@@ -13,3 +13,10 @@ body {
 * {
 	box-sizing: border-box;
 }
+
+@media (prefers-color-scheme: dark) {
+	body {
+		background: #111513;
+		color: #ebe6dc;
+	}
+}

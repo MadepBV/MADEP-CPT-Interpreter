@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import cptHtml from '../../cpt_app.html?raw';
 
 	let host = $state<HTMLDivElement | null>(null);
 	let isLoading = $state(true);
@@ -93,6 +94,38 @@
 	height:3px;
 	border-radius:999px 999px 0 0;
 }
+
+@media (prefers-color-scheme: dark){
+	[data-cpt-app-root]{
+		--ac:#82b9a7;
+		--acl:#21342d;
+		--acb:#4a7a69;
+		--acd:#b8dbcf;
+		--wn:#c89c61;
+		--wnl:#3a2d1f;
+		--bg:#171c19;
+		--bg2:#202723;
+		--bg3:#28302c;
+		--tx:#ebe6dc;
+		--tx2:#b8b3a8;
+		--tx3:#8c897f;
+		--bd:rgba(255,255,255,0.08);
+		--bd2:rgba(255,255,255,0.16);
+		background:
+			radial-gradient(circle at top left, rgba(130,185,167,0.11), transparent 28%),
+			linear-gradient(180deg, #161b18 0%, #111513 100%);
+		color-scheme:dark;
+	}
+
+	[data-cpt-app-root] .nav,
+	[data-cpt-app-root] #banner{
+		background:rgba(23,28,25,0.9);
+	}
+
+	[data-cpt-app-root] .dz{
+		background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+	}
+}
 `;
 
 	type RuntimeWindow = Window &
@@ -161,10 +194,7 @@
 
 		async function bootstrap() {
 			try {
-				const response = await fetch('/cpt_app.backup.html');
-				if (!response.ok) throw new Error(`Backup HTML could not be loaded (${response.status})`);
-
-				const html = await response.text();
+				const html = cptHtml;
 				if (cancelled) return;
 
 				const parser = new DOMParser();
@@ -233,7 +263,7 @@
 		<div class="card error">
 			<h1>Startup Error</h1>
 			<p>{errorMessage}</p>
-			<p>The original backup is available at <code>/cpt_app.backup.html</code>.</p>
+			<p>The current embedded source is loaded from <code>cpt_app.html</code>.</p>
 		</div>
 	</div>
 {/if}
@@ -302,5 +332,24 @@
 		font-family:
 			'SFMono-Regular', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas,
 			monospace;
+	}
+
+	@media (prefers-color-scheme: dark) {
+		.shell {
+			background:
+				radial-gradient(circle at top left, rgba(130, 185, 167, 0.16), transparent 34%),
+				linear-gradient(180deg, #161b18 0%, #111513 100%);
+			color: #ebe6dc;
+		}
+
+		.card {
+			background: rgba(24, 29, 26, 0.88);
+			border-color: rgba(255, 255, 255, 0.08);
+			box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+		}
+
+		.card.error {
+			border-color: rgba(200, 140, 110, 0.3);
+		}
 	}
 </style>

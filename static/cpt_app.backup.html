@@ -124,6 +124,7 @@ input[type=range]{accent-color:var(--ac)}
 .class-layout{display:grid;grid-template-columns:1fr 260px;gap:16px;align-items:start;margin-top:14px}
 @media(max-width:800px){.class-layout{grid-template-columns:1fr}}
 
+.preview-wrap{position:relative}
 .section-wrap{position:relative}
 .section-tip{
   position:absolute;display:none;pointer-events:none;z-index:30;
@@ -308,6 +309,11 @@ input[type=range]{accent-color:var(--ac)}
     <input class="ctrl-num" type="number" id="minThkN" min="0.05" max="2.0" step="0.05" value="0.50"
            oninput="setMinThk(+this.value,true)">
     <span style="font-size:12px;color:var(--tx2)">m</span>
+    <div class="ctrl-sep"></div>
+    <label style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--tx2);cursor:pointer">
+      <input type="checkbox" id="smartMergeChk" checked onchange="setSmartMerge(this.checked)">
+      Smart layer merge
+    </label>
     <span id="minThkInfo" style="font-size:11px;color:var(--tx3)"></span>
   </div>
 
@@ -323,7 +329,10 @@ input[type=range]{accent-color:var(--ac)}
     </div>
     <div>
       <div class="ct" style="margin-bottom:8px">Layer preview</div>
-      <svg id="layerPreviewSvg" viewBox="0 0 240 520" style="width:100%;border:1px solid var(--bd);border-radius:var(--r)"></svg>
+      <div class="preview-wrap">
+        <svg id="layerPreviewSvg" viewBox="0 0 240 520" style="width:100%;border:1px solid var(--bd);border-radius:var(--r)"></svg>
+        <div id="layerPreviewTip" class="section-tip"></div>
+      </div>
     </div>
   </div>
 
@@ -446,6 +455,7 @@ function newCptState(id){
     data:[], wt:1.7, wtFromFile:false,
     elev:null, elevFromFile:false,
     minThk:0.50,
+    smartMerge:true,
     method:'robertson',
     alphaMethod:'A',
     stiffMethod:'A',
@@ -492,6 +502,8 @@ function selectCpt(idx){
   document.getElementById('wtR').value=S.wt;
   document.getElementById('wtN').value=S.wt.toFixed(2);
   document.getElementById('elevN').value=S.elev!=null?S.elev.toFixed(2):'';
+  const smartMergeEl=document.getElementById('smartMergeChk');
+  if(smartMergeEl) smartMergeEl.checked=!!S.smartMerge;
   const cptXEl=document.getElementById('cptX');
   const cptYEl=document.getElementById('cptY');
   if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
@@ -505,13 +517,13 @@ function selectCpt(idx){
     S.chartsReady=false;
     S.charts={};
     // Rebuild chart area DOM so canvases are fresh
-    const cr=document.getElementById('cr');
+    const cr=document.getElementById('chartArea');
     if(cr) cr.innerHTML=`
       <div class="col-card"><div class="ct">layers</div><svg id="layerColSvg" viewBox="0 0 60 400"></svg></div>
       <div class="cc"><div class="ct">qc (MPa)</div><div style="position:relative;height:380px"><canvas id="cQc" role="img" aria-label="qc vs depth">qc profile</canvas></div></div>
       <div class="cc"><div class="ct">fs (kPa)</div><div style="position:relative;height:380px"><canvas id="cFs" role="img" aria-label="fs vs depth">fs profile</canvas></div></div>
       <div class="cc"><div class="ct">Rf (%)</div><div style="position:relative;height:380px"><canvas id="cRf" role="img" aria-label="Rf vs depth">Rf profile</canvas></div></div>`;
-    initCharts();
+    requestAnimationFrame(()=>initCharts());
     drawLayerColumnSvg('layerColSvg', S.layers, S.data[S.data.length-1]?.z+0.5||20);
   } else {
     document.getElementById('s1body').style.display='none';
@@ -1432,7 +1444,7 @@ function parseGEF(txt,fname){
 
   renderMeta();
   document.getElementById('s1body').style.display='block';
-  initCharts();
+  requestAnimationFrame(()=>initCharts());
 }
 
 function updateElevSrc(){
@@ -1516,6 +1528,17 @@ function setMinThk(v,fromInput){
   }
 }
 
+function setSmartMerge(v){
+  S.smartMerge=!!v;
+  if(S.classified.length){
+    detectLayers();
+    renderLayerPreviewSvg('layerPreviewSvg');
+    drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1]?.z+0.5||20);
+    if(document.getElementById('p2').classList.contains('active'))renderLayers();
+    document.getElementById('minThkInfo').textContent=`→ ${S.layers.length} layers`;
+  }
+}
+
 /* ════════════════════════════════
    CHARTS — created once, updated in-place
 ════════════════════════════════ */
@@ -1523,9 +1546,14 @@ function arrMax(arr){return arr.reduce((m,v)=>Math.max(m,v),-Infinity);}
 function arrSafe(arr){return arr.map(v=>isNaN(v)||v==null?0:v);}
 
 function initCharts(){
-  // If charts already exist, just update data
-  if(S.chartsReady){
+  const hasCanvases = document.getElementById('cQc') && document.getElementById('cFs') && document.getElementById('cRf');
+  // If charts already exist and the canvases still exist, just update data
+  if(S.chartsReady && hasCanvases && S.charts.qc && S.charts.fs && S.charts.rf){
     refreshChartData(); return;
+  }
+  if(typeof Chart==='undefined'){
+    setTimeout(()=>initCharts(), 120);
+    return;
   }
   const d=S.data;
   const depths=d.map(r=>r.z);
@@ -1666,6 +1694,7 @@ function renderLayerPreviewSvg(svgId){
   const labelX=165;     // type labels: 165-240
 
   let html='';
+  let overlaySvg='';
 
   // ── Column header ──
   html+=`<text x="${qcX+qcW/2}" y="12" font-size="7" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">qc (MPa)</text>`;
@@ -1681,9 +1710,10 @@ function renderLayerPreviewSvg(svgId){
   const scQc=v=>qcX+(v/Math.max(qcMax,0.1))*qcW;
   const scRf=v=>rfX+(v/Math.max(rfMaxVal,1))*rfW;
 
-  // ── Draw qc and Rf sparklines from per-reading data ──
+  // Track the original per-reading curves separately so they can be drawn
+  // on top of the layer bands instead of being visually buried underneath.
+  let qcPath='', rfPath='';
   if(data.length>1){
-    let qcPath='', rfPath='';
     data.forEach((r,i)=>{
       const y=sc(r.z);
       const xq=scQc(r.qc);
@@ -1693,12 +1723,13 @@ function renderLayerPreviewSvg(svgId){
         rfPath+=(rfPath===''?'M':'L')+`${xr.toFixed(1)},${y.toFixed(1)} `;
       }
     });
-    html+=`<polyline points="${qcPath}" fill="none" stroke="rgba(53,162,235,0.6)" stroke-width="0.8"/>`;
-    html+=`<polyline points="${rfPath}" fill="none" stroke="rgba(235,100,53,0.6)" stroke-width="0.8"/>`;
-    // Zero lines
-    html+=`<line x1="${qcX}" x2="${qcX}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.15)" stroke-width="0.5"/>`;
-    html+=`<line x1="${rfX}" x2="${rfX}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.15)" stroke-width="0.5"/>`;
   }
+
+  // Zero / origin lines and light chart guides
+  html+=`<line x1="${qcX}" x2="${qcX}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.18)" stroke-width="0.5"/>`;
+  html+=`<line x1="${rfX}" x2="${rfX}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.18)" stroke-width="0.5"/>`;
+  html+=`<line x1="${qcX+qcW}" x2="${qcX+qcW}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.07)" stroke-width="0.4"/>`;
+  html+=`<line x1="${rfX+rfW}" x2="${rfX+rfW}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.07)" stroke-width="0.4"/>`;
 
   // ── Draw layer bands ──
   for(const l of S.layers){
@@ -1706,35 +1737,49 @@ function renderLayerPreviewSvg(svgId){
     const h=Math.max(y2-y1,1.5);
     const fill=SCFILL[l.type]||'#D3D1C7';
     const midY=(y1+y2)/2;
+    const rows=data.filter(r=>r.z>=l.top&&r.z<=l.bot);
+    const qcRows=rows.map(r=>r.qc).filter(v=>v!=null&&v>=0);
+    const rfRows=rows.map(r=>r.rf).filter(v=>v!=null&&v>=0);
+    const fsRows=rows.map(r=>r.fs!=null?r.fs*1000:null).filter(v=>v!=null);
+    const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
     // Depth label
     html+=`<text x="${depthX}" y="${y1+5}" font-size="7" fill="#9a9a96" font-family="sans-serif">${l.top.toFixed(1)}</text>`;
     // Soil color band
     html+=`<rect x="${colX}" y="${y1}" width="${colW}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>`;
+    html+=`<rect class="section-layer-hit" data-layer-preview="1"
+      data-type="${esc(l.type)}"
+      data-subtype="${esc(l.subtype||'—')}"
+      data-top="${l.top.toFixed(2)}" data-bot="${l.bot.toFixed(2)}" data-thk="${(l.bot-l.top).toFixed(2)}"
+      data-points="${rows.length}"
+      data-qcmin="${qcRows.length?Math.min(...qcRows).toFixed(2):'—'}"
+      data-qcmax="${qcRows.length?Math.max(...qcRows).toFixed(2):'—'}"
+      data-qcavg="${l.avgQc.toFixed(2)}"
+      data-rfmin="${rfRows.length?Math.min(...rfRows).toFixed(2):'—'}"
+      data-rfmax="${rfRows.length?Math.max(...rfRows).toFixed(2):'—'}"
+      data-rfavg="${l.avgRf!=null?l.avgRf.toFixed(2):'—'}"
+      data-fsmin="${fsRows.length?Math.min(...fsRows).toFixed(1):'—'}"
+      data-fsmax="${fsRows.length?Math.max(...fsRows).toFixed(1):'—'}"
+      data-fsavg="${l.avgFs!=null?(l.avgFs*1000).toFixed(1):'—'}"
+      x="${colX}" y="${y1}" width="${labelX+70-colX}" height="${h}" fill="transparent"/>`;
     // Separator line across charts
     html+=`<line x1="${colX}" x2="${labelX+70}" y1="${y1}" y2="${y1}" stroke="rgba(0,0,0,0.08)" stroke-width="0.4"/>`;
 
-    // Soil type label
-    if(h>9){
-      const short=l.type.split('/')[0].trim().replace('Peat','Veen').replace('Sandy clay','Leem');
-      html+=`<text x="${labelX}" y="${midY+3}" font-size="7.5" fill="rgba(0,0,0,0.65)" font-family="sans-serif">${short}</text>`;
-    }
-    // avgQc bubble on qc line
-    const qcY=midY;
-    const qcBx=scQc(l.avgQc);
-    html+=`<circle cx="${qcBx.toFixed(1)}" cy="${qcY.toFixed(1)}" r="2.5" fill="rgba(53,162,235,0.8)"/>`;
-    if(h>14){
-      html+=`<text x="${qcBx+4}" y="${qcY+3}" font-size="6" fill="rgba(53,100,200,0.8)" font-family="sans-serif">${l.avgQc.toFixed(1)}</text>`;
-    }
-    // avgRf bubble
-    if(l.avgRf!=null){
-      const rfBx=scRf(l.avgRf);
-      html+=`<circle cx="${rfBx.toFixed(1)}" cy="${qcY.toFixed(1)}" r="2.5" fill="rgba(235,100,53,0.8)"/>`;
-      if(h>14){
-        html+=`<text x="${rfBx+4}" y="${qcY+3}" font-size="6" fill="rgba(200,80,30,0.8)" font-family="sans-serif">${l.avgRf.toFixed(1)}%</text>`;
-      }
-    }
   }
+
+  // ── Original qc and Rf data overlay (drawn LAST so it stays visible) ──
+  if(qcPath){
+    overlaySvg+=`<path d="${qcPath.trim()}" fill="none" stroke="rgba(53,162,235,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  if(rfPath){
+    overlaySvg+=`<path d="${rfPath.trim()}" fill="none" stroke="rgba(235,100,53,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+
+  // Small axis-end labels to make the chart ranges easier to read at a glance.
+  html+=`<text x="${qcX}" y="${H-4}" font-size="6" fill="#9a9a96" font-family="sans-serif">0</text>`;
+  html+=`<text x="${qcX+qcW}" y="${H-4}" font-size="6" text-anchor="end" fill="#9a9a96" font-family="sans-serif">${qcMax.toFixed(0)}</text>`;
+  html+=`<text x="${rfX}" y="${H-4}" font-size="6" fill="#9a9a96" font-family="sans-serif">0</text>`;
+  html+=`<text x="${rfX+rfW}" y="${H-4}" font-size="6" text-anchor="end" fill="#9a9a96" font-family="sans-serif">${rfMaxVal.toFixed(0)}</text>`;
 
   // Last depth label
   const last=S.layers[S.layers.length-1];
@@ -1745,9 +1790,49 @@ function renderLayerPreviewSvg(svgId){
   html+=`<line x1="${colX-4}" x2="${rfX+rfW}" y1="${wtY}" y2="${wtY}" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4,3"/>`;
   html+=`<text x="${rfX+rfW+2}" y="${wtY+3}" font-size="6.5" fill="#378ADD" font-family="sans-serif">WT</text>`;
 
-  svg.innerHTML=html;
+  svg.innerHTML=html+overlaySvg;
   // Widen the SVG container to show new width
   svg.setAttribute('width','100%');
+  bindLayerPreviewTooltip();
+}
+
+function bindLayerPreviewTooltip(){
+  const svg=document.getElementById('layerPreviewSvg');
+  const wrap=svg?.parentElement;
+  const tip=document.getElementById('layerPreviewTip');
+  if(!svg||!wrap||!tip||svg.dataset.previewTipBound==='1') return;
+
+  function hideTip(){ tip.style.display='none'; }
+  function showTip(target, evt){
+    tip.innerHTML=`<strong>${target.dataset.type||''}</strong>
+      <div class="mut">${target.dataset.subtype||'—'}</div>
+      <div class="row"><span>Depth</span><span>${target.dataset.top}–${target.dataset.bot} m</span></div>
+      <div class="row"><span>Thickness</span><span>${target.dataset.thk} m</span></div>
+      <div class="row"><span>Original points</span><span>${target.dataset.points}</span></div>
+      <div class="row"><span>qc original</span><span>${target.dataset.qcmin}–${target.dataset.qcmax} MPa</span></div>
+      <div class="row"><span>qc layer avg</span><span>${target.dataset.qcavg} MPa</span></div>
+      <div class="row"><span>Rf original</span><span>${target.dataset.rfmin}–${target.dataset.rfmax} %</span></div>
+      <div class="row"><span>Rf layer avg</span><span>${target.dataset.rfavg} %</span></div>
+      <div class="row"><span>fs original</span><span>${target.dataset.fsmin}–${target.dataset.fsmax} kPa</span></div>
+      <div class="row"><span>fs layer avg</span><span>${target.dataset.fsavg} kPa</span></div>`;
+    tip.style.display='block';
+    const rect=wrap.getBoundingClientRect();
+    const pad=12, tipW=250, tipH=210;
+    let left=evt.clientX-rect.left+14;
+    let top=evt.clientY-rect.top+14;
+    if(left+tipW>rect.width-pad) left=Math.max(pad, evt.clientX-rect.left-tipW-14);
+    if(top+tipH>rect.height-pad) top=Math.max(pad, evt.clientY-rect.top-tipH-14);
+    tip.style.left=`${left}px`;
+    tip.style.top=`${top}px`;
+  }
+
+  svg.addEventListener('mousemove',e=>{
+    const target=e.target.closest?.('[data-layer-preview]');
+    if(!target){ hideTip(); return; }
+    showTip(target,e);
+  });
+  svg.addEventListener('mouseleave',hideTip);
+  svg.dataset.previewTipBound='1';
 }
 
 /* ════════════════════════════════
@@ -1779,7 +1864,7 @@ function loadDemo(){
   updateElevSrc(); updateWTDisplay();
   renderMeta();
   document.getElementById('s1body').style.display='block';
-  initCharts();
+  requestAnimationFrame(()=>initCharts());
 }
 
 /* ════════════════════════════════
@@ -2070,6 +2155,130 @@ function runClass(){
 /* ════════════════════════════════
    LAYER DETECTION
 ════════════════════════════════ */
+function segmentSummary(seg){
+  const r=seg.rows.filter(x=>x.qc>0.02);
+  const rows=r.length?r:seg.rows;
+  const top=seg._top!=null?seg._top:(seg.isFirst?0:+(seg.rows[0].z-0.02).toFixed(3));
+  const bot=+seg.rows[seg.rows.length-1].z.toFixed(3);
+  const avgQc=+(rows.reduce((s,x)=>s+x.qc,0)/rows.length).toFixed(3);
+  const fsR=rows.filter(x=>x.fs!=null);
+  const avgFs=fsR.length?+(fsR.reduce((s,x)=>s+x.fs,0)/fsR.length).toFixed(5):null;
+  const rfR=rows.filter(x=>x.rf!=null);
+  const avgRf=rfR.length?+(rfR.reduce((s,x)=>s+(x.rf??0),0)/rfR.length).toFixed(2):null;
+  const subtypeCounts={};
+  seg.rows.forEach(row=>{const st=row.subtype||'';subtypeCounts[st]=(subtypeCounts[st]||0)+1;});
+  const subtype=Object.keys(subtypeCounts).sort((a,b)=>subtypeCounts[b]-subtypeCounts[a])[0]||'';
+  let g,gs,phi,c,cu;
+  if(S.useSB260params){
+    const vr=seg.rows.filter(x=>x.g!=null);
+    if(vr.length){
+      const avg2=fn=>+(vr.reduce((s,x)=>s+fn(x),0)/vr.length).toFixed(1);
+      g=+avg2(x=>x.g); gs=+avg2(x=>x.gs); phi=+avg2(x=>x.phi); c=+avg2(x=>x.c); cu=+avg2(x=>x.cu);
+    }else{
+      const df=DEF[seg.type]||DEF['Sand']; g=df.g; gs=df.gs; phi=df.phi; c=df.c; cu=df.cu;
+    }
+  }else{
+    const df=DEF[seg.type]||DEF['Sand']; g=df.g; gs=df.gs; phi=df.phi; c=df.c; cu=df.cu;
+  }
+  return{type:seg.type,subtype,avgQc,avgFs,avgRf,g,gs,phi,c,cu,top,bot,thk:+(bot-top).toFixed(3),rows:seg.rows.length};
+}
+
+function subtypeGroup(subtype){
+  const ent=CAT.find(r=>r.subtype===subtype);
+  return ent?ent.grp:'';
+}
+
+function familyClass(layer){
+  const grp=subtypeGroup(layer.subtype);
+  if(grp==='veen'||grp==='klei'||grp==='leem') return 'cohesive';
+  if(grp==='zand'||grp==='grind') return 'granular';
+  if(layer.type==='Peat / organic'||layer.type==='Clay'||layer.type==='Soft clay'||layer.type==='Sandy clay') return 'cohesive';
+  return 'granular';
+}
+
+function qcSimilarity(a,b){
+  const qa=Math.max(0.01,a.avgQc), qb=Math.max(0.01,b.avgQc);
+  return Math.max(0,1-Math.abs(Math.log(qa/qb))/Math.log(3));
+}
+
+function rfSimilarity(a,b){
+  if(a.avgRf==null||b.avgRf==null) return 0.5;
+  return Math.max(0,1-Math.abs(a.avgRf-b.avgRf)/3);
+}
+
+function subtypeSimilarity(a,b){
+  if(a.subtype&&a.subtype===b.subtype) return 1;
+  const ga=subtypeGroup(a.subtype), gb=subtypeGroup(b.subtype);
+  if(ga&&gb&&ga===gb) return 0.75;
+  const lvl=compatLevel(a.type,gb||'');
+  return lvl==='ok'?0.55:lvl==='adj'?0.25:0;
+}
+
+function paramSimilarity(a,b){
+  const vals=[
+    Math.max(0,1-Math.abs(a.phi-b.phi)/8),
+    Math.max(0,1-Math.abs(a.g-b.g)/3),
+    Math.max(0,1-Math.abs(a.c-b.c)/15)
+  ];
+  if(a.cu>0||b.cu>0) vals.push(Math.max(0,1-Math.abs(a.cu-b.cu)/75));
+  return vals.reduce((s,v)=>s+v,0)/vals.length;
+}
+
+function compatSimilarity(a,b){
+  const grpB=subtypeGroup(b.subtype);
+  const lvl=compatLevel(a.type,grpB||'');
+  return lvl==='ok'?1:lvl==='adj'?0.5:0;
+}
+
+function continuityScore(neighbor, outer){
+  if(!outer) return 0.5;
+  return 0.35*(layerTypeCompatScore(neighbor,outer)) + 0.35*qcSimilarity(neighbor,outer) + 0.30*rfSimilarity(neighbor,outer);
+}
+
+function isCriticalMarkerLayer(layer, up, down){
+  if(layer.type==='Peat / organic'||layer.type==='Gravel') return true;
+  if(layer.avgRf!=null&&layer.avgRf>6) return true;
+  if(layer.avgQc<0.35||layer.avgQc>=15) return true;
+  if(up&&down){
+    const fam=familyClass(layer), fu=familyClass(up), fd=familyClass(down);
+    if(fam!==fu&&fam!==fd&&fu===fd) return true;
+  }
+  return false;
+}
+
+function mergeCandidateScore(layer, neighbor, outer){
+  if(!neighbor) return{ok:false,score:0,why:'no-neighbor'};
+  const logRatio=Math.abs(Math.log(Math.max(0.01,layer.avgQc)/Math.max(0.01,neighbor.avgQc)));
+
+  const typeScore=layer.type===neighbor.type?1:layerTypeCompatScore(layer,neighbor);
+  const qcScore=qcSimilarity(layer,neighbor);
+  const rfScore=rfSimilarity(layer,neighbor);
+  const stScore=subtypeSimilarity(layer,neighbor);
+  const pScore=paramSimilarity(layer,neighbor);
+  const compScore=compatSimilarity(layer,neighbor);
+  const corrScore=continuityScore(neighbor,outer);
+  let score=0.24*typeScore + 0.20*qcScore + 0.14*rfScore + 0.14*stScore + 0.12*pScore + 0.08*compScore + 0.08*corrScore;
+
+  // Penalise sharp transitions, but do not fully block the merge.
+  // The thickness criterion remains hard; similarity only decides direction.
+  if(logRatio>Math.log(2.5)) score-=0.22;
+  else if(logRatio>Math.log(1.8)) score-=0.10;
+
+  if(layer.avgRf!=null&&neighbor.avgRf!=null){
+    const rfDiff=Math.abs(layer.avgRf-neighbor.avgRf);
+    if(rfDiff>4) score-=0.16;
+    else if(rfDiff>2.5) score-=0.08;
+  }
+
+  if((layer.type==='Peat / organic')!==(neighbor.type==='Peat / organic')) score-=0.18;
+  if((layer.type==='Gravel')!==(neighbor.type==='Gravel')) score-=0.14;
+
+  if(isCriticalMarkerLayer(layer,null,null) && layer.type!==neighbor.type) score-=0.10;
+
+  score=Math.max(0,+score.toFixed(3));
+  return{ok:true,score};
+}
+
 function detectLayers(){
   const d=S.classified;
   const raw=[];
@@ -2080,51 +2289,73 @@ function detectLayers(){
   }
   raw.push(cur);
 
-  // Iterative merge: repeat until stable (thin layers absorbed into predecessor)
-  let changed=true, merged=raw;
+  let changed=true, merged=raw.map((seg,i)=>({...seg,isFirst:i===0}));
   while(changed){
     changed=false;
-    const next=[];
-    for(const seg of merged){
-      const r=seg.rows;
-      const thick=r[r.length-1].z-r[0].z;
-      if(thick<S.minThk&&next.length>0){
-        next[next.length-1].rows.push(...r);
-        changed=true;
-      }else{
-        next.push({...seg,rows:[...r]});
+    if(!S.smartMerge){
+      const next=[];
+      for(const seg of merged){
+        const r=seg.rows;
+        const thick=r[r.length-1].z-r[0].z;
+        if(thick<S.minThk&&next.length>0){
+          next[next.length-1].rows.push(...r);
+          changed=true;
+        }else next.push({...seg,rows:[...r]});
       }
+      merged=next.map((seg,i)=>({...seg,isFirst:i===0}));
+      continue;
     }
-    merged=next;
+
+    for(let i=0;i<merged.length;i++){
+      const seg=merged[i];
+      const layer=segmentSummary(seg);
+      if(layer.thk>=S.minThk) continue;
+
+      const upSeg=i>0?merged[i-1]:null, downSeg=i<merged.length-1?merged[i+1]:null;
+      const up=upSeg?segmentSummary(upSeg):null, down=downSeg?segmentSummary(downSeg):null;
+
+      const upOuter=i>1?segmentSummary(merged[i-2]):null;
+      const downOuter=i<merged.length-2?segmentSummary(merged[i+2]):null;
+      const upCand=mergeCandidateScore(layer,up,upOuter);
+      const downCand=mergeCandidateScore(layer,down,downOuter);
+      if(!upCand.ok&&!downCand.ok) continue;
+
+      const margin=0.08;
+      let dir=null;
+      if(upCand.ok&&(!downCand.ok||upCand.score>downCand.score+margin)) dir='up';
+      else if(downCand.ok&&(!upCand.ok||downCand.score>upCand.score+margin)) dir='down';
+      else if(upCand.ok&&downCand.ok){
+        const upThk=up?.thk||0, downThk=down?.thk||0;
+        dir=upThk===downThk?'up':(upThk>downThk?'up':'down');
+      }
+      if(!dir){
+        dir=upCand.ok?'up':'down';
+      }
+
+      if(dir==='up'){
+        merged[i-1].rows.push(...seg.rows);
+        if(seg._top!=null) merged[i-1]._top=merged[i-1]._top??seg._top;
+        merged.splice(i,1);
+      }else{
+        merged[i+1].rows.unshift(...seg.rows);
+        merged[i+1]._top=seg._top!=null?seg._top:(i===0?0:seg.rows[0].z-0.02);
+        merged.splice(i,1);
+      }
+      merged=merged.map((s,idx)=>({...s,isFirst:idx===0}));
+      changed=true;
+      break;
+    }
   }
 
+  const mergedSummaries=merged.map((seg,i)=>segmentSummary({...seg,isFirst:i===0}));
+  let prevBot=null;
   S.layers=merged.map((seg,i)=>{
-    const r=seg.rows.filter(x=>x.qc>0.02);
-    if(!r.length)r.push(...seg.rows);
-    const top=i===0?0:+(seg.rows[0].z-0.02).toFixed(3);
-    const bot=+seg.rows[seg.rows.length-1].z.toFixed(3);
-    const avgQc=+(r.reduce((s,x)=>s+x.qc,0)/r.length).toFixed(3);
-    const fsR=r.filter(x=>x.fs!=null);
-    const avgFs=fsR.length?+(fsR.reduce((s,x)=>s+x.fs,0)/fsR.length).toFixed(5):null;
-    const rfR=r.filter(x=>x.rf!=null);
-    const avgRf=rfR.length?+(rfR.reduce((s,x)=>s+(x.rf??0),0)/rfR.length).toFixed(2):null;
-    // Dominant subtype (most frequent among rows)
-    const subtypeCounts={};
-    seg.rows.forEach(row=>{const st=row.subtype||'';subtypeCounts[st]=(subtypeCounts[st]||0)+1;});
-    const subtype=Object.keys(subtypeCounts).sort((a,b)=>subtypeCounts[b]-subtypeCounts[a])[0]||'';
-    // Parameters: for Eurocode Table 3 use the row-derived values; else use DEF table
-    let g,gs,phi,c,cu;
-    if(S.useSB260params){
-      // Weighted average of per-row Eurocode Table 3 values (rows already carry g,gs,phi,c,cu)
-      const vr=seg.rows.filter(x=>x.g!=null);
-      if(vr.length){
-        const avg2=fn=>+(vr.reduce((s,x)=>s+fn(x),0)/vr.length).toFixed(1);
-        g=+avg2(x=>x.g); gs=+avg2(x=>x.gs); phi=+avg2(x=>x.phi);
-        c=+avg2(x=>x.c); cu=+avg2(x=>x.cu);
-      }else{const df=DEF[seg.type]||DEF['Sand'];g=df.g;gs=df.gs;phi=df.phi;c=df.c;cu=df.cu;}
-    }else{
-      const df=DEF[seg.type]||DEF['Sand'];g=df.g;gs=df.gs;phi=df.phi;c=df.c;cu=df.cu;
-    }
+    const sum=mergedSummaries[i];
+    const top=prevBot==null?sum.top:+prevBot.toFixed(3);
+    const bot=Math.max(top,+sum.bot.toFixed(3));
+    prevBot=bot;
+    const {avgQc,avgFs,avgRf,subtype}=sum;
+    let {g,gs,phi,c,cu}=sum;
     // Auto-suggest best Eurocode Table 3 subtype from catalogue based on avgQc + avgRf
     // Only if subtype not already forced by the classification itself
     const tmpLayer={type:seg.type,subtype,avgQc,avgRf};
