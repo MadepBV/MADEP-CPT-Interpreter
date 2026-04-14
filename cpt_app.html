@@ -1,0 +1,3401 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CPT Interpreter — MADEP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{
+  --ac:#1D9E75;--acl:#E1F5EE;--acb:#5DCAA5;--acd:#0F6E56;
+  --wn:#BA7517;--wnl:#FAEEDA;
+  --bg:#ffffff;--bg2:#f6f6f4;--bg3:#f0efeb;
+  --tx:#1a1a18;--tx2:#6b6b68;--tx3:#9a9a96;
+  --bd:rgba(0,0,0,0.11);--bd2:rgba(0,0,0,0.20);
+  --r:8px;--r2:12px;
+  font-family:'Inter',system-ui,sans-serif;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#1a1a18;--bg2:#242420;--bg3:#2c2c28;
+  --tx:#f0efeb;--tx2:#9a9a96;--tx3:#6b6b68;
+  --bd:rgba(255,255,255,0.10);--bd2:rgba(255,255,255,0.18);
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font-size:14px;line-height:1.5}
+
+.nav{display:flex;align-items:stretch;border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:20;background:var(--bg);height:52px;overflow-x:auto}
+.si{display:flex;align-items:center;gap:8px;padding:0 20px;border-right:1px solid var(--bd);font-size:12px;color:var(--tx2);cursor:pointer;white-space:nowrap;flex-shrink:0;position:relative;transition:background .1s}
+.si:hover{background:var(--bg2)}
+.si.active{color:var(--tx);background:var(--bg2)}
+.si.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--ac)}
+.si.done{color:var(--tx)}
+.si.locked{opacity:.32;pointer-events:none}
+.sn{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bd2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.si.active .sn{background:var(--ac);border-color:var(--ac);color:#fff}
+.si.done .sn{background:var(--acl);border-color:var(--acb);color:var(--acd)}
+
+.wrap{max-width:1280px;margin:0 auto;padding:24px}
+.panel{display:none}.panel.active{display:block}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1px solid var(--bd2);border-radius:var(--r);background:transparent;color:var(--tx);font-size:13px;font-weight:500;cursor:pointer;transition:background .1s}
+.btn:hover{background:var(--bg2)}
+.btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+.btn.pri:hover{background:var(--acd)}
+.btn.sm{padding:4px 10px;font-size:12px}
+.togbtn{padding:5px 12px;font-size:12px;font-weight:500;border:none;background:transparent;color:var(--tx2);cursor:pointer;transition:.1s}
+.togbtn:hover{background:var(--bg2);color:var(--tx)}
+.togbtn.active{background:var(--ac);color:#fff}
+
+.dz{border:1.5px dashed var(--bd2);border-radius:var(--r2);padding:40px 24px;text-align:center;cursor:pointer;transition:.15s}
+.dz:hover,.dz.drag{border-color:var(--acb);background:var(--acl)}
+
+.sec{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap}
+.sec-title{font-size:15px;font-weight:600}
+.sec-sub{font-size:12px;color:var(--tx2);margin-top:3px}
+
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:14px}
+.mi{background:var(--bg2);border-radius:var(--r);padding:8px 12px}
+.mi-l{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
+.mi-v{font-size:13px;font-weight:500}
+
+/* Control row — WT, elevation, min-thickness */
+.ctrl-row{display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 14px;background:var(--bg2);border-radius:var(--r);flex-wrap:wrap}
+.ctrl-lbl{font-size:12px;color:var(--tx2);flex-shrink:0}
+.ctrl-num{width:72px;padding:4px 7px;border:1px solid var(--bd2);border-radius:var(--r);font-size:13px;background:var(--bg);color:var(--tx)}
+.ctrl-sep{width:1px;height:28px;background:var(--bd);margin:0 4px;flex-shrink:0}
+
+/* Charts + column layout */
+.chart-area{display:grid;grid-template-columns:80px 1fr 1fr 1fr;gap:8px;margin-top:12px;align-items:start}
+@media(max-width:700px){.chart-area{grid-template-columns:60px 1fr 1fr}}
+.cc{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:10px}
+.ct{font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+
+/* Layer column (SVG-based) */
+.col-card{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:10px;overflow:hidden}
+#layerColSvg{width:100%;display:block}
+
+.mcards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.mc{border:1.5px solid var(--bd);border-radius:var(--r);padding:14px;cursor:pointer;transition:.1s}
+.mc:hover{border-color:var(--acb)}
+.mc.sel{border-color:var(--ac);background:var(--acl)}
+.mc h3{font-size:13px;font-weight:600;margin-bottom:5px}
+.mc p{font-size:12px;color:var(--tx2);line-height:1.5}
+
+.mrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.met{background:var(--bg2);border-radius:var(--r);padding:8px 12px}
+.met-l{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.met-v{font-size:18px;font-weight:600}
+
+.tbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+.tbl th{text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bd);white-space:nowrap;text-transform:uppercase;letter-spacing:.03em}
+.tbl td{padding:5px 8px;border-bottom:1px solid var(--bd);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--bg2)}
+
+.sb{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
+.s-peat  {background:#C0DD97;color:#27500A}
+.s-sclay {background:#B5D4F4;color:#0C447C}
+.s-clay  {background:#AFA9EC;color:#26215C}
+.s-sclayl{background:#FAC775;color:#633806}
+.s-ssand {background:#F4C0D1;color:#4B1528}
+.s-sand  {background:#D3D1C7;color:#2C2C2A}
+.s-gravel{background:#F0997B;color:#4A1B0C}
+
+.ed{width:60px;padding:3px 6px;border:1px solid var(--bd2);border-radius:5px;font-size:11px;background:var(--bg);color:var(--tx);text-align:right}
+.ed.ovr{border-color:var(--wn);font-style:italic;color:var(--wn)}
+input[type=range]{accent-color:var(--ac)}
+
+.mc2{border:1px solid var(--bd);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.mc2-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.mc2-body{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:580px){.mc2-body{grid-template-columns:1fr}}
+@media(max-width:900px){.mc2 .mc2-body[style*="grid-template-columns:1fr 1fr 1fr"]{grid-template-columns:1fr 1fr}}
+.mc2-sec{font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--bd)}
+.pt{width:100%;font-size:12px;border-collapse:collapse}
+.pt td{padding:3px 0;vertical-align:top}
+.pt td:first-child{color:var(--tx2);padding-right:10px;white-space:nowrap;font-size:11px}
+.pt td:last-child{text-align:right;font-weight:500}
+.pt tr.key td:last-child{color:var(--acd)}
+
+.foot{display:flex;align-items:center;justify-content:space-between;margin-top:22px;padding-top:14px;border-top:1px solid var(--bd);gap:12px;flex-wrap:wrap}
+.info{font-size:12px;color:var(--tx2);padding:8px 12px;background:var(--wnl);border-radius:var(--r);border-left:2px solid var(--wn);margin-bottom:10px}
+
+/* Stage 2/3 combined view: classification result + layer preview side by side */
+.class-layout{display:grid;grid-template-columns:1fr 260px;gap:16px;align-items:start;margin-top:14px}
+@media(max-width:800px){.class-layout{grid-template-columns:1fr}}
+
+.section-wrap{position:relative}
+.section-tip{
+  position:absolute;display:none;pointer-events:none;z-index:30;
+  min-width:220px;max-width:280px;padding:10px 12px;border-radius:10px;
+  background:rgba(26,26,24,0.94);color:#f4f3ef;border:1px solid rgba(255,255,255,0.08);
+  box-shadow:0 12px 32px rgba(0,0,0,0.18);font-size:11px;line-height:1.45
+}
+.section-tip strong{display:block;font-size:11px;font-weight:600;margin-bottom:4px;color:#fff}
+.section-tip .mut{color:rgba(255,255,255,0.68)}
+.section-tip .row{display:flex;justify-content:space-between;gap:12px}
+.section-tip .row span:last-child{font-weight:500;color:#fff;text-align:right}
+.section-layer-hit{cursor:pointer}
+</style>
+</head>
+<body>
+
+<!-- ══ PROJECT BANNER ══════════════════════════════════════════════════ -->
+<div id="banner" style="background:var(--bg2);border-bottom:1px solid var(--bd);padding:0 16px;display:flex;align-items:center;gap:0;min-height:44px;flex-wrap:wrap">
+  <!-- Project name -->
+  <span style="font-size:12px;font-weight:600;color:var(--tx2);margin-right:10px;white-space:nowrap">📁</span>
+  <input id="projName" type="text" value="CPT Project"
+    oninput="PROJECT.name=this.value"
+    style="font-size:12px;font-weight:600;border:none;background:transparent;color:var(--tx);width:120px;padding:0;outline:none">
+
+  <div style="width:1px;height:24px;background:var(--bd);margin:0 12px"></div>
+
+  <!-- CPT tabs -->
+  <div id="cptTabs" style="display:flex;align-items:stretch;gap:2px;flex:1;overflow-x:auto"></div>
+  <button class="btn sm" onclick="addCpt()" style="margin-left:8px;flex-shrink:0">+ Add CPT</button>
+
+  <div style="width:1px;height:24px;background:var(--bd);margin:0 12px"></div>
+
+  <!-- Phase switcher -->
+  <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden;flex-shrink:0">
+    <button id="phaseA" class="togbtn active" onclick="setPhase('analysis')">Analysis</button>
+    <button id="phaseB" class="togbtn"        onclick="setPhase('correlation')">Correlatie</button>
+    <button id="phaseC" class="togbtn"        onclick="setPhase('section')">Doorsnede</button>
+  </div>
+</div>
+
+<!-- ══ PHASE B — CORRELATION ══════════════════════════════════════════ -->
+<div id="phaseCorr" style="display:none;padding:20px 24px;max-width:1280px;margin:0 auto">
+  <div class="sec">
+    <div><div class="sec-title">Cross-CPT correlatie</div>
+      <div class="sec-sub">Verbindt lagen over CPTs op basis van absolute hoogte (m TAW), grondsoort en qc. Vereist bevestigde maaiveldshoogte per CPT.</div>
+    </div>
+    <button class="btn pri sm" onclick="runCorrelation()">Auto-correleer</button>
+  </div>
+  <div id="corrWarnings"></div>
+  <div id="corrTable" style="overflow-x:auto;margin-top:12px"></div>
+</div>
+
+<!-- ══ PHASE C — CROSS-SECTION ════════════════════════════════════════ -->
+<div id="phaseSection" style="display:none;padding:20px 24px;max-width:1280px;margin:0 auto">
+  <div class="sec">
+    <div><div class="sec-title">Geologische doorsnede</div>
+      <div class="sec-sub">Projectie van gecorreleerde lagen op een verticaal vlak. Absolute hoogte (m TAW) op Y-as, afstand langs de doorsnede op X-as.</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="ctrl-lbl">Verticale schaal ×</span>
+      <input type="range" id="vexag" min="1" max="10" step="0.5" value="2" style="width:80px"
+             oninput="document.getElementById('vexagV').textContent=this.value;renderSection()">
+      <span id="vexagV" style="font-size:12px;min-width:20px">2</span>
+      <button class="btn sm" onclick="exportSectionSVG()">SVG ↓</button>
+    </div>
+  </div>
+  <div id="sectionCanvas" class="section-wrap" style="overflow:auto;border:1px solid var(--bd);border-radius:var(--r);background:var(--bg)">
+    <svg id="sectionSvg" style="display:block;min-width:600px"></svg>
+    <div id="sectionTip" class="section-tip"></div>
+  </div>
+</div>
+
+<nav class="nav" id="nav">
+  <div class="si active" data-s="0"><div class="sn">1</div>Load &amp; preview</div>
+  <div class="si locked" data-s="1"><div class="sn">2</div>Classification</div>
+  <div class="si locked" data-s="2"><div class="sn">3</div>Layer identification</div>
+  <div class="si locked" data-s="3"><div class="sn">4</div>Model parameters</div>
+  <div class="si locked" data-s="4"><div class="sn">5</div>Tuning <span style="font-size:9px;opacity:.7">exp.</span></div>
+</nav>
+
+<div class="wrap">
+
+<!-- ══════════════ STAGE 1 ══════════════ -->
+<div class="panel active" id="p0">
+  <div class="sec">
+    <div>
+      <div class="sec-title">Load CPT — GEF file</div>
+      <div class="sec-sub">Belgian/Dutch GEF. Quantity IDs: 1=depth, 2=qc, 3=fs, 4=Rf, 6=u2. Water table from MEASUREMENTVAR 14.</div>
+    </div>
+  </div>
+  <div class="dz" id="dz" onclick="document.getElementById('fi').click()">
+    <div style="font-size:28px;margin-bottom:10px">📂</div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:4px">Drop .GEF file here or click to browse</div>
+    <div style="font-size:12px;color:var(--tx2)">Space-delimited, scientific notation. Column order from COLUMNINFO quantity IDs — not assumed.</div>
+  </div>
+  <input type="file" id="fi" accept=".gef,.GEF,.txt" style="display:none" onchange="loadGEF(event)" multiple>
+  <div style="margin-top:10px;text-align:center">
+    <span style="font-size:12px;color:var(--tx2)">No file?&nbsp;</span>
+    <button class="btn sm" onclick="loadDemo()">Load demo — anonymous profile</button>
+  </div>
+
+  <div id="s1body" style="display:none">
+    <div class="mgrid" id="mgrid"></div>
+
+    <!-- Controls: surface elevation + water table + coordinates -->
+    <div class="ctrl-row" id="ctrlRow" style="flex-wrap:wrap;row-gap:8px">
+      <!-- Row 1: elevation + WT -->
+      <span class="ctrl-lbl">Surface elev. (m TAW):</span>
+      <input class="ctrl-num" type="number" id="elevN" step="0.01" placeholder="e.g. 69.97"
+             oninput="setElev(+this.value)" style="width:88px">
+      <span id="elev-src" style="font-size:11px;color:var(--tx3)"></span>
+
+      <div class="ctrl-sep"></div>
+
+      <span class="ctrl-lbl">Water table (m below surface):</span>
+      <input type="range" id="wtR" min="0" max="15" step="0.05" value="1.7"
+             style="width:120px" oninput="setWT(+this.value,false)">
+      <input class="ctrl-num" type="number" id="wtN" min="0" max="30" step="0.05" value="1.7"
+             oninput="setWT(+this.value,true)">
+      <span style="font-size:12px;color:var(--tx2)">m</span>
+      <span id="wt-taw" style="font-size:11px;color:var(--tx3)"></span>
+      <span id="wt-src" style="font-size:11px;color:var(--tx3)"></span>
+
+      <!-- Row 2: XY coordinates (for multi-CPT correlation) -->
+      <div style="width:100%;height:0;flex-basis:100%"></div>
+      <span class="ctrl-lbl">Coördinaten (m):</span>
+      <span style="font-size:12px;color:var(--tx2)">X</span>
+      <input class="ctrl-num" type="number" id="cptX" step="0.1" placeholder="easting"
+             style="width:96px" oninput="setCptCoord('x',this.value)">
+      <span style="font-size:12px;color:var(--tx2)">Y</span>
+      <input class="ctrl-num" type="number" id="cptY" step="0.1" placeholder="northing"
+             style="width:96px" oninput="setCptCoord('y',this.value)">
+      <span style="font-size:11px;color:var(--tx3)">Lokaal stelsel of RD — voor cross-sectie correlatie</span>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-area" id="chartArea">
+      <div class="col-card">
+        <div class="ct">layers</div>
+        <svg id="layerColSvg" viewBox="0 0 60 400"></svg>
+      </div>
+      <div class="cc"><div class="ct">qc (MPa)</div><div style="position:relative;height:380px"><canvas id="cQc" role="img" aria-label="qc vs depth">qc profile</canvas></div></div>
+      <div class="cc"><div class="ct">fs (kPa)</div><div style="position:relative;height:380px"><canvas id="cFs" role="img" aria-label="fs vs depth">fs profile</canvas></div></div>
+      <div class="cc"><div class="ct">Rf (%)</div><div style="position:relative;height:380px"><canvas id="cRf" role="img" aria-label="Rf vs depth">Rf profile</canvas></div></div>
+    </div>
+
+    <div class="foot">
+      <span id="finfo" style="font-size:12px;color:var(--tx2)"></span>
+      <button class="btn pri" onclick="goS(1)">Next: Classification →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ STAGE 2 ══════════════ -->
+<div class="panel" id="p1">
+  <div class="sec">
+    <div>
+      <div class="sec-title">Classification method</div>
+      <div class="sec-sub">Choose a method, set minimum layer thickness, then click Apply.</div>
+    </div>
+  </div>
+  <div class="mcards" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="mc sel" id="mRob" onclick="selM('robertson')">
+      <h3>Robertson (1990) — SBT / Ic</h3>
+      <p>Normalised Qt and Fr. Stress-dependent — accounts for depth. Preferred for HS parameter derivation and PLAXIS modelling.</p>
+    </div>
+    <div class="mc" id="mCur" onclick="selM('cur3')">
+      <h3>CUR 3 / NEN 6740</h3>
+      <p>Direct qc and Rf ranges. Dutch–Flemish practice. No stress normalisation. Accepted for SB260 and building permit contexts.</p>
+    </div>
+    <div class="mc" id="mSB" onclick="selM('sb260')">
+      <h3>NEN Tabel 3 / EC7</h3>
+      <p>Karakteristieke grondparameters. Grond-, zand-, leem-, klei-, veensoorten op basis van qc-bereik en Rf. Geeft direct γ, φ'k, c'k en cu,k.</p>
+    </div>
+  </div>
+
+  <!-- Min layer thickness control -->
+  <div class="ctrl-row" style="margin-top:14px">
+    <span class="ctrl-lbl">Minimum layer thickness:</span>
+    <input type="range" id="minThkR" min="0.05" max="2.0" step="0.05" value="0.50"
+           style="width:140px" oninput="setMinThk(+this.value,false)">
+    <input class="ctrl-num" type="number" id="minThkN" min="0.05" max="2.0" step="0.05" value="0.50"
+           oninput="setMinThk(+this.value,true)">
+    <span style="font-size:12px;color:var(--tx2)">m</span>
+    <span id="minThkInfo" style="font-size:11px;color:var(--tx3)"></span>
+  </div>
+
+  <div class="class-layout" id="classLayout" style="display:none">
+    <div>
+      <div class="mrow" id="cmet"></div>
+      <div style="margin-top:14px;font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Preview — first 25 classified rows</div>
+      <div style="overflow-x:auto;max-height:320px;overflow-y:auto;border:1px solid var(--bd);border-radius:var(--r)">
+        <table class="tbl" style="margin-top:0"><thead style="position:sticky;top:0;background:var(--bg);z-index:2">
+          <tr><th>depth (m)</th><th>TAW (m)</th><th>qc (MPa)</th><th>fs (kPa)</th><th>Rf (%)</th><th>Soil type</th><th>Sub-type</th><th>Ic</th></tr>
+        </thead><tbody id="cbody"></tbody></table>
+      </div>
+    </div>
+    <div>
+      <div class="ct" style="margin-bottom:8px">Layer preview</div>
+      <svg id="layerPreviewSvg" viewBox="0 0 240 520" style="width:100%;border:1px solid var(--bd);border-radius:var(--r)"></svg>
+    </div>
+  </div>
+
+  <div class="foot">
+    <button class="btn" onclick="goS(0)">← Back</button>
+    <button class="btn pri" onclick="runClass()">Apply classification →</button>
+    <button class="btn" id="btnToLayers" onclick="goS(2)" style="display:none">Review layers →</button>
+  </div>
+</div>
+
+<!-- ══════════════ STAGE 3 ══════════════ -->
+<div class="panel" id="p2">
+  <div class="sec">
+    <div>
+      <div class="sec-title">Layer identification</div>
+      <div class="sec-sub">Boundaries from soil-type changes + min-thickness filter. Edit any parameter — italic orange = manual override.</div>
+    </div>
+  </div>
+  <!-- Parameter method selector -->
+  <div class="ctrl-row" style="margin-bottom:14px;flex-wrap:wrap;gap:14px">
+    <span class="ctrl-lbl" style="white-space:nowrap;font-weight:500">Parameter methode:</span>
+    <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden">
+      <button id="pmSB260" class="togbtn active" onclick="setParamMethod('sb260')">NEN Tabel 3 / EC7</button>
+      <button id="pmDEF"   class="togbtn"        onclick="setParamMethod('def')">Generiek (DEF)</button>
+    </div>
+    <span style="font-size:11px;color:var(--tx3)" id="pmDesc">Grondsoort en consistentie uit NEN Tabel 3 (EC7) — aanbevolen</span>
+  </div>
+  <div class="info">
+    Thin-layer merging uses the minimum thickness set in Stage 2.
+    Values with <span style="color:var(--wn);font-style:italic">italic orange border</span> are manually overridden and feed into Stage 4.
+    Dropdown shows ✓ for best qc/Rf match — greyed entries are outside the expected range for this layer.
+  </div>
+  <div style="overflow-x:auto">
+    <table class="tbl" id="lt">
+      <thead><tr>
+        <th>#</th><th>Top (m)</th><th>Bot (m)</th><th>Top (TAW)</th><th>Bot (TAW)</th>
+        <th>Thick.</th><th>Soil type ▾ override</th>
+        <th>avg qc</th><th>avg fs</th><th>avg Rf%</th>
+        <th>γ (kN/m³)</th><th>γ_sat</th><th>φ' (°)</th><th>c' (kPa)</th><th>cu (kPa)</th>
+      </tr></thead>
+      <tbody id="lb"></tbody>
+    </table>
+  </div>
+  <div class="foot">
+    <button class="btn" onclick="goS(1)">← Back</button>
+    <button class="btn pri" onclick="goS(3)">Model parameters →</button>
+  </div>
+</div>
+
+<!-- ══════════════ STAGE 4 ══════════════ -->
+<div class="panel" id="p3">
+  <div class="sec">
+    <div>
+      <div class="sec-title">Model parameters</div>
+      <div class="sec-sub">Mohr-Coulomb and Hardening Soil (p_ref = 100 kPa). Eoed,i = αE × qc (Sanglerat). Review m and Eoed,ref per layer.</div>
+    </div>
+    <button class="btn sm" onclick="exportCSV()">Export CSV</button>
+  </div>
+  <!-- Global method toggles -->
+  <div class="ctrl-row" style="margin-bottom:16px;flex-wrap:wrap;gap:16px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="ctrl-lbl" style="white-space:nowrap">α-method:</span>
+      <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden">
+        <button id="btnAlphaA" class="togbtn active" onclick="setAlphaMethod('A')">A — Sanglerat (fixed)</button>
+        <button id="btnAlphaB" class="togbtn"        onclick="setAlphaMethod('B')">B — SB260 qc-dependent</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="ctrl-lbl" style="white-space:nowrap">Stiffness method:</span>
+      <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden">
+        <button id="btnStiffA" class="togbtn active" onclick="setStiffMethod('A')">A — CUR 2003-7 ratios</button>
+        <button id="btnStiffB" class="togbtn"        onclick="setStiffMethod('B')">B — E₅₀ = E_oed</button>
+      </div>
+    </div>
+  </div>
+  <div id="ma"></div>
+  <div class="foot">
+    <button class="btn" onclick="goS(2)">← Back</button>
+    <span style="font-size:12px;color:var(--tx2)">Review m-values. Use Tuning (Stage 5) to fit m from CPT data.</span>
+    <button class="btn" onclick="goS(4)" style="border-color:var(--wn);color:var(--wn)">Stage 5 — Tuning ⚗</button>
+  </div>
+</div>
+
+<!-- ══════════════ STAGE 5 — TUNING ══════════════ -->
+<div class="panel" id="p4">
+  <div class="sec">
+    <div>
+      <div class="sec-title">Tuning — m fitting <span style="font-size:11px;font-weight:400;color:var(--wn);margin-left:8px">⚠ experimental</span></div>
+      <div class="sec-sub">Per-layer OLS regression of ln(E_oed,i) vs ln(σ'v0 stress ratio) to fit m and E_oed,ref from CPT data directly. Review each fit before accepting.</div>
+    </div>
+    <button class="btn sm" onclick="runTuning()">Run fitting</button>
+  </div>
+  <div class="info" style="background:var(--wnl);border-color:var(--wn)">
+    <strong>Experimental.</strong> The fitted m replaces the type-default only when the engineer explicitly accepts it per layer.
+    Fit quality is shown as R² — values below 0.5 indicate too much scatter or insufficient depth range; keep the default in that case.
+  </div>
+  <div id="tuningArea"></div>
+  <div class="foot">
+    <button class="btn" onclick="goS(3)">← Back to parameters</button>
+    <button class="btn sm" onclick="exportCSV()">Export CSV</button>
+  </div>
+</div>
+
+</div><!-- wrap -->
+
+<script>
+/* ════════════════════════════════
+   STATE
+════════════════════════════════ */
+/* ════════════════════════════════
+   PROJECT STATE — multi-CPT architecture
+   S is always a reference to the active CPT's state object.
+   All existing functions (parseGEF, runClass, renderLayers, hsParams, etc.)
+   use S and require no changes — they transparently operate on the active CPT.
+════════════════════════════════ */
+function newCptState(id){
+  return{
+    id: id||'CPT',
+    x: null, y: null,           // site coordinates (m, local or RD)
+    data:[], wt:1.7, wtFromFile:false,
+    elev:null, elevFromFile:false,
+    minThk:0.50,
+    method:'robertson',
+    alphaMethod:'A',
+    stiffMethod:'A',
+    paramMethod:'sb260',
+    classified:[], layers:[],
+    charts:{}, chartsReady:false,
+    meta:{}, tuning:null, useSB260params:false,
+  };
+}
+
+const PROJECT={
+  name:'CPT Project',
+  cpts:[newCptState('CPT-1')],
+  activeCptIdx:0,
+  phase:'analysis',     // 'analysis' | 'correlation' | 'section'
+  correlations:[],
+  sectionOrder:[0],
+};
+
+// S is a live reference to the active CPT — all existing code uses S unchanged
+let S=PROJECT.cpts[0];
+
+function selectCpt(idx){
+  if(idx<0||idx>=PROJECT.cpts.length)return;
+
+  // Destroy any existing Chart.js instances tied to the DOM canvases
+  // (they are shared DOM elements, but each CPT has its own chart state)
+  try{
+    Object.values(S.charts||{}).forEach(c=>{if(c&&c.destroy)c.destroy();});
+  }catch(e){}
+
+  PROJECT.activeCptIdx=idx;
+  S=PROJECT.cpts[idx];
+  renderBanner();
+
+  // Reset stage nav to Stage 1
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===0));
+  document.querySelectorAll('.si').forEach((s,i)=>{
+    s.classList.remove('active','locked','done');
+    if(i===0)s.classList.add('active'); else s.classList.add('locked');
+  });
+
+  // Sync controls to this CPT's values
+  document.getElementById('wtR').value=S.wt;
+  document.getElementById('wtN').value=S.wt.toFixed(2);
+  document.getElementById('elevN').value=S.elev!=null?S.elev.toFixed(2):'';
+  const cptXEl=document.getElementById('cptX');
+  const cptYEl=document.getElementById('cptY');
+  if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
+  if(cptYEl) cptYEl.value=S.y!=null?S.y:'';
+  updateElevSrc(); updateWTDisplay();
+
+  if(S.data.length){
+    renderMeta();
+    document.getElementById('s1body').style.display='block';
+    // Force fresh chart creation for this CPT
+    S.chartsReady=false;
+    S.charts={};
+    // Rebuild chart area DOM so canvases are fresh
+    const cr=document.getElementById('cr');
+    if(cr) cr.innerHTML=`
+      <div class="col-card"><div class="ct">layers</div><svg id="layerColSvg" viewBox="0 0 60 400"></svg></div>
+      <div class="cc"><div class="ct">qc (MPa)</div><div style="position:relative;height:380px"><canvas id="cQc" role="img" aria-label="qc vs depth">qc profile</canvas></div></div>
+      <div class="cc"><div class="ct">fs (kPa)</div><div style="position:relative;height:380px"><canvas id="cFs" role="img" aria-label="fs vs depth">fs profile</canvas></div></div>
+      <div class="cc"><div class="ct">Rf (%)</div><div style="position:relative;height:380px"><canvas id="cRf" role="img" aria-label="Rf vs depth">Rf profile</canvas></div></div>`;
+    initCharts();
+    drawLayerColumnSvg('layerColSvg', S.layers, S.data[S.data.length-1]?.z+0.5||20);
+  } else {
+    document.getElementById('s1body').style.display='none';
+  }
+}
+
+function addCpt(){
+  const idx=PROJECT.cpts.length;
+  const cpt=newCptState('CPT-'+(idx+1));
+  PROJECT.cpts.push(cpt);
+  PROJECT.sectionOrder.push(idx);
+  selectCpt(idx);
+  // Open file picker for the new CPT
+  document.getElementById('fi').click();
+}
+
+function setCptName(idx, name){
+  PROJECT.cpts[idx].id=name.trim()||('CPT-'+(idx+1));
+  renderBanner();
+}
+
+/* ════════════════════════════════
+   BANNER + PHASE MANAGEMENT
+════════════════════════════════ */
+function renderBanner(){
+  const tabs=document.getElementById('cptTabs');
+  if(!tabs)return;
+  tabs.innerHTML=PROJECT.cpts.map((cpt,i)=>{
+    const isActive=i===PROJECT.activeCptIdx;
+    const status=cpt.layers.length?'✓':cpt.data.length?'⚡':'○';
+    const statusCol=cpt.layers.length?'#1D9E75':cpt.data.length?'#BA7517':'#9a9a96';
+    return`<div onclick="selectCpt(${i})" style="
+        display:flex;align-items:center;gap:5px;padding:0 12px;cursor:pointer;
+        border-bottom:2px solid ${isActive?'#1D9E75':'transparent'};
+        background:${isActive?'var(--bg)':'transparent'};
+        font-size:12px;font-weight:${isActive?'600':'400'};color:var(--tx);
+        white-space:nowrap;min-height:44px;transition:.1s">
+      <span style="color:${statusCol};font-size:10px">${status}</span>
+      <span>${cpt.id}</span>
+      ${PROJECT.cpts.length>1?`<span data-remove="${i}"
+        style="color:var(--tx3);font-size:10px;margin-left:3px;cursor:pointer;padding:2px 4px;border-radius:3px" title="Verwijder CPT">✕</span>`:''}
+    </div>`;
+  }).join('');
+  document.getElementById('projName').value=PROJECT.name;
+  // Event delegation for remove buttons (avoids nested onclick issues)
+  tabs.querySelectorAll('[data-remove]').forEach(el=>{
+    el.addEventListener('click', e=>{
+      e.stopPropagation();
+      const i=+el.dataset.remove;
+      removeCpt(i);
+    });
+  });
+}
+
+function removeCpt(idx){
+  if(PROJECT.cpts.length<=1)return;
+  if(!confirm(`CPT "${PROJECT.cpts[idx].id}" verwijderen?`))return;
+  PROJECT.cpts.splice(idx,1);
+  PROJECT.sectionOrder=PROJECT.sectionOrder.filter(i=>i!==idx).map(i=>i>idx?i-1:i);
+  const newActive=Math.min(PROJECT.activeCptIdx,PROJECT.cpts.length-1);
+  PROJECT.activeCptIdx=newActive;
+  S=PROJECT.cpts[newActive];
+  renderBanner();
+  selectCpt(newActive);
+}
+
+function setPhase(ph){
+  PROJECT.phase=ph;
+  ['analysis','correlation','section'].forEach(p=>{
+    document.getElementById('phase'+p[0].toUpperCase()+p.slice(1))?.classList.toggle('active',p===ph);
+  });
+  document.getElementById('phaseA').classList.toggle('active',ph==='analysis');
+  document.getElementById('phaseB').classList.toggle('active',ph==='correlation');
+  document.getElementById('phaseC').classList.toggle('active',ph==='section');
+  document.getElementById('nav').style.display    = ph==='analysis'?'flex':'none';
+  document.querySelector('.wrap').style.display   = ph==='analysis'?'block':'none';
+  document.getElementById('phaseCorr').style.display    = ph==='correlation'?'block':'none';
+  document.getElementById('phaseSection').style.display = ph==='section'?'block':'none';
+  if(ph==='correlation') renderCorrTable();
+  if(ph==='section')     renderSection();
+}
+
+/* ════════════════════════════════
+   MULTI-CPT FILE LOAD
+════════════════════════════════ */
+/* Multi-CPT file load — reads files serially to avoid chart race conditions */
+function loadGEF(evt){
+  const files=Array.from(evt.target.files);
+  if(!files.length)return;
+  evt.target.value='';
+
+  // Build list of target CPT indices before any async work
+  const targets=files.map((f,fi)=>{
+    if(fi===0) return PROJECT.activeCptIdx;
+    const idx=PROJECT.cpts.length;
+    PROJECT.cpts.push(newCptState('CPT-'+(idx+1)));
+    PROJECT.sectionOrder.push(idx);
+    return idx;
+  });
+
+  // Load serially: each file's reader waits for previous to complete
+  function loadNext(fi){
+    if(fi>=files.length)return;
+    const f=files[fi], targetIdx=targets[fi];
+    const reader=new FileReader();
+    reader.onload=e=>{
+      // Save current active, switch to target, parse, restore
+      const prevActive=PROJECT.activeCptIdx;
+      const prevS=S;
+      PROJECT.activeCptIdx=targetIdx;
+      S=PROJECT.cpts[targetIdx];
+      parseGEF(e.target.result,f.name);
+      S.id=f.name.replace(/\.gef$/i,'').replace(/\.txt$/i,'').replace(/\.GEF$/i,'');
+      renderBanner();
+      if(fi===0){
+        // First file: stay on this CPT, update display
+        selectCpt(targetIdx);
+      } else {
+        // Additional files: restore previous active, then load next
+        PROJECT.activeCptIdx=prevActive;
+        S=prevS;
+        renderBanner();
+      }
+      loadNext(fi+1);
+    };
+    reader.onerror=()=>{ alert('Error reading '+f.name); loadNext(fi+1); };
+    reader.readAsText(f);
+  }
+  loadNext(0);
+}
+
+function setCptCoord(axis, val){
+  const v=parseFloat(val);
+  S[axis]=isNaN(v)?null:v;
+  // No renderBanner needed — coordinates don't affect banner display
+}
+
+/* ════════════════════════════════
+   PHASE B — CROSS-CPT CORRELATION
+════════════════════════════════ */
+function layerTAW(cpt, layer){
+  if(cpt.elev==null) return null;
+  return{top:cpt.elev-layer.top, bot:cpt.elev-layer.bot, mid:cpt.elev-(layer.top+layer.bot)/2};
+}
+
+function cptDist(cptA, cptB){
+  // Returns distance between CPTs. If coordinates unknown, returns 10m as default.
+  if(cptA.x==null||cptA.y==null||cptB.x==null||cptB.y==null) return 10;
+  return Math.sqrt((cptA.x-cptB.x)**2+(cptA.y-cptB.y)**2)||1;
+}
+
+function layerTypeCompatScore(lA, lB){
+  /* Multi-level type compatibility for correlation.
+     Uses both the COMPAT matrix (grp-based) AND direct type matching.
+     Mixed/transition layers (Sandy clay = leem/klei border) get adjacency credit
+     on both sides of the boundary. */
+  const compatA=COMPAT[lA.type]||{ok:[],adj:[]};
+  const compatB=COMPAT[lB.type]||{ok:[],adj:[]};
+
+  // Get Eurocode Table 3 group of each layer's subtype
+  const entA=CAT.find(r=>r.subtype===lA.subtype);
+  const entB=CAT.find(r=>r.subtype===lB.subtype);
+  const grpA=entA?entA.grp:'';
+  const grpB=entB?entB.grp:'';
+
+  // Direct type match (both same CPT type)
+  if(lA.type===lB.type) return 1.0;
+
+  // A's subtype group is in B's compat.ok
+  if(grpA&&compatB.ok.includes(grpA)) return 0.9;
+  // B's subtype group is in A's compat.ok
+  if(grpB&&compatA.ok.includes(grpB)) return 0.9;
+
+  // Adjacent type (transition zones)
+  if(grpA&&compatB.adj.includes(grpA)) return 0.5;
+  if(grpB&&compatA.adj.includes(grpB)) return 0.5;
+
+  // CPT types are compatible (even without subtype info)
+  const cpttypes_compat={
+    'Sandy clay': ['Clay','Soft clay','Silty sand'],
+    'Silty sand': ['Sandy clay','Sand'],
+    'Soft clay':  ['Clay','Sandy clay'],
+    'Clay':       ['Soft clay','Sandy clay'],
+    'Sand':       ['Silty sand','Gravel'],
+    'Gravel':     ['Sand'],
+  };
+  if((cpttypes_compat[lA.type]||[]).includes(lB.type)) return 0.4;
+  if((cpttypes_compat[lB.type]||[]).includes(lA.type)) return 0.4;
+
+  return 0.0; // genuinely incompatible
+}
+
+function matchScore(cptA, lA, cptB, lB){
+  const tA=layerTAW(cptA,lA), tB=layerTAW(cptB,lB);
+  if(!tA||!tB) return 0;
+  const dist=cptDist(cptA,cptB);
+
+  // Elevation IoU (Intersection over Union)
+  // Both layers have top > bot in TAW (top = higher elevation)
+  const overlapTop=Math.min(tA.top,tB.top);
+  const overlapBot=Math.max(tA.bot,tB.bot);
+  const overlap=Math.max(0,overlapTop-overlapBot);
+  const unionTop=Math.max(tA.top,tB.top);
+  const unionBot=Math.min(tA.bot,tB.bot);
+  const union=Math.max(0.01, unionTop-unionBot);
+  const IoU=overlap/union;
+
+  // Gap penalty — layers that don't overlap but are close
+  const gap=Math.max(0,overlapBot-overlapTop); // positive = gap between layers
+  const tol=Math.max(0.30, 0.30+0.005*dist);  // tolerance grows 0.5cm/m distance
+  const gapScore=IoU>0?1.0:Math.max(0,1-gap/tol);
+
+  // Soil type compatibility (improved)
+  const typeScore=layerTypeCompatScore(lA,lB);
+
+  // qc similarity (log-ratio — more robust for orders of magnitude differences)
+  const qcA=Math.max(0.01,lA.avgQc), qcB=Math.max(0.01,lB.avgQc);
+  const logRatio=Math.abs(Math.log(qcA/qcB));
+  const qcScore=Math.max(0,1-logRatio/1.5); // 1.5 = 1 order of magnitude tolerance
+
+  // Thickness similarity bonus (same geological unit → similar thickness)
+  const thkA=lA.bot-lA.top, thkB=lB.bot-lB.top;
+  const thkRatio=Math.min(thkA,thkB)/Math.max(thkA,thkB,0.01);
+  const thkScore=Math.max(0,thkRatio-0.3)/0.7; // penalise >3× thickness difference
+
+  const score=0.45*IoU + 0.25*gapScore + 0.18*typeScore + 0.07*qcScore + 0.05*thkScore;
+  return +score.toFixed(3);
+}
+
+function runCorrelation(){
+  const cpts=PROJECT.cpts.filter(c=>c.elev!=null&&c.layers.length);
+  if(cpts.length<2){
+    document.getElementById('corrWarnings').innerHTML=
+      '<div class="info">Minimaal 2 CPTs met bevestigde maaiveldshoogte en laagindeling vereist.</div>';
+    return;
+  }
+  document.getElementById('corrWarnings').innerHTML='';
+
+  // Build edges (pairwise best matches, greedy)
+  // Node: {ci: cptIdx in PROJECT.cpts, li: layerIdx}
+  // Use original PROJECT indices
+  const projCpts=PROJECT.cpts;
+
+  // All pairwise candidate pairs
+  const pairs=[];
+  for(let a=0;a<projCpts.length;a++){
+    if(!projCpts[a].elev||!projCpts[a].layers.length) continue;
+    for(let b=a+1;b<projCpts.length;b++){
+      if(!projCpts[b].elev||!projCpts[b].layers.length) continue;
+      for(let la=0;la<projCpts[a].layers.length;la++){
+        for(let lb=0;lb<projCpts[b].layers.length;lb++){
+          const sc=matchScore(projCpts[a],projCpts[a].layers[la],projCpts[b],projCpts[b].layers[lb]);
+          if(sc>=0.25) pairs.push({a,la,b,lb,sc});
+        }
+      }
+    }
+  }
+  pairs.sort((x,y)=>y.sc-x.sc);
+
+  // Greedy assignment
+  const matched=new Set();
+  const edges=[];
+  for(const p of pairs){
+    const kA=p.a+'-'+p.la, kB=p.b+'-'+p.lb;
+    if(!matched.has(kA)&&!matched.has(kB)){
+      matched.add(kA); matched.add(kB);
+      edges.push(p);
+    }
+  }
+
+  // Union-Find to build groups
+  const parent={}; // key -> root key
+  function find(k){return parent[k]===k?k:(parent[k]=find(parent[k]));}
+  function union(k1,k2){parent[find(k1)]=find(k2);}
+
+  // Init
+  for(let ci=0;ci<projCpts.length;ci++){
+    if(!projCpts[ci].layers.length)continue;
+    projCpts[ci].layers.forEach((_,li)=>{ const k=ci+'-'+li; parent[k]=k; });
+  }
+  for(const e of edges){ union(e.a+'-'+e.la, e.b+'-'+e.lb); }
+
+  // Collect groups
+  const groupMap={};
+  for(let ci=0;ci<projCpts.length;ci++){
+    if(!projCpts[ci].layers.length)continue;
+    projCpts[ci].layers.forEach((l,li)=>{
+      const k=ci+'-'+li;
+      if(!parent[k])return;
+      const root=find(k);
+      if(!groupMap[root]) groupMap[root]=[];
+      groupMap[root].push({ci,li,layer:l});
+    });
+  }
+
+  // Sort groups by mean TAW elevation descending (highest first)
+  PROJECT.correlations=Object.values(groupMap).map(members=>{
+    const taws=members.map(m=>layerTAW(projCpts[m.ci],m.layer)).filter(Boolean);
+    const meanMid=taws.length?taws.reduce((s,t)=>s+t.mid,0)/taws.length:0;
+    return{members, meanMid};
+  }).sort((a,b)=>b.meanMid-a.meanMid);
+
+  renderCorrTable();
+  if(PROJECT.phase==='correlation') renderSection();
+}
+
+function renderCorrTable(){
+  const el=document.getElementById('corrTable');
+  const cpts=PROJECT.cpts;
+  const activeCpts=cpts.map((c,i)=>({c,i})).filter(({c})=>c.elev!=null&&c.layers.length);
+
+  if(activeCpts.length<2){
+    el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Laad minimaal 2 CPTs met laagindeling en maaiveldshoogte.</div>';
+    return;
+  }
+  if(!PROJECT.correlations.length){
+    el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Klik op "Auto-correleer" om de correlatie te berekenen.</div>';
+    return;
+  }
+
+  const hdrs=activeCpts.map(({c,i})=>`<th style="min-width:120px">${c.id}</th>`).join('');
+  const rows=PROJECT.correlations.map((grp,gi)=>{
+    const taws=grp.members.map(m=>layerTAW(cpts[m.ci],m.layer)).filter(Boolean);
+    const topTAW=Math.max(...taws.map(t=>t.top)).toFixed(1);
+    const botTAW=Math.min(...taws.map(t=>t.bot)).toFixed(1);
+    const cells=activeCpts.map(({c,i})=>{
+      const member=grp.members.find(m=>m.ci===i);
+      if(!member){
+        // Check if this CPT even covers this elevation range
+        const tawRange=grp.members.map(m=>layerTAW(cpts[m.ci],m.layer)).filter(Boolean);
+        const grpTopTAW=Math.max(...tawRange.map(t=>t.top));
+        const grpBotTAW=Math.min(...tawRange.map(t=>t.bot));
+        const cptToeElev=c.elev-(c.data[c.data.length-1]?.z||0);
+        const notSampled=c.elev!=null&&grpBotTAW<cptToeElev;
+        return`<td style="text-align:center;color:var(--tx3)">
+          <span style="font-size:10px">${notSampled?'— niet bereikt':'─── afwezig'}</span>
+        </td>`;
+      }
+      const l=member.layer;
+      const fill=SCFILL[l.type]||'#D3D1C7';
+      const taw=layerTAW(cpts[i],l);
+      const depthStr=taw?`${taw.top.toFixed(1)}→${taw.bot.toFixed(1)} TAW`:'';
+      return`<td style="vertical-align:top;padding:5px 8px">
+        <span class="sb" style="background:${fill};color:#333;font-size:10px;display:block;margin-bottom:3px">${l.subtype||l.type}</span>
+        <div style="font-size:10px;color:var(--tx2)">${depthStr}</div>
+        <div style="font-size:10px;color:var(--tx3)">qc ${l.avgQc.toFixed(2)} MPa · ${(l.bot-l.top).toFixed(1)}m dik</div>
+      </td>`;
+    }).join('');
+    return`<tr>
+      <td style="font-size:11px;color:var(--tx2);white-space:nowrap">${topTAW} → ${botTAW} m TAW</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  el.innerHTML=`<table class="tbl"><thead><tr><th>Hoogte (m TAW)</th>${hdrs}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/* ════════════════════════════════
+   PHASE C — GEOLOGICAL CROSS-SECTION
+════════════════════════════════ */
+function sectionProjection(){
+  // Project CPTs onto section line using XY if available, else use CPT order
+  const all=PROJECT.cpts.filter(c=>c.elev!=null&&c.layers.length);
+  if(all.length<2) return null;
+
+  const hasCoords=all.every(c=>c.x!=null&&c.y!=null);
+
+  if(!hasCoords){
+    // Fallback: use CPT index order, 50m apart
+    return all.map((c,i)=>({...c, dist:i*50}));
+  }
+
+  const cpts=all;
+
+  const cx=cpts.reduce((s,c)=>s+c.x,0)/cpts.length;
+  const cy=cpts.reduce((s,c)=>s+c.y,0)/cpts.length;
+
+  let sxx=0,sxy=0,syy=0;
+  cpts.forEach(c=>{sxx+=(c.x-cx)**2;sxy+=(c.x-cx)*(c.y-cy);syy+=(c.y-cy)**2;});
+
+  let dx,dy;
+  if(Math.abs(sxy)<1e-6&&sxx>=syy){dx=1;dy=0;}
+  else if(Math.abs(sxy)<1e-6){dx=0;dy=1;}
+  else{
+    // Eigenvector of 2x2 cov matrix
+    const diff=sxx-syy, disc=Math.sqrt(diff*diff+4*sxy*sxy);
+    const lam=(sxx+syy+disc)/2;
+    dx=sxy; dy=lam-sxx;
+    const len=Math.sqrt(dx*dx+dy*dy); dx/=len; dy/=len;
+  }
+
+  return cpts.map(c=>({
+    ...c,
+    dist: (c.x-cx)*dx+(c.y-cy)*dy
+  })).sort((a,b)=>a.dist-b.dist);
+}
+
+function renderSection(){
+  const svg=document.getElementById('sectionSvg');
+  if(!svg) return;
+  const vex=parseFloat(document.getElementById('vexag')?.value||2);
+
+  const projCpts=sectionProjection();
+  if(!projCpts||projCpts.length<1){
+    svg.innerHTML='<text x="20" y="40" font-size="13" fill="#9a9a96">Minimaal 2 CPTs met maaiveldshoogte vereist voor doorsnede.</text>';
+    svg.setAttribute('viewBox','0 0 400 80'); svg.setAttribute('width','400'); svg.setAttribute('height','80');
+    return;
+  }
+
+  // ── Canvas geometry ──
+  const ML=65,MR=30,MT=40,MB=50;
+  const W=Math.max(700, projCpts.length*260);
+
+  // Collect all elevations across all CPTs
+  const elevAll=[];
+  projCpts.forEach(c=>{
+    if(c.elev!=null) elevAll.push(c.elev);
+    c.layers.forEach(l=>{ if(c.elev!=null) elevAll.push(c.elev-l.bot); });
+  });
+  if(!elevAll.length){ svg.innerHTML='<text x="20" y="30" font-size="11" fill="#9a9a96">Geen data.</text>'; return; }
+  const maxElev=Math.max(...elevAll)+1;
+  const minElev=Math.min(...elevAll)-1;
+  const elevRange=maxElev-minElev||1;
+  const H=Math.max(350, elevRange*vex*18);
+
+  const totalW=W+ML+MR, totalH=H+MT+MB;
+  svg.setAttribute('viewBox',`0 0 ${totalW} ${totalH}`);
+  svg.setAttribute('width',totalW); svg.setAttribute('height',totalH);
+
+  const distMin=projCpts[0].dist, distMax=projCpts[projCpts.length-1].dist;
+  const distRange=Math.max(distMax-distMin,1);
+
+  function px(d){ return ML+(d-distMin)/distRange*W; }
+  function py(e){ return MT+(maxElev-e)/elevRange*(H/vex)*vex; }
+  function esc(v){
+    return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  let s='';
+
+  // ── Ground fill (below surface, above deepest layer) ──
+  s+='<rect x="0" y="0" width="'+totalW+'" height="'+totalH+'" fill="var(--bg)"/>';
+
+  // ── Elevation grid lines ──
+  const step=elevRange<=5?0.5:elevRange<=15?1:elevRange<=30?2:5;
+  for(let e=Math.ceil(minElev/step)*step; e<=Math.floor(maxElev/step)*step; e=+(e+step).toFixed(4)){
+    const y=py(e);
+    if(y<MT||y>MT+H) continue;
+    s+=`<line x1="${ML}" x2="${ML+W}" y1="${y}" y2="${y}" stroke="rgba(128,128,128,0.10)" stroke-width="0.5"/>`;
+    s+=`<text x="${ML-5}" y="${y+3.5}" font-size="9" text-anchor="end" fill="#9a9a96" font-family="sans-serif">${e.toFixed(1)}</text>`;
+  }
+
+  // ── Build interpolated stratigraphy ──
+  // For each unique soil group from correlations, draw a filled polygon
+  // connecting layer tops and bottoms across all CPTs (with interpolation for gaps).
+  // Groups sorted top to bottom in elevation.
+
+  if(PROJECT.correlations.length){
+    PROJECT.correlations.forEach((grp,gi)=>{
+      // Gather anchor points: {dist, topTAW, botTAW, type}
+      const anchors=[];
+      projCpts.forEach(pc=>{
+        const cptIdx=PROJECT.cpts.indexOf(pc);
+        if(cptIdx<0) return;
+        const member=grp.members.find(m=>m.ci===cptIdx);
+        if(member&&pc.elev!=null){
+          const taw={top:pc.elev-member.layer.top, bot:pc.elev-member.layer.bot};
+          anchors.push({dist:pc.dist, top:taw.top, bot:taw.bot, type:member.layer.type, hasData:true});
+        } else {
+          anchors.push({dist:pc.dist, top:null, bot:null, type:null, hasData:false});
+        }
+      });
+
+      // Interpolate missing anchors between known ones
+      for(let i=0;i<anchors.length;i++){
+        if(!anchors[i].hasData){
+          // Find nearest known on left and right
+          let li=-1,ri=-1;
+          for(let j=i-1;j>=0;j--){ if(anchors[j].hasData){li=j;break;} }
+          for(let j=i+1;j<anchors.length;j++){ if(anchors[j].hasData){ri=j;break;} }
+          if(li>=0&&ri>=0){
+            const t=(anchors[i].dist-anchors[li].dist)/(anchors[ri].dist-anchors[li].dist);
+            anchors[i].top =anchors[li].top +(anchors[ri].top -anchors[li].top )*t;
+            anchors[i].bot =anchors[li].bot +(anchors[ri].bot -anchors[li].bot )*t;
+            anchors[i].type=anchors[li].type;
+            anchors[i].interpolated=true;
+          } else if(li>=0){
+            // Taper to a point at the right end
+            anchors[i].top=anchors[li].top;
+            anchors[i].bot=anchors[li].bot;
+            anchors[i].type=anchors[li].type;
+            anchors[i].taper='right';
+          } else if(ri>=0){
+            anchors[i].top=anchors[ri].top;
+            anchors[i].bot=anchors[ri].bot;
+            anchors[i].type=anchors[ri].type;
+            anchors[i].taper='left';
+          }
+        }
+      }
+
+      const valid=anchors.filter(a=>a.top!=null);
+      if(valid.length<2) return;
+      const fill=SCFILL[valid[0].type]||'#D3D1C7';
+      const topPts=valid.map(a=>`${px(a.dist).toFixed(1)},${py(a.top).toFixed(1)}`).join(' ');
+      const botPts=[...valid].reverse().map(a=>`${px(a.dist).toFixed(1)},${py(a.bot).toFixed(1)}`).join(' ');
+      s+=`<polygon points="${topPts} ${botPts}" fill="${fill}" fill-opacity="0.80" stroke="#555" stroke-width="0.6"/>`;
+
+      // Label in middle of group
+      const midAnchor=valid[Math.floor(valid.length/2)];
+      const labelY=(py(midAnchor.top)+py(midAnchor.bot))/2;
+      const thickness=midAnchor.top-midAnchor.bot;
+      if(thickness*vex*18/elevRange>12){
+        const lbl=midAnchor.type||'';
+        s+=`<text x="${px(midAnchor.dist).toFixed(1)}" y="${(labelY+4).toFixed(1)}" font-size="9" text-anchor="middle" fill="rgba(0,0,0,0.55)" font-family="sans-serif">${lbl.split('/')[0].trim()}</text>`;
+      }
+    });
+  }
+
+  // ── Fill background below correlated stratigraphy (deepest layer downward) ──
+  // Draw a ground fill below the deepest confirmed layer in each CPT
+  projCpts.forEach(c=>{
+    if(!c.elev||!c.layers.length) return;
+    const deepBot=c.elev-c.layers[c.layers.length-1].bot;
+    const x=px(c.dist), colW=14;
+    s+=`<rect x="${(x-colW/2).toFixed(1)}" y="${py(deepBot).toFixed(1)}" width="${colW}" height="${(totalH-py(deepBot)).toFixed(1)}" fill="#b8a99a" fill-opacity="0.3"/>`;
+  });
+
+  // ── CPT columns ──
+  projCpts.forEach(c=>{
+    if(!c.elev) return;
+    const xc=px(c.dist), colW=14;
+    // Surface to toe vertical line
+    const toeElev=c.layers.length?c.elev-c.layers[c.layers.length-1].bot:c.elev-10;
+    s+=`<line x1="${xc}" x2="${xc}" y1="${py(c.elev)}" y2="${py(toeElev)}" stroke="#666" stroke-width="0.8" stroke-dasharray="3,2"/>`;
+
+    c.layers.forEach(l=>{
+      const fill=SCFILL[l.type]||'#D3D1C7';
+      const y1=py(c.elev-l.top), y2=py(c.elev-l.bot);
+      const h=Math.max(y2-y1,1.5);
+      const topTaw=(c.elev-l.top).toFixed(2);
+      const botTaw=(c.elev-l.bot).toFixed(2);
+      const avgFsTxt=l.avgFs!=null?(l.avgFs*1000).toFixed(1):'—';
+      const avgRfTxt=l.avgRf!=null?l.avgRf.toFixed(2):'—';
+      const subtypeTxt=l.subtype||'—';
+      s+=`<rect class="section-layer-hit" data-section-layer="1"
+        data-cpt="${esc(c.id)}"
+        data-type="${esc(l.type)}"
+        data-subtype="${esc(subtypeTxt)}"
+        data-top="${l.top.toFixed(2)}"
+        data-bot="${l.bot.toFixed(2)}"
+        data-toptaw="${topTaw}"
+        data-bottaw="${botTaw}"
+        data-thk="${(l.bot-l.top).toFixed(2)}"
+        data-qc="${l.avgQc.toFixed(2)}"
+        data-fs="${avgFsTxt}"
+        data-rf="${avgRfTxt}"
+        data-g="${l.g}"
+        data-gs="${l.gs}"
+        data-phi="${l.phi}"
+        data-c="${l.c}"
+        data-cu="${l.cu}"
+        x="${(xc-colW/2).toFixed(1)}" y="${y1.toFixed(1)}" width="${colW}" height="${h.toFixed(1)}"
+        fill="${fill}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`;
+      // Layer boundary tick (left of column)
+      s+=`<line x1="${(xc-colW/2-5).toFixed(1)}" x2="${(xc-colW/2).toFixed(1)}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="#666" stroke-width="0.6"/>`;
+      // Depth label left
+      if(h>12){
+        const elmid=(y1+y2)/2;
+        s+=`<text x="${(xc-colW/2-7).toFixed(1)}" y="${(elmid+3).toFixed(1)}" font-size="7.5" text-anchor="end" fill="#555" font-family="sans-serif">${(c.elev-l.bot).toFixed(1)}</text>`;
+      }
+    });
+
+    // WT
+    if(c.wt!=null){
+      const wtY=py(c.elev-c.wt);
+      s+=`<line x1="${(xc-18).toFixed(1)}" x2="${(xc+18).toFixed(1)}" y1="${wtY.toFixed(1)}" y2="${wtY.toFixed(1)}" stroke="#378ADD" stroke-width="2" stroke-dasharray="5,3"/>`;
+    }
+    // CPT label
+    s+=`<text x="${xc}" y="${(MT-14).toFixed(1)}" font-size="10" text-anchor="middle" font-weight="600" fill="#333" font-family="sans-serif">${c.id}</text>`;
+    s+=`<text x="${xc}" y="${(MT-4).toFixed(1)}" font-size="9" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">${c.elev!=null?c.elev.toFixed(2)+' m TAW':''}</text>`;
+    // Distance from start
+    const d0=(c.dist-distMin).toFixed(0);
+    s+=`<text x="${xc}" y="${(totalH-8).toFixed(1)}" font-size="9" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">${d0}m</text>`;
+  });
+
+  // ── WT interpolated line across section ──
+  const wtPts=projCpts.filter(c=>c.wt!=null&&c.elev!=null)
+    .map(c=>`${px(c.dist).toFixed(1)},${py(c.elev-c.wt).toFixed(1)}`);
+  if(wtPts.length>=2)
+    s+=`<polyline points="${wtPts.join(' ')}" fill="none" stroke="#378ADD" stroke-width="1.8" stroke-dasharray="7,5"/>
+        <text x="${(ML+10).toFixed(1)}" y="${py(projCpts.find(c=>c.wt!=null)?.elev-(projCpts.find(c=>c.wt!=null)?.wt||0)||maxElev).toFixed(1)}" font-size="9" fill="#378ADD" font-family="sans-serif">WT</text>`;
+
+  // ── Axes labels ──
+  s+=`<text x="${(ML+W/2).toFixed(1)}" y="${(totalH-6).toFixed(1)}" font-size="10" text-anchor="middle" fill="#6b6b68" font-family="sans-serif">Afstand langs doorsnede (m) — vex ×${vex}</text>`;
+  s+=`<text x="12" y="${(MT+H/2).toFixed(1)}" font-size="10" text-anchor="middle" fill="#6b6b68" font-family="sans-serif" transform="rotate(-90,12,${(MT+H/2).toFixed(1)})">Hoogte (m TAW)</text>`;
+
+  // ── Legend ──
+  const legendTypes=[...new Set(PROJECT.cpts.flatMap(c=>c.layers.map(l=>l.type)))].slice(0,8);
+  const lx=ML+W-140, ly=MT+10;
+  s+=`<rect x="${lx-4}" y="${ly-4}" width="144" height="${legendTypes.length*17+8}" rx="4" fill="var(--bg)" fill-opacity="0.85" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>`;
+  legendTypes.forEach((t,i)=>{
+    s+=`<rect x="${lx}" y="${ly+i*17}" width="10" height="10" fill="${SCFILL[t]||'#D3D1C7'}" stroke="rgba(0,0,0,0.2)" stroke-width="0.3"/>`;
+    s+=`<text x="${lx+14}" y="${ly+i*17+9}" font-size="8.5" fill="#333" font-family="sans-serif">${t}</text>`;
+  });
+
+  svg.innerHTML=s;
+  bindSectionTooltip();
+}
+
+function bindSectionTooltip(){
+  const svg=document.getElementById('sectionSvg');
+  const canvas=document.getElementById('sectionCanvas');
+  const tip=document.getElementById('sectionTip');
+  if(!svg||!canvas||!tip||svg.dataset.tipBound==='1') return;
+
+  function hideTip(){ tip.style.display='none'; }
+  function showTip(target, evt){
+    tip.innerHTML=`<strong>${target.dataset.cpt||'CPT'} — ${target.dataset.type||''}</strong>
+      <div class="mut">${target.dataset.subtype||'—'}</div>
+      <div class="row"><span>Depth</span><span>${target.dataset.top}–${target.dataset.bot} m</span></div>
+      <div class="row"><span>TAW</span><span>${target.dataset.toptaw} to ${target.dataset.bottaw}</span></div>
+      <div class="row"><span>Thickness</span><span>${target.dataset.thk} m</span></div>
+      <div class="row"><span>avg qc</span><span>${target.dataset.qc} MPa</span></div>
+      <div class="row"><span>avg fs</span><span>${target.dataset.fs} kPa</span></div>
+      <div class="row"><span>avg Rf</span><span>${target.dataset.rf} %</span></div>
+      <div class="row"><span>γ / γ_sat</span><span>${target.dataset.g} / ${target.dataset.gs}</span></div>
+      <div class="row"><span>φ' / c' / cu</span><span>${target.dataset.phi}° / ${target.dataset.c} / ${target.dataset.cu}</span></div>`;
+    tip.style.display='block';
+    const rect=canvas.getBoundingClientRect();
+    const pad=14;
+    const tipW=260;
+    const tipH=190;
+    let left=evt.clientX-rect.left+16+canvas.scrollLeft;
+    let top =evt.clientY-rect.top +16+canvas.scrollTop;
+    const maxLeft=canvas.scrollLeft+rect.width-tipW-pad;
+    const maxTop =canvas.scrollTop +rect.height-tipH-pad;
+    if(left>maxLeft) left=Math.max(canvas.scrollLeft+pad, evt.clientX-rect.left-tipW-16+canvas.scrollLeft);
+    if(top>maxTop)   top =Math.max(canvas.scrollTop+pad, evt.clientY-rect.top-tipH-16+canvas.scrollTop);
+    tip.style.left=`${left}px`;
+    tip.style.top=`${top}px`;
+  }
+
+  svg.addEventListener('mousemove',e=>{
+    const target=e.target.closest?.('[data-section-layer]');
+    if(!target){ hideTip(); return; }
+    showTip(target,e);
+  });
+  svg.addEventListener('mouseleave',hideTip);
+  svg.dataset.tipBound='1';
+}
+
+function exportSectionSVG(){
+  const svg=document.getElementById('sectionSvg');
+  if(!svg)return;
+  const blob=new Blob(['<?xml version="1.0"?>'+svg.outerHTML],{type:'image/svg+xml'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`${PROJECT.name}_doorsnede.svg`;
+  a.click();
+}
+
+// Init banner on page load
+window.addEventListener('load',()=>{ renderBanner(); });
+
+/* ════════════════════════════════
+   SOIL DEFS
+════════════════════════════════ */
+const SC={
+  'Peat / organic':'s-peat','Soft clay':'s-sclay','Clay':'s-clay',
+  'Sandy clay':'s-sclayl','Silty sand':'s-ssand','Sand':'s-sand','Gravel':'s-gravel'
+};
+const SCFILL={
+  'Peat / organic':'#C0DD97','Soft clay':'#B5D4F4','Clay':'#AFA9EC',
+  'Sandy clay':'#FAC775','Silty sand':'#F4C0D1','Sand':'#D3D1C7','Gravel':'#F0997B'
+};
+const DEF={
+  'Peat / organic':{g:11,gs:12,phi:17,c:0,cu:10},
+  'Soft clay':     {g:15,gs:16,phi:20,c:2,cu:25},
+  'Clay':          {g:17,gs:18,phi:24,c:5,cu:50},
+  'Sandy clay':    {g:18,gs:19,phi:28,c:2,cu:0},
+  'Silty sand':    {g:19,gs:20,phi:31,c:0,cu:0},
+  'Sand':          {g:19,gs:20,phi:34,c:0,cu:0},
+  'Gravel':        {g:20,gs:21,phi:38,c:0,cu:0}
+};
+/* Alpha Method A — fixed Sanglerat values (SB260-21-6.4.10) */
+const AE={
+  'Peat / organic':1.5,'Soft clay':3.0,'Clay':5.0,
+  'Sandy clay':8.0,'Silty sand':10.0,'Sand':13.0,'Gravel':15.0
+};
+
+/* Alpha Method B — SB260 Tabel 21-6-5 qc-dependent values.
+   Returns alphaE given soil type, avgQc, and subtype string.
+   For sand: Es = f(qc) directly (not alpha*qc), so we compute
+   Es and back-calculate alpha = Es / avgQc for consistency.
+   For cohesive: alpha from Tabel 21-6-5 (GEO column). */
+/* ════════════════════════════════
+   ALPHA METHOD B — SB260-21-6.4.10 Tabel 21-6-5
+   
+   Definitive subtype→formula mapping. Priority: subtype string first, then type.
+   
+   FORMULAE:
+   Zand NC:         qc<10 → Es=4qc; 10-50 → Es=2qc+20; >50 → 120 MPa
+   Overgangsgronden: qc<2.5 → α=2; 2.5-5 → Es=4qc-5; >5 → α=2 (cap)
+     Overgangsgronden = kleihoudend/leemhoudend zand, zandhoudend leem/klei
+     Identified by subtype containing '(lh)', '(kh)', '(zh)' OR label keyword
+   Klei CL:         qc<0.7→α=5; 0.7-2→α=3; >2→α=1.5
+   Leem ML:         qc<2→α=4; ≥2→α=2.5
+   Soft clay:       qc<2→α=4; ≥2→α=2.5
+   Veen OH:         qc≥0.7→α=1.5; else→α=2.5
+════════════════════════════════ */
+function isOvergangsgrond(type, subtype){
+  /* Returns true if this layer should use the SB260 overgangsgronden formula.
+     Overgangsgronden = kleihoudend of leemhoudend ZAND  (zand dominant)
+                      + zandhoudend LEEM of KLEI         (leem/klei dominant maar met zand)
+     In CAT: subtypes with (lh), (kh), or (zh) marker indicate admixture. */
+  const sub=(subtype||'').toLowerCase();
+  // Zand with leem or klei admixture → overgang
+  if((type==='Sand'||type==='Silty sand') && (sub.includes('(lh)')||sub.includes('(kh)'))) return true;
+  // Leem or Clay with zand admixture → overgang
+  if((type==='Sandy clay'||type==='Clay') && sub.includes('(zh)')) return true;
+  return false;
+}
+
+function alphaEB(type, avgQc, subtype){
+  const qc = Math.max(avgQc||0.1, 0.01);
+  const sub = (subtype||'').toLowerCase();
+
+  // ── OVERGANGSGRONDEN ── highest priority: check subtype marker first
+  if(isOvergangsgrond(type, subtype)){
+    if(qc < 2.5) return 2.0;
+    if(qc < 5.0){
+      const Es = 4*qc - 5;   // SB260 formula for overgangsgronden 2.5<qc<5
+      return +(Es/qc).toFixed(3);
+    }
+    return 2.0;  // qc>5: SB260 does not extend formula, use α=2
+  }
+
+  // ── ZAND (clean, no admixture) ──
+  if(type==='Sand'||type==='Silty sand'||type==='Gravel'){
+    let Es;
+    if(qc < 10)      Es = 4*qc;
+    else if(qc < 50) Es = 2*qc + 20;
+    else             Es = 120;
+    return +(Es/qc).toFixed(3);
+  }
+
+  // ── KLEI weinig plastisch (CL) ── pure klei, no zh marker
+  if(type==='Clay'){
+    if(qc < 0.7) return 5.0;
+    if(qc < 2.0) return 3.0;
+    return 1.5;
+  }
+
+  // ── SOFT CLAY / LEEM weinig plastisch (ML) ──
+  if(type==='Soft clay'){
+    if(qc < 2.0) return 4.0;
+    return 2.5;
+  }
+
+  // ── LEEM (Sandy clay without zh marker = pure leem) ──
+  if(type==='Sandy clay'){
+    if(qc < 2.0) return 4.0;
+    return 2.5;
+  }
+
+  // ── VEEN ──
+  if(type==='Peat / organic'){
+    return qc >= 0.7 ? 1.5 : 2.5;
+  }
+
+  return AE[type]||5.0;  // fallback Method A
+}
+
+/* ════════════════════════════════
+   NAVIGATION
+════════════════════════════════ */
+function goS(n){
+  // Track highest stage reached so nav tabs stay unlocked
+  if(!S._maxStage) S._maxStage=0;
+  if(n>S._maxStage) S._maxStage=n;
+  const maxReached=S._maxStage;
+
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  document.querySelectorAll('.si').forEach((s,i)=>{
+    s.classList.remove('active','locked','done');
+    if(i===n) s.classList.add('active');
+    else if(i<=maxReached) s.classList.add('done');  // all reached stages stay clickable
+    else s.classList.add('locked');
+  });
+  if(n===2)renderLayers();
+  if(n===3)renderModel();
+  if(n===4)renderTuning();
+}
+document.querySelectorAll('.si').forEach(s=>{
+  s.addEventListener('click',()=>{
+    if(!s.classList.contains('locked'))goS(+s.dataset.s);
+  });
+});
+
+
+/* ════════════════════════════════
+   GEF PARSER
+════════════════════════════════ */
+function parseGEF(txt,fname){
+  const lines=txt.split(/\r?\n/);
+  const colMap={};  // quantityID → 0-based col index
+  const unitMap={}; // quantityID → declared unit string from COLUMNINFO
+  let eoh=false, wl=null, zid=null, aRatio=0.8;
+  const meta={fname};
+  const rows=[];
+
+  for(const raw of lines){
+    const l=raw.trim();
+    if(!l)continue;
+    if(l.toUpperCase().startsWith('#EOH')){eoh=true;continue;}
+
+    if(!eoh){
+      if(l.startsWith('#COLUMNINFO')){
+        // format: #COLUMNINFO= colIndex, unit, description, quantityID
+        const rest=l.slice(l.indexOf('=')+1).split(',');
+        if(rest.length>=4){
+          const ci=parseInt(rest[0].trim())-1;
+          const unit=(rest[1]||'').trim();
+          const qi=parseInt(rest[3].trim());
+          if(!isNaN(ci)&&!isNaN(qi)){
+            colMap[qi]=ci;
+            unitMap[qi]=unit;
+          }
+        }
+      }
+      if(l.startsWith('#MEASUREMENTVAR')){
+        const m=l.match(/#MEASUREMENTVAR\s*=\s*(\d+)\s*,\s*([\-\d.eE+]+)/);
+        if(m){
+          const id=+m[1],val=parseFloat(m[2]);
+          if(id===14&&!isNaN(val))wl=Math.abs(val);   // water table depth
+          if(id===3 &&!isNaN(val))aRatio=val;           // net area ratio
+        }
+      }
+      if(l.startsWith('#ZID')){
+        const m=l.match(/#ZID\s*=\s*[^,]+,\s*([\-\d.eE+]+)/);
+        if(m)zid=parseFloat(m[1]);
+      }
+      if(l.startsWith('#PROJECTID'))  meta.project=l.split('=')[1].trim();
+      if(l.startsWith('#TESTID'))     meta.testid=l.split('=')[1].trim();
+      if(l.startsWith('#STARTDATE'))  meta.date=l.split('=')[1].trim();
+      if(l.startsWith('#FILEOWNER'))  meta.owner=l.split('=')[1].trim();
+      if(l.startsWith('#MEASUREMENTTEXT')&&/lokatie|location/i.test(l)){
+        const m=l.match(/=\s*\d+\s*,\s*([^,]+)/);
+        if(m)meta.location=m[1].trim();
+      }
+      continue;
+    }
+
+    if(l.startsWith('!'))continue;
+    const parts=l.split(/\s+/).filter(Boolean);
+    if(parts.length<2)continue;
+    let vals;try{vals=parts.map(Number);}catch(e){continue;}
+    if(vals.some(v=>isNaN(v)))continue;
+
+    function get(qid){const ci=colMap[qid];return(ci!=null&&ci<vals.length)?vals[ci]:null;}
+    function unitFor(qid){return (unitMap[qid]||'').toLowerCase();}
+    function toMPa(raw, unit, fallbackKind){
+      if(raw==null||isNaN(raw)) return null;
+      if(unit.includes('mpa')) return raw;
+      if(unit.includes('kpa')) return raw/1000;
+      if(unit==='pa' || unit.endsWith(' pa') || unit.startsWith('pa ')) return raw/1e6;
+      if(fallbackKind==='qc'){
+        return raw>100?raw/1000:raw;
+      }
+      if(fallbackKind==='fs'){
+        if(Math.abs(raw)>1000) return raw/1e6;
+        if(Math.abs(raw)>10) return raw/1000;
+      }
+      return raw;
+    }
+
+    const z=get(11)??get(1);   // prefer corrected depth
+    const qc_v=get(2);
+    const fs_v=get(3);
+    const rf_v=get(4);         // % as declared
+    const u2_v=get(6);
+
+    if(z==null||qc_v==null||isNaN(z)||isNaN(qc_v)||z<0)continue;
+
+    const qc=toMPa(qc_v, unitFor(2), 'qc');
+    const fs=toMPa(fs_v, unitFor(3), 'fs');
+
+    let rf=null;
+    if(rf_v!=null&&!isNaN(rf_v)&&rf_v>=0&&rf_v<50){
+      rf=Math.min(rf_v,20);
+    } else if(fs!=null&&qc>0.05){
+      rf=Math.max(0,Math.min(20,(Math.abs(fs)/qc)*100));
+    }
+
+    const u2=u2_v!=null&&!isNaN(u2_v)?u2_v:null;
+    if(qc<0.02)continue;  // cone not engaged
+
+    rows.push({z:+z.toFixed(4),qc:+qc.toFixed(4),
+      fs:fs!=null?+fs.toFixed(6):null,
+      rf:rf!=null?+rf.toFixed(3):null,u2});
+  }
+
+  if(!rows.length){alert('No valid data rows found.');return;}
+
+  S.data=rows;
+  S.wt=wl??1.5; S.wtFromFile=wl!=null;
+  S.elev=zid; S.elevFromFile=zid!=null;
+  S.meta={...meta,aRatio,zid,nRows:rows.length,
+    depthMin:rows[0].z,depthMax:rows[rows.length-1].z,
+    hasU2:rows.some(r=>r.u2!=null)};
+
+  // Sync controls
+  document.getElementById('wtR').value=S.wt;
+  document.getElementById('wtN').value=S.wt.toFixed(2);
+  if(S.elev!=null){document.getElementById('elevN').value=S.elev.toFixed(2);}
+  updateElevSrc(); updateWTDisplay();
+
+  renderMeta();
+  document.getElementById('s1body').style.display='block';
+  initCharts();
+}
+
+function updateElevSrc(){
+  document.getElementById('elev-src').textContent=
+    S.elevFromFile?'(from ZID)':S.elev!=null?'(manually set)':'(not set — enter for TAW output)';
+}
+function updateWTDisplay(){
+  document.getElementById('wt-src').textContent=S.wtFromFile?'(MEASUREMENTVAR 14)':'(default)';
+  const tawEl=document.getElementById('wt-taw');
+  if(S.elev!=null){
+    const wtTaw=(S.elev-S.wt).toFixed(2);
+    tawEl.textContent=`= ${wtTaw} m TAW`;
+  }else{tawEl.textContent='';}
+}
+
+function renderMeta(){
+  const m=S.meta, d=S.data;
+  const maxQc=d.reduce((mx,r)=>Math.max(mx,r.qc),0).toFixed(2);
+  const items=[
+    {l:'Project',v:m.project||'—'},{l:'Test ID',v:m.testid||'—'},
+    {l:'Location',v:m.location||'—'},{l:'Owner',v:m.owner||'—'},
+    {l:'Date',v:m.date||'—'},{l:'Readings',v:m.nRows},
+    {l:'Depth (m)',v:`${(+m.depthMin).toFixed(2)}–${(+m.depthMax).toFixed(2)}`},
+    {l:'Surface (m TAW)',v:m.zid!=null?m.zid.toFixed(2):'—'},
+    {l:'Area ratio a',v:m.aRatio.toFixed(3)},
+    {l:'Pore pres. u2',v:m.hasU2?'Present':'—'},
+    {l:'max qc (MPa)',v:maxQc},
+  ];
+  document.getElementById('mgrid').innerHTML=items.map(i=>
+    `<div class="mi"><div class="mi-l">${i.l}</div><div class="mi-v">${i.v}</div></div>`).join('');
+  document.getElementById('finfo').textContent=`${m.fname||''} — ${m.nRows} readings`;
+}
+
+/* ════════════════════════════════
+   CONTROLS: elevation, WT, min-thickness
+════════════════════════════════ */
+function setElev(v){
+  S.elev=(isNaN(v)||v==='')?null:v;
+  S.elevFromFile=false;
+  updateElevSrc(); updateWTDisplay();
+  // Re-render layers if they exist (TAW column changes)
+  if(S.layers.length&&document.getElementById('p2').classList.contains('active'))renderLayers();
+}
+
+function setWT(v,fromInput){
+  if(isNaN(v)||v<0)return;
+  S.wt=v;
+  if(fromInput)document.getElementById('wtR').value=v;
+  else document.getElementById('wtN').value=v.toFixed(2);
+  updateWTDisplay();
+  // Update only the WT annotation line on each chart — no rebuild
+  if(S.chartsReady){
+    const d=S.data;
+    const maxZ=d[d.length-1].z+0.5;
+    const maxQc=arrMax(d.map(r=>r.qc));
+    const maxFs=arrMax(d.map(r=>r.fs!=null?r.fs*1000:0));
+    updateWTLine(S.charts.qc, v, maxQc*1.15);
+    updateWTLine(S.charts.fs, v, maxFs*1.15);
+    updateWTLine(S.charts.rf, v, 12);
+  }
+}
+
+function updateWTLine(chart,wt,xmax){
+  if(!chart)return;
+  chart.data.datasets[1].data=[{x:0,y:wt},{x:xmax,y:wt}];
+  chart.update('none'); // no animation
+}
+
+function setMinThk(v,fromInput){
+  if(isNaN(v)||v<0.05)return;
+  S.minThk=v;
+  if(fromInput)document.getElementById('minThkR').value=v;
+  else document.getElementById('minThkN').value=v.toFixed(2);
+  document.getElementById('minThkInfo').textContent='';
+  // If already classified, re-run layer detection and update preview
+  if(S.classified.length){
+    detectLayers();
+    renderLayerPreviewSvg('layerPreviewSvg');
+    if(document.getElementById('p2').classList.contains('active'))renderLayers();
+    document.getElementById('minThkInfo').textContent=`→ ${S.layers.length} layers`;
+  }
+}
+
+/* ════════════════════════════════
+   CHARTS — created once, updated in-place
+════════════════════════════════ */
+function arrMax(arr){return arr.reduce((m,v)=>Math.max(m,v),-Infinity);}
+function arrSafe(arr){return arr.map(v=>isNaN(v)||v==null?0:v);}
+
+function initCharts(){
+  // If charts already exist, just update data
+  if(S.chartsReady){
+    refreshChartData(); return;
+  }
+  const d=S.data;
+  const depths=d.map(r=>r.z);
+  const maxZ=arrMax(depths)+0.5;
+  const qcs=arrSafe(d.map(r=>r.qc));
+  const fss=arrSafe(d.map(r=>r.fs!=null?r.fs*1000:null));
+  const rfs=arrSafe(d.map(r=>r.rf??null));
+  const maxQc=Math.max(1,arrMax(qcs))*1.15;
+  const maxFs=Math.max(10,arrMax(fss))*1.15;
+  const wt=S.wt;
+
+  function ptData(vals){return depths.map((z,i)=>({x:vals[i],y:z}));}
+  function wtLine(xmax){return[{x:0,y:wt},{x:xmax,y:wt}];}
+
+  function mk(id,vals,color,xmax){
+    const ctx=document.getElementById(id);
+    if(!ctx)return null;
+    return new Chart(ctx,{
+      type:'line',
+      data:{datasets:[
+        {label:'value',data:ptData(vals),borderColor:color,borderWidth:1.2,
+          pointRadius:0,fill:false,tension:0.04,spanGaps:true},
+        {label:'WT',data:wtLine(xmax),borderColor:'#378ADD',borderWidth:1.5,
+          borderDash:[6,4],pointRadius:0,fill:false}
+      ]},
+      options:{
+        responsive:true,maintainAspectRatio:false,animation:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{type:'linear',min:0,max:xmax,position:'top',
+            grid:{color:'rgba(128,128,128,0.07)'},
+            ticks:{font:{size:10},maxTicksLimit:5}},
+          y:{type:'linear',min:0,max:maxZ,reverse:true,
+            grid:{color:'rgba(128,128,128,0.07)'},
+            ticks:{font:{size:10}}}
+        }
+      }
+    });
+  }
+
+  S.charts.qc=mk('cQc',qcs,'#1D9E75',maxQc);
+  S.charts.fs=mk('cFs',fss,'#534AB7',maxFs);
+  S.charts.rf=mk('cRf',rfs,'#D85A30',12);
+  S.chartsReady=true;
+
+  // Layer column SVG (placeholder before classification)
+  drawLayerColumnSvg('layerColSvg',[],maxZ);
+}
+
+function refreshChartData(){
+  // Called if a new file is loaded after charts exist
+  const d=S.data;
+  const depths=d.map(r=>r.z);
+  const qcs=arrSafe(d.map(r=>r.qc));
+  const fss=arrSafe(d.map(r=>r.fs!=null?r.fs*1000:null));
+  const rfs=arrSafe(d.map(r=>r.rf??null));
+  const maxZ=arrMax(depths)+0.5;
+  const maxQc=Math.max(1,arrMax(qcs))*1.15;
+  const maxFs=Math.max(10,arrMax(fss))*1.15;
+
+  function ptData(vals){return depths.map((z,i)=>({x:vals[i],y:z}));}
+  function applyData(c,vals,xmax){
+    c.data.datasets[0].data=ptData(vals);
+    c.data.datasets[1].data=[{x:0,y:S.wt},{x:xmax,y:S.wt}];
+    c.options.scales.x.max=xmax;
+    c.options.scales.y.max=maxZ;
+    c.update('none');
+  }
+  applyData(S.charts.qc,qcs,maxQc);
+  applyData(S.charts.fs,fss,maxFs);
+  applyData(S.charts.rf,rfs,12);
+}
+
+/* ════════════════════════════════
+   LAYER COLUMN SVG (Stage 1 preview)
+════════════════════════════════ */
+function drawLayerColumnSvg(svgId, layers, maxZ){
+  const svg=document.getElementById(svgId);
+  if(!svg)return;
+  const W=60,H=400;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+
+  if(!layers.length){
+    svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="9" fill="#9a9a96">Run\nclass.</text>`;
+    return;
+  }
+
+  const zMax=layers[layers.length-1].bot||maxZ;
+  const scale=v=>+(v/zMax*H).toFixed(1);
+  const rects=layers.map(l=>{
+    const y1=scale(l.top), y2=scale(l.bot);
+    const fill=SCFILL[l.type]||'#D3D1C7';
+    return`<rect x="0" y="${y1}" width="${W}" height="${Math.max(y2-y1,1)}" fill="${fill}" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="${W/2}" y="${(y1+y2)/2+3}" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">${l.type.split('/')[0].trim().split(' ')[0]}</text>`;
+  }).join('');
+
+  // WT line
+  const wtY=scale(S.wt);
+  const wtLine=`<line x1="0" x2="${W}" y1="${wtY}" y2="${wtY}" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+
+  // Depth tick labels
+  const ticks=[0,2,4,6,8,10,12,14,16,18,20,22,25].filter(v=>v<=zMax);
+  const tickSvg=ticks.map(v=>{
+    const y=scale(v);
+    return`<line x1="0" x2="4" y1="${y}" y2="${y}" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="${y+3}" font-size="6" fill="#9a9a96" font-family="sans-serif">${v}</text>`;
+  }).join('');
+
+  svg.innerHTML=rects+wtLine+tickSvg;
+}
+
+/* ════════════════════════════════
+   LAYER PREVIEW SVG (Stage 2 side panel)
+════════════════════════════════ */
+function renderLayerPreviewSvg(svgId){
+  /* Renders: depth labels | soil column | qc micro-profile | Rf micro-profile
+     Uses S.classified (per-reading data) for the qc/Rf curves,
+     and S.layers for the color bands and labels. */
+  const svg=document.getElementById(svgId);
+  if(!svg||!S.layers.length)return;
+
+  const W=240, H=520;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+
+  const zMax=S.layers[S.layers.length-1].bot;
+  const pad=20;
+  const avail=H-2*pad;
+  const sc=v=>pad+v/zMax*avail;  // depth → SVG y
+
+  // Layout columns (x positions)
+  const depthX=0;       // depth labels: 0-20
+  const colX=22;        // soil color band: 22-54
+  const colW=32;
+  const qcX=58;         // qc sparkline: 58-118
+  const qcW=60;
+  const rfX=122;        // Rf sparkline: 122-162
+  const rfW=40;
+  const labelX=165;     // type labels: 165-240
+
+  let html='';
+
+  // ── Column header ──
+  html+=`<text x="${qcX+qcW/2}" y="12" font-size="7" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">qc (MPa)</text>`;
+  html+=`<text x="${rfX+rfW/2}" y="12" font-size="7" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">Rf (%)</text>`;
+
+  // ── qc and Rf range from data ──
+  const data=S.classified||[];
+  const qcVals=data.map(r=>r.qc).filter(v=>v>0);
+  const rfVals=data.map(r=>r.rf).filter(v=>v!=null&&v>=0);
+  const qcMax=qcVals.length?Math.max(...qcVals):10;
+  const rfMaxVal=rfVals.length?Math.max(...rfVals):10;
+  // Scale: qc 0→qcMax maps to qcW; Rf 0→rfMaxVal maps to rfW
+  const scQc=v=>qcX+(v/Math.max(qcMax,0.1))*qcW;
+  const scRf=v=>rfX+(v/Math.max(rfMaxVal,1))*rfW;
+
+  // ── Draw qc and Rf sparklines from per-reading data ──
+  if(data.length>1){
+    let qcPath='', rfPath='';
+    data.forEach((r,i)=>{
+      const y=sc(r.z);
+      const xq=scQc(r.qc);
+      qcPath+=(i===0?'M':'L')+`${xq.toFixed(1)},${y.toFixed(1)} `;
+      if(r.rf!=null){
+        const xr=scRf(r.rf);
+        rfPath+=(rfPath===''?'M':'L')+`${xr.toFixed(1)},${y.toFixed(1)} `;
+      }
+    });
+    html+=`<polyline points="${qcPath}" fill="none" stroke="rgba(53,162,235,0.6)" stroke-width="0.8"/>`;
+    html+=`<polyline points="${rfPath}" fill="none" stroke="rgba(235,100,53,0.6)" stroke-width="0.8"/>`;
+    // Zero lines
+    html+=`<line x1="${qcX}" x2="${qcX}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.15)" stroke-width="0.5"/>`;
+    html+=`<line x1="${rfX}" x2="${rfX}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.15)" stroke-width="0.5"/>`;
+  }
+
+  // ── Draw layer bands ──
+  for(const l of S.layers){
+    const y1=sc(l.top), y2=sc(l.bot);
+    const h=Math.max(y2-y1,1.5);
+    const fill=SCFILL[l.type]||'#D3D1C7';
+    const midY=(y1+y2)/2;
+
+    // Depth label
+    html+=`<text x="${depthX}" y="${y1+5}" font-size="7" fill="#9a9a96" font-family="sans-serif">${l.top.toFixed(1)}</text>`;
+    // Soil color band
+    html+=`<rect x="${colX}" y="${y1}" width="${colW}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>`;
+    // Separator line across charts
+    html+=`<line x1="${colX}" x2="${labelX+70}" y1="${y1}" y2="${y1}" stroke="rgba(0,0,0,0.08)" stroke-width="0.4"/>`;
+
+    // Soil type label
+    if(h>9){
+      const short=l.type.split('/')[0].trim().replace('Peat','Veen').replace('Sandy clay','Leem');
+      html+=`<text x="${labelX}" y="${midY+3}" font-size="7.5" fill="rgba(0,0,0,0.65)" font-family="sans-serif">${short}</text>`;
+    }
+    // avgQc bubble on qc line
+    const qcY=midY;
+    const qcBx=scQc(l.avgQc);
+    html+=`<circle cx="${qcBx.toFixed(1)}" cy="${qcY.toFixed(1)}" r="2.5" fill="rgba(53,162,235,0.8)"/>`;
+    if(h>14){
+      html+=`<text x="${qcBx+4}" y="${qcY+3}" font-size="6" fill="rgba(53,100,200,0.8)" font-family="sans-serif">${l.avgQc.toFixed(1)}</text>`;
+    }
+    // avgRf bubble
+    if(l.avgRf!=null){
+      const rfBx=scRf(l.avgRf);
+      html+=`<circle cx="${rfBx.toFixed(1)}" cy="${qcY.toFixed(1)}" r="2.5" fill="rgba(235,100,53,0.8)"/>`;
+      if(h>14){
+        html+=`<text x="${rfBx+4}" y="${qcY+3}" font-size="6" fill="rgba(200,80,30,0.8)" font-family="sans-serif">${l.avgRf.toFixed(1)}%</text>`;
+      }
+    }
+  }
+
+  // Last depth label
+  const last=S.layers[S.layers.length-1];
+  html+=`<text x="${depthX}" y="${sc(last.bot)+5}" font-size="7" fill="#9a9a96" font-family="sans-serif">${last.bot.toFixed(1)}</text>`;
+
+  // WT line
+  const wtY=sc(S.wt);
+  html+=`<line x1="${colX-4}" x2="${rfX+rfW}" y1="${wtY}" y2="${wtY}" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+  html+=`<text x="${rfX+rfW+2}" y="${wtY+3}" font-size="6.5" fill="#378ADD" font-family="sans-serif">WT</text>`;
+
+  svg.innerHTML=html;
+  // Widen the SVG container to show new width
+  svg.setAttribute('width','100%');
+}
+
+/* ════════════════════════════════
+   DEMO
+════════════════════════════════ */
+function loadDemo(){
+  const rows=[];
+  for(let z=0.14;z<=21.73;z=+(z+0.02).toFixed(3)){
+    let qc,rf;
+    if(z<0.6)      {qc=0.15+Math.random()*0.12;rf=0.7+Math.random()*0.4;}
+    else if(z<1.5) {qc=3+Math.random()*2.5;   rf=0.5+Math.random()*0.4;}
+    else if(z<3.0) {qc=7+Math.random()*3;     rf=0.8+Math.random()*0.7;}
+    else if(z<5.5) {qc=1.2+Math.random()*1;   rf=4+Math.random()*3;}
+    else if(z<7.0) {qc=1.5+Math.random()*0.8; rf=3.5+Math.random()*2;}
+    else if(z<9.5) {qc=4+Math.random()*4;     rf=1.2+Math.random()*0.8;}
+    else if(z<11)  {qc=2+Math.random()*1;     rf=3+Math.random()*2;}
+    else           {qc=3.5+Math.random()*5;   rf=1.5+Math.random()*2;}
+    const fs=qc*rf/100;
+    rows.push({z,qc:+qc.toFixed(4),fs:+fs.toFixed(6),rf:+rf.toFixed(3),u2:null});
+  }
+  S.data=rows; S.wt=1.7; S.wtFromFile=true;
+  S.elev=69.97; S.elevFromFile=true;
+  S.meta={project:'Demo Project A',testid:'CPT-1 (demo)',location:'Reference site — anonymised',owner:'Anonymous source',
+    date:'2025, 7, 7',aRatio:0.79,zid:69.97,fname:'demo-anonymous.GEF',
+    nRows:rows.length,depthMin:0.14,depthMax:21.73,hasU2:false};
+  document.getElementById('wtR').value=1.7;
+  document.getElementById('wtN').value='1.70';
+  document.getElementById('elevN').value='69.97';
+  updateElevSrc(); updateWTDisplay();
+  renderMeta();
+  document.getElementById('s1body').style.display='block';
+  initCharts();
+}
+
+/* ════════════════════════════════
+   FILE LOAD
+════════════════════════════════ */
+function loadGEF(evt){
+  const f=evt.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>parseGEF(e.target.result,f.name);
+  r.readAsText(f);
+}
+const dz=document.getElementById('dz');
+document.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
+document.addEventListener('dragleave',e=>{if(!dz.contains(e.relatedTarget))dz.classList.remove('drag')});
+document.addEventListener('drop',e=>{
+  e.preventDefault();dz.classList.remove('drag');
+  const f=e.dataTransfer.files[0]; if(!f)return;
+  const r=new FileReader();r.onload=ev=>parseGEF(ev.target.result,f.name);r.readAsText(f);
+});
+
+/* ════════════════════════════════
+   METHOD SELECT
+════════════════════════════════ */
+function selM(m){
+  S.method=m;
+  document.getElementById('mRob').classList.toggle('sel',m==='robertson');
+  document.getElementById('mCur').classList.toggle('sel',m==='cur3');
+  document.getElementById('mSB').classList.toggle('sel',m==='sb260');
+}
+
+/* ════════════════════════════════
+   STRESS
+════════════════════════════════ */
+function stressAt(z, gamma_sat, gamma_unsat){
+  /* Correct effective stress accounting for water table position.
+     Above WT: use gamma_unsat (unsaturated unit weight = gamma, Stage 3).
+     Below WT: use gamma_sat.
+     If gamma_unsat not supplied, falls back to gamma_sat for both zones
+     (conservative, used during Stage 2 classification where only gamma=18 known). */
+  const wt = S.wt;
+  const gu = gamma_unsat ?? gamma_sat; // fallback
+  let sigV;
+  if(z <= wt){
+    sigV = gu * z;
+  } else {
+    sigV = gu * wt + gamma_sat * (z - wt);
+  }
+  const u = z > wt ? 10 * (z - wt) : 0;
+  return{sigV: +sigV.toFixed(2), u: +u.toFixed(2), sigVeff: Math.max(sigV - u, 1)};
+}
+
+/* ════════════════════════════════
+   CLASSIFICATION
+════════════════════════════════ */
+
+/* ════════════════════════════════
+   CLASSIFICATION — Robertson (1990) SBT
+   
+   Source: Robertson, P.K. (1990). Soil classification using the CPT.
+   Canadian Geotechnical Journal, 27(1), 151-158.
+   
+   Uses the Soil Behaviour Type (SBT) index Ic and the normalised
+   Robertson chart. Nine zones mapped to practical soil types.
+   
+   STRESS NORMALISATION:
+     Qt = (qc - σv0) / σ'v0        (dimensionless, cone resistance ratio)
+     Fr = fs / (qc - σv0) × 100    (%, normalised friction ratio)
+     Ic = √((3.47 - log Qt)² + (log Fr + 1.22)²)
+   
+   IC ZONE BOUNDARIES (Robertson 1990):
+     Ic > 3.60  → Zone 2: Organic soils — clay / peat
+     Ic > 2.95  → Zone 3: Clays — silty clay to clay
+     Ic > 2.60  → Zone 4: Silt mixtures — clayey silt to silty clay
+     Ic > 2.05  → Zone 5: Sand mixtures — silty sand to sandy silt
+     Ic > 1.31  → Zone 6: Sands — clean sand to silty sand
+     Ic ≤ 1.31  → Zone 7: Gravelly sand to dense sand
+     (Zone 1 "sensitive fine-grained" is not defined by an Ic band alone.)
+   
+   MAPPING to app soil types:
+     Zone 2 → Peat / organic
+     Zone 3 → Clay
+     Zone 4 → Sandy clay
+     Zone 5 → Silty sand
+     Zone 6 → Sand
+     Zone 7 → Gravel
+   Sensitive / structured fine-grained soils require judgement outside the
+   Ic bands and are not inferred here from Ic alone.
+════════════════════════════════ */
+function classRob(r){
+  const {sigV, sigVeff} = stressAt(r.z, 18, 17);
+  const aRatio = S.meta?.aRatio ?? 0.8;
+  const qtCone = r.u2 != null ? (r.qc + (1 - aRatio) * r.u2) : r.qc; // qt in MPa
+  const dQ = qtCone - sigV/1000;   // qt - σv0 [MPa]
+
+  // Guard: if stress or net resistance is negligible, default to Clay
+  if(dQ < 0.01 || sigVeff < 1)
+    return{type:'Clay', subtype:'', Ic:2.80, Qt:null, g:null,gs:null,phi:null,c:null,cu:null};
+
+  // Qt = (qt - σv0) / σ'v0  — both in MPa
+  const Qt = Math.max(0.1, dQ / (sigVeff / 1000));
+
+  // Fr = fs / (qt - σv0) × 100  [%]
+  // If fs not available, estimate sleeve friction from qt and Rf.
+  const fs_eff = r.fs != null ? r.fs : qtCone * (r.rf ?? 3) / 100;
+  const Fr = Math.max(0.1, Math.min(10, (Math.abs(fs_eff) / dQ) * 100));
+
+  // Ic = √((3.47 - log Qt)² + (log Fr + 1.22)²)
+  const Ic = Math.sqrt((3.47 - Math.log10(Qt))**2 + (Math.log10(Fr) + 1.22)**2);
+
+  // Zone 7 check (gravelly sand / dense sand) — BEFORE Ic zones
+  // Robertson charts place very high Qt with very low Fr in the gravelly/dense range.
+  const isZone7 = (Qt > 200 && Fr < 0.5);
+
+  let type;
+  if(isZone7)    type = 'Gravel';              // Zone 7: gravelly sand/dense sand
+  else if(Ic > 3.60) type = 'Peat / organic';  // Zone 2: organic soils-clay / peat
+  else if(Ic > 2.95) type = 'Clay';            // Zone 3: clay to silty clay
+  else if(Ic > 2.60) type = 'Sandy clay';      // Zone 4: silt mixtures
+  else if(Ic > 2.05) type = 'Silty sand';      // Zone 5: sand mixtures
+  else               type = 'Sand';            // Zone 6: sands
+
+  return{type, subtype:'', Ic:+Ic.toFixed(2), Qt:+Qt.toFixed(1),
+         g:null, gs:null, phi:null, c:null, cu:null};
+}
+
+/* ════════════════════════════════
+   CLASSIFICATION — CUR Rapport 3
+   
+   Source: CUR Rapport 3 "Handleiding voor de verwerking van
+   sondeerslagen", SBRCURnet / CUR Bouw & Infra.
+   Also referenced in NEN 6740 and CUR/COB L400 Belgian practice.
+   
+   Uses a qc–Rf chart with overlapping zones. Priority order is applied
+   to resolve ambiguous readings at zone boundaries.
+   
+   GATE ORDER (priority high to low):
+   1. Veen:          Rf > 6% AND qc < 1 MPa
+   2. Klei:          Rf > 4% (with qc determining stiffness)
+                     OR Rf > 3% AND qc < 4 MPa
+   3. Leem (overgang): Rf 2–6% AND qc 0.5–4 MPa
+   4. Zand met bijmenging: Rf 1–4% AND qc > 2 MPa
+   5. Grind:         Rf < 2% AND qc > 15 MPa
+   6. Zand:          Rf < 3% AND qc > 2 MPa
+   7. Fallback:      everything else → Clay (soft/unidentified)
+   
+   CUR 3 does NOT produce per-reading γ/φ'/c'/cu — those come from
+   NEN Tabel 3 (Stage 3 parameter method).
+════════════════════════════════ */
+function classCUR(r){
+  const qc = r.qc;
+  const rf = r.rf != null ? r.rf : 3.0;  // default 3% if missing
+
+  // 1. VEEN — very high Rf AND low qc
+  //    CUR Rapport 3: Rf > 6%, qc < 1 MPa (some editions: Rf > 5%)
+  //    Using 6% to match NEN Tabel 3 hard boundary.
+  if(rf > 6 && qc < 1.0)
+    return{type:'Peat / organic', subtype:'', Ic:null, Qt:null,
+           g:null,gs:null,phi:null,c:null,cu:null};
+
+  // 2. KLEI — high Rf, moderate qc
+  //    CUR Rapport 3: Rf > 4%, or Rf > 3% with qc < 4 MPa
+  //    Subcategory: Soft clay when qc < 1 MPa
+  if(rf > 4 || (rf > 3 && qc < 4)){
+    const type = qc < 1.0 ? 'Soft clay' : 'Clay';
+    return{type, subtype:'', Ic:null, Qt:null,
+           g:null,gs:null,phi:null,c:null,cu:null};
+  }
+
+  // 3. LEEM / overgangsgrond — intermediate Rf AND intermediate qc
+  //    CUR Rapport 3: Rf 2–6% AND qc 0.5–4 MPa
+  //    Maps to Sandy clay (leem-dominant) in app types.
+  if(rf >= 2 && rf <= 6 && qc >= 0.5 && qc < 4)
+    return{type:'Sandy clay', subtype:'', Ic:null, Qt:null,
+           g:null,gs:null,phi:null,c:null,cu:null};
+
+  // 4. GRIND — very high qc AND low Rf
+  //    CUR Rapport 3: qc > 15 MPa AND Rf < 2%
+  if(qc >= 15 && rf < 2)
+    return{type:'Gravel', subtype:'', Ic:null, Qt:null,
+           g:null,gs:null,phi:null,c:null,cu:null};
+
+  // 5. ZAND (clean to slightly silty) — low Rf, higher qc
+  //    CUR Rapport 3: Rf < 3% AND qc > 2 MPa
+  //    Subcategory: Silty sand when Rf 1.5–3%, Sand when Rf < 1.5%
+  if(qc >= 2 && rf < 3){
+    const type = rf >= 1.5 ? 'Silty sand' : 'Sand';
+    return{type, subtype:'', Ic:null, Qt:null,
+           g:null,gs:null,phi:null,c:null,cu:null};
+  }
+
+  // 6. FALLBACK — soft/unidentified (low qc, boundary Rf)
+  //    Typically very soft clay or organic material not caught above.
+  return{type:'Clay', subtype:'', Ic:null, Qt:null,
+         g:null,gs:null,phi:null,c:null,cu:null};
+}
+
+/* ════════════════════════════════
+   CLASSIFICATION — Eurocode / NEN Tabel 3
+   "Karakteristieke grondparameters op basis van de resultaten
+   uit een elektrische sondering"
+   
+   The Eurocode table contains overlapping qc/Rf envelopes.
+   For deterministic classification the implementation checks the exact
+   table rows in table order:
+     grind → zand → leem → klei → veen
+   and, within each group, top-to-bottom row order.
+   Range handling follows the table notation exactly:
+     qc lower bound inclusive, upper bound exclusive
+     Rf < 1 and Rf > 6 are strict
+     banded Rf ranges (1–2, 2–4, 2–5, 3–6) are inclusive.
+════════════════════════════════ */
+function classSB260(r){
+  const qc = r.qc;
+  const rf = r.rf != null ? r.rf : null;
+
+  for(const entry of EUROCODE_CLASS_ENTRIES){
+    if(eurocodeEntryMatches(entry, qc, rf)){
+      return{
+        type:entry.type, subtype:entry.subtype,
+        g:entry.g, gs:entry.gs, phi:entry.phi, c:entry.c, cu:entry.cu,
+        Ic:null, Qt:null
+      };
+    }
+  }
+
+  // Table 3 does not cover every possible CPT reading.
+  // Keep a deterministic fallback for out-of-table values.
+  if(qc < 0.4){
+    return{type:'Sandy clay', subtype:'leem, weinig vast',
+      g:17, gs:17, phi:22, c:0, cu:10, Ic:null, Qt:null};
+  }
+  return{type:'Sand', subtype:'zand, los',
+    g:16, gs:18, phi:27, c:0, cu:0, Ic:null, Qt:null};
+}
+
+/* ════════════════════════════════
+   CLASSIFICATION RUN
+════════════════════════════════ */
+function runClass(){
+  if(!S.data.length){alert('Laad eerst een GEF bestand.');return;}
+
+  S.useSB260params=(S.method==='sb260');
+
+  S.classified=S.data.map(r=>{
+    let res;
+    if(S.method==='robertson')     res=classRob(r);
+    else if(S.method==='cur3')     res=classCUR(r);
+    else                           res=classSB260(r);
+    return Object.assign({},r,res);
+  });
+
+  const cl=S.classified;
+  const n=cl.length;
+  const avgOf=(fn,flt)=>{
+    const rows=flt?cl.filter(flt):cl;
+    return rows.length?rows.reduce((s,x)=>s+fn(x),0)/rows.length:0;
+  };
+
+  document.getElementById('cmet').innerHTML=[
+    {l:'avg qc (MPa)',  v:avgOf(r=>r.qc).toFixed(2)},
+    {l:'avg fs (kPa)',  v:(avgOf(r=>r.fs||0,r=>r.fs!=null)*1000).toFixed(1)},
+    {l:'avg Rf (%)',    v:avgOf(r=>r.rf||0,r=>r.rf!=null).toFixed(2)},
+    {l:'max depth (m)', v:cl[n-1].z.toFixed(2)},
+    {l:'readings',      v:n},
+    {l:'method',        v:{robertson:'Robertson',cur3:'CUR 3',sb260:'NEN Tabel 3 (EC7)'}[S.method]}
+  ].map(m=>`<div class="met"><div class="met-l">${m.l}</div><div class="met-v">${m.v}</div></div>`).join('');
+
+  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
+  document.getElementById('cbody').innerHTML=cl.map(r=>`<tr>
+    <td>${r.z.toFixed(3)}</td>
+    <td style="color:var(--tx2)">${taw(r.z)}</td>
+    <td>${r.qc.toFixed(3)}</td>
+    <td>${r.fs!=null?(r.fs*1000).toFixed(2):'—'}</td>
+    <td>${r.rf!=null?r.rf.toFixed(2):'—'}</td>
+    <td><span class="sb ${SC[r.type]||'s-sand'}">${r.type}</span></td>
+    <td style="font-size:10px;color:var(--tx2)">${r.subtype||'—'}</td>
+    <td style="color:var(--tx3)">${r.Ic!=null?r.Ic:'—'}</td>
+  </tr>`).join('');
+
+  document.getElementById('classLayout').style.display='';
+  detectLayers();
+  renderLayerPreviewSvg('layerPreviewSvg');
+  drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1].z+0.5);
+  document.getElementById('minThkInfo').textContent='-> '+S.layers.length+' layers';
+  document.getElementById('btnToLayers').style.display='';
+}
+
+/* ════════════════════════════════
+   LAYER DETECTION
+════════════════════════════════ */
+function detectLayers(){
+  const d=S.classified;
+  const raw=[];
+  let cur={type:d[0].type,rows:[d[0]]};
+  for(let i=1;i<d.length;i++){
+    if(d[i].type===cur.type)cur.rows.push(d[i]);
+    else{raw.push(cur);cur={type:d[i].type,rows:[d[i]]};}
+  }
+  raw.push(cur);
+
+  // Iterative merge: repeat until stable (thin layers absorbed into predecessor)
+  let changed=true, merged=raw;
+  while(changed){
+    changed=false;
+    const next=[];
+    for(const seg of merged){
+      const r=seg.rows;
+      const thick=r[r.length-1].z-r[0].z;
+      if(thick<S.minThk&&next.length>0){
+        next[next.length-1].rows.push(...r);
+        changed=true;
+      }else{
+        next.push({...seg,rows:[...r]});
+      }
+    }
+    merged=next;
+  }
+
+  S.layers=merged.map((seg,i)=>{
+    const r=seg.rows.filter(x=>x.qc>0.02);
+    if(!r.length)r.push(...seg.rows);
+    const top=i===0?0:+(seg.rows[0].z-0.02).toFixed(3);
+    const bot=+seg.rows[seg.rows.length-1].z.toFixed(3);
+    const avgQc=+(r.reduce((s,x)=>s+x.qc,0)/r.length).toFixed(3);
+    const fsR=r.filter(x=>x.fs!=null);
+    const avgFs=fsR.length?+(fsR.reduce((s,x)=>s+x.fs,0)/fsR.length).toFixed(5):null;
+    const rfR=r.filter(x=>x.rf!=null);
+    const avgRf=rfR.length?+(rfR.reduce((s,x)=>s+(x.rf??0),0)/rfR.length).toFixed(2):null;
+    // Dominant subtype (most frequent among rows)
+    const subtypeCounts={};
+    seg.rows.forEach(row=>{const st=row.subtype||'';subtypeCounts[st]=(subtypeCounts[st]||0)+1;});
+    const subtype=Object.keys(subtypeCounts).sort((a,b)=>subtypeCounts[b]-subtypeCounts[a])[0]||'';
+    // Parameters: for Eurocode Table 3 use the row-derived values; else use DEF table
+    let g,gs,phi,c,cu;
+    if(S.useSB260params){
+      // Weighted average of per-row Eurocode Table 3 values (rows already carry g,gs,phi,c,cu)
+      const vr=seg.rows.filter(x=>x.g!=null);
+      if(vr.length){
+        const avg2=fn=>+(vr.reduce((s,x)=>s+fn(x),0)/vr.length).toFixed(1);
+        g=+avg2(x=>x.g); gs=+avg2(x=>x.gs); phi=+avg2(x=>x.phi);
+        c=+avg2(x=>x.c); cu=+avg2(x=>x.cu);
+      }else{const df=DEF[seg.type]||DEF['Sand'];g=df.g;gs=df.gs;phi=df.phi;c=df.c;cu=df.cu;}
+    }else{
+      const df=DEF[seg.type]||DEF['Sand'];g=df.g;gs=df.gs;phi=df.phi;c=df.c;cu=df.cu;
+    }
+    // Auto-suggest best Eurocode Table 3 subtype from catalogue based on avgQc + avgRf
+    // Only if subtype not already forced by the classification itself
+    const tmpLayer={type:seg.type,subtype,avgQc,avgRf};
+    const suggestion=suggestSubtype(tmpLayer);
+    const suggestedSubtype=suggestion?suggestion.subtype:subtype;
+    // If suggestion differs from classification subtype, apply suggestion params
+    // but mark it as a suggestion (not a manual override)
+    let sg=g,sgs=gs,sphi=Math.round(phi),sc=Math.round(c),scu=Math.round(cu);
+    if(suggestion&&S.paramMethod==='sb260'){
+      sg=suggestion.g; sgs=suggestion.gs;
+      sphi=suggestion.phi; sc=suggestion.c; scu=suggestion.cu;
+    }
+    return{id:i,top,bot,type:seg.type,subtype:suggestedSubtype,avgQc,avgFs,avgRf,
+      g:sg,gs:sgs,phi:sphi,c:sc,cu:scu,ovr:{}};
+  });
+}
+
+/* ════════════════════════════════
+   LAYER TABLE
+   
+   CONCEPTUAL SEPARATION:
+   - Stage 2 (classification): Robertson / CUR 3 / Eurocode Table 3 → assigns CPT soil type
+     per depth reading, then layers are detected. This determines the BOUNDARY logic.
+   - Stage 3 (parameter method): independently assigns geotechnical parameters
+     (γ, φ', c', cu) to each layer. The engineer can choose:
+       • Generic DEF table (type-based defaults)
+       • Eurocode / NEN Tabel 3 (full subtype catalogue with consistentie)
+     These are independent of the Stage 2 classification method.
+   - Stage 4 (model): derives HS/MC params from Stage 3 output.
+
+   The subtype dropdown always shows the full Eurocode / NEN Table 3 catalogue.
+   Compatible entries (matching the CPT type) are listed first and enabled.
+   Potentially compatible entries (adjacent soil families) are shown with a note.
+   Incompatible entries are shown in a disabled optgroup with a warning label.
+   
+   A warning panel below the table flags any layer where the selected subtype
+   is outside the compatible or adjacent range for its CPT type.
+════════════════════════════════ */
+
+/* ── Parameter method selector (Stage 3 global) ── */
+// S.paramMethod: 'sb260' | 'def'
+// Set from the radio buttons rendered in renderLayers()
+
+/* ═══════════════════════════════════════════════════════════════════════
+   NEN / Eurocode 7 Tabel 3 — COMPLETE CATALOGUE
+   "Karakteristieke grondparameters op basis van de resultaten uit
+    een elektrische sondering"
+   
+   Every entry corresponds EXACTLY to one row of Tabel 3.
+   No entries outside the table. No invented entries.
+   
+   Columns verified against table image:
+     grp    = grondsoort family (determines dropdown grouping)
+     label  = displayed name in dropdown
+     type   = CPT soil behaviour type (for COMPAT routing)
+     subtype= exact internal key (matches classSB260 output)
+     g      = γ boven F.O. (kN/m³)
+     gs     = γ onder F.O. (kN/m³)
+     phi    = φ'k (°)
+     c      = c'k (kPa)
+     cu     = cu,k (kPa)
+     qcMin  = lower qc bound (MPa, inclusive)
+     qcMax  = upper qc bound (MPa, exclusive)
+     rfMin  = lower Rf bound (%, inclusive)
+     rfMax  = upper Rf bound (%, inclusive)
+   
+   GRIND: Tabel 3 shows qc ≥ 10 for matig and qc ≥ 20 for dicht.
+   VEEN:  Tabel 3 shows Rf > 6% (hard gate). qc 0.2-0.5 / 0.5-1 / ≥1.
+   ZAND:  Clean: Rf < 1%. With fines (lh/kh): Rf 1-2%.
+   LEEM:  Pure: Rf 2-4%. Zandhoudend: Rf 1-3%.
+   KLEI:  Pure: Rf 3-6%. Zandhoudend: Rf 2-5%.
+   
+   "Siltig zand" is NOT in Tabel 3 and has been removed.
+   Robertson Zone 5 (Silty sand CPT type) maps to leemhoudend zand / 
+   zandhoudende leem entries via COMPAT.
+═══════════════════════════════════════════════════════════════════════ */
+const CAT=[
+  // ──────────────────────────────────────────────────────────────────────
+  // VEEN  Tabel 3: Rf > 6%, qc ranges as shown
+  // γ boven/onder F.O.: 10/10, 12/12, 14/14  φ'=15°  c'=2,5,10  cu=10,20,40
+  // ──────────────────────────────────────────────────────────────────────
+  {grp:'veen', label:'Veen — weinig vast  (qc 0.2–0.5, Rf >6%)',
+   type:'Peat / organic', subtype:'veen, weinig vast',
+   g:10, gs:10, phi:15, c:2,  cu:10,
+   qcMin:0.2, qcMax:0.5, rfMin:6, rfMax:99},
+
+  {grp:'veen', label:'Veen — matig vast  (qc 0.5–1.0, Rf >6%)',
+   type:'Peat / organic', subtype:'veen, matig vast',
+   g:12, gs:12, phi:15, c:5,  cu:20,
+   qcMin:0.5, qcMax:1.0, rfMin:6, rfMax:99},
+
+  {grp:'veen', label:'Veen — vast  (qc ≥1.0, Rf >6%)',
+   type:'Peat / organic', subtype:'veen, vast',
+   g:14, gs:14, phi:15, c:10, cu:40,
+   qcMin:1.0, qcMax:99,  rfMin:6, rfMax:99},
+
+  // ──────────────────────────────────────────────────────────────────────
+  // KLEI (pure)  Tabel 3: Rf 3–6%
+  // γ: 16/16, 17/17, 18/18, 19/19  φ'=20°  c'=2,4,8,15  cu=20,50,100,200
+  // ──────────────────────────────────────────────────────────────────────
+  {grp:'klei', label:'Klei — weinig vast  (qc 0.4–1, Rf 3–6%)',
+   type:'Clay', subtype:'klei, weinig vast',
+   g:16, gs:16, phi:20, c:2,  cu:20,
+   qcMin:0.4, qcMax:1.0, rfMin:3, rfMax:6},
+
+  {grp:'klei', label:'Klei — matig vast  (qc 1–2, Rf 3–6%)',
+   type:'Clay', subtype:'klei, matig vast',
+   g:17, gs:17, phi:20, c:4,  cu:50,
+   qcMin:1.0, qcMax:2.0, rfMin:3, rfMax:6},
+
+  {grp:'klei', label:'Klei — vrij vast  (qc 2–4, Rf 3–6%)',
+   type:'Clay', subtype:'klei, vrij vast',
+   g:18, gs:18, phi:20, c:8,  cu:100,
+   qcMin:2.0, qcMax:4.0, rfMin:3, rfMax:6},
+
+  {grp:'klei', label:'Klei — vast  (qc ≥4, Rf 3–6%)',
+   type:'Clay', subtype:'klei, vast',
+   g:19, gs:19, phi:20, c:15, cu:200,
+   qcMin:4.0, qcMax:99,  rfMin:3, rfMax:6},
+
+  // ──────────────────────────────────────────────────────────────────────
+  // KLEI ZANDHOUDEND  Tabel 3: Rf 2–5%
+  // γ: 16/16, 17/17, 18/18, 19/19  φ'=22°  c'=2,4,8,15  cu=20,50,100,200
+  // ──────────────────────────────────────────────────────────────────────
+  {grp:'klei', label:'Klei zandhoudend — weinig vast  (qc 0.4–1, Rf 2–5%)',
+   type:'Clay', subtype:'klei (zh), weinig vast',
+   g:16, gs:16, phi:22, c:2,  cu:20,
+   qcMin:0.4, qcMax:1.0, rfMin:2, rfMax:5},
+
+  {grp:'klei', label:'Klei zandhoudend — matig vast  (qc 1–2, Rf 2–5%)',
+   type:'Clay', subtype:'klei (zh), matig vast',
+   g:17, gs:17, phi:22, c:4,  cu:50,
+   qcMin:1.0, qcMax:2.0, rfMin:2, rfMax:5},
+
+  {grp:'klei', label:'Klei zandhoudend — vrij vast  (qc 2–4, Rf 2–5%)',
+   type:'Clay', subtype:'klei (zh), vrij vast',
+   g:18, gs:18, phi:22, c:8,  cu:100,
+   qcMin:2.0, qcMax:4.0, rfMin:2, rfMax:5},
+
+  {grp:'klei', label:'Klei zandhoudend — vast  (qc ≥4, Rf 2–5%)',
+   type:'Clay', subtype:'klei (zh), vast',
+   g:19, gs:19, phi:22, c:15, cu:200,
+   qcMin:4.0, qcMax:99,  rfMin:2, rfMax:5},
+
+  // ──────────────────────────────────────────────────────────────────────
+  // LEEM (pure)  Tabel 3: Rf 2–4%
+  // γ: 17/17, 18/18, 19/19, 20/20  φ'=22°  c'=0,2,4,8  cu=10,25,50,100
+  // ──────────────────────────────────────────────────────────────────────
+  {grp:'leem', label:'Leem — weinig vast  (qc 0.4–1, Rf 2–4%)',
+   type:'Sandy clay', subtype:'leem, weinig vast',
+   g:17, gs:17, phi:22, c:0, cu:10,
+   qcMin:0.4, qcMax:1.0, rfMin:2, rfMax:4},
+
+  {grp:'leem', label:'Leem — matig vast  (qc 1–2, Rf 2–4%)',
+   type:'Sandy clay', subtype:'leem, matig vast',
+   g:18, gs:18, phi:22, c:2, cu:25,
+   qcMin:1.0, qcMax:2.0, rfMin:2, rfMax:4},
+
+  {grp:'leem', label:'Leem — vrij vast  (qc 2–4, Rf 2–4%)',
+   type:'Sandy clay', subtype:'leem, vrij vast',
+   g:19, gs:19, phi:22, c:4, cu:50,
+   qcMin:2.0, qcMax:4.0, rfMin:2, rfMax:4},
+
+  {grp:'leem', label:'Leem — vast  (qc ≥4, Rf 2–4%)',
+   type:'Sandy clay', subtype:'leem, vast',
+   g:20, gs:20, phi:22, c:8, cu:100,
+   qcMin:4.0, qcMax:99,  rfMin:2, rfMax:4},
+
+  // ──────────────────────────────────────────────────────────────────────
+  // LEEM ZANDHOUDEND  Tabel 3: Rf 1–3%
+  // (= zandhoudende leem: leem dominant with sand admixture)
+  // γ: 17/17, 18/18, 19/19, 20/20  φ'=25°  c'=0,2,4,8  cu=10,25,50,100
+  // ──────────────────────────────────────────────────────────────────────
+  {grp:'leem', label:'Zandhoudende leem — weinig vast  (qc 0.4–1, Rf 1–3%)',
+   type:'Sandy clay', subtype:'leem (zh), weinig vast',
+   g:17, gs:17, phi:25, c:0, cu:10,
+   qcMin:0.4, qcMax:1.0, rfMin:1, rfMax:3},
+
+  {grp:'leem', label:'Zandhoudende leem — matig vast  (qc 1–2, Rf 1–3%)',
+   type:'Sandy clay', subtype:'leem (zh), matig vast',
+   g:18, gs:18, phi:25, c:2, cu:25,
+   qcMin:1.0, qcMax:2.0, rfMin:1, rfMax:3},
+
+  {grp:'leem', label:'Zandhoudende leem — vrij vast  (qc 2–4, Rf 1–3%)',
+   type:'Sandy clay', subtype:'leem (zh), vrij vast',
+   g:19, gs:19, phi:25, c:4, cu:50,
+   qcMin:2.0, qcMax:4.0, rfMin:1, rfMax:3},
+
+  {grp:'leem', label:'Zandhoudende leem — vast  (qc ≥4, Rf 1–3%)',
+   type:'Sandy clay', subtype:'leem (zh), vast',
+   g:20, gs:20, phi:25, c:8, cu:100,
+   qcMin:4.0, qcMax:99,  rfMin:1, rfMax:3},
+
+  // ──────────────────────────────────────────────────────────────────────
+  // ZAND (clean)  Tabel 3: Rf < 1%
+  // γ boven F.O.: 16,17,18,18  γ onder: 18,19,20,20  φ'=27,30,32,35°
+  // c'=0  cu=—
+  // ──────────────────────────────────────────────────────────────────────
+  {grp:'zand', label:'Zand — los  (qc 2–4, Rf <1%)',
+   type:'Sand', subtype:'zand, los',
+   g:16, gs:18, phi:27, c:0, cu:0,
+   qcMin:2,  qcMax:4,  rfMin:0, rfMax:1},
+
+  {grp:'zand', label:'Zand — matig  (qc 4–10, Rf <1%)',
+   type:'Sand', subtype:'zand, matig',
+   g:17, gs:19, phi:30, c:0, cu:0,
+   qcMin:4,  qcMax:10, rfMin:0, rfMax:1},
+
+  {grp:'zand', label:'Zand — dicht  (qc 10–15, Rf <1%)',
+   type:'Sand', subtype:'zand, dicht',
+   g:18, gs:20, phi:32, c:0, cu:0,
+   qcMin:10, qcMax:15, rfMin:0, rfMax:1},
+
+  {grp:'zand', label:'Zand — zeer dicht  (qc ≥15, Rf <1%)',
+   type:'Sand', subtype:'zand, zeer dicht',
+   g:18, gs:20, phi:35, c:0, cu:0,
+   qcMin:15, qcMax:99, rfMin:0, rfMax:1},
+
+  // ──────────────────────────────────────────────────────────────────────
+  // ZAND leem/kleihoudend  Tabel 3: Rf 1–2%
+  // (= leemhoudend zand: zand dominant with silt/clay admixture)
+  // γ boven F.O.: 16,17,18,19  γ onder: 18,19,20,20  φ'=25,27,30,32°
+  // c'=0  cu=—
+  // ──────────────────────────────────────────────────────────────────────
+  {grp:'zand', label:'Leemhoudend zand — los  (qc 2–4, Rf 1–2%)',
+   type:'Sand', subtype:'zand (lh), los',
+   g:16, gs:18, phi:25, c:0, cu:0,
+   qcMin:2,  qcMax:4,  rfMin:1, rfMax:2},
+
+  {grp:'zand', label:'Leemhoudend zand — matig  (qc 4–10, Rf 1–2%)',
+   type:'Sand', subtype:'zand (lh), matig',
+   g:17, gs:19, phi:27, c:0, cu:0,
+   qcMin:4,  qcMax:10, rfMin:1, rfMax:2},
+
+  {grp:'zand', label:'Leemhoudend zand — dicht  (qc 10–15, Rf 1–2%)',
+   type:'Sand', subtype:'zand (lh), dicht',
+   g:18, gs:20, phi:30, c:0, cu:0,
+   qcMin:10, qcMax:15, rfMin:1, rfMax:2},
+
+  {grp:'zand', label:'Leemhoudend zand — zeer dicht  (qc ≥15, Rf 1–2%)',
+   type:'Sand', subtype:'zand (lh), z.dicht',
+   g:19, gs:20, phi:32, c:0, cu:0,
+   qcMin:15, qcMax:99, rfMin:1, rfMax:2},
+
+  // ──────────────────────────────────────────────────────────────────────
+  // GRIND (clean)  Tabel 3: Rf < 1%, qc ≥ 10
+  // γ: 18/20, 19/21  φ'=35,40°  c'=0  cu=—
+  // ──────────────────────────────────────────────────────────────────────
+  {grp:'grind', label:'Grind — matig  (qc 10–20, Rf <1%)',
+   type:'Gravel', subtype:'grind, matig',
+   g:18, gs:20, phi:35, c:0, cu:0,
+   qcMin:10, qcMax:20, rfMin:0, rfMax:1},
+
+  {grp:'grind', label:'Grind — dicht  (qc ≥20, Rf <1%)',
+   type:'Gravel', subtype:'grind, dicht',
+   g:19, gs:21, phi:40, c:0, cu:0,
+   qcMin:20, qcMax:99, rfMin:0, rfMax:1},
+
+  // ──────────────────────────────────────────────────────────────────────
+  // GRIND leem/kleihoudend  Tabel 3: Rf 1–2%, qc ≥ 10
+  // γ: 19/21, 20/22  φ'=32,37°  c'=0  cu=—
+  // ──────────────────────────────────────────────────────────────────────
+  {grp:'grind', label:'Grind klei-/leemhoudend — matig  (qc 10–20, Rf 1–2%)',
+   type:'Gravel', subtype:'grind (kh), matig',
+   g:19, gs:21, phi:32, c:0, cu:0,
+   qcMin:10, qcMax:20, rfMin:1, rfMax:2},
+
+  {grp:'grind', label:'Grind klei-/leemhoudend — dicht  (qc ≥20, Rf 1–2%)',
+   type:'Gravel', subtype:'grind (kh), dicht',
+   g:20, gs:22, phi:37, c:0, cu:0,
+   qcMin:20, qcMax:99, rfMin:1, rfMax:2},
+];
+
+const EUROCODE_CLASS_ENTRIES=[
+  ...CAT.filter(r=>r.grp==='grind'),
+  ...CAT.filter(r=>r.grp==='zand'),
+  ...CAT.filter(r=>r.grp==='leem'),
+  ...CAT.filter(r=>r.grp==='klei'),
+  ...CAT.filter(r=>r.grp==='veen'),
+];
+
+function eurocodeEntryMatches(entry, qc, rf){
+  if(qc < entry.qcMin || qc >= entry.qcMax) return false;
+  if(rf == null) return false;
+
+  if(entry.grp === 'veen') return rf > 6;
+  if(entry.rfMin === 0 && entry.rfMax === 1) return rf < 1;
+  if(entry.rfMin === 1 && entry.rfMax === 2) return rf >= 1 && rf <= 2;
+  return rf >= entry.rfMin && rf <= entry.rfMax;
+}
+
+const CAT_GROUPS={
+  veen:'Veen',
+  klei:'Klei / Klei zandhoudend',
+  leem:'Leem / Zandhoudende leem',
+  zand:'Zand / Leemhoudend zand',
+  grind:'Grind',
+};
+
+/* Compatibility matrix: CPT type → {compatible grps, adjacent grps}
+   'compatible' = expected match, no warning
+   'adjacent'   = plausible (transition zone), show note in dropdown but allow
+   anything else = incompatible, shown in disabled optgroup with warning */
+/* COMPAT: CPT soil behaviour type → {ok: Tabel 3 groups, adj: adjacent groups}
+   'ok'  = directly expected for this CPT type — shown first in dropdown, ✓/~/· hints
+   'adj' = adjacent/transition — shown with ⚠ prefix, selectable
+   rest  = incompatible — disabled
+   
+   Robertson types → Tabel 3 mapping:
+     Peat/organic (Zone 2)  → veen
+     Soft clay   (Zone 1)   → klei (sensitive clay), leem adj
+     Clay        (Zone 3)   → klei, leem adj
+     Sandy clay  (Zone 4)   → leem AND klei zh (both are silt mixtures in Tabel 3)
+     Silty sand  (Zone 5)   → zandhoudende leem (leem grp) + leemhoudend zand (zand grp)
+     Sand        (Zone 6)   → zand, grind adj
+     Gravel      (Zone 7)   → grind, zand adj
+*/
+const COMPAT={
+  'Peat / organic': {ok:['veen'],             adj:[]},
+  'Soft clay':      {ok:['klei'],             adj:['leem']},
+  'Clay':           {ok:['klei'],             adj:['leem']},
+  'Sandy clay':     {ok:['leem','klei'],      adj:['zand']},
+  'Silty sand':     {ok:['leem','zand'],      adj:['klei']},
+  'Sand':           {ok:['zand'],             adj:['grind','leem']},
+  'Gravel':         {ok:['grind'],            adj:['zand']},
+};
+
+function compatLevel(cptType, grp){
+  const c=COMPAT[cptType]||{ok:[],adj:[]};
+  if(c.ok.includes(grp))  return 'ok';
+  if(c.adj.includes(grp)) return 'adj';
+  return 'bad';
+}
+
+/* Build the subtype dropdown for one layer.
+   Groups: compatible entries first (enabled), adjacent (enabled, marked),
+   incompatible last (disabled). */
+/* ── qc/Rf fit check ───────────────────────────────────────────────────
+   Returns whether a CAT entry's qc and Rf ranges match the layer's
+   average values. 'match'=within range, 'close'=within 50% margin,
+   'out'=clearly outside. Only applied within compatible groups. */
+function qcRfFit(entry, avgQc, avgRf){
+  /* Strict matching against NEN Tabel 3 qc and Rf ranges.
+     
+     BOUNDARY RULES from Tabel 3:
+     - qc: lower bound inclusive, upper bound exclusive  (e.g. "2 ≤ qc < 4")
+     - Rf: lower bound inclusive, upper bound inclusive  (e.g. "Rf 3–6%")
+     - Exception: Rf < 1% entries (clean zand/grind) → upper bound is EXCLUSIVE
+       because Rf=1.0% belongs to the leem/kleihoudend zone (Rf 1–2%)
+     - Veen requires Rf > 6% (hard gate, no tolerance)
+     
+     Returns: 'match' = both qc and Rf in range for this entry
+              'close' = qc matches, Rf within 0.3pp of boundary
+              'out'   = clearly outside → shown as '·' hint only
+  */
+  const rf = avgRf ?? null;
+
+  // Hard veen gate: must have Rf > 6%
+  if(entry.grp === 'veen' && rf !== null && rf < 5.5) return 'out';
+
+  // qc check (exclusive upper bound per Tabel 3 notation)
+  const qcOk = avgQc >= entry.qcMin && avgQc < entry.qcMax;
+
+  // Rf check — boundary inclusivity depends on entry type
+  let rfOk;
+  if(rf === null){
+    rfOk = true;  // no Rf data: skip Rf check
+  } else if(entry.rfMax === 1 && entry.rfMin === 0){
+    // Clean zand / grind: Tabel 3 "Rf < 1%" → strict exclusive upper
+    rfOk = rf >= 0 && rf < 1.0;
+  } else if(entry.rfMax === 2 && entry.rfMin === 1){
+    // Lh/kh zand / grind: Tabel 3 "Rf 1–2%" → inclusive both ends
+    rfOk = rf >= 1.0 && rf <= 2.0;
+  } else {
+    // All other entries: inclusive both ends
+    rfOk = rf >= entry.rfMin && rf <= entry.rfMax;
+  }
+
+  if(qcOk && rfOk) return 'match';
+
+  // Close: qc in range, Rf within 0.3pp of boundary
+  let rfClose;
+  if(rf === null) rfClose = true;
+  else rfClose = rf >= entry.rfMin - 0.3 && rf <= entry.rfMax + 0.3;
+  if(qcOk && rfClose) return 'close';
+
+  return 'out';
+}
+
+/* ── Auto-suggest best CAT entry for a layer ──────────────────────────
+   Called when layer has no subtype yet (or on param method change).
+   Picks the highest-scoring compatible entry based on qc and Rf. */
+function suggestSubtype(l){
+  /* Suggest the single best CAT entry for this layer's qc and Rf.
+     
+     Priority:
+     1. Compatible group (COMPAT.ok) with qc AND Rf matching → score 10
+     2. Compatible group with qc matching, Rf close (±0.5pp) → score 5
+     3. Compatible group with qc matching, Rf out → score 2
+        BUT: never suggest veen if Rf < 6% (Tabel 3 hard gate)
+        AND: if the best ok-candidate has Rf mismatch, also check adj groups
+     4. Adjacent group with qc+Rf match → score 3 (preferred over ok+Rf mismatch)
+     5. Proximity-based fallback within ok group
+  */
+  const qc  = l.avgQc;
+  const rf  = l.avgRf ?? null;
+
+  // Hard veen exclusion: veen entries require Rf>6%
+  const rfBlocksVeen = rf !== null && rf < 5.0;
+
+  let best = null, bestScore = -99;
+
+  const levels = ['ok', 'adj'];
+  for(const level of levels){
+    const candidates = CAT.filter(r => compatLevel(l.type, r.grp) === level);
+    for(const r of candidates){
+      // Hard exclusion: never suggest veen if Rf clearly not peat-range
+      if(r.grp === 'veen' && rfBlocksVeen) continue;
+
+      const fit = qcRfFit(r, qc, rf);
+      let score = 0;
+      if(level === 'ok'){
+        if(fit === 'match')      score = 10;
+        else if(fit === 'close') score = 5;
+        else {
+          // qc out of range — penalise by distance
+          const qcDist = qc < r.qcMin ? r.qcMin - qc : Math.max(0, qc - r.qcMax);
+          score = 2 - qcDist;
+        }
+      } else {
+        // adj group — only suggest if it fits better than ok candidates
+        if(fit === 'match')      score = 4;   // slightly below ok-match
+        else if(fit === 'close') score = 2;
+        else score = -1;
+      }
+      // Tie-break: prefer entry whose qc midpoint is closest to layer avgQc
+      const qcMid = (r.qcMin + Math.min(r.qcMax, 20)) / 2;
+      score += 0.01 * (1 - Math.abs(qc - qcMid) / Math.max(qcMid, 1));
+
+      if(score > bestScore){ bestScore = score; best = r; }
+    }
+  }
+  return best;
+}
+
+function buildSubtypeDropdown(l, i){
+  const cptType=l.type;
+  const cur=l.subtype||'';
+  const qc=l.avgQc;
+  const rf=l.avgRf??3;
+  const bdCol=l.ovr.subtype?'var(--wn)':'var(--bd2)';
+
+  // Sort entries: ok → adj → bad
+  const sorted=[
+    ...CAT.filter(r=>compatLevel(cptType,r.grp)==='ok'),
+    ...CAT.filter(r=>compatLevel(cptType,r.grp)==='adj'),
+    ...CAT.filter(r=>compatLevel(cptType,r.grp)==='bad'),
+  ];
+
+  const sections={ok:'',adj:'',bad:''};
+  const grpOpen={ok:'',adj:'',bad:''};
+
+  for(const row of sorted){
+    const level=compatLevel(cptType,row.grp);
+    const sel=row.subtype===cur?' selected':'';
+    const grpLabel=CAT_GROUPS[row.grp]||row.grp;
+    const key=level+'__'+row.grp;
+    if(grpOpen[level]!==key){
+      if(grpOpen[level]) sections[level]+='</optgroup>';
+      const prefix=level==='adj'?'⚠ Overgang — ':'';
+      sections[level]+=`<optgroup label="${prefix}${grpLabel}">`;
+      grpOpen[level]=key;
+    }
+
+    // Visual fit hints — 'ok' entries never disabled (user must be able to select any)
+    // 'bad' (incompatible soil family) remain disabled
+    let disabled='', label=row.label, titleAttr='';
+    if(level==='ok'){
+      const fit=qcRfFit(row,qc,rf);
+      if(fit==='match'){
+        label='✓ '+row.label;            // clear best match
+      } else if(fit==='close'){
+        label='~ '+row.label;            // borderline
+      } else {
+        label='· '+row.label;            // out of range but still selectable
+      }
+    } else if(level==='adj'){
+      label='⚠ '+row.label;             // adjacent/transition
+    } else if(level==='bad'){
+      disabled=' disabled';               // incompatible family — truly disabled
+    }
+
+    sections[level]+=`<option value="${row.subtype}"${sel}${disabled}>${label}</option>`;
+  }
+  for(const lv of ['ok','adj','bad']) if(grpOpen[lv]) sections[lv]+='</optgroup>';
+
+  let inner=`<option value="">— kies grondsoort —</option>`;
+  if(sections.ok)  inner+=sections.ok;
+  if(sections.adj) inner+=`<optgroup label="── Overgang ──" disabled></optgroup>`+sections.adj;
+  if(sections.bad) inner+=`<optgroup label="── Niet verwacht ──" disabled></optgroup>`+sections.bad;
+
+  return `<select data-i="${i}" onchange="changeSubtype(this)"
+    style="font-size:11px;padding:2px 4px;border:1px solid ${bdCol};border-radius:4px;
+           background:var(--bg);color:var(--tx);width:100%;margin-top:3px;max-width:210px"
+    >${inner}</select>`;
+}
+
+function renderLayers(){
+  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
+  document.getElementById('lb').innerHTML=S.layers.map((l,i)=>{
+    const ed=(f,step=0.5)=>
+      `<input class="ed${l.ovr[f]?' ovr':''}" data-i="${i}" data-f="${f}" value="${l[f]}" type="number" step="${step}" onchange="editL(this)">`;
+    const thick=(l.bot-l.top).toFixed(2);
+    const dropdown=buildSubtypeDropdown(l,i);
+    return`<tr>
+      <td style="font-weight:600">${i+1}</td>
+      <td>${l.top.toFixed(2)}</td><td>${l.bot.toFixed(2)}</td>
+      <td style="color:var(--tx2)">${taw(l.top)}</td>
+      <td style="color:var(--tx2)">${taw(l.bot)}</td>
+      <td>${thick} m</td>
+      <td style="min-width:180px">
+        <span class="sb ${SC[l.type]||'s-sand'}" style="font-size:10px">${l.type}</span>
+        ${dropdown}
+      </td>
+      <td>${l.avgQc.toFixed(3)}</td>
+      <td>${l.avgFs!=null?(l.avgFs*1000).toFixed(1):'—'}</td>
+      <td>${l.avgRf!=null?l.avgRf.toFixed(2):'—'}</td>
+      <td>${ed('g')}</td><td>${ed('gs')}</td>
+      <td>${ed('phi')}</td><td>${ed('c')}</td><td>${ed('cu',1)}</td>
+    </tr>`;
+  }).join('');
+
+  // Render compatibility warnings below the table
+  renderCompatWarnings();
+}
+
+function changeSubtype(sel){
+  const i=+sel.dataset.i;
+  const subtype=sel.value;
+  if(!subtype) return;
+  const l=S.layers[i];
+  const entry=CAT.find(r=>r.subtype===subtype);
+  if(!entry) return;
+
+  const prevType=l.type;
+  l.type=entry.type;
+  l.subtype=entry.subtype;
+  l.ovr.type=true;
+  l.ovr.subtype=true;
+
+  // Auto-fill DEF params — only fields not yet manually overridden
+  ['g','gs','phi','c','cu'].forEach(f=>{
+    if(!l.ovr[f]){ l[f]=entry[f]; }
+  });
+
+  renderLayers();
+}
+
+function renderCompatWarnings(){
+  // Find layer warnings container — create if missing
+  let warnEl=document.getElementById('layerWarnings');
+  if(!warnEl){
+    warnEl=document.createElement('div');
+    warnEl.id='layerWarnings';
+    warnEl.style.cssText='margin-top:12px';
+    document.getElementById('lt').parentElement.after(warnEl);
+  }
+
+  const warnings=[];
+  S.layers.forEach((l,i)=>{
+    if(!l.subtype||l.subtype==='(overridden)') return;
+    const entry=CAT.find(r=>r.subtype===l.subtype);
+    if(!entry) return;
+    const level=compatLevel(l.type, entry.grp);
+    if(level==='bad'){
+      warnings.push({i,layer:i+1,cptType:l.type,subtype:l.subtype,level:'bad',
+        msg:`CPT classificatie = <strong>${l.type}</strong>, gekozen grondsoort = <strong>${l.subtype}</strong> — dit zijn niet-verwante grondsoorten. Controleer of de CPT classificatie correct is of pas de grondsoort aan.`});
+    } else if(level==='adj'){
+      warnings.push({i,layer:i+1,cptType:l.type,subtype:l.subtype,level:'adj',
+        msg:`Laag ${i+1}: <strong>${l.subtype}</strong> is een overgangsgrond t.o.v. CPT type <strong>${l.type}</strong>. Aanvaardbaar in overgangszone — bevestig via boring of labo.`});
+    }
+  });
+
+  if(!warnings.length){warnEl.innerHTML='';return;}
+
+  warnEl.innerHTML=warnings.map(w=>`
+    <div style="padding:8px 12px;margin-bottom:6px;border-radius:var(--r);
+      background:${w.level==='bad'?'#FCEBEB':'#FAEEDA'};
+      border-left:3px solid ${w.level==='bad'?'#A32D2D':'#BA7517'}">
+      <span style="font-size:11px;font-weight:600;color:${w.level==='bad'?'#A32D2D':'#BA7517'}">
+        ${w.level==='bad'?'⚠ Waarschuwing laag '+w.layer:'ⓘ Opmerking laag '+w.layer}
+      </span><br>
+      <span style="font-size:11px;color:var(--tx)">${w.msg}</span>
+    </div>`).join('');
+}
+
+function editL(el){
+  const i=+el.dataset.i,f=el.dataset.f;
+  S.layers[i][f]=+el.value; S.layers[i].ovr[f]=true; el.classList.add('ovr');
+}
+
+function editAlpha(el){
+  const i=+el.dataset.i;
+  S.layers[i].aE_ovr=+el.value; S.layers[i].ovr.aE=true;
+  el.classList.add('ovr');
+  renderModel();
+}
+
+function editM(el){
+  const i=+el.dataset.i;
+  S.layers[i].m_ovr=+el.value; S.layers[i].ovr.m=true;
+  el.classList.add('ovr');
+  renderModel();
+}
+
+/* ════════════════════════════════
+   MODEL PARAMETERS
+════════════════════════════════ */
+function khParams(l){
+  /* Hydraulic conductivity from I/RA/11461/15.066/JSW
+     Tabel 2-44 (OVAM 2002) + Tabel 2-45 (De Smedt VUB)
+     mapped to CPT soil types. Values in m/s.
+     kh_min, kh_max = range; kh_rep = representative (geometric mean). */
+  const sub=l.subtype||'';
+  const isGranular=l.type==='Sand'||l.type==='Silty sand'||l.type==='Gravel';
+  const isCohesive =l.type==='Clay'||l.type==='Soft clay';
+  const isLeem     =l.type==='Sandy clay';
+  const isPeat     =l.type==='Peat / organic';
+
+  let kh_min,kh_max,kh_rep;
+
+  if(l.type==='Gravel'){
+    kh_min=2.3e-4; kh_max=1.2e-2; kh_rep=1e-3;
+  } else if(l.type==='Sand'){
+    // Sub-classify by SB260 consistency (subtype contains zand, los/matig/dicht/z.dicht)
+    if(sub.includes('z.dicht')||sub.includes('zeer dicht')){kh_min=1.2e-4;kh_max=2.3e-4;kh_rep=2e-4;}
+    else if(sub.includes('dicht'))                          {kh_min=1.2e-4;kh_max=2.3e-4;kh_rep=1.5e-4;}
+    else if(sub.includes('matig'))                          {kh_min=1.2e-5;kh_max=1.2e-4;kh_rep=4e-5;}
+    else /* los + kleihoudend */                            {kh_min=1.2e-6;kh_max=1.2e-5;kh_rep=3e-6;}
+  } else if(l.type==='Silty sand'){
+    kh_min=1.2e-6; kh_max=1.2e-5; kh_rep=3e-6;
+  } else if(isLeem){
+    kh_min=1.2e-7; kh_max=1.2e-6; kh_rep=5e-7;
+  } else if(l.type==='Clay'){
+    kh_min=1e-9; kh_max=1.2e-7; kh_rep=5e-8;
+  } else if(l.type==='Soft clay'){
+    kh_min=1e-10; kh_max=1.2e-7; kh_rep=2e-8;
+  } else if(isPeat){
+    kh_min=6e-8; kh_max=6e-7; kh_rep=2e-7;
+  } else {
+    kh_min=1e-6; kh_max=1e-4; kh_rep=1e-5; // fallback
+  }
+
+  // kh/kv ratio (CUR 2003-7)
+  const khkv = isGranular ? 1 : 3;
+  const kv_rep = +(kh_rep / khkv).toExponential(1);
+
+  // psi_unsat (Plaxis 2D Manual)
+  const psi_unsat = isGranular ? 0.1 : isLeem ? 1.0 : 3.0;
+
+  // Infiltration design class (VMM §5.2, I/RA/11461/15.066/JSW)
+  let infClass;
+  if(kh_rep > 0.5e-6)       infClass='Infiltratie (volledig)';
+  else if(kh_rep > 0.1e-6)  infClass='Infiltratie (effectief)';
+  else if(kh_rep > 0.01e-6) infClass='Infiltratie + buffer';
+  else                        infClass='Buffer (infiltratie marginaal)';
+
+  function fmtK(v){
+    // Format as X.Xe-N
+    const e=Math.floor(Math.log10(v));
+    const m=+(v/Math.pow(10,e)).toFixed(1);
+    return `${m}\u00d710\u207b${Math.abs(e)}`;  // m×10⁻N
+  }
+
+  return{kh_min,kh_max,kh_rep,khkv,kv_rep,psi_unsat,infClass,
+    kh_rep_fmt:fmtK(kh_rep), kh_min_fmt:fmtK(kh_min), kh_max_fmt:fmtK(kh_max)};
+}
+
+/* Toggle functions for Stage 4 global method controls */
+function setAlphaMethod(v){
+  S.alphaMethod=v;
+  document.getElementById('btnAlphaA').classList.toggle('active',v==='A');
+  document.getElementById('btnAlphaB').classList.toggle('active',v==='B');
+  if(S.layers.length) renderModel();
+}
+function setStiffMethod(v){
+  S.stiffMethod=v;
+  document.getElementById('btnStiffA').classList.toggle('active',v==='A');
+  document.getElementById('btnStiffB').classList.toggle('active',v==='B');
+  if(S.layers.length) renderModel();
+}
+
+function setParamMethod(v){
+  S.paramMethod=v;
+  document.getElementById('pmSB260').classList.toggle('active',v==='sb260');
+  document.getElementById('pmDEF').classList.toggle('active',v==='def');
+  const desc={
+    sb260:'Grondsoort en consistentie uit NEN Tabel 3 (EC7) — aanbevolen',
+    def:'Generieke parameters op basis van CPT-type (DEF tabel)'
+  };
+  document.getElementById('pmDesc').textContent=desc[v]||'';
+  // Re-run detectLayers to apply new suggestions, then re-render
+  if(S.classified.length){ detectLayers(); renderLayers(); }
+}
+
+function hsParams(l){
+  const pref=100;
+  const midZ=(l.top+l.bot)/2;
+  /* Pass both gamma_sat (l.gs) and gamma_unsat (l.g) so that stress
+     above the water table uses the unsaturated unit weight. */
+  const {sigV, u, sigVeff}=stressAt(midZ, l.gs, l.g);
+  const cohesive=l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic';
+
+  /* ── Alpha selection ── */
+  let aE;
+  if(l.ovr.aE){
+    aE=l.aE_ovr;  // engineer override takes absolute priority
+  } else if(S.alphaMethod==='B'){
+    aE=alphaEB(l.type, l.avgQc, l.subtype);
+  } else {
+    aE=AE[l.type]||10;
+  }
+
+  /* ── Eoed,i ── */
+  const Eoed_i=+(aE*l.avgQc*1000).toFixed(0);
+
+  /* ── m (type default, engineer can override) ── */
+  const m=l.ovr.m ? l.m_ovr
+          : l.type==='Peat / organic'?1.0
+          : cohesive?0.85
+          : l.type==='Sandy clay'?0.65
+          : 0.50;
+
+  /* ── Eoed,ref (full cohesion-corrected formula per SB260-21-6.4.10) ── */
+  const cotphi = l.phi>0 ? Math.cos(l.phi*Math.PI/180)/Math.sin(l.phi*Math.PI/180) : 0;
+  const cCotPhi = l.c * cotphi;
+  const ratio = Math.max((sigVeff + cCotPhi) / (pref + cCotPhi), 0.05);
+  const Eoed_ref = +(Eoed_i / Math.pow(ratio, m)).toFixed(0);
+
+  /* ── Stiffness Method A (CUR 2003-7) or B (E50 = Eoed) ── */
+  let E50_ref, Eur_ref;
+  if(S.stiffMethod==='B'){
+    E50_ref = Eoed_ref;
+    Eur_ref = +(3*Eoed_ref).toFixed(0);
+  } else {
+    // Method A: CUR 2003-7
+    E50_ref = cohesive ? +(1.25*Eoed_ref).toFixed(0) : Eoed_ref;
+    Eur_ref = +(3*E50_ref).toFixed(0);
+  }
+
+  const K0nc=+(1-Math.sin(l.phi*Math.PI/180)).toFixed(3);
+  const nu=l.type==='Peat / organic'?0.45:cohesive?0.35:0.30;
+  const nu_ur=0.20;
+  const psi=Math.max(0,l.phi>30?Math.round(l.phi-30):0);
+  const Emc=+((1+nu)*(1-2*nu)/(1-nu)*Eoed_i*1.5).toFixed(0);
+  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2)+'m TAW':'—';
+  return{Eoed_i,Eoed_ref,E50_ref,Eur_ref,m,K0nc,nu,nu_ur,aE:+aE.toFixed(2),
+    sigV:+sigV.toFixed(1),u:+u.toFixed(1),sigVeff:+sigVeff.toFixed(1),psi,Emc,
+    topTAW:taw(l.top),botTAW:taw(l.bot)};
+}
+
+function renderModel(){
+  document.getElementById('ma').innerHTML=S.layers.map((l,i)=>{
+    const h=hsParams(l);
+    const k=khParams(l);
+    const thick=(l.bot-l.top).toFixed(2);
+    const midZ=(l.top+l.bot)/2;
+    const tawStr=S.elev!=null?` &nbsp;(${h.topTAW} \u2192 ${h.botTAW})`:'';
+
+    // Infiltration class colour
+    const infCol={
+      'Infiltratie (volledig)':    'var(--ac)',
+      'Infiltratie (effectief)':   '#1D9E75',
+      'Infiltratie + buffer':      'var(--wn)',
+      'Buffer (infiltratie marginaal)': '#D85A30'
+    }[k.infClass]||'var(--tx2)';
+
+    return`<div class="mc2">
+      <div class="mc2-head">
+        <span class="sb ${SC[l.type]||'s-sand'}">${l.type}</span>
+        <span style="font-size:13px;font-weight:600">Layer ${i+1} &mdash; ${l.top.toFixed(2)}&ndash;${l.bot.toFixed(2)} m${tawStr} &nbsp;(${thick} m)</span>
+        ${l.subtype?`<span style="font-size:11px;color:var(--tx2);font-style:italic">${l.subtype}</span>`:''}
+        <span style="font-size:11px;color:var(--tx2);margin-left:auto" title="z_mid=${midZ.toFixed(2)}m | &sigma;v0=${h.sigV} kPa | u=${h.u} kPa | &sigma;'v0=${h.sigVeff} kPa">&sigma;v0 ${h.sigV} &minus; u ${h.u} = &sigma;'v0 <strong>${h.sigVeff} kPa</strong> &middot; &alpha;E ${h.aE}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+        <div>
+          <div class="mc2-sec">Mohr-Coulomb</div>
+          <table class="pt">
+            <tr><td>E_ref (kPa)</td><td>${h.Emc.toLocaleString()}</td></tr>
+            <tr><td>&nu;</td><td>${h.nu}</td></tr>
+            <tr class="key"><td>&phi;' (&deg;)</td><td>${l.phi}</td></tr>
+            <tr class="key"><td>c' (kPa)</td><td>${l.c}</td></tr>
+            <tr><td>&psi; (&deg;)</td><td>${h.psi}</td></tr>
+            <tr><td>&gamma; / &gamma;_sat</td><td>${l.g} / ${l.gs} kN/m&sup3;</td></tr>
+            ${l.type==='Soft clay'||l.type==='Clay'?`<tr><td>c_u (kPa)</td><td>${l.cu}</td></tr>`:''}
+          </table>
+        </div>
+        <div>
+          <div class="mc2-sec">Hardening Soil &mdash; p_ref = 100 kPa</div>
+          <table class="pt">
+            <tr>
+              <td style="color:var(--tx3);font-size:10px">&alpha;E (${S.alphaMethod==='B'?'SB260':'Sanglerat'})</td>
+              <td style="text-align:right">
+                <input class="ed${l.ovr.aE?' ovr':''}" type="number" step="0.5" min="0.5" max="30"
+                  value="${h.aE}" style="width:54px"
+                  data-i="${i}" onchange="editAlpha(this)">
+              </td>
+            </tr>
+            <tr><td>E_oed,i (kPa)</td><td style="color:var(--tx2)">${h.Eoed_i.toLocaleString()}</td></tr>
+            <tr class="key"><td>E_oed,ref (kPa)</td><td>${h.Eoed_ref.toLocaleString()}</td></tr>
+            <tr class="key"><td>E_50,ref (kPa) <span style="font-size:9px;color:var(--tx3)">${S.stiffMethod==='B'?'=E_oed':'CUR 2003-7'}</span></td><td>${h.E50_ref.toLocaleString()}</td></tr>
+            <tr class="key"><td>E_ur,ref (kPa)</td><td>${h.Eur_ref.toLocaleString()}</td></tr>
+            <tr class="key">
+              <td>m <input class="ed${l.ovr.m?' ovr':''}" type="number" step="0.05" min="0.3" max="1.2"
+                value="${h.m.toFixed(2)}" style="width:48px;margin-left:4px"
+                data-i="${i}" onchange="editM(this)"></td>
+              <td>${h.m.toFixed(2)}</td>
+            </tr>
+            <tr><td>K0_nc</td><td>${h.K0nc}</td></tr>
+            <tr><td>&nu;_ur</td><td>${h.nu_ur}</td></tr>
+            <tr><td>R_f</td><td>0.90</td></tr>
+          </table>
+        </div>
+        <div>
+          <div class="mc2-sec">Hydraulic conductivity</div>
+          <table class="pt">
+            <tr><td>k_h (m/s)</td><td style="font-family:monospace;font-size:11px">${k.kh_rep_fmt}</td></tr>
+            <tr><td style="color:var(--tx3);font-size:10px">range</td><td style="font-family:monospace;font-size:10px;color:var(--tx3)">${k.kh_min_fmt} \u2013 ${k.kh_max_fmt}</td></tr>
+            <tr><td>k_h/k_v</td><td>${k.khkv}</td></tr>
+            <tr><td>k_v (m/s)</td><td style="font-family:monospace;font-size:11px">${k.kv_rep.toExponential(1)}</td></tr>
+            <tr><td>&psi;_unsat (m)</td><td>${k.psi_unsat}</td></tr>
+            <tr><td colspan="2" style="padding-top:6px">
+              <span style="font-size:10px;font-weight:600;color:${infCol}">${k.infClass}</span>
+              <div style="font-size:9px;color:var(--tx3);margin-top:2px">VMM §5.2 richtlijn</div>
+            </td></tr>
+          </table>
+          <div style="font-size:9px;color:var(--tx3);margin-top:6px">Ref: OVAM Tabel 2-44<br>I/RA/11461/15.066/JSW</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  // Build charts after DOM settles (data-attribute approach avoids early tag close)
+  setTimeout(buildTuningCharts, 50);
+}
+
+/* ════════════════════════════════
+   STAGE 5 — TUNING: m-fitting from CPT profile
+   
+   METHOD: OLS regression on log-log space.
+   
+   For each depth reading z_j in a layer:
+     Eoed,i(z_j) = alphaE * qc(z_j) * 1000         [kPa]  (CPT-derived)
+     X_j = ln((sigma_v0'(z_j) + c*cotphi) / (p_ref + c*cotphi))
+     Y_j = ln(Eoed,i(z_j))
+   
+   The HS model predicts: Y = ln(Eoed,ref) + m * X
+   OLS gives: m = cov(X,Y)/var(X), Eoed,ref = exp(mean(Y) - m*mean(X))
+   
+   This is equivalent to matching the derivative d(ln Eoed)/d(ln stress_ratio),
+   which is exactly m. Minimising the sum of squared log-errors finds the best m.
+   
+   R2 = 1 - SS_res/SS_tot  (in log space)
+   Reliable if: n>=10 readings, stress range factor >= 1.5, top layer > 0.5m
+════════════════════════════════ */
+
+function fitLayer(l){
+  // Pull the classified rows that belong to this layer depth range
+  const rows = S.classified.filter(r =>
+    r.z >= l.top && r.z <= l.bot && r.qc > 0.02
+  );
+  if(rows.length < 5) return null; // insufficient data
+
+  const pref = 100;
+  const cotphi = l.phi > 0
+    ? Math.cos(l.phi*Math.PI/180) / Math.sin(l.phi*Math.PI/180)
+    : 0;
+  const cCotPhi = l.c * cotphi;
+
+  // Resolve alphaE for this layer (same logic as hsParams)
+  let aE;
+  if(l.ovr.aE)            aE = l.aE_ovr;
+  else if(S.alphaMethod==='B') aE = alphaEB(l.type, l.avgQc, l.subtype);
+  else                     aE = AE[l.type] || 10;
+
+  const Xs=[], Ys=[];
+  for(const r of rows){
+    const {sigVeff} = stressAt(r.z, l.gs, l.g);
+    const denom = pref + cCotPhi;
+    const numer = sigVeff + cCotPhi;
+    if(numer <= 0 || denom <= 0) continue;
+    const X = Math.log(numer / denom);
+    const Eoed_i_row = aE * r.qc * 1000;
+    if(Eoed_i_row <= 0) continue;
+    const Y = Math.log(Eoed_i_row);
+    Xs.push(X); Ys.push(Y);
+  }
+
+  const n = Xs.length;
+  if(n < 5) return null;
+
+  // Stress range check
+  const sigVeffs = rows.map(r => stressAt(r.z, l.gs, l.g).sigVeff);
+  const svMin = Math.min(...sigVeffs), svMax = Math.max(...sigVeffs);
+  const stressRangeFactor = svMin > 0 ? svMax / svMin : 1;
+
+  // OLS
+  const meanX = Xs.reduce((s,v)=>s+v,0)/n;
+  const meanY = Ys.reduce((s,v)=>s+v,0)/n;
+  const covXY = Xs.reduce((s,x,i)=>s+(x-meanX)*(Ys[i]-meanY),0)/n;
+  const varX  = Xs.reduce((s,x)=>s+(x-meanX)**2,0)/n;
+
+  if(Math.abs(varX) < 1e-6) return null; // no depth variation
+
+  const m_fit = +(Math.max(0.3, Math.min(1.2, covXY/varX))).toFixed(3);
+  const Eoed_ref_fit = +Math.exp(meanY - m_fit*meanX).toFixed(0);
+
+  // R²
+  const SS_res = Xs.reduce((s,x,i)=>{
+    const Ypred = Math.log(Eoed_ref_fit) + m_fit*x;
+    return s + (Ys[i]-Ypred)**2;
+  },0);
+  const SS_tot = Ys.reduce((s,y)=>s+(y-meanY)**2,0);
+  const R2 = SS_tot > 0 ? +(1 - SS_res/SS_tot).toFixed(3) : 0;
+
+  // Quality flag
+  let quality, qMsg;
+  if(n < 10)                         { quality='warn'; qMsg='Weinig meetpunten (n='+n+')'; }
+  else if(stressRangeFactor < 1.5)   { quality='warn'; qMsg='Spanningsbereik te klein (factor '+stressRangeFactor.toFixed(1)+')'; }
+  else if(l.top < 0.5)               { quality='warn'; qMsg='Laag te ondiep (<0.5m)'; }
+  else if(R2 < 0.50)                 { quality='warn'; qMsg='Lage R²='+R2+' — heterogene laag?'; }
+  else if(R2 < 0.70)                 { quality='ok';   qMsg='Acceptabel (R²='+R2+')'; }
+  else                               { quality='good'; qMsg='Goede fit (R²='+R2+')'; }
+
+  // Build depth-profile arrays for physical-space chart
+  const depthPts = rows.map(r=>r.z);
+  const EoedI_pts = rows.map(r => aE * r.qc * 1000); // CPT-derived per row
+  // HS model curve: Eoed(z) = Eoed_ref * ratio(z)^m
+  const makeHScurve = (Eoed_ref_val, m_val) => rows.map(r=>{
+    const {sigVeff} = stressAt(r.z, l.gs, l.g);
+    const num = sigVeff + cCotPhi, den = pref + cCotPhi;
+    const ratio = Math.max(num/den, 0.05);
+    return Eoed_ref_val * Math.pow(ratio, m_val);
+  });
+
+  // For default m: recompute Eoed_ref at midZ with default m
+  const midZ2 = (l.top+l.bot)/2;
+  const {sigVeff: sv_mid2} = stressAt(midZ2, l.gs, l.g);
+  const mDefault = l.type==='Peat / organic'?1.0
+    : (l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic')?0.85
+    : l.type==='Sandy clay'?0.65:0.50;
+  const ratioMid = Math.max((sv_mid2+cCotPhi)/(pref+cCotPhi), 0.05);
+  const Eoed_ref_default = (aE * l.avgQc * 1000) / Math.pow(ratioMid, mDefault);
+
+  const hsDefault_pts = makeHScurve(Eoed_ref_default, mDefault);
+  const hsFit_pts     = makeHScurve(Eoed_ref_fit, m_fit);
+
+  return{m_fit, Eoed_ref_fit, R2, n, stressRangeFactor:+stressRangeFactor.toFixed(2),
+         quality, qMsg, Xs, Ys, aE,
+         depthPts, EoedI_pts, hsDefault_pts, hsFit_pts, Eoed_ref_default, mDefault};
+}
+
+function runTuning(){
+  S.tuning = S.layers.map((l,i)=>({i, fit:fitLayer(l)}));
+  renderTuning();
+}
+
+function acceptFit(i){
+  const t = S.tuning?.[i];
+  if(!t||!t.fit) return;
+  S.layers[i].m_ovr = t.fit.m_fit;
+  S.layers[i].ovr.m = true;
+  // Also update Eoed,ref override? No — Eoed,ref is derived from m in hsParams.
+  // Accepting m is enough: renderModel will recompute Eoed,ref with the new m.
+  renderTuning();
+  // Re-render Stage 4 in background so it stays current
+  if(document.getElementById('p3').classList.contains('active')) renderModel();
+}
+
+function rejectFit(i){
+  if(!S.layers[i]) return;
+  delete S.layers[i].m_ovr;
+  S.layers[i].ovr.m = false;
+  renderTuning();
+}
+
+function renderTuning(){
+  const el = document.getElementById('tuningArea');
+  if(!S.tuning){
+    el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Klik op "Run fitting" om de regressie per laag te berekenen.</div>';
+    return;
+  }
+
+  const pref=100;
+  el.innerHTML = S.tuning.map(t=>{
+    const l = S.layers[t.i];
+    const h_cur = hsParams(l); // current params (with possibly accepted fit)
+    const fit = t.fit;
+    const hasAccepted = !!l.ovr.m;
+    const badge = SC[l.type]||'s-sand';
+
+    if(!fit){
+      return`<div class="mc2" style="margin-bottom:10px">
+        <div class="mc2-head">
+          <span class="sb ${badge}">${l.type}</span>
+          <span style="font-size:13px;font-weight:600">Laag ${t.i+1} — ${l.top.toFixed(2)}–${l.bot.toFixed(2)} m</span>
+          <span style="font-size:11px;color:var(--wn);margin-left:auto">Onvoldoende data voor regressie (n &lt; 5 of geen variatie)</span>
+        </div>
+      </div>`;
+    }
+
+    const qColor = fit.quality==='good'?'#0F6E56':fit.quality==='ok'?'#BA7517':'#A32D2D';
+
+    // Build scatter chart data
+    const chartId = 'tChart'+t.i;
+
+    // Default line points (m_default, Eoed_ref from hsParams without fit)
+    const m_def = h_cur.m; // this is the type-default or engineer override
+    // Rebuild Eoed_ref with default m for comparison
+    const cotphi = l.phi>0?Math.cos(l.phi*Math.PI/180)/Math.sin(l.phi*Math.PI/180):0;
+    const cCotPhi = l.c*cotphi;
+    const sigVeff_mid = h_cur.sigVeff;
+    const ratio_mid = Math.max((sigVeff_mid+cCotPhi)/(pref+cCotPhi),0.05);
+    const Eoed_i_mid = fit.aE * l.avgQc * 1000;
+    const Eoed_ref_default = Eoed_i_mid / Math.pow(ratio_mid, m_def);
+
+    // X range for model lines
+    const Xmin = Math.min(...fit.Xs)-0.1, Xmax = Math.max(...fit.Xs)+0.1;
+    const linePts = 30;
+    const defaultLineY = Array.from({length:linePts},(_,k)=>{
+      const x=Xmin+(Xmax-Xmin)*k/(linePts-1);
+      return{x, y: Math.log(Eoed_ref_default)+m_def*x};
+    });
+    const fitLineY = Array.from({length:linePts},(_,k)=>{
+      const x=Xmin+(Xmax-Xmin)*k/(linePts-1);
+      return{x, y: Math.log(fit.Eoed_ref_fit)+fit.m_fit*x};
+    });
+
+    const scatterData = fit.Xs.map((x,k)=>({x,y:fit.Ys[k]}));
+
+    return`<div class="mc2" style="margin-bottom:12px">
+      <div class="mc2-head" style="margin-bottom:12px">
+        <span class="sb ${badge}">${l.type}</span>
+        <span style="font-size:13px;font-weight:600">Laag ${t.i+1} — ${l.top.toFixed(2)}–${l.bot.toFixed(2)} m</span>
+        <span style="font-size:11px;font-style:italic;color:var(--tx2)">${l.subtype||''}</span>
+        <span style="font-size:11px;font-weight:600;color:${qColor};margin-left:auto">${fit.qMsg}</span>
+      </div>
+      <!-- 3-column: depth profile | log-log fit | numbers -->
+      <div style="display:grid;grid-template-columns:200px 1fr 200px;gap:14px;align-items:start">
+
+        <!-- LEFT: Eoed vs depth (physical space) -->
+        <div>
+          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
+            E_oed vs diepte (kPa)
+            <span style="margin-left:6px;color:#534AB7">─ default</span>
+            <span style="margin-left:4px;color:#1D9E75">─ fit</span>
+            <span style="margin-left:4px;color:rgba(53,162,235,0.7)">· CPT</span>
+          </div>
+          <div style="position:relative;height:280px">
+            <canvas id="${chartId+'d'}" role="img" aria-label="Eoed depth profile layer ${t.i+1}"></canvas>
+          </div>
+        </div>
+
+        <!-- MIDDLE: log-log regression plot -->
+        <div>
+          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
+            ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+            <span style="margin-left:6px;color:#534AB7">─ default m=${m_def.toFixed(2)}</span>
+            <span style="margin-left:4px;color:#1D9E75">─ fitted m=${fit.m_fit.toFixed(2)}</span>
+          </div>
+          <div style="position:relative;height:280px">
+            <canvas id="${chartId}" role="img" aria-label="m fitting regression layer ${t.i+1}"></canvas>
+          </div>
+        </div>
+
+        <!-- RIGHT: numbers + accept/reject -->
+        <div>
+          <table class="pt" style="margin-bottom:12px">
+            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Type-default</td></tr>
+            <tr><td>m</td><td>${m_def.toFixed(2)}</td></tr>
+            <tr><td>E_oed,ref</td><td>${h_cur.Eoed_ref.toLocaleString()} kPa</td></tr>
+            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:#1D9E75;padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">CPT-fit</td></tr>
+            <tr><td>m</td><td style="color:#0F6E56;font-weight:700">${fit.m_fit.toFixed(3)}</td></tr>
+            <tr><td>E_oed,ref</td><td style="color:#0F6E56;font-weight:600">${fit.Eoed_ref_fit.toLocaleString()} kPa</td></tr>
+            <tr><td style="padding-top:6px">R²</td><td style="padding-top:6px">${fit.R2.toFixed(3)}</td></tr>
+            <tr><td>n</td><td>${fit.n} punten</td></tr>
+            <tr><td>σ' bereik</td><td>×${fit.stressRangeFactor}</td></tr>
+          </table>
+          ${hasAccepted
+            ?`<div style="font-size:11px;color:#0F6E56;font-weight:600;margin-bottom:8px">✓ Fit geaccepteerd</div>
+               <button class="btn sm" onclick="rejectFit(${t.i})">Herstel default m</button>`
+            :`<button class="btn pri sm" onclick="acceptFit(${t.i})" ${fit.quality==='warn'?'style="background:var(--wn);border-color:var(--wn)"':''}>
+                ${fit.quality==='warn'?'⚠ ':''}Accepteer fit
+              </button>`
+          }
+        </div>
+      </div>
+    </div>
+    <div data-chart-pending="${chartId}"
+         data-chart-depth="${chartId+'d'}"
+         data-scatter='${JSON.stringify(scatterData).replace(/'/g,"&#39;")}'
+         data-default-line='${JSON.stringify(defaultLineY).replace(/'/g,"&#39;")}'
+         data-fit-line='${JSON.stringify(fitLineY).replace(/'/g,"&#39;")}'
+         data-depth-pts='${JSON.stringify(fit.depthPts).replace(/'/g,"&#39;")}'
+         data-eoed-i='${JSON.stringify(fit.EoedI_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
+         data-hs-default='${JSON.stringify(fit.hsDefault_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
+         data-hs-fit='${JSON.stringify(fit.hsFit_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
+         data-layer-top="${l.top.toFixed(3)}"
+         data-layer-bot="${l.bot.toFixed(3)}"
+         data-wt="${S.wt.toFixed(3)}"
+         data-m-def="${m_def.toFixed(2)}"
+         data-m-fit="${fit.m_fit.toFixed(2)}"
+         data-quality="${fit.quality}">
+    </div>`;
+  }).join('');
+}
+/* Build tuning charts after DOM is rendered (avoids early tag close issue) */
+function buildTuningCharts(){
+  document.querySelectorAll('[data-chart-pending]').forEach(el=>{
+    // ── Log-log regression chart ──
+    const id = el.dataset.chartPending;
+    const canvas = document.getElementById(id);
+    if(canvas && !canvas._built){
+      canvas._built = true;
+      try{
+        const scatter  = JSON.parse(el.dataset.scatter);
+        const defLine  = JSON.parse(el.dataset.defaultLine);
+        const fitLine  = JSON.parse(el.dataset.fitLine);
+        const mDef = el.dataset.mDef, mFit = el.dataset.mFit;
+        new Chart(canvas,{
+          type:'scatter',
+          data:{datasets:[
+            {label:'CPT data', data:scatter,
+             backgroundColor:'rgba(53,162,235,0.55)', pointRadius:3, pointHoverRadius:5},
+            {label:'Default m='+mDef, data:defLine,
+             type:'line', borderColor:'#534AB7', borderWidth:1.5, pointRadius:0, fill:false},
+            {label:'Fitted m='+mFit, data:fitLine,
+             type:'line', borderColor:'#1D9E75', borderWidth:2, pointRadius:0, fill:false,
+             borderDash: el.dataset.quality==='warn'?[5,4]:[]}
+          ]},
+          options:{
+            responsive:true, maintainAspectRatio:false, animation:false,
+            plugins:{legend:{display:false}},
+            scales:{
+              x:{title:{display:true, text:"ln(σ'v0 stress ratio)", font:{size:10}},
+                 grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}},
+              y:{title:{display:true, text:'ln(E_oed,i)', font:{size:10}},
+                 grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}}
+            }
+          }
+        });
+      }catch(e){console.warn('Log-log chart error:',e);}
+    }
+
+    // ── Depth-profile chart ──
+    const idD = el.dataset.chartDepth;
+    const canvasD = idD ? document.getElementById(idD) : null;
+    if(canvasD && !canvasD._built){
+      canvasD._built = true;
+      try{
+        const depths    = JSON.parse(el.dataset.depthPts);
+        const EoedI     = JSON.parse(el.dataset.eoedI);
+        const hsDefault = JSON.parse(el.dataset.hsDefault);
+        const hsFit     = JSON.parse(el.dataset.hsFit);
+        const layerTop  = parseFloat(el.dataset.layerTop);
+        const layerBot  = parseFloat(el.dataset.layerBot);
+        const wt        = parseFloat(el.dataset.wt);
+        const mDef      = el.dataset.mDef;
+        const mFit      = el.dataset.mFit;
+
+        // x-axis max: round up to next 5000
+        const allE = [...EoedI, ...hsDefault, ...hsFit];
+        const xMax = Math.ceil(Math.max(...allE) / 5000) * 5000;
+
+        // CPT scatter: {x: Eoed_i, y: depth}
+        const scatterDep = depths.map((z,i)=>({x:EoedI[i], y:z}));
+        // HS lines: {x: Eoed(z), y: depth}
+        const defDep = depths.map((z,i)=>({x:hsDefault[i], y:z}));
+        const fitDep = depths.map((z,i)=>({x:hsFit[i],     y:z}));
+        // WT annotation line
+        const wtLine = [{x:0,y:wt},{x:xMax,y:wt}];
+        // Layer boundary lines
+        const topLine = [{x:0,y:layerTop},{x:xMax,y:layerTop}];
+        const botLine = [{x:0,y:layerBot},{x:xMax,y:layerBot}];
+
+        const yMin = Math.max(0, layerTop - 0.5);
+        const yMax = layerBot + 0.5;
+
+        new Chart(canvasD,{
+          type:'scatter',
+          data:{datasets:[
+            // Layer boundary shading — draw as area between top and bot
+            {label:'layer',
+             data:[{x:0,y:layerTop},{x:xMax,y:layerTop},{x:xMax,y:layerBot},{x:0,y:layerBot}],
+             type:'line', fill:true,
+             backgroundColor:'rgba(200,200,200,0.10)',
+             borderWidth:0, pointRadius:0, showLine:false},
+            // CPT-derived Eoed,i points
+            {label:'E_oed,i (CPT)', data:scatterDep,
+             backgroundColor:'rgba(53,162,235,0.5)',
+             pointRadius:2.5, pointHoverRadius:5},
+            // Default HS model curve
+            {label:'HS default m='+mDef, data:defDep,
+             type:'line', borderColor:'#534AB7', borderWidth:1.5,
+             pointRadius:0, fill:false, tension:0.3},
+            // Fitted HS model curve
+            {label:'HS fit m='+mFit, data:fitDep,
+             type:'line', borderColor:'#1D9E75', borderWidth:2.5,
+             pointRadius:0, fill:false, tension:0.3,
+             borderDash: el.dataset.quality==='warn'?[5,4]:[]},
+            // Water table
+            {label:'WT', data:wtLine,
+             type:'line', borderColor:'#378ADD', borderWidth:1.5,
+             borderDash:[6,4], pointRadius:0, fill:false},
+            // Layer top/bot dashes
+            {label:'top', data:topLine,
+             type:'line', borderColor:'rgba(0,0,0,0.25)', borderWidth:1,
+             borderDash:[3,3], pointRadius:0, fill:false},
+            {label:'bot', data:botLine,
+             type:'line', borderColor:'rgba(0,0,0,0.25)', borderWidth:1,
+             borderDash:[3,3], pointRadius:0, fill:false},
+          ]},
+          options:{
+            responsive:true, maintainAspectRatio:false, animation:false,
+            plugins:{legend:{display:false},
+              tooltip:{callbacks:{
+                label: ctx=>{
+                  if(ctx.dataset.label==='WT') return 'WT = '+wt.toFixed(2)+' m';
+                  return ctx.dataset.label+': '+Math.round(ctx.parsed.x).toLocaleString()+' kPa @ '+ctx.parsed.y.toFixed(2)+'m';
+                }
+              }}
+            },
+            scales:{
+              x:{type:'linear', min:0, max:xMax, position:'top',
+                 title:{display:true, text:'E_oed (kPa)', font:{size:10}},
+                 grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}, maxTicksLimit:5}},
+              y:{type:'linear', min:yMin, max:yMax, reverse:true,
+                 title:{display:true, text:'Diepte (m)', font:{size:10}},
+                 grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}}
+            }
+          }
+        });
+      }catch(e){console.warn('Depth chart error:',e);}
+    }
+  });
+}
+
+/* ════════════════════════════════
+   CSV EXPORT
+════════════════════════════════ */
+function exportCSV(){
+  if(!S.layers.length){alert('No layers to export. Run classification first.');return;}
+  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'';
+  const hdr='Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse';
+  const rows=S.layers.map((l,i)=>{
+    const h=hsParams(l);
+    const k=khParams(l);
+    return[i+1,l.type,`"${l.subtype||''}"`,
+      l.top.toFixed(3),l.bot.toFixed(3),taw(l.top),taw(l.bot),
+      (l.bot-l.top).toFixed(3),l.avgQc,l.avgRf??'',
+      l.g,l.gs,l.phi,l.c,l.cu,
+      h.aE.toFixed(2),S.alphaMethod,
+      h.Eoed_i,h.Eoed_ref,h.E50_ref,h.Eur_ref,h.m.toFixed(2),h.K0nc,h.nu_ur,S.stiffMethod,
+      k.kh_rep.toExponential(2),k.kv_rep.toExponential(2),k.khkv,k.psi_unsat,
+      `"${k.infClass}"`].join(',');
+  });
+  const csv=[hdr,...rows].join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download=`CPT_${S.meta.testid||'export'}_layers.csv`;
+  a.click();
+}
+</script>
+</body>
+</html>
