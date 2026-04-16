@@ -289,15 +289,15 @@ input[type=range]{accent-color:var(--ac)}
   <div class="mcards" style="grid-template-columns:1fr 1fr 1fr">
     <div class="mc sel" id="mRob" onclick="selM('robertson')">
       <h3>Robertson (1990) — SBT / Ic</h3>
-      <p>Normalised Qt and Fr. Stress-dependent — accounts for depth. Preferred for HS parameter derivation and PLAXIS modelling.</p>
+      <p>Normalised Qt and Fr. Stress-dependent — accounts for depth.</p>
     </div>
     <div class="mc" id="mCur" onclick="selM('cur3')">
       <h3>CUR 3 / NEN 6740</h3>
-      <p>Direct qc and Rf ranges. Dutch–Flemish practice. No stress normalisation. Accepted for SB260 and building permit contexts.</p>
+      <p>Direct qc and Rf ranges. No stress normalisation. Practical CPT grouping method; layering follows changes in the broader CUR soil-type buckets.</p>
     </div>
     <div class="mc" id="mSB" onclick="selM('sb260')">
       <h3>NEN Tabel 3 / EC7</h3>
-      <p>Karakteristieke grondparameters. Grond-, zand-, leem-, klei-, veensoorten op basis van qc-bereik en Rf. Geeft direct γ, φ'k, c'k en cu,k.</p>
+      <p>EC7 Table 3 soil families from qc and Rf. Often aligns better with Eurocode parameter sets and can therefore fit subsequent parameter selection better.</p>
     </div>
   </div>
 
@@ -387,7 +387,7 @@ input[type=range]{accent-color:var(--ac)}
   <div class="sec">
     <div>
       <div class="sec-title">Model parameters</div>
-      <div class="sec-sub">Mohr-Coulomb and Hardening Soil (p_ref = 100 kPa). Eoed,i = αE × qc (Sanglerat). Review m and Eoed,ref per layer.</div>
+      <div class="sec-sub">Mohr-Coulomb and Hardening Soil (p_ref = 100 kPa). Eoed,i = αE × qc (Sanglerat / SB260). Review m and Eoed,ref per layer.</div>
     </div>
     <button class="btn sm" onclick="exportCSV()">Export CSV</button>
   </div>
@@ -396,15 +396,15 @@ input[type=range]{accent-color:var(--ac)}
     <div style="display:flex;align-items:center;gap:8px">
       <span class="ctrl-lbl" style="white-space:nowrap">α-method:</span>
       <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden">
-        <button id="btnAlphaA" class="togbtn active" onclick="setAlphaMethod('A')">A — Sanglerat (fixed)</button>
-        <button id="btnAlphaB" class="togbtn"        onclick="setAlphaMethod('B')">B — SB260 qc-dependent</button>
+        <button id="btnAlphaA" class="togbtn"        onclick="setAlphaMethod('A')">A — Sanglerat (fixed)</button>
+        <button id="btnAlphaB" class="togbtn active" onclick="setAlphaMethod('B')">B — SB260 qc-dependent</button>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <span class="ctrl-lbl" style="white-space:nowrap">Stiffness method:</span>
       <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden">
-        <button id="btnStiffA" class="togbtn active" onclick="setStiffMethod('A')">A — CUR 2003-7 ratios</button>
-        <button id="btnStiffB" class="togbtn"        onclick="setStiffMethod('B')">B — E₅₀ = E_oed</button>
+        <button id="btnStiffA" class="togbtn"        onclick="setStiffMethod('A')">A — CUR 2003-7 ratios</button>
+        <button id="btnStiffB" class="togbtn active" onclick="setStiffMethod('B')">B — E₅₀ = E_oed</button>
       </div>
     </div>
   </div>
@@ -428,6 +428,8 @@ input[type=range]{accent-color:var(--ac)}
   <div class="info" style="background:var(--wnl);border-color:var(--wn)">
     <strong>Experimental.</strong> The fitted m replaces the type-default only when the engineer explicitly accepts it per layer.
     Fit quality is shown as R² — values below 0.5 indicate too much scatter or insufficient depth range; keep the default in that case.
+    Stage 5 is bedoeld als engineer preview. Representatieve m-waarden horen bij voorkeur uit laboproeven te komen.
+    Verwacht in het algemeen een m-waarde tussen 0 en 1; waarden daarbuiten vragen extra engineering judgement.
   </div>
   <div id="tuningArea"></div>
   <div class="foot">
@@ -457,8 +459,8 @@ function newCptState(id){
     minThk:0.50,
     smartMerge:true,
     method:'robertson',
-    alphaMethod:'A',
-    stiffMethod:'A',
+    alphaMethod:'B',
+    stiffMethod:'B',
     paramMethod:'sb260',
     classified:[], layers:[],
     charts:{}, chartsReady:false,
@@ -509,6 +511,10 @@ function selectCpt(idx){
   if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
   if(cptYEl) cptYEl.value=S.y!=null?S.y:'';
   updateElevSrc(); updateWTDisplay();
+  document.getElementById('btnAlphaA').classList.toggle('active',S.alphaMethod==='A');
+  document.getElementById('btnAlphaB').classList.toggle('active',S.alphaMethod==='B');
+  document.getElementById('btnStiffA').classList.toggle('active',S.stiffMethod==='A');
+  document.getElementById('btnStiffB').classList.toggle('active',S.stiffMethod==='B');
 
   if(S.data.length){
     renderMeta();
@@ -1215,85 +1221,73 @@ const AE={
   'Sandy clay':8.0,'Silty sand':10.0,'Sand':13.0,'Gravel':15.0
 };
 
-/* Alpha Method B — SB260 Tabel 21-6-5 qc-dependent values.
-   Returns alphaE given soil type, avgQc, and subtype string.
-   For sand: Es = f(qc) directly (not alpha*qc), so we compute
-   Es and back-calculate alpha = Es / avgQc for consistency.
-   For cohesive: alpha from Tabel 21-6-5 (GEO column). */
+/* Alpha Method B — SB260 family mapping driven by the selected EC7 subtype.
+   Stage 4 uses layer avgQc; Stage 5 may pass row qc for pointwise fitting.
+   Peat water content w is not available in the app, so veen defaults to α=1.5. */
 /* ════════════════════════════════
    ALPHA METHOD B — SB260-21-6.4.10 Tabel 21-6-5
    
-   Definitive subtype→formula mapping. Priority: subtype string first, then type.
+   Definitive subtype→rule-family mapping. Priority: subtype string first, then type.
    
-   FORMULAE:
-   Zand NC:         qc<10 → Es=4qc; 10-50 → Es=2qc+20; >50 → 120 MPa
-   Overgangsgronden: qc<2.5 → α=2; 2.5-5 → Es=4qc-5; >5 → α=2 (cap)
-     Overgangsgronden = kleihoudend/leemhoudend zand, zandhoudend leem/klei
-     Identified by subtype containing '(lh)', '(kh)', '(zh)' OR label keyword
-   Klei CL:         qc<0.7→α=5; 0.7-2→α=3; >2→α=1.5
-   Leem ML:         qc<2→α=4; ≥2→α=2.5
-   Soft clay:       qc<2→α=4; ≥2→α=2.5
-   Veen OH:         qc≥0.7→α=1.5; else→α=2.5
+   Cohesive:
+   - veen, ...      → α=1.5 (w unknown in app)
+   - klei, ...      → qc<0.7 => 5 ; 0.7-2 => 3 ; >=2 => 1.5
+   - leem, ...      → qc<2 => 4 ; >=2 => 2
+
+   Transition:
+   - klei (zh), ... / leem (zh), ... / zand (lh), ...
+     qc<2.5 => α=2 ; 2.5-5 => Es=4qc-5 ; >=5 => α=2
+
+   Granular:
+   - zand, ... / grind, ... / grind (kh), ...
+     qc<=10 => Es=4qc ; 10-50 => Es=2qc+20 ; >50 => Es=120
 ════════════════════════════════ */
-function isOvergangsgrond(type, subtype){
-  /* Returns true if this layer should use the SB260 overgangsgronden formula.
-     Overgangsgronden = kleihoudend of leemhoudend ZAND  (zand dominant)
-                      + zandhoudend LEEM of KLEI         (leem/klei dominant maar met zand)
-     In CAT: subtypes with (lh), (kh), or (zh) marker indicate admixture. */
-  const sub=(subtype||'').toLowerCase();
-  // Zand with leem or klei admixture → overgang
-  if((type==='Sand'||type==='Silty sand') && (sub.includes('(lh)')||sub.includes('(kh)'))) return true;
-  // Leem or Clay with zand admixture → overgang
-  if((type==='Sandy clay'||type==='Clay') && sub.includes('(zh)')) return true;
-  return false;
+function sb260GranularAlpha(qc){
+  if(qc <= 10) return 4.0;
+  if(qc <= 50) return +(((2*qc) + 20) / qc).toFixed(3);
+  return +(120 / qc).toFixed(3);
 }
 
-function alphaEB(type, avgQc, subtype){
+function sb260TransitionAlpha(qc){
+  if(qc < 2.5) return 2.0;
+  if(qc < 5.0) return +(((4*qc) - 5) / qc).toFixed(3);
+  return 2.0;
+}
+
+function sb260AlphaFamily(type, subtype, rf){
+  const sub=(subtype||'').toLowerCase();
+
+  if(sub.includes('veen')) return 'cohesive-peat';
+  if(sub.includes('klei (zh)')) return 'transition';
+  if(sub.includes('leem (zh)')) return 'transition';
+  if(sub.includes('zand (lh)')) return 'transition';
+  if(sub.includes('grind (kh)')) return 'granular';
+  if(sub.includes('grind')) return 'granular';
+  if(sub.includes('zand')) return 'granular';
+  if(sub.includes('klei')) return 'cohesive-clay';
+  if(sub.includes('leem')) return 'cohesive-loam';
+
+  // Fallback by type if no EC7 subtype is available.
+  if(type==='Peat / organic') return 'cohesive-peat';
+  if(type==='Gravel') return 'granular';
+  if(type==='Sand'||type==='Silty sand'){
+    if(rf != null && rf >= 1 && rf <= 2) return 'transition';
+    return 'granular';
+  }
+  if(type==='Clay'||type==='Soft clay') return 'cohesive-clay';
+  if(type==='Sandy clay') return 'cohesive-loam';
+  return 'cohesive-clay';
+}
+
+function alphaEB(type, avgQc, subtype, avgRf){
   const qc = Math.max(avgQc||0.1, 0.01);
-  const sub = (subtype||'').toLowerCase();
+  const family = sb260AlphaFamily(type, subtype, avgRf);
 
-  // ── OVERGANGSGRONDEN ── highest priority: check subtype marker first
-  if(isOvergangsgrond(type, subtype)){
-    if(qc < 2.5) return 2.0;
-    if(qc < 5.0){
-      const Es = 4*qc - 5;   // SB260 formula for overgangsgronden 2.5<qc<5
-      return +(Es/qc).toFixed(3);
-    }
-    return 2.0;  // qc>5: SB260 does not extend formula, use α=2
-  }
-
-  // ── ZAND (clean, no admixture) ──
-  if(type==='Sand'||type==='Silty sand'||type==='Gravel'){
-    let Es;
-    if(qc < 10)      Es = 4*qc;
-    else if(qc < 50) Es = 2*qc + 20;
-    else             Es = 120;
-    return +(Es/qc).toFixed(3);
-  }
-
-  // ── KLEI weinig plastisch (CL) ── pure klei, no zh marker
-  if(type==='Clay'){
-    if(qc < 0.7) return 5.0;
-    if(qc < 2.0) return 3.0;
-    return 1.5;
-  }
-
-  // ── SOFT CLAY / LEEM weinig plastisch (ML) ──
-  if(type==='Soft clay'){
-    if(qc < 2.0) return 4.0;
-    return 2.5;
-  }
-
-  // ── LEEM (Sandy clay without zh marker = pure leem) ──
-  if(type==='Sandy clay'){
-    if(qc < 2.0) return 4.0;
-    return 2.5;
-  }
-
-  // ── VEEN ──
-  if(type==='Peat / organic'){
-    return qc >= 0.7 ? 1.5 : 2.5;
-  }
+  if(family==='transition') return sb260TransitionAlpha(qc);
+  if(family==='granular') return sb260GranularAlpha(qc);
+  if(family==='cohesive-peat') return 1.5;
+  if(family==='cohesive-loam') return qc < 2.0 ? 4.0 : 2.0;
+  if(family==='cohesive-clay') return qc < 0.7 ? 5.0 : (qc < 2.0 ? 3.0 : 1.5);
 
   return AE[type]||5.0;  // fallback Method A
 }
@@ -2670,6 +2664,7 @@ const CAT_GROUPS={
      Clay        (Zone 3)   → klei, leem adj
      Sandy clay  (Zone 4)   → leem AND klei zh (both are silt mixtures in Tabel 3)
      Silty sand  (Zone 5)   → zandhoudende leem (leem grp) + leemhoudend zand (zand grp)
+                              pure klei is not treated as an adjacent transition here
      Sand        (Zone 6)   → zand, grind adj
      Gravel      (Zone 7)   → grind, zand adj
 */
@@ -2678,7 +2673,7 @@ const COMPAT={
   'Soft clay':      {ok:['klei'],             adj:['leem']},
   'Clay':           {ok:['klei'],             adj:['leem']},
   'Sandy clay':     {ok:['leem','klei'],      adj:['zand']},
-  'Silty sand':     {ok:['leem','zand'],      adj:['klei']},
+  'Silty sand':     {ok:['leem','zand'],      adj:[]},
   'Sand':           {ok:['zand'],             adj:['grind','leem']},
   'Gravel':         {ok:['grind'],            adj:['zand']},
 };
@@ -2935,7 +2930,7 @@ function renderCompatWarnings(){
         msg:`CPT classificatie = <strong>${l.type}</strong>, gekozen grondsoort = <strong>${l.subtype}</strong> — dit zijn niet-verwante grondsoorten. Controleer of de CPT classificatie correct is of pas de grondsoort aan.`});
     } else if(level==='adj'){
       warnings.push({i,layer:i+1,cptType:l.type,subtype:l.subtype,level:'adj',
-        msg:`Laag ${i+1}: <strong>${l.subtype}</strong> is een overgangsgrond t.o.v. CPT type <strong>${l.type}</strong>. Aanvaardbaar in overgangszone — bevestig via boring of labo.`});
+        msg:`Laag ${i+1}: <strong>${l.subtype}</strong> ligt in een aangrenzende / overgangsfamilie t.o.v. CPT type <strong>${l.type}</strong>. Enkel aanvaardbaar indien bevestigd via boring, labo of projectkennis.`});
     }
   });
 
@@ -3074,7 +3069,7 @@ function hsParams(l){
   if(l.ovr.aE){
     aE=l.aE_ovr;  // engineer override takes absolute priority
   } else if(S.alphaMethod==='B'){
-    aE=alphaEB(l.type, l.avgQc, l.subtype);
+    aE=alphaEB(l.type, l.avgQc, l.subtype, l.avgRf);
   } else {
     aE=AE[l.type]||10;
   }
@@ -3234,34 +3229,54 @@ function fitLayer(l){
     : 0;
   const cCotPhi = l.c * cotphi;
 
-  // Resolve alphaE for this layer (same logic as hsParams)
-  let aE;
-  if(l.ovr.aE)            aE = l.aE_ovr;
-  else if(S.alphaMethod==='B') aE = alphaEB(l.type, l.avgQc, l.subtype);
-  else                     aE = AE[l.type] || 10;
+  const mDefault = l.type==='Peat / organic'?1.0
+    : (l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic')?0.85
+    : l.type==='Sandy clay'?0.65
+    : 0.50;
+  const alphaDefault = (l.ovr.aE ? l.aE_ovr
+    : S.alphaMethod==='B' ? alphaEB(l.type, l.avgQc, l.subtype, l.avgRf)
+    : (AE[l.type] || 10));
 
-  const Xs=[], Ys=[];
+  // Build the point cloud directly from CPT rows in the layer.
+  // Stage 5 only: Method B uses the row qc for pointwise Eoed,i reconstruction.
+  const pts = [];
   for(const r of rows){
     const {sigVeff} = stressAt(r.z, l.gs, l.g);
     const denom = pref + cCotPhi;
     const numer = sigVeff + cCotPhi;
     if(numer <= 0 || denom <= 0) continue;
-    const X = Math.log(numer / denom);
-    const Eoed_i_row = aE * r.qc * 1000;
+
+    const ratio = numer / denom;
+    if(ratio <= 0) continue;
+
+    const aE_row = l.ovr.aE ? l.aE_ovr
+      : S.alphaMethod==='B' ? alphaEB(l.type, r.qc, l.subtype, r.rf ?? l.avgRf)
+      : (AE[l.type] || 10);
+    const Eoed_i_row = aE_row * r.qc * 1000;
     if(Eoed_i_row <= 0) continue;
-    const Y = Math.log(Eoed_i_row);
-    Xs.push(X); Ys.push(Y);
+
+    pts.push({
+      z:r.z,
+      x:Math.log(ratio),
+      y:Math.log(Eoed_i_row),
+      ratio,
+      sigVeff,
+      aE:aE_row,
+      Eoed_i:Eoed_i_row
+    });
   }
 
-  const n = Xs.length;
+  const n = pts.length;
   if(n < 5) return null;
 
   // Stress range check
-  const sigVeffs = rows.map(r => stressAt(r.z, l.gs, l.g).sigVeff);
+  const sigVeffs = pts.map(p => p.sigVeff);
   const svMin = Math.min(...sigVeffs), svMax = Math.max(...sigVeffs);
   const stressRangeFactor = svMin > 0 ? svMax / svMin : 1;
 
   // OLS
+  const Xs = pts.map(p=>p.x);
+  const Ys = pts.map(p=>p.y);
   const meanX = Xs.reduce((s,v)=>s+v,0)/n;
   const meanY = Ys.reduce((s,v)=>s+v,0)/n;
   const covXY = Xs.reduce((s,x,i)=>s+(x-meanX)*(Ys[i]-meanY),0)/n;
@@ -3269,12 +3284,16 @@ function fitLayer(l){
 
   if(Math.abs(varX) < 1e-6) return null; // no depth variation
 
-  const m_fit = +(Math.max(0.3, Math.min(1.2, covXY/varX))).toFixed(3);
+  const m_raw = covXY/varX;
+  if(!isFinite(m_raw)) return null;
+
+  const m_fit = +m_raw.toFixed(3);
   const Eoed_ref_fit = +Math.exp(meanY - m_fit*meanX).toFixed(0);
+  const invalidSlope = m_fit <= 0;
 
   // R²
   const SS_res = Xs.reduce((s,x,i)=>{
-    const Ypred = Math.log(Eoed_ref_fit) + m_fit*x;
+    const Ypred = meanY - m_raw*meanX + m_raw*x;
     return s + (Ys[i]-Ypred)**2;
   },0);
   const SS_tot = Ys.reduce((s,y)=>s+(y-meanY)**2,0);
@@ -3285,47 +3304,50 @@ function fitLayer(l){
   if(n < 10)                         { quality='warn'; qMsg='Weinig meetpunten (n='+n+')'; }
   else if(stressRangeFactor < 1.5)   { quality='warn'; qMsg='Spanningsbereik te klein (factor '+stressRangeFactor.toFixed(1)+')'; }
   else if(l.top < 0.5)               { quality='warn'; qMsg='Laag te ondiep (<0.5m)'; }
+  else if(invalidSlope)              { quality='invalid'; qMsg='Negatieve of nul-helling gevonden — fit ongeldig'; }
+  else if(m_fit < 0 || m_fit > 1.5)  { quality='warn'; qMsg='m buiten verwacht bereik ('+m_fit.toFixed(2)+')'; }
   else if(R2 < 0.50)                 { quality='warn'; qMsg='Lage R²='+R2+' — heterogene laag?'; }
   else if(R2 < 0.70)                 { quality='ok';   qMsg='Acceptabel (R²='+R2+')'; }
   else                               { quality='good'; qMsg='Goede fit (R²='+R2+')'; }
 
   // Build depth-profile arrays for physical-space chart
-  const depthPts = rows.map(r=>r.z);
-  const EoedI_pts = rows.map(r => aE * r.qc * 1000); // CPT-derived per row
+  const depthPts = pts.map(p=>p.z);
+  const EoedI_pts = pts.map(p=>p.Eoed_i); // CPT-derived per row
+  const aE_pts = pts.map(p=>+p.aE.toFixed(3));
+
   // HS model curve: Eoed(z) = Eoed_ref * ratio(z)^m
-  const makeHScurve = (Eoed_ref_val, m_val) => rows.map(r=>{
-    const {sigVeff} = stressAt(r.z, l.gs, l.g);
-    const num = sigVeff + cCotPhi, den = pref + cCotPhi;
-    const ratio = Math.max(num/den, 0.05);
-    return Eoed_ref_val * Math.pow(ratio, m_val);
-  });
+  const makeHScurve = (Eoed_ref_val, m_val) => pts.map(p =>
+    Eoed_ref_val * Math.pow(Math.max(p.ratio, 0.05), m_val)
+  );
 
   // For default m: recompute Eoed_ref at midZ with default m
   const midZ2 = (l.top+l.bot)/2;
   const {sigVeff: sv_mid2} = stressAt(midZ2, l.gs, l.g);
-  const mDefault = l.type==='Peat / organic'?1.0
-    : (l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic')?0.85
-    : l.type==='Sandy clay'?0.65:0.50;
   const ratioMid = Math.max((sv_mid2+cCotPhi)/(pref+cCotPhi), 0.05);
-  const Eoed_ref_default = (aE * l.avgQc * 1000) / Math.pow(ratioMid, mDefault);
+  const Eoed_ref_default = (alphaDefault * l.avgQc * 1000) / Math.pow(ratioMid, mDefault);
 
   const hsDefault_pts = makeHScurve(Eoed_ref_default, mDefault);
   const hsFit_pts     = makeHScurve(Eoed_ref_fit, m_fit);
 
   return{m_fit, Eoed_ref_fit, R2, n, stressRangeFactor:+stressRangeFactor.toFixed(2),
-         quality, qMsg, Xs, Ys, aE,
-         depthPts, EoedI_pts, hsDefault_pts, hsFit_pts, Eoed_ref_default, mDefault};
+         quality, qMsg, invalidSlope, Xs, Ys, meanX:+meanX.toFixed(6), meanY:+meanY.toFixed(6), m_raw:+m_raw.toFixed(4),
+         depthPts, EoedI_pts, aE_pts, hsDefault_pts, hsFit_pts,
+         Eoed_ref_default, mDefault, alphaDefault:+alphaDefault.toFixed(3)};
 }
 
 function runTuning(){
-  S.tuning = S.layers.map((l,i)=>({i, fit:fitLayer(l)}));
+  S.tuning = S.layers.map((l,i)=>{
+    const fit = fitLayer(l);
+    return{i, fit, previewM:fit ? (fit.invalidSlope ? fit.mDefault : fit.m_fit) : null};
+  });
   renderTuning();
 }
 
 function acceptFit(i){
   const t = S.tuning?.[i];
-  if(!t||!t.fit) return;
-  S.layers[i].m_ovr = t.fit.m_fit;
+  const previewM = Number(t?.previewM);
+  if(!t||!t.fit||!isFinite(previewM)||previewM<=0) return;
+  S.layers[i].m_ovr = previewM;
   S.layers[i].ovr.m = true;
   // Also update Eoed,ref override? No — Eoed,ref is derived from m in hsParams.
   // Accepting m is enough: renderModel will recompute Eoed,ref with the new m.
@@ -3341,6 +3363,99 @@ function rejectFit(i){
   renderTuning();
 }
 
+function getTuningPreviewM(t){
+  if(!t||!t.fit) return NaN;
+  const m = Number(t.previewM);
+  if(isFinite(m) && m > 0) return m;
+  return t.fit.invalidSlope ? t.fit.mDefault : t.fit.m_fit;
+}
+
+function tuningSliderBounds(fit){
+  const anchors=[fit.mDefault, fit.m_fit, 0.01].filter(v=>isFinite(v) && v>0);
+  const min=Math.max(0.01, Math.min(...anchors) - 0.4);
+  const max=Math.min(2.0, Math.max(...anchors) + 0.4);
+  return{
+    min:+min.toFixed(2),
+    max:+Math.max(max, min + 0.2).toFixed(2),
+    step:0.01
+  };
+}
+
+function tuningPreviewEoedRef(fit, previewM){
+  return +Math.exp(fit.meanY - previewM*fit.meanX).toFixed(0);
+}
+
+function tuningPreviewLineData(fit, previewM){
+  const Eoed_ref = tuningPreviewEoedRef(fit, previewM);
+  const Xmin = Math.min(...fit.Xs)-0.1, Xmax = Math.max(...fit.Xs)+0.1;
+  const linePts = 30;
+  const logLine = Array.from({length:linePts},(_,k)=>{
+    const x=Xmin+(Xmax-Xmin)*k/(linePts-1);
+    return{x, y: Math.log(Eoed_ref)+previewM*x};
+  });
+  const depthLine = fit.depthPts.map((z,i)=>({x:Eoed_ref*Math.exp(previewM*fit.Xs[i]), y:z}));
+  return{Eoed_ref, logLine, depthLine};
+}
+
+function updateTuningPreviewM(i, rawValue){
+  const t = S.tuning?.[i];
+  if(!t||!t.fit) return;
+
+  const parsed = Number(rawValue);
+  t.previewM = parsed;
+
+  const invalid = !isFinite(parsed) || parsed <= 0;
+  const previewM = invalid ? t.fit.m_fit : parsed;
+  const preview = tuningPreviewLineData(t.fit, previewM);
+
+  const input=document.getElementById('fitPreviewInput'+i);
+  if(input){
+    input.style.borderColor = invalid ? '#A32D2D' : 'var(--bd2)';
+    input.style.color = invalid ? '#A32D2D' : 'var(--tx)';
+  }
+
+  const mEl=document.getElementById('fitPreviewM'+i);
+  if(mEl) mEl.textContent = invalid ? '—' : previewM.toFixed(3);
+
+  const refEl=document.getElementById('fitPreviewRef'+i);
+  if(refEl) refEl.textContent = invalid ? '—' : preview.Eoed_ref.toLocaleString()+' kPa';
+
+  const noteEl=document.getElementById('fitPreviewNote'+i);
+  if(noteEl){
+    noteEl.textContent = invalid
+      ? 'Preview ongeldig: m moet groter zijn dan 0'
+      : (Math.abs(previewM - t.fit.m_fit) < 1e-6 ? 'Preview volgt de auto-fit' : 'Preview wijkt af van de auto-fit');
+    noteEl.style.color = invalid ? '#A32D2D' : 'var(--tx2)';
+  }
+
+  const btn=document.getElementById('fitAcceptBtn'+i);
+  if(btn){
+    btn.disabled = invalid;
+    btn.style.opacity = invalid ? '0.5' : '1';
+    btn.style.cursor = invalid ? 'not-allowed' : '';
+  }
+
+  const regCanvas=document.getElementById('tChart'+i);
+  const regChart=regCanvas?regCanvas._chartRef:null;
+  if(regChart){
+    regChart.data.datasets[2].data = preview.logLine;
+    regChart.data.datasets[2].label = 'Preview m='+previewM.toFixed(2);
+    regChart.data.datasets[2].borderColor = invalid ? '#A32D2D' : '#1D9E75';
+    regChart.data.datasets[2].borderDash = invalid ? [5,4] : (t.fit.quality==='warn'?[5,4]:[]);
+    regChart.update('none');
+  }
+
+  const depCanvas=document.getElementById('tChart'+i+'d');
+  const depChart=depCanvas?depCanvas._chartRef:null;
+  if(depChart){
+    depChart.data.datasets[3].data = preview.depthLine;
+    depChart.data.datasets[3].label = 'HS preview m='+previewM.toFixed(2);
+    depChart.data.datasets[3].borderColor = invalid ? '#A32D2D' : '#1D9E75';
+    depChart.data.datasets[3].borderDash = invalid ? [5,4] : (t.fit.quality==='warn'?[5,4]:[]);
+    depChart.update('none');
+  }
+}
+
 function renderTuning(){
   const el = document.getElementById('tuningArea');
   if(!S.tuning){
@@ -3351,7 +3466,6 @@ function renderTuning(){
   const pref=100;
   el.innerHTML = S.tuning.map(t=>{
     const l = S.layers[t.i];
-    const h_cur = hsParams(l); // current params (with possibly accepted fit)
     const fit = t.fit;
     const hasAccepted = !!l.ovr.m;
     const badge = SC[l.type]||'s-sand';
@@ -3366,20 +3480,20 @@ function renderTuning(){
       </div>`;
     }
 
-    const qColor = fit.quality==='good'?'#0F6E56':fit.quality==='ok'?'#BA7517':'#A32D2D';
+    const qColor = fit.quality==='good'?'#0F6E56'
+      : fit.quality==='ok'?'#BA7517'
+      : fit.quality==='invalid'?'#A32D2D'
+      : '#A32D2D';
 
     // Build scatter chart data
     const chartId = 'tChart'+t.i;
+    const previewM = getTuningPreviewM(t);
+    const preview = tuningPreviewLineData(fit, previewM);
+    const slider = tuningSliderBounds(fit);
 
-    // Default line points (m_default, Eoed_ref from hsParams without fit)
-    const m_def = h_cur.m; // this is the type-default or engineer override
-    // Rebuild Eoed_ref with default m for comparison
-    const cotphi = l.phi>0?Math.cos(l.phi*Math.PI/180)/Math.sin(l.phi*Math.PI/180):0;
-    const cCotPhi = l.c*cotphi;
-    const sigVeff_mid = h_cur.sigVeff;
-    const ratio_mid = Math.max((sigVeff_mid+cCotPhi)/(pref+cCotPhi),0.05);
-    const Eoed_i_mid = fit.aE * l.avgQc * 1000;
-    const Eoed_ref_default = Eoed_i_mid / Math.pow(ratio_mid, m_def);
+    // Default line points stay anchored to the type-default baseline.
+    const m_def = fit.mDefault;
+    const Eoed_ref_default = fit.Eoed_ref_default;
 
     // X range for model lines
     const Xmin = Math.min(...fit.Xs)-0.1, Xmax = Math.max(...fit.Xs)+0.1;
@@ -3388,11 +3502,6 @@ function renderTuning(){
       const x=Xmin+(Xmax-Xmin)*k/(linePts-1);
       return{x, y: Math.log(Eoed_ref_default)+m_def*x};
     });
-    const fitLineY = Array.from({length:linePts},(_,k)=>{
-      const x=Xmin+(Xmax-Xmin)*k/(linePts-1);
-      return{x, y: Math.log(fit.Eoed_ref_fit)+fit.m_fit*x};
-    });
-
     const scatterData = fit.Xs.map((x,k)=>({x,y:fit.Ys[k]}));
 
     return`<div class="mc2" style="margin-bottom:12px">
@@ -3410,7 +3519,7 @@ function renderTuning(){
           <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
             E_oed vs diepte (kPa)
             <span style="margin-left:6px;color:#534AB7">─ default</span>
-            <span style="margin-left:4px;color:#1D9E75">─ fit</span>
+            <span style="margin-left:4px;color:#1D9E75">─ preview</span>
             <span style="margin-left:4px;color:rgba(53,162,235,0.7)">· CPT</span>
           </div>
           <div style="position:relative;height:280px">
@@ -3423,7 +3532,7 @@ function renderTuning(){
           <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
             ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
             <span style="margin-left:6px;color:#534AB7">─ default m=${m_def.toFixed(2)}</span>
-            <span style="margin-left:4px;color:#1D9E75">─ fitted m=${fit.m_fit.toFixed(2)}</span>
+            <span style="margin-left:4px;color:#1D9E75">─ preview m=${previewM.toFixed(2)}</span>
           </div>
           <div style="position:relative;height:280px">
             <canvas id="${chartId}" role="img" aria-label="m fitting regression layer ${t.i+1}"></canvas>
@@ -3435,21 +3544,41 @@ function renderTuning(){
           <table class="pt" style="margin-bottom:12px">
             <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Type-default</td></tr>
             <tr><td>m</td><td>${m_def.toFixed(2)}</td></tr>
-            <tr><td>E_oed,ref</td><td>${h_cur.Eoed_ref.toLocaleString()} kPa</td></tr>
-            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:#1D9E75;padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">CPT-fit</td></tr>
+            <tr><td>E_oed,ref</td><td>${Eoed_ref_default.toLocaleString()} kPa</td></tr>
+            <tr><td>&alpha;E basis</td><td>${S.alphaMethod==='B'?'puntgewijs qc-afhankelijk':'vast per laag'} (${fit.alphaDefault.toFixed(2)})</td></tr>
+            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:#1D9E75;padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Auto-fit</td></tr>
             <tr><td>m</td><td style="color:#0F6E56;font-weight:700">${fit.m_fit.toFixed(3)}</td></tr>
             <tr><td>E_oed,ref</td><td style="color:#0F6E56;font-weight:600">${fit.Eoed_ref_fit.toLocaleString()} kPa</td></tr>
             <tr><td style="padding-top:6px">R²</td><td style="padding-top:6px">${fit.R2.toFixed(3)}</td></tr>
             <tr><td>n</td><td>${fit.n} punten</td></tr>
             <tr><td>σ' bereik</td><td>×${fit.stressRangeFactor}</td></tr>
+            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding:6px 0 4px;border-top:1px solid var(--bd);text-transform:uppercase">Preview / engineer tweak</td></tr>
+            <tr>
+              <td>m</td>
+              <td>
+                <input id="fitPreviewInput${t.i}" type="range" min="${slider.min}" max="${slider.max}" step="${slider.step}" value="${previewM.toFixed(3)}"
+                  oninput="updateTuningPreviewM(${t.i}, this.value)"
+                  style="width:100%;accent-color:var(--ac)">
+                <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx3);margin-top:2px">
+                  <span>${slider.min.toFixed(2)}</span>
+                  <span>${slider.max.toFixed(2)}</span>
+                </div>
+                <div id="fitPreviewNote${t.i}" style="font-size:10px;color:var(--tx2);margin-top:4px">
+                  ${fit.invalidSlope?'Auto-fit was ongeldig; slider start vanaf default m':'Preview volgt de auto-fit'}
+                </div>
+              </td>
+            </tr>
+            <tr><td>Preview m</td><td id="fitPreviewM${t.i}">${previewM.toFixed(3)}</td></tr>
+            <tr><td>Preview E_oed,ref</td><td id="fitPreviewRef${t.i}">${preview.Eoed_ref.toLocaleString()} kPa</td></tr>
           </table>
           ${hasAccepted
-            ?`<div style="font-size:11px;color:#0F6E56;font-weight:600;margin-bottom:8px">✓ Fit geaccepteerd</div>
-               <button class="btn sm" onclick="rejectFit(${t.i})">Herstel default m</button>`
-            :`<button class="btn pri sm" onclick="acceptFit(${t.i})" ${fit.quality==='warn'?'style="background:var(--wn);border-color:var(--wn)"':''}>
-                ${fit.quality==='warn'?'⚠ ':''}Accepteer fit
-              </button>`
+            ?`<div style="font-size:11px;color:#0F6E56;font-weight:600;margin-bottom:8px">✓ Huidige override m = ${l.m_ovr.toFixed(3)}</div>`
+            :`<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Standaard m actief tot je expliciet accepteert</div>`
           }
+          <button id="fitAcceptBtn${t.i}" class="btn pri sm" onclick="acceptFit(${t.i})" ${fit.quality==='warn'||fit.quality==='invalid'?'style="background:var(--wn);border-color:var(--wn)"':''}>
+            ${fit.quality==='warn'?'⚠ ':''}Accepteer fit
+          </button>
+          ${hasAccepted?`<button class="btn sm" onclick="rejectFit(${t.i})" style="margin-left:6px">Herstel default m</button>`:''}
         </div>
       </div>
     </div>
@@ -3457,19 +3586,22 @@ function renderTuning(){
          data-chart-depth="${chartId+'d'}"
          data-scatter='${JSON.stringify(scatterData).replace(/'/g,"&#39;")}'
          data-default-line='${JSON.stringify(defaultLineY).replace(/'/g,"&#39;")}'
-         data-fit-line='${JSON.stringify(fitLineY).replace(/'/g,"&#39;")}'
+         data-fit-line='${JSON.stringify(preview.logLine).replace(/'/g,"&#39;")}'
          data-depth-pts='${JSON.stringify(fit.depthPts).replace(/'/g,"&#39;")}'
          data-eoed-i='${JSON.stringify(fit.EoedI_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
          data-hs-default='${JSON.stringify(fit.hsDefault_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
-         data-hs-fit='${JSON.stringify(fit.hsFit_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
+         data-hs-fit='${JSON.stringify(preview.depthLine.map(v=>+v.x.toFixed(0))).replace(/'/g,"&#39;")}'
          data-layer-top="${l.top.toFixed(3)}"
          data-layer-bot="${l.bot.toFixed(3)}"
          data-wt="${S.wt.toFixed(3)}"
          data-m-def="${m_def.toFixed(2)}"
-         data-m-fit="${fit.m_fit.toFixed(2)}"
+         data-m-fit="${previewM.toFixed(2)}"
+         data-invalid-slope="0"
          data-quality="${fit.quality}">
     </div>`;
   }).join('');
+  // Build charts after DOM settles.
+  setTimeout(buildTuningCharts, 50);
 }
 /* Build tuning charts after DOM is rendered (avoids early tag close issue) */
 function buildTuningCharts(){
@@ -3484,16 +3616,17 @@ function buildTuningCharts(){
         const defLine  = JSON.parse(el.dataset.defaultLine);
         const fitLine  = JSON.parse(el.dataset.fitLine);
         const mDef = el.dataset.mDef, mFit = el.dataset.mFit;
-        new Chart(canvas,{
+        const invalidSlope = el.dataset.invalidSlope === '1';
+        const chart = new Chart(canvas,{
           type:'scatter',
           data:{datasets:[
             {label:'CPT data', data:scatter,
              backgroundColor:'rgba(53,162,235,0.55)', pointRadius:3, pointHoverRadius:5},
             {label:'Default m='+mDef, data:defLine,
              type:'line', borderColor:'#534AB7', borderWidth:1.5, pointRadius:0, fill:false},
-            {label:'Fitted m='+mFit, data:fitLine,
-             type:'line', borderColor:'#1D9E75', borderWidth:2, pointRadius:0, fill:false,
-             borderDash: el.dataset.quality==='warn'?[5,4]:[]}
+            {label:'Preview m='+mFit, data:fitLine,
+             type:'line', borderColor:invalidSlope?'#A32D2D':'#1D9E75', borderWidth:2, pointRadius:0, fill:false,
+             borderDash: (el.dataset.quality==='warn'||invalidSlope)?[5,4]:[]}
           ]},
           options:{
             responsive:true, maintainAspectRatio:false, animation:false,
@@ -3506,6 +3639,7 @@ function buildTuningCharts(){
             }
           }
         });
+        canvas._chartRef = chart;
       }catch(e){console.warn('Log-log chart error:',e);}
     }
 
@@ -3524,6 +3658,7 @@ function buildTuningCharts(){
         const wt        = parseFloat(el.dataset.wt);
         const mDef      = el.dataset.mDef;
         const mFit      = el.dataset.mFit;
+        const invalidSlope = el.dataset.invalidSlope === '1';
 
         // x-axis max: round up to next 5000
         const allE = [...EoedI, ...hsDefault, ...hsFit];
@@ -3543,7 +3678,7 @@ function buildTuningCharts(){
         const yMin = Math.max(0, layerTop - 0.5);
         const yMax = layerBot + 0.5;
 
-        new Chart(canvasD,{
+        const chart = new Chart(canvasD,{
           type:'scatter',
           data:{datasets:[
             // Layer boundary shading — draw as area between top and bot
@@ -3561,10 +3696,10 @@ function buildTuningCharts(){
              type:'line', borderColor:'#534AB7', borderWidth:1.5,
              pointRadius:0, fill:false, tension:0.3},
             // Fitted HS model curve
-            {label:'HS fit m='+mFit, data:fitDep,
-             type:'line', borderColor:'#1D9E75', borderWidth:2.5,
+            {label:'HS preview m='+mFit, data:fitDep,
+             type:'line', borderColor:invalidSlope?'#A32D2D':'#1D9E75', borderWidth:2.5,
              pointRadius:0, fill:false, tension:0.3,
-             borderDash: el.dataset.quality==='warn'?[5,4]:[]},
+             borderDash: (el.dataset.quality==='warn'||invalidSlope)?[5,4]:[]},
             // Water table
             {label:'WT', data:wtLine,
              type:'line', borderColor:'#378ADD', borderWidth:1.5,
@@ -3597,6 +3732,7 @@ function buildTuningCharts(){
             }
           }
         });
+        canvasD._chartRef = chart;
       }catch(e){console.warn('Depth chart error:',e);}
     }
   });

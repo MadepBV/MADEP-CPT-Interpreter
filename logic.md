@@ -395,7 +395,7 @@ The Stage 4 layer card shows: σv0 [value] − u [value] = σ'v0 [value] kPa, so
 
 ### 4.2 Alpha (alphaE) — Sanglerat / SB260 correlation [IMPLEMENTED]
 
-The per-depth oedometer stiffness is estimated from qc via:
+The per-layer oedometer stiffness is estimated from qc via:
 
 ```
 Eoed,i = alphaE * avgQc * 1000    [kPa]
@@ -415,49 +415,45 @@ Eoed,i = alphaE * avgQc * 1000    [kPa]
 
 These are the Sanglerat values as referenced in SB260-21-6.4.10 and commonly applied in Belgian practice.
 
-**Method B — SB260 qc-dependent alpha [IMPLEMENTED]:**
+**Method B — SB260 family mapping from selected EC7 Table 3 soil name [IMPLEMENTED]:**
 
-Source: SB260-21-6.4.10, Tabel 21-6-5. The alpha (GEO column) is the recommended value when boring and lab data are available. When only CPT is available, use the Sanglerat ranges and pick the GEO value.
+Source: SB260-21-6.4.10 text + Tabel 21-6-5 (GEO column). The selected **Stage 3 EC7 Table 3 subtype** is the primary mapping key; `avgQc` is then evaluated against the rule for that family. `avgRf` is used indirectly to arrive at the selected EC7 subtype in Stage 3, and as fallback context only if no subtype is available.
 
-**Cohesieve gronden — Tabel 21-6-5 (GEO column):**
+The implemented mapping is:
 
-| Grondsoort | qc range (MPa) | alpha (GEO) |
-|---|---|---|
-| Klei, weinig plastisch (CL) | qc < 0.7 | 5 |
-| Klei, weinig plastisch (CL) | 0.7 < qc < 2.0 | 3 |
-| Klei, weinig plastisch (CL) | qc > 2.0 | 1.5 |
-| Leem, weinig plastisch (ML) — only CPT available | qc < 2.0 | 4 |
-| Klei en leem, plastisch (ML/CH) | qc > 2.0 | 2 |
-| Klei en leem, plastisch (ML/CH) | qc < 2.0 | 3 |
-| Humushoudende leem (OL) | qc < 1.2 | 5 |
-| Veen, humushoudende klei (OH) | qc < 0.7 | 2.5 (w 50-100) / 1.5 (w 100-200) / 0.7 (w>200) |
-| Veen: qc > 0.7 or w unknown | — | 1.5 |
+| Family | Soil name | `qc` (MPa) | Rule | Formula / GEO value |
+|---|---|---:|---|---|
+| Cohesive | `veen, ...` | any | Default SB260 peat rule when `w` unknown | `alpha = 1.5` |
+| Cohesive | `klei, ...` | `< 0.7` | CL, GEO default | `alpha = 5` |
+| Cohesive | `klei, ...` | `0.7 - <2.0` | CL, GEO default | `alpha = 3` |
+| Cohesive | `klei, ...` | `>= 2.0` | CL, GEO default | `alpha = 1.5` |
+| Cohesive | `leem, ...` | `< 2.0` | ML, GEO default | `alpha = 4` |
+| Cohesive | `leem, ...` | `>= 2.0` | Practical ML/CH mapping | `alpha = 2` |
+| Transition | `klei (zh), ...` | `< 2.5` | Transition soil rule | `alpha = 2` |
+| Transition | `klei (zh), ...` | `2.5 - <5.0` | Transition soil rule | `Es = 4qc - 5`, so `alpha = (4qc - 5) / qc` |
+| Transition | `klei (zh), ...` | `>= 5.0` | Transition soil rule capped beyond formula range | `alpha = 2` |
+| Transition | `leem (zh), ...` | `< 2.5` | Transition soil rule | `alpha = 2` |
+| Transition | `leem (zh), ...` | `2.5 - <5.0` | Transition soil rule | `Es = 4qc - 5`, so `alpha = (4qc - 5) / qc` |
+| Transition | `leem (zh), ...` | `>= 5.0` | Transition soil rule capped beyond formula range | `alpha = 2` |
+| Transition | `zand (lh), ...` | `< 2.5` | Transition soil rule | `alpha = 2` |
+| Transition | `zand (lh), ...` | `2.5 - <5.0` | Transition soil rule | `Es = 4qc - 5`, so `alpha = (4qc - 5) / qc` |
+| Transition | `zand (lh), ...` | `>= 5.0` | Transition soil rule capped beyond formula range | `alpha = 2` |
+| Granular | `zand, ...` | `<= 10` | Normally consolidated sand | `Es = 4qc`, so `alpha = 4` |
+| Granular | `zand, ...` | `> 10 - <= 50` | Normally consolidated sand | `Es = 2qc + 20`, so `alpha = (2qc + 20) / qc` |
+| Granular | `zand, ...` | `> 50` | Normally consolidated sand | `Es = 120`, so `alpha = 120 / qc` |
+| Granular | `grind, ...` | `<= 10` | Granular mapped to NC sand rule | `Es = 4qc`, so `alpha = 4` |
+| Granular | `grind, ...` | `> 10 - <= 50` | Granular mapped to NC sand rule | `Es = 2qc + 20`, so `alpha = (2qc + 20) / qc` |
+| Granular | `grind, ...` | `> 50` | Granular mapped to NC sand rule | `Es = 120`, so `alpha = 120 / qc` |
+| Granular | `grind (kh), ...` | `<= 10` | Granular mapped to NC sand rule | `Es = 4qc`, so `alpha = 4` |
+| Granular | `grind (kh), ...` | `> 10 - <= 50` | Granular mapped to NC sand rule | `Es = 2qc + 20`, so `alpha = (2qc + 20) / qc` |
+| Granular | `grind (kh), ...` | `> 50` | Granular mapped to NC sand rule | `Es = 120`, so `alpha = 120 / qc` |
 
-**Overgangsgronden** (kleihoudend zand, zandhoudend leem):
-```
-qc < 2.5 MPa  →  alpha = 2  →  Es = 2 * qc
-2.5 < qc < 5.0 MPa  →  Es = 4*qc - 5  (MPa)   [not a constant alpha]
-```
-Only use if confirmed by borings, lab tests, or geological map.
-
-**Zandgronden** — Es derived directly (not as alpha * qc):
-```
-Normally consolidated:
-  qc < 10 MPa   →  Es = 4 * qc              [back-calc alpha ≈ 4]
-  10-50 MPa     →  Es = 2*qc + 20           [back-calc alpha decreases with qc]
-  qc > 50 MPa   →  Es = 120 MPa (capped)
-
-Overconsolidated (OC):
-  qc < 50 MPa   →  Es = 5 * qc              [alpha = 5]
-  qc > 50 MPa   →  Es = 250 MPa (capped)
-```
-
-**Implementation mapping to CPT types:**
-- Sand, Silty sand, Gravel → sand formula above (NC assumed; no OC toggle yet)
-- Clay → klei CL column by qc range
-- Soft clay → leem ML (α=4, qc<2)
-- Sandy clay → overgangsgronden formula
-- Peat / organic → veen OH (α=1.5 default)
+**Implementation assumptions:**
+- `klei (zh)` and `leem (zh)` are treated as **transition soils**, not as plain cohesive soils.
+- `zand (lh)` is treated as a **transition soil**.
+- `grind` and `grind (kh)` are treated as **granular soils**.
+- `w` is **not available in the app**, so peat / veen always defaults to `alpha = 1.5`.
+- Overconsolidated sand rules from SB260 are **not implemented** because the app has no OC/NC indicator; all sand and gravel use the **normally consolidated** branch.
 
 The Stage 4 UI provides a toggle: **A — Sanglerat (fixed)** vs **B — SB260 qc-dependent**. The computed alpha is shown per layer card with an inline override input. Engineer override takes absolute priority over both methods.
 
