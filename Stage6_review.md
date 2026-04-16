@@ -8,6 +8,275 @@ This is sufficient for all three options with minor additions. Where the origina
 
 ---
 
+## 0A. Current implemented engineering models in Stage 6
+
+The current Stage 6 implementation contains **four engineering applications**:
+
+1. **Bearing capacity**
+2. **Settlement**
+3. **Dewatering**
+4. **Beam / slab on elastic foundation**
+
+This section records the **mathematical model actually implemented today**, so the review remains aligned with the live application.
+
+### 0A.1 Bearing capacity — current implemented model
+
+The current bearing-capacity application evaluates shallow-foundation resistance versus founding depth using:
+
+- **Drained check**
+  ```
+  q_ult,d = c'·N_c·s_c + q'·N_q·s_q + 0.5·γ'·B·N_γ·s_γ
+  ```
+- **Undrained check**
+  ```
+  q_ult,u = q + 5.14·c_u·s_cu
+  ```
+
+with:
+- `q'` = effective surcharge at foundation depth
+- `γ'` = effective unit weight below the water table
+- `s_*` = footing-type shape factors used in the app
+
+In the current implementation, the drained bearing factors are evaluated as:
+```
+N_q = exp(π·tanφ') · tan²(45° + φ'/2)
+N_c = (N_q − 1) / tanφ'
+N_γ = 2·(N_q + 1)·tanφ'
+```
+
+The current app then converts ultimate resistance to the displayed design / allowable resistance as:
+```
+q_d       = q_ult / γ_Rd         # EC7 route
+q_allow   = q_ult / ξ            # global-system-factor route
+```
+
+So the present Stage 6 bearing module is mathematically a **resistance-side screening tool**:
+- it evaluates `q_ult`
+- converts that to `q_d` or `q_allow`
+- and optionally compares that against an applied stress in the UI
+
+For the Belgian EC7 route, the current application does:
+
+**DA1/1**
+```
+φ'_d = φ'_k
+c'_d = c'_k
+c_u,d = c_u,k
+γ_R = 1.0
+```
+
+**DA1/2**
+```
+tanφ'_d = tanφ'_k / 1.25
+c'_d    = c'_k / 1.25
+c_u,d   = c_u,k / 1.40
+γ_R = 1.0
+```
+
+and, in governing mode, takes:
+```
+q_d,drained   = min(q_d,DA1/1, q_d,DA1/2)      on the drained branch
+q_d,undrained = min(q_d,DA1/1, q_d,DA1/2)      on the undrained branch
+```
+
+So the current app does **not** simply pick one global DA1 combination and reuse it for both modes; it forms the governing drained and undrained envelopes separately.
+
+The current app applies the Belgian **DA1** philosophy as follows:
+- `DA1/1` = unfactored soil strength (`M1`)
+- `DA1/2` = reduced soil strength (`M2`)
+- governing mode = most onerous result of the two
+
+So, mathematically, the current implementation is:
+- **strength reduction on soil parameters for M2**
+- **no reduction on stiffness**
+- `γ_R = 1.0`
+- `γ_Rd` only as an optional model factor
+
+This means the present Stage 6 bearing module should be read as:
+- a **Belgian shallow-foundation ULS screening tool**
+- based on drained / undrained classical bearing-capacity formulas
+- with explicit DA1/1 and DA1/2 comparison
+
+### 0A.2 Settlement — current implemented model
+
+The current settlement module is implemented as a **centreline, one-dimensional constrained-settlement summation**:
+
+1. compute `q_net`
+2. compute `Δσ_v(z)` beneath the loaded area
+3. compute `E_oed(z)` at the mean stress state
+4. integrate:
+   ```
+   ΔS_i = (Δσ_v,i / E_oed,i) · Δz_i
+   S = Σ ΔS_i
+   ```
+
+The present implementation supports two stress routes:
+- **Boussinesq-based centreline stress**
+- **2:1 stress spread**
+
+The current settlement application evaluates settlement at:
+- the **strip centreline** for strip geometry
+- the **centre of the footprint** for rectangular / square / slab geometry
+
+So the current mathematics is:
+- not a full 2D settlement field
+- not edge settlement
+- not differential settlement between two points
+- but a **single vertical settlement line beneath the centre of the loaded area**
+
+For stress-dependent stiffness, the present implementation uses:
+```
+σ'_mean = σ'_v,0 + 0.5·Δσ_v
+E_oed(σ'_mean) = E_oed,ref · [(c'·cotφ' + σ'_mean)/(c'·cotφ' + p_ref)]^m
+```
+
+The current app defaults are:
+- **quasi-permanent SLS combination**
+- **CPT bottom** as the practical truncation setting
+
+### 0A.3 Dewatering — current implemented model
+
+The current dewatering application is implemented as an **SLS screening model** with two linked parts:
+
+1. **hydraulic drawdown estimate**
+2. **effective-stress and settlement response at the CPT**
+
+Hydraulically, the app currently uses:
+- **radial Dupuit / Thiem-style screening** for:
+  - single well
+  - equivalent-radius excavation
+- **linear screening interpolation** for:
+  - line dewatering trench
+
+The screening influence radius is:
+```
+R = C · s · √k
+```
+
+The settlement response is then derived from the CPT-side stress change:
+```
+Δσ'_v(z) = σ'_v,new(z) − σ'_v,old(z)
+ΔS = Σ [Δσ'_v / E_oed(σ'_mean)] · Δz
+```
+
+The current implementation contains **two total-stress assumptions**:
+
+**Conservative mode**
+```
+σ_v,new(z) = σ_v,old(z)
+u_new(z)   = γ_w · max(0, z − z'_w)
+σ'_v,new   = σ_v,old − u_new
+```
+
+**Realistic mode**
+between the old and new phreatic levels, total stress is reduced by switching:
+```
+γ_sat  →  γ
+```
+so both `σ_v` and `u` change.
+
+Therefore, the current dewatering module is mathematically not only:
+- a drawdown estimator
+but also:
+- a **paired stress-path comparison**
+  - conservative `σ_v` fixed
+  - realistic `γ_sat → γ`
+
+The current app reports both settlement outcomes explicitly so the sensitivity to this assumption is visible.
+
+### 0A.4 Beam / slab on elastic foundation — current implemented model
+
+The current structural-geotechnical application is a **1D strip / beam model**, not a 2D slab/plate model.
+
+So the implemented governing equations are:
+
+**Winkler**
+```
+EI · w'''' + k_s · b · w = q(x)
+```
+
+**Pasternak**
+```
+EI · w'''' − G_p · b · w'' + k_s · b · w = q(x)
+```
+
+The current app solves these numerically along a strip length `L`.
+
+Important consequence:
+- for **uniform full-length loading**, even Pasternak still admits nearly uniform settlement with low curvature, so bending moment can remain close to zero
+- the implemented Pasternak model does **not** by itself create large bending under a perfectly uniform free-strip load
+
+The subgrade model is currently linked to the CPT by:
+
+**Winkler stiffness**
+```
+k_s = (0.65 · E_s) / [B · (1 − ν_s²)] · (E_s·B^4 / (E_b·I_b))^(1/12)
+```
+
+**Pasternak shear coupling**
+```
+G_p = η · G_s,avg · H_p
+```
+
+with:
+```
+G_s,avg = E_s,avg / [2·(1 + ν_s)]
+H_p     = z_influence
+```
+
+and, in the current default implementation:
+```
+E_s = E_oed
+ν_s = 0
+=> G_s,avg = E_s,avg / 2
+```
+
+So the current Pasternak route is:
+- an implemented **1D screening extension**
+- not yet a continuum-calibrated Belgian design model
+- not a true 2D slab formulation
+
+### 0A.5 Reinforcement design — current implemented model
+
+The current beam/slab module already carries the structural output through to **ULS reinforcement design**.
+
+The implemented sequence is:
+
+1. derive `M_Ed` from the **ULS beam/foundation solve**
+2. convert materials to design values:
+   ```
+   f_cd = f_ck / γ_C
+   f_yd = f_yk / γ_S
+   ```
+3. compute effective depth:
+   ```
+   d = h − c_nom − φ_bar/2
+   ```
+4. compute required steel:
+   ```
+   μ      = M_Ed / (b·d²·f_cd)
+   ω      = 1 − √(1 − 2μ)
+   A_s,req = ω · b · d · f_cd / f_yd
+   ```
+5. compare with minimum reinforcement and take the governing value
+
+The current app also implements an **EC2 durability / cover route**, so the reinforcement calculation is not based on a manually guessed `c_nom` alone. Instead:
+- exposure class
+- design working life
+- detailing assumptions
+- EC2 structural class logic
+
+feed the nominal cover used in the reinforcement calculation.
+
+This is the same durability route later referenced in §10.5 and mirrored in the delivered `ec2_durability.py` helper: structural class selection, `c_min,dur` lookup from Table 4.4N, bond-cover check, then `Δc_dev`.
+
+So, mathematically, the present beam/slab application is already a coupled:
+- **soil stiffness model**
+- **strip-on-foundation response model**
+- **EC2 ULS reinforcement design**
+
+---
+
 ## 0. Input legend (used throughout §§1–9)
 
 Every pseudocode block below uses three tags:
@@ -234,6 +503,42 @@ For the sandy clay layers in your CSV: `c_v ≈ 1.7e-7 · 6094/9.81 ≈ 1.06e-4 
 - `ΔS_dewatering` total + per-layer + cumulative `S(z)` plot
 - (Optional) time curve `S(t)` for clay layers
 
+### 2.9A Current implemented dewatering form in the app
+
+The current app implementation expresses the dewatering result through the following delivered quantities:
+
+1. **Hydraulic profile**
+   - phreatic level depth below ground as a function of distance from:
+     - well centre
+     - excavation centroid
+     - trench axis
+
+2. **Stress response at the CPT**
+   - `σ_v,before(z)`
+   - `σ_v,after(z)`
+   - `σ'_v,before(z)`
+   - `σ'_v,after(z)`
+   - `Δσ'_v(z)`
+
+3. **Settlement response**
+   - total settlement at the CPT
+   - per-layer settlement contribution
+   - total settlement versus distance from source
+   - optional `S(t)` time curve
+
+The current app therefore does **not** present the dewatering output mainly as cumulative settlement versus depth anymore. The implemented public engineering output is:
+```
+S_total(x)
+```
+as a function of distance from the source, with the CPT location marked on that curve.
+
+The current app also computes and reports both:
+```
+S_conservative
+S_realistic
+```
+to show the effect of the selected total-stress assumption.
+
 ### 2.10 Inputs for Option A
 
 ```python
@@ -321,39 +626,34 @@ Let:
 ```
 m_N = B / z
 n_N = L / z
-R1  = √(m_N² + n_N² + 1)
-R2  = √(m_N² + n_N² + m_N²·n_N²)
-```
-Influence factor under the **corner**:
-```
-I_z = (1/4π) · {
-    [ (2·m_N·n_N·R1)/(R1² + m_N²·n_N²) ] · [(R1² + 1)/(R1² )] · ... 
-}
-```
-— this expression has a notational minefield. The clean, robust form (Newmark 1935, reproduced in Das/Bowles):
-```
-I_z = (1/4π) · [
-    ( 2·m_N·n_N·√(m_N² + n_N² + 1) ) / ( m_N² + n_N² + m_N²·n_N² + 1 ) 
-    · ( (m_N² + n_N² + 2) / (m_N² + n_N² + 1) )
-    + asin( (2·m_N·n_N·√(m_N² + n_N² + 1)) / (m_N² + n_N² + m_N²·n_N² + 1) )
-]
-```
-**Watchout**: when `m_N² + n_N² + 1 < m_N²·n_N²`, the `asin` argument exceeds 1 — you must use `atan` form instead (well known issue, see Das Chapter 5 or vulcanhammer.net). Safer universal form:
-
-```
 V   = m_N² + n_N² + 1
 V1  = m_N² · n_N²
-A   = (2·m_N·n_N·√V) / (V + V1)
-B_  = (V + 1) / (V + V1)        # note: not the footing width
-C_  = 2·m_N·n_N·√V / (V - V1)
+```
 
-if V >= V1:
-    I_z = (1/(4π)) · [ A · B_ + asin(A) ]
+Influence factor under the **corner**:
+```
+A        = (2·m_N·n_N·√V) / (V + V1)
+B_factor = (V + 1) / V          = (m_N² + n_N² + 2) / (m_N² + n_N² + 1)
+```
+
+Use the robust `atan`-branch form:
+```
+if V > V1:
+    atan_term = atan( 2·m_N·n_N·√V / (V − V1) )
+elif V < V1:
+    atan_term = atan( 2·m_N·n_N·√V / (V − V1) ) + π
 else:
-    I_z = (1/(4π)) · [ A · B_ + π − atan( (2·m_N·n_N·√V) / (V - V1) ) ]
+    atan_term = π/2
+
+I_z = (1/(4π)) · [ A · B_factor + atan_term ]
 
 Δσ_v,corner(z) = q_net · I_z
 ```
+
+Notes:
+- `m_N` and `n_N` are interchangeable; the result is symmetric in `B` and `L`.
+- The `V < V1` branch occurs for shallow, wide loaded areas. Many simplified reproductions silently return the principal value of `atan`, which is wrong in that regime.
+- An equivalent `asin` form exists, but the `atan + π` branch above is numerically safer and avoids the `asin(A) > 1` pathology.
 
 Under the **centre** of a rectangle, use the 4-quadrant superposition with `(B/2) × (L/2)` sub-rectangles:
 ```
@@ -424,6 +724,45 @@ Same Terzaghi 1D consolidation formulas apply.
 - Total `S`
 - Truncation depth + criterion
 - (Optional) `S(t)` for clay layers
+
+### 3.8A Current implemented settlement form in the app
+
+The current app implementation should be understood as:
+
+**Evaluation location**
+```
+settlement = vertical settlement beneath the centre of the loaded area
+```
+meaning:
+- strip footing → centreline in section
+- rectangle / square / slab → centre of plan footprint
+
+So the current app does **not** yet calculate:
+- edge settlement
+- average settlement over the whole loaded area
+- differential settlement between two distinct points
+
+The current implemented outputs are:
+- total settlement `S_total`
+- per-layer settlement contribution
+- sublayer audit table
+- cumulative settlement versus depth
+- optional settlement time curve
+
+The current app also implements these practical settings:
+- stress method selectable:
+  - Boussinesq
+  - 2:1
+- truncation setting selectable:
+  - `Δσ_v < 10% σ'_v,0`
+  - `Δσ_v < 20% q_net`
+  - `CPT bottom`
+
+and currently defaults to:
+```
+truncation = CPT bottom
+```
+in the user interface.
 
 ### 3.9 Inputs for Option B
 
@@ -713,11 +1052,61 @@ G_p ≈ η · G_s,avg · H_p
 where:
 - `E_s,avg` comes from the CPT-derived stiffness profile, as in §4.1
 - `ν_s` is the same Poisson ratio used in the `E_s` conversion
-- `η` is an empirical shape/calibration factor, order `0.5 … 1.5`
+- `η` is an empirical shape/calibration factor
 
 This gives the right units:
 ```
 [kPa] · [m] = [kN/m]
+```
+
+For the current screening implementation, keeping `η = 1.0` as the default is reasonable. But `η` should be presented as **calibration-dependent**, not as a universal soil constant. Kerr (1964), for example, derives `η = 1/6` for a plane-strain shear layer of finite thickness, which is much lower than the broad screening range often used in practice. So the practical reading for the app is:
+- `η = 1.0` default for first-pass screening
+- override or calibrate `η` if better benchmark data or FE back-analysis is available
+
+**Current app implementation note**
+
+In the present Stage 6 implementation, the Pasternak screening parameter is derived exactly as:
+```
+G_p = η · G_s,avg · H_p
+```
+with:
+- `H_p = z_influence`
+- `z_influence` = the user input `Influence depth for Es averaging (m)`
+- `G_s,avg = E_s,avg / [2·(1 + ν_s)]`
+
+The app obtains `E_s,avg` as a thickness-weighted average over the zone:
+```
+z = Df  ...  Df + z_influence
+```
+using the current CPT-derived stiffness profile at the local effective stress.
+
+So, in practical app terms:
+- `H_p` = “how thick the active averaging zone below the foundation is”
+- `G_s,avg` = “the average shear modulus of the soil in that same zone”
+
+By default, the app uses the route:
+```
+E_s = E_oed
+ν_s = 0
+```
+which means:
+```
+G_s,avg = E_s,avg / 2
+```
+
+So under the default Stage 6 beam/slab settings, the inferred Pasternak parameter becomes:
+```
+G_p = η · 0.5 · E_s,avg · H_p
+```
+
+Example:
+```
+E_s,avg = 6016 kPa
+ν_s = 0
+G_s,avg = 3008 kPa
+H_p = 2.0 m
+η = 1.0
+=> G_p = 1.0 · 3008 · 2.0 = 6016 kN/m
 ```
 
 **Important engineering note:** this `G_p` route is a screening approximation, not a code-calibrated Belgian design value. If you implement it, the UI should state clearly that the Pasternak shear parameter is inferred from CPT-derived stiffness and should be treated as **experimental / model-dependent** unless calibrated against a more advanced continuum or FE model.
@@ -1030,17 +1419,23 @@ def boussinesq_rect_corner(q_net, B, L, z):
     V  = mN**2 + nN**2 + 1.0
     V1 = (mN*nN)**2
     A  = (2*mN*nN*sqrt(V)) / (V + V1)
-    Bc = (V + 1) / (V + V1)
-    if V >= V1:
-        Iz = (1.0/(4*pi)) * (A*Bc + asin(A))
+    Bc = (V + 1.0) / V
+    num = 2*mN*nN*sqrt(V)
+    if V == V1:
+        atan_term = pi / 2.0
     else:
-        num = 2*mN*nN*sqrt(V)
-        Iz = (1.0/(4*pi)) * (A*Bc + pi - atan(num/(V - V1)))
+        atan_term = atan(num/(V - V1))
+        if V < V1:
+            atan_term += pi
+    Iz = (1.0/(4*pi)) * (A*Bc + atan_term)
     return q_net * Iz
 
-def settlement(profile, footing, q_net):
+def settlement(profile, footing, q_net, truncation_rule="10%_sigma_eff"):
     """Centreline settlement of rectangular footing B x L at founding depth Df."""
     S = 0.0
+    audit = []
+    z_trunc = None
+    cause = None
     for s in profile:
         if s.z_mid < footing.Df: continue
         z_rel = s.z_mid - footing.Df
@@ -1051,23 +1446,36 @@ def settlement(profile, footing, q_net):
         deps = dsig / Eoed
         dS   = deps * s.dz
         S   += dS
-        s.dsig = dsig; s.Eoed = Eoed; s.dS = dS
-        # truncation check
-        if dsig < 0.10 * s.sigma_eff: break
-    return S
+        audit.append(dict(
+            z_mid=s.z_mid, sigma_eff_0=s.sigma_eff,
+            delta_sigma_v=dsig, sigma_eff_f=s.sigma_eff + dsig,
+            E_oed=Eoed, delta_eps=deps, dS=dS,
+        ))
+        if truncation_rule == "10%_sigma_eff" and dsig < 0.10 * s.sigma_eff:
+            z_trunc, cause = s.z_mid, "Δσ_v < 10% σ'_v,0"
+            break
+        elif truncation_rule == "20%_q_net" and dsig < 0.20 * q_net:
+            z_trunc, cause = s.z_mid, "Δσ_v < 20% q_net"
+            break
+        # "CPT_bottom" -> loop until profile ends naturally
+    return dict(S_total=S, per_sublayer=audit,
+                z_truncation=z_trunc, truncation_cause=cause)
 
 
 # === Option C: Winkler beam ===
 def ks_vesic(Es, nu_s, B, EbIb):
     return (0.65 * Es) / (B * (1 - nu_s**2)) * (Es * B**4 / EbIb)**(1/12)
 
-def Es_average(profile, Df, B, mode="oedometric"):
+def oedometric_to_young(E_oed, nu):
+    return E_oed * (1 + nu) * (1 - 2*nu) / (1 - nu)
+
+def Es_average(profile, Df, B, mode="oedometric", nu=0.30):
     z_end = Df + 2*B
     num = 0.0; den = 0.0
     for s in profile:
         if s.z_mid < Df or s.z_mid > z_end: continue
         Eoed = E_oed_at(s.sigma_eff, s.layer)
-        E = Eoed if mode == "oedometric" else Eoed * (1+0.3)*(1-0.6)/(1-0.3)  # ν=0.3
+        E = Eoed if mode == "oedometric" else oedometric_to_young(Eoed, nu)
         num += E * s.dz; den += s.dz
     return num/den
 
@@ -1095,6 +1503,28 @@ def design_reinforcement(M_Ed, h, c_nom, phi_bar, fck, fyk, b_w=1000, gammaC=1.5
     fctm   = 0.30 * fck**(2/3)
     As_min = max(0.26*fctm/fyk, 0.0013) * b_w * d
     return dict(d=d, mu=mu, As_req=As_req, As_min=As_min, As=max(As_req, As_min))
+
+def _test_boussinesq():
+    """Regression checks against published values."""
+    tol = 1e-3
+
+    I = boussinesq_rect_corner(1.0, 1.0, 1.0, 1.0)
+    assert abs(I - 0.1752) < tol
+
+    sig = boussinesq_rect_corner(80.0, 2.0, 4.0, 5.0)
+    assert abs(sig - 7.45) < 0.01
+
+    sig_c = 4.0 * boussinesq_rect_corner(1.0, 1.0, 1.0, 2.0)
+    assert abs(sig_c - 0.336) < tol
+
+    I_v = boussinesq_rect_corner(1.0, 2.0, 2.0, 1.0)
+    assert abs(I_v - 0.2325) < tol
+
+    I_inf = boussinesq_rect_corner(1.0, 100.0, 100.0, 1.0)
+    assert abs(I_inf - pi/8) < 1e-3
+
+    sig_strip = boussinesq_strip_centreline(1.0, 2.0, 1.0)
+    assert abs(sig_strip - 0.8183) < tol
 
 
 # === Option A: Dewatering ===
@@ -1126,9 +1556,13 @@ def dewatering_settlement(profile, z_w_old, z_w_new, gamma_w=9.81):
 
 1. **Self-weight sanity**: integrate `γ(z)` and recover in-situ `σ'_v` matching your CSV-generating program within 0.1 kPa.
 2. **Boussinesq closed form**: for strip width B=2 m, q=100 kPa, z=2 m → `Δσ_v ≈ 55 kPa` (classic result, check against any textbook figure).
-3. **Winkler point load**: for `P=100 kN`, `EI=1.5e5 kN·m²` (0.4×0.6 m concrete beam), `k_s=20 000 kN/m³`, `b=0.4 m` → `λ ≈ 1.32 m`, `M_max ≈ 33 kNm`. Your code should reproduce this.
-4. **Settlement regression**: synthetic uniform layer E_oed=10 MPa, q_net=100 kPa, 2×2 m footing → hand calc via 2:1 method should match within 20% of your Boussinesq implementation.
-5. **Vesić dimensional check**: `k_s` should land in the 5 000–100 000 kN/m³ range for typical soils. Way off → check unit conversion on `E_s·B⁴/(E_b·I_b)`.
+3. **Rectangular corner benchmark**: for `m = n = 1`, `I_z = 0.1752`; for `m = n = 2`, `I_z = 0.2325`. These two checks catch both the wrong `B_factor` and the missing `+π` branch.
+4. **Worked example benchmark**: `q = 80 kPa`, `B = 2 m`, `L = 4 m`, `z = 5 m` → `Δσ_v,corner ≈ 7.45 kPa`.
+5. **Rectangular centreline superposition**: `B = L = 2 m`, `z = 2 m`, `q = 1 kPa` → `Δσ_v,center ≈ 0.336 kPa`.
+6. **Large-footing limit**: `I_z → π/8 ≈ 0.2498` as `m, n → ∞`.
+7. **Winkler point load**: for `P=100 kN`, `EI=1.5e5 kN·m²` (0.4×0.6 m concrete beam), `k_s=20 000 kN/m³`, `b=0.4 m` → `λ ≈ 1.32 m`, `M_max ≈ 33 kNm`. Your code should reproduce this.
+8. **Settlement regression**: synthetic uniform layer E_oed=10 MPa, q_net=100 kPa, 2×2 m footing → hand calc via 2:1 method should match within 20% of your Boussinesq implementation.
+9. **Vesić dimensional check**: `k_s` should land in the 5 000–100 000 kN/m³ range for typical soils. Way off → check unit conversion on `E_s·B⁴/(E_b·I_b)`.
 
 ---
 
@@ -1166,6 +1600,18 @@ def dewatering_settlement(profile, z_w_old, z_w_new, gamma_w=9.81):
 
 **Drop or deemphasise:**
 - Poulos & Davis (1974) — excellent but overkill for first version; add back if you implement elastic (Young's-modulus-based) settlement later.
+
+---
+
+## 9. Transition from implemented characteristic models to code checks
+
+Sections `0A ... 8` describe the **implemented physical models** now used in Stage 6: bearing resistance, settlement, dewatering response, and strip-on-foundation bending. The next section changes layer from soil/structure mechanics to **code-formatting of actions, strengths, and design values**.
+
+So the split is:
+- Sections `0A ... 8` = how the app computes the engineering response
+- Section `10` = how characteristic values are turned into SLS / ULS design checks
+
+This keeps the mechanics and the Eurocode factor route clearly separated.
 
 ---
 
@@ -1304,6 +1750,8 @@ K0_nc,design = K0_nc,characteristic                  (no γ applied)
 **Consequence for your code:** when routing the CSV through the ULS pipeline, reduce strengths only. Leave the stiffness columns untouched.
 
 ### 10.5 EN 1992-1-1 — Concrete and reinforcement (Option C, §4.9)
+
+The current app route for `c_nom` follows the EC2 durability logic described in §4.9 and mirrors the same Table 4.3N / Table 4.4N sequence as the delivered `ec2_durability.py` helper: choose structural class, read `c_min,dur`, combine with bond cover `c_min,b`, then add `Δc_dev`.
 
 #### 10.5.1 Partial factors (Belgian NA and EC2 main text agree)
 
