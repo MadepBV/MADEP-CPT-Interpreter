@@ -1,3 +1,6 @@
 # allow crawling everything by default
 User-agent: *
 Disallow:
+
+Host: https://cpt.madep.be
+Sitemap: https://cpt.madep.be/sitemap.xml

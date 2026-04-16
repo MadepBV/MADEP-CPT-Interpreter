@@ -1,449 +1,18 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CPT Interpreter — MADEP</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<style>
-:root{
-  --ac:#1D9E75;--acl:#E1F5EE;--acb:#5DCAA5;--acd:#0F6E56;
-  --wn:#BA7517;--wnl:#FAEEDA;
-  --bg:#ffffff;--bg2:#f6f6f4;--bg3:#f0efeb;
-  --tx:#1a1a18;--tx2:#6b6b68;--tx3:#9a9a96;
-  --bd:rgba(0,0,0,0.11);--bd2:rgba(0,0,0,0.20);
-  --r:8px;--r2:12px;
-  font-family:'Inter',system-ui,sans-serif;
-}
-@media(prefers-color-scheme:dark){:root{
-  --bg:#1a1a18;--bg2:#242420;--bg3:#2c2c28;
-  --tx:#f0efeb;--tx2:#9a9a96;--tx3:#6b6b68;
-  --bd:rgba(255,255,255,0.10);--bd2:rgba(255,255,255,0.18);
-}}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--tx);font-size:14px;line-height:1.5}
-
-.nav{display:flex;align-items:stretch;border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:20;background:var(--bg);height:52px;overflow-x:auto}
-.si{display:flex;align-items:center;gap:8px;padding:0 20px;border-right:1px solid var(--bd);font-size:12px;color:var(--tx2);cursor:pointer;white-space:nowrap;flex-shrink:0;position:relative;transition:background .1s}
-.si:hover{background:var(--bg2)}
-.si.active{color:var(--tx);background:var(--bg2)}
-.si.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--ac)}
-.si.done{color:var(--tx)}
-.si.locked{opacity:.32;pointer-events:none}
-.sn{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--bd2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
-.si.active .sn{background:var(--ac);border-color:var(--ac);color:#fff}
-.si.done .sn{background:var(--acl);border-color:var(--acb);color:var(--acd)}
-
-.wrap{max-width:1280px;margin:0 auto;padding:24px}
-.panel{display:none}.panel.active{display:block}
-
-.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1px solid var(--bd2);border-radius:var(--r);background:transparent;color:var(--tx);font-size:13px;font-weight:500;cursor:pointer;transition:background .1s}
-.btn:hover{background:var(--bg2)}
-.btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
-.btn.pri:hover{background:var(--acd)}
-.btn.sm{padding:4px 10px;font-size:12px}
-.togbtn{padding:5px 12px;font-size:12px;font-weight:500;border:none;background:transparent;color:var(--tx2);cursor:pointer;transition:.1s}
-.togbtn:hover{background:var(--bg2);color:var(--tx)}
-.togbtn.active{background:var(--ac);color:#fff}
-
-.dz{border:1.5px dashed var(--bd2);border-radius:var(--r2);padding:40px 24px;text-align:center;cursor:pointer;transition:.15s}
-.dz:hover,.dz.drag{border-color:var(--acb);background:var(--acl)}
-
-.sec{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap}
-.sec-title{font-size:15px;font-weight:600}
-.sec-sub{font-size:12px;color:var(--tx2);margin-top:3px}
-
-.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:14px}
-.mi{background:var(--bg2);border-radius:var(--r);padding:8px 12px}
-.mi-l{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
-.mi-v{font-size:13px;font-weight:500}
-
-/* Control row — WT, elevation, min-thickness */
-.ctrl-row{display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 14px;background:var(--bg2);border-radius:var(--r);flex-wrap:wrap}
-.ctrl-lbl{font-size:12px;color:var(--tx2);flex-shrink:0}
-.ctrl-num{width:72px;padding:4px 7px;border:1px solid var(--bd2);border-radius:var(--r);font-size:13px;background:var(--bg);color:var(--tx)}
-.ctrl-sep{width:1px;height:28px;background:var(--bd);margin:0 4px;flex-shrink:0}
-
-/* Charts + column layout */
-.chart-area{display:grid;grid-template-columns:80px 1fr 1fr 1fr;gap:8px;margin-top:12px;align-items:start}
-@media(max-width:700px){.chart-area{grid-template-columns:60px 1fr 1fr}}
-.cc{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:10px}
-.ct{font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
-
-/* Layer column (SVG-based) */
-.col-card{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:10px;overflow:hidden}
-#layerColSvg{width:100%;display:block}
-
-.mcards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
-.mc{border:1.5px solid var(--bd);border-radius:var(--r);padding:14px;cursor:pointer;transition:.1s}
-.mc:hover{border-color:var(--acb)}
-.mc.sel{border-color:var(--ac);background:var(--acl)}
-.mc h3{font-size:13px;font-weight:600;margin-bottom:5px}
-.mc p{font-size:12px;color:var(--tx2);line-height:1.5}
-
-.mrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.met{background:var(--bg2);border-radius:var(--r);padding:8px 12px}
-.met-l{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
-.met-v{font-size:18px;font-weight:600}
-
-.tbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
-.tbl th{text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bd);white-space:nowrap;text-transform:uppercase;letter-spacing:.03em}
-.tbl td{padding:5px 8px;border-bottom:1px solid var(--bd);vertical-align:middle}
-.tbl tr:last-child td{border-bottom:none}
-.tbl tr:hover td{background:var(--bg2)}
-
-.sb{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
-.s-peat  {background:#C0DD97;color:#27500A}
-.s-sclay {background:#B5D4F4;color:#0C447C}
-.s-clay  {background:#AFA9EC;color:#26215C}
-.s-sclayl{background:#FAC775;color:#633806}
-.s-ssand {background:#F4C0D1;color:#4B1528}
-.s-sand  {background:#D3D1C7;color:#2C2C2A}
-.s-gravel{background:#F0997B;color:#4A1B0C}
-
-.ed{width:60px;padding:3px 6px;border:1px solid var(--bd2);border-radius:5px;font-size:11px;background:var(--bg);color:var(--tx);text-align:right}
-.ed.ovr{border-color:var(--wn);font-style:italic;color:var(--wn)}
-input[type=range]{accent-color:var(--ac)}
-
-.mc2{border:1px solid var(--bd);border-radius:var(--r);padding:14px;margin-bottom:10px}
-.mc2-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
-.mc2-body{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media(max-width:580px){.mc2-body{grid-template-columns:1fr}}
-@media(max-width:900px){.mc2 .mc2-body[style*="grid-template-columns:1fr 1fr 1fr"]{grid-template-columns:1fr 1fr}}
-.mc2-sec{font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--bd)}
-.pt{width:100%;font-size:12px;border-collapse:collapse}
-.pt td{padding:3px 0;vertical-align:top}
-.pt td:first-child{color:var(--tx2);padding-right:10px;white-space:nowrap;font-size:11px}
-.pt td:last-child{text-align:right;font-weight:500}
-.pt tr.key td:last-child{color:var(--acd)}
-
-.foot{display:flex;align-items:center;justify-content:space-between;margin-top:22px;padding-top:14px;border-top:1px solid var(--bd);gap:12px;flex-wrap:wrap}
-.info{font-size:12px;color:var(--tx2);padding:8px 12px;background:var(--wnl);border-radius:var(--r);border-left:2px solid var(--wn);margin-bottom:10px}
-
-/* Stage 2/3 combined view: classification result + layer preview side by side */
-.class-layout{display:grid;grid-template-columns:1fr 260px;gap:16px;align-items:start;margin-top:14px}
-@media(max-width:800px){.class-layout{grid-template-columns:1fr}}
-
-.preview-wrap{position:relative}
-.section-wrap{position:relative}
-.section-tip{
-  position:absolute;display:none;pointer-events:none;z-index:30;
-  min-width:220px;max-width:280px;padding:10px 12px;border-radius:10px;
-  background:rgba(26,26,24,0.94);color:#f4f3ef;border:1px solid rgba(255,255,255,0.08);
-  box-shadow:0 12px 32px rgba(0,0,0,0.18);font-size:11px;line-height:1.45
-}
-.section-tip strong{display:block;font-size:11px;font-weight:600;margin-bottom:4px;color:#fff}
-.section-tip .mut{color:rgba(255,255,255,0.68)}
-.section-tip .row{display:flex;justify-content:space-between;gap:12px}
-.section-tip .row span:last-child{font-weight:500;color:#fff;text-align:right}
-.section-layer-hit{cursor:pointer}
-</style>
-</head>
-<body>
-
-<!-- ══ PROJECT BANNER ══════════════════════════════════════════════════ -->
-<div id="banner" style="background:var(--bg2);border-bottom:1px solid var(--bd);padding:0 16px;display:flex;align-items:center;gap:0;min-height:44px;flex-wrap:wrap">
-  <!-- Project name -->
-  <span style="font-size:12px;font-weight:600;color:var(--tx2);margin-right:10px;white-space:nowrap">📁</span>
-  <input id="projName" type="text" value="CPT Project"
-    oninput="PROJECT.name=this.value"
-    style="font-size:12px;font-weight:600;border:none;background:transparent;color:var(--tx);width:120px;padding:0;outline:none">
-
-  <div style="width:1px;height:24px;background:var(--bd);margin:0 12px"></div>
-
-  <!-- CPT tabs -->
-  <div id="cptTabs" style="display:flex;align-items:stretch;gap:2px;flex:1;overflow-x:auto"></div>
-  <button class="btn sm" onclick="addCpt()" style="margin-left:8px;flex-shrink:0">+ Add CPT</button>
-
-  <div style="width:1px;height:24px;background:var(--bd);margin:0 12px"></div>
-
-  <!-- Phase switcher -->
-  <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden;flex-shrink:0">
-    <button id="phaseA" class="togbtn active" onclick="setPhase('analysis')">Analysis</button>
-    <button id="phaseB" class="togbtn"        onclick="setPhase('correlation')">Correlatie</button>
-    <button id="phaseC" class="togbtn"        onclick="setPhase('section')">Doorsnede</button>
-  </div>
-</div>
-
-<!-- ══ PHASE B — CORRELATION ══════════════════════════════════════════ -->
-<div id="phaseCorr" style="display:none;padding:20px 24px;max-width:1280px;margin:0 auto">
-  <div class="sec">
-    <div><div class="sec-title">Cross-CPT correlatie</div>
-      <div class="sec-sub">Verbindt lagen over CPTs op basis van absolute hoogte (m TAW), grondsoort en qc. Vereist bevestigde maaiveldshoogte per CPT.</div>
-    </div>
-    <button class="btn pri sm" onclick="runCorrelation()">Auto-correleer</button>
-  </div>
-  <div id="corrWarnings"></div>
-  <div id="corrTable" style="overflow-x:auto;margin-top:12px"></div>
-</div>
-
-<!-- ══ PHASE C — CROSS-SECTION ════════════════════════════════════════ -->
-<div id="phaseSection" style="display:none;padding:20px 24px;max-width:1280px;margin:0 auto">
-  <div class="sec">
-    <div><div class="sec-title">Geologische doorsnede</div>
-      <div class="sec-sub">Projectie van gecorreleerde lagen op een verticaal vlak. Absolute hoogte (m TAW) op Y-as, afstand langs de doorsnede op X-as.</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <span class="ctrl-lbl">Verticale schaal ×</span>
-      <input type="range" id="vexag" min="1" max="10" step="0.5" value="2" style="width:80px"
-             oninput="document.getElementById('vexagV').textContent=this.value;renderSection()">
-      <span id="vexagV" style="font-size:12px;min-width:20px">2</span>
-      <button class="btn sm" onclick="exportSectionSVG()">SVG ↓</button>
-    </div>
-  </div>
-  <div id="sectionCanvas" class="section-wrap" style="overflow:auto;border:1px solid var(--bd);border-radius:var(--r);background:var(--bg)">
-    <svg id="sectionSvg" style="display:block;min-width:600px"></svg>
-    <div id="sectionTip" class="section-tip"></div>
-  </div>
-</div>
-
-<nav class="nav" id="nav">
-  <div class="si active" data-s="0"><div class="sn">1</div>Load &amp; preview</div>
-  <div class="si locked" data-s="1"><div class="sn">2</div>Classification</div>
-  <div class="si locked" data-s="2"><div class="sn">3</div>Layer identification</div>
-  <div class="si locked" data-s="3"><div class="sn">4</div>Model parameters</div>
-  <div class="si locked" data-s="4"><div class="sn">5</div>Tuning <span style="font-size:9px;opacity:.7">exp.</span></div>
-</nav>
-
-<div class="wrap">
-
-<!-- ══════════════ STAGE 1 ══════════════ -->
-<div class="panel active" id="p0">
-  <div class="sec">
-    <div>
-      <div class="sec-title">Load CPT — GEF file</div>
-      <div class="sec-sub">Belgian/Dutch GEF. Quantity IDs: 1=depth, 2=qc, 3=fs, 4=Rf, 6=u2. Water table from MEASUREMENTVAR 14.</div>
-    </div>
-  </div>
-  <div class="dz" id="dz" onclick="document.getElementById('fi').click()">
-    <div style="font-size:28px;margin-bottom:10px">📂</div>
-    <div style="font-size:14px;font-weight:600;margin-bottom:4px">Drop .GEF file here or click to browse</div>
-    <div style="font-size:12px;color:var(--tx2)">Space-delimited, scientific notation. Column order from COLUMNINFO quantity IDs — not assumed.</div>
-  </div>
-  <input type="file" id="fi" accept=".gef,.GEF,.txt" style="display:none" onchange="loadGEF(event)" multiple>
-  <div style="margin-top:10px;text-align:center">
-    <span style="font-size:12px;color:var(--tx2)">No file?&nbsp;</span>
-    <button class="btn sm" onclick="loadDemo()">Load demo — anonymous profile</button>
-  </div>
-
-  <div id="s1body" style="display:none">
-    <div class="mgrid" id="mgrid"></div>
-
-    <!-- Controls: surface elevation + water table + coordinates -->
-    <div class="ctrl-row" id="ctrlRow" style="flex-wrap:wrap;row-gap:8px">
-      <!-- Row 1: elevation + WT -->
-      <span class="ctrl-lbl">Surface elev. (m TAW):</span>
-      <input class="ctrl-num" type="number" id="elevN" step="0.01" placeholder="e.g. 69.97"
-             oninput="setElev(+this.value)" style="width:88px">
-      <span id="elev-src" style="font-size:11px;color:var(--tx3)"></span>
-
-      <div class="ctrl-sep"></div>
-
-      <span class="ctrl-lbl">Water table (m below surface):</span>
-      <input type="range" id="wtR" min="0" max="15" step="0.05" value="1.7"
-             style="width:120px" oninput="setWT(+this.value,false)">
-      <input class="ctrl-num" type="number" id="wtN" min="0" max="30" step="0.05" value="1.7"
-             oninput="setWT(+this.value,true)">
-      <span style="font-size:12px;color:var(--tx2)">m</span>
-      <span id="wt-taw" style="font-size:11px;color:var(--tx3)"></span>
-      <span id="wt-src" style="font-size:11px;color:var(--tx3)"></span>
-
-      <!-- Row 2: XY coordinates (for multi-CPT correlation) -->
-      <div style="width:100%;height:0;flex-basis:100%"></div>
-      <span class="ctrl-lbl">Coördinaten (m):</span>
-      <span style="font-size:12px;color:var(--tx2)">X</span>
-      <input class="ctrl-num" type="number" id="cptX" step="0.1" placeholder="easting"
-             style="width:96px" oninput="setCptCoord('x',this.value)">
-      <span style="font-size:12px;color:var(--tx2)">Y</span>
-      <input class="ctrl-num" type="number" id="cptY" step="0.1" placeholder="northing"
-             style="width:96px" oninput="setCptCoord('y',this.value)">
-      <span style="font-size:11px;color:var(--tx3)">Lokaal stelsel of RD — voor cross-sectie correlatie</span>
-    </div>
-
-    <!-- Charts -->
-    <div class="chart-area" id="chartArea">
-      <div class="col-card">
-        <div class="ct">layers</div>
-        <svg id="layerColSvg" viewBox="0 0 60 400"></svg>
-      </div>
-      <div class="cc"><div class="ct">qc (MPa)</div><div style="position:relative;height:380px"><canvas id="cQc" role="img" aria-label="qc vs depth">qc profile</canvas></div></div>
-      <div class="cc"><div class="ct">fs (kPa)</div><div style="position:relative;height:380px"><canvas id="cFs" role="img" aria-label="fs vs depth">fs profile</canvas></div></div>
-      <div class="cc"><div class="ct">Rf (%)</div><div style="position:relative;height:380px"><canvas id="cRf" role="img" aria-label="Rf vs depth">Rf profile</canvas></div></div>
-    </div>
-
-    <div class="foot">
-      <span id="finfo" style="font-size:12px;color:var(--tx2)"></span>
-      <button class="btn pri" onclick="goS(1)">Next: Classification →</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════ STAGE 2 ══════════════ -->
-<div class="panel" id="p1">
-  <div class="sec">
-    <div>
-      <div class="sec-title">Classification method</div>
-      <div class="sec-sub">Choose a method, set minimum layer thickness, then click Apply.</div>
-    </div>
-  </div>
-  <div class="mcards" style="grid-template-columns:1fr 1fr 1fr">
-    <div class="mc sel" id="mRob" onclick="selM('robertson')">
-      <h3>Robertson (1990) — SBT / Ic</h3>
-      <p>Normalised Qt and Fr. Stress-dependent — accounts for depth.</p>
-    </div>
-    <div class="mc" id="mCur" onclick="selM('cur3')">
-      <h3>CUR 3 / NEN 6740</h3>
-      <p>Direct qc and Rf ranges. No stress normalisation. Practical CPT grouping method; layering follows changes in the broader CUR soil-type buckets.</p>
-    </div>
-    <div class="mc" id="mSB" onclick="selM('sb260')">
-      <h3>NEN Tabel 3 / EC7</h3>
-      <p>EC7 Table 3 soil families from qc and Rf. Often aligns better with Eurocode parameter sets and can therefore fit subsequent parameter selection better.</p>
-    </div>
-  </div>
-
-  <!-- Min layer thickness control -->
-  <div class="ctrl-row" style="margin-top:14px">
-    <span class="ctrl-lbl">Minimum layer thickness:</span>
-    <input type="range" id="minThkR" min="0.05" max="2.0" step="0.05" value="0.50"
-           style="width:140px" oninput="setMinThk(+this.value,false)">
-    <input class="ctrl-num" type="number" id="minThkN" min="0.05" max="2.0" step="0.05" value="0.50"
-           oninput="setMinThk(+this.value,true)">
-    <span style="font-size:12px;color:var(--tx2)">m</span>
-    <div class="ctrl-sep"></div>
-    <label style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--tx2);cursor:pointer">
-      <input type="checkbox" id="smartMergeChk" checked onchange="setSmartMerge(this.checked)">
-      Smart layer merge
-    </label>
-    <span id="minThkInfo" style="font-size:11px;color:var(--tx3)"></span>
-  </div>
-
-  <div class="class-layout" id="classLayout" style="display:none">
-    <div>
-      <div class="mrow" id="cmet"></div>
-      <div style="margin-top:14px;font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Preview — first 25 classified rows</div>
-      <div style="overflow-x:auto;max-height:320px;overflow-y:auto;border:1px solid var(--bd);border-radius:var(--r)">
-        <table class="tbl" style="margin-top:0"><thead style="position:sticky;top:0;background:var(--bg);z-index:2">
-          <tr><th>depth (m)</th><th>TAW (m)</th><th>qc (MPa)</th><th>fs (kPa)</th><th>Rf (%)</th><th>Soil type</th><th>Sub-type</th><th>Ic</th></tr>
-        </thead><tbody id="cbody"></tbody></table>
-      </div>
-    </div>
-    <div>
-      <div class="ct" style="margin-bottom:8px">Layer preview</div>
-      <div class="preview-wrap">
-        <svg id="layerPreviewSvg" viewBox="0 0 240 520" style="width:100%;border:1px solid var(--bd);border-radius:var(--r)"></svg>
-        <div id="layerPreviewTip" class="section-tip"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="foot">
-    <button class="btn" onclick="goS(0)">← Back</button>
-    <button class="btn pri" onclick="runClass()">Apply classification →</button>
-    <button class="btn" id="btnToLayers" onclick="goS(2)" style="display:none">Review layers →</button>
-  </div>
-</div>
-
-<!-- ══════════════ STAGE 3 ══════════════ -->
-<div class="panel" id="p2">
-  <div class="sec">
-    <div>
-      <div class="sec-title">Layer identification</div>
-      <div class="sec-sub">Boundaries from soil-type changes + min-thickness filter. Edit any parameter — italic orange = manual override.</div>
-    </div>
-  </div>
-  <!-- Parameter method selector -->
-  <div class="ctrl-row" style="margin-bottom:14px;flex-wrap:wrap;gap:14px">
-    <span class="ctrl-lbl" style="white-space:nowrap;font-weight:500">Parameter methode:</span>
-    <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden">
-      <button id="pmSB260" class="togbtn active" onclick="setParamMethod('sb260')">NEN Tabel 3 / EC7</button>
-      <button id="pmDEF"   class="togbtn"        onclick="setParamMethod('def')">Generiek (DEF)</button>
-    </div>
-    <span style="font-size:11px;color:var(--tx3)" id="pmDesc">Grondsoort en consistentie uit NEN Tabel 3 (EC7) — aanbevolen</span>
-  </div>
-  <div class="info">
-    Thin-layer merging uses the minimum thickness set in Stage 2.
-    Values with <span style="color:var(--wn);font-style:italic">italic orange border</span> are manually overridden and feed into Stage 4.
-    Dropdown shows ✓ for best qc/Rf match — greyed entries are outside the expected range for this layer.
-  </div>
-  <div style="overflow-x:auto">
-    <table class="tbl" id="lt">
-      <thead><tr>
-        <th>#</th><th>Top (m)</th><th>Bot (m)</th><th>Top (TAW)</th><th>Bot (TAW)</th>
-        <th>Thick.</th><th>Soil type ▾ override</th>
-        <th>avg qc</th><th>avg fs</th><th>avg Rf%</th>
-        <th>γ (kN/m³)</th><th>γ_sat</th><th>φ' (°)</th><th>c' (kPa)</th><th>cu (kPa)</th>
-      </tr></thead>
-      <tbody id="lb"></tbody>
-    </table>
-  </div>
-  <div class="foot">
-    <button class="btn" onclick="goS(1)">← Back</button>
-    <button class="btn pri" onclick="goS(3)">Model parameters →</button>
-  </div>
-</div>
-
-<!-- ══════════════ STAGE 4 ══════════════ -->
-<div class="panel" id="p3">
-  <div class="sec">
-    <div>
-      <div class="sec-title">Model parameters</div>
-      <div class="sec-sub">Mohr-Coulomb and Hardening Soil (p_ref = 100 kPa). Eoed,i = αE × qc (Sanglerat / SB260). Review m and Eoed,ref per layer.</div>
-    </div>
-    <button class="btn sm" onclick="exportCSV()">Export CSV</button>
-  </div>
-  <!-- Global method toggles -->
-  <div class="ctrl-row" style="margin-bottom:16px;flex-wrap:wrap;gap:16px">
-    <div style="display:flex;align-items:center;gap:8px">
-      <span class="ctrl-lbl" style="white-space:nowrap">α-method:</span>
-      <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden">
-        <button id="btnAlphaA" class="togbtn"        onclick="setAlphaMethod('A')">A — Sanglerat (fixed)</button>
-        <button id="btnAlphaB" class="togbtn active" onclick="setAlphaMethod('B')">B — SB260 qc-dependent</button>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <span class="ctrl-lbl" style="white-space:nowrap">Stiffness method:</span>
-      <div style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden">
-        <button id="btnStiffA" class="togbtn"        onclick="setStiffMethod('A')">A — CUR 2003-7 ratios</button>
-        <button id="btnStiffB" class="togbtn active" onclick="setStiffMethod('B')">B — E₅₀ = E_oed</button>
-      </div>
-    </div>
-  </div>
-  <div id="ma"></div>
-  <div class="foot">
-    <button class="btn" onclick="goS(2)">← Back</button>
-    <span style="font-size:12px;color:var(--tx2)">Review m-values. Use Tuning (Stage 5) to fit m from CPT data.</span>
-    <button class="btn" onclick="goS(4)" style="border-color:var(--wn);color:var(--wn)">Stage 5 — Tuning ⚗</button>
-  </div>
-</div>
-
-<!-- ══════════════ STAGE 5 — TUNING ══════════════ -->
-<div class="panel" id="p4">
-  <div class="sec">
-    <div>
-      <div class="sec-title">Tuning — m fitting <span style="font-size:11px;font-weight:400;color:var(--wn);margin-left:8px">⚠ experimental</span></div>
-      <div class="sec-sub">Per-layer OLS regression of ln(E_oed,i) vs ln(σ'v0 stress ratio) to fit m and E_oed,ref from CPT data directly. Review each fit before accepting.</div>
-    </div>
-    <button class="btn sm" onclick="runTuning()">Run fitting</button>
-  </div>
-  <div class="info" style="background:var(--wnl);border-color:var(--wn)">
-    <strong>Experimental.</strong> The fitted m replaces the type-default only when the engineer explicitly accepts it per layer.
-    Fit quality is shown as R² — values below 0.5 indicate too much scatter or insufficient depth range; keep the default in that case.
-    Stage 5 is bedoeld als engineer preview. Representatieve m-waarden horen bij voorkeur uit laboproeven te komen.
-    Verwacht in het algemeen een m-waarde tussen 0 en 1; waarden daarbuiten vragen extra engineering judgement.
-  </div>
-  <div id="tuningArea"></div>
-  <div class="foot">
-    <button class="btn" onclick="goS(3)">← Back to parameters</button>
-    <button class="btn sm" onclick="exportCSV()">Export CSV</button>
-  </div>
-</div>
-
-</div><!-- wrap -->
-
-<script>
+// @ts-nocheck
+import {
+  EC2_EXPOSURE_META,
+  analyzeBeamAndReinforcement,
+  analyzeDewatering,
+  analyzeSettlement,
+  designSoilLayer,
+  effectiveVerticalStressAtDepth,
+  stage6Constants
+} from './stage6-engineering';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
+let __legacyControllerInitialized = false;
+
 /* ════════════════════════════════
    PROJECT STATE — multi-CPT architecture
    S is always a reference to the active CPT's state object.
@@ -462,6 +31,8 @@ function newCptState(id){
     alphaMethod:'B',
     stiffMethod:'B',
     paramMethod:'sb260',
+    stage6: stage6Defaults(),
+    stage6Cache:{},
     classified:[], layers:[],
     charts:{}, chartsReady:false,
     meta:{}, tuning:null, useSB260params:false,
@@ -1192,9 +763,6 @@ function exportSectionSVG(){
   a.click();
 }
 
-// Init banner on page load
-window.addEventListener('load',()=>{ renderBanner(); });
-
 /* ════════════════════════════════
    SOIL DEFS
 ════════════════════════════════ */
@@ -1311,6 +879,7 @@ function goS(n){
   if(n===2)renderLayers();
   if(n===3)renderModel();
   if(n===4)renderTuning();
+  if(n===5)renderStage6();
 }
 document.querySelectorAll('.si').forEach(s=>{
   s.addEventListener('click',()=>{
@@ -1864,20 +1433,24 @@ function loadDemo(){
 /* ════════════════════════════════
    FILE LOAD
 ════════════════════════════════ */
-function loadGEF(evt){
+function loadSingleGEF(evt){
   const f=evt.target.files[0]; if(!f)return;
   const r=new FileReader();
   r.onload=e=>parseGEF(e.target.result,f.name);
   r.readAsText(f);
 }
-const dz=document.getElementById('dz');
-document.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
-document.addEventListener('dragleave',e=>{if(!dz.contains(e.relatedTarget))dz.classList.remove('drag')});
-document.addEventListener('drop',e=>{
-  e.preventDefault();dz.classList.remove('drag');
-  const f=e.dataTransfer.files[0]; if(!f)return;
-  const r=new FileReader();r.onload=ev=>parseGEF(ev.target.result,f.name);r.readAsText(f);
-});
+function bindDropzone(){
+  const dz=document.getElementById('dz');
+  if(!dz || dz.dataset.bound==='1') return;
+  document.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
+  document.addEventListener('dragleave',e=>{if(!dz.contains(e.relatedTarget))dz.classList.remove('drag')});
+  document.addEventListener('drop',e=>{
+    e.preventDefault();dz.classList.remove('drag');
+    const f=e.dataTransfer.files[0]; if(!f)return;
+    const r=new FileReader();r.onload=ev=>parseGEF(ev.target.result,f.name);r.readAsText(f);
+  });
+  dz.dataset.bound='1';
+}
 
 /* ════════════════════════════════
    METHOD SELECT
@@ -3739,6 +3312,1759 @@ function buildTuningCharts(){
 }
 
 /* ════════════════════════════════
+   STAGE 6 — APPLICATIONS
+════════════════════════════════ */
+function stage6Defaults(){
+  return{
+    app:'bearing',
+    ui:{details:{}},
+    bearing:{
+      foundationType:'strip',
+      B:1.50,
+      L:1.50,
+      load:150,
+      factorMode:'ec7',
+      xi:2.0,
+      gammaRd:1.00,
+      ec7Combination:'governing',
+      Df:1.00,
+      showMode:'both'
+    },
+    settlement:{
+      footingType:'rectangular',
+      B:2.00,
+      L:2.00,
+      D:2.00,
+      Df:1.00,
+      Gk:120,
+      QLead:40,
+      QOther:0,
+      useCategory:'A',
+      combination:'qp',
+      stressMethod:'boussinesq',
+      truncationRule:'CPT_bottom',
+      dz:0.10,
+      includeTime:false,
+      timeDays:180,
+      allowableSettlement:25
+    },
+    dewatering:{
+      combination:'characteristic',
+      targetWt:3.00,
+      geometry:'single_well',
+      aquiferType:'unconfined',
+      rw:0.15,
+      rCPT:0.00,
+      LPit:12.00,
+      BPit:8.00,
+      LTrench:20.00,
+      distanceToCPT:10.00,
+      CSichardt:3000,
+      sigmaVMode:'conservative',
+      aquiferBaseDepth:null,
+      dz:0.10,
+      timeDays:0
+    },
+    beam:{
+      foundationModel:'winkler',
+      B:1.50,
+      b:1.00,
+      L:6.00,
+      h:0.35,
+      Df:0.80,
+      Ec:33000000,
+      EsMode:'oedometric',
+      zInfluence:3.00,
+      gpEta:1.00,
+      gpOverride:null,
+      loadPattern:'uniform_full',
+      Gk:35,
+      QLead:15,
+      QOther:0,
+      useCategory:'A',
+      slsCombination:'qp',
+      ulsCombination:'A1',
+      xLoad:3.00,
+      xStart:1.50,
+      xEnd:4.50,
+      nElements:120,
+      allowableDeflectionRatio:500,
+      fck:30,
+      fyk:500,
+      exposureClass:'XC2',
+      phiBar:12,
+      dG:20,
+      deltaCdev:10,
+      cNomOverride:null,
+      designLifeYears:50,
+      isSlabOrPlate:true,
+      specialQC:false,
+      castAgainstUnevenSurface:false,
+      castAgainstPreparedGround:false,
+      castAgainstUnpreparedGround:false,
+      dz:0.10
+    }
+  };
+}
+
+function stage6Merge(target, defaults){
+  Object.keys(defaults).forEach((key)=>{
+    const dv = defaults[key];
+    if(dv && typeof dv === 'object' && !Array.isArray(dv)){
+      if(!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) target[key] = {};
+      stage6Merge(target[key], dv);
+    } else if(target[key] == null){
+      target[key] = dv;
+    }
+  });
+}
+
+function stage6Get(obj, path){
+  return path.split('.').reduce((acc, part)=>acc ? acc[part] : undefined, obj);
+}
+
+function stage6Set(obj, path, value){
+  const parts = path.split('.');
+  let cur = obj;
+  for(let i=0;i<parts.length-1;i+=1){
+    const part = parts[i];
+    if(!cur[part] || typeof cur[part] !== 'object') cur[part] = {};
+    cur = cur[part];
+  }
+  cur[parts[parts.length-1]] = value;
+}
+
+function stage6WorkingLayers(){
+  return S.layers.map((layer, index)=>{
+    const h = hsParams(layer);
+    const k = khParams(layer);
+    return{
+      ...layer,
+      index,
+      Eoed_ref:h.Eoed_ref,
+      Eoed_i:h.Eoed_i,
+      E50_ref:h.E50_ref,
+      Eur_ref:h.Eur_ref,
+      m:h.m,
+      kh:k.kh_rep,
+      kv:k.kv_rep,
+      nu_ur:h.nu_ur
+    };
+  });
+}
+
+function stage6MaxDepth(){
+  return S.layers.length ? S.layers[S.layers.length-1].bot : 10;
+}
+
+function ensureStage6State(){
+  if(!S.stage6) S.stage6 = stage6Defaults();
+  stage6Merge(S.stage6, stage6Defaults());
+  if(!S.stage6Cache) S.stage6Cache = {};
+  const maxDepth = Math.max(stage6MaxDepth(), 0.5);
+  S.stage6.bearing.Df = Math.min(Math.max(+S.stage6.bearing.Df || 0.2, 0.2), maxDepth);
+  S.stage6.settlement.Df = Math.min(Math.max(+S.stage6.settlement.Df || 0.0, 0.0), maxDepth);
+  S.stage6.dewatering.targetWt = Math.min(Math.max(+S.stage6.dewatering.targetWt || (S.wt + 0.5), S.wt), Math.max(S.wt, maxDepth-0.2));
+  S.stage6.beam.Df = Math.min(Math.max(+S.stage6.beam.Df || 0.0, 0.0), maxDepth);
+  S.stage6.beam.zInfluence = Math.max(+S.stage6.beam.zInfluence || 1, 0.5);
+  S.stage6.beam.gpEta = Math.max(+S.stage6.beam.gpEta || 1.0, 0);
+  if(S.stage6.beam.gpOverride != null && S.stage6.beam.gpOverride !== ''){
+    S.stage6.beam.gpOverride = +S.stage6.beam.gpOverride;
+  } else {
+    S.stage6.beam.gpOverride = null;
+  }
+  if(S.stage6.beam.cNomOverride != null && S.stage6.beam.cNomOverride !== ''){
+    S.stage6.beam.cNomOverride = +S.stage6.beam.cNomOverride;
+  }
+}
+
+function stage6RememberDetailsState(){
+  const root = document.getElementById('stage6Area');
+  if(!root) return;
+  ensureStage6State();
+  if(!S.stage6.ui || typeof S.stage6.ui !== 'object') S.stage6.ui = {details:{}};
+  if(!S.stage6.ui.details || typeof S.stage6.ui.details !== 'object') S.stage6.ui.details = {};
+  root.querySelectorAll('details[data-st6details]').forEach(el=>{
+    S.stage6.ui.details[el.dataset.st6details] = !!el.open;
+  });
+}
+
+function stage6DetailsOpen(key){
+  ensureStage6State();
+  return S.stage6?.ui?.details?.[key] ? ' open' : '';
+}
+
+function setStage6Field(field, value){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const defaults = stage6Defaults();
+  const currentDefault = stage6Get(defaults, field);
+  let nextValue = value;
+  if(typeof currentDefault === 'number'){
+    nextValue = value === '' || value == null ? null : +value;
+  } else if(typeof currentDefault === 'boolean'){
+    nextValue = !!value;
+  }
+  stage6Set(S.stage6, field, nextValue);
+  if(field === 'bearing.Df' && S.stage6.app === 'bearing'){
+    refreshStage6BearingPreview();
+    return;
+  }
+  renderStage6();
+}
+
+function setStage6App(app){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  S.stage6.app = app;
+  renderStage6();
+}
+
+function layerAtDepth(z, layers){
+  const arr = layers || stage6WorkingLayers();
+  if(!arr.length) return null;
+  return arr.find(l=>z >= l.top && z < l.bot) || arr[arr.length-1];
+}
+
+function stage6ShapeFactors(type){
+  if(type === 'footing') return {sc:1.2, sq:1.1, sg:0.6, scu:1.2};
+  if(type === 'slab') return {sc:1.3, sq:1.2, sg:0.8, scu:1.3};
+  return {sc:1.0, sq:1.0, sg:1.0, scu:1.0};
+}
+
+function stage6UsesEc7Factors(cfg){
+  return (cfg.factorMode || 'ec7') === 'ec7';
+}
+
+function stage6CapacityLabel(cfg){
+  return stage6UsesEc7Factors(cfg) ? 'q_d' : 'q_allow';
+}
+
+function stage6FactorLabel(cfg){
+  return stage6UsesEc7Factors(cfg) ? 'γ_Rd' : 'ξ';
+}
+
+function stage6FactorValue(cfg){
+  if(stage6UsesEc7Factors(cfg)) return Math.max(cfg.gammaRd || 1, 0.1);
+  return Math.max(cfg.xi || 1, 0.1);
+}
+
+function stage6BearingEc7Keys(mode){
+  if(mode === 'da1_1') return ['da1_1'];
+  if(mode === 'da1_2') return ['da1_2'];
+  return ['da1_1', 'da1_2'];
+}
+
+function stage6BearingEc7Spec(key){
+  if(key === 'da1_1'){
+    return {
+      key,
+      label:'DA1/1',
+      soilSet:'M1',
+      gammaMphi:1.00,
+      gammaMc:1.00,
+      gammaMcu:1.00
+    };
+  }
+  return {
+    key:'da1_2',
+    label:'DA1/2',
+    soilSet:'M2',
+    gammaMphi:1.25,
+    gammaMc:1.25,
+    gammaMcu:1.40
+  };
+}
+
+function stage6NoteHtml(notes){
+  if(!notes || !notes.length) return '';
+  return notes.map(note=>{
+    const color = note.level === 'warn' ? 'var(--wn)' : note.level === 'error' ? '#D85A30' : 'var(--ac)';
+    const bg = note.level === 'warn' ? 'var(--wnl)' : 'var(--bg2)';
+    return `<div class="info" style="margin-top:8px;background:${bg};border-color:${color}">${note.text}</div>`;
+  }).join('');
+}
+
+function stage6EscAttr(value){
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function stage6Tooltip(text){
+  const safe = stage6EscAttr(text);
+  return `<span class="st6-tip" tabindex="0" data-tip="${safe}" aria-label="${safe}">ⓘ</span>`;
+}
+
+function stage6UseCategoryOptions(selected){
+  const labels = {
+    A:'A - residential / domestic',
+    B:'B - offices',
+    C:'C - assembly / congregation',
+    D:'D - shopping / commercial',
+    E:'E - storage',
+    W:'W - wind',
+    S:'S - snow',
+    T:'T - temperature'
+  };
+  return ['A','B','C','D','E','W','S','T']
+    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
+    .join('');
+}
+
+function stage6UseCategoryHelp(selected){
+  const text = {
+    A:'Residential and domestic imposed loads. Typical default for houses and small residential slabs.',
+    B:'Office loading. Use when the supported structure behaves like an office floor or office occupancy.',
+    C:'Assembly / congregation loading. Higher variable load factors for halls, schools, and gathering spaces.',
+    D:'Shopping and retail loading. Similar to C but framed for commercial occupancy.',
+    E:'Storage / warehouse loading. Highest default psi factors of the building-use categories.',
+    W:'Wind action. Only use when the variable action is wind rather than occupancy load.',
+    S:'Snow action. Belgian lowland snow defaults.',
+    T:'Temperature action. Only use if temperature effects govern the variable action.'
+  };
+  return text[selected] || text.A;
+}
+
+function stage6SlsCombinationOptions(selected){
+  const labels = {
+    qp:'Quasi-permanent',
+    frequent:'Frequent',
+    characteristic:'Characteristic'
+  };
+  return ['qp','frequent','characteristic']
+    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
+    .join('');
+}
+
+function stage6SlsCombinationHelp(selected, context){
+  const prefix = context === 'settlement'
+    ? 'For settlement'
+    : context === 'beam'
+      ? 'For deflection'
+      : 'For serviceability';
+  const text = {
+    qp:`${prefix}, quasi-permanent is the usual default for long-term behaviour and is the recommended starting point.`,
+    frequent:`${prefix}, frequent is useful for intermediate serviceability checks when the variable action is present often but not permanently.`,
+    characteristic:`${prefix}, characteristic is the better fit for short-term or immediate response checks and is usually less relevant for long-term consolidation.`
+  };
+  return text[selected] || text.qp;
+}
+
+function stage6DewateringCombinationOptions(selected){
+  const labels = {
+    characteristic:'Characteristic drawdown',
+    qp:'Quasi-permanent drawdown context'
+  };
+  return ['characteristic','qp'].map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`).join('');
+}
+
+function stage6DewateringCombinationHelp(selected){
+  if(selected === 'qp'){
+    return 'Quasi-permanent is useful as a contextual serviceability label when the lowered water level is expected to persist for a long period. In the current tool, the entered drawdown itself is still used directly.';
+  }
+  return 'Characteristic is the recommended default here: enter the expected drawdown directly and do not factor it as a ULS variable load.';
+}
+
+function stage6BeamUlsOptions(selected){
+  const labels = {
+    A1:'A1 - Eq. 6.10, ordinary building gravity default',
+    A2:'A2 - alternative action set'
+  };
+  return ['A1','A2'].map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`).join('');
+}
+
+function stage6BeamUlsHelp(selected){
+  if(selected === 'A2'){
+    return 'A2 is an alternative action set. For ordinary Belgian building gravity loading in this beam/slab screening tool, A1 is usually the safer and more standard starting point.';
+  }
+  return 'A1 is the recommended default here for ordinary Belgian building loading when deriving the ULS beam moment for reinforcement.';
+}
+
+function stage6BeamLoadPatternHelp(selected){
+  const text = {
+    uniform_full:'Uniform full length loads the whole strip equally. This is useful for settlement-style screening, but it can legitimately give almost zero bending moment because the strip settles nearly uniformly on the soil springs.',
+    uniform_patch:'Uniform patch is the better choice when you want bending from a wall strip, machine strip, loaded zone, or any local area load on the slab/beam.',
+    point_centre:'Point load at centre is a localised strip/beam check. Use it for a concentrated reaction or local heavy point action applied at midspan.',
+    point_at_x:'Point load at x is the same localised check, but at a chosen position along the strip so you can inspect edge-near or eccentric loading.'
+  };
+  return text[selected] || text.uniform_full;
+}
+
+function stage6BearingEc7Options(selected){
+  const labels = {
+    governing:'Governing of DA1/1 and DA1/2 (Recommended)',
+    da1_1:'DA1/1 - action-factored route',
+    da1_2:'DA1/2 - M2 soil-strength route'
+  };
+  return ['governing','da1_1','da1_2']
+    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
+    .join('');
+}
+
+function stage6BearingEc7Help(selected){
+  const text = {
+    governing:'Belgian EC7 bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.',
+    da1_1:'DA1/1 keeps soil strengths characteristic and is useful when you want to inspect the action-factored side on its own.',
+    da1_2:'DA1/2 applies the M2 reduction to soil strengths and often governs geotechnical bearing resistance; inspect it directly if you want to understand the soil-side penalty.'
+  };
+  return text[selected] || text.governing;
+}
+
+function stage6ExposureOptions(selected){
+  return Object.entries(EC2_EXPOSURE_META)
+    .map(([key, meta])=>`<option value="${key}"${selected===key?' selected':''}>${key} - ${meta.label}</option>`)
+    .join('');
+}
+
+function stage6ExposureHelp(selected){
+  const meta = EC2_EXPOSURE_META[selected] || EC2_EXPOSURE_META.XC2;
+  return meta.hint;
+}
+
+function stage6AuditTableHtml(rows){
+  return `
+    <table class="tbl st6-audit">
+      <thead><tr>${rows.map(r=>`<th>${r.k}</th>`).join('')}</tr></thead>
+      <tbody><tr>${rows.map(r=>`<td>${r.v}</td>`).join('')}</tr></tbody>
+    </table>
+  `;
+}
+
+function stage6LoadSummaryHtml(title, rows){
+  return `
+    <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">${title}</div>
+      ${stage6AuditTableHtml(rows)}
+    </div>
+  `;
+}
+
+function stage6CompactNumber(value, digits = 2){
+  const n = Number(value);
+  if(!Number.isFinite(n)) return '—';
+  if(n === 0) return '0';
+  const abs = Math.abs(n);
+  if(abs < 1e-2 || abs >= 1e4){
+    return n.toExponential(Math.max(0, digits - 1)).replace('e', 'E');
+  }
+  if(abs >= 100) return n.toFixed(1).replace(/\.0$/, '');
+  if(abs >= 10) return n.toFixed(2).replace(/\.?0+$/, '');
+  if(abs >= 1) return n.toFixed(3).replace(/\.?0+$/, '');
+  return n.toFixed(4).replace(/\.?0+$/, '');
+}
+
+function stage6BeamDurabilityHtml(reinf){
+  const d = reinf.durability;
+  const lines = [
+    {k:'Exposure class', v:`${d.exposureClass} - ${d.exposureMeta.label}`},
+    {k:'Structural class', v:`S${d.structuralClass}`},
+    {k:'c_min,dur', v:`${d.cMinDur.toFixed(0)} mm`},
+    {k:'c_min,b', v:`${d.cMinB.toFixed(0)} mm`},
+    {k:'c_min', v:`${d.cMin.toFixed(0)} mm`},
+    {k:'Δc_dev', v:`${d.deltaCdev.toFixed(0)} mm`},
+    {k:'Ground-cast extra', v:`${d.unevenExtra.toFixed(0)} mm`},
+    {k:'Ground-cast floor', v:`${d.floor.toFixed(0)} mm`},
+    {k:'c_nom raw', v:`${d.cNomRaw.toFixed(0)} mm`},
+    {k:'c_nom recommended', v:`${d.recommendedCNom.toFixed(0)} mm`},
+    {k:'c_nom used', v:`${d.cNom.toFixed(0)} mm`}
+  ];
+  const structuralDetail = d.structuralAdjustments.length
+    ? d.structuralAdjustments.join(' ')
+    : 'Default 50-year EC2 structural class S4, with no additional modifiers applied.';
+  const fallbackText = d.fallbackExposure
+    ? `For ${d.exposureClass}, EC2 cover uses the corrosion fallback ${d.tableExposure}. Concrete mix requirements for XF/XA remain an engineer check outside this tool.`
+    : '';
+  return `
+    <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">EC2 durability audit</div>
+      <table class="pt">
+        ${lines.map(row=>`<tr><td>${row.k}</td><td>${row.v}</td></tr>`).join('')}
+      </table>
+      <div style="margin-top:8px;font-size:11px;color:var(--tx2);line-height:1.55">
+        ${d.exposureMeta.hint}<br>
+        High-strength threshold for this exposure = <strong>${d.highStrengthThreshold.toFixed(0)} MPa</strong>; auto check = <strong>${d.autoHighStrength ? 'applied' : 'not applied'}</strong>.<br>
+        ${structuralDetail}
+        ${fallbackText ? `<br>${fallbackText}` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function stage6BearingNotes(sel, cfg){
+  const notes = [{
+    level:'warn',
+    text:'Bearing capacity is shown as a shallow-foundation screening curve using the interpreted layer active at each founding depth. Layered failure mechanisms and eccentric loading are not modeled here.'
+  }];
+  if(stage6UsesEc7Factors(cfg)){
+    notes.push({
+      level:'info',
+      text:'Belgian bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.'
+    });
+    notes.push({
+      level:'warn',
+      text:'gamma_Rd is kept as an optional model factor only. Leave it at 1.0 unless you intentionally want an extra correction for simplified analytical model bias.'
+    });
+  } else {
+    notes.push({level:'warn', text:'Global/system factor ξ is a legacy-style screening route. Keep it separate from the EC7 partial-factor route and do not stack them.'});
+  }
+  if(sel.layer.type === 'Sandy clay' || sel.layer.type === 'Peat / organic'){
+    notes.push({level:'info', text:'Mixed or organic layers can govern with undrained behaviour. Review both curves before accepting a founding depth.'});
+  }
+  return notes;
+}
+
+function bearingAtDepth(z, cfg, layers){
+  const arr = layers || stage6WorkingLayers();
+  const l = layerAtDepth(z, arr);
+  if(!l) return null;
+  const stress = effectiveVerticalStressAtDepth(arr, z, S.wt, stage6Constants().gammaW);
+  const shp = stage6ShapeFactors(cfg.foundationType);
+  const B = Math.max(cfg.B || 0.1, 0.1);
+  const phiK = Math.max(l.phi || 0, 0);
+  const cK = Math.max(l.c || 0, 0);
+  const cuK = Math.max(l.cu || 0, 0);
+  const useEc7 = stage6UsesEc7Factors(cfg);
+  const gammaEff = z <= S.wt ? l.g : Math.max((l.gs || l.g) - stage6Constants().gammaW, 1.0);
+  const qDrain = Math.max(stress.sigmaEff, 0);
+  const qUndrain = Math.max(stress.sigmaV, 0);
+  const factor = stage6FactorValue(cfg);
+  let drainedCalc = null;
+  let undrainedCalc = null;
+  let ec7Results = [];
+  if(useEc7){
+    ec7Results = stage6BearingEc7Keys(cfg.ec7Combination || 'governing').map(key=>{
+      const spec = stage6BearingEc7Spec(key);
+      const designed = designSoilLayer(l, spec.soilSet);
+      const phiD = Math.max(designed.phi || 0, 0);
+      const cD = Math.max(designed.c || 0, 0);
+      const cuD = Math.max(designed.cu || 0, 0);
+      const phiDRad = phiD * Math.PI / 180;
+      const tanPhi = Math.tan(phiDRad);
+      const Nq = phiD > 0 ? Math.exp(Math.PI * tanPhi) * Math.tan(Math.PI/4 + phiDRad/2)**2 : 1;
+      const Nc = phiD > 0 ? (Nq - 1) / Math.max(tanPhi, 1e-6) : 5.14;
+      const Ng = phiD > 0 ? Math.max(0, 2 * (Nq + 1) * tanPhi) : 0;
+      const qultDrained = Math.max(0, cD * Nc * shp.sc + qDrain * Nq * shp.sq + 0.5 * gammaEff * B * Ng * shp.sg);
+      const qultUndrained = Math.max(0, qUndrain + 5.14 * cuD * shp.scu);
+      const qdDrained = qultDrained / factor;
+      const qdUndrained = qultUndrained / factor;
+      return {
+        ...spec,
+        phiD, cD, cuD, Nq, Nc, Ng, qultDrained, qultUndrained, qdDrained, qdUndrained
+      };
+    });
+    drainedCalc = ec7Results.reduce((best, item)=>
+      !best || item.qdDrained < best.qdDrained ? item : best
+    , null);
+    undrainedCalc = ec7Results.reduce((best, item)=>
+      !best || item.qdUndrained < best.qdUndrained ? item : best
+    , null);
+  } else {
+    const phiD = phiK;
+    const cD = cK;
+    const cuD = cuK;
+    const phiDRad = phiD * Math.PI / 180;
+    const tanPhi = Math.tan(phiDRad);
+    const Nq = phiD > 0 ? Math.exp(Math.PI * tanPhi) * Math.tan(Math.PI/4 + phiDRad/2)**2 : 1;
+    const Nc = phiD > 0 ? (Nq - 1) / Math.max(tanPhi, 1e-6) : 5.14;
+    const Ng = phiD > 0 ? Math.max(0, 2 * (Nq + 1) * tanPhi) : 0;
+    const qultDrained = Math.max(0, cD * Nc * shp.sc + qDrain * Nq * shp.sq + 0.5 * gammaEff * B * Ng * shp.sg);
+    const qultUndrained = Math.max(0, qUndrain + 5.14 * cuD * shp.scu);
+    drainedCalc = undrainedCalc = {
+      label:'Global SF',
+      soilSet:'M1',
+      gammaMphi:1,
+      gammaMc:1,
+      gammaMcu:1,
+      phiD, cD, cuD, Nq, Nc, Ng, qultDrained, qultUndrained,
+      qdDrained: qultDrained / factor,
+      qdUndrained: qultUndrained / factor
+    };
+  }
+  const qdDrained = drainedCalc.qdDrained;
+  const qdUndrained = undrainedCalc.qdUndrained;
+  return{
+    layer:l,
+    z,
+    B:+B.toFixed(2),
+    sigV:+stress.sigmaV.toFixed(1),
+    sigVeff:+stress.sigmaEff.toFixed(1),
+    qDrain:+qDrain.toFixed(1),
+    qUndrain:+qUndrain.toFixed(1),
+    gammaEff:+gammaEff.toFixed(2),
+    phiK:+phiK.toFixed(1),
+    phiD:+drainedCalc.phiD.toFixed(1),
+    cK:+cK.toFixed(1),
+    cD:+drainedCalc.cD.toFixed(1),
+    cuK:+cuK.toFixed(1),
+    cuD:+undrainedCalc.cuD.toFixed(1),
+    drainedComboLabel:useEc7 ? drainedCalc.label : 'Global SF',
+    undrainedComboLabel:useEc7 ? undrainedCalc.label : 'Global SF',
+    gammaMphi:+drainedCalc.gammaMphi.toFixed(2),
+    gammaMc:+drainedCalc.gammaMc.toFixed(2),
+    gammaMcu:+undrainedCalc.gammaMcu.toFixed(2),
+    useEc7,
+    gammaRd:+(cfg.gammaRd || 1).toFixed(2),
+    xi:+(cfg.xi || 1).toFixed(2),
+    ec7CombinationMode:cfg.ec7Combination || 'governing',
+    ec7CombinationLabel:useEc7
+      ? drainedCalc.label === undrainedCalc.label
+        ? drainedCalc.label
+        : `drained ${drainedCalc.label} / undrained ${undrainedCalc.label}`
+      : null,
+    ec7Results:ec7Results.map(item=>({
+      label:item.label,
+      qdDrained:+item.qdDrained.toFixed(1),
+      qdUndrained:+item.qdUndrained.toFixed(1)
+    })),
+    capacityLabel:stage6CapacityLabel(cfg),
+    factorLabel:stage6FactorLabel(cfg),
+    Nc:+drainedCalc.Nc.toFixed(3),
+    Nq:+drainedCalc.Nq.toFixed(3),
+    Ng:+drainedCalc.Ng.toFixed(3),
+    sc:+shp.sc.toFixed(2),
+    sq:+shp.sq.toFixed(2),
+    sg:+shp.sg.toFixed(2),
+    scu:+shp.scu.toFixed(2),
+    factor:+factor.toFixed(2),
+    qultDrained:+drainedCalc.qultDrained.toFixed(1),
+    qultUndrained:+undrainedCalc.qultUndrained.toFixed(1),
+    qdDrained:+qdDrained.toFixed(1),
+    qdUndrained:+qdUndrained.toFixed(1),
+    utilDrained: cfg.load > 0 ? +(cfg.load / Math.max(qdDrained, 1e-6)).toFixed(2) : null,
+    utilUndrained: cfg.load > 0 ? +(cfg.load / Math.max(qdUndrained, 1e-6)).toFixed(2) : null
+  };
+}
+
+function bearingProfile(cfg, layers){
+  const arr = layers || stage6WorkingLayers();
+  if(!arr.length) return null;
+  const maxDepth = arr[arr.length-1].bot;
+  const step = Math.max(0.1, Math.min(0.25, maxDepth / 60));
+  const depths = [];
+  for(let z = Math.max(cfg.Df, 0.2); z <= maxDepth + 1e-9; z += step){
+    depths.push(+z.toFixed(3));
+  }
+  if(!depths.length || depths[0] !== +cfg.Df.toFixed(3)) depths.unshift(+cfg.Df.toFixed(3));
+  const pts = depths.map(z=>bearingAtDepth(z, cfg, arr)).filter(Boolean);
+  const selected = bearingAtDepth(cfg.Df, cfg, arr);
+  return{
+    pts,
+    selected,
+    drained:pts.map(p=>({x:p.qdDrained, y:p.z})),
+    undrained:pts.map(p=>({x:p.qdUndrained, y:p.z})),
+    maxDepth
+  };
+}
+
+function stage6BearingSelectedDepthHtml(sel, governing, governingMode){
+  return `
+    <table class="pt" style="margin-bottom:12px">
+      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Selected depth</td></tr>
+      <tr><td>Df</td><td>${sel.z.toFixed(2)} m</td></tr>
+      <tr><td>Layer</td><td>${sel.layer.type}</td></tr>
+      <tr><td>Subtype</td><td>${sel.layer.subtype||'—'}</td></tr>
+      ${sel.useEc7 ? `<tr><td>Belgian EC7 envelope</td><td>${sel.ec7CombinationLabel}</td></tr>` : `<tr><td>Safety route</td><td>Global system factor</td></tr>`}
+      <tr><td>σ'v</td><td>${sel.sigVeff.toFixed(1)} kPa</td></tr>
+      <tr><td>Applied stress</td><td>${sel.utilDrained!=null?`${sel.utilDrained.toFixed(2)} · drained / ${sel.utilUndrained.toFixed(2)} · undrained`:'—'}</td></tr>
+      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:#1D9E75;padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Drained</td></tr>
+      ${sel.useEc7 ? `<tr><td>Governing combo</td><td>${sel.drainedComboLabel}</td></tr>` : ''}
+      <tr><td>q_ult</td><td>${sel.qultDrained.toLocaleString()} kPa</td></tr>
+      <tr><td>${sel.capacityLabel}</td><td>${sel.qdDrained.toLocaleString()} kPa</td></tr>
+      <tr><td>utilisation</td><td>${sel.utilDrained!=null?sel.utilDrained.toFixed(2):'—'}</td></tr>
+      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:#D85A30;padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Undrained</td></tr>
+      ${sel.useEc7 ? `<tr><td>Governing combo</td><td>${sel.undrainedComboLabel}</td></tr>` : ''}
+      <tr><td>q_ult</td><td>${sel.qultUndrained.toLocaleString()} kPa</td></tr>
+      <tr><td>${sel.capacityLabel}</td><td>${sel.qdUndrained.toLocaleString()} kPa</td></tr>
+      <tr><td>utilisation</td><td>${sel.utilUndrained!=null?sel.utilUndrained.toFixed(2):'—'}</td></tr>
+      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding:4px 0;border-top:1px solid var(--bd);text-transform:uppercase">Governing</td></tr>
+      <tr><td>Mode</td><td>${governingMode}</td></tr>
+      <tr><td>${sel.capacityLabel}</td><td>${governing.toLocaleString()} kPa</td></tr>
+    </table>
+  `;
+}
+
+function stage6BearingMaterialParamsHtml(sel, cfg){
+  if(!sel.useEc7){
+    return `
+      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Global safety-factor route at selected depth</div>
+      <table class="pt">
+        <tr><td>φ'k</td><td>${sel.phiK.toFixed(1)}°</td><td>c'k</td><td>${sel.cK.toFixed(1)} kPa</td><td>cu,k</td><td>${sel.cuK.toFixed(1)} kPa</td></tr>
+        <tr><td>γ'</td><td>${sel.gammaEff.toFixed(2)} kN/m³</td><td>ξ</td><td>${cfg.xi.toFixed(2)}</td><td>Route</td><td>Global SF</td></tr>
+      </table>
+      <div style="margin-top:8px;font-size:11px;color:var(--tx2);line-height:1.5">
+        Characteristic soil parameters are used directly. The global/system factor ξ is applied on the output resistance only and is not combined with γ_R or γ_M.
+      </div>
+    `;
+  }
+  return `
+    <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Belgian EC7 DA1 parameters used at selected depth</div>
+    <table class="pt">
+      <tr><td>Drained combo</td><td>${sel.drainedComboLabel}</td><td>Undrained combo</td><td>${sel.undrainedComboLabel}</td><td>γ_Rd</td><td>${cfg.gammaRd.toFixed(2)}</td></tr>
+      <tr><td>φ'k</td><td>${sel.phiK.toFixed(1)}°</td><td>γ_M,φ</td><td>${sel.gammaMphi.toFixed(2)}</td><td>φ'd</td><td>${sel.phiD.toFixed(1)}°</td></tr>
+      <tr><td>c'k</td><td>${sel.cK.toFixed(1)} kPa</td><td>γ_M,c'</td><td>${sel.gammaMc.toFixed(2)}</td><td>c'd</td><td>${sel.cD.toFixed(1)} kPa</td></tr>
+      <tr><td>cu,k</td><td>${sel.cuK.toFixed(1)} kPa</td><td>γ_M,cu</td><td>${sel.gammaMcu.toFixed(2)}</td><td>cu,d</td><td>${sel.cuD.toFixed(1)} kPa</td></tr>
+      <tr><td>γ'</td><td>${sel.gammaEff.toFixed(2)} kN/m³</td><td>Combo mode</td><td>${cfg.ec7Combination === 'governing' ? 'most onerous' : cfg.ec7Combination.toUpperCase().replace('_','/')}</td><td>R set</td><td>R1</td></tr>
+    </table>
+    ${sel.ec7Results && sel.ec7Results.length > 1 ? `
+      <div style="margin-top:8px;font-size:11px;color:var(--tx2);line-height:1.55">
+        DA1 overview: ${sel.ec7Results.map(r=>`${r.label}: drained ${r.qdDrained.toFixed(0)} kPa, undrained ${r.qdUndrained.toFixed(0)} kPa`).join(' · ')}
+      </div>
+    ` : ''}
+  `;
+}
+
+function stage6BearingDrainedFormulaHtml(sel){
+  return `
+    <div style="font-size:10px;font-weight:700;color:#1D9E75;text-transform:uppercase;margin-bottom:6px">Drained formula at selected depth</div>
+    <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
+      q_ult,d = c'·N_c·s_c + q'·N_q·s_q + 0.5·γ'·B·N_γ·s_γ
+    </div>
+    <div style="font-size:11px;color:var(--tx2);line-height:1.55">
+      φ'k = <strong>${sel.phiK.toFixed(1)}°</strong>${sel.useEc7?` → φ'd = <strong>${sel.phiD.toFixed(1)}°</strong>`:''}<br>
+      c'k = <strong>${sel.cK.toFixed(1)} kPa</strong>${sel.useEc7?` → c'd = <strong>${sel.cD.toFixed(1)} kPa</strong>`:''}<br>
+      N_c = <strong>${sel.Nc.toFixed(3)}</strong><br>
+      N_q = <strong>${sel.Nq.toFixed(3)}</strong><br>
+      N_γ = <strong>${sel.Ng.toFixed(3)}</strong><br>
+      q' = σ'v = <strong>${sel.qDrain.toFixed(1)} kPa</strong><br>
+      γ' = <strong>${sel.gammaEff.toFixed(2)} kN/m³</strong><br>
+      ${sel.useEc7 ? `Governing Belgian combo = <strong>${sel.drainedComboLabel}</strong><br>` : ''}
+      B = <strong>${sel.B.toFixed(2)} m</strong><br>
+      s_c = <strong>${sel.sc.toFixed(2)}</strong>, s_q = <strong>${sel.sq.toFixed(2)}</strong>, s_γ = <strong>${sel.sg.toFixed(2)}</strong><br>
+      ${sel.factorLabel} = <strong>${sel.factor.toFixed(2)}</strong><br>
+      ${sel.capacityLabel} = q_ult,d / ${sel.factorLabel} = <strong>${sel.qdDrained.toLocaleString()} kPa</strong>
+    </div>
+  `;
+}
+
+function stage6BearingUndrainedFormulaHtml(sel){
+  return `
+    <div style="font-size:10px;font-weight:700;color:#D85A30;text-transform:uppercase;margin-bottom:6px">Undrained formula at selected depth</div>
+    <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
+      q_ult,u = q + 5.14·c_u·s_cu
+    </div>
+    <div style="font-size:11px;color:var(--tx2);line-height:1.55">
+      q = σv = <strong>${sel.qUndrain.toFixed(1)} kPa</strong><br>
+      cu,k = <strong>${sel.cuK.toFixed(1)} kPa</strong>${sel.useEc7?` → cu,d = <strong>${sel.cuD.toFixed(1)} kPa</strong>`:''}<br>
+      N_cu = <strong>5.14</strong><br>
+      ${sel.useEc7 ? `Governing Belgian combo = <strong>${sel.undrainedComboLabel}</strong><br>` : ''}
+      s_cu = <strong>${sel.scu.toFixed(2)}</strong><br>
+      ${sel.factorLabel} = <strong>${sel.factor.toFixed(2)}</strong><br>
+      ${sel.capacityLabel} = q_ult,u / ${sel.factorLabel} = <strong>${sel.qdUndrained.toLocaleString()} kPa</strong>
+    </div>
+  `;
+}
+
+let stage6BearingChartTimer = null;
+function queueStage6BearingChartBuild(){
+  if(stage6BearingChartTimer) clearTimeout(stage6BearingChartTimer);
+  stage6BearingChartTimer = setTimeout(()=>{
+    stage6BearingChartTimer = null;
+    buildStage6BearingChart();
+  }, 20);
+}
+
+function refreshStage6BearingPreview(){
+  ensureStage6State();
+  if(!S.layers.length || !S.stage6 || S.stage6.app !== 'bearing') return;
+  const layers = stage6WorkingLayers();
+  const cfg = S.stage6.bearing;
+  const profile = bearingProfile(cfg, layers);
+  if(!profile || !profile.selected) return;
+  S.stage6Cache.bearing = profile;
+  const sel = profile.selected;
+  const governing = Math.min(sel.qdDrained, sel.qdUndrained);
+  const governingMode = sel.qdDrained <= sel.qdUndrained ? 'Drained' : 'Undrained';
+  const dfValue = document.getElementById('stage6DfValue');
+  if(dfValue) dfValue.textContent = sel.z.toFixed(2)+' m';
+  const summary = document.getElementById('stage6SelectedDepth');
+  if(summary) summary.innerHTML = stage6BearingSelectedDepthHtml(sel, governing, governingMode);
+  const material = document.getElementById('stage6UlsParams');
+  if(material) material.innerHTML = stage6BearingMaterialParamsHtml(sel, cfg);
+  const drainedFormula = document.getElementById('stage6DrainedFormula');
+  if(drainedFormula) drainedFormula.innerHTML = stage6BearingDrainedFormulaHtml(sel);
+  const undrainedFormula = document.getElementById('stage6UndrainedFormula');
+  if(undrainedFormula) undrainedFormula.innerHTML = stage6BearingUndrainedFormulaHtml(sel);
+  queueStage6BearingChartBuild();
+}
+
+function stage6SharedBanner(){
+  return `
+    <div class="info" style="margin-bottom:14px;background:var(--bg2);border-color:var(--bd2);color:var(--tx2)">
+      Active CPT: <strong>${S.id}</strong> · WT = <strong>${S.wt.toFixed(2)} m</strong> below surface · parameter source = <strong>${S.paramMethod==='sb260'?'EC7 / NEN Table 3':'DEF'}</strong> · Stage 5 tuned m = <strong>${S.layers.some(l=>l.ovr.m)?'used where accepted':'not accepted'}</strong>
+    </div>
+  `;
+}
+
+function stage6CardsHtml(app){
+  const cards = [
+    {id:'bearing', title:'Bearing capacity', desc:'Drained and undrained shallow-foundation resistance vs founding depth.'},
+    {id:'settlement', title:'Settlement', desc:'SLS settlement from CPT-derived E_oed with Boussinesq or 2:1 stress spread.'},
+    {id:'dewatering', title:'Dewatering', desc:'Analytical drawdown screening plus induced stress change and settlement at the CPT.'},
+    {id:'beam', title:'Beam / slab on Winkler', desc:'1D strip-on-elastic-foundation screening with EC2 reinforcement output.'}
+  ];
+  return `
+    <div class="mcards" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:14px">
+      ${cards.map(c=>`<div class="mc ${c.id===app?'sel':''}" onclick="setStage6App('${c.id}')">
+        <h3>${c.title}</h3><p>${c.desc}</p>
+      </div>`).join('')}
+    </div>
+  `;
+}
+
+function renderStage6BearingApp(profile){
+  const cfg = S.stage6.bearing;
+  const sel = profile.selected;
+  const governing = Math.min(sel.qdDrained, sel.qdUndrained);
+  const governingMode = sel.qdDrained <= sel.qdUndrained ? 'Drained' : 'Undrained';
+  return `
+    <div class="mc2">
+      <div class="mc2-head" style="margin-bottom:12px">
+        <span style="font-size:13px;font-weight:600">Bearing capacity</span>
+        <span style="font-size:11px;color:var(--tx2)">ULS-style resistance screening from the interpreted CPT profile.</span>
+      </div>
+      <div style="display:grid;grid-template-columns:260px 1fr 250px;gap:14px;align-items:start">
+        <div>
+          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
+          <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
+            <label style="font-size:11px;color:var(--tx2)">Displayed curves
+              <select onchange="setStage6Field('bearing.showMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="both"${cfg.showMode==='both'?' selected':''}>Show both curves</option>
+                <option value="drained"${cfg.showMode==='drained'?' selected':''}>Drained only</option>
+                <option value="undrained"${cfg.showMode==='undrained'?' selected':''}>Undrained only</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Foundation type
+              <select onchange="setStage6Field('bearing.foundationType', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="strip"${cfg.foundationType==='strip'?' selected':''}>Strip</option>
+                <option value="footing"${cfg.foundationType==='footing'?' selected':''}>Footing / pad</option>
+                <option value="slab"${cfg.foundationType==='slab'?' selected':''}>Slab / raft</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Width B (m)
+              <input type="number" step="0.1" min="0.1" value="${cfg.B.toFixed(2)}" onchange="setStage6Field('bearing.B', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Length L (m)
+              <input type="number" step="0.1" min="0.1" value="${cfg.L.toFixed(2)}" onchange="setStage6Field('bearing.L', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <div>
+              <div style="font-size:11px;color:var(--tx2);margin-bottom:5px">Founding depth Df = <strong id="stage6DfValue">${cfg.Df.toFixed(2)} m</strong></div>
+              <input type="range" min="0.2" max="${profile.maxDepth.toFixed(2)}" step="0.05" value="${cfg.Df.toFixed(2)}" oninput="setStage6Field('bearing.Df', this.value)" style="width:100%">
+            </div>
+            <details class="st6-adv" data-st6details="bearing-advanced"${stage6DetailsOpen('bearing-advanced')}>
+              <summary>Optional verification and safety settings</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">Bearing capacity is calculated regardless. Expand this only if you want a utilisation check against an applied stress or if you want to adjust the safety philosophy.</div>
+                <label style="font-size:11px;color:var(--tx2)">Applied stress for utilisation (kPa)
+                  <input type="number" step="5" min="0" value="${cfg.load.toFixed(0)}" onchange="setStage6Field('bearing.load', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Safety route
+                  <select onchange="setStage6Field('bearing.factorMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                    <option value="ec7"${cfg.factorMode==='ec7'?' selected':''}>EC7 output factors</option>
+                    <option value="system"${cfg.factorMode==='system'?' selected':''}>Global system factor ξ</option>
+                  </select>
+                </label>
+                ${cfg.factorMode==='ec7' ? `
+                  <label style="font-size:11px;color:var(--tx2)">Belgian ULS combination
+                    <select onchange="setStage6Field('bearing.ec7Combination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                      ${stage6BearingEc7Options(cfg.ec7Combination)}
+                    </select>
+                  </label>
+                  <div class="st6-help">${stage6BearingEc7Help(cfg.ec7Combination)}</div>
+                  <label style="font-size:11px;color:var(--tx2)">γ_Rd
+                    <input type="number" step="0.05" min="1.0" value="${cfg.gammaRd.toFixed(2)}" onchange="setStage6Field('bearing.gammaRd', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                  </label>
+                  <div class="st6-help">Belgian EC7 DA1 uses R1 for spread footing bearing. This tool keeps γ_R = 1.0 and switches the soil-side factors automatically between DA1/1 and DA1/2.</div>
+                ` : `
+                  <label style="font-size:11px;color:var(--tx2)">Global system factor ξ
+                    <input type="number" step="0.1" min="1.0" value="${cfg.xi.toFixed(2)}" onchange="setStage6Field('bearing.xi', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                  </label>
+                  <div class="st6-help">Use the global ξ route only as a legacy screening path. For Belgian EC7 checks, switch back to the EC7 route above.</div>
+                `}
+              </div>
+            </details>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
+            ${cfg.factorMode==='ec7' ? 'Design bearing capacity vs founding depth' : 'Allowable bearing capacity vs founding depth'}
+            <span style="margin-left:6px;color:#1D9E75">- drained</span>
+            <span style="margin-left:4px;color:#D85A30">- undrained</span>
+            <span style="margin-left:4px;color:#378ADD">- selected Df</span>
+          </div>
+          <div style="position:relative;height:420px"><canvas id="stage6BearingChart" role="img" aria-label="Bearing capacity versus depth"></canvas></div>
+        </div>
+        <div id="stage6SelectedDepth">${stage6BearingSelectedDepthHtml(sel, governing, governingMode)}</div>
+      </div>
+      <div id="stage6UlsParams" style="margin-top:14px" class="info">${stage6BearingMaterialParamsHtml(sel, cfg)}</div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div id="stage6DrainedFormula" class="info" style="background:var(--bg2)">${stage6BearingDrainedFormulaHtml(sel)}</div>
+        <div id="stage6UndrainedFormula" class="info" style="background:var(--bg2)">${stage6BearingUndrainedFormulaHtml(sel)}</div>
+      </div>
+      ${stage6NoteHtml(stage6BearingNotes(sel, cfg))}
+    </div>
+  `;
+}
+
+function renderStage6SettlementApp(analysis){
+  const cfg = S.stage6.settlement;
+  const loadRows = [
+    {k:'Limit state', v:'SLS'},
+    {k:'Combination', v:cfg.combination === 'qp' ? 'Quasi-permanent' : cfg.combination},
+    {k:'Gk', v:`${cfg.Gk.toFixed(1)} kPa`},
+    {k:'Qk,lead', v:`${cfg.QLead.toFixed(1)} kPa`},
+    {k:'Qk,other', v:`${cfg.QOther.toFixed(1)} kPa`},
+    {k:'q_gross', v:`${analysis.qGross.toFixed(1)} kPa`},
+    {k:'sigma_v(Df)', v:`${analysis.sigmaVDf.toFixed(1)} kPa`},
+    {k:'q_net', v:`${analysis.qNet.toFixed(1)} kPa`}
+  ];
+  return `
+    <div class="mc2">
+      <div class="mc2-head" style="margin-bottom:12px">
+        <span style="font-size:13px;font-weight:600">Settlement</span>
+        <span style="font-size:11px;color:var(--tx2)">SLS settlement at the footing / slab centreline from CPT-derived E_oed with explicit stress integration below Df.</span>
+      </div>
+      <div style="display:grid;grid-template-columns:280px 1fr 260px;gap:14px;align-items:start">
+        <div>
+          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
+          <div class="st6-help" style="margin-bottom:8px">The reported settlement is the vertical settlement beneath the centre of the loaded area. For a strip footing this is the centreline in section; for a rectangular, square, circular footing or slab it is the middle of the footprint.</div>
+          <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
+            <label style="font-size:11px;color:var(--tx2)">Footing type
+              <select onchange="setStage6Field('settlement.footingType', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="strip"${cfg.footingType==='strip'?' selected':''}>Strip</option>
+                <option value="rectangular"${cfg.footingType==='rectangular'?' selected':''}>Rectangular / slab</option>
+                <option value="square"${cfg.footingType==='square'?' selected':''}>Square</option>
+                <option value="circular"${cfg.footingType==='circular'?' selected':''}>Circular</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Width B (m)
+              <input type="number" step="0.1" min="0.1" value="${cfg.B.toFixed(2)}" onchange="setStage6Field('settlement.B', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            ${cfg.footingType==='circular' ? `
+              <label style="font-size:11px;color:var(--tx2)">Diameter D (m)
+                <input type="number" step="0.1" min="0.1" value="${cfg.D.toFixed(2)}" onchange="setStage6Field('settlement.D', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+            ` : `
+              <label style="font-size:11px;color:var(--tx2)">Length L (m)
+                <input type="number" step="0.1" min="0.1" value="${cfg.L.toFixed(2)}" onchange="setStage6Field('settlement.L', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+            `}
+            <label style="font-size:11px;color:var(--tx2)">Founding depth Df (m)
+              <input type="number" step="0.1" min="0" value="${cfg.Df.toFixed(2)}" onchange="setStage6Field('settlement.Df', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Stress spread
+              <select onchange="setStage6Field('settlement.stressMethod', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="boussinesq"${cfg.stressMethod==='boussinesq'?' selected':''}>Boussinesq / Newmark</option>
+                <option value="two_to_one"${cfg.stressMethod==='two_to_one'?' selected':''}>2:1 method</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Truncation rule
+              <select onchange="setStage6Field('settlement.truncationRule', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="10%_sigma_eff"${cfg.truncationRule==='10%_sigma_eff'?' selected':''}>Delta sigma < 10% sigma'v0</option>
+                <option value="20%_q_net"${cfg.truncationRule==='20%_q_net'?' selected':''}>Delta sigma < 20% q_net</option>
+                <option value="CPT_bottom"${cfg.truncationRule==='CPT_bottom'?' selected':''}>Use CPT bottom</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Sub-layer dz (m)
+              <input type="number" step="0.05" min="0.05" value="${cfg.dz.toFixed(2)}" onchange="setStage6Field('settlement.dz', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Target allowable settlement (mm)
+              <input type="number" step="1" min="1" value="${cfg.allowableSettlement.toFixed(0)}" onchange="setStage6Field('settlement.allowableSettlement', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px">
+              <input type="checkbox" ${cfg.includeTime?'checked':''} onchange="setStage6Field('settlement.includeTime', this.checked)">
+              Show settlement time curve
+            </label>
+            ${cfg.includeTime ? `
+              <label style="font-size:11px;color:var(--tx2)">Time horizon (days)
+                <input type="number" step="10" min="1" value="${cfg.timeDays.toFixed(0)}" onchange="setStage6Field('settlement.timeDays', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+            `:''}
+            <details class="st6-adv" data-st6details="settlement-loads"${stage6DetailsOpen('settlement-loads')}>
+              <summary>Load assumptions and Eurocode combination</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">Only expand this if you want to change the serviceability load assumptions. The default is the quasi-permanent SLS combination, which is usually the right starting point for long-term settlement.</div>
+                <label style="font-size:11px;color:var(--tx2)">SLS combination
+                  <select onchange="setStage6Field('settlement.combination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                    ${stage6SlsCombinationOptions(cfg.combination)}
+                  </select>
+                </label>
+                <div class="st6-help">${stage6SlsCombinationHelp(cfg.combination, 'settlement')}</div>
+                <label style="font-size:11px;color:var(--tx2)">Load category for Eurocode ψ-factors
+                  <select onchange="setStage6Field('settlement.useCategory', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                    ${stage6UseCategoryOptions(cfg.useCategory)}
+                  </select>
+                </label>
+                <div class="st6-help">${stage6UseCategoryHelp(cfg.useCategory)}</div>
+                <label style="font-size:11px;color:var(--tx2)">Permanent stress Gk (kPa)
+                  <input type="number" step="5" min="0" value="${cfg.Gk.toFixed(1)}" onchange="setStage6Field('settlement.Gk', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Leading variable load Qk (kPa)
+                  <input type="number" step="5" min="0" value="${cfg.QLead.toFixed(1)}" onchange="setStage6Field('settlement.QLead', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Other variable loads together (kPa)
+                  <input type="number" step="5" min="0" value="${cfg.QOther.toFixed(1)}" onchange="setStage6Field('settlement.QOther', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                </label>
+              </div>
+            </details>
+          </div>
+        </div>
+        <div>
+          <div style="display:grid;grid-template-columns:1fr;gap:12px">
+            <div>
+              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Stress increase Delta sigma_v vs depth</div>
+              <div style="position:relative;height:180px"><canvas id="stage6SettlementStressChart" role="img" aria-label="Settlement stress increase versus depth"></canvas></div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Cumulative settlement vs depth</div>
+              <div style="position:relative;height:180px"><canvas id="stage6SettlementCumulativeChart" role="img" aria-label="Cumulative settlement versus depth"></canvas></div>
+            </div>
+            ${analysis.timeCurve ? `
+              <div>
+                <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Indicative settlement time curve</div>
+                <div style="position:relative;height:180px"><canvas id="stage6SettlementTimeChart" role="img" aria-label="Settlement time curve"></canvas></div>
+              </div>
+            `:''}
+          </div>
+        </div>
+        <div>
+          <table class="pt" style="margin-bottom:12px">
+            <tr><td colspan="2" style="font-size:10px;font-weight:700;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Summary</td></tr>
+            <tr><td>Total settlement</td><td>${analysis.totalSettlementMm.toFixed(1)} mm</td></tr>
+            <tr><td>Target allowable</td><td>${cfg.allowableSettlement.toFixed(1)} mm</td></tr>
+            <tr><td>Utilisation</td><td>${(analysis.totalSettlementMm/Math.max(cfg.allowableSettlement,1)).toFixed(2)}</td></tr>
+            <tr><td>q_gross</td><td>${analysis.qGross.toFixed(1)} kPa</td></tr>
+            <tr><td>q_net</td><td>${analysis.qNet.toFixed(1)} kPa</td></tr>
+            <tr><td>Df</td><td>${analysis.Df.toFixed(2)} m</td></tr>
+            <tr><td>Truncation</td><td>${analysis.truncationCause}</td></tr>
+            <tr><td>z_trunc</td><td>${analysis.truncationDepth.toFixed(2)} m</td></tr>
+            <tr><td>Sublayers used</td><td>${analysis.sublayers.length}</td></tr>
+          </table>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        ${stage6LoadSummaryHtml('Load combination audit', loadRows)}
+        <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+          <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Formula used</div>
+          <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
+            Delta eps = Delta sigma_v / E_oed(sigma_mean)<br>
+            Delta S = Sum(Delta eps * Delta z)
+          </div>
+          <div style="font-size:11px;color:var(--tx2);line-height:1.55">
+            Evaluation point = <strong>centre of loaded area</strong><br>
+            Stress method = <strong>${cfg.stressMethod === 'two_to_one' ? '2:1 spread beneath centreline' : 'Boussinesq / Newmark centreline'}</strong><br>
+            Soil route = <strong>Characteristic E_oed,ref and m</strong><br>
+            Load route = <strong>SLS ${cfg.combination === 'qp' ? 'quasi-permanent' : cfg.combination}</strong><br>
+            Truncation = <strong>${analysis.truncationCause}</strong>
+          </div>
+        </div>
+      </div>
+      <div class="mc2" style="margin-top:14px">
+        <div class="mc2-sec">Per layer contribution</div>
+        <table class="tbl">
+          <thead><tr><th>Layer</th><th>Type</th><th>Top-Bot (m)</th><th>Thickness (m)</th><th>Settlement (mm)</th></tr></thead>
+          <tbody>
+            ${analysis.perLayer.map(row=>`<tr><td>${row.layerIndex+1}</td><td>${row.type}</td><td>${row.top.toFixed(2)}-${row.bot.toFixed(2)}</td><td>${row.thickness.toFixed(2)}</td><td>${row.settlementMm.toFixed(2)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="mc2" style="margin-top:14px">
+        <div class="mc2-sec">Audit sublayers</div>
+        <div style="max-height:320px;overflow:auto">
+          <table class="tbl">
+            <thead><tr><th>z_mid</th><th>Layer</th><th>sigma'v0</th><th>Delta sigma</th><th>sigma'mean</th><th>E_oed</th><th>Delta S</th></tr></thead>
+            <tbody>
+              ${analysis.sublayers.map(row=>`<tr><td>${row.zMid.toFixed(2)}</td><td>${row.layerIndex+1}</td><td>${row.sigmaEff0.toFixed(1)}</td><td>${row.deltaSigmaV.toFixed(1)}</td><td>${row.sigmaMean.toFixed(1)}</td><td>${row.Eoed.toFixed(0)}</td><td>${row.dSmm.toFixed(3)}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      ${stage6NoteHtml(analysis.notes)}
+    </div>
+  `;
+}
+
+function renderStage6DewateringApp(analysis){
+  const cfg = S.stage6.dewatering;
+  const loadRows = [
+    {k:'Limit state', v:'SLS'},
+    {k:'Combination', v:cfg.combination === 'qp' ? 'Quasi-permanent drawdown context' : 'Characteristic drawdown'},
+    {k:'Geometry', v:analysis.geometry.label},
+    {k:'Original WT', v:`${S.wt.toFixed(2)} m`},
+    {k:'Target WT at well', v:`${analysis.targetWt.toFixed(2)} m`},
+    {k:'WT at CPT', v:`${analysis.newWtAtCpt.toFixed(2)} m`},
+    {k:'Drawdown at CPT', v:`${analysis.drawdownAtCpt.toFixed(2)} m`},
+    {k:analysis.geometry.distanceLabel || 'Source-CPT distance', v:`${(analysis.geometry.distanceToCpt || 0).toFixed(2)} m`},
+    ...(analysis.geometry.wellRadius ? [{k:analysis.geometry.equivalentRadiusLabel || 'Well radius', v:`${analysis.geometry.wellRadius.toFixed(2)} m`}] : []),
+    {k:'k_eff,h', v:`${analysis.effectiveK.toExponential(2)} m/s`},
+    {k:'R', v:`${analysis.radiusInfluence.toFixed(1)} m`}
+  ];
+  return `
+    <div class="mc2">
+      <div class="mc2-head" style="margin-bottom:12px">
+        <span style="font-size:13px;font-weight:600">Dewatering impact</span>
+        <span style="font-size:11px;color:var(--tx2)">Hydrogeological screening plus stress and settlement response at the CPT location.</span>
+      </div>
+      <div style="display:grid;grid-template-columns:280px 1fr 260px;gap:14px;align-items:start">
+        <div>
+          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
+          <div class="st6-help" style="margin-bottom:8px">Dewatering impact is treated as an SLS deformation screening tool. Use the expected drawdown directly; this module does not apply DA1/1 or DA1/2 style load factoring.</div>
+          <div class="st6-help" style="margin-bottom:8px">Important: settlement is driven by the <strong>drawdown at the CPT location</strong>, not by the target level at the well or excavation itself. If the CPT sits outside the computed screening influence radius, the module will show little or no settlement.</div>
+          <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
+            <label style="font-size:11px;color:var(--tx2)">Combination context
+              <select onchange="setStage6Field('dewatering.combination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                ${stage6DewateringCombinationOptions(cfg.combination)}
+              </select>
+            </label>
+            <div class="st6-help">${stage6DewateringCombinationHelp(cfg.combination)}</div>
+            <label style="font-size:11px;color:var(--tx2)">Target water table at well / excavation (m below ground)
+              <input type="number" step="0.1" min="${S.wt.toFixed(2)}" value="${cfg.targetWt.toFixed(2)}" onchange="setStage6Field('dewatering.targetWt', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Geometry
+              <select onchange="setStage6Field('dewatering.geometry', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="single_well"${cfg.geometry==='single_well'?' selected':''}>Single well</option>
+                <option value="equivalent_well_rectangular_excavation"${cfg.geometry==='equivalent_well_rectangular_excavation'?' selected':''}>Equivalent well excavation</option>
+                <option value="line_dewatering_trench"${cfg.geometry==='line_dewatering_trench'?' selected':''}>Line dewatering trench</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Aquifer type
+              <select onchange="setStage6Field('dewatering.aquiferType', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="unconfined"${cfg.aquiferType==='unconfined'?' selected':''}>Unconfined</option>
+                <option value="confined"${cfg.aquiferType==='confined'?' selected':''}>Confined</option>
+              </select>
+            </label>
+            ${cfg.geometry==='single_well' ? `
+              <label style="font-size:11px;color:var(--tx2)">Well radius rw (m)
+                <input type="number" step="0.05" min="0.05" value="${cfg.rw.toFixed(2)}" onchange="setStage6Field('dewatering.rw', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Distance well-CPT (m)
+                <input type="number" step="0.5" min="0" value="${cfg.rCPT.toFixed(2)}" onchange="setStage6Field('dewatering.rCPT', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+            `:''}
+            ${cfg.geometry==='equivalent_well_rectangular_excavation' ? `
+              <label style="font-size:11px;color:var(--tx2)">Pit length L (m)
+                <input type="number" step="0.5" min="0.5" value="${cfg.LPit.toFixed(2)}" onchange="setStage6Field('dewatering.LPit', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Pit width B (m)
+                <input type="number" step="0.5" min="0.5" value="${cfg.BPit.toFixed(2)}" onchange="setStage6Field('dewatering.BPit', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Centroid-CPT distance (m)
+                <input type="number" step="0.5" min="0" value="${cfg.rCPT.toFixed(2)}" onchange="setStage6Field('dewatering.rCPT', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <div class="st6-help">The rectangular excavation is converted to an equivalent circular well using the same plan area. The drawdown curve is then evaluated at the CPT distance from the excavation centroid.</div>
+            `:''}
+            ${cfg.geometry==='line_dewatering_trench' ? `
+              <label style="font-size:11px;color:var(--tx2)">Trench length (m)
+                <input type="number" step="0.5" min="1" value="${cfg.LTrench.toFixed(2)}" onchange="setStage6Field('dewatering.LTrench', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Perpendicular CPT distance (m)
+                <input type="number" step="0.5" min="0" value="${cfg.distanceToCPT.toFixed(2)}" onchange="setStage6Field('dewatering.distanceToCPT', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+            `:''}
+            <label style="font-size:11px;color:var(--tx2)">Sichardt coefficient C
+              <input type="number" step="100" min="100" value="${cfg.CSichardt.toFixed(0)}" onchange="setStage6Field('dewatering.CSichardt', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Total stress mode
+              <select onchange="setStage6Field('dewatering.sigmaVMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="conservative"${cfg.sigmaVMode==='conservative'?' selected':''}>Conservative sigma_v fixed</option>
+                <option value="realistic"${cfg.sigmaVMode==='realistic'?' selected':''}>Realistic gamma_sat to gamma</option>
+              </select>
+            </label>
+            <div class="st6-help">Conservative keeps the total overburden stress profile unchanged and only lowers pore pressure. Realistic also reduces total stress in the zone that changes from saturated to unsaturated, by switching from γ_sat to γ.</div>
+            <label style="font-size:11px;color:var(--tx2)">Aquifer base depth (m, optional)
+              <input type="number" step="0.5" min="0.5" value="${cfg.aquiferBaseDepth!=null?cfg.aquiferBaseDepth.toFixed(2):''}" onchange="setStage6Field('dewatering.aquiferBaseDepth', this.value)" placeholder="defaults to CPT bottom" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Sub-layer dz (m)
+              <input type="number" step="0.05" min="0.05" value="${cfg.dz.toFixed(2)}" onchange="setStage6Field('dewatering.dz', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Time horizon for settlement curve (days, optional)
+              <input type="number" step="10" min="0" value="${cfg.timeDays.toFixed(0)}" onchange="setStage6Field('dewatering.timeDays', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+          </div>
+        </div>
+        <div>
+          <div style="display:grid;grid-template-columns:1fr;gap:12px">
+            <div>
+              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Estimated phreatic level profile from source to CPT</div>
+              <div style="position:relative;height:170px"><canvas id="stage6DewateringDrawdownChart" role="img" aria-label="Drawdown profile"></canvas></div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Effective stress before / after drawdown</div>
+              <div style="position:relative;height:170px"><canvas id="stage6DewateringStressChart" role="img" aria-label="Effective stress profile"></canvas></div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Total settlement versus distance from source</div>
+              <div style="position:relative;height:170px"><canvas id="stage6DewateringSettlementChart" role="img" aria-label="Dewatering settlement versus distance"></canvas></div>
+            </div>
+            ${analysis.timeCurve ? `
+              <div>
+                <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Indicative settlement time curve</div>
+                <div style="position:relative;height:170px"><canvas id="stage6DewateringTimeChart" role="img" aria-label="Dewatering settlement time curve"></canvas></div>
+              </div>
+            `:''}
+          </div>
+        </div>
+        <div>
+          <table class="pt" style="margin-bottom:12px">
+            <tr><td colspan="2" style="font-size:10px;font-weight:700;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Summary</td></tr>
+            <tr><td>New WT at CPT</td><td>${analysis.newWtAtCpt.toFixed(2)} m</td></tr>
+            <tr><td>Drawdown at CPT</td><td>${analysis.drawdownAtCpt.toFixed(2)} m</td></tr>
+            <tr><td>${analysis.geometry.distanceLabel || 'Source-CPT distance'}</td><td>${(analysis.geometry.distanceToCpt || 0).toFixed(2)} m</td></tr>
+            ${analysis.geometry.wellRadius ? `<tr><td>${analysis.geometry.equivalentRadiusLabel || 'Well radius'}</td><td>${analysis.geometry.wellRadius.toFixed(2)} m</td></tr>` : ''}
+            <tr><td>R influence</td><td>${analysis.radiusInfluence.toFixed(1)} m</td></tr>
+            <tr><td>Q estimate</td><td>${analysis.QEstimate.toExponential(2)} ${analysis.QUnits}</td></tr>
+            ${analysis.qPrime ? `<tr><td>q' estimate</td><td>${analysis.qPrime.toExponential(2)} ${analysis.qPrimeUnits}</td></tr>`:''}
+            <tr><td>Aquifer base</td><td>${analysis.baseDepth.toFixed(2)} m</td></tr>
+            <tr><td>k_eff,h</td><td>${analysis.effectiveK.toExponential(2)} m/s</td></tr>
+            <tr><td>Conservative settlement</td><td>${analysis.conservativeSettlementMm.toFixed(2)} mm</td></tr>
+            <tr><td>Realistic settlement</td><td>${analysis.realisticSettlementMm.toFixed(2)} mm</td></tr>
+            <tr><td>Max Δσv mode effect</td><td>${analysis.maxSigmaVShift.toFixed(1)} kPa</td></tr>
+            <tr><td>Total settlement</td><td>${analysis.totalSettlementMm.toFixed(1)} mm</td></tr>
+          </table>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        ${stage6LoadSummaryHtml('Hydraulic screening inputs', loadRows)}
+        <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+          <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Formula route</div>
+          <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
+            R = C · s · sqrt(k)<br>
+            h²(r) = h_w² + Q / (pi·k) · ln(r / r_w) &nbsp; (radial, unconfined)<br>
+            Delta eps = Delta sigma' / E_oed(sigma_mean)
+          </div>
+          <div style="font-size:11px;color:var(--tx2);line-height:1.55">
+            Geometry = <strong>${analysis.geometry.label}</strong><br>
+            Aquifer type = <strong>${cfg.aquiferType}</strong><br>
+            Distance axis = <strong>${analysis.geometry.geometry === 'line_dewatering_trench' ? 'perpendicular distance from trench' : 'radial distance from well centre / excavation centroid'}</strong><br>
+            Settlement-distance curve = <strong>total settlement predicted at each x-location</strong><br>
+            Total stress mode = <strong>${cfg.sigmaVMode}</strong><br>
+            Settlement limit state = <strong>SLS only</strong><br>
+            Combination route = <strong>${cfg.combination === 'qp' ? 'Quasi-permanent context, no γ factors' : 'Characteristic drawdown, no γ factors'}</strong>
+          </div>
+        </div>
+      </div>
+      <div class="mc2" style="margin-top:14px">
+        <div class="mc2-sec">Per layer settlement contribution</div>
+        <table class="tbl">
+          <thead><tr><th>Layer</th><th>Type</th><th>Top-Bot (m)</th><th>Settlement (mm)</th></tr></thead>
+          <tbody>${analysis.perLayer.map(row=>`<tr><td>${row.layerIndex+1}</td><td>${row.type}</td><td>${row.top.toFixed(2)}-${row.bot.toFixed(2)}</td><td>${row.settlementMm.toFixed(2)}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+      ${stage6NoteHtml(analysis.notes)}
+    </div>
+  `;
+}
+
+function renderStage6BeamApp(analysis){
+  const cfg = S.stage6.beam;
+  const ks = analysis.ksInfo;
+  const reinf = analysis.reinforcement;
+  const loadRows = [
+    {k:'Foundation model', v:ks.foundationModel === 'pasternak' ? 'Pasternak (two-parameter)' : 'Winkler'},
+    {k:'SLS route', v:`${analysis.slsLoadMeta.label}`},
+    {k:'ULS route', v:`${analysis.ulsLoadMeta.label}`},
+    {k:'SLS load', v:`${analysis.slsLoadMeta.value.toFixed(2)} ${analysis.slsLoadMeta.units}`},
+    {k:'ULS load', v:`${analysis.ulsLoadMeta.value.toFixed(2)} ${analysis.ulsLoadMeta.units}`},
+    {k:'Es mode', v:cfg.EsMode === 'young_drained' ? 'Young drained' : 'Oedometric'},
+    {k:'Es avg', v:`${ks.EsAvg.toFixed(0)} kPa`},
+    {k:'ks', v:`${ks.ks.toFixed(0)} kN/m³`},
+    ...(ks.foundationModel === 'pasternak' ? [
+      {k:'G_s,avg', v:`${ks.GsAvg.toFixed(0)} kPa`},
+      {k:'G_p', v:`${ks.gp.toFixed(0)} kN/m`},
+      {k:'eta', v:ks.gpEta.toFixed(2)}
+    ] : []),
+    {k:'beta*L', v:ks.betaL.toFixed(2)}
+  ];
+  return `
+    <div class="mc2">
+      <div class="mc2-head" style="margin-bottom:12px">
+        <span style="font-size:13px;font-weight:600">Beam / slab on ${ks.foundationModel === 'pasternak' ? 'Pasternak' : 'Winkler'}</span>
+        <span style="font-size:11px;color:var(--tx2)">1D strip model with SLS deflection and ULS reinforcement output from the current CPT stiffness profile.</span>
+      </div>
+      <div style="display:grid;grid-template-columns:300px 1fr 280px;gap:14px;align-items:start">
+        <div>
+          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
+          <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
+            <div class="st6-help" style="margin-bottom:2px">Hover the <strong>ⓘ</strong> icons for how to use each modelling input. This module is best used as a <strong>1 m strip screening tool</strong>, not as a final 2D slab design model.</div>
+            <label style="font-size:11px;color:var(--tx2)">Soil width B for ks (m)${stage6Tooltip('B is the characteristic loaded width used in the subgrade-reaction calculation k_s. For a strip footing, beam, or 1 m slab strip, start with the real loaded width bearing on soil. For a full slab, B is often a screening width rather than the whole slab plan dimension.')}
+              <input type="number" step="0.1" min="0.1" value="${cfg.B.toFixed(2)}" onchange="setStage6Field('beam.B', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Beam / strip width b (m)${stage6Tooltip('b is the structural strip width used for the beam stiffness and line-foundation coupling. For slab screening, keep b = 1.0 m so the output stays in kNm/m and mm2/m.')}
+              <input type="number" step="0.1" min="0.1" value="${cfg.b.toFixed(2)}" onchange="setStage6Field('beam.b', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Length L (m)${stage6Tooltip('L is the strip length in the direction you want to analyse. For a slab, run the tool separately in the two principal strip directions if you want a first screening comparison.')}
+              <input type="number" step="0.1" min="0.5" value="${cfg.L.toFixed(2)}" onchange="setStage6Field('beam.L', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Thickness h (m)${stage6Tooltip('h is the concrete member thickness used in the strip stiffness EI and in the reinforcement effective depth d. Increasing h strongly increases stiffness and usually reduces deflection and required steel.')}
+              <input type="number" step="0.01" min="0.1" value="${cfg.h.toFixed(2)}" onchange="setStage6Field('beam.h', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Founding depth Df (m)${stage6Tooltip('Df shifts the evaluation depth for the soil stiffness averaging. Use the depth of the underside of the slab, strip footing, or beam relative to ground level.')}
+              <input type="number" step="0.1" min="0" value="${cfg.Df.toFixed(2)}" onchange="setStage6Field('beam.Df', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Concrete E (kPa)${stage6Tooltip('Concrete Young modulus used for EI. The default is a reasonable reinforced-concrete screening value. Change it only if you want a project-specific stiffness assumption.')}
+              <input type="number" step="100000" min="1000000" value="${cfg.Ec.toFixed(0)}" onchange="setStage6Field('beam.Ec', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Foundation model${stage6Tooltip('Use Winkler as the standard first screening model. Pasternak adds shear coupling between adjacent soil springs and can give a smoother, more spread response, but in this app it is still an inferred experimental extension.')}
+              <select onchange="setStage6Field('beam.foundationModel', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="winkler"${cfg.foundationModel==='winkler'?' selected':''}>Winkler</option>
+                <option value="pasternak"${cfg.foundationModel==='pasternak'?' selected':''}>Pasternak (1D strip)</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Es route${stage6Tooltip('This controls how the CPT-derived stiffness is converted to the soil modulus used in k_s. The default keeps Es = E_oed for consistency with the oedometric CPT workflow.')}
+              <select onchange="setStage6Field('beam.EsMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="oedometric"${cfg.EsMode==='oedometric'?' selected':''}>Es = E_oed, nu = 0</option>
+                <option value="young_drained"${cfg.EsMode==='young_drained'?' selected':''}>Young drained conversion</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Influence depth for Es averaging (m)${stage6Tooltip('Depth range below Df over which the CPT stiffness is averaged to derive Es and k_s. Larger values smooth the soil profile more; smaller values make the support react more to the near-surface layer only.')}
+              <input type="number" step="0.1" min="0.5" value="${cfg.zInfluence.toFixed(2)}" onchange="setStage6Field('beam.zInfluence', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            ${cfg.foundationModel==='pasternak' ? `
+              <label style="font-size:11px;color:var(--tx2)">Pasternak coupling factor eta${stage6Tooltip('eta scales the inferred Pasternak shear layer: G_p = eta · G_s,avg · H_p. Start around 1.0. Lower eta weakens lateral coupling between springs; higher eta strengthens it.')}
+                <input type="number" step="0.1" min="0" value="${cfg.gpEta.toFixed(2)}" onchange="setStage6Field('beam.gpEta', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Override G_p (kN/m, optional)${stage6Tooltip('Use this only if you already have an engineering value for the Pasternak shear parameter G_p. Leave it blank to let the app infer G_p from the CPT stiffness profile and eta.')}
+                <input type="number" step="100" min="0" value="${cfg.gpOverride!=null?cfg.gpOverride:''}" onchange="setStage6Field('beam.gpOverride', this.value)" placeholder="leave blank to infer from CPT" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <div class="st6-help">Pasternak adds shear interaction between adjacent springs. Here <strong>eta</strong> is an engineer scaling factor in <strong>G_p = eta · G_s,avg · H_p</strong>. Start around <strong>1.0</strong>; lower values weaken the coupling, higher values strengthen it. Treat this as experimental screening unless calibrated.</div>
+            `:''}
+            <label style="font-size:11px;color:var(--tx2)">Load pattern${stage6Tooltip('Choose a load shape that matches how the slab or beam is really loaded. Uniform full length is often a settlement-style case; local bending is usually better captured by a patch load or a point load.')}
+              <select onchange="setStage6Field('beam.loadPattern', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                <option value="uniform_full"${cfg.loadPattern==='uniform_full'?' selected':''}>Uniform full length</option>
+                <option value="uniform_patch"${cfg.loadPattern==='uniform_patch'?' selected':''}>Uniform patch</option>
+                <option value="point_centre"${cfg.loadPattern==='point_centre'?' selected':''}>Point load at centre</option>
+                <option value="point_at_x"${cfg.loadPattern==='point_at_x'?' selected':''}>Point load at x</option>
+              </select>
+            </label>
+            <div class="st6-help">${stage6BeamLoadPatternHelp(cfg.loadPattern)}</div>
+            ${cfg.loadPattern==='uniform_patch' ? `
+              <label style="font-size:11px;color:var(--tx2)">Patch start x (m)${stage6Tooltip('Start position of the loaded zone along the strip. Use this with patch end x to place a wall strip, loaded bay, or other local area load.')}
+                <input type="number" step="0.1" min="0" value="${cfg.xStart.toFixed(2)}" onchange="setStage6Field('beam.xStart', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Patch end x (m)${stage6Tooltip('End position of the loaded patch. The bending moment is created only over this loaded interval, so this is often more useful than full-length loading for reinforcement screening.')}
+                <input type="number" step="0.1" min="0" value="${cfg.xEnd.toFixed(2)}" onchange="setStage6Field('beam.xEnd', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+            `:''}
+            ${(cfg.loadPattern==='point_centre' || cfg.loadPattern==='point_at_x') ? `
+              <label style="font-size:11px;color:var(--tx2)">Point load x-position (m)${stage6Tooltip('x-position of the concentrated load along the strip. This is useful for checking an isolated reaction, edge-near machine support, or local heavy point action.')}
+                <input type="number" step="0.1" min="0" value="${cfg.xLoad.toFixed(2)}" onchange="setStage6Field('beam.xLoad', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+            `:''}
+            <label style="font-size:11px;color:var(--tx2)">Allowable deflection ratio L / n${stage6Tooltip('Serviceability comparison only. The app reports w_max and compares it to L/n. This does not affect the ULS reinforcement result.')}
+              <input type="number" step="50" min="100" value="${cfg.allowableDeflectionRatio.toFixed(0)}" onchange="setStage6Field('beam.allowableDeflectionRatio', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+            </label>
+            <details class="st6-adv" data-st6details="beam-loads"${stage6DetailsOpen('beam-loads')}>
+              <summary>Load assumptions and Eurocode combination</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">Expand this only if you want to change how the line load is assembled. The category sets the Eurocode ψ-factors for the variable action.</div>
+                <label style="font-size:11px;color:var(--tx2)">SLS combination
+                  <select onchange="setStage6Field('beam.slsCombination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                    ${stage6SlsCombinationOptions(cfg.slsCombination)}
+                  </select>
+                </label>
+                <div class="st6-help">${stage6SlsCombinationHelp(cfg.slsCombination, 'beam')}</div>
+                <label style="font-size:11px;color:var(--tx2)">ULS action set
+                  <select onchange="setStage6Field('beam.ulsCombination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                    ${stage6BeamUlsOptions(cfg.ulsCombination)}
+                  </select>
+                </label>
+                <div class="st6-help">${stage6BeamUlsHelp(cfg.ulsCombination)}</div>
+                <label style="font-size:11px;color:var(--tx2)">Load category for Eurocode ψ-factors
+                  <select onchange="setStage6Field('beam.useCategory', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                    ${stage6UseCategoryOptions(cfg.useCategory)}
+                  </select>
+                </label>
+                <div class="st6-help">${stage6UseCategoryHelp(cfg.useCategory)}</div>
+                <label style="font-size:11px;color:var(--tx2)">Permanent load Gk (${analysis.slsLoadMeta.units})
+                  <input type="number" step="1" min="0" value="${cfg.Gk.toFixed(1)}" onchange="setStage6Field('beam.Gk', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Leading variable load Qk (${analysis.slsLoadMeta.units})
+                  <input type="number" step="1" min="0" value="${cfg.QLead.toFixed(1)}" onchange="setStage6Field('beam.QLead', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Other variable loads together (${analysis.slsLoadMeta.units})
+                  <input type="number" step="1" min="0" value="${cfg.QOther.toFixed(1)}" onchange="setStage6Field('beam.QOther', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                </label>
+              </div>
+            </details>
+            <div style="padding-top:6px;border-top:1px solid var(--bd)">
+              <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">EC2 reinforcement</div>
+              <label style="font-size:11px;color:var(--tx2)">Concrete class fck (MPa)${stage6Tooltip('Characteristic cylinder strength used for the EC2 ULS reinforcement design. The app applies the concrete material factor internally when deriving f_cd.')}
+                <input type="number" step="1" min="12" value="${cfg.fck.toFixed(0)}" onchange="setStage6Field('beam.fck', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Steel fyk (MPa)${stage6Tooltip('Characteristic reinforcement yield strength. The app applies the EC2 steel material factor internally and designs with f_yd = f_yk / 1.15.')}
+                <input type="number" step="10" min="200" value="${cfg.fyk.toFixed(0)}" onchange="setStage6Field('beam.fyk', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Exposure class${stage6Tooltip('Exposure class drives the EC2 durability cover recommendation c_nom. Pick the environment the member will actually see, then override only if project detailing requires it.')}
+                <select onchange="setStage6Field('beam.exposureClass', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                  ${stage6ExposureOptions(cfg.exposureClass)}
+                </select>
+              </label>
+              <div class="st6-help">${stage6ExposureHelp(cfg.exposureClass)}</div>
+              <label style="font-size:11px;color:var(--tx2)">Design working life (years)${stage6Tooltip('Used in the EC2 durability route for the recommended nominal cover. Longer design life can lead to a higher recommended c_nom.')}
+                <select onchange="setStage6Field('beam.designLifeYears', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+                  <option value="25"${cfg.designLifeYears===25?' selected':''}>25 years</option>
+                  <option value="50"${cfg.designLifeYears===50?' selected':''}>50 years</option>
+                  <option value="100"${cfg.designLifeYears===100?' selected':''}>100 years</option>
+                </select>
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Bar diameter (mm)${stage6Tooltip('Bar diameter used in the cover and effective-depth calculation. It affects d and therefore the resulting As requirement slightly.')}
+                <input type="number" step="2" min="6" value="${cfg.phiBar.toFixed(0)}" onchange="setStage6Field('beam.phiBar', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Max aggregate size d_g (mm)
+                <input type="number" step="1" min="8" value="${cfg.dG.toFixed(0)}" onchange="setStage6Field('beam.dG', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Δc_dev (mm)
+                <input type="number" step="1" min="0" value="${cfg.deltaCdev.toFixed(0)}" onchange="setStage6Field('beam.deltaCdev', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2)">Override c_nom (mm, optional)
+                <input type="number" step="1" min="0" value="${cfg.cNomOverride!=null?cfg.cNomOverride:''}" onchange="setStage6Field('beam.cNomOverride', this.value)" placeholder="leave blank for recommendation" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+              </label>
+              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.isSlabOrPlate?'checked':''} onchange="setStage6Field('beam.isSlabOrPlate', this.checked)">slab / plate member</label>
+              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.specialQC?'checked':''} onchange="setStage6Field('beam.specialQC', this.checked)">special QC / precast-like execution</label>
+              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.castAgainstUnevenSurface?'checked':''} onchange="setStage6Field('beam.castAgainstUnevenSurface', this.checked)">cast against uneven prepared surface (+5 mm)</label>
+              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.castAgainstPreparedGround?'checked':''} onchange="setStage6Field('beam.castAgainstPreparedGround', this.checked)">cast against prepared ground / blinding (minimum 40 mm)</label>
+              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.castAgainstUnpreparedGround?'checked':''} onchange="setStage6Field('beam.castAgainstUnpreparedGround', this.checked)">cast against unprepared ground (minimum 75 mm)</label>
+              <div class="st6-help">High-strength concrete reduction is checked automatically from the chosen fck and exposure class, following the EC2 Table 4.3N thresholds.</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div style="display:grid;grid-template-columns:1fr;gap:12px">
+            <div>
+              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">SLS deflection line w(x)</div>
+              <div style="position:relative;height:190px"><canvas id="stage6BeamDeflectionChart" role="img" aria-label="Beam deflection diagram"></canvas></div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">ULS bending moment M(x)</div>
+              <div style="position:relative;height:190px"><canvas id="stage6BeamMomentChart" role="img" aria-label="Beam bending moment diagram"></canvas></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <table class="pt" style="margin-bottom:12px">
+            <tr><td colspan="2" style="font-size:10px;font-weight:700;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Summary</td></tr>
+            <tr><td>Es avg</td><td>${ks.EsAvg.toFixed(0)} kPa</td></tr>
+            <tr><td>ks</td><td>${ks.ks.toFixed(0)} kN/m³</td></tr>
+            ${ks.foundationModel === 'pasternak' ? `<tr><td>G_p</td><td>${ks.gp.toFixed(0)} kN/m</td></tr>` : ''}
+            <tr><td>${ks.foundationModel === 'pasternak' ? 'lambda_ref' : 'lambda'}</td><td>${ks.lambda.toFixed(2)} m</td></tr>
+            <tr><td>${ks.foundationModel === 'pasternak' ? 'beta·L ref' : 'beta·L'}</td><td>${ks.betaL.toFixed(2)}</td></tr>
+            <tr><td>Classification</td><td>${ks.classification}</td></tr>
+            <tr><td>w_max,SLS</td><td>${(analysis.sls.maxDeflection.value*1000).toFixed(2)} mm</td></tr>
+            <tr><td>w_allow</td><td>${((cfg.L / cfg.allowableDeflectionRatio)*1000).toFixed(2)} mm</td></tr>
+            <tr><td>SLS utilisation</td><td>${(Math.abs(analysis.sls.maxDeflection.value)/Math.max(cfg.L / cfg.allowableDeflectionRatio, 1e-6)).toFixed(2)}</td></tr>
+            <tr><td>M_Ed,max</td><td>${Math.abs(analysis.uls.maxMoment.value).toFixed(2)} kNm/m</td></tr>
+            <tr><td>Exposure</td><td>${reinf.durability.exposureClass}</td></tr>
+            <tr><td>Structural class</td><td>S${reinf.structuralClass}</td></tr>
+            <tr><td>c_nom</td><td>${reinf.cNom.toFixed(0)} mm</td></tr>
+            <tr><td>As,req</td><td>${reinf.AsReq!=null?reinf.AsReq.toFixed(0):'—'} mm²/m</td></tr>
+            <tr><td>As,min</td><td>${reinf.AsMin.toFixed(0)} mm²/m</td></tr>
+            <tr><td>As,governing</td><td>${reinf.As.toFixed(0)} mm²/m</td></tr>
+          </table>
+          <div class="st6-help">k_s is <strong>not</strong> a fixed soil material constant. It depends on the interpreted CPT stiffness, the loaded width <strong>B</strong>, the averaging depth, and the strip stiffness. As a rough order of magnitude only: very soft support may be around <strong>5,000-20,000 kN/m³</strong>, medium support <strong>20,000-80,000 kN/m³</strong>, and stiff/dense support <strong>80,000-200,000+ kN/m³</strong>. Use these only as a sanity check, not as target values.</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        ${stage6LoadSummaryHtml('Vesic / load audit', loadRows)}
+        <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+          <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Formula route</div>
+          <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
+            k_s = 0.65·E_s / [B·(1-nu²)] · (E_s·B^4 / (E_b·I_b))^(1/12)<br>
+            ${ks.foundationModel === 'pasternak'
+              ? `G_p = eta·G_s,avg·H_p &nbsp; (or engineer override)<br>EI·w'''' - G_p·b·w'' + k_s·b·w = q(x)`
+              : `EI·w'''' + k_s·b·w = q(x)`}
+          </div>
+          <div style="font-size:11px;color:var(--tx2);line-height:1.55">
+            Foundation model = <strong>${ks.foundationModel === 'pasternak' ? 'Pasternak (1D strip)' : 'Winkler'}</strong><br>
+            Structural stiffness I = <strong>${ks.I.toFixed(5)} m4</strong><br>
+            ULS design moment = <strong>${Math.abs(analysis.uls.maxMoment.value).toFixed(2)} kNm/m</strong><br>
+            c_nom used = <strong>${reinf.cNom.toFixed(0)} mm</strong><br>
+            Effective depth d = <strong>${reinf.d.toFixed(0)} mm</strong><br>
+            Structural class = <strong>S${reinf.structuralClass}</strong>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        ${stage6BeamDurabilityHtml(reinf)}
+      </div>
+      ${stage6NoteHtml(analysis.notes)}
+    </div>
+  `;
+}
+
+function renderStage6(){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const el = document.getElementById('stage6Area');
+  if(!el) return;
+  if(!S.layers.length){
+    el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Run the CPT through Stages 2–5 first so Stage 6 can reuse the interpreted layer model.</div>';
+    return;
+  }
+  const layers = stage6WorkingLayers();
+  const app = S.stage6.app;
+  let body = '';
+  if(app === 'bearing'){
+    const profile = bearingProfile(S.stage6.bearing, layers);
+    S.stage6Cache.bearing = profile;
+    body = renderStage6BearingApp(profile);
+  } else if(app === 'settlement'){
+    const analysis = analyzeSettlement(layers, S.wt, S.stage6.settlement);
+    S.stage6Cache.settlement = analysis;
+    body = renderStage6SettlementApp(analysis);
+  } else if(app === 'dewatering'){
+    const analysis = analyzeDewatering(layers, S.wt, S.stage6.dewatering);
+    S.stage6Cache.dewatering = analysis;
+    body = renderStage6DewateringApp(analysis);
+  } else {
+    const analysis = analyzeBeamAndReinforcement(layers, S.wt, S.stage6.beam);
+    S.stage6Cache.beam = analysis;
+    body = renderStage6BeamApp(analysis);
+  }
+  el.innerHTML = `${stage6CardsHtml(app)}${stage6SharedBanner()}${body}`;
+  requestAnimationFrame(()=>{
+    if(app === 'bearing') buildStage6BearingChart();
+    if(app === 'settlement') buildStage6SettlementCharts();
+    if(app === 'dewatering') buildStage6DewateringCharts();
+    if(app === 'beam') buildStage6BeamCharts();
+  });
+}
+
+function stage6DestroyChart(id){
+  const canvas = document.getElementById(id);
+  if(canvas && canvas._chartRef && canvas._chartRef.destroy) canvas._chartRef.destroy();
+  return canvas;
+}
+
+function buildStage6BearingChart(){
+  const canvas = stage6DestroyChart('stage6BearingChart');
+  const data = S.stage6Cache?.bearing;
+  if(!canvas || !data || typeof Chart === 'undefined') return;
+  const cfg = S.stage6.bearing;
+  const drained = data.drained;
+  const undrained = data.undrained;
+  const xMax = Math.max(50, Math.ceil(Math.max(...drained.map(p=>p.x||0), ...undrained.map(p=>p.x||0)) / 50) * 50);
+  const datasets = [];
+  if(cfg.showMode !== 'undrained') datasets.push({label:'Drained', data:drained, borderColor:'#1D9E75', borderWidth:2.4, pointRadius:0, fill:false, tension:0.15});
+  if(cfg.showMode !== 'drained') datasets.push({label:'Undrained', data:undrained, borderColor:'#D85A30', borderWidth:2.4, pointRadius:0, fill:false, tension:0.15});
+  datasets.push({label:'Selected Df', data:[{x:0,y:cfg.Df},{x:xMax,y:cfg.Df}], borderColor:'#378ADD', borderWidth:1.5, borderDash:[6,4], pointRadius:0, fill:false});
+  const chart = new Chart(canvas,{
+    type:'line',
+    data:{datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>ctx.dataset.label === 'Selected Df' ? `Df = ${cfg.Df.toFixed(2)} m` : `${ctx.dataset.label}: ${Math.round(ctx.parsed.x).toLocaleString()} kPa @ ${ctx.parsed.y.toFixed(2)} m`}}},
+      scales:{
+        x:{type:'linear', min:0, max:xMax, position:'top', title:{display:true,text:(stage6CapacityLabel(cfg)==='q_d'?'Design bearing capacity q_d (kPa)':'Allowable bearing capacity q_allow (kPa)'),font:{size:10}}, grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}},
+        y:{type:'linear', min:0, max:data.maxDepth + 0.25, reverse:true, title:{display:true,text:'Founding depth (m)',font:{size:10}}, grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}}
+      }
+    }
+  });
+  canvas._chartRef = chart;
+}
+
+function buildStage6SettlementCharts(){
+  const analysis = S.stage6Cache?.settlement;
+  if(!analysis || typeof Chart === 'undefined') return;
+  const stressCanvas = stage6DestroyChart('stage6SettlementStressChart');
+  if(stressCanvas){
+    stressCanvas._chartRef = new Chart(stressCanvas,{
+      type:'line',
+      data:{datasets:[{label:'Delta sigma_v', data:analysis.deltaStressCurve, borderColor:'#1D9E75', borderWidth:2.2, pointRadius:0, tension:0.15, fill:false}]},
+      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', position:'top', title:{display:true,text:'Delta sigma_v (kPa)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', reverse:true, min:0, max:stage6MaxDepth()+0.25, title:{display:true,text:'Depth (m)',font:{size:10}}, ticks:{font:{size:10}}}}}
+    });
+  }
+  const cumCanvas = stage6DestroyChart('stage6SettlementCumulativeChart');
+  if(cumCanvas){
+    cumCanvas._chartRef = new Chart(cumCanvas,{
+      type:'line',
+      data:{datasets:[{label:'Cumulative S', data:analysis.cumulativeCurve, borderColor:'#378ADD', borderWidth:2.2, pointRadius:0, tension:0.12, fill:false}]},
+      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', position:'top', title:{display:true,text:'Cumulative settlement (mm)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', reverse:true, min:0, max:analysis.truncationDepth + 0.25, title:{display:true,text:'Depth (m)',font:{size:10}}, ticks:{font:{size:10}}}}}
+    });
+  }
+  const timeCanvas = stage6DestroyChart('stage6SettlementTimeChart');
+  if(timeCanvas && analysis.timeCurve){
+    timeCanvas._chartRef = new Chart(timeCanvas,{
+      type:'line',
+      data:{datasets:[{label:'S(t)', data:analysis.timeCurve, borderColor:'#D85A30', borderWidth:2.2, pointRadius:0, fill:false, tension:0.15}]},
+      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', title:{display:true,text:'Time (days)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', title:{display:true,text:'Settlement (mm)',font:{size:10}}, ticks:{font:{size:10}}}}}
+    });
+  }
+}
+
+function buildStage6DewateringCharts(){
+  const analysis = S.stage6Cache?.dewatering;
+  if(!analysis || typeof Chart === 'undefined') return;
+  const drawCanvas = stage6DestroyChart('stage6DewateringDrawdownChart');
+  if(drawCanvas){
+    const profile = analysis.drawdownDisplayCurve?.length ? analysis.drawdownDisplayCurve : analysis.drawdownCurve;
+    const influenceX = Math.max(analysis.radiusInfluence || 0, analysis.geometry.distanceToCpt || 0, 1);
+    const maxX = influenceX * 1.1;
+    const minRelevantY = Math.min(
+      S.wt,
+      analysis.targetWt,
+      analysis.newWtAtCpt,
+      ...profile.map(p=>p.y ?? S.wt)
+    );
+    const maxRelevantY = Math.max(
+      S.wt,
+      analysis.targetWt,
+      analysis.newWtAtCpt,
+      ...profile.map(p=>p.y ?? S.wt)
+    );
+    const yPad = Math.max((maxRelevantY - minRelevantY) * 0.1, 0.15);
+    const minY = Math.max(0, minRelevantY - yPad);
+    const maxY = maxRelevantY + yPad;
+    const originalLine = [{x:0,y:S.wt},{x:maxX,y:S.wt}];
+    const influenceLine = analysis.radiusInfluence > 0 ? [{x:analysis.radiusInfluence,y:0},{x:analysis.radiusInfluence,y:maxY}] : [];
+    drawCanvas._chartRef = new Chart(drawCanvas,{
+      type:'line',
+      data:{datasets:[
+        {label:'Original WT', data:originalLine, borderColor:'rgba(107,107,104,.50)', borderWidth:1.3, borderDash:[5,4], pointRadius:0, fill:false},
+        {label:'WT profile', data:profile, borderColor:'#378ADD', backgroundColor:'rgba(55,138,221,.12)', borderWidth:2.4, pointRadius:0, tension:0, fill:'-1'},
+        {label:'Influence radius', data:influenceLine, borderColor:'rgba(29,158,117,.45)', borderWidth:1.2, borderDash:[4,4], pointRadius:0, fill:false},
+        {label:'CPT location', data:[{x:analysis.geometry.distanceToCpt || 0,y:0},{x:analysis.geometry.distanceToCpt || 0,y:maxY}], borderColor:'rgba(216,90,48,.55)', borderWidth:1.4, borderDash:[6,4], pointRadius:0, fill:false},
+        {label:'Target head at source', data:[{x:0,y:analysis.targetWt}], borderColor:'#1D9E75', pointRadius:4, pointHoverRadius:4, showLine:false},
+        {label:'WT at CPT', data:[{x:analysis.geometry.distanceToCpt || 0,y:analysis.newWtAtCpt}], borderColor:'#D85A30', pointRadius:4, pointHoverRadius:4, showLine:false}
+      ]},
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        animation:false,
+        interaction:{mode:'nearest', intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            filter:(ctx)=>ctx.dataset.label === 'WT profile' || ctx.dataset.label === 'WT at CPT' || ctx.dataset.label === 'Target head at source',
+            callbacks:{
+              label:(ctx)=>{
+                if(ctx.dataset.label === 'WT at CPT'){
+                  return `WT at CPT: ${ctx.parsed.y.toFixed(2)} m @ ${ctx.parsed.x.toFixed(2)} m`;
+                }
+                if(ctx.dataset.label === 'Target head at source'){
+                  return `Installed target head: ${ctx.parsed.y.toFixed(2)} m @ source`;
+                }
+                return `WT depth: ${ctx.parsed.y.toFixed(2)} m @ ${ctx.parsed.x.toFixed(2)} m`;
+              }
+            }
+          }
+        },
+        scales:{
+          x:{type:'linear', min:0, max:maxX, title:{display:true,text:analysis.geometry.geometry === 'line_dewatering_trench' ? 'Perpendicular distance from trench (m)' : 'Distance from source / centroid (m)',font:{size:10}}, grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}},
+          y:{type:'linear', reverse:true, min:minY, max:maxY, title:{display:true,text:'Phreatic level depth below ground (m)',font:{size:10}}, ticks:{font:{size:10}}}
+        }
+      }
+    });
+  }
+  const stressCanvas = stage6DestroyChart('stage6DewateringStressChart');
+  if(stressCanvas){
+    stressCanvas._chartRef = new Chart(stressCanvas,{
+      type:'line',
+      data:{datasets:[
+        {label:'sigma_v before', data:analysis.beforeTotalStressCurve, borderColor:'rgba(107,107,104,.60)', borderWidth:1.2, borderDash:[5,4], pointRadius:0, fill:false},
+        {label:'sigma_v after', data:analysis.afterTotalStressCurve, borderColor:'rgba(29,158,117,.55)', borderWidth:1.2, borderDash:[5,4], pointRadius:0, fill:false},
+        {label:'sigma_eff before', data:analysis.beforeStressCurve, borderColor:'#6b6b68', borderWidth:2, pointRadius:0, fill:false},
+        {label:'sigma_eff after', data:analysis.afterStressCurve, borderColor:'#1D9E75', borderWidth:2, pointRadius:0, fill:false},
+        {label:'Delta sigma', data:analysis.deltaStressCurve, borderColor:'#D85A30', borderWidth:1.6, pointRadius:0, fill:false}
+      ]},
+      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', position:'top', title:{display:true,text:'Total stress, effective stress, and increase (kPa)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', reverse:true, min:0, max:stage6MaxDepth()+0.25, title:{display:true,text:'Depth (m)',font:{size:10}}, ticks:{font:{size:10}}}}}
+    });
+  }
+  const setCanvas = stage6DestroyChart('stage6DewateringSettlementChart');
+  if(setCanvas){
+    setCanvas._chartRef = new Chart(setCanvas,{
+      type:'line',
+      data:{datasets:[
+        {label:'Total settlement', data:analysis.settlementDistanceCurve, borderColor:'#378ADD', borderWidth:2.2, pointRadius:0, fill:false, tension:0.12},
+        {label:'CPT location', data:[{x:analysis.geometry.distanceToCpt || 0,y:0},{x:analysis.geometry.distanceToCpt || 0,y:analysis.totalSettlementMm}], borderColor:'rgba(216,90,48,.55)', borderWidth:1.4, borderDash:[6,4], pointRadius:0, fill:false},
+        {label:'Settlement at CPT', data:[{x:analysis.geometry.distanceToCpt || 0,y:analysis.totalSettlementMm}], borderColor:'#D85A30', pointRadius:4, pointHoverRadius:4, showLine:false}
+      ]},
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        animation:false,
+        interaction:{mode:'nearest', intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            filter:(ctx)=>ctx.dataset.label === 'Total settlement' || ctx.dataset.label === 'Settlement at CPT',
+            callbacks:{
+              label:(ctx)=>{
+                if(ctx.dataset.label === 'Settlement at CPT'){
+                  return `Settlement at CPT: ${ctx.parsed.y.toFixed(2)} mm @ ${ctx.parsed.x.toFixed(2)} m`;
+                }
+                return `Settlement: ${ctx.parsed.y.toFixed(2)} mm @ ${ctx.parsed.x.toFixed(2)} m`;
+              }
+            }
+          }
+        },
+        scales:{
+          x:{type:'linear', title:{display:true,text:analysis.geometry.geometry === 'line_dewatering_trench' ? 'Perpendicular distance from trench (m)' : 'Radial distance from well centre / excavation centroid (m)',font:{size:10}}, ticks:{font:{size:10}}},
+          y:{type:'linear', beginAtZero:true, title:{display:true,text:'Total settlement (mm)',font:{size:10}}, ticks:{font:{size:10}}}
+        }
+      }
+    });
+  }
+  const timeCanvas = stage6DestroyChart('stage6DewateringTimeChart');
+  if(timeCanvas && analysis.timeCurve){
+    timeCanvas._chartRef = new Chart(timeCanvas,{
+      type:'line',
+      data:{datasets:[{label:'S(t)', data:analysis.timeCurve, borderColor:'#D85A30', borderWidth:2.2, pointRadius:0, fill:false, tension:0.15}]},
+      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', title:{display:true,text:'Time (days)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', title:{display:true,text:'Settlement (mm)',font:{size:10}}, ticks:{font:{size:10}}}}}
+    });
+  }
+}
+
+function buildStage6BeamCharts(){
+  const analysis = S.stage6Cache?.beam;
+  if(!analysis || typeof Chart === 'undefined') return;
+  const tickFmt = (value)=>stage6CompactNumber(value, 2);
+  const defCanvas = stage6DestroyChart('stage6BeamDeflectionChart');
+  if(defCanvas){
+    const deflectionData = analysis.sls.xSamples.map((x, i)=>({x, y:analysis.sls.wSamples[i]*1000}));
+    defCanvas._chartRef = new Chart(defCanvas,{
+      type:'line',
+      data:{datasets:[{label:'w(x)', data:deflectionData, borderColor:'#378ADD', borderWidth:2.2, pointRadius:0, fill:false, tension:0}]},
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        animation:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:(ctx)=>`w = ${stage6CompactNumber(ctx.parsed.y, 2)} mm @ x = ${stage6CompactNumber(ctx.parsed.x, 2)} m`}}
+        },
+        scales:{
+          x:{type:'linear', title:{display:true,text:'x along beam (m)',font:{size:10}}, ticks:{font:{size:10}, callback:tickFmt}},
+          y:{title:{display:true,text:'Deflection (mm)',font:{size:10}}, ticks:{font:{size:10}, callback:tickFmt}}
+        }
+      }
+    });
+  }
+  const momentCanvas = stage6DestroyChart('stage6BeamMomentChart');
+  if(momentCanvas){
+    const momentData = analysis.uls.xSamples.map((x, i)=>({x, y:analysis.uls.mSamples[i]}));
+    momentCanvas._chartRef = new Chart(momentCanvas,{
+      type:'line',
+      data:{datasets:[{label:'M(x)', data:momentData, borderColor:'#D85A30', borderWidth:2.2, pointRadius:0, fill:false, tension:0}]},
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        animation:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:(ctx)=>`M = ${stage6CompactNumber(ctx.parsed.y, 2)} kNm/m @ x = ${stage6CompactNumber(ctx.parsed.x, 2)} m`}}
+        },
+        scales:{
+          x:{type:'linear', title:{display:true,text:'x along beam (m)',font:{size:10}}, ticks:{font:{size:10}, callback:tickFmt}},
+          y:{title:{display:true,text:'Moment (kNm/m)',font:{size:10}}, ticks:{font:{size:10}, callback:tickFmt}}
+        }
+      }
+    });
+  }
+}
+
+/* ════════════════════════════════
    CSV EXPORT
 ════════════════════════════════ */
 function exportCSV(){
@@ -3763,6 +5089,120 @@ function exportCSV(){
   a.download=`CPT_${S.meta.testid||'export'}_layers.csv`;
   a.click();
 }
-</script>
-</body>
-</html>
+
+const legacyApi={
+  PROJECT,
+  newCptState,
+  selectCpt,
+  addCpt,
+  setCptName,
+  renderBanner,
+  removeCpt,
+  setPhase,
+  loadGEF,
+  setCptCoord,
+  layerTAW,
+  cptDist,
+  layerTypeCompatScore,
+  matchScore,
+  runCorrelation,
+  renderCorrTable,
+  sectionProjection,
+  renderSection,
+  bindSectionTooltip,
+  exportSectionSVG,
+  sb260GranularAlpha,
+  sb260TransitionAlpha,
+  sb260AlphaFamily,
+  alphaEB,
+  goS,
+  parseGEF,
+  updateElevSrc,
+  updateWTDisplay,
+  renderMeta,
+  setElev,
+  setWT,
+  updateWTLine,
+  setMinThk,
+  setSmartMerge,
+  arrMax,
+  arrSafe,
+  initCharts,
+  refreshChartData,
+  drawLayerColumnSvg,
+  renderLayerPreviewSvg,
+  bindLayerPreviewTooltip,
+  loadDemo,
+  selM,
+  stressAt,
+  classRob,
+  classCUR,
+  classSB260,
+  runClass,
+  segmentSummary,
+  subtypeGroup,
+  familyClass,
+  qcSimilarity,
+  rfSimilarity,
+  subtypeSimilarity,
+  paramSimilarity,
+  compatSimilarity,
+  continuityScore,
+  isCriticalMarkerLayer,
+  mergeCandidateScore,
+  detectLayers,
+  eurocodeEntryMatches,
+  compatLevel,
+  qcRfFit,
+  suggestSubtype,
+  buildSubtypeDropdown,
+  renderLayers,
+  changeSubtype,
+  renderCompatWarnings,
+  editL,
+  editAlpha,
+  editM,
+  khParams,
+  setAlphaMethod,
+  setStiffMethod,
+  setParamMethod,
+  hsParams,
+  renderModel,
+  fitLayer,
+  runTuning,
+  acceptFit,
+  rejectFit,
+  getTuningPreviewM,
+  tuningSliderBounds,
+  tuningPreviewEoedRef,
+  tuningPreviewLineData,
+  updateTuningPreviewM,
+  renderTuning,
+  buildTuningCharts,
+  stage6Defaults,
+  ensureStage6State,
+  setStage6Field,
+  setStage6App,
+  layerAtDepth,
+  stage6ShapeFactors,
+  bearingAtDepth,
+  bearingProfile,
+  stage6BearingSelectedDepthHtml,
+  stage6BearingMaterialParamsHtml,
+  stage6BearingDrainedFormulaHtml,
+  stage6BearingUndrainedFormulaHtml,
+  queueStage6BearingChartBuild,
+  refreshStage6BearingPreview,
+  renderStage6,
+  buildStage6BearingChart,
+  exportCSV
+};
+
+export function initLegacyController(){
+  if(__legacyControllerInitialized) return ()=>{};
+  Object.assign(window, legacyApi);
+  bindDropzone();
+  renderBanner();
+  __legacyControllerInitialized = true;
+  return ()=>{};
+}
