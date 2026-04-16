@@ -415,52 +415,100 @@ R_Theis ≈ 1.5 · √(T · t / S)
 ```
 where `T = k · H` (transmissivity), `S` is storativity, `t` is pumping duration. This is also approximate but physically consistent.
 
-### 2.3 Steady-state inflow estimates
-**Confined aquifer (Thiem, 1906)** — for a fully-penetrating well in an aquifer of constant thickness `H`:
-```
-Q = 2π · k · H · (h_0 − h_w) / ln(R / r_w)
-```
-All heads `h` measured from a common datum (e.g. aquifer base).
+### 2.3 Steady-state inflow estimates — transmissivity-based screening model
+The current app uses a **transmissivity-based screening model** for dewatering hydraulics.
 
-**Unconfined aquifer (Dupuit, 1863)**:
+For the interpreted pumped interval between the original water table and the chosen aquifer base, define the saturated transmissivity:
 ```
-Q = π · k · (h_0² − h_w²) / ln(R / r_w)
+T = Σ(k_h,i · b_i)                         [m²/s]
 ```
-where `h_0`, `h_w` = saturated thickness at the radius of influence and at the well, respectively.
+where `b_i` is the saturated thickness of layer `i` inside that interval.
 
-In the Dupuit form, `h_0` and `h_w` are **saturated thicknesses** (measured from the impermeable base), not free-water heads. For a horizontal base at elevation `z_base` and phreatic levels `z_phr`:
+For a variable water level above the aquifer base, define the transmissivity as a function of saturated thickness `h` measured upward from the base:
 ```
-h = z_phr − z_base
+T(h) = Σ(k_h,i · b_i(h))
+```
+and its cumulative moment:
+```
+M(h) = ∫_0^h T(ξ) dξ
 ```
 
-For a **rectangular or equivalent-radius excavation** (not a single well), use the Powers et al. (2007) equivalent-well approach:
+This is the key improvement over a single lumped `k_h`: the solver tracks how the active transmissivity changes as the saturated thickness changes.
+
+**Confined aquifer screening (Thiem, 1906; Bear, 1979)** — for the currently interpreted pumped interval:
+```
+Q = 2π · T_0 · (h_0 − h_w) / ln(R / r_w)
+```
+where:
+- `T_0 = Σ(k_h,i · b_i)` at the original phreatic level
+- `h_0`, `h_w` are head differences from a common datum (in the app: the chosen aquifer base)
+
+This is still a **screening surrogate** in the current app, because no separate aquifer-top input is available yet.
+
+**Unconfined aquifer screening (Dupuit, 1863; Bear, 1979; Freeze & Cherry, 1979)**:
+```
+Q = 2π · [M(h_0) − M(h_w)] / ln(R / r_w)
+```
+where `h_0`, `h_w` are the saturated thicknesses at the radius of influence and at the well, respectively.
+
+For a homogeneous aquifer with constant `k`, this reduces exactly to the classical Dupuit form:
+```
+T(h) = k · h
+M(h) = 0.5 · k · h²
+Q    = π · k · (h_0² − h_w²) / ln(R / r_w)
+```
+
+For a **rectangular or equivalent-radius excavation** (not a single well), the app uses the Powers et al. (2007) equivalent-well approach:
 ```
 r_w,eq = √(A / π)         where A = excavation plan area
 ```
-For line dewatering (trench/slurry wall), switch to a linear (1D) solution:
+
+For line dewatering (trench/slurry wall), the current app keeps a linear screening profile toward the CPT, but the flow estimate is made transmissivity-based:
 ```
-q' = k · (h_0² − h_w²) / (2·L_infl)     [m³/s per m length]
+q' = [M(h_0) − M(h_w)] / L_infl          [m³/s per m length]   unconfined
+q' = T_0 · (h_0 − h_w) / L_infl          [m³/s per m length]   confined
 ```
-with `L_infl` the distance to the recharge boundary (often the drawdown limit on one side).
+with `L_infl` the distance to the recharge boundary (screened here by the Sichardt radius on one side).
 
 ### 2.4 Drawdown profile along a line from well to CPT
-Given `Q` and `R`, the Dupuit drawdown curve at radial distance `r` from a well in an unconfined aquifer is:
+Given `Q` and `R`, the current app solves the unconfined radial drawdown through the transmissivity moment:
 ```
-h²(r) = h_w² + Q / (π·k) · ln(r / r_w)         for r_w ≤ r ≤ R
-h(r)  = h_0                                     for r > R
+M(h(r)) = M(h_w) + Q / (2π) · ln(r / r_w)         for r_w ≤ r ≤ R
+h(r)    = h_0                                      for r > R
 ```
+
 So for the CPT at distance `r_CPT`:
 ```
-Δh_CPT = h_0 − h(r_CPT)      (drawdown at the CPT)
+Δh_CPT = h_0 − h(r_CPT)
 ```
-This is what you feed to the stress calculation below.
+This is what is passed to the stress calculation below.
 
-### 2.5 Layer-averaged hydraulic conductivity
-The CSV contains `k_h` and `k_v` per layer. For horizontal flow from/to a vertical well, the correct average is a **thickness-weighted arithmetic mean** (flow in parallel):
+For a homogeneous aquifer, this reduces exactly to the classical Dupuit profile:
 ```
-k_eff,h = Σ(k_h,i · Δz_i) / Σ Δz_i     (within the aquifer being pumped)
+h²(r) = h_w² + Q / (π·k) · ln(r / r_w)
 ```
-For vertical flow (relevant for leakage through aquitards, not your screening case), the harmonic mean would apply instead.
+
+### 2.5 Hydraulic conductivity and transmissivity handling
+The CSV contains `k_h` and `k_v` per layer.
+
+For horizontal flow from/to a vertical well, the app now uses:
+```
+T = Σ(k_h,i · b_i)
+```
+through the interpreted pumped interval, together with the depth-varying forms `T(h)` and `M(h)` above.
+
+The equivalent reference conductivity still shown in the UI is:
+```
+k_eff,h = T_0 / H_0
+```
+with `H_0 = h_0`, so it remains the thickness-weighted arithmetic mean over the initially saturated interval:
+```
+k_eff,h = Σ(k_h,i · Δz_i) / ΣΔz_i
+```
+
+This `k_eff,h` is retained for the Sichardt radius estimate, while the actual flow and drawdown calculations use transmissivity.
+
+For vertical flow (relevant for leakage through aquitards, not the current screening case), the harmonic mean would apply instead.
 
 ### 2.6 Effective stress recalculation — this is the engineering deliverable
 Once you have the new phreatic level `z'_w` at the CPT:
@@ -512,6 +560,7 @@ For the sandy clay layers in your CSV: `c_v ≈ 1.7e-7 · 6094/9.81 ≈ 1.06e-4 
 The current app implementation expresses the dewatering result through the following delivered quantities:
 
 1. **Hydraulic profile**
+   - transmissivity-based radial or line-flow screening
    - phreatic level depth below ground as a function of distance from:
      - well centre
      - excavation centroid
@@ -542,6 +591,14 @@ S_conservative
 S_realistic
 ```
 to show the effect of the selected total-stress assumption.
+
+The hydraulic side now reports, and internally uses:
+```
+T_far field
+T_at well
+k_eff,h = T_0 / H_0
+```
+so the user can see both the transmissivity-based screening values and the legacy equivalent conductivity used in the Sichardt radius estimate.
 
 ### 2.10 Inputs for Option A
 
@@ -1583,7 +1640,9 @@ def dewatering_settlement(profile, z_w_old, z_w_new, gamma_w=9.81):
 - EN 1992-1-1 (Eurocode 2) + Belgian NA — reinforcement design
 - Terzaghi & Peck (1967) — 1D consolidation
 - Boussinesq (1885) — elastic solutions
-- Dupuit (1863), Thiem (1906), Bear (1979) — groundwater
+- Bear, J. (1979). *Hydraulics of Groundwater*. McGraw-Hill.
+- Freeze, R.A. & Cherry, J.A. (1979). *Groundwater*. Prentice-Hall.
+- Dupuit (1863), Thiem (1906) — classical groundwater-flow solutions
 
 **For partial factors (Section 9):**
 - EN 1990:2002+A1:2005 — *Basis of structural design*.

@@ -669,6 +669,73 @@ function layerAverageKh(layers, zTop, zBot) {
   return den > 0 ? num / den : 1e-7;
 }
 
+function buildTransmissivityProfile(layers, zTop, zBot) {
+  const segments = [];
+  layers.forEach((layer) => {
+    const top = Math.max(positive(layer.top), zTop);
+    const bot = Math.min(positive(layer.bot), zBot);
+    if (bot <= top) return;
+    segments.push({
+      top,
+      bot,
+      thickness: bot - top,
+      kh: positive(layer.kh, 1e-7)
+    });
+  });
+  segments.sort((a, b) => b.top - a.top);
+  const totalThickness = segments.reduce((sum, seg) => sum + seg.thickness, 0);
+  const totalTransmissivity = segments.reduce((sum, seg) => sum + seg.kh * seg.thickness, 0);
+  return {
+    segments,
+    totalThickness,
+    totalTransmissivity,
+    referenceK: totalThickness > 0 ? totalTransmissivity / totalThickness : 1e-7
+  };
+}
+
+function transmissivityAtThickness(profile, hRaw) {
+  const h = clamp(hRaw, 0, Math.max(profile.totalThickness, 0));
+  let remaining = h;
+  let T = 0;
+  for (const seg of profile.segments) {
+    if (remaining <= 1e-9) break;
+    const b = Math.min(seg.thickness, remaining);
+    T += seg.kh * b;
+    remaining -= b;
+  }
+  return T;
+}
+
+function transmissivityMoment(profile, hRaw) {
+  const h = clamp(hRaw, 0, Math.max(profile.totalThickness, 0));
+  let remaining = h;
+  let cumulativeT = 0;
+  let moment = 0;
+  for (const seg of profile.segments) {
+    if (remaining <= 1e-9) break;
+    const b = Math.min(seg.thickness, remaining);
+    moment += cumulativeT * b + 0.5 * seg.kh * b * b;
+    cumulativeT += seg.kh * b;
+    remaining -= b;
+  }
+  return moment;
+}
+
+function invertTransmissivityMoment(profile, targetMoment) {
+  const maxMoment = transmissivityMoment(profile, profile.totalThickness);
+  if (targetMoment <= 0) return 0;
+  if (targetMoment >= maxMoment) return profile.totalThickness;
+  let lo = 0;
+  let hi = profile.totalThickness;
+  for (let i = 0; i < 50; i += 1) {
+    const mid = 0.5 * (lo + hi);
+    const value = transmissivityMoment(profile, mid);
+    if (value < targetMoment) lo = mid;
+    else hi = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+
 function dewateringGeometry(config) {
   const geometry = config.geometry || 'equivalent_well_rectangular_excavation';
   if (geometry === 'single_well') {
@@ -708,62 +775,89 @@ function dewateringGeometry(config) {
   };
 }
 
-function drawdownCurveRadial(baseDepth, oldWt, newWtAtWell, radiusInfluence, effectiveK, geom, aquiferType) {
-  const oldH = Math.max(baseDepth - oldWt, 0.05);
-  const hw = Math.max(baseDepth - newWtAtWell, 0.05);
+function drawdownCurveRadial(baseDepth, oldWt, newWtAtWell, radiusInfluence, hydraulic, geom, aquiferType) {
+  const oldH = Math.max(hydraulic.totalThickness, 0.05);
+  const hw = clamp(baseDepth - newWtAtWell, 0.05, oldH);
   const rw = Math.max(geom.wellRadius || 0.1, 0.05);
   const R = Math.max(radiusInfluence, rw * 1.01);
   const logTerm = safeLogRatio(R, rw);
+  const TFar = Math.max(hydraulic.totalTransmissivity, 1e-9);
+  const TWell = Math.max(transmissivityAtThickness(hydraulic, hw), 1e-9);
+  const MFar = transmissivityMoment(hydraulic, oldH);
+  const MWell = transmissivityMoment(hydraulic, hw);
   if (aquiferType === 'confined') {
-    const H = oldH;
-    const Q = (TWO_PI * effectiveK * H * Math.max(oldH - hw, 0)) / Math.max(logTerm, 1e-6);
+    const Q = (TWO_PI * TFar * Math.max(oldH - hw, 0)) / Math.max(logTerm, 1e-6);
     return {
+      hydraulicModel: 'Transmissivity-based Thiem screening',
       Q,
       QUnits: 'm3/s',
+      transmissivityFar: TFar,
+      transmissivityWell: TWell,
+      saturatedThicknessFar: oldH,
+      saturatedThicknessWell: hw,
       points: Array.from({ length: 30 }, (_, idx) => {
         const r = rw + ((R - rw) * idx) / 29;
-        const h = hw + (Q / (TWO_PI * effectiveK * Math.max(H, 1e-6))) * Math.log(r / rw);
+        const h = clamp(hw + (Q / (TWO_PI * TFar)) * Math.log(r / rw), hw, oldH);
         return { x: r, y: baseDepth - h };
       }),
       waterTableAtDistance(distance) {
         if (distance <= rw) return newWtAtWell;
         if (distance >= R) return oldWt;
-        const h = hw + (Q / (TWO_PI * effectiveK * Math.max(H, 1e-6))) * Math.log(distance / rw);
+        const h = clamp(hw + (Q / (TWO_PI * TFar)) * Math.log(distance / rw), hw, oldH);
         return baseDepth - h;
       }
     };
   }
-  const Q = (Math.PI * effectiveK * Math.max(oldH * oldH - hw * hw, 0)) / Math.max(logTerm, 1e-6);
+  const Q = (TWO_PI * Math.max(MFar - MWell, 0)) / Math.max(logTerm, 1e-6);
   return {
+    hydraulicModel: 'Transmissivity-based Dupuit screening',
     Q,
     QUnits: 'm3/s',
+    transmissivityFar: TFar,
+    transmissivityWell: TWell,
+    saturatedThicknessFar: oldH,
+    saturatedThicknessWell: hw,
     points: Array.from({ length: 30 }, (_, idx) => {
       const r = rw + ((R - rw) * idx) / 29;
-      const h = Math.sqrt(Math.max(hw * hw + (Q / (Math.PI * effectiveK)) * Math.log(r / rw), hw * hw));
+      const targetMoment = clamp(MWell + (Q / TWO_PI) * Math.log(r / rw), MWell, MFar);
+      const h = invertTransmissivityMoment(hydraulic, targetMoment);
       return { x: r, y: baseDepth - h };
     }),
     waterTableAtDistance(distance) {
       if (distance <= rw) return newWtAtWell;
       if (distance >= R) return oldWt;
-      const h = Math.sqrt(Math.max(hw * hw + (Q / (Math.PI * effectiveK)) * Math.log(distance / rw), hw * hw));
+      const targetMoment = clamp(MWell + (Q / TWO_PI) * Math.log(distance / rw), MWell, MFar);
+      const h = invertTransmissivityMoment(hydraulic, targetMoment);
       return baseDepth - h;
     }
   };
 }
 
-function drawdownCurveTrench(baseDepth, oldWt, newWtAtWell, radiusInfluence, effectiveK, geom, aquiferType) {
-  const oldH = Math.max(baseDepth - oldWt, 0.05);
-  const hw = Math.max(baseDepth - newWtAtWell, 0.05);
+function drawdownCurveTrench(baseDepth, oldWt, newWtAtWell, radiusInfluence, hydraulic, geom, aquiferType) {
+  const oldH = Math.max(hydraulic.totalThickness, 0.05);
+  const hw = clamp(baseDepth - newWtAtWell, 0.05, oldH);
   const R = Math.max(radiusInfluence, 0.5);
+  const TFar = Math.max(hydraulic.totalTransmissivity, 1e-9);
+  const TWell = Math.max(transmissivityAtThickness(hydraulic, hw), 1e-9);
+  const MFar = transmissivityMoment(hydraulic, oldH);
+  const MWell = transmissivityMoment(hydraulic, hw);
   const qPrime =
     aquiferType === 'confined'
-      ? (effectiveK * oldH * Math.max(oldWt - newWtAtWell, 0)) / Math.max(R, 1e-6)
-      : (effectiveK * Math.max(oldH * oldH - hw * hw, 0)) / Math.max(2 * R, 1e-6);
+      ? (TFar * Math.max(oldH - hw, 0)) / Math.max(R, 1e-6)
+      : Math.max(MFar - MWell, 0) / Math.max(R, 1e-6);
   return {
+    hydraulicModel:
+      aquiferType === 'confined'
+        ? 'Transmissivity-based line-flow screening'
+        : 'Transmissivity-based Dupuit line-flow screening',
     Q: qPrime * positive(geom.trenchLength, 1),
     QUnits: 'm3/s total',
     qPrime,
     qPrimeUnits: 'm3/s per m',
+    transmissivityFar: TFar,
+    transmissivityWell: TWell,
+    saturatedThicknessFar: oldH,
+    saturatedThicknessWell: hw,
     points: Array.from({ length: 30 }, (_, idx) => {
       const x = (R * idx) / 29;
       const ratio = clamp(1 - x / Math.max(R, 1e-6), 0, 1);
@@ -857,14 +951,15 @@ export function analyzeDewatering(layers, wtDepth, config = {}) {
   const geom = dewateringGeometry(config);
   const targetWt = clamp(positive(config.targetWt, wtDepth + 1), wtDepth, Math.max(maxDepth - 0.2, wtDepth));
   const baseDepth = Math.max(positive(config.aquiferBaseDepth, maxDepth), targetWt + 0.2);
-  const effectiveK = layerAverageKh(layers, wtDepth, baseDepth);
+  const hydraulic = buildTransmissivityProfile(layers, wtDepth, baseDepth);
+  const effectiveK = hydraulic.referenceK || layerAverageKh(layers, wtDepth, baseDepth);
   const wellDrawdown = Math.max(targetWt - wtDepth, 0);
   const radiusInfluence = positive(config.CSichardt, 3000) * wellDrawdown * Math.sqrt(Math.max(effectiveK, 1e-12));
   const aquiferType = config.aquiferType || 'unconfined';
   const drawdown =
     geom.geometry === 'line_dewatering_trench'
-      ? drawdownCurveTrench(baseDepth, wtDepth, targetWt, radiusInfluence, effectiveK, geom, aquiferType)
-      : drawdownCurveRadial(baseDepth, wtDepth, targetWt, radiusInfluence, effectiveK, geom, aquiferType);
+      ? drawdownCurveTrench(baseDepth, wtDepth, targetWt, radiusInfluence, hydraulic, geom, aquiferType)
+      : drawdownCurveRadial(baseDepth, wtDepth, targetWt, radiusInfluence, hydraulic, geom, aquiferType);
   const newWtAtCpt = drawdown.waterTableAtDistance(geom.distanceToCpt);
   const conservativeResponse = dewateringSettlementResponse(
     layers,
@@ -901,6 +996,10 @@ export function analyzeDewatering(layers, wtDepth, config = {}) {
     {
       level: 'warn',
       text: 'Sichardt radius of influence is shown as a screening estimate only. It is not a permit-grade hydrogeological prediction.'
+    },
+    {
+      level: 'info',
+      text: `Hydraulic screening uses a transmissivity profile through the pumped interval: T = Σ(k_h · b). For unconfined flow, the radial drawdown is solved from the cumulative transmissivity moment rather than from one lumped k_h value.`
     }
   ];
   if (!config.aquiferBaseDepth) {
@@ -912,7 +1011,13 @@ export function analyzeDewatering(layers, wtDepth, config = {}) {
   if (geom.geometry === 'line_dewatering_trench') {
     notes.push({
       level: 'warn',
-      text: 'The trench drawdown profile toward the CPT is shown with a linear screening interpolation. Flow rate follows the Dupuit line-dewatering estimate.'
+      text: 'The trench drawdown profile toward the CPT is shown with a linear screening interpolation. Flow rate follows the transmissivity-based Dupuit line-dewatering estimate.'
+    });
+  }
+  if (aquiferType === 'confined') {
+    notes.push({
+      level: 'warn',
+      text: 'Confined mode still needs project judgement: the app uses transmissivity over the interpreted pumped interval, but no separate aquifer-top input is available yet.'
     });
   }
   if ((config.sigmaVMode || 'conservative') === 'realistic') {
@@ -971,9 +1076,14 @@ export function analyzeDewatering(layers, wtDepth, config = {}) {
   }
   return {
     limitState: 'SLS',
+    hydraulicModel: drawdown.hydraulicModel,
     geometry: geom,
     targetWt,
     effectiveK,
+    transmissivityFar: drawdown.transmissivityFar,
+    transmissivityWell: drawdown.transmissivityWell,
+    saturatedThicknessFar: drawdown.saturatedThicknessFar,
+    saturatedThicknessWell: drawdown.saturatedThicknessWell,
     baseDepth,
     radiusInfluence,
     QEstimate: drawdown.Q,
