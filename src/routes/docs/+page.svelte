@@ -15,6 +15,23 @@
 		items: Reference[];
 	};
 
+	type DocFigure = {
+		src: string;
+		alt: string;
+		caption: string;
+		collapsible?: boolean;
+		summary?: string;
+	};
+
+	type DocTable = {
+		caption: string;
+		note?: string;
+		collapsible?: boolean;
+		summary?: string;
+		columns: { key: string; label: string }[];
+		rows: Record<string, string>[];
+	};
+
 	type DocSubsection = {
 		id: string;
 		title: string;
@@ -22,6 +39,8 @@
 		equations?: string[];
 		bullets?: string[];
 		symbols?: { term: string; meaning: string }[];
+		figures?: DocFigure[];
+		table?: DocTable;
 	};
 
 	type DocSection = {
@@ -31,6 +50,55 @@
 		references: string[];
 		subsections: DocSubsection[];
 	};
+
+	const nenTable3Rows: Record<string, string>[] = [
+		{ family: 'Veen', subtype: 'veen, weinig vast', qc: '0.2 ≤ q<sub>c</sub> &lt; 0.5', rf: 'R<sub>f</sub> &gt; 6', gamma: '10', gammaSat: '10', phi: '15', c: '2', cu: '10' },
+		{ family: 'Veen', subtype: 'veen, matig vast', qc: '0.5 ≤ q<sub>c</sub> &lt; 1.0', rf: 'R<sub>f</sub> &gt; 6', gamma: '12', gammaSat: '12', phi: '15', c: '5', cu: '20' },
+		{ family: 'Veen', subtype: 'veen, vast', qc: 'q<sub>c</sub> ≥ 1.0', rf: 'R<sub>f</sub> &gt; 6', gamma: '14', gammaSat: '14', phi: '15', c: '10', cu: '40' },
+		{ family: 'Klei', subtype: 'klei, weinig vast', qc: '0.4 ≤ q<sub>c</sub> &lt; 1.0', rf: '3 ≤ R<sub>f</sub> ≤ 6', gamma: '16', gammaSat: '16', phi: '20', c: '2', cu: '20' },
+		{ family: 'Klei', subtype: 'klei, matig vast', qc: '1.0 ≤ q<sub>c</sub> &lt; 2.0', rf: '3 ≤ R<sub>f</sub> ≤ 6', gamma: '17', gammaSat: '17', phi: '20', c: '4', cu: '50' },
+		{ family: 'Klei', subtype: 'klei, vrij vast', qc: '2.0 ≤ q<sub>c</sub> &lt; 4.0', rf: '3 ≤ R<sub>f</sub> ≤ 6', gamma: '18', gammaSat: '18', phi: '20', c: '8', cu: '100' },
+		{ family: 'Klei', subtype: 'klei, vast', qc: 'q<sub>c</sub> ≥ 4.0', rf: '3 ≤ R<sub>f</sub> ≤ 6', gamma: '19', gammaSat: '19', phi: '20', c: '15', cu: '200' },
+		{ family: 'Klei zandhoudend', subtype: 'klei (zh), weinig vast', qc: '0.4 ≤ q<sub>c</sub> &lt; 1.0', rf: '2 ≤ R<sub>f</sub> ≤ 5', gamma: '16', gammaSat: '16', phi: '22', c: '2', cu: '20' },
+		{ family: 'Klei zandhoudend', subtype: 'klei (zh), matig vast', qc: '1.0 ≤ q<sub>c</sub> &lt; 2.0', rf: '2 ≤ R<sub>f</sub> ≤ 5', gamma: '17', gammaSat: '17', phi: '22', c: '4', cu: '50' },
+		{ family: 'Klei zandhoudend', subtype: 'klei (zh), vrij vast', qc: '2.0 ≤ q<sub>c</sub> &lt; 4.0', rf: '2 ≤ R<sub>f</sub> ≤ 5', gamma: '18', gammaSat: '18', phi: '22', c: '8', cu: '100' },
+		{ family: 'Klei zandhoudend', subtype: 'klei (zh), vast', qc: 'q<sub>c</sub> ≥ 4.0', rf: '2 ≤ R<sub>f</sub> ≤ 5', gamma: '19', gammaSat: '19', phi: '22', c: '15', cu: '200' },
+		{ family: 'Leem', subtype: 'leem, weinig vast', qc: '0.4 ≤ q<sub>c</sub> &lt; 1.0', rf: '2 ≤ R<sub>f</sub> ≤ 4', gamma: '17', gammaSat: '17', phi: '22', c: '0', cu: '10' },
+		{ family: 'Leem', subtype: 'leem, matig vast', qc: '1.0 ≤ q<sub>c</sub> &lt; 2.0', rf: '2 ≤ R<sub>f</sub> ≤ 4', gamma: '18', gammaSat: '18', phi: '22', c: '2', cu: '25' },
+		{ family: 'Leem', subtype: 'leem, vrij vast', qc: '2.0 ≤ q<sub>c</sub> &lt; 4.0', rf: '2 ≤ R<sub>f</sub> ≤ 4', gamma: '19', gammaSat: '19', phi: '22', c: '4', cu: '50' },
+		{ family: 'Leem', subtype: 'leem, vast', qc: 'q<sub>c</sub> ≥ 4.0', rf: '2 ≤ R<sub>f</sub> ≤ 4', gamma: '20', gammaSat: '20', phi: '22', c: '8', cu: '100' },
+		{ family: 'Zandhoudende leem', subtype: 'leem (zh), weinig vast', qc: '0.4 ≤ q<sub>c</sub> &lt; 1.0', rf: '1 ≤ R<sub>f</sub> ≤ 3', gamma: '17', gammaSat: '17', phi: '25', c: '0', cu: '10' },
+		{ family: 'Zandhoudende leem', subtype: 'leem (zh), matig vast', qc: '1.0 ≤ q<sub>c</sub> &lt; 2.0', rf: '1 ≤ R<sub>f</sub> ≤ 3', gamma: '18', gammaSat: '18', phi: '25', c: '2', cu: '25' },
+		{ family: 'Zandhoudende leem', subtype: 'leem (zh), vrij vast', qc: '2.0 ≤ q<sub>c</sub> &lt; 4.0', rf: '1 ≤ R<sub>f</sub> ≤ 3', gamma: '19', gammaSat: '19', phi: '25', c: '4', cu: '50' },
+		{ family: 'Zandhoudende leem', subtype: 'leem (zh), vast', qc: 'q<sub>c</sub> ≥ 4.0', rf: '1 ≤ R<sub>f</sub> ≤ 3', gamma: '20', gammaSat: '20', phi: '25', c: '8', cu: '100' },
+		{ family: 'Zand', subtype: 'zand, los', qc: '2 ≤ q<sub>c</sub> &lt; 4', rf: 'R<sub>f</sub> &lt; 1', gamma: '16', gammaSat: '18', phi: '27', c: '0', cu: '0' },
+		{ family: 'Zand', subtype: 'zand, matig', qc: '4 ≤ q<sub>c</sub> &lt; 10', rf: 'R<sub>f</sub> &lt; 1', gamma: '17', gammaSat: '19', phi: '30', c: '0', cu: '0' },
+		{ family: 'Zand', subtype: 'zand, dicht', qc: '10 ≤ q<sub>c</sub> &lt; 15', rf: 'R<sub>f</sub> &lt; 1', gamma: '18', gammaSat: '20', phi: '32', c: '0', cu: '0' },
+		{ family: 'Zand', subtype: 'zand, zeer dicht', qc: 'q<sub>c</sub> ≥ 15', rf: 'R<sub>f</sub> &lt; 1', gamma: '18', gammaSat: '20', phi: '35', c: '0', cu: '0' },
+		{ family: 'Leemhoudend zand', subtype: 'zand (lh), los', qc: '2 ≤ q<sub>c</sub> &lt; 4', rf: '1 ≤ R<sub>f</sub> ≤ 2', gamma: '16', gammaSat: '18', phi: '25', c: '0', cu: '0' },
+		{ family: 'Leemhoudend zand', subtype: 'zand (lh), matig', qc: '4 ≤ q<sub>c</sub> &lt; 10', rf: '1 ≤ R<sub>f</sub> ≤ 2', gamma: '17', gammaSat: '19', phi: '27', c: '0', cu: '0' },
+		{ family: 'Leemhoudend zand', subtype: 'zand (lh), dicht', qc: '10 ≤ q<sub>c</sub> &lt; 15', rf: '1 ≤ R<sub>f</sub> ≤ 2', gamma: '18', gammaSat: '20', phi: '30', c: '0', cu: '0' },
+		{ family: 'Leemhoudend zand', subtype: 'zand (lh), z.dicht', qc: 'q<sub>c</sub> ≥ 15', rf: '1 ≤ R<sub>f</sub> ≤ 2', gamma: '19', gammaSat: '20', phi: '32', c: '0', cu: '0' },
+		{ family: 'Grind', subtype: 'grind, matig', qc: '10 ≤ q<sub>c</sub> &lt; 20', rf: 'R<sub>f</sub> &lt; 1', gamma: '18', gammaSat: '20', phi: '35', c: '0', cu: '0' },
+		{ family: 'Grind', subtype: 'grind, dicht', qc: 'q<sub>c</sub> ≥ 20', rf: 'R<sub>f</sub> &lt; 1', gamma: '19', gammaSat: '21', phi: '40', c: '0', cu: '0' },
+		{ family: 'Grind klei-/leemhoudend', subtype: 'grind (kh), matig', qc: '10 ≤ q<sub>c</sub> &lt; 20', rf: '1 ≤ R<sub>f</sub> ≤ 2', gamma: '19', gammaSat: '21', phi: '32', c: '0', cu: '0' },
+		{ family: 'Grind klei-/leemhoudend', subtype: 'grind (kh), dicht', qc: 'q<sub>c</sub> ≥ 20', rf: '1 ≤ R<sub>f</sub> ≤ 2', gamma: '20', gammaSat: '22', phi: '37', c: '0', cu: '0' }
+	];
+
+	const alphaMethodRows: Record<string, string>[] = [
+		{ method: 'A', family: 'Behavioural type', soil: 'Peat / organic', qc: 'any', rule: 'fixed α', expression: 'α = 1.5' },
+		{ method: 'A', family: 'Behavioural type', soil: 'Soft clay / Clay', qc: 'any', rule: 'fixed α', expression: 'α = 3.0 or 5.0' },
+		{ method: 'A', family: 'Behavioural type', soil: 'Sandy clay / Silty sand / Sand / Gravel', qc: 'any', rule: 'fixed α', expression: 'α = 8.0 / 10.0 / 13.0 / 15.0' },
+		{ method: 'B', family: 'Cohesive', soil: 'veen, ...', qc: 'any', rule: 'SB260 default when w unknown', expression: 'α = 1.5' },
+		{ method: 'B', family: 'Cohesive', soil: 'klei, ...', qc: 'q<sub>c</sub> &lt; 0.7; 0.7 ≤ q<sub>c</sub> &lt; 2.0; q<sub>c</sub> ≥ 2.0', rule: 'GEO values by q<sub>c</sub> band', expression: 'α = 5.0; 3.0; 1.5' },
+		{ method: 'B', family: 'Cohesive', soil: 'leem, ...', qc: 'q<sub>c</sub> &lt; 2.0; q<sub>c</sub> ≥ 2.0', rule: 'GEO values by q<sub>c</sub> band', expression: 'α = 4.0; 2.0' },
+		{ method: 'B', family: 'Transition', soil: 'klei (zh), ... / leem (zh), ... / zand (lh), ...', qc: 'q<sub>c</sub> &lt; 2.5', rule: 'transition rule', expression: 'α = 2.0' },
+		{ method: 'B', family: 'Transition', soil: 'klei (zh), ... / leem (zh), ... / zand (lh), ...', qc: '2.5 ≤ q<sub>c</sub> &lt; 5.0', rule: 'E<sub>s</sub> = 4q<sub>c</sub> − 5', expression: 'α = (4q<sub>c</sub> − 5) / q<sub>c</sub>' },
+		{ method: 'B', family: 'Transition', soil: 'klei (zh), ... / leem (zh), ... / zand (lh), ...', qc: 'q<sub>c</sub> ≥ 5.0', rule: 'transition cap', expression: 'α = 2.0' },
+		{ method: 'B', family: 'Granular', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: 'q<sub>c</sub> ≤ 10', rule: 'NC granular rule', expression: 'E<sub>s</sub> = 4q<sub>c</sub>, so α = 4.0' },
+		{ method: 'B', family: 'Granular', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: '10 &lt; q<sub>c</sub> ≤ 50', rule: 'NC granular rule', expression: 'E<sub>s</sub> = 2q<sub>c</sub> + 20, so α = (2q<sub>c</sub> + 20) / q<sub>c</sub>' },
+		{ method: 'B', family: 'Granular', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: 'q<sub>c</sub> &gt; 50', rule: 'NC granular rule', expression: 'E<sub>s</sub> = 120, so α = 120 / q<sub>c</sub>' }
+	];
 
 	const referenceGroups: ReferenceGroup[] = [
 		{
@@ -102,7 +170,7 @@
 			id: 'scope',
 			title: '0A. Scope And Document Basis',
 			intro:
-				'This page documents the technical logic of the MADEP CPT Interpreter from raw GEF import through Stage 6 engineering use. It is written as a theory-and-implementation note: formulas, classifications, parameter routes, engineering assumptions, and the principal references behind the current application.',
+				'This page documents the technical logic of the CPT interpreter from raw GEF import through Stage 6 engineering use. It is written as a theory-and-implementation note: formulas, classifications, parameter routes, engineering assumptions, and the principal references behind the current application.',
 			subsections: [
 				{
 					id: 'scope-applications',
@@ -162,10 +230,10 @@
 						'0 ≤ R<sub>f</sub> ≤ 20 &nbsp;&nbsp; after app-side clamping'
 					],
 					symbols: [
-						{ term: 'q_c', meaning: 'cone resistance [MPa]' },
-						{ term: 'f_s', meaning: 'sleeve friction [MPa]' },
-						{ term: 'R_f', meaning: 'friction ratio [%]' },
-						{ term: 'u_2', meaning: 'pore pressure behind the cone [MPa]' }
+						{ term: 'q<sub>c</sub>', meaning: 'cone resistance [MPa]' },
+						{ term: 'f<sub>s</sub>', meaning: 'sleeve friction [MPa]' },
+						{ term: 'R<sub>f</sub>', meaning: 'friction ratio [%]' },
+						{ term: 'u<sub>2</sub>', meaning: 'pore pressure behind the cone [MPa]' }
 					],
 					bullets: [
 						'Rows with z < 0 are discarded.',
@@ -182,8 +250,8 @@
 					],
 					equations: ['z<sub>TAW</sub> = z<sub>surface</sub> − z'],
 					symbols: [
-						{ term: 'z_TAW', meaning: 'elevation relative to TAW [m]' },
-						{ term: 'z_surface', meaning: 'surface elevation [m TAW]' },
+						{ term: 'z<sub>TAW</sub>', meaning: 'elevation relative to TAW [m]' },
+						{ term: 'z<sub>surface</sub>', meaning: 'surface elevation [m TAW]' },
 						{ term: 'z', meaning: 'depth below surface [m]' }
 					]
 				}
@@ -206,7 +274,7 @@
 					equations: [
 						'σ<sub>v0</sub> = 17z &nbsp;&nbsp; above the water table',
 						'σ<sub>v0</sub> = 17z<sub>w</sub> + 18(z − z<sub>w</sub>) &nbsp;&nbsp; below the water table',
-						'u = 10 · max(0, z − z<sub>w</sub>)',
+						'u = 9.81 · max(0, z − z<sub>w</sub>)',
 						"σ'<sub>v0</sub> = max(σ<sub>v0</sub> − u, 1)",
 						'q<sub>t</sub> = q<sub>c</sub> + u<sub>2</sub>(1 − a)',
 						'Q<sub>t</sub> = max(0.1, (q<sub>t</sub> − σ<sub>v0</sub>/1000) / (σ′<sub>v0</sub>/1000))',
@@ -215,11 +283,11 @@
 					],
 					symbols: [
 						{ term: 'a', meaning: 'net area ratio [-]' },
-						{ term: 'q_t', meaning: 'corrected cone resistance [MPa]' },
-						{ term: 'f_s,eff', meaning: 'effective sleeve friction used in normalization [MPa]' },
-						{ term: 'Q_t', meaning: 'normalized cone-resistance parameter [-]' },
-						{ term: 'F_r', meaning: 'normalized friction ratio [%]' },
-						{ term: 'I_c', meaning: 'soil behaviour type index [-]' }
+						{ term: 'q<sub>t</sub>', meaning: 'corrected cone resistance [MPa]' },
+						{ term: 'f<sub>s,eff</sub>', meaning: 'effective sleeve friction used in normalization [MPa]' },
+						{ term: 'Q<sub>t</sub>', meaning: 'normalized cone-resistance parameter [-]' },
+						{ term: 'F<sub>r</sub>', meaning: 'normalized friction ratio [%]' },
+						{ term: 'I<sub>c</sub>', meaning: 'soil behaviour type index [-]' }
 					],
 					bullets: [
 						'The current app groups the normalized result into Gravel, Sand, Silty sand, Sandy clay, Clay, and Peat / organic.',
@@ -240,13 +308,23 @@
 						'otherwise &nbsp;&nbsp; → &nbsp;&nbsp; Clay'
 					],
 					symbols: [
-						{ term: 'q_c', meaning: 'measured cone resistance [MPa]' },
-						{ term: 'R_f', meaning: 'measured friction ratio [%]' }
+						{ term: 'q<sub>c</sub>', meaning: 'measured cone resistance [MPa]' },
+						{ term: 'R<sub>f</sub>', meaning: 'measured friction ratio [%]' }
 					],
 					bullets: [
 						'This route is direct and non-normalized: no stress correction is applied to q<sub>c</sub> before classification.',
 						'The current app uses this route for broad layer boundary logic; detailed geotechnical parameter assignment is still handled later by the Stage 3 parameter method.',
 						'Internal mapping note: the chart field “Silt” is stored as the app’s intermediate type family so that later parameter and compatibility tables remain usable.'
+					],
+					figures: [
+						{
+							src: '/docs/cur3-layers-chart.png',
+							alt: 'Published CUR 3 layers chart showing Sand, Silt, Clay, and Peat zones in qc-Rf space.',
+							caption:
+								'Published CUR 3 layers chart as used for the broad direct q<sub>c</sub>–R<sub>f</sub> zoning route. Source context: PLAXIS 2D 2018 Reference Manual.',
+							collapsible: true,
+							summary: 'Show published CUR 3 chart'
+						}
 					]
 				},
 				{
@@ -262,29 +340,66 @@
 						'i = arg min<sub>j</sub> |s − s<sub>j</sub>|'
 					],
 					symbols: [
-						{ term: 'q_c,NEN', meaning: 'stress-corrected cone resistance used by the NEN chart [MPa]' },
-						{ term: 'σ′_v0', meaning: 'initial effective vertical stress at the CPT reading [kPa]' },
+						{ term: 'q<sub>c,NEN</sub>', meaning: 'stress-corrected cone resistance used by the NEN chart [MPa]' },
+						{ term: 'σ′<sub>v0</sub>', meaning: 'initial effective vertical stress at the CPT reading [kPa]' },
 						{ term: 's', meaning: 'implemented chart-coordinate projection used for the representative-area search [-]' },
-						{ term: 's_j', meaning: 'projected coordinate of representative material area j [-]' }
+						{ term: 's<sub>j</sub>', meaning: 'projected coordinate of representative material area j [-]' }
 					],
 					bullets: [
 						'The stress-correction equation is part of the published NEN route; the one-dimensional chart projection is an implementation device used by the app to turn the graphical source into a deterministic classifier.',
 						'The representative materials are: gravel, slightly silty, moderate; sand, clean, stiff; sand, slightly silty, moderate; sand, very silty, loose; loam, very sandy, stiff; loam, slightly sandy, weak; clay, very sandy, stiff; clay, slightly sandy, moderate; clay, clean, stiff; clay, clean, weak; clay, organic, moderate; clay, organic, weak; peat, moderately preloaded, moderate; peat, not preloaded, weak.',
 						'The selected NEN material is then mapped into the app’s internal type families so that later layer grouping and parameter workflows remain consistent.'
+					],
+					figures: [
+						{
+							src: '/docs/nen6740-chart.png',
+							alt: 'Published NEN 6740 stress-dependent chart with fourteen material areas in corrected cone resistance and friction ratio space.',
+							caption:
+								'Published NEN 6740 stress-dependent classification chart with fourteen material areas. The app uses the stress correction from this method and a transparent representative-area implementation. Source context: comparative NEN/CUR implementation figure reproduced in the Deltares D-SHEET Piling ecosystem.',
+							collapsible: true,
+							summary: 'Show published NEN 6740 chart'
+						}
 					]
 				},
 				{
 					id: 'stage2-ec7',
-					title: '2.4 NEN Tabel 3 / EC7 — direct subtype classification',
+					title: '2.4 NEN Tabel 3 — direct subtype classification',
 					paragraphs: [
-						'The Table 3 route uses raw q<sub>c</sub> and R<sub>f</sub> and returns not only a soil family but the corresponding Eurocode subtype and its characteristic parameter row. Because the original table contains overlapping envelopes, the app checks rows in table order rather than trying to enforce mutual exclusivity.',
-						'The implemented family order is grind, zand, leem, klei, then veen. Within each family, subrows are checked top-to-bottom, with lower bounds inclusive and upper bounds exclusive unless the source notation states a closed interval.',
-						'For this method, the raw boundary logic follows the detailed Eurocode subtype result rather than only the broad family. This means subtype changes such as density or consistency transitions inside one family can create provisional layer boundaries before smart merge and minimum-thickness correction simplify them.'
+						'The Table 3 route uses raw q<sub>c</sub> and R<sub>f</sub> and returns a detailed subtype together with the characteristic parameter row used later in the workflow. The direct source documented here is the implemented NEN Tabel 3 catalogue itself, not a separate Eurocode classification chart.',
+						'Because the table contains overlapping q<sub>c</sub>–R<sub>f</sub> envelopes, the app evaluates the rows deterministically in table order rather than assuming the source is mutually exclusive. The implemented family order is grind, zand, leem, klei, then veen. Within each family, subrows are checked top-to-bottom, with q<sub>c</sub> lower bounds inclusive and upper bounds exclusive. For R<sub>f</sub>, the open bands R<sub>f</sub> &lt; 1 and R<sub>f</sub> &gt; 6 remain strict, while the bounded intervals are treated as closed.',
+						'For this method, the raw boundary logic follows the detailed subtype result rather than only the broad family. This means subtype changes such as density or consistency transitions inside one family can create provisional layer boundaries before smart merge and minimum-thickness correction simplify them.'
+					],
+					symbols: [
+						{ term: 'q<sub>c</sub>', meaning: 'measured cone resistance [MPa]' },
+						{ term: 'R<sub>f</sub>', meaning: 'measured friction ratio [%]' },
+						{ term: 'γ', meaning: 'unit weight above the phreatic level [kN/m³]' },
+						{ term: 'γ<sub>sat</sub>', meaning: 'unit weight below the phreatic level [kN/m³]' },
+						{ term: 'φ′', meaning: 'effective friction angle [°]' },
+						{ term: 'c′', meaning: 'effective cohesion [kPa]' },
+						{ term: 'c<sub>u</sub>', meaning: 'undrained shear strength [kPa]' }
 					],
 					bullets: [
-						'The table distinguishes, for example, zandhoudende leem from leemhoudend zand; those are not interchangeable.',
-						'If no table row matches, the app keeps a deterministic fallback so the workflow can continue, but that fallback is not itself part of Table 3.'
-					]
+						'If no table row matches, the app keeps a deterministic fallback so the workflow can continue, but that fallback is not itself part of Table 3.',
+						'The app UI may still show a legacy “EC7” label because the later parameter workflow is Eurocode-aligned. The direct q<sub>c</sub>–R<sub>f</sub> table documented in this section is the implemented NEN Tabel 3 source.'
+					],
+					table: {
+						caption:
+							'Implemented NEN Tabel 3 rows used by the direct subtype classifier. The table below is rendered from the active subtype catalogue rather than shown as a synthetic chart.',
+						note:
+							'All q<sub>c</sub> limits are applied as lower-inclusive and upper-exclusive. For R<sub>f</sub>, the open conditions R<sub>f</sub> &lt; 1 and R<sub>f</sub> &gt; 6 remain strict; the bounded intervals are treated as closed.',
+						columns: [
+							{ key: 'family', label: 'Family' },
+							{ key: 'subtype', label: 'Subtype' },
+							{ key: 'qc', label: 'q<sub>c</sub> range [MPa]' },
+							{ key: 'rf', label: 'R<sub>f</sub> range [%]' },
+							{ key: 'gamma', label: 'γ [kN/m³]' },
+							{ key: 'gammaSat', label: 'γ<sub>sat</sub> [kN/m³]' },
+							{ key: 'phi', label: 'φ′ [°]' },
+							{ key: 'c', label: 'c′ [kPa]' },
+							{ key: 'cu', label: 'c<sub>u</sub> [kPa]' }
+						],
+						rows: nenTable3Rows
+					}
 				},
 				{
 					id: 'stage2-separation',
@@ -301,37 +416,47 @@
 				'PLAXIS 2D 2018 Reference Manual',
 				'NEN 6740',
 				'Deltares D-SHEET Piling User Manual',
-				'EN 1997-1:2004+A1:2013'
+				'SB260'
 			]
 		},
 		{
 			id: 'stage3',
 			title: '3. Stage 3 — Layer Detection And Parameter Assignment',
 			intro:
-				'Once every CPT reading carries a classification label, the app converts that pointwise sequence into engineering layers by grouping consecutive identical types and then merging thin segments upward.',
+				'Once every CPT reading carries a classification label from the selected Stage 2 method, the app converts that pointwise sequence into engineering layers in four steps: raw segmentation, optional smart boundary reduction, final minimum-thickness enforcement, and recomputation of the final layer properties from the merged geometry.',
 			subsections: [
 				{
 					id: 'stage3-boundaries',
-					title: '3.1 Boundary detection and upward thin-layer merging',
+					title: '3.1 Raw segmentation and boundary placement',
 					paragraphs: [
-						'The first pass creates a new segment whenever the classified type changes. In baseline mode, a second pass then merges thin segments upward into their predecessor until all remaining segments satisfy the chosen minimum thickness.',
-						'The thickness check is applied to the segment boundaries used by the layer model, not merely to the difference between first and last retained CPT reading. The topmost segment is never merged upward because there is no segment above it. This makes the merge direction deterministic and reproducible.'
+						'The first pass creates provisional raw segments directly from the pointwise Stage 2 classification sequence. For Robertson, CUR 3 layers, and NEN 6740, the raw segment key is the broad internal soil family. For NEN Tabel 3, the raw segment key is the pair {type, subtype}, so detailed subtype changes can create provisional layer boundaries before later simplification.',
+						'Boundary depths are then constructed from the retained CPT rows. The first raw segment starts at ground level. Other raw segments start just above the first CPT row that belongs to that segment, unless a downward merge has already handed them an inherited top boundary. Segment thickness is always evaluated on these active layer boundaries rather than on the bare difference between first and last CPT reading.'
 					],
 					equations: [
-						't = z<sub>bot</sub> − z<sub>top</sub>',
-						'if t &lt; t<sub>min</sub> and the segment is not the first, merge upward'
+						'k<sub>row</sub> = type &nbsp;&nbsp; for Robertson, CUR 3 layers, and NEN 6740',
+						'k<sub>row</sub> = type :: subtype &nbsp;&nbsp; for NEN Tabel 3',
+						'z<sub>top</sub> = 0 &nbsp;&nbsp; for the first raw segment',
+						'z<sub>top</sub> = z<sub>first row</sub> − 0.02 &nbsp;&nbsp; for a new raw segment without inherited top',
+						'z<sub>bot</sub> = z<sub>last row</sub>',
+						't = z<sub>bot</sub> − z<sub>top</sub>'
 					],
 					symbols: [
-						{ term: 't', meaning: 'segment thickness from the active layer boundaries [m]' },
-						{ term: 't_min', meaning: 'minimum retained layer thickness [m]' }
+						{ term: 'k<sub>row</sub>', meaning: 'raw segmentation key used to decide whether two consecutive CPT rows belong to the same provisional segment [-]' },
+						{ term: 'z<sub>top</sub>, z<sub>bot</sub>', meaning: 'active top and bottom boundary of one provisional segment [m]' },
+						{ term: 't', meaning: 'segment thickness from the active layer boundaries [m]' }
+					],
+					bullets: [
+						'This means the NEN Tabel 3 route is intrinsically finer than the other Stage 2 routes, because subtype transitions inside one soil family are preserved in the raw segmentation.',
+						'NEN 6740 currently uses the internal family only for raw layer generation; its 14 detailed material labels remain available for interpretation but do not by themselves create raw boundaries.'
 					]
 				},
 				{
 					id: 'stage3-smart-merge',
 					title: '3.1A Smart merge correction',
 					paragraphs: [
-						'The app also provides a smart-merge mode. This mode is applied only after the original raw layering has already been created from the unmodified point-by-point classification sequence and after the baseline upward thin-layer merge has been carried out.',
-						'It therefore acts as a post-correction on the provisional layers. First it removes highly compatible existing boundaries when the continuity score exceeds a sensitivity-controlled threshold. Only after that reduction step does it enforce the minimum thickness by merging every remaining sub-minimum layer with its most similar neighbor.',
+						'The smart-merge correction is an in-house MADEP post-processing heuristic. It is not a published external classification standard or code method.',
+						'The app also provides a smart-merge mode. This mode is applied only after the original raw layering has already been created from the unmodified point-by-point classification sequence.',
+						'In smart mode, the algorithm first removes highly compatible existing boundaries when the continuity score exceeds a sensitivity-controlled threshold. Only after that reduction step does it enforce the minimum thickness by merging every remaining sub-minimum layer with its most similar neighbor.',
 						'The resulting smart-merged configuration becomes the active layer model. Layer boundaries, per-layer averages, subtype suggestion, and downstream parameter assignment are recalculated from the final merged geometry.'
 					],
 					equations: [
@@ -346,52 +471,93 @@
 					],
 					symbols: [
 						{ term: 'S', meaning: 'neighbor-merge score for one candidate direction [-]' },
-						{ term: 'S_type', meaning: 'type-family agreement score [-]' },
-						{ term: 'S_qc', meaning: 'cone-resistance similarity score [-]' },
-						{ term: 'S_Rf', meaning: 'friction-ratio similarity score [-]' },
-						{ term: 'S_subtype', meaning: 'Eurocode subtype-group similarity score [-]' },
-						{ term: 'S_param', meaning: 'parameter similarity score using φ′, γ, c′, and where relevant c_u [-]' },
-						{ term: 'S_compat', meaning: 'compatibility score between the CPT family and neighboring subtype group [-]' },
-						{ term: 'S_cont', meaning: 'continuity score against the outer layer beyond the immediate neighbor [-]' },
+						{ term: 'S<sub>type</sub>', meaning: 'type-family agreement score [-]' },
+						{ term: 'S<sub>qc</sub>', meaning: 'cone-resistance similarity score [-]' },
+						{ term: 'S<sub>Rf</sub>', meaning: 'friction-ratio similarity score [-]' },
+						{ term: 'S<sub>subtype</sub>', meaning: 'Eurocode subtype-group similarity score [-]' },
+						{ term: 'S<sub>param</sub>', meaning: 'parameter similarity score using φ′, γ, c′, and where relevant c<sub>u</sub> [-]' },
+						{ term: 'S<sub>compat</sub>', meaning: 'compatibility score between the CPT family and neighboring subtype group [-]' },
+						{ term: 'S<sub>cont</sub>', meaning: 'continuity score against the outer layer beyond the immediate neighbor [-]' },
 						{ term: 'P', meaning: 'penalty term for sharp transitions and critical marker layers [-]' },
 						{ term: 'λ', meaning: 'smart-merge sensitivity slider in the range 0…2 [-]' },
-						{ term: 'ΔS_min', meaning: 'minimum score lead required for one direction to override the tie-break rule [-]' },
-						{ term: 'S_pair', meaning: 'symmetric compatibility score of one existing baseline boundary [-]' },
-						{ term: 'S_crit', meaning: 'minimum pair score required for a post-merge removal of an existing boundary [-]' }
+						{ term: 'ΔS<sub>min</sub>', meaning: 'minimum score lead required for one direction to override the tie-break rule [-]' },
+						{ term: 'S<sub>pair</sub>', meaning: 'symmetric compatibility score of one existing baseline boundary [-]' },
+						{ term: 'S<sub>crit</sub>', meaning: 'minimum pair score required for a post-merge removal of an existing boundary [-]' }
 					],
 					bullets: [
 						'The original boundary detection step is never redefined by smart merge; smart merge operates only after the base layering algorithm has already run.',
 						'In smart mode, similarity-based reduction is applied before the final minimum-thickness enforcement. The minimum thickness therefore acts as the last hard constraint, not as the first distortion of the layering.',
-						'Because it is a post-merge correction, smart merge can only keep or further reduce the raw layer count; it does not create a finer final layering than the original classification-derived segmentation.',
 						'Very thin sections are intentionally down-weighted in the resistance to merging: sliver layers receive a small merge bonus, and sharp-transition penalties are attenuated when the layer thickness is small relative to a fixed sliver reference. This early similarity reduction is therefore independent of the chosen minimum thickness.',
 						'Low sensitivity keeps smart merge closer to the conservative baseline behavior; high sensitivity allows smaller continuity advantages to influence the merge direction and makes it easier to remove highly compatible boundaries.',
+						'The final layer count is not strictly monotonic with the sensitivity value. Because minimum-thickness enforcement runs after the smart-merge pass, a higher sensitivity can change the topology of the intermediate layering in a way that later produces either fewer or more final layers than a lower sensitivity case.',
 						'If the two candidate directions are nearly equal, the app resolves the tie by merging into the thicker neighboring layer; if the thicknesses are equal, upward merge is chosen.',
-						'The penalty term reduces the score for large q_c jumps, large R_f jumps, peat/non-peat transitions, gravel/non-gravel transitions, and thin layers that act as critical markers such as very weak peat, very coarse gravel, very high R_f, or extreme q_c.',
-						'If smart merge is turned off, the app reverts to the simpler correction rule: every sub-minimum segment is merged upward into the preceding segment, except the first segment which cannot merge upward.'
+						'The penalty term reduces the score for large q<sub>c</sub> jumps, large R<sub>f</sub> jumps, peat/non-peat transitions, gravel/non-gravel transitions, and thin layers that act as critical markers such as very weak peat, very coarse gravel, very high R<sub>f</sub>, or extreme q<sub>c</sub>.'
+					]
+				},
+				{
+					id: 'stage3-min-thk',
+					title: '3.1B Minimum-thickness enforcement',
+					paragraphs: [
+						'The minimum layer thickness remains the final hard constraint on the smart-merge chain. In baseline mode, it is enforced directly by repeated upward merging. In smart mode, it is enforced only after the similarity-based boundary reduction described above.',
+						'In smart mode, each remaining sub-minimum layer is merged with the more similar neighboring layer according to the directional score.'
+					],
+					equations: [
+						'if t &lt; t<sub>min</sub>, merge the segment',
+						'baseline mode: merge upward',
+						'smart mode: merge toward the neighbor with the higher directional similarity score'
+					],
+					symbols: [
+						{ term: 't<sub>min</sub>', meaning: 'minimum retained layer thickness [m]' }
+					],
+					bullets: [
+						'This means the minimum-thickness setting does not control the early smart-similarity reduction itself; it only controls the last mandatory cleanup step.',
+						'As a result, low t<sub>min</sub> preserves more of the similarity-reduced layering, while high t<sub>min</sub> forces stronger final consolidation of the remaining thin layers.'
+					]
+				},
+				{
+					id: 'stage3-usage',
+					title: '3.1C Intended engineer workflow',
+					paragraphs: [
+						'The intended use of the layering controls is sequential. First select the Stage 2 classification method that best represents the CPT behaviour for the project. That method defines the provisional pointwise geology and therefore the raw segment sequence.',
+						'Then use smart merge to remove boundaries that are judged highly compatible in the context of the surrounding profile. Only after that should the minimum thickness be used as the final hard cleanup rule for layers that remain too thin to retain.',
+						'The minimum-thickness setting is therefore not intended to replace the geological interpretation performed by the selected classification method or by the smart-merge pass. It is the final practical consolidation rule applied after those interpretation steps.'
+					],
+					bullets: [
+						'Choose the classification method first; it defines the raw boundaries that everything else works from.',
+						'Use smart merge to smooth obviously over-segmented or highly compatible boundaries, not to force an arbitrary target layer count.',
+						'Use minimum thickness last to eliminate remaining thin layers that are still impractical after the similarity-based cleanup.',
+						'After every change, review the resulting boundaries against the q<sub>c</sub> and R<sub>f</sub> trends rather than judging only by the final number of layers.'
 					]
 				},
 				{
 					id: 'stage3-statistics',
-					title: '3.2 Per-layer statistics',
+					title: '3.2 Final layer statistics and boundary continuity',
 					paragraphs: [
-						'After merging, the layer stores mean q<sub>c</sub>, mean f<sub>s</sub>, and mean R<sub>f</sub> over all valid CPT points in the merged segment. The representative subtype string is the modal subtype within that segment.',
-						'These average values provide the Stage 4 input for stiffness and conductivity derivation.'
+						'After the final merged geometry is fixed, the app recomputes each layer summary from the merged CPT rows. Mean q<sub>c</sub>, mean f<sub>s</sub>, and mean R<sub>f</sub> are taken over the valid CPT rows inside the final segment. The representative subtype string is the modal subtype within that final row set.',
+						'The final layer table is then rebuilt with continuous boundaries: each layer top is taken from the previous final layer bottom, and each layer bottom is forced not to lie above its own top. These recomputed averages are the Stage 4 input for stiffness and conductivity derivation.'
 					],
 					equations: [
 						'avg q<sub>c</sub> = mean(q<sub>c,j</sub>)',
 						'avg f<sub>s</sub> = mean(f<sub>s,j</sub>)',
-						'avg R<sub>f</sub> = mean(R<sub>f,j</sub>)'
+						'avg R<sub>f</sub> = mean(R<sub>f,j</sub>)',
+						'z<sub>top,i</sub> = z<sub>bot,i−1</sub>',
+						'z<sub>bot,i</sub> = max(z<sub>top,i</sub>, z<sub>bot,sum,i</sub>)'
 					],
 					symbols: [
-						{ term: 'q_c,j, f_s,j, R_f,j', meaning: 'valid CPT point values inside one merged segment' }
+						{ term: 'q<sub>c,j</sub>, f<sub>s,j</sub>, R<sub>f,j</sub>', meaning: 'valid CPT point values inside one final merged segment' },
+						{ term: 'z<sub>bot,sum,i</sub>', meaning: 'bottom depth obtained from the merged-segment summary before final continuity enforcement [m]' }
+					],
+					bullets: [
+						'Rows with q<sub>c</sub> ≤ 0.02 MPa are excluded from the averages when possible; if that would leave no rows, the full segment row set is used as fallback.',
+						'So every time the merging changes, the boundaries and the engineering averages are recalculated consistently from the new merged geometry.'
 					]
 				},
 				{
 					id: 'stage3-parameters',
-					title: '3.3 Default parameter assignment',
+					title: '3.3 Subtype suggestion and parameter assignment',
 					paragraphs: [
-						'For Robertson and CUR classifications, the app assigns default geotechnical values from a generic type table. For the Eurocode Table 3 route, the app instead averages the row parameters that matched each CPT point inside the merged segment.',
-						'All assigned values remain editable, and manual overrides always take precedence over automatic assignment.'
+						'The final merged layer first inherits provisional parameters from the merged rows. For the NEN Tabel 3 classification route, the app can average the pointwise row parameters available from the table-matched CPT rows. For the other classification routes, it falls back initially to the generic family defaults.',
+						'After that, the app auto-suggests the best Eurocode Table 3 subtype from the catalogue using the final layer average q<sub>c</sub>, average R<sub>f</sub>, and the compatibility matrix of the CPT family. If the active Stage 3 parameter method is the Eurocode Table 3 route, the suggested subtype also supplies the layer parameters. All assigned values remain editable, and manual overrides always take precedence over automatic assignment.'
 					],
 					equations: [
 						'γ = mean(γ<sub>row</sub>)',
@@ -401,10 +567,14 @@
 						'c<sub>u</sub> = round(mean(c<sub>u,row</sub>))'
 					],
 					symbols: [
-						{ term: 'γ, γ_sat', meaning: 'unsaturated and saturated unit weight [kN/m³]' },
+						{ term: 'γ, γ<sub>sat</sub>', meaning: 'unsaturated and saturated unit weight [kN/m³]' },
 						{ term: 'φ′', meaning: 'effective friction angle [degrees]' },
 						{ term: 'c′', meaning: 'effective cohesion [kPa]' },
-						{ term: 'c_u', meaning: 'undrained shear strength [kPa]' }
+						{ term: 'c<sub>u</sub>', meaning: 'undrained shear strength [kPa]' }
+					],
+					bullets: [
+						'The suggested Eurocode subtype is selected from the full catalogue by compatibility first and q<sub>c</sub>/R<sub>f</sub> fit second.',
+						'The final layer warnings below the table are then derived from the chosen subtype versus the CPT-family compatibility matrix, so the engineer can still see when a selected subtype lies only in an adjacent transition family.'
 					]
 				}
 			],
@@ -427,15 +597,15 @@
 						'z<sub>mid</sub> = (z<sub>top</sub> + z<sub>bot</sub>) / 2',
 						'σ<sub>v0</sub> = γz<sub>mid</sub> &nbsp;&nbsp; for z<sub>mid</sub> ≤ z<sub>w</sub>',
 						'σ<sub>v0</sub> = γz<sub>w</sub> + γ<sub>sat</sub>(z<sub>mid</sub> − z<sub>w</sub>) &nbsp;&nbsp; for z<sub>mid</sub> &gt; z<sub>w</sub>',
-						'u = 10 · max(0, z<sub>mid</sub> − z<sub>w</sub>)',
+						'u = 9.81 · max(0, z<sub>mid</sub> − z<sub>w</sub>)',
 						"σ′<sub>v0</sub> = max(σ<sub>v0</sub> − u, 1)"
 					],
 					symbols: [
-						{ term: 'z_mid', meaning: 'layer midpoint depth [m]' },
-						{ term: 'z_top, z_bot', meaning: 'layer top and bottom depth [m]' },
-						{ term: 'z_w', meaning: 'water-table depth below surface [m]' },
-						{ term: 'σ_v0', meaning: 'initial total vertical stress [kPa]' },
-						{ term: 'σ′_v0', meaning: 'initial effective vertical stress [kPa]' }
+						{ term: 'z<sub>mid</sub>', meaning: 'layer midpoint depth [m]' },
+						{ term: 'z<sub>top</sub>, z<sub>bot</sub>', meaning: 'layer top and bottom depth [m]' },
+						{ term: 'z<sub>w</sub>', meaning: 'water-table depth below surface [m]' },
+						{ term: 'σ<sub>v0</sub>', meaning: 'initial total vertical stress [kPa]' },
+						{ term: 'σ′<sub>v0</sub>', meaning: 'initial effective vertical stress [kPa]' }
 					]
 				},
 				{
@@ -443,7 +613,8 @@
 					title: '4.2 q<sub>c</sub>-to-E<sub>oed,i</sub> correlation and α methods',
 					paragraphs: [
 						'The first stiffness step converts the representative cone resistance into an oedometric modulus through the Sanglerat or SB260 α correlation.',
-						'Method A uses a fixed α per behavioural soil type. Method B uses the selected EC7 Table 3 soil family and then applies the SB260 family-specific q<sub>c</sub> rules.'
+						'Method A uses a fixed α per behavioural soil type. Method B uses the selected NEN Tabel 3 family and then applies the SB260 family-specific q<sub>c</sub> rules.',
+						'The full implemented α mapping is shown in the expandable reference table below so the reader can audit exactly which family, q<sub>c</sub> band, or modulus formula is applied.'
 					],
 					equations: [
 						'E<sub>oed,i</sub> = α · avg q<sub>c</sub> · 1000',
@@ -454,13 +625,30 @@
 					],
 					symbols: [
 						{ term: 'α', meaning: 'Sanglerat / SB260 stiffness correlation factor [-]' },
-						{ term: 'avg q_c', meaning: 'mean cone resistance of the layer [MPa]' },
-						{ term: 'E_oed,i', meaning: 'CPT-derived oedometric stiffness before reference-stress correction [kPa]' }
+						{ term: 'avg q<sub>c</sub>', meaning: 'mean cone resistance of the layer [MPa]' },
+						{ term: 'E<sub>oed,i</sub>', meaning: 'CPT-derived oedometric stiffness before reference-stress correction [kPa]' }
 					],
 					bullets: [
 						'For peat, water content w is not available in the app, so the SB260 default α = 1.5 is used.',
 						'Transition soils are mapped from the selected EC7 subtype rather than from q<sub>c</sub> and R<sub>f</sub> alone.'
-					]
+					],
+					table: {
+						caption:
+							'Implemented α-reference table used by the current stiffness correlation logic for Method A and Method B.',
+						note:
+							'Method A is a behavioural-type default route. Method B is the SB260 family mapping currently driven by the selected NEN Tabel 3 subtype family in the app.',
+						collapsible: true,
+						summary: 'Show implemented α reference table',
+						columns: [
+							{ key: 'method', label: 'Method' },
+							{ key: 'family', label: 'Family' },
+							{ key: 'soil', label: 'Soil / subtype mapping' },
+							{ key: 'qc', label: 'q<sub>c</sub> range [MPa]' },
+							{ key: 'rule', label: 'Rule' },
+							{ key: 'expression', label: 'Applied α or modulus relation' }
+						],
+						rows: alphaMethodRows
+					}
 				},
 				{
 					id: 'stage4-method-a',
@@ -477,10 +665,10 @@
 						'K<sub>0,nc</sub> = 1 − sinφ′'
 					],
 					symbols: [
-						{ term: 'E_oed,ref', meaning: 'reference oedometric stiffness at p_ref [kPa]' },
-						{ term: 'E_50,ref', meaning: 'reference secant stiffness for primary loading [kPa]' },
-						{ term: 'E_ur,ref', meaning: 'reference unloading/reloading stiffness [kPa]' },
-						{ term: 'K_0,nc', meaning: 'at-rest earth-pressure coefficient for normally consolidated state [-]' }
+						{ term: 'E<sub>oed,ref</sub>', meaning: 'reference oedometric stiffness at p<sub>ref</sub> [kPa]' },
+						{ term: 'E<sub>50,ref</sub>', meaning: 'reference secant stiffness for primary loading [kPa]' },
+						{ term: 'E<sub>ur,ref</sub>', meaning: 'reference unloading/reloading stiffness [kPa]' },
+						{ term: 'K<sub>0,nc</sub>', meaning: 'at-rest earth-pressure coefficient for normally consolidated state [-]' }
 					]
 				},
 				{
@@ -507,10 +695,10 @@
 						'k<sub>v</sub> = k<sub>h</sub> / a<sub>kv</sub>'
 					],
 					symbols: [
-						{ term: 'k_h,rep', meaning: 'representative horizontal conductivity [m/s]' },
-						{ term: 'k_h,min, k_h,max', meaning: 'adopted conductivity range [m/s]' },
-						{ term: 'a_kv', meaning: 'anisotropy ratio k_h / k_v [-]' },
-						{ term: 'k_v', meaning: 'vertical conductivity [m/s]' }
+						{ term: 'k<sub>h,rep</sub>', meaning: 'representative horizontal conductivity [m/s]' },
+						{ term: 'k<sub>h,min</sub>, k<sub>h,max</sub>', meaning: 'adopted conductivity range [m/s]' },
+						{ term: 'a<sub>kv</sub>', meaning: 'anisotropy ratio k<sub>h</sub> / k<sub>v</sub> [-]' },
+						{ term: 'k<sub>v</sub>', meaning: 'vertical conductivity [m/s]' }
 					],
 					bullets: [
 						'Indicative anisotropy in the current logic is 1 for sand and gravel, and 3 for clay, loam, silty soils, and peat.',
@@ -540,8 +728,8 @@
 						'Y<sub>j</sub> = a + mX<sub>j</sub>'
 					],
 					symbols: [
-						{ term: 'X_j, Y_j', meaning: 'log-transformed stress-ratio and stiffness points for CPT point j' },
-						{ term: 'a', meaning: 'intercept of the regression line; exp(a) = E_oed,ref' }
+						{ term: 'X<sub>j</sub>, Y<sub>j</sub>', meaning: 'log-transformed stress-ratio and stiffness points for CPT point j' },
+						{ term: 'a', meaning: 'intercept of the regression line; exp(a) = E<sub>oed,ref</sub>' }
 					]
 				},
 				{
@@ -557,8 +745,8 @@
 						'R<sup>2</sup> = 1 − SS<sub>res</sub> / SS<sub>tot</sub>'
 					],
 					symbols: [
-						{ term: 'm_fit', meaning: 'fitted stress exponent before engineering acceptance [-]' },
-						{ term: 'E_oed,ref,fit', meaning: 'fitted reference oedometric stiffness [kPa]' },
+						{ term: 'm<sub>fit</sub>', meaning: 'fitted stress exponent before engineering acceptance [-]' },
+						{ term: 'E<sub>oed,ref,fit</sub>', meaning: 'fitted reference oedometric stiffness [kPa]' },
 						{ term: 'R²', meaning: 'coefficient of determination in log space [-]' }
 					],
 					bullets: [
@@ -590,13 +778,13 @@
 					],
 					symbols: [
 						{ term: 'z', meaning: 'depth below ground level [m]' },
-						{ term: 'z_w', meaning: 'phreatic level depth below ground [m]' },
-						{ term: 'γ_w', meaning: 'unit weight of water [kN/m³]' },
-						{ term: 'γ_i', meaning: 'unit weight of layer i [kN/m³]' },
-						{ term: 'Δz_i', meaning: 'thickness contribution of layer i [m]' },
+						{ term: 'z<sub>w</sub>', meaning: 'phreatic level depth below ground [m]' },
+						{ term: 'γ<sub>w</sub>', meaning: 'unit weight of water [kN/m³]' },
+						{ term: 'γ<sub>i</sub>', meaning: 'unit weight of layer i [kN/m³]' },
+						{ term: 'Δz<sub>i</sub>', meaning: 'thickness contribution of layer i [m]' },
 						{ term: 'u', meaning: 'pore pressure [kPa]' },
-						{ term: 'σ_v', meaning: 'total vertical stress [kPa]' },
-						{ term: 'σ′_v', meaning: 'effective vertical stress [kPa]' }
+						{ term: 'σ<sub>v</sub>', meaning: 'total vertical stress [kPa]' },
+						{ term: 'σ′<sub>v</sub>', meaning: 'effective vertical stress [kPa]' }
 					]
 				},
 				{
@@ -611,12 +799,12 @@
 						"E<sub>oed</sub>(σ′<sub>1</sub>) = E<sub>oed,ref</sub> · (σ′<sub>1</sub>/p<sub>ref</sub>)<sup>m</sup> &nbsp;&nbsp; for c′ = 0"
 					],
 					symbols: [
-						{ term: 'E_oed', meaning: 'oedometric stiffness modulus [kPa or MPa, used consistently]' },
-						{ term: 'E_oed,ref', meaning: 'reference oedometric stiffness at p_ref [kPa or MPa]' },
-						{ term: 'σ′_1', meaning: 'effective major principal stress, taken here as vertical effective stress [kPa]' },
+						{ term: 'E<sub>oed</sub>', meaning: 'oedometric stiffness modulus [kPa or MPa, used consistently]' },
+						{ term: 'E<sub>oed,ref</sub>', meaning: 'reference oedometric stiffness at p<sub>ref</sub> [kPa or MPa]' },
+						{ term: 'σ′<sub>1</sub>', meaning: 'effective major principal stress, taken here as vertical effective stress [kPa]' },
 						{ term: 'c′', meaning: 'effective cohesion [kPa]' },
 						{ term: 'φ′', meaning: 'effective friction angle [degrees]' },
-						{ term: 'p_ref', meaning: 'reference stress, here 100 kPa' },
+						{ term: 'p<sub>ref</sub>', meaning: 'reference stress, here 100 kPa' },
 						{ term: 'm', meaning: 'Hardening Soil stress exponent [-]' }
 					]
 				},
@@ -652,15 +840,15 @@
 						'N<sub>γ</sub> = 2(N<sub>q</sub> + 1)tanφ′'
 					],
 					symbols: [
-						{ term: 'q_ult,d', meaning: 'ultimate drained bearing resistance [kPa]' },
-						{ term: 'q_ult,u', meaning: 'ultimate undrained bearing resistance [kPa]' },
+						{ term: 'q<sub>ult,d</sub>', meaning: 'ultimate drained bearing resistance [kPa]' },
+						{ term: 'q<sub>ult,u</sub>', meaning: 'ultimate undrained bearing resistance [kPa]' },
 						{ term: 'c′', meaning: 'effective cohesion [kPa]' },
 						{ term: 'q′', meaning: 'effective surcharge at foundation depth [kPa]' },
 						{ term: 'γ′', meaning: 'effective unit weight below the water table [kN/m³]' },
 						{ term: 'B', meaning: 'foundation width [m]' },
-						{ term: 'c_u', meaning: 'undrained shear strength [kPa]' },
-						{ term: 'N_c, N_q, N_γ', meaning: 'bearing-capacity factors [-]' },
-						{ term: 's_c, s_q, s_γ, s_cu', meaning: 'shape factors [-]' }
+						{ term: 'c<sub>u</sub>', meaning: 'undrained shear strength [kPa]' },
+						{ term: 'N<sub>c</sub>, N<sub>q</sub>, N<sub>γ</sub>', meaning: 'bearing-capacity factors [-]' },
+						{ term: 's<sub>c</sub>, s<sub>q</sub>, s<sub>γ</sub>, s<sub>cu</sub>', meaning: 'shape factors [-]' }
 					]
 				},
 				{
@@ -678,9 +866,9 @@
 						'q<sub>allow</sub> = q<sub>ult</sub> / ξ'
 					],
 					symbols: [
-						{ term: 'φ′_k, c′_k, c_u,k', meaning: 'characteristic soil strengths' },
-						{ term: 'φ′_d, c′_d, c_u,d', meaning: 'design soil strengths' },
-						{ term: 'γ_Rd', meaning: 'resistance/model factor in the EC7 route [-]' },
+						{ term: 'φ′<sub>k</sub>, c′<sub>k</sub>, c<sub>u,k</sub>', meaning: 'characteristic soil strengths' },
+						{ term: 'φ′<sub>d</sub>, c′<sub>d</sub>, c<sub>u,d</sub>', meaning: 'design soil strengths' },
+						{ term: 'γ<sub>Rd</sub>', meaning: 'resistance/model factor in the EC7 route [-]' },
 						{ term: 'ξ', meaning: 'global system factor [-]' }
 					],
 					bullets: [
@@ -710,7 +898,7 @@
 						{ term: 'R', meaning: 'screened radius of influence [m]' },
 						{ term: 'C', meaning: 'Sichardt coefficient [-]' },
 						{ term: 's', meaning: 'drawdown at the source [m]' },
-						{ term: 'k_eff,h', meaning: 'equivalent horizontal conductivity [m/s]' }
+						{ term: 'k<sub>eff,h</sub>', meaning: 'equivalent horizontal conductivity [m/s]' }
 					],
 					bullets: [
 						'C = 3000 is the classic Kyrieleis & Sichardt coefficient used in sandy-soil rule-of-thumb practice.',
@@ -735,20 +923,22 @@
 					],
 					symbols: [
 						{ term: 'T', meaning: 'transmissivity of the saturated profile [m²/s]' },
-						{ term: 'k_h,i', meaning: 'horizontal conductivity of layer i [m/s]' },
-						{ term: 'b_i', meaning: 'currently saturated thickness of layer i [m]' },
+						{ term: 'k<sub>h,i</sub>', meaning: 'horizontal conductivity of layer i [m/s]' },
+						{ term: 'b<sub>i</sub>', meaning: 'currently saturated thickness of layer i [m]' },
 						{ term: 'T(h)', meaning: 'transmissivity as a function of saturated thickness h [m²/s]' },
 						{ term: 'M(h)', meaning: 'cumulative transmissivity moment [m³/s]' },
-						{ term: 'h_0, h_w', meaning: 'saturated thickness at far field and at the source [m]' },
+						{ term: 'h<sub>0</sub>, h<sub>w</sub>', meaning: 'saturated thickness at far field and at the source [m]' },
 						{ term: 'Q', meaning: 'screening discharge [m³/s]' },
-						{ term: 'r_w', meaning: 'well radius or equivalent well radius [m]' },
+						{ term: 'r<sub>w</sub>', meaning: 'well radius or equivalent well radius [m]' },
 						{ term: 'A', meaning: 'excavation plan area [m²]' }
 					],
 					bullets: [
 						'T is the total horizontal flow capacity of the currently saturated part of the interpreted profile.',
 						'T(h) expresses how that flow capacity changes as the water table rises or falls relative to the aquifer base.',
 						'M(h) is the cumulative transmissivity moment used to solve the radial unconfined flow relation.',
-						'For a homogeneous aquifer, the formulation reduces exactly to the classical Dupuit expression.'
+						'For a homogeneous aquifer, the formulation reduces exactly to the classical Dupuit expression.',
+						'The CPT does not measure b<sub>i</sub>, T(h), or M(h) directly. The app derives them from the interpreted layer model: each layer receives k<sub>h</sub> in Stage 4.5, the aquifer base is set by the hydraulic screening setup, and b<sub>i</sub>(h) is then the overlap of layer i with the currently saturated interval between that base and the phreatic level.',
+						'Once the interpreted layers and their k<sub>h</sub> values are known, T(h) follows by summing k<sub>h,i</sub>b<sub>i</sub>(h) over the intersected layers, and M(h) is the corresponding cumulative transmissivity moment of that piecewise profile.'
 					]
 				},
 				{
@@ -765,9 +955,9 @@
 					],
 					symbols: [
 						{ term: 'r', meaning: 'radial distance from the source [m]' },
-						{ term: 'r_CPT', meaning: 'distance from the source to the CPT [m]' },
+						{ term: 'r<sub>CPT</sub>', meaning: 'distance from the source to the CPT [m]' },
 						{ term: 'h(r)', meaning: 'saturated thickness at distance r [m]' },
-						{ term: 'Δh_CPT', meaning: 'drawdown at the CPT [m]' }
+						{ term: 'Δh<sub>CPT</sub>', meaning: 'drawdown at the CPT [m]' }
 					]
 				},
 				{
@@ -787,14 +977,14 @@
 						'c<sub>v</sub> = k<sub>v</sub>E<sub>oed</sub> / γ<sub>w</sub>'
 					],
 					symbols: [
-						{ term: 'z′_w', meaning: 'new phreatic level depth below ground [m]' },
-						{ term: 'σ′_v,new, σ′_v,old', meaning: 'new and original effective vertical stress [kPa]' },
-						{ term: 'Δσ′_v', meaning: 'effective stress increase due to drawdown [kPa]' },
-						{ term: 'σ′_mean', meaning: 'mean effective stress used for stiffness evaluation [kPa]' },
-						{ term: 'Δε_v,i', meaning: 'vertical strain increment in sublayer i [-]' },
-						{ term: 'ΔS_dewatering', meaning: 'total dewatering-induced settlement [m or mm depending on output]' },
-						{ term: 'k_v', meaning: 'vertical conductivity [m/s]' },
-						{ term: 'c_v', meaning: 'consolidation coefficient [m²/s]' }
+						{ term: 'z′<sub>w</sub>', meaning: 'new phreatic level depth below ground [m]' },
+						{ term: 'σ′<sub>v,new</sub>, σ′<sub>v,old</sub>', meaning: 'new and original effective vertical stress [kPa]' },
+						{ term: 'Δσ′<sub>v</sub>', meaning: 'effective stress increase due to drawdown [kPa]' },
+						{ term: 'σ′<sub>mean</sub>', meaning: 'mean effective stress used for stiffness evaluation [kPa]' },
+						{ term: 'Δε<sub>v,i</sub>', meaning: 'vertical strain increment in sublayer i [-]' },
+						{ term: 'ΔS<sub>dewatering</sub>', meaning: 'total dewatering-induced settlement [m or mm depending on output]' },
+						{ term: 'k<sub>v</sub>', meaning: 'vertical conductivity [m/s]' },
+						{ term: 'c<sub>v</sub>', meaning: 'consolidation coefficient [m²/s]' }
 					],
 					bullets: [
 						'The app reports both S<sub>conservative</sub> and S<sub>realistic</sub> to expose the sensitivity to the chosen total-stress assumption.',
@@ -823,10 +1013,10 @@
 						'S = ΣΔS<sub>i</sub>'
 					],
 					symbols: [
-						{ term: 'q_gross', meaning: 'gross applied stress at foundation level [kPa]' },
-						{ term: 'q_net', meaning: 'net applied stress after subtracting in-situ overburden [kPa]' },
-						{ term: 'D_f', meaning: 'founding depth below ground [m]' },
-						{ term: 'ΔS_i', meaning: 'settlement contribution of sublayer i [m or mm depending on output]' },
+						{ term: 'q<sub>gross</sub>', meaning: 'gross applied stress at foundation level [kPa]' },
+						{ term: 'q<sub>net</sub>', meaning: 'net applied stress after subtracting in-situ overburden [kPa]' },
+						{ term: 'D<sub>f</sub>', meaning: 'founding depth below ground [m]' },
+						{ term: 'ΔS<sub>i</sub>', meaning: 'settlement contribution of sublayer i [m or mm depending on output]' },
 						{ term: 'S', meaning: 'total settlement [m or mm depending on output]' }
 					]
 				},
@@ -852,9 +1042,9 @@
 						{ term: 'z', meaning: 'depth below the loaded surface [m]' },
 						{ term: 'α', meaning: 'strip-footing Boussinesq angle [rad]' },
 						{ term: 'm, n', meaning: 'dimensionless geometry ratios B/z and L/z [-]' },
-						{ term: 'V, V₁, A, B_factor', meaning: 'intermediate Newmark/Fadum terms [-]' },
-						{ term: 'I_z', meaning: 'vertical stress influence factor [-]' },
-						{ term: 'Δσ_v', meaning: 'vertical stress increase [kPa]' }
+						{ term: 'V, V₁, A, B<sub>factor</sub>', meaning: 'intermediate Newmark/Fadum terms [-]' },
+						{ term: 'I<sub>z</sub>', meaning: 'vertical stress influence factor [-]' },
+						{ term: 'Δσ<sub>v</sub>', meaning: 'vertical stress increase [kPa]' }
 					]
 				},
 				{
@@ -872,12 +1062,12 @@
 						'ΔS<sub>i</sub> = Δε<sub>v,i</sub>Δz<sub>i</sub>'
 					],
 					symbols: [
-						{ term: 'σ′_v,0,i', meaning: 'initial effective stress in sublayer i [kPa]' },
-						{ term: 'σ′_v,f,i', meaning: 'final effective stress in sublayer i [kPa]' },
-						{ term: 'σ′_mean,i', meaning: 'mean effective stress in sublayer i [kPa]' },
-						{ term: 'E_oed,i', meaning: 'oedometric stiffness of sublayer i [kPa or MPa, used consistently]' },
-						{ term: 'Δε_v,i', meaning: 'vertical strain increment in sublayer i [-]' },
-						{ term: 'Δz_i', meaning: 'sublayer thickness [m]' }
+						{ term: 'σ′<sub>v,0,i</sub>', meaning: 'initial effective stress in sublayer i [kPa]' },
+						{ term: 'σ′<sub>v,f,i</sub>', meaning: 'final effective stress in sublayer i [kPa]' },
+						{ term: 'σ′<sub>mean,i</sub>', meaning: 'mean effective stress in sublayer i [kPa]' },
+						{ term: 'E<sub>oed,i</sub>', meaning: 'oedometric stiffness of sublayer i [kPa or MPa, used consistently]' },
+						{ term: 'Δε<sub>v,i</sub>', meaning: 'vertical strain increment in sublayer i [-]' },
+						{ term: 'Δz<sub>i</sub>', meaning: 'sublayer thickness [m]' }
 					]
 				},
 				{
@@ -905,20 +1095,28 @@
 					id: 'beam-ks',
 					title: '10.1 Modulus of subgrade reaction from CPT stiffness',
 					paragraphs: [
-						'The current implementation derives k<sub>s</sub> from CPT-linked stiffness using the Vesić route. The app offers a self-consistent default route in which E<sub>s</sub> is taken from E<sub>oed</sub> and ν<sub>s</sub> = 0, consistent with the oedometric nature of the interpreted stiffness.',
-						'The stiffness is averaged over an influence depth below the foundation, so k<sub>s</sub> is not treated as a pure soil constant but as a footing-dependent support parameter.'
+						'The current implementation derives k<sub>s</sub> from CPT-linked stiffness using the Vesić route. The app does not read E<sub>s</sub> directly from a separate soil table at Stage 6; it derives the stiffness from the interpreted CPT layer model.',
+						'For each numerical sublayer between D<sub>f</sub> and D<sub>f</sub> + z<sub>influence</sub>, the app evaluates E<sub>oed</sub> at the local effective stress using the current layer stiffness law. It then converts that sublayer stiffness to the selected E<sub>s</sub> route, averages it over the influence depth, and only then computes k<sub>s</sub>. The result is therefore a footing-dependent support parameter, not a pure soil constant.'
 					],
 					equations: [
+						'E<sub>oed,i</sub> = E<sub>oed,ref</sub>[(c′cotφ′ + σ′<sub>v,i</sub>)/(c′cotφ′ + p<sub>ref</sub>)]<sup>m</sup>',
+						'E<sub>s,i</sub> = E<sub>oed,i</sub> &nbsp;&nbsp; current default route',
+						'E<sub>s,i</sub> = E<sub>oed,i</sub>[(1 + ν<sub>s</sub>)(1 − 2ν<sub>s</sub>)/(1 − ν<sub>s</sub>)] &nbsp;&nbsp; drained Young route',
+						'E<sub>s,avg</sub> = Σ(E<sub>s,i</sub>Δz<sub>i</sub>) / ΣΔz<sub>i</sub> &nbsp;&nbsp; over z ∈ [D<sub>f</sub>, D<sub>f</sub> + z<sub>influence</sub>]',
 						'k<sub>s</sub> = [0.65E<sub>s</sub> / B(1 − ν<sub>s</sub><sup>2</sup>)] · (E<sub>s</sub>B<sup>4</sup> / E<sub>b</sub>I<sub>b</sub>)<sup>1/12</sup>',
-						'E<sub>s</sub> ≈ E<sub>oed</sub>, &nbsp; ν<sub>s</sub> = 0 &nbsp;&nbsp; current default route'
+						'E<sub>s</sub> = E<sub>s,avg</sub>, &nbsp; ν<sub>s</sub> = 0 &nbsp;&nbsp; current default route'
 					],
 					symbols: [
-						{ term: 'k_s', meaning: 'modulus of subgrade reaction [kN/m³]' },
-						{ term: 'E_s', meaning: 'soil stiffness used for foundation response [kPa or MPa, used consistently]' },
-						{ term: 'ν_s', meaning: 'soil Poisson ratio [-]' },
+						{ term: 'k<sub>s</sub>', meaning: 'modulus of subgrade reaction [kN/m³]' },
+						{ term: 'E<sub>s</sub>', meaning: 'soil stiffness used for foundation response [kPa or MPa, used consistently]' },
+						{ term: 'E<sub>s,i</sub>', meaning: 'soil stiffness contribution of sublayer i after route conversion [kPa or MPa, used consistently]' },
+						{ term: 'E<sub>s,avg</sub>', meaning: 'thickness-weighted soil stiffness average over the chosen influence depth [kPa or MPa, used consistently]' },
+						{ term: 'ν<sub>s</sub>', meaning: 'soil Poisson ratio [-]' },
 						{ term: 'B', meaning: 'foundation width [m]' },
-						{ term: 'E_b', meaning: 'beam or slab Young modulus [consistent stress units]' },
-						{ term: 'I_b', meaning: 'second moment of area per strip [m⁴]' }
+						{ term: 'E<sub>b</sub>', meaning: 'beam or slab Young modulus [consistent stress units]' },
+						{ term: 'I<sub>b</sub>', meaning: 'second moment of area per strip [m⁴]' },
+						{ term: 'D<sub>f</sub>', meaning: 'foundation depth below surface [m]' },
+						{ term: 'z<sub>influence</sub>', meaning: 'depth range used for averaging the supporting soil stiffness [m]' }
 					]
 				},
 				{
@@ -940,7 +1138,7 @@
 						{ term: 'w(x)', meaning: 'vertical deflection along the strip [m]' },
 						{ term: 'b', meaning: 'beam or strip width [m]' },
 						{ term: 'q(x)', meaning: 'line load distribution [kN/m]' },
-						{ term: 'G_p', meaning: 'Pasternak shear-layer parameter [kN/m]' },
+						{ term: 'G<sub>p</sub>', meaning: 'Pasternak shear-layer parameter [kN/m]' },
 						{ term: 'λ', meaning: 'characteristic length [m]' },
 						{ term: 'β', meaning: 'inverse characteristic length [1/m]' }
 					]
@@ -950,6 +1148,7 @@
 					title: '10.3 Pasternak 1D implementation',
 					paragraphs: [
 						'The Pasternak extension currently implemented in the app is a 1D strip formulation. The shear-layer parameter is not measured directly; it is inferred from the averaged soil shear modulus and a chosen influence depth.',
+						'In the current app, G<sub>s,avg</sub> is obtained from the same CPT-derived stiffness profile used for k<sub>s</sub>. The app first builds E<sub>s,avg</sub> over the selected influence zone, then converts that average stiffness into the average shear modulus, and only then forms G<sub>p</sub>.',
 						'This is why the Pasternak route is labeled as a screening extension rather than a continuum-calibrated Belgian design model.'
 					],
 					equations: [
@@ -959,11 +1158,12 @@
 					],
 					symbols: [
 						{ term: 'η', meaning: 'engineer scaling factor for Pasternak coupling [-]' },
-						{ term: 'G_s,avg', meaning: 'average soil shear modulus over the influence zone [consistent stress units]' },
-						{ term: 'H_p', meaning: 'Pasternak influence depth [m]' },
-						{ term: 'z_influence', meaning: 'depth range used for averaging the supporting soil stiffness [m]' }
+						{ term: 'G<sub>s,avg</sub>', meaning: 'average soil shear modulus obtained from the CPT-derived E<sub>s,avg</sub> over the influence zone [kPa or MPa, used consistently]' },
+						{ term: 'H<sub>p</sub>', meaning: 'Pasternak influence depth [m]' },
+						{ term: 'z<sub>influence</sub>', meaning: 'depth range used for averaging the supporting soil stiffness [m]' }
 					],
 					bullets: [
+						'With the default app route, E<sub>s,i</sub> = E<sub>oed,i</sub> and ν<sub>s</sub> = 0, so G<sub>s,avg</sub> = E<sub>s,avg</sub>/2.',
 						'Uniform full-length loading can still produce very low bending moment because the deflection field approaches nearly uniform settlement.',
 						'Patch loads and point loads are more informative when the objective is bending-driven reinforcement screening.'
 					]
@@ -993,16 +1193,16 @@
 						'A<sub>s,req</sub> = ωbdf<sub>cd</sub> / f<sub>yd</sub>'
 					],
 					symbols: [
-						{ term: 'f_ck', meaning: 'characteristic concrete compressive strength [MPa]' },
-						{ term: 'f_cd', meaning: 'design concrete compressive strength [MPa]' },
-						{ term: 'f_yk', meaning: 'characteristic steel yield strength [MPa]' },
-						{ term: 'f_yd', meaning: 'design steel yield strength [MPa]' },
-						{ term: 'γ_C, γ_S', meaning: 'partial factors for concrete and steel [-]' },
+						{ term: 'f<sub>ck</sub>', meaning: 'characteristic concrete compressive strength [MPa]' },
+						{ term: 'f<sub>cd</sub>', meaning: 'design concrete compressive strength [MPa]' },
+						{ term: 'f<sub>yk</sub>', meaning: 'characteristic steel yield strength [MPa]' },
+						{ term: 'f<sub>yd</sub>', meaning: 'design steel yield strength [MPa]' },
+						{ term: 'γ<sub>C</sub>, γ<sub>S</sub>', meaning: 'partial factors for concrete and steel [-]' },
 						{ term: 'h', meaning: 'member thickness [m]' },
-						{ term: 'c_nom', meaning: 'nominal concrete cover [same length unit as input]' },
-						{ term: 'φ_bar', meaning: 'bar diameter [same length unit as input]' },
-						{ term: 'M_Ed', meaning: 'design bending moment [kNm/m or consistent strip units]' },
-						{ term: 'A_s,req', meaning: 'required reinforcement area per meter width [mm²/m]' }
+						{ term: 'c<sub>nom</sub>', meaning: 'nominal concrete cover [same length unit as input]' },
+						{ term: 'φ<sub>bar</sub>', meaning: 'bar diameter [same length unit as input]' },
+						{ term: 'M<sub>Ed</sub>', meaning: 'design bending moment [kNm/m or consistent strip units]' },
+						{ term: 'A<sub>s,req</sub>', meaning: 'required reinforcement area per meter width [mm²/m]' }
 					],
 					bullets: [
 						'The result should be read as strip-based ULS reinforcement screening, not as a final 2D slab reinforcement layout.',
@@ -1044,9 +1244,9 @@
 	<header class="hero">
 		<div class="hero__inner">
 			<p class="hero__eyebrow">Technical documentation</p>
-			<h1>CPT interpretation and engineering theory, structured and referenced.</h1>
+			<h1>CPT theory and references.</h1>
 			<p class="hero__lead">
-				A technical implementation note for the live MADEP CPT workflow: GEF loading,
+				A technical implementation note for the CPT app workflow: GEF loading,
 				classification, layer and parameter derivation, experimental tuning, and the current
 				engineering applications, documented from the active logic and reference base.
 			</p>
@@ -1055,7 +1255,6 @@
 				<a class="btn btn--outline-dark" href="#stage1">Read the theory</a>
 			</div>
 			<div class="hero__trust">
-				<span>Belgium</span>
 				<span>Full CPT workflow</span>
 				<span>Technical reference</span>
 			</div>
@@ -1104,6 +1303,86 @@
 											</div>
 										{/each}
 									</dl>
+								</div>
+							{/if}
+
+							{#if subsection.figures}
+								<div class="doc-figures">
+									{#each subsection.figures as figure}
+										{#if figure.collapsible}
+											<details class="doc-figure-toggle">
+												<summary>{figure.summary ?? 'Show source figure'}</summary>
+												<figure class="doc-figure">
+													<img src={figure.src} alt={figure.alt} loading="lazy" />
+													<figcaption>{figure.caption}</figcaption>
+												</figure>
+											</details>
+										{:else}
+											<figure class="doc-figure">
+												<img src={figure.src} alt={figure.alt} loading="lazy" />
+												<figcaption>{figure.caption}</figcaption>
+											</figure>
+										{/if}
+									{/each}
+								</div>
+							{/if}
+
+							{#if subsection.table}
+								<div class="doc-table-wrap">
+									{#if subsection.table.collapsible}
+										<details class="doc-table-toggle">
+											<summary>{subsection.table.summary ?? 'Show table'}</summary>
+											<p class="doc-table-caption">{subsection.table.caption}</p>
+											<div class="doc-table-scroll">
+												<table class="doc-table">
+													<thead>
+														<tr>
+															{#each subsection.table.columns as column}
+																<th>{@html column.label}</th>
+															{/each}
+														</tr>
+													</thead>
+													<tbody>
+														{#each subsection.table.rows as row}
+															<tr>
+																{#each subsection.table.columns as column}
+																	<td>{@html row[column.key]}</td>
+																{/each}
+															</tr>
+														{/each}
+													</tbody>
+												</table>
+											</div>
+											{#if subsection.table.note}
+												<p class="doc-table-note">{subsection.table.note}</p>
+											{/if}
+										</details>
+									{:else}
+										<p class="doc-table-caption">{subsection.table.caption}</p>
+										<div class="doc-table-scroll">
+											<table class="doc-table">
+												<thead>
+													<tr>
+														{#each subsection.table.columns as column}
+															<th>{@html column.label}</th>
+														{/each}
+													</tr>
+												</thead>
+												<tbody>
+													{#each subsection.table.rows as row}
+														<tr>
+															{#each subsection.table.columns as column}
+																<td>{@html row[column.key]}</td>
+															{/each}
+														</tr>
+													{/each}
+												</tbody>
+											</table>
+										</div>
+										{#if subsection.table.note}
+											<p class="doc-table-note">{subsection.table.note}</p>
+										{/if}
+									{/if}
 								</div>
 							{/if}
 
@@ -1416,7 +1695,7 @@
 	.equations :global(.formula),
 	.equations :global(div) {
 		margin: 0;
-		padding: 10px 0 10px 18px;
+		padding: 12px 18px;
 		border-radius: 0;
 		background: transparent;
 		border: none;
@@ -1425,8 +1704,165 @@
 		white-space: normal;
 		word-break: break-word;
 		font-family: Georgia, 'Times New Roman', serif;
-		font-size: 1rem;
+		font-size: 1.03rem;
+		text-align: center;
 		color: var(--color-primary);
+	}
+
+	.doc-figures {
+		display: grid;
+		gap: 14px;
+		margin: 16px 0 18px;
+	}
+
+	.doc-figure {
+		margin: 0;
+		padding: 12px;
+		border: 1px solid var(--color-border);
+		background: rgba(255,255,255,0.55);
+	}
+
+	.doc-figure-toggle {
+		border: 1px solid var(--color-border);
+		background: rgba(255, 255, 255, 0.44);
+	}
+
+	.doc-figure-toggle summary {
+		cursor: pointer;
+		padding: 0.8rem 1rem;
+		font-size: 0.92rem;
+		font-weight: 600;
+		color: var(--color-primary);
+		list-style: none;
+	}
+
+	.doc-figure-toggle summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.doc-figure-toggle summary::after {
+		content: '▾';
+		float: right;
+		color: var(--color-text-light);
+	}
+
+	.doc-figure-toggle[open] summary::after {
+		content: '▴';
+	}
+
+	.doc-figure-toggle .doc-figure {
+		border: none;
+		border-top: 1px solid var(--color-border);
+		background: transparent;
+	}
+
+	.doc-figure img {
+		display: block;
+		width: 100%;
+		height: auto;
+		border: 1px solid var(--color-border);
+		background: #fff;
+	}
+
+	.doc-figure figcaption {
+		margin-top: 8px;
+		font-size: 0.92rem;
+		line-height: 1.55;
+		color: var(--color-text-light);
+	}
+
+	.doc-table-wrap {
+		margin: 1rem 0 1.25rem;
+	}
+
+	.doc-table-toggle {
+		border: 1px solid var(--color-border);
+		background: rgba(255, 255, 255, 0.44);
+	}
+
+	.doc-table-toggle summary {
+		cursor: pointer;
+		padding: 0.8rem 1rem;
+		font-size: 0.92rem;
+		font-weight: 600;
+		color: var(--color-primary);
+		list-style: none;
+	}
+
+	.doc-table-toggle summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.doc-table-toggle summary::after {
+		content: '▾';
+		float: right;
+		color: var(--color-text-light);
+	}
+
+	.doc-table-toggle[open] summary::after {
+		content: '▴';
+	}
+
+	.doc-table-toggle .doc-table-caption,
+	.doc-table-toggle .doc-table-note {
+		padding-left: 1rem;
+		padding-right: 1rem;
+	}
+
+	.doc-table-toggle .doc-table-scroll {
+		margin: 0 1rem;
+	}
+
+	.doc-table-caption,
+	.doc-table-note {
+		font-size: 0.95rem;
+	}
+
+	.doc-table-caption {
+		margin-bottom: 0.65rem;
+		color: var(--color-primary);
+	}
+
+	.doc-table-note {
+		margin-top: 0.65rem;
+		color: var(--color-text-light);
+	}
+
+	.doc-table-scroll {
+		overflow-x: auto;
+		border: 1px solid var(--color-border);
+		background: rgba(255, 255, 255, 0.55);
+	}
+
+	.doc-table {
+		width: 100%;
+		min-width: 860px;
+		border-collapse: collapse;
+		font-size: 0.92rem;
+	}
+
+	.doc-table th,
+	.doc-table td {
+		padding: 0.7rem 0.8rem;
+		border-bottom: 1px solid var(--color-border);
+		text-align: left;
+		vertical-align: top;
+	}
+
+	.doc-table th {
+		font-family: var(--font-heading);
+		font-size: 0.8rem;
+		letter-spacing: 0.04em;
+		color: var(--color-primary);
+		background: rgba(24, 24, 26, 0.03);
+	}
+
+	.doc-table td {
+		color: var(--color-text-light);
+	}
+
+	.doc-table tbody tr:last-child td {
+		border-bottom: none;
 	}
 
 	.notes,
@@ -1684,6 +2120,74 @@
 			background: transparent;
 			border: none;
 			border-left: 2px solid rgba(237, 233, 225, 0.14);
+			color: var(--color-text-on-dark);
+		}
+
+		.doc-figure {
+			background: rgba(255,255,255,0.03);
+			border-color: rgba(237, 233, 225, 0.08);
+		}
+
+		.doc-figure-toggle {
+			border-color: rgba(237, 233, 225, 0.08);
+			background: rgba(255, 255, 255, 0.03);
+		}
+
+		.doc-figure-toggle summary {
+			color: var(--color-text-on-dark);
+		}
+
+		.doc-figure-toggle summary::after {
+			color: var(--color-text-on-dark-muted);
+		}
+
+		.doc-figure-toggle .doc-figure {
+			border-top-color: rgba(237, 233, 225, 0.08);
+		}
+
+		.doc-table-toggle {
+			border-color: rgba(237, 233, 225, 0.08);
+			background: rgba(255, 255, 255, 0.03);
+		}
+
+		.doc-table-toggle summary {
+			color: var(--color-text-on-dark);
+		}
+
+		.doc-table-toggle summary::after {
+			color: var(--color-text-on-dark-muted);
+		}
+
+		.doc-figure img {
+			border-color: rgba(237, 233, 225, 0.08);
+			background: #f7f4ef;
+		}
+
+		.doc-figure figcaption {
+			color: var(--color-text-on-dark-muted);
+		}
+
+		.doc-table-scroll {
+			border-color: rgba(237, 233, 225, 0.08);
+			background: rgba(255, 255, 255, 0.03);
+		}
+
+		.doc-table th,
+		.doc-table td {
+			border-bottom-color: rgba(237, 233, 225, 0.08);
+		}
+
+		.doc-table th {
+			background: rgba(237, 233, 225, 0.05);
+			color: var(--color-text-on-dark);
+		}
+
+		.doc-table td,
+		.doc-table-note {
+			color: var(--color-text-on-dark-muted);
+		}
+
+		.doc-table-caption {
 			color: var(--color-text-on-dark);
 		}
 
