@@ -4,7 +4,7 @@
 Per layer your program already outputs:
 `Top_m, Bot_m, Top_TAW, Bot_TAW, Thick_m, γ, γ_sat, φ', c', c_u, E_oed,ref, E_oed,i, E50,ref, Eur,ref, m, K0_nc, ν_ur, k_h, k_v`.
 
-This is sufficient for all three options with minor additions. Where the original draft has issues, each is flagged **[CORRECTION]**, **[GAP]**, or **[ADD]**.
+This is sufficient for the current Stage 6 applications with only minor supplementary assumptions.
 
 ---
 
@@ -268,7 +268,7 @@ The current app also implements an **EC2 durability / cover route**, so the rein
 
 feed the nominal cover used in the reinforcement calculation.
 
-This is the same durability route later referenced in §10.5 and mirrored in the delivered `ec2_durability.py` helper: structural class selection, `c_min,dur` lookup from Table 4.4N, bond-cover check, then `Δc_dev`.
+This is the same durability route later referenced in §9.5 and mirrored in the delivered `ec2_durability.py` helper: structural class selection, `c_min,dur` lookup from Table 4.4N, bond-cover check, then `Δc_dev`.
 
 So, mathematically, the present beam/slab application is already a coupled:
 - **soil stiffness model**
@@ -345,7 +345,11 @@ For cohesionless soil (`c' = 0`) this reduces to:
 E_oed(σ'_1) = E_oed,ref · (σ'_1 / p_ref)^m
 ```
 
-**[CORRECTION]** The PLAXIS HS `E_oed` is governed by the **major principal effective stress** `σ'_1` (in oedometric loading this equals `σ'_v`). Many simplified implementations use `σ'_v` directly — that is consistent for 1D settlement on the centreline, but for off-centre points or biaxial loading the exact form above is required. For a first implementation tied to the CSV, **use `σ'_1 = σ'_v,initial + Δσ_v` at the mid-depth of each sublayer**.
+The PLAXIS HS `E_oed` is governed by the **major principal effective stress** `σ'_1` (in oedometric loading this equals `σ'_v`). Many simplified implementations use `σ'_v` directly — that is consistent for 1D settlement on the centreline, but for off-centre points or biaxial loading the exact form above is required. For the present Stage 6 settlement route, use:
+```
+σ'_1 = σ'_v,initial + Δσ_v
+```
+at the mid-depth of each sublayer.
 
 ### 1.4 Integration scheme
 Discretise the profile into sublayers `Δz ≤ 0.25 m` (finer than the layer thickness). Evaluate stresses at mid-depth of each sublayer. This is standard "stratification summation" and is what Terzaghi/Bowles/NEN all assume.
@@ -382,19 +386,19 @@ This preprocessor runs **once per CPT per calculation**. All three options below
 
 ---
 
-## 2. Option A — Dewatering impact estimator [REVISED]
+## 2. Option A — Dewatering impact estimator
 
-### 2.1 Scope correction
-The draft conflates two different things:
+### 2.1 Scope and structure
+This option contains two linked parts:
 
 1. **Drawdown at the CPT location** given a pumping configuration (hydrogeology)
 2. **Effective stress and settlement response** at the CPT (geotechnics)
 
-The first alone is a screening estimate of the impact zone. The **second is the actual engineering deliverable** (consolidation/settlement from lowered phreatic head). You want both, but structure them cleanly.
+The first is a hydraulic screening estimate of the impact zone. The **second is the engineering deliverable**: stress change and settlement response from the lowered phreatic head.
 
 ### 2.2 Radius of influence — important caveat
 
-**[CORRECTION]** The **Sichardt formula** in its original form is:
+The **Sichardt formula** in its original form is:
 
 ```
 R = C · s · √k            [R in m, s in m, k in m/s]
@@ -403,7 +407,7 @@ C = 3000   (Kyrieleis & Sichardt, 1930; standard rule-of-thumb for sandy soils)
 
 Note: some textbooks write `R = C · s · √(k in m/s)` which is identical; others misquote it as `R ≈ C · √(s·k)` — **that is wrong**. The correct form is linear in `s`.
 
-**Literature warning** (Louwyck et al., 2022, "The Radius of Influence Myth", *Water*, MDPI): the Sichardt formula is inconsistent with fundamental groundwater flow principles and systematically underestimates the drawdown extent for long-duration pumping. It is widely used in Flanders/Netherlands as a rule of thumb but must be labelled as a **screening estimate only**, not a permit-grade groundwater assessment. Your draft already says this — keep that disclaimer prominent.
+**Literature warning** (Louwyck et al., 2022, "The Radius of Influence Myth", *Water*, MDPI): the Sichardt formula is inconsistent with fundamental groundwater flow principles and systematically underestimates the drawdown extent for long-duration pumping. It is widely used in Flanders/Netherlands as a rule of thumb but must be labelled as a **screening estimate only**, not a permit-grade groundwater assessment.
 
 Better transient alternative (Theis-based, if you want to offer it):
 ```
@@ -424,12 +428,12 @@ Q = π · k · (h_0² − h_w²) / ln(R / r_w)
 ```
 where `h_0`, `h_w` = saturated thickness at the radius of influence and at the well, respectively.
 
-**[CORRECTION]** Your draft had the Dupuit form correct, but note that `h_0` and `h_w` here are **saturated thickness** (measured from the impermeable base), not heads. For a horizontal base at elevation `z_base` and phreatic levels `z_phr`:
+In the Dupuit form, `h_0` and `h_w` are **saturated thicknesses** (measured from the impermeable base), not free-water heads. For a horizontal base at elevation `z_base` and phreatic levels `z_phr`:
 ```
 h = z_phr − z_base
 ```
 
-**[ADD]** For a **rectangular or equivalent-radius excavation** (not a single well), use Powers et al. (2007) "equivalent well" approach:
+For a **rectangular or equivalent-radius excavation** (not a single well), use the Powers et al. (2007) equivalent-well approach:
 ```
 r_w,eq = √(A / π)         where A = excavation plan area
 ```
@@ -440,7 +444,7 @@ q' = k · (h_0² − h_w²) / (2·L_infl)     [m³/s per m length]
 with `L_infl` the distance to the recharge boundary (often the drawdown limit on one side).
 
 ### 2.4 Drawdown profile along a line from well to CPT
-**[ADD]** This is the piece the draft lacks. Given `Q` and `R`, the Dupuit drawdown curve at radial distance `r` from a well in an unconfined aquifer is:
+Given `Q` and `R`, the Dupuit drawdown curve at radial distance `r` from a well in an unconfined aquifer is:
 ```
 h²(r) = h_w² + Q / (π·k) · ln(r / r_w)         for r_w ≤ r ≤ R
 h(r)  = h_0                                     for r > R
@@ -452,7 +456,7 @@ So for the CPT at distance `r_CPT`:
 This is what you feed to the stress calculation below.
 
 ### 2.5 Layer-averaged hydraulic conductivity
-**[ADD]** Your CSV has `k_h` and `k_v` per layer. For horizontal flow from/to a vertical well, the correct average is a **thickness-weighted arithmetic** (for flow in parallel):
+The CSV contains `k_h` and `k_v` per layer. For horizontal flow from/to a vertical well, the correct average is a **thickness-weighted arithmetic mean** (flow in parallel):
 ```
 k_eff,h = Σ(k_h,i · Δz_i) / Σ Δz_i     (within the aquifer being pumped)
 ```
@@ -469,7 +473,7 @@ Note: `σ_v(z)` (total stress from self-weight using `γ` / `γ_sat`) **does cha
 - **Option 1 (conservative):** keep `σ_v` unchanged and only reduce `u`. This maximises `Δσ'_v`.
 - **Option 2 (realistic):** between old and new phreatic level, use `γ_moist ≈ γ` (your CSV's `γ`) instead of `γ_sat`, which gives a slightly smaller `Δσ'_v`.
 
-I recommend offering both, with Option 1 as default for screening.
+The current Stage 6 logic exposes both assumptions so the sensitivity can be reviewed explicitly.
 
 ### 2.7 Dewatering-induced settlement at the CPT
 This is where you link to Option B. For each sublayer:
@@ -486,7 +490,7 @@ E_oed,i(σ'_mean) = E_oed,ref · [(c' cot φ' + σ'_mean)/(c' cot φ' + p_ref)]^
 This avoids double-correction if your CSV's `E_oed,i` is already at the original stress.
 
 ### 2.8 Time dependency (clay layers only)
-**[GAP]** Your draft treats everything as instantaneous. For your CSV's Layer 1 (sandy clay, `k_v = 1.7e-7 m/s`) and Layer 5 (sandy clay, same `k_v`), dewatering-induced consolidation is **not instantaneous** — it follows Terzaghi 1D consolidation:
+For clay-containing layers, dewatering-induced consolidation is **not necessarily instantaneous** and can be described with the Terzaghi 1D consolidation route:
 ```
 c_v = k_v · E_oed / γ_w                [m²/s]
 T_v = c_v · t / H_d²                   (H_d = drainage path length)
@@ -601,9 +605,9 @@ result = {
 
 ---
 
-## 3. Option B — Settlement estimator [REVISED]
+## 3. Option B — Settlement estimator
 
-### 3.1 What the draft has right
+### 3.1 Settlement method summary
 - Classical constrained-modulus approach using `E_oed`
 - Stratification summation
 - Boussinesq influence factors for stress increase
@@ -611,7 +615,7 @@ result = {
 
 ### 3.2 Vertical stress increase formulas — exact forms
 
-**[CORRECTION]** Give the **exact Boussinesq forms**, not just "influence factors".
+Use the **exact Boussinesq forms**, not only tabulated influence factors.
 
 #### 3.2.1 Strip footing (plane strain), width `B`, uniform pressure `q_net`
 Along the centreline at depth `z` below the footing:
@@ -673,7 +677,7 @@ For strip:
 Include this as a comparison option — it's what most engineers check first.
 
 ### 3.3 Net foundation pressure
-**[ADD]** Clarify:
+Use:
 ```
 q_gross = (total structural load + self-weight of footing + backfill) / (B·L)
 q_net   = q_gross − σ_v(D_f)          [kPa]
@@ -697,7 +701,7 @@ S_total          = Σ ΔS_i
 ```
 
 ### 3.5 Depth of influence
-**[ADD]** Truncate integration at whichever comes first:
+The theoretical truncation rule is:
 - `Δσ_v(z) < 0.1 · σ'_v,0(z)` (10% rule, Bowles)  **or**
 - `Δσ_v(z) < 0.2 · q_net` (20% rule, old conservative)  **or**
 - the CPT bottom depth
@@ -705,7 +709,7 @@ S_total          = Σ ΔS_i
 Report which criterion terminated the integration so the user knows whether the profile was deep enough.
 
 ### 3.6 Immediate vs consolidation settlement
-**[ADD]** The draft says "immediate settlement only" — that's misleading. The `E_oed`-based method gives **drained, one-dimensional constrained settlement**, which is the primary consolidation settlement for saturated clay and essentially the total settlement for sand. For screening, separating "immediate" and "consolidation" is not necessary if you use `E_oed` consistently.
+The `E_oed`-based method gives **drained, one-dimensional constrained settlement**, which is the primary consolidation settlement for saturated clay and essentially the total settlement for sand. For the current screening implementation, separating "immediate" and "consolidation" is not necessary if `E_oed` is used consistently.
 
 If you want to be more rigorous, split:
 ```
@@ -713,7 +717,7 @@ S_i (immediate, undrained)   — use E_u, ν = 0.5, elastic half-space solution
 S_c (consolidation, drained) — use E_oed, method above
 S_total = S_i + S_c
 ```
-But for a first version, the `E_oed` sum alone is defensible.
+For the current Stage 6 screening implementation, the `E_oed` sum alone is defensible.
 
 ### 3.7 Time curve for clay layers — same as §2.8
 Same Terzaghi 1D consolidation formulas apply.
@@ -798,7 +802,7 @@ if footing_type == "circular":
 G_k            # [kN] or [kN/m²] characteristic permanent load
 Q_k_lead       # [kN] or [kN/m²] leading variable load (characteristic)
 Q_k_other      # [kN] or [kN/m²] list of other variable loads (characteristic)
-use_category   # ENUM {"A","B","C","D","E","W","S","T"}  → picks ψ₂ from §10.2.2
+use_category   # ENUM {"A","B","C","D","E","W","S","T"}  → picks ψ₂ from §9.2.2
 
 # [DEFAULT]
 combination        = "quasi_permanent"  # EN 1997-1 §2.4.8(2) default for settlement
@@ -840,13 +844,13 @@ result = {
 }
 ```
 
-**Reminder:** for the separate **bearing-capacity ULS check** (Brinch-Hansen / Vesić), see §10.6 — that is a different function with ULS load combination (`γ_G=1.35, γ_Q=1.50`) and M2-factored soil strengths (`φ'_d`, `c'_d`). Don't mix it into the settlement routine.
+**Reminder:** for the separate **bearing-capacity ULS check** (Brinch-Hansen / Vesić), see §9.6 — that is a different function with ULS load combination (`γ_G=1.35, γ_Q=1.50`) and M2-factored soil strengths (`φ'_d`, `c'_d`). Don't mix it into the settlement routine.
 
 ---
 
-## 4. Option C — Slab bending & reinforcement [MAJOR REVISION]
+## 4. Option C — Slab bending & reinforcement
 
-You asked specifically for **Winkler / beam-on-elastic-foundation so you can know bending moments on plates or structures on the soil**. This is the part that makes Option C actually geotechnically meaningful and CPT-driven. Here is the complete treatment.
+Option C provides a CPT-linked structural screening route for bending and reinforcement of strips / beams on elastic foundation, plus the associated EC2 reinforcement check.
 
 ### 4.1 Modulus of subgrade reaction `k_s` from CPT
 
@@ -864,7 +868,7 @@ k_s = (0.65 · E_s) / ( B · (1 − ν_s²) ) · [ E_s·B⁴ / (E_b·I_b) ]^(1/1
 The twelfth root makes `k_s` very weakly dependent on `E_b·I_b` — this is intentional (Vesić's whole point).
 
 #### 4.1.2 What `E_s` to use from the CPT
-**[KEY POINT]** The HS `E_oed,ref` is an **oedometric** (zero-lateral-strain, `ν = 0`) stiffness. In elastic terms:
+The HS `E_oed,ref` is an **oedometric** (zero-lateral-strain, `ν = 0`) stiffness. In elastic terms:
 ```
 E_oed = E · (1 − ν) / [ (1 + ν)·(1 − 2ν) ]
 ```
@@ -884,14 +888,14 @@ E_s ≈ E_oed · (1 + ν_s)·(1 − 2·ν_s) / (1 − ν_s)      with ν_s = 0.3
 ```
 For your CSV the `ν_ur = 0.20` already — that's the HS unload-reload Poisson's ratio and is a reasonable drained value.
 
-**Recommendation for your code:** offer both, with Option 1 (`E_s = E_oed`, `ν_s = 0`) as default because it's self-consistent with how you already derived `E_oed,ref`.
+Current Stage 6 route: offer both, with Option 1 (`E_s = E_oed`, `ν_s = 0`) as default because it is self-consistent with the present `E_oed,ref` derivation route.
 
 #### 4.1.3 Influence-zone averaging
 ```
 z_influence = 2·B   (rule of thumb; use 1·B for strip, 2·B for square, up to 2·L for long rectangle)
 E_s,avg = Σ(E_oed,i · Δz_i) / Σ Δz_i    over z ∈ [D_f, D_f + z_influence]
 ```
-If stiffness varies strongly with depth, use a weighted average with influence-factor weighting (Boussinesq-weighted) — but for a first version the simple arithmetic mean is adequate.
+If stiffness varies strongly with depth, a weighted average with influence-factor weighting can be justified. For the current screening implementation, the simple arithmetic thickness-weighted mean is adequate.
 
 ### 4.2 Beam on elastic foundation — the governing equation
 For a beam of width `b`, bending stiffness `EI`, on a Winkler foundation of modulus `k_s` (kN/m³):
@@ -955,7 +959,7 @@ Use the **method of end-conditioning forces** (Hetényi): solve the infinite-bea
 - If `β·L > π` (about 4 m for typical concrete strip on medium sand): use infinite-beam formulas directly, error < 5%.
 - If `β·L < π`: solve the ODE numerically (finite differences with ~100 nodes, or transfer matrix).
 
-**Recommendation:** implement the infinite-beam formulas and flag the user if `β·L < π`.
+Current interpretation: the infinite-beam formulas are appropriate when `β·L > π`; otherwise a finite-beam numerical solve is preferred.
 
 ### 4.8 Slab on elastic foundation (plate, not beam)
 For a plate of thickness `h`, `E`, `ν`:
@@ -980,10 +984,10 @@ For a **uniformly loaded rectangular slab** on Winkler foundation, closed-form s
 - interior point load → Westergaard formula above
 - edge/corner loads → Westergaard edge/corner formulas (different coefficients, see any slab-on-grade reference)
 
-**Practical recommendation:** implement the **1D beam** (strip) case rigorously. For true 2D plates, flag "use FE" — it's beyond analytical screening scope.
+For true 2D plates, FE or a dedicated plate solver remains the appropriate route; the current app stays intentionally at strip level.
 
-### 4.8A Pasternak foundation as a next-step extension
-If you want a model that is more realistic than pure Winkler for slabs and beams on soil, the natural next step is the **Pasternak two-parameter foundation**. It keeps the vertical spring term from Winkler, but adds a **shear-interaction layer** between the springs so neighboring points on the soil can interact.
+### 4.8A Pasternak foundation and current 1D implementation
+The Pasternak two-parameter foundation is the current extension beyond pure Winkler in Stage 6. It keeps the vertical spring term from Winkler, but adds a **shear-interaction layer** between the springs so neighboring points on the soil can interact.
 
 That fixes the biggest weakness of Winkler:
 - Winkler: each spring acts independently
@@ -1017,7 +1021,7 @@ k_lin   = k_s · b          [kN/m²]
 G_p,lin = G_p · b          [kN]
 ```
 
-This is the most practical extension of your current Option C, because your present numerical beam solver already assembles a beam ODE with a foundation term. The Pasternak extension simply adds the `−G_p,lin · w''` coupling term.
+This is the current Stage 6 extension of the Winkler strip model: the numerical beam solver keeps the same foundation ODE structure and adds the `−G_p,lin · w''` coupling term.
 
 #### 4.8A.3 Plate on Pasternak foundation
 For a plate of bending stiffness `D`:
@@ -1060,7 +1064,7 @@ This gives the right units:
 ```
 
 For the current screening implementation, keeping `η = 1.0` as the default is reasonable. But `η` should be presented as **calibration-dependent**, not as a universal soil constant. Kerr (1964), for example, derives `η = 1/6` for a plane-strain shear layer of finite thickness, which is much lower than the broad screening range often used in practice. So the practical reading for the app is:
-- `η = 1.0` default for first-pass screening
+- `η = 1.0` default for initial screening
 - override or calibrate `η` if better benchmark data or FE back-analysis is available
 
 **Current app implementation note**
@@ -1123,38 +1127,8 @@ Typical effect of Pasternak relative to Winkler:
 
 For a full-area uniform load, however, even Pasternak will still tend toward nearly uniform settlement with limited bending. So it does **not** turn a uniformly loaded free slab into a high-moment case by itself.
 
-#### 4.8A.7 Recommended implementation order
-**Stage 1 — Beam/strip Pasternak**
-- Best next step
-- Reuses your current 1D numerical beam framework
-- Moderate implementation effort
-- Good for ground beams, strips, and slab strips
-
-**Stage 2 — Plate Pasternak**
-- Much more realistic for actual slabs
-- Requires a 2D plate solver (finite differences, FE, or plate series solution)
-- Significantly more work
-
-#### 4.8A.8 Difficulty estimate
-**Beam/strip Pasternak option**
-- Difficulty: **medium**
-- Why: the current 1D numerical framework already exists; you mainly add one extra foundation-coupling term and an input route for `G_p`
-- Practical effort: roughly **a few focused implementation sessions**
-
-**Rectangular slab / plate Pasternak option**
-- Difficulty: **high**
-- Why: now you need a true 2D plate solver, boundary-condition handling, and plate moments `M_x`, `M_y`, `M_xy`
-- Practical effort: more like a **new analysis module**, not just an option toggle
-
-#### 4.8A.9 Recommendation for your app
-If the goal is:
-- **better beams / strips now** → add **Pasternak beam** as an option next to Winkler
-- **realistic slab moments for rafts / floor slabs** → skip straight to a **2D plate model** (Winkler or Pasternak), because this is where the real gain is
-
-So the honest roadmap is:
-1. current Winkler strip = screening
-2. Pasternak strip = better screening
-3. 2D plate foundation model = genuinely useful slab-design model
+#### 4.8A.7 Current scope boundary
+The current app implements the **1D Pasternak strip / beam** route. A true **2D Pasternak plate** remains outside the present scope and would require a dedicated plate solver or FE workflow.
 
 ### 4.9 Structural design from `M_Ed`
 Once `M_max` is known (and convert to design value with partial factor, `M_Ed = γ_Q · M_max` or similar):
@@ -1170,18 +1144,18 @@ d    = h − c_nom − φ_bar/2
 A_s,req = ω · b_w · d · f_cd / f_yd
 ```
 
-**[ADD]** Minimum reinforcement (EN 1992-1-1 §9.2.1.1):
+Minimum reinforcement (EN 1992-1-1 §9.2.1.1):
 ```
 A_s,min = max( 0.26 · (f_ctm / f_yk) · b_w · d ,  0.0013 · b_w · d )
 where f_ctm = 0.30 · f_ck^(2/3)   for f_ck ≤ 50 MPa
 ```
 
-**[ADD]** Maximum reinforcement and ductility check:
+Ductility and reinforcement-limit check:
 ```
 x/d ≤ 0.45    for C ≤ 50/60    (EC2 ductility)
 ```
 
-**[ADD]** Flag if `μ > 0.295` (approx) → section under-reinforced, increase `h`.
+Flag if `μ > 0.295` (approx) → section is outside the intended singly reinforced range; increase `h`.
 
 ### 4.10 Outputs
 - `k_s` (kN/m³) + how derived (Vesić, `E_s` avg, `ν_s`)
@@ -1244,7 +1218,7 @@ limit_state    # ENUM {"SLS_deflection", "ULS_bending"}
 G_k            # [kN] or [kN/m] characteristic permanent
 Q_k_lead       # [kN] or [kN/m] leading variable (characteristic)
 Q_k_other      # list of other characteristic variables
-use_category   # ENUM for ψ₀, ψ₂ selection (§10.2.2)
+use_category   # ENUM for ψ₀, ψ₂ selection (§9.2.2)
 
 # For SLS_deflection — user chooses combination (default qp for foundations):
 sls_combination = "quasi_permanent"   # {"quasi_permanent", "frequent", "characteristic"}
@@ -1367,22 +1341,7 @@ result = {
 
 ---
 
-## 5. Revised recommendation ranking
-
-Given your explicit requirement to know **bending moments on plates/structures on the soil**, the ranking changes:
-
-### Tier 1 — implement now (both)
-**B. Settlement estimator** — directly reuses CSV; pure geotechnics; well-defined outputs.
-**C. Beam-on-Winkler + slab bending** — because you explicitly need `M_Ed` on soil-supported elements. The Vesić-via-CPT link makes this genuinely CPT-driven, not just a structural calculator.
-
-**Suggested integration:** implement B and C to share the same sublayer loop. The settlement module produces `S(z)`; the Winkler module produces `k_s` from the same `E_oed` profile. One data pipeline, two outputs.
-
-### Tier 2 — implement next
-**A. Dewatering impact estimator** — useful for temporary works, but the Sichardt/Dupuit basis is rougher and the "radius of influence myth" caveat is real. Make it clearly a screening tool.
-
----
-
-## 6. Implementation pseudocode (matches math above)
+## 5. Technical pseudocode summary (matches the math above)
 
 ```python
 # === Shared core ===
@@ -1460,6 +1419,42 @@ def settlement(profile, footing, q_net, truncation_rule="10%_sigma_eff"):
         # "CPT_bottom" -> loop until profile ends naturally
     return dict(S_total=S, per_sublayer=audit,
                 z_truncation=z_trunc, truncation_cause=cause)
+
+
+# === Bearing capacity ===
+def bearing_capacity(layer, footing, stresses, route="EC7_DA1_governing", gamma_Rd=1.0, xi=2.0):
+    q_eff = stresses.sigma_eff_foundation
+    q_tot = stresses.sigma_total_foundation
+    gamma_eff = stresses.gamma_eff_below_base
+
+    def drained(phi_deg, c_eff):
+        phi = radians(phi_deg)
+        Nq = exp(pi * tan(phi)) * tan(pi/4 + phi/2)**2
+        Nc = (Nq - 1) / tan(phi) if phi_deg > 0 else 5.14
+        Ng = 2 * (Nq + 1) * tan(phi)
+        return c_eff * Nc * footing.s_c + q_eff * Nq * footing.s_q + 0.5 * gamma_eff * footing.B * Ng * footing.s_g
+
+    def undrained(cu):
+        return q_tot + 5.14 * cu * footing.s_cu
+
+    if route == "global_xi":
+        return dict(
+            q_allow_drained=drained(layer.phi, layer.c) / xi,
+            q_allow_undrained=undrained(layer.cu) / xi
+        )
+
+    # Belgian DA1 envelope
+    qd11_d = drained(layer.phi, layer.c) / gamma_Rd
+    qd11_u = undrained(layer.cu) / gamma_Rd
+    phi_d = degrees(atan(tan(radians(layer.phi)) / 1.25))
+    c_d = layer.c / 1.25
+    cu_d = layer.cu / 1.40
+    qd12_d = drained(phi_d, c_d) / gamma_Rd
+    qd12_u = undrained(cu_d) / gamma_Rd
+    return dict(
+        q_d_drained=min(qd11_d, qd12_d),
+        q_d_undrained=min(qd11_u, qd12_u)
+    )
 
 
 # === Option C: Winkler beam ===
@@ -1552,7 +1547,7 @@ def dewatering_settlement(profile, z_w_old, z_w_new, gamma_w=9.81):
 
 ---
 
-## 7. Validation checks — required before trusting results
+## 6. Validation checks — required before trusting results
 
 1. **Self-weight sanity**: integrate `γ(z)` and recover in-situ `σ'_v` matching your CSV-generating program within 0.1 kPa.
 2. **Boussinesq closed form**: for strip width B=2 m, q=100 kPa, z=2 m → `Δσ_v ≈ 55 kPa` (classic result, check against any textbook figure).
@@ -1566,7 +1561,7 @@ def dewatering_settlement(profile, z_w_old, z_w_new, gamma_w=9.81):
 
 ---
 
-## 8. Updated reference list
+## 7. Reference list
 
 **Added/corrected:**
 - Schanz, T., Vermeer, P.A. & Bonnier, P.G. (1999). The hardening soil model: formulation and verification. *Beyond 2000 in Computational Geotechnics*, Balkema.
@@ -1590,7 +1585,7 @@ def dewatering_settlement(profile, z_w_old, z_w_new, gamma_w=9.81):
 - Boussinesq (1885) — elastic solutions
 - Dupuit (1863), Thiem (1906), Bear (1979) — groundwater
 
-**For partial factors (Section 10):**
+**For partial factors (Section 9):**
 - EN 1990:2002+A1:2005 — *Basis of structural design*.
 - NBN EN 1990 ANB:2005 — Belgian National Annex to EN 1990 (Eq. 6.10, ξ = 0.85, ψ factors).
 - EN 1997-1:2004+A1:2013 — *Geotechnical design — General rules*, Annex A (normative partial factors).
@@ -1598,26 +1593,26 @@ def dewatering_settlement(profile, z_w_old, z_w_new, gamma_w=9.81):
 - Buildwise Rapport 20 (2022) — *Richtlijnen voor de toepassing van de Eurocode 7 in België voor het ontwerp van paalfunderingen* (pile-specific model and correlation factors, referenced by NBN EN 1997-1 ANB:2022).
 - EN 1992-1-1 + Belgian NA — concrete γ_C = 1.50, steel γ_S = 1.15, α_cc = α_ct = 1.00.
 
-**Drop or deemphasise:**
-- Poulos & Davis (1974) — excellent but overkill for first version; add back if you implement elastic (Young's-modulus-based) settlement later.
+**Optional extension reference:**
+- Poulos & Davis (1974) — useful if the app later adds a more explicit elastic-settlement route based on Young's modulus.
 
 ---
 
-## 9. Transition from implemented characteristic models to code checks
+## 8. Transition from implemented characteristic models to code checks
 
-Sections `0A ... 8` describe the **implemented physical models** now used in Stage 6: bearing resistance, settlement, dewatering response, and strip-on-foundation bending. The next section changes layer from soil/structure mechanics to **code-formatting of actions, strengths, and design values**.
+Sections `0A ... 7` describe the **implemented physical models** now used in Stage 6: bearing resistance, settlement, dewatering response, and strip-on-foundation bending. The next section changes layer from soil/structure mechanics to **code-formatting of actions, strengths, and design values**.
 
 So the split is:
-- Sections `0A ... 8` = how the app computes the engineering response
+- Sections `0A ... 7` = how the app computes the engineering response
 - Section `10` = how characteristic values are turned into SLS / ULS design checks
 
 This keeps the mechanics and the Eurocode factor route clearly separated.
 
 ---
 
-## 10. Eurocode partial factors — characteristic → design values
+## 9. Eurocode partial factors — characteristic → design values
 
-### 10.1 Governing principle — SLS vs ULS
+### 9.1 Governing principle — SLS vs ULS
 
 **Two parallel calculation paths for every engineering check, using the same soil profile:**
 
@@ -1628,11 +1623,11 @@ This keeps the mechanics and the Eurocode factor route clearly separated.
 
 **Hard rule for the code:** every function must carry an explicit flag `limit_state ∈ {"SLS", "ULS"}`. The same stress/deformation routines run in both modes; only the input factors change. **Never mix**: e.g. do not design reinforcement from an SLS moment, and do not compare an ULS settlement to a serviceability tolerance.
 
-### 10.2 EN 1990 — Actions (loads)
+### 9.2 EN 1990 — Actions (loads)
 
 **Belgian NA: NBN EN 1990 ANB:2005 uses Eq. 6.10 (NOT 6.10a/b).**
 
-#### 10.2.1 ULS — fundamental combination, Eq. 6.10
+#### 9.2.1 ULS — fundamental combination, Eq. 6.10
 
 ```
 E_d = Σ γ_G,j · G_k,j  +  γ_Q,1 · Q_k,1  +  Σ γ_Q,i · ψ_0,i · Q_k,i
@@ -1649,7 +1644,7 @@ Belgian NA partial factors (persistent/transient, STR/GEO):
 
 ξ (reduction factor for unfavourable G in Eq. 6.10a/b) = **0.85** — not used if only Eq. 6.10 is applied.
 
-#### 10.2.2 ψ factors (Belgian NA, NBN EN 1990 ANB)
+#### 9.2.2 ψ factors (Belgian NA, NBN EN 1990 ANB)
 
 | Use category | ψ_0 | ψ_1 | ψ_2 |
 |---|---|---|---|
@@ -1662,7 +1657,7 @@ Belgian NA partial factors (persistent/transient, STR/GEO):
 | Snow (< 1000 m, Belgium) | 0.5 | 0.2 | 0.0 |
 | Temperature (non-fire) | 0.6 | 0.5 | 0.0 |
 
-#### 10.2.3 SLS combinations
+#### 9.2.3 SLS combinations
 
 ```
 Characteristic (rare) : E_d = Σ G_k,j + Q_k,1 + Σ ψ_0,i · Q_k,i        (Eq. 6.14b)
@@ -1673,7 +1668,7 @@ All SLS partial factors γ = 1.0.
 
 **For settlement checks on foundations (EN 1997-1 §2.4.8(2)):** **use the quasi-permanent SLS combination.** This is the right thing for consolidation and long-term settlements. Immediate / short-term deflection uses the characteristic combination.
 
-### 10.3 EN 1997-1 — Soil parameters (GEO / STR limit states)
+### 9.3 EN 1997-1 — Soil parameters (GEO / STR limit states)
 
 **Belgium uses Design Approach 1 (DA1)** per NBN EN 1997-1 ANB:2022. Two combinations, the **most onerous governs**:
 
@@ -1688,14 +1683,14 @@ Typical ruling case:
 
 So you must run both and report the worst for each check.
 
-#### 10.3.1 Set A — actions
+#### 9.3.1 Set A — actions
 
 | Set | γ_G (unfav.) | γ_G (fav.) | γ_Q (unfav.) | γ_Q (fav.) |
 |---|---|---|---|---|
 | **A1** (C1) | 1.35 | 1.00 | 1.50 | 0 |
 | **A2** (C2) | 1.00 | 1.00 | 1.30 | 0 |
 
-#### 10.3.2 Set M — soil material factors [critical for your code]
+#### 9.3.2 Set M — soil material factors [critical for your code]
 
 | Parameter | Symbol | γ_M in **M1** | γ_M in **M2** |
 |---|---|---|---|
@@ -1721,7 +1716,7 @@ Worked numbers for your CSV:
   - `c'_d = 8/1.25 = 6.4 kPa`
   - `c_u,d = 100/1.40 = 71.4 kPa`
 
-#### 10.3.3 Set R — resistance factors (for DA1, R1 is used in both combinations)
+#### 9.3.3 Set R — resistance factors (for DA1, R1 is used in both combinations)
 
 For **spread foundations** (EN 1997-1 Table A.5), DA1 uses **R1**:
 
@@ -1734,7 +1729,7 @@ For **piles** (DA1, R1 and R4 for C1/C2 respectively in earlier NAs, but **NBN E
 
 For **slope / overall stability** (EN 1997-1 Table A.14), DA1 uses **R3 = 1.00** (safety comes entirely from M2-factored strength). This matches your Bosrede 2A SB260 workflow where you reduce `tan φ'` and `c'` and target a unity-check `SF ≥ 1.0` in the factored model — or equivalently leave strengths characteristic and target `SF ≥ 1.25` in an unfactored slope-stability program. SB260 uses the latter convention with its minimum `SF = 1.3`.
 
-### 10.4 EN 1997-1 — Stiffness parameters are NOT factored
+### 9.4 EN 1997-1 — Stiffness parameters are NOT factored
 
 **Critical point for your CSV:** the partial factors in Set M apply to **strength** parameters (`φ'`, `c'`, `c_u`), **not to stiffness** (`E_oed`, `E_50`, `E_ur`, `m`, `k_s`, `k_h`, `k_v`).
 
@@ -1749,11 +1744,11 @@ K0_nc,design = K0_nc,characteristic                  (no γ applied)
 
 **Consequence for your code:** when routing the CSV through the ULS pipeline, reduce strengths only. Leave the stiffness columns untouched.
 
-### 10.5 EN 1992-1-1 — Concrete and reinforcement (Option C, §4.9)
+### 9.5 EN 1992-1-1 — Concrete and reinforcement (Option C, §4.9)
 
 The current app route for `c_nom` follows the EC2 durability logic described in §4.9 and mirrors the same Table 4.3N / Table 4.4N sequence as the delivered `ec2_durability.py` helper: choose structural class, read `c_min,dur`, combine with bond cover `c_min,b`, then add `Δc_dev`.
 
-#### 10.5.1 Partial factors (Belgian NA and EC2 main text agree)
+#### 9.5.1 Partial factors (Belgian NA and EC2 main text agree)
 
 | Material | Symbol | ULS persistent/transient | ULS accidental | SLS |
 |---|---|---|---|---|
@@ -1776,7 +1771,7 @@ f_ctm = 0.30 · 30^(2/3) = 2.90 MPa
 f_ctd = 0.7·f_ctm / 1.5 = 1.35 MPa    (5% fractile / γ_C)
 ```
 
-#### 10.5.2 SLS stress limits (EN 1992-1-1 §7.2)
+#### 9.5.2 SLS stress limits (EN 1992-1-1 §7.2)
 
 Crack-control / durability, typical for exposure class XC2/XC3/XC4:
 
@@ -1788,17 +1783,18 @@ Crack-control / durability, typical for exposure class XC2/XC3/XC4:
 
 These are relevant if you extend Option C to SLS crack width checks.
 
-### 10.6 Mapping to the three Stage 6 options
+### 9.6 Mapping to the current Stage 6 applications
 
-| Option | SLS use | ULS use | Partial factors applied |
+| Application | SLS use | ULS use | Partial factors applied |
 |---|---|---|---|
-| **A — Dewatering** | Primary output: `ΔS_dewatering` (settlement at CPT from drawdown). **SLS quasi-permanent** loads; characteristic soil. | Secondary: effective-stress changes feeding a slope/bearing check elsewhere — then apply M2 to soil strengths for slope stability, A1 to loads (but loads are usually geostatic here), R1 (DA1). | Usually **SLS only** for the dewatering module itself. |
-| **B — Settlement** | Primary: `S_total` at footing. **SLS quasi-permanent** combination for `q_net`. Characteristic `E_oed`. Compare to allowable settlement (e.g. 25 mm total, 1/500 differential — EN 1997-1 Annex H or project criterion). | Not normally needed in this module. Bearing capacity is a separate ULS check: run M2 on `φ'`, `c'` (use `φ'_d`, `c'_d`), feed into Brinch-Hansen / Vesić bearing formula; apply A1 load factors; compare `q_Ed ≤ q_Rd / γ_R,v = q_Rd / 1.0` (DA1-R1). | **SLS for settlement**; ULS bearing is a separate module. |
-| **C — Beam/slab on Winkler** | Deflection `w(x)` and differential deflection from **SLS** characteristic or quasi-permanent `q_d`. Characteristic `k_s`. Compare to allowable (e.g. L/500). | Bending moment `M_Ed` from **ULS Eq. 6.10** (`γ_G = 1.35`, `γ_Q = 1.50`). Characteristic `k_s` (stiffness not factored). Then EC2 reinforcement with γ_C = 1.5, γ_S = 1.15. | **Both SLS (deflection) and ULS (reinforcement).** |
+| **Dewatering** | Primary output: drawdown-induced settlement at the CPT or along the source-distance line. **SLS** response using characteristic soil and water-table assumptions. | Secondary only if the resulting effective-stress state is exported to another ULS check outside this module. | Usually **SLS only** inside the dewatering application. |
+| **Settlement** | Primary output: `S_total` at footing. **SLS quasi-permanent** combination for `q_net`. Characteristic `E_oed`. | No separate ULS path inside this app. | **SLS only** for the settlement application. |
+| **Bearing capacity** | Not the primary mode. | Primary output: drained and undrained bearing resistance under Belgian DA1. | **ULS** with M1/M2 envelope, R1, optional `γ_Rd`, or legacy `ξ` route. |
+| **Beam / slab on elastic foundation** | Deflection `w(x)` and differential deflection from **SLS** characteristic or quasi-permanent loading. Characteristic `k_s`. | Bending moment `M_Ed` from **ULS** load combination, then EC2 reinforcement with `γ_C = 1.5`, `γ_S = 1.15`. | **Both SLS (deflection) and ULS (reinforcement).** |
 
-### 10.7 Code additions to the pseudocode
+### 9.7 Code additions to the pseudocode
 
-Append to each function:
+The helper layer is:
 
 ```python
 def design_values(layer, limit_state="SLS", combination="M1"):
@@ -1853,10 +1849,10 @@ def beam_on_winkler_ULS(P_ULS, beam, ks_characteristic):
 
 def reinforcement(M_Ed, h, c_nom, phi_bar, f_ck=30, f_yk=500, ...):
     gammaC = 1.50; gammaS = 1.15
-    # as already written in §4.9 / §6
+    # as already written in §4.9 / §5
 ```
 
-### 10.8 Reporting / audit trail
+### 9.8 Reporting / audit trail
 
 For every Stage 6 output, the report must state:
 
@@ -1870,7 +1866,7 @@ For every Stage 6 output, the report must state:
 
 This auditability is what makes the output defensible in a gerechtelijk or permit context. Without it, the calculation is just a number.
 
-### 10.9 Summary rule-of-thumb card
+### 9.9 Summary rule-of-thumb card
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -1895,11 +1891,11 @@ This auditability is what makes the output defensible in a gerechtelijk or permi
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 10.10 Resistance factor vs. model factor vs. system safety factor — don't conflate them
+### 9.10 Resistance factor vs. model factor vs. system safety factor — don't conflate them
 
 This is the single most common source of confusion when moving from characteristic to design resistance. There are **three** different factors in play and they have different origins, different values, and different combination rules. Getting them right matters because stacking them all multiplicatively produces absurd designs; missing one produces unsafe designs.
 
-#### 10.10.1 The three factors
+#### 9.10.1 The three factors
 
 | Factor | Symbol | Applies to | Typical value (DA1, Belgian NA) | Origin |
 |---|---|---|---|---|
@@ -1908,7 +1904,7 @@ This is the single most common source of confusion when moving from characterist
 | **Model factor** | γ_Rd (also γ_{R;d}, γ_{Sd}) | The **calculation model itself**, to account for its inherent inaccuracy | 1.00–1.40 depending on method | EC7 §2.4.1, §6.5.2, NAs |
 | (Legacy) **Global / system safety factor** | SF | Ratio R_char / S_char, outside the partial-factor framework | 2.0–3.0 bearing, 1.3–1.5 slopes | Pre-EC / SB260 / Terzaghi |
 
-#### 10.10.2 What each factor does
+#### 9.10.2 What each factor does
 
 **Material partial factor γ_M** — reduces the *input* to the resistance model. Applied once, at the top:
 ```
@@ -1942,7 +1938,7 @@ SF ≥ SF_required                               (e.g. 1.3 for slopes per SB260)
 ```
 It is **mathematically equivalent** to M2 with `γ_M = SF_required` and γ_R = 1.0 — but philosophically different: EC7 calibrates γ_M on statistical variability of the parameter; SF lumps everything (parameter uncertainty + model uncertainty + consequences) into one number.
 
-#### 10.10.3 How they combine — the rules
+#### 9.10.3 How they combine — the rules
 
 **Rule 1: Don't stack γ_M and γ_R on the same uncertainty.**
 DA1-C2 uses M2 + R1 (γ_R = 1.0). DA2 uses M1 (γ_M = 1.0) + R2. You pick a philosophy — factor inputs or factor output — not both.
@@ -1964,7 +1960,7 @@ SLS check:         E_k (any combo) ≤ C_d                  (both unfactored, no
 SF check (SB260):  SF_char ≥ SF_req   (both unfactored)
 ```
 
-#### 10.10.4 Concrete worked example — bearing of a spread footing on sand
+#### 9.10.4 Concrete worked example — bearing of a spread footing on sand
 
 Given: 2 × 2 m square footing, `D_f = 1.5 m`, sand with `φ'_k = 30°`, `γ_k = 17 kN/m³`. Characteristic load: `V_Gk = 400 kN`, `V_Qk = 200 kN`.
 
@@ -2000,7 +1996,7 @@ SF     = R_char / V_char = 7520 / (400 + 200) = 12.5
 ```
 A pre-EC engineer would report "SF = 12.5, required 3.0, OK". An EC7 engineer reports "C2 utilisation 0.20, OK". Both designs are safe, and EC7 arrived at the same conclusion through explicit uncertainty decomposition instead of a lumped SF. **Do not combine them** — never report `SF / γ_R / γ_M` as a stacked product.
 
-#### 10.10.5 Summary for Stage 6 implementation
+#### 9.10.5 Summary for Stage 6 implementation
 
 | Stage 6 output | Uses γ_M? | Uses γ_R? | Uses γ_Rd? | Uses SF? |
 |---|---|---|---|---|
@@ -2025,7 +2021,7 @@ Applied as a single equation:
 q_d = q_ult(φ'_d, c'_d, γ_k, geometry) / (γ_R · γ_Rd)
 ```
 
-### 10.11 Inputs for the partial-factor helpers
+### 9.11 Inputs for the partial-factor helpers
 
 These helpers are called internally by every Option; they are not separate UI forms but their inputs must be traceable.
 
@@ -2038,16 +2034,16 @@ layer              # Layer dataclass with characteristic soil parameters
 # [USER — only at the top of the calculation flow, then propagated]
 limit_state        # ENUM {"SLS", "ULS"}
                    # Chosen by the Option being run:
-                   #   Option A → always "SLS"
-                   #   Option B settlement → "SLS"
-                   #   Option B bearing (if implemented) → "ULS"
-                   #   Option C deflection → "SLS"
-                   #   Option C reinforcement → "ULS"
+                   #   Dewatering → "SLS"
+                   #   Settlement → "SLS"
+                   #   Bearing capacity → "ULS"
+                   #   Beam/slab deflection → "SLS"
+                   #   Beam/slab reinforcement → "ULS"
 
 combination        # ENUM {"M1", "M2"}  (only for ULS)
                    # Run BOTH for DA1, report the onerous one per check.
 
-use_category       # ENUM for ψ-selection (§10.2.2)
+use_category       # ENUM for ψ-selection (§9.2.2)
                    # Picked from a dropdown in the Stage 6 UI.
 
 # [DEFAULT — Belgian NA]
@@ -2077,7 +2073,7 @@ alpha_ct          = 1.00
 load_eq           = "6.10"   # Belgian NA: NOT 6.10a/b
 xi_factor         = 0.85     # only used if "6.10a/b" selected (non-standard in BE)
 
-# ψ tables per use_category (§10.2.2) — built-in lookup
+# ψ tables per use_category (§9.2.2) — built-in lookup
 psi0_lookup       = { ... }
 psi1_lookup       = { ... }
 psi2_lookup       = { ... }
