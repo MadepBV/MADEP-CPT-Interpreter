@@ -14,6 +14,23 @@ import {
   importBishopMaterialsFromLayers,
   terrainY as bishopTerrainY
 } from './stage6-bishop';
+import {
+  buildBeamDeflectionChartConfig,
+  buildBeamMomentChartConfig,
+  buildBearingChartConfig,
+  buildDewateringDrawdownChartConfig,
+  buildDewateringSettlementChartConfig,
+  buildDewateringStressChartConfig,
+  buildRawProfileChartConfig,
+  buildSettlementCumulativeChartConfig,
+  buildSettlementStressChartConfig,
+  buildTimeChartConfig,
+  buildTuningDepthChartConfig,
+  buildTuningRegressionChartConfig
+} from './chart-factories';
+import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report-svg';
+import { cleanupStage7Payloads, saveStage7Payload } from './report-storage';
+import { SOIL_CLASS_NAMES, SOIL_FILL_COLORS } from './soil-styles';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -793,14 +810,8 @@ function exportSectionSVG(){
 /* ════════════════════════════════
    SOIL DEFS
 ════════════════════════════════ */
-const SC={
-  'Peat / organic':'s-peat','Soft clay':'s-sclay','Clay':'s-clay',
-  'Sandy clay':'s-sclayl','Silty sand':'s-ssand','Sand':'s-sand','Gravel':'s-gravel'
-};
-const SCFILL={
-  'Peat / organic':'#C0DD97','Soft clay':'#B5D4F4','Clay':'#AFA9EC',
-  'Sandy clay':'#FAC775','Silty sand':'#F4C0D1','Sand':'#D3D1C7','Gravel':'#F0997B'
-};
+const SC = SOIL_CLASS_NAMES;
+const SCFILL = SOIL_FILL_COLORS;
 const DEF={
   'Peat / organic':{g:11,gs:12,phi:17,c:0,cu:10},
   'Soft clay':     {g:15,gs:16,phi:20,c:2,cu:25},
@@ -1178,37 +1189,22 @@ function initCharts(){
   const wt=S.wt;
 
   function ptData(vals){return depths.map((z,i)=>({x:vals[i],y:z}));}
-  function wtLine(xmax){return[{x:0,y:wt},{x:xmax,y:wt}];}
-
-  function mk(id,vals,color,xmax){
+  function mk(id,vals,color,xmax,label){
     const ctx=document.getElementById(id);
     if(!ctx)return null;
-    return new Chart(ctx,{
-      type:'line',
-      data:{datasets:[
-        {label:'value',data:ptData(vals),borderColor:color,borderWidth:1.2,
-          pointRadius:0,fill:false,tension:0.04,spanGaps:true},
-        {label:'WT',data:wtLine(xmax),borderColor:'#378ADD',borderWidth:1.5,
-          borderDash:[6,4],pointRadius:0,fill:false}
-      ]},
-      options:{
-        responsive:true,maintainAspectRatio:false,animation:false,
-        plugins:{legend:{display:false}},
-        scales:{
-          x:{type:'linear',min:0,max:xmax,position:'top',
-            grid:{color:'rgba(128,128,128,0.07)'},
-            ticks:{font:{size:10},maxTicksLimit:5}},
-          y:{type:'linear',min:0,max:maxZ,reverse:true,
-            grid:{color:'rgba(128,128,128,0.07)'},
-            ticks:{font:{size:10}}}
-        }
-      }
-    });
+    return new Chart(ctx, buildRawProfileChartConfig({
+      points:ptData(vals),
+      wt,
+      xMax:xmax,
+      maxDepth:maxZ,
+      color,
+      valueLabel:label
+    }));
   }
 
-  S.charts.qc=mk('cQc',qcs,'#1D9E75',maxQc);
-  S.charts.fs=mk('cFs',fss,'#534AB7',maxFs);
-  S.charts.rf=mk('cRf',rfs,'#D85A30',12);
+  S.charts.qc=mk('cQc',qcs,'#1D9E75',maxQc,'qc');
+  S.charts.fs=mk('cFs',fss,'#534AB7',maxFs,'fs');
+  S.charts.rf=mk('cRf',rfs,'#D85A30',12,'Rf');
   S.chartsReady=true;
 
   // Layer column SVG (placeholder before classification)
@@ -1247,163 +1243,33 @@ function drawLayerColumnSvg(svgId, layers, maxZ){
   if(!svg)return;
   const W=60,H=400;
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-
-  if(!layers.length){
-    svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="9" fill="#9a9a96">Run\nclass.</text>`;
-    return;
-  }
-
-  const zMax=layers[layers.length-1].bot||maxZ;
-  const scale=v=>+(v/zMax*H).toFixed(1);
-  const rects=layers.map(l=>{
-    const y1=scale(l.top), y2=scale(l.bot);
-    const fill=SCFILL[l.type]||'#D3D1C7';
-    return`<rect x="0" y="${y1}" width="${W}" height="${Math.max(y2-y1,1)}" fill="${fill}" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
-      <text x="${W/2}" y="${(y1+y2)/2+3}" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">${l.type.split('/')[0].trim().split(' ')[0]}</text>`;
-  }).join('');
-
-  // WT line
-  const wtY=scale(S.wt);
-  const wtLine=`<line x1="0" x2="${W}" y1="${wtY}" y2="${wtY}" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4,3"/>`;
-
-  // Depth tick labels
-  const ticks=[0,2,4,6,8,10,12,14,16,18,20,22,25].filter(v=>v<=zMax);
-  const tickSvg=ticks.map(v=>{
-    const y=scale(v);
-    return`<line x1="0" x2="4" y1="${y}" y2="${y}" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
-      <text x="5" y="${y+3}" font-size="6" fill="#9a9a96" font-family="sans-serif">${v}</text>`;
-  }).join('');
-
-  svg.innerHTML=rects+wtLine+tickSvg;
+  svg.innerHTML=buildLayerColumnSvgMarkup({
+    layers,
+    maxDepth:maxZ,
+    wt:S.wt,
+    width:W,
+    height:H,
+    emptyLabel:'Run class.'
+  });
 }
 
 /* ════════════════════════════════
    LAYER PREVIEW SVG (Stage 2 side panel)
 ════════════════════════════════ */
 function renderLayerPreviewSvg(svgId){
-  /* Renders: depth labels | soil column | qc micro-profile | Rf micro-profile
-     Uses S.classified (per-reading data) for the qc/Rf curves,
-     and S.layers for the color bands and labels. */
   const svg=document.getElementById(svgId);
   if(!svg||!S.layers.length)return;
 
   const W=240, H=520;
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-
-  const zMax=S.layers[S.layers.length-1].bot;
-  const pad=20;
-  const avail=H-2*pad;
-  const sc=v=>pad+v/zMax*avail;  // depth → SVG y
-
-  // Layout columns (x positions)
-  const depthX=0;       // depth labels: 0-20
-  const colX=22;        // soil color band: 22-54
-  const colW=32;
-  const qcX=58;         // qc sparkline: 58-118
-  const qcW=60;
-  const rfX=122;        // Rf sparkline: 122-162
-  const rfW=40;
-  const labelX=165;     // type labels: 165-240
-
-  let html='';
-  let overlaySvg='';
-
-  // ── Column header ──
-  html+=`<text x="${qcX+qcW/2}" y="12" font-size="7" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">qc (MPa)</text>`;
-  html+=`<text x="${rfX+rfW/2}" y="12" font-size="7" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">Rf (%)</text>`;
-
-  // ── qc and Rf range from data ──
-  const data=S.classified||[];
-  const qcVals=data.map(r=>r.qc).filter(v=>v>0);
-  const rfVals=data.map(r=>r.rf).filter(v=>v!=null&&v>=0);
-  const qcMax=qcVals.length?Math.max(...qcVals):10;
-  const rfMaxVal=rfVals.length?Math.max(...rfVals):10;
-  // Scale: qc 0→qcMax maps to qcW; Rf 0→rfMaxVal maps to rfW
-  const scQc=v=>qcX+(v/Math.max(qcMax,0.1))*qcW;
-  const scRf=v=>rfX+(v/Math.max(rfMaxVal,1))*rfW;
-
-  // Track the original per-reading curves separately so they can be drawn
-  // on top of the layer bands instead of being visually buried underneath.
-  let qcPath='', rfPath='';
-  if(data.length>1){
-    data.forEach((r,i)=>{
-      const y=sc(r.z);
-      const xq=scQc(r.qc);
-      qcPath+=(i===0?'M':'L')+`${xq.toFixed(1)},${y.toFixed(1)} `;
-      if(r.rf!=null){
-        const xr=scRf(r.rf);
-        rfPath+=(rfPath===''?'M':'L')+`${xr.toFixed(1)},${y.toFixed(1)} `;
-      }
-    });
-  }
-
-  // Zero / origin lines and light chart guides
-  html+=`<line x1="${qcX}" x2="${qcX}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.18)" stroke-width="0.5"/>`;
-  html+=`<line x1="${rfX}" x2="${rfX}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.18)" stroke-width="0.5"/>`;
-  html+=`<line x1="${qcX+qcW}" x2="${qcX+qcW}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.07)" stroke-width="0.4"/>`;
-  html+=`<line x1="${rfX+rfW}" x2="${rfX+rfW}" y1="${pad}" y2="${H-pad}" stroke="rgba(128,128,128,0.07)" stroke-width="0.4"/>`;
-
-  // ── Draw layer bands ──
-  for(const l of S.layers){
-    const y1=sc(l.top), y2=sc(l.bot);
-    const h=Math.max(y2-y1,1.5);
-    const fill=SCFILL[l.type]||'#D3D1C7';
-    const midY=(y1+y2)/2;
-    const rows=data.filter(r=>r.z>=l.top&&r.z<=l.bot);
-    const qcRows=rows.map(r=>r.qc).filter(v=>v!=null&&v>=0);
-    const rfRows=rows.map(r=>r.rf).filter(v=>v!=null&&v>=0);
-    const fsRows=rows.map(r=>r.fs!=null?r.fs*1000:null).filter(v=>v!=null);
-    const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-    // Depth label
-    html+=`<text x="${depthX}" y="${y1+5}" font-size="7" fill="#9a9a96" font-family="sans-serif">${l.top.toFixed(1)}</text>`;
-    // Soil color band
-    html+=`<rect x="${colX}" y="${y1}" width="${colW}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>`;
-    html+=`<rect class="section-layer-hit" data-layer-preview="1"
-      data-type="${esc(l.type)}"
-      data-subtype="${esc(l.subtype||'—')}"
-      data-top="${l.top.toFixed(2)}" data-bot="${l.bot.toFixed(2)}" data-thk="${(l.bot-l.top).toFixed(2)}"
-      data-points="${rows.length}"
-      data-qcmin="${qcRows.length?Math.min(...qcRows).toFixed(2):'—'}"
-      data-qcmax="${qcRows.length?Math.max(...qcRows).toFixed(2):'—'}"
-      data-qcavg="${l.avgQc.toFixed(2)}"
-      data-rfmin="${rfRows.length?Math.min(...rfRows).toFixed(2):'—'}"
-      data-rfmax="${rfRows.length?Math.max(...rfRows).toFixed(2):'—'}"
-      data-rfavg="${l.avgRf!=null?l.avgRf.toFixed(2):'—'}"
-      data-fsmin="${fsRows.length?Math.min(...fsRows).toFixed(1):'—'}"
-      data-fsmax="${fsRows.length?Math.max(...fsRows).toFixed(1):'—'}"
-      data-fsavg="${l.avgFs!=null?(l.avgFs*1000).toFixed(1):'—'}"
-      x="${colX}" y="${y1}" width="${labelX+70-colX}" height="${h}" fill="transparent"/>`;
-    // Separator line across charts
-    html+=`<line x1="${colX}" x2="${labelX+70}" y1="${y1}" y2="${y1}" stroke="rgba(0,0,0,0.08)" stroke-width="0.4"/>`;
-
-  }
-
-  // ── Original qc and Rf data overlay (drawn LAST so it stays visible) ──
-  if(qcPath){
-    overlaySvg+=`<path d="${qcPath.trim()}" fill="none" stroke="rgba(53,162,235,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
-  }
-  if(rfPath){
-    overlaySvg+=`<path d="${rfPath.trim()}" fill="none" stroke="rgba(235,100,53,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
-  }
-
-  // Small axis-end labels to make the chart ranges easier to read at a glance.
-  html+=`<text x="${qcX}" y="${H-4}" font-size="6" fill="#9a9a96" font-family="sans-serif">0</text>`;
-  html+=`<text x="${qcX+qcW}" y="${H-4}" font-size="6" text-anchor="end" fill="#9a9a96" font-family="sans-serif">${qcMax.toFixed(0)}</text>`;
-  html+=`<text x="${rfX}" y="${H-4}" font-size="6" fill="#9a9a96" font-family="sans-serif">0</text>`;
-  html+=`<text x="${rfX+rfW}" y="${H-4}" font-size="6" text-anchor="end" fill="#9a9a96" font-family="sans-serif">${rfMaxVal.toFixed(0)}</text>`;
-
-  // Last depth label
-  const last=S.layers[S.layers.length-1];
-  html+=`<text x="${depthX}" y="${sc(last.bot)+5}" font-size="7" fill="#9a9a96" font-family="sans-serif">${last.bot.toFixed(1)}</text>`;
-
-  // WT line
-  const wtY=sc(S.wt);
-  html+=`<line x1="${colX-4}" x2="${rfX+rfW}" y1="${wtY}" y2="${wtY}" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4,3"/>`;
-  html+=`<text x="${rfX+rfW+2}" y="${wtY+3}" font-size="6.5" fill="#378ADD" font-family="sans-serif">WT</text>`;
-
-  svg.innerHTML=html+overlaySvg;
-  // Widen the SVG container to show new width
+  svg.innerHTML=buildLayerPreviewSvgMarkup({
+    layers:S.layers,
+    rows:S.classified||[],
+    wt:S.wt,
+    width:W,
+    height:H,
+    showRf:true
+  });
   svg.setAttribute('width','100%');
   bindLayerPreviewTooltip();
 }
@@ -3365,28 +3231,15 @@ function buildTuningCharts(){
         const fitLine  = JSON.parse(el.dataset.fitLine);
         const mDef = el.dataset.mDef, mFit = el.dataset.mFit;
         const invalidSlope = el.dataset.invalidSlope === '1';
-        const chart = new Chart(canvas,{
-          type:'scatter',
-          data:{datasets:[
-            {label:'CPT data', data:scatter,
-             backgroundColor:'rgba(53,162,235,0.55)', pointRadius:3, pointHoverRadius:5},
-            {label:'Default m='+mDef, data:defLine,
-             type:'line', borderColor:'#534AB7', borderWidth:1.5, pointRadius:0, fill:false},
-            {label:'Preview m='+mFit, data:fitLine,
-             type:'line', borderColor:invalidSlope?'#A32D2D':'#1D9E75', borderWidth:2, pointRadius:0, fill:false,
-             borderDash: (el.dataset.quality==='warn'||invalidSlope)?[5,4]:[]}
-          ]},
-          options:{
-            responsive:true, maintainAspectRatio:false, animation:false,
-            plugins:{legend:{display:false}},
-            scales:{
-              x:{title:{display:true, text:"ln(σ'v0 stress ratio)", font:{size:10}},
-                 grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}},
-              y:{title:{display:true, text:'ln(E_oed,i)', font:{size:10}},
-                 grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}}
-            }
-          }
-        });
+        const chart = new Chart(canvas, buildTuningRegressionChartConfig({
+          scatter,
+          defaultLine:defLine,
+          previewLine:fitLine,
+          mDefault:mDef,
+          mPreview:mFit,
+          quality:el.dataset.quality,
+          invalidSlope
+        }));
         canvas._chartRef = chart;
       }catch(e){console.warn('Log-log chart error:',e);}
     }
@@ -3407,79 +3260,19 @@ function buildTuningCharts(){
         const mDef      = el.dataset.mDef;
         const mFit      = el.dataset.mFit;
         const invalidSlope = el.dataset.invalidSlope === '1';
-
-        // x-axis max: round up to next 5000
-        const allE = [...EoedI, ...hsDefault, ...hsFit];
-        const xMax = Math.ceil(Math.max(...allE) / 5000) * 5000;
-
-        // CPT scatter: {x: Eoed_i, y: depth}
-        const scatterDep = depths.map((z,i)=>({x:EoedI[i], y:z}));
-        // HS lines: {x: Eoed(z), y: depth}
-        const defDep = depths.map((z,i)=>({x:hsDefault[i], y:z}));
-        const fitDep = depths.map((z,i)=>({x:hsFit[i],     y:z}));
-        // WT annotation line
-        const wtLine = [{x:0,y:wt},{x:xMax,y:wt}];
-        // Layer boundary lines
-        const topLine = [{x:0,y:layerTop},{x:xMax,y:layerTop}];
-        const botLine = [{x:0,y:layerBot},{x:xMax,y:layerBot}];
-
-        const yMin = Math.max(0, layerTop - 0.5);
-        const yMax = layerBot + 0.5;
-
-        const chart = new Chart(canvasD,{
-          type:'scatter',
-          data:{datasets:[
-            // Layer boundary shading — draw as area between top and bot
-            {label:'layer',
-             data:[{x:0,y:layerTop},{x:xMax,y:layerTop},{x:xMax,y:layerBot},{x:0,y:layerBot}],
-             type:'line', fill:true,
-             backgroundColor:'rgba(200,200,200,0.10)',
-             borderWidth:0, pointRadius:0, showLine:false},
-            // CPT-derived Eoed,i points
-            {label:'E_oed,i (CPT)', data:scatterDep,
-             backgroundColor:'rgba(53,162,235,0.5)',
-             pointRadius:2.5, pointHoverRadius:5},
-            // Default HS model curve
-            {label:'HS default m='+mDef, data:defDep,
-             type:'line', borderColor:'#534AB7', borderWidth:1.5,
-             pointRadius:0, fill:false, tension:0.3},
-            // Fitted HS model curve
-            {label:'HS preview m='+mFit, data:fitDep,
-             type:'line', borderColor:invalidSlope?'#A32D2D':'#1D9E75', borderWidth:2.5,
-             pointRadius:0, fill:false, tension:0.3,
-             borderDash: (el.dataset.quality==='warn'||invalidSlope)?[5,4]:[]},
-            // Water table
-            {label:'WT', data:wtLine,
-             type:'line', borderColor:'#378ADD', borderWidth:1.5,
-             borderDash:[6,4], pointRadius:0, fill:false},
-            // Layer top/bot dashes
-            {label:'top', data:topLine,
-             type:'line', borderColor:'rgba(0,0,0,0.25)', borderWidth:1,
-             borderDash:[3,3], pointRadius:0, fill:false},
-            {label:'bot', data:botLine,
-             type:'line', borderColor:'rgba(0,0,0,0.25)', borderWidth:1,
-             borderDash:[3,3], pointRadius:0, fill:false},
-          ]},
-          options:{
-            responsive:true, maintainAspectRatio:false, animation:false,
-            plugins:{legend:{display:false},
-              tooltip:{callbacks:{
-                label: ctx=>{
-                  if(ctx.dataset.label==='WT') return 'WT = '+wt.toFixed(2)+' m';
-                  return ctx.dataset.label+': '+Math.round(ctx.parsed.x).toLocaleString()+' kPa @ '+ctx.parsed.y.toFixed(2)+'m';
-                }
-              }}
-            },
-            scales:{
-              x:{type:'linear', min:0, max:xMax, position:'top',
-                 title:{display:true, text:'E_oed (kPa)', font:{size:10}},
-                 grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}, maxTicksLimit:5}},
-              y:{type:'linear', min:yMin, max:yMax, reverse:true,
-                 title:{display:true, text:'Diepte (m)', font:{size:10}},
-                 grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}}
-            }
-          }
-        });
+        const chart = new Chart(canvasD, buildTuningDepthChartConfig({
+          depths,
+          eoedI:EoedI,
+          hsDefault,
+          hsPreview:hsFit,
+          layerTop,
+          layerBot,
+          wt,
+          mDefault:mDef,
+          mPreview:mFit,
+          quality:el.dataset.quality,
+          invalidSlope
+        }));
         canvasD._chartRef = chart;
       }catch(e){console.warn('Depth chart error:',e);}
     }
@@ -6406,25 +6199,13 @@ function buildStage6BearingChart(){
   const data = S.stage6Cache?.bearing;
   if(!canvas || !data || typeof Chart === 'undefined') return;
   const cfg = S.stage6.bearing;
-  const drained = data.drained;
-  const undrained = data.undrained;
-  const xMax = Math.max(50, Math.ceil(Math.max(...drained.map(p=>p.x||0), ...undrained.map(p=>p.x||0)) / 50) * 50);
-  const datasets = [];
-  if(cfg.showMode !== 'undrained') datasets.push({label:'Drained', data:drained, borderColor:'#1D9E75', borderWidth:2.4, pointRadius:0, fill:false, tension:0.15});
-  if(cfg.showMode !== 'drained') datasets.push({label:'Undrained', data:undrained, borderColor:'#D85A30', borderWidth:2.4, pointRadius:0, fill:false, tension:0.15});
-  datasets.push({label:'Selected Df', data:[{x:0,y:cfg.Df},{x:xMax,y:cfg.Df}], borderColor:'#378ADD', borderWidth:1.5, borderDash:[6,4], pointRadius:0, fill:false});
-  const chart = new Chart(canvas,{
-    type:'line',
-    data:{datasets},
-    options:{
-      responsive:true, maintainAspectRatio:false, animation:false,
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>ctx.dataset.label === 'Selected Df' ? `Df = ${cfg.Df.toFixed(2)} m` : `${ctx.dataset.label}: ${Math.round(ctx.parsed.x).toLocaleString()} kPa @ ${ctx.parsed.y.toFixed(2)} m`}}},
-      scales:{
-        x:{type:'linear', min:0, max:xMax, position:'top', title:{display:true,text:(stage6CapacityLabel(cfg)==='q_d'?'Design bearing capacity q_d (kPa)':'Allowable bearing capacity q_allow (kPa)'),font:{size:10}}, grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}},
-        y:{type:'linear', min:0, max:data.maxDepth + 0.25, reverse:true, title:{display:true,text:'Founding depth (m)',font:{size:10}}, grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}}
-      }
-    }
-  });
+  const chart = new Chart(canvas, buildBearingChartConfig({
+    data,
+    cfg,
+    capacityAxisTitle:stage6CapacityLabel(cfg)==='q_d'
+      ? 'Design bearing capacity q_d (kPa)'
+      : 'Allowable bearing capacity q_allow (kPa)'
+  }));
   canvas._chartRef = chart;
 }
 
@@ -6433,27 +6214,20 @@ function buildStage6SettlementCharts(){
   if(!analysis || typeof Chart === 'undefined') return;
   const stressCanvas = stage6DestroyChart('stage6SettlementStressChart');
   if(stressCanvas){
-    stressCanvas._chartRef = new Chart(stressCanvas,{
-      type:'line',
-      data:{datasets:[{label:'Delta sigma_v', data:analysis.deltaStressCurve, borderColor:'#1D9E75', borderWidth:2.2, pointRadius:0, tension:0.15, fill:false}]},
-      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', position:'top', title:{display:true,text:'Delta sigma_v (kPa)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', reverse:true, min:0, max:stage6MaxDepth()+0.25, title:{display:true,text:'Depth (m)',font:{size:10}}, ticks:{font:{size:10}}}}}
-    });
+    stressCanvas._chartRef = new Chart(stressCanvas, buildSettlementStressChartConfig({
+      analysis,
+      maxDepth:stage6MaxDepth()
+    }));
   }
   const cumCanvas = stage6DestroyChart('stage6SettlementCumulativeChart');
   if(cumCanvas){
-    cumCanvas._chartRef = new Chart(cumCanvas,{
-      type:'line',
-      data:{datasets:[{label:'Cumulative S', data:analysis.cumulativeCurve, borderColor:'#378ADD', borderWidth:2.2, pointRadius:0, tension:0.12, fill:false}]},
-      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', position:'top', title:{display:true,text:'Cumulative settlement (mm)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', reverse:true, min:0, max:analysis.truncationDepth + 0.25, title:{display:true,text:'Depth (m)',font:{size:10}}, ticks:{font:{size:10}}}}}
-    });
+    cumCanvas._chartRef = new Chart(cumCanvas, buildSettlementCumulativeChartConfig({analysis}));
   }
   const timeCanvas = stage6DestroyChart('stage6SettlementTimeChart');
   if(timeCanvas && analysis.timeCurve){
-    timeCanvas._chartRef = new Chart(timeCanvas,{
-      type:'line',
-      data:{datasets:[{label:'S(t)', data:analysis.timeCurve, borderColor:'#D85A30', borderWidth:2.2, pointRadius:0, fill:false, tension:0.15}]},
-      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', title:{display:true,text:'Time (days)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', title:{display:true,text:'Settlement (mm)',font:{size:10}}, ticks:{font:{size:10}}}}}
-    });
+    timeCanvas._chartRef = new Chart(timeCanvas, buildTimeChartConfig({
+      curve:analysis.timeCurve
+    }));
   }
 }
 
@@ -6462,121 +6236,27 @@ function buildStage6DewateringCharts(){
   if(!analysis || typeof Chart === 'undefined') return;
   const drawCanvas = stage6DestroyChart('stage6DewateringDrawdownChart');
   if(drawCanvas){
-    const profile = analysis.drawdownDisplayCurve?.length ? analysis.drawdownDisplayCurve : analysis.drawdownCurve;
-    const influenceX = Math.max(analysis.radiusInfluence || 0, analysis.geometry.distanceToCpt || 0, 1);
-    const maxX = influenceX * 1.1;
-    const minRelevantY = Math.min(
-      S.wt,
-      analysis.targetWt,
-      analysis.newWtAtCpt,
-      ...profile.map(p=>p.y ?? S.wt)
-    );
-    const maxRelevantY = Math.max(
-      S.wt,
-      analysis.targetWt,
-      analysis.newWtAtCpt,
-      ...profile.map(p=>p.y ?? S.wt)
-    );
-    const yPad = Math.max((maxRelevantY - minRelevantY) * 0.1, 0.15);
-    const minY = Math.max(0, minRelevantY - yPad);
-    const maxY = maxRelevantY + yPad;
-    const originalLine = [{x:0,y:S.wt},{x:maxX,y:S.wt}];
-    const influenceLine = analysis.radiusInfluence > 0 ? [{x:analysis.radiusInfluence,y:0},{x:analysis.radiusInfluence,y:maxY}] : [];
-    drawCanvas._chartRef = new Chart(drawCanvas,{
-      type:'line',
-      data:{datasets:[
-        {label:'Original WT', data:originalLine, borderColor:'rgba(107,107,104,.50)', borderWidth:1.3, borderDash:[5,4], pointRadius:0, fill:false},
-        {label:'WT profile', data:profile, borderColor:'#378ADD', backgroundColor:'rgba(55,138,221,.12)', borderWidth:2.4, pointRadius:0, tension:0, fill:'-1'},
-        {label:'Influence radius', data:influenceLine, borderColor:'rgba(29,158,117,.45)', borderWidth:1.2, borderDash:[4,4], pointRadius:0, fill:false},
-        {label:'CPT location', data:[{x:analysis.geometry.distanceToCpt || 0,y:0},{x:analysis.geometry.distanceToCpt || 0,y:maxY}], borderColor:'rgba(216,90,48,.55)', borderWidth:1.4, borderDash:[6,4], pointRadius:0, fill:false},
-        {label:'Target head at source', data:[{x:0,y:analysis.targetWt}], borderColor:'#1D9E75', pointRadius:4, pointHoverRadius:4, showLine:false},
-        {label:'WT at CPT', data:[{x:analysis.geometry.distanceToCpt || 0,y:analysis.newWtAtCpt}], borderColor:'#D85A30', pointRadius:4, pointHoverRadius:4, showLine:false}
-      ]},
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        animation:false,
-        interaction:{mode:'nearest', intersect:false},
-        plugins:{
-          legend:{display:false},
-          tooltip:{
-            filter:(ctx)=>ctx.dataset.label === 'WT profile' || ctx.dataset.label === 'WT at CPT' || ctx.dataset.label === 'Target head at source',
-            callbacks:{
-              label:(ctx)=>{
-                if(ctx.dataset.label === 'WT at CPT'){
-                  return `WT at CPT: ${ctx.parsed.y.toFixed(2)} m @ ${ctx.parsed.x.toFixed(2)} m`;
-                }
-                if(ctx.dataset.label === 'Target head at source'){
-                  return `Installed target head: ${ctx.parsed.y.toFixed(2)} m @ source`;
-                }
-                return `WT depth: ${ctx.parsed.y.toFixed(2)} m @ ${ctx.parsed.x.toFixed(2)} m`;
-              }
-            }
-          }
-        },
-        scales:{
-          x:{type:'linear', min:0, max:maxX, title:{display:true,text:analysis.geometry.geometry === 'line_dewatering_trench' ? 'Perpendicular distance from trench (m)' : 'Distance from source / centroid (m)',font:{size:10}}, grid:{color:'rgba(128,128,128,0.07)'}, ticks:{font:{size:10}}},
-          y:{type:'linear', reverse:true, min:minY, max:maxY, title:{display:true,text:'Phreatic level depth below ground (m)',font:{size:10}}, ticks:{font:{size:10}}}
-        }
-      }
-    });
+    drawCanvas._chartRef = new Chart(drawCanvas, buildDewateringDrawdownChartConfig({
+      analysis,
+      originalWt:S.wt
+    }));
   }
   const stressCanvas = stage6DestroyChart('stage6DewateringStressChart');
   if(stressCanvas){
-    stressCanvas._chartRef = new Chart(stressCanvas,{
-      type:'line',
-      data:{datasets:[
-        {label:'sigma_v before', data:analysis.beforeTotalStressCurve, borderColor:'rgba(107,107,104,.60)', borderWidth:1.2, borderDash:[5,4], pointRadius:0, fill:false},
-        {label:'sigma_v after', data:analysis.afterTotalStressCurve, borderColor:'rgba(29,158,117,.55)', borderWidth:1.2, borderDash:[5,4], pointRadius:0, fill:false},
-        {label:'sigma_eff before', data:analysis.beforeStressCurve, borderColor:'#6b6b68', borderWidth:2, pointRadius:0, fill:false},
-        {label:'sigma_eff after', data:analysis.afterStressCurve, borderColor:'#1D9E75', borderWidth:2, pointRadius:0, fill:false},
-        {label:'Delta sigma', data:analysis.deltaStressCurve, borderColor:'#D85A30', borderWidth:1.6, pointRadius:0, fill:false}
-      ]},
-      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', position:'top', title:{display:true,text:'Total stress, effective stress, and increase (kPa)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', reverse:true, min:0, max:stage6MaxDepth()+0.25, title:{display:true,text:'Depth (m)',font:{size:10}}, ticks:{font:{size:10}}}}}
-    });
+    stressCanvas._chartRef = new Chart(stressCanvas, buildDewateringStressChartConfig({
+      analysis,
+      maxDepth:stage6MaxDepth()
+    }));
   }
   const setCanvas = stage6DestroyChart('stage6DewateringSettlementChart');
   if(setCanvas){
-    setCanvas._chartRef = new Chart(setCanvas,{
-      type:'line',
-      data:{datasets:[
-        {label:'Total settlement', data:analysis.settlementDistanceCurve, borderColor:'#378ADD', borderWidth:2.2, pointRadius:0, fill:false, tension:0.12},
-        {label:'CPT location', data:[{x:analysis.geometry.distanceToCpt || 0,y:0},{x:analysis.geometry.distanceToCpt || 0,y:analysis.totalSettlementMm}], borderColor:'rgba(216,90,48,.55)', borderWidth:1.4, borderDash:[6,4], pointRadius:0, fill:false},
-        {label:'Settlement at CPT', data:[{x:analysis.geometry.distanceToCpt || 0,y:analysis.totalSettlementMm}], borderColor:'#D85A30', pointRadius:4, pointHoverRadius:4, showLine:false}
-      ]},
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        animation:false,
-        interaction:{mode:'nearest', intersect:false},
-        plugins:{
-          legend:{display:false},
-          tooltip:{
-            filter:(ctx)=>ctx.dataset.label === 'Total settlement' || ctx.dataset.label === 'Settlement at CPT',
-            callbacks:{
-              label:(ctx)=>{
-                if(ctx.dataset.label === 'Settlement at CPT'){
-                  return `Settlement at CPT: ${ctx.parsed.y.toFixed(2)} mm @ ${ctx.parsed.x.toFixed(2)} m`;
-                }
-                return `Settlement: ${ctx.parsed.y.toFixed(2)} mm @ ${ctx.parsed.x.toFixed(2)} m`;
-              }
-            }
-          }
-        },
-        scales:{
-          x:{type:'linear', title:{display:true,text:analysis.geometry.geometry === 'line_dewatering_trench' ? 'Perpendicular distance from trench (m)' : 'Radial distance from well centre / excavation centroid (m)',font:{size:10}}, ticks:{font:{size:10}}},
-          y:{type:'linear', beginAtZero:true, title:{display:true,text:'Total settlement (mm)',font:{size:10}}, ticks:{font:{size:10}}}
-        }
-      }
-    });
+    setCanvas._chartRef = new Chart(setCanvas, buildDewateringSettlementChartConfig({analysis}));
   }
   const timeCanvas = stage6DestroyChart('stage6DewateringTimeChart');
   if(timeCanvas && analysis.timeCurve){
-    timeCanvas._chartRef = new Chart(timeCanvas,{
-      type:'line',
-      data:{datasets:[{label:'S(t)', data:analysis.timeCurve, borderColor:'#D85A30', borderWidth:2.2, pointRadius:0, fill:false, tension:0.15}]},
-      options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:{x:{type:'linear', title:{display:true,text:'Time (days)',font:{size:10}}, ticks:{font:{size:10}}}, y:{type:'linear', title:{display:true,text:'Settlement (mm)',font:{size:10}}, ticks:{font:{size:10}}}}}
-    });
+    timeCanvas._chartRef = new Chart(timeCanvas, buildTimeChartConfig({
+      curve:analysis.timeCurve
+    }));
   }
 }
 
@@ -6586,45 +6266,17 @@ function buildStage6BeamCharts(){
   const tickFmt = (value)=>stage6CompactNumber(value, 2);
   const defCanvas = stage6DestroyChart('stage6BeamDeflectionChart');
   if(defCanvas){
-    const deflectionData = analysis.sls.xSamples.map((x, i)=>({x, y:analysis.sls.wSamples[i]*1000}));
-    defCanvas._chartRef = new Chart(defCanvas,{
-      type:'line',
-      data:{datasets:[{label:'w(x)', data:deflectionData, borderColor:'#378ADD', borderWidth:2.2, pointRadius:0, fill:false, tension:0}]},
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        animation:false,
-        plugins:{
-          legend:{display:false},
-          tooltip:{callbacks:{label:(ctx)=>`w = ${stage6CompactNumber(ctx.parsed.y, 2)} mm @ x = ${stage6CompactNumber(ctx.parsed.x, 2)} m`}}
-        },
-        scales:{
-          x:{type:'linear', title:{display:true,text:'x along beam (m)',font:{size:10}}, ticks:{font:{size:10}, callback:tickFmt}},
-          y:{title:{display:true,text:'Deflection (mm)',font:{size:10}}, ticks:{font:{size:10}, callback:tickFmt}}
-        }
-      }
-    });
+    defCanvas._chartRef = new Chart(defCanvas, buildBeamDeflectionChartConfig({
+      analysis,
+      tickFormatter:tickFmt
+    }));
   }
   const momentCanvas = stage6DestroyChart('stage6BeamMomentChart');
   if(momentCanvas){
-    const momentData = analysis.uls.xSamples.map((x, i)=>({x, y:analysis.uls.mSamples[i]}));
-    momentCanvas._chartRef = new Chart(momentCanvas,{
-      type:'line',
-      data:{datasets:[{label:'M(x)', data:momentData, borderColor:'#D85A30', borderWidth:2.2, pointRadius:0, fill:false, tension:0}]},
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        animation:false,
-        plugins:{
-          legend:{display:false},
-          tooltip:{callbacks:{label:(ctx)=>`M = ${stage6CompactNumber(ctx.parsed.y, 2)} kNm/m @ x = ${stage6CompactNumber(ctx.parsed.x, 2)} m`}}
-        },
-        scales:{
-          x:{type:'linear', title:{display:true,text:'x along beam (m)',font:{size:10}}, ticks:{font:{size:10}, callback:tickFmt}},
-          y:{title:{display:true,text:'Moment (kNm/m)',font:{size:10}}, ticks:{font:{size:10}, callback:tickFmt}}
-        }
-      }
-    });
+    momentCanvas._chartRef = new Chart(momentCanvas, buildBeamMomentChartConfig({
+      analysis,
+      tickFormatter:tickFmt
+    }));
   }
 }
 
@@ -6815,6 +6467,362 @@ function exportPlaxisCpt(){
   a.click();
 }
 
+function safeClone(value){
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function stage7MethodLabel(method){
+  return {
+    robertson:'Robertson (1990)',
+    cur3:'CUR 3 layers',
+    nen6740:'NEN 6740',
+    sb260:'NEN Tabel 3 / EC7'
+  }[method] || method || 'Unknown';
+}
+
+function stage7ParamMethodLabel(method){
+  return method === 'def' ? 'Generic (DEF)' : 'NEN Tabel 3 / EC7';
+}
+
+function stage7AlphaMethodLabel(method){
+  return method === 'A' ? 'A - Sanglerat (fixed)' : 'B - SB260 qc-dependent';
+}
+
+function stage7StiffMethodLabel(method){
+  return method === 'A' ? 'A - CUR 2003-7 ratios' : 'B - E50 = Eoed';
+}
+
+function stage7WtSourceLabel(){
+  return S.wtFromFile ? 'MEASUREMENTVAR 14' : 'Manual / default';
+}
+
+function stage7ElevSourceLabel(){
+  return S.elevFromFile ? 'ZID' : (S.elev != null ? 'Manual' : 'Not set');
+}
+
+function stage7LayerWarnings(){
+  const warnings=[];
+  S.layers.forEach((layer, index)=>{
+    if(!layer.subtype || layer.subtype === '(overridden)') return;
+    const entry=CAT.find(row=>row.subtype===layer.subtype);
+    if(!entry) return;
+    const level=compatLevel(layer.type, entry.grp);
+    if(level === 'ok') return;
+    warnings.push({
+      layer:index + 1,
+      level,
+      type:layer.type,
+      subtype:layer.subtype,
+      message:level === 'bad'
+        ? `${layer.type} is not directly compatible with ${layer.subtype}.`
+        : `${layer.subtype} sits in an adjacent transition family for ${layer.type}.`
+    });
+  });
+  return warnings;
+}
+
+function stage7TuningPayload(){
+  if(!S.tuning) return null;
+  return S.tuning.map((item)=>{
+    const layer=S.layers[item.i];
+    const fit=item.fit;
+    return{
+      index:item.i,
+      layerIndex:item.i + 1,
+      layerLabel:`Layer ${item.i + 1}`,
+      top:layer.top,
+      bot:layer.bot,
+      type:layer.type,
+      subtype:layer.subtype || '',
+      accepted:!!layer.ovr.m,
+      previewM:Number.isFinite(Number(item.previewM)) ? Number(item.previewM) : null,
+      fit:fit ? {
+        mFit:fit.m_fit,
+        eOedRefFit:fit.Eoed_ref_fit,
+        r2:fit.R2,
+        n:fit.n,
+        stressRangeFactor:fit.stressRangeFactor,
+        quality:fit.quality,
+        message:fit.qMsg,
+        mDefault:fit.mDefault,
+        eOedRefDefault:fit.Eoed_ref_default,
+        meanX:fit.meanX,
+        meanY:fit.meanY,
+        alphaDefault:fit.alphaDefault,
+        depthPts:fit.depthPts,
+        eOedIPts:fit.EoedI_pts,
+        hsDefaultPts:fit.hsDefault_pts,
+        hsFitPts:fit.hsFit_pts,
+        xs:fit.Xs,
+        ys:fit.Ys
+      } : null
+    };
+  });
+}
+
+function stage7WorkingLayerPayload(layer, index){
+  const hs=hsParams(layer);
+  const kh=khParams(layer);
+  const tuningFit=S.tuning?.[index]?.fit || null;
+  return{
+    index:index + 1,
+    id:layer.id,
+    top:layer.top,
+    bot:layer.bot,
+    topTaw:S.elev != null ? +(S.elev - layer.top).toFixed(2) : null,
+    botTaw:S.elev != null ? +(S.elev - layer.bot).toFixed(2) : null,
+    thickness:+(layer.bot - layer.top).toFixed(3),
+    type:layer.type,
+    subtype:layer.subtype || '',
+    avgQc:layer.avgQc,
+    avgFsKPa:layer.avgFs != null ? +(layer.avgFs * 1000).toFixed(2) : null,
+    avgRf:layer.avgRf,
+    gamma:layer.g,
+    gammaSat:layer.gs,
+    phi:layer.phi,
+    c:layer.c,
+    cu:layer.cu,
+    overrides:safeClone(layer.ovr || {}),
+    hasAcceptedTuning:!!layer.ovr?.m && !!tuningFit,
+    manualMOverride:!!layer.ovr?.m && !tuningFit,
+    hs:{
+      alphaE:hs.aE,
+      eOedI:hs.Eoed_i,
+      eOedRef:hs.Eoed_ref,
+      e50Ref:hs.E50_ref,
+      eurRef:hs.Eur_ref,
+      m:hs.m,
+      k0nc:hs.K0nc,
+      nu:hs.nu,
+      nuUr:hs.nu_ur,
+      psi:hs.psi,
+      eMc:hs.Emc,
+      sigmaV:hs.sigV,
+      porePressure:hs.u,
+      sigmaVEff:hs.sigVeff
+    },
+    hydraulic:{
+      kh:kh.kh_rep,
+      kv:kh.kv_rep,
+      khkv:kh.khkv,
+      psiUnsat:kh.psi_unsat,
+      infiltrationClass:kh.infClass
+    }
+  };
+}
+
+function stage7BishopPayload(){
+  const bishop=S.stage6?.bishop;
+  const results=bishop?.results?.allResults || [];
+  if(!results.length) return null;
+  const selected=stage6BishopSelectedResult();
+  const keepBest=Math.max(bishop.search?.keepBest || 10, 1);
+  return{
+    config:safeClone({
+      strengthSet:bishop.strengthSet,
+      analysisDepth:bishop.analysisDepth,
+      snapSize:bishop.snapSize,
+      gridSnap:bishop.gridSnap,
+      activeCptX:bishop.activeCptX,
+      entryZone:bishop.entryZone,
+      exitZone:bishop.exitZone,
+      surfaceLoad:bishop.surfaceLoad,
+      search:bishop.search,
+      solver:bishop.solver
+    }),
+    summary:safeClone(bishop.results?.summary || null),
+    selectedIndex:Math.min(Math.max(bishop.selectedResult || 0, 0), Math.max(results.length - 1, 0)),
+    selected:selected ? safeClone({
+      FS:selected.FS,
+      iterations:selected.iterations,
+      circle:selected.circle,
+      entry:selected.entry,
+      exit:selected.exit
+    }) : null,
+    topResults:results.slice(0, keepBest).map((result, index)=>safeClone({
+      rank:index + 1,
+      FS:result.FS,
+      iterations:result.iterations,
+      circle:result.circle
+    })),
+    rejectionCounts:safeClone(bishop.results?.rejectionCounts || {}),
+    timing:safeClone(bishop.results?.timing || null)
+  };
+}
+
+function stage7Stage6Payload(workingLayers){
+  const annexes={};
+  if(S.stage6Cache?.bearing?.selected){
+    annexes.bearing={
+      config:safeClone(S.stage6.bearing),
+      analysis:safeClone(S.stage6Cache.bearing)
+    };
+  }
+  if(S.stage6Cache?.settlement?.sublayers?.length){
+    annexes.settlement={
+      config:safeClone(S.stage6.settlement),
+      analysis:safeClone(S.stage6Cache.settlement)
+    };
+  }
+  if(S.stage6Cache?.dewatering?.sublayers?.length || S.stage6Cache?.dewatering?.drawdownCurve?.length){
+    annexes.dewatering={
+      config:safeClone(S.stage6.dewatering),
+      analysis:safeClone(S.stage6Cache.dewatering)
+    };
+  }
+  if(S.stage6Cache?.beam?.sls?.xSamples?.length){
+    annexes.beam={
+      config:safeClone(S.stage6.beam),
+      analysis:safeClone(S.stage6Cache.beam)
+    };
+  }
+  const bishop=stage7BishopPayload();
+  if(bishop) annexes.bishop=bishop;
+  const available=Object.keys(annexes);
+  if(!available.length) return null;
+  return{
+    currentApp:S.stage6?.app || 'bearing',
+    available,
+    layers:safeClone(workingLayers),
+    ...annexes
+  };
+}
+
+function buildStage7Payload(){
+  if(!S.layers.length || !S.data.length){
+    alert('Run the CPT through layers and model parameters before opening the Stage 7 report.');
+    return null;
+  }
+  ensureStage6State();
+  const workingLayers=stage6WorkingLayers();
+  const rawDepthMax=S.data.length ? +(S.data[S.data.length - 1].z + 0.5).toFixed(3) : stage6MaxDepth();
+  const maxQc=Math.max(1, arrMax(S.data.map(r=>r.qc))) * 1.15;
+  const maxFs=Math.max(10, arrMax(S.data.map(r=>r.fs != null ? r.fs * 1000 : 0))) * 1.15;
+  const tuning=stage7TuningPayload();
+  const layerWarnings=stage7LayerWarnings();
+  const layerPayload=S.layers.map((layer, index)=>stage7WorkingLayerPayload(layer, index));
+  const acceptedTuningCount=layerPayload.filter(layer=>layer.hasAcceptedTuning).length;
+  const manualOverrideCount=layerPayload.reduce((sum, layer)=>{
+    return sum + Object.values(layer.overrides || {}).filter(Boolean).length;
+  }, 0);
+  const stage6=stage7Stage6Payload(workingLayers);
+  return{
+    version:1,
+    stage:'stage7',
+    generatedAt:new Date().toISOString(),
+    appVersion:'0.0.1',
+    project:{
+      name:PROJECT.name,
+      phase:PROJECT.phase
+    },
+    cpt:{
+      id:S.id,
+      displayId:S.meta?.testid || S.id || 'CPT',
+      coordinates:{
+        x:S.x,
+        y:S.y
+      }
+    },
+    metadata:safeClone({
+      ...S.meta,
+      sourceFile:S.meta?.fname || null,
+      nRows:S.meta?.nRows || S.data.length
+    }),
+    replication:{
+      method:S.method,
+      methodLabel:stage7MethodLabel(S.method),
+      smartMerge:!!S.smartMerge,
+      smartMergeSensitivity:+Number(S.smartMergeSensitivity ?? 1.1).toFixed(3),
+      minThickness:+Number(S.minThk || 0).toFixed(3),
+      parameterMethod:S.paramMethod,
+      parameterMethodLabel:stage7ParamMethodLabel(S.paramMethod),
+      alphaMethod:S.alphaMethod,
+      alphaMethodLabel:stage7AlphaMethodLabel(S.alphaMethod),
+      stiffnessMethod:S.stiffMethod,
+      stiffnessMethodLabel:stage7StiffMethodLabel(S.stiffMethod),
+      waterTable:S.wt,
+      waterTableTaw:S.elev != null ? +(S.elev - S.wt).toFixed(2) : null,
+      waterTableSource:stage7WtSourceLabel(),
+      surfaceElevation:S.elev,
+      surfaceElevationSource:stage7ElevSourceLabel()
+    },
+    summary:{
+      layerCount:S.layers.length,
+      depthMin:S.meta?.depthMin ?? (S.data[0]?.z || 0),
+      depthMax:S.meta?.depthMax ?? (S.data[S.data.length - 1]?.z || 0),
+      acceptedTuningCount,
+      manualOverrideCount,
+      stage6Annexes:stage6?.available || []
+    },
+    visuals:{
+      layerColumn:{
+        width:72,
+        height:420,
+        markup:buildLayerColumnSvgMarkup({
+          layers:S.layers,
+          maxDepth:rawDepthMax,
+          wt:S.wt,
+          width:72,
+          height:420,
+          emptyLabel:'No layers'
+        })
+      },
+      layerProfile:{
+        width:210,
+        height:520,
+        markup:buildLayerPreviewSvgMarkup({
+          layers:S.layers,
+          rows:S.classified?.length ? S.classified : S.data,
+          wt:S.wt,
+          width:210,
+          height:520,
+          showRf:false,
+          showFs:true
+        })
+      }
+    },
+    chartInputs:{
+      raw:{
+        maxDepth:rawDepthMax,
+        maxQc,
+        maxFs
+      }
+    },
+    rawRows:S.data.map((row)=>({
+      depth:row.z,
+      taw:S.elev != null ? +(S.elev - row.z).toFixed(2) : null,
+      qc:row.qc,
+      fsMPa:row.fs ?? null,
+      fsKPa:row.fs != null ? +(row.fs * 1000).toFixed(3) : null,
+      rf:row.rf ?? null,
+      u2:row.u2 ?? null
+    })),
+    classifiedRows:(S.classified || []).map((row)=>({
+      depth:row.z,
+      taw:S.elev != null ? +(S.elev - row.z).toFixed(2) : null,
+      qc:row.qc,
+      fsKPa:row.fs != null ? +(row.fs * 1000).toFixed(3) : null,
+      rf:row.rf ?? null,
+      type:row.type,
+      subtype:row.subtype || '',
+      ic:row.Ic ?? null,
+      qtOrQcNen:row.Qt ?? null
+    })),
+    layers:layerPayload,
+    layerWarnings,
+    tuning,
+    stage6
+  };
+}
+
+function openStage7Report(){
+  const payload=buildStage7Payload();
+  if(!payload || typeof window === 'undefined') return;
+  const key=saveStage7Payload(window.localStorage, payload);
+  cleanupStage7Payloads(window.localStorage, key);
+  window.open(`/report/stage7?key=${encodeURIComponent(key)}`, '_blank', 'noopener');
+}
+
 function stage6BishopHandleHashChange(){
   if(!S?.stage6) return;
   if(stage6BishopHashActive()){
@@ -6941,6 +6949,8 @@ const legacyApi={
   refreshStage6BearingPreview,
   renderStage6,
   buildStage6BearingChart,
+  buildStage7Payload,
+  openStage7Report,
   exportCSV,
   exportPlaxisCommands,
   exportPlaxisCpt

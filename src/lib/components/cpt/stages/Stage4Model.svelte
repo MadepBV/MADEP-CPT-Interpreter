@@ -45,9 +45,12 @@
 	<div id="ma"></div>
 	<div class="foot">
 		<button class="btn" onclick={() => call('goS', 2)}>← Back</button>
-		<span style="font-size:12px;color:var(--tx2)"
-			>Review m-values. Use Tuning (Stage 5) to fit m from CPT data.</span
-		>
+		<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+			<span style="font-size:12px;color:var(--tx2)"
+				>Review m-values. Use Tuning (Stage 5) to fit m from CPT data.</span
+			>
+			<button class="btn sm" onclick={() => call('openStage7Report')}>Stage 7 Report</button>
+		</div>
 		<button class="btn" onclick={() => call('goS', 4)} style="border-color:var(--wn);color:var(--wn)">
 			Stage 5 — Tuning ⚗
 		</button>
