@@ -1233,12 +1233,9 @@
 <div class="docs-page">
 	<header class="docs-header">
 		<div class="docs-header__inner">
-			<a class="docs-header__logo" href="/">MADEP CPT Interpreter</a>
+			<a class="docs-header__logo" href="https://madep.be">MADEP CPT Interpreter</a>
 			<nav class="docs-header__nav" aria-label="Documentation navigation">
 				<a href="/">App</a>
-				<a href="/docs">Main docs</a>
-				<a href="/docs/bishop">Bishop docs</a>
-				<a href="#references">References</a>
 			</nav>
 		</div>
 	</header>
@@ -1437,7 +1434,7 @@
 	<footer class="docs-footer">
 		<div class="docs-footer__inner">
 				<div class="docs-footer__brand">
-					<div class="docs-footer__logo">MADEP CPT Interpreter</div>
+					<a class="docs-footer__logo" href="https://madep.be">MADEP CPT Interpreter</a>
 					<p class="docs-footer__tagline">
 						Technical CPT interpretation, parameter derivation, and engineering screening.
 					</p>
