@@ -24,6 +24,10 @@
   let chartReady = false;
   let chartRefs: any[] = [];
   const soilFillColors = SOIL_FILL_COLORS as Record<string, string>;
+  type LegacyMediaQueryList = MediaQueryList & {
+    addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+    removeListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+  };
 
   const levelLabels: Record<string, string> = {
     bad: 'Incompatible',
@@ -117,10 +121,50 @@
     chartRefs = [];
   }
 
+  function syncPrintChartImages() {
+    const canvases = Array.from(document.querySelectorAll('.report-canvas canvas')) as HTMLCanvasElement[];
+    for (const canvas of canvases) {
+      if (!canvas.width || !canvas.height) continue;
+      const host = canvas.parentElement;
+      if (!host) continue;
+      let image = host.querySelector('.report-print-chart') as HTMLImageElement | null;
+      if (!image) {
+        image = document.createElement('img');
+        image.className = 'report-print-chart';
+        image.alt = '';
+        host.appendChild(image);
+      }
+      image.src = canvas.toDataURL('image/png');
+    }
+  }
+
+  function resizeChartsForLayout() {
+    if (!chartRefs.length) return;
+    const resize = () => {
+      chartRefs.forEach((chart) => {
+        chart?.resize?.();
+        chart?.update?.('none');
+      });
+      syncPrintChartImages();
+    };
+    window.requestAnimationFrame(resize);
+    window.setTimeout(resize, 80);
+  }
+
   function mountChart(id: string, config: any) {
     const canvas = document.getElementById(id) as HTMLCanvasElement | null;
     if (!canvas || !(window as any).Chart) return;
+    config.options = {
+      ...config.options,
+      animation: false,
+      transitions: {
+        ...(config.options?.transitions || {}),
+        active: { animation: { duration: 0 } },
+        resize: { animation: { duration: 0 } }
+      }
+    };
     const chart = new (window as any).Chart(canvas, config);
+    chart.update?.('none');
     chartRefs.push(chart);
   }
 
@@ -254,6 +298,11 @@
         })
       );
     }
+
+    window.requestAnimationFrame(() => {
+      syncPrintChartImages();
+      window.setTimeout(syncPrintChartImages, 120);
+    });
   }
 
   $: if (payload && chartReady) {
@@ -261,6 +310,21 @@
   }
 
   onMount(() => {
+    const handlePrintLayout = () => resizeChartsForLayout();
+    const printMedia = window.matchMedia ? (window.matchMedia('print') as LegacyMediaQueryList) : null;
+    const legacyPrintMedia = printMedia as LegacyMediaQueryList | null;
+
+    window.addEventListener('beforeprint', handlePrintLayout);
+    window.addEventListener('afterprint', handlePrintLayout);
+
+    if (legacyPrintMedia) {
+      if (typeof legacyPrintMedia.addEventListener === 'function') {
+        legacyPrintMedia.addEventListener('change', handlePrintLayout);
+      } else if (typeof legacyPrintMedia.addListener === 'function') {
+        legacyPrintMedia.addListener(handlePrintLayout);
+      }
+    }
+
     void (async () => {
       const key = new URLSearchParams(window.location.search).get('key') || '';
       payload = loadStage7Payload(window.localStorage, key);
@@ -271,7 +335,18 @@
       chartReady = await waitForChart();
       if (!chartReady) loadError = 'Chart.js did not load in time, so the report charts could not be rendered.';
     })();
-    return () => destroyCharts();
+    return () => {
+      window.removeEventListener('beforeprint', handlePrintLayout);
+      window.removeEventListener('afterprint', handlePrintLayout);
+      if (legacyPrintMedia) {
+        if (typeof legacyPrintMedia.removeEventListener === 'function') {
+          legacyPrintMedia.removeEventListener('change', handlePrintLayout);
+        } else if (typeof legacyPrintMedia.removeListener === 'function') {
+          legacyPrintMedia.removeListener(handlePrintLayout);
+        }
+      }
+      destroyCharts();
+    };
   });
 </script>
 
@@ -598,16 +673,16 @@
       </section>
 
       {#if payload.stage6}
-        <section class="report-section">
+        <section class="report-section report-section--stage6">
           <div class="report-section__head">
             <h2>Stage 6 Annexes</h2>
             <p>Optional engineering annexes included only for analyses available in the frozen payload.</p>
           </div>
 
           {#if hasStage6('bearing')}
-            <div class="report-card report-annex">
+            <div class="report-card report-annex report-annex--bearing">
               <h3>Bearing capacity</h3>
-              <div class="report-grid report-grid--2">
+              <div class="report-grid report-grid--2 report-annex__summary">
                 <table class="pt report-pt">
                   <tbody>
                     <tr><td>Df (m)</td><td>{fmt(payload.stage6.bearing.config.Df, 2)} m</td></tr>
@@ -619,67 +694,67 @@
                     <tr><td>Undrained qd (kPa)</td><td>{fmtInt(payload.stage6.bearing.analysis.selected.qdUndrained)} kPa</td></tr>
                   </tbody>
                 </table>
-                <div class="report-canvas"><canvas id="stage7-bearing-chart"></canvas></div>
+                <div class="report-canvas report-canvas--annex report-canvas--annex-bearing"><canvas id="stage7-bearing-chart"></canvas></div>
               </div>
             </div>
           {/if}
 
           {#if hasStage6('settlement')}
-            <div class="report-card report-annex">
+            <div class="report-card report-annex report-annex--settlement">
               <h3>Settlement</h3>
-              <div class="report-grid report-grid--3">
+              <div class="report-grid report-grid--3 report-annex__stats">
                 <div class="report-stat"><span>Total settlement</span><strong>{fmt(payload.stage6.settlement.analysis.totalSettlementMm, 2)} mm</strong></div>
                 <div class="report-stat"><span>q gross</span><strong>{fmt(payload.stage6.settlement.analysis.qGross, 1)} kPa</strong></div>
                 <div class="report-stat"><span>q net</span><strong>{fmt(payload.stage6.settlement.analysis.qNet, 1)} kPa</strong></div>
               </div>
-              <div class="report-grid report-grid--2">
-                <div class="report-canvas"><canvas id="stage7-settlement-stress"></canvas></div>
-                <div class="report-canvas"><canvas id="stage7-settlement-cumulative"></canvas></div>
+              <div class="report-grid report-grid--2 report-annex__charts">
+                <div class="report-canvas report-canvas--annex"><canvas id="stage7-settlement-stress"></canvas></div>
+                <div class="report-canvas report-canvas--annex"><canvas id="stage7-settlement-cumulative"></canvas></div>
               </div>
               {#if payload.stage6.settlement.analysis.timeCurve}
-                <div class="report-canvas report-canvas--single"><canvas id="stage7-settlement-time"></canvas></div>
+                <div class="report-canvas report-canvas--annex report-canvas--annex-time report-canvas--single"><canvas id="stage7-settlement-time"></canvas></div>
               {/if}
             </div>
           {/if}
 
           {#if hasStage6('dewatering')}
-            <div class="report-card report-annex">
+            <div class="report-card report-annex report-annex--dewatering">
               <h3>Dewatering</h3>
-              <div class="report-grid report-grid--4">
+              <div class="report-grid report-grid--4 report-annex__stats">
                 <div class="report-stat"><span>Target WT</span><strong>{fmt(payload.stage6.dewatering.analysis.targetWt, 2)} m</strong></div>
                 <div class="report-stat"><span>WT at CPT</span><strong>{fmt(payload.stage6.dewatering.analysis.newWtAtCpt, 2)} m</strong></div>
                 <div class="report-stat"><span>Drawdown at CPT</span><strong>{fmt(payload.stage6.dewatering.analysis.drawdownAtCpt, 2)} m</strong></div>
                 <div class="report-stat"><span>Total settlement</span><strong>{fmt(payload.stage6.dewatering.analysis.totalSettlementMm, 2)} mm</strong></div>
               </div>
-              <div class="report-grid report-grid--2">
-                <div class="report-canvas"><canvas id="stage7-dewatering-drawdown"></canvas></div>
-                <div class="report-canvas"><canvas id="stage7-dewatering-stress"></canvas></div>
-                <div class="report-canvas"><canvas id="stage7-dewatering-settlement"></canvas></div>
+              <div class="report-grid report-grid--2 report-annex__charts">
+                <div class="report-canvas report-canvas--annex"><canvas id="stage7-dewatering-drawdown"></canvas></div>
+                <div class="report-canvas report-canvas--annex"><canvas id="stage7-dewatering-stress"></canvas></div>
+                <div class="report-canvas report-canvas--annex"><canvas id="stage7-dewatering-settlement"></canvas></div>
                 {#if payload.stage6.dewatering.analysis.timeCurve}
-                  <div class="report-canvas"><canvas id="stage7-dewatering-time"></canvas></div>
+                  <div class="report-canvas report-canvas--annex report-canvas--annex-time"><canvas id="stage7-dewatering-time"></canvas></div>
                 {/if}
               </div>
             </div>
           {/if}
 
           {#if hasStage6('beam')}
-            <div class="report-card report-annex">
+            <div class="report-card report-annex report-annex--beam">
               <h3>Beam / slab strip</h3>
-              <div class="report-grid report-grid--4">
+              <div class="report-grid report-grid--4 report-annex__stats">
                 <div class="report-stat"><span>k_s</span><strong>{fmt(payload.stage6.beam.analysis.ksInfo.ks, 0)} kN/m³</strong></div>
                 <div class="report-stat"><span>G_p</span><strong>{fmt(payload.stage6.beam.analysis.ksInfo.gp, 0)} kN/m</strong></div>
                 <div class="report-stat"><span>Max deflection</span><strong>{fmt(Math.abs(payload.stage6.beam.analysis.sls.maxDeflection.value) * 1000, 2)} mm</strong></div>
                 <div class="report-stat"><span>Max moment</span><strong>{fmt(Math.abs(payload.stage6.beam.analysis.uls.maxMoment.value), 2)} kNm/m</strong></div>
               </div>
-              <div class="report-grid report-grid--2">
-                <div class="report-canvas"><canvas id="stage7-beam-deflection"></canvas></div>
-                <div class="report-canvas"><canvas id="stage7-beam-moment"></canvas></div>
+              <div class="report-grid report-grid--2 report-annex__charts">
+                <div class="report-canvas report-canvas--annex"><canvas id="stage7-beam-deflection"></canvas></div>
+                <div class="report-canvas report-canvas--annex"><canvas id="stage7-beam-moment"></canvas></div>
               </div>
             </div>
           {/if}
 
           {#if hasStage6('bishop')}
-            <div class="report-card report-annex">
+            <div class="report-card report-annex report-annex--bishop">
               <h3>Bishop simplified</h3>
               <div class="report-grid report-grid--3">
                 <div class="report-stat"><span>Critical F</span><strong>{payload.stage6.bishop.topResults?.[0] ? fmt(payload.stage6.bishop.topResults[0].FS, 3) : '—'}</strong></div>
@@ -975,12 +1050,37 @@
     height: 260px;
   }
 
+  .report-canvas canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  :global(.report-print-chart) {
+    display: none;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
   .report-canvas--single {
     margin-top: 14px;
   }
 
   .report-canvas--tuning {
     height: 240px;
+  }
+
+  .report-canvas--annex {
+    height: 220px;
+  }
+
+  .report-canvas--annex-bearing {
+    height: 240px;
+  }
+
+  .report-canvas--annex-time {
+    height: 200px;
   }
 
   .report-chip {
@@ -1019,6 +1119,11 @@
   .report-annex {
     display: grid;
     gap: 14px;
+  }
+
+  .report-annex__summary,
+  .report-annex__charts {
+    align-items: start;
   }
 
   .report-error {
@@ -1160,6 +1265,12 @@
       padding-top: 8mm;
     }
 
+    .report-section--stage6 {
+      break-before: page;
+      page-break-before: always;
+      padding-top: 3mm;
+    }
+
     .report-cover {
       min-height: auto;
     }
@@ -1182,6 +1293,35 @@
 
     .report-section--cpt-profile .report-section__head p {
       font-size: 6.2pt;
+    }
+
+    .report-section--stage6 .report-section__head {
+      margin-bottom: 2px;
+    }
+
+    .report-section--stage6 .report-card {
+      padding: 2.5px 3px;
+    }
+
+    .report-section--stage6 .report-annex {
+      gap: 3px;
+    }
+
+    .report-section--stage6 .report-annex + .report-annex {
+      break-before: page;
+      page-break-before: always;
+      margin-top: 0;
+    }
+
+    .report-section--stage6 .report-annex__summary,
+    .report-section--stage6 .report-annex__charts {
+      grid-template-columns: 1fr;
+      gap: 3px;
+    }
+
+    .report-section--stage6 .report-annex__stats {
+      gap: 3px;
+      margin-bottom: 1px;
     }
 
     .tbl thead {
@@ -1224,8 +1364,28 @@
       height: 104mm;
     }
 
+    .report-canvas canvas {
+      display: none !important;
+    }
+
+    :global(.report-print-chart) {
+      display: block;
+    }
+
     .report-canvas--tuning {
       height: 66mm;
+    }
+
+    .report-section--stage6 .report-canvas--annex {
+      height: 48mm;
+    }
+
+    .report-section--stage6 .report-canvas--annex-bearing {
+      height: 58mm;
+    }
+
+    .report-section--stage6 .report-canvas--annex-time {
+      height: 42mm;
     }
 
     .report-profile svg {
