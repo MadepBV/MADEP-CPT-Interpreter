@@ -11,7 +11,12 @@
 				SB260). Review m and Eoed,ref per layer.
 			</div>
 		</div>
-		<button class="btn sm" onclick={() => call('exportCSV')}>Export CSV</button>
+		<div style="display:flex;gap:8px;flex-wrap:wrap">
+			<button class="btn sm" onclick={() => call('exportPlaxisCommands')}>
+				Export PLAXIS Commands
+			</button>
+			<button class="btn sm" onclick={() => call('exportCSV')}>Export CSV</button>
+		</div>
 	</div>
 	<div class="ctrl-row" style="margin-bottom:16px;flex-wrap:wrap;gap:16px">
 		<div style="display:flex;align-items:center;gap:8px">

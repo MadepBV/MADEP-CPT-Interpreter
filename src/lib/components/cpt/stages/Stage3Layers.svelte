@@ -11,6 +11,7 @@
 				orange = manual override.
 			</div>
 		</div>
+		<button class="btn sm" onclick={() => call('exportPlaxisCpt')}>Export PLAXIS CPT</button>
 	</div>
 	<div class="ctrl-row" style="margin-bottom:14px;flex-wrap:wrap;gap:14px">
 		<span class="ctrl-lbl" style="white-space:nowrap;font-weight:500">Parameter methode:</span>

@@ -131,6 +131,15 @@
 			]
 		},
 		{
+			title: 'PLAXIS Software Workflows',
+			items: [
+				{ label: 'Bentley KB0109063', detail: 'How to define and edit a material via the command line; documents the supported soilmat workflow.' },
+				{ label: 'Bentley KB0109071', detail: 'PLAXIS soil model numbers for command-line material creation.' },
+				{ label: 'Bentley KB0043470', detail: 'Re-using materials from other projects in PLAXIS, including project-to-database workflows.' },
+				{ label: 'Bentley KB0108936', detail: 'Material parameter datasets article whose sample package shows modern .matXdb content on disk.' }
+			]
+		},
+		{
 			title: 'Constitutive Models and Hydraulic Conductivity',
 			items: [
 				{ label: 'Schanz, Vermeer & Bonnier (1999)', detail: 'The Hardening Soil model: formulation and stress-dependent stiffness basis.' },
@@ -576,6 +585,24 @@
 						'The suggested Eurocode subtype is selected from the full catalogue by compatibility first and q<sub>c</sub>/R<sub>f</sub> fit second.',
 						'The final layer warnings below the table are then derived from the chosen subtype versus the CPT-family compatibility matrix, so the engineer can still see when a selected subtype lies only in an adjacent transition family.'
 					]
+				},
+				{
+					id: 'stage3-plaxis-export',
+					title: '3.4 PLAXIS simulated CPT export',
+					paragraphs: [
+						'Stage 3 can export the active interpreted layer model as a measurement-style CPT text file for PLAXIS. The goal is to reproduce the final interpreted layering exactly, not to retain the original pointwise cone variability.',
+						'The export reuses the original CPT depth rows and coordinates. For each original depth, the app finds the active final layer and writes that layer&apos;s representative values back as a synthetic CPT row. The result is therefore piecewise constant per interpreted layer, but sampled at the original CPT spacing.'
+					],
+					equations: [
+						'q<sub>c,export</sub>(z<sub>j</sub>) = avg q<sub>c</sub>(layer(z<sub>j</sub>))',
+						'f<sub>s,export</sub>(z<sub>j</sub>) = avg f<sub>s</sub>(layer(z<sub>j</sub>))',
+						'f<sub>s,export</sub>(z<sub>j</sub>) = avg q<sub>c</sub>(layer(z<sub>j</sub>)) · avg R<sub>f</sub>(layer(z<sub>j</sub>)) / 100 &nbsp;&nbsp; fallback when avg f<sub>s</sub> is missing'
+					],
+					bullets: [
+						'The header contains X[m], Y[m], Z[m], followed by a D[m] Q[MPa] F[MPa] x table.',
+						'One exported row is written for every original CPT depth row, so the synthetic file remains aligned with the measured depth sampling.',
+						'The final x column is currently written as 0, so the exported file behaves as a PLAXIS-compatible CPT with depth, cone resistance, and sleeve friction.'
+					]
 				}
 			],
 			references: ['EN 1997-1:2004+A1:2013', 'CUR 2003-7']
@@ -584,7 +611,7 @@
 			id: 'stage4',
 			title: '4. Stage 4 — Model Parameters',
 			intro:
-				'Stage 4 transforms the interpreted CPT layer into constitutive parameters for stiffness-based engineering use. The key tasks are effective-stress reconstruction, q<sub>c</sub>-to-stiffness correlation, reference-stress correction, and the assignment of auxiliary parameters such as K<sub>0,nc</sub>, ν<sub>ur</sub>, and hydraulic conductivity.',
+				'Stage 4 transforms the interpreted CPT layer into constitutive parameters for stiffness-based engineering use. The key tasks are effective-stress reconstruction, q<sub>c</sub>-to-stiffness correlation, reference-stress correction, derivation of auxiliary parameters such as K<sub>0,nc</sub>, ν<sub>ur</sub>, and hydraulic conductivity, and preparation of export-ready PLAXIS material data.',
 			subsections: [
 				{
 					id: 'stage4-stress',
@@ -688,25 +715,50 @@
 					title: '4.5 Hydraulic conductivity basis',
 					paragraphs: [
 						'The app uses indicative hydraulic conductivity values tied to Belgian and USDA-style texture classes, with OVAM and De Smedt as the principal reference sources. The representative value is treated as a geometric-mean estimate within the adopted class range rather than a deterministic measurement.',
-						'Anisotropy is then introduced through a k<sub>h</sub>/k<sub>v</sub> ratio: isotropic for coarse granular soils, higher horizontal-than-vertical conductivity for fine-grained and layered soils.'
+						'Anisotropy is then introduced through a k<sub>h</sub>/k<sub>v</sub> ratio: isotropic for coarse granular soils, higher horizontal-than-vertical conductivity for fine-grained and layered soils.',
+						'For the PLAXIS material-command export, the internally stored conductivities are converted from m/s to m/day before they are written to the command file.'
 					],
 					equations: [
 						'k<sub>h,rep</sub> = √(k<sub>h,min</sub>k<sub>h,max</sub>)',
-						'k<sub>v</sub> = k<sub>h</sub> / a<sub>kv</sub>'
+						'k<sub>v</sub> = k<sub>h</sub> / a<sub>kv</sub>',
+						'k<sub>PLAXIS</sub> = 86400 · k<sub>app</sub>'
 					],
 					symbols: [
 						{ term: 'k<sub>h,rep</sub>', meaning: 'representative horizontal conductivity [m/s]' },
 						{ term: 'k<sub>h,min</sub>, k<sub>h,max</sub>', meaning: 'adopted conductivity range [m/s]' },
 						{ term: 'a<sub>kv</sub>', meaning: 'anisotropy ratio k<sub>h</sub> / k<sub>v</sub> [-]' },
-						{ term: 'k<sub>v</sub>', meaning: 'vertical conductivity [m/s]' }
+						{ term: 'k<sub>v</sub>', meaning: 'vertical conductivity [m/s]' },
+						{ term: 'k<sub>PLAXIS</sub>', meaning: 'conductivity written to the PLAXIS command export [m/day]' }
 					],
 					bullets: [
 						'Indicative anisotropy in the current logic is 1 for sand and gravel, and 3 for clay, loam, silty soils, and peat.',
 						'In-situ measurement takes priority over indicative table values.'
 					]
+				},
+				{
+					id: 'stage4-plaxis-export',
+					title: '4.6 PLAXIS material-command export',
+					paragraphs: [
+						'Stage 4 includes a dedicated PLAXIS material export in addition to the CSV layer table. The implemented export writes a text file containing supported soilmat commands, not a directly generated native .matXdb database.',
+						'That choice is deliberate: in the modern PLAXIS workflow the app reliably creates project materials through command-line material creation, after which the engineer can copy those project materials into a reusable global material database from inside PLAXIS if desired.',
+						'For every interpreted layer, the export writes two material definitions: one Mohr-Coulomb material and one Hardening Soil material.'
+					],
+					equations: [
+						'name = safe(CPT id) + "_L" + i + "_" + safe(subtype) + "_MC/HS"',
+						'DrainageType = Undrained A &nbsp;&nbsp; if the subtype contains (lh), (kh), or equivalent fines-bearing wording',
+						'DrainageType = Drained &nbsp;&nbsp; only for clean Sand and clean Gravel',
+						'c<sub>ref</sub> = max(c′, 0.1)'
+					],
+					bullets: [
+						'Mohr-Coulomb export writes Identification, SoilModel = 2, DrainageType, gammaUnsat, gammaSat, ERef, nu, cRef, phi, psi, PermHorizontalPrimary, and PermVertical.',
+						'Hardening Soil export writes Identification, SoilModel = 3, DrainageType, gammaUnsat, gammaSat, E50Ref, EOedRef, EURRef, PowerM, pRef = 100, cRef, phi, psi, PermHorizontalPrimary, and PermVertical.',
+						'Only clean sand and clean gravel are exported as Drained by default. Fines-bearing granular subtypes such as zand (lh) and grind (kh) are exported as Undrained A.',
+						'The export intentionally omits RF, nuUR, and K0NC in the current tested PLAXIS workflow so PLAXIS can keep those automatic or read-only values under its own control.',
+						'cu and psi_unsat are not written by the material-command export. Undrained A uses the effective stress strength parameters, and psi_unsat remains available in the app without yet being exported.'
+					]
 				}
 			],
-			references: ['SB260', 'CUR 2003-7', 'Schanz, Vermeer & Bonnier (1999)', 'OVAM / I-RA-11461 (2002)', 'De Smedt / VUB (2005)']
+			references: ['SB260', 'CUR 2003-7', 'Schanz, Vermeer & Bonnier (1999)', 'OVAM / I-RA-11461 (2002)', 'De Smedt / VUB (2005)', 'Bentley KB0109063', 'Bentley KB0109071', 'Bentley KB0043470', 'Bentley KB0108936']
 		},
 		{
 			id: 'stage5',
@@ -1488,7 +1540,8 @@
 		top: 0;
 		z-index: 20;
 		padding: 10px 16px 0;
-		background: linear-gradient(180deg, rgba(247, 244, 239, 0.92), rgba(247, 244, 239, 0));
+		margin-bottom: -5.75rem;
+		background: transparent;
 	}
 
 	.docs-header__inner {
@@ -1535,7 +1588,7 @@
 	}
 
 	.hero {
-		padding: 6.5rem 24px 3.75rem;
+		padding: 12.25rem 24px 3.75rem;
 		background:
 			linear-gradient(135deg, rgba(61, 107, 106, 0.08), transparent 40%),
 			linear-gradient(180deg, #f7f4ef 0%, #ede9e1 100%);
@@ -2232,7 +2285,8 @@
 		}
 
 		.docs-header {
-			background: linear-gradient(180deg, rgba(17, 17, 16, 0.92), rgba(17, 17, 16, 0));
+			margin-bottom: -5.75rem;
+			background: transparent;
 		}
 
 		.docs-header__inner {
