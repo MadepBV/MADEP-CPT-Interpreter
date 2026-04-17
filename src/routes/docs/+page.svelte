@@ -1642,12 +1642,14 @@
 	.docs-content {
 		display: grid;
 		gap: 28px;
+		min-width: 0;
 	}
 
 	.doc-card {
 		padding: 28px 28px 26px;
 		border-top: 1px solid var(--color-border);
 		background: transparent;
+		min-width: 0;
 	}
 
 	.doc-subsection + .doc-subsection {
@@ -1684,6 +1686,23 @@
 		line-height: 1.72;
 		color: var(--color-text-light);
 		max-width: 72ch;
+		overflow-wrap: anywhere;
+		word-break: normal;
+		hyphens: auto;
+	}
+
+	li,
+	dt,
+	dd,
+	figcaption,
+	summary,
+	.docs-nav a,
+	.docs-footer__tagline,
+	.docs-footer__links a,
+	.refs-inline {
+		overflow-wrap: anywhere;
+		word-break: normal;
+		hyphens: auto;
 	}
 
 	.equations {
@@ -1921,6 +1940,7 @@
 	.symbols__row dd {
 		margin: 0;
 		color: var(--color-text-light);
+		min-width: 0;
 	}
 
 	.refs-inline {
@@ -2096,6 +2116,13 @@
 			padding: 22px 0 20px;
 		}
 
+		h1,
+		h2,
+		h3 {
+			overflow-wrap: anywhere;
+			hyphens: auto;
+		}
+
 		.doc-subsection + .doc-subsection {
 			margin-top: 22px;
 		}
@@ -2149,6 +2176,19 @@
 		.notes,
 		.reference-list {
 			padding-left: 1rem;
+		}
+
+		.notes li,
+		.reference-list li,
+		.symbols__row dd,
+		.doc-figure figcaption,
+		.doc-table-caption,
+		.doc-table-note,
+		.refs-inline,
+		.docs-nav a {
+			overflow-wrap: anywhere;
+			word-break: normal;
+			hyphens: auto;
 		}
 
 		.docs-footer {
