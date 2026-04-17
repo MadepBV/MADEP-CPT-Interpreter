@@ -1236,6 +1236,8 @@
 			<a class="docs-header__logo" href="/">MADEP CPT Interpreter</a>
 			<nav class="docs-header__nav" aria-label="Documentation navigation">
 				<a href="/">App</a>
+				<a href="/docs">Main docs</a>
+				<a href="/docs/bishop">Bishop docs</a>
 				<a href="#references">References</a>
 			</nav>
 		</div>
@@ -1263,7 +1265,10 @@
 
 	<div class="docs-shell">
 		<aside class="docs-nav" aria-label="On this page">
-			<div class="docs-nav__title">Contents</div>
+			<div class="docs-nav__title">Pages</div>
+			<a href="/docs" aria-current="page">Main theory</a>
+			<a href="/docs/bishop">Bishop simplified v1</a>
+			<div class="docs-nav__title" style="margin-top:18px">On this page</div>
 			{#each sections as section}
 				<a href={`#${section.id}`}>{section.title}</a>
 			{/each}
@@ -1440,6 +1445,8 @@
 			<div class="docs-footer__links">
 				<p class="docs-footer__heading">Navigation</p>
 				<a href="/">CPT app</a>
+				<a href="/docs">Main docs</a>
+				<a href="/docs/bishop">Bishop docs</a>
 				<a href="#scope">Scope</a>
 				<a href="#references">References</a>
 			</div>
