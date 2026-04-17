@@ -89,18 +89,26 @@
 					The current workflow uses the <strong>active CPT only</strong> as the soil source. The
 					interpreted active-CPT layer column from Stages 2 to 5 is converted to a Bishop soil
 					model by extending those layers horizontally across the drawn section. Terrain, phreatic
-					line, and entry and exit zones are then supplied by the Bishop canvas.
+					line, optional surcharge zone, and entry and exit zones are then supplied by the Bishop
+					canvas.
 				</p>
 				<div class="doc-callout">
 					<strong>Current v1 scope.</strong> The current Stage 6 Bishop app is limited to
-					circular slip surfaces, self-weight loading, and optional hydrostatic pore pressure from a
-					drawn phreatic line. Seismic loading, reinforcement, noncircular surfaces, and rigorous
-					force-and-moment methods such as Spencer or Morgenstern–Price are not part of the
-					current implementation.
+					circular slip surfaces, self-weight loading, one optional uniform vertical surcharge
+					zone, and optional hydrostatic pore pressure from a drawn phreatic line. Seismic
+					loading, reinforcement, noncircular surfaces, and rigorous force-and-moment methods
+					such as Spencer or Morgenstern–Price are not part of the current implementation.
+				</div>
+				<div class="doc-callout">
+					<strong>Current load model.</strong> The live load feature is one optional
+					<strong>uniform vertical surcharge zone</strong> drawn on the terrain with the same
+					two-click workflow as the entry and exit zones. It is interpreted as a strip surcharge
+					over a finite horizontal interval, not as a concentrated point load or inclined load.
 				</div>
 				<div class="equations">
 					<div class="formula">
-						2D cross-section, unit width, circular slip surfaces, self-weight only
+						2D cross-section, unit width, circular slip surfaces, self-weight plus one optional
+						uniform surcharge zone
 					</div>
 				</div>
 				<div class="symbols">
@@ -121,6 +129,18 @@
 						<div class="symbols__row">
 							<dt><em>u</em></dt>
 							<dd>pore-water pressure on the slice base [kPa]</dd>
+						</div>
+						<div class="symbols__row">
+							<dt><em>q</em></dt>
+							<dd>uniform surcharge intensity on a drawn terrain interval [kPa = kN/m²]</dd>
+						</div>
+						<div class="symbols__row">
+							<dt><em>Q</em><sub>i</sub></dt>
+							<dd>vertical surcharge contribution acting on slice <em>i</em> [kN/m]</dd>
+						</div>
+						<div class="symbols__row">
+							<dt><em>V</em><sub>i</sub></dt>
+							<dd>total vertical slice load, with self-weight and surcharge included [kN/m]</dd>
 						</div>
 					</dl>
 				</div>
@@ -350,6 +370,11 @@
 							x<sub>cuts</sub> = &#123;x<sub>entry</sub>, x<sub>exit</sub>, x<sub>backbone</sub>, x<sub>terrain breaks</sub>, x<sub>layer intersections</sub>, x<sub>phreatic intersections</sub>&#125;
 						</div>
 					</div>
+					<div class="doc-callout">
+						<strong>Current surcharge rule.</strong> The load-zone start and end x-coordinates are
+						also treated as mandatory cut positions so the applied load is not smeared across
+						slices that only partly overlap the loaded interval.
+					</div>
 				</section>
 
 				<section class="doc-subsection">
@@ -407,8 +432,8 @@
 				<h2>6. Bishop Simplified equations</h2>
 				<p>
 					The current app uses the Bishop Simplified form for circular slip surfaces with optional
-					base pore pressure and self-weight only. The factor of safety appears inside
-					m<sub>α,i</sub>, so the problem is solved by repeated substitution.
+					base pore pressure and one optional uniform surcharge zone. The factor of safety appears
+					inside m<sub>α,i</sub>, so the problem is solved by repeated substitution.
 				</p>
 				<div class="equations">
 					<div class="formula">
@@ -457,12 +482,59 @@
 					repeats until the FOS change falls below the configured tolerance or the iteration count
 					is exhausted.
 				</p>
+				<section class="doc-subsection">
+					<h3>6.1 Uniform surcharge zone</h3>
+					<p>
+						The current app supports one optional <strong>uniform vertical surcharge zone</strong>
+						drawn on the terrain between <em>x</em><sub>q,start</sub> and
+						<em>x</em><sub>q,end</sub>. The entered value <em>q</em> is interpreted as a strip
+						surcharge in kPa, which is numerically equal to kN/m². In the 2D unit-width Bishop
+						model, that surcharge becomes an added vertical line load on each slice according to
+						the part of the slice width that overlaps the drawn zone.
+					</p>
+					<div class="equations">
+						<div class="formula">
+							b<sub>load,i</sub> = max(0, min(x<sub>R,i</sub>, x<sub>q,end</sub>) −
+							max(x<sub>L,i</sub>, x<sub>q,start</sub>))
+						</div>
+						<div class="formula">
+							Q<sub>i</sub> = q · b<sub>load,i</sub>
+						</div>
+						<div class="formula">
+							V<sub>i</sub> = W<sub>i</sub> + Q<sub>i</sub>
+						</div>
+						<div class="formula">
+							F =
+							Σ[(c′<sub>i</sub>Δx<sub>i</sub> + (V<sub>i</sub> −
+							u<sub>i</sub>l<sub>i</sub>)tanφ′<sub>i</sub>) / m<sub>α,i</sub>(F)]
+							/
+							Σ[V<sub>i</sub> sinα<sub>i</sub>]
+						</div>
+					</div>
+					<p>
+						In practice, the current surcharge implementation simply replaces
+						<em>W</em><sub>i</sub> by <em>V</em><sub>i</sub> everywhere the Bishop solver uses the
+						slice vertical load. The surcharge remains vertical and downward only; no load angle,
+						horizontal component, or concentrated line load distribution is assumed in this v1
+						step.
+					</p>
+					<ul class="notes">
+						<li>The load applies only over slices that overlap the drawn zone and is zero outside it.</li>
+						<li>The load should be stored slice-by-slice as Q<sub>i</sub> so the UI can show soil weight, surcharge, and total vertical load separately.</li>
+						<li>The two-click terrain-anchored interaction should match the existing entry and exit zone workflow.</li>
+					</ul>
+					<div class="doc-callout">
+						<strong>Implementation note.</strong> The current Stage 6 canvas shows the load zone as
+						a highlighted terrain segment with a single intensity input <em>q</em>. If
+						<em>q</em> = 0, the zone can remain drawn but contributes no surcharge to the slices.
+					</div>
+				</section>
 				<details class="doc-details">
 					<summary>Show current fixed-point workflow</summary>
 					<pre><code>1. Compute an ordinary-method seed F₀.
 2. For each slice, evaluate mα,i(Fₖ).
-3. Form the resisting numerator using c′, W, u, l, and φ′.
-4. Divide by the driving sum Σ(Wᵢ sin αᵢ) to get Fₖ₊₁.
+3. Form the resisting numerator using c′, V, u, l, and φ′.
+4. Divide by the driving sum Σ(Vᵢ sin αᵢ) to get Fₖ₊₁.
 5. Stop when |Fₖ₊₁ − Fₖ| &lt; tolerance, or reject on no convergence or mα ≤ mα,min.</code></pre>
 				</details>
 			</section>
@@ -494,6 +566,7 @@
 								<tr><td>Tolerance</td><td>1e−4</td></tr>
 								<tr><td>Minimum m<sub>α</sub></td><td>1e−6</td></tr>
 								<tr><td>Pore pressure</td><td>Dry if no phreatic line is drawn; otherwise hydrostatic from the drawn phreatic line</td></tr>
+								<tr><td>Surface load</td><td>One optional uniform vertical surcharge zone on the terrain, with one shared q input in kPa</td></tr>
 								<tr><td>Execution</td><td>Worker-backed search so the canvas remains responsive while solving</td></tr>
 							</tbody>
 						</table>
@@ -503,7 +576,7 @@
 					<li>The active branch of the parent circle is resolved first and is stored with the trial circle for both rendering and solving.</li>
 					<li>The results table stores ranked circles sorted by increasing FOS.</li>
 					<li>The canvas can display the trial circle being tested while the worker is running.</li>
-					<li>Selected results expose slice-by-slice values including W<sub>i</sub>, α<sub>i</sub>, u<sub>i</sub>, m<sub>α,i</sub>, N<sub>i</sub>, and mobilized shear.</li>
+					<li>Selected results expose slice-by-slice values including W<sub>i</sub>, Q<sub>i</sub>, V<sub>i</sub>, α<sub>i</sub>, u<sub>i</sub>, m<sub>α,i</sub>, N<sub>i</sub>, and mobilized shear.</li>
 				</ul>
 			</section>
 
@@ -519,9 +592,15 @@
 					<li>Draw terrain left to right and accept it with <strong>Finish line</strong> or right-click.</li>
 					<li>Place the active CPT marker on that terrain.</li>
 					<li>Optionally draw the phreatic line.</li>
+					<li>Optionally draw the load zone on the terrain and assign the surcharge intensity <em>q</em>.</li>
 					<li>Draw the entry and exit daylight zones on the terrain.</li>
 					<li>Run the Bishop search.</li>
 				</ol>
+				<p>
+					The load zone uses the same terrain-anchored two-click interaction as the entry and exit
+					zones: first click for the loaded interval start, second click for the end, then assign
+					the surcharge intensity <em>q</em>.
+				</p>
 				<p>
 					The current canvas also supports metric grid display, snap-to-grid, live coordinate readout,
 					middle-mouse panning, wheel zoom, hover tooltips for soil regions, and a live trial-circle
@@ -543,6 +622,7 @@
 					<li>Check one slope with a phreatic line to verify the <em>u·l</em> term.</li>
 					<li>Check one layered slope to verify the distinction between full-slice weight and base-material strength.</li>
 					<li>Check one near-steep exit case to verify the exit-angle and m<sub>α</sub> filters.</li>
+					<li>Check one slope with a finite loaded crest zone to verify slice-overlap logic and the expected reduction in FOS.</li>
 				</ul>
 				<div class="doc-callout doc-callout--warn">
 					<strong>Important.</strong> Passing code checks does not by itself validate the factor of

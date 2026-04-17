@@ -7,6 +7,6 @@
 		<div class="sn">5</div>Tuning <span style="font-size:9px;opacity:.7">exp.</span>
 	</div>
 	<div class="si locked" data-s="5">
-		<div class="sn">6</div>Applications <span style="font-size:9px;opacity:.7">draft</span>
+		<div class="sn">6</div>Applications <span style="font-size:9px;opacity:.7">exp.</span>
 	</div>
 </nav>

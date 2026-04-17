@@ -235,12 +235,28 @@ input[type=range]{accent-color:var(--ac)}
 
 .st6-bishop-layout{
   display:grid;
-  grid-template-columns:300px minmax(0,1fr) 330px;
+  grid-template-columns:300px minmax(0,1fr);
   gap:14px;
   align-items:start;
 }
 .st6-bishop-side{
   min-width:0;
+}
+.st6-bishop-main{
+  min-width:0;
+  display:grid;
+  gap:14px;
+  align-items:start;
+}
+.st6-bishop-results-panel{
+  display:grid;
+  gap:14px;
+}
+.st6-bishop-results-top{
+  display:grid;
+  grid-template-columns:280px minmax(0,1fr);
+  gap:14px;
+  align-items:start;
 }
 .st6-bishop-controls{
   padding:12px;
@@ -349,11 +365,8 @@ input[type=range]{accent-color:var(--ac)}
 }
 
 @media(max-width:1200px){
-  .st6-bishop-layout{
-    grid-template-columns:280px minmax(0,1fr);
-  }
-  .st6-bishop-layout > :last-child{
-    grid-column:1 / -1;
+  .st6-bishop-results-top{
+    grid-template-columns:1fr;
   }
 }
 

@@ -304,6 +304,25 @@ function zoneSamplePoints(terrain, zone, n) {
   return sampleArray([x0, x1], Math.max(2, n)).map((x) => ({ x, y: terrainY(terrain, x) }));
 }
 
+function intervalOverlapWidth(aStart, aEnd, bStart, bEnd) {
+  return Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+}
+
+function surfaceLoadContribution(surfaceLoad, xL, xR) {
+  if (!surfaceLoad || !Number.isFinite(surfaceLoad.q) || surfaceLoad.q <= 0) {
+    return { width: 0, force: 0 };
+  }
+  const width = intervalOverlapWidth(xL, xR, surfaceLoad.xStart, surfaceLoad.xEnd);
+  return {
+    width,
+    force: width * surfaceLoad.q
+  };
+}
+
+function sliceVerticalLoad(slice) {
+  return Number.isFinite(slice?.V) ? slice.V : slice?.W || 0;
+}
+
 function branchEndpointError(circle, point, branch) {
   return Math.abs((Number(point?.y) || 0) - circleYOnBranch(circle, Number(point?.x) || 0, branch));
 }
@@ -418,6 +437,12 @@ function computeSliceBreaks(circle, entry, exit, model, searchConfig) {
     });
   }
 
+  if (model.surfaceLoad) {
+    [model.surfaceLoad.xStart, model.surfaceLoad.xEnd].forEach((x) => {
+      if (x > xStart + GEOM_EPS && x < xEnd - GEOM_EPS) cuts.push(x);
+    });
+  }
+
   return mergeShortIntervals(cuts, minSliceWidth);
 }
 
@@ -470,6 +495,9 @@ function buildSlicesForCircle(circle, entry, exit, model, searchConfig) {
 
     if (totalWeight <= 0) continue;
 
+    const surcharge = surfaceLoadContribution(model.surfaceLoad, xL, xR);
+    const totalVertical = totalWeight + surcharge.force;
+
     const uBase = averagePorePressureOnBase(model, circle, xL, xR);
 
     slices.push({
@@ -491,6 +519,9 @@ function buildSlicesForCircle(circle, entry, exit, model, searchConfig) {
         Math.max(yTopR - yBaseR, 0)
       ),
       W: totalWeight,
+      Q: surcharge.force,
+      V: totalVertical,
+      loadWidth: surcharge.width,
       alphaRad: alpha,
       baseLength,
       uBase,
@@ -509,8 +540,9 @@ function ordinarySeed(slices) {
     const c = slice.baseMaterial.cEff;
     const phi = (slice.baseMaterial.phiEffDeg * Math.PI) / 180;
     const tanPhi = Math.tan(phi);
-    numerator += c * slice.baseLength + (slice.W * Math.cos(slice.alphaRad) - slice.uBase * slice.baseLength) * tanPhi;
-    denominator += slice.W * Math.sin(slice.alphaRad);
+    const V = sliceVerticalLoad(slice);
+    numerator += c * slice.baseLength + (V * Math.cos(slice.alphaRad) - slice.uBase * slice.baseLength) * tanPhi;
+    denominator += V * Math.sin(slice.alphaRad);
   });
   if (denominator <= EPS) return 1;
   const seed = numerator / denominator;
@@ -526,9 +558,10 @@ function buildDiagnostics(slices, F, iterations) {
     const c = slice.baseMaterial.cEff;
     const phi = (slice.baseMaterial.phiEffDeg * Math.PI) / 180;
     const tanPhi = Math.tan(phi);
+    const V = sliceVerticalLoad(slice);
     const mAlpha = Math.cos(slice.alphaRad) + (Math.sin(slice.alphaRad) * tanPhi) / F;
     const N =
-      (slice.W -
+      (V -
         ((c * slice.baseLength - slice.uBase * slice.baseLength * tanPhi) * Math.sin(slice.alphaRad)) / F) /
       mAlpha;
     const T = (c * slice.baseLength + (N - slice.uBase * slice.baseLength) * tanPhi) / F;
@@ -551,7 +584,7 @@ function buildDiagnostics(slices, F, iterations) {
 function solveBishopSimplified(slices, solverConfig) {
   let driving = 0;
   slices.forEach((slice) => {
-    driving += slice.W * Math.sin(slice.alphaRad);
+    driving += sliceVerticalLoad(slice) * Math.sin(slice.alphaRad);
   });
   if (driving <= EPS) {
     return {
@@ -577,6 +610,7 @@ function solveBishopSimplified(slices, solverConfig) {
       const c = slice.baseMaterial.cEff;
       const phi = (slice.baseMaterial.phiEffDeg * Math.PI) / 180;
       const tanPhi = Math.tan(phi);
+      const V = sliceVerticalLoad(slice);
       const mAlpha = Math.cos(slice.alphaRad) + (Math.sin(slice.alphaRad) * tanPhi) / F;
       mDiag.push(mAlpha);
       if (mAlpha <= (solverConfig.minMAlpha || 1e-6)) {
@@ -590,7 +624,7 @@ function solveBishopSimplified(slices, solverConfig) {
           sliceMAlpha: mDiag
         };
       }
-      resisting += (c * slice.dx + (slice.W - slice.uBase * slice.baseLength) * tanPhi) / mAlpha;
+      resisting += (c * slice.dx + (V - slice.uBase * slice.baseLength) * tanPhi) / mAlpha;
     }
 
     const nextF = resisting / driving;
@@ -892,6 +926,21 @@ export function buildBishopModelFromStageLayers(layers, bishopState) {
         }
       : null;
 
+  const rawSurfaceLoad = bishopState?.surfaceLoad || null;
+  const surfaceLoadQ = Math.max(Number(rawSurfaceLoad?.q) || 0, 0);
+  let surfaceLoad = null;
+  if (surfaceLoadQ > 0 && Number.isFinite(rawSurfaceLoad?.xStart) && Number.isFinite(rawSurfaceLoad?.xEnd)) {
+    const xStart = clampXToTerrain(terrain, Math.min(rawSurfaceLoad.xStart, rawSurfaceLoad.xEnd));
+    const xEnd = clampXToTerrain(terrain, Math.max(rawSurfaceLoad.xStart, rawSurfaceLoad.xEnd));
+    if (xEnd > xStart + GEOM_EPS) {
+      surfaceLoad = {
+        xStart,
+        xEnd,
+        q: surfaceLoadQ
+      };
+    }
+  }
+
   const boundaryYs = uniqueSorted(
     layers
       .slice(0, -1)
@@ -909,6 +958,7 @@ export function buildBishopModelFromStageLayers(layers, bishopState) {
     strengthSet: bishopState?.strengthSet || 'characteristic',
     bands,
     regions,
-    boundaryYs
+    boundaryYs,
+    surfaceLoad
   };
 }
