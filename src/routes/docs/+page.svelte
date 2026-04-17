@@ -479,7 +479,7 @@
 						{ term: 'S<sub>compat</sub>', meaning: 'compatibility score between the CPT family and neighboring subtype group [-]' },
 						{ term: 'S<sub>cont</sub>', meaning: 'continuity score against the outer layer beyond the immediate neighbor [-]' },
 						{ term: 'P', meaning: 'penalty term for sharp transitions and critical marker layers [-]' },
-						{ term: 'λ', meaning: 'smart-merge sensitivity slider in the range 0…2 [-]' },
+						{ term: 'λ', meaning: 'smart-merge sensitivity slider in the range 0…6 [-]' },
 						{ term: 'ΔS<sub>min</sub>', meaning: 'minimum score lead required for one direction to override the tie-break rule [-]' },
 						{ term: 'S<sub>pair</sub>', meaning: 'symmetric compatibility score of one existing baseline boundary [-]' },
 						{ term: 'S<sub>crit</sub>', meaning: 'minimum pair score required for a post-merge removal of an existing boundary [-]' }
@@ -488,7 +488,7 @@
 						'The original boundary detection step is never redefined by smart merge; smart merge operates only after the base layering algorithm has already run.',
 						'In smart mode, similarity-based reduction is applied before the final minimum-thickness enforcement. The minimum thickness therefore acts as the last hard constraint, not as the first distortion of the layering.',
 						'Very thin sections are intentionally down-weighted in the resistance to merging: sliver layers receive a small merge bonus, and sharp-transition penalties are attenuated when the layer thickness is small relative to a fixed sliver reference. This early similarity reduction is therefore independent of the chosen minimum thickness.',
-						'Low sensitivity keeps smart merge closer to the conservative baseline behavior; high sensitivity allows smaller continuity advantages to influence the merge direction and makes it easier to remove highly compatible boundaries.',
+						'Low sensitivity keeps smart merge closer to the conservative baseline behavior; high sensitivity allows smaller continuity advantages to influence the merge direction and makes it easier to remove highly compatible boundaries. At the extreme right-hand end of the range, the smart pass becomes willing to absorb almost all remaining compatible boundaries before the minimum-thickness rule is applied.',
 						'The final layer count is not strictly monotonic with the sensitivity value. Because minimum-thickness enforcement runs after the smart-merge pass, a higher sensitivity can change the topology of the intermediate layering in a way that later produces either fewer or more final layers than a lower sensitivity case.',
 						'If the two candidate directions are nearly equal, the app resolves the tie by merging into the thicker neighboring layer; if the thicknesses are equal, upward merge is chosen.',
 						'The penalty term reduces the score for large q<sub>c</sub> jumps, large R<sub>f</sub> jumps, peat/non-peat transitions, gravel/non-gravel transitions, and thin layers that act as critical markers such as very weak peat, very coarse gravel, very high R<sub>f</sub>, or extreme q<sub>c</sub>.'
@@ -2031,6 +2031,8 @@
 
 		.docs-shell {
 			grid-template-columns: 1fr;
+			padding: 22px 18px 56px;
+			gap: 20px;
 		}
 
 		.docs-nav {
@@ -2041,6 +2043,135 @@
 		.docs-footer__inner {
 			grid-template-columns: 1fr;
 			gap: 2rem;
+		}
+	}
+
+	@media (max-width: 680px) {
+		.docs-header {
+			padding: 8px 12px 0;
+		}
+
+		.docs-header__inner {
+			padding: 0.8rem 0.9rem;
+			gap: 0.85rem;
+			flex-wrap: wrap;
+		}
+
+		.docs-header__nav {
+			width: 100%;
+			justify-content: flex-start;
+			gap: 0.9rem;
+			flex-wrap: wrap;
+		}
+
+		.hero {
+			padding: 5rem 18px 2.75rem;
+		}
+
+		.hero__lead {
+			font-size: 0.98rem;
+			line-height: 1.62;
+		}
+
+		.hero__actions {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.hero__actions .btn {
+			justify-content: center;
+			width: 100%;
+		}
+
+		.hero__trust {
+			gap: 0.55rem 1rem;
+			font-size: 0.78rem;
+		}
+
+		.docs-shell {
+			padding: 20px 14px 48px;
+		}
+
+		.doc-card {
+			padding: 22px 0 20px;
+		}
+
+		.doc-subsection + .doc-subsection {
+			margin-top: 22px;
+		}
+
+		.equations :global(.formula),
+		.equations :global(div) {
+			padding: 10px 12px;
+			font-size: 0.96rem;
+			line-height: 1.4;
+			text-align: left;
+			overflow-x: auto;
+		}
+
+		.symbols__row {
+			grid-template-columns: 1fr;
+			gap: 4px;
+			padding: 8px 0;
+		}
+
+		.doc-figure,
+		.doc-figure-toggle .doc-figure {
+			padding: 10px;
+		}
+
+		.doc-figure-toggle summary,
+		.doc-table-toggle summary {
+			padding: 0.75rem 0.85rem;
+			font-size: 0.88rem;
+		}
+
+		.doc-table-toggle .doc-table-caption,
+		.doc-table-toggle .doc-table-note {
+			padding-left: 0.85rem;
+			padding-right: 0.85rem;
+		}
+
+		.doc-table-toggle .doc-table-scroll {
+			margin: 0 0.85rem;
+		}
+
+		.doc-table {
+			font-size: 0.88rem;
+			min-width: 720px;
+		}
+
+		.doc-table th,
+		.doc-table td {
+			padding: 0.62rem 0.68rem;
+		}
+
+		.notes,
+		.reference-list {
+			padding-left: 1rem;
+		}
+
+		.docs-footer {
+			padding: 3.5rem 18px 1.75rem;
+		}
+	}
+
+	@media (max-width: 460px) {
+		.hero__trust span {
+			padding-right: 0;
+		}
+
+		.hero__trust span::after {
+			display: none;
+		}
+
+		.docs-shell {
+			padding-left: 12px;
+			padding-right: 12px;
+		}
+
+		.doc-table {
+			min-width: 640px;
 		}
 	}
 
