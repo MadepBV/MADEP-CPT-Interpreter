@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 export const STAGE7_REPORT_STORAGE_PREFIX = 'stage7-report:';
 

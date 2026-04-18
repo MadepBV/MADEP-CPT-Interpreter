@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 const GAMMA_W = 9.81;
 const P_REF = 100;
