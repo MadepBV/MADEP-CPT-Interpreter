@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <svelte:options runes={false} />
 
 <script lang="ts">
@@ -22,6 +23,10 @@
   let payload: any = null;
   let loadError = '';
   let chartReady = false;
+  let includePrintAppendices = true;
+  let hoveredProfileLayerIndex: number | null = null;
+  let profileSvgEl: SVGSVGElement | null = null;
+  let profileTooltipEl: HTMLDivElement | null = null;
   let chartRefs: any[] = [];
   const soilFillColors = SOIL_FILL_COLORS as Record<string, string>;
   type LegacyMediaQueryList = MediaQueryList & {
@@ -80,6 +85,96 @@
 
   function soilColor(type: string) {
     return soilFillColors[type] || '#D3D1C7';
+  }
+
+  function profileLayerName(layer: any) {
+    return layer?.subtype || layer?.type || 'Layer';
+  }
+
+  function syncProfileLayerHighlight() {
+    if (!profileSvgEl) return;
+    const activeIndex = hoveredProfileLayerIndex;
+    const fills = Array.from(profileSvgEl.querySelectorAll('[data-layer-fill]')) as SVGElement[];
+    const hits = Array.from(profileSvgEl.querySelectorAll('[data-layer-preview]')) as SVGElement[];
+
+    for (const fill of fills) {
+      const isActive =
+        activeIndex != null && Number(fill.getAttribute('data-layer-index') || '') === Number(activeIndex);
+      fill.setAttribute('fill-opacity', isActive ? '1' : '0.85');
+      fill.setAttribute('stroke', isActive ? 'rgba(36,88,107,0.95)' : 'rgba(0,0,0,0.15)');
+      fill.setAttribute('stroke-width', isActive ? '1.2' : '0.5');
+    }
+
+    for (const hit of hits) {
+      const isActive =
+        activeIndex != null && Number(hit.getAttribute('data-layer-index') || '') === Number(activeIndex);
+      hit.setAttribute('fill', isActive ? 'rgba(61,107,106,0.12)' : 'transparent');
+      hit.setAttribute('stroke', isActive ? 'rgba(61,107,106,0.55)' : 'none');
+      hit.setAttribute('stroke-width', isActive ? '0.8' : '0');
+    }
+  }
+
+  function setHoveredProfileLayer(layerIndex: number | null) {
+    hoveredProfileLayerIndex = layerIndex;
+    syncProfileLayerHighlight();
+  }
+
+  function handleProfileLegendEnter(layerIndex: number) {
+    setHoveredProfileLayer(layerIndex);
+  }
+
+  function handleProfileLegendLeave() {
+    if (profileTooltipEl?.style.display === 'block') return;
+    setHoveredProfileLayer(null);
+  }
+
+  function hideProfileTooltip() {
+    setHoveredProfileLayer(null);
+    if (profileTooltipEl) profileTooltipEl.style.display = 'none';
+  }
+
+  function showProfileTooltip(target: Element, event: MouseEvent) {
+    if (!profileTooltipEl || !profileSvgEl) return;
+    setHoveredProfileLayer(Number(target.getAttribute('data-layer-index') || '') || null);
+    const data = (target as HTMLElement).dataset;
+    profileTooltipEl.innerHTML = `<strong>${data.type || ''}</strong>
+      <div class="mut">${data.subtype || '—'}</div>
+      <div class="row"><span>Depth</span><span>${data.top}–${data.bot} m</span></div>
+      <div class="row"><span>Thickness</span><span>${data.thk} m</span></div>
+      <div class="row"><span>Original points</span><span>${data.points || '—'}</span></div>
+      <div class="row"><span>qc original</span><span>${data.qcmin}–${data.qcmax} MPa</span></div>
+      <div class="row"><span>qc layer avg</span><span>${data.qcavg} MPa</span></div>
+      <div class="row"><span>Rf original</span><span>${data.rfmin}–${data.rfmax} %</span></div>
+      <div class="row"><span>Rf layer avg</span><span>${data.rfavg} %</span></div>
+      <div class="row"><span>fs original</span><span>${data.fsmin}–${data.fsmax} kPa</span></div>
+      <div class="row"><span>fs layer avg</span><span>${data.fsavg} kPa</span></div>`;
+    profileTooltipEl.style.display = 'block';
+
+    const wrap = profileSvgEl.parentElement;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const pad = 12;
+    const tipW = 250;
+    const tipH = 210;
+    let left = event.clientX - rect.left + 14;
+    let top = event.clientY - rect.top + 14;
+    if (left + tipW > rect.width - pad) left = Math.max(pad, event.clientX - rect.left - tipW - 14);
+    if (top + tipH > rect.height - pad) top = Math.max(pad, event.clientY - rect.top - tipH - 14);
+    profileTooltipEl.style.left = `${left}px`;
+    profileTooltipEl.style.top = `${top}px`;
+  }
+
+  function handleProfileSvgMove(event: MouseEvent) {
+    const target = (event.target as Element | null)?.closest?.('[data-layer-preview]') as Element | null;
+    if (!target) {
+      hideProfileTooltip();
+      return;
+    }
+    showProfileTooltip(target, event);
+  }
+
+  $: if (profileSvgEl) {
+    syncProfileLayerHighlight();
   }
 
   function methodMetricLabel() {
@@ -153,6 +248,75 @@
     };
     window.requestAnimationFrame(resize);
     window.setTimeout(resize, 80);
+  }
+
+  function clearSmartPrintBreaks() {
+    document
+      .querySelectorAll('.report-section--print-break-before')
+      .forEach((section) => section.classList.remove('report-section--print-break-before'));
+  }
+
+  function applySmartPrintBreaks() {
+    clearSmartPrintBreaks();
+
+    const report = document.querySelector('.report') as HTMLElement | null;
+    if (!report) return;
+
+    const mmToPx = 96 / 25.4;
+    const printablePageHeight = (297 - 20) * mmToPx;
+    const minBodyBelowHeading = 28 * mmToPx;
+    const reportTop = report.getBoundingClientRect().top + window.scrollY;
+    const sections = Array.from(report.querySelectorAll('.report-section')) as HTMLElement[];
+
+    for (const section of sections) {
+      const head = section.querySelector(':scope > .report-section__head') as HTMLElement | null;
+      const firstContent = head?.nextElementSibling as HTMLElement | null;
+      if (!head || !firstContent) continue;
+
+      const firstTable = firstContent.querySelector('table') as HTMLTableElement | null;
+      const firstTableHead = firstTable?.querySelector('thead') as HTMLElement | null;
+      const firstTableRow = firstTable?.querySelector('tbody tr') as HTMLElement | null;
+      let minBodyBelowHeading = 28 * mmToPx;
+
+      if (firstTable) {
+        const tableLeadHeight =
+          (firstTableHead?.getBoundingClientRect().height || 0) +
+          (firstTableRow?.getBoundingClientRect().height || 0) * 2 +
+          16;
+        minBodyBelowHeading = Math.max(minBodyBelowHeading, tableLeadHeight);
+      }
+
+      if (section.classList.contains('report-section--layer-model')) {
+        minBodyBelowHeading = Math.max(minBodyBelowHeading, 52 * mmToPx);
+      }
+
+      if (section.classList.contains('report-section--cpt-profile')) {
+        minBodyBelowHeading = Math.max(minBodyBelowHeading, 40 * mmToPx);
+      }
+
+      const headTop = head.getBoundingClientRect().top + window.scrollY - reportTop;
+      const offsetWithinPage = ((headTop % printablePageHeight) + printablePageHeight) % printablePageHeight;
+      const remainingOnPage = printablePageHeight - offsetWithinPage;
+      const requiredSpace =
+        head.getBoundingClientRect().height + Math.min(firstContent.getBoundingClientRect().height, minBodyBelowHeading);
+
+      if (offsetWithinPage > 1 && remainingOnPage < requiredSpace) {
+        section.classList.add('report-section--print-break-before');
+      }
+    }
+  }
+
+  function syncSmartPrintLayout(printMedia?: LegacyMediaQueryList | null) {
+    resizeChartsForLayout();
+    const update = () => {
+      if (printMedia?.matches) {
+        applySmartPrintBreaks();
+      } else {
+        clearSmartPrintBreaks();
+      }
+    };
+    window.requestAnimationFrame(update);
+    window.setTimeout(update, 140);
   }
 
   function mountChart(id: string, config: any) {
@@ -317,9 +481,9 @@
   }
 
   onMount(() => {
-    const handlePrintLayout = () => resizeChartsForLayout();
     const printMedia = window.matchMedia ? (window.matchMedia('print') as LegacyMediaQueryList) : null;
     const legacyPrintMedia = printMedia as LegacyMediaQueryList | null;
+    const handlePrintLayout = () => syncSmartPrintLayout(legacyPrintMedia);
 
     window.addEventListener('beforeprint', handlePrintLayout);
     window.addEventListener('afterprint', handlePrintLayout);
@@ -384,10 +548,14 @@
   <div class="report-shell">
     <div class="report-toolbar no-print">
       <a class="btn sm" href="/">CPT app</a>
+      <label class="report-toolbar__toggle" for="include-print-appendices">
+        <input id="include-print-appendices" type="checkbox" bind:checked={includePrintAppendices} />
+        <span>Include Appendix A and B in print</span>
+      </label>
       <button class="btn pri" onclick={() => window.print()}>Print / Save as PDF</button>
     </div>
 
-    <article class="report">
+    <article class:report--concise-print={!includePrintAppendices} class="report">
       <section class="report-cover">
         <div class="report-cover__topline">
           <div class="report-cover__brand">CPT Interpreter</div>
@@ -493,8 +661,12 @@
           <div class="report-profile__visual">
             {#if payload.visuals?.layerProfile}
               <svg
+                bind:this={profileSvgEl}
                 viewBox={`0 0 ${payload.visuals.layerProfile.width} ${payload.visuals.layerProfile.height}`}
+                role="img"
                 aria-label="qc profile with final layering"
+                onmousemove={handleProfileSvgMove}
+                onmouseleave={hideProfileTooltip}
               >
                 {@html payload.visuals.layerProfile.markup}
               </svg>
@@ -521,11 +693,15 @@
               </thead>
               <tbody>
                 {#each payload.layers as layer}
-                  <tr>
+                  <tr
+                    class:report-profile__legend-row--hover={hoveredProfileLayerIndex === layer.index}
+                    onmouseenter={() => handleProfileLegendEnter(layer.index)}
+                    onmouseleave={handleProfileLegendLeave}
+                  >
                     <td>{layer.index}</td>
                     <td class="report-profile__type report-profile__name">
                       <span class="report-profile__swatch" style={`background:${soilColor(layer.type)};`}></span>
-                      <span>{layer.subtype || layer.type}</span>
+                      <span>{profileLayerName(layer)}</span>
                     </td>
                     <td>{fmt(layer.avgQc, 2)}</td>
                     <td>{layer.avgFsKPa != null ? fmt(layer.avgFsKPa, 0) : '—'}</td>
@@ -534,77 +710,80 @@
               </tbody>
             </table>
           </div>
+          <div class="section-tip report-profile__tooltip no-print" bind:this={profileTooltipEl}></div>
         </div>
       </section>
 
       <section class="report-section report-section--layer-model">
-        <div class="report-section__head">
-          <h2>Final Layer Model</h2>
-          <p>Characteristic values and interpretation output for the selected CPT only.</p>
-        </div>
-        <div class="report-card">
-          <table class="tbl report-table report-table--layers">
-            <colgroup>
-              <col class="report-table__col-index" />
-              <col class="report-table__col-depth" />
-              <col class="report-table__col-depth" />
-              <col class="report-table__col-depth" />
-              <col class="report-table__col-depth" />
-              <col class="report-table__col-thk" />
-              <col class="report-table__col-type" />
-              <col class="report-table__col-subtype" />
-              <col class="report-table__col-avgwide" />
-              <col class="report-table__col-avgwide" />
-              <col class="report-table__col-avgnarrow" />
-              <col class="report-table__col-param" />
-              <col class="report-table__col-param" />
-              <col class="report-table__col-smallparam" />
-              <col class="report-table__col-smallparam" />
-              <col class="report-table__col-smallparam" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Top (m bgl)</th>
-                <th>Bot (m bgl)</th>
-                <th>Top (m TAW)</th>
-                <th>Bot (m TAW)</th>
-                <th>Thk. (m)</th>
-                <th>Type</th>
-                <th>Subtype</th>
-                <th>avg qc<span class="report-table__unit">(MPa)</span></th>
-                <th>avg fs<span class="report-table__unit">(kPa)</span></th>
-                <th>avg Rf (%)</th>
-                <th>gamma<span class="report-table__unit">(kN/m³)</span></th>
-                <th>gamma_sat<span class="report-table__unit">(kN/m³)</span></th>
-                <th>phi'<span class="report-table__unit">(°)</span></th>
-                <th>c'<span class="report-table__unit">(kPa)</span></th>
-                <th>cu<span class="report-table__unit">(kPa)</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each payload.layers as layer}
+        <div class="report-section__block report-section__block--keep">
+          <div class="report-section__head">
+            <h2>Final Layer Model</h2>
+            <p>Characteristic values and interpretation output for the selected CPT only.</p>
+          </div>
+          <div class="report-card">
+            <table class="tbl report-table report-table--layers">
+              <colgroup>
+                <col class="report-table__col-index" />
+                <col class="report-table__col-depth" />
+                <col class="report-table__col-depth" />
+                <col class="report-table__col-depth" />
+                <col class="report-table__col-depth" />
+                <col class="report-table__col-thk" />
+                <col class="report-table__col-type" />
+                <col class="report-table__col-subtype" />
+                <col class="report-table__col-avgwide" />
+                <col class="report-table__col-avgwide" />
+                <col class="report-table__col-avgnarrow" />
+                <col class="report-table__col-param" />
+                <col class="report-table__col-param" />
+                <col class="report-table__col-smallparam" />
+                <col class="report-table__col-smallparam" />
+                <col class="report-table__col-smallparam" />
+              </colgroup>
+              <thead>
                 <tr>
-                  <td>{layer.index}</td>
-                  <td>{fmt(layer.top, 2)}</td>
-                  <td>{fmt(layer.bot, 2)}</td>
-                  <td>{layer.topTaw != null ? fmt(layer.topTaw, 2) : '—'}</td>
-                  <td>{layer.botTaw != null ? fmt(layer.botTaw, 2) : '—'}</td>
-                  <td>{fmt(layer.thickness, 2)}</td>
-                  <td><span class="report-chip" style={soilChipStyle(layer.type)}>{layer.type}</span></td>
-                  <td>{layer.subtype || '—'}</td>
-                  <td>{fmt(layer.avgQc, 3)}</td>
-                  <td>{layer.avgFsKPa != null ? fmt(layer.avgFsKPa, 1) : '—'}</td>
-                  <td>{layer.avgRf != null ? fmt(layer.avgRf, 2) : '—'}</td>
-                  <td>{fmt(layer.gamma, 1)}</td>
-                  <td>{fmt(layer.gammaSat, 1)}</td>
-                  <td>{fmt(layer.phi, 1)}</td>
-                  <td>{fmt(layer.c, 1)}</td>
-                  <td>{fmt(layer.cu, 1)}</td>
+                  <th>#</th>
+                  <th>Top (m bgl)</th>
+                  <th>Bot (m bgl)</th>
+                  <th>Top (m TAW)</th>
+                  <th>Bot (m TAW)</th>
+                  <th>Thk. (m)</th>
+                  <th>Type</th>
+                  <th>Subtype</th>
+                  <th>avg qc<span class="report-table__unit">(MPa)</span></th>
+                  <th>avg fs<span class="report-table__unit">(kPa)</span></th>
+                  <th>avg Rf (%)</th>
+                  <th>gamma<span class="report-table__unit">(kN/m³)</span></th>
+                  <th>gamma_sat<span class="report-table__unit">(kN/m³)</span></th>
+                  <th>phi'<span class="report-table__unit">(°)</span></th>
+                  <th>c'<span class="report-table__unit">(kPa)</span></th>
+                  <th>cu<span class="report-table__unit">(kPa)</span></th>
                 </tr>
-              {/each}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {#each payload.layers as layer}
+                  <tr>
+                    <td>{layer.index}</td>
+                    <td>{fmt(layer.top, 2)}</td>
+                    <td>{fmt(layer.bot, 2)}</td>
+                    <td>{layer.topTaw != null ? fmt(layer.topTaw, 2) : '—'}</td>
+                    <td>{layer.botTaw != null ? fmt(layer.botTaw, 2) : '—'}</td>
+                    <td>{fmt(layer.thickness, 2)}</td>
+                    <td><span class="report-chip" style={soilChipStyle(layer.type)}>{layer.type}</span></td>
+                    <td>{layer.subtype || '—'}</td>
+                    <td>{fmt(layer.avgQc, 3)}</td>
+                    <td>{layer.avgFsKPa != null ? fmt(layer.avgFsKPa, 1) : '—'}</td>
+                    <td>{layer.avgRf != null ? fmt(layer.avgRf, 2) : '—'}</td>
+                    <td>{fmt(layer.gamma, 1)}</td>
+                    <td>{fmt(layer.gammaSat, 1)}</td>
+                    <td>{fmt(layer.phi, 1)}</td>
+                    <td>{fmt(layer.c, 1)}</td>
+                    <td>{fmt(layer.cu, 1)}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
         </div>
         {#if payload.layerWarnings.length}
           <div class="report-grid report-grid--2">
@@ -624,7 +803,7 @@
           <p>Hardening Soil and hydraulic parameters carried into engineering work.</p>
         </div>
         <div class="report-card">
-          <table class="tbl report-table">
+          <table class="tbl report-table report-table--model-params">
             <thead>
               <tr>
                 <th>#</th>
@@ -854,7 +1033,7 @@
         </section>
       {/if}
 
-      <section class="report-section">
+      <section class="report-section report-section--appendix">
         <div class="report-section__head">
           <h2>Appendix A - Raw CPT Table</h2>
           <p>Full row set carried into the report payload.</p>
@@ -887,7 +1066,7 @@
         </div>
       </section>
 
-      <section class="report-section">
+      <section class="report-section report-section--appendix">
         <div class="report-section__head">
           <h2>Appendix B - Pointwise Classification Table</h2>
           <p>Classification output frozen at report generation time.</p>
@@ -940,9 +1119,29 @@
 
   .report-toolbar {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 10px;
     margin-bottom: 16px;
+  }
+
+  .report-toolbar__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--bd);
+    border-radius: var(--r);
+    background: var(--panel);
+    color: var(--tx);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .report-toolbar__toggle input {
+    margin: 0;
   }
 
   .report {
@@ -1011,6 +1210,11 @@
     display: grid;
     gap: 4px;
     margin-bottom: 16px;
+  }
+
+  .report-section__block {
+    display: grid;
+    align-content: start;
   }
 
   .report-section__head p {
@@ -1092,8 +1296,9 @@
   }
 
   .report-profile {
+    position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 230px;
+    grid-template-columns: minmax(0, 1fr) 290px;
     align-items: start;
     gap: 16px;
     overflow: hidden;
@@ -1103,6 +1308,7 @@
     min-width: 0;
     display: flex;
     justify-content: center;
+    position: relative;
   }
 
   .report-profile svg {
@@ -1131,12 +1337,12 @@
   }
 
   .report-profile__col-name {
-    width: 47%;
+    width: 45%;
   }
 
   .report-profile__col-qc,
   .report-profile__col-fs {
-    width: 23%;
+    width: 24%;
   }
 
   .report-profile__type {
@@ -1159,6 +1365,15 @@
     border-radius: 2px;
     border: 1px solid rgba(24, 24, 26, 0.18);
     flex: 0 0 auto;
+  }
+
+  .report-profile__legend-row--hover td {
+    background: color-mix(in srgb, var(--acl) 28%, transparent);
+  }
+
+  .report-profile__tooltip {
+    min-width: 220px;
+    max-width: 280px;
   }
 
   .report-canvas {
@@ -1226,7 +1441,7 @@
 
   .report-table sub {
     font-size: 0.78em;
-    line-height: 0;
+    line-height: 1;
   }
 
   .report-table__unit {
@@ -1234,6 +1449,10 @@
     white-space: nowrap;
     font-size: 0.92em;
     font-weight: 500;
+  }
+
+  .report-table--model-params th {
+    line-height: 1.22;
   }
 
   .report-table__col-index {
@@ -1253,15 +1472,15 @@
   }
 
   .report-table__col-subtype {
-    width: 10.8%;
+    width: 11.4%;
   }
 
   .report-table__col-avgwide {
-    width: 8.4%;
+    width: 7.5%;
   }
 
   .report-table__col-avgnarrow {
-    width: 4.4%;
+    width: 4.8%;
   }
 
   .report-table__col-param {
@@ -1296,6 +1515,11 @@
   }
 
   @media (max-width: 980px) {
+    .report-toolbar {
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+
     .report-grid--4,
     .report-cover__meta {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1320,7 +1544,7 @@
     :global(body) {
       background: #fff;
       color: #111;
-      font-size: 10px;
+      font-size: 8px;
       line-height: 1.32;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -1337,26 +1561,31 @@
       display: none !important;
     }
 
+    .report--concise-print .report-section--appendix {
+      display: none !important;
+    }
+
     .report-shell {
       max-width: none;
       padding: 0;
     }
 
     .report {
+      display: block;
       gap: 0;
     }
 
     .report-cover h1 {
-      font-size: 18pt;
+      font-size: 14.4pt;
     }
 
     .report-section h2 {
-      font-size: 10.5pt;
+      font-size: 8.4pt;
     }
 
     .report-cover__meta strong,
     .report-stat strong {
-      font-size: 9.5pt;
+      font-size: 7.6pt;
     }
 
     .report-cover__brand,
@@ -1364,7 +1593,7 @@
     .report-cover__meta span,
     .report-stat span,
     .tbl th {
-      font-size: 6pt;
+      font-size: 4.8pt;
     }
 
     .report-cover__topline {
@@ -1373,7 +1602,7 @@
 
     .report-card h3,
     .report-card h4 {
-      font-size: 7.8pt;
+      font-size: 6.2pt;
       margin-bottom: 6px;
     }
 
@@ -1386,15 +1615,22 @@
       page-break-after: avoid;
     }
 
+    .report-section__head + .report-card,
+    .report-section__head + .report-grid,
+    .report-section__head + .info {
+      break-before: avoid;
+      page-break-before: avoid;
+    }
+
     .report-section__head p,
     .report-muted,
     .info {
-      font-size: 6.9pt;
+      font-size: 5.5pt;
     }
 
     .report-pt,
     .tbl {
-      font-size: 6.6pt;
+      font-size: 5.3pt;
     }
 
     .report-grid,
@@ -1421,8 +1657,6 @@
     }
 
     .report-section--cpt-profile {
-      break-before: page;
-      page-break-before: always;
       padding-top: 2mm;
       padding-bottom: 2.5mm;
       break-inside: avoid;
@@ -1432,13 +1666,21 @@
     .report-section--layer-model {
       break-before: page;
       page-break-before: always;
-      padding-top: 8mm;
+      padding-top: 4mm;
+    }
+
+    .report-section__block--keep {
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     .report-section--stage6 {
-      break-before: page;
-      page-break-before: always;
       padding-top: 2mm;
+    }
+
+    :global(.report-section--print-break-before) {
+      break-before: page !important;
+      page-break-before: always !important;
     }
 
     .report-cover {
@@ -1460,7 +1702,7 @@
     }
 
     .report-profile {
-      grid-template-columns: minmax(0, 1fr) 45mm;
+      grid-template-columns: minmax(0, 1fr) 58mm;
       gap: 6px;
     }
 
@@ -1469,16 +1711,16 @@
     }
 
     .report-section--cpt-profile .report-section__head p {
-      font-size: 6.2pt;
+      font-size: 5pt;
     }
 
     .report-profile__legend h3 {
       margin-bottom: 4px;
-      font-size: 7pt;
+      font-size: 5.6pt;
     }
 
     .report-profile__table {
-      font-size: 5.7pt;
+      font-size: 4.6pt;
       table-layout: auto;
     }
 
@@ -1549,12 +1791,16 @@
     }
 
     .report-table th {
-      line-height: 1.05;
+      line-height: 1.15;
+    }
+
+    .report-table--model-params th {
+      line-height: 1.24;
     }
 
     .report-chip {
       padding: 0.5px 3px;
-      font-size: 5.6pt;
+      font-size: 4.5pt;
       margin-right: 3px;
     }
 
