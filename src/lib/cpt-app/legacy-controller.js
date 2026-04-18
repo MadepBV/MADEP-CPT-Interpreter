@@ -39,6 +39,7 @@ let __legacyControllerInitialized = false;
 let __legacyControllerHashBound = false;
 let stage6BishopWorker = null;
 let stage6BishopRunId = 0;
+let classificationRefreshTimer = null;
 const stage6BishopCanvasState = {
   canvas:null,
   pointerDrag:null,
@@ -60,7 +61,7 @@ function newCptState(id){
     minThk:0.50,
     smartMerge:true,
     smartMergeSensitivity:1.10,
-    method:'robertson',
+    method:'robertson2016',
     alphaMethod:'B',
     stiffMethod:'B',
     paramMethod:'sb260',
@@ -87,6 +88,7 @@ let S=PROJECT.cpts[0];
 function selectCpt(idx){
   if(idx<0||idx>=PROJECT.cpts.length)return;
   stage6BishopStopSearch(true);
+  cancelClassificationRefresh();
 
   // Destroy any existing Chart.js instances tied to the DOM canvases
   // (they are shared DOM elements, but each CPT has its own chart state)
@@ -126,6 +128,7 @@ function selectCpt(idx){
   document.getElementById('btnAlphaB').classList.toggle('active',S.alphaMethod==='B');
   document.getElementById('btnStiffA').classList.toggle('active',S.stiffMethod==='A');
   document.getElementById('btnStiffB').classList.toggle('active',S.stiffMethod==='B');
+  syncClassificationMethodCards(S.method);
 
   if(S.data.length){
     renderMeta();
@@ -1115,6 +1118,35 @@ function updateWTLine(chart,wt,xmax){
   chart.update('none'); // no animation
 }
 
+function cancelClassificationRefresh(){
+  if(classificationRefreshTimer!=null){
+    clearTimeout(classificationRefreshTimer);
+    classificationRefreshTimer=null;
+  }
+}
+
+function refreshClassificationDerivedViews(){
+  cancelClassificationRefresh();
+  if(!S.classified.length) return;
+  detectLayers();
+  renderLayerPreviewSvg('layerPreviewSvg');
+  const layerColSvg=document.getElementById('layerColSvg');
+  if(layerColSvg) drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1]?.z+0.5||20);
+  if(document.getElementById('p2').classList.contains('active')) renderLayers();
+  const info=document.getElementById('minThkInfo');
+  if(info) info.textContent=`→ ${S.layers.length} layers`;
+}
+
+function scheduleClassificationDerivedViews(delay=90){
+  cancelClassificationRefresh();
+  const info=document.getElementById('minThkInfo');
+  if(info) info.textContent='Updating...';
+  classificationRefreshTimer=setTimeout(()=>{
+    classificationRefreshTimer=null;
+    refreshClassificationDerivedViews();
+  }, delay);
+}
+
 function setMinThk(v,fromInput){
   if(isNaN(v)||v<0.05)return;
   S.minThk=v;
@@ -1123,10 +1155,7 @@ function setMinThk(v,fromInput){
   document.getElementById('minThkInfo').textContent='';
   // If already classified, re-run layer detection and update preview
   if(S.classified.length){
-    detectLayers();
-    renderLayerPreviewSvg('layerPreviewSvg');
-    if(document.getElementById('p2').classList.contains('active'))renderLayers();
-    document.getElementById('minThkInfo').textContent=`→ ${S.layers.length} layers`;
+    refreshClassificationDerivedViews();
   }
 }
 
@@ -1135,11 +1164,7 @@ function setSmartMerge(v){
   const smartMergeControls=document.getElementById('smartMergeControls');
   if(smartMergeControls) smartMergeControls.style.display=S.smartMerge?'':'none';
   if(S.classified.length){
-    detectLayers();
-    renderLayerPreviewSvg('layerPreviewSvg');
-    drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1]?.z+0.5||20);
-    if(document.getElementById('p2').classList.contains('active'))renderLayers();
-    document.getElementById('minThkInfo').textContent=`→ ${S.layers.length} layers`;
+    refreshClassificationDerivedViews();
   }
 }
 
@@ -1155,11 +1180,7 @@ function setSmartMergeSensitivity(v,fromInput){
     if(num) num.value=val.toFixed(2);
   }
   if(S.classified.length && S.smartMerge){
-    detectLayers();
-    renderLayerPreviewSvg('layerPreviewSvg');
-    drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1]?.z+0.5||20);
-    if(document.getElementById('p2').classList.contains('active'))renderLayers();
-    document.getElementById('minThkInfo').textContent=`→ ${S.layers.length} layers`;
+    scheduleClassificationDerivedViews();
   }
 }
 
@@ -1371,12 +1392,47 @@ function bindDropzone(){
 /* ════════════════════════════════
    METHOD SELECT
 ════════════════════════════════ */
+function classificationMethodLabel(method){
+  return {
+    robertson:'Robertson (1990)',
+    robertson2016:'Robertson (2016)',
+    cur3:'CUR 3 layers',
+    nen6740:'NEN 6740',
+    sb260:'NEN Tabel 3 / EC7'
+  }[method] || method || 'Unknown';
+}
+
+function classificationMetricLabel(method){
+  if(method === 'robertson') return 'Ic (-)';
+  if(method === 'robertson2016') return 'Qtn (-)';
+  if(method === 'nen6740') return 'qc,NEN (MPa)';
+  return 'Metric (-)';
+}
+
+function classificationMetricValue(method, row){
+  if(method === 'robertson') return row.Ic != null ? row.Ic : '—';
+  if(method === 'robertson2016') return row.Qt != null ? row.Qt.toFixed(1) : '—';
+  if(method === 'nen6740') return row.Qt != null ? row.Qt.toFixed(2) : '—';
+  return '—';
+}
+
+function syncClassificationMethodCards(method){
+  const cards={
+    mRob:'robertson',
+    mRob16:'robertson2016',
+    mCur:'cur3',
+    mNen:'nen6740',
+    mSB:'sb260'
+  };
+  Object.entries(cards).forEach(([id, value])=>{
+    const el=document.getElementById(id);
+    if(el) el.classList.toggle('sel', method === value);
+  });
+}
+
 function selM(m){
   S.method=m;
-  document.getElementById('mRob').classList.toggle('sel',m==='robertson');
-  document.getElementById('mCur').classList.toggle('sel',m==='cur3');
-  document.getElementById('mNen').classList.toggle('sel',m==='nen6740');
-  document.getElementById('mSB').classList.toggle('sel',m==='sb260');
+  syncClassificationMethodCards(m);
 }
 
 /* ════════════════════════════════
@@ -1471,6 +1527,57 @@ function classRob(r){
   else               type = 'Sand';            // Zone 6: sands
 
   return{type, subtype:'', Ic:+Ic.toFixed(2), Qt:+Qt.toFixed(1),
+         g:null, gs:null, phi:null, c:null, cu:null};
+}
+
+/* ════════════════════════════════
+   CLASSIFICATION — Robertson (2016) SBT
+
+   Uses the Robertson 2016 iterative Qtn normalisation while keeping the
+   existing Ic-based app mapping to broad soil families.
+════════════════════════════════ */
+function classRob2016(r){
+  const {sigV, sigVeff} = stressAt(r.z, 18, 17);
+  const aRatio = S.meta?.aRatio ?? 0.8;
+  const pa = 100;
+  const qtCone = r.u2 != null ? (r.qc + (1 - aRatio) * r.u2) : r.qc; // qt in MPa
+  const qtKPa = qtCone * 1000;
+  const dQKPa = qtKPa - sigV;
+
+  if(dQKPa < 10 || sigVeff < 1)
+    return{type:'Clay', subtype:'', Ic:2.80, Qt:null, g:null,gs:null,phi:null,c:null,cu:null};
+
+  const fsKPa = r.fs != null ? (r.fs * 1000) : (qtKPa * (r.rf ?? 3) / 100);
+  const Fr = Math.max(0.1, Math.min(10, (Math.abs(fsKPa) / dQKPa) * 100));
+
+  let n = 1.0;
+  let Qtn = 0.1;
+  let Ic = 2.8;
+  for(let i=0;i<10;i++){
+    Qtn = Math.max(0.1, (dQKPa / pa) * Math.pow(pa / sigVeff, n));
+    Ic = Math.sqrt((3.47 - Math.log10(Qtn))**2 + (Math.log10(Fr) + 1.22)**2);
+    const nNew = Math.max(0.5, Math.min(1.0, 0.381 * Ic + 0.05 * (sigVeff / pa) - 0.15));
+    if(Math.abs(nNew - n) < 0.001){
+      n = nNew;
+      break;
+    }
+    n = nNew;
+  }
+
+  Qtn = Math.max(0.1, (dQKPa / pa) * Math.pow(pa / sigVeff, n));
+  Ic = Math.sqrt((3.47 - Math.log10(Qtn))**2 + (Math.log10(Fr) + 1.22)**2);
+
+  const isZone7 = (Qtn > 200 && Fr < 0.5);
+
+  let type;
+  if(isZone7)         type = 'Gravel';
+  else if(Ic > 3.60) type = 'Peat / organic';
+  else if(Ic > 2.95) type = 'Clay';
+  else if(Ic > 2.60) type = 'Sandy clay';
+  else if(Ic > 2.05) type = 'Silty sand';
+  else               type = 'Sand';
+
+  return{type, subtype:'', Ic:+Ic.toFixed(2), Qt:+Qtn.toFixed(1),
          g:null, gs:null, phi:null, c:null, cu:null};
 }
 
@@ -1629,6 +1736,7 @@ function runClass(){
   S.classified=S.data.map(r=>{
     let res;
     if(S.method==='robertson')     res=classRob(r);
+    else if(S.method==='robertson2016') res=classRob2016(r);
     else if(S.method==='cur3')     res=classCUR3(r);
     else if(S.method==='nen6740')  res=classNEN6740(r);
     else                           res=classSB260(r);
@@ -1648,15 +1756,12 @@ function runClass(){
     {l:'avg Rf (%)',    v:avgOf(r=>r.rf||0,r=>r.rf!=null).toFixed(2)},
     {l:'max depth (m)', v:cl[n-1].z.toFixed(2)},
     {l:'readings',      v:n},
-    {l:'method',        v:{robertson:'Robertson',cur3:'CUR 3 layers',nen6740:'NEN 6740',sb260:'NEN Tabel 3'}[S.method]}
+    {l:'method',        v:classificationMethodLabel(S.method)}
   ].map(m=>`<div class="met"><div class="met-l">${m.l}</div><div class="met-v">${m.v}</div></div>`).join('');
 
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
-  const previewMetric=r=>{
-    if(S.method==='robertson') return r.Ic!=null ? r.Ic : '—';
-    if(S.method==='nen6740') return r.Qt!=null ? r.Qt.toFixed(2) : '—';
-    return '—';
-  };
+  const metricHead=document.getElementById('cmetricHead');
+  if(metricHead) metricHead.innerHTML=classificationMetricLabel(S.method);
   document.getElementById('cbody').innerHTML=cl.map(r=>`<tr>
     <td>${r.z.toFixed(3)}</td>
     <td style="color:var(--tx2)">${taw(r.z)}</td>
@@ -1665,7 +1770,7 @@ function runClass(){
     <td>${r.rf!=null?r.rf.toFixed(2):'—'}</td>
     <td><span class="sb ${SC[r.type]||'s-sand'}">${r.type}</span></td>
     <td style="font-size:10px;color:var(--tx2)">${r.subtype||'—'}</td>
-    <td style="color:var(--tx3)">${previewMetric(r)}</td>
+    <td style="color:var(--tx3)">${classificationMetricValue(S.method, r)}</td>
   </tr>`).join('');
 
   document.getElementById('classLayout').style.display='';
@@ -6473,12 +6578,7 @@ function safeClone(value){
 }
 
 function stage7MethodLabel(method){
-  return {
-    robertson:'Robertson (1990)',
-    cur3:'CUR 3 layers',
-    nen6740:'NEN 6740',
-    sb260:'NEN Tabel 3 / EC7'
-  }[method] || method || 'Unknown';
+  return classificationMethodLabel(method);
 }
 
 function stage7ParamMethodLabel(method){

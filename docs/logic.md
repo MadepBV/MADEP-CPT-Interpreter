@@ -72,7 +72,8 @@ When set: `TAW = elev - z` for all depth values.
 
 ## Stage 2 — Classification
 
-Classification is applied **per depth step** (every reading). Three methods are available.
+Classification is applied **per depth step** (every reading). Four methods are available. The
+Robertson (2016) route is documented separately in `docs/classification/robertson-2016.md`.
 
 ### 2.1 Robertson (1990) — SBT / Ic [IMPLEMENTED]
 
@@ -1631,6 +1632,7 @@ Reasons:
 ## References
 
 - Robertson, P.K. (1990). Soil classification using the CPT. Canadian Geotechnical Journal, 27(1), 151-158.
+- Robertson, P.K. (2016). Cone penetration test (CPT)-based soil behaviour type (SBT) classification system — an update. Canadian Geotechnical Journal, 53(12), 1910-1927.
 - Robertson, P.K. & Wride, C.E. (1998). Evaluating cyclic liquefaction potential using the CPT. Canadian Geotechnical Journal, 35, 442-459.
 - CUR Rapport 166 (2005). Damwandconstructies. SBRCURnet.
 - CUR 2003-7. Geotechnische aspecten van ondergrondse infra. Aanbevelingen voor Plaxis HS modelparameters.

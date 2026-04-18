@@ -200,6 +200,8 @@
   function methodMetricLabel() {
     return payload?.replication?.method === 'robertson'
       ? 'Ic (-)'
+      : payload?.replication?.method === 'robertson2016'
+        ? 'Qtn (-)'
       : payload?.replication?.method === 'nen6740'
         ? 'qc,NEN (MPa)'
         : 'Metric (-)';
@@ -207,6 +209,8 @@
 
   function methodMetricValue(row: any) {
     if (payload?.replication?.method === 'robertson') return row.ic != null ? fmt(row.ic, 2) : '—';
+    if (payload?.replication?.method === 'robertson2016')
+      return row.qtOrQcNen != null ? fmt(row.qtOrQcNen, 1) : '—';
     if (payload?.replication?.method === 'nen6740') return row.qtOrQcNen != null ? fmt(row.qtOrQcNen, 2) : '—';
     return '—';
   }
