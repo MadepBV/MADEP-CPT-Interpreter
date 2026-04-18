@@ -25,24 +25,54 @@ The current bearing-capacity application evaluates shallow-foundation resistance
 
 - **Drained check**
   ```
-  q_ult,d = c'·N_c·s_c + q'·N_q·s_q + 0.5·γ'·B·N_γ·s_γ
+  q_ult,d = c'·N_c·s_c·d_c + q'·N_q·s_q·d_q + 0.5·γ'·B'·N_γ·s_γ·d_γ
   ```
 - **Undrained check**
   ```
-  q_ult,u = q + 5.14·c_u·s_cu
+  q_ult,u = q + 5.14·c_u·s_cu·d_cu
   ```
 
 with:
 - `q'` = effective surcharge at foundation depth
 - `γ'` = effective unit weight below the water table
-- `s_*` = footing-type shape factors used in the app
+- `B' = B - 2eB`, `L' = L - 2eL` = effective dimensions used for the shape-factor route
+- `s_*` = shape factors derived from the effective plan ratio `r = B'/L'` (strip uses `r = 0`) or set conservatively to `1.0`
+- `d_*` = depth factors derived from `Df/B'`
+
+The current implementation still assumes vertical loading on a
+level base and level ground, so load-inclination,
+ground-slope, and base-tilt factors are all taken as `1.0`. Entered
+eccentricities only affect the effective dimensions used for the
+shape-factor route.
 
 In the current implementation, the drained bearing factors are evaluated as:
 ```
 N_q = exp(π·tanφ') · tan²(45° + φ'/2)
 N_c = (N_q − 1) / tanφ'
-N_γ = 2·(N_q + 1)·tanφ'
+N_γ = 2·(N_q − 1)·tanφ'
 ```
+
+with the current shape and depth factors:
+```
+r   = B'/L'    with B' <= L', strip => r = 0
+s_q = 1 + r·sinφ'
+s_c = (s_q·N_q − 1)/(N_q − 1)          for φ' > 0
+s_γ = max(0.6, 1 − 0.3r)
+s_cu = 1 + 0.2r
+
+conservative mode: s_q = s_c = s_γ = s_cu = 1.0
+
+η   = Df/B'
+k   = η          for η <= 1
+    = atan(η)    for η > 1
+d_q = 1 + 2·tanφ'·(1 − sinφ')²·k
+d_c = d_q − (1 − d_q)/(N_c·tanφ')      for φ' > 0
+d_γ = 1.0
+d_cu = 1 + 0.4k
+```
+
+For circular footings screened through this rectangular interface, use
+`B = L` and `eB = eL = 0`, so `r = 1`.
 
 The current app then converts ultimate resistance to the displayed design / allowable resistance as:
 ```
@@ -1488,8 +1518,8 @@ def bearing_capacity(layer, footing, stresses, route="EC7_DA1_governing", gamma_
         phi = radians(phi_deg)
         Nq = exp(pi * tan(phi)) * tan(pi/4 + phi/2)**2
         Nc = (Nq - 1) / tan(phi) if phi_deg > 0 else 5.14
-        Ng = 2 * (Nq + 1) * tan(phi)
-        return c_eff * Nc * footing.s_c + q_eff * Nq * footing.s_q + 0.5 * gamma_eff * footing.B * Ng * footing.s_g
+        Ng = 2 * (Nq - 1) * tan(phi)
+        return c_eff * Nc * footing.s_c + q_eff * Nq * footing.s_q + 0.5 * gamma_eff * footing.B_eff * Ng * footing.s_g
 
     def undrained(cu):
         return q_tot + 5.14 * cu * footing.s_cu
