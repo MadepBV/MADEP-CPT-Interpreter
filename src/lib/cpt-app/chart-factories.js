@@ -357,7 +357,7 @@ export function buildTuningDepthChartConfig({
   });
 }
 
-export function buildBearingChartConfig({ data, cfg, capacityAxisTitle }) {
+export function buildBearingChartConfig({ data, cfg, capacityAxisTitle, showLegend = false }) {
   const drained = data.drained;
   const undrained = data.undrained;
   const xMax =
@@ -405,7 +405,17 @@ export function buildBearingChartConfig({ data, cfg, capacityAxisTitle }) {
       maintainAspectRatio: false,
       animation: false,
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: showLegend,
+          position: 'bottom',
+          align: 'start',
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 8,
+            font: { size: 10 }
+          }
+        },
         tooltip: {
           callbacks: {
             label(ctx) {
@@ -439,7 +449,7 @@ export function buildBearingChartConfig({ data, cfg, capacityAxisTitle }) {
   });
 }
 
-export function buildSettlementStressChartConfig({ analysis, maxDepth }) {
+export function buildSettlementStressChartConfig({ analysis, maxDepth, showLegend = false }) {
   return applyChartTheme({
     type: 'line',
     data: {
@@ -459,7 +469,19 @@ export function buildSettlementStressChartConfig({ analysis, maxDepth }) {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
-      plugins: { legend: { display: false } },
+      plugins: {
+        legend: {
+          display: showLegend,
+          position: 'bottom',
+          align: 'start',
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 8,
+            font: { size: 10 }
+          }
+        }
+      },
       scales: {
         x: {
           type: 'linear',
@@ -705,7 +727,7 @@ export function buildDewateringDrawdownChartConfig({ analysis, originalWt }) {
   });
 }
 
-export function buildDewateringStressChartConfig({ analysis, maxDepth }) {
+export function buildDewateringStressChartConfig({ analysis, maxDepth, showLegend = false }) {
   return applyChartTheme({
     type: 'line',
     data: {
@@ -758,7 +780,19 @@ export function buildDewateringStressChartConfig({ analysis, maxDepth }) {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
-      plugins: { legend: { display: false } },
+      plugins: {
+        legend: {
+          display: showLegend,
+          position: 'bottom',
+          align: 'start',
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 8,
+            font: { size: 10 }
+          }
+        }
+      },
       scales: {
         x: {
           type: 'linear',
