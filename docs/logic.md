@@ -157,7 +157,8 @@ single app-type vocabulary.
 ### 2.2b NEN 6740 (stress-corrected chart) [IMPLEMENTED]
 
 Nearest-score classifier against 14 digitised reference areas from
-the NEN 6740 chart as reproduced in D-Sheet Piling.
+the NEN 6740 chart as reproduced in the Deltares D-SHEET Piling
+manual.
 
 **Step 1 — stress-correct qc**
 
@@ -170,7 +171,7 @@ where `sigma_v0'` is in kPa, floored at `1 kPa`; `qcNen` is floored at `0.01 MPa
 **Step 2 — chart score**
 
 ```
-score = log10(qcNen) - 0.18 * Rf
+score = log10(qcNen) - 0.34 * Rf
 ```
 
 `Rf` is in % and defaults to `3.0` when absent.
@@ -187,8 +188,46 @@ gravel toward peat.
 - the selected `qcNen` is stored in the `Qt` display field
 
 **Reference set.** Fourteen fixed material points spanning Gravel to
-Peat. See `src/lib/cpt-app/legacy-controller.js` (`NEN6740_MATERIALS`)
+Peat. See `src/lib/cpt-app/nen6740.js` (`NEN6740_MATERIALS`)
 for the exact subtype catalogue and parameter values.
+
+**Provenance of the chart constants.**
+
+- The stress exponent `0.67` is **not** prescribed algebraically by NEN
+  6740 itself, but it **is** documented by the Deltares D-SHEET Piling
+  User Manual (`v24.1`, §34.2.2) for the "NEN (Stress Dependent)" CPT
+  interpretation route.
+- The Rf coefficient magnitude `0.34` is **not** a published NEN or
+  Deltares coefficient. It is an app-side chart-fit constant obtained
+  from the regression magnitude of `log10(qcNen)` on `Rf` through the 14
+  stored reference centres used by the deterministic nearest-score
+  implementation.
+
+**Calibration note.** Regression through the 14 stored centres gives
+`|k_fit| ≈ 0.34` with `R² ≈ 0.98`, so the app now uses
+`score = log10(qcNen) - 0.34 * Rf`. The earlier `k = 0.18`
+under-weighted `Rf` and made the boundary between *loam, slightly sandy, weak* (area 5) and
+*clay, very sandy, stiff* (area 6) nearly degenerate. Areas 5 and 6
+remain the weakest neighbouring pair even after recalibration, so ties
+and near-ties are still resolved deterministically by the stored
+`order` of `NEN6740_MATERIALS`, which favours the lower-indexed area.
+
+**Validation.** The repo includes a dedicated self-consistency check:
+
+```
+npm run verify:nen6740
+```
+
+That script:
+
+- recomputes the regression slope through the 14 stored centres and
+  checks its magnitude remains in sync with the configured `0.34`;
+- re-projects every stored `(qcNen, Rf)` centre through the classifier
+  at several representative `sigma_v0'` values and verifies that each
+  centre still classifies back to itself.
+
+This makes the chart-fit implementation explicit and guards against
+future drift between the stored centres and the score formula.
 
 ---
 
@@ -719,11 +758,27 @@ nu     = 0.45  (Peat)
        = 0.35  (Clay, Soft clay)
        = 0.30  (all others)
 
-E_ref  = (1+nu)*(1-2*nu)/(1-nu) * Eoed,i * 1.5    [kPa]
-         (approximate conversion from Eoed via isotropic elasticity)
+E_ref  = E50,i                                      [kPa]
+
+Method A (CUR 2003-7 ratios):
+E50,i  = 1.25 * Eoed,i    (Clay, Soft clay, Peat / organic)
+E50,i  = Eoed,i           (all other soils)
+
+Method B (E50 = Eoed):
+E50,i  = Eoed,i           (all soils)
 
 psi    = max(0, phi' - 30)     [degrees, dilatancy angle]
 ```
+
+**Source basis.** The official PLAXIS Material Models Manual states that the
+Mohr-Coulomb model uses Young's modulus `E` as its basic stiffness parameter and
+that, for loading of soils, one generally uses `E50` rather than `E0`. Because
+the Mohr-Coulomb export is a constant-stiffness material, the app uses the
+current-stress loading stiffness `E50,i`, not the Hardening-Soil reference-stress
+quantity `E50,ref`.
+
+**Implementation note.** No extra empirical multiplier is applied. The earlier
+`× 1.5` heuristic was removed because no primary source was retained for it.
 
 ### 4.7 Hydraulic conductivity kh and kv [IMPLEMENTED / PLANNED]
 
@@ -1308,6 +1363,8 @@ To keep the Stage 6 tools transparent in Belgian practice, each application shou
 - **Bearing capacity**
   - Belgian EC7 **ULS**
   - default = **governing of DA1/1 and DA1/2**
+  - `DA1/1 = 1.35 * Gk + 1.50 * (Qlead + psi0 * Qother)` with M1 soil strengths
+  - `DA1/2 = 1.00 * Gk + 1.30 * (Qlead + psi0 * Qother)` with M2 soil strengths
   - user may inspect `DA1/1` or `DA1/2` separately
 
 - **Settlement**
@@ -1682,9 +1739,11 @@ Reasons:
 - CUR Rapport 166 (2005). Damwandconstructies. SBRCURnet.
 - CUR 2003-7. Geotechnische aspecten van ondergrondse infra. Aanbevelingen voor Plaxis HS modelparameters.
 - NEN 6740:2006. Geotechniek - TGB 1990 - Basiseisen en belastingen.
+- Deltares (2024). D-SHEET Piling User Manual, version 24.1, §34.2.2
+  "CPT interpretation acc. NEN 6740".
 - SB260 Standaardbestek 260, artikel 21-6.4.10: Karakteristieke grondparameters op basis van elektrische sondering (Sanglerat).
 - Sanglerat, G. (1972). The Penetrometer and Soil Exploration. Elsevier.
-- Plaxis 2D Manual (2023). Material Models — Hardening Soil. Bentley Systems.
+- PLAXIS 2D Material Models Manual (2025.1). Bentley Systems.
 - Bentley Systems. KB0109063. How to define and edit a material via the command line.
 - Bentley Systems. KB0109071. PLAXIS soil model numbers in the command line.
 - Bentley Systems. KB0043470. Re-using materials from other projects in PLAXIS.
