@@ -37,7 +37,7 @@ export function isStage7Payload(payload) {
     Array.isArray(payload.classifiedRows) &&
     Array.isArray(payload.layers) &&
     Array.isArray(payload.layerWarnings) &&
-    Array.isArray(payload.tuning) &&
+    (payload.tuning == null || Array.isArray(payload.tuning)) &&
     (payload.stage6 == null || isPlainObject(payload.stage6))
   );
 }
