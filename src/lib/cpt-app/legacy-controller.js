@@ -3527,8 +3527,8 @@ function stage6Defaults(){
         forceTolerance:0.001,
         FBracketLow:0.10,
         FBracketHigh:10.00,
-        maxOuterIter:30,
-        maxInnerIter:50,
+        maxOuterIter:20,
+        maxInnerIter:30,
         useNewton:false,
         initialF:null,
         initialLambda:0.00,
@@ -3677,8 +3677,8 @@ function ensureStage6State(){
     +(bishop.spencer.FBracketHigh ?? bishop.spencer.FfBracketHigh) || 10.0,
     bishop.spencer.FBracketLow + 0.1
   );
-  bishop.spencer.maxOuterIter = Math.max(5, Math.round(+bishop.spencer.maxOuterIter || 30));
-  bishop.spencer.maxInnerIter = Math.max(5, Math.round(+bishop.spencer.maxInnerIter || 50));
+  bishop.spencer.maxOuterIter = Math.max(5, Math.round(+bishop.spencer.maxOuterIter || 20));
+  bishop.spencer.maxInnerIter = Math.max(5, Math.round(+bishop.spencer.maxInnerIter || 30));
   bishop.spencer.useNewton = !!bishop.spencer.useNewton;
   bishop.spencer.initialF = Number.isFinite(+bishop.spencer.initialF) && +bishop.spencer.initialF > 0 ? +bishop.spencer.initialF : null;
   bishop.spencer.initialLambda = Number.isFinite(+bishop.spencer.initialLambda) ? +bishop.spencer.initialLambda : 0;
@@ -6315,6 +6315,7 @@ function renderStage6BishopApp(){
     : 'not set';
   const runReady = !!model && !!bishop.entryZone && !!bishop.exitZone;
   const showSpencerSliceCols = !!selected?.spencerConverged;
+  const selectedNormalHeader = showSpencerSliceCols ? 'Effective normal' : 'Normal';
   const selectedMethodLabel = stage6BishopResultMethodLabel(selected);
   const resultRows = results.slice(0, Math.max(bishop.search.keepBest || 10, 1)).map((result, index)=>`
     <tr class="${index === (bishop.selectedResult || 0) ? 'sel':''}">
@@ -6444,7 +6445,7 @@ function renderStage6BishopApp(){
             <details class="st6-adv" data-st6details="bishop-spencer"${stage6DetailsOpen('bishop-spencer')}>
               <summary>Spencer recheck settings</summary>
               <div class="st6-adv-body">
-                <div class="st6-help">When <strong>${stage6BishopMethodModeLabel('bishop_spencer')}</strong> is active, the app first searches with Bishop, then reruns the best circles with a full Spencer solve. For each shortlisted circle it solves the Spencer moment and force branches separately, then finds the λ where those branches intersect. If Spencer fails on a shortlisted circle, the Bishop result is kept as a fallback.</div>
+                <div class="st6-help">When <strong>${stage6BishopMethodModeLabel('bishop_spencer')}</strong> is active, the app first searches with Bishop, then reruns the best circles with a full Spencer solve. For each shortlisted circle it solves the Spencer moment and force branches separately, then finds the λ where those branches intersect. Convergence is accepted on the branch-intersection residual; the λ tolerance field is retained only for compatibility with older saved configs. If Spencer fails on a shortlisted circle, the Bishop result is kept as a fallback.</div>
                 <label style="font-size:11px;color:var(--tx2)">Recheck top N circles
                   <input type="number" step="1" min="1" max="${bishop.search.keepBest}" value="${bishop.spencer.recheckCount}" onchange="stage6BishopSetField('spencer.recheckCount', this.value)">
                 </label>
@@ -6454,7 +6455,7 @@ function renderStage6BishopApp(){
                 <label style="font-size:11px;color:var(--tx2)">Lambda high
                   <input type="number" step="0.05" value="${bishop.spencer.lambdaHigh.toFixed(2)}" onchange="stage6BishopSetField('spencer.lambdaHigh', this.value)">
                 </label>
-                <label style="font-size:11px;color:var(--tx2)">Lambda tolerance
+                <label style="font-size:11px;color:var(--tx2)">Lambda tolerance (legacy)
                   <input type="number" step="0.0001" min="0.000001" value="${bishop.spencer.lambdaTolerance}" onchange="stage6BishopSetField('spencer.lambdaTolerance', this.value)">
                 </label>
                 <label style="font-size:11px;color:var(--tx2)">Moment-branch tolerance
@@ -6560,7 +6561,7 @@ function renderStage6BishopApp(){
               <div class="mc2-sec">Selected slices</div>
               <div style="max-height:250px;overflow:auto">
                 <table class="tbl st6-bishop-results">
-                  <thead><tr><th>i</th><th>W</th><th>Q</th><th>V</th><th>alpha</th><th>c'</th><th>phi'</th><th>u</th><th>m_alpha</th><th>${showSpencerSliceCols ? "N'" : 'N'}</th>${showSpencerSliceCols ? '<th>E_r</th><th>X_r</th><th>S_mob</th>' : ''}</tr></thead>
+                  <thead><tr><th>i</th><th>W</th><th>Q</th><th>V</th><th>alpha</th><th>c'</th><th>phi'</th><th>u</th><th>m_alpha</th><th>${selectedNormalHeader}</th>${showSpencerSliceCols ? '<th>E_r</th><th>X_r</th><th>S_mob</th>' : ''}</tr></thead>
                   <tbody>
                     ${selected ? selected.slices.map((slice, index)=>`
                       <tr>
@@ -6573,7 +6574,7 @@ function renderStage6BishopApp(){
                         <td>${slice.baseMaterial.phiEffDeg.toFixed(1)}°</td>
                         <td>${slice.uBase.toFixed(1)}</td>
                         <td>${slice.mAlpha.toFixed(3)}</td>
-                        <td>${slice.normalForce.toFixed(1)}</td>
+                        <td>${(showSpencerSliceCols ? slice.N_eff : slice.normalForce) != null ? (showSpencerSliceCols ? slice.N_eff : slice.normalForce).toFixed(1) : '—'}</td>
                         ${showSpencerSliceCols ? `<td>${slice.E_right != null ? slice.E_right.toFixed(1) : '—'}</td><td>${slice.X_right != null ? slice.X_right.toFixed(1) : '—'}</td><td>${slice.S_mob != null ? slice.S_mob.toFixed(1) : '—'}</td>` : ''}
                       </tr>
                     `).join('') : `<tr><td colspan="${showSpencerSliceCols ? 13 : 10}" style="text-align:center;color:var(--tx2)">Select or run a result to inspect slice data.</td></tr>`}
