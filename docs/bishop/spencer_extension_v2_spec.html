@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spencer Method Extension — Technical Specification v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #faf9f6;
+  --text: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --accent: #5c3d1a;
+  --accent-light: #f5f0e8;
+  --border: #d4d0c8;
+  --code-bg: #f0ede6;
+  --code-border: #d4d0c8;
+  --warning-bg: #fff8e1;
+  --warning-border: #f0c040;
+  --note-bg: #f5f0e8;
+  --note-border: #5c3d1a;
+  --reuse-bg: #e8f5e9;
+  --reuse-border: #388e3c;
+  --new-bg: #fff3e0;
+  --new-border: #e65100;
+  --serif: 'Source Serif 4', Georgia, serif;
+  --sans: 'Source Sans 3', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'Consolas', monospace;
+  --max-w: 820px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.72;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 3rem 2rem 6rem;
+}
+
+.title-block {
+  border-bottom: 3px solid var(--accent);
+  padding-bottom: 1.5rem;
+  margin-bottom: 2.5rem;
+}
+.title-block h1 {
+  font-family: var(--sans);
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin-bottom: 0.5rem;
+}
+.title-block .subtitle {
+  font-family: var(--sans);
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.meta-table {
+  margin-top: 1rem;
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.meta-table td { padding: 0.15rem 0; }
+.meta-table td:first-child {
+  font-weight: 600;
+  padding-right: 1rem;
+  color: var(--text);
+}
+
+h2 {
+  font-family: var(--sans);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 3rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1.5px solid var(--border);
+}
+h3 {
+  font-family: var(--sans);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 2rem;
+  margin-bottom: 0.6rem;
+}
+h4 {
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-top: 1.5rem;
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+p { margin-bottom: 0.9rem; }
+
+.eq {
+  display: block;
+  background: var(--code-bg);
+  border-left: 3px solid var(--accent);
+  padding: 0.9rem 1.2rem;
+  margin: 1.2rem 0;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  line-height: 1.8;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+.eq .label {
+  display: block;
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+pre {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 1.2rem 1.4rem;
+  margin: 1.2rem 0;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.65;
+  overflow-x: auto;
+  tab-size: 2;
+}
+pre .kw { color: #569cd6; }
+pre .fn { color: #dcdcaa; }
+pre .cm { color: #6a9955; font-style: italic; }
+pre .st { color: #ce9178; }
+pre .nu { color: #b5cea8; }
+pre .ty { color: #4ec9b0; }
+pre .op { color: #d4d4d4; }
+pre .param { color: #9cdcfe; }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+}
+
+.callout {
+  padding: 0.9rem 1.1rem;
+  margin: 1.2rem 0;
+  border-radius: 3px;
+  font-size: 0.92rem;
+}
+.callout.warn {
+  background: var(--warning-bg);
+  border-left: 4px solid var(--warning-border);
+}
+.callout.note {
+  background: var(--note-bg);
+  border-left: 4px solid var(--note-border);
+}
+.callout.reuse {
+  background: var(--reuse-bg);
+  border-left: 4px solid var(--reuse-border);
+}
+.callout.new {
+  background: var(--new-bg);
+  border-left: 4px solid var(--new-border);
+}
+.callout strong {
+  font-family: var(--sans);
+  font-weight: 700;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.2rem 0;
+  font-size: 0.9rem;
+}
+th, td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+th {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: var(--accent-light);
+}
+td code { font-size: 0.84em; }
+
+ul, ol { margin: 0.6rem 0 0.9rem 1.8rem; }
+li { margin-bottom: 0.35rem; }
+
+.snum {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  color: var(--accent);
+  margin-right: 0.4rem;
+}
+
+.toc {
+  background: var(--accent-light);
+  border: 1px solid var(--border);
+  padding: 1.2rem 1.5rem;
+  margin: 1.5rem 0 2.5rem;
+  border-radius: 3px;
+}
+.toc h3 {
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 0 0 0.6rem;
+}
+.toc ol {
+  margin: 0;
+  padding-left: 1.3rem;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+.toc li { margin-bottom: 0.1rem; }
+.toc a { color: var(--text); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.toc ol ol { margin-top: 0.15rem; font-size: 0.87rem; }
+
+/* Reuse/new tag badges */
+.tag {
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.15em 0.5em;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+}
+.tag.reuse { background: #c8e6c9; color: #1b5e20; }
+.tag.new { background: #ffe0b2; color: #bf360c; }
+.tag.modify { background: #e1bee7; color: #4a148c; }
+
+/* Comparison table */
+.cmp-row-bishop td { background: #f5f5f5; }
+.cmp-row-spencer td { background: var(--accent-light); }
+
+@media print {
+  .page { max-width: 100%; padding: 1rem; }
+  pre { white-space: pre-wrap; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- TITLE -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div class="title-block">
+  <h1>Spencer Method — Extension Specification</h1>
+  <div class="subtitle">Upgrading Bishop Simplified v1 to a Full Spencer Limit-Equilibrium Solver</div>
+  <table class="meta-table">
+    <tr><td>Prerequisite</td><td>Bishop Simplified v1 spec (fully implemented and verified)</td></tr>
+    <tr><td>Method</td><td>Spencer (1967) — constant interslice-force ratio, satisfies force + moment equilibrium</td></tr>
+    <tr><td>Scope</td><td>What to reuse, what to modify, what to add — with complete theory and pseudocode</td></tr>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- TOC -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#s1">Why Spencer, and What Changes</a></li>
+    <li><a href="#s2">Reuse Map — What Stays, What Changes, What's New</a></li>
+    <li><a href="#s3">Spencer Theory</a>
+      <ol>
+        <li><a href="#s3-1">The interslice-force assumption</a></li>
+        <li><a href="#s3-2">Base force and strength terms</a></li>
+        <li><a href="#s3-3">Two governing equations: F_m and F_f</a></li>
+        <li><a href="#s3-4">The intersection problem: solving for F and λ</a></li>
+      </ol>
+    </li>
+    <li><a href="#s4">Slice-Level Force Resolution — Full Derivation</a>
+      <ol>
+        <li><a href="#s4-1">Common Spencer slice-state evaluator</a></li>
+        <li><a href="#s4-2">Propagation and boundary conditions</a></li>
+        <li><a href="#s4-3">Sign conventions and engineering checks</a></li>
+      </ol>
+    </li>
+    <li><a href="#s5">The Two-Equation Solver</a>
+      <ol>
+        <li><a href="#s5-1">F from moment equilibrium (F_m)</a></li>
+        <li><a href="#s5-2">F from force equilibrium (F_f)</a></li>
+        <li><a href="#s5-3">Intersection by bisection</a></li>
+        <li><a href="#s5-4">Direct two-variable solve</a></li>
+        <li><a href="#s5-5">Convergence, stability, and fallbacks</a></li>
+      </ol>
+    </li>
+    <li><a href="#s6">Modified Data Structures</a></li>
+    <li><a href="#s7">Complete Pseudocode</a>
+      <ol>
+        <li><a href="#s7-1">Common Spencer state evaluator</a></li>
+        <li><a href="#s7-2">Moment branch solve</a></li>
+        <li><a href="#s7-3">Force branch solve</a></li>
+        <li><a href="#s7-4">Outer solver: find λ where F_m = F_f</a></li>
+        <li><a href="#s7-5">Integrated search driver</a></li>
+      </ol>
+    </li>
+    <li><a href="#s8">Validation Strategy</a></li>
+    <li><a href="#s9">Practical Integration Notes</a></li>
+    <li><a href="#s10">Onward to Morgenstern–Price</a></li>
+    <li><a href="#s11">References</a></li>
+  </ol>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §1 WHY SPENCER -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s1"><span class="snum">1</span>Why Spencer, and What Changes</h2>
+
+<p>Bishop Simplified satisfies moment equilibrium about the circle centre and vertical force equilibrium per slice, but it neglects interslice shear and does not satisfy complete force equilibrium. For circular slip surfaces in comparatively benign ground this is often acceptable, which is precisely why Bishop remains valuable as a rapid search method. It is not, however, a rigorous Spencer solution.</p>
+
+<p>Spencer (1967) is the simplest broadly used method of slices that satisfies complete equilibrium of the discretised sliding mass under the assumption of parallel interslice resultants. As noted in the comparative reviews of Fredlund &amp; Krahn (1977) and in later texts such as Duncan &amp; Wright (2005), it is a rigorous method within the ordinary assumptions of limit-equilibrium slice analysis. In the present extension, Spencer shall therefore be implemented as a <strong>full and separate equilibrium solver</strong>: the same slice geometry, loads, pore pressures, and base lengths are reused, but the final Spencer factor of safety is obtained only from the Spencer equations themselves.</p>
+
+<p>The key insight that makes Spencer practical is the observation that for a given slip surface:</p>
+<ol>
+  <li>If you compute F from <strong>Spencer moment equilibrium</strong> as a function of λ, you obtain a curve F_m(λ).</li>
+  <li>If you compute F from <strong>Spencer force equilibrium</strong> as a function of λ, you obtain a second curve F_f(λ).</li>
+  <li>The true factor of safety is where these two curves intersect: <strong>F_m(λ*) = F_f(λ*) = F</strong>.</li>
+</ol>
+
+<p>This is the principal conceptual addition over Bishop. Geometry, terrain, soil regions, slice generation, surcharge treatment, and pore pressure may all be reused. The solver itself, however, is not a Bishop solver with a Spencer overlay; it is a full Spencer equilibrium solve built on the same slice table.</p>
+
+<div class="callout warn">
+  <strong>Academic correction.</strong> The Spencer branch shall <strong>not</strong> reuse Bishop's governing width-form resistance terms or a fixed Bishop factor of safety as the Spencer moment branch. Bishop may be reused for search, initial bracketing, seeding, and QA comparison only. The final Spencer result shall come from the Spencer equations alone, using the true base length <code>l_i = b_i / cos(α_i)</code> and the corresponding <code>c'_i l_i</code> and <code>u_i l_i</code> terms on the base.
+</div>
+
+<h3>What Spencer gives you over Bishop</h3>
+<table>
+  <tr><th>Aspect</th><th>Bishop Simplified</th><th>Spencer</th></tr>
+  <tr>
+    <td>Equilibrium satisfied</td>
+    <td>Moment + vertical force per slice</td>
+    <td>Moment + horizontal force + vertical force per slice</td>
+  </tr>
+  <tr>
+    <td>Interslice shear</td>
+    <td>Assumed zero</td>
+    <td>Included; constant ratio X/E = tan(θ) = λ</td>
+  </tr>
+  <tr>
+    <td>Accuracy class</td>
+    <td>Approximate</td>
+    <td>Rigorous within the method-of-slices assumptions; satisfies force and moment equilibrium for the discretised mass</td>
+  </tr>
+  <tr>
+    <td>Typical F difference</td>
+    <td>Baseline</td>
+    <td>Commonly close to Bishop for many circular problems, but no fixed sign or bound shall be assumed a priori; geometry, layering, and pore pressure govern the difference</td>
+  </tr>
+  <tr>
+    <td>Additional unknowns</td>
+    <td>F only</td>
+    <td>F and λ</td>
+  </tr>
+  <tr>
+    <td>Solver complexity</td>
+    <td>Single fixed-point loop</td>
+    <td>Outer λ loop with full Spencer inner solves for both F_m and F_f, or an equivalent two-variable Newton solve</td>
+  </tr>
+  <tr>
+    <td>Computation time</td>
+    <td>~5 fixed-point iterations per surface</td>
+    <td>Order of a few hundred slice-kernel evaluations per surface (outer λ bisection × inner F bisection); typically &lt;0.01 s per surface</td>
+  </tr>
+</table>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §2 REUSE MAP -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s2"><span class="snum">2</span>Reuse Map — What Stays, What Changes, What's New</h2>
+
+<p>This section maps every component from the Bishop v1 spec to its status in the Spencer extension. The goal is to make clear that Spencer is an <em>incremental</em> addition, not a rewrite.</p>
+
+<table>
+  <tr>
+    <th>Component (v1 spec section)</th>
+    <th>Status</th>
+    <th>Detail</th>
+  </tr>
+  <tr>
+    <td>Coordinate system (§2)</td>
+    <td><span class="tag reuse">Reuse</span></td>
+    <td>Identical. No changes.</td>
+  </tr>
+  <tr>
+    <td>Terrain polyline (§3.1)</td>
+    <td><span class="tag reuse">Reuse</span></td>
+    <td>Identical. <code>terrainY()</code> unchanged.</td>
+  </tr>
+  <tr>
+    <td>Soil regions from CPT (§3.2)</td>
+    <td><span class="tag reuse">Reuse</span></td>
+    <td>Identical. <code>buildSoilRegions()</code> unchanged.</td>
+  </tr>
+  <tr>
+    <td>Phreatic surface (§3.3)</td>
+    <td><span class="tag reuse">Reuse</span></td>
+    <td>Identical. Pore-pressure calculation unchanged.</td>
+  </tr>
+  <tr>
+    <td>Circle parameterisation (§4.1)</td>
+    <td><span class="tag reuse">Reuse</span></td>
+    <td>Spencer uses the same circular surfaces.</td>
+  </tr>
+  <tr>
+    <td>Grid-radius search (§4.2)</td>
+    <td><span class="tag modify">Modify</span></td>
+    <td>The search driver may still use Bishop for the full search and Spencer for the shortlisted re-check, but the Spencer re-check itself shall be a full Spencer solve.</td>
+  </tr>
+  <tr>
+    <td>Entry-exit search (§4.3)</td>
+    <td><span class="tag modify">Modify</span></td>
+    <td>Same search logic. Only the verification solver changes.</td>
+  </tr>
+  <tr>
+    <td>Validity filters (§4.4)</td>
+    <td><span class="tag reuse">Reuse</span></td>
+    <td>Identical. All geometric filters apply to Spencer too.</td>
+  </tr>
+  <tr>
+    <td>Slice generation (§5)</td>
+    <td><span class="tag reuse">Reuse</span></td>
+    <td>Identical. <code>buildSlices()</code> remains unchanged. Spencer uses exactly the same slice geometry, loads, pore pressures, and stored base lengths.</td>
+  </tr>
+  <tr>
+    <td>Slice data structure (§7)</td>
+    <td><span class="tag modify">Modify</span></td>
+    <td>Add interslice force fields and Spencer diagnostics. Existing geometry and load fields are unchanged.</td>
+  </tr>
+  <tr>
+    <td>Bishop iteration loop (§8.4)</td>
+    <td><span class="tag modify">Modify</span></td>
+    <td>Keep it only as the Bishop solver, shortlist engine, and optional initial guess. Do <strong>not</strong> reuse it as the Spencer moment-equilibrium branch.</td>
+  </tr>
+  <tr>
+    <td>Spencer moment-equilibrium solver</td>
+    <td><span class="tag new">New</span></td>
+    <td>New full Spencer moment-equilibrium branch. Solve <code>R_m(F, λ) = 0</code> for fixed λ using the Spencer slice equations. This is not Bishop with a λ wrapper.</td>
+  </tr>
+  <tr>
+    <td>Spencer force-equilibrium solver</td>
+    <td><span class="tag new">New</span></td>
+    <td>Entirely new: propagates interslice forces slice-by-slice and solves <code>R_f(F, λ) = 0</code> for fixed λ.</td>
+  </tr>
+  <tr>
+    <td>Outer λ solver</td>
+    <td><span class="tag new">New</span></td>
+    <td>Finds λ where the two Spencer branches intersect, or solves the two residual equations directly in <code>(F, λ)</code>.</td>
+  </tr>
+  <tr>
+    <td>Result structure</td>
+    <td><span class="tag modify">Modify</span></td>
+    <td>Add λ, F_m, F_f, residual diagnostics, interslice-force output, and a stored Bishop comparison value.</td>
+  </tr>
+</table>
+
+<div class="callout reuse">
+  <strong>Reuse summary.</strong> Geometry, slicing, loads, and search remain largely untouched. The substantive new work is the equilibrium kernel. This is exactly as it ought to be: Spencer is primarily a change in the solver, not in the geometric model.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §3 SPENCER THEORY -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s3"><span class="snum">3</span>Spencer Theory</h2>
+
+<h3 id="s3-1"><span class="snum">3.1</span>The interslice-force assumption</h3>
+
+<p>Spencer's method assumes that the resultant interslice force on every slice boundary is parallel to a single constant direction. Using the common component notation:</p>
+
+<div class="eq">
+<span class="label">Spencer interslice-force assumption</span>
+tan(θ) = X_i / E_i = λ        for all interslice boundaries i
+
+where:
+  E_i = horizontal component of the interslice resultant on boundary i
+  X_i = vertical component of the interslice resultant on boundary i
+  λ   = tan(θ)
+  θ   = constant interslice-force inclination
+</div>
+
+<p>This is the defining additional assumption that elevates the method from a Bishop-type approximation to a rigorous limit-equilibrium method of slices. It does <strong>not</strong> alter the geometry or load model; it alters the equilibrium kernel.</p>
+
+<div class="callout note">
+  <strong>Implementation note.</strong> The code may use <code>λ</code>, <code>θ</code>, or a resultant-force notation internally. Any of these is acceptable, provided the algebra is consistent and the final solution satisfies both Spencer residual equations.
+</div>
+
+<h3 id="s3-2"><span class="snum">3.2</span>Base force and strength terms</h3>
+
+<p>The Spencer branch uses the same slice geometry and loads as Bishop, but the shear-strength and pore-force terms are written on the <strong>true base length</strong>. This is the standard form given in Spencer (1967) and retained in later expositions such as Fredlund &amp; Krahn (1977), Carpenter (1985), and Duncan &amp; Wright (2005):</p>
+
+<div class="eq">
+<span class="label">Base quantities used by Spencer</span>
+l_i  = b_i / cos(α_i)
+U_i  = u_i l_i
+N'_i = N_i - U_i
+S_i  = [c'_i l_i + N'_i tan(φ'_i)] / F
+
+where:
+  b_i  = horizontal slice width
+  l_i  = true base length
+  u_i  = representative pore pressure on the base
+  U_i  = base pore-force resultant
+  N_i  = total base normal resultant
+  N'_i = effective base normal resultant
+  S_i  = mobilised base shear
+</div>
+
+<div class="callout warn">
+  <strong>Critical requirement.</strong> In the Spencer branch, the governing resistance shall be written on the true base length <code>l_i</code>, i.e. the cohesive and pore-force contributions shall enter the mobilised shear as <code>c'_i l_i</code> and <code>u_i l_i</code>. Width-form quantities such as <code>c'_i b_i</code> or <code>u_i b_i</code> may still appear in the downstream algebra, but only where they arise from a valid projection of the <code>l_i</code>-based terms — namely <code>l_i cos α_i = b_i</code> and <code>l_i sin α_i = b_i tan α_i</code>. A direct Bishop-style substitution of <code>b_i</code> for <code>l_i</code> in the governing strength equation is what is not academically correct.
+</div>
+
+<h3 id="s3-3"><span class="snum">3.3</span>Two governing equations: F_m and F_f</h3>
+
+<p>For each assumed λ, the full Spencer formulation yields two factor-of-safety branches, both derived from the same slice equilibrium kernel:</p>
+
+<h4>Equation 1: Moment equilibrium → F_m(λ)</h4>
+
+<div class="eq">
+<span class="label">Moment-equilibrium branch</span>
+R_m(F, λ) = 0
+
+For fixed λ:
+  find F_m(λ) such that the overall moment residual vanishes
+</div>
+
+<p>For circular slips, the natural reference moment point is the circle centre. The implementation shall evaluate the Spencer slice forces and then compute the overall moment residual from those forces. Even when Spencer and Bishop give similar results for circular slips, the Spencer moment branch shall still be solved from the Spencer equations, not copied from Bishop.</p>
+
+<h4>Equation 2: Force equilibrium → F_f(λ)</h4>
+
+<div class="eq">
+<span class="label">Force-equilibrium branch</span>
+R_f(F, λ) = 0
+
+Equivalent implementation forms include:
+  1. the global horizontal force residual of the sliding mass
+  2. interslice-force closure E_n = 0, with E_0 = 0
+
+For fixed λ:
+  find F_f(λ) such that the chosen force residual vanishes
+</div>
+
+<p>The closure form <code>E_0 = 0</code>, <code>E_n = 0</code> is especially convenient in a left-to-right slice propagation routine and is widely used in software implementations.</p>
+
+<h3 id="s3-4"><span class="snum">3.4</span>The intersection problem: solving for F and λ</h3>
+
+<p>The Spencer solution is the common root of the moment and force branches:</p>
+
+<div class="eq">
+<span class="label">Spencer solution condition</span>
+F_m(λ*) = F_f(λ*) = F*
+
+Equivalent residual form:
+  R_m(F, λ) = 0
+  R_f(F, λ) = 0
+</div>
+
+<p>Two implementation paths are academically valid. Both are found in the established literature and software lineage stemming from Spencer (1967), Morgenstern &amp; Price (1965), Fredlund &amp; Krahn (1977), and Carpenter (1985):</p>
+<ol>
+  <li><strong>Classical intersection method.</strong> For each λ, solve the moment and force branches separately to obtain <code>F_m(λ)</code> and <code>F_f(λ)</code>, then solve <code>g(λ) = F_m(λ) - F_f(λ) = 0</code>.</li>
+  <li><strong>Direct two-variable solve.</strong> Solve the residual system <code>R_m(F, λ) = 0</code>, <code>R_f(F, λ) = 0</code> simultaneously by Newton, secant, or quasi-Newton methods.</li>
+</ol>
+
+<p>This specification adopts the classical intersection method for v2 because it is transparent, robust, and easy to benchmark. A direct two-variable solve remains acceptable if it is shown to reproduce the same Spencer result.</p>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §4 SLICE-LEVEL FORCE RESOLUTION -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s4"><span class="snum">4</span>Slice-Level Force Resolution — Full Derivation</h2>
+
+<h3 id="s4-1"><span class="snum">4.1</span>Common Spencer slice-state evaluator</h3>
+
+<p>Every Spencer branch evaluation shall call a common slice-state routine. That routine receives a trial <code>(F, λ)</code> together with the already prepared slice table and returns the slice forces and residuals for that trial pair.</p>
+
+<div class="eq">
+<span class="label">Inputs and outputs of the Spencer slice kernel</span>
+Inputs per slice:
+  geometry      → α_i, b_i, l_i, lever arms
+  loads         → W_i, Q_i, pore-pressure descriptor
+  material      → c'_i, φ'_i
+  solver state  → F, λ, E_left
+
+Outputs per slice:
+  N_i, N'_i, S_i, E_right, X_right
+
+Outputs for the whole surface:
+  momentResidual
+  forceResidual
+  max|E|
+  slice-by-slice diagnostics
+</div>
+
+<p>For each slice, three equilibrium conditions close the three unknowns <code>N_i</code>, <code>S_i</code>, and <code>E_{i,right}</code>:</p>
+
+<div class="eq">
+<span class="label">Per-slice equilibrium equations</span>
+Vertical:     N_i cos α_i + S_i sin α_i = W_i + Q_i + (X_{i,left} - X_{i,right})
+Horizontal:   N_i sin α_i - S_i cos α_i = E_{i,right} - E_{i,left}
+Mohr-Coulomb: S_i = [c'_i l_i + (N_i - u_i l_i) tan φ'_i] / F
+
+Closure:      X_{i,right} = λ E_{i,right}    (Spencer assumption)
+</div>
+
+<p>Eliminating <code>S_i</code> with the Mohr–Coulomb equation leaves a 2×2 linear system in <code>(N_i, E_{i,right})</code> for fixed <code>(F, λ, E_{i,left})</code>. The resulting closed-form recurrence propagates the interslice force slice by slice.</p>
+
+<div class="eq">
+<span class="label">Overall residuals</span>
+Moment residual about the circle centre (circular surface):
+  R_m(F, λ) = Σ_i W_i x_i - R Σ_i S_i
+
+Force residual (closure of the interslice chain):
+  R_f(F, λ) = E_{n,right}    with E_{0,left} = 0
+</div>
+
+<p>The exact algebra may be coded in any form that is demonstrably equivalent to Spencer (1967) or Carpenter (1985): direct closed-form recurrence, linear approximation, or a small local Newton solve for the slice unknowns. The specification is concerned with the <strong>equilibrium target</strong> expressed above, not with enforcing one particular rearrangement, provided that the implemented equations remain traceable to the published Spencer formulation.</p>
+
+<h3 id="s4-2"><span class="snum">4.2</span>Propagation and boundary conditions</h3>
+
+<p>For a chosen <code>(F, λ)</code>, the slice chain is evaluated from one end of the slip surface to the other. In the convention adopted here, the propagation runs from the entry side to the exit side.</p>
+
+<div class="eq">
+<span class="label">Boundary conditions and propagation</span>
+E_0 = 0
+X_i = λ E_i
+E_{i,right} becomes E_{i+1,left}
+
+At force-equilibrium convergence:
+  E_n = 0
+</div>
+
+<p>If the implementation instead evaluates a global horizontal-force residual directly, it shall still expose the equivalent closure residual for diagnostics and testing.</p>
+
+<h3 id="s4-3"><span class="snum">4.3</span>Sign conventions and engineering checks</h3>
+
+<p>The sign convention shall be fixed once and used consistently in the solver, the tests, and the user-facing diagnostics:</p>
+
+<ol>
+  <li><strong>E_i</strong> shall be the signed horizontal component of the interslice force on boundary <em>i</em>.</li>
+  <li><strong>X_i</strong> shall always satisfy <code>X_i = λE_i</code> under the same sign convention.</li>
+  <li>The reported <code>N_eff</code> shall mean the <strong>effective</strong> base normal force, not the total normal force. Stage 6 slice-table columns and Stage 7 report fields that previously carried a Bishop "normal force" shall be relabelled to <em>effective normal force</em> whenever a Spencer result is displayed, so that <code>N_eff</code> is never confused with the Bishop total-normal diagnostic.</li>
+  <li>The Stage 6 table and Stage 7 report shall present the same sign convention used by the solver.</li>
+</ol>
+
+<div class="callout note">
+  <strong>Engineering check.</strong> The interslice-force profile should usually be compressive over most of the sliding mass and taper toward the ends. Local tension near a boundary may occur, but widespread sign anomalies ordinarily indicate a sign-convention or equilibrium-kernel error.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §5 THE TWO-EQUATION SOLVER -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s5"><span class="snum">5</span>The Two-Equation Solver</h2>
+
+<h3 id="s5-1"><span class="snum">5.1</span>F from moment equilibrium (F_m)</h3>
+
+<p>For a fixed λ, the moment branch shall be solved from the <strong>Spencer</strong> residual, not from the Bishop factor of safety. The implementation shall bracket or seed the factor of safety and then solve:</p>
+
+<div class="eq">
+<span class="label">Moment-branch solve</span>
+Given λ:
+  find F_m(λ) such that R_m(F, λ) = 0
+</div>
+
+<p>Bishop is still useful here, but only as an auxiliary quantity: it may provide an initial guess, a bracket centre, and a comparison value stored in the result. It shall not be treated as the converged Spencer moment branch.</p>
+
+<h3 id="s5-2"><span class="snum">5.2</span>F from force equilibrium (F_f)</h3>
+
+<p>For the same fixed λ, the force branch is solved from the Spencer force residual. The most practical residual for implementation is the closure of the interslice-force chain:</p>
+
+<div class="eq">
+<span class="label">Force-branch solve</span>
+Given λ:
+  find F_f(λ) such that R_f(F, λ) = 0
+
+Common implementation:
+  E_0 = 0
+  propagate slice-by-slice for trial (F, λ)
+  require E_n = 0 at convergence
+</div>
+
+<p>The force branch is therefore another one-dimensional root-finding problem in F for fixed λ. Bisection is the v2 default because it is unconditionally convergent once the residual has opposite signs at the bracket endpoints; a safeguarded secant or Brent accelerator is permitted only after the bisection baseline has been benchmarked.</p>
+
+<h3 id="s5-3"><span class="snum">5.3</span>Intersection by bisection (recommended for v2)</h3>
+
+<p>The recommended v2 strategy is the classical Spencer intersection method. The stopping criterion is the residual on <code>g</code>, not the width of the λ interval, so that tolerance scales with factor-of-safety units rather than with a dimensionless λ range:</p>
+
+<div class="eq">
+<span class="label">Outer solver — bisection on λ</span>
+g(λ) = F_m(λ) - F_f(λ)
+
+Choose an initial λ bracket, e.g.:
+  λ_low  = -0.6
+  λ_high = +0.6
+
+Evaluate g(λ_low) and g(λ_high). Both must be valid and have opposite signs.
+If not, widen the bracket or mark the surface as Spencer-unresolved.
+
+Bisection loop:
+  for iter = 1 to max_outer_iter:
+    λ_mid = (λ_low + λ_high) / 2
+    Compute F_m(λ_mid)  →  solve R_m(F, λ_mid) = 0
+    Compute F_f(λ_mid)  →  solve R_f(F, λ_mid) = 0
+    g_mid = F_m(λ_mid) - F_f(λ_mid)
+
+    if |g_mid| < intersection_tolerance:
+      return converged at λ_mid
+
+    if sign(g_mid) == sign(g(λ_low)):
+      λ_low = λ_mid
+    else:
+      λ_high = λ_mid
+
+  F_spencer = converged common value of F_m and F_f
+  λ_spencer = λ_mid
+</div>
+
+<p>The sign-compare update rule is used rather than a direct <code>F_m &gt; F_f</code> test, because <code>g(λ)</code> is not guaranteed a priori to be monotone decreasing in λ for every surface. In practice <code>g</code> is monotone over a well-posed bracket, but the sign-compare form is robust to the exceptional cases without any extra cost.</p>
+
+<p>At convergence, the reported Spencer factor of safety shall be the converged common value. The implementation shall <strong>not</strong> synthesize a Spencer factor by averaging an unconverged Bishop value and a force-equilibrium value.</p>
+
+<h3 id="s5-4"><span class="snum">5.4</span>Direct two-variable solve (optional optimisation)</h3>
+
+<p>Once the intersection method is verified, the implementation may optionally replace it with a direct solve of the two Spencer residuals:</p>
+
+<div class="eq">
+<span class="label">Direct solve in (F, λ)</span>
+Solve simultaneously:
+  R_m(F, λ) = 0
+  R_f(F, λ) = 0
+
+Newton / quasi-Newton update:
+  [F, λ]_{k+1} = [F, λ]_k - J^{-1} R
+
+where:
+  R = [R_m, R_f]^T
+  J = Jacobian of residuals with respect to [F, λ]
+</div>
+
+<p>This route is faster once mature, but the classical branch-intersection method is the recommended baseline because it is easier to audit and benchmark against published Spencer workflows and against reference implementations derived from the same literature.</p>
+
+<h3 id="s5-5"><span class="snum">5.5</span>Convergence, stability, and fallbacks</h3>
+
+<table>
+  <tr><th>Issue</th><th>Symptom</th><th>Remedy</th></tr>
+  <tr>
+    <td>Moment residual cannot be bracketed</td>
+    <td>No sign change in R_m(F, λ) for the chosen F bracket</td>
+    <td>Widen the F bracket or mark this λ as unresolved for the moment branch.</td>
+  </tr>
+  <tr>
+    <td>Force residual cannot be bracketed</td>
+    <td>No sign change in R_f(F, λ) for the chosen F bracket</td>
+    <td>Widen the F bracket. If still unresolved, move to the next λ or mark the surface Spencer-unresolved.</td>
+  </tr>
+  <tr>
+    <td>g(λ) does not change sign across the λ bracket</td>
+    <td>The two Spencer branches do not intersect in the initial λ range</td>
+    <td>Widen the λ range. If the branches still do not intersect, flag the surface and retain the Bishop comparison result for the UI.</td>
+  </tr>
+  <tr>
+    <td>N'_i becomes negative for some slice</td>
+    <td>Tension develops on the base</td>
+    <td>Flag it. Whether tension is clipped to zero or merely reported shall be an explicit implementation choice and shall be benchmarked, not introduced silently.</td>
+  </tr>
+  <tr>
+    <td>Interslice forces E become negative</td>
+    <td>Tension develops between slices</td>
+    <td>Flag for review. Mild local tension near a boundary may occur; strong or widespread tension usually warrants scrutiny of the surface and solver state.</td>
+  </tr>
+</table>
+
+<div class="callout warn">
+  <strong>Robust fallback strategy.</strong> In the user-facing application, a failed Spencer solve may fall back to the Bishop result so that the engineer is not blocked. In the <strong>Spencer result object itself</strong>, however, the implementation shall not report a fabricated Spencer factor of safety when the Spencer residuals have not converged.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §6 MODIFIED DATA STRUCTURES -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s6"><span class="snum">6</span>Modified Data Structures</h2>
+
+<p>Changes relative to the Bishop v1 structures are marked. Unchanged fields are not repeated — refer to v1 spec §7.</p>
+
+<pre>
+<span class="cm">// ── Slice: additions for Spencer ──</span>
+
+<span class="kw">struct</span> <span class="ty">Slice</span> {
+  <span class="cm">// ... all existing Bishop fields unchanged ...</span>
+
+  <span class="cm">// NEW: interslice force results (populated by Spencer solver)</span>
+  <span class="param">E_right</span>:     <span class="ty">float</span>   <span class="cm">// horizontal interslice force on right face (kN/m)</span>
+  <span class="param">X_right</span>:     <span class="ty">float</span>   <span class="cm">// vertical interslice force on right face (kN/m)</span>
+  <span class="param">N_eff</span>:       <span class="ty">float</span>   <span class="cm">// effective normal force on base (kN/m) — for QA</span>
+  <span class="param">S_mob</span>:       <span class="ty">float</span>   <span class="cm">// mobilised shear on base (kN/m) — for QA</span>
+}
+
+
+<span class="cm">// ── Result: extended for multi-method ──</span>
+
+<span class="kw">enum</span> <span class="ty">MethodType</span> {
+  BISHOP_SIMPLIFIED,
+  SPENCER,
+  MORGENSTERN_PRICE   <span class="cm">// reserved for future</span>
+}
+
+<span class="kw">struct</span> <span class="ty">StabilityResult</span> {
+  <span class="param">circle</span>:         <span class="ty">SlipCircle</span>
+  <span class="param">method</span>:         <span class="ty">MethodType</span>
+  <span class="param">F</span>:              <span class="ty">float</span>         <span class="cm">// converged factor of safety</span>
+  <span class="param">converged</span>:      <span class="ty">bool</span>
+  <span class="param">iterations</span>:     <span class="ty">int</span>           <span class="cm">// total iteration count (all loops)</span>
+  <span class="param">slices</span>:         <span class="ty">Slice[]</span>
+
+  <span class="cm">// Bishop-specific</span>
+  <span class="param">F_fellenius</span>:    <span class="ty">float</span>
+
+  <span class="cm">// Spencer-specific</span>
+  <span class="param">lambda</span>:         <span class="ty">float</span>         <span class="cm">// converged interslice force ratio</span>
+  <span class="param">theta_deg</span>:      <span class="ty">float</span>         <span class="cm">// atan(λ) in degrees — for display</span>
+  <span class="param">F_m</span>:            <span class="ty">float</span>         <span class="cm">// moment-equilibrium F at converged λ</span>
+  <span class="param">F_f</span>:            <span class="ty">float</span>         <span class="cm">// force-equilibrium F at converged λ</span>
+  <span class="param">F_bishop</span>:       <span class="ty">float</span>         <span class="cm">// Bishop F for same surface (always computed)</span>
+  <span class="param">momentResidual</span>: <span class="ty">float</span>         <span class="cm">// final Spencer moment residual</span>
+  <span class="param">forceResidual</span>:  <span class="ty">float</span>         <span class="cm">// final Spencer force residual / closure residual</span>
+
+  <span class="cm">// Diagnostics</span>
+  <span class="param">maxE</span>:           <span class="ty">float</span>         <span class="cm">// peak interslice force (kN/m)</span>
+  <span class="param">tensionSlices</span>:  <span class="ty">int</span>           <span class="cm">// count of slices where N' < 0</span>
+  <span class="param">rejected</span>:       <span class="ty">bool</span>
+  <span class="param">rejectReason</span>:   <span class="ty">string</span>
+}
+
+
+<span class="cm">// ── Spencer solver config ──</span>
+
+<span class="kw">struct</span> <span class="ty">SpencerConfig</span> {
+  <span class="param">lambda_low</span>:             <span class="ty">float</span>   <span class="cm">// default -0.6</span>
+  <span class="param">lambda_high</span>:            <span class="ty">float</span>   <span class="cm">// default +0.6</span>
+  <span class="param">intersection_tolerance</span>: <span class="ty">float</span>   <span class="cm">// default 0.001 on |F_m - F_f| (factor-of-safety units)</span>
+  <span class="param">moment_tolerance</span>:       <span class="ty">float</span>   <span class="cm">// default 0.001 on the moment-branch residual</span>
+  <span class="param">force_tolerance</span>:        <span class="ty">float</span>   <span class="cm">// default 0.001 on the force-branch residual</span>
+  <span class="param">F_bracket_low</span>:          <span class="ty">float</span>   <span class="cm">// default 0.1</span>
+  <span class="param">F_bracket_high</span>:         <span class="ty">float</span>   <span class="cm">// default 10.0</span>
+  <span class="param">max_outer_iter</span>:         <span class="ty">int</span>     <span class="cm">// default 20 (outer λ bisection steps)</span>
+  <span class="param">max_inner_iter</span>:         <span class="ty">int</span>     <span class="cm">// default 30 (inner F bisection steps)</span>
+  <span class="param">use_newton</span>:             <span class="ty">bool</span>    <span class="cm">// default false for v2, enable only after branch-intersection verification</span>
+  <span class="param">initial_F</span>:              <span class="ty">float</span>   <span class="cm">// optional seed; Bishop F is a natural default</span>
+  <span class="param">initial_lambda</span>:         <span class="ty">float</span>   <span class="cm">// optional seed; default 0.0</span>
+  <span class="param">fallback_bishop</span>:        <span class="ty">bool</span>    <span class="cm">// default true — use Bishop result in the UI if Spencer fails</span>
+}
+</pre>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §7 COMPLETE PSEUDOCODE -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s7"><span class="snum">7</span>Complete Pseudocode</h2>
+
+<h3 id="s7-1"><span class="snum">7.1</span>Common Spencer state evaluator <span class="tag new">New</span></h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// evaluateSpencerState: common Spencer slice kernel
+//
+// Inputs:
+//   slices  → geometry, loads, pore pressure, material data
+//   F       → trial factor of safety
+//   lambda  → trial interslice-force ratio
+//
+// Outputs:
+//   sliceStates     → N_total, N_eff, S_mob, E_right, X_right
+//   momentResidual  → overall Spencer moment residual
+//   forceResidual   → overall Spencer force residual / closure residual
+//
+// The slice equations shall be transcribed from Spencer (1967) or
+// Carpenter (1985), using l_i on cohesion and pore-force terms.
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">evaluateSpencerState</span>(
+  <span class="param">slices</span>: <span class="ty">Slice[]</span>,
+  <span class="param">lambda</span>: <span class="ty">float</span>,
+  <span class="param">F</span>: <span class="ty">float</span>
+) → {
+  valid: <span class="ty">bool</span>,
+  sliceStates: {N_total, N_eff, S_mob, E_right, X_right}[],
+  momentResidual: <span class="ty">float</span>,
+  forceResidual: <span class="ty">float</span>
+}:
+
+  <span class="kw">let</span> <span class="param">E_left</span> = <span class="nu">0.0</span>
+  <span class="kw">let</span> <span class="param">states</span> = []
+  <span class="kw">let</span> <span class="param">momentResidual</span> = <span class="nu">0.0</span>
+
+  <span class="kw">for each</span> s <span class="kw">in</span> slices:
+    <span class="cm">// Solve the Spencer slice equations for this slice.</span>
+    <span class="cm">// Governing ingredients:</span>
+    <span class="cm">//   l_i  = b_i / cos(alpha_i)</span>
+    <span class="cm">//   U_i  = u_i l_i</span>
+    <span class="cm">//   S_i  = [c'_i l_i + N'_i tan(phi'_i)] / F</span>
+    <span class="cm">//   X_i  = lambda E_i</span>
+    <span class="cm">// The implementation may use a direct recurrence, Carpenter's</span>
+    <span class="cm">// linear approximation method, or an algebraically equivalent</span>
+    <span class="cm">// local solve, provided the resulting residuals are Spencer-true.</span>
+
+    <span class="kw">let</span> <span class="param">state</span> = solveSliceSpencerEq(s, F, lambda, E_left)
+    <span class="kw">if not</span> state.valid:
+      <span class="kw">return</span> {valid: <span class="kw">false</span>, sliceStates: states, momentResidual: NaN, forceResidual: NaN}
+
+    states.push(state)
+    momentResidual += computeSliceMomentAboutCenter(s, state)
+    E_left = state.E_right
+
+  <span class="kw">let</span> <span class="param">forceResidual</span> = E_left
+  <span class="kw">return</span> {valid: <span class="kw">true</span>, sliceStates: states, momentResidual, forceResidual}
+</pre>
+
+<h3 id="s7-2"><span class="snum">7.2</span>Moment branch solve <span class="tag new">New</span></h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// computeFm: solve R_m(F, lambda) = 0 for fixed lambda
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">computeFm</span>(
+  <span class="param">slices</span>: <span class="ty">Slice[]</span>,
+  <span class="param">lambda</span>: <span class="ty">float</span>,
+  <span class="param">config</span>: <span class="ty">SpencerConfig</span>
+) → {F_m: <span class="ty">float</span>, converged: <span class="ty">bool</span>, state}:
+
+  <span class="kw">let</span> <span class="param">F_lo</span> = config.F_bracket_low
+  <span class="kw">let</span> <span class="param">F_hi</span> = config.F_bracket_high
+  <span class="kw">let</span> <span class="param">res_lo</span> = evaluateSpencerState(slices, lambda, F_lo)
+  <span class="kw">let</span> <span class="param">res_hi</span> = evaluateSpencerState(slices, lambda, F_hi)
+
+  <span class="kw">if not</span> res_lo.valid <span class="kw">or not</span> res_hi.valid:
+    <span class="kw">return</span> {F_m: NaN, converged: <span class="kw">false</span>, state: null}
+  <span class="kw">if</span> sign(res_lo.momentResidual) == sign(res_hi.momentResidual):
+    <span class="kw">return</span> {F_m: NaN, converged: <span class="kw">false</span>, state: null}
+
+  <span class="kw">for</span> iter = <span class="nu">1</span> <span class="kw">to</span> config.max_inner_iter:
+    <span class="kw">let</span> <span class="param">F_mid</span> = (F_lo + F_hi) / <span class="nu">2.0</span>
+    <span class="kw">let</span> <span class="param">res_mid</span> = evaluateSpencerState(slices, lambda, F_mid)
+    <span class="kw">if not</span> res_mid.valid:
+      <span class="kw">return</span> {F_m: NaN, converged: <span class="kw">false</span>, state: null}
+    <span class="kw">if</span> abs(res_mid.momentResidual) &lt; config.moment_tolerance:
+      <span class="kw">return</span> {F_m: F_mid, converged: <span class="kw">true</span>, state: res_mid}
+    <span class="kw">if</span> sign(res_mid.momentResidual) == sign(res_lo.momentResidual):
+      F_lo = F_mid; res_lo = res_mid
+    <span class="kw">else</span>:
+      F_hi = F_mid; res_hi = res_mid
+
+  <span class="kw">return</span> {F_m: (F_lo + F_hi) / <span class="nu">2.0</span>, converged: <span class="kw">false</span>, state: res_hi}
+</pre>
+
+<h3 id="s7-3"><span class="snum">7.3</span>Force branch solve <span class="tag new">New</span></h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// computeFf: solve R_f(F, lambda) = 0 for fixed lambda
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">computeFf</span>(
+  <span class="param">slices</span>: <span class="ty">Slice[]</span>,
+  <span class="param">lambda</span>: <span class="ty">float</span>,
+  <span class="param">config</span>: <span class="ty">SpencerConfig</span>
+) → {F_f: <span class="ty">float</span>, converged: <span class="ty">bool</span>, state}:
+
+  <span class="kw">let</span> <span class="param">F_lo</span> = config.F_bracket_low
+  <span class="kw">let</span> <span class="param">F_hi</span> = config.F_bracket_high
+  <span class="kw">let</span> <span class="param">res_lo</span> = evaluateSpencerState(slices, lambda, F_lo)
+  <span class="kw">let</span> <span class="param">res_hi</span> = evaluateSpencerState(slices, lambda, F_hi)
+
+  <span class="kw">if not</span> res_lo.valid <span class="kw">or not</span> res_hi.valid:
+    <span class="kw">return</span> {F_f: NaN, converged: <span class="kw">false</span>, state: null}
+  <span class="kw">if</span> sign(res_lo.forceResidual) == sign(res_hi.forceResidual):
+    <span class="kw">return</span> {F_f: NaN, converged: <span class="kw">false</span>, state: null}
+
+  <span class="kw">for</span> iter = <span class="nu">1</span> <span class="kw">to</span> config.max_inner_iter:
+    <span class="kw">let</span> <span class="param">F_mid</span> = (F_lo + F_hi) / <span class="nu">2.0</span>
+    <span class="kw">let</span> <span class="param">res_mid</span> = evaluateSpencerState(slices, lambda, F_mid)
+    <span class="kw">if not</span> res_mid.valid:
+      <span class="kw">return</span> {F_f: NaN, converged: <span class="kw">false</span>, state: null}
+    <span class="kw">if</span> abs(res_mid.forceResidual) &lt; config.force_tolerance:
+      <span class="kw">return</span> {F_f: F_mid, converged: <span class="kw">true</span>, state: res_mid}
+    <span class="kw">if</span> sign(res_mid.forceResidual) == sign(res_lo.forceResidual):
+      F_lo = F_mid; res_lo = res_mid
+    <span class="kw">else</span>:
+      F_hi = F_mid; res_hi = res_mid
+
+  <span class="kw">return</span> {F_f: (F_lo + F_hi) / <span class="nu">2.0</span>, converged: <span class="kw">false</span>, state: res_hi}
+</pre>
+
+<div class="eq">
+<span class="label">Checks on the common state evaluator</span>
+1. E_0 = 0 by boundary condition
+2. E_n = 0 at force-branch convergence
+3. X_i = λ E_i for every boundary
+4. N_eff, S_mob, E_right, X_right are finite for every slice
+5. The reported residuals are consistent with the stored slice states
+</div>
+
+<h3 id="s7-4"><span class="snum">7.4</span>Outer solver: find λ where F_m = F_f <span class="tag new">New</span></h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// computeSpencerF: complete Spencer solution by branch intersection
+//
+// Bishop may be computed as a seed or comparison value only.
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">computeSpencerF</span>(
+  <span class="param">slices</span>: <span class="ty">Slice[]</span>,
+  <span class="param">config</span>: <span class="ty">SpencerConfig</span>
+) → <span class="ty">StabilityResult</span>:
+
+  <span class="kw">let</span> <span class="param">bishopResult</span> = computeBishopF(slices)   <span class="cm">// optional seed and comparison</span>
+
+  <span class="kw">function</span> <span class="fn">g</span>(<span class="param">lambda</span>: <span class="ty">float</span>) → {valid: <span class="ty">bool</span>, value: <span class="ty">float</span>, F_m: <span class="ty">float</span>, F_f: <span class="ty">float</span>}:
+    <span class="kw">let</span> <span class="param">fm</span> = computeFm(slices, lambda, config)
+    <span class="kw">let</span> <span class="param">ff</span> = computeFf(slices, lambda, config)
+    <span class="kw">if not</span> fm.converged <span class="kw">or not</span> ff.converged:
+      <span class="kw">return</span> {valid: <span class="kw">false</span>, value: NaN, F_m: NaN, F_f: NaN}
+    <span class="kw">return</span> {
+      valid: <span class="kw">true</span>,
+      value: fm.F_m - ff.F_f,
+      F_m: fm.F_m,
+      F_f: ff.F_f
+    }
+
+  <span class="kw">let</span> <span class="param">lambdaLo</span> = config.lambda_low
+  <span class="kw">let</span> <span class="param">lambdaHi</span> = config.lambda_high
+  <span class="kw">let</span> <span class="param">gLo</span> = g(lambdaLo)
+  <span class="kw">let</span> <span class="param">gHi</span> = g(lambdaHi)
+
+  <span class="kw">if not</span> gLo.valid <span class="kw">or not</span> gHi.valid:
+    <span class="kw">return</span> unresolvedSpencerResult(bishopResult, <span class="st">"Spencer branch solve failed at λ bracket endpoints"</span>)
+  <span class="kw">if</span> sign(gLo.value) == sign(gHi.value):
+    <span class="kw">return</span> unresolvedSpencerResult(bishopResult, <span class="st">"F_m and F_f do not intersect in the current λ range"</span>)
+
+  <span class="kw">for</span> iter = <span class="nu">1</span> <span class="kw">to</span> config.max_outer_iter:
+    <span class="kw">let</span> <span class="param">lambdaMid</span> = (lambdaLo + lambdaHi) / <span class="nu">2.0</span>
+    <span class="kw">let</span> <span class="param">gMid</span> = g(lambdaMid)
+    <span class="kw">if not</span> gMid.valid:
+      <span class="kw">return</span> unresolvedSpencerResult(bishopResult, <span class="st">"Spencer branch solve failed during λ bisection"</span>)
+
+    <span class="kw">if</span> abs(gMid.value) &lt; config.intersection_tolerance:
+      <span class="cm">// Re-evaluate the kernel once at the converged (λ*, F*) to produce</span>
+      <span class="cm">// a single self-consistent slice-state set for diagnostics.</span>
+      <span class="kw">let</span> <span class="param">F_star</span> = <span class="nu">0.5</span> * (gMid.F_m + gMid.F_f)
+      <span class="kw">let</span> <span class="param">finalState</span> = evaluateSpencerState(slices, lambdaMid, F_star)
+      populateSliceDiagnosticsFromState(slices, finalState, lambdaMid)
+      <span class="kw">return</span> StabilityResult {
+        method: SPENCER,
+        F: F_star,
+        converged: <span class="kw">true</span>,
+        iterations: iter,
+        slices: slices,
+        lambda: lambdaMid,
+        theta_deg: degrees(atan(lambdaMid)),
+        F_m: gMid.F_m,
+        F_f: gMid.F_f,
+        F_bishop: bishopResult?.F ?? NaN,
+        momentResidual: finalState.momentResidual,
+        forceResidual: finalState.forceResidual,
+        maxE: max(abs(st.E_right) <span class="kw">for</span> st <span class="kw">in</span> finalState.sliceStates),
+        tensionSlices: count(st.N_eff &lt; <span class="nu">0</span> <span class="kw">for</span> st <span class="kw">in</span> finalState.sliceStates),
+        rejected: <span class="kw">false</span>,
+        rejectReason: <span class="st">""</span>
+      }
+
+    <span class="kw">if</span> sign(gMid.value) == sign(gLo.value):
+      lambdaLo = lambdaMid
+      gLo = gMid
+    <span class="kw">else</span>:
+      lambdaHi = lambdaMid
+      gHi = gMid
+
+  <span class="kw">return</span> unresolvedSpencerResult(bishopResult, <span class="st">"Outer λ loop did not converge"</span>)
+</pre>
+
+<h3 id="s7-5"><span class="snum">7.5</span>Integrated search driver <span class="tag modify">Modify</span></h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// searchWithSpencer: search using Bishop, re-check top-N with Spencer
+//
+// This is the recommended integration strategy:
+// 1. Run the full search with Bishop (fast)
+// 2. Take the top-N critical surfaces
+// 3. Re-analyse each with Spencer (slower but rigorous)
+// 4. Re-rank by Spencer F
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">searchWithSpencer</span>(
+  <span class="param">model</span>: <span class="ty">SlopeModel</span>,
+  <span class="param">searchConfig</span>: <span class="ty">SearchConfig</span>,
+  <span class="param">spencerConfig</span>: <span class="ty">SpencerConfig</span>,
+  <span class="param">recheckCount</span>: <span class="ty">int</span> = <span class="nu">10</span>
+) → <span class="ty">SearchResult</span>:
+
+  <span class="cm">// ── Phase 1: Bishop search (unchanged from v1) ──</span>
+  <span class="kw">let</span> <span class="param">bishopSearch</span> = searchGridRadius(model, searchConfig)
+    <span class="cm">// This returns results sorted by Bishop F, with slices pre-built</span>
+
+  <span class="cm">// ── Phase 2: full Spencer re-check on top candidates ──</span>
+  <span class="kw">let</span> <span class="param">spencerResults</span> = []
+
+  <span class="kw">for each</span> bishopResult <span class="kw">in</span> bishopSearch.results.take(recheckCount):
+    <span class="cm">// Reuse the slices, but solve Spencer from its own equations.</span>
+    <span class="cm">// Carry over the Bishop-side comparison values (F and, if available, F_fellenius)</span>
+    <span class="cm">// as secondary fields on the Spencer result — never as the Spencer F itself.</span>
+    <span class="kw">let</span> <span class="param">spencerResult</span> = computeSpencerF(bishopResult.slices, spencerConfig)
+    spencerResult.circle = bishopResult.circle
+    spencerResult.F_bishop = bishopResult.F
+    <span class="kw">if</span> bishopResult.F_fellenius != null:
+      spencerResult.F_fellenius = bishopResult.F_fellenius
+    spencerResults.push(spencerResult)
+
+  <span class="cm">// ── Phase 3: rank by Spencer F ──</span>
+  <span class="kw">let</span> <span class="param">convergedSpencer</span> = spencerResults.filter(r → r.converged)
+  convergedSpencer.sortBy(r → r.F)
+
+  <span class="cm">// If no Spencer result converged, fall back to Bishop ranking</span>
+  <span class="kw">if</span> convergedSpencer.length == <span class="nu">0</span>:
+    <span class="kw">return</span> bishopSearch   <span class="cm">// unchanged Bishop results</span>
+
+  <span class="kw">return</span> SearchResult {
+    results: convergedSpencer,
+    critical: convergedSpencer[<span class="nu">0</span>],
+    trialsTotal: bishopSearch.trialsTotal,
+    trialsValid: bishopSearch.trialsValid,
+    trialsRejected: bishopSearch.trialsRejected,
+    <span class="cm">// Additional Spencer-specific metadata:</span>
+    spencerRechecked: recheckCount,
+    spencerConverged: convergedSpencer.length
+  }
+</pre>
+
+<div class="callout reuse">
+  <strong>Search strategy recap.</strong> Bishop-for-search and Spencer-for-shortlist remains the recommended runtime architecture. That is an optimisation strategy only; it does not change the mathematical requirement that the shortlisted verification be a full Spencer solve.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §8 VALIDATION -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s8"><span class="snum">8</span>Validation Strategy</h2>
+
+<h3>Cross-check against Bishop</h3>
+<p>For circular slips in comparatively uniform soil, Spencer and Bishop will often lie close. That is a useful engineering check, but it is not the primary validation criterion. The primary validation criterion is that the Spencer residuals themselves converge correctly and match benchmark solutions.</p>
+
+<div class="eq">
+<span class="label">Expected Bishop–Spencer agreement</span>
+For circular surfaces in uniform soil:
+  |F_spencer - F_bishop| / F_bishop  <  5%  (usually < 2%)
+
+If the difference exceeds 5%, check:
+  - Is the exit angle steep? (Bishop degrades for steep exits)
+  - Is there a large strength contrast between layers?
+  - Is pore pressure high? (u/γh > 0.4)
+
+Large differences are a prompt for review, not proof of error.
+</div>
+
+<h3>Interslice force validation</h3>
+<p>After a Spencer solution, the interslice forces provide rich diagnostic information:</p>
+<ol>
+  <li><strong>E profile shape</strong>: should be roughly parabolic — zero at both ends, positive (compressive) in the middle. Plot E vs. slice index.</li>
+  <li><strong>X = λ·E</strong>: verify this holds exactly for every slice boundary.</li>
+  <li><strong>No large tension</strong>: if N'_i is negative for many slices (not just 1–2 near the crest), the slip surface geometry is suspect.</li>
+  <li><strong>λ magnitude</strong>: typical converged λ is between 0 and 0.5 for most slopes. Values outside [-0.5, +0.8] are unusual and worth investigating.</li>
+  <li><strong>Global force balance</strong>: sum of all horizontal forces should be zero to within tolerance. This is the strongest check — if it fails, the solver has a bug.</li>
+</ol>
+
+<h3>Benchmark test cases</h3>
+<p>Use the same geometric test cases from the v1 spec (§10), but add the following Spencer-specific acceptance checks:</p>
+<table>
+  <tr><th>Test</th><th>Acceptance criterion</th><th>Expected Spencer behaviour</th><th>Expected λ range</th></tr>
+  <tr>
+    <td>Test 1: Homogeneous, dry</td>
+    <td>Residuals converge; benchmark close to reference software</td>
+    <td>Spencer close to Bishop; force profile smooth and compressive</td>
+    <td>0.05 – 0.25</td>
+  </tr>
+  <tr>
+    <td>Test 2: Homogeneous, water table</td>
+    <td>Residuals converge; benchmark close to reference software</td>
+    <td>Sensitivity to pore pressure reproduced consistently</td>
+    <td>0.10 – 0.30</td>
+  </tr>
+  <tr>
+    <td>Test 3: Two-layer, dry</td>
+    <td>Residuals converge; benchmark close to reference software</td>
+    <td>Difference from Bishop may be more pronounced than Test 1</td>
+    <td>0.05 – 0.20</td>
+  </tr>
+</table>
+
+<p>Additionally, verify against an established reference implementation such as STABL, SLOPE/W, Slide, or an independently checked spreadsheet. Compare not only F, but also λ, the residual magnitudes, and the interslice-force profile.</p>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §9 PRACTICAL INTEGRATION -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s9"><span class="snum">9</span>Practical Integration Notes</h2>
+
+<h3>UI implications</h3>
+<p>The Spencer extension adds the following to the user interface:</p>
+
+<h4>The Spencer toggle</h4>
+<p>The primary UI control is a single checkbox or toggle switch labelled "Spencer equilibrium check" (default: ON). Its behaviour is simple and deterministic:</p>
+
+<div class="eq">
+<span class="label">Toggle behaviour</span>
+Spencer toggle OFF:
+  → Search uses Bishop only
+  → Results show: F_bishop
+  → Solver call: searchGridRadius() → computeBishopF()
+  → Fastest mode — suitable for exploration and initial geometry tuning
+
+Spencer toggle ON:
+  → Search uses Bishop, then re-checks top-N with Spencer
+  → Results show: F_spencer (primary), F_bishop (secondary, for comparison)
+  → Solver call: searchWithSpencer() → computeBishopF() + computeSpencerF()
+  → If Spencer fails to converge on a surface, Bishop result is shown
+    with a note "Spencer did not converge"
+  → Slower than Bishop-only, but still practical because only the shortlist is re-checked
+
+Implementation:
+  The toggle sets a single boolean in the search config:
+    config.useSpencer: bool = true
+
+  The search driver checks this flag:
+    if config.useSpencer:
+      return searchWithSpencer(model, searchConfig, spencerConfig)
+    else:
+      return searchGridRadius(model, searchConfig)
+</div>
+
+<p>Additional display elements when Spencer is enabled:</p>
+<ol>
+  <li><strong>Method selector</strong>: let the user choose "Bishop only" (fast, for exploration) or "Bishop + Spencer check" (rigorous, for final results). Default to Bishop + Spencer.</li>
+  <li><strong>Result display</strong>: show both F_bishop and F_spencer for the critical surface. If they agree within 2%, display only one (with a note "confirmed by Spencer"). If they differ by more than 2%, show both prominently.</li>
+  <li><strong>Interslice force diagram</strong>: optionally plot the E and X distributions along the slip surface. This is a standard output in commercial tools and gives engineers confidence that the result is physically plausible.</li>
+  <li><strong>λ / θ display</strong>: show the converged interslice-force angle. This is informational — the user never sets it.</li>
+  <li><strong>Convergence indicator</strong>: if Spencer failed to converge for a surface, show the Bishop result with a note "Spencer did not converge — Bishop comparison shown".</li>
+</ol>
+
+<h3>Performance budget</h3>
+<table>
+  <tr><th>Phase</th><th>Surfaces</th><th>Cost per surface</th><th>Total</th></tr>
+  <tr>
+    <td>Coarse Bishop search</td>
+    <td>~3,400</td>
+    <td>~150 slice-loop evaluations</td>
+    <td>~510k evals → &lt;1 s</td>
+  </tr>
+  <tr>
+    <td>Refined Bishop search</td>
+    <td>~3,500</td>
+    <td>~150 slice-loop evaluations</td>
+    <td>~525k evals → &lt;1 s</td>
+  </tr>
+  <tr>
+    <td>Spencer re-check</td>
+    <td>10</td>
+    <td>~300–800 kernel calls (outer λ × inner F bisection)</td>
+    <td>~3k–8k kernel calls → &lt;0.1 s</td>
+  </tr>
+  <tr>
+    <td><strong>Total</strong></td>
+    <td></td>
+    <td></td>
+    <td><strong>~1.04M evals → ~2 s</strong></td>
+  </tr>
+</table>
+
+<p>These figures are indicative only. The Spencer cost per surface is set by the product of the outer λ-bisection count and the two inner F-bisection counts; with the default <code>max_outer_iter = 20</code> and <code>max_inner_iter = 30</code> the worst case is roughly 20×(30+30) = 1200 kernel calls, and typical convergence is well under half of that. Because the Spencer cost is paid on only the shortlisted surfaces, the overall runtime remains dominated by the Bishop search.</p>
+
+<h3>Error handling hierarchy</h3>
+<ol>
+  <li>If geometry/slicing fails → reject the surface (same as v1).</li>
+  <li>If Bishop fails to converge → reject the surface (same as v1).</li>
+  <li>If Bishop converges but Spencer fails → return the Bishop result, flagged as "Spencer unconverged". Never discard a valid Bishop result because Spencer had trouble.</li>
+  <li>If Spencer converges → return the Spencer result (with Bishop F stored for comparison).</li>
+</ol>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §10 ONWARD TO M-P -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s10"><span class="snum">10</span>Onward to Morgenstern–Price</h2>
+
+<p>With Spencer implemented, the step to Morgenstern–Price is small. The only change is that the interslice-force ratio is no longer constant:</p>
+
+<div class="eq">
+<span class="label">Morgenstern–Price interslice-force function</span>
+Spencer:  X_i / E_i = λ                    (constant)
+
+M-P:      X_i / E_i = λ · f(x_i)           (variable)
+
+where f(x) is a prescribed function normalised so that max(f) = 1.
+Common choices:
+  f(x) = 1              → reduces to Spencer
+  f(x) = sin(π·ξ)       → half-sine (most common default in SLOPE/W)
+  f(x) = trapezoid       → user-defined linear segments
+
+  ξ = (x - x_entry) / (x_exit - x_entry)   (normalised position)
+</div>
+
+<p>The implementation changes are:</p>
+<ol>
+  <li>Replace the constant side-force ratio <code>λ</code> in the common Spencer state evaluator with <code>λ · f(x_i)</code>.</li>
+  <li>Add a function <code>f(x)</code> to the config (default: half-sine).</li>
+  <li>The outer solver remains a scalar solve in λ for the prescribed side-force function.</li>
+</ol>
+
+<p>For circular slip surfaces, M-P with half-sine f(x) typically gives F within 0.5% of Spencer. The method becomes more valuable when you move to non-circular surfaces (composite, block, or optimised shapes), where the interslice-force distribution matters more and the constant-ratio assumption of Spencer becomes less physical.</p>
+
+<div class="callout note">
+  <strong>Recommended sequence.</strong> Once Spencer is verified and stable, adding M-P is a half-day task. The bigger investment at that point is non-circular surface search (block search, optimisation, or Cuckoo search), which is a geometry problem rather than a solver problem. Your current architecture (closed polygonal regions, polygon-clipping slice builder) already supports non-circular surfaces — you would only need to replace the circle-based yBase calculation with a general polyline-based one.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §11 REFERENCES -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s11"><span class="snum">11</span>References</h2>
+
+<ol>
+  <li>Spencer, E. (1967). "A method of analysis of the stability of embankments assuming parallel inter-slice forces." <em>Géotechnique</em>, 17(1), 11–26. DOI: <a href="https://doi.org/10.1680/geot.1967.17.1.11">10.1680/geot.1967.17.1.11</a>.</li>
+  <li>Bishop, A.W. (1955). "The use of the slip circle in the stability analysis of slopes." <em>Géotechnique</em>, 5(1), 7–17. DOI: <a href="https://doi.org/10.1680/geot.1955.5.1.7">10.1680/geot.1955.5.1.7</a>.</li>
+  <li>Morgenstern, N.R. &amp; Price, V.E. (1965). "The analysis of the stability of general slip surfaces." <em>Géotechnique</em>, 15(1), 79–93. DOI: <a href="https://doi.org/10.1680/geot.1965.15.1.79">10.1680/geot.1965.15.1.79</a>.</li>
+  <li>Fredlund, D.G. &amp; Krahn, J. (1977). "Comparison of slope stability methods of analysis." <em>Canadian Geotechnical Journal</em>, 14(3), 429–439. DOI: <a href="https://doi.org/10.1139/t77-045">10.1139/t77-045</a>.</li>
+  <li>Carpenter, J.R. (1985). <em>STABL5 — The Spencer Method of Slices</em>. Joint Highway Research Project report, Purdue University, West Lafayette, Indiana.</li>
+  <li>USACE (2003). <em>EM 1110-2-1902: Engineering and Design — Slope Stability</em>. U.S. Army Corps of Engineers.</li>
+  <li>Duncan, J.M. &amp; Wright, S.G. (2005). <em>Soil Strength and Slope Stability</em>. Wiley, Hoboken, NJ.</li>
+  <li>Krahn, J. (2003). "The 2001 R.M. Hardy Lecture: The limits of limit equilibrium analyses." <em>Canadian Geotechnical Journal</em>, 40(3), 643–660. DOI: <a href="https://doi.org/10.1139/t03-024">10.1139/t03-024</a>.</li>
+</ol>
+
+<p>Implementers are expected to verify each DOI at <code>doi.org</code> before relying on it. The Carpenter (1985) JHRP report is available from the Purdue e-Pubs JTRP archive; the specific DOI assigned by Purdue e-Pubs should be fetched from <code>docs.lib.purdue.edu/jtrp</code> rather than reproduced from secondary sources. The previously cited FHWA NHI-01-028 reference has been removed pending verification of its title and applicability.</p>
+
+</div><!-- .page -->
+</body>
+</html>
