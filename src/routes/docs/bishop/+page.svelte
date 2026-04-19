@@ -516,23 +516,24 @@
 				<section class="doc-subsection">
 					<h3>6.3 Spencer algebra used for the recheck</h3>
 					<p>
-						For circular surfaces, the application reuses the converged Bishop result as the
-						<strong>moment-equilibrium</strong> branch:
+						For circular surfaces, the application now performs a <strong>full Spencer
+						solve</strong>. The Bishop result is retained as a search engine and comparison
+						value, but not as the Spencer moment branch:
 					</p>
 					<div class="equations">
 						<div class="formula">
-							F<sub>m</sub> = F<sub>bishop</sub>
+							R<sub>m</sub>(F, &lambda;) = 0
 						</div>
 						<div class="formula">
-							g(&lambda;) = F<sub>m</sub> − F<sub>f</sub>(&lambda;)
+							R<sub>f</sub>(F, &lambda;) = 0
 						</div>
 					</div>
 					<p>
-						The Spencer addition is therefore the <strong>force-equilibrium chain</strong>. For
-						a given trial factor of safety <em>F</em> and a constant interslice-force ratio
+						For a given trial factor of safety <em>F</em> and a constant interslice-force ratio
 						&lambda; = <em>X</em>/<em>E</em>, the application propagates slice forces from left
-						to right with <em>E</em><sub>0</sub> = 0 and seeks the closure condition
-						<em>E</em><sub>n</sub> = 0.
+						to right with <em>E</em><sub>0</sub> = 0, computes both the force-closure residual
+						and the overall moment residual, and then solves the two Spencer branches
+						<em>F</em><sub>m</sub>(&lambda;) and <em>F</em><sub>f</sub>(&lambda;).
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -558,16 +559,18 @@
 						</div>
 					</div>
 					<p>
-						For a fixed &lambda;, the application finds <em>F</em><sub>f</sub>(&lambda;) by
-						bisection on the final residual <em>E</em><sub>final</sub> =
-						<em>E</em><sub>R,n</sub>. It then scans and brackets &lambda; and concludes with
-						bisection on <em>g</em>(&lambda;) = <em>F</em><sub>m</sub> −
+						For a fixed &lambda;, the application finds <em>F</em><sub>m</sub>(&lambda;) from
+						the Spencer moment residual and <em>F</em><sub>f</sub>(&lambda;) from the final
+						force-closure residual <em>E</em><sub>final</sub> = <em>E</em><sub>R,n</sub>. It
+						then scans and brackets &lambda; and concludes with bisection on
+						<em>g</em>(&lambda;) = <em>F</em><sub>m</sub>(&lambda;) −
 						<em>F</em><sub>f</sub>(&lambda;).
 					</p>
 					<div class="doc-callout">
 						<strong>Present Spencer defaults.</strong> The present Stage 6 module starts from a
-						&lambda; bracket of <strong>−0.6 to +0.6</strong>, uses force-equilibrium and
-						&lambda; tolerances of <strong>0.001</strong>, and rechecks only the top
+						&lambda; bracket of <strong>−0.6 to +0.6</strong>, uses branch tolerances of
+						<strong>0.001</strong> on both the Spencer moment and force solves, uses
+						<strong>0.001</strong> on the outer &lambda; bracket, and rechecks only the top
 						shortlisted Bishop circles. If Spencer cannot converge, the Bishop result is
 						retained and the fallback is flagged in the interface and report.
 					</div>
@@ -668,9 +671,9 @@
    F = Σ[(c′·b + (V − u·b)tanφ′) / mα(F)] / Σ[V sinα]
 3. Rank all circles by Bishop F.
 4. If Spencer mode is on, recheck only the shortlisted circles:
-   a. Reuse Bishop F as Fm
+   a. Solve Fm(λ) from the Spencer moment residual
    b. Solve Ff(λ) from left-to-right force propagation
-   c. Find λ where Fm = Ff(λ)
+   c. Find λ where Fm(λ) = Ff(λ)
 5. If Spencer converges, rerank the shortlist by Spencer F.
 6. If Spencer fails, keep the Bishop result and flag the fallback.</code></pre>
 				</details>
@@ -706,7 +709,7 @@
 								<tr><td>Minimum m<sub>α</sub></td><td>1e−6</td></tr>
 								<tr><td>Spencer shortlist</td><td>Top 10 circles by default, capped by the prevailing keep-best setting</td></tr>
 								<tr><td>Spencer &lambda; bracket</td><td>−0.6 to +0.6 by default</td></tr>
-								<tr><td>Spencer tolerances</td><td>0.001 on force equilibrium and 0.001 on the outer &lambda; solve</td></tr>
+								<tr><td>Spencer tolerances</td><td>0.001 on the Spencer moment branch, 0.001 on the Spencer force branch, and 0.001 on the outer &lambda; bracket</td></tr>
 								<tr><td>Pore pressure</td><td>Dry if no phreatic line is drawn; otherwise hydrostatic from the drawn phreatic line</td></tr>
 								<tr><td>Surface load</td><td>One optional uniform vertical surcharge zone on the terrain, with one shared q input in kPa</td></tr>
 								<tr><td>Execution</td><td>Worker-backed search so the canvas remains responsive while solving</td></tr>
@@ -719,8 +722,8 @@
 					<li>The results table stores ranked circles sorted by increasing FOS, using Spencer F for converged Spencer results and Bishop F for flagged fallbacks.</li>
 					<li>The canvas may display the trial circle under evaluation while the worker is running.</li>
 					<li>Selected results expose slice-by-slice values including W<sub>i</sub>, Q<sub>i</sub>, V<sub>i</sub>, α<sub>i</sub>, u<sub>i</sub>, m<sub>α,i</sub>, N<sub>i</sub>, and mobilized shear.</li>
-					<li>When Spencer converges, the selected result also exposes E<sub>R</sub>, X<sub>R</sub>, S<sub>mob</sub>, &lambda;, and the Bishop/Spencer comparison values.</li>
-					<li>The Stage 7 report payload stores the active mode, shortlisted result methods, Bishop/Spencer values, and Spencer convergence counts.</li>
+					<li>When Spencer converges, the selected result also exposes E<sub>R</sub>, X<sub>R</sub>, S<sub>mob</sub>, &lambda;, the branch values F<sub>m</sub> and F<sub>f</sub>, and the final moment and force residuals.</li>
+					<li>The Stage 7 report payload stores the active mode, shortlisted result methods, Bishop/Spencer values, Spencer convergence counts, and the Spencer residual diagnostics.</li>
 				</ul>
 			</section>
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 export const STAGE7_REPORT_STORAGE_PREFIX = 'stage7-report:';
-export const STAGE7_REPORT_VERSION = 2;
+export const STAGE7_REPORT_VERSION = 3;
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);

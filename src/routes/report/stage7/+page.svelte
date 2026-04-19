@@ -1065,6 +1065,8 @@
                     <tr><td>Selected Bishop F</td><td>{payload.stage6.bishop.selected?.F_bishop != null ? fmt(payload.stage6.bishop.selected.F_bishop, 3) : '—'}</td></tr>
                     <tr><td>Selected Spencer F</td><td>{payload.stage6.bishop.selected?.method === 'spencer' ? fmt(payload.stage6.bishop.selected.FS, 3) : '—'}</td></tr>
                     <tr><td>Selected λ</td><td>{payload.stage6.bishop.selected?.lambda != null ? fmt(payload.stage6.bishop.selected.lambda, 3) : '—'}</td></tr>
+                    <tr><td>Selected moment residual</td><td>{payload.stage6.bishop.selected?.momentResidual != null ? fmt(payload.stage6.bishop.selected.momentResidual, 3) : '—'}</td></tr>
+                    <tr><td>Selected force residual</td><td>{payload.stage6.bishop.selected?.forceResidual != null ? fmt(payload.stage6.bishop.selected.forceResidual, 3) : '—'}</td></tr>
                     <tr><td>Runtime (ms)</td><td>{payload.stage6.bishop.timing?.totalMs != null ? `${fmt(payload.stage6.bishop.timing.totalMs, 0)} ms` : '—'}</td></tr>
                   </tbody>
                 </table>
@@ -1072,7 +1074,7 @@
                   <h4>Best circles</h4>
                   <table class="tbl report-table">
                     <thead>
-                      <tr><th>#</th><th>FS (-)</th><th>Method</th><th>Bishop F (-)</th><th>λ (-)</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
+                      <tr><th>#</th><th>FS (-)</th><th>Method</th><th>Bishop F (-)</th><th>λ (-)</th><th>M res.</th><th>F res.</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
                     </thead>
                     <tbody>
                       {#each payload.stage6.bishop.topResults as result}
@@ -1082,6 +1084,8 @@
                           <td>{result.methodLabel}</td>
                           <td>{result.F_bishop != null ? fmt(result.F_bishop, 3) : '—'}</td>
                           <td>{result.lambda != null ? fmt(result.lambda, 3) : '—'}</td>
+                          <td>{result.momentResidual != null ? fmt(result.momentResidual, 3) : '—'}</td>
+                          <td>{result.forceResidual != null ? fmt(result.forceResidual, 3) : '—'}</td>
                           <td>{result.iterations}</td>
                           <td>{result.circle?.radius != null ? `${fmt(result.circle.radius, 2)} m` : '—'}</td>
                         </tr>
