@@ -2,9 +2,9 @@
 <script lang="ts">
 	import '$lib/styles/docs.css';
 
-	const pageTitle = 'Bishop Simplified v1 — CPT App Documentation';
+	const pageTitle = 'Bishop + Spencer — CPT App Documentation';
 	const pageDescription =
-		'Technical documentation for the Bishop Simplified v1 slope-stability module in the CPT app: geometry model, slice generation, search strategy, equations, current implementation, and references.';
+		'Technical documentation for the Stage 6 circular slope-stability workflow in the CPT app: Bishop search, Spencer verification, implemented algebra, report outputs, and references.';
 	const canonicalUrl = 'https://cpt.madep.be/docs/bishop';
 	const ogImageUrl = 'https://cpt.madep.be/logo.png';
 
@@ -14,11 +14,11 @@
 		{ id: 'geometry', title: '3. Geometry and soil model' },
 		{ id: 'search', title: '4. Slip-circle search and validity filters' },
 		{ id: 'slices', title: '5. Slice generation and multi-layer handling' },
-		{ id: 'theory', title: '6. Bishop Simplified equations' },
+		{ id: 'theory', title: '6. Implemented theory and algebra' },
 		{ id: 'implementation', title: '7. Current Stage 6 implementation' },
 		{ id: 'canvas', title: '8. Interactive canvas workflow' },
 		{ id: 'verification', title: '9. Verification and testing' },
-		{ id: 'limits', title: '10. Limitations and upgrade path' },
+		{ id: 'limits', title: '10. Limitations and next steps' },
 		{ id: 'references', title: 'References' }
 	];
 </script>
@@ -47,11 +47,11 @@
 	<header class="hero">
 		<div class="hero__inner">
 			<p class="hero__eyebrow">Technical documentation</p>
-			<h1>Bishop simplified</h1>
+			<h1>Bishop and Spencer</h1>
 			<p class="hero__lead">
-				A technical implementation note for the Bishop slope-stability workflow in Stage 6:
-				terrain and phreatic geometry, active-CPT-based soil regions, entry-exit search,
-				slice generation, Bishop Simplified iteration, and the current interactive canvas behavior.
+				A technical implementation note for the Stage 6 circular slope-stability workflow:
+				terrain and phreatic geometry, active-CPT-based soil regions, Bishop shortlist search,
+				Spencer recheck, implemented slice algebra, and the current interactive canvas behavior.
 			</p>
 			<div class="hero__actions">
 				<a class="btn btn--primary" href="/">Open the app</a>
@@ -59,7 +59,7 @@
 			</div>
 			<div class="hero__trust">
 				<span>Circular slip surfaces</span>
-				<span>Bishop Simplified</span>
+				<span>Bishop + Spencer</span>
 				<span>Current app logic</span>
 			</div>
 		</div>
@@ -81,24 +81,24 @@
 				<p class="section-label">Section</p>
 				<h2>1. Scope and current model</h2>
 				<p>
-					The Bishop module implemented in Stage 6 is a <strong>Bishop Simplified</strong>
-					slope-stability tool for <strong>two-dimensional circular slip surfaces</strong>. It is
-					intended as a practical first-pass stability module within the CPT app, not as a final
-					rigorous limit-equilibrium platform.
+					The Stage 6 slope module is a <strong>two-dimensional circular-slip</strong>
+					limit-equilibrium tool built around a <strong>Bishop Simplified search</strong> with an
+					optional <strong>Spencer verification pass</strong>. In the current app, the engineer
+					can run either <strong>Bishop only</strong> or <strong>Bishop + Spencer check</strong>.
 				</p>
 				<p>
 					The current workflow uses the <strong>active CPT only</strong> as the soil source. The
-					interpreted active-CPT layer column from Stages 2 to 5 is converted to a Bishop soil
+					interpreted active-CPT layer column from Stages 2 to 5 is converted to a slope soil
 					model by extending those layers horizontally across the drawn section. Terrain, phreatic
-					line, optional surcharge zone, and entry and exit zones are then supplied by the Bishop
+					line, optional surcharge zone, and entry and exit zones are then supplied by the Stage 6
 					canvas.
 				</p>
 				<div class="doc-callout">
-					<strong>Current v1 scope.</strong> The current Stage 6 Bishop app is limited to
-					circular slip surfaces, self-weight loading, one optional uniform vertical surcharge
-					zone, and optional hydrostatic pore pressure from a drawn phreatic line. Seismic
-					loading, reinforcement, noncircular surfaces, and rigorous force-and-moment methods
-					such as Spencer or Morgenstern–Price are not part of the current implementation.
+					<strong>Current scope.</strong> The current Stage 6 app is limited to circular slip
+					surfaces, self-weight loading, one optional uniform vertical surcharge zone, and
+					optional hydrostatic pore pressure from a drawn phreatic line. Spencer is implemented
+					for the shortlisted circular surfaces only. Seismic loading, reinforcement,
+					noncircular surfaces, and Morgenstern&ndash;Price are not part of the current app.
 				</div>
 				<div class="doc-callout">
 					<strong>Current load model.</strong> The live load feature is one optional
@@ -109,7 +109,7 @@
 				<div class="equations">
 					<div class="formula">
 						2D cross-section, unit width, circular slip surfaces, self-weight plus one optional
-						uniform surcharge zone
+						uniform surcharge zone, with Bishop search and optional Spencer recheck
 					</div>
 				</div>
 				<div class="symbols">
@@ -147,8 +147,9 @@
 				</div>
 				<ul class="notes">
 					<li>The Bishop module sits inside the existing Stage 6 state and therefore preserves the interpreted CPT workflow.</li>
-					<li>The current search mode visible in the app is entry-exit search; no separate center-grid mode is currently exposed in the UI.</li>
-					<li>The current implementation is experimental, but it is part of the visible Stage 6 app set.</li>
+					<li>The full search is always run with Bishop Simplified; Spencer is applied only to the shortlisted circles.</li>
+					<li>The visible search mode in the app is entry-exit search; no separate center-grid mode is currently exposed in the UI.</li>
+					<li>The current implementation is experimental, but it is part of the visible Stage 6 app set and the Stage 7 report payload.</li>
 				</ul>
 			</section>
 
@@ -430,29 +431,155 @@
 
 			<section id="theory" class="doc-card">
 				<p class="section-label">Section</p>
-				<h2>6. Bishop Simplified equations</h2>
+				<h2>6. Implemented theory and algebra</h2>
 				<p>
-					The current app uses the Bishop Simplified form for circular slip surfaces with optional
-					base pore pressure and one optional uniform surcharge zone. The factor of safety appears
-					inside m<sub>α,i</sub>, so the problem is solved by repeated substitution.
+					This section documents the <strong>algebra actually used by the app</strong>. That is
+					deliberately narrower than a full textbook treatment: the live code solves a circular
+					Bishop equation for every trial surface, then optionally runs a Spencer force-equilibrium
+					check on the shortlisted circles and reranks those results.
 				</p>
-				<div class="equations">
-					<div class="formula">
-						T<sub>i</sub> = [c′<sub>i</sub>l<sub>i</sub> + (N<sub>i</sub> − u<sub>i</sub>l<sub>i</sub>)tanφ′<sub>i</sub>] / F
+				<section class="doc-subsection">
+					<h3>6.1 Bishop equation actually solved in the app</h3>
+					<p>
+						The Bishop search uses the slice vertical load
+						<em>V</em><sub>i</sub> = <em>W</em><sub>i</sub> + <em>Q</em><sub>i</sub>, where
+						<em>W</em><sub>i</sub> is the integrated self-weight and <em>Q</em><sub>i</sub> is
+						the surcharge overlap load for the slice. The factor of safety is solved from the
+						fixed-point form below.
+					</p>
+					<div class="equations">
+						<div class="formula">
+							m<sub>α,i</sub>(F) = cosα<sub>i</sub> + [sinα<sub>i</sub> tanφ′<sub>i</sub>] / F
+						</div>
+						<div class="formula">
+							F =
+							Σ[(c′<sub>i</sub>b<sub>i</sub> + (V<sub>i</sub> − u<sub>i</sub>b<sub>i</sub>)tanφ′<sub>i</sub>) / m<sub>α,i</sub>(F)]
+							/
+							Σ[V<sub>i</sub> sinα<sub>i</sub>]
+						</div>
 					</div>
-					<div class="formula">
-						N<sub>i</sub> = [W<sub>i</sub> − T<sub>i</sub> sinα<sub>i</sub>] / cosα<sub>i</sub>
+					<div class="doc-callout doc-callout--warn">
+						<strong>Important algebra detail.</strong> The current code uses
+						<strong>u<sub>i</sub>b<sub>i</sub></strong>, not <strong>u<sub>i</sub>l<sub>i</sub></strong>,
+						in the governing Bishop equation. It also carries cohesion in the same simplified
+						width form <strong>c′<sub>i</sub>b<sub>i</sub></strong>. This is the circular-surface
+						form implemented in the solver and documented in the MADEP spec. The solver does
+						<strong>not</strong> use a mixed <em>c′l</em> / <em>u·l</em> form in its main
+						fixed-point iteration.
 					</div>
-					<div class="formula">
-						m<sub>α,i</sub>(F) = cosα<sub>i</sub> + [sinα<sub>i</sub> tanφ′<sub>i</sub>] / F
+					<p>
+						In the current code, <em>b</em><sub>i</sub> = Δx<sub>i</sub> is the horizontal slice
+						width and <em>l</em><sub>i</sub> = Δx<sub>i</sub>/cosα<sub>i</sub> is still stored as
+						the geometric base length. The Bishop iteration itself, however, is evaluated in the
+						width form shown above.
+					</p>
+				</section>
+				<section class="doc-subsection">
+					<h3>6.2 Seed and slice diagnostics</h3>
+					<p>
+						The initial seed is an ordinary-method-style estimate using the same app algebra as
+						the fixed-point solver:
+					</p>
+					<div class="equations">
+						<div class="formula">
+							F<sub>seed</sub> =
+							Σ[c′<sub>i</sub>b<sub>i</sub> + (V<sub>i</sub> − u<sub>i</sub>b<sub>i</sub>)tanφ′<sub>i</sub>]
+							/
+							Σ[V<sub>i</sub> sinα<sub>i</sub>]
+						</div>
 					</div>
-					<div class="formula">
-						F =
-						Σ[(c′<sub>i</sub>Δx<sub>i</sub> + (W<sub>i</sub> − u<sub>i</sub>l<sub>i</sub>)tanφ′<sub>i</sub>) / m<sub>α,i</sub>(F)]
-						/
-						Σ[W<sub>i</sub> sinα<sub>i</sub>]
+					<p>
+						After convergence, the app back-calculates slice normal force and mobilized shear for
+						reporting with the same width-based algebra:
+					</p>
+					<div class="equations">
+						<div class="formula">
+							N<sub>i</sub> =
+							[V<sub>i</sub> − ((c′<sub>i</sub>b<sub>i</sub> − u<sub>i</sub>b<sub>i</sub>tanφ′<sub>i</sub>)sinα<sub>i</sub>) / F]
+							/
+							m<sub>α,i</sub>(F)
+						</div>
+						<div class="formula">
+							T<sub>i</sub> =
+							[c′<sub>i</sub>b<sub>i</sub> + (N<sub>i</sub> − u<sub>i</sub>b<sub>i</sub>)tanφ′<sub>i</sub>] / F
+						</div>
 					</div>
-				</div>
+					<p>
+						These are the values exposed in the Stage 6 slice table for the selected Bishop
+						result. They are not an independent solver; they are diagnostics consistent with the
+						governing Bishop equation used by the app.
+					</p>
+				</section>
+				<section class="doc-subsection">
+					<h3>6.3 Spencer algebra used for the recheck</h3>
+					<p>
+						For circular surfaces, the app reuses the converged Bishop result as the
+						<strong>moment-equilibrium</strong> branch:
+					</p>
+					<div class="equations">
+						<div class="formula">
+							F<sub>m</sub> = F<sub>bishop</sub>
+						</div>
+						<div class="formula">
+							g(&lambda;) = F<sub>m</sub> − F<sub>f</sub>(&lambda;)
+						</div>
+					</div>
+					<p>
+						The Spencer addition is therefore the <strong>force-equilibrium chain</strong>. For a
+						given trial factor of safety <em>F</em> and a constant interslice-force ratio
+						&lambda; = <em>X</em>/<em>E</em>, the app propagates slice forces from left to right
+						with <em>E</em><sub>0</sub> = 0 and seeks the closure condition
+						<em>E</em><sub>n</sub> = 0.
+					</p>
+					<div class="equations">
+						<div class="formula">
+							a<sub>1,i</sub> = −sinα<sub>i</sub> + [tanφ′<sub>i</sub> cosα<sub>i</sub>] / F
+						</div>
+						<div class="formula">
+							a<sub>0,i</sub> = E<sub>L,i</sub> − u<sub>i</sub>b<sub>i</sub>tanα<sub>i</sub> + c′<sub>i</sub>b<sub>i</sub> / F
+						</div>
+						<div class="formula">
+							N′<sub>i</sub> =
+							[V<sub>i</sub> + &lambda;E<sub>L,i</sub> − &lambda;a<sub>0,i</sub> − u<sub>i</sub>b<sub>i</sub> − c′<sub>i</sub>b<sub>i</sub>tanα<sub>i</sub>/F]
+							/
+							[m<sub>α,i</sub>(F) + &lambda;a<sub>1,i</sub>]
+						</div>
+						<div class="formula">
+							S<sub>i</sub> = [c′<sub>i</sub>l<sub>i</sub> + N′<sub>i</sub>tanφ′<sub>i</sub>] / F
+						</div>
+						<div class="formula">
+							E<sub>R,i</sub> = a<sub>0,i</sub> + a<sub>1,i</sub>N′<sub>i</sub>
+						</div>
+						<div class="formula">
+							X<sub>R,i</sub> = &lambda;E<sub>R,i</sub>
+						</div>
+					</div>
+					<p>
+						For a fixed &lambda;, the app finds <em>F</em><sub>f</sub>(&lambda;) by bisection on
+						the final residual <em>E</em><sub>final</sub> = <em>E</em><sub>R,n</sub>. It then
+						scans and brackets &lambda; and finishes with bisection on
+						<em>g</em>(&lambda;) = <em>F</em><sub>m</sub> − <em>F</em><sub>f</sub>(&lambda;).
+					</p>
+					<div class="doc-callout">
+						<strong>Current Spencer defaults.</strong> The current Stage 6 app starts from a
+						&lambda; bracket of <strong>−0.6 to +0.6</strong>, uses force-equilibrium and
+						&lambda; tolerances of <strong>0.001</strong>, and rechecks only the top
+						shortlisted Bishop circles. If Spencer cannot converge, the app keeps the Bishop
+						result and flags the fallback in the UI and report.
+					</div>
+				</section>
+				<section class="doc-subsection">
+					<h3>6.4 Search architecture used by the app</h3>
+					<p>
+						The solver architecture is intentionally asymmetric:
+					</p>
+					<ul class="notes">
+						<li><strong>Bishop</strong> is used for the full circle search because it is fast and robust.</li>
+						<li><strong>Spencer</strong> is run only on the shortlisted circles, not on every trial surface.</li>
+						<li>When Spencer converges, the shortlisted circles are reranked by Spencer F.</li>
+						<li>When Spencer fails on a shortlisted circle, the app keeps the Bishop result with a visible fallback note.</li>
+					</ul>
+				</section>
 				<div class="symbols">
 					<div class="symbols__title">Notation</div>
 					<dl class="symbols__list">
@@ -476,15 +603,22 @@
 							<dt>N<sub>i</sub>, T<sub>i</sub></dt>
 							<dd>base normal force and mobilized shear force [kN/m]</dd>
 						</div>
+						<div class="symbols__row">
+							<dt>E<sub>L</sub>, E<sub>R</sub></dt>
+							<dd>left and right interslice normal forces [kN/m]</dd>
+						</div>
+						<div class="symbols__row">
+							<dt>X<sub>L</sub>, X<sub>R</sub></dt>
+							<dd>left and right interslice shear forces [kN/m]</dd>
+						</div>
+						<div class="symbols__row">
+							<dt>&lambda;, &theta;</dt>
+							<dd>constant Spencer interslice-force ratio and corresponding angle [-, °]</dd>
+						</div>
 					</dl>
 				</div>
-				<p>
-					The current solver seeds the iteration with the Ordinary Method of Slices value and then
-					repeats until the FOS change falls below the configured tolerance or the iteration count
-					is exhausted.
-				</p>
 				<section class="doc-subsection">
-					<h3>6.1 Uniform surcharge zone</h3>
+					<h3>6.5 Uniform surcharge zone</h3>
 					<p>
 						The current app supports one optional <strong>uniform vertical surcharge zone</strong>
 						drawn on the terrain between <em>x</em><sub>q,start</sub> and
@@ -503,13 +637,6 @@
 						</div>
 						<div class="formula">
 							V<sub>i</sub> = W<sub>i</sub> + Q<sub>i</sub>
-						</div>
-						<div class="formula">
-							F =
-							Σ[(c′<sub>i</sub>Δx<sub>i</sub> + (V<sub>i</sub> −
-							u<sub>i</sub>l<sub>i</sub>)tanφ′<sub>i</sub>) / m<sub>α,i</sub>(F)]
-							/
-							Σ[V<sub>i</sub> sinα<sub>i</sub>]
 						</div>
 					</div>
 					<p>
@@ -532,11 +659,16 @@
 				</section>
 				<details class="doc-details">
 					<summary>Show current fixed-point workflow</summary>
-					<pre><code>1. Compute an ordinary-method seed F₀.
-2. For each slice, evaluate mα,i(Fₖ).
-3. Form the resisting numerator using c′, V, u, l, and φ′.
-4. Divide by the driving sum Σ(Vᵢ sin αᵢ) to get Fₖ₊₁.
-5. Stop when |Fₖ₊₁ − Fₖ| &lt; tolerance, or reject on no convergence or mα ≤ mα,min.</code></pre>
+					<pre><code>1. Build all valid trial circles from the entry-exit search.
+2. Solve each circle with Bishop Simplified using:
+   F = Σ[(c′·b + (V − u·b)tanφ′) / mα(F)] / Σ[V sinα]
+3. Rank all circles by Bishop F.
+4. If Spencer mode is on, recheck only the shortlisted circles:
+   a. Reuse Bishop F as Fm
+   b. Solve Ff(λ) from left-to-right force propagation
+   c. Find λ where Fm = Ff(λ)
+5. If Spencer converges, rerank the shortlist by Spencer F.
+6. If Spencer fails, keep the Bishop result and flag the fallback.</code></pre>
 				</details>
 			</section>
 
@@ -545,10 +677,11 @@
 				<h2>7. Current Stage 6 implementation</h2>
 				<p>
 					The current app implementation is intentionally narrower than a general slope-stability
-					package. The following points describe what the live Bishop module actually does today.
+					package. The following points describe what the live Stage 6 circular solver actually
+					does today.
 				</p>
 				<div class="doc-table-wrap">
-					<p class="doc-table-caption">Current Stage 6 Bishop defaults and solver settings.</p>
+						<p class="doc-table-caption">Current Stage 6 slope-stability defaults and solver settings.</p>
 					<div class="doc-table-scroll">
 						<table class="doc-table">
 							<thead>
@@ -559,6 +692,7 @@
 							</thead>
 							<tbody>
 								<tr><td>Soil source</td><td>Active CPT only, extended horizontally across the section</td></tr>
+								<tr><td>Method mode</td><td>Bishop only or Bishop + Spencer check</td></tr>
 								<tr><td>Search mode</td><td>Entry-exit search</td></tr>
 								<tr><td>Entry / exit samples</td><td>10 / 10 by default</td></tr>
 								<tr><td>Centers per chord</td><td>15 by default</td></tr>
@@ -566,6 +700,9 @@
 								<tr><td>Max iterations</td><td>50</td></tr>
 								<tr><td>Tolerance</td><td>1e−4</td></tr>
 								<tr><td>Minimum m<sub>α</sub></td><td>1e−6</td></tr>
+								<tr><td>Spencer shortlist</td><td>Top 10 circles by default, capped by the current keep-best setting</td></tr>
+								<tr><td>Spencer &lambda; bracket</td><td>−0.6 to +0.6 by default</td></tr>
+								<tr><td>Spencer tolerances</td><td>0.001 on force equilibrium and 0.001 on the outer &lambda; solve</td></tr>
 								<tr><td>Pore pressure</td><td>Dry if no phreatic line is drawn; otherwise hydrostatic from the drawn phreatic line</td></tr>
 								<tr><td>Surface load</td><td>One optional uniform vertical surcharge zone on the terrain, with one shared q input in kPa</td></tr>
 								<tr><td>Execution</td><td>Worker-backed search so the canvas remains responsive while solving</td></tr>
@@ -575,9 +712,11 @@
 				</div>
 				<ul class="notes">
 					<li>The active branch of the parent circle is resolved first and is stored with the trial circle for both rendering and solving.</li>
-					<li>The results table stores ranked circles sorted by increasing FOS.</li>
+					<li>The results table stores ranked circles sorted by increasing FOS, using Spencer F for converged Spencer results and Bishop F for flagged fallbacks.</li>
 					<li>The canvas can display the trial circle being tested while the worker is running.</li>
 					<li>Selected results expose slice-by-slice values including W<sub>i</sub>, Q<sub>i</sub>, V<sub>i</sub>, α<sub>i</sub>, u<sub>i</sub>, m<sub>α,i</sub>, N<sub>i</sub>, and mobilized shear.</li>
+					<li>When Spencer converges, the selected result also exposes E<sub>R</sub>, X<sub>R</sub>, S<sub>mob</sub>, &lambda;, and the Bishop/Spencer comparison values.</li>
+					<li>The Stage 7 report payload stores the active mode, shortlisted result methods, Bishop/Spencer values, and Spencer convergence counts.</li>
 				</ul>
 			</section>
 
@@ -595,7 +734,7 @@
 					<li>Optionally draw the phreatic line.</li>
 					<li>Optionally draw the load zone on the terrain and assign the surcharge intensity <em>q</em>.</li>
 					<li>Draw the entry and exit daylight zones on the terrain.</li>
-					<li>Run the Bishop search.</li>
+					<li>Run either Bishop only or Bishop + Spencer check.</li>
 				</ol>
 				<p>
 					The load zone uses the same terrain-anchored two-click interaction as the entry and exit
@@ -604,8 +743,9 @@
 				</p>
 				<p>
 					The current canvas also supports metric grid display, snap-to-grid, live coordinate readout,
-					middle-mouse panning, wheel zoom, hover tooltips for soil regions, and a live trial-circle
-					preview while the worker is evaluating circles.
+					middle-mouse panning, wheel zoom, hover tooltips for soil regions, a live trial-circle
+					preview while the worker is evaluating circles, and a result table that shows the active
+					method per shortlisted circle.
 				</p>
 			</section>
 
@@ -613,17 +753,18 @@
 				<p class="section-label">Section</p>
 				<h2>9. Verification and testing</h2>
 				<p>
-					The recommended verification order for Bishop v1 is numerical first, then geometric, then
-					benchmark comparison. The current app already includes the numerical framework needed for
-					this, but benchmark verification remains an engineering task rather than a purely code-level
-					one.
+					The recommended verification order is numerical first, then geometric, then benchmark
+					comparison. The current app now has two numerical layers to verify: the Bishop search
+					itself and the Spencer recheck on the shortlisted circles.
 				</p>
 				<ul class="notes">
 					<li>Check one homogeneous dry slope against a hand or spreadsheet calculation.</li>
-					<li>Check one slope with a phreatic line to verify the <em>u·l</em> term.</li>
+					<li>Check one slope with a phreatic line to verify the implemented <em>u·b</em> treatment in the Bishop equation.</li>
 					<li>Check one layered slope to verify the distinction between full-slice weight and base-material strength.</li>
 					<li>Check one near-steep exit case to verify the exit-angle and m<sub>α</sub> filters.</li>
 					<li>Check one slope with a finite loaded crest zone to verify slice-overlap logic and the expected reduction in FOS.</li>
+					<li>Check one benign circular case where Bishop and Spencer should agree closely.</li>
+					<li>Check one case where Spencer is forced to fall back so the UI and Stage 7 report both show the fallback metadata cleanly.</li>
 				</ul>
 				<div class="doc-callout doc-callout--warn">
 					<strong>Important.</strong> Passing code checks does not by itself validate the factor of
@@ -634,16 +775,18 @@
 
 			<section id="limits" class="doc-card">
 				<p class="section-label">Section</p>
-				<h2>10. Limitations and upgrade path</h2>
+				<h2>10. Limitations and next steps</h2>
 				<p>
 					The current module is strongest where a circular rotational mechanism is a reasonable
 					assumption. It is not the correct final framework for noncircular mechanisms, strong weak-seam
 					control, reinforced slopes, or problems where full force equilibrium is required.
 				</p>
 				<ul class="notes">
+					<li>The full search still relies on Bishop Simplified. Spencer is only a recheck on the shortlisted circles, not a full-search engine.</li>
 					<li>Bishop Simplified satisfies moment equilibrium and vertical slice equilibrium, but not full horizontal force equilibrium.</li>
+					<li>The Spencer implementation is currently limited to circular surfaces with a constant interslice-force ratio.</li>
 					<li>Noncircular failures and composite mechanisms are outside the scope of the current app.</li>
-					<li>The natural future upgrade path is Spencer or Morgenstern–Price on top of the same geometry and slice framework.</li>
+					<li>The natural next upgrade path is Morgenstern&ndash;Price or another rigorous noncircular workflow on top of the same geometry and slice framework.</li>
 					<li>Later extension paths also include custom materials, multi-CPT interpolation, and richer pore-pressure models.</li>
 				</ul>
 			</section>
@@ -657,6 +800,8 @@
 				</p>
 				<ul class="reference-list">
 					<li><strong>Bishop, A.W. (1955)</strong> — The use of the slip circle in the stability analysis of slopes. Géotechnique, 5(1), 7–17.</li>
+					<li><strong>Fellenius, W. (1927)</strong> — <em>Erdstatische Berechnungen</em>. W. Ernst u. Sohn, Berlin.</li>
+					<li><strong>Spencer, E. (1967)</strong> — A method of analysis of the stability of embankments assuming parallel inter-slice forces. Géotechnique, 17(1), 11–26.</li>
 					<li><strong>USACE EM 1110-2-1902</strong> — Slope Stability. U.S. Army Corps of Engineers.</li>
 					<li><strong>FHWA NHI-01-028</strong> — Soil Slope and Embankment Design Reference Manual.</li>
 					<li><strong>GeoStudio / SLOPE/W documentation</strong> — Bishop Simplified method, entry-exit search, and variable slice widths.</li>
