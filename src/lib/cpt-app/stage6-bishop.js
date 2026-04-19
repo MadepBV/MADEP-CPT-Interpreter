@@ -17,6 +17,20 @@ const DEFAULT_MATERIAL_COLORS = [
   '#b7a27c'
 ];
 
+const DEFAULT_SPENCER_CONFIG = {
+  recheckCount: 10,
+  lambdaLow: -0.6,
+  lambdaHigh: 0.6,
+  lambdaTolerance: 0.001,
+  FfTolerance: 0.001,
+  FfBracketLow: 0.1,
+  FfBracketHigh: 10.0,
+  maxOuterIter: 30,
+  maxInnerIter: 50,
+  useNewton: false,
+  fallbackBishop: true
+};
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -542,7 +556,7 @@ function ordinarySeed(slices) {
     const phi = (slice.baseMaterial.phiEffDeg * Math.PI) / 180;
     const tanPhi = Math.tan(phi);
     const V = sliceVerticalLoad(slice);
-    numerator += c * slice.baseLength + (V * Math.cos(slice.alphaRad) - slice.uBase * slice.baseLength) * tanPhi;
+    numerator += c * slice.dx + (V - slice.uBase * slice.dx) * tanPhi;
     denominator += V * Math.sin(slice.alphaRad);
   });
   if (denominator <= EPS) return 1;
@@ -563,9 +577,9 @@ function buildDiagnostics(slices, F, iterations) {
     const mAlpha = Math.cos(slice.alphaRad) + (Math.sin(slice.alphaRad) * tanPhi) / F;
     const N =
       (V -
-        ((c * slice.baseLength - slice.uBase * slice.baseLength * tanPhi) * Math.sin(slice.alphaRad)) / F) /
+        ((c * slice.dx - slice.uBase * slice.dx * tanPhi) * Math.sin(slice.alphaRad)) / F) /
       mAlpha;
-    const T = (c * slice.baseLength + (N - slice.uBase * slice.baseLength) * tanPhi) / F;
+    const T = (c * slice.dx + (N - slice.uBase * slice.dx) * tanPhi) / F;
     sliceNormals.push(N);
     sliceMobilizedShears.push(T);
     sliceMAlpha.push(mAlpha);
@@ -574,11 +588,583 @@ function buildDiagnostics(slices, F, iterations) {
   return {
     converged: true,
     FS: F,
+    F: F,
+    F_fellenius: ordinarySeed(slices),
     iterations,
     reason: '',
     sliceNormals,
     sliceMobilizedShears,
     sliceMAlpha
+  };
+}
+
+function cloneSlicesForSolver(slices) {
+  return (slices || []).map((slice) => ({
+    ...slice,
+    baseMaterial: slice?.baseMaterial ? { ...slice.baseMaterial } : slice.baseMaterial,
+    layerAreas: Array.isArray(slice?.layerAreas) ? slice.layerAreas.map((item) => ({ ...item })) : []
+  }));
+}
+
+function enrichBishopSlices(slices, diagnostics) {
+  return (slices || []).map((slice, index) => ({
+    ...slice,
+    mAlpha: diagnostics?.sliceMAlpha?.[index] ?? null,
+    normalForce: diagnostics?.sliceNormals?.[index] ?? null,
+    mobilizedShear: diagnostics?.sliceMobilizedShears?.[index] ?? null,
+    E_right: null,
+    X_right: null,
+    N_eff: null,
+    S_mob: null,
+    theta_interslice: null
+  }));
+}
+
+function buildBishopSearchResult(circle, slices, bishopDiagnostics) {
+  const F = bishopDiagnostics?.FS ?? bishopDiagnostics?.F ?? null;
+  return {
+    circle,
+    entry: circle?.entryPoint || null,
+    exit: circle?.exitPoint || null,
+    method: 'bishop_simplified',
+    methodLabel: 'Bishop simplified',
+    FS: F,
+    F,
+    F_bishop: F,
+    F_m: F,
+    F_f: null,
+    F_fellenius: bishopDiagnostics?.F_fellenius ?? ordinarySeed(slices),
+    lambda: null,
+    thetaDeg: null,
+    theta_deg: null,
+    maxE: null,
+    tensionSlices: 0,
+    iterations: bishopDiagnostics?.iterations ?? 0,
+    converged: !!bishopDiagnostics?.converged,
+    reason: bishopDiagnostics?.reason || '',
+    spencerAttempted: false,
+    spencerConverged: false,
+    spencerRejectReason: '',
+    diagnostics: {
+      bishop: bishopDiagnostics
+    },
+    slices: enrichBishopSlices(slices, bishopDiagnostics)
+  };
+}
+
+function normalizedForceResidualScale(slices) {
+  const scale =
+    (slices || []).reduce(
+      (sum, slice) => sum + Math.abs(sliceVerticalLoad(slice) * Math.sin(slice.alphaRad)),
+      0
+    ) / Math.max((slices || []).length, 1);
+  return Math.max(scale, 1);
+}
+
+function normalizeSpencerConfig(config, searchConfig) {
+  const merged = {
+    ...DEFAULT_SPENCER_CONFIG,
+    ...(config || {})
+  };
+  const keepBest = Math.max(1, Math.round(searchConfig?.keepBest || DEFAULT_SPENCER_CONFIG.recheckCount));
+  merged.recheckCount = Math.max(1, Math.min(Math.round(merged.recheckCount || keepBest), keepBest));
+  merged.lambdaLow = Number.isFinite(+merged.lambdaLow) ? +merged.lambdaLow : DEFAULT_SPENCER_CONFIG.lambdaLow;
+  merged.lambdaHigh = Number.isFinite(+merged.lambdaHigh) ? +merged.lambdaHigh : DEFAULT_SPENCER_CONFIG.lambdaHigh;
+  if (merged.lambdaHigh <= merged.lambdaLow) merged.lambdaHigh = merged.lambdaLow + 0.1;
+  merged.lambdaTolerance = Math.max(
+    Number.isFinite(+merged.lambdaTolerance) ? +merged.lambdaTolerance : DEFAULT_SPENCER_CONFIG.lambdaTolerance,
+    1e-6
+  );
+  merged.FfTolerance = Math.max(
+    Number.isFinite(+merged.FfTolerance) ? +merged.FfTolerance : DEFAULT_SPENCER_CONFIG.FfTolerance,
+    1e-6
+  );
+  merged.FfBracketLow = Math.max(
+    Number.isFinite(+merged.FfBracketLow) ? +merged.FfBracketLow : DEFAULT_SPENCER_CONFIG.FfBracketLow,
+    0.01
+  );
+  merged.FfBracketHigh = Math.max(
+    Number.isFinite(+merged.FfBracketHigh) ? +merged.FfBracketHigh : DEFAULT_SPENCER_CONFIG.FfBracketHigh,
+    merged.FfBracketLow + 0.1
+  );
+  merged.maxOuterIter = Math.max(
+    5,
+    Math.round(Number.isFinite(+merged.maxOuterIter) ? +merged.maxOuterIter : DEFAULT_SPENCER_CONFIG.maxOuterIter)
+  );
+  merged.maxInnerIter = Math.max(
+    5,
+    Math.round(Number.isFinite(+merged.maxInnerIter) ? +merged.maxInnerIter : DEFAULT_SPENCER_CONFIG.maxInnerIter)
+  );
+  merged.useNewton = !!merged.useNewton;
+  merged.fallbackBishop = merged.fallbackBishop !== false;
+  return merged;
+}
+
+function solveSpencerForceChain(slices, lambda, FTrial, solverConfig) {
+  const sliceForces = [];
+  let ELeft = 0;
+  let maxE = 0;
+  let tensionSlices = 0;
+  const theta = Math.atan(lambda);
+  const residualScale = normalizedForceResidualScale(slices);
+
+  for (let i = 0; i < slices.length; i += 1) {
+    const slice = slices[i];
+    const sinA = Math.sin(slice.alphaRad);
+    const cosA = Math.cos(slice.alphaRad);
+    const tanA = sinA / Math.max(cosA, 1e-9);
+    const tanPhi = Math.tan((Number(slice.baseMaterial?.phiEffDeg) * Math.PI) / 180);
+    const cohesion = Number(slice.baseMaterial?.cEff) || 0;
+    const porePressure = Number(slice.uBase) || 0;
+    const width = Number(slice.dx) || 0;
+    const baseLength = Number(slice.baseLength) || width / Math.max(cosA, 1e-6);
+    const vertical = sliceVerticalLoad(slice);
+    const mAlpha = cosA + (sinA * tanPhi) / FTrial;
+    if (!Number.isFinite(mAlpha) || Math.abs(mAlpha) <= (solverConfig.minMAlpha || 1e-6)) {
+      return {
+        valid: false,
+        reason: 'spencer m_alpha <= 0',
+        E_final: NaN,
+        normalizedResidual: Infinity,
+        residualScale,
+        maxE,
+        tensionSlices,
+        sliceForces
+      };
+    }
+
+    const a1 = -sinA + (tanPhi * cosA) / FTrial;
+    const a0 = ELeft - porePressure * width * tanA + (cohesion * width) / FTrial;
+    const denomN = mAlpha + lambda * a1;
+    if (!Number.isFinite(denomN) || Math.abs(denomN) <= (solverConfig.minMAlpha || 1e-6)) {
+      return {
+        valid: false,
+        reason: 'spencer denominator <= 0',
+        E_final: NaN,
+        normalizedResidual: Infinity,
+        residualScale,
+        maxE,
+        tensionSlices,
+        sliceForces
+      };
+    }
+
+    const numerN =
+      vertical +
+      lambda * ELeft -
+      lambda * a0 -
+      porePressure * width -
+      (cohesion * width * tanA) / FTrial;
+    const N_eff = numerN / denomN;
+    const S_mob = (cohesion * baseLength + N_eff * tanPhi) / FTrial;
+    const E_right = a0 + a1 * N_eff;
+    const X_right = lambda * E_right;
+    if (![N_eff, S_mob, E_right, X_right].every(Number.isFinite)) {
+      return {
+        valid: false,
+        reason: 'spencer invalid force state',
+        E_final: NaN,
+        normalizedResidual: Infinity,
+        residualScale,
+        maxE,
+        tensionSlices,
+        sliceForces
+      };
+    }
+
+    if (N_eff < 0) tensionSlices += 1;
+    maxE = Math.max(maxE, Math.abs(E_right));
+    sliceForces.push({
+      N_eff,
+      S_mob,
+      E_right,
+      X_right,
+      mAlpha,
+      theta_interslice: theta
+    });
+    ELeft = E_right;
+  }
+
+  return {
+    valid: true,
+    reason: '',
+    E_final: ELeft,
+    normalizedResidual: Math.abs(ELeft) / residualScale,
+    residualScale,
+    maxE,
+    tensionSlices,
+    sliceForces
+  };
+}
+
+function computeSpencerForceEquilibriumF(slices, lambda, spencerConfig, solverConfig) {
+  let FLo = spencerConfig.FfBracketLow;
+  let FHi = spencerConfig.FfBracketHigh;
+  let resLo = solveSpencerForceChain(slices, lambda, FLo, solverConfig);
+  let resHi = solveSpencerForceChain(slices, lambda, FHi, solverConfig);
+  let lastValid = null;
+
+  if (!resLo.valid || !resHi.valid || Math.sign(resLo.E_final) === Math.sign(resHi.E_final)) {
+    const wideLo = Math.min(0.01, FLo);
+    const wideHi = Math.max(20.0, FHi);
+    const resLoWide = solveSpencerForceChain(slices, lambda, wideLo, solverConfig);
+    const resHiWide = solveSpencerForceChain(slices, lambda, wideHi, solverConfig);
+    if (
+      resLoWide.valid &&
+      resHiWide.valid &&
+      Math.sign(resLoWide.E_final) !== Math.sign(resHiWide.E_final)
+    ) {
+      FLo = wideLo;
+      FHi = wideHi;
+      resLo = resLoWide;
+      resHi = resHiWide;
+    } else {
+      return {
+        F_f: NaN,
+        converged: false,
+        reason: !resLo.valid || !resHi.valid ? 'force equilibrium bracket invalid' : 'force equilibrium not bracketed',
+        sliceForces: [],
+        iterations: 0,
+        maxE: 0,
+        tensionSlices: 0
+      };
+    }
+  }
+
+  if (Math.abs(resLo.E_final) <= spencerConfig.FfTolerance * resLo.residualScale) {
+    return {
+      F_f: FLo,
+      converged: true,
+      reason: '',
+      sliceForces: resLo.sliceForces,
+      iterations: 0,
+      maxE: resLo.maxE,
+      tensionSlices: resLo.tensionSlices
+    };
+  }
+  if (Math.abs(resHi.E_final) <= spencerConfig.FfTolerance * resHi.residualScale) {
+    return {
+      F_f: FHi,
+      converged: true,
+      reason: '',
+      sliceForces: resHi.sliceForces,
+      iterations: 0,
+      maxE: resHi.maxE,
+      tensionSlices: resHi.tensionSlices
+    };
+  }
+
+  for (let iter = 1; iter <= spencerConfig.maxInnerIter; iter += 1) {
+    const FMid = 0.5 * (FLo + FHi);
+    const resMid = solveSpencerForceChain(slices, lambda, FMid, solverConfig);
+    if (!resMid.valid) {
+      return {
+        F_f: lastValid?.F_f ?? NaN,
+        converged: false,
+        reason: resMid.reason || 'force equilibrium invalid state',
+        sliceForces: lastValid?.sliceForces || [],
+        iterations: iter,
+        maxE: lastValid?.maxE ?? 0,
+        tensionSlices: lastValid?.tensionSlices ?? 0
+      };
+    }
+
+    lastValid = {
+      F_f: FMid,
+      sliceForces: resMid.sliceForces,
+      maxE: resMid.maxE,
+      tensionSlices: resMid.tensionSlices
+    };
+
+    if (Math.abs(resMid.E_final) <= spencerConfig.FfTolerance * resMid.residualScale) {
+      return {
+        F_f: FMid,
+        converged: true,
+        reason: '',
+        sliceForces: resMid.sliceForces,
+        iterations: iter,
+        maxE: resMid.maxE,
+        tensionSlices: resMid.tensionSlices
+      };
+    }
+
+    if (Math.sign(resMid.E_final) === Math.sign(resLo.E_final)) {
+      FLo = FMid;
+      resLo = resMid;
+    } else {
+      FHi = FMid;
+      resHi = resMid;
+    }
+
+    if (Math.abs(FHi - FLo) <= spencerConfig.FfTolerance) {
+      const FFinal = 0.5 * (FLo + FHi);
+      return {
+        F_f: FFinal,
+        converged: true,
+        reason: '',
+        sliceForces: resMid.sliceForces,
+        iterations: iter,
+        maxE: resMid.maxE,
+        tensionSlices: resMid.tensionSlices
+      };
+    }
+  }
+
+  return {
+    F_f: 0.5 * (FLo + FHi),
+    converged: false,
+    reason: 'force equilibrium did not converge',
+    sliceForces: lastValid?.sliceForces || [],
+    iterations: spencerConfig.maxInnerIter,
+    maxE: lastValid?.maxE ?? 0,
+    tensionSlices: lastValid?.tensionSlices ?? 0
+  };
+}
+
+function evaluateSpencerAtLambda(slices, bishopDiagnostics, lambda, spencerConfig, solverConfig) {
+  const forceEq = computeSpencerForceEquilibriumF(slices, lambda, spencerConfig, solverConfig);
+  if (!forceEq.converged || !Number.isFinite(forceEq.F_f)) {
+    return {
+      lambda,
+      valid: false,
+      value: NaN,
+      F_f: forceEq.F_f,
+      forceEq
+    };
+  }
+  const Fm = bishopDiagnostics?.FS ?? bishopDiagnostics?.F ?? NaN;
+  return {
+    lambda,
+    valid: true,
+    value: Fm - forceEq.F_f,
+    F_f: forceEq.F_f,
+    forceEq
+  };
+}
+
+function findSpencerLambdaBracket(slices, bishopDiagnostics, spencerConfig, solverConfig) {
+  const samples = uniqueSorted([
+    spencerConfig.lambdaLow,
+    spencerConfig.lambdaHigh,
+    -0.3,
+    0,
+    0.3,
+    ...sampleArray([spencerConfig.lambdaLow, spencerConfig.lambdaHigh], 13)
+  ]);
+  let previousValid = null;
+  let best = null;
+
+  for (let i = 0; i < samples.length; i += 1) {
+    const current = evaluateSpencerAtLambda(
+      slices,
+      bishopDiagnostics,
+      samples[i],
+      spencerConfig,
+      solverConfig
+    );
+    if (!current.valid) continue;
+    if (!best || Math.abs(current.value) < Math.abs(best.value)) best = current;
+    if (Math.abs(current.value) <= spencerConfig.lambdaTolerance) {
+      return { exact: current, lower: null, upper: null, best };
+    }
+    if (previousValid && Math.sign(previousValid.value) !== Math.sign(current.value)) {
+      return { exact: null, lower: previousValid, upper: current, best };
+    }
+    previousValid = current;
+  }
+
+  return { exact: null, lower: null, upper: null, best };
+}
+
+function finalizeSpencerSlices(baseSlices, sliceForces, lambda) {
+  const theta = Math.atan(lambda);
+  return (baseSlices || []).map((slice, index) => {
+    const forceState = sliceForces?.[index];
+    if (!forceState) return { ...slice };
+    return {
+      ...slice,
+      normalForce: forceState.N_eff,
+      mobilizedShear: forceState.S_mob,
+      E_right: forceState.E_right,
+      X_right: forceState.X_right,
+      N_eff: forceState.N_eff,
+      S_mob: forceState.S_mob,
+      mAlpha: forceState.mAlpha ?? slice.mAlpha,
+      theta_interslice: Number.isFinite(forceState.theta_interslice)
+        ? forceState.theta_interslice
+        : theta
+    };
+  });
+}
+
+function solveSpencerForSlices(slices, bishopDiagnostics, spencerConfig, solverConfig) {
+  const bishopF = bishopDiagnostics?.FS ?? bishopDiagnostics?.F ?? null;
+  if (!bishopDiagnostics?.converged || !Number.isFinite(bishopF) || bishopF <= 0) {
+    return {
+      converged: false,
+      F: bishopF,
+      F_m: bishopF,
+      F_f: NaN,
+      lambda: null,
+      thetaDeg: null,
+      maxE: 0,
+      tensionSlices: 0,
+      sliceForces: [],
+      iterations: 0,
+      reason: 'Bishop moment equilibrium did not converge'
+    };
+  }
+
+  const bracket = findSpencerLambdaBracket(slices, bishopDiagnostics, spencerConfig, solverConfig);
+  if (bracket.exact) {
+    const thetaDeg = (Math.atan(bracket.exact.lambda) * 180) / Math.PI;
+    return {
+      converged: true,
+      F: 0.5 * (bishopF + bracket.exact.F_f),
+      F_m: bishopF,
+      F_f: bracket.exact.F_f,
+      lambda: bracket.exact.lambda,
+      thetaDeg,
+      maxE: bracket.exact.forceEq.maxE,
+      tensionSlices: bracket.exact.forceEq.tensionSlices,
+      sliceForces: bracket.exact.forceEq.sliceForces,
+      iterations: 0,
+      reason: ''
+    };
+  }
+
+  if (!bracket.lower || !bracket.upper) {
+    return {
+      converged: false,
+      F: spencerConfig.fallbackBishop ? bishopF : bracket.best ? 0.5 * (bishopF + bracket.best.F_f) : bishopF,
+      F_m: bishopF,
+      F_f: bracket.best?.F_f ?? NaN,
+      lambda: bracket.best?.lambda ?? null,
+      thetaDeg: Number.isFinite(bracket.best?.lambda) ? (Math.atan(bracket.best.lambda) * 180) / Math.PI : null,
+      maxE: bracket.best?.forceEq?.maxE ?? 0,
+      tensionSlices: bracket.best?.forceEq?.tensionSlices ?? 0,
+      sliceForces: bracket.best?.forceEq?.sliceForces || [],
+      iterations: 0,
+      reason: bracket.best ? 'F_m and F_f do not intersect in lambda range' : 'force equilibrium failed across lambda range'
+    };
+  }
+
+  let lower = bracket.lower;
+  let upper = bracket.upper;
+  let best = bracket.best || (Math.abs(lower.value) <= Math.abs(upper.value) ? lower : upper);
+
+  for (let iter = 1; iter <= spencerConfig.maxOuterIter; iter += 1) {
+    const lambdaMid = 0.5 * (lower.lambda + upper.lambda);
+    const mid = evaluateSpencerAtLambda(slices, bishopDiagnostics, lambdaMid, spencerConfig, solverConfig);
+    if (!mid.valid) {
+      return {
+        converged: false,
+        F: spencerConfig.fallbackBishop ? bishopF : 0.5 * (bishopF + (best?.F_f ?? bishopF)),
+        F_m: bishopF,
+        F_f: best?.F_f ?? NaN,
+        lambda: best?.lambda ?? null,
+        thetaDeg: Number.isFinite(best?.lambda) ? (Math.atan(best.lambda) * 180) / Math.PI : null,
+        maxE: best?.forceEq?.maxE ?? 0,
+        tensionSlices: best?.forceEq?.tensionSlices ?? 0,
+        sliceForces: best?.forceEq?.sliceForces || [],
+        iterations: iter,
+        reason: mid.forceEq?.reason || 'force equilibrium failed during lambda bisection'
+      };
+    }
+
+    if (!best || Math.abs(mid.value) < Math.abs(best.value)) best = mid;
+
+    if (
+      Math.abs(mid.value) <= spencerConfig.lambdaTolerance ||
+      Math.abs(upper.lambda - lower.lambda) <= spencerConfig.lambdaTolerance
+    ) {
+      const thetaDeg = (Math.atan(mid.lambda) * 180) / Math.PI;
+      return {
+        converged: true,
+        F: 0.5 * (bishopF + mid.F_f),
+        F_m: bishopF,
+        F_f: mid.F_f,
+        lambda: mid.lambda,
+        thetaDeg,
+        maxE: mid.forceEq.maxE,
+        tensionSlices: mid.forceEq.tensionSlices,
+        sliceForces: mid.forceEq.sliceForces,
+        iterations: iter,
+        reason: ''
+      };
+    }
+
+    if (Math.sign(mid.value) === Math.sign(lower.value)) {
+      lower = mid;
+    } else {
+      upper = mid;
+    }
+  }
+
+  return {
+    converged: false,
+    F: spencerConfig.fallbackBishop ? bishopF : 0.5 * (bishopF + (best?.F_f ?? bishopF)),
+    F_m: bishopF,
+    F_f: best?.F_f ?? NaN,
+    lambda: best?.lambda ?? null,
+    thetaDeg: Number.isFinite(best?.lambda) ? (Math.atan(best.lambda) * 180) / Math.PI : null,
+    maxE: best?.forceEq?.maxE ?? 0,
+    tensionSlices: best?.forceEq?.tensionSlices ?? 0,
+    sliceForces: best?.forceEq?.sliceForces || [],
+    iterations: spencerConfig.maxOuterIter,
+    reason: `outer lambda loop did not converge in ${spencerConfig.maxOuterIter} iterations`
+  };
+}
+
+function applySpencerResult(baseResult, spencerResult) {
+  const thetaDeg = Number.isFinite(spencerResult?.thetaDeg)
+    ? spencerResult.thetaDeg
+    : Number.isFinite(spencerResult?.lambda)
+      ? (Math.atan(spencerResult.lambda) * 180) / Math.PI
+      : null;
+  if (!spencerResult?.converged) {
+    return {
+      ...baseResult,
+      methodLabel: 'Bishop simplified',
+      spencerAttempted: true,
+      spencerConverged: false,
+      spencerRejectReason: spencerResult?.reason || 'Spencer did not converge',
+      lambda: spencerResult?.lambda ?? null,
+      thetaDeg,
+      theta_deg: thetaDeg,
+      F_f: spencerResult?.F_f ?? null,
+      maxE: spencerResult?.maxE ?? null,
+      tensionSlices: spencerResult?.tensionSlices ?? 0,
+      diagnostics: {
+        ...baseResult.diagnostics,
+        spencer: spencerResult
+      }
+    };
+  }
+
+  const slices = finalizeSpencerSlices(baseResult.slices, spencerResult.sliceForces, spencerResult.lambda);
+  return {
+    ...baseResult,
+    method: 'spencer',
+    methodLabel: 'Spencer',
+    FS: spencerResult.F,
+    F: spencerResult.F,
+    F_m: spencerResult.F_m,
+    F_f: spencerResult.F_f,
+    lambda: spencerResult.lambda,
+    thetaDeg,
+    theta_deg: thetaDeg,
+    maxE: spencerResult.maxE,
+    tensionSlices: spencerResult.tensionSlices,
+    iterations: spencerResult.iterations,
+    spencerAttempted: true,
+    spencerConverged: true,
+    spencerRejectReason: '',
+    diagnostics: {
+      ...baseResult.diagnostics,
+      spencer: spencerResult
+    },
+    slices
   };
 }
 
@@ -738,6 +1324,8 @@ export function analyzeBishopSearch(input, emitProgress) {
   const model = input.model;
   const search = input.searchConfig || {};
   const solver = input.solverConfig || {};
+  const methodMode = input.methodMode === 'bishop_spencer' ? 'bishop_spencer' : 'bishop_only';
+  const spencerConfig = normalizeSpencerConfig(input.spencerConfig, search);
   const entryPts = zoneSamplePoints(model.terrain, input.entryZone, Math.max(2, search.nEntry || 10));
   const exitPts = zoneSamplePoints(model.terrain, input.exitZone, Math.max(2, search.nExit || 10));
   const totalTrials = entryPts.length * exitPts.length * Math.max(2, search.nCenter || 15) * 2;
@@ -790,20 +1378,7 @@ export function analyzeBishopSearch(input, emitProgress) {
               if (!bishop.converged) {
                 noteReject(bishop.reason || 'no convergence');
               } else {
-                const enrichedSlices = built.slices.map((slice, index) => ({
-                  ...slice,
-                  mAlpha: bishop.sliceMAlpha[index],
-                  normalForce: bishop.sliceNormals[index],
-                  mobilizedShear: bishop.sliceMobilizedShears[index]
-                }));
-                results.push({
-                  circle,
-                  FS: bishop.FS,
-                  iterations: bishop.iterations,
-                  converged: true,
-                  diagnostics: bishop,
-                  slices: enrichedSlices
-                });
+                results.push(buildBishopSearchResult(circle, built.slices, bishop));
               }
             }
           }
@@ -822,13 +1397,48 @@ export function analyzeBishopSearch(input, emitProgress) {
   });
 
   results.sort((a, b) => a.FS - b.FS);
-  const critical = results[0] || null;
+  let finalResults = results;
+  let spencerConverged = 0;
+  let spencerRechecked = 0;
+
+  if (methodMode === 'bishop_spencer' && results.length) {
+    const recheckCount = Math.min(results.length, spencerConfig.recheckCount);
+    const shortlisted = results.slice(0, recheckCount);
+    finalResults = shortlisted.map((result) => {
+      spencerRechecked += 1;
+      const spencer = solveSpencerForSlices(
+        cloneSlicesForSolver(result.slices),
+        result.diagnostics?.bishop,
+        spencerConfig,
+        solver
+      );
+      if (spencer.converged) spencerConverged += 1;
+      return applySpencerResult(result, spencer);
+    });
+    if (!spencerConverged && spencerConfig.fallbackBishop) {
+      finalResults = finalResults.map((result) => {
+        return {
+          ...result,
+          method: 'bishop_simplified',
+          methodLabel: 'Bishop simplified',
+          FS: result.F_bishop,
+          F: result.F_bishop
+        };
+      });
+    }
+    finalResults.sort((a, b) => a.FS - b.FS);
+  }
+
+  const critical = finalResults[0] || null;
   const totalMs = Date.now() - started;
   return {
     critical,
-    allResults: results,
+    allResults: finalResults,
     summary: summarizeCritical(critical, model),
     rejectionCounts,
+    methodMode,
+    spencerRechecked,
+    spencerConverged,
     timing: {
       totalMs,
       trialCount: trial,

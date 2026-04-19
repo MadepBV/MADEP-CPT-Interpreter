@@ -1,9 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 export const STAGE7_REPORT_STORAGE_PREFIX = 'stage7-report:';
+export const STAGE7_REPORT_VERSION = 2;
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isBishopStage6Payload(value) {
+  return (
+    isPlainObject(value) &&
+    isPlainObject(value.config) &&
+    ['bishop_only', 'bishop_spencer'].includes(value.methodMode) &&
+    Array.isArray(value.topResults) &&
+    isPlainObject(value.rejectionCounts) &&
+    isPlainObject(value.timing) &&
+    value.topResults.every(
+      (result) =>
+        isPlainObject(result) &&
+        isFiniteNumber(result.rank) &&
+        isFiniteNumber(result.FS) &&
+        typeof result.methodLabel === 'string' &&
+        isPlainObject(result.circle)
+    ) &&
+    (value.selected == null ||
+      (isPlainObject(value.selected) &&
+        isFiniteNumber(value.selected.FS) &&
+        typeof value.selected.methodLabel === 'string'))
+  );
 }
 
 export function makeStage7ReportKey() {
@@ -11,6 +39,7 @@ export function makeStage7ReportKey() {
 }
 
 export function saveStage7Payload(storage, payload) {
+  if (!storage || !isStage7Payload(payload)) return '';
   const key = makeStage7ReportKey();
   storage.setItem(key, JSON.stringify(payload));
   return key;
@@ -19,6 +48,7 @@ export function saveStage7Payload(storage, payload) {
 export function isStage7Payload(payload) {
   return (
     isPlainObject(payload) &&
+    payload.version === STAGE7_REPORT_VERSION &&
     payload.stage === 'stage7' &&
     typeof payload.generatedAt === 'string' &&
     isPlainObject(payload.project) &&
@@ -38,7 +68,9 @@ export function isStage7Payload(payload) {
     Array.isArray(payload.layers) &&
     Array.isArray(payload.layerWarnings) &&
     (payload.tuning == null || Array.isArray(payload.tuning)) &&
-    (payload.stage6 == null || isPlainObject(payload.stage6))
+    (payload.stage6 == null ||
+      (isPlainObject(payload.stage6) &&
+        (payload.stage6.bishop == null || isBishopStage6Payload(payload.stage6.bishop))))
   );
 }
 

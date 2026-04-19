@@ -1046,19 +1046,25 @@
 
           {#if hasStage6('bishop')}
             <div class="report-card report-annex report-annex--bishop">
-              <h3>Bishop simplified</h3>
-              <div class="report-grid report-grid--3">
+              <h3>Bishop / Spencer slope check</h3>
+              <div class="report-grid report-grid--4">
                 <div class="report-stat"><span>Critical F</span><strong>{payload.stage6.bishop.topResults?.[0] ? fmt(payload.stage6.bishop.topResults[0].FS, 3) : '—'}</strong></div>
+                <div class="report-stat"><span>Mode</span><strong>{payload.stage6.bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer' : 'Bishop only'}</strong></div>
                 <div class="report-stat"><span>Selected result</span><strong>{payload.stage6.bishop.selectedIndex + 1}</strong></div>
-                <div class="report-stat"><span>Trials</span><strong>{payload.stage6.bishop.timing?.trialCount ?? '—'}</strong></div>
+                <div class="report-stat"><span>Spencer converged</span><strong>{payload.stage6.bishop.methodMode === 'bishop_spencer' ? `${payload.stage6.bishop.spencerConverged}/${payload.stage6.bishop.spencerRechecked}` : 'off'}</strong></div>
               </div>
               <div class="report-grid report-grid--2">
                 <table class="pt report-pt">
                   <tbody>
                     <tr><td>Strength set</td><td>{payload.stage6.bishop.config.strengthSet}</td></tr>
+                    <tr><td>Method mode</td><td>{payload.stage6.bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer check' : 'Bishop only'}</td></tr>
                     <tr><td>Analysis depth (m)</td><td>{fmt(payload.stage6.bishop.config.analysisDepth, 2)} m</td></tr>
                     <tr><td>Entry zone x-range (m)</td><td>{payload.stage6.bishop.config.entryZone ? `${fmt(payload.stage6.bishop.config.entryZone.xStart, 2)} - ${fmt(payload.stage6.bishop.config.entryZone.xEnd, 2)} m` : '—'}</td></tr>
                     <tr><td>Exit zone x-range (m)</td><td>{payload.stage6.bishop.config.exitZone ? `${fmt(payload.stage6.bishop.config.exitZone.xStart, 2)} - ${fmt(payload.stage6.bishop.config.exitZone.xEnd, 2)} m` : '—'}</td></tr>
+                    <tr><td>Selected method</td><td>{payload.stage6.bishop.selected?.methodLabel ?? '—'}</td></tr>
+                    <tr><td>Selected Bishop F</td><td>{payload.stage6.bishop.selected?.F_bishop != null ? fmt(payload.stage6.bishop.selected.F_bishop, 3) : '—'}</td></tr>
+                    <tr><td>Selected Spencer F</td><td>{payload.stage6.bishop.selected?.method === 'spencer' ? fmt(payload.stage6.bishop.selected.FS, 3) : '—'}</td></tr>
+                    <tr><td>Selected λ</td><td>{payload.stage6.bishop.selected?.lambda != null ? fmt(payload.stage6.bishop.selected.lambda, 3) : '—'}</td></tr>
                     <tr><td>Runtime (ms)</td><td>{payload.stage6.bishop.timing?.totalMs != null ? `${fmt(payload.stage6.bishop.timing.totalMs, 0)} ms` : '—'}</td></tr>
                   </tbody>
                 </table>
@@ -1066,13 +1072,16 @@
                   <h4>Best circles</h4>
                   <table class="tbl report-table">
                     <thead>
-                      <tr><th>#</th><th>FS (-)</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
+                      <tr><th>#</th><th>FS (-)</th><th>Method</th><th>Bishop F (-)</th><th>λ (-)</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
                     </thead>
                     <tbody>
                       {#each payload.stage6.bishop.topResults as result}
                         <tr>
                           <td>{result.rank}</td>
                           <td>{fmt(result.FS, 3)}</td>
+                          <td>{result.methodLabel}</td>
+                          <td>{result.F_bishop != null ? fmt(result.F_bishop, 3) : '—'}</td>
+                          <td>{result.lambda != null ? fmt(result.lambda, 3) : '—'}</td>
                           <td>{result.iterations}</td>
                           <td>{result.circle?.radius != null ? `${fmt(result.circle.radius, 2)} m` : '—'}</td>
                         </tr>
