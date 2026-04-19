@@ -2,20 +2,20 @@
 <script lang="ts">
 	import '$lib/styles/docs.css';
 
-	const pageTitle = 'Bishop + Spencer — CPT App Documentation';
+	const pageTitle = 'Bishop + Spencer — Engineering Note';
 	const pageDescription =
-		'Technical documentation for the Stage 6 circular slope-stability workflow in the CPT app: Bishop search, Spencer verification, implemented algebra, report outputs, and references.';
+		'Engineering note for the Stage 6 circular slope-stability workflow in the CPT app: Bishop search, Spencer verification, implemented algebra, report outputs, and references.';
 	const canonicalUrl = 'https://cpt.madep.be/docs/bishop';
 	const ogImageUrl = 'https://cpt.madep.be/logo.png';
 
 	const sections = [
-		{ id: 'scope', title: '1. Scope and current model' },
+		{ id: 'scope', title: '1. Scope and present model' },
 		{ id: 'coordinates', title: '2. Coordinates and sign conventions' },
 		{ id: 'geometry', title: '3. Geometry and soil model' },
 		{ id: 'search', title: '4. Slip-circle search and validity filters' },
 		{ id: 'slices', title: '5. Slice generation and multi-layer handling' },
 		{ id: 'theory', title: '6. Implemented theory and algebra' },
-		{ id: 'implementation', title: '7. Current Stage 6 implementation' },
+		{ id: 'implementation', title: '7. Present Stage 6 implementation' },
 		{ id: 'canvas', title: '8. Interactive canvas workflow' },
 		{ id: 'verification', title: '9. Verification and testing' },
 		{ id: 'limits', title: '10. Limitations and next steps' },
@@ -46,12 +46,12 @@
 
 	<header class="hero">
 		<div class="hero__inner">
-			<p class="hero__eyebrow">Technical documentation</p>
+			<p class="hero__eyebrow">Engineering note</p>
 			<h1>Bishop and Spencer</h1>
 			<p class="hero__lead">
-				A technical implementation note for the Stage 6 circular slope-stability workflow:
-				terrain and phreatic geometry, active-CPT-based soil regions, Bishop shortlist search,
-				Spencer recheck, implemented slice algebra, and the current interactive canvas behavior.
+				A technical note on the Stage 6 circular slope-stability workflow: terrain and phreatic
+				geometry, soil regions derived from the active CPT, Bishop shortlist search, Spencer
+				recheck, implemented slice algebra, and the behaviour of the interactive canvas.
 			</p>
 			<div class="hero__actions">
 				<a class="btn btn--primary" href="/">Open the app</a>
@@ -60,7 +60,7 @@
 			<div class="hero__trust">
 				<span>Circular slip surfaces</span>
 				<span>Bishop + Spencer</span>
-				<span>Current app logic</span>
+				<span>Present implementation logic</span>
 			</div>
 		</div>
 	</header>
@@ -79,32 +79,35 @@
 		<main class="docs-content">
 			<section id="scope" class="doc-card">
 				<p class="section-label">Section</p>
-				<h2>1. Scope and current model</h2>
+				<h2>1. Scope and present model</h2>
 				<p>
 					The Stage 6 slope module is a <strong>two-dimensional circular-slip</strong>
 					limit-equilibrium tool built around a <strong>Bishop Simplified search</strong> with an
-					optional <strong>Spencer verification pass</strong>. In the current app, the engineer
-					can run either <strong>Bishop only</strong> or <strong>Bishop + Spencer check</strong>.
+					optional <strong>Spencer verification pass</strong>. In the present implementation, the
+					engineer may run either <strong>Bishop only</strong> or
+					<strong>Bishop + Spencer check</strong>.
 				</p>
 				<p>
-					The current workflow uses the <strong>active CPT only</strong> as the soil source. The
-					interpreted active-CPT layer column from Stages 2 to 5 is converted to a slope soil
-					model by extending those layers horizontally across the drawn section. Terrain, phreatic
-					line, optional surcharge zone, and entry and exit zones are then supplied by the Stage 6
+					The present workflow employs the <strong>active CPT only</strong> as the soil source.
+					The interpreted layer column from Stages 2 to 5 is converted into a slope soil model by
+					extending those layers horizontally across the drawn section. Terrain, phreatic line,
+					optional surcharge zone, and the entry and exit zones are then supplied by the Stage 6
 					canvas.
 				</p>
 				<div class="doc-callout">
-					<strong>Current scope.</strong> The current Stage 6 app is limited to circular slip
+					<strong>Present scope.</strong> The present Stage 6 module is limited to circular slip
 					surfaces, self-weight loading, one optional uniform vertical surcharge zone, and
-					optional hydrostatic pore pressure from a drawn phreatic line. Spencer is implemented
-					for the shortlisted circular surfaces only. Seismic loading, reinforcement,
-					noncircular surfaces, and Morgenstern&ndash;Price are not part of the current app.
+					optional hydrostatic pore pressure derived from a drawn phreatic line. Spencer is
+					implemented for shortlisted circular surfaces only. Seismic loading, reinforcement,
+					non-circular surfaces, and Morgenstern&ndash;Price do not form part of the present
+					implementation.
 				</div>
 				<div class="doc-callout">
-					<strong>Current load model.</strong> The live load feature is one optional
+					<strong>Present load model.</strong> The load feature comprises one optional
 					<strong>uniform vertical surcharge zone</strong> drawn on the terrain with the same
 					two-click workflow as the entry and exit zones. It is interpreted as a strip surcharge
-					over a finite horizontal interval, not as a concentrated point load or inclined load.
+					over a finite horizontal interval, and not as a concentrated point load or an inclined
+					load.
 				</div>
 				<div class="equations">
 					<div class="formula">
@@ -146,10 +149,10 @@
 					</dl>
 				</div>
 				<ul class="notes">
-					<li>The Bishop module sits inside the existing Stage 6 state and therefore preserves the interpreted CPT workflow.</li>
-					<li>The full search is always run with Bishop Simplified; Spencer is applied only to the shortlisted circles.</li>
-					<li>The visible search mode in the app is entry-exit search; no separate center-grid mode is currently exposed in the UI.</li>
-					<li>The current implementation is experimental, but it is part of the visible Stage 6 app set and the Stage 7 report payload.</li>
+					<li>The Bishop module sits within the existing Stage 6 state and therefore preserves the interpreted CPT workflow.</li>
+					<li>The full search is always executed with Bishop Simplified; Spencer is applied only to the shortlisted circles.</li>
+					<li>The exposed search mode is entry-exit search; no separate centre-grid mode is presently exposed in the interface.</li>
+					<li>The present implementation remains experimental, but it forms part of the visible Stage 6 workflow and the Stage 7 report payload.</li>
 				</ul>
 			</section>
 
@@ -160,10 +163,10 @@
 					The Bishop canvas uses world coordinates with <em>x</em> positive to the right and
 					<em>y</em> positive upward. Terrain, phreatic line, entry zone, exit zone, and slip
 					circles are all defined in that same world system. Screen pan and zoom are applied only
-					in the rendering layer; the solver sees world coordinates only.
+					in the rendering layer; the solver itself receives world coordinates only.
 				</p>
 				<p>
-					The current implementation stores a signed base angle per slice. The sign is taken
+					The present implementation stores a signed base angle per slice. The sign is taken
 					relative to the chosen movement direction from entry to exit, so the same circular
 					geometry can be evaluated consistently whether the active branch lies on the lower or
 					upper half of the parent circle.
@@ -175,9 +178,9 @@
 					</div>
 				</div>
 				<div class="doc-callout doc-callout--warn">
-					<strong>Implementation note.</strong> The app no longer forces unsigned base angles.
-					The signed-angle convention is essential for circles that pass across the lowest point
-					of the arc, because the sign of α changes over the span and directly affects the Bishop
+					<strong>Implementation note.</strong> Unsigned base angles are no longer enforced. The
+					signed-angle convention is essential for circles that pass across the lowest point of
+					the arc, because the sign of α changes over the span and directly affects the Bishop
 					driving term.
 				</div>
 			</section>
@@ -189,9 +192,9 @@
 				<section class="doc-subsection">
 					<h3>3.1 Terrain and phreatic polyline</h3>
 					<p>
-						The terrain is a user-drawn x-monotonic polyline. The app enforces left-to-right
-						vertex ordering, and the terrain is queried by linear interpolation. The optional
-						phreatic surface is another polyline in the same coordinate system.
+						The terrain is a user-drawn x-monotonic polyline. The application enforces
+						left-to-right vertex ordering, and the terrain is queried by linear interpolation.
+						The optional phreatic surface is another polyline in the same coordinate system.
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -203,16 +206,17 @@
 				<section class="doc-subsection">
 					<h3>3.2 Soil model from the active CPT</h3>
 					<p>
-						The current app does <strong>not</strong> interpolate between multiple CPTs. Instead,
-						it takes the active interpreted layer column and extends it horizontally across the full
-						Bishop model width. The top band follows the drawn terrain, the intermediate bands are
-						horizontal at the layer boundary elevations referenced to the active CPT position, and
-						the deepest band extends down to the selected Bishop analysis depth.
+						The present application does <strong>not</strong> interpolate between multiple CPTs.
+						Instead, it takes the active interpreted layer column and extends it horizontally
+						across the full Bishop model width. The top band follows the drawn terrain, the
+						intermediate bands are horizontal at the layer boundary elevations referenced to the
+						active CPT position, and the deepest band extends down to the selected Bishop
+						analysis depth.
 					</p>
 					<p>
 						The analysis depth defaults to the <strong>CPT depth or 15 m</strong>, whichever is
-						greater. If the engineer chooses a deeper analysis depth, the bottom layer is simply
-						extrapolated downward.
+						greater. If the engineer elects to analyse to a greater depth, the bottom layer is
+						simply extrapolated downward.
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -229,33 +233,33 @@
 					<ul class="notes">
 						<li>The first band follows terrain at the top boundary.</li>
 						<li>Lower bands are clipped so they never extend above terrain.</li>
-						<li>The current implementation builds closed, non-overlapping band polygons for rendering and region inspection.</li>
+						<li>The present implementation builds closed, non-overlapping band polygons for rendering and region inspection.</li>
 					</ul>
 				</section>
 
 				<section class="doc-subsection">
 					<h3>3.3 Material sets and design values</h3>
 					<p>
-						Bishop materials are imported automatically from the active CPT layers. The app
-						currently lets the user choose between <strong>Characteristic</strong>,
+						Bishop materials are imported automatically from the active CPT layers. The user may
+						select between <strong>Characteristic</strong>,
 						<strong>DA1/1 (M1)</strong>, and <strong>DA1/2 (M2)</strong>. For the design-value
-						sets, the module reuses the same soil-parameter reduction logic as the rest of
+						sets, the module reuses the same soil-parameter reduction logic as the remainder of
 						Stage 6 before assigning Bishop base materials.
 					</p>
 					<div class="doc-table-wrap">
-						<p class="doc-table-caption">Current Bishop material source modes.</p>
+						<p class="doc-table-caption">Bishop material source modes used in the present implementation.</p>
 						<div class="doc-table-scroll">
 							<table class="doc-table">
 								<thead>
 									<tr>
 										<th>Mode</th>
-										<th>Meaning in the current app</th>
+										<th>Meaning in the present implementation</th>
 									</tr>
 								</thead>
 								<tbody>
 									<tr>
 										<td>Characteristic</td>
-										<td>Imports layer c′, φ′, γ, and γ<sub>sat</sub> directly from the current CPT interpretation.</td>
+										<td>Imports layer c′, φ′, γ, and γ<sub>sat</sub> directly from the active CPT interpretation.</td>
 									</tr>
 									<tr>
 										<td>DA1/1 (M1)</td>
@@ -279,10 +283,10 @@
 				<section class="doc-subsection">
 					<h3>4.1 Entry-exit parameterization</h3>
 					<p>
-						The visible v1 workflow is based on <strong>entry-exit search</strong>. The user
-						draws an entry zone and an exit zone on the terrain. The app samples points along both
-						zones, forms the entry-exit chord, and then samples candidate circle centers on the
-						perpendicular bisector of that chord.
+						The exposed v1 workflow is based on <strong>entry-exit search</strong>. The user
+						draws an entry zone and an exit zone on the terrain. The application samples points
+						along both zones, forms the entry-exit chord, and thereafter samples candidate
+						circle centres on the perpendicular bisector of that chord.
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -329,9 +333,9 @@
 				<section class="doc-subsection">
 					<h3>4.2 Circle admissibility</h3>
 					<p>
-						The app validates each trial circle before slice generation. The active branch is
-						chosen first, then the circle is kept only if it daylights at the intended entry and
-						exit points and remains below terrain in between.
+						Each trial circle is validated before slice generation. The active branch is chosen
+						first, whereafter the circle is retained only if it daylights at the intended entry
+						and exit points and remains below terrain in between.
 					</p>
 					<ul class="notes">
 						<li>Exactly two terrain intersections are required inside the entry-exit span.</li>
@@ -362,10 +366,11 @@
 				<section class="doc-subsection">
 					<h3>5.1 Slice boundaries</h3>
 					<p>
-						The app starts from an equally spaced slice backbone and then inserts additional cut
-						positions at every relevant x-location: terrain vertices, phreatic vertices, slip-circle
-						intersections with horizontal layer boundaries, and phreatic intersections with the
-						active slip branch. The resulting cut set is then cleaned against a minimum slice width.
+						The implementation commences from an equally spaced slice backbone and then inserts
+						additional cut positions at every relevant x-location: terrain vertices, phreatic
+						vertices, slip-circle intersections with horizontal layer boundaries, and phreatic
+						intersections with the active slip branch. The resulting cut set is then cleaned
+						against a minimum slice width.
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -394,20 +399,17 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>5.3 Multi-layer slices in the current app</h3>
-					<p>
-						If a slice body passes through more than one soil layer, the current app handles it in
-						the standard Bishop v1 manner:
-					</p>
+					<h3>5.3 Multi-layer slices in the present implementation</h3>
+					<p>If a slice body passes through more than one soil layer, the present implementation handles it in the standard Bishop v1 manner:</p>
 					<ul class="notes">
 						<li><strong>Weight</strong> includes contributions from <em>all</em> layers intercepted by the slice body.</li>
 						<li><strong>Strength</strong> uses the material at the <em>slice base</em> only.</li>
 					</ul>
 					<p>
-						The current implementation computes layer-wise slice weight by integrating the
-						overlapped band thickness and unit weight across the slice width with Simpson
-						integration. It also stores the per-layer breakdown in <code>layerAreas</code> for UI
-						inspection.
+						The present implementation computes layer-wise slice weight by integrating the
+						overlapped band thickness and unit weight across the slice width by Simpson
+						integration. It also stores the per-layer breakdown in <code>layerAreas</code> for
+						inspection in the user interface.
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -421,10 +423,10 @@
 						</div>
 					</div>
 					<div class="doc-callout">
-						<strong>Current behavior.</strong> The app tries to place slice cuts at horizontal
-						layer-boundary intersections so that one soil type remains along each base segment. If a
-						very narrow interval is later merged by the minimum-slice-width cleanup, the strength
-						side falls back to the material at the base midpoint.
+						<strong>Present behaviour.</strong> The application attempts to place slice cuts at
+						horizontal layer-boundary intersections so that one soil type remains along each base
+						segment. If a very narrow interval is later merged by the minimum-slice-width
+						cleanup, the strength side falls back to the material at the base midpoint.
 					</div>
 				</section>
 			</section>
@@ -433,19 +435,19 @@
 				<p class="section-label">Section</p>
 				<h2>6. Implemented theory and algebra</h2>
 				<p>
-					This section documents the <strong>algebra actually used by the app</strong>. That is
-					deliberately narrower than a full textbook treatment: the live code solves a circular
-					Bishop equation for every trial surface, then optionally runs a Spencer force-equilibrium
-					check on the shortlisted circles and reranks those results.
+					This section documents the <strong>algebra actually used by the application</strong>.
+					It is deliberately narrower than a full textbook treatment: the production code solves
+					a circular Bishop equation for every trial surface, then optionally performs a Spencer
+					force-equilibrium check on the shortlisted circles and reranks those results.
 				</p>
 				<section class="doc-subsection">
-					<h3>6.1 Bishop equation actually solved in the app</h3>
+					<h3>6.1 Bishop equation actually solved in the present implementation</h3>
 					<p>
 						The Bishop search uses the slice vertical load
 						<em>V</em><sub>i</sub> = <em>W</em><sub>i</sub> + <em>Q</em><sub>i</sub>, where
 						<em>W</em><sub>i</sub> is the integrated self-weight and <em>Q</em><sub>i</sub> is
-						the surcharge overlap load for the slice. The factor of safety is solved from the
-						fixed-point form below.
+						the surcharge overlap load for the slice. The factor of safety is obtained from the
+						fixed-point form set out below.
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -459,26 +461,27 @@
 						</div>
 					</div>
 					<div class="doc-callout doc-callout--warn">
-						<strong>Important algebra detail.</strong> The current code uses
+						<strong>Important algebra detail.</strong> The present code uses
 						<strong>u<sub>i</sub>b<sub>i</sub></strong>, not <strong>u<sub>i</sub>l<sub>i</sub></strong>,
-						in the governing Bishop equation. It also carries cohesion in the same simplified
-						width form <strong>c′<sub>i</sub>b<sub>i</sub></strong>. This is the circular-surface
-						form implemented in the solver and documented in the MADEP spec. The solver does
+						in the governing Bishop equation. It likewise carries cohesion in the same
+						simplified width form <strong>c′<sub>i</sub>b<sub>i</sub></strong>. This is the
+						circular-surface form implemented in the solver and documented in the MADEP
+						specification. The solver does
 						<strong>not</strong> use a mixed <em>c′l</em> / <em>u·l</em> form in its main
 						fixed-point iteration.
 					</div>
 					<p>
-						In the current code, <em>b</em><sub>i</sub> = Δx<sub>i</sub> is the horizontal slice
-						width and <em>l</em><sub>i</sub> = Δx<sub>i</sub>/cosα<sub>i</sub> is still stored as
-						the geometric base length. The Bishop iteration itself, however, is evaluated in the
-						width form shown above.
+						In the present code, <em>b</em><sub>i</sub> = Δx<sub>i</sub> is the horizontal
+						slice width and <em>l</em><sub>i</sub> = Δx<sub>i</sub>/cosα<sub>i</sub> is still
+						stored as the geometric base length. The Bishop iteration itself, however, is
+						evaluated in the width form shown above.
 					</p>
 				</section>
 				<section class="doc-subsection">
 					<h3>6.2 Seed and slice diagnostics</h3>
 					<p>
-						The initial seed is an ordinary-method-style estimate using the same app algebra as
-						the fixed-point solver:
+						The initial seed is an ordinary-method-style estimate using the same application
+						algebra as the fixed-point solver:
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -489,8 +492,8 @@
 						</div>
 					</div>
 					<p>
-						After convergence, the app back-calculates slice normal force and mobilized shear for
-						reporting with the same width-based algebra:
+						After convergence, the application back-calculates slice normal force and mobilised
+						shear for reporting by the same width-based algebra:
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -506,14 +509,14 @@
 					</div>
 					<p>
 						These are the values exposed in the Stage 6 slice table for the selected Bishop
-						result. They are not an independent solver; they are diagnostics consistent with the
-						governing Bishop equation used by the app.
+						result. They do not constitute an independent solver; they are diagnostics
+						consistent with the governing Bishop equation used by the application.
 					</p>
 				</section>
 				<section class="doc-subsection">
 					<h3>6.3 Spencer algebra used for the recheck</h3>
 					<p>
-						For circular surfaces, the app reuses the converged Bishop result as the
+						For circular surfaces, the application reuses the converged Bishop result as the
 						<strong>moment-equilibrium</strong> branch:
 					</p>
 					<div class="equations">
@@ -525,10 +528,10 @@
 						</div>
 					</div>
 					<p>
-						The Spencer addition is therefore the <strong>force-equilibrium chain</strong>. For a
-						given trial factor of safety <em>F</em> and a constant interslice-force ratio
-						&lambda; = <em>X</em>/<em>E</em>, the app propagates slice forces from left to right
-						with <em>E</em><sub>0</sub> = 0 and seeks the closure condition
+						The Spencer addition is therefore the <strong>force-equilibrium chain</strong>. For
+						a given trial factor of safety <em>F</em> and a constant interslice-force ratio
+						&lambda; = <em>X</em>/<em>E</em>, the application propagates slice forces from left
+						to right with <em>E</em><sub>0</sub> = 0 and seeks the closure condition
 						<em>E</em><sub>n</sub> = 0.
 					</p>
 					<div class="equations">
@@ -555,21 +558,22 @@
 						</div>
 					</div>
 					<p>
-						For a fixed &lambda;, the app finds <em>F</em><sub>f</sub>(&lambda;) by bisection on
-						the final residual <em>E</em><sub>final</sub> = <em>E</em><sub>R,n</sub>. It then
-						scans and brackets &lambda; and finishes with bisection on
-						<em>g</em>(&lambda;) = <em>F</em><sub>m</sub> − <em>F</em><sub>f</sub>(&lambda;).
+						For a fixed &lambda;, the application finds <em>F</em><sub>f</sub>(&lambda;) by
+						bisection on the final residual <em>E</em><sub>final</sub> =
+						<em>E</em><sub>R,n</sub>. It then scans and brackets &lambda; and concludes with
+						bisection on <em>g</em>(&lambda;) = <em>F</em><sub>m</sub> −
+						<em>F</em><sub>f</sub>(&lambda;).
 					</p>
 					<div class="doc-callout">
-						<strong>Current Spencer defaults.</strong> The current Stage 6 app starts from a
+						<strong>Present Spencer defaults.</strong> The present Stage 6 module starts from a
 						&lambda; bracket of <strong>−0.6 to +0.6</strong>, uses force-equilibrium and
 						&lambda; tolerances of <strong>0.001</strong>, and rechecks only the top
-						shortlisted Bishop circles. If Spencer cannot converge, the app keeps the Bishop
-						result and flags the fallback in the UI and report.
+						shortlisted Bishop circles. If Spencer cannot converge, the Bishop result is
+						retained and the fallback is flagged in the interface and report.
 					</div>
 				</section>
 				<section class="doc-subsection">
-					<h3>6.4 Search architecture used by the app</h3>
+					<h3>6.4 Search architecture used by the present implementation</h3>
 					<p>
 						The solver architecture is intentionally asymmetric:
 					</p>
@@ -577,7 +581,7 @@
 						<li><strong>Bishop</strong> is used for the full circle search because it is fast and robust.</li>
 						<li><strong>Spencer</strong> is run only on the shortlisted circles, not on every trial surface.</li>
 						<li>When Spencer converges, the shortlisted circles are reranked by Spencer F.</li>
-						<li>When Spencer fails on a shortlisted circle, the app keeps the Bishop result with a visible fallback note.</li>
+						<li>When Spencer fails on a shortlisted circle, the Bishop result is retained with a visible fallback note.</li>
 					</ul>
 				</section>
 				<div class="symbols">
@@ -620,7 +624,7 @@
 				<section class="doc-subsection">
 					<h3>6.5 Uniform surcharge zone</h3>
 					<p>
-						The current app supports one optional <strong>uniform vertical surcharge zone</strong>
+						The present application supports one optional <strong>uniform vertical surcharge zone</strong>
 						drawn on the terrain between <em>x</em><sub>q,start</sub> and
 						<em>x</em><sub>q,end</sub>. The entered value <em>q</em> is interpreted as a strip
 						surcharge in kPa, which is numerically equal to kN/m². In the 2D unit-width Bishop
@@ -640,25 +644,25 @@
 						</div>
 					</div>
 					<p>
-						In practice, the current surcharge implementation simply replaces
-						<em>W</em><sub>i</sub> by <em>V</em><sub>i</sub> everywhere the Bishop solver uses the
-						slice vertical load. The surcharge remains vertical and downward only; no load angle,
-						horizontal component, or concentrated line load distribution is assumed in this v1
-						step.
+						In practice, the present surcharge implementation simply replaces
+						<em>W</em><sub>i</sub> by <em>V</em><sub>i</sub> wherever the Bishop solver uses the
+						slice vertical load. The surcharge remains vertical and downward only; no load
+						angle, horizontal component, or concentrated line-load distribution is assumed in
+						this v1 step.
 					</p>
 					<ul class="notes">
 						<li>The load applies only over slices that overlap the drawn zone and is zero outside it.</li>
-						<li>The load should be stored slice-by-slice as Q<sub>i</sub> so the UI can show soil weight, surcharge, and total vertical load separately.</li>
+						<li>The load is stored slice-by-slice as Q<sub>i</sub> so that the interface may show soil weight, surcharge, and total vertical load separately.</li>
 						<li>The two-click terrain-anchored interaction should match the existing entry and exit zone workflow.</li>
 					</ul>
 					<div class="doc-callout">
-						<strong>Implementation note.</strong> The current Stage 6 canvas shows the load zone as
+						<strong>Implementation note.</strong> The present Stage 6 canvas shows the load zone as
 						a highlighted terrain segment with a single intensity input <em>q</em>. If
 						<em>q</em> = 0, the zone can remain drawn but contributes no surcharge to the slices.
 					</div>
 				</section>
 				<details class="doc-details">
-					<summary>Show current fixed-point workflow</summary>
+					<summary>Show present fixed-point workflow</summary>
 					<pre><code>1. Build all valid trial circles from the entry-exit search.
 2. Solve each circle with Bishop Simplified using:
    F = Σ[(c′·b + (V − u·b)tanφ′) / mα(F)] / Σ[V sinα]
@@ -674,20 +678,20 @@
 
 			<section id="implementation" class="doc-card">
 				<p class="section-label">Section</p>
-				<h2>7. Current Stage 6 implementation</h2>
+				<h2>7. Present Stage 6 implementation</h2>
 				<p>
-					The current app implementation is intentionally narrower than a general slope-stability
-					package. The following points describe what the live Stage 6 circular solver actually
-					does today.
+					The present implementation is intentionally narrower than a general slope-stability
+					package. The points set out below describe what the present Stage 6 circular solver
+					actually does at present.
 				</p>
 				<div class="doc-table-wrap">
-						<p class="doc-table-caption">Current Stage 6 slope-stability defaults and solver settings.</p>
+						<p class="doc-table-caption">Stage 6 slope-stability defaults and solver settings in the present implementation.</p>
 					<div class="doc-table-scroll">
 						<table class="doc-table">
 							<thead>
 								<tr>
 									<th>Item</th>
-									<th>Current app behavior</th>
+									<th>Present implementation behaviour</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -700,7 +704,7 @@
 								<tr><td>Max iterations</td><td>50</td></tr>
 								<tr><td>Tolerance</td><td>1e−4</td></tr>
 								<tr><td>Minimum m<sub>α</sub></td><td>1e−6</td></tr>
-								<tr><td>Spencer shortlist</td><td>Top 10 circles by default, capped by the current keep-best setting</td></tr>
+								<tr><td>Spencer shortlist</td><td>Top 10 circles by default, capped by the prevailing keep-best setting</td></tr>
 								<tr><td>Spencer &lambda; bracket</td><td>−0.6 to +0.6 by default</td></tr>
 								<tr><td>Spencer tolerances</td><td>0.001 on force equilibrium and 0.001 on the outer &lambda; solve</td></tr>
 								<tr><td>Pore pressure</td><td>Dry if no phreatic line is drawn; otherwise hydrostatic from the drawn phreatic line</td></tr>
@@ -713,7 +717,7 @@
 				<ul class="notes">
 					<li>The active branch of the parent circle is resolved first and is stored with the trial circle for both rendering and solving.</li>
 					<li>The results table stores ranked circles sorted by increasing FOS, using Spencer F for converged Spencer results and Bishop F for flagged fallbacks.</li>
-					<li>The canvas can display the trial circle being tested while the worker is running.</li>
+					<li>The canvas may display the trial circle under evaluation while the worker is running.</li>
 					<li>Selected results expose slice-by-slice values including W<sub>i</sub>, Q<sub>i</sub>, V<sub>i</sub>, α<sub>i</sub>, u<sub>i</sub>, m<sub>α,i</sub>, N<sub>i</sub>, and mobilized shear.</li>
 					<li>When Spencer converges, the selected result also exposes E<sub>R</sub>, X<sub>R</sub>, S<sub>mob</sub>, &lambda;, and the Bishop/Spencer comparison values.</li>
 					<li>The Stage 7 report payload stores the active mode, shortlisted result methods, Bishop/Spencer values, and Spencer convergence counts.</li>
@@ -724,9 +728,10 @@
 				<p class="section-label">Section</p>
 				<h2>8. Interactive canvas workflow</h2>
 				<p>
-					The Bishop module is not just a numerical solver; it is a geometry-driven Stage 6 app.
-					The canvas is therefore part of the technical workflow. Geometry edits invalidate stale
-					results immediately, and the search only runs on the current canvas state.
+					The Bishop module is not merely a numerical solver; it is a geometry-driven Stage 6
+					workflow. The canvas therefore forms part of the technical method. Geometry edits
+					invalidate stale results forthwith, and the search runs only on the present canvas
+					state.
 				</p>
 				<ol class="notes">
 					<li>Draw terrain left to right and accept it with <strong>Finish line</strong> or right-click.</li>
@@ -737,15 +742,15 @@
 					<li>Run either Bishop only or Bishop + Spencer check.</li>
 				</ol>
 				<p>
-					The load zone uses the same terrain-anchored two-click interaction as the entry and exit
-					zones: first click for the loaded interval start, second click for the end, then assign
-					the surcharge intensity <em>q</em>.
+					The load zone uses the same terrain-anchored two-click interaction as the entry and
+					exit zones: first click for the start of the loaded interval, second click for the end,
+					whereafter the surcharge intensity <em>q</em> is assigned.
 				</p>
 				<p>
-					The current canvas also supports metric grid display, snap-to-grid, live coordinate readout,
-					middle-mouse panning, wheel zoom, hover tooltips for soil regions, a live trial-circle
-					preview while the worker is evaluating circles, and a result table that shows the active
-					method per shortlisted circle.
+					The present canvas also supports metric grid display, snap-to-grid, continuous
+					coordinate readout, middle-mouse panning, wheel zoom, hover tooltips for soil regions,
+					a live trial-circle preview while the worker is evaluating circles, and a result table
+					that shows the active method for each shortlisted circle.
 				</p>
 			</section>
 
@@ -753,9 +758,9 @@
 				<p class="section-label">Section</p>
 				<h2>9. Verification and testing</h2>
 				<p>
-					The recommended verification order is numerical first, then geometric, then benchmark
-					comparison. The current app now has two numerical layers to verify: the Bishop search
-					itself and the Spencer recheck on the shortlisted circles.
+					The recommended verification order is numerical first, thereafter geometric, and then
+					benchmark comparison. The present implementation therefore has two numerical layers to
+					verify: the Bishop search itself and the Spencer recheck on the shortlisted circles.
 				</p>
 				<ul class="notes">
 					<li>Check one homogeneous dry slope against a hand or spreadsheet calculation.</li>
@@ -764,12 +769,12 @@
 					<li>Check one near-steep exit case to verify the exit-angle and m<sub>α</sub> filters.</li>
 					<li>Check one slope with a finite loaded crest zone to verify slice-overlap logic and the expected reduction in FOS.</li>
 					<li>Check one benign circular case where Bishop and Spencer should agree closely.</li>
-					<li>Check one case where Spencer is forced to fall back so the UI and Stage 7 report both show the fallback metadata cleanly.</li>
+					<li>Check one case where Spencer is forced to fall back so that the interface and the Stage 7 report both show the fallback metadata cleanly.</li>
 				</ul>
 				<div class="doc-callout doc-callout--warn">
-					<strong>Important.</strong> Passing code checks does not by itself validate the factor of
-					safety. A Bishop solver should always be benchmarked against at least one known reference
-					case before it is treated as a trusted engineering calculator.
+					<strong>Important.</strong> Passing code checks does not by itself validate the factor
+					of safety. A Bishop solver ought always to be benchmarked against at least one known
+					reference case before it is treated as a trusted engineering calculator.
 				</div>
 			</section>
 
@@ -777,15 +782,16 @@
 				<p class="section-label">Section</p>
 				<h2>10. Limitations and next steps</h2>
 				<p>
-					The current module is strongest where a circular rotational mechanism is a reasonable
-					assumption. It is not the correct final framework for noncircular mechanisms, strong weak-seam
-					control, reinforced slopes, or problems where full force equilibrium is required.
+					The present module is strongest where a circular rotational mechanism is a reasonable
+					assumption. It is not the proper final framework for non-circular mechanisms, strong
+					weak-seam control, reinforced slopes, or problems for which full force equilibrium is
+					required.
 				</p>
 				<ul class="notes">
 					<li>The full search still relies on Bishop Simplified. Spencer is only a recheck on the shortlisted circles, not a full-search engine.</li>
 					<li>Bishop Simplified satisfies moment equilibrium and vertical slice equilibrium, but not full horizontal force equilibrium.</li>
-					<li>The Spencer implementation is currently limited to circular surfaces with a constant interslice-force ratio.</li>
-					<li>Noncircular failures and composite mechanisms are outside the scope of the current app.</li>
+					<li>The Spencer implementation is presently limited to circular surfaces with a constant interslice-force ratio.</li>
+					<li>Non-circular failures and composite mechanisms are outside the scope of the present implementation.</li>
 					<li>The natural next upgrade path is Morgenstern&ndash;Price or another rigorous noncircular workflow on top of the same geometry and slice framework.</li>
 					<li>Later extension paths also include custom materials, multi-CPT interpolation, and richer pore-pressure models.</li>
 				</ul>
@@ -795,7 +801,7 @@
 				<p class="section-label">Sources</p>
 				<h2>References</h2>
 				<p>
-					The references below frame both the Bishop Simplified theory and the current Stage 6
+					The references below frame both the Bishop Simplified theory and the present Stage 6
 					implementation choices.
 				</p>
 				<ul class="reference-list">
