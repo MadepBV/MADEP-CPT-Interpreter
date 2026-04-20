@@ -460,16 +460,18 @@
 							Σ[V<sub>i</sub> sinα<sub>i</sub>]
 						</div>
 					</div>
-					<div class="doc-callout doc-callout--warn">
-						<strong>Important algebra detail.</strong> The present code uses
-						<strong>u<sub>i</sub>b<sub>i</sub></strong>, not <strong>u<sub>i</sub>l<sub>i</sub></strong>,
-						in the governing Bishop equation. It likewise carries cohesion in the same
-						simplified width form <strong>c′<sub>i</sub>b<sub>i</sub></strong>. This is the
-						circular-surface form implemented in the solver and documented in the MADEP
-						specification. The solver does
-						<strong>not</strong> use a mixed <em>c′l</em> / <em>u·l</em> form in its main
-						fixed-point iteration.
-					</div>
+						<div class="doc-callout">
+							<strong>Algebra form used in the solver.</strong> The Bishop fixed-point iteration
+							is evaluated in the width form c′<sub>i</sub>b<sub>i</sub> and
+							u<sub>i</sub>b<sub>i</sub>. These are exact projections of the textbook
+							length-form quantities c′<sub>i</sub>l<sub>i</sub> and
+							u<sub>i</sub>l<sub>i</sub> via l<sub>i</sub>cosα<sub>i</sub> = b<sub>i</sub>,
+							after the moment equation is divided by cosα<sub>i</sub>. Width form and
+							length form are therefore algebraically equivalent for circular surfaces; the
+							choice is one of bookkeeping, not of theory. The Fellenius seed and the Spencer
+							recheck in §6.3 still use the true base length l<sub>i</sub> where the
+							Mohr-Coulomb law is expressed directly, keeping both conventions visible in the code.
+						</div>
 					<p>
 						In the present code, <em>b</em><sub>i</sub> = Δx<sub>i</sub> is the horizontal
 						slice width and <em>l</em><sub>i</sub> = Δx<sub>i</sub>/cosα<sub>i</sub> is still
@@ -522,56 +524,71 @@
 				</section>
 				<section class="doc-subsection">
 					<h3>6.3 Spencer algebra used for the recheck</h3>
-					<p>
-						For circular surfaces, the application now performs a <strong>full Spencer
-						solve</strong>. The Bishop result is retained as a search engine and comparison
-						value, but not as the Spencer moment branch:
-					</p>
-					<div class="equations">
-						<div class="formula">
-							R<sub>m</sub>(F, &lambda;) = 0
+						<p>
+							For circular surfaces, the application now performs a <strong>full Spencer
+							solve</strong>. The Bishop result is retained as a search engine and comparison
+							value, but not as the Spencer moment branch:
+						</p>
+						<p>
+							For circular surfaces with radius <em>R</em> and centre <em>C</em>, the two
+							branch residuals are written explicitly as:
+						</p>
+						<div class="equations">
+							<div class="formula">
+								R<sub>m</sub>(F, &lambda;) = R · [ΣS<sub>i</sub> − ΣV<sub>i</sub> sinα<sub>i</sub>]
+							</div>
+							<div class="formula">
+								R<sub>f</sub>(F, &lambda;) = E<sub>n,right</sub>
+							</div>
+							<div class="formula">
+								S<sub>i</sub> = [c′<sub>i</sub>l<sub>i</sub> + N′<sub>i</sub>tanφ′<sub>i</sub>] / F
+							</div>
 						</div>
-						<div class="formula">
-							R<sub>f</sub>(F, &lambda;) = 0
-						</div>
-					</div>
-					<p>
-						For a given trial factor of safety <em>F</em> and a constant interslice-force ratio
-						&lambda; = <em>X</em>/<em>E</em>, the application propagates slice forces from left
-						to right with <em>E</em><sub>0</sub> = 0, computes both the force-closure residual
-						and the overall moment residual, and then solves the two Spencer branches
-						<em>F</em><sub>m</sub>(&lambda;) and <em>F</em><sub>f</sub>(&lambda;).
-					</p>
-					<div class="equations">
-						<div class="formula">
+						<p>
+							For a given trial factor of safety <em>F</em> and a constant interslice-force ratio
+							&lambda; = <em>X</em>/<em>E</em>, the application propagates slice forces from left
+							to right with <em>E</em><sub>0</sub> = 0, computes both the force-closure residual
+							and the overall moment residual, and then solves the two Spencer branches
+							<em>F</em><sub>m</sub>(&lambda;) and <em>F</em><sub>f</sub>(&lambda;). The moment
+							branch <em>F</em><sub>m</sub>(&lambda;) is the factor of safety for which
+							ΣS<sub>i</sub> = ΣV<sub>i</sub> sinα<sub>i</sub> at the fixed &lambda;. The force
+							branch <em>F</em><sub>f</sub>(&lambda;) is the factor of safety for which
+							<em>E</em> propagated left-to-right with <em>X</em> = &lambda;<em>E</em> closes to
+							zero at the last slice.
+						</p>
+						<div class="equations">
+							<div class="formula">
 							a<sub>1,i</sub> = sinα<sub>i</sub> − [tanφ′<sub>i</sub> cosα<sub>i</sub>] / F
 						</div>
 						<div class="formula">
 							a<sub>0,i</sub> = E<sub>L,i</sub> + u<sub>i</sub>b<sub>i</sub>tanα<sub>i</sub> − c′<sub>i</sub>b<sub>i</sub> / F
 						</div>
-						<div class="formula">
-							N′<sub>i</sub> =
-							[V<sub>i</sub> + &lambda;E<sub>L,i</sub> − &lambda;a<sub>0,i</sub> − u<sub>i</sub>b<sub>i</sub> − c′<sub>i</sub>b<sub>i</sub>tanα<sub>i</sub>/F]
-							/
-							[m<sub>α,i</sub>(F) + &lambda;a<sub>1,i</sub>]
-						</div>
-						<div class="formula">
-							S<sub>i</sub> = [c′<sub>i</sub>l<sub>i</sub> + N′<sub>i</sub>tanφ′<sub>i</sub>] / F
-						</div>
-						<div class="formula">
-							E<sub>R,i</sub> = a<sub>0,i</sub> + a<sub>1,i</sub>N′<sub>i</sub>
+							<div class="formula">
+								N′<sub>i</sub> =
+								[V<sub>i</sub> + &lambda;E<sub>L,i</sub> − &lambda;a<sub>0,i</sub> − u<sub>i</sub>b<sub>i</sub> − c′<sub>i</sub>b<sub>i</sub>tanα<sub>i</sub>/F]
+								/
+								[m<sub>α,i</sub>(F) + &lambda;a<sub>1,i</sub>]
+							</div>
+							<div class="formula">
+								E<sub>R,i</sub> = a<sub>0,i</sub> + a<sub>1,i</sub>N′<sub>i</sub>
 						</div>
 						<div class="formula">
 							X<sub>R,i</sub> = &lambda;E<sub>R,i</sub>
 						</div>
 					</div>
-					<p>
-						For a fixed &lambda;, the application finds <em>F</em><sub>m</sub>(&lambda;) from
-						the Spencer moment residual and <em>F</em><sub>f</sub>(&lambda;) from the final
-						force-closure residual <em>E</em><sub>final</sub> = <em>E</em><sub>R,n</sub>. It
-						then scans and brackets &lambda; and concludes with bisection on
-						<em>g</em>(&lambda;) = <em>F</em><sub>m</sub>(&lambda;) −
-						<em>F</em><sub>f</sub>(&lambda;).
+						<p>
+							For a fixed &lambda;, the application finds <em>F</em><sub>m</sub>(&lambda;) from
+							the Spencer moment residual and <em>F</em><sub>f</sub>(&lambda;) from the final
+							force-closure residual <em>E</em><sub>final</sub> = <em>E</em><sub>R,n</sub>.
+							Because both the resisting term ΣS<sub>i</sub> and the driving term
+							ΣV<sub>i</sub> sinα<sub>i</sub> act on the same lever arm <em>R</em> for a
+							circular surface, the <em>R</em> factor cancels in the
+							<em>F</em><sub>m</sub> solve. The code therefore reports
+							R<sub>m</sub> in unit kN/m as a force residual per metre run rather than in kN·m/m.
+							It
+							then scans and brackets &lambda; and concludes with bisection on
+							<em>g</em>(&lambda;) = <em>F</em><sub>m</sub>(&lambda;) −
+							<em>F</em><sub>f</sub>(&lambda;).
 					</p>
 					<p>
 						The reported Spencer diagnostics now follow the classical sign convention used in the
@@ -835,15 +852,15 @@
 					implementation choices.
 				</p>
 				<ul class="reference-list">
-					<li><strong>Bishop, A.W. (1955)</strong> — The use of the slip circle in the stability analysis of slopes. Géotechnique, 5(1), 7–17.</li>
-					<li><strong>Fellenius, W. (1927)</strong> — <em>Erdstatische Berechnungen</em>. W. Ernst u. Sohn, Berlin.</li>
-					<li><strong>Spencer, E. (1967)</strong> — A method of analysis of the stability of embankments assuming parallel inter-slice forces. Géotechnique, 17(1), 11–26.</li>
-					<li><strong>Fredlund, D.G. &amp; Krahn, J. (1977)</strong> — Comparison of slope stability methods of analysis. Canadian Geotechnical Journal, 14(3), 429–439.</li>
-					<li><strong>USACE EM 1110-2-1902</strong> — Slope Stability. U.S. Army Corps of Engineers.</li>
-					<li><strong>FHWA NHI-01-028</strong> — Soil Slope and Embankment Design Reference Manual.</li>
-					<li><strong>GeoStudio / SLOPE/W documentation</strong> — Bishop Simplified method, entry-exit search, and variable slice widths.</li>
-					<li><strong>EN 1997-1:2004+A1:2013</strong> — Eurocode 7 — Geotechnical design — General rules.</li>
-					<li><strong>NBN EN 1997-1 ANB:2022</strong> — Belgian National Annex to EN 1997-1.</li>
+						<li><strong>Bishop, A.W. (1955)</strong> — The use of the slip circle in the stability analysis of slopes. Géotechnique, 5(1), 7–17.</li>
+						<li><strong>Fellenius, W. (1927)</strong> — <em>Erdstatische Berechnungen</em>. W. Ernst u. Sohn, Berlin.</li>
+						<li><strong>Spencer, E. (1967)</strong> — A method of analysis of the stability of embankments assuming parallel inter-slice forces. Géotechnique, 17(1), 11–26.</li>
+						<li><strong>Fredlund, D.G. &amp; Krahn, J. (1977)</strong> — Comparison of slope stability methods of analysis. Canadian Geotechnical Journal, 14(3), 429–439.</li>
+						<li><strong>Krahn, J. (2003)</strong> — The 2001 R.M. Hardy Lecture: The limits of limit equilibrium analyses. Canadian Geotechnical Journal, 40(3), 643–660. DOI: 10.1139/t03-024.</li>
+						<li><strong>USACE EM 1110-2-1902</strong> — Slope Stability. U.S. Army Corps of Engineers.</li>
+						<li><strong>GeoStudio / SLOPE/W documentation</strong> — Bishop Simplified method, entry-exit search, and variable slice widths.</li>
+						<li><strong>EN 1997-1:2004+A1:2013</strong> — Eurocode 7 — Geotechnical design — General rules.</li>
+						<li><strong>NBN EN 1997-1 ANB:2022</strong> — Belgian National Annex to EN 1997-1.</li>
 				</ul>
 			</section>
 		</main>
