@@ -1364,7 +1364,7 @@
   .report-profile {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 290px;
+    grid-template-columns: minmax(0, 1fr) 320px;
     align-items: start;
     gap: 16px;
     overflow: hidden;
@@ -1396,10 +1396,11 @@
   .report-profile__table {
     font-size: 11px;
     table-layout: auto;
+    min-width: 100%;
   }
 
   .report-profile__col-index {
-    width: 7%;
+    width: 3.6ch;
   }
 
   .report-profile__col-name {
@@ -1776,7 +1777,7 @@
     }
 
     .report-profile {
-      grid-template-columns: minmax(0, 1fr) 58mm;
+      grid-template-columns: minmax(0, 1fr) 64mm;
       gap: 6px;
     }
 
