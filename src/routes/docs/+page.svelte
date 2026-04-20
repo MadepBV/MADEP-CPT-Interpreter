@@ -335,13 +335,14 @@
 					title: '2.3 CUR 3 layers — broad q<sub>c</sub>–R<sub>f</sub> zoning',
 					paragraphs: [
 						'The CUR 3 layers route is implemented as a direct q<sub>c</sub>–R<sub>f</sub> zoning rule based on the published broad chart with four material fields: Sand, Silt, Clay, and Peat. It is a boundary-generation method, not a detailed parameter catalogue.',
+						'The implementation follows the chart as nested zones checked from the most specific region to the broadest envelope: sand first, then silt, then clay, with peat as the remaining outside region.',
 						'To keep the downstream parameter workflow stable, the chart field “Silt” is carried internally as the app’s intermediate family and tagged with the subtype marker <em>CUR3 silt</em>. The chart logic itself remains four-zoned.'
 					],
 					equations: [
-						'R<sub>f</sub> &gt; 4.0 &nbsp;&nbsp; → &nbsp;&nbsp; Peat / organic',
-						'R<sub>f</sub> &lt; 1.0 and q<sub>c</sub> &gt; 1.5 &nbsp;&nbsp; → &nbsp;&nbsp; Sand',
-						'R<sub>f</sub> &lt; 2.0 and 0.5 ≤ q<sub>c</sub> ≤ 1.5 &nbsp;&nbsp; → &nbsp;&nbsp; Silt field',
-						'otherwise &nbsp;&nbsp; → &nbsp;&nbsp; Clay'
+						'R<sub>f</sub> &lt; 1.5 and q<sub>c</sub> ≥ 1.5 &nbsp;&nbsp; → &nbsp;&nbsp; Sand',
+						'else if R<sub>f</sub> &lt; 2.5 and q<sub>c</sub> ≥ 0.5 &nbsp;&nbsp; → &nbsp;&nbsp; Silt field',
+						'else if R<sub>f</sub> ≤ 5.0 and q<sub>c</sub> ≥ 0.2 &nbsp;&nbsp; → &nbsp;&nbsp; Clay',
+						'else &nbsp;&nbsp; → &nbsp;&nbsp; Peat / organic'
 					],
 					symbols: [
 						{ term: 'q<sub>c</sub>', meaning: 'measured cone resistance [MPa]' },

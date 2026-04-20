@@ -132,15 +132,17 @@ This matches the standard Robertson Ic bands more closely than the earlier draft
 
 ### 2.2a CUR 3 layers (PLAXIS chart) [IMPLEMENTED]
 
-Four-gate decision tree on raw `qc` (MPa) and `Rf` (%). No stress
-normalisation. Gates are checked in order, first match wins.
+Nested-zone decision tree on raw `qc` (MPa) and `Rf` (%). No stress
+normalisation. The zones are checked from the smallest/specific region
+to the broadest envelope; the final peat zone is the complement of the
+three zones above.
 
 | # | Condition | Type | Subtype |
 |---|-----------|------|---------|
-| 1 | `Rf > 4%` | Peat / organic | — |
-| 2 | `Rf < 1%` and `qc > 1.5 MPa` | Sand | CUR3 sand |
-| 3 | `Rf < 2%` and `0.5 <= qc <= 1.5 MPa` | Sandy clay | CUR3 silt |
-| 4 | fallback | Clay | CUR3 clay |
+| 1 | `Rf < 1.5%` and `qc >= 1.5 MPa` | Sand | CUR3 sand |
+| 2 | `Rf < 2.5%` and `qc >= 0.5 MPa` | Sandy clay | CUR3 silt |
+| 3 | `Rf <= 5.0%` and `qc >= 0.2 MPa` | Clay | CUR3 clay |
+| 4 | fallback | Peat / organic | — |
 
 **Inputs**
 

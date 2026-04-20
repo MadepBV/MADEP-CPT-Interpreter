@@ -1598,29 +1598,36 @@ function classRob2016(r){
    workflow by carrying the intermediate "Silt" field as the app's
    intermediate type "Sandy clay", with subtype marker "CUR3 silt".
 
-   Implemented chart gates:
-     - Peat: Rf > 4%
-     - Sand: Rf < 1% and qc > 1.5 MPa
-     - Silt: Rf < 2% and 0.5 ≤ qc ≤ 1.5 MPa
-     - Clay: all remaining points
+   Implemented chart zones:
+     - Sand: Rf < 1.5% and qc ≥ 1.5 MPa
+     - Silt: Rf < 2.5% and qc ≥ 0.5 MPa
+     - Clay: Rf ≤ 5.0% and qc ≥ 0.2 MPa
+     - Peat: all remaining points
+
+   The chart is implemented as nested zones checked from the most
+   specific region to the broadest:
+     1. Sand
+     2. Silt
+     3. Clay
+     4. Peat (complement of the three zones above)
 ════════════════════════════════ */
 function classCUR3(r){
   const qc = r.qc;
   const rf = r.rf != null ? r.rf : 3.0;
 
-  if(rf > 4.0)
-    return{type:'Peat / organic', subtype:'', Ic:null, Qt:null,
-           g:null,gs:null,phi:null,c:null,cu:null};
-
-  if(rf < 1.0 && qc > 1.5)
+  if(rf < 1.5 && qc >= 1.5)
     return{type:'Sand', subtype:'CUR3 sand', Ic:null, Qt:null,
            g:null,gs:null,phi:null,c:null,cu:null};
 
-  if(rf < 2.0 && qc >= 0.5 && qc <= 1.5)
+  if(rf < 2.5 && qc >= 0.5)
     return{type:'Sandy clay', subtype:'CUR3 silt', Ic:null, Qt:null,
            g:null,gs:null,phi:null,c:null,cu:null};
 
-  return{type:'Clay', subtype:'CUR3 clay', Ic:null, Qt:null,
+  if(rf <= 5.0 && qc >= 0.2)
+    return{type:'Clay', subtype:'CUR3 clay', Ic:null, Qt:null,
+           g:null,gs:null,phi:null,c:null,cu:null};
+
+  return{type:'Peat / organic', subtype:'', Ic:null, Qt:null,
          g:null,gs:null,phi:null,c:null,cu:null};
 }
 
