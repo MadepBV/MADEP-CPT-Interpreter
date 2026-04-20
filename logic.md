@@ -1,6 +1,6 @@
 # CPT Interpretation App — Logic Documentation
 
-*Last updated: 2026-04-16. This document reflects the exact logic implemented in the SvelteKit CPT interpreter (`src/lib/components/cpt/*` UI plus `src/lib/cpt-app/legacy-controller.js`) and documents planned extensions. Sections marked [IMPLEMENTED] match the current code verbatim. Sections marked [PLANNED] are documented for upcoming implementation.*
+*Last updated: 2026-04-17. This document reflects the exact logic implemented in the SvelteKit CPT interpreter (`src/lib/components/cpt/*` UI plus `src/lib/cpt-app/legacy-controller.js`) and documents planned extensions. Sections marked [IMPLEMENTED] match the current code verbatim. Sections marked [PLANNED] are documented for upcoming implementation.*
 
 ---
 
@@ -359,6 +359,36 @@ cu        = mean(row.cu),        rounded to integer
 
 All parameters are editable in Stage 3. Overrides tracked per field in `layer.ovr{}`.
 
+### 3.4 PLAXIS simulated CPT export [IMPLEMENTED]
+
+Stage 3 includes a dedicated PLAXIS export that converts the active interpreted layer model back into a measurement-style CPT text file. The purpose is to create a synthetic CPT that is a **1:1 representation of the final interpreted layering**, not to preserve the original pointwise variability.
+
+The export reuses the original CPT sampling depths and the available CPT coordinates (`X`, `Y`, `Z`). For each original CPT reading depth `z_j`, the app finds the active final layer and writes that layer's representative values as a synthetic CPT row. The result is therefore piecewise constant within each interpreted layer, while preserving the original measurement spacing.
+
+```
+qc_export(z_j) = max(0, avgQc(layer(z_j)))                        [MPa]
+fs_export(z_j) = max(0, avgFs(layer(z_j)))                        [MPa]
+fs_export(z_j) = max(0, avgQc(layer(z_j)) * avgRf(layer(z_j))/100) [MPa], fallback if avgFs missing
+```
+
+The exported text format is:
+
+```
+X[m] <x coordinate>
+Y[m] <y coordinate>
+Z[m] <surface elevation>
+D[m] Q[MPa] F[MPa] x
+<depth> <qc> <fs> 0
+...
+```
+
+Implementation notes:
+- One exported row is written for every original CPT depth row in `S.data`.
+- `qc` comes from the final layer average `avgQc`.
+- `fs` comes from `avgFs` if available, otherwise from reconstructed `avgQc * avgRf / 100`.
+- The last column is currently written as `0`; the export is intended as a PLAXIS-compatible measurement-style CPT with depth, cone resistance, and sleeve friction.
+- The downloaded filename is `CPT_<id>_plaxis_simulated.txt`.
+
 ---
 
 ## Stage 4 — Model Parameters
@@ -649,7 +679,7 @@ E_ref  = (1+nu)*(1-2*nu)/(1-nu) * Eoed,i * 1.5    [kPa]
 psi    = max(0, phi' - 30)     [degrees, dilatancy angle]
 ```
 
-### 4.7 Hydraulic conductivity kh and kv [PLANNED]
+### 4.7 Hydraulic conductivity kh and kv [IMPLEMENTED / PLANNED]
 
 Reference sources used (in order of preference for Belgian practice):
 
@@ -716,6 +746,15 @@ The report provides the following decision thresholds for infiltration design, b
 
 These thresholds apply to the **in situ measured infiltration capacity**, not to the table-derived kh. The app displays the applicable recommendation based on the kh,rep value, flagged clearly as indicative only.
 
+The Stage 4 implementation currently derives and shows:
+- `kh_min`, `kh_max`, `kh_rep`
+- `kh/kv`
+- `kv_rep`
+- infiltration class
+- `psi_unsat` suggestion
+
+The CSV export records `kh_ms`, `kv_ms`, `khkv`, `psi_unsat_m`, and the infiltration class. The current PLAXIS material-command export uses **only** `kh_rep` and `kv_rep`, converted from `m/s` to `m/day`.
+
 #### psi_unsat — unsaturated suction head [PLANNED]
 
 Source: Plaxis 2D Manual.
@@ -728,6 +767,106 @@ psi_unsat = 0.1 m    (zand)
 ```
 
 Used in Plaxis groundwater flow boundary conditions for the unsaturated zone above the water table.
+
+### 4.8 PLAXIS material export [IMPLEMENTED]
+
+Stage 4 includes a second export path, in addition to the CSV layer table: a PLAXIS material-command export for the currently active layer model.
+
+After implementation review and testing, the app does **not** attempt to write native `*.matXdb` files directly. Bentley V22+ `*.matXdb` files are XML-based on disk and the public supported workflow is to create project materials through `soilmat` commands or through the PLAXIS UI, then optionally copy those project materials into a reusable global material database from inside PLAXIS itself.
+
+The app therefore exports a plain-text command file. For every interpreted layer, it writes:
+- one **Mohr-Coulomb** material command
+- one **Hardening Soil** material command
+
+Material names follow:
+
+```
+name = safe(CPT_id) + "_L" + layer_index + "_" + safe(subtype) + "_MC"
+name = safe(CPT_id) + "_L" + layer_index + "_" + safe(subtype) + "_HS"
+```
+
+where `safe(...)` removes or normalises spaces, brackets, commas, and other unsafe characters.
+
+**Drainage rule used by the export:**
+
+```
+IF subtype contains '(lh)' OR '(kh)' OR wording such as 'leemhoudend' / 'klei-/leemhoudend':
+    DrainageType = 'Undrained A'
+ELSE IF type is Sand or Gravel:
+    DrainageType = 'Drained'
+ELSE:
+    DrainageType = 'Undrained A'
+```
+
+This means:
+- clean sand and clean gravel export as `Drained`
+- `zand (lh)` and `grind (kh)` export as `Undrained A`
+- all clay, loam, peat, and other non-clean granular materials export as `Undrained A`
+
+**Properties written for Mohr-Coulomb (`SoilModel = 2`):**
+- `Identification`
+- `SoilModel`
+- `DrainageType`
+- `gammaUnsat`
+- `gammaSat`
+- `ERef`
+- `nu`
+- `cRef = max(c', 0.1)`
+- `phi`
+- `psi`
+- `PermHorizontalPrimary`
+- `PermVertical`
+
+**Properties written for Hardening Soil (`SoilModel = 3`):**
+- `Identification`
+- `SoilModel`
+- `DrainageType`
+- `gammaUnsat`
+- `gammaSat`
+- `E50Ref`
+- `EOedRef`
+- `EURRef`
+- `PowerM`
+- `pRef = 100`
+- `cRef = max(c', 0.1)`
+- `phi`
+- `psi`
+- `PermHorizontalPrimary`
+- `PermVertical`
+
+**Properties intentionally not written in the current PLAXIS command export:**
+- `RF`
+- `nuUR`
+- `K0NC`
+- `cu`
+- `psi_unsat`
+
+Rationale:
+- `RF` caused a read-only property error in the tested PLAXIS workflow.
+- `nuUR` and `K0NC` are intentionally left to PLAXIS to calculate or manage automatically in the current workflow.
+- `cu` is not required for `Undrained A`, which uses effective parameters.
+- `psi_unsat` is available in the app but is not yet written by the export.
+
+**Hydraulic conductivity units:**
+
+The app stores and displays the representative conductivity values in `m/s`, but the PLAXIS material command export converts them to `m/day` before writing:
+
+```
+k_plaxis = 86400 * k_app
+```
+
+so:
+
+```
+PermHorizontalPrimary = 86400 * kh_rep
+PermVertical          = 86400 * kv_rep
+```
+
+**Engineer workflow:**
+1. Review and, if needed, override the final Stage 3 parameters and Stage 4 stiffness/hydraulic values.
+2. Export the PLAXIS command file from Stage 4.
+3. Run the commands inside a PLAXIS project to create the project materials.
+4. If a reusable `*.matXdb` is needed, copy the created project materials into the global PLAXIS material database from inside PLAXIS.
 
 ---
 
@@ -1499,6 +1638,10 @@ Reasons:
 - SB260 Standaardbestek 260, artikel 21-6.4.10: Karakteristieke grondparameters op basis van elektrische sondering (Sanglerat).
 - Sanglerat, G. (1972). The Penetrometer and Soil Exploration. Elsevier.
 - Plaxis 2D Manual (2023). Material Models — Hardening Soil. Bentley Systems.
+- Bentley Systems. KB0109063. How to define and edit a material via the command line.
+- Bentley Systems. KB0109071. PLAXIS soil model numbers in the command line.
+- Bentley Systems. KB0043470. Re-using materials from other projects in PLAXIS.
+- Bentley Systems. KB0108936. Material parameter datasets for sheetpiles and beams.
 - aGEO (internal practice): Eur,ref = 3 * E50,ref.
 - IMDC nv i.s.m. Bodemkundige Dienst van België vzw (2016). Opstellen van richtlijnen voor het meten van de infiltratiecapaciteit en het modelmatig onderbouwen voor de dimensionering van infiltratievoorzieningen. Report I/RA/11461/15.066/JSW, versie 9.0, 30/11/2016. Commissioned by Vlaamse Milieumaatschappij (VMM).
   - Tabel 2-44 (p. 149): Richtwaarden kh per Belgische textuurklasse (OVAM, 2002).

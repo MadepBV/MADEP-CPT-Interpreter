@@ -6520,6 +6520,167 @@ function exportCSV(){
   a.click();
 }
 
+function safeMaterialToken(value){
+  let txt=String(value??'').trim();
+  if(txt.normalize) txt=txt.normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+  txt=txt.replace(/[(),]/g,'').replace(/\s+/g,'_').replace(/[^A-Za-z0-9_.-]/g,'');
+  return txt || 'Layer';
+}
+
+function plaxisDrainageType(layer){
+  const sub=(layer.subtype||'').toLowerCase();
+  if(sub.includes('(lh)') || sub.includes('(kh)') || sub.includes('leemhoudend') || sub.includes('klei-/leemhoudend')){
+    return 'Undrained A';
+  }
+  return layer.type==='Sand' || layer.type==='Gravel' ? 'Drained' : 'Undrained A';
+}
+
+function plaxisDisplayName(value){
+  return String(value??'')
+    .replace(/"/g, '\'')
+    .replace(/\r?\n/g, ' ')
+    .trim();
+}
+
+function plaxisCommandValue(value){
+  if(typeof value === 'number'){
+    if(!isFinite(value)) return '0';
+    return Object.is(value, -0) ? '0' : String(value);
+  }
+  return `"${plaxisDisplayName(value)}"`;
+}
+
+function buildPlaxisSoilmatCommand(pairs){
+  return `soilmat ${pairs.map(([key,val])=>`${plaxisCommandValue(key)} ${plaxisCommandValue(val)}`).join(' ')}`;
+}
+
+function msToMday(value){
+  if(!isFinite(value)) return 0;
+  return +(value * 86400).toFixed(6);
+}
+
+function exportPlaxisCommands(){
+  if(!S.layers.length){
+    alert('No layers to export. Run classification first.');
+    return;
+  }
+
+  const cptId=S.meta.testid||S.id||'CPT';
+  const commands=S.layers.flatMap((l,i)=>{
+    const layerId=i+1;
+    const subtype=l.subtype||l.type||`Layer_${layerId}`;
+    const safeSubtype=safeMaterialToken(subtype);
+    const baseName=`${safeMaterialToken(cptId)}_L${layerId}_${safeSubtype}`;
+    const dr=plaxisDrainageType(l);
+    const h=hsParams(l);
+    const k=khParams(l);
+    const khMday=msToMday(k.kh_rep);
+    const kvMday=msToMday(k.kv_rep);
+    const cohesion=Math.max(Number(l.c)||0,0.1);
+    const mcName=`${baseName}_MC`;
+    const hsName=`${baseName}_HS`;
+
+    return[
+      buildPlaxisSoilmatCommand([
+        ['Identification', mcName],
+        ['SoilModel', 2],
+        ['DrainageType', dr],
+        ['gammaUnsat', l.g],
+        ['gammaSat', l.gs],
+        ['ERef', h.Emc],
+        ['nu', h.nu],
+        ['cRef', cohesion],
+        ['phi', l.phi],
+        ['psi', h.psi],
+        ['PermHorizontalPrimary', khMday],
+        ['PermVertical', kvMday]
+      ]),
+      buildPlaxisSoilmatCommand([
+        ['Identification', hsName],
+        ['SoilModel', 3],
+        ['DrainageType', dr],
+        ['gammaUnsat', l.g],
+        ['gammaSat', l.gs],
+        ['E50Ref', h.E50_ref],
+        ['EOedRef', h.Eoed_ref],
+        ['EURRef', h.Eur_ref],
+        ['PowerM', h.m],
+        ['pRef', 100],
+        ['cRef', cohesion],
+        ['phi', l.phi],
+        ['psi', h.psi],
+        ['PermHorizontalPrimary', khMday],
+        ['PermVertical', kvMday]
+      ])
+    ];
+  });
+  const txt=commands.join('\r\n');
+  const a=document.createElement('a');
+  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);
+  a.download=`CPT_${safeMaterialToken(cptId)}_plaxis_materials_commands.txt`;
+  a.click();
+}
+
+function findLayerForDepth(z){
+  for(let i=0;i<S.layers.length;i++){
+    const l=S.layers[i];
+    const isLast=i===S.layers.length-1;
+    if(z >= l.top && (z < l.bot || (isLast && z <= l.bot))) return l;
+  }
+  return null;
+}
+
+function simulatedLayerFs(layer){
+  if(layer.avgFs!=null && isFinite(layer.avgFs)) return Math.max(0, layer.avgFs);
+  if(layer.avgRf!=null && isFinite(layer.avgRf)) return Math.max(0, layer.avgQc * layer.avgRf / 100);
+  return 0;
+}
+
+function formatPlaxisCoord(value){
+  if(value==null || !isFinite(value)) return '0';
+  const rounded=Math.abs(value) < 1e-9 ? 0 : value;
+  const txt=rounded.toFixed(4).replace(/\.?0+$/,'');
+  return txt === '-0' ? '0' : txt;
+}
+
+function exportPlaxisCpt(){
+  if(!S.layers.length || !S.data.length){
+    alert('No layer model to export. Run classification and layer identification first.');
+    return;
+  }
+
+  const rows=S.data
+    .map(r=>{
+      const layer=findLayerForDepth(r.z);
+      if(!layer) return null;
+      return{
+        z:r.z,
+        qc:Math.max(0, layer.avgQc || 0),
+        fs:simulatedLayerFs(layer)
+      };
+    })
+    .filter(Boolean);
+
+  if(!rows.length){
+    alert('No simulated CPT rows could be generated from the active layer model.');
+    return;
+  }
+
+  const lines=[
+    `X[m] ${formatPlaxisCoord(S.x)}`,
+    `Y[m] ${formatPlaxisCoord(S.y)}`,
+    `Z[m] ${formatPlaxisCoord(S.elev)}`,
+    'D[m] Q[MPa] F[MPa] x  # depth, qc, fs, Rf(skipped)',
+    ...rows.map(r=>`${r.z.toFixed(4)} ${r.qc.toFixed(6)} ${r.fs.toFixed(6)} 0`)
+  ];
+
+  const txt=lines.join('\r\n');
+  const a=document.createElement('a');
+  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);
+  a.download=`CPT_${S.meta.testid||S.id||'export'}_plaxis_simulated.txt`;
+  a.click();
+}
+
 function stage6BishopHandleHashChange(){
   if(!S?.stage6) return;
   if(stage6BishopHashActive()){
@@ -6646,7 +6807,9 @@ const legacyApi={
   refreshStage6BearingPreview,
   renderStage6,
   buildStage6BearingChart,
-  exportCSV
+  exportCSV,
+  exportPlaxisCommands,
+  exportPlaxisCpt
 };
 
 export function initLegacyController(){
