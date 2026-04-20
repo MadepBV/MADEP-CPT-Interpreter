@@ -1769,10 +1769,10 @@ function runClass(){
 /* ════════════════════════════════
    LAYER DETECTION
 ════════════════════════════════ */
-function segmentSummary(seg){
+function segmentSummary(seg, prevSeg){
   const r=seg.rows.filter(x=>x.qc>0.02);
   const rows=r.length?r:seg.rows;
-  const top=seg._top!=null?seg._top:(seg.isFirst?0:+(seg.rows[0].z-0.02).toFixed(3));
+  const top=segmentTop(seg, prevSeg);
   const bot=+seg.rows[seg.rows.length-1].z.toFixed(3);
   const avgQc=+(rows.reduce((s,x)=>s+x.qc,0)/rows.length).toFixed(3);
   const fsR=rows.filter(x=>x.fs!=null);
@@ -1795,6 +1795,25 @@ function segmentSummary(seg){
     const df=DEF[seg.type]||DEF['Sand']; g=df.g; gs=df.gs; phi=df.phi; c=df.c; cu=df.cu;
   }
   return{type:seg.type,subtype,avgQc,avgFs,avgRf,g,gs,phi,c,cu,top,bot,thk:+(bot-top).toFixed(3),rows:seg.rows.length};
+}
+
+function segmentTop(seg, prevSeg){
+  if(!seg) return 0;
+  if(seg._top!=null) return +(+seg._top).toFixed(3);
+  if(seg.isFirst) return 0;
+
+  const prevLast=prevSeg?.rows?.[prevSeg.rows.length - 1]?.z;
+  const currFirst=seg.rows?.[0]?.z;
+
+  if(Number.isFinite(prevLast) && Number.isFinite(currFirst) && currFirst > prevLast){
+    return +(0.5 * (prevLast + currFirst)).toFixed(3);
+  }
+
+  if(Number.isFinite(currFirst)){
+    return +(currFirst - 0.02).toFixed(3);
+  }
+
+  return Number.isFinite(prevLast) ? +prevLast.toFixed(3) : 0;
 }
 
 function subtypeGroup(subtype){
@@ -1905,9 +1924,11 @@ function simpleUpwardMerge(segments){
   while(changed){
     changed=false;
     const next=[];
-    for(const seg of merged){
+    for(let i=0;i<merged.length;i++){
+      const seg=merged[i];
       const rows=seg.rows;
-      const thick=segmentSummary(seg).thk;
+      const prev=i>0?merged[i-1]:null;
+      const thick=segmentSummary(seg, prev).thk;
       if(thick<S.minThk&&next.length>0){
         next[next.length-1].rows.push(...rows);
         changed=true;
@@ -1927,7 +1948,7 @@ function mergeSegmentInDirection(merged, i, dir){
     merged.splice(i,1);
   }else{
     merged[i+1].rows.unshift(...seg.rows);
-    merged[i+1]._top=seg._top!=null?seg._top:(i===0?0:seg.rows[0].z-0.02);
+    merged[i+1]._top=segmentTop(seg, i>0?merged[i-1]:null);
     merged.splice(i,1);
   }
   return merged.map((s,idx)=>({...s,isFirst:idx===0}));
@@ -1935,11 +1956,12 @@ function mergeSegmentInDirection(merged, i, dir){
 
 function chooseSimilarityMergeDirection(merged, i, margin){
   const seg=merged[i];
-  const layer=segmentSummary(seg);
+  const layer=segmentSummary(seg, i>0?merged[i-1]:null);
   const upSeg=i>0?merged[i-1]:null, downSeg=i<merged.length-1?merged[i+1]:null;
-  const up=upSeg?segmentSummary(upSeg):null, down=downSeg?segmentSummary(downSeg):null;
-  const upOuter=i>1?segmentSummary(merged[i-2]):null;
-  const downOuter=i<merged.length-2?segmentSummary(merged[i+2]):null;
+  const up=upSeg?segmentSummary(upSeg, i>1?merged[i-2]:null):null;
+  const down=downSeg?segmentSummary(downSeg, seg):null;
+  const upOuter=i>1?segmentSummary(merged[i-2], i>2?merged[i-3]:null):null;
+  const downOuter=i<merged.length-2?segmentSummary(merged[i+2], downSeg):null;
   const upCand=mergeCandidateScore(layer,up,upOuter);
   const downCand=mergeCandidateScore(layer,down,downOuter);
   if(!upCand.ok&&!downCand.ok) return null;
@@ -1964,10 +1986,10 @@ function smartSimilarityReduce(segments, sensitivity){
     let bestIdx=-1;
     let bestScore=-Infinity;
     for(let i=0;i<merged.length-1;i++){
-      const left=segmentSummary(merged[i]);
-      const right=segmentSummary(merged[i+1]);
-      const leftOuter=i>0?segmentSummary(merged[i-1]):null;
-      const rightOuter=i<merged.length-2?segmentSummary(merged[i+2]):null;
+      const left=segmentSummary(merged[i], i>0?merged[i-1]:null);
+      const right=segmentSummary(merged[i+1], merged[i]);
+      const leftOuter=i>0?segmentSummary(merged[i-1], i>1?merged[i-2]:null):null;
+      const rightOuter=i<merged.length-2?segmentSummary(merged[i+2], merged[i+1]):null;
       const lr=mergeCandidateScore(left,right,rightOuter);
       const rl=mergeCandidateScore(right,left,leftOuter);
       if(!lr.ok||!rl.ok) continue;
@@ -1997,7 +2019,7 @@ function enforceMinThicknessBySimilarity(segments, sensitivity){
   while(changed){
     changed=false;
     for(let i=0;i<merged.length;i++){
-      const layer=segmentSummary(merged[i]);
+      const layer=segmentSummary(merged[i], i>0?merged[i-1]:null);
       if(layer.thk>=S.minThk) continue;
       const dir=chooseSimilarityMergeDirection(merged, i, margin);
       if(!dir) continue;
@@ -2047,7 +2069,7 @@ function detectLayers(){
   //   - smart mode: reduce by similarity first, enforce minimum thickness last
   const merged=S.smartMerge ? smartPostMerge(raw) : simpleUpwardMerge(raw);
 
-  const mergedSummaries=merged.map((seg,i)=>segmentSummary({...seg,isFirst:i===0}));
+  const mergedSummaries=merged.map((seg,i)=>segmentSummary({...seg,isFirst:i===0}, i>0?merged[i-1]:null));
   let prevBot=null;
   S.layers=merged.map((seg,i)=>{
     const sum=mergedSummaries[i];
@@ -7248,7 +7270,7 @@ function buildStage7Payload(){
     version:3,
     stage:'stage7',
     generatedAt:new Date().toISOString(),
-    appVersion:'0.0.1',
+    appVersion:'0.1.0',
     project:{
       name:PROJECT.name,
       phase:PROJECT.phase
