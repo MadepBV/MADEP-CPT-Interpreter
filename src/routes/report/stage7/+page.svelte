@@ -1,0 +1,1242 @@
+<svelte:options runes={false} />
+
+<script lang="ts">
+  import '$lib/cpt-app/legacy.css';
+  import { onMount, tick } from 'svelte';
+  import {
+    buildBeamDeflectionChartConfig,
+    buildBeamMomentChartConfig,
+    buildBearingChartConfig,
+    buildDewateringDrawdownChartConfig,
+    buildDewateringSettlementChartConfig,
+    buildDewateringStressChartConfig,
+    buildSettlementCumulativeChartConfig,
+    buildSettlementStressChartConfig,
+    buildTimeChartConfig,
+    buildTuningDepthChartConfig,
+    buildTuningRegressionChartConfig
+  } from '$lib/cpt-app/chart-factories';
+  import { loadStage7Payload } from '$lib/cpt-app/report-storage';
+  import { SOIL_FILL_COLORS } from '$lib/cpt-app/soil-styles';
+
+  let payload: any = null;
+  let loadError = '';
+  let chartReady = false;
+  let chartRefs: any[] = [];
+  const soilFillColors = SOIL_FILL_COLORS as Record<string, string>;
+
+  const levelLabels: Record<string, string> = {
+    bad: 'Incompatible',
+    adj: 'Transition'
+  };
+
+  function fmt(value: unknown, digits = 2) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return num.toFixed(digits).replace(/\.?0+$/, '');
+  }
+
+  function fmtInt(value: unknown) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return Math.round(num).toLocaleString('nl-BE');
+  }
+
+  function fmtDateTime(value: string) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.valueOf())) return value;
+    return date.toLocaleString('nl-BE', {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+  }
+
+  function compactNumber(value: unknown, digits = 2) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    if (n === 0) return '0';
+    const abs = Math.abs(n);
+    if (abs < 1e-2 || abs >= 1e4) {
+      return n.toExponential(Math.max(0, digits - 1)).replace('e', 'E');
+    }
+    if (abs >= 100) return n.toFixed(1).replace(/\.0$/, '');
+    if (abs >= 10) return n.toFixed(2).replace(/\.?0+$/, '');
+    if (abs >= 1) return n.toFixed(3).replace(/\.?0+$/, '');
+    return n.toFixed(4).replace(/\.?0+$/, '');
+  }
+
+  function hasStage6(name: string) {
+    return !!payload?.stage6?.[name];
+  }
+
+  function soilChipStyle(type: string) {
+    return `background:${soilFillColors[type] || '#D3D1C7'};color:#2c2c2a;`;
+  }
+
+  function methodMetricLabel() {
+    return payload?.replication?.method === 'robertson'
+      ? 'Ic (-)'
+      : payload?.replication?.method === 'nen6740'
+        ? 'qc,NEN (MPa)'
+        : 'Metric (-)';
+  }
+
+  function methodMetricValue(row: any) {
+    if (payload?.replication?.method === 'robertson') return row.ic != null ? fmt(row.ic, 2) : '—';
+    if (payload?.replication?.method === 'nen6740') return row.qtOrQcNen != null ? fmt(row.qtOrQcNen, 2) : '—';
+    return '—';
+  }
+
+  function bearingAxisTitle(cfg: any) {
+    return (cfg?.factorMode || 'ec7') === 'ec7'
+      ? 'Design bearing capacity q_d (kPa)'
+      : 'Allowable bearing capacity q_allow (kPa)';
+  }
+
+  function tuningPreviewEoedRef(fit: any, previewM: number) {
+    return Math.exp(fit.meanY - previewM * fit.meanX);
+  }
+
+  function tuningLogLine(fit: any, previewM: number, eOedRef: number) {
+    const xMin = Math.min(...fit.xs) - 0.1;
+    const xMax = Math.max(...fit.xs) + 0.1;
+    const linePts = 30;
+    return Array.from({ length: linePts }, (_, index) => {
+      const x = xMin + ((xMax - xMin) * index) / (linePts - 1);
+      return { x, y: Math.log(eOedRef) + previewM * x };
+    });
+  }
+
+  function tuningHsPreview(fit: any, previewM: number, eOedRef: number) {
+    return fit.depthPts.map((_depth: number, index: number) => eOedRef * Math.exp(previewM * fit.xs[index]));
+  }
+
+  function destroyCharts() {
+    chartRefs.forEach((chart) => chart?.destroy?.());
+    chartRefs = [];
+  }
+
+  function mountChart(id: string, config: any) {
+    const canvas = document.getElementById(id) as HTMLCanvasElement | null;
+    if (!canvas || !(window as any).Chart) return;
+    const chart = new (window as any).Chart(canvas, config);
+    chartRefs.push(chart);
+  }
+
+  async function waitForChart() {
+    for (let index = 0; index < 80; index += 1) {
+      if ((window as any).Chart) return true;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return false;
+  }
+
+  function renderCharts() {
+    if (!payload || !chartReady) return;
+    destroyCharts();
+
+    for (const item of payload.tuning || []) {
+      if (!item.fit) continue;
+      const previewM =
+        Number.isFinite(Number(item.previewM)) && Number(item.previewM) > 0 ? Number(item.previewM) : item.fit.mFit;
+      const previewRef = tuningPreviewEoedRef(item.fit, previewM);
+      const defaultLine = tuningLogLine(item.fit, item.fit.mDefault, item.fit.eOedRefDefault);
+      const previewLine = tuningLogLine(item.fit, previewM, previewRef);
+      const hsPreview = tuningHsPreview(item.fit, previewM, previewRef);
+      mountChart(
+        `stage7-tuning-reg-${item.index}`,
+        buildTuningRegressionChartConfig({
+          scatter: item.fit.xs.map((x: number, index: number) => ({ x, y: item.fit.ys[index] })),
+          defaultLine,
+          previewLine,
+          mDefault: fmt(item.fit.mDefault, 2),
+          mPreview: fmt(previewM, 2),
+          quality: item.fit.quality
+        })
+      );
+      mountChart(
+        `stage7-tuning-depth-${item.index}`,
+        buildTuningDepthChartConfig({
+          depths: item.fit.depthPts,
+          eoedI: item.fit.eOedIPts,
+          hsDefault: item.fit.hsDefaultPts,
+          hsPreview,
+          layerTop: item.top,
+          layerBot: item.bot,
+          wt: payload.replication.waterTable,
+          mDefault: fmt(item.fit.mDefault, 2),
+          mPreview: fmt(previewM, 2),
+          quality: item.fit.quality
+        })
+      );
+    }
+
+    if (hasStage6('bearing')) {
+      mountChart(
+        'stage7-bearing-chart',
+        buildBearingChartConfig({
+          data: payload.stage6.bearing.analysis,
+          cfg: payload.stage6.bearing.config,
+          capacityAxisTitle: bearingAxisTitle(payload.stage6.bearing.config)
+        })
+      );
+    }
+
+    if (hasStage6('settlement')) {
+      mountChart(
+        'stage7-settlement-stress',
+        buildSettlementStressChartConfig({
+          analysis: payload.stage6.settlement.analysis,
+          maxDepth: payload.summary.depthMax
+        })
+      );
+      mountChart(
+        'stage7-settlement-cumulative',
+        buildSettlementCumulativeChartConfig({
+          analysis: payload.stage6.settlement.analysis
+        })
+      );
+      if (payload.stage6.settlement.analysis.timeCurve) {
+        mountChart(
+          'stage7-settlement-time',
+          buildTimeChartConfig({
+            curve: payload.stage6.settlement.analysis.timeCurve
+          })
+        );
+      }
+    }
+
+    if (hasStage6('dewatering')) {
+      mountChart(
+        'stage7-dewatering-drawdown',
+        buildDewateringDrawdownChartConfig({
+          analysis: payload.stage6.dewatering.analysis,
+          originalWt: payload.replication.waterTable
+        })
+      );
+      mountChart(
+        'stage7-dewatering-stress',
+        buildDewateringStressChartConfig({
+          analysis: payload.stage6.dewatering.analysis,
+          maxDepth: payload.summary.depthMax
+        })
+      );
+      mountChart(
+        'stage7-dewatering-settlement',
+        buildDewateringSettlementChartConfig({
+          analysis: payload.stage6.dewatering.analysis
+        })
+      );
+      if (payload.stage6.dewatering.analysis.timeCurve) {
+        mountChart(
+          'stage7-dewatering-time',
+          buildTimeChartConfig({
+            curve: payload.stage6.dewatering.analysis.timeCurve
+          })
+        );
+      }
+    }
+
+    if (hasStage6('beam')) {
+      mountChart(
+        'stage7-beam-deflection',
+        buildBeamDeflectionChartConfig({
+          analysis: payload.stage6.beam.analysis,
+          tickFormatter: compactNumber
+        })
+      );
+      mountChart(
+        'stage7-beam-moment',
+        buildBeamMomentChartConfig({
+          analysis: payload.stage6.beam.analysis,
+          tickFormatter: compactNumber
+        })
+      );
+    }
+  }
+
+  $: if (payload && chartReady) {
+    tick().then(renderCharts);
+  }
+
+  onMount(() => {
+    void (async () => {
+      const key = new URLSearchParams(window.location.search).get('key') || '';
+      payload = loadStage7Payload(window.localStorage, key);
+      if (!payload) {
+        loadError = 'No Stage 7 payload was found for this report key.';
+        return;
+      }
+      chartReady = await waitForChart();
+      if (!chartReady) loadError = 'Chart.js did not load in time, so the report charts could not be rendered.';
+    })();
+    return () => destroyCharts();
+  });
+</script>
+
+<svelte:head>
+  <title>{payload ? `Stage 7 Report - ${payload.cpt.displayId}` : 'Stage 7 Report'}</title>
+  <meta
+    name="description"
+    content="Printable Stage 7 CPT report for the selected MADEP CPT interpretation."
+  />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+</svelte:head>
+
+{#if loadError}
+  <div class="report-shell">
+    <div class="report-error">
+      <h1>Stage 7 report unavailable</h1>
+      <p>{loadError}</p>
+      <a class="btn pri" href="/">Back to CPT app</a>
+    </div>
+  </div>
+{:else if !payload}
+  <div class="report-shell">
+    <div class="report-error">
+      <h1>Loading Stage 7 report…</h1>
+    </div>
+  </div>
+{:else}
+  <div class="report-shell">
+    <div class="report-toolbar no-print">
+      <a class="btn sm" href="/">CPT app</a>
+      <button class="btn pri" onclick={() => window.print()}>Print / Save as PDF</button>
+    </div>
+
+    <article class="report">
+      <section class="report-cover">
+        <div class="report-cover__topline">
+          <div class="report-cover__brand">CPT Interpreter</div>
+          <div class="report-cover__eyebrow">Stage 7 report</div>
+        </div>
+        <h1>{payload.cpt.displayId}</h1>
+        <p>
+          Single-CPT engineering report with raw CPT data, interpretation settings, final layering,
+          characteristic values, model parameters, accepted tuning, and optional Stage 6 annexes.
+        </p>
+        <div class="report-cover__meta">
+          <div><span>Project</span><strong>{payload.project.name}</strong></div>
+          <div><span>CPT</span><strong>{payload.cpt.displayId}</strong></div>
+          <div><span>Generated</span><strong>{fmtDateTime(payload.generatedAt)}</strong></div>
+          <div><span>App version</span><strong>{payload.appVersion}</strong></div>
+        </div>
+      </section>
+
+      <section class="report-section report-section--profile">
+        <div class="report-section__head">
+          <h2>Document Control</h2>
+          <p>Frozen report record for the selected CPT interpretation.</p>
+        </div>
+        <div class="report-grid report-grid--2">
+          <div class="report-card">
+            <h3>Source</h3>
+            <table class="pt report-pt">
+              <tbody>
+                <tr><td>Project</td><td>{payload.metadata.project || payload.project.name || '—'}</td></tr>
+                <tr><td>Test ID</td><td>{payload.metadata.testid || payload.cpt.displayId}</td></tr>
+                <tr><td>Location</td><td>{payload.metadata.location || '—'}</td></tr>
+                <tr><td>Owner</td><td>{payload.metadata.owner || '—'}</td></tr>
+                <tr><td>Start date</td><td>{payload.metadata.date || '—'}</td></tr>
+                <tr><td>Source file</td><td>{payload.metadata.sourceFile || '—'}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="report-card">
+            <h3>Replication Summary</h3>
+            <table class="pt report-pt">
+              <tbody>
+                <tr><td>Classification</td><td>{payload.replication.methodLabel}</td></tr>
+                <tr><td>Smart merge</td><td>{payload.replication.smartMerge ? 'On' : 'Off'}</td></tr>
+                <tr><td>Sensitivity (-)</td><td>{fmt(payload.replication.smartMergeSensitivity, 3)}</td></tr>
+                <tr><td>Minimum thickness (m)</td><td>{fmt(payload.replication.minThickness, 3)}</td></tr>
+                <tr><td>Parameter method</td><td>{payload.replication.parameterMethodLabel}</td></tr>
+                <tr><td>Alpha method</td><td>{payload.replication.alphaMethodLabel}</td></tr>
+                <tr><td>Stiffness method</td><td>{payload.replication.stiffnessMethodLabel}</td></tr>
+                <tr><td>Accepted tuning (layers)</td><td>{payload.summary.acceptedTuningCount}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="report-section">
+        <div class="report-section__head">
+          <h2>Executive Summary</h2>
+          <p>Core interpretation outcomes for the selected CPT.</p>
+        </div>
+        <div class="report-grid report-grid--4">
+          <div class="report-stat"><span>Layers</span><strong>{payload.summary.layerCount}</strong></div>
+          <div class="report-stat"><span>Depth</span><strong>{fmt(payload.summary.depthMax, 2)} m</strong></div>
+          <div class="report-stat"><span>Water table</span><strong>{fmt(payload.replication.waterTable, 2)} m bgl</strong></div>
+          <div class="report-stat"><span>Stage 6 annexes</span><strong>{payload.summary.stage6Annexes.length}</strong></div>
+        </div>
+        <div class="report-grid report-grid--2">
+          <div class="report-card">
+            <h3>Coordinates and levels</h3>
+            <table class="pt report-pt">
+              <tbody>
+                <tr><td>X (m)</td><td>{payload.cpt.coordinates.x != null ? fmt(payload.cpt.coordinates.x, 2) : '—'}</td></tr>
+                <tr><td>Y (m)</td><td>{payload.cpt.coordinates.y != null ? fmt(payload.cpt.coordinates.y, 2) : '—'}</td></tr>
+                <tr><td>Surface level (m TAW)</td><td>{payload.replication.surfaceElevation != null ? `${fmt(payload.replication.surfaceElevation, 2)} m TAW` : '—'}</td></tr>
+                <tr><td>Surface source</td><td>{payload.replication.surfaceElevationSource}</td></tr>
+                <tr><td>Water table (m bgl)</td><td>{fmt(payload.replication.waterTable, 2)} m bgl</td></tr>
+                <tr><td>WT source</td><td>{payload.replication.waterTableSource}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="report-card">
+            <h3>Interpretation status</h3>
+            <table class="pt report-pt">
+              <tbody>
+                <tr><td>Rows (-)</td><td>{fmtInt(payload.metadata.nRows)}</td></tr>
+                <tr><td>Has u2</td><td>{payload.metadata.hasU2 ? 'Yes' : 'No'}</td></tr>
+                <tr><td>Area ratio a (-)</td><td>{payload.metadata.aRatio != null ? fmt(payload.metadata.aRatio, 3) : '—'}</td></tr>
+                <tr><td>Accepted tuning (layers)</td><td>{payload.summary.acceptedTuningCount}</td></tr>
+                <tr><td>Manual overrides (-)</td><td>{payload.summary.manualOverrideCount}</td></tr>
+                <tr><td>Optional annexes</td><td>{payload.summary.stage6Annexes.length ? payload.summary.stage6Annexes.join(', ') : 'None'}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="report-section report-section--cpt-profile">
+        <div class="report-section__head">
+          <h2>CPT Profile And Layering</h2>
+          <p>Profile rendered from the original CPT data with qc, fs, the water table, and the frozen final layering.</p>
+        </div>
+        <div class="report-card report-profile">
+          {#if payload.visuals?.layerProfile}
+            <svg
+              viewBox={`0 0 ${payload.visuals.layerProfile.width} ${payload.visuals.layerProfile.height}`}
+              aria-label="qc profile with final layering"
+            >
+              {@html payload.visuals.layerProfile.markup}
+            </svg>
+          {:else}
+            <p class="report-muted">Profile preview unavailable in this payload.</p>
+          {/if}
+        </div>
+      </section>
+
+      <section class="report-section report-section--layer-model">
+        <div class="report-section__head">
+          <h2>Final Layer Model</h2>
+          <p>Characteristic values and interpretation output for the selected CPT only.</p>
+        </div>
+        <div class="report-card">
+          <table class="tbl report-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Top (m bgl)</th>
+                <th>Bot (m bgl)</th>
+                <th>Top (m TAW)</th>
+                <th>Bot (m TAW)</th>
+                <th>Thk. (m)</th>
+                <th>Type</th>
+                <th>Subtype</th>
+                <th>avg qc (MPa)</th>
+                <th>avg fs (kPa)</th>
+                <th>avg Rf (%)</th>
+                <th>gamma (kN/m³)</th>
+                <th>gamma_sat (kN/m³)</th>
+                <th>phi' (°)</th>
+                <th>c' (kPa)</th>
+                <th>cu (kPa)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each payload.layers as layer}
+                <tr>
+                  <td>{layer.index}</td>
+                  <td>{fmt(layer.top, 2)}</td>
+                  <td>{fmt(layer.bot, 2)}</td>
+                  <td>{layer.topTaw != null ? fmt(layer.topTaw, 2) : '—'}</td>
+                  <td>{layer.botTaw != null ? fmt(layer.botTaw, 2) : '—'}</td>
+                  <td>{fmt(layer.thickness, 2)}</td>
+                  <td><span class="report-chip" style={soilChipStyle(layer.type)}>{layer.type}</span></td>
+                  <td>{layer.subtype || '—'}</td>
+                  <td>{fmt(layer.avgQc, 3)}</td>
+                  <td>{layer.avgFsKPa != null ? fmt(layer.avgFsKPa, 1) : '—'}</td>
+                  <td>{layer.avgRf != null ? fmt(layer.avgRf, 2) : '—'}</td>
+                  <td>{fmt(layer.gamma, 1)}</td>
+                  <td>{fmt(layer.gammaSat, 1)}</td>
+                  <td>{fmt(layer.phi, 1)}</td>
+                  <td>{fmt(layer.c, 1)}</td>
+                  <td>{fmt(layer.cu, 1)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        {#if payload.layerWarnings.length}
+          <div class="report-grid report-grid--2">
+            {#each payload.layerWarnings as warning}
+              <div class="info">
+                <strong>Layer {warning.layer} - {levelLabels[warning.level] || warning.level}</strong><br />
+                {warning.message}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <section class="report-section">
+        <div class="report-section__head">
+          <h2>Model Parameters</h2>
+          <p>Hardening Soil and hydraulic parameters carried into engineering work.</p>
+        </div>
+        <div class="report-card">
+          <table class="tbl report-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>alphaE (-)</th>
+                <th>Eoed,i (kPa)</th>
+                <th>Eoed,ref (kPa)</th>
+                <th>E50,ref (kPa)</th>
+                <th>Eur,ref (kPa)</th>
+                <th>m (-)</th>
+                <th>K0,nc (-)</th>
+                <th>nu_ur (-)</th>
+                <th>kh (m/s)</th>
+                <th>kv (m/s)</th>
+                <th>kh/kv (-)</th>
+                <th>psi_unsat (m)</th>
+                <th>Infiltration</th>
+                <th>Overrides</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each payload.layers as layer}
+                <tr>
+                  <td>{layer.index}</td>
+                  <td>{fmt(layer.hs.alphaE, 2)}</td>
+                  <td>{fmtInt(layer.hs.eOedI)}</td>
+                  <td>{fmtInt(layer.hs.eOedRef)}</td>
+                  <td>{fmtInt(layer.hs.e50Ref)}</td>
+                  <td>{fmtInt(layer.hs.eurRef)}</td>
+                  <td>{fmt(layer.hs.m, 3)}</td>
+                  <td>{fmt(layer.hs.k0nc, 3)}</td>
+                  <td>{fmt(layer.hs.nuUr, 2)}</td>
+                  <td>{compactNumber(layer.hydraulic.kh)}</td>
+                  <td>{compactNumber(layer.hydraulic.kv)}</td>
+                  <td>{fmt(layer.hydraulic.khkv, 1)}</td>
+                  <td>{fmt(layer.hydraulic.psiUnsat, 2)}</td>
+                  <td>{layer.hydraulic.infiltrationClass}</td>
+                  <td>
+                    {#if Object.values(layer.overrides || {}).some(Boolean)}
+                      {Object.entries(layer.overrides)
+                        .filter(([, active]) => active)
+                        .map(([name]) => name)
+                        .join(', ')}
+                    {:else}
+                      —
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="report-section">
+        <div class="report-section__head">
+          <h2>Stage 5 Tuning</h2>
+          <p>Per-layer regression output and accepted m updates, if tuning was run.</p>
+        </div>
+        {#if !payload.tuning}
+          <div class="info">Stage 5 tuning was not run for this report. Default layer m-values remain active unless manually overridden.</div>
+        {:else}
+          <div class="report-grid report-grid--2">
+            {#each payload.tuning as item}
+              <div class="report-card report-tuning">
+                <div class="report-tuning__head">
+                  <div>
+                    <span class="report-chip" style={soilChipStyle(item.type)}>{item.type}</span>
+                    <strong>{item.layerLabel}</strong>
+                    <span class="report-muted">{fmt(item.top, 2)} - {fmt(item.bot, 2)} m</span>
+                  </div>
+                  <div class="report-muted">{item.accepted ? 'Accepted' : 'Preview only'}</div>
+                </div>
+                {#if item.fit}
+                  <div class="report-grid report-grid--2">
+                    <div>
+                      <div class="report-canvas report-canvas--tuning">
+                        <canvas id={`stage7-tuning-depth-${item.index}`}></canvas>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="report-canvas report-canvas--tuning">
+                        <canvas id={`stage7-tuning-reg-${item.index}`}></canvas>
+                      </div>
+                    </div>
+                  </div>
+                  <table class="pt report-pt report-pt--tight">
+                    <tbody>
+                      <tr><td>Auto-fit m (-)</td><td>{fmt(item.fit.mFit, 3)}</td></tr>
+                      <tr><td>Preview / accepted m (-)</td><td>{item.previewM != null ? fmt(item.previewM, 3) : '—'}</td></tr>
+                      <tr><td>Auto-fit Eoed,ref (kPa)</td><td>{fmtInt(item.fit.eOedRefFit)} kPa</td></tr>
+                      <tr><td>Default m (-)</td><td>{fmt(item.fit.mDefault, 3)}</td></tr>
+                      <tr><td>R² (-)</td><td>{fmt(item.fit.r2, 3)}</td></tr>
+                      <tr><td>n (-)</td><td>{item.fit.n}</td></tr>
+                      <tr><td>Stress range factor (-)</td><td>x{fmt(item.fit.stressRangeFactor, 2)}</td></tr>
+                      <tr><td>Status</td><td>{item.fit.message}</td></tr>
+                    </tbody>
+                  </table>
+                {:else}
+                  <div class="info">Insufficient data were available for a tuning regression in this layer.</div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      {#if payload.stage6}
+        <section class="report-section">
+          <div class="report-section__head">
+            <h2>Stage 6 Annexes</h2>
+            <p>Optional engineering annexes included only for analyses available in the frozen payload.</p>
+          </div>
+
+          {#if hasStage6('bearing')}
+            <div class="report-card report-annex">
+              <h3>Bearing capacity</h3>
+              <div class="report-grid report-grid--2">
+                <table class="pt report-pt">
+                  <tbody>
+                    <tr><td>Df (m)</td><td>{fmt(payload.stage6.bearing.config.Df, 2)} m</td></tr>
+                    <tr><td>Foundation type</td><td>{payload.stage6.bearing.config.foundationType}</td></tr>
+                    <tr><td>B (m)</td><td>{fmt(payload.stage6.bearing.config.B, 2)} m</td></tr>
+                    <tr><td>Load q (kPa)</td><td>{fmt(payload.stage6.bearing.config.load, 0)} kPa</td></tr>
+                    <tr><td>Selected layer</td><td>{payload.stage6.bearing.analysis.selected.layer.type}</td></tr>
+                    <tr><td>Drained qd (kPa)</td><td>{fmtInt(payload.stage6.bearing.analysis.selected.qdDrained)} kPa</td></tr>
+                    <tr><td>Undrained qd (kPa)</td><td>{fmtInt(payload.stage6.bearing.analysis.selected.qdUndrained)} kPa</td></tr>
+                  </tbody>
+                </table>
+                <div class="report-canvas"><canvas id="stage7-bearing-chart"></canvas></div>
+              </div>
+            </div>
+          {/if}
+
+          {#if hasStage6('settlement')}
+            <div class="report-card report-annex">
+              <h3>Settlement</h3>
+              <div class="report-grid report-grid--3">
+                <div class="report-stat"><span>Total settlement</span><strong>{fmt(payload.stage6.settlement.analysis.totalSettlementMm, 2)} mm</strong></div>
+                <div class="report-stat"><span>q gross</span><strong>{fmt(payload.stage6.settlement.analysis.qGross, 1)} kPa</strong></div>
+                <div class="report-stat"><span>q net</span><strong>{fmt(payload.stage6.settlement.analysis.qNet, 1)} kPa</strong></div>
+              </div>
+              <div class="report-grid report-grid--2">
+                <div class="report-canvas"><canvas id="stage7-settlement-stress"></canvas></div>
+                <div class="report-canvas"><canvas id="stage7-settlement-cumulative"></canvas></div>
+              </div>
+              {#if payload.stage6.settlement.analysis.timeCurve}
+                <div class="report-canvas report-canvas--single"><canvas id="stage7-settlement-time"></canvas></div>
+              {/if}
+            </div>
+          {/if}
+
+          {#if hasStage6('dewatering')}
+            <div class="report-card report-annex">
+              <h3>Dewatering</h3>
+              <div class="report-grid report-grid--4">
+                <div class="report-stat"><span>Target WT</span><strong>{fmt(payload.stage6.dewatering.analysis.targetWt, 2)} m</strong></div>
+                <div class="report-stat"><span>WT at CPT</span><strong>{fmt(payload.stage6.dewatering.analysis.newWtAtCpt, 2)} m</strong></div>
+                <div class="report-stat"><span>Drawdown at CPT</span><strong>{fmt(payload.stage6.dewatering.analysis.drawdownAtCpt, 2)} m</strong></div>
+                <div class="report-stat"><span>Total settlement</span><strong>{fmt(payload.stage6.dewatering.analysis.totalSettlementMm, 2)} mm</strong></div>
+              </div>
+              <div class="report-grid report-grid--2">
+                <div class="report-canvas"><canvas id="stage7-dewatering-drawdown"></canvas></div>
+                <div class="report-canvas"><canvas id="stage7-dewatering-stress"></canvas></div>
+                <div class="report-canvas"><canvas id="stage7-dewatering-settlement"></canvas></div>
+                {#if payload.stage6.dewatering.analysis.timeCurve}
+                  <div class="report-canvas"><canvas id="stage7-dewatering-time"></canvas></div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
+          {#if hasStage6('beam')}
+            <div class="report-card report-annex">
+              <h3>Beam / slab strip</h3>
+              <div class="report-grid report-grid--4">
+                <div class="report-stat"><span>k_s</span><strong>{fmt(payload.stage6.beam.analysis.ksInfo.ks, 0)} kN/m³</strong></div>
+                <div class="report-stat"><span>G_p</span><strong>{fmt(payload.stage6.beam.analysis.ksInfo.gp, 0)} kN/m</strong></div>
+                <div class="report-stat"><span>Max deflection</span><strong>{fmt(Math.abs(payload.stage6.beam.analysis.sls.maxDeflection.value) * 1000, 2)} mm</strong></div>
+                <div class="report-stat"><span>Max moment</span><strong>{fmt(Math.abs(payload.stage6.beam.analysis.uls.maxMoment.value), 2)} kNm/m</strong></div>
+              </div>
+              <div class="report-grid report-grid--2">
+                <div class="report-canvas"><canvas id="stage7-beam-deflection"></canvas></div>
+                <div class="report-canvas"><canvas id="stage7-beam-moment"></canvas></div>
+              </div>
+            </div>
+          {/if}
+
+          {#if hasStage6('bishop')}
+            <div class="report-card report-annex">
+              <h3>Bishop simplified</h3>
+              <div class="report-grid report-grid--3">
+                <div class="report-stat"><span>Critical F</span><strong>{payload.stage6.bishop.topResults?.[0] ? fmt(payload.stage6.bishop.topResults[0].FS, 3) : '—'}</strong></div>
+                <div class="report-stat"><span>Selected result</span><strong>{payload.stage6.bishop.selectedIndex + 1}</strong></div>
+                <div class="report-stat"><span>Trials</span><strong>{payload.stage6.bishop.timing?.trialCount ?? '—'}</strong></div>
+              </div>
+              <div class="report-grid report-grid--2">
+                <table class="pt report-pt">
+                  <tbody>
+                    <tr><td>Strength set</td><td>{payload.stage6.bishop.config.strengthSet}</td></tr>
+                    <tr><td>Analysis depth (m)</td><td>{fmt(payload.stage6.bishop.config.analysisDepth, 2)} m</td></tr>
+                    <tr><td>Entry zone x-range (m)</td><td>{payload.stage6.bishop.config.entryZone ? `${fmt(payload.stage6.bishop.config.entryZone.xStart, 2)} - ${fmt(payload.stage6.bishop.config.entryZone.xEnd, 2)} m` : '—'}</td></tr>
+                    <tr><td>Exit zone x-range (m)</td><td>{payload.stage6.bishop.config.exitZone ? `${fmt(payload.stage6.bishop.config.exitZone.xStart, 2)} - ${fmt(payload.stage6.bishop.config.exitZone.xEnd, 2)} m` : '—'}</td></tr>
+                    <tr><td>Runtime (ms)</td><td>{payload.stage6.bishop.timing?.totalMs != null ? `${fmt(payload.stage6.bishop.timing.totalMs, 0)} ms` : '—'}</td></tr>
+                  </tbody>
+                </table>
+                <div class="report-card report-card--nested">
+                  <h4>Best circles</h4>
+                  <table class="tbl report-table">
+                    <thead>
+                      <tr><th>#</th><th>FS (-)</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
+                    </thead>
+                    <tbody>
+                      {#each payload.stage6.bishop.topResults as result}
+                        <tr>
+                          <td>{result.rank}</td>
+                          <td>{fmt(result.FS, 3)}</td>
+                          <td>{result.iterations}</td>
+                          <td>{result.circle?.radius != null ? `${fmt(result.circle.radius, 2)} m` : '—'}</td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          {/if}
+        </section>
+      {/if}
+
+      <section class="report-section">
+        <div class="report-section__head">
+          <h2>Appendix A - Raw CPT Table</h2>
+          <p>Full row set carried into the report payload.</p>
+        </div>
+        <div class="report-card">
+          <table class="tbl report-table">
+            <thead>
+              <tr>
+                <th>Depth (m)</th>
+                <th>TAW (m TAW)</th>
+                <th>qc (MPa)</th>
+                <th>fs (kPa)</th>
+                <th>Rf (%)</th>
+                <th>u2 (source units)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each payload.rawRows as row}
+                <tr>
+                  <td>{fmt(row.depth, 3)}</td>
+                  <td>{row.taw != null ? fmt(row.taw, 2) : '—'}</td>
+                  <td>{fmt(row.qc, 3)}</td>
+                  <td>{row.fsKPa != null ? fmt(row.fsKPa, 2) : '—'}</td>
+                  <td>{row.rf != null ? fmt(row.rf, 2) : '—'}</td>
+                  <td>{row.u2 != null ? fmt(row.u2, 3) : '—'}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="report-section">
+        <div class="report-section__head">
+          <h2>Appendix B - Pointwise Classification Table</h2>
+          <p>Classification output frozen at report generation time.</p>
+        </div>
+        <div class="report-card">
+          <table class="tbl report-table">
+            <thead>
+              <tr>
+                <th>Depth (m)</th>
+                <th>TAW (m TAW)</th>
+                <th>qc (MPa)</th>
+                <th>fs (kPa)</th>
+                <th>Rf (%)</th>
+                <th>Type</th>
+                <th>Subtype</th>
+                <th>{methodMetricLabel()}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each payload.classifiedRows as row}
+                <tr>
+                  <td>{fmt(row.depth, 3)}</td>
+                  <td>{row.taw != null ? fmt(row.taw, 2) : '—'}</td>
+                  <td>{fmt(row.qc, 3)}</td>
+                  <td>{row.fsKPa != null ? fmt(row.fsKPa, 2) : '—'}</td>
+                  <td>{row.rf != null ? fmt(row.rf, 2) : '—'}</td>
+                  <td>{row.type}</td>
+                  <td>{row.subtype || '—'}</td>
+                  <td>{methodMetricValue(row)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </article>
+  </div>
+{/if}
+
+<style>
+  :global(body) {
+    margin: 0;
+  }
+
+  .report-shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 24px 24px 56px;
+  }
+
+  .report-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .report {
+    display: grid;
+    gap: 22px;
+  }
+
+  .report-cover,
+  .report-section,
+  .report-error {
+    background: var(--panel-solid);
+    border: 1px solid var(--bd);
+    border-radius: var(--r2);
+    box-shadow: var(--sh);
+    padding: 28px;
+  }
+
+  .report-cover {
+    min-height: 260px;
+    display: grid;
+    align-content: start;
+    gap: 14px;
+    background:
+      linear-gradient(135deg, rgba(61, 107, 106, 0.16), transparent 36%),
+      var(--panel-strong);
+  }
+
+  .report-cover__topline {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .report-cover__brand,
+  .report-cover__eyebrow,
+  .report-section__head p,
+  .report-muted {
+    color: var(--tx2);
+  }
+
+  .report-cover__brand,
+  .report-cover__eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .report-cover__eyebrow {
+    text-align: right;
+  }
+
+  .report-cover h1,
+  .report-section h2 {
+    margin: 0;
+    font-family: var(--font-heading);
+    letter-spacing: -0.02em;
+  }
+
+  .report-cover h1 {
+    font-size: clamp(2rem, 5vw, 3.6rem);
+  }
+
+  .report-section__head {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+
+  .report-section__head p {
+    margin: 0;
+  }
+
+  .report-grid {
+    display: grid;
+    gap: 14px;
+  }
+
+  .report-grid--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-grid--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .report-grid--4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .report-card {
+    background: var(--panel);
+    border: 1px solid var(--bd);
+    border-radius: var(--r);
+    padding: 16px;
+    min-width: 0;
+  }
+
+  .report-card--nested {
+    padding: 14px;
+  }
+
+  .report-card h3,
+  .report-card h4 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    font-family: var(--font-heading);
+  }
+
+  .report-cover__meta {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .report-cover__meta div,
+  .report-stat {
+    background: var(--panel-soft);
+    border: 1px solid var(--bd);
+    border-radius: var(--r);
+    padding: 10px 12px;
+  }
+
+  .report-cover__meta span,
+  .report-stat span {
+    display: block;
+    font-size: 10px;
+    color: var(--tx2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+
+  .report-cover__meta strong,
+  .report-stat strong {
+    font-size: 16px;
+  }
+
+  .report-pt td:last-child {
+    text-align: right;
+    font-weight: 500;
+  }
+
+  .report-pt--tight td {
+    padding: 2px 0;
+  }
+
+  .report-profile {
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .report-profile svg {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: 520px;
+  }
+
+  .report-canvas {
+    position: relative;
+    height: 260px;
+  }
+
+  .report-canvas--single {
+    margin-top: 14px;
+  }
+
+  .report-canvas--tuning {
+    height: 240px;
+  }
+
+  .report-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-right: 8px;
+  }
+
+  .report-table {
+    table-layout: fixed;
+  }
+
+  .report-table th,
+  .report-table td {
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+
+  .report-table th {
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  .report-tuning__head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .report-annex {
+    display: grid;
+    gap: 14px;
+  }
+
+  .report-error {
+    margin-top: 12vh;
+    text-align: center;
+  }
+
+  @media (max-width: 980px) {
+    .report-grid--4,
+    .report-cover__meta {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .report-grid--3,
+    .report-grid--2 {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 6mm;
+  }
+
+  @media print {
+    :global(body) {
+      background: #fff;
+      color: #111;
+      font-size: 9.75px;
+      line-height: 1.28;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    :global(article),
+    :global(section),
+    :global(div),
+    :global(table) {
+      max-width: 100%;
+    }
+
+    .no-print {
+      display: none !important;
+    }
+
+    .report-shell {
+      max-width: none;
+      padding: 0;
+    }
+
+    .report {
+      gap: 0;
+    }
+
+    .report-cover h1 {
+      font-size: 18pt;
+    }
+
+    .report-section h2 {
+      font-size: 10.5pt;
+    }
+
+    .report-cover__meta strong,
+    .report-stat strong {
+      font-size: 9pt;
+    }
+
+    .report-cover__brand,
+    .report-cover__eyebrow,
+    .report-cover__meta span,
+    .report-stat span,
+    .tbl th {
+      font-size: 5.8pt;
+    }
+
+    .report-cover__topline {
+      gap: 8px;
+    }
+
+    .report-card h3,
+    .report-card h4 {
+      font-size: 7.2pt;
+      margin-bottom: 4px;
+    }
+
+    .report-section__head {
+      gap: 2px;
+      margin-bottom: 3px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+
+    .report-section__head p,
+    .report-muted,
+    .info {
+      font-size: 6.7pt;
+    }
+
+    .report-pt,
+    .tbl {
+      font-size: 6.3pt;
+    }
+
+    .report-grid,
+    .report-annex,
+    .report-cover__meta,
+    .report-toolbar {
+      gap: 4px;
+    }
+
+    .report-cover,
+    .report-section {
+      box-shadow: none;
+      border: none;
+      border-radius: 0;
+      background: #fff;
+      padding: 4mm 4mm;
+      break-before: auto;
+      page-break-before: auto;
+    }
+
+    .report-section {
+      padding-top: 2.2mm;
+      padding-bottom: 3.6mm;
+    }
+
+    .report-section--cpt-profile {
+      padding-top: 2mm;
+      padding-bottom: 3mm;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .report-section--layer-model {
+      break-before: page;
+      page-break-before: always;
+      padding-top: 8mm;
+    }
+
+    .report-cover {
+      min-height: auto;
+    }
+
+    .report-card,
+    .report-cover__meta div,
+    .report-stat {
+      box-shadow: none;
+      background: #fff;
+      padding: 3px 4px;
+    }
+
+    .report-section--cpt-profile .report-card {
+      padding: 2px 3px;
+    }
+
+    .report-section--cpt-profile .report-section__head {
+      margin-bottom: 1px;
+    }
+
+    .report-section--cpt-profile .report-section__head p {
+      font-size: 6.2pt;
+    }
+
+    .tbl thead {
+      display: table-header-group;
+    }
+
+    .tbl tr,
+    .pt tr,
+    .report-cover__meta,
+    .report-grid,
+    .report-stat,
+    .report-card.report-profile,
+    .report-tuning,
+    .report-annex,
+    .info {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .tbl th,
+    .tbl td {
+      padding: 1px 2px;
+    }
+
+    .pt td {
+      padding: 0;
+    }
+
+    .report-table th {
+      line-height: 1.05;
+    }
+
+    .report-chip {
+      padding: 0.5px 3px;
+      font-size: 5.6pt;
+      margin-right: 3px;
+    }
+
+    .report-canvas {
+      height: 104mm;
+    }
+
+    .report-canvas--tuning {
+      height: 66mm;
+    }
+
+    .report-profile svg {
+      height: 98mm;
+    }
+
+    .report-section--profile,
+    .report-section--cpt-profile {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+  }
+</style>
