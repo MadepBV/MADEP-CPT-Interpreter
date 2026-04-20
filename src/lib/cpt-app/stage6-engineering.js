@@ -465,13 +465,17 @@ function rectCornerInfluenceFactor(B, L, z) {
   const V = mN * mN + nN * nN + 1;
   const V1 = (mN * nN) * (mN * nN);
   const numerator = 2 * mN * nN * Math.sqrt(V);
-  const denom = V + V1;
-  const A = clamp(numerator / Math.max(denom, 1e-9), -1, 1);
-  const Bf = (V + 1) / Math.max(denom, 1e-9);
-  if (V >= V1) {
-    return (1 / (4 * Math.PI)) * (A * Bf + Math.asin(A));
+  const denom = Math.max(V + V1, 1e-9);
+  const A = numerator / denom;
+  const Bf = (V + 1) / Math.max(V, 1e-9);
+  let atanTerm;
+  if (Math.abs(V - V1) < 1e-9) {
+    atanTerm = Math.PI / 2;
+  } else {
+    atanTerm = Math.atan(numerator / (V - V1));
+    if (V < V1) atanTerm += Math.PI;
   }
-  return (1 / (4 * Math.PI)) * (A * Bf + Math.PI - Math.atan2(numerator, V - V1));
+  return (1 / (4 * Math.PI)) * (A * Bf + atanTerm);
 }
 
 export function settlementStressIncrease({ method = 'boussinesq', footingType, B, L, qNet, z }) {
