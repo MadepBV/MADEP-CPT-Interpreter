@@ -276,6 +276,13 @@ input[type=range]{accent-color:var(--ac)}
   grid-template-columns:1fr;
   gap:10px;
 }
+.st6-bishop-workspace-switch{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  margin-bottom:12px;
+}
 .st6-bishop-visuals{
   display:grid;
   gap:8px;
@@ -473,6 +480,31 @@ input[type=range]{accent-color:var(--ac)}
 .st6-bishop-materials input{
   width:100%;
   min-width:74px;
+}
+.st6-bishop-source-pill{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.02em;
+  border:1px solid transparent;
+}
+.st6-bishop-source-pill--cpt{
+  background:rgba(47,127,218,0.12);
+  border-color:rgba(47,127,218,0.28);
+  color:#24588d;
+}
+.st6-bishop-source-pill--sbtn-default{
+  background:rgba(111,125,138,0.12);
+  border-color:rgba(111,125,138,0.28);
+  color:#53606d;
+}
+.st6-bishop-source-pill--user{
+  background:rgba(29,158,117,0.12);
+  border-color:rgba(29,158,117,0.28);
+  color:#1d7a5e;
 }
 .st6-bishop-mode,
 .st6-bishop-coord{

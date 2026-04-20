@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 import { designSoilLayer } from './stage6-engineering';
+import { resolveMaterialPermeability } from './seepage/material';
+import { sampleSeepagePorePressure } from './seepage/solver';
 import {
   buildCptAutoRegions,
   isSimplePolygon,
@@ -529,12 +531,20 @@ function maxSlipThickness(circle, terrain, xStart, xEnd, n) {
 }
 
 function averagePorePressureOnBase(model, circle, xL, xR) {
-  if (!model.phreatic?.vertices?.length) return 0;
   const gauss = [0.2113248654, 0.5, 0.7886751346];
+  const useFem = !!model?.useFemPorePressure && model?.seepage?.mesh && model?.seepage?.result;
   let sum = 0;
   gauss.forEach((f) => {
     const x = lerp(xL, xR, f);
     const y = circleYActive(circle, x);
+    if (useFem) {
+      const sampled = sampleSeepagePorePressure(model.seepage.mesh, model.seepage.result, x, y, GAMMA_W);
+      if (Number.isFinite(sampled)) {
+        sum += Math.max(sampled, 0);
+        return;
+      }
+    }
+    if (!model.phreatic?.vertices?.length) return;
     const water = terrainY(model.phreatic, x);
     sum += Math.max((water - y) * GAMMA_W, 0);
   });
@@ -2529,6 +2539,7 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
       : strengthSet === 'da1_1' ? designSoilLayer(layer, 'M1')
       : { ...layer };
     const canReuseStrengthValues = prior.sourceStrengthSet === strengthSet;
+    const permeability = resolveMaterialPermeability(layer, prior);
     return {
       id,
       label: prior.label || `Layer ${index + 1} - ${fallbackLabel}`,
@@ -2539,6 +2550,9 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
       phiEffDeg: canReuseStrengthValues && Number.isFinite(prior.phiEffDeg) ? prior.phiEffDeg : Number(designed.phi) || 0,
       gamma: canReuseStrengthValues && Number.isFinite(prior.gamma) ? prior.gamma : Number(layer.g) || 18,
       gammaSat: canReuseStrengthValues && Number.isFinite(prior.gammaSat) ? prior.gammaSat : Number(layer.gs) || (Number(layer.g) || 18) + 2,
+      kx: permeability.kx,
+      ky: permeability.ky,
+      kSource: permeability.kSource,
       color: prior.color || DEFAULT_MATERIAL_COLORS[index % DEFAULT_MATERIAL_COLORS.length]
     };
   });
@@ -2554,7 +2568,9 @@ export function bishopLayerSignature(layers) {
       layer.c,
       layer.phi,
       layer.g,
-      layer.gs
+      layer.gs,
+      layer.kh,
+      layer.kv
     ])
   );
 }
@@ -2665,6 +2681,7 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
     cptX,
     cptGroundY: yGround,
     analysisBottomY,
+    useFemPorePressure: !!bishopState?.useFemPorePressure,
     materials,
     strengthSet: bishopState?.strengthSet || 'characteristic',
     regionMode: useCustomRegions ? 'custom' : 'auto',
@@ -2674,7 +2691,8 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
     regionBoundaryPolylines: useCustomRegions ? buildRegionBoundaryPolylines(customRegions) : [],
     boundaryYs,
     surfaceLoad,
-    walls
+    walls,
+    seepage: bishopState?.seepage || null
   };
   if (options.includeLegacyBands) model.legacyBands = legacyBands;
   return model;

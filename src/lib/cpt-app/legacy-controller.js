@@ -16,6 +16,14 @@ import {
   terrainY as bishopTerrainY
 } from './stage6-bishop';
 import { importTerrainFromDxfText } from './dxf-terrain';
+import {
+  buildOuterBoundary as buildSeepageOuterBoundary,
+  makeBoundaryCondition as makeSeepageBoundaryCondition,
+  migrateBcs as migrateSeepageBcs,
+  pickOuterBoundaryEdge as pickSeepageBoundaryEdge,
+  seepageGeometryHash
+} from './seepage/boundary';
+import { resolveMaterialPermeability, seepageSourceLabel } from './seepage/material';
 import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-regions';
 import {
   buildBeamDeflectionChartConfig,
@@ -42,6 +50,8 @@ let __legacyControllerInitialized = false;
 let __legacyControllerHashBound = false;
 let stage6BishopWorker = null;
 let stage6BishopRunId = 0;
+let stage6BishopSeepageWorker = null;
+let stage6BishopSeepageRunId = 0;
 let classificationRefreshTimer = null;
 const stage6BishopCanvasState = {
   canvas:null,
@@ -91,6 +101,7 @@ let S=PROJECT.cpts[0];
 function selectCpt(idx){
   if(idx<0||idx>=PROJECT.cpts.length)return;
   stage6BishopStopSearch(true);
+  stage6BishopStopSeepage(true);
   cancelClassificationRefresh();
 
   // Destroy any existing Chart.js instances tied to the DOM canvases
@@ -3494,7 +3505,9 @@ function stage6Defaults(){
       dz:0.10
     },
     bishop:{
+      workspace:'stability',
       tool:'terrain',
+      useFemPorePressure:false,
       strengthSet:'characteristic',
       methodMode:'bishop_spencer',
       useCustomRegions:false,
@@ -3577,6 +3590,36 @@ function stage6Defaults(){
         total:0,
         message:'',
         previewCircle:null
+      },
+      seepage:{
+        bcs:[],
+        mesh:null,
+        result:null,
+        status:'idle',
+        progress:{
+          running:false,
+          percent:0,
+          message:'',
+          runId:0
+        },
+        rejectReason:'',
+        geometryHash:'',
+        options:{
+          freeSurface:'fixed',
+          usePhreaticAsSeed:true,
+          maxFreeSurfaceIter:30,
+          meshTargetArea:0.5
+        },
+        display:{
+          showBoundaryConditions:true,
+          showBoundaryLabels:true,
+          showHead:false,
+          showEquipotentials:false,
+          showFlowVectors:false,
+          showExitGradient:false
+        },
+        selectedEdgeKey:'',
+        selectedBcId:''
       },
       results:null,
       selectedResult:0,
@@ -3664,6 +3707,8 @@ function ensureStage6State(){
   }
   const bishop = S.stage6.bishop;
   const bishopMinDepth = Math.max(stage6MaxDepth(), 15);
+  if(!['stability','seepage'].includes(bishop.workspace)) bishop.workspace = 'stability';
+  bishop.useFemPorePressure = !!bishop.useFemPorePressure;
   if(bishop.analysisDepth == null || bishop.analysisDepth === ''){
     const legacyBottomMargin = Number(bishop.bottomMargin);
     const hasCustomLegacyMargin = Number.isFinite(legacyBottomMargin) && Math.abs(legacyBottomMargin - 5) > 1e-9;
@@ -3730,6 +3775,31 @@ function ensureStage6State(){
   if(!Array.isArray(bishop.walls)) bishop.walls = [];
   if(!Array.isArray(bishop.draft)) bishop.draft = [];
   if(!Array.isArray(bishop.materials)) bishop.materials = [];
+  if(!bishop.seepage || typeof bishop.seepage !== 'object') bishop.seepage = stage6Defaults().bishop.seepage;
+  stage6Merge(bishop.seepage, stage6Defaults().bishop.seepage);
+  if(!Array.isArray(bishop.seepage.bcs)) bishop.seepage.bcs = [];
+  if(!['idle','meshing','solving','success','failed'].includes(bishop.seepage.status)) bishop.seepage.status = 'idle';
+  if(!bishop.seepage.progress || typeof bishop.seepage.progress !== 'object') bishop.seepage.progress = stage6Defaults().bishop.seepage.progress;
+  bishop.seepage.progress.running = !!bishop.seepage.progress.running;
+  bishop.seepage.progress.percent = Math.max(0, Math.min(100, +bishop.seepage.progress.percent || 0));
+  bishop.seepage.progress.message = bishop.seepage.progress.message ? String(bishop.seepage.progress.message) : '';
+  bishop.seepage.progress.runId = Math.max(0, Math.round(+bishop.seepage.progress.runId || 0));
+  bishop.seepage.rejectReason = bishop.seepage.rejectReason ? String(bishop.seepage.rejectReason) : '';
+  bishop.seepage.geometryHash = bishop.seepage.geometryHash ? String(bishop.seepage.geometryHash) : '';
+  if(!bishop.seepage.options || typeof bishop.seepage.options !== 'object') bishop.seepage.options = stage6Defaults().bishop.seepage.options;
+  if(!['fixed','iterate'].includes(bishop.seepage.options.freeSurface)) bishop.seepage.options.freeSurface = 'fixed';
+  bishop.seepage.options.usePhreaticAsSeed = bishop.seepage.options.usePhreaticAsSeed !== false;
+  bishop.seepage.options.maxFreeSurfaceIter = Math.max(1, Math.round(+bishop.seepage.options.maxFreeSurfaceIter || 30));
+  bishop.seepage.options.meshTargetArea = Math.max(+bishop.seepage.options.meshTargetArea || 0.5, 0.01);
+  if(!bishop.seepage.display || typeof bishop.seepage.display !== 'object') bishop.seepage.display = stage6Defaults().bishop.seepage.display;
+  bishop.seepage.display.showBoundaryConditions = bishop.seepage.display.showBoundaryConditions !== false;
+  bishop.seepage.display.showBoundaryLabels = bishop.seepage.display.showBoundaryLabels !== false;
+  bishop.seepage.display.showHead = !!bishop.seepage.display.showHead;
+  bishop.seepage.display.showEquipotentials = !!bishop.seepage.display.showEquipotentials;
+  bishop.seepage.display.showFlowVectors = !!bishop.seepage.display.showFlowVectors;
+  bishop.seepage.display.showExitGradient = !!bishop.seepage.display.showExitGradient;
+  bishop.seepage.selectedEdgeKey = bishop.seepage.selectedEdgeKey ? String(bishop.seepage.selectedEdgeKey) : '';
+  bishop.seepage.selectedBcId = bishop.seepage.selectedBcId ? String(bishop.seepage.selectedBcId) : '';
   if(!bishop.surfaceLoad || typeof bishop.surfaceLoad !== 'object') bishop.surfaceLoad = {xStart:null, xEnd:null, q:0};
   bishop.surfaceLoad.q = Math.max(+bishop.surfaceLoad.q || 0, 0);
   if(!bishop.viewport || typeof bishop.viewport !== 'object') bishop.viewport = {scale:24, offsetX:80, offsetY:360, fitted:false};
@@ -3922,6 +3992,139 @@ function stage6BishopResultWallLabel(result){
   return 'no wall effect';
 }
 
+function stage6BishopInvalidateSeepage(message, keepMesh){
+  ensureStage6State();
+  stage6BishopStopSeepage(true);
+  const seepage = S.stage6.bishop.seepage;
+  if(!keepMesh) seepage.mesh = null;
+  seepage.result = null;
+  seepage.progress.running = false;
+  seepage.progress.percent = 0;
+  if(seepage.status === 'success' || seepage.status === 'meshing' || seepage.status === 'solving') seepage.status = 'idle';
+  if(message) seepage.rejectReason = message;
+}
+
+function stage6BishopCurrentSeepageBoundary(model){
+  const boundary = buildSeepageOuterBoundary(model);
+  S.stage6Cache.bishopSeepageBoundary = boundary;
+  return boundary;
+}
+
+function stage6BishopSelectedBoundaryEdge(model){
+  const seepage = S.stage6?.bishop?.seepage;
+  const boundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
+  return (boundary || []).find((edge)=>edge.edgeKey === seepage?.selectedEdgeKey) || null;
+}
+
+function stage6BishopHoveredSeepageEdge(model){
+  const bishop = S?.stage6?.bishop;
+  if(!bishop || bishop.tool !== 'seepageBc' || !stage6BishopCanvasState.hoverWorld) return null;
+  const boundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
+  return pickSeepageBoundaryEdge(boundary, stage6BishopCanvasState.hoverWorld, stage6BishopSnapToleranceWorld())?.edge || null;
+}
+
+function stage6BishopSeepageBcForEdge(edgeKey){
+  return (S.stage6?.bishop?.seepage?.bcs || []).find((bc)=>bc.edgeKey === edgeKey) || null;
+}
+
+function stage6BishopSeepageEdgeLabel(edge){
+  if(!edge) return '—';
+  if(edge.source === 'terrain') return `Terrain edge ${edge.index + 1}`;
+  if(edge.source === 'base') return 'Model base';
+  if(edge.source === 'side-left') return 'Left side';
+  if(edge.source === 'side-right') return 'Right side';
+  return edge.source || 'Boundary edge';
+}
+
+function stage6BishopSeepageBcTypeLabel(type){
+  if(type === 'head') return 'Prescribed head';
+  if(type === 'seepage-face') return 'Seepage face';
+  return 'No-flow';
+}
+
+function stage6BishopSeepageHeadColor(value, min, max, alpha = 0.55){
+  const lo = Number.isFinite(min) ? min : 0;
+  const hi = Number.isFinite(max) && max > lo ? max : lo + 1;
+  const t = Math.max(0, Math.min((value - lo) / (hi - lo), 1));
+  const r = Math.round(33 + (44 - 33) * t);
+  const g = Math.round(109 + (158 - 109) * t);
+  const b = Math.round(186 + (82 - 186) * t);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function stage6BishopSyncSeepageState(model){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  const seepage = bishop.seepage;
+  const boundary = stage6BishopCurrentSeepageBoundary(model);
+  seepage.bcs = migrateSeepageBcs(seepage.bcs, boundary);
+  const geometryHash = model ? seepageGeometryHash(model, seepage.options) : '';
+  if(seepage.geometryHash && geometryHash && seepage.geometryHash !== geometryHash){
+    const clearMesh = seepage.options.freeSurface === 'fixed' || !model?.phreatic;
+    stage6BishopInvalidateSeepage('Seepage inputs changed.', !clearMesh);
+  }
+  seepage.geometryHash = geometryHash;
+  if(seepage.selectedEdgeKey && !boundary.some((edge)=>edge.edgeKey === seepage.selectedEdgeKey)){
+    seepage.selectedEdgeKey = '';
+  }
+  if(seepage.selectedBcId && !seepage.bcs.some((bc)=>bc.id === seepage.selectedBcId)){
+    seepage.selectedBcId = '';
+  }
+  return boundary;
+}
+
+function stage6BishopSelectSeepageBoundary(edgeKey){
+  ensureStage6State();
+  S.stage6.bishop.seepage.selectedEdgeKey = edgeKey || '';
+  const bc = stage6BishopSeepageBcForEdge(edgeKey);
+  S.stage6.bishop.seepage.selectedBcId = bc?.id || '';
+  renderStage6();
+}
+
+function stage6BishopSetSeepageBcType(value){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  const model = S.stage6Cache?.bishopModel || stage6BishopCurrentModel();
+  const edge = stage6BishopSelectedBoundaryEdge(model);
+  if(!edge) return;
+  const seepage = bishop.seepage;
+  const existing = stage6BishopSeepageBcForEdge(edge.edgeKey);
+  const nextType = value === 'head' ? 'head' : value === 'seepage-face' ? 'seepage-face' : 'no-flow';
+  const bc = makeSeepageBoundaryCondition(edge, {
+    ...existing,
+    id:existing?.id || `bc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    type:nextType,
+    head:nextType === 'head' ? (Number.isFinite(existing?.head) ? existing.head : edge.mid.y) : null
+  });
+  seepage.bcs = [...(seepage.bcs || []).filter((item)=>item.edgeKey !== edge.edgeKey), bc];
+  seepage.selectedBcId = bc.id;
+  stage6BishopInvalidateSeepage('Boundary conditions updated.', true);
+  renderStage6();
+}
+
+function stage6BishopSetSeepageBcHead(value){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const seepage = S.stage6.bishop.seepage;
+  const bc = (seepage.bcs || []).find((item)=>item.id === seepage.selectedBcId) || null;
+  if(!bc) return;
+  bc.type = 'head';
+  bc.head = value === '' || value == null ? null : +value;
+  stage6BishopInvalidateSeepage('Boundary head updated.', true);
+  renderStage6();
+}
+
+function stage6BishopDeleteSeepageBc(edgeKey){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const seepage = S.stage6.bishop.seepage;
+  seepage.bcs = (seepage.bcs || []).filter((bc)=>bc.edgeKey !== edgeKey);
+  if(seepage.selectedEdgeKey === edgeKey) seepage.selectedBcId = '';
+  stage6BishopInvalidateSeepage('Boundary condition removed.', true);
+  renderStage6();
+}
+
 function stage6BishopInvalidate(message){
   ensureStage6State();
   const bishop = S.stage6.bishop;
@@ -3987,6 +4190,7 @@ function stage6BishopCurrentModel(){
   const layers = stage6BishopSyncSoilModel();
   const model = buildBishopModelFromStageLayers(layers, S.stage6.bishop);
   S.stage6Cache.bishopModel = model;
+  stage6BishopSyncSeepageState(model);
   return model;
 }
 
@@ -4115,8 +4319,31 @@ function stage6BishopSetField(path, value){
     nextValue = !!value;
   }
   stage6Set(S.stage6.bishop, path, nextValue);
-  if(!(path === 'gridSnap' || path === 'pointSnap' || path === 'snapSize' || path.startsWith('viewport.') || path.startsWith('display.'))){
+  const isViewOnly = path === 'gridSnap' || path === 'pointSnap' || path === 'snapSize' || path.startsWith('viewport.') || path.startsWith('display.');
+  const isSeepageField = path === 'workspace' || path === 'useFemPorePressure' || path.startsWith('seepage.');
+  if(path.startsWith('seepage.')){
+    if(!path.startsWith('seepage.display.')){
+      const keepMesh = path.startsWith('seepage.bcs.') || path === 'seepage.bcs';
+      stage6BishopInvalidateSeepage('Seepage settings updated.', keepMesh);
+    }
+  }
+  if(path === 'useFemPorePressure'){
+    stage6BishopInvalidate(nextValue ? 'FEM pore pressure enabled; rerun Bishop search.' : 'Reverted to hydrostatic pore pressure; rerun Bishop search.');
+  } else if(!(isViewOnly || isSeepageField)){
     stage6BishopInvalidate();
+  }
+  renderStage6();
+}
+
+function stage6BishopSetWorkspace(workspace){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const next = workspace === 'seepage' ? 'seepage' : 'stability';
+  S.stage6.bishop.workspace = next;
+  if(next === 'seepage' && S.stage6.bishop.tool === 'terrain'){
+    S.stage6.bishop.tool = 'seepageBc';
+  } else if(next === 'stability' && S.stage6.bishop.tool === 'seepageBc'){
+    S.stage6.bishop.tool = 'edit';
   }
   renderStage6();
 }
@@ -4312,6 +4539,10 @@ function stage6BishopClear(kind){
     bishop.stale = true;
     renderStage6();
     return;
+  } else if(kind === 'seepageResults'){
+    stage6BishopInvalidateSeepage('Seepage result cleared.', false);
+    renderStage6();
+    return;
   }
   stage6BishopInvalidate();
   renderStage6();
@@ -4324,6 +4555,33 @@ function stage6BishopSetMaterialField(index, field, value){
   if(!material) return;
   material[field] = field === 'label' ? value : +value;
   stage6BishopInvalidate('Material properties updated; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopSetMaterialPermeability(index, field, value){
+  ensureStage6State();
+  stage6BishopSyncSoilModel();
+  const material = S.stage6.bishop.materials?.[index];
+  if(!material) return;
+  const nextValue = value === '' || value == null ? null : +value;
+  if(!(nextValue > 0)) return;
+  material[field] = nextValue;
+  material.kSource = 'user';
+  stage6BishopInvalidateSeepage('Material permeability updated.', false);
+  renderStage6();
+}
+
+function stage6BishopResetMaterialPermeability(index){
+  ensureStage6State();
+  const layers = stage6WorkingLayers();
+  const material = S.stage6.bishop.materials?.[index];
+  const layer = layers?.[index];
+  if(!material || !layer) return;
+  const next = resolveMaterialPermeability(layer, null);
+  material.kx = next.kx;
+  material.ky = next.ky;
+  material.kSource = next.kSource;
+  stage6BishopInvalidateSeepage('Material permeability reset to the current CPT-derived default.', false);
   renderStage6();
 }
 
@@ -4350,6 +4608,23 @@ function stage6BishopDeleteWall(index){
   S.stage6.bishop.walls = (S.stage6.bishop.walls || []).filter((_, wallIndex)=>wallIndex !== index);
   stage6BishopInvalidate('Retaining wall removed; rerun Bishop search.');
   renderStage6();
+}
+
+function stage6BishopStopSeepage(silent){
+  if(stage6BishopSeepageWorker){
+    stage6BishopSeepageWorker.terminate();
+    stage6BishopSeepageWorker = null;
+  }
+  if(S?.stage6?.bishop?.seepage){
+    const seepage = S.stage6.bishop.seepage;
+    seepage.progress.running = false;
+    seepage.progress.percent = 0;
+    if(seepage.status === 'meshing' || seepage.status === 'solving') seepage.status = 'idle';
+    if(!silent){
+      seepage.progress.message = 'Seepage run stopped.';
+      seepage.rejectReason = 'Seepage run stopped.';
+    }
+  }
 }
 
 function stage6BishopStopSearch(silent){
@@ -4426,6 +4701,64 @@ function stage6BishopEnsureWorker(){
   return stage6BishopWorker;
 }
 
+function stage6BishopEnsureSeepageWorker(){
+  if(stage6BishopSeepageWorker || typeof Worker === 'undefined') return stage6BishopSeepageWorker;
+  stage6BishopSeepageWorker = new Worker(new URL('./seepage/seepage-worker.js', import.meta.url), {type:'module'});
+  stage6BishopSeepageWorker.onmessage = (event)=>{
+    const payload = event?.data || {};
+    const seepage = S?.stage6?.bishop?.seepage;
+    if(!seepage || payload.runId !== seepage.progress?.runId) return;
+    if(payload.type === 'progress'){
+      seepage.progress.running = true;
+      seepage.progress.percent = payload.progress?.percent || 0;
+      seepage.progress.message = payload.progress?.message || 'Running seepage...';
+      if(payload.progress?.stage === 'meshing') seepage.status = 'meshing';
+      else if(payload.progress?.stage === 'solving' || payload.progress?.stage === 'post') seepage.status = 'solving';
+      renderStage6();
+      return;
+    }
+    seepage.progress.running = false;
+    seepage.progress.percent = 100;
+    if(payload.type === 'result'){
+      seepage.mesh = payload.output?.mesh || null;
+      seepage.result = payload.output?.result || null;
+      seepage.status = seepage.mesh && seepage.result ? 'success' : 'failed';
+      seepage.rejectReason = seepage.status === 'success'
+        ? ''
+        : 'The seepage solver returned no result.';
+      if(seepage.status === 'success' && !seepage.display?.showHead && !seepage.display?.showEquipotentials && !seepage.display?.showFlowVectors && !seepage.display?.showExitGradient){
+        seepage.display.showHead = true;
+      }
+      seepage.progress.message = seepage.status === 'success'
+        ? `Seepage solved in ${(payload.output?.result?.timing?.totalMs || 0).toFixed?.(0) || payload.output?.result?.timing?.totalMs || 0} ms.`
+        : 'Seepage solve failed.';
+      renderStage6();
+      return;
+    }
+    seepage.status = 'failed';
+    seepage.rejectReason = payload.error || 'Seepage solve failed.';
+    seepage.progress.message = seepage.rejectReason;
+    seepage.progress.percent = 0;
+    renderStage6();
+  };
+  stage6BishopSeepageWorker.onerror = ()=>{
+    if(S?.stage6?.bishop?.seepage){
+      const seepage = S.stage6.bishop.seepage;
+      seepage.progress.running = false;
+      seepage.progress.percent = 0;
+      seepage.status = 'failed';
+      seepage.rejectReason = 'Seepage worker error.';
+      seepage.progress.message = 'Seepage worker error.';
+      renderStage6();
+    }
+    if(stage6BishopSeepageWorker){
+      stage6BishopSeepageWorker.terminate();
+      stage6BishopSeepageWorker = null;
+    }
+  };
+  return stage6BishopSeepageWorker;
+}
+
 function stage6BishopRunSearch(){
   ensureStage6State();
   stage6RememberDetailsState();
@@ -4456,6 +4789,7 @@ function stage6BishopRunSearch(){
     solverConfig:{...bishop.solver},
     spencerConfig:{...bishop.spencer}
   };
+  stage6BishopStopSeepage(true);
   stage6BishopStopSearch(true);
   const worker = stage6BishopEnsureWorker();
   if(!worker){
@@ -4481,6 +4815,66 @@ function stage6BishopRunSearch(){
     type:'analyze',
     runId:stage6BishopRunId,
     input
+  });
+}
+
+function stage6BishopRunSeepage(){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  stage6BishopSyncSoilModel();
+  const model = stage6BishopCurrentModel();
+  if(!model){
+    bishop.seepage.rejectReason = 'Draw terrain and place the active CPT marker first.';
+    bishop.seepage.status = 'failed';
+    renderStage6();
+    return;
+  }
+  const activeBcs = (bishop.seepage.bcs || []).filter((bc)=>bc.status !== 'orphaned');
+  const headCount = activeBcs.filter((bc)=>bc.type === 'head').length;
+  if(!headCount){
+    bishop.seepage.rejectReason = 'Assign at least one prescribed-head boundary edge before running seepage.';
+    bishop.seepage.status = 'failed';
+    renderStage6();
+    return;
+  }
+  if(bishop.seepage.options?.freeSurface === 'fixed' && (!bishop.phreatic || bishop.phreatic.length < 2)){
+    bishop.seepage.rejectReason = 'Draw a phreatic line or switch seepage to iterative free-surface mode.';
+    bishop.seepage.status = 'failed';
+    renderStage6();
+    return;
+  }
+  stage6BishopStopSearch(true);
+  stage6BishopStopSeepage(true);
+  const worker = stage6BishopEnsureSeepageWorker();
+  if(!worker){
+    bishop.seepage.rejectReason = 'Web Worker is not available in this browser context.';
+    bishop.seepage.status = 'failed';
+    renderStage6();
+    return;
+  }
+  stage6BishopSeepageRunId += 1;
+  bishop.seepage.status = 'meshing';
+  bishop.seepage.rejectReason = '';
+  bishop.seepage.progress = {
+    running:true,
+    percent:0,
+    message:'Building triangulated seepage mesh...',
+    runId:stage6BishopSeepageRunId
+  };
+  const seepageInputModel = {
+    ...model,
+    seepage:{
+      ...(model.seepage || {}),
+      mesh:null,
+      result:null
+    }
+  };
+  renderStage6();
+  worker.postMessage({
+    type:'run-seepage',
+    runId:stage6BishopSeepageRunId,
+    input:{model:seepageInputModel}
   });
 }
 
@@ -4600,6 +4994,12 @@ function stage6BishopModeMeta(){
     return {
       label:'Retaining wall mode',
       hint:'Click the wall top, then click the wall tip. Walls stay vertical and act as infinitely stiff stabilising elements in Bishop and Spencer.'
+    };
+  }
+  if(bishop.tool === 'seepageBc'){
+    return {
+      label:'Boundary-condition mode',
+      hint:'Click an outer-boundary edge to assign a seepage boundary condition. Only the terrain, model base, and the two side boundaries can carry seepage BCs.'
     };
   }
   return {
@@ -5341,6 +5741,20 @@ function stage6BishopCommitDrawPoint(canvas, world){
   ensureStage6State();
   const bishop = S.stage6.bishop;
   const tool = bishop.tool;
+  if(tool === 'seepageBc'){
+    const model = S.stage6Cache?.bishopModel || stage6BishopCurrentModel();
+    const boundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
+    const picked = pickSeepageBoundaryEdge(boundary, world, stage6BishopSnapToleranceWorld());
+    if(!picked?.edge){
+      bishop.progress.message = 'Click near an outer-boundary edge to assign a seepage boundary condition.';
+      renderStage6();
+      return;
+    }
+    bishop.seepage.selectedEdgeKey = picked.edge.edgeKey;
+    bishop.seepage.selectedBcId = stage6BishopSeepageBcForEdge(picked.edge.edgeKey)?.id || '';
+    renderStage6();
+    return;
+  }
   if(tool === 'terrain' || tool === 'phreatic'){
     const snapped = stage6BishopSnapWorldPoint(world, 'free');
     const next = [...bishop.draft];
@@ -5837,6 +6251,93 @@ function stage6BishopDrawCanvas(){
     drawPolyline(pts, stroke, widthPx, dash);
   };
 
+  const seepageMesh = bishop.seepage?.mesh || null;
+  const seepageResult = bishop.seepage?.result || null;
+  if(bishop.workspace === 'seepage' && seepageMesh && seepageResult){
+    if(bishop.seepage.display?.showHead){
+      ctx.save();
+      seepageMesh.cells.forEach((cell, index)=>{
+        const polygon = cell?.polygon || [];
+        if(polygon.length < 3) return;
+        const screen = polygon.map((point)=>stage6BishopWorldToScreen(point));
+        ctx.fillStyle = stage6BishopSeepageHeadColor(
+          seepageResult.cellHeads?.[index] ?? seepageResult.headMin ?? 0,
+          seepageResult.headMin,
+          seepageResult.headMax,
+          seepageResult.cellDryMask?.[index] ? 0.20 : 0.44
+        );
+        ctx.beginPath();
+        ctx.moveTo(screen[0].x, screen[0].y);
+        for(let i=1;i<screen.length;i+=1) ctx.lineTo(screen[i].x, screen[i].y);
+        ctx.closePath();
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    (seepageResult.phreaticSegments || []).forEach((segment)=>{
+      drawPolyline(segment, '#1D9E75', 2, [8, 4]);
+    });
+
+    if(bishop.seepage.display?.showEquipotentials){
+      (seepageResult.equipotentialSegments || []).forEach((group, groupIndex)=>{
+        const alpha = groupIndex % 2 === 0 ? 0.42 : 0.26;
+        (group.segments || []).forEach((segment)=>{
+          drawPolyline(segment, `rgba(33, 109, 186, ${alpha})`, 1.1, []);
+        });
+      });
+    }
+
+    if(bishop.seepage.display?.showFlowVectors){
+      const step = Math.max(1, Math.round(Math.sqrt((seepageMesh.cells?.length || 1) / 110)));
+      const maxQ = Math.max(...(seepageResult.cellGradients || []).map((item)=>item?.qMagnitude || 0), 0);
+      seepageMesh.cells.forEach((cell, index)=>{
+        if(index % step !== 0) return;
+        const grad = seepageResult.cellGradients?.[index];
+        if(!grad || !(grad.qMagnitude > 1e-10) || !(maxQ > 0)) return;
+        const bbox = cell?.bbox || {};
+        const cellWidth = Math.max((bbox.xMax || 0) - (bbox.xMin || 0), 0.05);
+        const cellHeight = Math.max((bbox.yMax || 0) - (bbox.yMin || 0), 0.05);
+        const scale = 0.45 * Math.min(cellWidth, cellHeight) * (grad.qMagnitude / maxQ);
+        const length = Math.max(scale, 0.06);
+        const ux = grad.qx / (grad.qMagnitude || 1);
+        const uy = grad.qy / (grad.qMagnitude || 1);
+        const start = stage6BishopWorldToScreen(cell.centroid || {x:0, y:0});
+        const end = stage6BishopWorldToScreen({
+          x:(cell.centroid?.x || 0) + ux * length,
+          y:(cell.centroid?.y || 0) + uy * length
+        });
+        ctx.save();
+        ctx.strokeStyle = 'rgba(20, 58, 95, 0.72)';
+        ctx.fillStyle = 'rgba(20, 58, 95, 0.72)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+        const angle = Math.atan2(end.y - start.y, end.x - start.x);
+        const ah = 6;
+        ctx.beginPath();
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(end.x - ah * Math.cos(angle - Math.PI / 6), end.y - ah * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(end.x - ah * Math.cos(angle + Math.PI / 6), end.y - ah * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    if(bishop.seepage.display?.showExitGradient){
+      (seepageMesh.boundaryFaces || []).forEach((face, index)=>{
+        if(face?.type !== 'seepage-face') return;
+        const gradient = seepageResult.boundaryGradients?.[index] || 0;
+        const t = Math.max(0, Math.min(gradient / Math.max(seepageResult.maxExitGradient || 1, 1e-6), 1));
+        const stroke = `rgba(${Math.round(70 + 185 * t)}, ${Math.round(165 - 105 * t)}, 72, 0.86)`;
+        drawPolyline([face.a, face.b], stroke, 4, []);
+      });
+    }
+  }
+
   const drawLoadZoneMarkers = (zone, q, color)=>{
     if(!stage6BishopValidZone(zone) || bishop.terrain.length < 2) return;
     const terrain = {vertices:bishop.terrain};
@@ -6053,6 +6554,47 @@ function stage6BishopDrawCanvas(){
   }
 
   if(bishop.terrain?.length >= 2) drawPolyline(bishop.terrain, '#2d3a4a', 3);
+
+  if(bishop.workspace === 'seepage' && model && bishop.seepage?.display?.showBoundaryConditions !== false){
+    const boundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
+    const selectedBoundary = stage6BishopSelectedBoundaryEdge(model);
+    const hoveredBoundary = stage6BishopHoveredSeepageEdge(model);
+    boundary.forEach((edge)=>{
+      const bc = stage6BishopSeepageBcForEdge(edge.edgeKey);
+      const isSelected = selectedBoundary?.edgeKey === edge.edgeKey;
+      const isHovered = hoveredBoundary?.edgeKey === edge.edgeKey;
+      const stroke = bc?.type === 'head'
+        ? '#2f7fda'
+        : bc?.type === 'seepage-face'
+          ? '#1D9E75'
+          : '#6f7d8a';
+      const dash = bc?.type === 'head' ? [] : bc?.type === 'seepage-face' ? [10, 6] : [7, 5];
+      drawPolyline([edge.a, edge.b], stroke, isSelected ? 5 : isHovered ? 4 : 2.5, dash);
+      if((isSelected || isHovered) && bc?.status !== 'orphaned'){
+        drawPolyline([edge.a, edge.b], 'rgba(33,49,66,0.9)', 1.2, []);
+      }
+      if(bishop.seepage.display?.showBoundaryLabels !== false){
+        const label = bc?.type === 'head'
+          ? `h=${Number(bc.head ?? edge.mid.y).toFixed(2)} m`
+          : bc?.type === 'seepage-face'
+            ? 'h = y'
+            : (isSelected ? 'no-flow' : '');
+        if(label){
+          const mid = stage6BishopWorldToScreen(edge.mid);
+          ctx.save();
+          ctx.font = '11px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+          ctx.strokeText(label, mid.x, mid.y - 6);
+          ctx.fillStyle = stroke;
+          ctx.fillText(label, mid.x, mid.y - 6);
+          ctx.restore();
+        }
+      }
+    });
+  }
 
   if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
     const pt = {x:bishop.activeCptX, y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX)};
@@ -7617,6 +8159,43 @@ function renderStage6BishopApp(){
   const customRegionCount = (bishop.customRegions || []).length;
   const customModeActive = !!bishop.useCustomRegions && customRegionCount > 0;
   const showingCustomRegionPreview = stage6BishopShowingCustomRegionPreview(model);
+  const workspace = bishop.workspace === 'seepage' ? 'seepage' : 'stability';
+  const seepage = bishop.seepage || {};
+  const seepageBoundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
+  const selectedSeepageEdge = stage6BishopSelectedBoundaryEdge(model);
+  const selectedSeepageBc = seepage.selectedBcId
+    ? (seepage.bcs || []).find((bc)=>bc.id === seepage.selectedBcId) || null
+    : (selectedSeepageEdge ? stage6BishopSeepageBcForEdge(selectedSeepageEdge.edgeKey) : null);
+  const seepageActiveBcs = (seepage.bcs || []).filter((bc)=>bc.status !== 'orphaned');
+  const seepageOrphanedBcs = (seepage.bcs || []).filter((bc)=>bc.status === 'orphaned');
+  const seepageHeadCount = seepageActiveBcs.filter((bc)=>bc.type === 'head').length;
+  const seepagePhreaticReady = seepage.options?.freeSurface === 'iterate' || (bishop.phreatic || []).length >= 2;
+  const seepageRunReady = !!model && seepageHeadCount > 0 && seepagePhreaticReady;
+  const seepageHasResult = !!seepage.mesh && !!seepage.result;
+  const seepageSetupMessage = !model
+    ? 'Draw terrain and place the active CPT before assigning seepage boundary conditions.'
+    : seepageHeadCount > 0
+      ? `${seepageHeadCount} prescribed-head boundary ${seepageHeadCount === 1 ? 'edge is' : 'edges are'} ready.`
+      : 'Assign at least one prescribed-head boundary edge to make the seepage model solvable.';
+  const seepageStatusMessage = seepage.progress?.running
+    ? (seepage.progress.message || 'Running seepage...')
+    : seepage.status === 'success'
+      ? (seepage.progress?.message || 'Seepage result ready.')
+      : (seepage.rejectReason || seepageSetupMessage);
+  const toolbarRunLabel = workspace === 'seepage' ? 'Run seepage' : `Run ${stage6BishopMethodModeLabel(bishop.methodMode)}`;
+  const toolbarRunAction = workspace === 'seepage' ? 'stage6BishopRunSeepage()' : 'stage6BishopRunSearch()';
+  const toolbarStopAction = workspace === 'seepage' ? 'stage6BishopStopSeepage();renderStage6()' : 'stage6BishopStopSearch();renderStage6()';
+  const toolbarClearAction = workspace === 'seepage' ? "stage6BishopClear('seepageResults')" : "stage6BishopClear('results')";
+  const toolbarClearLabel = workspace === 'seepage' ? 'Clear seepage' : 'Clear results';
+  const toolbarRunReady = workspace === 'seepage' ? seepageRunReady : runReady;
+  const toolbarProgressText = workspace === 'seepage'
+    ? seepageStatusMessage
+    : (bishop.progress.running
+      ? `${stage6BishopMethodModeLabel(bishop.methodMode)} · ${bishop.progress.trial||0}/${bishop.progress.total||0} Bishop trials`
+      : (bishop.progress.message || stage6BishopReadyMessage(runReady)));
+  const toolbarProgressPercent = workspace === 'seepage'
+    ? (seepage.progress?.running ? (seepage.progress.percent || 0) : (seepage.status === 'success' ? 100 : 0))
+    : (bishop.progress.percent || 0);
   const resultRows = results.slice(0, Math.max(bishop.search.keepBest || 10, 1)).map((result, index)=>`
     <tr class="${index === (bishop.selectedResult || 0) ? 'sel':''}">
       <td>${index+1}</td>
@@ -7654,81 +8233,29 @@ function renderStage6BishopApp(){
       <td><button class="btn sm" onclick="stage6BishopDeleteWall(${index})">Delete</button></td>
     </tr>
   `).join('');
+  const permeabilityRows = (bishop.materials || []).map((mat, index)=>`
+    <tr>
+      <td>${stage6EscAttr(mat.label)}</td>
+      <td><input type="number" step="1e-7" min="1e-12" value="${Number(mat.kx || 0).toExponential(2)}" onchange="stage6BishopSetMaterialPermeability(${index}, 'kx', this.value)"></td>
+      <td><input type="number" step="1e-7" min="1e-12" value="${Number(mat.ky || 0).toExponential(2)}" onchange="stage6BishopSetMaterialPermeability(${index}, 'ky', this.value)"></td>
+      <td><span class="st6-bishop-source-pill st6-bishop-source-pill--${stage6EscAttr(mat.kSource || 'sbtn-default')}">${stage6EscAttr(seepageSourceLabel(mat.kSource))}</span></td>
+      <td><button class="btn sm" onclick="stage6BishopResetMaterialPermeability(${index})">Reset auto</button></td>
+    </tr>
+  `).join('');
+  const seepageBcRows = seepageActiveBcs.map((bc)=>{
+    const edge = seepageBoundary.find((item)=>item.edgeKey === bc.edgeKey);
+    return `
+      <tr class="${selectedSeepageEdge?.edgeKey === bc.edgeKey ? 'sel' : ''}">
+        <td>${stage6EscAttr(stage6BishopSeepageEdgeLabel(edge || {source:bc.anchor?.source, index:0}))}</td>
+        <td>${stage6EscAttr(stage6BishopSeepageBcTypeLabel(bc.type))}</td>
+        <td>${bc.type === 'head' && Number.isFinite(bc.head) ? `${bc.head.toFixed(2)} m` : '—'}</td>
+        <td>${bc.status}</td>
+        <td><button class="btn sm" onclick="stage6BishopSelectSeepageBoundary('${stage6EscAttr(bc.edgeKey)}')">Select</button></td>
+      </tr>
+    `;
+  }).join('');
   const regionLegendItems = stage6BishopRegionLegendItems({regions:stage6BishopDisplayRegions(model)});
-  return `
-    <div class="mc2 st6-bishop">
-      <div class="mc2-head" style="margin-bottom:12px">
-        <span style="font-size:13px;font-weight:600">Bishop simplified + Spencer equilibrium check</span>
-        <span style="font-size:11px;color:var(--tx2)">Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.</span>
-      </div>
-      <div class="st6-bishop-layout">
-        <div class="st6-bishop-side">
-          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Geometry</div>
-          <div class="ctrl-row st6-bishop-controls">
-            <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally add infinitely stiff retaining walls and a uniform surcharge zone, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
-            <div class="st6-bishop-tool-groups">
-              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-terrain"${stage6DetailsOpen('bishop-geo-terrain')}>
-                <summary>Terrain</summary>
-                <div class="st6-adv-body">
-                  <div class="st6-bishop-tools">
-                    <button class="btn sm ${bishop.tool==='terrain'?'active':''}" onclick="stage6BishopSetTool('terrain')">Draw terrain</button>
-                    <button class="btn sm" onclick="stage6BishopTriggerDxfImport()">Import DXF terrain</button>
-                    <input id="stage6BishopDxfInput" type="file" accept=".dxf,.DXF" style="display:none" onchange="stage6BishopImportDxf(event)">
-                    <button class="btn sm" onclick="stage6BishopFinishDraft()">Finish draft</button>
-                    <button class="btn sm" onclick="stage6BishopPopDraftPoint()">Undo point</button>
-                    <button class="btn sm" onclick="stage6BishopClear('draft')">Clear draft</button>
-                  </div>
-                </div>
-              </details>
-              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-regions"${stage6DetailsOpen('bishop-geo-regions')}>
-                <summary>Soil polygons</summary>
-                <div class="st6-adv-body">
-                  <div class="st6-help">Default Bishop still uses CPT-derived polygons. To edit them, first copy the current solver polygons into a custom set. After that you can draw additional polygons, select one in <strong>Edit / pan</strong>, drag its vertices, split it into smaller polygons, cut interior holes with a different material, and assign one of the imported Bishop materials.</div>
-                  ${showingCustomRegionPreview ? `<div class="st6-help">Custom polygons are visible for editing, but the solver is still using the CPT-derived polygon set until you enable the checkbox below.</div>` : ''}
-                  <div class="st6-bishop-tools">
-                    <button class="btn sm" onclick="stage6BishopCopyCurrentRegionsToCustom()">Copy current polygons</button>
-                    <button class="btn sm ${bishop.tool==='region'?'active':''}" onclick="stage6BishopSetTool('region')">Draw polygon</button>
-                    <button class="btn sm ${bishop.tool==='regionHole'?'active':''}" onclick="stage6BishopSetTool('regionHole')" ${selectedCustomRegion ? '' : 'disabled'}>Cut hole</button>
-                    <button class="btn sm ${bishop.tool==='regionSplit'?'active':''}" onclick="stage6BishopSetTool('regionSplit')" ${selectedCustomRegion ? '' : 'disabled'}>Split selected</button>
-                    <button class="btn sm" onclick="stage6BishopFinishDraft()" ${((bishop.draftKind==='region' || bishop.draftKind==='regionHole') && bishop.draft.length >= 3) ? '' : 'disabled'}>${bishop.draftKind==='regionHole' ? 'Finish hole' : 'Finish polygon'}</button>
-                    <button class="btn sm" onclick="stage6BishopDeleteSelectedRegion()" ${selectedCustomRegion ? '' : 'disabled'}>Delete selected</button>
-                    <button class="btn sm" onclick="stage6BishopClear('customRegions')" ${customRegionCount ? '' : 'disabled'}>Clear custom polygons</button>
-                  </div>
-                  <label class="st6-bishop-check">
-                    <input type="checkbox" ${customModeActive ? 'checked' : ''} onchange="stage6BishopSetUseCustomRegions(this.checked)" ${customRegionCount ? '' : 'disabled'}>
-                    Use custom polygons in the solver
-                  </label>
-                  <label style="font-size:11px;color:var(--tx2)">Material for new polygons
-                    <select onchange="stage6BishopSetField('regionDraftMaterialId', this.value)">
-                      ${(bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${(bishop.regionDraftMaterialId || bishop.materials?.[0]?.id)===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('')}
-                    </select>
-                  </label>
-                  ${selectedCustomRegion ? `
-                    <label style="font-size:11px;color:var(--tx2)">Selected polygon material
-                      <select onchange="stage6BishopSetSelectedRegionMaterial(this.value)">
-                        ${(bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${selectedCustomRegion.materialId===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('')}
-                      </select>
-                    </label>
-                    <div class="st6-help">Selected polygon: <strong>${stage6EscAttr(selectedCustomRegion.id)}</strong> · vertices <strong>${selectedCustomRegion.polygon.length}</strong> · source <strong>${selectedCustomRegion.source === 'cpt-copy' ? 'copied from CPT' : selectedCustomRegion.source === 'hole' ? 'hole cut' : selectedCustomRegion.source === 'edited' ? 'edited fragment' : 'custom drawn'}</strong></div>
-                  ` : `
-                    <div class="st6-help">${customRegionCount ? 'No custom polygon is selected. Click one in Edit / pan mode to edit it.' : 'No custom polygons yet. Copy the current solver polygons or draw a new polygon to start editing.'}</div>
-                  `}
-                </div>
-              </details>
-              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-setup"${stage6DetailsOpen('bishop-geo-setup')}>
-                <summary>Section setup</summary>
-                <div class="st6-adv-body">
-                  <div class="st6-bishop-tools">
-                    <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
-                    <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
-                    <button class="btn sm ${bishop.tool==='wall'?'active':''}" onclick="stage6BishopSetTool('wall')">Retaining wall</button>
-                    <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
-                    <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
-                    <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
-                    <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
-                  </div>
-                </div>
-              </details>
+  const workspaceGeometrySectionHtml = workspace === 'stability' ? `
               <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-analysis"${stage6DetailsOpen('bishop-geo-analysis')}>
                 <summary>Analysis inputs</summary>
                 <div class="st6-adv-body">
@@ -7753,80 +8280,39 @@ function renderStage6BishopApp(){
                   </label>
                 </div>
               </details>
-              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-view"${stage6DetailsOpen('bishop-geo-view')}>
-                <summary>View</summary>
+  ` : `
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-seepage-boundary"${stage6DetailsOpen('bishop-geo-seepage-boundary')}>
+                <summary>Boundary conditions</summary>
                 <div class="st6-adv-body">
-                  <label class="st6-bishop-check">
-                    <input type="checkbox" ${bishop.gridSnap?'checked':''} onchange="stage6BishopSetField('gridSnap', this.checked)">
-                    Snap to grid
-                  </label>
-                  <label class="st6-bishop-check">
-                    <input type="checkbox" ${bishop.pointSnap?'checked':''} onchange="stage6BishopSetField('pointSnap', this.checked)">
-                    Snap to existing points
-                  </label>
-                  <label style="font-size:11px;color:var(--tx2)">Grid size (m)
-                    <input type="number" step="0.05" min="0.05" value="${bishop.snapSize.toFixed(2)}" onchange="stage6BishopSetField('snapSize', this.value)">
-                  </label>
-                  <div class="st6-help">If both snap modes are enabled, the cursor snaps to whichever candidate is closer: the grid node or the nearest existing Bishop canvas point.</div>
-                  <div class="st6-bishop-visuals">
-                    <div class="st6-bishop-visuals-title">Polygon overlay</div>
-                    <label class="st6-bishop-check">
-                      <input type="checkbox" ${bishop.display?.showRegions !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegions', this.checked)">
-                      Show soil polygons
-                    </label>
-                    <label class="st6-bishop-check">
-                      <input type="checkbox" ${bishop.display?.showRegionLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLabels', this.checked)">
-                      Show polygon labels
-                    </label>
-                    <label class="st6-bishop-check">
-                      <input type="checkbox" ${bishop.display?.showRegionLegend !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLegend', this.checked)">
-                      Show polygon legend
-                    </label>
-                    <label style="font-size:11px;color:var(--tx2)">Fill opacity
-                      <input type="number" step="0.05" min="0.05" max="0.75" value="${Number(bishop.display?.regionOpacity ?? 0.22).toFixed(2)}" onchange="stage6BishopSetField('display.regionOpacity', this.value)">
-                    </label>
+                  <div class="st6-help">Switch the shared canvas into boundary-condition mode, then click an outer-boundary edge. Terrain, model base, and the two side boundaries can carry seepage BCs; interior soil-region edges cannot.</div>
+                  <div class="st6-bishop-tools">
+                    <button class="btn sm ${bishop.tool==='seepageBc'?'active':''}" onclick="stage6BishopSetTool('seepageBc')" ${model ? '' : 'disabled'}>Assign BC</button>
+                    <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
                   </div>
+                  ${selectedSeepageEdge ? `
+                    <div class="st6-help">Selected edge: <strong>${stage6EscAttr(stage6BishopSeepageEdgeLabel(selectedSeepageEdge))}</strong> · length <strong>${selectedSeepageEdge.length.toFixed(2)} m</strong></div>
+                    <label style="font-size:11px;color:var(--tx2)">Boundary type
+                      <select onchange="stage6BishopSetSeepageBcType(this.value)">
+                        <option value="no-flow"${(selectedSeepageBc?.type || 'no-flow')==='no-flow'?' selected':''}>No-flow</option>
+                        <option value="head"${selectedSeepageBc?.type==='head'?' selected':''}>Prescribed head</option>
+                        <option value="seepage-face"${selectedSeepageBc?.type==='seepage-face'?' selected':''}>Seepage face</option>
+                      </select>
+                    </label>
+                    ${(selectedSeepageBc?.type || 'no-flow') === 'head' ? `
+                      <label style="font-size:11px;color:var(--tx2)">Head h (m)
+                        <input type="number" step="0.05" value="${Number(selectedSeepageBc?.head ?? selectedSeepageEdge.mid.y).toFixed(2)}" onchange="stage6BishopSetSeepageBcHead(this.value)">
+                      </label>
+                    ` : ''}
+                    <div class="st6-bishop-mini-actions">
+                      <button class="btn sm" onclick="stage6BishopDeleteSeepageBc('${stage6EscAttr(selectedSeepageEdge.edgeKey)}')">Remove explicit BC</button>
+                    </div>
+                  ` : `
+                    <div class="st6-help">${seepageSetupMessage}</div>
+                  `}
                 </div>
               </details>
-              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-clear"${stage6DetailsOpen('bishop-geo-clear')}>
-                <summary>Clear accepted geometry</summary>
-                <div class="st6-adv-body">
-                  <div class="st6-bishop-mini-actions">
-                    <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
-                    <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
-                    <button class="btn sm" onclick="stage6BishopClear('walls')">Clear walls</button>
-                    <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
-                    <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
-                    <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
-                    <button class="btn sm" onclick="stage6BishopClear('customRegions')">Clear custom polygons</button>
-                  </div>
-                </div>
-              </details>
-            </div>
-            <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
-              Solver polygons: <strong>${model?.regions?.length || 0}</strong> (${model?.regionMode === 'custom' ? 'custom' : 'CPT-derived'})<br>
-              Custom polygons stored: <strong>${customRegionCount}</strong><br>
-              Polygon overlay: <strong>${showingCustomRegionPreview ? 'custom preview' : (model?.regionMode === 'custom' ? 'custom active' : 'CPT-derived')}</strong><br>
-              Terrain vertices: <strong>${bishop.terrain.length}</strong><br>
-              Phreatic vertices: <strong>${bishop.phreatic.length}</strong><br>
-              Retaining walls: <strong>${wallCount}</strong><br>
-              Active CPT x: <strong>${Number.isFinite(bishop.activeCptX)?bishop.activeCptX.toFixed(2)+' m':'not placed'}</strong><br>
-              Entry zone: <strong>${bishop.entryZone?`${bishop.entryZone.xStart.toFixed(2)}-${bishop.entryZone.xEnd.toFixed(2)} m`:'not set'}</strong><br>
-              Exit zone: <strong>${bishop.exitZone?`${bishop.exitZone.xStart.toFixed(2)}-${bishop.exitZone.xEnd.toFixed(2)} m`:'not set'}</strong><br>
-              Surface load: <strong>${loadSummary}</strong>
-            </div>
-            <details class="st6-adv" data-st6details="bishop-walls"${stage6DetailsOpen('bishop-walls')}>
-              <summary>Retaining walls</summary>
-              <div class="st6-adv-body">
-                <div class="st6-help">Walls are treated as infinitely stiff vertical elements. When a slip circle intersects a wall, the solver adds the wall's passive resistance as a stabilising moment in Bishop and as a horizontal push in Spencer. If a circle passes below the wall tip, the wall has no effect on that surface.</div>
-                <div style="overflow:auto">
-                  <table class="tbl st6-bishop-materials">
-                    <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Length</th><th></th></tr></thead>
-                    <tbody>${wallRows || '<tr><td colspan="7" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
-                  </table>
-                </div>
-              </div>
-            </details>
+  `;
+  const workspaceSettingsHtml = workspace === 'stability' ? `
             <details class="st6-adv" data-st6details="bishop-search"${stage6DetailsOpen('bishop-search')}>
               <summary>Search and solver settings</summary>
               <div class="st6-adv-body">
@@ -7922,18 +8408,305 @@ function renderStage6BishopApp(){
                 </div>
               </div>
             </details>
+  ` : `
+            <details class="st6-adv" data-st6details="bishop-seepage-perm"${stage6DetailsOpen('bishop-seepage-perm')}>
+              <summary>Permeability</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">Each Bishop material now carries seepage permeability. CPT-derived values are carried through when available; otherwise the app uses an SBTn-style default. Editing either value marks that material as a user override.</div>
+                <div style="overflow:auto">
+                  <table class="tbl st6-bishop-materials">
+                    <thead><tr><th>Material</th><th>k_x (m/s)</th><th>k_y (m/s)</th><th>Source</th><th></th></tr></thead>
+                    <tbody>${permeabilityRows}</tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            <details class="st6-adv" data-st6details="bishop-seepage-bcs"${stage6DetailsOpen('bishop-seepage-bcs')}>
+              <summary>Assigned boundary conditions</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">The seepage solver will require at least one prescribed-head edge. Any outer boundary edge without an explicit assignment still behaves as no-flow by default.</div>
+                <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+                  Outer boundary edges: <strong>${seepageBoundary.length}</strong><br>
+                  Active BCs: <strong>${seepageActiveBcs.length}</strong><br>
+                  Prescribed head edges: <strong>${seepageHeadCount}</strong><br>
+                  Orphaned BCs: <strong>${seepageOrphanedBcs.length}</strong><br>
+                  Status: <strong>${stage6EscAttr(seepageSetupMessage)}</strong>
+                </div>
+                <div style="overflow:auto">
+                  <table class="tbl st6-bishop-materials">
+                    <thead><tr><th>Edge</th><th>Type</th><th>Head</th><th>Status</th><th></th></tr></thead>
+                    <tbody>${seepageBcRows || '<tr><td colspan="5" style="text-align:center;color:var(--tx2)">No explicit boundary conditions yet.</td></tr>'}</tbody>
+                  </table>
+                </div>
+                ${seepageOrphanedBcs.length ? `
+                  <div class="st6-help">Some BC anchors no longer match the rebuilt geometry and are marked orphaned. Reassign those edges on the canvas before solving seepage.</div>
+                ` : ''}
+              </div>
+            </details>
+            <details class="st6-adv" data-st6details="bishop-seepage-options"${stage6DetailsOpen('bishop-seepage-options')}>
+              <summary>Mesh & solve</summary>
+              <div class="st6-adv-body">
+                <label style="font-size:11px;color:var(--tx2)">Free-surface mode
+                  <select onchange="stage6BishopSetField('seepage.options.freeSurface', this.value)">
+                    <option value="fixed"${seepage.options?.freeSurface==='fixed'?' selected':''}>Fixed phreatic line</option>
+                    <option value="iterate"${seepage.options?.freeSurface==='iterate'?' selected':''}>Iterative free surface</option>
+                  </select>
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Target element area (m²)
+                  <input type="number" step="0.05" min="0.01" value="${Number(seepage.options?.meshTargetArea || 0.5).toFixed(2)}" onchange="stage6BishopSetField('seepage.options.meshTargetArea', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Max free-surface iterations
+                  <input type="number" step="1" min="1" value="${Math.round(seepage.options?.maxFreeSurfaceIter || 30)}" onchange="stage6BishopSetField('seepage.options.maxFreeSurfaceIter', this.value)">
+                </label>
+                <label class="st6-bishop-check">
+                  <input type="checkbox" ${seepage.options?.usePhreaticAsSeed !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.options.usePhreaticAsSeed', this.checked)">
+                  Use the drawn phreatic line as the initial wet/dry seed
+                </label>
+                <div class="st6-bishop-tools">
+                  <button class="btn sm" onclick="stage6BishopRunSeepage()" ${seepageRunReady ? '' : 'disabled'}>Run seepage</button>
+                  <button class="btn sm" onclick="stage6BishopStopSeepage()">Stop</button>
+                  <button class="btn sm" onclick="stage6BishopClear('seepageResults')" ${seepageHasResult ? '' : 'disabled'}>Clear seepage result</button>
+                </div>
+                <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+                  Status: <strong>${stage6EscAttr(seepageStatusMessage)}</strong><br>
+                  Solver: <strong>triangulated T3 FEM mesh</strong><br>
+                  Nodes: <strong>${seepage.mesh?.nodes?.length || 0}</strong><br>
+                  Triangles: <strong>${seepage.mesh?.elements?.length || 0}</strong><br>
+                  Display cells: <strong>${seepage.mesh?.cells?.length || 0}</strong><br>
+                  Head range: <strong>${seepage.result ? `${seepage.result.headMin.toFixed(2)} to ${seepage.result.headMax.toFixed(2)} m` : '—'}</strong><br>
+                  Through-flow: <strong>${seepage.result ? `${(seepage.result.throughFlow || 0).toExponential(2)} m³/s/m` : '—'}</strong><br>
+                  Max exit gradient: <strong>${seepage.result ? (seepage.result.maxExitGradient || 0).toFixed(3) : '—'}</strong><br>
+                  Dry cells: <strong>${seepage.result?.dryCellCount || 0}</strong>
+                </div>
+                <div class="st6-help">The seepage solver now builds a triangle mesh directly from the shared Bishop terrain, soil polygons, walls, and optional fixed phreatic line, then solves the head field in a worker and feeds that same result back into the canvas overlays and the optional FEM pore-pressure hook.</div>
+              </div>
+            </details>
+            <details class="st6-adv" data-st6details="bishop-seepage-integration"${stage6DetailsOpen('bishop-seepage-integration')}>
+              <summary>Bishop integration</summary>
+              <div class="st6-adv-body">
+                <label class="st6-bishop-check">
+                  <input type="checkbox" ${bishop.useFemPorePressure ? 'checked' : ''} onchange="stage6BishopSetField('useFemPorePressure', this.checked)">
+                  Use FEM pore pressure when a seepage result exists
+                </label>
+                <div class="st6-help">This opt-in stays harmless while the seepage result is empty: Bishop and Spencer continue to use the drawn hydrostatic phreatic line until a seepage field is available.</div>
+              </div>
+            </details>
+  `;
+  const workspaceInfoHtml = workspace === 'stability' ? `
+            <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+              Solver polygons: <strong>${model?.regions?.length || 0}</strong> (${model?.regionMode === 'custom' ? 'custom' : 'CPT-derived'})<br>
+              Custom polygons stored: <strong>${customRegionCount}</strong><br>
+              Polygon overlay: <strong>${showingCustomRegionPreview ? 'custom preview' : (model?.regionMode === 'custom' ? 'custom active' : 'CPT-derived')}</strong><br>
+              Terrain vertices: <strong>${bishop.terrain.length}</strong><br>
+              Phreatic vertices: <strong>${bishop.phreatic.length}</strong><br>
+              Retaining walls: <strong>${wallCount}</strong><br>
+              Active CPT x: <strong>${Number.isFinite(bishop.activeCptX)?bishop.activeCptX.toFixed(2)+' m':'not placed'}</strong><br>
+              Entry zone: <strong>${bishop.entryZone?`${bishop.entryZone.xStart.toFixed(2)}-${bishop.entryZone.xEnd.toFixed(2)} m`:'not set'}</strong><br>
+              Exit zone: <strong>${bishop.exitZone?`${bishop.exitZone.xStart.toFixed(2)}-${bishop.exitZone.xEnd.toFixed(2)} m`:'not set'}</strong><br>
+              Surface load: <strong>${loadSummary}</strong>
+            </div>
+  ` : `
+            <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+              Shared geometry polygons: <strong>${model?.regions?.length || 0}</strong><br>
+              Outer seepage boundary edges: <strong>${seepageBoundary.length}</strong><br>
+              Explicit BCs: <strong>${seepageActiveBcs.length}</strong><br>
+              Prescribed head edges: <strong>${seepageHeadCount}</strong><br>
+              Orphaned BCs: <strong>${seepageOrphanedBcs.length}</strong><br>
+              Selected edge: <strong>${selectedSeepageEdge ? stage6EscAttr(stage6BishopSeepageEdgeLabel(selectedSeepageEdge)) : 'none'}</strong><br>
+              Free-surface mode: <strong>${stage6EscAttr(seepage.options?.freeSurface === 'iterate' ? 'iterative' : 'fixed')}</strong><br>
+              Solver status: <strong>${stage6EscAttr(seepage.status || 'idle')}</strong><br>
+              Last head range: <strong>${seepage.result ? `${seepage.result.headMin.toFixed(2)} to ${seepage.result.headMax.toFixed(2)} m` : '—'}</strong>
+            </div>
+  `;
+  const workspaceCanvasHelp = workspace === 'stability'
+    ? 'Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.'
+    : 'The seepage workspace reuses the same Bishop section. Use <strong>Assign BC</strong> and click the terrain, model base, or side boundaries to assign prescribed head, no-flow, or seepage-face conditions, then click <strong>Run seepage</strong>. The same terrain, polygons, walls, snap settings, and viewport stay active while you switch between stability and seepage, and the result overlays draw directly on this canvas.';
+  return `
+    <div class="mc2 st6-bishop">
+      <div class="mc2-head" style="margin-bottom:12px">
+        <span style="font-size:13px;font-weight:600">Bishop simplified + Spencer equilibrium check</span>
+        <span style="font-size:11px;color:var(--tx2)">Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.</span>
+      </div>
+      <div class="st6-bishop-workspace-switch">
+        <button class="btn sm ${workspace==='stability'?'active':''}" onclick="stage6BishopSetWorkspace('stability')">Stability</button>
+        <button class="btn sm ${workspace==='seepage'?'active':''}" onclick="stage6BishopSetWorkspace('seepage')">Seepage</button>
+        <span class="st6-bishop-progress">${workspace==='seepage' ? 'Shared canvas and geometry; seepage settings are additive.' : 'Shared canvas and geometry; Bishop/Spencer remain the default workspace.'}</span>
+      </div>
+      <div class="st6-bishop-layout">
+        <div class="st6-bishop-side">
+          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Geometry</div>
+          <div class="ctrl-row st6-bishop-controls">
+            <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally add infinitely stiff retaining walls and a uniform surcharge zone, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
+            <div class="st6-bishop-tool-groups">
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-terrain"${stage6DetailsOpen('bishop-geo-terrain')}>
+                <summary>Terrain</summary>
+                <div class="st6-adv-body">
+                  <div class="st6-bishop-tools">
+                    <button class="btn sm ${bishop.tool==='terrain'?'active':''}" onclick="stage6BishopSetTool('terrain')">Draw terrain</button>
+                    <button class="btn sm" onclick="stage6BishopTriggerDxfImport()">Import DXF terrain</button>
+                    <input id="stage6BishopDxfInput" type="file" accept=".dxf,.DXF" style="display:none" onchange="stage6BishopImportDxf(event)">
+                    <button class="btn sm" onclick="stage6BishopFinishDraft()">Finish draft</button>
+                    <button class="btn sm" onclick="stage6BishopPopDraftPoint()">Undo point</button>
+                    <button class="btn sm" onclick="stage6BishopClear('draft')">Clear draft</button>
+                  </div>
+                </div>
+              </details>
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-regions"${stage6DetailsOpen('bishop-geo-regions')}>
+                <summary>Soil polygons</summary>
+                <div class="st6-adv-body">
+                  <div class="st6-help">Default Bishop still uses CPT-derived polygons. To edit them, first copy the current solver polygons into a custom set. After that you can draw additional polygons, select one in <strong>Edit / pan</strong>, drag its vertices, split it into smaller polygons, cut interior holes with a different material, and assign one of the imported Bishop materials.</div>
+                  ${showingCustomRegionPreview ? `<div class="st6-help">Custom polygons are visible for editing, but the solver is still using the CPT-derived polygon set until you enable the checkbox below.</div>` : ''}
+                  <div class="st6-bishop-tools">
+                    <button class="btn sm" onclick="stage6BishopCopyCurrentRegionsToCustom()">Copy current polygons</button>
+                    <button class="btn sm ${bishop.tool==='region'?'active':''}" onclick="stage6BishopSetTool('region')">Draw polygon</button>
+                    <button class="btn sm ${bishop.tool==='regionHole'?'active':''}" onclick="stage6BishopSetTool('regionHole')" ${selectedCustomRegion ? '' : 'disabled'}>Cut hole</button>
+                    <button class="btn sm ${bishop.tool==='regionSplit'?'active':''}" onclick="stage6BishopSetTool('regionSplit')" ${selectedCustomRegion ? '' : 'disabled'}>Split selected</button>
+                    <button class="btn sm" onclick="stage6BishopFinishDraft()" ${((bishop.draftKind==='region' || bishop.draftKind==='regionHole') && bishop.draft.length >= 3) ? '' : 'disabled'}>${bishop.draftKind==='regionHole' ? 'Finish hole' : 'Finish polygon'}</button>
+                    <button class="btn sm" onclick="stage6BishopDeleteSelectedRegion()" ${selectedCustomRegion ? '' : 'disabled'}>Delete selected</button>
+                    <button class="btn sm" onclick="stage6BishopClear('customRegions')" ${customRegionCount ? '' : 'disabled'}>Clear custom polygons</button>
+                  </div>
+                  <label class="st6-bishop-check">
+                    <input type="checkbox" ${customModeActive ? 'checked' : ''} onchange="stage6BishopSetUseCustomRegions(this.checked)" ${customRegionCount ? '' : 'disabled'}>
+                    Use custom polygons in the solver
+                  </label>
+                  <label style="font-size:11px;color:var(--tx2)">Material for new polygons
+                    <select onchange="stage6BishopSetField('regionDraftMaterialId', this.value)">
+                      ${(bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${(bishop.regionDraftMaterialId || bishop.materials?.[0]?.id)===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('')}
+                    </select>
+                  </label>
+                  ${selectedCustomRegion ? `
+                    <label style="font-size:11px;color:var(--tx2)">Selected polygon material
+                      <select onchange="stage6BishopSetSelectedRegionMaterial(this.value)">
+                        ${(bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${selectedCustomRegion.materialId===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('')}
+                      </select>
+                    </label>
+                    <div class="st6-help">Selected polygon: <strong>${stage6EscAttr(selectedCustomRegion.id)}</strong> · vertices <strong>${selectedCustomRegion.polygon.length}</strong> · source <strong>${selectedCustomRegion.source === 'cpt-copy' ? 'copied from CPT' : selectedCustomRegion.source === 'hole' ? 'hole cut' : selectedCustomRegion.source === 'edited' ? 'edited fragment' : 'custom drawn'}</strong></div>
+                  ` : `
+                    <div class="st6-help">${customRegionCount ? 'No custom polygon is selected. Click one in Edit / pan mode to edit it.' : 'No custom polygons yet. Copy the current solver polygons or draw a new polygon to start editing.'}</div>
+                  `}
+                </div>
+              </details>
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-setup"${stage6DetailsOpen('bishop-geo-setup')}>
+                <summary>Section setup</summary>
+                <div class="st6-adv-body">
+                  <div class="st6-bishop-tools">
+                    <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
+                    <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
+                    <button class="btn sm ${bishop.tool==='wall'?'active':''}" onclick="stage6BishopSetTool('wall')">Retaining wall</button>
+                    <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
+                    <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
+                    <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
+                    <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
+                    ${workspace === 'seepage' ? `<button class="btn sm ${bishop.tool==='seepageBc'?'active':''}" onclick="stage6BishopSetTool('seepageBc')">Boundary conditions</button>` : ''}
+                  </div>
+                </div>
+              </details>
+              ${workspaceGeometrySectionHtml}
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-view"${stage6DetailsOpen('bishop-geo-view')}>
+                <summary>View</summary>
+                <div class="st6-adv-body">
+                  <label class="st6-bishop-check">
+                    <input type="checkbox" ${bishop.gridSnap?'checked':''} onchange="stage6BishopSetField('gridSnap', this.checked)">
+                    Snap to grid
+                  </label>
+                  <label class="st6-bishop-check">
+                    <input type="checkbox" ${bishop.pointSnap?'checked':''} onchange="stage6BishopSetField('pointSnap', this.checked)">
+                    Snap to existing points
+                  </label>
+                  <label style="font-size:11px;color:var(--tx2)">Grid size (m)
+                    <input type="number" step="0.05" min="0.05" value="${bishop.snapSize.toFixed(2)}" onchange="stage6BishopSetField('snapSize', this.value)">
+                  </label>
+                  <div class="st6-help">If both snap modes are enabled, the cursor snaps to whichever candidate is closer: the grid node or the nearest existing Bishop canvas point.</div>
+                  <div class="st6-bishop-visuals">
+                    <div class="st6-bishop-visuals-title">Polygon overlay</div>
+                    <label class="st6-bishop-check">
+                      <input type="checkbox" ${bishop.display?.showRegions !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegions', this.checked)">
+                      Show soil polygons
+                    </label>
+                    <label class="st6-bishop-check">
+                      <input type="checkbox" ${bishop.display?.showRegionLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLabels', this.checked)">
+                      Show polygon labels
+                    </label>
+                    <label class="st6-bishop-check">
+                      <input type="checkbox" ${bishop.display?.showRegionLegend !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLegend', this.checked)">
+                      Show polygon legend
+                    </label>
+                    <label style="font-size:11px;color:var(--tx2)">Fill opacity
+                      <input type="number" step="0.05" min="0.05" max="0.75" value="${Number(bishop.display?.regionOpacity ?? 0.22).toFixed(2)}" onchange="stage6BishopSetField('display.regionOpacity', this.value)">
+                    </label>
+                  </div>
+                  ${workspace === 'seepage' ? `
+                    <div class="st6-bishop-visuals">
+                      <div class="st6-bishop-visuals-title">Seepage overlay</div>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.seepage?.display?.showBoundaryConditions !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showBoundaryConditions', this.checked)">
+                        Show boundary conditions
+                      </label>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.seepage?.display?.showBoundaryLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showBoundaryLabels', this.checked)">
+                        Show BC labels
+                      </label>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.seepage?.display?.showHead ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showHead', this.checked)">
+                        Show head field
+                      </label>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.seepage?.display?.showEquipotentials ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showEquipotentials', this.checked)">
+                        Show equipotentials
+                      </label>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.seepage?.display?.showFlowVectors ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showFlowVectors', this.checked)">
+                        Show flow vectors
+                      </label>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.seepage?.display?.showExitGradient ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showExitGradient', this.checked)">
+                        Show exit gradient
+                      </label>
+                    </div>
+                  ` : ''}
+                </div>
+              </details>
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-clear"${stage6DetailsOpen('bishop-geo-clear')}>
+                <summary>Clear accepted geometry</summary>
+                <div class="st6-adv-body">
+                  <div class="st6-bishop-mini-actions">
+                    <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
+                    <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
+                    <button class="btn sm" onclick="stage6BishopClear('walls')">Clear walls</button>
+                    <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
+                    <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
+                    <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
+                    <button class="btn sm" onclick="stage6BishopClear('customRegions')">Clear custom polygons</button>
+                  </div>
+                </div>
+              </details>
+            </div>
+            ${workspaceInfoHtml}
+            <details class="st6-adv" data-st6details="bishop-walls"${stage6DetailsOpen('bishop-walls')}>
+              <summary>Retaining walls</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">Walls are treated as infinitely stiff vertical elements. When a slip circle intersects a wall, the solver adds the wall's passive resistance as a stabilising moment in Bishop and as a horizontal push in Spencer. If a circle passes below the wall tip, the wall has no effect on that surface.</div>
+                <div style="overflow:auto">
+                  <table class="tbl st6-bishop-materials">
+                    <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Length</th><th></th></tr></thead>
+                    <tbody>${wallRows || '<tr><td colspan="7" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+            ${workspaceSettingsHtml}
           </div>
         </div>
         <div class="st6-bishop-main">
           <div class="st6-bishop-canvas-wrap">
             <div class="st6-bishop-toolbar">
-              <button class="btn" onclick="stage6BishopRunSearch()" ${runReady?'':'disabled'}>Run ${stage6BishopMethodModeLabel(bishop.methodMode)}</button>
-              <button class="btn sm" onclick="stage6BishopStopSearch();renderStage6()">Stop</button>
+              <button class="btn" onclick="${toolbarRunAction}" ${toolbarRunReady?'':'disabled'}>${toolbarRunLabel}</button>
+              <button class="btn sm" onclick="${toolbarStopAction}">Stop</button>
               <button class="btn sm" onclick="fitStage6BishopViewport()">Fit view</button>
-              <button class="btn sm" onclick="stage6BishopClear('results')">Clear results</button>
-              <span id="stage6BishopProgress" class="st6-bishop-progress">${bishop.progress.running ? `${stage6BishopMethodModeLabel(bishop.methodMode)} · ${bishop.progress.trial||0}/${bishop.progress.total||0} Bishop trials` : (bishop.progress.message || stage6BishopReadyMessage(runReady))}</span>
+              <button class="btn sm" onclick="${toolbarClearAction}">${toolbarClearLabel}</button>
+              <span id="stage6BishopProgress" class="st6-bishop-progress">${toolbarProgressText}</span>
             </div>
-            <div class="st6-bishop-progress-track"><div id="stage6BishopProgressBar" class="st6-bishop-progress-bar" style="width:${Math.max(0, Math.min(100, bishop.progress.percent||0))}%"></div></div>
+            <div class="st6-bishop-progress-track"><div id="stage6BishopProgressBar" class="st6-bishop-progress-bar" style="width:${Math.max(0, Math.min(100, toolbarProgressPercent))}%"></div></div>
             <div class="st6-bishop-status">
               <div id="stage6BishopMode" class="st6-bishop-mode">${modeMeta.label}</div>
             </div>
@@ -7956,7 +8729,7 @@ function renderStage6BishopApp(){
             ` : ''}
             <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
             <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
-            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.</div>
+            <div class="st6-help" style="margin-top:10px">${workspaceCanvasHelp}</div>
           </div>
           <div class="st6-bishop-results-panel">
             <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Results</div>
@@ -8866,6 +9639,7 @@ const legacyApi={
   ensureStage6State,
   setStage6Field,
   setStage6App,
+  stage6BishopSetWorkspace,
   stage6BishopSetField,
   stage6BishopSetTool,
   stage6BishopTriggerDxfImport,
@@ -8878,8 +9652,16 @@ const legacyApi={
   stage6BishopPopDraftPoint,
   stage6BishopClear,
   stage6BishopSetMaterialField,
+  stage6BishopSetMaterialPermeability,
+  stage6BishopResetMaterialPermeability,
   stage6BishopSetWallField,
   stage6BishopDeleteWall,
+  stage6BishopSelectSeepageBoundary,
+  stage6BishopSetSeepageBcType,
+  stage6BishopSetSeepageBcHead,
+  stage6BishopDeleteSeepageBc,
+  stage6BishopRunSeepage,
+  stage6BishopStopSeepage,
   stage6BishopRunSearch,
   stage6BishopStopSearch,
   stage6BishopSelectResult,

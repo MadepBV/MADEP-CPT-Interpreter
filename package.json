@@ -15,7 +15,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"verify:nen6740": "node scripts/verify_nen6740.mjs",
-		"verify:bishop-phase-a": "node scripts/verify_bishop_phase_a_parity.mjs"
+		"verify:bishop-phase-a": "node scripts/verify_bishop_phase_a_parity.mjs",
+		"verify:seepage-phase-2": "node scripts/verify_seepage_phase_2.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.1",
