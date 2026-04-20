@@ -8,10 +8,24 @@ import {
   effectiveVerticalStressAtDepth,
   stage6Constants
 } from './stage6-engineering';
+import {
+  bishopLayerSignature,
+  buildBishopModelFromStageLayers,
+  importBishopMaterialsFromLayers,
+  terrainY as bishopTerrainY
+} from './stage6-bishop';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
 let __legacyControllerInitialized = false;
+let __legacyControllerHashBound = false;
+let stage6BishopWorker = null;
+let stage6BishopRunId = 0;
+const stage6BishopCanvasState = {
+  canvas:null,
+  pointerDrag:null,
+  hoverWorld:null
+};
 
 /* ════════════════════════════════
    PROJECT STATE — multi-CPT architecture
@@ -54,6 +68,7 @@ let S=PROJECT.cpts[0];
 
 function selectCpt(idx){
   if(idx<0||idx>=PROJECT.cpts.length)return;
+  stage6BishopStopSearch(true);
 
   // Destroy any existing Chart.js instances tied to the DOM canvases
   // (they are shared DOM elements, but each CPT has its own chart state)
@@ -3558,6 +3573,61 @@ function stage6Defaults(){
       castAgainstPreparedGround:false,
       castAgainstUnpreparedGround:false,
       dz:0.10
+    },
+    bishop:{
+      tool:'terrain',
+      strengthSet:'characteristic',
+      terrain:[],
+      phreatic:[],
+      draft:[],
+      draftKind:'',
+      activeCptX:null,
+      entryZone:null,
+      exitZone:null,
+      viewport:{
+        scale:24,
+        offsetX:80,
+        offsetY:360,
+        fitted:false
+      },
+      gridSnap:true,
+      snapSize:0.50,
+      analysisDepth:15.00,
+      materials:[],
+      sourceLayerSignature:'',
+      search:{
+        nEntry:10,
+        nExit:10,
+        nCenter:15,
+        centerOffsetMin:0.50,
+        centerOffsetMax:3.00,
+        minChordLength:2.00,
+        minSlipThickness:0.75,
+        maxExitAngleDeg:45,
+        validationSamples:30,
+        geomTol:0.001,
+        minSliceWidth:0.05,
+        targetSlices:30,
+        keepBest:10
+      },
+      solver:{
+        useOrdinarySeed:true,
+        initialFS:1.00,
+        tolerance:0.0001,
+        maxIterations:50,
+        minMAlpha:0.000001
+      },
+      progress:{
+        running:false,
+        percent:0,
+        trial:0,
+        total:0,
+        message:'',
+        previewCircle:null
+      },
+      results:null,
+      selectedResult:0,
+      stale:true
     }
   };
 }
@@ -3631,6 +3701,43 @@ function ensureStage6State(){
   if(S.stage6.beam.cNomOverride != null && S.stage6.beam.cNomOverride !== ''){
     S.stage6.beam.cNomOverride = +S.stage6.beam.cNomOverride;
   }
+  if(!stage6BishopEnabled() && S.stage6.app === 'bishop'){
+    S.stage6.app = 'bearing';
+  }
+  const bishop = S.stage6.bishop;
+  const bishopMinDepth = Math.max(stage6MaxDepth(), 15);
+  if(bishop.analysisDepth == null || bishop.analysisDepth === ''){
+    const legacyBottomMargin = Number(bishop.bottomMargin);
+    const hasCustomLegacyMargin = Number.isFinite(legacyBottomMargin) && Math.abs(legacyBottomMargin - 5) > 1e-9;
+    bishop.analysisDepth = hasCustomLegacyMargin
+      ? stage6MaxDepth() + legacyBottomMargin
+      : bishopMinDepth;
+  }
+  bishop.analysisDepth = Math.max(+bishop.analysisDepth || bishopMinDepth, bishopMinDepth);
+  bishop.snapSize = Math.max(+bishop.snapSize || 0.5, 0.05);
+  bishop.search.nEntry = Math.max(2, Math.round(+bishop.search.nEntry || 10));
+  bishop.search.nExit = Math.max(2, Math.round(+bishop.search.nExit || 10));
+  bishop.search.nCenter = Math.max(2, Math.round(+bishop.search.nCenter || 15));
+  bishop.search.centerOffsetMin = Math.max(+bishop.search.centerOffsetMin || 0.5, 0.05);
+  bishop.search.centerOffsetMax = Math.max(+bishop.search.centerOffsetMax || 3, bishop.search.centerOffsetMin + 0.05);
+  bishop.search.minChordLength = Math.max(+bishop.search.minChordLength || 2, 0.5);
+  bishop.search.minSlipThickness = Math.max(+bishop.search.minSlipThickness || 0.75, 0.1);
+  bishop.search.maxExitAngleDeg = Math.min(Math.max(+bishop.search.maxExitAngleDeg || 45, 5), 89);
+  bishop.search.validationSamples = Math.max(8, Math.round(+bishop.search.validationSamples || 30));
+  bishop.search.geomTol = Math.max(+bishop.search.geomTol || 0.001, 0.000001);
+  bishop.search.minSliceWidth = Math.max(+bishop.search.minSliceWidth || 0.05, 0.01);
+  bishop.search.targetSlices = Math.max(6, Math.round(+bishop.search.targetSlices || 30));
+  bishop.search.keepBest = Math.max(1, Math.round(+bishop.search.keepBest || 10));
+  bishop.solver.initialFS = Math.max(+bishop.solver.initialFS || 1, 0.1);
+  bishop.solver.tolerance = Math.max(+bishop.solver.tolerance || 0.0001, 0.000001);
+  bishop.solver.maxIterations = Math.max(5, Math.round(+bishop.solver.maxIterations || 50));
+  bishop.solver.minMAlpha = Math.max(+bishop.solver.minMAlpha || 0.000001, 0.000000001);
+  if(!Array.isArray(bishop.terrain)) bishop.terrain = [];
+  if(!Array.isArray(bishop.phreatic)) bishop.phreatic = [];
+  if(!Array.isArray(bishop.draft)) bishop.draft = [];
+  if(!Array.isArray(bishop.materials)) bishop.materials = [];
+  if(!bishop.viewport || typeof bishop.viewport !== 'object') bishop.viewport = {scale:24, offsetX:80, offsetY:360, fitted:false};
+  if(!['characteristic','da1_1','da1_2'].includes(bishop.strengthSet)) bishop.strengthSet = 'characteristic';
 }
 
 function stage6RememberDetailsState(){
@@ -3671,8 +3778,957 @@ function setStage6Field(field, value){
 function setStage6App(app){
   ensureStage6State();
   stage6RememberDetailsState();
+  if(app === 'bishop' && !stage6BishopEnabled()) return;
   S.stage6.app = app;
   renderStage6();
+}
+
+function stage6BishopEnabled(){
+  return true;
+}
+
+function stage6BishopHashActive(){
+  return typeof window !== 'undefined' && window.location.hash === '#bishop';
+}
+
+function stage6BishopSortedPolyline(points){
+  return (points || [])
+    .filter(pt=>Number.isFinite(pt?.x) && Number.isFinite(pt?.y))
+    .sort((a,b)=>a.x-b.x)
+    .reduce((acc, pt)=>{
+      if(!acc.length || Math.hypot(acc[acc.length-1].x-pt.x, acc[acc.length-1].y-pt.y) > 1e-6){
+        acc.push({x:+pt.x, y:+pt.y});
+      }
+      return acc;
+    }, []);
+}
+
+function stage6BishopSortZone(zone){
+  if(!zone || !Number.isFinite(zone.xStart) || !Number.isFinite(zone.xEnd)) return null;
+  return {
+    xStart:Math.min(zone.xStart, zone.xEnd),
+    xEnd:Math.max(zone.xStart, zone.xEnd)
+  };
+}
+
+function stage6BishopInvalidate(message){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  stage6BishopStopSearch(true);
+  bishop.results = null;
+  bishop.selectedResult = 0;
+  bishop.stale = true;
+  if(message) bishop.progress.message = message;
+}
+
+function stage6BishopSyncSoilModel(){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  const layers = stage6WorkingLayers();
+  const signature = bishopLayerSignature(layers);
+  const hadSignature = !!bishop.sourceLayerSignature;
+  const strengthSetChanged = bishop.sourceStrengthSet !== bishop.strengthSet;
+  if(signature !== bishop.sourceLayerSignature || !bishop.materials.length || strengthSetChanged){
+    bishop.materials = importBishopMaterialsFromLayers(layers, bishop.materials || [], bishop.strengthSet || 'characteristic');
+    bishop.sourceLayerSignature = signature;
+    bishop.sourceStrengthSet = bishop.strengthSet;
+    if(hadSignature) stage6BishopInvalidate(strengthSetChanged ? 'Material strength set changed; Bishop results were cleared.' : 'Active CPT layers changed; Bishop results were cleared.');
+  }
+  if(Array.isArray(bishop.terrain) && bishop.terrain.length >= 2){
+    const sorted = stage6BishopSortedPolyline(bishop.terrain);
+    bishop.terrain = sorted;
+    const minX = sorted[0].x;
+    const maxX = sorted[sorted.length-1].x;
+    if(!Number.isFinite(bishop.activeCptX)){
+      bishop.activeCptX = 0.5*(minX+maxX);
+    } else {
+      bishop.activeCptX = Math.min(Math.max(+bishop.activeCptX, minX), maxX);
+    }
+  }
+  return layers;
+}
+
+function stage6BishopCurrentModel(){
+  const layers = stage6BishopSyncSoilModel();
+  const model = buildBishopModelFromStageLayers(layers, S.stage6.bishop);
+  S.stage6Cache.bishopModel = model;
+  return model;
+}
+
+function stage6BishopSetField(path, value){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const defaults = stage6Defaults().bishop;
+  const currentDefault = stage6Get(defaults, path);
+  let nextValue = value;
+  if(typeof currentDefault === 'number'){
+    nextValue = value === '' || value == null ? null : +value;
+  } else if(typeof currentDefault === 'boolean'){
+    nextValue = !!value;
+  }
+  stage6Set(S.stage6.bishop, path, nextValue);
+  if(!(path === 'gridSnap' || path === 'snapSize' || path.startsWith('viewport.'))){
+    stage6BishopInvalidate();
+  }
+  renderStage6();
+}
+
+function stage6BishopSetTool(tool){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const prevTool = S.stage6.bishop.tool;
+  S.stage6.bishop.tool = tool;
+  if(tool !== prevTool && S.stage6.bishop.draftKind && S.stage6.bishop.draftKind !== tool){
+    S.stage6.bishop.draft = [];
+    S.stage6.bishop.draftKind = '';
+  }
+  renderStage6();
+}
+
+function stage6BishopPopDraftPoint(){
+  ensureStage6State();
+  if(S.stage6.bishop.draft?.length) S.stage6.bishop.draft.pop();
+  renderStage6();
+}
+
+function stage6BishopFinishDraft(){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  if(bishop.draftKind === 'terrain' && bishop.draft.length >= 2){
+    bishop.terrain = stage6BishopSortedPolyline(bishop.draft);
+    bishop.viewport.fitted = false;
+    if(!bishop.entryZone) bishop.entryZone = null;
+    if(!bishop.exitZone) bishop.exitZone = null;
+    stage6BishopInvalidate('Terrain updated; rerun Bishop search.');
+  } else if(bishop.draftKind === 'phreatic' && bishop.draft.length >= 2){
+    bishop.phreatic = stage6BishopSortedPolyline(bishop.draft);
+    stage6BishopInvalidate('Phreatic line updated; rerun Bishop search.');
+  }
+  bishop.draft = [];
+  bishop.draftKind = '';
+  renderStage6();
+}
+
+function stage6BishopClear(kind){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  if(kind === 'terrain'){
+    bishop.terrain = [];
+    bishop.phreatic = [];
+    bishop.entryZone = null;
+    bishop.exitZone = null;
+    bishop.activeCptX = null;
+    bishop.viewport.fitted = false;
+  } else if(kind === 'phreatic'){
+    bishop.phreatic = [];
+  } else if(kind === 'entry'){
+    bishop.entryZone = null;
+  } else if(kind === 'exit'){
+    bishop.exitZone = null;
+  } else if(kind === 'draft'){
+    bishop.draft = [];
+    bishop.draftKind = '';
+    renderStage6();
+    return;
+  } else if(kind === 'results'){
+    bishop.results = null;
+    bishop.selectedResult = 0;
+    bishop.stale = true;
+    renderStage6();
+    return;
+  }
+  stage6BishopInvalidate();
+  renderStage6();
+}
+
+function stage6BishopSetMaterialField(index, field, value){
+  ensureStage6State();
+  stage6BishopSyncSoilModel();
+  const material = S.stage6.bishop.materials?.[index];
+  if(!material) return;
+  material[field] = field === 'label' ? value : +value;
+  stage6BishopInvalidate('Material properties updated; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopStopSearch(silent){
+  if(stage6BishopWorker){
+    stage6BishopWorker.terminate();
+    stage6BishopWorker = null;
+  }
+  if(S?.stage6?.bishop){
+    S.stage6.bishop.progress.running = false;
+    S.stage6.bishop.progress.previewCircle = null;
+    if(!silent) S.stage6.bishop.progress.message = 'Bishop search stopped.';
+  }
+}
+
+function stage6BishopUpdateProgressDom(){
+  const bishop = S?.stage6?.bishop;
+  if(!bishop) return;
+  const status = document.getElementById('stage6BishopProgress');
+  const bar = document.getElementById('stage6BishopProgressBar');
+  if(status){
+    const p = bishop.progress;
+    status.textContent = p.running
+      ? `Running ${p.trial||0}/${p.total||0} trials (${(p.percent||0).toFixed(0)}%)`
+      : (p.message || 'Idle');
+  }
+  if(bar) bar.style.width = `${Math.max(0, Math.min(100, bishop.progress.percent || 0))}%`;
+}
+
+function stage6BishopEnsureWorker(){
+  if(stage6BishopWorker || typeof Worker === 'undefined') return stage6BishopWorker;
+  stage6BishopWorker = new Worker(new URL('./stage6-bishop-worker.js', import.meta.url), {type:'module'});
+  stage6BishopWorker.onmessage = (event)=>{
+    const payload = event?.data || {};
+    const bishop = S?.stage6?.bishop;
+    if(!bishop || payload.runId !== bishop.progress.runId) return;
+    if(payload.type === 'progress'){
+      bishop.progress.running = true;
+      bishop.progress.trial = payload.progress?.trial || 0;
+      bishop.progress.total = payload.progress?.total || 0;
+      bishop.progress.percent = payload.progress?.percent || 0;
+      bishop.progress.previewCircle = payload.progress?.previewCircle || null;
+      bishop.progress.message = 'Running Bishop search...';
+      stage6BishopUpdateProgressDom();
+      stage6BishopDrawCanvas();
+      return;
+    }
+    bishop.progress.running = false;
+    bishop.progress.previewCircle = null;
+    if(payload.type === 'result'){
+      bishop.results = payload.result || null;
+      bishop.selectedResult = 0;
+      bishop.stale = false;
+      const timing = payload.result?.timing;
+      bishop.progress.message = payload.result?.critical
+        ? `Search complete in ${timing?.totalMs?.toFixed ? timing.totalMs.toFixed(0) : timing?.totalMs || 0} ms.`
+        : 'Search completed with no valid slip circles.';
+      renderStage6();
+      return;
+    }
+    bishop.progress.message = payload.error || 'Bishop search failed.';
+    bishop.progress.previewCircle = null;
+    renderStage6();
+  };
+  stage6BishopWorker.onerror = ()=>{
+    if(S?.stage6?.bishop){
+      S.stage6.bishop.progress.running = false;
+      S.stage6.bishop.progress.previewCircle = null;
+      S.stage6.bishop.progress.message = 'Bishop worker error.';
+      renderStage6();
+    }
+    if(stage6BishopWorker){
+      stage6BishopWorker.terminate();
+      stage6BishopWorker = null;
+    }
+  };
+  return stage6BishopWorker;
+}
+
+function stage6BishopRunSearch(){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  const model = stage6BishopCurrentModel();
+  if(!model){
+    bishop.progress.message = 'Draw terrain and place the active CPT marker first.';
+    renderStage6();
+    return;
+  }
+  if(!bishop.entryZone || !bishop.exitZone){
+    bishop.progress.message = 'Define entry and exit zones on the terrain before running the search.';
+    renderStage6();
+    return;
+  }
+  const entryZone = stage6BishopSortZone(bishop.entryZone);
+  const exitZone = stage6BishopSortZone(bishop.exitZone);
+  const span = Math.abs((exitZone?.xEnd || 0) - (entryZone?.xStart || 0));
+  const input = {
+    model,
+    entryZone,
+    exitZone,
+    searchConfig:{
+      ...bishop.search,
+      minSliceWidth:Math.max(+bishop.search.minSliceWidth || 0.05, span/300 || 0.05, 0.05)
+    },
+    solverConfig:{...bishop.solver}
+  };
+  stage6BishopStopSearch(true);
+  const worker = stage6BishopEnsureWorker();
+  if(!worker){
+    bishop.progress.message = 'Web Worker is not available in this browser context.';
+    renderStage6();
+    return;
+  }
+  stage6BishopRunId += 1;
+  bishop.progress = {
+    running:true,
+    percent:0,
+    trial:0,
+    total:0,
+    runId:stage6BishopRunId,
+    message:'Running Bishop search...',
+    previewCircle:null
+  };
+  bishop.results = null;
+  bishop.selectedResult = 0;
+  bishop.stale = true;
+  renderStage6();
+  worker.postMessage({
+    type:'analyze',
+    runId:stage6BishopRunId,
+    input
+  });
+}
+
+function stage6BishopSelectResult(index){
+  ensureStage6State();
+  const results = S.stage6.bishop.results?.allResults || [];
+  S.stage6.bishop.selectedResult = Math.min(Math.max(+index || 0, 0), Math.max(results.length-1, 0));
+  renderStage6();
+}
+
+function stage6BishopSelectedResult(){
+  const results = S.stage6?.bishop?.results?.allResults || [];
+  if(!results.length) return null;
+  const index = Math.min(Math.max(S.stage6.bishop.selectedResult || 0, 0), results.length-1);
+  return results[index];
+}
+
+function stage6BishopStrengthSetLabel(key){
+  if(key === 'da1_1') return 'DA1/1 (M1 soil set)';
+  if(key === 'da1_2') return 'DA1/2 (M2 soil set)';
+  return 'Characteristic';
+}
+
+function stage6BishopModeMeta(){
+  const bishop = S.stage6.bishop;
+  if(bishop.tool === 'terrain'){
+    return {
+      label:'Terrain mode',
+      hint:'Click terrain points from left to right, then press Finish line to accept the terrain.'
+    };
+  }
+  if(bishop.tool === 'phreatic'){
+    return {
+      label:'Phreatic mode',
+      hint:'Click phreatic-line points from left to right, then press Finish line to accept the line.'
+    };
+  }
+  if(bishop.tool === 'cpt'){
+    return {
+      label:'Place CPT mode',
+      hint:'Click once on the terrain to place the active CPT marker used for the Bishop soil column.'
+    };
+  }
+  if(bishop.tool === 'entry'){
+    return {
+      label:'Entry zone mode',
+      hint:'Click the start and end of the entry zone on the terrain.'
+    };
+  }
+  if(bishop.tool === 'exit'){
+    return {
+      label:'Exit zone mode',
+      hint:'Click the start and end of the exit zone on the terrain.'
+    };
+  }
+  return {
+    label:'Edit / pan mode',
+    hint:'Drag terrain or phreatic vertices, the CPT marker, or zone ends. Drag empty space to pan and use the mouse wheel to zoom.'
+  };
+}
+
+function stage6BishopPointInPolygon(point, polygon){
+  let inside = false;
+  for(let i=0, j=polygon.length-1; i<polygon.length; j=i, i+=1){
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+    const intersect = ((yi > point.y) !== (yj > point.y))
+      && (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 1e-12) + xi);
+    if(intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function stage6BishopRegionAtPoint(model, point){
+  if(!model?.regions?.length) return null;
+  for(let i=0;i<model.regions.length;i+=1){
+    const region = model.regions[i];
+    if(region.polygon?.length >= 3 && stage6BishopPointInPolygon(point, region.polygon)) return region;
+  }
+  return null;
+}
+
+function stage6BishopTooltipHtml(region){
+  if(!region?.material) return '';
+  const mat = region.material;
+  const setLabel = stage6BishopStrengthSetLabel(mat.sourceStrengthSet || S.stage6.bishop.strengthSet);
+  return `
+    <strong>${mat.label}</strong>
+    <div class="mut">${mat.sourceType || 'Soil'}${mat.sourceSubtype ? ` · ${mat.sourceSubtype}` : ''}</div>
+    <div class="row"><span>Strength set</span><span>${setLabel}</span></div>
+    <div class="row"><span>c'</span><span>${Number(mat.cEff || 0).toFixed(1)} kPa</span></div>
+    <div class="row"><span>phi'</span><span>${Number(mat.phiEffDeg || 0).toFixed(1)}°</span></div>
+    <div class="row"><span>gamma</span><span>${Number(mat.gamma || 0).toFixed(2)} kN/m³</span></div>
+    <div class="row"><span>gamma_sat</span><span>${Number(mat.gammaSat || 0).toFixed(2)} kN/m³</span></div>
+  `;
+}
+
+function stage6BishopHideHoverDom(){
+  const tip = document.getElementById('stage6BishopTip');
+  const coord = document.getElementById('stage6BishopCoord');
+  if(tip) tip.style.display = 'none';
+  if(coord) coord.textContent = '';
+}
+
+function stage6BishopUpdateHoverDom(canvas, clientX, clientY){
+  const coord = document.getElementById('stage6BishopCoord');
+  const tip = document.getElementById('stage6BishopTip');
+  const model = S.stage6Cache.bishopModel || stage6BishopCurrentModel();
+  const world = stage6BishopScreenToWorld(canvas, clientX, clientY);
+  const snapped = stage6BishopSnapWorldPoint(world, 'free');
+  stage6BishopCanvasState.hoverWorld = world;
+  if(coord){
+    coord.textContent = `x = ${world.x.toFixed(2)} m · y = ${world.y.toFixed(2)} m${S.stage6.bishop.gridSnap ? ` · snap ${snapped.x.toFixed(2)}, ${snapped.y.toFixed(2)} m` : ''}`;
+  }
+  if(!tip || !model){
+    stage6BishopDrawCanvas();
+    return;
+  }
+  const region = stage6BishopRegionAtPoint(model, world);
+  if(region){
+    const wrap = canvas.parentElement;
+    const wrapRect = wrap.getBoundingClientRect();
+    tip.innerHTML = stage6BishopTooltipHtml(region);
+    tip.style.display = 'block';
+    tip.style.left = `${Math.min(Math.max(clientX - wrapRect.left + 16, 12), Math.max(wrapRect.width - 292, 12))}px`;
+    tip.style.top = `${Math.min(Math.max(clientY - wrapRect.top + 16, 12), Math.max(wrapRect.height - 180, 12))}px`;
+  } else {
+    tip.style.display = 'none';
+  }
+  stage6BishopDrawCanvas();
+}
+
+function stage6BishopScreenToWorld(canvas, clientX, clientY){
+  const rect = canvas.getBoundingClientRect();
+  const bishop = S.stage6.bishop;
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+  return {
+    x:(sx - bishop.viewport.offsetX) / bishop.viewport.scale,
+    y:(bishop.viewport.offsetY - sy) / bishop.viewport.scale
+  };
+}
+
+function stage6BishopWorldToScreen(pt){
+  const bishop = S.stage6.bishop;
+  return {
+    x:pt.x * bishop.viewport.scale + bishop.viewport.offsetX,
+    y:bishop.viewport.offsetY - pt.y * bishop.viewport.scale
+  };
+}
+
+function stage6BishopSnapWorldPoint(pt, mode){
+  const bishop = S.stage6.bishop;
+  const grid = Math.max(bishop.snapSize || 0.5, 0.05);
+  if(!bishop.gridSnap) return {...pt};
+  const out = {...pt};
+  out.x = Math.round(out.x / grid) * grid;
+  if(mode !== 'terrain-x'){
+    out.y = Math.round(out.y / grid) * grid;
+  }
+  return out;
+}
+
+function stage6BishopCanvasWorldBounds(model){
+  const bishop = S.stage6.bishop;
+  const terrain = stage6BishopSortedPolyline(bishop.terrain);
+  if(terrain.length >= 2){
+    const xs = terrain.map(pt=>pt.x);
+    const ys = terrain.map(pt=>pt.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    const minY = model ? model.analysisBottomY : (maxY - Math.max(+bishop.analysisDepth || 15, 1));
+    return {minX, maxX, minY, maxY};
+  }
+  return {minX:0, maxX:20, minY:-10, maxY:5};
+}
+
+function fitStage6BishopViewport(){
+  ensureStage6State();
+  const canvas = document.getElementById('stage6BishopCanvas');
+  if(!canvas) return;
+  const model = stage6BishopCurrentModel();
+  const rect = canvas.getBoundingClientRect();
+  const bounds = stage6BishopCanvasWorldBounds(model);
+  const width = Math.max(rect.width, 100);
+  const height = Math.max(rect.height, 100);
+  const dx = Math.max(bounds.maxX - bounds.minX, 1);
+  const dy = Math.max(bounds.maxY - bounds.minY, 1);
+  const margin = 28;
+  const scale = Math.max(Math.min((width - 2*margin)/dx, (height - 2*margin)/dy), 8);
+  const cx = 0.5*(bounds.minX + bounds.maxX);
+  const cy = 0.5*(bounds.minY + bounds.maxY);
+  S.stage6.bishop.viewport.scale = scale;
+  S.stage6.bishop.viewport.offsetX = width*0.5 - cx*scale;
+  S.stage6.bishop.viewport.offsetY = height*0.5 + cy*scale;
+  S.stage6.bishop.viewport.fitted = true;
+  stage6BishopDrawCanvas();
+}
+
+function stage6BishopAutoFitViewportIfNeeded(){
+  if(!S.stage6.bishop.viewport.fitted) fitStage6BishopViewport();
+}
+
+function stage6BishopNearestHandle(canvas, clientX, clientY){
+  const bishop = S.stage6.bishop;
+  const handles = [];
+  const screenDist = (pt)=>{
+    const scr = stage6BishopWorldToScreen(pt);
+    return Math.hypot(scr.x - (clientX - canvas.getBoundingClientRect().left), scr.y - (clientY - canvas.getBoundingClientRect().top));
+  };
+  bishop.terrain.forEach((pt, index)=>handles.push({kind:'terrain', index, pt}));
+  bishop.phreatic.forEach((pt, index)=>handles.push({kind:'phreatic', index, pt}));
+  if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
+    handles.push({kind:'cpt', pt:{x:bishop.activeCptX, y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX)}});
+  }
+  if(bishop.entryZone){
+    handles.push({kind:'entryStart', pt:{x:bishop.entryZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.entryZone.xStart)}});
+    handles.push({kind:'entryEnd', pt:{x:bishop.entryZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.entryZone.xEnd)}});
+  }
+  if(bishop.exitZone){
+    handles.push({kind:'exitStart', pt:{x:bishop.exitZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xStart)}});
+    handles.push({kind:'exitEnd', pt:{x:bishop.exitZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xEnd)}});
+  }
+  let best = null;
+  handles.forEach((handle)=>{
+    const d = screenDist(handle.pt);
+    if(d <= 12 && (!best || d < best.distance)){
+      best = {...handle, distance:d};
+    }
+  });
+  return best;
+}
+
+function stage6BishopCommitDrawPoint(world){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  const tool = bishop.tool;
+  if(tool === 'terrain' || tool === 'phreatic'){
+    const snapped = stage6BishopSnapWorldPoint(world, 'free');
+    const next = [...bishop.draft];
+    if(next.length && snapped.x <= next[next.length-1].x + 1e-6) return;
+    next.push(snapped);
+    bishop.draft = next;
+    bishop.draftKind = tool;
+    renderStage6();
+    return;
+  }
+  if(tool === 'cpt'){
+    if(bishop.terrain.length < 2) return;
+    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
+    const terrain = {vertices:bishop.terrain};
+    bishop.activeCptX = Math.min(Math.max(x, bishop.terrain[0].x), bishop.terrain[bishop.terrain.length-1].x);
+    stage6BishopInvalidate('Active CPT position updated; rerun Bishop search.');
+    renderStage6();
+    return;
+  }
+  if(tool === 'entry' || tool === 'exit'){
+    if(bishop.terrain.length < 2) return;
+    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
+    const terrain = {vertices:bishop.terrain};
+    const minX = bishop.terrain[0].x;
+    const maxX = bishop.terrain[bishop.terrain.length-1].x;
+    const clampedX = Math.min(Math.max(x, minX), maxX);
+    if(bishop.draftKind !== tool || bishop.draft.length >= 2){
+      bishop.draft = [{x:clampedX, y:bishopTerrainY(terrain, clampedX)}];
+      bishop.draftKind = tool;
+    } else {
+      const first = bishop.draft[0];
+      const zone = stage6BishopSortZone({xStart:first.x, xEnd:clampedX});
+      if(tool === 'entry') bishop.entryZone = zone;
+      else bishop.exitZone = zone;
+      bishop.draft = [];
+      bishop.draftKind = '';
+      stage6BishopInvalidate(`${tool === 'entry' ? 'Entry' : 'Exit'} zone updated; rerun Bishop search.`);
+    }
+    renderStage6();
+  }
+}
+
+function stage6BishopCompleteCurrentActionAt(world){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  if(bishop.draftKind === 'terrain' || bishop.draftKind === 'phreatic'){
+    if((bishop.draft || []).length >= 2){
+      stage6BishopFinishDraft();
+      return true;
+    }
+    return false;
+  }
+  if((bishop.draftKind === 'entry' || bishop.draftKind === 'exit') && (bishop.draft || []).length === 1 && bishop.terrain.length >= 2){
+    const kind = bishop.draftKind;
+    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
+    const terrain = {vertices:bishop.terrain};
+    const minX = bishop.terrain[0].x;
+    const maxX = bishop.terrain[bishop.terrain.length-1].x;
+    const clampedX = Math.min(Math.max(x, minX), maxX);
+    const first = bishop.draft[0];
+    const zone = stage6BishopSortZone({xStart:first.x, xEnd:clampedX});
+    if(zone && Math.abs(zone.xEnd - zone.xStart) > 1e-6){
+      if(kind === 'entry') bishop.entryZone = zone;
+      else bishop.exitZone = zone;
+      bishop.draft = [];
+      bishop.draftKind = '';
+      stage6BishopInvalidate(`${kind === 'entry' ? 'Entry' : 'Exit'} zone updated; rerun Bishop search.`);
+      renderStage6();
+      return true;
+    }
+  }
+  return false;
+}
+
+function stage6BishopPointerDown(event){
+  const canvas = event.currentTarget;
+  const bishop = S.stage6.bishop;
+  stage6BishopCanvasState.canvas = canvas;
+  stage6BishopUpdateHoverDom(canvas, event.clientX, event.clientY);
+  if(event.button === 2){
+    event.preventDefault();
+    stage6BishopCompleteCurrentActionAt(stage6BishopScreenToWorld(canvas, event.clientX, event.clientY));
+    return;
+  }
+  if(event.button === 1){
+    event.preventDefault();
+    stage6BishopCanvasState.pointerDrag = {
+      kind:'pan',
+      pointerId:event.pointerId,
+      startX:event.clientX,
+      startY:event.clientY,
+      offsetX:bishop.viewport.offsetX,
+      offsetY:bishop.viewport.offsetY
+    };
+    canvas.setPointerCapture(event.pointerId);
+    return;
+  }
+  if(bishop.tool === 'edit'){
+    const handle = stage6BishopNearestHandle(canvas, event.clientX, event.clientY);
+    if(handle){
+      stage6BishopInvalidate();
+      stage6BishopCanvasState.pointerDrag = {
+        kind:handle.kind,
+        index:handle.index,
+        pointerId:event.pointerId
+      };
+      canvas.setPointerCapture(event.pointerId);
+      return;
+    }
+    stage6BishopCanvasState.pointerDrag = {
+      kind:'pan',
+      pointerId:event.pointerId,
+      startX:event.clientX,
+      startY:event.clientY,
+      offsetX:bishop.viewport.offsetX,
+      offsetY:bishop.viewport.offsetY
+    };
+    canvas.setPointerCapture(event.pointerId);
+    return;
+  }
+  stage6BishopCommitDrawPoint(stage6BishopScreenToWorld(canvas, event.clientX, event.clientY));
+}
+
+function stage6BishopPointerMove(event){
+  const canvas = event.currentTarget;
+  stage6BishopUpdateHoverDom(canvas, event.clientX, event.clientY);
+  const drag = stage6BishopCanvasState.pointerDrag;
+  if(!drag || drag.pointerId !== event.pointerId){
+    return;
+  }
+  const bishop = S.stage6.bishop;
+  if(drag.kind === 'pan'){
+    bishop.viewport.offsetX = drag.offsetX + (event.clientX - drag.startX);
+    bishop.viewport.offsetY = drag.offsetY + (event.clientY - drag.startY);
+    stage6BishopDrawCanvas();
+    return;
+  }
+  const world = stage6BishopScreenToWorld(canvas, event.clientX, event.clientY);
+  if(drag.kind === 'terrain'){
+    const pt = stage6BishopSnapWorldPoint(world, 'free');
+    const prev = bishop.terrain[drag.index-1];
+    const next = bishop.terrain[drag.index+1];
+    if(prev) pt.x = Math.max(pt.x, prev.x + 0.05);
+    if(next) pt.x = Math.min(pt.x, next.x - 0.05);
+    bishop.terrain[drag.index] = pt;
+  } else if(drag.kind === 'phreatic'){
+    const pt = stage6BishopSnapWorldPoint(world, 'free');
+    const prev = bishop.phreatic[drag.index-1];
+    const next = bishop.phreatic[drag.index+1];
+    if(prev) pt.x = Math.max(pt.x, prev.x + 0.05);
+    if(next) pt.x = Math.min(pt.x, next.x - 0.05);
+    bishop.phreatic[drag.index] = pt;
+  } else if(drag.kind === 'cpt'){
+    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
+    bishop.activeCptX = Math.min(Math.max(x, bishop.terrain[0].x), bishop.terrain[bishop.terrain.length-1].x);
+  } else if(drag.kind.startsWith('entry') || drag.kind.startsWith('exit')){
+    const zoneKey = drag.kind.startsWith('entry') ? 'entryZone' : 'exitZone';
+    const edge = drag.kind.endsWith('Start') ? 'xStart' : 'xEnd';
+    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
+    const minX = bishop.terrain[0].x;
+    const maxX = bishop.terrain[bishop.terrain.length-1].x;
+    bishop[zoneKey][edge] = Math.min(Math.max(x, minX), maxX);
+    bishop[zoneKey] = stage6BishopSortZone(bishop[zoneKey]);
+  }
+  stage6BishopDrawCanvas();
+}
+
+function stage6BishopPointerUp(event){
+  const drag = stage6BishopCanvasState.pointerDrag;
+  if(!drag || drag.pointerId !== event.pointerId) return;
+  stage6BishopCanvasState.pointerDrag = null;
+  if(event.currentTarget.releasePointerCapture){
+    try{ event.currentTarget.releasePointerCapture(event.pointerId); }catch(e){}
+  }
+  renderStage6();
+}
+
+function stage6BishopPointerLeave(){
+  stage6BishopCanvasState.hoverWorld = null;
+  stage6BishopHideHoverDom();
+  stage6BishopDrawCanvas();
+}
+
+function stage6BishopWheel(event){
+  event.preventDefault();
+  const canvas = event.currentTarget;
+  const bishop = S.stage6.bishop;
+  const before = stage6BishopScreenToWorld(canvas, event.clientX, event.clientY);
+  const factor = event.deltaY < 0 ? 1.08 : 1/1.08;
+  bishop.viewport.scale = Math.min(Math.max(bishop.viewport.scale * factor, 4), 220);
+  bishop.viewport.offsetX = (event.clientX - canvas.getBoundingClientRect().left) - before.x * bishop.viewport.scale;
+  bishop.viewport.offsetY = (event.clientY - canvas.getBoundingClientRect().top) + before.y * bishop.viewport.scale;
+  stage6BishopDrawCanvas();
+}
+
+function stage6BishopDrawGrid(ctx, width, height){
+  const bishop = S.stage6.bishop;
+  const step = Math.max(bishop.snapSize || 0.5, 0.05);
+  if(bishop.viewport.scale * step < 18) return;
+  const xMin = (0 - bishop.viewport.offsetX) / bishop.viewport.scale;
+  const xMax = (width - bishop.viewport.offsetX) / bishop.viewport.scale;
+  const yMax = bishop.viewport.offsetY / bishop.viewport.scale;
+  const yMin = (bishop.viewport.offsetY - height) / bishop.viewport.scale;
+  const startX = Math.floor(xMin / step) * step;
+  const endX = Math.ceil(xMax / step) * step;
+  const startY = Math.floor(yMin / step) * step;
+  const endY = Math.ceil(yMax / step) * step;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(140, 150, 170, 0.18)';
+  ctx.lineWidth = 1;
+  for(let x=startX; x<=endX+1e-9; x+=step){
+    const sx = stage6BishopWorldToScreen({x, y:0}).x;
+    ctx.beginPath();
+    ctx.moveTo(sx, 0);
+    ctx.lineTo(sx, height);
+    ctx.stroke();
+  }
+  for(let y=startY; y<=endY+1e-9; y+=step){
+    const sy = stage6BishopWorldToScreen({x:0, y}).y;
+    ctx.beginPath();
+    ctx.moveTo(0, sy);
+    ctx.lineTo(width, sy);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function stage6BishopDrawCanvas(){
+  const canvas = stage6BishopCanvasState.canvas || document.getElementById('stage6BishopCanvas');
+  if(!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  if(canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)){
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  if(!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const width = rect.width;
+  const height = rect.height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#fff';
+  ctx.fillRect(0, 0, width, height);
+  stage6BishopDrawGrid(ctx, width, height);
+
+  const bishop = S.stage6.bishop;
+  stage6BishopSyncSoilModel();
+  const model = buildBishopModelFromStageLayers(stage6WorkingLayers(), bishop);
+  S.stage6Cache.bishopModel = model;
+  if(model){
+    model.regions.forEach((region)=>{
+      if(!region.polygon?.length) return;
+      ctx.beginPath();
+      region.polygon.forEach((pt, index)=>{
+        const s = stage6BishopWorldToScreen(pt);
+        if(index === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = `${region.material.color || '#c9b089'}33`;
+      ctx.strokeStyle = `${region.material.color || '#c9b089'}88`;
+      ctx.lineWidth = 1;
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  const drawPolyline = (points, stroke, widthPx, dash)=>{
+    if(!points?.length) return;
+    ctx.save();
+    ctx.beginPath();
+    points.forEach((pt, index)=>{
+      const s = stage6BishopWorldToScreen(pt);
+      if(index === 0) ctx.moveTo(s.x, s.y);
+      else ctx.lineTo(s.x, s.y);
+    });
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = widthPx;
+    ctx.setLineDash(dash || []);
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  const drawCircleArc = (circle, stroke, widthPx, dash)=>{
+    const pts = [];
+    const n = 100;
+    const branch = circle?.branch === 'upper' ? 'upper' : 'lower';
+    for(let i=0;i<=n;i+=1){
+      const x = circle.entryPoint.x + ((circle.exitPoint.x - circle.entryPoint.x) * i) / n;
+      const rem = Math.max(circle.radius*circle.radius - (x-circle.center.x)*(x-circle.center.x), 0);
+      const root = Math.sqrt(rem);
+      pts.push({x, y:branch === 'upper' ? circle.center.y + root : circle.center.y - root});
+    }
+    drawPolyline(pts, stroke, widthPx, dash);
+  };
+
+  if(bishop.phreatic?.length >= 2) drawPolyline(bishop.phreatic, '#2f7fda', 2, [8, 5]);
+  if(bishop.draft?.length) drawPolyline(bishop.draft, bishop.draftKind === 'phreatic' ? '#2f7fda' : '#2d3a4a', 2, [6, 4]);
+  if(stage6BishopCanvasState.hoverWorld){
+    if((bishop.tool === 'terrain' || bishop.tool === 'phreatic') && bishop.draft?.length){
+      const last = bishop.draft[bishop.draft.length-1];
+      const next = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
+      if(next.x > last.x + 1e-6){
+        drawPolyline([last, next], bishop.tool === 'phreatic' ? '#2f7fda' : '#2d3a4a', 1.5, [6, 4]);
+      }
+    }
+    if((bishop.tool === 'entry' || bishop.tool === 'exit') && bishop.draftKind === bishop.tool && bishop.draft?.length === 1 && bishop.terrain.length >= 2){
+      const terrain = {vertices:bishop.terrain};
+      const first = bishop.draft[0];
+      const x = Math.min(Math.max(stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'terrain-x').x, bishop.terrain[0].x), bishop.terrain[bishop.terrain.length-1].x);
+      const zone = stage6BishopSortZone({xStart:first.x, xEnd:x});
+      if(zone && Math.abs(zone.xEnd - zone.xStart) > 1e-6){
+        drawPolyline([
+          {x:zone.xStart, y:bishopTerrainY(terrain, zone.xStart)},
+          {x:zone.xEnd, y:bishopTerrainY(terrain, zone.xEnd)}
+        ], bishop.tool === 'entry' ? '#3aa35f' : '#d27b2d', 4, [5, 4]);
+      }
+    }
+  }
+
+  const zoneStroke = (zone, color)=>{
+    if(!zone || bishop.terrain.length < 2) return;
+    const pts = [
+      {x:zone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, zone.xStart)},
+      {x:zone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, zone.xEnd)}
+    ];
+    drawPolyline(pts, color, 5);
+  };
+  zoneStroke(bishop.entryZone, '#3aa35f');
+  zoneStroke(bishop.exitZone, '#d27b2d');
+
+  const results = bishop.results?.allResults || [];
+  const keepBest = Math.min(results.length, bishop.search.keepBest || 10);
+  if(bishop.progress?.running && bishop.progress.previewCircle){
+    drawCircleArc(bishop.progress.previewCircle, 'rgba(58, 128, 212, 0.6)', 1.8, [8, 6]);
+  }
+  for(let i=Math.min(keepBest-1, results.length-1); i>=0; i-=1){
+    const result = results[i];
+    const color = i === (bishop.selectedResult || 0) ? '#d65252' : 'rgba(214, 82, 82, 0.16)';
+    drawCircleArc(result.circle, color, i === (bishop.selectedResult || 0) ? 2.8 : 1.2);
+  }
+
+  const selected = stage6BishopSelectedResult();
+  if(selected){
+    selected.slices.forEach((slice)=>{
+      const top = stage6BishopWorldToScreen({x:slice.xL, y:slice.yTopL});
+      const base = stage6BishopWorldToScreen({x:slice.xL, y:slice.yBaseL});
+      ctx.save();
+      ctx.strokeStyle = 'rgba(34, 76, 120, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(top.x, top.y);
+      ctx.lineTo(base.x, base.y);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  if(bishop.terrain?.length >= 2) drawPolyline(bishop.terrain, '#2d3a4a', 3);
+
+  if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
+    const pt = {x:bishop.activeCptX, y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX)};
+    const s = stage6BishopWorldToScreen(pt);
+    ctx.save();
+    ctx.fillStyle = '#7a2dd2';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 6, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if(bishop.tool === 'edit'){
+    const handleSets = [
+      ...(bishop.terrain || []),
+      ...(bishop.phreatic || [])
+    ];
+    handleSets.forEach((pt)=>{
+      const s = stage6BishopWorldToScreen(pt);
+      ctx.save();
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#1f2e40';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 4, 0, Math.PI*2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+}
+
+function initStage6BishopCanvas(){
+  const canvas = document.getElementById('stage6BishopCanvas');
+  if(!canvas) return;
+  stage6BishopCanvasState.canvas = canvas;
+  canvas.onpointerdown = stage6BishopPointerDown;
+  canvas.onpointermove = stage6BishopPointerMove;
+  canvas.onpointerup = stage6BishopPointerUp;
+  canvas.onpointercancel = stage6BishopPointerUp;
+  canvas.onpointerleave = stage6BishopPointerLeave;
+  canvas.onwheel = stage6BishopWheel;
+  canvas.oncontextmenu = (event)=>event.preventDefault();
+  canvas.onauxclick = (event)=>event.preventDefault();
+  stage6BishopAutoFitViewportIfNeeded();
+  stage6BishopDrawCanvas();
 }
 
 function layerAtDepth(z, layers){
@@ -4260,8 +5316,11 @@ function stage6CardsHtml(app){
     {id:'dewatering', title:'Dewatering', desc:'Analytical drawdown screening plus induced stress change and settlement at the CPT.'},
     {id:'beam', title:'Beam / slab on Winkler', desc:'1D strip-on-elastic-foundation screening with EC2 reinforcement output.'}
   ];
+  if(stage6BishopEnabled()){
+    cards.push({id:'bishop', title:'Bishop simplified', desc:'Experimental slope-stability workspace using the current active CPT soil model.'});
+  }
   return `
-    <div class="mcards" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:14px">
+    <div class="mcards" style="grid-template-columns:repeat(${cards.length},minmax(0,1fr));margin-bottom:14px">
       ${cards.map(c=>`<div class="mc ${c.id===app?'sel':''}" onclick="setStage6App('${c.id}')">
         <h3>${c.title}</h3><p>${c.desc}</p>
       </div>`).join('')}
@@ -4955,6 +6014,212 @@ function renderStage6BeamApp(analysis){
   `;
 }
 
+function renderStage6BishopApp(){
+  const bishop = S.stage6.bishop;
+  const model = stage6BishopCurrentModel();
+  const modeMeta = stage6BishopModeMeta();
+  const selected = stage6BishopSelectedResult();
+  const results = bishop.results?.allResults || [];
+  const summary = bishop.results?.summary;
+  const runReady = !!model && !!bishop.entryZone && !!bishop.exitZone;
+  const resultRows = results.slice(0, Math.max(bishop.search.keepBest || 10, 1)).map((result, index)=>`
+    <tr class="${index === (bishop.selectedResult || 0) ? 'sel':''}">
+      <td>${index+1}</td>
+      <td>${result.FS.toFixed(3)}</td>
+      <td>${result.iterations}</td>
+      <td><button class="btn sm" onclick="stage6BishopSelectResult(${index})">Show</button></td>
+    </tr>
+  `).join('');
+  const materialRows = (bishop.materials || []).map((mat, index)=>`
+    <tr>
+      <td><input type="text" value="${stage6EscAttr(mat.label)}" onchange="stage6BishopSetMaterialField(${index}, 'label', this.value)"></td>
+      <td><input type="number" step="1" min="0" value="${Number(mat.cEff || 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'cEff', this.value)"></td>
+      <td><input type="number" step="1" min="0" value="${Number(mat.phiEffDeg || 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'phiEffDeg', this.value)"></td>
+      <td><input type="number" step="0.1" min="0" value="${Number(mat.gamma || 0).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'gamma', this.value)"></td>
+      <td><input type="number" step="0.1" min="0" value="${Number(mat.gammaSat || 0).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'gammaSat', this.value)"></td>
+    </tr>
+  `).join('');
+  return `
+    <div class="mc2 st6-bishop">
+      <div class="mc2-head" style="margin-bottom:12px">
+        <span style="font-size:13px;font-weight:600">Bishop simplified v1</span>
+        <span style="font-size:11px;color:var(--tx2)">Experimental hidden Stage 6 app. Circular slip surfaces only, self-weight only, active CPT only.</span>
+      </div>
+      <div class="st6-bishop-layout">
+        <div class="st6-bishop-side">
+          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Geometry</div>
+          <div class="ctrl-row st6-bishop-controls">
+            <div class="st6-help">Draw a monotonic terrain, place the active CPT on that terrain, then define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
+            <div class="st6-bishop-tools">
+              <button class="btn sm ${bishop.tool==='terrain'?'active':''}" onclick="stage6BishopSetTool('terrain')">Terrain</button>
+              <button class="btn sm" onclick="stage6BishopFinishDraft()">Finish line</button>
+              <button class="btn sm" onclick="stage6BishopPopDraftPoint()">Undo point</button>
+              <button class="btn sm" onclick="stage6BishopClear('draft')">Clear draft</button>
+              <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
+              <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic</button>
+              <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
+              <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
+              <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
+              <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
+              <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
+              <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
+              <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
+            </div>
+            <label style="font-size:11px;color:var(--tx2)">Material strength set${stage6Tooltip('Characteristic keeps the active CPT layer parameters unchanged. DA1/1 uses M1 soil factors and DA1/2 uses M2 soil factors before importing the Bishop base materials.')}
+              <select onchange="stage6BishopSetField('strengthSet', this.value)">
+                <option value="characteristic"${bishop.strengthSet==='characteristic'?' selected':''}>Characteristic</option>
+                <option value="da1_1"${bishop.strengthSet==='da1_1'?' selected':''}>DA1/1 (M1)</option>
+                <option value="da1_2"${bishop.strengthSet==='da1_2'?' selected':''}>DA1/2 (M2)</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Analysis depth below terrain (m)${stage6Tooltip('The Bishop section extends to this depth below the local ground level at the active CPT. The default is the CPT depth or 15 m, whichever is greater. If you go deeper, the deepest CPT layer is extrapolated downward.')}
+              <input type="number" step="0.5" min="${Math.max(stage6MaxDepth(), 15).toFixed(2)}" value="${bishop.analysisDepth.toFixed(2)}" onchange="stage6BishopSetField('analysisDepth', this.value)">
+            </label>
+            <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px">
+              <input type="checkbox" ${bishop.gridSnap?'checked':''} onchange="stage6BishopSetField('gridSnap', this.checked)">
+              Snap to grid
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Grid size (m)
+              <input type="number" step="0.05" min="0.05" value="${bishop.snapSize.toFixed(2)}" onchange="stage6BishopSetField('snapSize', this.value)">
+            </label>
+            <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+              Terrain vertices: <strong>${bishop.terrain.length}</strong><br>
+              Phreatic vertices: <strong>${bishop.phreatic.length}</strong><br>
+              Active CPT x: <strong>${Number.isFinite(bishop.activeCptX)?bishop.activeCptX.toFixed(2)+' m':'not placed'}</strong><br>
+              Entry zone: <strong>${bishop.entryZone?`${bishop.entryZone.xStart.toFixed(2)}-${bishop.entryZone.xEnd.toFixed(2)} m`:'not set'}</strong><br>
+              Exit zone: <strong>${bishop.exitZone?`${bishop.exitZone.xStart.toFixed(2)}-${bishop.exitZone.xEnd.toFixed(2)} m`:'not set'}</strong>
+            </div>
+            <details class="st6-adv" data-st6details="bishop-search"${stage6DetailsOpen('bishop-search')}>
+              <summary>Search and solver settings</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">If no valid slip circle is found, first try widening the entry and exit zones, increasing the entry / exit samples and centers per chord, increasing the maximum center offset, reducing the minimum slip thickness slightly, or allowing a somewhat larger exit angle. Simple, monotonic terrain geometry also helps the search.</div>
+                <label style="font-size:11px;color:var(--tx2)">Entry samples
+                  <input type="number" step="1" min="2" value="${bishop.search.nEntry}" onchange="stage6BishopSetField('search.nEntry', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Exit samples
+                  <input type="number" step="1" min="2" value="${bishop.search.nExit}" onchange="stage6BishopSetField('search.nExit', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Centers per chord
+                  <input type="number" step="1" min="2" value="${bishop.search.nCenter}" onchange="stage6BishopSetField('search.nCenter', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Center offset min (× chord)
+                  <input type="number" step="0.1" min="0.05" value="${bishop.search.centerOffsetMin.toFixed(2)}" onchange="stage6BishopSetField('search.centerOffsetMin', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Center offset max (× chord)
+                  <input type="number" step="0.1" min="0.10" value="${bishop.search.centerOffsetMax.toFixed(2)}" onchange="stage6BishopSetField('search.centerOffsetMax', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Target slices
+                  <input type="number" step="1" min="6" value="${bishop.search.targetSlices}" onchange="stage6BishopSetField('search.targetSlices', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Minimum slip thickness (m)
+                  <input type="number" step="0.05" min="0.1" value="${bishop.search.minSlipThickness.toFixed(2)}" onchange="stage6BishopSetField('search.minSlipThickness', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Maximum exit angle (deg)
+                  <input type="number" step="1" min="5" max="89" value="${bishop.search.maxExitAngleDeg.toFixed(0)}" onchange="stage6BishopSetField('search.maxExitAngleDeg', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Tolerance
+                  <input type="number" step="0.0001" min="0.000001" value="${bishop.solver.tolerance.toFixed(4)}" onchange="stage6BishopSetField('solver.tolerance', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Maximum iterations
+                  <input type="number" step="1" min="5" value="${bishop.solver.maxIterations}" onchange="stage6BishopSetField('solver.maxIterations', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Minimum m_alpha
+                  <input type="number" step="0.000001" min="0.000000001" value="${bishop.solver.minMAlpha}" onchange="stage6BishopSetField('solver.minMAlpha', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px">
+                  <input type="checkbox" ${bishop.solver.useOrdinarySeed?'checked':''} onchange="stage6BishopSetField('solver.useOrdinarySeed', this.checked)">
+                  Use ordinary method seed
+                </label>
+              </div>
+            </details>
+            <details class="st6-adv" data-st6details="bishop-materials"${stage6DetailsOpen('bishop-materials')}>
+              <summary>Imported base materials from active CPT</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">The active CPT working layer model from Stages 2-5 is extended horizontally across the Bishop section. The current imported material set is <strong>${stage6BishopStrengthSetLabel(bishop.strengthSet)}</strong>. You can still tweak the displayed values here for sensitivity work.</div>
+                <div style="overflow:auto">
+                  <table class="tbl st6-bishop-materials">
+                    <thead><tr><th>Layer</th><th>c'</th><th>phi'</th><th>gamma</th><th>gamma_sat</th></tr></thead>
+                    <tbody>${materialRows}</tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+        <div class="st6-bishop-canvas-wrap">
+          <div class="st6-bishop-toolbar">
+            <button class="btn" onclick="stage6BishopRunSearch()" ${runReady?'':'disabled'}>Run Bishop search</button>
+            <button class="btn sm" onclick="stage6BishopStopSearch();renderStage6()">Stop</button>
+            <button class="btn sm" onclick="fitStage6BishopViewport()">Fit view</button>
+            <button class="btn sm" onclick="stage6BishopClear('results')">Clear results</button>
+            <span id="stage6BishopProgress" class="st6-bishop-progress">${bishop.progress.running ? `Running ${bishop.progress.trial||0}/${bishop.progress.total||0} trials` : (bishop.progress.message || (runReady ? 'Ready to run Bishop search.' : 'Draw terrain, place the active CPT, and define entry and exit zones.'))}</span>
+          </div>
+          <div class="st6-bishop-progress-track"><div id="stage6BishopProgressBar" class="st6-bishop-progress-bar" style="width:${Math.max(0, Math.min(100, bishop.progress.percent||0))}%"></div></div>
+          <div class="st6-bishop-status">
+            <div id="stage6BishopMode" class="st6-bishop-mode">${modeMeta.label}</div>
+          </div>
+          <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Bishop simplified section and slip circles"></canvas>
+          <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
+          <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
+          <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the Bishop solver.</div>
+        </div>
+        <div class="st6-bishop-side">
+          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Results</div>
+          <table class="pt" style="margin-bottom:12px">
+            <tr><td>Critical F</td><td>${summary && results[0] ? results[0].FS.toFixed(3) : '—'}</td></tr>
+            <tr><td>Circle centre</td><td>${summary ? `(${summary.center.x.toFixed(2)}, ${summary.center.y.toFixed(2)})` : '—'}</td></tr>
+            <tr><td>Radius</td><td>${summary ? `${summary.radius.toFixed(2)} m` : '—'}</td></tr>
+            <tr><td>Max slip depth</td><td>${summary ? `${summary.maxDepth.toFixed(2)} m` : '—'}</td></tr>
+            <tr><td>Trials</td><td>${bishop.results?.timing?.trialCount ?? '—'}</td></tr>
+            <tr><td>Runtime</td><td>${bishop.results?.timing?.totalMs != null ? `${bishop.results.timing.totalMs.toFixed(0)} ms` : '—'}</td></tr>
+            <tr><td>Selected result</td><td>${selected ? `#${(bishop.selectedResult||0)+1}` : '—'}</td></tr>
+            <tr><td>Selected iterations</td><td>${selected ? selected.iterations : '—'}</td></tr>
+          </table>
+          <div class="info" style="background:var(--bg2);border-color:var(--bd2);margin-bottom:12px">
+            Rejections: ${bishop.results ? Object.entries(bishop.results.rejectionCounts || {}).map(([k,v])=>`${k}: ${v}`).join(' · ') || 'none' : 'no search yet'}
+          </div>
+          ${bishop.results && !results.length ? `
+            <div class="st6-help" style="margin-bottom:12px">
+              No valid circle was found for the current geometry and search settings. Try widening the <strong>entry</strong> and <strong>exit</strong> zones, increasing <strong>entry / exit samples</strong> and <strong>centers per chord</strong>, increasing <strong>center offset max</strong>, reducing <strong>minimum slip thickness</strong> a little, or allowing a larger <strong>maximum exit angle</strong>. The rejection summary above tells you which filter blocked most trial circles.
+            </div>
+          `:''}
+          <div class="mc2-sec">Best circles</div>
+          <div style="max-height:200px;overflow:auto">
+            <table class="tbl st6-bishop-results">
+              <thead><tr><th>#</th><th>F</th><th>Iter</th><th></th></tr></thead>
+              <tbody>${resultRows || '<tr><td colspan="4" style="text-align:center;color:var(--tx2)">No results yet.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div class="mc2-sec" style="margin-top:14px">Selected slices</div>
+          <div style="max-height:250px;overflow:auto">
+            <table class="tbl st6-bishop-results">
+              <thead><tr><th>i</th><th>W</th><th>alpha</th><th>c'</th><th>phi'</th><th>u</th><th>m_alpha</th><th>N</th></tr></thead>
+              <tbody>
+                ${selected ? selected.slices.map((slice, index)=>`
+                  <tr>
+                    <td>${index+1}</td>
+                    <td>${slice.W.toFixed(1)}</td>
+                    <td>${(slice.alphaRad * 180 / Math.PI).toFixed(1)}°</td>
+                    <td>${slice.baseMaterial.cEff.toFixed(1)}</td>
+                    <td>${slice.baseMaterial.phiEffDeg.toFixed(1)}°</td>
+                    <td>${slice.uBase.toFixed(1)}</td>
+                    <td>${slice.mAlpha.toFixed(3)}</td>
+                    <td>${slice.normalForce.toFixed(1)}</td>
+                  </tr>
+                `).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--tx2)">Select or run a result to inspect slice data.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      ${stage6NoteHtml([
+        {level:'warn', text:'Bishop v1 is experimental. It searches circular slip surfaces only and uses self-weight only with optional phreatic pore pressure along the base.'},
+        {level:'info', text:'The Bishop soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this v1 workflow.'}
+      ])}
+    </div>
+  `;
+}
+
 function renderStage6(){
   ensureStage6State();
   stage6RememberDetailsState();
@@ -4979,6 +6244,8 @@ function renderStage6(){
     const analysis = analyzeDewatering(layers, S.wt, S.stage6.dewatering);
     S.stage6Cache.dewatering = analysis;
     body = renderStage6DewateringApp(analysis);
+  } else if(app === 'bishop'){
+    body = renderStage6BishopApp();
   } else {
     const analysis = analyzeBeamAndReinforcement(layers, S.wt, S.stage6.beam);
     S.stage6Cache.beam = analysis;
@@ -4990,6 +6257,7 @@ function renderStage6(){
     if(app === 'settlement') buildStage6SettlementCharts();
     if(app === 'dewatering') buildStage6DewateringCharts();
     if(app === 'beam') buildStage6BeamCharts();
+    if(app === 'bishop') initStage6BishopCanvas();
   });
 }
 
@@ -5252,6 +6520,16 @@ function exportCSV(){
   a.click();
 }
 
+function stage6BishopHandleHashChange(){
+  if(!S?.stage6) return;
+  if(stage6BishopHashActive()){
+    if(S.stage6.app !== 'bishop') S.stage6.app = 'bishop';
+  } else if(S.stage6.app === 'bishop'){
+    S.stage6.app = 'bearing';
+  }
+  renderStage6();
+}
+
 const legacyApi={
   PROJECT,
   newCptState,
@@ -5346,6 +6624,16 @@ const legacyApi={
   ensureStage6State,
   setStage6Field,
   setStage6App,
+  stage6BishopSetField,
+  stage6BishopSetTool,
+  stage6BishopFinishDraft,
+  stage6BishopPopDraftPoint,
+  stage6BishopClear,
+  stage6BishopSetMaterialField,
+  stage6BishopRunSearch,
+  stage6BishopStopSearch,
+  stage6BishopSelectResult,
+  fitStage6BishopViewport,
   layerAtDepth,
   stage6ShapeFactors,
   bearingAtDepth,
@@ -5365,7 +6653,12 @@ export function initLegacyController(){
   if(__legacyControllerInitialized) return ()=>{};
   Object.assign(window, legacyApi);
   bindDropzone();
+  if(stage6BishopHashActive()) S.stage6.app = 'bishop';
   renderBanner();
+  if(!__legacyControllerHashBound && typeof window !== 'undefined'){
+    window.addEventListener('hashchange', stage6BishopHandleHashChange);
+    __legacyControllerHashBound = true;
+  }
   __legacyControllerInitialized = true;
   return ()=>{};
 }
