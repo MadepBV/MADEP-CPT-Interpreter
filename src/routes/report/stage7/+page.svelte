@@ -17,7 +17,7 @@
     buildTuningDepthChartConfig,
     buildTuningRegressionChartConfig
   } from '$lib/cpt-app/chart-factories';
-  import { loadStage7Payload } from '$lib/cpt-app/report-storage';
+  import { loadStage7Payload, stage7PayloadFilename } from '$lib/cpt-app/report-storage';
   import { SOIL_FILL_COLORS } from '$lib/cpt-app/soil-styles';
 
   let payload: any = null;
@@ -73,6 +73,26 @@
     if (abs >= 10) return n.toFixed(2).replace(/\.?0+$/, '');
     if (abs >= 1) return n.toFixed(3).replace(/\.?0+$/, '');
     return n.toFixed(4).replace(/\.?0+$/, '');
+  }
+
+  function missingReportMessage(key: string) {
+    return key
+      ? 'No Stage 7 payload was found for this report key in this browser. Open a saved data file or launch a fresh report from the CPT app.'
+      : 'No Stage 7 payload key was provided. Open a saved data file or launch a fresh report from the CPT app.';
+  }
+
+  function downloadPayloadFile() {
+    if (!payload) return;
+    const raw = JSON.stringify(payload, null, 2);
+    const blob = new Blob([raw], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = stage7PayloadFilename(payload);
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   function hasStage6(name: string) {
@@ -498,9 +518,13 @@
 
     void (async () => {
       const key = new URLSearchParams(window.location.search).get('key') || '';
+      if (!key) {
+        loadError = missingReportMessage('');
+        return;
+      }
       payload = loadStage7Payload(window.localStorage, key);
       if (!payload) {
-        loadError = 'No Stage 7 payload was found for this report key.';
+        loadError = missingReportMessage(key);
         return;
       }
       chartReady = await waitForChart();
@@ -535,7 +559,10 @@
     <div class="report-error">
       <h1>Stage 7 report unavailable</h1>
       <p>{loadError}</p>
-      <a class="btn pri" href="/">Back to CPT app</a>
+      <div class="report-error__actions">
+        <a class="btn" href="/report">Open saved data</a>
+        <a class="btn pri" href="/">Back to CPT app</a>
+      </div>
     </div>
   </div>
 {:else if !payload}
@@ -548,11 +575,13 @@
   <div class="report-shell">
     <div class="report-toolbar no-print">
       <a class="btn sm" href="/">CPT app</a>
+      <a class="btn sm" href="/report">Open saved data</a>
+      <button class="btn sm" type="button" onclick={downloadPayloadFile}>Download data file</button>
       <label class="report-toolbar__toggle" for="include-print-appendices">
         <input id="include-print-appendices" type="checkbox" bind:checked={includePrintAppendices} />
         <span>Include Appendix A and B in print</span>
       </label>
-      <button class="btn pri" onclick={() => window.print()}>Print / Save as PDF</button>
+      <button class="btn pri" type="button" onclick={() => window.print()}>Print / Save as PDF</button>
     </div>
 
     <article class:report--concise-print={!includePrintAppendices} class="report">
@@ -1512,6 +1541,14 @@
   .report-error {
     margin-top: 12vh;
     text-align: center;
+  }
+
+  .report-error__actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 16px;
   }
 
   @media (max-width: 980px) {
