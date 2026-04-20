@@ -15,6 +15,7 @@ import {
   importBishopMaterialsFromLayers,
   terrainY as bishopTerrainY
 } from './stage6-bishop';
+import { importTerrainFromDxfText } from './dxf-terrain';
 import {
   buildBeamDeflectionChartConfig,
   buildBeamMomentChartConfig,
@@ -3874,6 +3875,55 @@ function stage6BishopSetTool(tool){
   renderStage6();
 }
 
+function stage6BishopTriggerDxfImport(){
+  const input = document.getElementById('stage6BishopDxfInput');
+  if(input) input.click();
+}
+
+function stage6BishopApplyImportedTerrain(vertices, label){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  bishop.terrain = stage6BishopSortedPolyline(vertices);
+  bishop.phreatic = [];
+  bishop.draft = [];
+  bishop.draftKind = '';
+  bishop.entryZone = null;
+  bishop.exitZone = null;
+  bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
+  bishop.activeCptX = null;
+  bishop.viewport.fitted = false;
+  stage6BishopInvalidate(`Terrain imported from DXF${label ? ` (${label})` : ''}; review the CPT position and redraw the zones before rerunning the search.`);
+  renderStage6();
+}
+
+function stage6BishopImportDxf(event){
+  ensureStage6State();
+  const input = event?.target;
+  const file = input?.files?.[0];
+  if(input) input.value = '';
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (loadEvent)=>{
+    try{
+      const imported = importTerrainFromDxfText(loadEvent?.target?.result);
+      stage6BishopApplyImportedTerrain(imported.vertices, file.name);
+    }catch(error){
+      const message = error?.message || 'Unable to import terrain from DXF.';
+      S.stage6.bishop.progress.message = message;
+      renderStage6();
+      alert(`${file.name}: ${message}`);
+    }
+  };
+  reader.onerror = ()=>{
+    const message = `Error reading ${file.name}`;
+    S.stage6.bishop.progress.message = message;
+    renderStage6();
+    alert(message);
+  };
+  reader.readAsText(file);
+}
+
 function stage6BishopPopDraftPoint(){
   ensureStage6State();
   if(S.stage6.bishop.draft?.length) S.stage6.bishop.draft.pop();
@@ -6347,23 +6397,40 @@ function renderStage6BishopApp(){
         <div class="st6-bishop-side">
           <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Geometry</div>
           <div class="ctrl-row st6-bishop-controls">
-            <div class="st6-help">Draw a monotonic terrain, place the active CPT on that terrain, optionally define a uniform surcharge zone, then define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
-            <div class="st6-bishop-tools">
-              <button class="btn sm ${bishop.tool==='terrain'?'active':''}" onclick="stage6BishopSetTool('terrain')">Terrain</button>
-              <button class="btn sm" onclick="stage6BishopFinishDraft()">Finish line</button>
-              <button class="btn sm" onclick="stage6BishopPopDraftPoint()">Undo point</button>
-              <button class="btn sm" onclick="stage6BishopClear('draft')">Clear draft</button>
-              <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
-              <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic</button>
-              <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
-              <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
-              <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
-              <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
-              <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
-              <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
-              <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
-              <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
-              <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
+            <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally define a uniform surcharge zone, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
+            <div class="st6-bishop-tool-groups">
+              <div class="st6-bishop-tool-group">
+                <div class="st6-bishop-tool-title">Terrain</div>
+                <div class="st6-bishop-tools">
+                  <button class="btn sm ${bishop.tool==='terrain'?'active':''}" onclick="stage6BishopSetTool('terrain')">Draw terrain</button>
+                  <button class="btn sm" onclick="stage6BishopTriggerDxfImport()">Import DXF terrain</button>
+                  <input id="stage6BishopDxfInput" type="file" accept=".dxf,.DXF" style="display:none" onchange="stage6BishopImportDxf(event)">
+                  <button class="btn sm" onclick="stage6BishopFinishDraft()">Finish line</button>
+                  <button class="btn sm" onclick="stage6BishopPopDraftPoint()">Undo point</button>
+                  <button class="btn sm" onclick="stage6BishopClear('draft')">Clear draft</button>
+                </div>
+              </div>
+              <div class="st6-bishop-tool-group">
+                <div class="st6-bishop-tool-title">Section Setup</div>
+                <div class="st6-bishop-tools">
+                  <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
+                  <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
+                  <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
+                  <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
+                  <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
+                  <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
+                </div>
+              </div>
+              <div class="st6-bishop-tool-group st6-bishop-tool-group-muted">
+                <div class="st6-bishop-tool-title">Clear Accepted Geometry</div>
+                <div class="st6-bishop-mini-actions">
+                  <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
+                  <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
+                  <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
+                  <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
+                  <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
+                </div>
+              </div>
             </div>
             <label style="font-size:11px;color:var(--tx2)">Material strength set${stage6Tooltip('Characteristic keeps the active CPT layer parameters unchanged. DA1/1 uses M1 soil factors and DA1/2 uses M2 soil factors before importing the Bishop base materials.')}
               <select onchange="stage6BishopSetField('strengthSet', this.value)">
@@ -6512,7 +6579,7 @@ function renderStage6BishopApp(){
             <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Bishop simplified section and slip circles"></canvas>
             <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
             <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
-            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally draw the load zone, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the solver.</div>
+            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally draw the load zone, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the solver.</div>
           </div>
           <div class="st6-bishop-results-panel">
             <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Results</div>
@@ -7404,6 +7471,8 @@ const legacyApi={
   setStage6App,
   stage6BishopSetField,
   stage6BishopSetTool,
+  stage6BishopTriggerDxfImport,
+  stage6BishopImportDxf,
   stage6BishopFinishDraft,
   stage6BishopPopDraftPoint,
   stage6BishopClear,
