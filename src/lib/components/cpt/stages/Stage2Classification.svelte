@@ -122,7 +122,7 @@
 				min="0"
 				max="6"
 				step="0.05"
-				value="0.50"
+				value="1.10"
 				style="width:120px"
 				oninput={(event) =>
 					call(
@@ -138,7 +138,7 @@
 				min="0"
 				max="6"
 				step="0.05"
-				value="0.50"
+				value="1.10"
 				oninput={(event) =>
 					call(
 						'setSmartMergeSensitivity',

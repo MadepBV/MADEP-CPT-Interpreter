@@ -27,7 +27,7 @@ function newCptState(id){
     elev:null, elevFromFile:false,
     minThk:0.50,
     smartMerge:true,
-    smartMergeSensitivity:0.50,
+    smartMergeSensitivity:1.10,
     method:'robertson',
     alphaMethod:'B',
     stiffMethod:'B',
@@ -80,8 +80,8 @@ function selectCpt(idx){
   if(smartMergeEl) smartMergeEl.checked=!!S.smartMerge;
   const smartSensRange=document.getElementById('smartMergeSensR');
   const smartSensNum=document.getElementById('smartMergeSensN');
-  if(smartSensRange) smartSensRange.value=(S.smartMergeSensitivity ?? 0.5).toFixed(2);
-  if(smartSensNum) smartSensNum.value=(S.smartMergeSensitivity ?? 0.5).toFixed(2);
+  if(smartSensRange) smartSensRange.value=(S.smartMergeSensitivity ?? 1.1).toFixed(2);
+  if(smartSensNum) smartSensNum.value=(S.smartMergeSensitivity ?? 1.1).toFixed(2);
   const smartMergeControls=document.getElementById('smartMergeControls');
   if(smartMergeControls) smartMergeControls.style.display=S.smartMerge?'':'none';
   const cptXEl=document.getElementById('cptX');
@@ -1979,7 +1979,7 @@ function chooseSimilarityMergeDirection(merged, i, margin){
 function smartSimilarityReduce(segments, sensitivity){
   let changed=true;
   let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  const sens=Math.max(0,Math.min(6,sensitivity ?? 0.5));
+  const sens=Math.max(0,Math.min(6,sensitivity ?? 1.1));
   const pairThreshold=0.90 - 0.275*sens;
   const thicknessRef=SMART_SLIVER_REF;
   while(changed){
@@ -2015,7 +2015,7 @@ function smartSimilarityReduce(segments, sensitivity){
 function enforceMinThicknessBySimilarity(segments, sensitivity){
   let changed=true;
   let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  const sens=Math.max(0,Math.min(6,sensitivity ?? 0.5));
+  const sens=Math.max(0,Math.min(6,sensitivity ?? 1.1));
   const margin=Math.max(0, 0.14 - 0.08*sens);
   while(changed){
     changed=false;
@@ -2033,7 +2033,7 @@ function enforceMinThicknessBySimilarity(segments, sensitivity){
 }
 
 function smartPostMerge(segments){
-  const sensitivity=Math.max(0,Math.min(6,S.smartMergeSensitivity ?? 0.5));
+  const sensitivity=Math.max(0,Math.min(6,S.smartMergeSensitivity ?? 1.1));
   let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
   // Intended smart chain:
   //   1. original raw classification-derived layering
