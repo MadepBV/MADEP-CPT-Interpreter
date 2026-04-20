@@ -78,6 +78,10 @@
     return `background:${soilFillColors[type] || '#D3D1C7'};color:#2c2c2a;`;
   }
 
+  function soilColor(type: string) {
+    return soilFillColors[type] || '#D3D1C7';
+  }
+
   function methodMetricLabel() {
     return payload?.replication?.method === 'robertson'
       ? 'Ic (-)'
@@ -222,7 +226,8 @@
         buildBearingChartConfig({
           data: payload.stage6.bearing.analysis,
           cfg: payload.stage6.bearing.config,
-          capacityAxisTitle: bearingAxisTitle(payload.stage6.bearing.config)
+          capacityAxisTitle: bearingAxisTitle(payload.stage6.bearing.config),
+          showLegend: true
         })
       );
     }
@@ -232,7 +237,8 @@
         'stage7-settlement-stress',
         buildSettlementStressChartConfig({
           analysis: payload.stage6.settlement.analysis,
-          maxDepth: payload.summary.depthMax
+          maxDepth: payload.summary.depthMax,
+          showLegend: true
         })
       );
       mountChart(
@@ -263,7 +269,8 @@
         'stage7-dewatering-stress',
         buildDewateringStressChartConfig({
           analysis: payload.stage6.dewatering.analysis,
-          maxDepth: payload.summary.depthMax
+          maxDepth: payload.summary.depthMax,
+          showLegend: true
         })
       );
       mountChart(
@@ -483,16 +490,50 @@
           <p>Profile rendered from the original CPT data with qc, fs, the water table, and the frozen final layering.</p>
         </div>
         <div class="report-card report-profile">
-          {#if payload.visuals?.layerProfile}
-            <svg
-              viewBox={`0 0 ${payload.visuals.layerProfile.width} ${payload.visuals.layerProfile.height}`}
-              aria-label="qc profile with final layering"
-            >
-              {@html payload.visuals.layerProfile.markup}
-            </svg>
-          {:else}
-            <p class="report-muted">Profile preview unavailable in this payload.</p>
-          {/if}
+          <div class="report-profile__visual">
+            {#if payload.visuals?.layerProfile}
+              <svg
+                viewBox={`0 0 ${payload.visuals.layerProfile.width} ${payload.visuals.layerProfile.height}`}
+                aria-label="qc profile with final layering"
+              >
+                {@html payload.visuals.layerProfile.markup}
+              </svg>
+            {:else}
+              <p class="report-muted">Profile preview unavailable in this payload.</p>
+            {/if}
+          </div>
+          <div class="report-profile__legend">
+            <h3>Layer legend</h3>
+            <table class="tbl report-table report-profile__table">
+              <colgroup>
+                <col class="report-profile__col-index" />
+                <col class="report-profile__col-name" />
+                <col class="report-profile__col-qc" />
+                <col class="report-profile__col-fs" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>EC7 soil</th>
+                  <th>avg qc (MPa)</th>
+                  <th>avg fs (kPa)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each payload.layers as layer}
+                  <tr>
+                    <td>{layer.index}</td>
+                    <td class="report-profile__type report-profile__name">
+                      <span class="report-profile__swatch" style={`background:${soilColor(layer.type)};`}></span>
+                      <span>{layer.subtype || layer.type}</span>
+                    </td>
+                    <td>{fmt(layer.avgQc, 2)}</td>
+                    <td>{layer.avgFsKPa != null ? fmt(layer.avgFsKPa, 0) : '—'}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -502,7 +543,25 @@
           <p>Characteristic values and interpretation output for the selected CPT only.</p>
         </div>
         <div class="report-card">
-          <table class="tbl report-table">
+          <table class="tbl report-table report-table--layers">
+            <colgroup>
+              <col class="report-table__col-index" />
+              <col class="report-table__col-depth" />
+              <col class="report-table__col-depth" />
+              <col class="report-table__col-depth" />
+              <col class="report-table__col-depth" />
+              <col class="report-table__col-thk" />
+              <col class="report-table__col-type" />
+              <col class="report-table__col-subtype" />
+              <col class="report-table__col-avgwide" />
+              <col class="report-table__col-avgwide" />
+              <col class="report-table__col-avgnarrow" />
+              <col class="report-table__col-param" />
+              <col class="report-table__col-param" />
+              <col class="report-table__col-smallparam" />
+              <col class="report-table__col-smallparam" />
+              <col class="report-table__col-smallparam" />
+            </colgroup>
             <thead>
               <tr>
                 <th>#</th>
@@ -513,14 +572,14 @@
                 <th>Thk. (m)</th>
                 <th>Type</th>
                 <th>Subtype</th>
-                <th>avg qc (MPa)</th>
-                <th>avg fs (kPa)</th>
+                <th>avg qc<span class="report-table__unit">(MPa)</span></th>
+                <th>avg fs<span class="report-table__unit">(kPa)</span></th>
                 <th>avg Rf (%)</th>
-                <th>gamma (kN/m³)</th>
-                <th>gamma_sat (kN/m³)</th>
-                <th>phi' (°)</th>
-                <th>c' (kPa)</th>
-                <th>cu (kPa)</th>
+                <th>gamma<span class="report-table__unit">(kN/m³)</span></th>
+                <th>gamma_sat<span class="report-table__unit">(kN/m³)</span></th>
+                <th>phi'<span class="report-table__unit">(°)</span></th>
+                <th>c'<span class="report-table__unit">(kPa)</span></th>
+                <th>cu<span class="report-table__unit">(kPa)</span></th>
               </tr>
             </thead>
             <tbody>
@@ -569,18 +628,18 @@
             <thead>
               <tr>
                 <th>#</th>
-                <th>alphaE (-)</th>
-                <th>Eoed,i (kPa)</th>
-                <th>Eoed,ref (kPa)</th>
-                <th>E50,ref (kPa)</th>
-                <th>Eur,ref (kPa)</th>
+                <th>&alpha;<sub>E</sub> (-)</th>
+                <th>E<sub>oed,i</sub> (kPa)</th>
+                <th>E<sub>oed,ref</sub> (kPa)</th>
+                <th>E<sub>50,ref</sub> (kPa)</th>
+                <th>E<sub>ur,ref</sub> (kPa)</th>
                 <th>m (-)</th>
-                <th>K0,nc (-)</th>
-                <th>nu_ur (-)</th>
-                <th>kh (m/s)</th>
-                <th>kv (m/s)</th>
-                <th>kh/kv (-)</th>
-                <th>psi_unsat (m)</th>
+                <th>K<sub>0,nc</sub> (-)</th>
+                <th>&nu;<sub>ur</sub> (-)</th>
+                <th>k<sub>h</sub> (m/s)</th>
+                <th>k<sub>v</sub> (m/s)</th>
+                <th>k<sub>h</sub>/k<sub>v</sub> (-)</th>
+                <th>&psi;<sub>unsat</sub> (m)</th>
                 <th>Infiltration</th>
                 <th>Overrides</th>
               </tr>
@@ -1033,16 +1092,73 @@
   }
 
   .report-profile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 230px;
+    align-items: start;
+    gap: 16px;
+    overflow: hidden;
+  }
+
+  .report-profile__visual {
+    min-width: 0;
     display: flex;
     justify-content: center;
-    overflow: hidden;
   }
 
   .report-profile svg {
     display: block;
-    width: auto;
+    width: 100%;
     max-width: 100%;
-    height: 520px;
+    height: auto;
+    max-height: 520px;
+  }
+
+  .report-profile__legend {
+    min-width: 0;
+  }
+
+  .report-profile__legend h3 {
+    margin-bottom: 8px;
+  }
+
+  .report-profile__table {
+    font-size: 11px;
+    table-layout: auto;
+  }
+
+  .report-profile__col-index {
+    width: 7%;
+  }
+
+  .report-profile__col-name {
+    width: 47%;
+  }
+
+  .report-profile__col-qc,
+  .report-profile__col-fs {
+    width: 23%;
+  }
+
+  .report-profile__type {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .report-profile__name {
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: auto;
+  }
+
+  .report-profile__swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(24, 24, 26, 0.18);
+    flex: 0 0 auto;
   }
 
   .report-canvas {
@@ -1108,6 +1224,54 @@
     line-height: 1.35;
   }
 
+  .report-table sub {
+    font-size: 0.78em;
+    line-height: 0;
+  }
+
+  .report-table__unit {
+    display: block;
+    white-space: nowrap;
+    font-size: 0.92em;
+    font-weight: 500;
+  }
+
+  .report-table__col-index {
+    width: 3.5%;
+  }
+
+  .report-table__col-depth {
+    width: 6.3%;
+  }
+
+  .report-table__col-thk {
+    width: 5%;
+  }
+
+  .report-table__col-type {
+    width: 9%;
+  }
+
+  .report-table__col-subtype {
+    width: 10.8%;
+  }
+
+  .report-table__col-avgwide {
+    width: 8.4%;
+  }
+
+  .report-table__col-avgnarrow {
+    width: 4.4%;
+  }
+
+  .report-table__col-param {
+    width: 5.1%;
+  }
+
+  .report-table__col-smallparam {
+    width: 3.6%;
+  }
+
   .report-tuning__head {
     display: flex;
     justify-content: space-between;
@@ -1137,6 +1301,10 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .report-profile {
+      grid-template-columns: 1fr;
+    }
+
     .report-grid--3,
     .report-grid--2 {
       grid-template-columns: 1fr;
@@ -1145,15 +1313,15 @@
 
   @page {
     size: A4 portrait;
-    margin: 6mm;
+    margin: 10mm;
   }
 
   @media print {
     :global(body) {
       background: #fff;
       color: #111;
-      font-size: 9.75px;
-      line-height: 1.28;
+      font-size: 10px;
+      line-height: 1.32;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -1188,7 +1356,7 @@
 
     .report-cover__meta strong,
     .report-stat strong {
-      font-size: 9pt;
+      font-size: 9.5pt;
     }
 
     .report-cover__brand,
@@ -1196,7 +1364,7 @@
     .report-cover__meta span,
     .report-stat span,
     .tbl th {
-      font-size: 5.8pt;
+      font-size: 6pt;
     }
 
     .report-cover__topline {
@@ -1205,8 +1373,8 @@
 
     .report-card h3,
     .report-card h4 {
-      font-size: 7.2pt;
-      margin-bottom: 4px;
+      font-size: 7.8pt;
+      margin-bottom: 6px;
     }
 
     .report-section__head {
@@ -1221,19 +1389,19 @@
     .report-section__head p,
     .report-muted,
     .info {
-      font-size: 6.7pt;
+      font-size: 6.9pt;
     }
 
     .report-pt,
     .tbl {
-      font-size: 6.3pt;
+      font-size: 6.6pt;
     }
 
     .report-grid,
     .report-annex,
     .report-cover__meta,
     .report-toolbar {
-      gap: 4px;
+      gap: 6px;
     }
 
     .report-cover,
@@ -1248,13 +1416,15 @@
     }
 
     .report-section {
-      padding-top: 2.2mm;
+      padding-top: 2.8mm;
       padding-bottom: 3.6mm;
     }
 
     .report-section--cpt-profile {
+      break-before: page;
+      page-break-before: always;
       padding-top: 2mm;
-      padding-bottom: 3mm;
+      padding-bottom: 2.5mm;
       break-inside: avoid;
       page-break-inside: avoid;
     }
@@ -1268,7 +1438,7 @@
     .report-section--stage6 {
       break-before: page;
       page-break-before: always;
-      padding-top: 3mm;
+      padding-top: 2mm;
     }
 
     .report-cover {
@@ -1280,11 +1450,18 @@
     .report-stat {
       box-shadow: none;
       background: #fff;
-      padding: 3px 4px;
+      border: 0.35px solid rgba(24, 24, 26, 0.08);
+      border-radius: 0;
+      padding: 7px 8px;
     }
 
     .report-section--cpt-profile .report-card {
-      padding: 2px 3px;
+      padding: 4px 5px;
+    }
+
+    .report-profile {
+      grid-template-columns: minmax(0, 1fr) 45mm;
+      gap: 6px;
     }
 
     .report-section--cpt-profile .report-section__head {
@@ -1295,33 +1472,55 @@
       font-size: 6.2pt;
     }
 
+    .report-profile__legend h3 {
+      margin-bottom: 4px;
+      font-size: 7pt;
+    }
+
+    .report-profile__table {
+      font-size: 5.7pt;
+      table-layout: auto;
+    }
+
+    .report-profile__swatch {
+      width: 7px;
+      height: 7px;
+      border-width: 0.35px;
+    }
+
     .report-section--stage6 .report-section__head {
       margin-bottom: 2px;
     }
 
     .report-section--stage6 .report-card {
-      padding: 2.5px 3px;
+      padding: 6px 7px;
     }
 
     .report-section--stage6 .report-annex {
-      gap: 3px;
+      gap: 6px;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     .report-section--stage6 .report-annex + .report-annex {
-      break-before: page;
-      page-break-before: always;
+      break-before: auto;
+      page-break-before: auto;
       margin-top: 0;
     }
 
     .report-section--stage6 .report-annex__summary,
     .report-section--stage6 .report-annex__charts {
-      grid-template-columns: 1fr;
-      gap: 3px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      break-inside: auto;
+      page-break-inside: auto;
     }
 
     .report-section--stage6 .report-annex__stats {
-      gap: 3px;
+      gap: 6px;
       margin-bottom: 1px;
+      break-inside: auto;
+      page-break-inside: auto;
     }
 
     .tbl thead {
@@ -1331,11 +1530,9 @@
     .tbl tr,
     .pt tr,
     .report-cover__meta,
-    .report-grid,
     .report-stat,
     .report-card.report-profile,
     .report-tuning,
-    .report-annex,
     .info {
       break-inside: avoid;
       page-break-inside: avoid;
@@ -1343,7 +1540,8 @@
 
     .tbl th,
     .tbl td {
-      padding: 1px 2px;
+      border-color: rgba(24, 24, 26, 0.1);
+      padding: 1.5px 2.5px;
     }
 
     .pt td {
@@ -1361,7 +1559,7 @@
     }
 
     .report-canvas {
-      height: 104mm;
+      height: 60mm;
     }
 
     .report-canvas canvas {
@@ -1373,29 +1571,41 @@
     }
 
     .report-canvas--tuning {
-      height: 66mm;
+      height: 50mm;
     }
 
     .report-section--stage6 .report-canvas--annex {
-      height: 48mm;
+      height: 40mm;
     }
 
     .report-section--stage6 .report-canvas--annex-bearing {
-      height: 58mm;
+      height: 46mm;
     }
 
     .report-section--stage6 .report-canvas--annex-time {
-      height: 42mm;
+      height: 34mm;
+    }
+
+    .report-section--stage6 .report-canvas--single {
+      margin-top: 6px;
     }
 
     .report-profile svg {
-      height: 98mm;
+      max-height: 82mm;
     }
 
     .report-section--profile,
     .report-section--cpt-profile {
       break-inside: avoid;
       page-break-inside: avoid;
+    }
+
+    .report-section--stage6 .report-canvas,
+    .report-section--stage6 .report-stat,
+    .report-section--stage6 .report-card--nested,
+    .report-section--stage6 table {
+      break-inside: auto;
+      page-break-inside: auto;
     }
 
   }
