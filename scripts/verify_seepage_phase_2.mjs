@@ -8,6 +8,33 @@ function approxLE(value, limit, message) {
   assert(Number.isFinite(value) && value <= limit, `${message} (got ${value}, limit ${limit})`);
 }
 
+function assertContiguousActiveSeepageBlock(faces, activeMask, message) {
+  const sorted = faces
+    .map((face, index) => ({ face, active: !!activeMask[index] }))
+    .sort((left, right) => left.face.mid.y - right.face.mid.y);
+  let seenInactiveAboveActive = false;
+  let seenActive = false;
+  sorted.forEach((item) => {
+    if (item.active) {
+      seenActive = true;
+      assert(!seenInactiveAboveActive, message);
+      return;
+    }
+    if (seenActive) seenInactiveAboveActive = true;
+  });
+}
+
+function distancePointToSegment(point, a, b) {
+  const abx = (b?.x || 0) - (a?.x || 0);
+  const aby = (b?.y || 0) - (a?.y || 0);
+  const len2 = abx * abx + aby * aby;
+  if (!(len2 > 0)) return Math.hypot((point?.x || 0) - (a?.x || 0), (point?.y || 0) - (a?.y || 0));
+  const t = Math.min(Math.max((((point?.x || 0) - (a?.x || 0)) * abx + ((point?.y || 0) - (a?.y || 0)) * aby) / len2, 0), 1);
+  const qx = (a?.x || 0) + abx * t;
+  const qy = (a?.y || 0) + aby * t;
+  return Math.hypot((point?.x || 0) - qx, (point?.y || 0) - qy);
+}
+
 function homogeneousRegion(xMin, xMax, yMin, yMax, id = 'soil') {
   return {
     id,
@@ -60,29 +87,30 @@ function baseFixedModel(rightBcType) {
   };
 }
 
-function runCase(name, fn) {
-  fn();
+async function runCase(name, fn) {
+  await fn();
   console.log(`${name}: ok`);
 }
 
-runCase('Case 1 head/head disables exit gradient', () => {
-  const solved = analyzeSeepageModel({ model: baseFixedModel('head') });
+await runCase('Case 1 head/head disables exit gradient', async () => {
+  const solved = await analyzeSeepageModel({ model: baseFixedModel('head') });
   approxLE(solved.result.maxExitGradient, 1e-9, 'head/head case should not report an exit gradient');
   const seepageFaces = solved.mesh.boundaryFaces.filter((face) => face.type === 'seepage-face');
   assert(seepageFaces.length === 0, 'head/head case should not carry seepage-face boundary edges');
 });
 
-runCase('Case 2 seepage face enables exit gradient', () => {
-  const solved = analyzeSeepageModel({ model: baseFixedModel('seepage-face') });
+await runCase('Case 2 seepage face enables exit gradient', async () => {
+  const solved = await analyzeSeepageModel({ model: baseFixedModel('seepage-face') });
   assert(solved.result.maxExitGradient > 0.05, 'seepage-face case should report a positive exit gradient');
   const seepageFaces = solved.mesh.boundaryFaces.filter((face) => face.type === 'seepage-face');
   assert(seepageFaces.length > 0, 'seepage-face case should expose seepage-face boundary edges');
+  assert((solved.result.flowLines || []).length > 0, 'seepage-face case should generate flow lines from the solved discharge field');
 });
 
-runCase('Case 3 iterate mode converges and matches Dupuit profile', () => {
+await runCase('Case 3 iterate mode converges and matches Dupuit profile', async () => {
   const H = 5;
   const L = 10;
-  const solved = analyzeSeepageModel({
+  const solved = await analyzeSeepageModel({
     model: {
       terrain: {
         vertices: [
@@ -125,7 +153,7 @@ runCase('Case 3 iterate mode converges and matches Dupuit profile', () => {
   });
 });
 
-runCase('Case 4 moderate mesh stays under target size and runtime', () => {
+await runCase('Case 4 moderate mesh stays under target size and runtime', async () => {
   const terrain = {
     vertices: Array.from({ length: 41 }, (_, i) => ({
       x: i * 0.5,
@@ -157,7 +185,7 @@ runCase('Case 4 moderate mesh stays under target size and runtime', () => {
   }
 
   const started = Date.now();
-  const solved = analyzeSeepageModel({
+  const solved = await analyzeSeepageModel({
     model: {
       terrain,
       analysisBottomY: 0,
@@ -186,6 +214,96 @@ runCase('Case 4 moderate mesh stays under target size and runtime', () => {
   const runtimeMs = Date.now() - started;
   approxLE(runtimeMs, 3000, 'moderate seepage probe should solve within 3 s');
   approxLE(solved.mesh.elements.length, 5000, 'moderate seepage probe should stay under 5000 triangles');
+});
+
+await runCase('Case 5 embankment seepage face stays contiguous and converges', async () => {
+  const solved = await analyzeSeepageModel({
+    model: {
+      terrain: {
+        vertices: [
+          { x: 0, y: 8 },
+          { x: 4, y: 8 },
+          { x: 10, y: 4 }
+        ]
+      },
+      analysisBottomY: 0,
+      phreatic: {
+        vertices: [
+          { x: 0, y: 8 },
+          { x: 4, y: 7.6 },
+          { x: 10, y: 4.2 }
+        ]
+      },
+      walls: [],
+      regions: [homogeneousRegion(0, 10, 0, 8)],
+      seepage: {
+        bcs: [
+          { edgeKey: 'side-left:0', type: 'head', head: 8, status: 'active' },
+          { edgeKey: 'terrain:1', type: 'seepage-face', status: 'active' }
+        ],
+        options: {
+          freeSurface: 'iterate',
+          meshTargetArea: 0.2,
+          maxFreeSurfaceIter: 80,
+          usePhreaticAsSeed: true
+        }
+      }
+    }
+  });
+
+  const slopeFaces = solved.mesh.boundaryFaces.filter((face) => face.edgeKey === 'terrain:1');
+  const slopeMask = solved.result.activeSeepageFaceMask.filter((_, index) => solved.mesh.boundaryFaces[index]?.edgeKey === 'terrain:1');
+  assert(slopeFaces.length > 0, 'embankment case should split the downstream slope into seepage boundary faces');
+  assert(slopeMask.some(Boolean), 'embankment case should activate at least one downstream seepage face');
+  assertContiguousActiveSeepageBlock(
+    slopeFaces,
+    slopeMask,
+    'embankment case should not reactivate isolated seepage-face edges above an inactive downstream slope segment'
+  );
+
+  (solved.result.equipotentialSegments || []).forEach((group) => {
+    (group.segments || []).forEach((segment) => {
+      const mid = {
+        x: 0.5 * (segment[0].x + segment[1].x),
+        y: 0.5 * (segment[0].y + segment[1].y)
+      };
+      const head = sampleSeepageHead(solved.mesh, solved.result, mid.x, mid.y);
+      assert(Number.isFinite(head), 'embankment equipotential midpoint should remain inside the solved seepage domain');
+      approxLE(
+        mid.y - head,
+        0.02,
+        'embankment equipotential segments should not be shown materially above the computed free surface'
+      );
+    });
+  });
+
+  assert((solved.result.flowLines || []).length > 0, 'embankment case should produce visible flow lines');
+  (solved.result.flowLines || []).forEach((line) => {
+    line.forEach((point) => {
+      const head = sampleSeepageHead(solved.mesh, solved.result, point.x, point.y);
+      assert(Number.isFinite(head), 'flowline point should remain inside the solved seepage domain');
+      approxLE(
+        point.y - head,
+        0.02,
+        'flowline points should not be shown materially above the computed free surface'
+      );
+    });
+    const end = line[line.length - 1];
+    const nearBoundary = (solved.mesh.boundaryFaces || []).some((face) => distancePointToSegment(end, face.a, face.b) <= 0.06);
+    const endHead = sampleSeepageHead(solved.mesh, solved.result, end.x, end.y);
+    const nearFreeSurface = Number.isFinite(endHead) ? Math.abs(endHead - end.y) <= 0.03 : false;
+    assert(
+      nearBoundary || nearFreeSurface,
+      'flowlines should terminate at a boundary or at the computed free surface, not stop arbitrarily inside the embankment'
+    );
+  });
+
+  const crestHead = sampleSeepageHead(solved.mesh, solved.result, 4.6, 7.4);
+  approxLE(
+    crestHead - 7.4,
+    0.02,
+    'embankment case should not create a materially positive pressure head pocket at the downstream crest'
+  );
 });
 
 console.log('Seepage Phase 2 verification passed.');

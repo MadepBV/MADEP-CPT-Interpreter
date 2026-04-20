@@ -2,11 +2,11 @@
 // @ts-nocheck
 import { analyzeSeepageModel } from './solver.js';
 
-self.onmessage = (event) => {
+self.onmessage = async (event) => {
   const payload = event?.data || {};
   if (payload.type !== 'run-seepage') return;
   try {
-    const output = analyzeSeepageModel(payload.input, (progress) => {
+    const output = await analyzeSeepageModel(payload.input, (progress) => {
       self.postMessage({
         type: 'progress',
         runId: payload.runId,

@@ -3,13 +3,14 @@
 
 import { buildOuterBoundary, pickOuterBoundaryEdge } from './boundary.js';
 import { materialAt, pointInPolygonHalfOpen, polygonArea } from '../soil-regions.js';
+import { buildTriangleMesh } from './mesh-triangle.js';
 
 const EPS = 1e-9;
 const GEOM_EPS = 1e-6;
 const DRY_FACTOR = 1e-4;
 const WALL_K = 1e-10;
 const WALL_THICKNESS = 0.1;
-const DEFAULT_TARGET_AREA = 0.5;
+const DEFAULT_TARGET_AREA = 0.05;
 const MAX_CG_ITER = 2500;
 const CG_TOL = 1e-6;
 
@@ -143,6 +144,22 @@ function samplePolylineY(polyline, x) {
   const b = verts[lo + 1];
   const t = Math.abs(b.x - a.x) < EPS ? 0 : (x - a.x) / (b.x - a.x);
   return a.y + (b.y - a.y) * t;
+}
+
+function defaultMeshTargetAreaForModel(model) {
+  const terrain = model?.terrain?.vertices || [];
+  if (terrain.length < 2 || !Number.isFinite(model?.analysisBottomY)) return DEFAULT_TARGET_AREA;
+  const xMin = Number(terrain[0].x);
+  const xMax = Number(terrain[terrain.length - 1].x);
+  const bottomY = Number(model.analysisBottomY);
+  const domainPolygon = [
+    ...terrain.map((point) => ({ x: Number(point.x), y: Number(point.y) })),
+    { x: xMax, y: bottomY },
+    { x: xMin, y: bottomY }
+  ];
+  const area = polygonArea(domainPolygon);
+  if (!(area > 0)) return DEFAULT_TARGET_AREA;
+  return clamp(area / 3500, DEFAULT_TARGET_AREA, 1.5);
 }
 
 function polylineSegments(vertices, kind, extra = {}) {
@@ -1193,9 +1210,10 @@ function sampleTriangleValue(point, triPoints, triValues) {
   return l1 * triValues[0] + l2 * triValues[1] + l3 * triValues[2];
 }
 
-function contourSegmentsForTriangles(mesh, nodeValues, level) {
+function contourSegmentsForTriangles(mesh, nodeValues, level, options = {}) {
   const out = [];
-  mesh.elements.forEach((element) => {
+  mesh.elements.forEach((element, elementIndex) => {
+    if (typeof options.includeElement === 'function' && !options.includeElement(elementIndex)) return;
     const points = element.map((nodeId) => mesh.nodes[nodeId]);
     const values = element.map((nodeId) => nodeValues[nodeId]);
     const hits = [];
@@ -1225,7 +1243,19 @@ function contourSegmentsForTriangles(mesh, nodeValues, level) {
     hits.forEach((point) => {
       if (!uniqueHits.some((other) => dist(other, point) <= 1e-8)) uniqueHits.push(point);
     });
-    if (uniqueHits.length === 2) out.push(uniqueHits);
+    if (uniqueHits.length === 2) {
+      if (options.visibilityScalars) {
+        const midpoint = {
+          x: 0.5 * (uniqueHits[0].x + uniqueHits[1].x),
+          y: 0.5 * (uniqueHits[0].y + uniqueHits[1].y)
+        };
+        const visibilityValues = element.map((nodeId) => options.visibilityScalars[nodeId]);
+        const visibleValue = sampleTriangleValue(midpoint, points, visibilityValues);
+        const minVisible = Number.isFinite(options.minVisibleValue) ? Number(options.minVisibleValue) : 0;
+        if (!Number.isFinite(visibleValue) || visibleValue < minVisible) return;
+      }
+      out.push(uniqueHits);
+    }
   });
   return out;
 }
@@ -1233,6 +1263,43 @@ function contourSegmentsForTriangles(mesh, nodeValues, level) {
 function average(array) {
   if (!array.length) return 0;
   return array.reduce((sum, value) => sum + value, 0) / array.length;
+}
+
+function maxAbsDiff(left, right) {
+  if (!left || !right || left.length !== right.length) return Infinity;
+  let max = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    max = Math.max(max, Math.abs((left[i] || 0) - (right[i] || 0)));
+  }
+  return max;
+}
+
+function meshCharacteristicLength(mesh) {
+  const areas = (mesh?.elementData || [])
+    .map((item) => Number(item?.area))
+    .filter((value) => value > EPS);
+  const meanArea = areas.length ? average(areas) : DEFAULT_TARGET_AREA;
+  return Math.max(Math.sqrt(2 * meanArea), 0.05);
+}
+
+function seepageIterationTolerances(mesh) {
+  const charLength = meshCharacteristicLength(mesh);
+  const headActivateTol = clamp(0.02 * charLength, 0.002, 0.05);
+  const headKeepTol = clamp(1.5 * headActivateTol, 0.003, 0.075);
+  return {
+    charLength,
+    headActivateTol,
+    headKeepTol,
+    headConvergeTol: clamp(0.5 * headActivateTol, 0.001, 0.03),
+    wetFractionDryTol: 0.05,
+    wetFractionWetTol: 0.95
+  };
+}
+
+function stateSignature(dryFlags, activeSeepageFaces) {
+  const dry = (dryFlags || []).map((value) => (value ? '1' : '0')).join('');
+  const faces = (activeSeepageFaces || []).map((value) => (value ? '1' : '0')).join('');
+  return `${dry}|${faces}`;
 }
 
 function solveHeadField(mesh, dryFlags, dirichletValues, initial = null) {
@@ -1328,6 +1395,51 @@ function computeElementGradients(mesh, heads) {
 }
 
 function buildBoundaryFaces(mesh, model) {
+  if (mesh?.constraintEdges?.length) {
+    const activeBcs = new Map(
+      ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
+    );
+    const edgeMap = buildEdgeMap(mesh);
+    const out = [];
+
+    mesh.constraintEdges.forEach((edge) => {
+      if (edge?.markerType !== 'outer') return;
+      const key = edge.n1 < edge.n2 ? `${edge.n1}:${edge.n2}` : `${edge.n2}:${edge.n1}`;
+      const entry = edgeMap.get(key);
+      if (!entry || entry.elements.length !== 1) return;
+      const a = mesh.nodes[edge.n1];
+      const b = mesh.nodes[edge.n2];
+      if (!a || !b) return;
+      const midpoint = { x: 0.5 * (a.x + b.x), y: 0.5 * (a.y + b.y) };
+      const elementIndex = entry.elements[0];
+      const centroid = mesh.elementData[elementIndex].centroid;
+      const edgeDx = b.x - a.x;
+      const edgeDy = b.y - a.y;
+      const length = Math.hypot(edgeDx, edgeDy) || 1;
+      let normal = { x: edgeDy / length, y: -edgeDx / length };
+      const toEdge = { x: midpoint.x - centroid.x, y: midpoint.y - centroid.y };
+      if (normal.x * toEdge.x + normal.y * toEdge.y < 0) normal = { x: -normal.x, y: -normal.y };
+      const bc = activeBcs.get(edge.edgeKey);
+      out.push({
+        n1: edge.n1,
+        n2: edge.n2,
+        a,
+        b,
+        mid: midpoint,
+        length,
+        normal,
+        elementIndex,
+        edgeKey: edge.edgeKey,
+        source: edge.source,
+        sourceIndex: edge.sourceIndex,
+        type: bc?.type || 'no-flow',
+        head: Number.isFinite(Number(bc?.head)) ? Number(bc.head) : null
+      });
+    });
+
+    return out;
+  }
+
   const boundary = buildOuterBoundary(model);
   const activeBcs = new Map(
     ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
@@ -1408,6 +1520,76 @@ function buildDirichletValues(mesh, model, options, activeSeepageFaces) {
   return values;
 }
 
+function facePressureHeadMetrics(face, mesh, heads) {
+  const psi1 = (heads?.[face.n1] ?? 0) - Number(mesh?.nodes?.[face.n1]?.y || 0);
+  const psi2 = (heads?.[face.n2] ?? 0) - Number(mesh?.nodes?.[face.n2]?.y || 0);
+  const psiMid = 0.5 * (psi1 + psi2);
+  return {
+    psi1,
+    psi2,
+    psiMid,
+    minPsi: Math.min(psi1, psi2, psiMid),
+    maxPsi: Math.max(psi1, psi2, psiMid)
+  };
+}
+
+function trianglePressureHeadMetrics(mesh, heads, elementIndex) {
+  const element = mesh.elements[elementIndex];
+  const triPoints = element.map((nodeId) => mesh.nodes[nodeId]);
+  const psiValues = element.map((nodeId) => (heads?.[nodeId] ?? 0) - Number(mesh.nodes[nodeId]?.y || 0));
+  const centroid = mesh.elementData[elementIndex].centroid;
+  const triHeads = element.map((nodeId) => heads[nodeId]);
+  const headAtCentroid = sampleTriangleValue(centroid, triPoints, triHeads);
+  const centroidPsi = Number.isFinite(headAtCentroid) ? headAtCentroid - centroid.y : average(psiValues);
+  return {
+    triPoints,
+    psiValues,
+    centroidPsi,
+    minPsi: Math.min(...psiValues, centroidPsi),
+    maxPsi: Math.max(...psiValues, centroidPsi)
+  };
+}
+
+function clipPolygonByScalar(points, values, keepPositive) {
+  const outPoints = [];
+  const outValues = [];
+  const isInside = (value) => (keepPositive ? value >= -EPS : value <= EPS);
+  for (let i = 0; i < points.length; i += 1) {
+    const curr = points[i];
+    const currValue = values[i];
+    const prev = points[(i + points.length - 1) % points.length];
+    const prevValue = values[(i + points.length - 1) % points.length];
+    const currInside = isInside(currValue);
+    const prevInside = isInside(prevValue);
+    if (currInside !== prevInside) {
+      const denom = prevValue - currValue;
+      const t = Math.abs(denom) > EPS ? clamp(prevValue / denom, 0, 1) : 0.5;
+      outPoints.push({
+        x: prev.x + (curr.x - prev.x) * t,
+        y: prev.y + (curr.y - prev.y) * t
+      });
+      outValues.push(0);
+    }
+    if (currInside) {
+      outPoints.push(curr);
+      outValues.push(currValue);
+    }
+  }
+  return { points: cleanPolygon(outPoints), values: outValues.slice(0, outPoints.length) };
+}
+
+function triangleWetAreaFraction(triPoints, psiValues) {
+  const totalArea = polygonArea(triPoints);
+  if (!(totalArea > 1e-10)) return 0;
+  const minPsi = Math.min(...psiValues);
+  const maxPsi = Math.max(...psiValues);
+  if (minPsi >= 0) return 1;
+  if (maxPsi <= 0) return 0;
+  const clipped = clipPolygonByScalar(triPoints, psiValues, true).points;
+  const wetArea = polygonArea(clipped);
+  return clamp(wetArea / totalArea, 0, 1);
+}
+
 function cellValueFromTriangles(cell, triangleValues, mesh) {
   if (!cell.triangleIndices.length) return 0;
   let totalArea = 0;
@@ -1420,13 +1602,15 @@ function cellValueFromTriangles(cell, triangleValues, mesh) {
   return totalArea > EPS ? total / totalArea : average(cell.triangleIndices.map((triangleIndex) => triangleValues[triangleIndex]));
 }
 
-function updateDryFlags(mesh, heads) {
+function updateDryFlags(mesh, heads, prior = null, tolerances = seepageIterationTolerances(mesh)) {
   return mesh.elements.map((element, elementIndex) => {
-    const centroid = mesh.elementData[elementIndex].centroid;
-    const triPoints = element.map((nodeId) => mesh.nodes[nodeId]);
-    const triHeads = element.map((nodeId) => heads[nodeId]);
-    const headAtCentroid = sampleTriangleValue(centroid, triPoints, triHeads);
-    return Number.isFinite(headAtCentroid) ? centroid.y > headAtCentroid + 1e-5 : false;
+    const priorDry = typeof prior?.[elementIndex] === 'boolean' ? prior[elementIndex] : null;
+    const metrics = trianglePressureHeadMetrics(mesh, heads, elementIndex);
+    const wetFraction = triangleWetAreaFraction(metrics.triPoints, metrics.psiValues);
+    if (wetFraction <= tolerances.wetFractionDryTol && metrics.centroidPsi <= tolerances.headActivateTol) return true;
+    if (wetFraction >= tolerances.wetFractionWetTol && metrics.centroidPsi >= -tolerances.headActivateTol) return false;
+    if (priorDry != null) return priorDry;
+    return metrics.centroidPsi < 0;
   });
 }
 
@@ -1441,7 +1625,7 @@ function activeSeepageFacesFromDry(mesh, dryFlags, model) {
   });
 }
 
-function activeSeepageFacesFromFlux(mesh, heads, model, prior = null, fluxTol = 1e-9) {
+function activeSeepageFacesFromFlux(mesh, heads, model, dryFlags, prior = null, tolerances = seepageIterationTolerances(mesh)) {
   const gradients = computeElementGradients(mesh, heads);
   const activeBcs = new Map(
     ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
@@ -1451,13 +1635,279 @@ function activeSeepageFacesFromFlux(mesh, heads, model, prior = null, fluxTol = 
     if (bc?.type !== 'seepage-face') return false;
     const grad = gradients[face.elementIndex];
     if (!grad) return false;
+    const facePressure = facePressureHeadMetrics(face, mesh, heads);
+    if (dryFlags?.[face.elementIndex] && facePressure.maxPsi < tolerances.headActivateTol) return false;
+    const elementData = mesh.elementData[face.elementIndex];
+    const kNormal = Math.max(
+      elementData.kx * face.normal.x * face.normal.x + elementData.ky * face.normal.y * face.normal.y,
+      WALL_K
+    );
+    const fluxTol = Math.max(kNormal * tolerances.headActivateTol / Math.max(face.length, tolerances.charLength, 0.05), 1e-12);
     const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
-    if (prior?.[faceIndex]) return fluxNormal > -fluxTol;
-    return fluxNormal > fluxTol;
+    const priorActive = !!prior?.[faceIndex];
+    if (priorActive) {
+      return facePressure.psiMid >= -tolerances.headKeepTol && fluxNormal >= -fluxTol;
+    }
+    if (facePressure.psiMid >= tolerances.headActivateTol) return true;
+    return facePressure.maxPsi >= 0 && fluxNormal > fluxTol;
   });
 }
 
-function postProcess(mesh, model, heads, dryFlags, solveMeta, options) {
+function boundaryFaceFluxMetrics(face, mesh, gradients) {
+  const grad = gradients?.[face?.elementIndex];
+  if (!grad) return null;
+  const elementData = mesh?.elementData?.[face.elementIndex];
+  if (!elementData) return null;
+  const kNormal = Math.max(
+    elementData.kx * face.normal.x * face.normal.x + elementData.ky * face.normal.y * face.normal.y,
+    WALL_K
+  );
+  const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
+  return {
+    grad,
+    kNormal,
+    fluxNormal,
+    gradientNormal: Math.abs(fluxNormal) / kNormal
+  };
+}
+
+function sampleFlowState(mesh, heads, gradients, x, y) {
+  if (!mesh?.cells?.length || !pointInPolygonHalfOpen(mesh.domainPolygon || [], x, y)) return null;
+  const point = { x: Number(x), y: Number(y) };
+  const candidateCells = samplePointCandidates(mesh, point.x, point.y);
+  for (let i = 0; i < candidateCells.length; i += 1) {
+    const cell = mesh.cells[candidateCells[i]];
+    if (!cell) continue;
+    if (
+      point.x < cell.bbox.xMin - GEOM_EPS ||
+      point.x > cell.bbox.xMax + GEOM_EPS ||
+      point.y < cell.bbox.yMin - GEOM_EPS ||
+      point.y > cell.bbox.yMax + GEOM_EPS
+    ) continue;
+    if (!pointInPolygonHalfOpen(cell.polygon, point.x, point.y)) continue;
+    for (let j = 0; j < cell.triangleIndices.length; j += 1) {
+      const triangleIndex = cell.triangleIndices[j];
+      const element = mesh.elements[triangleIndex];
+      const triPoints = element.map((nodeId) => mesh.nodes[nodeId]);
+      const bary = sampleTriangleValue(point, triPoints, [1, 1, 1]);
+      if (!Number.isFinite(bary)) continue;
+      const grad = gradients?.[triangleIndex];
+      if (!grad || !heads) return null;
+      const triHeads = element.map((nodeId) => heads[nodeId]);
+      const head = sampleTriangleValue(point, triPoints, triHeads);
+      if (!Number.isFinite(head)) return null;
+      return {
+        ...grad,
+        head,
+        psi: head - point.y,
+        point,
+        triangleIndex,
+        cellIndex: candidateCells[i]
+      };
+    }
+  }
+  return null;
+}
+
+function boundaryIntersectionPoint(start, end, faces) {
+  let best = null;
+  (faces || []).forEach((face) => {
+    const hit = segmentIntersection(start, end, face.a, face.b, 1e-8);
+    if (!hit) return;
+    if (!(hit.t > 1e-5 && hit.t <= 1 + 1e-6)) return;
+    if (!best || hit.t < best.t) {
+      best = {
+        t: hit.t,
+        point: { x: hit.x, y: hit.y },
+        face
+      };
+    }
+  });
+  return best;
+}
+
+function buildFlowLineSeeds(mesh, heads, gradients, model, activeSeepageFaces, tolerances) {
+  const activeBcs = new Map(
+    ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
+  );
+  const eligible = [];
+  let totalWeight = 0;
+  mesh.boundaryFaces.forEach((face, faceIndex) => {
+    const bc = activeBcs.get(face.edgeKey);
+    if (bc?.type !== 'head') return;
+    const metrics = boundaryFaceFluxMetrics(face, mesh, gradients);
+    if (!metrics || !(metrics.fluxNormal < -1e-12)) return;
+    const weight = Math.max(-metrics.fluxNormal * face.length, face.length * 0.1);
+    totalWeight += weight;
+    eligible.push({ face, faceIndex, weight });
+  });
+  if (!eligible.length) return [];
+
+  const charLength = tolerances.charLength;
+  const offset = Math.max(0.12 * charLength, 0.02);
+  const minSeedSpacing = Math.max(0.7 * charLength, 0.08);
+  const desiredCount = clamp(
+    Math.round(eligible.reduce((sum, item) => sum + item.face.length, 0) / Math.max(1.1 * charLength, 0.2)),
+    6,
+    24
+  );
+  const seeds = [];
+
+  eligible.forEach((item) => {
+    const count = Math.max(1, Math.round((desiredCount * item.weight) / Math.max(totalWeight, EPS)));
+    for (let i = 0; i < count; i += 1) {
+      const t = (i + 1) / (count + 1);
+      const boundaryPoint = {
+        x: lerp(item.face.a.x, item.face.b.x, t),
+        y: lerp(item.face.a.y, item.face.b.y, t)
+      };
+      const point = {
+        x: boundaryPoint.x - item.face.normal.x * offset,
+        y: boundaryPoint.y - item.face.normal.y * offset
+      };
+      if (!pointInPolygonHalfOpen(mesh.domainPolygon || [], point.x, point.y)) continue;
+      if (seeds.some((seed) => dist(seed.point, point) < minSeedSpacing)) continue;
+      const field = sampleFlowState(mesh, heads, gradients, point.x, point.y);
+      if (!field || !(field.qMagnitude > 1e-12) || field.psi < -tolerances.headActivateTol) continue;
+      seeds.push({
+        point,
+        boundaryPoint,
+        sourceEdgeKey: item.face.edgeKey,
+        sourceFaceIndex: item.faceIndex
+      });
+    }
+  });
+
+  return seeds;
+}
+
+function findPressureHeadCrossing(mesh, heads, gradients, start, end, positiveTol) {
+  const startState = sampleFlowState(mesh, heads, gradients, start.x, start.y);
+  const endState = sampleFlowState(mesh, heads, gradients, end.x, end.y);
+  if (!startState || startState.psi < -positiveTol) return null;
+  if (endState && endState.psi >= -positiveTol) return null;
+  let lo = 0;
+  let hi = 1;
+  let loState = startState;
+  let hiState = endState;
+  for (let iter = 0; iter < 20; iter += 1) {
+    const midT = 0.5 * (lo + hi);
+    const midPoint = {
+      x: lerp(start.x, end.x, midT),
+      y: lerp(start.y, end.y, midT)
+    };
+    const midState = sampleFlowState(mesh, heads, gradients, midPoint.x, midPoint.y);
+    if (!midState) {
+      hi = midT;
+      hiState = null;
+      continue;
+    }
+    if (midState.psi >= -positiveTol) {
+      lo = midT;
+      loState = midState;
+    } else {
+      hi = midT;
+      hiState = midState;
+    }
+  }
+  const crossPoint = {
+    x: lerp(start.x, end.x, lo),
+    y: lerp(start.y, end.y, lo)
+  };
+  return loState || hiState ? crossPoint : null;
+}
+
+function traceFlowLine(mesh, heads, gradients, seed, options = {}) {
+  const stepLength = Math.max(Number(options.stepLength) || 0, 0.03);
+  const maxSteps = Math.max(Number(options.maxSteps) || 0, 200);
+  const maxLength = Math.max(Number(options.maxLength) || 0, stepLength * 10);
+  const domainPolygon = mesh?.domainPolygon || [];
+  const boundaryFaces = mesh?.boundaryFaces || [];
+  const pressureTol = Math.max(Number(options.pressureTol) || 0, 1e-4);
+  const points = [seed];
+  let current = { ...seed };
+  let travelled = 0;
+
+  for (let step = 0; step < maxSteps && travelled < maxLength; step += 1) {
+    const field0 = sampleFlowState(mesh, heads, gradients, current.x, current.y);
+    if (!field0 || !(field0.qMagnitude > 1e-12) || field0.psi < -pressureTol) break;
+    const dir0 = {
+      x: field0.qx / field0.qMagnitude,
+      y: field0.qy / field0.qMagnitude
+    };
+    const mid = {
+      x: current.x + dir0.x * stepLength * 0.5,
+      y: current.y + dir0.y * stepLength * 0.5
+    };
+    const fieldMid = sampleFlowState(mesh, heads, gradients, mid.x, mid.y) || field0;
+    if (!(fieldMid.qMagnitude > 1e-12) || fieldMid.psi < -pressureTol) {
+      const cross = findPressureHeadCrossing(mesh, heads, gradients, current, mid, pressureTol);
+      if (cross && dist(points[points.length - 1], cross) > 1e-4) points.push(cross);
+      break;
+    }
+    const dir = {
+      x: fieldMid.qx / fieldMid.qMagnitude,
+      y: fieldMid.qy / fieldMid.qMagnitude
+    };
+    const next = {
+      x: current.x + dir.x * stepLength,
+      y: current.y + dir.y * stepLength
+    };
+    const hit = boundaryIntersectionPoint(current, next, boundaryFaces);
+    if (hit) {
+      if (dist(points[points.length - 1], hit.point) > 1e-4) points.push(hit.point);
+      break;
+    }
+    if (!pointInPolygonHalfOpen(domainPolygon, next.x, next.y)) break;
+    const nextState = sampleFlowState(mesh, heads, gradients, next.x, next.y);
+    if (!nextState || nextState.psi < -pressureTol) {
+      const cross = findPressureHeadCrossing(mesh, heads, gradients, current, next, pressureTol);
+      if (cross && dist(points[points.length - 1], cross) > 1e-4) points.push(cross);
+      break;
+    }
+    if (points.length > 4 && points.slice(0, -3).some((point) => dist(point, next) < 0.35 * stepLength)) break;
+    const advance = dist(current, next);
+    if (!(advance > 1e-5)) break;
+    points.push(next);
+    travelled += advance;
+    current = next;
+  }
+
+  return points.length >= 2 && travelled > 0.5 * stepLength ? points : null;
+}
+
+function buildFlowLines(mesh, model, heads, gradients, activeSeepageFaces) {
+  const tolerances = seepageIterationTolerances(mesh);
+  const charLength = tolerances.charLength;
+  const seeds = buildFlowLineSeeds(mesh, heads, gradients, model, activeSeepageFaces, tolerances);
+  const domain = cleanPolygon(mesh.domainPolygon || []);
+  if (!domain.length || !seeds.length) return [];
+  const xValues = domain.map((point) => point.x);
+  const yValues = domain.map((point) => point.y);
+  const domainSpan = Math.hypot(Math.max(...xValues) - Math.min(...xValues), Math.max(...yValues) - Math.min(...yValues));
+  const stepLength = Math.max(0.45 * charLength, 0.04);
+  const maxLength = Math.max(2.5 * domainSpan, 8 * stepLength);
+  const lines = [];
+
+  seeds.forEach((seed) => {
+    const line = traceFlowLine(mesh, heads, gradients, seed.point, {
+      stepLength,
+      maxSteps: 900,
+      maxLength,
+      pressureTol: tolerances.headActivateTol
+    });
+    if (!line) return;
+    const totalLength = line.slice(1).reduce((sum, point, index) => sum + dist(line[index], point), 0);
+    if (!(totalLength > 1.5 * stepLength)) return;
+    if (lines.some((existing) => dist(existing[0], line[0]) < 0.6 * charLength)) return;
+    lines.push(line);
+  });
+
+  return lines;
+}
+
+function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSeepageFaces = null) {
+  const tolerances = seepageIterationTolerances(mesh);
   const gradients = computeElementGradients(mesh, heads);
   const boundaryGradients = [];
   let maxExitGradient = 0;
@@ -1467,25 +1917,26 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options) {
     ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
   );
 
-  mesh.boundaryFaces.forEach((face) => {
-    const grad = gradients[face.elementIndex];
-    const elementData = mesh.elementData[face.elementIndex];
-    const kNormal = Math.max(
-      elementData.kx * face.normal.x * face.normal.x + elementData.ky * face.normal.y * face.normal.y,
-      WALL_K
-    );
-    const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
-    const gradientNormal = Math.abs(fluxNormal) / kNormal;
+  mesh.boundaryFaces.forEach((face, faceIndex) => {
+    const metrics = boundaryFaceFluxMetrics(face, mesh, gradients);
+    if (!metrics) return;
+    const fluxNormal = metrics.fluxNormal;
+    const gradientNormal = metrics.gradientNormal;
     boundaryGradients.push(gradientNormal);
     const bc = activeBcs.get(face.edgeKey);
     if (bc?.type === 'head' && fluxNormal < 0) totalInflow += -fluxNormal * face.length;
-    if (bc?.type === 'seepage-face' && fluxNormal > 0) {
+    const faceActive = bc?.type === 'seepage-face' ? (activeSeepageFaces ? !!activeSeepageFaces[faceIndex] : true) : false;
+    if (faceActive && fluxNormal > 0) {
       totalOutflow += fluxNormal * face.length;
       maxExitGradient = Math.max(maxExitGradient, gradientNormal);
     }
   });
 
   const triangleHeads = mesh.elements.map((element) => average(element.map((nodeId) => heads[nodeId])));
+  const elementWetFraction = mesh.elements.map((element, elementIndex) => {
+    const metrics = trianglePressureHeadMetrics(mesh, heads, elementIndex);
+    return triangleWetAreaFraction(metrics.triPoints, metrics.psiValues);
+  });
   const cellHeads = mesh.cells.map((cell) => cellValueFromTriangles(cell, triangleHeads, mesh));
   const cellGradients = mesh.cells.map((cell) => {
     const meanQx = cellValueFromTriangles(cell, gradients.map((item) => item.qx), mesh);
@@ -1501,22 +1952,27 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options) {
       gradientMagnitude: Math.hypot(meanDhdx, meanDhdy)
     };
   });
-  const cellDryMask = mesh.cells.map((cell) => {
-    const wetCount = cell.triangleIndices.filter((index) => !dryFlags[index]).length;
-    return wetCount < Math.ceil(cell.triangleIndices.length * 0.5);
-  });
+  const cellWetFraction = mesh.cells.map((cell) =>
+    clamp(cellValueFromTriangles(cell, elementWetFraction, mesh), 0, 1)
+  );
+  const cellDryMask = cellWetFraction.map((value) => value <= tolerances.wetFractionDryTol);
 
   const headMin = Math.min(...heads);
   const headMax = Math.max(...heads);
+  const phreaticScalar = mesh.nodes.map((node, index) => heads[index] - node.y);
   const equipLevels = uniqueSorted(
     Array.from({ length: 9 }, (_, index) => headMin + ((headMax - headMin) * (index + 1)) / 10)
   );
   const equipotentialSegments = equipLevels.map((level) => ({
     level,
-    segments: contourSegmentsForTriangles(mesh, heads, level)
-  }));
-  const phreaticScalar = mesh.nodes.map((node, index) => heads[index] - node.y);
+    segments: contourSegmentsForTriangles(mesh, heads, level, {
+      includeElement: (elementIndex) => elementWetFraction[elementIndex] > tolerances.wetFractionDryTol,
+      visibilityScalars: phreaticScalar,
+      minVisibleValue: -Math.max(0.1 * tolerances.headActivateTol, 1e-6)
+    })
+  })).filter((group) => group.segments.length);
   const phreaticSegments = contourSegmentsForTriangles(mesh, phreaticScalar, 0);
+  const flowLines = buildFlowLines(mesh, model, heads, gradients, activeSeepageFaces);
   const dryCellCount = cellDryMask.filter(Boolean).length;
 
   return {
@@ -1525,16 +1981,20 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options) {
     elementHeads: triangleHeads,
     elementGradients: gradients,
     elementDryMask: dryFlags,
+    elementWetFraction,
     cellHeads,
     gradients: cellGradients,
     cellGradients,
+    cellWetFraction,
     dryMask: cellDryMask,
     cellDryMask,
     headMin,
     headMax,
     equipotentialSegments,
     phreaticSegments,
+    flowLines,
     boundaryGradients,
+    activeSeepageFaceMask: activeSeepageFaces || mesh.boundaryFaces.map((face) => face.type === 'seepage-face'),
     maxExitGradient,
     throughFlow: Math.max(totalInflow, totalOutflow),
     inflow: totalInflow,
@@ -1542,7 +2002,7 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options) {
     dryCellCount,
     timing: solveMeta,
     solver: {
-      meshType: 'triangulated-strip-fem',
+      meshType: mesh?.kind || 'triangulated-strip-fem',
       freeSurface: options.freeSurface,
       iterations: solveMeta.outerIterations || 1,
       innerIterations: solveMeta.linearIterations || 0,
@@ -1551,146 +2011,18 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options) {
   };
 }
 
-function generateTriangulatedMesh(model, options, onProgress = () => {}) {
-  const startedAt = performance.now();
-  const domainPolygon = domainPolygonFor(model);
-  if (domainPolygon.length < 3) throw new Error('A valid terrain and analysis bottom are required for seepage.');
+async function generateTriangulatedMesh(model, options, onProgress = () => {}) {
   const regions = activeRegionsFor(model);
   if (!regions.length) throw new Error('No seepage regions are available to mesh.');
-  const features = buildFeatureSegments(model, regions, options);
-  const { xCoords, yCoords } = buildMeshCoordinates(model, features, options);
-  const splitPiecesByCell = splitSegmentsToAtomicPieces(features.splitSegments, xCoords, yCoords);
-
-  const nodes = [];
-  const nodeIndexByKey = new Map();
-  const cells = [];
-  const elements = [];
-  const elementCell = [];
-  const elementData = [];
-  const sampleBins = {};
-
-  const getNodeId = (point) => {
-    const key = nodeKey(point);
-    if (!nodeIndexByKey.has(key)) {
-      nodeIndexByKey.set(key, nodes.length);
-      nodes.push({ x: +point.x.toFixed(8), y: +point.y.toFixed(8) });
-    }
-    return nodeIndexByKey.get(key);
-  };
-
-  for (let ix = 0; ix < xCoords.length - 1; ix += 1) {
-    const x0 = xCoords[ix];
-    const x1 = xCoords[ix + 1];
-    if (!(x1 > x0 + GEOM_EPS)) continue;
-    const top0 = samplePolylineY(model.terrain, x0);
-    const top1 = samplePolylineY(model.terrain, x1);
-    if (!Number.isFinite(top0) || !Number.isFinite(top1)) continue;
-    for (let iy = 0; iy < yCoords.length - 1; iy += 1) {
-      const y0 = yCoords[iy];
-      const y1 = yCoords[iy + 1];
-      if (y1 <= Number(model.analysisBottomY) + GEOM_EPS) continue;
-      const basePolygon = buildBaseCellPolygon(x0, x1, y0, y1, top0, top1);
-      if (!(polygonArea(basePolygon) > 1e-8)) continue;
-      const cellKey = `${ix}:${iy}`;
-      const splitPieces = splitPiecesByCell.get(cellKey) || [];
-      let polygons = [basePolygon];
-      splitPieces.forEach((piece) => {
-        const next = [];
-        polygons.forEach((polygon) => {
-          const clipped = clipSegmentToConvexPolygon(piece.a, piece.b, polygon);
-          if (!clipped || !(dist(clipped.a, clipped.b) > 1e-8)) {
-            next.push(polygon);
-            return;
-          }
-          const split = splitConvexPolygonByLine(polygon, clipped.a, clipped.b);
-          if (!split) {
-            next.push(polygon);
-            return;
-          }
-          next.push(split[0], split[1]);
-        });
-        polygons = next;
-      });
-
-      polygons.forEach((polygon) => {
-        const cleaned = cleanPolygon(polygon);
-        if (!(polygonArea(cleaned) > 1e-8)) return;
-        const centroid = polygonCentroid(cleaned);
-        if (!pointInPolygonHalfOpen(domainPolygon, centroid.x, centroid.y)) return;
-        const regionIndex = regionIndexAt(regions, centroid.x, centroid.y);
-        if (regionIndex < 0) return;
-        const material = regions[regionIndex].material || materialAt(regions, centroid.x, centroid.y);
-        if (!material) return;
-        const nodeIds = cleaned.map((point) => getNodeId(point));
-        const triangleNodeSets = buildTrianglesForPolygon(nodeIds, cleaned);
-        const triangleIndices = [];
-        triangleNodeSets.forEach((triangle) => {
-          const pts = triangle.map((nodeId) => nodes[nodeId]);
-          const area = triangleArea(pts[0], pts[1], pts[2]);
-          if (!(area > 1e-10)) return;
-          let tri = triangle;
-          if (segmentOrientation(pts[0], pts[1], pts[2]) < 0) tri = [triangle[0], triangle[2], triangle[1]];
-          triangleIndices.push(elements.length);
-          elements.push(tri);
-          elementCell.push(cells.length);
-          elementData.push({ area, centroid: centroidOfTriangle(nodes[tri[0]], nodes[tri[1]], nodes[tri[2]]) });
-        });
-        if (!triangleIndices.length) return;
-        cells.push({
-          polygon: cleaned,
-          centroid,
-          area: polygonArea(cleaned),
-          material,
-          regionIndex,
-          triangleIndices,
-          baseKey: cellKey,
-          bbox: {
-            xMin: Math.min(...cleaned.map((point) => point.x)),
-            xMax: Math.max(...cleaned.map((point) => point.x)),
-            yMin: Math.min(...cleaned.map((point) => point.y)),
-            yMax: Math.max(...cleaned.map((point) => point.y))
-          }
-        });
-        if (!sampleBins[cellKey]) sampleBins[cellKey] = [];
-        sampleBins[cellKey].push(cells.length - 1);
-      });
-    }
-    onProgress({
-      stage: 'meshing',
-      percent: Math.round((35 * (ix + 1)) / Math.max(xCoords.length - 1, 1)),
-      message: `Building seepage mesh (${ix + 1}/${Math.max(xCoords.length - 1, 1)} x-strips)...`
-    });
-  }
-
-  if (!elements.length || !cells.length) throw new Error('The seepage mesher produced no active elements.');
-  const mesh = {
-    kind: 'triangulated-strip-fem',
-    nodes,
-    elements,
-    cells,
-    elementCell,
-    elementData,
-    xCoords,
-    yCoords,
-    sampleBins,
-    domainPolygon,
-    boundaryFaces: [],
-    phreaticNodeIds: [],
-    generatedMs: performance.now() - startedAt
-  };
-
+  const mesh = await buildTriangleMesh(model, regions, options, onProgress);
+  mesh.boundaryFaces = [];
   mesh.boundaryFaces = buildBoundaryFaces(mesh, model);
-  const phreaticSegments = features.phreaticSegments;
-  if (phreaticSegments.length) {
-    mesh.phreaticNodeIds = nodes
-      .map((point, index) => (pointOnPolylineSegments(phreaticSegments, point, 1e-5) ? index : -1))
-      .filter((index) => index >= 0);
-  }
   return mesh;
 }
 
 function solveSeepage(mesh, model, options, onProgress = () => {}) {
   const solveStartedAt = performance.now();
+  const tolerances = seepageIterationTolerances(mesh);
   if (options.freeSurface === 'fixed') {
     const dryFlags = mesh.elements.map((element, elementIndex) => {
       const centroid = mesh.elementData[elementIndex].centroid;
@@ -1718,7 +2050,8 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
         linearIterations: headField.iterations,
         residualNorm: headField.residualNorm
       },
-      options
+      options,
+      mesh.boundaryFaces.map((face) => face.type === 'seepage-face')
     );
   }
 
@@ -1736,6 +2069,8 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
   let residualNorm = 0;
   let converged = false;
   const maxOuterIter = Math.max(Number(options.maxFreeSurfaceIter) || 30, 1);
+  let priorSignature = stateSignature(dryFlags, activeSeepageFaces);
+  let priorPriorSignature = null;
 
   for (let outerIter = 1; outerIter <= maxOuterIter; outerIter += 1) {
     onProgress({
@@ -1744,14 +2079,17 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
       message: `Iterating seepage free surface (${outerIter}/${maxOuterIter})...`
     });
     const dirichletValues = buildDirichletValues(mesh, model, options, activeSeepageFaces);
+    const priorHeads = heads;
     const solve = solveHeadField(mesh, dryFlags, dirichletValues, heads);
     heads = solve.heads;
     linearIterations += solve.iterations;
     residualNorm = solve.residualNorm;
-    const nextDryFlags = updateDryFlags(mesh, heads);
-    const nextActiveSeepageFaces = activeSeepageFacesFromFlux(mesh, heads, model);
+    const headChange = maxAbsDiff(priorHeads, heads);
+    const nextDryFlags = updateDryFlags(mesh, heads, dryFlags, tolerances);
+    const nextActiveSeepageFaces = activeSeepageFacesFromFlux(mesh, heads, model, nextDryFlags, activeSeepageFaces, tolerances);
     const dryChanged = nextDryFlags.some((value, index) => value !== dryFlags[index]);
     const seepageChanged = nextActiveSeepageFaces.some((value, index) => value !== activeSeepageFaces[index]);
+    const nextSignature = stateSignature(nextDryFlags, nextActiveSeepageFaces);
     dryFlags = nextDryFlags;
     activeSeepageFaces = nextActiveSeepageFaces;
     if (!dryChanged && !seepageChanged) {
@@ -1770,9 +2108,32 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
           linearIterations,
           residualNorm
         },
-        options
+        options,
+        activeSeepageFaces
       );
     }
+    if (headChange <= tolerances.headConvergeTol && nextSignature === priorPriorSignature) {
+      converged = true;
+      return postProcess(
+        mesh,
+        model,
+        heads,
+        dryFlags,
+        {
+          totalMs: performance.now() - solveStartedAt,
+          meshMs: mesh.generatedMs,
+          solveMs: performance.now() - solveStartedAt,
+          postMs: 0,
+          outerIterations: outerIter,
+          linearIterations,
+          residualNorm
+        },
+        options,
+        activeSeepageFaces
+      );
+    }
+    priorPriorSignature = priorSignature;
+    priorSignature = nextSignature;
   }
 
   if (!converged) {
@@ -1783,15 +2144,26 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
 
 function optionsFor(model) {
   const seepageOptions = model?.seepage?.options || {};
+  const autoTargetArea = defaultMeshTargetAreaForModel(model);
+  const manualTargetArea = Number(seepageOptions.meshTargetArea);
+  const hasExplicitManualTarget = Number.isFinite(manualTargetArea) && manualTargetArea > 0;
+  const useAutoTarget =
+    seepageOptions.meshTargetAreaAuto === true
+      ? true
+      : seepageOptions.meshTargetAreaAuto === false
+        ? false
+        : !hasExplicitManualTarget;
   return {
-    freeSurface: seepageOptions.freeSurface === 'iterate' ? 'iterate' : 'fixed',
+    freeSurface: seepageOptions.freeSurface === 'fixed' ? 'fixed' : 'iterate',
     maxFreeSurfaceIter: Math.max(Number(seepageOptions.maxFreeSurfaceIter) || 30, 1),
     usePhreaticAsSeed: seepageOptions.usePhreaticAsSeed !== false,
-    meshTargetArea: Math.max(Number(seepageOptions.meshTargetArea) || DEFAULT_TARGET_AREA, 0.01)
+    meshTargetArea: useAutoTarget
+      ? autoTargetArea
+      : Math.max(hasExplicitManualTarget ? manualTargetArea : autoTargetArea, 0.01)
   };
 }
 
-export function analyzeSeepageModel(input, onProgress = () => {}) {
+export async function analyzeSeepageModel(input, onProgress = () => {}) {
   const startedAt = performance.now();
   const model = input?.model;
   if (!model?.terrain?.vertices?.length || !Number.isFinite(model?.analysisBottomY)) {
@@ -1807,7 +2179,7 @@ export function analyzeSeepageModel(input, onProgress = () => {}) {
     percent: 5,
     message: 'Building triangulated seepage mesh...'
   });
-  const mesh = generateTriangulatedMesh(model, options, onProgress);
+  const mesh = await generateTriangulatedMesh(model, options, onProgress);
   const result = solveSeepage(mesh, model, options, onProgress);
   onProgress({
     stage: 'post',

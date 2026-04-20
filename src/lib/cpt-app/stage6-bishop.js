@@ -1011,7 +1011,7 @@ function buildBishopSearchResult(circle, slices, bishopDiagnostics, wallInteract
     entry: circle?.entryPoint || null,
     exit: circle?.exitPoint || null,
     method: 'bishop_simplified',
-    methodLabel: 'Bishop simplified',
+    methodLabel: 'Seep/Slope',
     FS: F,
     F,
     F_bishop: F,
@@ -2161,7 +2161,7 @@ function applySpencerResult(baseResult, spencerResult) {
   if (!spencerResult?.converged) {
     return {
       ...baseResult,
-      methodLabel: 'Bishop simplified',
+      methodLabel: 'Seep/Slope',
       spencerAttempted: true,
       spencerConverged: false,
       spencerRejectReason: spencerResult?.reason || 'Spencer did not converge',
@@ -2483,7 +2483,7 @@ export function analyzeBishopSearch(input, emitProgress) {
         return {
           ...result,
           method: 'bishop_simplified',
-          methodLabel: 'Bishop simplified',
+          methodLabel: 'Seep/Slope',
           FS: result.F_bishop,
           F: result.F_bishop
         };

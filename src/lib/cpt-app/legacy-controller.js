@@ -3605,10 +3605,11 @@ function stage6Defaults(){
         rejectReason:'',
         geometryHash:'',
         options:{
-          freeSurface:'fixed',
+          freeSurface:'iterate',
           usePhreaticAsSeed:true,
           maxFreeSurfaceIter:30,
-          meshTargetArea:0.5
+          meshTargetArea:null,
+          meshTargetAreaAuto:true
         },
         display:{
           showBoundaryConditions:true,
@@ -3676,6 +3677,42 @@ function stage6WorkingLayers(){
 
 function stage6MaxDepth(){
   return S.layers.length ? S.layers[S.layers.length-1].bot : 10;
+}
+
+function stage6BishopSeepageDomainArea(bishop){
+  const terrain = stage6BishopSortedPolyline(bishop?.terrain);
+  if(terrain.length < 2) return null;
+  const terrainLine = {vertices:terrain};
+  const xMin = terrain[0].x;
+  const xMax = terrain[terrain.length - 1].x;
+  const refX = Number.isFinite(+bishop?.activeCptX)
+    ? Math.max(xMin, Math.min(+bishop.activeCptX, xMax))
+    : 0.5 * (xMin + xMax);
+  const groundY = bishopTerrainY(terrainLine, refX);
+  if(!Number.isFinite(groundY)) return null;
+  const analysisDepth = Math.max(+bishop?.analysisDepth || 15, 0.5);
+  const bottomY = groundY - analysisDepth;
+  const polygon = [
+    ...terrain,
+    {x:xMax, y:bottomY},
+    {x:xMin, y:bottomY}
+  ];
+  const area = polygonArea(polygon);
+  return area > 1e-6 ? area : null;
+}
+
+function stage6BishopAutoSeepageMeshTargetArea(bishop){
+  const domainArea = stage6BishopSeepageDomainArea(bishop);
+  if(!(domainArea > 0)) return 0.05;
+  return +Math.min(Math.max(domainArea / 3500, 0.05), 1.5).toFixed(3);
+}
+
+function stage6BishopResolvedSeepageMeshTargetArea(bishop){
+  const options = bishop?.seepage?.options || {};
+  const autoArea = stage6BishopAutoSeepageMeshTargetArea(bishop);
+  if(options.meshTargetAreaAuto !== false) return autoArea;
+  const manualArea = Number(options.meshTargetArea);
+  return Math.max(Number.isFinite(manualArea) && manualArea > 0 ? manualArea : autoArea, 0.01);
 }
 
 function ensureStage6State(){
@@ -3787,10 +3824,21 @@ function ensureStage6State(){
   bishop.seepage.rejectReason = bishop.seepage.rejectReason ? String(bishop.seepage.rejectReason) : '';
   bishop.seepage.geometryHash = bishop.seepage.geometryHash ? String(bishop.seepage.geometryHash) : '';
   if(!bishop.seepage.options || typeof bishop.seepage.options !== 'object') bishop.seepage.options = stage6Defaults().bishop.seepage.options;
-  if(!['fixed','iterate'].includes(bishop.seepage.options.freeSurface)) bishop.seepage.options.freeSurface = 'fixed';
+  if(!['fixed','iterate'].includes(bishop.seepage.options.freeSurface)) bishop.seepage.options.freeSurface = 'iterate';
   bishop.seepage.options.usePhreaticAsSeed = bishop.seepage.options.usePhreaticAsSeed !== false;
   bishop.seepage.options.maxFreeSurfaceIter = Math.max(1, Math.round(+bishop.seepage.options.maxFreeSurfaceIter || 30));
-  bishop.seepage.options.meshTargetArea = Math.max(+bishop.seepage.options.meshTargetArea || 0.5, 0.01);
+  const rawSeepageMeshTargetArea = Number(bishop.seepage.options.meshTargetArea);
+  if(bishop.seepage.options.meshTargetAreaAuto == null){
+    bishop.seepage.options.meshTargetAreaAuto = !(
+      Number.isFinite(rawSeepageMeshTargetArea) &&
+      rawSeepageMeshTargetArea > 0 &&
+      Math.abs(rawSeepageMeshTargetArea - 0.5) > 1e-9
+    );
+  }
+  if(bishop.seepage.options.meshTargetAreaAuto === false && !(rawSeepageMeshTargetArea > 0)){
+    bishop.seepage.options.meshTargetAreaAuto = true;
+  }
+  bishop.seepage.options.meshTargetArea = stage6BishopResolvedSeepageMeshTargetArea(bishop);
   if(!bishop.seepage.display || typeof bishop.seepage.display !== 'object') bishop.seepage.display = stage6Defaults().bishop.seepage.display;
   bishop.seepage.display.showBoundaryConditions = bishop.seepage.display.showBoundaryConditions !== false;
   bishop.seepage.display.showBoundaryLabels = bishop.seepage.display.showBoundaryLabels !== false;
@@ -4313,10 +4361,23 @@ function stage6BishopSetField(path, value){
   const defaults = stage6Defaults().bishop;
   const currentDefault = stage6Get(defaults, path);
   let nextValue = value;
-  if(typeof currentDefault === 'number'){
+  if(path === 'seepage.options.meshTargetArea'){
+    const numeric = value === '' || value == null ? null : +value;
+    const isManual = Number.isFinite(numeric) && numeric > 0;
+    S.stage6.bishop.seepage.options.meshTargetAreaAuto = !isManual;
+    nextValue = isManual ? numeric : stage6BishopAutoSeepageMeshTargetArea(S.stage6.bishop);
+  } else if(path === 'seepage.options.meshTargetAreaAuto'){
+    nextValue = !!value;
+  } else if(typeof currentDefault === 'number'){
     nextValue = value === '' || value == null ? null : +value;
   } else if(typeof currentDefault === 'boolean'){
     nextValue = !!value;
+  }
+
+  if(path === 'seepage.options.meshTargetAreaAuto' && nextValue){
+    S.stage6.bishop.seepage.options.meshTargetArea = stage6BishopAutoSeepageMeshTargetArea(S.stage6.bishop);
+  } else if(path === 'seepage.options.meshTargetAreaAuto' && !(Number(S.stage6.bishop.seepage.options.meshTargetArea) > 0)){
+    S.stage6.bishop.seepage.options.meshTargetArea = stage6BishopAutoSeepageMeshTargetArea(S.stage6.bishop);
   }
   stage6Set(S.stage6.bishop, path, nextValue);
   const isViewOnly = path === 'gridSnap' || path === 'pointSnap' || path === 'snapSize' || path.startsWith('viewport.') || path.startsWith('display.');
@@ -4905,8 +4966,8 @@ function stage6BishopMethodModeLabel(mode){
 function stage6BishopResultMethodLabel(result){
   if(!result) return '—';
   if(result.method === 'spencer') return 'Spencer';
-  if(result.spencerAttempted && !result.spencerConverged) return 'Bishop (Spencer fallback)';
-  return 'Bishop simplified';
+  if(result.spencerAttempted && !result.spencerConverged) return 'Seep/Slope (Spencer fallback)';
+  return 'Seep/Slope';
 }
 
 function stage6BishopRunningMessage(){
@@ -6238,6 +6299,44 @@ function stage6BishopDrawCanvas(){
     ctx.restore();
   };
 
+  const drawPolylineArrows = (points, stroke, spacingPx = 74, arrowPx = 7)=>{
+    if(!points?.length || points.length < 2) return;
+    const screenPts = points.map((point)=>stage6BishopWorldToScreen(point));
+    let carry = spacingPx * 0.5;
+    for(let i=0;i<screenPts.length-1;i+=1){
+      const a = screenPts[i];
+      const b = screenPts[i+1];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      if(!(len > 1e-6)) continue;
+      let offset = carry;
+      while(offset < len){
+        const t = offset / len;
+        const x = a.x + dx * t;
+        const y = a.y + dy * t;
+        const angle = Math.atan2(dy, dx);
+        ctx.save();
+        ctx.strokeStyle = stroke;
+        ctx.fillStyle = stroke;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(x - 0.6 * arrowPx * Math.cos(angle), y - 0.6 * arrowPx * Math.sin(angle));
+        ctx.lineTo(x + 0.6 * arrowPx * Math.cos(angle), y + 0.6 * arrowPx * Math.sin(angle));
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + 0.6 * arrowPx * Math.cos(angle), y + 0.6 * arrowPx * Math.sin(angle));
+        ctx.lineTo(x + 0.05 * arrowPx * Math.cos(angle) - 0.6 * arrowPx * Math.cos(angle - Math.PI / 6), y + 0.05 * arrowPx * Math.sin(angle) - 0.6 * arrowPx * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(x + 0.05 * arrowPx * Math.cos(angle) - 0.6 * arrowPx * Math.cos(angle + Math.PI / 6), y + 0.05 * arrowPx * Math.sin(angle) - 0.6 * arrowPx * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        offset += spacingPx;
+      }
+      carry = offset - len;
+    }
+  };
+
   const drawCircleArc = (circle, stroke, widthPx, dash)=>{
     const pts = [];
     const n = 100;
@@ -6259,12 +6358,14 @@ function stage6BishopDrawCanvas(){
       seepageMesh.cells.forEach((cell, index)=>{
         const polygon = cell?.polygon || [];
         if(polygon.length < 3) return;
+        const wetFraction = Math.max(0, Math.min(seepageResult.cellWetFraction?.[index] ?? (seepageResult.cellDryMask?.[index] ? 0 : 1), 1));
+        if(wetFraction <= 0.01) return;
         const screen = polygon.map((point)=>stage6BishopWorldToScreen(point));
         ctx.fillStyle = stage6BishopSeepageHeadColor(
           seepageResult.cellHeads?.[index] ?? seepageResult.headMin ?? 0,
           seepageResult.headMin,
           seepageResult.headMax,
-          seepageResult.cellDryMask?.[index] ? 0.20 : 0.44
+          0.06 + 0.38 * wetFraction
         );
         ctx.beginPath();
         ctx.moveTo(screen[0].x, screen[0].y);
@@ -6289,47 +6390,17 @@ function stage6BishopDrawCanvas(){
     }
 
     if(bishop.seepage.display?.showFlowVectors){
-      const step = Math.max(1, Math.round(Math.sqrt((seepageMesh.cells?.length || 1) / 110)));
-      const maxQ = Math.max(...(seepageResult.cellGradients || []).map((item)=>item?.qMagnitude || 0), 0);
-      seepageMesh.cells.forEach((cell, index)=>{
-        if(index % step !== 0) return;
-        const grad = seepageResult.cellGradients?.[index];
-        if(!grad || !(grad.qMagnitude > 1e-10) || !(maxQ > 0)) return;
-        const bbox = cell?.bbox || {};
-        const cellWidth = Math.max((bbox.xMax || 0) - (bbox.xMin || 0), 0.05);
-        const cellHeight = Math.max((bbox.yMax || 0) - (bbox.yMin || 0), 0.05);
-        const scale = 0.45 * Math.min(cellWidth, cellHeight) * (grad.qMagnitude / maxQ);
-        const length = Math.max(scale, 0.06);
-        const ux = grad.qx / (grad.qMagnitude || 1);
-        const uy = grad.qy / (grad.qMagnitude || 1);
-        const start = stage6BishopWorldToScreen(cell.centroid || {x:0, y:0});
-        const end = stage6BishopWorldToScreen({
-          x:(cell.centroid?.x || 0) + ux * length,
-          y:(cell.centroid?.y || 0) + uy * length
-        });
-        ctx.save();
-        ctx.strokeStyle = 'rgba(20, 58, 95, 0.72)';
-        ctx.fillStyle = 'rgba(20, 58, 95, 0.72)';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(start.x, start.y);
-        ctx.lineTo(end.x, end.y);
-        ctx.stroke();
-        const angle = Math.atan2(end.y - start.y, end.x - start.x);
-        const ah = 6;
-        ctx.beginPath();
-        ctx.moveTo(end.x, end.y);
-        ctx.lineTo(end.x - ah * Math.cos(angle - Math.PI / 6), end.y - ah * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(end.x - ah * Math.cos(angle + Math.PI / 6), end.y - ah * Math.sin(angle + Math.PI / 6));
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
+      const flowLines = seepageResult.flowLines || [];
+      flowLines.forEach((line)=>{
+        drawPolyline(line, 'rgba(20, 58, 95, 0.48)', 1.6, []);
+        drawPolylineArrows(line, 'rgba(20, 58, 95, 0.78)', 74, 7);
       });
     }
 
     if(bishop.seepage.display?.showExitGradient){
       (seepageMesh.boundaryFaces || []).forEach((face, index)=>{
         if(face?.type !== 'seepage-face') return;
+        if(seepageResult.activeSeepageFaceMask && !seepageResult.activeSeepageFaceMask[index]) return;
         const gradient = seepageResult.boundaryGradients?.[index] || 0;
         const t = Math.max(0, Math.min(gradient / Math.max(seepageResult.maxExitGradient || 1, 1e-6), 1));
         const stroke = `rgba(${Math.round(70 + 185 * t)}, ${Math.round(165 - 105 * t)}, 72, 0.86)`;
@@ -7423,7 +7494,7 @@ function stage6CardsHtml(app){
     {id:'beam', title:'Beam / slab on Winkler', desc:'1D strip-on-elastic-foundation screening with EC2 reinforcement output.'}
   ];
   if(stage6BishopEnabled()){
-    cards.push({id:'bishop', title:'Bishop simplified', desc:'Experimental slope-stability workspace using the current active CPT soil model.'});
+    cards.push({id:'bishop', title:'Seep/Slope', desc:'Experimental slope-stability workspace using the current active CPT soil model.'});
   }
   return `
     <div class="mcards" style="grid-template-columns:repeat(${cards.length},minmax(0,1fr));margin-bottom:14px">
@@ -8169,6 +8240,9 @@ function renderStage6BishopApp(){
   const seepageActiveBcs = (seepage.bcs || []).filter((bc)=>bc.status !== 'orphaned');
   const seepageOrphanedBcs = (seepage.bcs || []).filter((bc)=>bc.status === 'orphaned');
   const seepageHeadCount = seepageActiveBcs.filter((bc)=>bc.type === 'head').length;
+  const seepageMeshTargetAreaAuto = seepage.options?.meshTargetAreaAuto !== false;
+  const seepageAutoMeshTargetArea = stage6BishopAutoSeepageMeshTargetArea(bishop);
+  const seepageMeshTargetArea = stage6BishopResolvedSeepageMeshTargetArea(bishop);
   const seepagePhreaticReady = seepage.options?.freeSurface === 'iterate' || (bishop.phreatic || []).length >= 2;
   const seepageRunReady = !!model && seepageHeadCount > 0 && seepagePhreaticReady;
   const seepageHasResult = !!seepage.mesh && !!seepage.result;
@@ -8448,12 +8522,16 @@ function renderStage6BishopApp(){
               <div class="st6-adv-body">
                 <label style="font-size:11px;color:var(--tx2)">Free-surface mode
                   <select onchange="stage6BishopSetField('seepage.options.freeSurface', this.value)">
-                    <option value="fixed"${seepage.options?.freeSurface==='fixed'?' selected':''}>Fixed phreatic line</option>
                     <option value="iterate"${seepage.options?.freeSurface==='iterate'?' selected':''}>Iterative free surface</option>
+                    <option value="fixed"${seepage.options?.freeSurface==='fixed'?' selected':''}>Fixed phreatic line</option>
                   </select>
                 </label>
+                <label class="st6-bishop-check">
+                  <input type="checkbox" ${seepageMeshTargetAreaAuto ? 'checked' : ''} onchange="stage6BishopSetField('seepage.options.meshTargetAreaAuto', this.checked)">
+                  Auto size target area from the drawn geometry
+                </label>
                 <label style="font-size:11px;color:var(--tx2)">Target element area (m²)
-                  <input type="number" step="0.05" min="0.01" value="${Number(seepage.options?.meshTargetArea || 0.5).toFixed(2)}" onchange="stage6BishopSetField('seepage.options.meshTargetArea', this.value)">
+                  <input type="number" step="0.01" min="0.01" value="${Number(seepageMeshTargetArea).toFixed(2)}" onchange="stage6BishopSetField('seepage.options.meshTargetArea', this.value)">
                 </label>
                 <label style="font-size:11px;color:var(--tx2)">Max free-surface iterations
                   <input type="number" step="1" min="1" value="${Math.round(seepage.options?.maxFreeSurfaceIter || 30)}" onchange="stage6BishopSetField('seepage.options.maxFreeSurfaceIter', this.value)">
@@ -8462,6 +8540,7 @@ function renderStage6BishopApp(){
                   <input type="checkbox" ${seepage.options?.usePhreaticAsSeed !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.options.usePhreaticAsSeed', this.checked)">
                   Use the drawn phreatic line as the initial wet/dry seed
                 </label>
+                <div class="st6-help">Iterative free surface is now the default. Fixed phreatic remains available when you intentionally want to lock seepage to a known phreatic line for benchmarking or sensitivity checks. The automatic target area scales from the drawn section geometry and becomes coarser for larger sections to keep the default mesh size under control. For the current section that lands around <strong>${seepageAutoMeshTargetArea.toFixed(2)} m²</strong>. Typing a value switches the mesh to manual sizing.</div>
                 <div class="st6-bishop-tools">
                   <button class="btn sm" onclick="stage6BishopRunSeepage()" ${seepageRunReady ? '' : 'disabled'}>Run seepage</button>
                   <button class="btn sm" onclick="stage6BishopStopSeepage()">Stop</button>
@@ -8469,16 +8548,16 @@ function renderStage6BishopApp(){
                 </div>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(seepageStatusMessage)}</strong><br>
-                  Solver: <strong>structured rectangular strip FEM mesh</strong><br>
+                  Solver: <strong>constrained triangular FEM mesh</strong><br>
                   Nodes: <strong>${seepage.mesh?.nodes?.length || 0}</strong><br>
                   Triangles: <strong>${seepage.mesh?.elements?.length || 0}</strong><br>
-                  Display cells: <strong>${seepage.mesh?.cells?.length || 0}</strong><br>
+                  Rendered triangles: <strong>${seepage.mesh?.cells?.length || 0}</strong><br>
                   Head range: <strong>${seepage.result ? `${seepage.result.headMin.toFixed(2)} to ${seepage.result.headMax.toFixed(2)} m` : '—'}</strong><br>
                   Through-flow: <strong>${seepage.result ? `${(seepage.result.throughFlow || 0).toExponential(2)} m³/s/m` : '—'}</strong><br>
                   Max exit gradient: <strong>${seepage.result ? (seepage.result.maxExitGradient || 0).toFixed(3) : '—'}</strong><br>
                   Dry cells: <strong>${seepage.result?.dryCellCount || 0}</strong>
                 </div>
-                <div class="st6-help">The seepage solver now rebuilds the shared Bishop section into a structured rectangular strip mesh, solves the head field in a worker, and feeds that result back into the canvas overlays and the optional FEM pore-pressure hook.</div>
+                <div class="st6-help">The seepage solver now rebuilds the shared Bishop section into a constrained triangular mesh, solves the head field in a worker, and feeds that result back into the canvas overlays and the optional FEM pore-pressure hook.</div>
               </div>
             </details>
             <details class="st6-adv" data-st6details="bishop-seepage-integration"${stage6DetailsOpen('bishop-seepage-integration')}>
@@ -8524,7 +8603,7 @@ function renderStage6BishopApp(){
   return `
     <div class="mc2 st6-bishop">
       <div class="mc2-head" style="margin-bottom:12px">
-        <span style="font-size:13px;font-weight:600">Bishop simplified + Spencer equilibrium check</span>
+        <span style="font-size:13px;font-weight:600">Seep/Slope + Spencer equilibrium check</span>
         <span style="font-size:11px;color:var(--tx2)">Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.</span>
       </div>
       <div class="st6-bishop-workspace-switch">
@@ -8656,7 +8735,7 @@ function renderStage6BishopApp(){
                       </label>
                       <label class="st6-bishop-check">
                         <input type="checkbox" ${bishop.seepage?.display?.showFlowVectors ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showFlowVectors', this.checked)">
-                        Show flow vectors
+                        Show flow lines
                       </label>
                       <label class="st6-bishop-check">
                         <input type="checkbox" ${bishop.seepage?.display?.showExitGradient ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showExitGradient', this.checked)">
@@ -8710,7 +8789,7 @@ function renderStage6BishopApp(){
             <div class="st6-bishop-status">
               <div id="stage6BishopMode" class="st6-bishop-mode">${modeMeta.label}</div>
             </div>
-            <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Bishop simplified section and slip circles"></canvas>
+            <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Seep/Slope section and slip circles"></canvas>
             ${bishop.display?.showRegionLegend !== false && regionLegendItems.length ? `
               <details class="st6-bishop-region-legend" data-st6details="bishop-region-legend"${stage6DetailsOpen('bishop-region-legend')}>
                 <summary>
@@ -9390,7 +9469,8 @@ function stage7SeepagePayload(){
         freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
         usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
         maxFreeSurfaceIter:Math.max(1, Math.round(+seepage.options?.maxFreeSurfaceIter || 30)),
-        meshTargetArea:Math.max(+seepage.options?.meshTargetArea || 0.5, 0.01),
+        meshTargetArea:stage6BishopResolvedSeepageMeshTargetArea(bishop),
+        meshTargetAreaAuto:seepage.options?.meshTargetAreaAuto !== false,
         useFemPorePressure:!!bishop.useFemPorePressure
       }),
       summary:{
@@ -9466,7 +9546,8 @@ function stage7SeepagePayload(){
         freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
         usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
         maxFreeSurfaceIter:Math.max(1, Math.round(+seepage.options?.maxFreeSurfaceIter || 30)),
-        meshTargetArea:Math.max(+seepage.options?.meshTargetArea || 0.5, 0.01),
+        meshTargetArea:stage6BishopResolvedSeepageMeshTargetArea(bishop),
+        meshTargetAreaAuto:seepage.options?.meshTargetAreaAuto !== false,
         useFemPorePressure:!!bishop.useFemPorePressure
       }),
       summary:{
@@ -9498,6 +9579,111 @@ function stage7SeepagePayload(){
   }
 }
 
+function stage7CaptureCanvasImage(canvasId, {
+  maxWidth=1400,
+  quality=0.9,
+  mimeType='image/jpeg'
+} = {}){
+  if(typeof document === 'undefined') return null;
+  const canvas=document.getElementById(canvasId);
+  if(!(canvas instanceof HTMLCanvasElement) || !canvas.width || !canvas.height) return null;
+  try{
+    const scale=Math.min(1, maxWidth / Math.max(canvas.width, 1));
+    const out=document.createElement('canvas');
+    out.width=Math.max(1, Math.round(canvas.width * scale));
+    out.height=Math.max(1, Math.round(canvas.height * scale));
+    const ctx=out.getContext('2d');
+    if(!ctx) return null;
+    ctx.fillStyle='#ffffff';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(canvas, 0, 0, out.width, out.height);
+    return {
+      mimeType,
+      width:out.width,
+      height:out.height,
+      dataUrl:out.toDataURL(mimeType, quality)
+    };
+  }catch(error){
+    console.warn('Stage 7 canvas capture failed:', error);
+    return null;
+  }
+}
+
+function stage7CaptureBishopWorkspaceView(workspace){
+  if(typeof document === 'undefined') return null;
+  ensureStage6State();
+  const stage6=S.stage6;
+  const bishop=stage6?.bishop;
+  if(!stage6 || !bishop) return null;
+  const targetWorkspace=workspace === 'seepage' ? 'seepage' : 'stability';
+  const hasContent=targetWorkspace === 'seepage'
+    ? !!(bishop.seepage?.mesh && bishop.seepage?.result)
+    : !!(bishop.results?.allResults?.length);
+  if(!hasContent) return null;
+
+  const prevApp=stage6.app;
+  const prevWorkspace=bishop.workspace;
+  const switched=prevApp !== 'bishop' || prevWorkspace !== targetWorkspace;
+
+  const syncBishopCanvas = ()=>{
+    const stage6Area = document.getElementById('stage6Area');
+    if(stage6.app !== 'bishop'){
+      renderStage6();
+      if(stage6.app === 'bishop' && stage6Area) initStage6BishopCanvas();
+      return;
+    }
+    const canvas = document.getElementById('stage6BishopCanvas');
+    if(!(canvas instanceof HTMLCanvasElement) || !stage6Area){
+      renderStage6();
+      if(document.getElementById('stage6BishopCanvas')) initStage6BishopCanvas();
+      return;
+    }
+    stage6BishopCanvasState.canvas = canvas;
+    stage6BishopDrawCanvas();
+  };
+
+  try{
+    if(switched){
+      stage6.app='bishop';
+      bishop.workspace=targetWorkspace;
+      syncBishopCanvas();
+    }
+    if(!switched) syncBishopCanvas();
+    const image=stage7CaptureCanvasImage('stage6BishopCanvas');
+    if(!image?.dataUrl) return null;
+    return safeClone({
+      workspace:targetWorkspace,
+      app:'bishop',
+      capturedAt:new Date().toISOString(),
+      display:targetWorkspace === 'seepage'
+        ? {
+            showBoundaryConditions:bishop.seepage?.display?.showBoundaryConditions !== false,
+            showBoundaryLabels:bishop.seepage?.display?.showBoundaryLabels !== false,
+            showHead:!!bishop.seepage?.display?.showHead,
+            showEquipotentials:!!bishop.seepage?.display?.showEquipotentials,
+            showFlowVectors:!!bishop.seepage?.display?.showFlowVectors,
+            showExitGradient:!!bishop.seepage?.display?.showExitGradient
+          }
+        : {
+            selectedResult:Math.min(Math.max(bishop.selectedResult || 0, 0), Math.max((bishop.results?.allResults?.length || 1) - 1, 0)),
+            methodMode:bishop.methodMode || 'bishop_spencer'
+          },
+      viewport:safeClone(bishop.viewport || null),
+      image
+    });
+  } finally {
+    if(switched){
+      stage6.app=prevApp;
+      bishop.workspace=prevWorkspace;
+      if(prevApp === 'bishop'){
+        syncBishopCanvas();
+      } else {
+        renderStage6();
+      }
+    }
+  }
+}
+
 function stage7Stage6Payload(workingLayers){
   const annexes={};
   if(S.stage6Cache?.bearing?.selected){
@@ -9525,9 +9711,17 @@ function stage7Stage6Payload(workingLayers){
     };
   }
   const bishop=stage7BishopPayload();
-  if(bishop) annexes.bishop=bishop;
+  if(bishop){
+    const bishopView=stage7CaptureBishopWorkspaceView('stability');
+    if(bishopView) bishop.view=bishopView;
+    annexes.bishop=bishop;
+  }
   const seepage=stage7SeepagePayload();
-  if(seepage) annexes.seepage=seepage;
+  if(seepage){
+    const seepageView=stage7CaptureBishopWorkspaceView('seepage');
+    if(seepageView) seepage.view=seepageView;
+    annexes.seepage=seepage;
+  }
   const available=Object.keys(annexes);
   if(!available.length) return null;
   return{

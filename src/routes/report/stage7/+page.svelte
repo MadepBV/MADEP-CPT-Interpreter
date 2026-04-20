@@ -1049,68 +1049,89 @@
           {/if}
 
           {#if hasStage6('bishop')}
+            {@const bishop = payload.stage6.bishop || {}}
+            {@const bishopView = bishop.view || null}
             <div class="report-card report-annex report-annex--bishop">
               <h3>Bishop / Spencer slope check</h3>
               <div class="report-grid report-grid--4">
-                <div class="report-stat"><span>Critical F</span><strong>{payload.stage6.bishop.topResults?.[0] ? fmt(payload.stage6.bishop.topResults[0].FS, 3) : '—'}</strong></div>
-                <div class="report-stat"><span>Mode</span><strong>{payload.stage6.bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer' : 'Bishop only'}</strong></div>
-                <div class="report-stat"><span>Selected result</span><strong>{payload.stage6.bishop.selectedIndex + 1}</strong></div>
-                <div class="report-stat"><span>Spencer converged</span><strong>{payload.stage6.bishop.methodMode === 'bishop_spencer' ? `${payload.stage6.bishop.spencerConverged}/${payload.stage6.bishop.spencerRechecked}` : 'off'}</strong></div>
-                {#if payload.stage6.bishop.config.walls?.length}
-                  <div class="report-stat"><span>Retaining walls</span><strong>{payload.stage6.bishop.config.walls.length}</strong></div>
-                  <div class="report-stat"><span>Critical through wall</span><strong>{payload.stage6.bishop.wallSummary?.criticalThroughWall ? fmt(payload.stage6.bishop.wallSummary.criticalThroughWall.FS, 3) : '—'}</strong></div>
-                  <div class="report-stat"><span>Critical below wall</span><strong>{payload.stage6.bishop.wallSummary?.criticalBelowWall ? fmt(payload.stage6.bishop.wallSummary.criticalBelowWall.FS, 3) : '—'}</strong></div>
-                  <div class="report-stat"><span>Wall effective</span><strong>{payload.stage6.bishop.wallSummary?.wallEffective == null ? '—' : payload.stage6.bishop.wallSummary.wallEffective ? 'Yes' : 'No / inconclusive'}</strong></div>
+                <div class="report-stat"><span>Critical F</span><strong>{bishop.topResults?.[0] ? fmt(bishop.topResults[0].FS, 3) : '—'}</strong></div>
+                <div class="report-stat"><span>Mode</span><strong>{bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer' : 'Bishop only'}</strong></div>
+                <div class="report-stat"><span>Selected result</span><strong>{bishop.selectedIndex + 1}</strong></div>
+                <div class="report-stat"><span>Spencer converged</span><strong>{bishop.methodMode === 'bishop_spencer' ? `${bishop.spencerConverged}/${bishop.spencerRechecked}` : 'off'}</strong></div>
+                {#if bishop.config.walls?.length}
+                  <div class="report-stat"><span>Retaining walls</span><strong>{bishop.config.walls.length}</strong></div>
+                  <div class="report-stat"><span>Critical through wall</span><strong>{bishop.wallSummary?.criticalThroughWall ? fmt(bishop.wallSummary.criticalThroughWall.FS, 3) : '—'}</strong></div>
+                  <div class="report-stat"><span>Critical below wall</span><strong>{bishop.wallSummary?.criticalBelowWall ? fmt(bishop.wallSummary.criticalBelowWall.FS, 3) : '—'}</strong></div>
+                  <div class="report-stat"><span>Wall effective</span><strong>{bishop.wallSummary?.wallEffective == null ? '—' : bishop.wallSummary.wallEffective ? 'Yes' : 'No / inconclusive'}</strong></div>
                 {/if}
               </div>
-              <div class="report-grid report-grid--2">
-                <table class="pt report-pt">
-                  <tbody>
-                    <tr><td>Strength set</td><td>{payload.stage6.bishop.config.strengthSet}</td></tr>
-                    <tr><td>Method mode</td><td>{payload.stage6.bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer check' : 'Bishop only'}</td></tr>
-                    <tr><td>Analysis depth (m)</td><td>{fmt(payload.stage6.bishop.config.analysisDepth, 2)} m</td></tr>
-                    <tr><td>Retaining walls</td><td>{payload.stage6.bishop.config.walls?.length ?? 0}</td></tr>
-                    <tr><td>Entry zone x-range (m)</td><td>{payload.stage6.bishop.config.entryZone ? `${fmt(payload.stage6.bishop.config.entryZone.xStart, 2)} - ${fmt(payload.stage6.bishop.config.entryZone.xEnd, 2)} m` : '—'}</td></tr>
-                    <tr><td>Exit zone x-range (m)</td><td>{payload.stage6.bishop.config.exitZone ? `${fmt(payload.stage6.bishop.config.exitZone.xStart, 2)} - ${fmt(payload.stage6.bishop.config.exitZone.xEnd, 2)} m` : '—'}</td></tr>
-                    <tr><td>Selected method</td><td>{payload.stage6.bishop.selected?.methodLabel ?? '—'}</td></tr>
-                    <tr><td>Selected wall status</td><td>{payload.stage6.bishop.selected?.intersectsWall ? `${payload.stage6.bishop.selected.wallIntersectionCount} engaged` : payload.stage6.bishop.selected?.passesBelowWall ? 'passes below wall' : 'no wall effect'}</td></tr>
-                    <tr><td>Selected wall force</td><td>{payload.stage6.bishop.selected?.wallForceTotal != null ? `${fmt(payload.stage6.bishop.selected.wallForceTotal, 1)} kN/m` : '—'}</td></tr>
-                    <tr><td>Selected Bishop F</td><td>{payload.stage6.bishop.selected?.F_bishop != null ? fmt(payload.stage6.bishop.selected.F_bishop, 3) : '—'}</td></tr>
-                    <tr><td>Selected Spencer F</td><td>{payload.stage6.bishop.selected?.method === 'spencer' ? fmt(payload.stage6.bishop.selected.FS, 3) : '—'}</td></tr>
-                    <tr><td>Selected λ</td><td>{payload.stage6.bishop.selected?.lambda != null ? fmt(payload.stage6.bishop.selected.lambda, 3) : '—'}</td></tr>
-                    <tr><td>Selected wall moment term</td><td>{payload.stage6.bishop.selected?.wallMomentTerm != null ? fmt(payload.stage6.bishop.selected.wallMomentTerm, 3) : '—'}</td></tr>
-                    <tr><td>Selected moment residual</td><td>{payload.stage6.bishop.selected?.momentResidual != null ? fmt(payload.stage6.bishop.selected.momentResidual, 3) : '—'}</td></tr>
-                    <tr><td>Selected force residual</td><td>{payload.stage6.bishop.selected?.forceResidual != null ? fmt(payload.stage6.bishop.selected.forceResidual, 3) : '—'}</td></tr>
-                    <tr><td>Runtime (ms)</td><td>{payload.stage6.bishop.timing?.totalMs != null ? `${fmt(payload.stage6.bishop.timing.totalMs, 0)} ms` : '—'}</td></tr>
-                  </tbody>
-                </table>
-                <div class="report-card report-card--nested">
-                  <h4>Best circles</h4>
-                  <table class="tbl report-table">
-                    <thead>
-                      <tr><th>#</th><th>FS (-)</th><th>Method</th><th>Wall</th><th>R_wall (kN/m)</th><th>Bishop F (-)</th><th>λ (-)</th><th>M res.</th><th>F res.</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
-                    </thead>
+              <div class={`report-annex__split${bishopView?.image?.dataUrl ? '' : ' report-annex__split--single'}`}>
+                <div class="report-annex__main">
+                  <table class="pt report-pt">
                     <tbody>
-                      {#each payload.stage6.bishop.topResults as result}
-                        <tr>
-                          <td>{result.rank}</td>
-                          <td>{fmt(result.FS, 3)}</td>
-                          <td>{result.methodLabel}</td>
-                          <td>{result.intersectsWall ? `${result.wallIntersectionCount} engaged` : result.passesBelowWall ? 'below wall' : 'none'}</td>
-                          <td>{result.wallForceTotal != null ? fmt(result.wallForceTotal, 1) : '—'}</td>
-                          <td>{result.F_bishop != null ? fmt(result.F_bishop, 3) : '—'}</td>
-                          <td>{result.lambda != null ? fmt(result.lambda, 3) : '—'}</td>
-                          <td>{result.momentResidual != null ? fmt(result.momentResidual, 3) : '—'}</td>
-                          <td>{result.forceResidual != null ? fmt(result.forceResidual, 3) : '—'}</td>
-                          <td>{result.iterations}</td>
-                          <td>{result.circle?.radius != null ? `${fmt(result.circle.radius, 2)} m` : '—'}</td>
-                        </tr>
-                      {/each}
+                      <tr><td>Strength set</td><td>{bishop.config.strengthSet}</td></tr>
+                      <tr><td>Method mode</td><td>{bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer check' : 'Bishop only'}</td></tr>
+                      <tr><td>Analysis depth (m)</td><td>{fmt(bishop.config.analysisDepth, 2)} m</td></tr>
+                      <tr><td>Retaining walls</td><td>{bishop.config.walls?.length ?? 0}</td></tr>
+                      <tr><td>Entry zone x-range (m)</td><td>{bishop.config.entryZone ? `${fmt(bishop.config.entryZone.xStart, 2)} - ${fmt(bishop.config.entryZone.xEnd, 2)} m` : '—'}</td></tr>
+                      <tr><td>Exit zone x-range (m)</td><td>{bishop.config.exitZone ? `${fmt(bishop.config.exitZone.xStart, 2)} - ${fmt(bishop.config.exitZone.xEnd, 2)} m` : '—'}</td></tr>
+                      <tr><td>Selected method</td><td>{bishop.selected?.methodLabel ?? '—'}</td></tr>
+                      <tr><td>Selected wall status</td><td>{bishop.selected?.intersectsWall ? `${bishop.selected.wallIntersectionCount} engaged` : bishop.selected?.passesBelowWall ? 'passes below wall' : 'no wall effect'}</td></tr>
+                      <tr><td>Selected wall force</td><td>{bishop.selected?.wallForceTotal != null ? `${fmt(bishop.selected.wallForceTotal, 1)} kN/m` : '—'}</td></tr>
+                      <tr><td>Selected Bishop F</td><td>{bishop.selected?.F_bishop != null ? fmt(bishop.selected.F_bishop, 3) : '—'}</td></tr>
+                      <tr><td>Selected Spencer F</td><td>{bishop.selected?.method === 'spencer' ? fmt(bishop.selected.FS, 3) : '—'}</td></tr>
+                      <tr><td>Selected λ</td><td>{bishop.selected?.lambda != null ? fmt(bishop.selected.lambda, 3) : '—'}</td></tr>
+                      <tr><td>Selected wall moment term</td><td>{bishop.selected?.wallMomentTerm != null ? fmt(bishop.selected.wallMomentTerm, 3) : '—'}</td></tr>
+                      <tr><td>Selected moment residual</td><td>{bishop.selected?.momentResidual != null ? fmt(bishop.selected.momentResidual, 3) : '—'}</td></tr>
+                      <tr><td>Selected force residual</td><td>{bishop.selected?.forceResidual != null ? fmt(bishop.selected.forceResidual, 3) : '—'}</td></tr>
+                      <tr><td>Runtime (ms)</td><td>{bishop.timing?.totalMs != null ? `${fmt(bishop.timing.totalMs, 0)} ms` : '—'}</td></tr>
                     </tbody>
                   </table>
                 </div>
+                {#if bishopView?.image?.dataUrl}
+                  <div class="report-annex__aside">
+                    <div class="report-card report-card--nested report-card--figure">
+                      <h4>Critical Surface View</h4>
+                      <figure class="report-figure">
+                        <img
+                          class="report-figure__image"
+                          src={bishopView.image.dataUrl}
+                          alt="Frozen Bishop stability view from the Stage 6 canvas"
+                        />
+                        <figcaption class="report-note">
+                          Frozen Stage 6 Bishop stability view at report export time.
+                        </figcaption>
+                      </figure>
+                    </div>
+                  </div>
+                {/if}
               </div>
-              {#if payload.stage6.bishop.config.walls?.length}
+              <div class="report-card report-card--nested" style="margin-top:16px">
+                <h4>Best circles</h4>
+                <table class="tbl report-table">
+                  <thead>
+                    <tr><th>#</th><th>FS (-)</th><th>Method</th><th>Wall</th><th>R_wall (kN/m)</th><th>Bishop F (-)</th><th>λ (-)</th><th>M res.</th><th>F res.</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
+                  </thead>
+                  <tbody>
+                    {#each bishop.topResults as result}
+                      <tr>
+                        <td>{result.rank}</td>
+                        <td>{fmt(result.FS, 3)}</td>
+                        <td>{result.methodLabel}</td>
+                        <td>{result.intersectsWall ? `${result.wallIntersectionCount} engaged` : result.passesBelowWall ? 'below wall' : 'none'}</td>
+                        <td>{result.wallForceTotal != null ? fmt(result.wallForceTotal, 1) : '—'}</td>
+                        <td>{result.F_bishop != null ? fmt(result.F_bishop, 3) : '—'}</td>
+                        <td>{result.lambda != null ? fmt(result.lambda, 3) : '—'}</td>
+                        <td>{result.momentResidual != null ? fmt(result.momentResidual, 3) : '—'}</td>
+                        <td>{result.forceResidual != null ? fmt(result.forceResidual, 3) : '—'}</td>
+                        <td>{result.iterations}</td>
+                        <td>{result.circle?.radius != null ? `${fmt(result.circle.radius, 2)} m` : '—'}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+              {#if bishop.config.walls?.length}
                 <div class="report-grid report-grid--2" style="margin-top:16px">
                   <div class="report-card report-card--nested">
                     <h4>Retaining Walls</h4>
@@ -1119,7 +1140,7 @@
                         <tr><th>#</th><th>x (m)</th><th>Top y (m)</th><th>Tip y (m)</th><th>Length (m)</th><th>Passive side</th></tr>
                       </thead>
                       <tbody>
-                        {#each payload.stage6.bishop.config.walls as wall, index}
+                        {#each bishop.config.walls as wall, index}
                           <tr>
                             <td>{index + 1}</td>
                             <td>{fmt(wall.x, 2)}</td>
@@ -1134,13 +1155,13 @@
                   </div>
                   <div class="report-card report-card--nested">
                     <h4>Selected Wall Interaction</h4>
-                    {#if payload.stage6.bishop.selected?.wallForces?.length}
+                    {#if bishop.selected?.wallForces?.length}
                       <table class="tbl report-table">
                         <thead>
                           <tr><th>#</th><th>x (m)</th><th>y intersect (m)</th><th>R_wall (kN/m)</th><th>y app (m)</th><th>Passive side</th></tr>
                         </thead>
                         <tbody>
-                          {#each payload.stage6.bishop.selected.wallForces as force, index}
+                          {#each bishop.selected.wallForces as force, index}
                             <tr>
                               <td>{index + 1}</td>
                               <td>{fmt(force.x, 2)}</td>
@@ -1170,6 +1191,7 @@
             {@const seepageResult = seepage.result || null}
             {@const seepageBcs = seepage.boundaryConditions || []}
             {@const seepageMaterials = seepage.materials || []}
+            {@const seepageView = seepage.view || null}
             <div class="report-card report-annex report-annex--seepage">
               <h3>Seepage / groundwater flow</h3>
               <div class="report-grid report-grid--4">
@@ -1182,39 +1204,54 @@
                 <div class="report-stat"><span>Triangles</span><strong>{seepageMesh?.elements ?? 0}</strong></div>
                 <div class="report-stat"><span>FEM pore pressure in Bishop</span><strong>{seepageConfig.useFemPorePressure ? 'Yes' : 'No'}</strong></div>
               </div>
-              <div class="report-grid report-grid--2">
-                <table class="pt report-pt">
-                  <tbody>
-                    <tr><td>Solver</td><td>{seepageResult?.solver?.meshType || 'triangulated-strip-fem'}</td></tr>
-                    <tr><td>Free-surface mode</td><td>{seepageFreeSurfaceLabel(seepageConfig.freeSurface)}</td></tr>
-                    <tr><td>Use drawn phreatic as seed</td><td>{seepageConfig.usePhreaticAsSeed ? 'Yes' : 'No'}</td></tr>
-                    <tr><td>Target element area (m²)</td><td>{fmt(seepageConfig.meshTargetArea, 2)} m²</td></tr>
-                    <tr><td>Max free-surface iterations</td><td>{seepageConfig.maxFreeSurfaceIter ?? '—'}</td></tr>
-                    <tr><td>Region mode</td><td>{seepageGeometry.regionMode === 'custom' ? 'Custom polygons' : 'CPT-derived polygons'}</td></tr>
-                    <tr><td>Regions</td><td>{seepageGeometry.regionCount ?? '—'}</td></tr>
-                    <tr><td>Retaining walls</td><td>{seepageGeometry.wallCount ?? '—'}</td></tr>
-                    <tr><td>Boundary edges</td><td>{seepageGeometry.boundaryEdgeCount ?? '—'}</td></tr>
-                    <tr><td>Explicit BCs</td><td>{seepageSummary.explicitBcCount ?? '—'}</td></tr>
-                    <tr><td>Active / orphaned BCs</td><td>{seepageSummary.activeBcCount ?? '—'} / {seepageSummary.orphanedBcCount ?? '—'}</td></tr>
-                    <tr><td>Prescribed head / seepage face / no-flow</td><td>{seepageSummary.prescribedHeadCount ?? '—'} / {seepageSummary.seepageFaceCount ?? '—'} / {seepageSummary.noFlowCount ?? '—'}</td></tr>
-                  </tbody>
-                </table>
-                <table class="pt report-pt">
-                  <tbody>
-                    <tr><td>Mesh nodes</td><td>{seepageMesh?.nodes ?? '—'}</td></tr>
-                    <tr><td>Mesh triangles</td><td>{seepageMesh?.elements ?? '—'}</td></tr>
-                    <tr><td>Display cells</td><td>{seepageMesh?.cells ?? '—'}</td></tr>
-                    <tr><td>Boundary faces</td><td>{seepageMesh?.boundaryFaces ?? '—'}</td></tr>
-                    <tr><td>Mesh build time</td><td>{seepageMesh?.generatedMs != null ? `${fmt(seepageMesh.generatedMs, 0)} ms` : '—'}</td></tr>
-                    <tr><td>Total runtime</td><td>{seepageResult?.timing?.totalMs != null ? `${fmt(seepageResult.timing.totalMs, 0)} ms` : '—'}</td></tr>
-                    <tr><td>Outer iterations</td><td>{seepageResult?.solver?.iterations ?? '—'}</td></tr>
-                    <tr><td>Linear iterations</td><td>{seepageResult?.solver?.innerIterations ?? '—'}</td></tr>
-                    <tr><td>Residual norm</td><td>{seepageResult?.solver?.residualNorm != null ? compactNumber(seepageResult.solver.residualNorm, 3) : '—'}</td></tr>
-                    <tr><td>Inflow / outflow</td><td>{seepageResult ? `${compactNumber(seepageResult.inflow, 3)} / ${compactNumber(seepageResult.outflow, 3)} m³/s/m` : '—'}</td></tr>
-                    <tr><td>Equipotential levels</td><td>{seepageResult?.equipotentialLevelCount ?? '—'}</td></tr>
-                    <tr><td>Phreatic segments</td><td>{seepageResult?.phreaticSegmentCount ?? '—'}</td></tr>
-                  </tbody>
-                </table>
+              <div class={`report-annex__split${seepageView?.image?.dataUrl ? '' : ' report-annex__split--single'}`}>
+                <div class="report-annex__main">
+                  <table class="pt report-pt">
+                    <tbody>
+                      <tr><td>Solver</td><td>{seepageResult?.solver?.meshType || 'triangle-cdt-fem'}</td></tr>
+                      <tr><td>Free-surface mode</td><td>{seepageFreeSurfaceLabel(seepageConfig.freeSurface)}</td></tr>
+                      <tr><td>Use drawn phreatic as seed</td><td>{seepageConfig.usePhreaticAsSeed ? 'Yes' : 'No'}</td></tr>
+                      <tr><td>Target element area (m²)</td><td>{fmt(seepageConfig.meshTargetArea, 2)} m²{seepageConfig.meshTargetAreaAuto ? ' (auto)' : ' (manual)'}</td></tr>
+                      <tr><td>Max free-surface iterations</td><td>{seepageConfig.maxFreeSurfaceIter ?? '—'}</td></tr>
+                      <tr><td>Region mode</td><td>{seepageGeometry.regionMode === 'custom' ? 'Custom polygons' : 'CPT-derived polygons'}</td></tr>
+                      <tr><td>Regions</td><td>{seepageGeometry.regionCount ?? '—'}</td></tr>
+                      <tr><td>Retaining walls</td><td>{seepageGeometry.wallCount ?? '—'}</td></tr>
+                      <tr><td>Boundary edges</td><td>{seepageGeometry.boundaryEdgeCount ?? '—'}</td></tr>
+                      <tr><td>Explicit BCs</td><td>{seepageSummary.explicitBcCount ?? '—'}</td></tr>
+                      <tr><td>Active / orphaned BCs</td><td>{seepageSummary.activeBcCount ?? '—'} / {seepageSummary.orphanedBcCount ?? '—'}</td></tr>
+                      <tr><td>Prescribed head / seepage face / no-flow</td><td>{seepageSummary.prescribedHeadCount ?? '—'} / {seepageSummary.seepageFaceCount ?? '—'} / {seepageSummary.noFlowCount ?? '—'}</td></tr>
+                      <tr><td>Mesh nodes</td><td>{seepageMesh?.nodes ?? '—'}</td></tr>
+                      <tr><td>Mesh triangles</td><td>{seepageMesh?.elements ?? '—'}</td></tr>
+                      <tr><td>Rendered triangles</td><td>{seepageMesh?.cells ?? '—'}</td></tr>
+                      <tr><td>Boundary faces</td><td>{seepageMesh?.boundaryFaces ?? '—'}</td></tr>
+                      <tr><td>Mesh build time</td><td>{seepageMesh?.generatedMs != null ? `${fmt(seepageMesh.generatedMs, 0)} ms` : '—'}</td></tr>
+                      <tr><td>Total runtime</td><td>{seepageResult?.timing?.totalMs != null ? `${fmt(seepageResult.timing.totalMs, 0)} ms` : '—'}</td></tr>
+                      <tr><td>Outer iterations</td><td>{seepageResult?.solver?.iterations ?? '—'}</td></tr>
+                      <tr><td>Linear iterations</td><td>{seepageResult?.solver?.innerIterations ?? '—'}</td></tr>
+                      <tr><td>Residual norm</td><td>{seepageResult?.solver?.residualNorm != null ? compactNumber(seepageResult.solver.residualNorm, 3) : '—'}</td></tr>
+                      <tr><td>Inflow / outflow</td><td>{seepageResult ? `${compactNumber(seepageResult.inflow, 3)} / ${compactNumber(seepageResult.outflow, 3)} m³/s/m` : '—'}</td></tr>
+                      <tr><td>Equipotential levels</td><td>{seepageResult?.equipotentialLevelCount ?? '—'}</td></tr>
+                      <tr><td>Phreatic segments</td><td>{seepageResult?.phreaticSegmentCount ?? '—'}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                {#if seepageView?.image?.dataUrl}
+                  <div class="report-annex__aside">
+                    <div class="report-card report-card--nested report-card--figure">
+                      <h4>Calculated Flow Field View</h4>
+                      <figure class="report-figure">
+                        <img
+                          class="report-figure__image"
+                          src={seepageView.image.dataUrl}
+                          alt="Frozen seepage field view from the Stage 6 canvas"
+                        />
+                        <figcaption class="report-note">
+                          Frozen Stage 6 seepage view at report export time.
+                        </figcaption>
+                      </figure>
+                    </div>
+                  </div>
+                {/if}
               </div>
               {#if seepageSummary.rejectReason}
                 <p class="report-note" style="margin-top:12px">
@@ -1657,6 +1694,47 @@
     height: 200px;
   }
 
+  .report-card--figure {
+    margin-top: 16px;
+  }
+
+  .report-annex__split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 16px;
+    align-items: start;
+    margin-top: 16px;
+  }
+
+  .report-annex__split--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .report-annex__main,
+  .report-annex__aside {
+    min-width: 0;
+    display: grid;
+    gap: 14px;
+    align-content: start;
+  }
+
+  .report-annex__aside .report-card--figure {
+    margin-top: 0;
+  }
+
+  .report-figure {
+    margin: 0;
+  }
+
+  .report-figure__image {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid rgba(24, 24, 26, 0.12);
+    border-radius: 10px;
+    background: #fff;
+  }
+
   .report-chip {
     display: inline-flex;
     align-items: center;
@@ -1781,7 +1859,8 @@
     }
 
     .report-grid--3,
-    .report-grid--2 {
+    .report-grid--2,
+    .report-annex__split {
       grid-template-columns: 1fr;
     }
   }
@@ -2009,6 +2088,16 @@
       page-break-inside: auto;
     }
 
+    .report-section--stage6 .report-annex__split {
+      grid-template-columns: minmax(0, 1fr) 68mm;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .report-section--stage6 .report-annex__split--single {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
     .report-section--stage6 .report-annex__stats {
       gap: 6px;
       margin-bottom: 1px;
@@ -2085,6 +2174,15 @@
 
     .report-section--stage6 .report-canvas--single {
       margin-top: 6px;
+    }
+
+    .report-section--stage6 .report-annex__aside .report-card--figure {
+      margin-top: 0;
+    }
+
+    .report-section--stage6 .report-figure__image {
+      max-height: 64mm;
+      object-fit: contain;
     }
 
     .report-profile svg {
