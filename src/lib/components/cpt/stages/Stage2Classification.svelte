@@ -8,14 +8,14 @@
 		<div>
 			<div class="sec-title">Classification method</div>
 			<div class="sec-sub">
-				Choose a method, set minimum layer thickness, then click Apply. Robertson is the
+				Choose a method, set minimum layer thickness, then click Apply. Robertson 2016 is the
 				recommended default for most projects in the current app.
 			</div>
 		</div>
 	</div>
-	<div class="mcards" style="grid-template-columns:1fr 1fr">
+	<div class="mcards stage2-methods">
 		<div
-			class="mc sel"
+			class="mc stage2-method-card"
 			id="mRob"
 			role="button"
 			tabindex="0"
@@ -27,11 +27,30 @@
 				}
 			}}
 		>
-			<h3>Robertson (1990) — SBT / Ic <span style="color:var(--acc)">Recommended</span></h3>
-			<p>Normalised Qt and Fr. Stress-dependent — accounts for depth. Preferred default.</p>
+			<h3>Robertson (1990) — SBT / Ic</h3>
+			<p>Normalised Qt and Fr. Stress-dependent — accounts for depth.</p>
 		</div>
 		<div
-			class="mc"
+			class="mc stage2-method-card sel"
+			id="mRob16"
+			role="button"
+			tabindex="0"
+			onclick={() => call('selM', 'robertson2016')}
+			onkeydown={(event) => {
+				if (event.key === 'Enter' || event.key === ' ') {
+					event.preventDefault();
+					call('selM', 'robertson2016');
+				}
+			}}
+		>
+			<h3>Robertson (2016) — SBT / Qtn <span style="color:var(--acc)">Recommended</span></h3>
+			<p>
+				Iterative Qtn and Fr. Preferred default; may be especially useful when the input is a CPTu; still works when
+				u2 is absent.
+			</p>
+		</div>
+		<div
+			class="mc stage2-method-card"
 			id="mCur"
 			role="button"
 			tabindex="0"
@@ -50,7 +69,7 @@
 			</p>
 		</div>
 		<div
-			class="mc"
+			class="mc stage2-method-card"
 			id="mNen"
 			role="button"
 			tabindex="0"
@@ -69,7 +88,7 @@
 			</p>
 		</div>
 		<div
-			class="mc"
+			class="mc stage2-method-card"
 			id="mSB"
 			role="button"
 			tabindex="0"
@@ -197,7 +216,7 @@
 							<th>Rf (%)</th>
 							<th>Soil type</th>
 							<th>Sub-type</th>
-							<th>Ic / q<sub>c,NEN</sub></th>
+							<th id="cmetricHead">Metric</th>
 						</tr>
 					</thead>
 					<tbody id="cbody"></tbody>

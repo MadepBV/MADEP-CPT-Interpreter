@@ -118,6 +118,7 @@
 			items: [
 				{ label: 'Terzaghi & Peck (1967)', detail: 'Soil Mechanics in Engineering Practice, 2nd ed.' },
 				{ label: 'Robertson (1990)', detail: 'Soil classification using the CPT. Canadian Geotechnical Journal, 27(1), 151–158.' },
+				{ label: 'Robertson (2016)', detail: 'Cone penetration test (CPT)-based soil behaviour type (SBT) classification system — an update. Canadian Geotechnical Journal, 53(12), 1910–1927.' },
 				{ label: 'Robertson & Wride (1998)', detail: 'Evaluating cyclic liquefaction potential using the CPT. Canadian Geotechnical Journal, 35, 442–459.' }
 			]
 		},
@@ -305,8 +306,31 @@
 					]
 				},
 				{
+					id: 'stage2-robertson2016',
+					title: '2.2 Robertson (2016) — iterative normalized SBT / Q<sub>tn</sub>',
+					paragraphs: [
+						'The Robertson 2016 route keeps the same broad SBT / I<sub>c</sub> family mapping as the earlier normalized Robertson workflow, but replaces the fixed-stress-exponent cone normalization with the iterative Q<sub>tn</sub> formulation. The stress exponent n varies with the inferred soil behaviour and is solved iteratively.',
+						'This route may be preferred when the input is a CPTu, but the implementation does not require measured u<sub>2</sub>. If u<sub>2</sub> is absent, the app uses q<sub>t</sub> = q<sub>c</sub> in the same way as the Robertson 1990 fallback.'
+					],
+					equations: [
+						'q<sub>t</sub> = q<sub>c</sub> + u<sub>2</sub>(1 − a)',
+						'Q<sub>tn</sub> = ((q<sub>t</sub> · 1000 − σ<sub>v0</sub>) / p<sub>a</sub>) · (p<sub>a</sub> / σ′<sub>v0</sub>)<sup>n</sup>',
+						'I<sub>c</sub> = √[(3.47 − log<sub>10</sub>Q<sub>tn</sub>)<sup>2</sup> + (log<sub>10</sub>F<sub>r</sub> + 1.22)<sup>2</sup>]',
+						'n = clamp(0.381I<sub>c</sub> + 0.05σ′<sub>v0</sub> / p<sub>a</sub> − 0.15, 0.5, 1.0)'
+					],
+					symbols: [
+						{ term: 'Q<sub>tn</sub>', meaning: 'stress-normalized cone-resistance parameter with variable exponent [-]' },
+						{ term: 'n', meaning: 'stress exponent solved iteratively from soil behaviour [-]' },
+						{ term: 'p<sub>a</sub>', meaning: 'atmospheric reference pressure = 100 kPa' }
+					],
+					bullets: [
+						'The implementation reuses the existing broad app families: Gravel, Sand, Silty sand, Sandy clay, Clay, and Peat / organic.',
+						'The displayed method metric is Q<sub>tn</sub>; the I<sub>c</sub> boundaries remain the same as the Robertson 1990 route.'
+					]
+				},
+				{
 					id: 'stage2-cur',
-					title: '2.2 CUR 3 layers — broad q<sub>c</sub>–R<sub>f</sub> zoning',
+					title: '2.3 CUR 3 layers — broad q<sub>c</sub>–R<sub>f</sub> zoning',
 					paragraphs: [
 						'The CUR 3 layers route is implemented as a direct q<sub>c</sub>–R<sub>f</sub> zoning rule based on the published broad chart with four material fields: Sand, Silt, Clay, and Peat. It is a boundary-generation method, not a detailed parameter catalogue.',
 						'To keep the downstream parameter workflow stable, the chart field “Silt” is carried internally as the app’s intermediate family and tagged with the subtype marker <em>CUR3 silt</em>. The chart logic itself remains four-zoned.'
@@ -339,7 +363,7 @@
 				},
 				{
 					id: 'stage2-nen',
-					title: '2.3 NEN 6740 — stress-dependent material classification',
+					title: '2.4 NEN 6740 — stress-dependent material classification',
 					paragraphs: [
 						'NEN 6740 uses a stress-corrected cone resistance together with friction ratio. The source method is graphical: a semilog chart with fourteen material areas rather than a closed algebraic decision tree.',
 						'The app therefore separates the method into two parts. First it evaluates the published stress correction. Then it applies a transparent implementation rule that selects the nearest representative area from a digitized fourteen-material set.'
@@ -373,7 +397,7 @@
 				},
 				{
 					id: 'stage2-ec7',
-					title: '2.4 NEN Tabel 3 — direct subtype classification',
+					title: '2.5 NEN Tabel 3 — direct subtype classification',
 					paragraphs: [
 						'The Table 3 route uses raw q<sub>c</sub> and R<sub>f</sub> and returns a detailed subtype together with the characteristic parameter row used later in the workflow. The direct source documented here is the implemented NEN Tabel 3 catalogue itself, not a separate Eurocode classification chart.',
 						'Because the table contains overlapping q<sub>c</sub>–R<sub>f</sub> envelopes, the app evaluates the rows deterministically in table order rather than assuming the source is mutually exclusive. The implemented family order is grind, zand, leem, klei, then veen. Within each family, subrows are checked top-to-bottom, with q<sub>c</sub> lower bounds inclusive and upper bounds exclusive. For R<sub>f</sub>, the open bands R<sub>f</sub> &lt; 1 and R<sub>f</sub> &gt; 6 remain strict, while the bounded intervals are treated as closed.',
@@ -413,7 +437,7 @@
 				},
 				{
 					id: 'stage2-separation',
-					title: '2.5 Classification versus parameter assignment',
+					title: '2.6 Classification versus parameter assignment',
 					paragraphs: [
 						'Stage 2 is boundary logic only. The classification method decides which soil type each CPT reading belongs to and therefore where soil-type changes occur with depth.',
 						'Stage 3 parameter assignment is independent of the chosen classification route. A layer identified by Robertson, CUR 3 layers, or NEN 6740 may still be assigned a Eurocode Table 3 subtype and its associated γ, γ<sub>sat</sub>, φ′, c′, and c<sub>u</sub> values.'
@@ -422,6 +446,7 @@
 			],
 			references: [
 				'Robertson (1990)',
+				'Robertson (2016)',
 				'Robertson & Wride (1998)',
 				'PLAXIS 2D 2018 Reference Manual',
 				'NEN 6740',

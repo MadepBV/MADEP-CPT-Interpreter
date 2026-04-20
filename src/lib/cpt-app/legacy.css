@@ -120,6 +120,10 @@ body{
 .mc.sel{border-color:var(--ac);background:var(--acl)}
 .mc h3{font-size:13px;font-weight:700;margin-bottom:5px;font-family:var(--font-heading)}
 .mc p{font-size:12px;color:var(--tx2);line-height:1.5}
+.stage2-methods{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.stage2-method-card{padding:11px 10px}
+.stage2-method-card h3{font-size:12px;line-height:1.32;margin-bottom:4px}
+.stage2-method-card p{font-size:11px;line-height:1.38}
 
 .mrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .met{background:var(--panel-soft);border-radius:var(--r);padding:8px 12px;border:1px solid var(--bd)}
