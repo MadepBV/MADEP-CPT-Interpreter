@@ -21,3 +21,34 @@
 	<Stage5Tuning />
 	<Stage6Applications />
 </div>
+
+<footer class="docs-footer">
+	<a href="/docs">Technical documentation</a>
+</footer>
+
+<style>
+	.docs-footer {
+		max-width: 1280px;
+		margin: 8px auto 28px;
+		padding: 0 24px;
+		text-align: right;
+	}
+
+	.docs-footer a {
+		font-size: 12px;
+		color: var(--tx3);
+		text-decoration: none;
+	}
+
+	.docs-footer a:hover {
+		color: var(--tx2);
+		text-decoration: underline;
+	}
+	
+	@media (max-width: 700px) {
+		.docs-footer {
+			text-align: left;
+			margin-top: 0;
+		}
+	}
+</style>
