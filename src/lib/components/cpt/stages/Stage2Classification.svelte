@@ -7,11 +7,12 @@
 		<div>
 			<div class="sec-title">Classification method</div>
 			<div class="sec-sub">
-				Choose a method, set minimum layer thickness, then click Apply.
+				Choose a method, set minimum layer thickness, then click Apply. Robertson is the
+				recommended default for most projects in the current app.
 			</div>
 		</div>
 	</div>
-	<div class="mcards" style="grid-template-columns:1fr 1fr 1fr">
+	<div class="mcards" style="grid-template-columns:1fr 1fr">
 		<div
 			class="mc sel"
 			id="mRob"
@@ -25,8 +26,8 @@
 				}
 			}}
 		>
-			<h3>Robertson (1990) — SBT / Ic</h3>
-			<p>Normalised Qt and Fr. Stress-dependent — accounts for depth.</p>
+			<h3>Robertson (1990) — SBT / Ic <span style="color:var(--acc)">Recommended</span></h3>
+			<p>Normalised Qt and Fr. Stress-dependent — accounts for depth. Preferred default.</p>
 		</div>
 		<div
 			class="mc"
@@ -41,10 +42,29 @@
 				}
 			}}
 		>
-			<h3>CUR 3 / NEN 6740</h3>
+			<h3>CUR 3 layers</h3>
 			<p>
-				Direct qc and Rf ranges. No stress normalisation. Practical CPT grouping method;
-				layering follows changes in the broader CUR soil-type buckets.
+				Broad practical layering chart using direct qc and Rf. Produces Sand, Silt, Clay,
+				and Peat zones for layer generation.
+			</p>
+		</div>
+		<div
+			class="mc"
+			id="mNen"
+			role="button"
+			tabindex="0"
+			onclick={() => call('selM', 'nen6740')}
+			onkeydown={(event) => {
+				if (event.key === 'Enter' || event.key === ' ') {
+					event.preventDefault();
+					call('selM', 'nen6740');
+				}
+			}}
+		>
+			<h3>NEN 6740</h3>
+			<p>
+				Stress-dependent q<sub>c,NEN</sub> and friction ratio. Uses the 14-area NEN material
+				chart for more detailed CPT interpretation.
 			</p>
 		</div>
 		<div
@@ -62,8 +82,8 @@
 		>
 			<h3>NEN Tabel 3 / EC7</h3>
 			<p>
-				EC7 Table 3 soil families from qc and Rf. Often aligns better with Eurocode parameter
-				sets and can therefore fit subsequent parameter selection better.
+				EC7 Table 3 soil families from qc and Rf. Often aligns better with Eurocode
+				parameter sets and can therefore fit subsequent parameter selection better.
 			</p>
 		</div>
 	</div>
@@ -106,6 +126,45 @@
 			/>
 			Smart layer merge
 		</label>
+		<div
+			id="smartMergeControls"
+			style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"
+		>
+			<span class="ctrl-lbl" style="font-size:12px">Sensitivity:</span>
+			<input
+				type="range"
+				id="smartMergeSensR"
+				min="0"
+				max="2"
+				step="0.05"
+				value="0.50"
+				style="width:120px"
+				oninput={(event) =>
+					call(
+						'setSmartMergeSensitivity',
+						+(event.currentTarget as HTMLInputElement).value,
+						false
+					)}
+			/>
+			<input
+				class="ctrl-num"
+				type="number"
+				id="smartMergeSensN"
+				min="0"
+				max="2"
+				step="0.05"
+				value="0.50"
+				oninput={(event) =>
+					call(
+						'setSmartMergeSensitivity',
+						+(event.currentTarget as HTMLInputElement).value,
+						true
+					)}
+			/>
+			<span style="font-size:11px;color:var(--tx3)">
+				0 = conservative, 1 = continuity-driven, 2 = aggressive
+			</span>
+		</div>
 		<span id="minThkInfo" style="font-size:11px;color:var(--tx3)"></span>
 	</div>
 
@@ -130,7 +189,7 @@
 							<th>Rf (%)</th>
 							<th>Soil type</th>
 							<th>Sub-type</th>
-							<th>Ic</th>
+							<th>Ic / q<sub>c,NEN</sub></th>
 						</tr>
 					</thead>
 					<tbody id="cbody"></tbody>

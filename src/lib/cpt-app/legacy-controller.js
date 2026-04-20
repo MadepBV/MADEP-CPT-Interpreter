@@ -27,6 +27,7 @@ function newCptState(id){
     elev:null, elevFromFile:false,
     minThk:0.50,
     smartMerge:true,
+    smartMergeSensitivity:0.50,
     method:'robertson',
     alphaMethod:'B',
     stiffMethod:'B',
@@ -77,6 +78,12 @@ function selectCpt(idx){
   document.getElementById('elevN').value=S.elev!=null?S.elev.toFixed(2):'';
   const smartMergeEl=document.getElementById('smartMergeChk');
   if(smartMergeEl) smartMergeEl.checked=!!S.smartMerge;
+  const smartSensRange=document.getElementById('smartMergeSensR');
+  const smartSensNum=document.getElementById('smartMergeSensN');
+  if(smartSensRange) smartSensRange.value=(S.smartMergeSensitivity ?? 0.5).toFixed(2);
+  if(smartSensNum) smartSensNum.value=(S.smartMergeSensitivity ?? 0.5).toFixed(2);
+  const smartMergeControls=document.getElementById('smartMergeControls');
+  if(smartMergeControls) smartMergeControls.style.display=S.smartMerge?'':'none';
   const cptXEl=document.getElementById('cptX');
   const cptYEl=document.getElementById('cptY');
   if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
@@ -1093,7 +1100,29 @@ function setMinThk(v,fromInput){
 
 function setSmartMerge(v){
   S.smartMerge=!!v;
+  const smartMergeControls=document.getElementById('smartMergeControls');
+  if(smartMergeControls) smartMergeControls.style.display=S.smartMerge?'':'none';
   if(S.classified.length){
+    detectLayers();
+    renderLayerPreviewSvg('layerPreviewSvg');
+    drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1]?.z+0.5||20);
+    if(document.getElementById('p2').classList.contains('active'))renderLayers();
+    document.getElementById('minThkInfo').textContent=`→ ${S.layers.length} layers`;
+  }
+}
+
+function setSmartMergeSensitivity(v,fromInput){
+  if(isNaN(v)) return;
+  const val=Math.max(0,Math.min(2,+v));
+  S.smartMergeSensitivity=val;
+  const range=document.getElementById('smartMergeSensR');
+  const num=document.getElementById('smartMergeSensN');
+  if(fromInput){
+    if(range) range.value=val.toFixed(2);
+  }else{
+    if(num) num.value=val.toFixed(2);
+  }
+  if(S.classified.length && S.smartMerge){
     detectLayers();
     renderLayerPreviewSvg('layerPreviewSvg');
     drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1]?.z+0.5||20);
@@ -1459,6 +1488,7 @@ function selM(m){
   S.method=m;
   document.getElementById('mRob').classList.toggle('sel',m==='robertson');
   document.getElementById('mCur').classList.toggle('sel',m==='cur3');
+  document.getElementById('mNen').classList.toggle('sel',m==='nen6740');
   document.getElementById('mSB').classList.toggle('sel',m==='sb260');
 }
 
@@ -1558,74 +1588,108 @@ function classRob(r){
 }
 
 /* ════════════════════════════════
-   CLASSIFICATION — CUR Rapport 3
-   
-   Source: CUR Rapport 3 "Handleiding voor de verwerking van
-   sondeerslagen", SBRCURnet / CUR Bouw & Infra.
-   Also referenced in NEN 6740 and CUR/COB L400 Belgian practice.
-   
-   Uses a qc–Rf chart with overlapping zones. Priority order is applied
-   to resolve ambiguous readings at zone boundaries.
-   
-   GATE ORDER (priority high to low):
-   1. Veen:          Rf > 6% AND qc < 1 MPa
-   2. Klei:          Rf > 4% (with qc determining stiffness)
-                     OR Rf > 3% AND qc < 4 MPa
-   3. Leem (overgang): Rf 2–6% AND qc 0.5–4 MPa
-   4. Zand met bijmenging: Rf 1–4% AND qc > 2 MPa
-   5. Grind:         Rf < 2% AND qc > 15 MPa
-   6. Zand:          Rf < 3% AND qc > 2 MPa
-   7. Fallback:      everything else → Clay (soft/unidentified)
-   
-   CUR 3 does NOT produce per-reading γ/φ'/c'/cu — those come from
-   NEN Tabel 3 (Stage 3 parameter method).
-════════════════════════════════ */
-function classCUR(r){
-  const qc = r.qc;
-  const rf = r.rf != null ? r.rf : 3.0;  // default 3% if missing
+   CLASSIFICATION — CUR 3 layers
 
-  // 1. VEEN — very high Rf AND low qc
-  //    CUR Rapport 3: Rf > 6%, qc < 1 MPa (some editions: Rf > 5%)
-  //    Using 6% to match NEN Tabel 3 hard boundary.
-  if(rf > 6 && qc < 1.0)
+   Source: PLAXIS Reference Manual, "CUR 3 layers method" chart.
+
+   This is a broad layering rule, not a detailed parameter catalogue.
+   The published chart contains four fields:
+     - Sand
+     - Silt
+     - Clay
+     - Peat
+
+   The app keeps downstream compatibility with the existing parameter
+   workflow by carrying the intermediate "Silt" field as the app's
+   intermediate type "Sandy clay", with subtype marker "CUR3 silt".
+
+   Implemented chart gates:
+     - Peat: Rf > 4%
+     - Sand: Rf < 1% and qc > 1.5 MPa
+     - Silt: Rf < 2% and 0.5 ≤ qc ≤ 1.5 MPa
+     - Clay: all remaining points
+════════════════════════════════ */
+function classCUR3(r){
+  const qc = r.qc;
+  const rf = r.rf != null ? r.rf : 3.0;
+
+  if(rf > 4.0)
     return{type:'Peat / organic', subtype:'', Ic:null, Qt:null,
            g:null,gs:null,phi:null,c:null,cu:null};
 
-  // 2. KLEI — high Rf, moderate qc
-  //    CUR Rapport 3: Rf > 4%, or Rf > 3% with qc < 4 MPa
-  //    Subcategory: Soft clay when qc < 1 MPa
-  if(rf > 4 || (rf > 3 && qc < 4)){
-    const type = qc < 1.0 ? 'Soft clay' : 'Clay';
-    return{type, subtype:'', Ic:null, Qt:null,
-           g:null,gs:null,phi:null,c:null,cu:null};
-  }
-
-  // 3. LEEM / overgangsgrond — intermediate Rf AND intermediate qc
-  //    CUR Rapport 3: Rf 2–6% AND qc 0.5–4 MPa
-  //    Maps to Sandy clay (leem-dominant) in app types.
-  if(rf >= 2 && rf <= 6 && qc >= 0.5 && qc < 4)
-    return{type:'Sandy clay', subtype:'', Ic:null, Qt:null,
+  if(rf < 1.0 && qc > 1.5)
+    return{type:'Sand', subtype:'CUR3 sand', Ic:null, Qt:null,
            g:null,gs:null,phi:null,c:null,cu:null};
 
-  // 4. GRIND — very high qc AND low Rf
-  //    CUR Rapport 3: qc > 15 MPa AND Rf < 2%
-  if(qc >= 15 && rf < 2)
-    return{type:'Gravel', subtype:'', Ic:null, Qt:null,
+  if(rf < 2.0 && qc >= 0.5 && qc <= 1.5)
+    return{type:'Sandy clay', subtype:'CUR3 silt', Ic:null, Qt:null,
            g:null,gs:null,phi:null,c:null,cu:null};
 
-  // 5. ZAND (clean to slightly silty) — low Rf, higher qc
-  //    CUR Rapport 3: Rf < 3% AND qc > 2 MPa
-  //    Subcategory: Silty sand when Rf 1.5–3%, Sand when Rf < 1.5%
-  if(qc >= 2 && rf < 3){
-    const type = rf >= 1.5 ? 'Silty sand' : 'Sand';
-    return{type, subtype:'', Ic:null, Qt:null,
-           g:null,gs:null,phi:null,c:null,cu:null};
-  }
-
-  // 6. FALLBACK — soft/unidentified (low qc, boundary Rf)
-  //    Typically very soft clay or organic material not caught above.
-  return{type:'Clay', subtype:'', Ic:null, Qt:null,
+  return{type:'Clay', subtype:'CUR3 clay', Ic:null, Qt:null,
          g:null,gs:null,phi:null,c:null,cu:null};
+}
+
+const classCUR = classCUR3;
+
+const NEN6740_MATERIALS=[
+  {subtype:'gravel, slightly silty, moderate', type:'Gravel', g:19, gs:21, phi:37.5, c:0, cu:0, rf:0.35, qcNen:25},
+  {subtype:'sand, clean, stiff',               type:'Sand',   g:20, gs:22, phi:40.0, c:0, cu:0, rf:1.00, qcNen:25},
+  {subtype:'sand, slightly silty, moderate',   type:'Silty sand', g:19, gs:21, phi:32.5, c:0, cu:0, rf:1.60, qcNen:15},
+  {subtype:'sand, very silty, loose',          type:'Silty sand', g:19, gs:21, phi:30.0, c:0, cu:0, rf:2.20, qcNen:7},
+  {subtype:'loam, very sandy, stiff',          type:'Sandy clay', g:20, gs:20, phi:35.0, c:1, cu:0, rf:2.45, qcNen:6},
+  {subtype:'loam, slightly sandy, weak',       type:'Sandy clay', g:20, gs:20, phi:30.0, c:1, cu:0, rf:3.00, qcNen:3.5},
+  {subtype:'clay, very sandy, stiff',          type:'Sandy clay', g:20, gs:20, phi:32.5, c:1, cu:0, rf:3.40, qcNen:4},
+  {subtype:'clay, slightly sandy, moderate',   type:'Clay',   g:20, gs:20, phi:22.5, c:13, cu:0, rf:3.85, qcNen:2.8},
+  {subtype:'clay, clean, stiff',               type:'Clay',   g:20, gs:20, phi:25.0, c:15, cu:0, rf:4.45, qcNen:2.3},
+  {subtype:'clay, clean, weak',                type:'Clay',   g:17, gs:17, phi:17.5, c:5, cu:0, rf:5.15, qcNen:1.0},
+  {subtype:'clay, organic, moderate',          type:'Clay',   g:16, gs:16, phi:15.0, c:1, cu:0, rf:6.10, qcNen:0.75},
+  {subtype:'clay, organic, weak',              type:'Clay',   g:15, gs:15, phi:15.0, c:1, cu:0, rf:7.05, qcNen:0.22},
+  {subtype:'peat, moderately preloaded, moderate', type:'Peat / organic', g:13, gs:13, phi:15.0, c:5, cu:0, rf:8.30, qcNen:0.06},
+  {subtype:'peat, not preloaded, weak',        type:'Peat / organic', g:12, gs:12, phi:15.0, c:2.5, cu:0, rf:9.25, qcNen:0.02},
+].map((entry, index)=>({
+  ...entry,
+  order:index,
+  score: Math.log10(entry.qcNen) - 0.18 * entry.rf
+}));
+
+/* ════════════════════════════════
+   CLASSIFICATION — NEN 6740 (stress dependent)
+
+   Source: NEN 6740 chart as reproduced in D-SHEET Piling and related
+   engineering manuals. The source is a 14-area semilog chart rather
+   than a closed algebraic decision tree.
+
+   The app therefore implements a transparent fixed discretisation:
+     1. compute stress-corrected q_c,NEN
+     2. compute chart score = log10(q_c,NEN) - 0.18 R_f
+     3. choose the nearest of the 14 published material areas
+
+   The 14 area centres are digitised from the published chart and tied
+   to the representative NEN material set commonly used by software
+   implementations of the rule.
+════════════════════════════════ */
+function classNEN6740(r){
+  const rf = r.rf != null ? r.rf : 3.0;
+  const {sigVeff} = stressAt(r.z, 18, 17);
+  const qcNen = Math.max(0.01, r.qc * Math.pow(100 / Math.max(sigVeff, 1), 0.67));
+  const score = Math.log10(qcNen) - 0.18 * rf;
+
+  let best=NEN6740_MATERIALS[0];
+  let bestDist=Infinity;
+  for(const area of NEN6740_MATERIALS){
+    const d=Math.abs(score-area.score);
+    if(d<bestDist || (Math.abs(d-bestDist)<1e-9 && area.order<best.order)){
+      best=area;
+      bestDist=d;
+    }
+  }
+
+  return{
+    type:best.type,
+    subtype:best.subtype,
+    g:best.g, gs:best.gs, phi:best.phi, c:best.c, cu:best.cu,
+    Ic:null, Qt:+qcNen.toFixed(2)
+  };
 }
 
 /* ════════════════════════════════
@@ -1678,7 +1742,8 @@ function runClass(){
   S.classified=S.data.map(r=>{
     let res;
     if(S.method==='robertson')     res=classRob(r);
-    else if(S.method==='cur3')     res=classCUR(r);
+    else if(S.method==='cur3')     res=classCUR3(r);
+    else if(S.method==='nen6740')  res=classNEN6740(r);
     else                           res=classSB260(r);
     return Object.assign({},r,res);
   });
@@ -1696,10 +1761,15 @@ function runClass(){
     {l:'avg Rf (%)',    v:avgOf(r=>r.rf||0,r=>r.rf!=null).toFixed(2)},
     {l:'max depth (m)', v:cl[n-1].z.toFixed(2)},
     {l:'readings',      v:n},
-    {l:'method',        v:{robertson:'Robertson',cur3:'CUR 3',sb260:'NEN Tabel 3 (EC7)'}[S.method]}
+    {l:'method',        v:{robertson:'Robertson',cur3:'CUR 3 layers',nen6740:'NEN 6740',sb260:'NEN Tabel 3 (EC7)'}[S.method]}
   ].map(m=>`<div class="met"><div class="met-l">${m.l}</div><div class="met-v">${m.v}</div></div>`).join('');
 
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
+  const previewMetric=r=>{
+    if(S.method==='robertson') return r.Ic!=null ? r.Ic : '—';
+    if(S.method==='nen6740') return r.Qt!=null ? r.Qt.toFixed(2) : '—';
+    return '—';
+  };
   document.getElementById('cbody').innerHTML=cl.map(r=>`<tr>
     <td>${r.z.toFixed(3)}</td>
     <td style="color:var(--tx2)">${taw(r.z)}</td>
@@ -1708,7 +1778,7 @@ function runClass(){
     <td>${r.rf!=null?r.rf.toFixed(2):'—'}</td>
     <td><span class="sb ${SC[r.type]||'s-sand'}">${r.type}</span></td>
     <td style="font-size:10px;color:var(--tx2)">${r.subtype||'—'}</td>
-    <td style="color:var(--tx3)">${r.Ic!=null?r.Ic:'—'}</td>
+    <td style="color:var(--tx3)">${previewMetric(r)}</td>
   </tr>`).join('');
 
   document.getElementById('classLayout').style.display='';
@@ -1813,9 +1883,15 @@ function isCriticalMarkerLayer(layer, up, down){
   return false;
 }
 
+const SMART_SLIVER_REF = 0.25;
+
 function mergeCandidateScore(layer, neighbor, outer){
   if(!neighbor) return{ok:false,score:0,why:'no-neighbor'};
   const logRatio=Math.abs(Math.log(Math.max(0.01,layer.avgQc)/Math.max(0.01,neighbor.avgQc)));
+  const thicknessRef=SMART_SLIVER_REF;
+  const thicknessImportance=Math.max(0,Math.min(1,(layer.thk||0)/thicknessRef));
+  const sliverBonus=0.14*(1-thicknessImportance);
+  const penaltyScale=0.25 + 0.75*thicknessImportance;
 
   const typeScore=layer.type===neighbor.type?1:layerTypeCompatScore(layer,neighbor);
   const qcScore=qcSimilarity(layer,neighbor);
@@ -1824,95 +1900,173 @@ function mergeCandidateScore(layer, neighbor, outer){
   const pScore=paramSimilarity(layer,neighbor);
   const compScore=compatSimilarity(layer,neighbor);
   const corrScore=continuityScore(neighbor,outer);
-  let score=0.24*typeScore + 0.20*qcScore + 0.14*rfScore + 0.14*stScore + 0.12*pScore + 0.08*compScore + 0.08*corrScore;
+  let score=0.24*typeScore + 0.20*qcScore + 0.14*rfScore + 0.14*stScore + 0.12*pScore + 0.08*compScore + 0.08*corrScore + sliverBonus;
 
   // Penalise sharp transitions, but do not fully block the merge.
   // The thickness criterion remains hard; similarity only decides direction.
-  if(logRatio>Math.log(2.5)) score-=0.22;
-  else if(logRatio>Math.log(1.8)) score-=0.10;
+  if(logRatio>Math.log(2.5)) score-=0.22*penaltyScale;
+  else if(logRatio>Math.log(1.8)) score-=0.10*penaltyScale;
 
   if(layer.avgRf!=null&&neighbor.avgRf!=null){
     const rfDiff=Math.abs(layer.avgRf-neighbor.avgRf);
-    if(rfDiff>4) score-=0.16;
-    else if(rfDiff>2.5) score-=0.08;
+    if(rfDiff>4) score-=0.16*penaltyScale;
+    else if(rfDiff>2.5) score-=0.08*penaltyScale;
   }
 
-  if((layer.type==='Peat / organic')!==(neighbor.type==='Peat / organic')) score-=0.18;
-  if((layer.type==='Gravel')!==(neighbor.type==='Gravel')) score-=0.14;
+  if((layer.type==='Peat / organic')!==(neighbor.type==='Peat / organic')) score-=0.18*penaltyScale;
+  if((layer.type==='Gravel')!==(neighbor.type==='Gravel')) score-=0.14*penaltyScale;
 
-  if(isCriticalMarkerLayer(layer,null,null) && layer.type!==neighbor.type) score-=0.10;
+  if(isCriticalMarkerLayer(layer,null,null) && layer.type!==neighbor.type) score-=0.10*penaltyScale;
 
   score=Math.max(0,+score.toFixed(3));
   return{ok:true,score};
 }
 
-function detectLayers(){
-  const d=S.classified;
-  const raw=[];
-  let cur={type:d[0].type,rows:[d[0]]};
-  for(let i=1;i<d.length;i++){
-    if(d[i].type===cur.type)cur.rows.push(d[i]);
-    else{raw.push(cur);cur={type:d[i].type,rows:[d[i]]};}
-  }
-  raw.push(cur);
-
-  let changed=true, merged=raw.map((seg,i)=>({...seg,isFirst:i===0}));
+function simpleUpwardMerge(segments){
+  let changed=true;
+  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
   while(changed){
     changed=false;
-    if(!S.smartMerge){
-      const next=[];
-      for(const seg of merged){
-        const r=seg.rows;
-        const thick=r[r.length-1].z-r[0].z;
-        if(thick<S.minThk&&next.length>0){
-          next[next.length-1].rows.push(...r);
-          changed=true;
-        }else next.push({...seg,rows:[...r]});
+    const next=[];
+    for(const seg of merged){
+      const rows=seg.rows;
+      const thick=segmentSummary(seg).thk;
+      if(thick<S.minThk&&next.length>0){
+        next[next.length-1].rows.push(...rows);
+        changed=true;
+      }else{
+        next.push({...seg,rows:[...rows]});
       }
-      merged=next.map((seg,i)=>({...seg,isFirst:i===0}));
-      continue;
+    }
+    merged=next.map((seg,i)=>({...seg,isFirst:i===0}));
+  }
+  return merged;
+}
+
+function mergeSegmentInDirection(merged, i, dir){
+  const seg=merged[i];
+  if(dir==='up'){
+    merged[i-1].rows.push(...seg.rows);
+    if(seg._top!=null) merged[i-1]._top=merged[i-1]._top??seg._top;
+    merged.splice(i,1);
+  }else{
+    merged[i+1].rows.unshift(...seg.rows);
+    merged[i+1]._top=seg._top!=null?seg._top:(i===0?0:seg.rows[0].z-0.02);
+    merged.splice(i,1);
+  }
+  return merged.map((s,idx)=>({...s,isFirst:idx===0}));
+}
+
+function chooseSimilarityMergeDirection(merged, i, margin){
+  const seg=merged[i];
+  const layer=segmentSummary(seg);
+  const upSeg=i>0?merged[i-1]:null, downSeg=i<merged.length-1?merged[i+1]:null;
+  const up=upSeg?segmentSummary(upSeg):null, down=downSeg?segmentSummary(downSeg):null;
+  const upOuter=i>1?segmentSummary(merged[i-2]):null;
+  const downOuter=i<merged.length-2?segmentSummary(merged[i+2]):null;
+  const upCand=mergeCandidateScore(layer,up,upOuter);
+  const downCand=mergeCandidateScore(layer,down,downOuter);
+  if(!upCand.ok&&!downCand.ok) return null;
+
+  if(upCand.ok&&(!downCand.ok||upCand.score>downCand.score+margin)) return 'up';
+  if(downCand.ok&&(!upCand.ok||downCand.score>upCand.score+margin)) return 'down';
+  if(upCand.ok&&downCand.ok){
+    const upThk=up?.thk||0, downThk=down?.thk||0;
+    return upThk===downThk?'up':(upThk>downThk?'up':'down');
+  }
+  return upCand.ok?'up':'down';
+}
+
+function smartSimilarityReduce(segments, sensitivity){
+  let changed=true;
+  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
+  const sens=Math.max(0,Math.min(2,sensitivity ?? 0.5));
+  const pairThreshold=Math.max(0.35, 0.90 - 0.275*sens);
+  const thicknessRef=SMART_SLIVER_REF;
+  while(changed){
+    changed=false;
+    let bestIdx=-1;
+    let bestScore=-Infinity;
+    for(let i=0;i<merged.length-1;i++){
+      const left=segmentSummary(merged[i]);
+      const right=segmentSummary(merged[i+1]);
+      const leftOuter=i>0?segmentSummary(merged[i-1]):null;
+      const rightOuter=i<merged.length-2?segmentSummary(merged[i+2]):null;
+      const lr=mergeCandidateScore(left,right,rightOuter);
+      const rl=mergeCandidateScore(right,left,leftOuter);
+      if(!lr.ok||!rl.ok) continue;
+      const thinBoundaryFactor=1-Math.max(0,Math.min(1,Math.min(left.thk,right.thk)/thicknessRef));
+      const pairScore=+(((lr.score+rl.score)/2 + 0.10*thinBoundaryFactor)).toFixed(3);
+      if(pairScore>bestScore){
+        bestScore=pairScore;
+        bestIdx=i;
+      }
     }
 
-    for(let i=0;i<merged.length;i++){
-      const seg=merged[i];
-      const layer=segmentSummary(seg);
-      if(layer.thk>=S.minThk) continue;
-
-      const upSeg=i>0?merged[i-1]:null, downSeg=i<merged.length-1?merged[i+1]:null;
-      const up=upSeg?segmentSummary(upSeg):null, down=downSeg?segmentSummary(downSeg):null;
-
-      const upOuter=i>1?segmentSummary(merged[i-2]):null;
-      const downOuter=i<merged.length-2?segmentSummary(merged[i+2]):null;
-      const upCand=mergeCandidateScore(layer,up,upOuter);
-      const downCand=mergeCandidateScore(layer,down,downOuter);
-      if(!upCand.ok&&!downCand.ok) continue;
-
-      const margin=0.08;
-      let dir=null;
-      if(upCand.ok&&(!downCand.ok||upCand.score>downCand.score+margin)) dir='up';
-      else if(downCand.ok&&(!upCand.ok||downCand.score>upCand.score+margin)) dir='down';
-      else if(upCand.ok&&downCand.ok){
-        const upThk=up?.thk||0, downThk=down?.thk||0;
-        dir=upThk===downThk?'up':(upThk>downThk?'up':'down');
-      }
-      if(!dir){
-        dir=upCand.ok?'up':'down';
-      }
-
-      if(dir==='up'){
-        merged[i-1].rows.push(...seg.rows);
-        if(seg._top!=null) merged[i-1]._top=merged[i-1]._top??seg._top;
-        merged.splice(i,1);
-      }else{
-        merged[i+1].rows.unshift(...seg.rows);
-        merged[i+1]._top=seg._top!=null?seg._top:(i===0?0:seg.rows[0].z-0.02);
-        merged.splice(i,1);
-      }
+    if(bestIdx>=0 && bestScore>=pairThreshold){
+      merged[bestIdx].rows.push(...merged[bestIdx+1].rows);
+      merged.splice(bestIdx+1,1);
       merged=merged.map((s,idx)=>({...s,isFirst:idx===0}));
+      changed=true;
+    }
+  }
+  return merged;
+}
+
+function enforceMinThicknessBySimilarity(segments, sensitivity){
+  let changed=true;
+  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
+  const sens=Math.max(0,Math.min(2,sensitivity ?? 0.5));
+  const margin=Math.max(0.02, 0.14 - 0.08*sens);
+  while(changed){
+    changed=false;
+    for(let i=0;i<merged.length;i++){
+      const layer=segmentSummary(merged[i]);
+      if(layer.thk>=S.minThk) continue;
+      const dir=chooseSimilarityMergeDirection(merged, i, margin);
+      if(!dir) continue;
+      merged=mergeSegmentInDirection(merged, i, dir);
       changed=true;
       break;
     }
   }
+  return merged;
+}
+
+function smartPostMerge(segments){
+  const sensitivity=Math.max(0,Math.min(2,S.smartMergeSensitivity ?? 0.5));
+  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
+  merged=smartSimilarityReduce(merged, sensitivity);
+  merged=enforceMinThicknessBySimilarity(merged, sensitivity);
+  return merged;
+}
+
+function classificationSegmentKey(row){
+  if(S.method==='sb260') return `${row.type}::${row.subtype||''}`;
+  return row.type;
+}
+
+function detectLayers(){
+  const d=S.classified;
+  const raw=[];
+  let cur={type:d[0].type, subtype:d[0].subtype||'', key:classificationSegmentKey(d[0]), rows:[d[0]]};
+  for(let i=1;i<d.length;i++){
+    const key=classificationSegmentKey(d[i]);
+    if(key===cur.key) cur.rows.push(d[i]);
+    else{
+      raw.push(cur);
+      cur={type:d[i].type, subtype:d[i].subtype||'', key, rows:[d[i]]};
+    }
+  }
+  raw.push(cur);
+
+  // Important: smartMerge is a post-processing correction only.
+  // The original raw layering is always created first from the
+  // unmodified point-by-point classification sequence above.
+  // Baseline behavior is the historical upward thin-layer merge.
+  // Smart merge may only further reduce that baseline, never refine it.
+  let merged=simpleUpwardMerge(raw);
+  if(S.smartMerge) merged=smartPostMerge(merged);
 
   const mergedSummaries=merged.map((seg,i)=>segmentSummary({...seg,isFirst:i===0}));
   let prevBot=null;
@@ -1944,7 +2098,8 @@ function detectLayers(){
    LAYER TABLE
    
    CONCEPTUAL SEPARATION:
-   - Stage 2 (classification): Robertson / CUR 3 / Eurocode Table 3 → assigns CPT soil type
+   - Stage 2 (classification): Robertson / CUR 3 layers / NEN 6740 / Eurocode Table 3
+     → assigns CPT soil type
      per depth reading, then layers are detected. This determines the BOUNDARY logic.
    - Stage 3 (parameter method): independently assigns geotechnical parameters
      (γ, φ', c', cu) to each layer. The engineer can choose:
@@ -2510,13 +2665,11 @@ function renderCompatWarnings(){
   if(!warnings.length){warnEl.innerHTML='';return;}
 
   warnEl.innerHTML=warnings.map(w=>`
-    <div style="padding:8px 12px;margin-bottom:6px;border-radius:var(--r);
-      background:${w.level==='bad'?'#FCEBEB':'#FAEEDA'};
-      border-left:3px solid ${w.level==='bad'?'#A32D2D':'#BA7517'}">
-      <span style="font-size:11px;font-weight:600;color:${w.level==='bad'?'#A32D2D':'#BA7517'}">
+    <div class="layerwarn ${w.level==='bad'?'layerwarn-bad':'layerwarn-adj'}">
+      <span class="layerwarn-k">
         ${w.level==='bad'?'⚠ Waarschuwing laag '+w.layer:'ⓘ Opmerking laag '+w.layer}
       </span><br>
-      <span style="font-size:11px;color:var(--tx)">${w.msg}</span>
+      <span class="layerwarn-msg">${w.msg}</span>
     </div>`).join('');
 }
 
@@ -3366,7 +3519,7 @@ function stage6Defaults(){
       timeDays:0
     },
     beam:{
-      foundationModel:'winkler',
+      foundationModel:'pasternak',
       B:1.50,
       b:1.00,
       L:6.00,
@@ -4391,6 +4544,7 @@ function renderStage6DewateringApp(analysis){
   const loadRows = [
     {k:'Limit state', v:'SLS'},
     {k:'Combination', v:cfg.combination === 'qp' ? 'Quasi-permanent drawdown context' : 'Characteristic drawdown'},
+    {k:'Hydraulic model', v:analysis.hydraulicModel},
     {k:'Geometry', v:analysis.geometry.label},
     {k:'Original WT', v:`${S.wt.toFixed(2)} m`},
     {k:'Target WT at well', v:`${analysis.targetWt.toFixed(2)} m`},
@@ -4398,6 +4552,8 @@ function renderStage6DewateringApp(analysis){
     {k:'Drawdown at CPT', v:`${analysis.drawdownAtCpt.toFixed(2)} m`},
     {k:analysis.geometry.distanceLabel || 'Source-CPT distance', v:`${(analysis.geometry.distanceToCpt || 0).toFixed(2)} m`},
     ...(analysis.geometry.wellRadius ? [{k:analysis.geometry.equivalentRadiusLabel || 'Well radius', v:`${analysis.geometry.wellRadius.toFixed(2)} m`}] : []),
+    {k:'T far field', v:`${analysis.transmissivityFar.toExponential(2)} m²/s`},
+    {k:'T at well', v:`${analysis.transmissivityWell.toExponential(2)} m²/s`},
     {k:'k_eff,h', v:`${analysis.effectiveK.toExponential(2)} m/s`},
     {k:'R', v:`${analysis.radiusInfluence.toFixed(1)} m`}
   ];
@@ -4410,8 +4566,6 @@ function renderStage6DewateringApp(analysis){
       <div style="display:grid;grid-template-columns:280px 1fr 260px;gap:14px;align-items:start">
         <div>
           <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
-          <div class="st6-help" style="margin-bottom:8px">Dewatering impact is treated as an SLS deformation screening tool. Use the expected drawdown directly; this module does not apply DA1/1 or DA1/2 style load factoring.</div>
-          <div class="st6-help" style="margin-bottom:8px">Important: settlement is driven by the <strong>drawdown at the CPT location</strong>, not by the target level at the well or excavation itself. If the CPT sits outside the computed screening influence radius, the module will show little or no settlement.</div>
           <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
             <label style="font-size:11px;color:var(--tx2)">Combination context
               <select onchange="setStage6Field('dewatering.combination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
@@ -4517,12 +4671,18 @@ function renderStage6DewateringApp(analysis){
             <tr><td>Q estimate</td><td>${analysis.QEstimate.toExponential(2)} ${analysis.QUnits}</td></tr>
             ${analysis.qPrime ? `<tr><td>q' estimate</td><td>${analysis.qPrime.toExponential(2)} ${analysis.qPrimeUnits}</td></tr>`:''}
             <tr><td>Aquifer base</td><td>${analysis.baseDepth.toFixed(2)} m</td></tr>
+            <tr><td>Hydraulic model</td><td>${analysis.hydraulicModel}</td></tr>
+            <tr><td>T far field</td><td>${analysis.transmissivityFar.toExponential(2)} m²/s</td></tr>
+            <tr><td>T at well</td><td>${analysis.transmissivityWell.toExponential(2)} m²/s</td></tr>
             <tr><td>k_eff,h</td><td>${analysis.effectiveK.toExponential(2)} m/s</td></tr>
             <tr><td>Conservative settlement</td><td>${analysis.conservativeSettlementMm.toFixed(2)} mm</td></tr>
             <tr><td>Realistic settlement</td><td>${analysis.realisticSettlementMm.toFixed(2)} mm</td></tr>
             <tr><td>Max Δσv mode effect</td><td>${analysis.maxSigmaVShift.toFixed(1)} kPa</td></tr>
             <tr><td>Total settlement</td><td>${analysis.totalSettlementMm.toFixed(1)} mm</td></tr>
           </table>
+          <div class="st6-help" style="margin-bottom:8px">Dewatering impact is treated as an SLS deformation screening tool. Use the expected drawdown directly; this module does not apply DA1/1 or DA1/2 style load factoring.</div>
+          <div class="st6-help" style="margin-bottom:8px">Hydraulics are screened with a transmissivity-based model. The app combines the active layer conductivities into <strong>T = Σ(k_h · b)</strong> through the pumped interval and uses that profile in the radial or line-flow estimate.</div>
+          <div class="st6-help">Important: settlement is driven by the <strong>drawdown at the CPT location</strong>, not by the target level at the well or excavation itself. If the CPT sits outside the computed screening influence radius, the module will show little or no settlement.</div>
         </div>
       </div>
       <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
@@ -5125,6 +5285,7 @@ const legacyApi={
   updateWTLine,
   setMinThk,
   setSmartMerge,
+  setSmartMergeSensitivity,
   arrMax,
   arrSafe,
   initCharts,
