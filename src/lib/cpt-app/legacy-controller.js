@@ -8469,7 +8469,7 @@ function renderStage6BishopApp(){
                 </div>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(seepageStatusMessage)}</strong><br>
-                  Solver: <strong>triangulated T3 FEM mesh</strong><br>
+                  Solver: <strong>structured rectangular strip FEM mesh</strong><br>
                   Nodes: <strong>${seepage.mesh?.nodes?.length || 0}</strong><br>
                   Triangles: <strong>${seepage.mesh?.elements?.length || 0}</strong><br>
                   Display cells: <strong>${seepage.mesh?.cells?.length || 0}</strong><br>
@@ -8478,7 +8478,7 @@ function renderStage6BishopApp(){
                   Max exit gradient: <strong>${seepage.result ? (seepage.result.maxExitGradient || 0).toFixed(3) : '—'}</strong><br>
                   Dry cells: <strong>${seepage.result?.dryCellCount || 0}</strong>
                 </div>
-                <div class="st6-help">The seepage solver now builds a triangle mesh directly from the shared Bishop terrain, soil polygons, walls, and optional fixed phreatic line, then solves the head field in a worker and feeds that same result back into the canvas overlays and the optional FEM pore-pressure hook.</div>
+                <div class="st6-help">The seepage solver now rebuilds the shared Bishop section into a structured rectangular strip mesh, solves the head field in a worker, and feeds that result back into the canvas overlays and the optional FEM pore-pressure hook.</div>
               </div>
             </details>
             <details class="st6-adv" data-st6details="bishop-seepage-integration"${stage6DetailsOpen('bishop-seepage-integration')}>
@@ -9358,6 +9358,146 @@ function stage7BishopPayload(){
   };
 }
 
+function stage7SeepagePayload(){
+  const bishop=S.stage6?.bishop;
+  const seepage=bishop?.seepage;
+  if(!bishop || !seepage) return null;
+  try{
+    const model=S.stage6Cache?.bishopModel || null;
+    const boundary=S.stage6Cache?.bishopSeepageBoundary || [];
+    const edgeByKey=new Map(boundary.map((edge)=>[edge.edgeKey, edge]));
+    const activeBcs=(seepage.bcs || []).filter((bc)=>bc?.status !== 'orphaned');
+    const orphanedBcs=(seepage.bcs || []).filter((bc)=>bc?.status === 'orphaned');
+    const hasSetup=!!(activeBcs.length || orphanedBcs.length || seepage.mesh || seepage.result || seepage.rejectReason);
+    if(!hasSetup) return null;
+    const prescribedHeadCount=activeBcs.filter((bc)=>bc.type === 'head').length;
+    const seepageFaceCount=activeBcs.filter((bc)=>bc.type === 'seepage-face').length;
+    const noFlowCount=activeBcs.filter((bc)=>bc.type !== 'head' && bc.type !== 'seepage-face').length;
+    const edgeLabelFor=(edgeKey, anchorSource)=>{
+      if(edgeByKey.has(edgeKey)) return stage6BishopSeepageEdgeLabel(edgeByKey.get(edgeKey));
+      if(typeof edgeKey === 'string' && edgeKey){
+        const [source, rawIndex] = edgeKey.split(':');
+        const index = Number(rawIndex);
+        return stage6BishopSeepageEdgeLabel({
+          source:source || anchorSource || '',
+          index:Number.isFinite(index) ? index : 0
+        });
+      }
+      return anchorSource ? `${anchorSource} edge` : 'Unmatched boundary edge';
+    };
+    return{
+      config:safeClone({
+        freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
+        usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
+        maxFreeSurfaceIter:Math.max(1, Math.round(+seepage.options?.maxFreeSurfaceIter || 30)),
+        meshTargetArea:Math.max(+seepage.options?.meshTargetArea || 0.5, 0.01),
+        useFemPorePressure:!!bishop.useFemPorePressure
+      }),
+      summary:{
+        status:seepage.status || 'idle',
+        solved:!!seepage.mesh && !!seepage.result,
+        rejectReason:seepage.rejectReason || '',
+        explicitBcCount:(seepage.bcs || []).length,
+        activeBcCount:activeBcs.length,
+        orphanedBcCount:orphanedBcs.length,
+        prescribedHeadCount,
+        seepageFaceCount,
+        noFlowCount
+      },
+      geometry:safeClone({
+        regionMode:model?.regionMode || (bishop.useCustomRegions ? 'custom' : 'auto'),
+        regionCount:model?.regions?.length || (bishop.useCustomRegions ? (bishop.customRegions?.length || 0) : (bishop.materials?.length || 0)),
+        autoRegionCount:model?.autoRegions?.length || 0,
+        customRegionCount:model?.customRegions?.length || (bishop.customRegions?.length || 0),
+        terrainVertexCount:bishop.terrain?.length || 0,
+        phreaticVertexCount:bishop.phreatic?.length || 0,
+        wallCount:bishop.walls?.length || 0,
+        boundaryEdgeCount:boundary.length
+      }),
+      materials:(bishop.materials || []).map((mat)=>safeClone({
+        id:mat.id || '',
+        label:mat.label || mat.id || 'Material',
+        kx:Number.isFinite(+mat.kx) ? +mat.kx : null,
+        ky:Number.isFinite(+mat.ky) ? +mat.ky : null,
+        kSource:mat.kSource || 'sbtn-default',
+        kSourceLabel:seepageSourceLabel(mat.kSource)
+      })),
+      boundaryConditions:(seepage.bcs || []).map((bc, index)=>{
+        const edge=edgeByKey.get(bc.edgeKey);
+        return safeClone({
+          id:bc.id || `bc-${index + 1}`,
+          edgeKey:bc.edgeKey || '',
+          edgeLabel:edgeLabelFor(bc.edgeKey, bc.anchor?.source),
+          source:edge?.source || bc.anchor?.source || '',
+          index:edge?.index ?? null,
+          type:bc.type === 'head' ? 'head' : bc.type === 'seepage-face' ? 'seepage-face' : 'no-flow',
+          typeLabel:stage6BishopSeepageBcTypeLabel(bc.type),
+          head:bc.type === 'head' && Number.isFinite(+bc.head) ? +bc.head : null,
+          status:bc.status === 'orphaned' ? 'orphaned' : 'active',
+          length:Number.isFinite(edge?.length) ? edge.length : null,
+          midpoint:safeClone(edge?.mid || bc.anchor?.mid || null)
+        });
+      }),
+      mesh:seepage.mesh ? safeClone({
+        nodes:seepage.mesh.nodes?.length || 0,
+        elements:seepage.mesh.elements?.length || 0,
+        cells:seepage.mesh.cells?.length || 0,
+        boundaryFaces:seepage.mesh.boundaryFaces?.length || 0,
+        generatedMs:Number.isFinite(+seepage.mesh.generatedMs) ? +seepage.mesh.generatedMs : null
+      }) : null,
+      result:seepage.result ? safeClone({
+        headMin:seepage.result.headMin,
+        headMax:seepage.result.headMax,
+        throughFlow:seepage.result.throughFlow,
+        inflow:seepage.result.inflow,
+        outflow:seepage.result.outflow,
+        maxExitGradient:seepage.result.maxExitGradient,
+        dryCellCount:seepage.result.dryCellCount,
+        equipotentialLevelCount:seepage.result.equipotentialSegments?.length || 0,
+        phreaticSegmentCount:seepage.result.phreaticSegments?.length || 0,
+        solver:safeClone(seepage.result.solver || null),
+        timing:safeClone(seepage.result.timing || null)
+      }) : null
+    };
+  } catch(error){
+    console.error('Stage 7 seepage payload build failed:', error);
+    return{
+      config:safeClone({
+        freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
+        usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
+        maxFreeSurfaceIter:Math.max(1, Math.round(+seepage.options?.maxFreeSurfaceIter || 30)),
+        meshTargetArea:Math.max(+seepage.options?.meshTargetArea || 0.5, 0.01),
+        useFemPorePressure:!!bishop.useFemPorePressure
+      }),
+      summary:{
+        status:seepage.status || 'idle',
+        solved:false,
+        rejectReason:seepage.rejectReason || 'Seepage report payload could not be fully assembled.',
+        explicitBcCount:(seepage.bcs || []).length,
+        activeBcCount:0,
+        orphanedBcCount:0,
+        prescribedHeadCount:0,
+        seepageFaceCount:0,
+        noFlowCount:0
+      },
+      geometry:{
+        regionMode:bishop.useCustomRegions ? 'custom' : 'auto',
+        regionCount:0,
+        autoRegionCount:0,
+        customRegionCount:bishop.customRegions?.length || 0,
+        terrainVertexCount:bishop.terrain?.length || 0,
+        phreaticVertexCount:bishop.phreatic?.length || 0,
+        wallCount:bishop.walls?.length || 0,
+        boundaryEdgeCount:0
+      },
+      materials:[],
+      boundaryConditions:[],
+      mesh:null,
+      result:null
+    };
+  }
+}
+
 function stage7Stage6Payload(workingLayers){
   const annexes={};
   if(S.stage6Cache?.bearing?.selected){
@@ -9386,6 +9526,8 @@ function stage7Stage6Payload(workingLayers){
   }
   const bishop=stage7BishopPayload();
   if(bishop) annexes.bishop=bishop;
+  const seepage=stage7SeepagePayload();
+  if(seepage) annexes.seepage=seepage;
   const available=Object.keys(annexes);
   if(!available.length) return null;
   return{
@@ -9415,10 +9557,10 @@ function buildStage7Payload(){
   }, 0);
   const stage6=stage7Stage6Payload(workingLayers);
   return{
-    version:3,
+    version:4,
     stage:'stage7',
     generatedAt:new Date().toISOString(),
-    appVersion:'0.2.0',
+    appVersion:'0.3.1',
     project:{
       name:PROJECT.name,
       phase:PROJECT.phase

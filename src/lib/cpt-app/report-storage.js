@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 export const STAGE7_REPORT_STORAGE_PREFIX = 'stage7-report:';
-export const STAGE7_REPORT_VERSION = 3;
+export const STAGE7_REPORT_VERSION = 4;
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -31,6 +31,19 @@ function isBishopStage6Payload(value) {
       (isPlainObject(value.selected) &&
         isFiniteNumber(value.selected.FS) &&
         typeof value.selected.methodLabel === 'string'))
+  );
+}
+
+function isSeepageStage6Payload(value) {
+  return (
+    isPlainObject(value) &&
+    isPlainObject(value.config) &&
+    isPlainObject(value.summary) &&
+    isPlainObject(value.geometry) &&
+    Array.isArray(value.materials) &&
+    Array.isArray(value.boundaryConditions) &&
+    (value.mesh == null || isPlainObject(value.mesh)) &&
+    (value.result == null || isPlainObject(value.result))
   );
 }
 
@@ -70,7 +83,8 @@ export function isStage7Payload(payload) {
     (payload.tuning == null || Array.isArray(payload.tuning)) &&
     (payload.stage6 == null ||
       (isPlainObject(payload.stage6) &&
-        (payload.stage6.bishop == null || isBishopStage6Payload(payload.stage6.bishop))))
+        (payload.stage6.bishop == null || isBishopStage6Payload(payload.stage6.bishop)) &&
+        (payload.stage6.seepage == null || isSeepageStage6Payload(payload.stage6.seepage))))
   );
 }
 

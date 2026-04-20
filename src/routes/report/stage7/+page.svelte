@@ -229,6 +229,10 @@
     return 'Shape factors follow the effective-dimension ratio r = B′/L′.';
   }
 
+  function seepageFreeSurfaceLabel(value: string) {
+    return value === 'iterate' ? 'Iterative free surface' : 'Fixed phreatic line';
+  }
+
   function tuningPreviewEoedRef(fit: any, previewM: number) {
     return Math.exp(fit.meanY - previewM * fit.meanX);
   }
@@ -1154,6 +1158,118 @@
                   </div>
                 </div>
               {/if}
+            </div>
+          {/if}
+
+          {#if hasStage6('seepage')}
+            {@const seepage = payload.stage6.seepage || {}}
+            {@const seepageSummary = seepage.summary || {}}
+            {@const seepageConfig = seepage.config || {}}
+            {@const seepageGeometry = seepage.geometry || {}}
+            {@const seepageMesh = seepage.mesh || null}
+            {@const seepageResult = seepage.result || null}
+            {@const seepageBcs = seepage.boundaryConditions || []}
+            {@const seepageMaterials = seepage.materials || []}
+            <div class="report-card report-annex report-annex--seepage">
+              <h3>Seepage / groundwater flow</h3>
+              <div class="report-grid report-grid--4">
+                <div class="report-stat"><span>Status</span><strong>{seepageSummary.status || 'idle'}</strong></div>
+                <div class="report-stat"><span>Free-surface mode</span><strong>{seepageFreeSurfaceLabel(seepageConfig.freeSurface)}</strong></div>
+                <div class="report-stat"><span>Head range</span><strong>{seepageResult ? `${fmt(seepageResult.headMin, 2)} to ${fmt(seepageResult.headMax, 2)} m` : '—'}</strong></div>
+                <div class="report-stat"><span>Through-flow</span><strong>{seepageResult ? `${compactNumber(seepageResult.throughFlow, 3)} m³/s/m` : '—'}</strong></div>
+                <div class="report-stat"><span>Max exit gradient</span><strong>{seepageResult ? fmt(seepageResult.maxExitGradient, 3) : '—'}</strong></div>
+                <div class="report-stat"><span>Dry cells</span><strong>{seepageResult?.dryCellCount ?? '—'}</strong></div>
+                <div class="report-stat"><span>Triangles</span><strong>{seepageMesh?.elements ?? 0}</strong></div>
+                <div class="report-stat"><span>FEM pore pressure in Bishop</span><strong>{seepageConfig.useFemPorePressure ? 'Yes' : 'No'}</strong></div>
+              </div>
+              <div class="report-grid report-grid--2">
+                <table class="pt report-pt">
+                  <tbody>
+                    <tr><td>Solver</td><td>{seepageResult?.solver?.meshType || 'triangulated-strip-fem'}</td></tr>
+                    <tr><td>Free-surface mode</td><td>{seepageFreeSurfaceLabel(seepageConfig.freeSurface)}</td></tr>
+                    <tr><td>Use drawn phreatic as seed</td><td>{seepageConfig.usePhreaticAsSeed ? 'Yes' : 'No'}</td></tr>
+                    <tr><td>Target element area (m²)</td><td>{fmt(seepageConfig.meshTargetArea, 2)} m²</td></tr>
+                    <tr><td>Max free-surface iterations</td><td>{seepageConfig.maxFreeSurfaceIter ?? '—'}</td></tr>
+                    <tr><td>Region mode</td><td>{seepageGeometry.regionMode === 'custom' ? 'Custom polygons' : 'CPT-derived polygons'}</td></tr>
+                    <tr><td>Regions</td><td>{seepageGeometry.regionCount ?? '—'}</td></tr>
+                    <tr><td>Retaining walls</td><td>{seepageGeometry.wallCount ?? '—'}</td></tr>
+                    <tr><td>Boundary edges</td><td>{seepageGeometry.boundaryEdgeCount ?? '—'}</td></tr>
+                    <tr><td>Explicit BCs</td><td>{seepageSummary.explicitBcCount ?? '—'}</td></tr>
+                    <tr><td>Active / orphaned BCs</td><td>{seepageSummary.activeBcCount ?? '—'} / {seepageSummary.orphanedBcCount ?? '—'}</td></tr>
+                    <tr><td>Prescribed head / seepage face / no-flow</td><td>{seepageSummary.prescribedHeadCount ?? '—'} / {seepageSummary.seepageFaceCount ?? '—'} / {seepageSummary.noFlowCount ?? '—'}</td></tr>
+                  </tbody>
+                </table>
+                <table class="pt report-pt">
+                  <tbody>
+                    <tr><td>Mesh nodes</td><td>{seepageMesh?.nodes ?? '—'}</td></tr>
+                    <tr><td>Mesh triangles</td><td>{seepageMesh?.elements ?? '—'}</td></tr>
+                    <tr><td>Display cells</td><td>{seepageMesh?.cells ?? '—'}</td></tr>
+                    <tr><td>Boundary faces</td><td>{seepageMesh?.boundaryFaces ?? '—'}</td></tr>
+                    <tr><td>Mesh build time</td><td>{seepageMesh?.generatedMs != null ? `${fmt(seepageMesh.generatedMs, 0)} ms` : '—'}</td></tr>
+                    <tr><td>Total runtime</td><td>{seepageResult?.timing?.totalMs != null ? `${fmt(seepageResult.timing.totalMs, 0)} ms` : '—'}</td></tr>
+                    <tr><td>Outer iterations</td><td>{seepageResult?.solver?.iterations ?? '—'}</td></tr>
+                    <tr><td>Linear iterations</td><td>{seepageResult?.solver?.innerIterations ?? '—'}</td></tr>
+                    <tr><td>Residual norm</td><td>{seepageResult?.solver?.residualNorm != null ? compactNumber(seepageResult.solver.residualNorm, 3) : '—'}</td></tr>
+                    <tr><td>Inflow / outflow</td><td>{seepageResult ? `${compactNumber(seepageResult.inflow, 3)} / ${compactNumber(seepageResult.outflow, 3)} m³/s/m` : '—'}</td></tr>
+                    <tr><td>Equipotential levels</td><td>{seepageResult?.equipotentialLevelCount ?? '—'}</td></tr>
+                    <tr><td>Phreatic segments</td><td>{seepageResult?.phreaticSegmentCount ?? '—'}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              {#if seepageSummary.rejectReason}
+                <p class="report-note" style="margin-top:12px">
+                  Solver message: {seepageSummary.rejectReason}
+                </p>
+              {/if}
+              <div class="report-grid report-grid--2" style="margin-top:16px">
+                <div class="report-card report-card--nested">
+                  <h4>Boundary Conditions</h4>
+                  <table class="tbl report-table">
+                    <thead>
+                      <tr><th>Edge</th><th>Type</th><th>Head (m)</th><th>Length (m)</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                      {#if seepageBcs.length}
+                        {#each seepageBcs as bc}
+                          <tr>
+                            <td>{bc.edgeLabel}</td>
+                            <td>{bc.typeLabel}</td>
+                            <td>{bc.head != null ? fmt(bc.head, 2) : '—'}</td>
+                            <td>{bc.length != null ? fmt(bc.length, 2) : '—'}</td>
+                            <td>{bc.status}</td>
+                          </tr>
+                        {/each}
+                      {:else}
+                        <tr><td colspan="5" style="text-align:center">No explicit seepage boundary conditions were frozen into this report.</td></tr>
+                      {/if}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="report-card report-card--nested">
+                  <h4>Permeability Set</h4>
+                  <table class="tbl report-table">
+                    <thead>
+                      <tr><th>Material</th><th>k_x (m/s)</th><th>k_y (m/s)</th><th>Source</th></tr>
+                    </thead>
+                    <tbody>
+                      {#if seepageMaterials.length}
+                        {#each seepageMaterials as material}
+                          <tr>
+                            <td>{material.label}</td>
+                            <td>{material.kx != null ? compactNumber(material.kx, 3) : '—'}</td>
+                            <td>{material.ky != null ? compactNumber(material.ky, 3) : '—'}</td>
+                            <td>{material.kSourceLabel}</td>
+                          </tr>
+                        {/each}
+                      {:else}
+                        <tr>
+                          <td colspan="4" style="text-align:center">No seepage permeability set was frozen into this report.</td>
+                        </tr>
+                      {/if}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           {/if}
         </section>

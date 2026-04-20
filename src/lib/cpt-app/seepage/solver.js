@@ -418,6 +418,467 @@ function buildFeatureSegments(model, regions, options) {
   };
 }
 
+function dedupeConstraintSegments(segments) {
+  const seen = new Set();
+  const out = [];
+  (segments || []).forEach((segment) => {
+    const key = normalizeSegmentKey(segment.a, segment.b, 'constraint');
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({
+      a: { x: +segment.a.x.toFixed(8), y: +segment.a.y.toFixed(8) },
+      b: { x: +segment.b.x.toFixed(8), y: +segment.b.y.toFixed(8) },
+      kind: segment.kind || 'constraint'
+    });
+  });
+  return out;
+}
+
+function buildConstraintSegments(model, regions, options) {
+  const outerBoundarySegments = buildOuterBoundary(model).map((edge) => ({
+    a: { x: Number(edge.a.x), y: Number(edge.a.y) },
+    b: { x: Number(edge.b.x), y: Number(edge.b.y) },
+    kind: 'boundary'
+  }));
+  const regionSegments = dedupeConstraintSegments(
+    regions.flatMap((region) => polygonSegments(region.polygon, 'region'))
+  );
+  const phreaticSegments =
+    options.freeSurface === 'fixed' && model?.phreatic?.vertices?.length >= 2
+      ? dedupeConstraintSegments(polylineSegments(model.phreatic.vertices, 'phreatic'))
+      : [];
+  return {
+    outerBoundarySegments,
+    regionSegments,
+    phreaticSegments,
+    all: dedupeConstraintSegments([...outerBoundarySegments, ...regionSegments, ...phreaticSegments])
+  };
+}
+
+function pointParamOnSegment(point, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (Math.abs(dx) >= Math.abs(dy) && Math.abs(dx) > EPS) return (point.x - a.x) / dx;
+  if (Math.abs(dy) > EPS) return (point.y - a.y) / dy;
+  return 0;
+}
+
+function buildSplitSegments(segments, splitParams) {
+  const seen = new Set();
+  const out = [];
+  segments.forEach((segment, index) => {
+    const ts = uniqueSorted(splitParams[index], 1e-8);
+    for (let i = 0; i < ts.length - 1; i += 1) {
+      const t0 = ts[i];
+      const t1 = ts[i + 1];
+      if (!(t1 > t0 + GEOM_EPS)) continue;
+      const a = {
+        x: +lerp(segment.a.x, segment.b.x, t0).toFixed(8),
+        y: +lerp(segment.a.y, segment.b.y, t0).toFixed(8)
+      };
+      const b = {
+        x: +lerp(segment.a.x, segment.b.x, t1).toFixed(8),
+        y: +lerp(segment.a.y, segment.b.y, t1).toFixed(8)
+      };
+      if (!(dist(a, b) > GEOM_EPS)) continue;
+      const key = normalizeSegmentKey(a, b, 'constraint-piece');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ a, b, kind: segment.kind || 'constraint' });
+    }
+  });
+  return out;
+}
+
+function splitConstraintSegmentsInternal(groupA, groupB = null) {
+  const segments = groupB ? [...groupA, ...groupB] : [...groupA];
+  const nA = groupB ? groupA.length : 0;
+  const splitParams = segments.map(() => [0, 1]);
+  const bboxes = segments.map((segment) => ({
+    xMin: Math.min(segment.a.x, segment.b.x),
+    xMax: Math.max(segment.a.x, segment.b.x),
+    yMin: Math.min(segment.a.y, segment.b.y),
+    yMax: Math.max(segment.a.y, segment.b.y)
+  }));
+
+  for (let i = 0; i < segments.length; i += 1) {
+    for (let j = i + 1; j < segments.length; j += 1) {
+      if (groupB && i < nA && j < nA) continue;
+      const boxA = bboxes[i];
+      const boxB = bboxes[j];
+      if (Math.max(boxA.xMin, boxB.xMin) > Math.min(boxA.xMax, boxB.xMax) + GEOM_EPS) continue;
+      if (Math.max(boxA.yMin, boxB.yMin) > Math.min(boxA.yMax, boxB.yMax) + GEOM_EPS) continue;
+      const a = segments[i];
+      const b = segments[j];
+      const hit = segmentIntersection(a.a, a.b, b.a, b.b);
+      if (hit) {
+        if (hit.t > GEOM_EPS && hit.t < 1 - GEOM_EPS) splitParams[i].push(hit.t);
+        if (hit.u > GEOM_EPS && hit.u < 1 - GEOM_EPS) splitParams[j].push(hit.u);
+        continue;
+      }
+
+      [b.a, b.b].forEach((point) => {
+        if (!pointOnSegment(point, a.a, a.b)) return;
+        const t = pointParamOnSegment(point, a.a, a.b);
+        if (t > GEOM_EPS && t < 1 - GEOM_EPS) splitParams[i].push(t);
+      });
+      [a.a, a.b].forEach((point) => {
+        if (!pointOnSegment(point, b.a, b.b)) return;
+        const t = pointParamOnSegment(point, b.a, b.b);
+        if (t > GEOM_EPS && t < 1 - GEOM_EPS) splitParams[j].push(t);
+      });
+    }
+  }
+
+  return buildSplitSegments(segments, splitParams);
+}
+
+function splitConstraintSegments(segments) {
+  return splitConstraintSegmentsInternal(segments || []);
+}
+
+function splitConstraintSegmentsTwoGroups(groupA, groupB) {
+  return splitConstraintSegmentsInternal(groupA || [], groupB || []);
+}
+
+function buildPlanarFacesFromSegments(segments) {
+  const vertices = [];
+  const vertexIdByKey = new Map();
+  const adjacency = new Map();
+
+  const getVertexId = (point) => {
+    const key = nodeKey(point);
+    if (!vertexIdByKey.has(key)) {
+      vertexIdByKey.set(key, vertices.length);
+      vertices.push({ x: +point.x.toFixed(8), y: +point.y.toFixed(8) });
+    }
+    return vertexIdByKey.get(key);
+  };
+
+  const addHalfEdge = (from, to) => {
+    if (!adjacency.has(from)) adjacency.set(from, []);
+    const fromPoint = vertices[from];
+    const toPoint = vertices[to];
+    adjacency.get(from).push({
+      to,
+      angle: Math.atan2(toPoint.y - fromPoint.y, toPoint.x - fromPoint.x)
+    });
+  };
+
+  (segments || []).forEach((segment) => {
+    const from = getVertexId(segment.a);
+    const to = getVertexId(segment.b);
+    if (from === to) return;
+    addHalfEdge(from, to);
+    addHalfEdge(to, from);
+  });
+
+  adjacency.forEach((edges) => {
+    edges.sort((left, right) => left.angle - right.angle);
+  });
+
+  const visited = new Set();
+  const faces = [];
+
+  const nextHalfEdge = (from, to) => {
+    const edges = adjacency.get(to) || [];
+    if (!edges.length) return null;
+    const reverseIndex = edges.findIndex((edge) => edge.to === from);
+    if (reverseIndex < 0) return null;
+    const nextIndex = (reverseIndex - 1 + edges.length) % edges.length;
+    return { from: to, to: edges[nextIndex].to };
+  };
+
+  adjacency.forEach((edges, from) => {
+    edges.forEach((edge) => {
+      const startKey = `${from}:${edge.to}`;
+      if (visited.has(startKey)) return;
+      const polygonVertexIds = [];
+      let current = { from, to: edge.to };
+      let closed = false;
+      for (let guard = 0; guard < 2 * segments.length + 2; guard += 1) {
+        const key = `${current.from}:${current.to}`;
+        if (visited.has(key)) break;
+        visited.add(key);
+        polygonVertexIds.push(current.from);
+        const next = nextHalfEdge(current.from, current.to);
+        if (!next) break;
+        current = next;
+        if (current.from === from && current.to === edge.to) {
+          closed = true;
+          break;
+        }
+      }
+      if (!closed) return;
+      const polygon = cleanPolygon(polygonVertexIds.map((vertexId) => vertices[vertexId]));
+      if (polygon.length < 3) return;
+      if (!(polygonArea(polygon) > 1e-8)) return;
+      if (polygonSignedArea(polygon) <= 1e-8) return;
+      faces.push(polygon);
+    });
+  });
+
+  return faces;
+}
+
+function pointInTriangle(point, a, b, c) {
+  const value = sampleTriangleValue(point, [a, b, c], [1, 1, 1]);
+  return Number.isFinite(value);
+}
+
+function simplifyPolygonForTriangulation(points, nodeIds) {
+  const pts = [...points];
+  const ids = [...nodeIds];
+  let changed = true;
+  while (changed && pts.length > 3) {
+    changed = false;
+    for (let i = 0; i < pts.length; i += 1) {
+      const prev = pts[(i + pts.length - 1) % pts.length];
+      const curr = pts[i];
+      const next = pts[(i + 1) % pts.length];
+      if (Math.abs(segmentOrientation(prev, curr, next)) > 1e-10) continue;
+      if (!pointOnSegment(curr, prev, next, 1e-8)) continue;
+      pts.splice(i, 1);
+      ids.splice(i, 1);
+      changed = true;
+      break;
+    }
+  }
+  return { points: pts, nodeIds: ids };
+}
+
+function triangulatePolygonEarClip(polygon, nodeIds) {
+  if (polygon.length < 3 || polygon.length !== nodeIds.length) return [];
+  const oriented =
+    polygonSignedArea(polygon) >= 0
+      ? { points: polygon, nodeIds }
+      : { points: [...polygon].reverse(), nodeIds: [...nodeIds].reverse() };
+  const simplified = simplifyPolygonForTriangulation(oriented.points, oriented.nodeIds);
+  const points = simplified.points;
+  const ids = simplified.nodeIds;
+  if (points.length < 3) return [];
+  if (points.length === 3) return [[ids[0], ids[1], ids[2]]];
+  const remaining = Array.from({ length: points.length }, (_, index) => index);
+  const triangles = [];
+
+  while (remaining.length > 3) {
+    let earFound = false;
+    for (let i = 0; i < remaining.length; i += 1) {
+      const prevIndex = remaining[(i + remaining.length - 1) % remaining.length];
+      const currIndex = remaining[i];
+      const nextIndex = remaining[(i + 1) % remaining.length];
+      const a = points[prevIndex];
+      const b = points[currIndex];
+      const c = points[nextIndex];
+      if (segmentOrientation(a, b, c) <= 1e-10) continue;
+
+      let containsVertex = false;
+      for (let j = 0; j < remaining.length; j += 1) {
+        const testIndex = remaining[j];
+        if (testIndex === prevIndex || testIndex === currIndex || testIndex === nextIndex) continue;
+        if (pointInTriangle(points[testIndex], a, b, c)) {
+          containsVertex = true;
+          break;
+        }
+      }
+      if (containsVertex) continue;
+
+      triangles.push([ids[prevIndex], ids[currIndex], ids[nextIndex]]);
+      remaining.splice(i, 1);
+      earFound = true;
+      break;
+    }
+
+    if (!earFound) {
+      // Fallback fans from a reflex vertex tend to create zero-area or inverted
+      // triangles that later disappear. Returning the safe partial result keeps
+      // the stiffness matrix well-posed until we add centroid insertion.
+      return triangles;
+    }
+  }
+
+  triangles.push([ids[remaining[0]], ids[remaining[1]], ids[remaining[2]]]);
+  return triangles;
+}
+
+function orientTriangleCcw(nodes, triangle) {
+  return segmentOrientation(nodes[triangle[0]], nodes[triangle[1]], nodes[triangle[2]]) >= 0
+    ? triangle
+    : [triangle[0], triangle[2], triangle[1]];
+}
+
+function isDelaunay(a, b, c, d) {
+  const ax = a.x - d.x;
+  const ay = a.y - d.y;
+  const bx = b.x - d.x;
+  const by = b.y - d.y;
+  const cx = c.x - d.x;
+  const cy = c.y - d.y;
+  const det =
+    (ax * ax + ay * ay) * (bx * cy - by * cx) -
+    (bx * bx + by * by) * (ax * cy - ay * cx) +
+    (cx * cx + cy * cy) * (ax * by - ay * bx);
+  const orientation = segmentOrientation(a, b, c);
+  if (Math.abs(orientation) <= EPS) return true;
+  return orientation > 0 ? det <= 1e-10 : det >= -1e-10;
+}
+
+function performLawsonDelaunayFlips(nodes, elements, constrainedSegments) {
+  const constrained = new Set();
+  (constrainedSegments || []).forEach((segment) => {
+    const nodeIdA = segment.startNodeId ?? segment.nodeIdA;
+    const nodeIdB = segment.endNodeId ?? segment.nodeIdB;
+    if (!Number.isInteger(nodeIdA) || !Number.isInteger(nodeIdB) || nodeIdA === nodeIdB) return;
+    constrained.add(nodeIdA < nodeIdB ? `${nodeIdA}-${nodeIdB}` : `${nodeIdB}-${nodeIdA}`);
+  });
+
+  let flipped = true;
+  let iter = 0;
+  while (flipped && iter < 20) {
+    flipped = false;
+    iter += 1;
+
+    const edgeToTris = new Map();
+    for (let t = 0; t < elements.length; t += 1) {
+      const tri = elements[t];
+      for (let e = 0; e < 3; e += 1) {
+        const i1 = tri[e];
+        const i2 = tri[(e + 1) % 3];
+        const key = i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
+        if (!edgeToTris.has(key)) edgeToTris.set(key, []);
+        edgeToTris.get(key).push(t);
+      }
+    }
+
+    const flipsToApply = [];
+    for (const [key, tris] of edgeToTris.entries()) {
+      if (tris.length !== 2 || constrained.has(key)) continue;
+      const tri1 = elements[tris[0]];
+      const tri2 = elements[tris[1]];
+      const shared = tri1.filter((nodeId) => tri2.includes(nodeId));
+      if (shared.length !== 2) continue;
+      const [a, b] = shared;
+      const c = tri1.find((nodeId) => nodeId !== a && nodeId !== b);
+      const d = tri2.find((nodeId) => nodeId !== a && nodeId !== b);
+      if (![a, b, c, d].every(Number.isInteger)) continue;
+
+      const ptA = nodes[a];
+      const ptB = nodes[b];
+      const ptC = nodes[c];
+      const ptD = nodes[d];
+      const diagonalHit = segmentIntersection(ptC, ptD, ptA, ptB, 1e-10);
+      if (!diagonalHit || diagonalHit.t <= GEOM_EPS || diagonalHit.t >= 1 - GEOM_EPS) continue;
+      if (isDelaunay(ptA, ptB, ptC, ptD)) continue;
+
+      const new1 = orientTriangleCcw(nodes, [c, d, a]);
+      const new2 = orientTriangleCcw(nodes, [d, c, b]);
+      if (
+        triangleArea(nodes[new1[0]], nodes[new1[1]], nodes[new1[2]]) <= 1e-10 ||
+        triangleArea(nodes[new2[0]], nodes[new2[1]], nodes[new2[2]]) <= 1e-10
+      ) {
+        continue;
+      }
+      flipsToApply.push({ t1: tris[0], t2: tris[1], new1, new2 });
+    }
+
+    flipsToApply.forEach((flip) => {
+      elements[flip.t1] = flip.new1;
+      elements[flip.t2] = flip.new2;
+      flipped = true;
+    });
+  }
+}
+
+function splitPolygonForRefinement(polygon, depth = 0) {
+  const cleaned = cleanPolygon(polygon);
+  if (cleaned.length < 3) return null;
+  let bestLen = 0;
+  let bestNormal = null;
+  for (let i = 0; i < cleaned.length; i += 1) {
+    const a = cleaned[i];
+    const b = cleaned[(i + 1) % cleaned.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (!(len > bestLen + GEOM_EPS)) continue;
+    const mid = { x: 0.5 * (a.x + b.x), y: 0.5 * (a.y + b.y) };
+    bestLen = len;
+    // Split across the longest edge, not along it: the bisector line must use
+    // the edge direction as its normal so we cut the polygon into two pieces.
+    bestNormal = (point) => (point.x - mid.x) * (dx / len) + (point.y - mid.y) * (dy / len);
+  }
+  if (!bestNormal) return null;
+  const left = cleanPolygon(clipPolygonBySignedDistance(cleaned, bestNormal, true));
+  const right = cleanPolygon(clipPolygonBySignedDistance(cleaned, bestNormal, false));
+  if (!(polygonArea(left) > 1e-8) || !(polygonArea(right) > 1e-8)) return null;
+  return [left, right];
+}
+
+function refineFacePolygons(facePolygon, targetArea, depth = 0) {
+  const cleaned = cleanPolygon(facePolygon);
+  const area = polygonArea(cleaned);
+  if (!(area > 1e-8)) return [];
+  if (area <= targetArea * 1.35 || depth >= 12) return [cleaned];
+  const split = splitPolygonForRefinement(cleaned, depth);
+  if (!split) return [cleaned];
+  return split.flatMap((piece) => refineFacePolygons(piece, targetArea, depth + 1));
+}
+
+function samplePointFromTriangles(triangleNodeSets, nodes) {
+  if (!triangleNodeSets?.length) return null;
+  let best = null;
+  triangleNodeSets.forEach((triangle) => {
+    const a = nodes[triangle[0]];
+    const b = nodes[triangle[1]];
+    const c = nodes[triangle[2]];
+    const area = triangleArea(a, b, c);
+    if (!(area > 1e-10)) return;
+    if (!best || area > best.area) {
+      best = {
+        area,
+        point: centroidOfTriangle(a, b, c)
+      };
+    }
+  });
+  return best?.point || null;
+}
+
+function buildCellSampleBins(cells, domainPolygon, targetArea) {
+  const domain = cleanPolygon(domainPolygon);
+  if (!cells?.length || domain.length < 3) {
+    return {
+      grid: {
+        xMin: 0,
+        yMin: 0,
+        cellSize: Math.max(Math.sqrt(Number(targetArea) || DEFAULT_TARGET_AREA), 0.1)
+      },
+      bins: {}
+    };
+  }
+  const xMin = Math.min(...domain.map((point) => point.x));
+  const yMin = Math.min(...domain.map((point) => point.y));
+  const cellSize = Math.max(Math.sqrt(Number(targetArea) || DEFAULT_TARGET_AREA), 0.1);
+  const bins = {};
+  cells.forEach((cell, index) => {
+    const bbox = cell?.bbox || {};
+    const ix0 = Math.floor((bbox.xMin - xMin) / cellSize);
+    const ix1 = Math.floor((bbox.xMax - xMin) / cellSize);
+    const iy0 = Math.floor((bbox.yMin - yMin) / cellSize);
+    const iy1 = Math.floor((bbox.yMax - yMin) / cellSize);
+    for (let ix = ix0; ix <= ix1; ix += 1) {
+      for (let iy = iy0; iy <= iy1; iy += 1) {
+        const key = `${ix}:${iy}`;
+        if (!bins[key]) bins[key] = [];
+        bins[key].push(index);
+      }
+    }
+  });
+  return {
+    grid: { xMin, yMin, cellSize },
+    bins
+  };
+}
+
 function buildMeshCoordinates(model, features, options) {
   const xMin = Number(model?.terrain?.vertices?.[0]?.x);
   const xMax = Number(model?.terrain?.vertices?.[model.terrain.vertices.length - 1]?.x);
@@ -827,7 +1288,29 @@ function solveHeadField(mesh, dryFlags, dirichletValues, initial = null) {
 
 function computeElementGradients(mesh, heads) {
   return mesh.elements.map((element, elementIndex) => {
-    const data = mesh.elementData[elementIndex];
+    let data = mesh.elementData[elementIndex];
+    if (!data?.dNdx || !data?.dNdy) {
+      const cell = mesh.cells[mesh.elementCell[elementIndex]];
+      const kx = Number.isFinite(Number(data?.kx))
+        ? Number(data.kx)
+        : Math.max(Number(cell?.material?.kx) || 0, WALL_K);
+      const ky = Number.isFinite(Number(data?.ky))
+        ? Number(data.ky)
+        : Math.max(Number(cell?.material?.ky) || 0, WALL_K);
+      const matrix = elementMatrix(mesh.nodes, element, kx, ky);
+      if (!matrix) {
+        return {
+          dhdx: 0,
+          dhdy: 0,
+          gradientMagnitude: 0,
+          qx: 0,
+          qy: 0,
+          qMagnitude: 0
+        };
+      }
+      data = { ...data, ...matrix, kx, ky };
+      mesh.elementData[elementIndex] = data;
+    }
     const hLocal = element.map((nodeId) => heads[nodeId]);
     const dhdx = data.dNdx[0] * hLocal[0] + data.dNdx[1] * hLocal[1] + data.dNdx[2] * hLocal[2];
     const dhdy = data.dNdy[0] * hLocal[0] + data.dNdy[1] * hLocal[1] + data.dNdy[2] * hLocal[2];
@@ -858,6 +1341,14 @@ function buildBoundaryFaces(mesh, model) {
     const midpoint = { x: 0.5 * (a.x + b.x), y: 0.5 * (a.y + b.y) };
     const match = pickOuterBoundaryEdge(boundary, midpoint, Math.max(dist(a, b), 0.1));
     if (!match?.edge) return;
+    const tol = Math.max(1e-5, dist(a, b) * 0.05);
+    if (
+      !pointOnSegment(a, match.edge.a, match.edge.b, tol) ||
+      !pointOnSegment(b, match.edge.a, match.edge.b, tol) ||
+      !pointOnSegment(midpoint, match.edge.a, match.edge.b, tol)
+    ) {
+      return;
+    }
     const elementIndex = entry.elements[0];
     const centroid = mesh.elementData[elementIndex].centroid;
     const edgeDx = b.x - a.x;
@@ -950,18 +1441,19 @@ function activeSeepageFacesFromDry(mesh, dryFlags, model) {
   });
 }
 
-function activeSeepageFacesFromFlux(mesh, heads, model) {
+function activeSeepageFacesFromFlux(mesh, heads, model, prior = null, fluxTol = 1e-9) {
   const gradients = computeElementGradients(mesh, heads);
   const activeBcs = new Map(
     ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
   );
-  return mesh.boundaryFaces.map((face) => {
+  return mesh.boundaryFaces.map((face, faceIndex) => {
     const bc = activeBcs.get(face.edgeKey);
     if (bc?.type !== 'seepage-face') return false;
     const grad = gradients[face.elementIndex];
     if (!grad) return false;
     const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
-    return fluxNormal > 0;
+    if (prior?.[faceIndex]) return fluxNormal > -fluxTol;
+    return fluxNormal > fluxTol;
   });
 }
 
@@ -1029,6 +1521,10 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options) {
 
   return {
     heads,
+    triangleHeads,
+    elementHeads: triangleHeads,
+    elementGradients: gradients,
+    elementDryMask: dryFlags,
     cellHeads,
     gradients: cellGradients,
     cellGradients,
@@ -1330,6 +1826,19 @@ export function analyzeSeepageModel(input, onProgress = () => {}) {
 }
 
 function samplePointCandidates(mesh, x, y) {
+  if (mesh?.sampleGrid && mesh?.sampleBins) {
+    const cellSize = Math.max(Number(mesh.sampleGrid.cellSize) || 0, 0.05);
+    const ix = Math.floor((x - Number(mesh.sampleGrid.xMin || 0)) / cellSize);
+    const iy = Math.floor((y - Number(mesh.sampleGrid.yMin || 0)) / cellSize);
+    const keys = new Set();
+    for (let dx = -1; dx <= 1; dx += 1) {
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const key = `${ix + dx}:${iy + dy}`;
+        if (mesh.sampleBins[key]) keys.add(key);
+      }
+    }
+    return [...keys].flatMap((key) => mesh.sampleBins[key] || []);
+  }
   const ix = findBin(mesh.xCoords, x);
   const iy = findBin(mesh.yCoords, y);
   const keys = new Set();
