@@ -1383,6 +1383,176 @@ To keep the Stage 6 tools transparent in Belgian practice, each application shou
   - **ULS** action set selectable for reinforcement
   - default = **Eq. 6.10 A1** for ordinary building gravity loading in this screening tool
 
+### Bearing capacity [IMPLEMENTED]
+
+The current Stage 6 bearing-capacity tool is a **shallow-foundation ULS
+screening model** based on the classical Brinch Hansen / EC7 Annex D
+format.
+It evaluates drained and undrained resistance versus founding depth and
+then converts the result either to Belgian EC7 design resistance or to
+a legacy global-factor allowable resistance.
+
+#### General reference form
+
+For the drained route, the full general form is:
+
+```
+q_ult,d = c' * Nc * sc * dc * ic * gc * bc
+        + q' * Nq * sq * dq * iq * gq * bq
+        + 0.5 * gamma' * B' * Ngamma * sg * dgamma * igamma * ggamma * bgamma
+```
+
+For the undrained route (`phi' = 0`):
+
+```
+q_ult,u = q + (pi + 2) * cu * scu * dcu * icu * gcu * bcu
+```
+
+with:
+
+- `B' = B - 2eB`, `L' = L - 2eL` the effective dimensions used for the
+  shape-factor route
+- `q' = sigma'v0(Df)` and `q = sigmav0(Df)`
+- `gamma'` taken from the active layer at the founding depth
+- `Nc`, `Nq`, `Ngamma` the bearing-capacity factors
+- `s*`, `d*`, `i*`, `g*`, `b*` the shape, depth, load-inclination,
+  ground-slope, and base-tilt factors
+
+#### Current app assumptions
+
+The present implementation is intentionally narrower than the full
+general form:
+
+- vertical load only, so `H = 0` and no load-inclination factors
+- level ground and horizontal base, so no ground-slope or base-tilt
+  factors
+- eccentricity is only used to derive effective dimensions for the
+  shape-factor route; it does **not** yet trigger a full inclined /
+  eccentric-load bearing verification
+- therefore `i* = g* = b* = 1`
+
+Under those assumptions the app evaluates:
+
+```
+q_ult,d = c' * Nc * sc * dc
+        + q' * Nq * sq * dq
+        + 0.5 * gamma' * B' * Ngamma * sg * dgamma
+
+q_ult,u = q + 5.14 * cu * scu * dcu
+```
+
+#### Bearing-capacity factors
+
+The current app now uses the **EC7 Annex D rough-base** `Ngamma` form:
+
+```
+Nq = exp(pi * tan(phi')) * tan^2(45deg + phi'/2)
+Nc = (Nq - 1) / tan(phi')              for phi' > 0
+Nc = pi + 2 = 5.14                    for phi' = 0
+Ngamma = 2 * (Nq - 1) * tan(phi')
+```
+
+The previous implementation used the larger Vesić
+`Ngamma = 2 * (Nq + 1) * tan(phi')`. The app now stays with the Annex D
+recommendation because Stage 6 is primarily an EC7-oriented screening
+tool, and the rough-base Annex D value is slightly more conservative and
+easier to audit against the code text.
+
+#### Shape factors used in the app
+
+For non-strip foundations the app uses the **effective-dimension** plan
+ratio
+
+```
+r = B' / L'      with B' <= L'
+```
+
+and for strip foundations it sets `r = 0`.
+
+The user can choose between:
+
+- `Brinch Hansen / Annex D` (default): derive shape factors from `r`
+- `Conservative`: force all shape factors to `1.0`
+
+The current implementation uses the Brinch Hansen / Annex D style shape
+factors:
+
+```
+sq = 1 + r * sin(phi')
+sc = (sq * Nq - 1) / (Nq - 1)         for phi' > 0
+sc = 1 + 0.2 * r                      for phi' = 0
+sgamma = max(0.6, 1 - 0.3 * r)
+scu = 1 + 0.2 * r
+```
+
+So:
+
+- strip footing: `r = 0`, therefore `sq = sc = sgamma = scu = 1`
+- square footing / pad: `r = 1`
+- rectangular pad / raft: `r = B' / L'`
+- circular footing screened in the rectangular interface: use `B = L`,
+  `eB = eL = 0`, so `r = 1`
+
+If the conservative toggle is selected, the app instead uses:
+
+```
+sq = sc = sgamma = scu = 1.0
+```
+
+#### Depth factors used in the app
+
+Define:
+
+```
+eta = Df / B'
+k = eta                  for eta <= 1
+k = atan(eta)            for eta > 1
+```
+
+The current app applies:
+
+```
+dq = 1 + 2 * tan(phi') * (1 - sin(phi'))^2 * k
+dc = dq - (1 - dq) / (Nc * tan(phi'))      for phi' > 0
+dc = 1 + 0.4 * k                           for phi' = 0
+dgamma = 1.0
+dcu = 1 + 0.4 * k
+```
+
+The depth factors therefore increase the `c'` and `q'` terms for deeper
+embedment, while the `Ngamma` term keeps `dgamma = 1.0`.
+
+#### Resistance conversion
+
+The app then converts the ultimate resistance to the displayed capacity
+using either the Belgian EC7 route or a legacy global factor:
+
+```
+q_d = q_ult / gamma_Rd
+q_allow = q_ult / xi
+```
+
+Belgian EC7 handling remains:
+
+- `DA1/1`: M1 soil strengths
+- `DA1/2`: M2 soil strengths
+- the app reports the governing result by default
+
+#### Still outside the current model
+
+The current bearing-capacity screening still does **not** model:
+
+- horizontal load inclination factors
+- ground-slope factors
+- base-tilt factors
+- separate sliding checks
+- full effective-area resistance `R = q * A'` after eccentricity
+- layered failure mechanisms beyond the active founding layer at each depth
+- the full three-case groundwater averaging rule for the `0.5 * gamma' * B' * Ngamma` term
+
+These omissions are deliberate simplifications for a first-pass
+screening tool and are stated in the UI notes.
+
 ### Option A — Dewatering impact estimator [DRAFT]
 
 #### Goal
@@ -1759,6 +1929,9 @@ Reasons:
 - Thiem, G. (1906). Hydrologische Methoden.
 - Bear, J. (1979). Hydraulics of Groundwater. McGraw-Hill.
 - Terzaghi, K. & Peck, R.B. (1967). Soil Mechanics in Engineering Practice.
+- Vesić, A.S. (1975). Bearing Capacity of Shallow Foundations. In
+  Foundation Engineering Handbook (Winterkorn & Fang, eds.).
 - Poulos, H.G. & Davis, E.H. (1974). Elastic Solutions for Soil and Rock Mechanics.
 - Boussinesq, J. (1885). Application des potentiels à l'étude de l'équilibre et du mouvement des solides élastiques.
+- EN 1997-1:2004+A1:2013. Eurocode 7: Geotechnical design — General rules.
 - EN 1992-1-1. Eurocode 2: Design of concrete structures.

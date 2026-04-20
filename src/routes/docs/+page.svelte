@@ -117,6 +117,7 @@
 			title: 'Books and Journal Papers',
 			items: [
 				{ label: 'Terzaghi & Peck (1967)', detail: 'Soil Mechanics in Engineering Practice, 2nd ed.' },
+				{ label: 'Vesić (1975)', detail: 'Bearing Capacity of Shallow Foundations, in Foundation Engineering Handbook (Winterkorn & Fang, eds.).' },
 				{ label: 'Robertson (1990)', detail: 'Soil classification using the CPT. Canadian Geotechnical Journal, 27(1), 151–158.' },
 				{ label: 'Robertson (2016)', detail: 'Cone penetration test (CPT)-based soil behaviour type (SBT) classification system — an update. Canadian Geotechnical Journal, 53(12), 1910–1927.' },
 				{ label: 'Robertson & Wride (1998)', detail: 'Evaluating cyclic liquefaction potential using the CPT. Canadian Geotechnical Journal, 35, 442–459.' }
@@ -915,14 +916,25 @@
 					title: '7.1 Current implemented resistance model',
 					paragraphs: [
 						'The application computes drained and undrained ultimate resistance separately and converts those results to q<sub>d</sub> or q<sub>allow</sub> depending on the selected safety route.',
-						'The formulas used are the standard classical shallow-foundation expressions currently implemented in the app.'
+						'The underlying reference family is the Brinch Hansen / EC7 Annex D shallow-foundation format. The current app implements the vertical-load subset of that model: no horizontal load, no ground slope, and no base tilt. Eccentricity is only used to derive the effective dimensions for the shape-factor route.'
 					],
 					equations: [
-						"q<sub>ult,d</sub> = c′N<sub>c</sub>s<sub>c</sub> + q′N<sub>q</sub>s<sub>q</sub> + 0.5γ′BN<sub>γ</sub>s<sub>γ</sub>",
-						'q<sub>ult,u</sub> = q + 5.14c<sub>u</sub>s<sub>cu</sub>',
+						"q<sub>ult,d</sub> = c′N<sub>c</sub>s<sub>c</sub>d<sub>c</sub> + q′N<sub>q</sub>s<sub>q</sub>d<sub>q</sub> + 0.5γ′B′N<sub>γ</sub>s<sub>γ</sub>d<sub>γ</sub>",
+						'q<sub>ult,u</sub> = q + 5.14c<sub>u</sub>s<sub>cu</sub>d<sub>cu</sub>',
 						'N<sub>q</sub> = exp(πtanφ′) · tan<sup>2</sup>(45° + φ′/2)',
 						'N<sub>c</sub> = (N<sub>q</sub> − 1) / tanφ′',
-						'N<sub>γ</sub> = 2(N<sub>q</sub> + 1)tanφ′',
+						'N<sub>γ</sub> = 2(N<sub>q</sub> − 1)tanφ′',
+						'B′ = B − 2e<sub>B</sub>; &nbsp; L′ = L − 2e<sub>L</sub>',
+						'r = B′ / L′ &nbsp;&nbsp; with B′ ≤ L′; strip uses r = 0',
+						's<sub>q</sub> = 1 + r sinφ′',
+						's<sub>c</sub> = (s<sub>q</sub>N<sub>q</sub> − 1) / (N<sub>q</sub> − 1) &nbsp;&nbsp; for φ′ > 0',
+						's<sub>γ</sub> = max(0.6, 1 − 0.3r)',
+						's<sub>cu</sub> = 1 + 0.2r',
+						'Conservative shape mode: s<sub>q</sub> = s<sub>c</sub> = s<sub>γ</sub> = s<sub>cu</sub> = 1.0',
+						'η = D<sub>f</sub> / B′; &nbsp; k = η for η ≤ 1, else k = atan(η)',
+						'd<sub>q</sub> = 1 + 2tanφ′(1 − sinφ′)<sup>2</sup>k',
+						'd<sub>c</sub> = d<sub>q</sub> − (1 − d<sub>q</sub>) / (N<sub>c</sub>tanφ′) &nbsp;&nbsp; for φ′ > 0',
+						'd<sub>γ</sub> = 1.0; &nbsp; d<sub>cu</sub> = 1 + 0.4k',
 						'ΔD<sub>f</sub> = clamp(maxDepth / 60, 0.10, 0.25) &nbsp;&nbsp; for the founding-depth sweep'
 					],
 					symbols: [
@@ -931,14 +943,22 @@
 						{ term: 'c′', meaning: 'effective cohesion [kPa]' },
 						{ term: 'q′', meaning: 'effective surcharge at foundation depth [kPa]' },
 						{ term: 'γ′', meaning: 'effective unit weight below the water table [kN/m³]' },
-						{ term: 'B', meaning: 'foundation width [m]' },
+						{ term: 'B, L', meaning: 'entered footing width and length [m]' },
+						{ term: 'e<sub>B</sub>, e<sub>L</sub>', meaning: 'load eccentricities used to derive B′ and L′ [m]' },
+						{ term: 'B′, L′', meaning: 'effective dimensions used for the shape-factor route [m]' },
 						{ term: 'c<sub>u</sub>', meaning: 'undrained shear strength [kPa]' },
 						{ term: 'N<sub>c</sub>, N<sub>q</sub>, N<sub>γ</sub>', meaning: 'bearing-capacity factors [-]' },
-						{ term: 's<sub>c</sub>, s<sub>q</sub>, s<sub>γ</sub>, s<sub>cu</sub>', meaning: 'shape factors [-]' }
-					]
-					,
+						{ term: 's<sub>c</sub>, s<sub>q</sub>, s<sub>γ</sub>, s<sub>cu</sub>', meaning: 'shape factors [-]' },
+						{ term: 'd<sub>c</sub>, d<sub>q</sub>, d<sub>γ</sub>, d<sub>cu</sub>', meaning: 'depth factors [-]' },
+						{ term: 'r', meaning: 'effective plan ratio B′/L′ used for non-strip shape factors [-]' },
+						{ term: 'k', meaning: 'depth-factor embedment parameter derived from D<sub>f</sub>/B′ [-]' }
+					],
 					bullets: [
-						'The bearing-depth envelope is sampled from the selected starting depth upward to the model bottom using a depth increment clamped between 0.10 m and 0.25 m.'
+						'The app now keeps the EC7 Annex D rough-base N<sub>γ</sub> = 2(N<sub>q</sub> − 1)tanφ′ formulation consistently. The earlier Vesić variant 2(N<sub>q</sub> + 1)tanφ′ is slightly larger; Annex D is now preferred here because Stage 6 is an EC7-oriented screening tool and the Annex D form is slightly more conservative and easier to audit against the code text.',
+						'Shape factors now default to Brinch Hansen / Annex D values derived from the effective plan ratio r = B′/L′. Users can switch to a conservative mode with all shape factors fixed to 1.0.',
+						'For circular footings screened through this rectangular interface, use B = L and keep e<sub>B</sub> = e<sub>L</sub> = 0 so r = 1.',
+						'The bearing-depth envelope is sampled from the selected starting depth upward to the model bottom using a depth increment clamped between 0.10 m and 0.25 m.',
+						'This remains a shallow-foundation screening model: full inclined/eccentric-load verification, sliding, ground-slope effects, base tilt, and the full three-case groundwater averaging rule for the N<sub>γ</sub> term are still outside the current app.'
 					]
 				},
 				{
@@ -968,7 +988,7 @@
 					]
 				}
 			],
-			references: ['EN 1997-1:2004+A1:2013', 'NBN EN 1997-1 ANB:2022', 'EN 1990:2002+A1:2005', 'NBN EN 1990 ANB:2005']
+			references: ['EN 1997-1:2004+A1:2013', 'NBN EN 1997-1 ANB:2022', 'EN 1990:2002+A1:2005', 'NBN EN 1990 ANB:2005', 'Vesić (1975)', 'Terzaghi & Peck (1967)']
 		},
 		{
 			id: 'dewatering',

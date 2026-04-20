@@ -221,6 +221,14 @@
       : 'Allowable bearing capacity q_allow (kPa)';
   }
 
+  function bearingShapeModeNote(selected: any) {
+    if (!selected) return '';
+    if (selected.shapeMode === 'conservative') {
+      return 'Shape factors follow conservative mode and are fixed at 1.0.';
+    }
+    return 'Shape factors follow the effective-dimension ratio r = B′/L′.';
+  }
+
   function tuningPreviewEoedRef(fit: any, previewM: number) {
     return Math.exp(fit.meanY - previewM * fit.meanX);
   }
@@ -958,14 +966,26 @@
                   <tbody>
                     <tr><td>Df (m)</td><td>{fmt(payload.stage6.bearing.config.Df, 2)} m</td></tr>
                     <tr><td>Foundation type</td><td>{payload.stage6.bearing.config.foundationType}</td></tr>
-                    <tr><td>B (m)</td><td>{fmt(payload.stage6.bearing.config.B, 2)} m</td></tr>
+                    <tr><td>B / L (m)</td><td>{fmt(payload.stage6.bearing.config.B, 2)} / {fmt(payload.stage6.bearing.config.L, 2)} m</td></tr>
+                    <tr><td>eB / eL (m)</td><td>{fmt(payload.stage6.bearing.analysis.selected.eB ?? 0, 2)} / {fmt(payload.stage6.bearing.analysis.selected.eL ?? 0, 2)} m</td></tr>
+                    <tr><td>B′ / L′ (m)</td><td>{fmt(payload.stage6.bearing.analysis.selected.BEff ?? payload.stage6.bearing.config.B, 2)} / {fmt(payload.stage6.bearing.analysis.selected.LEff ?? payload.stage6.bearing.config.L, 2)} m</td></tr>
+                    <tr><td>Shape factors</td><td>{payload.stage6.bearing.analysis.selected.shapeModeLabel || 'Brinch Hansen / Annex D'}</td></tr>
+                    <tr><td>Nγ formulation</td><td>{payload.stage6.bearing.analysis.selected.ngammaFormulaLabel || 'EC7 Annex D rough base'}</td></tr>
                     <tr><td>Load q (kPa)</td><td>{fmt(payload.stage6.bearing.config.load, 0)} kPa</td></tr>
                     <tr><td>Selected layer</td><td>{payload.stage6.bearing.analysis.selected.layer.type}</td></tr>
                     <tr><td>Drained qd (kPa)</td><td>{fmtInt(payload.stage6.bearing.analysis.selected.qdDrained)} kPa</td></tr>
                     <tr><td>Undrained qd (kPa)</td><td>{fmtInt(payload.stage6.bearing.analysis.selected.qdUndrained)} kPa</td></tr>
                   </tbody>
                 </table>
-                <div class="report-canvas report-canvas--annex report-canvas--annex-bearing"><canvas id="stage7-bearing-chart"></canvas></div>
+                <div>
+                  <div class="report-canvas report-canvas--annex report-canvas--annex-bearing"><canvas id="stage7-bearing-chart"></canvas></div>
+                  <p class="report-note" style="margin-top:10px">
+                    This bearing annex uses the EC7 Annex D rough-base
+                    <code>Nγ = 2(Nq − 1)tanφ′</code> formulation. Shape factors follow
+                    {payload.stage6.bearing.analysis.selected.shapeModeLabel || 'Brinch Hansen / Annex D'}
+                    . {bearingShapeModeNote(payload.stage6.bearing.analysis.selected)}
+                  </p>
+                </div>
               </div>
             </div>
           {/if}
