@@ -1,0 +1,2261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bishop Simplified Slope Stability — Technical Specification v1</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #faf9f6;
+  --text: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --accent: #004B72;
+  --accent-light: #e8f0f5;
+  --border: #d4d0c8;
+  --code-bg: #f0ede6;
+  --code-border: #d4d0c8;
+  --warning-bg: #fff8e1;
+  --warning-border: #f0c040;
+  --note-bg: #e8f0f5;
+  --note-border: #004B72;
+  --serif: 'Source Serif 4', Georgia, serif;
+  --sans: 'Source Sans 3', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'Consolas', monospace;
+  --max-w: 820px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.72;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 3rem 2rem 6rem;
+}
+
+/* ── Title block ── */
+.title-block {
+  border-bottom: 3px solid var(--accent);
+  padding-bottom: 1.5rem;
+  margin-bottom: 2.5rem;
+}
+.title-block h1 {
+  font-family: var(--sans);
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin-bottom: 0.5rem;
+}
+.title-block .subtitle {
+  font-family: var(--sans);
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.meta-table {
+  margin-top: 1rem;
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.meta-table td { padding: 0.15rem 0; }
+.meta-table td:first-child {
+  font-weight: 600;
+  padding-right: 1rem;
+  color: var(--text);
+}
+
+/* ── Headings ── */
+h2 {
+  font-family: var(--sans);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 3rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1.5px solid var(--border);
+}
+h3 {
+  font-family: var(--sans);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 2rem;
+  margin-bottom: 0.6rem;
+}
+h4 {
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-top: 1.5rem;
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+p { margin-bottom: 0.9rem; }
+
+/* ── Equation blocks ── */
+.eq {
+  display: block;
+  background: var(--code-bg);
+  border-left: 3px solid var(--accent);
+  padding: 0.9rem 1.2rem;
+  margin: 1.2rem 0;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  line-height: 1.8;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+.eq .label {
+  display: block;
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Code blocks ── */
+pre {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 1.2rem 1.4rem;
+  margin: 1.2rem 0;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.65;
+  overflow-x: auto;
+  tab-size: 2;
+}
+pre .kw { color: #569cd6; }
+pre .fn { color: #dcdcaa; }
+pre .cm { color: #6a9955; font-style: italic; }
+pre .st { color: #ce9178; }
+pre .nu { color: #b5cea8; }
+pre .ty { color: #4ec9b0; }
+pre .op { color: #d4d4d4; }
+pre .param { color: #9cdcfe; }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+}
+
+/* ── Callouts ── */
+.callout {
+  padding: 0.9rem 1.1rem;
+  margin: 1.2rem 0;
+  border-radius: 3px;
+  font-size: 0.92rem;
+}
+.callout.warn {
+  background: var(--warning-bg);
+  border-left: 4px solid var(--warning-border);
+}
+.callout.note {
+  background: var(--note-bg);
+  border-left: 4px solid var(--note-border);
+}
+.callout strong {
+  font-family: var(--sans);
+  font-weight: 700;
+}
+
+/* ── Tables ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.2rem 0;
+  font-size: 0.9rem;
+}
+th, td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+th {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: var(--accent-light);
+}
+td code {
+  font-size: 0.84em;
+}
+
+/* ── Lists ── */
+ul, ol {
+  margin: 0.6rem 0 0.9rem 1.8rem;
+}
+li { margin-bottom: 0.35rem; }
+
+/* ── Figure captions ── */
+.fig-caption {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: 0.3rem;
+  font-style: italic;
+}
+
+/* ── Section numbering ── */
+.snum {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  color: var(--accent);
+  margin-right: 0.4rem;
+}
+
+/* ── TOC ── */
+.toc {
+  background: var(--accent-light);
+  border: 1px solid var(--border);
+  padding: 1.2rem 1.5rem;
+  margin: 1.5rem 0 2.5rem;
+  border-radius: 3px;
+}
+.toc h3 {
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 0 0 0.6rem;
+}
+.toc ol {
+  margin: 0;
+  padding-left: 1.3rem;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+.toc li { margin-bottom: 0.1rem; }
+.toc a {
+  color: var(--text);
+  text-decoration: none;
+}
+.toc a:hover { color: var(--accent); }
+.toc ol ol {
+  margin-top: 0.15rem;
+  font-size: 0.87rem;
+}
+
+/* print */
+@media print {
+  .page { max-width: 100%; padding: 1rem; }
+  pre { white-space: pre-wrap; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- TITLE -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div class="title-block">
+  <h1>Bishop Simplified Slope Stability Solver</h1>
+  <div class="subtitle">Technical Specification &amp; Implementation Guide — v1.0</div>
+  <table class="meta-table">
+    <tr><td>Target</td><td>Circular slip-surface search with CPT-derived layering</td></tr>
+    <tr><td>Method</td><td>Bishop Simplified (1955) — satisfies moment equilibrium + vertical force per slice</td></tr>
+    <tr><td>Status</td><td>v1 specification — foundation for Spencer / M-P upgrade path</td></tr>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- TOC -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#s1">Scope &amp; Conventions</a></li>
+    <li><a href="#s2">Coordinate System &amp; Sign Conventions</a></li>
+    <li><a href="#s3">Geometry Model</a>
+      <ol>
+        <li><a href="#s3-1">Terrain polyline</a></li>
+        <li><a href="#s3-2">Soil regions from CPT layering</a></li>
+        <li><a href="#s3-3">Phreatic surface &amp; pore-pressure model</a></li>
+      </ol>
+    </li>
+    <li><a href="#s4">Slip-Circle Definition &amp; Search Strategy</a>
+      <ol>
+        <li><a href="#s4-1">Circle parameterisation</a></li>
+        <li><a href="#s4-2">Grid-radius search</a></li>
+        <li><a href="#s4-3">Entry-exit constraint mode</a></li>
+        <li><a href="#s4-4">Validity filters</a></li>
+      </ol>
+    </li>
+    <li><a href="#s5">Slice Generation</a>
+      <ol>
+        <li><a href="#s5-1">Vertical-cut placement</a></li>
+        <li><a href="#s5-2">Slice geometry extraction</a></li>
+        <li><a href="#s5-3">Multi-layer slices</a></li>
+      </ol>
+    </li>
+    <li><a href="#s6">Bishop Simplified Theory</a>
+      <ol>
+        <li><a href="#s6-1">Free-body diagram &amp; assumptions</a></li>
+        <li><a href="#s6-2">Governing equation derivation</a></li>
+        <li><a href="#s6-3">Iteration scheme</a></li>
+        <li><a href="#s6-4">Convergence criteria &amp; failure modes</a></li>
+      </ol>
+    </li>
+    <li><a href="#s7">Data Structures</a></li>
+    <li><a href="#s8">Complete Pseudocode</a>
+      <ol>
+        <li><a href="#s8-1">Geometry &amp; region builder</a></li>
+        <li><a href="#s8-2">Circle-terrain intersection</a></li>
+        <li><a href="#s8-3">Slice builder</a></li>
+        <li><a href="#s8-4">Bishop iteration loop</a></li>
+        <li><a href="#s8-5">Search driver</a></li>
+      </ol>
+    </li>
+    <li><a href="#s9">Pore-Pressure Handling</a></li>
+    <li><a href="#s10">Verification &amp; Test Cases</a></li>
+    <li><a href="#s11">Upgrade Path to Spencer / M-P</a></li>
+    <li><a href="#s12">Interactive Canvas — Drawing &amp; Editing</a>
+      <ol>
+        <li><a href="#s12-1">Canvas coordinate system &amp; viewport</a></li>
+        <li><a href="#s12-2">Terrain drawing tool</a></li>
+        <li><a href="#s12-3">CPT placement &amp; layer adoption</a></li>
+        <li><a href="#s12-4">Phreatic surface drawing</a></li>
+        <li><a href="#s12-5">Entry-exit zone definition</a></li>
+        <li><a href="#s12-6">Vertex editing &amp; snapping</a></li>
+        <li><a href="#s12-7">Material panel &amp; soil-type management</a></li>
+        <li><a href="#s12-8">Manual region override</a></li>
+      </ol>
+    </li>
+    <li><a href="#s13">Visualization &amp; Rendering</a>
+      <ol>
+        <li><a href="#s13-1">Layer rendering — material fills &amp; legend</a></li>
+        <li><a href="#s13-2">Slip-circle rendering</a></li>
+        <li><a href="#s13-3">Slice visualization</a></li>
+        <li><a href="#s13-4">Result overlays &amp; annotations</a></li>
+        <li><a href="#s13-5">Multi-surface comparison view</a></li>
+      </ol>
+    </li>
+    <li><a href="#s14">UI State Machine &amp; Data Flow</a>
+      <ol>
+        <li><a href="#s14-1">Application states</a></li>
+        <li><a href="#s14-2">Event flow &amp; solver trigger</a></li>
+        <li><a href="#s14-3">Canvas-to-solver data contract</a></li>
+        <li><a href="#s14-4">Undo/redo &amp; serialisation</a></li>
+      </ol>
+    </li>
+    <li><a href="#s15">References</a></li>
+  </ol>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §1 SCOPE -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s1"><span class="snum">1</span>Scope &amp; Conventions</h2>
+
+<p>This document specifies the complete algorithmic pipeline from user-drawn terrain and CPT-derived soil layering through to a ranked list of Bishop Simplified factors of safety for circular slip surfaces. It is written so that a developer with no prior slope-stability experience can produce a working implementation. Every equation is given in computable form; every data flow is explicit.</p>
+
+<p>The method implemented is <strong>Bishop Simplified</strong> (Bishop, 1955). It satisfies overall moment equilibrium about the circle centre and vertical force equilibrium per slice. It assumes zero interslice shear forces but retains interslice normal forces implicitly through the vertical equilibrium. This makes the factor of safety appear on both sides of the governing equation, requiring a simple fixed-point iteration that converges reliably for well-posed problems.</p>
+
+<div class="callout note">
+  <strong>Accuracy context.</strong> Bishop Simplified typically agrees within 5% of rigorous methods (Spencer, Morgenstern–Price) for circular failure surfaces. It is the standard first-pass method in commercial tools (SLOPE/W, SLIDE, etc.) and is accepted by USACE EM 1110-2-1902, FHWA NHI-01-028, and Eurocode 7 annexes for circular analysis.
+</div>
+
+<h3>Unit system</h3>
+<p>All internal computation uses SI base units: metres (m), kilonewtons per cubic metre (kN/m³) for unit weights, kilopascals (kPa) for stresses and cohesion, degrees for friction angles (converted to radians for trigonometry). The solver is 2D plane-strain; all forces are per metre run of slope.</p>
+
+<h3>Notation conventions</h3>
+<table>
+  <tr><th>Symbol</th><th>Meaning</th><th>Unit</th></tr>
+  <tr><td><code>F</code></td><td>Factor of safety (the unknown)</td><td>—</td></tr>
+  <tr><td><code>c'</code></td><td>Effective cohesion</td><td>kPa</td></tr>
+  <tr><td><code>φ'</code></td><td>Effective friction angle</td><td>°</td></tr>
+  <tr><td><code>γ</code></td><td>Total unit weight of soil</td><td>kN/m³</td></tr>
+  <tr><td><code>u</code></td><td>Pore-water pressure at slice base</td><td>kPa</td></tr>
+  <tr><td><code>W</code></td><td>Slice weight (total, including water)</td><td>kN/m</td></tr>
+  <tr><td><code>b</code></td><td>Slice width (horizontal)</td><td>m</td></tr>
+  <tr><td><code>α</code></td><td>Inclination of slice base to horizontal (positive when base slopes downward left-to-right)</td><td>°</td></tr>
+  <tr><td><code>l</code></td><td>Length of slice base (= b / cos α)</td><td>m</td></tr>
+  <tr><td><code>R</code></td><td>Radius of slip circle</td><td>m</td></tr>
+  <tr><td><code>xc, yc</code></td><td>Centre of slip circle</td><td>m</td></tr>
+</table>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §2 COORDINATE SYSTEM -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s2"><span class="snum">2</span>Coordinate System &amp; Sign Conventions</h2>
+
+<p>The coordinate system is right-handed with x pointing right (horizontal distance along slope cross-section) and y pointing up (elevation). The circle centre <code>(xc, yc)</code> always lies above the terrain. The slip circle arc runs from the entry point (higher elevation, typically the crest zone) to the exit point (lower elevation, typically the toe zone) in the positive x-direction.</p>
+
+<p>The base angle α of each slice is defined as the angle between the slice-base chord and the horizontal, measured positive clockwise from horizontal. For a typical left-to-right descending slope, slices near the entry (active zone) have positive α, slices near the toe (passive zone) have negative α. This sign convention is critical and directly affects the moment arm calculation:</p>
+
+<div class="eq">
+<span class="label">Base angle from circle geometry</span>
+α_i = arctan( (y_base_left - y_base_right) / (x_right - x_left) )
+
+Equivalently, from the circle centre:
+sin(α_i) = (x_mid_i - xc) / R
+
+where x_mid_i is the x-coordinate of the midpoint of slice i's base.
+</div>
+
+<div class="callout warn">
+  <strong>Critical implementation note.</strong> Use <code>atan2</code> everywhere. Never use <code>atan</code>. The quadrant matters for slices that cross the lowest point of the circle where the sign of α flips. Using <code>atan2(dy, dx)</code> handles this automatically.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §3 GEOMETRY MODEL -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s3"><span class="snum">3</span>Geometry Model</h2>
+
+<h3 id="s3-1"><span class="snum">3.1</span>Terrain polyline</h3>
+
+<p>The terrain surface is a piecewise-linear polyline defined by the user, stored as an ordered array of <code>(x, y)</code> vertices from left to right. The polyline must be monotonically increasing in x (no overhangs). The terrain defines the upper boundary of the soil mass.</p>
+
+<p>Between any two consecutive terrain vertices, the surface elevation at arbitrary x is linearly interpolated:</p>
+
+<div class="eq">
+<span class="label">Terrain interpolation</span>
+y_terrain(x) = y_j + (y_{j+1} - y_j) × (x - x_j) / (x_{j+1} - x_j)
+
+where x_j ≤ x ≤ x_{j+1}
+</div>
+
+<p>The implementation must provide a function <code>terrainY(x)</code> that performs this interpolation with binary search on the vertex array for efficiency. Outside the terrain extent, the function should extrapolate horizontally (constant y at the nearest endpoint), or reject the query depending on context.</p>
+
+<h3 id="s3-2"><span class="snum">3.2</span>Soil regions from CPT layering</h3>
+
+<p>The CPT-derived layering from the existing app provides a vertical column of soil layers at each CPT location. Each layer has a top depth, bottom depth, and associated soil parameters (c', φ', γ). The slope stability module must convert these into 2D closed polygonal soil regions.</p>
+
+<h4>Layer interpolation between CPTs</h4>
+
+<p>Given two adjacent CPT locations at x-positions <code>x_A</code> and <code>x_B</code>, each with their own layer boundaries, the interpolation proceeds as follows:</p>
+
+<ol>
+  <li><strong>Match layers</strong> between CPTs by soil-type ID (not by depth). Each unique soil-type present in either CPT produces one region.</li>
+  <li><strong>Linear interpolation</strong> of layer boundaries: for each matched soil type, interpolate the top and bottom depth linearly between the two CPT positions. Where a layer exists in one CPT but not the adjacent one, either pinch it out (zero thickness at the far CPT) or flag the boundary as a lateral termination.</li>
+  <li><strong>Extend to terrain</strong>: the uppermost layer at each x must reach the terrain surface. If the CPT top-of-first-layer is below terrain, extend the first layer upward. If there is fill or topsoil above the CPT start depth, the user must define this as an explicit layer.</li>
+  <li><strong>Extend to depth</strong>: the deepest layer in each column extends downward to a defined model base (e.g. 5 m below the deepest slip circle considered) or to bedrock if defined.</li>
+</ol>
+
+<h4>Region polygon construction</h4>
+
+<p>Each soil region is stored as a closed polygon (array of vertices, counterclockwise winding). The regions must tile the model cross-section without gaps or overlaps. The polygon vertices come from the interpolated layer boundaries traced across the model width. Each region carries a single <code>SoilType</code> reference containing c', φ', γ, and optionally γ_sat for below-water calculations.</p>
+
+<div class="callout note">
+  <strong>Why polygons, not depth arrays.</strong> Closed polygons make slice clipping (intersection of vertical strip with region polygon) a standard computational-geometry operation. They handle pinch-outs, lenses, and irregular boundaries cleanly. Every slice–layer intersection produces a sub-polygon whose area and centroid are computable with the shoelace formula. This is dramatically simpler and less error-prone than trying to track layer depths per-slice from raw arrays.
+</div>
+
+<h3 id="s3-3"><span class="snum">3.3</span>Phreatic surface &amp; pore-pressure model</h3>
+
+<p>The phreatic surface (groundwater table) is stored as another polyline, similar to the terrain. For v1, pore-water pressure at any point is computed from the vertical distance below the phreatic surface:</p>
+
+<div class="eq">
+<span class="label">Hydrostatic pore pressure</span>
+u(x, y) = γ_w × (y_phreatic(x) - y)    if y &lt; y_phreatic(x)
+u(x, y) = 0                              if y ≥ y_phreatic(x)
+
+where γ_w = 9.81 kN/m³
+</div>
+
+<p>The pore pressure relevant to each slice is evaluated at the midpoint of the slice base. For slices where the phreatic surface intersects the slice base, the average u across the base should be used (integrate linearly and divide by base length), but for v1 the midpoint value is acceptable and standard in most implementations.</p>
+
+<div class="callout warn">
+  <strong>Pore-pressure alternative: r_u method.</strong> If the app does not have a defined phreatic surface, an alternative is the pore-pressure ratio: <code>u = r_u × γ × h</code> where h is the height of the soil column above the slice base midpoint. This is a global simplification; <code>r_u</code> values of 0.0 (dry), 0.25 (typical), or 0.5 (high water table) are common. The phreatic-surface approach is preferred because it allows spatial variation.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §4 SLIP CIRCLE SEARCH -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s4"><span class="snum">4</span>Slip-Circle Definition &amp; Search Strategy</h2>
+
+<h3 id="s4-1"><span class="snum">4.1</span>Circle parameterisation</h3>
+
+<p>A trial slip surface is a circular arc defined by three parameters: the centre coordinates <code>(xc, yc)</code> and the radius <code>R</code>. The arc intersects the terrain surface at exactly two points: the entry point (upslope) and the exit point (downslope). These intersection points define the horizontal extent of the sliding mass.</p>
+
+<p>Given a circle and the terrain polyline, the entry and exit points are found by solving, for each terrain segment:</p>
+
+<div class="eq">
+<span class="label">Circle–segment intersection</span>
+Given terrain segment from (x1, y1) to (x2, y2):
+parametrise as  P(t) = (x1, y1) + t × ((x2, y2) - (x1, y1)),  t ∈ [0, 1]
+
+Substitute into circle equation:
+(P_x(t) - xc)² + (P_y(t) - yc)² = R²
+
+This yields a quadratic in t:
+a·t² + b·t + c = 0
+
+where:
+  dx = x2 - x1,  dy = y2 - y1
+  fx = x1 - xc,  fy = y1 - yc
+  a = dx² + dy²
+  b = 2·(fx·dx + fy·dy)
+  c = fx² + fy² - R²
+
+Solutions t in [0, 1] give valid intersection points.
+Sort all valid intersections by x-coordinate → first = entry, last = exit.
+</div>
+
+<p>A valid slip surface must have exactly two terrain intersections (entry and exit), and the entire arc between them must lie below the terrain. If the arc re-emerges through the terrain between entry and exit, the surface is multi-block and must be rejected in v1.</p>
+
+<h3 id="s4-2"><span class="snum">4.2</span>Grid-radius search</h3>
+
+<p>The simplest search strategy discretises the space of possible circle centres and radii. Define a rectangular grid of candidate circle centres above the slope, and for each centre try a range of radii.</p>
+
+<h4>Grid bounds</h4>
+<ol>
+  <li><strong>Horizontal extent</strong>: from x_crest − 0.5 × H to x_toe + 0.5 × H, where H is the slope height.</li>
+  <li><strong>Vertical extent</strong>: from y_crest to y_crest + 2 × H. Circle centres must be above the terrain.</li>
+  <li><strong>Grid spacing</strong>: start with H/10 in both directions. For a 10 m slope this gives 1 m spacing. After coarse search, refine around the best centre with spacing H/40.</li>
+  <li><strong>Radius range</strong>: for each centre, the minimum radius is the distance from the centre to the nearest terrain point (so the circle at least touches the terrain). The maximum radius is the distance from the centre to the deepest plausible failure depth. Try 10–20 radii per centre, linearly spaced.</li>
+</ol>
+
+<h4>Search size</h4>
+<p>A typical coarse search: 15 × 15 grid × 15 radii = 3,375 trial surfaces. Each Bishop iteration takes ~30 slices × ~5 iterations = ~150 evaluations, so the total is roughly 500,000 floating-point slice evaluations. This runs in well under 1 second on any modern device. The refinement pass adds another ~5,000 trials around the best centre. Total: well under 2 seconds.</p>
+
+<h3 id="s4-3"><span class="snum">4.3</span>Entry-exit constraint mode</h3>
+
+<p>A more user-friendly alternative: instead of searching the (xc, yc, R) space, the user defines an entry zone (a segment of the terrain near the crest) and an exit zone (a segment near the toe). The search then generates circles that pass through all combinations of entry and exit points.</p>
+
+<p>Given an entry point <code>(x_en, y_en)</code> and an exit point <code>(x_ex, y_ex)</code>, the family of circles passing through both points is parameterised by one free parameter. The most natural choice is the circle centre's x-coordinate <code>xc</code>. Given two points on a circle:</p>
+
+<div class="eq">
+<span class="label">Circle from two points + one parameter</span>
+Given entry (x_en, y_en), exit (x_ex, y_ex), and chosen xc:
+
+From the circle equation applied to both points:
+(x_en - xc)² + (y_en - yc)² = R²
+(x_ex - xc)² + (y_ex - yc)² = R²
+
+Subtract to eliminate R²:
+yc = [ (x_en² - x_ex²) + (y_en² - y_ex²) - 2·xc·(x_en - x_ex) ] / [ 2·(y_en - y_ex) ]
+
+Then:
+R² = (x_en - xc)² + (y_en - yc)²
+
+Constraint: yc must be above terrain (circle centre above slope).
+Constraint: R must be large enough that the arc passes below the terrain between entry and exit.
+</div>
+
+<p>Discretise the entry zone into ~10 points, the exit zone into ~10 points, and for each (entry, exit) pair sweep xc across ~15 values. This gives 10 × 10 × 15 = 1,500 trial surfaces — fast and well-constrained.</p>
+
+<h3 id="s4-4"><span class="snum">4.4</span>Validity filters</h3>
+
+<p>Before running Bishop iteration on a trial circle, apply these filters (in order, cheapest first):</p>
+
+<ol>
+  <li><strong>Two-intersection test</strong>: the circle must intersect the terrain at exactly two points between entry and exit. Reject if zero, one, or more than two intersections.</li>
+  <li><strong>Minimum depth test</strong>: the maximum vertical distance from terrain to the arc (the depth of the slip at its deepest) must exceed a threshold, e.g. 0.5 m. Shallow surfaces are physically meaningless and numerically noisy.</li>
+  <li><strong>Entry/exit angle test</strong>: the angle at which the slip surface emerges through the terrain at the exit point must be less than a maximum, typically 60° from horizontal. Very steep exit angles produce unrealistic passive-zone geometry and convergence problems.</li>
+  <li><strong>No re-emergence test</strong>: verify the arc stays below the terrain between entry and exit. Sample 20+ points along the arc and check each is at or below the terrain. This catches circles that cut through intermediate benches or berms.</li>
+  <li><strong>Minimum slice count</strong>: after slicing (§5), require at least 5 valid slices. Fewer means the geometry is degenerate.</li>
+</ol>
+
+<div class="callout warn">
+  <strong>Performance note.</strong> Filter (1) and (2) eliminate the majority of invalid circles without ever building slices. Applying filters in cost order is essential for search performance. A rejected circle should cost only a circle-terrain intersection test, not a full slice build.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §5 SLICE GENERATION -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s5"><span class="snum">5</span>Slice Generation</h2>
+
+<h3 id="s5-1"><span class="snum">5.1</span>Vertical-cut placement</h3>
+
+<p>Slices are vertical cuts through the sliding mass between the entry and exit x-coordinates. The cut positions are not uniform — they are placed at every geometric discontinuity, then intermediate cuts are added to limit maximum slice width.</p>
+
+<h4>Mandatory cut positions (sorted set of x-values)</h4>
+<ol>
+  <li>The entry x-coordinate (x_en).</li>
+  <li>The exit x-coordinate (x_ex).</li>
+  <li>Every terrain vertex x between x_en and x_ex (terrain slope breaks).</li>
+  <li>Every soil-region boundary intersection with the vertical strip between x_en and x_ex. These are the x-positions where a layer boundary crosses the terrain surface or the slip-circle arc.</li>
+  <li>The x-position where the phreatic surface crosses the slip-circle arc (if applicable).</li>
+  <li>The x-position of the lowest point of the slip circle (where α changes sign), to prevent a single slice from spanning the sign change.</li>
+</ol>
+
+<h4>Intermediate cuts</h4>
+<p>After placing all mandatory cuts, inspect each resulting interval. If any interval is wider than <code>(x_ex − x_en) / N_target</code> where <code>N_target = 30</code>, subdivide it into equal sub-intervals until all slices are below the threshold width. This ensures roughly 30 slices minimum while honouring geometric boundaries.</p>
+
+<div class="callout note">
+  <strong>Why 30 slices.</strong> GeoStudio documentation notes that beyond ~30 slices, the factor of safety changes negligibly. Fewer than ~10 can introduce meaningful discretisation error. 30 is a safe default; 50 is conservative; above 100 is wasted computation.
+</div>
+
+<h3 id="s5-2"><span class="snum">5.2</span>Slice geometry extraction</h3>
+
+<p>For each slice between consecutive cuts at <code>x_L</code> and <code>x_R</code>, extract:</p>
+
+<div class="eq">
+<span class="label">Slice geometry quantities</span>
+Width:
+  b = x_R - x_L
+
+Terrain elevation at edges:
+  y_TL = terrainY(x_L)
+  y_TR = terrainY(x_R)
+
+Circle elevation at edges (lower arc):
+  y_CL = yc - sqrt(R² - (x_L - xc)²)
+  y_CR = yc - sqrt(R² - (x_R - xc)²)
+
+  Check: if (x - xc)² > R², this x is outside the circle → no valid slice.
+  Always take the LOWER root (yc - sqrt) for the slip surface.
+
+Slice base midpoint:
+  x_mid = (x_L + x_R) / 2
+  y_base_mid = yc - sqrt(R² - (x_mid - xc)²)
+  y_top_mid = terrainY(x_mid)
+
+Base inclination angle:
+  α = arcsin((x_mid - xc) / R)
+  — or equivalently —
+  α = atan2(y_CL - y_CR, x_R - x_L)
+
+Base length:
+  l = b / cos(α)
+</div>
+
+<h3 id="s5-3"><span class="snum">5.3</span>Multi-layer slices</h3>
+
+<p>A slice may pass through multiple soil layers between the terrain surface and the slip circle. The slice weight W must account for the contribution of each layer. The base properties (c', φ') come from the layer at the slip surface, not from layers above.</p>
+
+<h4>Weight calculation for multi-layer slice</h4>
+
+<p>For each slice, identify all soil regions that overlap with the vertical strip [x_L, x_R] × [y_circle, y_terrain]. For each overlapping region, compute the area of intersection (the sub-polygon formed by clipping the vertical strip against the region polygon), then:</p>
+
+<div class="eq">
+<span class="label">Slice weight — multi-layer</span>
+W_i = Σ_k ( A_k × γ_k )
+
+where:
+  A_k = area of region k within slice i  (m²)
+  γ_k = unit weight of region k           (kN/m³)
+
+For the simplified case of horizontal or near-horizontal layering:
+  A_k ≈ b × h_k
+where h_k is the average thickness of layer k within the slice.
+
+The base soil type is the region that contains the slice-base midpoint (x_mid, y_base_mid).
+  c'_base = soilRegion(x_mid, y_base_mid).c_eff
+  φ'_base = soilRegion(x_mid, y_base_mid).phi_eff
+</div>
+
+<div class="callout note">
+  <strong>Simplification for v1.</strong> If layers are approximately horizontal (typical for CPT-derived profiles), the trapezoidal approximation <code>A_k ≈ b × (h_k_left + h_k_right) / 2</code> is adequate and avoids polygon clipping. Full polygon clipping is needed only when layers are steeply inclined or pinch out within a slice.
+</div>
+
+<h4>Point-in-region test for base soil type</h4>
+<p>To determine which soil region contains the base midpoint, perform a standard point-in-polygon test (ray-casting or winding number) against each region polygon. Pre-sort regions so the deepest (lowest expected y) is tested first, since the base is always below the upper layers. Cache the region assignment per slice.</p>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §6 BISHOP SIMPLIFIED THEORY -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s6"><span class="snum">6</span>Bishop Simplified Theory</h2>
+
+<h3 id="s6-1"><span class="snum">6.1</span>Free-body diagram &amp; assumptions</h3>
+
+<p>Consider a single vertical slice through the sliding mass. The forces acting on it are:</p>
+
+<ol>
+  <li><strong>W</strong> — self-weight, acting vertically downward through the slice centroid.</li>
+  <li><strong>N'</strong> — effective normal force on the slice base, acting perpendicular to the base.</li>
+  <li><strong>u · l</strong> — pore-water force on the base, acting perpendicular to the base (opposite to N').</li>
+  <li><strong>S</strong> — shear force mobilised on the base, acting along the base (resisting sliding).</li>
+  <li><strong>E_L, E_R</strong> — interslice normal forces on the left and right vertical faces.</li>
+  <li><strong>X_L, X_R</strong> — interslice shear forces on the left and right vertical faces.</li>
+</ol>
+
+<p><strong>Bishop Simplified assumptions:</strong></p>
+<ol>
+  <li>The interslice shear forces are zero: <code>X_L = X_R = 0</code> for all slices. This is the defining simplification. It does not mean interslice normal forces are zero — they are implicitly determined by vertical equilibrium.</li>
+  <li>The Mohr–Coulomb failure criterion applies on the base: <code>τ_f = c' + (σ_n - u) × tan(φ')</code>.</li>
+  <li>The mobilised shear stress is <code>τ_m = τ_f / F</code>, where F is the factor of safety (uniform along the entire slip surface).</li>
+  <li>Moment equilibrium is taken about the circle centre, which causes the normal force and pore pressure (both radial) to vanish from the moment equation.</li>
+</ol>
+
+<h3 id="s6-2"><span class="snum">6.2</span>Governing equation derivation</h3>
+
+<p>Starting from vertical force equilibrium on a single slice (with X_L = X_R = 0):</p>
+
+<div class="eq">
+<span class="label">Vertical equilibrium per slice</span>
+W = N'·cos(α) + u·l·cos(α) + S·sin(α)
+
+where S = (1/F) × (c'·l + N'·tan(φ'))
+
+Substitute S and solve for N':
+W = N'·cos(α) + u·l·cos(α) + (sin(α)/F)·(c'·l + N'·tan(φ'))
+
+N'·[cos(α) + sin(α)·tan(φ')/F] = W - u·l·cos(α) - c'·l·sin(α)/F
+
+Define: m_α = cos(α) + sin(α)·tan(φ')/F
+
+Then: N' = [W - u·l·cos(α) - c'·l·sin(α)/F] / m_α
+</div>
+
+<p>Now take moment equilibrium about the circle centre. The moment arm for W is <code>R·sin(α)</code> (driving). The moment arm for S is <code>R</code> (resisting — because shear on the base is tangential to the circle, so its lever arm to the centre is always R). The normal force N' and the pore-pressure force u·l are both radial, so their moment about the centre is zero.</p>
+
+<div class="eq">
+<span class="label">Moment equilibrium about circle centre</span>
+Σ W_i · R · sin(α_i)  =  Σ S_i · R
+
+The R cancels:
+Σ W_i · sin(α_i)  =  Σ S_i
+
+Since S_i = (1/F) × (c'_i · l_i + N'_i · tan(φ'_i)):
+
+F = Σ (c'_i · l_i + N'_i · tan(φ'_i))  /  Σ W_i · sin(α_i)
+</div>
+
+<p>Now substitute the expression for N' and use <code>l = b / cos(α)</code>:</p>
+
+<div class="eq">
+<span class="label">Bishop Simplified — final governing equation</span>
+          Σ [ (c'·b + (W - u·b)·tan(φ')) × (1 / m_α) ]
+F  =  ─────────────────────────────────────────────────────
+                      Σ [ W · sin(α) ]
+
+where:
+
+  m_α(i) = cos(α_i) + sin(α_i) · tan(φ'_i) / F
+
+For each slice i:
+  numerator term:  [ c'_i · b_i  +  (W_i - u_i · b_i) · tan(φ'_i) ]  /  m_α(i)
+  denominator term:  W_i · sin(α_i)
+</div>
+
+<div class="callout warn">
+  <strong>Critical subtlety.</strong> In the numerator, the pore-pressure term is <code>u · b</code>, not <code>u · l</code>. This is because when you substitute <code>l = b / cos(α)</code> and multiply through by <code>cos(α)</code> to form m_α, the <code>l · cos(α)</code> simplifies to <code>b</code>. Getting this wrong (using u·l instead of u·b) is the single most common implementation error in Bishop Simplified and will produce wrong factors of safety. Verify this in your derivation.
+</div>
+
+<h3 id="s6-3"><span class="snum">6.3</span>Iteration scheme</h3>
+
+<p>Because F appears on both sides of the equation (inside m_α on the right-hand side and as the overall ratio), the equation must be solved iteratively. The standard approach is simple fixed-point iteration (successive substitution):</p>
+
+<div class="eq">
+<span class="label">Fixed-point iteration</span>
+1. Choose initial guess: F⁰ = F_Fellenius  (or simply F⁰ = 1.0)
+
+2. For iteration k = 0, 1, 2, ...:
+   a. For each slice i, compute:
+        m_α(i) = cos(α_i) + sin(α_i) · tan(φ'_i) / F^k
+   b. Compute:
+        numerator   = Σ_i [ (c'_i · b_i + (W_i - u_i · b_i) · tan(φ'_i)) / m_α(i) ]
+        denominator = Σ_i [ W_i · sin(α_i) ]
+   c. New estimate:
+        F^{k+1} = numerator / denominator
+
+3. Stop when |F^{k+1} - F^k| < tolerance  (tolerance = 0.001)
+</div>
+
+<h4>Initial guess: Ordinary (Fellenius) method</h4>
+<p>A good initial guess accelerates convergence. The Ordinary Method of Slices (Fellenius, 1927) does not require iteration and provides a useful starting point:</p>
+
+<div class="eq">
+<span class="label">Fellenius factor of safety (initial guess)</span>
+              Σ [ c'_i · l_i + (W_i · cos(α_i) - u_i · l_i) · tan(φ'_i) ]
+F_Fellenius = ─────────────────────────────────────────────────────────────────
+                              Σ [ W_i · sin(α_i) ]
+
+This satisfies only moment equilibrium without vertical force equilibrium per slice.
+It typically underestimates F by 5–15% compared to Bishop.
+</div>
+
+<h3 id="s6-4"><span class="snum">6.4</span>Convergence criteria &amp; failure modes</h3>
+
+<p>Bishop Simplified converges rapidly — typically 4–6 iterations for well-posed problems. However, certain conditions cause trouble:</p>
+
+<table>
+  <tr><th>Condition</th><th>Symptom</th><th>Action</th></tr>
+  <tr>
+    <td><code>m_α ≤ 0</code> for any slice</td>
+    <td>Division by zero or negative denominator → F oscillates or diverges</td>
+    <td>Reject this trial surface. This occurs when <code>α</code> is steeply negative (passive zone) and <code>tan(φ')/F</code> is large. It is a known limitation of Bishop Simplified for deep-seated failures with steep exit angles.</td>
+  </tr>
+  <tr>
+    <td>Denominator <code>Σ W·sin(α) ≤ 0</code></td>
+    <td>F becomes negative or infinite</td>
+    <td>Reject. This means the slip surface has no net driving moment — it is not a physically meaningful failure.</td>
+  </tr>
+  <tr>
+    <td>No convergence in 50 iterations</td>
+    <td>F oscillates between two values or drifts</td>
+    <td>Reject and flag. Consider under-relaxation: <code>F^{k+1} = ω·F_new + (1-ω)·F^k</code> with ω = 0.5. If this still fails after 50 iterations, the surface is genuinely problematic.</td>
+  </tr>
+  <tr>
+    <td><code>F &lt; 0.1</code> during iteration</td>
+    <td>Extreme instability — possibly a numerical artifact</td>
+    <td>Flag as potentially unstable but do not reject outright. Very low F values can be real for steep, weak slopes.</td>
+  </tr>
+</table>
+
+<div class="callout note">
+  <strong>Under-relaxation implementation.</strong> If during any iteration k the change |F^{k+1} − F^k| increases compared to the previous step (i.e. the iteration is diverging), switch to under-relaxed updates: <code>F^{k+1} = 0.5 × F_new + 0.5 × F^k</code>. This damps oscillation without affecting the final converged value.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §7 DATA STRUCTURES -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s7"><span class="snum">7</span>Data Structures</h2>
+
+<p>The following data structures define the complete state required by the solver. They are language-agnostic; adapt to your stack's conventions (classes, structs, interfaces, typed objects).</p>
+
+<pre>
+<span class="cm">// ── Core geometry ──</span>
+
+<span class="kw">struct</span> <span class="ty">Point</span> {
+  <span class="param">x</span>: <span class="ty">float</span>    <span class="cm">// horizontal position (m)</span>
+  <span class="param">y</span>: <span class="ty">float</span>    <span class="cm">// elevation (m)</span>
+}
+
+<span class="kw">struct</span> <span class="ty">Polyline</span> {
+  <span class="param">vertices</span>: <span class="ty">Point[]</span>   <span class="cm">// ordered left→right, monotonic in x</span>
+
+  <span class="fn">interpolateY</span>(<span class="param">x</span>): <span class="ty">float</span>
+    <span class="cm">// binary search for segment, then linear interpolation</span>
+}
+
+<span class="cm">// ── Soil model ──</span>
+
+<span class="kw">struct</span> <span class="ty">SoilType</span> {
+  <span class="param">id</span>:          <span class="ty">string</span>     <span class="cm">// unique identifier</span>
+  <span class="param">c_eff</span>:       <span class="ty">float</span>      <span class="cm">// effective cohesion c' (kPa)</span>
+  <span class="param">phi_eff</span>:     <span class="ty">float</span>      <span class="cm">// effective friction angle φ' (degrees)</span>
+  <span class="param">gamma</span>:       <span class="ty">float</span>      <span class="cm">// total unit weight γ (kN/m³)</span>
+  <span class="param">gamma_sat</span>:   <span class="ty">float</span>      <span class="cm">// saturated unit weight (kN/m³), optional</span>
+}
+
+<span class="kw">struct</span> <span class="ty">SoilRegion</span> {
+  <span class="param">polygon</span>:    <span class="ty">Point[]</span>    <span class="cm">// closed polygon, CCW winding</span>
+  <span class="param">soilType</span>:   <span class="ty">SoilType</span>   <span class="cm">// material reference</span>
+
+  <span class="fn">containsPoint</span>(<span class="param">p</span>: <span class="ty">Point</span>): <span class="ty">bool</span>
+    <span class="cm">// ray-casting point-in-polygon test</span>
+
+  <span class="fn">clipToVerticalStrip</span>(<span class="param">xL</span>, <span class="param">xR</span>): <span class="ty">Point[]</span>
+    <span class="cm">// Sutherland–Hodgman clip against x=xL, x=xR</span>
+
+  <span class="fn">area</span>(): <span class="ty">float</span>
+    <span class="cm">// shoelace formula on polygon</span>
+}
+
+<span class="cm">// ── Slip circle ──</span>
+
+<span class="kw">struct</span> <span class="ty">SlipCircle</span> {
+  <span class="param">xc</span>: <span class="ty">float</span>      <span class="cm">// centre x (m)</span>
+  <span class="param">yc</span>: <span class="ty">float</span>      <span class="cm">// centre y (m)</span>
+  <span class="param">R</span>:  <span class="ty">float</span>      <span class="cm">// radius (m)</span>
+
+  <span class="fn">yCircle</span>(<span class="param">x</span>): <span class="ty">float</span>
+    <span class="cm">// yc - sqrt(R² - (x - xc)²)  — lower arc</span>
+    <span class="cm">// returns NaN if |x - xc| > R</span>
+
+  <span class="fn">baseAngle</span>(<span class="param">x</span>): <span class="ty">float</span>
+    <span class="cm">// asin((x - xc) / R)  in radians</span>
+}
+
+<span class="cm">// ── Slice ──</span>
+
+<span class="kw">struct</span> <span class="ty">Slice</span> {
+  <span class="param">index</span>:       <span class="ty">int</span>
+  <span class="param">xL</span>:          <span class="ty">float</span>       <span class="cm">// left edge x</span>
+  <span class="param">xR</span>:          <span class="ty">float</span>       <span class="cm">// right edge x</span>
+  <span class="param">b</span>:           <span class="ty">float</span>       <span class="cm">// width = xR - xL</span>
+  <span class="param">xMid</span>:        <span class="ty">float</span>       <span class="cm">// midpoint x</span>
+  <span class="param">yTop</span>:        <span class="ty">float</span>       <span class="cm">// terrain at xMid</span>
+  <span class="param">yBase</span>:       <span class="ty">float</span>       <span class="cm">// circle at xMid</span>
+  <span class="param">alpha</span>:       <span class="ty">float</span>       <span class="cm">// base angle (radians)</span>
+  <span class="param">baseLength</span>:  <span class="ty">float</span>       <span class="cm">// l = b / cos(α)</span>
+  <span class="param">W</span>:           <span class="ty">float</span>       <span class="cm">// total weight (kN/m)</span>
+  <span class="param">u</span>:           <span class="ty">float</span>       <span class="cm">// pore pressure at base midpoint (kPa)</span>
+  <span class="param">c_eff</span>:       <span class="ty">float</span>       <span class="cm">// c' of base layer (kPa)</span>
+  <span class="param">phi_eff</span>:     <span class="ty">float</span>       <span class="cm">// φ' of base layer (radians)</span>
+  <span class="param">layerAreas</span>:  <span class="ty">{soilType: SoilType, area: float}[]</span>
+}
+
+<span class="cm">// ── Result ──</span>
+
+<span class="kw">struct</span> <span class="ty">BishopResult</span> {
+  <span class="param">circle</span>:        <span class="ty">SlipCircle</span>
+  <span class="param">F</span>:             <span class="ty">float</span>       <span class="cm">// converged factor of safety</span>
+  <span class="param">converged</span>:     <span class="ty">bool</span>
+  <span class="param">iterations</span>:    <span class="ty">int</span>
+  <span class="param">slices</span>:        <span class="ty">Slice[]</span>
+  <span class="param">F_fellenius</span>:   <span class="ty">float</span>       <span class="cm">// initial guess (for QA)</span>
+  <span class="param">rejected</span>:      <span class="ty">bool</span>
+  <span class="param">rejectReason</span>:  <span class="ty">string</span>
+}
+
+<span class="kw">struct</span> <span class="ty">SearchResult</span> {
+  <span class="param">results</span>:       <span class="ty">BishopResult[]</span>   <span class="cm">// all valid, sorted by F ascending</span>
+  <span class="param">critical</span>:      <span class="ty">BishopResult</span>     <span class="cm">// lowest F</span>
+  <span class="param">trialsTotal</span>:   <span class="ty">int</span>
+  <span class="param">trialsValid</span>:   <span class="ty">int</span>
+  <span class="param">trialsRejected</span>: <span class="ty">int</span>
+}
+
+<span class="cm">// ── Model (top-level) ──</span>
+
+<span class="kw">struct</span> <span class="ty">SlopeModel</span> {
+  <span class="param">terrain</span>:      <span class="ty">Polyline</span>
+  <span class="param">phreatic</span>:     <span class="ty">Polyline</span>       <span class="cm">// nullable: if absent, u=0 everywhere</span>
+  <span class="param">regions</span>:      <span class="ty">SoilRegion[]</span>
+  <span class="param">soilTypes</span>:    <span class="ty">SoilType[]</span>
+}
+</pre>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §8 PSEUDOCODE -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s8"><span class="snum">8</span>Complete Pseudocode</h2>
+
+<p>The pseudocode below is deliberately verbose and explicit. It uses no abbreviations and names every intermediate variable. A developer should be able to transliterate this into any language with minimal interpretation.</p>
+
+<h3 id="s8-1"><span class="snum">8.1</span>Geometry &amp; region builder</h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// terrainY: interpolate terrain elevation at arbitrary x
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">terrainY</span>(<span class="param">terrain</span>: <span class="ty">Polyline</span>, <span class="param">x</span>: <span class="ty">float</span>) → <span class="ty">float</span>:
+  <span class="kw">let</span> <span class="param">verts</span> = terrain.vertices
+  <span class="kw">if</span> x ≤ verts[<span class="nu">0</span>].x: <span class="kw">return</span> verts[<span class="nu">0</span>].y
+  <span class="kw">if</span> x ≥ verts[last].x: <span class="kw">return</span> verts[last].y
+
+  <span class="cm">// binary search for segment [j, j+1] containing x</span>
+  <span class="kw">let</span> <span class="param">j</span> = binarySearchSegment(verts, x)
+  <span class="kw">let</span> <span class="param">t</span> = (x - verts[j].x) / (verts[j+<span class="nu">1</span>].x - verts[j].x)
+  <span class="kw">return</span> verts[j].y + t × (verts[j+<span class="nu">1</span>].y - verts[j].y)
+
+
+<span class="cm">// ────────────────────────────────────────────────────────────
+// buildSoilRegions: convert CPT layer columns to 2D polygons
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">buildSoilRegions</span>(
+  <span class="param">cptLocations</span>: {x: <span class="ty">float</span>, layers: {topDepth, botDepth, soilTypeId}[]}[],
+  <span class="param">terrain</span>: <span class="ty">Polyline</span>,
+  <span class="param">modelBase</span>: <span class="ty">float</span>    <span class="cm">// y-coordinate of model bottom</span>
+) → <span class="ty">SoilRegion[]</span>:
+
+  <span class="cm">// Step 1: collect all unique soil type IDs across all CPTs</span>
+  <span class="kw">let</span> <span class="param">allTypeIds</span> = unique set of soilTypeId from all CPT layers
+
+  <span class="kw">let</span> <span class="param">regions</span> = []
+
+  <span class="kw">for each</span> typeId <span class="kw">in</span> allTypeIds:
+    <span class="kw">let</span> <span class="param">topProfile</span> = []   <span class="cm">// (x, y) pairs tracing top of this layer</span>
+    <span class="kw">let</span> <span class="param">botProfile</span> = []   <span class="cm">// (x, y) pairs tracing bottom of this layer</span>
+
+    <span class="kw">for each</span> cpt <span class="kw">in</span> cptLocations (sorted by x):
+      <span class="kw">let</span> <span class="param">layer</span> = cpt.layers.find(soilTypeId == typeId)
+      <span class="kw">let</span> <span class="param">yTerrain</span> = terrainY(terrain, cpt.x)
+
+      <span class="kw">if</span> layer exists:
+        <span class="cm">// CPT depths are below terrain surface → convert to elevation</span>
+        <span class="kw">let</span> <span class="param">yTop</span> = yTerrain - layer.topDepth
+        <span class="kw">let</span> <span class="param">yBot</span> = yTerrain - layer.botDepth
+        <span class="cm">// Clamp top to terrain if it's the shallowest layer</span>
+        <span class="kw">if</span> yTop > yTerrain: yTop = yTerrain
+        <span class="cm">// Clamp bottom to model base</span>
+        <span class="kw">if</span> yBot < modelBase: yBot = modelBase
+        topProfile.push({x: cpt.x, y: yTop})
+        botProfile.push({x: cpt.x, y: yBot})
+      <span class="kw">else</span>:
+        <span class="cm">// Layer absent at this CPT → pinch out (zero thickness)</span>
+        <span class="kw">let</span> <span class="param">yPinch</span> = interpolate from adjacent CPTs or terrain
+        topProfile.push({x: cpt.x, y: yPinch})
+        botProfile.push({x: cpt.x, y: yPinch})
+
+    <span class="cm">// Step 2: form closed polygon</span>
+    <span class="cm">// trace top left→right, then bottom right→left</span>
+    <span class="kw">let</span> <span class="param">polygon</span> = topProfile + reverse(botProfile)
+    <span class="cm">// close the polygon</span>
+    polygon.push(polygon[<span class="nu">0</span>])
+
+    regions.push(SoilRegion {
+      polygon: polygon,
+      soilType: lookupSoilType(typeId)
+    })
+
+  <span class="kw">return</span> regions
+
+
+<span class="cm">// ────────────────────────────────────────────────────────────
+// shoelaceArea: signed area of a closed polygon
+// Positive = CCW, Negative = CW
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">shoelaceArea</span>(<span class="param">poly</span>: <span class="ty">Point[]</span>) → <span class="ty">float</span>:
+  <span class="kw">let</span> <span class="param">n</span> = poly.length
+  <span class="kw">let</span> <span class="param">area</span> = <span class="nu">0.0</span>
+  <span class="kw">for</span> i = <span class="nu">0</span> <span class="kw">to</span> n-<span class="nu">2</span>:
+    area += poly[i].x × poly[i+<span class="nu">1</span>].y - poly[i+<span class="nu">1</span>].x × poly[i].y
+  <span class="kw">return</span> area / <span class="nu">2.0</span>
+</pre>
+
+<h3 id="s8-2"><span class="snum">8.2</span>Circle-terrain intersection</h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// findCircleTerrainIntersections
+// Returns intersection points sorted by x, from entry to exit
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">findCircleTerrainIntersections</span>(
+  <span class="param">circle</span>: <span class="ty">SlipCircle</span>,
+  <span class="param">terrain</span>: <span class="ty">Polyline</span>
+) → <span class="ty">Point[]</span>:
+  <span class="kw">let</span> <span class="param">intersections</span> = []
+
+  <span class="kw">for each</span> segment (p1, p2) <span class="kw">in</span> terrain.vertices (consecutive pairs):
+    <span class="kw">let</span> <span class="param">dx</span> = p2.x - p1.x
+    <span class="kw">let</span> <span class="param">dy</span> = p2.y - p1.y
+    <span class="kw">let</span> <span class="param">fx</span> = p1.x - circle.xc
+    <span class="kw">let</span> <span class="param">fy</span> = p1.y - circle.yc
+
+    <span class="kw">let</span> <span class="param">a</span> = dx×dx + dy×dy
+    <span class="kw">let</span> <span class="param">b_coeff</span> = <span class="nu">2.0</span> × (fx×dx + fy×dy)
+    <span class="kw">let</span> <span class="param">c</span> = fx×fx + fy×fy - circle.R × circle.R
+
+    <span class="kw">let</span> <span class="param">discriminant</span> = b_coeff×b_coeff - <span class="nu">4.0</span>×a×c
+
+    <span class="kw">if</span> discriminant < <span class="nu">0</span>: <span class="kw">continue</span>  <span class="cm">// no intersection with this segment</span>
+
+    <span class="kw">let</span> <span class="param">sqrtDisc</span> = sqrt(discriminant)
+
+    <span class="kw">for</span> sign <span class="kw">in</span> [-<span class="nu">1</span>, +<span class="nu">1</span>]:
+      <span class="kw">let</span> <span class="param">t</span> = (-b_coeff + sign × sqrtDisc) / (<span class="nu">2.0</span> × a)
+
+      <span class="cm">// t must be in [0, 1] to lie on this segment</span>
+      <span class="cm">// use small epsilon for boundary tolerance</span>
+      <span class="kw">if</span> t < -<span class="nu">1e-9</span> <span class="kw">or</span> t > <span class="nu">1.0</span> + <span class="nu">1e-9</span>: <span class="kw">continue</span>
+      t = clamp(t, <span class="nu">0.0</span>, <span class="nu">1.0</span>)
+
+      <span class="kw">let</span> <span class="param">px</span> = p1.x + t × dx
+      <span class="kw">let</span> <span class="param">py</span> = p1.y + t × dy
+
+      <span class="cm">// deduplicate: skip if too close to an existing intersection</span>
+      <span class="kw">if</span> <span class="kw">not</span> any(intersections, p → dist(p, {px, py}) < <span class="nu">1e-6</span>):
+        intersections.push({x: px, y: py})
+
+  <span class="cm">// sort by x ascending</span>
+  intersections.sortBy(p → p.x)
+  <span class="kw">return</span> intersections
+
+
+<span class="cm">// ────────────────────────────────────────────────────────────
+// validateSlipCircle: apply all validity filters
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">validateSlipCircle</span>(
+  <span class="param">circle</span>: <span class="ty">SlipCircle</span>,
+  <span class="param">terrain</span>: <span class="ty">Polyline</span>,
+  <span class="param">config</span>: {
+    minDepth: <span class="ty">float</span>,          <span class="cm">// default 0.5 m</span>
+    maxExitAngle: <span class="ty">float</span>,       <span class="cm">// default 60° (in radians)</span>
+    nCheckPoints: <span class="ty">int</span>          <span class="cm">// default 30</span>
+  }
+) → {valid: <span class="ty">bool</span>, entry: <span class="ty">Point</span>, exit: <span class="ty">Point</span>, reason: <span class="ty">string</span>}:
+
+  <span class="kw">let</span> <span class="param">ints</span> = findCircleTerrainIntersections(circle, terrain)
+
+  <span class="cm">// Filter 1: exactly 2 intersections</span>
+  <span class="kw">if</span> ints.length ≠ <span class="nu">2</span>:
+    <span class="kw">return</span> {valid: <span class="kw">false</span>, reason: <span class="st">"need exactly 2 terrain intersections, got "</span> + ints.length}
+
+  <span class="kw">let</span> <span class="param">entry</span> = ints[<span class="nu">0</span>]   <span class="cm">// leftmost (upslope)</span>
+  <span class="kw">let</span> <span class="param">exit</span>  = ints[<span class="nu">1</span>]   <span class="cm">// rightmost (downslope)</span>
+
+  <span class="cm">// Filter 2: minimum depth</span>
+  <span class="kw">let</span> <span class="param">xMid</span> = (entry.x + exit.x) / <span class="nu">2.0</span>
+  <span class="kw">let</span> <span class="param">depth</span> = terrainY(terrain, xMid) - circle.yCircle(xMid)
+  <span class="kw">if</span> depth < config.minDepth:
+    <span class="kw">return</span> {valid: <span class="kw">false</span>, reason: <span class="st">"max depth "</span> + depth + <span class="st">" < min "</span> + config.minDepth}
+
+  <span class="cm">// Filter 3: exit angle</span>
+  <span class="kw">let</span> <span class="param">exitAngle</span> = abs(circle.baseAngle(exit.x))
+  <span class="kw">if</span> exitAngle > config.maxExitAngle:
+    <span class="kw">return</span> {valid: <span class="kw">false</span>, reason: <span class="st">"exit angle "</span> + degrees(exitAngle) + <span class="st">"° > max"</span>}
+
+  <span class="cm">// Filter 4: no re-emergence</span>
+  <span class="kw">let</span> <span class="param">dx</span> = (exit.x - entry.x) / config.nCheckPoints
+  <span class="kw">for</span> k = <span class="nu">1</span> <span class="kw">to</span> config.nCheckPoints - <span class="nu">1</span>:
+    <span class="kw">let</span> <span class="param">xCheck</span> = entry.x + k × dx
+    <span class="kw">let</span> <span class="param">yCircleCheck</span> = circle.yCircle(xCheck)
+    <span class="kw">let</span> <span class="param">yTerrainCheck</span> = terrainY(terrain, xCheck)
+    <span class="kw">if</span> yCircleCheck > yTerrainCheck + <span class="nu">1e-4</span>:
+      <span class="kw">return</span> {valid: <span class="kw">false</span>, reason: <span class="st">"circle re-emerges above terrain at x="</span> + xCheck}
+
+  <span class="kw">return</span> {valid: <span class="kw">true</span>, entry: entry, exit: exit, reason: <span class="st">""</span>}
+</pre>
+
+<h3 id="s8-3"><span class="snum">8.3</span>Slice builder</h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// buildSlices: generate vertical slices between entry and exit
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">buildSlices</span>(
+  <span class="param">circle</span>: <span class="ty">SlipCircle</span>,
+  <span class="param">entry</span>: <span class="ty">Point</span>,
+  <span class="param">exit</span>: <span class="ty">Point</span>,
+  <span class="param">model</span>: <span class="ty">SlopeModel</span>,
+  <span class="param">nTarget</span>: <span class="ty">int</span> = <span class="nu">30</span>
+) → <span class="ty">Slice[]</span>:
+
+  <span class="cm">// ── Step 1: collect mandatory cut x-positions ──</span>
+  <span class="kw">let</span> <span class="param">cuts</span> = SortedSet()
+  cuts.add(entry.x)
+  cuts.add(exit.x)
+
+  <span class="cm">// terrain vertices within [entry.x, exit.x]</span>
+  <span class="kw">for each</span> v <span class="kw">in</span> model.terrain.vertices:
+    <span class="kw">if</span> v.x > entry.x + <span class="nu">1e-6</span> <span class="kw">and</span> v.x < exit.x - <span class="nu">1e-6</span>:
+      cuts.add(v.x)
+
+  <span class="cm">// phreatic surface vertices</span>
+  <span class="kw">if</span> model.phreatic ≠ null:
+    <span class="kw">for each</span> v <span class="kw">in</span> model.phreatic.vertices:
+      <span class="kw">if</span> v.x > entry.x + <span class="nu">1e-6</span> <span class="kw">and</span> v.x < exit.x - <span class="nu">1e-6</span>:
+        cuts.add(v.x)
+
+  <span class="cm">// x where α = 0 (lowest point of circle)</span>
+  <span class="kw">if</span> circle.xc > entry.x <span class="kw">and</span> circle.xc < exit.x:
+    cuts.add(circle.xc)
+
+  <span class="cm">// soil-region boundary intersections with the arc</span>
+  <span class="cm">// For each region polygon edge, find where it intersects</span>
+  <span class="cm">// the slip circle arc between entry.x and exit.x</span>
+  <span class="kw">for each</span> region <span class="kw">in</span> model.regions:
+    <span class="kw">for each</span> edge (p1, p2) <span class="kw">in</span> region.polygon:
+      <span class="kw">let</span> <span class="param">ixs</span> = circleSegmentIntersections(circle, p1, p2)
+      <span class="kw">for each</span> ix <span class="kw">in</span> ixs:
+        <span class="kw">if</span> ix.x > entry.x + <span class="nu">1e-6</span> <span class="kw">and</span> ix.x < exit.x - <span class="nu">1e-6</span>:
+          cuts.add(ix.x)
+
+  <span class="cm">// ── Step 2: subdivide wide intervals ──</span>
+  <span class="kw">let</span> <span class="param">maxWidth</span> = (exit.x - entry.x) / nTarget
+  <span class="kw">let</span> <span class="param">finalCuts</span> = SortedSet()
+  <span class="kw">let</span> <span class="param">cutList</span> = cuts.toArray()
+
+  <span class="kw">for</span> i = <span class="nu">0</span> <span class="kw">to</span> cutList.length - <span class="nu">2</span>:
+    finalCuts.add(cutList[i])
+    <span class="kw">let</span> <span class="param">gap</span> = cutList[i+<span class="nu">1</span>] - cutList[i]
+    <span class="kw">if</span> gap > maxWidth:
+      <span class="kw">let</span> <span class="param">nSub</span> = ceil(gap / maxWidth)
+      <span class="kw">let</span> <span class="param">subWidth</span> = gap / nSub
+      <span class="kw">for</span> j = <span class="nu">1</span> <span class="kw">to</span> nSub - <span class="nu">1</span>:
+        finalCuts.add(cutList[i] + j × subWidth)
+  finalCuts.add(cutList[last])
+
+  <span class="cm">// ── Step 3: build slice objects ──</span>
+  <span class="kw">let</span> <span class="param">cutArr</span> = finalCuts.toArray()
+  <span class="kw">let</span> <span class="param">slices</span> = []
+
+  <span class="kw">for</span> i = <span class="nu">0</span> <span class="kw">to</span> cutArr.length - <span class="nu">2</span>:
+    <span class="kw">let</span> <span class="param">xL</span> = cutArr[i]
+    <span class="kw">let</span> <span class="param">xR</span> = cutArr[i + <span class="nu">1</span>]
+    <span class="kw">let</span> <span class="param">b</span>  = xR - xL
+    <span class="kw">if</span> b < <span class="nu">1e-6</span>: <span class="kw">continue</span>  <span class="cm">// degenerate slice</span>
+
+    <span class="kw">let</span> <span class="param">xMid</span> = (xL + xR) / <span class="nu">2.0</span>
+
+    <span class="cm">// terrain and circle at midpoint</span>
+    <span class="kw">let</span> <span class="param">yTop</span>  = terrainY(model.terrain, xMid)
+    <span class="kw">let</span> <span class="param">yBase</span> = circle.yCircle(xMid)
+
+    <span class="kw">if</span> yBase ≥ yTop: <span class="kw">continue</span>  <span class="cm">// circle above terrain → invalid slice</span>
+
+    <span class="cm">// base angle</span>
+    <span class="kw">let</span> <span class="param">alpha</span> = asin(clamp((xMid - circle.xc) / circle.R, -<span class="nu">1.0</span>, <span class="nu">1.0</span>))
+
+    <span class="cm">// base length</span>
+    <span class="kw">let</span> <span class="param">cosAlpha</span> = cos(alpha)
+    <span class="kw">if</span> abs(cosAlpha) < <span class="nu">1e-10</span>: <span class="kw">continue</span>  <span class="cm">// near-vertical base → degenerate</span>
+    <span class="kw">let</span> <span class="param">baseLength</span> = b / cosAlpha
+
+    <span class="cm">// ── weight: sum contributions from each soil region ──</span>
+    <span class="kw">let</span> <span class="param">W</span> = <span class="nu">0.0</span>
+    <span class="kw">let</span> <span class="param">layerAreas</span> = []
+
+    <span class="kw">for each</span> region <span class="kw">in</span> model.regions:
+      <span class="cm">// clip region polygon to vertical strip [xL, xR]</span>
+      <span class="kw">let</span> <span class="param">clipped</span> = clipPolygonToStrip(region.polygon, xL, xR)
+      <span class="kw">if</span> clipped is empty: <span class="kw">continue</span>
+
+      <span class="cm">// further clip to [yBase, yTop] vertical extent</span>
+      <span class="cm">// (clip below terrain and above circle)</span>
+      <span class="kw">let</span> <span class="param">sliceClipped</span> = clipPolygonToHorizontalBand(clipped, yBase, yTop)
+      <span class="cm">// Note: for full accuracy, the lower boundary is the arc, not</span>
+      <span class="cm">// a horizontal line. For v1 with ~30 narrow slices, using</span>
+      <span class="cm">// yBase at midpoint as the lower clip is adequate.</span>
+
+      <span class="kw">let</span> <span class="param">A</span> = abs(shoelaceArea(sliceClipped))
+      <span class="kw">if</span> A > <span class="nu">1e-8</span>:
+        W += A × region.soilType.gamma
+        layerAreas.push({soilType: region.soilType, area: A})
+
+    <span class="cm">// ── simplified weight for near-horizontal layers ──</span>
+    <span class="cm">// Alternative if polygon clipping is not yet implemented:</span>
+    <span class="cm">// W = b × (yTop - yBase) × γ_weighted_average</span>
+    <span class="cm">// where γ_weighted_average weights each layer's γ by its</span>
+    <span class="cm">// thickness fraction within the slice column.</span>
+
+    <span class="cm">// ── pore pressure ──</span>
+    <span class="kw">let</span> <span class="param">u</span> = <span class="nu">0.0</span>
+    <span class="kw">if</span> model.phreatic ≠ null:
+      <span class="kw">let</span> <span class="param">yPhreatic</span> = model.phreatic.interpolateY(xMid)
+      <span class="kw">if</span> yBase < yPhreatic:
+        u = <span class="nu">9.81</span> × (yPhreatic - yBase)
+
+    <span class="cm">// ── base soil properties ──</span>
+    <span class="kw">let</span> <span class="param">baseSoil</span> = findRegionContaining(model.regions, {x: xMid, y: yBase + <span class="nu">0.01</span>})
+    <span class="cm">// offset slightly above base to ensure point is inside the soil mass</span>
+    <span class="cm">// not below the circle</span>
+
+    slices.push(Slice {
+      index: slices.length,
+      xL: xL, xR: xR, b: b, xMid: xMid,
+      yTop: yTop, yBase: yBase,
+      alpha: alpha,
+      baseLength: baseLength,
+      W: W, u: u,
+      c_eff: baseSoil.soilType.c_eff,
+      phi_eff: toRadians(baseSoil.soilType.phi_eff),
+      layerAreas: layerAreas
+    })
+
+  <span class="kw">return</span> slices
+
+
+<span class="cm">// ────────────────────────────────────────────────────────────
+// findRegionContaining: point-in-polygon test across all regions
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">findRegionContaining</span>(
+  <span class="param">regions</span>: <span class="ty">SoilRegion[]</span>,
+  <span class="param">point</span>: <span class="ty">Point</span>
+) → <span class="ty">SoilRegion</span>:
+  <span class="kw">for each</span> region <span class="kw">in</span> regions:
+    <span class="kw">if</span> region.containsPoint(point):
+      <span class="kw">return</span> region
+  <span class="cm">// fallback: return the deepest region (last in array)</span>
+  <span class="cm">// This should not happen if regions tile the model correctly</span>
+  <span class="kw">throw</span> <span class="st">"No soil region contains point ("</span> + point.x + <span class="st">", "</span> + point.y + <span class="st">")"</span>
+</pre>
+
+<h3 id="s8-4"><span class="snum">8.4</span>Bishop iteration loop</h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// computeBishopF: iterate to find factor of safety
+// This is the core solver.
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">computeBishopF</span>(
+  <span class="param">slices</span>: <span class="ty">Slice[]</span>,
+  <span class="param">maxIter</span>: <span class="ty">int</span> = <span class="nu">50</span>,
+  <span class="param">tolerance</span>: <span class="ty">float</span> = <span class="nu">0.001</span>
+) → {F: <span class="ty">float</span>, converged: <span class="ty">bool</span>, iterations: <span class="ty">int</span>, F_fellenius: <span class="ty">float</span>}:
+
+  <span class="cm">// ── Step 0: pre-check denominator ──</span>
+  <span class="kw">let</span> <span class="param">sumWsinAlpha</span> = <span class="nu">0.0</span>
+  <span class="kw">for each</span> s <span class="kw">in</span> slices:
+    sumWsinAlpha += s.W × sin(s.alpha)
+
+  <span class="kw">if</span> sumWsinAlpha ≤ <span class="nu">0.001</span>:
+    <span class="cm">// no net driving moment → not a meaningful failure</span>
+    <span class="kw">return</span> {F: <span class="nu">Infinity</span>, converged: <span class="kw">false</span>, iterations: <span class="nu">0</span>,
+            F_fellenius: <span class="nu">Infinity</span>}
+
+  <span class="cm">// ── Step 1: compute Fellenius F as initial guess ──</span>
+  <span class="kw">let</span> <span class="param">felleniusNum</span> = <span class="nu">0.0</span>
+  <span class="kw">for each</span> s <span class="kw">in</span> slices:
+    <span class="kw">let</span> <span class="param">l</span> = s.baseLength
+    <span class="kw">let</span> <span class="param">normalComponent</span> = s.W × cos(s.alpha) - s.u × l
+    felleniusNum += s.c_eff × l + normalComponent × tan(s.phi_eff)
+
+  <span class="kw">let</span> <span class="param">F_fellenius</span> = felleniusNum / sumWsinAlpha
+  <span class="kw">if</span> F_fellenius < <span class="nu">0.1</span>: F_fellenius = <span class="nu">1.0</span>  <span class="cm">// safety floor for initial guess</span>
+
+  <span class="cm">// ── Step 2: Bishop iteration ──</span>
+  <span class="kw">let</span> <span class="param">F</span> = F_fellenius
+  <span class="kw">let</span> <span class="param">prevChange</span> = <span class="nu">Infinity</span>
+  <span class="kw">let</span> <span class="param">useRelaxation</span> = <span class="kw">false</span>
+
+  <span class="kw">for</span> iter = <span class="nu">1</span> <span class="kw">to</span> maxIter:
+    <span class="kw">let</span> <span class="param">numerator</span> = <span class="nu">0.0</span>
+    <span class="kw">let</span> <span class="param">mAlphaOk</span> = <span class="kw">true</span>
+
+    <span class="kw">for each</span> s <span class="kw">in</span> slices:
+      <span class="cm">// m_α = cos(α) + sin(α)·tan(φ') / F</span>
+      <span class="kw">let</span> <span class="param">mAlpha</span> = cos(s.alpha) + sin(s.alpha) × tan(s.phi_eff) / F
+
+      <span class="kw">if</span> mAlpha ≤ <span class="nu">0.0</span>:
+        mAlphaOk = <span class="kw">false</span>
+        <span class="kw">break</span>
+
+      <span class="cm">// Bishop numerator term for this slice:</span>
+      <span class="cm">// [c'·b + (W - u·b)·tan(φ')] / m_α</span>
+      <span class="cm">//</span>
+      <span class="cm">// CRITICAL: the pore-pressure term uses u·b, NOT u·l</span>
+      <span class="cm">// This is a consequence of the derivation — see §6.2</span>
+      <span class="kw">let</span> <span class="param">term</span> = (s.c_eff × s.b + (s.W - s.u × s.b) × tan(s.phi_eff)) / mAlpha
+
+      numerator += term
+
+    <span class="kw">if not</span> mAlphaOk:
+      <span class="kw">return</span> {F: F, converged: <span class="kw">false</span>, iterations: iter,
+              F_fellenius: F_fellenius}
+
+    <span class="kw">let</span> <span class="param">F_new</span> = numerator / sumWsinAlpha
+    <span class="kw">let</span> <span class="param">change</span> = abs(F_new - F)
+
+    <span class="cm">// divergence detection → switch to under-relaxation</span>
+    <span class="kw">if</span> change > prevChange <span class="kw">and not</span> useRelaxation:
+      useRelaxation = <span class="kw">true</span>
+
+    <span class="kw">if</span> useRelaxation:
+      F = <span class="nu">0.5</span> × F_new + <span class="nu">0.5</span> × F
+    <span class="kw">else</span>:
+      F = F_new
+
+    <span class="cm">// convergence check</span>
+    <span class="kw">if</span> change < tolerance:
+      <span class="kw">return</span> {F: F, converged: <span class="kw">true</span>, iterations: iter,
+              F_fellenius: F_fellenius}
+
+    prevChange = change
+
+  <span class="cm">// failed to converge</span>
+  <span class="kw">return</span> {F: F, converged: <span class="kw">false</span>, iterations: maxIter,
+          F_fellenius: F_fellenius}
+</pre>
+
+<h3 id="s8-5"><span class="snum">8.5</span>Search driver</h3>
+
+<pre>
+<span class="cm">// ────────────────────────────────────────────────────────────
+// searchGridRadius: coarse grid search + refinement
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">searchGridRadius</span>(
+  <span class="param">model</span>: <span class="ty">SlopeModel</span>,
+  <span class="param">config</span>: {
+    gridNx: <span class="ty">int</span>,        <span class="cm">// default 15</span>
+    gridNy: <span class="ty">int</span>,        <span class="cm">// default 15</span>
+    nRadii: <span class="ty">int</span>,        <span class="cm">// default 15</span>
+    refineNx: <span class="ty">int</span>,      <span class="cm">// default 7</span>
+    refineNy: <span class="ty">int</span>,      <span class="cm">// default 7</span>
+    refineNr: <span class="ty">int</span>,      <span class="cm">// default 7</span>
+    nSlices: <span class="ty">int</span>,       <span class="cm">// default 30</span>
+    keepBest: <span class="ty">int</span>       <span class="cm">// default 10</span>
+  }
+) → <span class="ty">SearchResult</span>:
+
+  <span class="cm">// ── determine slope extents ──</span>
+  <span class="kw">let</span> <span class="param">xMin</span> = model.terrain.vertices[<span class="nu">0</span>].x
+  <span class="kw">let</span> <span class="param">xMax</span> = model.terrain.vertices[last].x
+  <span class="kw">let</span> <span class="param">yMin</span> = min(v.y for v in model.terrain.vertices)
+  <span class="kw">let</span> <span class="param">yMax</span> = max(v.y for v in model.terrain.vertices)
+  <span class="kw">let</span> <span class="param">H</span>    = yMax - yMin   <span class="cm">// slope height</span>
+
+  <span class="cm">// ── coarse grid bounds ──</span>
+  <span class="kw">let</span> <span class="param">xc_min</span> = xMin - <span class="nu">0.5</span> × H
+  <span class="kw">let</span> <span class="param">xc_max</span> = xMax + <span class="nu">0.5</span> × H
+  <span class="kw">let</span> <span class="param">yc_min</span> = yMax              <span class="cm">// at crest elevation</span>
+  <span class="kw">let</span> <span class="param">yc_max</span> = yMax + <span class="nu">2.0</span> × H    <span class="cm">// well above slope</span>
+
+  <span class="kw">let</span> <span class="param">dx</span> = (xc_max - xc_min) / config.gridNx
+  <span class="kw">let</span> <span class="param">dy</span> = (yc_max - yc_min) / config.gridNy
+
+  <span class="kw">let</span> <span class="param">allResults</span> = []
+  <span class="kw">let</span> <span class="param">trialsTotal</span> = <span class="nu">0</span>
+  <span class="kw">let</span> <span class="param">trialsRejected</span> = <span class="nu">0</span>
+
+  <span class="cm">// ── Phase 1: coarse search ──</span>
+  <span class="kw">for</span> ix = <span class="nu">0</span> <span class="kw">to</span> config.gridNx:
+    <span class="kw">for</span> iy = <span class="nu">0</span> <span class="kw">to</span> config.gridNy:
+      <span class="kw">let</span> <span class="param">xc</span> = xc_min + ix × dx
+      <span class="kw">let</span> <span class="param">yc</span> = yc_min + iy × dy
+
+      <span class="cm">// radius range: minimum = distance to nearest terrain point</span>
+      <span class="kw">let</span> <span class="param">R_min</span> = minDistToTerrain(xc, yc, model.terrain) + <span class="nu">0.1</span>
+      <span class="kw">let</span> <span class="param">R_max</span> = sqrt((xc - xMin)² + (yc - yMin)²) + H
+      <span class="kw">if</span> R_max ≤ R_min: <span class="kw">continue</span>
+
+      <span class="kw">let</span> <span class="param">dR</span> = (R_max - R_min) / config.nRadii
+
+      <span class="kw">for</span> ir = <span class="nu">0</span> <span class="kw">to</span> config.nRadii:
+        <span class="kw">let</span> <span class="param">R</span> = R_min + ir × dR
+        <span class="kw">let</span> <span class="param">circle</span> = SlipCircle {xc, yc, R}
+
+        trialsTotal += <span class="nu">1</span>
+
+        <span class="cm">// validate</span>
+        <span class="kw">let</span> <span class="param">v</span> = validateSlipCircle(circle, model.terrain,
+                {minDepth: <span class="nu">0.5</span>, maxExitAngle: toRadians(<span class="nu">60</span>), nCheckPoints: <span class="nu">30</span>})
+        <span class="kw">if not</span> v.valid:
+          trialsRejected += <span class="nu">1</span>
+          <span class="kw">continue</span>
+
+        <span class="cm">// build slices</span>
+        <span class="kw">let</span> <span class="param">slices</span> = buildSlices(circle, v.entry, v.exit, model, config.nSlices)
+        <span class="kw">if</span> slices.length < <span class="nu">5</span>:
+          trialsRejected += <span class="nu">1</span>
+          <span class="kw">continue</span>
+
+        <span class="cm">// solve Bishop</span>
+        <span class="kw">let</span> <span class="param">result</span> = computeBishopF(slices)
+
+        allResults.push(BishopResult {
+          circle: circle,
+          F: result.F,
+          converged: result.converged,
+          iterations: result.iterations,
+          slices: slices,
+          F_fellenius: result.F_fellenius,
+          rejected: <span class="kw">not</span> result.converged,
+          rejectReason: result.converged ? <span class="st">""</span> : <span class="st">"no convergence"</span>
+        })
+
+  <span class="cm">// ── Phase 2: refinement around best centre ──</span>
+  <span class="kw">let</span> <span class="param">validResults</span> = allResults.filter(r → r.converged <span class="kw">and</span> r.F > <span class="nu">0</span>)
+  validResults.sortBy(r → r.F)
+
+  <span class="kw">if</span> validResults.length > <span class="nu">0</span>:
+    <span class="kw">let</span> <span class="param">best</span> = validResults[<span class="nu">0</span>]
+    <span class="kw">let</span> <span class="param">refDx</span> = dx / config.refineNx
+    <span class="kw">let</span> <span class="param">refDy</span> = dy / config.refineNy
+
+    <span class="kw">for</span> ix = -config.refineNx <span class="kw">to</span> config.refineNx:
+      <span class="kw">for</span> iy = -config.refineNy <span class="kw">to</span> config.refineNy:
+        <span class="kw">let</span> <span class="param">xc</span> = best.circle.xc + ix × refDx
+        <span class="kw">let</span> <span class="param">yc</span> = best.circle.yc + iy × refDy
+
+        <span class="kw">let</span> <span class="param">R_center</span> = best.circle.R
+        <span class="kw">let</span> <span class="param">dR_ref</span> = (dx + dy) / <span class="nu">2.0</span> / config.refineNr
+
+        <span class="kw">for</span> ir = -config.refineNr <span class="kw">to</span> config.refineNr:
+          <span class="kw">let</span> <span class="param">R</span> = R_center + ir × dR_ref
+          <span class="kw">if</span> R ≤ <span class="nu">0</span>: <span class="kw">continue</span>
+
+          <span class="kw">let</span> <span class="param">circle</span> = SlipCircle {xc, yc, R}
+          trialsTotal += <span class="nu">1</span>
+
+          <span class="cm">// ... same validate → buildSlices → computeBishopF pipeline ...</span>
+          <span class="cm">// (identical to coarse phase above)</span>
+
+  <span class="cm">// ── collect and rank ──</span>
+  <span class="kw">let</span> <span class="param">finalValid</span> = allResults.filter(r → r.converged <span class="kw">and</span> r.F > <span class="nu">0</span>)
+  finalValid.sortBy(r → r.F)
+
+  <span class="kw">return</span> SearchResult {
+    results: finalValid.take(config.keepBest),
+    critical: finalValid[<span class="nu">0</span>],
+    trialsTotal: trialsTotal,
+    trialsValid: finalValid.length,
+    trialsRejected: trialsRejected
+  }
+
+
+<span class="cm">// ────────────────────────────────────────────────────────────
+// searchEntryExit: user-defined entry/exit zone search
+// ────────────────────────────────────────────────────────────</span>
+<span class="kw">function</span> <span class="fn">searchEntryExit</span>(
+  <span class="param">model</span>: <span class="ty">SlopeModel</span>,
+  <span class="param">entryZone</span>: {xStart: <span class="ty">float</span>, xEnd: <span class="ty">float</span>},
+  <span class="param">exitZone</span>:  {xStart: <span class="ty">float</span>, xEnd: <span class="ty">float</span>},
+  <span class="param">config</span>: {
+    nEntry: <span class="ty">int</span>,    <span class="cm">// default 10</span>
+    nExit: <span class="ty">int</span>,     <span class="cm">// default 10</span>
+    nXc: <span class="ty">int</span>,       <span class="cm">// default 15</span>
+    nSlices: <span class="ty">int</span>,   <span class="cm">// default 30</span>
+    keepBest: <span class="ty">int</span>   <span class="cm">// default 10</span>
+  }
+) → <span class="ty">SearchResult</span>:
+
+  <span class="kw">let</span> <span class="param">allResults</span> = []
+  <span class="kw">let</span> <span class="param">terrain</span> = model.terrain
+
+  <span class="kw">for</span> ie = <span class="nu">0</span> <span class="kw">to</span> config.nEntry - <span class="nu">1</span>:
+    <span class="kw">let</span> <span class="param">x_en</span> = entryZone.xStart + ie × (entryZone.xEnd - entryZone.xStart) / (config.nEntry - <span class="nu">1</span>)
+    <span class="kw">let</span> <span class="param">y_en</span> = terrainY(terrain, x_en)
+
+    <span class="kw">for</span> ix = <span class="nu">0</span> <span class="kw">to</span> config.nExit - <span class="nu">1</span>:
+      <span class="kw">let</span> <span class="param">x_ex</span> = exitZone.xStart + ix × (exitZone.xEnd - exitZone.xStart) / (config.nExit - <span class="nu">1</span>)
+      <span class="kw">let</span> <span class="param">y_ex</span> = terrainY(terrain, x_ex)
+
+      <span class="kw">if</span> x_ex ≤ x_en: <span class="kw">continue</span>  <span class="cm">// entry must be left of exit</span>
+      <span class="kw">if</span> abs(y_en - y_ex) < <span class="nu">1e-6</span>: <span class="kw">continue</span>  <span class="cm">// degenerate: same elevation</span>
+
+      <span class="cm">// sweep xc to generate circle family through (x_en,y_en) & (x_ex,y_ex)</span>
+      <span class="kw">let</span> <span class="param">xc_lo</span> = (x_en + x_ex) / <span class="nu">2.0</span> - <span class="nu">2.0</span> × (x_ex - x_en)
+      <span class="kw">let</span> <span class="param">xc_hi</span> = (x_en + x_ex) / <span class="nu">2.0</span> + <span class="nu">2.0</span> × (x_ex - x_en)
+
+      <span class="kw">for</span> ic = <span class="nu">0</span> <span class="kw">to</span> config.nXc - <span class="nu">1</span>:
+        <span class="kw">let</span> <span class="param">xc</span> = xc_lo + ic × (xc_hi - xc_lo) / (config.nXc - <span class="nu">1</span>)
+
+        <span class="cm">// compute yc from two-point constraint (§4.3)</span>
+        <span class="kw">let</span> <span class="param">dy_en_ex</span> = y_en - y_ex
+        <span class="kw">if</span> abs(dy_en_ex) < <span class="nu">1e-9</span>: <span class="kw">continue</span>
+
+        <span class="kw">let</span> <span class="param">yc</span> = ((x_en×x_en - x_ex×x_ex) + (y_en×y_en - y_ex×y_ex)
+                  - <span class="nu">2.0</span> × xc × (x_en - x_ex)) / (<span class="nu">2.0</span> × dy_en_ex)
+
+        <span class="cm">// yc must be above terrain</span>
+        <span class="kw">let</span> <span class="param">yTerMax</span> = max(terrainY(terrain, x) for x in linspace(x_en, x_ex, <span class="nu">20</span>))
+        <span class="kw">if</span> yc < yTerMax + <span class="nu">0.1</span>: <span class="kw">continue</span>
+
+        <span class="kw">let</span> <span class="param">R</span> = sqrt((x_en - xc)² + (y_en - yc)²)
+        <span class="kw">let</span> <span class="param">circle</span> = SlipCircle {xc, yc, R}
+
+        <span class="cm">// ... validate → buildSlices → computeBishopF ...</span>
+        <span class="cm">// (same pipeline as grid-radius search)</span>
+
+  <span class="cm">// ... rank and return as in grid-radius search ...</span>
+</pre>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §9 PORE PRESSURE -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s9"><span class="snum">9</span>Pore-Pressure Handling</h2>
+
+<p>Three pore-pressure models are supported, in order of sophistication:</p>
+
+<h3>Model A: Dry (u = 0)</h3>
+<p>No phreatic surface defined. All slices have <code>u = 0</code>. Suitable for quick checks or naturally drained slopes above the water table.</p>
+
+<h3>Model B: Pore-pressure ratio r_u</h3>
+<p>A single global ratio applied to all slices:</p>
+<div class="eq">
+u_i = r_u × γ_i × h_i
+
+where h_i = yTop_i - yBase_i (height of soil column above base midpoint)
+and γ_i is the average unit weight of the slice column.
+</div>
+<p>Typical values: r_u = 0 (dry), 0.25 (moderate), 0.5 (high water table). This is a crude but useful approximation when no phreatic data is available.</p>
+
+<h3>Model C: Phreatic surface (recommended)</h3>
+<p>As described in §3.3. The phreatic polyline is interpolated at each slice base midpoint. This is the default and recommended approach because it allows spatial variation of pore pressure reflecting real groundwater conditions.</p>
+
+<div class="callout warn">
+  <strong>Submerged unit weight.</strong> In v1, use total unit weight γ for W and subtract u·b in the Bishop formula. Do <em>not</em> try to separate the calculation into γ' (submerged) above and below the water table — the Bishop formula already handles this correctly through the <code>(W - u·b)</code> term, where W uses total weight. Using γ' would double-count the buoyancy effect.
+</div>
+
+<h3>Below-water weight handling</h3>
+<p>When the phreatic surface is above the slice base but below the terrain, the slice column has a submerged portion. The weight calculation uses total unit weight throughout:</p>
+
+<div class="eq">
+<span class="label">Weight with partial submersion</span>
+W = Σ (A_k × γ_k)
+
+Use γ_sat for layers below the phreatic surface,
+and γ (natural/dry) for layers above.
+
+The pore pressure u at the base handles the effective-stress
+correction in the Bishop equation. Do NOT subtract buoyancy
+from W — the formula does this via the (W - u·b) term.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §10 VERIFICATION -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s10"><span class="snum">10</span>Verification &amp; Test Cases</h2>
+
+<p>Before using the solver on real projects, verify against known benchmark problems. The following test cases have published solutions and are standard in the literature.</p>
+
+<h3>Test 1: Simple homogeneous slope, no water</h3>
+<table>
+  <tr><th>Parameter</th><th>Value</th></tr>
+  <tr><td>Slope geometry</td><td>10 m high, 2H:1V (26.6°), horizontal crest and toe extending 15 m each</td></tr>
+  <tr><td>Soil</td><td>c' = 10 kPa, φ' = 25°, γ = 18 kN/m³</td></tr>
+  <tr><td>Water</td><td>None (u = 0 everywhere)</td></tr>
+  <tr><td>Expected F (Bishop)</td><td>≈ 1.37 – 1.40</td></tr>
+  <tr><td>Source</td><td>Standard textbook problem; matches SLOPE/W, SLIDE outputs</td></tr>
+</table>
+
+<h3>Test 2: Homogeneous slope with water table</h3>
+<table>
+  <tr><th>Parameter</th><th>Value</th></tr>
+  <tr><td>Slope geometry</td><td>Same as Test 1</td></tr>
+  <tr><td>Soil</td><td>c' = 5 kPa, φ' = 30°, γ = 19 kN/m³, γ_sat = 20 kN/m³</td></tr>
+  <tr><td>Phreatic surface</td><td>2 m below crest, daylighting at toe</td></tr>
+  <tr><td>Expected F (Bishop)</td><td>≈ 1.15 – 1.20</td></tr>
+</table>
+
+<h3>Test 3: Two-layer system</h3>
+<table>
+  <tr><th>Parameter</th><th>Value</th></tr>
+  <tr><td>Slope geometry</td><td>8 m high, 1.5H:1V</td></tr>
+  <tr><td>Upper layer</td><td>4 m thick, c' = 5 kPa, φ' = 28°, γ = 17 kN/m³</td></tr>
+  <tr><td>Lower layer</td><td>extends to depth, c' = 20 kPa, φ' = 32°, γ = 19 kN/m³</td></tr>
+  <tr><td>Water</td><td>None</td></tr>
+  <tr><td>Expected F</td><td>≈ 1.25 – 1.35 (critical circle should be shallow, mostly in the upper layer)</td></tr>
+</table>
+
+<h3>Verification protocol</h3>
+<ol>
+  <li>Run each test case and compare F to the expected range.</li>
+  <li>Verify the critical circle location visually — it should pass through or near the toe for cohesive soils, and be shallower for friction-dominated soils.</li>
+  <li>Check that Fellenius F is consistently 5–15% lower than Bishop F for the same circle.</li>
+  <li>Verify slice count is ≥ 25 and that slice edges align with terrain breaks and layer boundaries.</li>
+  <li>Run a convergence study: increase slice count from 10 to 100 and verify F changes by less than 2% beyond 30 slices.</li>
+  <li>For a known circle (fixed xc, yc, R), compare individual slice weights, base angles, and pore pressures against hand calculations for at least 3 slices.</li>
+</ol>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §11 UPGRADE PATH -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s11"><span class="snum">11</span>Upgrade Path to Spencer / Morgenstern–Price</h2>
+
+<p>The architecture of the solver is designed to make the upgrade to rigorous methods incremental. The key additions for each method are outlined below.</p>
+
+<h3>Spencer (constant interslice-force ratio)</h3>
+<p>Spencer (1967) satisfies both moment and force equilibrium simultaneously. It assumes that the ratio of interslice shear to interslice normal force is constant: <code>X/E = λ = constant</code> (the same for all slices).</p>
+
+<p>Implementation requires:</p>
+<ol>
+  <li>A second equation: overall horizontal force equilibrium (in addition to moment equilibrium).</li>
+  <li>An outer loop that iterates on λ until both equilibrium equations yield the same F.</li>
+  <li>An inner loop (per trial λ) that iterates on F via the same Bishop-like scheme but with modified m_α that includes the interslice force contribution.</li>
+  <li>The slice data structure already contains everything needed. The only addition is tracking E and X arrays (interslice forces, n-1 values for n slices).</li>
+</ol>
+
+<p>The practical approach: for each shortlisted Bishop surface (top 5–10), re-run with Spencer. If Bishop and Spencer agree within 5%, Bishop is sufficient. If they diverge, the Spencer result is more reliable.</p>
+
+<h3>Morgenstern–Price (general interslice-force function)</h3>
+<p>Generalises Spencer by allowing the interslice force ratio to vary along the slip surface: <code>X/E = λ · f(x)</code> where f(x) is a prescribed function (half-sine, constant, trapezoidal, etc.).</p>
+
+<p>This adds complexity mainly in the iteration scheme (two unknowns: F and λ, solved by Newton–Raphson or bisection on the two equilibrium equations). The slice-level calculations are the same. For most practical problems with circular slip surfaces, Spencer and M-P give nearly identical results. M-P is primarily valuable for non-circular surfaces where the interslice force distribution matters more.</p>
+
+<div class="callout note">
+  <strong>Recommended v2 strategy.</strong> After Bishop v1 is verified and stable, add Spencer as the first rigorous check method. Use it to validate Bishop results on your critical surfaces. Only add M-P if you encounter non-circular failure scenarios (thin weak seams, defined interfaces) that Bishop cannot model. Even then, the geometry engine (non-circular surface definition, composite surface search) is a bigger development effort than the M-P solver itself.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §12 INTERACTIVE CANVAS -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s12"><span class="snum">12</span>Interactive Canvas — Drawing &amp; Editing</h2>
+
+<p>The entire geometry model — terrain, CPT positions, phreatic surface, entry/exit zones, and soil regions — is constructed by the user on a 2D canvas. The canvas is the single source of truth for all geometry that feeds the solver. Nothing is typed into tables or imported from files in v1; every geometric input is drawn or placed graphically and can be edited graphically. The solver only runs on what the canvas contains.</p>
+
+<h3 id="s12-1"><span class="snum">12.1</span>Canvas coordinate system &amp; viewport</h3>
+
+<p>The canvas operates in two coordinate spaces that must be kept rigorously separate throughout the codebase:</p>
+
+<table>
+  <tr><th>Space</th><th>Units</th><th>Origin</th><th>Y direction</th><th>Used for</th></tr>
+  <tr><td><strong>World space</strong></td><td>metres</td><td>arbitrary (user-defined datum)</td><td>up = positive</td><td>All engineering data: terrain vertices, circle centres, slice geometry, solver input. Persisted in the model.</td></tr>
+  <tr><td><strong>Screen space</strong></td><td>CSS pixels</td><td>top-left of canvas element</td><td>down = positive</td><td>All rendering, hit-testing, mouse/touch coordinates. Ephemeral — recomputed on every frame.</td></tr>
+</table>
+
+<h4>Viewport transform</h4>
+
+<p>The mapping between world and screen is an affine transform defined by three parameters: pan offset <code>(panX, panY)</code> in pixels and a zoom scale factor <code>scale</code> (pixels per metre). The transform is:</p>
+
+<div class="eq">
+<span class="label">World → Screen</span>
+screenX = (worldX - panX) × scale
+screenY = canvasHeight - (worldY - panY) × scale
+
+The Y-flip (canvasHeight − …) is essential because screen Y increases downward
+while world Y increases upward.
+</div>
+
+<div class="eq">
+<span class="label">Screen → World (inverse, for mouse events)</span>
+worldX = screenX / scale + panX
+worldY = (canvasHeight - screenY) / scale + panY
+</div>
+
+<h4>Viewport behaviour</h4>
+<ol>
+  <li><strong>Pan</strong>: middle-mouse drag or two-finger drag updates <code>panX, panY</code>. Pan is in world units.</li>
+  <li><strong>Zoom</strong>: scroll wheel or pinch adjusts <code>scale</code>. Zoom towards the cursor position (the world point under the cursor must remain stationary after zoom). Implementation: compute world point under cursor before zoom, adjust scale, recompute panX/panY so the same world point maps back to the same screen pixel.</li>
+  <li><strong>Fit-to-extents</strong>: a button or keyboard shortcut (<code>F</code> key) auto-fits the viewport so the terrain polyline plus a 10% margin fills the canvas. Compute bounding box of terrain vertices, then set scale and pan so the box fits with padding.</li>
+  <li><strong>Aspect ratio</strong>: always 1:1 (no distortion). The same scale value applies to both axes. This is non-negotiable — a distorted cross-section produces wrong visual intuition about slope angles.</li>
+</ol>
+
+<div class="callout warn">
+  <strong>Exaggeration option (v2).</strong> Some users may want vertical exaggeration (e.g. 2× or 5×) for very flat slopes. Do not implement this in v1. It complicates the screen↔world transform, breaks circle rendering (circles become ellipses), and creates misleading visual impressions. If added later, it must be clearly labelled and disabled during solver visualization.
+</div>
+
+<h4>Grid &amp; axis display</h4>
+<p>Draw a background grid in world-space coordinates. Grid spacing adapts to zoom level: at zoom where 1 m = 20+ px, show 1 m major grid + 0.5 m minor grid; at zoom where 1 m = 5–20 px, show 5 m major + 1 m minor; at zoom where 1 m &lt; 5 px, show 10 m major + 5 m minor. Axis labels (elevation in m above datum, horizontal distance in m) appear along the left and bottom edges. The grid is drawn first (lowest z-order) so all geometry draws on top of it.</p>
+
+<h3 id="s12-2"><span class="snum">12.2</span>Terrain drawing tool</h3>
+
+<p>The terrain polyline is the first thing the user draws. It defines the upper boundary of the entire model.</p>
+
+<h4>Drawing mode</h4>
+<ol>
+  <li>User activates the terrain tool (toolbar button or <code>T</code> key).</li>
+  <li>Each click/tap places a vertex at the world coordinates under the cursor. The vertex snaps to the grid if grid-snap is enabled (default: on, snap to 0.5 m).</li>
+  <li>A rubber-band line follows the cursor from the last placed vertex to the current cursor position, showing the next segment before placement.</li>
+  <li>The terrain is drawn left-to-right. If the user clicks at an x-coordinate less than or equal to the previous vertex, reject the click and flash a visual warning. The terrain must be monotonically increasing in x.</li>
+  <li>Double-click or press <code>Enter</code> / <code>Escape</code> to finish the polyline.</li>
+  <li>Minimum 3 vertices required. If the user finishes with fewer, discard and stay in drawing mode.</li>
+</ol>
+
+<h4>Visual feedback during drawing</h4>
+<ul>
+  <li>Placed vertices: solid circles (6 px radius), accent colour.</li>
+  <li>Placed segments: solid lines (2 px), accent colour.</li>
+  <li>Rubber-band segment: dashed line (1.5 px), lighter accent colour.</li>
+  <li>Cursor coordinate readout: small tooltip near cursor showing <code>(x, y)</code> in metres, updated in real time.</li>
+  <li>Cumulative terrain length displayed in the status bar.</li>
+</ul>
+
+<h4>Post-drawing editing</h4>
+<p>After the terrain is placed, it becomes editable (§12.6). Vertices can be dragged, inserted, or deleted. The monotonicity constraint must be enforced during drag: a vertex cannot be dragged past its neighbours in x.</p>
+
+<h3 id="s12-3"><span class="snum">12.3</span>CPT placement &amp; layer adoption</h3>
+
+<p>CPTs are the source of soil layering. The user places CPT markers on the terrain, and the app imports layering from the existing CPT interpretation pipeline.</p>
+
+<h4>Placement</h4>
+<ol>
+  <li>User activates the CPT tool (toolbar button or <code>C</code> key).</li>
+  <li>Click on or near the terrain polyline to place a CPT. The CPT marker snaps to the terrain surface: the x-coordinate is taken from the click, the y-coordinate is set to <code>terrainY(x)</code>. Visual: a vertical pin/marker icon extending downward from the terrain.</li>
+  <li>On placement, the app must resolve which CPT data to associate. Two modes:
+    <ul>
+      <li><strong>Auto-link</strong>: if the existing app has CPT data indexed by location, match the placed position to the nearest available CPT dataset (within a configurable tolerance, e.g. 5 m). Show the matched CPT ID in a tooltip.</li>
+      <li><strong>Manual selection</strong>: a dropdown/modal appears listing available CPTs from the project; the user picks one.</li>
+    </ul>
+  </li>
+  <li>Once linked, the CPT's interpreted layer column is immediately available. The app draws the layer boundaries extending downward from the terrain surface at the CPT's x-position.</li>
+</ol>
+
+<h4>Layer adoption &amp; interpolation visualisation</h4>
+<p>When two or more CPTs are placed, the app interpolates layer boundaries between them (as specified in §3.2) and fills the cross-section with soil regions. This interpolation must happen live as each CPT is placed — the user should see the layering update immediately. Specifically:</p>
+
+<ol>
+  <li><strong>Single CPT</strong>: layers extend horizontally across the full model width (constant depth from terrain). This is a placeholder until a second CPT constrains the interpolation.</li>
+  <li><strong>Two+ CPTs</strong>: layers are linearly interpolated between adjacent CPTs. Beyond the leftmost and rightmost CPTs, layers are extrapolated horizontally (constant depth equal to the nearest CPT's values).</li>
+  <li><strong>Layer matching</strong>: layers are matched by soil-type ID. If a layer exists in one CPT but not an adjacent one, it pinches out linearly. The pinch-out is shown visually as the region tapering to zero thickness.</li>
+  <li><strong>Terrain capping</strong>: the uppermost layer at every x is clipped to the terrain surface. No layer can extend above the terrain. If interpolated layer tops exceed terrain elevation (e.g. on a slope face between a crest CPT and a toe CPT), the region polygon follows the terrain.</li>
+</ol>
+
+<h4>CPT repositioning</h4>
+<p>Placed CPTs can be dragged horizontally along the terrain (the y-coordinate tracks the terrain). This re-triggers the interpolation. CPTs can also be deleted (right-click → delete, or select + <code>Delete</code> key), which re-triggers interpolation with the remaining CPTs.</p>
+
+<div class="callout note">
+  <strong>Minimum configuration.</strong> The solver requires at least one CPT (providing at least one soil type with c', φ', γ). A model with zero CPTs has no soil properties and cannot be solved. The UI should disable the "Run" button and display a message until at least one CPT is placed.
+</div>
+
+<h3 id="s12-4"><span class="snum">12.4</span>Phreatic surface drawing</h3>
+
+<p>The phreatic surface tool works identically to the terrain drawing tool (§12.2) with these differences:</p>
+
+<ol>
+  <li>The phreatic polyline is drawn in a distinct colour (blue, semi-transparent) and dashed style.</li>
+  <li>It does <strong>not</strong> require monotonicity in x — the water table can have local dips (e.g. drawdown near a drain). However, it must span the full horizontal extent of the terrain or the solver will treat uncovered zones as dry.</li>
+  <li>The phreatic surface is constrained to lie at or below the terrain. If a vertex is placed above the terrain, clamp its y to <code>terrainY(x)</code> and show a visual warning. Artesian conditions (phreatic above terrain) are not supported in v1.</li>
+  <li>The phreatic surface is optional. If not drawn, the solver runs with u = 0 everywhere.</li>
+</ol>
+
+<h3 id="s12-5"><span class="snum">12.5</span>Entry-exit zone definition</h3>
+
+<p>For the entry-exit search mode (§4.3), the user defines two zones on the terrain surface.</p>
+
+<h4>Drawing mode</h4>
+<ol>
+  <li>User activates the "Entry zone" tool. Click two points on the terrain to define the entry segment (highlighted in green). The segment must lie on the crest/upper portion of the terrain.</li>
+  <li>User activates the "Exit zone" tool. Click two points on the terrain to define the exit segment (highlighted in red/orange). The segment must lie on the face/toe/lower portion of the terrain.</li>
+  <li>Constraint: the exit zone must be entirely to the right of (higher x than) the entry zone. If violated, show an error.</li>
+  <li>The zones are drawn as thick highlighted segments on the terrain polyline, with translucent fill extending slightly below the terrain for visibility.</li>
+</ol>
+
+<p>If the user does not define entry-exit zones, the solver uses the grid-radius search (§4.2) which does not require zones. The UI should offer both search modes: "Auto search (grid)" and "Guided search (entry-exit)" with a toggle or radio button.</p>
+
+<h3 id="s12-6"><span class="snum">12.6</span>Vertex editing &amp; snapping</h3>
+
+<p>All drawn polylines (terrain, phreatic) and placed markers (CPTs) are editable after creation. The editing model is consistent across all element types.</p>
+
+<h4>Selection</h4>
+<ol>
+  <li>Click on a vertex (within a hit-test radius of 8 screen pixels) to select it. Selected vertex shows a larger circle (8 px) with a contrasting fill.</li>
+  <li>Click on a segment (within 5 px perpendicular distance) to select the parent polyline. The entire polyline highlights.</li>
+  <li>Click on empty space to deselect.</li>
+  <li><code>Tab</code> cycles selection through vertices of the active polyline.</li>
+</ol>
+
+<h4>Dragging</h4>
+<ol>
+  <li>Drag a selected vertex to move it. Enforce all constraints during drag:
+    <ul>
+      <li>Terrain vertex: x must stay between its left and right neighbours (monotonicity). y is unconstrained.</li>
+      <li>Phreatic vertex: y must stay ≤ terrainY(x). x-monotonicity is not required.</li>
+      <li>CPT marker: drag only in x. y auto-tracks terrain.</li>
+    </ul>
+  </li>
+  <li>Snap to grid during drag if grid-snap is enabled. Show snap indicators (thin guidelines).</li>
+  <li>Show real-time coordinate readout during drag.</li>
+</ol>
+
+<h4>Insert vertex</h4>
+<p>Double-click on a segment to insert a new vertex at that position. The vertex is added between the two segment endpoints. The polyline is re-sorted. This allows the user to add detail to a terrain profile after initial drawing.</p>
+
+<h4>Delete vertex</h4>
+<p>Select a vertex and press <code>Delete</code> or <code>Backspace</code>. If the resulting polyline would have fewer than 3 vertices (for terrain) or 2 vertices (for phreatic), reject the deletion and show a warning. Terrain cannot be fully deleted this way — use a "Clear terrain" action for that.</p>
+
+<h4>Snapping rules</h4>
+<table>
+  <tr><th>Snap target</th><th>Radius</th><th>Priority</th></tr>
+  <tr><td>Grid intersection</td><td>10 px</td><td>3 (lowest)</td></tr>
+  <tr><td>Existing vertex of same polyline</td><td>12 px</td><td>2</td></tr>
+  <tr><td>Terrain surface (for phreatic/CPT)</td><td>15 px</td><td>1 (highest)</td></tr>
+</table>
+<p>When multiple snaps compete, highest priority wins. Show a visual snap indicator (small square or cross) when snap is active.</p>
+
+<h3 id="s12-7"><span class="snum">12.7</span>Material panel &amp; soil-type management</h3>
+
+<p>A side panel (collapsible, docked to the right or bottom of the canvas) manages soil types and their properties. This is the bridge between the CPT interpretation data and the visual/analytical model.</p>
+
+<h4>Soil type list</h4>
+<p>Each soil type imported from CPT interpretation appears as a row in the panel:</p>
+
+<table>
+  <tr><th>Field</th><th>Editable</th><th>Display</th></tr>
+  <tr><td>Name / label</td><td>Yes</td><td>e.g. "Klei (matig vast)", "Zand (middelfijn)"</td></tr>
+  <tr><td>Colour swatch</td><td>Yes (colour picker)</td><td>Filled square; this colour is used for the region fill on the canvas</td></tr>
+  <tr><td>Hatch pattern</td><td>Yes (dropdown)</td><td>Standard geotechnical hatching per soil class: dots for sand, horizontal dashes for clay, diagonal hatches for silt, brick pattern for rock, stipple for peat. Pattern overlays the solid colour.</td></tr>
+  <tr><td>c' (kPa)</td><td>Yes</td><td>Numeric input, range 0–500</td></tr>
+  <tr><td>φ' (°)</td><td>Yes</td><td>Numeric input, range 0–55</td></tr>
+  <tr><td>γ (kN/m³)</td><td>Yes</td><td>Numeric input, range 10–28</td></tr>
+  <tr><td>γ_sat (kN/m³)</td><td>Yes</td><td>Numeric input, range 14–26. Defaults to γ + 2 if not set.</td></tr>
+</table>
+
+<p>Soil types are initially populated from the CPT interpretation pipeline with estimated c', φ', γ values. The user can edit these at any time. Edits propagate immediately to the canvas rendering and invalidate any cached solver results (requiring re-run).</p>
+
+<h4>Colour scheme defaults</h4>
+<p>To make the cross-section immediately readable, assign a standard geotechnical colour palette by default. These follow common European practice and are consistent with Belgian borehole log conventions:</p>
+
+<table>
+  <tr><th>Soil class</th><th>Default fill colour</th><th>Default hatch</th></tr>
+  <tr><td>Topsoil / fill</td><td><code>#8B7355</code> (warm brown)</td><td>Random dots</td></tr>
+  <tr><td>Clay (klei)</td><td><code>#4A8C5C</code> (olive green)</td><td>Horizontal dashes</td></tr>
+  <tr><td>Silt (leem)</td><td><code>#B8A88A</code> (khaki)</td><td>Diagonal fine hatches</td></tr>
+  <tr><td>Sand (zand)</td><td><code>#E8D44D</code> (yellow)</td><td>Stipple dots</td></tr>
+  <tr><td>Gravel (grind)</td><td><code>#D4A574</code> (sandy orange)</td><td>Circle + dot pattern</td></tr>
+  <tr><td>Peat (veen)</td><td><code>#3D2B1F</code> (dark brown)</td><td>Wavy horizontal lines</td></tr>
+  <tr><td>Rock / hard substrate</td><td><code>#9E9E9E</code> (grey)</td><td>Brick / block pattern</td></tr>
+</table>
+
+<h4>Add / remove soil types</h4>
+<p>The user can add a new soil type manually (not from a CPT) — e.g. for a fill layer or a known stratum not captured by the CPT. They can also delete a soil type, which removes all associated regions from the model and triggers re-interpolation.</p>
+
+<h3 id="s12-8"><span class="snum">12.8</span>Manual region override</h3>
+
+<p>In some cases, the linear interpolation between CPTs does not capture the real geology. The user may want to manually override a region boundary or add a region that the CPTs did not detect.</p>
+
+<h4>Override polyline tool</h4>
+<ol>
+  <li>User activates the "Region boundary" tool.</li>
+  <li>Draw a polyline that represents a layer boundary. This polyline replaces the interpolated boundary between the two CPTs it spans.</li>
+  <li>The affected soil regions are re-clipped to respect the manually drawn boundary.</li>
+</ol>
+
+<h4>Manual region fill</h4>
+<ol>
+  <li>User draws a closed polygon directly on the canvas (freeform region tool).</li>
+  <li>Assigns a soil type from the material panel (click on the region, then click a soil type in the panel, or use a dropdown).</li>
+  <li>The manual region takes precedence over interpolated regions where they overlap. The interpolated region is clipped to exclude the manual region's footprint.</li>
+</ol>
+
+<div class="callout note">
+  <strong>Priority.</strong> Manual regions override interpolated regions. Interpolated regions override the default (deepest/last) layer. This layering priority must be tracked in the <code>SoilRegion</code> data structure — add a <code>priority: int</code> field (higher = takes precedence). The <code>findRegionContaining()</code> function (§8.3) must check regions in priority order, returning the first match.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §13 VISUALIZATION & RENDERING -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s13"><span class="snum">13</span>Visualization &amp; Rendering</h2>
+
+<p>The canvas must render the full geotechnical cross-section at all times, and overlay solver results when available. Rendering is layered in a strict z-order so elements never occlude each other incorrectly. All rendering uses the world→screen transform from §12.1.</p>
+
+<h4>Z-order (bottom to top)</h4>
+<table>
+  <tr><th>Z</th><th>Layer</th><th>Description</th></tr>
+  <tr><td>0</td><td>Grid &amp; axes</td><td>Background coordinate grid, axis labels, elevation markers</td></tr>
+  <tr><td>1</td><td>Soil regions (filled)</td><td>Solid colour + hatch pattern fill for each region polygon</td></tr>
+  <tr><td>2</td><td>Phreatic surface</td><td>Blue dashed polyline + translucent blue fill below it (clipped to soil mass)</td></tr>
+  <tr><td>3</td><td>Slip circle arc (all trials — dimmed)</td><td>When showing search results: faintly draw all evaluated circles</td></tr>
+  <tr><td>4</td><td>Critical slip circle</td><td>Bold red arc for the lowest-F surface</td></tr>
+  <tr><td>5</td><td>Slice boundaries</td><td>Thin vertical lines from terrain to circle, within the critical slip mass</td></tr>
+  <tr><td>6</td><td>Slice force diagrams</td><td>Optional overlay: weight vectors, base normal, shear mobilised per slice</td></tr>
+  <tr><td>7</td><td>Terrain polyline</td><td>Bold black polyline on top of everything, always visible</td></tr>
+  <tr><td>8</td><td>CPT markers</td><td>Vertical pin icons with labels, drawn over terrain</td></tr>
+  <tr><td>9</td><td>Entry/exit zones</td><td>Highlighted terrain segments (green/orange)</td></tr>
+  <tr><td>10</td><td>Vertices &amp; handles</td><td>Draggable vertex circles (only visible in edit mode)</td></tr>
+  <tr><td>11</td><td>Annotations &amp; labels</td><td>F values, depth labels, coordinate readouts, tooltips</td></tr>
+</table>
+
+<h3 id="s13-1"><span class="snum">13.1</span>Layer rendering — material fills &amp; legend</h3>
+
+<h4>Region fill</h4>
+<p>Each <code>SoilRegion</code> polygon is rendered as a filled path using the soil type's assigned colour (from §12.7). The fill has two components:</p>
+<ol>
+  <li><strong>Solid fill</strong>: the soil type colour at ~70% opacity, so overlapping or adjacent regions remain distinguishable and the grid is faintly visible through shallow layers.</li>
+  <li><strong>Hatch overlay</strong>: a repeating pattern (defined per soil class) drawn on top of the solid fill at ~40% opacity. The hatch pattern is in a fixed screen-space size (e.g. 8 px spacing) so it remains readable at all zoom levels. Do <strong>not</strong> scale the hatch with zoom — a 1-metre-spaced hatch would disappear when zoomed out.</li>
+</ol>
+
+<h4>Region boundaries</h4>
+<p>Draw thin lines (1 px, dark grey, 50% opacity) along the edges between different soil regions. Do not draw boundaries along the terrain surface (that is covered by the terrain polyline at z=7) or along the model base.</p>
+
+<h4>Legend</h4>
+<p>A legend box (anchored to the top-right or bottom-right of the canvas, semi-transparent background) lists all soil types present in the model with their colour swatch, hatch, name, and key parameters (c', φ', γ). The legend updates dynamically as soil types are added or modified. The legend can be toggled on/off.</p>
+
+<h3 id="s13-2"><span class="snum">13.2</span>Slip-circle rendering</h3>
+
+<h4>Pre-analysis (no results yet)</h4>
+<p>When entry-exit zones are defined but the solver has not run, optionally show a preview of the search space: draw a few representative circles faintly (light grey, 0.5 px, ~20% opacity) to give the user a sense of where the search will look. This is a visual aid, not a requirement.</p>
+
+<h4>Post-analysis: all evaluated surfaces</h4>
+<p>After the solver completes, all valid trial surfaces can be rendered as a "cloud" of faint arcs. Colour-code by F value using a diverging colour scale:</p>
+
+<table>
+  <tr><th>F range</th><th>Colour</th><th>Interpretation</th></tr>
+  <tr><td>&lt; 1.0</td><td>Red (<code>#D32F2F</code>)</td><td>Unstable — failure expected</td></tr>
+  <tr><td>1.0 – 1.3</td><td>Orange (<code>#F57C00</code>)</td><td>Marginal — below typical design thresholds</td></tr>
+  <tr><td>1.3 – 1.5</td><td>Yellow-green (<code>#AFB42B</code>)</td><td>Acceptable for many design codes</td></tr>
+  <tr><td>&gt; 1.5</td><td>Green (<code>#388E3C</code>)</td><td>Stable</td></tr>
+</table>
+
+<p>The cloud is drawn at very low opacity (5–15% per arc) so the density of low-F circles creates a natural "heat map" effect showing the zone of lowest stability. This rendering mode is toggled on/off by the user.</p>
+
+<h4>Critical surface</h4>
+<p>The surface with the lowest F is drawn prominently:</p>
+<ul>
+  <li>Arc: 3 px stroke, colour from the F-range table above, solid line.</li>
+  <li>Entry and exit points: filled circles (6 px) at the terrain intersection points.</li>
+  <li>Centre marker: small cross or plus sign at the circle centre (xc, yc) with a thin dashed line from centre to the arc (the radius), so the user can see the geometric construction.</li>
+  <li>F label: positioned near the deepest point of the arc, showing <code>F = X.XX</code> in a semi-transparent background box. Font: sans-serif, bold, 14 px.</li>
+</ul>
+
+<h4>Runner-up surfaces</h4>
+<p>The next 2–4 best surfaces (from the <code>SearchResult.results</code> array) are drawn at medium opacity (40%) with thinner strokes (1.5 px), each labelled with their F value. This lets the user see whether the critical surface is isolated or part of a cluster of similar-F surfaces (which indicates a well-defined failure zone).</p>
+
+<h3 id="s13-3"><span class="snum">13.3</span>Slice visualization</h3>
+
+<p>When the user selects a slip surface (click on it, or select from a results list), the slice decomposition for that surface is rendered:</p>
+
+<h4>Slice boundaries</h4>
+<p>Thin vertical lines (1 px, dark grey, dashed) from the terrain surface down to the slip circle, at each slice-cut x-position. The lines are clipped to the region between terrain and circle.</p>
+
+<h4>Slice fill</h4>
+<p>Each slice is filled with a semi-transparent colour indicating its contribution to instability. Colour by the ratio of driving moment to resisting moment for that individual slice:</p>
+
+<div class="eq">
+<span class="label">Slice stability ratio (for visual only)</span>
+ratio_i = (c'_i · b_i + (W_i - u_i · b_i) · tan(φ'_i)) / (m_α_i × W_i · sin(α_i))
+
+Slices with ratio < 1.0 → reddish fill (net driving)
+Slices with ratio > 1.0 → greenish fill (net resisting)
+Slices near α = 0 → neutral/grey (minimal contribution)
+</div>
+
+<p>The fill is at 20–30% opacity, overlaid on the soil-region fill beneath. This produces an intuitive picture of which parts of the slip mass are driving failure (active zone, typically upslope) versus resisting (passive zone, typically near the toe).</p>
+
+<h4>Slice data tooltip</h4>
+<p>Hover over a slice to show a tooltip with its computed properties:</p>
+<ul>
+  <li>Slice index and width (b)</li>
+  <li>Weight (W), in kN/m</li>
+  <li>Base angle (α), in degrees</li>
+  <li>Pore pressure (u), in kPa</li>
+  <li>Base soil type name, c', φ'</li>
+  <li>m_α value</li>
+  <li>Driving moment contribution: W · sin(α)</li>
+  <li>Resisting moment contribution: the numerator term for this slice</li>
+</ul>
+
+<h3 id="s13-4"><span class="snum">13.4</span>Result overlays &amp; annotations</h3>
+
+<h4>Factor-of-safety banner</h4>
+<p>When solver results are available, display a persistent result banner at the top of the canvas (or in a docked results panel):</p>
+<ul>
+  <li>Critical F value, large font, colour-coded by the F-range table.</li>
+  <li>Number of valid trials / total trials.</li>
+  <li>Convergence indicator: "Converged in N iterations" or warning if the critical surface had convergence issues.</li>
+  <li>Fellenius F for comparison (smaller font, labelled "Fellenius check").</li>
+</ul>
+
+<h4>Depth label</h4>
+<p>At the deepest point of the critical slip surface, draw a small dimension line from the terrain to the arc, labelled with the maximum slip depth in metres.</p>
+
+<h4>Optional force diagrams</h4>
+<p>A toggle in the toolbar enables per-slice force arrows (for advanced users / verification):</p>
+<ul>
+  <li><strong>W</strong>: vertical arrow (downward) at slice centroid, length proportional to weight.</li>
+  <li><strong>N'</strong>: arrow perpendicular to the base, length proportional to effective normal.</li>
+  <li><strong>S</strong>: arrow along the base (tangential), length proportional to mobilised shear.</li>
+  <li><strong>u · b</strong>: arrow perpendicular to the base (opposing N'), length proportional to pore force.</li>
+</ul>
+<p>Force arrows are drawn at z-order 6 and colour-coded: W in black, N' in blue, S in red, u·b in cyan. A scale bar (e.g. "→ = 50 kN/m") appears in the legend.</p>
+
+<h3 id="s13-5"><span class="snum">13.5</span>Multi-surface comparison view</h3>
+
+<p>The results panel lists the top N surfaces sorted by F. Each row shows:</p>
+<table>
+  <tr><th>Column</th><th>Content</th></tr>
+  <tr><td>Rank</td><td>#1, #2, …</td></tr>
+  <tr><td>F</td><td>Bishop factor of safety, 3 decimal places</td></tr>
+  <tr><td>F (Fellenius)</td><td>For cross-check</td></tr>
+  <tr><td>Centre</td><td>(xc, yc) in metres</td></tr>
+  <tr><td>Radius</td><td>R in metres</td></tr>
+  <tr><td>Max depth</td><td>Deepest point below terrain, in metres</td></tr>
+  <tr><td>Converged</td><td>✓ / ✗ with iteration count</td></tr>
+</table>
+
+<p>Clicking a row highlights that surface on the canvas (draws it with the full slice visualization from §13.3). Hovering a row draws the surface faintly as a preview. This lets the user quickly scan and compare alternative failure surfaces.</p>
+
+<div class="callout note">
+  <strong>Export.</strong> The results table should be exportable as CSV or clipboard-copy for documentation purposes. The canvas view should be exportable as a PNG/SVG image with all visible layers rendered, suitable for inclusion in a geotechnical report.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §14 UI STATE MACHINE & DATA FLOW -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s14"><span class="snum">14</span>UI State Machine &amp; Data Flow</h2>
+
+<h3 id="s14-1"><span class="snum">14.1</span>Application states</h3>
+
+<p>The application is a single-page canvas app with a toolbar, a side panel, and a results panel. At any moment it is in exactly one of these states:</p>
+
+<table>
+  <tr><th>State</th><th>Active tool</th><th>Canvas behaviour</th><th>Side panel</th></tr>
+  <tr><td><code>IDLE</code></td><td>Select/pan</td><td>Pan/zoom; click to select elements; hover for tooltips</td><td>Shows selected element properties or general model info</td></tr>
+  <tr><td><code>DRAW_TERRAIN</code></td><td>Terrain pencil</td><td>Click to place vertices; rubber-band preview; double-click to finish</td><td>Terrain drawing instructions</td></tr>
+  <tr><td><code>DRAW_PHREATIC</code></td><td>Phreatic pencil</td><td>Same as terrain but with phreatic constraints (§12.4)</td><td>Phreatic drawing instructions</td></tr>
+  <tr><td><code>PLACE_CPT</code></td><td>CPT marker</td><td>Click on terrain to place CPT; side panel shows CPT selection</td><td>CPT picker / linker</td></tr>
+  <tr><td><code>DRAW_ENTRY</code></td><td>Entry zone</td><td>Click two terrain points to define entry zone</td><td>Entry zone instructions</td></tr>
+  <tr><td><code>DRAW_EXIT</code></td><td>Exit zone</td><td>Click two terrain points to define exit zone</td><td>Exit zone instructions</td></tr>
+  <tr><td><code>DRAW_REGION</code></td><td>Manual region</td><td>Click to draw closed polygon; assign soil type on close</td><td>Region tool instructions + soil-type selector</td></tr>
+  <tr><td><code>EDIT_VERTEX</code></td><td>Vertex drag</td><td>Drag selected vertex; enforce constraints; snap</td><td>Vertex coordinate editor (manual numeric input)</td></tr>
+  <tr><td><code>SOLVING</code></td><td>None (locked)</td><td>Canvas locked (no editing); progress spinner; partial results rendered as they come in</td><td>Progress: "Evaluating surface 1,234 / 3,375…"</td></tr>
+  <tr><td><code>RESULTS</code></td><td>Select/pan</td><td>Pan/zoom; click on surfaces to inspect; slice tooltips active</td><td>Results panel with ranked surfaces (§13.5)</td></tr>
+</table>
+
+<h4>State transitions</h4>
+<div class="eq">
+<span class="label">State transition rules</span>
+IDLE → DRAW_TERRAIN     : user clicks "Terrain" tool (only if no terrain exists)
+IDLE → DRAW_PHREATIC    : user clicks "Phreatic" tool
+IDLE → PLACE_CPT        : user clicks "CPT" tool (requires terrain to exist)
+IDLE → DRAW_ENTRY       : user clicks "Entry zone" tool (requires terrain)
+IDLE → DRAW_EXIT        : user clicks "Exit zone" tool (requires terrain)
+IDLE → DRAW_REGION      : user clicks "Region" tool (requires terrain + ≥1 CPT)
+IDLE → EDIT_VERTEX      : user clicks on a vertex
+IDLE → SOLVING          : user clicks "Run" (requires terrain + ≥1 CPT)
+RESULTS → IDLE          : user clicks "Edit" or modifies any geometry
+
+Any DRAW_* → IDLE       : user finishes or cancels drawing (Escape)
+EDIT_VERTEX → IDLE      : user clicks away from vertex or presses Escape
+SOLVING → RESULTS       : solver completes
+SOLVING → IDLE          : user cancels solve (Escape)
+</div>
+
+<div class="callout warn">
+  <strong>Result invalidation.</strong> Any geometry change (terrain edit, CPT move, phreatic edit, soil parameter change, entry/exit zone change, region override) while in <code>RESULTS</code> state must immediately invalidate the results: transition to <code>IDLE</code>, clear the solver output from the canvas, and show a "Results outdated — re-run required" indicator. Stale results displayed alongside modified geometry is dangerous in engineering software.
+</div>
+
+<h3 id="s14-2"><span class="snum">14.2</span>Event flow &amp; solver trigger</h3>
+
+<p>The data flow from user action to solver output follows this pipeline:</p>
+
+<div class="eq">
+<span class="label">Pipeline: canvas → solver → render</span>
+1. USER ACTION
+   Mouse/touch event on canvas
+        ↓
+2. SCREEN → WORLD TRANSFORM
+   Convert screen coordinates to world coordinates (§12.1)
+        ↓
+3. TOOL HANDLER
+   Active tool interprets the world-space event:
+   - Drawing tool: append vertex to polyline
+   - Edit tool: update vertex position, enforce constraints
+   - CPT tool: place marker, trigger layer import
+        ↓
+4. MODEL UPDATE
+   The canonical SlopeModel object is updated:
+   - Terrain polyline modified
+   - Soil regions re-interpolated from CPT data
+   - Phreatic polyline modified
+   - Entry/exit zones updated
+        ↓
+5. CANVAS RE-RENDER
+   Full redraw of canvas from the updated SlopeModel.
+   All z-layers (§13 z-order table) are re-rendered.
+   This happens on every model change, at 60 fps during drag.
+        ↓
+6. SOLVER TRIGGER (only on explicit "Run" action)
+   The SlopeModel is frozen (deep-copied) and passed to the solver.
+   The solver runs in a Web Worker (background thread) so the UI stays
+   responsive. Progress callbacks update the SOLVING state display.
+        ↓
+7. RESULTS RECEIVED
+   SearchResult object returned from the solver.
+   Canvas transitions to RESULTS state.
+   Result overlays (§13.2–13.5) are rendered on top of the model layers.
+</div>
+
+<div class="callout note">
+  <strong>Web Worker requirement.</strong> The solver must run off the main thread. A grid-radius search with refinement evaluates 5,000–10,000 circles × ~30 slices × ~5 iterations = 750k–1.5M evaluations. This takes 0.5–2 seconds, which would freeze the UI if run on the main thread. Use a Web Worker (or equivalent background thread in your framework). Transfer the <code>SlopeModel</code> as a serialisable object. Post progress messages back to the main thread for the progress display.
+</div>
+
+<h3 id="s14-3"><span class="snum">14.3</span>Canvas-to-solver data contract</h3>
+
+<p>The solver receives exactly one object: a frozen <code>SlopeModel</code> (§7) plus search configuration. The solver has no knowledge of the canvas, screen coordinates, UI state, or any rendering concept. The contract is:</p>
+
+<pre>
+<span class="cm">// ── Solver input: everything the solver needs, nothing more ──</span>
+
+<span class="kw">struct</span> <span class="ty">SolverInput</span> {
+  <span class="param">model</span>: <span class="ty">SlopeModel</span> {
+    terrain:  Polyline         <span class="cm">// world-space vertices</span>
+    phreatic: Polyline | null  <span class="cm">// world-space vertices, or null if dry</span>
+    regions:  SoilRegion[]     <span class="cm">// closed polygons + soil type refs</span>
+    soilTypes: SoilType[]      <span class="cm">// c', φ', γ, γ_sat</span>
+  }
+
+  <span class="param">searchMode</span>: <span class="st">"grid"</span> | <span class="st">"entry_exit"</span>
+
+  <span class="cm">// for grid mode:</span>
+  <span class="param">gridConfig</span>: {
+    gridNx, gridNy, nRadii,
+    refineNx, refineNy, refineNr
+  }
+
+  <span class="cm">// for entry-exit mode:</span>
+  <span class="param">entryExitConfig</span>: {
+    entryZone: {xStart, xEnd},
+    exitZone:  {xStart, xEnd},
+    nEntry, nExit, nXc
+  }
+
+  <span class="cm">// shared:</span>
+  <span class="param">sliceConfig</span>: {
+    nTarget: int,           <span class="cm">// default 30</span>
+    minDepth: float,        <span class="cm">// default 0.5 m</span>
+    maxExitAngle: float,    <span class="cm">// default 60° in radians</span>
+  }
+  <span class="param">solverConfig</span>: {
+    maxIter: int,           <span class="cm">// default 50</span>
+    tolerance: float,       <span class="cm">// default 0.001</span>
+    keepBest: int           <span class="cm">// default 10</span>
+  }
+}
+
+<span class="cm">// ── Solver output: everything the UI needs to render results ──</span>
+
+<span class="kw">struct</span> <span class="ty">SolverOutput</span> {
+  <span class="param">searchResult</span>: <span class="ty">SearchResult</span>  <span class="cm">// as defined in §7</span>
+  <span class="param">timing</span>: {
+    totalMs: float,
+    trialCount: int,
+    avgMsPerTrial: float
+  }
+}
+</pre>
+
+<p>The canvas/UI layer is responsible for converting the visual model into this contract. The solver is responsible for returning <code>SearchResult</code>. There is no coupling beyond this interface. This separation is essential for testability (the solver can be tested with hardcoded <code>SolverInput</code> objects, no canvas needed) and for the Web Worker boundary (the input/output must be serialisable).</p>
+
+<h3 id="s14-4"><span class="snum">14.4</span>Undo/redo &amp; serialisation</h3>
+
+<h4>Undo/redo</h4>
+<p>Every model-mutating action pushes the previous <code>SlopeModel</code> state onto an undo stack. The stack has a maximum depth of 50 entries. <code>Ctrl+Z</code> / <code>Cmd+Z</code> pops the stack and restores the previous state. <code>Ctrl+Shift+Z</code> / <code>Cmd+Shift+Z</code> redoes.</p>
+
+<p>Mutating actions that create undo entries: place terrain vertex, finish terrain, move vertex, delete vertex, insert vertex, place CPT, move CPT, delete CPT, place phreatic vertex, finish phreatic, define entry/exit zone, draw manual region, change soil type parameter, change soil type colour. Pan and zoom do not create undo entries (they are viewport changes, not model changes).</p>
+
+<h4>Serialisation (save/load)</h4>
+<p>The entire <code>SlopeModel</code> plus the viewport state (panX, panY, scale) plus the search configuration plus the last <code>SearchResult</code> (if any) is serialised to JSON. This JSON can be saved to local storage or exported as a file. The schema version is included at the top level for forward compatibility.</p>
+
+<pre>
+<span class="cm">// ── Serialised project file structure ──</span>
+
+{
+  <span class="st">"version"</span>: <span class="nu">1</span>,
+  <span class="st">"model"</span>: {
+    <span class="st">"terrain"</span>: { <span class="st">"vertices"</span>: [[x, y], ...] },
+    <span class="st">"phreatic"</span>: { <span class="st">"vertices"</span>: [[x, y], ...] } | <span class="kw">null</span>,
+    <span class="st">"soilTypes"</span>: [
+      { <span class="st">"id"</span>: <span class="st">"clay_1"</span>, <span class="st">"name"</span>: <span class="st">"Klei (matig vast)"</span>,
+        <span class="st">"c_eff"</span>: <span class="nu">8</span>, <span class="st">"phi_eff"</span>: <span class="nu">22</span>, <span class="st">"gamma"</span>: <span class="nu">18</span>, <span class="st">"gamma_sat"</span>: <span class="nu">20</span>,
+        <span class="st">"colour"</span>: <span class="st">"#4A8C5C"</span>, <span class="st">"hatch"</span>: <span class="st">"horizontal_dash"</span> }, ...
+    ],
+    <span class="st">"regions"</span>: [
+      { <span class="st">"polygon"</span>: [[x,y], ...], <span class="st">"soilTypeId"</span>: <span class="st">"clay_1"</span>,
+        <span class="st">"source"</span>: <span class="st">"interpolated"</span> | <span class="st">"manual"</span>, <span class="st">"priority"</span>: <span class="nu">0</span> }, ...
+    ],
+    <span class="st">"cptMarkers"</span>: [
+      { <span class="st">"x"</span>: <span class="nu">12.5</span>, <span class="st">"linkedCptId"</span>: <span class="st">"CPT-03"</span> }, ...
+    ]
+  },
+  <span class="st">"searchConfig"</span>: { ... },
+  <span class="st">"viewport"</span>: { <span class="st">"panX"</span>: <span class="nu">0</span>, <span class="st">"panY"</span>: <span class="nu">0</span>, <span class="st">"scale"</span>: <span class="nu">20</span> },
+  <span class="st">"lastResult"</span>: { ... } | <span class="kw">null</span>
+}
+</pre>
+
+<div class="callout note">
+  <strong>Versioning.</strong> The <code>"version"</code> field is always checked on load. If the loaded version is higher than the app's current version, refuse to load and show an error. If it is lower, apply migration logic (which may be a no-op in early versions). Never silently drop unknown fields — preserve them on re-save to avoid data loss if a newer version added fields.
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<!-- §15 REFERENCES -->
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2 id="s15"><span class="snum">15</span>References</h2>
+
+<ol>
+  <li>Bishop, A.W. (1955). "The use of the slip circle in the stability analysis of slopes." <em>Géotechnique</em>, 5(1), 7–17.</li>
+  <li>Fellenius, W. (1927). <em>Erdstatische Berechnungen</em>. W. Ernst u. Sohn, Berlin.</li>
+  <li>Spencer, E. (1967). "A method of analysis of the stability of embankments assuming parallel inter-slice forces." <em>Géotechnique</em>, 17(1), 11–26.</li>
+  <li>Morgenstern, N.R. &amp; Price, V.E. (1965). "The analysis of the stability of general slip surfaces." <em>Géotechnique</em>, 15(1), 79–93.</li>
+  <li>USACE (2003). <em>EM 1110-2-1902: Engineering and Design — Slope Stability</em>. U.S. Army Corps of Engineers.</li>
+  <li>FHWA (2001). <em>NHI-01-028: Soil Slopes and Retaining Structures</em>. Federal Highway Administration.</li>
+  <li>GeoStudio / Seequent (2024). SLOPE/W Engineering Methodology. Online documentation.</li>
+  <li>EN 1997-1:2004. <em>Eurocode 7: Geotechnical design — Part 1: General rules</em>.</li>
+  <li>NBN EN 1997-1 ANB:2014. Belgian National Annex to Eurocode 7.</li>
+  <li>SB260 (WTCB/Buildwise). <em>Geotechnische berekeningen — Richtlijnen voor het gebruik van sonderingen</em>.</li>
+</ol>
+
+</div><!-- .page -->
+</body>
+</html>
