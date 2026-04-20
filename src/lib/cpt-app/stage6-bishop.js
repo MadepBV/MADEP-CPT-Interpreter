@@ -26,8 +26,8 @@ const DEFAULT_SPENCER_CONFIG = {
   forceTolerance: 0.001,
   FBracketLow: 0.1,
   FBracketHigh: 10.0,
-  maxOuterIter: 30,
-  maxInnerIter: 50,
+  maxOuterIter: 20,
+  maxInnerIter: 30,
   useNewton: false,
   initialF: null,
   initialLambda: 0,
@@ -558,13 +558,16 @@ function ordinarySeed(slices) {
     const c = slice.baseMaterial.cEff;
     const phi = (slice.baseMaterial.phiEffDeg * Math.PI) / 180;
     const tanPhi = Math.tan(phi);
+    const cosA = Math.cos(slice.alphaRad);
+    const sinA = Math.sin(slice.alphaRad);
     const V = sliceVerticalLoad(slice);
-    numerator += c * slice.dx + (V - slice.uBase * slice.dx) * tanPhi;
-    denominator += V * Math.sin(slice.alphaRad);
+    const l = Number(slice.baseLength) || slice.dx / Math.max(cosA, 1e-6);
+    numerator += c * l + (V * cosA - slice.uBase * l) * tanPhi;
+    denominator += V * sinA;
   });
   if (denominator <= EPS) return 1;
   const seed = numerator / denominator;
-  return Number.isFinite(seed) && seed > 0 ? seed : 1;
+  return Number.isFinite(seed) ? seed : 1;
 }
 
 function buildDiagnostics(slices, F, iterations) {
@@ -614,6 +617,7 @@ function enrichBishopSlices(slices, diagnostics) {
     ...slice,
     mAlpha: diagnostics?.sliceMAlpha?.[index] ?? null,
     normalForce: diagnostics?.sliceNormals?.[index] ?? null,
+    N_total: diagnostics?.sliceNormals?.[index] ?? null,
     mobilizedShear: diagnostics?.sliceMobilizedShears?.[index] ?? null,
     E_right: null,
     X_right: null,
@@ -796,8 +800,8 @@ function evaluateSpencerState(slices, lambda, FTrial, solverConfig) {
       };
     }
 
-    const a1 = -sinA + (tanPhi * cosA) / FTrial;
-    const a0 = ELeft - porePressure * width * tanA + (cohesion * width) / FTrial;
+    const a1 = sinA - (tanPhi * cosA) / FTrial;
+    const a0 = ELeft + porePressure * width * tanA - (cohesion * width) / FTrial;
     const denomN = mAlpha + lambda * a1;
     if (!Number.isFinite(denomN) || Math.abs(denomN) <= (solverConfig.minMAlpha || 1e-6)) {
       return {
@@ -1135,13 +1139,15 @@ function finalizeSpencerSlices(baseSlices, sliceForces, lambda) {
   return (baseSlices || []).map((slice, index) => {
     const forceState = sliceForces?.[index];
     if (!forceState) return { ...slice };
+    const porePressure = Number(slice.uBase) || 0;
+    const baseLength = Number(slice.baseLength) || 0;
     return {
       ...slice,
-      normalForce: forceState.N_eff,
       mobilizedShear: forceState.S_mob,
       E_right: forceState.E_right,
       X_right: forceState.X_right,
       N_eff: forceState.N_eff,
+      N_total: forceState.N_eff + porePressure * baseLength,
       S_mob: forceState.S_mob,
       mAlpha: forceState.mAlpha ?? slice.mAlpha,
       theta_interslice: Number.isFinite(forceState.theta_interslice)
@@ -1233,18 +1239,6 @@ function solveSpencerForSlices(slices, bishopDiagnostics, spencerConfig, solverC
 
     if (Math.abs(mid.value) <= spencerConfig.intersectionTolerance) {
       return buildConvergedSpencerResult(bishopF, mid, totalIterations);
-    }
-
-    if (Math.abs(upper.lambda - lower.lambda) <= spencerConfig.lambdaTolerance) {
-      if (best && Math.abs(best.value) <= spencerConfig.intersectionTolerance) {
-        return buildConvergedSpencerResult(bishopF, best, totalIterations);
-      }
-      return buildSpencerUnresolvedResult(
-        bishopF,
-        best,
-        'Outer lambda bracket collapsed before the Spencer branches intersected within tolerance',
-        totalIterations
-      );
     }
 
     if (Math.sign(mid.value) === Math.sign(lower.value)) {

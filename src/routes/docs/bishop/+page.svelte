@@ -480,20 +480,24 @@
 				<section class="doc-subsection">
 					<h3>6.2 Seed and slice diagnostics</h3>
 					<p>
-						The initial seed is an ordinary-method-style estimate using the same application
-						algebra as the fixed-point solver:
+						The recorded Fellenius seed is evaluated on the <strong>true base length</strong>,
+						even though the governing Bishop fixed-point iteration itself remains in the width
+						form shown above:
 					</p>
 					<div class="equations">
 						<div class="formula">
-							F<sub>seed</sub> =
-							Σ[c′<sub>i</sub>b<sub>i</sub> + (V<sub>i</sub> − u<sub>i</sub>b<sub>i</sub>)tanφ′<sub>i</sub>]
+							F<sub>fellenius</sub> =
+							Σ[c′<sub>i</sub>l<sub>i</sub> + (V<sub>i</sub>cosα<sub>i</sub> − u<sub>i</sub>l<sub>i</sub>)tanφ′<sub>i</sub>]
 							/
 							Σ[V<sub>i</sub> sinα<sub>i</sub>]
 						</div>
 					</div>
 					<p>
-						After convergence, the application back-calculates slice normal force and mobilised
-						shear for reporting by the same width-based algebra:
+						If that Fellenius value is non-finite or non-positive, the Bishop iteration falls
+						back to the configured initial factor of safety; the raw Fellenius value is still
+						retained as a QA diagnostic. After convergence, the application back-calculates the
+						Bishop slice <strong>total normal force</strong> and mobilised shear for reporting by
+						the same width-based algebra:
 					</p>
 					<div class="equations">
 						<div class="formula">
@@ -510,7 +514,10 @@
 					<p>
 						These are the values exposed in the Stage 6 slice table for the selected Bishop
 						result. They do not constitute an independent solver; they are diagnostics
-						consistent with the governing Bishop equation used by the application.
+						consistent with the governing Bishop equation used by the application. When a
+						Spencer result is displayed, the normal-force column switches to the Spencer
+						<strong>effective normal</strong> N′ rather than reusing the Bishop total-normal
+						diagnostic.
 					</p>
 				</section>
 				<section class="doc-subsection">
@@ -537,10 +544,10 @@
 					</p>
 					<div class="equations">
 						<div class="formula">
-							a<sub>1,i</sub> = −sinα<sub>i</sub> + [tanφ′<sub>i</sub> cosα<sub>i</sub>] / F
+							a<sub>1,i</sub> = sinα<sub>i</sub> − [tanφ′<sub>i</sub> cosα<sub>i</sub>] / F
 						</div>
 						<div class="formula">
-							a<sub>0,i</sub> = E<sub>L,i</sub> − u<sub>i</sub>b<sub>i</sub>tanα<sub>i</sub> + c′<sub>i</sub>b<sub>i</sub> / F
+							a<sub>0,i</sub> = E<sub>L,i</sub> + u<sub>i</sub>b<sub>i</sub>tanα<sub>i</sub> − c′<sub>i</sub>b<sub>i</sub> / F
 						</div>
 						<div class="formula">
 							N′<sub>i</sub> =
@@ -566,13 +573,23 @@
 						<em>g</em>(&lambda;) = <em>F</em><sub>m</sub>(&lambda;) −
 						<em>F</em><sub>f</sub>(&lambda;).
 					</p>
+					<p>
+						The reported Spencer diagnostics now follow the classical sign convention used in the
+						literature: positive &lambda; and positive E<sub>R</sub> correspond to the solver’s
+						compression-positive interslice chain.
+					</p>
 					<div class="doc-callout">
 						<strong>Present Spencer defaults.</strong> The present Stage 6 module starts from a
 						&lambda; bracket of <strong>−0.6 to +0.6</strong>, uses branch tolerances of
-						<strong>0.001</strong> on both the Spencer moment and force solves, uses
-						<strong>0.001</strong> on the outer &lambda; bracket, and rechecks only the top
-						shortlisted Bishop circles. If Spencer cannot converge, the Bishop result is
-						retained and the fallback is flagged in the interface and report.
+						<strong>0.001</strong> on both the Spencer moment and force solves, accepts the
+						outer solve on the branch-intersection residual
+						<strong>|F<sub>m</sub> − F<sub>f</sub>| ≤ 0.001</strong>, and uses up to
+						<strong>20 outer</strong> and <strong>30 inner</strong> iterations by default.
+						The settings panel still retains a &lambda; tolerance field for backward
+						compatibility with older saved configs, but the present solver does not use a
+						separate &lambda;-collapse acceptance test. Spencer still rechecks only the top
+						shortlisted Bishop circles. If Spencer cannot converge, the Bishop result is retained
+						and the fallback is flagged in the interface and report.
 					</div>
 				</section>
 				<section class="doc-subsection">
@@ -608,7 +625,11 @@
 						</div>
 						<div class="symbols__row">
 							<dt>N<sub>i</sub>, T<sub>i</sub></dt>
-							<dd>base normal force and mobilized shear force [kN/m]</dd>
+							<dd>Bishop total base normal force and mobilized shear force [kN/m]</dd>
+						</div>
+						<div class="symbols__row">
+							<dt>N′<sub>i</sub></dt>
+							<dd>Spencer effective base normal force [kN/m]</dd>
 						</div>
 						<div class="symbols__row">
 							<dt>E<sub>L</sub>, E<sub>R</sub></dt>
@@ -667,15 +688,18 @@
 				<details class="doc-details">
 					<summary>Show present fixed-point workflow</summary>
 					<pre><code>1. Build all valid trial circles from the entry-exit search.
-2. Solve each circle with Bishop Simplified using:
+2. Compute the recorded Fellenius seed:
+   F_fellenius = Σ[c′·l + (V cosα − u·l)tanφ′] / Σ[V sinα]
+   If F_fellenius is non-positive or non-finite, start Bishop from initialFS.
+3. Solve each circle with Bishop Simplified using:
    F = Σ[(c′·b + (V − u·b)tanφ′) / mα(F)] / Σ[V sinα]
-3. Rank all circles by Bishop F.
-4. If Spencer mode is on, recheck only the shortlisted circles:
+4. Rank all circles by Bishop F.
+5. If Spencer mode is on, recheck only the shortlisted circles:
    a. Solve Fm(λ) from the Spencer moment residual
    b. Solve Ff(λ) from left-to-right force propagation
-   c. Find λ where Fm(λ) = Ff(λ)
-5. If Spencer converges, rerank the shortlist by Spencer F.
-6. If Spencer fails, keep the Bishop result and flag the fallback.</code></pre>
+   c. Find λ where Fm(λ) = Ff(λ), using the residual intersection criterion
+6. If Spencer converges, rerank the shortlist by Spencer F.
+7. If Spencer fails, keep the Bishop result and flag the fallback.</code></pre>
 				</details>
 			</section>
 
@@ -709,7 +733,9 @@
 								<tr><td>Minimum m<sub>α</sub></td><td>1e−6</td></tr>
 								<tr><td>Spencer shortlist</td><td>Top 10 circles by default, capped by the prevailing keep-best setting</td></tr>
 								<tr><td>Spencer &lambda; bracket</td><td>−0.6 to +0.6 by default</td></tr>
-								<tr><td>Spencer tolerances</td><td>0.001 on the Spencer moment branch, 0.001 on the Spencer force branch, and 0.001 on the outer &lambda; bracket</td></tr>
+								<tr><td>Spencer branch tolerances</td><td>0.001 on the Spencer moment branch and 0.001 on the Spencer force branch</td></tr>
+								<tr><td>Spencer convergence</td><td>Residual-based on |F<sub>m</sub> − F<sub>f</sub>|, 0.001 by default</td></tr>
+								<tr><td>Spencer outer / inner iterations</td><td>20 / 30 by default</td></tr>
 								<tr><td>Pore pressure</td><td>Dry if no phreatic line is drawn; otherwise hydrostatic from the drawn phreatic line</td></tr>
 								<tr><td>Surface load</td><td>One optional uniform vertical surcharge zone on the terrain, with one shared q input in kPa</td></tr>
 								<tr><td>Execution</td><td>Worker-backed search so the canvas remains responsive while solving</td></tr>
@@ -721,9 +747,9 @@
 					<li>The active branch of the parent circle is resolved first and is stored with the trial circle for both rendering and solving.</li>
 					<li>The results table stores ranked circles sorted by increasing FOS, using Spencer F for converged Spencer results and Bishop F for flagged fallbacks.</li>
 					<li>The canvas may display the trial circle under evaluation while the worker is running.</li>
-					<li>Selected results expose slice-by-slice values including W<sub>i</sub>, Q<sub>i</sub>, V<sub>i</sub>, α<sub>i</sub>, u<sub>i</sub>, m<sub>α,i</sub>, N<sub>i</sub>, and mobilized shear.</li>
-					<li>When Spencer converges, the selected result also exposes E<sub>R</sub>, X<sub>R</sub>, S<sub>mob</sub>, &lambda;, the branch values F<sub>m</sub> and F<sub>f</sub>, and the final moment and force residuals.</li>
-					<li>The Stage 7 report payload stores the active mode, shortlisted result methods, Bishop/Spencer values, Spencer convergence counts, and the Spencer residual diagnostics.</li>
+					<li>Selected Bishop results expose slice-by-slice values including W<sub>i</sub>, Q<sub>i</sub>, V<sub>i</sub>, α<sub>i</sub>, u<sub>i</sub>, m<sub>α,i</sub>, the Bishop total normal N<sub>i</sub>, and mobilized shear.</li>
+					<li>When Spencer converges, the selected result relabels the normal column to the Spencer effective normal N′<sub>i</sub> and also exposes E<sub>R</sub>, X<sub>R</sub>, S<sub>mob</sub>, &lambda;, the branch values F<sub>m</sub> and F<sub>f</sub>, and the final moment and force residuals.</li>
+					<li>The Stage 7 report payload presently stores summary-level Bishop/Spencer values, convergence counts, and Spencer residual diagnostics, but not the full slice-force table.</li>
 				</ul>
 			</section>
 
@@ -772,6 +798,7 @@
 					<li>Check one near-steep exit case to verify the exit-angle and m<sub>α</sub> filters.</li>
 					<li>Check one slope with a finite loaded crest zone to verify slice-overlap logic and the expected reduction in FOS.</li>
 					<li>Check one benign circular case where Bishop and Spencer should agree closely.</li>
+					<li>Check one published Spencer benchmark, such as Fredlund &amp; Krahn (1977) or a documented SLOPE/W case, to verify both the factor of safety and the sign of &lambda;.</li>
 					<li>Check one case where Spencer is forced to fall back so that the interface and the Stage 7 report both show the fallback metadata cleanly.</li>
 				</ul>
 				<div class="doc-callout doc-callout--warn">
@@ -811,6 +838,7 @@
 					<li><strong>Bishop, A.W. (1955)</strong> — The use of the slip circle in the stability analysis of slopes. Géotechnique, 5(1), 7–17.</li>
 					<li><strong>Fellenius, W. (1927)</strong> — <em>Erdstatische Berechnungen</em>. W. Ernst u. Sohn, Berlin.</li>
 					<li><strong>Spencer, E. (1967)</strong> — A method of analysis of the stability of embankments assuming parallel inter-slice forces. Géotechnique, 17(1), 11–26.</li>
+					<li><strong>Fredlund, D.G. &amp; Krahn, J. (1977)</strong> — Comparison of slope stability methods of analysis. Canadian Geotechnical Journal, 14(3), 429–439.</li>
 					<li><strong>USACE EM 1110-2-1902</strong> — Slope Stability. U.S. Army Corps of Engineers.</li>
 					<li><strong>FHWA NHI-01-028</strong> — Soil Slope and Embankment Design Reference Manual.</li>
 					<li><strong>GeoStudio / SLOPE/W documentation</strong> — Bishop Simplified method, entry-exit search, and variable slice widths.</li>
