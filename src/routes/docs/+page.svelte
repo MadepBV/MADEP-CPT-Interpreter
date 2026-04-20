@@ -468,29 +468,33 @@
 			subsections: [
 				{
 					id: 'stage3-boundaries',
-					title: '3.1 Raw segmentation and boundary placement',
-					paragraphs: [
-						'The first pass creates provisional raw segments directly from the pointwise Stage 2 classification sequence. For Robertson, CUR 3 layers, and NEN 6740, the raw segment key is the broad internal soil family. For NEN Tabel 3, the raw segment key is the pair {type, subtype}, so detailed subtype changes can create provisional layer boundaries before later simplification.',
-						'Boundary depths are then constructed from the retained CPT rows. The first raw segment starts at ground level. Other raw segments start just above the first CPT row that belongs to that segment, unless a downward merge has already handed them an inherited top boundary. Segment thickness is always evaluated on these active layer boundaries rather than on the bare difference between first and last CPT reading.'
-					],
-					equations: [
-						'k<sub>row</sub> = type &nbsp;&nbsp; for Robertson, CUR 3 layers, and NEN 6740',
-						'k<sub>row</sub> = type :: subtype &nbsp;&nbsp; for NEN Tabel 3',
-						'z<sub>top</sub> = 0 &nbsp;&nbsp; for the first raw segment',
-						'z<sub>top</sub> = z<sub>first row</sub> − 0.02 &nbsp;&nbsp; for a new raw segment without inherited top',
-						'z<sub>bot</sub> = z<sub>last row</sub>',
-						't = z<sub>bot</sub> − z<sub>top</sub>'
-					],
-					symbols: [
-						{ term: 'k<sub>row</sub>', meaning: 'raw segmentation key used to decide whether two consecutive CPT rows belong to the same provisional segment [-]' },
-						{ term: 'z<sub>top</sub>, z<sub>bot</sub>', meaning: 'active top and bottom boundary of one provisional segment [m]' },
-						{ term: 't', meaning: 'segment thickness from the active layer boundaries [m]' }
-					],
-					bullets: [
-						'This means the NEN Tabel 3 route is intrinsically finer than the other Stage 2 routes, because subtype transitions inside one soil family are preserved in the raw segmentation.',
-						'NEN 6740 currently uses the internal family only for raw layer generation; its 14 detailed material labels remain available for interpretation but do not by themselves create raw boundaries.'
-					]
-				},
+						title: '3.1 Raw segmentation and boundary placement',
+						paragraphs: [
+							'The first pass creates provisional raw segments directly from the pointwise Stage 2 classification sequence. For Robertson, CUR 3 layers, and NEN 6740, the raw segment key is the broad internal soil family. For NEN Tabel 3, the raw segment key is the pair {type, subtype}, so detailed subtype changes can create provisional layer boundaries before later simplification.',
+							'Boundary depths are then constructed from the retained CPT rows. The first raw segment starts at ground level. Other raw segments start at the midpoint between the last CPT row of the previous segment and the first CPT row of the new segment, unless a downward merge has already handed them an inherited top boundary. If that straddling sample pair is unavailable or degenerate, the app falls back to the legacy 20 mm offset from the first row of the new segment. Segment thickness is always evaluated on these active layer boundaries rather than on the bare difference between first and last CPT reading.'
+						],
+						equations: [
+							'k<sub>row</sub> = type &nbsp;&nbsp; for Robertson, CUR 3 layers, and NEN 6740',
+							'k<sub>row</sub> = type :: subtype &nbsp;&nbsp; for NEN Tabel 3',
+							'z<sub>top</sub> = 0 &nbsp;&nbsp; for the first raw segment',
+							'z<sub>top</sub> = 0.5(z<sub>last row,prev</sub> + z<sub>first row,curr</sub>) &nbsp;&nbsp; for a new raw segment without inherited top and with valid straddling samples',
+							'z<sub>top</sub> = z<sub>first row,curr</sub> − 0.02 &nbsp;&nbsp; fallback when the straddling samples are unavailable or degenerate',
+							'z<sub>bot</sub> = z<sub>last row</sub>',
+							't = z<sub>bot</sub> − z<sub>top</sub>'
+						],
+						symbols: [
+							{ term: 'k<sub>row</sub>', meaning: 'raw segmentation key used to decide whether two consecutive CPT rows belong to the same provisional segment [-]' },
+							{ term: 'z<sub>last row,prev</sub>, z<sub>first row,curr</sub>', meaning: 'last retained CPT depth in the segment above and first retained CPT depth in the new segment [m]' },
+							{ term: 'z<sub>top</sub>, z<sub>bot</sub>', meaning: 'active top and bottom boundary of one provisional segment [m]' },
+							{ term: 't', meaning: 'segment thickness from the active layer boundaries [m]' }
+						],
+						bullets: [
+							'This means the NEN Tabel 3 route is intrinsically finer than the other Stage 2 routes, because subtype transitions inside one soil family are preserved in the raw segmentation.',
+							'NEN 6740 currently uses the internal family only for raw layer generation; its 14 detailed material labels remain available for interpretation but do not by themselves create raw boundaries.',
+							'The midpoint rule is self-calibrating to the actual CPT logging step and remains bounded by construction between the two samples that straddle the raw boundary.',
+							'For uniform 40 mm sampling, the midpoint rule collapses exactly to the earlier 20 mm offset.'
+						]
+					},
 				{
 					id: 'stage3-smart-merge',
 					title: '3.1A Smart merge correction',
@@ -853,27 +857,32 @@
 			subsections: [
 				{
 					id: 'conventions-sign',
-					title: '6.1 Sign convention and in-situ stresses',
-					paragraphs: [
-						'Compression is taken as positive. Depth z is measured downward from ground level. Elevation values are interpreted in Belgian TAW convention where relevant.',
-						'The in-situ effective-stress profile is reconstructed from the active groundwater level and the interpreted unit weights.'
-					],
-					equations: [
-						'u(z) = γ<sub>w</sub> · max(0, z − z<sub>w</sub>)',
-						'σ<sub>v</sub>(z) = Σ γ<sub>i</sub> · Δz<sub>i</sub>',
-						"σ′<sub>v</sub>(z) = σ<sub>v</sub>(z) − u(z)"
-					],
-					symbols: [
-						{ term: 'z', meaning: 'depth below ground level [m]' },
-						{ term: 'z<sub>w</sub>', meaning: 'phreatic level depth below ground [m]' },
-						{ term: 'γ<sub>w</sub>', meaning: 'unit weight of water [kN/m³]' },
-						{ term: 'γ<sub>i</sub>', meaning: 'unit weight of layer i [kN/m³]' },
-						{ term: 'Δz<sub>i</sub>', meaning: 'thickness contribution of layer i [m]' },
-						{ term: 'u', meaning: 'pore pressure [kPa]' },
-						{ term: 'σ<sub>v</sub>', meaning: 'total vertical stress [kPa]' },
-						{ term: 'σ′<sub>v</sub>', meaning: 'effective vertical stress [kPa]' }
-					]
-				},
+						title: '6.1 Sign convention and in-situ stresses',
+						paragraphs: [
+							'Compression is taken as positive. Depth z is measured downward from ground level. Elevation values are interpreted in Belgian TAW convention where relevant.',
+							'The in-situ effective-stress profile is reconstructed from the active groundwater level and the interpreted unit weights.'
+						],
+						equations: [
+							'u(z) = γ<sub>w</sub> · max(0, z − z<sub>w</sub>)',
+							'σ<sub>v</sub>(z) = Σ γ<sub>i</sub> · Δz<sub>i</sub> &nbsp;&nbsp; with γ<sub>i</sub> = γ for z<sub>i</sub> ≤ z<sub>w</sub>, γ<sub>i</sub> = γ<sub>sat</sub> for z<sub>i</sub> &gt; z<sub>w</sub>',
+							"σ′<sub>v</sub>(z) = σ<sub>v</sub>(z) − u(z)"
+						],
+						symbols: [
+							{ term: 'z', meaning: 'depth below ground level [m]' },
+							{ term: 'z<sub>w</sub>', meaning: 'phreatic level depth below ground [m]' },
+							{ term: 'γ', meaning: 'unit weight above the phreatic level [kN/m³]' },
+							{ term: 'γ<sub>sat</sub>', meaning: 'saturated unit weight below the phreatic level [kN/m³]' },
+							{ term: 'γ<sub>w</sub>', meaning: 'unit weight of water [kN/m³]' },
+							{ term: 'γ<sub>i</sub>', meaning: 'unit weight selected for layer contribution i according to its position relative to the phreatic level [kN/m³]' },
+							{ term: 'Δz<sub>i</sub>', meaning: 'thickness contribution of layer i [m]' },
+							{ term: 'u', meaning: 'pore pressure [kPa]' },
+							{ term: 'σ<sub>v</sub>', meaning: 'total vertical stress [kPa]' },
+							{ term: 'σ′<sub>v</sub>', meaning: 'effective vertical stress [kPa]' }
+						],
+						bullets: [
+							'Above the phreatic level, the dry unit weight γ is used; below it, γ<sub>sat</sub> is used. Pore pressure u(z) = γ<sub>w</sub> · max(0, z − z<sub>w</sub>) is subtracted from σ<sub>v</sub>(z) to form σ′<sub>v</sub>(z).'
+						]
+					},
 				{
 					id: 'conventions-hs',
 					title: '6.2 Hardening Soil reference-stress convention',
@@ -919,13 +928,14 @@
 						'The application computes drained and undrained ultimate resistance separately and converts those results to q<sub>d</sub> or q<sub>allow</sub> depending on the selected safety route.',
 						'The underlying reference family is the Brinch Hansen / EC7 Annex D shallow-foundation format. The current app implements the vertical-load subset of that model: no horizontal load, no ground slope, and no base tilt. Eccentricity is only used to derive the effective dimensions for the shape-factor route.'
 					],
-					equations: [
-						"q<sub>ult,d</sub> = c′N<sub>c</sub>s<sub>c</sub>d<sub>c</sub> + q′N<sub>q</sub>s<sub>q</sub>d<sub>q</sub> + 0.5γ′B′N<sub>γ</sub>s<sub>γ</sub>d<sub>γ</sub>",
-						'q<sub>ult,u</sub> = q + 5.14c<sub>u</sub>s<sub>cu</sub>d<sub>cu</sub>',
-						'N<sub>q</sub> = exp(πtanφ′) · tan<sup>2</sup>(45° + φ′/2)',
-						'N<sub>c</sub> = (N<sub>q</sub> − 1) / tanφ′',
-						'N<sub>γ</sub> = 2(N<sub>q</sub> − 1)tanφ′',
-						'B′ = B − 2e<sub>B</sub>; &nbsp; L′ = L − 2e<sub>L</sub>',
+						equations: [
+							"q<sub>ult,d</sub> = c′N<sub>c</sub>s<sub>c</sub>d<sub>c</sub> + q′N<sub>q</sub>s<sub>q</sub>d<sub>q</sub> + 0.5γ′B′N<sub>γ</sub>s<sub>γ</sub>d<sub>γ</sub>",
+							'q<sub>ult,u</sub> = q + 5.14c<sub>u</sub>s<sub>cu</sub>d<sub>cu</sub>',
+							'N<sub>q</sub> = exp(πtanφ′) · tan<sup>2</sup>(45° + φ′/2)',
+							'N<sub>c</sub> = (N<sub>q</sub> − 1) / tanφ′ &nbsp;&nbsp; for φ′ &gt; 0',
+							'N<sub>c</sub> → 5.14 &nbsp;&nbsp; as φ′ → 0 (Prandtl limit, corresponds to 5.14c<sub>u</sub> in the undrained form)',
+							'N<sub>γ</sub> = 2(N<sub>q</sub> − 1)tanφ′',
+							'B′ = B − 2e<sub>B</sub>; &nbsp; L′ = L − 2e<sub>L</sub>',
 						'r = B′ / L′ &nbsp;&nbsp; with B′ ≤ L′; strip uses r = 0',
 						's<sub>q</sub> = 1 + r sinφ′',
 						's<sub>c</sub> = (s<sub>q</sub>N<sub>q</sub> − 1) / (N<sub>q</sub> − 1) &nbsp;&nbsp; for φ′ > 0',
@@ -955,11 +965,12 @@
 						{ term: 'k', meaning: 'depth-factor embedment parameter derived from D<sub>f</sub>/B′ [-]' }
 					],
 					bullets: [
-						'The app now keeps the EC7 Annex D rough-base N<sub>γ</sub> = 2(N<sub>q</sub> − 1)tanφ′ formulation consistently. The earlier Vesić variant 2(N<sub>q</sub> + 1)tanφ′ is slightly larger; Annex D is now preferred here because Stage 6 is an EC7-oriented screening tool and the Annex D form is slightly more conservative and easier to audit against the code text.',
-						'Shape factors now default to Brinch Hansen / Annex D values derived from the effective plan ratio r = B′/L′. Users can switch to a conservative mode with all shape factors fixed to 1.0.',
-						'For circular footings screened through this rectangular interface, use B = L and keep e<sub>B</sub> = e<sub>L</sub> = 0 so r = 1.',
-						'The bearing-depth envelope is sampled from the selected starting depth upward to the model bottom using a depth increment clamped between 0.10 m and 0.25 m.',
-						'This remains a shallow-foundation screening model: full inclined/eccentric-load verification, sliding, ground-slope effects, base tilt, and the full three-case groundwater averaging rule for the N<sub>γ</sub> term are still outside the current app.'
+							'The app now keeps the EC7 Annex D rough-base N<sub>γ</sub> = 2(N<sub>q</sub> − 1)tanφ′ formulation consistently. The earlier Vesić variant 2(N<sub>q</sub> + 1)tanφ′ is slightly larger; Annex D is now preferred here because Stage 6 is an EC7-oriented screening tool and the Annex D form is slightly more conservative and easier to audit against the code text.',
+							'Shape factors now default to Brinch Hansen / Annex D values derived from the effective plan ratio r = B′/L′. Users can switch to a conservative mode with all shape factors fixed to 1.0.',
+							'For circular footings screened through this rectangular interface, use B = L and keep e<sub>B</sub> = e<sub>L</sub> = 0 so r = 1.',
+							'For φ′ = 0, the drained block collapses to the undrained Prandtl expression q<sub>ult,u</sub> = q + 5.14c<sub>u</sub>s<sub>cu</sub>d<sub>cu</sub>; the drained expression is therefore not evaluated in that limit.',
+							'The bearing-depth envelope is sampled from the selected starting depth upward to the model bottom using a depth increment clamped between 0.10 m and 0.25 m.',
+							'This remains a shallow-foundation screening model: full inclined/eccentric-load verification, sliding, ground-slope effects, base tilt, and the full three-case groundwater averaging rule for the N<sub>γ</sub> term are still outside the current app.'
 					]
 				},
 				{
@@ -1073,20 +1084,20 @@
 				},
 				{
 					id: 'dewatering-stress',
-					title: '8.4 Effective stress and settlement response',
-					paragraphs: [
-						'Once the new phreatic level at the CPT is known, the app recomputes pore pressure and effective stress with two selectable total-stress assumptions: conservative σ<sub>v</sub> fixed, or realistic γ<sub>sat</sub> → γ between the old and new water levels.',
-						'Settlement is then computed with the same constrained-modulus philosophy used in the settlement app, evaluated at the mean stress state between before and after drawdown.'
-					],
-					equations: [
-						"u′(z) = γ<sub>w</sub> · max(0, z − z′<sub>w</sub>)",
-						"σ′<sub>v</sub>′(z) = σ<sub>v</sub>(z) − u′(z)",
-						"Δσ′<sub>v</sub>(z) = σ′<sub>v,new</sub>(z) − σ′<sub>v,old</sub>(z)",
-						"σ′<sub>mean</sub> = 0.5(σ′<sub>v,old</sub> + σ′<sub>v,new</sub>)",
-						"Δε<sub>v,i</sub> = Δσ′<sub>v,i</sub> / E<sub>oed,i</sub>",
-						'ΔS<sub>dewatering</sub> = ΣΔε<sub>v,i</sub>Δz<sub>i</sub>',
-						'c<sub>v</sub> = k<sub>v</sub>E<sub>oed</sub> / γ<sub>w</sub>'
-					],
+						title: '8.4 Effective stress and settlement response',
+						paragraphs: [
+							'Once the new phreatic level at the CPT is known, the app recomputes pore pressure and effective stress with two selectable total-stress assumptions: conservative σ<sub>v</sub> fixed, or realistic γ<sub>sat</sub> → γ between the old and new water levels.',
+							'Settlement is then computed with the same constrained-modulus philosophy used in the settlement app, evaluated at the mean stress state between before and after drawdown.',
+							'Optional time curve for fine-grained layers follows the same Terzaghi 1D consolidation route used in the settlement application, with the consolidation coefficient c<sub>v</sub> = k<sub>v</sub>E<sub>oed</sub> / γ<sub>w</sub> derived from the interpreted layer k<sub>v</sub> and the stiffness used for settlement.'
+						],
+						equations: [
+							"u′(z) = γ<sub>w</sub> · max(0, z − z′<sub>w</sub>)",
+							"σ′<sub>v</sub>′(z) = σ<sub>v</sub>(z) − u′(z)",
+							"Δσ′<sub>v</sub>(z) = σ′<sub>v,new</sub>(z) − σ′<sub>v,old</sub>(z)",
+							"σ′<sub>mean</sub> = 0.5(σ′<sub>v,old</sub> + σ′<sub>v,new</sub>)",
+							"Δε<sub>v,i</sub> = Δσ′<sub>v,i</sub> / E<sub>oed,i</sub>",
+							'ΔS<sub>dewatering</sub> = ΣΔε<sub>v,i</sub>Δz<sub>i</sub>'
+						],
 					symbols: [
 						{ term: 'z′<sub>w</sub>', meaning: 'new phreatic level depth below ground [m]' },
 						{ term: 'σ′<sub>v,new</sub>, σ′<sub>v,old</sub>', meaning: 'new and original effective vertical stress [kPa]' },
