@@ -1509,7 +1509,7 @@ function stressAt(z, gamma_sat, gamma_unsat){
   } else {
     sigV = gu * wt + gamma_sat * (z - wt);
   }
-  const u = z > wt ? 10 * (z - wt) : 0;
+  const u = z > wt ? 9.81 * (z - wt) : 0;
   return{sigV: +sigV.toFixed(2), u: +u.toFixed(2), sigVeff: Math.max(sigV - u, 1)};
 }
 
@@ -1761,7 +1761,7 @@ function runClass(){
     {l:'avg Rf (%)',    v:avgOf(r=>r.rf||0,r=>r.rf!=null).toFixed(2)},
     {l:'max depth (m)', v:cl[n-1].z.toFixed(2)},
     {l:'readings',      v:n},
-    {l:'method',        v:{robertson:'Robertson',cur3:'CUR 3 layers',nen6740:'NEN 6740',sb260:'NEN Tabel 3 (EC7)'}[S.method]}
+    {l:'method',        v:{robertson:'Robertson',cur3:'CUR 3 layers',nen6740:'NEN 6740',sb260:'NEN Tabel 3'}[S.method]}
   ].map(m=>`<div class="met"><div class="met-l">${m.l}</div><div class="met-v">${m.v}</div></div>`).join('');
 
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
@@ -1947,7 +1947,6 @@ function mergeSegmentInDirection(merged, i, dir){
   const seg=merged[i];
   if(dir==='up'){
     merged[i-1].rows.push(...seg.rows);
-    if(seg._top!=null) merged[i-1]._top=merged[i-1]._top??seg._top;
     merged.splice(i,1);
   }else{
     merged[i+1].rows.unshift(...seg.rows);
@@ -2036,6 +2035,10 @@ function enforceMinThicknessBySimilarity(segments, sensitivity){
 function smartPostMerge(segments){
   const sensitivity=Math.max(0,Math.min(2,S.smartMergeSensitivity ?? 0.5));
   let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
+  // Intended smart chain:
+  //   1. original raw classification-derived layering
+  //   2. similarity-driven boundary reduction
+  //   3. minimum-thickness enforcement as the final hard merge force
   merged=smartSimilarityReduce(merged, sensitivity);
   merged=enforceMinThicknessBySimilarity(merged, sensitivity);
   return merged;
@@ -2060,13 +2063,12 @@ function detectLayers(){
   }
   raw.push(cur);
 
-  // Important: smartMerge is a post-processing correction only.
-  // The original raw layering is always created first from the
+  // Important: the original raw layering is always created first from the
   // unmodified point-by-point classification sequence above.
-  // Baseline behavior is the historical upward thin-layer merge.
-  // Smart merge may only further reduce that baseline, never refine it.
-  let merged=simpleUpwardMerge(raw);
-  if(S.smartMerge) merged=smartPostMerge(merged);
+  // Then:
+  //   - baseline mode: enforce minimum thickness by upward merge
+  //   - smart mode: reduce by similarity first, enforce minimum thickness last
+  const merged=S.smartMerge ? smartPostMerge(raw) : simpleUpwardMerge(raw);
 
   const mergedSummaries=merged.map((seg,i)=>segmentSummary({...seg,isFirst:i===0}));
   let prevBot=null;
@@ -2774,7 +2776,7 @@ function setParamMethod(v){
   document.getElementById('pmSB260').classList.toggle('active',v==='sb260');
   document.getElementById('pmDEF').classList.toggle('active',v==='def');
   const desc={
-    sb260:'Grondsoort en consistentie uit NEN Tabel 3 (EC7) — aanbevolen',
+    sb260:'Grondsoort en consistentie uit NEN Tabel 3 — aanbevolen',
     def:'Generieke parameters op basis van CPT-type (DEF tabel)'
   };
   document.getElementById('pmDesc').textContent=desc[v]||'';

@@ -80,40 +80,15 @@
 				}
 			}}
 		>
-			<h3>NEN Tabel 3 / EC7</h3>
+			<h3>NEN Tabel 3</h3>
 			<p>
-				EC7 Table 3 soil families from qc and Rf. Often aligns better with Eurocode
-				parameter sets and can therefore fit subsequent parameter selection better.
+				Direct subtype table from q<sub>c</sub> and R<sub>f</sub>. Fine-grained route that
+				often aligns well with later parameter assignment.
 			</p>
 		</div>
 	</div>
 
 	<div class="ctrl-row" style="margin-top:14px">
-		<span class="ctrl-lbl">Minimum layer thickness:</span>
-		<input
-			type="range"
-			id="minThkR"
-			min="0.05"
-			max="2.0"
-			step="0.05"
-			value="0.50"
-			style="width:140px"
-			oninput={(event) =>
-				call('setMinThk', +(event.currentTarget as HTMLInputElement).value, false)}
-		/>
-		<input
-			class="ctrl-num"
-			type="number"
-			id="minThkN"
-			min="0.05"
-			max="2.0"
-			step="0.05"
-			value="0.50"
-			oninput={(event) =>
-				call('setMinThk', +(event.currentTarget as HTMLInputElement).value, true)}
-		/>
-		<span style="font-size:12px;color:var(--tx2)">m</span>
-		<div class="ctrl-sep"></div>
 		<label
 			style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--tx2);cursor:pointer"
 		>
@@ -161,10 +136,32 @@
 						true
 					)}
 			/>
-			<span style="font-size:11px;color:var(--tx3)">
-				0 = conservative, 1 = continuity-driven, 2 = aggressive
-			</span>
 		</div>
+		<div class="ctrl-sep"></div>
+		<span class="ctrl-lbl">Minimum layer thickness:</span>
+		<input
+			type="range"
+			id="minThkR"
+			min="0.05"
+			max="2.0"
+			step="0.05"
+			value="0.50"
+			style="width:140px"
+			oninput={(event) =>
+				call('setMinThk', +(event.currentTarget as HTMLInputElement).value, false)}
+		/>
+		<input
+			class="ctrl-num"
+			type="number"
+			id="minThkN"
+			min="0.05"
+			max="2.0"
+			step="0.05"
+			value="0.50"
+			oninput={(event) =>
+				call('setMinThk', +(event.currentTarget as HTMLInputElement).value, true)}
+		/>
+		<span style="font-size:12px;color:var(--tx2)">m</span>
 		<span id="minThkInfo" style="font-size:11px;color:var(--tx3)"></span>
 	</div>
 
