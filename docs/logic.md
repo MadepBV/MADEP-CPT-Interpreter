@@ -1,6 +1,6 @@
 # CPT Interpretation App — Logic Documentation
 
-*Last updated: 2026-04-17. This document reflects the exact logic implemented in the SvelteKit CPT interpreter (`src/lib/components/cpt/*` UI plus `src/lib/cpt-app/legacy-controller.js`) and documents planned extensions. Sections marked [IMPLEMENTED] match the current code verbatim. Sections marked [PLANNED] are documented for upcoming implementation.*
+*Last updated: 2026-04-18. This document reflects the exact logic implemented in the SvelteKit CPT interpreter (`src/lib/components/cpt/*` UI plus `src/lib/cpt-app/legacy-controller.js`) and documents planned extensions. Sections marked [IMPLEMENTED] match the current code verbatim. Sections marked [PLANNED] are documented for upcoming implementation.*
 
 ---
 
@@ -45,7 +45,7 @@ Rows are discarded if:
 
 Source priority:
 1. `#MEASUREMENTVAR= 14, value, m, WaterLevel` — `wt = |value|` (sign convention: negative = below surface, so absolute value taken)
-2. If absent — default `wt = 1.5 m`
+2. If absent — default `wt = 1.7 m`
 
 The engineer can override at any time via slider or numeric input. Display shows both depth-below-surface (m) and elevation (m TAW) when a surface elevation is set.
 
@@ -72,8 +72,8 @@ When set: `TAW = elev - z` for all depth values.
 
 ## Stage 2 — Classification
 
-Classification is applied **per depth step** (every reading). Four methods are available. The
-Robertson (2016) route is documented separately in `docs/classification/robertson-2016.md`.
+Classification is applied **per depth step** (every reading). Five methods are available. The
+Robertson (2016) route is the default for new CPTs and is documented separately in `docs/classification/robertson-2016.md`.
 
 ### 2.1 Robertson (1990) — SBT / Ic [IMPLEMENTED]
 
@@ -84,7 +84,7 @@ The implementation uses the Robertson-style normalised chart with a fixed prelim
 ```
 sigma_v0  = 17 * z                         [kPa] above WT
 sigma_v0  = 17 * z_wt + 18 * (z-z_wt)      [kPa] below WT
-u         = 10 * max(0, z - z_wt)          [kPa]
+u         = 9.81 * max(0, z - z_wt)        [kPa]
 sigma_v0' = max(sigma_v0 - u, 1)           [kPa]
 ```
 
@@ -130,20 +130,65 @@ This matches the standard Robertson Ic bands more closely than the earlier draft
 
 ---
 
-### 2.2 CUR 3 / NEN 6740 [IMPLEMENTED]
+### 2.2a CUR 3 layers (PLAXIS chart) [IMPLEMENTED]
 
-Uses raw `qc` (MPa) and `Rf` (%) directly. No stress normalisation. **First matching condition wins**:
+Four-gate decision tree on raw `qc` (MPa) and `Rf` (%). No stress
+normalisation. Gates are checked in order, first match wins.
 
-| Priority | Condition | Type |
-|----------|-----------|------|
-| 1 | `Rf > 6` and `qc < 1.0` | Peat / organic |
-| 2 | `Rf > 4` or (`Rf > 3` and `qc < 4`) and `qc < 1.0` | Soft clay |
-| 3 | `Rf > 4` or (`Rf > 3` and `qc < 4`) and `qc >= 1.0` | Clay |
-| 4 | `2 <= Rf <= 6` and `0.5 <= qc < 4` | Sandy clay |
-| 5 | `qc >= 15` and `Rf < 2` | Gravel |
-| 6 | `qc >= 2` and `1.5 <= Rf < 3` | Silty sand |
-| 7 | `qc >= 2` and `Rf < 1.5` | Sand |
-| 8 | fallback | Clay |
+| # | Condition | Type | Subtype |
+|---|-----------|------|---------|
+| 1 | `Rf > 4%` | Peat / organic | — |
+| 2 | `Rf < 1%` and `qc > 1.5 MPa` | Sand | CUR3 sand |
+| 3 | `Rf < 2%` and `0.5 <= qc <= 1.5 MPa` | Sandy clay | CUR3 silt |
+| 4 | fallback | Clay | CUR3 clay |
+
+**Inputs**
+
+- `qc` — cone resistance [MPa]
+- `Rf` — friction ratio [%]; defaults to `3.0` when absent
+
+**Mapping note.** The published CUR 3 chart names the intermediate
+field "Silt". The app carries this as `Sandy clay / CUR3 silt` to
+keep downstream parameter-assignment (Stage 3) working against a
+single app-type vocabulary.
+
+**Source:** PLAXIS Reference Manual, "CUR 3 layers method" chart.
+
+### 2.2b NEN 6740 (stress-corrected chart) [IMPLEMENTED]
+
+Nearest-score classifier against 14 digitised reference areas from
+the NEN 6740 chart as reproduced in D-Sheet Piling.
+
+**Step 1 — stress-correct qc**
+
+```
+qcNen = qc * (100 / sigma_v0')^0.67        [MPa]
+```
+
+where `sigma_v0'` is in kPa, floored at `1 kPa`; `qcNen` is floored at `0.01 MPa`.
+
+**Step 2 — chart score**
+
+```
+score = log10(qcNen) - 0.18 * Rf
+```
+
+`Rf` is in % and defaults to `3.0` when absent.
+
+**Step 3 — match**
+
+Pick the reference area with the smallest `|score - area.score|`. On
+ties the lower-indexed area wins, preserving the chart ordering from
+gravel toward peat.
+
+**Output**
+
+- `type`, `subtype`, `gamma`, `gamma_sat`, `phi'`, `c'`, `cu`
+- the selected `qcNen` is stored in the `Qt` display field
+
+**Reference set.** Fourteen fixed material points spanning Gravel to
+Peat. See `src/lib/cpt-app/legacy-controller.js` (`NEN6740_MATERIALS`)
+for the exact subtype catalogue and parameter values.
 
 ---
 
@@ -407,7 +452,7 @@ wt       = water table depth (m below surface, set in Stage 1)
 sigma_v0 = gamma * wt  +  gamma_sat * (z_mid - wt)    [kPa]  if z_mid > wt
 sigma_v0 = gamma * z_mid                                [kPa]  if z_mid <= wt
 
-u        = 10 * max(0, z_mid - wt)                     [kPa]  (hydrostatic)
+u        = 9.81 * max(0, z_mid - wt)                  [kPa]  (hydrostatic)
 sigma_v0'= max(sigma_v0 - u, 1)                         [kPa]  (floor 1 kPa)
 ```
 
@@ -416,8 +461,8 @@ where γ = l.g (unsaturated unit weight from Stage 3) and γ_sat = l.gs (saturat
 **Example:** layer top=1.0m, bot=4.0m → z_mid=2.5m. Water table at 1.7m. γ=18, γ_sat=19 kN/m³.
 ```
 sigma_v0 = 18 * 1.7  +  19 * (2.5 - 1.7) = 30.6 + 15.2 = 45.8 kPa
-u        = 10 * (2.5 - 1.7) = 8.0 kPa
-sigma_v0'= 45.8 - 8.0 = 37.8 kPa
+u        = 9.81 * (2.5 - 1.7) = 7.85 kPa
+sigma_v0'= 45.8 - 7.85 = 37.95 kPa
 ```
 
 The Stage 4 layer card shows: σv0 [value] − u [value] = σ'v0 [value] kPa, so the engineer can immediately verify the stress state.

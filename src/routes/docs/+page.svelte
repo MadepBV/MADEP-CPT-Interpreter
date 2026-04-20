@@ -1434,7 +1434,7 @@
 												</table>
 											</div>
 											{#if subsection.table.note}
-												<p class="doc-table-note">{subsection.table.note}</p>
+												<p class="doc-table-note">{@html subsection.table.note}</p>
 											{/if}
 										</details>
 									{:else}
@@ -1460,7 +1460,7 @@
 											</table>
 										</div>
 										{#if subsection.table.note}
-											<p class="doc-table-note">{subsection.table.note}</p>
+											<p class="doc-table-note">{@html subsection.table.note}</p>
 										{/if}
 									{/if}
 								</div>

@@ -625,7 +625,7 @@ function solveBishopSimplified(slices, solverConfig) {
           sliceMAlpha: mDiag
         };
       }
-      resisting += (c * slice.dx + (V - slice.uBase * slice.baseLength) * tanPhi) / mAlpha;
+      resisting += (c * slice.dx + (V - slice.uBase * slice.dx) * tanPhi) / mAlpha;
     }
 
     const nextF = resisting / driving;
