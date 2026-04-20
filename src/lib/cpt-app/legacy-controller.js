@@ -3472,6 +3472,7 @@ function stage6Defaults(){
     bishop:{
       tool:'terrain',
       strengthSet:'characteristic',
+      methodMode:'bishop_spencer',
       terrain:[],
       phreatic:[],
       draft:[],
@@ -3516,6 +3517,22 @@ function stage6Defaults(){
         tolerance:0.0001,
         maxIterations:50,
         minMAlpha:0.000001
+      },
+      spencer:{
+        recheckCount:10,
+        lambdaLow:-0.60,
+        lambdaHigh:0.60,
+        lambdaTolerance:0.001,
+        momentTolerance:0.001,
+        forceTolerance:0.001,
+        FBracketLow:0.10,
+        FBracketHigh:10.00,
+        maxOuterIter:20,
+        maxInnerIter:30,
+        useNewton:false,
+        initialF:null,
+        initialLambda:0.00,
+        fallbackBishop:true
       },
       progress:{
         running:false,
@@ -3633,10 +3650,39 @@ function ensureStage6State(){
   bishop.search.minSliceWidth = Math.max(+bishop.search.minSliceWidth || 0.05, 0.01);
   bishop.search.targetSlices = Math.max(6, Math.round(+bishop.search.targetSlices || 30));
   bishop.search.keepBest = Math.max(1, Math.round(+bishop.search.keepBest || 10));
+  if(!['bishop_only','bishop_spencer'].includes(bishop.methodMode)) bishop.methodMode = 'bishop_spencer';
   bishop.solver.initialFS = Math.max(+bishop.solver.initialFS || 1, 0.1);
   bishop.solver.tolerance = Math.max(+bishop.solver.tolerance || 0.0001, 0.000001);
   bishop.solver.maxIterations = Math.max(5, Math.round(+bishop.solver.maxIterations || 50));
   bishop.solver.minMAlpha = Math.max(+bishop.solver.minMAlpha || 0.000001, 0.000000001);
+  if(!bishop.spencer || typeof bishop.spencer !== 'object') bishop.spencer = {};
+  bishop.spencer.recheckCount = Math.max(1, Math.min(Math.round(+bishop.spencer.recheckCount || 10), bishop.search.keepBest));
+  bishop.spencer.lambdaLow = Number.isFinite(+bishop.spencer.lambdaLow) ? +bishop.spencer.lambdaLow : -0.6;
+  bishop.spencer.lambdaHigh = Number.isFinite(+bishop.spencer.lambdaHigh) ? +bishop.spencer.lambdaHigh : 0.6;
+  if(bishop.spencer.lambdaHigh <= bishop.spencer.lambdaLow) bishop.spencer.lambdaHigh = bishop.spencer.lambdaLow + 0.1;
+  bishop.spencer.lambdaTolerance = Math.max(+bishop.spencer.lambdaTolerance || 0.001, 0.000001);
+  bishop.spencer.momentTolerance = Math.max(
+    +(bishop.spencer.momentTolerance ?? bishop.spencer.FfTolerance) || 0.001,
+    0.000001
+  );
+  bishop.spencer.forceTolerance = Math.max(
+    +(bishop.spencer.forceTolerance ?? bishop.spencer.FfTolerance) || 0.001,
+    0.000001
+  );
+  bishop.spencer.FBracketLow = Math.max(
+    +(bishop.spencer.FBracketLow ?? bishop.spencer.FfBracketLow) || 0.1,
+    0.01
+  );
+  bishop.spencer.FBracketHigh = Math.max(
+    +(bishop.spencer.FBracketHigh ?? bishop.spencer.FfBracketHigh) || 10.0,
+    bishop.spencer.FBracketLow + 0.1
+  );
+  bishop.spencer.maxOuterIter = Math.max(5, Math.round(+bishop.spencer.maxOuterIter || 20));
+  bishop.spencer.maxInnerIter = Math.max(5, Math.round(+bishop.spencer.maxInnerIter || 30));
+  bishop.spencer.useNewton = !!bishop.spencer.useNewton;
+  bishop.spencer.initialF = Number.isFinite(+bishop.spencer.initialF) && +bishop.spencer.initialF > 0 ? +bishop.spencer.initialF : null;
+  bishop.spencer.initialLambda = Number.isFinite(+bishop.spencer.initialLambda) ? +bishop.spencer.initialLambda : 0;
+  bishop.spencer.fallbackBishop = bishop.spencer.fallbackBishop !== false;
   if(!Array.isArray(bishop.terrain)) bishop.terrain = [];
   if(!Array.isArray(bishop.phreatic)) bishop.phreatic = [];
   if(!Array.isArray(bishop.draft)) bishop.draft = [];
@@ -3917,7 +3963,7 @@ function stage6BishopUpdateProgressDom(){
   if(status){
     const p = bishop.progress;
     status.textContent = p.running
-      ? `Running ${p.trial||0}/${p.total||0} trials (${(p.percent||0).toFixed(0)}%)`
+      ? `${stage6BishopMethodModeLabel(bishop.methodMode)} · ${p.trial||0}/${p.total||0} Bishop trials (${(p.percent||0).toFixed(0)}%)`
       : (p.message || 'Idle');
   }
   if(bar) bar.style.width = `${Math.max(0, Math.min(100, bishop.progress.percent || 0))}%`;
@@ -3936,7 +3982,7 @@ function stage6BishopEnsureWorker(){
       bishop.progress.total = payload.progress?.total || 0;
       bishop.progress.percent = payload.progress?.percent || 0;
       bishop.progress.previewCircle = payload.progress?.previewCircle || null;
-      bishop.progress.message = 'Running Bishop search...';
+      bishop.progress.message = stage6BishopRunningMessage();
       stage6BishopUpdateProgressDom();
       stage6BishopDrawCanvas();
       return;
@@ -3948,9 +3994,7 @@ function stage6BishopEnsureWorker(){
       bishop.selectedResult = 0;
       bishop.stale = false;
       const timing = payload.result?.timing;
-      bishop.progress.message = payload.result?.critical
-        ? `Search complete in ${timing?.totalMs?.toFixed ? timing.totalMs.toFixed(0) : timing?.totalMs || 0} ms.`
-        : 'Search completed with no valid slip circles.';
+      bishop.progress.message = stage6BishopCompleteMessage(payload.result, timing);
       renderStage6();
       return;
     }
@@ -3995,11 +4039,13 @@ function stage6BishopRunSearch(){
     model,
     entryZone,
     exitZone,
+    methodMode:bishop.methodMode,
     searchConfig:{
       ...bishop.search,
       minSliceWidth:Math.max(+bishop.search.minSliceWidth || 0.05, span/300 || 0.05, 0.05)
     },
-    solverConfig:{...bishop.solver}
+    solverConfig:{...bishop.solver},
+    spencerConfig:{...bishop.spencer}
   };
   stage6BishopStopSearch(true);
   const worker = stage6BishopEnsureWorker();
@@ -4015,7 +4061,7 @@ function stage6BishopRunSearch(){
     trial:0,
     total:0,
     runId:stage6BishopRunId,
-    message:'Running Bishop search...',
+    message:stage6BishopRunningMessage(),
     previewCircle:null
   };
   bishop.results = null;
@@ -4047,6 +4093,42 @@ function stage6BishopStrengthSetLabel(key){
   if(key === 'da1_1') return 'DA1/1 (M1 soil set)';
   if(key === 'da1_2') return 'DA1/2 (M2 soil set)';
   return 'Characteristic';
+}
+
+function stage6BishopMethodModeLabel(mode){
+  return mode === 'bishop_spencer' ? 'Bishop + Spencer check' : 'Bishop only';
+}
+
+function stage6BishopResultMethodLabel(result){
+  if(!result) return '—';
+  if(result.method === 'spencer') return 'Spencer';
+  if(result.spencerAttempted && !result.spencerConverged) return 'Bishop (Spencer fallback)';
+  return 'Bishop simplified';
+}
+
+function stage6BishopRunningMessage(){
+  return S.stage6?.bishop?.methodMode === 'bishop_spencer'
+    ? 'Running Bishop search; Spencer will recheck the shortlist...'
+    : 'Running Bishop search...';
+}
+
+function stage6BishopReadyMessage(runReady){
+  if(!runReady) return 'Draw terrain, place the active CPT, and define entry and exit zones. The load zone is optional.';
+  return S.stage6?.bishop?.methodMode === 'bishop_spencer'
+    ? 'Ready to run Bishop + Spencer check.'
+    : 'Ready to run Bishop search.';
+}
+
+function stage6BishopCompleteMessage(result, timing){
+  if(!result?.critical) return 'Search completed with no valid slip circles.';
+  const runtime = timing?.totalMs?.toFixed ? timing.totalMs.toFixed(0) : timing?.totalMs || 0;
+  if(result.methodMode === 'bishop_spencer'){
+    if((result.spencerConverged || 0) > 0){
+      return `Search + Spencer check complete in ${runtime} ms.`;
+    }
+    return `Bishop search complete in ${runtime} ms; Spencer fell back to Bishop results.`;
+  }
+  return `Search complete in ${runtime} ms.`;
 }
 
 function stage6BishopModeMeta(){
@@ -6232,10 +6314,16 @@ function renderStage6BishopApp(){
     ? `${loadZone.xStart.toFixed(2)}-${loadZone.xEnd.toFixed(2)} m @ ${loadQ.toFixed(1)} kPa${loadQ > 0 ? '' : ' (inactive)'}`
     : 'not set';
   const runReady = !!model && !!bishop.entryZone && !!bishop.exitZone;
+  const showSpencerSliceCols = !!selected?.spencerConverged;
+  const selectedNormalHeader = showSpencerSliceCols ? 'Effective normal' : 'Normal';
+  const selectedMethodLabel = stage6BishopResultMethodLabel(selected);
   const resultRows = results.slice(0, Math.max(bishop.search.keepBest || 10, 1)).map((result, index)=>`
     <tr class="${index === (bishop.selectedResult || 0) ? 'sel':''}">
       <td>${index+1}</td>
       <td>${result.FS.toFixed(3)}</td>
+      <td>${stage6BishopResultMethodLabel(result)}</td>
+      <td>${Number.isFinite(result.F_bishop) ? result.F_bishop.toFixed(3) : '—'}</td>
+      <td>${Number.isFinite(result.lambda) ? result.lambda.toFixed(3) : '—'}</td>
       <td>${result.iterations}</td>
       <td><button class="btn sm" onclick="stage6BishopSelectResult(${index})">Show</button></td>
     </tr>
@@ -6252,8 +6340,8 @@ function renderStage6BishopApp(){
   return `
     <div class="mc2 st6-bishop">
       <div class="mc2-head" style="margin-bottom:12px">
-        <span style="font-size:13px;font-weight:600">Bishop simplified v1</span>
-        <span style="font-size:11px;color:var(--tx2)">Circular slip surfaces only, active CPT only, with self-weight and one optional uniform surcharge zone.</span>
+        <span style="font-size:13px;font-weight:600">Bishop simplified + Spencer equilibrium check</span>
+        <span style="font-size:11px;color:var(--tx2)">Circular slip surfaces only, active CPT only, with self-weight, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.</span>
       </div>
       <div class="st6-bishop-layout">
         <div class="st6-bishop-side">
@@ -6282,6 +6370,12 @@ function renderStage6BishopApp(){
                 <option value="characteristic"${bishop.strengthSet==='characteristic'?' selected':''}>Characteristic</option>
                 <option value="da1_1"${bishop.strengthSet==='da1_1'?' selected':''}>DA1/1 (M1)</option>
                 <option value="da1_2"${bishop.strengthSet==='da1_2'?' selected':''}>DA1/2 (M2)</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--tx2)">Method
+              <select onchange="stage6BishopSetField('methodMode', this.value)">
+                <option value="bishop_spencer"${bishop.methodMode==='bishop_spencer'?' selected':''}>Bishop + Spencer check</option>
+                <option value="bishop_only"${bishop.methodMode==='bishop_only'?' selected':''}>Bishop only</option>
               </select>
             </label>
             <label style="font-size:11px;color:var(--tx2)">Surface load q (kPa)${stage6Tooltip('Uniform vertical surcharge intensity acting over the drawn load zone. In the 2D Bishop section this becomes q times the overlap width of each slice.')}
@@ -6348,6 +6442,46 @@ function renderStage6BishopApp(){
                 </label>
               </div>
             </details>
+            <details class="st6-adv" data-st6details="bishop-spencer"${stage6DetailsOpen('bishop-spencer')}>
+              <summary>Spencer recheck settings</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">When <strong>${stage6BishopMethodModeLabel('bishop_spencer')}</strong> is active, the app first searches with Bishop, then reruns the best circles with a full Spencer solve. For each shortlisted circle it solves the Spencer moment and force branches separately, then finds the λ where those branches intersect. Convergence is accepted on the branch-intersection residual; the λ tolerance field is retained only for compatibility with older saved configs. If Spencer fails on a shortlisted circle, the Bishop result is kept as a fallback.</div>
+                <label style="font-size:11px;color:var(--tx2)">Recheck top N circles
+                  <input type="number" step="1" min="1" max="${bishop.search.keepBest}" value="${bishop.spencer.recheckCount}" onchange="stage6BishopSetField('spencer.recheckCount', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Lambda low
+                  <input type="number" step="0.05" value="${bishop.spencer.lambdaLow.toFixed(2)}" onchange="stage6BishopSetField('spencer.lambdaLow', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Lambda high
+                  <input type="number" step="0.05" value="${bishop.spencer.lambdaHigh.toFixed(2)}" onchange="stage6BishopSetField('spencer.lambdaHigh', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Lambda tolerance (legacy)
+                  <input type="number" step="0.0001" min="0.000001" value="${bishop.spencer.lambdaTolerance}" onchange="stage6BishopSetField('spencer.lambdaTolerance', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Moment-branch tolerance
+                  <input type="number" step="0.0001" min="0.000001" value="${bishop.spencer.momentTolerance}" onchange="stage6BishopSetField('spencer.momentTolerance', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Force-branch tolerance
+                  <input type="number" step="0.0001" min="0.000001" value="${bishop.spencer.forceTolerance}" onchange="stage6BishopSetField('spencer.forceTolerance', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">F bracket low
+                  <input type="number" step="0.05" min="0.01" value="${bishop.spencer.FBracketLow.toFixed(2)}" onchange="stage6BishopSetField('spencer.FBracketLow', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">F bracket high
+                  <input type="number" step="0.5" min="0.10" value="${bishop.spencer.FBracketHigh.toFixed(2)}" onchange="stage6BishopSetField('spencer.FBracketHigh', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Outer iterations
+                  <input type="number" step="1" min="5" value="${bishop.spencer.maxOuterIter}" onchange="stage6BishopSetField('spencer.maxOuterIter', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Inner iterations
+                  <input type="number" step="1" min="5" value="${bishop.spencer.maxInnerIter}" onchange="stage6BishopSetField('spencer.maxInnerIter', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px">
+                  <input type="checkbox" ${bishop.spencer.fallbackBishop?'checked':''} onchange="stage6BishopSetField('spencer.fallbackBishop', this.checked)">
+                  Fall back to Bishop if Spencer fails
+                </label>
+              </div>
+            </details>
             <details class="st6-adv" data-st6details="bishop-materials"${stage6DetailsOpen('bishop-materials')}>
               <summary>Imported base materials from active CPT</summary>
               <div class="st6-adv-body">
@@ -6365,11 +6499,11 @@ function renderStage6BishopApp(){
         <div class="st6-bishop-main">
           <div class="st6-bishop-canvas-wrap">
             <div class="st6-bishop-toolbar">
-              <button class="btn" onclick="stage6BishopRunSearch()" ${runReady?'':'disabled'}>Run Bishop search</button>
+              <button class="btn" onclick="stage6BishopRunSearch()" ${runReady?'':'disabled'}>Run ${stage6BishopMethodModeLabel(bishop.methodMode)}</button>
               <button class="btn sm" onclick="stage6BishopStopSearch();renderStage6()">Stop</button>
               <button class="btn sm" onclick="fitStage6BishopViewport()">Fit view</button>
               <button class="btn sm" onclick="stage6BishopClear('results')">Clear results</button>
-              <span id="stage6BishopProgress" class="st6-bishop-progress">${bishop.progress.running ? `Running ${bishop.progress.trial||0}/${bishop.progress.total||0} trials` : (bishop.progress.message || (runReady ? 'Ready to run Bishop search.' : 'Draw terrain, place the active CPT, and define entry and exit zones. The load zone is optional.'))}</span>
+              <span id="stage6BishopProgress" class="st6-bishop-progress">${bishop.progress.running ? `${stage6BishopMethodModeLabel(bishop.methodMode)} · ${bishop.progress.trial||0}/${bishop.progress.total||0} Bishop trials` : (bishop.progress.message || stage6BishopReadyMessage(runReady))}</span>
             </div>
             <div class="st6-bishop-progress-track"><div id="stage6BishopProgressBar" class="st6-bishop-progress-bar" style="width:${Math.max(0, Math.min(100, bishop.progress.percent||0))}%"></div></div>
             <div class="st6-bishop-status">
@@ -6378,7 +6512,7 @@ function renderStage6BishopApp(){
             <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Bishop simplified section and slip circles"></canvas>
             <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
             <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
-            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally draw the load zone, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the Bishop solver.</div>
+            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally draw the load zone, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the solver.</div>
           </div>
           <div class="st6-bishop-results-panel">
             <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Results</div>
@@ -6386,16 +6520,26 @@ function renderStage6BishopApp(){
               <div class="st6-bishop-side">
                 <table class="pt" style="margin-bottom:12px">
                   <tr><td>Critical F</td><td>${summary && results[0] ? results[0].FS.toFixed(3) : '—'}</td></tr>
+                  <tr><td>Mode</td><td>${stage6BishopMethodModeLabel(bishop.methodMode)}</td></tr>
                   <tr><td>Circle centre</td><td>${summary ? `(${summary.center.x.toFixed(2)}, ${summary.center.y.toFixed(2)})` : '—'}</td></tr>
                   <tr><td>Radius</td><td>${summary ? `${summary.radius.toFixed(2)} m` : '—'}</td></tr>
                   <tr><td>Max slip depth</td><td>${summary ? `${summary.maxDepth.toFixed(2)} m` : '—'}</td></tr>
                   <tr><td>Trials</td><td>${bishop.results?.timing?.trialCount ?? '—'}</td></tr>
                   <tr><td>Runtime</td><td>${bishop.results?.timing?.totalMs != null ? `${bishop.results.timing.totalMs.toFixed(0)} ms` : '—'}</td></tr>
+                  <tr><td>Spencer rechecked</td><td>${bishop.results?.methodMode === 'bishop_spencer' ? `${bishop.results?.spencerRechecked || 0}` : 'off'}</td></tr>
+                  <tr><td>Spencer converged</td><td>${bishop.results?.methodMode === 'bishop_spencer' ? `${bishop.results?.spencerConverged || 0}` : 'off'}</td></tr>
                   <tr><td>Selected result</td><td>${selected ? `#${(bishop.selectedResult||0)+1}` : '—'}</td></tr>
+                  <tr><td>Selected method</td><td>${selectedMethodLabel}</td></tr>
+                  <tr><td>Selected Bishop F</td><td>${selected && Number.isFinite(selected.F_bishop) ? selected.F_bishop.toFixed(3) : '—'}</td></tr>
+                  <tr><td>Selected Spencer F</td><td>${selected?.method === 'spencer' && Number.isFinite(selected.FS) ? selected.FS.toFixed(3) : '—'}</td></tr>
+                  <tr><td>Selected λ</td><td>${selected && Number.isFinite(selected.lambda) ? selected.lambda.toFixed(3) : '—'}</td></tr>
+                  <tr><td>Selected θ</td><td>${selected && Number.isFinite(selected.thetaDeg) ? `${selected.thetaDeg.toFixed(1)}°` : '—'}</td></tr>
+                  <tr><td>Selected moment residual</td><td>${selected && Number.isFinite(selected.momentResidual) ? selected.momentResidual.toFixed(3) : '—'}</td></tr>
+                  <tr><td>Selected force residual</td><td>${selected && Number.isFinite(selected.forceResidual) ? selected.forceResidual.toFixed(3) : '—'}</td></tr>
                   <tr><td>Selected iterations</td><td>${selected ? selected.iterations : '—'}</td></tr>
                 </table>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2);margin-bottom:0">
-                  Rejections: ${bishop.results ? Object.entries(bishop.results.rejectionCounts || {}).map(([k,v])=>`${k}: ${v}`).join(' · ') || 'none' : 'no search yet'}
+                  Rejections: ${bishop.results ? Object.entries(bishop.results.rejectionCounts || {}).map(([k,v])=>`${k}: ${v}`).join(' · ') || 'none' : 'no search yet'}${selected?.spencerAttempted && !selected?.spencerConverged ? `<br>Selected fallback: ${stage6EscAttr(selected.spencerRejectReason || 'Spencer did not converge.')}` : ''}
                 </div>
               </div>
               <div class="st6-bishop-side">
@@ -6407,8 +6551,8 @@ function renderStage6BishopApp(){
                 <div class="mc2-sec">Best circles</div>
                 <div style="max-height:200px;overflow:auto">
                   <table class="tbl st6-bishop-results">
-                    <thead><tr><th>#</th><th>F</th><th>Iter</th><th></th></tr></thead>
-                    <tbody>${resultRows || '<tr><td colspan="4" style="text-align:center;color:var(--tx2)">No results yet.</td></tr>'}</tbody>
+                    <thead><tr><th>#</th><th>F</th><th>Method</th><th>Bishop F</th><th>λ</th><th>Iter</th><th></th></tr></thead>
+                    <tbody>${resultRows || '<tr><td colspan="7" style="text-align:center;color:var(--tx2)">No results yet.</td></tr>'}</tbody>
                   </table>
                 </div>
               </div>
@@ -6417,7 +6561,7 @@ function renderStage6BishopApp(){
               <div class="mc2-sec">Selected slices</div>
               <div style="max-height:250px;overflow:auto">
                 <table class="tbl st6-bishop-results">
-                  <thead><tr><th>i</th><th>W</th><th>Q</th><th>V</th><th>alpha</th><th>c'</th><th>phi'</th><th>u</th><th>m_alpha</th><th>N</th></tr></thead>
+                  <thead><tr><th>i</th><th>W</th><th>Q</th><th>V</th><th>alpha</th><th>c'</th><th>phi'</th><th>u</th><th>m_alpha</th><th>${selectedNormalHeader}</th>${showSpencerSliceCols ? '<th>E_r</th><th>X_r</th><th>S_mob</th>' : ''}</tr></thead>
                   <tbody>
                     ${selected ? selected.slices.map((slice, index)=>`
                       <tr>
@@ -6430,9 +6574,10 @@ function renderStage6BishopApp(){
                         <td>${slice.baseMaterial.phiEffDeg.toFixed(1)}°</td>
                         <td>${slice.uBase.toFixed(1)}</td>
                         <td>${slice.mAlpha.toFixed(3)}</td>
-                        <td>${slice.normalForce.toFixed(1)}</td>
+                        <td>${(showSpencerSliceCols ? slice.N_eff : slice.normalForce) != null ? (showSpencerSliceCols ? slice.N_eff : slice.normalForce).toFixed(1) : '—'}</td>
+                        ${showSpencerSliceCols ? `<td>${slice.E_right != null ? slice.E_right.toFixed(1) : '—'}</td><td>${slice.X_right != null ? slice.X_right.toFixed(1) : '—'}</td><td>${slice.S_mob != null ? slice.S_mob.toFixed(1) : '—'}</td>` : ''}
                       </tr>
-                    `).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--tx2)">Select or run a result to inspect slice data.</td></tr>'}
+                    `).join('') : `<tr><td colspan="${showSpencerSliceCols ? 13 : 10}" style="text-align:center;color:var(--tx2)">Select or run a result to inspect slice data.</td></tr>`}
                   </tbody>
                 </table>
               </div>
@@ -6441,8 +6586,9 @@ function renderStage6BishopApp(){
         </div>
       </div>
       ${stage6NoteHtml([
-        {level:'warn', text:'Bishop v1 is experimental. It searches circular slip surfaces only and currently uses self-weight, one optional uniform surcharge zone, and optional phreatic pore pressure along the base.'},
-        {level:'info', text:'The Bishop soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this v1 workflow.'}
+        {level:'warn', text:'This Stage 6 slope check is experimental. It searches circular slip surfaces only and currently uses self-weight, one optional uniform surcharge zone, and optional phreatic pore pressure along the base.'},
+        {level:'info', text:'The soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this workflow.'},
+        {level:'info', text:'Spencer runs as a verification pass on the best Bishop circles. Each shortlisted circle is solved by intersecting the Spencer moment and force branches. If Spencer does not converge for a shortlisted circle, the app keeps the Bishop result and flags that fallback in the results panel.'}
       ])}
     </div>
   `;
@@ -6916,6 +7062,7 @@ function stage7BishopPayload(){
   return{
     config:safeClone({
       strengthSet:bishop.strengthSet,
+      methodMode:bishop.methodMode,
       analysisDepth:bishop.analysisDepth,
       snapSize:bishop.snapSize,
       gridSnap:bishop.gridSnap,
@@ -6924,12 +7071,28 @@ function stage7BishopPayload(){
       exitZone:bishop.exitZone,
       surfaceLoad:bishop.surfaceLoad,
       search:bishop.search,
-      solver:bishop.solver
+      solver:bishop.solver,
+      spencer:bishop.spencer
     }),
     summary:safeClone(bishop.results?.summary || null),
+    methodMode:bishop.results?.methodMode || bishop.methodMode || 'bishop_only',
+    spencerRechecked:bishop.results?.spencerRechecked || 0,
+    spencerConverged:bishop.results?.spencerConverged || 0,
     selectedIndex:Math.min(Math.max(bishop.selectedResult || 0, 0), Math.max(results.length - 1, 0)),
     selected:selected ? safeClone({
       FS:selected.FS,
+      method:selected.method,
+      methodLabel:stage6BishopResultMethodLabel(selected),
+      F_bishop:selected.F_bishop,
+      F_m:selected.F_m,
+      F_f:selected.F_f,
+      lambda:selected.lambda,
+      thetaDeg:selected.thetaDeg,
+      momentResidual:selected.momentResidual,
+      forceResidual:selected.forceResidual,
+      spencerAttempted:selected.spencerAttempted,
+      spencerConverged:selected.spencerConverged,
+      spencerRejectReason:selected.spencerRejectReason,
       iterations:selected.iterations,
       circle:selected.circle,
       entry:selected.entry,
@@ -6938,6 +7101,18 @@ function stage7BishopPayload(){
     topResults:results.slice(0, keepBest).map((result, index)=>safeClone({
       rank:index + 1,
       FS:result.FS,
+      method:result.method,
+      methodLabel:stage6BishopResultMethodLabel(result),
+      F_bishop:result.F_bishop,
+      F_m:result.F_m,
+      F_f:result.F_f,
+      lambda:result.lambda,
+      thetaDeg:result.thetaDeg,
+      momentResidual:result.momentResidual,
+      forceResidual:result.forceResidual,
+      spencerAttempted:result.spencerAttempted,
+      spencerConverged:result.spencerConverged,
+      spencerRejectReason:result.spencerRejectReason,
       iterations:result.iterations,
       circle:result.circle
     })),
@@ -7003,7 +7178,7 @@ function buildStage7Payload(){
   }, 0);
   const stage6=stage7Stage6Payload(workingLayers);
   return{
-    version:1,
+    version:3,
     stage:'stage7',
     generatedAt:new Date().toISOString(),
     appVersion:'0.0.1',
@@ -7115,6 +7290,10 @@ function openStage7Report(){
   const payload=buildStage7Payload();
   if(!payload || typeof window === 'undefined') return;
   const key=saveStage7Payload(window.localStorage, payload);
+  if(!key){
+    alert('The Stage 7 report payload could not be validated for saving.');
+    return;
+  }
   cleanupStage7Payloads(window.localStorage, key);
   window.open(`/report/stage7?key=${encodeURIComponent(key)}`, '_blank', 'noopener');
 }
