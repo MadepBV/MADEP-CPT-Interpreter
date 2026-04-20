@@ -29,6 +29,7 @@ import {
   buildTuningDepthChartConfig,
   buildTuningRegressionChartConfig
 } from './chart-factories';
+import { classifyNen6740Reading } from './nen6740';
 import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report-svg';
 import { cleanupStage7Payloads, saveStage7Payload } from './report-storage';
 import { SOIL_CLASS_NAMES, SOIL_FILL_COLORS } from './soil-styles';
@@ -1625,27 +1626,6 @@ function classCUR3(r){
 
 const classCUR = classCUR3;
 
-const NEN6740_MATERIALS=[
-  {subtype:'gravel, slightly silty, moderate', type:'Gravel', g:19, gs:21, phi:37.5, c:0, cu:0, rf:0.35, qcNen:25},
-  {subtype:'sand, clean, stiff',               type:'Sand',   g:20, gs:22, phi:40.0, c:0, cu:0, rf:1.00, qcNen:25},
-  {subtype:'sand, slightly silty, moderate',   type:'Silty sand', g:19, gs:21, phi:32.5, c:0, cu:0, rf:1.60, qcNen:15},
-  {subtype:'sand, very silty, loose',          type:'Silty sand', g:19, gs:21, phi:30.0, c:0, cu:0, rf:2.20, qcNen:7},
-  {subtype:'loam, very sandy, stiff',          type:'Sandy clay', g:20, gs:20, phi:35.0, c:1, cu:0, rf:2.45, qcNen:6},
-  {subtype:'loam, slightly sandy, weak',       type:'Sandy clay', g:20, gs:20, phi:30.0, c:1, cu:0, rf:3.00, qcNen:3.5},
-  {subtype:'clay, very sandy, stiff',          type:'Sandy clay', g:20, gs:20, phi:32.5, c:1, cu:0, rf:3.40, qcNen:4},
-  {subtype:'clay, slightly sandy, moderate',   type:'Clay',   g:20, gs:20, phi:22.5, c:13, cu:0, rf:3.85, qcNen:2.8},
-  {subtype:'clay, clean, stiff',               type:'Clay',   g:20, gs:20, phi:25.0, c:15, cu:0, rf:4.45, qcNen:2.3},
-  {subtype:'clay, clean, weak',                type:'Clay',   g:17, gs:17, phi:17.5, c:5, cu:0, rf:5.15, qcNen:1.0},
-  {subtype:'clay, organic, moderate',          type:'Clay',   g:16, gs:16, phi:15.0, c:1, cu:0, rf:6.10, qcNen:0.75},
-  {subtype:'clay, organic, weak',              type:'Clay',   g:15, gs:15, phi:15.0, c:1, cu:0, rf:7.05, qcNen:0.22},
-  {subtype:'peat, moderately preloaded, moderate', type:'Peat / organic', g:13, gs:13, phi:15.0, c:5, cu:0, rf:8.30, qcNen:0.06},
-  {subtype:'peat, not preloaded, weak',        type:'Peat / organic', g:12, gs:12, phi:15.0, c:2.5, cu:0, rf:9.25, qcNen:0.02},
-].map((entry, index)=>({
-  ...entry,
-  order:index,
-  score: Math.log10(entry.qcNen) - 0.18 * entry.rf
-}));
-
 /* ════════════════════════════════
    CLASSIFICATION — NEN 6740 (stress dependent)
 
@@ -1655,28 +1635,25 @@ const NEN6740_MATERIALS=[
 
    The app therefore implements a transparent fixed discretisation:
      1. compute stress-corrected q_c,NEN
-     2. compute chart score = log10(q_c,NEN) - 0.18 R_f
+     2. compute chart score = log10(q_c,NEN) - 0.34 * R_f
      3. choose the nearest of the 14 published material areas
 
    The 14 area centres are digitised from the published chart and tied
    to the representative NEN material set commonly used by software
    implementations of the rule.
+
+   Provenance:
+   - the stress correction exponent 0.67 follows the Deltares D-SHEET
+     Piling manual for the NEN (Stress Dependent) rule;
+   - the RF slope 0.34 is an app-side regression fit through the 14
+     digitised centres, not a published NEN coefficient. It replaced the
+     earlier 0.18 slope after audit validation showed that 0.18 collapsed
+     the boundary between the stored areas 5 and 6 into a near tie.
 ════════════════════════════════ */
 function classNEN6740(r){
   const rf = r.rf != null ? r.rf : 3.0;
   const {sigVeff} = stressAt(r.z, 18, 17);
-  const qcNen = Math.max(0.01, r.qc * Math.pow(100 / Math.max(sigVeff, 1), 0.67));
-  const score = Math.log10(qcNen) - 0.18 * rf;
-
-  let best=NEN6740_MATERIALS[0];
-  let bestDist=Infinity;
-  for(const area of NEN6740_MATERIALS){
-    const d=Math.abs(score-area.score);
-    if(d<bestDist || (Math.abs(d-bestDist)<1e-9 && area.order<best.order)){
-      best=area;
-      bestDist=d;
-    }
-  }
+  const { area:best, qcNen } = classifyNen6740Reading({ qc:r.qc, rf, sigVeff });
 
   return{
     type:best.type,
@@ -2811,12 +2788,14 @@ function hsParams(l){
   const Eoed_ref = +(Eoed_i / Math.pow(ratio, m)).toFixed(0);
 
   /* ── Stiffness Method A (CUR 2003-7) or B (E50 = Eoed) ── */
-  let E50_ref, Eur_ref;
+  let E50_i, E50_ref, Eur_ref;
   if(S.stiffMethod==='B'){
+    E50_i = Eoed_i;
     E50_ref = Eoed_ref;
     Eur_ref = +(3*Eoed_ref).toFixed(0);
   } else {
     // Method A: CUR 2003-7
+    E50_i = cohesive ? +(1.25*Eoed_i).toFixed(0) : Eoed_i;
     E50_ref = cohesive ? +(1.25*Eoed_ref).toFixed(0) : Eoed_ref;
     Eur_ref = +(3*E50_ref).toFixed(0);
   }
@@ -2825,9 +2804,11 @@ function hsParams(l){
   const nu=l.type==='Peat / organic'?0.45:cohesive?0.35:0.30;
   const nu_ur=0.20;
   const psi=Math.max(0,l.phi>30?Math.round(l.phi-30):0);
-  const Emc=+((1+nu)*(1-2*nu)/(1-nu)*Eoed_i*1.5).toFixed(0);
+  /* MC export uses the current-stress loading stiffness E50,i.
+     The earlier x1.5 conversion from Eoed,i had no retained source basis. */
+  const Emc=E50_i;
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2)+'m TAW':'—';
-  return{Eoed_i,Eoed_ref,E50_ref,Eur_ref,m,K0nc,nu,nu_ur,aE:+aE.toFixed(2),
+  return{Eoed_i,E50_i,Eoed_ref,E50_ref,Eur_ref,m,K0nc,nu,nu_ur,aE:+aE.toFixed(2),
     sigV:+sigV.toFixed(1),u:+u.toFixed(1),sigVeff:+sigVeff.toFixed(1),psi,Emc,
     topTAW:taw(l.top),botTAW:taw(l.bot)};
 }

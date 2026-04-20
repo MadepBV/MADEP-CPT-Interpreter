@@ -128,13 +128,14 @@
 				{ label: 'SB260', detail: 'Standaardbestek 260, artikel 21-6.4.10: karakteristieke grondparameters op basis van elektrische sondering.' },
 				{ label: 'CUR 2003-7', detail: 'CPT-correlated geotechnical parameter guidance used in Belgian and Dutch practice.' },
 				{ label: 'NEN 6740', detail: 'Dutch geotechnical design standard with stress-dependent CPT material classification.' },
-				{ label: 'Deltares D-SHEET Piling User Manual', detail: 'Comparative implementation guidance for CUR and NEN CPT material classification methods.' },
+				{ label: 'Deltares D-SHEET Piling User Manual', detail: 'Version 24.1; §34.2.2 documents the NEN stress-correction formula q<sub>c,NEN</sub> = q<sub>c</sub>(100 / σ′<sub>v0</sub>)<sup>0.67</sup>.' },
 				{ label: 'PLAXIS 2D 2018 Reference Manual', detail: 'Reference manual showing the broad CUR 3 layers classification chart with Sand, Silt, Clay, and Peat fields.' }
 			]
 		},
 		{
 			title: 'PLAXIS Software Workflows',
 			items: [
+				{ label: 'PLAXIS 2D Material Models Manual (2025.1)', detail: 'Official material-model manual giving the Mohr-Coulomb Young’s modulus guidance and Hooke-law stiffness relations.' },
 				{ label: 'Bentley KB0109063', detail: 'How to define and edit a material via the command line; documents the supported soilmat workflow.' },
 				{ label: 'Bentley KB0109071', detail: 'PLAXIS soil model numbers for command-line material creation.' },
 				{ label: 'Bentley KB0043470', detail: 'Re-using materials from other projects in PLAXIS, including project-to-database workflows.' },
@@ -366,11 +367,11 @@
 					title: '2.4 NEN 6740 — stress-dependent material classification',
 					paragraphs: [
 						'NEN 6740 uses a stress-corrected cone resistance together with friction ratio. The source method is graphical: a semilog chart with fourteen material areas rather than a closed algebraic decision tree.',
-						'The app therefore separates the method into two parts. First it evaluates the published stress correction. Then it applies a transparent implementation rule that selects the nearest representative area from a digitized fourteen-material set.'
+						'The app therefore separates the method into two parts. First it evaluates the published stress correction documented in the Deltares D-SHEET Piling manual. Then it applies a transparent representative-area rule that selects the nearest material area from a digitized fourteen-material set.'
 					],
 					equations: [
 						'q<sub>c,NEN</sub> = q<sub>c</sub> · (100 / σ′<sub>v0</sub>)<sup>0.67</sup>',
-						's = log<sub>10</sub>(q<sub>c,NEN</sub>) − 0.18R<sub>f</sub>',
+						's = log<sub>10</sub>(q<sub>c,NEN</sub>) − 0.34R<sub>f</sub>',
 						'i = arg min<sub>j</sub> |s − s<sub>j</sub>|'
 					],
 					symbols: [
@@ -380,8 +381,11 @@
 						{ term: 's<sub>j</sub>', meaning: 'projected coordinate of representative material area j [-]' }
 					],
 					bullets: [
-						'The stress-correction equation is part of the published NEN route; the one-dimensional chart projection is an implementation device used by the app to turn the graphical source into a deterministic classifier.',
+						'The stress-correction equation with exponent 0.67 is part of the documented Deltares implementation of the published NEN route; the one-dimensional score projection is the app’s deterministic way of reproducing the graphical chart.',
+						'The score coefficient magnitude 0.34 is not a normative NEN coefficient. It is the regression-fit semilog projection magnitude through the fourteen stored representative centres used by the app.',
 						'The representative materials are: gravel, slightly silty, moderate; sand, clean, stiff; sand, slightly silty, moderate; sand, very silty, loose; loam, very sandy, stiff; loam, slightly sandy, weak; clay, very sandy, stiff; clay, slightly sandy, moderate; clay, clean, stiff; clay, clean, weak; clay, organic, moderate; clay, organic, weak; peat, moderately preloaded, moderate; peat, not preloaded, weak.',
+						'The weakest transition remains the area-5/area-6 pair (loam, slightly sandy, weak versus clay, very sandy, stiff). Near ties are resolved by the fixed chart order of the stored representative set.',
+						'A repo verification script re-projects all fourteen centres at several effective stresses to ensure the stored centres and the implemented score formula stay in sync.',
 						'The selected NEN material is then mapped into the app’s internal type families so that later layer grouping and parameter workflows remain consistent.'
 					],
 					figures: [
@@ -389,7 +393,7 @@
 							src: '/docs/nen6740-chart.png',
 							alt: 'Published NEN 6740 stress-dependent chart with fourteen material areas in corrected cone resistance and friction ratio space.',
 							caption:
-								'Published NEN 6740 stress-dependent classification chart with fourteen material areas. The app uses the stress correction from this method and a transparent representative-area implementation. Source context: comparative NEN/CUR implementation figure reproduced in the Deltares D-SHEET Piling ecosystem.',
+								'Published NEN 6740 stress-dependent classification chart with fourteen material areas. The app uses the documented stress correction from this method and a transparent representative-area implementation calibrated to the stored chart centres.',
 							collapsible: true,
 							summary: 'Show published NEN 6740 chart'
 						}
@@ -773,18 +777,21 @@
 						'name = safe(CPT id) + "_L" + i + "_" + safe(subtype) + "_MC/HS"',
 						'DrainageType = Undrained A &nbsp;&nbsp; if the subtype contains (lh), (kh), or equivalent fines-bearing wording',
 						'DrainageType = Drained &nbsp;&nbsp; only for clean Sand and clean Gravel',
+						'E<sub>Ref</sub> = E<sub>50,i</sub> &nbsp;&nbsp; for the Mohr-Coulomb export',
 						'c<sub>ref</sub> = max(c′, 0.1)'
 					],
 					bullets: [
 						'Mohr-Coulomb export writes Identification, SoilModel = 2, DrainageType, gammaUnsat, gammaSat, ERef, nu, cRef, phi, psi, PermHorizontalPrimary, and PermVertical.',
 						'Hardening Soil export writes Identification, SoilModel = 3, DrainageType, gammaUnsat, gammaSat, E50Ref, EOedRef, EURRef, PowerM, pRef = 100, cRef, phi, psi, PermHorizontalPrimary, and PermVertical.',
+						'For the MC material, ERef follows the current-stress loading stiffness E50,i from the selected Stage 4 stiffness route rather than the Hardening Soil reference-stress quantity E50Ref.',
+						'Method A gives E50,i = 1.25 EOed,i for Clay, Soft clay, and Peat / organic, and E50,i = EOed,i for the other soils. Method B gives E50,i = EOed,i for all soils.',
 						'Only clean sand and clean gravel are exported as Drained by default. Fines-bearing granular subtypes such as zand (lh) and grind (kh) are exported as Undrained A.',
 						'The export intentionally omits RF, nuUR, and K0NC in the current tested PLAXIS workflow so PLAXIS can keep those automatic or read-only values under its own control.',
 						'cu and psi_unsat are not written by the material-command export. Undrained A uses the effective stress strength parameters, and psi_unsat remains available in the app without yet being exported.'
 					]
 				}
 			],
-			references: ['SB260', 'CUR 2003-7', 'Schanz, Vermeer & Bonnier (1999)', 'OVAM / I-RA-11461 (2002)', 'De Smedt / VUB (2005)', 'Bentley KB0109063', 'Bentley KB0109071', 'Bentley KB0043470', 'Bentley KB0108936']
+			references: ['SB260', 'CUR 2003-7', 'Schanz, Vermeer & Bonnier (1999)', 'OVAM / I-RA-11461 (2002)', 'De Smedt / VUB (2005)', 'PLAXIS 2D Material Models Manual (2025.1)', 'Bentley KB0109063', 'Bentley KB0109071', 'Bentley KB0043470', 'Bentley KB0108936']
 		},
 		{
 			id: 'stage5',
@@ -915,7 +922,8 @@
 						'q<sub>ult,u</sub> = q + 5.14c<sub>u</sub>s<sub>cu</sub>',
 						'N<sub>q</sub> = exp(πtanφ′) · tan<sup>2</sup>(45° + φ′/2)',
 						'N<sub>c</sub> = (N<sub>q</sub> − 1) / tanφ′',
-						'N<sub>γ</sub> = 2(N<sub>q</sub> + 1)tanφ′'
+						'N<sub>γ</sub> = 2(N<sub>q</sub> + 1)tanφ′',
+						'ΔD<sub>f</sub> = clamp(maxDepth / 60, 0.10, 0.25) &nbsp;&nbsp; for the founding-depth sweep'
 					],
 					symbols: [
 						{ term: 'q<sub>ult,d</sub>', meaning: 'ultimate drained bearing resistance [kPa]' },
@@ -927,6 +935,10 @@
 						{ term: 'c<sub>u</sub>', meaning: 'undrained shear strength [kPa]' },
 						{ term: 'N<sub>c</sub>, N<sub>q</sub>, N<sub>γ</sub>', meaning: 'bearing-capacity factors [-]' },
 						{ term: 's<sub>c</sub>, s<sub>q</sub>, s<sub>γ</sub>, s<sub>cu</sub>', meaning: 'shape factors [-]' }
+					]
+					,
+					bullets: [
+						'The bearing-depth envelope is sampled from the selected starting depth upward to the model bottom using a depth increment clamped between 0.10 m and 0.25 m.'
 					]
 				},
 				{

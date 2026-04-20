@@ -186,7 +186,7 @@ The app writes:
 | `DrainageType` | drainage rule above |
 | `gammaUnsat` | Stage 3 / Stage 4 unsaturated unit weight |
 | `gammaSat` | Stage 3 / Stage 4 saturated unit weight |
-| `ERef` | MC reference stiffness from the app |
+| `ERef` | current-stress `E50,i` from the selected Stage 4 stiffness method |
 | `nu` | MC Poisson ratio from the app |
 | `cRef` | `max(c', 0.1)` |
 | `phi` | `phi'` |
@@ -196,6 +196,10 @@ The app writes:
 
 Notes:
 
+- For the MC material the app writes `ERef = E50,i`, not `E50Ref`.
+- If Stage 4 Method A is active, `E50,i = 1.25 · Eoed,i` for Clay / Soft clay / Peat and `E50,i = Eoed,i` for the other soils.
+- If Stage 4 Method B is active, `E50,i = Eoed,i` for all soils.
+- This follows the PLAXIS Material Models Manual guidance that for loading of soils one generally uses `E50` as the Young's modulus for the Mohr-Coulomb model.
 - `cRef` is floored to `0.1 kPa` to avoid zero-cohesion export edge cases
 - `psi` follows the app's current Stage 4 logic
 - permeability is exported even for undrained materials because PLAXIS still uses
@@ -350,4 +354,4 @@ Recommended workflow:
 - Bentley Systems, KB0109071: *PLAXIS soil model numbers in the command line*
 - Bentley Systems, KB0043470: *Re-using materials from other projects in PLAXIS*
 - Bentley Systems, KB0108936: *Material parameter datasets for sheetpiles and beams*
-
+- PLAXIS 2D Material Models Manual (2025.1), §3.3.1: Young's modulus in the Mohr-Coulomb model
