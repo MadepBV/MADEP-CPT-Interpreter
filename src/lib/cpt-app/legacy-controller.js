@@ -16,6 +16,7 @@ import {
   terrainY as bishopTerrainY
 } from './stage6-bishop';
 import { importTerrainFromDxfText } from './dxf-terrain';
+import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-regions';
 import {
   buildBeamDeflectionChartConfig,
   buildBeamMomentChartConfig,
@@ -3496,6 +3497,16 @@ function stage6Defaults(){
       tool:'terrain',
       strengthSet:'characteristic',
       methodMode:'bishop_spencer',
+      useCustomRegions:false,
+      customRegions:[],
+      selectedRegionId:null,
+      regionDraftMaterialId:null,
+      display:{
+        showRegions:true,
+        showRegionLabels:true,
+        showRegionLegend:true,
+        regionOpacity:0.22
+      },
       terrain:[],
       phreatic:[],
       walls:[],
@@ -3516,6 +3527,7 @@ function stage6Defaults(){
         fitted:false
       },
       gridSnap:true,
+      pointSnap:false,
       snapSize:0.50,
       analysisDepth:15.00,
       materials:[],
@@ -3661,6 +3673,12 @@ function ensureStage6State(){
   }
   bishop.analysisDepth = Math.max(+bishop.analysisDepth || bishopMinDepth, bishopMinDepth);
   bishop.snapSize = Math.max(+bishop.snapSize || 0.5, 0.05);
+  bishop.pointSnap = !!bishop.pointSnap;
+  if(!bishop.display || typeof bishop.display !== 'object') bishop.display = stage6Defaults().bishop.display;
+  bishop.display.showRegions = bishop.display.showRegions !== false;
+  bishop.display.showRegionLabels = bishop.display.showRegionLabels !== false;
+  bishop.display.showRegionLegend = bishop.display.showRegionLegend !== false;
+  bishop.display.regionOpacity = Math.min(Math.max(+bishop.display.regionOpacity || 0.22, 0.05), 0.75);
   bishop.search.nEntry = Math.max(2, Math.round(+bishop.search.nEntry || 10));
   bishop.search.nExit = Math.max(2, Math.round(+bishop.search.nExit || 10));
   bishop.search.nCenter = Math.max(2, Math.round(+bishop.search.nCenter || 15));
@@ -3858,6 +3876,45 @@ function stage6BishopNormalizeWalls(walls, terrain){
     .sort((a,b)=>a.x-b.x || b.yTop-a.yTop);
 }
 
+function stage6BishopRegionId(){
+  return `region_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
+}
+
+function stage6BishopNormalizeCustomRegions(regions, terrain, materials){
+  const minX = terrain?.length ? terrain[0].x : -Infinity;
+  const maxX = terrain?.length ? terrain[terrain.length-1].x : Infinity;
+  const materialIds = new Set((materials || []).map((material)=>material.id));
+  const fallbackMaterialId = materials?.[0]?.id || null;
+  return (regions || [])
+    .map((region)=>{
+      const rawPolygon = (region?.polygon || [])
+        .map((pt)=>({
+          x:Number(pt?.x),
+          y:Number(pt?.y)
+        }))
+        .filter((pt)=>Number.isFinite(pt.x) && Number.isFinite(pt.y))
+        .map((pt)=>({
+          x:+Math.min(Math.max(pt.x, minX), maxX).toFixed(3),
+          y:+pt.y.toFixed(3)
+        }));
+      const polygon = normalizeRegionPolygon(rawPolygon);
+      const materialId = materialIds.has(region?.materialId) ? region.materialId : fallbackMaterialId;
+      return {
+        id:region?.id || stage6BishopRegionId(),
+        polygon,
+        materialId,
+        source:region?.source === 'cpt-copy' ? 'cpt-copy' : region?.source === 'hole' ? 'hole' : region?.source === 'edited' ? 'edited' : 'custom'
+      };
+    })
+    .filter((region)=>region.materialId && region.polygon.length >= 3 && polygonArea(region.polygon) > 1e-4 && isSimplePolygon(region.polygon));
+}
+
+function stage6BishopSelectedCustomRegion(){
+  const bishop = S?.stage6?.bishop;
+  if(!bishop) return null;
+  return (bishop.customRegions || []).find((region)=>region.id === bishop.selectedRegionId) || null;
+}
+
 function stage6BishopResultWallLabel(result){
   if(!result) return '—';
   if(result.intersectsWall) return `${result.wallIntersectionCount || 0} engaged`;
@@ -3888,6 +3945,8 @@ function stage6BishopSyncSoilModel(){
     bishop.sourceStrengthSet = bishop.strengthSet;
     if(hadSignature) stage6BishopInvalidate(strengthSetChanged ? 'Material strength set changed; Bishop results were cleared.' : 'Active CPT layers changed; Bishop results were cleared.');
   }
+  if(!Array.isArray(bishop.customRegions)) bishop.customRegions = [];
+  bishop.useCustomRegions = !!bishop.useCustomRegions;
   if(Array.isArray(bishop.terrain) && bishop.terrain.length >= 2){
     const sorted = stage6BishopSortedPolyline(bishop.terrain);
     bishop.terrain = sorted;
@@ -3906,6 +3965,20 @@ function stage6BishopSyncSoilModel(){
       bishop[key] = stage6BishopSortZone(zone);
     });
     bishop.walls = stage6BishopNormalizeWalls(bishop.walls, sorted);
+    bishop.customRegions = stage6BishopNormalizeCustomRegions(bishop.customRegions, sorted, bishop.materials);
+  }
+  const validMaterialIds = new Set((bishop.materials || []).map((material)=>material.id));
+  if(!validMaterialIds.has(bishop.regionDraftMaterialId)){
+    bishop.regionDraftMaterialId = bishop.materials?.[0]?.id || null;
+  }
+  if(!(bishop.customRegions || []).some((region)=>region.id === bishop.selectedRegionId)){
+    bishop.selectedRegionId = bishop.customRegions?.[0]?.id || null;
+  }
+  if(!(bishop.customRegions || []).length) bishop.useCustomRegions = false;
+  if((bishop.tool === 'regionSplit' || bishop.tool === 'regionHole') && !bishop.selectedRegionId){
+    bishop.tool = 'edit';
+    bishop.draft = [];
+    bishop.draftKind = '';
   }
   return layers;
 }
@@ -3915,6 +3988,119 @@ function stage6BishopCurrentModel(){
   const model = buildBishopModelFromStageLayers(layers, S.stage6.bishop);
   S.stage6Cache.bishopModel = model;
   return model;
+}
+
+function stage6BishopSetSelectedRegion(regionId){
+  ensureStage6State();
+  S.stage6.bishop.selectedRegionId = regionId || null;
+  renderStage6();
+}
+
+function stage6BishopCopyCurrentRegionsToCustom(){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  const model = stage6BishopCurrentModel();
+  if(!model?.regions?.length){
+    bishop.progress.message = 'Draw terrain and place the active CPT marker before copying solver polygons.';
+    renderStage6();
+    return;
+  }
+  bishop.customRegions = model.regions.map((region, index)=>({
+    id:stage6BishopRegionId(),
+    polygon:(region.polygon || []).map((pt)=>({x:+pt.x.toFixed(3), y:+pt.y.toFixed(3)})),
+    materialId:region.material?.id || bishop.materials?.[0]?.id || null,
+    source:index < (model.autoRegions?.length || 0) ? 'cpt-copy' : 'custom'
+  }));
+  bishop.useCustomRegions = bishop.customRegions.length > 0;
+  bishop.selectedRegionId = bishop.customRegions[0]?.id || null;
+  bishop.regionDraftMaterialId = bishop.customRegions[0]?.materialId || bishop.materials?.[0]?.id || null;
+  stage6BishopInvalidate('Current solver polygons copied into an editable custom polygon set; rerun Bishop search after edits.');
+  renderStage6();
+}
+
+function stage6BishopSetUseCustomRegions(value){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  bishop.useCustomRegions = !!value && (bishop.customRegions || []).length > 0;
+  stage6BishopInvalidate(bishop.useCustomRegions ? 'Custom soil polygons enabled; rerun Bishop search.' : 'Reverted to CPT-derived soil polygons; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopClearCustomRegions(message){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  bishop.customRegions = [];
+  bishop.useCustomRegions = false;
+  bishop.selectedRegionId = null;
+  stage6BishopInvalidate(message || 'Custom soil polygons were cleared; Bishop reverted to CPT-derived polygons.');
+}
+
+function stage6BishopDeleteSelectedRegion(){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  const selectedId = bishop.selectedRegionId;
+  if(!selectedId) return;
+  bishop.customRegions = (bishop.customRegions || []).filter((region)=>region.id !== selectedId);
+  bishop.selectedRegionId = bishop.customRegions[0]?.id || null;
+  if(!bishop.customRegions.length){
+    bishop.useCustomRegions = false;
+  }
+  stage6BishopInvalidate('Custom soil polygon removed; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopSetSelectedRegionMaterial(materialId){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  const region = stage6BishopSelectedCustomRegion();
+  if(!region) return;
+  region.materialId = materialId;
+  stage6BishopSyncSoilModel();
+  stage6BishopInvalidate('Custom soil polygon material updated; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopSplitSelectedRegion(){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  const region = stage6BishopSelectedCustomRegion();
+  const splitPoints = bishop.draftKind === 'regionSplit' ? (bishop.draft || []) : [];
+  if(!region || splitPoints.length < 2){
+    bishop.progress.message = 'Choose two boundary points on the selected polygon to split it.';
+    renderStage6();
+    return;
+  }
+  const outcome = stage6BishopSplitRegionPolygon(region, splitPoints[0], splitPoints[1]);
+  if(!outcome.ok){
+    bishop.draft = [];
+    bishop.draftKind = 'regionSplit';
+    bishop.progress.message = outcome.message;
+    renderStage6();
+    return;
+  }
+  const replacements = outcome.polygons.map((polygon)=>({
+    id:stage6BishopRegionId(),
+    polygon,
+    materialId:region.materialId || bishop.materials?.[0]?.id || null,
+    source:'edited'
+  }));
+  bishop.customRegions = stage6BishopNormalizeCustomRegions(
+    (bishop.customRegions || []).flatMap((item)=>item.id === region.id ? replacements : [item]),
+    bishop.terrain,
+    bishop.materials
+  );
+  bishop.selectedRegionId = replacements[0]?.id || bishop.selectedRegionId;
+  bishop.useCustomRegions = bishop.customRegions.length > 0;
+  bishop.tool = 'edit';
+  bishop.draft = [];
+  bishop.draftKind = '';
+  stage6BishopInvalidate('Custom soil polygon split into two polygons; rerun Bishop search.');
+  renderStage6();
 }
 
 function stage6BishopSetField(path, value){
@@ -3929,7 +4115,7 @@ function stage6BishopSetField(path, value){
     nextValue = !!value;
   }
   stage6Set(S.stage6.bishop, path, nextValue);
-  if(!(path === 'gridSnap' || path === 'snapSize' || path.startsWith('viewport.'))){
+  if(!(path === 'gridSnap' || path === 'pointSnap' || path === 'snapSize' || path.startsWith('viewport.') || path.startsWith('display.'))){
     stage6BishopInvalidate();
   }
   renderStage6();
@@ -3938,6 +4124,11 @@ function stage6BishopSetField(path, value){
 function stage6BishopSetTool(tool){
   ensureStage6State();
   stage6RememberDetailsState();
+  if((tool === 'regionSplit' || tool === 'regionHole') && !stage6BishopSelectedCustomRegion()){
+    S.stage6.bishop.progress.message = `Select a custom polygon first in Edit / pan mode, then choose ${tool === 'regionHole' ? 'Cut hole' : 'Split selected'}.`;
+    renderStage6();
+    return;
+  }
   const prevTool = S.stage6.bishop.tool;
   S.stage6.bishop.tool = tool;
   if(tool !== prevTool && S.stage6.bishop.draftKind && S.stage6.bishop.draftKind !== tool){
@@ -3965,8 +4156,11 @@ function stage6BishopApplyImportedTerrain(vertices, label){
   bishop.exitZone = null;
   bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
   bishop.activeCptX = null;
+  bishop.customRegions = [];
+  bishop.useCustomRegions = false;
+  bishop.selectedRegionId = null;
   bishop.viewport.fitted = false;
-  stage6BishopInvalidate(`Terrain imported from DXF${label ? ` (${label})` : ''}; retaining walls were cleared, so review the CPT position and redraw the zones before rerunning the search.`);
+  stage6BishopInvalidate(`Terrain imported from DXF${label ? ` (${label})` : ''}; retaining walls and custom soil polygons were cleared, so review the CPT position and redraw the zones before rerunning the search.`);
   renderStage6();
 }
 
@@ -4009,13 +4203,69 @@ function stage6BishopFinishDraft(){
   if(bishop.draftKind === 'terrain' && bishop.draft.length >= 2){
     bishop.terrain = stage6BishopSortedPolyline(bishop.draft);
     bishop.walls = [];
+    bishop.customRegions = [];
+    bishop.useCustomRegions = false;
+    bishop.selectedRegionId = null;
     bishop.viewport.fitted = false;
     if(!bishop.entryZone) bishop.entryZone = null;
     if(!bishop.exitZone) bishop.exitZone = null;
-    stage6BishopInvalidate('Terrain updated; retaining walls were cleared and Bishop results were reset.');
+    stage6BishopInvalidate('Terrain updated; retaining walls and custom soil polygons were cleared and Bishop results were reset.');
   } else if(bishop.draftKind === 'phreatic' && bishop.draft.length >= 2){
     bishop.phreatic = stage6BishopSortedPolyline(bishop.draft);
     stage6BishopInvalidate('Phreatic line updated; rerun Bishop search.');
+  } else if(bishop.draftKind === 'region' && bishop.draft.length >= 3){
+    const polygon = normalizeRegionPolygon(bishop.draft);
+    if(!stage6BishopPolygonIsValid(polygon)){
+      bishop.progress.message = 'Soil polygons must be simple non-self-intersecting closed shapes.';
+      renderStage6();
+      return;
+    }
+    bishop.customRegions = stage6BishopNormalizeCustomRegions([
+      ...(bishop.customRegions || []),
+      {
+        id:stage6BishopRegionId(),
+        polygon,
+        materialId:bishop.regionDraftMaterialId || bishop.materials?.[0]?.id || null,
+        source:'custom'
+      }
+    ], bishop.terrain, bishop.materials);
+    bishop.useCustomRegions = bishop.customRegions.length > 0;
+    bishop.selectedRegionId = bishop.customRegions[bishop.customRegions.length - 1]?.id || bishop.selectedRegionId;
+    stage6BishopInvalidate('Custom soil polygon added; rerun Bishop search.');
+  } else if(bishop.draftKind === 'regionHole' && bishop.draft.length >= 3){
+    const parentRegion = stage6BishopSelectedCustomRegion();
+    const outcome = stage6BishopValidateHolePolygon(parentRegion, bishop.draft);
+    if(outcome.ok){
+      const carvedPieces = stage6BishopSubtractHoleFromPolygon(parentRegion?.polygon, outcome.polygon);
+      if(!carvedPieces.length){
+        bishop.progress.message = 'That hole could not be carved into non-overlapping pieces. Try a simpler hole shape fully inside the selected polygon.';
+        bishop.draft = [];
+        bishop.draftKind = '';
+        renderStage6();
+        return;
+      }
+      const holeRegion = {
+        id:stage6BishopRegionId(),
+        polygon:outcome.polygon,
+        materialId:bishop.regionDraftMaterialId || bishop.materials?.[0]?.id || null,
+        source:'hole'
+      };
+      const replacementRegions = carvedPieces.map((polygon)=>({
+        id:stage6BishopRegionId(),
+        polygon,
+        materialId:parentRegion.materialId || bishop.materials?.[0]?.id || null,
+        source:'edited'
+      }));
+      bishop.customRegions = stage6BishopNormalizeCustomRegions([
+        ...((bishop.customRegions || []).flatMap((region)=>region.id === parentRegion?.id ? [...replacementRegions, holeRegion] : [region]))
+      ], bishop.terrain, bishop.materials);
+      bishop.useCustomRegions = bishop.customRegions.length > 0;
+      bishop.selectedRegionId = holeRegion.id;
+      bishop.tool = 'edit';
+      stage6BishopInvalidate('Hole cut applied; the original polygon was rewritten into surrounding pieces with no overlap. Rerun Bishop search.');
+    } else {
+      bishop.progress.message = outcome.message;
+    }
   }
   bishop.draft = [];
   bishop.draftKind = '';
@@ -4029,6 +4279,9 @@ function stage6BishopClear(kind){
     bishop.terrain = [];
     bishop.phreatic = [];
     bishop.walls = [];
+    bishop.customRegions = [];
+    bishop.useCustomRegions = false;
+    bishop.selectedRegionId = null;
     bishop.entryZone = null;
     bishop.exitZone = null;
     bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
@@ -4047,6 +4300,10 @@ function stage6BishopClear(kind){
   } else if(kind === 'draft'){
     bishop.draft = [];
     bishop.draftKind = '';
+    renderStage6();
+    return;
+  } else if(kind === 'customRegions'){
+    stage6BishopClearCustomRegions();
     renderStage6();
     return;
   } else if(kind === 'results'){
@@ -4288,13 +4545,31 @@ function stage6BishopModeMeta(){
   if(bishop.tool === 'terrain'){
     return {
       label:'Terrain mode',
-      hint:'Click terrain points from left to right, then press Finish line to accept the terrain.'
+      hint:'Click terrain points from left to right, then press Finish draft to accept the terrain.'
     };
   }
   if(bishop.tool === 'phreatic'){
     return {
       label:'Phreatic mode',
-      hint:'Click phreatic-line points from left to right, then press Finish line to accept the line.'
+      hint:'Click phreatic-line points from left to right, then press Finish draft to accept the line.'
+    };
+  }
+  if(bishop.tool === 'region'){
+    return {
+      label:'Soil polygon mode',
+      hint:'Click polygon vertices, then press Finish draft or right-click to close the polygon. New polygons use the selected material and switch Bishop to custom polygon mode.'
+    };
+  }
+  if(bishop.tool === 'regionHole'){
+    return {
+      label:'Hole cut mode',
+      hint:'Draw a closed polygon inside the selected custom polygon to create a material override there. The chosen material for new polygons will be used for the cutout.'
+    };
+  }
+  if(bishop.tool === 'regionSplit'){
+    return {
+      label:'Split polygon mode',
+      hint:'Click two points on the boundary of the selected custom polygon to split it into two polygons. Right-click cancels the current split draft.'
     };
   }
   if(bishop.tool === 'cpt'){
@@ -4329,8 +4604,12 @@ function stage6BishopModeMeta(){
   }
   return {
     label:'Edit / pan mode',
-    hint:'Drag terrain or phreatic vertices, retaining-wall ends, the CPT marker, or zone ends. Drag empty space to pan and use the mouse wheel to zoom.'
+    hint:'Drag terrain or phreatic vertices, retaining-wall ends, the CPT marker, zone ends, or selected custom soil-polygon vertices. Click a custom polygon first to select it. Drag empty space to pan and use the mouse wheel to zoom.'
   };
+}
+
+function stage6BishopDist(a, b){
+  return Math.hypot((Number(a?.x) || 0) - (Number(b?.x) || 0), (Number(a?.y) || 0) - (Number(b?.y) || 0));
 }
 
 function stage6BishopPointInPolygon(point, polygon){
@@ -4349,7 +4628,7 @@ function stage6BishopPointInPolygon(point, polygon){
 
 function stage6BishopRegionAtPoint(model, point){
   if(!model?.regions?.length) return null;
-  for(let i=0;i<model.regions.length;i+=1){
+  for(let i=model.regions.length-1;i>=0;i-=1){
     const region = model.regions[i];
     if(region.polygon?.length >= 3 && stage6BishopPointInPolygon(point, region.polygon)) return region;
   }
@@ -4371,6 +4650,438 @@ function stage6BishopTooltipHtml(region){
   `;
 }
 
+function stage6BishopRegionShortLabel(region){
+  const label = String(region?.material?.label || region?.material?.id || 'Region').trim();
+  const base = label.includes(' - ') ? label.split(' - ')[0] : label;
+  return base.length > 18 ? `${base.slice(0, 17)}…` : base;
+}
+
+function stage6BishopPolygonCentroid(polygon){
+  if(!polygon?.length) return null;
+  let twiceArea = 0;
+  let cx = 0;
+  let cy = 0;
+  for(let i=0;i<polygon.length;i+=1){
+    const a = polygon[i];
+    const b = polygon[(i+1)%polygon.length];
+    const cross = a.x * b.y - b.x * a.y;
+    twiceArea += cross;
+    cx += (a.x + b.x) * cross;
+    cy += (a.y + b.y) * cross;
+  }
+  if(Math.abs(twiceArea) < 1e-9){
+    const avg = polygon.reduce((acc, pt)=>{
+      acc.x += pt.x;
+      acc.y += pt.y;
+      return acc;
+    }, {x:0, y:0});
+    return {
+      x:avg.x / polygon.length,
+      y:avg.y / polygon.length
+    };
+  }
+  return {
+    x:cx / (3 * twiceArea),
+    y:cy / (3 * twiceArea)
+  };
+}
+
+function stage6BishopRegionLegendItems(model){
+  if(!model?.regions?.length) return [];
+  const items = new Map();
+  model.regions.forEach((region)=>{
+    const mat = region.material || {};
+    const key = mat.id || region.id;
+    const item = items.get(key) || {
+      id:key,
+      label:mat.label || key,
+      color:mat.color || '#c9b089',
+      count:0,
+      sourceType:mat.sourceType || 'Soil'
+    };
+    item.count += 1;
+    items.set(key, item);
+  });
+  return [...items.values()];
+}
+
+function stage6BishopDisplayRegions(model){
+  const bishop = S?.stage6?.bishop;
+  if(!model || !bishop) return [];
+  const customRegions = model.customRegions || [];
+  if(customRegions.length) return customRegions;
+  return model.regions || [];
+}
+
+function stage6BishopShowingCustomRegionPreview(model){
+  return !!(model?.customRegions?.length) && model.regionMode !== 'custom';
+}
+
+function stage6BishopPolygonIsValid(polygon){
+  return Array.isArray(polygon) && polygon.length >= 3 && polygonArea(polygon) > 1e-4 && isSimplePolygon(polygon);
+}
+
+function stage6BishopSegmentOrientation(a, b, c){
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+function stage6BishopSegmentsIntersectClosed(a, b, c, d, tol = 1e-6){
+  const o1 = stage6BishopSegmentOrientation(a, b, c);
+  const o2 = stage6BishopSegmentOrientation(a, b, d);
+  const o3 = stage6BishopSegmentOrientation(c, d, a);
+  const o4 = stage6BishopSegmentOrientation(c, d, b);
+
+  if(Math.abs(o1) <= tol && stage6BishopPointOnSegment(c, a, b, tol)) return true;
+  if(Math.abs(o2) <= tol && stage6BishopPointOnSegment(d, a, b, tol)) return true;
+  if(Math.abs(o3) <= tol && stage6BishopPointOnSegment(a, c, d, tol)) return true;
+  if(Math.abs(o4) <= tol && stage6BishopPointOnSegment(b, c, d, tol)) return true;
+
+  return (
+    ((o1 > tol && o2 < -tol) || (o1 < -tol && o2 > tol)) &&
+    ((o3 > tol && o4 < -tol) || (o3 < -tol && o4 > tol))
+  );
+}
+
+function stage6BishopValidateHolePolygon(parentRegion, polygon){
+  const parentPolygon = parentRegion?.polygon || [];
+  const holePolygon = normalizeRegionPolygon(polygon || []);
+  if(parentPolygon.length < 3) return {ok:false, message:'Select a valid custom polygon before cutting a hole.'};
+  if(holePolygon.length < 3 || !(polygonArea(holePolygon) > 1e-4)){
+    return {ok:false, message:'Draw at least three distinct points for the hole polygon.'};
+  }
+  if(!isSimplePolygon(holePolygon)){
+    return {ok:false, message:'Hole polygons must be simple non-self-intersecting closed shapes.'};
+  }
+  if(holePolygon.some((pt)=>parentPolygon.some((_, index)=>stage6BishopPointOnSegment(pt, parentPolygon[index], parentPolygon[(index + 1) % parentPolygon.length], 1e-6)))){
+    return {ok:false, message:'The hole polygon must stay strictly inside the selected custom polygon.'};
+  }
+  if(holePolygon.some((pt)=>!stage6BishopPointInPolygon(pt, parentPolygon))){
+    return {ok:false, message:'The hole polygon must stay strictly inside the selected custom polygon.'};
+  }
+  for(let i=0;i<holePolygon.length;i+=1){
+    const a = holePolygon[i];
+    const b = holePolygon[(i + 1) % holePolygon.length];
+    for(let j=0;j<parentPolygon.length;j+=1){
+      const c = parentPolygon[j];
+      const d = parentPolygon[(j + 1) % parentPolygon.length];
+      if(stage6BishopSegmentsIntersectClosed(a, b, c, d)){
+        return {ok:false, message:'The hole polygon must stay strictly inside the selected custom polygon.'};
+      }
+    }
+  }
+  return {ok:true, polygon:holePolygon};
+}
+
+function stage6BishopPointOnSegment(point, a, b, tol = 1e-6){
+  const apx = point.x - a.x;
+  const apy = point.y - a.y;
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const len2 = abx*abx + aby*aby;
+  if(len2 <= 1e-12) return stage6BishopDist(point, a) <= tol;
+  const cross = Math.abs(apx*aby - apy*abx);
+  if(cross > tol * Math.max(1, Math.sqrt(len2))) return false;
+  const dot = apx*abx + apy*aby;
+  return dot >= -tol && dot <= len2 + tol;
+}
+
+function stage6BishopPointInsideOrBoundary(point, polygon){
+  if(stage6BishopPointInPolygon(point, polygon)) return true;
+  for(let i=0;i<polygon.length;i+=1){
+    const a = polygon[i];
+    const b = polygon[(i+1)%polygon.length];
+    if(stage6BishopPointOnSegment(point, a, b, 1e-4)) return true;
+  }
+  return false;
+}
+
+function stage6BishopClosestPointOnSegment(point, a, b){
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx*dx + dy*dy;
+  const t = len2 > 1e-12 ? Math.min(Math.max(((point.x - a.x)*dx + (point.y - a.y)*dy) / len2, 0), 1) : 0;
+  return {
+    point:{
+      x:+(a.x + dx*t).toFixed(3),
+      y:+(a.y + dy*t).toFixed(3)
+    },
+    t,
+    distance:Math.hypot(point.x - (a.x + dx*t), point.y - (a.y + dy*t))
+  };
+}
+
+function stage6BishopBoundaryPickToleranceWorld(){
+  return stage6BishopSnapToleranceWorld();
+}
+
+function stage6BishopPickRegionBoundaryPoint(region, world){
+  const polygon = region?.polygon || [];
+  if(polygon.length < 3) return null;
+  let best = null;
+  for(let i=0;i<polygon.length;i+=1){
+    const a = polygon[i];
+    const b = polygon[(i+1)%polygon.length];
+    const projected = stage6BishopClosestPointOnSegment(world, a, b);
+    if(!best || projected.distance < best.distance){
+      best = {
+        ...projected,
+        edgeIndex:i
+      };
+    }
+  }
+  if(!best || best.distance > stage6BishopBoundaryPickToleranceWorld()) return null;
+  const polygonLength = polygon.length;
+  const nearVertexTol = 1e-3;
+  if(best.t <= nearVertexTol){
+    return {
+      x:+polygon[best.edgeIndex].x.toFixed(3),
+      y:+polygon[best.edgeIndex].y.toFixed(3),
+      edgeIndex:best.edgeIndex,
+      vertexIndex:best.edgeIndex,
+      t:0
+    };
+  }
+  if(best.t >= 1 - nearVertexTol){
+    const vertexIndex = (best.edgeIndex + 1) % polygonLength;
+    return {
+      x:+polygon[vertexIndex].x.toFixed(3),
+      y:+polygon[vertexIndex].y.toFixed(3),
+      edgeIndex:best.edgeIndex,
+      vertexIndex,
+      t:1
+    };
+  }
+  return {
+    x:best.point.x,
+    y:best.point.y,
+    edgeIndex:best.edgeIndex,
+    vertexIndex:null,
+    t:best.t
+  };
+}
+
+function stage6BishopTraverseBoundary(boundary, startIndex, endIndex){
+  const out = [];
+  let index = startIndex;
+  while(true){
+    out.push({
+      x:+boundary[index].x.toFixed(3),
+      y:+boundary[index].y.toFixed(3)
+    });
+    if(index === endIndex) break;
+    index = (index + 1) % boundary.length;
+    if(out.length > boundary.length + 2) return [];
+  }
+  return out;
+}
+
+function stage6BishopBuildSplitBoundary(polygon, cuts){
+  const insertionsByEdge = new Map();
+  const cutNamesByVertex = new Map();
+  cuts.forEach((cut)=>{
+    if(Number.isInteger(cut.vertexIndex)){
+      const names = cutNamesByVertex.get(cut.vertexIndex) || [];
+      names.push(cut.name);
+      cutNamesByVertex.set(cut.vertexIndex, names);
+      return;
+    }
+    const insertions = insertionsByEdge.get(cut.edgeIndex) || [];
+    insertions.push(cut);
+    insertionsByEdge.set(cut.edgeIndex, insertions);
+  });
+  const boundary = [];
+  const cutIndices = {};
+  for(let i=0;i<polygon.length;i+=1){
+    boundary.push({
+      x:+polygon[i].x.toFixed(3),
+      y:+polygon[i].y.toFixed(3)
+    });
+    (cutNamesByVertex.get(i) || []).forEach((name)=>{
+      cutIndices[name] = boundary.length - 1;
+    });
+    const insertions = (insertionsByEdge.get(i) || []).slice().sort((a, b)=>a.t - b.t);
+    insertions.forEach((cut)=>{
+      const pt = {
+        x:+cut.x.toFixed(3),
+        y:+cut.y.toFixed(3)
+      };
+      if(stage6BishopDist(boundary[boundary.length - 1], pt) > 1e-6){
+        boundary.push(pt);
+      }
+      cutIndices[cut.name] = boundary.length - 1;
+    });
+  }
+  return {boundary, cutIndices};
+}
+
+function stage6BishopUniqueSortedNumbers(values, tol = 1e-6){
+  const sorted = [...values].filter((value)=>Number.isFinite(value)).sort((a, b)=>a - b);
+  const out = [];
+  sorted.forEach((value)=>{
+    if(!out.length || Math.abs(value - out[out.length - 1]) > tol) out.push(value);
+  });
+  return out;
+}
+
+function stage6BishopBoundaryYAtX(boundary, x){
+  const polygon = boundary?.polygon || [];
+  const a = polygon?.[boundary?.edgeIndex];
+  const b = polygon?.[(boundary?.edgeIndex + 1) % polygon.length];
+  if(!a || !b) return NaN;
+  if(Math.abs((b.x - a.x) || 0) <= 1e-9) return +a.y.toFixed(6);
+  return +(a.y + ((x - a.x) * (b.y - a.y)) / (b.x - a.x)).toFixed(6);
+}
+
+function stage6BishopPolygonIntervalsDetailed(polygon, x){
+  const pts = normalizeRegionPolygon(polygon || []);
+  if(pts.length < 3) return [];
+  const hits = [];
+  for(let i=0;i<pts.length;i+=1){
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const dx = b.x - a.x;
+    const minX = Math.min(a.x, b.x);
+    const maxX = Math.max(a.x, b.x);
+    if(Math.abs(dx) <= 1e-9) continue;
+    if(x <= minX + 1e-9 || x >= maxX - 1e-9) continue;
+    const t = (x - a.x) / dx;
+    if(t <= 1e-9 || t >= 1 - 1e-9) continue;
+    hits.push({
+      y:a.y + (b.y - a.y) * t,
+      edgeIndex:i
+    });
+  }
+  hits.sort((left, right)=>left.y - right.y);
+  const intervals = [];
+  for(let i=0;i+1<hits.length;i+=2){
+    const low = hits[i];
+    const high = hits[i + 1];
+    if(!(high.y > low.y + 1e-6)) continue;
+    intervals.push({
+      yBottom:low.y,
+      yTop:high.y,
+      bottomBoundary:{polygon:pts, edgeIndex:low.edgeIndex},
+      topBoundary:{polygon:pts, edgeIndex:high.edgeIndex}
+    });
+  }
+  return intervals;
+}
+
+function stage6BishopSubtractDetailedIntervals(parentIntervals, holeIntervals){
+  const out = [];
+  (parentIntervals || []).forEach((parentInterval)=>{
+    let segments = [{
+      yBottom:parentInterval.yBottom,
+      yTop:parentInterval.yTop,
+      bottomBoundary:parentInterval.bottomBoundary,
+      topBoundary:parentInterval.topBoundary
+    }];
+    (holeIntervals || []).forEach((holeInterval)=>{
+      const nextSegments = [];
+      segments.forEach((segment)=>{
+        const overlapBottom = Math.max(segment.yBottom, holeInterval.yBottom);
+        const overlapTop = Math.min(segment.yTop, holeInterval.yTop);
+        if(!(overlapTop > overlapBottom + 1e-6)){
+          nextSegments.push(segment);
+          return;
+        }
+        if(overlapBottom > segment.yBottom + 1e-6){
+          nextSegments.push({
+            yBottom:segment.yBottom,
+            yTop:overlapBottom,
+            bottomBoundary:segment.bottomBoundary,
+            topBoundary:holeInterval.bottomBoundary
+          });
+        }
+        if(overlapTop < segment.yTop - 1e-6){
+          nextSegments.push({
+            yBottom:overlapTop,
+            yTop:segment.yTop,
+            bottomBoundary:holeInterval.topBoundary,
+            topBoundary:segment.topBoundary
+          });
+        }
+      });
+      segments = nextSegments;
+    });
+    out.push(...segments.filter((segment)=>segment.yTop > segment.yBottom + 1e-6));
+  });
+  return out;
+}
+
+function stage6BishopSubtractHoleFromPolygon(parentPolygon, holePolygon){
+  const parent = normalizeRegionPolygon(parentPolygon || []);
+  const hole = normalizeRegionPolygon(holePolygon || []);
+  if(parent.length < 3 || hole.length < 3) return [];
+  const xBreaks = stage6BishopUniqueSortedNumbers([
+    ...parent.map((pt)=>pt.x),
+    ...hole.map((pt)=>pt.x)
+  ]);
+  const pieces = [];
+  for(let i=0;i<xBreaks.length - 1;i+=1){
+    const xL = xBreaks[i];
+    const xR = xBreaks[i + 1];
+    if(!(xR > xL + 1e-6)) continue;
+    const xMid = 0.5 * (xL + xR);
+    const parentIntervals = stage6BishopPolygonIntervalsDetailed(parent, xMid);
+    const holeIntervals = stage6BishopPolygonIntervalsDetailed(hole, xMid);
+    const visibleIntervals = stage6BishopSubtractDetailedIntervals(parentIntervals, holeIntervals);
+    visibleIntervals.forEach((interval)=>{
+      const leftBottom = {x:+xL.toFixed(3), y:+stage6BishopBoundaryYAtX(interval.bottomBoundary, xL).toFixed(3)};
+      const leftTop = {x:+xL.toFixed(3), y:+stage6BishopBoundaryYAtX(interval.topBoundary, xL).toFixed(3)};
+      const rightTop = {x:+xR.toFixed(3), y:+stage6BishopBoundaryYAtX(interval.topBoundary, xR).toFixed(3)};
+      const rightBottom = {x:+xR.toFixed(3), y:+stage6BishopBoundaryYAtX(interval.bottomBoundary, xR).toFixed(3)};
+      const piece = normalizeRegionPolygon([leftBottom, leftTop, rightTop, rightBottom]);
+      if(stage6BishopPolygonIsValid(piece)){
+        pieces.push(piece);
+      }
+    });
+  }
+  return pieces;
+}
+
+function stage6BishopSplitRegionPolygon(region, cutA, cutB){
+  const polygon = region?.polygon || [];
+  if(polygon.length < 3) return {ok:false, message:'Select a valid polygon before splitting it.'};
+  if(stage6BishopDist(cutA, cutB) <= 1e-4){
+    return {ok:false, message:'Choose two distinct points on the selected polygon boundary to split it.'};
+  }
+  const chordSamples = [0.25, 0.5, 0.75].every((t)=>{
+    const point = {
+      x:cutA.x + (cutB.x - cutA.x)*t,
+      y:cutA.y + (cutB.y - cutA.y)*t
+    };
+    return stage6BishopPointInsideOrBoundary(point, polygon);
+  });
+  if(!chordSamples){
+    return {ok:false, message:'The split line must stay inside the selected polygon.'};
+  }
+  const {boundary, cutIndices} = stage6BishopBuildSplitBoundary(polygon, [
+    {...cutA, name:'a'},
+    {...cutB, name:'b'}
+  ]);
+  const indexA = cutIndices.a;
+  const indexB = cutIndices.b;
+  if(indexA == null || indexB == null || indexA === indexB){
+    return {ok:false, message:'Choose two separate polygon-boundary points to split the polygon.'};
+  }
+  const polygonA = normalizeRegionPolygon(stage6BishopTraverseBoundary(boundary, indexA, indexB));
+  const polygonB = normalizeRegionPolygon(stage6BishopTraverseBoundary(boundary, indexB, indexA));
+  if(!stage6BishopPolygonIsValid(polygonA) || !stage6BishopPolygonIsValid(polygonB)){
+    return {ok:false, message:'That split would create an invalid polygon. Try points on different edges.'};
+  }
+  const originalArea = polygonArea(polygon);
+  const splitArea = polygonArea(polygonA) + polygonArea(polygonB);
+  const areaTolerance = Math.max(0.01, originalArea * 1e-4);
+  if(Math.abs(splitArea - originalArea) > areaTolerance){
+    return {ok:false, message:'That split falls outside the polygon. Try a cut line that stays inside the region.'};
+  }
+  return {
+    ok:true,
+    polygons:[polygonA, polygonB]
+  };
+}
+
 function stage6BishopHideHoverDom(){
   const tip = document.getElementById('stage6BishopTip');
   const coord = document.getElementById('stage6BishopCoord');
@@ -4386,13 +5097,14 @@ function stage6BishopUpdateHoverDom(canvas, clientX, clientY){
   const snapped = stage6BishopSnapWorldPoint(world, 'free');
   stage6BishopCanvasState.hoverWorld = world;
   if(coord){
-    coord.textContent = `x = ${world.x.toFixed(2)} m · y = ${world.y.toFixed(2)} m${S.stage6.bishop.gridSnap ? ` · snap ${snapped.x.toFixed(2)}, ${snapped.y.toFixed(2)} m` : ''}`;
+    const snapEnabled = S.stage6.bishop.gridSnap || S.stage6.bishop.pointSnap;
+    coord.textContent = `x = ${world.x.toFixed(2)} m · y = ${world.y.toFixed(2)} m${snapEnabled ? ` · snap ${snapped.x.toFixed(2)}, ${snapped.y.toFixed(2)} m` : ''}`;
   }
   if(!tip || !model){
     stage6BishopDrawCanvas();
     return;
   }
-  const region = stage6BishopRegionAtPoint(model, world);
+  const region = stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world);
   if(region){
     const wrap = canvas.parentElement;
     const wrapRect = wrap.getBoundingClientRect();
@@ -4425,16 +5137,108 @@ function stage6BishopWorldToScreen(pt){
   };
 }
 
+function stage6BishopSnapToleranceWorld(){
+  const scale = Math.max(S?.stage6?.bishop?.viewport?.scale || 24, 1);
+  return 14 / scale;
+}
+
+function stage6BishopCurrentDragKey(){
+  const drag = stage6BishopCanvasState.pointerDrag;
+  if(!drag) return '';
+  return `${drag.kind}:${drag.regionId || ''}:${Number.isFinite(drag.index) ? drag.index : ''}`;
+}
+
+function stage6BishopSnapPointKey(kind, index, regionId){
+  return `${kind}:${regionId || ''}:${Number.isFinite(index) ? index : ''}`;
+}
+
+function stage6BishopCollectSnapPoints(){
+  const bishop = S.stage6.bishop;
+  const points = [];
+  const seen = new Set();
+  const excludeKey = stage6BishopCurrentDragKey();
+  const pushPoint = (kind, pt, index = null, regionId = null)=>{
+    const x = Number(pt?.x);
+    const y = Number(pt?.y);
+    if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if(stage6BishopSnapPointKey(kind, index, regionId) === excludeKey) return;
+    const coordKey = `${x.toFixed(4)}:${y.toFixed(4)}`;
+    if(seen.has(coordKey)) return;
+    seen.add(coordKey);
+    points.push({x, y});
+  };
+  (bishop.terrain || []).forEach((pt, index)=>pushPoint('terrain', pt, index));
+  (bishop.phreatic || []).forEach((pt, index)=>pushPoint('phreatic', pt, index));
+  if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
+    pushPoint('cpt', {
+      x:bishop.activeCptX,
+      y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX)
+    });
+  }
+  if(bishop.entryZone && bishop.terrain.length >= 2){
+    pushPoint('entryStart', {x:bishop.entryZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.entryZone.xStart)});
+    pushPoint('entryEnd', {x:bishop.entryZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.entryZone.xEnd)});
+  }
+  if(bishop.exitZone && bishop.terrain.length >= 2){
+    pushPoint('exitStart', {x:bishop.exitZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xStart)});
+    pushPoint('exitEnd', {x:bishop.exitZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xEnd)});
+  }
+  if(stage6BishopValidZone(bishop.surfaceLoad) && bishop.terrain.length >= 2){
+    pushPoint('loadStart', {x:bishop.surfaceLoad.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.surfaceLoad.xStart)});
+    pushPoint('loadEnd', {x:bishop.surfaceLoad.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.surfaceLoad.xEnd)});
+  }
+  (bishop.walls || []).forEach((wall, index)=>{
+    pushPoint('wallTop', {x:wall.x, y:wall.yTop}, index);
+    pushPoint('wallTip', {x:wall.x, y:wall.yTip}, index);
+  });
+  (bishop.customRegions || []).forEach((region)=>{
+    (region.polygon || []).forEach((pt, index)=>pushPoint('regionVertex', pt, index, region.id));
+  });
+  return points;
+}
+
+function stage6BishopNearestPointSnap(pt, mode){
+  const tolerance = stage6BishopSnapToleranceWorld();
+  let best = null;
+  stage6BishopCollectSnapPoints().forEach((candidate)=>{
+    const distance = mode === 'terrain-x'
+      ? Math.abs(candidate.x - pt.x)
+      : stage6BishopDist(candidate, pt);
+    if(distance > tolerance) return;
+    if(!best || distance < best.distance){
+      best = {
+        distance,
+        point:mode === 'terrain-x'
+          ? {x:candidate.x, y:pt.y}
+          : {x:candidate.x, y:candidate.y}
+      };
+    }
+  });
+  return best;
+}
+
 function stage6BishopSnapWorldPoint(pt, mode){
   const bishop = S.stage6.bishop;
   const grid = Math.max(bishop.snapSize || 0.5, 0.05);
-  if(!bishop.gridSnap) return {...pt};
-  const out = {...pt};
-  out.x = Math.round(out.x / grid) * grid;
-  if(mode !== 'terrain-x'){
-    out.y = Math.round(out.y / grid) * grid;
+  const candidates = [];
+  if(bishop.gridSnap){
+    const gridPoint = {...pt};
+    gridPoint.x = Math.round(gridPoint.x / grid) * grid;
+    if(mode !== 'terrain-x'){
+      gridPoint.y = Math.round(gridPoint.y / grid) * grid;
+    }
+    candidates.push({
+      point:gridPoint,
+      distance:mode === 'terrain-x' ? Math.abs(gridPoint.x - pt.x) : stage6BishopDist(gridPoint, pt)
+    });
   }
-  return out;
+  if(bishop.pointSnap){
+    const pointCandidate = stage6BishopNearestPointSnap(pt, mode);
+    if(pointCandidate) candidates.push(pointCandidate);
+  }
+  if(!candidates.length) return {...pt};
+  candidates.sort((a, b)=>a.distance - b.distance);
+  return {...candidates[0].point};
 }
 
 function stage6BishopCanvasWorldBounds(model){
@@ -4517,6 +5321,12 @@ function stage6BishopNearestHandle(canvas, clientX, clientY){
       handles.push({kind:'wallTip', index, pt:{x:wall.x, y:wall.yTip}});
     }
   });
+  if((bishop.customRegions || []).length){
+    const selectedRegion = stage6BishopSelectedCustomRegion();
+    (selectedRegion?.polygon || []).forEach((pt, index)=>{
+      handles.push({kind:'regionVertex', regionId:selectedRegion.id, index, pt});
+    });
+  }
   let best = null;
   handles.forEach((handle)=>{
     const d = screenDist(handle.pt);
@@ -4527,7 +5337,7 @@ function stage6BishopNearestHandle(canvas, clientX, clientY){
   return best;
 }
 
-function stage6BishopCommitDrawPoint(world){
+function stage6BishopCommitDrawPoint(canvas, world){
   ensureStage6State();
   const bishop = S.stage6.bishop;
   const tool = bishop.tool;
@@ -4539,6 +5349,55 @@ function stage6BishopCommitDrawPoint(world){
     bishop.draft = next;
     bishop.draftKind = tool;
     renderStage6();
+    return;
+  }
+  if(tool === 'region' || tool === 'regionHole'){
+    if(bishop.terrain.length < 2) return;
+    if(tool === 'regionHole' && !stage6BishopSelectedCustomRegion()){
+      bishop.progress.message = 'Select a custom polygon first in Edit / pan mode, then choose Cut hole.';
+      renderStage6();
+      return;
+    }
+    const snapped = stage6BishopSnapWorldPoint(world, 'free');
+    const next = [...bishop.draft];
+    if(next.length && stage6BishopDist(snapped, next[next.length - 1]) <= 1e-6) return;
+    if(next.length >= 3 && stage6BishopDist(snapped, next[0]) <= Math.max(bishop.snapSize || 0.5, 0.25)){
+      stage6BishopFinishDraft();
+      return;
+    }
+    next.push(snapped);
+    bishop.draft = next;
+    bishop.draftKind = tool;
+    renderStage6();
+    return;
+  }
+  if(tool === 'regionSplit'){
+    const region = stage6BishopSelectedCustomRegion();
+    if(!region){
+      bishop.progress.message = 'Select a custom polygon first in Edit / pan mode, then choose Split selected.';
+      renderStage6();
+      return;
+    }
+    const cutPoint = stage6BishopPickRegionBoundaryPoint(region, world);
+    if(!cutPoint){
+      bishop.progress.message = 'Click near the selected polygon boundary to place a split point.';
+      renderStage6();
+      return;
+    }
+    if(bishop.draftKind !== 'regionSplit' || bishop.draft.length >= 2){
+      bishop.draft = [cutPoint];
+      bishop.draftKind = 'regionSplit';
+      renderStage6();
+      return;
+    }
+    if(stage6BishopDist(bishop.draft[0], cutPoint) <= Math.max((bishop.snapSize || 0.5) * 0.25, 0.05)){
+      bishop.progress.message = 'Choose a second boundary point away from the first one to split the polygon.';
+      renderStage6();
+      return;
+    }
+    bishop.draft = [bishop.draft[0], cutPoint];
+    bishop.draftKind = 'regionSplit';
+    stage6BishopSplitSelectedRegion();
     return;
   }
   if(tool === 'cpt'){
@@ -4610,12 +5469,19 @@ function stage6BishopCommitDrawPoint(world){
 function stage6BishopCompleteCurrentActionAt(world){
   ensureStage6State();
   const bishop = S.stage6.bishop;
-  if(bishop.draftKind === 'terrain' || bishop.draftKind === 'phreatic'){
+  if(bishop.draftKind === 'terrain' || bishop.draftKind === 'phreatic' || bishop.draftKind === 'region' || bishop.draftKind === 'regionHole'){
     if((bishop.draft || []).length >= 2){
+      if((bishop.draftKind === 'region' || bishop.draftKind === 'regionHole') && bishop.draft.length < 3) return false;
       stage6BishopFinishDraft();
       return true;
     }
     return false;
+  }
+  if(bishop.draftKind === 'regionSplit'){
+    bishop.draft = [];
+    bishop.draftKind = 'regionSplit';
+    renderStage6();
+    return true;
   }
   if((bishop.draftKind === 'entry' || bishop.draftKind === 'exit' || bishop.draftKind === 'load') && (bishop.draft || []).length === 1 && bishop.terrain.length >= 2){
     const kind = bishop.draftKind;
@@ -4693,9 +5559,20 @@ function stage6BishopPointerDown(event){
       stage6BishopCanvasState.pointerDrag = {
         kind:handle.kind,
         index:handle.index,
+        regionId:handle.regionId,
         pointerId:event.pointerId
       };
       canvas.setPointerCapture(event.pointerId);
+      return;
+    }
+    const model = S.stage6Cache.bishopModel || stage6BishopCurrentModel();
+    const world = stage6BishopScreenToWorld(canvas, event.clientX, event.clientY);
+    const region = (bishop.customRegions || []).length
+      ? stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world)
+      : null;
+    if(region){
+      bishop.selectedRegionId = region.id;
+      renderStage6();
       return;
     }
     stage6BishopCanvasState.pointerDrag = {
@@ -4709,7 +5586,7 @@ function stage6BishopPointerDown(event){
     canvas.setPointerCapture(event.pointerId);
     return;
   }
-  stage6BishopCommitDrawPoint(stage6BishopScreenToWorld(canvas, event.clientX, event.clientY));
+  stage6BishopCommitDrawPoint(canvas, stage6BishopScreenToWorld(canvas, event.clientX, event.clientY));
 }
 
 function stage6BishopPointerMove(event){
@@ -4766,6 +5643,20 @@ function stage6BishopPointerMove(event){
       wall.yTip = Math.min(pt.y, wall.yTop - 0.05);
     }
     bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
+  } else if(drag.kind === 'regionVertex'){
+    const region = (bishop.customRegions || []).find((item)=>item.id === drag.regionId);
+    if(!region) return;
+    const pt = stage6BishopSnapWorldPoint(world, 'free');
+    const minX = bishop.terrain.length >= 2 ? bishop.terrain[0].x : -Infinity;
+    const maxX = bishop.terrain.length >= 2 ? bishop.terrain[bishop.terrain.length-1].x : Infinity;
+    const nextPoint = {
+      x:+Math.min(Math.max(pt.x, minX), maxX).toFixed(3),
+      y:+pt.y.toFixed(3)
+    };
+    const nextPolygon = (region.polygon || []).map((item, index)=>index === drag.index ? nextPoint : item);
+    if(stage6BishopPolygonIsValid(nextPolygon)){
+      region.polygon[drag.index] = nextPoint;
+    }
   }
   stage6BishopDrawCanvas();
 }
@@ -4776,6 +5667,9 @@ function stage6BishopPointerUp(event){
   stage6BishopCanvasState.pointerDrag = null;
   if(event.currentTarget.releasePointerCapture){
     try{ event.currentTarget.releasePointerCapture(event.pointerId); }catch(e){}
+  }
+  if(drag.kind === 'terrain' && (S.stage6.bishop.customRegions || []).length){
+    stage6BishopClearCustomRegions('Terrain updated; custom soil polygons were cleared and Bishop results were reset.');
   }
   renderStage6();
 }
@@ -4853,21 +5747,64 @@ function stage6BishopDrawCanvas(){
   stage6BishopSyncSoilModel();
   const model = buildBishopModelFromStageLayers(stage6WorkingLayers(), bishop);
   S.stage6Cache.bishopModel = model;
-  if(model){
-    model.regions.forEach((region)=>{
+  const displayRegions = stage6BishopDisplayRegions(model);
+  const showingCustomRegionPreview = stage6BishopShowingCustomRegionPreview(model);
+  if(model && bishop.display?.showRegions !== false){
+    displayRegions.forEach((region)=>{
       if(!region.polygon?.length) return;
+      const screenPts = region.polygon.map((pt)=>stage6BishopWorldToScreen(pt));
+      const isSelectedCustom = region.id === bishop.selectedRegionId;
       ctx.beginPath();
-      region.polygon.forEach((pt, index)=>{
-        const s = stage6BishopWorldToScreen(pt);
+      screenPts.forEach((s, index)=>{
         if(index === 0) ctx.moveTo(s.x, s.y);
         else ctx.lineTo(s.x, s.y);
       });
       ctx.closePath();
-      ctx.fillStyle = `${region.material.color || '#c9b089'}33`;
-      ctx.strokeStyle = `${region.material.color || '#c9b089'}88`;
-      ctx.lineWidth = 1;
+      ctx.save();
+      ctx.globalAlpha = showingCustomRegionPreview ? Math.min((bishop.display?.regionOpacity ?? 0.22) + 0.06, 0.35) : (bishop.display?.regionOpacity ?? 0.22);
+      ctx.fillStyle = region.material.color || '#c9b089';
       ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = region.material.color || '#c9b089';
+      ctx.globalAlpha = isSelectedCustom ? 0.95 : (showingCustomRegionPreview ? 0.82 : 0.7);
+      ctx.lineWidth = isSelectedCustom ? 3 : 1.5;
+      if(showingCustomRegionPreview) ctx.setLineDash([8, 5]);
       ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([]);
+      if(isSelectedCustom){
+        ctx.save();
+        ctx.strokeStyle = '#213142';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([6,4]);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if(bishop.display?.showRegionLabels !== false){
+        const centroid = stage6BishopPolygonCentroid(region.polygon);
+        if(centroid){
+          const labelPos = stage6BishopWorldToScreen(centroid);
+          const xs = screenPts.map((pt)=>pt.x);
+          const ys = screenPts.map((pt)=>pt.y);
+          const widthPx = Math.max(...xs) - Math.min(...xs);
+          const heightPx = Math.max(...ys) - Math.min(...ys);
+          if(widthPx >= 48 && heightPx >= 20){
+            const label = stage6BishopRegionShortLabel(region);
+            ctx.save();
+            ctx.font = '600 11px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineWidth = 4;
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+            ctx.strokeText(label, labelPos.x, labelPos.y);
+            ctx.fillStyle = '#213142';
+            ctx.fillText(label, labelPos.x, labelPos.y);
+            ctx.restore();
+          }
+        }
+      }
     });
   }
 
@@ -4986,6 +5923,60 @@ function stage6BishopDrawCanvas(){
         ], stage6BishopZoneColor(bishop.tool), 4, [5, 4]);
       }
     }
+    if((bishop.tool === 'region' || bishop.tool === 'regionHole') && (bishop.draftKind === 'region' || bishop.draftKind === 'regionHole') && bishop.draft?.length){
+      const isHoleDraft = bishop.draftKind === 'regionHole';
+      const next = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
+      const preview = [...bishop.draft, next];
+      if(preview.length >= 2){
+        drawPolyline(preview, isHoleDraft ? '#b3477a' : '#2d3a4a', 1.5, [6, 4]);
+      }
+      if(preview.length >= 3){
+        ctx.save();
+        ctx.beginPath();
+        preview.forEach((pt, index)=>{
+          const s = stage6BishopWorldToScreen(pt);
+          if(index === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = isHoleDraft ? '#b3477a' : '#2d3a4a';
+        ctx.globalAlpha = 0.08;
+        ctx.fill();
+        ctx.restore();
+        const first = stage6BishopWorldToScreen(preview[0]);
+        ctx.save();
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = isHoleDraft ? '#b3477a' : '#2d3a4a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(first.x, first.y, 5, 0, Math.PI*2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    if(bishop.tool === 'regionSplit'){
+      const selectedRegion = stage6BishopSelectedCustomRegion();
+      const splitDraft = bishop.draftKind === 'regionSplit' ? (bishop.draft || []) : [];
+      splitDraft.forEach((pt, index)=>{
+        const s = stage6BishopWorldToScreen(pt);
+        ctx.save();
+        ctx.fillStyle = index === 0 ? '#b3477a' : '#fff';
+        ctx.strokeStyle = '#b3477a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 5, 0, Math.PI*2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      });
+      if(selectedRegion && splitDraft.length === 1 && stage6BishopCanvasState.hoverWorld){
+        const hoverCut = stage6BishopPickRegionBoundaryPoint(selectedRegion, stage6BishopCanvasState.hoverWorld);
+        if(hoverCut){
+          drawPolyline([splitDraft[0], hoverCut], '#b3477a', 2, [6, 4]);
+        }
+      }
+    }
     if(bishop.tool === 'wall' && bishop.draftKind === 'wall' && bishop.draft?.length === 1){
       const top = bishop.draft[0];
       const tip = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
@@ -5084,7 +6075,8 @@ function stage6BishopDrawCanvas(){
       ...(bishop.walls || []).flatMap((wall)=>[
         {x:wall.x, y:wall.yTop},
         {x:wall.x, y:wall.yTip}
-      ])
+      ]),
+      ...((bishop.customRegions?.length ? stage6BishopSelectedCustomRegion()?.polygon : []) || [])
     ];
     handleSets.forEach((pt)=>{
       const s = stage6BishopWorldToScreen(pt);
@@ -6621,6 +7613,10 @@ function renderStage6BishopApp(){
   const selectedNormalHeader = showSpencerSliceCols ? 'Effective normal' : 'Normal';
   const selectedMethodLabel = stage6BishopResultMethodLabel(selected);
   const selectedWallLabel = stage6BishopResultWallLabel(selected);
+  const selectedCustomRegion = stage6BishopSelectedCustomRegion();
+  const customRegionCount = (bishop.customRegions || []).length;
+  const customModeActive = !!bishop.useCustomRegions && customRegionCount > 0;
+  const showingCustomRegionPreview = stage6BishopShowingCustomRegionPreview(model);
   const resultRows = results.slice(0, Math.max(bishop.search.keepBest || 10, 1)).map((result, index)=>`
     <tr class="${index === (bishop.selectedResult || 0) ? 'sel':''}">
       <td>${index+1}</td>
@@ -6658,6 +7654,7 @@ function renderStage6BishopApp(){
       <td><button class="btn sm" onclick="stage6BishopDeleteWall(${index})">Delete</button></td>
     </tr>
   `).join('');
+  const regionLegendItems = stage6BishopRegionLegendItems({regions:stage6BishopDisplayRegions(model)});
   return `
     <div class="mc2 st6-bishop">
       <div class="mc2-head" style="margin-bottom:12px">
@@ -6670,68 +7667,146 @@ function renderStage6BishopApp(){
           <div class="ctrl-row st6-bishop-controls">
             <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally add infinitely stiff retaining walls and a uniform surcharge zone, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
             <div class="st6-bishop-tool-groups">
-              <div class="st6-bishop-tool-group">
-                <div class="st6-bishop-tool-title">Terrain</div>
-                <div class="st6-bishop-tools">
-                  <button class="btn sm ${bishop.tool==='terrain'?'active':''}" onclick="stage6BishopSetTool('terrain')">Draw terrain</button>
-                  <button class="btn sm" onclick="stage6BishopTriggerDxfImport()">Import DXF terrain</button>
-                  <input id="stage6BishopDxfInput" type="file" accept=".dxf,.DXF" style="display:none" onchange="stage6BishopImportDxf(event)">
-                  <button class="btn sm" onclick="stage6BishopFinishDraft()">Finish line</button>
-                  <button class="btn sm" onclick="stage6BishopPopDraftPoint()">Undo point</button>
-                  <button class="btn sm" onclick="stage6BishopClear('draft')">Clear draft</button>
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-terrain"${stage6DetailsOpen('bishop-geo-terrain')}>
+                <summary>Terrain</summary>
+                <div class="st6-adv-body">
+                  <div class="st6-bishop-tools">
+                    <button class="btn sm ${bishop.tool==='terrain'?'active':''}" onclick="stage6BishopSetTool('terrain')">Draw terrain</button>
+                    <button class="btn sm" onclick="stage6BishopTriggerDxfImport()">Import DXF terrain</button>
+                    <input id="stage6BishopDxfInput" type="file" accept=".dxf,.DXF" style="display:none" onchange="stage6BishopImportDxf(event)">
+                    <button class="btn sm" onclick="stage6BishopFinishDraft()">Finish draft</button>
+                    <button class="btn sm" onclick="stage6BishopPopDraftPoint()">Undo point</button>
+                    <button class="btn sm" onclick="stage6BishopClear('draft')">Clear draft</button>
+                  </div>
                 </div>
-              </div>
-              <div class="st6-bishop-tool-group">
-                <div class="st6-bishop-tool-title">Section Setup</div>
-                <div class="st6-bishop-tools">
-                  <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
-                  <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
-                  <button class="btn sm ${bishop.tool==='wall'?'active':''}" onclick="stage6BishopSetTool('wall')">Retaining wall</button>
-                  <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
-                  <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
-                  <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
-                  <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
+              </details>
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-regions"${stage6DetailsOpen('bishop-geo-regions')}>
+                <summary>Soil polygons</summary>
+                <div class="st6-adv-body">
+                  <div class="st6-help">Default Bishop still uses CPT-derived polygons. To edit them, first copy the current solver polygons into a custom set. After that you can draw additional polygons, select one in <strong>Edit / pan</strong>, drag its vertices, split it into smaller polygons, cut interior holes with a different material, and assign one of the imported Bishop materials.</div>
+                  ${showingCustomRegionPreview ? `<div class="st6-help">Custom polygons are visible for editing, but the solver is still using the CPT-derived polygon set until you enable the checkbox below.</div>` : ''}
+                  <div class="st6-bishop-tools">
+                    <button class="btn sm" onclick="stage6BishopCopyCurrentRegionsToCustom()">Copy current polygons</button>
+                    <button class="btn sm ${bishop.tool==='region'?'active':''}" onclick="stage6BishopSetTool('region')">Draw polygon</button>
+                    <button class="btn sm ${bishop.tool==='regionHole'?'active':''}" onclick="stage6BishopSetTool('regionHole')" ${selectedCustomRegion ? '' : 'disabled'}>Cut hole</button>
+                    <button class="btn sm ${bishop.tool==='regionSplit'?'active':''}" onclick="stage6BishopSetTool('regionSplit')" ${selectedCustomRegion ? '' : 'disabled'}>Split selected</button>
+                    <button class="btn sm" onclick="stage6BishopFinishDraft()" ${((bishop.draftKind==='region' || bishop.draftKind==='regionHole') && bishop.draft.length >= 3) ? '' : 'disabled'}>${bishop.draftKind==='regionHole' ? 'Finish hole' : 'Finish polygon'}</button>
+                    <button class="btn sm" onclick="stage6BishopDeleteSelectedRegion()" ${selectedCustomRegion ? '' : 'disabled'}>Delete selected</button>
+                    <button class="btn sm" onclick="stage6BishopClear('customRegions')" ${customRegionCount ? '' : 'disabled'}>Clear custom polygons</button>
+                  </div>
+                  <label class="st6-bishop-check">
+                    <input type="checkbox" ${customModeActive ? 'checked' : ''} onchange="stage6BishopSetUseCustomRegions(this.checked)" ${customRegionCount ? '' : 'disabled'}>
+                    Use custom polygons in the solver
+                  </label>
+                  <label style="font-size:11px;color:var(--tx2)">Material for new polygons
+                    <select onchange="stage6BishopSetField('regionDraftMaterialId', this.value)">
+                      ${(bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${(bishop.regionDraftMaterialId || bishop.materials?.[0]?.id)===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('')}
+                    </select>
+                  </label>
+                  ${selectedCustomRegion ? `
+                    <label style="font-size:11px;color:var(--tx2)">Selected polygon material
+                      <select onchange="stage6BishopSetSelectedRegionMaterial(this.value)">
+                        ${(bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${selectedCustomRegion.materialId===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('')}
+                      </select>
+                    </label>
+                    <div class="st6-help">Selected polygon: <strong>${stage6EscAttr(selectedCustomRegion.id)}</strong> · vertices <strong>${selectedCustomRegion.polygon.length}</strong> · source <strong>${selectedCustomRegion.source === 'cpt-copy' ? 'copied from CPT' : selectedCustomRegion.source === 'hole' ? 'hole cut' : selectedCustomRegion.source === 'edited' ? 'edited fragment' : 'custom drawn'}</strong></div>
+                  ` : `
+                    <div class="st6-help">${customRegionCount ? 'No custom polygon is selected. Click one in Edit / pan mode to edit it.' : 'No custom polygons yet. Copy the current solver polygons or draw a new polygon to start editing.'}</div>
+                  `}
                 </div>
-              </div>
-              <div class="st6-bishop-tool-group st6-bishop-tool-group-muted">
-                <div class="st6-bishop-tool-title">Clear Accepted Geometry</div>
-                <div class="st6-bishop-mini-actions">
-                  <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
-                  <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
-                  <button class="btn sm" onclick="stage6BishopClear('walls')">Clear walls</button>
-                  <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
-                  <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
-                  <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
+              </details>
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-setup"${stage6DetailsOpen('bishop-geo-setup')}>
+                <summary>Section setup</summary>
+                <div class="st6-adv-body">
+                  <div class="st6-bishop-tools">
+                    <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
+                    <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
+                    <button class="btn sm ${bishop.tool==='wall'?'active':''}" onclick="stage6BishopSetTool('wall')">Retaining wall</button>
+                    <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
+                    <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
+                    <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
+                    <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
+                  </div>
                 </div>
-              </div>
+              </details>
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-analysis"${stage6DetailsOpen('bishop-geo-analysis')}>
+                <summary>Analysis inputs</summary>
+                <div class="st6-adv-body">
+                  <label style="font-size:11px;color:var(--tx2)">Material strength set${stage6Tooltip('Characteristic keeps the active CPT layer parameters unchanged. DA1/1 uses M1 soil factors and DA1/2 uses M2 soil factors before importing the Bishop base materials.')}
+                    <select onchange="stage6BishopSetField('strengthSet', this.value)">
+                      <option value="characteristic"${bishop.strengthSet==='characteristic'?' selected':''}>Characteristic</option>
+                      <option value="da1_1"${bishop.strengthSet==='da1_1'?' selected':''}>DA1/1 (M1)</option>
+                      <option value="da1_2"${bishop.strengthSet==='da1_2'?' selected':''}>DA1/2 (M2)</option>
+                    </select>
+                  </label>
+                  <label style="font-size:11px;color:var(--tx2)">Method
+                    <select onchange="stage6BishopSetField('methodMode', this.value)">
+                      <option value="bishop_spencer"${bishop.methodMode==='bishop_spencer'?' selected':''}>Bishop + Spencer check</option>
+                      <option value="bishop_only"${bishop.methodMode==='bishop_only'?' selected':''}>Bishop only</option>
+                    </select>
+                  </label>
+                  <label style="font-size:11px;color:var(--tx2)">Surface load q (kPa)${stage6Tooltip('Uniform vertical surcharge intensity acting over the drawn load zone. In the 2D Bishop section this becomes q times the overlap width of each slice.')}
+                    <input type="number" step="1" min="0" value="${loadQ.toFixed(1)}" onchange="stage6BishopSetField('surfaceLoad.q', this.value)">
+                  </label>
+                  <label style="font-size:11px;color:var(--tx2)">Analysis depth below terrain (m)${stage6Tooltip('The Bishop section extends to this depth below the local ground level at the active CPT. The default is the CPT depth or 15 m, whichever is greater. If you go deeper, the deepest CPT layer is extrapolated downward.')}
+                    <input type="number" step="0.5" min="${Math.max(stage6MaxDepth(), 15).toFixed(2)}" value="${bishop.analysisDepth.toFixed(2)}" onchange="stage6BishopSetField('analysisDepth', this.value)">
+                  </label>
+                </div>
+              </details>
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-view"${stage6DetailsOpen('bishop-geo-view')}>
+                <summary>View</summary>
+                <div class="st6-adv-body">
+                  <label class="st6-bishop-check">
+                    <input type="checkbox" ${bishop.gridSnap?'checked':''} onchange="stage6BishopSetField('gridSnap', this.checked)">
+                    Snap to grid
+                  </label>
+                  <label class="st6-bishop-check">
+                    <input type="checkbox" ${bishop.pointSnap?'checked':''} onchange="stage6BishopSetField('pointSnap', this.checked)">
+                    Snap to existing points
+                  </label>
+                  <label style="font-size:11px;color:var(--tx2)">Grid size (m)
+                    <input type="number" step="0.05" min="0.05" value="${bishop.snapSize.toFixed(2)}" onchange="stage6BishopSetField('snapSize', this.value)">
+                  </label>
+                  <div class="st6-help">If both snap modes are enabled, the cursor snaps to whichever candidate is closer: the grid node or the nearest existing Bishop canvas point.</div>
+                  <div class="st6-bishop-visuals">
+                    <div class="st6-bishop-visuals-title">Polygon overlay</div>
+                    <label class="st6-bishop-check">
+                      <input type="checkbox" ${bishop.display?.showRegions !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegions', this.checked)">
+                      Show soil polygons
+                    </label>
+                    <label class="st6-bishop-check">
+                      <input type="checkbox" ${bishop.display?.showRegionLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLabels', this.checked)">
+                      Show polygon labels
+                    </label>
+                    <label class="st6-bishop-check">
+                      <input type="checkbox" ${bishop.display?.showRegionLegend !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLegend', this.checked)">
+                      Show polygon legend
+                    </label>
+                    <label style="font-size:11px;color:var(--tx2)">Fill opacity
+                      <input type="number" step="0.05" min="0.05" max="0.75" value="${Number(bishop.display?.regionOpacity ?? 0.22).toFixed(2)}" onchange="stage6BishopSetField('display.regionOpacity', this.value)">
+                    </label>
+                  </div>
+                </div>
+              </details>
+              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-clear"${stage6DetailsOpen('bishop-geo-clear')}>
+                <summary>Clear accepted geometry</summary>
+                <div class="st6-adv-body">
+                  <div class="st6-bishop-mini-actions">
+                    <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
+                    <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
+                    <button class="btn sm" onclick="stage6BishopClear('walls')">Clear walls</button>
+                    <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
+                    <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
+                    <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
+                    <button class="btn sm" onclick="stage6BishopClear('customRegions')">Clear custom polygons</button>
+                  </div>
+                </div>
+              </details>
             </div>
-            <label style="font-size:11px;color:var(--tx2)">Material strength set${stage6Tooltip('Characteristic keeps the active CPT layer parameters unchanged. DA1/1 uses M1 soil factors and DA1/2 uses M2 soil factors before importing the Bishop base materials.')}
-              <select onchange="stage6BishopSetField('strengthSet', this.value)">
-                <option value="characteristic"${bishop.strengthSet==='characteristic'?' selected':''}>Characteristic</option>
-                <option value="da1_1"${bishop.strengthSet==='da1_1'?' selected':''}>DA1/1 (M1)</option>
-                <option value="da1_2"${bishop.strengthSet==='da1_2'?' selected':''}>DA1/2 (M2)</option>
-              </select>
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Method
-              <select onchange="stage6BishopSetField('methodMode', this.value)">
-                <option value="bishop_spencer"${bishop.methodMode==='bishop_spencer'?' selected':''}>Bishop + Spencer check</option>
-                <option value="bishop_only"${bishop.methodMode==='bishop_only'?' selected':''}>Bishop only</option>
-              </select>
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Surface load q (kPa)${stage6Tooltip('Uniform vertical surcharge intensity acting over the drawn load zone. In the 2D Bishop section this becomes q times the overlap width of each slice.')}
-              <input type="number" step="1" min="0" value="${loadQ.toFixed(1)}" onchange="stage6BishopSetField('surfaceLoad.q', this.value)">
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Analysis depth below terrain (m)${stage6Tooltip('The Bishop section extends to this depth below the local ground level at the active CPT. The default is the CPT depth or 15 m, whichever is greater. If you go deeper, the deepest CPT layer is extrapolated downward.')}
-              <input type="number" step="0.5" min="${Math.max(stage6MaxDepth(), 15).toFixed(2)}" value="${bishop.analysisDepth.toFixed(2)}" onchange="stage6BishopSetField('analysisDepth', this.value)">
-            </label>
-            <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px">
-              <input type="checkbox" ${bishop.gridSnap?'checked':''} onchange="stage6BishopSetField('gridSnap', this.checked)">
-              Snap to grid
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Grid size (m)
-              <input type="number" step="0.05" min="0.05" value="${bishop.snapSize.toFixed(2)}" onchange="stage6BishopSetField('snapSize', this.value)">
-            </label>
             <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+              Solver polygons: <strong>${model?.regions?.length || 0}</strong> (${model?.regionMode === 'custom' ? 'custom' : 'CPT-derived'})<br>
+              Custom polygons stored: <strong>${customRegionCount}</strong><br>
+              Polygon overlay: <strong>${showingCustomRegionPreview ? 'custom preview' : (model?.regionMode === 'custom' ? 'custom active' : 'CPT-derived')}</strong><br>
               Terrain vertices: <strong>${bishop.terrain.length}</strong><br>
               Phreatic vertices: <strong>${bishop.phreatic.length}</strong><br>
               Retaining walls: <strong>${wallCount}</strong><br>
@@ -6863,9 +7938,25 @@ function renderStage6BishopApp(){
               <div id="stage6BishopMode" class="st6-bishop-mode">${modeMeta.label}</div>
             </div>
             <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Bishop simplified section and slip circles"></canvas>
+            ${bishop.display?.showRegionLegend !== false && regionLegendItems.length ? `
+              <details class="st6-bishop-region-legend" data-st6details="bishop-region-legend"${stage6DetailsOpen('bishop-region-legend')}>
+                <summary>
+                  <span class="st6-bishop-region-legend-title">Soil polygons${showingCustomRegionPreview ? ' (custom preview)' : ''}</span>
+                  <span class="st6-bishop-region-legend-count">${regionLegendItems.length}</span>
+                </summary>
+                <div class="st6-bishop-region-legend-body">
+                  ${regionLegendItems.map((item)=>`
+                    <div class="st6-bishop-region-chip">
+                      <span class="st6-bishop-region-swatch" style="background:${stage6EscAttr(item.color)}"></span>
+                      <span class="st6-bishop-region-text">${stage6EscAttr(item.label)}${item.count > 1 ? ` <em>(${item.count})</em>` : ''}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </details>
+            ` : ''}
             <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
             <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
-            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the solver.</div>
+            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.</div>
           </div>
           <div class="st6-bishop-results-panel">
             <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Results</div>
@@ -7426,6 +8517,7 @@ function stage7BishopPayload(){
       analysisDepth:bishop.analysisDepth,
       snapSize:bishop.snapSize,
       gridSnap:bishop.gridSnap,
+      pointSnap:bishop.pointSnap,
       activeCptX:bishop.activeCptX,
       walls:bishop.walls,
       entryZone:bishop.entryZone,
@@ -7553,7 +8645,7 @@ function buildStage7Payload(){
     version:3,
     stage:'stage7',
     generatedAt:new Date().toISOString(),
-    appVersion:'0.1.0',
+    appVersion:'0.2.0',
     project:{
       name:PROJECT.name,
       phase:PROJECT.phase
@@ -7778,6 +8870,10 @@ const legacyApi={
   stage6BishopSetTool,
   stage6BishopTriggerDxfImport,
   stage6BishopImportDxf,
+  stage6BishopCopyCurrentRegionsToCustom,
+  stage6BishopSetUseCustomRegions,
+  stage6BishopDeleteSelectedRegion,
+  stage6BishopSetSelectedRegionMaterial,
   stage6BishopFinishDraft,
   stage6BishopPopDraftPoint,
   stage6BishopClear,

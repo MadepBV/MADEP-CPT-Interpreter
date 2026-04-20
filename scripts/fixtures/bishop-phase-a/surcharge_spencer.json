@@ -1,0 +1,96 @@
+{
+  "name": "surcharge_spencer",
+  "methodMode": "bishop_spencer",
+  "layers": [
+    {
+      "top": 0,
+      "bot": 3,
+      "type": "Sand",
+      "subtype": "Fine sand",
+      "c": 4,
+      "phi": 30,
+      "g": 18,
+      "gs": 20
+    },
+    {
+      "top": 3,
+      "bot": 7,
+      "type": "Silt",
+      "subtype": "Silt mixture",
+      "c": 10,
+      "phi": 23,
+      "g": 18,
+      "gs": 19
+    },
+    {
+      "top": 7,
+      "bot": 14,
+      "type": "Sand",
+      "subtype": "Sand",
+      "c": 6,
+      "phi": 32,
+      "g": 18.5,
+      "gs": 20.5
+    }
+  ],
+  "bishopState": {
+    "terrain": [
+      { "x": 0, "y": 4.5 },
+      { "x": 5, "y": 4.5 },
+      { "x": 10, "y": 3.4 },
+      { "x": 20, "y": 0.2 }
+    ],
+    "phreatic": [
+      { "x": 0, "y": 3.8 },
+      { "x": 12, "y": 2.2 },
+      { "x": 20, "y": 0.5 }
+    ],
+    "walls": [],
+    "activeCptX": 3.5,
+    "analysisDepth": 15,
+    "materials": [],
+    "strengthSet": "characteristic",
+    "surfaceLoad": {
+      "xStart": 4,
+      "xEnd": 9.5,
+      "q": 24
+    }
+  },
+  "entryZone": { "xStart": 1, "xEnd": 4.5 },
+  "exitZone": { "xStart": 12, "xEnd": 19 },
+  "searchConfig": {
+    "nEntry": 5,
+    "nExit": 5,
+    "nCenter": 9,
+    "centerOffsetMin": 0.55,
+    "centerOffsetMax": 2.8,
+    "minChordLength": 2,
+    "minSlipThickness": 0.5,
+    "maxExitAngleDeg": 58,
+    "validationSamples": 24,
+    "geomTol": 0.001,
+    "minSliceWidth": 0.05,
+    "targetSlices": 28,
+    "keepBest": 6
+  },
+  "solverConfig": {
+    "initialFS": 1,
+    "tolerance": 0.0001,
+    "maxIterations": 60,
+    "minMAlpha": 0.000001
+  },
+  "spencerConfig": {
+    "recheckCount": 4,
+    "lambdaLow": -0.6,
+    "lambdaHigh": 0.6,
+    "lambdaTolerance": 0.001,
+    "momentTolerance": 0.001,
+    "forceTolerance": 0.001,
+    "FBracketLow": 0.1,
+    "FBracketHigh": 10,
+    "maxOuterIter": 20,
+    "maxInnerIter": 30,
+    "initialLambda": 0,
+    "fallbackBishop": true
+  }
+}

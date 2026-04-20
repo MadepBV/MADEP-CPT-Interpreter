@@ -1,0 +1,117 @@
+{
+  "name": "retaining_wall",
+  "methodMode": "bishop_spencer",
+  "layers": [
+    {
+      "top": 0,
+      "bot": 2.5,
+      "type": "Sand",
+      "subtype": "Fine sand",
+      "c": 2,
+      "phi": 31,
+      "g": 18,
+      "gs": 20
+    },
+    {
+      "top": 2.5,
+      "bot": 6,
+      "type": "Silt",
+      "subtype": "Silt",
+      "c": 8,
+      "phi": 24,
+      "g": 18,
+      "gs": 19
+    },
+    {
+      "top": 6,
+      "bot": 11,
+      "type": "Sand",
+      "subtype": "Sand",
+      "c": 5,
+      "phi": 33,
+      "g": 18.5,
+      "gs": 20.5
+    },
+    {
+      "top": 11,
+      "bot": 16,
+      "type": "Clay",
+      "subtype": "Clay",
+      "c": 14,
+      "phi": 19,
+      "g": 17,
+      "gs": 18
+    }
+  ],
+  "bishopState": {
+    "terrain": [
+      { "x": 0, "y": 5 },
+      { "x": 7, "y": 5 },
+      { "x": 14, "y": 2.4 },
+      { "x": 20, "y": 0.2 }
+    ],
+    "phreatic": [
+      { "x": 0, "y": 4.4 },
+      { "x": 8, "y": 3.5 },
+      { "x": 20, "y": 1.0 }
+    ],
+    "walls": [
+      {
+        "x": 10.5,
+        "yTop": 3.7,
+        "yTip": -3.2,
+        "passiveSide": "right",
+        "maxShearForce": null
+      }
+    ],
+    "activeCptX": 4.5,
+    "analysisDepth": 17,
+    "materials": [],
+    "strengthSet": "characteristic",
+    "surfaceLoad": {
+      "xStart": 5.5,
+      "xEnd": 8.5,
+      "q": 15
+    }
+  },
+  "entryZone": { "xStart": 1, "xEnd": 4.5 },
+  "exitZone": { "xStart": 13, "xEnd": 19 },
+  "wallProbes": [
+    { "wallIndex": 0, "yIntersect": 3.4 }
+  ],
+  "searchConfig": {
+    "nEntry": 5,
+    "nExit": 5,
+    "nCenter": 10,
+    "centerOffsetMin": 0.55,
+    "centerOffsetMax": 3.0,
+    "minChordLength": 2.5,
+    "minSlipThickness": 0.6,
+    "maxExitAngleDeg": 58,
+    "validationSamples": 28,
+    "geomTol": 0.001,
+    "minSliceWidth": 0.05,
+    "targetSlices": 30,
+    "keepBest": 6
+  },
+  "solverConfig": {
+    "initialFS": 1,
+    "tolerance": 0.0001,
+    "maxIterations": 60,
+    "minMAlpha": 0.000001
+  },
+  "spencerConfig": {
+    "recheckCount": 4,
+    "lambdaLow": -0.6,
+    "lambdaHigh": 0.6,
+    "lambdaTolerance": 0.001,
+    "momentTolerance": 0.001,
+    "forceTolerance": 0.001,
+    "FBracketLow": 0.1,
+    "FBracketHigh": 10,
+    "maxOuterIter": 20,
+    "maxInnerIter": 30,
+    "initialLambda": 0,
+    "fallbackBishop": true
+  }
+}

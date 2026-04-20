@@ -1,0 +1,106 @@
+{
+  "name": "layered_phreatic",
+  "methodMode": "bishop_spencer",
+  "layers": [
+    {
+      "top": 0,
+      "bot": 2,
+      "type": "Sand",
+      "subtype": "Fine sand",
+      "c": 3,
+      "phi": 29,
+      "g": 17.5,
+      "gs": 19.5
+    },
+    {
+      "top": 2,
+      "bot": 5,
+      "type": "Silt",
+      "subtype": "Silt",
+      "c": 8,
+      "phi": 24,
+      "g": 18,
+      "gs": 19
+    },
+    {
+      "top": 5,
+      "bot": 9,
+      "type": "Sand",
+      "subtype": "Sand mixture",
+      "c": 5,
+      "phi": 31,
+      "g": 18.5,
+      "gs": 20.5
+    },
+    {
+      "top": 9,
+      "bot": 15,
+      "type": "Clay",
+      "subtype": "Clay",
+      "c": 12,
+      "phi": 20,
+      "g": 17,
+      "gs": 18
+    }
+  ],
+  "bishopState": {
+    "terrain": [
+      { "x": 0, "y": 5 },
+      { "x": 6, "y": 5 },
+      { "x": 12, "y": 2.5 },
+      { "x": 20, "y": 0 }
+    ],
+    "phreatic": [
+      { "x": 0, "y": 4.5 },
+      { "x": 8, "y": 3.4 },
+      { "x": 20, "y": 0.8 }
+    ],
+    "walls": [],
+    "activeCptX": 4,
+    "analysisDepth": 16,
+    "materials": [],
+    "strengthSet": "characteristic",
+    "surfaceLoad": {
+      "xStart": null,
+      "xEnd": null,
+      "q": 0
+    }
+  },
+  "entryZone": { "xStart": 1, "xEnd": 5 },
+  "exitZone": { "xStart": 13, "xEnd": 19 },
+  "searchConfig": {
+    "nEntry": 5,
+    "nExit": 5,
+    "nCenter": 9,
+    "centerOffsetMin": 0.55,
+    "centerOffsetMax": 2.8,
+    "minChordLength": 2,
+    "minSlipThickness": 0.55,
+    "maxExitAngleDeg": 55,
+    "validationSamples": 24,
+    "geomTol": 0.001,
+    "minSliceWidth": 0.05,
+    "targetSlices": 26,
+    "keepBest": 6
+  },
+  "solverConfig": {
+    "initialFS": 1,
+    "tolerance": 0.0001,
+    "maxIterations": 60,
+    "minMAlpha": 0.000001
+  },
+  "spencerConfig": {
+    "recheckCount": 4,
+    "lambdaLow": -0.6,
+    "lambdaHigh": 0.6,
+    "lambdaTolerance": 0.001,
+    "momentTolerance": 0.001,
+    "forceTolerance": 0.001,
+    "FBracketLow": 0.1,
+    "FBracketHigh": 10,
+    "maxOuterIter": 20,
+    "maxInnerIter": 30,
+    "initialLambda": 0,
+    "fallbackBishop": true
+  }
+}

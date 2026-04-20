@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 import { designSoilLayer } from './stage6-engineering';
+import {
+  buildCptAutoRegions,
+  isSimplePolygon,
+  normalizeRegionPolygon,
+  materialAt as regionMaterialAt,
+  polygonArea,
+  probeVerticalRegionStack,
+  regionStripOverlap
+} from './soil-regions';
 
 const EPS = 1e-9;
 const GEOM_EPS = 1e-6;
@@ -73,6 +82,35 @@ function sampleArray(xs, n) {
   return out;
 }
 
+function sampleLogSpace(min, max, n) {
+  const lo = Math.max(Number(min) || 0, 1e-6);
+  const hi = Math.max(Number(max) || 0, lo * (1 + 1e-6));
+  if (n <= 1 || Math.abs(hi - lo) <= EPS) return [lo];
+  const logLo = Math.log(lo);
+  const logHi = Math.log(hi);
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    out.push(Math.exp(lerp(logLo, logHi, i / (n - 1))));
+  }
+  return out;
+}
+
+function incrementCount(map, key) {
+  const bucket = map || {};
+  const label = key || 'unknown';
+  bucket[label] = (bucket[label] || 0) + 1;
+  return bucket;
+}
+
+function summarizeReasonCounts(counts, maxItems = 2) {
+  const entries = Object.entries(counts || {}).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return '';
+  return entries
+    .slice(0, maxItems)
+    .map(([reason, count]) => `${reason}: ${count}`)
+    .join(', ');
+}
+
 export function terrainY(polyline, x) {
   const verts = polyline?.vertices || [];
   if (!verts.length) return 0;
@@ -135,7 +173,7 @@ function thicknessBelowWater(bot, top, waterY) {
   return Math.max(0, Math.min(high, waterY) - low);
 }
 
-function polygonArea(points) {
+function legacyPolygonArea(points) {
   if (!points?.length || points.length < 3) return 0;
   let sum = 0;
   for (let i = 0; i < points.length; i += 1) {
@@ -146,7 +184,7 @@ function polygonArea(points) {
   return 0.5 * sum;
 }
 
-function buildHorizontalBandPolygons(terrain, topY, botY, topFollowsTerrain) {
+function buildLegacyHorizontalBandPolygons(terrain, topY, botY, topFollowsTerrain) {
   const verts = terrain?.vertices || [];
   if (verts.length < 2) return [];
   const xCandidates = [
@@ -172,7 +210,7 @@ function buildHorizontalBandPolygons(terrain, topY, botY, topFollowsTerrain) {
       .reverse()
       .map((x) => ({ x, y: bandLowerYAt(x, terrain, botY) }));
     const poly = [...upper, ...lower];
-    if (Math.abs(polygonArea(poly)) > 1e-4) polygons.push(poly);
+    if (Math.abs(legacyPolygonArea(poly)) > 1e-4) polygons.push(poly);
     current = [];
   }
 
@@ -193,22 +231,22 @@ function buildHorizontalBandPolygons(terrain, topY, botY, topFollowsTerrain) {
   return polygons;
 }
 
-function baseMaterialAt(model, x, yBase) {
+function baseMaterialAtLegacy(model, x, yBase) {
   const probeY = yBase + 0.05;
   const terrainVal = terrainY(model.terrain, x);
   if (probeY > terrainVal) return null;
-  for (let i = 0; i < model.bands.length; i += 1) {
-    const band = model.bands[i];
+  for (let i = 0; i < model.legacyBands.length; i += 1) {
+    const band = model.legacyBands[i];
     const upper = bandUpperYAt(x, model.terrain, band.topY, band.topFollowsTerrain);
     const lower = bandLowerYAt(x, model.terrain, band.botY);
     if (probeY <= upper + GEOM_EPS && probeY >= lower - GEOM_EPS && upper > lower + GEOM_EPS) {
       return band.material;
     }
   }
-  return model.bands[model.bands.length - 1]?.material || null;
+  return model.legacyBands[model.legacyBands.length - 1]?.material || null;
 }
 
-function deriveBandContributionAtX(model, band, x, yBase) {
+function deriveBandContributionAtXLegacy(model, band, x, yBase) {
   const yTop = terrainY(model.terrain, x);
   const upper = bandUpperYAt(x, model.terrain, band.topY, band.topFollowsTerrain);
   const lower = bandLowerYAt(x, model.terrain, band.botY);
@@ -225,6 +263,108 @@ function deriveBandContributionAtX(model, band, x, yBase) {
     thickness: total,
     weightPerWidth: aboveWater * gammaDry + belowWater * gammaSat
   };
+}
+
+function baseMaterialAt(model, x, yBase, soilSource = 'regions') {
+  if (soilSource === 'legacy-bands' && Array.isArray(model?.legacyBands)) {
+    return baseMaterialAtLegacy(model, x, yBase);
+  }
+  const probeY = yBase + 0.05;
+  const terrainVal = terrainY(model.terrain, x);
+  if (probeY > terrainVal) return null;
+  return regionMaterialAt(model.regions, x, probeY) || null;
+}
+
+function aggregateLayerAreas(model, contributions) {
+  const order = new Map((model?.materials || []).map((material, index) => [material.id, index]));
+  const merged = new Map();
+  (contributions || []).forEach((item) => {
+    const material = item.material;
+    if (!material?.id) return;
+    const prev = merged.get(material.id) || {
+      materialId: material.id,
+      label: material.label,
+      area: 0,
+      weight: 0
+    };
+    prev.area += Number(item.area) || 0;
+    prev.weight += Number(item.weight) || 0;
+    merged.set(material.id, prev);
+  });
+  return [...merged.values()]
+    .filter((item) => item.area > 1e-5)
+    .sort((a, b) => (order.get(a.materialId) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.materialId) ?? Number.MAX_SAFE_INTEGER));
+}
+
+function legacySliceContributions(model, xL, xR, yBaseL, yBaseMid, yBaseR) {
+  const dx = xR - xL;
+  const contributions = [];
+  (model.legacyBands || []).forEach((band) => {
+    const left = deriveBandContributionAtXLegacy(model, band, xL, yBaseL);
+    const mid = deriveBandContributionAtXLegacy(model, band, 0.5 * (xL + xR), yBaseMid);
+    const right = deriveBandContributionAtXLegacy(model, band, xR, yBaseR);
+    const area = simpsonIntegrate(dx, left.thickness, mid.thickness, right.thickness);
+    const weight = simpsonIntegrate(dx, left.weightPerWidth, mid.weightPerWidth, right.weightPerWidth);
+    if (area > 1e-5) {
+      contributions.push({
+        material: band.material,
+        area,
+        weight
+      });
+    }
+  });
+  return contributions;
+}
+
+function regionSliceContributions(model, xL, xR, soilBounds) {
+  const phreaticFn = model.phreatic ? (x) => terrainY(model.phreatic, x) : null;
+  return regionStripOverlap(
+    model.regions,
+    xL,
+    xR,
+    soilBounds.yTopAt,
+    soilBounds.yBaseAt,
+    phreaticFn
+  );
+}
+
+function buildRegionBoundaryPolylines(regions) {
+  const seen = new Set();
+  const polylines = [];
+  (regions || []).forEach((region) => {
+    const polygon = region?.polygon || [];
+    for (let i = 0; i < polygon.length; i += 1) {
+      const a = polygon[i];
+      const b = polygon[(i + 1) % polygon.length];
+      if (!Number.isFinite(a?.x) || !Number.isFinite(a?.y) || !Number.isFinite(b?.x) || !Number.isFinite(b?.y)) continue;
+      if (dist(a, b) <= GEOM_EPS) continue;
+      const key = [a.x, a.y, b.x, b.y].map((value) => Number(value).toFixed(6)).join(':');
+      const reverseKey = [b.x, b.y, a.x, a.y].map((value) => Number(value).toFixed(6)).join(':');
+      if (seen.has(key) || seen.has(reverseKey)) continue;
+      seen.add(key);
+      polylines.push({
+        vertices: [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y }
+        ]
+      });
+    }
+  });
+  return polylines;
+}
+
+function sliceContributionsForSpan(model, xL, xR, yBaseL, yBaseMid, yBaseR, soilSource = 'regions') {
+  if (soilSource === 'legacy-bands') {
+    return legacySliceContributions(model, xL, xR, yBaseL, yBaseMid, yBaseR);
+  }
+  return regionSliceContributions(model, xL, xR, {
+    yTopAt: (x) => terrainY(model.terrain, x),
+    yBaseAt: (x) => {
+      if (Math.abs(x - xL) <= GEOM_EPS) return yBaseL;
+      if (Math.abs(x - xR) <= GEOM_EPS) return yBaseR;
+      return yBaseMid;
+    }
+  });
 }
 
 function simpsonIntegrate(dx, left, mid, right) {
@@ -414,7 +554,7 @@ function wallPassiveProbeX(model, wall) {
   return clampXToTerrain(model.terrain, (Number(wall?.x) || 0) + dir * offset);
 }
 
-function wallPassiveSegments(model, wall, yIntersect) {
+function wallPassiveSegmentsLegacy(model, wall, yIntersect) {
   const xProbe = wallPassiveProbeX(model, wall);
   const terrainSurfaceY = terrainY(model.terrain, xProbe);
   const waterY = model.phreatic ? terrainY(model.phreatic, xProbe) : null;
@@ -422,7 +562,7 @@ function wallPassiveSegments(model, wall, yIntersect) {
   const yTop = Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
   const segments = [];
 
-  (model.bands || []).forEach((band) => {
+  (model.legacyBands || []).forEach((band) => {
     const bandTop = bandUpperYAt(xProbe, model.terrain, band.topY, band.topFollowsTerrain);
     const bandBottom = bandLowerYAt(xProbe, model.terrain, band.botY);
     const overlapTop = Math.min(yTop, bandTop);
@@ -455,7 +595,27 @@ function wallPassiveSegments(model, wall, yIntersect) {
   };
 }
 
-function computeWallIntersections(circle, model, entry, exit) {
+function wallPassiveSegments(model, wall, yIntersect, soilSource = 'regions') {
+  const xProbe = wallPassiveProbeX(model, wall);
+  const terrainSurfaceY = terrainY(model.terrain, xProbe);
+  const waterY = model.phreatic ? terrainY(model.phreatic, xProbe) : null;
+  const yBottom = Math.min(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
+  const yTop = Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
+  if (soilSource === 'legacy-bands' && Array.isArray(model?.legacyBands)) {
+    return wallPassiveSegmentsLegacy(model, wall, yIntersect);
+  }
+  return {
+    xProbe,
+    terrainSurfaceY,
+    segments: probeVerticalRegionStack(model.regions, xProbe, yBottom, yTop, waterY)
+  };
+}
+
+export function debugWallPassiveSegmentsForTest(model, wall, yIntersect, soilSource = 'regions') {
+  return wallPassiveSegments(model, wall, yIntersect, soilSource);
+}
+
+function computeWallIntersections(circle, model, entry, exit, soilSource = 'regions') {
   const walls = model?.walls || [];
   const interactions = {
     intersections: [],
@@ -482,7 +642,7 @@ function computeWallIntersections(circle, model, entry, exit) {
       return;
     }
 
-    const passive = wallPassiveSegments(model, wall, yIntersect);
+    const passive = wallPassiveSegments(model, wall, yIntersect, soilSource);
     let R_passive = 0;
     let yMoment = 0;
     passive.segments.forEach((segment) => {
@@ -622,6 +782,17 @@ function computeSliceBreaks(circle, entry, exit, model, searchConfig) {
     });
   }
 
+  if (model.regionMode === 'custom') {
+    (model.regionBoundaryPolylines || []).forEach((polyline) => {
+      (polyline.vertices || []).forEach((pt) => {
+        if (pt.x > xStart + GEOM_EPS && pt.x < xEnd - GEOM_EPS) cuts.push(pt.x);
+      });
+      circlePolylineIntersections(circle, polyline).forEach((pt) => {
+        if (pt.x > xStart + GEOM_EPS && pt.x < xEnd - GEOM_EPS) cuts.push(pt.x);
+      });
+    });
+  }
+
   if (model.surfaceLoad) {
     [model.surfaceLoad.xStart, model.surfaceLoad.xEnd].forEach((x) => {
       if (x > xStart + GEOM_EPS && x < xEnd - GEOM_EPS) cuts.push(x);
@@ -638,7 +809,7 @@ function computeSliceBreaks(circle, entry, exit, model, searchConfig) {
   return mergeShortIntervals(cuts, minSliceWidth, protectedCuts);
 }
 
-function buildSlicesForCircle(circle, entry, exit, model, searchConfig) {
+function buildSlicesForCircle(circle, entry, exit, model, searchConfig, soilSource = 'regions') {
   const xBreaks = computeSliceBreaks(circle, entry, exit, model, searchConfig);
   const slices = [];
   const minSliceWidth = Math.max(searchConfig.minSliceWidth || Math.abs(exit.x - entry.x) / 300, 0.05);
@@ -663,27 +834,20 @@ function buildSlicesForCircle(circle, entry, exit, model, searchConfig) {
     if (alpha >= (89 * Math.PI) / 180) return { slices: null, reason: 'base angle too steep' };
     const baseLength = dx / Math.max(Math.cos(alpha), 1e-6);
 
-    const baseMaterial = baseMaterialAt(model, xMid, yBaseMid);
+    const baseMaterial = baseMaterialAt(model, xMid, yBaseMid, soilSource);
     if (!baseMaterial) return { slices: null, reason: 'cannot identify base material' };
 
-    let totalWeight = 0;
-    const layerAreas = [];
-    model.bands.forEach((band) => {
-      const left = deriveBandContributionAtX(model, band, xL, yBaseL);
-      const mid = deriveBandContributionAtX(model, band, xMid, yBaseMid);
-      const right = deriveBandContributionAtX(model, band, xR, yBaseR);
-      const area = simpsonIntegrate(dx, left.thickness, mid.thickness, right.thickness);
-      const weight = simpsonIntegrate(dx, left.weightPerWidth, mid.weightPerWidth, right.weightPerWidth);
-      if (area > 1e-5) {
-        layerAreas.push({
-          materialId: band.material.id,
-          label: band.material.label,
-          area,
-          weight
-        });
-      }
-      totalWeight += weight;
-    });
+    const rawContributions = sliceContributionsForSpan(
+      model,
+      xL,
+      xR,
+      yBaseL,
+      yBaseMid,
+      yBaseR,
+      soilSource
+    );
+    const layerAreas = aggregateLayerAreas(model, rawContributions);
+    const totalWeight = layerAreas.reduce((sum, item) => sum + item.weight, 0);
 
     if (totalWeight <= 0) continue;
 
@@ -1096,36 +1260,6 @@ function evaluateSpencerState(slices, lambda, FTrial, solverConfig) {
   };
 }
 
-function buildSpencerFBracketCandidates(spencerConfig, bishopF) {
-  const out = [];
-  const seen = new Set();
-
-  function addBracket(low, high) {
-    let lo = Math.max(Number(low) || 0, 0.01);
-    let hi = Math.max(Number(high) || 0, lo + 0.05);
-    if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo + EPS) return;
-    const key = `${lo.toFixed(6)}:${hi.toFixed(6)}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push([lo, hi]);
-  }
-
-  const seedF = Number.isFinite(spencerConfig.initialF) && spencerConfig.initialF > 0
-    ? spencerConfig.initialF
-    : Number.isFinite(bishopF) && bishopF > 0
-      ? bishopF
-      : null;
-
-  addBracket(spencerConfig.FBracketLow, spencerConfig.FBracketHigh);
-  if (seedF != null) {
-    addBracket(seedF * 0.5, seedF * 1.5);
-    addBracket(seedF * 0.25, seedF * 2.5);
-  }
-  addBracket(0.01, Math.max(20, spencerConfig.FBracketHigh));
-  addBracket(0.01, Math.max(40, spencerConfig.FBracketHigh * 2));
-  return out;
-}
-
 function spencerBranchSolveKey(mode) {
   return mode === 'moment'
     ? {
@@ -1144,92 +1278,328 @@ function spencerBranchSolveKey(mode) {
       };
 }
 
+function buildSpencerFProbeValues(spencerConfig, bishopF) {
+  const seedF =
+    Number.isFinite(spencerConfig.initialF) && spencerConfig.initialF > 0
+      ? spencerConfig.initialF
+      : Number.isFinite(bishopF) && bishopF > 0
+        ? bishopF
+        : null;
+  const dynamicHigh = Math.max(
+    40,
+    Number(spencerConfig?.FBracketHigh) || 0,
+    seedF != null ? seedF * 4 : 0
+  );
+  const dynamicLow = Math.max(
+    0.01,
+    Math.min(
+      Number(spencerConfig?.FBracketLow) || 0.1,
+      seedF != null ? seedF * 0.25 : Infinity,
+      0.05
+    )
+  );
+  return uniqueSorted([
+    0.01,
+    0.02,
+    0.05,
+    0.1,
+    spencerConfig.FBracketLow,
+    spencerConfig.FBracketHigh,
+    ...sampleLogSpace(dynamicLow, dynamicHigh, 17),
+    ...(seedF != null
+      ? [seedF * 0.25, seedF * 0.5, seedF * 0.75, seedF, seedF * 1.25, seedF * 1.5, seedF * 2.5, seedF * 4]
+      : [])
+  ]);
+}
+
+function choosePreferredFExactSample(candidates, targetF, normalizedField) {
+  let best = null;
+  (candidates || []).forEach((candidate) => {
+    if (!candidate?.valid) return;
+    if (!best) {
+      best = candidate;
+      return;
+    }
+    const nextDist = Number.isFinite(targetF) ? Math.abs(candidate.F - targetF) : 0;
+    const bestDist = Number.isFinite(targetF) ? Math.abs(best.F - targetF) : 0;
+    if (nextDist < bestDist - 1e-12) {
+      best = candidate;
+      return;
+    }
+    if (Math.abs(nextDist - bestDist) <= 1e-12 && candidate.state?.[normalizedField] < best.state?.[normalizedField]) {
+      best = candidate;
+    }
+  });
+  return best;
+}
+
+function choosePreferredFSignChange(samples, residualField, targetF, currentWidth = Infinity) {
+  let previousValid = null;
+  let best = null;
+
+  function rank(bracket) {
+    const width = bracket.upper.F - bracket.lower.F;
+    const mid = 0.5 * (bracket.lower.F + bracket.upper.F);
+    const target = Number.isFinite(targetF) ? targetF : mid;
+    const spansTarget = Number.isFinite(targetF)
+      ? bracket.lower.F <= targetF + EPS && bracket.upper.F >= targetF - EPS
+      : false;
+    return {
+      spansTarget: spansTarget ? 0 : 1,
+      distance: Math.abs(mid - target),
+      width,
+      residualMag:
+        Math.abs(bracket.lower.state?.[residualField] || 0) + Math.abs(bracket.upper.state?.[residualField] || 0)
+    };
+  }
+
+  function isBetter(next, current) {
+    if (!current) return true;
+    const a = rank(next);
+    const b = rank(current);
+    if (a.spansTarget !== b.spansTarget) return a.spansTarget < b.spansTarget;
+    if (Math.abs(a.distance - b.distance) > 1e-12) return a.distance < b.distance;
+    if (Math.abs(a.width - b.width) > 1e-12) return a.width < b.width;
+    return a.residualMag < b.residualMag;
+  }
+
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = samples[i];
+    if (!sample?.valid) {
+      previousValid = null;
+      continue;
+    }
+    if (
+      previousValid &&
+      Math.sign(previousValid.state?.[residualField]) !== Math.sign(sample.state?.[residualField])
+    ) {
+      const width = sample.F - previousValid.F;
+      const bracket = {
+        lower: previousValid,
+        upper: sample,
+        width
+      };
+      if (width < currentWidth - 1e-12 && isBetter(bracket, best)) {
+        best = bracket;
+      }
+    }
+    previousValid = sample;
+  }
+  return best;
+}
+
+function probeSpencerBranchF(slices, lambda, spencerConfig, solverConfig, bishopF, branch, tol) {
+  const samples = [];
+  const invalidReasonCounts = {};
+  let best = null;
+  let exactCandidates = [];
+  const targetF =
+    Number.isFinite(spencerConfig.initialF) && spencerConfig.initialF > 0
+      ? spencerConfig.initialF
+      : Number.isFinite(bishopF) && bishopF > 0
+        ? bishopF
+        : null;
+  const probeValues = buildSpencerFProbeValues(spencerConfig, bishopF);
+
+  probeValues.forEach((F) => {
+    const state = evaluateSpencerState(slices, lambda, F, solverConfig);
+    const sample = {
+      F,
+      state,
+      valid: !!state?.valid
+    };
+    samples.push(sample);
+    if (!state?.valid) {
+      incrementCount(invalidReasonCounts, state?.reason);
+      return;
+    }
+    if (!best || state[branch.normalizedField] < best.state[branch.normalizedField]) {
+      best = sample;
+    }
+    if (state[branch.normalizedField] <= tol) exactCandidates.push(sample);
+  });
+
+  return {
+    samples,
+    best,
+    exact: choosePreferredFExactSample(exactCandidates, targetF, branch.normalizedField),
+    bracket: choosePreferredFSignChange(samples, branch.residualField, targetF),
+    validCount: samples.filter((item) => item.valid).length,
+    invalidCount: samples.filter((item) => !item.valid).length,
+    invalidReasonCounts,
+    evaluations: samples.length,
+    targetF
+  };
+}
+
+function describeSpencerBranchProbeFailure(branch, probe) {
+  const summary = summarizeReasonCounts(probe?.invalidReasonCounts);
+  const suffix = summary ? ` (${summary})` : '';
+  if ((probe?.validCount || 0) <= 0) {
+    return `${branch.label} has no valid F window for this lambda${suffix}`;
+  }
+  return `${branch.label} valid F window shows no residual sign change${suffix}`;
+}
+
+function refineSpencerBranchBracket(
+  slices,
+  lambda,
+  solverConfig,
+  branch,
+  tol,
+  FLo,
+  resLo,
+  FHi,
+  resHi,
+  priorBest,
+  targetF
+) {
+  const probeValues = uniqueSorted([
+    FLo,
+    FHi,
+    ...sampleArray([FLo, FHi], 9)
+  ]);
+  const currentWidth = FHi - FLo;
+  let best = priorBest || null;
+  let exactCandidates = [];
+  let evaluations = 0;
+  const invalidReasonCounts = {};
+  const samples = probeValues.map((F) => {
+    let state = null;
+    if (Math.abs(F - FLo) <= EPS) state = resLo;
+    else if (Math.abs(F - FHi) <= EPS) state = resHi;
+    else {
+      state = evaluateSpencerState(slices, lambda, F, solverConfig);
+      evaluations += 1;
+    }
+    const sample = {
+      F,
+      state,
+      valid: !!state?.valid
+    };
+    if (!state?.valid) {
+      incrementCount(invalidReasonCounts, state?.reason);
+      return sample;
+    }
+    if (!best || state[branch.normalizedField] < best.state[branch.normalizedField]) {
+      best = sample;
+    }
+    if (state[branch.normalizedField] <= tol) exactCandidates.push(sample);
+    return sample;
+  });
+
+  const exact = choosePreferredFExactSample(exactCandidates, targetF, branch.normalizedField);
+  if (exact) {
+    return { best, exact, bracket: null, evaluations, reason: '' };
+  }
+
+  const narrowed = choosePreferredFSignChange(samples, branch.residualField, targetF, currentWidth);
+  if (narrowed) {
+    return { best, exact: null, bracket: narrowed, evaluations, reason: '' };
+  }
+
+  const summary = summarizeReasonCounts(invalidReasonCounts);
+  const suffix = summary ? ` (${summary})` : '';
+  const validCount = samples.filter((item) => item.valid).length;
+  return {
+    best,
+    exact: null,
+    bracket: null,
+    evaluations,
+    reason:
+      validCount > 0
+        ? `${branch.label} valid F interval fragmented by invalid states${suffix}`
+        : `${branch.label} lost all valid F states inside the active bracket${suffix}`
+  };
+}
+
 function solveSpencerBranchF(slices, lambda, spencerConfig, solverConfig, bishopF, mode) {
   const branch = spencerBranchSolveKey(mode);
   const tol = spencerConfig[branch.tolerance];
-  const brackets = buildSpencerFBracketCandidates(spencerConfig, bishopF);
-  let best = null;
-  let FLo = NaN;
-  let FHi = NaN;
-  let resLo = null;
-  let resHi = null;
+  const probe = probeSpencerBranchF(slices, lambda, spencerConfig, solverConfig, bishopF, branch, tol);
+  let best = probe.best || null;
+  let iterations = probe.evaluations || 0;
 
-  function noteBest(F, state) {
-    if (!state?.valid) return;
-    if (!best || state[branch.normalizedField] < best.state[branch.normalizedField]) {
-      best = { F, state };
-    }
+  if (probe.exact?.state) {
+    return {
+      [branch.outputField]: probe.exact.F,
+      converged: true,
+      reason: '',
+      state: probe.exact.state,
+      iterations
+    };
   }
 
-  for (let i = 0; i < brackets.length; i += 1) {
-    const [trialLo, trialHi] = brackets[i];
-    const loState = evaluateSpencerState(slices, lambda, trialLo, solverConfig);
-    const hiState = evaluateSpencerState(slices, lambda, trialHi, solverConfig);
-    noteBest(trialLo, loState);
-    noteBest(trialHi, hiState);
-
-    if (loState.valid && loState[branch.normalizedField] <= tol) {
-      return {
-        [branch.outputField]: trialLo,
-        converged: true,
-        reason: '',
-        state: loState,
-        iterations: 0
-      };
-    }
-    if (hiState.valid && hiState[branch.normalizedField] <= tol) {
-      return {
-        [branch.outputField]: trialHi,
-        converged: true,
-        reason: '',
-        state: hiState,
-        iterations: 0
-      };
-    }
-    if (
-      loState.valid &&
-      hiState.valid &&
-      Math.sign(loState[branch.residualField]) !== Math.sign(hiState[branch.residualField])
-    ) {
-      FLo = trialLo;
-      FHi = trialHi;
-      resLo = loState;
-      resHi = hiState;
-      break;
-    }
-  }
-
-  if (!Number.isFinite(FLo) || !Number.isFinite(FHi) || !resLo || !resHi) {
+  if (!probe.bracket?.lower?.state || !probe.bracket?.upper?.state) {
     return {
       [branch.outputField]: best?.F ?? NaN,
       converged: false,
-      reason: `${branch.label} not bracketed`,
+      reason: describeSpencerBranchProbeFailure(branch, probe),
       state: best?.state || null,
-      iterations: 0
+      iterations
     };
   }
+
+  let FLo = probe.bracket.lower.F;
+  let FHi = probe.bracket.upper.F;
+  let resLo = probe.bracket.lower.state;
+  let resHi = probe.bracket.upper.state;
 
   for (let iter = 1; iter <= spencerConfig.maxInnerIter; iter += 1) {
     const FMid = 0.5 * (FLo + FHi);
     const midState = evaluateSpencerState(slices, lambda, FMid, solverConfig);
+    iterations += 1;
     if (!midState.valid) {
+      const refined = refineSpencerBranchBracket(
+        slices,
+        lambda,
+        solverConfig,
+        branch,
+        tol,
+        FLo,
+        resLo,
+        FHi,
+        resHi,
+        best,
+        probe.targetF
+      );
+      iterations += refined.evaluations || 0;
+      if (refined.best) best = refined.best;
+      if (refined.exact?.state) {
+        return {
+          [branch.outputField]: refined.exact.F,
+          converged: true,
+          reason: '',
+          state: refined.exact.state,
+          iterations
+        };
+      }
+      if (refined.bracket?.lower?.state && refined.bracket?.upper?.state) {
+        FLo = refined.bracket.lower.F;
+        FHi = refined.bracket.upper.F;
+        resLo = refined.bracket.lower.state;
+        resHi = refined.bracket.upper.state;
+        continue;
+      }
       return {
         [branch.outputField]: best?.F ?? NaN,
         converged: false,
-        reason: midState.reason || `${branch.label} invalid state`,
+        reason: refined.reason || midState.reason || `${branch.label} invalid state`,
         state: best?.state || null,
-        iterations: iter
+        iterations
       };
     }
 
-    noteBest(FMid, midState);
+    if (!best || midState[branch.normalizedField] < best.state[branch.normalizedField]) {
+      best = { F: FMid, state: midState };
+    }
     if (midState[branch.normalizedField] <= tol) {
       return {
         [branch.outputField]: FMid,
         converged: true,
         reason: '',
         state: midState,
-        iterations: iter
+        iterations
       };
     }
 
@@ -1247,7 +1617,7 @@ function solveSpencerBranchF(slices, lambda, spencerConfig, solverConfig, bishop
     converged: false,
     reason: `${branch.label} did not converge`,
     state: best?.state || resHi,
-    iterations: spencerConfig.maxInnerIter
+    iterations
   };
 }
 
@@ -1257,6 +1627,13 @@ function computeSpencerMomentEquilibriumF(slices, lambda, spencerConfig, solverC
 
 function computeSpencerForceEquilibriumF(slices, lambda, spencerConfig, solverConfig, bishopF) {
   return solveSpencerBranchF(slices, lambda, spencerConfig, solverConfig, bishopF, 'force');
+}
+
+function describeSpencerLambdaFailure(momentEq, forceEq) {
+  const reasons = [];
+  if (!momentEq?.converged) reasons.push(`moment branch: ${momentEq?.reason || 'failed'}`);
+  if (!forceEq?.converged) reasons.push(`force branch: ${forceEq?.reason || 'failed'}`);
+  return reasons.join('; ') || 'Spencer branch solve failed';
 }
 
 function evaluateSpencerAtLambda(slices, bishopF, lambda, spencerConfig, solverConfig) {
@@ -1275,7 +1652,7 @@ function evaluateSpencerAtLambda(slices, bishopF, lambda, spencerConfig, solverC
       momentEq,
       forceEq,
       iterations: totalIterations,
-      reason: momentEq?.reason || forceEq?.reason || 'Spencer branch solve failed'
+      reason: describeSpencerLambdaFailure(momentEq, forceEq)
     };
   }
 
@@ -1310,41 +1687,313 @@ function evaluateSpencerAtLambda(slices, bishopF, lambda, spencerConfig, solverC
   };
 }
 
-function findSpencerLambdaBracket(slices, bishopF, spencerConfig, solverConfig) {
-  const samples = uniqueSorted([
-    spencerConfig.lambdaLow,
-    spencerConfig.lambdaHigh,
+function buildSpencerLambdaSamples(spencerConfig) {
+  const low = spencerConfig.lambdaLow;
+  const high = spencerConfig.lambdaHigh;
+  const anchors = [-0.45, -0.3, -0.15, 0, 0.15, 0.3, 0.45].filter(
+    (value) => value > low + EPS && value < high - EPS
+  );
+  return uniqueSorted([
+    low,
+    high,
     spencerConfig.initialLambda,
-    -0.3,
-    0,
-    0.3,
-    ...sampleArray([spencerConfig.lambdaLow, spencerConfig.lambdaHigh], 13)
+    ...anchors,
+    ...sampleArray([low, high], 25)
   ]);
+}
+
+function choosePreferredLambdaExactSample(candidates, targetLambda) {
+  let best = null;
+  (candidates || []).forEach((candidate) => {
+    if (!candidate?.valid) return;
+    if (!best) {
+      best = candidate;
+      return;
+    }
+    const nextDist = Number.isFinite(targetLambda) ? Math.abs(candidate.lambda - targetLambda) : Math.abs(candidate.value);
+    const bestDist = Number.isFinite(targetLambda) ? Math.abs(best.lambda - targetLambda) : Math.abs(best.value);
+    if (nextDist < bestDist - 1e-12) {
+      best = candidate;
+      return;
+    }
+    if (Math.abs(nextDist - bestDist) <= 1e-12 && Math.abs(candidate.value) < Math.abs(best.value)) {
+      best = candidate;
+    }
+  });
+  return best;
+}
+
+function choosePreferredLambdaSignChange(samples, targetLambda, currentWidth = Infinity) {
   let previousValid = null;
   let best = null;
-  let totalIterations = 0;
 
-  for (let i = 0; i < samples.length; i += 1) {
-    const current = evaluateSpencerAtLambda(
-      slices,
-      bishopF,
-      samples[i],
-      spencerConfig,
-      solverConfig
-    );
-    totalIterations += current?.iterations || 0;
-    if (!current.valid) continue;
-    if (!best || Math.abs(current.value) < Math.abs(best.value)) best = current;
-    if (Math.abs(current.value) <= spencerConfig.intersectionTolerance) {
-      return { exact: current, lower: null, upper: null, best, iterations: totalIterations };
-    }
-    if (previousValid && Math.sign(previousValid.value) !== Math.sign(current.value)) {
-      return { exact: null, lower: previousValid, upper: current, best, iterations: totalIterations };
-    }
-    previousValid = current;
+  function rank(bracket) {
+    const width = bracket.upper.lambda - bracket.lower.lambda;
+    const mid = 0.5 * (bracket.lower.lambda + bracket.upper.lambda);
+    const target = Number.isFinite(targetLambda) ? targetLambda : mid;
+    const spansTarget = Number.isFinite(targetLambda)
+      ? bracket.lower.lambda <= targetLambda + EPS && bracket.upper.lambda >= targetLambda - EPS
+      : false;
+    return {
+      spansTarget: spansTarget ? 0 : 1,
+      distance: Math.abs(mid - target),
+      width,
+      residualMag: Math.abs(bracket.lower.value) + Math.abs(bracket.upper.value)
+    };
   }
 
-  return { exact: null, lower: null, upper: null, best, iterations: totalIterations };
+  function isBetter(next, current) {
+    if (!current) return true;
+    const a = rank(next);
+    const b = rank(current);
+    if (a.spansTarget !== b.spansTarget) return a.spansTarget < b.spansTarget;
+    if (Math.abs(a.distance - b.distance) > 1e-12) return a.distance < b.distance;
+    if (Math.abs(a.width - b.width) > 1e-12) return a.width < b.width;
+    return a.residualMag < b.residualMag;
+  }
+
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = samples[i];
+    if (!sample?.valid) continue;
+    if (previousValid && Math.sign(previousValid.value) !== Math.sign(sample.value)) {
+      const width = sample.lambda - previousValid.lambda;
+      const bracket = {
+        lower: previousValid,
+        upper: sample,
+        width
+      };
+      if (width < currentWidth - 1e-12 && isBetter(bracket, best)) {
+        best = bracket;
+      }
+    }
+    previousValid = sample;
+  }
+  return best;
+}
+
+function evaluateSpencerLambdaSamples(slices, bishopF, lambdas, spencerConfig, solverConfig) {
+  const samples = [];
+  const invalidReasonCounts = {};
+  let best = null;
+  let exactCandidates = [];
+  let totalIterations = 0;
+  const targetLambda = Number.isFinite(spencerConfig.initialLambda) ? spencerConfig.initialLambda : 0;
+
+  lambdas.forEach((lambda) => {
+    const current = evaluateSpencerAtLambda(slices, bishopF, lambda, spencerConfig, solverConfig);
+    totalIterations += current?.iterations || 0;
+    samples.push(current);
+    if (!current?.valid) {
+      incrementCount(invalidReasonCounts, current?.reason);
+      return;
+    }
+    if (!best || Math.abs(current.value) < Math.abs(best.value)) best = current;
+    if (Math.abs(current.value) <= spencerConfig.intersectionTolerance) exactCandidates.push(current);
+  });
+
+  return {
+    samples,
+    best,
+    exact: choosePreferredLambdaExactSample(exactCandidates, targetLambda),
+    bracket: choosePreferredLambdaSignChange(samples, targetLambda),
+    validCount: samples.filter((item) => item.valid).length,
+    invalidCount: samples.filter((item) => !item.valid).length,
+    invalidReasonCounts,
+    iterations: totalIterations,
+    targetLambda
+  };
+}
+
+function chooseSpencerSecantPair(samples, best) {
+  const valid = (samples || []).filter((item) => item?.valid).sort((a, b) => a.lambda - b.lambda);
+  if (valid.length < 2 || !best) return null;
+  const bestIndex = valid.findIndex((item) => Math.abs(item.lambda - best.lambda) <= 1e-12);
+  const candidates = [];
+  if (bestIndex > 0) candidates.push([valid[bestIndex - 1], valid[bestIndex]]);
+  if (bestIndex >= 0 && bestIndex < valid.length - 1) candidates.push([valid[bestIndex], valid[bestIndex + 1]]);
+  if (bestIndex > 0 && bestIndex < valid.length - 1) candidates.push([valid[bestIndex - 1], valid[bestIndex + 1]]);
+  if (!candidates.length) candidates.push([valid[0], valid[1]]);
+  return candidates
+    .filter(([left, right]) => left && right && Math.abs(right.value - left.value) > 1e-12)
+    .sort(
+      (a, b) =>
+        Math.abs(a[0].value) + Math.abs(a[1].value) - (Math.abs(b[0].value) + Math.abs(b[1].value))
+    )[0] || null;
+}
+
+function refineSpencerLambdaBracket(
+  slices,
+  bishopF,
+  spencerConfig,
+  solverConfig,
+  lower,
+  upper,
+  priorBest,
+  targetLambda
+) {
+  const probeLambdas = uniqueSorted([
+    lower.lambda,
+    upper.lambda,
+    ...sampleArray([lower.lambda, upper.lambda], 9)
+  ]);
+  const currentWidth = upper.lambda - lower.lambda;
+  let best = priorBest || null;
+  let exactCandidates = [];
+  let iterations = 0;
+  const invalidReasonCounts = {};
+  const samples = probeLambdas.map((lambda) => {
+    let current = null;
+    if (Math.abs(lambda - lower.lambda) <= EPS) current = lower;
+    else if (Math.abs(lambda - upper.lambda) <= EPS) current = upper;
+    else {
+      current = evaluateSpencerAtLambda(slices, bishopF, lambda, spencerConfig, solverConfig);
+      iterations += current?.iterations || 0;
+    }
+    if (!current?.valid) {
+      incrementCount(invalidReasonCounts, current?.reason);
+      return current;
+    }
+    if (!best || Math.abs(current.value) < Math.abs(best.value)) best = current;
+    if (Math.abs(current.value) <= spencerConfig.intersectionTolerance) exactCandidates.push(current);
+    return current;
+  });
+
+  const exact = choosePreferredLambdaExactSample(exactCandidates, targetLambda);
+  if (exact) {
+    return { best, exact, bracket: null, iterations, reason: '' };
+  }
+
+  const narrowed = choosePreferredLambdaSignChange(samples, targetLambda, currentWidth);
+  if (narrowed) {
+    return { best, exact: null, bracket: narrowed, iterations, reason: '' };
+  }
+
+  const summary = summarizeReasonCounts(invalidReasonCounts);
+  const suffix = summary ? ` (${summary})` : '';
+  const validCount = samples.filter((item) => item?.valid).length;
+  return {
+    best,
+    exact: null,
+    bracket: null,
+    iterations,
+    reason:
+      validCount > 0
+        ? `Spencer lambda interval fragmented by invalid branch states${suffix}`
+        : `No admissible Spencer lambda remained inside the active bracket${suffix}`
+  };
+}
+
+function findSpencerLambdaBracket(slices, bishopF, spencerConfig, solverConfig) {
+  const initial = evaluateSpencerLambdaSamples(
+    slices,
+    bishopF,
+    buildSpencerLambdaSamples(spencerConfig),
+    spencerConfig,
+    solverConfig
+  );
+  let samples = [...initial.samples];
+  let best = initial.best || null;
+  let totalIterations = initial.iterations || 0;
+  const invalidReasonCounts = { ...(initial.invalidReasonCounts || {}) };
+  let validCount = initial.validCount || 0;
+  let invalidCount = initial.invalidCount || 0;
+
+  if (initial.exact) {
+    return {
+      exact: initial.exact,
+      lower: null,
+      upper: null,
+      best,
+      iterations: totalIterations,
+      validCount,
+      invalidCount,
+      invalidReasonCounts,
+      targetLambda: initial.targetLambda
+    };
+  }
+
+  if (initial.bracket) {
+    return {
+      exact: null,
+      lower: initial.bracket.lower,
+      upper: initial.bracket.upper,
+      best,
+      iterations: totalIterations,
+      validCount,
+      invalidCount,
+      invalidReasonCounts,
+      targetLambda: initial.targetLambda
+    };
+  }
+
+  const maxSecantIter = Math.min(6, Math.max(spencerConfig.maxOuterIter || 0, 1));
+  for (let iter = 0; iter < maxSecantIter; iter += 1) {
+    const pair = chooseSpencerSecantPair(samples, best);
+    if (!pair) break;
+    const [left, right] = pair;
+    const valueDiff = right.value - left.value;
+    let lambdaNext = right.lambda - (right.value * (right.lambda - left.lambda)) / valueDiff;
+    if (!Number.isFinite(lambdaNext)) {
+      lambdaNext = 0.5 * (left.lambda + right.lambda);
+    }
+    lambdaNext = clamp(lambdaNext, spencerConfig.lambdaLow, spencerConfig.lambdaHigh);
+    if (samples.some((sample) => Math.abs(sample.lambda - lambdaNext) <= spencerConfig.lambdaTolerance)) {
+      lambdaNext = 0.5 * (left.lambda + right.lambda);
+    }
+    if (samples.some((sample) => Math.abs(sample.lambda - lambdaNext) <= spencerConfig.lambdaTolerance)) break;
+
+    const current = evaluateSpencerAtLambda(slices, bishopF, lambdaNext, spencerConfig, solverConfig);
+    totalIterations += current?.iterations || 0;
+    samples.push(current);
+    samples.sort((a, b) => a.lambda - b.lambda);
+
+    if (!current?.valid) {
+      invalidCount += 1;
+      incrementCount(invalidReasonCounts, current?.reason);
+    } else {
+      validCount += 1;
+      if (!best || Math.abs(current.value) < Math.abs(best.value)) best = current;
+      if (Math.abs(current.value) <= spencerConfig.intersectionTolerance) {
+        return {
+          exact: current,
+          lower: null,
+          upper: null,
+          best,
+          iterations: totalIterations,
+          validCount,
+          invalidCount,
+          invalidReasonCounts,
+          targetLambda: initial.targetLambda
+        };
+      }
+      const bracket = choosePreferredLambdaSignChange(samples, initial.targetLambda);
+      if (bracket) {
+        return {
+          exact: null,
+          lower: bracket.lower,
+          upper: bracket.upper,
+          best,
+          iterations: totalIterations,
+          validCount,
+          invalidCount,
+          invalidReasonCounts,
+          targetLambda: initial.targetLambda
+        };
+      }
+    }
+  }
+
+  return {
+    exact: null,
+    lower: null,
+    upper: null,
+    best,
+    iterations: totalIterations,
+    validCount,
+    invalidCount,
+    invalidReasonCounts,
+    targetLambda: initial.targetLambda
+  };
 }
 
 function finalizeSpencerSlices(baseSlices, sliceForces, lambda) {
@@ -1423,10 +2072,14 @@ function solveSpencerForSlices(slices, bishopDiagnostics, spencerConfig, solverC
   }
 
   if (!bracket.lower || !bracket.upper) {
+    const summary = summarizeReasonCounts(bracket.invalidReasonCounts);
+    const suffix = summary ? ` (${summary})` : '';
     return buildSpencerUnresolvedResult(
       bishopF,
       bracket.best,
-      bracket.best ? 'F_m and F_f do not intersect in lambda range' : 'Spencer branch solve failed across lambda range',
+      bracket.best
+        ? `Valid Spencer lambda samples found, but F_m and F_f did not intersect in the lambda range${suffix}`
+        : `No admissible Spencer lambda in the search range${suffix}`,
       totalIterations
     );
   }
@@ -1440,10 +2093,30 @@ function solveSpencerForSlices(slices, bishopDiagnostics, spencerConfig, solverC
     const mid = evaluateSpencerAtLambda(slices, bishopF, lambdaMid, spencerConfig, solverConfig);
     totalIterations += mid?.iterations || 0;
     if (!mid.valid) {
+      const refined = refineSpencerLambdaBracket(
+        slices,
+        bishopF,
+        spencerConfig,
+        solverConfig,
+        lower,
+        upper,
+        best,
+        bracket.targetLambda
+      );
+      totalIterations += refined.iterations || 0;
+      if (refined.best) best = refined.best;
+      if (refined.exact) {
+        return buildConvergedSpencerResult(bishopF, refined.exact, totalIterations);
+      }
+      if (refined.bracket?.lower && refined.bracket?.upper) {
+        lower = refined.bracket.lower;
+        upper = refined.bracket.upper;
+        continue;
+      }
       return buildSpencerUnresolvedResult(
         bishopF,
         best,
-        mid.reason || 'Spencer branch solve failed during lambda bisection',
+        refined.reason || mid.reason || 'Spencer branch solve failed during lambda bisection',
         totalIterations
       );
     }
@@ -1701,6 +2374,7 @@ export function analyzeBishopSearch(input, emitProgress) {
   const model = input.model;
   const search = input.searchConfig || {};
   const solver = input.solverConfig || {};
+  const soilSource = input?.soilSource === 'legacy-bands' ? 'legacy-bands' : 'regions';
   const methodMode = input.methodMode === 'bishop_spencer' ? 'bishop_spencer' : 'bishop_only';
   const spencerConfig = normalizeSpencerConfig(input.spencerConfig, search);
   const entryPts = zoneSamplePoints(model.terrain, input.entryZone, Math.max(2, search.nEntry || 10));
@@ -1747,11 +2421,11 @@ export function analyzeBishopSearch(input, emitProgress) {
           if (!validity.valid) {
             noteReject(validity.reason);
           } else {
-            const built = buildSlicesForCircle(circle, entry, exit, model, search);
+            const built = buildSlicesForCircle(circle, entry, exit, model, search, soilSource);
             if (!built.slices || built.slices.length < 3) {
               noteReject(built.reason || 'too few slices');
             } else {
-              const wallInteraction = computeWallIntersections(circle, model, entry, exit);
+              const wallInteraction = computeWallIntersections(circle, model, entry, exit, soilSource);
               const wallSlices = applyWallInteractionsToSlices(built.slices, wallInteraction.intersections);
               const bishop = solveBishopSimplified(wallSlices, solver, wallInteraction.intersections);
               if (!bishop.converged) {
@@ -1885,7 +2559,7 @@ export function bishopLayerSignature(layers) {
   );
 }
 
-export function buildBishopModelFromStageLayers(layers, bishopState) {
+export function buildBishopModelFromStageLayers(layers, bishopState, options = {}) {
   const terrainVertices = (bishopState?.terrain || [])
     .filter((pt) => Number.isFinite(pt?.x) && Number.isFinite(pt?.y))
     .sort((a, b) => a.x - b.x)
@@ -1904,7 +2578,7 @@ export function buildBishopModelFromStageLayers(layers, bishopState) {
   const analysisBottomY = yGround - analysisDepth;
   const materials = importBishopMaterialsFromLayers(layers, bishopState?.materials || [], bishopState?.strengthSet || 'characteristic');
 
-  const bands = layers.map((layer, index) => ({
+  const legacyBands = layers.map((layer, index) => ({
     id: `band_${index}`,
     topY: yGround - (Number(layer.top) || 0),
     botY: index === layers.length - 1 ? analysisBottomY : yGround - (Number(layer.bot) || 0),
@@ -1912,17 +2586,23 @@ export function buildBishopModelFromStageLayers(layers, bishopState) {
     material: materials[index]
   }));
 
-  const regions = [];
-  bands.forEach((band) => {
-    const polys = buildHorizontalBandPolygons(terrain, band.topY, band.botY, band.topFollowsTerrain);
-    polys.forEach((polygon, polyIndex) => {
-      regions.push({
-        id: `${band.id}_${polyIndex}`,
+  const autoRegions = buildCptAutoRegions(terrain, layers, cptX, analysisBottomY, materials);
+  const materialMap = new Map(materials.map((material) => [material.id, material]));
+  const customRegions = (bishopState?.customRegions || [])
+    .map((region, index) => {
+      const polygon = normalizeRegionPolygon(region?.polygon || []);
+      const materialId = typeof region?.materialId === 'string' ? region.materialId : materials[0]?.id || null;
+      return {
+        id: region?.id || `user-region-${index}`,
         polygon,
-        material: band.material
-      });
-    });
-  });
+        materialId,
+        material: materialMap.get(materialId) || null,
+        source: region?.source === 'cpt-copy' ? 'cpt-copy' : region?.source === 'hole' ? 'hole' : region?.source === 'edited' ? 'edited' : 'custom'
+      };
+    })
+    .filter((region) => region.material && region.polygon.length >= 3 && polygonArea(region.polygon) > 1e-4 && isSimplePolygon(region.polygon));
+  const useCustomRegions = !!bishopState?.useCustomRegions && customRegions.length > 0;
+  const regions = useCustomRegions ? customRegions : autoRegions;
 
   const phreaticVertices = (bishopState?.phreatic || [])
     .filter((pt) => Number.isFinite(pt?.x) && Number.isFinite(pt?.y))
@@ -1979,7 +2659,7 @@ export function buildBishopModelFromStageLayers(layers, bishopState) {
     })
     .sort((a, b) => a.x - b.x || b.yTop - a.yTop);
 
-  return {
+  const model = {
     terrain,
     phreatic,
     cptX,
@@ -1987,10 +2667,15 @@ export function buildBishopModelFromStageLayers(layers, bishopState) {
     analysisBottomY,
     materials,
     strengthSet: bishopState?.strengthSet || 'characteristic',
-    bands,
+    regionMode: useCustomRegions ? 'custom' : 'auto',
+    autoRegions,
+    customRegions,
     regions,
+    regionBoundaryPolylines: useCustomRegions ? buildRegionBoundaryPolylines(customRegions) : [],
     boundaryYs,
     surfaceLoad,
     walls
   };
+  if (options.includeLegacyBands) model.legacyBands = legacyBands;
+  return model;
 }
