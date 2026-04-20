@@ -1,6 +1,6 @@
 # CPT Interpretation App — Logic Documentation
 
-*Last updated: 2026-04-14. This document reflects the exact logic implemented in `cpt_app.html` and documents planned extensions. Sections marked [IMPLEMENTED] match the current code verbatim. Sections marked [PLANNED] are documented for upcoming implementation.*
+*Last updated: 2026-04-16. This document reflects the exact logic implemented in the SvelteKit CPT interpreter (`src/lib/components/cpt/*` UI plus `src/lib/cpt-app/legacy-controller.js`) and documents planned extensions. Sections marked [IMPLEMENTED] match the current code verbatim. Sections marked [PLANNED] are documented for upcoming implementation.*
 
 ---
 
@@ -1101,6 +1101,393 @@ For each CPT that has a confirmed water table and surface elevation, plot the WT
 
 Stages 1–5 of the per-CPT analysis require no changes.
 
+---
+
+## Stage 6 — First engineering use cases from a single CPT [DRAFT / REVIEW]
+
+### Scope
+
+Stage 6 is the first step from **soil interpretation** to **engineering use**. To keep the first implementation basic and auditable, Stage 6 should initially work on **one CPT only**:
+
+- use the layered profile from Stages 2–5
+- use the current phreatic level and layer parameters from Stages 3–5
+- produce a simple, vertically resolved engineering estimate
+- avoid 2D / 3D groundwater flow or full FEM at this stage
+
+This section outlines **three candidate features** for review before implementation.
+
+### Stage 6 combination policy [Belgium]
+
+To keep the Stage 6 tools transparent in Belgian practice, each application should expose the relevant combination route instead of hiding it:
+
+- **Bearing capacity**
+  - Belgian EC7 **ULS**
+  - default = **governing of DA1/1 and DA1/2**
+  - user may inspect `DA1/1` or `DA1/2` separately
+
+- **Settlement**
+  - **SLS**
+  - default = **quasi-permanent** combination
+  - `frequent` and `characteristic` remain selectable for shorter-term serviceability screening
+
+- **Dewatering**
+  - **SLS only**
+  - use the **characteristic expected drawdown** directly
+  - do **not** factor the drawdown by EC7 ULS partial factors in this module
+
+- **Beam / slab on Winkler**
+  - **SLS** combination selectable for deflection
+  - default = **quasi-permanent** for long-term deflection
+  - **ULS** action set selectable for reinforcement
+  - default = **Eq. 6.10 A1** for ordinary building gravity loading in this screening tool
+
+### Option A — Dewatering impact estimator [DRAFT]
+
+#### Goal
+
+Estimate how a change in phreatic head affects the groundwater level and the effective stress profile beneath / around a dewatered zone, using an analytical method from the groundwater literature.
+
+#### Intended user workflow
+
+1. User starts from one CPT with a known ground level and default water table
+2. User sets:
+   - initial phreatic level / head
+   - target lowered head
+   - geometry assumption (first-pass: circular pit or equivalent radius, or line dewatering / trench)
+   - optional hydraulic conductivity per layer or representative global value
+3. Program estimates the phreatic drawdown profile analytically
+4. Program recalculates:
+   - water table at the CPT
+   - pore pressure `u(z)`
+   - effective stress `σ'v(z)`
+   - indicative impact on `E_oed,ref` / settlements if linked later
+
+#### First-pass analytical basis
+
+For a first implementation, use a **Dupuit-Thiem style steady-state analytical approach**:
+
+- unconfined aquifer: Dupuit approximation
+- confined aquifer: Thiem equation
+
+Possible basic formulas:
+
+**Confined aquifer, radial steady flow:**
+```
+Q = 2 * pi * k * H * (h0 - hw) / ln(R / rw)
+```
+
+**Unconfined aquifer, Dupuit approximation:**
+```
+Q = pi * k * (h0^2 - hw^2) / ln(R / rw)
+```
+
+where:
+- `k` = hydraulic conductivity
+- `h0` = initial head
+- `hw` = target head at well / excavation
+- `R` = radius of influence
+- `rw` = equivalent well radius
+
+For the radius of influence, a simple engineering first pass can use a **Sichardt-type estimate**:
+```
+R ≈ C * s * sqrt(k)
+```
+
+where:
+- `s` = drawdown
+- `k` in m/s
+- `C` = empirical factor per chosen convention
+
+#### Outputs
+
+- estimated head at CPT location
+- updated water table elevation
+- updated `u(z)` and `σ'v(z)` profiles
+- table / plot of drawdown versus depth or distance
+- optional “before / after dewatering” profile comparison
+
+#### Why it fits this app
+
+- directly reuses the current water-table-aware stress calculation
+- does not require a finite element groundwater model
+- is useful for excavation and temporary works screening
+
+#### Limitations / caveats
+
+- strongly idealised steady-state flow
+- layered anisotropy and leakage are simplified or ignored
+- one-CPT mode means lateral heterogeneity is not modelled explicitly
+- should be presented as a **screening tool**, not a permit-grade groundwater study
+
+#### Draft references
+
+- Dupuit, J. (1863). *Études théoriques et pratiques sur le mouvement des eaux*.
+- Thiem, G. (1906). *Hydrologische Methoden*.
+- Sichardt, W. (1928). empirical radius-of-influence relation for dewatering practice.
+- Bear, J. (1979). *Hydraulics of Groundwater*.
+
+### Option B — Settlement estimator [DRAFT]
+
+#### Goal
+
+Estimate 1D settlement beneath a simple loaded foundation using the CPT-derived layered profile.
+
+#### Intended user workflow
+
+1. User chooses foundation type:
+   - slab
+   - strip footing
+   - isolated footing
+2. User enters geometry:
+   - width `B`
+   - length `L` where relevant
+   - founding depth `Df`
+3. User enters load:
+   - characteristic / design load
+   - optionally self-weight and surcharge separately
+4. Program calculates vertical stress increase with depth along the centreline
+5. Program integrates settlement over the compressible layers
+
+#### First-pass analytical basis
+
+Use a classical **1D constrained settlement approach**, linked to the CPT-derived `E_oed`:
+
+For each layer increment:
+```
+dS = (delta_sigma_v / E_oed,used) * dz
+```
+
+Total settlement:
+```
+S = integral(dS) ≈ sum((delta_sigma_v,i / E_oed,i) * dz_i)
+```
+
+Stress increase beneath the centreline can be obtained analytically from influence-factor methods:
+
+- strip footing: Boussinesq / elastic influence factors in 2D plane strain approximation
+- rectangular footing / slab patch: Boussinesq-based rectangular loaded area solution
+- practical implementation option: Newmark / Fadum style influence factors
+
+General form:
+```
+delta_sigma_v(z) = q_net * I_z(B, L, z)
+```
+
+where:
+- `q_net` = net foundation pressure
+- `I_z` = vertical stress influence factor
+
+#### First-pass options for stiffness choice
+
+To keep it simple, the first version should allow:
+
+1. `E_oed,ref` from Stage 4 + stress correction to depth, or
+2. direct use of `E_oed,i` / tuned `m` profile from Stage 5
+
+This gives a settlement profile that is fully traceable back to the CPT.
+
+#### Outputs
+
+- total estimated settlement
+- settlement contribution per layer
+- stress increase with depth along the centreline
+- plot:
+  - `delta_sigma_v(z)`
+  - `E_oed(z)`
+  - cumulative settlement `S(z)`
+
+#### Why it fits this app
+
+- directly uses the current layered CPT-derived stiffness model
+- naturally benefits from Stage 5 tuning of `m`
+- produces a useful geotechnical screening result without needing FEM
+
+#### Limitations / caveats
+
+- first version is 1D / centreline only
+- no raft redistribution, no edge effects, no nonlinear bearing interaction
+- immediate settlement only unless consolidation is added later
+- should be labelled as **screening / preliminary design**
+
+#### Draft references
+
+- Terzaghi, K. & Peck, R.B. (1967). *Soil Mechanics in Engineering Practice*.
+- Poulos, H.G. & Davis, E.H. (1974). *Elastic Solutions for Soil and Rock Mechanics*.
+- Newmark, N.M. influence chart method for vertical stress under loaded areas.
+- Boussinesq, J. (1885). elastic stress solution for a loaded half-space.
+
+### Option C — Slab bending and reinforcement estimator [DRAFT]
+
+#### Goal
+
+Calculate the design bending moment in a simple slab strip and determine the required reinforcement area according to Eurocode 2.
+
+#### Intended user workflow
+
+1. User sets:
+   - slab width / design strip width
+   - slab thickness `h`
+   - exposure class and durability assumptions
+   - concrete class (default e.g. `C30/37`)
+   - steel grade (default e.g. `BE500S`)
+   - load / line load / soil reaction assumption
+2. Program calculates:
+   - design bending moment
+   - effective depth `d`
+   - recommended EC2 nominal cover `c_nom`
+   - required steel area `A_s,req`
+3. Program returns:
+   - required `mm²/m`
+   - EC2 durability audit for the chosen exposure
+   - optional bar spacing suggestions later
+
+#### First-pass analytical basis
+
+This is the simplest option mathematically, but it is also the least directly CPT-driven unless tied to a soil reaction model.
+
+For a basic reinforced-concrete strip:
+```
+M_Ed = function(load, support model, strip width)
+```
+
+Then:
+```
+d = h - c_nom - phi_bar / 2
+z ≈ 0.9 * d
+f_yd = f_yk / gamma_s
+```
+
+Required steel:
+```
+A_s,req = M_Ed / (z * f_yd)
+```
+
+#### Durability / cover route now intended for Stage 6
+
+The beam / slab-on-Winkler tool should not ask the engineer to guess `c_nom` first. It should derive the recommended cover from EC2 durability logic and still allow an explicit override.
+
+Use the following EC2 route:
+
+1. **Exposure class selection**
+   - use the EC2 / EN 1992-1-1 Table 4.1 exposure classes
+   - the dropdown should spell out the meaning of the class, e.g.:
+     - `XC2 = wet, rarely dry`
+     - `XC4 = cyclic wet and dry`
+     - `XD3 = chlorides, cyclic wet and dry`
+     - `XF4 = freeze-thaw, severe`
+
+2. **Structural class**
+   - start from `S4`
+   - modify per EC2 Table 4.3N:
+     - `+2` for 100-year design working life
+     - `-1` for design working life `<= 25 years`
+     - `-1` if `fck` reaches the exposure-dependent high-strength threshold
+     - `-1` for slab-like geometry
+     - `-1` for special quality control
+   - clamp to `S1 ... S6`
+
+3. **Durability cover**
+   - get `c_min,dur` from EC2 Table 4.4N using structural class and exposure column
+   - for `XF` and `XA`, use the corrosion-cover fallback route:
+     - `XF1`, `XF2`, `XF3`, `XA1`, `XA2` -> `XC4`
+     - `XF4`, `XA3` -> `XD3`
+   - note in the app that XF/XA concrete mix requirements still need a separate EN 206 durability check
+
+4. **Bond cover**
+   - `c_min,b = phi_bar`
+   - add `5 mm` if `d_g > 32 mm`
+
+5. **Nominal cover**
+   - `c_min = max(c_min,b, c_min,dur, 10)`
+   - `c_nom,raw = c_min + Delta c_dev + extra_ground_cast`
+   - if cast against prepared ground, `c_nom >= 40 mm`
+   - if cast against unprepared ground, `c_nom >= 75 mm`
+   - round `c_nom` up to the next `5 mm`
+
+6. **Engineer override**
+   - the engineer may override `c_nom`
+   - if the override is lower than the EC2 recommendation, the app should keep it visible but show a warning
+
+This gives a fully auditable Stage 6 durability output:
+- selected exposure class and meaning
+- structural class
+- `c_min,dur`
+- `c_min,b`
+- `c_min`
+- `Delta c_dev`
+- ground-cast additions / floors
+- recommended `c_nom`
+- actual `c_nom` used in the reinforcement calculation
+
+#### How CPT could enter later
+
+In a later stage, the slab could be linked to a **Winkler subgrade model** using CPT-derived subgrade stiffness:
+
+```
+q = k_s * w
+```
+
+where:
+- `k_s` = modulus of subgrade reaction estimated from CPT-derived stiffness
+- `w` = settlement / slab deflection
+
+But for the first version, the slab reinforcement calculation can remain a **simple structural calculator** with user-defined moment input or idealised support condition.
+
+#### Outputs
+
+- design moment `M_Ed`
+- effective depth `d`
+- required steel area `A_s,req`
+- optional minimum reinforcement check
+
+#### Why it fits this app
+
+- easiest to implement mathematically
+- directly useful for preliminary concrete sizing
+
+#### Limitations / caveats
+
+- weakest coupling to the CPT unless subgrade modelling is added
+- structural design should stay within a narrow, explicit scope
+- not a substitute for a full slab-on-grade structural model
+
+#### Draft references
+
+- EN 1992-1-1 (Eurocode 2): Design of concrete structures.
+- NBN EN 1992-1-1 Belgian National Annex.
+- classic slab / RC design formulas for singly reinforced rectangular sections.
+
+### First recommendation
+
+If Stage 6 must remain **basic, geotechnical, and clearly tied to the CPT**, the best first candidate is:
+
+1. **Settlement estimator**
+
+Reasons:
+- strongest link to the CPT-derived `E_oed` and tuned `m`
+- directly uses the profile already built in Stages 1–5
+- analytically feasible in 1D
+- useful for early foundation screening
+
+Second candidate:
+
+2. **Dewatering impact estimator**
+
+Reasons:
+- also strongly geotechnical
+- elegant analytical basis
+- useful for temporary works and excavation screening
+- but needs more assumptions on lateral geometry and permeability
+
+Third candidate:
+
+3. **Slab reinforcement estimator**
+
+Reasons:
+- easiest math
+- structurally useful
+- but least directly connected to the CPT unless a soil-reaction model is added
+
 
 ## References
 
@@ -1119,3 +1506,10 @@ Stages 1–5 of the per-CPT analysis require no changes.
   - Tabel 2-46 (p. 153): Ruwe inschatting infiltratiecapaciteit per grondsoort.
   - §5.2 (p. 335): Ontwerprichtlijnen infiltratievoorzieningen op basis van infiltratiecapaciteit.
 - De Beer, E. (1971). Grondmechanica Deel I: Inleidende begrippen (9e herziene druk). Tabel 2-47: doorlatendheidscoëfficiënt k voor typische grondmonsters.
+- Dupuit, J. (1863). Études théoriques et pratiques sur le mouvement des eaux.
+- Thiem, G. (1906). Hydrologische Methoden.
+- Bear, J. (1979). Hydraulics of Groundwater. McGraw-Hill.
+- Terzaghi, K. & Peck, R.B. (1967). Soil Mechanics in Engineering Practice.
+- Poulos, H.G. & Davis, E.H. (1974). Elastic Solutions for Soil and Rock Mechanics.
+- Boussinesq, J. (1885). Application des potentiels à l'étude de l'équilibre et du mouvement des solides élastiques.
+- EN 1992-1-1. Eurocode 2: Design of concrete structures.
