@@ -29,9 +29,12 @@
 	<div id="tuningArea"></div>
 	<div class="foot">
 		<button class="btn" onclick={() => call('goS', 3)}>← Back to parameters</button>
-		<span style="font-size:12px;color:var(--tx2)"
-			>Use Stage 6 to turn the interpreted CPT into a first engineering estimate.</span
-		>
+		<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+			<span style="font-size:12px;color:var(--tx2)"
+				>Use Stage 6 to turn the interpreted CPT into a first engineering estimate.</span
+			>
+			<button class="btn sm" onclick={() => call('openStage7Report')}>Stage 7 Report</button>
+		</div>
 		<button class="btn" onclick={() => call('goS', 5)} style="border-color:var(--ac);color:var(--ac)">
 			Stage 6 — Applications →
 		</button>
