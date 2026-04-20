@@ -3498,6 +3498,7 @@ function stage6Defaults(){
       methodMode:'bishop_spencer',
       terrain:[],
       phreatic:[],
+      walls:[],
       draft:[],
       draftKind:'',
       activeCptX:null,
@@ -3708,6 +3709,7 @@ function ensureStage6State(){
   bishop.spencer.fallbackBishop = bishop.spencer.fallbackBishop !== false;
   if(!Array.isArray(bishop.terrain)) bishop.terrain = [];
   if(!Array.isArray(bishop.phreatic)) bishop.phreatic = [];
+  if(!Array.isArray(bishop.walls)) bishop.walls = [];
   if(!Array.isArray(bishop.draft)) bishop.draft = [];
   if(!Array.isArray(bishop.materials)) bishop.materials = [];
   if(!bishop.surfaceLoad || typeof bishop.surfaceLoad !== 'object') bishop.surfaceLoad = {xStart:null, xEnd:null, q:0};
@@ -3816,6 +3818,53 @@ function stage6BishopZoneColor(kind){
   return '#5c6b7a';
 }
 
+function stage6BishopPassiveSideLabel(side){
+  return side === 'left' ? 'Left' : 'Right';
+}
+
+function stage6BishopDefaultPassiveSide(){
+  const terrain = S.stage6?.bishop?.terrain || [];
+  if(terrain.length >= 2){
+    return terrain[terrain.length-1].y <= terrain[0].y ? 'right' : 'left';
+  }
+  return 'right';
+}
+
+function stage6BishopNormalizeWalls(walls, terrain){
+  const terrainLine = terrain?.length ? {vertices:terrain} : null;
+  const minX = terrain?.length ? terrain[0].x : -Infinity;
+  const maxX = terrain?.length ? terrain[terrain.length-1].x : Infinity;
+  return (walls || [])
+    .map((wall)=>({
+      x:Number(wall?.x),
+      yTop:Number.isFinite(+wall?.yTop)
+        ? +wall.yTop
+        : terrainLine
+          ? bishopTerrainY(terrainLine, Math.min(Math.max(+wall?.x || minX, minX), maxX))
+          : NaN,
+      yTip:Number.isFinite(+wall?.yTip) ? +wall.yTip : NaN,
+      passiveSide:wall?.passiveSide === 'left' ? 'left' : 'right',
+      maxShearForce:Number.isFinite(+wall?.maxShearForce) && +wall.maxShearForce > 0 ? +wall.maxShearForce : null
+    }))
+    .filter((wall)=>Number.isFinite(wall.x) && Number.isFinite(wall.yTop) && Number.isFinite(wall.yTip))
+    .map((wall)=>{
+      wall.x = Math.min(Math.max(wall.x, minX), maxX);
+      if(wall.yTip >= wall.yTop - 0.05) wall.yTip = +(wall.yTop - 0.05).toFixed(3);
+      wall.x = +wall.x.toFixed(3);
+      wall.yTop = +wall.yTop.toFixed(3);
+      wall.yTip = +wall.yTip.toFixed(3);
+      return wall;
+    })
+    .sort((a,b)=>a.x-b.x || b.yTop-a.yTop);
+}
+
+function stage6BishopResultWallLabel(result){
+  if(!result) return '—';
+  if(result.intersectsWall) return `${result.wallIntersectionCount || 0} engaged`;
+  if(result.passesBelowWall) return 'passes below';
+  return 'no wall effect';
+}
+
 function stage6BishopInvalidate(message){
   ensureStage6State();
   const bishop = S.stage6.bishop;
@@ -3856,6 +3905,7 @@ function stage6BishopSyncSoilModel(){
       zone.xEnd = Math.min(Math.max(zone.xEnd, minX), maxX);
       bishop[key] = stage6BishopSortZone(zone);
     });
+    bishop.walls = stage6BishopNormalizeWalls(bishop.walls, sorted);
   }
   return layers;
 }
@@ -3908,6 +3958,7 @@ function stage6BishopApplyImportedTerrain(vertices, label){
   const bishop = S.stage6.bishop;
   bishop.terrain = stage6BishopSortedPolyline(vertices);
   bishop.phreatic = [];
+  bishop.walls = [];
   bishop.draft = [];
   bishop.draftKind = '';
   bishop.entryZone = null;
@@ -3915,7 +3966,7 @@ function stage6BishopApplyImportedTerrain(vertices, label){
   bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
   bishop.activeCptX = null;
   bishop.viewport.fitted = false;
-  stage6BishopInvalidate(`Terrain imported from DXF${label ? ` (${label})` : ''}; review the CPT position and redraw the zones before rerunning the search.`);
+  stage6BishopInvalidate(`Terrain imported from DXF${label ? ` (${label})` : ''}; retaining walls were cleared, so review the CPT position and redraw the zones before rerunning the search.`);
   renderStage6();
 }
 
@@ -3957,10 +4008,11 @@ function stage6BishopFinishDraft(){
   const bishop = S.stage6.bishop;
   if(bishop.draftKind === 'terrain' && bishop.draft.length >= 2){
     bishop.terrain = stage6BishopSortedPolyline(bishop.draft);
+    bishop.walls = [];
     bishop.viewport.fitted = false;
     if(!bishop.entryZone) bishop.entryZone = null;
     if(!bishop.exitZone) bishop.exitZone = null;
-    stage6BishopInvalidate('Terrain updated; rerun Bishop search.');
+    stage6BishopInvalidate('Terrain updated; retaining walls were cleared and Bishop results were reset.');
   } else if(bishop.draftKind === 'phreatic' && bishop.draft.length >= 2){
     bishop.phreatic = stage6BishopSortedPolyline(bishop.draft);
     stage6BishopInvalidate('Phreatic line updated; rerun Bishop search.');
@@ -3976,6 +4028,7 @@ function stage6BishopClear(kind){
   if(kind === 'terrain'){
     bishop.terrain = [];
     bishop.phreatic = [];
+    bishop.walls = [];
     bishop.entryZone = null;
     bishop.exitZone = null;
     bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
@@ -3983,6 +4036,8 @@ function stage6BishopClear(kind){
     bishop.viewport.fitted = false;
   } else if(kind === 'phreatic'){
     bishop.phreatic = [];
+  } else if(kind === 'walls'){
+    bishop.walls = [];
   } else if(kind === 'entry'){
     bishop.entryZone = null;
   } else if(kind === 'exit'){
@@ -4012,6 +4067,31 @@ function stage6BishopSetMaterialField(index, field, value){
   if(!material) return;
   material[field] = field === 'label' ? value : +value;
   stage6BishopInvalidate('Material properties updated; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopSetWallField(index, field, value){
+  ensureStage6State();
+  stage6BishopSyncSoilModel();
+  const wall = S.stage6.bishop.walls?.[index];
+  if(!wall) return;
+  if(field === 'passiveSide'){
+    wall.passiveSide = value === 'left' ? 'left' : 'right';
+  } else if(field === 'maxShearForce'){
+    wall.maxShearForce = value === '' || value == null ? null : Math.max(+value || 0, 0);
+  } else {
+    wall[field] = value === '' || value == null ? null : +value;
+  }
+  S.stage6.bishop.walls = stage6BishopNormalizeWalls(S.stage6.bishop.walls, S.stage6.bishop.terrain);
+  stage6BishopInvalidate('Retaining wall geometry updated; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopDeleteWall(index){
+  ensureStage6State();
+  stage6BishopSyncSoilModel();
+  S.stage6.bishop.walls = (S.stage6.bishop.walls || []).filter((_, wallIndex)=>wallIndex !== index);
+  stage6BishopInvalidate('Retaining wall removed; rerun Bishop search.');
   renderStage6();
 }
 
@@ -4185,7 +4265,7 @@ function stage6BishopRunningMessage(){
 }
 
 function stage6BishopReadyMessage(runReady){
-  if(!runReady) return 'Draw terrain, place the active CPT, and define entry and exit zones. The load zone is optional.';
+  if(!runReady) return 'Draw terrain, place the active CPT, and define entry and exit zones. Retaining walls, the load zone, and the phreatic line are optional.';
   return S.stage6?.bishop?.methodMode === 'bishop_spencer'
     ? 'Ready to run Bishop + Spencer check.'
     : 'Ready to run Bishop search.';
@@ -4241,9 +4321,15 @@ function stage6BishopModeMeta(){
       hint:'Click the start and end of the uniform surcharge zone on the terrain. Set q below in kPa.'
     };
   }
+  if(bishop.tool === 'wall'){
+    return {
+      label:'Retaining wall mode',
+      hint:'Click the wall top, then click the wall tip. Walls stay vertical and act as infinitely stiff stabilising elements in Bishop and Spencer.'
+    };
+  }
   return {
     label:'Edit / pan mode',
-    hint:'Drag terrain or phreatic vertices, the CPT marker, or zone ends. Drag empty space to pan and use the mouse wheel to zoom.'
+    hint:'Drag terrain or phreatic vertices, retaining-wall ends, the CPT marker, or zone ends. Drag empty space to pan and use the mouse wheel to zoom.'
   };
 }
 
@@ -4357,6 +4443,13 @@ function stage6BishopCanvasWorldBounds(model){
   if(terrain.length >= 2){
     const xs = terrain.map(pt=>pt.x);
     const ys = terrain.map(pt=>pt.y);
+    (bishop.walls || []).forEach((wall)=>{
+      if(Number.isFinite(wall?.x)){
+        xs.push(wall.x);
+      }
+      if(Number.isFinite(wall?.yTop)) ys.push(wall.yTop);
+      if(Number.isFinite(wall?.yTip)) ys.push(wall.yTip);
+    });
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
     const maxY = Math.max(...ys);
@@ -4416,6 +4509,14 @@ function stage6BishopNearestHandle(canvas, clientX, clientY){
     handles.push({kind:'loadStart', pt:{x:bishop.surfaceLoad.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.surfaceLoad.xStart)}});
     handles.push({kind:'loadEnd', pt:{x:bishop.surfaceLoad.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.surfaceLoad.xEnd)}});
   }
+  (bishop.walls || []).forEach((wall, index)=>{
+    if(Number.isFinite(wall?.x) && Number.isFinite(wall?.yTop)){
+      handles.push({kind:'wallTop', index, pt:{x:wall.x, y:wall.yTop}});
+    }
+    if(Number.isFinite(wall?.x) && Number.isFinite(wall?.yTip)){
+      handles.push({kind:'wallTip', index, pt:{x:wall.x, y:wall.yTip}});
+    }
+  });
   let best = null;
   handles.forEach((handle)=>{
     const d = screenDist(handle.pt);
@@ -4473,6 +4574,36 @@ function stage6BishopCommitDrawPoint(world){
       stage6BishopInvalidate(`${stage6BishopZoneLabel(tool)} updated; rerun Bishop search.`);
     }
     renderStage6();
+    return;
+  }
+  if(tool === 'wall'){
+    if(bishop.terrain.length < 2) return;
+    const minX = bishop.terrain[0].x;
+    const maxX = bishop.terrain[bishop.terrain.length-1].x;
+    if(bishop.draftKind !== 'wall' || bishop.draft.length !== 1){
+      const x = Math.min(Math.max(stage6BishopSnapWorldPoint(world, 'terrain-x').x, minX), maxX);
+      const terrain = {vertices:bishop.terrain};
+      bishop.draft = [{x, y:bishopTerrainY(terrain, x)}];
+      bishop.draftKind = 'wall';
+    } else {
+      const top = bishop.draft[0];
+      const tip = stage6BishopSnapWorldPoint(world, 'free');
+      bishop.walls = [
+        ...(bishop.walls || []),
+        {
+          x:top.x,
+          yTop:top.y,
+          yTip:Math.min(tip.y, top.y - 0.05),
+          passiveSide:stage6BishopDefaultPassiveSide(),
+          maxShearForce:null
+        }
+      ];
+      bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
+      bishop.draft = [];
+      bishop.draftKind = '';
+      stage6BishopInvalidate('Retaining wall added; rerun Bishop search.');
+    }
+    renderStage6();
   }
 }
 
@@ -4508,6 +4639,26 @@ function stage6BishopCompleteCurrentActionAt(world){
       renderStage6();
       return true;
     }
+  }
+  if(bishop.draftKind === 'wall' && (bishop.draft || []).length === 1){
+    const top = bishop.draft[0];
+    const tip = stage6BishopSnapWorldPoint(world, 'free');
+    bishop.walls = [
+      ...(bishop.walls || []),
+      {
+        x:top.x,
+        yTop:top.y,
+        yTip:Math.min(tip.y, top.y - 0.05),
+        passiveSide:stage6BishopDefaultPassiveSide(),
+        maxShearForce:null
+      }
+    ];
+    bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
+    bishop.draft = [];
+    bishop.draftKind = '';
+    stage6BishopInvalidate('Retaining wall added; rerun Bishop search.');
+    renderStage6();
+    return true;
   }
   return false;
 }
@@ -4601,6 +4752,20 @@ function stage6BishopPointerMove(event){
     const maxX = bishop.terrain[bishop.terrain.length-1].x;
     bishop[zoneKey][edge] = Math.min(Math.max(x, minX), maxX);
     bishop[zoneKey] = stage6BishopSortZone(bishop[zoneKey]);
+  } else if(drag.kind === 'wallTop' || drag.kind === 'wallTip'){
+    const wall = bishop.walls?.[drag.index];
+    if(!wall) return;
+    const pt = stage6BishopSnapWorldPoint(world, 'free');
+    const minX = bishop.terrain.length >= 2 ? bishop.terrain[0].x : -Infinity;
+    const maxX = bishop.terrain.length >= 2 ? bishop.terrain[bishop.terrain.length-1].x : Infinity;
+    wall.x = Math.min(Math.max(pt.x, minX), maxX);
+    if(drag.kind === 'wallTop'){
+      wall.yTop = pt.y;
+      if(wall.yTip >= wall.yTop - 0.05) wall.yTip = wall.yTop - 0.05;
+    } else {
+      wall.yTip = Math.min(pt.y, wall.yTop - 0.05);
+    }
+    bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
   }
   stage6BishopDrawCanvas();
 }
@@ -4774,6 +4939,31 @@ function stage6BishopDrawCanvas(){
     });
   };
 
+  const drawWall = (wall, options = {})=>{
+    if(!Number.isFinite(wall?.x) || !Number.isFinite(wall?.yTop) || !Number.isFinite(wall?.yTip)) return;
+    const top = stage6BishopWorldToScreen({x:wall.x, y:wall.yTop});
+    const tip = stage6BishopWorldToScreen({x:wall.x, y:wall.yTip});
+    const mid = stage6BishopWorldToScreen({x:wall.x, y:0.5 * (wall.yTop + wall.yTip)});
+    const dir = wall.passiveSide === 'left' ? -1 : 1;
+    ctx.save();
+    ctx.strokeStyle = options.stroke || '#6a5841';
+    ctx.lineWidth = options.width || 4;
+    ctx.setLineDash(options.dash || []);
+    ctx.beginPath();
+    ctx.moveTo(top.x, top.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = options.stroke || '#6a5841';
+    ctx.beginPath();
+    ctx.moveTo(mid.x + dir * 10, mid.y);
+    ctx.lineTo(mid.x + dir * 2, mid.y - 5);
+    ctx.lineTo(mid.x + dir * 2, mid.y + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  };
+
   if(bishop.phreatic?.length >= 2) drawPolyline(bishop.phreatic, '#2f7fda', 2, [8, 5]);
   if(bishop.draft?.length) drawPolyline(bishop.draft, bishop.draftKind === 'phreatic' ? '#2f7fda' : '#2d3a4a', 2, [6, 4]);
   if(stage6BishopCanvasState.hoverWorld){
@@ -4796,6 +4986,16 @@ function stage6BishopDrawCanvas(){
         ], stage6BishopZoneColor(bishop.tool), 4, [5, 4]);
       }
     }
+    if(bishop.tool === 'wall' && bishop.draftKind === 'wall' && bishop.draft?.length === 1){
+      const top = bishop.draft[0];
+      const tip = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
+      drawWall({
+        x:top.x,
+        yTop:top.y,
+        yTip:Math.min(tip.y, top.y - 0.05),
+        passiveSide:stage6BishopDefaultPassiveSide()
+      }, {stroke:'#6a5841', width:3, dash:[6,4]});
+    }
   }
 
   const zoneStroke = (zone, color, widthPx, dash)=>{
@@ -4810,6 +5010,7 @@ function stage6BishopDrawCanvas(){
   zoneStroke(bishop.exitZone, stage6BishopZoneColor('exit'));
   zoneStroke(stage6BishopSortZone(bishop.surfaceLoad), stage6BishopZoneColor('load'), 4, (bishop.surfaceLoad?.q || 0) > 0 ? [] : [5, 4]);
   drawLoadZoneMarkers(stage6BishopSortZone(bishop.surfaceLoad), Math.max(+bishop.surfaceLoad?.q || 0, 0), stage6BishopZoneColor('load'));
+  (bishop.walls || []).forEach((wall)=>drawWall(wall));
 
   const results = bishop.results?.allResults || [];
   const keepBest = Math.min(results.length, bishop.search.keepBest || 10);
@@ -4836,6 +5037,28 @@ function stage6BishopDrawCanvas(){
       ctx.stroke();
       ctx.restore();
     });
+    (selected.wallForces || []).forEach((wallForce)=>{
+      const application = stage6BishopWorldToScreen({x:wallForce.x, y:wallForce.y_application});
+      const dir = wallForce.wall?.passiveSide === 'left' ? -1 : 1;
+      ctx.save();
+      ctx.strokeStyle = '#b3477a';
+      ctx.fillStyle = '#b3477a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(application.x, application.y);
+      ctx.lineTo(application.x + dir * 20, application.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(application.x + dir * 20, application.y);
+      ctx.lineTo(application.x + dir * 12, application.y - 5);
+      ctx.lineTo(application.x + dir * 12, application.y + 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textAlign = dir > 0 ? 'left' : 'right';
+      ctx.fillText(`${wallForce.R_wall.toFixed(0)} kN/m`, application.x + dir * 24, application.y - 6);
+      ctx.restore();
+    });
   }
 
   if(bishop.terrain?.length >= 2) drawPolyline(bishop.terrain, '#2d3a4a', 3);
@@ -4857,7 +5080,11 @@ function stage6BishopDrawCanvas(){
   if(bishop.tool === 'edit'){
     const handleSets = [
       ...(bishop.terrain || []),
-      ...(bishop.phreatic || [])
+      ...(bishop.phreatic || []),
+      ...(bishop.walls || []).flatMap((wall)=>[
+        {x:wall.x, y:wall.yTop},
+        {x:wall.x, y:wall.yTip}
+      ])
     ];
     handleSets.forEach((pt)=>{
       const s = stage6BishopWorldToScreen(pt);
@@ -6379,22 +6606,28 @@ function renderStage6BishopApp(){
   const selected = stage6BishopSelectedResult();
   const results = bishop.results?.allResults || [];
   const summary = bishop.results?.summary;
+  const wallSummary = bishop.results?.wallSummary || null;
   const loadZone = stage6BishopSortZone(bishop.surfaceLoad);
   const loadZoneActive = stage6BishopValidZone(loadZone);
   const loadQ = Math.max(+bishop.surfaceLoad?.q || 0, 0);
+  const wallCount = (bishop.walls || []).length;
+  const hasWalls = wallCount > 0;
   const loadSummary = loadZoneActive
     ? `${loadZone.xStart.toFixed(2)}-${loadZone.xEnd.toFixed(2)} m @ ${loadQ.toFixed(1)} kPa${loadQ > 0 ? '' : ' (inactive)'}`
     : 'not set';
   const runReady = !!model && !!bishop.entryZone && !!bishop.exitZone;
   const showSpencerSliceCols = !!selected?.spencerConverged;
+  const showWallSliceCol = !!selected?.slices?.some((slice)=>(slice.wallForceLeft || 0) > 0);
   const selectedNormalHeader = showSpencerSliceCols ? 'Effective normal' : 'Normal';
   const selectedMethodLabel = stage6BishopResultMethodLabel(selected);
+  const selectedWallLabel = stage6BishopResultWallLabel(selected);
   const resultRows = results.slice(0, Math.max(bishop.search.keepBest || 10, 1)).map((result, index)=>`
     <tr class="${index === (bishop.selectedResult || 0) ? 'sel':''}">
       <td>${index+1}</td>
       <td>${result.FS.toFixed(3)}</td>
       <td>${stage6BishopResultMethodLabel(result)}</td>
       <td>${Number.isFinite(result.F_bishop) ? result.F_bishop.toFixed(3) : '—'}</td>
+      <td>${stage6BishopResultWallLabel(result)}</td>
       <td>${Number.isFinite(result.lambda) ? result.lambda.toFixed(3) : '—'}</td>
       <td>${result.iterations}</td>
       <td><button class="btn sm" onclick="stage6BishopSelectResult(${index})">Show</button></td>
@@ -6409,17 +6642,33 @@ function renderStage6BishopApp(){
       <td><input type="number" step="0.1" min="0" value="${Number(mat.gammaSat || 0).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'gammaSat', this.value)"></td>
     </tr>
   `).join('');
+  const wallRows = (bishop.walls || []).map((wall, index)=>`
+    <tr>
+      <td>${index + 1}</td>
+      <td><input type="number" step="0.05" value="${wall.x.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'x', this.value)"></td>
+      <td><input type="number" step="0.05" value="${wall.yTop.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'yTop', this.value)"></td>
+      <td><input type="number" step="0.05" value="${wall.yTip.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'yTip', this.value)"></td>
+      <td>
+        <select onchange="stage6BishopSetWallField(${index}, 'passiveSide', this.value)">
+          <option value="left"${wall.passiveSide==='left'?' selected':''}>Left</option>
+          <option value="right"${wall.passiveSide==='right'?' selected':''}>Right</option>
+        </select>
+      </td>
+      <td>${(wall.yTop - wall.yTip).toFixed(2)} m</td>
+      <td><button class="btn sm" onclick="stage6BishopDeleteWall(${index})">Delete</button></td>
+    </tr>
+  `).join('');
   return `
     <div class="mc2 st6-bishop">
       <div class="mc2-head" style="margin-bottom:12px">
         <span style="font-size:13px;font-weight:600">Bishop simplified + Spencer equilibrium check</span>
-        <span style="font-size:11px;color:var(--tx2)">Circular slip surfaces only, active CPT only, with self-weight, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.</span>
+        <span style="font-size:11px;color:var(--tx2)">Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.</span>
       </div>
       <div class="st6-bishop-layout">
         <div class="st6-bishop-side">
           <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Geometry</div>
           <div class="ctrl-row st6-bishop-controls">
-            <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally define a uniform surcharge zone, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
+            <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally add infinitely stiff retaining walls and a uniform surcharge zone, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
             <div class="st6-bishop-tool-groups">
               <div class="st6-bishop-tool-group">
                 <div class="st6-bishop-tool-title">Terrain</div>
@@ -6437,6 +6686,7 @@ function renderStage6BishopApp(){
                 <div class="st6-bishop-tools">
                   <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
                   <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
+                  <button class="btn sm ${bishop.tool==='wall'?'active':''}" onclick="stage6BishopSetTool('wall')">Retaining wall</button>
                   <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
                   <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
                   <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
@@ -6448,6 +6698,7 @@ function renderStage6BishopApp(){
                 <div class="st6-bishop-mini-actions">
                   <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
                   <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
+                  <button class="btn sm" onclick="stage6BishopClear('walls')">Clear walls</button>
                   <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
                   <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
                   <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
@@ -6483,11 +6734,24 @@ function renderStage6BishopApp(){
             <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
               Terrain vertices: <strong>${bishop.terrain.length}</strong><br>
               Phreatic vertices: <strong>${bishop.phreatic.length}</strong><br>
+              Retaining walls: <strong>${wallCount}</strong><br>
               Active CPT x: <strong>${Number.isFinite(bishop.activeCptX)?bishop.activeCptX.toFixed(2)+' m':'not placed'}</strong><br>
               Entry zone: <strong>${bishop.entryZone?`${bishop.entryZone.xStart.toFixed(2)}-${bishop.entryZone.xEnd.toFixed(2)} m`:'not set'}</strong><br>
               Exit zone: <strong>${bishop.exitZone?`${bishop.exitZone.xStart.toFixed(2)}-${bishop.exitZone.xEnd.toFixed(2)} m`:'not set'}</strong><br>
               Surface load: <strong>${loadSummary}</strong>
             </div>
+            <details class="st6-adv" data-st6details="bishop-walls"${stage6DetailsOpen('bishop-walls')}>
+              <summary>Retaining walls</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">Walls are treated as infinitely stiff vertical elements. When a slip circle intersects a wall, the solver adds the wall's passive resistance as a stabilising moment in Bishop and as a horizontal push in Spencer. If a circle passes below the wall tip, the wall has no effect on that surface.</div>
+                <div style="overflow:auto">
+                  <table class="tbl st6-bishop-materials">
+                    <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Length</th><th></th></tr></thead>
+                    <tbody>${wallRows || '<tr><td colspan="7" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
             <details class="st6-adv" data-st6details="bishop-search"${stage6DetailsOpen('bishop-search')}>
               <summary>Search and solver settings</summary>
               <div class="st6-adv-body">
@@ -6601,7 +6865,7 @@ function renderStage6BishopApp(){
             <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Bishop simplified section and slip circles"></canvas>
             <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
             <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
-            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally draw the load zone, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the solver.</div>
+            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the solver.</div>
           </div>
           <div class="st6-bishop-results-panel">
             <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Results</div>
@@ -6613,6 +6877,9 @@ function renderStage6BishopApp(){
                   <tr><td>Circle centre</td><td>${summary ? `(${summary.center.x.toFixed(2)}, ${summary.center.y.toFixed(2)})` : '—'}</td></tr>
                   <tr><td>Radius</td><td>${summary ? `${summary.radius.toFixed(2)} m` : '—'}</td></tr>
                   <tr><td>Max slip depth</td><td>${summary ? `${summary.maxDepth.toFixed(2)} m` : '—'}</td></tr>
+                  ${hasWalls ? `<tr><td>Critical through wall</td><td>${wallSummary?.criticalThroughWall ? wallSummary.criticalThroughWall.FS.toFixed(3) : '—'}</td></tr>` : ''}
+                  ${hasWalls ? `<tr><td>Critical below wall</td><td>${wallSummary?.criticalBelowWall ? wallSummary.criticalBelowWall.FS.toFixed(3) : '—'}</td></tr>` : ''}
+                  ${hasWalls ? `<tr><td>Wall effective</td><td>${wallSummary?.wallEffective == null ? '—' : (wallSummary.wallEffective ? 'yes' : 'no / inconclusive')}</td></tr>` : ''}
                   <tr><td>Trials</td><td>${bishop.results?.timing?.trialCount ?? '—'}</td></tr>
                   <tr><td>Runtime</td><td>${bishop.results?.timing?.totalMs != null ? `${bishop.results.timing.totalMs.toFixed(0)} ms` : '—'}</td></tr>
                   <tr><td>Spencer rechecked</td><td>${bishop.results?.methodMode === 'bishop_spencer' ? `${bishop.results?.spencerRechecked || 0}` : 'off'}</td></tr>
@@ -6623,6 +6890,8 @@ function renderStage6BishopApp(){
                   <tr><td>Selected Spencer F</td><td>${selected?.method === 'spencer' && Number.isFinite(selected.FS) ? selected.FS.toFixed(3) : '—'}</td></tr>
                   <tr><td>Selected λ</td><td>${selected && Number.isFinite(selected.lambda) ? selected.lambda.toFixed(3) : '—'}</td></tr>
                   <tr><td>Selected θ</td><td>${selected && Number.isFinite(selected.thetaDeg) ? `${selected.thetaDeg.toFixed(1)}°` : '—'}</td></tr>
+                  ${hasWalls ? `<tr><td>Selected wall status</td><td>${selectedWallLabel}</td></tr>` : ''}
+                  ${hasWalls ? `<tr><td>Selected wall force</td><td>${selected && Number.isFinite(selected.wallForceTotal) ? `${selected.wallForceTotal.toFixed(1)} kN/m` : '—'}</td></tr>` : ''}
                   <tr><td>Selected moment residual</td><td>${selected && Number.isFinite(selected.momentResidual) ? selected.momentResidual.toFixed(3) : '—'}</td></tr>
                   <tr><td>Selected force residual</td><td>${selected && Number.isFinite(selected.forceResidual) ? selected.forceResidual.toFixed(3) : '—'}</td></tr>
                   <tr><td>Selected iterations</td><td>${selected ? selected.iterations : '—'}</td></tr>
@@ -6640,8 +6909,8 @@ function renderStage6BishopApp(){
                 <div class="mc2-sec">Best circles</div>
                 <div style="max-height:200px;overflow:auto">
                   <table class="tbl st6-bishop-results">
-                    <thead><tr><th>#</th><th>F</th><th>Method</th><th>Bishop F</th><th>λ</th><th>Iter</th><th></th></tr></thead>
-                    <tbody>${resultRows || '<tr><td colspan="7" style="text-align:center;color:var(--tx2)">No results yet.</td></tr>'}</tbody>
+                    <thead><tr><th>#</th><th>F</th><th>Method</th><th>Bishop F</th><th>Wall</th><th>λ</th><th>Iter</th><th></th></tr></thead>
+                    <tbody>${resultRows || '<tr><td colspan="8" style="text-align:center;color:var(--tx2)">No results yet.</td></tr>'}</tbody>
                   </table>
                 </div>
               </div>
@@ -6650,7 +6919,7 @@ function renderStage6BishopApp(){
               <div class="mc2-sec">Selected slices</div>
               <div style="max-height:250px;overflow:auto">
                 <table class="tbl st6-bishop-results">
-                  <thead><tr><th>i</th><th>W</th><th>Q</th><th>V</th><th>alpha</th><th>c'</th><th>phi'</th><th>u</th><th>m_alpha</th><th>${selectedNormalHeader}</th>${showSpencerSliceCols ? '<th>E_r</th><th>X_r</th><th>S_mob</th>' : ''}</tr></thead>
+                  <thead><tr><th>i</th><th>W</th><th>Q</th><th>V</th><th>alpha</th><th>c'</th><th>phi'</th><th>u</th><th>m_alpha</th><th>${selectedNormalHeader}</th>${showWallSliceCol ? '<th>R_wall,left</th>' : ''}${showSpencerSliceCols ? '<th>E_r</th><th>X_r</th><th>S_mob</th>' : ''}</tr></thead>
                   <tbody>
                     ${selected ? selected.slices.map((slice, index)=>`
                       <tr>
@@ -6664,9 +6933,10 @@ function renderStage6BishopApp(){
                         <td>${slice.uBase.toFixed(1)}</td>
                         <td>${slice.mAlpha.toFixed(3)}</td>
                         <td>${(showSpencerSliceCols ? slice.N_eff : slice.normalForce) != null ? (showSpencerSliceCols ? slice.N_eff : slice.normalForce).toFixed(1) : '—'}</td>
+                        ${showWallSliceCol ? `<td>${(slice.wallForceLeft || 0) > 0 ? slice.wallForceLeft.toFixed(1) : '—'}</td>` : ''}
                         ${showSpencerSliceCols ? `<td>${slice.E_right != null ? slice.E_right.toFixed(1) : '—'}</td><td>${slice.X_right != null ? slice.X_right.toFixed(1) : '—'}</td><td>${slice.S_mob != null ? slice.S_mob.toFixed(1) : '—'}</td>` : ''}
                       </tr>
-                    `).join('') : `<tr><td colspan="${showSpencerSliceCols ? 13 : 10}" style="text-align:center;color:var(--tx2)">Select or run a result to inspect slice data.</td></tr>`}
+                    `).join('') : `<tr><td colspan="${10 + (showWallSliceCol ? 1 : 0) + (showSpencerSliceCols ? 3 : 0)}" style="text-align:center;color:var(--tx2)">Select or run a result to inspect slice data.</td></tr>`}
                   </tbody>
                 </table>
               </div>
@@ -6675,9 +6945,10 @@ function renderStage6BishopApp(){
         </div>
       </div>
       ${stage6NoteHtml([
-        {level:'warn', text:'This Stage 6 slope check is experimental. It searches circular slip surfaces only and currently uses self-weight, one optional uniform surcharge zone, and optional phreatic pore pressure along the base.'},
+        {level:'warn', text:'This Stage 6 slope check is experimental. It searches circular slip surfaces only and currently uses self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and optional phreatic pore pressure along the base.'},
         {level:'info', text:'The soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this workflow.'},
-        {level:'info', text:'Spencer runs as a verification pass on the best Bishop circles. Each shortlisted circle is solved by intersecting the Spencer moment and force branches. If Spencer does not converge for a shortlisted circle, the app keeps the Bishop result and flags that fallback in the results panel.'}
+        {level:'info', text:'Spencer runs as a verification pass on the best Bishop circles. Each shortlisted circle is solved by intersecting the Spencer moment and force branches. If Spencer does not converge for a shortlisted circle, the app keeps the Bishop result and flags that fallback in the results panel.'},
+        {level:'info', text:'When a circle intersects a retaining wall, Bishop reduces the driving moment with the wall resistance and Spencer injects the same wall force into the horizontal force chain. Circles that pass below the wall tip remain unchanged and may still govern.'}
       ])}
     </div>
   `;
@@ -7156,6 +7427,7 @@ function stage7BishopPayload(){
       snapSize:bishop.snapSize,
       gridSnap:bishop.gridSnap,
       activeCptX:bishop.activeCptX,
+      walls:bishop.walls,
       entryZone:bishop.entryZone,
       exitZone:bishop.exitZone,
       surfaceLoad:bishop.surfaceLoad,
@@ -7164,6 +7436,7 @@ function stage7BishopPayload(){
       spencer:bishop.spencer
     }),
     summary:safeClone(bishop.results?.summary || null),
+    wallSummary:safeClone(bishop.results?.wallSummary || null),
     methodMode:bishop.results?.methodMode || bishop.methodMode || 'bishop_only',
     spencerRechecked:bishop.results?.spencerRechecked || 0,
     spencerConverged:bishop.results?.spencerConverged || 0,
@@ -7182,6 +7455,12 @@ function stage7BishopPayload(){
       spencerAttempted:selected.spencerAttempted,
       spencerConverged:selected.spencerConverged,
       spencerRejectReason:selected.spencerRejectReason,
+      intersectsWall:selected.intersectsWall,
+      passesBelowWall:selected.passesBelowWall,
+      wallIntersectionCount:selected.wallIntersectionCount,
+      wallForceTotal:selected.wallForceTotal,
+      wallMomentTerm:selected.wallMomentTerm,
+      wallForces:selected.wallForces,
       iterations:selected.iterations,
       circle:selected.circle,
       entry:selected.entry,
@@ -7202,6 +7481,10 @@ function stage7BishopPayload(){
       spencerAttempted:result.spencerAttempted,
       spencerConverged:result.spencerConverged,
       spencerRejectReason:result.spencerRejectReason,
+      intersectsWall:result.intersectsWall,
+      passesBelowWall:result.passesBelowWall,
+      wallIntersectionCount:result.wallIntersectionCount,
+      wallForceTotal:result.wallForceTotal,
       iterations:result.iterations,
       circle:result.circle
     })),
@@ -7499,6 +7782,8 @@ const legacyApi={
   stage6BishopPopDraftPoint,
   stage6BishopClear,
   stage6BishopSetMaterialField,
+  stage6BishopSetWallField,
+  stage6BishopDeleteWall,
   stage6BishopRunSearch,
   stage6BishopStopSearch,
   stage6BishopSelectResult,

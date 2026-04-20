@@ -1052,6 +1052,12 @@
                 <div class="report-stat"><span>Mode</span><strong>{payload.stage6.bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer' : 'Bishop only'}</strong></div>
                 <div class="report-stat"><span>Selected result</span><strong>{payload.stage6.bishop.selectedIndex + 1}</strong></div>
                 <div class="report-stat"><span>Spencer converged</span><strong>{payload.stage6.bishop.methodMode === 'bishop_spencer' ? `${payload.stage6.bishop.spencerConverged}/${payload.stage6.bishop.spencerRechecked}` : 'off'}</strong></div>
+                {#if payload.stage6.bishop.config.walls?.length}
+                  <div class="report-stat"><span>Retaining walls</span><strong>{payload.stage6.bishop.config.walls.length}</strong></div>
+                  <div class="report-stat"><span>Critical through wall</span><strong>{payload.stage6.bishop.wallSummary?.criticalThroughWall ? fmt(payload.stage6.bishop.wallSummary.criticalThroughWall.FS, 3) : '—'}</strong></div>
+                  <div class="report-stat"><span>Critical below wall</span><strong>{payload.stage6.bishop.wallSummary?.criticalBelowWall ? fmt(payload.stage6.bishop.wallSummary.criticalBelowWall.FS, 3) : '—'}</strong></div>
+                  <div class="report-stat"><span>Wall effective</span><strong>{payload.stage6.bishop.wallSummary?.wallEffective == null ? '—' : payload.stage6.bishop.wallSummary.wallEffective ? 'Yes' : 'No / inconclusive'}</strong></div>
+                {/if}
               </div>
               <div class="report-grid report-grid--2">
                 <table class="pt report-pt">
@@ -1059,12 +1065,16 @@
                     <tr><td>Strength set</td><td>{payload.stage6.bishop.config.strengthSet}</td></tr>
                     <tr><td>Method mode</td><td>{payload.stage6.bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer check' : 'Bishop only'}</td></tr>
                     <tr><td>Analysis depth (m)</td><td>{fmt(payload.stage6.bishop.config.analysisDepth, 2)} m</td></tr>
+                    <tr><td>Retaining walls</td><td>{payload.stage6.bishop.config.walls?.length ?? 0}</td></tr>
                     <tr><td>Entry zone x-range (m)</td><td>{payload.stage6.bishop.config.entryZone ? `${fmt(payload.stage6.bishop.config.entryZone.xStart, 2)} - ${fmt(payload.stage6.bishop.config.entryZone.xEnd, 2)} m` : '—'}</td></tr>
                     <tr><td>Exit zone x-range (m)</td><td>{payload.stage6.bishop.config.exitZone ? `${fmt(payload.stage6.bishop.config.exitZone.xStart, 2)} - ${fmt(payload.stage6.bishop.config.exitZone.xEnd, 2)} m` : '—'}</td></tr>
                     <tr><td>Selected method</td><td>{payload.stage6.bishop.selected?.methodLabel ?? '—'}</td></tr>
+                    <tr><td>Selected wall status</td><td>{payload.stage6.bishop.selected?.intersectsWall ? `${payload.stage6.bishop.selected.wallIntersectionCount} engaged` : payload.stage6.bishop.selected?.passesBelowWall ? 'passes below wall' : 'no wall effect'}</td></tr>
+                    <tr><td>Selected wall force</td><td>{payload.stage6.bishop.selected?.wallForceTotal != null ? `${fmt(payload.stage6.bishop.selected.wallForceTotal, 1)} kN/m` : '—'}</td></tr>
                     <tr><td>Selected Bishop F</td><td>{payload.stage6.bishop.selected?.F_bishop != null ? fmt(payload.stage6.bishop.selected.F_bishop, 3) : '—'}</td></tr>
                     <tr><td>Selected Spencer F</td><td>{payload.stage6.bishop.selected?.method === 'spencer' ? fmt(payload.stage6.bishop.selected.FS, 3) : '—'}</td></tr>
                     <tr><td>Selected λ</td><td>{payload.stage6.bishop.selected?.lambda != null ? fmt(payload.stage6.bishop.selected.lambda, 3) : '—'}</td></tr>
+                    <tr><td>Selected wall moment term</td><td>{payload.stage6.bishop.selected?.wallMomentTerm != null ? fmt(payload.stage6.bishop.selected.wallMomentTerm, 3) : '—'}</td></tr>
                     <tr><td>Selected moment residual</td><td>{payload.stage6.bishop.selected?.momentResidual != null ? fmt(payload.stage6.bishop.selected.momentResidual, 3) : '—'}</td></tr>
                     <tr><td>Selected force residual</td><td>{payload.stage6.bishop.selected?.forceResidual != null ? fmt(payload.stage6.bishop.selected.forceResidual, 3) : '—'}</td></tr>
                     <tr><td>Runtime (ms)</td><td>{payload.stage6.bishop.timing?.totalMs != null ? `${fmt(payload.stage6.bishop.timing.totalMs, 0)} ms` : '—'}</td></tr>
@@ -1074,7 +1084,7 @@
                   <h4>Best circles</h4>
                   <table class="tbl report-table">
                     <thead>
-                      <tr><th>#</th><th>FS (-)</th><th>Method</th><th>Bishop F (-)</th><th>λ (-)</th><th>M res.</th><th>F res.</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
+                      <tr><th>#</th><th>FS (-)</th><th>Method</th><th>Wall</th><th>R_wall (kN/m)</th><th>Bishop F (-)</th><th>λ (-)</th><th>M res.</th><th>F res.</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
                     </thead>
                     <tbody>
                       {#each payload.stage6.bishop.topResults as result}
@@ -1082,6 +1092,8 @@
                           <td>{result.rank}</td>
                           <td>{fmt(result.FS, 3)}</td>
                           <td>{result.methodLabel}</td>
+                          <td>{result.intersectsWall ? `${result.wallIntersectionCount} engaged` : result.passesBelowWall ? 'below wall' : 'none'}</td>
+                          <td>{result.wallForceTotal != null ? fmt(result.wallForceTotal, 1) : '—'}</td>
                           <td>{result.F_bishop != null ? fmt(result.F_bishop, 3) : '—'}</td>
                           <td>{result.lambda != null ? fmt(result.lambda, 3) : '—'}</td>
                           <td>{result.momentResidual != null ? fmt(result.momentResidual, 3) : '—'}</td>
@@ -1094,6 +1106,54 @@
                   </table>
                 </div>
               </div>
+              {#if payload.stage6.bishop.config.walls?.length}
+                <div class="report-grid report-grid--2" style="margin-top:16px">
+                  <div class="report-card report-card--nested">
+                    <h4>Retaining Walls</h4>
+                    <table class="tbl report-table">
+                      <thead>
+                        <tr><th>#</th><th>x (m)</th><th>Top y (m)</th><th>Tip y (m)</th><th>Length (m)</th><th>Passive side</th></tr>
+                      </thead>
+                      <tbody>
+                        {#each payload.stage6.bishop.config.walls as wall, index}
+                          <tr>
+                            <td>{index + 1}</td>
+                            <td>{fmt(wall.x, 2)}</td>
+                            <td>{fmt(wall.yTop, 2)}</td>
+                            <td>{fmt(wall.yTip, 2)}</td>
+                            <td>{fmt(wall.yTop - wall.yTip, 2)}</td>
+                            <td>{wall.passiveSide === 'left' ? 'Left' : 'Right'}</td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="report-card report-card--nested">
+                    <h4>Selected Wall Interaction</h4>
+                    {#if payload.stage6.bishop.selected?.wallForces?.length}
+                      <table class="tbl report-table">
+                        <thead>
+                          <tr><th>#</th><th>x (m)</th><th>y intersect (m)</th><th>R_wall (kN/m)</th><th>y app (m)</th><th>Passive side</th></tr>
+                        </thead>
+                        <tbody>
+                          {#each payload.stage6.bishop.selected.wallForces as force, index}
+                            <tr>
+                              <td>{index + 1}</td>
+                              <td>{fmt(force.x, 2)}</td>
+                              <td>{fmt(force.y_intersect, 2)}</td>
+                              <td>{fmt(force.R_wall, 1)}</td>
+                              <td>{fmt(force.y_application, 2)}</td>
+                              <td>{force.wall?.passiveSide === 'left' ? 'Left' : 'Right'}</td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    {:else}
+                      <p class="report-note" style="margin:0">The selected critical surface does not engage a retaining wall directly.</p>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
             </div>
           {/if}
         </section>
