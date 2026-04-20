@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <nav class="nav" id="nav">
 	<div class="si active" data-s="0"><div class="sn">1</div>Load &amp; preview</div>
 	<div class="si locked" data-s="1"><div class="sn">2</div>Classification</div>

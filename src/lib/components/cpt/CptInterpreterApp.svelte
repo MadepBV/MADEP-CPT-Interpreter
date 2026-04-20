@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
 	import '$lib/cpt-app/legacy.css';
 	import BannerPhaseShell from './BannerPhaseShell.svelte';

@@ -1,43 +1,56 @@
-# sv
+# madep-cpt
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
-
-## Creating a project
-
-If you're seeing this, you've probably already done this step. Congrats!
-
-```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-npx sv@0.15.1 create --template minimal --types ts --install npm .
-```
+A SvelteKit app for CPT (Cone Penetration Test) data processing, geotechnical
+analysis, and reporting.
 
 ## Developing
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+Install dependencies and start the dev server:
 
 ```sh
+npm install
 npm run dev
 
-# or start the server and open the app in a new browser tab
+# or open in a new browser tab on start
 npm run dev -- --open
 ```
 
 ## Building
 
-To create a production version of your app:
-
 ```sh
 npm run build
+npm run preview   # preview the production build locally
 ```
 
-You can preview the production build with `npm run preview`.
+You may need an [adapter](https://svelte.dev/docs/kit/adapters) for your
+deployment target.
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
-# madep-cpt
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+workflow and the Developer Certificate of Origin (DCO) sign-off requirement
+(`git commit -s`).
+
+## License
+
+Copyright (C) 2025 Mathias De Pelsmaeker and contributors.
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the **GNU Affero General Public License** as published by the
+Free Software Foundation, either version 3 of the License, or (at your option)
+any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the [GNU AGPL v3](LICENSE) for more details.
+
+SPDX-License-Identifier: `AGPL-3.0-or-later`
+
+### What AGPL-3.0 means in practice
+
+- You can **use, modify, and redistribute** this software freely.
+- If you distribute it or **run a modified version as a network service**, you
+  must make your source code available to users under the same license.
+- Forks and derivative works must also be released under AGPL-3.0-or-later.
+- Consulting work and internal modifications are fine; running a modified
+  public version without publishing your changes is not.

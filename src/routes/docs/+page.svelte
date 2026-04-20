@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
 	const pageTitle = 'Technical Documentation — MADEP CPT Interpreter';
 	const pageDescription =

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 export const SOIL_CLASS_NAMES = {
   'Peat / organic': 's-peat',
   'Soft clay': 's-sclay',

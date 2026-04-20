@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 function chartTitle(text) {
   return text ? { display: true, text, font: { size: 10 } } : { display: false };
