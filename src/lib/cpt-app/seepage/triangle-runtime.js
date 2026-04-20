@@ -2,7 +2,7 @@
 // @ts-nocheck
 
 const IS_NODE = typeof process === 'object' && typeof process?.versions?.node === 'string';
-const WASM_STATIC_PATH = 'vendor/triangle-wasm/triangle.out.wasm';
+const triangleWasmUrl = new URL('./assets/triangle.out.wasm', import.meta.url);
 
 let modulePromise = null;
 let triangleLogs = [];
@@ -30,20 +30,13 @@ function resetTriangleModule() {
   modulePromise = null;
 }
 
-function withBase(pathname) {
-  const base = import.meta?.env?.BASE_URL || '/';
-  const normalizedBase = base.endsWith('/') ? base : `${base}/`;
-  return `${normalizedBase}${String(pathname || '').replace(/^\/+/, '')}`;
-}
-
 async function loadWasmBinary() {
   if (IS_NODE) {
     const fs = await import('node:fs/promises');
-    const wasmUrl = new URL(`../../../../static/${WASM_STATIC_PATH}`, import.meta.url);
-    return new Uint8Array(await fs.readFile(wasmUrl));
+    return new Uint8Array(await fs.readFile(triangleWasmUrl));
   }
 
-  const response = await fetch(withBase(WASM_STATIC_PATH));
+  const response = await fetch(triangleWasmUrl.href);
   if (!response.ok) {
     throw new Error(`Failed to load Triangle WASM (${response.status} ${response.statusText}).`);
   }
