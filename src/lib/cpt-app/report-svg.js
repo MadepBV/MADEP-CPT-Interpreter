@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 import { SOIL_FILL_COLORS } from './soil-styles';
 
@@ -115,6 +116,7 @@ export function buildLayerPreviewSvgMarkup({
 
   let html = '';
   let overlaySvg = '';
+  let hitSvg = '';
 
   html += `<text x="${qcX + qcW / 2}" y="12" font-size="7" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">qc (MPa)</text>`;
   if (secondaryMetric === 'rf') {
@@ -157,8 +159,9 @@ export function buildLayerPreviewSvgMarkup({
     const fsRows = layerRows.map((row) => row.fsKPa).filter((value) => value != null);
 
     html += `<text x="${depthX}" y="${y1 + 5}" font-size="7" fill="#9a9a96" font-family="sans-serif">${layer.top.toFixed(1)}</text>`;
-    html += `<rect x="${colX}" y="${y1}" width="${colW}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>`;
-    html += `<rect class="section-layer-hit" data-layer-preview="1"
+    html += `<rect data-layer-fill="1" data-layer-index="${Number(layer.index ?? 0)}" x="${colX}" y="${y1}" width="${colW}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="rgba(0,0,0,0.15)" stroke-width="0.5" pointer-events="none"/>`;
+    hitSvg += `<rect class="section-layer-hit" data-layer-preview="1"
+      data-layer-index="${Number(layer.index ?? 0)}"
       data-type="${esc(layer.type)}"
       data-subtype="${esc(layer.subtype || '—')}"
       data-top="${Number(layer.top).toFixed(2)}" data-bot="${Number(layer.bot).toFixed(2)}" data-thk="${(layer.bot - layer.top).toFixed(2)}"
@@ -172,18 +175,18 @@ export function buildLayerPreviewSvgMarkup({
       data-fsmin="${fsRows.length ? Math.min(...fsRows).toFixed(1) : '—'}"
       data-fsmax="${fsRows.length ? Math.max(...fsRows).toFixed(1) : '—'}"
       data-fsavg="${layer.avgFs != null ? (Number(layer.avgFs) * 1000).toFixed(1) : '—'}"
-      x="${colX}" y="${y1}" width="${Math.max(hitEndX - colX, colW)}" height="${h}" fill="transparent"/>`;
+      x="${colX}" y="${y1}" width="${Math.max(hitEndX - colX, colW)}" height="${h}" fill="transparent" pointer-events="all"/>`;
     html += `<line x1="${colX}" x2="${hitEndX}" y1="${y1}" y2="${y1}" stroke="rgba(0,0,0,0.08)" stroke-width="0.4"/>`;
   }
 
   if (qcPath) {
-    overlaySvg += `<path d="${qcPath.trim()}" fill="none" stroke="rgba(53,162,235,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
+    overlaySvg += `<path d="${qcPath.trim()}" fill="none" stroke="rgba(53,162,235,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round" pointer-events="none"/>`;
   }
   if (secondaryMetric === 'rf' && rfPath) {
-    overlaySvg += `<path d="${rfPath.trim()}" fill="none" stroke="rgba(235,100,53,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
+    overlaySvg += `<path d="${rfPath.trim()}" fill="none" stroke="rgba(235,100,53,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round" pointer-events="none"/>`;
   }
   if (secondaryMetric === 'fs' && fsPath) {
-    overlaySvg += `<path d="${fsPath.trim()}" fill="none" stroke="rgba(83,74,183,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
+    overlaySvg += `<path d="${fsPath.trim()}" fill="none" stroke="rgba(83,74,183,0.95)" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round" pointer-events="none"/>`;
   }
 
   html += `<text x="${qcX}" y="${height - 4}" font-size="6" fill="#9a9a96" font-family="sans-serif">0</text>`;
@@ -201,9 +204,9 @@ export function buildLayerPreviewSvgMarkup({
 
   if (wt != null && Number.isFinite(Number(wt))) {
     const wtY = scaleDepth(Number(wt));
-    html += `<line x1="${colX - 4}" x2="${profileEndX}" y1="${wtY}" y2="${wtY}" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4,3"/>`;
-    html += `<text x="${profileEndX + 2}" y="${wtY + 3}" font-size="6.5" fill="#378ADD" font-family="sans-serif">WT</text>`;
+    html += `<line x1="${colX - 4}" x2="${profileEndX}" y1="${wtY}" y2="${wtY}" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4,3" pointer-events="none"/>`;
+    html += `<text x="${profileEndX + 2}" y="${wtY + 3}" font-size="6.5" fill="#378ADD" font-family="sans-serif" pointer-events="none">WT</text>`;
   }
 
-  return html + overlaySvg;
+  return html + overlaySvg + hitSvg;
 }
