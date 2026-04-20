@@ -401,20 +401,186 @@ function averagePorePressureOnBase(model, circle, xL, xR) {
   return sum / gauss.length;
 }
 
-function mergeShortIntervals(xs, minSliceWidth) {
+function normalizePassiveSide(side) {
+  return side === 'left' ? 'left' : 'right';
+}
+
+function wallPassiveProbeX(model, wall) {
+  const terrainVerts = model?.terrain?.vertices || [];
+  if (!terrainVerts.length) return Number(wall?.x) || 0;
+  const span = Math.max(terrainVerts[terrainVerts.length - 1].x - terrainVerts[0].x, 1);
+  const offset = Math.max(span * 1e-4, 0.01);
+  const dir = normalizePassiveSide(wall?.passiveSide) === 'left' ? -1 : 1;
+  return clampXToTerrain(model.terrain, (Number(wall?.x) || 0) + dir * offset);
+}
+
+function wallPassiveSegments(model, wall, yIntersect) {
+  const xProbe = wallPassiveProbeX(model, wall);
+  const terrainSurfaceY = terrainY(model.terrain, xProbe);
+  const waterY = model.phreatic ? terrainY(model.phreatic, xProbe) : null;
+  const yBottom = Math.min(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
+  const yTop = Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
+  const segments = [];
+
+  (model.bands || []).forEach((band) => {
+    const bandTop = bandUpperYAt(xProbe, model.terrain, band.topY, band.topFollowsTerrain);
+    const bandBottom = bandLowerYAt(xProbe, model.terrain, band.botY);
+    const overlapTop = Math.min(yTop, bandTop);
+    const overlapBottom = Math.max(yBottom, bandBottom);
+    if (overlapTop <= overlapBottom + GEOM_EPS) return;
+    const breakYs = [overlapBottom, overlapTop];
+    if (Number.isFinite(waterY) && waterY > overlapBottom + GEOM_EPS && waterY < overlapTop - GEOM_EPS) {
+      breakYs.push(waterY);
+    }
+    const ys = uniqueSorted(breakYs);
+    for (let i = 0; i < ys.length - 1; i += 1) {
+      const yLow = ys[i];
+      const yHigh = ys[i + 1];
+      const yMid = 0.5 * (yLow + yHigh);
+      const gammaDry = Number.isFinite(Number(band.material?.gamma)) ? Number(band.material.gamma) : 18;
+      const gammaSat = Number.isFinite(Number(band.material?.gammaSat)) ? Number(band.material.gammaSat) : gammaDry + 2;
+      segments.push({
+        yBottom: yLow,
+        yTop: yHigh,
+        gamma: Number.isFinite(waterY) && yMid < waterY - GEOM_EPS ? gammaSat : gammaDry,
+        material: band.material
+      });
+    }
+  });
+
+  return {
+    xProbe,
+    terrainSurfaceY,
+    segments
+  };
+}
+
+function computeWallIntersections(circle, model, entry, exit) {
+  const walls = model?.walls || [];
+  const interactions = {
+    intersections: [],
+    passedBelow: 0,
+    passedAbove: 0,
+    outOfMass: 0
+  };
+
+  walls.forEach((wall) => {
+    const wallX = Number(wall?.x);
+    if (!Number.isFinite(wallX) || wallX <= entry.x + GEOM_EPS || wallX >= exit.x - GEOM_EPS) {
+      interactions.outOfMass += 1;
+      return;
+    }
+    if (Math.abs(wallX - circle.center.x) >= circle.radius - GEOM_EPS) return;
+    const yIntersect = circleYActive(circle, wallX);
+    if (!Number.isFinite(yIntersect)) return;
+    if (yIntersect <= Number(wall?.yTip) + GEOM_EPS) {
+      interactions.passedBelow += 1;
+      return;
+    }
+    if (yIntersect >= Number(wall?.yTop) - GEOM_EPS) {
+      interactions.passedAbove += 1;
+      return;
+    }
+
+    const passive = wallPassiveSegments(model, wall, yIntersect);
+    let R_passive = 0;
+    let yMoment = 0;
+    passive.segments.forEach((segment) => {
+      const phi = ((Number(segment.material?.phiEffDeg) || 0) * Math.PI) / 180;
+      const Kp = sqr(Math.tan(Math.PI / 4 + phi / 2));
+      const cohesion = Number(segment.material?.cEff) || 0;
+      const z1 = passive.terrainSurfaceY - segment.yTop;
+      const z2 = passive.terrainSurfaceY - segment.yBottom;
+      if (!Number.isFinite(z1) || !Number.isFinite(z2) || z2 <= z1 + GEOM_EPS) return;
+      const a = Kp * (Number(segment.gamma) || 0);
+      const b = 2 * cohesion * Math.sqrt(Math.max(Kp, 0));
+      const force = 0.5 * a * (z2 * z2 - z1 * z1) + b * (z2 - z1);
+      if (!(force > GEOM_EPS)) return;
+      const firstMoment =
+        passive.terrainSurfaceY * force -
+        (a / 3) * (z2 * z2 * z2 - z1 * z1 * z1) -
+        0.5 * b * (z2 * z2 - z1 * z1);
+      R_passive += force;
+      yMoment += firstMoment;
+    });
+
+    if (!(R_passive > GEOM_EPS)) return;
+    const maxShear =
+      Number.isFinite(Number(wall?.maxShearForce)) && Number(wall.maxShearForce) > 0
+        ? Number(wall.maxShearForce)
+        : null;
+    const R_wall = maxShear != null ? Math.min(R_passive, maxShear) : R_passive;
+    if (!(R_wall > GEOM_EPS)) return;
+    const y_application =
+      R_passive > GEOM_EPS && Number.isFinite(yMoment / R_passive)
+        ? yMoment / R_passive
+        : Number(wall?.yTip) + (yIntersect - Number(wall?.yTip)) / 3;
+    const momentArm = circle.center.y - y_application;
+    const M_wall = R_wall * momentArm;
+    interactions.intersections.push({
+      wall: {
+        ...wall,
+        passiveSide: normalizePassiveSide(wall?.passiveSide)
+      },
+      x: wallX,
+      y_intersect: yIntersect,
+      d_embedded: yIntersect - Number(wall?.yTip),
+      R_passive,
+      R_wall,
+      y_application,
+      momentArm,
+      M_wall,
+      momentTerm: M_wall / Math.max(circle.radius, EPS)
+    });
+  });
+
+  return interactions;
+}
+
+function applyWallInteractionsToSlices(slices, wallIntersections) {
+  if (!Array.isArray(slices) || !slices.length) return [];
+  return slices.map((slice) => {
+    const leftWalls = (wallIntersections || []).filter((item) => Math.abs(slice.xL - item.x) <= 1e-6);
+    const rightWalls = (wallIntersections || []).filter((item) => Math.abs(slice.xR - item.x) <= 1e-6);
+    return {
+      ...slice,
+      wallOnLeft: leftWalls[0]?.wall || slice.wallOnLeft || null,
+      wallOnRight: rightWalls[0]?.wall || slice.wallOnRight || null,
+      wallForceLeft: leftWalls.reduce((sum, item) => sum + (Number(item.R_wall) || 0), 0),
+      wallMomentTermLeft: leftWalls.reduce((sum, item) => sum + (Number(item.momentTerm) || 0), 0),
+      wallInteractionsLeft: leftWalls.map((item) => ({
+        x: item.x,
+        y_intersect: item.y_intersect,
+        R_wall: item.R_wall,
+        y_application: item.y_application
+      }))
+    };
+  });
+}
+
+function mergeShortIntervals(xs, minSliceWidth, protectedXs = []) {
   let arr = uniqueSorted(xs);
+  const protectedVals = uniqueSorted(protectedXs);
+  const isProtected = (value) => protectedVals.some((item) => Math.abs(item - value) <= GEOM_EPS);
   if (arr.length < 2) return arr;
   let changed = true;
   while (changed && arr.length > 2) {
     changed = false;
     for (let i = 0; i < arr.length - 1; i += 1) {
       if (arr[i + 1] - arr[i] >= minSliceWidth - GEOM_EPS) continue;
-      if (i === 0) arr.splice(1, 1);
-      else if (i === arr.length - 2) arr.splice(i, 1);
-      else {
+      const leftProtected = isProtected(arr[i]);
+      const rightProtected = isProtected(arr[i + 1]);
+      if (leftProtected && rightProtected) continue;
+      if (i === 0) {
+        arr.splice(leftProtected ? i + 1 : 1, 1);
+      } else if (i === arr.length - 2) {
+        arr.splice(rightProtected ? i : arr.length - 2, 1);
+      } else {
         const left = arr[i] - arr[i - 1];
         const right = arr[i + 2] - arr[i + 1];
-        if (left >= right) arr.splice(i + 1, 1);
+        if (leftProtected) arr.splice(i + 1, 1);
+        else if (rightProtected) arr.splice(i, 1);
+        else if (left >= right) arr.splice(i + 1, 1);
         else arr.splice(i, 1);
       }
       changed = true;
@@ -430,6 +596,7 @@ function computeSliceBreaks(circle, entry, exit, model, searchConfig) {
   const span = Math.abs(xEnd - xStart);
   const minSliceWidth = Math.max(searchConfig.minSliceWidth || span / 300, 0.05);
   const cuts = [xStart, xEnd];
+  const protectedCuts = [xStart, xEnd];
   const backbone = Math.max(3, searchConfig.targetSlices || 30);
   for (let i = 1; i < backbone; i += 1) cuts.push(lerp(xStart, xEnd, i / backbone));
 
@@ -461,7 +628,14 @@ function computeSliceBreaks(circle, entry, exit, model, searchConfig) {
     });
   }
 
-  return mergeShortIntervals(cuts, minSliceWidth);
+  (model.walls || []).forEach((wall) => {
+    if (wall.x > xStart + GEOM_EPS && wall.x < xEnd - GEOM_EPS) {
+      cuts.push(wall.x);
+      protectedCuts.push(wall.x);
+    }
+  });
+
+  return mergeShortIntervals(cuts, minSliceWidth, protectedCuts);
 }
 
 function buildSlicesForCircle(circle, entry, exit, model, searchConfig) {
@@ -544,14 +718,27 @@ function buildSlicesForCircle(circle, entry, exit, model, searchConfig) {
       baseLength,
       uBase,
       baseMaterial,
-      layerAreas
+      layerAreas,
+      wallOnLeft: (model.walls || []).find((wall) => Math.abs(wall.x - xL) <= 1e-6) || null,
+      wallOnRight: (model.walls || []).find((wall) => Math.abs(wall.x - xR) <= 1e-6) || null,
+      wallForceLeft: 0,
+      wallMomentTermLeft: 0,
+      wallInteractionsLeft: []
     });
   }
 
   return { slices, reason: '' };
 }
 
-function ordinarySeed(slices) {
+function totalWallMomentTerm(wallIntersections) {
+  return (wallIntersections || []).reduce((sum, item) => sum + (Number(item?.momentTerm) || 0), 0);
+}
+
+function totalWallForce(wallIntersections) {
+  return (wallIntersections || []).reduce((sum, item) => sum + (Number(item?.R_wall) || 0), 0);
+}
+
+function ordinarySeed(slices, wallIntersections = []) {
   let numerator = 0;
   let denominator = 0;
   slices.forEach((slice) => {
@@ -565,12 +752,13 @@ function ordinarySeed(slices) {
     numerator += c * l + (V * cosA - slice.uBase * l) * tanPhi;
     denominator += V * sinA;
   });
+  denominator -= totalWallMomentTerm(wallIntersections);
   if (denominator <= EPS) return 1;
   const seed = numerator / denominator;
   return Number.isFinite(seed) ? seed : 1;
 }
 
-function buildDiagnostics(slices, F, iterations) {
+function buildDiagnostics(slices, F, iterations, wallIntersections = []) {
   const sliceNormals = [];
   const sliceMobilizedShears = [];
   const sliceMAlpha = [];
@@ -595,9 +783,12 @@ function buildDiagnostics(slices, F, iterations) {
     converged: true,
     FS: F,
     F: F,
-    F_fellenius: ordinarySeed(slices),
+    F_fellenius: ordinarySeed(slices, wallIntersections),
     iterations,
     reason: '',
+    wallMomentTerm: totalWallMomentTerm(wallIntersections),
+    wallForceTotal: totalWallForce(wallIntersections),
+    wallIntersections,
     sliceNormals,
     sliceMobilizedShears,
     sliceMAlpha
@@ -608,7 +799,12 @@ function cloneSlicesForSolver(slices) {
   return (slices || []).map((slice) => ({
     ...slice,
     baseMaterial: slice?.baseMaterial ? { ...slice.baseMaterial } : slice.baseMaterial,
-    layerAreas: Array.isArray(slice?.layerAreas) ? slice.layerAreas.map((item) => ({ ...item })) : []
+    layerAreas: Array.isArray(slice?.layerAreas) ? slice.layerAreas.map((item) => ({ ...item })) : [],
+    wallOnLeft: slice?.wallOnLeft ? { ...slice.wallOnLeft } : null,
+    wallOnRight: slice?.wallOnRight ? { ...slice.wallOnRight } : null,
+    wallInteractionsLeft: Array.isArray(slice?.wallInteractionsLeft)
+      ? slice.wallInteractionsLeft.map((item) => ({ ...item }))
+      : []
   }));
 }
 
@@ -623,12 +819,19 @@ function enrichBishopSlices(slices, diagnostics) {
     X_right: null,
     N_eff: null,
     S_mob: null,
-    theta_interslice: null
+    theta_interslice: null,
+    wallForceLeft: Number(slice?.wallForceLeft) || 0,
+    wallMomentTermLeft: Number(slice?.wallMomentTermLeft) || 0,
+    wallInteractionsLeft: Array.isArray(slice?.wallInteractionsLeft)
+      ? slice.wallInteractionsLeft.map((item) => ({ ...item }))
+      : []
   }));
 }
 
-function buildBishopSearchResult(circle, slices, bishopDiagnostics) {
+function buildBishopSearchResult(circle, slices, bishopDiagnostics, wallInteraction) {
   const F = bishopDiagnostics?.FS ?? bishopDiagnostics?.F ?? null;
+  const wallIntersections = wallInteraction?.intersections || bishopDiagnostics?.wallIntersections || [];
+  const passesBelowWall = !wallIntersections.length && (wallInteraction?.passedBelow || 0) > 0;
   return {
     circle,
     entry: circle?.entryPoint || null,
@@ -640,7 +843,7 @@ function buildBishopSearchResult(circle, slices, bishopDiagnostics) {
     F_bishop: F,
     F_m: F,
     F_f: null,
-    F_fellenius: bishopDiagnostics?.F_fellenius ?? ordinarySeed(slices),
+    F_fellenius: bishopDiagnostics?.F_fellenius ?? ordinarySeed(slices, wallIntersections),
     lambda: null,
     thetaDeg: null,
     theta_deg: null,
@@ -654,6 +857,13 @@ function buildBishopSearchResult(circle, slices, bishopDiagnostics) {
     spencerAttempted: false,
     spencerConverged: false,
     spencerRejectReason: '',
+    intersectsWall: wallIntersections.length > 0,
+    passesBelowWall,
+    wallIntersectionCount: wallIntersections.length,
+    wallBypassCount: wallInteraction?.passedBelow || 0,
+    wallForceTotal: bishopDiagnostics?.wallForceTotal ?? totalWallForce(wallIntersections),
+    wallMomentTerm: bishopDiagnostics?.wallMomentTerm ?? totalWallMomentTerm(wallIntersections),
+    wallForces: wallIntersections.map((item) => ({ ...item })),
     diagnostics: {
       bishop: bishopDiagnostics
     },
@@ -766,12 +976,14 @@ function evaluateSpencerState(slices, lambda, FTrial, solverConfig) {
   let tensionSlices = 0;
   let drivingMoment = 0;
   let resistingMoment = 0;
+  const wallMomentTerm = (slices || []).reduce((sum, slice) => sum + (Number(slice?.wallMomentTermLeft) || 0), 0);
   const theta = Math.atan(lambda);
   const forceResidualScale = normalizedForceResidualScale(slices);
   const momentResidualScale = normalizedMomentResidualScale(slices);
 
   for (let i = 0; i < slices.length; i += 1) {
     const slice = slices[i];
+    ELeft += Number(slice?.wallForceLeft) || 0;
     const sinA = Math.sin(slice.alphaRad);
     const cosA = Math.cos(slice.alphaRad);
     const tanA = sinA / Math.max(cosA, 1e-9);
@@ -865,7 +1077,7 @@ function evaluateSpencerState(slices, lambda, FTrial, solverConfig) {
   }
 
   const forceResidual = ELeft;
-  const momentResidual = resistingMoment - drivingMoment;
+  const momentResidual = resistingMoment - drivingMoment + wallMomentTerm;
   return {
     valid: true,
     reason: '',
@@ -873,6 +1085,7 @@ function evaluateSpencerState(slices, lambda, FTrial, solverConfig) {
     lambda,
     forceResidual,
     momentResidual,
+    wallMomentTerm,
     normalizedForceResidual: Math.abs(forceResidual) / forceResidualScale,
     normalizedMomentResidual: Math.abs(momentResidual) / momentResidualScale,
     forceResidualScale,
@@ -1313,24 +1526,29 @@ function applySpencerResult(baseResult, spencerResult) {
   };
 }
 
-function solveBishopSimplified(slices, solverConfig) {
+function solveBishopSimplified(slices, solverConfig, wallIntersections = []) {
   let driving = 0;
   slices.forEach((slice) => {
     driving += sliceVerticalLoad(slice) * Math.sin(slice.alphaRad);
   });
+  const wallMomentTerm = totalWallMomentTerm(wallIntersections);
+  driving -= wallMomentTerm;
   if (driving <= EPS) {
     return {
       converged: false,
       FS: null,
       iterations: 0,
-      reason: 'nonpositive driving term',
+      reason: wallMomentTerm > 0 ? 'stable by wall alone' : 'nonpositive driving term',
+      wallMomentTerm,
+      wallForceTotal: totalWallForce(wallIntersections),
+      wallIntersections,
       sliceNormals: [],
       sliceMobilizedShears: [],
       sliceMAlpha: []
     };
   }
 
-  let F = ordinarySeed(slices);
+  let F = ordinarySeed(slices, wallIntersections);
   if (!Number.isFinite(F) || F <= 0) F = solverConfig.initialFS || 1;
 
   for (let iter = 1; iter <= (solverConfig.maxIterations || 50); iter += 1) {
@@ -1351,6 +1569,9 @@ function solveBishopSimplified(slices, solverConfig) {
           FS: null,
           iterations: iter,
           reason: 'm_alpha <= 0',
+          wallMomentTerm,
+          wallForceTotal: totalWallForce(wallIntersections),
+          wallIntersections,
           sliceNormals: [],
           sliceMobilizedShears: [],
           sliceMAlpha: mDiag
@@ -1366,13 +1587,16 @@ function solveBishopSimplified(slices, solverConfig) {
         FS: null,
         iterations: iter,
         reason: 'invalid FS',
+        wallMomentTerm,
+        wallForceTotal: totalWallForce(wallIntersections),
+        wallIntersections,
         sliceNormals: [],
         sliceMobilizedShears: [],
         sliceMAlpha: mDiag
       };
     }
     if (Math.abs(nextF - F) < (solverConfig.tolerance || 1e-4)) {
-      return buildDiagnostics(slices, nextF, iter);
+      return buildDiagnostics(slices, nextF, iter, wallIntersections);
     }
     F = nextF;
   }
@@ -1382,6 +1606,9 @@ function solveBishopSimplified(slices, solverConfig) {
     FS: null,
     iterations: solverConfig.maxIterations || 50,
     reason: 'no convergence',
+    wallMomentTerm,
+    wallForceTotal: totalWallForce(wallIntersections),
+    wallIntersections,
     sliceNormals: [],
     sliceMobilizedShears: [],
     sliceMAlpha: []
@@ -1456,7 +1683,12 @@ function summarizeCritical(result, model) {
   const xEnd = result.circle.exitPoint.x;
   const depth = maxSlipThickness(result.circle, model.terrain, xStart, xEnd, 50);
   return {
+    FS: result.FS,
     maxDepth: depth,
+    intersectsWall: !!result.intersectsWall,
+    passesBelowWall: !!result.passesBelowWall,
+    wallIntersectionCount: result.wallIntersectionCount || 0,
+    wallForceTotal: Number(result.wallForceTotal) || 0,
     entry: result.circle.entryPoint,
     exit: result.circle.exitPoint,
     center: result.circle.center,
@@ -1519,11 +1751,13 @@ export function analyzeBishopSearch(input, emitProgress) {
             if (!built.slices || built.slices.length < 3) {
               noteReject(built.reason || 'too few slices');
             } else {
-              const bishop = solveBishopSimplified(built.slices, solver);
+              const wallInteraction = computeWallIntersections(circle, model, entry, exit);
+              const wallSlices = applyWallInteractionsToSlices(built.slices, wallInteraction.intersections);
+              const bishop = solveBishopSimplified(wallSlices, solver, wallInteraction.intersections);
               if (!bishop.converged) {
                 noteReject(bishop.reason || 'no convergence');
               } else {
-                results.push(buildBishopSearchResult(circle, built.slices, bishop));
+                results.push(buildBishopSearchResult(circle, wallSlices, bishop, wallInteraction));
               }
             }
           }
@@ -1574,12 +1808,30 @@ export function analyzeBishopSearch(input, emitProgress) {
     finalResults.sort((a, b) => a.FS - b.FS);
   }
 
-  const critical = finalResults[0] || null;
+  const criticalOverall = finalResults[0] || null;
+  const criticalThroughWall = finalResults.find((result) => result.intersectsWall) || null;
+  const criticalBelowWall = finalResults.find((result) => result.passesBelowWall) || null;
   const totalMs = Date.now() - started;
   return {
-    critical,
+    critical: criticalOverall,
+    criticalOverall,
+    criticalThroughWall,
+    criticalBelowWall,
     allResults: finalResults,
-    summary: summarizeCritical(critical, model),
+    summary: summarizeCritical(criticalOverall, model),
+    wallSummary:
+      (model?.walls || []).length > 0
+        ? {
+            wallCount: model.walls.length,
+            criticalOverall: summarizeCritical(criticalOverall, model),
+            criticalThroughWall: summarizeCritical(criticalThroughWall, model),
+            criticalBelowWall: summarizeCritical(criticalBelowWall, model),
+            wallEffective:
+              criticalThroughWall && criticalBelowWall
+                ? criticalThroughWall.FS > criticalBelowWall.FS + 1e-9
+                : null
+          }
+        : null,
     rejectionCounts,
     methodMode,
     spencerRechecked,
@@ -1704,6 +1956,29 @@ export function buildBishopModelFromStageLayers(layers, bishopState) {
       .filter(Number.isFinite)
   );
 
+  const walls = (bishopState?.walls || [])
+    .map((wall) => ({
+      x: Number(wall?.x),
+      yTop: Number(wall?.yTop),
+      yTip: Number(wall?.yTip),
+      passiveSide: normalizePassiveSide(wall?.passiveSide),
+      maxShearForce:
+        Number.isFinite(Number(wall?.maxShearForce)) && Number(wall.maxShearForce) > 0
+          ? Number(wall.maxShearForce)
+          : null
+    }))
+    .filter((wall) => {
+      return (
+        Number.isFinite(wall.x) &&
+        Number.isFinite(wall.yTop) &&
+        Number.isFinite(wall.yTip) &&
+        wall.yTip < wall.yTop - GEOM_EPS &&
+        wall.x >= terrain.vertices[0].x - GEOM_EPS &&
+        wall.x <= terrain.vertices[terrain.vertices.length - 1].x + GEOM_EPS
+      );
+    })
+    .sort((a, b) => a.x - b.x || b.yTop - a.yTop);
+
   return {
     terrain,
     phreatic,
@@ -1715,6 +1990,7 @@ export function buildBishopModelFromStageLayers(layers, bishopState) {
     bands,
     regions,
     boundaryYs,
-    surfaceLoad
+    surfaceLoad,
+    walls
   };
 }
