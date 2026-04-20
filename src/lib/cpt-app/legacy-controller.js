@@ -1113,7 +1113,7 @@ function setSmartMerge(v){
 
 function setSmartMergeSensitivity(v,fromInput){
   if(isNaN(v)) return;
-  const val=Math.max(0,Math.min(2,+v));
+  const val=Math.max(0,Math.min(6,+v));
   S.smartMergeSensitivity=val;
   const range=document.getElementById('smartMergeSensR');
   const num=document.getElementById('smartMergeSensN');
@@ -1979,8 +1979,8 @@ function chooseSimilarityMergeDirection(merged, i, margin){
 function smartSimilarityReduce(segments, sensitivity){
   let changed=true;
   let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  const sens=Math.max(0,Math.min(2,sensitivity ?? 0.5));
-  const pairThreshold=Math.max(0.35, 0.90 - 0.275*sens);
+  const sens=Math.max(0,Math.min(6,sensitivity ?? 0.5));
+  const pairThreshold=0.90 - 0.275*sens;
   const thicknessRef=SMART_SLIVER_REF;
   while(changed){
     changed=false;
@@ -2015,8 +2015,8 @@ function smartSimilarityReduce(segments, sensitivity){
 function enforceMinThicknessBySimilarity(segments, sensitivity){
   let changed=true;
   let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  const sens=Math.max(0,Math.min(2,sensitivity ?? 0.5));
-  const margin=Math.max(0.02, 0.14 - 0.08*sens);
+  const sens=Math.max(0,Math.min(6,sensitivity ?? 0.5));
+  const margin=Math.max(0, 0.14 - 0.08*sens);
   while(changed){
     changed=false;
     for(let i=0;i<merged.length;i++){
@@ -2033,7 +2033,7 @@ function enforceMinThicknessBySimilarity(segments, sensitivity){
 }
 
 function smartPostMerge(segments){
-  const sensitivity=Math.max(0,Math.min(2,S.smartMergeSensitivity ?? 0.5));
+  const sensitivity=Math.max(0,Math.min(6,S.smartMergeSensitivity ?? 0.5));
   let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
   // Intended smart chain:
   //   1. original raw classification-derived layering

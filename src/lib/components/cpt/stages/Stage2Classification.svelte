@@ -99,7 +99,17 @@
 				onchange={(event) =>
 					call('setSmartMerge', (event.currentTarget as HTMLInputElement).checked)}
 			/>
-			Smart layer merge
+			<span style="display:inline-flex;align-items:center;gap:4px">
+				Smart layer merge
+				<button
+					type="button"
+					class="st6-tip"
+					data-tip="Similarity-based boundary cleanup applied after classification and before the final minimum-thickness rule. Higher sensitivity makes the app progressively more willing to remove compatible layer boundaries."
+					aria-label="Similarity-based boundary cleanup applied after classification and before the final minimum-thickness rule. Higher sensitivity makes the app progressively more willing to remove compatible layer boundaries."
+				>
+					ⓘ
+				</button>
+			</span>
 		</label>
 		<div
 			id="smartMergeControls"
@@ -110,7 +120,7 @@
 				type="range"
 				id="smartMergeSensR"
 				min="0"
-				max="2"
+				max="6"
 				step="0.05"
 				value="0.50"
 				style="width:120px"
@@ -126,7 +136,7 @@
 				type="number"
 				id="smartMergeSensN"
 				min="0"
-				max="2"
+				max="6"
 				step="0.05"
 				value="0.50"
 				oninput={(event) =>
