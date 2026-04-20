@@ -15,6 +15,7 @@ import {
   importBishopMaterialsFromLayers,
   terrainY as bishopTerrainY
 } from './stage6-bishop';
+import { importTerrainFromDxfText } from './dxf-terrain';
 import {
   buildBeamDeflectionChartConfig,
   buildBeamMomentChartConfig,
@@ -1768,10 +1769,10 @@ function runClass(){
 /* ════════════════════════════════
    LAYER DETECTION
 ════════════════════════════════ */
-function segmentSummary(seg){
+function segmentSummary(seg, prevSeg){
   const r=seg.rows.filter(x=>x.qc>0.02);
   const rows=r.length?r:seg.rows;
-  const top=seg._top!=null?seg._top:(seg.isFirst?0:+(seg.rows[0].z-0.02).toFixed(3));
+  const top=segmentTop(seg, prevSeg);
   const bot=+seg.rows[seg.rows.length-1].z.toFixed(3);
   const avgQc=+(rows.reduce((s,x)=>s+x.qc,0)/rows.length).toFixed(3);
   const fsR=rows.filter(x=>x.fs!=null);
@@ -1794,6 +1795,25 @@ function segmentSummary(seg){
     const df=DEF[seg.type]||DEF['Sand']; g=df.g; gs=df.gs; phi=df.phi; c=df.c; cu=df.cu;
   }
   return{type:seg.type,subtype,avgQc,avgFs,avgRf,g,gs,phi,c,cu,top,bot,thk:+(bot-top).toFixed(3),rows:seg.rows.length};
+}
+
+function segmentTop(seg, prevSeg){
+  if(!seg) return 0;
+  if(seg._top!=null) return +(+seg._top).toFixed(3);
+  if(seg.isFirst) return 0;
+
+  const prevLast=prevSeg?.rows?.[prevSeg.rows.length - 1]?.z;
+  const currFirst=seg.rows?.[0]?.z;
+
+  if(Number.isFinite(prevLast) && Number.isFinite(currFirst) && currFirst > prevLast){
+    return +(0.5 * (prevLast + currFirst)).toFixed(3);
+  }
+
+  if(Number.isFinite(currFirst)){
+    return +(currFirst - 0.02).toFixed(3);
+  }
+
+  return Number.isFinite(prevLast) ? +prevLast.toFixed(3) : 0;
 }
 
 function subtypeGroup(subtype){
@@ -1904,9 +1924,11 @@ function simpleUpwardMerge(segments){
   while(changed){
     changed=false;
     const next=[];
-    for(const seg of merged){
+    for(let i=0;i<merged.length;i++){
+      const seg=merged[i];
       const rows=seg.rows;
-      const thick=segmentSummary(seg).thk;
+      const prev=i>0?merged[i-1]:null;
+      const thick=segmentSummary(seg, prev).thk;
       if(thick<S.minThk&&next.length>0){
         next[next.length-1].rows.push(...rows);
         changed=true;
@@ -1926,7 +1948,7 @@ function mergeSegmentInDirection(merged, i, dir){
     merged.splice(i,1);
   }else{
     merged[i+1].rows.unshift(...seg.rows);
-    merged[i+1]._top=seg._top!=null?seg._top:(i===0?0:seg.rows[0].z-0.02);
+    merged[i+1]._top=segmentTop(seg, i>0?merged[i-1]:null);
     merged.splice(i,1);
   }
   return merged.map((s,idx)=>({...s,isFirst:idx===0}));
@@ -1934,11 +1956,12 @@ function mergeSegmentInDirection(merged, i, dir){
 
 function chooseSimilarityMergeDirection(merged, i, margin){
   const seg=merged[i];
-  const layer=segmentSummary(seg);
+  const layer=segmentSummary(seg, i>0?merged[i-1]:null);
   const upSeg=i>0?merged[i-1]:null, downSeg=i<merged.length-1?merged[i+1]:null;
-  const up=upSeg?segmentSummary(upSeg):null, down=downSeg?segmentSummary(downSeg):null;
-  const upOuter=i>1?segmentSummary(merged[i-2]):null;
-  const downOuter=i<merged.length-2?segmentSummary(merged[i+2]):null;
+  const up=upSeg?segmentSummary(upSeg, i>1?merged[i-2]:null):null;
+  const down=downSeg?segmentSummary(downSeg, seg):null;
+  const upOuter=i>1?segmentSummary(merged[i-2], i>2?merged[i-3]:null):null;
+  const downOuter=i<merged.length-2?segmentSummary(merged[i+2], downSeg):null;
   const upCand=mergeCandidateScore(layer,up,upOuter);
   const downCand=mergeCandidateScore(layer,down,downOuter);
   if(!upCand.ok&&!downCand.ok) return null;
@@ -1963,10 +1986,10 @@ function smartSimilarityReduce(segments, sensitivity){
     let bestIdx=-1;
     let bestScore=-Infinity;
     for(let i=0;i<merged.length-1;i++){
-      const left=segmentSummary(merged[i]);
-      const right=segmentSummary(merged[i+1]);
-      const leftOuter=i>0?segmentSummary(merged[i-1]):null;
-      const rightOuter=i<merged.length-2?segmentSummary(merged[i+2]):null;
+      const left=segmentSummary(merged[i], i>0?merged[i-1]:null);
+      const right=segmentSummary(merged[i+1], merged[i]);
+      const leftOuter=i>0?segmentSummary(merged[i-1], i>1?merged[i-2]:null):null;
+      const rightOuter=i<merged.length-2?segmentSummary(merged[i+2], merged[i+1]):null;
       const lr=mergeCandidateScore(left,right,rightOuter);
       const rl=mergeCandidateScore(right,left,leftOuter);
       if(!lr.ok||!rl.ok) continue;
@@ -1996,7 +2019,7 @@ function enforceMinThicknessBySimilarity(segments, sensitivity){
   while(changed){
     changed=false;
     for(let i=0;i<merged.length;i++){
-      const layer=segmentSummary(merged[i]);
+      const layer=segmentSummary(merged[i], i>0?merged[i-1]:null);
       if(layer.thk>=S.minThk) continue;
       const dir=chooseSimilarityMergeDirection(merged, i, margin);
       if(!dir) continue;
@@ -2046,7 +2069,7 @@ function detectLayers(){
   //   - smart mode: reduce by similarity first, enforce minimum thickness last
   const merged=S.smartMerge ? smartPostMerge(raw) : simpleUpwardMerge(raw);
 
-  const mergedSummaries=merged.map((seg,i)=>segmentSummary({...seg,isFirst:i===0}));
+  const mergedSummaries=merged.map((seg,i)=>segmentSummary({...seg,isFirst:i===0}, i>0?merged[i-1]:null));
   let prevBot=null;
   S.layers=merged.map((seg,i)=>{
     const sum=mergedSummaries[i];
@@ -3872,6 +3895,55 @@ function stage6BishopSetTool(tool){
     S.stage6.bishop.draftKind = '';
   }
   renderStage6();
+}
+
+function stage6BishopTriggerDxfImport(){
+  const input = document.getElementById('stage6BishopDxfInput');
+  if(input) input.click();
+}
+
+function stage6BishopApplyImportedTerrain(vertices, label){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  bishop.terrain = stage6BishopSortedPolyline(vertices);
+  bishop.phreatic = [];
+  bishop.draft = [];
+  bishop.draftKind = '';
+  bishop.entryZone = null;
+  bishop.exitZone = null;
+  bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
+  bishop.activeCptX = null;
+  bishop.viewport.fitted = false;
+  stage6BishopInvalidate(`Terrain imported from DXF${label ? ` (${label})` : ''}; review the CPT position and redraw the zones before rerunning the search.`);
+  renderStage6();
+}
+
+function stage6BishopImportDxf(event){
+  ensureStage6State();
+  const input = event?.target;
+  const file = input?.files?.[0];
+  if(input) input.value = '';
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (loadEvent)=>{
+    try{
+      const imported = importTerrainFromDxfText(loadEvent?.target?.result);
+      stage6BishopApplyImportedTerrain(imported.vertices, file.name);
+    }catch(error){
+      const message = error?.message || 'Unable to import terrain from DXF.';
+      S.stage6.bishop.progress.message = message;
+      renderStage6();
+      alert(`${file.name}: ${message}`);
+    }
+  };
+  reader.onerror = ()=>{
+    const message = `Error reading ${file.name}`;
+    S.stage6.bishop.progress.message = message;
+    renderStage6();
+    alert(message);
+  };
+  reader.readAsText(file);
 }
 
 function stage6BishopPopDraftPoint(){
@@ -6347,23 +6419,40 @@ function renderStage6BishopApp(){
         <div class="st6-bishop-side">
           <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Geometry</div>
           <div class="ctrl-row st6-bishop-controls">
-            <div class="st6-help">Draw a monotonic terrain, place the active CPT on that terrain, optionally define a uniform surcharge zone, then define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
-            <div class="st6-bishop-tools">
-              <button class="btn sm ${bishop.tool==='terrain'?'active':''}" onclick="stage6BishopSetTool('terrain')">Terrain</button>
-              <button class="btn sm" onclick="stage6BishopFinishDraft()">Finish line</button>
-              <button class="btn sm" onclick="stage6BishopPopDraftPoint()">Undo point</button>
-              <button class="btn sm" onclick="stage6BishopClear('draft')">Clear draft</button>
-              <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
-              <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic</button>
-              <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
-              <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
-              <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
-              <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
-              <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
-              <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
-              <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
-              <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
-              <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
+            <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally define a uniform surcharge zone, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
+            <div class="st6-bishop-tool-groups">
+              <div class="st6-bishop-tool-group">
+                <div class="st6-bishop-tool-title">Terrain</div>
+                <div class="st6-bishop-tools">
+                  <button class="btn sm ${bishop.tool==='terrain'?'active':''}" onclick="stage6BishopSetTool('terrain')">Draw terrain</button>
+                  <button class="btn sm" onclick="stage6BishopTriggerDxfImport()">Import DXF terrain</button>
+                  <input id="stage6BishopDxfInput" type="file" accept=".dxf,.DXF" style="display:none" onchange="stage6BishopImportDxf(event)">
+                  <button class="btn sm" onclick="stage6BishopFinishDraft()">Finish line</button>
+                  <button class="btn sm" onclick="stage6BishopPopDraftPoint()">Undo point</button>
+                  <button class="btn sm" onclick="stage6BishopClear('draft')">Clear draft</button>
+                </div>
+              </div>
+              <div class="st6-bishop-tool-group">
+                <div class="st6-bishop-tool-title">Section Setup</div>
+                <div class="st6-bishop-tools">
+                  <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
+                  <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
+                  <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
+                  <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
+                  <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
+                  <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
+                </div>
+              </div>
+              <div class="st6-bishop-tool-group st6-bishop-tool-group-muted">
+                <div class="st6-bishop-tool-title">Clear Accepted Geometry</div>
+                <div class="st6-bishop-mini-actions">
+                  <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
+                  <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
+                  <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
+                  <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
+                  <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
+                </div>
+              </div>
             </div>
             <label style="font-size:11px;color:var(--tx2)">Material strength set${stage6Tooltip('Characteristic keeps the active CPT layer parameters unchanged. DA1/1 uses M1 soil factors and DA1/2 uses M2 soil factors before importing the Bishop base materials.')}
               <select onchange="stage6BishopSetField('strengthSet', this.value)">
@@ -6512,7 +6601,7 @@ function renderStage6BishopApp(){
             <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Bishop simplified section and slip circles"></canvas>
             <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
             <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
-            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally draw the load zone, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the solver.</div>
+            <div class="st6-help" style="margin-top:10px">Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally draw the load zone, then draw the entry and exit zones. Hover a soil region to see the material parameters currently used by the solver.</div>
           </div>
           <div class="st6-bishop-results-panel">
             <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Results</div>
@@ -7181,7 +7270,7 @@ function buildStage7Payload(){
     version:3,
     stage:'stage7',
     generatedAt:new Date().toISOString(),
-    appVersion:'0.0.1',
+    appVersion:'0.1.0',
     project:{
       name:PROJECT.name,
       phase:PROJECT.phase
@@ -7404,6 +7493,8 @@ const legacyApi={
   setStage6App,
   stage6BishopSetField,
   stage6BishopSetTool,
+  stage6BishopTriggerDxfImport,
+  stage6BishopImportDxf,
   stage6BishopFinishDraft,
   stage6BishopPopDraftPoint,
   stage6BishopClear,
