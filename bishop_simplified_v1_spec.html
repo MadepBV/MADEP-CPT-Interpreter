@@ -302,6 +302,7 @@ li { margin-bottom: 0.35rem; }
         <li><a href="#s3-1">Terrain polyline</a></li>
         <li><a href="#s3-2">Soil regions from CPT layering</a></li>
         <li><a href="#s3-3">Phreatic surface &amp; pore-pressure model</a></li>
+        <li><a href="#s3-4">Uniform surcharge zone</a></li>
       </ol>
     </li>
     <li><a href="#s4">Slip-Circle Definition &amp; Search Strategy</a>
@@ -325,6 +326,7 @@ li { margin-bottom: 0.35rem; }
         <li><a href="#s6-2">Governing equation derivation</a></li>
         <li><a href="#s6-3">Iteration scheme</a></li>
         <li><a href="#s6-4">Convergence criteria &amp; failure modes</a></li>
+        <li><a href="#s6-5">Uniform surcharge contribution</a></li>
       </ol>
     </li>
     <li><a href="#s7">Data Structures</a></li>
@@ -386,6 +388,10 @@ li { margin-bottom: 0.35rem; }
   <strong>Accuracy context.</strong> Bishop Simplified typically agrees within 5% of rigorous methods (Spencer, Morgenstern–Price) for circular failure surfaces. It is the standard first-pass method in commercial tools (SLOPE/W, SLIDE, etc.) and is accepted by USACE EM 1110-2-1902, FHWA NHI-01-028, and Eurocode 7 annexes for circular analysis.
 </div>
 
+<div class="callout note">
+  <strong>Current external-load support.</strong> The Stage 6 Bishop app supports one optional <strong>uniform vertical surcharge zone</strong> drawn on the terrain with the same two-click interaction as the entry and exit zones. It represents a strip surcharge over a finite horizontal interval, not a concentrated point load or an inclined load.
+</div>
+
 <h3>Unit system</h3>
 <p>All internal computation uses SI base units: metres (m), kilonewtons per cubic metre (kN/m³) for unit weights, kilopascals (kPa) for stresses and cohesion, degrees for friction angles (converted to radians for trigonometry). The solver is 2D plane-strain; all forces are per metre run of slope.</p>
 
@@ -398,6 +404,9 @@ li { margin-bottom: 0.35rem; }
   <tr><td><code>γ</code></td><td>Total unit weight of soil</td><td>kN/m³</td></tr>
   <tr><td><code>u</code></td><td>Pore-water pressure at slice base</td><td>kPa</td></tr>
   <tr><td><code>W</code></td><td>Slice weight (total, including water)</td><td>kN/m</td></tr>
+  <tr><td><code>q</code></td><td>Uniform surcharge intensity on a drawn terrain interval</td><td>kPa = kN/m²</td></tr>
+  <tr><td><code>Q</code></td><td>Surcharge contribution to a slice</td><td>kN/m</td></tr>
+  <tr><td><code>V</code></td><td>Total vertical slice load, with self-weight and surcharge included</td><td>kN/m</td></tr>
   <tr><td><code>b</code></td><td>Slice width (horizontal)</td><td>m</td></tr>
   <tr><td><code>α</code></td><td>Inclination of slice base to horizontal (positive when base slopes downward left-to-right)</td><td>°</td></tr>
   <tr><td><code>l</code></td><td>Length of slice base (= b / cos α)</td><td>m</td></tr>
@@ -490,6 +499,25 @@ where γ_w = 9.81 kN/m³
 <div class="callout warn">
   <strong>Pore-pressure alternative: r_u method.</strong> If the app does not have a defined phreatic surface, an alternative is the pore-pressure ratio: <code>u = r_u × γ × h</code> where h is the height of the soil column above the slice base midpoint. This is a global simplification; <code>r_u</code> values of 0.0 (dry), 0.25 (typical), or 0.5 (high water table) are common. The phreatic-surface approach is preferred because it allows spatial variation.
 </div>
+
+<h3 id="s3-4"><span class="snum">3.4</span>Uniform surcharge zone</h3>
+
+<p>The current load support beyond self-weight is one optional terrain-anchored surcharge zone. The zone is defined by its start and end x-coordinates on the terrain plus a uniform vertical intensity <code>q</code>. In engineering terms this is a strip surcharge over a finite width, evaluated per metre run of section.</p>
+
+<div class="eq">
+<span class="label">Surface-load geometry</span>
+surfaceLoad = {
+  xStart: float,
+  xEnd:   float,
+  q:      float    // kPa = kN/m²
+}
+
+Constraint:
+  xStart &lt; xEnd
+  q ≥ 0
+</div>
+
+<p>The load is applied only where a slice overlaps the interval <code>[xStart, xEnd]</code>. In the first version the direction is strictly vertical and downward. No horizontal component, no eccentricity, and no line-load singularity are introduced.</p>
 
 
 <!-- ════════════════════════════════════════════════════════════════ -->
@@ -601,6 +629,7 @@ Constraint: R must be large enough that the arc passes below the terrain between
   <li>Every terrain vertex x between x_en and x_ex (terrain slope breaks).</li>
   <li>Every soil-region boundary intersection with the vertical strip between x_en and x_ex. These are the x-positions where a layer boundary crosses the terrain surface or the slip-circle arc.</li>
   <li>The x-position where the phreatic surface crosses the slip-circle arc (if applicable).</li>
+  <li>If a surcharge zone is present: its start and end x-coordinates, clipped to the entry-exit span.</li>
   <li>The x-position of the lowest point of the slip circle (where α changes sign), to prevent a single slice from spanning the sign change.</li>
 </ol>
 
@@ -824,6 +853,43 @@ It typically underestimates F by 5–15% compared to Bishop.
   <strong>Under-relaxation implementation.</strong> If during any iteration k the change |F^{k+1} − F^k| increases compared to the previous step (i.e. the iteration is diverging), switch to under-relaxed updates: <code>F^{k+1} = 0.5 × F_new + 0.5 × F^k</code>. This damps oscillation without affecting the final converged value.
 </div>
 
+<h3 id="s6-5"><span class="snum">6.5</span>Uniform surcharge contribution</h3>
+
+<p>The current load implementation adds one vertical surcharge term to each slice. The surcharge is treated as an added vertical load contribution <code>Q_i</code> over the part of the slice width that overlaps the drawn terrain interval.</p>
+
+<div class="eq">
+<span class="label">Slice surcharge overlap</span>
+b_load,i = max(0, min(x_R,i, x_q,end) - max(x_L,i, x_q,start))
+
+Q_i = q × b_load,i
+
+V_i = W_i + Q_i
+</div>
+
+<p>The surcharge is vertical and downward only, so the Bishop algebra stays almost unchanged: replace the slice vertical load <code>W_i</code> by <code>V_i</code> wherever the solver currently uses the total downward slice force.</p>
+
+<div class="eq">
+<span class="label">Bishop equation with surcharge zone</span>
+          Σ [ (c'·b + (V - u·b)·tan(φ')) × (1 / m_α) ]
+F  =  ─────────────────────────────────────────────────────
+                      Σ [ V · sin(α) ]
+
+where:
+  V_i = W_i + Q_i
+</div>
+
+<div class="eq">
+<span class="label">Vertical equilibrium with surcharge</span>
+V = N'·cos(α) + u·b + S·sin(α)
+
+with:
+  V = W + Q
+</div>
+
+<div class="callout note">
+  <strong>Implementation consequence.</strong> The load-zone start and end x-values must be part of the mandatory cut set (§5.1), and the slice data structure should retain both <code>Q_i</code> and <code>V_i</code> for result inspection. This keeps the visual diagnostics honest: users can see soil weight, surcharge, and total vertical load separately.
+</div>
+
 
 <!-- ════════════════════════════════════════════════════════════════ -->
 <!-- §7 DATA STRUCTURES -->
@@ -899,6 +965,8 @@ It typically underestimates F by 5–15% compared to Bishop.
   <span class="param">alpha</span>:       <span class="ty">float</span>       <span class="cm">// base angle (radians)</span>
   <span class="param">baseLength</span>:  <span class="ty">float</span>       <span class="cm">// l = b / cos(α)</span>
   <span class="param">W</span>:           <span class="ty">float</span>       <span class="cm">// total weight (kN/m)</span>
+  <span class="param">Q</span>:           <span class="ty">float</span>       <span class="cm">// surcharge contribution (kN/m)</span>
+  <span class="param">V</span>:           <span class="ty">float</span>       <span class="cm">// total vertical load = W + Q (kN/m)</span>
   <span class="param">u</span>:           <span class="ty">float</span>       <span class="cm">// pore pressure at base midpoint (kPa)</span>
   <span class="param">c_eff</span>:       <span class="ty">float</span>       <span class="cm">// c' of base layer (kPa)</span>
   <span class="param">phi_eff</span>:     <span class="ty">float</span>       <span class="cm">// φ' of base layer (radians)</span>
@@ -931,6 +999,7 @@ It typically underestimates F by 5–15% compared to Bishop.
 <span class="kw">struct</span> <span class="ty">SlopeModel</span> {
   <span class="param">terrain</span>:      <span class="ty">Polyline</span>
   <span class="param">phreatic</span>:     <span class="ty">Polyline</span>       <span class="cm">// nullable: if absent, u=0 everywhere</span>
+  <span class="param">surfaceLoad</span>:  <span class="ty">{xStart: float, xEnd: float, q: float}</span> | <span class="kw">null</span>
   <span class="param">regions</span>:      <span class="ty">SoilRegion[]</span>
   <span class="param">soilTypes</span>:    <span class="ty">SoilType[]</span>
 }
@@ -1623,6 +1692,16 @@ from W — the formula does this via the (W - u·b) term.
   <tr><td>Expected F</td><td>≈ 1.25 – 1.35 (critical circle should be shallow, mostly in the upper layer)</td></tr>
 </table>
 
+<h3>Test 4: Finite crest surcharge zone</h3>
+<table>
+  <tr><th>Parameter</th><th>Value</th></tr>
+  <tr><td>Slope geometry</td><td>Same as Test 1</td></tr>
+  <tr><td>Soil</td><td>Same as Test 1</td></tr>
+  <tr><td>Water</td><td>None</td></tr>
+  <tr><td>Surface load</td><td>Uniform surcharge q = 20 kPa over a 4 m interval behind the crest</td></tr>
+  <tr><td>Expected behaviour</td><td>Critical F should reduce relative to Test 1, and slice surcharge should be nonzero only where the slice overlaps the loaded interval</td></tr>
+</table>
+
 <h3>Verification protocol</h3>
 <ol>
   <li>Run each test case and compare F to the expected range.</li>
@@ -1631,6 +1710,7 @@ from W — the formula does this via the (W - u·b) term.
   <li>Verify slice count is ≥ 25 and that slice edges align with terrain breaks and layer boundaries.</li>
   <li>Run a convergence study: increase slice count from 10 to 100 and verify F changes by less than 2% beyond 30 slices.</li>
   <li>For a known circle (fixed xc, yc, R), compare individual slice weights, base angles, and pore pressures against hand calculations for at least 3 slices.</li>
+  <li>For the surcharge extension, verify that the load-zone start and end create explicit slice cuts and that the computed <code>Q_i</code> values match the exact interval overlap.</li>
 </ol>
 
 
@@ -1799,6 +1879,8 @@ worldY = (canvasHeight - screenY) / scale + panY
 </ol>
 
 <p>If the user does not define entry-exit zones, the solver uses the grid-radius search (§4.2) which does not require zones. The UI should offer both search modes: "Auto search (grid)" and "Guided search (entry-exit)" with a toggle or radio button.</p>
+
+<p>The surcharge-zone tool mirrors this same interaction model: activate the tool, click the terrain at the loaded interval start, click again at the interval end, then assign the uniform intensity <code>q</code>. In the current version the zone is a highlighted terrain segment plus a numeric intensity, not a separate free-floating load object.</p>
 
 <h3 id="s12-6"><span class="snum">12.6</span>Vertex editing &amp; snapping</h3>
 
@@ -2150,6 +2232,7 @@ SOLVING → IDLE          : user cancels solve (Escape)
   <span class="param">model</span>: <span class="ty">SlopeModel</span> {
     terrain:  Polyline         <span class="cm">// world-space vertices</span>
     phreatic: Polyline | null  <span class="cm">// world-space vertices, or null if dry</span>
+    surfaceLoad: {xStart, xEnd, q} | null
     regions:  SoilRegion[]     <span class="cm">// closed polygons + soil type refs</span>
     soilTypes: SoilType[]      <span class="cm">// c', φ', γ, γ_sat</span>
   }
@@ -2201,7 +2284,7 @@ SOLVING → IDLE          : user cancels solve (Escape)
 <h4>Undo/redo</h4>
 <p>Every model-mutating action pushes the previous <code>SlopeModel</code> state onto an undo stack. The stack has a maximum depth of 50 entries. <code>Ctrl+Z</code> / <code>Cmd+Z</code> pops the stack and restores the previous state. <code>Ctrl+Shift+Z</code> / <code>Cmd+Shift+Z</code> redoes.</p>
 
-<p>Mutating actions that create undo entries: place terrain vertex, finish terrain, move vertex, delete vertex, insert vertex, place CPT, move CPT, delete CPT, place phreatic vertex, finish phreatic, define entry/exit zone, draw manual region, change soil type parameter, change soil type colour. Pan and zoom do not create undo entries (they are viewport changes, not model changes).</p>
+<p>Mutating actions that create undo entries: place terrain vertex, finish terrain, move vertex, delete vertex, insert vertex, place CPT, move CPT, delete CPT, place phreatic vertex, finish phreatic, define entry/exit zone, define or move surcharge zone, change surcharge intensity, draw manual region, change soil type parameter, change soil type colour. Pan and zoom do not create undo entries (they are viewport changes, not model changes).</p>
 
 <h4>Serialisation (save/load)</h4>
 <p>The entire <code>SlopeModel</code> plus the viewport state (panX, panY, scale) plus the search configuration plus the last <code>SearchResult</code> (if any) is serialised to JSON. This JSON can be saved to local storage or exported as a file. The schema version is included at the top level for forward compatibility.</p>
@@ -2214,6 +2297,7 @@ SOLVING → IDLE          : user cancels solve (Escape)
   <span class="st">"model"</span>: {
     <span class="st">"terrain"</span>: { <span class="st">"vertices"</span>: [[x, y], ...] },
     <span class="st">"phreatic"</span>: { <span class="st">"vertices"</span>: [[x, y], ...] } | <span class="kw">null</span>,
+    <span class="st">"surfaceLoad"</span>: { <span class="st">"xStart"</span>: <span class="nu">8.0</span>, <span class="st">"xEnd"</span>: <span class="nu">12.0</span>, <span class="st">"q"</span>: <span class="nu">20.0</span> } | <span class="kw">null</span>,
     <span class="st">"soilTypes"</span>: [
       { <span class="st">"id"</span>: <span class="st">"clay_1"</span>, <span class="st">"name"</span>: <span class="st">"Klei (matig vast)"</span>,
         <span class="st">"c_eff"</span>: <span class="nu">8</span>, <span class="st">"phi_eff"</span>: <span class="nu">22</span>, <span class="st">"gamma"</span>: <span class="nu">18</span>, <span class="st">"gamma_sat"</span>: <span class="nu">20</span>,

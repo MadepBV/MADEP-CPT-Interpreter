@@ -25,7 +25,7 @@
 
 	<div id="cptTabs" style="display:flex;align-items:stretch;gap:2px;flex:1;overflow-x:auto"></div>
 	<button class="btn sm" onclick={() => call('addCpt')} style="margin-left:8px;flex-shrink:0"
-		>+ Add CPT</button
+		>+ Import CPT(s)</button
 	>
 
 	<div style="width:1px;height:24px;background:var(--bd);margin:0 12px"></div>

@@ -27,11 +27,11 @@
 	>
 		<div style="font-size:28px;margin-bottom:10px">📂</div>
 		<div style="font-size:14px;font-weight:600;margin-bottom:4px">
-			Drop .GEF file here or click to browse
+			Drop one or more .GEF files here or click to browse
 		</div>
 		<div style="font-size:12px;color:var(--tx2)">
-			Space-delimited, scientific notation. Column order from COLUMNINFO quantity IDs — not
-			assumed.
+			Select multiple files at once to create multiple CPT tabs. Space-delimited, scientific
+			notation. Column order from COLUMNINFO quantity IDs — not assumed.
 		</div>
 	</div>
 	<input
