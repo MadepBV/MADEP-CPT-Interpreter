@@ -233,6 +233,14 @@
     return value === 'iterate' ? 'Iterative free surface' : 'Fixed phreatic line';
   }
 
+  function seepageTerminationLabel(reason: string | null | undefined) {
+    if (reason === 'time-limit') return 'Stopped at runtime limit';
+    if (reason === 'iteration-limit') return 'Stopped at hard iteration cap';
+    if (reason === 'fixed-boundary') return 'Solved with fixed phreatic boundary';
+    if (reason === 'flow-error') return 'Converged on flow-error target';
+    return '—';
+  }
+
   function tuningPreviewEoedRef(fit: any, previewM: number) {
     return Math.exp(fit.meanY - previewM * fit.meanX);
   }
@@ -1199,6 +1207,7 @@
                 <div class="report-stat"><span>Free-surface mode</span><strong>{seepageFreeSurfaceLabel(seepageConfig.freeSurface)}</strong></div>
                 <div class="report-stat"><span>Head range</span><strong>{seepageResult ? `${fmt(seepageResult.headMin, 2)} to ${fmt(seepageResult.headMax, 2)} m` : '—'}</strong></div>
                 <div class="report-stat"><span>Through-flow</span><strong>{seepageResult ? `${compactNumber(seepageResult.throughFlow, 3)} m³/s/m` : '—'}</strong></div>
+                <div class="report-stat"><span>Flow error</span><strong>{seepageResult?.flowError != null ? `${compactNumber(100 * seepageResult.flowError, 3)} %` : '—'}</strong></div>
                 <div class="report-stat"><span>Max exit gradient</span><strong>{seepageResult ? fmt(seepageResult.maxExitGradient, 3) : '—'}</strong></div>
                 <div class="report-stat"><span>Dry cells</span><strong>{seepageResult?.dryCellCount ?? '—'}</strong></div>
                 <div class="report-stat"><span>Triangles</span><strong>{seepageMesh?.elements ?? 0}</strong></div>
@@ -1212,7 +1221,9 @@
                       <tr><td>Free-surface mode</td><td>{seepageFreeSurfaceLabel(seepageConfig.freeSurface)}</td></tr>
                       <tr><td>Use drawn phreatic as seed</td><td>{seepageConfig.usePhreaticAsSeed ? 'Yes' : 'No'}</td></tr>
                       <tr><td>Target element area (m²)</td><td>{fmt(seepageConfig.meshTargetArea, 2)} m²{seepageConfig.meshTargetAreaAuto ? ' (auto)' : ' (manual)'}</td></tr>
-                      <tr><td>Max free-surface iterations</td><td>{seepageConfig.maxFreeSurfaceIter ?? '—'}</td></tr>
+                      <tr><td>Hard free-surface iteration cap</td><td>{seepageConfig.maxFreeSurfaceIter ?? '—'}</td></tr>
+                      <tr><td>Flow error target</td><td>{seepageConfig.freeSurface === 'iterate' && seepageConfig.flowErrorTolerance != null ? `${compactNumber(100 * seepageConfig.flowErrorTolerance, 3)} %` : 'n/a'}</td></tr>
+                      <tr><td>Max runtime</td><td>{seepageConfig.freeSurface === 'iterate' && seepageConfig.maxRuntimeMs != null ? `${fmt(seepageConfig.maxRuntimeMs, 0)} ms` : 'n/a'}</td></tr>
                       <tr><td>Region mode</td><td>{seepageGeometry.regionMode === 'custom' ? 'Custom polygons' : 'CPT-derived polygons'}</td></tr>
                       <tr><td>Regions</td><td>{seepageGeometry.regionCount ?? '—'}</td></tr>
                       <tr><td>Retaining walls</td><td>{seepageGeometry.wallCount ?? '—'}</td></tr>
@@ -1229,7 +1240,10 @@
                       <tr><td>Outer iterations</td><td>{seepageResult?.solver?.iterations ?? '—'}</td></tr>
                       <tr><td>Linear iterations</td><td>{seepageResult?.solver?.innerIterations ?? '—'}</td></tr>
                       <tr><td>Residual norm</td><td>{seepageResult?.solver?.residualNorm != null ? compactNumber(seepageResult.solver.residualNorm, 3) : '—'}</td></tr>
+                      <tr><td>Termination</td><td>{seepageTerminationLabel(seepageResult?.solver?.terminationReason)}</td></tr>
+                      <tr><td>Converged</td><td>{seepageResult?.solver?.converged != null ? (seepageResult.solver.converged ? 'Yes' : 'No') : '—'}</td></tr>
                       <tr><td>Inflow / outflow</td><td>{seepageResult ? `${compactNumber(seepageResult.inflow, 3)} / ${compactNumber(seepageResult.outflow, 3)} m³/s/m` : '—'}</td></tr>
+                      <tr><td>Flow error</td><td>{seepageResult?.flowError != null ? `${compactNumber(100 * seepageResult.flowError, 3)} %` : '—'}</td></tr>
                       <tr><td>Equipotential levels</td><td>{seepageResult?.equipotentialLevelCount ?? '—'}</td></tr>
                       <tr><td>Phreatic segments</td><td>{seepageResult?.phreaticSegmentCount ?? '—'}</td></tr>
                     </tbody>

@@ -178,6 +178,7 @@ export function migrateBcs(oldBcs, boundary) {
 
 export function seepageGeometryHash(model, options = {}) {
   const freeSurface = options?.freeSurface === 'iterate' ? 'iterate' : 'fixed';
+  const usePhreaticAsSeed = options?.usePhreaticAsSeed !== false;
   return JSON.stringify({
     terrain: (model?.terrain?.vertices || []).map((pt) => [roundCoord(pt.x), roundCoord(pt.y)]),
     bottomY: roundCoord(model?.analysisBottomY),
@@ -195,9 +196,10 @@ export function seepageGeometryHash(model, options = {}) {
       wall?.passiveSide || 'right'
     ]),
     freeSurface,
+    usePhreaticAsSeed,
     meshTargetArea: roundCoord(options?.meshTargetArea),
     phreatic:
-      freeSurface === 'fixed'
+      freeSurface === 'fixed' || usePhreaticAsSeed
         ? (model?.phreatic?.vertices || []).map((pt) => [roundCoord(pt.x), roundCoord(pt.y)])
         : []
   });

@@ -8,6 +8,15 @@ function approxLE(value, limit, message) {
   assert(Number.isFinite(value) && value <= limit, `${message} (got ${value}, limit ${limit})`);
 }
 
+function assertFlowErrorWithinTolerance(solved, message) {
+  const error = Number(solved?.result?.flowError);
+  const tolerance = Number(solved?.result?.solver?.flowErrorTolerance);
+  assert(solved?.result?.solver?.converged !== false, `${message} should converge before checking the flow-error target`);
+  assert(Number.isFinite(error), `${message} should report a finite flow error`);
+  assert(Number.isFinite(tolerance), `${message} should report a finite flow-error tolerance`);
+  approxLE(error, tolerance, `${message} should satisfy the configured flow-error tolerance`);
+}
+
 function assertContiguousActiveSeepageBlock(faces, activeMask, message) {
   const sorted = faces
     .map((face, index) => ({ face, active: !!activeMask[index] }))
@@ -250,6 +259,7 @@ await runCase('Case 3 iterate mode converges and matches Dupuit profile', async 
 
   assert(solved.result.solver.iterations >= 1, 'iterate case should report outer iterations');
   assert(solved.result.phreaticSegments.length > 0, 'iterate case should produce a phreatic isoline');
+  assertFlowErrorWithinTolerance(solved, 'iterate case');
 
   [2.5, 5, 7.5].forEach((x) => {
     const yExpected = Math.sqrt(H * H * (1 - x / L));
@@ -257,6 +267,47 @@ await runCase('Case 3 iterate mode converges and matches Dupuit profile', async 
     const delta = Math.abs((sampledHead ?? NaN) - yExpected);
     approxLE(delta, 0.05 * H, `iterate case should match the Dupuit phreatic profile at x=${x}`);
   });
+});
+
+await runCase('Case 3b iterate mode returns a usable result when the runtime limit is reached', async () => {
+  const solved = await analyzeSeepageModel({
+    model: {
+      terrain: {
+        vertices: [
+          { x: 0, y: 5 },
+          { x: 10, y: 5 }
+        ]
+      },
+      analysisBottomY: 0,
+      phreatic: {
+        vertices: [
+          { x: 0, y: 5 },
+          { x: 10, y: 0 }
+        ]
+      },
+      walls: [],
+      regions: [homogeneousRegion(0, 10, 0, 5)],
+      seepage: {
+        bcs: [
+          { edgeKey: 'side-left:0', type: 'head', head: 5, status: 'active' },
+          { edgeKey: 'side-right:0', type: 'seepage-face', status: 'active' }
+        ],
+        options: {
+          freeSurface: 'iterate',
+          meshTargetArea: 0.08,
+          maxFreeSurfaceIter: 80,
+          flowErrorTolerance: 1e-4,
+          maxRuntimeMs: 1,
+          usePhreaticAsSeed: true
+        }
+      }
+    }
+  });
+
+  assert(solved.result.solver.terminationReason === 'time-limit', 'runtime-limited iterate case should report a time-limit termination');
+  assert(solved.result.solver.converged === false, 'runtime-limited iterate case should report non-convergence');
+  assert(solved.result.solver.iterations >= 1, 'runtime-limited iterate case should still complete at least one outer iteration');
+  assert(Number.isFinite(solved.result.headMin) && Number.isFinite(solved.result.headMax), 'runtime-limited iterate case should still return a solved head field');
 });
 
 await runCase('Case 4 moderate mesh stays under target size and runtime', async () => {
@@ -361,6 +412,7 @@ await runCase('Case 5 embankment seepage face stays contiguous and converges', a
   const slopeMask = solved.result.activeSeepageFaceMask.filter((_, index) => solved.mesh.boundaryFaces[index]?.edgeKey === 'terrain:1');
   assert(slopeFaces.length > 0, 'embankment case should split the downstream slope into seepage boundary faces');
   assert(slopeMask.some(Boolean), 'embankment case should activate at least one downstream seepage face');
+  assertFlowErrorWithinTolerance(solved, 'embankment case');
   assertContiguousActiveSeepageBlock(
     slopeFaces,
     slopeMask,
@@ -412,8 +464,92 @@ await runCase('Case 5 embankment seepage face stays contiguous and converges', a
   );
 });
 
+await runCase('Case 5b embankment iterate mode stays close across phreatic seeds', async () => {
+  const solveEmbankment = (phreaticVertices, usePhreaticAsSeed) =>
+    analyzeSeepageModel({
+      model: {
+        terrain: {
+          vertices: [
+            { x: 0, y: 8 },
+            { x: 4, y: 8 },
+            { x: 10, y: 4 }
+          ]
+        },
+        analysisBottomY: 0,
+        phreatic: phreaticVertices ? { vertices: phreaticVertices } : null,
+        walls: [],
+        regions: [homogeneousRegion(0, 10, 0, 8)],
+        seepage: {
+          bcs: [
+            { edgeKey: 'side-left:0', type: 'head', head: 8, status: 'active' },
+            { edgeKey: 'terrain:1', type: 'seepage-face', status: 'active' }
+          ],
+          options: {
+            freeSurface: 'iterate',
+            meshTargetArea: 0.2,
+            maxFreeSurfaceIter: 80,
+            usePhreaticAsSeed
+          }
+        }
+      }
+    });
+
+  const seeded = await solveEmbankment(
+    [
+      { x: 0, y: 8 },
+      { x: 4, y: 7.6 },
+      { x: 10, y: 4.2 }
+    ],
+    true
+  );
+  const unseeded = await solveEmbankment(
+    [
+      { x: 0, y: 8 },
+      { x: 4, y: 7.6 },
+      { x: 10, y: 4.2 }
+    ],
+    false
+  );
+  assertFlowErrorWithinTolerance(seeded, 'seeded embankment case');
+  assertFlowErrorWithinTolerance(unseeded, 'unseeded embankment case');
+
+  assert(
+    seeded.result.activeSeepageFaceMask.length === unseeded.result.activeSeepageFaceMask.length,
+    'seeded and unseeded embankment solves should expose the same seepage-face mask length'
+  );
+  seeded.result.activeSeepageFaceMask.forEach((value, index) => {
+    assert(
+      !!value === !!unseeded.result.activeSeepageFaceMask[index],
+      `embankment seepage-face activation should not depend on the initial phreatic seed at face ${index}`
+    );
+  });
+
+  const samplePoints = [
+    { x: 4.6, y: 7.4 },
+    { x: 6, y: 6.6 },
+    { x: 8, y: 5.3 },
+    { x: 9.2, y: 4.45 }
+  ];
+  let maxHeadDelta = 0;
+  samplePoints.forEach((point) => {
+    const seededHead = sampleSeepageHead(seeded.mesh, seeded.result, point.x, point.y);
+    const unseededHead = sampleSeepageHead(unseeded.mesh, unseeded.result, point.x, point.y);
+    assert(Number.isFinite(seededHead) && Number.isFinite(unseededHead), 'embankment seed-sensitivity probe should stay inside the solved domain');
+    maxHeadDelta = Math.max(maxHeadDelta, Math.abs(seededHead - unseededHead));
+  });
+  approxLE(maxHeadDelta, 0.03, 'embankment head field should stay materially consistent when the iterative seed is disabled');
+
+  const flowReference = Math.max(Math.abs(unseeded.result.throughFlow), 1e-12);
+  approxLE(
+    Math.abs(seeded.result.throughFlow - unseeded.result.throughFlow) / flowReference,
+    0.02,
+    'embankment through-flow should stay close when the iterative seed is disabled'
+  );
+});
+
 await runCase('Case 6 layered iterate mode keeps low-k precision and a single phreatic envelope', async () => {
   const solved = await analyzeSeepageModel({ model: layeredIterateModel(1e-12) });
+  assertFlowErrorWithinTolerance(solved, 'layered iterate case');
 
   const midElementKx = solved.mesh.elementData
     .filter((_, index) => solved.mesh.cells[solved.mesh.elementCell[index]]?.material?.id === 'mid')
@@ -436,6 +572,7 @@ await runCase('Case 6 layered iterate mode keeps low-k precision and a single ph
 
 await runCase('Case 7 extreme low-k layer remains numerically stable in JavaScript', async () => {
   const solved = await analyzeSeepageModel({ model: layeredIterateModel(1e-18) });
+  assertFlowErrorWithinTolerance(solved, 'extreme low-k case');
   const midElementKx = solved.mesh.elementData
     .filter((_, index) => solved.mesh.cells[solved.mesh.elementCell[index]]?.material?.id === 'mid')
     .map((item) => Number(item?.kx))
@@ -492,6 +629,7 @@ await runCase('Case 8 partially submerged head edge only constrains the wetted u
   });
 
   const upstreamFaces = (solved.mesh.boundaryFaces || []).filter((face) => face.edgeKey === 'terrain:0');
+  assertFlowErrorWithinTolerance(solved, 'partially submerged head case');
   assert(upstreamFaces.length > 1, 'partially submerged head case should split the upstream slope into multiple boundary faces');
   const wetFaces = upstreamFaces.filter((face) => face.headSubmerged === true);
   const dryFaces = upstreamFaces.filter((face) => face.headSubmerged === false);
