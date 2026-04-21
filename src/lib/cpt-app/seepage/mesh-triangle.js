@@ -2,6 +2,7 @@
 // @ts-nocheck
 
 import { materialAt, pointInPolygonHalfOpen } from '../soil-regions.js';
+import { buildSectionMesh } from '../mesh/section-mesh.js';
 import { buildSeepagePslg } from './pslg.js';
 import { triangulatePslg } from './triangle-runtime.js';
 
@@ -245,109 +246,26 @@ export async function buildTriangleMesh(model, regions, options, onProgress = ()
   });
 
   const { triangleOutput, attempt, pslg } = await triangulateSeepagePslg(model, regions, options, onProgress);
-
-  const nodes = [];
-  const pointlist = triangleOutput?.pointlist || [];
-  for (let i = 0; i < pointlist.length; i += 2) {
-    nodes.push({
-      x: +Number(pointlist[i]).toFixed(8),
-      y: +Number(pointlist[i + 1]).toFixed(8)
-    });
-  }
-
-  const elements = [];
-  const cells = [];
-  const elementCell = [];
-  const elementData = [];
-  const uncovered = [];
-  const trianglelist = triangleOutput?.trianglelist || [];
-  const corners = Math.max(Number(triangleOutput?.numberofcorners) || 3, 3);
-
-  for (let i = 0; i < trianglelist.length; i += corners) {
-    const tri = [
-      Number(trianglelist[i]),
-      Number(trianglelist[i + 1]),
-      Number(trianglelist[i + 2])
-    ];
-    if (!tri.every(Number.isInteger)) continue;
-    const pts = tri.map((nodeId) => nodes[nodeId]);
-    if (pts.some((point) => !point)) continue;
-    if (segmentOrientation(pts[0], pts[1], pts[2]) < 0) {
-      tri[1] = Number(trianglelist[i + 2]);
-      tri[2] = Number(trianglelist[i + 1]);
-      pts[1] = nodes[tri[1]];
-      pts[2] = nodes[tri[2]];
-    }
-
-    const area = triangleArea(pts[0], pts[1], pts[2]);
-    if (!(area > 1e-10)) continue;
-    const centroid = centroidOfTriangle(pts[0], pts[1], pts[2]);
-    if (!pointInPolygonHalfOpen(pslg.domainPolygon, centroid.x, centroid.y)) continue;
-
-    const assignment = resolveMaterialAssignment(regions, centroid);
-    const regionIndex = assignment?.regionIndex ?? -1;
-    const material = assignment?.material || null;
-    if (!material) {
-      if (uncovered.length < 5) uncovered.push(`${centroid.x.toFixed(3)}, ${centroid.y.toFixed(3)}`);
-      continue;
-    }
-
-    const elementIndex = elements.length;
-    elements.push(tri);
-    elementCell.push(cells.length);
-    elementData.push({ area, centroid });
-    cells.push({
-      polygon: pts,
-      centroid,
-      area,
-      material,
-      regionIndex,
-      triangleIndices: [elementIndex],
-      bbox: bboxForPolygon(pts)
-    });
-  }
-
-  if (uncovered.length) {
-    throw new Error(`The seepage mesh contains triangles outside any soil polygon. First uncovered centroid(s): ${uncovered.join('; ')}.`);
-  }
-  if (!elements.length || !cells.length) {
-    throw new Error('The constrained triangulation produced no active seepage elements.');
-  }
-
-  const sample = buildCellSampleBins(cells, pslg.domainPolygon, options?.meshTargetArea);
-  const constraintEdges = buildConstraintEdges(nodes, triangleOutput, pslg.markerInfoById);
+  const mesh = buildSectionMesh({
+    triangleOutput,
+    pslg,
+    regions,
+    targetArea: options?.meshTargetArea,
+    startedAt,
+    attemptLabel: attempt?.label || 'quality-28',
+    onProgress,
+    progressPercent: 38,
+    purpose: 'seepage'
+  });
   const phreaticNodeIds = [
     ...new Set(
-      constraintEdges
+      mesh.constraintEdges
         .filter((edge) => edge.markerType === 'phreatic')
         .flatMap((edge) => [edge.n1, edge.n2])
     )
   ];
-
-  onProgress({
-    stage: 'meshing',
-    percent: 38,
-    message: `Built ${elements.length} seepage triangles from ${nodes.length} nodes.`
-  });
-
   return {
-    kind: 'triangle-cdt-fem',
-    nodes,
-    elements,
-    cells,
-    elementCell,
-    elementData,
-    constraintEdges,
-    domainPolygon: pslg.domainPolygon,
-    sampleGrid: sample.grid,
-    sampleBins: sample.bins,
-    phreaticNodeIds,
-    generatedMs: performance.now() - startedAt,
-    meshStats: {
-      nodes: nodes.length,
-      triangles: elements.length,
-      meanTriangleArea: average(elementData.map((item) => item.area)),
-      triangleAttempt: attempt?.label || 'quality-28'
-    }
+    ...mesh,
+    phreaticNodeIds
   };
 }

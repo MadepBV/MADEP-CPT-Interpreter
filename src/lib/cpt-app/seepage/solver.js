@@ -3086,3 +3086,10 @@ export function sampleSeepagePorePressure(mesh, result, x, y, gammaW = 9.81) {
   if (!Number.isFinite(head)) return null;
   return gammaW * (head - Number(y));
 }
+
+export function sampleSeepageFlowState(mesh, result, x, y) {
+  if (!mesh?.cells?.length || !result?.heads?.length) return null;
+  const gradients = result?.elementGradients;
+  if (!Array.isArray(gradients) || !gradients.length) return null;
+  return sampleFlowState(mesh, result.heads, gradients, x, y);
+}

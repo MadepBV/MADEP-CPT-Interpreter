@@ -2,7 +2,7 @@
 <script lang="ts">
 	const pageTitle = 'Technical Documentation — MADEP CPT Interpreter';
 	const pageDescription =
-		'Technical documentation for the MADEP CPT Interpreter: GEF loading, classification, layer derivation, model parameters, tuning, and engineering applications, with formulas, notation, and references.';
+		'Technical documentation for the MADEP CPT Interpreter: GEF loading, classification, layer derivation, model parameters, tuning, and Stage 6 engineering applications including Bishop/Spencer, seepage, and deformation, with formulas, notation, and references.';
 	const canonicalUrl = 'https://cpt.madep.be/docs';
 	const ogImageUrl = 'https://cpt.madep.be/logo.png';
 
@@ -1333,6 +1333,124 @@
 				}
 			],
 			references: ['EN 1992-1-1', 'NBN EN 1992-1-1 ANB']
+		},
+		{
+			id: 'seepage-stage6',
+			title: '12. Stage 6 Seepage Workspace',
+			intro:
+				'The Stage 6 seepage workspace is a two-dimensional steady-state groundwater screening tool on the shared Bishop geometry. It reuses the same terrain, soil polygons, phreatic line, retaining-wall geometry, and section depth rather than introducing a second drawing model.',
+			subsections: [
+				{
+					id: 'seepage-stage6-scope',
+					title: '12.1 Present solver scope and geometry model',
+					paragraphs: [
+						'The current seepage module solves a steady-state Darcy/Laplace problem on a constrained triangular mesh. It is intended for cross-section screening, flow visualisation, exit-gradient checks, and optional pore-pressure handoff to Bishop.',
+						'Unless custom polygons are enabled, the soil layout still starts from the <strong>active CPT column extended laterally across the section</strong>. If custom polygons are enabled, those polygons become the seepage regions on the shared canvas.'
+					],
+					equations: ['q = -k∇h', 'u = γ<sub>w</sub>(h - y)'],
+					bullets: [
+						'Only <strong>outer-boundary</strong> edges can currently carry seepage boundary conditions: terrain, base, left side, and right side.',
+						'Interior region boundaries are meshing constraints only; they are not yet seepage BCs.',
+						'The current module is steady-state only: no transient storage, no consolidation time response, and no Richards-type unsaturated flow law.',
+						'Retaining walls are presently approximated as thin low-permeability regions rather than true zero-thickness duplicate-node cutoffs.',
+						'Internal drains and line sinks are not yet part of the public seepage solver.'
+					]
+				},
+				{
+					id: 'seepage-stage6-free-surface',
+					title: '12.2 Free surface, boundary logic, and numerical safeguards',
+					paragraphs: [
+						'The shipped default is the <strong>iterative free-surface</strong> mode. It keeps one fixed mesh, classifies elements as wet or dry from the current pressure-head state, and updates the atmospheric seepage-face activation set on the outer boundary.',
+						'A second <strong>fixed phreatic</strong> mode remains available for benchmarking or sensitivity studies. In that mode the drawn phreatic line is imposed as an internal constraint and the solution is locked to that water-table geometry.'
+					],
+					equations: ['k<sub>dry</sub> = 10<sup>−4</sup>k', 'h = y &nbsp;&nbsp; on active seepage-face nodes'],
+					bullets: [
+						'A prescribed-head BC on a sloping or vertical edge applies only to the submerged part below the entered head elevation; the dry part above reverts to natural no-flow.',
+						'Iterative convergence is accepted only when the seepage-face active set is stable, the boundary flow-rate error is within the target tolerance, and no disconnected wet islands remain.',
+						'The current default flow-rate error target is 1%, with a 10 s runtime cap in iterative mode.',
+						'If the wet/dry loop creates isolated wet pockets that are not connected to a prescribed-head boundary, the solver applies a connectivity fallback and dries those pockets out.',
+						'This wet/dry handling is a practical engineering screening shortcut, not an unsaturated constitutive model.'
+					]
+				},
+				{
+					id: 'seepage-stage6-coupling',
+					title: '12.3 Mesh controls, coupling, and public outputs',
+					paragraphs: [
+						'The seepage mesh is built with the same shared section mesher used by the deformation workspace. The global target element area can be left on automatic sizing or entered manually, and each polygon may apply a local <strong>coarseness</strong> factor to refine only that region.',
+						'When the engineer enables <strong>Use FEM pore pressure</strong> in Bishop, the slice base samples pore pressure from the seepage field rather than from the drawn hydrostatic phreatic line. Outside the seepage mesh, or if no seepage result exists, the solver falls back safely to the hydrostatic route.'
+					],
+					bullets: [
+						'Polygon <strong>coarseness</strong> is a mesh-density control only; it is not a hydraulic soil property.',
+						'The current results panel can plot head, pore pressure, hydraulic gradient, specific discharge magnitude, and normal cross-flow along the shared measurement line.',
+						'The line-probe graph is sampled from the solved field and can be copied to the clipboard as distance/value data.',
+						'The seepage workspace is strongest as a 2D screening tool and as a pore-pressure source for the circular Bishop/Spencer solver; it is not yet a full groundwater package.'
+					]
+				}
+			],
+			references: ['Bear (1979)', 'Freeze & Cherry (1979)', 'Powers et al. (2007)']
+		},
+		{
+			id: 'deformation-stage6',
+			title: '13. Stage 6 Deformation Workspace',
+			intro:
+				'The Stage 6 deformation workspace is the first mesh-based mechanical screen on the shared Bishop geometry. It reuses the constrained triangular section mesh to compute displacements and stress screening beneath a terrain load interval.',
+			subsections: [
+				{
+					id: 'deformation-stage6-model',
+					title: '13.1 Present constitutive route and engineering meaning',
+					paragraphs: [
+						'The current deformation tool is intentionally the <strong>easy Mohr-Coulomb route</strong>: a <strong>linear-elastic plane-strain</strong> displacement solve followed by Mohr-Coulomb effective-stress screening in post-processing.',
+						'This means the field quantities are useful for settlement shape, displacement trends, and proximity-to-yield visualisation, but the solver does <strong>not</strong> yet produce plastic strains, stress redistribution, or an emergent failure mechanism.'
+					],
+					equations: [
+						'σ = Dε &nbsp;&nbsp; with linear-elastic plane-strain D',
+						'η<sub>MC</sub> = (σ′<sub>1</sub> − σ′<sub>3</sub>) / [(σ′<sub>1</sub> + σ′<sub>3</sub>)sinφ′ + 2c′cosφ′]'
+					],
+					bullets: [
+						'The displacement solve is linear elastic.',
+						'<strong>Mohr-Coulomb is post-processing only</strong>; it is not an elastoplastic constitutive update.',
+						'The tool should be read as <strong>long-term drained screening</strong>, not as an immediate undrained clay check.',
+						'The current implementation uses the Stage 4/5 <strong>E<sub>mc</sub></strong> value directly as the elastic modulus E.',
+						'The stored dilation angle ψ is carried through the data model, but it is not used until plasticity exists.'
+					]
+				},
+				{
+					id: 'deformation-stage6-loading',
+					title: '13.2 Load model, supports, and initial stresses',
+					paragraphs: [
+						'The mechanical load is currently taken from the shared <strong>surface load</strong> interval on the terrain. In pressure mode the entered q is applied directly; in total-load mode the app converts the total slab load to an equivalent 2D pressure through the out-of-plane length.',
+						'The initial effective stress field is reconstructed with a flat-ground at-rest approximation rather than a prior gravity step. Optional seepage coupling only changes the initial pore-pressure field used in that reconstruction.'
+					],
+					equations: [
+						'q = P<sub>total</sub> / (B · L<sub>out</sub>) &nbsp;&nbsp; in total-load mode',
+						'σ′<sub>h0</sub> = K<sub>0</sub>σ′<sub>v0</sub>, &nbsp; τ′<sub>xy,0</sub> = 0'
+					],
+					bullets: [
+						'Bottom boundary: u<sub>y</sub> = 0. Side boundaries: u<sub>x</sub> = 0.',
+						'A practical screening rule is to keep roughly 5B of width on each side of the load and 5B of depth below it; smaller domains will look too stiff.',
+						'Retaining walls are visible in the shared geometry but are not active mechanical elements in the deformation solve.',
+						'If seepage pore pressures are enabled and a seepage result exists, they are sampled into the initial stress field; otherwise the tool falls back to the drawn hydrostatic phreatic line.',
+						'Results near steep slopes, embankments, and walls need caution because the current initialization ignores pre-existing shear stress.'
+					]
+				},
+				{
+					id: 'deformation-stage6-numerics',
+					title: '13.3 Numerical safeguards and public outputs',
+					paragraphs: [
+						'The deformation solver uses 3-node constant-strain triangles. That choice is robust and fast on the shared mesh, but it comes with the usual stiffness issues for coarse meshes and near-incompressible Poisson ratios.',
+						'The public results panel can display settlement, u<sub>x</sub>, u<sub>y</sub>, Δσ<sub>yy</sub>, and η<sub>MC</sub> contours, and the same shared measurement line can probe those quantities without covering the canvas.'
+					],
+					bullets: [
+						'Poisson&apos;s ratio is capped at 0.49 for numerical stability in the plane-strain T3 solver.',
+						'Load-edge refinement is added automatically beneath both ends of the loaded interval because coarse CST/T3 meshes become too stiff there.',
+						'The MC screen uses the in-plane principal pair only and applies a zero-tension cut-off by default.',
+						'Missing or non-positive E<sub>mc</sub> is replaced with a pragmatic fallback value of 1000 kPa, with a warning.',
+						'Polygon coarseness remains a local mesh-refinement factor only.',
+						'The line-probe graph can be copied to the clipboard as distance/value data for external checking.'
+					]
+				}
+			],
+			references: ['PLAXIS 2D Material Models Manual (2025.1)', 'Schanz, Vermeer & Bonnier (1999)', 'Boussinesq (1885)']
 		}
 	];
 
@@ -1369,7 +1487,8 @@
 			<p class="hero__lead">
 				A technical implementation note for the CPT app workflow: GEF loading,
 				classification, layer and parameter derivation, experimental tuning, and the current
-				engineering applications, documented from the active logic and reference base.
+				engineering applications including Bishop/Spencer, seepage, and deformation,
+				documented from the active logic and reference base.
 			</p>
 			<div class="hero__actions">
 				<a class="btn btn--primary" href="/">Open the app</a>

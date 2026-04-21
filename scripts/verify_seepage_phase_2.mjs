@@ -1,4 +1,4 @@
-import { analyzeSeepageModel, sampleSeepageHead } from '../src/lib/cpt-app/seepage/solver.js';
+import { analyzeSeepageModel, sampleSeepageFlowState, sampleSeepageHead } from '../src/lib/cpt-app/seepage/solver.js';
 import { buildTriangleMesh } from '../src/lib/cpt-app/seepage/mesh-triangle.js';
 
 function assert(condition, message) {
@@ -315,6 +315,9 @@ await runCase('Case 1 head/head disables exit gradient', async () => {
   approxLE(solved.result.maxExitGradient, 1e-9, 'head/head case should not report an exit gradient');
   const seepageFaces = solved.mesh.boundaryFaces.filter((face) => face.type === 'seepage-face');
   assert(seepageFaces.length === 0, 'head/head case should not carry seepage-face boundary edges');
+  const sampled = sampleSeepageFlowState(solved.mesh, solved.result, 5, 2.5);
+  assert(sampled && Number.isFinite(sampled.head), 'line-probe seepage sampling should recover a finite head inside the solved domain');
+  assert(Number.isFinite(sampled?.qx) && Number.isFinite(sampled?.qy), 'line-probe seepage sampling should expose a finite specific discharge vector');
 });
 
 await runCase('Case 2 seepage face enables exit gradient', async () => {

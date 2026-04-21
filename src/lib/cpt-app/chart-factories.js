@@ -983,3 +983,66 @@ export function buildBeamMomentChartConfig({ analysis, tickFormatter }) {
     }
   });
 }
+
+export function buildLineProbeChartConfig({
+  points,
+  title = '',
+  seriesLabel = 'Line probe',
+  color = '#378ADD',
+  xAxisTitle = 'Distance along line s (m)',
+  yAxisTitle = 'Value',
+  xTickFormatter = (value) => value,
+  yTickFormatter = (value) => value,
+  tooltipLabel = null
+}) {
+  return applyChartTheme({
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: seriesLabel,
+          data: points,
+          borderColor: color,
+          backgroundColor: color,
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          pointHitRadius: 12,
+          fill: false,
+          spanGaps: false,
+          tension: 0.08
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        title: chartTitle(title),
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              if (typeof tooltipLabel === 'function') {
+                return tooltipLabel(ctx.parsed?.y, ctx.parsed?.x, ctx);
+              }
+              return `${seriesLabel}: ${ctx.parsed?.y}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: chartTitle(xAxisTitle),
+          ticks: { font: { size: 10 }, callback: xTickFormatter }
+        },
+        y: {
+          title: chartTitle(yAxisTitle),
+          ticks: { font: { size: 10 }, callback: yTickFormatter }
+        }
+      }
+    }
+  });
+}

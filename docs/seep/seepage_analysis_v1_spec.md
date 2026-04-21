@@ -3,7 +3,7 @@
 **Module**: Seepage / Flow-net analysis
 **Prerequisites**: Existing geometry canvas, polygonal soil regions, terrain polyline
 **Method**: Finite Element Method (FEM) — 3-node triangular elements, Laplace/Darcy formulation
-**Status**: v1.1 — Phase A landed (2026-04-20); Phase 2 rewritten to reuse the shipped `soil-regions.js` primitives. The seepage module is additive: no second geometry tab, no change to Bishop/Spencer default behaviour.
+**Status**: v1.2 — current Stage 6 seepage workflow documented as shipped on 2026-04-22. The solver remains experimental, but this spec now records the live implementation choices and numerical shortcuts in addition to the theory.
 
 ---
 
@@ -43,6 +43,7 @@
    - 9.3 [Pore-pressure field for slope stability](#93-pore-pressure-field-for-slope-stability)
    - 9.4 [Exit gradient and piping check](#94-exit-gradient-and-piping-check)
    - 9.5 [Total flow rate](#95-total-flow-rate)
+   - 9.6 [Arbitrary line probe along the shared measurement tool](#96-arbitrary-line-probe-along-the-shared-measurement-tool)
 10. [Data Structures](#10-data-structures)
 11. [Complete Pseudocode](#11-complete-pseudocode)
     - 11.1 [Mesh generation wrapper](#111-mesh-generation-wrapper)
@@ -76,7 +77,7 @@ The primary value propositions are:
 
 Given:
 - A 2D cross-section with user-defined soil regions (each with permeability kx, ky)
-- Boundary conditions on geometry edges (prescribed head, no-flow, seepage face)
+- Boundary conditions on outer-boundary edges (prescribed head, no-flow, seepage face)
 
 It computes:
 - Total head h(x, y) at every node in the mesh
@@ -88,6 +89,7 @@ It computes:
 - The phreatic surface (line where u = 0, i.e. h = y)
 - Total seepage flow rate Q through the section
 - Exit gradient at the downstream face (for piping assessment)
+- Head, pore-pressure, gradient, and discharge plots along an arbitrary measured line
 
 ---
 
@@ -417,7 +419,7 @@ return {
 };
 ```
 
-`defaultKx` / `defaultKy` use the SBTn table in the next subsection. The `kSource === 'user'` guard is intentional: `c'`, `phi'` have an analogous preservation rule via `canReuseStrengthValues` keyed on `sourceStrengthSet`, but for permeability there is no strength-set analogue — the only thing worth preserving across a CPT re-import is an explicit manual override. CPT-sourced values are replaced by the fresh layer values so that reclassification flows through.
+`defaultKx` / `defaultKy` use the built-in classified-soil heuristic in the next subsection. The UI still tags that path as `kSource = 'sbtn-default'` for continuity with the existing Bishop material editor, but it should be read as a practical default rather than a measured permeability. The `kSource === 'user'` guard is intentional: `c'`, `phi'` have an analogous preservation rule via `canReuseStrengthValues` keyed on `sourceStrengthSet`, but for permeability there is no strength-set analogue — the only thing worth preserving across a CPT re-import is an explicit manual override. CPT-sourced values are replaced by the fresh layer values so that reclassification flows through.
 
 **Backward compatibility**: `kx` / `ky` are optional — Bishop/Spencer never read them. A `model` with materials that don't have `kx`/`ky` must still solve identically, so the parity harness from Phase A §5.5.7 gets one extra fixture: "materials without permeability fields produce the same F, λ, and slice outputs".
 
@@ -453,12 +455,19 @@ Common anisotropy ratios (kx/ky):
 
 ### 5.2 Boundary condition assignment
 
-Boundary conditions are assigned to geometry edges. An "edge" is a segment of a region boundary polygon, the terrain polyline, or the model base.
+Boundary conditions are assigned only to **outer-boundary** edges. In the current Stage 6 workflow an "edge" means one segment on:
+
+- the terrain polyline
+- the model base
+- the left side boundary
+- the right side boundary
+
+Interior soil-region edges are meshing constraints only. They preserve material interfaces, but they do not currently accept seepage BCs.
 
 #### Assignment UX
 
 1. User enters "BC mode" (a tool/mode selector in the toolbar).
-2. User clicks on an edge (or selects multiple edges by dragging).
+2. User clicks on an outer-boundary edge.
 3. A panel appears with BC type selection:
    - **Prescribed head**: enter h value in metres (or pick from a water level line on the canvas)
    - **No flow**: default — no input needed
@@ -490,10 +499,12 @@ Cofferdam / sheet pile:
 
 Slope with drainage blanket:
   - Upstream: h = groundwater head
-  - Drain: h = y (acts like a seepage face — drains to atmospheric)
-  - Slope face: seepage face (where water exits)
+  - Downstream outer face: seepage face (where water exits)
+  - Toe / tailwater zone: h = tailwater level when submerged
   - Base: no-flow
 ```
+
+Internal drains are planned separately and are not part of the current solver. See [drain.md](drain.md) for the one-way drain design note.
 
 ### 5.3 Reuse from slope stability module (post-Phase-A)
 
@@ -525,7 +536,7 @@ Geometry (already drawn for Bishop/Spencer — unchanged):
 Seepage tab (new, sits on the same canvas):
    1. Assign kx, ky per material
       - Defaults come from CPT kh_rep, kv_rep when available
-      - Fallback: SBTn table lookup (§5.1)
+      - Fallback: built-in classified-soil heuristic (§5.1)
       - User edits tagged kSource='user', preserved across reclassification
 
    2. Boundary conditions
@@ -807,21 +818,22 @@ New code lives under `src/lib/cpt-app/seepage/`:
 
 ```
 src/lib/cpt-app/seepage/
-  index.js              // public API: runSeepage(model, options) → SeepageResult
-  boundary.js           // outer-boundary extraction + edgeKey scheme (§5.6.3)
-  material.js           // kx, ky resolution + SBTn-default table (§5.1)
-  mesh.js               // CDT wrapper: PSLG → { nodes, elements, edges }
-  mesh-triangle.js      // adapter for triangle-wasm
-  fem.js                // T3 element K, global assembly, Dirichlet application
-  solver.js             // CG with Jacobi preconditioner (SPD, <10k nodes)
-  free-surface.js       // reduced-permeability outer iteration (§8)
-  post.js               // gradients, isolines, streamlines, exit gradient
-  pore-pressure.js      // u(x, y) lookup for Bishop opt-in integration (§12)
-seepage-worker.js       // OffscreenWorker entry point: mesh + solve
+  boundary.js           // outer boundary extraction, edgeKey migration, geometry hash
+  material.js           // kx, ky defaults and CPT/user override logic
+  pslg.js               // seepage-specific PSLG build on the shared section mesher
+  mesh-triangle.js      // Triangle adapter + region tagging
+  triangle-runtime.js   // low-level Triangle WASM wrapper
+  solver.js             // FEM assembly, active-set seepage faces, wet/dry iteration, post-processing
+  seepage-worker.js     // worker entry point: mesh + solve
 
-test/fixtures/seepage/  // verification cases (§13)
+src/lib/cpt-app/mesh/
+  section-pslg.js       // shared section-to-PSLG helpers reused by deformation
+  section-mesh.js       // shared mesh assembly helpers reused by deformation
+
 scripts/verify_seepage_phase_2.mjs
 ```
+
+The current implementation intentionally keeps most seepage numerics in `solver.js` rather than splitting them into separate `fem.js`, `free-surface.js`, and `post.js` modules. That keeps the active-set, wet/dry, and boundary-flux logic in one place while the architecture is still stabilizing.
 
 All new modules are tree-shakeable — they are only imported from the seepage panel and the opt-in pore-pressure hook. The existing `stage6-bishop.js` gets two small additions:
 
@@ -845,10 +857,20 @@ bishopState {
                                  // produced mesh+result; compared on rebuild to
                                  // detect stale state (see §5.6.2)
     options: {
-      density: 'coarse' | 'medium' | 'fine',
       freeSurface: 'fixed' | 'iterate',
-      maxFreeSurfaceIter: number,
-      usePhreaticAsSeed: boolean
+      usePhreaticAsSeed: boolean,
+      flowErrorTolerance: number,
+      maxRuntimeMs: number,
+      meshTargetArea: number,
+      meshTargetAreaAuto: boolean
+    },
+    display: {
+      showBoundaryConditions: boolean,
+      showBoundaryLabels: boolean,
+      showHead: boolean,
+      showEquipotentials: boolean,
+      showFlowVectors: boolean,
+      showExitGradient: boolean
     }
   },
   useFemPorePressure: boolean    // opt-in switch, off by default
@@ -861,7 +883,7 @@ Invalidation rules (all triggered on every `buildBishopModelFromStageLayers` cal
 - Change to `phreatic` while `options.freeSurface === 'fixed'` → clear both (the phreatic is an internal mesh constraint in that mode; see §5.6.6).
 - Change to `phreatic` while `options.freeSurface === 'iterate'` → clear only `seepage.result` (mesh is independent of the phreatic).
 - Change to any `seepage.bcs` entry → clear only `seepage.result`.
-- Change to `options.density` → clear both.
+- Change to `options.freeSurface`, `options.usePhreaticAsSeed`, `options.meshTargetArea`, or `options.meshTargetAreaAuto` → clear the cached state whenever the geometry hash changes.
 
 The seepage panel UI reflects invalidation with a dirty-state pill so the user knows the displayed field matches the current geometry.
 
@@ -918,10 +940,10 @@ Input:
    regionSeeds     : one interior point per region (centroid works if
                      polygonArea(r.polygon) > threshold; otherwise walk
                      to a vertex and inset by ε along the inward normal)
-   maxArea         : from options.density
-                     coarse  = domainArea / 250
-                     medium  = domainArea / 1000   (default)
-                     fine    = domainArea / 5000
+   maxArea         : from options.meshTargetArea
+                     auto mode   = clamp(domainArea / 3500, 0.05, 1.5) m^2
+                     manual mode = positive user-entered target area
+   regionAreaLimit : max(maxArea * region.coarseness, 1e-4)
    minAngleDeg     : 20
 
 Output:
@@ -948,7 +970,7 @@ Two key invariants:
 
 **Mesher choice**
 
-Shewchuk's Triangle is the reference CDT that handles PSLGs with quality constraints in production. Several WASM ports exist on npm; **the specific package is chosen during Step 2 of the rollout after a head-to-head evaluation.** Required capabilities:
+Shewchuk's Triangle is the reference CDT that handles PSLGs with quality constraints in production. The current implementation uses a Triangle WASM adapter behind `triangle-runtime.js`. Required capabilities remain:
 
 - ESM import compatible with Vite / SvelteKit
 - region markers (Triangle's regional-attribute mechanism with `-A`)
@@ -970,12 +992,16 @@ The element and assembly math is fully specified in §7. Key points for integrat
 
 ### 5.6.6 Free-surface handling (two modes)
 
-For the MVP the user picks one:
+For the shipped workflow the user picks one:
 
-- **`fixed`**: take `model.phreatic` as given. Meshing treats the phreatic polyline as an internal constraint (via `phreaticEdges` in §5.6.4). Elements whose centroid falls above the phreatic are tagged dry; dry elements get k × 1e-4 applied in place so the solver sees a single domain with very-low-permeability material on top. Downstream exit face is a seepage face (h = y). No outer iteration. Fast, deterministic, matches how the user already thinks about Bishop. Note: tagging above-phreatic elements as "dry" is a read-only decoration on the mesh — it does not mutate `model.phreatic`.
-- **`iterate`**: reduced-permeability method from §8. Full domain mesh (no phreatic constraint), elements whose centroid currently falls above the computed phreatic get k × 1e-4. Outer loop on element dry/wet state. Converges in 5–15 iterations for typical dam / levee sections; capped at `maxFreeSurfaceIter` (default 30). The first outer iteration may use `model.phreatic` as a warm start when `options.usePhreaticAsSeed` is set.
+- **`iterate`**: this is the current default. The solver keeps one full-domain mesh, classifies elements by pressure-head sign and wet area fraction, scales dry conductivity by `k × 1e-4`, and runs an outer loop that couples:
+  - wet/dry reclassification,
+  - outer-boundary seepage-face activation,
+  - boundary-flow balance checking.
+  Convergence is accepted only when the seepage-face active set is stable, the normalized boundary flow error is within `flowErrorTolerance` (default `1%`), and no disconnected wet islands remain. The run is also bounded by `maxRuntimeMs` (default `10 s`). If `usePhreaticAsSeed` is on, the drawn phreatic line is used only as a warm start for the first wet/dry guess.
+- **`fixed`**: take `model.phreatic` as given. Meshing treats the phreatic polyline as an internal constraint (via `phreaticEdges` in §5.6.4). Elements above it are treated as dry with `k × 1e-4`, and the phreatic nodes are clamped to `h = y`. This is useful for benchmarking, sensitivity checks, or intentionally locking the seepage geometry to a known water table.
 
-Default is `fixed`. The "iterate" mode is exposed but not the default, to keep the first shippable version simple and reproducible.
+The important implementation detail is that the live iterative mode does **not** remesh the phreatic surface geometry itself. It solves on one fixed mesh and updates the saturated subset numerically.
 
 ### 5.6.7 Parity harness extension
 
@@ -1010,7 +1036,7 @@ Plus two new seepage-only fixtures (not Bishop):
 
 `scripts/verify_seepage_phase_2.mjs` runs Cases D–E in CI. Cases A–C extend the existing Bishop parity job.
 
-### 5.6.8 Rollout plan
+### 5.6.8 Landing path (historical, now largely shipped)
 
 ```
 Step 1 (plumbing, ~2 days):
@@ -1022,7 +1048,7 @@ Step 1 (plumbing, ~2 days):
 Step 2 (mesher integration, ~3 days):
   - Integrate triangle-wasm (ESM + worker)
   - boundary.js: outer boundary + edgeKey
-  - mesh.js: PSLG assembly, region seeding, tagging
+  - pslg.js + mesh-triangle.js: PSLG assembly, region seeding, tagging
   - Unit tests: round-trip a known fixture, check node/element counts and
     tag correctness against expected region ownership
   - Ship: no visible change
@@ -1035,9 +1061,8 @@ Step 3 (seepage panel + BC UI, ~3 days):
   - Ship behind a feature flag (seepage-panel-v1)
 
 Step 4 (FEM solve + visualisation, ~5 days):
-  - fem.js + solver.js (SPD CG)
-  - free-surface.js in 'fixed' mode first
-  - post.js: gradients, isoline extraction, streamlines, exit gradient
+  - solver.js (SPD CG + active-set seepage faces + post-processing)
+  - fixed mode first, then iterative wet/dry mode
   - Canvas overlays: head colormap, |q| colormap, arrows, h=y line
   - Single-number readouts (Q, max exit gradient, piping factor)
   - Ship under seepage-panel-v1 flag (Phase 2 MVP)
@@ -1050,7 +1075,7 @@ Step 5 (free-surface iteration, ~2 days):
 
 Step 6 (Bishop integration, opt-in, ~2 days):
   - useFemPorePressure switch on slope panel
-  - pore-pressure.js: element containment + shape-function interpolation
+  - element containment + shape-function interpolation inside the seepage solver helpers
   - Fallback to hydrostatic outside the mesh
   - Case B and Case C parity tests must pass before the switch is visible
   - Ship: flag flips to public
@@ -1072,9 +1097,24 @@ Steps 1–4 alone (~13 days) produce a shippable standalone seepage tool.
 - No transient / unsaturated flow (no consolidation time curves, no Richards equation — v3).
 - No coupled flow-deformation (no PLAXIS-style effective-stress update — v3).
 - No 3D — 2D plane strain only.
-- **Sheet piles / retaining walls — deferred with a documented gap.** A zero-thickness no-flow edge requires duplicate nodes along the segment so head can jump across the wall (Triangle does not split nodes natively). For the MVP, walls are modelled as a **thin region** (default thickness 0.1 m) of a fixed low-k material (k = 1e-10 m/s) auto-generated from each `model.walls[i].{x, yTop, yTip}`. The user sees "wall" in the region list, tagged `source: 'wall-auto'`. Pros: no node-splitting, no new mesher capability. Cons: the mesh around the wall needs locally finer elements (auto-refined via a per-wall `maxArea` override), and very high gradients at the wall tip may need a mesh convergence study case. If this proves inadequate, Phase 2b can add node-splitting as a follow-up.
+- No true zero-thickness sheet-pile / cutoff interface yet. The current retaining-wall approximation is a **thin region** (default thickness `0.1 m`) of fixed low conductivity (`k = 1e-10 m/s`) auto-generated from each `model.walls[i].{x, yTop, yTip}`. This is useful and already shipped, but it is still an approximation to a duplicated-node cutoff interface.
 - No second geometry tab. No separate terrain, no separate regions, no separate phreatic.
 - No change to Bishop/Spencer math when `useFemPorePressure` is false.
+
+### 5.6.11 Current implementation decisions and shortcuts
+
+The live Stage 6 seepage tool makes the following deliberate modelling and numerical choices. These are important for interpretation:
+
+- The shared section still starts from **one active CPT column**. Unless custom polygons are enabled, the interpreted CPT layers are extended laterally across the whole section before seepage is run.
+- When permeability is not explicitly supplied from CPT data or a user override, the current `kSource = 'sbtn-default'` path uses built-in soil-type heuristics from the classified layer labels. Treat those values as practical starting points, not measured conductivity.
+- Only **outer-boundary** edges can carry seepage BCs. Internal drains, relief wells, and line sinks are not yet part of the solver; see [drain.md](drain.md) for the planned one-way drain design.
+- A prescribed-head BC on a sloping or vertical outer edge is applied only to the **submerged** part below `y = h`. The dry portion above that elevation reverts to natural no-flow.
+- The iterative free-surface solve uses a **dry-conductivity scaling** (`DRY_FACTOR = 1e-4`) and a conductivity floor (`1e-20 m/s`) as numerical safeguards. This is a practical wet/dry screening model, not an unsaturated constitutive law.
+- If the wet/dry iteration creates disconnected wet pockets that are not connected to a prescribed-head boundary, the solver applies a **connectivity fallback** and dries those islands out. This avoids spurious trapped saturated zones on a single-domain mesh.
+- Retaining walls are represented as thin low-`k` polygons, not as true zero-thickness duplicate-node cutoffs. Tip gradients should still be checked with a mesh sensitivity run on important cases.
+- The seepage mesh target is exposed as a **numeric target area**, not just coarse/medium/fine presets. In auto mode it scales with the section area; in manual mode it uses the user value directly.
+- Polygon `coarseness` multiplies the local mesh target area by `global meshTargetArea × coarseness`. This is a numerical refinement control only; it is not a soil property.
+- Bishop/Spencer coupling samples `u = gamma_w * (h - y)` from the seepage mesh, clamps suction to zero, and falls back to hydrostatic phreatic pore pressure whenever a sample point lies outside the mesh or no seepage result exists.
 
 ---
 
@@ -1110,15 +1150,14 @@ The mesh should be finer where gradients are steep (near boundaries, corners, tr
 
 ```
 Mesh density strategy:
-  - Default: maximum element area = (domain_area / 500)
-    This gives ~1000 elements for a typical cross-section.
-  - Refinement near BCs: elements touching BC edges should be
-    at most 1/4 the default area.
-  - Refinement near soil transitions: elements spanning a
-    permeability contrast of >10× should be at most 1/4 the
-    default area.
-  - User override: "Coarse" (200 elements), "Medium" (1000),
-    "Fine" (5000). These set the maximum area constraint.
+  - Auto mode: maximum element area = clamp(domain_area / 3500, 0.05, 1.5) m^2
+    This keeps larger sections from silently becoming too dense.
+  - Manual mode: the entered meshTargetArea is used directly.
+  - Region coarseness: local max area = global meshTargetArea × region.coarseness
+  - Boundary densification: prescribed-head, seepage-face, terrain,
+    and fixed-phreatic segments are split to shorter target edge lengths.
+  - Region-boundary densification: internal material interfaces inherit
+    a segment length derived from the local area target.
 
 Quality constraint:
   - Minimum angle ≥ 20° (prevents degenerate slivers).
@@ -1518,6 +1557,29 @@ Method 2 — sum flux at boundary nodes:
 Method 2 is recommended. Display Q in m³/s per metre run
 (or litres/day per metre run for practical display).
 ```
+
+### 9.6 Arbitrary line probe along the shared measurement tool
+
+The current Stage 6 seepage workspace reuses the shared measurement line as a **post-processing probe**. This is distinct from boundary flux accounting: it samples the solved field along an arbitrary segment `A -> B` drawn by the user.
+
+Supported plotted quantities:
+
+- head `h`
+- pore pressure `u`
+- hydraulic gradient magnitude `|∇h|`
+- specific discharge magnitude `|q|`
+- normal discharge `q_n`
+
+Current implementation details:
+
+- The line is sampled at `21-201` evenly spaced points; the default is `81`.
+- `h` is sampled by barycentric interpolation of the nodal head field inside the containing triangle.
+- `u` is then computed as `gamma_w * (h - y)` at the sampled point.
+- `|∇h|`, `|q|`, and `q_n` come from the containing T3 element's constant gradient / Darcy state, so they are piecewise constant between triangle boundaries.
+- `q_n` uses the line normal pointing to the **left** of the measurement direction `A -> B`. Reversing the line flips the sign.
+- For `q_n`, the UI reports both the **net cross-flow** and the **absolute cross-flow** by integrating `q_n ds` along the sampled line.
+- Samples outside the seepage domain are returned as gaps rather than extrapolated values.
+- The graph can be copied to the clipboard as distance/value columns for external review.
 
 ---
 

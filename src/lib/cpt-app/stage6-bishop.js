@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
-import { designSoilLayer } from './stage6-engineering';
-import { resolveMaterialPermeability } from './seepage/material';
-import { sampleSeepagePorePressure } from './seepage/solver';
+import { designSoilLayer } from './stage6-engineering.js';
+import { resolveMaterialPermeability } from './seepage/material.js';
+import { sampleSeepagePorePressure } from './seepage/solver.js';
 import {
   buildCptAutoRegions,
   isSimplePolygon,
@@ -11,7 +11,7 @@ import {
   polygonArea,
   probeVerticalRegionStack,
   regionStripOverlap
-} from './soil-regions';
+} from './soil-regions.js';
 
 const EPS = 1e-9;
 const GEOM_EPS = 1e-6;
@@ -2555,6 +2555,11 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
       phiEffDeg: canReuseStrengthValues && Number.isFinite(prior.phiEffDeg) ? prior.phiEffDeg : Number(designed.phi) || 0,
       gamma: canReuseStrengthValues && Number.isFinite(prior.gamma) ? prior.gamma : Number(layer.g) || 18,
       gammaSat: canReuseStrengthValues && Number.isFinite(prior.gammaSat) ? prior.gammaSat : Number(layer.gs) || (Number(layer.g) || 18) + 2,
+      Emc: Number.isFinite(prior.Emc) && prior.Emc > 0 ? prior.Emc : Number(layer.Emc) || Number(layer.E50_i) || Number(layer.E50_ref) || 1000,
+      nu: Number.isFinite(prior.nu) ? prior.nu : Number(layer.nu),
+      K0nc: Number.isFinite(prior.K0nc) ? prior.K0nc : Number(layer.K0nc),
+      psi: Number.isFinite(prior.psi) ? prior.psi : Number(layer.psi) || 0,
+      sigmaTAllow: Number.isFinite(prior.sigmaTAllow) ? prior.sigmaTAllow : 0,
       kx: permeability.kx,
       ky: permeability.ky,
       kSource: permeability.kSource,
@@ -2698,7 +2703,8 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
     boundaryYs,
     surfaceLoad,
     walls,
-    seepage: bishopState?.seepage || null
+    seepage: bishopState?.seepage || null,
+    deformation: bishopState?.deformation || null
   };
   if (options.includeLegacyBands) model.legacyBands = legacyBands;
   return model;

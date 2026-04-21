@@ -97,7 +97,8 @@
 				<div class="doc-callout">
 					<strong>Present scope.</strong> The present Stage 6 module is limited to circular slip
 					surfaces, self-weight loading, one optional uniform vertical surcharge zone, and
-					optional hydrostatic pore pressure derived from a drawn phreatic line. Spencer is
+					optional pore pressure from the drawn hydrostatic phreatic line or, when the seepage
+					workspace has been solved and enabled, sampled FEM seepage pore pressure. Spencer is
 					implemented for shortlisted circular surfaces only. Seismic loading, reinforcement,
 					non-circular surfaces, and Morgenstern&ndash;Price do not form part of the present
 					implementation.
@@ -753,7 +754,7 @@
 								<tr><td>Spencer branch tolerances</td><td>0.001 on the Spencer moment branch and 0.001 on the Spencer force branch</td></tr>
 								<tr><td>Spencer convergence</td><td>Residual-based on |F<sub>m</sub> − F<sub>f</sub>|, 0.001 by default</td></tr>
 								<tr><td>Spencer outer / inner iterations</td><td>20 / 30 by default</td></tr>
-								<tr><td>Pore pressure</td><td>Dry if no phreatic line is drawn; otherwise hydrostatic from the drawn phreatic line</td></tr>
+								<tr><td>Pore pressure</td><td>Dry if no phreatic line is drawn; otherwise hydrostatic from the drawn phreatic line by default, with optional sampled FEM pore pressure from the seepage workspace when enabled. Outside the seepage mesh, or without a seepage result, the solver falls back to the hydrostatic route.</td></tr>
 								<tr><td>Surface load</td><td>One optional uniform vertical surcharge zone on the terrain, with one shared q input in kPa</td></tr>
 								<tr><td>Execution</td><td>Worker-backed search so the canvas remains responsive while solving</td></tr>
 							</tbody>
@@ -766,6 +767,7 @@
 					<li>The canvas may display the trial circle under evaluation while the worker is running.</li>
 					<li>Selected Bishop results expose slice-by-slice values including W<sub>i</sub>, Q<sub>i</sub>, V<sub>i</sub>, α<sub>i</sub>, u<sub>i</sub>, m<sub>α,i</sub>, the Bishop total normal N<sub>i</sub>, and mobilized shear.</li>
 					<li>When Spencer converges, the selected result relabels the normal column to the Spencer effective normal N′<sub>i</sub> and also exposes E<sub>R</sub>, X<sub>R</sub>, S<sub>mob</sub>, &lambda;, the branch values F<sub>m</sub> and F<sub>f</sub>, and the final moment and force residuals.</li>
+					<li>If FEM pore pressure is enabled, slice-base pore pressure is sampled from the seepage field; outside the seepage mesh or without a seepage result, the solver falls back to the hydrostatic phreatic model.</li>
 					<li>The Stage 7 report payload presently stores summary-level Bishop/Spencer values, convergence counts, and Spencer residual diagnostics, but not the full slice-force table.</li>
 				</ul>
 			</section>

@@ -2,7 +2,7 @@
 
 **Module**: 2D deformation / settlement screening on the shared Bishop-Seepage geometry  
 **Method**: Linear elastic plane-strain FEM on the existing triangular mesh, with Mohr-Coulomb effective-stress post-processing  
-**Status**: Draft v0.1  
+**Status**: v0.2 — initial Stage 6 deformation screening implementation shipped on 2026-04-22  
 **Positioning**: This is the "easy MC route". It is intentionally **not** a full elastoplastic Mohr-Coulomb solver.
 
 ---
@@ -24,6 +24,7 @@
    - 7.6 [Effective stress and pore pressure](#76-effective-stress-and-pore-pressure)
    - 7.7 [Mohr-Coulomb yield indicator](#77-mohr-coulomb-yield-indicator)
 8. [Application Design](#8-application-design)
+   - 8.5 [Current shipped v1 behavior and result interrogation](#85-current-shipped-v1-behavior-and-result-interrogation)
 9. [Data Structures](#9-data-structures)
 10. [Implementation Path](#10-implementation-path)
 11. [Complete Pseudocode](#11-complete-pseudocode)
@@ -53,6 +54,13 @@ That means:
 - Mohr-Coulomb is used to evaluate the solved stress field, not to produce plastic strains.
 
 This keeps the implementation realistic and fast while still giving engineers a very useful "where is the stress going, what is settling, and where are we close to MC yield?" tool.
+
+The intended interpretation is:
+
+- **long-term drained screening**
+- **small-strain plane strain**
+- **flat-ground `K0` geostatic initialization**
+- **elastic deformation solve with MC screening afterward**
 
 ---
 
@@ -95,6 +103,8 @@ This v1 does **not** do:
 - true 3D slab behaviour
 
 So this is **not** PLAXIS-like nonlinear FE. It is a high-value screening tool that fits the current app architecture.
+
+It also does not do a true geostatic gravity step before loading. That matters on slopes, embankments, and wall-supported geometries; see the explicit limitation in Section 7.5.
 
 ---
 
@@ -167,7 +177,86 @@ This keeps the solver stable and aligns with the current settlement workflow.
 
 ### 5.5 Effective-stress screening
 
-The deformation solve is best interpreted as a drained effective-stress screening model. If seepage results are available, their pore pressures should be used in the initial stress reconstruction.
+The deformation solve is best interpreted as a **drained effective-stress screening model**. If seepage results are available, their pore pressures should be used in the initial stress reconstruction.
+
+This means:
+
+- `delta_u = 0` during the mechanical loading step
+- the applied load changes effective stress directly
+- the result is appropriate for long-term drained response
+- the result is **not** an immediate undrained loading check for fast-loaded clay
+
+The UI and report should label this mode explicitly as:
+
+```text
+Long-term drained deformation screening
+```
+
+### 5.6 Flat-ground geostatic initialization limitation
+
+The initial stress logic in v1 assumes:
+
+```text
+sigma_h0' = K0 * sigma_v0'
+tau_xy0' = 0
+```
+
+This is a one-dimensional at-rest initialization. It is acceptable for:
+
+- flat or nearly flat ground
+- broad foundation screening on level terrain
+
+It becomes mechanically weak for:
+
+- steep slopes
+- embankments
+- wall-supported sections
+- load cases near a crest or face
+
+In those cases, the real soil mass already carries static shear stress before the new load is applied. A `tau_xy0' = 0` assumption will generally understate the pre-existing shear stress level and can make MC utilization look artificially safe.
+
+So v1 must:
+
+- document this limitation clearly
+- warn the user when the terrain contains significant slope breaks or retaining walls
+
+Recommended warning text:
+
+```text
+Initial stress state uses flat-ground K0 initialization with zero initial shear stress.
+Results near steep slopes, embankments, or retaining walls may be unconservative.
+```
+
+Future v2 improvement:
+
+- run a gravity-loading geostatic step first
+- use the resulting stress field as the initial state for the incremental load analysis
+
+### 5.7 Near-incompressible materials and T3 limitations
+
+The v1 formulation uses 3-node constant-strain triangles (T3 / CST). These are convenient and robust, but they come with two important numerical limitations:
+
+- **near-incompressible behavior**: as `nu -> 0.5`, the plane-strain elastic matrix becomes ill-conditioned and T3 elements exhibit volumetric locking
+- **bending-driven over-stiffness**: T3 elements are too stiff in coarse meshes where bending-like curvature must be represented, especially under the edges of the loaded area
+
+This matters particularly for:
+
+- saturated clays modeled with high `nu`
+- coarse meshes beneath `load.xStart` and `load.xEnd`
+
+So v1 must include:
+
+- a hard cap on Poisson's ratio in the elastic matrix builder
+- a user warning when the entered `nu` exceeds the cap
+- explicit local mesh refinement beneath the loaded edges
+
+Recommended default:
+
+```text
+nuMax = 0.49
+```
+
+This does not remove locking, but it prevents matrix blow-up and makes the limitation explicit.
 
 ---
 
@@ -181,7 +270,14 @@ Use the existing Stage 6 Bishop geometry model:
 - analysis bottom
 - regions
 - optional custom polygons
+- optional retaining walls in the shared canvas
 - optional seepage result
+
+Important current interpretation notes:
+
+- If custom polygons are **off**, the soil layout still comes from the **active CPT column extended laterally across the whole section**.
+- If custom polygons are **on**, they locally replace that default layering and can also carry a local mesh `coarseness` factor.
+- Retaining walls remain part of the shared Stage 6 geometry, but they are **not** mechanical elements in the deformation solver. They stay active only in the slope-stability workspace today.
 
 ### 6.2 Materials
 
@@ -199,10 +295,18 @@ type MechanicalMaterial = {
   phiEffDeg: number
   psiDeg: number
   K0nc: number
+  sigmaTAllow?: number
 }
 ```
 
 These values already exist conceptually in the Stage 4 / Stage 6 pipeline.
+
+Current implementation safeguards:
+
+- `Emc` is used directly as the linear-elastic modulus `E`.
+- If `Emc` is missing or non-positive, the solver replaces it with `1000 kPa` and emits a warning.
+- If `K0nc` is missing, the solver falls back to Jaky's `K0 = 1 - sin(phi')`.
+- `psi` is carried through the data model, but it is not used until plasticity exists.
 
 ### 6.3 Load model
 
@@ -210,12 +314,11 @@ For v1, do **not** block the module on a full slab-structure model. Use a staged
 
 ```ts
 type DeformationLoad = {
-  kind: 'slab-strip'
+  kind: 'terrain-strip'
   xStart: number
   xEnd: number
-  inputMode: 'pressure' | 'lineLoad' | 'totalLoad'
+  inputMode: 'pressure' | 'totalLoad'
   q?: number
-  lineLoad?: number
   totalLoad?: number
   outOfPlaneLength?: number
 }
@@ -235,14 +338,17 @@ For a loaded width `B = xEnd - xStart`:
 If pressure is entered:
   q = q_user
 
-If line load is entered [kN/m along the section]:
-  q = lineLoad / B
-
 If total load is entered [kN]:
   q = totalLoad / (B * L_out)
 ```
 
 Once `q` is known, the 2D FE solve is identical. The out-of-plane length matters only for converting total load to pressure.
+
+Current shipped behavior:
+
+- The FE solver applies the load as a **vertical traction** on terrain edges whose `x` range overlaps the shared `surfaceLoad` interval.
+- There is no rigid slab, no plate stiffness, no contact algorithm, and no line-load mode in the current implementation.
+- The drawn interval is therefore a convenient load footprint, not yet a structural slab object.
 
 ### 6.4 Boundary conditions
 
@@ -252,6 +358,13 @@ Default v1 mechanical supports:
 - `ux = 0` on the left and right vertical boundaries
 
 This is a standard screening set for a truncated half-space. The domain must be wide enough that side restraints do not dominate the loaded zone.
+
+Practical screening rule:
+
+- aim for at least `5 * B` of width on each side of the loaded interval
+- aim for at least `5 * B` of depth beneath the loaded interval
+
+If the shared Bishop domain is smaller than this, the solve can still be used for screening, but settlements will tend to be too stiff and `eta_MC` near the lateral boundaries may be optimistic.
 
 ---
 
@@ -306,6 +419,28 @@ where:
 - `E = Emc`
 - `nu = nu`
 
+Programmatic safeguard:
+
+```text
+nuEff = min(nuInput, nuMax)
+nuMax = 0.49   // recommended default
+```
+
+If `nuInput > nuMax`, the solver should:
+
+- clamp to `nuEff = nuMax`
+- keep running
+- emit a warning in the UI / report
+
+Recommended warning text:
+
+```text
+Poisson's ratio was capped to 0.49 for numerical stability in the plane-strain T3 solver.
+Higher values can trigger near-incompressible locking and unrealistically stiff settlements.
+```
+
+This is not just a conditioning safeguard. Even with a finite matrix, T3 elements become artificially stiff as incompressibility is approached. So high-`nu` clay cases must be interpreted conservatively.
+
 ### 7.3 T3 triangle element
 
 For a 3-node triangle with nodes:
@@ -340,6 +475,24 @@ k_e = t * A * B^T * D * B
 ```
 
 This is exact for the constant-strain triangle.
+
+Numerical note:
+
+- the element is constant-strain, so stresses are piecewise constant before smoothing
+- the element is simple and robust, but it is not ideal for bending-dominated response
+- if the mesh is coarse beneath the loaded edges, settlement bowls will be too stiff and stress contours will look blocky
+
+Therefore the meshing logic for deformation should add **load-edge refinement bands** beneath:
+
+- `load.xStart`
+- `load.xEnd`
+
+Recommended v1 rule:
+
+- refine a vertical strip beneath each loaded edge to a local target area smaller than the global target area
+- ensure at least several element rows exist between the terrain and the first stress-bulb depths below the load edges
+
+This is required if the FE settlement profile is expected to track the analytical Boussinesq trend in the verification section.
 
 ### 7.4 Boundary traction from slab / load patch
 
@@ -392,6 +545,27 @@ sigma0' =
   [ 0            sigma_v0']
 ```
 
+Implementation note:
+
+`verticalOverburdenStressAt(...)` must integrate from the terrain surface downward to the target point. In the current app geometry, `y` increases upward, so the accumulated overburden stress must increase as `y` decreases.
+
+Important modelling limitation:
+
+This initialization assumes flat-ground geostatic conditions. It does **not** reproduce the non-zero static shear stresses that exist inside slopes, embankments, or wall-influenced ground. Therefore:
+
+- for flat to mildly sloping ground, this is acceptable as a screening initialization
+- for steep slopes or retaining-wall sections, the resulting MC screening can be unconservative near the face or crest
+
+The app should therefore warn the user if:
+
+- terrain slope exceeds a threshold over meaningful segments, or
+- retaining walls are present in the model
+
+Future v2 path:
+
+- perform a gravity-loading step first
+- use that stress field, including non-zero `tau_xy0'`, as the initial state
+
 ### 7.6 Effective stress and pore pressure
 
 The elastic FE solve returns an incremental stress field `delta_sigma` in **tension-positive** sign convention.
@@ -431,6 +605,10 @@ sigma_3' = p - r
 
 with `sigma_1' >= sigma_3'`.
 
+In v1, the MC screening check uses the **in-plane principal pair only**. The out-of-plane plane-strain principal `sigma_2'` is ignored.
+
+This is a standard and acceptable approximation for a 2D screening tool, but it is marginally less conservative than a full 3D Mohr-Coulomb evaluation.
+
 The Mohr-Coulomb criterion in principal stress form is:
 
 ```text
@@ -461,6 +639,48 @@ Interpretation:
 - `eta_MC > 1`: would exceed MC strength if plasticity were allowed
 
 This is the key v1 post-processing quantity.
+
+### 7.8 Tension cut-off
+
+The Mohr-Coulomb expression above is meaningful only while the stress state remains in the compressive regime that soil can sustain. Soil tensile strength is negligible in most practical screening models.
+
+So v1 should apply an explicit tension cut-off before reporting `eta_MC`.
+
+Recommended default:
+
+```text
+sigma_t_allow = 0
+```
+
+That is, in compression-positive convention, if:
+
+```text
+sigma_3' < 0
+```
+
+the element is flagged as failed in tension immediately.
+
+Optional less-conservative alternative:
+
+```text
+sigma_t_allow = c' * cot(phi')
+failure if sigma_3' < -sigma_t_allow
+```
+
+Recommended v1 implementation:
+
+- default to zero tensile strength
+- optionally expose a future advanced toggle for cohesive tensile cut-off
+
+This avoids misleadingly low `eta_MC` values in zones where the FE solve develops tensile principal stress under load edges or near geometric bending zones.
+
+API recommendation:
+
+- include `sigma_t_allow` in the internal material / solver interface from day one
+- default it to `0`
+- keep it hidden from the normal UI in v1
+
+That way a future advanced toggle can be added without changing the solver contract.
 
 ---
 
@@ -500,13 +720,14 @@ The seepage mesher is already the right foundation:
 - same polygon regions
 - same Triangle-based meshing route
 
-The deformation solver should share the same domain meshing logic, but it does not need seepage-only internal boundary semantics.
+The deformation solver shares the same domain meshing logic, but it does not inherit seepage-only internal boundary semantics.
 
-Recommended refactor:
+Current shipped split:
 
-- extract the reusable Triangle domain builder from the seepage module into a shared mesh helper
-- keep seepage on top of that helper
-- let deformation call the same helper
+- `src/lib/cpt-app/mesh/section-pslg.js` and `src/lib/cpt-app/mesh/section-mesh.js` hold the shared section-meshing helpers
+- `src/lib/cpt-app/seepage/triangle-runtime.js` remains the low-level Triangle bridge
+- `src/lib/cpt-app/seepage/pslg.js` builds seepage-specific requests on top of that shared core
+- `src/lib/cpt-app/deformation/mesh.js` builds deformation-specific requests on top of the same shared core
 
 ### 8.4 Worker execution
 
@@ -516,6 +737,31 @@ Use the same pattern as the seepage worker:
 - stream progress messages
 - support cooperative stop
 - return mesh + fields + summaries
+
+### 8.5 Current shipped v1 behavior and result interrogation
+
+The live implementation currently makes the following deliberate modelling choices:
+
+- The deformation mesh reuses the shared section mesher via `src/lib/cpt-app/mesh/section-pslg.js` and `src/lib/cpt-app/mesh/section-mesh.js`, with the low-level Triangle call still coming from `src/lib/cpt-app/seepage/triangle-runtime.js`.
+- The deformation-specific mesher in `src/lib/cpt-app/deformation/mesh.js` adds local refinement beneath the loaded interval and both load edges because CST/T3 elements become too stiff if that zone stays coarse.
+- Region `coarseness` multiplies the local target element area in deformation exactly as it does in seepage. This is a numerical mesh control only, not a constitutive material parameter.
+- Seepage coupling only changes the **initial pore-pressure field** used for effective-stress reconstruction. There is no `delta_u` generation during loading and no feedback from deformation back into seepage.
+- Retaining walls remain visible in the shared geometry, but they are ignored by the deformation stiffness solve. No beam, plate, spring, or contact element is attached to them yet.
+
+The current results panel also reuses the shared measurement line as a **line probe**. It can plot:
+
+- settlement `-u_y`
+- horizontal displacement `u_x`
+- vertical displacement `u_y`
+- `delta_sigma_yy`
+- `eta_MC`
+
+Sampling details matter:
+
+- `u_x` and `u_y` are sampled by barycentric interpolation of nodal displacements inside the containing triangle.
+- `delta_sigma_yy` and `eta_MC` come from the containing constant-strain triangle and are therefore piecewise constant between element boundaries.
+- Points outside the solved domain are returned as gaps rather than extrapolated values.
+- The plotted graph can be copied to the clipboard as distance/value columns for external review.
 
 ---
 
@@ -542,7 +788,11 @@ type DeformationElementResult = {
   stressIncrement: { sxx: number, syy: number, txy: number } // tension-positive FE sign
   effectiveStress: { sxx: number, syy: number, txy: number } // compression-positive geotech sign
   principal: { s1: number, s3: number }
-  mc: { F: number, eta: number }
+  mc: {
+    F: number
+    eta: number
+    state: 'elastic' | 'mc-yield' | 'tension-cutoff'
+  }
 }
 
 type DeformationOutput = {
@@ -572,6 +822,8 @@ This is where averaging is appropriate. It is for visualisation only, not for en
 
 ## 10. Implementation Path
 
+Phases 1-5 below are now largely landed in the repo. This section is kept as the implementation map so future work can still hang off the same structure.
+
 ### Phase 1 - Data and UI plumbing
 
 Touch:
@@ -586,6 +838,10 @@ Add:
 - out-of-plane length
 - run / stop / clear actions
 - result display toggles
+- warning banner for:
+  - drained-only interpretation
+  - flat-ground `K0` initialization
+  - Poisson ratio capping
 
 ### Phase 2 - Shared mesh extraction
 
@@ -595,9 +851,16 @@ Extract from the seepage stack:
 - shared Triangle call
 - shared region tagging
 
+Add deformation-specific local refinement:
+
+- refinement strips under `load.xStart` and `load.xEnd`
+- optional finer top band beneath the loaded interval
+
 Recommended files:
 
-- `src/lib/cpt-app/mesh/shared-triangle.js`
+- `src/lib/cpt-app/mesh/section-pslg.js`
+- `src/lib/cpt-app/mesh/section-mesh.js`
+- `src/lib/cpt-app/seepage/triangle-runtime.js`
 - `src/lib/cpt-app/deformation/mesh.js`
 
 ### Phase 3 - Mechanical solver core
@@ -617,6 +880,8 @@ Implement:
 - linear solve
 - stress recovery
 - MC post-processing
+- Poisson-ratio cap and warnings
+- tension cut-off state classification
 
 ### Phase 4 - Worker integration
 
@@ -641,6 +906,7 @@ Show:
 - horizontal displacement contours
 - `delta_sigma_yy` contours
 - MC utilization contours
+- shared measurement-line graph and clipboard export
 
 ### Phase 6 - Optional seepage coupling
 
@@ -663,7 +929,10 @@ function runMcDeformationScreening(input):
   model = input.model
   load = normalizeLoad(input.load)
 
-  mesh = buildMechanicalMesh(model, input.options)
+  mesh = buildMechanicalMesh(model, {
+    ...input.options,
+    refinementBands: buildLoadEdgeRefinementBands(load)
+  })
   materials = mapMeshElementsToMaterials(mesh, model.regions)
 
   constraints = buildMechanicalSupports(mesh, model)
@@ -703,6 +972,24 @@ function elementStiffnessT3(element, material):
   return A * transpose(B) * D * B
 ```
 
+```ts
+function planeStrainElasticMatrix(E, nuInput):
+  nuMax = 0.49
+  nuMin = -0.99
+  nu = clamp(nuInput, nuMin, nuMax)
+
+  if (nuInput > nuMax):
+    pushWarning('Poisson ratio capped to 0.49 for numerical stability in the T3 plane-strain solver.')
+
+  factor = E / ((1 + nu) * (1 - 2 * nu))
+
+  return factor * [
+    [1 - nu, nu, 0],
+    [nu, 1 - nu, 0],
+    [0, 0, (1 - 2 * nu) / 2]
+  ]
+```
+
 ### 11.3 Edge traction assembly
 
 ```ts
@@ -717,11 +1004,15 @@ function edgeTractionVector(edge, q):
 
 ```ts
 function buildInitialEffectiveStressField(mesh, model, options):
+  if (modelContainsSteepSlopeOrWalls(model)):
+    pushWarning('Initial stress uses flat-ground K0 initialization with zero initial shear stress; results near slopes or walls may be unconservative.')
+
   out = []
   for each element in mesh.elements:
     c = element.centroid
     material = model.regions[element.regionIndex].material
 
+    // Integrate from terrain downward; in this geometry system y decreases with depth.
     sigmaV0 = verticalOverburdenStressAt(model, c.y)
     u0 = options.useSeepagePorePressures
       ? sampleSeepagePorePressure(model.seepage, c.x, c.y)
@@ -784,12 +1075,25 @@ function mohrCoulombIndicator(principal, material):
   c = material.cEff
   s1 = principal.s1
   s3 = principal.s3
+  sigmaTAllow = max(material.sigmaTAllow ?? 0, 0)
 
-  denom = max((s1 + s3) * sin(phi) + 2 * c * cos(phi), 1e-6)
+  if (s3 < -sigmaTAllow):
+    return {
+      F: +Infinity,
+      eta: +Infinity,
+      state: 'tension-cutoff'
+    }
+
+  rawDenom = (s1 + s3) * sin(phi) + 2 * c * cos(phi)
+  denom = max(rawDenom, 1e-6)
   F = (s1 - s3) - (s1 + s3) * sin(phi) - 2 * c * cos(phi)
   eta = (s1 - s3) / denom
 
-  return { F, eta }
+  return {
+    F,
+    eta,
+    state: eta >= 1 ? 'mc-yield' : 'elastic'
+  }
 ```
 
 ### 11.7 Terrain settlement profile
@@ -857,6 +1161,27 @@ Run the same mechanical load:
 
 The high-pore-pressure case should show lower effective-stress reserve and higher `eta_MC`.
 
+### 12.7 High-Poisson-ratio safeguard test
+
+Use a clay layer with `nu > 0.49` in the input material and verify:
+
+- the solver does not fail numerically
+- the constitutive builder clamps to the configured maximum
+- the result reports a clear warning
+
+### 12.8 Load-edge refinement sensitivity test
+
+Run the same loaded strip with:
+
+- coarse edge refinement
+- fine edge refinement
+
+Verify that the coarse mesh is stiffer and that refinement beneath `load.xStart` / `load.xEnd` improves convergence toward the analytical settlement / stress trend.
+
+### 12.9 Slope initialization warning test
+
+Run the solver on a steeply sloping geometry and verify that the report or UI issues the geostatic-initialization warning.
+
 ---
 
 ## 13. Limitations and Future Extensions
@@ -866,8 +1191,22 @@ The high-pore-pressure case should show lower effective-stress reserve and highe
 - No plastic strains: if `eta_MC > 1`, the app reports overstress, but does not redistribute stress.
 - `psi` is carried but unused.
 - Settlement is elastic screening settlement, not consolidation settlement.
+- Mechanical loading is interpreted as long-term drained response; undrained excess pore pressure generation is not modeled.
 - Short slabs remain a 3D problem; plane strain is only a screening approximation.
 - Boundary effects matter if the domain is too narrow or too shallow.
+- The current soil layout still begins from one active CPT column extended laterally across the section unless custom polygons are used.
+- Retaining walls are not active deformation elements in v1.
+- The current load is a vertical terrain traction from the shared `surfaceLoad` interval only; there is no rigid slab or contact redistribution yet.
+- Flat-ground `K0` initialization ignores initial shear stress and can be unconservative on slopes and wall-supported sections.
+- T3 elements become overly stiff for high `nu` and coarse meshes, especially beneath sharp load gradients; local refinement and `nu` capping are mandatory safeguards.
+- MC screening uses the in-plane principal pair only; the out-of-plane principal `sigma_2'` is ignored.
+- Tension cut-off is applied with zero tensile strength (`sigma_3' >= 0`). This is conservative; a small cohesive tension allowance can be added in a future toggle.
+- Initial vertical effective stress is reconstructed from overburden only, which is the intended v1 geostatic approximation.
+- Results are sensitive to lateral and bottom domain extent because the side boundaries restrain horizontal movement.
+- Missing or non-positive `Emc` is replaced with `1000 kPa`, and missing `K0nc` falls back to Jaky `K0`. Those are pragmatic screening defaults, not calibrated constitutive choices.
+- Seepage coupling changes only the initial pore pressure used in stress recovery; it does not make the solve coupled or undrained.
+- `delta_sigma_yy` and `eta_MC` remain elementwise CST/T3 quantities. Smoothed plots and line-probe graphs are useful for interpretation, but they do not add equilibrium or compatibility beyond the underlying triangle field.
+- Polygon `coarseness` is only a local mesh-refinement factor.
 
 ### 13.2 Natural v2 extensions
 
