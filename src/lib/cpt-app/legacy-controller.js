@@ -4002,6 +4002,19 @@ function stage6BishopRegionId(){
   return `region_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
 }
 
+const STAGE6_REGION_COORD_DECIMALS = 6;
+
+function stage6BishopRoundRegionCoord(value){
+  return +Number(value).toFixed(STAGE6_REGION_COORD_DECIMALS);
+}
+
+function stage6BishopClampRegionPoint(point, minX = -Infinity, maxX = Infinity){
+  return {
+    x:stage6BishopRoundRegionCoord(Math.min(Math.max(Number(point?.x), minX), maxX)),
+    y:stage6BishopRoundRegionCoord(Number(point?.y))
+  };
+}
+
 function stage6BishopNormalizeCustomRegions(regions, terrain, materials){
   const minX = terrain?.length ? terrain[0].x : -Infinity;
   const maxX = terrain?.length ? terrain[terrain.length-1].x : Infinity;
@@ -4015,10 +4028,7 @@ function stage6BishopNormalizeCustomRegions(regions, terrain, materials){
           y:Number(pt?.y)
         }))
         .filter((pt)=>Number.isFinite(pt.x) && Number.isFinite(pt.y))
-        .map((pt)=>({
-          x:+Math.min(Math.max(pt.x, minX), maxX).toFixed(3),
-          y:+pt.y.toFixed(3)
-        }));
+        .map((pt)=>stage6BishopClampRegionPoint(pt, minX, maxX));
       const polygon = normalizeRegionPolygon(rawPolygon);
       const materialId = materialIds.has(region?.materialId) ? region.materialId : fallbackMaterialId;
       return {
@@ -4264,7 +4274,7 @@ function stage6BishopCopyCurrentRegionsToCustom(){
   }
   bishop.customRegions = model.regions.map((region, index)=>({
     id:stage6BishopRegionId(),
-    polygon:(region.polygon || []).map((pt)=>({x:+pt.x.toFixed(3), y:+pt.y.toFixed(3)})),
+    polygon:(region.polygon || []).map((pt)=>stage6BishopClampRegionPoint(pt)),
     materialId:region.material?.id || bishop.materials?.[0]?.id || null,
     source:index < (model.autoRegions?.length || 0) ? 'cpt-copy' : 'custom'
   }));
@@ -5291,10 +5301,7 @@ function stage6BishopClosestPointOnSegment(point, a, b){
   const len2 = dx*dx + dy*dy;
   const t = len2 > 1e-12 ? Math.min(Math.max(((point.x - a.x)*dx + (point.y - a.y)*dy) / len2, 0), 1) : 0;
   return {
-    point:{
-      x:+(a.x + dx*t).toFixed(3),
-      y:+(a.y + dy*t).toFixed(3)
-    },
+    point:stage6BishopClampRegionPoint({x:a.x + dx*t, y:a.y + dy*t}),
     t,
     distance:Math.hypot(point.x - (a.x + dx*t), point.y - (a.y + dy*t))
   };
@@ -5324,8 +5331,8 @@ function stage6BishopPickRegionBoundaryPoint(region, world){
   const nearVertexTol = 1e-3;
   if(best.t <= nearVertexTol){
     return {
-      x:+polygon[best.edgeIndex].x.toFixed(3),
-      y:+polygon[best.edgeIndex].y.toFixed(3),
+      x:stage6BishopRoundRegionCoord(polygon[best.edgeIndex].x),
+      y:stage6BishopRoundRegionCoord(polygon[best.edgeIndex].y),
       edgeIndex:best.edgeIndex,
       vertexIndex:best.edgeIndex,
       t:0
@@ -5334,8 +5341,8 @@ function stage6BishopPickRegionBoundaryPoint(region, world){
   if(best.t >= 1 - nearVertexTol){
     const vertexIndex = (best.edgeIndex + 1) % polygonLength;
     return {
-      x:+polygon[vertexIndex].x.toFixed(3),
-      y:+polygon[vertexIndex].y.toFixed(3),
+      x:stage6BishopRoundRegionCoord(polygon[vertexIndex].x),
+      y:stage6BishopRoundRegionCoord(polygon[vertexIndex].y),
       edgeIndex:best.edgeIndex,
       vertexIndex,
       t:1
@@ -5354,10 +5361,7 @@ function stage6BishopTraverseBoundary(boundary, startIndex, endIndex){
   const out = [];
   let index = startIndex;
   while(true){
-    out.push({
-      x:+boundary[index].x.toFixed(3),
-      y:+boundary[index].y.toFixed(3)
-    });
+    out.push(stage6BishopClampRegionPoint(boundary[index]));
     if(index === endIndex) break;
     index = (index + 1) % boundary.length;
     if(out.length > boundary.length + 2) return [];
@@ -5382,19 +5386,13 @@ function stage6BishopBuildSplitBoundary(polygon, cuts){
   const boundary = [];
   const cutIndices = {};
   for(let i=0;i<polygon.length;i+=1){
-    boundary.push({
-      x:+polygon[i].x.toFixed(3),
-      y:+polygon[i].y.toFixed(3)
-    });
+    boundary.push(stage6BishopClampRegionPoint(polygon[i]));
     (cutNamesByVertex.get(i) || []).forEach((name)=>{
       cutIndices[name] = boundary.length - 1;
     });
     const insertions = (insertionsByEdge.get(i) || []).slice().sort((a, b)=>a.t - b.t);
     insertions.forEach((cut)=>{
-      const pt = {
-        x:+cut.x.toFixed(3),
-        y:+cut.y.toFixed(3)
-      };
+      const pt = stage6BishopClampRegionPoint(cut);
       if(stage6BishopDist(boundary[boundary.length - 1], pt) > 1e-6){
         boundary.push(pt);
       }
@@ -5517,10 +5515,10 @@ function stage6BishopSubtractHoleFromPolygon(parentPolygon, holePolygon){
     const holeIntervals = stage6BishopPolygonIntervalsDetailed(hole, xMid);
     const visibleIntervals = stage6BishopSubtractDetailedIntervals(parentIntervals, holeIntervals);
     visibleIntervals.forEach((interval)=>{
-      const leftBottom = {x:+xL.toFixed(3), y:+stage6BishopBoundaryYAtX(interval.bottomBoundary, xL).toFixed(3)};
-      const leftTop = {x:+xL.toFixed(3), y:+stage6BishopBoundaryYAtX(interval.topBoundary, xL).toFixed(3)};
-      const rightTop = {x:+xR.toFixed(3), y:+stage6BishopBoundaryYAtX(interval.topBoundary, xR).toFixed(3)};
-      const rightBottom = {x:+xR.toFixed(3), y:+stage6BishopBoundaryYAtX(interval.bottomBoundary, xR).toFixed(3)};
+      const leftBottom = stage6BishopClampRegionPoint({x:xL, y:stage6BishopBoundaryYAtX(interval.bottomBoundary, xL)});
+      const leftTop = stage6BishopClampRegionPoint({x:xL, y:stage6BishopBoundaryYAtX(interval.topBoundary, xL)});
+      const rightTop = stage6BishopClampRegionPoint({x:xR, y:stage6BishopBoundaryYAtX(interval.topBoundary, xR)});
+      const rightBottom = stage6BishopClampRegionPoint({x:xR, y:stage6BishopBoundaryYAtX(interval.bottomBoundary, xR)});
       const piece = normalizeRegionPolygon([leftBottom, leftTop, rightTop, rightBottom]);
       if(stage6BishopPolygonIsValid(piece)){
         pieces.push(piece);
@@ -6153,10 +6151,7 @@ function stage6BishopPointerMove(event){
     const pt = stage6BishopSnapWorldPoint(world, 'free');
     const minX = bishop.terrain.length >= 2 ? bishop.terrain[0].x : -Infinity;
     const maxX = bishop.terrain.length >= 2 ? bishop.terrain[bishop.terrain.length-1].x : Infinity;
-    const nextPoint = {
-      x:+Math.min(Math.max(pt.x, minX), maxX).toFixed(3),
-      y:+pt.y.toFixed(3)
-    };
+    const nextPoint = stage6BishopClampRegionPoint(pt, minX, maxX);
     const nextPolygon = (region.polygon || []).map((item, index)=>index === drag.index ? nextPoint : item);
     if(stage6BishopPolygonIsValid(nextPolygon)){
       region.polygon[drag.index] = nextPoint;
