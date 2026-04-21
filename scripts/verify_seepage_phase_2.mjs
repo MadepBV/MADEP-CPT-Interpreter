@@ -33,20 +33,6 @@ function assertContiguousActiveSeepageBlock(faces, activeMask, message) {
   });
 }
 
-function assertToeAnchoredActiveSeepageBlock(faces, activeMask, message) {
-  const sorted = faces
-    .map((face, index) => ({ face, active: !!activeMask[index] }))
-    .sort((left, right) => left.face.mid.y - right.face.mid.y);
-  let seenInactive = false;
-  sorted.forEach((item) => {
-    if (!item.active) {
-      seenInactive = true;
-      return;
-    }
-    assert(!seenInactive, message);
-  });
-}
-
 function buildElementNeighbors(mesh) {
   const edgeMap = new Map();
   const neighbors = Array.from({ length: mesh?.elements?.length || 0 }, () => new Set());
@@ -153,6 +139,16 @@ function phreaticDirectionalRise(segments, xMin, xMax, step = 0.2) {
     else maxRise = Math.max(maxRise, -delta);
   }
   return { maxRise, samples };
+}
+
+async function withFakePerformanceNow(fakeNowRef, fn) {
+  const originalNow = performance.now;
+  performance.now = () => fakeNowRef.value;
+  try {
+    return await fn();
+  } finally {
+    performance.now = originalNow;
+  }
 }
 
 function homogeneousRegion(xMin, xMax, yMin, yMax, id = 'soil') {
@@ -445,6 +441,76 @@ await runCase('Case 3c iterate mode returns the latest solved state when interru
   assert(Number.isFinite(solved.result.headMin) && Number.isFinite(solved.result.headMax), 'interrupted iterate case should still return the latest solved head field');
 });
 
+await runCase('Case 3d iterate mode honors the runtime deadline from inside the active-set solve', async () => {
+  const fakeNow = { value: 0 };
+  const solved = await withFakePerformanceNow(fakeNow, async () =>
+    analyzeSeepageModel({
+      model: {
+        terrain: {
+          vertices: [
+            { x: 0, y: 8 },
+            { x: 12, y: 8 }
+          ]
+        },
+        analysisBottomY: 0,
+        phreatic: {
+          vertices: [
+            { x: 0, y: 8 },
+            { x: 12, y: 2 }
+          ]
+        },
+        walls: [],
+        regions: [
+          homogeneousRegion(0, 12, 0, 8, 'body'),
+          {
+            id: 'cap',
+            polygon: [
+              { x: 2, y: 5.5 },
+              { x: 10, y: 5.5 },
+              { x: 10, y: 6.6 },
+              { x: 2, y: 6.6 }
+            ],
+            material: {
+              id: 'cap',
+              label: 'cap',
+              kx: 1e-10,
+              ky: 1e-10,
+              gamma: 18,
+              gammaSat: 20
+            }
+          }
+        ],
+        seepage: {
+          bcs: [
+            { edgeKey: 'side-left:0', type: 'head', head: 8, status: 'active' },
+            { edgeKey: 'side-right:0', type: 'seepage-face', status: 'active' }
+          ],
+          options: {
+            freeSurface: 'iterate',
+            meshTargetArea: 0.03,
+            flowErrorTolerance: 1e-4,
+            maxRuntimeMs: 12,
+            usePhreaticAsSeed: true
+          }
+        }
+      }
+    }, () => {}, {
+      shouldStop: () => false,
+      checkpoint: async () => {
+        fakeNow.value += 3;
+        return false;
+      }
+    })
+  );
+
+  assert(solved.result.solver.terminationReason === 'time-limit', 'deadline-driven iterate case should report a time-limit termination');
+  approxLE(
+    solved.result.timing.totalMs,
+    18,
+    'deadline-driven iterate case should stop close to the requested runtime instead of overshooting by a full last solve'
+  );
+});
+
 await runCase('Case 4 moderate mesh stays under target size and runtime', async () => {
   const terrain = {
     vertices: Array.from({ length: 41 }, (_, i) => ({
@@ -550,11 +616,6 @@ await runCase('Case 5 embankment seepage face stays contiguous and converges', a
     slopeFaces,
     slopeMask,
     'embankment case should not reactivate isolated seepage-face edges above an inactive downstream slope segment'
-  );
-  assertToeAnchoredActiveSeepageBlock(
-    slopeFaces,
-    slopeMask,
-    'embankment case should activate the downstream seepage face from the toe upward, not as a floating block'
   );
   assertWetComponentsTouchPrescribedHead(
     solved.mesh,

@@ -7,7 +7,7 @@ import { buildTriangleMesh } from './mesh-triangle.js';
 
 const EPS = 1e-9;
 const GEOM_EPS = 1e-6;
-const DRY_FACTOR = 1e-6;
+const DRY_FACTOR = 1e-4;
 const WALL_K = 1e-10;
 const MIN_CONDUCTIVITY = 1e-20;
 const WALL_THICKNESS = 0.1;
@@ -72,8 +72,22 @@ function buildInterruptedError(message = 'Seepage run was interrupted before a s
   return error;
 }
 
+function buildTimeLimitError(message = 'Seepage runtime limit was reached before a solution became available.') {
+  const error = new Error(message);
+  error.code = 'SEEPAGE_TIME_LIMIT';
+  return error;
+}
+
 function isStopRequested(runControl) {
   return !!runControl?.shouldStop?.();
+}
+
+function stopReason(runControl) {
+  if (typeof runControl?.stopReason === 'function') {
+    const reason = runControl.stopReason();
+    if (reason) return reason;
+  }
+  return isStopRequested(runControl) ? 'interrupted' : null;
 }
 
 async function runCheckpoint(runControl, force = false) {
@@ -81,6 +95,30 @@ async function runCheckpoint(runControl, force = false) {
     return !!(await runControl.checkpoint({ force }));
   }
   return isStopRequested(runControl);
+}
+
+function withRuntimeDeadline(runControl, deadlineAt) {
+  if (!Number.isFinite(deadlineAt)) return runControl;
+  const deadline = Number(deadlineAt);
+  const deadlineExceeded = () => performance.now() >= deadline;
+  return {
+    shouldStop: () => deadlineExceeded() || isStopRequested(runControl),
+    stopReason: () => {
+      const baseReason = stopReason(runControl);
+      if (baseReason) return baseReason;
+      return deadlineExceeded() ? 'time-limit' : null;
+    },
+    checkpoint: async ({ force = false } = {}) => {
+      if (deadlineExceeded()) return true;
+      if (typeof runControl?.checkpoint === 'function') {
+        const stopped = await runControl.checkpoint({ force });
+        if (stopped) return true;
+      } else if (isStopRequested(runControl)) {
+        return true;
+      }
+      return deadlineExceeded();
+    }
+  };
 }
 
 function conductivityFloor(value, floor = MIN_CONDUCTIVITY) {
@@ -1246,9 +1284,7 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = C
   if (residualNorm / bNorm <= tol) {
     return { solution: x, converged: true, iterations: 0, residualNorm };
   }
-  if (await runCheckpoint(runControl, true)) {
-    return { solution: x, converged: false, iterations: 0, residualNorm, interrupted: true };
-  }
+  await runCheckpoint(runControl, true);
 
   for (let iter = 1; iter <= maxIter; iter += 1) {
     const ap = sparseMatVec(rows, p);
@@ -1274,7 +1310,14 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = C
     for (let i = 0; i < n; i += 1) p[i] = z[i] + beta * p[i];
     rzOld = rzNew;
     if (iter % CG_CHECKPOINT_INTERVAL === 0 && (await runCheckpoint(runControl))) {
-      return { solution: x, converged: false, iterations: iter, residualNorm, interrupted: true };
+      return {
+        solution: x,
+        converged: false,
+        iterations: iter,
+        residualNorm,
+        interrupted: true,
+        stopReason: stopReason(runControl)
+      };
     }
   }
 
@@ -1370,19 +1413,11 @@ function average(array) {
   return array.reduce((sum, value) => sum + value, 0) / array.length;
 }
 
-function maxAbsDiff(left, right) {
-  if (!left || !right || left.length !== right.length) return Infinity;
-  let max = 0;
-  for (let i = 0; i < left.length; i += 1) {
-    max = Math.max(max, Math.abs((left[i] || 0) - (right[i] || 0)));
-  }
-  return max;
-}
-
-function relativeChange(current, prior, floor = 1e-12) {
-  if (!Number.isFinite(current) || !Number.isFinite(prior)) return Infinity;
-  const denominator = Math.max(Math.abs(current), Math.abs(prior), floor);
-  return Math.abs(current - prior) / denominator;
+function normalizedFlowBalanceError(boundaryFluxSummary) {
+  const totalInflow = Number(boundaryFluxSummary?.totalInflow) || 0;
+  const totalOutflow = Number(boundaryFluxSummary?.totalOutflow) || 0;
+  const referenceFlow = Math.max(Math.abs(totalInflow), Math.abs(totalOutflow), 1e-12);
+  return Math.abs(totalInflow - totalOutflow) / referenceFlow;
 }
 
 function meshCharacteristicLength(mesh) {
@@ -1405,12 +1440,6 @@ function seepageIterationTolerances(mesh) {
     wetFractionDryTol: 0.05,
     wetFractionWetTol: 0.95
   };
-}
-
-function stateSignature(dryFlags, activeSeepageFaces) {
-  const dry = (dryFlags || []).map((value) => (value ? '1' : '0')).join('');
-  const faces = (activeSeepageFaces || []).map((value) => (value ? '1' : '0')).join('');
-  return `${dry}|${faces}`;
 }
 
 function ensureElementNeighbors(mesh) {
@@ -1447,14 +1476,37 @@ function classifyElementWet(metrics, priorDry = null, tolerances = seepageIterat
   if (!metrics) return priorDry == null ? false : !priorDry;
   if (metrics.wetFraction <= tolerances.wetFractionDryTol && metrics.centroidPsi <= tolerances.headActivateTol) return false;
   if (metrics.wetFraction >= tolerances.wetFractionWetTol && metrics.centroidPsi >= -tolerances.headActivateTol) return true;
-  if (priorDry != null) return !priorDry;
-  return metrics.centroidPsi >= 0;
+  return metrics.wetFraction >= 0.5 || metrics.centroidPsi >= 0;
 }
 
-function boundaryElementSupportsSeepage(metrics, tolerances) {
-  if (!metrics) return false;
-  if (metrics.wetFraction > tolerances.wetFractionDryTol) return true;
-  return metrics.centroidPsi >= -tolerances.headActivateTol;
+function faceMaskSignature(mask) {
+  return (mask || []).map((value) => (value ? '1' : '0')).join('');
+}
+
+function masksMatch(left, right) {
+  if (!left || !right || left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (!!left[i] !== !!right[i]) return false;
+  }
+  return true;
+}
+
+function updateDryFlagsFromHeads(mesh, heads, priorDryFlags = null, activeSeepageFaces = null, tolerances = seepageIterationTolerances(mesh)) {
+  const elementMetrics = elementWetMetrics(mesh, heads);
+  const dryFlags = elementMetrics.map((metrics, elementIndex) => {
+    const priorDry = typeof priorDryFlags?.[elementIndex] === 'boolean' ? priorDryFlags[elementIndex] : null;
+    return !classifyElementWet(metrics, priorDry, tolerances);
+  });
+
+  (activeSeepageFaces || []).forEach((active, faceIndex) => {
+    if (!active) return;
+    dryFlags[mesh.boundaryFaces[faceIndex].elementIndex] = false;
+  });
+
+  return {
+    dryFlags,
+    elementMetrics
+  };
 }
 
 function prescribedHeadAnchorElements(mesh, model) {
@@ -1469,93 +1521,194 @@ function prescribedHeadAnchorElements(mesh, model) {
   return anchors;
 }
 
-function connectedWetMask(mesh, candidateWetMask, anchorElements) {
-  const wet = (candidateWetMask || []).map(Boolean);
-  const anchors = [...(anchorElements || [])].filter((elementIndex) => wet[elementIndex]);
-  if (!anchors.length) return wet.slice();
-
+function wetConnectivityDiagnostics(mesh, wetMask, anchorElements) {
+  const wet = (wetMask || []).map(Boolean);
   const neighbors = ensureElementNeighbors(mesh);
-  const connected = new Array(wet.length).fill(false);
-  const queue = [...anchors];
+  const connectedWetMask = new Array(wet.length).fill(false);
+  const queue = [...new Set([...(anchorElements || [])].filter((elementIndex) => wet[elementIndex]))];
 
-  anchors.forEach((elementIndex) => {
-    connected[elementIndex] = true;
+  queue.forEach((elementIndex) => {
+    connectedWetMask[elementIndex] = true;
   });
 
   while (queue.length) {
     const elementIndex = queue.shift();
     (neighbors[elementIndex] || []).forEach((neighborIndex) => {
-      if (!wet[neighborIndex] || connected[neighborIndex]) return;
-      connected[neighborIndex] = true;
+      if (!wet[neighborIndex] || connectedWetMask[neighborIndex]) return;
+      connectedWetMask[neighborIndex] = true;
       queue.push(neighborIndex);
     });
   }
 
-  return connected;
+  const disconnectedWetMask = wet.map((isWet, elementIndex) => isWet && !connectedWetMask[elementIndex]);
+  const seen = new Array(wet.length).fill(false);
+  let disconnectedComponentCount = 0;
+  let disconnectedElementCount = 0;
+
+  disconnectedWetMask.forEach((isDisconnected, elementIndex) => {
+    if (!isDisconnected || seen[elementIndex]) return;
+    disconnectedComponentCount += 1;
+    const stack = [elementIndex];
+    seen[elementIndex] = true;
+    while (stack.length) {
+      const current = stack.pop();
+      disconnectedElementCount += 1;
+      (neighbors[current] || []).forEach((neighborIndex) => {
+        if (!disconnectedWetMask[neighborIndex] || seen[neighborIndex]) return;
+        seen[neighborIndex] = true;
+        stack.push(neighborIndex);
+      });
+    }
+  });
+
+  return {
+    connectedWetMask,
+    disconnectedWetMask,
+    disconnectedComponentCount,
+    disconnectedElementCount
+  };
 }
 
-function regularizeIteratedFreeSurfaceState(
-  mesh,
-  model,
-  heads,
-  priorDryFlags = null,
-  priorActiveSeepageFaces = null,
-  tolerances = seepageIterationTolerances(mesh)
-) {
-  const metrics = elementWetMetrics(mesh, heads);
-  const rawWetMask = metrics.map((metric, elementIndex) =>
-    classifyElementWet(metric, typeof priorDryFlags?.[elementIndex] === 'boolean' ? priorDryFlags[elementIndex] : null, tolerances)
-  );
-  const rawDryFlags = rawWetMask.map((wet) => !wet);
-  const candidateActiveFaces = activeSeepageFacesFromFlux(
-    mesh,
-    heads,
-    model,
-    rawDryFlags,
-    priorActiveSeepageFaces,
-    tolerances
-  ).map(
-    (active, faceIndex) =>
-      active && boundaryElementSupportsSeepage(metrics[mesh.boundaryFaces[faceIndex].elementIndex], tolerances)
-  );
-  const anchorElements = prescribedHeadAnchorElements(mesh, model);
-  const candidateWetMask = rawWetMask.slice();
+function applyDisconnectedWetFallback(mesh, dryFlags, activeSeepageFaces, disconnectedWetMask) {
+  const disconnected = (disconnectedWetMask || []).map(Boolean);
+  if (!disconnected.some(Boolean)) {
+    return {
+      dryFlags,
+      activeSeepageFaces,
+      applied: false
+    };
+  }
 
-  anchorElements.forEach((elementIndex) => {
-    candidateWetMask[elementIndex] = true;
-  });
-  candidateActiveFaces.forEach((active, faceIndex) => {
-    if (!active) return;
-    candidateWetMask[mesh.boundaryFaces[faceIndex].elementIndex] = true;
-  });
-
-  const connectedWet = connectedWetMask(mesh, candidateWetMask, anchorElements);
-  const nextDryFlags = connectedWet.map((wet) => !wet);
-  const nextActiveSeepageFaces = activeSeepageFacesFromFlux(
-    mesh,
-    heads,
-    model,
-    nextDryFlags,
-    priorActiveSeepageFaces,
-    tolerances
-  ).map(
-    (active, faceIndex) =>
-      active &&
-      connectedWet[mesh.boundaryFaces[faceIndex].elementIndex] &&
-      boundaryElementSupportsSeepage(metrics[mesh.boundaryFaces[faceIndex].elementIndex], tolerances)
+  const nextDryFlags = dryFlags.map((isDry, elementIndex) => isDry || disconnected[elementIndex]);
+  const nextActiveSeepageFaces = (activeSeepageFaces || []).map(
+    (active, faceIndex) => active && !disconnected[mesh.boundaryFaces[faceIndex].elementIndex]
   );
-
-  nextActiveSeepageFaces.forEach((active, faceIndex) => {
-    if (!active) return;
-    nextDryFlags[mesh.boundaryFaces[faceIndex].elementIndex] = false;
-  });
 
   return {
     dryFlags: nextDryFlags,
     activeSeepageFaces: nextActiveSeepageFaces,
-    elementMetrics: metrics,
-    connectedWetMask: connectedWet
+    applied: true
   };
+}
+
+async function solveSeepageBoundaryActiveSet(
+  mesh,
+  model,
+  options,
+  dryFlags,
+  initialActiveSeepageFaces = null,
+  initialHeads = null,
+  tolerances = seepageIterationTolerances(mesh),
+  runControl = null
+) {
+  let activeSeepageFaces =
+    initialActiveSeepageFaces && initialActiveSeepageFaces.length === mesh.boundaryFaces.length
+      ? initialActiveSeepageFaces.slice()
+      : mesh.boundaryFaces.map(() => false);
+  let heads = initialHeads;
+  let totalLinearIterations = 0;
+  let residualNorm = 0;
+  let activeSetIterations = 0;
+  let priorSignature = null;
+
+  while (true) {
+    if (await runCheckpoint(runControl, true)) {
+      const reason = stopReason(runControl);
+      if (!heads) {
+        // Allow one partial active-set solve so stop/time-limit requests can
+        // still return a usable latest state instead of failing before any iterate.
+      } else {
+        return {
+          heads,
+          activeSeepageFaces,
+          nextActiveSeepageFaces: activeSeepageFaces,
+          activeSetIterations,
+          linearIterations: totalLinearIterations,
+          residualNorm,
+          interrupted: true,
+          stopReason: reason,
+          activeSetStable: false
+        };
+      }
+    }
+
+    activeSetIterations += 1;
+    const dirichletValues = buildDirichletValues(mesh, model, options, activeSeepageFaces);
+    const activeSetDryFlags = (dryFlags || []).slice();
+    activeSeepageFaces.forEach((active, faceIndex) => {
+      if (!active) return;
+      activeSetDryFlags[mesh.boundaryFaces[faceIndex].elementIndex] = false;
+    });
+    const solve = await solveHeadField(mesh, activeSetDryFlags, dirichletValues, heads, runControl);
+    if (solve.interrupted && solve.iterations <= 0 && !heads) {
+      return {
+        heads: solve.heads,
+        activeSeepageFaces,
+        nextActiveSeepageFaces: activeSeepageFaces,
+        activeSetIterations,
+        linearIterations: totalLinearIterations,
+        residualNorm: solve.residualNorm,
+        interrupted: true,
+        stopReason: solve.stopReason || stopReason(runControl),
+        activeSetStable: false
+      };
+    }
+
+    heads = solve.heads;
+    totalLinearIterations += solve.iterations;
+    residualNorm = solve.residualNorm;
+    const gradients = computeElementGradients(mesh, heads);
+    const nextActiveSeepageFaces = activeSeepageFacesFromFlux(
+      mesh,
+      heads,
+      model,
+      dryFlags,
+      activeSeepageFaces,
+      tolerances,
+      gradients
+    );
+    const stable = masksMatch(nextActiveSeepageFaces, activeSeepageFaces);
+    const nextSignature = faceMaskSignature(nextActiveSeepageFaces);
+    const cycling = priorSignature != null && nextSignature === priorSignature;
+    const boundaryFluxSummary = summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces, solve.reactions);
+
+    if (solve.interrupted) {
+      return {
+        heads,
+        activeSeepageFaces,
+        nextActiveSeepageFaces: activeSeepageFaces,
+        activeSetIterations,
+        linearIterations: totalLinearIterations,
+        residualNorm,
+        interrupted: true,
+        stopReason: solve.stopReason || stopReason(runControl),
+        activeSetStable: stable,
+        gradients,
+        boundaryFluxSummary,
+        reactions: solve.reactions
+      };
+    }
+
+    if (stable || cycling || activeSetIterations >= 12) {
+      return {
+        heads,
+        activeSeepageFaces,
+        nextActiveSeepageFaces,
+        activeSetIterations,
+        linearIterations: totalLinearIterations,
+        residualNorm,
+        interrupted: false,
+        stopReason: null,
+        activeSetStable: stable,
+        gradients,
+        boundaryFluxSummary,
+        reactions: solve.reactions
+      };
+    }
+
+    priorSignature = faceMaskSignature(activeSeepageFaces);
+    activeSeepageFaces = nextActiveSeepageFaces;
+  }
 }
 
 async function solveHeadField(mesh, dryFlags, dirichletValues, initial = null, runControl = null) {
@@ -1617,11 +1770,22 @@ async function solveHeadField(mesh, dryFlags, dirichletValues, initial = null, r
   freeNodes.forEach((nodeId, rowIndex) => {
     heads[nodeId] = cg.solution[rowIndex];
   });
+  const reactions = new Float64Array(mesh.nodes.length);
+  dirichletValues.forEach((_value, nodeId) => {
+    const row = rows[nodeId];
+    let reaction = 0;
+    row.forEach((coefficient, columnId) => {
+      reaction += coefficient * heads[columnId];
+    });
+    reactions[nodeId] = reaction * conductivityScale;
+  });
   return {
     heads,
     iterations: cg.iterations,
     residualNorm: cg.residualNorm,
-    interrupted: !!cg.interrupted
+    interrupted: !!cg.interrupted,
+    stopReason: cg.stopReason || null,
+    reactions
   };
 }
 
@@ -1800,6 +1964,27 @@ function buildDirichletValues(mesh, model, options, activeSeepageFaces) {
   return values;
 }
 
+function dirichletBoundaryNodeTypes(mesh, model, activeSeepageFaces = null) {
+  const activeBcs = new Map(
+    ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
+  );
+  const nodeTypes = new Array(mesh?.nodes?.length || 0).fill(null);
+
+  mesh.boundaryFaces.forEach((face, faceIndex) => {
+    const bc = activeBcs.get(face.edgeKey);
+    if (boundaryFaceUsesPrescribedHead(face, bc)) {
+      nodeTypes[face.n1] = 'head';
+      nodeTypes[face.n2] = 'head';
+      return;
+    }
+    if (bc?.type !== 'seepage-face' || !activeSeepageFaces?.[faceIndex]) return;
+    if (!nodeTypes[face.n1]) nodeTypes[face.n1] = 'seepage-face';
+    if (!nodeTypes[face.n2]) nodeTypes[face.n2] = 'seepage-face';
+  });
+
+  return nodeTypes;
+}
+
 function facePressureHeadMetrics(face, mesh, heads) {
   const psi1 = (heads?.[face.n1] ?? 0) - Number(mesh?.nodes?.[face.n1]?.y || 0);
   const psi2 = (heads?.[face.n2] ?? 0) - Number(mesh?.nodes?.[face.n2]?.y || 0);
@@ -1882,29 +2067,25 @@ function cellValueFromTriangles(cell, triangleValues, mesh) {
   return totalArea > EPS ? total / totalArea : average(cell.triangleIndices.map((triangleIndex) => triangleValues[triangleIndex]));
 }
 
-function activeSeepageFacesFromDry(mesh, dryFlags, model) {
-  const activeBcs = new Map(
-    ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
-  );
-  return mesh.boundaryFaces.map((face) => {
-    const bc = activeBcs.get(face.edgeKey);
-    if (bc?.type !== 'seepage-face') return false;
-    return !dryFlags[face.elementIndex];
-  });
-}
-
-function activeSeepageFacesFromFlux(mesh, heads, model, dryFlags, prior = null, tolerances = seepageIterationTolerances(mesh)) {
-  const gradients = computeElementGradients(mesh, heads);
+function activeSeepageFacesFromFlux(
+  mesh,
+  heads,
+  model,
+  dryFlags,
+  prior = null,
+  tolerances = seepageIterationTolerances(mesh),
+  gradients = null
+) {
+  const fieldGradients = gradients || computeElementGradients(mesh, heads);
   const activeBcs = new Map(
     ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
   );
   return mesh.boundaryFaces.map((face, faceIndex) => {
     const bc = activeBcs.get(face.edgeKey);
     if (bc?.type !== 'seepage-face') return false;
-    const grad = gradients[face.elementIndex];
+    const grad = fieldGradients[face.elementIndex];
     if (!grad) return false;
     const facePressure = facePressureHeadMetrics(face, mesh, heads);
-    if (dryFlags?.[face.elementIndex] && facePressure.maxPsi < tolerances.headActivateTol) return false;
     const elementData = mesh.elementData[face.elementIndex];
     const kNormal = Math.max(
       elementData.kx * face.normal.x * face.normal.x + elementData.ky * face.normal.y * face.normal.y,
@@ -1912,6 +2093,12 @@ function activeSeepageFacesFromFlux(mesh, heads, model, dryFlags, prior = null, 
     );
     const fluxTol = Math.max(kNormal * tolerances.headActivateTol / Math.max(face.length, tolerances.charLength, 0.05), 1e-12);
     const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
+    const priorActive = !!prior?.[faceIndex];
+    if (priorActive) {
+      // Active-set retention: an atmospheric seepage edge remains active only
+      // while it stays near zero pressure and does not demand inward flow.
+      return facePressure.psiMid >= -tolerances.headKeepTol && fluxNormal >= -fluxTol;
+    }
     if (facePressure.psiMid >= tolerances.headActivateTol) return true;
     return facePressure.psiMid >= -tolerances.headActivateTol && fluxNormal > fluxTol;
   });
@@ -1935,7 +2122,7 @@ function boundaryFaceFluxMetrics(face, mesh, gradients) {
   };
 }
 
-function summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces = null) {
+function summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces = null, reactions = null) {
   const boundaryFaces = mesh?.boundaryFaces || [];
   const boundaryGradients = new Array(boundaryFaces.length).fill(0);
   let maxExitGradient = 0;
@@ -1952,9 +2139,7 @@ function summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces = nu
   boundaryFaces.forEach((face, faceIndex) => {
     const metrics = boundaryFaceFluxMetrics(face, mesh, gradients);
     if (!metrics) return;
-    const fluxMagnitude = Math.abs(metrics.fluxNormal) * face.length;
     const bc = activeBcs.get(face.edgeKey);
-    const usesHead = boundaryFaceUsesPrescribedHead(face, bc);
     const seepageFaceActive =
       bc?.type === 'seepage-face' ? (activeSeepageFaces ? !!activeSeepageFaces[faceIndex] : true) : false;
     boundaryGradients[faceIndex] = metrics.gradientNormal;
@@ -1962,20 +2147,49 @@ function summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces = nu
     if (seepageFaceActive && metrics.fluxNormal > 0) {
       maxExitGradient = Math.max(maxExitGradient, metrics.gradientNormal);
     }
-    if (!usesHead && !seepageFaceActive) return;
-
-    if (metrics.fluxNormal < 0) {
-      totalInflow += fluxMagnitude;
-      if (usesHead) prescribedHeadInflow += fluxMagnitude;
-      else if (seepageFaceActive) seepageFaceInflow += fluxMagnitude;
-      return;
-    }
-    if (metrics.fluxNormal > 0) {
-      totalOutflow += fluxMagnitude;
-      if (usesHead) prescribedHeadOutflow += fluxMagnitude;
-      else if (seepageFaceActive) seepageFaceOutflow += fluxMagnitude;
-    }
   });
+
+  if (reactions) {
+    const nodeTypes = dirichletBoundaryNodeTypes(mesh, model, activeSeepageFaces);
+    nodeTypes.forEach((type, nodeId) => {
+      if (!type) return;
+      const flux = Number(reactions[nodeId]);
+      if (!Number.isFinite(flux) || Math.abs(flux) <= 1e-12) return;
+      const fluxMagnitude = Math.abs(flux);
+      if (flux < 0) {
+        totalInflow += fluxMagnitude;
+        if (type === 'head') prescribedHeadInflow += fluxMagnitude;
+        else seepageFaceInflow += fluxMagnitude;
+        return;
+      }
+      totalOutflow += fluxMagnitude;
+      if (type === 'head') prescribedHeadOutflow += fluxMagnitude;
+      else seepageFaceOutflow += fluxMagnitude;
+    });
+  } else {
+    boundaryFaces.forEach((face, faceIndex) => {
+      const metrics = boundaryFaceFluxMetrics(face, mesh, gradients);
+      if (!metrics) return;
+      const fluxMagnitude = Math.abs(metrics.fluxNormal) * face.length;
+      const bc = activeBcs.get(face.edgeKey);
+      const usesHead = boundaryFaceUsesPrescribedHead(face, bc);
+      const seepageFaceActive =
+        bc?.type === 'seepage-face' ? (activeSeepageFaces ? !!activeSeepageFaces[faceIndex] : true) : false;
+      if (!usesHead && !seepageFaceActive) return;
+
+      if (metrics.fluxNormal < 0) {
+        totalInflow += fluxMagnitude;
+        if (usesHead) prescribedHeadInflow += fluxMagnitude;
+        else if (seepageFaceActive) seepageFaceInflow += fluxMagnitude;
+        return;
+      }
+      if (metrics.fluxNormal > 0) {
+        totalOutflow += fluxMagnitude;
+        if (usesHead) prescribedHeadOutflow += fluxMagnitude;
+        else if (seepageFaceActive) seepageFaceOutflow += fluxMagnitude;
+      }
+    });
+  }
 
   const throughFlow = Math.max(totalInflow, totalOutflow);
 
@@ -2339,7 +2553,9 @@ function buildFlowLines(mesh, model, heads, gradients, activeSeepageFaces) {
 function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSeepageFaces = null) {
   const tolerances = seepageIterationTolerances(mesh);
   const gradients = computeElementGradients(mesh, heads);
-  const boundaryFluxSummary = summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces);
+  const boundaryFluxSummary =
+    solveMeta.boundaryFluxSummary ||
+    summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces, solveMeta.reactions);
   const flowError = options.freeSurface === 'iterate' && Number.isFinite(solveMeta.flowError) ? solveMeta.flowError : null;
   const converged = solveMeta.converged !== false;
   const terminationReason =
@@ -2418,12 +2634,16 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
     outflow: boundaryFluxSummary.totalOutflow,
     flowError,
     dryCellCount,
+    disconnectedWetComponentCount: Number(solveMeta.disconnectedWetComponentCount) || 0,
+    disconnectedWetElementCount: Number(solveMeta.disconnectedWetElementCount) || 0,
     timing: solveMeta,
     solver: {
       meshType: mesh?.kind || 'triangulated-strip-fem',
       freeSurface: options.freeSurface,
       iterations: solveMeta.outerIterations || 1,
       innerIterations: solveMeta.linearIterations || 0,
+      activeSetIterations: solveMeta.activeSetIterations || 0,
+      activeSetStable: solveMeta.activeSetStable !== false,
       residualNorm: solveMeta.residualNorm || 0,
       converged,
       terminationReason,
@@ -2431,7 +2651,10 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
       flowErrorTolerance:
         options.freeSurface === 'iterate' ? Number(options.flowErrorTolerance) || DEFAULT_FLOW_ERROR_TOL : null,
       maxRuntimeMs: options.freeSurface === 'iterate' ? Number(options.maxRuntimeMs) || DEFAULT_MAX_RUNTIME_MS : null,
-      convergenceMode: options.freeSurface === 'iterate' ? 'state-and-flow-error' : 'fixed-boundary'
+      disconnectedWetComponentCount: Number(solveMeta.disconnectedWetComponentCount) || 0,
+      disconnectedWetElementCount: Number(solveMeta.disconnectedWetElementCount) || 0,
+      connectivityFallbackApplied: !!solveMeta.connectivityFallbackApplied,
+      convergenceMode: options.freeSurface === 'iterate' ? 'active-set-and-flow-balance' : 'fixed-boundary'
     }
   };
 }
@@ -2484,7 +2707,8 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           terminationReason: headField.interrupted ? 'interrupted' : 'fixed-boundary',
           flowError: null,
           flowErrorTolerance: null,
-          maxRuntimeMs: null
+          maxRuntimeMs: null,
+          reactions: headField.reactions
         },
         options,
         mesh.boundaryFaces.map((face) => face.type === 'seepage-face')
@@ -2505,14 +2729,45 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
   let residualNorm = 0;
   const flowErrorTolerance = Math.max(Number(options.flowErrorTolerance) || DEFAULT_FLOW_ERROR_TOL, 1e-6);
   const maxRuntimeMs = Math.max(Number(options.maxRuntimeMs) || DEFAULT_MAX_RUNTIME_MS, 1);
-  let priorThroughFlow = null;
-  let priorSignature = stateSignature(dryFlags, activeSeepageFaces);
-  let priorPriorSignature = null;
+  const deadlineRunControl = withRuntimeDeadline(runControl, solveStartedAt + maxRuntimeMs);
+  const anchorElements = prescribedHeadAnchorElements(mesh, model);
   let lastSolvedState = null;
   let outerIter = 0;
   while (true) {
-    if (await runCheckpoint(runControl, true)) {
-      if (!lastSolvedState?.heads) throw buildInterruptedError();
+    if (await runCheckpoint(deadlineRunControl, true)) {
+      const reason = stopReason(deadlineRunControl) || 'interrupted';
+      if (!lastSolvedState?.heads) {
+        // Allow one partial outer solve so stop/time-limit requests can still
+        // return the latest iterate instead of aborting before any state exists.
+      } else {
+        return postProcess(
+          mesh,
+          model,
+          lastSolvedState.heads,
+          lastSolvedState.dryFlags,
+          {
+            totalMs: lastSolvedState.elapsedMs,
+            meshMs: mesh.generatedMs,
+            solveMs: lastSolvedState.elapsedMs,
+            postMs: 0,
+            outerIterations: lastSolvedState.outerIterations,
+            linearIterations: lastSolvedState.linearIterations,
+            residualNorm: lastSolvedState.residualNorm,
+            converged: false,
+            terminationReason: reason === 'time-limit' ? 'time-limit' : 'interrupted',
+            flowError: lastSolvedState.flowError,
+            flowErrorTolerance,
+            maxRuntimeMs,
+            boundaryFluxSummary: lastSolvedState.boundaryFluxSummary
+          },
+          options,
+          lastSolvedState.activeSeepageFaces
+        );
+      }
+    }
+    outerIter += 1;
+    const elapsedBeforeSolveMs = performance.now() - solveStartedAt;
+    if (lastSolvedState?.heads && elapsedBeforeSolveMs >= maxRuntimeMs) {
       return postProcess(
         mesh,
         model,
@@ -2527,64 +2782,99 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           linearIterations: lastSolvedState.linearIterations,
           residualNorm: lastSolvedState.residualNorm,
           converged: false,
-          terminationReason: 'interrupted',
+          terminationReason: 'time-limit',
           flowError: lastSolvedState.flowError,
           flowErrorTolerance,
-          maxRuntimeMs
+          maxRuntimeMs,
+          boundaryFluxSummary: lastSolvedState.boundaryFluxSummary
         },
         options,
         lastSolvedState.activeSeepageFaces
       );
     }
-    outerIter += 1;
-    const elapsedBeforeSolveMs = performance.now() - solveStartedAt;
     const runtimeRatio = clamp(elapsedBeforeSolveMs / maxRuntimeMs, 0, 1);
     onProgress({
       stage: 'solving',
       percent: 45 + Math.round(35 * runtimeRatio),
       message: `Iterating seepage free surface... ${secondsValueLabel(elapsedBeforeSolveMs)} / ${secondsValueLabel(maxRuntimeMs)} s`
     });
-    const dirichletValues = buildDirichletValues(mesh, model, options, activeSeepageFaces);
     const priorHeads = heads;
-    const solve = await solveHeadField(mesh, dryFlags, dirichletValues, heads, runControl);
-    if (solve.interrupted && solve.iterations <= 0 && !priorHeads) {
-      throw buildInterruptedError();
-    }
-    heads = solve.heads;
-    linearIterations += solve.iterations;
-    residualNorm = solve.residualNorm;
-    const headChange = maxAbsDiff(priorHeads, heads);
-    const gradients = computeElementGradients(mesh, heads);
-    const boundaryFluxSummary = summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces);
-    const flowError = Number.isFinite(priorThroughFlow) ? relativeChange(boundaryFluxSummary.throughFlow, priorThroughFlow) : null;
-    const flowErrorConverged = Number.isFinite(flowError) && flowError <= flowErrorTolerance;
-    const nextState = regularizeIteratedFreeSurfaceState(
+    const boundarySolve = await solveSeepageBoundaryActiveSet(
       mesh,
       model,
-      heads,
+      options,
       dryFlags,
       activeSeepageFaces,
+      heads,
+      tolerances,
+      deadlineRunControl
+    );
+    if (boundarySolve.interrupted && boundarySolve.linearIterations <= 0 && !priorHeads) {
+      throw boundarySolve.stopReason === 'time-limit' ? buildTimeLimitError() : buildInterruptedError();
+    }
+    heads = boundarySolve.heads;
+    linearIterations += boundarySolve.linearIterations;
+    residualNorm = boundarySolve.residualNorm;
+    const solvedActiveSeepageFaces = boundarySolve.activeSeepageFaces || activeSeepageFaces;
+    const gradients = boundarySolve.gradients || computeElementGradients(mesh, heads);
+    const boundaryFluxSummary =
+      boundarySolve.boundaryFluxSummary ||
+      summarizeBoundaryFluxes(mesh, model, gradients, solvedActiveSeepageFaces, boundarySolve.reactions);
+    const flowError = normalizedFlowBalanceError(boundaryFluxSummary);
+    const flowErrorConverged = Number.isFinite(flowError) && flowError <= flowErrorTolerance;
+    let nextActiveSeepageFaces = boundarySolve.nextActiveSeepageFaces || solvedActiveSeepageFaces;
+    const dryUpdate = updateDryFlagsFromHeads(
+      mesh,
+      heads,
+      dryFlags,
+      nextActiveSeepageFaces,
       tolerances
     );
-    const nextDryFlags = nextState.dryFlags;
-    const nextActiveSeepageFaces = nextState.activeSeepageFaces;
-    const dryChanged = nextDryFlags.some((value, index) => value !== dryFlags[index]);
+    let nextDryFlags = dryUpdate.dryFlags;
+    let connectivity = wetConnectivityDiagnostics(
+      mesh,
+      nextDryFlags.map((value) => !value),
+      anchorElements
+    );
+    let connectivityFallbackApplied = false;
+    if (connectivity.disconnectedComponentCount > 0) {
+      const fallback = applyDisconnectedWetFallback(
+        mesh,
+        nextDryFlags,
+        nextActiveSeepageFaces,
+        connectivity.disconnectedWetMask
+      );
+      nextDryFlags = fallback.dryFlags;
+      nextActiveSeepageFaces = fallback.activeSeepageFaces;
+      connectivityFallbackApplied = fallback.applied;
+      connectivity = wetConnectivityDiagnostics(
+        mesh,
+        nextDryFlags.map((value) => !value),
+        anchorElements
+      );
+    }
     const seepageChanged = nextActiveSeepageFaces.some((value, index) => value !== activeSeepageFaces[index]);
-    const nextSignature = stateSignature(nextDryFlags, nextActiveSeepageFaces);
     const elapsedMs = performance.now() - solveStartedAt;
-    const stateStable = !dryChanged && !seepageChanged;
-    const cyclingStable = headChange <= tolerances.headConvergeTol && nextSignature === priorPriorSignature;
+    const admissibleState = boundarySolve.activeSetStable && connectivity.disconnectedComponentCount === 0;
+    const convergedOuterSolve = outerIter >= 3 && flowErrorConverged && admissibleState;
     lastSolvedState = {
       heads,
       dryFlags,
-      activeSeepageFaces,
+      activeSeepageFaces: solvedActiveSeepageFaces,
       outerIterations: outerIter,
       linearIterations,
       residualNorm,
       flowError,
-      elapsedMs
+      elapsedMs,
+      activeSetIterations: boundarySolve.activeSetIterations,
+      activeSetStable: boundarySolve.activeSetStable,
+      disconnectedWetComponentCount: connectivity.disconnectedComponentCount,
+      disconnectedWetElementCount: connectivity.disconnectedElementCount,
+      connectivityFallbackApplied,
+      boundaryFluxSummary
     };
-    if (solve.interrupted) {
+    if (boundarySolve.interrupted) {
+      const terminationReason = boundarySolve.stopReason === 'time-limit' ? 'time-limit' : 'interrupted';
       return postProcess(
         mesh,
         model,
@@ -2599,16 +2889,22 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           linearIterations: lastSolvedState.linearIterations,
           residualNorm: lastSolvedState.residualNorm,
           converged: false,
-          terminationReason: 'interrupted',
+          terminationReason,
           flowError,
           flowErrorTolerance,
-          maxRuntimeMs
+          maxRuntimeMs,
+          activeSetIterations: boundarySolve.activeSetIterations,
+          activeSetStable: boundarySolve.activeSetStable,
+          disconnectedWetComponentCount: connectivity.disconnectedComponentCount,
+          disconnectedWetElementCount: connectivity.disconnectedElementCount,
+          connectivityFallbackApplied,
+          boundaryFluxSummary: lastSolvedState.boundaryFluxSummary
         },
         options,
         lastSolvedState.activeSeepageFaces
       );
     }
-    if ((stateStable || cyclingStable) && flowErrorConverged) {
+    if (convergedOuterSolve) {
       return postProcess(
         mesh,
         model,
@@ -2626,7 +2922,13 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           terminationReason: 'flow-error',
           flowError,
           flowErrorTolerance,
-          maxRuntimeMs
+          maxRuntimeMs,
+          activeSetIterations: boundarySolve.activeSetIterations,
+          activeSetStable: boundarySolve.activeSetStable,
+          disconnectedWetComponentCount: connectivity.disconnectedComponentCount,
+          disconnectedWetElementCount: connectivity.disconnectedElementCount,
+          connectivityFallbackApplied,
+          boundaryFluxSummary: lastSolvedState.boundaryFluxSummary
         },
         options,
         lastSolvedState.activeSeepageFaces
@@ -2650,7 +2952,13 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           terminationReason: 'time-limit',
           flowError,
           flowErrorTolerance,
-          maxRuntimeMs
+          maxRuntimeMs,
+          activeSetIterations: boundarySolve.activeSetIterations,
+          activeSetStable: boundarySolve.activeSetStable,
+          disconnectedWetComponentCount: connectivity.disconnectedComponentCount,
+          disconnectedWetElementCount: connectivity.disconnectedElementCount,
+          connectivityFallbackApplied,
+          boundaryFluxSummary: lastSolvedState.boundaryFluxSummary
         },
         options,
         lastSolvedState.activeSeepageFaces
@@ -2658,9 +2966,6 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
     }
     dryFlags = nextDryFlags;
     activeSeepageFaces = nextActiveSeepageFaces;
-    priorThroughFlow = boundaryFluxSummary.throughFlow;
-    priorPriorSignature = priorSignature;
-    priorSignature = nextSignature;
   }
 }
 

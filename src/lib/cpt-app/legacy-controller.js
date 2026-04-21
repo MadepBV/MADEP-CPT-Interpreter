@@ -3620,6 +3620,8 @@ function stage6Defaults(){
           showFlowVectors:false,
           showExitGradient:false
         },
+        lastAppliedBcType:'',
+        lastAppliedBcHead:null,
         selectedEdgeKey:'',
         selectedBcId:''
       },
@@ -3848,6 +3850,12 @@ function ensureStage6State(){
   bishop.seepage.display.showEquipotentials = !!bishop.seepage.display.showEquipotentials;
   bishop.seepage.display.showFlowVectors = !!bishop.seepage.display.showFlowVectors;
   bishop.seepage.display.showExitGradient = !!bishop.seepage.display.showExitGradient;
+  bishop.seepage.lastAppliedBcType = ['head','seepage-face','no-flow'].includes(bishop.seepage.lastAppliedBcType)
+    ? bishop.seepage.lastAppliedBcType
+    : '';
+  bishop.seepage.lastAppliedBcHead = Number.isFinite(+bishop.seepage.lastAppliedBcHead)
+    ? +bishop.seepage.lastAppliedBcHead
+    : null;
   bishop.seepage.selectedEdgeKey = bishop.seepage.selectedEdgeKey ? String(bishop.seepage.selectedEdgeKey) : '';
   bishop.seepage.selectedBcId = bishop.seepage.selectedBcId ? String(bishop.seepage.selectedBcId) : '';
   if(!bishop.surfaceLoad || typeof bishop.surfaceLoad !== 'object') bishop.surfaceLoad = {xStart:null, xEnd:null, q:0};
@@ -4102,6 +4110,31 @@ function stage6BishopSeepageBcTypeLabel(type){
   return 'No-flow';
 }
 
+function stage6BishopRememberSeepageBcPreset(bc){
+  const seepage = S?.stage6?.bishop?.seepage;
+  if(!seepage || !bc) return;
+  seepage.lastAppliedBcType = bc.type === 'head' ? 'head' : bc.type === 'seepage-face' ? 'seepage-face' : 'no-flow';
+  seepage.lastAppliedBcHead = seepage.lastAppliedBcType === 'head' && Number.isFinite(+bc.head) ? +bc.head : null;
+}
+
+function stage6BishopAutoApplySeepagePreset(edge){
+  const seepage = S?.stage6?.bishop?.seepage;
+  if(!seepage || !edge || stage6BishopSeepageBcForEdge(edge.edgeKey)) return null;
+  const presetType = seepage.lastAppliedBcType;
+  if(!['head','seepage-face','no-flow'].includes(presetType) || !presetType) return null;
+  const bc = makeSeepageBoundaryCondition(edge, {
+    id:`bc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    type:presetType,
+    head:presetType === 'head'
+      ? (Number.isFinite(seepage.lastAppliedBcHead) ? seepage.lastAppliedBcHead : edge.mid.y)
+      : null
+  });
+  seepage.bcs = [...(seepage.bcs || []).filter((item)=>item.edgeKey !== edge.edgeKey), bc];
+  seepage.selectedBcId = bc.id;
+  stage6BishopRememberSeepageBcPreset(bc);
+  return bc;
+}
+
 function stage6BishopSeepageHeadColor(value, min, max, alpha = 0.55){
   const lo = Number.isFinite(min) ? min : 0;
   const hi = Number.isFinite(max) && max > lo ? max : lo + 1;
@@ -4135,9 +4168,18 @@ function stage6BishopSyncSeepageState(model){
 
 function stage6BishopSelectSeepageBoundary(edgeKey){
   ensureStage6State();
-  S.stage6.bishop.seepage.selectedEdgeKey = edgeKey || '';
-  const bc = stage6BishopSeepageBcForEdge(edgeKey);
-  S.stage6.bishop.seepage.selectedBcId = bc?.id || '';
+  const seepage = S.stage6.bishop.seepage;
+  seepage.selectedEdgeKey = edgeKey || '';
+  const model = S.stage6Cache?.bishopModel || stage6BishopCurrentModel();
+  const boundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
+  const edge = (boundary || []).find((item)=>item.edgeKey === edgeKey) || null;
+  let bc = stage6BishopSeepageBcForEdge(edgeKey);
+  if(!bc && edge){
+    stage6RememberDetailsState();
+    bc = stage6BishopAutoApplySeepagePreset(edge);
+    if(bc) stage6BishopInvalidateSeepage('Boundary conditions updated.', true);
+  }
+  seepage.selectedBcId = bc?.id || '';
   renderStage6();
 }
 
@@ -4159,6 +4201,7 @@ function stage6BishopSetSeepageBcType(value){
   });
   seepage.bcs = [...(seepage.bcs || []).filter((item)=>item.edgeKey !== edge.edgeKey), bc];
   seepage.selectedBcId = bc.id;
+  stage6BishopRememberSeepageBcPreset(bc);
   stage6BishopInvalidateSeepage('Boundary conditions updated.', true);
   renderStage6();
 }
@@ -4171,6 +4214,7 @@ function stage6BishopSetSeepageBcHead(value){
   if(!bc) return;
   bc.type = 'head';
   bc.head = value === '' || value == null ? null : +value;
+  stage6BishopRememberSeepageBcPreset(bc);
   stage6BishopInvalidateSeepage('Boundary head updated.', true);
   renderStage6();
 }
@@ -5872,9 +5916,7 @@ function stage6BishopCommitDrawPoint(canvas, world){
       renderStage6();
       return;
     }
-    bishop.seepage.selectedEdgeKey = picked.edge.edgeKey;
-    bishop.seepage.selectedBcId = stage6BishopSeepageBcForEdge(picked.edge.edgeKey)?.id || '';
-    renderStage6();
+    stage6BishopSelectSeepageBoundary(picked.edge.edgeKey);
     return;
   }
   if(tool === 'terrain' || tool === 'phreatic'){
@@ -8417,7 +8459,7 @@ function renderStage6BishopApp(){
               <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-seepage-boundary"${stage6DetailsOpen('bishop-geo-seepage-boundary')}>
                 <summary>Boundary conditions</summary>
                 <div class="st6-adv-body">
-                  <div class="st6-help">Switch the shared canvas into boundary-condition mode, then click an outer-boundary edge. Terrain, model base, and the two side boundaries can carry seepage BCs; interior soil-region edges cannot. For <strong>Prescribed head</strong>, enter the absolute head elevation <strong>h</strong> in metres; on a sloping or vertical edge the solver applies that head only to the submerged part below <strong>y = h</strong>, while the dry part above falls back to natural no-flow.</div>
+                  <div class="st6-help">Switch the shared canvas into boundary-condition mode, then click an outer-boundary edge. Terrain, model base, and the two side boundaries can carry seepage BCs; interior soil-region edges cannot. New edges reuse the last boundary condition you applied, while edges that already have an explicit BC keep their own setting. For <strong>Prescribed head</strong>, enter the absolute head elevation <strong>h</strong> in metres; on a sloping or vertical edge the solver applies that head only to the submerged part below <strong>y = h</strong>, while the dry part above falls back to natural no-flow.</div>
                   <div class="st6-bishop-tools">
                     <button class="btn sm ${bishop.tool==='seepageBc'?'active':''}" onclick="stage6BishopSetTool('seepageBc')" ${model ? '' : 'disabled'}>Assign BC</button>
                     <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
