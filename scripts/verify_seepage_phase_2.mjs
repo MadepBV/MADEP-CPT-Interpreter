@@ -35,6 +35,28 @@ function distancePointToSegment(point, a, b) {
   return Math.hypot((point?.x || 0) - qx, (point?.y || 0) - qy);
 }
 
+function verticalSegmentIntersections(segments, x, tol = 1e-6) {
+  const hits = [];
+  (segments || []).forEach((segment) => {
+    if (!Array.isArray(segment) || segment.length !== 2) return;
+    const [a, b] = segment;
+    const xMin = Math.min(a?.x || 0, b?.x || 0) - tol;
+    const xMax = Math.max(a?.x || 0, b?.x || 0) + tol;
+    if (x < xMin || x > xMax) return;
+    const dx = (b?.x || 0) - (a?.x || 0);
+    if (Math.abs(dx) <= tol) {
+      if (Math.abs(x - (a?.x || 0)) <= tol) hits.push(0.5 * ((a?.y || 0) + (b?.y || 0)));
+      return;
+    }
+    const t = (x - (a?.x || 0)) / dx;
+    if (t < -tol || t > 1 + tol) return;
+    hits.push((a?.y || 0) + ((b?.y || 0) - (a?.y || 0)) * t);
+  });
+  return hits
+    .sort((left, right) => left - right)
+    .filter((value, index, array) => index === 0 || Math.abs(value - array[index - 1]) > 1e-4);
+}
+
 function homogeneousRegion(xMin, xMax, yMin, yMax, id = 'soil') {
   return {
     id,
@@ -81,6 +103,90 @@ function baseFixedModel(rightBcType) {
         freeSurface: 'fixed',
         meshTargetArea: 0.4,
         maxFreeSurfaceIter: 20,
+        usePhreaticAsSeed: true
+      }
+    }
+  };
+}
+
+function layeredIterateModel(kMid) {
+  return {
+    terrain: {
+      vertices: [
+        { x: 0, y: 5 },
+        { x: 20, y: 5 }
+      ]
+    },
+    analysisBottomY: 0,
+    phreatic: {
+      vertices: [
+        { x: 0, y: 5 },
+        { x: 20, y: 0 }
+      ]
+    },
+    walls: [],
+    regions: [
+      {
+        id: 'bot',
+        polygon: [
+          { x: 0, y: 0 },
+          { x: 20, y: 0 },
+          { x: 20, y: 2 },
+          { x: 0, y: 2 }
+        ],
+        material: {
+          id: 'bot',
+          label: 'bot',
+          kx: 1e-5,
+          ky: 1e-5,
+          gamma: 18,
+          gammaSat: 20
+        }
+      },
+      {
+        id: 'mid',
+        polygon: [
+          { x: 0, y: 2 },
+          { x: 20, y: 2 },
+          { x: 20, y: 3 },
+          { x: 0, y: 3 }
+        ],
+        material: {
+          id: 'mid',
+          label: 'mid',
+          kx: kMid,
+          ky: kMid,
+          gamma: 18,
+          gammaSat: 20
+        }
+      },
+      {
+        id: 'top',
+        polygon: [
+          { x: 0, y: 3 },
+          { x: 20, y: 3 },
+          { x: 20, y: 5 },
+          { x: 0, y: 5 }
+        ],
+        material: {
+          id: 'top',
+          label: 'top',
+          kx: 1e-5,
+          ky: 1e-5,
+          gamma: 18,
+          gammaSat: 20
+        }
+      }
+    ],
+    seepage: {
+      bcs: [
+        { edgeKey: 'side-left:0', type: 'head', head: 5, status: 'active' },
+        { edgeKey: 'side-right:0', type: 'seepage-face', status: 'active' }
+      ],
+      options: {
+        freeSurface: 'iterate',
+        meshTargetArea: 0.2,
+        maxFreeSurfaceIter: 80,
         usePhreaticAsSeed: true
       }
     }
@@ -304,6 +410,50 @@ await runCase('Case 5 embankment seepage face stays contiguous and converges', a
     0.02,
     'embankment case should not create a materially positive pressure head pocket at the downstream crest'
   );
+});
+
+await runCase('Case 6 layered iterate mode keeps low-k precision and a single phreatic envelope', async () => {
+  const solved = await analyzeSeepageModel({ model: layeredIterateModel(1e-12) });
+
+  const midElementKx = solved.mesh.elementData
+    .filter((_, index) => solved.mesh.cells[solved.mesh.elementCell[index]]?.material?.id === 'mid')
+    .map((item) => Number(item?.kx))
+    .filter(Number.isFinite);
+  assert(midElementKx.length > 0, 'layered iterate case should contain middle-layer elements');
+  assert(
+    Math.max(...midElementKx) < 5e-12 && Math.max(...midElementKx) > 5e-13,
+    'layered iterate case should preserve a 1e-12 m/s sublayer instead of flooring it to the wall permeability'
+  );
+
+  [4, 8, 12, 16, 18].forEach((x) => {
+    const hits = verticalSegmentIntersections(solved.result.phreaticSegments, x);
+    assert(
+      hits.length <= 1,
+      `layered iterate case should export only the top phreatic envelope at x=${x} (got ${hits.join(', ')})`
+    );
+  });
+});
+
+await runCase('Case 7 extreme low-k layer remains numerically stable in JavaScript', async () => {
+  const solved = await analyzeSeepageModel({ model: layeredIterateModel(1e-18) });
+  const midElementKx = solved.mesh.elementData
+    .filter((_, index) => solved.mesh.cells[solved.mesh.elementCell[index]]?.material?.id === 'mid')
+    .map((item) => Number(item?.kx))
+    .filter(Number.isFinite);
+  assert(midElementKx.length > 0, 'extreme low-k case should contain middle-layer elements');
+  assert(
+    Math.max(...midElementKx) < 5e-18 && Math.max(...midElementKx) > 5e-19,
+    'extreme low-k case should preserve a 1e-18 m/s sublayer within JavaScript Number precision'
+  );
+  assert(Number.isFinite(solved.result.solver.residualNorm), 'extreme low-k case should report a finite linear residual');
+  assert(solved.result.solver.innerIterations > 0, 'extreme low-k case should still solve the linear system');
+  [4, 12, 18].forEach((x) => {
+    const hits = verticalSegmentIntersections(solved.result.phreaticSegments, x);
+    assert(
+      hits.length <= 1,
+      `extreme low-k case should keep a single phreatic envelope at x=${x} (got ${hits.join(', ')})`
+    );
+  });
 });
 
 console.log('Seepage Phase 2 verification passed.');

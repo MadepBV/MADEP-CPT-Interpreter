@@ -9,13 +9,30 @@ const EPS = 1e-9;
 const GEOM_EPS = 1e-6;
 const DRY_FACTOR = 1e-4;
 const WALL_K = 1e-10;
+const MIN_CONDUCTIVITY = 1e-20;
 const WALL_THICKNESS = 0.1;
 const DEFAULT_TARGET_AREA = 0.05;
 const MAX_CG_ITER = 2500;
 const CG_TOL = 1e-6;
+const CG_NUMERIC_EPS = 1e-30;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function positiveNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function conductivityFloor(value, floor = MIN_CONDUCTIVITY) {
+  const numeric = positiveNumber(value);
+  return numeric != null ? Math.max(numeric, floor) : floor;
+}
+
+function effectiveElementConductivity(value, dry = false) {
+  const base = conductivityFloor(value);
+  return dry ? Math.max(base * DRY_FACTOR, MIN_CONDUCTIVITY * DRY_FACTOR) : base;
 }
 
 function lerp(a, b, t) {
@@ -1103,7 +1120,14 @@ function compressRows(rows, freeNodes, freeIndexByNode, fixedValues) {
 
 function dot(a, b) {
   let sum = 0;
-  for (let i = 0; i < a.length; i += 1) sum += a[i] * b[i];
+  let compensation = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    const term = a[i] * b[i];
+    const corrected = term - compensation;
+    const next = sum + corrected;
+    compensation = (next - sum) - corrected;
+    sum = next;
+  }
   return sum;
 }
 
@@ -1111,9 +1135,14 @@ function sparseMatVec(rows, vector) {
   const out = new Float64Array(rows.length);
   for (let i = 0; i < rows.length; i += 1) {
     let sum = 0;
+    let compensation = 0;
     const row = rows[i];
     for (let j = 0; j < row.indices.length; j += 1) {
-      sum += row.values[j] * vector[row.indices[j]];
+      const term = row.values[j] * vector[row.indices[j]];
+      const corrected = term - compensation;
+      const next = sum + corrected;
+      compensation = (next - sum) - corrected;
+      sum = next;
     }
     out[i] = sum;
   }
@@ -1137,7 +1166,7 @@ function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = CG_TOL)
   const bNorm = Math.max(Math.sqrt(dot(rhs, rhs)), 1);
 
   for (let i = 0; i < n; i += 1) {
-    const diag = Math.abs(rows[i].diag) > EPS ? rows[i].diag : 1;
+    const diag = Math.abs(rows[i].diag) > CG_NUMERIC_EPS ? rows[i].diag : 1;
     z[i] = r[i] / diag;
     p[i] = z[i];
   }
@@ -1151,8 +1180,8 @@ function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = CG_TOL)
   for (let iter = 1; iter <= maxIter; iter += 1) {
     const ap = sparseMatVec(rows, p);
     const denom = dot(p, ap);
-    if (!(Math.abs(denom) > EPS)) {
-      return { solution: x, converged: false, iterations: iter, residualNorm };
+    if (!(Math.abs(denom) > CG_NUMERIC_EPS)) {
+      return { solution: x, converged: residualNorm / bNorm <= tol, iterations: iter, residualNorm };
     }
     const alpha = rzOld / denom;
     for (let i = 0; i < n; i += 1) {
@@ -1164,11 +1193,11 @@ function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = CG_TOL)
       return { solution: x, converged: true, iterations: iter, residualNorm };
     }
     for (let i = 0; i < n; i += 1) {
-      const diag = Math.abs(rows[i].diag) > EPS ? rows[i].diag : 1;
+      const diag = Math.abs(rows[i].diag) > CG_NUMERIC_EPS ? rows[i].diag : 1;
       z[i] = r[i] / diag;
     }
     const rzNew = dot(r, z);
-    const beta = rzNew / Math.max(rzOld, EPS);
+    const beta = Math.abs(rzOld) > CG_NUMERIC_EPS ? rzNew / rzOld : 0;
     for (let i = 0; i < n; i += 1) p[i] = z[i] + beta * p[i];
     rzOld = rzNew;
   }
@@ -1304,14 +1333,22 @@ function stateSignature(dryFlags, activeSeepageFaces) {
 
 function solveHeadField(mesh, dryFlags, dirichletValues, initial = null) {
   const rows = Array.from({ length: mesh.nodes.length }, () => new Map());
+  const conductivities = mesh.elementData.map((elementData, elementIndex) => {
+    const cell = mesh.cells[mesh.elementCell[elementIndex]];
+    const dry = !!dryFlags[elementIndex];
+    const kx = effectiveElementConductivity(cell.material?.kx, dry);
+    const ky = effectiveElementConductivity(cell.material?.ky, dry);
+    return { kx, ky };
+  });
+  const conductivityScale = Math.max(
+    ...conductivities.flatMap((item) => [item.kx, item.ky]),
+    MIN_CONDUCTIVITY
+  );
+
   mesh.elementData.forEach((elementData, elementIndex) => {
     const element = mesh.elements[elementIndex];
-    const cell = mesh.cells[mesh.elementCell[elementIndex]];
-    const dry = dryFlags[elementIndex];
-    const factor = dry ? DRY_FACTOR : 1;
-    const kx = Math.max(Number(cell.material?.kx) || 0, WALL_K) * factor;
-    const ky = Math.max(Number(cell.material?.ky) || 0, WALL_K) * factor;
-    const matrix = elementMatrix(mesh.nodes, element, kx, ky);
+    const { kx, ky } = conductivities[elementIndex];
+    const matrix = elementMatrix(mesh.nodes, element, kx / conductivityScale, ky / conductivityScale);
     if (!matrix) return;
     for (let i = 0; i < 3; i += 1) {
       const row = rows[element[i]];
@@ -1319,7 +1356,17 @@ function solveHeadField(mesh, dryFlags, dirichletValues, initial = null) {
         row.set(element[j], (row.get(element[j]) || 0) + matrix.ke[i][j]);
       }
     }
-    mesh.elementData[elementIndex] = { ...elementData, kx, ky, area: matrix.area, dNdx: matrix.dNdx, dNdy: matrix.dNdy, centroid: matrix.centroid };
+    mesh.elementData[elementIndex] = {
+      ...elementData,
+      kx,
+      ky,
+      solverKx: kx / conductivityScale,
+      solverKy: ky / conductivityScale,
+      area: matrix.area,
+      dNdx: matrix.dNdx,
+      dNdy: matrix.dNdy,
+      centroid: matrix.centroid
+    };
   });
 
   const freeNodes = [];
@@ -1360,10 +1407,10 @@ function computeElementGradients(mesh, heads) {
       const cell = mesh.cells[mesh.elementCell[elementIndex]];
       const kx = Number.isFinite(Number(data?.kx))
         ? Number(data.kx)
-        : Math.max(Number(cell?.material?.kx) || 0, WALL_K);
+        : conductivityFloor(cell?.material?.kx);
       const ky = Number.isFinite(Number(data?.ky))
         ? Number(data.ky)
-        : Math.max(Number(cell?.material?.ky) || 0, WALL_K);
+        : conductivityFloor(cell?.material?.ky);
       const matrix = elementMatrix(mesh.nodes, element, kx, ky);
       if (!matrix) {
         return {
@@ -1640,7 +1687,7 @@ function activeSeepageFacesFromFlux(mesh, heads, model, dryFlags, prior = null, 
     const elementData = mesh.elementData[face.elementIndex];
     const kNormal = Math.max(
       elementData.kx * face.normal.x * face.normal.x + elementData.ky * face.normal.y * face.normal.y,
-      WALL_K
+      MIN_CONDUCTIVITY
     );
     const fluxTol = Math.max(kNormal * tolerances.headActivateTol / Math.max(face.length, tolerances.charLength, 0.05), 1e-12);
     const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
@@ -1660,7 +1707,7 @@ function boundaryFaceFluxMetrics(face, mesh, gradients) {
   if (!elementData) return null;
   const kNormal = Math.max(
     elementData.kx * face.normal.x * face.normal.x + elementData.ky * face.normal.y * face.normal.y,
-    WALL_K
+    MIN_CONDUCTIVITY
   );
   const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
   return {
@@ -1669,6 +1716,36 @@ function boundaryFaceFluxMetrics(face, mesh, gradients) {
     fluxNormal,
     gradientNormal: Math.abs(fluxNormal) / kNormal
   };
+}
+
+function segmentYAtX(segment, x, tol = 1e-8) {
+  if (!Array.isArray(segment) || segment.length !== 2) return null;
+  const [a, b] = segment;
+  const xMin = Math.min(a.x, b.x) - tol;
+  const xMax = Math.max(a.x, b.x) + tol;
+  if (x < xMin || x > xMax) return null;
+  const dx = b.x - a.x;
+  if (Math.abs(dx) <= tol) {
+    return Math.abs(x - a.x) <= tol ? Math.max(a.y, b.y) : null;
+  }
+  const t = (x - a.x) / dx;
+  if (t < -tol || t > 1 + tol) return null;
+  return lerp(a.y, b.y, clamp(t, 0, 1));
+}
+
+function topEnvelopeContourSegments(segments, tol = 1e-5) {
+  const raw = (segments || []).filter((segment) => Array.isArray(segment) && segment.length === 2);
+  if (raw.length <= 1) return raw;
+  return raw.filter((segment) => {
+    const xMid = 0.5 * (segment[0].x + segment[1].x);
+    const yMid = 0.5 * (segment[0].y + segment[1].y);
+    let highestY = yMid;
+    raw.forEach((other) => {
+      const sampleY = segmentYAtX(other, xMid);
+      if (Number.isFinite(sampleY)) highestY = Math.max(highestY, sampleY);
+    });
+    return yMid >= highestY - tol;
+  });
 }
 
 function sampleFlowState(mesh, heads, gradients, x, y) {
@@ -1971,7 +2048,7 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
       minVisibleValue: -Math.max(0.1 * tolerances.headActivateTol, 1e-6)
     })
   })).filter((group) => group.segments.length);
-  const phreaticSegments = contourSegmentsForTriangles(mesh, phreaticScalar, 0);
+  const phreaticSegments = topEnvelopeContourSegments(contourSegmentsForTriangles(mesh, phreaticScalar, 0));
   const flowLines = buildFlowLines(mesh, model, heads, gradients, activeSeepageFaces);
   const dryCellCount = cellDryMask.filter(Boolean).length;
 
