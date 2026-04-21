@@ -2086,7 +2086,7 @@
 		font-weight: 600;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-md);
 		border: 1px solid transparent;
 		text-decoration: none;
 		transition:

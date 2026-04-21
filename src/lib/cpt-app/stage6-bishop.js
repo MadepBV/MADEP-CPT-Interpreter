@@ -45,6 +45,11 @@ const DEFAULT_SPENCER_CONFIG = {
   fallbackBishop: true
 };
 
+function normalizeRegionCoarseness(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -2612,6 +2617,7 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
         id: region?.id || `user-region-${index}`,
         polygon,
         materialId,
+        coarseness: normalizeRegionCoarseness(region?.coarseness),
         material: materialMap.get(materialId) || null,
         source: region?.source === 'cpt-copy' ? 'cpt-copy' : region?.source === 'hole' ? 'hole' : region?.source === 'edited' ? 'edited' : 'custom'
       };

@@ -198,6 +198,7 @@ export function buildCptAutoRegions(terrain, layers, cptX, analysisBottomY, mate
         id: `cpt-${index}-${polyIndex}`,
         polygon,
         material: materials?.[index] || null,
+        coarseness: 1,
         source: 'cpt-auto',
         topFollowsTerrain
       });

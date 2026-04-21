@@ -187,6 +187,7 @@ export function seepageGeometryHash(model, options = {}) {
       materialId: region?.material?.id || '',
       kx: Number.isFinite(Number(region?.material?.kx)) ? Number(region.material.kx) : null,
       ky: Number.isFinite(Number(region?.material?.ky)) ? Number(region.material.ky) : null,
+      coarseness: roundCoord(Number(region?.coarseness) > 0 ? Number(region.coarseness) : 1),
       polygon: (region?.polygon || []).map((pt) => [roundCoord(pt.x), roundCoord(pt.y)])
     })),
     walls: (model?.walls || []).map((wall) => [

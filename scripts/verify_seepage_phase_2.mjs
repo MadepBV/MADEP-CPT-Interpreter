@@ -1,4 +1,5 @@
 import { analyzeSeepageModel, sampleSeepageHead } from '../src/lib/cpt-app/seepage/solver.js';
+import { buildTriangleMesh } from '../src/lib/cpt-app/seepage/mesh-triangle.js';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -6,6 +7,25 @@ function assert(condition, message) {
 
 function approxLE(value, limit, message) {
   assert(Number.isFinite(value) && value <= limit, `${message} (got ${value}, limit ${limit})`);
+}
+
+function average(values) {
+  return values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
+}
+
+function meanCellAreaForRegion(mesh, regionIndex) {
+  const areas = (mesh?.cells || [])
+    .filter((cell) => cell?.regionIndex === regionIndex)
+    .map((cell) => Number(cell.area))
+    .filter(Number.isFinite);
+  assert(areas.length > 0, `region ${regionIndex} should receive seepage cells`);
+  return average(areas);
+}
+
+function maxCellArea(mesh) {
+  const areas = (mesh?.cells || []).map((cell) => Number(cell?.area)).filter(Number.isFinite);
+  assert(areas.length > 0, 'mesh should contain cells before checking max area');
+  return Math.max(...areas);
 }
 
 function assertFlowErrorWithinTolerance(solved, message) {
@@ -303,6 +323,97 @@ await runCase('Case 2 seepage face enables exit gradient', async () => {
   const seepageFaces = solved.mesh.boundaryFaces.filter((face) => face.type === 'seepage-face');
   assert(seepageFaces.length > 0, 'seepage-face case should expose seepage-face boundary edges');
   assert((solved.result.flowLines || []).length > 0, 'seepage-face case should generate flow lines from the solved discharge field');
+});
+
+await runCase('Case 2b polygon coarseness locally refines the seepage mesh', async () => {
+  const model = {
+    terrain: {
+      vertices: [
+        { x: 0, y: 6 },
+        { x: 10, y: 6 }
+      ]
+    },
+    analysisBottomY: 0,
+    phreatic: {
+      vertices: [
+        { x: 0, y: 4.8 },
+        { x: 10, y: 1.8 }
+      ]
+    },
+    walls: [],
+    seepage: {
+      bcs: [],
+      options: {
+        freeSurface: 'fixed',
+        meshTargetArea: 0.5,
+        usePhreaticAsSeed: true
+      }
+    }
+  };
+  const material = {
+    id: 'soil',
+    label: 'soil',
+    kx: 1e-5,
+    ky: 1e-5,
+    gamma: 18,
+    gammaSat: 20
+  };
+  const makeRegions = (rightCoarseness) => [
+    {
+      id: 'left',
+      polygon: [
+        { x: 0, y: 0 },
+        { x: 5, y: 0 },
+        { x: 5, y: 6 },
+        { x: 0, y: 6 }
+      ],
+      material,
+      coarseness: 1
+    },
+    {
+      id: 'right',
+      polygon: [
+        { x: 5, y: 0 },
+        { x: 10, y: 0 },
+        { x: 10, y: 6 },
+        { x: 5, y: 6 }
+      ],
+      material,
+      coarseness: rightCoarseness
+    }
+  ];
+  const coarseMesh = await buildTriangleMesh(model, makeRegions(1), model.seepage.options);
+  const halfMesh = await buildTriangleMesh(model, makeRegions(0.5), model.seepage.options);
+  const quarterMesh = await buildTriangleMesh(model, makeRegions(0.25), model.seepage.options);
+  const coarseMeanArea = meanCellAreaForRegion(coarseMesh, 1);
+  const halfMeanArea = meanCellAreaForRegion(halfMesh, 1);
+  const quarterMeanArea = meanCellAreaForRegion(quarterMesh, 1);
+  assert(
+    halfMeanArea < coarseMeanArea * 0.92,
+    `polygon coarseness 0.5 should already reduce the local mean triangle area (coarse=${coarseMeanArea}, half=${halfMeanArea})`
+  );
+  assert(
+    quarterMeanArea < halfMeanArea * 0.9,
+    `polygon coarseness 0.25 should refine further than 0.5 (half=${halfMeanArea}, quarter=${quarterMeanArea})`
+  );
+  approxLE(
+    maxCellArea(halfMesh),
+    1.1,
+    'polygon coarseness 0.5 should not degrade the global triangulation into oversized elements'
+  );
+  approxLE(
+    maxCellArea(quarterMesh),
+    1.1,
+    'polygon coarseness 0.25 should not degrade the global triangulation into oversized elements'
+  );
+  assert(
+    halfMesh.cells.filter((cell) => cell.regionIndex === 1).length > coarseMesh.cells.filter((cell) => cell.regionIndex === 1).length,
+    'polygon coarseness 0.5 should create more triangles inside the refined polygon than the base mesh'
+  );
+  assert(
+    quarterMesh.cells.filter((cell) => cell.regionIndex === 1).length > halfMesh.cells.filter((cell) => cell.regionIndex === 1).length,
+    'polygon coarseness 0.25 should create more triangles inside the refined polygon than coarseness 0.5'
+  );
 });
 
 await runCase('Case 3 iterate mode converges and matches Dupuit profile', async () => {

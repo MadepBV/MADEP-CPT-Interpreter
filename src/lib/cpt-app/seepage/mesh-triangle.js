@@ -171,6 +171,18 @@ function meshingAttemptsFor(targetArea) {
   ];
 }
 
+function triangleSwitchesForAttempt(attempt, hasRegionAreaConstraints) {
+  let out = 'pzQ';
+  if (attempt?.ccdt) out += 'D';
+  if (attempt?.jettison !== false) out += 'j';
+  if (attempt?.edges !== false) out += 'e';
+  if (typeof attempt?.steiner === 'number') out += `S${attempt.steiner}`;
+  if (typeof attempt?.quality === 'number') out += `q${attempt.quality}`;
+  if (typeof attempt?.area === 'number') out += `a${Math.max(attempt.area, 0.01)}`;
+  if (hasRegionAreaConstraints) out += 'a';
+  return out;
+}
+
 async function triangulateSeepagePslg(model, regions, options, onProgress = () => {}) {
   const attempts = meshingAttemptsFor(options?.meshTargetArea);
   let lastError = null;
@@ -180,7 +192,8 @@ async function triangulateSeepagePslg(model, regions, options, onProgress = () =
     try {
       const pslg = buildSeepagePslg(model, regions, {
         ...options,
-        segmentTargetArea: attempt.segmentTargetArea
+        segmentTargetArea: attempt.segmentTargetArea,
+        regionTargetArea: attempt.area
       });
       if (i > 0) {
         onProgress({
@@ -189,22 +202,22 @@ async function triangulateSeepagePslg(model, regions, options, onProgress = () =
           message: `Triangle hit a meshing limit; retrying with relaxed mesh controls (${attempt.label})...`
         });
       }
+      const hasRegionAreaConstraints = Array.isArray(pslg.regionlist) && pslg.regionlist.length >= 4;
       const triangleOutput = await triangulatePslg(
         {
           pointlist: pslg.pointlist,
           segmentlist: pslg.segmentlist,
-          segmentmarkerlist: pslg.segmentmarkerlist
+          segmentmarkerlist: pslg.segmentmarkerlist,
+          regionlist: hasRegionAreaConstraints ? pslg.regionlist : undefined
         },
-        {
-          pslg: true,
-          quality: attempt.quality,
-          area: Math.max(attempt.area, 0.01),
-          ccdt: attempt.ccdt,
-          steiner: attempt.steiner,
-          edges: true,
-          jettison: true,
-          quiet: true
-        }
+        triangleSwitchesForAttempt(
+          {
+            ...attempt,
+            edges: true,
+            jettison: true
+          },
+          hasRegionAreaConstraints
+        )
       );
       return { triangleOutput, attempt, pslg };
     } catch (error) {

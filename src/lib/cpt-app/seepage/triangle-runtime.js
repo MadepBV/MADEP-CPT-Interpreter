@@ -320,6 +320,7 @@ export async function triangulatePslg(data, switches = null) {
       numberofpoints: output.numberofpoints,
       numberoftriangles: output.numberoftriangles,
       numberofcorners: output.numberofcorners,
+      numberoftriangleattributes: output.numberoftriangleattributes,
       numberofedges: output.numberofedges
     };
   } catch (error) {

@@ -501,7 +501,7 @@
 	font-weight: 600;
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
-	border-radius: var(--radius-sm);
+	border-radius: var(--radius-md);
 	border: 1px solid transparent;
 	text-decoration: none;
 	transition:
@@ -879,5 +879,24 @@
 
 	.doc-callout {
 		color: var(--color-text-light);
+	}
+
+	.btn--primary {
+		background: var(--color-text-on-dark);
+		color: #111110;
+	}
+
+	.btn--primary:hover {
+		background: #ffffff;
+	}
+
+	.btn--outline-dark {
+		color: var(--color-text-on-dark);
+		border-color: rgba(237, 233, 225, 0.18);
+	}
+
+	.btn--outline-dark:hover {
+		background: rgba(237, 233, 225, 0.05);
+		border-color: rgba(237, 233, 225, 0.32);
 	}
 }

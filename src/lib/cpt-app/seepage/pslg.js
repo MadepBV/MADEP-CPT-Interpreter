@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 
+import { pointInPolygonHalfOpen } from '../soil-regions.js';
 import { buildOuterBoundary } from './boundary.js';
 
 const EPS = 1e-9;
@@ -204,6 +205,13 @@ function splitConstraintSegments(segments) {
 
 function segmentMaxLength(segment, targetLength) {
   const base = Math.max(Number(targetLength) || 0, 0.1);
+  if (
+    segment.kind === 'region' &&
+    Number.isFinite(Number(segment.segmentTargetLength)) &&
+    Number(segment.segmentTargetLength) > 0
+  ) {
+    return Math.max(Math.min(base, Number(segment.segmentTargetLength)), 0.02);
+  }
   if (segment.kind === 'phreatic') return Math.max(base * 0.6, 0.05);
   if (segment.kind === 'outer' && segment.bcType === 'seepage-face') return Math.max(base * 0.45, 0.03);
   if (segment.kind === 'outer' && segment.bcType === 'head') return Math.max(base * 0.55, 0.04);
@@ -237,6 +245,16 @@ function densifySegments(segments, targetLength) {
 }
 
 function dedupeSegmentsByPriority(segments) {
+  const mergeRefinement = (kept, candidate) => {
+    const lengths = [kept?.segmentTargetLength, candidate?.segmentTargetLength]
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (!lengths.length) return kept;
+    return {
+      ...kept,
+      segmentTargetLength: Math.min(...lengths)
+    };
+  };
   const map = new Map();
   (segments || []).forEach((segment) => {
     const key = segmentKey(segment);
@@ -248,18 +266,147 @@ function dedupeSegmentsByPriority(segments) {
     const existingPriority = existing.priority || 0;
     const nextPriority = segment.priority || 0;
     if (nextPriority > existingPriority) {
-      map.set(key, segment);
+      map.set(key, mergeRefinement(segment, existing));
       return;
     }
     if (nextPriority === existingPriority && (segment.markerId || 0) < (existing.markerId || 0)) {
-      map.set(key, segment);
+      map.set(key, mergeRefinement(segment, existing));
+      return;
     }
+    map.set(key, mergeRefinement(existing, segment));
   });
   return [...map.values()];
 }
 
 function pointKey(point) {
   return `${point.x.toFixed(SNAP_DECIMALS)},${point.y.toFixed(SNAP_DECIMALS)}`;
+}
+
+function pointToSegmentDistance(point, a, b) {
+  const abx = (b?.x || 0) - (a?.x || 0);
+  const aby = (b?.y || 0) - (a?.y || 0);
+  const len2 = abx * abx + aby * aby;
+  if (!(len2 > EPS)) return Math.hypot((point?.x || 0) - (a?.x || 0), (point?.y || 0) - (a?.y || 0));
+  const t = clamp((((point?.x || 0) - (a?.x || 0)) * abx + (((point?.y || 0) - (a?.y || 0)) * aby)) / len2, 0, 1);
+  const qx = (a?.x || 0) + abx * t;
+  const qy = (a?.y || 0) + aby * t;
+  return Math.hypot((point?.x || 0) - qx, (point?.y || 0) - qy);
+}
+
+function bboxForPolygon(points) {
+  return {
+    xMin: Math.min(...points.map((point) => point.x)),
+    xMax: Math.max(...points.map((point) => point.x)),
+    yMin: Math.min(...points.map((point) => point.y)),
+    yMax: Math.max(...points.map((point) => point.y))
+  };
+}
+
+function horizontalIntervalsInPolygon(polygon, y) {
+  const pts = cleanPolygon(polygon);
+  if (pts.length < 3) return [];
+  const xHits = [];
+  for (let i = 0; i < pts.length; i += 1) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    if (Math.abs(b.y - a.y) <= EPS) continue;
+    const crosses = (a.y <= y + GEOM_EPS && b.y > y + GEOM_EPS) || (b.y <= y + GEOM_EPS && a.y > y + GEOM_EPS);
+    if (!crosses) continue;
+    const t = (y - a.y) / (b.y - a.y);
+    if (t < -GEOM_EPS || t > 1 + GEOM_EPS) continue;
+    xHits.push(lerp(a.x, b.x, t));
+  }
+  const xs = uniqueSorted(xHits);
+  const out = [];
+  for (let i = 0; i + 1 < xs.length; i += 2) {
+    if (xs[i + 1] > xs[i] + GEOM_EPS) out.push({ xMin: xs[i], xMax: xs[i + 1] });
+  }
+  return out;
+}
+
+function regionAreaLimit(region, options) {
+  const baseArea = Math.max(Number(options?.regionTargetArea ?? options?.meshTargetArea) || 0.5, 0.01);
+  const coarseness = Number.isFinite(Number(region?.coarseness)) && Number(region.coarseness) > 0 ? Number(region.coarseness) : 1;
+  return Math.max(baseArea * coarseness, 1e-4);
+}
+
+function polygonCentroid(polygon) {
+  const pts = cleanPolygon(polygon);
+  const signedArea = polygonSignedArea(pts);
+  if (!(Math.abs(signedArea) > EPS)) return null;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < pts.length; i += 1) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const cross = a.x * b.y - b.x * a.y;
+    cx += (a.x + b.x) * cross;
+    cy += (a.y + b.y) * cross;
+  }
+  return {
+    x: cx / (6 * signedArea),
+    y: cy / (6 * signedArea)
+  };
+}
+
+function pointToPolygonBoundaryDistance(point, polygon) {
+  const pts = cleanPolygon(polygon);
+  if (pts.length < 2) return 0;
+  let best = Infinity;
+  for (let i = 0; i < pts.length; i += 1) {
+    best = Math.min(best, pointToSegmentDistance(point, pts[i], pts[(i + 1) % pts.length]));
+  }
+  return best;
+}
+
+function bestInteriorPointForPolygon(polygon) {
+  const pts = cleanPolygon(polygon);
+  if (pts.length < 3) return null;
+  const bbox = bboxForPolygon(pts);
+  const candidates = [];
+  const seen = new Set();
+
+  const tryCandidate = (x, y) => {
+    const candidate = {
+      x: +Number(x).toFixed(SNAP_DECIMALS),
+      y: +Number(y).toFixed(SNAP_DECIMALS)
+    };
+    const key = pointKey(candidate);
+    if (seen.has(key) || !pointInPolygonHalfOpen(pts, candidate.x, candidate.y)) return;
+    seen.add(key);
+    candidates.push(candidate);
+  };
+
+  const centroid = polygonCentroid(pts);
+  if (centroid) tryCandidate(centroid.x, centroid.y);
+
+  [0.5, 0.38, 0.62, 0.25, 0.75, 0.15, 0.85].forEach((fraction) => {
+    const y = lerp(bbox.yMin, bbox.yMax, fraction);
+    horizontalIntervalsInPolygon(pts, y).forEach((interval) => {
+      tryCandidate(0.5 * (interval.xMin + interval.xMax), y);
+      tryCandidate(lerp(interval.xMin, interval.xMax, 0.35), y);
+      tryCandidate(lerp(interval.xMin, interval.xMax, 0.65), y);
+    });
+  });
+
+  if (!candidates.length) return null;
+  return candidates.reduce((best, candidate) => {
+    const distance = pointToPolygonBoundaryDistance(candidate, pts);
+    if (!best || distance > best.distance) return { point: candidate, distance };
+    return best;
+  }, null)?.point || null;
+}
+
+function buildRegionList(regions, options) {
+  const list = [];
+  (regions || []).forEach((region, regionIndex) => {
+    const polygon = cleanPolygon(region?.polygon || []);
+    if (polygon.length < 3) return;
+    const seed = bestInteriorPointForPolygon(polygon);
+    if (!seed) return;
+    list.push(seed.x, seed.y, regionIndex + 1, regionAreaLimit(region, options));
+  });
+  return list;
 }
 
 function outerMarkerInfo(edge, extra = {}) {
@@ -369,6 +516,7 @@ export function buildSeepagePslg(model, regions, options) {
       regionId: region?.id || `region-${regionIndex + 1}`,
       regionIndex,
       regionSource: region?.source || 'region',
+      segmentTargetLength: Math.sqrt(regionAreaLimit(region, options)),
       markerId: allocateMarker({
         markerType: 'region',
         regionId: region?.id || `region-${regionIndex + 1}`,
@@ -400,6 +548,7 @@ export function buildSeepagePslg(model, regions, options) {
     Math.sqrt(Math.max(Number(options?.segmentTargetArea ?? options?.meshTargetArea) || 0.5, 0.01))
   );
   const finalSegments = dedupeSegmentsByPriority(densified);
+  const regionlist = buildRegionList(regions, options);
 
   const points = [];
   const pointIndexByKey = new Map();
@@ -433,6 +582,7 @@ export function buildSeepagePslg(model, regions, options) {
     domainPolygon,
     points,
     segments: finalSegments,
+    regionlist,
     pointlist,
     segmentlist,
     segmentmarkerlist,

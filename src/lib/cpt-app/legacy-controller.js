@@ -4009,9 +4009,16 @@ function stage6BishopRegionId(){
 }
 
 const STAGE6_REGION_COORD_DECIMALS = 6;
+const STAGE6_REGION_COARSENESS_DECIMALS = 3;
 
 function stage6BishopRoundRegionCoord(value){
   return +Number(value).toFixed(STAGE6_REGION_COORD_DECIMALS);
+}
+
+function stage6BishopNormalizeRegionCoarseness(value){
+  const numeric = Number(value);
+  if(!Number.isFinite(numeric) || !(numeric > 0)) return 1;
+  return +numeric.toFixed(STAGE6_REGION_COARSENESS_DECIMALS);
 }
 
 function stage6BishopClampRegionPoint(point, minX = -Infinity, maxX = Infinity){
@@ -4041,6 +4048,7 @@ function stage6BishopNormalizeCustomRegions(regions, terrain, materials){
         id:region?.id || stage6BishopRegionId(),
         polygon,
         materialId,
+        coarseness:stage6BishopNormalizeRegionCoarseness(region?.coarseness),
         source:region?.source === 'cpt-copy' ? 'cpt-copy' : region?.source === 'hole' ? 'hole' : region?.source === 'edited' ? 'edited' : 'custom'
       };
     })
@@ -4318,12 +4326,14 @@ function stage6BishopCopyCurrentRegionsToCustom(){
     id:stage6BishopRegionId(),
     polygon:(region.polygon || []).map((pt)=>stage6BishopClampRegionPoint(pt)),
     materialId:region.material?.id || bishop.materials?.[0]?.id || null,
+    coarseness:stage6BishopNormalizeRegionCoarseness(region?.coarseness),
     source:index < (model.autoRegions?.length || 0) ? 'cpt-copy' : 'custom'
   }));
   bishop.useCustomRegions = bishop.customRegions.length > 0;
   bishop.selectedRegionId = bishop.customRegions[0]?.id || null;
   bishop.regionDraftMaterialId = bishop.customRegions[0]?.materialId || bishop.materials?.[0]?.id || null;
-  stage6BishopInvalidate('Current solver polygons copied into an editable custom polygon set; rerun Bishop search after edits.');
+  if(bishop.useCustomRegions) stage6BishopCurrentModel();
+  stage6BishopInvalidate('Current solver polygons were copied into an editable custom polygon set and automatically enabled in the solver; rerun Bishop search after edits.');
   renderStage6();
 }
 
@@ -4372,6 +4382,29 @@ function stage6BishopSetSelectedRegionMaterial(materialId){
   renderStage6();
 }
 
+function stage6BishopSetSelectedRegionCoarseness(value){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  const region = stage6BishopSelectedCustomRegion();
+  if(!region) return;
+  region.coarseness = stage6BishopNormalizeRegionCoarseness(value);
+  stage6BishopSyncSoilModel();
+  if(bishop.useCustomRegions && (bishop.customRegions || []).length){
+    stage6BishopInvalidateSeepage('Selected polygon coarseness updated; rerun seepage.', false);
+  } else {
+    bishop.progress.message = 'Selected polygon coarseness updated. Enable custom polygons in the solver for it to affect seepage meshing.';
+  }
+  renderStage6();
+}
+
+function stage6BishopCommitPendingSelectedRegionCoarseness(){
+  if(typeof document === 'undefined') return;
+  const input = document.getElementById('st6-bishop-selected-region-coarseness');
+  if(!input) return;
+  stage6BishopSetSelectedRegionCoarseness(input.value);
+}
+
 function stage6BishopSplitSelectedRegion(){
   ensureStage6State();
   stage6RememberDetailsState();
@@ -4395,6 +4428,7 @@ function stage6BishopSplitSelectedRegion(){
     id:stage6BishopRegionId(),
     polygon,
     materialId:region.materialId || bishop.materials?.[0]?.id || null,
+    coarseness:stage6BishopNormalizeRegionCoarseness(region?.coarseness),
     source:'edited'
   }));
   bishop.customRegions = stage6BishopNormalizeCustomRegions(
@@ -4574,6 +4608,7 @@ function stage6BishopFinishDraft(){
         id:stage6BishopRegionId(),
         polygon,
         materialId:bishop.regionDraftMaterialId || bishop.materials?.[0]?.id || null,
+        coarseness:1,
         source:'custom'
       }
     ], bishop.terrain, bishop.materials);
@@ -4596,12 +4631,14 @@ function stage6BishopFinishDraft(){
         id:stage6BishopRegionId(),
         polygon:outcome.polygon,
         materialId:bishop.regionDraftMaterialId || bishop.materials?.[0]?.id || null,
+        coarseness:1,
         source:'hole'
       };
       const replacementRegions = carvedPieces.map((polygon)=>({
         id:stage6BishopRegionId(),
         polygon,
         materialId:parentRegion.materialId || bishop.materials?.[0]?.id || null,
+        coarseness:stage6BishopNormalizeRegionCoarseness(parentRegion?.coarseness),
         source:'edited'
       }));
       bishop.customRegions = stage6BishopNormalizeCustomRegions([
@@ -4902,6 +4939,7 @@ function stage6BishopEnsureSeepageWorker(){
 function stage6BishopRunSearch(){
   ensureStage6State();
   stage6RememberDetailsState();
+  stage6BishopCommitPendingSelectedRegionCoarseness();
   const bishop = S.stage6.bishop;
   const model = stage6BishopCurrentModel();
   if(!model){
@@ -4961,6 +4999,7 @@ function stage6BishopRunSearch(){
 function stage6BishopRunSeepage(){
   ensureStage6State();
   stage6RememberDetailsState();
+  stage6BishopCommitPendingSelectedRegionCoarseness();
   const bishop = S.stage6.bishop;
   stage6BishopSyncSoilModel();
   const model = stage6BishopCurrentModel();
@@ -8742,7 +8781,7 @@ function renderStage6BishopApp(){
               <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-regions"${stage6DetailsOpen('bishop-geo-regions')}>
                 <summary>Soil polygons</summary>
                 <div class="st6-adv-body">
-                  <div class="st6-help">Default Bishop still uses CPT-derived polygons. To edit them, first copy the current solver polygons into a custom set. After that you can draw additional polygons, select one in <strong>Edit / pan</strong>, drag its vertices, split it into smaller polygons, cut interior holes with a different material, and assign one of the imported Bishop materials.</div>
+                  <div class="st6-help">Default Bishop still uses CPT-derived polygons. To edit them, first copy the current solver polygons into a custom set. After that you can draw additional polygons, select one in <strong>Edit / pan</strong>, drag its vertices, split it into smaller polygons, cut interior holes with a different material, assign one of the imported Bishop materials, and tune a polygon-specific seepage coarseness factor for local mesh refinement.</div>
                   ${showingCustomRegionPreview ? `<div class="st6-help">Custom polygons are visible for editing, but the solver is still using the CPT-derived polygon set until you enable the checkbox below.</div>` : ''}
                   <div class="st6-bishop-tools">
                     <button class="btn sm" onclick="stage6BishopCopyCurrentRegionsToCustom()">Copy current polygons</button>
@@ -8768,6 +8807,18 @@ function renderStage6BishopApp(){
                         ${(bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${selectedCustomRegion.materialId===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('')}
                       </select>
                     </label>
+                    <label style="font-size:11px;color:var(--tx2)">Selected polygon coarseness
+                      <input
+                        id="st6-bishop-selected-region-coarseness"
+                        type="number"
+                        min="0.01"
+                        step="0.1"
+                        value="${stage6BishopNormalizeRegionCoarseness(selectedCustomRegion.coarseness)}"
+                        onchange="stage6BishopSetSelectedRegionCoarseness(this.value)"
+                        onkeydown="if(event.key === 'Enter'){ event.preventDefault(); stage6BishopSetSelectedRegionCoarseness(this.value); this.blur(); }"
+                      >
+                    </label>
+                    <div class="st6-help">When custom polygons are enabled in the solver, this scales only the seepage mesh inside the selected polygon. Effective local target area: <strong>${(stage6BishopNormalizeRegionCoarseness(selectedCustomRegion.coarseness) * seepageMeshTargetArea).toFixed(3)} m²</strong> = coarseness <strong>${stage6BishopNormalizeRegionCoarseness(selectedCustomRegion.coarseness).toFixed(2)}</strong> × global target <strong>${seepageMeshTargetArea.toFixed(3)} m²</strong>.</div>
                     <div class="st6-help">Selected polygon: <strong>${stage6EscAttr(selectedCustomRegion.id)}</strong> · vertices <strong>${selectedCustomRegion.polygon.length}</strong> · source <strong>${selectedCustomRegion.source === 'cpt-copy' ? 'copied from CPT' : selectedCustomRegion.source === 'hole' ? 'hole cut' : selectedCustomRegion.source === 'edited' ? 'edited fragment' : 'custom drawn'}</strong></div>
                   ` : `
                     <div class="st6-help">${customRegionCount ? 'No custom polygon is selected. Click one in Edit / pan mode to edit it.' : 'No custom polygons yet. Copy the current solver polygons or draw a new polygon to start editing.'}</div>
