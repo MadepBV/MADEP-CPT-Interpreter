@@ -456,4 +456,61 @@ await runCase('Case 7 extreme low-k layer remains numerically stable in JavaScri
   });
 });
 
+await runCase('Case 8 partially submerged head edge only constrains the wetted upstream face', async () => {
+  const solved = await analyzeSeepageModel({
+    model: {
+      terrain: {
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 4, y: 4 },
+          { x: 6, y: 4 },
+          { x: 10, y: 0 }
+        ]
+      },
+      analysisBottomY: -2,
+      phreatic: {
+        vertices: [
+          { x: 0, y: 2.5 },
+          { x: 10, y: 0 }
+        ]
+      },
+      walls: [],
+      regions: [homogeneousRegion(0, 10, -2, 4)],
+      seepage: {
+        bcs: [
+          { edgeKey: 'terrain:0', type: 'head', head: 2.5, status: 'active' },
+          { edgeKey: 'terrain:2', type: 'seepage-face', status: 'active' }
+        ],
+        options: {
+          freeSurface: 'iterate',
+          meshTargetArea: 0.12,
+          maxFreeSurfaceIter: 80,
+          usePhreaticAsSeed: true
+        }
+      }
+    }
+  });
+
+  const upstreamFaces = (solved.mesh.boundaryFaces || []).filter((face) => face.edgeKey === 'terrain:0');
+  assert(upstreamFaces.length > 1, 'partially submerged head case should split the upstream slope into multiple boundary faces');
+  const wetFaces = upstreamFaces.filter((face) => face.headSubmerged === true);
+  const dryFaces = upstreamFaces.filter((face) => face.headSubmerged === false);
+  assert(wetFaces.length > 0, 'partially submerged head case should keep wetted upstream head faces');
+  assert(dryFaces.length > 0, 'partially submerged head case should leave a dry upstream segment above the waterline');
+  assert(
+    dryFaces.every((face) => face.mid.y >= 2.5 - 1e-6),
+    'dry upstream head faces should lie at or above the waterline'
+  );
+  assert(
+    wetFaces.every((face) => face.mid.y <= 2.5 + 1e-6),
+    'wetted upstream head faces should lie at or below the waterline'
+  );
+
+  const dryNodeIds = [...new Set(dryFaces.flatMap((face) => [face.n1, face.n2]))];
+  assert(
+    dryNodeIds.some((nodeId) => Math.abs((solved.result.heads?.[nodeId] ?? NaN) - 2.5) > 0.05),
+    'dry upstream nodes should not be clamped to the prescribed reservoir head'
+  );
+});
+
 console.log('Seepage Phase 2 verification passed.');

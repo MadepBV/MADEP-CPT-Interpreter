@@ -1480,7 +1480,8 @@ function buildBoundaryFaces(mesh, model) {
         source: edge.source,
         sourceIndex: edge.sourceIndex,
         type: bc?.type || 'no-flow',
-        head: Number.isFinite(Number(bc?.head)) ? Number(bc.head) : null
+        head: Number.isFinite(Number(bc?.head)) ? Number(bc.head) : null,
+        headSubmerged: edge?.headSubmerged
       });
     });
 
@@ -1530,10 +1531,17 @@ function buildBoundaryFaces(mesh, model) {
       source: match.edge.source,
       sourceIndex: match.edge.index,
       type: bc?.type || 'no-flow',
-      head: Number.isFinite(Number(bc?.head)) ? Number(bc.head) : null
+      head: Number.isFinite(Number(bc?.head)) ? Number(bc.head) : null,
+      headSubmerged: null
     });
   });
   return out;
+}
+
+function boundaryFaceUsesPrescribedHead(face, bc) {
+  if (bc?.type !== 'head' || !Number.isFinite(Number(bc?.head))) return false;
+  if (typeof face?.headSubmerged === 'boolean') return face.headSubmerged;
+  return Math.max(Number(face?.a?.y), Number(face?.b?.y), Number(face?.mid?.y)) <= Number(bc.head) + GEOM_EPS;
 }
 
 function buildDirichletValues(mesh, model, options, activeSeepageFaces) {
@@ -1545,7 +1553,7 @@ function buildDirichletValues(mesh, model, options, activeSeepageFaces) {
   mesh.boundaryFaces.forEach((face, faceIndex) => {
     const bc = activeBcs.get(face.edgeKey);
     if (!bc) return;
-    if (bc.type === 'head') {
+    if (boundaryFaceUsesPrescribedHead(face, bc)) {
       mergeDirichlet(values, face.n1, Number(bc.head));
       mergeDirichlet(values, face.n2, Number(bc.head));
       return;
@@ -1811,7 +1819,7 @@ function buildFlowLineSeeds(mesh, heads, gradients, model, activeSeepageFaces, t
   let totalWeight = 0;
   mesh.boundaryFaces.forEach((face, faceIndex) => {
     const bc = activeBcs.get(face.edgeKey);
-    if (bc?.type !== 'head') return;
+    if (!boundaryFaceUsesPrescribedHead(face, bc)) return;
     const metrics = boundaryFaceFluxMetrics(face, mesh, gradients);
     if (!metrics || !(metrics.fluxNormal < -1e-12)) return;
     const weight = Math.max(-metrics.fluxNormal * face.length, face.length * 0.1);
@@ -2001,7 +2009,7 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
     const gradientNormal = metrics.gradientNormal;
     boundaryGradients.push(gradientNormal);
     const bc = activeBcs.get(face.edgeKey);
-    if (bc?.type === 'head' && fluxNormal < 0) totalInflow += -fluxNormal * face.length;
+    if (boundaryFaceUsesPrescribedHead(face, bc) && fluxNormal < 0) totalInflow += -fluxNormal * face.length;
     const faceActive = bc?.type === 'seepage-face' ? (activeSeepageFaces ? !!activeSeepageFaces[faceIndex] : true) : false;
     if (faceActive && fluxNormal > 0) {
       totalOutflow += fluxNormal * face.length;

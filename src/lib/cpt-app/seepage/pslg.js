@@ -260,6 +260,82 @@ function pointKey(point) {
   return `${point.x.toFixed(SNAP_DECIMALS)},${point.y.toFixed(SNAP_DECIMALS)}`;
 }
 
+function outerMarkerInfo(edge, extra = {}) {
+  return {
+    markerType: 'outer',
+    edgeKey: edge.edgeKey,
+    source: edge.source,
+    sourceIndex: edge.index,
+    ...extra
+  };
+}
+
+function headBcMapFor(model) {
+  return new Map(
+    ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned' && bc?.type === 'head') || [])
+      .filter((bc) => Number.isFinite(Number(bc?.head)))
+      .map((bc) => [bc.edgeKey, Number(bc.head)])
+  );
+}
+
+function splitOuterBoundarySegmentsForHead(edge, headValue, allocateMarker) {
+  const a = { x: Number(edge?.a?.x), y: Number(edge?.a?.y) };
+  const b = { x: Number(edge?.b?.x), y: Number(edge?.b?.y) };
+  const base = {
+    a,
+    b,
+    kind: 'outer',
+    priority: SEGMENT_PRIORITY.outer
+  };
+  if (!Number.isFinite(headValue)) {
+    return [
+      {
+        ...base,
+        markerId: allocateMarker(outerMarkerInfo(edge))
+      }
+    ];
+  }
+
+  const yMin = Math.min(a.y, b.y);
+  const yMax = Math.max(a.y, b.y);
+  const classifyPiece = (start, end) => Math.max(start.y, end.y) <= headValue + GEOM_EPS;
+  if (!(headValue > yMin + GEOM_EPS && headValue < yMax - GEOM_EPS) || Math.abs(a.y - b.y) <= GEOM_EPS) {
+    return [
+      {
+        ...base,
+        markerId: allocateMarker(
+          outerMarkerInfo(edge, {
+            headSubmerged: classifyPiece(a, b),
+            headValue
+          })
+        )
+      }
+    ];
+  }
+
+  const t = clamp((headValue - a.y) / (b.y - a.y), 0, 1);
+  const splitPoint = {
+    x: +lerp(a.x, b.x, t).toFixed(SNAP_DECIMALS),
+    y: +lerp(a.y, b.y, t).toFixed(SNAP_DECIMALS)
+  };
+  const pieces = [
+    { a, b: splitPoint },
+    { a: splitPoint, b }
+  ].filter((segment) => dist(segment.a, segment.b) > GEOM_EPS);
+
+  return pieces.map((segment) => ({
+    ...segment,
+    kind: 'outer',
+    priority: SEGMENT_PRIORITY.outer,
+    markerId: allocateMarker(
+      outerMarkerInfo(edge, {
+        headSubmerged: classifyPiece(segment.a, segment.b),
+        headValue
+      })
+    )
+  }));
+}
+
 export function buildSeepagePslg(model, regions, options) {
   const domainPolygon = domainPolygonFor(model);
   if (domainPolygon.length < 3) {
@@ -275,18 +351,10 @@ export function buildSeepagePslg(model, regions, options) {
     return markerId;
   };
 
-  const outerBoundarySegments = buildOuterBoundary(model).map((edge) => ({
-    a: { x: Number(edge.a.x), y: Number(edge.a.y) },
-    b: { x: Number(edge.b.x), y: Number(edge.b.y) },
-    kind: 'outer',
-    priority: SEGMENT_PRIORITY.outer,
-    markerId: allocateMarker({
-      markerType: 'outer',
-      edgeKey: edge.edgeKey,
-      source: edge.source,
-      sourceIndex: edge.index
-    })
-  }));
+  const headBcs = headBcMapFor(model);
+  const outerBoundarySegments = buildOuterBoundary(model).flatMap((edge) =>
+    splitOuterBoundarySegmentsForHead(edge, headBcs.get(edge.edgeKey), allocateMarker)
+  );
 
   const regionBoundarySegments = (regions || []).flatMap((region, regionIndex) =>
     polygonSegments(region?.polygon || [], {
