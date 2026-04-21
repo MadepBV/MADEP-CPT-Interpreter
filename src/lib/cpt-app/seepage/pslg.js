@@ -205,6 +205,8 @@ function splitConstraintSegments(segments) {
 function segmentMaxLength(segment, targetLength) {
   const base = Math.max(Number(targetLength) || 0, 0.1);
   if (segment.kind === 'phreatic') return Math.max(base * 0.6, 0.05);
+  if (segment.kind === 'outer' && segment.bcType === 'seepage-face') return Math.max(base * 0.45, 0.03);
+  if (segment.kind === 'outer' && segment.bcType === 'head') return Math.max(base * 0.55, 0.04);
   if (segment.kind === 'outer') return Math.max(base * 0.8, 0.05);
   if (segment.regionSource === 'wall-auto') return Math.max(base * 0.4, 0.03);
   return base;
@@ -270,28 +272,29 @@ function outerMarkerInfo(edge, extra = {}) {
   };
 }
 
-function headBcMapFor(model) {
+function seepageBoundaryConditionMapFor(model) {
   return new Map(
-    ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned' && bc?.type === 'head') || [])
-      .filter((bc) => Number.isFinite(Number(bc?.head)))
-      .map((bc) => [bc.edgeKey, Number(bc.head)])
+    ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
   );
 }
 
-function splitOuterBoundarySegmentsForHead(edge, headValue, allocateMarker) {
+function splitOuterBoundarySegmentsForHead(edge, bc, allocateMarker) {
+  const bcType = bc?.type === 'seepage-face' ? 'seepage-face' : bc?.type === 'head' ? 'head' : 'no-flow';
+  const headValue = bcType === 'head' && Number.isFinite(Number(bc?.head)) ? Number(bc.head) : null;
   const a = { x: Number(edge?.a?.x), y: Number(edge?.a?.y) };
   const b = { x: Number(edge?.b?.x), y: Number(edge?.b?.y) };
   const base = {
     a,
     b,
     kind: 'outer',
-    priority: SEGMENT_PRIORITY.outer
+    priority: SEGMENT_PRIORITY.outer,
+    bcType
   };
   if (!Number.isFinite(headValue)) {
     return [
       {
         ...base,
-        markerId: allocateMarker(outerMarkerInfo(edge))
+        markerId: allocateMarker(outerMarkerInfo(edge, { bcType }))
       }
     ];
   }
@@ -305,6 +308,7 @@ function splitOuterBoundarySegmentsForHead(edge, headValue, allocateMarker) {
         ...base,
         markerId: allocateMarker(
           outerMarkerInfo(edge, {
+            bcType,
             headSubmerged: classifyPiece(a, b),
             headValue
           })
@@ -327,8 +331,10 @@ function splitOuterBoundarySegmentsForHead(edge, headValue, allocateMarker) {
     ...segment,
     kind: 'outer',
     priority: SEGMENT_PRIORITY.outer,
+    bcType,
     markerId: allocateMarker(
       outerMarkerInfo(edge, {
+        bcType,
         headSubmerged: classifyPiece(segment.a, segment.b),
         headValue
       })
@@ -351,9 +357,9 @@ export function buildSeepagePslg(model, regions, options) {
     return markerId;
   };
 
-  const headBcs = headBcMapFor(model);
+  const seepageBcs = seepageBoundaryConditionMapFor(model);
   const outerBoundarySegments = buildOuterBoundary(model).flatMap((edge) =>
-    splitOuterBoundarySegmentsForHead(edge, headBcs.get(edge.edgeKey), allocateMarker)
+    splitOuterBoundarySegmentsForHead(edge, seepageBcs.get(edge.edgeKey), allocateMarker)
   );
 
   const regionBoundarySegments = (regions || []).flatMap((region, regionIndex) =>

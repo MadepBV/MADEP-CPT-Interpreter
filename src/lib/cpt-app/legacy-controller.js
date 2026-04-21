@@ -3607,7 +3607,6 @@ function stage6Defaults(){
         options:{
           freeSurface:'iterate',
           usePhreaticAsSeed:true,
-          maxFreeSurfaceIter:30,
           flowErrorTolerance:0.01,
           maxRuntimeMs:10000,
           meshTargetArea:null,
@@ -3828,7 +3827,6 @@ function ensureStage6State(){
   if(!bishop.seepage.options || typeof bishop.seepage.options !== 'object') bishop.seepage.options = stage6Defaults().bishop.seepage.options;
   if(!['fixed','iterate'].includes(bishop.seepage.options.freeSurface)) bishop.seepage.options.freeSurface = 'iterate';
   bishop.seepage.options.usePhreaticAsSeed = bishop.seepage.options.usePhreaticAsSeed !== false;
-  bishop.seepage.options.maxFreeSurfaceIter = Math.max(1, Math.round(+bishop.seepage.options.maxFreeSurfaceIter || 30));
   bishop.seepage.options.flowErrorTolerance = Math.max(+bishop.seepage.options.flowErrorTolerance || 0.01, 0.000001);
   bishop.seepage.options.maxRuntimeMs = Math.max(+bishop.seepage.options.maxRuntimeMs || 10000, 1);
   const rawSeepageMeshTargetArea = Number(bishop.seepage.options.meshTargetArea);
@@ -4382,6 +4380,8 @@ function stage6BishopSetField(path, value){
     nextValue = isManual ? numeric : stage6BishopAutoSeepageMeshTargetArea(S.stage6.bishop);
   } else if(path === 'seepage.options.flowErrorTolerance'){
     nextValue = value === '' || value == null ? null : (+value / 100);
+  } else if(path === 'seepage.options.maxRuntimeMs'){
+    nextValue = value === '' || value == null ? null : (+value * 1000);
   } else if(path === 'seepage.options.meshTargetAreaAuto'){
     nextValue = !!value;
   } else if(typeof currentDefault === 'number'){
@@ -4689,17 +4689,28 @@ function stage6BishopDeleteWall(index){
 
 function stage6BishopStopSeepage(silent){
   if(stage6BishopSeepageWorker){
-    stage6BishopSeepageWorker.terminate();
-    stage6BishopSeepageWorker = null;
+    if(silent){
+      stage6BishopSeepageWorker.terminate();
+      stage6BishopSeepageWorker = null;
+    } else if(S?.stage6?.bishop?.seepage?.progress?.runId){
+      stage6BishopSeepageWorker.postMessage({
+        type:'stop-seepage',
+        runId:S.stage6.bishop.seepage.progress.runId
+      });
+    }
   }
   if(S?.stage6?.bishop?.seepage){
     const seepage = S.stage6.bishop.seepage;
-    seepage.progress.running = false;
-    seepage.progress.percent = 0;
-    if(seepage.status === 'meshing' || seepage.status === 'solving') seepage.status = 'idle';
-    if(!silent){
-      seepage.progress.message = 'Seepage run stopped.';
-      seepage.rejectReason = 'Seepage run stopped.';
+    if(silent){
+      seepage.progress.running = false;
+      seepage.progress.percent = 0;
+      if(seepage.status === 'meshing' || seepage.status === 'solving') seepage.status = 'idle';
+    } else if(seepage.progress?.running){
+      seepage.progress.message = 'Stopping seepage and keeping the latest solved state...';
+      seepage.rejectReason = '';
+    } else {
+      seepage.progress.message = 'No seepage run is active.';
+      seepage.rejectReason = '';
     }
   }
 }
@@ -4809,6 +4820,14 @@ function stage6BishopEnsureSeepageWorker(){
       seepage.progress.message = seepage.status === 'success'
         ? stage6BishopSeepageCompleteMessage(seepage.result)
         : 'Seepage solve failed.';
+      renderStage6();
+      return;
+    }
+    if(payload.error === 'Seepage run was interrupted before a solution became available.'){
+      seepage.status = 'idle';
+      seepage.rejectReason = '';
+      seepage.progress.message = 'Seepage interrupted before the first solution became available.';
+      seepage.progress.percent = 0;
       renderStage6();
       return;
     }
@@ -4979,12 +4998,22 @@ function stage6BishopMethodModeLabel(mode){
   return mode === 'bishop_spencer' ? 'Bishop + Spencer check' : 'Bishop only';
 }
 
+function stage6SecondsLabelFromMs(value){
+  const ms = Number(value);
+  if(!Number.isFinite(ms)) return '—';
+  return `${stage6CompactNumber(ms / 1000, 3)} s`;
+}
+
+function stage6SeepageFlowErrorLabel(result){
+  return result?.flowError != null ? `${stage6CompactNumber(100 * result.flowError, 3)} %` : '—';
+}
+
 function stage6BishopSeepageTerminationLabel(reason){
   if(!reason) return '—';
   if(reason === 'time-limit') return 'Stopped at runtime limit';
-  if(reason === 'iteration-limit') return 'Stopped at hard iteration cap';
+  if(reason === 'interrupted') return 'Interrupted by user';
   if(reason === 'fixed-boundary') return 'Solved with fixed phreatic boundary';
-  return 'Converged on flow-error target';
+  return 'Converged on flow-rate error target';
 }
 
 function stage6BishopResultMethodLabel(result){
@@ -5020,18 +5049,23 @@ function stage6BishopCompleteMessage(result, timing){
 }
 
 function stage6BishopSeepageCompleteMessage(result){
-  const runtime = result?.timing?.totalMs?.toFixed ? result.timing.totalMs.toFixed(0) : result?.timing?.totalMs || 0;
+  const runtime = stage6SecondsLabelFromMs(result?.timing?.totalMs);
+  const flowError = stage6SeepageFlowErrorLabel(result);
   const terminationReason = result?.solver?.terminationReason || 'flow-error';
   if(terminationReason === 'time-limit'){
-    return `Seepage stopped after ${runtime} ms at the configured runtime limit; showing the best available result.`;
+    return flowError !== '—'
+      ? `Seepage stopped after ${runtime} at the configured runtime limit. Latest flow-rate error: ${flowError}.`
+      : `Seepage stopped after ${runtime} at the configured runtime limit; showing the best available result.`;
   }
-  if(terminationReason === 'iteration-limit'){
-    return `Seepage stopped after ${runtime} ms at the hard iteration cap; consider allowing more runtime or iterations.`;
+  if(terminationReason === 'interrupted'){
+    return flowError !== '—'
+      ? `Seepage interrupted after ${runtime}. Showing the latest solved state with flow-rate error ${flowError}.`
+      : `Seepage interrupted after ${runtime}. Showing the latest solved state.`;
   }
   if(terminationReason === 'fixed-boundary'){
-    return `Seepage solved in ${runtime} ms with a fixed phreatic boundary.`;
+    return `Seepage solved in ${runtime} with a fixed phreatic boundary.`;
   }
-  return `Seepage solved in ${runtime} ms and converged on the flow-error target.`;
+  return `Seepage solved in ${runtime} with flow-rate error ${flowError}.`;
 }
 
 function stage6BishopModeMeta(){
@@ -8558,20 +8592,17 @@ function renderStage6BishopApp(){
                 <label style="font-size:11px;color:var(--tx2)">Target element area (m²)
                   <input type="number" step="0.01" min="0.01" value="${Number(seepageMeshTargetArea).toFixed(2)}" onchange="stage6BishopSetField('seepage.options.meshTargetArea', this.value)">
                 </label>
-                <label style="font-size:11px;color:var(--tx2)">Hard free-surface iteration cap
-                  <input type="number" step="1" min="1" value="${Math.round(seepage.options?.maxFreeSurfaceIter || 30)}" onchange="stage6BishopSetField('seepage.options.maxFreeSurfaceIter', this.value)" ${seepageUsesIterativeFreeSurface ? '' : 'disabled'}>
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Flow-error target (%)
+                <label style="font-size:11px;color:var(--tx2)">Flow-rate error target (%)
                   <input type="number" step="0.01" min="0.0001" value="${(100 * Math.max(Number(seepage.options?.flowErrorTolerance) || 0.01, 0.000001)).toFixed(3)}" onchange="stage6BishopSetField('seepage.options.flowErrorTolerance', this.value)" ${seepageUsesIterativeFreeSurface ? '' : 'disabled'}>
                 </label>
-                <label style="font-size:11px;color:var(--tx2)">Max runtime (ms)
-                  <input type="number" step="100" min="1" value="${Math.round(Math.max(Number(seepage.options?.maxRuntimeMs) || 10000, 1))}" onchange="stage6BishopSetField('seepage.options.maxRuntimeMs', this.value)" ${seepageUsesIterativeFreeSurface ? '' : 'disabled'}>
+                <label style="font-size:11px;color:var(--tx2)">Max runtime (s)
+                  <input type="number" step="0.1" min="0.1" value="${(Math.max(Number(seepage.options?.maxRuntimeMs) || 10000, 1) / 1000).toFixed(2)}" onchange="stage6BishopSetField('seepage.options.maxRuntimeMs', this.value)" ${seepageUsesIterativeFreeSurface ? '' : 'disabled'}>
                 </label>
                 <label class="st6-bishop-check">
                   <input type="checkbox" ${seepage.options?.usePhreaticAsSeed !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.options.usePhreaticAsSeed', this.checked)">
                   Use the drawn phreatic line as the initial wet/dry seed
                 </label>
-                <div class="st6-help">Iterative free surface is now the default. In iterative mode the seepage solve stops as soon as the flow-error target is met or the runtime limit is reached, whichever comes first. The free-surface iteration count remains as a hard safety cap. Fixed phreatic remains available when you intentionally want to lock seepage to a known phreatic line for benchmarking or sensitivity checks. The automatic target area scales from the drawn section geometry and becomes coarser for larger sections to keep the default mesh size under control. For the current section that lands around <strong>${seepageAutoMeshTargetArea.toFixed(2)} m²</strong>. Typing a value switches the mesh to manual sizing.</div>
+                <div class="st6-help">Iterative free surface is now the default. In iterative mode the seepage solve stops as soon as the flow-rate error target is met or the runtime limit is reached, whichever comes first. Fixed phreatic remains available when you intentionally want to lock seepage to a known phreatic line for benchmarking or sensitivity checks. The automatic target area scales from the drawn section geometry and becomes coarser for larger sections to keep the default mesh size under control. For the current section that lands around <strong>${seepageAutoMeshTargetArea.toFixed(2)} m²</strong>. Typing a value switches the mesh to manual sizing.</div>
                 <div class="st6-bishop-tools">
                   <button class="btn sm" onclick="stage6BishopRunSeepage()" ${seepageRunReady ? '' : 'disabled'}>Run seepage</button>
                   <button class="btn sm" onclick="stage6BishopStopSeepage()">Stop</button>
@@ -8585,9 +8616,10 @@ function renderStage6BishopApp(){
                   Rendered triangles: <strong>${seepage.mesh?.cells?.length || 0}</strong><br>
                   Head range: <strong>${seepage.result ? `${seepage.result.headMin.toFixed(2)} to ${seepage.result.headMax.toFixed(2)} m` : '—'}</strong><br>
                   Through-flow: <strong>${seepage.result ? `${(seepage.result.throughFlow || 0).toExponential(2)} m³/s/m` : '—'}</strong><br>
-                  Flow-error target: <strong>${seepageUsesIterativeFreeSurface ? `${(100 * Math.max(Number(seepage.options?.flowErrorTolerance) || 0.01, 0.000001)).toFixed(3)} %` : 'n/a'}</strong><br>
-                  Runtime cap: <strong>${seepageUsesIterativeFreeSurface ? `${Math.round(Math.max(Number(seepage.options?.maxRuntimeMs) || 10000, 1))} ms` : 'n/a'}</strong><br>
-                  Flow error: <strong>${seepage.result?.flowError != null ? `${(100 * seepage.result.flowError).toFixed(3)} %` : '—'}</strong><br>
+                  Flow-rate error target: <strong>${seepageUsesIterativeFreeSurface ? `${(100 * Math.max(Number(seepage.options?.flowErrorTolerance) || 0.01, 0.000001)).toFixed(3)} %` : 'n/a'}</strong><br>
+                  Runtime cap: <strong>${seepageUsesIterativeFreeSurface ? stage6SecondsLabelFromMs(Math.max(Number(seepage.options?.maxRuntimeMs) || 10000, 1)) : 'n/a'}</strong><br>
+                  Total runtime: <strong>${stage6SecondsLabelFromMs(seepage.result?.timing?.totalMs)}</strong><br>
+                  Flow-rate error: <strong>${stage6SeepageFlowErrorLabel(seepage.result)}</strong><br>
                   Termination: <strong>${stage6EscAttr(stage6BishopSeepageTerminationLabel(seepage.result?.solver?.terminationReason))}</strong><br>
                   Max exit gradient: <strong>${seepage.result ? (seepage.result.maxExitGradient || 0).toFixed(3) : '—'}</strong><br>
                   Dry cells: <strong>${seepage.result?.dryCellCount || 0}</strong>
@@ -9503,7 +9535,6 @@ function stage7SeepagePayload(){
       config:safeClone({
         freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
         usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
-        maxFreeSurfaceIter:Math.max(1, Math.round(+seepage.options?.maxFreeSurfaceIter || 30)),
         flowErrorTolerance:Math.max(+seepage.options?.flowErrorTolerance || 0.01, 0.000001),
         maxRuntimeMs:Math.max(+seepage.options?.maxRuntimeMs || 10000, 1),
         meshTargetArea:stage6BishopResolvedSeepageMeshTargetArea(bishop),
@@ -9583,7 +9614,6 @@ function stage7SeepagePayload(){
       config:safeClone({
         freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
         usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
-        maxFreeSurfaceIter:Math.max(1, Math.round(+seepage.options?.maxFreeSurfaceIter || 30)),
         flowErrorTolerance:Math.max(+seepage.options?.flowErrorTolerance || 0.01, 0.000001),
         maxRuntimeMs:Math.max(+seepage.options?.maxRuntimeMs || 10000, 1),
         meshTargetArea:stage6BishopResolvedSeepageMeshTargetArea(bishop),

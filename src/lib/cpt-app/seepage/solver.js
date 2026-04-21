@@ -7,7 +7,7 @@ import { buildTriangleMesh } from './mesh-triangle.js';
 
 const EPS = 1e-9;
 const GEOM_EPS = 1e-6;
-const DRY_FACTOR = 1e-4;
+const DRY_FACTOR = 1e-6;
 const WALL_K = 1e-10;
 const MIN_CONDUCTIVITY = 1e-20;
 const WALL_THICKNESS = 0.1;
@@ -15,6 +15,7 @@ const DEFAULT_TARGET_AREA = 0.05;
 const DEFAULT_FLOW_ERROR_TOL = 0.01;
 const DEFAULT_MAX_RUNTIME_MS = 10000;
 const MAX_CG_ITER = 2500;
+const CG_CHECKPOINT_INTERVAL = 25;
 const CG_TOL = 1e-6;
 const CG_NUMERIC_EPS = 1e-30;
 
@@ -25,6 +26,61 @@ function clamp(value, min, max) {
 function positiveNumber(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function minMax(values) {
+  if (!values?.length) return { min: null, max: null };
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < values.length; i += 1) {
+    const value = Number(values[i]);
+    if (!Number.isFinite(value)) continue;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  return min === Infinity ? { min: null, max: null } : { min, max };
+}
+
+function pointBounds(points) {
+  if (!points?.length) return null;
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  for (let i = 0; i < points.length; i += 1) {
+    const point = points[i];
+    const x = Number(point?.x);
+    const y = Number(point?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (x < xMin) xMin = x;
+    if (x > xMax) xMax = x;
+    if (y < yMin) yMin = y;
+    if (y > yMax) yMax = y;
+  }
+  return xMin === Infinity ? null : { xMin, xMax, yMin, yMax };
+}
+
+function secondsValueLabel(ms) {
+  const seconds = Number(ms) / 1000;
+  if (!Number.isFinite(seconds)) return '0.00';
+  return seconds >= 10 ? seconds.toFixed(1) : seconds.toFixed(2);
+}
+
+function buildInterruptedError(message = 'Seepage run was interrupted before a solution became available.') {
+  const error = new Error(message);
+  error.code = 'SEEPAGE_INTERRUPTED';
+  return error;
+}
+
+function isStopRequested(runControl) {
+  return !!runControl?.shouldStop?.();
+}
+
+async function runCheckpoint(runControl, force = false) {
+  if (typeof runControl?.checkpoint === 'function') {
+    return !!(await runControl.checkpoint({ force }));
+  }
+  return isStopRequested(runControl);
 }
 
 function conductivityFloor(value, floor = MIN_CONDUCTIVITY) {
@@ -1133,6 +1189,18 @@ function dot(a, b) {
   return sum;
 }
 
+function maxConductivityValue(conductivities) {
+  let maxValue = MIN_CONDUCTIVITY;
+  for (let i = 0; i < conductivities.length; i += 1) {
+    const item = conductivities[i];
+    const kx = Number(item?.kx);
+    const ky = Number(item?.ky);
+    if (Number.isFinite(kx) && kx > maxValue) maxValue = kx;
+    if (Number.isFinite(ky) && ky > maxValue) maxValue = ky;
+  }
+  return maxValue;
+}
+
 function sparseMatVec(rows, vector) {
   const out = new Float64Array(rows.length);
   for (let i = 0; i < rows.length; i += 1) {
@@ -1151,7 +1219,7 @@ function sparseMatVec(rows, vector) {
   return out;
 }
 
-function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = CG_TOL) {
+async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = CG_TOL, runControl = null) {
   const n = rows.length;
   if (!n) return { solution: new Float64Array(0), converged: true, iterations: 0, residualNorm: 0 };
   const x = initial && initial.length === n ? Float64Array.from(initial) : new Float64Array(n);
@@ -1178,6 +1246,9 @@ function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = CG_TOL)
   if (residualNorm / bNorm <= tol) {
     return { solution: x, converged: true, iterations: 0, residualNorm };
   }
+  if (await runCheckpoint(runControl, true)) {
+    return { solution: x, converged: false, iterations: 0, residualNorm, interrupted: true };
+  }
 
   for (let iter = 1; iter <= maxIter; iter += 1) {
     const ap = sparseMatVec(rows, p);
@@ -1202,6 +1273,9 @@ function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = CG_TOL)
     const beta = Math.abs(rzOld) > CG_NUMERIC_EPS ? rzNew / rzOld : 0;
     for (let i = 0; i < n; i += 1) p[i] = z[i] + beta * p[i];
     rzOld = rzNew;
+    if (iter % CG_CHECKPOINT_INTERVAL === 0 && (await runCheckpoint(runControl))) {
+      return { solution: x, converged: false, iterations: iter, residualNorm, interrupted: true };
+    }
   }
 
   return { solution: x, converged: false, iterations: maxIter, residualNorm };
@@ -1339,7 +1413,152 @@ function stateSignature(dryFlags, activeSeepageFaces) {
   return `${dry}|${faces}`;
 }
 
-function solveHeadField(mesh, dryFlags, dirichletValues, initial = null) {
+function ensureElementNeighbors(mesh) {
+  if (Array.isArray(mesh?.elementNeighbors) && mesh.elementNeighbors.length === (mesh.elements?.length || 0)) {
+    return mesh.elementNeighbors;
+  }
+
+  const neighbors = Array.from({ length: mesh?.elements?.length || 0 }, () => new Set());
+  buildEdgeMap(mesh).forEach((entry) => {
+    if ((entry?.elements?.length || 0) <= 1) return;
+    for (let i = 0; i < entry.elements.length; i += 1) {
+      for (let j = i + 1; j < entry.elements.length; j += 1) {
+        neighbors[entry.elements[i]].add(entry.elements[j]);
+        neighbors[entry.elements[j]].add(entry.elements[i]);
+      }
+    }
+  });
+
+  mesh.elementNeighbors = neighbors.map((set) => [...set]);
+  return mesh.elementNeighbors;
+}
+
+function elementWetMetrics(mesh, heads) {
+  return mesh.elements.map((element, elementIndex) => {
+    const metrics = trianglePressureHeadMetrics(mesh, heads, elementIndex);
+    return {
+      ...metrics,
+      wetFraction: triangleWetAreaFraction(metrics.triPoints, metrics.psiValues)
+    };
+  });
+}
+
+function classifyElementWet(metrics, priorDry = null, tolerances = seepageIterationTolerances(null)) {
+  if (!metrics) return priorDry == null ? false : !priorDry;
+  if (metrics.wetFraction <= tolerances.wetFractionDryTol && metrics.centroidPsi <= tolerances.headActivateTol) return false;
+  if (metrics.wetFraction >= tolerances.wetFractionWetTol && metrics.centroidPsi >= -tolerances.headActivateTol) return true;
+  if (priorDry != null) return !priorDry;
+  return metrics.centroidPsi >= 0;
+}
+
+function boundaryElementSupportsSeepage(metrics, tolerances) {
+  if (!metrics) return false;
+  if (metrics.wetFraction > tolerances.wetFractionDryTol) return true;
+  return metrics.centroidPsi >= -tolerances.headActivateTol;
+}
+
+function prescribedHeadAnchorElements(mesh, model) {
+  const activeBcs = new Map(
+    ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
+  );
+  const anchors = new Set();
+  (mesh?.boundaryFaces || []).forEach((face) => {
+    const bc = activeBcs.get(face?.edgeKey);
+    if (boundaryFaceUsesPrescribedHead(face, bc)) anchors.add(face.elementIndex);
+  });
+  return anchors;
+}
+
+function connectedWetMask(mesh, candidateWetMask, anchorElements) {
+  const wet = (candidateWetMask || []).map(Boolean);
+  const anchors = [...(anchorElements || [])].filter((elementIndex) => wet[elementIndex]);
+  if (!anchors.length) return wet.slice();
+
+  const neighbors = ensureElementNeighbors(mesh);
+  const connected = new Array(wet.length).fill(false);
+  const queue = [...anchors];
+
+  anchors.forEach((elementIndex) => {
+    connected[elementIndex] = true;
+  });
+
+  while (queue.length) {
+    const elementIndex = queue.shift();
+    (neighbors[elementIndex] || []).forEach((neighborIndex) => {
+      if (!wet[neighborIndex] || connected[neighborIndex]) return;
+      connected[neighborIndex] = true;
+      queue.push(neighborIndex);
+    });
+  }
+
+  return connected;
+}
+
+function regularizeIteratedFreeSurfaceState(
+  mesh,
+  model,
+  heads,
+  priorDryFlags = null,
+  priorActiveSeepageFaces = null,
+  tolerances = seepageIterationTolerances(mesh)
+) {
+  const metrics = elementWetMetrics(mesh, heads);
+  const rawWetMask = metrics.map((metric, elementIndex) =>
+    classifyElementWet(metric, typeof priorDryFlags?.[elementIndex] === 'boolean' ? priorDryFlags[elementIndex] : null, tolerances)
+  );
+  const rawDryFlags = rawWetMask.map((wet) => !wet);
+  const candidateActiveFaces = activeSeepageFacesFromFlux(
+    mesh,
+    heads,
+    model,
+    rawDryFlags,
+    priorActiveSeepageFaces,
+    tolerances
+  ).map(
+    (active, faceIndex) =>
+      active && boundaryElementSupportsSeepage(metrics[mesh.boundaryFaces[faceIndex].elementIndex], tolerances)
+  );
+  const anchorElements = prescribedHeadAnchorElements(mesh, model);
+  const candidateWetMask = rawWetMask.slice();
+
+  anchorElements.forEach((elementIndex) => {
+    candidateWetMask[elementIndex] = true;
+  });
+  candidateActiveFaces.forEach((active, faceIndex) => {
+    if (!active) return;
+    candidateWetMask[mesh.boundaryFaces[faceIndex].elementIndex] = true;
+  });
+
+  const connectedWet = connectedWetMask(mesh, candidateWetMask, anchorElements);
+  const nextDryFlags = connectedWet.map((wet) => !wet);
+  const nextActiveSeepageFaces = activeSeepageFacesFromFlux(
+    mesh,
+    heads,
+    model,
+    nextDryFlags,
+    priorActiveSeepageFaces,
+    tolerances
+  ).map(
+    (active, faceIndex) =>
+      active &&
+      connectedWet[mesh.boundaryFaces[faceIndex].elementIndex] &&
+      boundaryElementSupportsSeepage(metrics[mesh.boundaryFaces[faceIndex].elementIndex], tolerances)
+  );
+
+  nextActiveSeepageFaces.forEach((active, faceIndex) => {
+    if (!active) return;
+    nextDryFlags[mesh.boundaryFaces[faceIndex].elementIndex] = false;
+  });
+
+  return {
+    dryFlags: nextDryFlags,
+    activeSeepageFaces: nextActiveSeepageFaces,
+    elementMetrics: metrics,
+    connectedWetMask: connectedWet
+  };
+}
+
+async function solveHeadField(mesh, dryFlags, dirichletValues, initial = null, runControl = null) {
   const rows = Array.from({ length: mesh.nodes.length }, () => new Map());
   const conductivities = mesh.elementData.map((elementData, elementIndex) => {
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
@@ -1348,10 +1567,7 @@ function solveHeadField(mesh, dryFlags, dirichletValues, initial = null) {
     const ky = effectiveElementConductivity(cell.material?.ky, dry);
     return { kx, ky };
   });
-  const conductivityScale = Math.max(
-    ...conductivities.flatMap((item) => [item.kx, item.ky]),
-    MIN_CONDUCTIVITY
-  );
+  const conductivityScale = maxConductivityValue(conductivities);
 
   mesh.elementData.forEach((elementData, elementIndex) => {
     const element = mesh.elements[elementIndex];
@@ -1389,8 +1605,8 @@ function solveHeadField(mesh, dryFlags, dirichletValues, initial = null) {
   const initialFree = initial
     ? freeNodes.map((nodeId) => initial[nodeId] ?? 0)
     : null;
-  const cg = solveCg(compressed.rows, compressed.rhs, initialFree);
-  if (!cg.converged) {
+  const cg = await solveCg(compressed.rows, compressed.rhs, initialFree, MAX_CG_ITER, CG_TOL, runControl);
+  if (!cg.converged && !cg.interrupted) {
     throw new Error(`Seepage linear solve did not converge (residual ${cg.residualNorm.toExponential(2)} after ${cg.iterations} iterations).`);
   }
 
@@ -1404,7 +1620,8 @@ function solveHeadField(mesh, dryFlags, dirichletValues, initial = null) {
   return {
     heads,
     iterations: cg.iterations,
-    residualNorm: cg.residualNorm
+    residualNorm: cg.residualNorm,
+    interrupted: !!cg.interrupted
   };
 }
 
@@ -1665,18 +1882,6 @@ function cellValueFromTriangles(cell, triangleValues, mesh) {
   return totalArea > EPS ? total / totalArea : average(cell.triangleIndices.map((triangleIndex) => triangleValues[triangleIndex]));
 }
 
-function updateDryFlags(mesh, heads, prior = null, tolerances = seepageIterationTolerances(mesh)) {
-  return mesh.elements.map((element, elementIndex) => {
-    const priorDry = typeof prior?.[elementIndex] === 'boolean' ? prior[elementIndex] : null;
-    const metrics = trianglePressureHeadMetrics(mesh, heads, elementIndex);
-    const wetFraction = triangleWetAreaFraction(metrics.triPoints, metrics.psiValues);
-    if (wetFraction <= tolerances.wetFractionDryTol && metrics.centroidPsi <= tolerances.headActivateTol) return true;
-    if (wetFraction >= tolerances.wetFractionWetTol && metrics.centroidPsi >= -tolerances.headActivateTol) return false;
-    if (priorDry != null) return priorDry;
-    return metrics.centroidPsi < 0;
-  });
-}
-
 function activeSeepageFacesFromDry(mesh, dryFlags, model) {
   const activeBcs = new Map(
     ((model?.seepage?.bcs || []).filter((bc) => bc?.status !== 'orphaned') || []).map((bc) => [bc.edgeKey, bc])
@@ -1707,13 +1912,6 @@ function activeSeepageFacesFromFlux(mesh, heads, model, dryFlags, prior = null, 
     );
     const fluxTol = Math.max(kNormal * tolerances.headActivateTol / Math.max(face.length, tolerances.charLength, 0.05), 1e-12);
     const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
-    const priorActive = !!prior?.[faceIndex];
-    if (priorActive) {
-      // Once a seepage face is clamped to h = y, pressure head alone can no longer
-      // tell us whether it should stay active. Require non-inward flux so an
-      // initially wet seed cannot pin the free surface above its physical exit point.
-      return facePressure.psiMid >= -tolerances.headKeepTol && fluxNormal >= 0;
-    }
     if (facePressure.psiMid >= tolerances.headActivateTol) return true;
     return facePressure.psiMid >= -tolerances.headActivateTol && fluxNormal > fluxTol;
   });
@@ -1807,6 +2005,84 @@ function segmentYAtX(segment, x, tol = 1e-8) {
   const t = (x - a.x) / dx;
   if (t < -tol || t > 1 + tol) return null;
   return lerp(a.y, b.y, clamp(t, 0, 1));
+}
+
+function simplifyOpenPolyline(points, tol = 1e-6) {
+  const cleaned = [];
+  (points || []).forEach((point) => {
+    const next = { x: Number(point?.x), y: Number(point?.y) };
+    if (!Number.isFinite(next.x) || !Number.isFinite(next.y)) return;
+    const last = cleaned[cleaned.length - 1];
+    if (!last || dist(last, next) > tol) cleaned.push(next);
+  });
+  if (cleaned.length <= 2) return cleaned;
+
+  const simplified = [cleaned[0]];
+  for (let i = 1; i < cleaned.length - 1; i += 1) {
+    const prev = simplified[simplified.length - 1];
+    const curr = cleaned[i];
+    const next = cleaned[i + 1];
+    const dx1 = curr.x - prev.x;
+    const dy1 = curr.y - prev.y;
+    const dx2 = next.x - curr.x;
+    const dy2 = next.y - curr.y;
+    const len1 = Math.hypot(dx1, dy1);
+    const len2 = Math.hypot(dx2, dy2);
+    if (!(len1 > tol) || !(len2 > tol)) continue;
+    const cross = Math.abs(dx1 * dy2 - dy1 * dx2);
+    if (cross <= tol * (len1 + len2)) continue;
+    simplified.push(curr);
+  }
+  simplified.push(cleaned[cleaned.length - 1]);
+  return simplified;
+}
+
+function polylineToSegments(points) {
+  const out = [];
+  for (let i = 0; i < (points?.length || 0) - 1; i += 1) {
+    if (dist(points[i], points[i + 1]) <= GEOM_EPS) continue;
+    out.push([points[i], points[i + 1]]);
+  }
+  return out;
+}
+
+function regularizedPhreaticEnvelopeSegments(segments, tol = 1e-5) {
+  const raw = (segments || []).filter((segment) => Array.isArray(segment) && segment.length === 2);
+  if (!raw.length) return [];
+
+  const xSamples = uniqueSorted(
+    raw.flatMap((segment) => [Number(segment?.[0]?.x), Number(segment?.[1]?.x)]).filter(Number.isFinite),
+    tol
+  );
+  if (!xSamples.length) return raw;
+
+  const envelope = xSamples
+    .map((x) => {
+      let highestY = null;
+      raw.forEach((segment) => {
+        const sampleY = segmentYAtX(segment, x, tol);
+        if (!Number.isFinite(sampleY)) return;
+        highestY = highestY == null ? sampleY : Math.max(highestY, sampleY);
+      });
+      return highestY == null ? null : { x, y: highestY };
+    })
+    .filter(Boolean);
+
+  if (envelope.length <= 1) return raw;
+
+  const descending = envelope[envelope.length - 1].y <= envelope[0].y;
+  const regularized = [];
+  let runningY = envelope[0].y;
+  regularized.push({ x: envelope[0].x, y: runningY });
+
+  for (let i = 1; i < envelope.length; i += 1) {
+    const sample = envelope[i];
+    runningY = descending ? Math.min(runningY, sample.y) : Math.max(runningY, sample.y);
+    regularized.push({ x: sample.x, y: runningY });
+  }
+
+  const simplified = simplifyOpenPolyline(regularized, tol);
+  return polylineToSegments(simplified);
 }
 
 function topEnvelopeContourSegments(segments, tol = 1e-5) {
@@ -2035,9 +2311,10 @@ function buildFlowLines(mesh, model, heads, gradients, activeSeepageFaces) {
   const seeds = buildFlowLineSeeds(mesh, heads, gradients, model, activeSeepageFaces, tolerances);
   const domain = cleanPolygon(mesh.domainPolygon || []);
   if (!domain.length || !seeds.length) return [];
-  const xValues = domain.map((point) => point.x);
-  const yValues = domain.map((point) => point.y);
-  const domainSpan = Math.hypot(Math.max(...xValues) - Math.min(...xValues), Math.max(...yValues) - Math.min(...yValues));
+  const domainBounds = pointBounds(domain);
+  const domainSpan = domainBounds
+    ? Math.hypot(domainBounds.xMax - domainBounds.xMin, domainBounds.yMax - domainBounds.yMin)
+    : 0;
   const stepLength = Math.max(0.45 * charLength, 0.04);
   const maxLength = Math.max(2.5 * domainSpan, 8 * stepLength);
   const lines = [];
@@ -2093,8 +2370,9 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
   );
   const cellDryMask = cellWetFraction.map((value) => value <= tolerances.wetFractionDryTol);
 
-  const headMin = Math.min(...heads);
-  const headMax = Math.max(...heads);
+  const headRange = minMax(heads);
+  const headMin = headRange.min ?? 0;
+  const headMax = headRange.max ?? 0;
   const phreaticScalar = mesh.nodes.map((node, index) => heads[index] - node.y);
   const equipLevels = uniqueSorted(
     Array.from({ length: 9 }, (_, index) => headMin + ((headMax - headMin) * (index + 1)) / 10)
@@ -2107,7 +2385,10 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
       minVisibleValue: -Math.max(0.1 * tolerances.headActivateTol, 1e-6)
     })
   })).filter((group) => group.segments.length);
-  const phreaticSegments = topEnvelopeContourSegments(contourSegmentsForTriangles(mesh, phreaticScalar, 0));
+  const phreaticSegments = regularizedPhreaticEnvelopeSegments(
+    topEnvelopeContourSegments(contourSegmentsForTriangles(mesh, phreaticScalar, 0)),
+    Math.max(0.08 * tolerances.charLength, 1e-5)
+  );
   const flowLines = buildFlowLines(mesh, model, heads, gradients, activeSeepageFaces);
   const dryCellCount = cellDryMask.filter(Boolean).length;
 
@@ -2164,10 +2445,13 @@ async function generateTriangulatedMesh(model, options, onProgress = () => {}) {
   return mesh;
 }
 
-function solveSeepage(mesh, model, options, onProgress = () => {}) {
+async function solveSeepage(mesh, model, options, onProgress = () => {}, runControl = null) {
   const solveStartedAt = performance.now();
   const tolerances = seepageIterationTolerances(mesh);
   if (options.freeSurface === 'fixed') {
+    if (await runCheckpoint(runControl, true)) {
+      throw buildInterruptedError();
+    }
     const dryFlags = mesh.elements.map((element, elementIndex) => {
       const centroid = mesh.elementData[elementIndex].centroid;
       const waterY = samplePolylineY(model.phreatic, centroid.x);
@@ -2179,7 +2463,10 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
       percent: 55,
       message: 'Solving seepage head field on the triangulated mesh...'
     });
-    const headField = solveHeadField(mesh, dryFlags, dirichletValues);
+    const headField = await solveHeadField(mesh, dryFlags, dirichletValues, null, runControl);
+    if (headField.interrupted && headField.iterations <= 0) {
+      throw buildInterruptedError();
+    }
     return postProcess(
       mesh,
       model,
@@ -2193,8 +2480,8 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
           outerIterations: 1,
           linearIterations: headField.iterations,
           residualNorm: headField.residualNorm,
-          converged: true,
-          terminationReason: 'fixed-boundary',
+          converged: !headField.interrupted,
+          terminationReason: headField.interrupted ? 'interrupted' : 'fixed-boundary',
           flowError: null,
           flowErrorTolerance: null,
           maxRuntimeMs: null
@@ -2212,26 +2499,57 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
     }
     return false;
   });
-  let activeSeepageFaces = activeSeepageFacesFromDry(mesh, dryFlags, model);
+  let activeSeepageFaces = mesh.boundaryFaces.map(() => false);
   let heads = null;
   let linearIterations = 0;
   let residualNorm = 0;
-  const maxOuterIter = Math.max(Number(options.maxFreeSurfaceIter) || 30, 1);
   const flowErrorTolerance = Math.max(Number(options.flowErrorTolerance) || DEFAULT_FLOW_ERROR_TOL, 1e-6);
   const maxRuntimeMs = Math.max(Number(options.maxRuntimeMs) || DEFAULT_MAX_RUNTIME_MS, 1);
   let priorThroughFlow = null;
   let priorSignature = stateSignature(dryFlags, activeSeepageFaces);
   let priorPriorSignature = null;
   let lastSolvedState = null;
-  for (let outerIter = 1; outerIter <= maxOuterIter; outerIter += 1) {
+  let outerIter = 0;
+  while (true) {
+    if (await runCheckpoint(runControl, true)) {
+      if (!lastSolvedState?.heads) throw buildInterruptedError();
+      return postProcess(
+        mesh,
+        model,
+        lastSolvedState.heads,
+        lastSolvedState.dryFlags,
+        {
+          totalMs: lastSolvedState.elapsedMs,
+          meshMs: mesh.generatedMs,
+          solveMs: lastSolvedState.elapsedMs,
+          postMs: 0,
+          outerIterations: lastSolvedState.outerIterations,
+          linearIterations: lastSolvedState.linearIterations,
+          residualNorm: lastSolvedState.residualNorm,
+          converged: false,
+          terminationReason: 'interrupted',
+          flowError: lastSolvedState.flowError,
+          flowErrorTolerance,
+          maxRuntimeMs
+        },
+        options,
+        lastSolvedState.activeSeepageFaces
+      );
+    }
+    outerIter += 1;
+    const elapsedBeforeSolveMs = performance.now() - solveStartedAt;
+    const runtimeRatio = clamp(elapsedBeforeSolveMs / maxRuntimeMs, 0, 1);
     onProgress({
       stage: 'solving',
-      percent: 45 + Math.round((35 * outerIter) / maxOuterIter),
-      message: `Iterating seepage free surface (${outerIter}/${maxOuterIter})...`
+      percent: 45 + Math.round(35 * runtimeRatio),
+      message: `Iterating seepage free surface... ${secondsValueLabel(elapsedBeforeSolveMs)} / ${secondsValueLabel(maxRuntimeMs)} s`
     });
     const dirichletValues = buildDirichletValues(mesh, model, options, activeSeepageFaces);
     const priorHeads = heads;
-    const solve = solveHeadField(mesh, dryFlags, dirichletValues, heads);
+    const solve = await solveHeadField(mesh, dryFlags, dirichletValues, heads, runControl);
+    if (solve.interrupted && solve.iterations <= 0 && !priorHeads) {
+      throw buildInterruptedError();
+    }
     heads = solve.heads;
     linearIterations += solve.iterations;
     residualNorm = solve.residualNorm;
@@ -2240,8 +2558,16 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
     const boundaryFluxSummary = summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces);
     const flowError = Number.isFinite(priorThroughFlow) ? relativeChange(boundaryFluxSummary.throughFlow, priorThroughFlow) : null;
     const flowErrorConverged = Number.isFinite(flowError) && flowError <= flowErrorTolerance;
-    const nextDryFlags = updateDryFlags(mesh, heads, dryFlags, tolerances);
-    const nextActiveSeepageFaces = activeSeepageFacesFromFlux(mesh, heads, model, nextDryFlags, activeSeepageFaces, tolerances);
+    const nextState = regularizeIteratedFreeSurfaceState(
+      mesh,
+      model,
+      heads,
+      dryFlags,
+      activeSeepageFaces,
+      tolerances
+    );
+    const nextDryFlags = nextState.dryFlags;
+    const nextActiveSeepageFaces = nextState.activeSeepageFaces;
     const dryChanged = nextDryFlags.some((value, index) => value !== dryFlags[index]);
     const seepageChanged = nextActiveSeepageFaces.some((value, index) => value !== activeSeepageFaces[index]);
     const nextSignature = stateSignature(nextDryFlags, nextActiveSeepageFaces);
@@ -2258,6 +2584,30 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
       flowError,
       elapsedMs
     };
+    if (solve.interrupted) {
+      return postProcess(
+        mesh,
+        model,
+        lastSolvedState.heads,
+        lastSolvedState.dryFlags,
+        {
+          totalMs: elapsedMs,
+          meshMs: mesh.generatedMs,
+          solveMs: elapsedMs,
+          postMs: 0,
+          outerIterations: lastSolvedState.outerIterations,
+          linearIterations: lastSolvedState.linearIterations,
+          residualNorm: lastSolvedState.residualNorm,
+          converged: false,
+          terminationReason: 'interrupted',
+          flowError,
+          flowErrorTolerance,
+          maxRuntimeMs
+        },
+        options,
+        lastSolvedState.activeSeepageFaces
+      );
+    }
     if ((stateStable || cyclingStable) && flowErrorConverged) {
       return postProcess(
         mesh,
@@ -2312,32 +2662,6 @@ function solveSeepage(mesh, model, options, onProgress = () => {}) {
     priorPriorSignature = priorSignature;
     priorSignature = nextSignature;
   }
-
-  if (!lastSolvedState?.heads) {
-    throw new Error('The seepage free-surface iteration did not produce a usable head field.');
-  }
-  return postProcess(
-    mesh,
-    model,
-    lastSolvedState.heads,
-    lastSolvedState.dryFlags,
-    {
-      totalMs: lastSolvedState.elapsedMs,
-      meshMs: mesh.generatedMs,
-      solveMs: lastSolvedState.elapsedMs,
-      postMs: 0,
-      outerIterations: lastSolvedState.outerIterations,
-      linearIterations: lastSolvedState.linearIterations,
-      residualNorm: lastSolvedState.residualNorm,
-      converged: false,
-      terminationReason: 'iteration-limit',
-      flowError: lastSolvedState.flowError,
-      flowErrorTolerance,
-      maxRuntimeMs
-    },
-    options,
-    lastSolvedState.activeSeepageFaces
-  );
 }
 
 function optionsFor(model) {
@@ -2353,7 +2677,6 @@ function optionsFor(model) {
         : !hasExplicitManualTarget;
   return {
     freeSurface: seepageOptions.freeSurface === 'fixed' ? 'fixed' : 'iterate',
-    maxFreeSurfaceIter: Math.max(Number(seepageOptions.maxFreeSurfaceIter) || 30, 1),
     flowErrorTolerance: Math.max(Number(seepageOptions.flowErrorTolerance) || DEFAULT_FLOW_ERROR_TOL, 1e-6),
     maxRuntimeMs: Math.max(Number(seepageOptions.maxRuntimeMs) || DEFAULT_MAX_RUNTIME_MS, 1),
     usePhreaticAsSeed: seepageOptions.usePhreaticAsSeed !== false,
@@ -2363,7 +2686,7 @@ function optionsFor(model) {
   };
 }
 
-export async function analyzeSeepageModel(input, onProgress = () => {}) {
+export async function analyzeSeepageModel(input, onProgress = () => {}, runControl = null) {
   const startedAt = performance.now();
   const model = input?.model;
   if (!model?.terrain?.vertices?.length || !Number.isFinite(model?.analysisBottomY)) {
@@ -2380,7 +2703,10 @@ export async function analyzeSeepageModel(input, onProgress = () => {}) {
     message: 'Building triangulated seepage mesh...'
   });
   const mesh = await generateTriangulatedMesh(model, options, onProgress);
-  const result = solveSeepage(mesh, model, options, onProgress);
+  if (await runCheckpoint(runControl, true)) {
+    throw buildInterruptedError();
+  }
+  const result = await solveSeepage(mesh, model, options, onProgress, runControl);
   onProgress({
     stage: 'post',
     percent: 95,

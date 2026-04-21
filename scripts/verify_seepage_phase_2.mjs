@@ -33,6 +33,76 @@ function assertContiguousActiveSeepageBlock(faces, activeMask, message) {
   });
 }
 
+function assertToeAnchoredActiveSeepageBlock(faces, activeMask, message) {
+  const sorted = faces
+    .map((face, index) => ({ face, active: !!activeMask[index] }))
+    .sort((left, right) => left.face.mid.y - right.face.mid.y);
+  let seenInactive = false;
+  sorted.forEach((item) => {
+    if (!item.active) {
+      seenInactive = true;
+      return;
+    }
+    assert(!seenInactive, message);
+  });
+}
+
+function buildElementNeighbors(mesh) {
+  const edgeMap = new Map();
+  const neighbors = Array.from({ length: mesh?.elements?.length || 0 }, () => new Set());
+  (mesh?.elements || []).forEach((element, elementIndex) => {
+    [
+      [element[0], element[1]],
+      [element[1], element[2]],
+      [element[2], element[0]]
+    ].forEach(([left, right]) => {
+      const key = left < right ? `${left}:${right}` : `${right}:${left}`;
+      if (!edgeMap.has(key)) edgeMap.set(key, []);
+      edgeMap.get(key).push(elementIndex);
+    });
+  });
+  edgeMap.forEach((elements) => {
+    if (elements.length <= 1) return;
+    for (let i = 0; i < elements.length; i += 1) {
+      for (let j = i + 1; j < elements.length; j += 1) {
+        neighbors[elements[i]].add(elements[j]);
+        neighbors[elements[j]].add(elements[i]);
+      }
+    }
+  });
+  return neighbors.map((set) => [...set]);
+}
+
+function assertWetComponentsTouchPrescribedHead(mesh, result, message) {
+  const wetMask = (result?.elementDryMask || []).map((value) => !value);
+  const neighbors = buildElementNeighbors(mesh);
+  const prescribedHeadElements = new Set(
+    (mesh?.boundaryFaces || [])
+      .filter((face) => face?.type === 'head' && face?.headSubmerged !== false)
+      .map((face) => face.elementIndex)
+  );
+  const seen = new Array(wetMask.length).fill(false);
+
+  wetMask.forEach((isWet, elementIndex) => {
+    if (!isWet || seen[elementIndex]) return;
+    const queue = [elementIndex];
+    seen[elementIndex] = true;
+    let touchesHead = prescribedHeadElements.has(elementIndex);
+
+    while (queue.length) {
+      const current = queue.pop();
+      (neighbors[current] || []).forEach((neighbor) => {
+        if (!wetMask[neighbor] || seen[neighbor]) return;
+        seen[neighbor] = true;
+        if (prescribedHeadElements.has(neighbor)) touchesHead = true;
+        queue.push(neighbor);
+      });
+    }
+
+    assert(touchesHead, message);
+  });
+}
+
 function distancePointToSegment(point, a, b) {
   const abx = (b?.x || 0) - (a?.x || 0);
   const aby = (b?.y || 0) - (a?.y || 0);
@@ -64,6 +134,25 @@ function verticalSegmentIntersections(segments, x, tol = 1e-6) {
   return hits
     .sort((left, right) => left - right)
     .filter((value, index, array) => index === 0 || Math.abs(value - array[index - 1]) > 1e-4);
+}
+
+function phreaticDirectionalRise(segments, xMin, xMax, step = 0.2) {
+  const samples = [];
+  for (let x = xMin; x <= xMax + 1e-9; x += step) {
+    const hits = verticalSegmentIntersections(segments, +x.toFixed(6));
+    if (!hits.length) continue;
+    samples.push({ x: +x.toFixed(6), y: hits[hits.length - 1] });
+  }
+  if (samples.length <= 1) return { maxRise: 0, samples };
+
+  const descending = samples[samples.length - 1].y <= samples[0].y;
+  let maxRise = 0;
+  for (let i = 1; i < samples.length; i += 1) {
+    const delta = samples[i].y - samples[i - 1].y;
+    if (descending) maxRise = Math.max(maxRise, delta);
+    else maxRise = Math.max(maxRise, -delta);
+  }
+  return { maxRise, samples };
 }
 
 function homogeneousRegion(xMin, xMax, yMin, yMax, id = 'soil') {
@@ -111,7 +200,6 @@ function baseFixedModel(rightBcType) {
       options: {
         freeSurface: 'fixed',
         meshTargetArea: 0.4,
-        maxFreeSurfaceIter: 20,
         usePhreaticAsSeed: true
       }
     }
@@ -195,7 +283,6 @@ function layeredIterateModel(kMid) {
       options: {
         freeSurface: 'iterate',
         meshTargetArea: 0.2,
-        maxFreeSurfaceIter: 80,
         usePhreaticAsSeed: true
       }
     }
@@ -250,14 +337,12 @@ await runCase('Case 3 iterate mode converges and matches Dupuit profile', async 
         options: {
           freeSurface: 'iterate',
           meshTargetArea: 0.4,
-          maxFreeSurfaceIter: 80,
           usePhreaticAsSeed: true
         }
       }
     }
   });
 
-  assert(solved.result.solver.iterations >= 1, 'iterate case should report outer iterations');
   assert(solved.result.phreaticSegments.length > 0, 'iterate case should produce a phreatic isoline');
   assertFlowErrorWithinTolerance(solved, 'iterate case');
 
@@ -295,7 +380,6 @@ await runCase('Case 3b iterate mode returns a usable result when the runtime lim
         options: {
           freeSurface: 'iterate',
           meshTargetArea: 0.08,
-          maxFreeSurfaceIter: 80,
           flowErrorTolerance: 1e-4,
           maxRuntimeMs: 1,
           usePhreaticAsSeed: true
@@ -306,8 +390,59 @@ await runCase('Case 3b iterate mode returns a usable result when the runtime lim
 
   assert(solved.result.solver.terminationReason === 'time-limit', 'runtime-limited iterate case should report a time-limit termination');
   assert(solved.result.solver.converged === false, 'runtime-limited iterate case should report non-convergence');
-  assert(solved.result.solver.iterations >= 1, 'runtime-limited iterate case should still complete at least one outer iteration');
   assert(Number.isFinite(solved.result.headMin) && Number.isFinite(solved.result.headMax), 'runtime-limited iterate case should still return a solved head field');
+});
+
+await runCase('Case 3c iterate mode returns the latest solved state when interrupted', async () => {
+  let stopRequested = false;
+  let stopCheckpointCount = 0;
+  const solved = await analyzeSeepageModel({
+    model: {
+      terrain: {
+        vertices: [
+          { x: 0, y: 5 },
+          { x: 10, y: 5 }
+        ]
+      },
+      analysisBottomY: 0,
+      phreatic: {
+        vertices: [
+          { x: 0, y: 5 },
+          { x: 10, y: 0 }
+        ]
+      },
+      walls: [],
+      regions: [homogeneousRegion(0, 10, 0, 5)],
+      seepage: {
+        bcs: [
+          { edgeKey: 'side-left:0', type: 'head', head: 5, status: 'active' },
+          { edgeKey: 'side-right:0', type: 'seepage-face', status: 'active' }
+        ],
+        options: {
+          freeSurface: 'iterate',
+          meshTargetArea: 0.08,
+          flowErrorTolerance: 1e-4,
+          maxRuntimeMs: 10000,
+          usePhreaticAsSeed: true
+        }
+      }
+    }
+  }, (progress) => {
+    if (progress?.stage === 'solving' && String(progress?.message || '').includes('Iterating seepage free surface')) {
+      stopRequested = true;
+    }
+  }, {
+    shouldStop: () => stopRequested,
+    checkpoint: async () => {
+      if (!stopRequested) return false;
+      stopCheckpointCount += 1;
+      return stopCheckpointCount >= 2;
+    }
+  });
+
+  assert(solved.result.solver.terminationReason === 'interrupted', 'interrupted iterate case should report an interrupted termination');
+  assert(solved.result.solver.converged === false, 'interrupted iterate case should report non-convergence');
+  assert(Number.isFinite(solved.result.headMin) && Number.isFinite(solved.result.headMax), 'interrupted iterate case should still return the latest solved head field');
 });
 
 await runCase('Case 4 moderate mesh stays under target size and runtime', async () => {
@@ -362,7 +497,6 @@ await runCase('Case 4 moderate mesh stays under target size and runtime', async 
         options: {
           freeSurface: 'fixed',
           meshTargetArea: 0.35,
-          maxFreeSurfaceIter: 20,
           usePhreaticAsSeed: true
         }
       }
@@ -401,7 +535,6 @@ await runCase('Case 5 embankment seepage face stays contiguous and converges', a
         options: {
           freeSurface: 'iterate',
           meshTargetArea: 0.2,
-          maxFreeSurfaceIter: 80,
           usePhreaticAsSeed: true
         }
       }
@@ -417,6 +550,16 @@ await runCase('Case 5 embankment seepage face stays contiguous and converges', a
     slopeFaces,
     slopeMask,
     'embankment case should not reactivate isolated seepage-face edges above an inactive downstream slope segment'
+  );
+  assertToeAnchoredActiveSeepageBlock(
+    slopeFaces,
+    slopeMask,
+    'embankment case should activate the downstream seepage face from the toe upward, not as a floating block'
+  );
+  assertWetComponentsTouchPrescribedHead(
+    solved.mesh,
+    solved.result,
+    'embankment case should not leave a disconnected wet component that does not touch a prescribed-head boundary'
   );
 
   (solved.result.equipotentialSegments || []).forEach((group) => {
@@ -487,7 +630,6 @@ await runCase('Case 5b embankment iterate mode stays close across phreatic seeds
           options: {
             freeSurface: 'iterate',
             meshTargetArea: 0.2,
-            maxFreeSurfaceIter: 80,
             usePhreaticAsSeed
           }
         }
@@ -544,6 +686,76 @@ await runCase('Case 5b embankment iterate mode stays close across phreatic seeds
     Math.abs(seeded.result.throughFlow - unseeded.result.throughFlow) / flowReference,
     0.02,
     'embankment through-flow should stay close when the iterative seed is disabled'
+  );
+});
+
+await runCase('Case 5c layered embankment exports a non-reversing phreatic envelope', async () => {
+  const solved = await analyzeSeepageModel({
+    model: {
+      terrain: {
+        vertices: [
+          { x: 0, y: 8 },
+          { x: 4, y: 8 },
+          { x: 10, y: 4 }
+        ]
+      },
+      analysisBottomY: 0,
+      phreatic: {
+        vertices: [
+          { x: 0, y: 8 },
+          { x: 4, y: 7.7 },
+          { x: 10, y: 4.2 }
+        ]
+      },
+      walls: [],
+      regions: [
+        homogeneousRegion(0, 10, 0, 8, 'body'),
+        {
+          id: 'cap',
+          polygon: [
+            { x: 3.5, y: 7.2 },
+            { x: 9.2, y: 4.45 },
+            { x: 9.2, y: 5.0 },
+            { x: 3.5, y: 7.75 }
+          ],
+          material: {
+            id: 'cap',
+            label: 'cap',
+            kx: 1e-8,
+            ky: 1e-8,
+            gamma: 18,
+            gammaSat: 20
+          }
+        }
+      ],
+      seepage: {
+        bcs: [
+          { edgeKey: 'side-left:0', type: 'head', head: 8, status: 'active' },
+          { edgeKey: 'terrain:1', type: 'seepage-face', status: 'active' },
+          { edgeKey: 'side-right:0', type: 'head', head: 2, status: 'active' }
+        ],
+        options: {
+          freeSurface: 'iterate',
+          meshTargetArea: 0.08,
+          usePhreaticAsSeed: true,
+          flowErrorTolerance: 0.002,
+          maxRuntimeMs: 5000
+        }
+      }
+    }
+  });
+
+  assertFlowErrorWithinTolerance(solved, 'layered embankment envelope case');
+  assertWetComponentsTouchPrescribedHead(
+    solved.mesh,
+    solved.result,
+    'layered embankment envelope case should not leave a disconnected wet component that does not touch a prescribed-head boundary'
+  );
+  const rise = phreaticDirectionalRise(solved.result.phreaticSegments, 0.1, 9.9, 0.2);
+  approxLE(
+    rise.maxRise,
+    0.05,
+    'layered embankment phreatic envelope should not reverse direction materially once exported'
   );
 });
 
@@ -621,7 +833,6 @@ await runCase('Case 8 partially submerged head edge only constrains the wetted u
         options: {
           freeSurface: 'iterate',
           meshTargetArea: 0.12,
-          maxFreeSurfaceIter: 80,
           usePhreaticAsSeed: true
         }
       }
