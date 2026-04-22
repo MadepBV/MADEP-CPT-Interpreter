@@ -88,6 +88,11 @@
 		linear-gradient(180deg, #f7f4ef 0%, #ede9e1 100%);
 }
 
+.hero--compact {
+	padding-top: 5.25rem;
+	padding-bottom: 2.5rem;
+}
+
 .hero__inner,
 .docs-shell,
 .docs-footer__inner {
@@ -205,6 +210,60 @@
 
 .doc-subsection + .doc-subsection {
 	margin-top: 28px;
+}
+
+.docs-link-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 18px;
+}
+
+.docs-link-card {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 18px;
+	border: 1px solid var(--color-border);
+	background: rgba(255, 255, 255, 0.55);
+	color: inherit;
+	text-decoration: none;
+	box-shadow: var(--shadow-sm);
+	transition:
+		transform 0.18s ease,
+		box-shadow 0.18s ease,
+		border-color 0.18s ease,
+		background-color 0.18s ease;
+}
+
+.docs-link-card:hover {
+	transform: translateY(-1px);
+	border-color: var(--color-border-strong);
+	box-shadow: var(--shadow-md);
+	background: rgba(255, 255, 255, 0.72);
+}
+
+.docs-link-card h3 {
+	margin: 0;
+}
+
+.docs-link-card p {
+	margin: 0;
+	max-width: none;
+}
+
+.docs-link-card__meta {
+	font-family: var(--font-mono);
+	font-size: 0.68rem;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--color-accent-text);
+}
+
+.docs-link-list {
+	margin: 0;
+	padding-left: 1rem;
+	color: var(--color-text-light);
+	line-height: 1.55;
 }
 
 .section-label {
@@ -871,6 +930,32 @@
 	.doc-callout {
 		background: rgba(237, 233, 225, 0.04);
 		border-color: rgba(237, 233, 225, 0.08);
+	}
+
+	.docs-link-card {
+		background: rgba(237, 233, 225, 0.07);
+		border-color: rgba(237, 233, 225, 0.14);
+		box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+	}
+
+	.docs-link-card:hover {
+		background: rgba(237, 233, 225, 0.1);
+		border-color: rgba(237, 233, 225, 0.24);
+		box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+	}
+
+	.docs-link-card h3 {
+		color: var(--color-text-on-dark);
+	}
+
+	.docs-link-card p,
+	.docs-link-list,
+	.docs-link-list li {
+		color: var(--color-text-light);
+	}
+
+	.docs-link-card__meta {
+		color: #92c8c6;
 	}
 
 	.docs-page code {

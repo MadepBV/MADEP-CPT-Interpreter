@@ -2,10 +2,10 @@
 <script lang="ts">
 	import '$lib/styles/docs.css';
 
-	const pageTitle = 'Bishop + Spencer — Engineering Note';
+	const pageTitle = 'Slope Stability — Bishop and Spencer';
 	const pageDescription =
-		'Engineering note for the Stage 6 circular slope-stability workflow in the CPT app: Bishop search, Spencer verification, implemented algebra, report outputs, and references.';
-	const canonicalUrl = 'https://cpt.madep.be/docs/bishop';
+		'Stage 6 slope-stability documentation for the CPT app: Bishop search, Spencer verification, implemented algebra, report outputs, and references.';
+	const canonicalUrl = 'https://cpt.madep.be/docs/engineering/bishop';
 	const ogImageUrl = 'https://cpt.madep.be/logo.png';
 
 	const sections = [
@@ -14,7 +14,7 @@
 		{ id: 'geometry', title: '3. Geometry and soil model' },
 		{ id: 'search', title: '4. Slip-circle search and validity filters' },
 		{ id: 'slices', title: '5. Slice generation and multi-layer handling' },
-		{ id: 'theory', title: '6. Implemented theory and algebra' },
+		{ id: 'theory', title: '6. Implemented theory' },
 		{ id: 'implementation', title: '7. Present Stage 6 implementation' },
 		{ id: 'canvas', title: '8. Interactive canvas workflow' },
 		{ id: 'verification', title: '9. Verification and testing' },
@@ -46,8 +46,8 @@
 
 	<header class="hero">
 		<div class="hero__inner">
-			<p class="hero__eyebrow">Engineering note</p>
-			<h1>Bishop and Spencer</h1>
+			<p class="hero__eyebrow">Stage 6 / slope stability</p>
+			<h1>Slope stability: Bishop and Spencer</h1>
 			<p class="hero__lead">
 				A technical note on the Stage 6 circular slope-stability workflow: terrain and phreatic
 				geometry, soil regions derived from the active CPT, Bishop shortlist search, Spencer
@@ -55,7 +55,7 @@
 			</p>
 			<div class="hero__actions">
 				<a class="btn btn--primary" href="/">Open the app</a>
-				<a class="btn btn--outline-dark" href="#scope">Read the theory</a>
+				<a class="btn btn--outline-dark" href="#scope">Open the technical chapter</a>
 			</div>
 			<div class="hero__trust">
 				<span>Circular slip surfaces</span>
@@ -68,8 +68,13 @@
 	<div class="docs-shell">
 		<aside class="docs-nav" aria-label="Documentation navigation">
 			<div class="docs-nav__title">Pages</div>
-			<a href="/docs">Main theory</a>
-			<a href="/docs/bishop" aria-current="page">Bishop simplified</a>
+				<a href="/docs">Documentation</a>
+				<a href="/docs/workflow">Interpretation</a>
+				<a href="/docs/engineering">Stage 6</a>
+				<a href="/docs/theory">Methods</a>
+				<a href="/docs/reference">References</a>
+				<a href="/docs/full">Specification</a>
+				<a href="/docs/engineering/bishop" aria-current="page">Slope stability</a>
 			<div class="docs-nav__title" style="margin-top:18px">On this page</div>
 			{#each sections as section}
 				<a href={`#${section.id}`}>{section.title}</a>
@@ -178,6 +183,27 @@
 						α<sub>i</sub> = atan(−(dy/dx)<sub>base,i</sub> · sign(x<sub>exit</sub> − x<sub>entry</sub>))
 					</div>
 				</div>
+				<div class="symbols">
+					<div class="symbols__title">Notation</div>
+					<dl class="symbols__list">
+						<div class="symbols__row">
+							<dt>x, y</dt>
+							<dd>world coordinates on the Stage 6 section canvas [m]</dd>
+						</div>
+						<div class="symbols__row">
+							<dt>α<sub>i</sub></dt>
+							<dd>signed slice-base inclination for slice <em>i</em> [rad internally, ° in user-facing tables]</dd>
+						</div>
+						<div class="symbols__row">
+							<dt>(dy/dx)<sub>base,i</sub></dt>
+							<dd>slope of the active slip branch at the slice base midpoint [-]</dd>
+						</div>
+						<div class="symbols__row">
+							<dt>x<sub>entry</sub>, x<sub>exit</sub></dt>
+							<dd>entry and exit abscissae of the active slip branch on the terrain [m]</dd>
+						</div>
+					</dl>
+				</div>
 				<div class="doc-callout doc-callout--warn">
 					<strong>Implementation note.</strong> Unsigned base angles are no longer enforced. The
 					signed-angle convention is essential for circles that pass across the lowest point of
@@ -201,6 +227,27 @@
 						<div class="formula">
 							y(x) = y<sub>j</sub> + (y<sub>j+1</sub> − y<sub>j</sub>) · (x − x<sub>j</sub>) / (x<sub>j+1</sub> − x<sub>j</sub>)
 						</div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>y(x)</dt>
+								<dd>interpolated terrain or phreatic elevation at abscissa <em>x</em> [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>x</dt>
+								<dd>query abscissa along the polyline span [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>x<sub>j</sub>, x<sub>j+1</sub></dt>
+								<dd>abscissae of consecutive polyline vertices [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>y<sub>j</sub>, y<sub>j+1</sub></dt>
+								<dd>ordinates of consecutive polyline vertices [m]</dd>
+							</div>
+						</dl>
 					</div>
 				</section>
 
@@ -230,6 +277,39 @@
 							y<sub>bottom</sub> = y<sub>ground,CPT</sub> − max(z<sub>CPT,max</sub>, 15)
 							&nbsp;&nbsp; by default
 						</div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>y<sub>ground,CPT</sub></dt>
+								<dd>terrain elevation at the active CPT position [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>y<sub>terrain</sub>(x)</dt>
+								<dd>terrain elevation function obtained by polyline interpolation [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>x<sub>CPT</sub></dt>
+								<dd>abscissa of the active CPT marker [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>z<sub>boundary,k</sub></dt>
+								<dd>depth of interpreted layer boundary <em>k</em> below CPT ground level [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>y<sub>boundary,k</sub></dt>
+								<dd>world elevation of layer boundary <em>k</em> [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>z<sub>CPT,max</sub></dt>
+								<dd>maximum interpreted CPT depth used by the Bishop section [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>y<sub>bottom</sub></dt>
+								<dd>default lower elevation of the Bishop section [m]</dd>
+							</div>
+						</dl>
 					</div>
 					<ul class="notes">
 						<li>The first band follows terrain at the top boundary.</li>
@@ -357,6 +437,35 @@
 							|α<sub>exit</sub>| ≤ α<sub>exit,max</sub>
 						</div>
 					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>P<sub>intersection</sub></dt>
+								<dd>computed terrain-circle intersection point [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>E, X</dt>
+								<dd>selected entry and exit daylight points on the terrain [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>tol</dt>
+								<dd>geometric admissibility tolerance [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>y<sub>terrain</sub>(x), y<sub>slip</sub>(x)</dt>
+								<dd>terrain and active slip-branch elevations at abscissa <em>x</em> [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>h<sub>min</sub></dt>
+								<dd>minimum required slip thickness [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>α<sub>exit</sub>, α<sub>exit,max</sub></dt>
+								<dd>exit inclination and maximum admissible exit inclination [° in user settings]</dd>
+							</div>
+						</dl>
+					</div>
 				</section>
 			</section>
 
@@ -378,6 +487,27 @@
 							x<sub>cuts</sub> = &#123;x<sub>entry</sub>, x<sub>exit</sub>, x<sub>backbone</sub>, x<sub>terrain breaks</sub>, x<sub>layer intersections</sub>, x<sub>phreatic intersections</sub>&#125;
 						</div>
 					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>x<sub>cuts</sub></dt>
+								<dd>set of slice-cut abscissae before minimum-width cleanup [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>x<sub>entry</sub>, x<sub>exit</sub></dt>
+								<dd>entry and exit abscissae of the active slip branch [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>x<sub>backbone</sub></dt>
+								<dd>equally spaced backbone slice-cut coordinates [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>x<sub>terrain breaks</sub>, x<sub>layer intersections</sub>, x<sub>phreatic intersections</sub></dt>
+								<dd>additional geometry-driven cut coordinates [m]</dd>
+							</div>
+						</dl>
+					</div>
 					<div class="doc-callout">
 						<strong>Current surcharge rule.</strong> The load-zone start and end x-coordinates are
 						also treated as mandatory cut positions so the applied load is not smeared across
@@ -396,6 +526,27 @@
 						<div class="formula">
 							b<sub>i</sub> = Δx<sub>i</sub>, &nbsp;&nbsp; l<sub>i</sub> = Δx<sub>i</sub> / cos α<sub>i</sub>
 						</div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>b<sub>i</sub></dt>
+								<dd>horizontal slice width for slice <em>i</em> [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>Δx<sub>i</sub></dt>
+								<dd>difference between consecutive slice-cut abscissae [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>l<sub>i</sub></dt>
+								<dd>true circular base length of slice <em>i</em> [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>α<sub>i</sub></dt>
+								<dd>signed base inclination of slice <em>i</em> [rad internally, ° in tables]</dd>
+							</div>
+						</dl>
 					</div>
 				</section>
 
@@ -423,6 +574,31 @@
 							(c′<sub>i</sub>, φ′<sub>i</sub>) = material at the slice base midpoint
 						</div>
 					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>W<sub>i</sub></dt>
+								<dd>total self-weight of slice <em>i</em> [kN/m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>W<sub>ij</sub></dt>
+								<dd>contribution of intercepted soil layer <em>j</em> to slice weight [kN/m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>γ<sub>j</sub></dt>
+								<dd>unit weight assigned to layer <em>j</em> [kN/m³]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>t<sub>ij</sub>(x)</dt>
+								<dd>vertical thickness of layer <em>j</em> inside slice <em>i</em> at abscissa <em>x</em> [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>c′<sub>i</sub>, φ′<sub>i</sub></dt>
+								<dd>effective strength parameters assigned to the slice base [kPa, °]</dd>
+							</div>
+						</dl>
+					</div>
 					<div class="doc-callout">
 						<strong>Present behaviour.</strong> The application attempts to place slice cuts at
 						horizontal layer-boundary intersections so that one soil type remains along each base
@@ -434,7 +610,7 @@
 
 			<section id="theory" class="doc-card">
 				<p class="section-label">Section</p>
-				<h2>6. Implemented theory and algebra</h2>
+				<h2>6. Implemented theory</h2>
 				<p>
 					This section documents the <strong>algebra actually used by the application</strong>.
 					It is deliberately narrower than a full textbook treatment: the production code solves
@@ -461,6 +637,39 @@
 							Σ[V<sub>i</sub> sinα<sub>i</sub>]
 						</div>
 					</div>
+						<div class="symbols">
+							<div class="symbols__title">Notation</div>
+							<dl class="symbols__list">
+								<div class="symbols__row">
+									<dt>F</dt>
+									<dd>factor of safety [-]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>m<sub>α,i</sub>(F)</dt>
+									<dd>Bishop geometry-strength denominator term for slice <em>i</em> [-]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>c′<sub>i</sub></dt>
+									<dd>effective cohesion at the slice base [kPa]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>b<sub>i</sub></dt>
+									<dd>slice width [m]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>V<sub>i</sub></dt>
+									<dd>total vertical slice load, with self-weight and surcharge [kN/m]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>u<sub>i</sub></dt>
+									<dd>average pore pressure acting on the slice base [kPa]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>φ′<sub>i</sub>, α<sub>i</sub></dt>
+									<dd>effective base friction angle and base inclination [°, °]</dd>
+								</div>
+							</dl>
+						</div>
 						<div class="doc-callout">
 							<strong>Algebra form used in the solver.</strong> The Bishop fixed-point iteration
 							is evaluated in the width form c′<sub>i</sub>b<sub>i</sub> and
@@ -513,6 +722,27 @@
 							T<sub>i</sub> =
 							[c′<sub>i</sub>b<sub>i</sub> + (N<sub>i</sub> − u<sub>i</sub>b<sub>i</sub>)tanφ′<sub>i</sub>] / F
 						</div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>F<sub>fellenius</sub></dt>
+								<dd>ordinary-method seed factor of safety used as a Bishop starting value [-]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>l<sub>i</sub></dt>
+								<dd>true slice-base length [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>N<sub>i</sub></dt>
+								<dd>Bishop total base normal force for slice <em>i</em> [kN/m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>T<sub>i</sub></dt>
+								<dd>mobilized shear force on the slice base [kN/m]</dd>
+							</div>
+						</dl>
 					</div>
 					<p>
 						These are the values exposed in the Stage 6 slice table for the selected Bishop
@@ -577,6 +807,51 @@
 							X<sub>R,i</sub> = &lambda;E<sub>R,i</sub>
 						</div>
 					</div>
+						<div class="symbols">
+							<div class="symbols__title">Notation</div>
+							<dl class="symbols__list">
+								<div class="symbols__row">
+									<dt>R<sub>m</sub>(F, &lambda;)</dt>
+									<dd>Spencer moment residual for a trial pair <em>(F, &lambda;)</em> [kN/m after cancellation of the common radius]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>R<sub>f</sub>(F, &lambda;)</dt>
+									<dd>Spencer force-closure residual, equal to the rightmost propagated interslice normal force [kN/m]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>R</dt>
+									<dd>slip-circle radius [m]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>S<sub>i</sub></dt>
+									<dd>mobilized Spencer base shear for slice <em>i</em> [kN/m]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>N′<sub>i</sub></dt>
+									<dd>effective base normal force in Spencer theory [kN/m]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>E<sub>L,i</sub>, E<sub>R,i</sub></dt>
+									<dd>left and right interslice normal forces [kN/m]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>X<sub>L,i</sub>, X<sub>R,i</sub></dt>
+									<dd>left and right interslice shear forces [kN/m]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>&lambda;</dt>
+									<dd>constant interslice-force ratio <em>X/E</em> [-]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>a<sub>0,i</sub></dt>
+									<dd>slice recursion coefficient carrying force terms in the Spencer propagation [kN/m]</dd>
+								</div>
+								<div class="symbols__row">
+									<dt>a<sub>1,i</sub></dt>
+									<dd>dimensionless Spencer recursion coefficient multiplying N′<sub>i</sub> [-]</dd>
+								</div>
+							</dl>
+						</div>
 						<p>
 							For a fixed &lambda;, the application finds <em>F</em><sub>m</sub>(&lambda;) from
 							the Spencer moment residual and <em>F</em><sub>f</sub>(&lambda;) from the final
@@ -684,6 +959,35 @@
 						<div class="formula">
 							V<sub>i</sub> = W<sub>i</sub> + Q<sub>i</sub>
 						</div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>b<sub>load,i</sub></dt>
+								<dd>portion of slice width overlapped by the surcharge zone [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>x<sub>L,i</sub>, x<sub>R,i</sub></dt>
+								<dd>left and right abscissae of slice <em>i</em> [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>x<sub>q,start</sub>, x<sub>q,end</sub></dt>
+								<dd>start and end abscissae of the drawn surcharge zone [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>Q<sub>i</sub></dt>
+								<dd>vertical surcharge contribution acting on slice <em>i</em> [kN/m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>q</dt>
+								<dd>uniform surcharge intensity [kPa = kN/m²]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>V<sub>i</sub>, W<sub>i</sub></dt>
+								<dd>total vertical slice load and self-weight [kN/m]</dd>
+							</div>
+						</dl>
 					</div>
 					<p>
 						In practice, the present surcharge implementation simply replaces
@@ -879,8 +1183,12 @@
 			<div class="docs-footer__links">
 				<p class="docs-footer__heading">Navigation</p>
 				<a href="/">CPT app</a>
-				<a href="/docs">Main docs</a>
-				<a href="/docs/bishop">Bishop docs</a>
+				<a href="/docs">Documentation</a>
+				<a href="/docs/workflow">Interpretation</a>
+				<a href="/docs/engineering">Stage 6</a>
+				<a href="/docs/theory">Methods</a>
+				<a href="/docs/reference">References</a>
+				<a href="/docs/engineering/bishop">Slope stability</a>
 				<a href="#scope">Scope</a>
 				<a href="#references">References</a>
 			</div>
