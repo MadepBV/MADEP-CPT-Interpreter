@@ -1419,18 +1419,18 @@
 					title: '13.2 Load model, supports, and initial stresses',
 					paragraphs: [
 						'The mechanical load is currently taken from the shared <strong>surface load</strong> interval on the terrain. In pressure mode the entered q is applied directly; in total-load mode the app converts the total slab load to an equivalent 2D pressure through the out-of-plane length.',
-						'The initial effective stress field is reconstructed with a flat-ground at-rest approximation rather than a prior gravity step. Optional seepage coupling only changes the initial pore-pressure field used in that reconstruction.'
+						'The initial effective stress field is now built with a <strong>geostatic gravity step</strong> on the same shared mesh before the external load increment is applied. Optional seepage coupling only changes the initial pore-pressure field used in that reconstruction.'
 					],
 					equations: [
 						'q = P<sub>total</sub> / (B · L<sub>out</sub>) &nbsp;&nbsp; in total-load mode',
-						'σ′<sub>h0</sub> = K<sub>0</sub>σ′<sub>v0</sub>, &nbsp; τ′<sub>xy,0</sub> = 0'
+						'K U<sub>geo</sub> = F<sub>g</sub> &nbsp;&nbsp; for the geostatic gravity turn-on'
 					],
 					bullets: [
 						'Bottom boundary: u<sub>y</sub> = 0. Side boundaries: u<sub>x</sub> = 0.',
 						'A practical screening rule is to keep roughly 5B of width on each side of the load and 5B of depth below it; smaller domains will look too stiff.',
 						'Retaining walls are visible in the shared geometry but are not active mechanical elements in the deformation solve.',
 						'If seepage pore pressures are enabled and a seepage result exists, they are sampled into the initial stress field; otherwise the tool falls back to the drawn hydrostatic phreatic line.',
-						'Results near steep slopes, embankments, and walls need caution because the current initialization ignores pre-existing shear stress.'
+						'The gravity step lets slopes and wall-supported sections develop initial shear stress before the load increment; if that initialization fails numerically, the solver falls back to the older flat-ground K<sub>0</sub> route and reports a warning.'
 					]
 				},
 				{

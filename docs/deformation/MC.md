@@ -2,7 +2,7 @@
 
 **Module**: 2D deformation / settlement screening on the shared Bishop-Seepage geometry  
 **Method**: Linear elastic plane-strain FEM on the existing triangular mesh, with Mohr-Coulomb effective-stress post-processing  
-**Status**: v0.2 — initial Stage 6 deformation screening implementation shipped on 2026-04-22  
+**Status**: v0.3 — Stage 6 deformation screening with geostatic gravity-step initialization shipped on 2026-04-22  
 **Positioning**: This is the "easy MC route". It is intentionally **not** a full elastoplastic Mohr-Coulomb solver.
 
 ---
@@ -59,7 +59,7 @@ The intended interpretation is:
 
 - **long-term drained screening**
 - **small-strain plane strain**
-- **flat-ground `K0` geostatic initialization**
+- **current shipped route: geostatic gravity-step initialization**
 - **elastic deformation solve with MC screening afterward**
 
 ---
@@ -104,7 +104,7 @@ This v1 does **not** do:
 
 So this is **not** PLAXIS-like nonlinear FE. It is a high-value screening tool that fits the current app architecture.
 
-It also does not do a true geostatic gravity step before loading. That matters on slopes, embankments, and wall-supported geometries; see the explicit limitation in Section 7.5.
+It is still not a nonlinear geoplastic solve, but it now does perform a true geostatic gravity step before loading so slopes, embankments, and wall-supported geometries can develop initial shear stress on the shared mesh.
 
 ---
 
@@ -192,9 +192,11 @@ The UI and report should label this mode explicitly as:
 Long-term drained deformation screening
 ```
 
-### 5.6 Flat-ground geostatic initialization limitation
+### 5.6 Current shipped route and fallback
 
-The initial stress logic in v1 assumes:
+The current shipped route uses the geostatic gravity step from Section 7.5.
+
+The older flat-ground fallback assumes:
 
 ```text
 sigma_h0' = K0 * sigma_v0'
@@ -227,10 +229,11 @@ Initial stress state uses flat-ground K0 initialization with zero initial shear 
 Results near steep slopes, embankments, or retaining walls may be unconservative.
 ```
 
-Future v2 improvement:
+If the gravity solve ever fails numerically, the solver should:
 
-- run a gravity-loading geostatic step first
-- use the resulting stress field as the initial state for the incremental load analysis
+- warn explicitly
+- fall back to the flat-ground `K0` route
+- keep the deformation workspace usable rather than hard-failing
 
 ### 5.7 Near-incompressible materials and T3 limitations
 
@@ -523,7 +526,102 @@ The total external load vector is the sum over all top-boundary edge fragments t
 
 The FEM solve is incremental, but MC screening needs total effective stress.
 
-Use:
+The current shipped route is a **geostatic gravity step**. It keeps the "Easy MC" philosophy intact because the constitutive law is still linear elastic, but it lets the mesh develop a stress field that actually respects the geometry before the external load is applied.
+
+#### 7.5.1 Gravity turn-on
+
+Before the external load increment is assembled, solve a self-weight case on the same mesh with the same elastic stiffness and the same support constraints.
+
+For each triangle element, assemble the consistent gravity body-force vector:
+
+```text
+f_g,e = t * A * gamma_bulk / 3 * [0, -1, 0, -1, 0, -1]^T
+```
+
+where:
+
+- `t = 1 m` is the unit out-of-plane thickness
+- `A` is the triangle area
+- `gamma_bulk` is the initial bulk unit weight for that element
+
+`gamma_bulk` should be chosen from the initial hydraulic state:
+
+- use `gammaSat` when the element centroid is below the initial water table or in a zone with positive initial pore pressure
+- otherwise use the moist / dry unit weight carried by the current section model
+
+After assembling the global gravity vector `F_g`, solve:
+
+```text
+K * U_geo = F_g
+```
+
+Then recover the resulting **initial total stress** field from the geostatic displacement solution `U_geo`.
+
+Implementation note:
+
+- the geostatic displacement field is a solver-internal state
+- it should not be shown as the user-facing deformation result
+- the displayed deformation should remain the incremental response to the added surface load only
+
+#### 7.5.2 Effective stress reconstruction
+
+At each element centroid, convert the recovered geostatic total stress to effective stress by subtracting the initial pore pressure:
+
+```text
+sigma0' = sigma_total,0 - m * u0
+m = [1, 1, 0]^T
+```
+
+where:
+
+- `sigma_total,0` is the total in-situ stress from the gravity solve, expressed in compression-positive convention
+- `u0` is the initial pore pressure from seepage sampling or from the hydrostatic phreatic fallback
+- `m` subtracts pore pressure from the normal stress components only
+
+This gives:
+
+```text
+sigma0' =
+  [ sigma_xx,0'   tau_xy,0' ]
+  [ tau_xy,0'     sigma_yy,0']
+```
+
+Unlike the flat `K0` route, `tau_xy,0'` is no longer forced to zero.
+
+#### 7.5.3 Why this is better than flat `K0`
+
+| Feature | Flat `K0` logic | Geostatic gravity step |
+| --- | --- | --- |
+| Initial shear stress `tau_xy,0'` | Forced to `0` | Developed naturally from geometry |
+| Lateral stress | Driven by prescribed `K0` only | Driven by `nu`, geometry, and support constraints |
+| Slope / wall response | Can look artificially safe | Better captures toe / crest stress build-up |
+| Cost | Negligible | One extra linear solve on the same mesh |
+
+Note on `K0` versus `nu`:
+
+- in an elastic oedometer-style state, the implied at-rest ratio is `K0,elastic = nu / (1 - nu)`
+- that elastic ratio will not necessarily match the user's imported `K0nc`
+- for sloping or wall-influenced geometries, the gravity-driven stress field should take priority because it satisfies equilibrium on the actual mesh
+- `K0nc` can still remain available as a flat-ground fallback, a diagnostic comparison value, or a future advanced calibration target
+
+UI / UX implication:
+
+- fallback warning if the gravity step cannot be used:
+
+```text
+Initial stress state uses flat-ground K0 initialization with zero initial shear stress.
+Results near steep slopes, embankments, or retaining walls may be unconservative.
+```
+
+- current shipped status text:
+
+```text
+Slope detected: initial stresses calculated via gravity step for improved accuracy.
+```
+
+#### 7.5.4 Flat `K0` fallback
+
+If the gravity step fails numerically, the solver falls back to:
 
 ```text
 sigma_v0'(y) = sigma_v0(y) - u0(y)
@@ -537,7 +635,7 @@ where:
 - `u0` = initial pore pressure
 - `K0 = K0nc`
 
-The initial effective stress tensor in geotechnical compression-positive convention is:
+with the initial effective stress tensor:
 
 ```text
 sigma0' =
@@ -545,26 +643,7 @@ sigma0' =
   [ 0            sigma_v0']
 ```
 
-Implementation note:
-
 `verticalOverburdenStressAt(...)` must integrate from the terrain surface downward to the target point. In the current app geometry, `y` increases upward, so the accumulated overburden stress must increase as `y` decreases.
-
-Important modelling limitation:
-
-This initialization assumes flat-ground geostatic conditions. It does **not** reproduce the non-zero static shear stresses that exist inside slopes, embankments, or wall-influenced ground. Therefore:
-
-- for flat to mildly sloping ground, this is acceptable as a screening initialization
-- for steep slopes or retaining-wall sections, the resulting MC screening can be unconservative near the face or crest
-
-The app should therefore warn the user if:
-
-- terrain slope exceeds a threshold over meaningful segments, or
-- retaining walls are present in the model
-
-Future v2 path:
-
-- perform a gravity-loading step first
-- use that stress field, including non-zero `tau_xy0'`, as the initial state
 
 ### 7.6 Effective stress and pore pressure
 
@@ -587,6 +666,9 @@ Then the total effective stress used for MC screening is:
 ```text
 sigma' = sigma0' + delta_sigma'
 ```
+
+In the current shipped route, `sigma0'` comes from the gravity-step effective stress field.
+If the gravity step fails numerically, the solver falls back to the flat-ground `K0` route above.
 
 If a seepage result exists, use the seepage pore pressure field to build `u0`.
 If not, derive `u0` hydrostatically from the phreatic line.
@@ -745,6 +827,7 @@ The live implementation currently makes the following deliberate modelling choic
 - The deformation mesh reuses the shared section mesher via `src/lib/cpt-app/mesh/section-pslg.js` and `src/lib/cpt-app/mesh/section-mesh.js`, with the low-level Triangle call still coming from `src/lib/cpt-app/seepage/triangle-runtime.js`.
 - The deformation-specific mesher in `src/lib/cpt-app/deformation/mesh.js` adds local refinement beneath the loaded interval and both load edges because CST/T3 elements become too stiff if that zone stays coarse.
 - Region `coarseness` multiplies the local target element area in deformation exactly as it does in seepage. This is a numerical mesh control only, not a constitutive material parameter.
+- The current shipped route reconstructs initial effective stress from the geostatic gravity step. If that solve fails numerically, the solver falls back to the older flat-ground `K0nc` route and warns explicitly.
 - Seepage coupling only changes the **initial pore-pressure field** used for effective-stress reconstruction. There is no `delta_u` generation during loading and no feedback from deformation back into seepage.
 - Retaining walls remain visible in the shared geometry, but they are ignored by the deformation stiffness solve. No beam, plate, spring, or contact element is attached to them yet.
 
@@ -840,7 +923,7 @@ Add:
 - result display toggles
 - warning banner for:
   - drained-only interpretation
-  - flat-ground `K0` initialization
+  - gravity-step status, plus an explicit fallback warning if the solver has to drop back to flat-ground `K0`
   - Poisson ratio capping
 
 ### Phase 2 - Shared mesh extraction
@@ -875,6 +958,9 @@ Add:
 Implement:
 
 - stiffness assembly
+- gravity load assembly
+- geostatic gravity solve
+- initial total-stress recovery and effective-stress reconstruction
 - traction load assembly
 - Dirichlet supports
 - linear solve
@@ -939,21 +1025,23 @@ function runMcDeformationScreening(input):
   tractionEdges = findLoadedTopEdges(mesh, load.xStart, load.xEnd)
 
   K = zeroMatrix(2 * mesh.nodeCount, 2 * mesh.nodeCount)
-  F = zeroVector(2 * mesh.nodeCount)
 
   for each element in mesh.elements:
     ke = elementStiffnessT3(element, materials[element.regionIndex])
     assemble(K, ke, element.dofMap)
 
+  initialField = buildInitialEffectiveStressField(mesh, K, constraints, model, materials, input.options)
+
+  F = zeroVector(2 * mesh.nodeCount)
   for each edge in tractionEdges:
     fe = edgeTractionVector(edge, load.q)
     assemble(F, fe, edge.dofMap)
 
-  applyDirichlet(K, F, constraints)
+  Kload = cloneMatrix(K)
+  Fload = cloneVector(F)
+  applyDirichlet(Kload, Fload, constraints)
 
-  U = solveLinearSystem(K, F)
-
-  initialField = buildInitialEffectiveStressField(mesh, model, input.options)
+  U = solveLinearSystem(Kload, Fload)
   elementResults = recoverElementResults(mesh, U, materials, initialField)
 
   nodalDisplacements = unpackNodalDisplacements(U)
@@ -1003,31 +1091,45 @@ function edgeTractionVector(edge, q):
 ### 11.4 Initial effective stress field
 
 ```ts
-function buildInitialEffectiveStressField(mesh, model, options):
+function buildInitialEffectiveStressField(mesh, K, constraints, model, materials, options):
   if (modelContainsSteepSlopeOrWalls(model)):
-    pushWarning('Initial stress uses flat-ground K0 initialization with zero initial shear stress; results near slopes or walls may be unconservative.')
+    pushStatus('Slope detected: initial stresses calculated via gravity step for improved accuracy.')
+
+  Fg = zeroVector(2 * mesh.nodeCount)
+  for each element in mesh.elements:
+    c = element.centroid
+    material = model.regions[element.regionIndex].material
+    gammaBulk = initialBulkUnitWeightAt(model, material, c.x, c.y, options)
+    fge = elementGravityVector(element, gammaBulk)
+    assemble(Fg, fge, element.dofMap)
+
+  Kgeo = cloneMatrix(K)
+  Fgeo = cloneVector(Fg)
+  applyDirichlet(Kgeo, Fgeo, constraints)
+  Ugeo = solveLinearSystem(Kgeo, Fgeo)
 
   out = []
   for each element in mesh.elements:
     c = element.centroid
     material = model.regions[element.regionIndex].material
+    ueGeo = gatherElementDofs(Ugeo, element.dofMap)
+    sigmaGeoFE = computeStress(element, ueGeo, material) // tension-positive
+    sigmaTotal0 = negateNormalAndShear(sigmaGeoFE)        // compression-positive
 
-    // Integrate from terrain downward; in this geometry system y decreases with depth.
-    sigmaV0 = verticalOverburdenStressAt(model, c.y)
     u0 = options.useSeepagePorePressures
       ? sampleSeepagePorePressure(model.seepage, c.x, c.y)
       : hydrostaticPorePressureFromPhreatic(model.phreatic, c.x, c.y)
 
-    sigmaV0Eff = max(sigmaV0 - u0, 0)
-    sigmaH0Eff = material.K0nc * sigmaV0Eff
-
     out.push({
-      sxx: sigmaH0Eff,
-      syy: sigmaV0Eff,
-      txy: 0
+      sxx: sigmaTotal0.sxx - u0,
+      syy: sigmaTotal0.syy - u0,
+      txy: sigmaTotal0.txy
     })
+
   return out
 ```
+
+The pseudocode above is the current shipped route. If the geostatic solve fails numerically, the solver falls back to the simpler flat-ground `K0` route from Section 7.5.4 and reports that downgrade clearly.
 
 ### 11.5 Stress recovery and MC screening
 
@@ -1178,9 +1280,20 @@ Run the same loaded strip with:
 
 Verify that the coarse mesh is stiffer and that refinement beneath `load.xStart` / `load.xEnd` improves convergence toward the analytical settlement / stress trend.
 
-### 12.9 Slope initialization warning test
+### 12.9 Slope geostatic initialization test
 
-Run the solver on a steeply sloping geometry and verify that the report or UI issues the geostatic-initialization warning.
+Use a steep slope or embankment geometry and compare:
+
+- current flat `K0` initialization
+- gravity-step initialization
+
+Verify that:
+
+- the gravity-step route develops non-zero `tau_xy,0'`
+- high-utilization zones shift toward expected crest / toe locations
+- the gravity-step route avoids the artificially "too safe" look that the flat `K0` route can create
+
+Until the gravity step ships, the current app should at least issue the existing flat-`K0` warning on these geometries.
 
 ---
 
@@ -1197,11 +1310,11 @@ Run the solver on a steeply sloping geometry and verify that the report or UI is
 - The current soil layout still begins from one active CPT column extended laterally across the section unless custom polygons are used.
 - Retaining walls are not active deformation elements in v1.
 - The current load is a vertical terrain traction from the shared `surfaceLoad` interval only; there is no rigid slab or contact redistribution yet.
-- Flat-ground `K0` initialization ignores initial shear stress and can be unconservative on slopes and wall-supported sections.
+- The geostatic gravity step is still linear elastic. It improves slope realism substantially, but it is not a substitute for staged geoplastic initialization in a nonlinear FE code.
 - T3 elements become overly stiff for high `nu` and coarse meshes, especially beneath sharp load gradients; local refinement and `nu` capping are mandatory safeguards.
 - MC screening uses the in-plane principal pair only; the out-of-plane principal `sigma_2'` is ignored.
 - Tension cut-off is applied with zero tensile strength (`sigma_3' >= 0`). This is conservative; a small cohesive tension allowance can be added in a future toggle.
-- Initial vertical effective stress is reconstructed from overburden only, which is the intended v1 geostatic approximation.
+- If the gravity step fails numerically, the solver falls back to overburden-plus-`K0` initial effective stress and warns explicitly.
 - Results are sensitive to lateral and bottom domain extent because the side boundaries restrain horizontal movement.
 - Missing or non-positive `Emc` is replaced with `1000 kPa`, and missing `K0nc` falls back to Jaky `K0`. Those are pragmatic screening defaults, not calibrated constitutive choices.
 - Seepage coupling changes only the initial pore pressure used in stress recovery; it does not make the solve coupled or undrained.
@@ -1212,7 +1325,6 @@ Run the solver on a steeply sloping geometry and verify that the report or UI is
 
 - staged loading
 - excavation / unloading steps
-- self-weight mechanical solve
 - rigid slab compatibility
 - beam / plate coupling
 - elastoplastic Mohr-Coulomb

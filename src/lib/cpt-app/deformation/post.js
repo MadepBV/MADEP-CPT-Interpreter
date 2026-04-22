@@ -13,7 +13,7 @@ function pushUniqueWarning(warnings, message) {
   if (!warnings.includes(message)) warnings.push(message);
 }
 
-function modelHasSteepSlopeOrWalls(model) {
+export function modelHasSteepSlopeOrWalls(model) {
   if ((model?.walls || []).length) return true;
   const terrain = model?.terrain?.vertices || [];
   for (let i = 0; i < terrain.length - 1; i += 1) {
@@ -33,6 +33,32 @@ export function hydrostaticPorePressureFromPhreatic(model, x, y, gammaW = GAMMA_
   return Math.max((waterY - y) * gammaW, 0);
 }
 
+export function sampleInitialPorePressure(model, x, y, options = {}, warnings = [], gammaW = GAMMA_W) {
+  const useSeepage = !!options?.useSeepagePorePressures && model?.seepage?.mesh && model?.seepage?.result;
+  if (useSeepage) {
+    const sampled = sampleSeepagePorePressure(model.seepage.mesh, model.seepage.result, x, y, gammaW);
+    if (Number.isFinite(sampled)) return Math.max(sampled, 0);
+    pushUniqueWarning(
+      warnings,
+      'FEM pore pressure sampling missed part of the deformation mesh, so hydrostatic phreatic pressure was used there instead.'
+    );
+    return hydrostaticPorePressureFromPhreatic(model, x, y, gammaW);
+  }
+  if (options?.useSeepagePorePressures) {
+    pushUniqueWarning(
+      warnings,
+      'Use seepage pore pressures was requested, but no seepage result was available. The deformation screen fell back to the drawn hydrostatic phreatic line.'
+    );
+  }
+  return hydrostaticPorePressureFromPhreatic(model, x, y, gammaW);
+}
+
+export function initialBulkUnitWeightFromPorePressure(material, porePressure) {
+  const gammaDry = Number.isFinite(Number(material?.gamma)) ? Number(material.gamma) : 18;
+  const gammaSat = Number.isFinite(Number(material?.gammaSat)) ? Number(material.gammaSat) : gammaDry + 2;
+  return Number(porePressure) > GEOM_EPS ? gammaSat : gammaDry;
+}
+
 export function verticalOverburdenStressAt(model, x, y) {
   if (!model?.terrain?.vertices?.length) return 0;
   const surfaceY = terrainY(model.terrain, x);
@@ -48,30 +74,11 @@ export function verticalOverburdenStressAt(model, x, y) {
 function initialEffectiveStressAtPoint(model, point, options, warnings) {
   const material = model?.regions?.[point.regionIndex]?.material || point.material || null;
   const sigmaV0 = verticalOverburdenStressAt(model, point.x, point.y);
-  let u0 = 0;
-  const useSeepage = !!options?.useSeepagePorePressures && model?.seepage?.mesh && model?.seepage?.result;
-  if (useSeepage) {
-    const sampled = sampleSeepagePorePressure(model.seepage.mesh, model.seepage.result, point.x, point.y, GAMMA_W);
-    if (Number.isFinite(sampled)) {
-      u0 = Math.max(sampled, 0);
-    } else {
-      pushUniqueWarning(
-        warnings,
-        'FEM pore pressure sampling missed part of the deformation mesh, so hydrostatic phreatic pressure was used there instead.'
-      );
-      u0 = hydrostaticPorePressureFromPhreatic(model, point.x, point.y, GAMMA_W);
-    }
-  } else {
-    if (options?.useSeepagePorePressures) {
-      pushUniqueWarning(
-        warnings,
-        'Use seepage pore pressures was requested, but no seepage result was available. The deformation screen fell back to the drawn hydrostatic phreatic line.'
-      );
-    }
-    u0 = hydrostaticPorePressureFromPhreatic(model, point.x, point.y, GAMMA_W);
-  }
+  const u0 = sampleInitialPorePressure(model, point.x, point.y, options, warnings, GAMMA_W);
   const sigmaV0Eff = Math.max(sigmaV0 - u0, 0);
-  const sigmaH0Eff = (Number(material?.K0nc) || 0) * sigmaV0Eff;
+  const phi = (Math.max(Number(material?.phiEffDeg) || 0, 0) * Math.PI) / 180;
+  const K0 = Number.isFinite(Number(material?.K0nc)) ? Math.max(Number(material.K0nc), 0) : Math.max(1 - Math.sin(phi), 0);
+  const sigmaH0Eff = K0 * sigmaV0Eff;
   return {
     sxx: sigmaH0Eff,
     syy: sigmaV0Eff,
@@ -79,7 +86,7 @@ function initialEffectiveStressAtPoint(model, point, options, warnings) {
   };
 }
 
-export function buildInitialEffectiveStressField(mesh, model, options = {}, warnings = []) {
+export function buildFlatK0InitialEffectiveStressField(mesh, model, options = {}, warnings = []) {
   if (modelHasSteepSlopeOrWalls(model)) {
     pushUniqueWarning(
       warnings,
@@ -100,6 +107,10 @@ export function buildInitialEffectiveStressField(mesh, model, options = {}, warn
       warnings
     );
   });
+}
+
+export function buildInitialEffectiveStressField(mesh, model, options = {}, warnings = []) {
+  return buildFlatK0InitialEffectiveStressField(mesh, model, options, warnings);
 }
 
 export function negateNormalAndShear(stress) {

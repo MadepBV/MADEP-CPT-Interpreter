@@ -3,14 +3,16 @@
 
 import { pointInPolygonHalfOpen } from '../soil-regions.js';
 import { buildDeformationMesh } from './mesh.js';
-import { buildBMatrixT3, edgeTractionVector, elementStiffnessT3, triangleArea } from './element-t3.js';
+import { buildBMatrixT3, edgeTractionVector, elementGravityVectorT3, elementStiffnessT3, triangleArea } from './element-t3.js';
 import { prepareMechanicalMaterial, planeStrainElasticMatrix } from './material.js';
 import {
   addStress,
-  buildInitialEffectiveStressField,
+  buildFlatK0InitialEffectiveStressField,
+  initialBulkUnitWeightFromPorePressure,
   mohrCoulombIndicator,
   negateNormalAndShear,
-  principalStress2DCompressionPositive
+  principalStress2DCompressionPositive,
+  sampleInitialPorePressure
 } from './post.js';
 
 const CG_TOL = 1e-5;
@@ -18,6 +20,11 @@ const CG_NUMERIC_EPS = 1e-14;
 const CG_CHECKPOINT_INTERVAL = 25;
 const MAX_CG_ITER = 25000;
 const GEOM_EPS = 1e-6;
+
+function pushUniqueWarning(warnings, message) {
+  if (!Array.isArray(warnings) || !message) return;
+  if (!warnings.includes(message)) warnings.push(message);
+}
 
 function isStopRequested(runControl) {
   return typeof runControl?.shouldStop === 'function' ? !!runControl.shouldStop() : false;
@@ -121,26 +128,30 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = C
   return { solution: x, converged: false, iterations: maxIter, residualNorm, interrupted: false };
 }
 
-function compressRows(rows, freeDofs, freeIndexByDof, fixedValues, fullRhs) {
-  const out = freeDofs.map(() => ({ indices: [], values: [], diag: 0 }));
-  const rhs = new Float64Array(freeDofs.length);
+function compressMatrixRows(rows, freeDofs, freeIndexByDof) {
+  return freeDofs.map((dofId, rowIndex) => {
+    const out = { indices: [], values: [], diag: 0 };
+    rows[dofId].forEach((value, colId) => {
+      const colIndex = freeIndexByDof.get(colId);
+      if (colIndex == null) return;
+      out.indices.push(colIndex);
+      out.values.push(value);
+      if (colIndex === rowIndex) out.diag = value;
+    });
+    return out;
+  });
+}
 
+function compressRhs(rows, freeDofs, fixedValues, fullRhs) {
+  const rhs = new Float64Array(freeDofs.length);
   freeDofs.forEach((dofId, rowIndex) => {
     rhs[rowIndex] = fullRhs[dofId] || 0;
     rows[dofId].forEach((value, colId) => {
-      if (fixedValues.has(colId)) {
-        rhs[rowIndex] -= value * fixedValues.get(colId);
-        return;
-      }
-      const colIndex = freeIndexByDof.get(colId);
-      if (colIndex == null) return;
-      out[rowIndex].indices.push(colIndex);
-      out[rowIndex].values.push(value);
-      if (colIndex === rowIndex) out[rowIndex].diag = value;
+      if (!fixedValues.has(colId)) return;
+      rhs[rowIndex] -= value * fixedValues.get(colId);
     });
   });
-
-  return { rows: out, rhs };
+  return rhs;
 }
 
 function addMatrixBlock(rows, dofs, localK) {
@@ -256,6 +267,21 @@ function prepareRegionMaterials(mesh, warnings) {
   return byRegion;
 }
 
+function elementDofMap(element) {
+  return [2 * element[0], 2 * element[0] + 1, 2 * element[1], 2 * element[1] + 1, 2 * element[2], 2 * element[2] + 1];
+}
+
+function expandSolutionVector(ndof, freeDofs, fixedValues, freeSolution) {
+  const U = new Float64Array(ndof);
+  fixedValues.forEach((value, dof) => {
+    U[dof] = value;
+  });
+  freeDofs.forEach((dof, index) => {
+    U[dof] = freeSolution[index];
+  });
+  return U;
+}
+
 function gatherElementDisplacements(U, element) {
   const out = new Float64Array(6);
   for (let i = 0; i < 3; i += 1) {
@@ -278,6 +304,109 @@ function applyElasticMatrix(D, strain) {
     sxx: D[0][0] * strain.exx + D[0][1] * strain.eyy + D[0][2] * strain.gxy,
     syy: D[1][0] * strain.exx + D[1][1] * strain.eyy + D[1][2] * strain.gxy,
     txy: D[2][0] * strain.exx + D[2][1] * strain.eyy + D[2][2] * strain.gxy
+  };
+}
+
+function recoverElementElasticResponse(mesh, elementIndex, U, material) {
+  const element = mesh.elements[elementIndex];
+  const nodes = element.map((nodeId) => mesh.nodes[nodeId]);
+  const ue = gatherElementDisplacements(U, element);
+  const area = triangleArea(nodes);
+  const B = buildBMatrixT3(nodes);
+  const D = planeStrainElasticMatrix(material.Emc, material.nu, [], material.label || material.id || 'Material');
+  const strain = multiplyMat3x6Vec6(B, ue);
+  const stressIncrement = applyElasticMatrix(D, strain);
+  return {
+    element,
+    nodes,
+    ue,
+    area,
+    B,
+    D,
+    strain,
+    stressIncrement
+  };
+}
+
+function recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, materialsByRegion, porePressureByElement) {
+  const out = [];
+  for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
+    const cell = mesh.cells[mesh.elementCell[elementIndex]];
+    const material = materialsByRegion.get(cell?.regionIndex) || prepareMechanicalMaterial(cell?.material);
+    const elastic = recoverElementElasticResponse(mesh, elementIndex, Ugeo, material);
+    const sigmaTotal0 = negateNormalAndShear(elastic.stressIncrement);
+    const u0 = Math.max(Number(porePressureByElement?.[elementIndex]) || 0, 0);
+    out.push({
+      sxx: sigmaTotal0.sxx - u0,
+      syy: sigmaTotal0.syy - u0,
+      txy: sigmaTotal0.txy
+    });
+  }
+  return out;
+}
+
+async function buildGeostaticInitialization(
+  mesh,
+  model,
+  options,
+  warnings,
+  materialsByRegion,
+  ndof,
+  rows,
+  compressedRows,
+  freeDofs,
+  fixedValues,
+  gravityRhs,
+  porePressureByElement,
+  runControl,
+  onProgress
+) {
+  onProgress({
+    stage: 'solving',
+    percent: 64,
+    message: 'Solving the geostatic gravity step for the initial stress field...'
+  });
+
+  const gravityCompressedRhs = compressRhs(rows, freeDofs, fixedValues, gravityRhs);
+  const geostaticCg = await solveCg(compressedRows, gravityCompressedRhs, null, MAX_CG_ITER, CG_TOL, runControl);
+  if (geostaticCg.interrupted) {
+    throw new Error('Deformation run was interrupted before geostatic initialization became available.');
+  }
+
+  if (!geostaticCg.converged) {
+    pushUniqueWarning(
+      warnings,
+      `Geostatic gravity-step initialization did not converge (residual ${geostaticCg.residualNorm.toExponential(2)} after ${geostaticCg.iterations} iterations), so the deformation screen fell back to flat-ground K0 initial stress.`
+    );
+    return {
+      initialField: buildFlatK0InitialEffectiveStressField(mesh, model, options, warnings),
+      mode: 'flat-k0-fallback',
+      iterations: geostaticCg.iterations,
+      residualNorm: geostaticCg.residualNorm
+    };
+  }
+
+  const Ugeo = expandSolutionVector(ndof, freeDofs, fixedValues, geostaticCg.solution);
+  const initialField = recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, materialsByRegion, porePressureByElement);
+  const hasInvalidStress = initialField.some((stress) => !Number.isFinite(stress?.sxx) || !Number.isFinite(stress?.syy) || !Number.isFinite(stress?.txy));
+  if (hasInvalidStress) {
+    pushUniqueWarning(
+      warnings,
+      'Geostatic gravity-step initialization produced an invalid stress state, so the deformation screen fell back to flat-ground K0 initial stress.'
+    );
+    return {
+      initialField: buildFlatK0InitialEffectiveStressField(mesh, model, options, warnings),
+      mode: 'flat-k0-fallback',
+      iterations: geostaticCg.iterations,
+      residualNorm: geostaticCg.residualNorm
+    };
+  }
+
+  return {
+    initialField,
+    mode: 'gravity-step',
+    iterations: geostaticCg.iterations,
+    residualNorm: geostaticCg.residualNorm
   };
 }
 
@@ -309,7 +438,7 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
   let maxDeltaSigmaYy = 0;
   elementResults.forEach((item) => {
     maxMcEta = Math.max(maxMcEta, Number(item?.mc?.eta) || 0);
-    maxDeltaSigmaYy = Math.max(maxDeltaSigmaYy, Number(item?.effectiveStress?.syy) || 0);
+    maxDeltaSigmaYy = Math.max(maxDeltaSigmaYy, -Number(item?.stressIncrement?.syy || 0));
   });
   return {
     maxSettlement,
@@ -322,27 +451,23 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
 function recoverElementResults(mesh, U, materialsByRegion, initialField) {
   const out = [];
   for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
-    const element = mesh.elements[elementIndex];
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
     const material = materialsByRegion.get(cell?.regionIndex) || prepareMechanicalMaterial(cell?.material);
-    const nodes = element.map((nodeId) => mesh.nodes[nodeId]);
-    const ue = gatherElementDisplacements(U, element);
-    const area = triangleArea(nodes);
-    const B = buildBMatrixT3(nodes);
-    const D = planeStrainElasticMatrix(material.Emc, material.nu, [], material.label || material.id || 'Material');
-    const strain = multiplyMat3x6Vec6(B, ue);
-    const stressIncrement = applyElasticMatrix(D, strain);
+    const elastic = recoverElementElasticResponse(mesh, elementIndex, U, material);
+    const initialStress = initialField[elementIndex];
+    const stressIncrement = elastic.stressIncrement;
     const sigmaIncrementGeo = negateNormalAndShear(stressIncrement);
-    const sigmaEff = addStress(initialField[elementIndex], sigmaIncrementGeo);
+    const sigmaEff = addStress(initialStress, sigmaIncrementGeo);
     const principal = principalStress2DCompressionPositive(sigmaEff);
     const mc = mohrCoulombIndicator(principal, material);
     out.push({
       elementIndex,
       regionIndex: cell?.regionIndex ?? -1,
-      area,
+      area: elastic.area,
       centroid: mesh.elementData[elementIndex]?.centroid || cell?.centroid || { x: 0, y: 0 },
-      strain,
+      strain: elastic.strain,
       stressIncrement,
+      initialEffectiveStress: initialStress,
       effectiveStress: sigmaEff,
       principal,
       mc
@@ -452,13 +577,15 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
 
   const ndof = 2 * mesh.nodes.length;
   const rows = Array.from({ length: ndof }, () => new Map());
-  const rhs = new Float64Array(ndof);
+  const loadRhs = new Float64Array(ndof);
+  const gravityRhs = new Float64Array(ndof);
+  const porePressureByElement = new Float64Array(mesh.elements.length);
   const materialsByRegion = prepareRegionMaterials(mesh, warnings);
 
   onProgress({
     stage: 'solving',
     percent: 46,
-    message: 'Assembling the plane-strain stiffness matrix...'
+    message: 'Assembling the plane-strain stiffness matrix and geostatic gravity load...'
   });
 
   for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
@@ -466,8 +593,16 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     const nodes = element.map((nodeId) => mesh.nodes[nodeId]);
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
     const material = materialsByRegion.get(cell?.regionIndex) || prepareMechanicalMaterial(cell?.material, warnings);
-    const dofs = [2 * element[0], 2 * element[0] + 1, 2 * element[1], 2 * element[1] + 1, 2 * element[2], 2 * element[2] + 1];
+    const dofs = elementDofMap(element);
+    const centroid = mesh.elementData[elementIndex]?.centroid || cell?.centroid || {
+      x: (nodes[0].x + nodes[1].x + nodes[2].x) / 3,
+      y: (nodes[0].y + nodes[1].y + nodes[2].y) / 3
+    };
+    const initialPorePressure = sampleInitialPorePressure(model, centroid.x, centroid.y, options, warnings);
+    const gammaBulk = initialBulkUnitWeightFromPorePressure(material, initialPorePressure);
     addMatrixBlock(rows, dofs, elementStiffnessT3(nodes, material, warnings));
+    addVectorBlock(gravityRhs, dofs, elementGravityVectorT3(nodes, gammaBulk));
+    porePressureByElement[elementIndex] = initialPorePressure;
     if (elementIndex % 250 === 0 && (await runCheckpoint(runControl))) {
       throw new Error('Deformation run was interrupted during stiffness assembly.');
     }
@@ -480,7 +615,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   });
 
   loadedTerrainEdges(mesh, load).forEach((edge) => {
-    addVectorBlock(rhs, [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1], edgeTractionVector(edge, 0, -load.q));
+    addVectorBlock(loadRhs, [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1], edgeTractionVector(edge, 0, -load.q));
   });
 
   const fixedValues = buildFixedDofMap(mesh);
@@ -491,15 +626,32 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     freeIndexByDof.set(dof, freeDofs.length);
     freeDofs.push(dof);
   }
-  const compressed = compressRows(rows, freeDofs, freeIndexByDof, fixedValues, rhs);
+  const compressedRows = compressMatrixRows(rows, freeDofs, freeIndexByDof);
+  const geostatic = await buildGeostaticInitialization(
+    mesh,
+    model,
+    options,
+    warnings,
+    materialsByRegion,
+    ndof,
+    rows,
+    compressedRows,
+    freeDofs,
+    fixedValues,
+    gravityRhs,
+    porePressureByElement,
+    runControl,
+    onProgress
+  );
 
   onProgress({
     stage: 'solving',
-    percent: 66,
-    message: `Solving ${freeDofs.length.toLocaleString()} free deformation DOFs with conjugate gradients...`
+    percent: 74,
+    message: `Solving ${freeDofs.length.toLocaleString()} free deformation DOFs for the applied load increment...`
   });
 
-  const cg = await solveCg(compressed.rows, compressed.rhs, null, MAX_CG_ITER, CG_TOL, runControl);
+  const compressedLoadRhs = compressRhs(rows, freeDofs, fixedValues, loadRhs);
+  const cg = await solveCg(compressedRows, compressedLoadRhs, null, MAX_CG_ITER, CG_TOL, runControl);
   if (cg.interrupted) {
     throw new Error('Deformation run was interrupted before the first displacement solution became available.');
   }
@@ -507,22 +659,15 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     throw new Error(`Deformation linear solve did not converge (residual ${cg.residualNorm.toExponential(2)} after ${cg.iterations} iterations).`);
   }
 
-  const U = new Float64Array(ndof);
-  fixedValues.forEach((value, dof) => {
-    U[dof] = value;
-  });
-  freeDofs.forEach((dof, index) => {
-    U[dof] = cg.solution[index];
-  });
+  const U = expandSolutionVector(ndof, freeDofs, fixedValues, cg.solution);
 
   onProgress({
     stage: 'post',
-    percent: 82,
+    percent: 86,
     message: 'Recovering stresses, settlements, and MC utilization...'
   });
 
-  const initialField = buildInitialEffectiveStressField(mesh, model, options, warnings);
-  const elementResults = recoverElementResults(mesh, U, materialsByRegion, initialField);
+  const elementResults = recoverElementResults(mesh, U, materialsByRegion, geostatic.initialField);
   const nodalDisplacements = mesh.nodes.map((_node, nodeId) => ({
     ux: U[2 * nodeId],
     uy: U[2 * nodeId + 1]
@@ -546,6 +691,9 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     summaries,
     solver: {
       method: 'linear-elastic-plane-strain-t3',
+      initialStressMode: geostatic.mode,
+      geostaticIterations: geostatic.iterations,
+      geostaticResidualNorm: geostatic.residualNorm,
       linearIterations: cg.iterations,
       residualNorm: cg.residualNorm,
       freeDofs: freeDofs.length

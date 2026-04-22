@@ -5229,10 +5229,15 @@ function stage6BishopEnsureDeformationWorker(){
       renderStage6();
       return;
     }
-    if(payload.error === 'Deformation run was interrupted before the first displacement solution became available.'){
+    if(
+      payload.error === 'Deformation run was interrupted before the first displacement solution became available.' ||
+      payload.error === 'Deformation run was interrupted before geostatic initialization became available.'
+    ){
       deformation.status = 'idle';
       deformation.rejectReason = '';
-      deformation.progress.message = 'Deformation interrupted before the first displacement solution became available.';
+      deformation.progress.message = payload.error === 'Deformation run was interrupted before geostatic initialization became available.'
+        ? 'Deformation interrupted before the geostatic initialization solution became available.'
+        : 'Deformation interrupted before the first displacement solution became available.';
       deformation.progress.percent = 0;
       renderStage6();
       return;
@@ -9295,6 +9300,17 @@ function renderStage6BishopApp(){
   const deformationHasResult = !!deformation.mesh && !!deformation.result;
   const deformationAppliedQ = Math.max(Number(deformationDerivedQ) || 0, 0);
   const deformationWarnings = Array.isArray(deformation.warnings) ? deformation.warnings : [];
+  const deformationInitialStressMode = deformation.result?.solver?.initialStressMode === 'gravity-step'
+    ? 'gravity step'
+    : deformation.result?.solver?.initialStressMode === 'flat-k0-fallback'
+      ? 'flat K0 fallback'
+      : '—';
+  const deformationGeostaticIterations = Number.isFinite(deformation.result?.solver?.geostaticIterations)
+    ? deformation.result.solver.geostaticIterations
+    : null;
+  const deformationGeostaticResidual = Number.isFinite(deformation.result?.solver?.geostaticResidualNorm)
+    ? Number(deformation.result.solver.geostaticResidualNorm).toExponential(2)
+    : '—';
   const deformationProfileRows = deformationHasResult
     ? (deformation.result?.terrainSettlementProfile || []).map((point, index)=>`
         <tr>
@@ -9739,9 +9755,12 @@ function renderStage6BishopApp(){
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(deformationStatusMessage)}</strong><br>
                   Solver: <strong>linear elastic plane strain on shared T3 mesh</strong><br>
+                  Initial stress: <strong>${stage6EscAttr(deformationInitialStressMode)}</strong><br>
                   Nodes: <strong>${deformation.mesh?.nodes?.length || 0}</strong><br>
                   Triangles: <strong>${deformation.mesh?.elements?.length || 0}</strong><br>
                   Free DOFs: <strong>${deformation.result?.solver?.freeDofs || 0}</strong><br>
+                  Geostatic CG iterations: <strong>${deformationGeostaticIterations ?? '—'}</strong><br>
+                  Geostatic residual: <strong>${deformationGeostaticResidual}</strong><br>
                   CG iterations: <strong>${deformation.result?.solver?.linearIterations || 0}</strong><br>
                   Residual: <strong>${Number.isFinite(deformation.result?.solver?.residualNorm) ? Number(deformation.result.solver.residualNorm).toExponential(2) : '—'}</strong><br>
                   Runtime: <strong>${stage6SecondsLabelFromMs(deformation.result?.timing?.totalMs)}</strong>
@@ -9790,6 +9809,7 @@ function renderStage6BishopApp(){
               Applied pressure q: <strong>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</strong><br>
               Out-of-plane length: <strong>${deformationOutOfPlaneLength.toFixed(2)} m</strong><br>
               Seepage pore pressures: <strong>${deformation.options?.useSeepagePorePressures ? 'enabled when available' : 'off'}</strong><br>
+              Initial stress: <strong>${stage6EscAttr(deformationInitialStressMode)}</strong><br>
               Solver status: <strong>${stage6EscAttr(deformation.status || 'idle')}</strong><br>
               Last max settlement: <strong>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxSettlement || 0)).toFixed(2)} mm` : '—'}</strong><br>
               Measurement: <strong>${stage6EscAttr(measurementStatus)}</strong>
@@ -9973,7 +9993,10 @@ function renderStage6BishopApp(){
                   <tr><td>Out-of-plane length</td><td>${deformationOutOfPlaneLength.toFixed(2)} m</td></tr>
                   <tr><td>Nodes</td><td>${deformation.mesh?.nodes?.length || 0}</td></tr>
                   <tr><td>Triangles</td><td>${deformation.mesh?.elements?.length || 0}</td></tr>
+                  <tr><td>Initial stress</td><td>${stage6EscAttr(deformationInitialStressMode)}</td></tr>
                   <tr><td>Free DOFs</td><td>${deformation.result?.solver?.freeDofs || 0}</td></tr>
+                  <tr><td>Geostatic CG iterations</td><td>${deformationGeostaticIterations ?? '—'}</td></tr>
+                  <tr><td>Geostatic residual</td><td>${deformationGeostaticResidual}</td></tr>
                   <tr><td>CG iterations</td><td>${deformation.result?.solver?.linearIterations || 0}</td></tr>
                   <tr><td>Residual</td><td>${Number.isFinite(deformation.result?.solver?.residualNorm) ? Number(deformation.result.solver.residualNorm).toExponential(2) : '—'}</td></tr>
                   <tr><td>Max settlement</td><td>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxSettlement || 0)).toFixed(2)} mm` : '—'}</td></tr>
@@ -10273,7 +10296,7 @@ function renderStage6BishopApp(){
         ? [
             {level:'warn', text:'This deformation workspace is a drained screening tool. It solves a linear-elastic plane-strain displacement field on T3 triangles and applies the Mohr-Coulomb check only in post-processing.'},
             {level:'info', text:'The soil model is still derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section, and retaining walls are not yet active mechanical elements in the deformation solve.'},
-            {level:'info', text:'Initial stress uses a flat-ground K0 field with zero initial shear stress. Results near steep slopes, embankments, or walls should be treated as conservative screening only after engineering review.'},
+            {level:'info', text:'Initial stress is built from a geostatic gravity step on the shared mesh, so slopes and wall-supported sections develop in-situ shear stress before the load increment. If that initialization fails numerically, the solver falls back to the older flat-ground K0 field and warns you explicitly.'},
             {level:'info', text:'MC utilization is based on in-plane principal effective stresses with a zero-tension cut-off. That is useful for visualization and screening, but it is not a substitute for a full elastoplastic FE model.'}
           ]
         : workspace === 'seepage'

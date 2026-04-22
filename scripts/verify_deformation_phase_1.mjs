@@ -67,6 +67,58 @@ function baseModel(overrides = {}) {
   };
 }
 
+function slopedModel(overrides = {}) {
+  const material = {
+    id: 'slope-soil',
+    label: 'slope-soil',
+    Emc: 22000,
+    nu: 0.3,
+    K0nc: 0.55,
+    cEff: 6,
+    phiEffDeg: 28,
+    gamma: 18,
+    gammaSat: 20,
+    ...(overrides.material || {})
+  };
+  return {
+    terrain: {
+      vertices: [
+        { x: 0, y: 1.5 },
+        { x: 8, y: 1.5 },
+        { x: 24, y: -6.5 }
+      ]
+    },
+    analysisBottomY: -16.5,
+    phreatic: {
+      vertices: [
+        { x: 0, y: -20 },
+        { x: 24, y: -20 }
+      ]
+    },
+    walls: [],
+    regions: [
+      {
+        id: 'slope-soil',
+        polygon: [
+          { x: 0, y: -16.5 },
+          { x: 24, y: -16.5 },
+          { x: 24, y: -6.5 },
+          { x: 8, y: 1.5 },
+          { x: 0, y: 1.5 }
+        ],
+        material
+      }
+    ],
+    surfaceLoad: {
+      xStart: 6,
+      xEnd: 8,
+      q: 120
+    },
+    seepage: overrides.seepage || { mesh: null, result: null },
+    ...overrides
+  };
+}
+
 async function runCase(name, fn) {
   await fn();
   console.log(`${name}: ok`);
@@ -164,6 +216,31 @@ await runCase('Case 3 capped nu and seepage fallback warnings still allow a defo
     'requesting seepage pore pressures without a seepage result should emit the hydrostatic fallback warning'
   );
   assert((output?.summaries?.maxSettlement || 0) > 0, 'warning case should still produce a valid settlement result');
+  assert(output?.solver?.initialStressMode === 'gravity-step', 'warning case should still use the geostatic gravity-step initialization');
+});
+
+await runCase('Case 4 slope geometry uses gravity initialization and develops initial shear stress', async () => {
+  const output = await analyzeDeformationModel({
+    model: slopedModel(),
+    options: {
+      meshTargetArea: 0.3,
+      loadMode: 'pressure',
+      outOfPlaneLength: 12,
+      useSeepagePorePressures: false
+    }
+  });
+
+  assert(output?.solver?.initialStressMode === 'gravity-step', 'slope case should use the geostatic gravity-step initialization');
+  const warnings = output?.warnings || [];
+  assert(
+    !warnings.some((warning) => warning.toLowerCase().includes('flat-ground k0 initialization')),
+    'successful gravity initialization should not emit the old flat-ground K0 warning'
+  );
+  const maxInitialShear = (output?.elementResults || []).reduce(
+    (max, item) => Math.max(max, Math.abs(Number(item?.initialEffectiveStress?.txy) || 0)),
+    0
+  );
+  assert(maxInitialShear > 0.1, `slope gravity initialization should develop non-zero initial shear stress (got ${maxInitialShear})`);
 });
 
 console.log('Deformation Phase 1 verification passed.');

@@ -78,6 +78,19 @@ export function elementStiffnessT3(nodes, material, warnings = []) {
   return BtDB.map((row) => row.map((value) => value * area));
 }
 
+export function elementBodyForceVectorT3(nodes, bx = 0, by = 0) {
+  const area = triangleArea(nodes);
+  if (!(area > AREA_EPS)) {
+    throw new Error('Encountered a zero-area T3 element during deformation body-force assembly.');
+  }
+  const scale = area / 3;
+  return [scale * bx, scale * by, scale * bx, scale * by, scale * bx, scale * by];
+}
+
+export function elementGravityVectorT3(nodes, gammaBulk) {
+  return elementBodyForceVectorT3(nodes, 0, -Math.max(Number(gammaBulk) || 0, 0));
+}
+
 export function edgeTractionVector(edge, tx, ty) {
   const length = Math.hypot((edge?.b?.x || 0) - (edge?.a?.x || 0), (edge?.b?.y || 0) - (edge?.a?.y || 0));
   const scale = length / 2;
