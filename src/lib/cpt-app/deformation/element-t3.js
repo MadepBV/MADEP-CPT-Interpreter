@@ -41,25 +41,21 @@ export function buildBMatrixT3(nodes) {
   ];
 }
 
-function multiplyMatrices3x6and6x6(left, right) {
-  const out = Array.from({ length: 3 }, () => Array(6).fill(0));
-  for (let i = 0; i < 3; i += 1) {
-    for (let k = 0; k < 6; k += 1) {
-      let sum = 0;
-      for (let j = 0; j < 3; j += 1) sum += left[i][j] * right[j][k];
-      out[i][k] = sum;
-    }
+export function elementStiffnessT3FromBAndArea(B, area, tangent2D) {
+  if (!(area > AREA_EPS)) {
+    throw new Error('Encountered a zero-area T3 element during deformation assembly.');
   }
-  return out;
-}
-
-function multiplyMatrices6x3and3x6(left, right) {
+  const D = tangent2D;
   const out = Array.from({ length: 6 }, () => Array(6).fill(0));
   for (let i = 0; i < 6; i += 1) {
-    for (let k = 0; k < 6; k += 1) {
-      let sum = 0;
-      for (let j = 0; j < 3; j += 1) sum += left[i][j] * right[j][k];
-      out[i][k] = sum;
+    const Bi0 = B[0][i];
+    const Bi1 = B[1][i];
+    const Bi2 = B[2][i];
+    for (let j = 0; j < 6; j += 1) {
+      const DB0 = D[0][0] * B[0][j] + D[0][1] * B[1][j] + D[0][2] * B[2][j];
+      const DB1 = D[1][0] * B[0][j] + D[1][1] * B[1][j] + D[1][2] * B[2][j];
+      const DB2 = D[2][0] * B[0][j] + D[2][1] * B[1][j] + D[2][2] * B[2][j];
+      out[i][j] = area * (Bi0 * DB0 + Bi1 * DB1 + Bi2 * DB2);
     }
   }
   return out;
@@ -71,11 +67,7 @@ export function elementStiffnessT3FromTangent2D(nodes, tangent2D) {
     throw new Error('Encountered a zero-area T3 element during deformation assembly.');
   }
   const B = buildBMatrixT3(nodes);
-  const D = tangent2D;
-  const Bt = Array.from({ length: 6 }, (_, i) => [B[0][i], B[1][i], B[2][i]]);
-  const DB = multiplyMatrices3x6and6x6(D, B);
-  const BtDB = multiplyMatrices6x3and3x6(Bt, DB);
-  return BtDB.map((row) => row.map((value) => value * area));
+  return elementStiffnessT3FromBAndArea(B, area, tangent2D);
 }
 
 export function elementStiffnessT3(nodes, material, warnings = []) {
@@ -88,12 +80,23 @@ export function elementBodyForceVectorT3(nodes, bx = 0, by = 0) {
   if (!(area > AREA_EPS)) {
     throw new Error('Encountered a zero-area T3 element during deformation body-force assembly.');
   }
+  return elementBodyForceVectorT3FromArea(area, bx, by);
+}
+
+export function elementBodyForceVectorT3FromArea(area, bx = 0, by = 0) {
+  if (!(area > AREA_EPS)) {
+    throw new Error('Encountered a zero-area T3 element during deformation body-force assembly.');
+  }
   const scale = area / 3;
   return [scale * bx, scale * by, scale * bx, scale * by, scale * bx, scale * by];
 }
 
 export function elementGravityVectorT3(nodes, gammaBulk) {
   return elementBodyForceVectorT3(nodes, 0, -Math.max(Number(gammaBulk) || 0, 0));
+}
+
+export function elementGravityVectorT3FromArea(area, gammaBulk) {
+  return elementBodyForceVectorT3FromArea(area, 0, -Math.max(Number(gammaBulk) || 0, 0));
 }
 
 export function edgeTractionVector(edge, tx, ty) {

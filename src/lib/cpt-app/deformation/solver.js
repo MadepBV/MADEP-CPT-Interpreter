@@ -3,7 +3,13 @@
 
 import { pointInPolygonHalfOpen } from '../soil-regions.js';
 import { buildDeformationMesh } from './mesh.js';
-import { buildBMatrixT3, edgeTractionVector, elementGravityVectorT3, elementStiffnessT3FromTangent2D, triangleArea } from './element-t3.js';
+import {
+  buildBMatrixT3,
+  edgeTractionVector,
+  elementGravityVectorT3FromArea,
+  elementStiffnessT3FromBAndArea,
+  triangleArea
+} from './element-t3.js';
 import {
   cloneMaterialPointState,
   createLinearElasticMaterial,
@@ -497,6 +503,27 @@ function addVectorBlock(rhs, dofs, localF) {
   for (let i = 0; i < dofs.length; i += 1) rhs[dofs[i]] += localF[i];
 }
 
+function addMatrixBlockToCompressedRows(rows, elementCache, localK) {
+  for (let localRow = 0; localRow < 6; localRow += 1) {
+    const freeRowIndex = elementCache.freeRowIndices?.[localRow] ?? -1;
+    if (freeRowIndex < 0) continue;
+    const rowValues = rows[freeRowIndex].values;
+    for (let localCol = 0; localCol < 6; localCol += 1) {
+      const slotIndex = elementCache.assemblyLocalSlots?.[localRow * 6 + localCol] ?? -1;
+      if (slotIndex < 0) continue;
+      rowValues[slotIndex] += localK[localRow][localCol];
+    }
+  }
+}
+
+function addVectorBlockToFreeRhs(rhs, freeRowIndices, localF) {
+  for (let i = 0; i < 6; i += 1) {
+    const freeRowIndex = freeRowIndices?.[i] ?? -1;
+    if (freeRowIndex < 0) continue;
+    rhs[freeRowIndex] += localF[i];
+  }
+}
+
 function elementInternalForceVector(B, stress2D, area) {
   return [
     area * (B[0][0] * stress2D.sxx + B[1][0] * stress2D.syy + B[2][0] * stress2D.txy),
@@ -637,6 +664,102 @@ function elementDofMap(element) {
   return [2 * element[0], 2 * element[0] + 1, 2 * element[1], 2 * element[1] + 1, 2 * element[2], 2 * element[2] + 1];
 }
 
+function buildDeformationElementCaches(mesh) {
+  return mesh.elements.map((element, elementIndex) => {
+    const nodes = element.map((nodeId) => mesh.nodes[nodeId]);
+    const area = triangleArea(nodes);
+    const B = buildBMatrixT3(nodes);
+    const centroid = mesh.elementData[elementIndex]?.centroid || mesh.cells[mesh.elementCell[elementIndex]]?.centroid || {
+      x: (nodes[0].x + nodes[1].x + nodes[2].x) / 3,
+      y: (nodes[0].y + nodes[1].y + nodes[2].y) / 3
+    };
+    return {
+      elementIndex,
+      cellIndex: mesh.elementCell[elementIndex],
+      element,
+      nodes,
+      area,
+      B,
+      centroid,
+      dofs: Int32Array.from(elementDofMap(element)),
+      freeRowIndices: null,
+      assemblyLocalSlots: null
+    };
+  });
+}
+
+function buildCompressedAssemblyPattern(elementCaches, freeIndexByDof, freeDofCount) {
+  const rowColSets = Array.from({ length: freeDofCount }, () => new Set());
+
+  elementCaches.forEach((elementCache) => {
+    const freeRowIndices = new Int32Array(6);
+    freeRowIndices.fill(-1);
+    for (let localIndex = 0; localIndex < 6; localIndex += 1) {
+      const freeRowIndex = freeIndexByDof.get(elementCache.dofs[localIndex]);
+      if (freeRowIndex != null) freeRowIndices[localIndex] = freeRowIndex;
+    }
+    elementCache.freeRowIndices = freeRowIndices;
+    elementCache.assemblyLocalSlots = new Int32Array(36);
+    elementCache.assemblyLocalSlots.fill(-1);
+    for (let localRow = 0; localRow < 6; localRow += 1) {
+      const freeRowIndex = freeRowIndices[localRow];
+      if (freeRowIndex < 0) continue;
+      for (let localCol = 0; localCol < 6; localCol += 1) {
+        const freeColIndex = freeRowIndices[localCol];
+        if (freeColIndex < 0) continue;
+        rowColSets[freeRowIndex].add(freeColIndex);
+      }
+    }
+  });
+
+  const rowTemplates = rowColSets.map((rowSet, rowIndex) => {
+    const indices = Int32Array.from([...rowSet].sort((left, right) => left - right));
+    const slotByCol = new Map();
+    let diagIndex = -1;
+    for (let slotIndex = 0; slotIndex < indices.length; slotIndex += 1) {
+      slotByCol.set(indices[slotIndex], slotIndex);
+      if (indices[slotIndex] === rowIndex) diagIndex = slotIndex;
+    }
+    return { indices, diagIndex, slotByCol };
+  });
+
+  elementCaches.forEach((elementCache) => {
+    for (let localRow = 0; localRow < 6; localRow += 1) {
+      const freeRowIndex = elementCache.freeRowIndices[localRow];
+      if (freeRowIndex < 0) continue;
+      const template = rowTemplates[freeRowIndex];
+      for (let localCol = 0; localCol < 6; localCol += 1) {
+        const freeColIndex = elementCache.freeRowIndices[localCol];
+        if (freeColIndex < 0) continue;
+        const slotIndex = template.slotByCol.get(freeColIndex);
+        if (slotIndex != null) elementCache.assemblyLocalSlots[localRow * 6 + localCol] = slotIndex;
+      }
+    }
+  });
+
+  return {
+    rows: rowTemplates.map((rowTemplate) => ({
+      indices: rowTemplate.indices,
+      diagIndex: rowTemplate.diagIndex
+    }))
+  };
+}
+
+function createCompressedRowsFromPattern(pattern) {
+  return pattern.rows.map((rowTemplate) => ({
+    indices: rowTemplate.indices,
+    values: new Float64Array(rowTemplate.indices.length),
+    diagIndex: rowTemplate.diagIndex,
+    diag: 0
+  }));
+}
+
+function finalizeCompressedRows(rows) {
+  rows.forEach((row) => {
+    row.diag = row.diagIndex >= 0 ? row.values[row.diagIndex] || 0 : 0;
+  });
+}
+
 function expandSolutionVector(ndof, freeDofs, fixedValues, freeSolution) {
   const U = new Float64Array(ndof);
   fixedValues.forEach((value, dof) => {
@@ -648,12 +771,9 @@ function expandSolutionVector(ndof, freeDofs, fixedValues, freeSolution) {
   return U;
 }
 
-function gatherElementDisplacements(U, element) {
+function gatherElementDisplacements(U, dofs) {
   const out = new Float64Array(6);
-  for (let i = 0; i < 3; i += 1) {
-    out[2 * i] = U[2 * element[i]];
-    out[2 * i + 1] = U[2 * element[i] + 1];
-  }
+  for (let i = 0; i < 6; i += 1) out[i] = U[dofs[i]];
   return out;
 }
 
@@ -665,26 +785,22 @@ function multiplyMat3x6Vec6(matrix, vector) {
   };
 }
 
-function buildElementAnalysisState(mesh, elementIndex, U) {
-  const element = mesh.elements[elementIndex];
-  const nodes = element.map((nodeId) => mesh.nodes[nodeId]);
-  const ue = gatherElementDisplacements(U, element);
-  const area = triangleArea(nodes);
-  const B = buildBMatrixT3(nodes);
-  const strain = multiplyMat3x6Vec6(B, ue);
+function buildElementAnalysisState(elementCache, U) {
+  const ue = gatherElementDisplacements(U, elementCache.dofs);
+  const strain = multiplyMat3x6Vec6(elementCache.B, ue);
   return {
-    element,
-    nodes,
+    element: elementCache.element,
+    nodes: elementCache.nodes,
     ue,
-    area,
-    B,
+    area: elementCache.area,
+    B: elementCache.B,
     strain,
     strainTrial6: liftPlaneStrainStrainTo6(strain)
   };
 }
 
-function recoverElementMaterialResponse(mesh, elementIndex, U, materialPoint, analysisContext = null) {
-  const elementState = buildElementAnalysisState(mesh, elementIndex, U);
+function recoverElementMaterialResponse(elementCache, U, materialPoint, analysisContext = null) {
+  const elementState = buildElementAnalysisState(elementCache, U);
   const previousTrialState = materialPoint.trialState ? cloneMaterialPointState(materialPoint.trialState) : cloneMaterialPointState(materialPoint.committedState);
   const update = materialPoint.materialModel.update({
     strainTrial6: elementState.strainTrial6,
@@ -693,7 +809,7 @@ function recoverElementMaterialResponse(mesh, elementIndex, U, materialPoint, an
     analysisContext: {
       ...analysisContext,
       previousTrialState,
-      elementIndex,
+      elementIndex: elementCache.elementIndex,
       regionIndex: materialPoint.regionIndex
     }
   });
@@ -737,10 +853,11 @@ function buildK0ControlledInitialEffectiveStress6(totalStress6, materialParamete
   ];
 }
 
-function recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, regionConstitutiveByRegion, options, porePressureByElement, warnings) {
+function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, regionConstitutiveByRegion, options, porePressureByElement, warnings) {
   const out = [];
-  for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
-    const cell = mesh.cells[mesh.elementCell[elementIndex]];
+  for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
+    const elementCache = elementCaches[elementIndex];
+    const cell = mesh.cells[elementCache.cellIndex];
     const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
     const materialPoint = createMaterialPoint({
       materialModel: createLinearElasticMaterial(constitutive.materialParameters, warnings),
@@ -748,7 +865,7 @@ function recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, regionConstitutive
       elementIndex,
       regionIndex: cell?.regionIndex ?? -1
     });
-    const response = recoverElementMaterialResponse(mesh, elementIndex, Ugeo, materialPoint, {
+    const response = recoverElementMaterialResponse(elementCache, Ugeo, materialPoint, {
       stage: 'geostatic-initialization'
     });
     const u0 = Math.max(Number(porePressureByElement?.[elementIndex]) || 0, 0);
@@ -759,16 +876,16 @@ function recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, regionConstitutive
 
 async function buildGeostaticInitialization(
   mesh,
+  elementCaches,
   model,
   options,
   warnings,
   regionConstitutiveByRegion,
   ndof,
-  rows,
   compressedRows,
   freeDofs,
   fixedValues,
-  gravityRhs,
+  gravityCompressedRhs,
   porePressureByElement,
   runControl,
   onProgress
@@ -779,7 +896,6 @@ async function buildGeostaticInitialization(
     message: 'Solving the geostatic gravity step for the initial stress field...'
   });
 
-  const gravityCompressedRhs = compressRhs(rows, freeDofs, fixedValues, gravityRhs);
   const geostaticCg = await solveCg(compressedRows, gravityCompressedRhs, null, MAX_CG_ITER, CG_REL_TOL, CG_ABS_TOL, runControl);
   if (geostaticCg.interrupted) {
     throw new Error('Deformation run was interrupted before geostatic initialization became available.');
@@ -799,7 +915,7 @@ async function buildGeostaticInitialization(
   }
 
   const Ugeo = expandSolutionVector(ndof, freeDofs, fixedValues, geostaticCg.solution);
-  const initialField = recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, regionConstitutiveByRegion, options, porePressureByElement, warnings);
+  const initialField = recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, regionConstitutiveByRegion, options, porePressureByElement, warnings);
   const hasInvalidStress = initialField.some((stress6) => !Array.isArray(stress6) || stress6.some((value) => !Number.isFinite(Number(value))));
   if (hasInvalidStress) {
     pushUniqueWarning(
@@ -847,18 +963,19 @@ function resetMaterialPointTrials(materialPoints) {
   });
 }
 
-async function assembleNonlinearSystem(mesh, UTrial, materialPoints, loadRhs, loadFactor, ndof, freeDofs, freeIndexByDof, runControl, stageLabel = 'nonlinear-stage') {
-  const rows = Array.from({ length: ndof }, () => new Map());
-  const internalForce = new Float64Array(ndof);
+async function assembleNonlinearSystem(elementCaches, assemblyPattern, UTrial, materialPoints, loadRhsFreeBase, loadFactor, runControl, stageLabel = 'nonlinear-stage') {
+  const compressedRows = createCompressedRowsFromPattern(assemblyPattern);
+  const internalForceFree = new Float64Array(loadRhsFreeBase.length);
   let activeCount = 0;
   let changedCount = 0;
   let maxEta = 0;
   let maxStrengthReserve = 0;
 
-  for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
+  for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
+    const elementCache = elementCaches[elementIndex];
     const materialPoint = materialPoints[elementIndex];
     const previousTrialActive = materialPoint.trialState?.currentlyMcActive === true;
-    const response = recoverElementMaterialResponse(mesh, elementIndex, UTrial, materialPoint, {
+    const response = recoverElementMaterialResponse(elementCache, UTrial, materialPoint, {
       stage: stageLabel,
       loadFactor
     });
@@ -870,30 +987,35 @@ async function assembleNonlinearSystem(mesh, UTrial, materialPoints, loadRhs, lo
     maxEta = Math.max(maxEta, Number(response.update.diagnostics?.etaMcFinal) || 0);
     maxStrengthReserve = Math.max(maxStrengthReserve, Number(response.update.diagnostics?.localStrengthReserve) || 0);
 
-    addMatrixBlock(rows, elementDofMap(response.element), elementStiffnessT3FromTangent2D(response.nodes, response.tangent2D));
+    addMatrixBlockToCompressedRows(
+      compressedRows,
+      elementCache,
+      elementStiffnessT3FromBAndArea(response.B, response.area, response.tangent2D)
+    );
     const referenceStress2D = extractStress2DFrom6(materialPoint.referenceState?.effectiveStress6);
     const stressIncrement2D = {
       sxx: response.stress2D.sxx - referenceStress2D.sxx,
       syy: response.stress2D.syy - referenceStress2D.syy,
       txy: response.stress2D.txy - referenceStress2D.txy
     };
-    addVectorBlock(internalForce, elementDofMap(response.element), elementInternalForceVector(response.B, stressIncrement2D, response.area));
+    addVectorBlockToFreeRhs(
+      internalForceFree,
+      elementCache.freeRowIndices,
+      elementInternalForceVector(response.B, stressIncrement2D, response.area)
+    );
 
     if (elementIndex % 200 === 0 && (await runCheckpoint(runControl))) {
       throw new Error('Deformation run was interrupted during nonlinear assembly.');
     }
   }
 
-  const targetForce = cloneScaledVector(loadRhs, loadFactor);
-  const residualFull = cloneScaledVector(targetForce, 1);
-  addScaledVectorInPlace(residualFull, internalForce, -1);
-  const compressedRows = compressMatrixRows(rows, freeDofs, freeIndexByDof);
-  const residualFree = gatherFreeVector(residualFull, freeDofs);
-  const targetForceFree = gatherFreeVector(targetForce, freeDofs);
+  finalizeCompressedRows(compressedRows);
+  const targetForceFree = cloneScaledVector(loadRhsFreeBase, loadFactor);
+  const residualFree = cloneScaledVector(targetForceFree, 1);
+  addScaledVectorInPlace(residualFree, internalForceFree, -1);
 
   return {
     compressedRows,
-    residualFull,
     residualFree,
     targetForceFree,
     activeCount,
@@ -904,21 +1026,20 @@ async function assembleNonlinearSystem(mesh, UTrial, materialPoints, loadRhs, lo
 }
 
 async function backtrackPlasticCorrection(
-  mesh,
+  elementCaches,
+  assemblyPattern,
   uBase,
   correction,
   currentResidualNorm,
   materialPoints,
-  loadRhs,
+  loadRhsFreeBase,
   targetLoadFactor,
-  ndof,
-  freeDofs,
-  freeIndexByDof,
   runControl,
   analysisStageLabel
 ) {
-  const stepScales = [1, 0.5, 0.25, 0.125, 0.0625];
+  const stepScales = [1, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625];
   let best = null;
+  const improvementTarget = Math.max(currentResidualNorm * (1 - 1e-4), currentResidualNorm - 1e-8);
 
   for (let index = 0; index < stepScales.length; index += 1) {
     const stepScale = stepScales[index];
@@ -926,14 +1047,12 @@ async function backtrackPlasticCorrection(
     addScaledVectorInPlace(uCandidate, correction, stepScale);
     resetMaterialPointTrials(materialPoints);
     const assembly = await assembleNonlinearSystem(
-      mesh,
+      elementCaches,
+      assemblyPattern,
       uCandidate,
       materialPoints,
-      loadRhs,
+      loadRhsFreeBase,
       targetLoadFactor,
-      ndof,
-      freeDofs,
-      freeIndexByDof,
       runControl,
       analysisStageLabel
     );
@@ -943,22 +1062,57 @@ async function backtrackPlasticCorrection(
         stepScale,
         residualNorm,
         uCandidate,
-        assembly
+        assembly,
+        improved: residualNorm < improvementTarget
       };
     }
-    if (residualNorm < currentResidualNorm) return best;
+    if (residualNorm < improvementTarget) return best;
   }
 
   return best;
 }
 
+function shouldPreferDisplayCandidate(candidate, current) {
+  if (!candidate) return false;
+  if (!current) return true;
+  if ((Number(candidate.loadFactor) || 0) > (Number(current.loadFactor) || 0) + 1e-10) return true;
+  if ((Number(candidate.loadFactor) || 0) < (Number(current.loadFactor) || 0) - 1e-10) return false;
+  return (Number(candidate.residualNorm) || Number.POSITIVE_INFINITY) < (Number(current.residualNorm) || Number.POSITIVE_INFINITY) - 1e-12;
+}
+
+function snapshotDisplayedState(solution, loadFactor, assembly, mode, reason = '') {
+  if (!solution || !(solution.length > 0)) return null;
+  const targetForceFree = assembly?.targetForceFree;
+  const residualFree = assembly?.residualFree;
+  const residualNorm = residualFree
+    ? vectorNorm(residualFree)
+    : (Number.isFinite(Number(assembly?.residualNorm)) ? Number(assembly.residualNorm) : Number.POSITIVE_INFINITY);
+  const rhsNorm = targetForceFree
+    ? vectorNorm(targetForceFree)
+    : (Number.isFinite(Number(assembly?.rhsNorm)) ? Number(assembly.rhsNorm) : 0);
+  const relativeResidualNorm = rhsNorm > CG_NUMERIC_EPS
+    ? residualNorm / rhsNorm
+    : (Number.isFinite(Number(assembly?.relativeResidualNorm)) ? Number(assembly.relativeResidualNorm) : (residualNorm > 0 ? Number.POSITIVE_INFINITY : 0));
+  return {
+    solution: Float64Array.from(solution),
+    loadFactor: Math.max(Number(loadFactor) || 0, 0),
+    residualNorm,
+    relativeResidualNorm,
+    activeCount: Number(assembly?.activeCount) || 0,
+    maxEta: Number(assembly?.maxEta) || 0,
+    stateChanges: Number(assembly?.changedCount) || 0,
+    mode,
+    reason
+  };
+}
+
 async function solveNonlinearStage1(
-  mesh,
-  loadRhs,
+  elementCaches,
+  assemblyPattern,
+  loadRhsFreeBase,
   materialPoints,
   ndof,
   freeDofs,
-  freeIndexByDof,
   fixedValues,
   runControl,
   onProgress,
@@ -976,6 +1130,8 @@ async function solveNonlinearStage1(
   const maxIterations = Math.max(Math.round(Number(options?.nonlinearMaxIterations) || NONLINEAR_MAX_ITER), 1);
   const growthFactor = Math.max(Number(options?.loadStepGrowthFactor) || NONLINEAR_GROWTH_FACTOR, 1);
   const cutbackFactor = Math.min(Math.max(Number(options?.loadStepCutbackFactor) || NONLINEAR_CUTBACK_FACTOR, 0.1), 0.9);
+  const plasticGrowthFactor = Math.max(Number(options?.plasticLoadStepGrowthFactor) || 1.05, 1);
+  const plasticCutbackFactor = Math.min(Math.max(Number(options?.plasticLoadStepCutbackFactor) || 0.4, 0.1), 0.9);
   const minLoadStep = Math.max(Number(options?.minLoadStep) || NONLINEAR_MIN_LOAD_STEP, 1e-4);
   let stepSize = isLinearElastic
     ? 1
@@ -997,6 +1153,12 @@ async function solveNonlinearStage1(
   let peakActiveCount = 0;
   let peakEta = 0;
   let loadStepCounter = 0;
+  const loadStepHistory = [];
+  const residualHistory = [];
+  let terminalFailureReason = '';
+  let terminatedByFailure = false;
+  let bestDisplayedState = null;
+  let warmStartFreeCorrection = null;
   const analysisStageLabel = constitutiveModel === 'mc-plastic'
     ? 'nonlinear-stage-2'
     : constitutiveModel === 'linear-elastic'
@@ -1008,17 +1170,39 @@ async function solveNonlinearStage1(
   while (loadFactorCommitted < 1 - 1e-10) {
     loadStepCounter += 1;
     if (loadStepCounter > maxLoadSteps) {
-      throw new Error(`${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve exceeded the maximum number of load steps (${maxLoadSteps}).`);
+      terminalFailureReason = `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve exceeded the maximum number of load steps (${maxLoadSteps}).`;
+      terminatedByFailure = true;
+      break;
     }
     const remaining = 1 - loadFactorCommitted;
     const actualStep = Math.min(stepSize, remaining);
     const targetLoadFactor = loadFactorCommitted + actualStep;
     const uTrial = Float64Array.from(uCommitted);
     resetMaterialPointTrials(materialPoints);
+    const stepRecord = {
+      index: loadStepCounter,
+      targetLoadFactor,
+      attemptedStep: actualStep,
+      constitutiveModel,
+      status: 'running',
+      iterations: 0,
+      accepted: false,
+      rejected: false,
+      peakActiveCount: 0,
+      peakEta: 0,
+      finalResidualNorm: null,
+      relativeResidualNorm: null,
+      reason: ''
+    };
 
     let converged = false;
     let failureReason = '';
     let lastCorrection = new Float64Array(ndof);
+    let stepBestState = null;
+    const shouldWarmStartLinearSolve = constitutiveModel === 'mc-plastic';
+    let iterationLinearGuess = warmStartFreeCorrection && warmStartFreeCorrection.length === freeDofs.length
+      ? (shouldWarmStartLinearSolve ? Float64Array.from(warmStartFreeCorrection) : null)
+      : null;
 
     onProgress({
       stage: 'solving',
@@ -1031,14 +1215,12 @@ async function solveNonlinearStage1(
       let assembled;
       try {
         assembled = await assembleNonlinearSystem(
-          mesh,
+          elementCaches,
+          assemblyPattern,
           uTrial,
           materialPoints,
-          loadRhs,
+          loadRhsFreeBase,
           targetLoadFactor,
-          ndof,
-          freeDofs,
-          freeIndexByDof,
           runControl,
           analysisStageLabel
         );
@@ -1065,6 +1247,22 @@ async function solveNonlinearStage1(
       lastDisplacementNorm = deltaNorm;
       lastRelativeDisplacement = tolerance.relativeDisplacement;
       lastStateChanges = assembled.changedCount;
+      stepRecord.iterations = iteration;
+      stepRecord.peakActiveCount = Math.max(stepRecord.peakActiveCount, assembled.activeCount);
+      stepRecord.peakEta = Math.max(stepRecord.peakEta, assembled.maxEta);
+      residualHistory.push({
+        loadStepIndex: loadStepCounter,
+        iteration,
+        targetLoadFactor,
+        residualNorm,
+        relativeResidualNorm: tolerance.relativeResidual,
+        displacementCorrectionNorm: deltaNorm,
+        relativeDisplacementCorrectionNorm: tolerance.relativeDisplacement,
+        activeCount: assembled.activeCount,
+        stateChanges: assembled.changedCount
+      });
+      const assembledState = snapshotDisplayedState(uTrial, targetLoadFactor, assembled, 'failed-step-iteration', failureReason);
+      if (shouldPreferDisplayCandidate(assembledState, stepBestState)) stepBestState = assembledState;
 
       const assembledConverged = tolerance.residualConverged && (!requiresDisplacementTolerance || tolerance.displacementConverged);
       if (iteration > 1 && assembledConverged && (!requiresStableActiveSet || assembled.changedCount === 0)) {
@@ -1076,7 +1274,7 @@ async function solveNonlinearStage1(
       const cg = await linearSolve(
         assembled.compressedRows,
         assembled.residualFree,
-        null,
+        shouldWarmStartLinearSolve ? iterationLinearGuess : null,
         MAX_CG_ITER,
         CG_REL_TOL,
         CG_ABS_TOL,
@@ -1100,27 +1298,31 @@ async function solveNonlinearStage1(
       lastCorrection = expandSolutionVector(ndof, freeDofs, fixedValues, cg.solution);
       let correctionNorm = vectorNorm(lastCorrection);
       let refreshed = null;
+      let lineSearchStepScale = 1;
       if (constitutiveModel === 'mc-plastic' && correctionNorm > 0) {
         try {
           const lineSearch = await backtrackPlasticCorrection(
-            mesh,
+            elementCaches,
+            assemblyPattern,
             uTrial,
             lastCorrection,
             residualNorm,
             materialPoints,
-            loadRhs,
+            loadRhsFreeBase,
             targetLoadFactor,
-            ndof,
-            freeDofs,
-            freeIndexByDof,
             runControl,
             analysisStageLabel
           );
           if (lineSearch) {
+            if (!lineSearch.improved) {
+              failureReason = 'plastic line search stalled';
+              break;
+            }
             copyVectorInto(uTrial, lineSearch.uCandidate);
             lastCorrection = cloneScaledVector(lastCorrection, lineSearch.stepScale);
             correctionNorm = vectorNorm(lastCorrection);
             refreshed = lineSearch.assembly;
+            lineSearchStepScale = lineSearch.stepScale;
           } else {
             addScaledVectorInPlace(uTrial, lastCorrection, 1);
           }
@@ -1130,6 +1332,10 @@ async function solveNonlinearStage1(
         }
       } else {
         addScaledVectorInPlace(uTrial, lastCorrection, 1);
+      }
+      iterationLinearGuess = shouldWarmStartLinearSolve ? Float64Array.from(cg.solution) : null;
+      if (shouldWarmStartLinearSolve && lineSearchStepScale !== 1) {
+        for (let i = 0; i < iterationLinearGuess.length; i += 1) iterationLinearGuess[i] *= lineSearchStepScale;
       }
       const updatedSolutionNorm = vectorNorm(uTrial);
       const postSolveTolerance = nonlinearToleranceState(
@@ -1141,20 +1347,27 @@ async function solveNonlinearStage1(
       );
       lastDisplacementNorm = correctionNorm;
       lastRelativeDisplacement = postSolveTolerance.relativeDisplacement;
+      if (
+        constitutiveModel === 'mc-plastic' &&
+        iteration >= 6 &&
+        lineSearchStepScale <= 0.125 &&
+        !postSolveTolerance.residualConverged
+      ) {
+        failureReason = 'plastic correction required excessive damping';
+        break;
+      }
       const postSolveConverged = postSolveTolerance.residualConverged && (!requiresDisplacementTolerance || postSolveTolerance.displacementConverged);
       if ((isLinearElastic || postSolveConverged) && (!requiresStableActiveSet || assembled.changedCount === 0)) {
         if (!refreshed) {
           resetMaterialPointTrials(materialPoints);
           try {
             refreshed = await assembleNonlinearSystem(
-              mesh,
+              elementCaches,
+              assemblyPattern,
               uTrial,
               materialPoints,
-              loadRhs,
+              loadRhsFreeBase,
               targetLoadFactor,
-              ndof,
-              freeDofs,
-              freeIndexByDof,
               runControl,
               analysisStageLabel
             );
@@ -1175,6 +1388,8 @@ async function solveNonlinearStage1(
           updatedSolutionNorm,
           options
         );
+        const refreshedState = snapshotDisplayedState(uTrial, targetLoadFactor, refreshed, 'failed-step-refresh', failureReason);
+        if (shouldPreferDisplayCandidate(refreshedState, stepBestState)) stepBestState = refreshedState;
         lastResidualNorm = refreshedResidualNorm;
         lastRelativeResidual = refreshedTolerance.relativeResidual;
         lastDisplacementNorm = correctionNorm;
@@ -1196,31 +1411,101 @@ async function solveNonlinearStage1(
       materialPoints.forEach((materialPoint) => commitMaterialPoint(materialPoint));
       uCommitted = Float64Array.from(uTrial);
       loadFactorCommitted = targetLoadFactor;
+      const committedAssembly = stepBestState && Math.abs((Number(stepBestState.loadFactor) || 0) - targetLoadFactor) <= 1e-10
+        ? {
+            residualFree: null,
+            targetForceFree: null,
+            activeCount: stepBestState.activeCount,
+            maxEta: stepBestState.maxEta,
+            changedCount: stepBestState.stateChanges
+          }
+        : null;
+      const committedState = snapshotDisplayedState(
+        uCommitted,
+        loadFactorCommitted,
+        committedAssembly || {
+          residualFree: new Float64Array([lastResidualNorm]),
+          targetForceFree: new Float64Array([Math.max(lastResidualNorm / Math.max(lastRelativeResidual || 0, 1e-12), 0)]),
+          activeCount: finalActiveCount,
+          maxEta: peakEta,
+          changedCount: lastStateChanges
+        },
+        'committed'
+      );
+      if (shouldPreferDisplayCandidate(committedState, bestDisplayedState)) bestDisplayedState = committedState;
       acceptedSteps += 1;
-      stepSize = Math.min(actualStep * growthFactor, 1 - loadFactorCommitted || actualStep);
+      stepRecord.status = 'accepted';
+      stepRecord.accepted = true;
+      stepRecord.finalResidualNorm = lastResidualNorm;
+      stepRecord.relativeResidualNorm = lastRelativeResidual;
+      loadStepHistory.push(stepRecord);
+      warmStartFreeCorrection = shouldWarmStartLinearSolve && iterationLinearGuess ? Float64Array.from(iterationLinearGuess) : null;
+      const effectiveGrowthFactor = constitutiveModel === 'mc-plastic' && stepRecord.peakActiveCount > 0
+        ? Math.min(growthFactor, plasticGrowthFactor)
+        : growthFactor;
+      stepSize = Math.min(actualStep * effectiveGrowthFactor, 1 - loadFactorCommitted || actualStep);
       continue;
     }
 
     rejectedSteps += 1;
-    stepSize = actualStep * cutbackFactor;
+    stepRecord.status = 'rejected';
+    stepRecord.rejected = true;
+    stepRecord.finalResidualNorm = lastResidualNorm;
+    stepRecord.relativeResidualNorm = lastRelativeResidual;
+    stepRecord.reason = failureReason || 'nonlinear iterations exhausted';
+    loadStepHistory.push(stepRecord);
+    if (shouldPreferDisplayCandidate(stepBestState, bestDisplayedState)) {
+      bestDisplayedState = {
+        ...stepBestState,
+        reason: stepRecord.reason
+      };
+    }
+    warmStartFreeCorrection = shouldWarmStartLinearSolve && iterationLinearGuess
+      ? Float64Array.from(iterationLinearGuess)
+      : warmStartFreeCorrection;
+    const effectiveCutbackFactor = constitutiveModel === 'mc-plastic' && stepRecord.peakActiveCount > 0
+      ? Math.min(cutbackFactor, plasticCutbackFactor)
+      : cutbackFactor;
+    stepSize = actualStep * effectiveCutbackFactor;
     resetMaterialPointTrials(materialPoints);
     if (stepSize < minLoadStep - 1e-12) {
-      throw new Error(
-        `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve could not converge the load step to ${(100 * targetLoadFactor).toFixed(1)}% (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
-      );
+      terminalFailureReason = `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve could not converge the load step to ${(100 * targetLoadFactor).toFixed(1)}% (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`;
+      terminatedByFailure = true;
+      break;
     }
   }
 
+  const fallbackCommittedState = snapshotDisplayedState(
+    uCommitted,
+    loadFactorCommitted,
+    {
+      residualFree: new Float64Array([lastResidualNorm]),
+      targetForceFree: new Float64Array([Math.max(lastResidualNorm / Math.max(lastRelativeResidual || 0, 1e-12), 0)]),
+      activeCount: finalActiveCount,
+      maxEta: peakEta,
+      changedCount: lastStateChanges
+    },
+    'committed',
+    terminalFailureReason
+  );
+  if (shouldPreferDisplayCandidate(fallbackCommittedState, bestDisplayedState)) bestDisplayedState = fallbackCommittedState;
+
+  if (terminatedByFailure && !bestDisplayedState) {
+    throw new Error(terminalFailureReason || `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve failed before a usable displacement state became available.`);
+  }
+
+  const displayedState = terminatedByFailure ? (bestDisplayedState || fallbackCommittedState) : (fallbackCommittedState || bestDisplayedState);
+  const displayedSolution = displayedState?.solution || uCommitted;
+  const displayedLoadFactor = Math.max(Number(displayedState?.loadFactor) || loadFactorCommitted || 0, 0);
+
   resetMaterialPointTrials(materialPoints);
   const finalAssembly = await assembleNonlinearSystem(
-    mesh,
-    uCommitted,
+    elementCaches,
+    assemblyPattern,
+    displayedSolution,
     materialPoints,
-    loadRhs,
-    loadFactorCommitted,
-    ndof,
-    freeDofs,
-    freeIndexByDof,
+    loadRhsFreeBase,
+    displayedLoadFactor,
     runControl,
     analysisStageLabel
   );
@@ -1241,7 +1526,7 @@ async function solveNonlinearStage1(
   lastStateChanges = finalAssembly.changedCount;
 
   return {
-    solution: uCommitted,
+    solution: displayedSolution,
     acceptedSteps,
     rejectedSteps,
     totalNonlinearIterations,
@@ -1254,7 +1539,14 @@ async function solveNonlinearStage1(
     finalActiveCount,
     peakActiveCount,
     peakEta,
-    loadFactorCommitted
+    loadFactorCommitted,
+    displayedLoadFactor,
+    converged: !terminatedByFailure,
+    convergenceState: terminatedByFailure ? 'partial' : 'converged',
+    displayedStateMode: displayedState?.mode || 'committed',
+    failureReason: terminatedByFailure ? (displayedState?.reason || terminalFailureReason) : '',
+    loadStepHistory,
+    residualHistory
   };
 }
 
@@ -1280,6 +1572,7 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
   let maxHorizontalDisplacement = 0;
   let activeMcElementCount = 0;
   let exceededMcElementCount = 0;
+  let maxEquivalentPlasticStrain = 0;
   nodalDisplacements.forEach((item) => {
     maxSettlement = Math.max(maxSettlement, -(item?.uy || 0));
     maxHorizontalDisplacement = Math.max(maxHorizontalDisplacement, Math.abs(item?.ux || 0));
@@ -1291,23 +1584,26 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
     maxDeltaSigmaYy = Math.max(maxDeltaSigmaYy, -Number(item?.stressIncrement?.syy || 0));
     if (item?.materialDiagnostics?.currentlyMcActive) activeMcElementCount += 1;
     if (item?.materialDiagnostics?.hasEverExceededMc) exceededMcElementCount += 1;
+    maxEquivalentPlasticStrain = Math.max(maxEquivalentPlasticStrain, Number(item?.materialState?.accumulatedPlasticStrain) || 0);
   });
   return {
     maxSettlement,
     maxHorizontalDisplacement,
     maxMcEta,
     maxDeltaSigmaYy,
+    maxEquivalentPlasticStrain,
     activeMcElementCount,
     exceededMcElementCount
   };
 }
 
-function recoverElementResults(mesh, U, materialPoints, porePressureByElement = null) {
+function recoverElementResults(mesh, elementCaches, U, materialPoints, porePressureByElement = null) {
   const out = [];
-  for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
-    const cell = mesh.cells[mesh.elementCell[elementIndex]];
+  for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
+    const elementCache = elementCaches[elementIndex];
+    const cell = mesh.cells[elementCache.cellIndex];
     const materialPoint = materialPoints[elementIndex];
-    const response = recoverElementMaterialResponse(mesh, elementIndex, U, materialPoint, {
+    const response = recoverElementMaterialResponse(elementCache, U, materialPoint, {
       stage: 'final-recovery'
     });
     materialPoint.trialState = response.update.trialState;
@@ -1348,11 +1644,13 @@ function recoverElementResults(mesh, U, materialPoints, porePressureByElement = 
     };
     const principal = response.update.diagnostics?.principal || principalStress2DCompressionPositive(sigmaEff);
     const mc = response.update.diagnostics?.mc || mohrCoulombIndicator(principal, materialPoint.materialParameters);
+    const displayedMaterialState = snapshotMaterialPointState(materialPoint.trialState);
+    const committedMaterialState = snapshotMaterialPointState(materialPoint.committedState);
     out.push({
       elementIndex,
       regionIndex: cell?.regionIndex ?? -1,
       area: response.area,
-      centroid: mesh.elementData[elementIndex]?.centroid || cell?.centroid || { x: 0, y: 0 },
+      centroid: elementCache.centroid || cell?.centroid || { x: 0, y: 0 },
       strain: response.strain,
       stressIncrement,
       stressIncrementGeo: sigmaIncrementGeo,
@@ -1368,12 +1666,16 @@ function recoverElementResults(mesh, U, materialPoints, porePressureByElement = 
       principal,
       mc,
       referenceMaterialState: snapshotMaterialPointState(materialPoint.referenceState),
-      materialState: snapshotMaterialPointState(materialPoint.committedState),
+      committedMaterialState,
+      materialState: displayedMaterialState,
       materialDiagnostics: {
         constitutiveModel: response.update.diagnostics?.constitutiveModel || materialPoint.materialModel?.kind || 'linear-elastic',
-        activeYieldSurface: materialPoint.committedState?.activeYieldSurface || response.update.diagnostics?.activeYieldSurface || 'NONE',
-        currentlyMcActive: materialPoint.committedState?.currentlyMcActive === true,
-        hasEverExceededMc: materialPoint.committedState?.hasEverExceededMc === true,
+        activeYieldSurface: displayedMaterialState?.activeYieldSurface || response.update.diagnostics?.activeYieldSurface || 'NONE',
+        currentlyMcActive: displayedMaterialState?.currentlyMcActive === true,
+        hasEverExceededMc: displayedMaterialState?.hasEverExceededMc === true,
+        committedActiveYieldSurface: committedMaterialState?.activeYieldSurface || 'NONE',
+        committedCurrentlyMcActive: committedMaterialState?.currentlyMcActive === true,
+        committedHasEverExceededMc: committedMaterialState?.hasEverExceededMc === true,
         localStrengthReserve: Number(response.update.diagnostics?.localStrengthReserve),
         etaMcFinal: Number(response.update.diagnostics?.etaMcFinal),
         stateChanged: false
@@ -1446,6 +1748,7 @@ export function sampleDeformationState(mesh, result, x, y) {
         epsilonXx: Number(result.elementResults?.[triangleIndex]?.strain?.exx || 0),
         epsilonYy: Number(result.elementResults?.[triangleIndex]?.strain?.eyy || 0),
         gammaXy: Number(result.elementResults?.[triangleIndex]?.strain?.gxy || 0),
+        equivalentPlasticStrain: Number(result.elementResults?.[triangleIndex]?.materialState?.accumulatedPlasticStrain || 0),
         deltaSigmaYy: -Number(result.elementResults?.[triangleIndex]?.stressIncrement?.syy || 0),
         sigmaYyEffInit: Number(result.elementResults?.[triangleIndex]?.initialEffectiveStress?.syy || 0),
         sigmaYyEff: Number(result.elementResults?.[triangleIndex]?.effectiveStress?.syy || 0),
@@ -1493,7 +1796,10 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     displacementRelTol: Math.max(Number(input?.options?.displacementRelTol) || NONLINEAR_DISPLACEMENT_REL_TOL, 1e-8),
     displacementAbsTol: Math.max(Number(input?.options?.displacementAbsTol) || NONLINEAR_DISPLACEMENT_ABS_TOL, 1e-12),
     loadStepGrowthFactor: Math.max(Number(input?.options?.loadStepGrowthFactor) || NONLINEAR_GROWTH_FACTOR, 1),
-    loadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.loadStepCutbackFactor) || NONLINEAR_CUTBACK_FACTOR, 0.1), 0.9)
+    loadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.loadStepCutbackFactor) || NONLINEAR_CUTBACK_FACTOR, 0.1), 0.9),
+    plasticLoadStepGrowthFactor: Math.max(Number(input?.options?.plasticLoadStepGrowthFactor) || 1.05, 1),
+    plasticLoadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.plasticLoadStepCutbackFactor) || 0.4, 0.1), 0.9),
+    useUnsymmetricPlasticSolver: input?.options?.useUnsymmetricPlasticSolver === true
   };
   const load = normalizeLoad(model, options, warnings);
   addDomainExtentWarnings(model, load, warnings);
@@ -1513,6 +1819,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   );
 
   const ndof = 2 * mesh.nodes.length;
+  const elementCaches = buildDeformationElementCaches(mesh);
   const rows = Array.from({ length: ndof }, () => new Map());
   const loadRhs = new Float64Array(ndof);
   const gravityRhs = new Float64Array(ndof);
@@ -1525,24 +1832,18 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     message: 'Assembling the plane-strain stiffness matrix and geostatic gravity load...'
   });
 
-  for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
-    const element = mesh.elements[elementIndex];
-    const nodes = element.map((nodeId) => mesh.nodes[nodeId]);
-    const cell = mesh.cells[mesh.elementCell[elementIndex]];
+  for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
+    const elementCache = elementCaches[elementIndex];
+    const cell = mesh.cells[elementCache.cellIndex];
     const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
-    const dofs = elementDofMap(element);
-    const centroid = mesh.elementData[elementIndex]?.centroid || cell?.centroid || {
-      x: (nodes[0].x + nodes[1].x + nodes[2].x) / 3,
-      y: (nodes[0].y + nodes[1].y + nodes[2].y) / 3
-    };
-    const initialPorePressure = sampleInitialPorePressure(model, centroid.x, centroid.y, options, warnings);
+    const initialPorePressure = sampleInitialPorePressure(model, elementCache.centroid.x, elementCache.centroid.y, options, warnings);
     const gammaBulk = initialBulkUnitWeightFromPorePressure(constitutive.materialParameters, initialPorePressure);
     addMatrixBlock(
       rows,
-      dofs,
-      elementStiffnessT3FromTangent2D(nodes, extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6))
+      elementCache.dofs,
+      elementStiffnessT3FromBAndArea(elementCache.B, elementCache.area, extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6))
     );
-    addVectorBlock(gravityRhs, dofs, elementGravityVectorT3(nodes, gammaBulk));
+    addVectorBlock(gravityRhs, elementCache.dofs, elementGravityVectorT3FromArea(elementCache.area, gammaBulk));
     porePressureByElement[elementIndex] = initialPorePressure;
     if (elementIndex % 250 === 0 && (await runCheckpoint(runControl))) {
       throw new Error('Deformation run was interrupted during stiffness assembly.');
@@ -1568,18 +1869,21 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     freeDofs.push(dof);
   }
   const compressedRows = compressMatrixRows(rows, freeDofs, freeIndexByDof);
+  const gravityCompressedRhs = gatherFreeVector(gravityRhs, freeDofs);
+  const loadRhsFreeBase = gatherFreeVector(loadRhs, freeDofs);
+  const nonlinearAssemblyPattern = buildCompressedAssemblyPattern(elementCaches, freeIndexByDof, freeDofs.length);
   const geostatic = await buildGeostaticInitialization(
     mesh,
+    elementCaches,
     model,
     options,
     warnings,
     regionConstitutiveByRegion,
     ndof,
-    rows,
     compressedRows,
     freeDofs,
     fixedValues,
-    gravityRhs,
+    gravityCompressedRhs,
     porePressureByElement,
     runControl,
     onProgress
@@ -1593,17 +1897,27 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
 
   const materialPoints = buildElementMaterialPoints(mesh, regionConstitutiveByRegion, geostatic.initialField, options, warnings);
   const nonlinear = await solveNonlinearStage1(
-    mesh,
-    loadRhs,
+    elementCaches,
+    nonlinearAssemblyPattern,
+    loadRhsFreeBase,
     materialPoints,
     ndof,
     freeDofs,
-    freeIndexByDof,
     fixedValues,
     runControl,
     onProgress,
     options
   );
+  if (!nonlinear.converged) {
+    const shownLoadFactor = 100 * Math.max(Number(nonlinear.displayedLoadFactor) || 0, 0);
+    const stableLoadFactor = 100 * Math.max(Number(nonlinear.loadFactorCommitted) || 0, 0);
+    const showingNearFailureState = (Number(nonlinear.displayedLoadFactor) || 0) > (Number(nonlinear.loadFactorCommitted) || 0) + 1e-8;
+    warnings.push(
+      showingNearFailureState
+        ? `Showing a non-converged near-failure state at ${shownLoadFactor.toFixed(1)}% load. The last fully converged state reached ${stableLoadFactor.toFixed(1)}%. Reason: ${nonlinear.failureReason || 'nonlinear iterations exhausted'}. Use this result qualitatively.`
+        : `The deformation solve did not fully converge beyond ${stableLoadFactor.toFixed(1)}% load. Showing the last fully converged state. Reason: ${nonlinear.failureReason || 'nonlinear iterations exhausted'}.`
+    );
+  }
   const U = nonlinear.solution;
 
   onProgress({
@@ -1612,7 +1926,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     message: 'Recovering stresses, settlements, and MC utilization...'
   });
 
-  const elementResults = recoverElementResults(mesh, U, materialPoints, porePressureByElement);
+  const elementResults = recoverElementResults(mesh, elementCaches, U, materialPoints, porePressureByElement);
   const nodalDisplacements = mesh.nodes.map((_node, nodeId) => ({
     ux: U[2 * nodeId],
     uy: U[2 * nodeId + 1]
@@ -1654,6 +1968,11 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
       acceptedLoadSteps: nonlinear.acceptedSteps,
       rejectedLoadSteps: nonlinear.rejectedSteps,
       loadFactorCommitted: nonlinear.loadFactorCommitted,
+      displayedLoadFactor: nonlinear.displayedLoadFactor,
+      converged: nonlinear.converged,
+      convergenceState: nonlinear.convergenceState,
+      displayedStateMode: nonlinear.displayedStateMode,
+      failureReason: nonlinear.failureReason,
       residualNorm: nonlinear.residualNorm,
       relativeResidualNorm: nonlinear.relativeResidualNorm,
       displacementCorrectionNorm: nonlinear.displacementCorrectionNorm,
@@ -1662,7 +1981,9 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
       peakActiveMcElements: nonlinear.peakActiveCount,
       peakMcEta: nonlinear.peakEta,
       lastStateChanges: nonlinear.lastStateChanges,
-      freeDofs: freeDofs.length
+      freeDofs: freeDofs.length,
+      loadStepHistory: nonlinear.loadStepHistory,
+      residualHistory: nonlinear.residualHistory
     },
     timing: {
       totalMs: performance.now() - startedAt

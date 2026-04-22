@@ -3798,7 +3798,20 @@ function stage6Defaults(){
           meshTargetArea:null,
           meshTargetAreaAuto:true,
           useSeepagePorePressures:false,
-          displacementScale:1
+          displacementScale:1,
+          nonlinearMaxIterations:24,
+          initialLoadStep:0.25,
+          minLoadStep:1/2048,
+          maxLoadSteps:256,
+          residualRelTol:1e-4,
+          residualAbsTol:1e-3,
+          displacementRelTol:1e-5,
+          displacementAbsTol:1e-8,
+          loadStepGrowthFactor:1.25,
+          loadStepCutbackFactor:0.5,
+          plasticLoadStepGrowthFactor:1.05,
+          plasticLoadStepCutbackFactor:0.4,
+          useUnsymmetricPlasticSolver:false
         },
         display:{
           contourMode:'settlement',
@@ -3965,7 +3978,7 @@ function ensureStage6State(){
   if(!['head','porePressure','gradient','flow','qx','qy','normalFlow'].includes(bishop.lineProbe.seepageQuantity)){
     bishop.lineProbe.seepageQuantity = 'head';
   }
-  if(!['settlement','ux','uy','uTotal','epsilonXx','epsilonYy','gammaXy','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.lineProbe.deformationQuantity)){
+  if(!['settlement','ux','uy','uTotal','epsilonXx','epsilonYy','gammaXy','equivalentPlasticStrain','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.lineProbe.deformationQuantity)){
     bishop.lineProbe.deformationQuantity = 'settlement';
   }
   bishop.lineProbe.copyMessage = typeof bishop.lineProbe.copyMessage === 'string' ? bishop.lineProbe.copyMessage : '';
@@ -4106,6 +4119,22 @@ function ensureStage6State(){
   bishop.deformation.options.outOfPlaneLength = Math.max(+bishop.deformation.options.outOfPlaneLength || 10, 0.1);
   bishop.deformation.options.useSeepagePorePressures = !!bishop.deformation.options.useSeepagePorePressures;
   bishop.deformation.options.displacementScale = Math.max(+bishop.deformation.options.displacementScale || 1, 0.05);
+  bishop.deformation.options.nonlinearMaxIterations = Math.max(Math.round(+bishop.deformation.options.nonlinearMaxIterations || 24), 1);
+  bishop.deformation.options.initialLoadStep = Math.min(Math.max(+bishop.deformation.options.initialLoadStep || 0.25, 0.0001), 1);
+  bishop.deformation.options.minLoadStep = Math.max(+bishop.deformation.options.minLoadStep || (1/2048), 0.000001);
+  if(bishop.deformation.options.initialLoadStep < bishop.deformation.options.minLoadStep){
+    bishop.deformation.options.initialLoadStep = bishop.deformation.options.minLoadStep;
+  }
+  bishop.deformation.options.maxLoadSteps = Math.max(Math.round(+bishop.deformation.options.maxLoadSteps || 256), 1);
+  bishop.deformation.options.residualRelTol = Math.max(+bishop.deformation.options.residualRelTol || 1e-4, 1e-8);
+  bishop.deformation.options.residualAbsTol = Math.max(+bishop.deformation.options.residualAbsTol || 1e-3, 1e-9);
+  bishop.deformation.options.displacementRelTol = Math.max(+bishop.deformation.options.displacementRelTol || 1e-5, 1e-8);
+  bishop.deformation.options.displacementAbsTol = Math.max(+bishop.deformation.options.displacementAbsTol || 1e-8, 1e-12);
+  bishop.deformation.options.loadStepGrowthFactor = Math.max(+bishop.deformation.options.loadStepGrowthFactor || 1.25, 1);
+  bishop.deformation.options.loadStepCutbackFactor = Math.min(Math.max(+bishop.deformation.options.loadStepCutbackFactor || 0.5, 0.1), 0.9);
+  bishop.deformation.options.plasticLoadStepGrowthFactor = Math.max(+bishop.deformation.options.plasticLoadStepGrowthFactor || 1.05, 1);
+  bishop.deformation.options.plasticLoadStepCutbackFactor = Math.min(Math.max(+bishop.deformation.options.plasticLoadStepCutbackFactor || 0.4, 0.1), 0.9);
+  bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver === true;
   const rawDeformationMeshTargetArea = Number(bishop.deformation.options.meshTargetArea);
   if(bishop.deformation.options.meshTargetAreaAuto == null){
     bishop.deformation.options.meshTargetAreaAuto = !(
@@ -4121,7 +4150,7 @@ function ensureStage6State(){
   if(!bishop.deformation.display || typeof bishop.deformation.display !== 'object') bishop.deformation.display = stage6Defaults().bishop.deformation.display;
   if(bishop.deformation.display.contourMode === 'syy') bishop.deformation.display.contourMode = 'deltaSigmaYy';
   if(bishop.deformation.display.contourMode === 'mc') bishop.deformation.display.contourMode = 'mcEta';
-  if(!['settlement','ux','uy','uTotal','epsilonXx','epsilonYy','gammaXy','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'settlement';
+  if(!['settlement','ux','uy','uTotal','epsilonXx','epsilonYy','gammaXy','equivalentPlasticStrain','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'settlement';
   bishop.deformation.display.showContours = bishop.deformation.display.showContours !== false;
   bishop.deformation.display.showContourLines = bishop.deformation.display.showContourLines !== false;
   bishop.deformation.display.showContourLegend = bishop.deformation.display.showContourLegend !== false;
@@ -4621,6 +4650,7 @@ function stage6BishopDeformationContourMeta(mode){
   if(mode === 'epsilonXx') return {label:'εₓₓ,fin', axisTitle:'εₓₓ,fin (%)', unit:'%', scale:100, digits:3, signed:true};
   if(mode === 'epsilonYy') return {label:'εᵧᵧ,fin', axisTitle:'εᵧᵧ,fin (%)', unit:'%', scale:100, digits:3, signed:true};
   if(mode === 'gammaXy') return {label:'γₓᵧ,fin', axisTitle:'γₓᵧ,fin (%)', unit:'%', scale:100, digits:3, signed:true};
+  if(mode === 'equivalentPlasticStrain') return {label:'ε̄ᵖ,acc', axisTitle:'ε̄ᵖ,acc (%)', unit:'%', scale:100, digits:3, signed:false};
   if(mode === 'deltaSigmaYy') return {label:'Δσᵧᵧ', axisTitle:'Δσᵧᵧ (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
   if(mode === 'sigmaYyEffInit') return {label:'σ′ᵧᵧ,init', axisTitle:'σ′ᵧᵧ,init (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
   if(mode === 'sigmaYyEff') return {label:'σ′ᵧᵧ,fin', axisTitle:'σ′ᵧᵧ,fin (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
@@ -4643,6 +4673,7 @@ function stage6BishopDeformationContourOptions(){
     'epsilonXx',
     'epsilonYy',
     'gammaXy',
+    'equivalentPlasticStrain',
     'deltaSigmaYy',
     'sigmaYyEffInit',
     'sigmaYyEff',
@@ -4670,6 +4701,7 @@ function stage6BishopDeformationElementContourValue(result, elementIndex, mode){
   if(mode === 'epsilonXx') return Number(item?.strain?.exx || 0);
   if(mode === 'epsilonYy') return Number(item?.strain?.eyy || 0);
   if(mode === 'gammaXy') return Number(item?.strain?.gxy || 0);
+  if(mode === 'equivalentPlasticStrain') return Number(item?.materialState?.accumulatedPlasticStrain || 0);
   if(mode === 'deltaSigmaYy') return -Number(item?.stressIncrement?.syy || 0);
   if(mode === 'sigmaYyEffInit') return Number(item?.initialEffectiveStress?.syy || 0);
   if(mode === 'sigmaYyEff') return Number(item?.effectiveStress?.syy || 0);
@@ -5796,8 +5828,16 @@ function stage6BishopEnsureDeformationWorker(){
       deformation.rejectReason = deformation.status === 'success'
         ? ''
         : 'The deformation solver returned no result.';
+      const solver = payload.output?.solver || {};
+      const convergenceState = solver?.convergenceState || 'converged';
+      const shownLoadFactor = 100 * Math.max(Number(solver?.displayedLoadFactor) || 0, 0);
+      const stableLoadFactor = 100 * Math.max(Number(solver?.loadFactorCommitted) || 0, 0);
       deformation.progress.message = deformation.status === 'success'
-        ? `Deformation screen ready. Max settlement ${((payload.output?.summaries?.maxSettlement || 0) * 1000).toFixed(1)} mm; max MC eta ${(payload.output?.summaries?.maxMcEta || 0).toFixed(2)}.`
+        ? (
+            convergenceState === 'partial'
+              ? `Showing a non-converged near-failure deformation state at ${shownLoadFactor.toFixed(1)}% load${shownLoadFactor > stableLoadFactor + 1e-6 ? ` (last fully converged state ${stableLoadFactor.toFixed(1)}%)` : ''}. Max settlement ${((payload.output?.summaries?.maxSettlement || 0) * 1000).toFixed(1)} mm; max MC eta ${(payload.output?.summaries?.maxMcEta || 0).toFixed(2)}.`
+              : `Deformation screen ready. Max settlement ${((payload.output?.summaries?.maxSettlement || 0) * 1000).toFixed(1)} mm; max MC eta ${(payload.output?.summaries?.maxMcEta || 0).toFixed(2)}.`
+          )
         : 'Deformation solve failed.';
       renderStage6();
       return;
@@ -6025,7 +6065,20 @@ function stage6BishopRunDeformation(){
         loadMode,
         totalLoad:bishop.deformation?.options?.totalLoad,
         outOfPlaneLength:bishop.deformation?.options?.outOfPlaneLength,
-        useSeepagePorePressures:bishop.deformation?.options?.useSeepagePorePressures === true
+        useSeepagePorePressures:bishop.deformation?.options?.useSeepagePorePressures === true,
+        nonlinearMaxIterations:bishop.deformation?.options?.nonlinearMaxIterations,
+        initialLoadStep:bishop.deformation?.options?.initialLoadStep,
+        minLoadStep:bishop.deformation?.options?.minLoadStep,
+        maxLoadSteps:bishop.deformation?.options?.maxLoadSteps,
+        residualRelTol:bishop.deformation?.options?.residualRelTol,
+        residualAbsTol:bishop.deformation?.options?.residualAbsTol,
+        displacementRelTol:bishop.deformation?.options?.displacementRelTol,
+        displacementAbsTol:bishop.deformation?.options?.displacementAbsTol,
+        loadStepGrowthFactor:bishop.deformation?.options?.loadStepGrowthFactor,
+        loadStepCutbackFactor:bishop.deformation?.options?.loadStepCutbackFactor,
+        plasticLoadStepGrowthFactor:bishop.deformation?.options?.plasticLoadStepGrowthFactor,
+        plasticLoadStepCutbackFactor:bishop.deformation?.options?.plasticLoadStepCutbackFactor,
+        useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true
       }
     }
   });
@@ -6349,6 +6402,7 @@ function stage6BishopLineProbeOptions(workspace){
       epsilonXx:'#0B8F6A',
       epsilonYy:'#17865D',
       gammaXy:'#1F7A8C',
+      equivalentPlasticStrain:'#B53A6D',
       deltaSigmaYy:'#BA7517',
       sigmaYyEffInit:'#9E7A2E',
       sigmaYyEff:'#C47B10',
@@ -6584,6 +6638,7 @@ function stage6BishopBuildLineProbe(workspace, measurementMetrics){
         else if(quantity === 'epsilonXx') value = 100 * (state.epsilonXx || 0);
         else if(quantity === 'epsilonYy') value = 100 * (state.epsilonYy || 0);
         else if(quantity === 'gammaXy') value = 100 * (state.gammaXy || 0);
+        else if(quantity === 'equivalentPlasticStrain') value = 100 * (state.equivalentPlasticStrain || 0);
         else if(quantity === 'deltaSigmaYy') value = state.deltaSigmaYy;
         else if(quantity === 'sigmaYyEffInit') value = state.sigmaYyEffInit;
         else if(quantity === 'sigmaYyEff') value = state.sigmaYyEff;
@@ -10041,6 +10096,19 @@ function renderStage6BishopApp(){
   const deformationMeshTargetAreaAuto = deformation.options?.meshTargetAreaAuto !== false;
   const deformationAutoMeshTargetArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
   const deformationMeshTargetArea = stage6BishopResolvedDeformationMeshTargetArea(bishop);
+  const deformationNonlinearMaxIterations = Math.max(Math.round(Number(deformation.options?.nonlinearMaxIterations) || 24), 1);
+  const deformationInitialLoadStep = Math.min(Math.max(Number(deformation.options?.initialLoadStep) || 0.25, 0.0001), 1);
+  const deformationMinLoadStep = Math.max(Number(deformation.options?.minLoadStep) || (1/2048), 0.000001);
+  const deformationMaxLoadSteps = Math.max(Math.round(Number(deformation.options?.maxLoadSteps) || 256), 1);
+  const deformationResidualRelTol = Math.max(Number(deformation.options?.residualRelTol) || 1e-4, 1e-8);
+  const deformationResidualAbsTol = Math.max(Number(deformation.options?.residualAbsTol) || 1e-3, 1e-9);
+  const deformationDisplacementRelTol = Math.max(Number(deformation.options?.displacementRelTol) || 1e-5, 1e-8);
+  const deformationDisplacementAbsTol = Math.max(Number(deformation.options?.displacementAbsTol) || 1e-8, 1e-12);
+  const deformationLoadStepGrowthFactor = Math.max(Number(deformation.options?.loadStepGrowthFactor) || 1.25, 1);
+  const deformationLoadStepCutbackFactor = Math.min(Math.max(Number(deformation.options?.loadStepCutbackFactor) || 0.5, 0.1), 0.9);
+  const deformationPlasticLoadStepGrowthFactor = Math.max(Number(deformation.options?.plasticLoadStepGrowthFactor) || 1.05, 1);
+  const deformationPlasticLoadStepCutbackFactor = Math.min(Math.max(Number(deformation.options?.plasticLoadStepCutbackFactor) || 0.4, 0.1), 0.9);
+  const deformationUseUnsymmetricPlasticSolver = deformation.options?.useUnsymmetricPlasticSolver === true;
   const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
   const deformationTotalLoad = Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null;
@@ -10077,6 +10145,12 @@ function renderStage6BishopApp(){
     : null;
   const deformationRejectedSteps = Number.isFinite(deformation.result?.solver?.rejectedLoadSteps)
     ? deformation.result.solver.rejectedLoadSteps
+    : null;
+  const deformationCommittedLoadFactor = Number.isFinite(deformation.result?.solver?.loadFactorCommitted)
+    ? deformation.result.solver.loadFactorCommitted
+    : null;
+  const deformationDisplayedLoadFactor = Number.isFinite(deformation.result?.solver?.displayedLoadFactor)
+    ? deformation.result.solver.displayedLoadFactor
     : null;
   const deformationPeakActive = Number.isFinite(deformation.result?.solver?.peakActiveMcElements)
     ? deformation.result.solver.peakActiveMcElements
@@ -10564,6 +10638,8 @@ function renderStage6BishopApp(){
                   Geostatic CG iterations: <strong>${deformationGeostaticIterations ?? '—'}</strong><br>
                   Geostatic residual: <strong>${deformationGeostaticResidual}</strong><br>
                   Load steps: <strong>${deformationAcceptedSteps ?? '—'}</strong>${deformationRejectedSteps ? ` accepted, ${deformationRejectedSteps} cut back` : ''}<br>
+                  Load factor shown: <strong>${deformationDisplayedLoadFactor != null ? `${(100 * deformationDisplayedLoadFactor).toFixed(1)} %` : '—'}</strong><br>
+                  Last converged load factor: <strong>${deformationCommittedLoadFactor != null ? `${(100 * deformationCommittedLoadFactor).toFixed(1)} %` : '—'}</strong><br>
                   Nonlinear iterations: <strong>${deformation.result?.solver?.nonlinearIterations || 0}</strong><br>
                   CG iterations: <strong>${deformation.result?.solver?.linearIterations || 0}</strong><br>
                   Residual: <strong>${Number.isFinite(deformation.result?.solver?.residualNorm) ? Number(deformation.result.solver.residualNorm).toExponential(2) : '—'}</strong><br>
@@ -10575,6 +10651,53 @@ function renderStage6BishopApp(){
                     ${deformationWarnings.map((warning)=>stage6EscAttr(warning)).join('<br>')}
                   </div>
                 ` : ''}
+              </div>
+            </details>
+            <details class="st6-adv" data-st6details="bishop-deformation-solver-settings"${stage6DetailsOpen('bishop-deformation-solver-settings')}>
+              <summary>Solver settings</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">These settings control how aggressively the nonlinear deformation solver searches for equilibrium before it cuts the load step back or stops. Smaller initial steps and more conservative growth help near plastic collapse; tighter tolerances demand a cleaner residual before a step is accepted.</div>
+                <label style="font-size:11px;color:var(--tx2)">Nonlinear iterations per load step
+                  <input type="number" step="1" min="1" value="${deformationNonlinearMaxIterations}" onchange="stage6BishopSetField('deformation.options.nonlinearMaxIterations', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Initial load step (0-1)
+                  <input type="number" step="0.01" min="${deformationMinLoadStep.toFixed(6)}" max="1" value="${deformationInitialLoadStep.toFixed(3)}" onchange="stage6BishopSetField('deformation.options.initialLoadStep', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Minimum load step
+                  <input type="number" step="0.0001" min="0.000001" value="${deformationMinLoadStep.toFixed(6)}" onchange="stage6BishopSetField('deformation.options.minLoadStep', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Maximum load steps
+                  <input type="number" step="1" min="1" value="${deformationMaxLoadSteps}" onchange="stage6BishopSetField('deformation.options.maxLoadSteps', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Residual relative tolerance
+                  <input type="number" step="0.00001" min="0.00000001" value="${deformationResidualRelTol.toExponential(3)}" onchange="stage6BishopSetField('deformation.options.residualRelTol', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Residual absolute tolerance
+                  <input type="number" step="0.000001" min="0.000000001" value="${deformationResidualAbsTol.toExponential(3)}" onchange="stage6BishopSetField('deformation.options.residualAbsTol', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Displacement relative tolerance
+                  <input type="number" step="0.000001" min="0.00000001" value="${deformationDisplacementRelTol.toExponential(3)}" onchange="stage6BishopSetField('deformation.options.displacementRelTol', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Displacement absolute tolerance
+                  <input type="number" step="0.000000001" min="0.000000000001" value="${deformationDisplacementAbsTol.toExponential(3)}" onchange="stage6BishopSetField('deformation.options.displacementAbsTol', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Load-step growth factor
+                  <input type="number" step="0.01" min="1" value="${deformationLoadStepGrowthFactor.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.loadStepGrowthFactor', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Load-step cutback factor
+                  <input type="number" step="0.01" min="0.1" max="0.9" value="${deformationLoadStepCutbackFactor.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.loadStepCutbackFactor', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Plastic growth factor
+                  <input type="number" step="0.01" min="1" value="${deformationPlasticLoadStepGrowthFactor.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.plasticLoadStepGrowthFactor', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Plastic cutback factor
+                  <input type="number" step="0.01" min="0.1" max="0.9" value="${deformationPlasticLoadStepCutbackFactor.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.plasticLoadStepCutbackFactor', this.value)">
+                </label>
+                <label class="st6-bishop-check">
+                  <input type="checkbox" ${deformationUseUnsymmetricPlasticSolver ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useUnsymmetricPlasticSolver', this.checked)">
+                  Use the unsymmetric Stage 2 linear solver path
+                </label>
+                <div class="st6-help">The unsymmetric Stage 2 path is mainly for solver experimentation and exacter plastic tangents later on. The current 2.1 implementation is usually more robust on the default symmetric approximate tangent path.</div>
               </div>
             </details>
   `;
@@ -11249,8 +11372,8 @@ function renderStage6BishopApp(){
       </div>
       ${stage6NoteHtml(workspace === 'deformation'
         ? [
-            {level:'warn', text:'This deformation workspace is a drained small-strain plane-strain tool on T3 triangles. Stage 1 reduced stiffness remains the standard screen, while Stage 2 elastoplastic is available as an advanced experimental path.'},
-            {level:'info', text:'Stage 2 is true plasticity in the sense that it stores plastic strain and performs a local return map, but the current first implementation still uses a smoothed Mohr-Coulomb / Drucker-Prager-style plastic surface rather than exact face-edge-apex Mohr-Coulomb.'},
+            {level:'warn', text:'This deformation workspace is a drained small-strain plane-strain tool on T3 triangles. Stage 1 reduced stiffness remains the standard screen, while Stage 2.1 smoothed elastoplasticity is available as the advanced plastic path.'},
+            {level:'info', text:'Stage 2.1 stores plastic strain and performs a local return map on a smoothed Mohr-Coulomb / Drucker-Prager-style surface. Exact face-edge-apex Mohr-Coulomb and tension-cutoff plasticity are later upgrades.'},
             {level:'info', text:'The soil model is still derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section, and retaining walls are not yet active mechanical elements in the deformation solve.'},
             {level:'info', text:'Initial stress is built from a geostatic gravity step on the shared mesh, so slopes and wall-supported sections develop in-situ shear stress before the load increment. If that initialization fails numerically, the solver falls back to the older flat-ground K0 field and warns you explicitly.'},
             {level:'info', text:'MC utilization is still reported as the familiar visualization metric. That is useful for interpretation, but exact classical Mohr-Coulomb corner return and tension-cutoff plasticity are still later upgrades.'}

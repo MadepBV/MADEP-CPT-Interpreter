@@ -1400,22 +1400,22 @@
 					id: 'deformation-stage6-model',
 					title: '13.1 Present constitutive route and engineering meaning',
 					paragraphs: [
-						'The current deformation tool is intentionally the <strong>easy Mohr-Coulomb route</strong>: a <strong>small-strain plane-strain</strong> displacement solve with a <strong>Stage 1 MC-active reduced-stiffness</strong> material update and Mohr-Coulomb effective-stress screening.',
-						'This means the field quantities are useful for settlement shape, displacement trends, and proximity-to-yield visualisation, but the solver still does <strong>not</strong> produce plastic strains, return-mapped stresses, or an emergent failure mechanism.',
+						'The current deformation tool offers two Mohr-Coulomb routes on the shared section mesh: the conservative <strong>Stage 1 MC-active reduced-stiffness</strong> screen and the newer <strong>Stage 2.1 smoothed elastoplastic</strong> return-mapping solve.',
+						'Stage 1 remains the default screening path for quick settlement and hotspot work. Stage 2.1 adds stored plastic strain, non-associated flow through ψ, and a smoothed Mohr-Coulomb / Drucker-Prager-style return map with load-step cutback on the shared plane-strain T3 mesh.',
 						'The Stage 1 branch is conservative across the monotonic load ramp: once an element exceeds MC during that screening run, it remains on the reduced-stiffness branch for the rest of the increment sequence.',
 						'Tension cut-off is reported as a diagnostic warning state, but it does not enter the reduced-shear Stage 1 branch.',
-						'For this current Stage 1 hack, the imported CPT layer model also carries a soil-dependent <strong>r<sub>shear</sub></strong> factor into the deformation material set. Granular soils keep a milder reduction and cohesive soils a stronger one, and the factor remains editable in the deformation material table.'
+						'For the current Stage 1 screen, the imported CPT layer model also carries a soil-dependent <strong>r<sub>shear</sub></strong> factor into the deformation material set. Granular soils keep a milder reduction and cohesive soils a stronger one, and the factor remains editable in the deformation material table.'
 					],
 					equations: [
-						'σ = Dε &nbsp;&nbsp; with elastic or MC-active reduced-stiffness plane-strain D',
+						'σ = Dε &nbsp;&nbsp; with elastic, Stage 1 reduced-stiffness, or Stage 2.1 smoothed elastoplastic plane-strain D',
 						'η<sub>MC</sub> = (σ′<sub>1</sub> − σ′<sub>3</sub>) / [(σ′<sub>1</sub> + σ′<sub>3</sub>)sinφ′ + 2c′cosφ′]'
 					],
 					bullets: [
 						'The default displacement solve uses a conservative <strong>monotonic Stage 1 MC-active reduced-stiffness</strong> constitutive screen.',
-						'<strong>Mohr-Coulomb is not yet full elastoplasticity</strong>; no plastic strain or return mapping is stored.',
+						'<strong>Stage 2.1</strong> stores plastic strain and performs a smoothed return map, but it is <strong>not yet exact classical face-edge-apex Mohr-Coulomb</strong>.',
 						'The tool should be read as <strong>long-term drained screening</strong>, not as an immediate undrained clay check.',
 						'The current implementation uses the Stage 4/5 <strong>E<sub>mc</sub></strong> value directly as the elastic modulus E.',
-						'The stored dilation angle ψ is carried through the data model, but it is not used until plasticity exists.'
+						'The stored dilation angle ψ is active in Stage 2.1 plastic flow, while exact corner return and tension-cutoff plasticity remain later upgrades.'
 					]
 				},
 				{

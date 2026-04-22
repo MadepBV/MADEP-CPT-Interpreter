@@ -254,6 +254,40 @@ function evaluateSmoothedPlasticSurface(stress6, angleDeg, cohesion, materialPar
   };
 }
 
+function smoothSurfaceGradient6(stress6, angleDeg, cohesion, materialParameters = {}, includeCohesion = true) {
+  const sxx = -(Number(stress6?.[VOIGT_XX]) || 0);
+  const syy = -(Number(stress6?.[VOIGT_YY]) || 0);
+  const szz = -(Number(stress6?.[VOIGT_ZZ]) || 0);
+  const txy = -(Number(stress6?.[VOIGT_XY]) || 0);
+  const tyz = -(Number(stress6?.[VOIGT_YZ]) || 0);
+  const txz = -(Number(stress6?.[VOIGT_XZ]) || 0);
+  const p = (sxx + syy + szz) / 3;
+  const dxx = sxx - p;
+  const dyy = syy - p;
+  const dzz = szz - p;
+  const J2 = 0.5 * (dxx * dxx + dyy * dyy + dzz * dzz + 2 * (txy * txy + tyz * tyz + txz * txz));
+  const q0 = smoothQScale(materialParameters);
+  const qTilde = Math.sqrt(Math.max(3 * J2, 0) + q0 * q0);
+  const { alpha } = pressureDependentMcParameters(angleDeg, includeCohesion ? cohesion : 0);
+  const qFactor = qTilde > 1e-12 ? 3 / (2 * qTilde) : 0;
+  const tensorGradientCompressionPositive = [
+    qFactor * dxx - alpha / 3,
+    qFactor * dyy - alpha / 3,
+    qFactor * dzz - alpha / 3,
+    qFactor * txy,
+    qFactor * tyz,
+    qFactor * txz
+  ];
+  return [
+    -tensorGradientCompressionPositive[VOIGT_XX],
+    -tensorGradientCompressionPositive[VOIGT_YY],
+    -tensorGradientCompressionPositive[VOIGT_ZZ],
+    -2 * tensorGradientCompressionPositive[VOIGT_XY],
+    -2 * tensorGradientCompressionPositive[VOIGT_YZ],
+    -2 * tensorGradientCompressionPositive[VOIGT_XZ]
+  ];
+}
+
 function gradientStepForStressComponent(stress6, index, materialParameters) {
   const baseScale = Math.max(Math.abs(Number(stress6?.[index]) || 0), Number(materialParameters?.yieldTolerancePref) || 100, 1);
   const stepScale = Math.max(Number(materialParameters?.gradientStepScale) || 1e-7, 1e-10);
@@ -285,27 +319,22 @@ function toEngineeringStrainLikeGradient6(tensorGradientLike6) {
 }
 
 function smoothYieldGradient6(stress6, materialParameters) {
-  return toEngineeringStrainLikeGradient6(finiteDifferenceStressGradient6(
-    stress6,
-    (candidate) => evaluateSmoothedPlasticSurface(candidate, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true).f,
-    materialParameters
-  ));
+  return smoothSurfaceGradient6(stress6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
 }
 
 function smoothPotentialGradient6(stress6, materialParameters) {
-  return toEngineeringStrainLikeGradient6(finiteDifferenceStressGradient6(
-    stress6,
-    (candidate) => evaluateSmoothedPlasticSurface(candidate, materialParameters?.psiEffDeg ?? materialParameters?.psi, 0, materialParameters, false).f,
-    materialParameters
-  ));
+  return smoothSurfaceGradient6(stress6, materialParameters?.psiEffDeg ?? materialParameters?.psi, 0, materialParameters, false);
 }
 
-function computeApproximateElastoplasticTangent(D_e, yieldGradient6, potentialGradient6) {
+function computeApproximateElastoplasticTangent(D_e, yieldGradient6, potentialGradient6, materialParameters = null) {
   const Dm = multiplyMatrix6x6Vector6(D_e, potentialGradient6);
   const Dn = multiplyMatrix6x6Vector6(D_e, yieldGradient6);
   const denominator = dotVector6(yieldGradient6, Dm);
   if (!(Number.isFinite(denominator) && Math.abs(denominator) > 1e-12)) return cloneMatrix6(D_e);
-  return symmetrizeMatrix6(subtractMatrix6(D_e, outerProduct6(Dm, Dn, 1 / denominator)));
+  const tangent = subtractMatrix6(D_e, outerProduct6(Dm, Dn, 1 / denominator));
+  return materialParameters?.symmetrizeEpTangent === true
+    ? symmetrizeMatrix6(tangent)
+    : tangent;
 }
 
 function localReturnTolerance(materialParameters, mcTrial) {
@@ -315,71 +344,28 @@ function localReturnTolerance(materialParameters, mcTrial) {
 function returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, materialParameters, mcTrial) {
   let stress6 = cloneVector6(stressTrial6);
   let deltaPlasticStrain6 = zeroVector6();
-  const trialYieldGradient6 = smoothYieldGradient6(stressTrial6, materialParameters);
-  const trialPotentialGradient6 = smoothPotentialGradient6(stressTrial6, materialParameters);
-  const flowStressDirection6 = multiplyMatrix6x6Vector6(elasticTangent6x6, trialPotentialGradient6);
   const tolerance = localReturnTolerance(materialParameters, mcTrial);
-  const maxIterations = Math.max(Math.round(Number(materialParameters?.localMaxIterations) || 25), 1);
+  const maxIterations = Math.max(Math.round(Number(materialParameters?.localMaxIterations) || 40), 1);
   const smoothTrial = evaluateSmoothedPlasticSurface(stressTrial6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
-  const denominator = dotVector6(trialYieldGradient6, flowStressDirection6);
-  if (!(Number.isFinite(denominator) && denominator > 1e-12)) {
-    return { converged: false, reason: 'bad plastic denominator' };
-  }
   const fTrial = Number(smoothTrial?.f) || 0;
   if (Math.abs(fTrial) <= tolerance) {
-    return {
-      converged: true,
-      iterations: 0,
-      stress6,
-      plasticStrainIncrement6: deltaPlasticStrain6,
-      algorithmicTangent6x6: computeApproximateElastoplasticTangent(elasticTangent6x6, trialYieldGradient6, trialPotentialGradient6),
-      activeYieldSurface: YIELD_SURFACE_MC_SHEAR
-    };
-  }
-
-  let lambdaLow = 0;
-  let fLow = fTrial;
-  let lambdaHigh = Math.max(fTrial / denominator, tolerance / Math.max(denominator, 1e-12), 1e-10);
-  let fHigh = fLow;
-  let bracketed = false;
-
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const candidateStress6 = subtractVector6(stressTrial6, scaleVector6(flowStressDirection6, lambdaHigh));
-    const candidateSmooth = evaluateSmoothedPlasticSurface(candidateStress6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
-    fHigh = Number(candidateSmooth?.f) || 0;
-    if (Math.abs(fHigh) <= tolerance) {
-      stress6 = candidateStress6;
-      deltaPlasticStrain6 = scaleVector6(trialPotentialGradient6, lambdaHigh);
-      const finalYieldGradient6 = smoothYieldGradient6(stress6, materialParameters);
-      const finalPotentialGradient6 = smoothPotentialGradient6(stress6, materialParameters);
+    const trialYieldGradient6 = smoothYieldGradient6(stressTrial6, materialParameters);
+    const trialPotentialGradient6 = smoothPotentialGradient6(stressTrial6, materialParameters);
       return {
         converged: true,
-        iterations: attempt + 1,
+        iterations: 0,
         stress6,
         plasticStrainIncrement6: deltaPlasticStrain6,
-        algorithmicTangent6x6: computeApproximateElastoplasticTangent(elasticTangent6x6, finalYieldGradient6, finalPotentialGradient6),
-        activeYieldSurface: YIELD_SURFACE_MC_SHEAR
+        algorithmicTangent6x6: computeApproximateElastoplasticTangent(elasticTangent6x6, trialYieldGradient6, trialPotentialGradient6, materialParameters),
+        activeYieldSurface: YIELD_SURFACE_MC_SHEAR,
+        yieldResidual: fTrial
       };
     }
-    if (fHigh <= 0) {
-      bracketed = true;
-      break;
-    }
-    lambdaHigh *= 2;
-  }
-
-  if (!bracketed) {
-    return { converged: false, reason: 'could not bracket plastic return' };
-  }
 
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    const lambdaMid = 0.5 * (lambdaLow + lambdaHigh);
-    const candidateStress6 = subtractVector6(stressTrial6, scaleVector6(flowStressDirection6, lambdaMid));
-    const candidateSmooth = evaluateSmoothedPlasticSurface(candidateStress6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
-    const fMid = Number(candidateSmooth?.f) || 0;
-    if (Math.abs(fMid) <= tolerance || Math.abs(lambdaHigh - lambdaLow) <= 1e-12 * Math.max(1, lambdaHigh)) {
-      stress6 = candidateStress6;
-      deltaPlasticStrain6 = scaleVector6(trialPotentialGradient6, lambdaMid);
+    const smoothCurrent = evaluateSmoothedPlasticSurface(stress6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
+    const fCurrent = Number(smoothCurrent?.f) || 0;
+    if (Math.abs(fCurrent) <= tolerance) {
       const finalYieldGradient6 = smoothYieldGradient6(stress6, materialParameters);
       const finalPotentialGradient6 = smoothPotentialGradient6(stress6, materialParameters);
       return {
@@ -387,20 +373,62 @@ function returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, materialParam
         iterations: iteration,
         stress6,
         plasticStrainIncrement6: deltaPlasticStrain6,
-        algorithmicTangent6x6: computeApproximateElastoplasticTangent(elasticTangent6x6, finalYieldGradient6, finalPotentialGradient6),
-        activeYieldSurface: YIELD_SURFACE_MC_SHEAR
+        algorithmicTangent6x6: computeApproximateElastoplasticTangent(elasticTangent6x6, finalYieldGradient6, finalPotentialGradient6, materialParameters),
+        activeYieldSurface: YIELD_SURFACE_MC_SHEAR,
+        yieldResidual: fCurrent
       };
     }
-    if (fMid > 0) {
-      lambdaLow = lambdaMid;
-      fLow = fMid;
-    } else {
-      lambdaHigh = lambdaMid;
-      fHigh = fMid;
+
+    const yieldGradient6 = smoothYieldGradient6(stress6, materialParameters);
+    const potentialGradient6 = smoothPotentialGradient6(stress6, materialParameters);
+    const flowStressDirection6 = multiplyMatrix6x6Vector6(elasticTangent6x6, potentialGradient6);
+    const denominator = dotVector6(yieldGradient6, flowStressDirection6);
+    if (!(Number.isFinite(denominator) && denominator > 1e-12)) {
+      return { converged: false, reason: 'bad plastic denominator' };
     }
+
+    let deltaLambda = fCurrent / denominator;
+    if (!(Number.isFinite(deltaLambda) && deltaLambda >= 0)) {
+      return { converged: false, reason: 'negative plastic multiplier' };
+    }
+
+    let accepted = null;
+    let best = null;
+    for (const stepScale of [1, 0.5, 0.25, 0.125, 0.0625]) {
+      const effectiveDeltaLambda = deltaLambda * stepScale;
+      if (!(effectiveDeltaLambda > 0)) continue;
+      const candidateStress6 = subtractVector6(stress6, scaleVector6(flowStressDirection6, effectiveDeltaLambda));
+      const candidateSmooth = evaluateSmoothedPlasticSurface(candidateStress6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
+      const fCandidate = Number(candidateSmooth?.f) || 0;
+      if (!Number.isFinite(fCandidate)) continue;
+      const candidate = {
+        stress6: candidateStress6,
+        f: fCandidate,
+        deltaLambda: effectiveDeltaLambda,
+        plasticStrainIncrement6: scaleVector6(potentialGradient6, effectiveDeltaLambda)
+      };
+      if (!best || Math.abs(fCandidate) < Math.abs(best.f)) best = candidate;
+      if (Math.abs(fCandidate) <= tolerance || Math.abs(fCandidate) < Math.abs(fCurrent) * 0.9) {
+        accepted = candidate;
+        break;
+      }
+    }
+
+    const next = accepted || best;
+    if (!next || !(Math.abs(next.f) < Math.abs(fCurrent) - 1e-12 || Math.abs(next.f) <= tolerance)) {
+      return { converged: false, reason: 'local line search could not reduce the smoothed yield residual' };
+    }
+
+    stress6 = next.stress6;
+    deltaPlasticStrain6 = addVector6(deltaPlasticStrain6, next.plasticStrainIncrement6);
   }
 
-  return { converged: false, reason: `max local iterations reached (bracket ${fLow.toExponential(3)} to ${fHigh.toExponential(3)})` };
+  const smoothFinal = evaluateSmoothedPlasticSurface(stress6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
+  return {
+    converged: false,
+    reason: `max local iterations reached (f=${(Number(smoothFinal?.f) || 0).toExponential(3)})`,
+    yieldResidual: Number(smoothFinal?.f) || 0
+  };
 }
 
 export function createMaterialPointState(overrides = {}) {
@@ -864,6 +892,8 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
           etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
           fMcFinal: Number(finalMc?.F) || 0,
           etaMcFinal: Number.isFinite(Number(finalMc?.eta)) ? Number(finalMc.eta) : Number.POSITIVE_INFINITY,
+          smoothYieldTrial: Number(smoothTrial?.f) || 0,
+          smoothYieldFinal: Number(local?.yieldResidual) || 0,
           yieldTolerance,
           plasticIncrementNorm: vectorNorm6(plasticStrainIncrement6),
           localIterations: local.iterations,

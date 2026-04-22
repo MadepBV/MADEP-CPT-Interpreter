@@ -284,6 +284,10 @@ await runCase('Case 0d Stage 2 plastic material accumulates plastic strain under
   assert((update?.diagnostics?.localIterations || 0) > 0, 'Stage 2 return mapping should take one or more local corrector iterations');
   assert((update?.trialState?.accumulatedPlasticStrain || 0) > 0, 'Stage 2 material points should accumulate equivalent plastic strain after yield');
   assert(
+    Math.abs(Number(update?.diagnostics?.smoothYieldFinal) || 0) <= Math.max(Number(update?.diagnostics?.yieldTolerance) || 0, 1e-8),
+    `Stage 2 local return mapping should drive the smoothed yield residual back inside tolerance (got ${update?.diagnostics?.smoothYieldFinal})`
+  );
+  assert(
     (update?.trialState?.plasticStrain6 || []).some((value) => Math.abs(Number(value) || 0) > 1e-10),
     'Stage 2 material points should store a non-zero plastic strain increment after yield'
   );
@@ -309,6 +313,46 @@ await runCase('Case 0e Stage 2 leaves tension cut-off as a diagnostic-only state
   assert(update?.trialState?.currentlyMcActive === false, 'Stage 2 should not route pure tension-cutoff states into the MC shear return map');
   assert(update?.trialState?.activeYieldSurface === 'TENSION', 'Stage 2 should preserve the tension-cutoff diagnostic surface');
   assert((update?.trialState?.accumulatedPlasticStrain || 0) === 0, 'Stage 2 should not accumulate plastic strain for tension-diagnostic-only states');
+});
+
+await runCase('Case 0f Stage 2 unloads elastically around a plastic strain state', async () => {
+  const prepared = prepareMechanicalMaterial({
+    ...baseModel().regions[0].material,
+    Emc: 18000,
+    cEff: 1.5,
+    phiEffDeg: 18,
+    psiEffDeg: 5,
+    yieldTolerance: 1e-6
+  });
+  const material = createMCPlasticMaterial(prepared);
+  const initialState = seedMaterialPointStateFromInitialStress({ sxx: 15, syy: 30, txy: 0 }, prepared);
+  const plasticLoading = material.update({
+    strainTrial6: liftPlaneStrainStrainTo6({ exx: 0, eyy: -0.03, gxy: 0.008 }),
+    committedState: initialState,
+    materialParameters: prepared
+  });
+  const unloaded = material.update({
+    strainTrial6: liftPlaneStrainStrainTo6({ exx: 0, eyy: -0.015, gxy: 0.002 }),
+    committedState: plasticLoading.trialState,
+    materialParameters: prepared
+  });
+  const elasticD2d = planeStrainElasticMatrix(prepared.Emc, prepared.nu);
+
+  assert((plasticLoading?.trialState?.accumulatedPlasticStrain || 0) > 0, 'Stage 2 unload/reload test should first create a plastic strain state');
+  assert((unloaded?.diagnostics?.localIterations || 0) === 0, 'elastic unloading from a plastic state should not trigger another local return map');
+  assert(unloaded?.trialState?.currentlyMcActive === false, 'elastic unloading should leave the Stage 2 material point off the active plastic surface');
+  approxRelative(
+    extractTangent2DFrom6(unloaded.tangent6x6)[2][2],
+    elasticD2d[2][2],
+    1e-12,
+    'elastic unloading from a plastic state should recover the elastic tangent'
+  );
+  approxRelative(
+    unloaded?.trialState?.accumulatedPlasticStrain || 0,
+    plasticLoading?.trialState?.accumulatedPlasticStrain || 0,
+    1e-12,
+    'elastic unloading should preserve the committed equivalent plastic strain'
+  );
 });
 
 await runCase('Case 1 pressure-mode Stage 1 deformation solves and settles beneath the load', async () => {
@@ -391,6 +435,176 @@ await runCase('Case 1b linear-elastic comparison path converges in one full Newt
   assert((elastic?.solver?.nonlinearIterations || 0) <= 2, 'linear-elastic path should converge in one solve plus at most one refreshed equilibrium check');
   assert((elastic?.solver?.loadFactorCommitted || 0) === 1, 'linear-elastic path should commit the full load factor');
   assert((elastic?.solver?.relativeResidualNorm || 0) <= 1.5e-5, `linear-elastic path should leave a small final relative residual (got ${elastic?.solver?.relativeResidualNorm})`);
+});
+
+await runCase('Case 1c Stage 2 plastic footing softens relative to the elastic comparison', async () => {
+  const model = baseModel({
+    material: {
+      Emc: 25000,
+      nu: 0.3,
+      K0nc: 0.5,
+      cEff: 5,
+      phiEffDeg: 30,
+      psiEffDeg: 5,
+      gamma: 18,
+      gammaSat: 20
+    },
+    surfaceLoad: {
+      xStart: 11,
+      xEnd: 13,
+      q: 160
+    }
+  });
+
+  const elastic = await analyzeDeformationModel({
+    model,
+    options: {
+      meshTargetArea: 0.4,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'linear-elastic'
+    }
+  });
+
+  const plastic = await analyzeDeformationModel({
+    model,
+    options: {
+      meshTargetArea: 0.4,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      nonlinearMaxIterations: 30,
+      maxLoadSteps: 20,
+      initialLoadStep: 0.25,
+      minLoadStep: 0.001
+    }
+  });
+
+  const plasticElementCount = (plastic?.elementResults || []).filter((item) => (Number(item?.materialState?.accumulatedPlasticStrain) || 0) > 0).length;
+
+  assert((plastic?.solver?.peakActiveMcElements || 0) > 0, 'Stage 2 plastic footing case should activate plastic zones');
+  assert(plasticElementCount > 0, 'Stage 2 plastic footing case should accumulate plastic strain in one or more elements');
+  assert((plastic?.summaries?.maxEquivalentPlasticStrain || 0) > 0, 'Stage 2 plastic footing case should report non-zero accumulated equivalent plastic strain');
+  assert((plastic?.solver?.acceptedLoadSteps || 0) > 1, 'Stage 2 plastic footing case should require multiple accepted load steps once yielding starts');
+  assert((plastic?.solver?.loadStepHistory || []).some((step) => step?.accepted), 'Stage 2 plastic footing case should record accepted load steps');
+  assert((plastic?.solver?.residualHistory || []).length >= (plastic?.solver?.nonlinearIterations || 0), 'Stage 2 plastic footing case should retain residual history through the nonlinear iterations');
+  assert(
+    (plastic?.summaries?.maxSettlement || 0) > (elastic?.summaries?.maxSettlement || 0) * 1.02,
+    `Stage 2 plastic footing case should settle more than the elastic comparison (got ${plastic?.summaries?.maxSettlement} vs ${elastic?.summaries?.maxSettlement})`
+  );
+});
+
+await runCase('Case 1d Stage 2 plastic slope converges with yielding and accumulated plastic strain', async () => {
+  const model = slopedModel({
+    material: {
+      Emc: 22000,
+      nu: 0.3,
+      K0nc: 0.55,
+      cEff: 6,
+      phiEffDeg: 28,
+      psiEffDeg: 4,
+      gamma: 18,
+      gammaSat: 20
+    },
+    surfaceLoad: {
+      xStart: 6,
+      xEnd: 8,
+      q: 55
+    }
+  });
+
+  const elastic = await analyzeDeformationModel({
+    model,
+    options: {
+      meshTargetArea: 0.45,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'linear-elastic'
+    }
+  });
+
+  const plastic = await analyzeDeformationModel({
+    model,
+    options: {
+      meshTargetArea: 0.45,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      nonlinearMaxIterations: 40,
+      maxLoadSteps: 80,
+      initialLoadStep: 0.1,
+      minLoadStep: 0.0005
+    }
+  });
+
+  assert((plastic?.solver?.loadFactorCommitted || 0) === 1, 'Stage 2 plastic slope benchmark should converge the full target load');
+  assert((plastic?.solver?.peakActiveMcElements || 0) > 0, 'Stage 2 plastic slope benchmark should activate one or more yielded zones');
+  assert((plastic?.summaries?.maxEquivalentPlasticStrain || 0) > 0, 'Stage 2 plastic slope benchmark should accumulate non-zero equivalent plastic strain');
+  assert((plastic?.solver?.acceptedLoadSteps || 0) > 1, 'Stage 2 plastic slope benchmark should use multiple nonlinear load steps once yielding starts');
+  assert(
+    (plastic?.summaries?.maxSettlement || 0) >= (elastic?.summaries?.maxSettlement || 0),
+    'Stage 2 plastic slope benchmark should not settle less than the elastic comparison once plasticity activates'
+  );
+});
+
+await runCase('Case 1e Stage 2 returns a flagged near-failure state when the nonlinear solve cannot fully converge', async () => {
+  const model = slopedModel({
+    material: {
+      Emc: 22000,
+      nu: 0.3,
+      K0nc: 0.55,
+      cEff: 6,
+      phiEffDeg: 28,
+      psiEffDeg: 4,
+      gamma: 18,
+      gammaSat: 20
+    },
+    surfaceLoad: {
+      xStart: 6,
+      xEnd: 8,
+      q: 60
+    }
+  });
+
+  const output = await analyzeDeformationModel({
+    model,
+    options: {
+      meshTargetArea: 0.45,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      nonlinearMaxIterations: 40,
+      maxLoadSteps: 80,
+      initialLoadStep: 0.1,
+      minLoadStep: 0.0005
+    }
+  });
+
+  assert(output?.solver?.convergenceState === 'partial', 'a near-failure Stage 2 slope case should return a partial flagged result rather than throwing');
+  assert((output?.solver?.displayedLoadFactor || 0) >= (output?.solver?.loadFactorCommitted || 0), 'the displayed near-failure state should be at or beyond the last fully converged load factor');
+  assert((output?.summaries?.maxEquivalentPlasticStrain || 0) > 0, 'the near-failure Stage 2 result should still carry accumulated plastic strain');
+  const maxDisplayedPlasticStrain = Math.max(
+    0,
+    ...(output?.elementResults || []).map((item) => Number(item?.materialState?.accumulatedPlasticStrain) || 0)
+  );
+  const maxCommittedPlasticStrain = Math.max(
+    0,
+    ...(output?.elementResults || []).map((item) => Number(item?.committedMaterialState?.accumulatedPlasticStrain) || 0)
+  );
+  assert(
+    maxDisplayedPlasticStrain >= maxCommittedPlasticStrain,
+    'the displayed Stage 2 near-failure state should not plot less accumulated plastic strain than the last committed state'
+  );
+  assert(
+    maxDisplayedPlasticStrain > maxCommittedPlasticStrain + 1e-12,
+    'the plotted Stage 2 near-failure material state should reflect the displayed state beyond the last committed state'
+  );
+  assert((output?.warnings || []).some((warning) => String(warning).includes('non-converged near-failure state')), 'the returned near-failure Stage 2 result should be clearly flagged in the warnings');
 });
 
 await runCase('Case 2 total-load mode matches the equivalent pressure solve', async () => {
