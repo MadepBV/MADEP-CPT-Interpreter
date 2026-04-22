@@ -865,10 +865,13 @@ bishopState {
       meshTargetAreaAuto: boolean
     },
     display: {
+      contourMode: 'head' | 'porePressure' | 'gradient' | 'flow' | 'qx' | 'qy',
+      showContours: boolean,
+      showContourLines: boolean,
+      showContourLegend: boolean,
+      showPhreatic: boolean,
       showBoundaryConditions: boolean,
       showBoundaryLabels: boolean,
-      showHead: boolean,
-      showEquipotentials: boolean,
       showFlowVectors: boolean,
       showExitGradient: boolean
     }

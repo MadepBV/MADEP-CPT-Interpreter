@@ -191,6 +191,39 @@ await runCase('Case 2 total-load mode matches the equivalent pressure solve', as
   );
 });
 
+await runCase('Case 2b low pressure still converges and stays in the linear range', async () => {
+  const highLoad = await analyzeDeformationModel({
+    model: baseModel(),
+    options: {
+      meshTargetArea: 0.2,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false
+    }
+  });
+
+  const lowQ = 0.1;
+  const lowLoad = await analyzeDeformationModel({
+    model: baseModel({
+      surfaceLoad: { xStart: 11, xEnd: 13, q: lowQ }
+    }),
+    options: {
+      meshTargetArea: 0.2,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false
+    }
+  });
+
+  assert((lowLoad?.summaries?.maxSettlement || 0) > 0, 'low-pressure case should still produce a small positive settlement');
+  approxRelative(
+    lowLoad?.summaries?.maxSettlement || 0,
+    (highLoad?.summaries?.maxSettlement || 0) * (lowQ / 80),
+    0.08,
+    'low-pressure settlement should stay close to linear-elastic scaling'
+  );
+});
+
 await runCase('Case 3 capped nu and seepage fallback warnings still allow a deformation solve', async () => {
   const output = await analyzeDeformationModel({
     model: baseModel({
@@ -241,6 +274,54 @@ await runCase('Case 4 slope geometry uses gravity initialization and develops in
     0
   );
   assert(maxInitialShear > 0.1, `slope gravity initialization should develop non-zero initial shear stress (got ${maxInitialShear})`);
+});
+
+await runCase('Case 5 deformation sampling exposes total/effective stresses and shear stress', async () => {
+  const output = await analyzeDeformationModel({
+    model: baseModel({
+      phreatic: {
+        vertices: [
+          { x: 0, y: -0.4 },
+          { x: 24, y: -0.4 }
+        ]
+      }
+    }),
+    options: {
+      meshTargetArea: 0.2,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false
+    }
+  });
+
+  const sampled = sampleDeformationState(output.mesh, output, 12, -2);
+  assert(sampled, 'stress-view case should sample a valid point inside the deformation mesh');
+  assert(Number.isFinite(sampled?.uTotal), 'stress-view sampling should expose total displacement magnitude');
+  assert(Number.isFinite(sampled?.sigmaYyEffInit), 'stress-view sampling should expose initial effective vertical stress');
+  assert(Number.isFinite(sampled?.sigmaYyEff), 'stress-view sampling should expose effective vertical stress');
+  assert(Number.isFinite(sampled?.sigmaYyTotalInit), 'stress-view sampling should expose initial total vertical stress');
+  assert(Number.isFinite(sampled?.sigmaYyTotal), 'stress-view sampling should expose total vertical stress');
+  assert(Number.isFinite(sampled?.sigmaXxEffInit), 'stress-view sampling should expose initial effective horizontal stress');
+  assert(Number.isFinite(sampled?.sigmaXxEff), 'stress-view sampling should expose effective horizontal stress');
+  assert(Number.isFinite(sampled?.sigmaXxTotalInit), 'stress-view sampling should expose initial total horizontal stress');
+  assert(Number.isFinite(sampled?.sigmaXxTotal), 'stress-view sampling should expose total horizontal stress');
+  assert(Number.isFinite(sampled?.tauXy), 'stress-view sampling should expose shear stress');
+  assert(
+    sampled.sigmaYyTotal > sampled.sigmaYyEff + 5,
+    `total vertical stress should exceed effective vertical stress below the phreatic line (got ${sampled.sigmaYyTotal} vs ${sampled.sigmaYyEff})`
+  );
+  assert(
+    sampled.sigmaXxTotal > sampled.sigmaXxEff + 5,
+    `total horizontal stress should exceed effective horizontal stress below the phreatic line (got ${sampled.sigmaXxTotal} vs ${sampled.sigmaXxEff})`
+  );
+  assert(
+    sampled.sigmaYyEff > sampled.sigmaYyEffInit + 1,
+    `final effective vertical stress should include the load increment (got ${sampled.sigmaYyEff} vs ${sampled.sigmaYyEffInit})`
+  );
+  assert(
+    sampled.sigmaYyTotal > sampled.sigmaYyTotalInit + 1,
+    `final total vertical stress should include the load increment (got ${sampled.sigmaYyTotal} vs ${sampled.sigmaYyTotalInit})`
+  );
 });
 
 console.log('Deformation Phase 1 verification passed.');

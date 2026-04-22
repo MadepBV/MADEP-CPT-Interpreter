@@ -24,7 +24,7 @@ import {
   seepageGeometryHash
 } from './seepage/boundary';
 import { resolveMaterialPermeability, seepageSourceLabel } from './seepage/material';
-import { sampleSeepageFlowState, sampleSeepageHead, sampleSeepagePorePressure } from './seepage/solver';
+import { contourSegmentsForTriangles, sampleSeepageFlowState, sampleSeepageHead, sampleSeepagePorePressure } from './seepage/solver';
 import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-regions';
 import { sampleDeformationState } from './deformation/solver.js';
 import {
@@ -3610,6 +3610,7 @@ function stage6Defaults(){
         bcs:[],
         mesh:null,
         result:null,
+        stale:false,
         status:'idle',
         progress:{
           running:false,
@@ -3630,6 +3631,11 @@ function stage6Defaults(){
         display:{
           showBoundaryConditions:true,
           showBoundaryLabels:true,
+          contourMode:'head',
+          showContours:true,
+          showContourLines:true,
+          showContourLegend:true,
+          showPhreatic:true,
           showHead:false,
           showEquipotentials:false,
           showFlowVectors:false,
@@ -3643,6 +3649,7 @@ function stage6Defaults(){
       deformation:{
         mesh:null,
         result:null,
+        stale:false,
         status:'idle',
         rejectReason:'',
         warnings:[],
@@ -3664,7 +3671,10 @@ function stage6Defaults(){
         display:{
           contourMode:'settlement',
           showContours:true,
-          showDeformedMesh:true,
+          showContourLines:true,
+          showContourLegend:true,
+          showDisplacementVectors:false,
+          showDeformedMesh:false,
           showUndeformedMesh:false,
           showLoadVectors:true
         }
@@ -3819,10 +3829,10 @@ function ensureStage6State(){
     .map((pt)=>({x:+pt.x, y:+pt.y}));
   if(!bishop.lineProbe || typeof bishop.lineProbe !== 'object') bishop.lineProbe = stage6Defaults().bishop.lineProbe;
   bishop.lineProbe.sampleCount = Math.min(Math.max(Math.round(+bishop.lineProbe.sampleCount || 81), 21), 201);
-  if(!['head','porePressure','gradient','flow','normalFlow'].includes(bishop.lineProbe.seepageQuantity)){
+  if(!['head','porePressure','gradient','flow','qx','qy','normalFlow'].includes(bishop.lineProbe.seepageQuantity)){
     bishop.lineProbe.seepageQuantity = 'head';
   }
-  if(!['settlement','ux','uy','deltaSigmaYy','mcEta'].includes(bishop.lineProbe.deformationQuantity)){
+  if(!['settlement','ux','uy','uTotal','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.lineProbe.deformationQuantity)){
     bishop.lineProbe.deformationQuantity = 'settlement';
   }
   bishop.lineProbe.copyMessage = typeof bishop.lineProbe.copyMessage === 'string' ? bishop.lineProbe.copyMessage : '';
@@ -3924,10 +3934,16 @@ function ensureStage6State(){
   if(!bishop.seepage.display || typeof bishop.seepage.display !== 'object') bishop.seepage.display = stage6Defaults().bishop.seepage.display;
   bishop.seepage.display.showBoundaryConditions = bishop.seepage.display.showBoundaryConditions !== false;
   bishop.seepage.display.showBoundaryLabels = bishop.seepage.display.showBoundaryLabels !== false;
+  if(!['head','porePressure','gradient','flow','qx','qy'].includes(bishop.seepage.display.contourMode)) bishop.seepage.display.contourMode = 'head';
+  bishop.seepage.display.showContours = bishop.seepage.display.showContours !== false;
+  bishop.seepage.display.showContourLines = bishop.seepage.display.showContourLines !== false;
+  bishop.seepage.display.showContourLegend = bishop.seepage.display.showContourLegend !== false;
+  bishop.seepage.display.showPhreatic = bishop.seepage.display.showPhreatic !== false;
   bishop.seepage.display.showHead = !!bishop.seepage.display.showHead;
   bishop.seepage.display.showEquipotentials = !!bishop.seepage.display.showEquipotentials;
   bishop.seepage.display.showFlowVectors = !!bishop.seepage.display.showFlowVectors;
   bishop.seepage.display.showExitGradient = !!bishop.seepage.display.showExitGradient;
+  bishop.seepage.stale = !!bishop.seepage.stale;
   bishop.seepage.lastAppliedBcType = ['head','seepage-face','no-flow'].includes(bishop.seepage.lastAppliedBcType)
     ? bishop.seepage.lastAppliedBcType
     : '';
@@ -3967,11 +3983,17 @@ function ensureStage6State(){
   }
   bishop.deformation.options.meshTargetArea = stage6BishopResolvedDeformationMeshTargetArea(bishop);
   if(!bishop.deformation.display || typeof bishop.deformation.display !== 'object') bishop.deformation.display = stage6Defaults().bishop.deformation.display;
-  if(!['settlement','ux','syy','mc'].includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'settlement';
+  if(bishop.deformation.display.contourMode === 'syy') bishop.deformation.display.contourMode = 'deltaSigmaYy';
+  if(bishop.deformation.display.contourMode === 'mc') bishop.deformation.display.contourMode = 'mcEta';
+  if(!['settlement','ux','uy','uTotal','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'settlement';
   bishop.deformation.display.showContours = bishop.deformation.display.showContours !== false;
-  bishop.deformation.display.showDeformedMesh = bishop.deformation.display.showDeformedMesh !== false;
+  bishop.deformation.display.showContourLines = bishop.deformation.display.showContourLines !== false;
+  bishop.deformation.display.showContourLegend = bishop.deformation.display.showContourLegend !== false;
+  bishop.deformation.display.showDisplacementVectors = !!bishop.deformation.display.showDisplacementVectors;
+  bishop.deformation.display.showDeformedMesh = !!bishop.deformation.display.showDeformedMesh;
   bishop.deformation.display.showUndeformedMesh = !!bishop.deformation.display.showUndeformedMesh;
   bishop.deformation.display.showLoadVectors = bishop.deformation.display.showLoadVectors !== false;
+  bishop.deformation.stale = !!bishop.deformation.stale;
   if(!bishop.surfaceLoad || typeof bishop.surfaceLoad !== 'object') bishop.surfaceLoad = {xStart:null, xEnd:null, q:0};
   bishop.surfaceLoad.q = Math.max(+bishop.surfaceLoad.q || 0, 0);
   if(!bishop.viewport || typeof bishop.viewport !== 'object') bishop.viewport = {scale:24, offsetX:80, offsetY:360, fitted:false};
@@ -4182,14 +4204,22 @@ function stage6BishopResultWallLabel(result){
   return 'no wall effect';
 }
 
-function stage6BishopInvalidateSeepage(message, keepMesh){
+function stage6BishopInvalidateSeepage(message, keepMesh, preserveSolvedState){
   ensureStage6State();
   stage6BishopStopSeepage(true);
   const seepage = S.stage6.bishop.seepage;
-  if(!keepMesh) seepage.mesh = null;
-  seepage.result = null;
+  const keepSolvedState = !!preserveSolvedState && !!seepage.mesh && !!seepage.result;
   seepage.progress.running = false;
   seepage.progress.percent = 0;
+  if(keepSolvedState){
+    seepage.stale = true;
+    seepage.status = 'success';
+    if(message) seepage.rejectReason = message;
+    return;
+  }
+  if(!keepMesh) seepage.mesh = null;
+  seepage.result = null;
+  seepage.stale = false;
   if(seepage.status === 'success' || seepage.status === 'meshing' || seepage.status === 'solving') seepage.status = 'idle';
   if(message) seepage.rejectReason = message;
 }
@@ -4267,6 +4297,247 @@ function stage6BishopSeepageHeadColor(value, min, max, alpha = 0.55){
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function stage6BishopSeepageContourMeta(mode){
+  if(mode === 'head') return {label:'h', axisTitle:'Head h (m)', unit:'m', scale:1, digits:2, signed:false};
+  if(mode === 'porePressure') return {label:'u', axisTitle:'Pore pressure u (kPa)', unit:'kPa', scale:1, digits:2, signed:true};
+  if(mode === 'gradient') return {label:'|∇h|', axisTitle:'Hydraulic gradient |∇h| (-)', unit:'', scale:1, digits:3, signed:false};
+  if(mode === 'flow') return {label:'|q|', axisTitle:'Specific discharge |q| (m/s)', unit:'m/s', scale:1, digits:3, signed:false};
+  if(mode === 'qx') return {label:'qₓ', axisTitle:'Specific discharge qₓ (m/s)', unit:'m/s', scale:1, digits:3, signed:true};
+  return {label:'qᵧ', axisTitle:'Specific discharge qᵧ (m/s)', unit:'m/s', scale:1, digits:3, signed:true};
+}
+
+function stage6BishopSeepageContourOptions(){
+  return [
+    'head',
+    'porePressure',
+    'gradient',
+    'flow',
+    'qx',
+    'qy'
+  ].map((id)=>({
+    id,
+    label:stage6BishopSeepageContourMeta(id).label
+  }));
+}
+
+function stage6BishopSeepageElementContourValue(result, mesh, elementIndex, mode){
+  if(mode === 'head') return Number(result?.elementHeads?.[elementIndex] ?? 0);
+  if(mode === 'porePressure'){
+    const centroidY = Number(mesh?.elementData?.[elementIndex]?.centroid?.y);
+    const head = Number(result?.elementHeads?.[elementIndex] ?? 0);
+    return Number.isFinite(centroidY) ? 9.81 * (head - centroidY) : 0;
+  }
+  const gradient = result?.elementGradients?.[elementIndex] || {};
+  if(mode === 'gradient') return Number(gradient.gradientMagnitude || 0);
+  if(mode === 'flow') return Number(gradient.qMagnitude || 0);
+  if(mode === 'qx') return Number(gradient.qx || 0);
+  return Number(gradient.qy || 0);
+}
+
+function stage6BishopSeepageContourValue(result, mesh, cellIndex, mode){
+  if(mode === 'head') return Number(result?.cellHeads?.[cellIndex] ?? result?.headMin ?? 0);
+  if(mode === 'porePressure'){
+    const cellY = Number(mesh?.cells?.[cellIndex]?.centroid?.y);
+    const head = Number(result?.cellHeads?.[cellIndex] ?? 0);
+    return Number.isFinite(cellY) ? 9.81 * (head - cellY) : 0;
+  }
+  const gradient = result?.cellGradients?.[cellIndex] || {};
+  if(mode === 'gradient') return Number(gradient.gradientMagnitude || 0);
+  if(mode === 'flow') return Number(gradient.qMagnitude || 0);
+  if(mode === 'qx') return Number(gradient.qx || 0);
+  return Number(gradient.qy || 0);
+}
+
+function stage6BishopSeepageContourModeIsSigned(mode){
+  return !!stage6BishopSeepageContourMeta(mode).signed;
+}
+
+function stage6BishopSeepageContourStats(result, mesh, mode){
+  const values = (mesh?.cells || []).map((_, index)=>stage6BishopSeepageContourValue(result, mesh, index, mode)).filter(Number.isFinite);
+  if(!values.length) return {min:0, max:1};
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if(stage6BishopSeepageContourModeIsSigned(mode)){
+    const abs = Math.max(Math.abs(min), Math.abs(max), 1e-9);
+    return {min:-abs, max:abs};
+  }
+  return {
+    min,
+    max: max > min + 1e-9 ? max : min + 1
+  };
+}
+
+function stage6BishopSeepageContourNodalValues(result, mesh, mode){
+  const nodeCount = mesh?.nodes?.length || 0;
+  if(!nodeCount) return [];
+  if(mode === 'head') return Array.from({length:nodeCount}, (_, nodeId)=>Number(result?.heads?.[nodeId] || 0));
+  if(mode === 'porePressure'){
+    return Array.from({length:nodeCount}, (_, nodeId)=>{
+      const head = Number(result?.heads?.[nodeId] || 0);
+      const y = Number(mesh?.nodes?.[nodeId]?.y);
+      return Number.isFinite(y) ? 9.81 * (head - y) : 0;
+    });
+  }
+  const sums = new Array(nodeCount).fill(0);
+  const weights = new Array(nodeCount).fill(0);
+  (mesh?.elements || []).forEach((element, elementIndex)=>{
+    const value = stage6BishopSeepageElementContourValue(result, mesh, elementIndex, mode);
+    if(!Number.isFinite(value)) return;
+    const weight = Math.max(Number(mesh?.elementData?.[elementIndex]?.area) || 0, 1e-6);
+    element.forEach((nodeId)=>{
+      sums[nodeId] += value * weight;
+      weights[nodeId] += weight;
+    });
+  });
+  return sums.map((sum, index)=>weights[index] > 0 ? sum / weights[index] : 0);
+}
+
+function stage6BishopSeepageContourRgb(value, min, max, mode){
+  const lo = Number.isFinite(min) ? min : 0;
+  const hi = Number.isFinite(max) && max > lo ? max : lo + 1;
+  if(stage6BishopSeepageContourModeIsSigned(mode)){
+    const span = Math.max(Math.abs(lo), Math.abs(hi), 1e-9);
+    return stage6BishopInterpolatePalette(
+      ST6_DEFORMATION_SIGNED_PALETTE,
+      Math.max(0, Math.min((value + span) / (2 * span), 1))
+    );
+  }
+  return stage6BishopInterpolatePalette(
+    ST6_DEFORMATION_SEQ_PALETTE,
+    Math.max(0, Math.min((value - lo) / (hi - lo), 1))
+  );
+}
+
+function stage6BishopSeepageContourColor(value, min, max, mode, alpha = 0.52){
+  const rgb = stage6BishopSeepageContourRgb(value, min, max, mode);
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+function stage6BishopSeepageContourLineColor(value, min, max, mode, alpha = 0.94){
+  const rgb = stage6BishopSeepageContourRgb(value, min, max, mode);
+  return `rgba(${Math.round(rgb.r * 0.72)}, ${Math.round(rgb.g * 0.72)}, ${Math.round(rgb.b * 0.72)}, ${alpha})`;
+}
+
+function stage6BishopSeepageContourLegendGradient(mode){
+  const stops = stage6BishopSeepageContourModeIsSigned(mode)
+    ? ST6_DEFORMATION_SIGNED_PALETTE
+    : ST6_DEFORMATION_SEQ_PALETTE;
+  return `linear-gradient(to top, ${stops.map((stop)=>`rgb(${stop.rgb[0]}, ${stop.rgb[1]}, ${stop.rgb[2]}) ${Math.round(stop.t * 100)}%`).join(', ')})`;
+}
+
+function stage6BishopSeepageContourLegendTicks(mode, stats){
+  if(stage6BishopSeepageContourModeIsSigned(mode)){
+    const span = Math.max(Math.abs(stats?.min || 0), Math.abs(stats?.max || 0), 1e-9);
+    return [span, 0.5 * span, 0, -0.5 * span, -span];
+  }
+  const min = Number.isFinite(stats?.min) ? stats.min : 0;
+  const max = Number.isFinite(stats?.max) ? stats.max : 1;
+  return [max, min + 0.75 * (max - min), min + 0.5 * (max - min), min + 0.25 * (max - min), min];
+}
+
+function stage6BishopSeepageContourLegendValue(mode, value){
+  const meta = stage6BishopSeepageContourMeta(mode);
+  const scaled = value * (meta.scale || 1);
+  return `${stage6CompactNumber(scaled, meta.digits || 3)}${meta.unit ? ` ${meta.unit}` : ''}`;
+}
+
+function stage6BishopSeepageContourLevels(mode, stats, count = 11){
+  const min = Number.isFinite(stats?.min) ? stats.min : 0;
+  const max = Number.isFinite(stats?.max) ? stats.max : min + 1;
+  if(!(max > min + 1e-9)) return [];
+  const out = [];
+  for(let index = 1; index < count; index += 1){
+    const t = index / count;
+    const level = min + (max - min) * t;
+    if(stage6BishopSeepageContourModeIsSigned(mode) && Math.abs(level) < 1e-10) continue;
+    out.push(level);
+  }
+  if(stage6BishopSeepageContourModeIsSigned(mode) && min < 0 && max > 0){
+    out.push(0);
+    out.sort((a, b)=>a - b);
+  }
+  return out;
+}
+
+function stage6BishopSeepageContourDerived(result, mesh, mode){
+  ensureStage6State();
+  S.stage6Cache ||= {};
+  const store = S.stage6Cache.bishopSeepageContourDerived || (S.stage6Cache.bishopSeepageContourDerived = {});
+  const cached = store[mode];
+  if(cached && cached.result === result && cached.mesh === mesh) return cached;
+  const stats = stage6BishopSeepageContourStats(result, mesh, mode);
+  const nodalValues = stage6BishopSeepageContourNodalValues(result, mesh, mode);
+  const levels = stage6BishopSeepageContourLevels(mode, stats, 11);
+  const levelSegments = levels.map((level)=>({
+    level,
+    segments:contourSegmentsForTriangles(mesh, nodalValues, level)
+  })).filter((group)=>group.segments.length);
+  const next = {result, mesh, mode, stats, nodalValues, levels, levelSegments};
+  store[mode] = next;
+  return next;
+}
+
+function stage6BishopDeformationContourMeta(mode){
+  if(mode === 'settlement') return {label:'Settlement (-uᵧ,fin)', axisTitle:'Settlement (-uᵧ,fin) (mm)', unit:'mm', scale:1000, digits:2, signed:false};
+  if(mode === 'ux') return {label:'uₓ,fin', axisTitle:'uₓ,fin (mm)', unit:'mm', scale:1000, digits:2, signed:true};
+  if(mode === 'uy') return {label:'uᵧ,fin', axisTitle:'uᵧ,fin (mm)', unit:'mm', scale:1000, digits:2, signed:true};
+  if(mode === 'uTotal') return {label:'|u|,fin', axisTitle:'|u|,fin (mm)', unit:'mm', scale:1000, digits:2, signed:false};
+  if(mode === 'deltaSigmaYy') return {label:'Δσᵧᵧ', axisTitle:'Δσᵧᵧ (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
+  if(mode === 'sigmaYyEffInit') return {label:'σ′ᵧᵧ,init', axisTitle:'σ′ᵧᵧ,init (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
+  if(mode === 'sigmaYyEff') return {label:'σ′ᵧᵧ,fin', axisTitle:'σ′ᵧᵧ,fin (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
+  if(mode === 'sigmaYyTotalInit') return {label:'σᵧᵧ,init', axisTitle:'σᵧᵧ,init (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
+  if(mode === 'sigmaYyTotal') return {label:'σᵧᵧ,fin', axisTitle:'σᵧᵧ,fin (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
+  if(mode === 'sigmaXxEffInit') return {label:'σ′ₓₓ,init', axisTitle:'σ′ₓₓ,init (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
+  if(mode === 'sigmaXxEff') return {label:'σ′ₓₓ,fin', axisTitle:'σ′ₓₓ,fin (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
+  if(mode === 'sigmaXxTotalInit') return {label:'σₓₓ,init', axisTitle:'σₓₓ,init (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
+  if(mode === 'sigmaXxTotal') return {label:'σₓₓ,fin', axisTitle:'σₓₓ,fin (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
+  if(mode === 'tauXy') return {label:'τₓᵧ,fin', axisTitle:'τₓᵧ,fin (kPa)', unit:'kPa', scale:1, digits:2, signed:true};
+  return {label:'η_MC', axisTitle:'η_MC (-)', unit:'', scale:1, digits:3, signed:false};
+}
+
+function stage6BishopDeformationContourOptions(){
+  return [
+    'settlement',
+    'ux',
+    'uy',
+    'uTotal',
+    'deltaSigmaYy',
+    'sigmaYyEffInit',
+    'sigmaYyEff',
+    'sigmaYyTotalInit',
+    'sigmaYyTotal',
+    'sigmaXxEffInit',
+    'sigmaXxEff',
+    'sigmaXxTotalInit',
+    'sigmaXxTotal',
+    'tauXy',
+    'mcEta'
+  ].map((id)=>({
+    id,
+    label:stage6BishopDeformationContourMeta(id).label
+  }));
+}
+
+function stage6BishopDeformationVectorMode(mode){
+  return ['settlement', 'ux', 'uy', 'uTotal'].includes(mode);
+}
+
+function stage6BishopDeformationElementContourValue(result, elementIndex, mode){
+  if(mode === 'syy') mode = 'deltaSigmaYy';
+  const item = result?.elementResults?.[elementIndex] || null;
+  if(mode === 'deltaSigmaYy') return -Number(item?.stressIncrement?.syy || 0);
+  if(mode === 'sigmaYyEffInit') return Number(item?.initialEffectiveStress?.syy || 0);
+  if(mode === 'sigmaYyEff') return Number(item?.effectiveStress?.syy || 0);
+  if(mode === 'sigmaYyTotalInit') return Number(item?.initialTotalStress?.syy || 0);
+  if(mode === 'sigmaYyTotal') return Number(item?.totalStress?.syy || 0);
+  if(mode === 'sigmaXxEffInit') return Number(item?.initialEffectiveStress?.sxx || 0);
+  if(mode === 'sigmaXxEff') return Number(item?.effectiveStress?.sxx || 0);
+  if(mode === 'sigmaXxTotalInit') return Number(item?.initialTotalStress?.sxx || 0);
+  if(mode === 'sigmaXxTotal') return Number(item?.totalStress?.sxx || 0);
+  if(mode === 'tauXy') return Number(item?.effectiveStress?.txy || 0);
+  return Number(item?.mc?.eta || 0);
+}
+
 function stage6BishopDeformationContourValue(result, mesh, cellIndex, mode){
   const elementIndex = mesh?.cells?.[cellIndex]?.triangleIndices?.[0] ?? cellIndex;
   const element = mesh?.elements?.[elementIndex] || [];
@@ -4279,10 +4550,19 @@ function stage6BishopDeformationContourValue(result, mesh, cellIndex, mode){
     const values = element.map((nodeId)=>nodal[nodeId]?.ux || 0);
     return values.length ? values.reduce((sum, value)=>sum + value, 0) / values.length : 0;
   }
-  if(mode === 'syy'){
-    return -Number(result?.elementResults?.[elementIndex]?.stressIncrement?.syy || 0);
+  if(mode === 'uy'){
+    const values = element.map((nodeId)=>nodal[nodeId]?.uy || 0);
+    return values.length ? values.reduce((sum, value)=>sum + value, 0) / values.length : 0;
   }
-  return Number(result?.elementResults?.[elementIndex]?.mc?.eta || 0);
+  if(mode === 'uTotal'){
+    const values = element.map((nodeId)=>Math.hypot(nodal[nodeId]?.ux || 0, nodal[nodeId]?.uy || 0));
+    return values.length ? values.reduce((sum, value)=>sum + value, 0) / values.length : 0;
+  }
+  return stage6BishopDeformationElementContourValue(result, elementIndex, mode);
+}
+
+function stage6BishopDeformationContourModeIsSigned(mode){
+  return !!stage6BishopDeformationContourMeta(mode).signed;
 }
 
 function stage6BishopDeformationContourStats(result, mesh, mode){
@@ -4290,7 +4570,7 @@ function stage6BishopDeformationContourStats(result, mesh, mode){
   if(!values.length) return {min:0, max:1};
   const min = Math.min(...values);
   const max = Math.max(...values);
-  if(mode === 'ux'){
+  if(stage6BishopDeformationContourModeIsSigned(mode)){
     const abs = Math.max(Math.abs(min), Math.abs(max), 1e-9);
     return {min:-abs, max:abs};
   }
@@ -4300,29 +4580,147 @@ function stage6BishopDeformationContourStats(result, mesh, mode){
   };
 }
 
-function stage6BishopDeformationContourColor(value, min, max, mode, alpha = 0.6){
+function stage6BishopDeformationContourNodalValues(result, mesh, mode){
+  const nodeCount = mesh?.nodes?.length || 0;
+  if(!nodeCount) return [];
+  if(mode === 'settlement') return Array.from({length:nodeCount}, (_, nodeId)=>-(result?.nodalDisplacements?.[nodeId]?.uy || 0));
+  if(mode === 'ux') return Array.from({length:nodeCount}, (_, nodeId)=>result?.nodalDisplacements?.[nodeId]?.ux || 0);
+  if(mode === 'uy') return Array.from({length:nodeCount}, (_, nodeId)=>result?.nodalDisplacements?.[nodeId]?.uy || 0);
+  if(mode === 'uTotal') return Array.from({length:nodeCount}, (_, nodeId)=>Math.hypot(result?.nodalDisplacements?.[nodeId]?.ux || 0, result?.nodalDisplacements?.[nodeId]?.uy || 0));
+  const sums = new Array(nodeCount).fill(0);
+  const weights = new Array(nodeCount).fill(0);
+  (mesh?.elements || []).forEach((element, elementIndex)=>{
+    const value = stage6BishopDeformationElementContourValue(result, elementIndex, mode);
+    if(!Number.isFinite(value)) return;
+    const weight = Math.max(Number(mesh?.elementData?.[elementIndex]?.area) || 0, 1e-6);
+    element.forEach((nodeId)=>{
+      sums[nodeId] += value * weight;
+      weights[nodeId] += weight;
+    });
+  });
+  return sums.map((sum, index)=>weights[index] > 0 ? sum / weights[index] : 0);
+}
+
+const ST6_DEFORMATION_SEQ_PALETTE = [
+  {t:0.00, rgb:[24, 52, 166]},
+  {t:0.18, rgb:[36, 118, 224]},
+  {t:0.36, rgb:[33, 193, 233]},
+  {t:0.55, rgb:[46, 191, 104]},
+  {t:0.72, rgb:[244, 223, 67]},
+  {t:0.86, rgb:[243, 150, 36]},
+  {t:1.00, rgb:[202, 32, 36]}
+];
+const ST6_DEFORMATION_SIGNED_PALETTE = [
+  {t:0.00, rgb:[25, 58, 168]},
+  {t:0.20, rgb:[41, 131, 229]},
+  {t:0.40, rgb:[79, 205, 232]},
+  {t:0.50, rgb:[250, 245, 198]},
+  {t:0.70, rgb:[244, 182, 58]},
+  {t:0.85, rgb:[237, 114, 34]},
+  {t:1.00, rgb:[196, 33, 34]}
+];
+
+function stage6BishopInterpolatePalette(stops, t){
+  const clamped = Math.max(0, Math.min(t, 1));
+  for(let index = 1; index < stops.length; index += 1){
+    const prev = stops[index - 1];
+    const next = stops[index];
+    if(clamped > next.t) continue;
+    const span = Math.max(next.t - prev.t, 1e-9);
+    const localT = (clamped - prev.t) / span;
+    return {
+      r:Math.round(prev.rgb[0] + (next.rgb[0] - prev.rgb[0]) * localT),
+      g:Math.round(prev.rgb[1] + (next.rgb[1] - prev.rgb[1]) * localT),
+      b:Math.round(prev.rgb[2] + (next.rgb[2] - prev.rgb[2]) * localT)
+    };
+  }
+  const last = stops[stops.length - 1];
+  return {r:last.rgb[0], g:last.rgb[1], b:last.rgb[2]};
+}
+
+function stage6BishopDeformationContourRgb(value, min, max, mode){
   const lo = Number.isFinite(min) ? min : 0;
   const hi = Number.isFinite(max) && max > lo ? max : lo + 1;
-  if(mode === 'ux'){
+  if(stage6BishopDeformationContourModeIsSigned(mode)){
     const span = Math.max(Math.abs(lo), Math.abs(hi), 1e-9);
-    const t = Math.max(0, Math.min((value + span) / (2 * span), 1));
-    const r = Math.round(45 + 185 * t);
-    const g = Math.round(111 + 34 * (1 - Math.abs(2 * t - 1)));
-    const b = Math.round(210 - 165 * t);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    return stage6BishopInterpolatePalette(
+      ST6_DEFORMATION_SIGNED_PALETTE,
+      Math.max(0, Math.min((value + span) / (2 * span), 1))
+    );
   }
-  if(mode === 'mc'){
-    const t = Math.max(0, Math.min((value - lo) / (hi - lo), 1));
-    const r = Math.round(47 + 180 * t);
-    const g = Math.round(150 - 96 * t);
-    const b = Math.round(92 - 48 * t);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  return stage6BishopInterpolatePalette(
+    ST6_DEFORMATION_SEQ_PALETTE,
+    Math.max(0, Math.min((value - lo) / (hi - lo), 1))
+  );
+}
+
+function stage6BishopDeformationContourColor(value, min, max, mode, alpha = 0.6){
+  const rgb = stage6BishopDeformationContourRgb(value, min, max, mode);
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+function stage6BishopDeformationContourLineColor(value, min, max, mode, alpha = 0.92){
+  const rgb = stage6BishopDeformationContourRgb(value, min, max, mode);
+  return `rgba(${Math.round(rgb.r * 0.72)}, ${Math.round(rgb.g * 0.72)}, ${Math.round(rgb.b * 0.72)}, ${alpha})`;
+}
+
+function stage6BishopDeformationContourLegendGradient(mode){
+  const stops = stage6BishopDeformationContourModeIsSigned(mode)
+    ? ST6_DEFORMATION_SIGNED_PALETTE
+    : ST6_DEFORMATION_SEQ_PALETTE;
+  return `linear-gradient(to top, ${stops.map((stop)=>`rgb(${stop.rgb[0]}, ${stop.rgb[1]}, ${stop.rgb[2]}) ${Math.round(stop.t * 100)}%`).join(', ')})`;
+}
+
+function stage6BishopDeformationContourLegendTicks(mode, stats){
+  if(stage6BishopDeformationContourModeIsSigned(mode)){
+    const span = Math.max(Math.abs(stats?.min || 0), Math.abs(stats?.max || 0), 1e-9);
+    return [span, 0.5 * span, 0, -0.5 * span, -span];
   }
-  const t = Math.max(0, Math.min((value - lo) / (hi - lo), 1));
-  const r = Math.round(246 - 58 * (1 - t));
-  const g = Math.round(227 - 145 * t);
-  const b = Math.round(193 - 149 * t);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  const min = Number.isFinite(stats?.min) ? stats.min : 0;
+  const max = Number.isFinite(stats?.max) ? stats.max : 1;
+  return [max, min + 0.75 * (max - min), min + 0.5 * (max - min), min + 0.25 * (max - min), min];
+}
+
+function stage6BishopDeformationContourLegendValue(mode, value){
+  const meta = stage6BishopDeformationContourMeta(mode);
+  const scaled = value * (meta.scale || 1);
+  return `${stage6CompactNumber(scaled, meta.digits || 3)}${meta.unit ? ` ${meta.unit}` : ''}`;
+}
+
+function stage6BishopDeformationContourLevels(mode, stats, count = 11){
+  const min = Number.isFinite(stats?.min) ? stats.min : 0;
+  const max = Number.isFinite(stats?.max) ? stats.max : min + 1;
+  if(!(max > min + 1e-9)) return [];
+  const out = [];
+  for(let index = 1; index < count; index += 1){
+    const t = index / count;
+    const level = min + (max - min) * t;
+    if(stage6BishopDeformationContourModeIsSigned(mode) && Math.abs(level) < 1e-10) continue;
+    out.push(level);
+  }
+  if(stage6BishopDeformationContourModeIsSigned(mode) && min < 0 && max > 0){
+    out.push(0);
+    out.sort((a, b)=>a - b);
+  }
+  return out;
+}
+
+function stage6BishopDeformationContourDerived(result, mesh, mode){
+  ensureStage6State();
+  S.stage6Cache ||= {};
+  const store = S.stage6Cache.bishopDeformationContourDerived || (S.stage6Cache.bishopDeformationContourDerived = {});
+  const cached = store[mode];
+  if(cached && cached.result === result && cached.mesh === mesh) return cached;
+  const stats = stage6BishopDeformationContourStats(result, mesh, mode);
+  const nodalValues = stage6BishopDeformationContourNodalValues(result, mesh, mode);
+  const levels = stage6BishopDeformationContourLevels(mode, stats, 11);
+  const levelSegments = levels.map((level)=>({
+    level,
+    segments:contourSegmentsForTriangles(mesh, nodalValues, level)
+  })).filter((group)=>group.segments.length);
+  const next = {result, mesh, mode, stats, nodalValues, levels, levelSegments};
+  store[mode] = next;
+  return next;
 }
 
 function stage6BishopSyncSeepageState(model){
@@ -4357,7 +4755,7 @@ function stage6BishopSelectSeepageBoundary(edgeKey){
   if(!bc && edge){
     stage6RememberDetailsState();
     bc = stage6BishopAutoApplySeepagePreset(edge);
-    if(bc) stage6BishopInvalidateSeepage('Boundary conditions updated.', true);
+    if(bc) stage6BishopInvalidateSeepage('Boundary conditions changed. Showing the previous result until you rerun.', true, true);
   }
   seepage.selectedBcId = bc?.id || '';
   renderStage6();
@@ -4382,7 +4780,7 @@ function stage6BishopSetSeepageBcType(value){
   seepage.bcs = [...(seepage.bcs || []).filter((item)=>item.edgeKey !== edge.edgeKey), bc];
   seepage.selectedBcId = bc.id;
   stage6BishopRememberSeepageBcPreset(bc);
-  stage6BishopInvalidateSeepage('Boundary conditions updated.', true);
+  stage6BishopInvalidateSeepage('Boundary conditions changed. Showing the previous result until you rerun.', true, true);
   renderStage6();
 }
 
@@ -4395,7 +4793,7 @@ function stage6BishopSetSeepageBcHead(value){
   bc.type = 'head';
   bc.head = value === '' || value == null ? null : +value;
   stage6BishopRememberSeepageBcPreset(bc);
-  stage6BishopInvalidateSeepage('Boundary head updated.', true);
+  stage6BishopInvalidateSeepage('Boundary head changed. Showing the previous result until you rerun.', true, true);
   renderStage6();
 }
 
@@ -4405,19 +4803,27 @@ function stage6BishopDeleteSeepageBc(edgeKey){
   const seepage = S.stage6.bishop.seepage;
   seepage.bcs = (seepage.bcs || []).filter((bc)=>bc.edgeKey !== edgeKey);
   if(seepage.selectedEdgeKey === edgeKey) seepage.selectedBcId = '';
-  stage6BishopInvalidateSeepage('Boundary condition removed.', true);
+  stage6BishopInvalidateSeepage('Boundary condition removed. Showing the previous result until you rerun.', true, true);
   renderStage6();
 }
 
-function stage6BishopInvalidateDeformation(message, keepMesh){
+function stage6BishopInvalidateDeformation(message, keepMesh, preserveSolvedState){
   ensureStage6State();
   stage6BishopStopDeformation(true);
   const deformation = S.stage6.bishop.deformation;
-  if(!keepMesh) deformation.mesh = null;
-  deformation.result = null;
-  deformation.warnings = [];
+  const keepSolvedState = !!preserveSolvedState && !!deformation.mesh && !!deformation.result;
   deformation.progress.running = false;
   deformation.progress.percent = 0;
+  if(keepSolvedState){
+    deformation.stale = true;
+    deformation.status = 'success';
+    if(message) deformation.rejectReason = message;
+    return;
+  }
+  if(!keepMesh) deformation.mesh = null;
+  deformation.result = null;
+  deformation.stale = false;
+  deformation.warnings = [];
   if(['success','meshing','solving','post'].includes(deformation.status)) deformation.status = 'idle';
   deformation.rejectReason = message || '';
 }
@@ -4433,6 +4839,7 @@ function stage6BishopInvalidate(message){
   if(bishop.deformation){
     bishop.deformation.mesh = null;
     bishop.deformation.result = null;
+    bishop.deformation.stale = false;
     bishop.deformation.warnings = [];
     bishop.deformation.progress.running = false;
     bishop.deformation.progress.percent = 0;
@@ -4586,7 +4993,7 @@ function stage6BishopSetSelectedRegionCoarseness(value){
   region.coarseness = stage6BishopNormalizeRegionCoarseness(value);
   stage6BishopSyncSoilModel();
   if(bishop.useCustomRegions && (bishop.customRegions || []).length){
-    stage6BishopInvalidateSeepage('Selected polygon coarseness updated; rerun seepage.', false);
+    stage6BishopInvalidateSeepage('Selected polygon coarseness changed. Showing the previous result until you rerun.', true, true);
   } else {
     bishop.progress.message = 'Selected polygon coarseness updated. Enable custom polygons in the solver for it to affect seepage meshing.';
   }
@@ -4685,18 +5092,23 @@ function stage6BishopSetField(path, value){
     S.stage6.bishop.lineProbe.copyMessage = '';
     S.stage6.bishop.lineProbe.copyTone = '';
   }
-  const isViewOnly = path === 'gridSnap' || path === 'pointSnap' || path === 'snapSize' || path.startsWith('viewport.') || path.startsWith('display.') || path.startsWith('lineProbe.');
+  const isViewOnly = path === 'gridSnap' ||
+    path === 'pointSnap' ||
+    path === 'snapSize' ||
+    path === 'deformation.options.displacementScale' ||
+    path.startsWith('viewport.') ||
+    path.startsWith('display.') ||
+    path.startsWith('lineProbe.');
   const isSeepageField = path === 'workspace' || path === 'useFemPorePressure' || path.startsWith('seepage.');
   const isDeformationField = path === 'workspace' || path.startsWith('deformation.');
   if(path.startsWith('seepage.')){
     if(!path.startsWith('seepage.display.')){
-      const keepMesh = path.startsWith('seepage.bcs.') || path === 'seepage.bcs';
-      stage6BishopInvalidateSeepage('Seepage settings updated.', keepMesh);
+      stage6BishopInvalidateSeepage('Seepage settings changed. Showing the previous result until you rerun.', true, true);
     }
   }
   if(path.startsWith('deformation.')){
-    if(!path.startsWith('deformation.display.')){
-      stage6BishopInvalidateDeformation('Deformation settings updated.', false);
+    if(path !== 'deformation.options.displacementScale' && !path.startsWith('deformation.display.')){
+      stage6BishopInvalidateDeformation('Deformation settings changed. Showing the previous result until you rerun.', true, true);
     }
   }
   if(path === 'useFemPorePressure'){
@@ -4957,7 +5369,7 @@ function stage6BishopSetMaterialPermeability(index, field, value){
   if(!(nextValue > 0)) return;
   material[field] = nextValue;
   material.kSource = 'user';
-  stage6BishopInvalidateSeepage('Material permeability updated.', false);
+  stage6BishopInvalidateSeepage('Material permeability changed. Showing the previous result until you rerun.', true, true);
   renderStage6();
 }
 
@@ -4971,7 +5383,7 @@ function stage6BishopResetMaterialPermeability(index){
   material.kx = next.kx;
   material.ky = next.ky;
   material.kSource = next.kSource;
-  stage6BishopInvalidateSeepage('Material permeability reset to the current CPT-derived default.', false);
+  stage6BishopInvalidateSeepage('Material permeability reset. Showing the previous result until you rerun.', true, true);
   renderStage6();
 }
 
@@ -5151,12 +5563,22 @@ function stage6BishopEnsureSeepageWorker(){
     if(payload.type === 'result'){
       seepage.mesh = payload.output?.mesh || null;
       seepage.result = payload.output?.result || null;
+      seepage.stale = false;
       seepage.status = seepage.mesh && seepage.result ? 'success' : 'failed';
       seepage.rejectReason = seepage.status === 'success'
         ? ''
         : 'The seepage solver returned no result.';
-      if(seepage.status === 'success' && !seepage.display?.showHead && !seepage.display?.showEquipotentials && !seepage.display?.showFlowVectors && !seepage.display?.showExitGradient){
-        seepage.display.showHead = true;
+      if(
+        seepage.status === 'success' &&
+        !seepage.display?.showContours &&
+        !seepage.display?.showContourLines &&
+        !seepage.display?.showFlowVectors &&
+        !seepage.display?.showExitGradient
+      ){
+        seepage.display.showContours = true;
+        seepage.display.showContourLines = true;
+        seepage.display.showContourLegend = true;
+        seepage.display.contourMode = 'head';
       }
       seepage.progress.message = seepage.status === 'success'
         ? stage6BishopSeepageCompleteMessage(seepage.result)
@@ -5218,6 +5640,7 @@ function stage6BishopEnsureDeformationWorker(){
     if(payload.type === 'result'){
       deformation.mesh = payload.output?.mesh || null;
       deformation.result = payload.output || null;
+      deformation.stale = false;
       deformation.warnings = Array.isArray(payload.output?.warnings) ? payload.output.warnings : [];
       deformation.status = deformation.mesh && deformation.result ? 'success' : 'failed';
       deformation.rejectReason = deformation.status === 'success'
@@ -5757,21 +6180,44 @@ function stage6BishopMeasurementLabel(metrics){
 function stage6BishopLineProbeOptions(workspace){
   if(workspace === 'seepage'){
     return [
-      {id:'head', label:'Head h', axisTitle:'Head h (m)', unit:'m', color:'#378ADD', digits:3},
-      {id:'porePressure', label:'Pore pressure u', axisTitle:'Pore pressure u (kPa)', unit:'kPa', color:'#2E86C1', digits:3},
-      {id:'gradient', label:'Hydraulic gradient |∇h|', axisTitle:'Hydraulic gradient |∇h| (-)', unit:'', color:'#1D9E75', digits:3},
-      {id:'flow', label:'Specific discharge |q|', axisTitle:'Specific discharge |q| (m/s)', unit:'m/s', color:'#BA7517', digits:3},
-      {id:'normalFlow', label:'Normal discharge q_n', axisTitle:'Normal discharge q_n (m/s)', unit:'m/s', color:'#A32D2D', digits:3}
+      {id:'head', label:'h', axisTitle:'Head h (m)', unit:'m', color:'#378ADD', digits:3},
+      {id:'porePressure', label:'u', axisTitle:'Pore pressure u (kPa)', unit:'kPa', color:'#2E86C1', digits:3},
+      {id:'gradient', label:'|∇h|', axisTitle:'Hydraulic gradient |∇h| (-)', unit:'', color:'#1D9E75', digits:3},
+      {id:'flow', label:'|q|', axisTitle:'Specific discharge |q| (m/s)', unit:'m/s', color:'#BA7517', digits:3},
+      {id:'qx', label:'qₓ', axisTitle:'Specific discharge qₓ (m/s)', unit:'m/s', color:'#B85C38', digits:3},
+      {id:'qy', label:'qᵧ', axisTitle:'Specific discharge qᵧ (m/s)', unit:'m/s', color:'#9B59B6', digits:3},
+      {id:'normalFlow', label:'qₙ', axisTitle:'Normal discharge qₙ (m/s)', unit:'m/s', color:'#A32D2D', digits:3}
     ];
   }
   if(workspace === 'deformation'){
-    return [
-      {id:'settlement', label:'Settlement (-u_y)', axisTitle:'Settlement (mm)', unit:'mm', color:'#D85A30', digits:3},
-      {id:'ux', label:'Horizontal displacement u_x', axisTitle:'Horizontal displacement u_x (mm)', unit:'mm', color:'#378ADD', digits:3},
-      {id:'uy', label:'Vertical displacement u_y', axisTitle:'Vertical displacement u_y (mm)', unit:'mm', color:'#7D5BA6', digits:3},
-      {id:'deltaSigmaYy', label:'Delta sigma_yy', axisTitle:'Delta sigma_yy (kPa)', unit:'kPa', color:'#BA7517', digits:3},
-      {id:'mcEta', label:'MC utilization eta', axisTitle:'MC utilization eta (-)', unit:'', color:'#A32D2D', digits:3}
-    ];
+    const colorById = {
+      settlement:'#D85A30',
+      ux:'#378ADD',
+      uy:'#7D5BA6',
+      uTotal:'#C0392B',
+      deltaSigmaYy:'#BA7517',
+      sigmaYyEffInit:'#9E7A2E',
+      sigmaYyEff:'#C47B10',
+      sigmaYyTotalInit:'#8E5316',
+      sigmaYyTotal:'#A64616',
+      sigmaXxEffInit:'#4E7DA8',
+      sigmaXxEff:'#2E86C1',
+      sigmaXxTotalInit:'#335C8A',
+      sigmaXxTotal:'#1F618D',
+      tauXy:'#6C5CE7',
+      mcEta:'#A32D2D'
+    };
+    return stage6BishopDeformationContourOptions().map(({id, label})=>{
+      const meta = stage6BishopDeformationContourMeta(id);
+      return {
+        id,
+        label,
+        axisTitle:meta.axisTitle || `${label}${meta.unit ? ` (${meta.unit})` : ''}`,
+        unit:meta.unit || '',
+        color:colorById[id] || '#378ADD',
+        digits:meta.digits || 3
+      };
+    });
   }
   return [];
 }
@@ -5966,6 +6412,10 @@ function stage6BishopBuildLineProbe(workspace, measurementMetrics){
             value = Math.hypot(flowState.dhdx || 0, flowState.dhdy || 0);
           } else if(quantity === 'flow'){
             value = Math.hypot(flowState.qx || 0, flowState.qy || 0);
+          } else if(quantity === 'qx'){
+            value = flowState.qx || 0;
+          } else if(quantity === 'qy'){
+            value = flowState.qy || 0;
           } else if(quantity === 'normalFlow'){
             value = (flowState.qx || 0) * vectors.nx + (flowState.qy || 0) * vectors.ny;
           }
@@ -5976,7 +6426,17 @@ function stage6BishopBuildLineProbe(workspace, measurementMetrics){
       if(state){
         if(quantity === 'ux') value = 1000 * (state.ux || 0);
         else if(quantity === 'uy') value = 1000 * (state.uy || 0);
+        else if(quantity === 'uTotal') value = 1000 * (state.uTotal || 0);
         else if(quantity === 'deltaSigmaYy') value = state.deltaSigmaYy;
+        else if(quantity === 'sigmaYyEffInit') value = state.sigmaYyEffInit;
+        else if(quantity === 'sigmaYyEff') value = state.sigmaYyEff;
+        else if(quantity === 'sigmaYyTotalInit') value = state.sigmaYyTotalInit;
+        else if(quantity === 'sigmaYyTotal') value = state.sigmaYyTotal;
+        else if(quantity === 'sigmaXxEffInit') value = state.sigmaXxEffInit;
+        else if(quantity === 'sigmaXxEff') value = state.sigmaXxEff;
+        else if(quantity === 'sigmaXxTotalInit') value = state.sigmaXxTotalInit;
+        else if(quantity === 'sigmaXxTotal') value = state.sigmaXxTotal;
+        else if(quantity === 'tauXy') value = state.tauXy;
         else if(quantity === 'mcEta') value = state.mcEta;
         else value = 1000 * (state.settlement || 0);
       }
@@ -7228,20 +7688,19 @@ function stage6BishopDrawCanvas(){
   const seepageMesh = bishop.seepage?.mesh || null;
   const seepageResult = bishop.seepage?.result || null;
   if(workspace === 'seepage' && seepageMesh && seepageResult){
-    if(bishop.seepage.display?.showHead){
+    const contourMode = bishop.seepage?.display?.contourMode || 'head';
+    const contourDerived = stage6BishopSeepageContourDerived(seepageResult, seepageMesh, contourMode);
+    const contourStats = contourDerived.stats;
+    if(bishop.seepage.display?.showContours !== false){
       ctx.save();
       seepageMesh.cells.forEach((cell, index)=>{
         const polygon = cell?.polygon || [];
         if(polygon.length < 3) return;
-        const wetFraction = Math.max(0, Math.min(seepageResult.cellWetFraction?.[index] ?? (seepageResult.cellDryMask?.[index] ? 0 : 1), 1));
-        if(wetFraction <= 0.01) return;
         const screen = polygon.map((point)=>stage6BishopWorldToScreen(point));
-        ctx.fillStyle = stage6BishopSeepageHeadColor(
-          seepageResult.cellHeads?.[index] ?? seepageResult.headMin ?? 0,
-          seepageResult.headMin,
-          seepageResult.headMax,
-          0.06 + 0.38 * wetFraction
-        );
+        const wetFraction = Math.max(0, Math.min(seepageResult.cellWetFraction?.[index] ?? (seepageResult.cellDryMask?.[index] ? 0 : 1), 1));
+        const alpha = contourMode === 'head' ? (0.08 + 0.44 * wetFraction) : 0.52;
+        const value = stage6BishopSeepageContourValue(seepageResult, seepageMesh, index, contourMode);
+        ctx.fillStyle = stage6BishopSeepageContourColor(value, contourStats.min, contourStats.max, contourMode, alpha);
         ctx.beginPath();
         ctx.moveTo(screen[0].x, screen[0].y);
         for(let i=1;i<screen.length;i+=1) ctx.lineTo(screen[i].x, screen[i].y);
@@ -7251,16 +7710,20 @@ function stage6BishopDrawCanvas(){
       ctx.restore();
     }
 
-    (seepageResult.phreaticSegments || []).forEach((segment)=>{
-      drawPolyline(segment, '#1D9E75', 2, [8, 4]);
-    });
-
-    if(bishop.seepage.display?.showEquipotentials){
-      (seepageResult.equipotentialSegments || []).forEach((group, groupIndex)=>{
-        const alpha = groupIndex % 2 === 0 ? 0.42 : 0.26;
+    if(bishop.seepage.display?.showContourLines !== false){
+      ctx.save();
+      contourDerived.levelSegments.forEach((group)=>{
+        const stroke = stage6BishopSeepageContourLineColor(group.level, contourStats.min, contourStats.max, contourMode, 0.94);
         (group.segments || []).forEach((segment)=>{
-          drawPolyline(segment, `rgba(33, 109, 186, ${alpha})`, 1.1, []);
+          drawPolyline(segment, stroke, Math.abs(group.level) < 1e-10 ? 2.1 : 1.35, []);
         });
+      });
+      ctx.restore();
+    }
+
+    if(bishop.seepage.display?.showPhreatic !== false){
+      (seepageResult.phreaticSegments || []).forEach((segment)=>{
+        drawPolyline(segment, '#1D9E75', 2, [8, 4]);
       });
     }
 
@@ -7288,8 +7751,25 @@ function stage6BishopDrawCanvas(){
   const deformationResult = bishop.deformation?.result || null;
   if(workspace === 'deformation' && deformationMesh && deformationResult){
     const contourMode = bishop.deformation?.display?.contourMode || 'settlement';
-    const contourStats = stage6BishopDeformationContourStats(deformationResult, deformationMesh, contourMode);
+    const contourDerived = stage6BishopDeformationContourDerived(deformationResult, deformationMesh, contourMode);
+    const contourStats = contourDerived.stats;
     const dispScale = Math.max(Number(bishop.deformation?.options?.displacementScale) || 1, 0.05);
+    const deformationVectorMode = stage6BishopDeformationVectorMode(contourMode);
+    const deformationVectorReference = deformationVectorMode
+      ? Math.max(
+          (deformationResult?.nodalDisplacements || []).reduce((max, disp)=>{
+            const ux = Number(disp?.ux) || 0;
+            const uy = Number(disp?.uy) || 0;
+            const mag = contourMode === 'ux'
+              ? Math.abs(ux)
+              : contourMode === 'uy' || contourMode === 'settlement'
+                ? Math.abs(uy)
+                : Math.hypot(ux, uy);
+            return Math.max(max, mag);
+          }, 0),
+          1e-12
+        )
+      : 1e-12;
     const deformedPoint = (nodeId)=>{
       const node = deformationMesh.nodes?.[nodeId];
       const disp = deformationResult.nodalDisplacements?.[nodeId];
@@ -7313,6 +7793,117 @@ function stage6BishopDrawCanvas(){
         ctx.fill();
       });
       ctx.restore();
+    }
+    if(bishop.deformation?.display?.showContourLines !== false){
+      ctx.save();
+      contourDerived.levelSegments.forEach((group)=>{
+        const stroke = stage6BishopDeformationContourLineColor(group.level, contourStats.min, contourStats.max, contourMode, 0.94);
+        (group.segments || []).forEach((segment)=>{
+          drawPolyline(segment, stroke, Math.abs(group.level) < 1e-10 ? 2.1 : 1.35, []);
+        });
+      });
+      ctx.restore();
+    }
+    if(
+      bishop.deformation?.display?.showDisplacementVectors &&
+      bishop.deformation?.display?.showContourLines !== false &&
+      deformationVectorMode
+    ){
+      const maxVectors = 28;
+      const bucketSizePx = 96;
+      const viewportPaddingPx = 18;
+      const usedBuckets = new Set();
+      let drawnVectors = 0;
+      const drawDisplacementArrow = (screenMid, vx, vy, relativeMagnitude)=>{
+        const mag = Math.hypot(vx, vy);
+        if(!(mag > 1e-12)) return;
+        const dirX = vx / mag;
+        const dirY = vy / mag;
+        const shaftPx = 10 + 8 * Math.max(0, Math.min(relativeMagnitude, 1));
+        const halfDx = 0.5 * shaftPx * dirX;
+        const halfDy = -0.5 * shaftPx * dirY;
+        const tailX = screenMid.x - halfDx;
+        const tailY = screenMid.y - halfDy;
+        const tipX = screenMid.x + halfDx;
+        const tipY = screenMid.y + halfDy;
+        const headPx = 5.2;
+        const headAngle = Math.PI / 6;
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+        ctx.lineWidth = 3.4;
+        ctx.beginPath();
+        ctx.moveTo(tailX, tailY);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(25, 37, 54, 0.92)';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(tailX, tailY);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(25, 37, 54, 0.94)';
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(
+          tipX - headPx * Math.cos(Math.atan2(-dirY, dirX) - headAngle),
+          tipY - headPx * Math.sin(Math.atan2(-dirY, dirX) - headAngle)
+        );
+        ctx.lineTo(
+          tipX - headPx * Math.cos(Math.atan2(-dirY, dirX) + headAngle),
+          tipY - headPx * Math.sin(Math.atan2(-dirY, dirX) + headAngle)
+        );
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      };
+      contourDerived.levelSegments.forEach((group)=>{
+        if(drawnVectors >= maxVectors) return;
+        (group.segments || []).forEach((segment)=>{
+          if(drawnVectors >= maxVectors || !segment?.length || segment.length < 2) return;
+          const a = segment[0];
+          const b = segment[segment.length - 1];
+          const screenA = stage6BishopWorldToScreen(a);
+          const screenB = stage6BishopWorldToScreen(b);
+          const screenLen = Math.hypot(screenB.x - screenA.x, screenB.y - screenA.y);
+          if(screenLen < 2) return;
+          const midpoint = {
+            x:0.5 * (a.x + b.x),
+            y:0.5 * (a.y + b.y)
+          };
+          const screenMid = stage6BishopWorldToScreen(midpoint);
+          if(
+            screenMid.x < -viewportPaddingPx ||
+            screenMid.x > width + viewportPaddingPx ||
+            screenMid.y < -viewportPaddingPx ||
+            screenMid.y > height + viewportPaddingPx
+          ) return;
+          const bucketKey = `${Math.floor(screenMid.x / bucketSizePx)}:${Math.floor(screenMid.y / bucketSizePx)}`;
+          if(usedBuckets.has(bucketKey)) return;
+          const sampled = sampleDeformationState(deformationMesh, deformationResult, midpoint.x, midpoint.y);
+          if(!sampled) return;
+          const vx = contourMode === 'ux'
+            ? Number(sampled.ux) || 0
+            : contourMode === 'uy' || contourMode === 'settlement'
+              ? 0
+              : Number(sampled.ux) || 0;
+          const vy = contourMode === 'ux'
+            ? 0
+            : contourMode === 'uy' || contourMode === 'settlement'
+              ? Number(sampled.uy) || 0
+              : Number(sampled.uy) || 0;
+          const referenceMag = contourMode === 'ux'
+            ? Math.abs(vx)
+            : contourMode === 'uy' || contourMode === 'settlement'
+              ? Math.abs(vy)
+              : Math.hypot(vx, vy);
+          if(!(referenceMag > 1e-12)) return;
+          usedBuckets.add(bucketKey);
+          drawDisplacementArrow(screenMid, vx, vy, referenceMag / deformationVectorReference);
+          drawnVectors += 1;
+        });
+      });
     }
     if(bishop.deformation?.display?.showUndeformedMesh){
       ctx.save();
@@ -9276,6 +9867,7 @@ function renderStage6BishopApp(){
   const seepagePhreaticReady = seepage.options?.freeSurface === 'iterate' || (bishop.phreatic || []).length >= 2;
   const seepageRunReady = !!model && seepageHeadCount > 0 && seepagePhreaticReady;
   const seepageHasResult = !!seepage.mesh && !!seepage.result;
+  const seepageStatusLabel = seepageHasResult && seepage.stale ? 'success (stale)' : (seepage.status || 'idle');
   const seepageSetupMessage = !model
     ? 'Draw terrain and place the active CPT before assigning seepage boundary conditions.'
     : seepageHeadCount > 0
@@ -9283,6 +9875,8 @@ function renderStage6BishopApp(){
       : 'Assign at least one prescribed-head boundary edge to make the seepage model solvable.';
   const seepageStatusMessage = seepage.progress?.running
     ? (seepage.progress.message || 'Running seepage...')
+    : seepageHasResult && seepage.stale
+      ? (seepage.rejectReason || 'Showing the previous seepage result. Rerun to update it.')
     : seepage.status === 'success'
       ? (seepage.progress?.message || 'Seepage result ready.')
       : (seepage.rejectReason || seepageSetupMessage);
@@ -9298,6 +9892,7 @@ function renderStage6BishopApp(){
     : loadQ;
   const deformationRunReady = !!model && loadZoneActive && (deformationLoadMode === 'total' ? !!deformationTotalLoad : deformationDerivedQ > 0);
   const deformationHasResult = !!deformation.mesh && !!deformation.result;
+  const deformationStatusLabel = deformationHasResult && deformation.stale ? 'success (stale)' : (deformation.status || 'idle');
   const deformationAppliedQ = Math.max(Number(deformationDerivedQ) || 0, 0);
   const deformationWarnings = Array.isArray(deformation.warnings) ? deformation.warnings : [];
   const deformationInitialStressMode = deformation.result?.solver?.initialStressMode === 'gravity-step'
@@ -9331,6 +9926,8 @@ function renderStage6BishopApp(){
         : (deformationDerivedQ > 0 ? 'Load interval and pressure are ready for deformation.' : 'Enter a positive surface load q before running deformation.');
   const deformationStatusMessage = deformation.progress?.running
     ? (deformation.progress.message || 'Running deformation...')
+    : deformationHasResult && deformation.stale
+      ? (deformation.rejectReason || 'Showing the previous deformation result. Rerun to update it.')
     : deformation.status === 'success'
       ? (deformation.progress?.message || 'Deformation result ready.')
       : (deformation.rejectReason || deformationSetupMessage);
@@ -9359,6 +9956,16 @@ function renderStage6BishopApp(){
       : "stage6BishopClear('results')";
   const toolbarClearLabel = workspace === 'seepage' ? 'Clear seepage' : workspace === 'deformation' ? 'Clear deformation' : 'Clear results';
   const toolbarRunReady = workspace === 'seepage' ? seepageRunReady : workspace === 'deformation' ? deformationRunReady : runReady;
+  const toolbarRunning = workspace === 'seepage'
+    ? !!seepage.progress?.running
+    : workspace === 'deformation'
+      ? !!deformation.progress?.running
+      : !!bishop.progress.running;
+  const toolbarHasResult = workspace === 'seepage'
+    ? seepageHasResult
+    : workspace === 'deformation'
+      ? deformationHasResult
+      : results.length > 0;
   const toolbarProgressText = workspace === 'seepage'
     ? seepageStatusMessage
     : workspace === 'deformation'
@@ -9371,6 +9978,26 @@ function renderStage6BishopApp(){
     : workspace === 'deformation'
       ? (deformation.progress?.running ? (deformation.progress.percent || 0) : (deformation.status === 'success' ? 100 : 0))
       : (bishop.progress.percent || 0);
+  const workspaceSwitchNote = workspace==='seepage'
+    ? 'Shared canvas and geometry; seepage settings are additive.'
+    : workspace === 'deformation'
+      ? 'Shared canvas and geometry; deformation reuses the section mesh with its own solver settings.'
+      : 'Shared canvas and geometry; Bishop/Spencer remain the default workspace.';
+  const workspaceReadyHint = workspace === 'seepage'
+    ? seepageSetupMessage
+    : workspace === 'deformation'
+      ? deformationSetupMessage
+      : stage6BishopReadyMessage(runReady);
+  const workspaceFocusLabel = workspace === 'seepage'
+    ? 'Selected edge'
+    : workspace === 'deformation'
+      ? 'Load interval'
+      : 'Method';
+  const workspaceFocusValue = workspace === 'seepage'
+    ? (selectedSeepageEdge ? stage6BishopSeepageEdgeLabel(selectedSeepageEdge) : 'none')
+    : workspace === 'deformation'
+      ? (loadZoneActive ? `${loadZone.xStart.toFixed(2)}-${loadZone.xEnd.toFixed(2)} m` : 'not set')
+      : stage6BishopMethodModeLabel(bishop.methodMode);
   const resultRows = results.slice(0, Math.max(bishop.search.keepBest || 10, 1)).map((result, index)=>`
     <tr class="${index === (bishop.selectedResult || 0) ? 'sel':''}">
       <td>${index+1}</td>
@@ -9687,11 +10314,6 @@ function renderStage6BishopApp(){
                   Use the drawn phreatic line as the initial wet/dry seed
                 </label>
                 <div class="st6-help">Iterative free surface is now the default. In iterative mode the seepage solve stops as soon as the flow-rate error target is met or the runtime limit is reached, whichever comes first. Fixed phreatic remains available when you intentionally want to lock seepage to a known phreatic line for benchmarking or sensitivity checks. The automatic target area scales from the drawn section geometry and becomes coarser for larger sections to keep the default mesh size under control. For the current section that lands around <strong>${seepageAutoMeshTargetArea.toFixed(2)} m²</strong>. Typing a value switches the mesh to manual sizing.</div>
-                <div class="st6-bishop-tools">
-                  <button class="btn sm" onclick="stage6BishopRunSeepage()" ${seepageRunReady ? '' : 'disabled'}>Run seepage</button>
-                  <button class="btn sm" onclick="stage6BishopStopSeepage()">Stop</button>
-                  <button class="btn sm" onclick="stage6BishopClear('seepageResults')" ${seepageHasResult ? '' : 'disabled'}>Clear seepage result</button>
-                </div>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(seepageStatusMessage)}</strong><br>
                   Solver: <strong>constrained triangular FEM mesh</strong><br>
@@ -9748,9 +10370,6 @@ function renderStage6BishopApp(){
                   <input type="checkbox" ${deformation.options?.useSeepagePorePressures ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useSeepagePorePressures', this.checked)">
                   Use seepage pore pressures when a seepage result exists
                 </label>
-                <label style="font-size:11px;color:var(--tx2)">Deformed-shape scale factor
-                  <input type="number" step="0.1" min="0.05" value="${Number(deformation.options?.displacementScale || 1).toFixed(2)}" onchange="stage6BishopSetField('deformation.options.displacementScale', this.value)">
-                </label>
                 <div class="st6-help">The deformation mesh is intentionally refined beneath the loaded interval and both load edges, because the constant-strain T3 triangles become too stiff if that part of the mesh is left coarse. The automatic target area scales from the current section and is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here.</div>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(deformationStatusMessage)}</strong><br>
@@ -9796,7 +10415,7 @@ function renderStage6BishopApp(){
               Orphaned BCs: <strong>${seepageOrphanedBcs.length}</strong><br>
               Selected edge: <strong>${selectedSeepageEdge ? stage6EscAttr(stage6BishopSeepageEdgeLabel(selectedSeepageEdge)) : 'none'}</strong><br>
               Free-surface mode: <strong>${stage6EscAttr(seepage.options?.freeSurface === 'iterate' ? 'iterative' : 'fixed')}</strong><br>
-              Solver status: <strong>${stage6EscAttr(seepage.status || 'idle')}</strong><br>
+              Solver status: <strong>${stage6EscAttr(seepageStatusLabel)}</strong><br>
               Last head range: <strong>${seepage.result ? `${seepage.result.headMin.toFixed(2)} to ${seepage.result.headMax.toFixed(2)} m` : '—'}</strong><br>
               Measurement: <strong>${stage6EscAttr(measurementStatus)}</strong>
             </div>
@@ -9810,7 +10429,7 @@ function renderStage6BishopApp(){
               Out-of-plane length: <strong>${deformationOutOfPlaneLength.toFixed(2)} m</strong><br>
               Seepage pore pressures: <strong>${deformation.options?.useSeepagePorePressures ? 'enabled when available' : 'off'}</strong><br>
               Initial stress: <strong>${stage6EscAttr(deformationInitialStressMode)}</strong><br>
-              Solver status: <strong>${stage6EscAttr(deformation.status || 'idle')}</strong><br>
+              Solver status: <strong>${stage6EscAttr(deformationStatusLabel)}</strong><br>
               Last max settlement: <strong>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxSettlement || 0)).toFixed(2)} mm` : '—'}</strong><br>
               Measurement: <strong>${stage6EscAttr(measurementStatus)}</strong>
             </div>
@@ -9818,8 +10437,8 @@ function renderStage6BishopApp(){
   const workspaceCanvasHelp = workspace === 'stability'
     ? 'Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.'
     : workspace === 'seepage'
-      ? 'The seepage workspace reuses the same Bishop section. Use <strong>Assign BC</strong> and click the terrain, model base, or side boundaries to assign prescribed head, no-flow, or seepage-face conditions, then click <strong>Run seepage</strong>. The same terrain, polygons, walls, snap settings, and viewport stay active while you switch between stability and seepage, and the result overlays draw directly on this canvas. When a measurement line exists, the results panel can also probe heads, gradients, and discharge along it.'
-      : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the linear-elastic plane-strain screen. Contours show settlement, horizontal displacement, vertical stress increase, or MC utilization, and the deformed mesh can be amplified with the scale factor for inspection. The shared measurement line can also probe displacement and MC screening quantities in the results panel.';
+      ? 'The seepage workspace reuses the same Bishop section. Use <strong>Assign BC</strong> and click the terrain, model base, or side boundaries to assign prescribed head, no-flow, or seepage-face conditions, then click <strong>Run seepage</strong>. The same terrain, polygons, walls, snap settings, and viewport stay active while you switch between stability and seepage. Contour fill, contour lines, and the legend now follow the selected seepage field, while flow lines, the phreatic line, and exit-gradient highlights remain optional overlays. When a measurement line exists, the results panel can also probe heads, gradients, and discharge along it.'
+      : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the linear-elastic plane-strain screen. Contour fill, contour lines, and the optional legend now work together on the selected field, and the stress menus separate the initial geostatic state from the final post-load state. The shared measurement line can also probe displacement and stress quantities in the results panel.';
   const lineProbeSelectionPath = workspace === 'seepage' ? 'lineProbe.seepageQuantity' : 'lineProbe.deformationQuantity';
   const lineProbeCopyToneColor = bishop.lineProbe?.copyTone === 'ok' ? '#1D9E75' : bishop.lineProbe?.copyTone === 'warn' ? '#BA7517' : 'var(--tx2)';
   const lineProbeSummaryHtml = lineProbe.status === 'ready' ? `
@@ -9845,6 +10464,8 @@ function renderStage6BishopApp(){
                 </select>
               </label>
               <div class="st6-bishop-mini-actions" style="margin-bottom:10px">
+                <button class="btn sm ${bishop.tool==='measure'?'active':''}" onclick="stage6BishopSetTool('measure')">Set probe line</button>
+                <button class="btn sm" onclick="stage6BishopClear('measure')" ${measurementPoints.length ? '' : 'disabled'}>Clear line</button>
                 <button class="btn sm" onclick="stage6BishopCopyLineProbeData()" ${lineProbe.status === 'ready' ? '' : 'disabled'}>Copy graph data</button>
               </div>
               ${bishop.lineProbe?.copyMessage ? `<div class="st6-help" style="margin-bottom:10px;color:${lineProbeCopyToneColor}">${stage6EscAttr(bishop.lineProbe.copyMessage)}</div>` : ''}
@@ -9852,6 +10473,202 @@ function renderStage6BishopApp(){
               ${lineProbe.status === 'ready' ? `<div style="position:relative;height:220px"><canvas id="stage6BishopLineProbeChart" role="img" aria-label="Line probe graph"></canvas></div>` : ''}
             </div>
           ` : '';
+  const seepageContourMode = bishop.seepage?.display?.contourMode || 'head';
+  const seepageContourOptions = stage6BishopSeepageContourOptions();
+  const seepageContourDerived = workspace === 'seepage' && seepage.mesh && seepage.result
+    ? stage6BishopSeepageContourDerived(seepage.result, seepage.mesh, seepageContourMode)
+    : null;
+  const seepageContourLegendMeta = stage6BishopSeepageContourMeta(seepageContourMode);
+  const seepageContourLegendTicks = seepageContourDerived
+    ? stage6BishopSeepageContourLegendTicks(seepageContourMode, seepageContourDerived.stats)
+    : [];
+  const deformationContourMode = bishop.deformation?.display?.contourMode || 'settlement';
+  const deformationContourOptions = stage6BishopDeformationContourOptions();
+  const deformationDisplacementVectorReady = stage6BishopDeformationVectorMode(deformationContourMode);
+  const deformationDisplacementVectorAvailable = deformationDisplacementVectorReady && bishop.deformation?.display?.showContourLines !== false;
+  const deformationContourDerived = workspace === 'deformation' && deformation.mesh && deformation.result
+    ? stage6BishopDeformationContourDerived(deformation.result, deformation.mesh, deformationContourMode)
+    : null;
+  const deformationContourLegendMeta = stage6BishopDeformationContourMeta(deformationContourMode);
+  const deformationContourLegendTicks = deformationContourDerived
+    ? stage6BishopDeformationContourLegendTicks(deformationContourMode, deformationContourDerived.stats)
+    : [];
+  const viewSectionHtml = `
+              <details class="st6-adv st6-bishop-view-panel" data-st6details="bishop-geo-view"${stage6DetailsOpen('bishop-geo-view')}>
+                <summary>View</summary>
+                <div class="st6-adv-body">
+                  <div class="st6-bishop-view-grid">
+                    <div class="st6-bishop-view-card">
+                      <div class="st6-bishop-view-card-title">Snap</div>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.gridSnap?'checked':''} onchange="stage6BishopSetField('gridSnap', this.checked)">
+                        Snap to grid
+                      </label>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.pointSnap?'checked':''} onchange="stage6BishopSetField('pointSnap', this.checked)">
+                        Snap to existing points
+                      </label>
+                      <label style="font-size:11px;color:var(--tx2)">Grid size (m)
+                        <input type="number" step="0.05" min="0.05" value="${bishop.snapSize.toFixed(2)}" onchange="stage6BishopSetField('snapSize', this.value)">
+                      </label>
+                      <div class="st6-help">If both snap modes are enabled, the cursor snaps to whichever candidate is closer: the grid node or the nearest existing Bishop canvas point.</div>
+                    </div>
+                    <div class="st6-bishop-view-card">
+                      <div class="st6-bishop-view-card-title">Polygon overlay</div>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.display?.showRegions !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegions', this.checked)">
+                        Show soil polygons
+                      </label>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.display?.showRegionLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLabels', this.checked)">
+                        Show polygon labels
+                      </label>
+                      <label class="st6-bishop-check">
+                        <input type="checkbox" ${bishop.display?.showRegionLegend !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLegend', this.checked)">
+                        Show polygon legend
+                      </label>
+                      <label style="font-size:11px;color:var(--tx2)">Fill opacity
+                        <input type="number" step="0.05" min="0.05" max="0.75" value="${Number(bishop.display?.regionOpacity ?? 0.22).toFixed(2)}" onchange="stage6BishopSetField('display.regionOpacity', this.value)">
+                      </label>
+                    </div>
+                    ${workspace === 'seepage' ? `
+                      <div class="st6-bishop-view-card">
+                        <div class="st6-bishop-view-card-title">Seepage contours</div>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.seepage?.display?.showContours !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showContours', this.checked)">
+                          Show contour fill
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.seepage?.display?.showContourLines !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showContourLines', this.checked)">
+                          Show contour lines
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.seepage?.display?.showContourLegend !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showContourLegend', this.checked)">
+                          Show contour legend
+                        </label>
+                        <label style="font-size:11px;color:var(--tx2)">Contour mode
+                          <select onchange="stage6BishopSetField('seepage.display.contourMode', this.value)">
+                            ${seepageContourOptions.map((option)=>`<option value="${stage6EscAttr(option.id)}"${bishop.seepage?.display?.contourMode===option.id?' selected':''}>${stage6EscAttr(option.label)}</option>`).join('')}
+                          </select>
+                        </label>
+                      </div>
+                      <div class="st6-bishop-view-card">
+                        <div class="st6-bishop-view-card-title">Seepage overlay</div>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.seepage?.display?.showBoundaryConditions !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showBoundaryConditions', this.checked)">
+                          Show boundary conditions
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.seepage?.display?.showBoundaryLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showBoundaryLabels', this.checked)">
+                          Show BC labels
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.seepage?.display?.showPhreatic !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showPhreatic', this.checked)">
+                          Show phreatic line
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.seepage?.display?.showFlowVectors ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showFlowVectors', this.checked)">
+                          Show flow lines
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.seepage?.display?.showExitGradient ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showExitGradient', this.checked)">
+                          Show exit gradient
+                        </label>
+                      </div>
+                    ` : workspace === 'deformation' ? `
+                      <div class="st6-bishop-view-card">
+                        <div class="st6-bishop-view-card-title">Contour overlay</div>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.deformation?.display?.showContours !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showContours', this.checked)">
+                          Show contour fill
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.deformation?.display?.showContourLines !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showContourLines', this.checked)">
+                          Show contour lines
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.deformation?.display?.showContourLegend !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showContourLegend', this.checked)">
+                          Show contour legend
+                        </label>
+                        <label style="font-size:11px;color:var(--tx2)">Contour mode
+                          <select onchange="stage6BishopSetField('deformation.display.contourMode', this.value)">
+                            ${deformationContourOptions.map((option)=>`<option value="${stage6EscAttr(option.id)}"${bishop.deformation?.display?.contourMode===option.id?' selected':''}>${stage6EscAttr(option.label)}</option>`).join('')}
+                          </select>
+                        </label>
+                      </div>
+                      <div class="st6-bishop-view-card">
+                        <div class="st6-bishop-view-card-title">Mesh and vectors</div>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.deformation?.display?.showDeformedMesh !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showDeformedMesh', this.checked)">
+                          Show deformed mesh
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.deformation?.display?.showUndeformedMesh ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showUndeformedMesh', this.checked)">
+                          Show undeformed mesh
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.deformation?.display?.showLoadVectors !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showLoadVectors', this.checked)">
+                          Show load vectors
+                        </label>
+                        <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.deformation?.display?.showDisplacementVectors ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showDisplacementVectors', this.checked)" ${deformationDisplacementVectorAvailable ? '' : 'disabled'}>
+                          Show displacement direction vectors
+                        </label>
+                        <label style="font-size:11px;color:var(--tx2)">Deformed-shape scale factor
+                          <input type="number" step="0.1" min="0.05" value="${Number(bishop.deformation?.options?.displacementScale || 1).toFixed(2)}" onchange="stage6BishopSetField('deformation.options.displacementScale', this.value)">
+                        </label>
+                        <div class="st6-help">Displacement vectors are shown sparsely on the current contour lines for <strong>Settlement</strong>, <strong>|u|,fin</strong>, <strong>uₓ,fin</strong>, and <strong>uᵧ,fin</strong>. They stay off for stress and MC contour modes.</div>
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+              </details>
+  `;
+  const deformationContourLegendHtml = deformationContourDerived &&
+      bishop.deformation?.display?.showContourLegend !== false &&
+      (bishop.deformation?.display?.showContours !== false || bishop.deformation?.display?.showContourLines !== false)
+    ? `
+              <details class="st6-bishop-contour-legend" data-st6details="bishop-deformation-contour-legend"${stage6DetailsOpen('bishop-deformation-contour-legend')}>
+                <summary>
+                  <span class="st6-bishop-contour-legend-title">Legend</span>
+                  <span class="st6-bishop-contour-legend-mode">${stage6EscAttr(deformationContourLegendMeta.label)}</span>
+                </summary>
+                <div class="st6-bishop-contour-legend-panel">
+                  <div class="st6-bishop-contour-legend-unit">${stage6EscAttr(deformationContourLegendMeta.unit || 'relative')}</div>
+                  <div class="st6-bishop-contour-legend-body">
+                    <div class="st6-bishop-contour-legend-scale" style="background:${stage6EscAttr(stage6BishopDeformationContourLegendGradient(deformationContourMode))}"></div>
+                    <div class="st6-bishop-contour-legend-ticks">
+                      ${deformationContourLegendTicks.map((value)=>`<span>${stage6EscAttr(stage6BishopDeformationContourLegendValue(deformationContourMode, value))}</span>`).join('')}
+                    </div>
+                  </div>
+                </div>
+              </details>
+            `
+    : '';
+  const seepageContourLegendHtml = seepageContourDerived &&
+      bishop.seepage?.display?.showContourLegend !== false &&
+      (bishop.seepage?.display?.showContours !== false || bishop.seepage?.display?.showContourLines !== false)
+    ? `
+              <details class="st6-bishop-contour-legend" data-st6details="bishop-seepage-contour-legend"${stage6DetailsOpen('bishop-seepage-contour-legend')}>
+                <summary>
+                  <span class="st6-bishop-contour-legend-title">Legend</span>
+                  <span class="st6-bishop-contour-legend-mode">${stage6EscAttr(seepageContourLegendMeta.label)}</span>
+                </summary>
+                <div class="st6-bishop-contour-legend-panel">
+                  <div class="st6-bishop-contour-legend-unit">${stage6EscAttr(seepageContourLegendMeta.unit || 'relative')}</div>
+                  <div class="st6-bishop-contour-legend-body">
+                    <div class="st6-bishop-contour-legend-scale" style="background:${stage6EscAttr(stage6BishopSeepageContourLegendGradient(seepageContourMode))}"></div>
+                    <div class="st6-bishop-contour-legend-ticks">
+                      ${seepageContourLegendTicks.map((value)=>`<span>${stage6EscAttr(stage6BishopSeepageContourLegendValue(seepageContourMode, value))}</span>`).join('')}
+                    </div>
+                  </div>
+                </div>
+              </details>
+            `
+    : '';
+  const activeContourLegendHtml = workspace === 'seepage'
+    ? seepageContourLegendHtml
+    : deformationContourLegendHtml;
   const workspaceResultsHtml = workspace === 'stability' ? `
           <div class="st6-bishop-results-panel">
             <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Results</div>
@@ -9934,7 +10751,7 @@ function renderStage6BishopApp(){
             <div class="st6-bishop-results-top">
               <div class="st6-bishop-side">
                 <table class="pt" style="margin-bottom:12px">
-                  <tr><td>Status</td><td>${stage6EscAttr(seepage.status || 'idle')}</td></tr>
+                  <tr><td>Status</td><td>${stage6EscAttr(seepageStatusLabel)}</td></tr>
                   <tr><td>Nodes</td><td>${seepage.mesh?.nodes?.length || 0}</td></tr>
                   <tr><td>Triangles</td><td>${seepage.mesh?.elements?.length || 0}</td></tr>
                   <tr><td>Head range</td><td>${seepage.result ? `${seepage.result.headMin.toFixed(2)} to ${seepage.result.headMax.toFixed(2)} m` : '—'}</td></tr>
@@ -9986,7 +10803,7 @@ function renderStage6BishopApp(){
             <div class="st6-bishop-results-top">
               <div class="st6-bishop-side">
                 <table class="pt" style="margin-bottom:12px">
-                  <tr><td>Status</td><td>${stage6EscAttr(deformation.status || 'idle')}</td></tr>
+                  <tr><td>Status</td><td>${stage6EscAttr(deformationStatusLabel)}</td></tr>
                   <tr><td>Load mode</td><td>${deformationLoadMode === 'total' ? 'total load' : 'pressure q'}</td></tr>
                   <tr><td>Applied q</td><td>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</td></tr>
                   <tr><td>Total load</td><td>${deformationTotalLoad != null ? `${deformationTotalLoad.toFixed(1)} kN` : '—'}</td></tr>
@@ -10035,12 +10852,8 @@ function renderStage6BishopApp(){
         <button class="btn sm ${workspace==='stability'?'active':''}" onclick="stage6BishopSetWorkspace('stability')">Stability</button>
         <button class="btn sm ${workspace==='seepage'?'active':''}" onclick="stage6BishopSetWorkspace('seepage')">Seepage</button>
         <button class="btn sm ${workspace==='deformation'?'active':''}" onclick="stage6BishopSetWorkspace('deformation')">Deformation</button>
-        <span class="st6-bishop-progress">${workspace==='seepage'
-          ? 'Shared canvas and geometry; seepage settings are additive.'
-          : workspace === 'deformation'
-            ? 'Shared canvas and geometry; deformation reuses the section mesh with its own solver settings.'
-            : 'Shared canvas and geometry; Bishop/Spencer remain the default workspace.'}</span>
       </div>
+      <div class="st6-bishop-workspace-note">${stage6EscAttr(workspaceSwitchNote)}</div>
       <div class="st6-bishop-layout">
         <div class="st6-bishop-side">
           <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Geometry</div>
@@ -10065,14 +10878,23 @@ function renderStage6BishopApp(){
                 <div class="st6-adv-body">
                   <div class="st6-help">Default Bishop still uses CPT-derived polygons. To edit them, first copy the current solver polygons into a custom set. After that you can draw additional polygons, select one in <strong>Edit / pan</strong>, drag its vertices, split it into smaller polygons, cut interior holes with a different material, assign one of the imported Bishop materials, and tune a polygon-specific seepage coarseness factor for local mesh refinement.</div>
                   ${showingCustomRegionPreview ? `<div class="st6-help">Custom polygons are visible for editing, but the solver is still using the CPT-derived polygon set until you enable the checkbox below.</div>` : ''}
-                  <div class="st6-bishop-tools">
-                    <button class="btn sm" onclick="stage6BishopCopyCurrentRegionsToCustom()">Copy current polygons</button>
-                    <button class="btn sm ${bishop.tool==='region'?'active':''}" onclick="stage6BishopSetTool('region')">Draw polygon</button>
-                    <button class="btn sm ${bishop.tool==='regionHole'?'active':''}" onclick="stage6BishopSetTool('regionHole')" ${selectedCustomRegion ? '' : 'disabled'}>Cut hole</button>
-                    <button class="btn sm ${bishop.tool==='regionSplit'?'active':''}" onclick="stage6BishopSetTool('regionSplit')" ${selectedCustomRegion ? '' : 'disabled'}>Split selected</button>
-                    <button class="btn sm" onclick="stage6BishopFinishDraft()" ${((bishop.draftKind==='region' || bishop.draftKind==='regionHole') && bishop.draft.length >= 3) ? '' : 'disabled'}>${bishop.draftKind==='regionHole' ? 'Finish hole' : 'Finish polygon'}</button>
-                    <button class="btn sm" onclick="stage6BishopDeleteSelectedRegion()" ${selectedCustomRegion ? '' : 'disabled'}>Delete selected</button>
-                    <button class="btn sm" onclick="stage6BishopClear('customRegions')" ${customRegionCount ? '' : 'disabled'}>Clear custom polygons</button>
+                  <div class="st6-bishop-tool-grid">
+                    <div class="st6-bishop-tool-group">
+                      <div class="st6-bishop-tool-title">Create</div>
+                      <div class="st6-bishop-tools">
+                        <button class="btn sm" onclick="stage6BishopCopyCurrentRegionsToCustom()">Copy current polygons</button>
+                        <button class="btn sm ${bishop.tool==='region'?'active':''}" onclick="stage6BishopSetTool('region')">Draw polygon</button>
+                        <button class="btn sm" onclick="stage6BishopFinishDraft()" ${((bishop.draftKind==='region' || bishop.draftKind==='regionHole') && bishop.draft.length >= 3) ? '' : 'disabled'}>${bishop.draftKind==='regionHole' ? 'Finish hole' : 'Finish polygon'}</button>
+                      </div>
+                    </div>
+                    <div class="st6-bishop-tool-group ${selectedCustomRegion ? '' : 'st6-bishop-tool-group-muted'}">
+                      <div class="st6-bishop-tool-title">Selected polygon</div>
+                      <div class="st6-bishop-tools">
+                        <button class="btn sm ${bishop.tool==='regionHole'?'active':''}" onclick="stage6BishopSetTool('regionHole')" ${selectedCustomRegion ? '' : 'disabled'}>Cut hole</button>
+                        <button class="btn sm ${bishop.tool==='regionSplit'?'active':''}" onclick="stage6BishopSetTool('regionSplit')" ${selectedCustomRegion ? '' : 'disabled'}>Split selected</button>
+                        <button class="btn sm" onclick="stage6BishopDeleteSelectedRegion()" ${selectedCustomRegion ? '' : 'disabled'}>Delete selected</button>
+                      </div>
+                    </div>
                   </div>
                   <label class="st6-bishop-check">
                     <input type="checkbox" ${customModeActive ? 'checked' : ''} onchange="stage6BishopSetUseCustomRegions(this.checked)" ${customRegionCount ? '' : 'disabled'}>
@@ -10110,121 +10932,37 @@ function renderStage6BishopApp(){
               <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-setup"${stage6DetailsOpen('bishop-geo-setup')}>
                 <summary>Section setup</summary>
                 <div class="st6-adv-body">
-                  <div class="st6-bishop-tools">
-                    <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
-                    <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
-                    <button class="btn sm ${bishop.tool==='wall'?'active':''}" onclick="stage6BishopSetTool('wall')">Retaining wall</button>
-                    <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
-                    <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
-                    <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
-                    <button class="btn sm ${bishop.tool==='measure'?'active':''}" onclick="stage6BishopSetTool('measure')">Measure</button>
-                    <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
-                    ${workspace === 'seepage' ? `<button class="btn sm ${bishop.tool==='seepageBc'?'active':''}" onclick="stage6BishopSetTool('seepageBc')">Boundary conditions</button>` : ''}
+                  <div class="st6-bishop-tool-grid">
+                    <div class="st6-bishop-tool-group">
+                      <div class="st6-bishop-tool-title">Draw</div>
+                      <div class="st6-bishop-tools">
+                        <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
+                        <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
+                        <button class="btn sm ${bishop.tool==='wall'?'active':''}" onclick="stage6BishopSetTool('wall')">Retaining wall</button>
+                        <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
+                        <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
+                        <button class="btn sm ${bishop.tool==='load'?'active':''}" onclick="stage6BishopSetTool('load')">Load zone</button>
+                      </div>
+                    </div>
+                    <div class="st6-bishop-tool-group">
+                      <div class="st6-bishop-tool-title">Edit</div>
+                      <div class="st6-bishop-tools">
+                        <button class="btn sm ${bishop.tool==='edit'?'active':''}" onclick="stage6BishopSetTool('edit')">Edit / pan</button>
+                      </div>
+                    </div>
+                    <div class="st6-bishop-tool-group st6-bishop-tool-group-muted">
+                      <div class="st6-bishop-tool-title">Probe</div>
+                      <div class="st6-bishop-tools">
+                        <button class="btn sm ${bishop.tool==='measure'?'active':''}" onclick="stage6BishopSetTool('measure')">Measure</button>
+                      </div>
+                      <div class="st6-help">Measurement line: <strong>${stage6EscAttr(measurementStatus)}</strong>${workspace === 'seepage' ? '<br>Boundary assignment lives in the seepage boundary-conditions section below.' : ''}</div>
+                    </div>
                   </div>
-                  <div class="st6-bishop-mini-actions">
-                    <button class="btn sm" onclick="stage6BishopClear('measure')" ${measurementPoints.length ? '' : 'disabled'}>Clear measure</button>
-                  </div>
-                  <div class="st6-help">Measurement: <strong>${stage6EscAttr(measurementStatus)}</strong></div>
                 </div>
               </details>
               ${workspaceGeometrySectionHtml}
-              <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-view"${stage6DetailsOpen('bishop-geo-view')}>
-                <summary>View</summary>
-                <div class="st6-adv-body">
-                  <label class="st6-bishop-check">
-                    <input type="checkbox" ${bishop.gridSnap?'checked':''} onchange="stage6BishopSetField('gridSnap', this.checked)">
-                    Snap to grid
-                  </label>
-                  <label class="st6-bishop-check">
-                    <input type="checkbox" ${bishop.pointSnap?'checked':''} onchange="stage6BishopSetField('pointSnap', this.checked)">
-                    Snap to existing points
-                  </label>
-                  <label style="font-size:11px;color:var(--tx2)">Grid size (m)
-                    <input type="number" step="0.05" min="0.05" value="${bishop.snapSize.toFixed(2)}" onchange="stage6BishopSetField('snapSize', this.value)">
-                  </label>
-                  <div class="st6-help">If both snap modes are enabled, the cursor snaps to whichever candidate is closer: the grid node or the nearest existing Bishop canvas point.</div>
-                  <div class="st6-bishop-visuals">
-                    <div class="st6-bishop-visuals-title">Polygon overlay</div>
-                    <label class="st6-bishop-check">
-                      <input type="checkbox" ${bishop.display?.showRegions !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegions', this.checked)">
-                      Show soil polygons
-                    </label>
-                    <label class="st6-bishop-check">
-                      <input type="checkbox" ${bishop.display?.showRegionLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLabels', this.checked)">
-                      Show polygon labels
-                    </label>
-                    <label class="st6-bishop-check">
-                      <input type="checkbox" ${bishop.display?.showRegionLegend !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLegend', this.checked)">
-                      Show polygon legend
-                    </label>
-                    <label style="font-size:11px;color:var(--tx2)">Fill opacity
-                      <input type="number" step="0.05" min="0.05" max="0.75" value="${Number(bishop.display?.regionOpacity ?? 0.22).toFixed(2)}" onchange="stage6BishopSetField('display.regionOpacity', this.value)">
-                    </label>
-                  </div>
-                  ${workspace === 'seepage' ? `
-                    <div class="st6-bishop-visuals">
-                      <div class="st6-bishop-visuals-title">Seepage overlay</div>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.seepage?.display?.showBoundaryConditions !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showBoundaryConditions', this.checked)">
-                        Show boundary conditions
-                      </label>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.seepage?.display?.showBoundaryLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showBoundaryLabels', this.checked)">
-                        Show BC labels
-                      </label>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.seepage?.display?.showHead ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showHead', this.checked)">
-                        Show head field
-                      </label>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.seepage?.display?.showEquipotentials ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showEquipotentials', this.checked)">
-                        Show equipotentials
-                      </label>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.seepage?.display?.showFlowVectors ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showFlowVectors', this.checked)">
-                        Show flow lines
-                      </label>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.seepage?.display?.showExitGradient ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showExitGradient', this.checked)">
-                        Show exit gradient
-                      </label>
-                    </div>
-                  ` : workspace === 'deformation' ? `
-                    <div class="st6-bishop-visuals">
-                      <div class="st6-bishop-visuals-title">Deformation overlay</div>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.deformation?.display?.showContours !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showContours', this.checked)">
-                        Show contours
-                      </label>
-                      <label style="font-size:11px;color:var(--tx2)">Contour mode
-                        <select onchange="stage6BishopSetField('deformation.display.contourMode', this.value)">
-                          <option value="settlement"${bishop.deformation?.display?.contourMode==='settlement'?' selected':''}>Settlement</option>
-                          <option value="ux"${bishop.deformation?.display?.contourMode==='ux'?' selected':''}>Horizontal displacement u_x</option>
-                          <option value="syy"${bishop.deformation?.display?.contourMode==='syy'?' selected':''}>Delta sigma_yy</option>
-                          <option value="mc"${bishop.deformation?.display?.contourMode==='mc'?' selected':''}>MC utilization eta</option>
-                        </select>
-                      </label>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.deformation?.display?.showDeformedMesh !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showDeformedMesh', this.checked)">
-                        Show deformed mesh
-                      </label>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.deformation?.display?.showUndeformedMesh ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showUndeformedMesh', this.checked)">
-                        Show undeformed mesh
-                      </label>
-                      <label class="st6-bishop-check">
-                        <input type="checkbox" ${bishop.deformation?.display?.showLoadVectors !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showLoadVectors', this.checked)">
-                        Show load vectors
-                      </label>
-                      <label style="font-size:11px;color:var(--tx2)">Deformed-shape scale factor
-                        <input type="number" step="0.1" min="0.05" value="${Number(bishop.deformation?.options?.displacementScale || 1).toFixed(2)}" onchange="stage6BishopSetField('deformation.options.displacementScale', this.value)">
-                      </label>
-                    </div>
-                  ` : ''}
-                </div>
-              </details>
               <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-clear"${stage6DetailsOpen('bishop-geo-clear')}>
-                <summary>Clear accepted geometry</summary>
+                <summary>Reset geometry</summary>
                 <div class="st6-adv-body">
                   <div class="st6-bishop-mini-actions">
                     <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
@@ -10233,7 +10971,7 @@ function renderStage6BishopApp(){
                     <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
                     <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
                     <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
-                    <button class="btn sm" onclick="stage6BishopClear('measure')" ${measurementPoints.length ? '' : 'disabled'}>Clear measure</button>
+                    ${workspace === 'stability' ? `<button class="btn sm" onclick="stage6BishopClear('measure')" ${measurementPoints.length ? '' : 'disabled'}>Clear measure</button>` : ''}
                     <button class="btn sm" onclick="stage6BishopClear('customRegions')">Clear custom polygons</button>
                   </div>
                 </div>
@@ -10257,35 +10995,59 @@ function renderStage6BishopApp(){
         </div>
         <div class="st6-bishop-main">
           <div class="st6-bishop-canvas-wrap">
-            <div class="st6-bishop-toolbar">
-              <button class="btn" onclick="${toolbarRunAction}" ${toolbarRunReady?'':'disabled'}>${toolbarRunLabel}</button>
-              <button class="btn sm" onclick="${toolbarStopAction}">Stop</button>
-              <button class="btn sm" onclick="fitStage6BishopViewport()">Fit view</button>
-              <button class="btn sm" onclick="${toolbarClearAction}">${toolbarClearLabel}</button>
-              <span id="stage6BishopProgress" class="st6-bishop-progress">${toolbarProgressText}</span>
-            </div>
-            <div class="st6-bishop-progress-track"><div id="stage6BishopProgressBar" class="st6-bishop-progress-bar" style="width:${Math.max(0, Math.min(100, toolbarProgressPercent))}%"></div></div>
-            <div class="st6-bishop-status">
-              <div id="stage6BishopMode" class="st6-bishop-mode">${modeMeta.label}</div>
-            </div>
-            <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Seep/Slope section and slip circles"></canvas>
-            ${bishop.display?.showRegionLegend !== false && regionLegendItems.length ? `
-              <details class="st6-bishop-region-legend" data-st6details="bishop-region-legend"${stage6DetailsOpen('bishop-region-legend')}>
-                <summary>
-                  <span class="st6-bishop-region-legend-title">Soil polygons${showingCustomRegionPreview ? ' (custom preview)' : ''}</span>
-                  <span class="st6-bishop-region-legend-count">${regionLegendItems.length}</span>
-                </summary>
-                <div class="st6-bishop-region-legend-body">
-                  ${regionLegendItems.map((item)=>`
-                    <div class="st6-bishop-region-chip">
-                      <span class="st6-bishop-region-swatch" style="background:${stage6EscAttr(item.color)}"></span>
-                      <span class="st6-bishop-region-text">${stage6EscAttr(item.label)}${item.count > 1 ? ` <em>(${item.count})</em>` : ''}</span>
-                    </div>
-                  `).join('')}
+            <div class="st6-bishop-command">
+              <div class="st6-bishop-toolbar">
+                <div class="st6-bishop-toolbar-main">
+                  <button class="btn" onclick="${toolbarRunAction}" ${toolbarRunReady?'':'disabled'}>${toolbarRunLabel}</button>
+                  <button class="btn sm" onclick="${toolbarStopAction}" ${toolbarRunning ? '' : 'disabled'}>Stop</button>
                 </div>
-              </details>
-            ` : ''}
-            <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
+                <div class="st6-bishop-toolbar-secondary">
+                  <button class="btn sm" onclick="fitStage6BishopViewport()">Fit view</button>
+                  <button class="btn sm" onclick="${toolbarClearAction}" ${toolbarHasResult ? '' : 'disabled'}>${toolbarClearLabel}</button>
+                </div>
+              </div>
+              <div class="st6-bishop-status-card">
+                <div id="stage6BishopProgress" class="st6-bishop-status-summary">${stage6EscAttr(toolbarProgressText)}</div>
+                <div class="st6-bishop-status-meta">
+                  <div class="st6-bishop-status-stat">
+                    <span class="st6-bishop-status-label">Tool</span>
+                    <strong id="stage6BishopMode" class="st6-bishop-mode">${stage6EscAttr(modeMeta.label)}</strong>
+                  </div>
+                  <div class="st6-bishop-status-stat">
+                    <span class="st6-bishop-status-label">${stage6EscAttr(workspaceFocusLabel)}</span>
+                    <strong>${stage6EscAttr(workspaceFocusValue)}</strong>
+                  </div>
+                  <div class="st6-bishop-status-stat">
+                    <span class="st6-bishop-status-label">Line</span>
+                    <strong>${stage6EscAttr(measurementStatus)}</strong>
+                  </div>
+                </div>
+                <div class="st6-bishop-status-hint">${stage6EscAttr(workspaceReadyHint)}</div>
+              </div>
+            </div>
+            ${viewSectionHtml}
+            <div class="st6-bishop-progress-track"><div id="stage6BishopProgressBar" class="st6-bishop-progress-bar" style="width:${Math.max(0, Math.min(100, toolbarProgressPercent))}%"></div></div>
+            <div class="st6-bishop-canvas-stage">
+              <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Seep/Slope section and slip circles"></canvas>
+              ${bishop.display?.showRegionLegend !== false && regionLegendItems.length ? `
+                <details class="st6-bishop-region-legend" data-st6details="bishop-region-legend"${stage6DetailsOpen('bishop-region-legend')}>
+                  <summary>
+                    <span class="st6-bishop-region-legend-title">Soil polygons${showingCustomRegionPreview ? ' (custom preview)' : ''}</span>
+                    <span class="st6-bishop-region-legend-count">${regionLegendItems.length}</span>
+                  </summary>
+                  <div class="st6-bishop-region-legend-body">
+                    ${regionLegendItems.map((item)=>`
+                      <div class="st6-bishop-region-chip">
+                        <span class="st6-bishop-region-swatch" style="background:${stage6EscAttr(item.color)}"></span>
+                        <span class="st6-bishop-region-text">${stage6EscAttr(item.label)}${item.count > 1 ? ` <em>(${item.count})</em>` : ''}</span>
+                      </div>
+                    `).join('')}
+                  </div>
+                </details>
+              ` : ''}
+              ${activeContourLegendHtml}
+              <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
+            </div>
             <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
             <div class="st6-help" style="margin-top:10px">${workspaceCanvasHelp}</div>
           </div>
@@ -11106,10 +11868,13 @@ function stage7CaptureBishopWorkspaceView(workspace){
       capturedAt:new Date().toISOString(),
       display:targetWorkspace === 'seepage'
         ? {
+            contourMode:bishop.seepage?.display?.contourMode || 'head',
+            showContours:bishop.seepage?.display?.showContours !== false,
+            showContourLines:bishop.seepage?.display?.showContourLines !== false,
+            showContourLegend:bishop.seepage?.display?.showContourLegend !== false,
             showBoundaryConditions:bishop.seepage?.display?.showBoundaryConditions !== false,
             showBoundaryLabels:bishop.seepage?.display?.showBoundaryLabels !== false,
-            showHead:!!bishop.seepage?.display?.showHead,
-            showEquipotentials:!!bishop.seepage?.display?.showEquipotentials,
+            showPhreatic:bishop.seepage?.display?.showPhreatic !== false,
             showFlowVectors:!!bishop.seepage?.display?.showFlowVectors,
             showExitGradient:!!bishop.seepage?.display?.showExitGradient
           }

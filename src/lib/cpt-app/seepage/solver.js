@@ -1408,6 +1408,8 @@ function contourSegmentsForTriangles(mesh, nodeValues, level, options = {}) {
   return out;
 }
 
+export { contourSegmentsForTriangles };
+
 function average(array) {
   if (!array.length) return 0;
   return array.reduce((sum, value) => sum + value, 0) / array.length;

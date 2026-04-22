@@ -281,7 +281,11 @@ input[type=range]{accent-color:var(--ac)}
   flex-wrap:wrap;
   gap:8px;
   align-items:center;
-  margin-bottom:12px;
+}
+.st6-bishop-workspace-note{
+  margin:4px 0 12px;
+  font-size:11px;
+  color:var(--tx2);
 }
 .st6-bishop-visuals{
   display:grid;
@@ -310,6 +314,10 @@ input[type=range]{accent-color:var(--ac)}
   margin:0;
 }
 .st6-bishop-tool-groups{
+  display:grid;
+  gap:8px;
+}
+.st6-bishop-tool-grid{
   display:grid;
   gap:8px;
 }
@@ -343,11 +351,64 @@ input[type=range]{accent-color:var(--ac)}
 .st6-bishop-toolbar{
   display:flex;
   flex-wrap:wrap;
+  justify-content:space-between;
+  gap:8px;
+  align-items:flex-start;
+}
+.st6-bishop-toolbar-main,
+.st6-bishop-toolbar-secondary{
+  display:flex;
+  flex-wrap:wrap;
   gap:8px;
   align-items:center;
+}
+.st6-bishop-command{
+  display:grid;
+  gap:10px;
   margin-bottom:8px;
 }
 .st6-bishop-progress{
+  font-size:11px;
+  color:var(--tx2);
+}
+.st6-bishop-status-card{
+  display:grid;
+  gap:10px;
+  padding:10px 12px;
+  border:1px solid var(--bd);
+  border-radius:10px;
+  background:var(--panel-soft);
+}
+.st6-bishop-status-summary{
+  font-size:12px;
+  font-weight:600;
+  color:var(--tx);
+}
+.st6-bishop-status-meta{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+  gap:8px;
+}
+.st6-bishop-status-stat{
+  display:grid;
+  gap:4px;
+  padding:8px 10px;
+  border:1px solid var(--bd);
+  border-radius:8px;
+  background:var(--panel);
+}
+.st6-bishop-status-label{
+  font-size:10px;
+  font-weight:700;
+  color:var(--tx2);
+  text-transform:uppercase;
+  letter-spacing:0.04em;
+}
+.st6-bishop-status-stat strong{
+  font-size:12px;
+  color:var(--tx);
+}
+.st6-bishop-status-hint{
   font-size:11px;
   color:var(--tx2);
 }
@@ -369,9 +430,36 @@ input[type=range]{accent-color:var(--ac)}
   min-width:0;
   position:relative;
 }
+.st6-bishop-view-panel{
+  margin-bottom:10px;
+}
+.st6-bishop-view-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+  gap:10px;
+}
+.st6-bishop-view-card{
+  display:grid;
+  gap:8px;
+  padding:10px;
+  border:1px solid var(--bd);
+  border-radius:8px;
+  background:var(--panel-soft);
+  align-content:start;
+}
+.st6-bishop-view-card-title{
+  font-size:10px;
+  font-weight:700;
+  color:var(--tx2);
+  text-transform:uppercase;
+  letter-spacing:0.04em;
+}
+.st6-bishop-canvas-stage{
+  position:relative;
+}
 .st6-bishop-region-legend{
   position:absolute;
-  top:82px;
+  top:12px;
   right:12px;
   z-index:2;
   min-width:180px;
@@ -449,10 +537,85 @@ input[type=range]{accent-color:var(--ac)}
   font-style:normal;
   color:var(--tx2);
 }
-.st6-bishop-status{
+.st6-bishop-contour-legend{
+  position:absolute;
+  right:12px;
+  bottom:12px;
+  z-index:2;
+  min-width:122px;
+  max-width:min(180px, calc(100% - 24px));
+  border:1px solid var(--bd2);
+  border-radius:10px;
+  background:var(--panel-solid);
+  box-shadow:var(--sh);
+  backdrop-filter:blur(4px);
+  overflow:hidden;
+}
+.st6-bishop-contour-legend summary{
+  position:relative;
+  display:grid;
+  gap:2px;
+  padding:10px;
+  cursor:pointer;
+  list-style:none;
+}
+.st6-bishop-contour-legend summary::-webkit-details-marker{
+  display:none;
+}
+.st6-bishop-contour-legend summary::after{
+  content:'+';
+  position:absolute;
+  top:10px;
+  right:10px;
+  color:var(--tx3);
+  font-size:14px;
+  line-height:1;
+}
+.st6-bishop-contour-legend[open] summary::after{
+  content:'−';
+}
+.st6-bishop-contour-legend-title{
+  font-size:10px;
+  font-weight:700;
+  color:var(--tx2);
+  text-transform:uppercase;
+  letter-spacing:0.04em;
+}
+.st6-bishop-contour-legend-mode{
+  padding-right:18px;
+  font-size:11px;
+  font-weight:600;
+  color:var(--tx);
+}
+.st6-bishop-contour-legend-panel{
+  padding:0 10px 10px;
+  border-top:1px solid var(--bd);
+}
+.st6-bishop-contour-legend-unit{
+  margin-top:10px;
+  font-size:10px;
+  color:var(--tx3);
+}
+.st6-bishop-contour-legend-body{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:16px minmax(0, 1fr);
+  gap:10px;
+  align-items:stretch;
+}
+.st6-bishop-contour-legend-scale{
+  min-height:156px;
+  border-radius:999px;
+  border:1px solid var(--bd2);
+}
+.st6-bishop-contour-legend-ticks{
+  min-height:156px;
   display:flex;
-  align-items:center;
-  margin-bottom:10px;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:6px;
+  font-size:10px;
+  color:var(--tx2);
 }
 .st6-bishop-canvas{
   display:block;
@@ -506,7 +669,11 @@ input[type=range]{accent-color:var(--ac)}
   border-color:rgba(29,158,117,0.28);
   color:#1d7a5e;
 }
-.st6-bishop-mode,
+.st6-bishop-mode{
+  font-size:12px;
+  font-weight:700;
+  color:var(--tx);
+}
 .st6-bishop-coord{
   display:flex;
   align-items:center;
@@ -516,14 +683,6 @@ input[type=range]{accent-color:var(--ac)}
   background:var(--bg2);
   color:var(--tx);
   border:1px solid var(--bd);
-}
-.st6-bishop-mode{
-  font-size:11px;
-  font-weight:700;
-  text-transform:uppercase;
-  letter-spacing:.04em;
-}
-.st6-bishop-coord{
   font-size:11px;
   line-height:1.45;
 }
@@ -543,6 +702,9 @@ input[type=range]{accent-color:var(--ac)}
   .st6-bishop-results-top{
     grid-template-columns:1fr;
   }
+  .st6-bishop-toolbar{
+    flex-direction:column;
+  }
 }
 
 @media(max-width:860px){
@@ -551,6 +713,12 @@ input[type=range]{accent-color:var(--ac)}
   }
   .st6-bishop-canvas{
     height:460px;
+  }
+  .st6-bishop-status-meta{
+    grid-template-columns:1fr;
+  }
+  .st6-bishop-view-grid{
+    grid-template-columns:1fr;
   }
 }
 

@@ -1381,7 +1381,8 @@
 					],
 					bullets: [
 						'Polygon <strong>coarseness</strong> is a mesh-density control only; it is not a hydraulic soil property.',
-						'The current results panel can plot head, pore pressure, hydraulic gradient, specific discharge magnitude, and normal cross-flow along the shared measurement line.',
+						'The seepage canvas now supports the same high-contrast contour style as deformation: filled contours, isolines, and an in-canvas legend for <strong>h</strong>, <strong>u</strong>, <strong>|∇h|</strong>, <strong>|q|</strong>, <strong>q<sub>x</sub></strong>, and <strong>q<sub>y</sub></strong>.',
+						'The current results panel can plot head, pore pressure, hydraulic gradient, specific discharge magnitude, discharge components, and normal cross-flow along the shared measurement line.',
 						'The line-probe graph is sampled from the solved field and can be copied to the clipboard as distance/value data.',
 						'The seepage workspace is strongest as a 2D screening tool and as a pore-pressure source for the circular Bishop/Spencer solver; it is not yet a full groundwater package.'
 					]
@@ -1438,7 +1439,7 @@
 					title: '13.3 Numerical safeguards and public outputs',
 					paragraphs: [
 						'The deformation solver uses 3-node constant-strain triangles. That choice is robust and fast on the shared mesh, but it comes with the usual stiffness issues for coarse meshes and near-incompressible Poisson ratios.',
-						'The public results panel can display settlement, u<sub>x</sub>, u<sub>y</sub>, Δσ<sub>yy</sub>, and η<sub>MC</sub> contours, and the same shared measurement line can probe those quantities without covering the canvas.'
+						'The public results panel can display settlement, u<sub>x</sub>, u<sub>y</sub>, |u|, Δσ<sub>yy</sub>, initial and final effective / total σ<sub>yy</sub>, initial and final effective / total σ<sub>xx</sub>, final τ<sub>xy</sub>, and η<sub>MC</sub>. The deformation overlay can show filled contours, contour lines, and a toggleable legend, and the same shared measurement line can probe those quantities without covering the canvas.'
 					],
 					bullets: [
 						'Poisson&apos;s ratio is capped at 0.49 for numerical stability in the plane-strain T3 solver.',

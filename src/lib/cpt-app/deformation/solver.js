@@ -15,7 +15,8 @@ import {
   sampleInitialPorePressure
 } from './post.js';
 
-const CG_TOL = 1e-5;
+const CG_REL_TOL = 1e-5;
+const CG_ABS_TOL = 5e-5;
 const CG_NUMERIC_EPS = 1e-14;
 const CG_CHECKPOINT_INTERVAL = 25;
 const MAX_CG_ITER = 25000;
@@ -68,9 +69,36 @@ function sparseMatVec(rows, vector) {
   return out;
 }
 
-async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = CG_TOL, runControl = null) {
+function cgToleranceState(residualNorm, rhsNorm, relTol = CG_REL_TOL, absTol = CG_ABS_TOL) {
+  const absoluteTarget = Math.max(Number(absTol) || 0, 0);
+  const relativeTarget = Math.max(Number(relTol) || 0, 0) * Math.max(Number(rhsNorm) || 0, 0);
+  const target = Math.max(absoluteTarget, relativeTarget);
+  const relativeResidual = Math.max(Number(rhsNorm) || 0, 0) > CG_NUMERIC_EPS
+    ? residualNorm / rhsNorm
+    : residualNorm > absoluteTarget ? Infinity : 0;
+  return {
+    target,
+    absoluteTarget,
+    relativeTarget,
+    relativeResidual,
+    converged: residualNorm <= target
+  };
+}
+
+async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null) {
   const n = rows.length;
-  if (!n) return { solution: new Float64Array(0), converged: true, iterations: 0, residualNorm: 0, interrupted: false };
+  if (!n) {
+    return {
+      solution: new Float64Array(0),
+      converged: true,
+      iterations: 0,
+      residualNorm: 0,
+      relativeResidual: 0,
+      rhsNorm: 0,
+      toleranceTarget: 0,
+      interrupted: false
+    };
+  }
   const x = initial && initial.length === n ? Float64Array.from(initial) : new Float64Array(n);
   let r = rhs;
   if (initial) {
@@ -82,7 +110,7 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = C
   }
   const z = new Float64Array(n);
   const p = new Float64Array(n);
-  const bNorm = Math.max(Math.sqrt(dot(rhs, rhs)), 1);
+  const rhsNorm = Math.sqrt(dot(rhs, rhs));
 
   for (let i = 0; i < n; i += 1) {
     const diag = Math.abs(rows[i].diag) > CG_NUMERIC_EPS ? rows[i].diag : 1;
@@ -92,8 +120,18 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = C
 
   let rzOld = dot(r, z);
   let residualNorm = Math.sqrt(dot(r, r));
-  if (residualNorm / bNorm <= tol) {
-    return { solution: x, converged: true, iterations: 0, residualNorm, interrupted: false };
+  let tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+  if (tolerance.converged) {
+    return {
+      solution: x,
+      converged: true,
+      iterations: 0,
+      residualNorm,
+      relativeResidual: tolerance.relativeResidual,
+      rhsNorm,
+      toleranceTarget: tolerance.target,
+      interrupted: false
+    };
   }
   await runCheckpoint(runControl, true);
 
@@ -101,7 +139,17 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = C
     const ap = sparseMatVec(rows, p);
     const denom = dot(p, ap);
     if (!(Math.abs(denom) > CG_NUMERIC_EPS)) {
-      return { solution: x, converged: residualNorm / bNorm <= tol, iterations: iter, residualNorm, interrupted: false };
+      tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+      return {
+        solution: x,
+        converged: tolerance.converged,
+        iterations: iter,
+        residualNorm,
+        relativeResidual: tolerance.relativeResidual,
+        rhsNorm,
+        toleranceTarget: tolerance.target,
+        interrupted: false
+      };
     }
     const alpha = rzOld / denom;
     for (let i = 0; i < n; i += 1) {
@@ -109,8 +157,18 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = C
       r[i] -= alpha * ap[i];
     }
     residualNorm = Math.sqrt(dot(r, r));
-    if (residualNorm / bNorm <= tol) {
-      return { solution: x, converged: true, iterations: iter, residualNorm, interrupted: false };
+    tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+    if (tolerance.converged) {
+      return {
+        solution: x,
+        converged: true,
+        iterations: iter,
+        residualNorm,
+        relativeResidual: tolerance.relativeResidual,
+        rhsNorm,
+        toleranceTarget: tolerance.target,
+        interrupted: false
+      };
     }
     for (let i = 0; i < n; i += 1) {
       const diag = Math.abs(rows[i].diag) > CG_NUMERIC_EPS ? rows[i].diag : 1;
@@ -121,11 +179,30 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, tol = C
     for (let i = 0; i < n; i += 1) p[i] = z[i] + beta * p[i];
     rzOld = rzNew;
     if (iter % CG_CHECKPOINT_INTERVAL === 0 && (await runCheckpoint(runControl))) {
-      return { solution: x, converged: false, iterations: iter, residualNorm, interrupted: true };
+      return {
+        solution: x,
+        converged: false,
+        iterations: iter,
+        residualNorm,
+        relativeResidual: tolerance.relativeResidual,
+        rhsNorm,
+        toleranceTarget: tolerance.target,
+        interrupted: true
+      };
     }
   }
 
-  return { solution: x, converged: false, iterations: maxIter, residualNorm, interrupted: false };
+  tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+  return {
+    solution: x,
+    converged: false,
+    iterations: maxIter,
+    residualNorm,
+    relativeResidual: tolerance.relativeResidual,
+    rhsNorm,
+    toleranceTarget: tolerance.target,
+    interrupted: false
+  };
 }
 
 function compressMatrixRows(rows, freeDofs, freeIndexByDof) {
@@ -368,7 +445,7 @@ async function buildGeostaticInitialization(
   });
 
   const gravityCompressedRhs = compressRhs(rows, freeDofs, fixedValues, gravityRhs);
-  const geostaticCg = await solveCg(compressedRows, gravityCompressedRhs, null, MAX_CG_ITER, CG_TOL, runControl);
+  const geostaticCg = await solveCg(compressedRows, gravityCompressedRhs, null, MAX_CG_ITER, CG_REL_TOL, CG_ABS_TOL, runControl);
   if (geostaticCg.interrupted) {
     throw new Error('Deformation run was interrupted before geostatic initialization became available.');
   }
@@ -448,7 +525,7 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
   };
 }
 
-function recoverElementResults(mesh, U, materialsByRegion, initialField) {
+function recoverElementResults(mesh, U, materialsByRegion, initialField, porePressureByElement = null) {
   const out = [];
   for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
@@ -458,6 +535,17 @@ function recoverElementResults(mesh, U, materialsByRegion, initialField) {
     const stressIncrement = elastic.stressIncrement;
     const sigmaIncrementGeo = negateNormalAndShear(stressIncrement);
     const sigmaEff = addStress(initialStress, sigmaIncrementGeo);
+    const porePressure = Math.max(Number(porePressureByElement?.[elementIndex]) || 0, 0);
+    const initialTotalStress = {
+      sxx: (Number(initialStress?.sxx) || 0) + porePressure,
+      syy: (Number(initialStress?.syy) || 0) + porePressure,
+      txy: Number(initialStress?.txy) || 0
+    };
+    const totalStress = {
+      sxx: (Number(sigmaEff?.sxx) || 0) + porePressure,
+      syy: (Number(sigmaEff?.syy) || 0) + porePressure,
+      txy: Number(sigmaEff?.txy) || 0
+    };
     const principal = principalStress2DCompressionPositive(sigmaEff);
     const mc = mohrCoulombIndicator(principal, material);
     out.push({
@@ -467,8 +555,12 @@ function recoverElementResults(mesh, U, materialsByRegion, initialField) {
       centroid: mesh.elementData[elementIndex]?.centroid || cell?.centroid || { x: 0, y: 0 },
       strain: elastic.strain,
       stressIncrement,
+      stressIncrementGeo: sigmaIncrementGeo,
+      porePressure,
       initialEffectiveStress: initialStress,
+      initialTotalStress,
       effectiveStress: sigmaEff,
+      totalStress,
       principal,
       mc
     });
@@ -534,8 +626,19 @@ export function sampleDeformationState(mesh, result, x, y) {
         triangleIndex,
         ux,
         uy,
+        uTotal: Math.hypot(ux, uy),
         settlement: -uy,
         deltaSigmaYy: -Number(result.elementResults?.[triangleIndex]?.stressIncrement?.syy || 0),
+        sigmaYyEffInit: Number(result.elementResults?.[triangleIndex]?.initialEffectiveStress?.syy || 0),
+        sigmaYyEff: Number(result.elementResults?.[triangleIndex]?.effectiveStress?.syy || 0),
+        sigmaYyTotalInit: Number(result.elementResults?.[triangleIndex]?.initialTotalStress?.syy || 0),
+        sigmaYyTotal: Number(result.elementResults?.[triangleIndex]?.totalStress?.syy || 0),
+        sigmaXxEffInit: Number(result.elementResults?.[triangleIndex]?.initialEffectiveStress?.sxx || 0),
+        sigmaXxEff: Number(result.elementResults?.[triangleIndex]?.effectiveStress?.sxx || 0),
+        sigmaXxTotalInit: Number(result.elementResults?.[triangleIndex]?.initialTotalStress?.sxx || 0),
+        sigmaXxTotal: Number(result.elementResults?.[triangleIndex]?.totalStress?.sxx || 0),
+        tauXy: Number(result.elementResults?.[triangleIndex]?.effectiveStress?.txy || 0),
+        porePressure: Number(result.elementResults?.[triangleIndex]?.porePressure || 0),
         mcEta: Number(result.elementResults?.[triangleIndex]?.mc?.eta || 0)
       };
     }
@@ -651,12 +754,14 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   });
 
   const compressedLoadRhs = compressRhs(rows, freeDofs, fixedValues, loadRhs);
-  const cg = await solveCg(compressedRows, compressedLoadRhs, null, MAX_CG_ITER, CG_TOL, runControl);
+  const cg = await solveCg(compressedRows, compressedLoadRhs, null, MAX_CG_ITER, CG_REL_TOL, CG_ABS_TOL, runControl);
   if (cg.interrupted) {
     throw new Error('Deformation run was interrupted before the first displacement solution became available.');
   }
   if (!cg.converged) {
-    throw new Error(`Deformation linear solve did not converge (residual ${cg.residualNorm.toExponential(2)} after ${cg.iterations} iterations).`);
+    throw new Error(
+      `Deformation linear solve did not converge (residual ${cg.residualNorm.toExponential(2)}, relative ${Number.isFinite(cg.relativeResidual) ? cg.relativeResidual.toExponential(2) : 'inf'}, target ${cg.toleranceTarget.toExponential(2)} after ${cg.iterations} iterations).`
+    );
   }
 
   const U = expandSolutionVector(ndof, freeDofs, fixedValues, cg.solution);
@@ -667,7 +772,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     message: 'Recovering stresses, settlements, and MC utilization...'
   });
 
-  const elementResults = recoverElementResults(mesh, U, materialsByRegion, geostatic.initialField);
+  const elementResults = recoverElementResults(mesh, U, materialsByRegion, geostatic.initialField, porePressureByElement);
   const nodalDisplacements = mesh.nodes.map((_node, nodeId) => ({
     ux: U[2 * nodeId],
     uy: U[2 * nodeId + 1]
@@ -696,6 +801,9 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
       geostaticResidualNorm: geostatic.residualNorm,
       linearIterations: cg.iterations,
       residualNorm: cg.residualNorm,
+      relativeResidualNorm: cg.relativeResidual,
+      rhsNorm: cg.rhsNorm,
+      toleranceTarget: cg.toleranceTarget,
       freeDofs: freeDofs.length
     },
     timing: {
