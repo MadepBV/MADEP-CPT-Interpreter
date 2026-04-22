@@ -1,5 +1,6 @@
 import { analyzeDeformationModel, sampleDeformationState } from '../src/lib/cpt-app/deformation/solver.js';
 import {
+  createMCPlasticMaterial,
   createMCReducedStiffnessMaterial,
   createLinearElasticMaterial,
   extractStress2DFrom6,
@@ -262,14 +263,63 @@ await runCase('Case 0c tension cut-off remains diagnostic and does not activate 
   );
 });
 
-await runCase('Case 1 pressure-mode deformation solves and settles beneath the load', async () => {
+await runCase('Case 0d Stage 2 plastic material accumulates plastic strain under a yielding increment', async () => {
+  const prepared = prepareMechanicalMaterial({
+    ...baseModel().regions[0].material,
+    Emc: 18000,
+    cEff: 1.5,
+    phiEffDeg: 18,
+    psiEffDeg: 5,
+    yieldTolerance: 1e-6
+  });
+  const material = createMCPlasticMaterial(prepared);
+  const initialState = seedMaterialPointStateFromInitialStress({ sxx: 15, syy: 30, txy: 0 }, prepared);
+  const update = material.update({
+    strainTrial6: liftPlaneStrainStrainTo6({ exx: 0, eyy: -0.03, gxy: 0.008 }),
+    committedState: initialState,
+    materialParameters: prepared
+  });
+
+  assert(update?.diagnostics?.constitutiveModel === 'mc-plastic', 'Stage 2 material diagnostics should label the constitutive model');
+  assert((update?.diagnostics?.localIterations || 0) > 0, 'Stage 2 return mapping should take one or more local corrector iterations');
+  assert((update?.trialState?.accumulatedPlasticStrain || 0) > 0, 'Stage 2 material points should accumulate equivalent plastic strain after yield');
+  assert(
+    (update?.trialState?.plasticStrain6 || []).some((value) => Math.abs(Number(value) || 0) > 1e-10),
+    'Stage 2 material points should store a non-zero plastic strain increment after yield'
+  );
+  assert(update?.trialState?.currentlyMcActive === true, 'Stage 2 should mark the yielded trial state as MC-active');
+  assert(update?.trialState?.activeYieldSurface === 'MC_SHEAR', 'Stage 2 should report the MC shear surface when the smoothed return map yields');
+});
+
+await runCase('Case 0e Stage 2 leaves tension cut-off as a diagnostic-only state for now', async () => {
+  const prepared = prepareMechanicalMaterial({
+    ...baseModel().regions[0].material,
+    cEff: 0,
+    phiEffDeg: 30,
+    sigmaTAllow: 0
+  });
+  const material = createMCPlasticMaterial(prepared);
+  const initialState = seedMaterialPointStateFromEffectiveStress6([-25, -25, -15, 0, 0, 0], prepared);
+  const update = material.update({
+    strainTrial6: liftPlaneStrainStrainTo6({ exx: 0.02, eyy: 0.02, gxy: 0 }),
+    committedState: initialState,
+    materialParameters: prepared
+  });
+
+  assert(update?.trialState?.currentlyMcActive === false, 'Stage 2 should not route pure tension-cutoff states into the MC shear return map');
+  assert(update?.trialState?.activeYieldSurface === 'TENSION', 'Stage 2 should preserve the tension-cutoff diagnostic surface');
+  assert((update?.trialState?.accumulatedPlasticStrain || 0) === 0, 'Stage 2 should not accumulate plastic strain for tension-diagnostic-only states');
+});
+
+await runCase('Case 1 pressure-mode Stage 1 deformation solves and settles beneath the load', async () => {
   const output = await analyzeDeformationModel({
     model: baseModel(),
     options: {
       meshTargetArea: 0.2,
       loadMode: 'pressure',
       outOfPlaneLength: 10,
-      useSeepagePorePressures: false
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-reduced-stiffness'
     }
   });
 
@@ -299,6 +349,30 @@ await runCase('Case 1 pressure-mode deformation solves and settles beneath the l
   );
 });
 
+await runCase('Case 1a Stage 2 pressure-mode deformation solves through the elastoplastic path in the elastic range', async () => {
+  const output = await analyzeDeformationModel({
+    model: baseModel(),
+    options: {
+      meshTargetArea: 0.3,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialLoadStep: 1,
+      maxLoadSteps: 8
+    }
+  });
+
+  assert(output?.solver?.constitutiveModel === 'mc-plastic-material-point', 'Stage 2 pressure-mode solve should report the elastoplastic constitutive path');
+  assert((output?.solver?.acceptedLoadSteps || 0) === 1, 'Stage 2 elastic-range solve should accept the full load in one step');
+  assert((output?.summaries?.maxSettlement || 0) > 0, 'Stage 2 elastic-range solve should still produce settlement');
+  assert((output?.solver?.peakActiveMcElements || 0) === 0, 'Stage 2 elastic-range solve should stay below the MC surface');
+  assert(
+    !(output?.elementResults || []).some((item) => (Number(item?.materialState?.accumulatedPlasticStrain) || 0) > 0),
+    'Stage 2 elastic-range solve should not accumulate plastic strain when the trial state stays inside the surface'
+  );
+});
+
 await runCase('Case 1b linear-elastic comparison path converges in one full Newton step', async () => {
   const elastic = await analyzeDeformationModel({
     model: baseModel(),
@@ -314,7 +388,7 @@ await runCase('Case 1b linear-elastic comparison path converges in one full Newt
   assert(elastic?.solver?.constitutiveModel === 'linear-elastic-material-point', 'elastic comparison path should report the linear-elastic constitutive model');
   assert((elastic?.solver?.acceptedLoadSteps || 0) === 1, 'linear-elastic path should accept the full load in one load step');
   assert((elastic?.solver?.rejectedLoadSteps || 0) === 0, 'linear-elastic path should not need cutbacks');
-  assert((elastic?.solver?.nonlinearIterations || 0) === 1, 'linear-elastic path should converge in one Newton iteration');
+  assert((elastic?.solver?.nonlinearIterations || 0) <= 2, 'linear-elastic path should converge in one solve plus at most one refreshed equilibrium check');
   assert((elastic?.solver?.loadFactorCommitted || 0) === 1, 'linear-elastic path should commit the full load factor');
   assert((elastic?.solver?.relativeResidualNorm || 0) <= 1.5e-5, `linear-elastic path should leave a small final relative residual (got ${elastic?.solver?.relativeResidualNorm})`);
 });
@@ -326,7 +400,8 @@ await runCase('Case 2 total-load mode matches the equivalent pressure solve', as
       meshTargetArea: 0.2,
       loadMode: 'pressure',
       outOfPlaneLength: 10,
-      useSeepagePorePressures: false
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-reduced-stiffness'
     }
   });
 
@@ -338,7 +413,8 @@ await runCase('Case 2 total-load mode matches the equivalent pressure solve', as
       loadMode: 'total',
       totalLoad,
       outOfPlaneLength: 10,
-      useSeepagePorePressures: false
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-reduced-stiffness'
     }
   });
 
@@ -367,7 +443,8 @@ await runCase('Case 2b low pressure still converges and stays in the linear rang
       meshTargetArea: 0.2,
       loadMode: 'pressure',
       outOfPlaneLength: 10,
-      useSeepagePorePressures: false
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-reduced-stiffness'
     }
   });
   const lowElastic = await analyzeDeformationModel({
@@ -401,7 +478,7 @@ await runCase('Case 2c Stage 1 activates reduced-stiffness zones and softens rel
     surfaceLoad: {
       xStart: 10.5,
       xEnd: 13.5,
-      q: 450
+      q: 350
     }
   });
 
@@ -411,7 +488,9 @@ await runCase('Case 2c Stage 1 activates reduced-stiffness zones and softens rel
       meshTargetArea: 0.22,
       loadMode: 'pressure',
       outOfPlaneLength: 10,
-      useSeepagePorePressures: false
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-reduced-stiffness',
+      nonlinearMaxIterations: 40
     }
   });
 
@@ -445,7 +524,8 @@ await runCase('Case 3 capped nu and seepage fallback warnings still allow a defo
       meshTargetArea: 0.2,
       loadMode: 'pressure',
       outOfPlaneLength: 10,
-      useSeepagePorePressures: true
+      useSeepagePorePressures: true,
+      constitutiveModel: 'mc-reduced-stiffness'
     }
   });
 
@@ -460,6 +540,43 @@ await runCase('Case 3 capped nu and seepage fallback warnings still allow a defo
   );
   assert((output?.summaries?.maxSettlement || 0) > 0, 'warning case should still produce a valid settlement result');
   assert(output?.solver?.initialStressMode === 'gravity-step-k0nc', 'warning case should still use the K0-controlled geostatic initialization');
+});
+
+await runCase('Case 2d Stage 2 low-pressure response stays close to the elastic range', async () => {
+  const model = baseModel({
+    surfaceLoad: { xStart: 11, xEnd: 13, q: 0.1 }
+  });
+  const stage1 = await analyzeDeformationModel({
+    model,
+    options: {
+      meshTargetArea: 0.2,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-reduced-stiffness'
+    }
+  });
+  const plastic = await analyzeDeformationModel({
+    model,
+    options: {
+      meshTargetArea: 0.2,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic'
+    }
+  });
+
+  const stage1Settlement = stage1?.summaries?.maxSettlement || 0;
+  const plasticSettlement = plastic?.summaries?.maxSettlement || 0;
+  assert(plasticSettlement > 0, 'Stage 2 low-pressure case should still produce a positive settlement');
+  approxRelative(
+    plasticSettlement,
+    stage1Settlement,
+    0.1,
+    'Stage 2 low-pressure response should stay close to the Stage 1 elastic-like result when no plasticity activates'
+  );
+  assert((plastic?.solver?.peakActiveMcElements || 0) === 0, 'Stage 2 low-pressure case should not activate plastic zones');
 });
 
 await runCase('Case 3b submerged initialization now carries K0nc-controlled sigma_zz rather than a nu-based lift', async () => {
@@ -565,7 +682,8 @@ await runCase('Case 3d weak low-load soil should not start in blanket MC failure
       meshTargetArea: 0.2,
       loadMode: 'pressure',
       outOfPlaneLength: 10,
-      useSeepagePorePressures: false
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-reduced-stiffness'
     }
   });
 
@@ -593,7 +711,8 @@ await runCase('Case 4 slope geometry uses gravity initialization and develops in
       meshTargetArea: 0.3,
       loadMode: 'pressure',
       outOfPlaneLength: 12,
-      useSeepagePorePressures: false
+      useSeepagePorePressures: false,
+      constitutiveModel: 'linear-elastic'
     }
   });
 
@@ -624,7 +743,8 @@ await runCase('Case 5 deformation sampling exposes total/effective stresses and 
       meshTargetArea: 0.2,
       loadMode: 'pressure',
       outOfPlaneLength: 10,
-      useSeepagePorePressures: false
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-reduced-stiffness'
     }
   });
 

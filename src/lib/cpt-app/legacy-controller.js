@@ -3792,6 +3792,7 @@ function stage6Defaults(){
         },
         options:{
           loadMode:'pressure',
+          constitutiveModel:'mc-reduced-stiffness',
           totalLoad:null,
           outOfPlaneLength:10,
           meshTargetArea:null,
@@ -3964,7 +3965,7 @@ function ensureStage6State(){
   if(!['head','porePressure','gradient','flow','qx','qy','normalFlow'].includes(bishop.lineProbe.seepageQuantity)){
     bishop.lineProbe.seepageQuantity = 'head';
   }
-  if(!['settlement','ux','uy','uTotal','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.lineProbe.deformationQuantity)){
+  if(!['settlement','ux','uy','uTotal','epsilonXx','epsilonYy','gammaXy','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.lineProbe.deformationQuantity)){
     bishop.lineProbe.deformationQuantity = 'settlement';
   }
   bishop.lineProbe.copyMessage = typeof bishop.lineProbe.copyMessage === 'string' ? bishop.lineProbe.copyMessage : '';
@@ -4086,6 +4087,9 @@ function ensureStage6State(){
   bishop.seepage.selectedBcId = bishop.seepage.selectedBcId ? String(bishop.seepage.selectedBcId) : '';
   if(!bishop.deformation || typeof bishop.deformation !== 'object') bishop.deformation = stage6Defaults().bishop.deformation;
   stage6Merge(bishop.deformation, stage6Defaults().bishop.deformation);
+  if(!['linear-elastic','mc-reduced-stiffness','mc-plastic'].includes(bishop.deformation.options.constitutiveModel)){
+    bishop.deformation.options.constitutiveModel = stage6Defaults().bishop.deformation.options.constitutiveModel;
+  }
   if(!['idle','meshing','solving','post','success','failed'].includes(bishop.deformation.status)) bishop.deformation.status = 'idle';
   if(!bishop.deformation.progress || typeof bishop.deformation.progress !== 'object') bishop.deformation.progress = stage6Defaults().bishop.deformation.progress;
   bishop.deformation.progress.running = !!bishop.deformation.progress.running;
@@ -4117,7 +4121,7 @@ function ensureStage6State(){
   if(!bishop.deformation.display || typeof bishop.deformation.display !== 'object') bishop.deformation.display = stage6Defaults().bishop.deformation.display;
   if(bishop.deformation.display.contourMode === 'syy') bishop.deformation.display.contourMode = 'deltaSigmaYy';
   if(bishop.deformation.display.contourMode === 'mc') bishop.deformation.display.contourMode = 'mcEta';
-  if(!['settlement','ux','uy','uTotal','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'settlement';
+  if(!['settlement','ux','uy','uTotal','epsilonXx','epsilonYy','gammaXy','deltaSigmaYy','sigmaYyEffInit','sigmaYyEff','sigmaYyTotalInit','sigmaYyTotal','sigmaXxEffInit','sigmaXxEff','sigmaXxTotalInit','sigmaXxTotal','tauXy','mcEta'].includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'settlement';
   bishop.deformation.display.showContours = bishop.deformation.display.showContours !== false;
   bishop.deformation.display.showContourLines = bishop.deformation.display.showContourLines !== false;
   bishop.deformation.display.showContourLegend = bishop.deformation.display.showContourLegend !== false;
@@ -4614,6 +4618,9 @@ function stage6BishopDeformationContourMeta(mode){
   if(mode === 'ux') return {label:'uₓ,fin', axisTitle:'uₓ,fin (mm)', unit:'mm', scale:1000, digits:2, signed:true};
   if(mode === 'uy') return {label:'uᵧ,fin', axisTitle:'uᵧ,fin (mm)', unit:'mm', scale:1000, digits:2, signed:true};
   if(mode === 'uTotal') return {label:'|u|,fin', axisTitle:'|u|,fin (mm)', unit:'mm', scale:1000, digits:2, signed:false};
+  if(mode === 'epsilonXx') return {label:'εₓₓ,fin', axisTitle:'εₓₓ,fin (%)', unit:'%', scale:100, digits:3, signed:true};
+  if(mode === 'epsilonYy') return {label:'εᵧᵧ,fin', axisTitle:'εᵧᵧ,fin (%)', unit:'%', scale:100, digits:3, signed:true};
+  if(mode === 'gammaXy') return {label:'γₓᵧ,fin', axisTitle:'γₓᵧ,fin (%)', unit:'%', scale:100, digits:3, signed:true};
   if(mode === 'deltaSigmaYy') return {label:'Δσᵧᵧ', axisTitle:'Δσᵧᵧ (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
   if(mode === 'sigmaYyEffInit') return {label:'σ′ᵧᵧ,init', axisTitle:'σ′ᵧᵧ,init (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
   if(mode === 'sigmaYyEff') return {label:'σ′ᵧᵧ,fin', axisTitle:'σ′ᵧᵧ,fin (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
@@ -4633,6 +4640,9 @@ function stage6BishopDeformationContourOptions(){
     'ux',
     'uy',
     'uTotal',
+    'epsilonXx',
+    'epsilonYy',
+    'gammaXy',
     'deltaSigmaYy',
     'sigmaYyEffInit',
     'sigmaYyEff',
@@ -4657,6 +4667,9 @@ function stage6BishopDeformationVectorMode(mode){
 function stage6BishopDeformationElementContourValue(result, elementIndex, mode){
   if(mode === 'syy') mode = 'deltaSigmaYy';
   const item = result?.elementResults?.[elementIndex] || null;
+  if(mode === 'epsilonXx') return Number(item?.strain?.exx || 0);
+  if(mode === 'epsilonYy') return Number(item?.strain?.eyy || 0);
+  if(mode === 'gammaXy') return Number(item?.strain?.gxy || 0);
   if(mode === 'deltaSigmaYy') return -Number(item?.stressIncrement?.syy || 0);
   if(mode === 'sigmaYyEffInit') return Number(item?.initialEffectiveStress?.syy || 0);
   if(mode === 'sigmaYyEff') return Number(item?.effectiveStress?.syy || 0);
@@ -6008,6 +6021,7 @@ function stage6BishopRunDeformation(){
       model,
       options:{
         meshTargetArea:stage6BishopResolvedDeformationMeshTargetArea(bishop),
+        constitutiveModel:bishop.deformation?.options?.constitutiveModel,
         loadMode,
         totalLoad:bishop.deformation?.options?.totalLoad,
         outOfPlaneLength:bishop.deformation?.options?.outOfPlaneLength,
@@ -6332,6 +6346,9 @@ function stage6BishopLineProbeOptions(workspace){
       ux:'#378ADD',
       uy:'#7D5BA6',
       uTotal:'#C0392B',
+      epsilonXx:'#0B8F6A',
+      epsilonYy:'#17865D',
+      gammaXy:'#1F7A8C',
       deltaSigmaYy:'#BA7517',
       sigmaYyEffInit:'#9E7A2E',
       sigmaYyEff:'#C47B10',
@@ -6564,6 +6581,9 @@ function stage6BishopBuildLineProbe(workspace, measurementMetrics){
         if(quantity === 'ux') value = 1000 * (state.ux || 0);
         else if(quantity === 'uy') value = 1000 * (state.uy || 0);
         else if(quantity === 'uTotal') value = 1000 * (state.uTotal || 0);
+        else if(quantity === 'epsilonXx') value = 100 * (state.epsilonXx || 0);
+        else if(quantity === 'epsilonYy') value = 100 * (state.epsilonYy || 0);
+        else if(quantity === 'gammaXy') value = 100 * (state.gammaXy || 0);
         else if(quantity === 'deltaSigmaYy') value = state.deltaSigmaYy;
         else if(quantity === 'sigmaYyEffInit') value = state.sigmaYyEffInit;
         else if(quantity === 'sigmaYyEff') value = state.sigmaYyEff;
@@ -10047,6 +10067,8 @@ function renderStage6BishopApp(){
     : '—';
   const deformationSolverLabel = deformation.result?.solver?.constitutiveModel === 'mc-reduced-stiffness-material-point'
     ? 'Stage 1 MC-active reduced-stiffness plane strain'
+    : deformation.result?.solver?.constitutiveModel === 'mc-plastic-material-point'
+      ? 'Stage 2 elastoplastic plane strain'
     : deformation.result?.solver?.constitutiveModel === 'linear-elastic-material-point'
       ? 'Linear elastic plane strain'
       : '—';
@@ -10288,6 +10310,13 @@ function renderStage6BishopApp(){
                       <option value="total"${deformationLoadMode==='total'?' selected':''}>Total load (kN)</option>
                     </select>
                   </label>
+                  <label style="font-size:11px;color:var(--tx2)">Constitutive model
+                    <select onchange="stage6BishopSetField('deformation.options.constitutiveModel', this.value)">
+                      <option value="mc-plastic"${bishop.deformation?.options?.constitutiveModel==='mc-plastic'?' selected':''}>Stage 2 elastoplastic</option>
+                      <option value="mc-reduced-stiffness"${bishop.deformation?.options?.constitutiveModel==='mc-reduced-stiffness'?' selected':''}>Stage 1 reduced stiffness</option>
+                      <option value="linear-elastic"${bishop.deformation?.options?.constitutiveModel==='linear-elastic'?' selected':''}>Linear elastic</option>
+                    </select>
+                  </label>
                   <label style="font-size:11px;color:var(--tx2)">Surface load q (kPa)${stage6Tooltip('Used directly in pressure mode. In total-load mode the app derives an equivalent 2D pressure q = total load / (loaded width × out-of-plane length).')}
                     <input type="number" step="1" min="0" value="${loadQ.toFixed(1)}" onchange="stage6BishopSetField('surfaceLoad.q', this.value)" ${deformationLoadMode === 'pressure' ? '' : 'disabled'}>
                   </label>
@@ -10501,7 +10530,7 @@ function renderStage6BishopApp(){
             <details class="st6-adv" data-st6details="bishop-deformation-materials"${stage6DetailsOpen('bishop-deformation-materials')}>
               <summary>Imported deformation materials</summary>
               <div class="st6-adv-body">
-                <div class="st6-help">The deformation screen reuses the active CPT-derived layer column across the whole section. The default Stage 1 path solves a drained plane-strain field with an <strong>MC-active reduced-stiffness</strong> material update, so the key inputs are <strong>E<sub>mc</sub></strong>, <strong>nu</strong>, <strong>K<sub>0,NC</sub></strong>, <strong>r<sub>shear</sub></strong>, <strong>c'</strong>, and <strong>phi'</strong>. This Stage 1 branch is a conservative monotonic screening model, not a full reversible elastoplastic law.</div>
+                <div class="st6-help">The deformation screen reuses the active CPT-derived layer column across the whole section. The standard path remains the Stage 1 reduced-stiffness screen, while <strong>Stage 2 elastoplastic</strong> is now available as an advanced return-mapping option on a smoothed Mohr-Coulomb / Drucker-Prager-style surface. The key inputs are <strong>E<sub>mc</sub></strong>, <strong>nu</strong>, <strong>K<sub>0,NC</sub></strong>, <strong>r<sub>shear</sub></strong>, <strong>c'</strong>, and <strong>phi'</strong>.</div>
                 <div style="overflow:auto">
                   <table class="tbl st6-bishop-materials">
                     <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th></tr></thead>
@@ -10524,7 +10553,7 @@ function renderStage6BishopApp(){
                   <input type="checkbox" ${deformation.options?.useSeepagePorePressures ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useSeepagePorePressures', this.checked)">
                   Use seepage pore pressures when a seepage result exists
                 </label>
-                <div class="st6-help">The deformation mesh is intentionally refined beneath the loaded interval and both load edges, because the constant-strain T3 triangles become too stiff if that part of the mesh is left coarse. The automatic target area scales from the current section and is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here.</div>
+                <div class="st6-help">The deformation mesh is intentionally refined beneath the loaded interval and both load edges, because the constant-strain T3 triangles become too stiff if that part of the mesh is left coarse. The automatic target area scales from the current section and is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. Stage 2 uses the full elastoplastic return-map path; Stage 1 and linear elastic remain available for comparison and fallback.</div>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(deformationStatusMessage)}</strong><br>
                   Solver: <strong>${stage6EscAttr(deformationSolverLabel)}</strong><br>
@@ -10595,7 +10624,7 @@ function renderStage6BishopApp(){
     ? 'Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.'
     : workspace === 'seepage'
       ? 'The seepage workspace reuses the same Bishop section. Use <strong>Assign BC</strong> and click the terrain, model base, or side boundaries to assign prescribed head, no-flow, or seepage-face conditions, then click <strong>Run seepage</strong>. The same terrain, polygons, walls, snap settings, and viewport stay active while you switch between stability and seepage. Contour fill, contour lines, and the legend now follow the selected seepage field, while flow lines, the phreatic line, and exit-gradient highlights remain optional overlays. When a measurement line exists, the results panel can also probe heads, gradients, and discharge along it.'
-      : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the drained plane-strain screen. By default the solver uses the Stage 1 MC-active reduced-stiffness material path, while the stress menus still separate the initial geostatic state from the final post-load state. Contour fill, contour lines, the optional legend, and the shared measurement line all work together on the selected deformation field.';
+      : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the drained plane-strain screen. Stage 1 reduced stiffness remains the standard nonlinear screen, while linear elastic and the new Stage 2 elastoplastic path remain available for comparison and advanced use. The stress menus still separate the initial geostatic state from the final post-load state. Contour fill, contour lines, the optional legend, and the shared measurement line all work together on the selected deformation field.';
   const lineProbeSelectionPath = workspace === 'seepage' ? 'lineProbe.seepageQuantity' : 'lineProbe.deformationQuantity';
   const lineProbeCopyToneColor = bishop.lineProbe?.copyTone === 'ok' ? '#1D9E75' : bishop.lineProbe?.copyTone === 'warn' ? '#BA7517' : 'var(--tx2)';
   const lineProbeSummaryHtml = lineProbe.status === 'ready' ? `
@@ -11009,7 +11038,7 @@ function renderStage6BishopApp(){
       <div class="mc2-head" style="margin-bottom:12px">
         <span style="font-size:13px;font-weight:600">${workspace === 'deformation' ? 'Section deformation screening' : 'Seep/Slope + Spencer equilibrium check'}</span>
         <span style="font-size:11px;color:var(--tx2)">${workspace === 'deformation'
-          ? 'Shared Stage 6 geometry with a drained plane-strain mesh, geostatic initialization, and a Stage 1 MC-active reduced-stiffness screening solve.'
+          ? 'Shared Stage 6 geometry with a drained plane-strain mesh, geostatic initialization, and a selectable linear-elastic / Stage 1 / Stage 2 deformation solve.'
           : 'Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.'}</span>
       </div>
       <div class="st6-bishop-workspace-switch">
@@ -11220,11 +11249,11 @@ function renderStage6BishopApp(){
       </div>
       ${stage6NoteHtml(workspace === 'deformation'
         ? [
-            {level:'warn', text:'This deformation workspace is a drained screening tool. It solves a small-strain plane-strain displacement field on T3 triangles and, by default, uses a Stage 1 MC-active reduced-stiffness material update rather than full elastoplasticity.'},
-            {level:'info', text:'Within one monotonic screening run, elements that exceed MC stay on the reduced-stiffness branch for the remaining load ramp. That is conservative and numerically stable, but it is still a pseudo-plastic approximation rather than true return-mapping plasticity.'},
+            {level:'warn', text:'This deformation workspace is a drained small-strain plane-strain tool on T3 triangles. Stage 1 reduced stiffness remains the standard screen, while Stage 2 elastoplastic is available as an advanced experimental path.'},
+            {level:'info', text:'Stage 2 is true plasticity in the sense that it stores plastic strain and performs a local return map, but the current first implementation still uses a smoothed Mohr-Coulomb / Drucker-Prager-style plastic surface rather than exact face-edge-apex Mohr-Coulomb.'},
             {level:'info', text:'The soil model is still derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section, and retaining walls are not yet active mechanical elements in the deformation solve.'},
             {level:'info', text:'Initial stress is built from a geostatic gravity step on the shared mesh, so slopes and wall-supported sections develop in-situ shear stress before the load increment. If that initialization fails numerically, the solver falls back to the older flat-ground K0 field and warns you explicitly.'},
-            {level:'info', text:'MC utilization is based on in-plane principal effective stresses with a zero-tension cut-off. That is useful for visualization and screening, but it is not a substitute for a full elastoplastic FE model.'}
+            {level:'info', text:'MC utilization is still reported as the familiar visualization metric. That is useful for interpretation, but exact classical Mohr-Coulomb corner return and tension-cutoff plasticity are still later upgrades.'}
           ]
         : workspace === 'seepage'
           ? [

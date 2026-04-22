@@ -127,6 +127,282 @@ function resolveYieldTolerance(materialParameters, mcTrial) {
   return epsilonF * stressScale;
 }
 
+function weightedEngineeringStrainDot(left, right) {
+  return (
+    (Number(left?.[0]) || 0) * (Number(right?.[0]) || 0) +
+    (Number(left?.[1]) || 0) * (Number(right?.[1]) || 0) +
+    (Number(left?.[2]) || 0) * (Number(right?.[2]) || 0) +
+    0.5 * (Number(left?.[3]) || 0) * (Number(right?.[3]) || 0) +
+    0.5 * (Number(left?.[4]) || 0) * (Number(right?.[4]) || 0) +
+    0.5 * (Number(left?.[5]) || 0) * (Number(right?.[5]) || 0)
+  );
+}
+
+function deviatoricEngineeringStrain6(strain6) {
+  const exx = Number(strain6?.[VOIGT_XX]) || 0;
+  const eyy = Number(strain6?.[VOIGT_YY]) || 0;
+  const ezz = Number(strain6?.[VOIGT_ZZ]) || 0;
+  const mean = (exx + eyy + ezz) / 3;
+  return [
+    exx - mean,
+    eyy - mean,
+    ezz - mean,
+    Number(strain6?.[VOIGT_XY]) || 0,
+    Number(strain6?.[VOIGT_YZ]) || 0,
+    Number(strain6?.[VOIGT_XZ]) || 0
+  ];
+}
+
+function equivalentPlasticStrainIncrement(deltaPlasticStrain6) {
+  const dev = deviatoricEngineeringStrain6(deltaPlasticStrain6);
+  const normSquared = weightedEngineeringStrainDot(dev, dev);
+  return Math.sqrt(Math.max((2 / 3) * normSquared, 0));
+}
+
+function vectorNorm6(vector) {
+  return Math.sqrt(
+    (Number(vector?.[0]) || 0) ** 2 +
+    (Number(vector?.[1]) || 0) ** 2 +
+    (Number(vector?.[2]) || 0) ** 2 +
+    (Number(vector?.[3]) || 0) ** 2 +
+    (Number(vector?.[4]) || 0) ** 2 +
+    (Number(vector?.[5]) || 0) ** 2
+  );
+}
+
+function dotVector6(left, right) {
+  return (
+    (Number(left?.[0]) || 0) * (Number(right?.[0]) || 0) +
+    (Number(left?.[1]) || 0) * (Number(right?.[1]) || 0) +
+    (Number(left?.[2]) || 0) * (Number(right?.[2]) || 0) +
+    (Number(left?.[3]) || 0) * (Number(right?.[3]) || 0) +
+    (Number(left?.[4]) || 0) * (Number(right?.[4]) || 0) +
+    (Number(left?.[5]) || 0) * (Number(right?.[5]) || 0)
+  );
+}
+
+function outerProduct6(left, right, scale = 1) {
+  return Array.from({ length: 6 }, (_item, rowIndex) =>
+    Array.from({ length: 6 }, (_value, colIndex) =>
+      scale * (Number(left?.[rowIndex]) || 0) * (Number(right?.[colIndex]) || 0)
+    )
+  );
+}
+
+function subtractMatrix6(left, right) {
+  return Array.from({ length: 6 }, (_item, rowIndex) =>
+    Array.from({ length: 6 }, (_value, colIndex) =>
+      (Number(left?.[rowIndex]?.[colIndex]) || 0) - (Number(right?.[rowIndex]?.[colIndex]) || 0)
+    )
+  );
+}
+
+function symmetrizeMatrix6(matrix) {
+  return Array.from({ length: 6 }, (_item, rowIndex) =>
+    Array.from({ length: 6 }, (_value, colIndex) =>
+      0.5 * (
+        (Number(matrix?.[rowIndex]?.[colIndex]) || 0) +
+        (Number(matrix?.[colIndex]?.[rowIndex]) || 0)
+      )
+    )
+  );
+}
+
+function clampMcAngle(angleDeg) {
+  return Math.max(Math.min(Number(angleDeg) || 0, 89.5), 0);
+}
+
+function smoothQScale(materialParameters) {
+  const pRef = Math.max(Number(materialParameters?.yieldTolerancePref) || 100, 1e-6);
+  const factor = Math.max(Number(materialParameters?.smoothQScale) || 1e-8, 0);
+  return Math.max(factor * pRef, 1e-10);
+}
+
+function pressureDependentMcParameters(angleDeg, cohesion) {
+  const angle = (clampMcAngle(angleDeg) * Math.PI) / 180;
+  const sin = Math.sin(angle);
+  const cos = Math.cos(angle);
+  const denom = Math.max(3 - sin, 1e-9);
+  return {
+    alpha: (6 * sin) / denom,
+    k: (6 * Math.max(Number(cohesion) || 0, 0) * cos) / denom
+  };
+}
+
+function evaluateSmoothedPlasticSurface(stress6, angleDeg, cohesion, materialParameters = {}, includeCohesion = true) {
+  const sxx = -(Number(stress6?.[VOIGT_XX]) || 0);
+  const syy = -(Number(stress6?.[VOIGT_YY]) || 0);
+  const szz = -(Number(stress6?.[VOIGT_ZZ]) || 0);
+  const txy = -(Number(stress6?.[VOIGT_XY]) || 0);
+  const tyz = -(Number(stress6?.[VOIGT_YZ]) || 0);
+  const txz = -(Number(stress6?.[VOIGT_XZ]) || 0);
+  const p = (sxx + syy + szz) / 3;
+  const dxx = sxx - p;
+  const dyy = syy - p;
+  const dzz = szz - p;
+  const J2 = 0.5 * (dxx * dxx + dyy * dyy + dzz * dzz + 2 * (txy * txy + tyz * tyz + txz * txz));
+  const q0 = smoothQScale(materialParameters);
+  const q = Math.sqrt(Math.max(3 * J2, 0) + q0 * q0) - q0;
+  const { alpha, k } = pressureDependentMcParameters(angleDeg, includeCohesion ? cohesion : 0);
+  return {
+    f: q - alpha * p - (includeCohesion ? k : 0),
+    p,
+    q,
+    J2,
+    alpha,
+    k: includeCohesion ? k : 0
+  };
+}
+
+function gradientStepForStressComponent(stress6, index, materialParameters) {
+  const baseScale = Math.max(Math.abs(Number(stress6?.[index]) || 0), Number(materialParameters?.yieldTolerancePref) || 100, 1);
+  const stepScale = Math.max(Number(materialParameters?.gradientStepScale) || 1e-7, 1e-10);
+  return Math.max(baseScale * stepScale, 1e-8);
+}
+
+function finiteDifferenceStressGradient6(stress6, evaluator, materialParameters) {
+  const base = cloneVector6(stress6);
+  const gradient = zeroVector6();
+  for (let index = 0; index < 6; index += 1) {
+    const step = gradientStepForStressComponent(base, index, materialParameters);
+    const plus = cloneVector6(base);
+    const minus = cloneVector6(base);
+    plus[index] += step;
+    minus[index] -= step;
+    const fPlus = Number(evaluator(plus)) || 0;
+    const fMinus = Number(evaluator(minus)) || 0;
+    gradient[index] = (fPlus - fMinus) / (2 * step);
+  }
+  return gradient;
+}
+
+function toEngineeringStrainLikeGradient6(tensorGradientLike6) {
+  const gradient = cloneVector6(tensorGradientLike6);
+  gradient[VOIGT_XY] *= 2;
+  gradient[VOIGT_YZ] *= 2;
+  gradient[VOIGT_XZ] *= 2;
+  return gradient;
+}
+
+function smoothYieldGradient6(stress6, materialParameters) {
+  return toEngineeringStrainLikeGradient6(finiteDifferenceStressGradient6(
+    stress6,
+    (candidate) => evaluateSmoothedPlasticSurface(candidate, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true).f,
+    materialParameters
+  ));
+}
+
+function smoothPotentialGradient6(stress6, materialParameters) {
+  return toEngineeringStrainLikeGradient6(finiteDifferenceStressGradient6(
+    stress6,
+    (candidate) => evaluateSmoothedPlasticSurface(candidate, materialParameters?.psiEffDeg ?? materialParameters?.psi, 0, materialParameters, false).f,
+    materialParameters
+  ));
+}
+
+function computeApproximateElastoplasticTangent(D_e, yieldGradient6, potentialGradient6) {
+  const Dm = multiplyMatrix6x6Vector6(D_e, potentialGradient6);
+  const Dn = multiplyMatrix6x6Vector6(D_e, yieldGradient6);
+  const denominator = dotVector6(yieldGradient6, Dm);
+  if (!(Number.isFinite(denominator) && Math.abs(denominator) > 1e-12)) return cloneMatrix6(D_e);
+  return symmetrizeMatrix6(subtractMatrix6(D_e, outerProduct6(Dm, Dn, 1 / denominator)));
+}
+
+function localReturnTolerance(materialParameters, mcTrial) {
+  return Math.max(Number(materialParameters?.localTolerance) || 1e-8, resolveYieldTolerance(materialParameters, mcTrial));
+}
+
+function returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, materialParameters, mcTrial) {
+  let stress6 = cloneVector6(stressTrial6);
+  let deltaPlasticStrain6 = zeroVector6();
+  const trialYieldGradient6 = smoothYieldGradient6(stressTrial6, materialParameters);
+  const trialPotentialGradient6 = smoothPotentialGradient6(stressTrial6, materialParameters);
+  const flowStressDirection6 = multiplyMatrix6x6Vector6(elasticTangent6x6, trialPotentialGradient6);
+  const tolerance = localReturnTolerance(materialParameters, mcTrial);
+  const maxIterations = Math.max(Math.round(Number(materialParameters?.localMaxIterations) || 25), 1);
+  const smoothTrial = evaluateSmoothedPlasticSurface(stressTrial6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
+  const denominator = dotVector6(trialYieldGradient6, flowStressDirection6);
+  if (!(Number.isFinite(denominator) && denominator > 1e-12)) {
+    return { converged: false, reason: 'bad plastic denominator' };
+  }
+  const fTrial = Number(smoothTrial?.f) || 0;
+  if (Math.abs(fTrial) <= tolerance) {
+    return {
+      converged: true,
+      iterations: 0,
+      stress6,
+      plasticStrainIncrement6: deltaPlasticStrain6,
+      algorithmicTangent6x6: computeApproximateElastoplasticTangent(elasticTangent6x6, trialYieldGradient6, trialPotentialGradient6),
+      activeYieldSurface: YIELD_SURFACE_MC_SHEAR
+    };
+  }
+
+  let lambdaLow = 0;
+  let fLow = fTrial;
+  let lambdaHigh = Math.max(fTrial / denominator, tolerance / Math.max(denominator, 1e-12), 1e-10);
+  let fHigh = fLow;
+  let bracketed = false;
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const candidateStress6 = subtractVector6(stressTrial6, scaleVector6(flowStressDirection6, lambdaHigh));
+    const candidateSmooth = evaluateSmoothedPlasticSurface(candidateStress6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
+    fHigh = Number(candidateSmooth?.f) || 0;
+    if (Math.abs(fHigh) <= tolerance) {
+      stress6 = candidateStress6;
+      deltaPlasticStrain6 = scaleVector6(trialPotentialGradient6, lambdaHigh);
+      const finalYieldGradient6 = smoothYieldGradient6(stress6, materialParameters);
+      const finalPotentialGradient6 = smoothPotentialGradient6(stress6, materialParameters);
+      return {
+        converged: true,
+        iterations: attempt + 1,
+        stress6,
+        plasticStrainIncrement6: deltaPlasticStrain6,
+        algorithmicTangent6x6: computeApproximateElastoplasticTangent(elasticTangent6x6, finalYieldGradient6, finalPotentialGradient6),
+        activeYieldSurface: YIELD_SURFACE_MC_SHEAR
+      };
+    }
+    if (fHigh <= 0) {
+      bracketed = true;
+      break;
+    }
+    lambdaHigh *= 2;
+  }
+
+  if (!bracketed) {
+    return { converged: false, reason: 'could not bracket plastic return' };
+  }
+
+  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+    const lambdaMid = 0.5 * (lambdaLow + lambdaHigh);
+    const candidateStress6 = subtractVector6(stressTrial6, scaleVector6(flowStressDirection6, lambdaMid));
+    const candidateSmooth = evaluateSmoothedPlasticSurface(candidateStress6, materialParameters?.phiEffDeg, materialParameters?.cEff, materialParameters, true);
+    const fMid = Number(candidateSmooth?.f) || 0;
+    if (Math.abs(fMid) <= tolerance || Math.abs(lambdaHigh - lambdaLow) <= 1e-12 * Math.max(1, lambdaHigh)) {
+      stress6 = candidateStress6;
+      deltaPlasticStrain6 = scaleVector6(trialPotentialGradient6, lambdaMid);
+      const finalYieldGradient6 = smoothYieldGradient6(stress6, materialParameters);
+      const finalPotentialGradient6 = smoothPotentialGradient6(stress6, materialParameters);
+      return {
+        converged: true,
+        iterations: iteration,
+        stress6,
+        plasticStrainIncrement6: deltaPlasticStrain6,
+        algorithmicTangent6x6: computeApproximateElastoplasticTangent(elasticTangent6x6, finalYieldGradient6, finalPotentialGradient6),
+        activeYieldSurface: YIELD_SURFACE_MC_SHEAR
+      };
+    }
+    if (fMid > 0) {
+      lambdaLow = lambdaMid;
+      fLow = fMid;
+    } else {
+      lambdaHigh = lambdaMid;
+      fHigh = fMid;
+    }
+  }
+
+  return { converged: false, reason: `max local iterations reached (bracket ${fLow.toExponential(3)} to ${fHigh.toExponential(3)})` };
+}
+
 export function createMaterialPointState(overrides = {}) {
   const source = overrides && typeof overrides === 'object' ? overrides : {};
   return {
@@ -456,6 +732,142 @@ export function createMCReducedStiffnessMaterial(materialParameters, warnings = 
           etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
           yieldTolerance,
           constitutiveModel: 'mc-reduced-stiffness',
+          analysisContext
+        }
+      };
+    }
+  };
+}
+
+export function createMCPlasticMaterial(materialParameters, warnings = []) {
+  const label = materialParameters?.label || materialParameters?.id || 'Material';
+  const elasticTangent6x6 = elasticMatrix6x6(materialParameters?.Emc, materialParameters?.nu, warnings, label);
+  return {
+    kind: 'mc-plastic',
+    materialParameters,
+    elasticTangent6x6,
+    initialTangent6x6: cloneMatrix6(elasticTangent6x6),
+    update({ strainTrial6, committedState, materialParameters: paramsOverride, analysisContext = null } = {}) {
+      const params = paramsOverride || materialParameters || {};
+      const committed = cloneMaterialPointState(committedState);
+      const nextStrain6 = cloneVector6(strainTrial6);
+      const deltaStrain6 = subtractVector6(nextStrain6, committed.totalStrain6);
+      const stressTrial6 = addVector6(committed.effectiveStress6, multiplyMatrix6x6Vector6(elasticTangent6x6, deltaStrain6));
+      const mcTrial = mohrCoulombIndicator3D(stressTrial6, params);
+      const smoothTrial = evaluateSmoothedPlasticSurface(stressTrial6, params?.phiEffDeg, params?.cEff, params, true);
+      const yieldTolerance = resolveYieldTolerance(params, mcTrial);
+      const exactYieldSurface = activeYieldSurfaceFromState(mcTrial);
+
+      if (exactYieldSurface === YIELD_SURFACE_TENSION) {
+        const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(stressTrial6, params, committed, {
+          currentlyMcActive: false,
+          stateChanged: committed.activeYieldSurface !== YIELD_SURFACE_TENSION,
+          activeYieldSurface: YIELD_SURFACE_TENSION
+        });
+        const trialState = createMaterialPointState({
+          ...committed,
+          totalStrain6: nextStrain6,
+          effectiveStress6: stressTrial6,
+          activeYieldSurface: YIELD_SURFACE_TENSION,
+          currentlyMcActive: false,
+          hasEverExceededMc: diagnostics.hasEverExceededMc,
+          etaMcCurrent: diagnostics.etaMcCurrent,
+          etaMcMaxHistory: diagnostics.etaMcMaxHistory,
+          sigmaY: params?.sigmaY
+        });
+        return {
+          stressTrial6,
+          tangent6x6: elasticTangent6x6,
+          trialState,
+          diagnostics: {
+            ...diagnostics,
+            fMcTrial: Number(mcTrial?.F) || 0,
+            etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
+            yieldTolerance,
+            plasticIncrementNorm: 0,
+            localIterations: 0,
+            constitutiveModel: 'mc-plastic',
+            analysisContext
+          }
+        };
+      }
+
+      if ((Number(smoothTrial?.f) || 0) <= yieldTolerance) {
+        const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(stressTrial6, params, committed, {
+          currentlyMcActive: false,
+          stateChanged: false,
+          activeYieldSurface: YIELD_SURFACE_NONE
+        });
+        const trialState = createMaterialPointState({
+          ...committed,
+          totalStrain6: nextStrain6,
+          effectiveStress6: stressTrial6,
+          activeYieldSurface: YIELD_SURFACE_NONE,
+          currentlyMcActive: false,
+          hasEverExceededMc: diagnostics.hasEverExceededMc,
+          etaMcCurrent: diagnostics.etaMcCurrent,
+          etaMcMaxHistory: diagnostics.etaMcMaxHistory,
+          sigmaY: params?.sigmaY
+        });
+        return {
+          stressTrial6,
+          tangent6x6: elasticTangent6x6,
+          trialState,
+          diagnostics: {
+            ...diagnostics,
+            fMcTrial: Number(mcTrial?.F) || 0,
+            etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
+            yieldTolerance,
+            plasticIncrementNorm: 0,
+            localIterations: 0,
+            constitutiveModel: 'mc-plastic',
+            analysisContext
+          }
+        };
+      }
+
+      const local = returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, params, mcTrial);
+      if (!local?.converged) {
+        throw new Error(`Local return mapping failed: ${local?.reason || 'unknown reason'}`);
+      }
+
+      const plasticStrainIncrement6 = cloneVector6(local.plasticStrainIncrement6);
+      const nextPlasticStrain6 = addVector6(committed.plasticStrain6, plasticStrainIncrement6);
+      const finalMc = mohrCoulombIndicator3D(local.stress6, params);
+      const equivalentPlasticIncrement = equivalentPlasticStrainIncrement(plasticStrainIncrement6);
+      const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(local.stress6, params, committed, {
+        currentlyMcActive: local.activeYieldSurface === YIELD_SURFACE_MC_SHEAR,
+        stateChanged: committed.activeYieldSurface !== local.activeYieldSurface,
+        activeYieldSurface: local.activeYieldSurface,
+        hasEverExceededMc: committed.hasEverExceededMc || (Number(mcTrial?.F) || 0) > yieldTolerance
+      });
+      const trialState = createMaterialPointState({
+        ...committed,
+        totalStrain6: nextStrain6,
+        plasticStrain6: nextPlasticStrain6,
+        effectiveStress6: local.stress6,
+        activeYieldSurface: local.activeYieldSurface,
+        currentlyMcActive: local.activeYieldSurface === YIELD_SURFACE_MC_SHEAR,
+        hasEverExceededMc: diagnostics.hasEverExceededMc,
+        etaMcCurrent: diagnostics.etaMcCurrent,
+        etaMcMaxHistory: diagnostics.etaMcMaxHistory,
+        sigmaY: params?.sigmaY,
+        accumulatedPlasticStrain: Math.max(Number(committed.accumulatedPlasticStrain) || 0, 0) + equivalentPlasticIncrement
+      });
+      return {
+        stressTrial6: local.stress6,
+        tangent6x6: local.algorithmicTangent6x6,
+        trialState,
+        diagnostics: {
+          ...diagnostics,
+          fMcTrial: Number(mcTrial?.F) || 0,
+          etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
+          fMcFinal: Number(finalMc?.F) || 0,
+          etaMcFinal: Number.isFinite(Number(finalMc?.eta)) ? Number(finalMc.eta) : Number.POSITIVE_INFINITY,
+          yieldTolerance,
+          plasticIncrementNorm: vectorNorm6(plasticStrainIncrement6),
+          localIterations: local.iterations,
+          constitutiveModel: 'mc-plastic',
           analysisContext
         }
       };
