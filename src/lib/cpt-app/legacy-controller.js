@@ -850,6 +850,118 @@ const AE={
   'Sandy clay':8.0,'Silty sand':10.0,'Sand':13.0,'Gravel':15.0
 };
 
+/* Default drained Poisson ratios for the Mohr-Coulomb deformation export.
+   Priority: selected EC7 subtype first, then broad CPT soil family fallback.
+   These values replace the previous blanket 0.30/0.35/0.45 rule so dense sands
+   and weak fine soils do not all inherit the same lateral-strain behavior. */
+const MC_NU_BY_TYPE={
+  'Peat / organic':0.42,
+  'Soft clay':0.45,
+  'Clay':0.40,
+  'Sandy clay':0.33,
+  'Silty sand':0.30,
+  'Sand':0.30,
+  'Gravel':0.28
+};
+
+const MC_NU_BY_SUBTYPE={
+  'veen, weinig vast':0.40,
+  'veen, matig vast':0.42,
+  'veen, vast':0.45,
+
+  'klei, weinig vast':0.42,
+  'klei, matig vast':0.40,
+  'klei, vrij vast':0.38,
+  'klei, vast':0.35,
+  'klei (zh), weinig vast':0.40,
+  'klei (zh), matig vast':0.38,
+  'klei (zh), vrij vast':0.36,
+  'klei (zh), vast':0.35,
+
+  'leem, weinig vast':0.35,
+  'leem, matig vast':0.33,
+  'leem, vrij vast':0.32,
+  'leem, vast':0.30,
+  'leem (zh), weinig vast':0.33,
+  'leem (zh), matig vast':0.32,
+  'leem (zh), vrij vast':0.31,
+  'leem (zh), vast':0.30,
+
+  'zand, los':0.28,
+  'zand, matig':0.30,
+  'zand, dicht':0.33,
+  'zand, zeer dicht':0.35,
+  'zand (lh), los':0.30,
+  'zand (lh), matig':0.32,
+  'zand (lh), dicht':0.34,
+  'zand (lh), z.dicht':0.35,
+
+  'grind, matig':0.28,
+  'grind, dicht':0.30,
+  'grind (kh), matig':0.30,
+  'grind (kh), dicht':0.32
+};
+
+const MC_RSHEAR_BY_TYPE={
+  'Peat / organic':0.12,
+  'Soft clay':0.14,
+  'Clay':0.16,
+  'Sandy clay':0.22,
+  'Silty sand':0.28,
+  'Sand':0.33,
+  'Gravel':0.34
+};
+
+const MC_RSHEAR_BY_SUBTYPE={
+  'veen, weinig vast':0.10,
+  'veen, matig vast':0.12,
+  'veen, vast':0.15,
+
+  'klei, weinig vast':0.12,
+  'klei, matig vast':0.15,
+  'klei, vrij vast':0.18,
+  'klei, vast':0.20,
+  'klei (zh), weinig vast':0.15,
+  'klei (zh), matig vast':0.18,
+  'klei (zh), vrij vast':0.20,
+  'klei (zh), vast':0.22,
+
+  'leem, weinig vast':0.18,
+  'leem, matig vast':0.20,
+  'leem, vrij vast':0.22,
+  'leem, vast':0.25,
+  'leem (zh), weinig vast':0.20,
+  'leem (zh), matig vast':0.22,
+  'leem (zh), vrij vast':0.25,
+  'leem (zh), vast':0.28,
+
+  'zand, los':0.30,
+  'zand, matig':0.33,
+  'zand, dicht':0.35,
+  'zand, zeer dicht':0.35,
+  'zand (lh), los':0.28,
+  'zand (lh), matig':0.30,
+  'zand (lh), dicht':0.32,
+  'zand (lh), z.dicht':0.33,
+
+  'grind, matig':0.33,
+  'grind, dicht':0.35,
+  'grind (kh), matig':0.30,
+  'grind (kh), dicht':0.33
+};
+
+function mohrCoulombNuDefault(type, subtype){
+  const key=(subtype||'').trim().toLowerCase();
+  if(key && Object.prototype.hasOwnProperty.call(MC_NU_BY_SUBTYPE, key)) return MC_NU_BY_SUBTYPE[key];
+  return MC_NU_BY_TYPE[type] ?? 0.30;
+}
+
+function mohrCoulombRShearDefault(type, subtype){
+  const key=(subtype||'').trim().toLowerCase();
+  if(key && Object.prototype.hasOwnProperty.call(MC_RSHEAR_BY_SUBTYPE, key)) return MC_RSHEAR_BY_SUBTYPE[key];
+  return MC_RSHEAR_BY_TYPE[type] ?? 0.25;
+}
+
 /* Alpha Method B — SB260 family mapping driven by the selected EC7 subtype.
    Stage 4 uses layer avgQc; Stage 5 may pass row qc for pointwise fitting.
    Peat water content w is not available in the app, so veen defaults to α=1.5. */
@@ -2710,6 +2822,16 @@ function editM(el){
   renderModel();
 }
 
+function editRShear(el){
+  const i=+el.dataset.i;
+  const numeric=Number(el.value);
+  if(!Number.isFinite(numeric)) return;
+  S.layers[i].rShear_ovr=Math.max(Math.min(numeric, 1), 0.01);
+  S.layers[i].ovr.rShear=true;
+  el.classList.add('ovr');
+  renderModel();
+}
+
 /* ════════════════════════════════
    MODEL PARAMETERS
 ════════════════════════════════ */
@@ -2848,7 +2970,10 @@ function hsParams(l){
   }
 
   const K0nc=+(1-Math.sin(l.phi*Math.PI/180)).toFixed(3);
-  const nu=l.type==='Peat / organic'?0.45:cohesive?0.35:0.30;
+  const nu = l.ovr && l.ovr.nu ? l.nu_ovr : mohrCoulombNuDefault(l.type, l.subtype);
+  const rShear = l.ovr && l.ovr.rShear
+    ? Math.max(Math.min(Number(l.rShear_ovr) || 0.25, 1), 0.01)
+    : mohrCoulombRShearDefault(l.type, l.subtype);
   const nu_ur=0.20;
   const psi=Math.max(0,l.phi>30?Math.round(l.phi-30):0);
   /* MC export uses the current-stress loading stiffness E50,i.
@@ -2856,7 +2981,7 @@ function hsParams(l){
   const Emc=E50_i;
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2)+'m TAW':'—';
   return{Eoed_i,E50_i,Eoed_ref,E50_ref,Eur_ref,m,K0nc,nu,nu_ur,aE:+aE.toFixed(2),
-    sigV:+sigV.toFixed(1),u:+u.toFixed(1),sigVeff:+sigVeff.toFixed(1),psi,Emc,
+    sigV:+sigV.toFixed(1),u:+u.toFixed(1),sigVeff:+sigVeff.toFixed(1),psi,Emc,rShear,
     topTAW:taw(l.top),botTAW:taw(l.bot)};
 }
 
@@ -2889,6 +3014,12 @@ function renderModel(){
           <table class="pt">
             <tr><td>E_ref (kPa)</td><td>${h.Emc.toLocaleString()}</td></tr>
             <tr><td>&nu;</td><td>${h.nu}</td></tr>
+            <tr class="key">
+              <td>r_shear <input class="ed${l.ovr.rShear?' ovr':''}" type="number" step="0.01" min="0.01" max="1.00"
+                value="${h.rShear.toFixed(2)}" style="width:52px;margin-left:4px"
+                data-i="${i}" onchange="editRShear(this)"></td>
+              <td>${h.rShear.toFixed(2)}</td>
+            </tr>
             <tr class="key"><td>&phi;' (&deg;)</td><td>${l.phi}</td></tr>
             <tr class="key"><td>c' (kPa)</td><td>${l.c}</td></tr>
             <tr><td>&psi; (&deg;)</td><td>${h.psi}</td></tr>
@@ -3728,6 +3859,7 @@ function stage6WorkingLayers(){
       Emc:h.Emc,
       nu:h.nu,
       K0nc:h.K0nc,
+      rShear:h.rShear,
       psi:h.psi,
       kh:k.kh_rep,
       kv:k.kv_rep,
@@ -4862,6 +4994,11 @@ function stage6BishopSyncSoilModel(){
     bishop.sourceStrengthSet = bishop.strengthSet;
     if(hadSignature) stage6BishopInvalidate(strengthSetChanged ? 'Material strength set changed; Bishop results were cleared.' : 'Active CPT layers changed; Bishop results were cleared.');
   }
+  bishop.materials.forEach((material, index)=>{
+    if(Number.isFinite(Number(material?.rShear))) return;
+    const layer = layers[index];
+    material.rShear = Number.isFinite(Number(layer?.rShear)) ? Number(layer.rShear) : 0.25;
+  });
   if(!Array.isArray(bishop.customRegions)) bishop.customRegions = [];
   bishop.useCustomRegions = !!bishop.useCustomRegions;
   if(Array.isArray(bishop.terrain) && bishop.terrain.length >= 2){
@@ -9895,8 +10032,10 @@ function renderStage6BishopApp(){
   const deformationStatusLabel = deformationHasResult && deformation.stale ? 'success (stale)' : (deformation.status || 'idle');
   const deformationAppliedQ = Math.max(Number(deformationDerivedQ) || 0, 0);
   const deformationWarnings = Array.isArray(deformation.warnings) ? deformation.warnings : [];
-  const deformationInitialStressMode = deformation.result?.solver?.initialStressMode === 'gravity-step'
-    ? 'gravity step'
+  const deformationInitialStressMode = deformation.result?.solver?.initialStressMode === 'gravity-step-k0nc'
+    ? 'gravity step + K0nc confinement'
+    : deformation.result?.solver?.initialStressMode === 'gravity-step'
+      ? 'gravity step'
     : deformation.result?.solver?.initialStressMode === 'flat-k0-fallback'
       ? 'flat K0 fallback'
       : '—';
@@ -9906,6 +10045,20 @@ function renderStage6BishopApp(){
   const deformationGeostaticResidual = Number.isFinite(deformation.result?.solver?.geostaticResidualNorm)
     ? Number(deformation.result.solver.geostaticResidualNorm).toExponential(2)
     : '—';
+  const deformationSolverLabel = deformation.result?.solver?.constitutiveModel === 'mc-reduced-stiffness-material-point'
+    ? 'Stage 1 MC-active reduced-stiffness plane strain'
+    : deformation.result?.solver?.constitutiveModel === 'linear-elastic-material-point'
+      ? 'Linear elastic plane strain'
+      : '—';
+  const deformationAcceptedSteps = Number.isFinite(deformation.result?.solver?.acceptedLoadSteps)
+    ? deformation.result.solver.acceptedLoadSteps
+    : null;
+  const deformationRejectedSteps = Number.isFinite(deformation.result?.solver?.rejectedLoadSteps)
+    ? deformation.result.solver.rejectedLoadSteps
+    : null;
+  const deformationPeakActive = Number.isFinite(deformation.result?.solver?.peakActiveMcElements)
+    ? deformation.result.solver.peakActiveMcElements
+    : null;
   const deformationProfileRows = deformationHasResult
     ? (deformation.result?.terrainSettlementProfile || []).map((point, index)=>`
         <tr>
@@ -10025,6 +10178,7 @@ function renderStage6BishopApp(){
       <td><input type="number" step="100" min="100" value="${Number(mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialField(${index}, 'Emc', this.value)"></td>
       <td><input type="number" step="0.01" min="-0.49" max="0.49" value="${Number(mat.nu || 0).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'nu', this.value)"></td>
       <td><input type="number" step="0.01" min="0" value="${Number(mat.K0nc || 0).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'K0nc', this.value)"></td>
+      <td><input type="number" step="0.01" min="0.01" max="1" value="${(Number.isFinite(Number(mat.rShear)) ? Number(mat.rShear) : 0.25).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'rShear', this.value)"></td>
       <td><input type="number" step="1" min="0" value="${Number(mat.cEff || 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'cEff', this.value)"></td>
       <td><input type="number" step="1" min="0" value="${Number(mat.phiEffDeg || 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'phiEffDeg', this.value)"></td>
     </tr>
@@ -10347,10 +10501,10 @@ function renderStage6BishopApp(){
             <details class="st6-adv" data-st6details="bishop-deformation-materials"${stage6DetailsOpen('bishop-deformation-materials')}>
               <summary>Imported deformation materials</summary>
               <div class="st6-adv-body">
-                <div class="st6-help">The deformation screen reuses the active CPT-derived layer column across the whole section. This v1 path stays linear-elastic in the solve and applies the Mohr-Coulomb check in post-processing, so the key inputs are <strong>E<sub>mc</sub></strong>, <strong>nu</strong>, <strong>K<sub>0,NC</sub></strong>, <strong>c'</strong>, and <strong>phi'</strong>.</div>
+                <div class="st6-help">The deformation screen reuses the active CPT-derived layer column across the whole section. The default Stage 1 path solves a drained plane-strain field with an <strong>MC-active reduced-stiffness</strong> material update, so the key inputs are <strong>E<sub>mc</sub></strong>, <strong>nu</strong>, <strong>K<sub>0,NC</sub></strong>, <strong>r<sub>shear</sub></strong>, <strong>c'</strong>, and <strong>phi'</strong>. This Stage 1 branch is a conservative monotonic screening model, not a full reversible elastoplastic law.</div>
                 <div style="overflow:auto">
                   <table class="tbl st6-bishop-materials">
-                    <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>c'</th><th>phi'</th></tr></thead>
+                    <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th></tr></thead>
                     <tbody>${deformationMaterialRows}</tbody>
                   </table>
                 </div>
@@ -10373,15 +10527,18 @@ function renderStage6BishopApp(){
                 <div class="st6-help">The deformation mesh is intentionally refined beneath the loaded interval and both load edges, because the constant-strain T3 triangles become too stiff if that part of the mesh is left coarse. The automatic target area scales from the current section and is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here.</div>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(deformationStatusMessage)}</strong><br>
-                  Solver: <strong>linear elastic plane strain on shared T3 mesh</strong><br>
+                  Solver: <strong>${stage6EscAttr(deformationSolverLabel)}</strong><br>
                   Initial stress: <strong>${stage6EscAttr(deformationInitialStressMode)}</strong><br>
                   Nodes: <strong>${deformation.mesh?.nodes?.length || 0}</strong><br>
                   Triangles: <strong>${deformation.mesh?.elements?.length || 0}</strong><br>
                   Free DOFs: <strong>${deformation.result?.solver?.freeDofs || 0}</strong><br>
                   Geostatic CG iterations: <strong>${deformationGeostaticIterations ?? '—'}</strong><br>
                   Geostatic residual: <strong>${deformationGeostaticResidual}</strong><br>
+                  Load steps: <strong>${deformationAcceptedSteps ?? '—'}</strong>${deformationRejectedSteps ? ` accepted, ${deformationRejectedSteps} cut back` : ''}<br>
+                  Nonlinear iterations: <strong>${deformation.result?.solver?.nonlinearIterations || 0}</strong><br>
                   CG iterations: <strong>${deformation.result?.solver?.linearIterations || 0}</strong><br>
                   Residual: <strong>${Number.isFinite(deformation.result?.solver?.residualNorm) ? Number(deformation.result.solver.residualNorm).toExponential(2) : '—'}</strong><br>
+                  Peak active MC elements: <strong>${deformationPeakActive ?? '—'}</strong><br>
                   Runtime: <strong>${stage6SecondsLabelFromMs(deformation.result?.timing?.totalMs)}</strong>
                 </div>
                 ${deformationWarnings.length ? `
@@ -10438,7 +10595,7 @@ function renderStage6BishopApp(){
     ? 'Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.'
     : workspace === 'seepage'
       ? 'The seepage workspace reuses the same Bishop section. Use <strong>Assign BC</strong> and click the terrain, model base, or side boundaries to assign prescribed head, no-flow, or seepage-face conditions, then click <strong>Run seepage</strong>. The same terrain, polygons, walls, snap settings, and viewport stay active while you switch between stability and seepage. Contour fill, contour lines, and the legend now follow the selected seepage field, while flow lines, the phreatic line, and exit-gradient highlights remain optional overlays. When a measurement line exists, the results panel can also probe heads, gradients, and discharge along it.'
-      : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the linear-elastic plane-strain screen. Contour fill, contour lines, and the optional legend now work together on the selected field, and the stress menus separate the initial geostatic state from the final post-load state. The shared measurement line can also probe displacement and stress quantities in the results panel.';
+      : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the drained plane-strain screen. By default the solver uses the Stage 1 MC-active reduced-stiffness material path, while the stress menus still separate the initial geostatic state from the final post-load state. Contour fill, contour lines, the optional legend, and the shared measurement line all work together on the selected deformation field.';
   const lineProbeSelectionPath = workspace === 'seepage' ? 'lineProbe.seepageQuantity' : 'lineProbe.deformationQuantity';
   const lineProbeCopyToneColor = bishop.lineProbe?.copyTone === 'ok' ? '#1D9E75' : bishop.lineProbe?.copyTone === 'warn' ? '#BA7517' : 'var(--tx2)';
   const lineProbeSummaryHtml = lineProbe.status === 'ready' ? `
@@ -10810,16 +10967,23 @@ function renderStage6BishopApp(){
                   <tr><td>Out-of-plane length</td><td>${deformationOutOfPlaneLength.toFixed(2)} m</td></tr>
                   <tr><td>Nodes</td><td>${deformation.mesh?.nodes?.length || 0}</td></tr>
                   <tr><td>Triangles</td><td>${deformation.mesh?.elements?.length || 0}</td></tr>
+                  <tr><td>Solver</td><td>${stage6EscAttr(deformationSolverLabel)}</td></tr>
                   <tr><td>Initial stress</td><td>${stage6EscAttr(deformationInitialStressMode)}</td></tr>
                   <tr><td>Free DOFs</td><td>${deformation.result?.solver?.freeDofs || 0}</td></tr>
                   <tr><td>Geostatic CG iterations</td><td>${deformationGeostaticIterations ?? '—'}</td></tr>
                   <tr><td>Geostatic residual</td><td>${deformationGeostaticResidual}</td></tr>
+                  <tr><td>Accepted load steps</td><td>${deformationAcceptedSteps ?? '—'}</td></tr>
+                  <tr><td>Rejected load steps</td><td>${deformationRejectedSteps ?? '—'}</td></tr>
+                  <tr><td>Nonlinear iterations</td><td>${deformation.result?.solver?.nonlinearIterations || 0}</td></tr>
                   <tr><td>CG iterations</td><td>${deformation.result?.solver?.linearIterations || 0}</td></tr>
                   <tr><td>Residual</td><td>${Number.isFinite(deformation.result?.solver?.residualNorm) ? Number(deformation.result.solver.residualNorm).toExponential(2) : '—'}</td></tr>
+                  <tr><td>Peak active MC elements</td><td>${deformationPeakActive ?? '—'}</td></tr>
                   <tr><td>Max settlement</td><td>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxSettlement || 0)).toFixed(2)} mm` : '—'}</td></tr>
                   <tr><td>Max |u_x|</td><td>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxHorizontalDisplacement || 0)).toFixed(2)} mm` : '—'}</td></tr>
                   <tr><td>Max delta sigma_yy</td><td>${deformation.result ? `${(deformation.result.summaries?.maxDeltaSigmaYy || 0).toFixed(2)} kPa` : '—'}</td></tr>
                   <tr><td>Max MC eta</td><td>${deformation.result ? `${(deformation.result.summaries?.maxMcEta || 0).toFixed(3)}` : '—'}</td></tr>
+                  <tr><td>Active MC elements</td><td>${deformation.result ? `${deformation.result.summaries?.activeMcElementCount || 0}` : '—'}</td></tr>
+                  <tr><td>MC-exceeded elements</td><td>${deformation.result ? `${deformation.result.summaries?.exceededMcElementCount || 0}` : '—'}</td></tr>
                   <tr><td>Runtime</td><td>${stage6SecondsLabelFromMs(deformation.result?.timing?.totalMs)}</td></tr>
                 </table>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2);margin-bottom:0">
@@ -10845,7 +11009,7 @@ function renderStage6BishopApp(){
       <div class="mc2-head" style="margin-bottom:12px">
         <span style="font-size:13px;font-weight:600">${workspace === 'deformation' ? 'Section deformation screening' : 'Seep/Slope + Spencer equilibrium check'}</span>
         <span style="font-size:11px;color:var(--tx2)">${workspace === 'deformation'
-          ? 'Shared Stage 6 geometry with a linear-elastic plane-strain mesh, drained stress recovery, and Mohr-Coulomb screening in post-processing.'
+          ? 'Shared Stage 6 geometry with a drained plane-strain mesh, geostatic initialization, and a Stage 1 MC-active reduced-stiffness screening solve.'
           : 'Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.'}</span>
       </div>
       <div class="st6-bishop-workspace-switch">
@@ -11056,7 +11220,8 @@ function renderStage6BishopApp(){
       </div>
       ${stage6NoteHtml(workspace === 'deformation'
         ? [
-            {level:'warn', text:'This deformation workspace is a drained screening tool. It solves a linear-elastic plane-strain displacement field on T3 triangles and applies the Mohr-Coulomb check only in post-processing.'},
+            {level:'warn', text:'This deformation workspace is a drained screening tool. It solves a small-strain plane-strain displacement field on T3 triangles and, by default, uses a Stage 1 MC-active reduced-stiffness material update rather than full elastoplasticity.'},
+            {level:'info', text:'Within one monotonic screening run, elements that exceed MC stay on the reduced-stiffness branch for the remaining load ramp. That is conservative and numerically stable, but it is still a pseudo-plastic approximation rather than true return-mapping plasticity.'},
             {level:'info', text:'The soil model is still derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section, and retaining walls are not yet active mechanical elements in the deformation solve.'},
             {level:'info', text:'Initial stress is built from a geostatic gravity step on the shared mesh, so slopes and wall-supported sections develop in-situ shear stress before the load increment. If that initialization fails numerically, the solver falls back to the older flat-ground K0 field and warns you explicitly.'},
             {level:'info', text:'MC utilization is based on in-plane principal effective stresses with a zero-tension cut-off. That is useful for visualization and screening, but it is not a substitute for a full elastoplastic FE model.'}
@@ -11244,7 +11409,7 @@ function buildStage6BishopLineProbeChart(){
 function exportCSV(){
   if(!S.layers.length){alert('No layers to export. Run classification first.');return;}
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'';
-  const hdr='Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse';
+  const hdr='Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,E_mc_kPa,nu,rShear,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse';
   const rows=S.layers.map((l,i)=>{
     const h=hsParams(l);
     const k=khParams(l);
@@ -11253,7 +11418,7 @@ function exportCSV(){
       (l.bot-l.top).toFixed(3),l.avgQc,l.avgRf??'',
       l.g,l.gs,l.phi,l.c,l.cu,
       h.aE.toFixed(2),S.alphaMethod,
-      h.Eoed_i,h.Eoed_ref,h.E50_ref,h.Eur_ref,h.m.toFixed(2),h.K0nc,h.nu_ur,S.stiffMethod,
+      h.Eoed_i,h.Eoed_ref,h.E50_ref,h.Eur_ref,h.Emc,h.nu,h.rShear.toFixed(2),h.m.toFixed(2),h.K0nc,h.nu_ur,S.stiffMethod,
       k.kh_rep.toExponential(2),k.kv_rep.toExponential(2),k.khkv,k.psi_unsat,
       `"${k.infClass}"`].join(',');
   });
@@ -11548,6 +11713,7 @@ function stage7WorkingLayerPayload(layer, index){
       k0nc:hs.K0nc,
       nu:hs.nu,
       nuUr:hs.nu_ur,
+      rShear:hs.rShear,
       psi:hs.psi,
       eMc:hs.Emc,
       sigmaV:hs.sigV,
@@ -12168,6 +12334,7 @@ const legacyApi={
   editL,
   editAlpha,
   editM,
+  editRShear,
   khParams,
   setAlphaMethod,
   setStiffMethod,

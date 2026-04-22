@@ -756,9 +756,23 @@ nu_ur = 0.2    (CUR 2003-7 & Plaxis 2D Manual)
 
 **Mohr-Coulomb E_ref [IMPLEMENTED]:**
 ```
-nu     = 0.45  (Peat)
-       = 0.35  (Clay, Soft clay)
-       = 0.30  (all others)
+nu     = subtype-first lookup, then broad CPT-family fallback
+
+Broad fallback:
+  Peat / organic = 0.42
+  Soft clay      = 0.45
+  Clay           = 0.40
+  Sandy clay     = 0.33
+  Silty sand     = 0.30
+  Sand           = 0.30
+  Gravel         = 0.28
+
+Selected EC7 / Tabel 3 subtypes refine this further:
+  veen           = 0.40–0.45
+  klei           = 0.35–0.42
+  leem           = 0.30–0.35
+  zand           = 0.28–0.35
+  grind          = 0.28–0.32
 
 E_ref  = E50,i                                      [kPa]
 
@@ -771,6 +785,32 @@ E50,i  = Eoed,i           (all soils)
 
 psi    = max(0, phi' - 30)     [degrees, dilatancy angle]
 ```
+
+**Stage 1 reduced-stiffness factor r_shear [IMPLEMENTED]:**
+```
+r_shear = subtype-first lookup, then broad CPT-family fallback
+
+Broad fallback:
+  Peat / organic = 0.12
+  Soft clay      = 0.14
+  Clay           = 0.16
+  Sandy clay     = 0.22
+  Silty sand     = 0.28
+  Sand           = 0.33
+  Gravel         = 0.34
+
+Selected EC7 / Tabel 3 subtypes refine this further:
+  veen           = 0.10–0.15
+  klei           = 0.12–0.22
+  leem           = 0.18–0.28
+  zand           = 0.28–0.35
+  grind          = 0.30–0.35
+```
+
+This is a Stage 1 deformation-screening hack only. It does **not** represent a
+formal Mohr-Coulomb post-yield modulus from constitutive theory; it is the
+current app-side reduced shear-stiffness factor used once the MC-active branch
+is triggered in the deformation workspace.
 
 **Source basis.** The official PLAXIS Material Models Manual states that the
 Mohr-Coulomb model uses Young's modulus `E` as its basic stiffness parameter and

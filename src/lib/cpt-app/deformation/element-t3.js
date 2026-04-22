@@ -65,17 +65,22 @@ function multiplyMatrices6x3and3x6(left, right) {
   return out;
 }
 
-export function elementStiffnessT3(nodes, material, warnings = []) {
+export function elementStiffnessT3FromTangent2D(nodes, tangent2D) {
   const area = triangleArea(nodes);
   if (!(area > AREA_EPS)) {
     throw new Error('Encountered a zero-area T3 element during deformation assembly.');
   }
   const B = buildBMatrixT3(nodes);
-  const D = planeStrainElasticMatrix(material?.Emc, material?.nu, warnings, material?.label || material?.id || 'Material');
+  const D = tangent2D;
   const Bt = Array.from({ length: 6 }, (_, i) => [B[0][i], B[1][i], B[2][i]]);
   const DB = multiplyMatrices3x6and6x6(D, B);
   const BtDB = multiplyMatrices6x3and3x6(Bt, DB);
   return BtDB.map((row) => row.map((value) => value * area));
+}
+
+export function elementStiffnessT3(nodes, material, warnings = []) {
+  const D = planeStrainElasticMatrix(material?.Emc, material?.nu, warnings, material?.label || material?.id || 'Material');
+  return elementStiffnessT3FromTangent2D(nodes, D);
 }
 
 export function elementBodyForceVectorT3(nodes, bx = 0, by = 0) {

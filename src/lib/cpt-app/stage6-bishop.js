@@ -2558,6 +2558,7 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
       Emc: Number.isFinite(prior.Emc) && prior.Emc > 0 ? prior.Emc : Number(layer.Emc) || Number(layer.E50_i) || Number(layer.E50_ref) || 1000,
       nu: Number.isFinite(prior.nu) ? prior.nu : Number(layer.nu),
       K0nc: Number.isFinite(prior.K0nc) ? prior.K0nc : Number(layer.K0nc),
+      rShear: Number.isFinite(prior.rShear) && prior.rShear > 0 ? prior.rShear : Number(layer.rShear) || 0.25,
       psi: Number.isFinite(prior.psi) ? prior.psi : Number(layer.psi) || 0,
       sigmaTAllow: Number.isFinite(prior.sigmaTAllow) ? prior.sigmaTAllow : 0,
       kx: permeability.kx,

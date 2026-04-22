@@ -71,7 +71,7 @@ export function verticalOverburdenStressAt(model, x, y) {
   );
 }
 
-function initialEffectiveStressAtPoint(model, point, options, warnings) {
+function initialEffectiveStress6AtPoint(model, point, options, warnings) {
   const material = model?.regions?.[point.regionIndex]?.material || point.material || null;
   const sigmaV0 = verticalOverburdenStressAt(model, point.x, point.y);
   const u0 = sampleInitialPorePressure(model, point.x, point.y, options, warnings, GAMMA_W);
@@ -79,11 +79,14 @@ function initialEffectiveStressAtPoint(model, point, options, warnings) {
   const phi = (Math.max(Number(material?.phiEffDeg) || 0, 0) * Math.PI) / 180;
   const K0 = Number.isFinite(Number(material?.K0nc)) ? Math.max(Number(material.K0nc), 0) : Math.max(1 - Math.sin(phi), 0);
   const sigmaH0Eff = K0 * sigmaV0Eff;
-  return {
-    sxx: sigmaH0Eff,
-    syy: sigmaV0Eff,
-    txy: 0
-  };
+  return [
+    -sigmaH0Eff,
+    -sigmaV0Eff,
+    -sigmaH0Eff,
+    0,
+    0,
+    0
+  ];
 }
 
 export function buildFlatK0InitialEffectiveStressField(mesh, model, options = {}, warnings = []) {
@@ -95,7 +98,7 @@ export function buildFlatK0InitialEffectiveStressField(mesh, model, options = {}
   }
   return mesh.elementData.map((elementData, elementIndex) => {
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
-    return initialEffectiveStressAtPoint(
+    return initialEffectiveStress6AtPoint(
       model,
       {
         x: elementData?.centroid?.x ?? cell?.centroid?.x ?? 0,

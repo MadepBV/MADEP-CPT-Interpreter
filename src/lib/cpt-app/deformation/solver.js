@@ -3,10 +3,23 @@
 
 import { pointInPolygonHalfOpen } from '../soil-regions.js';
 import { buildDeformationMesh } from './mesh.js';
-import { buildBMatrixT3, edgeTractionVector, elementGravityVectorT3, elementStiffnessT3, triangleArea } from './element-t3.js';
-import { prepareMechanicalMaterial, planeStrainElasticMatrix } from './material.js';
+import { buildBMatrixT3, edgeTractionVector, elementGravityVectorT3, elementStiffnessT3FromTangent2D, triangleArea } from './element-t3.js';
 import {
-  addStress,
+  cloneMaterialPointState,
+  createLinearElasticMaterial,
+  createMCReducedStiffnessMaterial,
+  createMaterialPoint,
+  commitMaterialPoint,
+  effectiveStress6ToCompressionPositiveStress3D,
+  extractStress2DFrom6,
+  extractTangent2DFrom6,
+  liftPlaneStrainStrainTo6,
+  seedMaterialPointStateFromEffectiveStress6,
+  seedMaterialPointStateFromInitialStress,
+  snapshotMaterialPointState,
+} from './material-models.js';
+import { prepareMechanicalMaterial } from './material.js';
+import {
   buildFlatK0InitialEffectiveStressField,
   initialBulkUnitWeightFromPorePressure,
   mohrCoulombIndicator,
@@ -21,6 +34,16 @@ const CG_NUMERIC_EPS = 1e-14;
 const CG_CHECKPOINT_INTERVAL = 25;
 const MAX_CG_ITER = 25000;
 const GEOM_EPS = 1e-6;
+const NONLINEAR_RESIDUAL_REL_TOL = 1e-4;
+const NONLINEAR_RESIDUAL_ABS_TOL = 1e-3;
+const NONLINEAR_DISPLACEMENT_REL_TOL = 1e-5;
+const NONLINEAR_DISPLACEMENT_ABS_TOL = 1e-8;
+const NONLINEAR_MAX_ITER = 24;
+const NONLINEAR_INITIAL_LOAD_STEP = 0.25;
+const NONLINEAR_MIN_LOAD_STEP = 1 / 2048;
+const NONLINEAR_GROWTH_FACTOR = 1.25;
+const NONLINEAR_CUTBACK_FACTOR = 0.5;
+const NONLINEAR_MAX_LOAD_STEPS = 256;
 
 function pushUniqueWarning(warnings, message) {
   if (!Array.isArray(warnings) || !message) return;
@@ -51,6 +74,20 @@ function dot(a, b) {
   return sum;
 }
 
+function vectorNorm(vector) {
+  return Math.sqrt(dot(vector, vector));
+}
+
+function addScaledVectorInPlace(target, source, scale = 1) {
+  for (let i = 0; i < target.length; i += 1) target[i] += (Number(source?.[i]) || 0) * scale;
+}
+
+function cloneScaledVector(vector, scale = 1) {
+  const out = new Float64Array(vector.length);
+  for (let i = 0; i < vector.length; i += 1) out[i] = (Number(vector[i]) || 0) * scale;
+  return out;
+}
+
 function sparseMatVec(rows, vector) {
   const out = new Float64Array(rows.length);
   for (let i = 0; i < rows.length; i += 1) {
@@ -67,6 +104,27 @@ function sparseMatVec(rows, vector) {
     out[i] = sum;
   }
   return out;
+}
+
+function nonlinearToleranceState(residualNorm, rhsNorm, deltaNorm, solutionNorm, {
+  residualRelTol = NONLINEAR_RESIDUAL_REL_TOL,
+  residualAbsTol = NONLINEAR_RESIDUAL_ABS_TOL,
+  displacementRelTol = NONLINEAR_DISPLACEMENT_REL_TOL,
+  displacementAbsTol = NONLINEAR_DISPLACEMENT_ABS_TOL
+} = {}) {
+  const residualTarget = Math.max(Math.max(Number(residualAbsTol) || 0, 0), Math.max(Number(residualRelTol) || 0, 0) * Math.max(Number(rhsNorm) || 0, 0));
+  const displacementTarget = Math.max(Math.max(Number(displacementAbsTol) || 0, 0), Math.max(Number(displacementRelTol) || 0, 0) * Math.max(Number(solutionNorm) || 0, 0));
+  const relativeResidual = Math.max(Number(rhsNorm) || 0, 0) > CG_NUMERIC_EPS ? residualNorm / rhsNorm : residualNorm > residualTarget ? Infinity : 0;
+  const relativeDisplacement = Math.max(Number(solutionNorm) || 0, 0) > CG_NUMERIC_EPS ? deltaNorm / solutionNorm : deltaNorm > displacementTarget ? Infinity : 0;
+  return {
+    residualTarget,
+    displacementTarget,
+    relativeResidual,
+    relativeDisplacement,
+    residualConverged: residualNorm <= residualTarget,
+    displacementConverged: deltaNorm <= displacementTarget,
+    converged: residualNorm <= residualTarget && deltaNorm <= displacementTarget
+  };
 }
 
 function cgToleranceState(residualNorm, rhsNorm, relTol = CG_REL_TOL, absTol = CG_ABS_TOL) {
@@ -231,6 +289,14 @@ function compressRhs(rows, freeDofs, fixedValues, fullRhs) {
   return rhs;
 }
 
+function gatherFreeVector(fullVector, freeDofs) {
+  const rhs = new Float64Array(freeDofs.length);
+  freeDofs.forEach((dofId, rowIndex) => {
+    rhs[rowIndex] = Number(fullVector?.[dofId]) || 0;
+  });
+  return rhs;
+}
+
 function addMatrixBlock(rows, dofs, localK) {
   for (let i = 0; i < dofs.length; i += 1) {
     const row = rows[dofs[i]];
@@ -242,6 +308,17 @@ function addMatrixBlock(rows, dofs, localK) {
 
 function addVectorBlock(rhs, dofs, localF) {
   for (let i = 0; i < dofs.length; i += 1) rhs[dofs[i]] += localF[i];
+}
+
+function elementInternalForceVector(B, stress2D, area) {
+  return [
+    area * (B[0][0] * stress2D.sxx + B[1][0] * stress2D.syy + B[2][0] * stress2D.txy),
+    area * (B[0][1] * stress2D.sxx + B[1][1] * stress2D.syy + B[2][1] * stress2D.txy),
+    area * (B[0][2] * stress2D.sxx + B[1][2] * stress2D.syy + B[2][2] * stress2D.txy),
+    area * (B[0][3] * stress2D.sxx + B[1][3] * stress2D.syy + B[2][3] * stress2D.txy),
+    area * (B[0][4] * stress2D.sxx + B[1][4] * stress2D.syy + B[2][4] * stress2D.txy),
+    area * (B[0][5] * stress2D.sxx + B[1][5] * stress2D.syy + B[2][5] * stress2D.txy)
+  ];
 }
 
 function overlapRange(a0, a1, b0, b1) {
@@ -335,13 +412,34 @@ function loadedTerrainEdges(mesh, load) {
   });
 }
 
-function prepareRegionMaterials(mesh, warnings) {
+function createMaterialModelForOptions(materialParameters, options, warnings) {
+  const constitutiveModel = options?.constitutiveModel === 'linear-elastic' ? 'linear-elastic' : 'mc-reduced-stiffness';
+  return constitutiveModel === 'linear-elastic'
+    ? createLinearElasticMaterial(materialParameters, warnings)
+    : createMCReducedStiffnessMaterial(materialParameters, warnings);
+}
+
+function prepareRegionConstitutiveModels(mesh, options, warnings) {
   const byRegion = new Map();
   mesh.cells.forEach((cell) => {
     if (cell?.regionIndex == null || cell.regionIndex < 0 || byRegion.has(cell.regionIndex)) return;
-    byRegion.set(cell.regionIndex, prepareMechanicalMaterial(cell.material, warnings));
+    const materialParameters = prepareMechanicalMaterial(cell.material, warnings);
+    byRegion.set(cell.regionIndex, {
+      materialParameters,
+      materialModel: createMaterialModelForOptions(materialParameters, options, warnings)
+    });
   });
   return byRegion;
+}
+
+function regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings) {
+  const cached = regionConstitutiveByRegion.get(cell?.regionIndex);
+  if (cached) return cached;
+  const materialParameters = prepareMechanicalMaterial(cell?.material, warnings);
+  return {
+    materialParameters,
+    materialModel: createMaterialModelForOptions(materialParameters, options, warnings)
+  };
 }
 
 function elementDofMap(element) {
@@ -376,48 +474,94 @@ function multiplyMat3x6Vec6(matrix, vector) {
   };
 }
 
-function applyElasticMatrix(D, strain) {
-  return {
-    sxx: D[0][0] * strain.exx + D[0][1] * strain.eyy + D[0][2] * strain.gxy,
-    syy: D[1][0] * strain.exx + D[1][1] * strain.eyy + D[1][2] * strain.gxy,
-    txy: D[2][0] * strain.exx + D[2][1] * strain.eyy + D[2][2] * strain.gxy
-  };
-}
-
-function recoverElementElasticResponse(mesh, elementIndex, U, material) {
+function buildElementAnalysisState(mesh, elementIndex, U) {
   const element = mesh.elements[elementIndex];
   const nodes = element.map((nodeId) => mesh.nodes[nodeId]);
   const ue = gatherElementDisplacements(U, element);
   const area = triangleArea(nodes);
   const B = buildBMatrixT3(nodes);
-  const D = planeStrainElasticMatrix(material.Emc, material.nu, [], material.label || material.id || 'Material');
   const strain = multiplyMat3x6Vec6(B, ue);
-  const stressIncrement = applyElasticMatrix(D, strain);
   return {
     element,
     nodes,
     ue,
     area,
     B,
-    D,
     strain,
-    stressIncrement
+    strainTrial6: liftPlaneStrainStrainTo6(strain)
   };
 }
 
-function recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, materialsByRegion, porePressureByElement) {
+function recoverElementMaterialResponse(mesh, elementIndex, U, materialPoint, analysisContext = null) {
+  const elementState = buildElementAnalysisState(mesh, elementIndex, U);
+  const previousTrialState = materialPoint.trialState ? cloneMaterialPointState(materialPoint.trialState) : cloneMaterialPointState(materialPoint.committedState);
+  const update = materialPoint.materialModel.update({
+    strainTrial6: elementState.strainTrial6,
+    committedState: materialPoint.committedState,
+    materialParameters: materialPoint.materialParameters,
+    analysisContext: {
+      ...analysisContext,
+      previousTrialState,
+      elementIndex,
+      regionIndex: materialPoint.regionIndex
+    }
+  });
+  return {
+    ...elementState,
+    stress2D: extractStress2DFrom6(update.stressTrial6),
+    tangent2D: extractTangent2DFrom6(update.tangent6x6),
+    update
+  };
+}
+
+function fallbackK0(phiEffDeg) {
+  const phi = (Math.max(Number(phiEffDeg) || 0, 0) * Math.PI) / 180;
+  return Math.max(1 - Math.sin(phi), 0);
+}
+
+function totalStress6ToCompressionPositiveStress3D(stress6) {
+  return {
+    sxx: -(Number(stress6?.[0]) || 0),
+    syy: -(Number(stress6?.[1]) || 0),
+    szz: -(Number(stress6?.[2]) || 0),
+    txy: -(Number(stress6?.[3]) || 0)
+  };
+}
+
+function buildK0ControlledInitialEffectiveStress6(totalStress6, materialParameters, porePressure = 0) {
+  const totalStress = totalStress6ToCompressionPositiveStress3D(totalStress6);
+  const u0 = Math.max(Number(porePressure) || 0, 0);
+  const sigmaV0Eff = Math.max(totalStress.syy - u0, 0);
+  const K0 = Number.isFinite(Number(materialParameters?.K0nc))
+    ? Math.max(Number(materialParameters.K0nc), 0)
+    : fallbackK0(materialParameters?.phiEffDeg);
+  const sigmaH0Eff = K0 * sigmaV0Eff;
+  return [
+    -sigmaH0Eff,
+    -sigmaV0Eff,
+    -sigmaH0Eff,
+    -(Number(totalStress.txy) || 0),
+    0,
+    0
+  ];
+}
+
+function recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, regionConstitutiveByRegion, options, porePressureByElement, warnings) {
   const out = [];
   for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
-    const material = materialsByRegion.get(cell?.regionIndex) || prepareMechanicalMaterial(cell?.material);
-    const elastic = recoverElementElasticResponse(mesh, elementIndex, Ugeo, material);
-    const sigmaTotal0 = negateNormalAndShear(elastic.stressIncrement);
-    const u0 = Math.max(Number(porePressureByElement?.[elementIndex]) || 0, 0);
-    out.push({
-      sxx: sigmaTotal0.sxx - u0,
-      syy: sigmaTotal0.syy - u0,
-      txy: sigmaTotal0.txy
+    const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
+    const materialPoint = createMaterialPoint({
+      materialModel: createLinearElasticMaterial(constitutive.materialParameters, warnings),
+      materialParameters: constitutive.materialParameters,
+      elementIndex,
+      regionIndex: cell?.regionIndex ?? -1
     });
+    const response = recoverElementMaterialResponse(mesh, elementIndex, Ugeo, materialPoint, {
+      stage: 'geostatic-initialization'
+    });
+    const u0 = Math.max(Number(porePressureByElement?.[elementIndex]) || 0, 0);
+    out.push(buildK0ControlledInitialEffectiveStress6(response.update?.stressTrial6, constitutive.materialParameters, u0));
   }
   return out;
 }
@@ -427,7 +571,7 @@ async function buildGeostaticInitialization(
   model,
   options,
   warnings,
-  materialsByRegion,
+  regionConstitutiveByRegion,
   ndof,
   rows,
   compressedRows,
@@ -464,8 +608,8 @@ async function buildGeostaticInitialization(
   }
 
   const Ugeo = expandSolutionVector(ndof, freeDofs, fixedValues, geostaticCg.solution);
-  const initialField = recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, materialsByRegion, porePressureByElement);
-  const hasInvalidStress = initialField.some((stress) => !Number.isFinite(stress?.sxx) || !Number.isFinite(stress?.syy) || !Number.isFinite(stress?.txy));
+  const initialField = recoverInitialFieldFromGeostaticSolution(mesh, Ugeo, regionConstitutiveByRegion, options, porePressureByElement, warnings);
+  const hasInvalidStress = initialField.some((stress6) => !Array.isArray(stress6) || stress6.some((value) => !Number.isFinite(Number(value))));
   if (hasInvalidStress) {
     pushUniqueWarning(
       warnings,
@@ -481,9 +625,322 @@ async function buildGeostaticInitialization(
 
   return {
     initialField,
-    mode: 'gravity-step',
+    mode: 'gravity-step-k0nc',
     iterations: geostaticCg.iterations,
     residualNorm: geostaticCg.residualNorm
+  };
+}
+
+function buildElementMaterialPoints(mesh, regionConstitutiveByRegion, initialField, options, warnings) {
+  return mesh.elements.map((_element, elementIndex) => {
+    const cell = mesh.cells[mesh.elementCell[elementIndex]];
+    const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
+    const initialStress6 = initialField?.[elementIndex];
+    const committedState = Array.isArray(initialStress6)
+      ? seedMaterialPointStateFromEffectiveStress6(initialStress6, constitutive.materialParameters)
+      : seedMaterialPointStateFromInitialStress(initialStress6, constitutive.materialParameters);
+    return createMaterialPoint({
+      materialModel: constitutive.materialModel,
+      materialParameters: constitutive.materialParameters,
+      committedState,
+      elementIndex,
+      regionIndex: cell?.regionIndex ?? -1
+    });
+  });
+}
+
+function resetMaterialPointTrials(materialPoints) {
+  materialPoints.forEach((materialPoint) => {
+    materialPoint.trialState = cloneMaterialPointState(materialPoint.committedState);
+    materialPoint.diagnostics = null;
+  });
+}
+
+async function assembleNonlinearSystem(mesh, UTrial, materialPoints, loadRhs, loadFactor, ndof, freeDofs, freeIndexByDof, runControl) {
+  const rows = Array.from({ length: ndof }, () => new Map());
+  const internalForce = new Float64Array(ndof);
+  let activeCount = 0;
+  let changedCount = 0;
+  let maxEta = 0;
+  let maxStrengthReserve = 0;
+
+  for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
+    const materialPoint = materialPoints[elementIndex];
+    const previousTrialActive = materialPoint.trialState?.currentlyMcActive === true;
+    const response = recoverElementMaterialResponse(mesh, elementIndex, UTrial, materialPoint, {
+      stage: 'nonlinear-stage-1',
+      loadFactor
+    });
+    materialPoint.trialState = response.update.trialState;
+    materialPoint.diagnostics = response.update.diagnostics;
+    const currentTrialActive = response.update.trialState?.currentlyMcActive === true;
+    if (currentTrialActive) activeCount += 1;
+    if (currentTrialActive !== previousTrialActive) changedCount += 1;
+    maxEta = Math.max(maxEta, Number(response.update.diagnostics?.etaMcFinal) || 0);
+    maxStrengthReserve = Math.max(maxStrengthReserve, Number(response.update.diagnostics?.localStrengthReserve) || 0);
+
+    addMatrixBlock(rows, elementDofMap(response.element), elementStiffnessT3FromTangent2D(response.nodes, response.tangent2D));
+    const referenceStress2D = extractStress2DFrom6(materialPoint.referenceState?.effectiveStress6);
+    const stressIncrement2D = {
+      sxx: response.stress2D.sxx - referenceStress2D.sxx,
+      syy: response.stress2D.syy - referenceStress2D.syy,
+      txy: response.stress2D.txy - referenceStress2D.txy
+    };
+    addVectorBlock(internalForce, elementDofMap(response.element), elementInternalForceVector(response.B, stressIncrement2D, response.area));
+
+    if (elementIndex % 200 === 0 && (await runCheckpoint(runControl))) {
+      throw new Error('Deformation run was interrupted during nonlinear assembly.');
+    }
+  }
+
+  const targetForce = cloneScaledVector(loadRhs, loadFactor);
+  const residualFull = cloneScaledVector(targetForce, 1);
+  addScaledVectorInPlace(residualFull, internalForce, -1);
+  const compressedRows = compressMatrixRows(rows, freeDofs, freeIndexByDof);
+  const residualFree = gatherFreeVector(residualFull, freeDofs);
+  const targetForceFree = gatherFreeVector(targetForce, freeDofs);
+
+  return {
+    compressedRows,
+    residualFull,
+    residualFree,
+    targetForceFree,
+    activeCount,
+    changedCount,
+    maxEta,
+    maxStrengthReserve
+  };
+}
+
+async function solveNonlinearStage1(
+  mesh,
+  loadRhs,
+  materialPoints,
+  ndof,
+  freeDofs,
+  freeIndexByDof,
+  fixedValues,
+  runControl,
+  onProgress,
+  options = {}
+) {
+  const constitutiveModel = options?.constitutiveModel === 'linear-elastic' ? 'linear-elastic' : 'mc-reduced-stiffness';
+  const isLinearElastic = constitutiveModel === 'linear-elastic';
+  const maxIterations = Math.max(Math.round(Number(options?.nonlinearMaxIterations) || NONLINEAR_MAX_ITER), 1);
+  const growthFactor = Math.max(Number(options?.loadStepGrowthFactor) || NONLINEAR_GROWTH_FACTOR, 1);
+  const cutbackFactor = Math.min(Math.max(Number(options?.loadStepCutbackFactor) || NONLINEAR_CUTBACK_FACTOR, 0.1), 0.9);
+  const minLoadStep = Math.max(Number(options?.minLoadStep) || NONLINEAR_MIN_LOAD_STEP, 1e-4);
+  let stepSize = isLinearElastic
+    ? 1
+    : Math.min(Math.max(Number(options?.initialLoadStep) || NONLINEAR_INITIAL_LOAD_STEP, minLoadStep), 1);
+  const maxLoadSteps = Math.max(Math.round(Number(options?.maxLoadSteps) || NONLINEAR_MAX_LOAD_STEPS), 1);
+
+  let loadFactorCommitted = 0;
+  let uCommitted = new Float64Array(ndof);
+  let acceptedSteps = 0;
+  let rejectedSteps = 0;
+  let totalNonlinearIterations = 0;
+  let totalCgIterations = 0;
+  let lastResidualNorm = 0;
+  let lastRelativeResidual = 0;
+  let lastDisplacementNorm = 0;
+  let lastRelativeDisplacement = 0;
+  let lastStateChanges = 0;
+  let finalActiveCount = 0;
+  let peakActiveCount = 0;
+  let peakEta = 0;
+  let loadStepCounter = 0;
+
+  resetMaterialPointTrials(materialPoints);
+
+  while (loadFactorCommitted < 1 - 1e-10) {
+    loadStepCounter += 1;
+    if (loadStepCounter > maxLoadSteps) {
+      throw new Error(`Stage 1 deformation solve exceeded the maximum number of load steps (${maxLoadSteps}).`);
+    }
+    const remaining = 1 - loadFactorCommitted;
+    const actualStep = Math.min(stepSize, remaining);
+    const targetLoadFactor = loadFactorCommitted + actualStep;
+    const uTrial = Float64Array.from(uCommitted);
+    resetMaterialPointTrials(materialPoints);
+
+    let converged = false;
+    let needsTrialRefresh = false;
+    let failureReason = '';
+    let lastCorrection = new Float64Array(ndof);
+
+    onProgress({
+      stage: 'solving',
+      percent: 74,
+      message: `Stage 1 ${constitutiveModel === 'linear-elastic' ? 'elastic' : 'MC-active'} solve: load step ${acceptedSteps + rejectedSteps + 1}, target ${(100 * targetLoadFactor).toFixed(0)}%...`
+    });
+
+    for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+      totalNonlinearIterations += 1;
+      const assembled = await assembleNonlinearSystem(
+        mesh,
+        uTrial,
+        materialPoints,
+        loadRhs,
+        targetLoadFactor,
+        ndof,
+        freeDofs,
+        freeIndexByDof,
+        runControl
+      );
+      finalActiveCount = assembled.activeCount;
+      peakActiveCount = Math.max(peakActiveCount, assembled.activeCount);
+      peakEta = Math.max(peakEta, assembled.maxEta);
+      const residualNorm = vectorNorm(assembled.residualFree);
+      const rhsNorm = vectorNorm(assembled.targetForceFree);
+      const deltaNorm = vectorNorm(lastCorrection);
+      const solutionNorm = vectorNorm(uTrial);
+      const tolerance = nonlinearToleranceState(
+        residualNorm,
+        rhsNorm,
+        deltaNorm,
+        solutionNorm,
+        options
+      );
+      lastResidualNorm = residualNorm;
+      lastRelativeResidual = tolerance.relativeResidual;
+      lastDisplacementNorm = deltaNorm;
+      lastRelativeDisplacement = tolerance.relativeDisplacement;
+      lastStateChanges = assembled.changedCount;
+
+      if (iteration > 1 && tolerance.converged && assembled.changedCount === 0) {
+        converged = true;
+        break;
+      }
+
+      const cg = await solveCg(
+        assembled.compressedRows,
+        assembled.residualFree,
+        null,
+        MAX_CG_ITER,
+        CG_REL_TOL,
+        CG_ABS_TOL,
+        runControl
+      );
+      totalCgIterations += cg.iterations;
+      if (cg.interrupted) {
+        throw new Error('Deformation run was interrupted during the Stage 1 nonlinear solve.');
+      }
+      const acceptableLinearizedResidual = isLinearElastic
+        ? Math.max(CG_ABS_TOL, 1e-8 * Math.max(Number(cg.rhsNorm) || 0, 0))
+        : Math.max(
+          CG_ABS_TOL,
+          0.25 * Math.max(Number(options?.residualAbsTol) || NONLINEAR_RESIDUAL_ABS_TOL, NONLINEAR_RESIDUAL_ABS_TOL)
+        );
+      const allowInexactLinearizedSolve = cg.residualNorm <= acceptableLinearizedResidual;
+      if (!cg.converged && !allowInexactLinearizedSolve) {
+        failureReason = `linearized solve did not converge (residual ${cg.residualNorm.toExponential(2)} after ${cg.iterations} iterations)`;
+        break;
+      }
+      lastCorrection = expandSolutionVector(ndof, freeDofs, fixedValues, cg.solution);
+      const correctionNorm = vectorNorm(lastCorrection);
+      const postSolveTolerance = nonlinearToleranceState(
+        residualNorm,
+        rhsNorm,
+        correctionNorm,
+        solutionNorm,
+        options
+      );
+      lastDisplacementNorm = correctionNorm;
+      lastRelativeDisplacement = postSolveTolerance.relativeDisplacement;
+      addScaledVectorInPlace(uTrial, lastCorrection, 1);
+      if (isLinearElastic && assembled.changedCount === 0) {
+        converged = true;
+        needsTrialRefresh = true;
+        break;
+      }
+      if (postSolveTolerance.converged && assembled.changedCount === 0) {
+        converged = true;
+        needsTrialRefresh = true;
+        break;
+      }
+
+      if (await runCheckpoint(runControl)) {
+        throw new Error('Deformation run was interrupted during the Stage 1 nonlinear solve.');
+      }
+    }
+
+    if (converged) {
+      if (needsTrialRefresh) {
+        resetMaterialPointTrials(materialPoints);
+        await assembleNonlinearSystem(
+          mesh,
+          uTrial,
+          materialPoints,
+          loadRhs,
+          targetLoadFactor,
+          ndof,
+          freeDofs,
+          freeIndexByDof,
+          runControl
+        );
+      }
+      materialPoints.forEach((materialPoint) => commitMaterialPoint(materialPoint));
+      uCommitted = Float64Array.from(uTrial);
+      loadFactorCommitted = targetLoadFactor;
+      acceptedSteps += 1;
+      stepSize = Math.min(actualStep * growthFactor, 1 - loadFactorCommitted || actualStep);
+      continue;
+    }
+
+    rejectedSteps += 1;
+    stepSize = actualStep * cutbackFactor;
+    resetMaterialPointTrials(materialPoints);
+    if (stepSize < minLoadStep - 1e-12) {
+      throw new Error(
+        `Stage 1 deformation solve could not converge the load step to ${(100 * targetLoadFactor).toFixed(1)}% (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
+      );
+    }
+  }
+
+  resetMaterialPointTrials(materialPoints);
+  const finalAssembly = await assembleNonlinearSystem(
+    mesh,
+    uCommitted,
+    materialPoints,
+    loadRhs,
+    loadFactorCommitted,
+    ndof,
+    freeDofs,
+    freeIndexByDof,
+    runControl
+  );
+  finalActiveCount = finalAssembly.activeCount;
+  peakActiveCount = Math.max(peakActiveCount, finalAssembly.activeCount);
+  peakEta = Math.max(peakEta, finalAssembly.maxEta);
+  lastResidualNorm = vectorNorm(finalAssembly.residualFree);
+  const finalRhsNorm = vectorNorm(finalAssembly.targetForceFree);
+  const finalTolerance = nonlinearToleranceState(
+    lastResidualNorm,
+    finalRhsNorm,
+    lastDisplacementNorm,
+    vectorNorm(uCommitted),
+    options
+  );
+  lastRelativeResidual = finalTolerance.relativeResidual;
+  lastRelativeDisplacement = finalTolerance.relativeDisplacement;
+  lastStateChanges = finalAssembly.changedCount;
+
+  return {
+    solution: uCommitted,
+    acceptedSteps,
+    rejectedSteps,
+    totalNonlinearIterations,
+    totalCgIterations,
+    residualNorm: lastResidualNorm,
+    relativeResidualNorm: lastRelativeResidual,
+    displacementCorrectionNorm: lastDisplacementNorm,
+    relativeDisplacementCorrectionNorm: lastRelativeDisplacement,
+    lastStateChanges,
+    finalActiveCount,
+    peakActiveCount,
+    peakEta,
+    loadFactorCommitted
   };
 }
 
@@ -507,6 +964,8 @@ function buildTerrainSettlementProfile(mesh, nodalDisplacements) {
 function summarizeDeformation(nodalDisplacements, elementResults) {
   let maxSettlement = 0;
   let maxHorizontalDisplacement = 0;
+  let activeMcElementCount = 0;
+  let exceededMcElementCount = 0;
   nodalDisplacements.forEach((item) => {
     maxSettlement = Math.max(maxSettlement, -(item?.uy || 0));
     maxHorizontalDisplacement = Math.max(maxHorizontalDisplacement, Math.abs(item?.ux || 0));
@@ -516,53 +975,95 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
   elementResults.forEach((item) => {
     maxMcEta = Math.max(maxMcEta, Number(item?.mc?.eta) || 0);
     maxDeltaSigmaYy = Math.max(maxDeltaSigmaYy, -Number(item?.stressIncrement?.syy || 0));
+    if (item?.materialDiagnostics?.currentlyMcActive) activeMcElementCount += 1;
+    if (item?.materialDiagnostics?.hasEverExceededMc) exceededMcElementCount += 1;
   });
   return {
     maxSettlement,
     maxHorizontalDisplacement,
     maxMcEta,
-    maxDeltaSigmaYy
+    maxDeltaSigmaYy,
+    activeMcElementCount,
+    exceededMcElementCount
   };
 }
 
-function recoverElementResults(mesh, U, materialsByRegion, initialField, porePressureByElement = null) {
+function recoverElementResults(mesh, U, materialPoints, porePressureByElement = null) {
   const out = [];
   for (let elementIndex = 0; elementIndex < mesh.elements.length; elementIndex += 1) {
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
-    const material = materialsByRegion.get(cell?.regionIndex) || prepareMechanicalMaterial(cell?.material);
-    const elastic = recoverElementElasticResponse(mesh, elementIndex, U, material);
-    const initialStress = initialField[elementIndex];
-    const stressIncrement = elastic.stressIncrement;
+    const materialPoint = materialPoints[elementIndex];
+    const response = recoverElementMaterialResponse(mesh, elementIndex, U, materialPoint, {
+      stage: 'final-recovery'
+    });
+    materialPoint.trialState = response.update.trialState;
+    materialPoint.diagnostics = response.update.diagnostics;
+    const initialStress = negateNormalAndShear(extractStress2DFrom6(materialPoint.referenceState.effectiveStress6));
+    const initialStress3D = effectiveStress6ToCompressionPositiveStress3D(materialPoint.referenceState.effectiveStress6);
+    const initialStressFe = extractStress2DFrom6(materialPoint.referenceState.effectiveStress6);
+    const stressIncrement = {
+      sxx: response.stress2D.sxx - initialStressFe.sxx,
+      syy: response.stress2D.syy - initialStressFe.syy,
+      txy: response.stress2D.txy - initialStressFe.txy
+    };
     const sigmaIncrementGeo = negateNormalAndShear(stressIncrement);
-    const sigmaEff = addStress(initialStress, sigmaIncrementGeo);
+    const sigmaEff = negateNormalAndShear(response.stress2D);
+    const sigmaEff3D = effectiveStress6ToCompressionPositiveStress3D(response.update.stressTrial6);
     const porePressure = Math.max(Number(porePressureByElement?.[elementIndex]) || 0, 0);
     const initialTotalStress = {
       sxx: (Number(initialStress?.sxx) || 0) + porePressure,
       syy: (Number(initialStress?.syy) || 0) + porePressure,
       txy: Number(initialStress?.txy) || 0
     };
+    const initialTotalStress3D = {
+      sxx: (Number(initialStress3D?.sxx) || 0) + porePressure,
+      syy: (Number(initialStress3D?.syy) || 0) + porePressure,
+      szz: (Number(initialStress3D?.szz) || 0) + porePressure,
+      txy: Number(initialStress3D?.txy) || 0
+    };
     const totalStress = {
       sxx: (Number(sigmaEff?.sxx) || 0) + porePressure,
       syy: (Number(sigmaEff?.syy) || 0) + porePressure,
       txy: Number(sigmaEff?.txy) || 0
     };
-    const principal = principalStress2DCompressionPositive(sigmaEff);
-    const mc = mohrCoulombIndicator(principal, material);
+    const totalStress3D = {
+      sxx: (Number(sigmaEff3D?.sxx) || 0) + porePressure,
+      syy: (Number(sigmaEff3D?.syy) || 0) + porePressure,
+      szz: (Number(sigmaEff3D?.szz) || 0) + porePressure,
+      txy: Number(sigmaEff3D?.txy) || 0
+    };
+    const principal = response.update.diagnostics?.principal || principalStress2DCompressionPositive(sigmaEff);
+    const mc = response.update.diagnostics?.mc || mohrCoulombIndicator(principal, materialPoint.materialParameters);
     out.push({
       elementIndex,
       regionIndex: cell?.regionIndex ?? -1,
-      area: elastic.area,
+      area: response.area,
       centroid: mesh.elementData[elementIndex]?.centroid || cell?.centroid || { x: 0, y: 0 },
-      strain: elastic.strain,
+      strain: response.strain,
       stressIncrement,
       stressIncrementGeo: sigmaIncrementGeo,
       porePressure,
       initialEffectiveStress: initialStress,
+      initialEffectiveStress3D: initialStress3D,
       initialTotalStress,
+      initialTotalStress3D,
       effectiveStress: sigmaEff,
+      effectiveStress3D: sigmaEff3D,
       totalStress,
+      totalStress3D,
       principal,
-      mc
+      mc,
+      referenceMaterialState: snapshotMaterialPointState(materialPoint.referenceState),
+      materialState: snapshotMaterialPointState(materialPoint.committedState),
+      materialDiagnostics: {
+        constitutiveModel: response.update.diagnostics?.constitutiveModel || materialPoint.materialModel?.kind || 'linear-elastic',
+        activeYieldSurface: materialPoint.committedState?.activeYieldSurface || response.update.diagnostics?.activeYieldSurface || 'NONE',
+        currentlyMcActive: materialPoint.committedState?.currentlyMcActive === true,
+        hasEverExceededMc: materialPoint.committedState?.hasEverExceededMc === true,
+        localStrengthReserve: Number(response.update.diagnostics?.localStrengthReserve),
+        etaMcFinal: Number(response.update.diagnostics?.etaMcFinal),
+        stateChanged: false
+      }
     });
   }
   return out;
@@ -659,7 +1160,18 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     loadMode: input?.options?.loadMode === 'total' ? 'total' : 'pressure',
     totalLoad: input?.options?.totalLoad,
     outOfPlaneLength: Math.max(Number(input?.options?.outOfPlaneLength) || 10, 0.1),
-    useSeepagePorePressures: input?.options?.useSeepagePorePressures === true
+    useSeepagePorePressures: input?.options?.useSeepagePorePressures === true,
+    constitutiveModel: input?.options?.constitutiveModel === 'linear-elastic' ? 'linear-elastic' : 'mc-reduced-stiffness',
+    nonlinearMaxIterations: Math.max(Math.round(Number(input?.options?.nonlinearMaxIterations) || NONLINEAR_MAX_ITER), 1),
+    initialLoadStep: Math.min(Math.max(Number(input?.options?.initialLoadStep) || NONLINEAR_INITIAL_LOAD_STEP, NONLINEAR_MIN_LOAD_STEP), 1),
+    minLoadStep: Math.max(Number(input?.options?.minLoadStep) || NONLINEAR_MIN_LOAD_STEP, 1e-4),
+    maxLoadSteps: Math.max(Math.round(Number(input?.options?.maxLoadSteps) || NONLINEAR_MAX_LOAD_STEPS), 1),
+    residualRelTol: Math.max(Number(input?.options?.residualRelTol) || NONLINEAR_RESIDUAL_REL_TOL, 1e-8),
+    residualAbsTol: Math.max(Number(input?.options?.residualAbsTol) || NONLINEAR_RESIDUAL_ABS_TOL, 1e-9),
+    displacementRelTol: Math.max(Number(input?.options?.displacementRelTol) || NONLINEAR_DISPLACEMENT_REL_TOL, 1e-8),
+    displacementAbsTol: Math.max(Number(input?.options?.displacementAbsTol) || NONLINEAR_DISPLACEMENT_ABS_TOL, 1e-12),
+    loadStepGrowthFactor: Math.max(Number(input?.options?.loadStepGrowthFactor) || NONLINEAR_GROWTH_FACTOR, 1),
+    loadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.loadStepCutbackFactor) || NONLINEAR_CUTBACK_FACTOR, 0.1), 0.9)
   };
   const load = normalizeLoad(model, options, warnings);
   addDomainExtentWarnings(model, load, warnings);
@@ -683,7 +1195,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   const loadRhs = new Float64Array(ndof);
   const gravityRhs = new Float64Array(ndof);
   const porePressureByElement = new Float64Array(mesh.elements.length);
-  const materialsByRegion = prepareRegionMaterials(mesh, warnings);
+  const regionConstitutiveByRegion = prepareRegionConstitutiveModels(mesh, options, warnings);
 
   onProgress({
     stage: 'solving',
@@ -695,15 +1207,19 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     const element = mesh.elements[elementIndex];
     const nodes = element.map((nodeId) => mesh.nodes[nodeId]);
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
-    const material = materialsByRegion.get(cell?.regionIndex) || prepareMechanicalMaterial(cell?.material, warnings);
+    const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
     const dofs = elementDofMap(element);
     const centroid = mesh.elementData[elementIndex]?.centroid || cell?.centroid || {
       x: (nodes[0].x + nodes[1].x + nodes[2].x) / 3,
       y: (nodes[0].y + nodes[1].y + nodes[2].y) / 3
     };
     const initialPorePressure = sampleInitialPorePressure(model, centroid.x, centroid.y, options, warnings);
-    const gammaBulk = initialBulkUnitWeightFromPorePressure(material, initialPorePressure);
-    addMatrixBlock(rows, dofs, elementStiffnessT3(nodes, material, warnings));
+    const gammaBulk = initialBulkUnitWeightFromPorePressure(constitutive.materialParameters, initialPorePressure);
+    addMatrixBlock(
+      rows,
+      dofs,
+      elementStiffnessT3FromTangent2D(nodes, extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6))
+    );
     addVectorBlock(gravityRhs, dofs, elementGravityVectorT3(nodes, gammaBulk));
     porePressureByElement[elementIndex] = initialPorePressure;
     if (elementIndex % 250 === 0 && (await runCheckpoint(runControl))) {
@@ -735,7 +1251,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     model,
     options,
     warnings,
-    materialsByRegion,
+    regionConstitutiveByRegion,
     ndof,
     rows,
     compressedRows,
@@ -750,21 +1266,23 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   onProgress({
     stage: 'solving',
     percent: 74,
-    message: `Solving ${freeDofs.length.toLocaleString()} free deformation DOFs for the applied load increment...`
+    message: `Solving ${freeDofs.length.toLocaleString()} free deformation DOFs with the ${options.constitutiveModel === 'linear-elastic' ? 'elastic' : 'Stage 1 MC-active reduced-stiffness'} material model...`
   });
 
-  const compressedLoadRhs = compressRhs(rows, freeDofs, fixedValues, loadRhs);
-  const cg = await solveCg(compressedRows, compressedLoadRhs, null, MAX_CG_ITER, CG_REL_TOL, CG_ABS_TOL, runControl);
-  if (cg.interrupted) {
-    throw new Error('Deformation run was interrupted before the first displacement solution became available.');
-  }
-  if (!cg.converged) {
-    throw new Error(
-      `Deformation linear solve did not converge (residual ${cg.residualNorm.toExponential(2)}, relative ${Number.isFinite(cg.relativeResidual) ? cg.relativeResidual.toExponential(2) : 'inf'}, target ${cg.toleranceTarget.toExponential(2)} after ${cg.iterations} iterations).`
-    );
-  }
-
-  const U = expandSolutionVector(ndof, freeDofs, fixedValues, cg.solution);
+  const materialPoints = buildElementMaterialPoints(mesh, regionConstitutiveByRegion, geostatic.initialField, options, warnings);
+  const nonlinear = await solveNonlinearStage1(
+    mesh,
+    loadRhs,
+    materialPoints,
+    ndof,
+    freeDofs,
+    freeIndexByDof,
+    fixedValues,
+    runControl,
+    onProgress,
+    options
+  );
+  const U = nonlinear.solution;
 
   onProgress({
     stage: 'post',
@@ -772,7 +1290,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     message: 'Recovering stresses, settlements, and MC utilization...'
   });
 
-  const elementResults = recoverElementResults(mesh, U, materialsByRegion, geostatic.initialField, porePressureByElement);
+  const elementResults = recoverElementResults(mesh, U, materialPoints, porePressureByElement);
   const nodalDisplacements = mesh.nodes.map((_node, nodeId) => ({
     ux: U[2 * nodeId],
     uy: U[2 * nodeId + 1]
@@ -795,15 +1313,27 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     elementResults,
     summaries,
     solver: {
-      method: 'linear-elastic-plane-strain-t3',
+      method: options.constitutiveModel === 'linear-elastic'
+        ? 'nonlinear-elastic-plane-strain-t3'
+        : 'stage-1-mc-reduced-stiffness-plane-strain-t3',
+      constitutiveModel: options.constitutiveModel === 'linear-elastic' ? 'linear-elastic-material-point' : 'mc-reduced-stiffness-material-point',
+      materialPointCount: materialPoints.length,
       initialStressMode: geostatic.mode,
       geostaticIterations: geostatic.iterations,
       geostaticResidualNorm: geostatic.residualNorm,
-      linearIterations: cg.iterations,
-      residualNorm: cg.residualNorm,
-      relativeResidualNorm: cg.relativeResidual,
-      rhsNorm: cg.rhsNorm,
-      toleranceTarget: cg.toleranceTarget,
+      linearIterations: nonlinear.totalCgIterations,
+      nonlinearIterations: nonlinear.totalNonlinearIterations,
+      acceptedLoadSteps: nonlinear.acceptedSteps,
+      rejectedLoadSteps: nonlinear.rejectedSteps,
+      loadFactorCommitted: nonlinear.loadFactorCommitted,
+      residualNorm: nonlinear.residualNorm,
+      relativeResidualNorm: nonlinear.relativeResidualNorm,
+      displacementCorrectionNorm: nonlinear.displacementCorrectionNorm,
+      relativeDisplacementCorrectionNorm: nonlinear.relativeDisplacementCorrectionNorm,
+      finalActiveMcElements: nonlinear.finalActiveCount,
+      peakActiveMcElements: nonlinear.peakActiveCount,
+      peakMcEta: nonlinear.peakEta,
+      lastStateChanges: nonlinear.lastStateChanges,
       freeDofs: freeDofs.length
     },
     timing: {
