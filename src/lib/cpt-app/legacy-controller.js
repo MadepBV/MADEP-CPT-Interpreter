@@ -3792,7 +3792,7 @@ function stage6Defaults(){
         },
         options:{
           loadMode:'pressure',
-          constitutiveModel:'mc-reduced-stiffness',
+          constitutiveModel:'mc-plastic',
           totalLoad:null,
           outOfPlaneLength:10,
           meshTargetArea:null,
@@ -3924,8 +3924,8 @@ function stage6BishopResolvedSeepageMeshTargetArea(bishop){
 
 function stage6BishopAutoDeformationMeshTargetArea(bishop){
   const domainArea = stage6BishopSeepageDomainArea(bishop);
-  if(!(domainArea > 0)) return 0.035;
-  return +Math.min(Math.max(domainArea / 5000, 0.035), 1.0).toFixed(3);
+  if(!(domainArea > 0)) return 0.05;
+  return +Math.min(Math.max(domainArea / 3500, 0.05), 1.0).toFixed(3);
 }
 
 function stage6BishopResolvedDeformationMeshTargetArea(bishop){
