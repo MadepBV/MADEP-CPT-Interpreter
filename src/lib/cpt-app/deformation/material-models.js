@@ -19,6 +19,19 @@ export const YIELD_SURFACE_MC_APEX = 'MC_APEX';
 export const YIELD_SURFACE_TENSION = 'TENSION';
 export const YIELD_SURFACE_COMPRESSION_CAP = 'COMPRESSION_CAP';
 
+const BRANCH_ELASTIC = 'ELASTIC';
+const BRANCH_FACE_F13 = 'MC_FACE_F13';
+const BRANCH_EDGE_S23_EQUAL = 'MC_EDGE_S23_EQUAL';
+const BRANCH_EDGE_S12_EQUAL = 'MC_EDGE_S12_EQUAL';
+const BRANCH_APEX_FORMAL = 'MC_APEX_FORMAL';
+const BRANCH_TENSION_PENDING = 'MC_TENSION_PENDING';
+const BRANCH_TENSION_FACE_T3 = 'TENSION_FACE_T3';
+const BRANCH_TENSION_EDGE_T23 = 'TENSION_EDGE_T23';
+const BRANCH_TENSION_EDGE_F13_T3 = 'TENSION_EDGE_F13_T3';
+const BRANCH_TENSION_CORNER_S23_T3 = 'TENSION_CORNER_S23_T3';
+const BRANCH_TENSION_CORNER_S12_T3 = 'TENSION_CORNER_S12_T3';
+const BRANCH_TENSION_APEX_T123 = 'TENSION_APEX_T123';
+
 function zeroVector6() {
   return [0, 0, 0, 0, 0, 0];
 }
@@ -96,6 +109,13 @@ function zeroMatrix3() {
   ];
 }
 
+function cloneMatrix3(matrix) {
+  if (!Array.isArray(matrix)) return zeroMatrix3();
+  return Array.from({ length: 3 }, (_item, rowIndex) =>
+    Array.from({ length: 3 }, (_value, colIndex) => Number(matrix?.[rowIndex]?.[colIndex]) || 0)
+  );
+}
+
 function cloneVector3(vector) {
   const source = Array.isArray(vector) || ArrayBuffer.isView(vector) ? vector : [0, 0, 0];
   return [
@@ -135,6 +155,14 @@ function dotVector3(left, right) {
     (Number(left?.[1]) || 0) * (Number(right?.[1]) || 0) +
     (Number(left?.[2]) || 0) * (Number(right?.[2]) || 0)
   );
+}
+
+function crossVector3(left, right) {
+  return [
+    (Number(left?.[1]) || 0) * (Number(right?.[2]) || 0) - (Number(left?.[2]) || 0) * (Number(right?.[1]) || 0),
+    (Number(left?.[2]) || 0) * (Number(right?.[0]) || 0) - (Number(left?.[0]) || 0) * (Number(right?.[2]) || 0),
+    (Number(left?.[0]) || 0) * (Number(right?.[1]) || 0) - (Number(left?.[1]) || 0) * (Number(right?.[0]) || 0)
+  ];
 }
 
 function vectorNorm3(vector) {
@@ -198,6 +226,34 @@ function principalDirectionToProjector(vector3) {
   return outerProduct3(normalized, normalized);
 }
 
+function rankOneProjectorToDirection(projector, fallback = [1, 0, 0]) {
+  const candidateColumns = [
+    [Number(projector?.[0]?.[0]) || 0, Number(projector?.[1]?.[0]) || 0, Number(projector?.[2]?.[0]) || 0],
+    [Number(projector?.[0]?.[1]) || 0, Number(projector?.[1]?.[1]) || 0, Number(projector?.[2]?.[1]) || 0],
+    [Number(projector?.[0]?.[2]) || 0, Number(projector?.[1]?.[2]) || 0, Number(projector?.[2]?.[2]) || 0]
+  ];
+  let best = null;
+  let bestNorm = 0;
+  candidateColumns.forEach((column) => {
+    const norm = vectorNorm3(column);
+    if (norm > bestNorm) {
+      bestNorm = norm;
+      best = column;
+    }
+  });
+  if (!(bestNorm > 1e-12) || !best) return normalizeVector3(fallback, fallback);
+  return normalizeVector3(best, fallback);
+}
+
+function cloneRepresentativeProjectors(projectors) {
+  if (!projectors || typeof projectors !== 'object') return null;
+  const out = {};
+  ['P1', 'P2', 'P3', 'P12', 'P23'].forEach((key) => {
+    if (projectors[key]) out[key] = cloneMatrix3(projectors[key]);
+  });
+  return Object.keys(out).length ? out : null;
+}
+
 function projectorTensorToEngineeringGradient6(projector) {
   return [
     Number(projector?.[0]?.[0]) || 0,
@@ -213,6 +269,25 @@ function normalizeVector3(vector3, fallback = [1, 0, 0]) {
   const norm = vectorNorm3(vector3);
   if (!(norm > 1e-12)) return cloneVector3(fallback);
   return scaleVector3(vector3, 1 / norm);
+}
+
+function matrixInfinityNorm(matrix) {
+  const size = Array.isArray(matrix) ? matrix.length : 0;
+  let maxRowSum = 0;
+  for (let rowIndex = 0; rowIndex < size; rowIndex += 1) {
+    let rowSum = 0;
+    for (let colIndex = 0; colIndex < size; colIndex += 1) {
+      rowSum += Math.abs(Number(matrix?.[rowIndex]?.[colIndex]) || 0);
+    }
+    maxRowSum = Math.max(maxRowSum, rowSum);
+  }
+  return maxRowSum;
+}
+
+function denseMatrixConditionNumberEstimate(matrix, tolerance = 1e-12) {
+  const inverse = invertDenseMatrix(matrix, tolerance);
+  if (!inverse) return Number.POSITIVE_INFINITY;
+  return matrixInfinityNorm(matrix) * matrixInfinityNorm(inverse);
 }
 
 function solveDenseLinearSystem(matrixInput, rhsInput, tolerance = 1e-12) {
@@ -458,7 +533,10 @@ function exactMcSurfaceParameters(materialParameters = {}) {
   const phi = (clampMcAngle(materialParameters?.phiEffDeg) * Math.PI) / 180;
   const psi = (clampMcAngle(materialParameters?.psiEffDeg ?? materialParameters?.psi) * Math.PI) / 180;
   const c = Math.max(Number(materialParameters?.cEff) || 0, 0);
-  const sigmaTAllow = Math.max(Number(materialParameters?.sigmaTAllow) || 0, 0);
+  const sigmaTAllowRaw = Math.max(Number(materialParameters?.sigmaTAllow) || 0, 0);
+  const tanPhi = Math.tan(phi);
+  const sigmaTUpperBound = Math.abs(tanPhi) > 1e-12 ? Math.max(c / tanPhi, 0) : Number.POSITIVE_INFINITY;
+  const sigmaTAllow = Math.min(sigmaTAllowRaw, sigmaTUpperBound);
   return {
     phi,
     psi,
@@ -520,32 +598,79 @@ function principalStressProjectors3DCompressionPositive(stress6, materialParamet
   };
 }
 
-function buildExactMcSurfaces(projectors, materialParameters) {
-  const { sinPhi, cosPhi, sinPsi } = exactMcSurfaceParameters(materialParameters);
+function tensionSurfacePrincipalCoefficients(branchKind = null) {
+  if (branchKind === BRANCH_TENSION_EDGE_T23 || branchKind === BRANCH_TENSION_CORNER_S23_T3) {
+    return {
+      nPrincipal: [0, -0.5, -0.5],
+      mPrincipal: [0, -0.5, -0.5]
+    };
+  }
+  if (branchKind === BRANCH_TENSION_APEX_T123) {
+    return {
+      nPrincipal: [-1 / 3, -1 / 3, -1 / 3],
+      mPrincipal: [-1 / 3, -1 / 3, -1 / 3]
+    };
+  }
+  return {
+    nPrincipal: [0, 0, -1],
+    mPrincipal: [0, 0, -1]
+  };
+}
+
+function buildExactMcSurfaces(projectors, materialParameters, branchKind = null) {
+  const { sinPhi, cosPhi, sinPsi, useTensionCutoff, sigmaTAllow } = exactMcSurfaceParameters(materialParameters);
   const shearIntercept = 2 * Math.max(Number(materialParameters?.cEff) || 0, 0) * cosPhi;
+  const f12Principal = [1 - sinPhi, -(1 + sinPhi), 0];
+  const f13Principal = [1 - sinPhi, 0, -(1 + sinPhi)];
+  const f23Principal = [0, 1 - sinPhi, -(1 + sinPhi)];
+  const g12Principal = [1 - sinPsi, -(1 + sinPsi), 0];
+  const g13Principal = [1 - sinPsi, 0, -(1 + sinPsi)];
+  const g23Principal = [0, 1 - sinPsi, -(1 + sinPsi)];
+  if (branchKind === BRANCH_TENSION_CORNER_S23_T3) {
+    f13Principal[1] = -0.5 * (1 + sinPhi);
+    f13Principal[2] = -0.5 * (1 + sinPhi);
+    g13Principal[1] = -0.5 * (1 + sinPsi);
+    g13Principal[2] = -0.5 * (1 + sinPsi);
+  }
+  if (branchKind === BRANCH_TENSION_CORNER_S12_T3) {
+    f13Principal[0] = 0.5 * (1 - sinPhi);
+    f13Principal[1] = 0.5 * (1 - sinPhi);
+    g13Principal[0] = 0.5 * (1 - sinPsi);
+    g13Principal[1] = 0.5 * (1 - sinPsi);
+  }
   const definitions = [
     {
       id: 'F12',
       kind: 'shear',
-      nPrincipal: [1 - sinPhi, -(1 + sinPhi), 0],
-      mPrincipal: [1 - sinPsi, -(1 + sinPsi), 0],
+      nPrincipal: f12Principal,
+      mPrincipal: g12Principal,
       intercept: shearIntercept
     },
     {
       id: 'F13',
       kind: 'shear',
-      nPrincipal: [1 - sinPhi, 0, -(1 + sinPhi)],
-      mPrincipal: [1 - sinPsi, 0, -(1 + sinPsi)],
+      nPrincipal: f13Principal,
+      mPrincipal: g13Principal,
       intercept: shearIntercept
     },
     {
       id: 'F23',
       kind: 'shear',
-      nPrincipal: [0, 1 - sinPhi, -(1 + sinPhi)],
-      mPrincipal: [0, 1 - sinPsi, -(1 + sinPsi)],
+      nPrincipal: f23Principal,
+      mPrincipal: g23Principal,
       intercept: shearIntercept
     }
   ];
+  if (useTensionCutoff) {
+    const tensionCoefficients = tensionSurfacePrincipalCoefficients(branchKind);
+    definitions.push({
+      id: 'T3',
+      kind: 'tension',
+      nPrincipal: tensionCoefficients.nPrincipal,
+      mPrincipal: tensionCoefficients.mPrincipal,
+      intercept: sigmaTAllow
+    });
+  }
   return definitions.map((surface) => ({
     ...surface,
     n6: principalCoefficientsToInternalGradient6(surface.nPrincipal, projectors),
@@ -575,17 +700,17 @@ function evaluateExactMcSurfaceValuesFromStress(stress6, materialParameters) {
 function activeYieldSurfaceLabelFromActiveSet(activeSurfaces = []) {
   const shearCount = activeSurfaces.filter((surface) => surface?.kind === 'shear').length;
   const hasTension = activeSurfaces.some((surface) => surface?.kind === 'tension');
+  if (hasTension) return YIELD_SURFACE_TENSION;
   if (shearCount >= 3) return YIELD_SURFACE_MC_APEX;
   if (shearCount >= 2) return YIELD_SURFACE_MC_EDGE;
   if (shearCount === 1) return YIELD_SURFACE_MC_FACE;
-  if (hasTension) return YIELD_SURFACE_TENSION;
   return YIELD_SURFACE_NONE;
 }
 
 function computeExactElastoplasticTangent(D_e, activeSurfaces, couplingMatrix, materialParameters = null) {
   if (!Array.isArray(activeSurfaces) || activeSurfaces.length === 0) return cloneMatrix6(D_e);
   const inverseCoupling = invertDenseMatrix(couplingMatrix, 1e-12);
-  if (!inverseCoupling) return cloneMatrix6(D_e);
+  if (!inverseCoupling) return null;
   const correction = zeroMatrix6();
   const DmColumns = activeSurfaces.map((surface) => multiplyMatrix6x6Vector6(D_e, surface.m6));
   const DnColumns = activeSurfaces.map((surface) => multiplyMatrix6x6Vector6(D_e, surface.n6));
@@ -605,18 +730,812 @@ function computeExactElastoplasticTangent(D_e, activeSurfaces, couplingMatrix, m
   return materialParameters?.symmetrizeEpTangent === true ? symmetrizeMatrix6(tangent) : tangent;
 }
 
-function solveExactMcActiveSetReturn(stressTrial6, elasticTangent6x6, materialParameters, mcTrial) {
+function exactMcStressScale(materialParameters, principalValues = [], mcTrial = null) {
+  const [s1, s2, s3] = principalValues?.length ? principalValues : [
+    Number(mcTrial?.s1) || 0,
+    Number(mcTrial?.s2) || 0,
+    Number(mcTrial?.s3) || 0
+  ];
+  const cEff = Math.max(Number(materialParameters?.cEff) || 0, 0);
+  const pRef = Math.max(Number(materialParameters?.yieldTolerancePref) || 100, 1e-6);
+  return Math.max(Math.abs(s1), Math.abs(s2), Math.abs(s3), cEff, pRef, 1);
+}
+
+function resolveCornerStressGapTolerance(materialParameters, principalValues, mcTrial, kind = 'edge') {
+  const explicit = kind === 'apex'
+    ? Number(materialParameters?.apexStressGapTolerance)
+    : Number(materialParameters?.edgeStressGapTolerance);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const stressScale = exactMcStressScale(materialParameters, principalValues, mcTrial);
+  const localTol = localReturnTolerance(materialParameters, mcTrial);
+  const scale = kind === 'apex' ? 5e-7 : 1e-7;
+  const multiplier = kind === 'apex' ? 10 : 5;
+  return Math.max(multiplier * localTol, scale * stressScale);
+}
+
+function resolveActiveSetComplementarityTolerance(materialParameters, principalValues, mcTrial, edgeTolerance) {
+  const explicit = Number(materialParameters?.activeSetComplementarityTolerance);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const stressScale = exactMcStressScale(materialParameters, principalValues, mcTrial);
+  const localTol = localReturnTolerance(materialParameters, mcTrial);
+  return Math.max(5 * localTol, 1e-7 * stressScale, edgeTolerance);
+}
+
+function resolveEigenSubspaceTolerance(materialParameters, principalValues, mcTrial, edgeTolerance) {
+  const explicit = Number(materialParameters?.eigenSubspaceTolerance);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return Math.max(Number(materialParameters?.eigTolerance) || 1e-9, edgeTolerance);
+}
+
+function resolveApexHydrostaticTolerance(materialParameters, principalValues, mcTrial, apexTolerance) {
+  const explicit = Number(materialParameters?.apexHydrostaticTolerance);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const stressScale = exactMcStressScale(materialParameters, principalValues, mcTrial);
+  const cohesionScale = Math.max(Number(materialParameters?.cEff) || 0, 0);
+  return Math.max(20 * apexTolerance, 0.05 * Math.max(stressScale, cohesionScale, 1));
+}
+
+function isTensionBranchKind(branchKind) {
+  return (
+    branchKind === BRANCH_TENSION_PENDING ||
+    branchKind === BRANCH_TENSION_FACE_T3 ||
+    branchKind === BRANCH_TENSION_EDGE_T23 ||
+    branchKind === BRANCH_TENSION_EDGE_F13_T3 ||
+    branchKind === BRANCH_TENSION_CORNER_S23_T3 ||
+    branchKind === BRANCH_TENSION_CORNER_S12_T3 ||
+    branchKind === BRANCH_TENSION_APEX_T123
+  );
+}
+
+function isLowerRepeatedBranchKind(branchKind) {
+  return (
+    branchKind === BRANCH_EDGE_S23_EQUAL ||
+    branchKind === BRANCH_TENSION_EDGE_T23 ||
+    branchKind === BRANCH_TENSION_CORNER_S23_T3
+  );
+}
+
+function isUpperRepeatedBranchKind(branchKind) {
+  return branchKind === BRANCH_EDGE_S12_EQUAL || branchKind === BRANCH_TENSION_CORNER_S12_T3;
+}
+
+function isShearEdgeBranchKind(branchKind) {
+  return branchKind === BRANCH_EDGE_S23_EQUAL || branchKind === BRANCH_EDGE_S12_EQUAL;
+}
+
+function activeYieldSurfaceFromBranchKind(branchKind) {
+  switch (branchKind) {
+    case BRANCH_FACE_F13:
+      return YIELD_SURFACE_MC_FACE;
+    case BRANCH_EDGE_S23_EQUAL:
+    case BRANCH_EDGE_S12_EQUAL:
+      return YIELD_SURFACE_MC_EDGE;
+    case BRANCH_APEX_FORMAL:
+      return YIELD_SURFACE_MC_APEX;
+    case BRANCH_TENSION_PENDING:
+    case BRANCH_TENSION_FACE_T3:
+    case BRANCH_TENSION_EDGE_T23:
+    case BRANCH_TENSION_EDGE_F13_T3:
+    case BRANCH_TENSION_CORNER_S23_T3:
+    case BRANCH_TENSION_CORNER_S12_T3:
+    case BRANCH_TENSION_APEX_T123:
+      return YIELD_SURFACE_TENSION;
+    default:
+      return YIELD_SURFACE_NONE;
+  }
+}
+
+function multiplicityKindFromBranchKind(branchKind) {
+  switch (branchKind) {
+    case BRANCH_EDGE_S23_EQUAL:
+    case BRANCH_TENSION_EDGE_T23:
+    case BRANCH_TENSION_CORNER_S23_T3:
+      return 'S23_EQUAL';
+    case BRANCH_EDGE_S12_EQUAL:
+    case BRANCH_TENSION_CORNER_S12_T3:
+      return 'S12_EQUAL';
+    case BRANCH_APEX_FORMAL:
+    case BRANCH_TENSION_APEX_T123:
+      return 'TRIPLE';
+    default:
+      return 'DISTINCT';
+  }
+}
+
+function activeSurfaceIdsForBranchKind(branchKind) {
+  switch (branchKind) {
+    case BRANCH_FACE_F13:
+      return ['F13'];
+    case BRANCH_EDGE_S23_EQUAL:
+      return ['F12', 'F13'];
+    case BRANCH_EDGE_S12_EQUAL:
+      return ['F13', 'F23'];
+    case BRANCH_APEX_FORMAL:
+      return ['F12', 'F13', 'F23'];
+    case BRANCH_TENSION_FACE_T3:
+      return ['T3'];
+    case BRANCH_TENSION_EDGE_T23:
+      return ['T3'];
+    case BRANCH_TENSION_EDGE_F13_T3:
+      return ['F13', 'T3'];
+    case BRANCH_TENSION_CORNER_S23_T3:
+      return ['F13', 'T3'];
+    case BRANCH_TENSION_CORNER_S12_T3:
+      return ['F13', 'T3'];
+    case BRANCH_TENSION_APEX_T123:
+      return ['T3'];
+    default:
+      return [];
+  }
+}
+
+function classifyTangentQuality(conditionNumber) {
+  if (!Number.isFinite(conditionNumber)) return 'singular';
+  if (conditionNumber > 1e12) return 'very-poor';
+  if (conditionNumber > 1e9) return 'poor';
+  if (conditionNumber > 1e6) return 'fair';
+  return 'good';
+}
+
+function exactMcHydrostaticApexStress(materialParameters) {
+  const { phi, c } = exactMcSurfaceParameters(materialParameters);
+  const tanPhi = Math.tan(phi);
+  if (!(Math.abs(tanPhi) > 1e-12)) return null;
+  return -(c / tanPhi);
+}
+
+function isNearFormalShearApex(principalValues, materialParameters, apexTolerance) {
+  const apexStress = exactMcHydrostaticApexStress(materialParameters);
+  if (!Number.isFinite(apexStress)) return false;
+  return principalValues.every((value) => Math.abs((Number(value) || 0) - apexStress) <= apexTolerance);
+}
+
+function representativeBasisPriorityList(materialParameters = {}) {
+  const raw = String(materialParameters?.representativeBasisPolicy || 'committed-trial-canonical')
+    .split(/[^a-zA-Z]+/)
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean);
+  const unique = [];
+  raw.forEach((token) => {
+    if (['committed', 'trial', 'canonical'].includes(token) && !unique.includes(token)) unique.push(token);
+  });
+  if (!unique.length) return ['committed', 'trial', 'canonical'];
+  if (!unique.includes('canonical')) unique.push('canonical');
+  return unique;
+}
+
+function directionCandidatesFromCommittedState(committedState, multiplicityKind) {
+  const projectors = committedState?.representativeProjectors;
+  if (!projectors) return [];
+  if (multiplicityKind === 'S23_EQUAL') {
+    return [projectors.P2, projectors.P3]
+      .filter(Boolean)
+      .map((projector) => rankOneProjectorToDirection(projector, [0, 1, 0]));
+  }
+  if (multiplicityKind === 'S12_EQUAL') {
+    return [projectors.P1, projectors.P2]
+      .filter(Boolean)
+      .map((projector) => rankOneProjectorToDirection(projector, [1, 0, 0]));
+  }
+  return [projectors.P1, projectors.P2, projectors.P3]
+    .filter(Boolean)
+    .map((projector) => rankOneProjectorToDirection(projector, [1, 0, 0]));
+}
+
+function chooseProjectedDirection(subspaceProjector, candidateDirections, orthogonalTo = [], tolerance = 1e-10) {
+  const forbidden = Array.isArray(orthogonalTo) ? orthogonalTo : [orthogonalTo];
+  for (const candidate of candidateDirections) {
+    if (!candidate) continue;
+    let projected = multiplyMatrix3x3Vector3(subspaceProjector, candidate);
+    forbidden.forEach((direction) => {
+      const norm = vectorNorm3(direction);
+      if (!(norm > tolerance)) return;
+      const normalized = scaleVector3(direction, 1 / norm);
+      projected = subtractVector3(projected, scaleVector3(normalized, dotVector3(projected, normalized)));
+    });
+    const norm = vectorNorm3(projected);
+    if (norm > tolerance) return scaleVector3(projected, 1 / norm);
+  }
+  return null;
+}
+
+function buildRepeatedSubspaceProjectors(principalState, branchKind, committedState, materialParameters, tolerance) {
+  if (!isLowerRepeatedBranchKind(branchKind) && !isUpperRepeatedBranchKind(branchKind)) {
+    return {
+      representativeBasisSource: 'trial',
+      representativeProjectors: {
+        P1: cloneMatrix3(principalState?.P1),
+        P2: cloneMatrix3(principalState?.P2),
+        P3: cloneMatrix3(principalState?.P3)
+      }
+    };
+  }
+
+  const priority = representativeBasisPriorityList(materialParameters);
+  const multiplicityKind = multiplicityKindFromBranchKind(branchKind);
+  const repeatedProjector = isLowerRepeatedBranchKind(branchKind)
+    ? addMatrix3(principalState?.P2, principalState?.P3)
+    : addMatrix3(principalState?.P1, principalState?.P2);
+  const distinctDirection = isLowerRepeatedBranchKind(branchKind)
+    ? rankOneProjectorToDirection(principalState?.P1, [1, 0, 0])
+    : rankOneProjectorToDirection(principalState?.P3, [0, 0, 1]);
+  const trialSeeds = isLowerRepeatedBranchKind(branchKind)
+    ? [
+        rankOneProjectorToDirection(principalState?.P2, [0, 1, 0]),
+        rankOneProjectorToDirection(principalState?.P3, [0, 0, 1])
+      ]
+    : [
+        rankOneProjectorToDirection(principalState?.P1, [1, 0, 0]),
+        rankOneProjectorToDirection(principalState?.P2, [0, 1, 0])
+      ];
+  const canonicalSeeds = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+  ];
+
+  let sourceUsed = 'canonical';
+  let primaryRepeatedDirection = null;
+  for (const source of priority) {
+    const seeds = source === 'committed'
+      ? directionCandidatesFromCommittedState(committedState, multiplicityKind)
+      : source === 'trial'
+        ? trialSeeds
+        : canonicalSeeds;
+    primaryRepeatedDirection = chooseProjectedDirection(repeatedProjector, seeds, [distinctDirection], tolerance);
+    if (primaryRepeatedDirection) {
+      sourceUsed = source;
+      break;
+    }
+  }
+  if (!primaryRepeatedDirection) {
+    primaryRepeatedDirection = chooseProjectedDirection(repeatedProjector, canonicalSeeds, [distinctDirection], tolerance)
+      || (isLowerRepeatedBranchKind(branchKind) ? [0, 1, 0] : [1, 0, 0]);
+    sourceUsed = 'canonical';
+  }
+
+  let secondaryDirection = crossVector3(distinctDirection, primaryRepeatedDirection);
+  secondaryDirection = chooseProjectedDirection(repeatedProjector, [secondaryDirection, ...canonicalSeeds], [distinctDirection, primaryRepeatedDirection], tolerance)
+    || normalizeVector3(crossVector3(distinctDirection, primaryRepeatedDirection), isLowerRepeatedBranchKind(branchKind) ? [0, 0, 1] : [0, 1, 0]);
+
+  if (isLowerRepeatedBranchKind(branchKind)) {
+    return {
+      representativeBasisSource: sourceUsed,
+      representativeProjectors: {
+        P1: cloneMatrix3(principalState?.P1),
+        P2: principalDirectionToProjector(primaryRepeatedDirection),
+        P3: principalDirectionToProjector(secondaryDirection),
+        P23: cloneMatrix3(repeatedProjector)
+      }
+    };
+  }
+  return {
+    representativeBasisSource: sourceUsed,
+    representativeProjectors: {
+      P1: principalDirectionToProjector(primaryRepeatedDirection),
+      P2: principalDirectionToProjector(secondaryDirection),
+      P3: cloneMatrix3(principalState?.P3),
+      P12: cloneMatrix3(repeatedProjector)
+    }
+  };
+}
+
+function buildSurfaceMapForProjectors(projectors, materialParameters, branchKind = null) {
+  const surfaces = buildExactMcSurfaces(projectors, materialParameters, branchKind);
+  return {
+    surfaces,
+    surfaceMap: Object.fromEntries(surfaces.map((surface) => [surface.id, surface]))
+  };
+}
+
+function buildStressTensorProjectorsForBranch(branchKind, representativeProjectors) {
+  if (isLowerRepeatedBranchKind(branchKind)) {
+    return {
+      P1: cloneMatrix3(representativeProjectors?.P1),
+      P2: cloneMatrix3(representativeProjectors?.P2),
+      P3: cloneMatrix3(representativeProjectors?.P3)
+    };
+  }
+  if (isUpperRepeatedBranchKind(branchKind)) {
+    return {
+      P1: cloneMatrix3(representativeProjectors?.P1),
+      P2: cloneMatrix3(representativeProjectors?.P2),
+      P3: cloneMatrix3(representativeProjectors?.P3)
+    };
+  }
+  return {
+    P1: cloneMatrix3(representativeProjectors?.P1),
+    P2: cloneMatrix3(representativeProjectors?.P2),
+    P3: cloneMatrix3(representativeProjectors?.P3)
+  };
+}
+
+function representedPrincipalValuesForBranch(branchKind, principalValues) {
+  const [s1, s2, s3] = cloneVector3(principalValues);
+  if (isLowerRepeatedBranchKind(branchKind)) {
+    const repeated = 0.5 * (s2 + s3);
+    return [s1, repeated, repeated];
+  }
+  if (isUpperRepeatedBranchKind(branchKind)) {
+    const repeated = 0.5 * (s1 + s2);
+    return [repeated, repeated, s3];
+  }
+  if (branchKind === BRANCH_APEX_FORMAL || branchKind === BRANCH_TENSION_APEX_T123) {
+    const repeated = (s1 + s2 + s3) / 3;
+    return [repeated, repeated, repeated];
+  }
+  return [s1, s2, s3];
+}
+
+function evaluatePrincipalSurfaceValue(surface, principalValues) {
+  if (!surface) return 0;
+  return dotVector3(surface.nPrincipal, principalValues) - (Number(surface.intercept) || 0);
+}
+
+function solveExactMcActiveSystemPrincipal(trialPrincipalValues, activeSurfaceIds, principalSurfaceMap, D_n, complementarityTolerance) {
+  const activeSurfaces = activeSurfaceIds.map((id) => principalSurfaceMap?.[id]).filter(Boolean);
+  const couplingMatrix = activeSurfaces.map((surfaceI) =>
+    activeSurfaces.map((surfaceJ) => dotVector3(surfaceI.nPrincipal, multiplyMatrix3x3Vector3(D_n, surfaceJ.mPrincipal)))
+  );
+  const rhs = activeSurfaces.map((surface) => evaluatePrincipalSurfaceValue(surface, trialPrincipalValues));
+  const plasticMultipliers = solveDenseLinearSystem(couplingMatrix, rhs, 1e-12);
+  const conditionNumber = denseMatrixConditionNumberEstimate(couplingMatrix, 1e-12);
+  if (!plasticMultipliers) {
+    return {
+      converged: false,
+      reason: `local exact MC active-set solve became singular on ${activeSurfaceIds.join('|') || 'EMPTY'}`,
+      conditionNumber
+    };
+  }
+  const minMultiplier = Math.min(...plasticMultipliers.map((value) => Number(value) || 0));
+  if (minMultiplier < -complementarityTolerance) {
+    return {
+      converged: false,
+      reason: `negative plastic multiplier on ${activeSurfaceIds.join('|') || 'EMPTY'}`,
+      conditionNumber,
+      plasticMultipliers
+    };
+  }
+  const plasticFlowPrincipal = activeSurfaces.reduce(
+    (sum, surface, index) => addVector3(sum, scaleVector3(surface.mPrincipal, Number(plasticMultipliers?.[index]) || 0)),
+    [0, 0, 0]
+  );
+  const stressCorrectionPrincipal = multiplyMatrix3x3Vector3(D_n, plasticFlowPrincipal);
+  return {
+    converged: true,
+    plasticMultipliers,
+    couplingMatrix,
+    conditionNumber,
+    stressReturnPrincipal: subtractVector3(trialPrincipalValues, stressCorrectionPrincipal)
+  };
+}
+
+function classifyTrialBranchKind(principalTrialValues, trialSurfaceValues, edgeTolerance, apexTolerance, materialParameters) {
+  const [s1, s2, s3] = cloneVector3(principalTrialValues);
+  const gap12 = Math.abs(s1 - s2);
+  const gap23 = Math.abs(s2 - s3);
+  const f12 = Number(trialSurfaceValues?.F12) || 0;
+  const f13 = Number(trialSurfaceValues?.F13) || 0;
+  const f23 = Number(trialSurfaceValues?.F23) || 0;
+  const t3 = Number(trialSurfaceValues?.T3) || 0;
+  if (exactMcSurfaceParameters(materialParameters).useTensionCutoff && t3 > 0) {
+    if (gap12 <= apexTolerance && gap23 <= apexTolerance) return BRANCH_TENSION_APEX_T123;
+    if (gap23 <= edgeTolerance && f13 > 0) return BRANCH_TENSION_CORNER_S23_T3;
+    if (gap23 <= edgeTolerance) return BRANCH_TENSION_EDGE_T23;
+    if (f13 > 0 && (gap12 <= edgeTolerance || f23 > 0)) return BRANCH_TENSION_CORNER_S12_T3;
+    if (f13 > 0) return BRANCH_TENSION_EDGE_F13_T3;
+    return BRANCH_TENSION_FACE_T3;
+  }
+  if (gap12 <= apexTolerance && gap23 <= apexTolerance && isNearFormalShearApex(principalTrialValues, materialParameters, apexTolerance)) {
+    return materialParameters?.allowFormalApexBranch === true ? BRANCH_APEX_FORMAL : BRANCH_TENSION_PENDING;
+  }
+  if (gap23 <= edgeTolerance || (f12 > 0 && f13 > 0)) return BRANCH_EDGE_S23_EQUAL;
+  if (gap12 <= edgeTolerance || (f13 > 0 && f23 > 0)) return BRANCH_EDGE_S12_EQUAL;
+  if (f13 > 0) return BRANCH_FACE_F13;
+  return BRANCH_ELASTIC;
+}
+
+function buildExactMcPendingTensionResult(branchKind, stressTrial6, elasticTangent6x6, trialSurfaceValues, options = {}) {
+  const maxResidual = Math.max(...Object.values(trialSurfaceValues || {}).map((value) => Number(value) || 0), 0);
+  return {
+    converged: true,
+    iterations: 0,
+    stress6: cloneVector6(stressTrial6),
+    plasticStrainIncrement6: zeroVector6(),
+    algorithmicTangent6x6: cloneMatrix6(elasticTangent6x6),
+    activeYieldSurface: YIELD_SURFACE_TENSION,
+    activeSurfaceIds: [],
+    activeSetIds: [],
+    yieldResidual: maxResidual,
+    trialBranchKind: options.trialBranchKind || branchKind,
+    acceptedBranchKind: branchKind,
+    branchKind,
+    trialMultiplicityKind: options.trialMultiplicityKind || multiplicityKindFromBranchKind(branchKind),
+    finalMultiplicityKind: multiplicityKindFromBranchKind(branchKind),
+    representativeBasisSource: options.representativeBasisSource || 'trial',
+    tangentConditionNumber: Number.POSITIVE_INFINITY,
+    tangentQuality: 'pending-tension',
+    branchAcceptanceResidual: maxResidual,
+    apexAdmissibilityReason: options.apexAdmissibilityReason || 'pending-tension-cutoff-stage',
+    localResidualsBySurface: { ...(trialSurfaceValues || {}) },
+    edgeTotalMultiplier: 0,
+    edgeMixWeight: 0,
+    plasticMultipliers: [],
+    exactSurfaceValues: { ...(trialSurfaceValues || {}) }
+  };
+}
+
+function solveExactMcCandidateBranch(
+  branchKind,
+  stressTrial6,
+  trialPrincipal,
+  elasticTangent6x6,
+  materialParameters,
+  mcTrial,
+  committedState,
+  toleranceState
+) {
+  const trialPrincipalValues = [trialPrincipal.s1, trialPrincipal.s2, trialPrincipal.s3];
+  const trialSurfaceValues = evaluateExactMcSurfaceValuesFromPrincipal(trialPrincipalValues, materialParameters);
+  const activeSurfaceIds = activeSurfaceIdsForBranchKind(branchKind);
+  if (!activeSurfaceIds.length) {
+    return {
+      converged: false,
+      reason: `no active surfaces were defined for branch ${branchKind}`
+    };
+  }
+  if (branchKind === BRANCH_APEX_FORMAL) {
+    const { sinPsi } = exactMcSurfaceParameters(materialParameters);
+    if (materialParameters?.allowFormalApexBranch !== true) {
+      return {
+        converged: false,
+        routePending: true,
+        reason: 'formal apex branch disabled',
+        apexAdmissibilityReason: 'formal-apex-disabled'
+      };
+    }
+    if (!(Math.abs(sinPsi) > 1e-12)) {
+      return {
+        converged: false,
+        routePending: true,
+        reason: 'formal apex branch is rank-deficient when psi = 0',
+        apexAdmissibilityReason: 'apex_potential_rank_deficient'
+      };
+    }
+  }
+
+  const complementarityTolerance = resolveActiveSetComplementarityTolerance(
+    materialParameters,
+    trialPrincipalValues,
+    mcTrial,
+    toleranceState.edgeTolerance
+  );
+  const D_n = principalElasticMatrix3x3(materialParameters);
+  const trialSurfaceMap = buildSurfaceMapForProjectors(trialPrincipal, materialParameters, branchKind).surfaceMap;
+  const representative = buildRepeatedSubspaceProjectors(
+    trialPrincipal,
+    branchKind,
+    committedState,
+    materialParameters,
+    toleranceState.eigenSubspaceTolerance
+  );
+  const representativeProjectors = representative.representativeProjectors;
+  const representativeSurfaceBundle = buildSurfaceMapForProjectors(representativeProjectors, materialParameters, branchKind);
+  const principalSolve = solveExactMcActiveSystemPrincipal(
+    trialPrincipalValues,
+    activeSurfaceIds,
+    trialSurfaceMap,
+    D_n,
+    complementarityTolerance
+  );
+  if (!principalSolve?.converged) {
+    return {
+      ...principalSolve,
+      representativeBasisSource: representative.representativeBasisSource,
+      activeSurfaceIds
+    };
+  }
+
+  const representedPrincipalValues = representedPrincipalValuesForBranch(branchKind, principalSolve.stressReturnPrincipal);
+  if (
+    branchKind === BRANCH_APEX_FORMAL &&
+    isNearFormalShearApex(representedPrincipalValues, materialParameters, toleranceState.apexTolerance) &&
+    (materialParameters?.allowFormalApexBranch !== true || !(Math.abs(exactMcSurfaceParameters(materialParameters).sinPsi) > 1e-12))
+  ) {
+    return {
+      converged: false,
+      routePending: true,
+      reason: 'formal apex branch rerouted to pending tension/tension-cutoff stage',
+      apexAdmissibilityReason: 'formal-apex-rerouted'
+    };
+  }
+
+  const stressTensorProjectors = buildStressTensorProjectorsForBranch(branchKind, representativeProjectors);
+  const stressReturn6 = compressionPositiveTensor3ToStress6(
+    projectorsToCompressionPositiveStressTensor(representedPrincipalValues, stressTensorProjectors)
+  );
+  const representativeSurfaceMap = representativeSurfaceBundle.surfaceMap;
+  const activeRepresentativeSurfaces = activeSurfaceIds.map((id) => representativeSurfaceMap[id]).filter(Boolean);
+  const plasticStrainIncrement6 = activeRepresentativeSurfaces.reduce(
+    (sum, surface, index) => addVector6(sum, scaleVector6(surface.m6, Number(principalSolve.plasticMultipliers?.[index]) || 0)),
+    zeroVector6()
+  );
+  const tangentCouplingMatrix = activeRepresentativeSurfaces.map((surfaceI) =>
+    activeRepresentativeSurfaces.map((surfaceJ) => dotVector6(surfaceI.n6, multiplyMatrix6x6Vector6(elasticTangent6x6, surfaceJ.m6)))
+  );
+  const tangentConditionNumber = denseMatrixConditionNumberEstimate(tangentCouplingMatrix, 1e-12);
+  const exactCurrent = evaluateExactMcSurfaceValuesFromStress(stressReturn6, materialParameters);
+  const exactValues = exactCurrent?.values || {};
+  const maxPositiveResidual = Math.max(...Object.values(exactValues).map((value) => Number(value) || 0), 0);
+  const activeResidual = Math.max(
+    0,
+    ...activeSurfaceIds.map((id) => Math.abs(Number(exactValues?.[id]) || 0))
+  );
+  const inactivePositiveResidual = Math.max(
+    0,
+    ...Object.entries(exactValues)
+      .filter(([id]) => !activeSurfaceIds.includes(id))
+      .map(([_id, value]) => Math.max(Number(value) || 0, 0))
+  );
+  const principalFinal = exactCurrent?.principal || principalStressProjectors3DCompressionPositive(stressReturn6, materialParameters);
+  const gap12 = Math.abs((Number(principalFinal?.s1) || 0) - (Number(principalFinal?.s2) || 0));
+  const gap23 = Math.abs((Number(principalFinal?.s2) || 0) - (Number(principalFinal?.s3) || 0));
+  const edgeTotalMultiplier = isShearEdgeBranchKind(branchKind)
+    ? principalSolve.plasticMultipliers.reduce((sum, value) => sum + Math.max(Number(value) || 0, 0), 0)
+    : 0;
+  const edgeMixWeight = isShearEdgeBranchKind(branchKind) && edgeTotalMultiplier > 0
+    ? Math.max(0, Math.min(1, (Number(principalSolve.plasticMultipliers?.[0]) || 0) / edgeTotalMultiplier))
+    : 0;
+  const branchAcceptanceResidual = Math.max(activeResidual, inactivePositiveResidual, maxPositiveResidual);
+
+  if (activeResidual > toleranceState.localTolerance || inactivePositiveResidual > toleranceState.localTolerance) {
+    return {
+      converged: false,
+      reason: `branch ${branchKind} did not satisfy exact MC surface closure`,
+      activeSurfaceIds,
+      branchAcceptanceResidual,
+      localResidualsBySurface: { ...exactValues },
+      representativeBasisSource: representative.representativeBasisSource
+    };
+  }
+
+  if (branchKind === BRANCH_FACE_F13) {
+    if (gap23 <= toleranceState.edgeTolerance) {
+      return {
+        converged: false,
+        promoteToBranchKind: BRANCH_EDGE_S23_EQUAL,
+        reason: 'face return closed the s2-s3 gap below edge tolerance',
+        branchAcceptanceResidual,
+        activeSurfaceIds,
+        localResidualsBySurface: { ...exactValues },
+        representativeBasisSource: representative.representativeBasisSource
+      };
+    }
+    if (gap12 <= toleranceState.edgeTolerance) {
+      return {
+        converged: false,
+        promoteToBranchKind: BRANCH_EDGE_S12_EQUAL,
+        reason: 'face return closed the s1-s2 gap below edge tolerance',
+        branchAcceptanceResidual,
+        activeSurfaceIds,
+        localResidualsBySurface: { ...exactValues },
+        representativeBasisSource: representative.representativeBasisSource
+      };
+    }
+  }
+  if (branchKind === BRANCH_TENSION_FACE_T3 && gap23 <= toleranceState.edgeTolerance) {
+    return {
+      converged: false,
+      promoteToBranchKind: BRANCH_TENSION_EDGE_T23,
+      reason: 'tension face return closed the s2-s3 gap below edge tolerance',
+      branchAcceptanceResidual,
+      activeSurfaceIds,
+      localResidualsBySurface: { ...exactValues },
+      representativeBasisSource: representative.representativeBasisSource
+    };
+  }
+  if (branchKind === BRANCH_TENSION_EDGE_F13_T3) {
+    if (gap23 <= toleranceState.edgeTolerance) {
+      return {
+        converged: false,
+        promoteToBranchKind: BRANCH_TENSION_CORNER_S23_T3,
+        reason: 'tension edge return closed the s2-s3 gap below edge tolerance',
+        branchAcceptanceResidual,
+        activeSurfaceIds,
+        localResidualsBySurface: { ...exactValues },
+        representativeBasisSource: representative.representativeBasisSource
+      };
+    }
+    if (gap12 <= toleranceState.edgeTolerance) {
+      return {
+        converged: false,
+        promoteToBranchKind: BRANCH_TENSION_CORNER_S12_T3,
+        reason: 'tension edge return closed the s1-s2 gap below edge tolerance',
+        branchAcceptanceResidual,
+        activeSurfaceIds,
+        localResidualsBySurface: { ...exactValues },
+        representativeBasisSource: representative.representativeBasisSource
+      };
+    }
+  }
+  if (branchKind === BRANCH_TENSION_EDGE_T23) {
+    if (gap23 > toleranceState.edgeTolerance) {
+      return {
+        converged: false,
+        reason: 'lower repeated tension branch did not close the s2-s3 gap inside edge tolerance',
+        branchAcceptanceResidual,
+        activeSurfaceIds,
+        localResidualsBySurface: { ...exactValues },
+        representativeBasisSource: representative.representativeBasisSource
+      };
+    }
+    if (gap12 <= toleranceState.edgeTolerance) {
+      return {
+        converged: false,
+        promoteToBranchKind: BRANCH_TENSION_APEX_T123,
+        reason: 'lower tension edge return closed the s1-s2 gap below edge tolerance',
+        branchAcceptanceResidual,
+        activeSurfaceIds,
+        localResidualsBySurface: { ...exactValues },
+        representativeBasisSource: representative.representativeBasisSource
+      };
+    }
+  }
+  if (branchKind === BRANCH_EDGE_S23_EQUAL && gap23 > toleranceState.edgeTolerance) {
+    return {
+      converged: false,
+      reason: 'lower edge return did not close the s2-s3 gap inside edge tolerance',
+      branchAcceptanceResidual,
+      activeSurfaceIds,
+      localResidualsBySurface: { ...exactValues },
+      representativeBasisSource: representative.representativeBasisSource
+    };
+  }
+  if (branchKind === BRANCH_EDGE_S12_EQUAL && gap12 > toleranceState.edgeTolerance) {
+    return {
+      converged: false,
+      reason: 'upper edge return did not close the s1-s2 gap inside edge tolerance',
+      branchAcceptanceResidual,
+      activeSurfaceIds,
+      localResidualsBySurface: { ...exactValues },
+      representativeBasisSource: representative.representativeBasisSource
+    };
+  }
+  if (branchKind === BRANCH_TENSION_CORNER_S23_T3 && gap23 > toleranceState.edgeTolerance) {
+    return {
+      converged: false,
+      reason: 'lower tension corner return did not close the s2-s3 gap inside edge tolerance',
+      branchAcceptanceResidual,
+      activeSurfaceIds,
+      localResidualsBySurface: { ...exactValues },
+      representativeBasisSource: representative.representativeBasisSource
+    };
+  }
+  if (branchKind === BRANCH_TENSION_CORNER_S12_T3 && gap12 > toleranceState.edgeTolerance) {
+    return {
+      converged: false,
+      reason: 'upper tension corner return did not close the s1-s2 gap inside edge tolerance',
+      branchAcceptanceResidual,
+      activeSurfaceIds,
+      localResidualsBySurface: { ...exactValues },
+      representativeBasisSource: representative.representativeBasisSource
+    };
+  }
+  if (branchKind === BRANCH_TENSION_APEX_T123 && (gap12 > toleranceState.apexTolerance || gap23 > toleranceState.apexTolerance)) {
+    return {
+      converged: false,
+      reason: 'tension apex return did not collapse the three principal stresses inside apex tolerance',
+      branchAcceptanceResidual,
+      activeSurfaceIds,
+      localResidualsBySurface: { ...exactValues },
+      representativeBasisSource: representative.representativeBasisSource
+    };
+  }
+  if (
+    (branchKind === BRANCH_EDGE_S23_EQUAL || branchKind === BRANCH_EDGE_S12_EQUAL || branchKind === BRANCH_FACE_F13) &&
+    gap12 <= toleranceState.apexTolerance &&
+    gap23 <= toleranceState.apexTolerance &&
+    isNearFormalShearApex(
+      [principalFinal?.s1, principalFinal?.s2, principalFinal?.s3],
+      materialParameters,
+      toleranceState.apexHydrostaticTolerance || toleranceState.apexTolerance
+    ) &&
+    exactMcSurfaceParameters(materialParameters).useTensionCutoff !== true &&
+    (materialParameters?.allowFormalApexBranch !== true || !(Math.abs(exactMcSurfaceParameters(materialParameters).sinPsi) > 1e-12))
+  ) {
+    return {
+      converged: false,
+      routePending: true,
+      reason: 'returned stress lies near the formal MC shear apex and must hand off to pending tension handling',
+      apexAdmissibilityReason: 'formal-apex-near-tension-region'
+    };
+  }
+
+  const algorithmicTangent6x6 = computeExactElastoplasticTangent(
+    elasticTangent6x6,
+    activeRepresentativeSurfaces,
+    tangentCouplingMatrix,
+    materialParameters
+  );
+  if (!algorithmicTangent6x6) {
+    return {
+      converged: false,
+      reason: `branch ${branchKind} produced a singular elastoplastic tangent coupling matrix`,
+      activeSurfaceIds,
+      branchAcceptanceResidual,
+      localResidualsBySurface: { ...exactValues },
+      representativeBasisSource: representative.representativeBasisSource,
+      tangentConditionNumber,
+      tangentQuality: 'singular'
+    };
+  }
+
+  return {
+    converged: true,
+    iterations: 1,
+    stress6: stressReturn6,
+    plasticStrainIncrement6,
+    algorithmicTangent6x6,
+    activeYieldSurface: activeYieldSurfaceFromBranchKind(branchKind),
+    activeSurfaceIds,
+    yieldResidual: maxPositiveResidual,
+    trialBranchKind: null,
+    acceptedBranchKind: branchKind,
+    branchKind,
+    representativeBasisSource: representative.representativeBasisSource,
+    representativeProjectors,
+    trialMultiplicityKind: null,
+    finalMultiplicityKind: multiplicityKindFromBranchKind(branchKind),
+    edgeTotalMultiplier,
+    edgeMixWeight,
+    plasticMultipliers: principalSolve.plasticMultipliers.map((value) => Math.max(Number(value) || 0, 0)),
+    tangentConditionNumber,
+    tangentQuality: classifyTangentQuality(tangentConditionNumber),
+    branchAcceptanceResidual,
+    apexAdmissibilityReason: branchKind === BRANCH_APEX_FORMAL ? 'formal-apex-accepted' : '',
+    localResidualsBySurface: { ...exactValues }
+  };
+}
+
+function solveExactMcActiveSetReturn(stressTrial6, elasticTangent6x6, materialParameters, mcTrial, committedState = null) {
   const tolerance = localReturnTolerance(materialParameters, mcTrial);
-  const maxIterations = Math.max(Math.round(Number(materialParameters?.localMaxIterations) || 40), 1);
   const principalTrial = principalStressProjectors3DCompressionPositive(stressTrial6, materialParameters);
   const trialPrincipalValues = [principalTrial.s1, principalTrial.s2, principalTrial.s3];
-  const surfaces = buildExactMcSurfaces(principalTrial, materialParameters);
-  const surfaceMap = Object.fromEntries(surfaces.map((surface) => [surface.id, surface]));
   const trialSurfaceValues = evaluateExactMcSurfaceValuesFromPrincipal(trialPrincipalValues, materialParameters);
-  const violatingTrialSurfaces = surfaces
-    .filter((surface) => (Number(trialSurfaceValues?.[surface.id]) || 0) > tolerance)
-    .sort((left, right) => (Number(trialSurfaceValues?.[right.id]) || 0) - (Number(trialSurfaceValues?.[left.id]) || 0));
-  if (!violatingTrialSurfaces.length) {
+  const maxTrialResidual = Math.max(...Object.values(trialSurfaceValues).map((value) => Number(value) || 0), 0);
+  const edgeTolerance = resolveCornerStressGapTolerance(materialParameters, trialPrincipalValues, mcTrial, 'edge');
+  const apexTolerance = resolveCornerStressGapTolerance(materialParameters, trialPrincipalValues, mcTrial, 'apex');
+  const apexHydrostaticTolerance = resolveApexHydrostaticTolerance(materialParameters, trialPrincipalValues, mcTrial, apexTolerance);
+  const eigenSubspaceTolerance = resolveEigenSubspaceTolerance(materialParameters, trialPrincipalValues, mcTrial, edgeTolerance);
+  const toleranceState = {
+    localTolerance: tolerance,
+    edgeTolerance,
+    apexTolerance,
+    apexHydrostaticTolerance,
+    eigenSubspaceTolerance
+  };
+  if (!(maxTrialResidual > tolerance)) {
+    if (
+      activeSurfaceIdsForBranchKind(committedState?.exactBranchKind).length &&
+      committedState?.activeYieldSurface !== YIELD_SURFACE_NONE
+    ) {
+      const retainedBranch = solveExactMcCandidateBranch(
+        committedState.exactBranchKind,
+        stressTrial6,
+        principalTrial,
+        elasticTangent6x6,
+        materialParameters,
+        mcTrial,
+        committedState,
+        toleranceState
+      );
+      if (retainedBranch?.converged) {
+        retainedBranch.iterations = 0;
+        retainedBranch.trialBranchKind = committedState.exactBranchKind;
+        retainedBranch.trialMultiplicityKind = committedState.multiplicityKind || multiplicityKindFromBranchKind(committedState.exactBranchKind);
+        return retainedBranch;
+      }
+    }
     return {
       converged: true,
       iterations: 0,
@@ -625,84 +1544,178 @@ function solveExactMcActiveSetReturn(stressTrial6, elasticTangent6x6, materialPa
       algorithmicTangent6x6: cloneMatrix6(elasticTangent6x6),
       activeYieldSurface: YIELD_SURFACE_NONE,
       activeSurfaceIds: [],
-      yieldResidual: Math.max(...Object.values(trialSurfaceValues).map((value) => Number(value) || 0), 0)
+      yieldResidual: maxTrialResidual,
+      trialBranchKind: BRANCH_ELASTIC,
+      acceptedBranchKind: BRANCH_ELASTIC,
+      branchKind: BRANCH_ELASTIC,
+      representativeBasisSource: 'trial',
+      representativeProjectors: cloneRepresentativeProjectors({
+        P1: principalTrial.P1,
+        P2: principalTrial.P2,
+        P3: principalTrial.P3
+      }),
+      trialMultiplicityKind: 'DISTINCT',
+      finalMultiplicityKind: 'DISTINCT',
+      edgeTotalMultiplier: 0,
+      edgeMixWeight: 0,
+      plasticMultipliers: [],
+      tangentConditionNumber: 1,
+      tangentQuality: 'good',
+      branchAcceptanceResidual: maxTrialResidual,
+      apexAdmissibilityReason: '',
+      localResidualsBySurface: { ...trialSurfaceValues }
     };
   }
+  const gap12Trial = Math.abs(principalTrial.s1 - principalTrial.s2);
+  const gap23Trial = Math.abs(principalTrial.s2 - principalTrial.s3);
+  const trialBranchKind = classifyTrialBranchKind(trialPrincipalValues, trialSurfaceValues, edgeTolerance, apexTolerance, materialParameters);
+  const trialMultiplicityKind = multiplicityKindFromBranchKind(trialBranchKind);
+  const { useTensionCutoff } = exactMcSurfaceParameters(materialParameters);
+  const tensionViolated = useTensionCutoff && (Number(trialSurfaceValues?.T3) || 0) > tolerance;
+  const nearFormalApex = gap12Trial <= apexTolerance &&
+    gap23Trial <= apexTolerance &&
+    isNearFormalShearApex(trialPrincipalValues, materialParameters, apexHydrostaticTolerance);
 
-  const activeIds = [];
-  const tensionTrial = violatingTrialSurfaces.find((surface) => surface.kind === 'tension');
-  const shearTrial = violatingTrialSurfaces.find((surface) => surface.kind === 'shear');
-  if (tensionTrial) activeIds.push(tensionTrial.id);
-  if (shearTrial) activeIds.push(shearTrial.id);
-  if (!activeIds.length) activeIds.push(violatingTrialSurfaces[0].id);
-  const visitedSets = new Set();
-  const D_n = principalElasticMatrix3x3(materialParameters);
+  if (nearFormalApex && materialParameters?.allowFormalApexBranch !== true && !tensionViolated) {
+    return buildExactMcPendingTensionResult(
+      BRANCH_TENSION_PENDING,
+      stressTrial6,
+      elasticTangent6x6,
+      trialSurfaceValues,
+      {
+        trialBranchKind,
+        trialMultiplicityKind,
+        apexAdmissibilityReason: 'formal-apex-disabled-or-deferred-to-tension-stage'
+      }
+    );
+  }
 
-  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    activeIds.sort();
-    const activeKey = activeIds.join('|');
-    if (visitedSets.has(activeKey)) {
-      return { converged: false, reason: `local active set oscillated (${activeKey})` };
-    }
-    visitedSets.add(activeKey);
-    const activeSurfaces = activeIds.map((id) => surfaceMap[id]).filter(Boolean);
-    const couplingMatrix = activeSurfaces.map((surfaceI) =>
-      activeSurfaces.map((surfaceJ) => dotVector6(surfaceI.n6, multiplyMatrix6x6Vector6(elasticTangent6x6, surfaceJ.m6)))
-    );
-    const rhs = activeSurfaces.map((surface) => Number(trialSurfaceValues?.[surface.id]) || 0);
-    const plasticMultipliers = solveDenseLinearSystem(couplingMatrix, rhs, 1e-12);
-    if (!plasticMultipliers) {
-      return { converged: false, reason: `local exact MC active-set solve became singular on ${activeKey || 'EMPTY'}` };
-    }
-    const mostNegativeIndex = plasticMultipliers.reduce((bestIndex, value, index) => {
-      const bestValue = bestIndex >= 0 ? Number(plasticMultipliers?.[bestIndex]) || 0 : 0;
-      return bestIndex < 0 || value < bestValue ? index : bestIndex;
-    }, -1);
-    if (mostNegativeIndex >= 0 && (Number(plasticMultipliers[mostNegativeIndex]) || 0) < -tolerance) {
-      activeIds.splice(mostNegativeIndex, 1);
-      if (!activeIds.length) activeIds.push(violatingTrialSurfaces[0].id);
-      continue;
-    }
+  const preferredCandidates = [];
+  const committedBranch = committedState?.exactBranchKind;
+  const directLowerEdge = gap23Trial <= edgeTolerance || ((Number(trialSurfaceValues?.F12) || 0) > tolerance && (Number(trialSurfaceValues?.F13) || 0) > tolerance);
+  const directUpperEdge = gap12Trial <= edgeTolerance || ((Number(trialSurfaceValues?.F13) || 0) > tolerance && (Number(trialSurfaceValues?.F23) || 0) > tolerance);
+  const committedPrefLower = committedBranch === BRANCH_EDGE_S23_EQUAL && gap23Trial <= 2 * edgeTolerance;
+  const committedPrefUpper = committedBranch === BRANCH_EDGE_S12_EQUAL && gap12Trial <= 2 * edgeTolerance;
+  const directTensionApex = tensionViolated && gap12Trial <= apexTolerance && gap23Trial <= apexTolerance;
+  const directLowerTensionEdge = tensionViolated && gap23Trial <= edgeTolerance;
+  const directLowerTensionCorner = tensionViolated && gap23Trial <= edgeTolerance && (Number(trialSurfaceValues?.F13) || 0) > tolerance;
+  const directUpperTensionCorner = tensionViolated && (gap12Trial <= edgeTolerance || (Number(trialSurfaceValues?.F23) || 0) > tolerance);
+  const committedPrefTensionApex = committedBranch === BRANCH_TENSION_APEX_T123;
+  const committedPrefLowerTensionEdge = committedBranch === BRANCH_TENSION_EDGE_T23 && gap23Trial <= 2 * edgeTolerance;
+  const committedPrefLowerTensionCorner = committedBranch === BRANCH_TENSION_CORNER_S23_T3 && gap23Trial <= 2 * edgeTolerance;
+  const committedPrefUpperTensionCorner = committedBranch === BRANCH_TENSION_CORNER_S12_T3 && gap12Trial <= 2 * edgeTolerance;
+  const committedPrefTensionEdge = committedBranch === BRANCH_TENSION_EDGE_F13_T3 && (
+    (Number(trialSurfaceValues?.F13) || 0) > -2 * tolerance || nearFormalApex
+  );
+  const committedPrefTensionFace = committedBranch === BRANCH_TENSION_FACE_T3;
 
-    const plasticFlowPrincipal = activeSurfaces.reduce(
-      (sum, surface, index) => addVector3(sum, scaleVector3(surface.mPrincipal, Number(plasticMultipliers?.[index]) || 0)),
-      [0, 0, 0]
-    );
-    const stressCorrectionPrincipal = multiplyMatrix3x3Vector3(D_n, plasticFlowPrincipal);
-    const stressReturnPrincipal = subtractVector3(trialPrincipalValues, stressCorrectionPrincipal);
-    const candidateSurfaceValues = evaluateExactMcSurfaceValuesFromPrincipal(stressReturnPrincipal, materialParameters);
-    const stressReturn6 = compressionPositiveTensor3ToStress6(
-      projectorsToCompressionPositiveStressTensor(stressReturnPrincipal, principalTrial)
-    );
-    const plasticStrainIncrement6 = activeSurfaces.reduce(
-      (sum, surface, index) => addVector6(sum, scaleVector6(surface.m6, Number(plasticMultipliers?.[index]) || 0)),
-      zeroVector6()
-    );
-    const violatingInactive = surfaces
-      .filter((surface) => !activeIds.includes(surface.id))
-      .filter((surface) => (Number(candidateSurfaceValues?.[surface.id]) || 0) > tolerance)
-      .sort((left, right) => (Number(candidateSurfaceValues?.[right.id]) || 0) - (Number(candidateSurfaceValues?.[left.id]) || 0));
-    if (violatingInactive.length) {
-      activeIds.push(violatingInactive[0].id);
-      continue;
-    }
-    const exactCurrent = evaluateExactMcSurfaceValuesFromStress(stressReturn6, materialParameters);
+  function pushCandidate(kind) {
+    if (!kind || preferredCandidates.includes(kind)) return;
+    preferredCandidates.push(kind);
+  }
 
-    return {
-      converged: true,
-      iterations: iteration,
-      stress6: stressReturn6,
-      plasticStrainIncrement6,
-      algorithmicTangent6x6: computeExactElastoplasticTangent(elasticTangent6x6, activeSurfaces, couplingMatrix, materialParameters),
-      activeYieldSurface: activeYieldSurfaceLabelFromActiveSet(activeSurfaces),
-      activeSurfaceIds: activeSurfaces.map((surface) => surface.id),
-      yieldResidual: Math.max(...Object.values(exactCurrent.values || {}).map((value) => Number(value) || 0), 0)
-    };
+  function pushShearCandidates() {
+    if (nearFormalApex && materialParameters?.allowFormalApexBranch === true) pushCandidate(BRANCH_APEX_FORMAL);
+    if (committedPrefLower) pushCandidate(BRANCH_EDGE_S23_EQUAL);
+    if (committedPrefUpper) pushCandidate(BRANCH_EDGE_S12_EQUAL);
+    if (directLowerEdge) pushCandidate(BRANCH_EDGE_S23_EQUAL);
+    if (directUpperEdge) pushCandidate(BRANCH_EDGE_S12_EQUAL);
+    if ((Number(trialSurfaceValues?.F13) || 0) > tolerance) pushCandidate(BRANCH_FACE_F13);
+  }
+  function pushTensionCandidates() {
+    if (committedPrefTensionApex) pushCandidate(BRANCH_TENSION_APEX_T123);
+    if (directTensionApex) pushCandidate(BRANCH_TENSION_APEX_T123);
+    if (committedPrefLowerTensionEdge) pushCandidate(BRANCH_TENSION_EDGE_T23);
+    if (committedPrefLowerTensionCorner) pushCandidate(BRANCH_TENSION_CORNER_S23_T3);
+    if (committedPrefUpperTensionCorner) pushCandidate(BRANCH_TENSION_CORNER_S12_T3);
+    if (directLowerTensionEdge) pushCandidate(BRANCH_TENSION_EDGE_T23);
+    if (directLowerTensionCorner) pushCandidate(BRANCH_TENSION_CORNER_S23_T3);
+    if (directUpperTensionCorner) pushCandidate(BRANCH_TENSION_CORNER_S12_T3);
+    if (committedPrefTensionEdge || (Number(trialSurfaceValues?.F13) || 0) > tolerance || nearFormalApex) {
+      pushCandidate(BRANCH_TENSION_EDGE_F13_T3);
+      if (committedPrefTensionFace) pushCandidate(BRANCH_TENSION_FACE_T3);
+    } else {
+      if (committedPrefTensionFace) pushCandidate(BRANCH_TENSION_FACE_T3);
+      pushCandidate(BRANCH_TENSION_FACE_T3);
+      pushCandidate(BRANCH_TENSION_EDGE_F13_T3);
+    }
+    pushCandidate(BRANCH_TENSION_FACE_T3);
+    pushCandidate(BRANCH_TENSION_EDGE_T23);
+    pushCandidate(BRANCH_TENSION_EDGE_F13_T3);
+    pushCandidate(BRANCH_TENSION_CORNER_S23_T3);
+    pushCandidate(BRANCH_TENSION_CORNER_S12_T3);
+    pushCandidate(BRANCH_TENSION_APEX_T123);
+  }
+
+  if (tensionViolated) {
+    const shearSeverity = Math.max(
+      Number(trialSurfaceValues?.F12) || 0,
+      Number(trialSurfaceValues?.F13) || 0,
+      Number(trialSurfaceValues?.F23) || 0,
+      0
+    );
+    const tensionSeverity = Math.max(
+      Number(trialSurfaceValues?.T3) || 0,
+      0
+    );
+    if (shearSeverity >= tensionSeverity) {
+      pushShearCandidates();
+      pushTensionCandidates();
+    } else {
+      pushTensionCandidates();
+      pushShearCandidates();
+    }
+  } else {
+    pushShearCandidates();
+  }
+  if (!preferredCandidates.length) pushCandidate(trialBranchKind === BRANCH_ELASTIC ? BRANCH_FACE_F13 : trialBranchKind);
+
+  const attempted = new Map();
+  const failureReasons = [];
+  for (let index = 0; index < preferredCandidates.length; index += 1) {
+    const candidateKind = preferredCandidates[index];
+    if (attempted.has(candidateKind)) continue;
+    attempted.set(candidateKind, true);
+    const candidate = solveExactMcCandidateBranch(
+      candidateKind,
+      stressTrial6,
+      principalTrial,
+      elasticTangent6x6,
+      materialParameters,
+      mcTrial,
+      committedState,
+      toleranceState
+    );
+    if (candidate?.converged) {
+      candidate.iterations = 1;
+      candidate.trialBranchKind = trialBranchKind;
+      candidate.trialMultiplicityKind = trialMultiplicityKind;
+      return candidate;
+    }
+    if (candidate?.routePending) {
+      return buildExactMcPendingTensionResult(
+        BRANCH_TENSION_PENDING,
+        stressTrial6,
+        elasticTangent6x6,
+        trialSurfaceValues,
+        {
+          trialBranchKind,
+          trialMultiplicityKind,
+          apexAdmissibilityReason: candidate?.apexAdmissibilityReason || candidate?.reason || 'pending-tension-cutoff-stage'
+        }
+      );
+    }
+    if (candidate?.promoteToBranchKind) {
+      pushCandidate(candidate.promoteToBranchKind);
+    }
+    if (candidate?.reason) failureReasons.push(`${candidateKind}: ${candidate.reason}`);
   }
 
   return {
     converged: false,
-    reason: `max exact MC active-set iterations reached (${maxIterations})`
+    reason: failureReasons.length
+      ? `exact MC branch acceptance failed (${failureReasons.join('; ')})`
+      : 'exact MC branch acceptance failed without a resolved candidate'
   };
 }
 
@@ -936,6 +1949,10 @@ export function createMaterialPointState(overrides = {}) {
     plasticStrain6: cloneVector6(source.plasticStrain6),
     effectiveStress6: cloneVector6(source.effectiveStress6),
     activeYieldSurface: source.activeYieldSurface || YIELD_SURFACE_NONE,
+    exactBranchKind: source.exactBranchKind || 'ELASTIC',
+    multiplicityKind: source.multiplicityKind || 'DISTINCT',
+    representativeBasisSource: source.representativeBasisSource || 'trial',
+    representativeProjectors: cloneRepresentativeProjectors(source.representativeProjectors),
     currentlyMcActive: source.currentlyMcActive === true,
     hasEverExceededMc: source.hasEverExceededMc === true,
     etaMcCurrent: Number(source.etaMcCurrent) || 0,
@@ -944,9 +1961,16 @@ export function createMaterialPointState(overrides = {}) {
     initialEtaMc: Number(source.initialEtaMc) || 0,
     initialDiagnosticYieldSurface: source.initialDiagnosticYieldSurface || YIELD_SURFACE_NONE,
     initialStateAdmissible: source.initialStateAdmissible !== false,
+    equilibratedInitialStateAvailable: source.equilibratedInitialStateAvailable === true,
+    equilibratedInitialFMc: Number(source.equilibratedInitialFMc) || 0,
+    equilibratedInitialEtaMc: Number(source.equilibratedInitialEtaMc) || 0,
+    equilibratedInitialDiagnosticYieldSurface: source.equilibratedInitialDiagnosticYieldSurface || YIELD_SURFACE_NONE,
+    equilibratedInitialStateAdmissible: source.equilibratedInitialStateAdmissible !== false,
     sigmaY: Math.max(Number(source.sigmaY) || 0, 0),
     hardeningVariable: Number(source.hardeningVariable) || 0,
-    accumulatedPlasticStrain: Math.max(Number(source.accumulatedPlasticStrain) || 0, 0)
+    accumulatedPlasticStrain: Math.max(Number(source.accumulatedPlasticStrain) || 0, 0),
+    edgeTotalMultiplier: Math.max(Number(source.edgeTotalMultiplier) || 0, 0),
+    edgeMixWeight: Math.min(Math.max(Number(source.edgeMixWeight) || 0, 0), 1)
   };
 }
 
@@ -1042,13 +2066,15 @@ export function mohrCoulombIndicator3D(stress6, materialParameters) {
   const s1 = principal.s1;
   const s2 = principal.s2;
   const s3 = principal.s3;
+  const surfaceValues = evaluateExactMcSurfaceValuesFromPrincipal([s1, s2, s3], materialParameters);
+  const tensionTolerance = resolveYieldTolerance(materialParameters, { s1, s2, s3 });
 
-  if (useTensionCutoff && s3 < -sigmaTAllow) {
+  if (useTensionCutoff && (Number(surfaceValues?.T3) || 0) >= -tensionTolerance) {
     return {
       F: Number.POSITIVE_INFINITY,
       eta: Number.POSITIVE_INFINITY,
       state: 'tension-cutoff',
-      surfaceValues: evaluateExactMcSurfaceValuesFromPrincipal([s1, s2, s3], materialParameters),
+      surfaceValues,
       ...principal
     };
   }
@@ -1062,7 +2088,7 @@ export function mohrCoulombIndicator3D(stress6, materialParameters) {
     F,
     eta,
     state: F > 0 ? 'mc-yield' : 'elastic',
-    surfaceValues: evaluateExactMcSurfaceValuesFromPrincipal([s1, s2, s3], materialParameters),
+    surfaceValues,
     ...principal
   };
 }
@@ -1071,8 +2097,10 @@ export function evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, ma
   const effectiveStress2D = effectiveStress6ToCompressionPositiveStress2D(effectiveStress6);
   const effectiveStress3D = effectiveStress6ToCompressionPositiveStress3D(effectiveStress6);
   const mc = mohrCoulombIndicator3D(effectiveStress6, materialParameters);
-  const diagnosticYieldSurface = activeYieldSurfaceFromState(mc);
   const activeYieldSurface = overrides.activeYieldSurface ?? YIELD_SURFACE_NONE;
+  const diagnosticYieldSurface = activeYieldSurface === YIELD_SURFACE_TENSION
+    ? YIELD_SURFACE_TENSION
+    : activeYieldSurfaceFromState(mc);
   const currentlyMcActive = overrides.currentlyMcActive === true;
   const hasExceededNow = overrides.hasExceededNow === true ||
     activeYieldSurface === YIELD_SURFACE_MC_FACE ||
@@ -1107,6 +2135,30 @@ export function evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, ma
     effectiveStress2D,
     effectiveStress3D
   };
+}
+
+function stampEquilibratedInitialAudit(state, materialParameters) {
+  const next = createMaterialPointState({
+    ...state,
+    initialFMc: 0,
+    initialEtaMc: 0,
+    initialDiagnosticYieldSurface: YIELD_SURFACE_NONE,
+    initialStateAdmissible: true
+  });
+  if (!materialParameters) return next;
+  const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(next.effectiveStress6, materialParameters, next, {
+    activeYieldSurface: next.activeYieldSurface,
+    currentlyMcActive: next.currentlyMcActive === true,
+    hasEverExceededMc: next.hasEverExceededMc === true,
+    hasExceededNow: next.currentlyMcActive === true
+  });
+  const tolerance = resolveYieldTolerance(materialParameters, diagnostics.mc);
+  next.equilibratedInitialStateAvailable = true;
+  next.equilibratedInitialFMc = Number(diagnostics.fMcFinal) || 0;
+  next.equilibratedInitialEtaMc = Number(diagnostics.etaMcFinal) || 0;
+  next.equilibratedInitialDiagnosticYieldSurface = diagnostics.diagnosticYieldSurface || YIELD_SURFACE_NONE;
+  next.equilibratedInitialStateAdmissible = (Number(diagnostics.fMcFinal) || 0) <= tolerance;
+  return next;
 }
 
 export function seedMaterialPointStateFromEffectiveStress6(initialEffectiveStress6, materialParameters) {
@@ -1145,11 +2197,30 @@ export function createMaterialPoint({ materialModel, materialParameters, committ
     regionIndex,
     materialModel,
     materialParameters,
+    predictorState: cloneMaterialPointState(committed),
     referenceState: cloneMaterialPointState(committed),
     committedState: committed,
     trialState: cloneMaterialPointState(committed),
     diagnostics: null
   };
+}
+
+export function setMaterialPointReferenceState(materialPoint, sourceState = null, options = {}) {
+  if (!materialPoint) return null;
+  const referenceMode = options?.referenceMode === 'equilibrated-initial' ? 'equilibrated-initial' : 'predictor';
+  const materialParameters = options?.materialParameters || materialPoint.materialParameters || null;
+  const source = sourceState ? cloneMaterialPointState(sourceState) : cloneMaterialPointState(materialPoint.committedState);
+  materialPoint.referenceState = referenceMode === 'equilibrated-initial'
+    ? stampEquilibratedInitialAudit(source, materialParameters)
+    : createMaterialPointState({
+      ...source,
+      equilibratedInitialStateAvailable: false,
+      equilibratedInitialFMc: 0,
+      equilibratedInitialEtaMc: 0,
+      equilibratedInitialDiagnosticYieldSurface: YIELD_SURFACE_NONE,
+      equilibratedInitialStateAdmissible: true
+    });
+  return materialPoint.referenceState;
 }
 
 export function commitMaterialPoint(materialPoint) {
@@ -1166,6 +2237,10 @@ export function snapshotMaterialPointState(state = {}) {
     plasticStrain6: cloneVector6(source.plasticStrain6),
     effectiveStress6: cloneVector6(source.effectiveStress6),
     activeYieldSurface: source.activeYieldSurface || YIELD_SURFACE_NONE,
+    exactBranchKind: source.exactBranchKind || 'ELASTIC',
+    multiplicityKind: source.multiplicityKind || 'DISTINCT',
+    representativeBasisSource: source.representativeBasisSource || 'trial',
+    representativeProjectors: cloneRepresentativeProjectors(source.representativeProjectors),
     currentlyMcActive: source.currentlyMcActive === true,
     hasEverExceededMc: source.hasEverExceededMc === true,
     etaMcCurrent: Number(source.etaMcCurrent) || 0,
@@ -1174,9 +2249,16 @@ export function snapshotMaterialPointState(state = {}) {
     initialEtaMc: Number(source.initialEtaMc) || 0,
     initialDiagnosticYieldSurface: source.initialDiagnosticYieldSurface || YIELD_SURFACE_NONE,
     initialStateAdmissible: source.initialStateAdmissible !== false,
+    equilibratedInitialStateAvailable: source.equilibratedInitialStateAvailable === true,
+    equilibratedInitialFMc: Number(source.equilibratedInitialFMc) || 0,
+    equilibratedInitialEtaMc: Number(source.equilibratedInitialEtaMc) || 0,
+    equilibratedInitialDiagnosticYieldSurface: source.equilibratedInitialDiagnosticYieldSurface || YIELD_SURFACE_NONE,
+    equilibratedInitialStateAdmissible: source.equilibratedInitialStateAdmissible !== false,
     sigmaY: Math.max(Number(source.sigmaY) || 0, 0),
     hardeningVariable: Number(source.hardeningVariable) || 0,
-    accumulatedPlasticStrain: Math.max(Number(source.accumulatedPlasticStrain) || 0, 0)
+    accumulatedPlasticStrain: Math.max(Number(source.accumulatedPlasticStrain) || 0, 0),
+    edgeTotalMultiplier: Math.max(Number(source.edgeTotalMultiplier) || 0, 0),
+    edgeMixWeight: Math.min(Math.max(Number(source.edgeMixWeight) || 0, 0), 1)
   };
 }
 
@@ -1306,44 +2388,8 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
       const deltaStrain6 = subtractVector6(nextStrain6, committed.totalStrain6);
       const stressTrial6 = addVector6(committed.effectiveStress6, multiplyMatrix6x6Vector6(elasticTangent6x6, deltaStrain6));
       const mcTrial = mohrCoulombIndicator3D(stressTrial6, params);
+      const mcTrialDiagnostic = mcTrial;
       const yieldTolerance = resolveYieldTolerance(params, mcTrial);
-      const exactYieldSurface = activeYieldSurfaceFromState(mcTrial);
-      if (exactYieldSurface === YIELD_SURFACE_TENSION) {
-        const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(stressTrial6, params, committed, {
-          currentlyMcActive: false,
-          stateChanged: committed.activeYieldSurface !== YIELD_SURFACE_TENSION,
-          activeYieldSurface: YIELD_SURFACE_TENSION,
-          hasExceededNow: false
-        });
-        const trialState = createMaterialPointState({
-          ...committed,
-          totalStrain6: nextStrain6,
-          effectiveStress6: stressTrial6,
-          activeYieldSurface: YIELD_SURFACE_TENSION,
-          currentlyMcActive: false,
-          hasEverExceededMc: diagnostics.hasEverExceededMc,
-          etaMcCurrent: diagnostics.etaMcCurrent,
-          etaMcMaxHistory: diagnostics.etaMcMaxHistory,
-          sigmaY: params?.sigmaY
-        });
-        return {
-          stressTrial6,
-          tangent6x6: elasticTangent6x6,
-          trialState,
-          diagnostics: {
-            ...diagnostics,
-            fMcTrial: Number(mcTrial?.F) || 0,
-            etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
-            yieldTolerance,
-            plasticIncrementNorm: 0,
-            localIterations: 0,
-            exactYieldTrial: Number.POSITIVE_INFINITY,
-            exactYieldFinal: Number.POSITIVE_INFINITY,
-            constitutiveModel: 'mc-plastic',
-            analysisContext
-          }
-        };
-      }
       const exactTrial = evaluateExactMcSurfaceValuesFromStress(stressTrial6, params);
       const exactTrialMaxResidual = Math.max(...Object.values(exactTrial?.values || {}).map((value) => Number(value) || 0), 0);
 
@@ -1359,6 +2405,8 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
           totalStrain6: nextStrain6,
           effectiveStress6: stressTrial6,
           activeYieldSurface: YIELD_SURFACE_NONE,
+          exactBranchKind: BRANCH_ELASTIC,
+          multiplicityKind: 'DISTINCT',
           currentlyMcActive: false,
           hasEverExceededMc: diagnostics.hasEverExceededMc,
           etaMcCurrent: diagnostics.etaMcCurrent,
@@ -1371,20 +2419,33 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
           trialState,
           diagnostics: {
             ...diagnostics,
-            fMcTrial: Number(mcTrial?.F) || 0,
-            etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
+            fMcTrial: Number(mcTrialDiagnostic?.F) || 0,
+            etaMcTrial: Number.isFinite(Number(mcTrialDiagnostic?.eta)) ? Number(mcTrialDiagnostic.eta) : Number.POSITIVE_INFINITY,
             yieldTolerance,
             plasticIncrementNorm: 0,
             localIterations: 0,
             exactYieldTrial: exactTrialMaxResidual,
             exactYieldFinal: exactTrialMaxResidual,
+            exactBranchKind: BRANCH_ELASTIC,
+            trialBranchKind: BRANCH_ELASTIC,
+            trialMultiplicityKind: 'DISTINCT',
+            finalMultiplicityKind: 'DISTINCT',
+            representativeBasisSource: committed.representativeBasisSource || 'trial',
+            edgeTotalMultiplier: 0,
+            edgeMixWeight: 0,
+            plasticMultipliers: [],
+            branchAcceptanceResidual: exactTrialMaxResidual,
+            tangentConditionNumber: 1,
+            tangentQuality: 'good',
+            apexAdmissibilityReason: '',
+            localResidualsBySurface: exactTrial?.values ? { ...exactTrial.values } : {},
             constitutiveModel: 'mc-plastic',
             analysisContext
           }
         };
       }
 
-      const local = solveExactMcActiveSetReturn(stressTrial6, elasticTangent6x6, params, mcTrial);
+      const local = solveExactMcActiveSetReturn(stressTrial6, elasticTangent6x6, params, mcTrial, committed);
       if (!local?.converged) {
         throw new Error(`Local return mapping failed: ${local?.reason || 'unknown reason'}`);
       }
@@ -1393,16 +2454,17 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
       const nextPlasticStrain6 = addVector6(committed.plasticStrain6, plasticStrainIncrement6);
       const finalMc = mohrCoulombIndicator3D(local.stress6, params);
       const equivalentPlasticIncrement = equivalentPlasticStrainIncrement(plasticStrainIncrement6);
-      const finalIsMcActive =
+      const finalIsPlasticActive =
         local.activeYieldSurface === YIELD_SURFACE_MC_FACE ||
         local.activeYieldSurface === YIELD_SURFACE_MC_EDGE ||
-        local.activeYieldSurface === YIELD_SURFACE_MC_APEX;
+        local.activeYieldSurface === YIELD_SURFACE_MC_APEX ||
+        local.activeYieldSurface === YIELD_SURFACE_TENSION;
       const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(local.stress6, params, committed, {
-        currentlyMcActive: finalIsMcActive,
+        currentlyMcActive: finalIsPlasticActive,
         stateChanged: committed.activeYieldSurface !== local.activeYieldSurface,
         activeYieldSurface: local.activeYieldSurface,
-        hasEverExceededMc: committed.hasEverExceededMc || finalIsMcActive,
-        hasExceededNow: finalIsMcActive
+        hasEverExceededMc: committed.hasEverExceededMc || finalIsPlasticActive,
+        hasExceededNow: finalIsPlasticActive
       });
       const trialState = createMaterialPointState({
         ...committed,
@@ -1410,12 +2472,18 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
         plasticStrain6: nextPlasticStrain6,
         effectiveStress6: local.stress6,
         activeYieldSurface: local.activeYieldSurface,
-        currentlyMcActive: finalIsMcActive,
+        exactBranchKind: local.acceptedBranchKind || local.branchKind || BRANCH_ELASTIC,
+        multiplicityKind: local.finalMultiplicityKind || multiplicityKindFromBranchKind(local.acceptedBranchKind || local.branchKind),
+        representativeBasisSource: local.representativeBasisSource || committed.representativeBasisSource || 'trial',
+        representativeProjectors: local.representativeProjectors || committed.representativeProjectors || null,
+        currentlyMcActive: finalIsPlasticActive,
         hasEverExceededMc: diagnostics.hasEverExceededMc,
         etaMcCurrent: diagnostics.etaMcCurrent,
         etaMcMaxHistory: diagnostics.etaMcMaxHistory,
         sigmaY: params?.sigmaY,
-        accumulatedPlasticStrain: Math.max(Number(committed.accumulatedPlasticStrain) || 0, 0) + equivalentPlasticIncrement
+        accumulatedPlasticStrain: Math.max(Number(committed.accumulatedPlasticStrain) || 0, 0) + equivalentPlasticIncrement,
+        edgeTotalMultiplier: Number(local.edgeTotalMultiplier) || 0,
+        edgeMixWeight: Number(local.edgeMixWeight) || 0
       });
       return {
         stressTrial6: local.stress6,
@@ -1423,13 +2491,26 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
         trialState,
         diagnostics: {
           ...diagnostics,
-          fMcTrial: Number(mcTrial?.F) || 0,
-          etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
+          fMcTrial: Number(mcTrialDiagnostic?.F) || 0,
+          etaMcTrial: Number.isFinite(Number(mcTrialDiagnostic?.eta)) ? Number(mcTrialDiagnostic.eta) : Number.POSITIVE_INFINITY,
           fMcFinal: Number(finalMc?.F) || 0,
           etaMcFinal: Number.isFinite(Number(finalMc?.eta)) ? Number(finalMc.eta) : Number.POSITIVE_INFINITY,
           exactYieldTrial: exactTrialMaxResidual,
           exactYieldFinal: Number(local?.yieldResidual) || 0,
           activeSurfaceIds: Array.isArray(local?.activeSurfaceIds) ? [...local.activeSurfaceIds] : [],
+          exactBranchKind: local.acceptedBranchKind || local.branchKind || BRANCH_ELASTIC,
+          trialBranchKind: local.trialBranchKind || BRANCH_ELASTIC,
+          trialMultiplicityKind: local.trialMultiplicityKind || 'DISTINCT',
+          finalMultiplicityKind: local.finalMultiplicityKind || multiplicityKindFromBranchKind(local.acceptedBranchKind || local.branchKind),
+          representativeBasisSource: local.representativeBasisSource || 'trial',
+          edgeTotalMultiplier: Number(local.edgeTotalMultiplier) || 0,
+          edgeMixWeight: Number(local.edgeMixWeight) || 0,
+          plasticMultipliers: Array.isArray(local?.plasticMultipliers) ? [...local.plasticMultipliers] : [],
+          branchAcceptanceResidual: Number(local?.branchAcceptanceResidual) || 0,
+          tangentConditionNumber: Number(local?.tangentConditionNumber) || Number.POSITIVE_INFINITY,
+          tangentQuality: local?.tangentQuality || 'unknown',
+          apexAdmissibilityReason: local?.apexAdmissibilityReason || '',
+          localResidualsBySurface: local?.localResidualsBySurface ? { ...local.localResidualsBySurface } : {},
           yieldTolerance,
           plasticIncrementNorm: vectorNorm6(plasticStrainIncrement6),
           localIterations: local.iterations,

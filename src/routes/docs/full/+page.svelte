@@ -1400,22 +1400,23 @@
 					id: 'deformation-stage6-model',
 					title: '13.1 Present constitutive route and engineering meaning',
 					paragraphs: [
-						'The current deformation tool offers two Mohr-Coulomb routes on the shared section mesh: the conservative <strong>Stage 1 MC-active reduced-stiffness</strong> screen and the newer <strong>Stage 2 exact shear elastoplastic</strong> return-mapping solve.',
-						'Stage 2 is now the default deformation solve for first-pass runs, while Stage 1 remains available as the more conservative hotspot screen. Stage 2 adds stored plastic strain, non-associated flow through ψ, and an exact Mohr-Coulomb shear return with face and edge handling on the shared plane-strain T3 mesh.',
+						'The current deformation tool offers two Mohr-Coulomb routes on the shared section mesh: the conservative <strong>Stage 1 MC-active reduced-stiffness</strong> screen and the <strong>Stage 2 exact Mohr-Coulomb elastoplastic</strong> return-mapping solve.',
+						'Stage 2 is now the default deformation solve for first-pass runs, while Stage 1 remains available as the more conservative hotspot screen. Stage 2 adds stored plastic strain, non-associated flow through ψ, exact Mohr-Coulomb face-edge-apex return logic, exact tension cut-off branches, and an optional plastic geostatic equilibration phase on the shared plane-strain T3 mesh.',
 						'The Stage 1 branch is conservative across the monotonic load ramp: once an element exceeds MC during that screening run, it remains on the reduced-stiffness branch for the rest of the increment sequence.',
-						'Tension cut-off is reported as a diagnostic warning state, but it does not enter the reduced-shear Stage 1 branch.',
+						'Tension cut-off is diagnostic-only in Stage 1, but constitutive in Stage 2.',
 						'For the current Stage 1 screen, the imported CPT layer model also carries a soil-dependent <strong>r<sub>shear</sub></strong> factor into the deformation material set. Granular soils keep a milder reduction and cohesive soils a stronger one, and the factor remains editable in the deformation material table.'
 					],
 					equations: [
-						'σ = Dε &nbsp;&nbsp; with elastic, Stage 1 reduced-stiffness, or Stage 2 exact shear elastoplastic plane-strain D',
-						'η<sub>MC</sub> = (σ′<sub>1</sub> − σ′<sub>3</sub>) / [(σ′<sub>1</sub> + σ′<sub>3</sub>)sinφ′ + 2c′cosφ′]'
+						'σ = Dε &nbsp;&nbsp; with elastic, Stage 1 reduced-stiffness, or Stage 2 exact Mohr-Coulomb elastoplastic plane-strain D',
+						'η<sub>MC</sub> = (σ′<sub>1</sub> − σ′<sub>3</sub>) / [(σ′<sub>1</sub> + σ′<sub>3</sub>)sinφ′ + 2c′cosφ′]',
+						'f<sub>t</sub> = -σ′<sub>3</sub> - σ<sub>t</sub> ≤ 0'
 					],
 					bullets: [
-						'The default displacement solve uses <strong>Stage 2 exact Mohr-Coulomb shear elastoplasticity</strong>, while the conservative <strong>Stage 1 MC-active reduced-stiffness</strong> screen remains available as a hotspot check.',
-						'<strong>Stage 2</strong> stores plastic strain and performs an exact Mohr-Coulomb shear return with face and edge handling. Tension-cutoff plasticity remains a later constitutive stage.',
+						'The default displacement solve uses <strong>Stage 2 exact Mohr-Coulomb elastoplasticity</strong>, while the conservative <strong>Stage 1 MC-active reduced-stiffness</strong> screen remains available as a hotspot check.',
+						'<strong>Stage 2</strong> stores plastic strain and performs an exact Mohr-Coulomb active-set return with face, edge, apex, and tension-cutoff handling.',
 						'The tool should be read as <strong>long-term drained screening</strong>, not as an immediate undrained clay check.',
 						'The current implementation uses the Stage 4/5 <strong>E<sub>mc</sub></strong> value directly as the elastic modulus E.',
-						'The stored dilation angle ψ is active in Stage 2 plastic flow, while the full public tension-cutoff plastic branch remains a later upgrade.'
+						'The stored dilation angle ψ is active in Stage 2 plastic flow, and plastic geostatic equilibration may be used to equilibrate the initial self-weight state before service loading.'
 					]
 				},
 				{
@@ -1423,11 +1424,13 @@
 					title: '13.2 Load model, supports, and initial stresses',
 					paragraphs: [
 						'The mechanical load is currently taken from the shared <strong>surface load</strong> interval on the terrain. In pressure mode the entered q is applied directly; in total-load mode the app converts the total slab load to an equivalent 2D pressure through the out-of-plane length.',
-						'The initial effective stress field is now built with a <strong>geostatic gravity step</strong> on the same shared mesh before the external load increment is applied, but the in-situ horizontal confinement is then reset from <strong>K<sub>0,nc</sub></strong> so elastic ν controls stiffness rather than at-rest stress. Optional seepage coupling only changes the initial pore-pressure field used in that reconstruction.'
+						'The initial effective stress field is built with a <strong>geostatic gravity step</strong> on the same shared mesh before the external load increment is applied, but the in-situ horizontal confinement is then reset from <strong>K<sub>0,nc</sub></strong> so elastic ν controls stiffness rather than at-rest stress. Optional seepage coupling only changes the initial pore-pressure field used in that reconstruction.',
+						'If plastic geostatic equilibration is selected, the predictor is corrected by a full self-weight equilibrium solve formulated as a predictor-relative constitutive correction rather than a second gravity replay.'
 					],
 					equations: [
 						'q = P<sub>total</sub> / (B · L<sub>out</sub>) &nbsp;&nbsp; in total-load mode',
-						'K U<sub>geo</sub> = F<sub>g</sub> &nbsp;&nbsp; for the geostatic gravity turn-on'
+						'K U<sub>geo</sub> = F<sub>g</sub> &nbsp;&nbsp; for the geostatic gravity turn-on',
+						'R<sub>0b</sub>(Δu) = F<sub>g</sub> - F<sub>int</sub>(σ′<sub>pred</sub> + Δσ′(Δu, history)) = 0'
 					],
 					bullets: [
 						'Bottom boundary: u<sub>y</sub> = 0. Side boundaries: u<sub>x</sub> = 0.',
@@ -1442,19 +1445,19 @@
 					title: '13.3 Numerical safeguards and public outputs',
 					paragraphs: [
 						'The deformation solver uses 3-node constant-strain triangles. That choice is robust and fast on the shared mesh, but it comes with the usual stiffness issues for coarse meshes and near-incompressible Poisson ratios.',
-						'The public results panel can display settlement, u<sub>x</sub>, u<sub>y</sub>, |u|, Δσ<sub>yy</sub>, initial and final effective / total σ<sub>yy</sub>, initial and final effective / total σ<sub>xx</sub>, final τ<sub>xy</sub>, and η<sub>MC</sub>. The deformation overlay can show filled contours, contour lines, and a toggleable legend, and the same shared measurement line can probe those quantities without covering the canvas.'
+						'The public results panel can display settlement, u<sub>x</sub>, u<sub>y</sub>, |u|, Δσ<sub>yy</sub>, initial and final effective / total σ<sub>yy</sub>, initial and final effective / total σ<sub>xx</sub>, final τ<sub>xy</sub>, η<sub>MC</sub>, and accumulated plastic strain. In exact tension-cutoff-active zones, η<sub>MC</sub> is suppressed because admissibility is governed by the tension surface rather than by the Mohr-Coulomb shear ratio. The deformation overlay can show filled contours, contour lines, and a toggleable legend, and the same shared measurement line can probe those quantities without covering the canvas.'
 					],
 					bullets: [
 						'Poisson&apos;s ratio is capped at 0.49 for numerical stability in the plane-strain T3 solver.',
 						'Load-edge refinement is added automatically beneath both ends of the loaded interval because coarse CST/T3 meshes become too stiff there.',
-						'The MC screen uses the in-plane principal pair only and applies a zero-tension cut-off by default.',
+						'The constitutive update uses the full plane-strain stress<sub>6</sub> state and full principal-stress decomposition.',
 						'Missing or non-positive E<sub>mc</sub> is replaced with a pragmatic fallback value of 1000 kPa, with a warning.',
 						'Polygon coarseness remains a local mesh-refinement factor only.',
 						'The line-probe graph can be copied to the clipboard as distance/value data for external checking.'
 					]
 				}
 			],
-			references: ['PLAXIS 2D Material Models Manual (2025.1)', 'Schanz, Vermeer & Bonnier (1999)', 'Boussinesq (1885)']
+			references: ['Clausen, Damkilde & Andersen (2007)', 'de Souza Neto, Perić & Owen (2008)', 'Simo & Taylor (1985)', 'PLAXIS 2D Material Models Manual (2025.1)', 'Potts & Zdravković (1999)']
 		}
 	];
 

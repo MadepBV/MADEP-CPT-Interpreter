@@ -56,6 +56,10 @@ export function prepareMechanicalMaterial(material, warnings = []) {
   const rawYieldTolerance = finiteOrNull(material?.yieldTolerance);
   const rawYieldToleranceScale = finiteOrNull(material?.yieldToleranceScale);
   const rawYieldTolerancePref = finiteOrNull(material?.yieldTolerancePref);
+  const rawEdgeStressGapTolerance = finiteOrNull(material?.edgeStressGapTolerance);
+  const rawApexStressGapTolerance = finiteOrNull(material?.apexStressGapTolerance);
+  const rawComplementarityTolerance = finiteOrNull(material?.activeSetComplementarityTolerance);
+  const rawEigenSubspaceTolerance = finiteOrNull(material?.eigenSubspaceTolerance);
 
   return {
     ...material,
@@ -77,6 +81,14 @@ export function prepareMechanicalMaterial(material, warnings = []) {
     localTolerance: Math.max(Number(material?.localTolerance) || 1e-8, 0),
     localMaxIterations: Math.max(Math.round(Number(material?.localMaxIterations) || 40), 1),
     eigTolerance: Math.max(Number(material?.eigTolerance) || 1e-9, 1e-12),
+    edgeStressGapTolerance: rawEdgeStressGapTolerance !== null ? Math.max(rawEdgeStressGapTolerance, 0) : null,
+    apexStressGapTolerance: rawApexStressGapTolerance !== null ? Math.max(rawApexStressGapTolerance, 0) : null,
+    activeSetComplementarityTolerance: rawComplementarityTolerance !== null ? Math.max(rawComplementarityTolerance, 0) : null,
+    eigenSubspaceTolerance: rawEigenSubspaceTolerance !== null ? Math.max(rawEigenSubspaceTolerance, 1e-12) : null,
+    allowFormalApexBranch: material?.allowFormalApexBranch === true,
+    representativeBasisPolicy: typeof material?.representativeBasisPolicy === 'string' && material.representativeBasisPolicy
+      ? material.representativeBasisPolicy
+      : 'committed-trial-canonical',
     symmetrizeEpTangent: material?.symmetrizeEpTangent !== false,
     useTensionCutoff: material?.useTensionCutoff !== false,
     useCompressionYield: material?.useCompressionYield === true

@@ -237,12 +237,14 @@
 				<section class="doc-subsection">
 					<h3>5.2 Geostatic preparation</h3>
 					<p>
-						The initial stress state is prepared by a linear gravity step. This is an important
-						explicit modeling choice: geostatic initialization stays linear, while yielding and
-						plasticity are reserved for the subsequent load solve.
+						The initial stress state is prepared by a linear gravity step and a
+						K<sub>0,nc</sub>-controlled confinement reconstruction. Optionally, the seeded
+						predictor may then be corrected by a plastic self-weight equilibration phase before
+						the service-load step starts.
 					</p>
 					<div class="equations">
 						<div class="formula">K u<sub>geo</sub> = F<sub>g</sub></div>
+						<div class="formula">R<sub>0b</sub>(Δu) = F<sub>g</sub> - F<sub>int</sub>(σ′<sub>pred</sub> + Δσ′(Δu, history)) = 0</div>
 					</div>
 				</section>
 
@@ -254,13 +256,13 @@
 					<ul class="notes">
 						<li><strong>Linear elastic</strong> for baseline screening.</li>
 						<li><strong>Stage 1 reduced stiffness</strong> as a pseudo-plastic exceedance route.</li>
-						<li><strong>Stage 2.2 exact shear elastoplasticity</strong> as the current default plastic route.</li>
+						<li><strong>Stage 2 exact Mohr-Coulomb elastoplasticity</strong> as the current default plastic route.</li>
 					</ul>
 					<p>
-						The shipped Stage 2 route already stores plastic strain and now uses an exact
-						Mohr-Coulomb shear return with face and edge handling. Tension cutoff remains a
-						separate later constitutive stage rather than an implied part of the current exact
-						shear path.
+						The shipped Stage 2 route stores plastic strain and uses an exact Mohr-Coulomb
+						active-set return with shear face, shear edge, apex, tension-face, mixed
+						shear-tension, and triple tension-point branches in principal effective stress
+						space.
 					</p>
 				</section>
 			</section>
@@ -278,7 +280,7 @@
 					<li>The deformation route caps high ν values for plane-strain stability and warns about T3 locking and coarse-mesh over-stiffness.</li>
 					<li>The seepage route is steady-state only and keeps interior drains outside the current public boundary-condition set.</li>
 					<li>The deformation route can expose a partial near-failure state rather than discarding the best available non-converged plastic result.</li>
-					<li>The current Stage 2 constitutive route is exact for Mohr-Coulomb shear return in principal stress space, while tension-cutoff plasticity remains outside the shipped shear-return stage.</li>
+					<li>The current Stage 2 constitutive route is an exact Mohr-Coulomb active-set return in principal stress space, including tension-cutoff branches.</li>
 				</ul>
 			</section>
 

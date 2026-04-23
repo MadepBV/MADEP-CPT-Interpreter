@@ -111,8 +111,8 @@
 						<div class="docs-link-card__meta">Finite element deformation</div>
 						<h3>Deformation analysis</h3>
 						<p>
-							Geostatic initialization, constitutive model choices, plotted fields, and the
-							current Stage 2 exact Mohr-Coulomb shear-plastic route.
+							Geostatic initialization, exact Mohr-Coulomb elastoplasticity with tension
+							cut-off, plotted fields, and solver interpretation.
 						</p>
 					</a>
 				</div>

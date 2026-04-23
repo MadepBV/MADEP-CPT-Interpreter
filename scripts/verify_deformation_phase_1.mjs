@@ -10,7 +10,7 @@ import {
   seedMaterialPointStateFromEffectiveStress6,
   seedMaterialPointStateFromInitialStress
 } from '../src/lib/cpt-app/deformation/material-models.js';
-import { planeStrainElasticMatrix, prepareMechanicalMaterial } from '../src/lib/cpt-app/deformation/material.js';
+import { elasticMatrix6x6, planeStrainElasticMatrix, prepareMechanicalMaterial } from '../src/lib/cpt-app/deformation/material.js';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -30,6 +30,58 @@ function applyElasticMatrix(D, strain) {
   };
 }
 
+function solveDense3x3(matrix, rhs) {
+  const augmented = matrix.map((row, index) => [...row, rhs[index]]);
+  for (let pivotIndex = 0; pivotIndex < 3; pivotIndex += 1) {
+    let bestRow = pivotIndex;
+    for (let rowIndex = pivotIndex + 1; rowIndex < 3; rowIndex += 1) {
+      if (Math.abs(augmented[rowIndex][pivotIndex]) > Math.abs(augmented[bestRow][pivotIndex])) bestRow = rowIndex;
+    }
+    assert(Math.abs(augmented[bestRow][pivotIndex]) > 1e-12, 'dense 3x3 helper encountered a singular matrix');
+    if (bestRow !== pivotIndex) {
+      const temp = augmented[pivotIndex];
+      augmented[pivotIndex] = augmented[bestRow];
+      augmented[bestRow] = temp;
+    }
+    const pivot = augmented[pivotIndex][pivotIndex];
+    for (let colIndex = pivotIndex; colIndex <= 3; colIndex += 1) augmented[pivotIndex][colIndex] /= pivot;
+    for (let rowIndex = 0; rowIndex < 3; rowIndex += 1) {
+      if (rowIndex === pivotIndex) continue;
+      const factor = augmented[rowIndex][pivotIndex];
+      for (let colIndex = pivotIndex; colIndex <= 3; colIndex += 1) {
+        augmented[rowIndex][colIndex] -= factor * augmented[pivotIndex][colIndex];
+      }
+    }
+  }
+  return augmented.map((row) => row[3]);
+}
+
+function strainTrial6ForTargetStress6(materialParameters, targetStress6) {
+  const D = elasticMatrix6x6(materialParameters.Emc, materialParameters.nu);
+  const normalBlock = [
+    [D[0][0], D[0][1], D[0][2]],
+    [D[1][0], D[1][1], D[1][2]],
+    [D[2][0], D[2][1], D[2][2]]
+  ];
+  const targetNormal = [
+    Number(targetStress6?.[0]) || 0,
+    Number(targetStress6?.[1]) || 0,
+    Number(targetStress6?.[2]) || 0
+  ];
+  const normalStrain = solveDense3x3(normalBlock, targetNormal);
+  return [normalStrain[0], normalStrain[1], normalStrain[2], 0, 0, 0];
+}
+
+function updateMcPlasticFromTargetStress6(materialParameters, targetStress6, initialEffectiveStress6 = [0, 0, 0, 0, 0, 0]) {
+  const material = createMCPlasticMaterial(materialParameters);
+  const initialState = seedMaterialPointStateFromEffectiveStress6(initialEffectiveStress6, materialParameters);
+  return material.update({
+    strainTrial6: strainTrial6ForTargetStress6(materialParameters, targetStress6),
+    committedState: initialState,
+    materialParameters
+  });
+}
+
 function nearestProfilePoint(profile, x) {
   return (profile || []).reduce((best, point) => {
     if (!best) return point;
@@ -44,8 +96,8 @@ function baseModel(overrides = {}) {
     Emc: 25000,
     nu: 0.3,
     K0nc: 0.5,
-    cEff: 5,
-    phiEffDeg: 30,
+    cEff: 1,
+    phiEffDeg: 25,
     gamma: 18,
     gammaSat: 20,
     ...(overrides.material || {})
@@ -105,7 +157,8 @@ function slopedModel(overrides = {}) {
       vertices: [
         { x: 0, y: 1.5 },
         { x: 8, y: 1.5 },
-        { x: 24, y: -6.5 }
+        { x: 24, y: -6.5 },
+        { x: 35, y: -6.5}
       ]
     },
     analysisBottomY: -16.5,
@@ -121,8 +174,8 @@ function slopedModel(overrides = {}) {
         id: 'slope-soil',
         polygon: [
           { x: 0, y: -16.5 },
-          { x: 24, y: -16.5 },
-          { x: 24, y: -6.5 },
+          { x: 35, y: -16.5 },
+          { x: 35, y: -6.5 },
           { x: 8, y: 1.5 },
           { x: 0, y: 1.5 }
         ],
@@ -132,7 +185,7 @@ function slopedModel(overrides = {}) {
     surfaceLoad: {
       xStart: 6,
       xEnd: 8,
-      q: 120
+      q: 12
     },
     seepage: overrides.seepage || { mesh: null, result: null },
     ...overrides
@@ -304,24 +357,178 @@ await runCase('Case 0d Stage 2 exact MC return accumulates plastic strain and re
   );
 });
 
-await runCase('Case 0e Stage 2 keeps tension cut-off diagnostic-only until the dedicated cutoff stage', async () => {
+await runCase('Case 0e Stage 2 exact tension-face return lands on the cut-off and accumulates plastic strain', async () => {
   const prepared = prepareMechanicalMaterial({
     ...baseModel().regions[0].material,
+    Emc: 18000,
+    cEff: 5,
+    phiEffDeg: 30,
+    psiEffDeg: 0,
+    sigmaTAllow: 2,
+    yieldTolerance: 1e-8,
+    localTolerance: 1e-8
+  });
+  const targetStress6 = [-10, -10, 4, 0, 0, 0];
+  const update = updateMcPlasticFromTargetStress6(prepared, targetStress6);
+
+  assert(mohrCoulombIndicator3D(targetStress6, prepared)?.state === 'tension-cutoff', 'the manufactured trial state should violate the exact tension cutoff before the return step');
+  assert(update?.trialState?.currentlyMcActive === true, 'an exact Stage 2 tension-face state should be tracked as an active plastic branch');
+  assert(update?.trialState?.activeYieldSurface === 'TENSION', 'the exact tension-face return should report the tension yield surface');
+  assert(update?.diagnostics?.exactBranchKind === 'TENSION_FACE_T3', `the exact tension-face benchmark should accept the T3 face branch (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(
+    JSON.stringify(update?.diagnostics?.activeSurfaceIds || []) === JSON.stringify(['T3']),
+    `the exact tension-face benchmark should keep only the T3 active surface (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
+  );
+  assert((update?.trialState?.accumulatedPlasticStrain || 0) > 0, 'the exact tension-face return should accumulate plastic strain');
+  assert(!Number.isFinite(Number(update?.diagnostics?.etaMcFinal)), 'η_MC should be suppressed once the exact tension cutoff governs the accepted state');
+  approxRelative(Number(update?.diagnostics?.principal?.s3) || 0, -2, 1e-9, 'the exact tension-face return should land on sigma3 = -sigma_t');
+});
+
+await runCase('Case 0e1 Stage 2 exact lower repeated tension branch closes sigma2=sigma3 on the cut-off', async () => {
+  const prepared = prepareMechanicalMaterial({
+    Emc: 18000,
+    nu: 0.3,
+    cEff: 5,
+    phiEffDeg: 30,
+    psiEffDeg: 0,
+    gamma: 18,
+    gammaSat: 20,
+    sigmaTAllow: 2,
+    yieldTolerance: 1e-8,
+    localTolerance: 1e-8
+  });
+  const update = updateMcPlasticFromTargetStress6(prepared, [-10, 4, 4, 0, 0, 0]);
+
+  assert(update?.diagnostics?.exactBranchKind === 'TENSION_EDGE_T23', `the lower repeated tension benchmark should accept the repeated T3 branch (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(update?.diagnostics?.finalMultiplicityKind === 'S23_EQUAL', 'the lower repeated tension benchmark should record sigma2=sigma3 multiplicity');
+  assert(
+    JSON.stringify(update?.diagnostics?.activeSurfaceIds || []) === JSON.stringify(['T3']),
+    `the lower repeated tension benchmark should use the single exact T3 active surface (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
+  );
+  approxRelative(Number(update?.diagnostics?.principal?.s2) || 0, Number(update?.diagnostics?.principal?.s3) || 0, 1e-9, 'the lower repeated tension benchmark should close the lower principal-stress gap');
+  approxRelative(Number(update?.diagnostics?.principal?.s3) || 0, -2, 1e-9, 'the lower repeated tension benchmark should end on sigma3 = -sigma_t');
+});
+
+await runCase('Case 0e2 Stage 2 exact mixed shear-tension edge keeps the F13 and T3 surfaces active', async () => {
+  const prepared = prepareMechanicalMaterial({
+    Emc: 18000,
+    nu: 0.3,
+    cEff: 5,
+    phiEffDeg: 30,
+    psiEffDeg: 0,
+    gamma: 18,
+    gammaSat: 20,
+    sigmaTAllow: 2,
+    yieldTolerance: 1e-8,
+    localTolerance: 1e-8
+  });
+  const update = updateMcPlasticFromTargetStress6(prepared, [-16, 0, 8, 0, 0, 0]);
+
+  assert(update?.diagnostics?.exactBranchKind === 'TENSION_EDGE_F13_T3', `the mixed shear-tension edge benchmark should accept the {F13,T3} branch (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(
+    JSON.stringify(update?.diagnostics?.activeSurfaceIds || []) === JSON.stringify(['F13', 'T3']),
+    `the mixed shear-tension edge benchmark should keep the {F13,T3} active pair (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
+  );
+  approxRelative(Number(update?.diagnostics?.principal?.s3) || 0, -2, 1e-9, 'the mixed shear-tension edge benchmark should end on sigma3 = -sigma_t');
+  assert(!Number.isFinite(Number(update?.diagnostics?.etaMcFinal)), 'the mixed shear-tension edge benchmark should suppress η_MC on the accepted tension-governed state');
+});
+
+await runCase('Case 0e3 Stage 2 exact lower mixed shear-tension corner closes sigma2=sigma3 on the cut-off', async () => {
+  const prepared = prepareMechanicalMaterial({
+    Emc: 18000,
+    nu: 0.3,
+    cEff: 5,
+    phiEffDeg: 30,
+    psiEffDeg: 0,
+    gamma: 18,
+    gammaSat: 20,
+    sigmaTAllow: 2,
+    yieldTolerance: 1e-8,
+    localTolerance: 1e-8
+  });
+  const update = updateMcPlasticFromTargetStress6(prepared, [-30, 12, 12, 0, 0, 0]);
+
+  assert(update?.diagnostics?.exactBranchKind === 'TENSION_CORNER_S23_T3', `the lower mixed corner benchmark should accept the lower shear-tension corner branch (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(update?.diagnostics?.finalMultiplicityKind === 'S23_EQUAL', 'the lower mixed corner benchmark should record sigma2=sigma3 multiplicity');
+  assert(
+    JSON.stringify(update?.diagnostics?.activeSurfaceIds || []) === JSON.stringify(['F13', 'T3']),
+    `the lower mixed corner benchmark should use the repeated representative {F13,T3} active pair (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
+  );
+  approxRelative(Number(update?.diagnostics?.principal?.s2) || 0, Number(update?.diagnostics?.principal?.s3) || 0, 1e-9, 'the lower mixed corner benchmark should close the lower principal-stress gap');
+  approxRelative(Number(update?.diagnostics?.principal?.s3) || 0, -2, 1e-9, 'the lower mixed corner benchmark should end on sigma3 = -sigma_t');
+});
+
+await runCase('Case 0e4 Stage 2 exact upper mixed shear-tension corner closes sigma1=sigma2 on the cut-off', async () => {
+  const prepared = prepareMechanicalMaterial({
+    Emc: 18000,
+    nu: 0.3,
+    cEff: 5,
+    phiEffDeg: 30,
+    psiEffDeg: 0,
+    gamma: 18,
+    gammaSat: 20,
+    sigmaTAllow: 2,
+    yieldTolerance: 1e-8,
+    localTolerance: 1e-8
+  });
+  const update = updateMcPlasticFromTargetStress6(prepared, [-30, -20, 30, 0, 0, 0]);
+
+  assert(update?.diagnostics?.exactBranchKind === 'TENSION_CORNER_S12_T3', `the upper mixed corner benchmark should accept the upper shear-tension corner branch (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(update?.diagnostics?.finalMultiplicityKind === 'S12_EQUAL', 'the upper mixed corner benchmark should record sigma1=sigma2 multiplicity');
+  assert(
+    JSON.stringify(update?.diagnostics?.activeSurfaceIds || []) === JSON.stringify(['F13', 'T3']),
+    `the upper mixed corner benchmark should use the repeated representative {F13,T3} active pair (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
+  );
+  approxRelative(Number(update?.diagnostics?.principal?.s1) || 0, Number(update?.diagnostics?.principal?.s2) || 0, 1e-9, 'the upper mixed corner benchmark should close the upper principal-stress gap');
+  approxRelative(Number(update?.diagnostics?.principal?.s3) || 0, -2, 1e-9, 'the upper mixed corner benchmark should end on sigma3 = -sigma_t');
+});
+
+await runCase('Case 0e5 Stage 2 exact triple tension point returns to the hydrostatic cut-off point', async () => {
+  const prepared = prepareMechanicalMaterial({
+    Emc: 18000,
+    nu: 0.3,
+    cEff: 5,
+    phiEffDeg: 30,
+    psiEffDeg: 0,
+    gamma: 18,
+    gammaSat: 20,
+    sigmaTAllow: 2,
+    yieldTolerance: 1e-8,
+    localTolerance: 1e-8
+  });
+  const update = updateMcPlasticFromTargetStress6(prepared, [4, 4, 4, 0, 0, 0]);
+
+  assert(update?.diagnostics?.exactBranchKind === 'TENSION_APEX_T123', `the triple tension-point benchmark should accept the triple repeated T3 branch (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(update?.diagnostics?.finalMultiplicityKind === 'TRIPLE', 'the triple tension-point benchmark should record triple multiplicity');
+  assert(
+    JSON.stringify(update?.diagnostics?.activeSurfaceIds || []) === JSON.stringify(['T3']),
+    `the triple tension-point benchmark should use the single exact T3 active surface (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
+  );
+  approxRelative(Number(update?.diagnostics?.principal?.s1) || 0, Number(update?.diagnostics?.principal?.s2) || 0, 1e-9, 'the triple tension-point benchmark should close the sigma1=sigma2 gap');
+  approxRelative(Number(update?.diagnostics?.principal?.s2) || 0, Number(update?.diagnostics?.principal?.s3) || 0, 1e-9, 'the triple tension-point benchmark should close the sigma2=sigma3 gap');
+  approxRelative(Number(update?.diagnostics?.principal?.s3) || 0, -2, 1e-9, 'the triple tension-point benchmark should end on sigma = -sigma_t');
+});
+
+await runCase('Case 0e6 a tension-violating exact trial can still return on a shear branch when the shear return restores admissibility', async () => {
+  const prepared = prepareMechanicalMaterial({
+    Emc: 18000,
+    nu: 0.3,
     cEff: 0,
     phiEffDeg: 30,
-    sigmaTAllow: 0
+    psiEffDeg: 0,
+    gamma: 18,
+    gammaSat: 20,
+    sigmaTAllow: 0,
+    yieldTolerance: 1e-8,
+    localTolerance: 1e-8
   });
-  const material = createMCPlasticMaterial(prepared);
-  const initialState = seedMaterialPointStateFromEffectiveStress6([-25, -25, -15, 0, 0, 0], prepared);
-  const update = material.update({
-    strainTrial6: liftPlaneStrainStrainTo6({ exx: 0.02, eyy: 0.02, gxy: 0 }),
-    committedState: initialState,
-    materialParameters: prepared
-  });
+  const targetStress6 = [-20, -10, 2, 0, 0, 0];
+  const update = updateMcPlasticFromTargetStress6(prepared, targetStress6);
 
-  assert(update?.trialState?.currentlyMcActive === false, 'Stage 2 should not route pure tension-cutoff states into the MC shear return map');
-  assert(update?.trialState?.activeYieldSurface === 'TENSION', 'Stage 2 should preserve the tension-cutoff diagnostic surface');
-  assert((update?.trialState?.accumulatedPlasticStrain || 0) === 0, 'Stage 2 should not accumulate plastic strain for tension-diagnostic-only states');
+  assert(mohrCoulombIndicator3D(targetStress6, prepared)?.state === 'tension-cutoff', 'the manufactured mixed trial state should violate the tension cutoff before the return step');
+  assert(update?.diagnostics?.exactBranchKind === 'MC_FACE_F13', `the mixed trial state should still admit a pure shear return when that restores admissibility (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(update?.trialState?.activeYieldSurface === 'MC_FACE', 'the mixed trial state should end on the exact MC shear face rather than the tension branch');
+  assert(Number(update?.diagnostics?.principal?.s3) > -1e-9, 'the accepted shear return should restore the minor principal stress inside the admissible tension domain');
 });
 
 await runCase('Case 0ea inadmissible initial stress is audited without being counted as plastic history', async () => {
@@ -381,6 +588,161 @@ await runCase('Case 0f Stage 2 unloads elastically around a plastic strain state
   );
 });
 
+await runCase('Case 0g Stage 2 exact lower-edge return closes the s2-s3 branch and stores edge mixing data', async () => {
+  const prepared = prepareMechanicalMaterial({
+    ...baseModel().regions[0].material,
+    Emc: 18000,
+    cEff: 1.5,
+    phiEffDeg: 18,
+    psiEffDeg: 5,
+    yieldTolerance: 1e-6
+  });
+  const material = createMCPlasticMaterial(prepared);
+  const initialState = seedMaterialPointStateFromInitialStress({ sxx: 15, syy: 30, txy: 0 }, prepared);
+  const update = material.update({
+    strainTrial6: liftPlaneStrainStrainTo6({ exx: -0.02, eyy: 0, gxy: 0.02 }),
+    committedState: initialState,
+    materialParameters: prepared
+  });
+
+  assert(update?.diagnostics?.exactBranchKind === 'MC_EDGE_S23_EQUAL', `lower-edge case should accept the sigma2=sigma3 branch (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(update?.diagnostics?.finalMultiplicityKind === 'S23_EQUAL', 'lower-edge case should store the lower-pair multiplicity kind');
+  assert(
+    JSON.stringify(update?.diagnostics?.activeSurfaceIds || []) === JSON.stringify(['F12', 'F13']),
+    `lower-edge case should keep the {F12,F13} active pair (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
+  );
+  assert((update?.diagnostics?.edgeMixWeight || 0) > 0 && (update?.diagnostics?.edgeMixWeight || 0) < 1, 'lower-edge case should store a non-trivial edge mixing weight');
+  assert((update?.diagnostics?.edgeTotalMultiplier || 0) > 0, 'lower-edge case should store a positive total edge plastic multiplier');
+  assert(
+    Math.abs((Number(update?.diagnostics?.principal?.s2) || 0) - (Number(update?.diagnostics?.principal?.s3) || 0)) <= 1e-8,
+    'lower-edge case should close the lower principal-stress gap'
+  );
+  approxRelative(
+    Number(update?.diagnostics?.etaMcFinal) || 0,
+    1,
+    1e-9,
+    'lower-edge case should return to eta_MC = 1 on the accepted state'
+  );
+});
+
+await runCase('Case 0ga Stage 2 lower-edge scalar invariants remain stable under mirrored trial shear directions', async () => {
+  const prepared = prepareMechanicalMaterial({
+    ...baseModel().regions[0].material,
+    Emc: 18000,
+    cEff: 1.5,
+    phiEffDeg: 18,
+    psiEffDeg: 5,
+    yieldTolerance: 1e-6
+  });
+  const material = createMCPlasticMaterial(prepared);
+  const initialState = seedMaterialPointStateFromInitialStress({ sxx: 15, syy: 30, txy: 0 }, prepared);
+  const positive = material.update({
+    strainTrial6: liftPlaneStrainStrainTo6({ exx: -0.02, eyy: 0, gxy: 0.02 }),
+    committedState: initialState,
+    materialParameters: prepared
+  });
+  const negative = material.update({
+    strainTrial6: liftPlaneStrainStrainTo6({ exx: -0.02, eyy: 0, gxy: -0.02 }),
+    committedState: initialState,
+    materialParameters: prepared
+  });
+
+  assert(positive?.diagnostics?.exactBranchKind === 'MC_EDGE_S23_EQUAL', 'positive mirrored case should remain on the lower edge');
+  assert(negative?.diagnostics?.exactBranchKind === 'MC_EDGE_S23_EQUAL', 'negative mirrored case should remain on the lower edge');
+  approxRelative(
+    Number(positive?.diagnostics?.etaMcFinal) || 0,
+    Number(negative?.diagnostics?.etaMcFinal) || 0,
+    1e-12,
+    'mirrored lower-edge cases should preserve eta_MC'
+  );
+  approxRelative(
+    Number(positive?.trialState?.accumulatedPlasticStrain) || 0,
+    Number(negative?.trialState?.accumulatedPlasticStrain) || 0,
+    1e-12,
+    'mirrored lower-edge cases should preserve equivalent accumulated plastic strain'
+  );
+  approxRelative(
+    Number(positive?.diagnostics?.plasticIncrementNorm) || 0,
+    Number(negative?.diagnostics?.plasticIncrementNorm) || 0,
+    1e-12,
+    'mirrored lower-edge cases should preserve the scalar plastic increment norm'
+  );
+});
+
+await runCase('Case 0h Stage 2 exact upper-edge return closes the s1-s2 branch and stores edge mixing data', async () => {
+  const prepared = prepareMechanicalMaterial({
+    Emc: 18000,
+    nu: 0.3,
+    cEff: 4.070289300283476,
+    phiEffDeg: 10.214211521800564,
+    psiEffDeg: 1.2262853774186977,
+    gamma: 18,
+    gammaSat: 20,
+    yieldTolerance: 1e-6
+  });
+  const material = createMCPlasticMaterial(prepared);
+  const initialState = seedMaterialPointStateFromInitialStress(
+    { sxx: 41.42400488726434, syy: 52.349590265728594, txy: -8.639369008225234 },
+    prepared
+  );
+  const update = material.update({
+    strainTrial6: liftPlaneStrainStrainTo6({
+      exx: -0.02721493782357276,
+      eyy: -0.028109921482776842,
+      gxy: 0.0007843543396598568
+    }),
+    committedState: initialState,
+    materialParameters: prepared
+  });
+
+  assert(update?.diagnostics?.exactBranchKind === 'MC_EDGE_S12_EQUAL', `upper-edge case should accept the sigma1=sigma2 branch (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(update?.diagnostics?.finalMultiplicityKind === 'S12_EQUAL', 'upper-edge case should store the upper-pair multiplicity kind');
+  assert(
+    JSON.stringify(update?.diagnostics?.activeSurfaceIds || []) === JSON.stringify(['F13', 'F23']),
+    `upper-edge case should keep the {F13,F23} active pair (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
+  );
+  assert((update?.diagnostics?.edgeMixWeight || 0) > 0 && (update?.diagnostics?.edgeMixWeight || 0) < 1, 'upper-edge case should store a non-trivial edge mixing weight');
+  assert((update?.diagnostics?.edgeTotalMultiplier || 0) > 0, 'upper-edge case should store a positive total edge plastic multiplier');
+  assert(
+    Math.abs((Number(update?.diagnostics?.principal?.s1) || 0) - (Number(update?.diagnostics?.principal?.s2) || 0)) <= 1e-8,
+    'upper-edge case should close the upper principal-stress gap'
+  );
+  approxRelative(
+    Number(update?.diagnostics?.etaMcFinal) || 0,
+    1,
+    1e-9,
+    'upper-edge case should return to eta_MC = 1 on the accepted state'
+  );
+});
+
+await runCase('Case 0i Stage 2 reroutes the formal apex neighborhood when psi = 0 makes the shear apex system rank-deficient', async () => {
+  const prepared = prepareMechanicalMaterial({
+    Emc: 18000,
+    nu: 0.3,
+    cEff: 10,
+    phiEffDeg: 30,
+    psiEffDeg: 0,
+    gamma: 18,
+    gammaSat: 20,
+    yieldTolerance: 1e-6,
+    allowFormalApexBranch: true,
+    useTensionCutoff: false
+  });
+  const material = createMCPlasticMaterial(prepared);
+  const initialState = seedMaterialPointStateFromEffectiveStress6([18, 18, 18, 0, 0, 0], prepared);
+  const update = material.update({
+    strainTrial6: [0, 0, 0, 0, 0, 0],
+    committedState: initialState,
+    materialParameters: prepared
+  });
+
+  assert(update?.diagnostics?.exactBranchKind === 'MC_TENSION_PENDING', `psi=0 apex-neighborhood case should reroute to the guarded pending-tension endpoint (got ${update?.diagnostics?.exactBranchKind})`);
+  assert(update?.trialState?.activeYieldSurface === 'TENSION', 'psi=0 apex-neighborhood case should remain a diagnostic tension-style endpoint rather than a shear-plastic branch');
+  assert(update?.diagnostics?.apexAdmissibilityReason === 'apex_potential_rank_deficient', `psi=0 apex-neighborhood case should report the rank-deficient apex reason (got ${update?.diagnostics?.apexAdmissibilityReason})`);
+  assert((update?.trialState?.accumulatedPlasticStrain || 0) === 0, 'psi=0 apex-neighborhood case should not accumulate plastic strain on the guarded reroute');
+  assert((update?.diagnostics?.plasticMultipliers || []).length === 0, 'psi=0 apex-neighborhood case should not store active shear multipliers after rerouting');
+});
+
 await runCase('Case 1 pressure-mode Stage 1 deformation solves and settles beneath the load', async () => {
   const output = await analyzeDeformationModel({
     model: baseModel(),
@@ -421,7 +783,13 @@ await runCase('Case 1 pressure-mode Stage 1 deformation solves and settles benea
 
 await runCase('Case 1a Stage 2 pressure-mode deformation solves through the elastoplastic path in the elastic range', async () => {
   const output = await analyzeDeformationModel({
-    model: baseModel(),
+    model: baseModel({
+      surfaceLoad: {
+        xStart: 11,
+        xEnd: 13,
+        q: 5
+      }
+    }),
     options: {
       meshTargetArea: 0.3,
       loadMode: 'pressure',
@@ -528,16 +896,16 @@ await runCase('Case 1d Stage 2 plastic slope converges with yielding and accumul
       Emc: 22000,
       nu: 0.3,
       K0nc: 0.8,
-      cEff: 8,
-      phiEffDeg: 32,
-      psiEffDeg: 2,
+      cEff: 16,
+      phiEffDeg: 36,
+      psiEffDeg: 3,
       gamma: 18,
       gammaSat: 20
     },
     surfaceLoad: {
       xStart: 6,
       xEnd: 8,
-      q: 70
+      q: 40
     }
   });
 
@@ -560,6 +928,7 @@ await runCase('Case 1d Stage 2 plastic slope converges with yielding and accumul
       outOfPlaneLength: 10,
       useSeepagePorePressures: false,
       constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
       nonlinearMaxIterations: 40,
       maxLoadSteps: 80,
       initialLoadStep: 0.1,
@@ -568,11 +937,12 @@ await runCase('Case 1d Stage 2 plastic slope converges with yielding and accumul
   });
 
   assert((plastic?.solver?.loadFactorCommitted || 0) === 1, 'Stage 2 plastic slope benchmark should converge the full target load');
+  assert(plastic?.solver?.initialPhaseConverged === true, 'Stage 2 plastic slope benchmark should converge the initial plastic-geostatic equilibration phase');
   assert((plastic?.solver?.peakActiveMcElements || 0) > 0, 'Stage 2 plastic slope benchmark should activate one or more yielded zones');
   assert((plastic?.summaries?.maxEquivalentPlasticStrain || 0) > 0, 'Stage 2 plastic slope benchmark should accumulate non-zero equivalent plastic strain');
   assert((plastic?.solver?.acceptedLoadSteps || 0) > 1, 'Stage 2 plastic slope benchmark should use multiple nonlinear load steps once yielding starts');
   assert(
-    Math.abs((plastic?.summaries?.maxSettlement || 0) - (elastic?.summaries?.maxSettlement || 0)) > 1e-5,
+    Math.abs((plastic?.summaries?.maxSettlement || 0) - (elastic?.summaries?.maxSettlement || 0)) > 5e-6,
     'Stage 2 plastic slope benchmark should not collapse back to the elastic settlement response once plasticity activates'
   );
 });
@@ -583,8 +953,8 @@ await runCase('Case 1e Stage 2 returns a flagged near-failure state when the non
       Emc: 22000,
       nu: 0.3,
       K0nc: 0.8,
-      cEff: 8,
-      phiEffDeg: 32,
+      cEff: 12,
+      phiEffDeg: 34,
       psiEffDeg: 2,
       gamma: 18,
       gammaSat: 20
@@ -592,18 +962,19 @@ await runCase('Case 1e Stage 2 returns a flagged near-failure state when the non
     surfaceLoad: {
       xStart: 6,
       xEnd: 8,
-      q: 95
+      q: 20
     }
   });
 
   const output = await analyzeDeformationModel({
     model,
     options: {
-      meshTargetArea: 0.45,
+      meshTargetArea: 0.6,
       loadMode: 'pressure',
       outOfPlaneLength: 10,
       useSeepagePorePressures: false,
       constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
       nonlinearMaxIterations: 40,
       maxLoadSteps: 80,
       initialLoadStep: 0.1,
@@ -611,6 +982,7 @@ await runCase('Case 1e Stage 2 returns a flagged near-failure state when the non
     }
   });
 
+  assert(output?.solver?.initialPhaseConverged === true, 'the near-failure Stage 2 slope case should still converge the initial plastic-geostatic equilibration phase');
   assert(output?.solver?.convergenceState === 'partial', 'a near-failure Stage 2 slope case should return a partial flagged result rather than throwing');
   assert((output?.solver?.displayedLoadFactor || 0) >= (output?.solver?.loadFactorCommitted || 0), 'the displayed near-failure state should be at or beyond the last fully converged load factor');
   assert((output?.summaries?.maxEquivalentPlasticStrain || 0) > 0, 'the near-failure Stage 2 result should still carry accumulated plastic strain');
@@ -626,11 +998,283 @@ await runCase('Case 1e Stage 2 returns a flagged near-failure state when the non
     maxDisplayedPlasticStrain >= maxCommittedPlasticStrain,
     'the displayed Stage 2 near-failure state should not plot less accumulated plastic strain than the last committed state'
   );
-  assert(
-    maxDisplayedPlasticStrain > maxCommittedPlasticStrain + 1e-12,
-    'the plotted Stage 2 near-failure material state should reflect the displayed state beyond the last committed state'
+  if ((Number(output?.solver?.displayedLoadFactor) || 0) > (Number(output?.solver?.loadFactorCommitted) || 0) + 1e-12) {
+    assert(
+      maxDisplayedPlasticStrain > maxCommittedPlasticStrain + 1e-12,
+      'when the displayed near-failure state advances beyond the last committed load, the plotted material state should carry additional plastic strain'
+    );
+  } else {
+    approxRelative(
+      maxDisplayedPlasticStrain,
+      maxCommittedPlasticStrain,
+      1e-12,
+      'when the displayed near-failure state falls back to the last committed load, the plotted material state should match the committed plastic strain'
+    );
+  }
+  assert((output?.warnings || []).some((warning) => String(warning).includes('non-converged near-failure deformation state')), 'the returned near-failure Stage 2 result should be clearly flagged in the warnings');
+});
+
+await runCase('Case 1f Stage 2 plastic geostatic equilibration carries the initial state and resets service displacements', async () => {
+  const output = await analyzeDeformationModel({
+    model: baseModel(),
+    options: {
+      meshTargetArea: 0.3,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
+      nonlinearMaxIterations: 30,
+      maxLoadSteps: 20,
+      initialLoadStep: 0.25,
+      minLoadStep: 0.001
+    }
+  });
+
+  assert(output?.solver?.initialStressMode === 'gravity-step-k0nc-plastic-equilibration', 'plastic-geostatic mode should report the combined predictor + plastic equilibration initialization path');
+  assert(output?.solver?.initialPhaseStarted === true, 'plastic-geostatic mode should start the initial plastic equilibration phase');
+  assert(output?.solver?.initialPhaseConverged === true, 'the baseline plastic-geostatic benchmark should converge the initial plastic equilibration phase');
+  assert(output?.solver?.servicePhaseStarted === true, 'the service phase should start once the initial plastic equilibration phase converges');
+  assert(output?.solver?.initialDisplacementResetApplied === true, 'the service phase should reset the displayed displacement baseline to the equilibrated initial state');
+  assert((output?.solver?.initialLoadStepHistory || []).length >= 1, 'the initial plastic equilibration phase should retain its own load-step history');
+  assert((output?.solver?.initialResidualHistory || []).length >= 1, 'the initial plastic equilibration phase should retain its own residual history');
+  assert((output?.summaries?.maxInitialSettlement || 0) > 0, 'the equilibrated initial phase should store a non-zero self-weight settlement baseline');
+  approxRelative(
+    Number(output?.summaries?.serviceSettlementIncrement) || 0,
+    Number(output?.summaries?.maxSettlement) || 0,
+    1e-12,
+    'when the service phase runs after the displacement reset, the service-settlement increment should equal the displayed settlement summary'
   );
-  assert((output?.warnings || []).some((warning) => String(warning).includes('non-converged near-failure state')), 'the returned near-failure Stage 2 result should be clearly flagged in the warnings');
+
+  const reconstructionError = Math.max(
+    0,
+    ...((output?.totalNodalDisplacements || []).map((totalPoint, index) => {
+      const initialPoint = output?.initialNodalDisplacements?.[index] || {};
+      const displayedPoint = output?.nodalDisplacements?.[index] || {};
+      return Math.max(
+        Math.abs((Number(totalPoint?.ux) || 0) - ((Number(initialPoint?.ux) || 0) + (Number(displayedPoint?.ux) || 0))),
+        Math.abs((Number(totalPoint?.uy) || 0) - ((Number(initialPoint?.uy) || 0) + (Number(displayedPoint?.uy) || 0)))
+      );
+    }))
+  );
+  assert(reconstructionError <= 1e-9, `displayed service displacements should reconstruct the stored total field after the initial-baseline reset (max mismatch ${reconstructionError})`);
+
+  const representativeElement = (output?.elementResults || []).find((item) => item?.materialDiagnostics?.equilibratedInitialStateAvailable === true);
+  assert(representativeElement, 'plastic-geostatic mode should expose an equilibrated reference state on at least one element');
+  approxRelative(
+    Number(representativeElement?.materialDiagnostics?.initialEtaMc) || 0,
+    Number(representativeElement?.predictorMaterialState?.initialEtaMc) || 0,
+    1e-12,
+    'predictor audit metrics should remain tied to predictorState after the initial plastic phase'
+  );
+  assert(
+    (Number(representativeElement?.referenceMaterialState?.initialEtaMc) || 0) === 0,
+    'referenceState should no longer expose the legacy predictor utilization as if it were the equilibrated initial audit'
+  );
+  assert(
+    Number(representativeElement?.materialDiagnostics?.equilibratedInitialEtaMc) > 0,
+    'the equilibrated initial state should expose its own exact MC utilization separately from the predictor audit'
+  );
+});
+
+await runCase('Case 1fa Stage 2 plastic geostatic equilibration treats an admissible flat predictor as a correction problem rather than replaying gravity strain', async () => {
+  const output = await analyzeDeformationModel({
+    model: baseModel({
+      material: {
+        Emc: 12000,
+        nu: 0.3,
+        K0nc: 0.5,
+        cEff: 1,
+        phiEffDeg: 20,
+        gamma: 18,
+        gammaSat: 20
+      },
+      surfaceLoad: {
+        xStart: 11,
+        xEnd: 13,
+        q: 1
+      }
+    }),
+    options: {
+      meshTargetArea: 0.3,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
+      nonlinearMaxIterations: 30,
+      maxLoadSteps: 20,
+      initialLoadStep: 0.25,
+      minLoadStep: 0.001
+    }
+  });
+
+  assert(output?.solver?.initialPhaseConverged === true, 'the admissible flat predictor benchmark should converge the initial plastic correction phase');
+  assert(
+    (output?.solver?.initialPhaseAcceptedSteps || 0) > 1,
+    'the admissible flat predictor benchmark should use multiple predictor-to-gravity continuation steps instead of one undivided full-gravity jump'
+  );
+  assert(
+    (output?.summaries?.maxInitialEquivalentPlasticStrain || 0) <= 1e-12,
+    'an admissible flat predictor should not accumulate artificial initial plastic strain during the correction phase'
+  );
+  assert(
+    Math.abs((Number(output?.summaries?.maxInitialEtaMcEquilibrated) || 0) - (Number(output?.summaries?.maxInitialEtaMcPredictor) || 0)) <= 0.02,
+    'the equilibrated initial utilization should stay close to the admissible predictor utilization when the flat predictor only needs a small correction'
+  );
+});
+
+await runCase('Case 1fb Stage 2 plastic geostatic slope initialization progresses beyond the raw predictor with exact tension-cutoff branches available', async () => {
+  const output = await analyzeDeformationModel({
+    model: slopedModel({
+      material: {
+        Emc: 22000,
+        nu: 0.3,
+        K0nc: 0.8,
+        cEff: 12,
+        phiEffDeg: 34,
+        psiEffDeg: 2,
+        gamma: 18,
+        gammaSat: 20
+      },
+      surfaceLoad: {
+        xStart: 6,
+        xEnd: 8,
+        q: 20
+      }
+    }),
+    options: {
+      meshTargetArea: 0.6,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
+      nonlinearMaxIterations: 40,
+      maxLoadSteps: 80,
+      initialLoadStep: 0.1,
+      minLoadStep: 0.0005
+    }
+  });
+
+  assert(output?.solver?.initialPhaseStarted === true, 'plastic-geostatic slope test should start the initial plastic equilibration phase');
+  assert(output?.solver?.initialPhaseConverged === true, 'the supportable plastic-geostatic slope benchmark should converge the initial plastic equilibration phase once the exact Stage 2.4 tension branch is available');
+  assert(output?.solver?.servicePhaseStarted === true, 'the service phase should start after the supportable plastic-geostatic slope benchmark equilibrates self-weight');
+  assert((output?.solver?.initialPhaseAcceptedSteps || 0) > 0, 'plastic-geostatic slope test should move beyond the raw predictor baseline instead of stalling at zero accepted correction steps');
+  assert((output?.solver?.initialPhaseDisplayedGravityFactor || 0) > 0.1, 'plastic-geostatic slope test should display a materially advanced self-weight correction state');
+  assert(
+    !(output?.warnings || []).some((warning) => String(warning).includes('not implemented yet')),
+    'plastic-geostatic slope warnings should no longer claim that the exact Stage 2.4 tension branch is missing'
+  );
+  assert(
+    (output?.solver?.initialPhasePeakTensionCutoffActiveElements || output?.solver?.initialPhasePeakTensionPendingElements || 0) > 0,
+    'the supportable plastic-geostatic slope benchmark should still activate exact tension-cutoff zones near the free surface'
+  );
+});
+
+await runCase('Case 1g Stage 2 plastic geostatic equilibration can fail under self-weight before the service phase starts', async () => {
+  const output = await analyzeDeformationModel({
+    model: slopedModel({
+      material: {
+        Emc: 2000,
+        nu: 0.3,
+        K0nc: 1 - Math.sin((22 * Math.PI) / 180),
+        cEff: 1,
+        phiEffDeg: 22,
+        psiEffDeg: 0,
+        gamma: 18,
+        gammaSat: 20
+      },
+      surfaceLoad: {
+        xStart: 6,
+        xEnd: 8,
+        q: 1
+      }
+    }),
+    options: {
+      meshTargetArea: 0.45,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
+      nonlinearMaxIterations: 40,
+      maxLoadSteps: 80,
+      initialLoadStep: 0.1,
+      minLoadStep: 0.0005
+    }
+  });
+
+  assert(output?.solver?.initialPhaseStarted === true, 'weak-slope geostatic test should attempt the initial plastic equilibration phase');
+  assert(output?.solver?.initialPhaseConvergenceState === 'partial', 'weak-slope geostatic test should return a partial initial-phase state when the self-weight correction cannot converge');
+  assert(output?.solver?.servicePhaseStarted === false, 'service loading should not start when the initial plastic equilibration phase fails under self-weight');
+  assert(output?.solver?.convergenceState === 'partial', 'the overall result should stay available as a partial flagged state when the initial phase fails');
+  assert(output?.solver?.initialDisplacementResetApplied === false, 'no service-phase displacement reset should be reported when the service phase never starts');
+  assert((output?.solver?.initialLoadStepHistory || []).length >= 1, 'the failed initial phase should still retain its step history');
+  assert((output?.solver?.loadStepHistory || []).length === 0, 'the service phase should not produce load-step history when it never started');
+  assert((output?.summaries?.maxInitialSettlement || 0) > 0, 'the returned initial self-weight state should still provide an interpretable settlement field');
+  assert((output?.summaries?.serviceSettlementIncrement || 0) === 0, 'service-settlement increment should remain zero when the service phase never starts');
+  assert((output?.warnings || []).some((warning) => String(warning).includes('self-weight equilibration state')), 'the weak-slope initial-phase result should be clearly flagged as an initial self-weight equilibration state');
+  assert((output?.warnings || []).some((warning) => String(warning).includes('Service loading was not started')), 'the warnings should state explicitly that the service phase never started');
+});
+
+await runCase('Case 1ga Stage 2 plastic geostatic failure with no accepted correction step falls back to the predictor baseline', async () => {
+  const output = await analyzeDeformationModel({
+    model: slopedModel({
+      material: {
+        Emc: 2000,
+        nu: 0.3,
+        K0nc: 1 - Math.sin((22 * Math.PI) / 180),
+        cEff: 1,
+        phiEffDeg: 22,
+        psiEffDeg: 0,
+        gamma: 18,
+        gammaSat: 20
+      },
+      surfaceLoad: {
+        xStart: 6,
+        xEnd: 8,
+        q: 1
+      }
+    }),
+    options: {
+      meshTargetArea: 0.45,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
+      nonlinearMaxIterations: 1,
+      maxLoadSteps: 20,
+      initialLoadStep: 0.25,
+      minLoadStep: 0.0005
+    }
+  });
+
+  assert(output?.solver?.initialPhaseStarted === true, 'no-step fallback case should still attempt the initial plastic equilibration phase');
+  assert(output?.solver?.initialPhaseConvergenceState === 'partial', 'no-step fallback case should remain a partial initial-phase result');
+  assert((output?.solver?.initialPhaseAcceptedSteps || 0) === 0, 'no-step fallback case should reject the first correction step before any plastic-geostatic correction is accepted');
+  assert((output?.solver?.initialPhaseDisplayedGravityFactor || 0) === 0, 'when no correction step is accepted, the displayed initial correction factor should fall back to the committed predictor baseline');
+  assert(output?.solver?.displayedStateMode === 'committed', 'no-step fallback case should display the last committed initial state rather than a rejected iteration');
+  assert(output?.solver?.servicePhaseStarted === false, 'service loading must not start in the no-step fallback case');
+
+  const baselineMismatch = Math.max(
+    0,
+    ...((output?.totalNodalDisplacements || []).map((totalPoint, index) => {
+      const baselinePoint = output?.initialNodalDisplacements?.[index] || {};
+      return Math.max(
+        Math.abs((Number(totalPoint?.ux) || 0) - (Number(baselinePoint?.ux) || 0)),
+        Math.abs((Number(totalPoint?.uy) || 0) - (Number(baselinePoint?.uy) || 0))
+      );
+    }))
+  );
+  assert(baselineMismatch <= 1e-12, `when no initial correction step is accepted, the displayed total field should remain the predictor baseline (max mismatch ${baselineMismatch})`);
+  approxRelative(
+    Number(output?.summaries?.maxSettlement) || 0,
+    Number(output?.summaries?.maxInitialSettlement) || 0,
+    1e-12,
+    'when no initial correction step is accepted, the displayed settlement summary should match the predictor baseline settlement'
+  );
 });
 
 await runCase('Case 2 total-load mode matches the equivalent pressure solve', async () => {

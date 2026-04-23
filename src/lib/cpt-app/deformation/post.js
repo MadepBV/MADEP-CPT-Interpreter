@@ -151,9 +151,14 @@ export function mohrCoulombIndicator(principal, material) {
   const c = Math.max(Number(material?.cEff) || 0, 0);
   const s1 = Number(principal?.s1) || 0;
   const s3 = Number(principal?.s3) || 0;
-  const sigmaTAllow = Math.max(Number(material?.sigmaTAllow) || 0, 0);
+  const tanPhi = Math.tan(phi);
+  const sigmaTRaw = Math.max(Number(material?.sigmaTAllow) || 0, 0);
+  const sigmaTAllow = Math.min(sigmaTRaw, Math.abs(tanPhi) > 1e-12 ? Math.max(c / tanPhi, 0) : Number.POSITIVE_INFINITY);
+  const tensionTolerance = Number.isFinite(Number(material?.yieldTolerance)) && Number(material?.yieldTolerance) > 0
+    ? Number(material.yieldTolerance)
+    : Math.max(1e-8 * Math.max(Math.abs(s1), Math.abs(s3), c, 100), 1e-9);
 
-  if (s3 < -sigmaTAllow) {
+  if (s3 <= -sigmaTAllow + tensionTolerance) {
     return {
       F: Number.POSITIVE_INFINITY,
       eta: Number.POSITIVE_INFINITY,

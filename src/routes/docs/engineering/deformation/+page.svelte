@@ -4,7 +4,7 @@
 
 	const pageTitle = 'Deformation Analysis — MADEP CPT Interpreter';
 	const pageDescription =
-		'Full technical engineering chapter for the Stage 6 deformation analysis: scope, finite-element theory, geostatic initialization, Mohr-Coulomb theory, Stage 1 and exact Stage 2 constitutive routes, nonlinear solver architecture, outputs, corrections, limitations, and references.';
+		'Full technical engineering chapter for the Stage 6 deformation analysis: plane-strain finite-element theory, geostatic initialization, exact Mohr-Coulomb elastoplasticity with tension cut-off, solver architecture, outputs, verification, limitations, and references.';
 	const canonicalUrl = 'https://cpt.madep.be/docs/engineering/deformation';
 	const ogImageUrl = 'https://cpt.madep.be/logo.png';
 </script>
@@ -41,10 +41,12 @@
 			<h1>Stage 6 deformation analysis.</h1>
 			<p class="hero__lead">
 				The deformation module is the mechanical finite-element branch of the Stage 6 section
-				model. It combines a linear geostatic preparation step with a plane-strain load solve,
-				offers multiple constitutive routes from linear elastic through Stage 1 pseudo-plasticity
-				to exact Stage 2 shear elastoplasticity, and exposes displacement, strain, stress,
-				utilization, and plastic-strain fields on the shared mesh.
+				model. It combines a geostatic predictor, an optional plastic self-weight equilibration
+				phase, and a drained plane-strain service-load solve on the shared T3 mesh. The shipped
+				constitutive hierarchy spans linear elasticity, Stage 1 reduced-stiffness screening, and
+				an exact Stage 2 Mohr-Coulomb elastoplastic route with face, edge, apex, and tension
+				cut-off branch handling in principal effective stress space. Displacement, stress,
+				utilization, and plastic-history fields are exposed on the solved section.
 			</p>
 		</div>
 	</header>
@@ -74,28 +76,26 @@
 				<p class="section-label">Scope and positioning</p>
 				<h2>1. Problem class, public purpose, and non-scope</h2>
 				<p>
-					The public deformation route is a <strong>small-strain plane-strain finite-element
+					The deformation route is a <strong>small-strain plane-strain finite-element
 					analysis</strong> on the shared Stage 6 cross-section. Its intended engineering use is
-					settlement screening, displacement-field interpretation, stress redistribution,
-					strain-localization inspection, and diagnosis of the onset of Mohr-Coulomb yielding or
-					plasticity beneath a terrain load interval.
+					drained settlement assessment, displacement-field interpretation, stress
+					redistribution, localization diagnostics, and evaluation of elastoplastic response
+					under self-weight and service loading.
 				</p>
 				<div class="doc-callout">
-					<strong>Public model class.</strong> This is a section-based mechanical screening tool.
-					It is not a full three-dimensional foundation analysis, not a large-deformation or
-					updated-Lagrangian algorithm, not a coupled consolidation analysis, and not yet an exact
-					classical face-edge-apex Mohr-Coulomb plasticity implementation.
+					<strong>Model class.</strong> The implemented route is a drained section-based
+					mechanical analysis. It is not a full three-dimensional foundation model, not a
+					large-deformation or updated-Lagrangian formulation, and not a coupled
+					consolidation analysis.
 				</div>
 				<p>
-					The development path matters. The deformation route began as an elastic Mohr-Coulomb
-					screening tool, evolved into a Stage 1 reduced-stiffness pseudo-plastic route, and now
-					ships with a Stage 2 <strong>exact shear elastoplastic</strong> constitutive option as the
-					default solver. The documentation below therefore distinguishes carefully between:
+					The implementation contains three constitutive levels with different mathematical
+					status and different engineering interpretation:
 				</p>
 				<ul class="notes">
-					<li><strong>underlying theory</strong>,</li>
-					<li><strong>current shipped implementation</strong>, and</li>
-					<li><strong>planned but not yet shipped exact Mohr-Coulomb extensions</strong>.</li>
+					<li><strong>linear elasticity</strong> as the baseline regression path,</li>
+					<li><strong>Stage 1 reduced stiffness</strong> as a conservative pseudo-plastic screen,</li>
+					<li><strong>Stage 2 exact Mohr-Coulomb elastoplasticity</strong> as the current reference constitutive route.</li>
 				</ul>
 				<div class="symbols">
 					<div class="symbols__title">Primary field quantities</div>
@@ -638,15 +638,15 @@
 
 			<section id="initial" class="doc-card">
 				<p class="section-label">Initial stress state</p>
-				<h2>6. Geostatic gravity turn-on, pore pressure, and K<sub>0,nc</sub> confinement</h2>
+				<h2>6. Geostatic predictor, plastic self-weight equilibration, pore pressure, and K<sub>0,nc</sub> confinement</h2>
 
 				<section class="doc-subsection">
-					<h3>6.1 Linear gravity turn-on</h3>
+					<h3>6.1 Linear gravity predictor</h3>
 					<p>
-						The initial stress field is obtained from a <strong>linear elastic gravity solve</strong>
+						The initial route always begins with a <strong>linear elastic gravity predictor</strong>
 						on the same mesh and the same support set used by the subsequent deformation analysis.
-						This is deliberate: geostatic preparation remains linear, while yielding and plasticity
-						belong to the later load solve.
+						This predictor provides a geometry-aware vertical stress and initial shear field and
+						forms the starting point for both shipped initial-stress modes.
 					</p>
 					<div class="equations">
 						<div class="formula">K u<sub>geo</sub> = F<sub>g</sub></div>
@@ -679,12 +679,15 @@
 					</div>
 					<p>
 						This gives a geometry-driven total stress state including non-zero initial shear stress
-						on slopes and near geometry breaks.
+						on slopes and near geometry breaks. In the fast mode, that predictor is used directly
+						after K<sub>0,nc</sub>-based confinement reconstruction. In the exact Stage 2
+						initial-phase mode, it becomes the starting guess for the later plastic self-weight
+						equilibration phase.
 					</p>
 				</section>
 
 				<section class="doc-subsection">
-					<h3>6.2 Effective stress reconstruction</h3>
+					<h3>6.2 Effective stress reconstruction and K<sub>0,nc</sub> predictor state</h3>
 					<p>
 						After the gravity step, pore pressure is subtracted from the normal total stress
 						components only:
@@ -715,10 +718,74 @@
 						σ′<sub>xx</sub>, σ′<sub>yy</sub>, and τ<sub>xy</sub> were not sufficient for a
 						reliable plane-strain Mohr-Coulomb route.
 					</p>
+					<p>
+						The shipped predictor then reconstructs the in-situ normal confinement with the
+						interpreted at-rest ratio rather than letting elastic Poisson coupling define the
+						initial lateral stress state:
+					</p>
+					<div class="equations">
+						<div class="formula">σ′<sub>yy,0</sub> = σ<sub>yy,total,gravity</sub> − u<sub>0</sub></div>
+						<div class="formula">σ′<sub>xx,0</sub> = K<sub>0,nc</sub> σ′<sub>yy,0</sub></div>
+						<div class="formula">σ′<sub>zz,0</sub> = K<sub>0,nc</sub> σ′<sub>yy,0</sub></div>
+						<div class="formula">τ′<sub>xy,0</sub> = τ<sub>xy,total,gravity</sub></div>
+					</div>
+					<p>
+						So the current predictor preserves geometry-driven shear stress but forces the normal
+						in-situ confinement back to the interpreted K<sub>0,nc</sub> state. This is the
+						deliberate engineering distinction between <strong>in-situ confinement</strong> and
+						<strong>elastic stiffness</strong>.
+					</p>
 				</section>
 
 				<section class="doc-subsection">
-					<h3>6.3 K<sub>0,nc</sub> controls initial confinement, not ν</h3>
+					<h3>6.3 Optional plastic self-weight equilibration</h3>
+					<p>
+						When the deformation workspace is run in the <strong>plastic geostatic
+						equilibration</strong> mode, the predictor state above is not yet accepted as the
+						final initial condition. Instead, it becomes the starting point for a full Stage 2
+						self-weight equilibrium correction under exact Mohr-Coulomb elastoplasticity.
+					</p>
+					<div class="equations">
+						<div class="formula">R<sub>0b</sub>(Δu) = F<sub>g</sub> − F<sub>int</sub>(σ′<sub>pred</sub> + Δσ′(Δu, history)) = 0</div>
+						<div class="formula">Δε = B Δu</div>
+						<div class="formula">u<sub>total</sub> = u<sub>pred</sub> + Δu</div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>R<sub>0b</sub></dt>
+								<dd>initial plastic self-weight correction residual vector [kN/m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>F<sub>int</sub></dt>
+								<dd>internal force vector assembled from the current exact constitutive stress state [kN/m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>σ′<sub>pred</sub></dt>
+								<dd>effective predictor stress state obtained from the gravity-step-plus-K<sub>0,nc</sub> reconstruction [kPa]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>Δu</dt>
+								<dd>predictor-relative correction displacement field [m]</dd>
+							</div>
+						</dl>
+					</div>
+					<p>
+						This phase is a <strong>predictor-correction problem</strong>, not a fresh loading
+						from a stress-free state and not a replay of the gravity-step displacement field.
+						The constitutive update sees the incremental strain operator
+						<em>B Δu</em> around the seeded predictor stress state. That distinction is required
+						to prevent double-counting of the gravity strain field.
+					</p>
+					<ul class="notes">
+						<li>If the correction converges, the equilibrated stress and plastic state become the constitutive reference state for the service phase.</li>
+						<li>If the correction does not converge, the service phase is not started and the reported state remains the last accepted self-weight state.</li>
+					</ul>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>6.4 K<sub>0,nc</sub> controls initial confinement, not ν</h3>
 					<p>
 						The present public route makes a strict conceptual distinction:
 					</p>
@@ -734,7 +801,26 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>6.4 Flat K<sub>0</sub> fallback</h3>
+					<h3>6.5 Displacement reset between the initial phase and service phase</h3>
+					<p>
+						If the plastic self-weight equilibration phase converges, the later service-load phase
+						keeps the equilibrated stress state and plastic history but resets the displacement
+						baseline for reported contour quantities. This matches the standard staged-analysis
+						engineering reading used in commercial FEM workflows.
+					</p>
+					<div class="equations">
+						<div class="formula">u<sub>displayed</sub> = u<sub>total</sub> − u<sub>0</sub></div>
+					</div>
+					<p>
+						So the default deformation contours and settlement values still represent the
+						<strong>service-load increment</strong>, not the sum of self-weight settlement and
+						service settlement. The total and initial displacement fields are retained internally
+						for diagnostics and reconstruction.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>6.6 Flat K<sub>0</sub> fallback</h3>
 					<p>
 						If the gravity step fails numerically, the solver falls back to a flat-ground
 						K<sub>0</sub> reconstruction. That fallback still constructs the total stress state
@@ -779,7 +865,7 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>6.5 Effective stress and load increment</h3>
+					<h3>6.7 Effective stress and load increment</h3>
 					<p>
 						The FE solve returns an incremental stress field in the solver sign convention. For
 						public engineering interpretation, the increment is converted back to geotechnical
@@ -858,39 +944,31 @@
 				<section class="doc-subsection">
 					<h3>7.2 Principal stress evaluation</h3>
 					<p>
-						For the in-plane stress pair:
+						The constitutive algorithm works with the full compression-positive effective stress
+						tensor in plane strain:
 					</p>
 					<div class="equations">
-						<div class="formula">p = (σ′<sub>xx</sub> + σ′<sub>yy</sub>) / 2</div>
-						<div class="formula">r = √(((σ′<sub>xx</sub> − σ′<sub>yy</sub>) / 2)² + τ′<sub>xy</sub>²)</div>
-						<div class="formula">σ′<sub>1</sub> = p + r</div>
-						<div class="formula">σ′<sub>3</sub> = p − r</div>
+						<div class="formula">σ′ = Σ<sub>i=1</sub><sup>3</sup> σ′<sub>i</sub> P<sub>i</sub></div>
+						<div class="formula">σ′<sub>1</sub> ≥ σ′<sub>2</sub> ≥ σ′<sub>3</sub></div>
+						<div class="formula">P<sub>i</sub> P<sub>j</sub> = δ<sub>ij</sub> P<sub>i</sub>, &nbsp; Σ<sub>i=1</sub><sup>3</sup> P<sub>i</sub> = I</div>
 					</div>
 					<div class="symbols">
 						<div class="symbols__title">Notation</div>
 						<dl class="symbols__list">
 							<div class="symbols__row">
-								<dt>σ′<sub>xx</sub>, σ′<sub>yy</sub>, τ′<sub>xy</sub></dt>
-								<dd>in-plane effective normal and shear stresses [kPa]</dd>
+								<dt>σ′<sub>i</sub></dt>
+								<dd>ordered effective principal stresses [kPa]</dd>
 							</div>
 							<div class="symbols__row">
-								<dt>p</dt>
-								<dd>mean in-plane effective stress used in the two-dimensional principal-stress reduction [kPa]</dd>
-							</div>
-							<div class="symbols__row">
-								<dt>r</dt>
-								<dd>in-plane Mohr-circle radius [kPa]</dd>
-							</div>
-							<div class="symbols__row">
-								<dt>σ′<sub>1</sub>, σ′<sub>3</sub></dt>
-								<dd>major and minor effective principal stresses [kPa]</dd>
+								<dt>P<sub>i</sub></dt>
+								<dd>spectral projectors of the effective stress tensor [-]</dd>
 							</div>
 						</dl>
 					</div>
 					<p>
-						The Stage 2 constitutive route itself uses the full six-component stress state in
-						principal-stress evaluation. The simpler in-plane pair remains relevant for some
-						screening and plotting interpretations.
+						The full three-principal representation is required because the plane-strain
+						constitutive state still carries an out-of-plane stress component and the exact
+						Mohr-Coulomb active-set return is formulated in principal effective stress space.
 					</p>
 				</section>
 
@@ -934,12 +1012,13 @@
 				<section class="doc-subsection">
 					<h3>7.4 Tension cut-off</h3>
 					<p>
-						Classical Mohr-Coulomb can imply a tensile capacity that is unrealistic for soils.
-						The natural diagnostic tension-cutoff condition is therefore:
+						Classical Mohr-Coulomb can imply an unrealistic effective tensile capacity. The
+						exact Stage 2 route therefore includes the optional tension cut-off:
 					</p>
 					<div class="equations">
 						<div class="formula">f<sub>t</sub> = −σ′<sub>3</sub> − σ<sub>t</sub> ≤ 0</div>
-						<div class="formula">σ<sub>t</sub> = 0 for zero tensile strength</div>
+						<div class="formula">σ<sub>t</sub> = 0 &nbsp; for zero tensile strength</div>
+						<div class="formula">σ<sub>t</sub> ≤ c′ / tan φ′</div>
 					</div>
 					<div class="symbols">
 						<div class="symbols__title">Notation</div>
@@ -954,17 +1033,22 @@
 							</div>
 							<div class="symbols__row">
 								<dt>σ<sub>t</sub></dt>
-								<dd>allowed tensile stress, commonly zero for soil [kPa]</dd>
+								<dd>allowed tensile effective stress, commonly zero for soil [kPa]</dd>
 							</div>
 						</dl>
 					</div>
 					<p>
-						In the current public solver, tension cut-off is treated differently by route:
+						The exact constitutive implementation uses one physical tension surface only:
 					</p>
-					<ul class="notes">
-						<li>In Stage 1 it is <strong>diagnostic-only</strong>; it does not activate the reduced-shear branch.</li>
-						<li>In Stage 2 it remains part of the engineering interpretation boundary, but exact multisurface tension plasticity is not yet exposed as a separate public active yield surface.</li>
-					</ul>
+					<div class="equations">
+						<div class="formula">T3 : −σ′<sub>3</sub> − σ<sub>t</sub> = 0</div>
+					</div>
+					<p>
+						In Stage 1 this condition remains diagnostic-only. In Stage 2 it is now part of the
+						exact active-set elastoplastic return. Tension-governed accepted states are reported
+						with active yield surface <strong>TENSION</strong>; the app does not reinterpret those
+						zones as ordinary finite shear-utilization states.
+					</p>
 				</section>
 			</section>
 
@@ -1090,8 +1174,9 @@
 					</p>
 					<div class="equations">
 						<div class="formula">σ′<sub>trial</sub> = σ′<sub>n</sub> + D<sup>e</sup> Δε</div>
-						<div class="formula">if f(σ′<sub>trial</sub>) ≤ 0 → elastic update</div>
-						<div class="formula">if f(σ′<sub>trial</sub>) &gt; 0 → plastic correction and tangent update</div>
+						<div class="formula">σ′<sub>n+1</sub> = σ′<sub>trial</sub> − D<sup>e</sup> Σ<sub>i∈A</sub> Δλ<sub>i</sub> m<sub>i</sub></div>
+						<div class="formula">f<sub>i</sub>(σ′<sub>n+1</sub>) = 0 &nbsp; for every active surface i ∈ A</div>
+						<div class="formula">H<sub>ij</sub> = n<sub>i</sub><sup>T</sup> D<sub>n</sub> m<sub>j</sub></div>
 					</div>
 					<div class="symbols">
 						<div class="symbols__title">Notation</div>
@@ -1113,20 +1198,62 @@
 								<dd>total strain increment [-]</dd>
 							</div>
 							<div class="symbols__row">
-								<dt>f</dt>
-								<dd>yield function value used for the admissibility check [kPa]</dd>
+								<dt>A</dt>
+								<dd>active set of yield surfaces for the accepted branch [-]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>n<sub>i</sub>, m<sub>i</sub></dt>
+								<dd>yield and potential gradients in principal stress space for active surface i [-]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>H</dt>
+								<dd>local active-set coupling matrix used to solve the plastic multipliers [-]</dd>
 							</div>
 						</dl>
 					</div>
 					<p>
-						In the current public Stage 2 route, this is implemented as an exact Mohr-Coulomb
-						shear return in principal stress space, with active-set promotion from face to edge
-						where required. Tension-cutoff plasticity remains a later constitutive stage.
+						The shipped Stage 2 route uses an exact nonsmooth multisurface return in principal
+						effective stress space. The accepted branch may be a shear face, a repeated-eigenvalue
+						shear edge, the formal shear apex, a tension face, a mixed shear-tension branch, or
+						the triple tension point.
 					</p>
 				</section>
 
 				<section class="doc-subsection">
-					<h3>8.5 Equivalent plastic strain diagnostic</h3>
+					<h3>8.5 Exact Stage 2 branch structure</h3>
+					<p>
+						The present implementation exposes the following exact Stage 2 branch families:
+					</p>
+					<ul class="notes">
+						<li><strong>MC face</strong>: single active shear surface.</li>
+						<li><strong>MC edge</strong>: two active shear surfaces with repeated principal stresses.</li>
+						<li><strong>MC apex</strong>: formal triple-shear branch where admissible.</li>
+						<li><strong>Tension face</strong>: single active cut-off surface T3.</li>
+						<li><strong>Mixed shear-tension</strong>: active set &#123;F13, T3&#125;.</li>
+						<li><strong>Tension apex</strong>: hydrostatic cut-off point with σ′<sub>1</sub> = σ′<sub>2</sub> = σ′<sub>3</sub> = −σ<sub>t</sub>.</li>
+					</ul>
+					<p>
+						Repeated-eigenvalue branches are solved with representative principal-space normals
+						and flow directions rather than by reusing the distinct-stress formulas unchanged.
+						This is required for projector stability and exact branch closure near
+						σ′<sub>1</sub> = σ′<sub>2</sub> or σ′<sub>2</sub> = σ′<sub>3</sub>.
+					</p>
+					<div class="equations">
+						<div class="formula">n<sub>t,23</sub> = m<sub>t,23</sub> = [0, −1/2, −1/2]</div>
+						<div class="formula">n<sub>t,123</sub> = m<sub>t,123</sub> = [−1/3, −1/3, −1/3]</div>
+						<div class="formula">n<sub>s,23</sub> = [1 − sinφ′, −(1 + sinφ′)/2, −(1 + sinφ′)/2]</div>
+						<div class="formula">m<sub>s,23</sub> = [1 − sinψ, −(1 + sinψ)/2, −(1 + sinψ)/2]</div>
+						<div class="formula">n<sub>s,12</sub> = [(1 − sinφ′)/2, (1 − sinφ′)/2, −(1 + sinφ′)]</div>
+						<div class="formula">m<sub>s,12</sub> = [(1 − sinψ)/2, (1 − sinψ)/2, −(1 + sinψ)]</div>
+					</div>
+					<p>
+						The mixed repeated shear-tension corners use branch-specific representative shear
+						gradients in the repeated subspace; they are not treated as ad hoc stress clipping.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>8.6 Equivalent plastic strain diagnostic</h3>
 					<p>
 						The public route reports an accumulated equivalent plastic strain for visualization
 						and interpretation:
@@ -1227,29 +1354,31 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>9.3 Stage 2 exact shear elastoplasticity</h3>
+					<h3>9.3 Stage 2 exact Mohr-Coulomb elastoplasticity</h3>
 					<p>
-						Stage 2 is the current public default and the first exact shear-plastic route:
+						Stage 2 is the current public default and the exact elastoplastic constitutive route:
 					</p>
 					<ul class="notes">
 						<li>It stores material-point plastic strain.</li>
-						<li>It uses a local active-set return in principal stress space for the Mohr-Coulomb shear surface.</li>
+						<li>It uses a local active-set return in principal effective stress space.</li>
 						<li>It supports non-associated flow through ψ.</li>
+						<li>It supports shear face, edge, apex, tension-face, mixed shear-tension, and triple tension-point branches.</li>
 						<li>It returns the current elastoplastic tangent, with the default global solve using the symmetrized form for robustness unless the optional unsymmetric path is enabled.</li>
 					</ul>
 					<p>
-						What it is <strong>not</strong> yet:
+						The remaining limits are algorithmic and modelling limits, not missing core
+						Mohr-Coulomb branch physics:
 					</p>
 					<ul class="notes">
-						<li>not yet the full public tension-cutoff plastic branch,</li>
-						<li>not yet the final strength-reduction FEM workflow,</li>
-						<li>not yet a large-deformation or post-failure formulation.</li>
+						<li>it is not a strength-reduction FEM driver,</li>
+						<li>it is not a large-deformation or post-failure formulation,</li>
+						<li>it remains a drained small-strain section analysis on T3 triangles.</li>
 					</ul>
 					<div class="doc-callout">
-						<strong>Current engineering reading.</strong> Stage 2 is the correct public default
-						for exact Mohr-Coulomb shear plasticity in the present drained small-strain section
-						model. The remaining public constitutive boundary is the later tension-cutoff stage,
-						not the shear return itself.
+						<strong>Current engineering reading.</strong> Stage 2 is the reference constitutive
+						route for drained small-strain Mohr-Coulomb analysis in the present app. The key
+						remaining extensions are alternative constitutive models and alternative analysis
+						drivers, not completion of the classical MC local branch set.
 					</div>
 				</section>
 			</section>
@@ -1270,6 +1399,13 @@
 						<li>plastic strain accumulation only on accepted states,</li>
 						<li>diagnostic comparison between displayed and committed states.</li>
 					</ul>
+					<p>
+						For plastic geostatic initialization the state container distinguishes
+						<strong>predictorState</strong>, <strong>referenceState</strong>,
+						<strong>committedState</strong>, and <strong>trialState</strong>. Predictor audit
+						quantities remain attached to the seeded initial state, while equilibrated-initial
+						audit quantities are stamped separately after a converged self-weight correction.
+					</p>
 				</section>
 
 				<section class="doc-subsection">
@@ -1365,6 +1501,13 @@
 						stress components. Therefore τ<sub>xy</sub> does not split into separate total and
 						effective shear views.
 					</p>
+					<p>
+						When plastic geostatic equilibration is enabled and converges, the displayed
+						displacement fields are the <strong>service-load increment relative to the equilibrated
+						initial state</strong>. The solver still stores the total and initial displacement
+						fields separately so the service increment can be reconstructed exactly as
+						u<sub>total</sub> − u<sub>0</sub>.
+					</p>
 				</section>
 
 				<section class="doc-subsection">
@@ -1384,6 +1527,7 @@
 					<h3>11.4 Interpretation of η<sub>MC</sub> and ε̄<sup>p</sup><sub>acc</sub></h3>
 					<ul class="notes">
 						<li>η<sub>MC</sub> is a pointwise reserve or utilization ratio, not a global factor of safety.</li>
+						<li>In exact tension-cutoff-active zones, η<sub>MC</sub> is suppressed because tension admissibility, not shear utilization, governs the accepted state.</li>
 						<li>ε̄<sup>p</sup><sub>acc</sub> is a plastic-history localization diagnostic, not a direct serviceability value.</li>
 						<li>A plastic band is not yet automatically equivalent to a validated global failure plane.</li>
 					</ul>
@@ -1436,12 +1580,40 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>12.5 Stage 2 is exact for Mohr-Coulomb shear return</h3>
+					<h3>12.5 Stage 2 is exact for the classical Mohr-Coulomb branch set</h3>
 					<p>
 						The current public default Stage 2 computes true plastic strain and performs an exact
-						Mohr-Coulomb shear return in principal stress space. The current public constitutive
-						boundary is that tension-cutoff plasticity is still held as a diagnostic-only state
-						until the dedicated cutoff stage is exposed.
+						Mohr-Coulomb active-set return in principal effective stress space. The shipped
+						branch set now includes the shear faces, repeated-eigenvalue shear edges, the formal
+						shear apex where admissible, the tension face, the mixed shear-tension branches, and
+						the triple tension point.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>12.6 Tension cut-off is constitutive in Stage 2 and diagnostic in Stage 1</h3>
+					<p>
+						The public route now makes an explicit constitutive distinction:
+					</p>
+					<ul class="notes">
+						<li><strong>Stage 1</strong>: tension cut-off is diagnostic-only and never enters the reduced-stiffness branch.</li>
+						<li><strong>Stage 2</strong>: tension cut-off is part of the exact active-set return and is reported through the active surface label <strong>TENSION</strong>.</li>
+					</ul>
+					<p>
+						This prevents the earlier ambiguity where tension-governed accepted states could be
+						displayed as if they were unresolved or infinite shear-utilization states.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>12.7 Plastic geostatic initialization is a correction problem around the predictor</h3>
+					<p>
+						The initial plastic self-weight phase is formulated around the seeded geostatic
+						predictor, not as a second gravity replay. The constitutive increment in that phase is
+						driven by predictor-relative strain increments only. Predictor audit quantities and
+						equilibrated-initial audit quantities are stored separately in the material-point
+						state to avoid conflating inadmissible predictor diagnostics with the converged
+						initial state.
 					</p>
 				</section>
 			</section>
@@ -1453,7 +1625,7 @@
 					The technical deformation stack is verified at three levels:
 				</p>
 				<ul class="notes">
-					<li><strong>unit level</strong>: yield-function evaluation, Voigt work conjugacy, plane-strain stress handling, commit or rollback, and local return mapping;</li>
+					<li><strong>unit level</strong>: yield-function evaluation, Voigt work conjugacy, plane-strain stress handling, commit or rollback, and local branch return mapping;</li>
 					<li><strong>element level</strong>: patch tests and stress-recovery sanity checks;</li>
 					<li><strong>boundary-value level</strong>: loaded strip, settlement trend, symmetry, seepage coupling, geostatic slope initialization, unload or reload around a plastic state, and plastic slope or footing benchmarks.</li>
 				</ul>
@@ -1464,7 +1636,8 @@
 					<li>elastic cases regress to the linear baseline,</li>
 					<li>plastic strain accumulates only in the Stage 2 route,</li>
 					<li>unload or reload around a plastic state behaves elastically,</li>
-						<li>the local return map drives the exact MC shear residual back inside tolerance,</li>
+					<li>the local return map drives the active-surface residuals back inside tolerance for face, edge, apex, and tension branches,</li>
+					<li>plastic-geostatic slope cases progress beyond the raw predictor when exact tension-cutoff branches are available,</li>
 					<li>global plastic footing and slope cases converge or produce an explicitly flagged partial shown state.</li>
 				</ul>
 			</section>
@@ -1480,21 +1653,19 @@
 						<li>Small-strain kinematics only.</li>
 						<li>T3 triangle formulation, with the usual limitations for bending-dominated and near-incompressible cases.</li>
 						<li>Drained effective-stress loading step only; no coupled excess pore-pressure generation.</li>
-						<li>Exact shear return is public, but the tension cut-off plastic branch is not yet public.</li>
-						<li>Tension cut-off plasticity is not yet a full public multisurface branch.</li>
-						<li>The deformation route is not yet a strength-reduction FEM driver.</li>
+						<li>No constitutive softening, fracture energy regularization, or strain localization control.</li>
+						<li>No strength-reduction analysis driver.</li>
+						<li>No contact, interface, or structural-element coupling in the deformation solve.</li>
 					</ul>
 				</section>
 
 				<section class="doc-subsection">
 					<h3>14.2 Natural next steps</h3>
 					<ul class="notes">
-						<li>Stage 2.2 exact Mohr-Coulomb face return.</li>
-						<li>Stage 2.3 edge and apex active-set return.</li>
-						<li>Stage 2.4 explicit tension-cutoff plasticity.</li>
-						<li>Optional c-φ strength reduction as a separate analysis driver.</li>
-						<li>A Hardening Soil style deformation route for better serviceability realism.</li>
-						<li>More advanced hydro-mechanical coupling in later development phases.</li>
+						<li>Strength-reduction analysis as a separate driver above the existing constitutive law.</li>
+						<li>Alternative constitutive families, in particular Hardening Soil class formulations for serviceability realism.</li>
+						<li>Unsymmetric global Newton support as the default path once benchmarked sufficiently on the present exact tangent set.</li>
+						<li>Hydro-mechanical and consolidation extensions beyond the present drained load-step assumption.</li>
 					</ul>
 				</section>
 			</section>
@@ -1502,14 +1673,17 @@
 			<section id="references" class="doc-card">
 				<p class="section-label">References</p>
 				<h2>15. Theory and source basis</h2>
-				<ul class="notes">
-					<li>Zienkiewicz, Taylor, and Zhu — The Finite Element Method</li>
-					<li>de Souza Neto, Perić, and Owen — Computational Methods for Plasticity</li>
-					<li>Sloan, Abbo, and related Mohr-Coulomb return-mapping literature</li>
-					<li>PLAXIS Material Models Manual</li>
-					<li>Schanz, Vermeer &amp; Bonnier (1999)</li>
-					<li>Bishop (1955) and Spencer (1967) for the coupled Stage 6 stability context</li>
-					<li>The current app-specific technical stack consolidated from the Mohr-Coulomb deformation specification, the plasticity implementation specification, and the Stage 1 correction plan</li>
+				<ul class="reference-list">
+					<li><strong>Zienkiewicz, O. C., Taylor, R. L., and Zhu, J. Z.</strong> <em>The Finite Element Method</em>. 7th ed., Butterworth-Heinemann, 2013. General finite-element reference for small-strain plane-strain discretization and nonlinear solution structure.</li>
+					<li><strong>Simo, J. C., and Taylor, R. L.</strong> “Consistent Tangent Operators for Rate-Independent Elastoplasticity.” <em>Computer Methods in Applied Mechanics and Engineering</em>, 48(1), 101-118, 1985. DOI: 10.1016/0045-7825(85)90070-2.</li>
+					<li><strong>de Souza Neto, E. A., Perić, D., and Owen, D. R. J.</strong> <em>Computational Methods for Plasticity: Theory and Applications</em>. Wiley, 2008. General reference for backward-Euler return mapping, active-set logic, and algorithmic tangents.</li>
+					<li><strong>Clausen, J. C., Damkilde, L., and Andersen, L.</strong> “An Efficient Return Algorithm for Non-Associated Plasticity With Linear Yield Criteria in Principal Stress Space.” <em>Computers &amp; Structures</em>, 85(23-24), 1795-1807, 2007. DOI: 10.1016/j.compstruc.2007.04.002.</li>
+					<li><strong>Abbo, A. J., and Sloan, S. W.</strong> “A Smooth Hyperbolic Approximation to the Mohr-Coulomb Yield Criterion.” <em>Computers &amp; Structures</em>, 54(3), 427-441, 1995. DOI: 10.1016/0045-7949(94)00339-5.</li>
+					<li><strong>Sloan, S. W., and Booker, J. R.</strong> “Removal of Singularities in Tresca and Mohr-Coulomb Yield Functions.” <em>Communications in Applied Numerical Methods</em>, 2(2), 173-179, 1986. DOI: 10.1002/cnm.1630020208.</li>
+					<li><strong>Potts, D. M., and Zdravković, L.</strong> <em>Finite Element Analysis in Geotechnical Engineering: Theory</em>. Thomas Telford, 1999. Geotechnical interpretation reference for nonlinear soil analysis.</li>
+					<li><strong>Itasca Consulting Group.</strong> <em>FLAC3D Theory and Background: Mohr-Coulomb Model</em>. Reference source for principal-stress formulation, non-associated flow, and tension cut-off semantics.</li>
+					<li><strong>PLAXIS.</strong> <em>PLAXIS 2D Material Models Manual</em>, 2025.1. Reference source for staged deformation interpretation and drained small-strain Mohr-Coulomb benchmarking practice.</li>
+					<li><strong>Internal implementation notes.</strong> The app-specific theory basis is consolidated in the MADEP deformation notes <em>MC_pl</em>, <em>stage 2.2-f_MC_pl</em>, <em>stage 2.3-f_MC_pl</em>, and <em>stage 2.4-f_MC_pl</em>, with the website specification anchor at <a href="/docs/full#deformation-stage6">/docs/full#deformation-stage6</a>.</li>
 				</ul>
 				<p>
 					The long-form audit trail remains available in the
