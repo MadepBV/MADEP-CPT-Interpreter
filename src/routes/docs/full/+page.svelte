@@ -1400,22 +1400,22 @@
 					id: 'deformation-stage6-model',
 					title: '13.1 Present constitutive route and engineering meaning',
 					paragraphs: [
-						'The current deformation tool offers two Mohr-Coulomb routes on the shared section mesh: the conservative <strong>Stage 1 MC-active reduced-stiffness</strong> screen and the newer <strong>Stage 2.1 smoothed elastoplastic</strong> return-mapping solve.',
-						'Stage 2.1 is now the default deformation solve for first-pass runs, while Stage 1 remains available as the more conservative hotspot screen. Stage 2.1 adds stored plastic strain, non-associated flow through ψ, and a smoothed Mohr-Coulomb / Drucker-Prager-style return map with load-step cutback on the shared plane-strain T3 mesh.',
+						'The current deformation tool offers two Mohr-Coulomb routes on the shared section mesh: the conservative <strong>Stage 1 MC-active reduced-stiffness</strong> screen and the newer <strong>Stage 2 exact shear elastoplastic</strong> return-mapping solve.',
+						'Stage 2 is now the default deformation solve for first-pass runs, while Stage 1 remains available as the more conservative hotspot screen. Stage 2 adds stored plastic strain, non-associated flow through ψ, and an exact Mohr-Coulomb shear return with face and edge handling on the shared plane-strain T3 mesh.',
 						'The Stage 1 branch is conservative across the monotonic load ramp: once an element exceeds MC during that screening run, it remains on the reduced-stiffness branch for the rest of the increment sequence.',
 						'Tension cut-off is reported as a diagnostic warning state, but it does not enter the reduced-shear Stage 1 branch.',
 						'For the current Stage 1 screen, the imported CPT layer model also carries a soil-dependent <strong>r<sub>shear</sub></strong> factor into the deformation material set. Granular soils keep a milder reduction and cohesive soils a stronger one, and the factor remains editable in the deformation material table.'
 					],
 					equations: [
-						'σ = Dε &nbsp;&nbsp; with elastic, Stage 1 reduced-stiffness, or Stage 2.1 smoothed elastoplastic plane-strain D',
+						'σ = Dε &nbsp;&nbsp; with elastic, Stage 1 reduced-stiffness, or Stage 2 exact shear elastoplastic plane-strain D',
 						'η<sub>MC</sub> = (σ′<sub>1</sub> − σ′<sub>3</sub>) / [(σ′<sub>1</sub> + σ′<sub>3</sub>)sinφ′ + 2c′cosφ′]'
 					],
 					bullets: [
-						'The default displacement solve uses a conservative <strong>monotonic Stage 1 MC-active reduced-stiffness</strong> constitutive screen.',
-						'<strong>Stage 2.1</strong> stores plastic strain and performs a smoothed return map, but it is <strong>not yet exact classical face-edge-apex Mohr-Coulomb</strong>.',
+						'The default displacement solve uses <strong>Stage 2 exact Mohr-Coulomb shear elastoplasticity</strong>, while the conservative <strong>Stage 1 MC-active reduced-stiffness</strong> screen remains available as a hotspot check.',
+						'<strong>Stage 2</strong> stores plastic strain and performs an exact Mohr-Coulomb shear return with face and edge handling. Tension-cutoff plasticity remains a later constitutive stage.',
 						'The tool should be read as <strong>long-term drained screening</strong>, not as an immediate undrained clay check.',
 						'The current implementation uses the Stage 4/5 <strong>E<sub>mc</sub></strong> value directly as the elastic modulus E.',
-						'The stored dilation angle ψ is active in Stage 2.1 plastic flow, while exact corner return and tension-cutoff plasticity remain later upgrades.'
+						'The stored dilation angle ψ is active in Stage 2 plastic flow, while the full public tension-cutoff plastic branch remains a later upgrade.'
 					]
 				},
 				{

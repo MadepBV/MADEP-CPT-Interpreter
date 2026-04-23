@@ -4,7 +4,7 @@
 
 	const pageTitle = 'Deformation Analysis — MADEP CPT Interpreter';
 	const pageDescription =
-		'Full technical engineering chapter for the Stage 6 deformation analysis: scope, finite-element theory, geostatic initialization, Mohr-Coulomb theory, Stage 1 and Stage 2.1 constitutive routes, nonlinear solver architecture, outputs, corrections, limitations, and references.';
+		'Full technical engineering chapter for the Stage 6 deformation analysis: scope, finite-element theory, geostatic initialization, Mohr-Coulomb theory, Stage 1 and exact Stage 2 constitutive routes, nonlinear solver architecture, outputs, corrections, limitations, and references.';
 	const canonicalUrl = 'https://cpt.madep.be/docs/engineering/deformation';
 	const ogImageUrl = 'https://cpt.madep.be/logo.png';
 </script>
@@ -43,7 +43,7 @@
 				The deformation module is the mechanical finite-element branch of the Stage 6 section
 				model. It combines a linear geostatic preparation step with a plane-strain load solve,
 				offers multiple constitutive routes from linear elastic through Stage 1 pseudo-plasticity
-				to Stage 2.1 smoothed elastoplasticity, and exposes displacement, strain, stress,
+				to exact Stage 2 shear elastoplasticity, and exposes displacement, strain, stress,
 				utilization, and plastic-strain fields on the shared mesh.
 			</p>
 		</div>
@@ -89,7 +89,7 @@
 				<p>
 					The development path matters. The deformation route began as an elastic Mohr-Coulomb
 					screening tool, evolved into a Stage 1 reduced-stiffness pseudo-plastic route, and now
-					ships with a Stage 2.1 <strong>smoothed elastoplastic</strong> constitutive option as the
+					ships with a Stage 2 <strong>exact shear elastoplastic</strong> constitutive option as the
 					default solver. The documentation below therefore distinguishes carefully between:
 				</p>
 				<ul class="notes">
@@ -122,7 +122,7 @@
 						</div>
 						<div class="symbols__row">
 							<dt>ε̄<sup>p</sup><sub>acc</sub></dt>
-							<dd>Accumulated equivalent plastic strain in the Stage 2.1 route.</dd>
+							<dd>Accumulated equivalent plastic strain in the Stage 2 route.</dd>
 						</div>
 					</dl>
 				</div>
@@ -187,7 +187,7 @@
 						<li>Use it for long-term drained settlement and stress-screening questions.</li>
 						<li>Use it for plastic-zone visualization and displacement trends.</li>
 						<li>Do not read it as an undrained short-term clay model.</li>
-						<li>Do not read Stage 2.1 plastic bands as a fully validated FEM failure surface in the PLAXIS sense.</li>
+						<li>Do not read Stage 2 plastic bands as a fully validated FEM failure surface in the PLAXIS sense.</li>
 					</ul>
 				</section>
 			</section>
@@ -242,7 +242,7 @@
 									<tr>
 										<td>ψ</td>
 										<td>Dilation angle.</td>
-										<td>Used by Stage 2.1 through a non-associated plastic potential.</td>
+										<td>Used by Stage 2 through a non-associated plastic potential.</td>
 									</tr>
 									<tr>
 										<td>K<sub>0,nc</sub></td>
@@ -505,8 +505,10 @@
 					</div>
 					<p>
 						For linear elasticity, D<sub>tan</sub> = D<sup>e</sup>. For Stage 1, the tangent is
-						either elastic or reduced-shear. For Stage 2.1, the tangent is an approximate
-						elastoplastic tangent derived from the local return map.
+						either elastic or reduced-shear. For Stage 2, the constitutive update returns the
+						current elastoplastic tangent from the exact shear return; the default global solve
+						uses its symmetrized form for robustness unless the optional unsymmetric path is
+						enabled.
 					</p>
 				</section>
 			</section>
@@ -961,7 +963,7 @@
 					</p>
 					<ul class="notes">
 						<li>In Stage 1 it is <strong>diagnostic-only</strong>; it does not activate the reduced-shear branch.</li>
-						<li>In Stage 2.1 it remains part of the engineering interpretation boundary, but exact multisurface tension plasticity is not yet exposed as a separate public active yield surface.</li>
+						<li>In Stage 2 it remains part of the engineering interpretation boundary, but exact multisurface tension plasticity is not yet exposed as a separate public active yield surface.</li>
 					</ul>
 				</section>
 			</section>
@@ -1034,8 +1036,8 @@
 						</dl>
 					</div>
 					<p>
-						The Stage 2.1 route uses a smoothed equivalent of this logic so that the local return
-						map remains robust and differentiable.
+						The shipped Stage 2 route uses this exact principal-stress logic for the Mohr-Coulomb
+						shear return, with face and edge handling in the local active-set solve.
 					</p>
 				</section>
 
@@ -1117,10 +1119,9 @@
 						</dl>
 					</div>
 					<p>
-						In the current public Stage 2.1 route, this is implemented on a
-						<strong>smoothed Mohr-Coulomb or Drucker-Prager-like surface</strong> as the
-						recommended first true-plastic route. Exact classical face return, edge return, and
-						apex handling belong to later stages.
+						In the current public Stage 2 route, this is implemented as an exact Mohr-Coulomb
+						shear return in principal stress space, with active-set promotion from face to edge
+						where required. Tension-cutoff plasticity remains a later constitutive stage.
 					</p>
 				</section>
 
@@ -1159,7 +1160,7 @@
 
 			<section id="routes" class="doc-card">
 				<p class="section-label">Shipped constitutive routes</p>
-				<h2>9. Linear elastic, Stage 1 reduced stiffness, and Stage 2.1 elastoplasticity</h2>
+				<h2>9. Linear elastic, Stage 1 reduced stiffness, and exact Stage 2 elastoplasticity</h2>
 
 				<section class="doc-subsection">
 					<h3>9.1 Linear elastic route</h3>
@@ -1226,29 +1227,29 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>9.3 Stage 2.1 smoothed elastoplasticity</h3>
+					<h3>9.3 Stage 2 exact shear elastoplasticity</h3>
 					<p>
-						Stage 2.1 is the current public default and the first true-plastic route:
+						Stage 2 is the current public default and the first exact shear-plastic route:
 					</p>
 					<ul class="notes">
 						<li>It stores material-point plastic strain.</li>
-						<li>It uses a local return map on a smoothed Mohr-Coulomb style surface.</li>
+						<li>It uses a local active-set return in principal stress space for the Mohr-Coulomb shear surface.</li>
 						<li>It supports non-associated flow through ψ.</li>
-						<li>It returns an approximate elastoplastic tangent to the global solve.</li>
+						<li>It returns the current elastoplastic tangent, with the default global solve using the symmetrized form for robustness unless the optional unsymmetric path is enabled.</li>
 					</ul>
 					<p>
 						What it is <strong>not</strong> yet:
 					</p>
 					<ul class="notes">
-						<li>not exact classical face return,</li>
-						<li>not edge or apex active-set return,</li>
-						<li>not full multisurface tension-cutoff plasticity,</li>
-						<li>not yet the final Mohr-Coulomb implementation envisioned by the full theory stack.</li>
+						<li>not yet the full public tension-cutoff plastic branch,</li>
+						<li>not yet the final strength-reduction FEM workflow,</li>
+						<li>not yet a large-deformation or post-failure formulation.</li>
 					</ul>
 					<div class="doc-callout">
-						<strong>Current engineering reading.</strong> Stage 2.1 is the correct public default
-						for a first true-plastic deformation route, but it remains a smoothed approximation of
-						classical Mohr-Coulomb rather than the exact final formulation.
+						<strong>Current engineering reading.</strong> Stage 2 is the correct public default
+						for exact Mohr-Coulomb shear plasticity in the present drained small-strain section
+						model. The remaining public constitutive boundary is the later tension-cutoff stage,
+						not the shear return itself.
 					</div>
 				</section>
 			</section>
@@ -1315,7 +1316,7 @@
 						optional unsymmetric plastic path. These are solver controls, not soil parameters.
 					</p>
 					<ul class="notes">
-						<li>Stage 2.1 can use cautious growth after first yield.</li>
+						<li>Stage 2 can use cautious growth after first yield.</li>
 						<li>Plastic line-search failure or exhausted nonlinear iterations trigger cutback.</li>
 						<li>Elastic low-load cases are intentionally kept close to the linear baseline.</li>
 					</ul>
@@ -1435,12 +1436,12 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>12.5 Stage 2.1 is true plasticity, but still approximate</h3>
+					<h3>12.5 Stage 2 is exact for Mohr-Coulomb shear return</h3>
 					<p>
-						The current public default Stage 2.1 computes true plastic strain and performs a
-						local return map, but it does so on a smoothed surface with an approximate
-						elastoplastic tangent. It is therefore a real constitutive advance over Stage 1, but
-						not yet the final exact Mohr-Coulomb implementation.
+						The current public default Stage 2 computes true plastic strain and performs an exact
+						Mohr-Coulomb shear return in principal stress space. The current public constitutive
+						boundary is that tension-cutoff plasticity is still held as a diagnostic-only state
+						until the dedicated cutoff stage is exposed.
 					</p>
 				</section>
 			</section>
@@ -1457,13 +1458,13 @@
 					<li><strong>boundary-value level</strong>: loaded strip, settlement trend, symmetry, seepage coupling, geostatic slope initialization, unload or reload around a plastic state, and plastic slope or footing benchmarks.</li>
 				</ul>
 				<p>
-					For Stage 2.1, the important practical acceptance criteria are:
+					For Stage 2, the important practical acceptance criteria are:
 				</p>
 				<ul class="notes">
 					<li>elastic cases regress to the linear baseline,</li>
 					<li>plastic strain accumulates only in the Stage 2 route,</li>
 					<li>unload or reload around a plastic state behaves elastically,</li>
-					<li>the local return map drives the smoothed yield residual back inside tolerance,</li>
+						<li>the local return map drives the exact MC shear residual back inside tolerance,</li>
 					<li>global plastic footing and slope cases converge or produce an explicitly flagged partial shown state.</li>
 				</ul>
 			</section>
@@ -1479,7 +1480,7 @@
 						<li>Small-strain kinematics only.</li>
 						<li>T3 triangle formulation, with the usual limitations for bending-dominated and near-incompressible cases.</li>
 						<li>Drained effective-stress loading step only; no coupled excess pore-pressure generation.</li>
-						<li>Stage 2.1 smoothed Mohr-Coulomb only; exact face-edge-apex return is not yet public.</li>
+						<li>Exact shear return is public, but the tension cut-off plastic branch is not yet public.</li>
 						<li>Tension cut-off plasticity is not yet a full public multisurface branch.</li>
 						<li>The deformation route is not yet a strength-reduction FEM driver.</li>
 					</ul>

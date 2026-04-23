@@ -76,6 +76,7 @@ export function prepareMechanicalMaterial(material, warnings = []) {
     yieldTolerancePref: rawYieldTolerancePref !== null ? Math.max(rawYieldTolerancePref, 1e-6) : 100,
     localTolerance: Math.max(Number(material?.localTolerance) || 1e-8, 0),
     localMaxIterations: Math.max(Math.round(Number(material?.localMaxIterations) || 40), 1),
+    eigTolerance: Math.max(Number(material?.eigTolerance) || 1e-9, 1e-12),
     symmetrizeEpTangent: material?.symmetrizeEpTangent !== false,
     useTensionCutoff: material?.useTensionCutoff !== false,
     useCompressionYield: material?.useCompressionYield === true

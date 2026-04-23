@@ -5832,11 +5832,18 @@ function stage6BishopEnsureDeformationWorker(){
       const convergenceState = solver?.convergenceState || 'converged';
       const shownLoadFactor = 100 * Math.max(Number(solver?.displayedLoadFactor) || 0, 0);
       const stableLoadFactor = 100 * Math.max(Number(solver?.loadFactorCommitted) || 0, 0);
+      const maxMcEtaLabel = payload.output?.summaries?.hasInfiniteMcEta
+        ? '∞'
+        : (Number(payload.output?.summaries?.maxMcEta) || 0).toFixed(2);
+      const inadmissibleInitialCount = Math.max(Math.round(Number(payload.output?.summaries?.inadmissibleInitialElementCount) || 0), 0);
+      const inadmissibleInitialSuffix = inadmissibleInitialCount > 0
+        ? ` Initial exact MC audit flagged ${inadmissibleInitialCount} inadmissible reference element${inadmissibleInitialCount === 1 ? '' : 's'}.`
+        : '';
       deformation.progress.message = deformation.status === 'success'
         ? (
             convergenceState === 'partial'
-              ? `Showing a non-converged near-failure deformation state at ${shownLoadFactor.toFixed(1)}% load${shownLoadFactor > stableLoadFactor + 1e-6 ? ` (last fully converged state ${stableLoadFactor.toFixed(1)}%)` : ''}. Max settlement ${((payload.output?.summaries?.maxSettlement || 0) * 1000).toFixed(1)} mm; max MC eta ${(payload.output?.summaries?.maxMcEta || 0).toFixed(2)}.`
-              : `Deformation screen ready. Max settlement ${((payload.output?.summaries?.maxSettlement || 0) * 1000).toFixed(1)} mm; max MC eta ${(payload.output?.summaries?.maxMcEta || 0).toFixed(2)}.`
+              ? `Showing a non-converged near-failure deformation state at ${shownLoadFactor.toFixed(1)}% load${shownLoadFactor > stableLoadFactor + 1e-6 ? ` (last fully converged state ${stableLoadFactor.toFixed(1)}%)` : ''}. Max settlement ${((payload.output?.summaries?.maxSettlement || 0) * 1000).toFixed(1)} mm; max MC eta ${maxMcEtaLabel}.${inadmissibleInitialSuffix}`
+              : `Deformation screen ready. Max settlement ${((payload.output?.summaries?.maxSettlement || 0) * 1000).toFixed(1)} mm; max MC eta ${maxMcEtaLabel}.${inadmissibleInitialSuffix}`
           )
         : 'Deformation solve failed.';
       renderStage6();
@@ -10604,7 +10611,7 @@ function renderStage6BishopApp(){
             <details class="st6-adv" data-st6details="bishop-deformation-materials"${stage6DetailsOpen('bishop-deformation-materials')}>
               <summary>Imported deformation materials</summary>
               <div class="st6-adv-body">
-                <div class="st6-help">The deformation screen reuses the active CPT-derived layer column across the whole section. The standard path remains the Stage 1 reduced-stiffness screen, while <strong>Stage 2 elastoplastic</strong> is now available as an advanced return-mapping option on a smoothed Mohr-Coulomb / Drucker-Prager-style surface. The key inputs are <strong>E<sub>mc</sub></strong>, <strong>nu</strong>, <strong>K<sub>0,NC</sub></strong>, <strong>r<sub>shear</sub></strong>, <strong>c'</strong>, and <strong>phi'</strong>.</div>
+                <div class="st6-help">The deformation screen reuses the active CPT-derived layer column across the whole section. <strong>Stage 2 elastoplastic</strong> now runs an exact Mohr-Coulomb shear return with face and edge handling, while Stage 1 remains available as the reduced-stiffness screening route. The key inputs are <strong>E<sub>mc</sub></strong>, <strong>nu</strong>, <strong>K<sub>0,NC</sub></strong>, <strong>r<sub>shear</sub></strong>, <strong>c'</strong>, <strong>phi'</strong>, and <strong>psi</strong>.</div>
                 <div style="overflow:auto">
                   <table class="tbl st6-bishop-materials">
                     <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th></tr></thead>
@@ -10697,7 +10704,7 @@ function renderStage6BishopApp(){
                   <input type="checkbox" ${deformationUseUnsymmetricPlasticSolver ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useUnsymmetricPlasticSolver', this.checked)">
                   Use the unsymmetric Stage 2 linear solver path
                 </label>
-                <div class="st6-help">The unsymmetric Stage 2 path is mainly for solver experimentation and exacter plastic tangents later on. The current 2.1 implementation is usually more robust on the default symmetric approximate tangent path.</div>
+                <div class="st6-help">The unsymmetric Stage 2 path is an advanced option. The default Stage 2 solve keeps the exact Mohr-Coulomb local return but uses the more robust symmetrized elastoplastic tangent in the global solve unless you explicitly enable the unsymmetric path.</div>
               </div>
             </details>
   `;
@@ -11133,9 +11140,11 @@ function renderStage6BishopApp(){
                   <tr><td>Max settlement</td><td>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxSettlement || 0)).toFixed(2)} mm` : '—'}</td></tr>
                   <tr><td>Max |u_x|</td><td>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxHorizontalDisplacement || 0)).toFixed(2)} mm` : '—'}</td></tr>
                   <tr><td>Max delta sigma_yy</td><td>${deformation.result ? `${(deformation.result.summaries?.maxDeltaSigmaYy || 0).toFixed(2)} kPa` : '—'}</td></tr>
-                  <tr><td>Max MC eta</td><td>${deformation.result ? `${(deformation.result.summaries?.maxMcEta || 0).toFixed(3)}` : '—'}</td></tr>
+                  <tr><td>Max MC eta</td><td>${deformation.result ? (deformation.result.summaries?.hasInfiniteMcEta ? '∞' : `${(deformation.result.summaries?.maxMcEta || 0).toFixed(3)}`) : '—'}</td></tr>
                   <tr><td>Active MC elements</td><td>${deformation.result ? `${deformation.result.summaries?.activeMcElementCount || 0}` : '—'}</td></tr>
                   <tr><td>MC-exceeded elements</td><td>${deformation.result ? `${deformation.result.summaries?.exceededMcElementCount || 0}` : '—'}</td></tr>
+                  <tr><td>Initial inadmissible elements</td><td>${deformation.result ? `${deformation.result.summaries?.inadmissibleInitialElementCount || 0}` : '—'}</td></tr>
+                  <tr><td>Max ε̄ᵖ,acc</td><td>${deformation.result ? `${(100 * (deformation.result.summaries?.maxEquivalentPlasticStrain || 0)).toFixed(3)} %` : '—'}</td></tr>
                   <tr><td>Runtime</td><td>${stage6SecondsLabelFromMs(deformation.result?.timing?.totalMs)}</td></tr>
                 </table>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2);margin-bottom:0">
@@ -11372,11 +11381,11 @@ function renderStage6BishopApp(){
       </div>
       ${stage6NoteHtml(workspace === 'deformation'
         ? [
-            {level:'warn', text:'This deformation workspace is a drained small-strain plane-strain tool on T3 triangles. Stage 1 reduced stiffness remains the standard screen, while Stage 2.1 smoothed elastoplasticity is available as the advanced plastic path.'},
-            {level:'info', text:'Stage 2.1 stores plastic strain and performs a local return map on a smoothed Mohr-Coulomb / Drucker-Prager-style surface. Exact face-edge-apex Mohr-Coulomb and tension-cutoff plasticity are later upgrades.'},
+            {level:'warn', text:'This deformation workspace is a drained small-strain plane-strain tool on T3 triangles. Stage 1 reduced stiffness remains available as the conservative screen, while Stage 2 now uses an exact Mohr-Coulomb shear return with face and edge handling as the advanced plastic path.'},
+            {level:'info', text:'Stage 2 stores plastic strain and performs an exact Mohr-Coulomb shear return in principal stress space. Tension cut-off remains diagnostic-only until the dedicated cutoff stage is implemented.'},
             {level:'info', text:'The soil model is still derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section, and retaining walls are not yet active mechanical elements in the deformation solve.'},
             {level:'info', text:'Initial stress is built from a geostatic gravity step on the shared mesh, so slopes and wall-supported sections develop in-situ shear stress before the load increment. If that initialization fails numerically, the solver falls back to the older flat-ground K0 field and warns you explicitly.'},
-            {level:'info', text:'MC utilization is still reported as the familiar visualization metric. That is useful for interpretation, but exact classical Mohr-Coulomb corner return and tension-cutoff plasticity are still later upgrades.'}
+            {level:'info', text:'MC utilization remains an exact diagnostic on the current effective stress state. Plastic zones should be interpreted from the active yield surface and accumulated plastic strain, while inadmissible initial stresses are reported separately from plastic history.'}
           ]
         : workspace === 'seepage'
           ? [

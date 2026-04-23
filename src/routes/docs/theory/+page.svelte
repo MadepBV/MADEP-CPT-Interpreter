@@ -254,12 +254,13 @@
 					<ul class="notes">
 						<li><strong>Linear elastic</strong> for baseline screening.</li>
 						<li><strong>Stage 1 reduced stiffness</strong> as a pseudo-plastic exceedance route.</li>
-						<li><strong>Stage 2.1 smoothed elastoplasticity</strong> as the current default plastic route.</li>
+						<li><strong>Stage 2.2 exact shear elastoplasticity</strong> as the current default plastic route.</li>
 					</ul>
 					<p>
-						Stage 2.1 already stores plastic strain, but it is intentionally documented as a
-						smoothed intermediate constitutive stage rather than the final exact
-						face-edge-apex Mohr-Coulomb return.
+						The shipped Stage 2 route already stores plastic strain and now uses an exact
+						Mohr-Coulomb shear return with face and edge handling. Tension cutoff remains a
+						separate later constitutive stage rather than an implied part of the current exact
+						shear path.
 					</p>
 				</section>
 			</section>
@@ -277,7 +278,7 @@
 					<li>The deformation route caps high ν values for plane-strain stability and warns about T3 locking and coarse-mesh over-stiffness.</li>
 					<li>The seepage route is steady-state only and keeps interior drains outside the current public boundary-condition set.</li>
 					<li>The deformation route can expose a partial near-failure state rather than discarding the best available non-converged plastic result.</li>
-					<li>The current Stage 2.1 constitutive route is smoothed and approximate by design; exact return-mapping is documented as the next constitutive stage rather than implied to exist already.</li>
+					<li>The current Stage 2 constitutive route is exact for Mohr-Coulomb shear return in principal stress space, while tension-cutoff plasticity remains outside the shipped shear-return stage.</li>
 				</ul>
 			</section>
 

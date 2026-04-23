@@ -13,6 +13,9 @@ const VOIGT_XZ = 5;
 
 export const YIELD_SURFACE_NONE = 'NONE';
 export const YIELD_SURFACE_MC_SHEAR = 'MC_SHEAR';
+export const YIELD_SURFACE_MC_FACE = 'MC_FACE';
+export const YIELD_SURFACE_MC_EDGE = 'MC_EDGE';
+export const YIELD_SURFACE_MC_APEX = 'MC_APEX';
 export const YIELD_SURFACE_TENSION = 'TENSION';
 export const YIELD_SURFACE_COMPRESSION_CAP = 'COMPRESSION_CAP';
 
@@ -83,6 +86,180 @@ function addPorePressureToNormalComponents(stress6, porePressure) {
 
 function descendingNumeric(left, right) {
   return right - left;
+}
+
+function zeroMatrix3() {
+  return [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0]
+  ];
+}
+
+function cloneVector3(vector) {
+  const source = Array.isArray(vector) || ArrayBuffer.isView(vector) ? vector : [0, 0, 0];
+  return [
+    Number(source[0]) || 0,
+    Number(source[1]) || 0,
+    Number(source[2]) || 0
+  ];
+}
+
+function addVector3(left, right) {
+  return [
+    (Number(left?.[0]) || 0) + (Number(right?.[0]) || 0),
+    (Number(left?.[1]) || 0) + (Number(right?.[1]) || 0),
+    (Number(left?.[2]) || 0) + (Number(right?.[2]) || 0)
+  ];
+}
+
+function subtractVector3(left, right) {
+  return [
+    (Number(left?.[0]) || 0) - (Number(right?.[0]) || 0),
+    (Number(left?.[1]) || 0) - (Number(right?.[1]) || 0),
+    (Number(left?.[2]) || 0) - (Number(right?.[2]) || 0)
+  ];
+}
+
+function scaleVector3(vector, factor) {
+  return [
+    (Number(vector?.[0]) || 0) * factor,
+    (Number(vector?.[1]) || 0) * factor,
+    (Number(vector?.[2]) || 0) * factor
+  ];
+}
+
+function dotVector3(left, right) {
+  return (
+    (Number(left?.[0]) || 0) * (Number(right?.[0]) || 0) +
+    (Number(left?.[1]) || 0) * (Number(right?.[1]) || 0) +
+    (Number(left?.[2]) || 0) * (Number(right?.[2]) || 0)
+  );
+}
+
+function vectorNorm3(vector) {
+  return Math.sqrt(dotVector3(vector, vector));
+}
+
+function multiplyMatrix3x3Vector3(matrix, vector) {
+  return [
+    (Number(matrix?.[0]?.[0]) || 0) * (Number(vector?.[0]) || 0) +
+      (Number(matrix?.[0]?.[1]) || 0) * (Number(vector?.[1]) || 0) +
+      (Number(matrix?.[0]?.[2]) || 0) * (Number(vector?.[2]) || 0),
+    (Number(matrix?.[1]?.[0]) || 0) * (Number(vector?.[0]) || 0) +
+      (Number(matrix?.[1]?.[1]) || 0) * (Number(vector?.[1]) || 0) +
+      (Number(matrix?.[1]?.[2]) || 0) * (Number(vector?.[2]) || 0),
+    (Number(matrix?.[2]?.[0]) || 0) * (Number(vector?.[0]) || 0) +
+      (Number(matrix?.[2]?.[1]) || 0) * (Number(vector?.[1]) || 0) +
+      (Number(matrix?.[2]?.[2]) || 0) * (Number(vector?.[2]) || 0)
+  ];
+}
+
+function outerProduct3(left, right) {
+  return [
+    [
+      (Number(left?.[0]) || 0) * (Number(right?.[0]) || 0),
+      (Number(left?.[0]) || 0) * (Number(right?.[1]) || 0),
+      (Number(left?.[0]) || 0) * (Number(right?.[2]) || 0)
+    ],
+    [
+      (Number(left?.[1]) || 0) * (Number(right?.[0]) || 0),
+      (Number(left?.[1]) || 0) * (Number(right?.[1]) || 0),
+      (Number(left?.[1]) || 0) * (Number(right?.[2]) || 0)
+    ],
+    [
+      (Number(left?.[2]) || 0) * (Number(right?.[0]) || 0),
+      (Number(left?.[2]) || 0) * (Number(right?.[1]) || 0),
+      (Number(left?.[2]) || 0) * (Number(right?.[2]) || 0)
+    ]
+  ];
+}
+
+function addMatrix3(left, right) {
+  return Array.from({ length: 3 }, (_item, rowIndex) =>
+    Array.from({ length: 3 }, (_value, colIndex) =>
+      (Number(left?.[rowIndex]?.[colIndex]) || 0) + (Number(right?.[rowIndex]?.[colIndex]) || 0)
+    )
+  );
+}
+
+function scaleMatrix3(matrix, factor) {
+  return Array.from({ length: 3 }, (_item, rowIndex) =>
+    Array.from({ length: 3 }, (_value, colIndex) =>
+      (Number(matrix?.[rowIndex]?.[colIndex]) || 0) * factor
+    )
+  );
+}
+
+function principalDirectionToProjector(vector3) {
+  const norm = vectorNorm3(vector3);
+  if (!(norm > 1e-12)) return zeroMatrix3();
+  const normalized = scaleVector3(vector3, 1 / norm);
+  return outerProduct3(normalized, normalized);
+}
+
+function projectorTensorToEngineeringGradient6(projector) {
+  return [
+    Number(projector?.[0]?.[0]) || 0,
+    Number(projector?.[1]?.[1]) || 0,
+    Number(projector?.[2]?.[2]) || 0,
+    2 * (Number(projector?.[0]?.[1]) || 0),
+    2 * (Number(projector?.[1]?.[2]) || 0),
+    2 * (Number(projector?.[0]?.[2]) || 0)
+  ];
+}
+
+function normalizeVector3(vector3, fallback = [1, 0, 0]) {
+  const norm = vectorNorm3(vector3);
+  if (!(norm > 1e-12)) return cloneVector3(fallback);
+  return scaleVector3(vector3, 1 / norm);
+}
+
+function solveDenseLinearSystem(matrixInput, rhsInput, tolerance = 1e-12) {
+  const size = Array.isArray(rhsInput) ? rhsInput.length : 0;
+  if (!(size > 0)) return [];
+  const matrix = Array.from({ length: size }, (_item, rowIndex) =>
+    Array.from({ length: size }, (_value, colIndex) => Number(matrixInput?.[rowIndex]?.[colIndex]) || 0)
+  );
+  const rhs = Array.from({ length: size }, (_item, rowIndex) => Number(rhsInput?.[rowIndex]) || 0);
+
+  for (let pivotIndex = 0; pivotIndex < size; pivotIndex += 1) {
+    let pivotRow = pivotIndex;
+    let pivotValue = Math.abs(matrix[pivotRow][pivotIndex]);
+    for (let rowIndex = pivotIndex + 1; rowIndex < size; rowIndex += 1) {
+      const candidate = Math.abs(matrix[rowIndex][pivotIndex]);
+      if (candidate > pivotValue) {
+        pivotValue = candidate;
+        pivotRow = rowIndex;
+      }
+    }
+    if (!(pivotValue > tolerance) || !Number.isFinite(pivotValue)) return null;
+    if (pivotRow !== pivotIndex) {
+      [matrix[pivotIndex], matrix[pivotRow]] = [matrix[pivotRow], matrix[pivotIndex]];
+      [rhs[pivotIndex], rhs[pivotRow]] = [rhs[pivotRow], rhs[pivotIndex]];
+    }
+    const pivot = matrix[pivotIndex][pivotIndex];
+    for (let rowIndex = pivotIndex + 1; rowIndex < size; rowIndex += 1) {
+      const factor = matrix[rowIndex][pivotIndex] / pivot;
+      matrix[rowIndex][pivotIndex] = 0;
+      for (let colIndex = pivotIndex + 1; colIndex < size; colIndex += 1) {
+        matrix[rowIndex][colIndex] -= factor * matrix[pivotIndex][colIndex];
+      }
+      rhs[rowIndex] -= factor * rhs[pivotIndex];
+    }
+  }
+
+  const solution = Array(size).fill(0);
+  for (let rowIndex = size - 1; rowIndex >= 0; rowIndex -= 1) {
+    let value = rhs[rowIndex];
+    for (let colIndex = rowIndex + 1; colIndex < size; colIndex += 1) {
+      value -= matrix[rowIndex][colIndex] * solution[colIndex];
+    }
+    const pivot = matrix[rowIndex][rowIndex];
+    if (!(Math.abs(pivot) > tolerance) || !Number.isFinite(pivot)) return null;
+    solution[rowIndex] = value / pivot;
+  }
+  return solution;
 }
 
 function multiplyMatrix6x6Vector6(matrix, vector) {
@@ -206,6 +383,327 @@ function symmetrizeMatrix6(matrix) {
       )
     )
   );
+}
+
+function zeroMatrix6() {
+  return Array.from({ length: 6 }, () => zeroVector6());
+}
+
+function invertDenseMatrix(matrixInput, tolerance = 1e-12) {
+  const size = Array.isArray(matrixInput) ? matrixInput.length : 0;
+  if (!(size > 0)) return [];
+  const inverse = Array.from({ length: size }, () => Array(size).fill(0));
+  for (let columnIndex = 0; columnIndex < size; columnIndex += 1) {
+    const rhs = Array.from({ length: size }, (_item, rowIndex) => (rowIndex === columnIndex ? 1 : 0));
+    const column = solveDenseLinearSystem(matrixInput, rhs, tolerance);
+    if (!column) return null;
+    for (let rowIndex = 0; rowIndex < size; rowIndex += 1) {
+      inverse[rowIndex][columnIndex] = Number(column[rowIndex]) || 0;
+    }
+  }
+  return inverse;
+}
+
+function compressionPositiveStressTensor3From6(stress6) {
+  return [
+    [-(Number(stress6?.[VOIGT_XX]) || 0), -(Number(stress6?.[VOIGT_XY]) || 0), -(Number(stress6?.[VOIGT_XZ]) || 0)],
+    [-(Number(stress6?.[VOIGT_XY]) || 0), -(Number(stress6?.[VOIGT_YY]) || 0), -(Number(stress6?.[VOIGT_YZ]) || 0)],
+    [-(Number(stress6?.[VOIGT_XZ]) || 0), -(Number(stress6?.[VOIGT_YZ]) || 0), -(Number(stress6?.[VOIGT_ZZ]) || 0)]
+  ];
+}
+
+function compressionPositiveTensor3ToStress6(tensor3) {
+  return [
+    -(Number(tensor3?.[0]?.[0]) || 0),
+    -(Number(tensor3?.[1]?.[1]) || 0),
+    -(Number(tensor3?.[2]?.[2]) || 0),
+    -(Number(tensor3?.[0]?.[1]) || 0),
+    -(Number(tensor3?.[1]?.[2]) || 0),
+    -(Number(tensor3?.[0]?.[2]) || 0)
+  ];
+}
+
+function combinePrincipalProjectors(projectors, coefficients) {
+  return addMatrix3(
+    addMatrix3(
+      scaleMatrix3(projectors?.P1, Number(coefficients?.[0]) || 0),
+      scaleMatrix3(projectors?.P2, Number(coefficients?.[1]) || 0)
+    ),
+    scaleMatrix3(projectors?.P3, Number(coefficients?.[2]) || 0)
+  );
+}
+
+function compressionPositiveGradientTensorToInternalEngineeringGradient6(tensor3) {
+  return [
+    -(Number(tensor3?.[0]?.[0]) || 0),
+    -(Number(tensor3?.[1]?.[1]) || 0),
+    -(Number(tensor3?.[2]?.[2]) || 0),
+    -2 * (Number(tensor3?.[0]?.[1]) || 0),
+    -2 * (Number(tensor3?.[1]?.[2]) || 0),
+    -2 * (Number(tensor3?.[0]?.[2]) || 0)
+  ];
+}
+
+function principalCoefficientsToInternalGradient6(coefficients, projectors) {
+  return compressionPositiveGradientTensorToInternalEngineeringGradient6(
+    combinePrincipalProjectors(projectors, coefficients)
+  );
+}
+
+function projectorsToCompressionPositiveStressTensor(principalValues, projectors) {
+  return combinePrincipalProjectors(projectors, principalValues);
+}
+
+function exactMcSurfaceParameters(materialParameters = {}) {
+  const phi = (clampMcAngle(materialParameters?.phiEffDeg) * Math.PI) / 180;
+  const psi = (clampMcAngle(materialParameters?.psiEffDeg ?? materialParameters?.psi) * Math.PI) / 180;
+  const c = Math.max(Number(materialParameters?.cEff) || 0, 0);
+  const sigmaTAllow = Math.max(Number(materialParameters?.sigmaTAllow) || 0, 0);
+  return {
+    phi,
+    psi,
+    c,
+    sigmaTAllow,
+    sinPhi: Math.sin(phi),
+    cosPhi: Math.cos(phi),
+    sinPsi: Math.sin(psi),
+    useTensionCutoff: materialParameters?.useTensionCutoff !== false
+  };
+}
+
+function principalElasticMatrix3x3(materialParameters, warnings = [], label = 'Material') {
+  const { lambda, G } = elasticLameParameters(materialParameters?.Emc, materialParameters?.nu, warnings, label);
+  return [
+    [lambda + 2 * G, lambda, lambda],
+    [lambda, lambda + 2 * G, lambda],
+    [lambda, lambda, lambda + 2 * G]
+  ];
+}
+
+function principalStressProjectors3DCompressionPositive(stress6, materialParameters = {}) {
+  const stress = effectiveStress6ToCompressionPositiveStress3D(stress6);
+  const eigTolerance = Math.max(Number(materialParameters?.eigTolerance) || 1e-9, 1e-12);
+  const pxy = 0.5 * (stress.sxx + stress.syy);
+  const diff = 0.5 * (stress.sxx - stress.syy);
+  const radius = Math.hypot(diff, stress.txy);
+  const planeMajor = pxy + radius;
+  const planeMinor = pxy - radius;
+  let planeMajorVector = [1, 0, 0];
+  let planeMinorVector = [0, 1, 0];
+  if (radius > eigTolerance) {
+    const theta = 0.5 * Math.atan2(2 * stress.txy, stress.sxx - stress.syy);
+    const c = Math.cos(theta);
+    const s = Math.sin(theta);
+    planeMajorVector = [c, s, 0];
+    planeMinorVector = [-s, c, 0];
+  }
+  const eigenpairs = [
+    { value: planeMajor, direction: normalizeVector3(planeMajorVector), source: 'plane-major' },
+    { value: stress.szz, direction: [0, 0, 1], source: 'out-of-plane' },
+    { value: planeMinor, direction: normalizeVector3(planeMinorVector), source: 'plane-minor' }
+  ].sort((left, right) => descendingNumeric(left.value, right.value));
+  const repeatedEigenvalues =
+    Math.abs(eigenpairs[0].value - eigenpairs[1].value) <= eigTolerance ||
+    Math.abs(eigenpairs[1].value - eigenpairs[2].value) <= eigTolerance ||
+    Math.abs(eigenpairs[0].value - eigenpairs[2].value) <= eigTolerance;
+  return {
+    s1: Number(eigenpairs[0].value) || 0,
+    s2: Number(eigenpairs[1].value) || 0,
+    s3: Number(eigenpairs[2].value) || 0,
+    P1: principalDirectionToProjector(eigenpairs[0].direction),
+    P2: principalDirectionToProjector(eigenpairs[1].direction),
+    P3: principalDirectionToProjector(eigenpairs[2].direction),
+    planeMajor,
+    planeMinor,
+    repeatedEigenvalues,
+    eigTolerance
+  };
+}
+
+function buildExactMcSurfaces(projectors, materialParameters) {
+  const { sinPhi, cosPhi, sinPsi } = exactMcSurfaceParameters(materialParameters);
+  const shearIntercept = 2 * Math.max(Number(materialParameters?.cEff) || 0, 0) * cosPhi;
+  const definitions = [
+    {
+      id: 'F12',
+      kind: 'shear',
+      nPrincipal: [1 - sinPhi, -(1 + sinPhi), 0],
+      mPrincipal: [1 - sinPsi, -(1 + sinPsi), 0],
+      intercept: shearIntercept
+    },
+    {
+      id: 'F13',
+      kind: 'shear',
+      nPrincipal: [1 - sinPhi, 0, -(1 + sinPhi)],
+      mPrincipal: [1 - sinPsi, 0, -(1 + sinPsi)],
+      intercept: shearIntercept
+    },
+    {
+      id: 'F23',
+      kind: 'shear',
+      nPrincipal: [0, 1 - sinPhi, -(1 + sinPhi)],
+      mPrincipal: [0, 1 - sinPsi, -(1 + sinPsi)],
+      intercept: shearIntercept
+    }
+  ];
+  return definitions.map((surface) => ({
+    ...surface,
+    n6: principalCoefficientsToInternalGradient6(surface.nPrincipal, projectors),
+    m6: principalCoefficientsToInternalGradient6(surface.mPrincipal, projectors)
+  }));
+}
+
+function evaluateExactMcSurfaceValuesFromPrincipal(principalValues, materialParameters) {
+  const { sinPhi, cosPhi, sigmaTAllow, useTensionCutoff } = exactMcSurfaceParameters(materialParameters);
+  const shearIntercept = 2 * Math.max(Number(materialParameters?.cEff) || 0, 0) * cosPhi;
+  const [s1, s2, s3] = cloneVector3(principalValues);
+  const values = {
+    F12: (1 - sinPhi) * s1 - (1 + sinPhi) * s2 - shearIntercept,
+    F13: (1 - sinPhi) * s1 - (1 + sinPhi) * s3 - shearIntercept,
+    F23: (1 - sinPhi) * s2 - (1 + sinPhi) * s3 - shearIntercept
+  };
+  if (useTensionCutoff) values.T3 = -s3 - sigmaTAllow;
+  return values;
+}
+
+function evaluateExactMcSurfaceValuesFromStress(stress6, materialParameters) {
+  const principal = principalStressProjectors3DCompressionPositive(stress6, materialParameters);
+  const values = evaluateExactMcSurfaceValuesFromPrincipal([principal.s1, principal.s2, principal.s3], materialParameters);
+  return { principal, values };
+}
+
+function activeYieldSurfaceLabelFromActiveSet(activeSurfaces = []) {
+  const shearCount = activeSurfaces.filter((surface) => surface?.kind === 'shear').length;
+  const hasTension = activeSurfaces.some((surface) => surface?.kind === 'tension');
+  if (shearCount >= 3) return YIELD_SURFACE_MC_APEX;
+  if (shearCount >= 2) return YIELD_SURFACE_MC_EDGE;
+  if (shearCount === 1) return YIELD_SURFACE_MC_FACE;
+  if (hasTension) return YIELD_SURFACE_TENSION;
+  return YIELD_SURFACE_NONE;
+}
+
+function computeExactElastoplasticTangent(D_e, activeSurfaces, couplingMatrix, materialParameters = null) {
+  if (!Array.isArray(activeSurfaces) || activeSurfaces.length === 0) return cloneMatrix6(D_e);
+  const inverseCoupling = invertDenseMatrix(couplingMatrix, 1e-12);
+  if (!inverseCoupling) return cloneMatrix6(D_e);
+  const correction = zeroMatrix6();
+  const DmColumns = activeSurfaces.map((surface) => multiplyMatrix6x6Vector6(D_e, surface.m6));
+  const DnColumns = activeSurfaces.map((surface) => multiplyMatrix6x6Vector6(D_e, surface.n6));
+  for (let rowIndex = 0; rowIndex < activeSurfaces.length; rowIndex += 1) {
+    for (let colIndex = 0; colIndex < activeSurfaces.length; colIndex += 1) {
+      const scale = Number(inverseCoupling?.[rowIndex]?.[colIndex]) || 0;
+      if (!Number.isFinite(scale) || Math.abs(scale) <= 0) continue;
+      const outer = outerProduct6(DmColumns[rowIndex], DnColumns[colIndex], scale);
+      for (let i = 0; i < 6; i += 1) {
+        for (let j = 0; j < 6; j += 1) {
+          correction[i][j] += Number(outer?.[i]?.[j]) || 0;
+        }
+      }
+    }
+  }
+  const tangent = subtractMatrix6(D_e, correction);
+  return materialParameters?.symmetrizeEpTangent === true ? symmetrizeMatrix6(tangent) : tangent;
+}
+
+function solveExactMcActiveSetReturn(stressTrial6, elasticTangent6x6, materialParameters, mcTrial) {
+  const tolerance = localReturnTolerance(materialParameters, mcTrial);
+  const maxIterations = Math.max(Math.round(Number(materialParameters?.localMaxIterations) || 40), 1);
+  const principalTrial = principalStressProjectors3DCompressionPositive(stressTrial6, materialParameters);
+  const trialPrincipalValues = [principalTrial.s1, principalTrial.s2, principalTrial.s3];
+  const surfaces = buildExactMcSurfaces(principalTrial, materialParameters);
+  const surfaceMap = Object.fromEntries(surfaces.map((surface) => [surface.id, surface]));
+  const trialSurfaceValues = evaluateExactMcSurfaceValuesFromPrincipal(trialPrincipalValues, materialParameters);
+  const violatingTrialSurfaces = surfaces
+    .filter((surface) => (Number(trialSurfaceValues?.[surface.id]) || 0) > tolerance)
+    .sort((left, right) => (Number(trialSurfaceValues?.[right.id]) || 0) - (Number(trialSurfaceValues?.[left.id]) || 0));
+  if (!violatingTrialSurfaces.length) {
+    return {
+      converged: true,
+      iterations: 0,
+      stress6: cloneVector6(stressTrial6),
+      plasticStrainIncrement6: zeroVector6(),
+      algorithmicTangent6x6: cloneMatrix6(elasticTangent6x6),
+      activeYieldSurface: YIELD_SURFACE_NONE,
+      activeSurfaceIds: [],
+      yieldResidual: Math.max(...Object.values(trialSurfaceValues).map((value) => Number(value) || 0), 0)
+    };
+  }
+
+  const activeIds = [];
+  const tensionTrial = violatingTrialSurfaces.find((surface) => surface.kind === 'tension');
+  const shearTrial = violatingTrialSurfaces.find((surface) => surface.kind === 'shear');
+  if (tensionTrial) activeIds.push(tensionTrial.id);
+  if (shearTrial) activeIds.push(shearTrial.id);
+  if (!activeIds.length) activeIds.push(violatingTrialSurfaces[0].id);
+  const visitedSets = new Set();
+  const D_n = principalElasticMatrix3x3(materialParameters);
+
+  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+    activeIds.sort();
+    const activeKey = activeIds.join('|');
+    if (visitedSets.has(activeKey)) {
+      return { converged: false, reason: `local active set oscillated (${activeKey})` };
+    }
+    visitedSets.add(activeKey);
+    const activeSurfaces = activeIds.map((id) => surfaceMap[id]).filter(Boolean);
+    const couplingMatrix = activeSurfaces.map((surfaceI) =>
+      activeSurfaces.map((surfaceJ) => dotVector6(surfaceI.n6, multiplyMatrix6x6Vector6(elasticTangent6x6, surfaceJ.m6)))
+    );
+    const rhs = activeSurfaces.map((surface) => Number(trialSurfaceValues?.[surface.id]) || 0);
+    const plasticMultipliers = solveDenseLinearSystem(couplingMatrix, rhs, 1e-12);
+    if (!plasticMultipliers) {
+      return { converged: false, reason: `local exact MC active-set solve became singular on ${activeKey || 'EMPTY'}` };
+    }
+    const mostNegativeIndex = plasticMultipliers.reduce((bestIndex, value, index) => {
+      const bestValue = bestIndex >= 0 ? Number(plasticMultipliers?.[bestIndex]) || 0 : 0;
+      return bestIndex < 0 || value < bestValue ? index : bestIndex;
+    }, -1);
+    if (mostNegativeIndex >= 0 && (Number(plasticMultipliers[mostNegativeIndex]) || 0) < -tolerance) {
+      activeIds.splice(mostNegativeIndex, 1);
+      if (!activeIds.length) activeIds.push(violatingTrialSurfaces[0].id);
+      continue;
+    }
+
+    const plasticFlowPrincipal = activeSurfaces.reduce(
+      (sum, surface, index) => addVector3(sum, scaleVector3(surface.mPrincipal, Number(plasticMultipliers?.[index]) || 0)),
+      [0, 0, 0]
+    );
+    const stressCorrectionPrincipal = multiplyMatrix3x3Vector3(D_n, plasticFlowPrincipal);
+    const stressReturnPrincipal = subtractVector3(trialPrincipalValues, stressCorrectionPrincipal);
+    const candidateSurfaceValues = evaluateExactMcSurfaceValuesFromPrincipal(stressReturnPrincipal, materialParameters);
+    const stressReturn6 = compressionPositiveTensor3ToStress6(
+      projectorsToCompressionPositiveStressTensor(stressReturnPrincipal, principalTrial)
+    );
+    const plasticStrainIncrement6 = activeSurfaces.reduce(
+      (sum, surface, index) => addVector6(sum, scaleVector6(surface.m6, Number(plasticMultipliers?.[index]) || 0)),
+      zeroVector6()
+    );
+    const violatingInactive = surfaces
+      .filter((surface) => !activeIds.includes(surface.id))
+      .filter((surface) => (Number(candidateSurfaceValues?.[surface.id]) || 0) > tolerance)
+      .sort((left, right) => (Number(candidateSurfaceValues?.[right.id]) || 0) - (Number(candidateSurfaceValues?.[left.id]) || 0));
+    if (violatingInactive.length) {
+      activeIds.push(violatingInactive[0].id);
+      continue;
+    }
+    const exactCurrent = evaluateExactMcSurfaceValuesFromStress(stressReturn6, materialParameters);
+
+    return {
+      converged: true,
+      iterations: iteration,
+      stress6: stressReturn6,
+      plasticStrainIncrement6,
+      algorithmicTangent6x6: computeExactElastoplasticTangent(elasticTangent6x6, activeSurfaces, couplingMatrix, materialParameters),
+      activeYieldSurface: activeYieldSurfaceLabelFromActiveSet(activeSurfaces),
+      activeSurfaceIds: activeSurfaces.map((surface) => surface.id),
+      yieldResidual: Math.max(...Object.values(exactCurrent.values || {}).map((value) => Number(value) || 0), 0)
+    };
+  }
+
+  return {
+    converged: false,
+    reason: `max exact MC active-set iterations reached (${maxIterations})`
+  };
 }
 
 function clampMcAngle(angleDeg) {
@@ -442,6 +940,10 @@ export function createMaterialPointState(overrides = {}) {
     hasEverExceededMc: source.hasEverExceededMc === true,
     etaMcCurrent: Number(source.etaMcCurrent) || 0,
     etaMcMaxHistory: Number(source.etaMcMaxHistory) || 0,
+    initialFMc: Number(source.initialFMc) || 0,
+    initialEtaMc: Number(source.initialEtaMc) || 0,
+    initialDiagnosticYieldSurface: source.initialDiagnosticYieldSurface || YIELD_SURFACE_NONE,
+    initialStateAdmissible: source.initialStateAdmissible !== false,
     sigmaY: Math.max(Number(source.sigmaY) || 0, 0),
     hardeningVariable: Number(source.hardeningVariable) || 0,
     accumulatedPlasticStrain: Math.max(Number(source.accumulatedPlasticStrain) || 0, 0)
@@ -524,32 +1026,29 @@ export function effectiveStress6ToCompressionPositiveStress3D(stress6) {
 }
 
 export function principalStress3DCompressionPositive(stress6) {
-  const stress = effectiveStress6ToCompressionPositiveStress3D(stress6);
-  const pxy = 0.5 * (stress.sxx + stress.syy);
-  const rxy = Math.hypot(0.5 * (stress.sxx - stress.syy), stress.txy);
-  const principals = [pxy + rxy, stress.szz, pxy - rxy].sort(descendingNumeric);
+  const principal = principalStressProjectors3DCompressionPositive(stress6);
   return {
-    s1: principals[0],
-    s2: principals[1],
-    s3: principals[2],
-    planeMajor: pxy + rxy,
-    planeMinor: pxy - rxy
+    s1: principal.s1,
+    s2: principal.s2,
+    s3: principal.s3,
+    planeMajor: principal.planeMajor,
+    planeMinor: principal.planeMinor
   };
 }
 
 export function mohrCoulombIndicator3D(stress6, materialParameters) {
-  const phi = (Math.max(Number(materialParameters?.phiEffDeg) || 0, 0) * Math.PI) / 180;
-  const c = Math.max(Number(materialParameters?.cEff) || 0, 0);
-  const sigmaTAllow = Math.max(Number(materialParameters?.sigmaTAllow) || 0, 0);
-  const principal = principalStress3DCompressionPositive(stress6);
+  const { phi, c, sigmaTAllow, useTensionCutoff } = exactMcSurfaceParameters(materialParameters);
+  const principal = principalStressProjectors3DCompressionPositive(stress6, materialParameters);
   const s1 = principal.s1;
+  const s2 = principal.s2;
   const s3 = principal.s3;
 
-  if ((materialParameters?.useTensionCutoff !== false) && s3 < -sigmaTAllow) {
+  if (useTensionCutoff && s3 < -sigmaTAllow) {
     return {
       F: Number.POSITIVE_INFINITY,
       eta: Number.POSITIVE_INFINITY,
       state: 'tension-cutoff',
+      surfaceValues: evaluateExactMcSurfaceValuesFromPrincipal([s1, s2, s3], materialParameters),
       ...principal
     };
   }
@@ -562,7 +1061,8 @@ export function mohrCoulombIndicator3D(stress6, materialParameters) {
   return {
     F,
     eta,
-    state: eta >= 1 ? 'mc-yield' : 'elastic',
+    state: F > 0 ? 'mc-yield' : 'elastic',
+    surfaceValues: evaluateExactMcSurfaceValuesFromPrincipal([s1, s2, s3], materialParameters),
     ...principal
   };
 }
@@ -571,9 +1071,13 @@ export function evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, ma
   const effectiveStress2D = effectiveStress6ToCompressionPositiveStress2D(effectiveStress6);
   const effectiveStress3D = effectiveStress6ToCompressionPositiveStress3D(effectiveStress6);
   const mc = mohrCoulombIndicator3D(effectiveStress6, materialParameters);
-  const activeYieldSurface = overrides.activeYieldSurface || activeYieldSurfaceFromState(mc);
+  const diagnosticYieldSurface = activeYieldSurfaceFromState(mc);
+  const activeYieldSurface = overrides.activeYieldSurface ?? YIELD_SURFACE_NONE;
   const currentlyMcActive = overrides.currentlyMcActive === true;
-  const hasExceededNow = activeYieldSurface === YIELD_SURFACE_MC_SHEAR || hasShearYieldExceedance(mc);
+  const hasExceededNow = overrides.hasExceededNow === true ||
+    activeYieldSurface === YIELD_SURFACE_MC_FACE ||
+    activeYieldSurface === YIELD_SURFACE_MC_EDGE ||
+    activeYieldSurface === YIELD_SURFACE_MC_APEX;
   const hasEverExceededMc = overrides.hasEverExceededMc === true || committedState?.hasEverExceededMc === true || hasExceededNow;
   const etaMc = Number(mc?.eta);
   const etaMcCurrent = Number.isFinite(etaMc) ? etaMc : Number.POSITIVE_INFINITY;
@@ -592,6 +1096,7 @@ export function evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, ma
     currentlyMcActive,
     hasEverExceededMc,
     activeYieldSurface,
+    diagnosticYieldSurface,
     stateChanged: overrides.stateChanged === true,
     principal: {
       s1: mc.s1,
@@ -606,14 +1111,24 @@ export function evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, ma
 
 export function seedMaterialPointStateFromEffectiveStress6(initialEffectiveStress6, materialParameters) {
   const effectiveStress6 = cloneVector6(initialEffectiveStress6);
-  const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, materialParameters);
+  const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, materialParameters, null, {
+    activeYieldSurface: YIELD_SURFACE_NONE,
+    currentlyMcActive: false,
+    hasEverExceededMc: false,
+    hasExceededNow: false
+  });
+  const initialTolerance = resolveYieldTolerance(materialParameters, diagnostics.mc);
   return createMaterialPointState({
     effectiveStress6,
-    activeYieldSurface: diagnostics.activeYieldSurface,
+    activeYieldSurface: YIELD_SURFACE_NONE,
     currentlyMcActive: false,
-    hasEverExceededMc: diagnostics.hasEverExceededMc,
+    hasEverExceededMc: false,
     etaMcCurrent: diagnostics.etaMcFinal,
     etaMcMaxHistory: diagnostics.etaMcFinal,
+    initialFMc: diagnostics.fMcFinal,
+    initialEtaMc: diagnostics.etaMcFinal,
+    initialDiagnosticYieldSurface: diagnostics.diagnosticYieldSurface,
+    initialStateAdmissible: (Number(diagnostics.fMcFinal) || 0) <= initialTolerance,
     sigmaY: materialParameters?.sigmaY
   });
 }
@@ -655,6 +1170,10 @@ export function snapshotMaterialPointState(state = {}) {
     hasEverExceededMc: source.hasEverExceededMc === true,
     etaMcCurrent: Number(source.etaMcCurrent) || 0,
     etaMcMaxHistory: Number(source.etaMcMaxHistory) || 0,
+    initialFMc: Number(source.initialFMc) || 0,
+    initialEtaMc: Number(source.initialEtaMc) || 0,
+    initialDiagnosticYieldSurface: source.initialDiagnosticYieldSurface || YIELD_SURFACE_NONE,
+    initialStateAdmissible: source.initialStateAdmissible !== false,
     sigmaY: Math.max(Number(source.sigmaY) || 0, 0),
     hardeningVariable: Number(source.hardeningVariable) || 0,
     accumulatedPlasticStrain: Math.max(Number(source.accumulatedPlasticStrain) || 0, 0)
@@ -735,8 +1254,13 @@ export function createMCReducedStiffnessMaterial(materialParameters, warnings = 
       const finalMc = mohrCoulombIndicator3D(stressTrial6, params);
       const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(stressTrial6, params, committed, {
         currentlyMcActive,
-        activeYieldSurface: activeYieldSurfaceFromState(currentlyMcActive ? mcTrial : finalMc),
+        activeYieldSurface: currentlyMcActive
+          ? YIELD_SURFACE_MC_SHEAR
+          : finalMc?.state === 'tension-cutoff'
+            ? YIELD_SURFACE_TENSION
+            : YIELD_SURFACE_NONE,
         hasEverExceededMc: committed.hasEverExceededMc || exceedsMcShear || hasShearYieldExceedance(finalMc),
+        hasExceededNow: currentlyMcActive,
         stateChanged: currentlyMcActive !== (committed.currentlyMcActive === true)
       });
       const trialState = createMaterialPointState({
@@ -782,15 +1306,14 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
       const deltaStrain6 = subtractVector6(nextStrain6, committed.totalStrain6);
       const stressTrial6 = addVector6(committed.effectiveStress6, multiplyMatrix6x6Vector6(elasticTangent6x6, deltaStrain6));
       const mcTrial = mohrCoulombIndicator3D(stressTrial6, params);
-      const smoothTrial = evaluateSmoothedPlasticSurface(stressTrial6, params?.phiEffDeg, params?.cEff, params, true);
       const yieldTolerance = resolveYieldTolerance(params, mcTrial);
       const exactYieldSurface = activeYieldSurfaceFromState(mcTrial);
-
       if (exactYieldSurface === YIELD_SURFACE_TENSION) {
         const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(stressTrial6, params, committed, {
           currentlyMcActive: false,
           stateChanged: committed.activeYieldSurface !== YIELD_SURFACE_TENSION,
-          activeYieldSurface: YIELD_SURFACE_TENSION
+          activeYieldSurface: YIELD_SURFACE_TENSION,
+          hasExceededNow: false
         });
         const trialState = createMaterialPointState({
           ...committed,
@@ -814,17 +1337,22 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
             yieldTolerance,
             plasticIncrementNorm: 0,
             localIterations: 0,
+            exactYieldTrial: Number.POSITIVE_INFINITY,
+            exactYieldFinal: Number.POSITIVE_INFINITY,
             constitutiveModel: 'mc-plastic',
             analysisContext
           }
         };
       }
+      const exactTrial = evaluateExactMcSurfaceValuesFromStress(stressTrial6, params);
+      const exactTrialMaxResidual = Math.max(...Object.values(exactTrial?.values || {}).map((value) => Number(value) || 0), 0);
 
-      if ((Number(smoothTrial?.f) || 0) <= yieldTolerance) {
+      if (!(exactTrialMaxResidual > yieldTolerance)) {
         const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(stressTrial6, params, committed, {
           currentlyMcActive: false,
           stateChanged: false,
-          activeYieldSurface: YIELD_SURFACE_NONE
+          activeYieldSurface: YIELD_SURFACE_NONE,
+          hasExceededNow: false
         });
         const trialState = createMaterialPointState({
           ...committed,
@@ -848,13 +1376,15 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
             yieldTolerance,
             plasticIncrementNorm: 0,
             localIterations: 0,
+            exactYieldTrial: exactTrialMaxResidual,
+            exactYieldFinal: exactTrialMaxResidual,
             constitutiveModel: 'mc-plastic',
             analysisContext
           }
         };
       }
 
-      const local = returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, params, mcTrial);
+      const local = solveExactMcActiveSetReturn(stressTrial6, elasticTangent6x6, params, mcTrial);
       if (!local?.converged) {
         throw new Error(`Local return mapping failed: ${local?.reason || 'unknown reason'}`);
       }
@@ -863,11 +1393,16 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
       const nextPlasticStrain6 = addVector6(committed.plasticStrain6, plasticStrainIncrement6);
       const finalMc = mohrCoulombIndicator3D(local.stress6, params);
       const equivalentPlasticIncrement = equivalentPlasticStrainIncrement(plasticStrainIncrement6);
+      const finalIsMcActive =
+        local.activeYieldSurface === YIELD_SURFACE_MC_FACE ||
+        local.activeYieldSurface === YIELD_SURFACE_MC_EDGE ||
+        local.activeYieldSurface === YIELD_SURFACE_MC_APEX;
       const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(local.stress6, params, committed, {
-        currentlyMcActive: local.activeYieldSurface === YIELD_SURFACE_MC_SHEAR,
+        currentlyMcActive: finalIsMcActive,
         stateChanged: committed.activeYieldSurface !== local.activeYieldSurface,
         activeYieldSurface: local.activeYieldSurface,
-        hasEverExceededMc: committed.hasEverExceededMc || (Number(mcTrial?.F) || 0) > yieldTolerance
+        hasEverExceededMc: committed.hasEverExceededMc || finalIsMcActive,
+        hasExceededNow: finalIsMcActive
       });
       const trialState = createMaterialPointState({
         ...committed,
@@ -875,7 +1410,7 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
         plasticStrain6: nextPlasticStrain6,
         effectiveStress6: local.stress6,
         activeYieldSurface: local.activeYieldSurface,
-        currentlyMcActive: local.activeYieldSurface === YIELD_SURFACE_MC_SHEAR,
+        currentlyMcActive: finalIsMcActive,
         hasEverExceededMc: diagnostics.hasEverExceededMc,
         etaMcCurrent: diagnostics.etaMcCurrent,
         etaMcMaxHistory: diagnostics.etaMcMaxHistory,
@@ -892,8 +1427,9 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
           etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
           fMcFinal: Number(finalMc?.F) || 0,
           etaMcFinal: Number.isFinite(Number(finalMc?.eta)) ? Number(finalMc.eta) : Number.POSITIVE_INFINITY,
-          smoothYieldTrial: Number(smoothTrial?.f) || 0,
-          smoothYieldFinal: Number(local?.yieldResidual) || 0,
+          exactYieldTrial: exactTrialMaxResidual,
+          exactYieldFinal: Number(local?.yieldResidual) || 0,
+          activeSurfaceIds: Array.isArray(local?.activeSurfaceIds) ? [...local.activeSurfaceIds] : [],
           yieldTolerance,
           plasticIncrementNorm: vectorNorm6(plasticStrainIncrement6),
           localIterations: local.iterations,

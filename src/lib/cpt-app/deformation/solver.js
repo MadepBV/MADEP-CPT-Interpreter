@@ -1572,28 +1572,38 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
   let maxHorizontalDisplacement = 0;
   let activeMcElementCount = 0;
   let exceededMcElementCount = 0;
+  let inadmissibleInitialElementCount = 0;
   let maxEquivalentPlasticStrain = 0;
   nodalDisplacements.forEach((item) => {
     maxSettlement = Math.max(maxSettlement, -(item?.uy || 0));
     maxHorizontalDisplacement = Math.max(maxHorizontalDisplacement, Math.abs(item?.ux || 0));
   });
   let maxMcEta = 0;
+  let hasInfiniteMcEta = false;
   let maxDeltaSigmaYy = 0;
   elementResults.forEach((item) => {
-    maxMcEta = Math.max(maxMcEta, Number(item?.mc?.eta) || 0);
+    const etaValue = Number(item?.mc?.eta);
+    if (Number.isFinite(etaValue)) {
+      maxMcEta = Math.max(maxMcEta, etaValue);
+    } else if (etaValue > 0 || item?.mc?.state === 'tension-cutoff') {
+      hasInfiniteMcEta = true;
+    }
     maxDeltaSigmaYy = Math.max(maxDeltaSigmaYy, -Number(item?.stressIncrement?.syy || 0));
     if (item?.materialDiagnostics?.currentlyMcActive) activeMcElementCount += 1;
     if (item?.materialDiagnostics?.hasEverExceededMc) exceededMcElementCount += 1;
+    if (item?.materialDiagnostics?.initialStateAdmissible === false) inadmissibleInitialElementCount += 1;
     maxEquivalentPlasticStrain = Math.max(maxEquivalentPlasticStrain, Number(item?.materialState?.accumulatedPlasticStrain) || 0);
   });
   return {
     maxSettlement,
     maxHorizontalDisplacement,
     maxMcEta,
+    hasInfiniteMcEta,
     maxDeltaSigmaYy,
     maxEquivalentPlasticStrain,
     activeMcElementCount,
-    exceededMcElementCount
+    exceededMcElementCount,
+    inadmissibleInitialElementCount
   };
 }
 
@@ -1671,11 +1681,15 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
       materialDiagnostics: {
         constitutiveModel: response.update.diagnostics?.constitutiveModel || materialPoint.materialModel?.kind || 'linear-elastic',
         activeYieldSurface: displayedMaterialState?.activeYieldSurface || response.update.diagnostics?.activeYieldSurface || 'NONE',
+        diagnosticYieldSurface: response.update.diagnostics?.diagnosticYieldSurface || 'NONE',
         currentlyMcActive: displayedMaterialState?.currentlyMcActive === true,
         hasEverExceededMc: displayedMaterialState?.hasEverExceededMc === true,
         committedActiveYieldSurface: committedMaterialState?.activeYieldSurface || 'NONE',
         committedCurrentlyMcActive: committedMaterialState?.currentlyMcActive === true,
         committedHasEverExceededMc: committedMaterialState?.hasEverExceededMc === true,
+        initialStateAdmissible: materialPoint.referenceState?.initialStateAdmissible !== false,
+        initialEtaMc: Number(materialPoint.referenceState?.initialEtaMc),
+        initialFMc: Number(materialPoint.referenceState?.initialFMc),
         localStrengthReserve: Number(response.update.diagnostics?.localStrengthReserve),
         etaMcFinal: Number(response.update.diagnostics?.etaMcFinal),
         stateChanged: false

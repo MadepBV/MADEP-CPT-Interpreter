@@ -112,7 +112,7 @@
 						<h3>Deformation analysis</h3>
 						<p>
 							Geostatic initialization, constitutive model choices, plotted fields, and the
-							current Stage 2.1 elastoplastic route.
+							current Stage 2 exact Mohr-Coulomb shear-plastic route.
 						</p>
 					</a>
 				</div>
