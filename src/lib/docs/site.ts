@@ -154,14 +154,14 @@ export const docsGroups: DocsGroup[] = [
 		pages: [
 			{
 				title: 'Source families',
-				path: '/docs/reference#sources',
+				path: '/docs/reference#families',
 				summary:
 					'Robertson, NEN, SB260, CUR, PLAXIS, Bishop, Spencer, Darcy flow, and related source families behind the app.',
 				tag: 'Primary'
 			},
 			{
 				title: 'Export meaning',
-				path: '/docs/reference#exports',
+				path: '/docs/reference#external-exports',
 				summary:
 					'Meaning of exported stiffness, conductivity, and constitutive values in the app and in downstream workflows.'
 			},
@@ -192,7 +192,7 @@ export const docsGroups: DocsGroup[] = [
 			},
 			{
 				title: 'Sources and references',
-				path: '/docs/reference#sources',
+				path: '/docs/reference#families',
 				summary:
 					'The principal Eurocode, Belgian/Dutch, PLAXIS, constitutive-model, and theory references behind the app.'
 			}
