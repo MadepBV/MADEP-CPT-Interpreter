@@ -10399,9 +10399,12 @@ function renderStage6BishopApp(){
   const deformationGpuProbePending = stage6DeformationGpuProbeState.status === 'pending' || stage6DeformationGpuProbeState.status === 'idle';
   const deformationGpuAvailable = deformationGpuProbe?.ok === true;
   const deformationGpuUnavailable = stage6DeformationGpuProbeState.status === 'ready' && deformationGpuProbe?.ok === false;
-  const deformationGpuToggleDisabled = deformationGpuUnavailable;
+  // Do not hard-disable the GPU request from the page-level preflight. The
+  // deformation solve runs in a worker, and the solver has its own guarded
+  // backend creation path with CPU fallback and a precise run-record reason.
+  const deformationGpuToggleDisabled = false;
   const deformationGpuTooltipText = deformationGpuUnavailable
-    ? `GPU acceleration is unavailable here. ${stage6BishopGpuProbeReasonLabel(deformationGpuProbe?.reason)}`
+    ? `GPU preflight did not pass in this page context. ${stage6BishopGpuProbeReasonLabel(deformationGpuProbe?.reason)} You can still request GPU; the worker will try again and fall back to CPU f64 if needed.`
     : deformationGpuProbePending
       ? 'Checking WebGL2 GPU availability for the deformation solver...'
       : deformationGpuAvailable
