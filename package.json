@@ -1,7 +1,7 @@
 {
 	"name": "madep-cp",
 	"private": true,
-	"version": "0.3.3",
+	"version": "0.5.0",
 	"type": "module",
 	"license": "AGPL-3.0-or-later",
 	"engines": {
@@ -30,6 +30,7 @@
 		"vite": "^8.0.7"
 	},
 	"dependencies": {
+		"gpu.js": "^2.16.0",
 		"triangle-wasm": "^1.0.0"
 	}
 }

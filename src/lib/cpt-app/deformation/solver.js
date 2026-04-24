@@ -35,6 +35,13 @@ import {
   principalStress2DCompressionPositive,
   sampleInitialPorePressure
 } from './post.js';
+import { createLinearAlgebraBackend, GPU_DEFAULT_MIN_DOF } from './gpu/index.js';
+
+// Residual-refresh cadence: after every BACKEND_RESIDUAL_REFRESH_INTERVAL
+// Krylov iterations a mixed-precision backend triggers a CPU f64 recompute
+// of r = rhs - A*x to reset accumulated f32 roundoff. Matches the
+// CG_CHECKPOINT_INTERVAL cadence by construction.
+const BACKEND_RESIDUAL_REFRESH_INTERVAL = 25;
 
 const CG_REL_TOL = 1e-5;
 const CG_ABS_TOL = 5e-5;
@@ -248,7 +255,35 @@ function branchActivityCounts(materialState) {
   };
 }
 
+let activeMatvecBackend = null;
+let activeBackendInfo = { name: 'cpu-f64', reason: 'gpu-disabled' };
+
+function backendRequiresResidualRefresh() {
+  return !!(activeMatvecBackend && activeMatvecBackend.requiresResidualRefresh);
+}
+
 function sparseMatVec(rows, vector) {
+  if (activeMatvecBackend && typeof activeMatvecBackend.matvec === 'function') {
+    try {
+      return activeMatvecBackend.matvec(rows, vector);
+    } catch (error) {
+      const message = `Linear-algebra backend '${activeMatvecBackend.name}' failed during matvec (${error?.message || 'unknown'}); falling back to the CPU f64 path for the remainder of the run.`;
+      activeBackendInfo = {
+        ...activeBackendInfo,
+        name: 'cpu-f64',
+        reason: `runtime-fallback:${error?.message || 'unknown'}`,
+        failedFrom: activeMatvecBackend.name
+      };
+      try { activeMatvecBackend.dispose?.(); } catch { /* ignore */ }
+      activeMatvecBackend = null;
+      if (typeof console !== 'undefined' && console?.warn) console.warn(message);
+      return sparseMatVecFallback(rows, vector);
+    }
+  }
+  return sparseMatVecFallback(rows, vector);
+}
+
+function sparseMatVecFallback(rows, vector) {
   const out = new Float64Array(rows.length);
   for (let i = 0; i < rows.length; i += 1) {
     let sum = 0;
@@ -430,7 +465,12 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
   const x = initial && initial.length === n ? Float64Array.from(initial) : new Float64Array(n);
   let r = rhs;
   if (initial) {
-    const ax = sparseMatVec(rows, x);
+    // The initial residual sets convergence expectations for the rest of the
+    // solve. Use the f64 fallback when a mixed-precision backend is active
+    // so warm-start convergence is not judged against a narrowed residual.
+    const ax = backendRequiresResidualRefresh()
+      ? sparseMatVecFallback(rows, x)
+      : sparseMatVec(rows, x);
     r = new Float64Array(n);
     for (let i = 0; i < n; i += 1) r[i] = rhs[i] - ax[i];
   } else {
@@ -484,6 +524,12 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
       x[i] += alpha * p[i];
       r[i] -= alpha * ap[i];
     }
+    let didResidualRefresh = false;
+    if (backendRequiresResidualRefresh() && iter % BACKEND_RESIDUAL_REFRESH_INTERVAL === 0) {
+      const axRefresh = sparseMatVecFallback(rows, x);
+      for (let i = 0; i < n; i += 1) r[i] = rhs[i] - axRefresh[i];
+      didResidualRefresh = true;
+    }
     residualNorm = Math.sqrt(dot(r, r));
     tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
     if (iterationObserver && (iter === 1 || iter % GEOSTATIC_CG_PROGRESS_INTERVAL === 0)) {
@@ -512,8 +558,12 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
       z[i] = r[i] / diag;
     }
     const rzNew = dot(r, z);
-    const beta = Math.abs(rzOld) > CG_NUMERIC_EPS ? rzNew / rzOld : 0;
-    for (let i = 0; i < n; i += 1) p[i] = z[i] + beta * p[i];
+    // After a residual refresh we restart the Krylov subspace (p = z) so the
+    // momentum term does not drag in stale pre-refresh direction vectors.
+    const beta = didResidualRefresh
+      ? 0
+      : (Math.abs(rzOld) > CG_NUMERIC_EPS ? rzNew / rzOld : 0);
+    for (let i = 0; i < n; i += 1) p[i] = didResidualRefresh ? z[i] : z[i] + beta * p[i];
     rzOld = rzNew;
     if (iter % CG_CHECKPOINT_INTERVAL === 0 && (await runCheckpoint(runControl))) {
       return {
@@ -558,7 +608,11 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
   }
   const x = initial && initial.length === n ? Float64Array.from(initial) : new Float64Array(n);
   const rhsNorm = Math.sqrt(dot(rhs, rhs));
-  const ax0 = initial ? sparseMatVec(rows, x) : new Float64Array(n);
+  const ax0 = initial
+    ? (backendRequiresResidualRefresh()
+        ? sparseMatVecFallback(rows, x)
+        : sparseMatVec(rows, x))
+    : new Float64Array(n);
   const r = new Float64Array(n);
   for (let i = 0; i < n; i += 1) r[i] = rhs[i] - ax0[i];
   let rHat = Float64Array.from(r);
@@ -708,6 +762,18 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
     for (let i = 0; i < n; i += 1) {
       x[i] += alpha * phat[i] + omega * shat[i];
       r[i] = s[i] - omega * t[i];
+    }
+    if (backendRequiresResidualRefresh() && iter % BACKEND_RESIDUAL_REFRESH_INTERVAL === 0) {
+      const axRefresh = sparseMatVecFallback(rows, x);
+      for (let i = 0; i < n; i += 1) r[i] = rhs[i] - axRefresh[i];
+      // Restart the biorthogonalisation: fresh r implies fresh shadow rHat,
+      // zeroed search directions and unit scalars. x is preserved.
+      rHat = Float64Array.from(r);
+      p.fill(0);
+      v.fill(0);
+      rhoOld = 1;
+      alpha = 1;
+      omega = 1;
     }
     residualNorm = Math.sqrt(dot(r, r));
     tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
@@ -893,7 +959,9 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
   const rhsNorm = Math.sqrt(dot(scaledRhs, scaledRhs));
   const restart = Math.max(Math.round(Number(options?.restart) || GMRES_RESTART), 4);
   let x = scaledSystem.unscaleInitialSolution(initial) || new Float64Array(n);
-  let ax = sparseMatVec(scaledRows, x);
+  let ax = backendRequiresResidualRefresh()
+    ? sparseMatVecFallback(scaledRows, x)
+    : sparseMatVec(scaledRows, x);
   let residual = new Float64Array(n);
   for (let i = 0; i < n; i += 1) residual[i] = scaledRhs[i] - ax[i];
   let residualNorm = Math.sqrt(dot(residual, residual));
@@ -1011,7 +1079,13 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
             }
           }
         }
-        ax = sparseMatVec(scaledRows, x);
+        // Residual recomputes at restart boundaries always use the f64
+        // fallback when a mixed-precision backend is active. Arnoldi steps
+        // inside the restart may have been evaluated in f32; we reset the
+        // convergence residual with full precision here.
+        ax = backendRequiresResidualRefresh()
+          ? sparseMatVecFallback(scaledRows, x)
+          : sparseMatVec(scaledRows, x);
         for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
           residual[entryIndex] = scaledRhs[entryIndex] - ax[entryIndex];
         }
@@ -1060,7 +1134,10 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
       };
     }
 
-    ax = sparseMatVec(scaledRows, x);
+    // Between restarts: full-precision residual recompute when mixed.
+    ax = backendRequiresResidualRefresh()
+      ? sparseMatVecFallback(scaledRows, x)
+      : sparseMatVec(scaledRows, x);
     for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
       residual[entryIndex] = scaledRhs[entryIndex] - ax[entryIndex];
     }
@@ -3570,6 +3647,19 @@ export function sampleDeformationState(mesh, result, x, y) {
 }
 
 export async function analyzeDeformationModel(input, onProgress = () => {}, runControl = null) {
+  try {
+    return await _analyzeDeformationModelImpl(input, onProgress, runControl);
+  } finally {
+    // The inner implementation disposes the backend on the happy path, but
+    // we belt-and-suspender the release here so a throw mid-run cannot leak
+    // a WebGL context or GPU.js kernel cache into a subsequent invocation.
+    try { activeMatvecBackend?.dispose?.(); } catch { /* ignore */ }
+    activeMatvecBackend = null;
+    activeBackendInfo = { name: 'cpu-f64', reason: 'gpu-disabled' };
+  }
+}
+
+async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runControl = null) {
   const startedAt = performance.now();
   const model = input?.model;
   if (!model?.terrain?.vertices?.length || !model?.regions?.length) {
@@ -3636,7 +3726,12 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     safetyMechanismPlateauWindow: Math.max(Math.round(Number(input?.options?.safetyMechanismPlateauWindow) || 3), 2),
     safetyMechanismPlateauRelativeTolerance: Math.max(Number(input?.options?.safetyMechanismPlateauRelativeTolerance) || 0.01, 1e-4),
     safetyMechanismMinIncrementalDisplacementNorm: Math.max(Number(input?.options?.safetyMechanismMinIncrementalDisplacementNorm) || 1e-8, 0),
-    safetyMechanismMinPlasticIncrement: Math.max(Number(input?.options?.safetyMechanismMinPlasticIncrement) || 1e-8, 0)
+    safetyMechanismMinPlasticIncrement: Math.max(Number(input?.options?.safetyMechanismMinPlasticIncrement) || 1e-8, 0),
+    useGpuAcceleration: input?.options?.useGpuAcceleration === true,
+    linearAlgebraBackend: typeof input?.options?.linearAlgebraBackend === 'string'
+      ? input.options.linearAlgebraBackend
+      : null,
+    gpuMinDof: Math.max(Math.round(Number(input?.options?.gpuMinDof) || GPU_DEFAULT_MIN_DOF), 0)
   };
   const load = normalizeLoad(model, options, warnings, analysisType === 'deformation' ? 'required' : 'optional');
   addDomainExtentWarnings(model, load, warnings);
@@ -3721,6 +3816,18 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   const loadRhsFreeBase = gatherFreeVector(loadRhs, freeDofs);
   const totalExternalForceFree = addSolutionVectors(gravityCompressedRhs, loadRhsFreeBase);
   const nonlinearAssemblyPattern = buildCompressedAssemblyPattern(elementCaches, freeIndexByDof, freeDofs.length);
+  // Set up the optional linear-algebra backend. We wait until freeDofs is
+  // known so the size gate decides against the actual Krylov problem size
+  // (not the uncondensed ndof). The outer analyzeDeformationModel wrapper
+  // disposes the backend in its finally block.
+  const backendSetup = await createLinearAlgebraBackend({
+    useGpuAcceleration: options.useGpuAcceleration,
+    linearAlgebraBackend: options.linearAlgebraBackend,
+    ndof: freeDofs.length,
+    gpuMinDof: options.gpuMinDof
+  }, warnings);
+  activeMatvecBackend = backendSetup.backend;
+  activeBackendInfo = backendSetup.info;
   const geostatic = await buildGeostaticInitialization(
     mesh,
     elementCaches,
@@ -4202,7 +4309,18 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
         : null,
       safetyTrialHistory: analysisType === 'safety-cphi' ? (safetyAnalysis?.history || []) : [],
       safetyAcceptedContinuationSteps: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalAcceptedContinuationSteps) || 0 : 0,
-      safetyRejectedContinuationSteps: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalRejectedContinuationSteps) || 0 : 0
+      safetyRejectedContinuationSteps: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalRejectedContinuationSteps) || 0 : 0,
+      linearAlgebraBackend: {
+        name: activeBackendInfo?.name || 'cpu-f64',
+        reason: activeBackendInfo?.reason || '',
+        requested: !!options.useGpuAcceleration,
+        override: options.linearAlgebraBackend || null,
+        probeMode: activeBackendInfo?.probeMode || null,
+        probeContext: activeBackendInfo?.probeContext || null,
+        failedFrom: activeBackendInfo?.failedFrom || null,
+        freeDofCount: freeDofs.length,
+        residualRefreshInterval: backendRequiresResidualRefresh() ? BACKEND_RESIDUAL_REFRESH_INTERVAL : 0
+      }
     },
     timing: {
       totalMs: performance.now() - startedAt

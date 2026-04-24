@@ -3818,7 +3818,9 @@ function stage6Defaults(){
           safetySigmaMsfMax:3.00,
           safetySigmaMsfBracketTolerance:0.01,
           safetyMaxSearchTrials:32,
-          useUnsymmetricPlasticSolver:false
+          useUnsymmetricPlasticSolver:false,
+          useGpuAcceleration:false,
+          gpuMinDof:1500
         },
         display:{
           contourMode:'settlement',
@@ -4153,6 +4155,11 @@ function ensureStage6State(){
   bishop.deformation.options.safetySigmaMsfBracketTolerance = Math.max(+bishop.deformation.options.safetySigmaMsfBracketTolerance || 0.01, 0.0001);
   bishop.deformation.options.safetyMaxSearchTrials = Math.max(Math.round(+bishop.deformation.options.safetyMaxSearchTrials || 32), 1);
   bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver === true;
+  bishop.deformation.options.useGpuAcceleration = bishop.deformation.options.useGpuAcceleration === true;
+  const rawGpuMinDof = Number(bishop.deformation.options.gpuMinDof);
+  bishop.deformation.options.gpuMinDof = Number.isFinite(rawGpuMinDof) && rawGpuMinDof > 0
+    ? Math.max(Math.round(rawGpuMinDof), 0)
+    : 1500;
   const rawDeformationMeshTargetArea = Number(bishop.deformation.options.meshTargetArea);
   if(bishop.deformation.options.meshTargetAreaAuto == null){
     bishop.deformation.options.meshTargetAreaAuto = !(
@@ -6219,7 +6226,9 @@ function stage6BishopRunDeformation(){
         safetySigmaMsfMax:bishop.deformation?.options?.safetySigmaMsfMax,
         safetySigmaMsfBracketTolerance:bishop.deformation?.options?.safetySigmaMsfBracketTolerance,
         safetyMaxSearchTrials:bishop.deformation?.options?.safetyMaxSearchTrials,
-        useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true
+        useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true,
+        useGpuAcceleration:bishop.deformation?.options?.useGpuAcceleration === true,
+        gpuMinDof:bishop.deformation?.options?.gpuMinDof
       }
     }
   });
@@ -10265,6 +10274,8 @@ function renderStage6BishopApp(){
   const deformationSafetySigmaMsfBracketTolerance = Math.max(Number(deformation.options?.safetySigmaMsfBracketTolerance) || 0.01, 0.0001);
   const deformationSafetyMaxSearchTrials = Math.max(Math.round(Number(deformation.options?.safetyMaxSearchTrials) || 32), 1);
   const deformationUseUnsymmetricPlasticSolver = deformation.options?.useUnsymmetricPlasticSolver === true;
+  const deformationUseGpuAcceleration = deformation.options?.useGpuAcceleration === true;
+  const deformationGpuMinDof = Math.max(Math.round(Number(deformation.options?.gpuMinDof) || 1500), 0);
   const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
   const deformationTotalLoad = Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null;
@@ -10345,6 +10356,16 @@ function renderStage6BishopApp(){
   const deformationPeakActive = Number.isFinite(deformation.result?.solver?.peakActiveMcElements)
     ? deformation.result.solver.peakActiveMcElements
     : null;
+  const deformationBackendInfo = deformation.result?.solver?.linearAlgebraBackend || null;
+  const deformationBackendLabel = deformationBackendInfo
+    ? (deformationBackendInfo.name === 'webgl2-f32'
+        ? `GPU (WebGL2 f32, refresh every ${Math.max(Number(deformationBackendInfo.residualRefreshInterval) || 0, 0)} iters)`
+        : deformationBackendInfo.name === 'cpu-f32'
+          ? 'CPU f32 (diagnostic mixed-precision path)'
+          : deformationBackendInfo.requested
+            ? `CPU f64 (GPU requested but unavailable — ${deformationBackendInfo.reason || 'unknown reason'})`
+            : 'CPU f64')
+    : '—';
   const deformationProfileRows = deformationHasResult
     ? (deformation.result?.terrainSettlementProfile || []).map((point, index)=>`
         <tr>
@@ -10940,6 +10961,14 @@ function renderStage6BishopApp(){
                   Use the unsymmetric Stage 2 linear solver path
                 </label>
                 <div class="st6-help">The service phase keeps the previous Stage 2 default unless you explicitly enable this advanced option. The initial plastic equilibration phase now uses the robust Krylov path automatically, because that total-force correction problem is more sensitive to non-SPD linearizations.</div>
+                <label class="st6-bishop-check">
+                  <input type="checkbox" ${deformationUseGpuAcceleration ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useGpuAcceleration', this.checked)">
+                  Offload matvec to the GPU (WebGL2, experimental)
+                </label>
+                <div class="st6-help">When enabled the Krylov inner loop runs a mixed-precision matvec on the GPU with CPU f64 residual refresh at every restart. Requires a WebGL2 context with EXT_color_buffer_float; the solver silently falls back to the CPU path if the probe fails, the gpu.js package is missing, or the problem has fewer than ${deformationGpuMinDof.toLocaleString()} free DOFs. Biggest wins are on linear-elastic and service-load phases; Stage 2 safety runs remain bounded by the CPU MC return-map.</div>
+                <label style="font-size:11px;color:var(--tx2)">GPU minimum free-DOF gate
+                  <input type="number" step="100" min="0" value="${deformationGpuMinDof}" onchange="stage6BishopSetField('deformation.options.gpuMinDof', this.value)">
+                </label>
                 ${deformationIsSafety ? `
                   <label style="font-size:11px;color:var(--tx2)">Initial ΣMsf increment
                     <input type="number" step="0.01" min="0.001" value="${deformationSafetyInitialSigmaMsfIncrement.toFixed(3)}" onchange="stage6BishopSetField('deformation.options.safetyInitialSigmaMsfIncrement', this.value)">
@@ -11381,6 +11410,7 @@ function renderStage6BishopApp(){
                   <tr><td>Nodes</td><td>${deformation.mesh?.nodes?.length || 0}</td></tr>
                   <tr><td>Triangles</td><td>${deformation.mesh?.elements?.length || 0}</td></tr>
                   <tr><td>Solver</td><td>${stage6EscAttr(deformationSolverLabel)}</td></tr>
+                  <tr><td>Linear-algebra backend</td><td>${stage6EscAttr(deformationBackendLabel)}</td></tr>
                   <tr><td>Initial stress</td><td>${stage6EscAttr(deformationInitialStressMode)}</td></tr>
                   <tr><td>Free DOFs</td><td>${deformation.result?.solver?.freeDofs || 0}</td></tr>
                   <tr><td>Geostatic CG iterations</td><td>${deformationGeostaticIterations ?? '—'}</td></tr>

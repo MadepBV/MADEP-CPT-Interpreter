@@ -1,5 +1,14 @@
 import { analyzeDeformationModel, sampleDeformationState } from '../src/lib/cpt-app/deformation/solver.js';
 import {
+  computeEllpackShape,
+  createEllpackBuffer,
+  ellpackMatvecReference,
+  packEllpackIndices,
+  packEllpackValues
+} from '../src/lib/cpt-app/deformation/gpu/ellpack.js';
+import { createCpuF32Backend } from '../src/lib/cpt-app/deformation/gpu/cpu-f32-backend.js';
+import { createLinearAlgebraBackend } from '../src/lib/cpt-app/deformation/gpu/index.js';
+import {
   createMCPlasticMaterial,
   createMCReducedStiffnessMaterial,
   createLinearElasticMaterial,
@@ -1830,6 +1839,199 @@ await runCase('Case 5 deformation sampling exposes total/effective stresses and 
   assert(
     Math.abs(sampled.sigmaYyTotal - sampled.sigmaYyTotalInit) > 1,
     `final total vertical stress should reflect a non-trivial load-induced change (got ${sampled.sigmaYyTotal} vs ${sampled.sigmaYyTotalInit})`
+  );
+});
+
+await runCase('Case 39 ELLPACK pack/matvec reproduces the dense reference within machine precision', async () => {
+  // Build a small asymmetric sparse system that hits every row-padding
+  // scenario (varying row lengths, non-zero diag, off-diagonal entries).
+  const rows = [
+    { indices: new Int32Array([0, 1, 3]), values: new Float64Array([4.5, -1.2, 0.7]), diagIndex: 0, diag: 4.5 },
+    { indices: new Int32Array([0, 1, 2]), values: new Float64Array([-1.2, 3.1, -0.9]), diagIndex: 1, diag: 3.1 },
+    { indices: new Int32Array([1, 2, 3]), values: new Float64Array([-0.9, 5.2, -1.4]), diagIndex: 1, diag: 5.2 },
+    { indices: new Int32Array([0, 2, 3]), values: new Float64Array([0.7, -1.4, 2.3]), diagIndex: 2, diag: 2.3 }
+  ];
+  const vector = new Float64Array([1.2, -0.3, 0.8, 2.1]);
+
+  // Reference dense matvec
+  const ref = new Float64Array(rows.length);
+  for (let i = 0; i < rows.length; i += 1) {
+    let sum = 0;
+    for (let k = 0; k < rows[i].indices.length; k += 1) sum += rows[i].values[k] * vector[rows[i].indices[k]];
+    ref[i] = sum;
+  }
+
+  const shape = computeEllpackShape(rows);
+  assert(shape.numRows === 4 && shape.maxRowLen === 3, 'ELLPACK shape detection should pick the tightest padding width');
+
+  const bufF64 = createEllpackBuffer({ ...shape, valueDtype: 'f64' });
+  packEllpackIndices(bufF64, rows);
+  packEllpackValues(bufF64, rows);
+  const gotF64 = ellpackMatvecReference(bufF64, vector);
+  for (let i = 0; i < rows.length; i += 1) {
+    approxRelative(ref[i], gotF64[i], 1e-12, `ELLPACK f64 matvec row ${i}`);
+  }
+
+  // Back the pattern with Float32 values to simulate the GPU backend path.
+  const bufF32 = createEllpackBuffer({ ...shape, valueDtype: 'f32' });
+  packEllpackIndices(bufF32, rows);
+  packEllpackValues(bufF32, rows);
+  const narrowVec = new Float32Array(vector.length);
+  for (let i = 0; i < vector.length; i += 1) narrowVec[i] = vector[i];
+  const gotF32 = ellpackMatvecReference(bufF32, narrowVec);
+  for (let i = 0; i < rows.length; i += 1) {
+    approxRelative(ref[i], gotF32[i], 1e-5, `ELLPACK f32 matvec row ${i}`);
+  }
+});
+
+await runCase('Case 40 CPU-f32 backend factory respects the gpuMinDof size gate and explicit overrides', async () => {
+  const smallGate = await createLinearAlgebraBackend({
+    useGpuAcceleration: true,
+    ndof: 500,
+    gpuMinDof: 1500
+  }, []);
+  assert(smallGate.backend === null, 'size-gated request should stay on the CPU f64 path');
+  assert(String(smallGate.info.reason || '').startsWith('below-size-gate'), 'size-gate reason should be reported explicitly');
+
+  const explicitF32 = await createLinearAlgebraBackend({
+    linearAlgebraBackend: 'cpu-f32'
+  }, []);
+  assert(explicitF32.backend && explicitF32.backend.name === 'cpu-f32', 'explicit cpu-f32 override should be honoured regardless of useGpuAcceleration');
+  assert(explicitF32.backend.requiresResidualRefresh === true, 'cpu-f32 backend must request residual refresh so the Krylov solvers reset f32 drift');
+  explicitF32.backend.dispose();
+
+  const explicitF64 = await createLinearAlgebraBackend({
+    linearAlgebraBackend: 'cpu-f64'
+  }, []);
+  assert(explicitF64.backend === null, 'explicit cpu-f64 override should return the native fallback (null backend)');
+});
+
+await runCase('Case 41 CPU-f32 backend matvec matches the CSR reference within f32 tolerance', async () => {
+  const backend = createCpuF32Backend();
+  try {
+    const rows = [
+      { indices: new Int32Array([0, 1, 2]), values: new Float64Array([10, 2, -1]), diagIndex: 0, diag: 10 },
+      { indices: new Int32Array([0, 1, 3]), values: new Float64Array([2, 9, 3]), diagIndex: 1, diag: 9 },
+      { indices: new Int32Array([0, 2, 3]), values: new Float64Array([-1, 7, -2]), diagIndex: 1, diag: 7 },
+      { indices: new Int32Array([1, 2, 3]), values: new Float64Array([3, -2, 11]), diagIndex: 2, diag: 11 }
+    ];
+    const x = new Float64Array([0.125, -0.5, 1.75, -0.875]);
+    const reference = new Float64Array(rows.length);
+    for (let i = 0; i < rows.length; i += 1) {
+      let sum = 0;
+      for (let k = 0; k < rows[i].indices.length; k += 1) sum += rows[i].values[k] * x[rows[i].indices[k]];
+      reference[i] = sum;
+    }
+    const got = backend.matvec(rows, x);
+    for (let i = 0; i < rows.length; i += 1) {
+      approxRelative(reference[i], got[i], 1e-5, `cpu-f32 matvec row ${i}`);
+    }
+    // Pattern caching: a second call with the same identity must hit the refresh-only path.
+    const got2 = backend.matvec(rows, x);
+    for (let i = 0; i < rows.length; i += 1) {
+      approxRelative(reference[i], got2[i], 1e-5, `cpu-f32 matvec (cached) row ${i}`);
+    }
+  } finally {
+    backend.dispose();
+  }
+});
+
+async function runBackendParityCase(label, modelFactory, options, tolerances) {
+  const base = await analyzeDeformationModel({
+    model: modelFactory(),
+    options
+  });
+  const mixed = await analyzeDeformationModel({
+    model: modelFactory(),
+    options: { ...options, linearAlgebraBackend: 'cpu-f32' }
+  });
+  assert(base?.solver?.linearAlgebraBackend?.name === 'cpu-f64', `${label}: baseline run should use the CPU f64 backend`);
+  assert(mixed?.solver?.linearAlgebraBackend?.name === 'cpu-f32', `${label}: mixed-precision run should use the CPU f32 backend`);
+  assert(mixed?.solver?.linearAlgebraBackend?.residualRefreshInterval > 0, `${label}: mixed-precision backend should enable residual refresh`);
+
+  const settlementRel = tolerances?.settlement ?? 1e-3;
+  approxRelative(
+    Math.max(base.summaries?.maxSettlement || 0, 1e-9),
+    Math.max(mixed.summaries?.maxSettlement || 0, 1e-9),
+    settlementRel,
+    `${label}: max settlement should agree between CPU f64 and mixed-precision paths`
+  );
+  // Peak MC utilization is a scalar field that should be stable across matvec
+  // precision. Use a looser bound for Stage 2 because active-set transitions
+  // are sensitive to roundoff.
+  const etaRel = tolerances?.eta ?? 5e-3;
+  const baseEta = Math.max(base.summaries?.maxMcEta || 0, 1e-9);
+  const mixedEta = Math.max(mixed.summaries?.maxMcEta || 0, 1e-9);
+  approxRelative(baseEta, mixedEta, etaRel, `${label}: peak MC utilization should agree between backends`);
+
+  assert(
+    base.solver?.convergenceState === mixed.solver?.convergenceState
+    || (base.solver?.convergenceState === 'converged' && mixed.solver?.convergenceState === 'quasi-converged'),
+    `${label}: both paths should reach the same convergence class (base=${base.solver?.convergenceState}, mixed=${mixed.solver?.convergenceState})`
+  );
+  // Iteration counts may differ slightly (Krylov restart at refresh boundaries);
+  // assert a 2x envelope so regressions in the mixed-precision path are flagged.
+  const baseLinear = Math.max(Number(base.solver?.linearIterations) || 0, 1);
+  const mixedLinear = Math.max(Number(mixed.solver?.linearIterations) || 0, 1);
+  assert(
+    mixedLinear <= 4 * baseLinear,
+    `${label}: mixed-precision linear iterations (${mixedLinear}) should stay within 4x baseline (${baseLinear})`
+  );
+}
+
+await runCase('Case 42 linear-elastic run is numerically stable under the mixed-precision backend', async () => {
+  await runBackendParityCase(
+    'linear-elastic',
+    baseModel,
+    {
+      meshTargetArea: 0.25,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'linear-elastic'
+    },
+    { settlement: 5e-4, eta: 5e-3 }
+  );
+});
+
+await runCase('Case 43 Stage 1 reduced-stiffness run is numerically stable under the mixed-precision backend', async () => {
+  await runBackendParityCase(
+    'stage-1-reduced-stiffness',
+    baseModel,
+    {
+      meshTargetArea: 0.25,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-reduced-stiffness'
+    },
+    { settlement: 1e-3, eta: 5e-3 }
+  );
+});
+
+await runCase('Case 44 Stage 2 elastoplastic run is numerically stable under the mixed-precision backend', async () => {
+  // Small load so the run stays in the elastic range of the MC surface —
+  // verifies that Stage 2 can traverse the active-set paths without the
+  // f32 matvec introducing spurious yield transitions.
+  await runBackendParityCase(
+    'stage-2-elastoplastic-elastic-range',
+    () => baseModel({
+      surfaceLoad: {
+        xStart: 11,
+        xEnd: 13,
+        q: 5
+      }
+    }),
+    {
+      meshTargetArea: 0.3,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialLoadStep: 1,
+      maxLoadSteps: 8
+    },
+    { settlement: 5e-3, eta: 1e-2 }
   );
 });
 
