@@ -53,9 +53,12 @@
 			<div class="docs-nav__title">Methods</div>
 			<a href="#overview">Scope and structure</a>
 			<a href="#conventions">Conventions and notation</a>
+			<a href="#voigt">Voigt notation and elastic matrix</a>
 			<a href="#classification">Classification and parameter logic</a>
 			<a href="#seepage">Seepage formulation</a>
 			<a href="#deformation">Deformation formulation</a>
+			<a href="#mc">Mohr-Coulomb yield theory</a>
+			<a href="#tension">Tension cut-off</a>
 			<a href="#numerics">Numerical assumptions</a>
 			<a href="#references">Source basis</a>
 		</aside>
@@ -124,6 +127,52 @@
 					</div>
 					<p>
 						The geometry is therefore not updated during the current equilibrium iterations.
+					</p>
+				</section>
+			</section>
+
+			<section id="voigt" class="doc-card">
+				<p class="section-label">Voigt notation</p>
+				<h2>3. Voigt-6 stress, strain, and elastic matrix</h2>
+				<section class="doc-subsection">
+					<h3>3.1 Vector convention and engineering shear</h3>
+					<p>
+						All six-component tensor quantities in the deformation route use the Voigt-6
+						convention with engineering shear strain (γ = 2ε). The order is [xx, yy, zz, xy, yz,
+						zx] for stress and strain; the engineering shear factor lets the stress-strain
+						relation read linearly as σ = D ε in the shear block.
+					</p>
+					<div class="equations">
+						<div class="formula">σ = [σ<sub>xx</sub>, σ<sub>yy</sub>, σ<sub>zz</sub>, τ<sub>xy</sub>, τ<sub>yz</sub>, τ<sub>zx</sub>]<sup>T</sup></div>
+						<div class="formula">ε = [ε<sub>xx</sub>, ε<sub>yy</sub>, ε<sub>zz</sub>, γ<sub>xy</sub>, γ<sub>yz</sub>, γ<sub>zx</sub>]<sup>T</sup>,   γ<sub>ij</sub> = 2 ε<sub>ij</sub><sup>tensor</sup></div>
+						<div class="formula">σ : ε = σ<sub>xx</sub>ε<sub>xx</sub> + σ<sub>yy</sub>ε<sub>yy</sub> + σ<sub>zz</sub>ε<sub>zz</sub> + τ<sub>xy</sub>γ<sub>xy</sub> + τ<sub>yz</sub>γ<sub>yz</sub> + τ<sub>zx</sub>γ<sub>zx</sub></div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>3.2 Isotropic linear-elastic stiffness</h3>
+					<div class="equations">
+						<div class="formula">D<sub>e</sub> = λ ι<sub>6</sub>ι<sub>6</sub><sup>T</sup> + 2G I<sub>6</sub>     (with ι<sub>6</sub> = [1,1,1,0,0,0]<sup>T</sup>, I<sub>6</sub> the Voigt identity with the half-factor on shear)</div>
+						<div class="formula">λ = E ν / [(1+ν)(1−2ν)],   G = E / [2(1+ν)]</div>
+						<div class="formula">In block form, with engineering shear:</div>
+						<div class="formula">D<sub>e</sub> = [[λ+2G, λ, λ; λ, λ+2G, λ; λ, λ, λ+2G] ⊕ G·diag(1,1,1)]</div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>3.3 Plane-strain reduction</h3>
+					<p>
+						For plane strain ε<sub>zz</sub> = γ<sub>yz</sub> = γ<sub>zx</sub> = 0. The reduced 3×3
+						elastic matrix, acting on plane strains [ε<sub>xx</sub>, ε<sub>yy</sub>, γ<sub>xy</sub>],
+						is the xx/yy/xy block of D<sub>e</sub>:
+					</p>
+					<div class="equations">
+						<div class="formula">D<sub>2D</sub> = (E / [(1+ν)(1−2ν)]) · [[1−ν, ν, 0; ν, 1−ν, 0; 0, 0, (1−2ν)/2]]</div>
+					</div>
+					<p>
+						The out-of-plane effective stress σ′<sub>zz</sub> is not constrained to a single elastic
+						closed form in plastic runs: σ′<sub>zz</sub> becomes an internal state variable and its
+						K<sub>0</sub>-controlled initialization is preserved through the Stage 2 return map.
 					</p>
 				</section>
 			</section>
@@ -265,6 +314,118 @@
 						space.
 					</p>
 				</section>
+			</section>
+
+			<section id="mc" class="doc-card">
+				<p class="section-label">Mohr-Coulomb yield theory</p>
+				<h2>6. Mohr-Coulomb yield function, flow rule, and algorithmic tangent</h2>
+				<section class="doc-subsection">
+					<h3>6.1 Yield function in principal stress space</h3>
+					<p>
+						Using compression-positive effective principal stresses ordered σ<sub>1</sub> ≥
+						σ<sub>2</sub> ≥ σ<sub>3</sub>, the Mohr-Coulomb criterion in its critical form reads:
+					</p>
+					<div class="equations">
+						<div class="formula">F(σ) = (σ<sub>1</sub> − σ<sub>3</sub>) − (σ<sub>1</sub> + σ<sub>3</sub>) sin φ′ − 2 c′ cos φ′ ≤ 0</div>
+						<div class="formula">Equivalent: (1 − sin φ′) σ<sub>1</sub> − (1 + sin φ′) σ<sub>3</sub> − 2 c′ cos φ′ ≤ 0</div>
+						<div class="formula">Apex location (hydrostatic tensile corner): p<sub>apex</sub> = c′ cot φ′</div>
+					</div>
+					<p>
+						For the exact multisurface treatment, three pair-wise surfaces F<sub>ij</sub> (index
+						pair ij ∈ &#123;12, 13, 23&#125;) are retained simultaneously. F<sub>13</sub> governs
+						on the ordered face; F<sub>12</sub> and F<sub>23</sub> pick up the σ<sub>1</sub>=σ<sub>2</sub>
+						and σ<sub>2</sub>=σ<sub>3</sub> edges respectively.
+					</p>
+					<div class="equations">
+						<div class="formula">F<sub>ij</sub>(σ) = (1 − sin φ′) σ<sub>i</sub> − (1 + sin φ′) σ<sub>j</sub> − 2 c′ cos φ′</div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>6.2 Non-associated flow rule</h3>
+					<p>
+						Plastic flow follows a plastic potential G built with the dilatancy angle ψ′ ≤ φ′.
+						The flow is non-associated when ψ′ ≠ φ′; for dilatant soils ψ′ &gt; 0 introduces a
+						volumetric plastic strain component.
+					</p>
+					<div class="equations">
+						<div class="formula">G<sub>ij</sub>(σ) = (1 − sin ψ′) σ<sub>i</sub> − (1 + sin ψ′) σ<sub>j</sub> − const</div>
+						<div class="formula">dε<sup>p</sup> = dλ ∂G/∂σ   (flow rule)</div>
+						<div class="formula">n<sub>ij</sub> = ∂F<sub>ij</sub>/∂σ,    m<sub>ij</sub> = ∂G<sub>ij</sub>/∂σ</div>
+						<div class="formula">Associated case: n<sub>ij</sub> = m<sub>ij</sub>,   ψ′ = φ′</div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>6.3 Return mapping and algorithmic tangent</h3>
+					<p>
+						Because F is piecewise linear in stress, the return map closes in a single linear
+						step on each active branch. The return equation and the algorithmic consistent tangent
+						follow the Simo–Taylor form:
+					</p>
+					<div class="equations">
+						<div class="formula">σ<sub>ret</sub> = σ<sub>trial</sub> − D<sub>e</sub> Σ<sub>i</sub> λ<sub>i</sub> m<sub>i</sub></div>
+						<div class="formula">C<sub>ij</sub> = n<sub>i</sub><sup>T</sup> D<sub>e</sub> m<sub>j</sub>    (coupling matrix; unsymmetric for ψ ≠ φ)</div>
+						<div class="formula">C λ = F(σ<sub>trial</sub>)    ⇒    λ = C<sup>-1</sup> F(σ<sub>trial</sub>)</div>
+						<div class="formula">D<sub>ep</sub> = D<sub>e</sub> − Σ<sub>i,j</sub> (D<sub>e</sub> m<sub>i</sub>) (C<sup>-1</sup>)<sub>ij</sub> (D<sub>e</sub> n<sub>j</sub>)<sup>T</sup></div>
+					</div>
+					<p>
+						The unsymmetric D<sub>ep</sub> is preserved by default in the shipped Stage 2 route.
+						Symmetrization is offered as a convenience option but is theoretically a projection
+						and loses accuracy on active-set transitions.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>6.4 Strength reduction (c-φ reduction)</h3>
+					<p>
+						The safety-by-c-φ-reduction route divides the strength parameters by a common
+						multiplier Σ<sub>Msf</sub> and searches for the critical value at which equilibrium
+						fails to close:
+					</p>
+					<div class="equations">
+						<div class="formula">c′<sub>r</sub> = c′ / Σ<sub>Msf</sub>,    tan φ′<sub>r</sub> = tan φ′ / Σ<sub>Msf</sub></div>
+						<div class="formula">tan ψ′<sub>r</sub> = tan ψ′ / Σ<sub>Msf</sub>,   σ<sub>t,r</sub> = σ<sub>t</sub> / Σ<sub>Msf</sub></div>
+						<div class="formula">Apex invariant: c′<sub>r</sub> cot φ′<sub>r</sub> = c′ cot φ′ (the apex does not move under reduction)</div>
+						<div class="formula">Constraints: ψ′<sub>r</sub> ≤ φ′<sub>r</sub>,    σ<sub>t,r</sub> ≤ c′<sub>r</sub> / tan φ′<sub>r</sub></div>
+						<div class="formula">Factor of safety:  F<sub>s</sub> = Σ<sub>Msf, critical</sub></div>
+					</div>
+					<p>
+						Reported factor of safety is the highest converged lower bound. The upper bound (first
+						non-converging multiplier) and the bracket are reported alongside so the engineer can
+						judge the numerical uncertainty on the critical state.
+					</p>
+				</section>
+			</section>
+
+			<section id="tension" class="doc-card">
+				<p class="section-label">Tension cut-off</p>
+				<h2>7. Tension cut-off, apex corners, and mixed branches</h2>
+				<p>
+					The Mohr-Coulomb surface by itself admits unlimited tensile strength once the apex
+					cot(φ) fixes the hydrostatic corner. Real soils exhibit a finite tensile strength
+					σ<sub>t</sub>. The tension cut-off is a supplementary surface active in the tensile
+					region of principal stress space.
+				</p>
+				<div class="equations">
+					<div class="formula">T<sub>i</sub>(σ) = −σ<sub>i</sub> − σ<sub>t</sub> ≤ 0    (per principal direction)</div>
+					<div class="formula">Ordered form (σ<sub>3</sub> = least compressive):  T<sub>3</sub> = −σ<sub>3</sub> − σ<sub>t</sub> ≤ 0</div>
+					<div class="formula">Apex invariant: σ<sub>t</sub> ≤ c′ / tan φ′ (cut-off cannot exceed MC apex)</div>
+				</div>
+				<p>
+					The app's Stage 2 constitutive branch set covers the tension cut-off in combination
+					with MC shear. The return map distinguishes:
+				</p>
+				<ul class="notes">
+					<li>Pure shear branches: F<sub>13</sub> alone (face), F<sub>12</sub>+F<sub>13</sub> and F<sub>13</sub>+F<sub>23</sub> (edges), and the triple-shear apex branch.</li>
+					<li>Pure tension branches: T<sub>3</sub> (face), T<sub>2</sub>+T<sub>3</sub> (edge at σ<sub>2</sub>=σ<sub>3</sub> cut-off), T<sub>1</sub>+T<sub>2</sub>+T<sub>3</sub> (hydrostatic tension apex).</li>
+					<li>Mixed branches: F<sub>13</sub>+T<sub>3</sub> (edge), plus the lower and upper mixed shear-tension corners where one shear surface and the tension cut-off coincide.</li>
+				</ul>
+				<p>
+					Each branch solves a linear system whose size equals the number of active surfaces; the
+					active-set selection is driven by stress-gap and complementarity tolerances chosen
+					relative to the local stress scale.
+				</p>
 			</section>
 
 			<section id="numerics" class="doc-card">
