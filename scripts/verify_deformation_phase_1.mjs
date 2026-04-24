@@ -7,7 +7,14 @@ import {
   packEllpackValues
 } from '../src/lib/cpt-app/deformation/gpu/ellpack.js';
 import { createCpuF32Backend } from '../src/lib/cpt-app/deformation/gpu/cpu-f32-backend.js';
-import { createLinearAlgebraBackend } from '../src/lib/cpt-app/deformation/gpu/index.js';
+import { createLinearAlgebraBackend, probeGpuBackend } from '../src/lib/cpt-app/deformation/gpu/index.js';
+import {
+  createElementKernelBuffer,
+  elementElasticStiffnessReference,
+  elementInternalForceReference,
+  elementStrainReference,
+  packElementKernelBuffer
+} from '../src/lib/cpt-app/deformation/gpu/elements.js';
 import {
   createMCPlasticMaterial,
   createMCReducedStiffnessMaterial,
@@ -20,6 +27,9 @@ import {
   seedMaterialPointStateFromInitialStress
 } from '../src/lib/cpt-app/deformation/material-models.js';
 import { elasticMatrix6x6, planeStrainElasticMatrix, prepareMechanicalMaterial } from '../src/lib/cpt-app/deformation/material.js';
+
+const ENABLE_REAL_GPU_PARITY = process.argv.includes('--gpu-parity');
+const ENABLE_GPU_BENCHMARK = process.argv.includes('--gpu-benchmark');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -1936,6 +1946,69 @@ await runCase('Case 41 CPU-f32 backend matvec matches the CSR reference within f
   }
 });
 
+await runCase('Case 41a CPU mixed-precision element kernels reproduce the reference branch-free arithmetic', async () => {
+  const backend = createCpuF32Backend();
+  try {
+    const elementCaches = [{
+      B: [
+        [1, 0, 2, 0, -1, 0],
+        [0, 3, 0, -2, 0, 1],
+        [4, 5, 6, 7, 8, 9]
+      ],
+      dofs: Int32Array.from([0, 1, 2, 3, 4, 5]),
+      area: 2
+    }];
+    const referenceBuffer = createElementKernelBuffer(elementCaches.length);
+    packElementKernelBuffer(referenceBuffer, elementCaches);
+
+    const displacement = new Float64Array([1, 2, 3, 4, 5, 6]);
+    const stress = new Float64Array([1.5, -0.75, 2.25]);
+    const tangent = new Float64Array([
+      4, 1, 0.5,
+      1, 5, 0.25,
+      0.5, 0.25, 3
+    ]);
+
+    const strainRef = elementStrainReference(referenceBuffer, new Float32Array(displacement));
+    const forceRef = elementInternalForceReference(referenceBuffer, new Float32Array(stress));
+    const stiffnessRef = elementElasticStiffnessReference(referenceBuffer, new Float32Array(tangent));
+
+    const strainGot = backend.elementStrain(elementCaches, displacement);
+    const forceGot = backend.elementInternalForce(elementCaches, stress);
+    const stiffnessGot = backend.elementElasticStiffness(elementCaches, tangent);
+
+    for (let index = 0; index < strainRef.length; index += 1) {
+      approxRelative(strainRef[index], strainGot[index], 1e-6, `cpu-f32 element strain entry ${index}`);
+    }
+    for (let index = 0; index < forceRef.length; index += 1) {
+      approxRelative(forceRef[index], forceGot[index], 1e-6, `cpu-f32 internal-force entry ${index}`);
+    }
+    for (let index = 0; index < stiffnessRef.length; index += 1) {
+      approxRelative(stiffnessRef[index], stiffnessGot[index], 1e-6, `cpu-f32 elastic stiffness entry ${index}`);
+    }
+  } finally {
+    backend.dispose();
+  }
+});
+
+await runCase('Case 41b CPU double-single backend preserves the explicit precision mode contract', async () => {
+  const backend = createCpuF32Backend({ precisionMode: 'double-single', residualRefreshInterval: 10 });
+  try {
+    assert(backend.name === 'cpu-double-single', 'double-single override should expose the dedicated backend label');
+    assert(backend.precisionMode === 'double-single', 'double-single backend should report its precision mode');
+    assert(backend.residualRefreshInterval === 10, 'double-single backend should preserve the requested residual refresh interval');
+    const rows = [
+      { indices: new Int32Array([0, 1]), values: new Float64Array([1e8 + 1, -1e8]), diagIndex: 0, diag: 1e8 + 1 },
+      { indices: new Int32Array([0, 1]), values: new Float64Array([1, 1]), diagIndex: 1, diag: 1 }
+    ];
+    const x = new Float64Array([1, 1]);
+    const result = backend.matvec(rows, x);
+    assert(Number.isFinite(result[0]) && Number.isFinite(result[1]), 'double-single matvec should remain finite on cancellation-sensitive input');
+  } finally {
+    backend.dispose();
+  }
+});
+
 async function runBackendParityCase(label, modelFactory, options, tolerances) {
   const base = await analyzeDeformationModel({
     model: modelFactory(),
@@ -2034,5 +2107,90 @@ await runCase('Case 44 Stage 2 elastoplastic run is numerically stable under the
     { settlement: 5e-3, eta: 1e-2 }
   );
 });
+
+if (ENABLE_REAL_GPU_PARITY) {
+  await runCase('Case 45 optional real-WebGL GPU parity hook is available when the capability probe passes', async () => {
+    const probe = await probeGpuBackend(true);
+    if (!probe?.ok) {
+      console.log(`Case 45 skipped: GPU probe unavailable (${probe?.reason || 'unknown'}).`);
+      return;
+    }
+    const baseline = await analyzeDeformationModel({
+      model: baseModel(),
+      options: {
+        meshTargetArea: 0.25,
+        loadMode: 'pressure',
+        outOfPlaneLength: 10,
+        useSeepagePorePressures: false,
+        constitutiveModel: 'linear-elastic'
+      }
+    });
+    const gpuRun = await analyzeDeformationModel({
+      model: baseModel(),
+      options: {
+        meshTargetArea: 0.25,
+        loadMode: 'pressure',
+        outOfPlaneLength: 10,
+        useSeepagePorePressures: false,
+        constitutiveModel: 'linear-elastic',
+        useGpuAcceleration: true,
+        gpuMinDof: 0
+      }
+    });
+    assert(
+      gpuRun?.solver?.linearAlgebraBackend?.name === 'webgl2-f32'
+      || gpuRun?.solver?.linearAlgebraBackend?.name === 'webgl2-double-single',
+      'real GPU parity case should activate the WebGL backend when the probe passes'
+    );
+    approxRelative(
+      Math.max(baseline.summaries?.maxSettlement || 0, 1e-9),
+      Math.max(gpuRun.summaries?.maxSettlement || 0, 1e-9),
+      1e-5,
+      'real GPU parity case should match the elastic settlement baseline'
+    );
+  });
+}
+
+if (ENABLE_GPU_BENCHMARK) {
+  const probe = await probeGpuBackend(true);
+  if (probe?.ok) {
+    const benchmarkModel = () => baseModel({
+      surfaceLoad: {
+        xStart: 10.5,
+        xEnd: 13.5,
+        q: 25
+      }
+    });
+    const benchmarkOptions = {
+      meshTargetArea: 0.2,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
+      useUnsymmetricPlasticSolver: true,
+      maxLoadSteps: 32
+    };
+    const cpuStartedAt = performance.now();
+    await analyzeDeformationModel({
+      model: benchmarkModel(),
+      options: benchmarkOptions
+    });
+    const cpuMs = performance.now() - cpuStartedAt;
+    const gpuStartedAt = performance.now();
+    await analyzeDeformationModel({
+      model: benchmarkModel(),
+      options: {
+        ...benchmarkOptions,
+        useGpuAcceleration: true,
+        gpuMinDof: 0
+      }
+    });
+    const gpuMs = performance.now() - gpuStartedAt;
+    console.log(`GPU benchmark: CPU ${cpuMs.toFixed(1)} ms, GPU ${gpuMs.toFixed(1)} ms, speedup ${(cpuMs / Math.max(gpuMs, 1e-9)).toFixed(2)}x`);
+  } else {
+    console.log(`GPU benchmark skipped: ${probe?.reason || 'GPU probe unavailable'}.`);
+  }
+}
 
 console.log('Deformation Phase 1 verification passed.');

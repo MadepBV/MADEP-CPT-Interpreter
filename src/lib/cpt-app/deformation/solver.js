@@ -257,9 +257,52 @@ function branchActivityCounts(materialState) {
 
 let activeMatvecBackend = null;
 let activeBackendInfo = { name: 'cpu-f64', reason: 'gpu-disabled' };
+let activeBackendRuntimeWarnings = [];
 
 function backendRequiresResidualRefresh() {
   return !!(activeMatvecBackend && activeMatvecBackend.requiresResidualRefresh);
+}
+
+function backendResidualRefreshInterval() {
+  return Math.max(
+    Math.round(Number(activeMatvecBackend?.residualRefreshInterval) || BACKEND_RESIDUAL_REFRESH_INTERVAL),
+    1
+  );
+}
+
+function handleActiveBackendFailure(operation, error) {
+  const operationLabel = String(operation || 'unknown-operation');
+  const message = `Linear-algebra backend '${activeMatvecBackend?.name || 'unknown'}' failed during ${operationLabel} (${error?.message || 'unknown'}); falling back to the CPU f64 path for the remainder of the run.`;
+  activeBackendInfo = {
+    ...activeBackendInfo,
+    name: 'cpu-f64',
+    reason: `runtime-fallback:${operationLabel}:${error?.message || 'unknown'}`,
+    failedFrom: activeMatvecBackend?.name || null,
+    failedOperation: operationLabel,
+    precisionMode: null,
+    supportsElementKernels: false,
+    supportsDoubleSingle: false
+  };
+  try { activeMatvecBackend?.dispose?.(); } catch { /* ignore */ }
+  activeMatvecBackend = null;
+  pushUniqueWarning(activeBackendRuntimeWarnings, message);
+  if (typeof console !== 'undefined' && console?.warn) console.warn(message);
+}
+
+function backendEscalatePrecisionMode(nextMode, reason = '', nextResidualRefreshInterval = null) {
+  if (!activeMatvecBackend?.setPrecisionMode) return false;
+  const resolvedMode = activeMatvecBackend.setPrecisionMode(nextMode);
+  if (nextResidualRefreshInterval != null) {
+    try { activeMatvecBackend.setResidualRefreshInterval?.(nextResidualRefreshInterval); } catch { /* ignore */ }
+  }
+  activeBackendInfo = {
+    ...activeBackendInfo,
+    name: activeMatvecBackend?.name || activeBackendInfo?.name || 'cpu-f64',
+    precisionMode: activeMatvecBackend?.precisionMode || resolvedMode || null,
+    residualRefreshInterval: backendRequiresResidualRefresh() ? backendResidualRefreshInterval() : 0,
+    precisionEscalationReason: reason || activeBackendInfo?.precisionEscalationReason || ''
+  };
+  return true;
 }
 
 function sparseMatVec(rows, vector) {
@@ -267,20 +310,41 @@ function sparseMatVec(rows, vector) {
     try {
       return activeMatvecBackend.matvec(rows, vector);
     } catch (error) {
-      const message = `Linear-algebra backend '${activeMatvecBackend.name}' failed during matvec (${error?.message || 'unknown'}); falling back to the CPU f64 path for the remainder of the run.`;
-      activeBackendInfo = {
-        ...activeBackendInfo,
-        name: 'cpu-f64',
-        reason: `runtime-fallback:${error?.message || 'unknown'}`,
-        failedFrom: activeMatvecBackend.name
-      };
-      try { activeMatvecBackend.dispose?.(); } catch { /* ignore */ }
-      activeMatvecBackend = null;
-      if (typeof console !== 'undefined' && console?.warn) console.warn(message);
+      handleActiveBackendFailure('matvec', error);
       return sparseMatVecFallback(rows, vector);
     }
   }
   return sparseMatVecFallback(rows, vector);
+}
+
+function backendElementStrain(elementCaches, vector) {
+  if (!activeMatvecBackend || typeof activeMatvecBackend.elementStrain !== 'function') return null;
+  try {
+    return activeMatvecBackend.elementStrain(elementCaches, vector);
+  } catch (error) {
+    handleActiveBackendFailure('element-strain', error);
+    return null;
+  }
+}
+
+function backendElementInternalForce(elementCaches, stressFlat) {
+  if (!activeMatvecBackend || typeof activeMatvecBackend.elementInternalForce !== 'function') return null;
+  try {
+    return activeMatvecBackend.elementInternalForce(elementCaches, stressFlat);
+  } catch (error) {
+    handleActiveBackendFailure('element-internal-force', error);
+    return null;
+  }
+}
+
+function backendElementElasticStiffness(elementCaches, tangentFlat) {
+  if (!activeMatvecBackend || typeof activeMatvecBackend.elementElasticStiffness !== 'function') return null;
+  try {
+    return activeMatvecBackend.elementElasticStiffness(elementCaches, tangentFlat);
+  } catch (error) {
+    handleActiveBackendFailure('element-elastic-stiffness', error);
+    return null;
+  }
 }
 
 function sparseMatVecFallback(rows, vector) {
@@ -525,7 +589,7 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
       r[i] -= alpha * ap[i];
     }
     let didResidualRefresh = false;
-    if (backendRequiresResidualRefresh() && iter % BACKEND_RESIDUAL_REFRESH_INTERVAL === 0) {
+    if (backendRequiresResidualRefresh() && iter % backendResidualRefreshInterval() === 0) {
       const axRefresh = sparseMatVecFallback(rows, x);
       for (let i = 0; i < n; i += 1) r[i] = rhs[i] - axRefresh[i];
       didResidualRefresh = true;
@@ -763,7 +827,7 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
       x[i] += alpha * phat[i] + omega * shat[i];
       r[i] = s[i] - omega * t[i];
     }
-    if (backendRequiresResidualRefresh() && iter % BACKEND_RESIDUAL_REFRESH_INTERVAL === 0) {
+    if (backendRequiresResidualRefresh() && iter % backendResidualRefreshInterval() === 0) {
       const axRefresh = sparseMatVecFallback(rows, x);
       for (let i = 0; i < n; i += 1) r[i] = rhs[i] - axRefresh[i];
       // Restart the biorthogonalisation: fresh r implies fresh shadow rHat,
@@ -1206,6 +1270,16 @@ function addVectorBlock(rhs, dofs, localF) {
   for (let i = 0; i < dofs.length; i += 1) rhs[dofs[i]] += localF[i];
 }
 
+function addMatrixBlockFlat(rows, dofs, localKFlat, base = 0) {
+  for (let localRow = 0; localRow < 6; localRow += 1) {
+    const row = rows[dofs[localRow]];
+    const rowBase = base + localRow * 6;
+    for (let localCol = 0; localCol < 6; localCol += 1) {
+      row.set(dofs[localCol], (row.get(dofs[localCol]) || 0) + (Number(localKFlat?.[rowBase + localCol]) || 0));
+    }
+  }
+}
+
 function addMatrixBlockToCompressedRows(rows, elementCache, localK) {
   for (let localRow = 0; localRow < 6; localRow += 1) {
     const freeRowIndex = elementCache.freeRowIndices?.[localRow] ?? -1;
@@ -1219,6 +1293,19 @@ function addMatrixBlockToCompressedRows(rows, elementCache, localK) {
   }
 }
 
+function addMatrixBlockFlatToCompressedRows(rows, elementCache, localKFlat, base = 0) {
+  for (let localRow = 0; localRow < 6; localRow += 1) {
+    const freeRowIndex = elementCache.freeRowIndices?.[localRow] ?? -1;
+    if (freeRowIndex < 0) continue;
+    const rowValues = rows[freeRowIndex].values;
+    for (let localCol = 0; localCol < 6; localCol += 1) {
+      const slotIndex = elementCache.assemblyLocalSlots?.[localRow * 6 + localCol] ?? -1;
+      if (slotIndex < 0) continue;
+      rowValues[slotIndex] += Number(localKFlat?.[base + localRow * 6 + localCol]) || 0;
+    }
+  }
+}
+
 function addVectorBlockToFreeRhs(rhs, freeRowIndices, localF) {
   for (let i = 0; i < 6; i += 1) {
     const freeRowIndex = freeRowIndices?.[i] ?? -1;
@@ -1227,15 +1314,12 @@ function addVectorBlockToFreeRhs(rhs, freeRowIndices, localF) {
   }
 }
 
-function elementInternalForceVector(B, stress2D, area) {
-  return [
-    area * (B[0][0] * stress2D.sxx + B[1][0] * stress2D.syy + B[2][0] * stress2D.txy),
-    area * (B[0][1] * stress2D.sxx + B[1][1] * stress2D.syy + B[2][1] * stress2D.txy),
-    area * (B[0][2] * stress2D.sxx + B[1][2] * stress2D.syy + B[2][2] * stress2D.txy),
-    area * (B[0][3] * stress2D.sxx + B[1][3] * stress2D.syy + B[2][3] * stress2D.txy),
-    area * (B[0][4] * stress2D.sxx + B[1][4] * stress2D.syy + B[2][4] * stress2D.txy),
-    area * (B[0][5] * stress2D.sxx + B[1][5] * stress2D.syy + B[2][5] * stress2D.txy)
-  ];
+function addVectorBlockFlatToFreeRhs(rhs, freeRowIndices, localFFlat, base = 0) {
+  for (let localIndex = 0; localIndex < 6; localIndex += 1) {
+    const freeRowIndex = freeRowIndices?.[localIndex] ?? -1;
+    if (freeRowIndex < 0) continue;
+    rhs[freeRowIndex] += Number(localFFlat?.[base + localIndex]) || 0;
+  }
 }
 
 function overlapRange(a0, a1, b0, b1) {
@@ -1505,23 +1589,21 @@ function expandSolutionVector(ndof, freeDofs, fixedValues, freeSolution) {
   return U;
 }
 
-function gatherElementDisplacements(U, dofs) {
-  const out = new Float64Array(6);
-  for (let i = 0; i < 6; i += 1) out[i] = U[dofs[i]];
-  return out;
-}
-
-function multiplyMat3x6Vec6(matrix, vector) {
+function multiplyMat3x6Displacement(matrix, displacementVector, dofs) {
+  const u0 = displacementVector[dofs[0]];
+  const u1 = displacementVector[dofs[1]];
+  const u2 = displacementVector[dofs[2]];
+  const u3 = displacementVector[dofs[3]];
+  const u4 = displacementVector[dofs[4]];
+  const u5 = displacementVector[dofs[5]];
   return {
-    exx: matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2] + matrix[0][3] * vector[3] + matrix[0][4] * vector[4] + matrix[0][5] * vector[5],
-    eyy: matrix[1][0] * vector[0] + matrix[1][1] * vector[1] + matrix[1][2] * vector[2] + matrix[1][3] * vector[3] + matrix[1][4] * vector[4] + matrix[1][5] * vector[5],
-    gxy: matrix[2][0] * vector[0] + matrix[2][1] * vector[1] + matrix[2][2] * vector[2] + matrix[2][3] * vector[3] + matrix[2][4] * vector[4] + matrix[2][5] * vector[5]
+    exx: matrix[0][0] * u0 + matrix[0][1] * u1 + matrix[0][2] * u2 + matrix[0][3] * u3 + matrix[0][4] * u4 + matrix[0][5] * u5,
+    eyy: matrix[1][0] * u0 + matrix[1][1] * u1 + matrix[1][2] * u2 + matrix[1][3] * u3 + matrix[1][4] * u4 + matrix[1][5] * u5,
+    gxy: matrix[2][0] * u0 + matrix[2][1] * u1 + matrix[2][2] * u2 + matrix[2][3] * u3 + matrix[2][4] * u4 + matrix[2][5] * u5
   };
 }
 
-function buildElementAnalysisState(elementCache, U) {
-  const ue = gatherElementDisplacements(U, elementCache.dofs);
-  const strain = multiplyMat3x6Vec6(elementCache.B, ue);
+function buildElementAnalysisStateFromStrain(elementCache, strain, ue = null) {
   return {
     element: elementCache.element,
     nodes: elementCache.nodes,
@@ -1533,8 +1615,34 @@ function buildElementAnalysisState(elementCache, U) {
   };
 }
 
-function recoverElementMaterialResponse(elementCache, U, materialPoint, analysisContext = null) {
-  const elementState = buildElementAnalysisState(elementCache, U);
+function buildElementAnalysisState(elementCache, U, precomputedStrain = null) {
+  if (precomputedStrain) {
+    return buildElementAnalysisStateFromStrain(elementCache, precomputedStrain, null);
+  }
+  const strain = multiplyMat3x6Displacement(elementCache.B, U, elementCache.dofs);
+  return buildElementAnalysisStateFromStrain(elementCache, strain, null);
+}
+
+function addElementInternalForceContributionToFreeRhs(target, elementCache, stress2D) {
+  const freeRowIndices = elementCache?.freeRowIndices;
+  const B = elementCache?.B;
+  const area = Number(elementCache?.area) || 0;
+  const sxx = Number(stress2D?.sxx) || 0;
+  const syy = Number(stress2D?.syy) || 0;
+  const txy = Number(stress2D?.txy) || 0;
+  for (let localIndex = 0; localIndex < 6; localIndex += 1) {
+    const freeRowIndex = freeRowIndices?.[localIndex];
+    if (freeRowIndex < 0) continue;
+    target[freeRowIndex] += area * (
+      (Number(B?.[0]?.[localIndex]) || 0) * sxx
+      + (Number(B?.[1]?.[localIndex]) || 0) * syy
+      + (Number(B?.[2]?.[localIndex]) || 0) * txy
+    );
+  }
+}
+
+function recoverElementMaterialResponse(elementCache, U, materialPoint, analysisContext = null, precomputedStrain = null) {
+  const elementState = buildElementAnalysisState(elementCache, U, precomputedStrain);
   const previousTrialState = materialPoint.trialState ? cloneMaterialPointState(materialPoint.trialState) : cloneMaterialPointState(materialPoint.committedState);
   const materialParametersOverride = analysisContext?.materialParametersOverride || null;
   const update = materialPoint.materialModel.update({
@@ -1596,6 +1704,7 @@ function buildK0ControlledInitialEffectiveStress6(totalStress6, materialParamete
 
 function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, regionConstitutiveByRegion, options, porePressureByElement, warnings) {
   const out = [];
+  const precomputedStrainFlat = backendElementStrain(elementCaches, Ugeo);
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
     const cell = mesh.cells[elementCache.cellIndex];
@@ -1606,9 +1715,16 @@ function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, reg
       elementIndex,
       regionIndex: cell?.regionIndex ?? -1
     });
+    const precomputedStrain = precomputedStrainFlat
+      ? {
+          exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
+          eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
+          gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
+        }
+      : null;
     const response = recoverElementMaterialResponse(elementCache, Ugeo, materialPoint, {
       stage: 'geostatic-initialization'
-    });
+    }, precomputedStrain);
     const u0 = Math.max(Number(porePressureByElement?.[elementIndex]) || 0, 0);
     out.push(buildK0ControlledInitialEffectiveStress6(response.update?.stressTrial6, constitutive.materialParameters, u0));
   }
@@ -1756,6 +1872,11 @@ async function assembleNonlinearSystem(
   let changedCount = 0;
   let maxEta = 0;
   let maxStrengthReserve = 0;
+  const precomputedStrainFlat = backendElementStrain(elementCaches, UTrial);
+  const usesBackendInternalForce = !!(activeMatvecBackend && typeof activeMatvecBackend.elementInternalForce === 'function');
+  const stressContributionFlat = usesBackendInternalForce
+    ? new Float64Array(elementCaches.length * 3)
+    : null;
 
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
@@ -1763,12 +1884,19 @@ async function assembleNonlinearSystem(
     const previousTrialActive = materialPoint.trialState?.currentlyMcActive === true;
     const materialParametersOverride = elementAnalysisOptions?.regionMaterialParametersByRegion?.get(materialPoint.regionIndex)
       || null;
+    const precomputedStrain = precomputedStrainFlat
+      ? {
+          exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
+          eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
+          gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
+        }
+      : null;
     const response = recoverElementMaterialResponse(elementCache, UTrial, materialPoint, {
       stage: stageLabel,
       loadFactor,
       useElasticGlobalizationTangent: elementAnalysisOptions?.useElasticGlobalizationTangent === true,
       materialParametersOverride
-    });
+    }, precomputedStrain);
     materialPoint.trialState = response.update.trialState;
     materialPoint.diagnostics = response.update.diagnostics;
     const currentTrialActive = response.update.trialState?.currentlyMcActive === true;
@@ -1795,14 +1923,41 @@ async function assembleNonlinearSystem(
           syy: response.stress2D.syy - referenceStress2D.syy,
           txy: response.stress2D.txy - referenceStress2D.txy
         };
-    addVectorBlockToFreeRhs(
-      internalForceFree,
-      elementCache.freeRowIndices,
-      elementInternalForceVector(response.B, stressContribution2D, response.area)
-    );
+    if (stressContributionFlat) {
+      const stressBase = elementIndex * 3;
+      stressContributionFlat[stressBase] = Number(stressContribution2D.sxx) || 0;
+      stressContributionFlat[stressBase + 1] = Number(stressContribution2D.syy) || 0;
+      stressContributionFlat[stressBase + 2] = Number(stressContribution2D.txy) || 0;
+    } else {
+      addElementInternalForceContributionToFreeRhs(internalForceFree, elementCache, stressContribution2D);
+    }
 
     if (elementIndex % 200 === 0 && (await runCheckpoint(runControl))) {
       throw new Error('Deformation run was interrupted during nonlinear assembly.');
+    }
+  }
+
+  if (stressContributionFlat) {
+    const elementForceFlat = backendElementInternalForce(elementCaches, stressContributionFlat);
+    if (elementForceFlat) {
+      for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
+        addVectorBlockFlatToFreeRhs(
+          internalForceFree,
+          elementCaches[elementIndex].freeRowIndices,
+          elementForceFlat,
+          elementIndex * 6
+        );
+      }
+    } else {
+      for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
+        const elementCache = elementCaches[elementIndex];
+        const stressBase = elementIndex * 3;
+        addElementInternalForceContributionToFreeRhs(internalForceFree, elementCache, {
+          sxx: stressContributionFlat[stressBase],
+          syy: stressContributionFlat[stressBase + 1],
+          txy: stressContributionFlat[stressBase + 2]
+        });
+      }
     }
   }
 
@@ -1812,12 +1967,22 @@ async function assembleNonlinearSystem(
     : cloneScaledVector(loadRhsFreeBase, loadFactor);
   const residualFree = cloneScaledVector(targetForceFree, 1);
   addScaledVectorInPlace(residualFree, internalForceFree, -1);
+  let residualNorm2 = 0;
+  let rhsNorm2 = 0;
+  for (let index = 0; index < residualFree.length; index += 1) {
+    const residualValue = residualFree[index];
+    const rhsValue = targetForceFree[index];
+    residualNorm2 += residualValue * residualValue;
+    rhsNorm2 += rhsValue * rhsValue;
+  }
 
   return {
     compressedRows,
     internalForceFree,
     residualFree,
     targetForceFree,
+    residualNorm: Math.sqrt(residualNorm2),
+    rhsNorm: Math.sqrt(rhsNorm2),
     activeCount,
     activeFaceCount,
     activeEdgeCount,
@@ -1874,7 +2039,9 @@ async function performArmijoLineSearch(
       targetForceFreeOverride,
       elementAnalysisOptions
     );
-    const residualNorm = vectorNorm(assembly.residualFree);
+    const residualNorm = Number.isFinite(Number(assembly?.residualNorm))
+      ? Number(assembly.residualNorm)
+      : vectorNorm(assembly.residualFree);
     const candidateMerit = evaluateResidualMerit(residualNorm);
     const improved = candidateMerit < currentMerit - Math.max(1e-16, 1e-12 * Math.max(currentMerit, 1));
     const armijoTarget = currentMerit + armijoCoefficient * stepScale * Math.min(directionalDerivative, 0);
@@ -1927,12 +2094,12 @@ function snapshotDisplayedState(solution, loadFactor, assembly, mode, reason = '
   if (!solution || !(solution.length > 0)) return null;
   const targetForceFree = assembly?.targetForceFree;
   const residualFree = assembly?.residualFree;
-  const residualNorm = residualFree
-    ? vectorNorm(residualFree)
-    : (Number.isFinite(Number(assembly?.residualNorm)) ? Number(assembly.residualNorm) : Number.POSITIVE_INFINITY);
-  const rhsNorm = targetForceFree
-    ? vectorNorm(targetForceFree)
-    : (Number.isFinite(Number(assembly?.rhsNorm)) ? Number(assembly.rhsNorm) : 0);
+  const residualNorm = Number.isFinite(Number(assembly?.residualNorm))
+    ? Number(assembly.residualNorm)
+    : (residualFree ? vectorNorm(residualFree) : Number.POSITIVE_INFINITY);
+  const rhsNorm = Number.isFinite(Number(assembly?.rhsNorm))
+    ? Number(assembly.rhsNorm)
+    : (targetForceFree ? vectorNorm(targetForceFree) : 0);
   const relativeResidualNorm = rhsNorm > CG_NUMERIC_EPS
     ? residualNorm / rhsNorm
     : (Number.isFinite(Number(assembly?.relativeResidualNorm)) ? Number(assembly.relativeResidualNorm) : (residualNorm > 0 ? Number.POSITIVE_INFINITY : 0));
@@ -2282,8 +2449,12 @@ async function solveNonlinearPhase(
       peakActiveApexCount = Math.max(peakActiveApexCount, assembled.activeApexCount);
       peakTensionPendingCount = Math.max(peakTensionPendingCount, assembled.tensionPendingCount);
       peakEta = Math.max(peakEta, assembled.maxEta);
-      const residualNorm = vectorNorm(assembled.residualFree);
-      const rhsNorm = vectorNorm(assembled.targetForceFree);
+      const residualNorm = Number.isFinite(Number(assembled.residualNorm))
+        ? Number(assembled.residualNorm)
+        : vectorNorm(assembled.residualFree);
+      const rhsNorm = Number.isFinite(Number(assembled.rhsNorm))
+        ? Number(assembled.rhsNorm)
+        : vectorNorm(assembled.targetForceFree);
       const deltaNorm = vectorNorm(lastCorrection);
       const solutionNorm = vectorNorm(uTrial);
       const tolerance = nonlinearToleranceState(
@@ -2359,6 +2530,7 @@ async function solveNonlinearPhase(
       stepRecord.linearSolver = usesUnsymmetricSolver
         ? (unsymmetricLinearSolverMode === 'bicgstab' ? 'bicgstab' : 'gmres-scaled')
         : 'cg';
+      stepRecord.linearSolverPrecisionMode = activeMatvecBackend?.precisionMode || 'cpu-f64';
       const linearIterationObserver = phaseKind === 'initial-gravity'
         ? async ({ iterations, relativeResidual }) => {
             onProgress({
@@ -2369,7 +2541,7 @@ async function solveNonlinearPhase(
             await runCheckpoint(runControl);
           }
         : null;
-      const cg = await linearSolve(
+      let cg = await linearSolve(
         assembled.compressedRows,
         assembled.residualFree,
         shouldWarmStartLinearSolve ? iterationLinearGuess : null,
@@ -2379,6 +2551,30 @@ async function solveNonlinearPhase(
         runControl,
         linearIterationObserver
       );
+      const maybeRetryWithDoubleSingle = async () => {
+        if (
+          !usesUnsymmetricSolver
+          || constitutiveModel !== 'mc-plastic'
+          || !activeMatvecBackend?.supportsDoubleSingle
+          || activeMatvecBackend?.precisionMode === 'double-single'
+        ) return cg;
+        backendEscalatePrecisionMode(
+          'double-single',
+          'Stage 2 unsymmetric solve escalated from f32 to double-single after a non-converged mixed-precision Krylov step.',
+          10
+        );
+        stepRecord.linearSolverPrecisionMode = activeMatvecBackend?.precisionMode || 'double-single';
+        return linearSolve(
+          assembled.compressedRows,
+          assembled.residualFree,
+          shouldWarmStartLinearSolve ? iterationLinearGuess : null,
+          MAX_CG_ITER,
+          CG_REL_TOL,
+          CG_ABS_TOL,
+          runControl,
+          linearIterationObserver
+        );
+      };
       totalCgIterations += cg.iterations;
       if (cg.interrupted) {
         throw new Error(`Deformation run was interrupted during ${
@@ -2407,7 +2603,24 @@ async function solveNonlinearPhase(
           0.25 * Math.max(Number(options?.residualAbsTol) || NONLINEAR_RESIDUAL_ABS_TOL, NONLINEAR_RESIDUAL_ABS_TOL),
           inexactNewtonForcing * Math.max(Number(cg.rhsNorm) || 0, 0)
         );
-      const allowInexactLinearizedSolve = cg.residualNorm <= acceptableLinearizedResidual;
+      let allowInexactLinearizedSolve = cg.residualNorm <= acceptableLinearizedResidual;
+      if (!cg.converged && !allowInexactLinearizedSolve) {
+        const retried = await maybeRetryWithDoubleSingle();
+        if (retried !== cg) {
+          totalCgIterations += retried.iterations;
+          cg = retried;
+          if (cg.interrupted) {
+            throw new Error(`Deformation run was interrupted during ${
+              phaseKind === 'initial-gravity'
+                ? 'the initial plastic equilibration phase'
+                : phaseKind === 'safety-cphi'
+                  ? 'the c-phi reduction safety phase'
+                  : `the ${constitutiveModel === 'mc-plastic' ? 'Stage 2 elastoplastic' : 'Stage 1 nonlinear'} solve`
+            }.`);
+          }
+          allowInexactLinearizedSolve = cg.residualNorm <= acceptableLinearizedResidual;
+        }
+      }
       if (!cg.converged && !allowInexactLinearizedSolve) {
         setStepFailure('global-linear-solve-failure', `linearized solve did not converge (residual ${cg.residualNorm.toExponential(2)} after ${cg.iterations} iterations)`);
         break;
@@ -2449,8 +2662,12 @@ async function solveNonlinearPhase(
               const candidateCorrection = cloneScaledVector(lastCorrection, lineSearch.stepScale);
               const candidateCorrectionNorm = vectorNorm(candidateCorrection);
               const candidateSolutionNorm = vectorNorm(lineSearch.uCandidate);
-              const candidateResidualNorm = vectorNorm(lineSearch.assembly?.residualFree);
-              const candidateRhsNorm = vectorNorm(lineSearch.assembly?.targetForceFree);
+              const candidateResidualNorm = Number.isFinite(Number(lineSearch.assembly?.residualNorm))
+                ? Number(lineSearch.assembly.residualNorm)
+                : vectorNorm(lineSearch.assembly?.residualFree);
+              const candidateRhsNorm = Number.isFinite(Number(lineSearch.assembly?.rhsNorm))
+                ? Number(lineSearch.assembly.rhsNorm)
+                : vectorNorm(lineSearch.assembly?.targetForceFree);
               const candidateTolerance = nonlinearToleranceState(
                 candidateResidualNorm,
                 candidateRhsNorm,
@@ -2567,8 +2784,12 @@ async function solveNonlinearPhase(
         peakActiveApexCount = Math.max(peakActiveApexCount, refreshed.activeApexCount);
         peakTensionPendingCount = Math.max(peakTensionPendingCount, refreshed.tensionPendingCount);
         peakEta = Math.max(peakEta, refreshed.maxEta);
-        const refreshedResidualNorm = vectorNorm(refreshed.residualFree);
-        const refreshedRhsNorm = vectorNorm(refreshed.targetForceFree);
+        const refreshedResidualNorm = Number.isFinite(Number(refreshed.residualNorm))
+          ? Number(refreshed.residualNorm)
+          : vectorNorm(refreshed.residualFree);
+        const refreshedRhsNorm = Number.isFinite(Number(refreshed.rhsNorm))
+          ? Number(refreshed.rhsNorm)
+          : vectorNorm(refreshed.targetForceFree);
         const refreshedTolerance = nonlinearToleranceState(
           refreshedResidualNorm,
           refreshedRhsNorm,
@@ -3430,13 +3651,21 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
 
 function recoverElementResults(mesh, elementCaches, U, materialPoints, porePressureByElement = null, comparisonMaterialPoints = null) {
   const out = [];
+  const precomputedStrainFlat = backendElementStrain(elementCaches, U);
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
     const cell = mesh.cells[elementCache.cellIndex];
     const materialPoint = materialPoints[elementIndex];
+    const precomputedStrain = precomputedStrainFlat
+      ? {
+          exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
+          eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
+          gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
+        }
+      : null;
     const response = recoverElementMaterialResponse(elementCache, U, materialPoint, {
       stage: 'final-recovery'
-    });
+    }, precomputedStrain);
     materialPoint.trialState = response.update.trialState;
     materialPoint.diagnostics = response.update.diagnostics;
     const initialStress = negateNormalAndShear(extractStress2DFrom6(materialPoint.referenceState.effectiveStress6));
@@ -3656,11 +3885,13 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     try { activeMatvecBackend?.dispose?.(); } catch { /* ignore */ }
     activeMatvecBackend = null;
     activeBackendInfo = { name: 'cpu-f64', reason: 'gpu-disabled' };
+    activeBackendRuntimeWarnings = [];
   }
 }
 
 async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runControl = null) {
   const startedAt = performance.now();
+  activeBackendRuntimeWarnings = [];
   const model = input?.model;
   if (!model?.terrain?.vertices?.length || !model?.regions?.length) {
     throw new Error('The deformation screen needs a valid Bishop section model first.');
@@ -3728,6 +3959,9 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     safetyMechanismMinIncrementalDisplacementNorm: Math.max(Number(input?.options?.safetyMechanismMinIncrementalDisplacementNorm) || 1e-8, 0),
     safetyMechanismMinPlasticIncrement: Math.max(Number(input?.options?.safetyMechanismMinPlasticIncrement) || 1e-8, 0),
     useGpuAcceleration: input?.options?.useGpuAcceleration === true,
+    gpuPrecisionMode: String(input?.options?.gpuPrecisionMode || 'auto').toLowerCase() === 'double-single'
+      ? 'double-single'
+      : 'auto',
     linearAlgebraBackend: typeof input?.options?.linearAlgebraBackend === 'string'
       ? input.options.linearAlgebraBackend
       : null,
@@ -3761,6 +3995,23 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
 
   const ndof = 2 * mesh.nodes.length;
   const elementCaches = buildDeformationElementCaches(mesh);
+  const fixedValues = buildFixedDofMap(mesh);
+  const freeDofs = [];
+  const freeIndexByDof = new Map();
+  for (let dof = 0; dof < ndof; dof += 1) {
+    if (fixedValues.has(dof)) continue;
+    freeIndexByDof.set(dof, freeDofs.length);
+    freeDofs.push(dof);
+  }
+  const backendSetup = await createLinearAlgebraBackend({
+    useGpuAcceleration: options.useGpuAcceleration,
+    linearAlgebraBackend: options.linearAlgebraBackend,
+    ndof: freeDofs.length,
+    gpuMinDof: options.gpuMinDof,
+    gpuPrecisionMode: options.gpuPrecisionMode
+  }, warnings);
+  activeMatvecBackend = backendSetup.backend;
+  activeBackendInfo = backendSetup.info;
   const rows = Array.from({ length: ndof }, () => new Map());
   const loadRhs = new Float64Array(ndof);
   const gravityRhs = new Float64Array(ndof);
@@ -3773,17 +4024,46 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     message: 'Assembling the plane-strain stiffness matrix and geostatic gravity load...'
   });
 
+  const elasticStiffnessTangentFlat = activeMatvecBackend?.elementElasticStiffness
+    ? new Float64Array(elementCaches.length * 9)
+    : null;
+  if (elasticStiffnessTangentFlat) {
+    for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
+      const elementCache = elementCaches[elementIndex];
+      const cell = mesh.cells[elementCache.cellIndex];
+      const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
+      const tangent2D = extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6);
+      const base = elementIndex * 9;
+      elasticStiffnessTangentFlat[base] = tangent2D[0][0];
+      elasticStiffnessTangentFlat[base + 1] = tangent2D[0][1];
+      elasticStiffnessTangentFlat[base + 2] = tangent2D[0][2];
+      elasticStiffnessTangentFlat[base + 3] = tangent2D[1][0];
+      elasticStiffnessTangentFlat[base + 4] = tangent2D[1][1];
+      elasticStiffnessTangentFlat[base + 5] = tangent2D[1][2];
+      elasticStiffnessTangentFlat[base + 6] = tangent2D[2][0];
+      elasticStiffnessTangentFlat[base + 7] = tangent2D[2][1];
+      elasticStiffnessTangentFlat[base + 8] = tangent2D[2][2];
+    }
+  }
+  const elasticStiffnessFlat = elasticStiffnessTangentFlat
+    ? backendElementElasticStiffness(elementCaches, elasticStiffnessTangentFlat)
+    : null;
+
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
     const cell = mesh.cells[elementCache.cellIndex];
     const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
     const initialPorePressure = sampleInitialPorePressure(model, elementCache.centroid.x, elementCache.centroid.y, options, warnings);
     const gammaBulk = initialBulkUnitWeightFromPorePressure(constitutive.materialParameters, initialPorePressure);
-    addMatrixBlock(
-      rows,
-      elementCache.dofs,
-      elementStiffnessT3FromBAndArea(elementCache.B, elementCache.area, extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6))
-    );
+    if (elasticStiffnessFlat) {
+      addMatrixBlockFlat(rows, elementCache.dofs, elasticStiffnessFlat, elementIndex * 36);
+    } else {
+      addMatrixBlock(
+        rows,
+        elementCache.dofs,
+        elementStiffnessT3FromBAndArea(elementCache.B, elementCache.area, extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6))
+      );
+    }
     addVectorBlock(gravityRhs, elementCache.dofs, elementGravityVectorT3FromArea(elementCache.area, gammaBulk));
     porePressureByElement[elementIndex] = initialPorePressure;
     if (elementIndex % 250 === 0 && (await runCheckpoint(runControl))) {
@@ -3803,31 +4083,11 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     addVectorBlock(loadRhs, [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1], edgeTractionVector(edge, 0, -load.q));
   });
 
-  const fixedValues = buildFixedDofMap(mesh);
-  const freeDofs = [];
-  const freeIndexByDof = new Map();
-  for (let dof = 0; dof < ndof; dof += 1) {
-    if (fixedValues.has(dof)) continue;
-    freeIndexByDof.set(dof, freeDofs.length);
-    freeDofs.push(dof);
-  }
   const compressedRows = compressMatrixRows(rows, freeDofs, freeIndexByDof);
   const gravityCompressedRhs = gatherFreeVector(gravityRhs, freeDofs);
   const loadRhsFreeBase = gatherFreeVector(loadRhs, freeDofs);
   const totalExternalForceFree = addSolutionVectors(gravityCompressedRhs, loadRhsFreeBase);
   const nonlinearAssemblyPattern = buildCompressedAssemblyPattern(elementCaches, freeIndexByDof, freeDofs.length);
-  // Set up the optional linear-algebra backend. We wait until freeDofs is
-  // known so the size gate decides against the actual Krylov problem size
-  // (not the uncondensed ndof). The outer analyzeDeformationModel wrapper
-  // disposes the backend in its finally block.
-  const backendSetup = await createLinearAlgebraBackend({
-    useGpuAcceleration: options.useGpuAcceleration,
-    linearAlgebraBackend: options.linearAlgebraBackend,
-    ndof: freeDofs.length,
-    gpuMinDof: options.gpuMinDof
-  }, warnings);
-  activeMatvecBackend = backendSetup.backend;
-  activeBackendInfo = backendSetup.info;
   const geostatic = await buildGeostaticInitialization(
     mesh,
     elementCaches,
@@ -4178,6 +4438,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     ? Math.max(0, ...serviceIncrementNodalDisplacements.map((item) => -(item?.uy || 0)))
     : (servicePhaseStarted ? summaries.maxSettlement : 0);
   summaries.safetySettlementIncrement = analysisType === 'safety-cphi' ? summaries.maxSettlement : 0;
+  activeBackendRuntimeWarnings.forEach((warning) => pushUniqueWarning(warnings, warning));
 
   onProgress({
     stage: 'post',
@@ -4314,12 +4575,18 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
         name: activeBackendInfo?.name || 'cpu-f64',
         reason: activeBackendInfo?.reason || '',
         requested: !!options.useGpuAcceleration,
+        requestedPrecisionMode: options.gpuPrecisionMode || 'auto',
         override: options.linearAlgebraBackend || null,
         probeMode: activeBackendInfo?.probeMode || null,
         probeContext: activeBackendInfo?.probeContext || null,
+        precisionMode: activeBackendInfo?.precisionMode || activeMatvecBackend?.precisionMode || null,
+        maxTextureSize: activeBackendInfo?.maxTextureSize || null,
+        supportsElementKernels: activeBackendInfo?.supportsElementKernels === true,
+        supportsDoubleSingle: activeBackendInfo?.supportsDoubleSingle === true,
         failedFrom: activeBackendInfo?.failedFrom || null,
+        failedOperation: activeBackendInfo?.failedOperation || null,
         freeDofCount: freeDofs.length,
-        residualRefreshInterval: backendRequiresResidualRefresh() ? BACKEND_RESIDUAL_REFRESH_INTERVAL : 0
+        residualRefreshInterval: backendRequiresResidualRefresh() ? backendResidualRefreshInterval() : 0
       }
     },
     timing: {

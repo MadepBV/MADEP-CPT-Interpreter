@@ -25,7 +25,8 @@ export async function createLinearAlgebraBackend(setup = {}, warnings = []) {
     useGpuAcceleration = false,
     linearAlgebraBackend = null,
     ndof = 0,
-    gpuMinDof = GPU_DEFAULT_MIN_DOF
+    gpuMinDof = GPU_DEFAULT_MIN_DOF,
+    gpuPrecisionMode = 'auto'
   } = setup;
 
   const explicit = linearAlgebraBackend ? String(linearAlgebraBackend).toLowerCase() : null;
@@ -33,17 +34,68 @@ export async function createLinearAlgebraBackend(setup = {}, warnings = []) {
   // Explicit overrides take precedence. They are primarily for tests and
   // diagnostics; production users drive the feature through the boolean.
   if (explicit === 'cpu-f64' || explicit === 'cpu-f64-fallback') {
-    return { backend: null, info: { name: 'cpu-f64', reason: 'explicit-cpu-f64' } };
+    return {
+      backend: null,
+      info: {
+        name: 'cpu-f64',
+        reason: 'explicit-cpu-f64',
+        precisionMode: null,
+        residualRefreshInterval: 0,
+        supportsElementKernels: false,
+        supportsDoubleSingle: false
+      }
+    };
   }
   if (explicit === 'cpu-f32') {
+    const backend = createCpuF32Backend();
     return {
-      backend: createCpuF32Backend(),
-      info: { name: 'cpu-f32', reason: 'explicit-cpu-f32' }
+      backend,
+      info: {
+        name: backend.name,
+        reason: 'explicit-cpu-f32',
+        precisionMode: backend.precisionMode,
+        residualRefreshInterval: backend.residualRefreshInterval,
+        supportsElementKernels: backend.supportsElementKernels === true,
+        supportsDoubleSingle: backend.supportsDoubleSingle === true
+      }
+    };
+  }
+  if (explicit === 'cpu-double-single' || explicit === 'cpu-ds') {
+    const backend = createCpuF32Backend({
+      precisionMode: 'double-single',
+      residualRefreshInterval: 10
+    });
+    return {
+      backend,
+      info: {
+        name: backend.name,
+        reason: 'explicit-cpu-double-single',
+        precisionMode: backend.precisionMode,
+        residualRefreshInterval: backend.residualRefreshInterval,
+        supportsElementKernels: backend.supportsElementKernels === true,
+        supportsDoubleSingle: backend.supportsDoubleSingle === true
+      }
     };
   }
 
-  if (!useGpuAcceleration && explicit !== 'webgl2-f32' && explicit !== 'gpu') {
-    return { backend: null, info: { name: 'cpu-f64', reason: 'gpu-disabled' } };
+  if (
+    !useGpuAcceleration
+    && explicit !== 'webgl2-f32'
+    && explicit !== 'webgl2-double-single'
+    && explicit !== 'webgl2-ds'
+    && explicit !== 'gpu'
+  ) {
+    return {
+      backend: null,
+      info: {
+        name: 'cpu-f64',
+        reason: 'gpu-disabled',
+        precisionMode: null,
+        residualRefreshInterval: 0,
+        supportsElementKernels: false,
+        supportsDoubleSingle: false
+      }
+    };
   }
 
   // Size gate: launch overhead dominates below a few thousand DOFs.
@@ -54,25 +106,72 @@ export async function createLinearAlgebraBackend(setup = {}, warnings = []) {
       warnings,
       `GPU acceleration is enabled but the analysis has only ${ndof} free DOFs (< ${gpuMinDof}), so the solver stayed on the CPU f64 path to avoid launch-overhead penalties.`
     );
-    return { backend: null, info: { name: 'cpu-f64', reason: 'below-size-gate', ndof, gpuMinDof } };
+    return {
+      backend: null,
+      info: {
+        name: 'cpu-f64',
+        reason: 'below-size-gate',
+        ndof,
+        gpuMinDof,
+        precisionMode: null,
+        residualRefreshInterval: 0,
+        supportsElementKernels: false,
+        supportsDoubleSingle: false
+      }
+    };
   }
 
-  const probe = probeGpuBackend();
+  const probe = await probeGpuBackend();
   if (!probe.ok) {
     warn(
       warnings,
       `GPU acceleration requested but the WebGL2 capability probe failed (${probe.reason || 'unknown'}); solver stayed on the CPU f64 path.`
     );
-    return { backend: null, info: { name: 'cpu-f64', reason: `probe-failed:${probe.reason || 'unknown'}` } };
+    return {
+      backend: null,
+      info: {
+        name: 'cpu-f64',
+        reason: `probe-failed:${probe.reason || 'unknown'}`,
+        probeMode: probe.mode || null,
+        probeContext: probe.context || null,
+        maxTextureSize: probe.maxTextureSize || null,
+        precisionMode: null,
+        residualRefreshInterval: 0,
+        supportsElementKernels: false,
+        supportsDoubleSingle: false
+      }
+    };
   }
 
-  const created = await tryCreateWebglBackend();
+  const requestedPrecisionMode = (
+    explicit === 'webgl2-double-single'
+    || explicit === 'webgl2-ds'
+    || String(gpuPrecisionMode || 'auto').toLowerCase() === 'double-single'
+  )
+    ? 'double-single'
+    : 'f32';
+  const created = await tryCreateWebglBackend({
+    initialPrecisionMode: requestedPrecisionMode
+  });
   if (!created.backend) {
     warn(
       warnings,
       `GPU acceleration could not be initialised (${created.reason || 'unknown'}); solver stayed on the CPU f64 path.`
     );
-    return { backend: null, info: { name: 'cpu-f64', reason: `init-failed:${created.reason || 'unknown'}` } };
+    return {
+      backend: null,
+      info: {
+        name: 'cpu-f64',
+        reason: `init-failed:${created.reason || 'unknown'}`,
+        probeMode: probe.mode || null,
+        probeContext: probe.context || null,
+        maxTextureSize: probe.maxTextureSize || null,
+        precisionMode: null,
+        residualRefreshInterval: 0,
+        supportsElementKernels: false,
+        supportsDoubleSingle: false
+      }
+    };
   }
 
   return {
@@ -81,7 +180,12 @@ export async function createLinearAlgebraBackend(setup = {}, warnings = []) {
       name: created.backend.name,
       reason: 'gpu-enabled',
       probeMode: probe.mode,
-      probeContext: probe.context
+      probeContext: probe.context,
+      maxTextureSize: created.maxTextureSize || probe.maxTextureSize || null,
+      precisionMode: created.backend.precisionMode || requestedPrecisionMode,
+      residualRefreshInterval: created.backend.residualRefreshInterval || 0,
+      supportsElementKernels: created.backend.supportsElementKernels === true,
+      supportsDoubleSingle: created.backend.supportsDoubleSingle === true
     }
   };
 }
