@@ -30,7 +30,6 @@
 		"vite": "^8.0.7"
 	},
 	"dependencies": {
-		"gpu.js": "^2.16.0",
 		"triangle-wasm": "^1.0.0"
 	}
 }

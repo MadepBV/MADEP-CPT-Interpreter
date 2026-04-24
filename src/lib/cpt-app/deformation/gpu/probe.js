@@ -4,8 +4,8 @@
 // Capability probe for the WebGL2 GPU.js backend. Callable from both main
 // thread and worker contexts. The cheap sync probe is enough to decide whether
 // a canvas + float render target exists; the async detailed probe also loads
-// gpu.js and compiles a tiny kernel so the UI can disable the toggle before a
-// run starts.
+// the bundled browser GPU runtime and compiles a tiny kernel so the UI can
+// disable the toggle before a run starts.
 
 const GPU_RUNTIME_MODULE = './gpujs-runtime.js';
 let cachedGpuJsPromise = null;
@@ -26,7 +26,9 @@ export async function loadGpuJs() {
   cachedGpuJsPromise = (async () => {
     try {
       const mod = await import(GPU_RUNTIME_MODULE);
-      return mod?.GPU || mod?.default || null;
+      const loader = mod?.loadBundledGpuRuntime || mod?.default || null;
+      if (typeof loader !== 'function') return null;
+      return await loader();
     } catch {
       return null;
     }

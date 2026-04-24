@@ -8978,7 +8978,7 @@ function stage6Tooltip(text){
 }
 
 function stage6BishopGpuProbeReasonLabel(reason){
-  if(reason === 'gpu-js-load-failed') return 'The gpu.js runtime could not be loaded in this browser context.';
+  if(reason === 'gpu-js-load-failed') return 'The bundled browser GPU runtime could not be loaded in this browser context.';
   if(reason === 'no-canvas-in-context') return 'This browser context does not expose a usable canvas for WebGL2.';
   if(reason === 'webgl2-float-rt-missing') return 'WebGL2 with EXT_color_buffer_float is unavailable.';
   if(reason === 'probe-kernel-mismatch') return 'A trivial WebGL2 GPU kernel compiled, but its output was not numerically correct.';
@@ -11098,7 +11098,7 @@ function renderStage6BishopApp(){
                   <input type="checkbox" ${deformationUseGpuAcceleration ? 'checked' : ''} ${deformationGpuToggleDisabled ? 'disabled' : ''} onchange="stage6BishopSetField('deformation.options.useGpuAcceleration', this.checked)">
                   Offload matvec to the GPU (WebGL2, experimental)${stage6Tooltip(deformationGpuTooltipText)}
                 </label>
-                <div class="st6-help">When enabled the Krylov inner loop runs a mixed-precision matvec on the GPU with CPU f64 residual refresh at every restart. Requires a WebGL2 context with EXT_color_buffer_float; the solver silently falls back to the CPU path if the probe fails, the gpu.js package is missing, or the problem has fewer than ${deformationGpuMinDof.toLocaleString()} free DOFs. Biggest wins are on linear-elastic and service-load phases; Stage 2 safety runs remain bounded by the CPU MC return-map.</div>
+                <div class="st6-help">When enabled the Krylov inner loop runs a mixed-precision matvec on the GPU with CPU f64 residual refresh at every restart. Requires a WebGL2 context with EXT_color_buffer_float; the solver silently falls back to the CPU path if the probe fails, the bundled browser GPU runtime cannot be loaded, or the problem has fewer than ${deformationGpuMinDof.toLocaleString()} free DOFs. Biggest wins are on linear-elastic and service-load phases; Stage 2 safety runs remain bounded by the CPU MC return-map.</div>
                 <label style="font-size:11px;color:var(--tx2)">GPU minimum free-DOF gate
                   <input type="number" step="100" min="0" value="${deformationGpuMinDof}" ${deformationGpuToggleDisabled ? 'disabled' : ''} onchange="stage6BishopSetField('deformation.options.gpuMinDof', this.value)">
                 </label>
