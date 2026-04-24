@@ -31,6 +31,7 @@ const BRANCH_TENSION_EDGE_F13_T3 = 'TENSION_EDGE_F13_T3';
 const BRANCH_TENSION_CORNER_S23_T3 = 'TENSION_CORNER_S23_T3';
 const BRANCH_TENSION_CORNER_S12_T3 = 'TENSION_CORNER_S12_T3';
 const BRANCH_TENSION_APEX_T123 = 'TENSION_APEX_T123';
+const BRANCH_FALLBACK_SMOOTH = 'MC_FALLBACK_SMOOTH';
 
 function zeroVector6() {
   return [0, 0, 0, 0, 0, 0];
@@ -875,6 +876,24 @@ function classifyTangentQuality(conditionNumber) {
   if (conditionNumber > 1e9) return 'poor';
   if (conditionNumber > 1e6) return 'fair';
   return 'good';
+}
+
+function classifyLocalReturnFailure(local = null) {
+  if (!local) return 'unknown';
+  if (local?.routePending) return 'pending-tension-handoff';
+  const text = String(local?.reason || '').toLowerCase();
+  if (!text) return 'unknown';
+  if (text.includes('singular')) return 'singular-coupling';
+  if (text.includes('branch acceptance failed')) return 'branch-acceptance-failure';
+  if (text.includes('surface closure')) return 'surface-closure-failure';
+  if (text.includes('gap')) return 'repeated-eigenvalue-closure-failure';
+  if (text.includes('tension')) return 'tension-branch-failure';
+  if (text.includes('formal apex')) return 'formal-apex-handoff';
+  if (text.includes('bad plastic denominator')) return 'bad-plastic-denominator';
+  if (text.includes('negative plastic multiplier')) return 'negative-plastic-multiplier';
+  if (text.includes('line search')) return 'local-line-search-stall';
+  if (text.includes('max local iterations')) return 'local-iteration-budget-exhausted';
+  return 'unknown';
 }
 
 function exactMcHydrostaticApexStress(materialParameters) {
@@ -1942,6 +1961,56 @@ function returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, materialParam
   };
 }
 
+function solveLocalMcFallbackTrustRegion(stressTrial6, elasticTangent6x6, materialParameters, mcTrial, committedState = null, exactFailure = null) {
+  const fallback = returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, materialParameters, mcTrial);
+  if (!fallback?.converged) {
+    return {
+      converged: false,
+      reason: `local fallback return failed after exact Stage 2 failure (${fallback?.reason || 'unknown reason'})`,
+      localFailureClassification: classifyLocalReturnFailure(fallback),
+      fallbackSourceReason: exactFailure?.reason || ''
+    };
+  }
+
+  const exactCurrent = evaluateExactMcSurfaceValuesFromStress(fallback.stress6, materialParameters);
+  const exactValues = exactCurrent?.values || {};
+  const fallbackConditionNumber = denseMatrixConditionNumberEstimate(fallback.algorithmicTangent6x6, 1e-12);
+  const retainedCommittedBranch =
+    activeSurfaceIdsForBranchKind(committedState?.exactBranchKind).length > 0
+      ? committedState.exactBranchKind
+      : BRANCH_FACE_F13;
+
+  return {
+    converged: true,
+    iterations: Number(fallback.iterations) || 0,
+    stress6: cloneVector6(fallback.stress6),
+    plasticStrainIncrement6: cloneVector6(fallback.plasticStrainIncrement6),
+    algorithmicTangent6x6: cloneMatrix6(fallback.algorithmicTangent6x6),
+    activeYieldSurface: YIELD_SURFACE_MC_SHEAR,
+    activeSurfaceIds: ['SMOOTH_MC_FALLBACK'],
+    yieldResidual: Math.max(Number(exactCurrent?.F) || 0, 0),
+    trialBranchKind: exactFailure?.trialBranchKind || retainedCommittedBranch,
+    acceptedBranchKind: retainedCommittedBranch,
+    branchKind: retainedCommittedBranch,
+    representativeBasisSource: committedState?.representativeBasisSource || 'fallback-smooth',
+    representativeProjectors: cloneRepresentativeProjectors(committedState?.representativeProjectors),
+    trialMultiplicityKind: committedState?.multiplicityKind || 'DISTINCT',
+    finalMultiplicityKind: 'DISTINCT',
+    edgeTotalMultiplier: 0,
+    edgeMixWeight: 0,
+    plasticMultipliers: [],
+    tangentConditionNumber: fallbackConditionNumber,
+    tangentQuality: classifyTangentQuality(fallbackConditionNumber),
+    branchAcceptanceResidual: Math.max(...Object.values(exactValues).map((value) => Number(value) || 0), 0),
+    apexAdmissibilityReason: exactFailure?.apexAdmissibilityReason || '',
+    localResidualsBySurface: { ...exactValues },
+    localFallbackUsed: true,
+    localReturnMode: 'smooth-fallback',
+    localFailureClassification: exactFailure ? classifyLocalReturnFailure(exactFailure) : 'fallback-retained',
+    fallbackSourceReason: exactFailure?.reason || ''
+  };
+}
+
 export function createMaterialPointState(overrides = {}) {
   const source = overrides && typeof overrides === 'object' ? overrides : {};
   return {
@@ -1953,6 +2022,8 @@ export function createMaterialPointState(overrides = {}) {
     multiplicityKind: source.multiplicityKind || 'DISTINCT',
     representativeBasisSource: source.representativeBasisSource || 'trial',
     representativeProjectors: cloneRepresentativeProjectors(source.representativeProjectors),
+    localReturnMode: source.localReturnMode || 'elastic',
+    localFallbackUsed: source.localFallbackUsed === true,
     currentlyMcActive: source.currentlyMcActive === true,
     hasEverExceededMc: source.hasEverExceededMc === true,
     etaMcCurrent: Number(source.etaMcCurrent) || 0,
@@ -2241,6 +2312,8 @@ export function snapshotMaterialPointState(state = {}) {
     multiplicityKind: source.multiplicityKind || 'DISTINCT',
     representativeBasisSource: source.representativeBasisSource || 'trial',
     representativeProjectors: cloneRepresentativeProjectors(source.representativeProjectors),
+    localReturnMode: source.localReturnMode || 'elastic',
+    localFallbackUsed: source.localFallbackUsed === true,
     currentlyMcActive: source.currentlyMcActive === true,
     hasEverExceededMc: source.hasEverExceededMc === true,
     etaMcCurrent: Number(source.etaMcCurrent) || 0,
@@ -2392,8 +2465,15 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
       const yieldTolerance = resolveYieldTolerance(params, mcTrial);
       const exactTrial = evaluateExactMcSurfaceValuesFromStress(stressTrial6, params);
       const exactTrialMaxResidual = Math.max(...Object.values(exactTrial?.values || {}).map((value) => Number(value) || 0), 0);
+      const committedHasRetainableExactBranch =
+        activeSurfaceIdsForBranchKind(committed?.exactBranchKind).length > 0 &&
+        committed?.activeYieldSurface !== YIELD_SURFACE_NONE;
+      const committedHasRetainableSmoothFallback =
+        committed?.currentlyMcActive === true &&
+        committed?.localReturnMode === 'smooth-fallback' &&
+        (Number(exactTrial?.values?.T3) || 0) <= yieldTolerance;
 
-      if (!(exactTrialMaxResidual > yieldTolerance)) {
+      if (!(exactTrialMaxResidual > yieldTolerance) && !committedHasRetainableExactBranch && !committedHasRetainableSmoothFallback) {
         const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(stressTrial6, params, committed, {
           currentlyMcActive: false,
           stateChanged: false,
@@ -2407,6 +2487,8 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
           activeYieldSurface: YIELD_SURFACE_NONE,
           exactBranchKind: BRANCH_ELASTIC,
           multiplicityKind: 'DISTINCT',
+          localReturnMode: 'elastic',
+          localFallbackUsed: false,
           currentlyMcActive: false,
           hasEverExceededMc: diagnostics.hasEverExceededMc,
           etaMcCurrent: diagnostics.etaMcCurrent,
@@ -2439,15 +2521,36 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
             tangentQuality: 'good',
             apexAdmissibilityReason: '',
             localResidualsBySurface: exactTrial?.values ? { ...exactTrial.values } : {},
+            localReturnMode: 'elastic',
+            localFallbackUsed: false,
+            localFailureClassification: '',
+            fallbackSourceReason: '',
             constitutiveModel: 'mc-plastic',
             analysisContext
           }
         };
       }
 
-      const local = solveExactMcActiveSetReturn(stressTrial6, elasticTangent6x6, params, mcTrial, committed);
+      let local = committedHasRetainableSmoothFallback
+        ? solveLocalMcFallbackTrustRegion(stressTrial6, elasticTangent6x6, params, mcTrial, committed, null)
+        : solveExactMcActiveSetReturn(stressTrial6, elasticTangent6x6, params, mcTrial, committed);
       if (!local?.converged) {
-        throw new Error(`Local return mapping failed: ${local?.reason || 'unknown reason'}`);
+        const tensionTrialResidual = Number(exactTrial?.values?.T3) || 0;
+        const canAttemptSmoothFallback =
+          !committedHasRetainableSmoothFallback &&
+          !local?.routePending &&
+          tensionTrialResidual <= yieldTolerance &&
+          mcTrial?.state !== 'tension-cutoff';
+        if (canAttemptSmoothFallback) {
+          const fallbackLocal = solveLocalMcFallbackTrustRegion(stressTrial6, elasticTangent6x6, params, mcTrial, committed, local);
+          if (fallbackLocal?.converged) {
+            local = fallbackLocal;
+          } else {
+            throw new Error(`Local return mapping failed: ${local?.reason || 'unknown reason'}; fallback failed: ${fallbackLocal?.reason || 'unknown reason'}`);
+          }
+        } else {
+          throw new Error(`Local return mapping failed: ${local?.reason || 'unknown reason'}`);
+        }
       }
 
       const plasticStrainIncrement6 = cloneVector6(local.plasticStrainIncrement6);
@@ -2476,6 +2579,8 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
         multiplicityKind: local.finalMultiplicityKind || multiplicityKindFromBranchKind(local.acceptedBranchKind || local.branchKind),
         representativeBasisSource: local.representativeBasisSource || committed.representativeBasisSource || 'trial',
         representativeProjectors: local.representativeProjectors || committed.representativeProjectors || null,
+        localReturnMode: local.localReturnMode || 'exact-active-set',
+        localFallbackUsed: local.localFallbackUsed === true,
         currentlyMcActive: finalIsPlasticActive,
         hasEverExceededMc: diagnostics.hasEverExceededMc,
         etaMcCurrent: diagnostics.etaMcCurrent,
@@ -2511,6 +2616,10 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
           tangentQuality: local?.tangentQuality || 'unknown',
           apexAdmissibilityReason: local?.apexAdmissibilityReason || '',
           localResidualsBySurface: local?.localResidualsBySurface ? { ...local.localResidualsBySurface } : {},
+          localReturnMode: local?.localReturnMode || 'exact-active-set',
+          localFallbackUsed: local?.localFallbackUsed === true,
+          localFailureClassification: local?.localFailureClassification || '',
+          fallbackSourceReason: local?.fallbackSourceReason || '',
           yieldTolerance,
           plasticIncrementNorm: vectorNorm6(plasticStrainIncrement6),
           localIterations: local.iterations,

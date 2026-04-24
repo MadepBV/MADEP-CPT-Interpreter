@@ -3,6 +3,7 @@
 
 export const NU_MIN = -0.99;
 export const NU_MAX = 0.49;
+const MC_ANGLE_MAX_DEG = 89.5;
 
 function pushUniqueWarning(warnings, message) {
   if (!Array.isArray(warnings) || !message) return;
@@ -17,6 +18,10 @@ function fallbackK0(phiEffDeg) {
 function finiteOrNull(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function clampMcAngle(angleDeg) {
+  return Math.max(Math.min(Number(angleDeg) || 0, MC_ANGLE_MAX_DEG), 0);
 }
 
 export function elasticLameParameters(EInput, nuInput, warnings = [], label = 'Material') {
@@ -89,9 +94,47 @@ export function prepareMechanicalMaterial(material, warnings = []) {
     representativeBasisPolicy: typeof material?.representativeBasisPolicy === 'string' && material.representativeBasisPolicy
       ? material.representativeBasisPolicy
       : 'committed-trial-canonical',
-    symmetrizeEpTangent: material?.symmetrizeEpTangent !== false,
+    // The exact non-associated Stage 2 multisurface tangent is generally
+    // unsymmetric. Preserve that by default unless the user explicitly asks
+    // for a symmetrized approximation.
+    symmetrizeEpTangent: material?.symmetrizeEpTangent === true,
     useTensionCutoff: material?.useTensionCutoff !== false,
     useCompressionYield: material?.useCompressionYield === true
+  };
+}
+
+export function reduceMaterialStrengthForSafety(materialParameters, sigmaMsfInput = 1) {
+  const base = materialParameters && typeof materialParameters === 'object'
+    ? materialParameters
+    : {};
+  const sigmaMsf = Math.max(Number(sigmaMsfInput) || 1, 1);
+  const phiBaseDeg = clampMcAngle(base?.phiEffDeg);
+  const psiBaseDeg = clampMcAngle(base?.psiEffDeg ?? base?.psi);
+  const phiBaseRad = (phiBaseDeg * Math.PI) / 180;
+  const psiBaseRad = (psiBaseDeg * Math.PI) / 180;
+  const tanPhiReduced = Math.tan(phiBaseRad) / sigmaMsf;
+  const tanPsiReduced = Math.tan(psiBaseRad) / sigmaMsf;
+  const phiReducedDeg = (Math.atan(Math.max(tanPhiReduced, 0)) * 180) / Math.PI;
+  const psiReducedUnclampedDeg = (Math.atan(Math.max(tanPsiReduced, 0)) * 180) / Math.PI;
+  const psiReducedDeg = Math.min(phiReducedDeg, psiReducedUnclampedDeg);
+  const cohesionBase = Math.max(Number(base?.cEff) || 0, 0);
+  const sigmaTAllowBaseRaw = Math.max(Number(base?.sigmaTAllow) || 0, 0);
+  const phiTangentBase = Math.tan(phiBaseRad);
+  const sigmaTAllowCap = phiTangentBase > 1e-12
+    ? cohesionBase / phiTangentBase
+    : Number.POSITIVE_INFINITY;
+  const sigmaTAllowBase = Math.min(sigmaTAllowBaseRaw, sigmaTAllowCap);
+  return {
+    ...base,
+    cEff: cohesionBase / sigmaMsf,
+    phiEffDeg: phiReducedDeg,
+    psiEffDeg: psiReducedDeg,
+    sigmaTAllow: Number.isFinite(sigmaTAllowBase) ? (sigmaTAllowBase / sigmaMsf) : sigmaTAllowBaseRaw,
+    safetyStrengthReductionFactor: sigmaMsf,
+    safetyBaseCohesion: cohesionBase,
+    safetyBasePhiEffDeg: phiBaseDeg,
+    safetyBasePsiEffDeg: psiBaseDeg,
+    safetyBaseSigmaTAllow: sigmaTAllowBase
   };
 }
 

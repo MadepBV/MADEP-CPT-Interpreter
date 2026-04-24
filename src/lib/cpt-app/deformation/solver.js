@@ -26,7 +26,7 @@ import {
   seedMaterialPointStateFromInitialStress,
   snapshotMaterialPointState,
 } from './material-models.js';
-import { prepareMechanicalMaterial } from './material.js';
+import { prepareMechanicalMaterial, reduceMaterialStrengthForSafety } from './material.js';
 import {
   buildFlatK0InitialEffectiveStressField,
   initialBulkUnitWeightFromPorePressure,
@@ -43,6 +43,8 @@ const CG_CHECKPOINT_INTERVAL = 25;
 const GEOSTATIC_CG_PROGRESS_INTERVAL = 100;
 const MAX_CG_ITER = 25000;
 const BICGSTAB_CHECKPOINT_INTERVAL = 20;
+const GMRES_RESTART = 40;
+const GMRES_CHECKPOINT_INTERVAL = 20;
 const NONLINEAR_LINEAR_PROGRESS_INTERVAL = 200;
 const GEOM_EPS = 1e-6;
 const NONLINEAR_RESIDUAL_REL_TOL = 1e-4;
@@ -55,6 +57,15 @@ const NONLINEAR_MIN_LOAD_STEP = 1 / 2048;
 const NONLINEAR_GROWTH_FACTOR = 1.25;
 const NONLINEAR_CUTBACK_FACTOR = 0.5;
 const NONLINEAR_MAX_LOAD_STEPS = 256;
+const NONLINEAR_CONTINUATION_TARGET_ITERATIONS = 6;
+const NONLINEAR_CONTINUATION_TARGET_LINE_SEARCH_SCALE = 0.9;
+const NONLINEAR_CONTINUATION_ITERATION_EXPONENT = 0.5;
+const NONLINEAR_CONTINUATION_LINE_SEARCH_EXPONENT = 0.25;
+const SAFETY_INITIAL_SIGMA_MSF_INCREMENT = 0.1;
+const SAFETY_SIGMA_MSF_GROWTH_FACTOR = 1.5;
+const SAFETY_SIGMA_MSF_MAX = 3.0;
+const SAFETY_SIGMA_MSF_BRACKET_TOL = 0.01;
+const SAFETY_MAX_SEARCH_TRIALS = 32;
 
 function pushUniqueWarning(warnings, message) {
   if (!Array.isArray(warnings) || !message) return;
@@ -112,6 +123,15 @@ function addSolutionVectors(left, right) {
   return out;
 }
 
+function subtractSolutionVectors(left, right) {
+  const size = Math.max(left?.length || 0, right?.length || 0);
+  const out = new Float64Array(size);
+  for (let i = 0; i < size; i += 1) {
+    out[i] = (Number(left?.[i]) || 0) - (Number(right?.[i]) || 0);
+  }
+  return out;
+}
+
 function interpolateVectorFields(start, end, factor = 1) {
   const size = Math.max(start?.length || 0, end?.length || 0);
   const clampedFactor = Math.max(0, Math.min(Number(factor) || 0, 1));
@@ -122,6 +142,85 @@ function interpolateVectorFields(start, end, factor = 1) {
     out[i] = startValue + clampedFactor * (endValue - startValue);
   }
   return out;
+}
+
+function cloneMaterialParameters(materialParameters) {
+  return materialParameters && typeof materialParameters === 'object'
+    ? { ...materialParameters }
+    : null;
+}
+
+function cloneMaterialPoint(materialPoint) {
+  if (!materialPoint) return null;
+  return {
+    ...materialPoint,
+    materialParameters: cloneMaterialParameters(materialPoint.materialParameters),
+    predictorState: cloneMaterialPointState(materialPoint.predictorState),
+    referenceState: cloneMaterialPointState(materialPoint.referenceState),
+    committedState: cloneMaterialPointState(materialPoint.committedState),
+    trialState: cloneMaterialPointState(materialPoint.trialState),
+    diagnostics: materialPoint.diagnostics && typeof materialPoint.diagnostics === 'object'
+      ? { ...materialPoint.diagnostics }
+      : null
+  };
+}
+
+function cloneMaterialPointCollection(materialPoints) {
+  return (materialPoints || []).map((materialPoint) => cloneMaterialPoint(materialPoint));
+}
+
+function createMaterialPointCheckpoint(materialPoints, solution, metadata = {}) {
+  return {
+    materialPoints: cloneMaterialPointCollection(materialPoints),
+    solution: Float64Array.from(solution || []),
+    sigmaMsf: Math.max(Number(metadata?.sigmaMsf) || 1, 1),
+    label: metadata?.label || ''
+  };
+}
+
+function createSafetyDisplayPhaseFromCheckpoint(checkpoint, metadata = {}) {
+  const sigmaMsf = Math.max(Number(metadata?.sigmaMsf ?? checkpoint?.sigmaMsf) || 1, 1);
+  return {
+    phaseKind: 'safety-cphi',
+    formulationMode: 'total',
+    solution: Float64Array.from(checkpoint?.solution || []),
+    materialPoints: cloneMaterialPointCollection(checkpoint?.materialPoints),
+    sigmaMsfStart: sigmaMsf,
+    sigmaMsfTarget: sigmaMsf,
+    sigmaMsfCommitted: sigmaMsf,
+    sigmaMsfDisplayed: sigmaMsf,
+    acceptedSteps: 0,
+    rejectedSteps: 0,
+    totalNonlinearIterations: 0,
+    totalCgIterations: 0,
+    residualNorm: 0,
+    relativeResidualNorm: 0,
+    displacementCorrectionNorm: 0,
+    relativeDisplacementCorrectionNorm: 0,
+    lastStateChanges: 0,
+    finalActiveCount: 0,
+    peakActiveCount: 0,
+    finalActiveFaceCount: 0,
+    finalActiveEdgeCount: 0,
+    finalActiveApexCount: 0,
+    finalTensionPendingCount: 0,
+    peakActiveFaceCount: 0,
+    peakActiveEdgeCount: 0,
+    peakActiveApexCount: 0,
+    peakTensionPendingCount: 0,
+    peakEta: 0,
+    loadFactorCommitted: 1,
+    displayedLoadFactor: 1,
+    converged: true,
+    convergenceState: 'converged',
+    failureCode: 'equilibrium-converged',
+    failureOutcomeClass: 'converged',
+    displayedStateMode: 'committed',
+    loadFactorMeaning: 'safety-strength-reduction',
+    failureReason: '',
+    loadStepHistory: [],
+    residualHistory: []
+  };
 }
 
 function isExactTensionBranchKind(branchKind) {
@@ -186,6 +285,100 @@ function nonlinearToleranceState(residualNorm, rhsNorm, deltaNorm, solutionNorm,
     displacementConverged: deltaNorm <= displacementTarget,
     converged: residualNorm <= residualTarget && deltaNorm <= displacementTarget
   };
+}
+
+function evaluateResidualMerit(residualNormOrVector) {
+  const residualNorm = typeof residualNormOrVector === 'number'
+    ? Math.max(Number(residualNormOrVector) || 0, 0)
+    : vectorNorm(residualNormOrVector || []);
+  return 0.5 * residualNorm * residualNorm;
+}
+
+function approximateNewtonMeritDirectionalDerivative(residualNorm, linearizedResidualNorm = 0) {
+  const residual = Math.max(Number(residualNorm) || 0, 0);
+  const linearizedResidual = Math.max(Number(linearizedResidualNorm) || 0, 0);
+  const effectiveDescent = Math.max(residual - linearizedResidual, 0);
+  return -residual * effectiveDescent;
+}
+
+function classifyFailureOutcomeClass(code = '') {
+  switch (String(code || '')) {
+    case 'equilibrium-converged':
+      return 'converged';
+    case 'no-failure-found':
+      return 'stable';
+    case 'mechanism-developed':
+      return 'mechanism-developed';
+    case 'local-constitutive-failure':
+      return 'local-constitutive';
+    case 'interrupted':
+      return 'interrupted';
+    case 'global-linear-solve-failure':
+    case 'line-search-stall':
+    case 'step-budget-exhausted':
+    case 'step-below-minimum':
+    case 'nonlinear-iterations-exhausted':
+    case 'assembly-failure':
+    case 'arc-length-limit-point-not-resolved':
+      return 'numerical-nonconvergence';
+    default:
+      return code ? 'unknown-failure' : 'unknown';
+  }
+}
+
+function classifyFailureCode(reason = '') {
+  const text = String(reason || '').toLowerCase();
+  if (!text) return '';
+  if (text.includes('interrupted')) return 'interrupted';
+  if (text.includes('line search stalled')) return 'line-search-stall';
+  if (text.includes('linearized solve did not converge')) return 'global-linear-solve-failure';
+  if (
+    text.includes('exact mc')
+    || text.includes('active-set')
+    || text.includes('constitutive')
+    || text.includes('tangent coupling matrix')
+    || text.includes('branch acceptance')
+  ) return 'local-constitutive-failure';
+  if (text.includes('exceeded the maximum number of load steps')) return 'step-budget-exhausted';
+  if (
+    text.includes('could not converge the load step')
+    || text.includes('could not converge the continuation step')
+  ) return 'step-below-minimum';
+  if (text.includes('arc-length')) return 'arc-length-limit-point-not-resolved';
+  if (text.includes('nonlinear iterations exhausted')) return 'nonlinear-iterations-exhausted';
+  return 'assembly-failure';
+}
+
+function createFailureRecord(code = '', reason = '') {
+  const resolvedCode = code || classifyFailureCode(reason);
+  return {
+    code: resolvedCode,
+    outcomeClass: classifyFailureOutcomeClass(resolvedCode),
+    reason: reason || ''
+  };
+}
+
+function computeAdaptiveContinuationFactor({
+  iterationCount,
+  acceptedLineSearchScale,
+  targetIterations,
+  targetLineSearchScale,
+  iterationExponent,
+  lineSearchExponent,
+  minFactor,
+  maxFactor
+}) {
+  const boundedMin = Math.max(Number(minFactor) || 0, 1e-6);
+  const boundedMax = Math.max(Number(maxFactor) || 0, boundedMin);
+  const effectiveIterations = Math.max(Number(iterationCount) || 0, 1);
+  const effectiveScale = Math.max(Math.min(Number(acceptedLineSearchScale) || 1, 1), 1e-6);
+  const targetIter = Math.max(Number(targetIterations) || NONLINEAR_CONTINUATION_TARGET_ITERATIONS, 1);
+  const targetScale = Math.max(Math.min(Number(targetLineSearchScale) || NONLINEAR_CONTINUATION_TARGET_LINE_SEARCH_SCALE, 1), 1e-6);
+  const iterExp = Math.max(Number(iterationExponent) || NONLINEAR_CONTINUATION_ITERATION_EXPONENT, 0);
+  const scaleExp = Math.max(Number(lineSearchExponent) || NONLINEAR_CONTINUATION_LINE_SEARCH_EXPONENT, 0);
+  const rawFactor = Math.pow(targetIter / effectiveIterations, iterExp) * Math.pow(effectiveScale / targetScale, scaleExp);
+  if (!Number.isFinite(rawFactor) || rawFactor <= 0) return boundedMin;
+  return Math.min(Math.max(rawFactor, boundedMin), boundedMax);
 }
 
 function allowPlasticQuasiConvergence(
@@ -567,6 +760,328 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
   };
 }
 
+function buildScaledLinearSystem(rows, rhs, options = {}) {
+  const n = rows.length;
+  const rowScaling = options?.rowScaling !== false;
+  const columnScaling = options?.columnScaling !== false;
+  const scaleFloor = Math.max(Number(options?.scaleFloor) || 1e-12, 1e-16);
+  const rowScale = new Float64Array(n);
+  const columnScale = new Float64Array(n);
+  rowScale.fill(1);
+  columnScale.fill(1);
+
+  if (columnScaling) {
+    const columnMax = new Float64Array(n);
+    for (let rowIndex = 0; rowIndex < n; rowIndex += 1) {
+      const row = rows[rowIndex];
+      for (let entryIndex = 0; entryIndex < row.indices.length; entryIndex += 1) {
+        const colIndex = row.indices[entryIndex];
+        columnMax[colIndex] = Math.max(columnMax[colIndex], Math.abs(Number(row.values?.[entryIndex]) || 0));
+      }
+    }
+    for (let colIndex = 0; colIndex < n; colIndex += 1) {
+      columnScale[colIndex] = 1 / Math.max(columnMax[colIndex], scaleFloor);
+    }
+  }
+
+  if (rowScaling) {
+    for (let rowIndex = 0; rowIndex < n; rowIndex += 1) {
+      const row = rows[rowIndex];
+      let maxRowAbs = 0;
+      for (let entryIndex = 0; entryIndex < row.indices.length; entryIndex += 1) {
+        const colIndex = row.indices[entryIndex];
+        maxRowAbs = Math.max(
+          maxRowAbs,
+          Math.abs((Number(row.values?.[entryIndex]) || 0) * (columnScaling ? columnScale[colIndex] : 1))
+        );
+      }
+      rowScale[rowIndex] = 1 / Math.max(maxRowAbs, scaleFloor);
+    }
+  }
+
+  const scaledRows = Array.from({ length: n }, () => ({ indices: [], values: [], diag: 0 }));
+  for (let rowIndex = 0; rowIndex < n; rowIndex += 1) {
+    const row = rows[rowIndex];
+    const scaledRow = scaledRows[rowIndex];
+    const rowFactor = rowScale[rowIndex];
+    scaledRow.indices = row.indices.slice();
+    scaledRow.values = row.values.map((value, entryIndex) => {
+      const colIndex = row.indices[entryIndex];
+      const scaledValue = rowFactor * (Number(value) || 0) * columnScale[colIndex];
+      if (colIndex === rowIndex) scaledRow.diag = scaledValue;
+      return scaledValue;
+    });
+  }
+
+  const scaledRhs = new Float64Array(n);
+  for (let rowIndex = 0; rowIndex < n; rowIndex += 1) {
+    scaledRhs[rowIndex] = rowScale[rowIndex] * (Number(rhs?.[rowIndex]) || 0);
+  }
+
+  return {
+    rows: scaledRows,
+    rhs: scaledRhs,
+    rowScale,
+    columnScale,
+    scaleSolution(solutionScaled) {
+      const solution = new Float64Array(n);
+      for (let index = 0; index < n; index += 1) {
+        solution[index] = (Number(solutionScaled?.[index]) || 0) * columnScale[index];
+      }
+      return solution;
+    },
+    unscaleInitialSolution(initialSolution) {
+      if (!initialSolution || initialSolution.length !== n) return null;
+      const scaled = new Float64Array(n);
+      for (let index = 0; index < n; index += 1) {
+        scaled[index] = (Number(initialSolution[index]) || 0) / Math.max(columnScale[index], scaleFloor);
+      }
+      return scaled;
+    }
+  };
+}
+
+function applyGivensRotation(x, y, cosine, sine) {
+  return [
+    cosine * x + sine * y,
+    -sine * x + cosine * y
+  ];
+}
+
+function computeGivensRotation(a, b) {
+  if (!(Math.abs(b) > CG_NUMERIC_EPS)) return { cosine: 1, sine: 0 };
+  if (!(Math.abs(a) > CG_NUMERIC_EPS)) return { cosine: 0, sine: 1 };
+  const radius = Math.hypot(a, b);
+  return {
+    cosine: a / radius,
+    sine: b / radius
+  };
+}
+
+function solveUpperTriangularFromHessenberg(hessenberg, rhs, dimension) {
+  const solution = new Float64Array(dimension);
+  for (let rowIndex = dimension - 1; rowIndex >= 0; rowIndex -= 1) {
+    let sum = Number(rhs?.[rowIndex]) || 0;
+    for (let colIndex = rowIndex + 1; colIndex < dimension; colIndex += 1) {
+      sum -= (Number(hessenberg?.[rowIndex]?.[colIndex]) || 0) * solution[colIndex];
+    }
+    const diagonal = Number(hessenberg?.[rowIndex]?.[rowIndex]) || 0;
+    if (!(Math.abs(diagonal) > CG_NUMERIC_EPS)) return null;
+    solution[rowIndex] = sum / diagonal;
+  }
+  return solution;
+}
+
+async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null, iterationObserver = null, options = {}) {
+  const n = rows.length;
+  if (!n) {
+    return {
+      solution: new Float64Array(0),
+      converged: true,
+      iterations: 0,
+      residualNorm: 0,
+      relativeResidual: 0,
+      rhsNorm: 0,
+      toleranceTarget: 0,
+      interrupted: false
+    };
+  }
+
+  const scaledSystem = buildScaledLinearSystem(rows, rhs, options);
+  const scaledRows = scaledSystem.rows;
+  const scaledRhs = scaledSystem.rhs;
+  const rhsNorm = Math.sqrt(dot(scaledRhs, scaledRhs));
+  const restart = Math.max(Math.round(Number(options?.restart) || GMRES_RESTART), 4);
+  let x = scaledSystem.unscaleInitialSolution(initial) || new Float64Array(n);
+  let ax = sparseMatVec(scaledRows, x);
+  let residual = new Float64Array(n);
+  for (let i = 0; i < n; i += 1) residual[i] = scaledRhs[i] - ax[i];
+  let residualNorm = Math.sqrt(dot(residual, residual));
+  let tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+  if (tolerance.converged) {
+    return {
+      solution: scaledSystem.scaleSolution(x),
+      converged: true,
+      iterations: 0,
+      residualNorm,
+      relativeResidual: tolerance.relativeResidual,
+      rhsNorm,
+      toleranceTarget: tolerance.target,
+      interrupted: false
+    };
+  }
+
+  await runCheckpoint(runControl, true);
+  let totalIterations = 0;
+
+  while (totalIterations < maxIter) {
+    const beta = Math.sqrt(dot(residual, residual));
+    if (!(beta > CG_NUMERIC_EPS)) {
+      tolerance = cgToleranceState(0, rhsNorm, relTol, absTol);
+      return {
+        solution: scaledSystem.scaleSolution(x),
+        converged: true,
+        iterations: totalIterations,
+        residualNorm: 0,
+        relativeResidual: tolerance.relativeResidual,
+        rhsNorm,
+        toleranceTarget: tolerance.target,
+        interrupted: false
+      };
+    }
+
+    const krylovDim = Math.min(restart, maxIter - totalIterations);
+    const basis = Array.from({ length: krylovDim + 1 }, () => new Float64Array(n));
+    const hessenberg = Array.from({ length: krylovDim + 1 }, () => new Float64Array(krylovDim));
+    const givensCos = new Float64Array(krylovDim);
+    const givensSin = new Float64Array(krylovDim);
+    const g = new Float64Array(krylovDim + 1);
+    g[0] = beta;
+    for (let i = 0; i < n; i += 1) basis[0][i] = residual[i] / beta;
+
+    let solvedThisRestart = false;
+    let completedColumns = 0;
+
+    for (let columnIndex = 0; columnIndex < krylovDim; columnIndex += 1) {
+      totalIterations += 1;
+      completedColumns = columnIndex + 1;
+      const arnoldiVector = sparseMatVec(scaledRows, basis[columnIndex]);
+      for (let rowIndex = 0; rowIndex <= columnIndex; rowIndex += 1) {
+        const projection = dot(arnoldiVector, basis[rowIndex]);
+        hessenberg[rowIndex][columnIndex] = projection;
+        for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
+          arnoldiVector[entryIndex] -= projection * basis[rowIndex][entryIndex];
+        }
+      }
+      const nextNorm = Math.sqrt(dot(arnoldiVector, arnoldiVector));
+      hessenberg[columnIndex + 1][columnIndex] = nextNorm;
+      if (nextNorm > CG_NUMERIC_EPS && columnIndex + 1 < basis.length) {
+        for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
+          basis[columnIndex + 1][entryIndex] = arnoldiVector[entryIndex] / nextNorm;
+        }
+      }
+
+      for (let rotationIndex = 0; rotationIndex < columnIndex; rotationIndex += 1) {
+        const [rotatedUpper, rotatedLower] = applyGivensRotation(
+          hessenberg[rotationIndex][columnIndex],
+          hessenberg[rotationIndex + 1][columnIndex],
+          givensCos[rotationIndex],
+          givensSin[rotationIndex]
+        );
+        hessenberg[rotationIndex][columnIndex] = rotatedUpper;
+        hessenberg[rotationIndex + 1][columnIndex] = rotatedLower;
+      }
+
+      const { cosine, sine } = computeGivensRotation(
+        hessenberg[columnIndex][columnIndex],
+        hessenberg[columnIndex + 1][columnIndex]
+      );
+      givensCos[columnIndex] = cosine;
+      givensSin[columnIndex] = sine;
+      const [newDiag, newSubdiag] = applyGivensRotation(
+        hessenberg[columnIndex][columnIndex],
+        hessenberg[columnIndex + 1][columnIndex],
+        cosine,
+        sine
+      );
+      hessenberg[columnIndex][columnIndex] = newDiag;
+      hessenberg[columnIndex + 1][columnIndex] = newSubdiag;
+      const [newG, newNextG] = applyGivensRotation(g[columnIndex], g[columnIndex + 1], cosine, sine);
+      g[columnIndex] = newG;
+      g[columnIndex + 1] = newNextG;
+
+      residualNorm = Math.abs(g[columnIndex + 1]);
+      tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+      if (iterationObserver && (totalIterations === 1 || totalIterations % NONLINEAR_LINEAR_PROGRESS_INTERVAL === 0)) {
+        await iterationObserver({
+          iterations: totalIterations,
+          residualNorm,
+          relativeResidual: tolerance.relativeResidual,
+          rhsNorm,
+          toleranceTarget: tolerance.target
+        });
+      }
+      if (tolerance.converged || totalIterations >= maxIter || !(nextNorm > CG_NUMERIC_EPS)) {
+        const y = solveUpperTriangularFromHessenberg(hessenberg, g, completedColumns);
+        if (y) {
+          for (let basisIndex = 0; basisIndex < completedColumns; basisIndex += 1) {
+            const coefficient = y[basisIndex];
+            for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
+              x[entryIndex] += coefficient * basis[basisIndex][entryIndex];
+            }
+          }
+        }
+        ax = sparseMatVec(scaledRows, x);
+        for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
+          residual[entryIndex] = scaledRhs[entryIndex] - ax[entryIndex];
+        }
+        residualNorm = Math.sqrt(dot(residual, residual));
+        tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+        solvedThisRestart = tolerance.converged;
+        break;
+      }
+
+      if (totalIterations % GMRES_CHECKPOINT_INTERVAL === 0 && (await runCheckpoint(runControl))) {
+        return {
+          solution: scaledSystem.scaleSolution(x),
+          converged: false,
+          iterations: totalIterations,
+          residualNorm,
+          relativeResidual: tolerance.relativeResidual,
+          rhsNorm,
+          toleranceTarget: tolerance.target,
+          interrupted: true
+        };
+      }
+    }
+
+    if (!solvedThisRestart && completedColumns > 0) {
+      const y = solveUpperTriangularFromHessenberg(hessenberg, g, completedColumns);
+      if (y) {
+        for (let basisIndex = 0; basisIndex < completedColumns; basisIndex += 1) {
+          const coefficient = y[basisIndex];
+          for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
+            x[entryIndex] += coefficient * basis[basisIndex][entryIndex];
+          }
+        }
+      }
+    }
+
+    if (solvedThisRestart || tolerance.converged) {
+      return {
+        solution: scaledSystem.scaleSolution(x),
+        converged: true,
+        iterations: totalIterations,
+        residualNorm,
+        relativeResidual: tolerance.relativeResidual,
+        rhsNorm,
+        toleranceTarget: tolerance.target,
+        interrupted: false
+      };
+    }
+
+    ax = sparseMatVec(scaledRows, x);
+    for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
+      residual[entryIndex] = scaledRhs[entryIndex] - ax[entryIndex];
+    }
+    residualNorm = Math.sqrt(dot(residual, residual));
+    tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+    if (totalIterations >= maxIter) break;
+  }
+
+  tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+  return {
+    solution: scaledSystem.scaleSolution(x),
+    converged: false,
+    iterations: totalIterations,
+    residualNorm,
+    relativeResidual: tolerance.relativeResidual,
+    rhsNorm,
+    toleranceTarget: tolerance.target,
+    interrupted: false
+  };
+}
+
 function compressMatrixRows(rows, freeDofs, freeIndexByDof) {
   return freeDofs.map((dofId, rowIndex) => {
     const out = { indices: [], values: [], diag: 0 };
@@ -652,28 +1167,39 @@ function overlapRange(a0, a1, b0, b1) {
   return hi > lo + GEOM_EPS ? { lo, hi } : null;
 }
 
-function normalizeLoad(model, options, warnings) {
+function normalizeLoad(model, options, warnings, mode = 'required') {
   const surfaceLoad = model?.surfaceLoad || null;
-  if (!(surfaceLoad?.xEnd > surfaceLoad?.xStart + GEOM_EPS)) {
-    throw new Error('Draw a load interval on the terrain before running deformation.');
+  const loadMode = options?.loadMode === 'total' ? 'total' : 'pressure';
+  const hasPositiveTotalLoad = loadMode === 'total' && (Math.max(Number(options?.totalLoad) || 0, 0) > 0);
+  const hasPositivePressure = loadMode === 'pressure' && (Math.max(Number(surfaceLoad?.q) || 0, 0) > 0);
+  const requiresLoad = mode === 'required';
+  const validInterval = surfaceLoad?.xEnd > surfaceLoad?.xStart + GEOM_EPS;
+  if (!validInterval) {
+    if (!requiresLoad && !hasPositiveTotalLoad && !hasPositivePressure) return null;
+    throw new Error(
+      requiresLoad
+        ? 'Draw a load interval on the terrain before running deformation.'
+        : 'Draw a load interval on the terrain before applying an external surface load in the safety analysis.'
+    );
   }
   const width = surfaceLoad.xEnd - surfaceLoad.xStart;
   const outOfPlaneLength = Math.max(Number(options?.outOfPlaneLength) || 10, 0.1);
-  const loadMode = options?.loadMode === 'total' ? 'total' : 'pressure';
   let q = Math.max(Number(surfaceLoad?.q) || 0, 0);
   let totalLoad = null;
   if (loadMode === 'total') {
     totalLoad = Math.max(Number(options?.totalLoad) || 0, 0);
-    if (!(totalLoad > 0)) {
+    if (requiresLoad && !(totalLoad > 0)) {
       throw new Error('Enter a positive total load before running deformation in total-load mode.');
     }
+    if (!requiresLoad && !(totalLoad > 0)) return null;
     q = totalLoad / Math.max(width * outOfPlaneLength, 1e-6);
   }
-  if (!(q > 0)) {
+  if (requiresLoad && !(q > 0)) {
     throw new Error(loadMode === 'pressure'
       ? 'Enter a positive surface load q before running deformation.'
       : 'The derived pressure from total load is zero or negative.');
   }
+  if (!requiresLoad && !(q > 0)) return null;
   if (loadMode === 'pressure' && Number(options?.totalLoad) > 0) {
     totalLoad = q * width * outOfPlaneLength;
   }
@@ -731,6 +1257,7 @@ function buildFixedDofMap(mesh) {
 }
 
 function loadedTerrainEdges(mesh, load) {
+  if (!(load?.xEnd > load?.xStart + GEOM_EPS)) return [];
   return (mesh.constraintEdges || []).filter((edge) => {
     if (edge?.markerType !== 'outer' || edge?.source !== 'terrain') return false;
     return !!overlapRange(edge.a.x, edge.b.x, load.xStart, load.xEnd);
@@ -759,6 +1286,25 @@ function prepareRegionConstitutiveModels(mesh, options, warnings) {
     });
   });
   return byRegion;
+}
+
+function buildSafetyReducedRegionParameters(regionConstitutiveByRegion, sigmaMsf) {
+  const reducedByRegion = new Map();
+  regionConstitutiveByRegion.forEach((constitutive, regionIndex) => {
+    reducedByRegion.set(
+      regionIndex,
+      reduceMaterialStrengthForSafety(constitutive?.materialParameters, sigmaMsf)
+    );
+  });
+  return reducedByRegion;
+}
+
+function assignMaterialParametersByRegion(materialPoints, materialParametersByRegion) {
+  materialPoints.forEach((materialPoint) => {
+    if (!materialPoint) return;
+    const override = materialParametersByRegion?.get(materialPoint.regionIndex);
+    if (override) materialPoint.materialParameters = cloneMaterialParameters(override);
+  });
 }
 
 function regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings) {
@@ -913,10 +1459,11 @@ function buildElementAnalysisState(elementCache, U) {
 function recoverElementMaterialResponse(elementCache, U, materialPoint, analysisContext = null) {
   const elementState = buildElementAnalysisState(elementCache, U);
   const previousTrialState = materialPoint.trialState ? cloneMaterialPointState(materialPoint.trialState) : cloneMaterialPointState(materialPoint.committedState);
+  const materialParametersOverride = analysisContext?.materialParametersOverride || null;
   const update = materialPoint.materialModel.update({
     strainTrial6: elementState.strainTrial6,
     committedState: materialPoint.committedState,
-    materialParameters: materialPoint.materialParameters,
+    materialParameters: materialParametersOverride || materialPoint.materialParameters,
     analysisContext: {
       ...analysisContext,
       previousTrialState,
@@ -933,7 +1480,8 @@ function recoverElementMaterialResponse(elementCache, U, materialPoint, analysis
     ...elementState,
     stress2D: extractStress2DFrom6(update.stressTrial6),
     tangent2D: extractTangent2DFrom6(globalizationTangent6x6),
-    update
+    update,
+    materialParameters: materialParametersOverride || materialPoint.materialParameters
   };
 }
 
@@ -1136,10 +1684,13 @@ async function assembleNonlinearSystem(
     const elementCache = elementCaches[elementIndex];
     const materialPoint = materialPoints[elementIndex];
     const previousTrialActive = materialPoint.trialState?.currentlyMcActive === true;
+    const materialParametersOverride = elementAnalysisOptions?.regionMaterialParametersByRegion?.get(materialPoint.regionIndex)
+      || null;
     const response = recoverElementMaterialResponse(elementCache, UTrial, materialPoint, {
       stage: stageLabel,
       loadFactor,
-      useElasticGlobalizationTangent: elementAnalysisOptions?.useElasticGlobalizationTangent === true
+      useElasticGlobalizationTangent: elementAnalysisOptions?.useElasticGlobalizationTangent === true,
+      materialParametersOverride
     });
     materialPoint.trialState = response.update.trialState;
     materialPoint.diagnostics = response.update.diagnostics;
@@ -1201,12 +1752,13 @@ async function assembleNonlinearSystem(
   };
 }
 
-async function backtrackPlasticCorrection(
+async function performArmijoLineSearch(
   elementCaches,
   assemblyPattern,
   uBase,
   correction,
   currentResidualNorm,
+  linearizedResidualNorm,
   materialPoints,
   loadRhsFreeBase,
   targetLoadFactor,
@@ -1214,17 +1766,21 @@ async function backtrackPlasticCorrection(
   analysisStageLabel,
   formulationMode = 'incremental',
   targetForceFreeOverride = null,
-  elementAnalysisOptions = null
+  elementAnalysisOptions = null,
+  lineSearchOptions = {}
 ) {
-  const stepScales = [1, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625];
+  const reductionFactor = Math.min(Math.max(Number(lineSearchOptions?.reductionFactor) || 0.5, 0.1), 0.95);
+  const minStepScale = Math.min(Math.max(Number(lineSearchOptions?.minStepScale) || 1 / 64, 1e-4), 1);
+  const maxBacktracks = Math.max(Math.round(Number(lineSearchOptions?.maxBacktracks) || 5), 1);
+  const armijoCoefficient = Math.max(Number(lineSearchOptions?.armijoCoefficient ?? lineSearchOptions?.sufficientDecreaseFactor) || 1e-4, 0);
+  const currentMerit = evaluateResidualMerit(currentResidualNorm);
+  const directionalDerivative = approximateNewtonMeritDirectionalDerivative(currentResidualNorm, linearizedResidualNorm);
   let best = null;
-  const improvementTarget = Math.max(
-    currentResidualNorm - Math.max(1e-10, 1e-6 * Math.max(currentResidualNorm, 1)),
-    0
-  );
+  let stepScale = 1;
+  let evaluations = 0;
 
-  for (let index = 0; index < stepScales.length; index += 1) {
-    const stepScale = stepScales[index];
+  for (let index = 0; index < maxBacktracks; index += 1) {
+    evaluations += 1;
     const uCandidate = Float64Array.from(uBase);
     addScaledVectorInPlace(uCandidate, correction, stepScale);
     resetMaterialPointTrials(materialPoints);
@@ -1242,19 +1798,44 @@ async function backtrackPlasticCorrection(
       elementAnalysisOptions
     );
     const residualNorm = vectorNorm(assembly.residualFree);
-    if (!best || residualNorm < best.residualNorm) {
+    const candidateMerit = evaluateResidualMerit(residualNorm);
+    const improved = candidateMerit < currentMerit - Math.max(1e-16, 1e-12 * Math.max(currentMerit, 1));
+    const armijoTarget = currentMerit + armijoCoefficient * stepScale * Math.min(directionalDerivative, 0);
+    const accepted = candidateMerit <= Math.max(armijoTarget, 0);
+    if (
+      !best
+      || candidateMerit < best.candidateMerit - Math.max(1e-16, 1e-12 * Math.max(best.candidateMerit, 1))
+      || (
+        Math.abs(candidateMerit - best.candidateMerit) <= Math.max(1e-16, 1e-12 * Math.max(candidateMerit, best.candidateMerit, 1))
+        && residualNorm < best.residualNorm
+      )
+    ) {
       best = {
         stepScale,
         residualNorm,
+        candidateMerit,
         uCandidate,
         assembly,
-        improved: residualNorm < improvementTarget
+        improved,
+        accepted,
+        currentMerit,
+        directionalDerivative,
+        armijoTarget,
+        evaluations
       };
     }
-    if (residualNorm < improvementTarget) return best;
+    if (accepted) return best;
+    if (stepScale <= minStepScale + 1e-12) break;
+    stepScale = Math.max(stepScale * reductionFactor, minStepScale);
   }
 
-  return best;
+  return best
+    ? {
+        ...best,
+        accepted: false,
+        evaluations
+      }
+    : null;
 }
 
 function shouldPreferDisplayCandidate(candidate, current) {
@@ -1313,7 +1894,11 @@ async function solveNonlinearPhase(
     : options?.constitutiveModel === 'mc-plastic'
       ? 'mc-plastic'
       : 'mc-reduced-stiffness';
-  const phaseKind = phaseConfig?.phaseKind === 'initial-gravity' ? 'initial-gravity' : 'service-load';
+  const phaseKind = phaseConfig?.phaseKind === 'initial-gravity'
+    ? 'initial-gravity'
+    : phaseConfig?.phaseKind === 'safety-cphi'
+      ? 'safety-cphi'
+      : 'service-load';
   const formulationMode = phaseConfig?.formulationMode === 'total' ? 'total' : 'incremental';
   const allowLoadStepping = phaseConfig?.allowLoadStepping !== false;
   const targetLoadFactorFinal = Math.max(Number(phaseConfig?.targetLoadFactor) || 1, 0);
@@ -1322,6 +1907,8 @@ async function solveNonlinearPhase(
   const isLinearElastic = constitutiveModel === 'linear-elastic';
   const requiresStableActiveSet = constitutiveModel === 'mc-reduced-stiffness';
   const requiresDisplacementTolerance = constitutiveModel !== 'mc-plastic';
+  const exactPlasticTangentMayBeUnsymmetric = constitutiveModel === 'mc-plastic' &&
+    materialPoints.some((materialPoint) => materialPoint?.materialParameters?.symmetrizeEpTangent !== true);
   // The modified-Newton elastic globalization tangent is a robustness fallback
   // for difficult initial-gravity runs, but it is much slower and should not
   // be the default Phase 0b path.
@@ -1329,21 +1916,87 @@ async function solveNonlinearPhase(
     phaseKind === 'initial-gravity' &&
     options?.initialGravityUseElasticGlobalizationTangent === true;
   const mayNeedUnsymmetricSolver = constitutiveModel === 'mc-plastic' && !phaseUsesElasticGlobalizationTangent && (
-    phaseKind === 'initial-gravity' ||
+    exactPlasticTangentMayBeUnsymmetric ||
     options?.useUnsymmetricPlasticSolver === true
   );
+  const unsymmetricLinearSolverMode = options?.unsymmetricLinearSolver === 'bicgstab'
+    ? 'bicgstab'
+    : 'gmres-scaled';
+  const isInitialGravityPhase = phaseKind === 'initial-gravity';
   const maxIterations = Math.max(Math.round(Number(options?.nonlinearMaxIterations) || NONLINEAR_MAX_ITER), 1);
   const growthFactor = Math.max(Number(options?.loadStepGrowthFactor) || NONLINEAR_GROWTH_FACTOR, 1);
   const cutbackFactor = Math.min(Math.max(Number(options?.loadStepCutbackFactor) || NONLINEAR_CUTBACK_FACTOR, 0.1), 0.9);
-  const plasticGrowthFactor = Math.max(Number(options?.plasticLoadStepGrowthFactor) || 1.05, 1);
-  const plasticCutbackFactor = Math.min(Math.max(Number(options?.plasticLoadStepCutbackFactor) || 0.4, 0.1), 0.9);
-  const minLoadStep = Math.max(Number(options?.minLoadStep) || NONLINEAR_MIN_LOAD_STEP, 1e-4);
+  const plasticGrowthFactor = Math.max(
+    Number(
+      isInitialGravityPhase
+        ? (options?.initialGravityPlasticLoadStepGrowthFactor ?? options?.plasticLoadStepGrowthFactor)
+        : options?.plasticLoadStepGrowthFactor
+    ) || (isInitialGravityPhase ? 1.12 : 1.05),
+    1
+  );
+  const plasticCutbackFactor = Math.min(
+    Math.max(
+      Number(
+        isInitialGravityPhase
+          ? (options?.initialGravityPlasticLoadStepCutbackFactor ?? options?.plasticLoadStepCutbackFactor)
+          : options?.plasticLoadStepCutbackFactor
+      ) || (isInitialGravityPhase ? 0.5 : 0.4),
+      0.1
+    ),
+    0.9
+  );
+  const minLoadStep = Math.max(
+    Number(isInitialGravityPhase ? (options?.initialGravityMinLoadStep ?? options?.minLoadStep) : options?.minLoadStep)
+      || (isInitialGravityPhase ? (1 / 8192) : NONLINEAR_MIN_LOAD_STEP),
+    1e-5
+  );
   let stepSize = isLinearElastic
     ? 1
     : Math.min(Math.max(Number(options?.initialLoadStep) || NONLINEAR_INITIAL_LOAD_STEP, minLoadStep), 1);
   const maxLoadSteps = allowLoadStepping
-    ? Math.max(Math.round(Number(options?.maxLoadSteps) || NONLINEAR_MAX_LOAD_STEPS), 1)
+    ? Math.max(
+      Math.round(
+        Number(isInitialGravityPhase ? (options?.initialGravityMaxLoadSteps ?? options?.maxLoadSteps) : options?.maxLoadSteps)
+          || (isInitialGravityPhase ? 512 : NONLINEAR_MAX_LOAD_STEPS)
+      ),
+      1
+    )
     : 1;
+  const plasticLineSearchOptions = {
+    reductionFactor: Number(options?.plasticLineSearchReductionFactor) || 0.5,
+    minStepScale: Number(isInitialGravityPhase ? (options?.initialGravityPlasticLineSearchMinScale ?? options?.plasticLineSearchMinScale) : options?.plasticLineSearchMinScale)
+      || (isInitialGravityPhase ? 1 / 32 : 1 / 64),
+    maxBacktracks: Math.max(
+      Math.round(
+        Number(isInitialGravityPhase ? (options?.initialGravityPlasticLineSearchMaxBacktracks ?? options?.plasticLineSearchMaxBacktracks) : options?.plasticLineSearchMaxBacktracks)
+          || (isInitialGravityPhase ? 5 : 4)
+      ),
+      1
+    ),
+    armijoCoefficient: Number(isInitialGravityPhase
+      ? (options?.initialGravityPlasticLineSearchArmijoCoefficient
+          ?? options?.initialGravityPlasticLineSearchSufficientDecreaseFactor
+          ?? options?.plasticLineSearchArmijoCoefficient
+          ?? options?.plasticLineSearchSufficientDecreaseFactor)
+      : (options?.plasticLineSearchArmijoCoefficient ?? options?.plasticLineSearchSufficientDecreaseFactor)) || 1e-4
+  };
+  const useAdaptiveContinuation = options?.adaptiveContinuation !== false;
+  const continuationTargetIterations = Math.max(
+    Number(
+      isInitialGravityPhase
+        ? (options?.initialGravityContinuationTargetIterations ?? options?.continuationTargetIterations)
+        : phaseKind === 'safety-cphi'
+          ? (options?.safetyContinuationTargetIterations ?? options?.continuationTargetIterations)
+          : options?.continuationTargetIterations
+    ) || NONLINEAR_CONTINUATION_TARGET_ITERATIONS,
+    1
+  );
+  const continuationTargetLineSearchScale = Math.max(
+    Math.min(Number(options?.continuationTargetLineSearchScale) || NONLINEAR_CONTINUATION_TARGET_LINE_SEARCH_SCALE, 1),
+    1e-6
+  );
+  const continuationIterationExponent = Math.max(Number(options?.continuationIterationExponent) || NONLINEAR_CONTINUATION_ITERATION_EXPONENT, 0);
+  const continuationLineSearchExponent = Math.max(Number(options?.continuationLineSearchExponent) || NONLINEAR_CONTINUATION_LINE_SEARCH_EXPONENT, 0);
 
   if (!allowLoadStepping) stepSize = targetLoadFactorFinal;
 
@@ -1375,11 +2028,14 @@ async function solveNonlinearPhase(
   const loadStepHistory = [];
   const residualHistory = [];
   let terminalFailureReason = '';
+  let terminalFailureCode = '';
   let terminatedByFailure = false;
   let bestDisplayedState = null;
   let warmStartFreeCorrection = null;
   const phaseDisplayName = phaseKind === 'initial-gravity'
     ? 'Stage 2 initial plastic equilibration'
+    : phaseKind === 'safety-cphi'
+      ? 'Safety c-phi reduction'
     : constitutiveModel === 'mc-plastic'
       ? 'Stage 2 elastoplastic'
       : constitutiveModel === 'linear-elastic'
@@ -1387,6 +2043,8 @@ async function solveNonlinearPhase(
         : 'Stage 1 MC-active reduced-stiffness';
   const analysisStageLabel = phaseKind === 'initial-gravity'
     ? 'initial-gravity-stage-2'
+    : phaseKind === 'safety-cphi'
+      ? 'safety-cphi-stage'
     : constitutiveModel === 'mc-plastic'
       ? 'nonlinear-stage-2'
       : constitutiveModel === 'linear-elastic'
@@ -1400,26 +2058,53 @@ async function solveNonlinearPhase(
   const usesTargetForceHomotopy = targetForceBase && targetForceBase.length === finalTargetForceFree.length;
   const loadFactorMeaning = phaseKind === 'initial-gravity'
     ? (usesTargetForceHomotopy ? 'predictor-to-full-gravity correction' : 'gravity')
+    : phaseKind === 'safety-cphi'
+      ? 'safety-strength-reduction'
     : 'load';
+  const customTargetForceBuilder = typeof phaseConfig?.buildTargetForceFree === 'function'
+    ? phaseConfig.buildTargetForceFree
+    : null;
+  const customProgressLabel = typeof phaseConfig?.progressLabel === 'function'
+    ? phaseConfig.progressLabel
+    : null;
+  const buildElementAnalysisOptions = typeof phaseConfig?.buildElementAnalysisOptions === 'function'
+    ? phaseConfig.buildElementAnalysisOptions
+    : null;
+  const commitPhaseState = typeof phaseConfig?.commitPhaseState === 'function'
+    ? phaseConfig.commitPhaseState
+    : null;
   const buildTargetForceFree = (loadFactor) => {
+    if (customTargetForceBuilder) return customTargetForceBuilder(loadFactor);
     if (!usesTargetForceHomotopy) return cloneScaledVector(loadRhsFreeBase, loadFactor);
     const progress = targetLoadFactorFinal > 1e-12 ? loadFactor / targetLoadFactorFinal : 1;
     return interpolateVectorFields(targetForceBase, finalTargetForceFree, progress);
   };
-  const nonlinearStepLabel = (targetLoadFactor) => phaseKind === 'initial-gravity'
-    ? (
-        usesTargetForceHomotopy
-          ? `${phaseDisplayName}: step ${acceptedSteps + rejectedSteps + 1}, target ${(100 * targetLoadFactor).toFixed(0)}% of the predictor-to-full-gravity correction`
-          : `${phaseDisplayName}: correcting the full gravity state`
-      )
-    : `${phaseDisplayName} solve: load step ${acceptedSteps + rejectedSteps + 1}, target ${(100 * targetLoadFactor).toFixed(0)}%`;
+  const nonlinearStepLabel = (targetLoadFactor) => {
+    if (customProgressLabel) return customProgressLabel(targetLoadFactor, acceptedSteps, rejectedSteps);
+    if (phaseKind === 'initial-gravity') {
+      return usesTargetForceHomotopy
+        ? `${phaseDisplayName}: step ${acceptedSteps + rejectedSteps + 1}, target ${(100 * targetLoadFactor).toFixed(0)}% of the predictor-to-full-gravity correction`
+        : `${phaseDisplayName}: correcting the full gravity state`;
+    }
+    if (phaseKind === 'safety-cphi') {
+      return `${phaseDisplayName}: continuation step ${acceptedSteps + rejectedSteps + 1}`;
+    }
+    return `${phaseDisplayName} solve: load step ${acceptedSteps + rejectedSteps + 1}, target ${(100 * targetLoadFactor).toFixed(0)}%`;
+  };
 
   resetMaterialPointTrials(materialPoints);
 
   while (loadFactorCommitted < targetLoadFactorFinal - 1e-10) {
     loadStepCounter += 1;
     if (loadStepCounter > maxLoadSteps) {
-      terminalFailureReason = `${phaseKind === 'initial-gravity' ? 'Initial plastic equilibration' : `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve`} exceeded the maximum number of load steps (${maxLoadSteps}).`;
+      terminalFailureReason = `${
+        phaseKind === 'initial-gravity'
+          ? 'Initial plastic equilibration'
+          : phaseKind === 'safety-cphi'
+            ? 'Safety c-phi reduction phase'
+            : `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve`
+      } exceeded the maximum number of load steps (${maxLoadSteps}).`;
+      terminalFailureCode = 'step-budget-exhausted';
       terminatedByFailure = true;
       break;
     }
@@ -1434,6 +2119,7 @@ async function solveNonlinearPhase(
       targetLoadFactor,
       attemptedStep: actualStep,
       constitutiveModel,
+      continuationStrategy: useAdaptiveContinuation ? 'adaptive-pi' : 'fixed-factor',
       status: 'running',
       iterations: 0,
       accepted: false,
@@ -1446,11 +2132,23 @@ async function solveNonlinearPhase(
       peakEta: 0,
       finalResidualNorm: null,
       relativeResidualNorm: null,
-      reason: ''
+      failureCode: '',
+      failureOutcomeClass: '',
+      reason: '',
+      lineSearchAccepted: false,
+      lineSearchAcceptedScale: 1,
+      lineSearchBestScale: 1,
+      lineSearchEvaluations: 0,
+      lineSearchCurrentMerit: 0,
+      lineSearchBestMerit: 0,
+      suggestedNextStepFactor: 1,
+      suggestedNextStepSize: actualStep
     };
 
     let converged = false;
     let failureReason = '';
+    let failureCode = '';
+    let suggestedStepCutbackFactor = null;
     let lastCorrection = new Float64Array(ndof);
     let stepBestState = null;
     const shouldWarmStartLinearSolve = constitutiveModel === 'mc-plastic';
@@ -1458,6 +2156,12 @@ async function solveNonlinearPhase(
     let iterationLinearGuess = warmStartFreeCorrection && warmStartFreeCorrection.length === freeDofs.length
       ? (shouldWarmStartLinearSolve ? Float64Array.from(warmStartFreeCorrection) : null)
       : null;
+    const setStepFailure = (code, reason) => {
+      const record = createFailureRecord(code, reason);
+      failureCode = record.code;
+      failureReason = record.reason;
+      return record;
+    };
 
     onProgress({
       stage: 'solving',
@@ -1467,6 +2171,10 @@ async function solveNonlinearPhase(
 
     for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
       totalNonlinearIterations += 1;
+      const elementAnalysisOptionsForTarget = {
+        ...(buildElementAnalysisOptions ? (buildElementAnalysisOptions(targetLoadFactor) || {}) : {}),
+        useElasticGlobalizationTangent: phaseUsesElasticGlobalizationTangent
+      };
       let assembled;
       try {
         assembled = await assembleNonlinearSystem(
@@ -1480,12 +2188,10 @@ async function solveNonlinearPhase(
           analysisStageLabel,
           formulationMode,
           targetForceFree,
-          {
-            useElasticGlobalizationTangent: phaseUsesElasticGlobalizationTangent
-          }
+          elementAnalysisOptionsForTarget
         );
       } catch (error) {
-        failureReason = error instanceof Error ? error.message : String(error);
+        setStepFailure('assembly-failure', error instanceof Error ? error.message : String(error));
         break;
       }
       finalActiveCount = assembled.activeCount;
@@ -1531,6 +2237,7 @@ async function solveNonlinearPhase(
         iteration,
         targetLoadFactor,
         residualNorm,
+        residualMerit: evaluateResidualMerit(residualNorm),
         relativeResidualNorm: tolerance.relativeResidual,
         displacementCorrectionNorm: deltaNorm,
         relativeDisplacementCorrectionNorm: tolerance.relativeDisplacement,
@@ -1564,14 +2271,23 @@ async function solveNonlinearPhase(
       }
 
       const usesUnsymmetricSolver = mayNeedUnsymmetricSolver && (assembled.activeCount > 0);
-      const linearSolve = usesUnsymmetricSolver ? solveBiCgStab : solveCg;
+      const linearSolve = usesUnsymmetricSolver
+        ? (
+            unsymmetricLinearSolverMode === 'bicgstab'
+              ? solveBiCgStab
+              : solveGmresScaled
+          )
+        : solveCg;
       stepUsedUnsymmetricSolver = usesUnsymmetricSolver;
+      stepRecord.linearSolver = usesUnsymmetricSolver
+        ? (unsymmetricLinearSolverMode === 'bicgstab' ? 'bicgstab' : 'gmres-scaled')
+        : 'cg';
       const linearIterationObserver = phaseKind === 'initial-gravity'
         ? async ({ iterations, relativeResidual }) => {
             onProgress({
               stage: 'solving',
               percent: 74,
-              message: `${nonlinearStepLabel(targetLoadFactor)}; Newton ${iteration}/${maxIterations}, ${usesUnsymmetricSolver ? 'BiCGStab' : 'CG'} iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
+              message: `${nonlinearStepLabel(targetLoadFactor)}; Newton ${iteration}/${maxIterations}, ${usesUnsymmetricSolver ? (unsymmetricLinearSolverMode === 'bicgstab' ? 'BiCGStab' : 'GMRES') : 'CG'} iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
             });
             await runCheckpoint(runControl);
           }
@@ -1588,7 +2304,13 @@ async function solveNonlinearPhase(
       );
       totalCgIterations += cg.iterations;
       if (cg.interrupted) {
-        throw new Error(`Deformation run was interrupted during ${phaseKind === 'initial-gravity' ? 'the initial plastic equilibration phase' : `the ${constitutiveModel === 'mc-plastic' ? 'Stage 2 elastoplastic' : 'Stage 1 nonlinear'} solve`}.`);
+        throw new Error(`Deformation run was interrupted during ${
+          phaseKind === 'initial-gravity'
+            ? 'the initial plastic equilibration phase'
+            : phaseKind === 'safety-cphi'
+              ? 'the c-phi reduction safety phase'
+              : `the ${constitutiveModel === 'mc-plastic' ? 'Stage 2 elastoplastic' : 'Stage 1 nonlinear'} solve`
+        }.`);
       }
       const inexactNewtonForcing = isLinearElastic
         ? 1e-8
@@ -1610,7 +2332,7 @@ async function solveNonlinearPhase(
         );
       const allowInexactLinearizedSolve = cg.residualNorm <= acceptableLinearizedResidual;
       if (!cg.converged && !allowInexactLinearizedSolve) {
-        failureReason = `linearized solve did not converge (residual ${cg.residualNorm.toExponential(2)} after ${cg.iterations} iterations)`;
+        setStepFailure('global-linear-solve-failure', `linearized solve did not converge (residual ${cg.residualNorm.toExponential(2)} after ${cg.iterations} iterations)`);
         break;
       }
       lastCorrection = expandSolutionVector(ndof, freeDofs, fixedValues, cg.solution);
@@ -1619,12 +2341,13 @@ async function solveNonlinearPhase(
       let lineSearchStepScale = 1;
       if (constitutiveModel === 'mc-plastic' && correctionNorm > 0) {
         try {
-          const lineSearch = await backtrackPlasticCorrection(
+          const lineSearch = await performArmijoLineSearch(
             elementCaches,
             assemblyPattern,
             uTrial,
             lastCorrection,
             residualNorm,
+            cg.residualNorm,
             materialPoints,
             loadRhsFreeBase,
             targetLoadFactor,
@@ -1632,12 +2355,20 @@ async function solveNonlinearPhase(
             analysisStageLabel,
             formulationMode,
             targetForceFree,
-            {
-              useElasticGlobalizationTangent: phaseUsesElasticGlobalizationTangent
-            }
+            elementAnalysisOptionsForTarget,
+            plasticLineSearchOptions
           );
           if (lineSearch) {
-            if (!lineSearch.improved) {
+            suggestedStepCutbackFactor = Number.isFinite(Number(lineSearch.stepScale)) && Number(lineSearch.stepScale) > 0
+              ? Number(lineSearch.stepScale)
+              : suggestedStepCutbackFactor;
+            stepRecord.lineSearchAccepted = !!lineSearch.accepted;
+            stepRecord.lineSearchAcceptedScale = lineSearch.accepted ? Number(lineSearch.stepScale) || 1 : 0;
+            stepRecord.lineSearchBestScale = Number(lineSearch.stepScale) || 1;
+            stepRecord.lineSearchEvaluations = Number(lineSearch.evaluations) || 0;
+            stepRecord.lineSearchCurrentMerit = Number(lineSearch.currentMerit) || 0;
+            stepRecord.lineSearchBestMerit = Number(lineSearch.candidateMerit) || 0;
+            if (!lineSearch.accepted) {
               const candidateCorrection = cloneScaledVector(lastCorrection, lineSearch.stepScale);
               const candidateCorrectionNorm = vectorNorm(candidateCorrection);
               const candidateSolutionNorm = vectorNorm(lineSearch.uCandidate);
@@ -1681,7 +2412,7 @@ async function solveNonlinearPhase(
                 converged = true;
                 break;
               }
-              failureReason = 'plastic line search stalled';
+              setStepFailure('line-search-stall', 'plastic line search stalled');
               break;
             }
             copyVectorInto(uTrial, lineSearch.uCandidate);
@@ -1693,7 +2424,7 @@ async function solveNonlinearPhase(
             addScaledVectorInPlace(uTrial, lastCorrection, 1);
           }
         } catch (error) {
-          failureReason = error instanceof Error ? error.message : String(error);
+          setStepFailure('assembly-failure', error instanceof Error ? error.message : String(error));
           break;
         }
       } else {
@@ -1717,15 +2448,6 @@ async function solveNonlinearPhase(
       };
       lastDisplacementNorm = correctionNorm;
       lastRelativeDisplacement = postSolveTolerance.relativeDisplacement;
-      if (
-        constitutiveModel === 'mc-plastic' &&
-        iteration >= 6 &&
-        lineSearchStepScale <= 0.125 &&
-        !postSolveTolerance.residualConverged
-      ) {
-        failureReason = 'plastic correction required excessive damping';
-        break;
-      }
       const postSolveConverged = (
         postSolveTolerance.residualConverged && (!requiresDisplacementTolerance || postSolveTolerance.displacementConverged)
       ) || allowPlasticQuasiConvergence(
@@ -1750,12 +2472,10 @@ async function solveNonlinearPhase(
               analysisStageLabel,
               formulationMode,
               targetForceFree,
-              {
-                useElasticGlobalizationTangent: phaseUsesElasticGlobalizationTangent
-              }
+              elementAnalysisOptionsForTarget
             );
           } catch (error) {
-            failureReason = error instanceof Error ? error.message : String(error);
+            setStepFailure('assembly-failure', error instanceof Error ? error.message : String(error));
             break;
           }
         }
@@ -1806,12 +2526,19 @@ async function solveNonlinearPhase(
       }
 
       if (await runCheckpoint(runControl)) {
-        throw new Error(`Deformation run was interrupted during ${phaseKind === 'initial-gravity' ? 'the initial plastic equilibration phase' : `the ${constitutiveModel === 'mc-plastic' ? 'Stage 2 elastoplastic' : 'Stage 1 nonlinear'} solve`}.`);
+        throw new Error(`Deformation run was interrupted during ${
+          phaseKind === 'initial-gravity'
+            ? 'the initial plastic equilibration phase'
+            : phaseKind === 'safety-cphi'
+              ? 'the c-phi reduction safety phase'
+              : `the ${constitutiveModel === 'mc-plastic' ? 'Stage 2 elastoplastic' : 'Stage 1 nonlinear'} solve`
+        }.`);
       }
     }
 
     if (converged) {
       materialPoints.forEach((materialPoint) => commitMaterialPoint(materialPoint));
+      if (commitPhaseState) commitPhaseState(targetLoadFactor, materialPoints);
       uCommitted = Float64Array.from(uTrial);
       loadFactorCommitted = targetLoadFactor;
       const committedAssembly = stepBestState && Math.abs((Number(stepBestState.loadFactor) || 0) - targetLoadFactor) <= 1e-10
@@ -1849,13 +2576,39 @@ async function solveNonlinearPhase(
       stepRecord.accepted = true;
       stepRecord.finalResidualNorm = lastResidualNorm;
       stepRecord.relativeResidualNorm = lastRelativeResidual;
-      loadStepHistory.push(stepRecord);
+      stepRecord.failureCode = 'equilibrium-converged';
+      stepRecord.failureOutcomeClass = 'converged';
+      stepRecord.reason = '';
       warmStartFreeCorrection = shouldWarmStartLinearSolve && stepUsedUnsymmetricSolver && iterationLinearGuess ? Float64Array.from(iterationLinearGuess) : null;
-      if (!allowLoadStepping) continue;
+      if (!allowLoadStepping) {
+        loadStepHistory.push(stepRecord);
+        continue;
+      }
       const effectiveGrowthFactor = constitutiveModel === 'mc-plastic' && stepRecord.peakActiveCount > 0
         ? Math.min(growthFactor, plasticGrowthFactor)
         : growthFactor;
-      stepSize = Math.min(actualStep * effectiveGrowthFactor, targetLoadFactorFinal - loadFactorCommitted || actualStep);
+      const effectiveCutbackFactor = constitutiveModel === 'mc-plastic' && stepRecord.peakActiveCount > 0
+        ? Math.min(cutbackFactor, plasticCutbackFactor)
+        : cutbackFactor;
+      const acceptedLineSearchScale = stepRecord.lineSearchAccepted
+        ? Math.max(Number(stepRecord.lineSearchAcceptedScale) || 0, 1e-6)
+        : 1;
+      const nextStepFactor = useAdaptiveContinuation
+        ? computeAdaptiveContinuationFactor({
+            iterationCount: stepRecord.iterations,
+            acceptedLineSearchScale,
+            targetIterations: continuationTargetIterations,
+            targetLineSearchScale: continuationTargetLineSearchScale,
+            iterationExponent: continuationIterationExponent,
+            lineSearchExponent: continuationLineSearchExponent,
+            minFactor: effectiveCutbackFactor,
+            maxFactor: effectiveGrowthFactor
+          })
+        : effectiveGrowthFactor;
+      stepRecord.suggestedNextStepFactor = nextStepFactor;
+      stepRecord.suggestedNextStepSize = Math.min(actualStep * nextStepFactor, targetLoadFactorFinal - loadFactorCommitted || actualStep);
+      loadStepHistory.push(stepRecord);
+      stepSize = stepRecord.suggestedNextStepSize;
       continue;
     }
 
@@ -1864,8 +2617,14 @@ async function solveNonlinearPhase(
     stepRecord.rejected = true;
     stepRecord.finalResidualNorm = lastResidualNorm;
     stepRecord.relativeResidualNorm = lastRelativeResidual;
-    stepRecord.reason = failureReason || 'nonlinear iterations exhausted';
-    loadStepHistory.push(stepRecord);
+    if (!failureReason) {
+      const failureRecord = createFailureRecord('nonlinear-iterations-exhausted', 'nonlinear iterations exhausted');
+      failureCode = failureRecord.code;
+      failureReason = failureRecord.reason;
+    }
+    stepRecord.failureCode = failureCode;
+    stepRecord.failureOutcomeClass = classifyFailureOutcomeClass(failureCode);
+    stepRecord.reason = failureReason;
     if (shouldPreferDisplayCandidate(stepBestState, bestDisplayedState)) {
       bestDisplayedState = {
         ...stepBestState,
@@ -1878,17 +2637,37 @@ async function solveNonlinearPhase(
     if (!allowLoadStepping) {
       terminalFailureReason = phaseKind === 'initial-gravity'
         ? `Initial plastic equilibration could not converge the full gravity state (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
-        : `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve could not converge the target state (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`;
+        : phaseKind === 'safety-cphi'
+          ? `Safety c-phi reduction could not converge the target strength-reduced state (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
+          : `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve could not converge the target state (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`;
+      terminalFailureCode = failureCode || 'nonlinear-iterations-exhausted';
+      loadStepHistory.push(stepRecord);
       terminatedByFailure = true;
       break;
     }
     const effectiveCutbackFactor = constitutiveModel === 'mc-plastic' && stepRecord.peakActiveCount > 0
       ? Math.min(cutbackFactor, plasticCutbackFactor)
       : cutbackFactor;
-    stepSize = actualStep * effectiveCutbackFactor;
+    const suggestedCutbackFactor = constitutiveModel === 'mc-plastic' &&
+      Number.isFinite(Number(suggestedStepCutbackFactor)) &&
+      Number(suggestedStepCutbackFactor) > 0
+      ? Math.min(effectiveCutbackFactor, Number(suggestedStepCutbackFactor))
+      : effectiveCutbackFactor;
+    const proposedStepSize = actualStep * suggestedCutbackFactor;
+    stepRecord.suggestedNextStepFactor = suggestedCutbackFactor;
+    stepRecord.suggestedNextStepSize = proposedStepSize < minLoadStep - 1e-12 && actualStep > minLoadStep + 1e-12
+      ? minLoadStep
+      : proposedStepSize;
+    loadStepHistory.push(stepRecord);
+    stepSize = stepRecord.suggestedNextStepSize;
     resetMaterialPointTrials(materialPoints);
     if (stepSize < minLoadStep - 1e-12) {
-      terminalFailureReason = `${phaseKind === 'initial-gravity' ? 'Initial plastic equilibration' : `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve`} could not converge the load step to ${(100 * targetLoadFactor).toFixed(1)}% (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`;
+      terminalFailureReason = phaseKind === 'initial-gravity'
+        ? `Initial plastic equilibration could not converge the load step to ${(100 * targetLoadFactor).toFixed(1)}% (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
+        : phaseKind === 'safety-cphi'
+          ? `Safety c-phi reduction could not converge the continuation step (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
+          : `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve could not converge the load step to ${(100 * targetLoadFactor).toFixed(1)}% (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`;
+      terminalFailureCode = 'step-below-minimum';
       terminatedByFailure = true;
       break;
     }
@@ -1932,6 +2711,7 @@ async function solveNonlinearPhase(
   const displayedTargetForceFree = buildTargetForceFree(displayedLoadFactor);
 
   resetMaterialPointTrials(materialPoints);
+  if (commitPhaseState) commitPhaseState(displayedLoadFactor, materialPoints);
   const finalAssembly = await assembleNonlinearSystem(
     elementCaches,
     assemblyPattern,
@@ -1944,6 +2724,7 @@ async function solveNonlinearPhase(
     formulationMode,
     displayedTargetForceFree,
     {
+      ...(buildElementAnalysisOptions ? (buildElementAnalysisOptions(displayedLoadFactor) || {}) : {}),
       useElasticGlobalizationTangent: phaseUsesElasticGlobalizationTangent
     }
   );
@@ -1970,6 +2751,9 @@ async function solveNonlinearPhase(
   lastRelativeResidual = finalTolerance.relativeResidual;
   lastRelativeDisplacement = finalTolerance.relativeDisplacement;
   lastStateChanges = finalAssembly.changedCount;
+  const phaseFailureRecord = terminatedByFailure
+    ? createFailureRecord(terminalFailureCode, displayedState?.reason || terminalFailureReason)
+    : createFailureRecord('equilibrium-converged', '');
 
   return {
     solution: displayedSolution,
@@ -2000,6 +2784,8 @@ async function solveNonlinearPhase(
     loadFactorMeaning,
     converged: !terminatedByFailure,
     convergenceState: terminatedByFailure ? 'partial' : 'converged',
+    failureCode: phaseFailureRecord.code,
+    failureOutcomeClass: phaseFailureRecord.outcomeClass,
     displayedStateMode: displayedState?.mode || 'committed',
     failureReason: terminatedByFailure ? (displayedState?.reason || terminalFailureReason) : '',
     loadStepHistory,
@@ -2121,6 +2907,343 @@ async function solveServiceLoadPhase(
   );
 }
 
+function safetySigmaMsfAtProgress(sigmaStart, sigmaTarget, progress) {
+  const clampedProgress = Math.max(0, Math.min(Number(progress) || 0, 1));
+  return sigmaStart + (sigmaTarget - sigmaStart) * clampedProgress;
+}
+
+function extractIncrementalMechanismMetrics(fromCheckpoint, toPhase) {
+  const displacementIncrement = subtractSolutionVectors(toPhase?.solution, fromCheckpoint?.solution);
+  let incrementalDisplacementMaxAbs = 0;
+  for (let index = 0; index < displacementIncrement.length; index += 1) {
+    incrementalDisplacementMaxAbs = Math.max(incrementalDisplacementMaxAbs, Math.abs(Number(displacementIncrement[index]) || 0));
+  }
+  let maxAccumulatedPlasticIncrement = 0;
+  let totalAccumulatedPlasticIncrement = 0;
+  const fromMaterialPoints = fromCheckpoint?.materialPoints || [];
+  const toMaterialPoints = toPhase?.materialPoints || [];
+  const pointCount = Math.max(fromMaterialPoints.length, toMaterialPoints.length);
+  for (let pointIndex = 0; pointIndex < pointCount; pointIndex += 1) {
+    const fromPlastic = Math.max(Number(fromMaterialPoints?.[pointIndex]?.committedState?.accumulatedPlasticStrain) || 0, 0);
+    const toPlastic = Math.max(Number(toMaterialPoints?.[pointIndex]?.committedState?.accumulatedPlasticStrain) || 0, 0);
+    const increment = Math.max(toPlastic - fromPlastic, 0);
+    maxAccumulatedPlasticIncrement = Math.max(maxAccumulatedPlasticIncrement, increment);
+    totalAccumulatedPlasticIncrement += increment;
+  }
+  return {
+    incrementalDisplacementNorm: vectorNorm(displacementIncrement),
+    incrementalDisplacementMaxAbs,
+    maxAccumulatedPlasticIncrement,
+    totalAccumulatedPlasticIncrement
+  };
+}
+
+function safetyMechanismPlateauDetected(acceptedHistory, options = {}) {
+  const plateauWindow = Math.max(Math.round(Number(options?.safetyMechanismPlateauWindow) || 3), 2);
+  const plateauRelativeTolerance = Math.max(Number(options?.safetyMechanismPlateauRelativeTolerance) || 0.01, 1e-4);
+  const minIncrementalDisplacementNorm = Math.max(Number(options?.safetyMechanismMinIncrementalDisplacementNorm) || 1e-8, 0);
+  const minPlasticIncrement = Math.max(Number(options?.safetyMechanismMinPlasticIncrement) || 1e-8, 0);
+  if (!Array.isArray(acceptedHistory) || acceptedHistory.length < plateauWindow) return false;
+  const window = acceptedHistory.slice(-plateauWindow);
+  const sigmaLow = Number(window[0]?.sigmaMsfCommitted) || 0;
+  const sigmaHigh = Number(window[window.length - 1]?.sigmaMsfCommitted) || 0;
+  if (!(sigmaHigh > 0)) return false;
+  if (((sigmaHigh - sigmaLow) / sigmaHigh) > plateauRelativeTolerance) return false;
+  let displacementGrows = false;
+  let plasticGrows = false;
+  for (let index = 1; index < window.length; index += 1) {
+    const previousDisplacement = Number(window[index - 1]?.incrementalDisplacementNorm) || 0;
+    const currentDisplacement = Number(window[index]?.incrementalDisplacementNorm) || 0;
+    if (currentDisplacement > previousDisplacement + 1e-12) displacementGrows = true;
+    const previousPlastic = Number(window[index - 1]?.maxAccumulatedPlasticIncrement) || 0;
+    const currentPlastic = Number(window[index]?.maxAccumulatedPlasticIncrement) || 0;
+    if (currentPlastic > previousPlastic + 1e-12) plasticGrows = true;
+  }
+  const latest = window[window.length - 1];
+  const mechanismLargeEnough =
+    (Number(latest?.incrementalDisplacementNorm) || 0) >= minIncrementalDisplacementNorm ||
+    (Number(latest?.maxAccumulatedPlasticIncrement) || 0) >= minPlasticIncrement;
+  return mechanismLargeEnough && (displacementGrows || plasticGrows);
+}
+
+async function solveSafetyReductionPhase(
+  elementCaches,
+  assemblyPattern,
+  fullExternalForceFree,
+  stableCheckpoint,
+  regionConstitutiveByRegion,
+  ndof,
+  freeDofs,
+  fixedValues,
+  runControl,
+  onProgress,
+  options,
+  sigmaMsfStart,
+  sigmaMsfTarget
+) {
+  const workingMaterialPoints = cloneMaterialPointCollection(stableCheckpoint.materialPoints);
+  const applySafetyParameters = (progress, materialPoints) => {
+    const sigmaMsf = safetySigmaMsfAtProgress(sigmaMsfStart, sigmaMsfTarget, progress);
+    assignMaterialParametersByRegion(materialPoints, buildSafetyReducedRegionParameters(regionConstitutiveByRegion, sigmaMsf));
+    return sigmaMsf;
+  };
+  applySafetyParameters(0, workingMaterialPoints);
+  const safetyPhase = await solveNonlinearPhase(
+    elementCaches,
+    assemblyPattern,
+    fullExternalForceFree,
+    workingMaterialPoints,
+    ndof,
+    freeDofs,
+    fixedValues,
+    runControl,
+    onProgress,
+    options,
+    {
+      phaseKind: 'safety-cphi',
+      formulationMode: 'total',
+      allowLoadStepping: true,
+      targetLoadFactor: 1,
+      initialSolution: stableCheckpoint.solution,
+      buildTargetForceFree: () => Float64Array.from(fullExternalForceFree),
+      buildElementAnalysisOptions: (progress) => ({
+        regionMaterialParametersByRegion: buildSafetyReducedRegionParameters(
+          regionConstitutiveByRegion,
+          safetySigmaMsfAtProgress(sigmaMsfStart, sigmaMsfTarget, progress)
+        )
+      }),
+      progressLabel: (targetLoadFactor, acceptedSteps, rejectedSteps) =>
+        `Safety c-phi reduction: continuation step ${acceptedSteps + rejectedSteps + 1}, target ΣMsf ${safetySigmaMsfAtProgress(sigmaMsfStart, sigmaMsfTarget, targetLoadFactor).toFixed(3)}`,
+      commitPhaseState: (progress, materialPoints) => applySafetyParameters(progress, materialPoints)
+    }
+  );
+  return {
+    ...safetyPhase,
+    materialPoints: workingMaterialPoints,
+    sigmaMsfStart,
+    sigmaMsfTarget,
+    sigmaMsfCommitted: safetySigmaMsfAtProgress(sigmaMsfStart, sigmaMsfTarget, safetyPhase.loadFactorCommitted),
+    sigmaMsfDisplayed: safetySigmaMsfAtProgress(sigmaMsfStart, sigmaMsfTarget, safetyPhase.displayedLoadFactor)
+  };
+}
+
+async function solveSafetyReductionSearch(
+  elementCaches,
+  assemblyPattern,
+  fullExternalForceFree,
+  baseCheckpoint,
+  regionConstitutiveByRegion,
+  ndof,
+  freeDofs,
+  fixedValues,
+  runControl,
+  onProgress,
+  options
+) {
+  const sigmaMax = Math.max(Number(options?.safetySigmaMsfMax) || SAFETY_SIGMA_MSF_MAX, 1);
+  const sigmaBracketTolerance = Math.max(Number(options?.safetySigmaMsfBracketTolerance) || SAFETY_SIGMA_MSF_BRACKET_TOL, 1e-4);
+  const sigmaGrowthFactor = Math.max(Number(options?.safetySigmaMsfGrowthFactor) || SAFETY_SIGMA_MSF_GROWTH_FACTOR, 1.05);
+  const maxSearchTrials = Math.max(Math.round(Number(options?.safetyMaxSearchTrials) || SAFETY_MAX_SEARCH_TRIALS), 1);
+  const sigmaCutbackFactor = Math.min(Math.max(Number(options?.safetySigmaMsfCutbackFactor) || 0.5, 0.1), 0.95);
+  const sigmaMinIncrement = Math.max(Number(options?.safetyMinSigmaMsfIncrement) || Math.min(sigmaBracketTolerance, 0.01), 1e-4);
+  let sigmaIncrement = Math.max(Number(options?.safetyInitialSigmaMsfIncrement) || SAFETY_INITIAL_SIGMA_MSF_INCREMENT, sigmaMinIncrement);
+  let stableCheckpoint = createMaterialPointCheckpoint(baseCheckpoint.materialPoints, baseCheckpoint.solution, {
+    sigmaMsf: Math.max(Number(baseCheckpoint?.sigmaMsf) || 1, 1),
+    label: 'safety-base'
+  });
+  const baseDisplayPhase = createSafetyDisplayPhaseFromCheckpoint(stableCheckpoint);
+  let lowerBoundPhase = null;
+  let lowerSigmaMsf = stableCheckpoint.sigmaMsf;
+  let upperSigmaMsf = null;
+  let failurePhase = null;
+  const trialHistory = [];
+  let totalCgIterations = 0;
+  let totalNonlinearIterations = 0;
+  let totalAcceptedContinuationSteps = 0;
+  let totalRejectedContinuationSteps = 0;
+  let peakActiveCount = 0;
+  let peakActiveFaceCount = 0;
+  let peakActiveEdgeCount = 0;
+  let peakActiveApexCount = 0;
+  let peakTensionPendingCount = 0;
+  let peakEta = 0;
+  const acceptedMechanismHistory = [];
+
+  const accumulatePhaseMetrics = (phase) => {
+    if (!phase) return;
+    totalCgIterations += Number(phase.totalCgIterations) || 0;
+    totalNonlinearIterations += Number(phase.totalNonlinearIterations) || 0;
+    totalAcceptedContinuationSteps += Number(phase.acceptedSteps) || 0;
+    totalRejectedContinuationSteps += Number(phase.rejectedSteps) || 0;
+    peakActiveCount = Math.max(peakActiveCount, Number(phase.peakActiveCount) || 0);
+    peakActiveFaceCount = Math.max(peakActiveFaceCount, Number(phase.peakActiveFaceCount) || 0);
+    peakActiveEdgeCount = Math.max(peakActiveEdgeCount, Number(phase.peakActiveEdgeCount) || 0);
+    peakActiveApexCount = Math.max(peakActiveApexCount, Number(phase.peakActiveApexCount) || 0);
+    peakTensionPendingCount = Math.max(peakTensionPendingCount, Number(phase.peakTensionPendingCount) || 0);
+    peakEta = Math.max(peakEta, Number(phase.peakEta) || 0);
+  };
+
+  for (let trialIndex = 1; trialIndex <= maxSearchTrials; trialIndex += 1) {
+    if (upperSigmaMsf != null && (upperSigmaMsf - lowerSigmaMsf) <= sigmaBracketTolerance) {
+      return {
+        status: 'bracketed',
+        failureCode: failurePhase?.failureCode || 'step-below-minimum',
+        failureOutcomeClass: classifyFailureOutcomeClass(failurePhase?.failureCode || 'step-below-minimum'),
+        factorOfSafety: lowerSigmaMsf,
+        factorOfSafetyLower: lowerSigmaMsf,
+        factorOfSafetyUpper: upperSigmaMsf,
+        strengthRetained: 1 / Math.max(lowerSigmaMsf, 1),
+        displayedPhase: failurePhase || lowerBoundPhase || baseDisplayPhase,
+        lowerBoundPhase,
+        lowerBoundCheckpoint: stableCheckpoint,
+        failurePhase,
+        history: trialHistory,
+        totalCgIterations,
+        totalNonlinearIterations,
+        totalAcceptedContinuationSteps,
+        totalRejectedContinuationSteps,
+        peakActiveCount,
+        peakActiveFaceCount,
+        peakActiveEdgeCount,
+        peakActiveApexCount,
+        peakTensionPendingCount,
+        peakEta
+      };
+    }
+    if (lowerSigmaMsf >= sigmaMax - sigmaBracketTolerance) break;
+    const sigmaTarget = Math.min(lowerSigmaMsf + sigmaIncrement, sigmaMax);
+    const phase = await solveSafetyReductionPhase(
+      elementCaches,
+      assemblyPattern,
+      fullExternalForceFree,
+      stableCheckpoint,
+      regionConstitutiveByRegion,
+      ndof,
+      freeDofs,
+      fixedValues,
+      runControl,
+      onProgress,
+      options,
+      lowerSigmaMsf,
+      sigmaTarget
+    );
+    const mechanismMetrics = extractIncrementalMechanismMetrics(stableCheckpoint, phase);
+    trialHistory.push({
+      index: trialHistory.length + 1,
+      sigmaMsfStart: lowerSigmaMsf,
+      sigmaMsfTarget: sigmaTarget,
+      sigmaMsfCommitted: phase.sigmaMsfCommitted,
+      sigmaMsfDisplayed: phase.sigmaMsfDisplayed,
+      converged: phase.converged,
+      failureCode: phase.failureCode || '',
+      failureOutcomeClass: phase.failureOutcomeClass || 'unknown',
+      failureReason: phase.failureReason || '',
+      incrementalDisplacementNorm: mechanismMetrics.incrementalDisplacementNorm,
+      incrementalDisplacementMaxAbs: mechanismMetrics.incrementalDisplacementMaxAbs,
+      maxAccumulatedPlasticIncrement: mechanismMetrics.maxAccumulatedPlasticIncrement,
+      totalAccumulatedPlasticIncrement: mechanismMetrics.totalAccumulatedPlasticIncrement,
+      acceptedContinuationSteps: phase.acceptedSteps,
+      rejectedContinuationSteps: phase.rejectedSteps
+    });
+    accumulatePhaseMetrics(phase);
+    if (phase.converged) {
+      lowerSigmaMsf = sigmaTarget;
+      lowerBoundPhase = phase;
+      stableCheckpoint = createMaterialPointCheckpoint(phase.materialPoints, phase.solution, {
+        sigmaMsf: sigmaTarget,
+        label: `stable-${sigmaTarget.toFixed(3)}`
+      });
+      acceptedMechanismHistory.push({
+        sigmaMsfCommitted: sigmaTarget,
+        ...mechanismMetrics
+      });
+      if (safetyMechanismPlateauDetected(acceptedMechanismHistory, options)) {
+        return {
+          status: 'mechanism-developed',
+          failureCode: 'mechanism-developed',
+          failureOutcomeClass: classifyFailureOutcomeClass('mechanism-developed'),
+          factorOfSafety: lowerSigmaMsf,
+          factorOfSafetyLower: lowerSigmaMsf,
+          factorOfSafetyUpper: upperSigmaMsf,
+          strengthRetained: 1 / Math.max(lowerSigmaMsf, 1),
+          displayedPhase: lowerBoundPhase || baseDisplayPhase,
+          lowerBoundPhase,
+          lowerBoundCheckpoint: stableCheckpoint,
+          failurePhase,
+          history: trialHistory,
+          totalCgIterations,
+          totalNonlinearIterations,
+          totalAcceptedContinuationSteps,
+          totalRejectedContinuationSteps,
+          peakActiveCount,
+          peakActiveFaceCount,
+          peakActiveEdgeCount,
+          peakActiveApexCount,
+          peakTensionPendingCount,
+          peakEta
+        };
+      }
+      sigmaIncrement = Math.min(Math.max(sigmaIncrement * sigmaGrowthFactor, sigmaMinIncrement), Math.max(sigmaMax - lowerSigmaMsf, sigmaMinIncrement));
+      continue;
+    }
+    upperSigmaMsf = upperSigmaMsf == null ? sigmaTarget : Math.min(upperSigmaMsf, sigmaTarget);
+    failurePhase = phase;
+    sigmaIncrement = Math.max(Math.min(sigmaIncrement * sigmaCutbackFactor, Math.max((upperSigmaMsf - lowerSigmaMsf) * 0.5, sigmaMinIncrement)), sigmaMinIncrement);
+  }
+
+  if (upperSigmaMsf == null) {
+    return {
+      status: 'no-failure-found',
+      failureCode: 'no-failure-found',
+      failureOutcomeClass: classifyFailureOutcomeClass('no-failure-found'),
+      factorOfSafety: lowerSigmaMsf,
+      factorOfSafetyLower: lowerSigmaMsf,
+      factorOfSafetyUpper: null,
+      strengthRetained: 1 / Math.max(lowerSigmaMsf, 1),
+      displayedPhase: lowerBoundPhase || baseDisplayPhase,
+      lowerBoundPhase,
+      lowerBoundCheckpoint: stableCheckpoint,
+      failurePhase: null,
+      history: trialHistory,
+      totalCgIterations,
+      totalNonlinearIterations,
+      totalAcceptedContinuationSteps,
+      totalRejectedContinuationSteps,
+      peakActiveCount,
+      peakActiveFaceCount,
+      peakActiveEdgeCount,
+      peakActiveApexCount,
+      peakTensionPendingCount,
+      peakEta
+    };
+  }
+
+  return {
+    status: 'bracketed',
+    failureCode: failurePhase?.failureCode || 'step-below-minimum',
+    failureOutcomeClass: classifyFailureOutcomeClass(failurePhase?.failureCode || 'step-below-minimum'),
+    factorOfSafety: lowerSigmaMsf,
+    factorOfSafetyLower: lowerSigmaMsf,
+    factorOfSafetyUpper: upperSigmaMsf,
+    strengthRetained: 1 / Math.max(lowerSigmaMsf, 1),
+    displayedPhase: failurePhase || lowerBoundPhase || baseDisplayPhase,
+    lowerBoundPhase,
+    lowerBoundCheckpoint: stableCheckpoint,
+    failurePhase,
+    history: trialHistory,
+    totalCgIterations,
+    totalNonlinearIterations,
+    totalAcceptedContinuationSteps,
+    totalRejectedContinuationSteps,
+    peakActiveCount,
+    peakActiveFaceCount,
+    peakActiveEdgeCount,
+    peakActiveApexCount,
+    peakTensionPendingCount,
+    peakEta
+  };
+}
+
 function buildNodalDisplacements(mesh, solution) {
   const U = solution || new Float64Array(2 * (mesh?.nodes?.length || 0));
   return (mesh?.nodes || []).map((_node, nodeId) => ({
@@ -2166,6 +3289,7 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
   let exceededMcElementCount = 0;
   let inadmissibleInitialElementCount = 0;
   let maxEquivalentPlasticStrain = 0;
+  let maxSafetyEquivalentPlasticIncrement = 0;
   let maxInitialEquivalentPlasticStrain = 0;
   let initialPlasticElementCount = 0;
   let maxInitialEtaMcPredictor = 0;
@@ -2194,6 +3318,7 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
     if (item?.materialDiagnostics?.hasEverExceededMc) exceededMcElementCount += 1;
     if (item?.materialDiagnostics?.initialStateAdmissible === false) inadmissibleInitialElementCount += 1;
     maxEquivalentPlasticStrain = Math.max(maxEquivalentPlasticStrain, Number(item?.materialState?.accumulatedPlasticStrain) || 0);
+    maxSafetyEquivalentPlasticIncrement = Math.max(maxSafetyEquivalentPlasticIncrement, Number(item?.materialDiagnostics?.safetyEquivalentPlasticIncrement) || 0);
     const predictorEta = Number(item?.predictorMaterialState?.etaMcCurrent ?? item?.predictorMaterialState?.initialEtaMc);
     if (Number.isFinite(predictorEta)) maxInitialEtaMcPredictor = Math.max(maxInitialEtaMcPredictor, predictorEta);
     const equilibratedEta = Number(item?.referenceMaterialState?.equilibratedInitialEtaMc ?? item?.referenceMaterialState?.etaMcCurrent);
@@ -2210,6 +3335,7 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
     hasInfiniteMcEta,
     maxDeltaSigmaYy,
     maxEquivalentPlasticStrain,
+    maxSafetyEquivalentPlasticIncrement,
     maxInitialEquivalentPlasticStrain,
     initialPlasticElementCount,
     maxInitialEtaMcPredictor,
@@ -2225,7 +3351,7 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
   };
 }
 
-function recoverElementResults(mesh, elementCaches, U, materialPoints, porePressureByElement = null) {
+function recoverElementResults(mesh, elementCaches, U, materialPoints, porePressureByElement = null, comparisonMaterialPoints = null) {
   const out = [];
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
@@ -2276,6 +3402,15 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
     const predictorMaterialState = snapshotMaterialPointState(materialPoint.predictorState);
     const displayedMaterialState = snapshotMaterialPointState(materialPoint.trialState);
     const committedMaterialState = snapshotMaterialPointState(materialPoint.committedState);
+    const comparisonMaterialState = comparisonMaterialPoints?.[elementIndex]
+      ? snapshotMaterialPointState(
+        comparisonMaterialPoints[elementIndex].committedState || comparisonMaterialPoints[elementIndex].trialState
+      )
+      : null;
+    const safetyEquivalentPlasticIncrement = Math.max(
+      (Number(displayedMaterialState?.accumulatedPlasticStrain) || 0) - (Number(comparisonMaterialState?.accumulatedPlasticStrain) || 0),
+      0
+    );
     out.push({
       elementIndex,
       regionIndex: cell?.regionIndex ?? -1,
@@ -2296,6 +3431,7 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
       principal,
       mc,
       predictorMaterialState,
+      comparisonMaterialState,
       referenceMaterialState: snapshotMaterialPointState(materialPoint.referenceState),
       committedMaterialState,
       materialState: displayedMaterialState,
@@ -2308,6 +3444,8 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
         trialBranchKind: response.update.diagnostics?.trialBranchKind || displayedMaterialState?.exactBranchKind || 'ELASTIC',
         trialMultiplicityKind: response.update.diagnostics?.trialMultiplicityKind || displayedMaterialState?.multiplicityKind || 'DISTINCT',
         representativeBasisSource: displayedMaterialState?.representativeBasisSource || response.update.diagnostics?.representativeBasisSource || 'trial',
+        localReturnMode: displayedMaterialState?.localReturnMode || response.update.diagnostics?.localReturnMode || 'elastic',
+        localFallbackUsed: displayedMaterialState?.localFallbackUsed === true || response.update.diagnostics?.localFallbackUsed === true,
         edgeTotalMultiplier: Number(displayedMaterialState?.edgeTotalMultiplier ?? response.update.diagnostics?.edgeTotalMultiplier) || 0,
         edgeMixWeight: Number(displayedMaterialState?.edgeMixWeight ?? response.update.diagnostics?.edgeMixWeight) || 0,
         plasticMultipliers: Array.isArray(response.update.diagnostics?.plasticMultipliers) ? [...response.update.diagnostics.plasticMultipliers] : [],
@@ -2315,6 +3453,8 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
         tangentConditionNumber: Number(response.update.diagnostics?.tangentConditionNumber) || Number.POSITIVE_INFINITY,
         tangentQuality: response.update.diagnostics?.tangentQuality || 'unknown',
         apexAdmissibilityReason: response.update.diagnostics?.apexAdmissibilityReason || '',
+        localFailureClassification: response.update.diagnostics?.localFailureClassification || '',
+        fallbackSourceReason: response.update.diagnostics?.fallbackSourceReason || '',
         localResidualsBySurface: response.update.diagnostics?.localResidualsBySurface ? { ...response.update.diagnostics.localResidualsBySurface } : {},
         currentlyMcActive: displayedMaterialState?.currentlyMcActive === true,
         hasEverExceededMc: displayedMaterialState?.hasEverExceededMc === true,
@@ -2335,6 +3475,7 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
         tensionCutoffActive,
         localStrengthReserve: Number(response.update.diagnostics?.localStrengthReserve),
         etaMcFinal: Number(response.update.diagnostics?.etaMcFinal),
+        safetyEquivalentPlasticIncrement,
         stateChanged: false
       }
     });
@@ -2408,6 +3549,7 @@ export function sampleDeformationState(mesh, result, x, y) {
         epsilonYy: Number(result.elementResults?.[triangleIndex]?.strain?.eyy || 0),
         gammaXy: Number(result.elementResults?.[triangleIndex]?.strain?.gxy || 0),
         equivalentPlasticStrain: Number(result.elementResults?.[triangleIndex]?.materialState?.accumulatedPlasticStrain || 0),
+        safetyEquivalentPlasticIncrement: Number(result.elementResults?.[triangleIndex]?.materialDiagnostics?.safetyEquivalentPlasticIncrement || 0),
         deltaSigmaYy: -Number(result.elementResults?.[triangleIndex]?.stressIncrement?.syy || 0),
         sigmaYyEffInit: Number(result.elementResults?.[triangleIndex]?.initialEffectiveStress?.syy || 0),
         sigmaYyEff: Number(result.elementResults?.[triangleIndex]?.effectiveStress?.syy || 0),
@@ -2435,12 +3577,14 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   }
 
   const warnings = [];
+  const analysisType = input?.options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
   const constitutiveModel = input?.options?.constitutiveModel === 'linear-elastic'
     ? 'linear-elastic'
     : input?.options?.constitutiveModel === 'mc-plastic'
       ? 'mc-plastic'
       : 'mc-reduced-stiffness';
   const options = {
+    analysisType,
     meshTargetArea: Math.max(Number(input?.options?.meshTargetArea) || 0.05, 0.01),
     loadMode: input?.options?.loadMode === 'total' ? 'total' : 'pressure',
     totalLoad: input?.options?.totalLoad,
@@ -2460,10 +3604,51 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     loadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.loadStepCutbackFactor) || NONLINEAR_CUTBACK_FACTOR, 0.1), 0.9),
     plasticLoadStepGrowthFactor: Math.max(Number(input?.options?.plasticLoadStepGrowthFactor) || 1.05, 1),
     plasticLoadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.plasticLoadStepCutbackFactor) || 0.4, 0.1), 0.9),
-    useUnsymmetricPlasticSolver: input?.options?.useUnsymmetricPlasticSolver === true
+    initialGravityPlasticLoadStepGrowthFactor: Math.max(Number(input?.options?.initialGravityPlasticLoadStepGrowthFactor) || 1.12, 1),
+    initialGravityPlasticLoadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.initialGravityPlasticLoadStepCutbackFactor) || 0.5, 0.1), 0.9),
+    initialGravityMinLoadStep: Math.max(Number(input?.options?.initialGravityMinLoadStep) || (1 / 8192), 1e-5),
+    initialGravityMaxLoadSteps: Math.max(Math.round(Number(input?.options?.initialGravityMaxLoadSteps) || 512), 1),
+    plasticLineSearchReductionFactor: Math.min(Math.max(Number(input?.options?.plasticLineSearchReductionFactor) || 0.5, 0.1), 0.95),
+    plasticLineSearchMaxBacktracks: Math.max(Math.round(Number(input?.options?.plasticLineSearchMaxBacktracks) || 4), 1),
+    plasticLineSearchMinScale: Math.min(Math.max(Number(input?.options?.plasticLineSearchMinScale) || (1 / 64), 1e-4), 1),
+    plasticLineSearchSufficientDecreaseFactor: Math.max(Number(input?.options?.plasticLineSearchSufficientDecreaseFactor) || 1e-3, 0),
+    plasticLineSearchArmijoCoefficient: Math.max(Number(input?.options?.plasticLineSearchArmijoCoefficient) || 1e-4, 0),
+    initialGravityPlasticLineSearchMaxBacktracks: Math.max(Math.round(Number(input?.options?.initialGravityPlasticLineSearchMaxBacktracks) || 5), 1),
+    initialGravityPlasticLineSearchMinScale: Math.min(Math.max(Number(input?.options?.initialGravityPlasticLineSearchMinScale) || (1 / 32), 1e-4), 1),
+    initialGravityPlasticLineSearchSufficientDecreaseFactor: Math.max(Number(input?.options?.initialGravityPlasticLineSearchSufficientDecreaseFactor) || 1e-3, 0),
+    initialGravityPlasticLineSearchArmijoCoefficient: Math.max(Number(input?.options?.initialGravityPlasticLineSearchArmijoCoefficient) || 1e-4, 0),
+    adaptiveContinuation: input?.options?.adaptiveContinuation !== false,
+    continuationTargetIterations: Math.max(Number(input?.options?.continuationTargetIterations) || NONLINEAR_CONTINUATION_TARGET_ITERATIONS, 1),
+    initialGravityContinuationTargetIterations: Math.max(Number(input?.options?.initialGravityContinuationTargetIterations) || NONLINEAR_CONTINUATION_TARGET_ITERATIONS, 1),
+    safetyContinuationTargetIterations: Math.max(Number(input?.options?.safetyContinuationTargetIterations) || NONLINEAR_CONTINUATION_TARGET_ITERATIONS, 1),
+    continuationTargetLineSearchScale: Math.max(Math.min(Number(input?.options?.continuationTargetLineSearchScale) || NONLINEAR_CONTINUATION_TARGET_LINE_SEARCH_SCALE, 1), 1e-6),
+    continuationIterationExponent: Math.max(Number(input?.options?.continuationIterationExponent) || NONLINEAR_CONTINUATION_ITERATION_EXPONENT, 0),
+    continuationLineSearchExponent: Math.max(Number(input?.options?.continuationLineSearchExponent) || NONLINEAR_CONTINUATION_LINE_SEARCH_EXPONENT, 0),
+    useUnsymmetricPlasticSolver: input?.options?.useUnsymmetricPlasticSolver === true,
+    unsymmetricLinearSolver: input?.options?.unsymmetricLinearSolver === 'bicgstab' ? 'bicgstab' : 'gmres-scaled',
+    safetyInitialSigmaMsfIncrement: Math.max(Number(input?.options?.safetyInitialSigmaMsfIncrement) || SAFETY_INITIAL_SIGMA_MSF_INCREMENT, 1e-3),
+    safetySigmaMsfGrowthFactor: Math.max(Number(input?.options?.safetySigmaMsfGrowthFactor) || SAFETY_SIGMA_MSF_GROWTH_FACTOR, 1.05),
+    safetySigmaMsfCutbackFactor: Math.min(Math.max(Number(input?.options?.safetySigmaMsfCutbackFactor) || 0.5, 0.1), 0.95),
+    safetyMinSigmaMsfIncrement: Math.max(Number(input?.options?.safetyMinSigmaMsfIncrement) || 1e-4, 1e-4),
+    safetySigmaMsfMax: Math.max(Number(input?.options?.safetySigmaMsfMax) || SAFETY_SIGMA_MSF_MAX, 1),
+    safetySigmaMsfBracketTolerance: Math.max(Number(input?.options?.safetySigmaMsfBracketTolerance) || SAFETY_SIGMA_MSF_BRACKET_TOL, 1e-4),
+    safetyMaxSearchTrials: Math.max(Math.round(Number(input?.options?.safetyMaxSearchTrials) || SAFETY_MAX_SEARCH_TRIALS), 1),
+    safetyMechanismPlateauWindow: Math.max(Math.round(Number(input?.options?.safetyMechanismPlateauWindow) || 3), 2),
+    safetyMechanismPlateauRelativeTolerance: Math.max(Number(input?.options?.safetyMechanismPlateauRelativeTolerance) || 0.01, 1e-4),
+    safetyMechanismMinIncrementalDisplacementNorm: Math.max(Number(input?.options?.safetyMechanismMinIncrementalDisplacementNorm) || 1e-8, 0),
+    safetyMechanismMinPlasticIncrement: Math.max(Number(input?.options?.safetyMechanismMinPlasticIncrement) || 1e-8, 0)
   };
-  const load = normalizeLoad(model, options, warnings);
+  const load = normalizeLoad(model, options, warnings, analysisType === 'deformation' ? 'required' : 'optional');
   addDomainExtentWarnings(model, load, warnings);
+  const hasSurfaceLoad = !!load;
+  if (analysisType === 'safety-cphi') {
+    if (options.constitutiveModel !== 'mc-plastic') {
+      throw new Error('C-phi reduction safety analysis is only available with the Stage 2 elastoplastic constitutive model.');
+    }
+    if (options.initialStressMode !== 'plastic-geostatic') {
+      throw new Error('C-phi reduction safety analysis requires the plastic geostatic initial stress mode so the base state is a converged elastoplastic equilibrium.');
+    }
+  }
 
   if (await runCheckpoint(runControl, true)) {
     throw new Error('Deformation run was interrupted before meshing started.');
@@ -2514,7 +3699,9 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   onProgress({
     stage: 'solving',
     percent: 58,
-    message: 'Applying the surface traction and support constraints...'
+    message: hasSurfaceLoad
+      ? 'Applying the surface traction and support constraints...'
+      : 'Applying the support constraints for the self-weight analysis...'
   });
 
   loadedTerrainEdges(mesh, load).forEach((edge) => {
@@ -2532,6 +3719,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   const compressedRows = compressMatrixRows(rows, freeDofs, freeIndexByDof);
   const gravityCompressedRhs = gatherFreeVector(gravityRhs, freeDofs);
   const loadRhsFreeBase = gatherFreeVector(loadRhs, freeDofs);
+  const totalExternalForceFree = addSolutionVectors(gravityCompressedRhs, loadRhsFreeBase);
   const nonlinearAssemblyPattern = buildCompressedAssemblyPattern(elementCaches, freeIndexByDof, freeDofs.length);
   const geostatic = await buildGeostaticInitialization(
     mesh,
@@ -2595,6 +3783,9 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   let servicePhase = null;
   let servicePhaseStarted = false;
   let initialBaselineSolution = new Float64Array(ndof);
+  let safetyAnalysis = null;
+  let safetyBaseCheckpoint = null;
+  const wantsServiceLoadPhase = hasSurfaceLoad;
 
   if (canRunPlasticInitialEquilibrium) {
     onProgress({
@@ -2635,7 +3826,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     } else {
       initialBaselineSolution = Float64Array.from(initialPhase.solution);
       setReferenceStateFromCommittedStates(materialPoints);
-      servicePhaseStarted = true;
+      servicePhaseStarted = wantsServiceLoadPhase;
     }
   } else {
     initialPhase = {
@@ -2645,7 +3836,7 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
       displayedStateMode: 'predictor',
       solution: geostatic.solution || new Float64Array(ndof)
     };
-    servicePhaseStarted = true;
+    servicePhaseStarted = wantsServiceLoadPhase;
   }
 
   if (servicePhaseStarted) {
@@ -2680,50 +3871,119 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     }
   }
 
-  const activePhase = servicePhaseStarted ? servicePhase : initialPhase;
-  const totalLinearIterations = (canRunPlasticInitialEquilibrium ? Number(initialPhase.totalCgIterations) || 0 : 0) + (servicePhaseStarted ? Number(servicePhase.totalCgIterations) || 0 : 0);
-  const totalNonlinearIterations = (canRunPlasticInitialEquilibrium ? Number(initialPhase.totalNonlinearIterations) || 0 : 0) + (servicePhaseStarted ? Number(servicePhase.totalNonlinearIterations) || 0 : 0);
-  const overallPeakActiveCount = Math.max(
-    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakActiveCount) || 0 : 0,
-    servicePhaseStarted ? Number(servicePhase.peakActiveCount) || 0 : 0
-  );
-  const overallPeakActiveFaceCount = Math.max(
-    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakActiveFaceCount) || 0 : 0,
-    servicePhaseStarted ? Number(servicePhase.peakActiveFaceCount) || 0 : 0
-  );
-  const overallPeakActiveEdgeCount = Math.max(
-    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakActiveEdgeCount) || 0 : 0,
-    servicePhaseStarted ? Number(servicePhase.peakActiveEdgeCount) || 0 : 0
-  );
-  const overallPeakActiveApexCount = Math.max(
-    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakActiveApexCount) || 0 : 0,
-    servicePhaseStarted ? Number(servicePhase.peakActiveApexCount) || 0 : 0
-  );
-  const overallPeakTensionPendingCount = Math.max(
-    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakTensionPendingCount) || 0 : 0,
-    servicePhaseStarted ? Number(servicePhase.peakTensionPendingCount) || 0 : 0
-  );
-  const overallPeakEta = Math.max(
-    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakEta) || 0 : 0,
-    servicePhaseStarted ? Number(servicePhase.peakEta) || 0 : 0
-  );
-  const constitutiveSolution = activePhase.solution;
-  // The nonlinear constitutive phases track predictor-relative correction displacements,
-  // while reporting still needs the full physical field.
   const predictorDisplacementSolution = canRunPlasticInitialEquilibrium
     ? (geostatic.solution || new Float64Array(ndof))
     : new Float64Array(ndof);
-  const physicalActiveSolution = canRunPlasticInitialEquilibrium
-    ? addSolutionVectors(predictorDisplacementSolution, constitutiveSolution)
-    : constitutiveSolution;
-  const physicalInitialBaselineSolution = canRunPlasticInitialEquilibrium
-    ? addSolutionVectors(
-      predictorDisplacementSolution,
-      initialPhase.converged
-        ? initialBaselineSolution
-        : (!servicePhaseStarted ? initialPhase.solution : new Float64Array(ndof))
-    )
-    : (!servicePhaseStarted ? initialPhase.solution : new Float64Array(ndof));
+  const physicalInitialEquilibriumSolution = canRunPlasticInitialEquilibrium
+    ? addSolutionVectors(predictorDisplacementSolution, initialPhase.solution)
+    : initialPhase.solution;
+  const physicalServiceSolution = servicePhaseStarted
+    ? (
+        canRunPlasticInitialEquilibrium
+          ? addSolutionVectors(predictorDisplacementSolution, servicePhase.solution)
+          : servicePhase.solution
+      )
+    : physicalInitialEquilibriumSolution;
+
+  if (analysisType === 'safety-cphi') {
+    if (!initialPhase.converged) {
+      throw new Error('C-phi reduction safety analysis requires the initial plastic self-weight equilibration phase to converge fully before strength reduction starts.');
+    }
+    if (wantsServiceLoadPhase && (!servicePhaseStarted || !servicePhase?.converged)) {
+      throw new Error('C-phi reduction safety analysis requires the full service-loading phase to converge before strength reduction starts.');
+    }
+    onProgress({
+      stage: 'solving',
+      percent: 78,
+      message: `Running the c-phi reduction safety phase from the ${wantsServiceLoadPhase ? 'end-of-service' : 'self-weight-only'} equilibrium state...`
+    });
+    safetyBaseCheckpoint = createMaterialPointCheckpoint(
+      materialPoints,
+      wantsServiceLoadPhase ? physicalServiceSolution : physicalInitialEquilibriumSolution,
+      {
+        sigmaMsf: 1,
+        label: wantsServiceLoadPhase ? 'service-base' : 'initial-equilibrium-base'
+      }
+    );
+    safetyAnalysis = await solveSafetyReductionSearch(
+      elementCaches,
+      nonlinearAssemblyPattern,
+      totalExternalForceFree,
+      safetyBaseCheckpoint,
+      regionConstitutiveByRegion,
+      ndof,
+      freeDofs,
+      fixedValues,
+      runControl,
+      onProgress,
+      options
+    );
+  }
+
+  const activePhase = analysisType === 'safety-cphi'
+    ? (safetyAnalysis?.displayedPhase || safetyAnalysis?.lowerBoundPhase || initialPhase)
+    : (servicePhaseStarted ? servicePhase : initialPhase);
+  const activeMaterialPoints = analysisType === 'safety-cphi'
+    ? (activePhase?.materialPoints || safetyAnalysis?.lowerBoundCheckpoint?.materialPoints || materialPoints)
+    : materialPoints;
+  const totalLinearIterations =
+    (canRunPlasticInitialEquilibrium ? Number(initialPhase.totalCgIterations) || 0 : 0) +
+    (servicePhaseStarted ? Number(servicePhase.totalCgIterations) || 0 : 0) +
+    (analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalCgIterations) || 0 : 0);
+  const totalNonlinearIterations =
+    (canRunPlasticInitialEquilibrium ? Number(initialPhase.totalNonlinearIterations) || 0 : 0) +
+    (servicePhaseStarted ? Number(servicePhase.totalNonlinearIterations) || 0 : 0) +
+    (analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalNonlinearIterations) || 0 : 0);
+  const overallPeakActiveCount = Math.max(
+    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakActiveCount) || 0 : 0,
+    servicePhaseStarted ? Number(servicePhase.peakActiveCount) || 0 : 0,
+    analysisType === 'safety-cphi' ? Number(safetyAnalysis?.peakActiveCount) || 0 : 0
+  );
+  const overallPeakActiveFaceCount = Math.max(
+    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakActiveFaceCount) || 0 : 0,
+    servicePhaseStarted ? Number(servicePhase.peakActiveFaceCount) || 0 : 0,
+    analysisType === 'safety-cphi' ? Number(safetyAnalysis?.peakActiveFaceCount) || 0 : 0
+  );
+  const overallPeakActiveEdgeCount = Math.max(
+    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakActiveEdgeCount) || 0 : 0,
+    servicePhaseStarted ? Number(servicePhase.peakActiveEdgeCount) || 0 : 0,
+    analysisType === 'safety-cphi' ? Number(safetyAnalysis?.peakActiveEdgeCount) || 0 : 0
+  );
+  const overallPeakActiveApexCount = Math.max(
+    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakActiveApexCount) || 0 : 0,
+    servicePhaseStarted ? Number(servicePhase.peakActiveApexCount) || 0 : 0,
+    analysisType === 'safety-cphi' ? Number(safetyAnalysis?.peakActiveApexCount) || 0 : 0
+  );
+  const overallPeakTensionPendingCount = Math.max(
+    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakTensionPendingCount) || 0 : 0,
+    servicePhaseStarted ? Number(servicePhase.peakTensionPendingCount) || 0 : 0,
+    analysisType === 'safety-cphi' ? Number(safetyAnalysis?.peakTensionPendingCount) || 0 : 0
+  );
+  const overallPeakEta = Math.max(
+    canRunPlasticInitialEquilibrium ? Number(initialPhase.peakEta) || 0 : 0,
+    servicePhaseStarted ? Number(servicePhase.peakEta) || 0 : 0,
+    analysisType === 'safety-cphi' ? Number(safetyAnalysis?.peakEta) || 0 : 0
+  );
+  const constitutiveSolution = activePhase.solution;
+  const physicalActiveSolution = analysisType === 'safety-cphi'
+    ? (constitutiveSolution || (wantsServiceLoadPhase ? physicalServiceSolution : physicalInitialEquilibriumSolution))
+    : (
+        canRunPlasticInitialEquilibrium
+          ? addSolutionVectors(predictorDisplacementSolution, constitutiveSolution)
+          : constitutiveSolution
+      );
+  const physicalInitialBaselineSolution = analysisType === 'safety-cphi'
+    ? (wantsServiceLoadPhase ? physicalServiceSolution : physicalInitialEquilibriumSolution)
+    : (
+        canRunPlasticInitialEquilibrium
+          ? addSolutionVectors(
+            predictorDisplacementSolution,
+            initialPhase.converged
+              ? initialBaselineSolution
+              : (!servicePhaseStarted ? initialPhase.solution : new Float64Array(ndof))
+          )
+          : (!servicePhaseStarted ? initialPhase.solution : new Float64Array(ndof))
+      );
 
   onProgress({
     stage: 'post',
@@ -2731,14 +3991,58 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     message: 'Recovering stresses, settlements, and MC utilization...'
   });
 
-  const elementResults = recoverElementResults(mesh, elementCaches, constitutiveSolution, materialPoints, porePressureByElement);
+  const recoverySolution = analysisType === 'safety-cphi' ? physicalActiveSolution : constitutiveSolution;
+  const safetyComparisonMaterialPoints = analysisType === 'safety-cphi'
+    ? (
+        safetyAnalysis?.status === 'bracketed'
+          ? (safetyAnalysis?.lowerBoundCheckpoint?.materialPoints || null)
+          : (safetyBaseCheckpoint?.materialPoints || null)
+      )
+    : null;
+  const elementResults = recoverElementResults(
+    mesh,
+    elementCaches,
+    recoverySolution,
+    activeMaterialPoints,
+    porePressureByElement,
+    safetyComparisonMaterialPoints
+  );
   const totalNodalDisplacements = buildNodalDisplacements(mesh, physicalActiveSolution);
   const initialNodalDisplacements = buildNodalDisplacements(mesh, physicalInitialBaselineSolution);
-  const displayUsesServiceIncrement = servicePhaseStarted && canRunPlasticInitialEquilibrium && initialPhase.converged;
+  const serviceIncrementNodalDisplacements = servicePhaseStarted
+    ? subtractNodalDisplacementFields(
+      buildNodalDisplacements(mesh, physicalServiceSolution),
+      buildNodalDisplacements(mesh, physicalInitialEquilibriumSolution)
+    )
+    : [];
+  const displayUsesServiceIncrement = analysisType === 'safety-cphi'
+    ? true
+    : (servicePhaseStarted && canRunPlasticInitialEquilibrium && initialPhase.converged);
   const nodalDisplacements = displayUsesServiceIncrement
     ? subtractNodalDisplacementFields(totalNodalDisplacements, initialNodalDisplacements)
     : totalNodalDisplacements;
-  if (activePhase?.convergenceState === 'partial') {
+  if (analysisType === 'safety-cphi') {
+    const sigmaLower = Number(safetyAnalysis?.factorOfSafetyLower) || 1;
+    const sigmaUpper = Number(safetyAnalysis?.factorOfSafetyUpper);
+    if (safetyAnalysis?.status === 'bracketed') {
+      pushUniqueWarning(
+        warnings,
+        Number.isFinite(sigmaUpper)
+          ? `C-phi reduction bracketed failure between ΣMsf=${sigmaLower.toFixed(3)} and ΣMsf=${sigmaUpper.toFixed(3)}. Report the conservative lower bound ΣMsf=${sigmaLower.toFixed(3)} as the factor of safety.`
+          : `C-phi reduction bracketed a near-failure state at ΣMsf=${sigmaLower.toFixed(3)}. Report the conservative lower bound ΣMsf=${sigmaLower.toFixed(3)} as the factor of safety.`
+      );
+    } else if (safetyAnalysis?.status === 'mechanism-developed') {
+      pushUniqueWarning(
+        warnings,
+        `C-phi reduction developed a persistent failure mechanism at ΣMsf=${sigmaLower.toFixed(3)}. Report ΣMsf=${sigmaLower.toFixed(3)} as the factor of safety, and interpret the final incremental fields as the governing mechanism.`
+      );
+    } else if (safetyAnalysis?.status === 'no-failure-found') {
+      pushUniqueWarning(
+        warnings,
+        `C-phi reduction did not find failure up to ΣMsf=${sigmaLower.toFixed(3)}. Report the result conservatively as FoS > ${sigmaLower.toFixed(3)}.`
+      );
+    }
+  } else if (activePhase?.convergenceState === 'partial') {
     if (servicePhaseStarted) {
       const shownLoadFactor = 100 * Math.max(Number(servicePhase?.displayedLoadFactor) || 0, 0);
       const stableLoadFactor = 100 * Math.max(Number(servicePhase?.loadFactorCommitted) || 0, 0);
@@ -2763,7 +4067,10 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
   const terrainSettlementProfile = buildTerrainSettlementProfile(mesh, nodalDisplacements);
   const summaries = summarizeDeformation(nodalDisplacements, elementResults);
   summaries.maxInitialSettlement = Math.max(0, ...initialNodalDisplacements.map((item) => -(item?.uy || 0)));
-  summaries.serviceSettlementIncrement = servicePhaseStarted ? summaries.maxSettlement : 0;
+  summaries.serviceSettlementIncrement = analysisType === 'safety-cphi'
+    ? Math.max(0, ...serviceIncrementNodalDisplacements.map((item) => -(item?.uy || 0)))
+    : (servicePhaseStarted ? summaries.maxSettlement : 0);
+  summaries.safetySettlementIncrement = analysisType === 'safety-cphi' ? summaries.maxSettlement : 0;
 
   onProgress({
     stage: 'post',
@@ -2782,11 +4089,14 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
     elementResults,
     summaries,
     solver: {
-      method: options.constitutiveModel === 'linear-elastic'
+      method: analysisType === 'safety-cphi'
+        ? 'stage-2-mc-plastic-plane-strain-t3-safety-cphi'
+        : options.constitutiveModel === 'linear-elastic'
         ? 'nonlinear-elastic-plane-strain-t3'
         : options.constitutiveModel === 'mc-plastic'
           ? 'stage-2-mc-plastic-plane-strain-t3'
           : 'stage-1-mc-reduced-stiffness-plane-strain-t3',
+      analysisType,
       constitutiveModel: options.constitutiveModel === 'linear-elastic'
         ? 'linear-elastic-material-point'
         : options.constitutiveModel === 'mc-plastic'
@@ -2802,6 +4112,8 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
       initialPhaseStarted: canRunPlasticInitialEquilibrium,
       initialPhaseConverged: canRunPlasticInitialEquilibrium ? initialPhase.converged : null,
       initialPhaseConvergenceState: canRunPlasticInitialEquilibrium ? initialPhase.convergenceState : 'skipped',
+      initialPhaseFailureCode: canRunPlasticInitialEquilibrium ? initialPhase.failureCode : '',
+      initialPhaseFailureOutcomeClass: canRunPlasticInitialEquilibrium ? initialPhase.failureOutcomeClass : 'unknown',
       initialPhaseFailureReason: canRunPlasticInitialEquilibrium ? initialPhase.failureReason : '',
       initialPhaseAcceptedSteps: canRunPlasticInitialEquilibrium ? initialPhase.acceptedSteps : 0,
       initialPhaseRejectedSteps: canRunPlasticInitialEquilibrium ? initialPhase.rejectedSteps : 0,
@@ -2815,19 +4127,35 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
       initialPhasePeakTensionCutoffActiveElements: canRunPlasticInitialEquilibrium ? initialPhase.peakTensionPendingCount : 0,
       servicePhaseStarted,
       servicePhaseConvergenceState: servicePhaseStarted ? servicePhase.convergenceState : 'not-started',
+      servicePhaseFailureCode: servicePhaseStarted ? servicePhase.failureCode : (canRunPlasticInitialEquilibrium ? initialPhase.failureCode : ''),
+      servicePhaseFailureOutcomeClass: servicePhaseStarted ? servicePhase.failureOutcomeClass : (canRunPlasticInitialEquilibrium ? initialPhase.failureOutcomeClass : 'unknown'),
       servicePhaseFailureReason: servicePhaseStarted ? servicePhase.failureReason : (canRunPlasticInitialEquilibrium ? initialPhase.failureReason : ''),
       initialDisplacementResetApplied: displayUsesServiceIncrement,
       linearIterations: totalLinearIterations,
       nonlinearIterations: totalNonlinearIterations,
-      acceptedLoadSteps: servicePhaseStarted ? servicePhase.acceptedSteps : 0,
-      rejectedLoadSteps: servicePhaseStarted ? servicePhase.rejectedSteps : 0,
-      loadFactorCommitted: servicePhaseStarted ? servicePhase.loadFactorCommitted : 0,
-      displayedLoadFactor: servicePhaseStarted ? servicePhase.displayedLoadFactor : 0,
-      converged: servicePhaseStarted ? servicePhase.converged : initialPhase.converged,
-      convergenceState: servicePhaseStarted ? servicePhase.convergenceState : initialPhase.convergenceState,
+      acceptedLoadSteps: analysisType === 'safety-cphi' ? 0 : (servicePhaseStarted ? servicePhase.acceptedSteps : 0),
+      rejectedLoadSteps: analysisType === 'safety-cphi' ? 0 : (servicePhaseStarted ? servicePhase.rejectedSteps : 0),
+      loadFactorCommitted: analysisType === 'safety-cphi' ? 0 : (servicePhaseStarted ? servicePhase.loadFactorCommitted : 0),
+      displayedLoadFactor: analysisType === 'safety-cphi' ? 0 : (servicePhaseStarted ? servicePhase.displayedLoadFactor : 0),
+      converged: analysisType === 'safety-cphi'
+        ? safetyAnalysis != null
+        : (servicePhaseStarted ? servicePhase.converged : initialPhase.converged),
+      convergenceState: analysisType === 'safety-cphi'
+        ? (safetyAnalysis?.status || 'unknown')
+        : (servicePhaseStarted ? servicePhase.convergenceState : initialPhase.convergenceState),
+      failureCode: analysisType === 'safety-cphi'
+        ? (safetyAnalysis?.failureCode || '')
+        : (servicePhaseStarted ? servicePhase.failureCode : initialPhase.failureCode),
+      failureOutcomeClass: analysisType === 'safety-cphi'
+        ? (safetyAnalysis?.failureOutcomeClass || 'unknown')
+        : (servicePhaseStarted ? servicePhase.failureOutcomeClass : initialPhase.failureOutcomeClass),
       displayedStateMode: activePhase.displayedStateMode,
-      displayedLoadFactorMeaning: activePhase.loadFactorMeaning || (servicePhaseStarted ? 'load' : 'gravity'),
-      failureReason: servicePhaseStarted ? servicePhase.failureReason : initialPhase.failureReason,
+      displayedLoadFactorMeaning: analysisType === 'safety-cphi'
+        ? 'safety-strength-reduction'
+        : (activePhase.loadFactorMeaning || (servicePhaseStarted ? 'load' : 'gravity')),
+      failureReason: analysisType === 'safety-cphi'
+        ? (safetyAnalysis?.failurePhase?.failureReason || '')
+        : (servicePhaseStarted ? servicePhase.failureReason : initialPhase.failureReason),
       residualNorm: activePhase.residualNorm,
       relativeResidualNorm: activePhase.relativeResidualNorm,
       displacementCorrectionNorm: activePhase.displacementCorrectionNorm,
@@ -2847,10 +4175,34 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
       peakMcEta: overallPeakEta,
       lastStateChanges: activePhase.lastStateChanges,
       freeDofs: freeDofs.length,
-      loadStepHistory: servicePhaseStarted ? servicePhase.loadStepHistory : [],
-      residualHistory: servicePhaseStarted ? servicePhase.residualHistory : [],
+      loadStepHistory: analysisType === 'safety-cphi'
+        ? (activePhase?.loadStepHistory || [])
+        : (servicePhaseStarted ? servicePhase.loadStepHistory : []),
+      residualHistory: analysisType === 'safety-cphi'
+        ? (activePhase?.residualHistory || [])
+        : (servicePhaseStarted ? servicePhase.residualHistory : []),
       initialLoadStepHistory: canRunPlasticInitialEquilibrium ? initialPhase.loadStepHistory : [],
-      initialResidualHistory: canRunPlasticInitialEquilibrium ? initialPhase.residualHistory : []
+      initialResidualHistory: canRunPlasticInitialEquilibrium ? initialPhase.residualHistory : [],
+      safetyStarted: analysisType === 'safety-cphi',
+      safetyBaseState: analysisType === 'safety-cphi'
+        ? (wantsServiceLoadPhase ? 'end-of-service' : 'initial-equilibrium')
+        : 'not-applicable',
+      safetyStatus: analysisType === 'safety-cphi' ? (safetyAnalysis?.status || 'unknown') : 'not-applicable',
+      safetyFailureCode: analysisType === 'safety-cphi' ? (safetyAnalysis?.failureCode || '') : '',
+      safetyFailureOutcomeClass: analysisType === 'safety-cphi' ? (safetyAnalysis?.failureOutcomeClass || 'unknown') : 'not-applicable',
+      safetyFactorOfSafety: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.factorOfSafety) || 1 : null,
+      safetyFactorOfSafetyLower: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.factorOfSafetyLower) || 1 : null,
+      safetyFactorOfSafetyUpper: analysisType === 'safety-cphi' && safetyAnalysis?.factorOfSafetyUpper != null && Number.isFinite(Number(safetyAnalysis?.factorOfSafetyUpper))
+        ? Number(safetyAnalysis?.factorOfSafetyUpper)
+        : null,
+      safetyStrengthRetained: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.strengthRetained) || 1 : null,
+      safetyDisplayedSigmaMsf: analysisType === 'safety-cphi' ? Number(activePhase?.sigmaMsfDisplayed ?? safetyAnalysis?.factorOfSafetyLower) || 1 : null,
+      safetyCommittedSigmaMsf: analysisType === 'safety-cphi'
+        ? Number(safetyAnalysis?.lowerBoundCheckpoint?.sigmaMsf ?? safetyAnalysis?.factorOfSafetyLower) || 1
+        : null,
+      safetyTrialHistory: analysisType === 'safety-cphi' ? (safetyAnalysis?.history || []) : [],
+      safetyAcceptedContinuationSteps: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalAcceptedContinuationSteps) || 0 : 0,
+      safetyRejectedContinuationSteps: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalRejectedContinuationSteps) || 0 : 0
     },
     timing: {
       totalMs: performance.now() - startedAt
