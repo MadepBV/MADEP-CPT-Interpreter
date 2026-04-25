@@ -4,9 +4,9 @@
 
 ---
 
-## Stage 1 — GEF File Loading
+## Stage 1 — CPT File Loading
 
-### 1.1 Column mapping
+### 1.1 Supported file structures and column mapping
 
 GEF files map physical quantities to column positions via `#COLUMNINFO` header lines:
 
@@ -27,10 +27,15 @@ The app reads the **4th token (quantityID)** and maps it to a 0-based column ind
 
 When both quantity ID 11 and ID 1 are present, **ID 11 (corrected depth) takes priority**.
 
+Excel `.xls` / `.xlsx` files are read from a `Data` sheet and, when present, a `Header` sheet. The Data sheet may contain depth, qc, fs, and Rf columns. The Header sheet can provide project/test/location/date metadata, water level (`Waterniveau`), surface level (`Grondniveau`), coordinates, and net area ratio (`Alpha Factor`).
+
+CSV files are accepted as a reduced-input route. They must contain headers named `depth` and `qc`; optional headers are `fs` and `rf`. Comma, semicolon, and tab delimiters are detected automatically. If decimal commas are used, prefer semicolon-delimited CSV.
+
 ### 1.2 Unit detection and conversion
 
-- **qc**: unit is read from `#COLUMNINFO` for quantity ID 2. `MPa` is used directly, `kPa` is divided by 1000, `Pa` by 1 000 000. If the unit string is missing or unclear, a heuristic fallback is used.
-- **fs**: unit is read from `#COLUMNINFO` for quantity ID 3. `MPa` is used directly, `kPa` is divided by 1000, `Pa` by 1 000 000. If the unit string is missing or unclear, a heuristic fallback is used.
+- **depth**: expected in metres below surface.
+- **qc**: unit is read from `#COLUMNINFO` for quantity ID 2 or from the Excel/CSV column header. `MPa` is used directly, `kPa` is divided by 1000, `Pa` by 1 000 000. If the unit string is missing or unclear, values above 100 are treated as kPa, otherwise MPa.
+- **fs**: unit is read from `#COLUMNINFO` for quantity ID 3 or from the Excel/CSV column header. `MPa` is used directly, `kPa` is divided by 1000, `Pa` by 1 000 000. If the unit string is missing or unclear, values above 1000 are treated as Pa, values above 10 as kPa, otherwise MPa.
 - **Rf**: used directly from column (declared as %). If Rf is absent, negative, or `>= 50`, computed as `|fs| / qc * 100`, clamped to [0, 20]
 - **u2**: used as-is (expected MPa in the GEF file)
 
@@ -45,7 +50,8 @@ Rows are discarded if:
 
 Source priority:
 1. `#MEASUREMENTVAR= 14, value, m, WaterLevel` — `wt = |value|` (sign convention: negative = below surface, so absolute value taken)
-2. If absent — default `wt = 1.7 m`
+2. Excel Header `Waterniveau` — `wt = |value|`
+3. If absent — application default, reviewable in Stage 1
 
 The engineer can override at any time via slider or numeric input. Display shows both depth-below-surface (m) and elevation (m TAW) when a surface elevation is set.
 
@@ -53,7 +59,8 @@ The engineer can override at any time via slider or numeric input. Display shows
 
 Source priority:
 1. `#ZID= datum, value, precision` — `elev = value` (m TAW)
-2. Manual entry in the UI
+2. Excel Header `Grondniveau`
+3. Manual entry in the UI
 
 When set: `TAW = elev - z` for all depth values.
 
@@ -1789,9 +1796,9 @@ Calculate the design bending moment in a simple slab strip and determine the req
    - design bending moment
    - effective depth `d`
    - recommended EC2 nominal cover `c_nom`
-   - required steel area `A_s,req`
+   - required steel area `A_s,req` for the modelled strip width
 3. Program returns:
-   - required `mm²/m`
+   - required `mm²/m` when `b = 1.0 m`, otherwise total `mm²` over the entered strip width
    - EC2 durability audit for the chosen exposure
    - optional bar spacing suggestions later
 
@@ -1804,6 +1811,13 @@ For a basic reinforced-concrete strip:
 M_Ed = function(load, support model, strip width)
 ```
 
+Beam / slab-on-soil coordinates:
+- `x` is the 1D analysis direction. `L`, patch start/end, point-load position, and the response charts all live along `x`.
+- `b` is the model strip width perpendicular to `x` in plan. It converts `k_s` to a line spring and sets the EC2 section width.
+- `h` is the vertical section depth.
+- `B` is the bearing/contact width used to derive `k_s`; it is not automatically the same modelling quantity as `b`.
+- The UI asks for the analysis direction first: slab strip direction, along the wall/beam length, or across the footing width. This changes how labels and the geometry preview are read, not the 1D equation itself.
+
 Then:
 ```
 d = h - c_nom - phi_bar / 2
@@ -1815,6 +1829,14 @@ Required steel:
 ```
 A_s,req = M_Ed / (z * f_yd)
 ```
+
+In the implemented beam / slab-on-soil route, `M_Ed` is not held constant while `h`
+changes. The same height also changes the strip stiffness `EI`, the elastic-foundation
+characteristic length, and therefore the ULS moment envelope. A larger `h` usually
+reduces deflection and increases the effective depth `d`, but it can still increase
+`A_s,req` if the recalculated `M_Ed` grows faster than the lever-arm benefit. For a
+standalone section check with an externally fixed moment, `M_Ed` should be kept separate
+from the soil-supported beam solve.
 
 #### Durability / cover route now intended for Stage 6
 

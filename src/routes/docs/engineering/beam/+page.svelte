@@ -56,6 +56,7 @@
 			<a href="#ks">CPT-based subgrade modulus</a>
 			<a href="#characteristic">Characteristic length and regimes</a>
 			<a href="#closed">Hetényi closed forms</a>
+			<a href="#hsensitivity">Sensitivity of M to member depth h</a>
 			<a href="#bc">Boundary and loading cases</a>
 			<a href="#pasternak">Pasternak shear layer</a>
 			<a href="#kerr">Kerr three-parameter model</a>
@@ -81,6 +82,24 @@
 					<em>footing-dependent</em>, not universal soil constants. A different strip width or
 					influence depth yields a different k<sub>s</sub>.
 				</div>
+				<div class="doc-callout">
+					<strong>Thickness sensitivity.</strong> The member thickness h is not only a
+					section-capacity input. It changes EI<sub>b</sub>, the characteristic length λ, and
+					therefore the bending-moment envelope from the elastic-foundation solve. Increasing h
+					normally reduces deflection, but it can increase M<sub>Ed</sub> and sometimes
+					A<sub>s,req</sub> because the stiffer strip bridges load differently over the soil
+					springs.
+				</div>
+				<div class="doc-callout">
+					<strong>Coordinate convention.</strong> The model is one-dimensional. The x-axis is
+					the analysed strip direction and is where L, patch start/end, point-load position, and
+					the plotted response live. The y-axis is the model strip width b, perpendicular to x in
+					plan. The z-axis is the vertical section depth h. For a transverse strip-footing check,
+					x should run across the footing width and b is normally a one-meter slice along the wall.
+					For a longitudinal beam check, x runs along the member. The app's
+					<em>Analysis direction</em> selector changes these labels and the preview drawing; it
+					does not change the underlying one-dimensional equations.
+				</div>
 				<div class="symbols">
 					<div class="symbols__title">Primary quantities</div>
 					<dl class="symbols__list">
@@ -90,7 +109,7 @@
 						</div>
 						<div class="symbols__row">
 							<dt>M(x), V(x)</dt>
-							<dd>Bending moment [kN·m/m] and shear [kN/m] per meter of strip width.</dd>
+							<dd>Bending moment and shear for the modelled strip width; these are kN·m/m and kN/m only when b = 1.0 m.</dd>
 						</div>
 						<div class="symbols__row">
 							<dt>k<sub>s</sub></dt>
@@ -125,7 +144,7 @@
 					<dl class="symbols__list">
 						<div class="symbols__row">
 							<dt>EI<sub>b</sub></dt>
-							<dd>Bending stiffness per meter of strip width [kN·m²/m].</dd>
+							<dd>Bending stiffness of the modelled strip width [kN·m²], or per meter only when b = 1.0 m.</dd>
 						</div>
 						<div class="symbols__row">
 							<dt>q(x)</dt>
@@ -184,7 +203,7 @@
 						</div>
 						<div class="symbols__row">
 							<dt>B</dt>
-							<dd>Strip width [m]. Enters through both the geometric stiffness and the B<sup>4</sup> coupling term.</dd>
+							<dd>Bearing/contact width used to derive k<sub>s</sub> [m]. It is the Vesić support width, not automatically the same as the model strip width b.</dd>
 						</div>
 						<div class="symbols__row">
 							<dt>ν<sub>s</sub></dt>
@@ -192,14 +211,14 @@
 						</div>
 						<div class="symbols__row">
 							<dt>E<sub>b</sub> I<sub>b</sub></dt>
-							<dd>Per-meter bending stiffness of the structural strip [kN·m²/m].</dd>
+							<dd>Bending stiffness of the modelled structural strip. It is per meter only when b = 1.0 m.</dd>
 						</div>
 					</dl>
 				</div>
 				<ul class="notes">
 					<li>The twelfth root of (E<sub>s</sub>B⁴/E<sub>b</sub>I<sub>b</sub>) captures the Vesić soil–beam stiffness coupling: stiffer strips see less uniform contact pressure.</li>
 					<li>Because k<sub>s</sub> depends on B, E<sub>b</sub>I<sub>b</sub>, and the chosen influence zone, two footings on the same soil can carry materially different k<sub>s</sub>.</li>
-					<li>Default averaging depths are 2B in sand and 1.5B in clay, and can be overridden in the app.</li>
+					<li>The averaging depth is exposed directly in the app. Larger values smooth the interpreted CPT stiffness over more soil; smaller values make k<sub>s</sub> more sensitive to the layer just below founding level.</li>
 				</ul>
 			</section>
 
@@ -270,9 +289,94 @@
 				</p>
 			</section>
 
+			<section id="hsensitivity" class="doc-card">
+				<p class="section-label">Sensitivity to member depth</p>
+				<h2>6. Why a stiffer strip can attract a larger bending moment</h2>
+				<p>
+					On a rigid support a thicker member is unambiguously beneficial: the moment is fixed by
+					statics and the larger lever arm reduces stress. On a Winkler foundation that intuition
+					fails. The moment is not fixed by statics; it is set by the competition between EI
+					and k<sub>s</sub>. As h grows the strip stiffens faster than the support, λ grows, and
+					the strip bridges further across the soil column. The peak moment grows with it.
+				</p>
+				<div class="equations">
+					<div class="formula">EI = E<sub>b</sub> b h<sup>3</sup> / 12  ⇒  EI ∝ h<sup>3</sup></div>
+					<div class="formula">k<sub>s</sub>(EI) ∝ (E<sub>s</sub> B<sup>4</sup> / EI)<sup>1/12</sup>  ⇒  k<sub>s</sub> ∝ h<sup>−1/4</sup>   (Vesić soft coupling)</div>
+					<div class="formula">λ<sup>4</sup> = 4 EI / (b k<sub>s</sub>)  ⇒  λ ∝ h<sup>13/16</sup> ≈ h<sup>0.81</sup></div>
+				</div>
+				<p>
+					The Hetényi closed forms then dictate how M<sub>max</sub> scales with λ for each canonical
+					load case:
+				</p>
+				<div class="equations">
+					<div class="formula">Concentrated load P (infinite strip):  M<sub>max</sub> = P/(4β) = P λ / 4  ⇒  M<sub>max</sub> ∝ λ ∝ h<sup>0.81</sup></div>
+					<div class="formula">Patch UDL q over a span shorter than λ:  M<sub>max</sub> ∝ q λ<sup>2</sup> ∝ h<sup>1.63</sup></div>
+					<div class="formula">UDL covering the full free-ended strip:  M<sub>max</sub> → 0   (rigid translation w ≈ q/(b k<sub>s</sub>))</div>
+				</div>
+				<p>
+					The relation that controls the reinforcement output is then μ ∝ M<sub>max</sub>/d² with
+					d ≈ h. Carrying the exponents through:
+				</p>
+				<div class="doc-table-wrap">
+					<p class="doc-table-caption">Asymptotic h-scalings for the small-μ (linear elastic-RC) regime where ω ≈ μ.</p>
+					<div class="doc-table-scroll">
+						<table class="doc-table">
+							<thead>
+								<tr>
+									<th>Load case</th>
+									<th>M<sub>max</sub> ∝ h<sup>α</sup></th>
+									<th>μ ∝ h<sup>α−2</sup></th>
+									<th>A<sub>s,req</sub> ∝ ω·d ∝ h<sup>α−1</sup></th>
+									<th>Direction</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td>Concentrated load</td>
+									<td>h<sup>0.81</sup></td>
+									<td>h<sup>−1.19</sup></td>
+									<td>h<sup>−0.19</sup></td>
+									<td>A<sub>s</sub> falls slowly with h</td>
+								</tr>
+								<tr>
+									<td>Patch UDL (L<sub>patch</sub> &lt; λ)</td>
+									<td>h<sup>1.63</sup></td>
+									<td>h<sup>−0.37</sup></td>
+									<td>h<sup>0.63</sup></td>
+									<td><strong>A<sub>s</sub> rises with h</strong></td>
+								</tr>
+								<tr>
+									<td>Full-strip UDL on free-ended strip</td>
+									<td>≈ 0</td>
+									<td>≈ 0</td>
+									<td>governed by A<sub>s,min</sub></td>
+									<td>insensitive to h</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+					<p class="doc-table-note">Exponents follow from λ ∝ h<sup>13/16</sup> together with the Hetényi closed forms in §5. The crossover is at α = 1: any load case where M<sub>max</sub> grows faster than h<sup>1</sup> will increase A<sub>s,req</sub>.</p>
+				</div>
+				<div class="doc-callout">
+					<strong>Worked illustration.</strong> Strip 1 m wide, b = 1 m, f<sub>ck</sub> = 30 MPa,
+					c<sub>nom</sub> + φ<sub>bar</sub>/2 = 36 mm. Patch UDL load case, M<sub>1</sub> = 100 kN·m
+					at h<sub>1</sub> = 0.30 m. Going to h<sub>2</sub> = 0.50 m gives:
+					M<sub>2</sub>/M<sub>1</sub> = (0.5/0.3)<sup>1.63</sup> = 2.15, so M<sub>2</sub> ≈ 215
+					kN·m; d<sub>1</sub> = 264 mm, d<sub>2</sub> = 464 mm; μ<sub>1</sub> = 0.072 →
+					A<sub>s,1</sub> ≈ 904 mm²/m, μ<sub>2</sub> = 0.050 → A<sub>s,2</sub> ≈ 1094 mm²/m. The
+					moment growth out-runs the lever-arm gain by ~21%.
+				</div>
+				<ul class="notes">
+					<li>The crossover thickness at which adding depth stops helping depends on the load case and on the soil column. Engineers used to rigid-support beam intuition will find this surprising; the analytical reason is that statics alone no longer sets M.</li>
+					<li>The result is exact in the small-μ regime where ω ≈ μ. For very large μ (close to ductility limit μ<sub>lim</sub>) the closed-form ω ≈ μ approximation no longer holds, but the qualitative direction is preserved.</li>
+					<li>If the ULS bending moment comes from an external structural model rather than the soil-supported solve here, the conventional intuition (more h → less A<sub>s</sub>) does apply. The two checks are different problems and should be kept separate.</li>
+					<li>The same logic applies to k<sub>s</sub> calibration: doubling k<sub>s</sub> reduces λ by a factor 2<sup>−1/4</sup>, lowers the patch-UDL moment by 2<sup>−0.5</sup> ≈ 0.71×, and lowers A<sub>s,req</sub> by ≈ 0.71×.</li>
+				</ul>
+			</section>
+
 			<section id="bc" class="doc-card">
 				<p class="section-label">Boundary and loading cases</p>
-				<h2>6. Point, patch, and distributed loads with finite ends</h2>
+				<h2>7. Point, patch, and distributed loads with finite ends</h2>
 				<p>
 					For finite strips the app superposes particular solutions and applies end boundary
 					conditions. Free-end strip footings carry M = V = 0 at the ends; fixed-end walls carry
@@ -280,6 +384,12 @@
 					x<sub>2</sub>] are handled by integrating the point-load Green function, giving
 					closed-form end moments and deflections in terms of A, B, C, D kernels.
 				</p>
+				<div class="doc-callout">
+					<strong>Load units.</strong> Uniform and patch inputs are line loads q(x) in kN/m
+					along the x direction, not pressures. A pressure p in kPa becomes q = p b. In the
+					transverse strip-footing interpretation, a wall line load N in kN/m along the wall
+					spread over contact width t becomes q = N/t over the patch interval.
+				</div>
 				<div class="equations">
 					<div class="formula">Uniform load q over [x<sub>1</sub>, x<sub>2</sub>], infinite strip:</div>
 					<div class="formula">w(x) = (q / (2 b k<sub>s</sub>))[2 − A(β|x − x<sub>1</sub>|) − A(β|x − x<sub>2</sub>|)]</div>
@@ -295,7 +405,7 @@
 
 			<section id="pasternak" class="doc-card">
 				<p class="section-label">Pasternak extension</p>
-				<h2>7. Pasternak shear-layer coupling</h2>
+				<h2>8. Pasternak shear-layer coupling</h2>
 				<p>
 					Winkler independence is the main limitation of the single-parameter model: adjacent
 					springs do not communicate, so the predicted contact-pressure field is discontinuous at
@@ -336,7 +446,7 @@
 
 			<section id="kerr" class="doc-card">
 				<p class="section-label">Kerr extension</p>
-				<h2>8. Kerr three-parameter model (diagnostic)</h2>
+				<h2>9. Kerr three-parameter model (diagnostic)</h2>
 				<p>
 					Kerr (1964) places a second spring layer in series with the shear layer. The extra
 					parameter matches observed wheel-load response on pavements and softens the
@@ -355,7 +465,7 @@
 
 			<section id="numerics" class="doc-card">
 				<p class="section-label">Numerical discretization</p>
-				<h2>9. Finite-element implementation of the strip</h2>
+				<h2>10. Finite-element implementation of the strip</h2>
 				<p>
 					The strip is discretised with two-node cubic-Hermite beam elements. Each element carries
 					two nodal rotations and two nodal deflections (4 DOF), and Winkler support is assembled
@@ -377,7 +487,7 @@
 
 			<section id="limits" class="doc-card">
 				<p class="section-label">Limitations</p>
-				<h2>10. Assumptions and boundaries of validity</h2>
+				<h2>11. Assumptions and boundaries of validity</h2>
 				<ul class="notes">
 					<li>One-dimensional strip. Two-dimensional plate action (slab on column grid, orthotropic reinforcement) is outside this route.</li>
 					<li>Winkler and Pasternak are <em>stiffness screens</em> derived from the CPT column. They do not capture yield beneath local high-pressure zones — that is the domain of the Stage 2 deformation solver.</li>

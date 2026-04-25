@@ -135,7 +135,7 @@
 								<tr>
 									<td><a href="/docs/workflow">/docs/workflow</a></td>
 									<td>Derivation of engineering layers and parameters from raw CPT readings.</td>
-									<td>Stages 1 to 5: GEF import, classification, layer derivation, parameter assignment, and optional m-fitting.</td>
+									<td>Stages 1 to 5: GEF/Excel/CSV import, classification, layer derivation, parameter assignment, and optional m-fitting.</td>
 								</tr>
 								<tr>
 									<td><a href="/docs/engineering">/docs/engineering</a></td>

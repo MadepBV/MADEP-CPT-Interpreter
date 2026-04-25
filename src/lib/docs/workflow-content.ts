@@ -174,13 +174,13 @@ export const workflowScopeSection: DocSection = {
 	id: 'scope',
 	title: '0A. Scope And Document Basis',
 	intro:
-		'This chapter documents the technical logic of the CPT interpreter from raw GEF import through the interpreted layer state handed into Stage 6. It is written as a theory-and-implementation record: formulas, classifications, parameter routes, engineering assumptions, and the principal references behind the current workflow.',
+		'This chapter documents the technical logic of the CPT interpreter from raw CPT file import through the interpreted layer state handed into Stage 6. It is written as a theory-and-implementation record: formulas, classifications, parameter routes, engineering assumptions, and the principal references behind the current workflow.',
 	subsections: [
 		{
 			id: 'scope-applications',
 			title: '0A.1 Coverage',
 			paragraphs: [
-				'The documentation covers the current implemented interpretation workflow: GEF parsing, per-point CPT classification, layer detection, layer parameter assignment, stiffness derivation, and experimental m-fitting. It is intended as the full technical account of Stages 1 to 5 rather than a short product summary.',
+				'The documentation covers the current implemented interpretation workflow: CPT file parsing for GEF, Excel, and CSV sources, per-point CPT classification, layer detection, layer parameter assignment, stiffness derivation, and experimental m-fitting. It is intended as the full technical account of Stages 1 to 5 rather than a short product summary.',
 				'Where the application contains an engineering simplification, the simplification is stated explicitly. The purpose is not to replace engineering judgement, but to make the implemented mathematics auditable and readable.'
 			],
 			bullets: [
@@ -204,31 +204,35 @@ export const workflowScopeSection: DocSection = {
 export const workflowStageSections: DocSection[] = [
 	{
 		id: 'stage1',
-		title: '1. Stage 1 — GEF File Loading',
+		title: '1. Stage 1 — CPT File Loading',
 		intro:
-			'The first stage reconstructs a usable CPT dataset from the GEF headers and data rows. The logic is header-driven rather than position-driven: physical quantities are mapped from quantity IDs, then converted and filtered into a consistent working dataset.',
+			'The first stage reconstructs a usable CPT dataset from the uploaded source file. Rich GEF files and Excel workbooks with Header/Data sheets are preferred because they carry metadata, water level, surface level, and coordinates. Minimal CSV files are also accepted when only the measurement trace is available.',
 		subsections: [
 			{
 				id: 'stage1-mapping',
-				title: '1.1 Column mapping and physical quantities',
+				title: '1.1 Supported file structures and column mapping',
 				paragraphs: [
 					'GEF files declare their physical quantities through <code>#COLUMNINFO</code> lines. The application reads the quantity identifier and maps it to the relevant column index; column order is therefore never assumed.',
-					'If both penetration length and corrected depth are present, corrected depth takes priority. This avoids using an uncorrected depth trace when the file already carries the corrected penetration geometry.'
+					'Excel workbooks are read from a <code>Data</code> sheet and, when present, a <code>Header</code> sheet. The Data sheet may contain depth, q<sub>c</sub>, f<sub>s</sub>, and R<sub>f</sub>; the Header sheet can provide project, test, location, date, water level, surface level, coordinates, and the net area ratio.',
+					'CSV files are the reduced-input route. They must contain headers named <code>depth</code> and <code>qc</code>. Optional headers are <code>fs</code> and <code>rf</code>. Comma, semicolon, and tab delimiters are detected automatically.',
+					'A recommended minimal CSV header is <code>depth [m], qc [MPa], fs [MPa]</code>. If decimal commas are used in the values, a semicolon-delimited CSV is recommended.'
 				],
 				bullets: [
-					'Quantity 1: penetration length.',
-					'Quantity 2: q<sub>c</sub>.',
-					'Quantity 3: f<sub>s</sub>.',
-					'Quantity 4: R<sub>f</sub>.',
-					'Quantity 6: u<sub>2</sub>.',
-					'Quantity 11: corrected depth.'
+					'GEF quantity 1: penetration length.',
+					'GEF quantity 2: q<sub>c</sub>.',
+					'GEF quantity 3: f<sub>s</sub>.',
+					'GEF quantity 4: R<sub>f</sub>.',
+					'GEF quantity 6: u<sub>2</sub>.',
+					'GEF quantity 11: corrected depth, used before quantity 1 when both are present.',
+					'Excel/CSV column headers may include units, for example <code>qc [MPa]</code>, <code>fs kPa</code>, or <code>Friction ratio (Rf) in %</code>.'
 				]
 			},
 			{
 				id: 'stage1-units',
 				title: '1.2 Unit conversion and row filtering',
 				paragraphs: [
-					'The parser converts q<sub>c</sub> and f<sub>s</sub> to MPa based on the declared GEF unit string. If the unit declaration is absent or ambiguous, a heuristic fallback is used so the file remains workable.',
+					'The parser converts q<sub>c</sub> and f<sub>s</sub> to MPa based on the declared GEF unit string or the Excel/CSV column header. Headers containing MPa are used directly; kPa is divided by 1000; Pa is divided by 1 000 000.',
+					'If the unit declaration is absent or ambiguous, a heuristic fallback is used so the file remains workable: q<sub>c</sub> values above 100 are treated as kPa, otherwise MPa; f<sub>s</sub> values above 1000 are treated as Pa, values above 10 as kPa, otherwise MPa. Explicit unit labels are therefore strongly recommended.',
 					'Rows are removed when they clearly do not represent meaningful CPT measurements, namely negative depths, values before cone engagement, or all-zero terminal rows.'
 				],
 				equations: [
@@ -242,6 +246,8 @@ export const workflowStageSections: DocSection[] = [
 					{ term: 'u<sub>2</sub>', meaning: 'pore pressure behind the cone [MPa]' }
 				],
 				bullets: [
+					'Depth is expected in metres below surface.',
+					'R<sub>f</sub> is optional; when absent or invalid, the app computes it from f<sub>s</sub> and q<sub>c</sub>.',
 					'Rows with z &lt; 0 are discarded.',
 					'Rows with q<sub>c</sub> &lt; 0.02 MPa are treated as cone-not-engaged and discarded.',
 					'All-zero rows appended by logging software are discarded.'
@@ -251,8 +257,8 @@ export const workflowStageSections: DocSection[] = [
 				id: 'stage1-water',
 				title: '1.3 Water table, elevation, and header metadata',
 				paragraphs: [
-					'The phreatic level is first taken from the GEF measurement variables when available; otherwise a default depth below surface is assigned. The engineer may override this value at any time.',
-					'Surface elevation is read from the ZID header or entered manually. When present, all depth values can be expressed relative to TAW as well as depth below surface.'
+					'The phreatic level is first taken from the GEF measurement variables or the Excel Header field <code>Waterniveau</code> when available; otherwise a default depth below surface is assigned. CSV files do not carry this metadata, so the engineer should review or override the default after import.',
+					'Surface elevation is read from the GEF ZID header, the Excel Header field <code>Grondniveau</code>, or entered manually. When present, all depth values can be expressed relative to TAW as well as depth below surface.'
 				],
 				equations: ['z<sub>TAW</sub> = z<sub>surface</sub> − z'],
 				symbols: [

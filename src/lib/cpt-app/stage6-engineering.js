@@ -1459,13 +1459,15 @@ function reinforcementDesign(config, MEdAbs) {
   const gammaS = 1.15;
   const fcd = fck / gammaC;
   const fyd = fyk / gammaS;
-  const bw = 1000;
+  const modelWidth = Math.max(positive(config.b, 1), 0.1);
+  const bw = modelWidth * 1000;
   const mu = d > 0 ? (Math.max(MEdAbs, 0) * 1e6) / (bw * d * d * fcd) : 0;
   const omega = mu < 0.5 ? 1 - Math.sqrt(Math.max(1 - 2 * mu, 0)) : null;
   const AsReq = omega != null ? (omega * bw * d * fcd) / fyd : null;
   const fctm = 0.30 * Math.pow(fck, 2 / 3);
   const AsMin = Math.max((0.26 * fctm) / fyk, 0.0013) * bw * d;
   const As = AsReq == null ? AsMin : Math.max(AsReq, AsMin);
+  const isOneMeterStrip = Math.abs(modelWidth - 1) < 1e-6;
   const warnings = [];
   if (durability.hasOverride && durability.cNomOverride < durability.recommendedCNom) {
     warnings.push(
@@ -1486,6 +1488,10 @@ function reinforcementDesign(config, MEdAbs) {
     cNom,
     recommendedCNom: durability.recommendedCNom,
     d,
+    bw,
+    modelWidth,
+    areaUnits: isOneMeterStrip ? 'mm²/m' : 'mm² over b',
+    momentUnits: isOneMeterStrip ? 'kNm/m' : 'kNm over b',
     fcd,
     fyd,
     mu,
@@ -1521,6 +1527,28 @@ export function analyzeBeamAndReinforcement(layers, wtDepth, config = {}) {
     level: 'warn',
     text: `Stage 6 ${gp > 0 ? 'Pasternak' : 'Winkler'} uses a 1D beam/strip model. True 2D slab-on-grade plate behaviour still needs FE or a dedicated analytical plate solution.`
   });
+  if ((config.loadPattern || 'uniform_full') !== 'uniform_full') {
+    notes.push({
+      level: 'info',
+      text: 'Changing h recalculates both the beam stiffness EI and the EC2 effective depth d. For patch or point loading, a stiffer strip can bridge farther and develop a larger ULS moment, so As,req can increase if MEd grows faster than the lever-arm benefit.'
+    });
+  }
+  if (config.modelMode === 'footing_transverse') {
+    notes.push({
+      level: 'info',
+      text: 'Model interpretation is transverse strip footing: x runs across the footing width, b is the out-of-plane slice width along the wall, and patch loads should represent the wall/contact width.'
+    });
+  } else if (config.modelMode === 'beam_length') {
+    notes.push({
+      level: 'info',
+      text: 'Model interpretation is beam/strip along its length: x runs along the member, b is the section/contact width perpendicular to that run, and full-length uniform loading mainly represents settlement rather than local bending.'
+    });
+  } else {
+    notes.push({
+      level: 'info',
+      text: 'Model interpretation is 1 m slab strip: x is the checked slab direction, b is normally 1.00 m, and outputs are per meter only when b = 1.00 m.'
+    });
+  }
   if (betaL < Math.PI) {
     notes.push({
       level: 'warn',
@@ -1546,6 +1574,12 @@ export function analyzeBeamAndReinforcement(layers, wtDepth, config = {}) {
     notes.push({
       level: 'info',
       text: `Current Pasternak inputs: G_p = ${gp.toFixed(0)} kN/m, G_s,avg = ${ksInfo.GsAvg.toFixed(0)} kPa, H_p = ${ksInfo.zInfluence.toFixed(2)} m, eta = ${ksInfo.gpEta.toFixed(2)}.`
+    });
+  }
+  if (Math.abs(reinforcement.modelWidth - 1) > 1e-6) {
+    notes.push({
+      level: 'info',
+      text: `Reinforcement is checked over the entered model width b = ${reinforcement.modelWidth.toFixed(2)} m, so As is reported as total steel over that width. Use b = 1.00 m for standard mm2/m slab-strip output.`
     });
   }
   if ((config.loadPattern || 'uniform_full') === 'uniform_full') {

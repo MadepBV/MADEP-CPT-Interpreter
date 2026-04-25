@@ -7,7 +7,7 @@
 	const workflow = docsGroups.find((group) => group.path === '/docs/workflow')!;
 	const pageTitle = 'CPT Interpretation — MADEP CPT Interpreter';
 	const pageDescription =
-		'Technical documentation for the CPT interpretation workflow: scope, GEF loading, classification, layering, parameter derivation, experimental m-fitting, engineering conventions, formulas, tables, assumptions, and references.';
+		'Technical documentation for the CPT interpretation workflow: scope, GEF/Excel/CSV loading, classification, layering, parameter derivation, experimental m-fitting, engineering conventions, formulas, tables, assumptions, and references.';
 	const canonicalUrl = 'https://cpt.madep.be/docs/workflow';
 	const ogImageUrl = 'https://cpt.madep.be/logo.png';
 </script>
@@ -44,7 +44,7 @@
 			<p class="hero__eyebrow">CPT interpretation</p>
 			<h1>Technical interpretation workflow of the application.</h1>
 			<p class="hero__lead">
-				This chapter records the full interpretation chain from raw GEF input to the
+				This chapter records the full interpretation chain from raw CPT file input to the
 				engineered layer state used by Stage 6: scope, file reconstruction, point
 				classification, layer rationalization, parameter derivation, optional
 				stress-dependency fitting, and the shared engineering conventions carried forward.
@@ -95,14 +95,14 @@
 				<h2>Application sequence</h2>
 				<p>
 					The workflow is sequential by design. The application first reconstructs a usable
-					CPT trace from the GEF file, then classifies every point, then converts that
+					CPT trace from the uploaded file, then classifies every point, then converts that
 					pointwise sequence into layers, then assigns engineering parameters to those
 					layers, and only after that passes the resulting interpreted state into the Stage 6
 					engineering analyses.
 				</p>
 				<div class="equations">
 					<div class="formula">
-						GEF import → point classification → layer boundaries → model parameters → optional
+						file import → point classification → layer boundaries → model parameters → optional
 						m-fitting → Stage 6 engineering use
 					</div>
 				</div>

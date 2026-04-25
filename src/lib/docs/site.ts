@@ -19,12 +19,12 @@ export const docsGroups: DocsGroup[] = [
 		title: 'CPT interpretation',
 		path: '/docs/workflow',
 		summary:
-			'Stages 1 to 5 of the application flow: GEF import, CPT classification, layer derivation, parameter assignment, and optional stress-dependency fitting.',
+			'Stages 1 to 5 of the application flow: GEF, Excel, and CSV import, CPT classification, layer derivation, parameter assignment, and optional stress-dependency fitting.',
 		pages: [
 			{
-				title: 'Stage 1 — GEF loading',
+				title: 'Stage 1 — CPT loading',
 				path: '/docs/workflow#stage1',
-				summary: 'Header-driven CPT import, quantity mapping, unit conversion, and row filtering.'
+				summary: 'GEF, Excel Header/Data, and reduced CSV import with quantity mapping, unit conversion, and row filtering.'
 			},
 			{
 				title: 'Stage 2 — Classification',

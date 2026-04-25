@@ -6,10 +6,10 @@
 <div class="panel active" id="p0">
 	<div class="sec">
 		<div>
-			<div class="sec-title">Load CPT — GEF file</div>
+			<div class="sec-title">Load CPT — GEF, Excel or CSV file</div>
 			<div class="sec-sub">
-				Belgian/Dutch GEF. Quantity IDs: 1=depth, 2=qc, 3=fs, 4=Rf, 6=u2. Water table from
-				MEASUREMENTVAR 14.
+				Belgian/Dutch GEF, Excel workbooks with Header/Data sheets, or a CSV with depth and
+				qc columns. GEF quantity IDs: 1=depth, 2=qc, 3=fs, 4=Rf, 6=u2.
 			</div>
 		</div>
 	</div>
@@ -28,17 +28,17 @@
 	>
 		<div style="font-size:28px;margin-bottom:10px">📂</div>
 		<div style="font-size:14px;font-weight:600;margin-bottom:4px">
-			Drop one or more .GEF files here or click to browse
+			Drop one or more .GEF, .XLS, .XLSX or .CSV files here or click to browse
 		</div>
 		<div style="font-size:12px;color:var(--tx2)">
-			Select multiple files at once to create multiple CPT tabs. Space-delimited, scientific
-			notation. Column order from COLUMNINFO quantity IDs — not assumed.
+			Select multiple files at once to create multiple CPT tabs. GEF column order comes from
+			COLUMNINFO; Excel and CSV columns are detected from their headers.
 		</div>
 	</div>
 	<input
 		type="file"
 		id="fi"
-		accept=".gef,.GEF,.txt"
+		accept=".gef,.GEF,.txt,.csv,.CSV,.xls,.XLS,.xlsx,.XLSX,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 		style="display:none"
 		onchange={(event) => call('loadGEF', event)}
 		multiple

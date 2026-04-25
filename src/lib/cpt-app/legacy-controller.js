@@ -52,6 +52,7 @@ import { SOIL_CLASS_NAMES, SOIL_FILL_COLORS } from './soil-styles';
 ════════════════════════════════ */
 let __legacyControllerInitialized = false;
 let __legacyControllerHashBound = false;
+let xlsxModulePromise = null;
 let stage6BishopWorker = null;
 let stage6BishopRunId = 0;
 let stage6BishopSeepageWorker = null;
@@ -81,7 +82,8 @@ function newCptState(id){
     id: id||'CPT',
     x: null, y: null,           // site coordinates (m, local or RD)
     data:[], wt:1.7, wtFromFile:false,
-    elev:null, elevFromFile:false,
+    wtSource:null,
+    elev:null, elevFromFile:false, elevSource:null,
     minThk:0.50,
     smartMerge:true,
     smartMergeSensitivity:1.10,
@@ -254,8 +256,26 @@ function setPhase(ph){
 /* ════════════════════════════════
    MULTI-CPT FILE LOAD
 ════════════════════════════════ */
+function stripCptFileExtension(name){
+  return String(name||'CPT').replace(/\.(gef|txt|csv|xls|xlsx)$/i,'');
+}
+
+function isExcelCptFile(file){
+  const name=String(file?.name||'');
+  const type=String(file?.type||'');
+  return /\.(xls|xlsx)$/i.test(name)
+    || type.includes('spreadsheet')
+    || type.includes('excel');
+}
+
+function isCsvCptFile(file){
+  const name=String(file?.name||'');
+  const type=String(file?.type||'');
+  return /\.csv$/i.test(name) || type.includes('csv');
+}
+
 /* Reads files serially because parsing still drives shared DOM/chart state. */
-function importGEFFiles(files){
+function importCptFiles(files){
   if(!files.length)return;
 
   // Build list of target CPT indices before any async work
@@ -272,15 +292,25 @@ function importGEFFiles(files){
     if(fi>=files.length)return;
     const f=files[fi], targetIdx=targets[fi];
     const reader=new FileReader();
-    reader.onload=e=>{
+    reader.onload=async e=>{
       // Save current active, switch to target, parse, restore
       const prevActive=PROJECT.activeCptIdx;
       const prevS=S;
       PROJECT.activeCptIdx=targetIdx;
       S=PROJECT.cpts[targetIdx];
-      parseGEF(e.target.result,f.name);
-      S.id=f.name.replace(/\.gef$/i,'').replace(/\.txt$/i,'').replace(/\.GEF$/i,'');
-      renderBanner();
+      try{
+        let ok;
+        if(isExcelCptFile(f)) ok=await parseExcelCpt(e.target.result,f.name);
+        else if(isCsvCptFile(f)) ok=parseCsvCpt(e.target.result,f.name);
+        else ok=parseGEF(e.target.result,f.name);
+        if(ok!==false){
+          S.id=stripCptFileExtension(f.name);
+          renderBanner();
+        }
+      }catch(err){
+        console.error(err);
+        alert(`Error importing ${f.name}: ${err?.message||err}`);
+      }
       if(fi===0){
         // First file: stay on this CPT, update display
         selectCpt(targetIdx);
@@ -293,16 +323,21 @@ function importGEFFiles(files){
       loadNext(fi+1);
     };
     reader.onerror=()=>{ alert('Error reading '+f.name); loadNext(fi+1); };
-    reader.readAsText(f);
+    if(isExcelCptFile(f)) reader.readAsArrayBuffer(f);
+    else reader.readAsText(f);
   }
   loadNext(0);
+}
+
+function importGEFFiles(files){
+  importCptFiles(files);
 }
 
 /* Multi-CPT file load — one picker action can create multiple CPT tabs. */
 function loadGEF(evt){
   const files=Array.from(evt.target.files||[]);
   evt.target.value='';
-  importGEFFiles(files);
+  importCptFiles(files);
 }
 
 function setCptCoord(axis, val){
@@ -1068,6 +1103,385 @@ document.querySelectorAll('.si').forEach(s=>{
 
 
 /* ════════════════════════════════
+   CPT FILE PARSERS
+════════════════════════════════ */
+function cptValueToMPa(raw, unit, fallbackKind){
+  if(raw==null||isNaN(raw)) return null;
+  const u=String(unit||'').toLowerCase();
+  if(u.includes('mpa')) return raw;
+  if(u.includes('kpa')) return raw/1000;
+  if(u==='pa' || u.endsWith(' pa') || u.startsWith('pa ') || /\bpa\b/.test(u)) return raw/1e6;
+  if(fallbackKind==='qc'){
+    return raw>100?raw/1000:raw;
+  }
+  if(fallbackKind==='fs'){
+    if(Math.abs(raw)>1000) return raw/1e6;
+    if(Math.abs(raw)>10) return raw/1000;
+  }
+  return raw;
+}
+
+function parseCptNumber(value){
+  if(value==null || value==='') return null;
+  if(typeof value==='number') return Number.isFinite(value)?value:null;
+  if(value instanceof Date) return null;
+  let s=String(value).trim();
+  if(!s) return null;
+  s=s.replace(/\s/g,'');
+  if(s.includes(',') && s.includes('.')){
+    s=s.lastIndexOf(',')>s.lastIndexOf('.')
+      ? s.replace(/\./g,'').replace(',','.')
+      : s.replace(/,/g,'');
+  }else{
+    s=s.replace(',','.');
+  }
+  const n=Number(s);
+  return Number.isFinite(n)?n:null;
+}
+
+function pad2(n){
+  return String(n).padStart(2,'0');
+}
+
+function formatExcelHeaderValue(value, key=''){
+  if(value==null) return '';
+  if(value instanceof Date && !isNaN(value)){
+    if(/tijd|time/i.test(key)){
+      return `${pad2(value.getHours())}:${pad2(value.getMinutes())}:${pad2(value.getSeconds())}`;
+    }
+    return `${pad2(value.getDate())}/${pad2(value.getMonth()+1)}/${value.getFullYear()}`;
+  }
+  if(typeof value==='number'){
+    return Number.isInteger(value)?String(value):String(value);
+  }
+  return String(value).trim();
+}
+
+function normalizeExcelLabel(value){
+  return String(value||'')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,' ');
+}
+
+function excelHeaderLookup(headerRows, labels){
+  const wanted=labels.map(normalizeExcelLabel);
+  for(const row of headerRows){
+    const key=normalizeExcelLabel(row?.[0]);
+    if(wanted.includes(key)) return row?.[1];
+  }
+  return null;
+}
+
+function excelHeaderText(headerRows, labels){
+  const raw=excelHeaderLookup(headerRows, labels);
+  const label=labels[0]||'';
+  const text=formatExcelHeaderValue(raw,label);
+  return text||null;
+}
+
+function excelHeaderNumber(headerRows, labels){
+  return parseCptNumber(excelHeaderLookup(headerRows, labels));
+}
+
+function findExcelSheetName(workbook, preferredName){
+  const wanted=normalizeExcelLabel(preferredName);
+  return workbook.SheetNames.find(name=>normalizeExcelLabel(name)===wanted)
+    || workbook.SheetNames.find(name=>normalizeExcelLabel(name).includes(wanted));
+}
+
+function findExcelDataHeaderRow(rows){
+  const max=Math.min(rows.length,40);
+  for(let i=0;i<max;i++){
+    const labels=(rows[i]||[]).map(normalizeExcelLabel);
+    const hasDepth=labels.some(isExcelDepthHeader);
+    const hasQc=labels.some(isExcelQcHeader);
+    if(hasDepth && hasQc) return i;
+  }
+  return -1;
+}
+
+function isExcelDepthHeader(label){
+  return /\bdepth\b/.test(label) || /\bdiepte\b/.test(label) || /penetratie lengte/.test(label);
+}
+
+function isExcelQcHeader(label){
+  return /\bqc\b/.test(label) || /cone resistance/.test(label) || /conus weerstand/.test(label);
+}
+
+function isExcelFsHeader(label){
+  return /\bfs\b/.test(label) || /sleeve friction/.test(label) || /plaatselijke wrijving/.test(label);
+}
+
+function isExcelRfHeader(label){
+  return /\brf\b/.test(label) || /friction ratio/.test(label) || /wrijvingsgetal/.test(label);
+}
+
+function findExcelColumn(headers, predicate){
+  for(let i=0;i<headers.length;i++){
+    if(predicate(normalizeExcelLabel(headers[i]))) return i;
+  }
+  return -1;
+}
+
+function loadXlsxModule(){
+  if(!xlsxModulePromise){
+    xlsxModulePromise=import('xlsx').then(module=>module.default?.read?module.default:module);
+  }
+  return xlsxModulePromise;
+}
+
+function applyParsedCpt({rows, meta, waterLevel, waterSource, elevation, elevationSource, x, y, coordinateSource}){
+  if(!rows.length){alert('No valid data rows found.');return false;}
+
+  S.data=rows;
+  S.wt=waterLevel??1.5;
+  S.wtFromFile=waterLevel!=null;
+  S.wtSource=waterLevel!=null?(waterSource||'file'):null;
+  S.elev=elevation;
+  S.elevFromFile=elevation!=null;
+  S.elevSource=elevation!=null?(elevationSource||'file'):null;
+  if(x!=null && y!=null && (x!==0 || y!==0)){
+    S.x=x;
+    S.y=y;
+  }else if(coordinateSource){
+    S.x=null;
+    S.y=null;
+  }
+  S.meta={...meta,nRows:rows.length,
+    depthMin:rows[0].z,depthMax:rows[rows.length-1].z,
+    hasU2:rows.some(r=>r.u2!=null)};
+
+  // Sync controls
+  document.getElementById('wtR').value=S.wt;
+  document.getElementById('wtN').value=S.wt.toFixed(2);
+  document.getElementById('elevN').value=S.elev!=null?S.elev.toFixed(2):'';
+  const cptXEl=document.getElementById('cptX');
+  const cptYEl=document.getElementById('cptY');
+  if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
+  if(cptYEl) cptYEl.value=S.y!=null?S.y:'';
+  updateElevSrc(); updateWTDisplay();
+
+  renderMeta();
+  document.getElementById('s1body').style.display='block';
+  requestAnimationFrame(()=>initCharts());
+  return true;
+}
+
+async function parseExcelCpt(buffer,fname){
+  const XLSX=await loadXlsxModule();
+  let workbook;
+  try{
+    workbook=XLSX.read(buffer,{type:'array',cellDates:true});
+  }catch(err){
+    alert(`Could not read Excel workbook: ${err?.message||err}`);
+    return false;
+  }
+
+  const dataSheetName=findExcelSheetName(workbook,'Data') || workbook.SheetNames[0];
+  const headerSheetName=findExcelSheetName(workbook,'Header');
+  const dataSheet=workbook.Sheets[dataSheetName];
+  if(!dataSheet){alert('No data sheet found in Excel workbook.');return false;}
+
+  const dataRows=XLSX.utils.sheet_to_json(dataSheet,{header:1,raw:true,defval:null,blankrows:false});
+  const headerRows=headerSheetName
+    ? XLSX.utils.sheet_to_json(workbook.Sheets[headerSheetName],{header:1,raw:true,defval:null,blankrows:false})
+    : [];
+
+  const headerIdx=findExcelDataHeaderRow(dataRows);
+  if(headerIdx<0){alert('Could not find depth/qc columns in the Excel data sheet.');return false;}
+
+  const headers=dataRows[headerIdx]||[];
+  const zCol=findExcelColumn(headers,isExcelDepthHeader);
+  const qcCol=findExcelColumn(headers,isExcelQcHeader);
+  const fsCol=findExcelColumn(headers,isExcelFsHeader);
+  const rfCol=findExcelColumn(headers,isExcelRfHeader);
+  if(zCol<0 || qcCol<0){alert('Excel data sheet needs at least depth and qc columns.');return false;}
+
+  const rows=[];
+  const qcUnit=headers[qcCol]||'';
+  const fsUnit=fsCol>=0?(headers[fsCol]||''):'';
+  for(let i=headerIdx+1;i<dataRows.length;i++){
+    const raw=dataRows[i]||[];
+    const z=parseCptNumber(raw[zCol]);
+    const qcRaw=parseCptNumber(raw[qcCol]);
+    const fsRaw=fsCol>=0?parseCptNumber(raw[fsCol]):null;
+    const rfRaw=rfCol>=0?parseCptNumber(raw[rfCol]):null;
+    if(z==null||qcRaw==null||z<0) continue;
+
+    const qc=cptValueToMPa(qcRaw,qcUnit,'qc');
+    const fs=fsRaw!=null?cptValueToMPa(fsRaw,fsUnit,'fs'):null;
+    if(qc==null||qc<0.02) continue;
+
+    let rf=null;
+    if(rfRaw!=null&&rfRaw>=0&&rfRaw<50){
+      rf=Math.min(rfRaw,20);
+    }else if(fs!=null&&qc>0.05){
+      rf=Math.max(0,Math.min(20,(Math.abs(fs)/qc)*100));
+    }
+
+    rows.push({z:+z.toFixed(4),qc:+qc.toFixed(4),
+      fs:fs!=null?+fs.toFixed(6):null,
+      rf:rf!=null?+rf.toFixed(3):null,u2:null});
+  }
+  rows.sort((a,b)=>a.z-b.z);
+
+  const water=excelHeaderNumber(headerRows,['Waterniveau','Water level']);
+  const elevation=excelHeaderNumber(headerRows,['Grondniveau','Surface level','Ground level','ZID']);
+  const x=excelHeaderNumber(headerRows,['E Coordinate','X Coordinate','Easting']);
+  const y=excelHeaderNumber(headerRows,['N Coordinate','Y Coordinate','Northing']);
+  const aRatio=excelHeaderNumber(headerRows,['Alpha Factor','Alpha','Area ratio']) ?? 0.8;
+  const betaFactor=excelHeaderNumber(headerRows,['Beta Factor','Beta']);
+  const project=excelHeaderText(headerRows,['Taak Nummer','Project','Project ID']);
+  const testid=excelHeaderText(headerRows,['Sondering Nummer','Test ID','CPT ID']);
+  const client=excelHeaderText(headerRows,['Client Naam','Client Name','File owner']);
+  const operator=excelHeaderText(headerRows,['Operator']);
+  const location=excelHeaderText(headerRows,['Locatie','Location']);
+  const date=excelHeaderText(headerRows,['Datum','Date']);
+  const coneNumber=excelHeaderText(headerRows,['Conus Nummer','Cone Number']);
+  const penetrationDepth=excelHeaderNumber(headerRows,['Penetratiediepte','Penetration depth']);
+
+  return applyParsedCpt({
+    rows,
+    waterLevel:water!=null?Math.abs(water):null,
+    waterSource:water!=null?'Header Waterniveau':null,
+    elevation,
+    elevationSource:elevation!=null?'Header Grondniveau':null,
+    x,
+    y,
+    coordinateSource:(x!=null||y!=null)?'Header coordinates':null,
+    meta:{
+      fname,
+      importFormat:'Excel',
+      project,
+      testid,
+      client,
+      owner:client||operator,
+      operator,
+      location,
+      date,
+      coneNumber,
+      penetrationDepth,
+      aRatio,
+      betaFactor,
+      zid:elevation
+    }
+  });
+}
+
+function splitDelimitedLine(line, delimiter){
+  const cells=[];
+  let cell='';
+  let quoted=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){
+      if(quoted && line[i+1]==='"'){
+        cell+='"';
+        i++;
+      }else{
+        quoted=!quoted;
+      }
+    }else if(ch===delimiter && !quoted){
+      cells.push(cell.trim());
+      cell='';
+    }else{
+      cell+=ch;
+    }
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+function parseDelimitedText(text, delimiter){
+  return String(text||'')
+    .replace(/^\uFEFF/,'')
+    .split(/\r?\n/)
+    .map(line=>splitDelimitedLine(line, delimiter))
+    .filter(row=>row.some(cell=>String(cell||'').trim()!==''));
+}
+
+function detectDelimitedTextSeparator(text){
+  const sample=String(text||'')
+    .replace(/^\uFEFF/,'')
+    .split(/\r?\n/)
+    .filter(line=>line.trim())
+    .slice(0,20);
+  const delimiters=[',',';','\t'];
+  let best={delimiter:',',score:-Infinity};
+  for(const delimiter of delimiters){
+    const rows=sample.map(line=>splitDelimitedLine(line, delimiter));
+    const headerIdx=findExcelDataHeaderRow(rows);
+    const maxCols=Math.max(...rows.map(row=>row.length),0);
+    const avgCols=rows.length?rows.reduce((sum,row)=>sum+row.length,0)/rows.length:0;
+    const score=(headerIdx>=0?100:0) + maxCols*3 + avgCols;
+    if(score>best.score) best={delimiter,score};
+  }
+  return best.delimiter;
+}
+
+function parseCsvCpt(text,fname){
+  const delimiter=detectDelimitedTextSeparator(text);
+  const tableRows=parseDelimitedText(text, delimiter);
+  const headerIdx=findExcelDataHeaderRow(tableRows);
+  if(headerIdx<0){alert('Could not find depth/qc columns in the CSV file.');return false;}
+
+  const headers=tableRows[headerIdx]||[];
+  const zCol=findExcelColumn(headers,isExcelDepthHeader);
+  const qcCol=findExcelColumn(headers,isExcelQcHeader);
+  const fsCol=findExcelColumn(headers,isExcelFsHeader);
+  const rfCol=findExcelColumn(headers,isExcelRfHeader);
+  if(zCol<0 || qcCol<0){alert('CSV file needs at least depth and qc columns.');return false;}
+
+  const rows=[];
+  const qcUnit=headers[qcCol]||'';
+  const fsUnit=fsCol>=0?(headers[fsCol]||''):'';
+  for(let i=headerIdx+1;i<tableRows.length;i++){
+    const raw=tableRows[i]||[];
+    const z=parseCptNumber(raw[zCol]);
+    const qcRaw=parseCptNumber(raw[qcCol]);
+    const fsRaw=fsCol>=0?parseCptNumber(raw[fsCol]):null;
+    const rfRaw=rfCol>=0?parseCptNumber(raw[rfCol]):null;
+    if(z==null||qcRaw==null||z<0) continue;
+
+    const qc=cptValueToMPa(qcRaw,qcUnit,'qc');
+    const fs=fsRaw!=null?cptValueToMPa(fsRaw,fsUnit,'fs'):null;
+    if(qc==null||qc<0.02) continue;
+
+    let rf=null;
+    if(rfRaw!=null&&rfRaw>=0&&rfRaw<50){
+      rf=Math.min(rfRaw,20);
+    }else if(fs!=null&&qc>0.05){
+      rf=Math.max(0,Math.min(20,(Math.abs(fs)/qc)*100));
+    }
+
+    rows.push({z:+z.toFixed(4),qc:+qc.toFixed(4),
+      fs:fs!=null?+fs.toFixed(6):null,
+      rf:rf!=null?+rf.toFixed(3):null,u2:null});
+  }
+  rows.sort((a,b)=>a.z-b.z);
+
+  return applyParsedCpt({
+    rows,
+    waterLevel:null,
+    elevation:null,
+    meta:{
+      fname,
+      importFormat:'CSV',
+      project:null,
+      testid:stripCptFileExtension(fname),
+      owner:null,
+      location:null,
+      date:null,
+      aRatio:0.8,
+      zid:null
+    }
+  });
+}
+
+/* ════════════════════════════════
    GEF PARSER
 ════════════════════════════════ */
 function parseGEF(txt,fname){
@@ -1128,20 +1542,6 @@ function parseGEF(txt,fname){
 
     function get(qid){const ci=colMap[qid];return(ci!=null&&ci<vals.length)?vals[ci]:null;}
     function unitFor(qid){return (unitMap[qid]||'').toLowerCase();}
-    function toMPa(raw, unit, fallbackKind){
-      if(raw==null||isNaN(raw)) return null;
-      if(unit.includes('mpa')) return raw;
-      if(unit.includes('kpa')) return raw/1000;
-      if(unit==='pa' || unit.endsWith(' pa') || unit.startsWith('pa ')) return raw/1e6;
-      if(fallbackKind==='qc'){
-        return raw>100?raw/1000:raw;
-      }
-      if(fallbackKind==='fs'){
-        if(Math.abs(raw)>1000) return raw/1e6;
-        if(Math.abs(raw)>10) return raw/1000;
-      }
-      return raw;
-    }
 
     const z=get(11)??get(1);   // prefer corrected depth
     const qc_v=get(2);
@@ -1151,8 +1551,8 @@ function parseGEF(txt,fname){
 
     if(z==null||qc_v==null||isNaN(z)||isNaN(qc_v)||z<0)continue;
 
-    const qc=toMPa(qc_v, unitFor(2), 'qc');
-    const fs=toMPa(fs_v, unitFor(3), 'fs');
+    const qc=cptValueToMPa(qc_v, unitFor(2), 'qc');
+    const fs=cptValueToMPa(fs_v, unitFor(3), 'fs');
 
     let rf=null;
     if(rf_v!=null&&!isNaN(rf_v)&&rf_v>=0&&rf_v<50){
@@ -1169,32 +1569,23 @@ function parseGEF(txt,fname){
       rf:rf!=null?+rf.toFixed(3):null,u2});
   }
 
-  if(!rows.length){alert('No valid data rows found.');return;}
-
-  S.data=rows;
-  S.wt=wl??1.5; S.wtFromFile=wl!=null;
-  S.elev=zid; S.elevFromFile=zid!=null;
-  S.meta={...meta,aRatio,zid,nRows:rows.length,
-    depthMin:rows[0].z,depthMax:rows[rows.length-1].z,
-    hasU2:rows.some(r=>r.u2!=null)};
-
-  // Sync controls
-  document.getElementById('wtR').value=S.wt;
-  document.getElementById('wtN').value=S.wt.toFixed(2);
-  if(S.elev!=null){document.getElementById('elevN').value=S.elev.toFixed(2);}
-  updateElevSrc(); updateWTDisplay();
-
-  renderMeta();
-  document.getElementById('s1body').style.display='block';
-  requestAnimationFrame(()=>initCharts());
+  return applyParsedCpt({
+    rows,
+    waterLevel:wl,
+    waterSource:wl!=null?'MEASUREMENTVAR 14':null,
+    elevation:zid,
+    elevationSource:zid!=null?'ZID':null,
+    meta:{...meta,importFormat:'GEF',aRatio,zid}
+  });
 }
 
 function updateElevSrc(){
+  const src=S.elevSource || 'ZID';
   document.getElementById('elev-src').textContent=
-    S.elevFromFile?'(from ZID)':S.elev!=null?'(manually set)':'(not set — enter for TAW output)';
+    S.elevFromFile?`(from ${src})`:S.elev!=null?'(manually set)':'(not set — enter for TAW output)';
 }
 function updateWTDisplay(){
-  document.getElementById('wt-src').textContent=S.wtFromFile?'(MEASUREMENTVAR 14)':'(default)';
+  document.getElementById('wt-src').textContent=S.wtFromFile?`(${S.wtSource || 'file'})`:'(default)';
   const tawEl=document.getElementById('wt-taw');
   if(S.elev!=null){
     const wtTaw=(S.elev-S.wt).toFixed(2);
@@ -1226,6 +1617,7 @@ function renderMeta(){
 function setElev(v){
   S.elev=(isNaN(v)||v==='')?null:v;
   S.elevFromFile=false;
+  S.elevSource=null;
   updateElevSrc(); updateWTDisplay();
   // Re-render layers if they exist (TAW column changes)
   if(S.layers.length&&document.getElementById('p2').classList.contains('active'))renderLayers();
@@ -1234,6 +1626,8 @@ function setElev(v){
 function setWT(v,fromInput){
   if(isNaN(v)||v<0)return;
   S.wt=v;
+  S.wtFromFile=false;
+  S.wtSource=null;
   if(fromInput)document.getElementById('wtR').value=v;
   else document.getElementById('wtN').value=v.toFixed(2);
   updateWTDisplay();
@@ -1491,7 +1885,8 @@ function loadDemo(){
     rows.push({z,qc:+qc.toFixed(4),fs:+fs.toFixed(6),rf:+rf.toFixed(3),u2:null});
   }
   S.data=rows; S.wt=1.7; S.wtFromFile=true;
-  S.elev=69.97; S.elevFromFile=true;
+  S.wtSource='demo';
+  S.elev=69.97; S.elevFromFile=true; S.elevSource='demo';
   S.meta={project:'Demo Project A',testid:'CPT-1 (demo)',location:'Reference site — anonymised',owner:'Anonymous source',
     date:'2025, 7, 7',aRatio:0.79,zid:69.97,fname:'demo-anonymous.GEF',
     nRows:rows.length,depthMin:0.14,depthMax:21.73,hasU2:false};
@@ -3608,6 +4003,7 @@ function stage6Defaults(){
       timeDays:0
     },
     beam:{
+      modelMode:'slab_strip',
       foundationModel:'pasternak',
       B:1.50,
       b:1.00,
@@ -3968,6 +4364,9 @@ function ensureStage6State(){
   S.stage6.beam.Df = Math.min(Math.max(+S.stage6.beam.Df || 0.0, 0.0), maxDepth);
   S.stage6.beam.zInfluence = Math.max(+S.stage6.beam.zInfluence || 1, 0.5);
   S.stage6.beam.gpEta = Math.max(+S.stage6.beam.gpEta || 1.0, 0);
+  if(!['slab_strip','beam_length','footing_transverse'].includes(S.stage6.beam.modelMode)){
+    S.stage6.beam.modelMode = 'slab_strip';
+  }
   if(S.stage6.beam.gpOverride != null && S.stage6.beam.gpOverride !== ''){
     S.stage6.beam.gpOverride = +S.stage6.beam.gpOverride;
   } else {
@@ -9097,12 +9496,96 @@ function stage6BeamUlsHelp(selected){
 
 function stage6BeamLoadPatternHelp(selected){
   const text = {
-    uniform_full:'Uniform full length loads the whole strip equally. This is useful for settlement-style screening, but it can legitimately give almost zero bending moment because the strip settles nearly uniformly on the soil springs.',
-    uniform_patch:'Uniform patch is the better choice when you want bending from a wall strip, machine strip, loaded zone, or any local area load on the slab/beam.',
+    uniform_full:'Uniform full length applies the same line load along the whole x direction. For a long uniform strip this is effectively the infinite/uniform case: settlement is meaningful, while longitudinal bending can legitimately be almost zero.',
+    uniform_patch:'Uniform patch applies a line load only between patch start x and patch end x. Use it for a loaded slab bay, machine strip, wall contact width in transverse footing mode, or any local zone that should create bending along x.',
     point_centre:'Point load at centre is a localised strip/beam check. Use it for a concentrated reaction or local heavy point action applied at midspan.',
     point_at_x:'Point load at x is the same localised check, but at a chosen position along the strip so you can inspect edge-near or eccentric loading.'
   };
   return text[selected] || text.uniform_full;
+}
+
+function stage6BeamModelModeOptions(selected){
+  const labels = {
+    slab_strip:'x = slab strip direction',
+    beam_length:'x = along wall / beam length',
+    footing_transverse:'x = across footing width'
+  };
+  return ['slab_strip','beam_length','footing_transverse']
+    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
+    .join('');
+}
+
+function stage6BeamModelModeLabel(selected){
+  const labels = {
+    slab_strip:'1 m slab strip',
+    beam_length:'Along wall / beam length',
+    footing_transverse:'Across footing width'
+  };
+  return labels[selected] || labels.slab_strip;
+}
+
+function stage6BeamAxisCopy(selected){
+  const mode = ['slab_strip','beam_length','footing_transverse'].includes(selected) ? selected : 'slab_strip';
+  const copy = {
+    slab_strip: {
+      prompt: '1D bending is solved only along x. For a slab strip, x is the checked slab direction and b is normally 1.00 m.',
+      summary: 'x = checked slab strip direction',
+      canvasMode: 'x: slab strip direction, b: unit strip width',
+      LLabel: 'Analysis length L along slab x (m)',
+      LTip: 'L is the in-plan length of the checked slab strip in the x direction.',
+      bLabel: 'Strip width b along y (m)',
+      bTip: 'b is the strip width perpendicular to x. Keep b = 1.00 m when you want kNm/m and mm2/m output.',
+      BLabel: 'Bearing width B for k_s (m)',
+      BTip: 'B is the characteristic contact width used only to derive k_s from the CPT stiffness profile. For slab-strip screening it is the width you want the Vesić support conversion to represent.',
+      hLabel: 'Slab thickness h along z (m)'
+    },
+    beam_length: {
+      prompt: '1D bending is solved only along x. Here x runs along the wall or beam; local patch or point loads create the useful bending case.',
+      summary: 'x = foundation / wall run',
+      canvasMode: 'x: wall/beam run, b: contact width',
+      LLabel: 'Run length L along wall / beam x (m)',
+      LTip: 'L is the length along the wall, strip, or beam run. A full-length uniform load mainly checks settlement; patch or point loads create local bending along this run.',
+      bLabel: 'Contact width b across the run (m)',
+      bTip: 'b is the physical strip/contact width perpendicular to the wall or beam run. It is used in I = b*h^3/12, k_s*b, and the reinforcement width b_w.',
+      BLabel: 'Bearing width B for k_s (m)',
+      BTip: 'B is the real bearing/contact width used in the subgrade-reaction calculation. For a beam along its length this often equals the physical contact width b, but it is entered separately so you can audit the assumption.',
+      hLabel: 'Section height h along z (m)'
+    },
+    footing_transverse: {
+      prompt: '1D bending is solved only along x. Here x runs across the footing width; b is the out-of-plane slice along the wall, often 1.00 m.',
+      summary: 'x = transverse footing width',
+      canvasMode: 'x: across footing width, b: slice along wall',
+      LLabel: 'Footing width L across wall x (m)',
+      LTip: 'L is the footing width across the wall or line load. Use this mode when the ordinary strip-footing bending check is transverse rather than along the wall length.',
+      bLabel: 'Out-of-plane strip width b along wall (m)',
+      bTip: 'b is the model slice width along the wall. Use b = 1.00 m for a conventional per-meter strip-footing check.',
+      BLabel: 'Bearing width B for k_s (m)',
+      BTip: 'B is the support width used in the k_s derivation. In transverse strip-footing mode this normally matches the footing width across the wall.',
+      hLabel: 'Footing height h along z (m)'
+    }
+  };
+  return copy[mode];
+}
+
+function stage6BeamMomentContextHelp(cfg){
+  const pattern = cfg.loadPattern || 'uniform_full';
+  if(pattern === 'uniform_full'){
+    return 'Full-length uniform loading is mainly a settlement case in this 1D model; longitudinal bending can be near zero because soil reaction balances the load almost uniformly.';
+  }
+  return 'Patch and point loads make the strip redistribute load into the soil. Increasing h raises EI, so M_Ed can increase even while deflection drops.';
+}
+
+function stage6BeamOrientationHtml(cfg, analysis){
+  const mode = cfg.modelMode || 'slab_strip';
+  const axis = stage6BeamAxisCopy(mode);
+  return `
+    <label style="font-size:11px;color:var(--tx2)">Analysis direction${stage6Tooltip('The equations are one-dimensional. This choice defines what the x direction means before you enter L, b, B, loads, and patch positions.')}
+      <select onchange="setStage6Field('beam.modelMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+        ${stage6BeamModelModeOptions(mode)}
+      </select>
+    </label>
+    <div class="st6-help">${axis.prompt}</div>
+  `;
 }
 
 function stage6BearingEc7Options(selected){
@@ -10072,7 +10555,13 @@ function renderStage6BeamApp(analysis){
   const cfg = S.stage6.beam;
   const ks = analysis.ksInfo;
   const reinf = analysis.reinforcement;
+  const axisCopy = stage6BeamAxisCopy(cfg.modelMode);
+  const momentUnits = reinf.momentUnits || 'kNm/m';
+  const areaUnits = reinf.areaUnits || 'mm²/m';
+  const loadInputKind = analysis.slsLoadMeta.units === 'kN' ? 'point action' : 'line load q(x)';
+  const loadInputPlural = analysis.slsLoadMeta.units === 'kN' ? 'point actions' : 'line loads q(x)';
   const loadRows = [
+    {k:'Analysis direction', v:axisCopy.summary},
     {k:'Foundation model', v:ks.foundationModel === 'pasternak' ? 'Pasternak (two-parameter)' : 'Winkler'},
     {k:'SLS route', v:`${analysis.slsLoadMeta.label}`},
     {k:'ULS route', v:`${analysis.ulsLoadMeta.label}`},
@@ -10098,17 +10587,18 @@ function renderStage6BeamApp(analysis){
         <div>
           <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
           <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
-            <div class="st6-help" style="margin-bottom:2px">Hover the <strong>ⓘ</strong> icons for how to use each modelling input. This module is best used as a <strong>1 m strip screening tool</strong>, not as a final 2D slab design model.</div>
-            <label style="font-size:11px;color:var(--tx2)">Soil width B for ks (m)${stage6Tooltip('B is the characteristic loaded width used in the subgrade-reaction calculation k_s. For a strip footing, beam, or 1 m slab strip, start with the real loaded width bearing on soil. For a full slab, B is often a screening width rather than the whole slab plan dimension.')}
+            <div class="st6-help" style="margin-bottom:2px">Pick the <strong>x direction</strong> first. The canvas shows the x-z model view and the y-z section for the values below.</div>
+            ${stage6BeamOrientationHtml(cfg, analysis)}
+            <label style="font-size:11px;color:var(--tx2)">${axisCopy.BLabel}${stage6Tooltip(axisCopy.BTip)}
               <input type="number" step="0.1" min="0.1" value="${cfg.B.toFixed(2)}" onchange="setStage6Field('beam.B', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
             </label>
-            <label style="font-size:11px;color:var(--tx2)">Beam / strip width b (m)${stage6Tooltip('b is the structural strip width used for the beam stiffness and line-foundation coupling. For slab screening, keep b = 1.0 m so the output stays in kNm/m and mm2/m.')}
+            <label style="font-size:11px;color:var(--tx2)">${axisCopy.bLabel}${stage6Tooltip(axisCopy.bTip)}
               <input type="number" step="0.1" min="0.1" value="${cfg.b.toFixed(2)}" onchange="setStage6Field('beam.b', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
             </label>
-            <label style="font-size:11px;color:var(--tx2)">Length L (m)${stage6Tooltip('L is the strip length in the direction you want to analyse. For a slab, run the tool separately in the two principal strip directions if you want a first screening comparison.')}
+            <label style="font-size:11px;color:var(--tx2)">${axisCopy.LLabel}${stage6Tooltip(axisCopy.LTip)}
               <input type="number" step="0.1" min="0.5" value="${cfg.L.toFixed(2)}" onchange="setStage6Field('beam.L', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
             </label>
-            <label style="font-size:11px;color:var(--tx2)">Thickness h (m)${stage6Tooltip('h is the concrete member thickness used in the strip stiffness EI and in the reinforcement effective depth d. Increasing h strongly increases stiffness and usually reduces deflection and required steel.')}
+            <label style="font-size:11px;color:var(--tx2)">${axisCopy.hLabel}${stage6Tooltip('h is the vertical concrete section depth. It is used twice: it increases strip stiffness EI for the soil-supported beam solve and increases reinforcement effective depth d for the section check. Because a stiffer strip can bridge a larger MEd on elastic support, As,req can rise over some h ranges even though a fixed-moment section check would usually need less steel.')}
               <input type="number" step="0.01" min="0.1" value="${cfg.h.toFixed(2)}" onchange="setStage6Field('beam.h', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
             </label>
             <label style="font-size:11px;color:var(--tx2)">Founding depth Df (m)${stage6Tooltip('Df shifts the evaluation depth for the soil stiffness averaging. Use the depth of the underside of the slab, strip footing, or beam relative to ground level.')}
@@ -10188,13 +10678,13 @@ function renderStage6BeamApp(analysis){
                   </select>
                 </label>
                 <div class="st6-help">${stage6UseCategoryHelp(cfg.useCategory)}</div>
-                <label style="font-size:11px;color:var(--tx2)">Permanent load Gk (${analysis.slsLoadMeta.units})
+                <label style="font-size:11px;color:var(--tx2)">Permanent ${loadInputKind} Gk (${analysis.slsLoadMeta.units})
                   <input type="number" step="1" min="0" value="${cfg.Gk.toFixed(1)}" onchange="setStage6Field('beam.Gk', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
                 </label>
-                <label style="font-size:11px;color:var(--tx2)">Leading variable load Qk (${analysis.slsLoadMeta.units})
+                <label style="font-size:11px;color:var(--tx2)">Leading variable ${loadInputKind} Qk (${analysis.slsLoadMeta.units})
                   <input type="number" step="1" min="0" value="${cfg.QLead.toFixed(1)}" onchange="setStage6Field('beam.QLead', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
                 </label>
-                <label style="font-size:11px;color:var(--tx2)">Other variable loads together (${analysis.slsLoadMeta.units})
+                <label style="font-size:11px;color:var(--tx2)">Other variable ${loadInputPlural} together (${analysis.slsLoadMeta.units})
                   <input type="number" step="1" min="0" value="${cfg.QOther.toFixed(1)}" onchange="setStage6Field('beam.QOther', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
                 </label>
               </div>
@@ -10232,7 +10722,7 @@ function renderStage6BeamApp(analysis){
               <label style="font-size:11px;color:var(--tx2)">Override c_nom (mm, optional)
                 <input type="number" step="1" min="0" value="${cfg.cNomOverride!=null?cfg.cNomOverride:''}" onchange="setStage6Field('beam.cNomOverride', this.value)" placeholder="leave blank for recommendation" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
               </label>
-              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.isSlabOrPlate?'checked':''} onchange="setStage6Field('beam.isSlabOrPlate', this.checked)">slab / plate member</label>
+              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.isSlabOrPlate?'checked':''} onchange="setStage6Field('beam.isSlabOrPlate', this.checked)">EC2 slab / plate durability class (cover only)</label>
               <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.specialQC?'checked':''} onchange="setStage6Field('beam.specialQC', this.checked)">special QC / precast-like execution</label>
               <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.castAgainstUnevenSurface?'checked':''} onchange="setStage6Field('beam.castAgainstUnevenSurface', this.checked)">cast against uneven prepared surface (+5 mm)</label>
               <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.castAgainstPreparedGround?'checked':''} onchange="setStage6Field('beam.castAgainstPreparedGround', this.checked)">cast against prepared ground / blinding (minimum 40 mm)</label>
@@ -10251,6 +10741,12 @@ function renderStage6BeamApp(analysis){
               <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">ULS bending moment M(x)</div>
               <div style="position:relative;height:190px"><canvas id="stage6BeamMomentChart" role="img" aria-label="Beam bending moment diagram"></canvas></div>
             </div>
+            <div>
+              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Geometry preview (view only)</div>
+              <div style="position:relative;height:220px;border:1px solid var(--bd);border-radius:3px;background:var(--bg2);overflow:hidden">
+                <canvas id="stage6BeamGeometryCanvas" role="img" aria-label="Beam or slab strip geometry preview" style="width:100%;height:100%;display:block"></canvas>
+              </div>
+            </div>
           </div>
         </div>
         <div>
@@ -10265,14 +10761,16 @@ function renderStage6BeamApp(analysis){
             <tr><td>w_max,SLS</td><td>${(analysis.sls.maxDeflection.value*1000).toFixed(2)} mm</td></tr>
             <tr><td>w_allow</td><td>${((cfg.L / cfg.allowableDeflectionRatio)*1000).toFixed(2)} mm</td></tr>
             <tr><td>SLS utilisation</td><td>${(Math.abs(analysis.sls.maxDeflection.value)/Math.max(cfg.L / cfg.allowableDeflectionRatio, 1e-6)).toFixed(2)}</td></tr>
-            <tr><td>M_Ed,max</td><td>${Math.abs(analysis.uls.maxMoment.value).toFixed(2)} kNm/m</td></tr>
+            <tr><td>M_Ed,max</td><td>${Math.abs(analysis.uls.maxMoment.value).toFixed(2)} ${momentUnits}</td></tr>
             <tr><td>Exposure</td><td>${reinf.durability.exposureClass}</td></tr>
             <tr><td>Structural class</td><td>S${reinf.structuralClass}</td></tr>
             <tr><td>c_nom</td><td>${reinf.cNom.toFixed(0)} mm</td></tr>
-            <tr><td>As,req</td><td>${reinf.AsReq!=null?reinf.AsReq.toFixed(0):'—'} mm²/m</td></tr>
-            <tr><td>As,min</td><td>${reinf.AsMin.toFixed(0)} mm²/m</td></tr>
-            <tr><td>As,governing</td><td>${reinf.As.toFixed(0)} mm²/m</td></tr>
+            <tr><td>b_w</td><td>${reinf.bw.toFixed(0)} mm</td></tr>
+            <tr><td>As,req</td><td>${reinf.AsReq!=null?reinf.AsReq.toFixed(0):'—'} ${areaUnits}</td></tr>
+            <tr><td>As,min</td><td>${reinf.AsMin.toFixed(0)} ${areaUnits}</td></tr>
+            <tr><td>As,governing</td><td>${reinf.As.toFixed(0)} ${areaUnits}</td></tr>
           </table>
+          <div class="st6-help" style="margin-bottom:10px">${stage6BeamMomentContextHelp(cfg)}</div>
           <div class="st6-help">k_s is <strong>not</strong> a fixed soil material constant. It depends on the interpreted CPT stiffness, the loaded width <strong>B</strong>, the averaging depth, and the strip stiffness. As a rough order of magnitude only: very soft support may be around <strong>5,000-20,000 kN/m³</strong>, medium support <strong>20,000-80,000 kN/m³</strong>, and stiff/dense support <strong>80,000-200,000+ kN/m³</strong>. Use these only as a sanity check, not as target values.</div>
         </div>
       </div>
@@ -10289,7 +10787,7 @@ function renderStage6BeamApp(analysis){
           <div style="font-size:11px;color:var(--tx2);line-height:1.55">
             Foundation model = <strong>${ks.foundationModel === 'pasternak' ? 'Pasternak (1D strip)' : 'Winkler'}</strong><br>
             Structural stiffness I = <strong>${ks.I.toFixed(5)} m4</strong><br>
-            ULS design moment = <strong>${Math.abs(analysis.uls.maxMoment.value).toFixed(2)} kNm/m</strong><br>
+            ULS design moment = <strong>${Math.abs(analysis.uls.maxMoment.value).toFixed(2)} ${momentUnits}</strong><br>
             c_nom used = <strong>${reinf.cNom.toFixed(0)} mm</strong><br>
             Effective depth d = <strong>${reinf.d.toFixed(0)} mm</strong><br>
             Structural class = <strong>S${reinf.structuralClass}</strong>
@@ -11957,22 +12455,281 @@ function buildStage6DewateringCharts(){
 
 function buildStage6BeamCharts(){
   const analysis = S.stage6Cache?.beam;
-  if(!analysis || typeof Chart === 'undefined') return;
-  const tickFmt = (value)=>stage6CompactNumber(value, 2);
-  const defCanvas = stage6DestroyChart('stage6BeamDeflectionChart');
-  if(defCanvas){
-    defCanvas._chartRef = new Chart(defCanvas, buildBeamDeflectionChartConfig({
-      analysis,
-      tickFormatter:tickFmt
-    }));
+  if(!analysis) return;
+  if(typeof Chart !== 'undefined'){
+    const tickFmt = (value)=>stage6CompactNumber(value, 2);
+    const defCanvas = stage6DestroyChart('stage6BeamDeflectionChart');
+    if(defCanvas){
+      defCanvas._chartRef = new Chart(defCanvas, buildBeamDeflectionChartConfig({
+        analysis,
+        tickFormatter:tickFmt
+      }));
+    }
+    const momentCanvas = stage6DestroyChart('stage6BeamMomentChart');
+    if(momentCanvas){
+      momentCanvas._chartRef = new Chart(momentCanvas, buildBeamMomentChartConfig({
+        analysis,
+        tickFormatter:tickFmt
+      }));
+    }
   }
-  const momentCanvas = stage6DestroyChart('stage6BeamMomentChart');
-  if(momentCanvas){
-    momentCanvas._chartRef = new Chart(momentCanvas, buildBeamMomentChartConfig({
-      analysis,
-      tickFormatter:tickFmt
-    }));
+  drawStage6BeamGeometryPreview(analysis);
+}
+
+function stage6BeamCanvasText(ctx, text, x, y, opts = {}){
+  const size = opts.size || 11;
+  const weight = opts.weight || 500;
+  ctx.save();
+  ctx.font = `${weight} ${size}px Inter, system-ui, sans-serif`;
+  ctx.fillStyle = opts.color || '#344054';
+  ctx.textAlign = opts.align || 'left';
+  ctx.textBaseline = opts.baseline || 'middle';
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function stage6BeamRoundedRect(ctx, x, y, w, h, r){
+  const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+  ctx.closePath();
+}
+
+function stage6BeamDrawDimension(ctx, x1, y1, x2, y2, label, vertical = false){
+  ctx.save();
+  ctx.strokeStyle = '#667085';
+  ctx.fillStyle = '#667085';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  const tick = 4;
+  if(vertical){
+    ctx.beginPath();
+    ctx.moveTo(x1 - tick, y1);
+    ctx.lineTo(x1 + tick, y1);
+    ctx.moveTo(x2 - tick, y2);
+    ctx.lineTo(x2 + tick, y2);
+    ctx.stroke();
+    stage6BeamCanvasText(ctx, label, x1 + 8, (y1 + y2) / 2, {size:10, color:'#475467'});
+  }else{
+    ctx.beginPath();
+    ctx.moveTo(x1, y1 - tick);
+    ctx.lineTo(x1, y1 + tick);
+    ctx.moveTo(x2, y2 - tick);
+    ctx.lineTo(x2, y2 + tick);
+    ctx.stroke();
+    stage6BeamCanvasText(ctx, label, (x1 + x2) / 2, y1 - 9, {size:10, color:'#475467', align:'center'});
   }
+  ctx.restore();
+}
+
+function stage6BeamDrawLoadArrow(ctx, x, yTop, yBot, color){
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(x, yTop);
+  ctx.lineTo(x, yBot);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, yBot);
+  ctx.lineTo(x - 4, yBot - 7);
+  ctx.lineTo(x + 4, yBot - 7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawStage6BeamGeometryPreview(analysis){
+  const canvas = document.getElementById('stage6BeamGeometryCanvas');
+  if(!(canvas instanceof HTMLCanvasElement) || !analysis) return;
+  const rect = canvas.getBoundingClientRect();
+  if(!(rect.width > 0 && rect.height > 0)) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(rect.width * dpr));
+  const h = Math.max(1, Math.round(rect.height * dpr));
+  if(canvas.width !== w || canvas.height !== h){
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const ctx = canvas.getContext('2d');
+  if(!ctx) return;
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  const W = rect.width;
+  const H = rect.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#F8FAFC';
+  ctx.fillRect(0, 0, W, H);
+
+  const cfg = S.stage6?.beam || {};
+  const ks = analysis.ksInfo || {};
+  const mode = cfg.modelMode || 'slab_strip';
+  const axisCopy = stage6BeamAxisCopy(mode);
+  const L = Math.max(+cfg.L || +ks.L || 6, 0.5);
+  const b = Math.max(+cfg.b || +ks.b || 1, 0.1);
+  const B = Math.max(+cfg.B || +ks.B || b, 0.1);
+  const depth = Math.max(+cfg.h || +ks.h || 0.3, 0.05);
+  const Df = Math.max(+cfg.Df || 0, 0);
+  const pattern = cfg.loadPattern || 'uniform_full';
+  const margin = 18;
+  const mainX = margin;
+  const mainY = 24;
+  const mainW = Math.max(160, W - 210);
+  const mainH = H - 42;
+  const insetX = mainX + mainW + 18;
+  const insetW = Math.max(150, W - insetX - margin);
+  const soilY = mainY + Math.min(mainH * 0.58, mainH - 58);
+  const zScale = Math.min(54, Math.max(10, (soilY - mainY - 12) / Math.max(Df, depth, 0.1)));
+  const groundY = Math.max(mainY + 10, soilY - Df * zScale);
+  const beamPixH = Math.max(10, Math.min(64, depth * zScale));
+  const beamY = soilY - beamPixH;
+  const scaleX = mainW / L;
+
+  // Soil bed and founding depth context.
+  ctx.fillStyle = '#EEF4EC';
+  ctx.fillRect(mainX, groundY, mainW, mainH - (groundY - mainY));
+  ctx.strokeStyle = '#6F8F64';
+  ctx.setLineDash([5, 4]);
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(mainX, groundY);
+  ctx.lineTo(mainX + mainW, groundY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  stage6BeamCanvasText(ctx, 'soil surface', mainX + 6, groundY - 8, {size:10, color:'#667085'});
+  ctx.strokeStyle = '#8AA57F';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(mainX, soilY);
+  ctx.lineTo(mainX + mainW, soilY);
+  ctx.stroke();
+  for(let x = mainX; x < mainX + mainW; x += 14){
+    ctx.strokeStyle = 'rgba(138,165,127,0.32)';
+    ctx.beginPath();
+    ctx.moveTo(x, soilY + 8);
+    ctx.lineTo(x + 10, soilY);
+    ctx.stroke();
+  }
+
+  // Springs.
+  const springCount = Math.max(8, Math.min(22, Math.round(mainW / 28)));
+  ctx.strokeStyle = '#9AA6B2';
+  ctx.lineWidth = 1;
+  for(let i = 0; i <= springCount; i += 1){
+    const x = mainX + (mainW * i) / springCount;
+    const y0 = soilY + 3;
+    const amp = 4;
+    const step = 4;
+    ctx.beginPath();
+    ctx.moveTo(x, y0);
+    for(let j = 1; j <= 6; j += 1){
+      ctx.lineTo(x + (j % 2 ? amp : -amp), y0 + j * step);
+    }
+    ctx.lineTo(x, y0 + 7 * step);
+    ctx.stroke();
+  }
+
+  // Beam/slab rectangle in x-z view.
+  stage6BeamRoundedRect(ctx, mainX, beamY, mainW, beamPixH, 2);
+  ctx.fillStyle = '#D9E7F5';
+  ctx.fill();
+  ctx.strokeStyle = '#3C6F97';
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(60,111,151,0.12)';
+  ctx.fillRect(mainX, beamY + beamPixH - 5, mainW, 5);
+
+  // Load rendering.
+  const loadColor = '#C2410C';
+  if(pattern === 'uniform_full' || pattern === 'uniform_patch'){
+    const xStart = pattern === 'uniform_patch' ? Math.max(0, Math.min(L, +cfg.xStart || 0)) : 0;
+    const xEndRaw = pattern === 'uniform_patch' ? (+cfg.xEnd || L) : L;
+    const xEnd = Math.max(xStart, Math.min(L, xEndRaw));
+    const px1 = mainX + xStart * scaleX;
+    const px2 = mainX + xEnd * scaleX;
+    ctx.fillStyle = 'rgba(194,65,12,0.10)';
+    ctx.fillRect(px1, beamY - 30, Math.max(2, px2 - px1), 24);
+    const arrows = Math.max(2, Math.min(10, Math.round((px2 - px1) / 28)));
+    for(let i = 0; i < arrows; i += 1){
+      const x = px1 + ((px2 - px1) * (i + 0.5)) / arrows;
+      stage6BeamDrawLoadArrow(ctx, x, beamY - 28, beamY - 6, loadColor);
+    }
+    stage6BeamCanvasText(ctx, pattern === 'uniform_patch' ? 'patch q(x)' : 'full-length q(x)', (px1 + px2) / 2, beamY - 36, {size:10, color:loadColor, align:'center'});
+  }else{
+    const pointX = pattern === 'point_at_x' ? (+cfg.xLoad || L / 2) : L / 2;
+    const px = mainX + Math.max(0, Math.min(L, pointX)) * scaleX;
+    stage6BeamDrawLoadArrow(ctx, px, beamY - 40, beamY - 5, loadColor);
+    stage6BeamCanvasText(ctx, 'P', px + 7, beamY - 34, {size:10, color:loadColor});
+  }
+
+  stage6BeamDrawDimension(ctx, mainX, beamY + beamPixH + 42, mainX + mainW, beamY + beamPixH + 42, `L = ${L.toFixed(2)} m`);
+  stage6BeamDrawDimension(ctx, mainX + mainW + 8, beamY, mainX + mainW + 8, beamY + beamPixH, `h = ${depth.toFixed(2)} m`, true);
+  stage6BeamDrawDimension(ctx, mainX + 10, groundY, mainX + 10, soilY, `Df = ${Df.toFixed(2)} m`, true);
+  stage6BeamCanvasText(ctx, 'soil bed / elastic support', mainX + mainW - 6, soilY + 44, {size:10, color:'#667085', align:'right'});
+  stage6BeamCanvasText(ctx, `x-z view - ${axisCopy.summary}`, mainX, 13, {size:11, weight:700, color:'#344054'});
+
+  // Cross-section inset y-z.
+  const insetY = mainY + 8;
+  const insetH = mainH - 12;
+  ctx.strokeStyle = '#D0D5DD';
+  ctx.beginPath();
+  ctx.moveTo(insetX - 10, mainY);
+  ctx.lineTo(insetX - 10, mainY + mainH);
+  ctx.stroke();
+  stage6BeamCanvasText(ctx, 'y-z section', insetX, 13, {size:11, weight:700, color:'#344054'});
+  const secBaseY = insetY + Math.min(insetH * 0.58, insetH - 56);
+  const maxSecW = insetW - 36;
+  const widthScale = maxSecW / Math.max(b, B);
+  const bW = Math.max(16, b * widthScale);
+  const BW = Math.max(16, B * widthScale);
+  const secZScale = Math.min(58, Math.max(14, (secBaseY - insetY - 12) / Math.max(Df, depth, 0.1)));
+  const secGroundY = Math.max(insetY + 8, secBaseY - Df * secZScale);
+  const secH = Math.max(20, Math.min(76, depth * secZScale));
+  const secCX = insetX + insetW / 2;
+  const secX = secCX - bW / 2;
+  const secY = secBaseY - secH;
+  ctx.fillStyle = '#EEF4EC';
+  ctx.fillRect(insetX, secGroundY, insetW - 4, insetH - (secGroundY - insetY));
+  ctx.strokeStyle = '#6F8F64';
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(insetX, secGroundY);
+  ctx.lineTo(insetX + insetW - 4, secGroundY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  stage6BeamCanvasText(ctx, 'surface', insetX + 3, secGroundY - 8, {size:9, color:'#667085'});
+  ctx.strokeStyle = '#8AA57F';
+  ctx.beginPath();
+  ctx.moveTo(insetX, secBaseY);
+  ctx.lineTo(insetX + insetW - 4, secBaseY);
+  ctx.stroke();
+  const bx = secCX - BW / 2;
+  ctx.fillStyle = 'rgba(138,165,127,0.20)';
+  ctx.fillRect(bx, secBaseY + 2, BW, 12);
+  ctx.strokeStyle = '#8AA57F';
+  ctx.strokeRect(bx, secBaseY + 2, BW, 12);
+  stage6BeamRoundedRect(ctx, secX, secY, bW, secH, 2);
+  ctx.fillStyle = '#D9E7F5';
+  ctx.fill();
+  ctx.strokeStyle = '#3C6F97';
+  ctx.stroke();
+  stage6BeamDrawDimension(ctx, secX, secY - 10, secX + bW, secY - 10, `b = ${b.toFixed(2)} m`);
+  stage6BeamDrawDimension(ctx, secX + bW + 8, secY, secX + bW + 8, secY + secH, `h = ${depth.toFixed(2)} m`, true);
+  stage6BeamDrawDimension(ctx, bx, secBaseY + 30, bx + BW, secBaseY + 30, `B = ${B.toFixed(2)} m`);
+  stage6BeamCanvasText(ctx, axisCopy.canvasMode, insetX, H - 15, {size:10, color:'#475467'});
+  ctx.restore();
 }
 
 function buildStage6BishopLineProbeChart(){
@@ -12206,11 +12963,11 @@ function stage7StiffMethodLabel(method){
 }
 
 function stage7WtSourceLabel(){
-  return S.wtFromFile ? 'MEASUREMENTVAR 14' : 'Manual / default';
+  return S.wtFromFile ? (S.wtSource || 'File') : 'Manual / default';
 }
 
 function stage7ElevSourceLabel(){
-  return S.elevFromFile ? 'ZID' : (S.elev != null ? 'Manual' : 'Not set');
+  return S.elevFromFile ? (S.elevSource || 'File') : (S.elev != null ? 'Manual' : 'Not set');
 }
 
 function stage7LayerWarnings(){
