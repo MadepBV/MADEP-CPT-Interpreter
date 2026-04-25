@@ -27,6 +27,20 @@ import {
   seedMaterialPointStateFromInitialStress
 } from '../src/lib/cpt-app/deformation/material-models.js';
 import { elasticMatrix6x6, planeStrainElasticMatrix, prepareMechanicalMaterial } from '../src/lib/cpt-app/deformation/material.js';
+import { buildDeformationMesh } from '../src/lib/cpt-app/deformation/mesh.js';
+import {
+  edgeTractionVector,
+  elementBodyForceVectorT3FromArea,
+  triangleArea
+} from '../src/lib/cpt-app/deformation/element-t3.js';
+import {
+  buildBMatrixT6AtGauss,
+  edgeTractionVectorT6,
+  elementBodyForceVectorT6FromArea,
+  elementStiffnessT6FromTangents2D,
+  GAUSS_T6_3PT,
+  shapeFunctionsT6
+} from '../src/lib/cpt-app/deformation/element-t6.js';
 
 const ENABLE_REAL_GPU_PARITY = process.argv.includes('--gpu-parity');
 const ENABLE_GPU_BENCHMARK = process.argv.includes('--gpu-benchmark');
@@ -39,6 +53,11 @@ function approxRelative(left, right, relTol, message) {
   const scale = Math.max(Math.abs(left), Math.abs(right), 1e-9);
   const relErr = Math.abs(left - right) / scale;
   assert(relErr <= relTol, `${message} (left ${left}, right ${right}, rel err ${relErr})`);
+}
+
+function approxAbs(left, right, absTol, message) {
+  const absErr = Math.abs(left - right);
+  assert(absErr <= absTol, `${message} (left ${left}, right ${right}, abs err ${absErr})`);
 }
 
 function applyElasticMatrix(D, strain) {
@@ -119,6 +138,26 @@ function nearestProfilePoint(profile, x) {
     if (!best) return point;
     return Math.abs(point.x - x) < Math.abs(best.x - x) ? point : best;
   }, null);
+}
+
+function vectorYResultant(vector) {
+  let sum = 0;
+  for (let i = 1; i < (vector?.length || 0); i += 2) sum += Number(vector[i]) || 0;
+  return sum;
+}
+
+function maxAbsVectorEntry(vector) {
+  let maxValue = 0;
+  for (const value of vector || []) maxValue = Math.max(maxValue, Math.abs(Number(value) || 0));
+  return maxValue;
+}
+
+function multiplyMatrixVector(matrix, vector) {
+  return matrix.map((row) => {
+    let sum = 0;
+    for (let i = 0; i < row.length; i += 1) sum += (Number(row[i]) || 0) * (Number(vector?.[i]) || 0);
+    return sum;
+  });
 }
 
 function baseModel(overrides = {}) {
@@ -291,6 +330,233 @@ await runCase('Case 0a full effective stress seeding preserves submerged out-of-
   assert(
     Math.abs(seeded.effectiveStress6[2] - naive.effectiveStress6[2]) > 1,
     'full stress_6 seeding should differ from the old naive effective-stress lift under submerged conditions'
+  );
+});
+
+await runCase('Case 0t6a T6 shape functions match Triangle o2 ordering and partition unity', async () => {
+  const barycentricNodes = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+    [0, 0.5, 0.5],
+    [0.5, 0, 0.5],
+    [0.5, 0.5, 0]
+  ];
+  barycentricNodes.forEach(([L1, L2, L3], nodeIndex) => {
+    const N = shapeFunctionsT6(L1, L2, L3);
+    approxAbs(N.reduce((sum, value) => sum + value, 0), 1, 1e-14, `T6 node ${nodeIndex} should preserve partition of unity`);
+    N.forEach((value, shapeIndex) => {
+      approxAbs(value, shapeIndex === nodeIndex ? 1 : 0, 1e-14, `T6 Kronecker property failed at node ${nodeIndex}, shape ${shapeIndex}`);
+    });
+  });
+  const centroidN = shapeFunctionsT6(1 / 3, 1 / 3, 1 / 3);
+  approxAbs(centroidN.reduce((sum, value) => sum + value, 0), 1, 1e-14, 'T6 centroid shape functions should sum to one');
+});
+
+await runCase('Case 0t6b T6 B-matrix reproduces a quadratic displacement / linear strain patch', async () => {
+  const meshes = [
+    [{ x: 0, y: 0 }, { x: 2.0, y: 0.2 }, { x: 0.3, y: 1.4 }],
+    [{ x: -0.4, y: 0.1 }, { x: 1.6, y: -0.25 }, { x: 0.25, y: 1.7 }]
+  ];
+  const coeff = { a: 0.003, b: -0.0015, c: 0.002, d: -0.0025, e: 0.0012, f: -0.0018 };
+  const displacement = (point) => ({
+    ux: coeff.a * point.x * point.x + coeff.b * point.x * point.y + coeff.c * point.y * point.y,
+    uy: coeff.d * point.x * point.x + coeff.e * point.x * point.y + coeff.f * point.y * point.y
+  });
+  meshes.forEach((corners, meshIndex) => {
+    const nodes = [
+      corners[0],
+      corners[1],
+      corners[2],
+      { x: 0.5 * (corners[1].x + corners[2].x), y: 0.5 * (corners[1].y + corners[2].y) },
+      { x: 0.5 * (corners[2].x + corners[0].x), y: 0.5 * (corners[2].y + corners[0].y) },
+      { x: 0.5 * (corners[0].x + corners[1].x), y: 0.5 * (corners[0].y + corners[1].y) }
+    ];
+    const ue = new Float64Array(12);
+    nodes.forEach((node, nodeIndex) => {
+      const u = displacement(node);
+      ue[2 * nodeIndex] = u.ux;
+      ue[2 * nodeIndex + 1] = u.uy;
+    });
+    GAUSS_T6_3PT.forEach((gp, gpIndex) => {
+      const B = buildBMatrixT6AtGauss(corners, gp.L1, gp.L2, gp.L3);
+      const strain = [0, 0, 0];
+      for (let row = 0; row < 3; row += 1) {
+        for (let col = 0; col < 12; col += 1) strain[row] += B[row][col] * ue[col];
+      }
+      const x = gp.L1 * corners[0].x + gp.L2 * corners[1].x + gp.L3 * corners[2].x;
+      const y = gp.L1 * corners[0].y + gp.L2 * corners[1].y + gp.L3 * corners[2].y;
+      approxAbs(strain[0], 2 * coeff.a * x + coeff.b * y, 1e-12, `T6 exx patch failed on mesh ${meshIndex}, gp ${gpIndex}`);
+      approxAbs(strain[1], coeff.e * x + 2 * coeff.f * y, 1e-12, `T6 eyy patch failed on mesh ${meshIndex}, gp ${gpIndex}`);
+      approxAbs(strain[2], (coeff.b + 2 * coeff.d) * x + (2 * coeff.c + coeff.e) * y, 1e-12, `T6 gxy patch failed on mesh ${meshIndex}, gp ${gpIndex}`);
+    });
+  });
+});
+
+await runCase('Case 0t6c T6 body force and edge traction conserve total load', async () => {
+  const area = 12;
+  const gamma = 18;
+  const gravity = elementBodyForceVectorT6FromArea(area, 0, -gamma);
+  approxAbs(gravity[1] + gravity[3] + gravity[5], 0, 1e-12, 'T6 gravity should put zero resultant on corner nodes');
+  approxAbs(gravity[7], -area * gamma / 3, 1e-12, 'T6 first midpoint gravity share should be A gamma / 3');
+  approxAbs(gravity[9], -area * gamma / 3, 1e-12, 'T6 second midpoint gravity share should be A gamma / 3');
+  approxAbs(gravity[11], -area * gamma / 3, 1e-12, 'T6 third midpoint gravity share should be A gamma / 3');
+  approxAbs(gravity[1] + gravity[3] + gravity[5] + gravity[7] + gravity[9] + gravity[11], -area * gamma, 1e-12, 'T6 gravity resultant should equal area times unit weight');
+
+  const edge = { a: { x: 0, y: 0 }, b: { x: 3, y: 4 } };
+  const q = 10;
+  const traction = edgeTractionVectorT6(edge, 0, -q);
+  approxAbs(traction[1] + traction[3] + traction[5], -5 * q, 1e-12, 'T6 edge traction resultant should equal q times edge length');
+  approxAbs(traction[5], -4 * 5 * q / 6, 1e-12, 'T6 edge midpoint traction should carry the Simpson 4/6 share');
+});
+
+await runCase('Case 0t6d native Triangle o2 mesh exposes six-node elements and constrained mid-edge nodes', async () => {
+  const model = baseModel();
+  const mesh = await buildDeformationMesh(
+    model,
+    model.regions,
+    {
+      meshTargetArea: 8,
+      meshElementType: 't6',
+      load: {
+        ...model.surfaceLoad,
+        width: model.surfaceLoad.xEnd - model.surfaceLoad.xStart,
+        q: model.surfaceLoad.q
+      }
+    },
+    () => {}
+  );
+  assert(mesh.elementType === 't6', 'T6 mesh should report elementType=t6');
+  assert(mesh.elements.length > 0, 'T6 mesh should contain elements');
+  assert(mesh.elements.every((element) => element.length === 6), 'every T6 element should have six nodes');
+  assert((mesh.meshStats?.midEdgeNodes || 0) > 0, 'T6 mesh should report mid-edge nodes');
+  const terrainEdges = (mesh.constraintEdges || []).filter((edge) => edge.markerType === 'outer' && edge.source === 'terrain');
+  assert(terrainEdges.length > 0, 'T6 mesh should expose terrain constraint edges');
+  assert(terrainEdges.every((edge) => Number.isInteger(edge.nMid) && edge.nodeIds?.length === 3), 'every T6 terrain edge should carry its midpoint node');
+});
+
+await runCase('Case 0t6e T3 and T6 mesh-level gravity and terrain traction conserve total load', async () => {
+  const q = 7;
+  const gamma = 18;
+  for (const meshElementType of ['t3', 't6']) {
+    const model = baseModel({
+      surfaceLoad: {
+        xStart: 0,
+        xEnd: 24,
+        q
+      }
+    });
+    const mesh = await buildDeformationMesh(
+      model,
+      model.regions,
+      {
+        meshTargetArea: 8,
+        meshElementType,
+        load: {
+          ...model.surfaceLoad,
+          width: model.surfaceLoad.xEnd - model.surfaceLoad.xStart,
+          q: model.surfaceLoad.q
+        }
+      },
+      () => {}
+    );
+    let gravityResultant = 0;
+    let areaTotal = 0;
+    mesh.elements.forEach((element) => {
+      const area = triangleArea(element.slice(0, 3).map((nodeId) => mesh.nodes[nodeId]));
+      areaTotal += area;
+      gravityResultant += vectorYResultant(
+        meshElementType === 't6'
+          ? elementBodyForceVectorT6FromArea(area, 0, -gamma)
+          : elementBodyForceVectorT3FromArea(area, 0, -gamma)
+      );
+    });
+    approxRelative(gravityResultant, -gamma * areaTotal, 1e-12, `${meshElementType} gravity resultant should equal gamma times total mesh area`);
+
+    let tractionResultant = 0;
+    (mesh.constraintEdges || [])
+      .filter((edge) => edge?.markerType === 'outer' && edge?.source === 'terrain')
+      .forEach((edge) => {
+        tractionResultant += vectorYResultant(
+          meshElementType === 't6'
+            ? edgeTractionVectorT6(edge, 0, -q)
+            : edgeTractionVector(edge, 0, -q)
+        );
+      });
+    approxRelative(tractionResultant, -q * 24, 1e-12, `${meshElementType} terrain traction resultant should equal q times loaded length`);
+  }
+});
+
+await runCase('Case 0t6f T6 elastic stiffness is symmetric and annihilates rigid body modes', async () => {
+  const corners = [{ x: 0.2, y: -0.1 }, { x: 2.1, y: 0.15 }, { x: 0.45, y: 1.65 }];
+  const nodes = [
+    corners[0],
+    corners[1],
+    corners[2],
+    { x: 0.5 * (corners[1].x + corners[2].x), y: 0.5 * (corners[1].y + corners[2].y) },
+    { x: 0.5 * (corners[2].x + corners[0].x), y: 0.5 * (corners[2].y + corners[0].y) },
+    { x: 0.5 * (corners[0].x + corners[1].x), y: 0.5 * (corners[0].y + corners[1].y) }
+  ];
+  const D = planeStrainElasticMatrix(25000, 0.3);
+  const K = elementStiffnessT6FromTangents2D(corners, [D, D, D], triangleArea(corners));
+  assert(maxMatrixAsymmetry(K) < 1e-8, `T6 stiffness should be symmetric for a symmetric elastic tangent (max asymmetry ${maxMatrixAsymmetry(K)})`);
+
+  const tx = new Float64Array(12);
+  const ty = new Float64Array(12);
+  const rz = new Float64Array(12);
+  nodes.forEach((node, nodeIndex) => {
+    tx[2 * nodeIndex] = 1;
+    ty[2 * nodeIndex + 1] = 1;
+    rz[2 * nodeIndex] = -node.y;
+    rz[2 * nodeIndex + 1] = node.x;
+  });
+  assert(maxAbsVectorEntry(multiplyMatrixVector(K, tx)) < 1e-7, 'T6 stiffness should not resist rigid x translation');
+  assert(maxAbsVectorEntry(multiplyMatrixVector(K, ty)) < 1e-7, 'T6 stiffness should not resist rigid y translation');
+  assert(maxAbsVectorEntry(multiplyMatrixVector(K, rz)) < 1e-7, 'T6 stiffness should not resist infinitesimal rigid rotation');
+});
+
+await runCase('Case 0t6g T6 Gauss points can carry independent plastic activity under a linear strain field', async () => {
+  const corners = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }];
+  const nodes = [
+    corners[0],
+    corners[1],
+    corners[2],
+    { x: 0.5, y: 0.5 },
+    { x: 0, y: 0.5 },
+    { x: 0.5, y: 0 }
+  ];
+  const prepared = prepareMechanicalMaterial({
+    Emc: 18000,
+    nu: 0.3,
+    cEff: 8,
+    phiEffDeg: 30,
+    psiEffDeg: 5,
+    gamma: 18,
+    gammaSat: 20,
+    yieldTolerance: 1e-6
+  });
+  const shearGradient = 0.006;
+  const ue = new Float64Array(12);
+  nodes.forEach((node, nodeIndex) => {
+    ue[2 * nodeIndex] = 0;
+    ue[2 * nodeIndex + 1] = 0.5 * shearGradient * node.x * node.x;
+  });
+  const activeFlags = GAUSS_T6_3PT.map((gp) => {
+    const B = buildBMatrixT6AtGauss(corners, gp.L1, gp.L2, gp.L3);
+    const strain = [0, 0, 0];
+    for (let row = 0; row < 3; row += 1) {
+      for (let col = 0; col < 12; col += 1) strain[row] += B[row][col] * ue[col];
+    }
+    const update = createMCPlasticMaterial(prepared).update({
+      strainTrial6: liftPlaneStrainStrainTo6({ exx: strain[0], eyy: strain[1], gxy: strain[2] }),
+      committedState: seedMaterialPointStateFromInitialStress({ sxx: 20, syy: 50, txy: 0 }, prepared),
+      materialParameters: prepared
+    });
+    return update.trialState?.currentlyMcActive === true;
+  });
+  assert(
+    JSON.stringify(activeFlags) === JSON.stringify([false, true, false]),
+    `only the high-x T6 Gauss point should activate plasticity under this manufactured shear-gradient field (got ${JSON.stringify(activeFlags)})`
   );
 });
 
@@ -924,6 +1190,80 @@ await runCase('Case 1b linear-elastic comparison path converges in one full Newt
   assert((elastic?.solver?.nonlinearIterations || 0) <= 2, 'linear-elastic path should converge in one solve plus at most one refreshed equilibrium check');
   assert((elastic?.solver?.loadFactorCommitted || 0) === 1, 'linear-elastic path should commit the full load factor');
   assert((elastic?.solver?.relativeResidualNorm || 0) <= 1.5e-5, `linear-elastic path should leave a small final relative residual (got ${elastic?.solver?.relativeResidualNorm})`);
+});
+
+await runCase('Case 1t6 linear-elastic T6 solve runs end-to-end with quadratic sampling and CPU-f64 backend gating', async () => {
+  const output = await analyzeDeformationModel({
+    model: baseModel(),
+    options: {
+      meshElementType: 't6',
+      meshTargetArea: 3.0,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'linear-elastic',
+      initialStressMode: 'predictor',
+      useGpuAcceleration: true
+    }
+  });
+
+  assert(output?.mesh?.elementType === 't6', 'T6 run should return a T6 mesh');
+  assert(output?.mesh?.elements?.every((element) => element.length === 6), 'T6 solve should keep six-node element connectivity through the solver');
+  assert(output?.solver?.elementType === 't6', 'T6 solve should report solver.elementType=t6');
+  assert(output?.solver?.integrationPointsPerElement === 3, 'T6 solve should report three integration points per element');
+  assert(output?.solver?.materialPointCount === 3 * output.mesh.elements.length, 'T6 solve should create one material point per Gauss point');
+  assert(output?.solver?.linearAlgebraBackend?.name === 'cpu-f64', 'T6 solve should force the CPU f64 backend while T6 element kernels are CPU-only');
+  assert((output?.warnings || []).some((warning) => warning.includes('T6 deformation currently uses the CPU f64 element path')), 'T6 GPU request should emit the CPU-f64 fallback warning');
+  assert((output?.summaries?.maxSettlement || 0) > 0, 'T6 linear-elastic solve should produce positive settlement');
+  assert((output?.elementResults || []).every((item) => item?.gaussPoints?.length === 3), 'T6 element results should expose three Gauss-point records per element');
+  const sampled = sampleDeformationState(output.mesh, output, 12, -0.5);
+  assert(sampled && sampled.settlement > 0 && Number.isFinite(sampled.ux), 'T6 sampleDeformationState should use a finite quadratic displacement interpolation');
+});
+
+await runCase('Case 1t6b Stage 2 plastic T6 solve converges with per-Gauss material points', async () => {
+  const output = await analyzeDeformationModel({
+    model: baseModel({
+      material: {
+        Emc: 18000,
+        nu: 0.3,
+        K0nc: 0.5,
+        cEff: 6,
+        phiEffDeg: 30,
+        psiEffDeg: 5,
+        gamma: 18,
+        gammaSat: 20
+      },
+      surfaceLoad: {
+        xStart: 11,
+        xEnd: 13,
+        q: 80
+      }
+    }),
+    options: {
+      meshElementType: 't6',
+      meshTargetArea: 6,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialStressMode: 'predictor',
+      nonlinearMaxIterations: 26,
+      maxLoadSteps: 18,
+      initialLoadStep: 0.25,
+      minLoadStep: 0.002
+    }
+  });
+
+  assert(output?.solver?.elementType === 't6', 'Stage 2 T6 run should report solver.elementType=t6');
+  assert(output?.solver?.convergenceState === 'converged', `Stage 2 T6 solve should converge (got ${output?.solver?.convergenceState})`);
+  assert(output?.solver?.materialPointCount === 3 * output.mesh.elements.length, 'Stage 2 T6 solve should keep one material point per Gauss point');
+  assert((output?.solver?.peakActiveMcElements || 0) > 0, 'Stage 2 T6 solve should activate plastic zones in this benchmark');
+  assert((output?.summaries?.maxEquivalentPlasticStrain || 0) > 0, 'Stage 2 T6 solve should accumulate equivalent plastic strain');
+  const plasticGpCount = (output?.elementResults || []).reduce(
+    (count, elementResult) => count + (elementResult?.gaussPoints || []).filter((gp) => (Number(gp?.materialState?.accumulatedPlasticStrain) || 0) > 0).length,
+    0
+  );
+  assert(plasticGpCount > 0, 'Stage 2 T6 result should expose plastic history on Gauss-point records');
 });
 
 await runCase('Case 1c Stage 2 plastic footing departs materially from the elastic comparison', async () => {

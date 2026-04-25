@@ -30,3 +30,6 @@ pnpm-debug.log*
 
 # Claude Code workspace
 .claude/
+
+# Local sample CPT files
+docs/classification/2306609_S1.xls

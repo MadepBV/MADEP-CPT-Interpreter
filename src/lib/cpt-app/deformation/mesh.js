@@ -228,8 +228,9 @@ function meshingAttemptsFor(targetArea) {
   ];
 }
 
-function triangleSwitchesForAttempt(attempt, hasRegionAreaConstraints) {
+function triangleSwitchesForAttempt(attempt, hasRegionAreaConstraints, elementType = 't3') {
   let out = 'pzQ';
+  if (String(elementType || '').toLowerCase() === 't6') out += 'o2';
   if (attempt?.ccdt) out += 'D';
   if (attempt?.jettison !== false) out += 'j';
   if (attempt?.edges !== false) out += 'e';
@@ -263,6 +264,7 @@ function buildMechanicalPslg(model, regions, options) {
 
 async function triangulateMechanicalPslg(model, regions, options, onProgress = () => {}) {
   const attempts = meshingAttemptsFor(options?.meshTargetArea);
+  const elementType = String(options?.meshElementType || '').toLowerCase() === 't6' ? 't6' : 't3';
   let lastError = null;
 
   for (let i = 0; i < attempts.length; i += 1) {
@@ -294,7 +296,8 @@ async function triangulateMechanicalPslg(model, regions, options, onProgress = (
             edges: true,
             jettison: true
           },
-          hasRegionAreaConstraints
+          hasRegionAreaConstraints,
+          elementType
         )
       );
       return { triangleOutput, attempt, pslg };
@@ -321,6 +324,7 @@ export async function buildDeformationMesh(model, regions, options, onProgress =
   });
 
   const { triangleOutput, attempt, pslg } = await triangulateMechanicalPslg(model, regions, options, onProgress);
+  const elementType = String(options?.meshElementType || '').toLowerCase() === 't6' ? 't6' : 't3';
   return buildSectionMesh({
     triangleOutput,
     pslg,
@@ -330,6 +334,7 @@ export async function buildDeformationMesh(model, regions, options, onProgress =
     attemptLabel: attempt?.label || 'quality-28',
     onProgress,
     progressPercent: 38,
-    purpose: 'deformation'
+    purpose: 'deformation',
+    elementType
   });
 }

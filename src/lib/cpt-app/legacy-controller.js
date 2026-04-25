@@ -4199,6 +4199,7 @@ function stage6Defaults(){
           initialStressMode:'plastic-geostatic',
           totalLoad:null,
           outOfPlaneLength:10,
+          meshElementType:'t3',
           meshTargetArea:null,
           meshTargetAreaAuto:true,
           useSeepagePorePressures:false,
@@ -4532,6 +4533,11 @@ function ensureStage6State(){
   if(!bishop.deformation.options || typeof bishop.deformation.options !== 'object') bishop.deformation.options = stage6Defaults().bishop.deformation.options;
   if(!['deformation','safety-cphi'].includes(bishop.deformation.options.analysisType)){
     bishop.deformation.options.analysisType = stage6Defaults().bishop.deformation.options.analysisType;
+  }
+  if(!['t3','t6'].includes(String(bishop.deformation.options.meshElementType || '').toLowerCase())){
+    bishop.deformation.options.meshElementType = stage6Defaults().bishop.deformation.options.meshElementType;
+  } else {
+    bishop.deformation.options.meshElementType = String(bishop.deformation.options.meshElementType).toLowerCase();
   }
   if(!['pressure','total'].includes(bishop.deformation.options.loadMode)) bishop.deformation.options.loadMode = 'pressure';
   bishop.deformation.options.totalLoad = Number.isFinite(+bishop.deformation.options.totalLoad) && +bishop.deformation.options.totalLoad > 0
@@ -5148,12 +5154,46 @@ function stage6BishopDeformationVectorMode(mode){
   return ['settlement', 'ux', 'uy', 'uTotal'].includes(mode);
 }
 
+function stage6BishopT6VisualSubtriangles(element){
+  if(!Array.isArray(element) || element.length < 6) return [element?.slice?.(0, 3) || []];
+  return [
+    [element[0], element[5], element[4]],
+    [element[5], element[1], element[3]],
+    [element[4], element[3], element[2]],
+    [element[5], element[3], element[4]]
+  ];
+}
+
 function stage6BishopDeformationPlasticPointSets(result){
   const constitutiveModel = String(result?.solver?.constitutiveModel || '');
   const activePoints = [];
   const tensionPoints = [];
   const historyPoints = [];
   (result?.elementResults || []).forEach((item)=>{
+    if(Array.isArray(item?.gaussPoints) && item.gaussPoints.length){
+      item.gaussPoints.forEach((gp)=>{
+        if(!Number.isFinite(gp?.x) || !Number.isFinite(gp?.y)) return;
+        const point = {x:gp.x, y:gp.y};
+        const diagnostics = gp?.materialDiagnostics || {};
+        const materialState = gp?.materialState || {};
+        const tensionCutoffActive = gp?.tensionCutoffActive === true || diagnostics.tensionCutoffActive === true;
+        const currentlyMcActive = diagnostics.currentlyMcActive === true || materialState.currentlyMcActive === true;
+        if(constitutiveModel === 'mc-plastic-material-point'){
+          if(tensionCutoffActive){
+            tensionPoints.push(point);
+            return;
+          }
+          if(currentlyMcActive){
+            activePoints.push(point);
+            return;
+          }
+          if((Number(materialState?.accumulatedPlasticStrain) || 0) > 1e-8) historyPoints.push(point);
+          return;
+        }
+        if(constitutiveModel === 'mc-reduced-stiffness-material-point' && currentlyMcActive) activePoints.push(point);
+      });
+      return;
+    }
     const centroid = item?.centroid;
     if(!Number.isFinite(centroid?.x) || !Number.isFinite(centroid?.y)) return;
     const diagnostics = item?.materialDiagnostics || {};
@@ -5307,6 +5347,14 @@ function stage6BishopDeformationContourNodalValues(result, mesh, mode){
   return sums.map((sum, index)=>weights[index] > 0 ? sum / weights[index] : 0);
 }
 
+function stage6BishopDeformationVisualContourMesh(mesh, mode){
+  if(mesh?.elementType !== 't6' || !stage6BishopDeformationVectorMode(mode)) return mesh;
+  return {
+    ...mesh,
+    elements:(mesh.elements || []).flatMap((element)=>stage6BishopT6VisualSubtriangles(element))
+  };
+}
+
 const ST6_DEFORMATION_SEQ_PALETTE = [
   {t:0.00, rgb:[24, 52, 166]},
   {t:0.18, rgb:[36, 118, 224]},
@@ -5432,9 +5480,10 @@ function stage6BishopDeformationContourDerived(result, mesh, mode){
   const stats = stage6BishopDeformationContourStats(result, mesh, mode, analysisType);
   const nodalValues = stage6BishopDeformationContourNodalValues(result, mesh, mode);
   const levels = stage6BishopDeformationContourLevels(mode, stats, 11, analysisType);
+  const contourMesh = stage6BishopDeformationVisualContourMesh(mesh, mode);
   const levelSegments = levels.map((level)=>({
     level,
-    segments:contourSegmentsForTriangles(mesh, nodalValues, level)
+    segments:contourSegmentsForTriangles(contourMesh, nodalValues, level)
   })).filter((group)=>group.segments.length);
   const next = {result, mesh, mode, stats, nodalValues, levels, levelSegments};
   store[mode] = next;
@@ -6647,6 +6696,7 @@ function stage6BishopRunDeformation(){
       options:{
         analysisType,
         meshTargetArea:stage6BishopResolvedDeformationMeshTargetArea(bishop),
+        meshElementType:String(bishop.deformation?.options?.meshElementType || '').toLowerCase() === 't6' ? 't6' : 't3',
         constitutiveModel:bishop.deformation?.options?.constitutiveModel,
         initialStressMode:bishop.deformation?.options?.initialStressMode,
         loadMode,
@@ -8593,19 +8643,40 @@ function stage6BishopDrawCanvas(){
     };
     if(bishop.deformation?.display?.showContours !== false){
       ctx.save();
-      deformationMesh.cells.forEach((cell, index)=>{
-        const polygon = cell?.polygon || [];
-        if(polygon.length < 3) return;
-        const screen = polygon.map((point)=>stage6BishopWorldToScreen(point));
-        const value = stage6BishopDeformationContourValue(deformationResult, deformationMesh, index, contourMode);
-        if(!Number.isFinite(value)) return;
-        ctx.fillStyle = stage6BishopDeformationContourColor(value, contourStats.min, contourStats.max, contourMode, 0.52, deformationAnalysisType);
-        ctx.beginPath();
-        ctx.moveTo(screen[0].x, screen[0].y);
-        for(let i=1;i<screen.length;i+=1) ctx.lineTo(screen[i].x, screen[i].y);
-        ctx.closePath();
-        ctx.fill();
-      });
+      if(deformationMesh.elementType === 't6' && deformationVectorMode){
+        deformationMesh.elements.forEach((element)=>{
+          stage6BishopT6VisualSubtriangles(element).forEach((subtri)=>{
+            if(subtri.length < 3) return;
+            const value = stage6BishopAverageFiniteValues(
+              subtri.map((nodeId)=>stage6BishopDeformationFiniteScalarOrNull(contourDerived.nodalValues?.[nodeId])),
+              null
+            );
+            if(!Number.isFinite(value)) return;
+            const screen = subtri.map((nodeId)=>stage6BishopWorldToScreen(deformationMesh.nodes[nodeId]));
+            ctx.fillStyle = stage6BishopDeformationContourColor(value, contourStats.min, contourStats.max, contourMode, 0.52, deformationAnalysisType);
+            ctx.beginPath();
+            ctx.moveTo(screen[0].x, screen[0].y);
+            ctx.lineTo(screen[1].x, screen[1].y);
+            ctx.lineTo(screen[2].x, screen[2].y);
+            ctx.closePath();
+            ctx.fill();
+          });
+        });
+      } else {
+        deformationMesh.cells.forEach((cell, index)=>{
+          const polygon = cell?.polygon || [];
+          if(polygon.length < 3) return;
+          const screen = polygon.map((point)=>stage6BishopWorldToScreen(point));
+          const value = stage6BishopDeformationContourValue(deformationResult, deformationMesh, index, contourMode);
+          if(!Number.isFinite(value)) return;
+          ctx.fillStyle = stage6BishopDeformationContourColor(value, contourStats.min, contourStats.max, contourMode, 0.52, deformationAnalysisType);
+          ctx.beginPath();
+          ctx.moveTo(screen[0].x, screen[0].y);
+          for(let i=1;i<screen.length;i+=1) ctx.lineTo(screen[i].x, screen[i].y);
+          ctx.closePath();
+          ctx.fill();
+        });
+      }
       ctx.restore();
     }
     if(bishop.deformation?.display?.showContourLines !== false){
@@ -10872,6 +10943,10 @@ function renderStage6BishopApp(){
   const deformationMeshTargetAreaAuto = deformation.options?.meshTargetAreaAuto !== false;
   const deformationAutoMeshTargetArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
   const deformationMeshTargetArea = stage6BishopResolvedDeformationMeshTargetArea(bishop);
+  const deformationMeshElementType = String(deformation.options?.meshElementType || '').toLowerCase() === 't6' ? 't6' : 't3';
+  const deformationMeshElementLabel = deformation.result?.solver?.elementType === 't6' || deformation.mesh?.elementType === 't6'
+    ? 'T6 quadratic triangles'
+    : 'T3 constant-strain triangles';
   const deformationNonlinearMaxIterations = Math.max(Math.round(Number(deformation.options?.nonlinearMaxIterations) || 24), 1);
   const deformationInitialLoadStep = Math.min(Math.max(Number(deformation.options?.initialLoadStep) || 0.25, 0.0001), 1);
   const deformationMinLoadStep = Math.max(Number(deformation.options?.minLoadStep) || (1/2048), 0.000001);
@@ -10900,14 +10975,16 @@ function renderStage6BishopApp(){
   // Do not hard-disable the GPU request from the page-level preflight. The
   // deformation solve runs in a worker, and the solver has its own guarded
   // backend creation path with CPU fallback and a precise run-record reason.
-  const deformationGpuToggleDisabled = false;
-  const deformationGpuTooltipText = deformationGpuUnavailable
-    ? `GPU preflight did not pass in this page context. ${stage6BishopGpuProbeReasonLabel(deformationGpuProbe?.reason)} You can still request GPU; the worker will try again and fall back to CPU f64 if needed.`
-    : deformationGpuProbePending
-      ? 'Checking WebGL2 GPU availability for the deformation solver...'
-      : deformationGpuAvailable
-        ? `GPU acceleration is available (${stage6EscAttr(deformationGpuProbe?.mode || 'webgl2')}, ${stage6EscAttr(deformationGpuProbe?.context || 'context')}, max texture ${Number(deformationGpuProbe?.maxTextureSize || 0).toLocaleString()}).`
-        : 'GPU acceleration has not been probed yet.';
+  const deformationGpuToggleDisabled = deformationMeshElementType === 't6';
+  const deformationGpuTooltipText = deformationMeshElementType === 't6'
+    ? 'T6 currently runs element assembly on the CPU f64 path because the mixed-precision element kernels are T3-only.'
+    : deformationGpuUnavailable
+      ? `GPU preflight did not pass in this page context. ${stage6BishopGpuProbeReasonLabel(deformationGpuProbe?.reason)} You can still request GPU; the worker will try again and fall back to CPU f64 if needed.`
+      : deformationGpuProbePending
+        ? 'Checking WebGL2 GPU availability for the deformation solver...'
+        : deformationGpuAvailable
+          ? `GPU acceleration is available (${stage6EscAttr(deformationGpuProbe?.mode || 'webgl2')}, ${stage6EscAttr(deformationGpuProbe?.context || 'context')}, max texture ${Number(deformationGpuProbe?.maxTextureSize || 0).toLocaleString()}).`
+          : 'GPU acceleration has not been probed yet.';
   const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
   const deformationTotalLoad = Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null;
@@ -11498,13 +11575,19 @@ function renderStage6BishopApp(){
                 <label style="font-size:11px;color:var(--tx2)">Target element area (m²)
                   <input type="number" step="0.005" min="0.01" value="${Number(deformationMeshTargetArea).toFixed(3)}" onchange="stage6BishopSetField('deformation.options.meshTargetArea', this.value)">
                 </label>
+                <label style="font-size:11px;color:var(--tx2)">Triangle element
+                  <select onchange="stage6BishopSetField('deformation.options.meshElementType', this.value)">
+                    <option value="t3" ${deformationMeshElementType === 't3' ? 'selected' : ''}>T3 - constant strain, fast</option>
+                    <option value="t6" ${deformationMeshElementType === 't6' ? 'selected' : ''}>T6 - quadratic, 3 Gauss points</option>
+                  </select>
+                </label>
                 <label class="st6-bishop-check">
                   <input type="checkbox" ${deformation.options?.useSeepagePorePressures ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useSeepagePorePressures', this.checked)">
                   Use seepage pore pressures when a seepage result exists
                 </label>
                 <div class="st6-help">${deformationIsSafety
                   ? `The safety mesh still follows the shared section geometry, with local refinement under the drawn surcharge interval when one is active. The automatic target area scales from the current section and is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. The safety phase requires the plastic geostatic route because the starting point must be a converged elastoplastic equilibrium before the strength-reduction multiplier ΣMsf is advanced.`
-                  : `The deformation mesh is intentionally refined beneath the loaded interval and both load edges, because the constant-strain T3 triangles become too stiff if that part of the mesh is left coarse. The automatic target area now scales to a coarser default and is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. Plastic geostatic equilibration is the default initial-state route: it performs the full Stage 2 self-weight correction before the service phase is reported and then resets the displayed displacement baseline. The fast geostatic predictor remains available as the lighter comparison route.`}</div>
+                  : `The deformation mesh is intentionally refined beneath the loaded interval and both load edges. T3 is the fast constant-strain production path; T6 uses six-node quadratic triangles, three integration points per element, and CPU f64 element assembly to resolve bending and stress gradients with lower mesh sensitivity. The automatic target area is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. Plastic geostatic equilibration is the default initial-state route: it performs the full Stage 2 self-weight correction before the service phase is reported and then resets the displayed displacement baseline. The fast geostatic predictor remains available as the lighter comparison route.`}</div>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(deformationStatusMessage)}</strong><br>
                   Solver: <strong>${stage6EscAttr(deformationSolverLabel)}</strong><br>
@@ -11519,8 +11602,11 @@ function renderStage6BishopApp(){
                   ${deformationIsSafety ? `Displayed ΣMsf: <strong>${deformationSafetyDisplayedSigmaMsf != null ? deformationSafetyDisplayedSigmaMsf.toFixed(3) : '—'}</strong><br>` : ''}
                   ${deformationIsSafety ? `Displayed retained strength: <strong>${deformationSafetyStrengthRetained != null ? `${(100 * deformationSafetyStrengthRetained).toFixed(2)} %` : '—'}</strong><br>` : ''}
                   Displacements reset before service reporting: <strong>${stage6EscAttr(deformationInitialDisplacementReset)}</strong><br>
+                  Element type: <strong>${stage6EscAttr(deformationMeshElementLabel)}</strong><br>
                   Nodes: <strong>${deformation.mesh?.nodes?.length || 0}</strong><br>
+                  Mid-edge nodes: <strong>${deformation.mesh?.meshStats?.midEdgeNodes || 0}</strong><br>
                   Triangles: <strong>${deformation.mesh?.elements?.length || 0}</strong><br>
+                  Integration points: <strong>${deformation.result?.solver?.integrationPointCount || 0}</strong><br>
                   Free DOFs: <strong>${deformation.result?.solver?.freeDofs || 0}</strong><br>
                   Geostatic CG iterations: <strong>${deformationGeostaticIterations ?? '—'}</strong><br>
                   Geostatic residual: <strong>${deformationGeostaticResidual}</strong><br>
@@ -11657,6 +11743,7 @@ function renderStage6BishopApp(){
               Load interval: <strong>${loadZoneActive ? `${loadZone.xStart.toFixed(2)}-${loadZone.xEnd.toFixed(2)} m` : 'not set'}</strong><br>
               Load mode: <strong>${deformationLoadMode === 'total' ? 'total load' : 'pressure q'}</strong><br>
               Applied pressure q: <strong>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</strong><br>
+              Element type: <strong>${stage6EscAttr(deformationMeshElementLabel)}</strong><br>
               Out-of-plane length: <strong>${deformationOutOfPlaneLength.toFixed(2)} m</strong><br>
               Seepage pore pressures: <strong>${deformation.options?.useSeepagePorePressures ? 'enabled when available' : 'off'}</strong><br>
               Initial stress: <strong>${stage6EscAttr(deformationInitialStressMode)}</strong><br>

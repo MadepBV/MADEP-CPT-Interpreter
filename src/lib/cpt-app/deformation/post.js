@@ -71,7 +71,7 @@ export function verticalOverburdenStressAt(model, x, y) {
   );
 }
 
-function initialEffectiveStress6AtPoint(model, point, options, warnings) {
+export function initialEffectiveStress6AtPoint(model, point, options, warnings) {
   const material = model?.regions?.[point.regionIndex]?.material || point.material || null;
   const sigmaV0 = verticalOverburdenStressAt(model, point.x, point.y);
   const u0 = sampleInitialPorePressure(model, point.x, point.y, options, warnings, GAMMA_W);
@@ -110,6 +110,16 @@ export function buildFlatK0InitialEffectiveStressField(mesh, model, options = {}
       warnings
     );
   });
+}
+
+export function buildFlatK0InitialEffectiveStressFieldAtPoints(points, model, options = {}, warnings = []) {
+  if (modelHasSteepSlopeOrWalls(model)) {
+    pushUniqueWarning(
+      warnings,
+      'Initial stress uses flat-ground K0 initialization with zero initial shear stress; results near steep slopes, embankments, or retaining walls may be unconservative.'
+    );
+  }
+  return (points || []).map((point) => initialEffectiveStress6AtPoint(model, point, options, warnings));
 }
 
 export function buildInitialEffectiveStressField(mesh, model, options = {}, warnings = []) {

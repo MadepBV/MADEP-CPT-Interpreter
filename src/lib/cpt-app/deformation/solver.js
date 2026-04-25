@@ -3,13 +3,9 @@
 
 import { pointInPolygonHalfOpen } from '../soil-regions.js';
 import { buildDeformationMesh } from './mesh.js';
-import {
-  buildBMatrixT3,
-  edgeTractionVector,
-  elementGravityVectorT3FromArea,
-  elementStiffnessT3FromBAndArea,
-  triangleArea
-} from './element-t3.js';
+import { triangleArea } from './element-t3.js';
+import { elementKernelFor, normalizeElementType } from './element-kernel.js';
+import { shapeFunctionsT6 } from './element-t6.js';
 import {
   cloneMaterialPointState,
   createLinearElasticMaterial,
@@ -28,7 +24,7 @@ import {
 } from './material-models.js';
 import { prepareMechanicalMaterial, reduceMaterialStrengthForSafety } from './material.js';
 import {
-  buildFlatK0InitialEffectiveStressField,
+  buildFlatK0InitialEffectiveStressFieldAtPoints,
   initialBulkUnitWeightFromPorePressure,
   mohrCoulombIndicator,
   negateNormalAndShear,
@@ -318,6 +314,7 @@ function sparseMatVec(rows, vector) {
 }
 
 function backendElementStrain(elementCaches, vector) {
+  if ((elementCaches || []).some((elementCache) => elementCache?.kind !== 't3')) return null;
   if (!activeMatvecBackend || typeof activeMatvecBackend.elementStrain !== 'function') return null;
   try {
     return activeMatvecBackend.elementStrain(elementCaches, vector);
@@ -328,6 +325,7 @@ function backendElementStrain(elementCaches, vector) {
 }
 
 function backendElementInternalForce(elementCaches, stressFlat) {
+  if ((elementCaches || []).some((elementCache) => elementCache?.kind !== 't3')) return null;
   if (!activeMatvecBackend || typeof activeMatvecBackend.elementInternalForce !== 'function') return null;
   try {
     return activeMatvecBackend.elementInternalForce(elementCaches, stressFlat);
@@ -338,6 +336,7 @@ function backendElementInternalForce(elementCaches, stressFlat) {
 }
 
 function backendElementElasticStiffness(elementCaches, tangentFlat) {
+  if ((elementCaches || []).some((elementCache) => elementCache?.kind !== 't3')) return null;
   if (!activeMatvecBackend || typeof activeMatvecBackend.elementElasticStiffness !== 'function') return null;
   try {
     return activeMatvecBackend.elementElasticStiffness(elementCaches, tangentFlat);
@@ -1271,22 +1270,24 @@ function addVectorBlock(rhs, dofs, localF) {
 }
 
 function addMatrixBlockFlat(rows, dofs, localKFlat, base = 0) {
-  for (let localRow = 0; localRow < 6; localRow += 1) {
+  const localDofCount = dofs.length;
+  for (let localRow = 0; localRow < localDofCount; localRow += 1) {
     const row = rows[dofs[localRow]];
-    const rowBase = base + localRow * 6;
-    for (let localCol = 0; localCol < 6; localCol += 1) {
+    const rowBase = base + localRow * localDofCount;
+    for (let localCol = 0; localCol < localDofCount; localCol += 1) {
       row.set(dofs[localCol], (row.get(dofs[localCol]) || 0) + (Number(localKFlat?.[rowBase + localCol]) || 0));
     }
   }
 }
 
 function addMatrixBlockToCompressedRows(rows, elementCache, localK) {
-  for (let localRow = 0; localRow < 6; localRow += 1) {
+  const localDofCount = elementCache.dofs.length;
+  for (let localRow = 0; localRow < localDofCount; localRow += 1) {
     const freeRowIndex = elementCache.freeRowIndices?.[localRow] ?? -1;
     if (freeRowIndex < 0) continue;
     const rowValues = rows[freeRowIndex].values;
-    for (let localCol = 0; localCol < 6; localCol += 1) {
-      const slotIndex = elementCache.assemblyLocalSlots?.[localRow * 6 + localCol] ?? -1;
+    for (let localCol = 0; localCol < localDofCount; localCol += 1) {
+      const slotIndex = elementCache.assemblyLocalSlots?.[localRow * localDofCount + localCol] ?? -1;
       if (slotIndex < 0) continue;
       rowValues[slotIndex] += localK[localRow][localCol];
     }
@@ -1294,20 +1295,22 @@ function addMatrixBlockToCompressedRows(rows, elementCache, localK) {
 }
 
 function addMatrixBlockFlatToCompressedRows(rows, elementCache, localKFlat, base = 0) {
-  for (let localRow = 0; localRow < 6; localRow += 1) {
+  const localDofCount = elementCache.dofs.length;
+  for (let localRow = 0; localRow < localDofCount; localRow += 1) {
     const freeRowIndex = elementCache.freeRowIndices?.[localRow] ?? -1;
     if (freeRowIndex < 0) continue;
     const rowValues = rows[freeRowIndex].values;
-    for (let localCol = 0; localCol < 6; localCol += 1) {
-      const slotIndex = elementCache.assemblyLocalSlots?.[localRow * 6 + localCol] ?? -1;
+    for (let localCol = 0; localCol < localDofCount; localCol += 1) {
+      const slotIndex = elementCache.assemblyLocalSlots?.[localRow * localDofCount + localCol] ?? -1;
       if (slotIndex < 0) continue;
-      rowValues[slotIndex] += Number(localKFlat?.[base + localRow * 6 + localCol]) || 0;
+      rowValues[slotIndex] += Number(localKFlat?.[base + localRow * localDofCount + localCol]) || 0;
     }
   }
 }
 
 function addVectorBlockToFreeRhs(rhs, freeRowIndices, localF) {
-  for (let i = 0; i < 6; i += 1) {
+  const localDofCount = Math.min(freeRowIndices?.length || 0, localF?.length || 0);
+  for (let i = 0; i < localDofCount; i += 1) {
     const freeRowIndex = freeRowIndices?.[i] ?? -1;
     if (freeRowIndex < 0) continue;
     rhs[freeRowIndex] += localF[i];
@@ -1315,7 +1318,7 @@ function addVectorBlockToFreeRhs(rhs, freeRowIndices, localF) {
 }
 
 function addVectorBlockFlatToFreeRhs(rhs, freeRowIndices, localFFlat, base = 0) {
-  for (let localIndex = 0; localIndex < 6; localIndex += 1) {
+  for (let localIndex = 0; localIndex < (freeRowIndices?.length || 0); localIndex += 1) {
     const freeRowIndex = freeRowIndices?.[localIndex] ?? -1;
     if (freeRowIndex < 0) continue;
     rhs[freeRowIndex] += Number(localFFlat?.[base + localIndex]) || 0;
@@ -1397,13 +1400,12 @@ function buildConstraintSets(mesh) {
   const fixUy = new Set();
   (mesh.constraintEdges || []).forEach((edge) => {
     if (edge?.markerType !== 'outer') return;
+    const nodeIds = edge.nodeIds || [edge.n1, edge.n2];
     if (edge.source === 'side-left' || edge.source === 'side-right') {
-      fixUx.add(edge.n1);
-      fixUx.add(edge.n2);
+      nodeIds.forEach((nodeId) => fixUx.add(nodeId));
     }
     if (edge.source === 'base') {
-      fixUy.add(edge.n1);
-      fixUy.add(edge.n2);
+      nodeIds.forEach((nodeId) => fixUy.add(nodeId));
     }
   });
   return { fixUx, fixUy };
@@ -1479,50 +1481,80 @@ function regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, wa
 }
 
 function elementDofMap(element) {
-  return [2 * element[0], 2 * element[0] + 1, 2 * element[1], 2 * element[1] + 1, 2 * element[2], 2 * element[2] + 1];
+  const dofs = new Array(2 * element.length);
+  for (let i = 0; i < element.length; i += 1) {
+    dofs[2 * i] = 2 * element[i];
+    dofs[2 * i + 1] = 2 * element[i] + 1;
+  }
+  return dofs;
 }
 
 function buildDeformationElementCaches(mesh) {
-  return mesh.elements.map((element, elementIndex) => {
+  const elementType = normalizeElementType(mesh?.elementType);
+  const kernel = elementKernelFor(elementType);
+  let integrationPointCount = 0;
+  const caches = mesh.elements.map((element, elementIndex) => {
     const nodes = element.map((nodeId) => mesh.nodes[nodeId]);
-    const area = triangleArea(nodes);
-    const B = buildBMatrixT3(nodes);
+    const corners = element.slice(0, 3).map((nodeId) => mesh.nodes[nodeId]);
+    const area = triangleArea(corners);
     const centroid = mesh.elementData[elementIndex]?.centroid || mesh.cells[mesh.elementCell[elementIndex]]?.centroid || {
-      x: (nodes[0].x + nodes[1].x + nodes[2].x) / 3,
-      y: (nodes[0].y + nodes[1].y + nodes[2].y) / 3
+      x: (corners[0].x + corners[1].x + corners[2].x) / 3,
+      y: (corners[0].y + corners[1].y + corners[2].y) / 3
     };
+    const integrationPoints = kernel.gaussPointsXY(corners).map((gp, gpIndex) => {
+      const B = kernel.buildBAtGauss(corners, gp.L1, gp.L2, gp.L3);
+      const globalIndex = integrationPointCount;
+      integrationPointCount += 1;
+      return {
+        ...gp,
+        gpIndex,
+        globalIndex,
+        materialPointIndex: globalIndex,
+        areaWeight: area * (Number(gp.areaWeightFactor) || 1),
+        B
+      };
+    });
     return {
       elementIndex,
       cellIndex: mesh.elementCell[elementIndex],
       element,
+      kind: elementType,
+      kernel,
+      localDofCount: kernel.numDofs,
+      numGaussPoints: kernel.numGaussPoints,
       nodes,
+      corners,
       area,
-      B,
+      B: integrationPoints[0]?.B || null,
       centroid,
+      integrationPoints,
       dofs: Int32Array.from(elementDofMap(element)),
       freeRowIndices: null,
       assemblyLocalSlots: null
     };
   });
+  caches.integrationPointCount = integrationPointCount;
+  return caches;
 }
 
 function buildCompressedAssemblyPattern(elementCaches, freeIndexByDof, freeDofCount) {
   const rowColSets = Array.from({ length: freeDofCount }, () => new Set());
 
   elementCaches.forEach((elementCache) => {
-    const freeRowIndices = new Int32Array(6);
+    const localDofCount = elementCache.dofs.length;
+    const freeRowIndices = new Int32Array(localDofCount);
     freeRowIndices.fill(-1);
-    for (let localIndex = 0; localIndex < 6; localIndex += 1) {
+    for (let localIndex = 0; localIndex < localDofCount; localIndex += 1) {
       const freeRowIndex = freeIndexByDof.get(elementCache.dofs[localIndex]);
       if (freeRowIndex != null) freeRowIndices[localIndex] = freeRowIndex;
     }
     elementCache.freeRowIndices = freeRowIndices;
-    elementCache.assemblyLocalSlots = new Int32Array(36);
+    elementCache.assemblyLocalSlots = new Int32Array(localDofCount * localDofCount);
     elementCache.assemblyLocalSlots.fill(-1);
-    for (let localRow = 0; localRow < 6; localRow += 1) {
+    for (let localRow = 0; localRow < localDofCount; localRow += 1) {
       const freeRowIndex = freeRowIndices[localRow];
       if (freeRowIndex < 0) continue;
-      for (let localCol = 0; localCol < 6; localCol += 1) {
+      for (let localCol = 0; localCol < localDofCount; localCol += 1) {
         const freeColIndex = freeRowIndices[localCol];
         if (freeColIndex < 0) continue;
         rowColSets[freeRowIndex].add(freeColIndex);
@@ -1542,15 +1574,16 @@ function buildCompressedAssemblyPattern(elementCaches, freeIndexByDof, freeDofCo
   });
 
   elementCaches.forEach((elementCache) => {
-    for (let localRow = 0; localRow < 6; localRow += 1) {
+    const localDofCount = elementCache.dofs.length;
+    for (let localRow = 0; localRow < localDofCount; localRow += 1) {
       const freeRowIndex = elementCache.freeRowIndices[localRow];
       if (freeRowIndex < 0) continue;
       const template = rowTemplates[freeRowIndex];
-      for (let localCol = 0; localCol < 6; localCol += 1) {
+      for (let localCol = 0; localCol < localDofCount; localCol += 1) {
         const freeColIndex = elementCache.freeRowIndices[localCol];
         if (freeColIndex < 0) continue;
         const slotIndex = template.slotByCol.get(freeColIndex);
-        if (slotIndex != null) elementCache.assemblyLocalSlots[localRow * 6 + localCol] = slotIndex;
+        if (slotIndex != null) elementCache.assemblyLocalSlots[localRow * localDofCount + localCol] = slotIndex;
       }
     }
   });
@@ -1589,7 +1622,25 @@ function expandSolutionVector(ndof, freeDofs, fixedValues, freeSolution) {
   return U;
 }
 
+function multiplyBDisplacement(matrix, displacementVector, dofs) {
+  const out = { exx: 0, eyy: 0, gxy: 0 };
+  for (let i = 0; i < dofs.length; i += 1) {
+    const u = Number(displacementVector?.[dofs[i]]) || 0;
+    out.exx += (Number(matrix?.[0]?.[i]) || 0) * u;
+    out.eyy += (Number(matrix?.[1]?.[i]) || 0) * u;
+    out.gxy += (Number(matrix?.[2]?.[i]) || 0) * u;
+  }
+  return out;
+}
+
+function gatherElementDisplacements(displacementVector, dofs) {
+  const out = new Float64Array(dofs.length);
+  for (let i = 0; i < dofs.length; i += 1) out[i] = Number(displacementVector?.[dofs[i]]) || 0;
+  return out;
+}
+
 function multiplyMat3x6Displacement(matrix, displacementVector, dofs) {
+  if ((dofs?.length || 0) !== 6) return multiplyBDisplacement(matrix, displacementVector, dofs || []);
   const u0 = displacementVector[dofs[0]];
   const u1 = displacementVector[dofs[1]];
   const u2 = displacementVector[dofs[2]];
@@ -1603,24 +1654,42 @@ function multiplyMat3x6Displacement(matrix, displacementVector, dofs) {
   };
 }
 
-function buildElementAnalysisStateFromStrain(elementCache, strain, ue = null) {
+function buildIntegrationPointAnalysisStateFromStrain(elementCache, gp, strain, ue = null) {
   return {
     element: elementCache.element,
     nodes: elementCache.nodes,
+    corners: elementCache.corners,
     ue,
     area: elementCache.area,
-    B: elementCache.B,
+    areaWeight: gp?.areaWeight ?? elementCache.area,
+    B: gp?.B || elementCache.B,
+    gpIndex: gp?.gpIndex ?? 0,
+    integrationPointIndex: gp?.globalIndex ?? gp?.materialPointIndex ?? elementCache.elementIndex,
+    x: gp?.x ?? elementCache.centroid?.x ?? 0,
+    y: gp?.y ?? elementCache.centroid?.y ?? 0,
     strain,
     strainTrial6: liftPlaneStrainStrainTo6(strain)
   };
 }
 
-function buildElementAnalysisState(elementCache, U, precomputedStrain = null) {
+function buildIntegrationPointAnalysisState(elementCache, gp, U, precomputedStrain = null) {
   if (precomputedStrain) {
-    return buildElementAnalysisStateFromStrain(elementCache, precomputedStrain, null);
+    return buildIntegrationPointAnalysisStateFromStrain(elementCache, gp, precomputedStrain, null);
   }
-  const strain = multiplyMat3x6Displacement(elementCache.B, U, elementCache.dofs);
-  return buildElementAnalysisStateFromStrain(elementCache, strain, null);
+  const strain = multiplyBDisplacement(gp?.B || elementCache.B, U, elementCache.dofs);
+  return buildIntegrationPointAnalysisStateFromStrain(elementCache, gp, strain, gatherElementDisplacements(U, elementCache.dofs));
+}
+
+function buildElementAnalysisState(elementCache, U, precomputedStrain = null) {
+  const gp = elementCache.integrationPoints?.[0] || {
+    gpIndex: 0,
+    globalIndex: elementCache.elementIndex,
+    areaWeight: elementCache.area,
+    B: elementCache.B,
+    x: elementCache.centroid?.x ?? 0,
+    y: elementCache.centroid?.y ?? 0
+  };
+  return buildIntegrationPointAnalysisState(elementCache, gp, U, precomputedStrain);
 }
 
 function addElementInternalForceContributionToFreeRhs(target, elementCache, stress2D) {
@@ -1641,8 +1710,8 @@ function addElementInternalForceContributionToFreeRhs(target, elementCache, stre
   }
 }
 
-function recoverElementMaterialResponse(elementCache, U, materialPoint, analysisContext = null, precomputedStrain = null) {
-  const elementState = buildElementAnalysisState(elementCache, U, precomputedStrain);
+function recoverIntegrationPointMaterialResponse(elementCache, gp, U, materialPoint, analysisContext = null, precomputedStrain = null) {
+  const elementState = buildIntegrationPointAnalysisState(elementCache, gp, U, precomputedStrain);
   const previousTrialState = materialPoint.trialState ? cloneMaterialPointState(materialPoint.trialState) : cloneMaterialPointState(materialPoint.committedState);
   const materialParametersOverride = analysisContext?.materialParametersOverride || null;
   const update = materialPoint.materialModel.update({
@@ -1653,6 +1722,8 @@ function recoverElementMaterialResponse(elementCache, U, materialPoint, analysis
       ...analysisContext,
       previousTrialState,
       elementIndex: elementCache.elementIndex,
+      gpIndex: gp?.gpIndex ?? 0,
+      integrationPointIndex: gp?.globalIndex ?? gp?.materialPointIndex ?? elementCache.elementIndex,
       regionIndex: materialPoint.regionIndex
     }
   });
@@ -1668,6 +1739,18 @@ function recoverElementMaterialResponse(elementCache, U, materialPoint, analysis
     update,
     materialParameters: materialParametersOverride || materialPoint.materialParameters
   };
+}
+
+function recoverElementMaterialResponse(elementCache, U, materialPoint, analysisContext = null, precomputedStrain = null) {
+  const gp = elementCache.integrationPoints?.[0] || {
+    gpIndex: 0,
+    globalIndex: elementCache.elementIndex,
+    areaWeight: elementCache.area,
+    B: elementCache.B,
+    x: elementCache.centroid?.x ?? 0,
+    y: elementCache.centroid?.y ?? 0
+  };
+  return recoverIntegrationPointMaterialResponse(elementCache, gp, U, materialPoint, analysisContext, precomputedStrain);
 }
 
 function fallbackK0(phiEffDeg) {
@@ -1702,31 +1785,60 @@ function buildK0ControlledInitialEffectiveStress6(totalStress6, materialParamete
   ];
 }
 
-function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, regionConstitutiveByRegion, options, porePressureByElement, warnings) {
+function integrationPointStressSeedPoints(mesh, elementCaches) {
   const out = [];
+  elementCaches.forEach((elementCache) => {
+    const cell = mesh.cells[elementCache.cellIndex];
+    (elementCache.integrationPoints || []).forEach((gp) => {
+      out[gp.globalIndex] = {
+        x: gp.x,
+        y: gp.y,
+        regionIndex: cell?.regionIndex ?? -1,
+        material: cell?.material || null
+      };
+    });
+  });
+  return out;
+}
+
+function buildFlatK0InitialEffectiveStressFieldForIntegrationPoints(mesh, elementCaches, model, options, warnings) {
+  return buildFlatK0InitialEffectiveStressFieldAtPoints(
+    integrationPointStressSeedPoints(mesh, elementCaches),
+    model,
+    options,
+    warnings
+  );
+}
+
+function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, regionConstitutiveByRegion, options, porePressureByIntegrationPoint, warnings) {
+  const out = new Array(elementCaches.integrationPointCount || elementCaches.length);
   const precomputedStrainFlat = backendElementStrain(elementCaches, Ugeo);
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
     const cell = mesh.cells[elementCache.cellIndex];
     const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
-    const materialPoint = createMaterialPoint({
-      materialModel: createLinearElasticMaterial(constitutive.materialParameters, warnings),
-      materialParameters: constitutive.materialParameters,
-      elementIndex,
-      regionIndex: cell?.regionIndex ?? -1
-    });
-    const precomputedStrain = precomputedStrainFlat
-      ? {
-          exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
-          eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
-          gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
-        }
-      : null;
-    const response = recoverElementMaterialResponse(elementCache, Ugeo, materialPoint, {
-      stage: 'geostatic-initialization'
-    }, precomputedStrain);
-    const u0 = Math.max(Number(porePressureByElement?.[elementIndex]) || 0, 0);
-    out.push(buildK0ControlledInitialEffectiveStress6(response.update?.stressTrial6, constitutive.materialParameters, u0));
+    for (const gp of elementCache.integrationPoints || []) {
+      const materialPoint = createMaterialPoint({
+        materialModel: createLinearElasticMaterial(constitutive.materialParameters, warnings),
+        materialParameters: constitutive.materialParameters,
+        elementIndex,
+        integrationPointIndex: gp.globalIndex,
+        gpIndex: gp.gpIndex,
+        regionIndex: cell?.regionIndex ?? -1
+      });
+      const precomputedStrain = precomputedStrainFlat && elementCache.kind === 't3'
+        ? {
+            exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
+            eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
+            gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
+          }
+        : null;
+      const response = recoverIntegrationPointMaterialResponse(elementCache, gp, Ugeo, materialPoint, {
+        stage: 'geostatic-initialization'
+      }, precomputedStrain);
+      const u0 = Math.max(Number(porePressureByIntegrationPoint?.[gp.globalIndex]) || 0, 0);
+      out[gp.globalIndex] = buildK0ControlledInitialEffectiveStress6(response.update?.stressTrial6, constitutive.materialParameters, u0);
+    }
   }
   return out;
 }
@@ -1743,7 +1855,7 @@ async function buildGeostaticInitialization(
   freeDofs,
   fixedValues,
   gravityCompressedRhs,
-  porePressureByElement,
+  porePressureByIntegrationPoint,
   runControl,
   onProgress
 ) {
@@ -1781,7 +1893,7 @@ async function buildGeostaticInitialization(
       `Geostatic gravity-step initialization did not converge (residual ${geostaticCg.residualNorm.toExponential(2)} after ${geostaticCg.iterations} iterations), so the deformation screen fell back to flat-ground K0 initial stress.`
     );
     return {
-      initialField: buildFlatK0InitialEffectiveStressField(mesh, model, options, warnings),
+      initialField: buildFlatK0InitialEffectiveStressFieldForIntegrationPoints(mesh, elementCaches, model, options, warnings),
       mode: 'flat-k0-fallback',
       iterations: geostaticCg.iterations,
       residualNorm: geostaticCg.residualNorm,
@@ -1790,7 +1902,7 @@ async function buildGeostaticInitialization(
   }
 
   const Ugeo = expandSolutionVector(ndof, freeDofs, fixedValues, geostaticCg.solution);
-  const initialField = recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, regionConstitutiveByRegion, options, porePressureByElement, warnings);
+  const initialField = recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, regionConstitutiveByRegion, options, porePressureByIntegrationPoint, warnings);
   const hasInvalidStress = initialField.some((stress6) => !Array.isArray(stress6) || stress6.some((value) => !Number.isFinite(Number(value))));
   if (hasInvalidStress) {
     pushUniqueWarning(
@@ -1798,7 +1910,7 @@ async function buildGeostaticInitialization(
       'Geostatic gravity-step initialization produced an invalid stress state, so the deformation screen fell back to flat-ground K0 initial stress.'
     );
     return {
-      initialField: buildFlatK0InitialEffectiveStressField(mesh, model, options, warnings),
+      initialField: buildFlatK0InitialEffectiveStressFieldForIntegrationPoints(mesh, elementCaches, model, options, warnings),
       mode: 'flat-k0-fallback',
       iterations: geostaticCg.iterations,
       residualNorm: geostaticCg.residualNorm,
@@ -1815,22 +1927,29 @@ async function buildGeostaticInitialization(
   };
 }
 
-function buildElementMaterialPoints(mesh, regionConstitutiveByRegion, initialField, options, warnings) {
-  return mesh.elements.map((_element, elementIndex) => {
+function buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByRegion, initialField, options, warnings) {
+  const materialPoints = new Array(elementCaches.integrationPointCount || elementCaches.length);
+  elementCaches.forEach((elementCache) => {
+    const elementIndex = elementCache.elementIndex;
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
     const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
-    const initialStress6 = initialField?.[elementIndex];
-    const committedState = Array.isArray(initialStress6)
-      ? seedMaterialPointStateFromEffectiveStress6(initialStress6, constitutive.materialParameters)
-      : seedMaterialPointStateFromInitialStress(initialStress6, constitutive.materialParameters);
-    return createMaterialPoint({
-      materialModel: constitutive.materialModel,
-      materialParameters: constitutive.materialParameters,
-      committedState,
-      elementIndex,
-      regionIndex: cell?.regionIndex ?? -1
+    (elementCache.integrationPoints || []).forEach((gp) => {
+      const initialStress6 = initialField?.[gp.globalIndex];
+      const committedState = Array.isArray(initialStress6)
+        ? seedMaterialPointStateFromEffectiveStress6(initialStress6, constitutive.materialParameters)
+        : seedMaterialPointStateFromInitialStress(initialStress6, constitutive.materialParameters);
+      materialPoints[gp.globalIndex] = createMaterialPoint({
+        materialModel: constitutive.materialModel,
+        materialParameters: constitutive.materialParameters,
+        committedState,
+        elementIndex,
+        integrationPointIndex: gp.globalIndex,
+        gpIndex: gp.gpIndex,
+        regionIndex: cell?.regionIndex ?? -1
+      });
     });
   });
+  return materialPoints;
 }
 
 function resetMaterialPointTrials(materialPoints) {
@@ -1873,63 +1992,93 @@ async function assembleNonlinearSystem(
   let maxEta = 0;
   let maxStrengthReserve = 0;
   const precomputedStrainFlat = backendElementStrain(elementCaches, UTrial);
-  const usesBackendInternalForce = !!(activeMatvecBackend && typeof activeMatvecBackend.elementInternalForce === 'function');
+  const usesBackendInternalForce = !!(
+    activeMatvecBackend &&
+    typeof activeMatvecBackend.elementInternalForce === 'function' &&
+    elementCaches.every((elementCache) => elementCache?.kind === 't3')
+  );
   const stressContributionFlat = usesBackendInternalForce
     ? new Float64Array(elementCaches.length * 3)
     : null;
 
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
-    const materialPoint = materialPoints[elementIndex];
-    const previousTrialActive = materialPoint.trialState?.currentlyMcActive === true;
-    const materialParametersOverride = elementAnalysisOptions?.regionMaterialParametersByRegion?.get(materialPoint.regionIndex)
-      || null;
-    const precomputedStrain = precomputedStrainFlat
-      ? {
-          exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
-          eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
-          gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
-        }
-      : null;
-    const response = recoverElementMaterialResponse(elementCache, UTrial, materialPoint, {
-      stage: stageLabel,
-      loadFactor,
-      useElasticGlobalizationTangent: elementAnalysisOptions?.useElasticGlobalizationTangent === true,
-      materialParametersOverride
-    }, precomputedStrain);
-    materialPoint.trialState = response.update.trialState;
-    materialPoint.diagnostics = response.update.diagnostics;
-    const currentTrialActive = response.update.trialState?.currentlyMcActive === true;
-    if (currentTrialActive) activeCount += 1;
-    const branchCounts = branchActivityCounts(response.update.trialState);
-    activeFaceCount += branchCounts.face;
-    activeEdgeCount += branchCounts.edge;
-    activeApexCount += branchCounts.apex;
-    tensionPendingCount += branchCounts.tension;
-    if (currentTrialActive !== previousTrialActive) changedCount += 1;
-    maxEta = Math.max(maxEta, Number(response.update.diagnostics?.etaMcFinal) || 0);
-    maxStrengthReserve = Math.max(maxStrengthReserve, Number(response.update.diagnostics?.localStrengthReserve) || 0);
+    const tangentsAtGp = new Array(elementCache.numGaussPoints);
+    const stressContributionAtGp = new Array(elementCache.numGaussPoints);
+    let elementActive = false;
+    let elementFaceActive = false;
+    let elementEdgeActive = false;
+    let elementApexActive = false;
+    let elementTensionPending = false;
+    let elementChanged = false;
+
+    for (const gp of elementCache.integrationPoints || []) {
+      const materialPoint = materialPoints[gp.globalIndex];
+      const previousTrialActive = materialPoint.trialState?.currentlyMcActive === true;
+      const materialParametersOverride = elementAnalysisOptions?.regionMaterialParametersByRegion?.get(materialPoint.regionIndex)
+        || null;
+      const precomputedStrain = precomputedStrainFlat && elementCache.kind === 't3'
+        ? {
+            exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
+            eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
+            gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
+          }
+        : null;
+      const response = recoverIntegrationPointMaterialResponse(elementCache, gp, UTrial, materialPoint, {
+        stage: stageLabel,
+        loadFactor,
+        useElasticGlobalizationTangent: elementAnalysisOptions?.useElasticGlobalizationTangent === true,
+        materialParametersOverride
+      }, precomputedStrain);
+      materialPoint.trialState = response.update.trialState;
+      materialPoint.diagnostics = response.update.diagnostics;
+      const currentTrialActive = response.update.trialState?.currentlyMcActive === true;
+      elementActive = elementActive || currentTrialActive;
+      const branchCounts = branchActivityCounts(response.update.trialState);
+      elementFaceActive = elementFaceActive || branchCounts.face > 0;
+      elementEdgeActive = elementEdgeActive || branchCounts.edge > 0;
+      elementApexActive = elementApexActive || branchCounts.apex > 0;
+      elementTensionPending = elementTensionPending || branchCounts.tension > 0;
+      elementChanged = elementChanged || currentTrialActive !== previousTrialActive;
+      maxEta = Math.max(maxEta, Number(response.update.diagnostics?.etaMcFinal) || 0);
+      maxStrengthReserve = Math.max(maxStrengthReserve, Number(response.update.diagnostics?.localStrengthReserve) || 0);
+
+      tangentsAtGp[gp.gpIndex] = response.tangent2D;
+      const referenceStress2D = extractStress2DFrom6(materialPoint.referenceState?.effectiveStress6);
+      stressContributionAtGp[gp.gpIndex] = formulationMode === 'total'
+        ? response.stress2D
+        : {
+            sxx: response.stress2D.sxx - referenceStress2D.sxx,
+            syy: response.stress2D.syy - referenceStress2D.syy,
+            txy: response.stress2D.txy - referenceStress2D.txy
+          };
+    }
+
+    if (elementActive) activeCount += 1;
+    if (elementFaceActive) activeFaceCount += 1;
+    if (elementEdgeActive) activeEdgeCount += 1;
+    if (elementApexActive) activeApexCount += 1;
+    if (elementTensionPending) tensionPendingCount += 1;
+    if (elementChanged) changedCount += 1;
 
     addMatrixBlockToCompressedRows(
       compressedRows,
       elementCache,
-      elementStiffnessT3FromBAndArea(response.B, response.area, response.tangent2D)
+      elementCache.kernel.elementStiffness(elementCache.corners, tangentsAtGp, elementCache.area, elementCache)
     );
-    const referenceStress2D = extractStress2DFrom6(materialPoint.referenceState?.effectiveStress6);
-    const stressContribution2D = formulationMode === 'total'
-      ? response.stress2D
-      : {
-          sxx: response.stress2D.sxx - referenceStress2D.sxx,
-          syy: response.stress2D.syy - referenceStress2D.syy,
-          txy: response.stress2D.txy - referenceStress2D.txy
-        };
-    if (stressContributionFlat) {
+
+    if (stressContributionFlat && elementCache.kind === 't3') {
+      const stressContribution2D = stressContributionAtGp[0];
       const stressBase = elementIndex * 3;
       stressContributionFlat[stressBase] = Number(stressContribution2D.sxx) || 0;
       stressContributionFlat[stressBase + 1] = Number(stressContribution2D.syy) || 0;
       stressContributionFlat[stressBase + 2] = Number(stressContribution2D.txy) || 0;
     } else {
-      addElementInternalForceContributionToFreeRhs(internalForceFree, elementCache, stressContribution2D);
+      addVectorBlockToFreeRhs(
+        internalForceFree,
+        elementCache.freeRowIndices,
+        elementCache.kernel.elementInternalForce(elementCache.corners, stressContributionAtGp, elementCache.area, elementCache)
+      );
     }
 
     if (elementIndex % 200 === 0 && (await runCheckpoint(runControl))) {
@@ -3562,8 +3711,7 @@ function buildTerrainSettlementProfile(mesh, nodalDisplacements) {
   const terrainNodeIds = new Set();
   (mesh.constraintEdges || []).forEach((edge) => {
     if (edge?.markerType !== 'outer' || edge?.source !== 'terrain') return;
-    terrainNodeIds.add(edge.n1);
-    terrainNodeIds.add(edge.n2);
+    (edge.nodeIds || [edge.n1, edge.n2]).forEach((nodeId) => terrainNodeIds.add(nodeId));
   });
   return [...terrainNodeIds]
     .map((nodeId) => ({
@@ -3655,30 +3803,123 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
     const cell = mesh.cells[elementCache.cellIndex];
-    const materialPoint = materialPoints[elementIndex];
-    const precomputedStrain = precomputedStrainFlat
-      ? {
-          exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
-          eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
-          gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
-        }
-      : null;
-    const response = recoverElementMaterialResponse(elementCache, U, materialPoint, {
-      stage: 'final-recovery'
-    }, precomputedStrain);
-    materialPoint.trialState = response.update.trialState;
-    materialPoint.diagnostics = response.update.diagnostics;
-    const initialStress = negateNormalAndShear(extractStress2DFrom6(materialPoint.referenceState.effectiveStress6));
-    const initialStress3D = effectiveStress6ToCompressionPositiveStress3D(materialPoint.referenceState.effectiveStress6);
-    const initialStressFe = extractStress2DFrom6(materialPoint.referenceState.effectiveStress6);
+    const gpRecords = [];
+    const avgStrain = { exx: 0, eyy: 0, gxy: 0 };
+    const avgStress2D = { sxx: 0, syy: 0, txy: 0 };
+    const avgInitialStress2D = { sxx: 0, syy: 0, txy: 0 };
+    const avgStress6 = [0, 0, 0, 0, 0, 0];
+    const avgInitialStress6 = [0, 0, 0, 0, 0, 0];
+    const area = Math.max(Number(elementCache.area) || 0, 1e-12);
+    let representative = null;
+    let representativeScore = Number.NEGATIVE_INFINITY;
+    let anyActive = false;
+    let anyExceeded = false;
+    let anyTension = false;
+    let anyInitialInadmissible = false;
+    let safetyEquivalentPlasticIncrement = 0;
+    let maxLocalStrengthReserve = 0;
+    let maxEtaMcFinal = 0;
+
+    for (const gp of elementCache.integrationPoints || []) {
+      const materialPoint = materialPoints[gp.globalIndex];
+      const precomputedStrain = precomputedStrainFlat && elementCache.kind === 't3'
+        ? {
+            exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
+            eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
+            gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
+          }
+        : null;
+      const response = recoverIntegrationPointMaterialResponse(elementCache, gp, U, materialPoint, {
+        stage: 'final-recovery'
+      }, precomputedStrain);
+      materialPoint.trialState = response.update.trialState;
+      materialPoint.diagnostics = response.update.diagnostics;
+      const weight = (Number(gp.areaWeight) || 0) / area;
+      const initialStressFe = extractStress2DFrom6(materialPoint.referenceState.effectiveStress6);
+      const stress6 = response.update.stressTrial6 || [];
+      const initialStress6 = materialPoint.referenceState.effectiveStress6 || [];
+      avgStrain.exx += weight * (Number(response.strain?.exx) || 0);
+      avgStrain.eyy += weight * (Number(response.strain?.eyy) || 0);
+      avgStrain.gxy += weight * (Number(response.strain?.gxy) || 0);
+      avgStress2D.sxx += weight * (Number(response.stress2D?.sxx) || 0);
+      avgStress2D.syy += weight * (Number(response.stress2D?.syy) || 0);
+      avgStress2D.txy += weight * (Number(response.stress2D?.txy) || 0);
+      avgInitialStress2D.sxx += weight * (Number(initialStressFe?.sxx) || 0);
+      avgInitialStress2D.syy += weight * (Number(initialStressFe?.syy) || 0);
+      avgInitialStress2D.txy += weight * (Number(initialStressFe?.txy) || 0);
+      for (let k = 0; k < 6; k += 1) {
+        avgStress6[k] += weight * (Number(stress6[k]) || 0);
+        avgInitialStress6[k] += weight * (Number(initialStress6[k]) || 0);
+      }
+      const comparisonMaterialState = comparisonMaterialPoints?.[gp.globalIndex]
+        ? snapshotMaterialPointState(
+          comparisonMaterialPoints[gp.globalIndex].committedState || comparisonMaterialPoints[gp.globalIndex].trialState
+        )
+        : null;
+      const displayedMaterialState = snapshotMaterialPointState(materialPoint.trialState);
+      const increment = Math.max(
+        (Number(displayedMaterialState?.accumulatedPlasticStrain) || 0) - (Number(comparisonMaterialState?.accumulatedPlasticStrain) || 0),
+        0
+      );
+      safetyEquivalentPlasticIncrement = Math.max(safetyEquivalentPlasticIncrement, increment);
+      const principalAtGp = response.update.diagnostics?.principal || principalStress2DCompressionPositive(negateNormalAndShear(response.stress2D));
+      const mcAtGp = response.update.diagnostics?.mc || mohrCoulombIndicator(principalAtGp, materialPoint.materialParameters);
+      const tensionAtGp = isTensionCutoffActiveState(response.update.trialState, response.update.diagnostics, mcAtGp);
+      const eta = Number(response.update.diagnostics?.etaMcFinal ?? mcAtGp?.eta);
+      const active = displayedMaterialState?.currentlyMcActive === true;
+      const score = (tensionAtGp ? 3e9 : 0) + (active ? 2e9 : 0) + (Number.isFinite(eta) ? eta : 1e9);
+      if (!representative || score > representativeScore) {
+        representativeScore = score;
+        representative = {
+          gp,
+          response,
+          materialPoint,
+          comparisonMaterialState,
+          displayedMaterialState,
+          committedMaterialState: snapshotMaterialPointState(materialPoint.committedState),
+          predictorMaterialState: snapshotMaterialPointState(materialPoint.predictorState),
+          referenceMaterialState: snapshotMaterialPointState(materialPoint.referenceState),
+          mcAtGp,
+          tensionAtGp
+        };
+      }
+      anyActive = anyActive || active;
+      anyExceeded = anyExceeded || displayedMaterialState?.hasEverExceededMc === true;
+      anyTension = anyTension || tensionAtGp;
+      anyInitialInadmissible = anyInitialInadmissible || materialPoint.predictorState?.initialStateAdmissible === false;
+      maxLocalStrengthReserve = Math.max(maxLocalStrengthReserve, Number(response.update.diagnostics?.localStrengthReserve) || 0);
+      maxEtaMcFinal = Math.max(maxEtaMcFinal, Number.isFinite(eta) ? eta : 0);
+      gpRecords.push({
+        gpIndex: gp.gpIndex,
+        integrationPointIndex: gp.globalIndex,
+        x: gp.x,
+        y: gp.y,
+        areaWeight: gp.areaWeight,
+        strain: response.strain,
+        stress2D: response.stress2D,
+        effectiveStress: negateNormalAndShear(response.stress2D),
+        materialState: displayedMaterialState,
+        materialDiagnostics: response.update.diagnostics,
+        mc: mcAtGp,
+        tensionCutoffActive: tensionAtGp
+      });
+    }
+
+    const rep = representative || {};
+    const response = rep.response || {};
+    const materialPoint = rep.materialPoint || materialPoints[elementIndex];
+    const displayedMaterialState = rep.displayedMaterialState || snapshotMaterialPointState(materialPoint?.trialState);
+    const committedMaterialState = rep.committedMaterialState || snapshotMaterialPointState(materialPoint?.committedState);
+    const initialStress = negateNormalAndShear(avgInitialStress2D);
+    const initialStress3D = effectiveStress6ToCompressionPositiveStress3D(avgInitialStress6);
     const stressIncrement = {
-      sxx: response.stress2D.sxx - initialStressFe.sxx,
-      syy: response.stress2D.syy - initialStressFe.syy,
-      txy: response.stress2D.txy - initialStressFe.txy
+      sxx: avgStress2D.sxx - avgInitialStress2D.sxx,
+      syy: avgStress2D.syy - avgInitialStress2D.syy,
+      txy: avgStress2D.txy - avgInitialStress2D.txy
     };
     const sigmaIncrementGeo = negateNormalAndShear(stressIncrement);
-    const sigmaEff = negateNormalAndShear(response.stress2D);
-    const sigmaEff3D = effectiveStress6ToCompressionPositiveStress3D(response.update.stressTrial6);
+    const sigmaEff = negateNormalAndShear(avgStress2D);
+    const sigmaEff3D = effectiveStress6ToCompressionPositiveStress3D(avgStress6);
     const porePressure = Math.max(Number(porePressureByElement?.[elementIndex]) || 0, 0);
     const initialTotalStress = {
       sxx: (Number(initialStress?.sxx) || 0) + porePressure,
@@ -3702,27 +3943,15 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
       szz: (Number(sigmaEff3D?.szz) || 0) + porePressure,
       txy: Number(sigmaEff3D?.txy) || 0
     };
-    const principal = response.update.diagnostics?.principal || principalStress2DCompressionPositive(sigmaEff);
-    const mc = response.update.diagnostics?.mc || mohrCoulombIndicator(principal, materialPoint.materialParameters);
-    const tensionCutoffActive = isTensionCutoffActiveState(response.update.trialState, response.update.diagnostics, mc);
-    const predictorMaterialState = snapshotMaterialPointState(materialPoint.predictorState);
-    const displayedMaterialState = snapshotMaterialPointState(materialPoint.trialState);
-    const committedMaterialState = snapshotMaterialPointState(materialPoint.committedState);
-    const comparisonMaterialState = comparisonMaterialPoints?.[elementIndex]
-      ? snapshotMaterialPointState(
-        comparisonMaterialPoints[elementIndex].committedState || comparisonMaterialPoints[elementIndex].trialState
-      )
-      : null;
-    const safetyEquivalentPlasticIncrement = Math.max(
-      (Number(displayedMaterialState?.accumulatedPlasticStrain) || 0) - (Number(comparisonMaterialState?.accumulatedPlasticStrain) || 0),
-      0
-    );
+    const principal = principalStress2DCompressionPositive(sigmaEff);
+    const mc = mohrCoulombIndicator(principal, materialPoint?.materialParameters);
+    const tensionCutoffActive = anyTension || isTensionCutoffActiveState(displayedMaterialState, response.update?.diagnostics, mc);
     out.push({
       elementIndex,
       regionIndex: cell?.regionIndex ?? -1,
-      area: response.area,
+      area: elementCache.area,
       centroid: elementCache.centroid || cell?.centroid || { x: 0, y: 0 },
-      strain: response.strain,
+      strain: avgStrain,
       stressIncrement,
       stressIncrementGeo: sigmaIncrementGeo,
       porePressure,
@@ -3736,51 +3965,52 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
       totalStress3D,
       principal,
       mc,
-      predictorMaterialState,
-      comparisonMaterialState,
-      referenceMaterialState: snapshotMaterialPointState(materialPoint.referenceState),
+      gaussPoints: gpRecords,
+      predictorMaterialState: rep.predictorMaterialState || snapshotMaterialPointState(materialPoint?.predictorState),
+      comparisonMaterialState: rep.comparisonMaterialState || null,
+      referenceMaterialState: rep.referenceMaterialState || snapshotMaterialPointState(materialPoint?.referenceState),
       committedMaterialState,
       materialState: displayedMaterialState,
       materialDiagnostics: {
-        constitutiveModel: response.update.diagnostics?.constitutiveModel || materialPoint.materialModel?.kind || 'linear-elastic',
-        activeYieldSurface: displayedMaterialState?.activeYieldSurface || response.update.diagnostics?.activeYieldSurface || 'NONE',
-        diagnosticYieldSurface: response.update.diagnostics?.diagnosticYieldSurface || 'NONE',
-        exactBranchKind: displayedMaterialState?.exactBranchKind || response.update.diagnostics?.exactBranchKind || 'ELASTIC',
-        multiplicityKind: displayedMaterialState?.multiplicityKind || response.update.diagnostics?.finalMultiplicityKind || 'DISTINCT',
-        trialBranchKind: response.update.diagnostics?.trialBranchKind || displayedMaterialState?.exactBranchKind || 'ELASTIC',
-        trialMultiplicityKind: response.update.diagnostics?.trialMultiplicityKind || displayedMaterialState?.multiplicityKind || 'DISTINCT',
-        representativeBasisSource: displayedMaterialState?.representativeBasisSource || response.update.diagnostics?.representativeBasisSource || 'trial',
-        localReturnMode: displayedMaterialState?.localReturnMode || response.update.diagnostics?.localReturnMode || 'elastic',
-        localFallbackUsed: displayedMaterialState?.localFallbackUsed === true || response.update.diagnostics?.localFallbackUsed === true,
-        edgeTotalMultiplier: Number(displayedMaterialState?.edgeTotalMultiplier ?? response.update.diagnostics?.edgeTotalMultiplier) || 0,
-        edgeMixWeight: Number(displayedMaterialState?.edgeMixWeight ?? response.update.diagnostics?.edgeMixWeight) || 0,
-        plasticMultipliers: Array.isArray(response.update.diagnostics?.plasticMultipliers) ? [...response.update.diagnostics.plasticMultipliers] : [],
-        branchAcceptanceResidual: Number(response.update.diagnostics?.branchAcceptanceResidual) || 0,
-        tangentConditionNumber: Number(response.update.diagnostics?.tangentConditionNumber) || Number.POSITIVE_INFINITY,
-        tangentQuality: response.update.diagnostics?.tangentQuality || 'unknown',
-        apexAdmissibilityReason: response.update.diagnostics?.apexAdmissibilityReason || '',
-        localFailureClassification: response.update.diagnostics?.localFailureClassification || '',
-        fallbackSourceReason: response.update.diagnostics?.fallbackSourceReason || '',
-        localResidualsBySurface: response.update.diagnostics?.localResidualsBySurface ? { ...response.update.diagnostics.localResidualsBySurface } : {},
-        currentlyMcActive: displayedMaterialState?.currentlyMcActive === true,
-        hasEverExceededMc: displayedMaterialState?.hasEverExceededMc === true,
+        constitutiveModel: response.update?.diagnostics?.constitutiveModel || materialPoint?.materialModel?.kind || 'linear-elastic',
+        activeYieldSurface: displayedMaterialState?.activeYieldSurface || response.update?.diagnostics?.activeYieldSurface || 'NONE',
+        diagnosticYieldSurface: response.update?.diagnostics?.diagnosticYieldSurface || 'NONE',
+        exactBranchKind: displayedMaterialState?.exactBranchKind || response.update?.diagnostics?.exactBranchKind || 'ELASTIC',
+        multiplicityKind: displayedMaterialState?.multiplicityKind || response.update?.diagnostics?.finalMultiplicityKind || 'DISTINCT',
+        trialBranchKind: response.update?.diagnostics?.trialBranchKind || displayedMaterialState?.exactBranchKind || 'ELASTIC',
+        trialMultiplicityKind: response.update?.diagnostics?.trialMultiplicityKind || displayedMaterialState?.multiplicityKind || 'DISTINCT',
+        representativeBasisSource: displayedMaterialState?.representativeBasisSource || response.update?.diagnostics?.representativeBasisSource || 'trial',
+        localReturnMode: displayedMaterialState?.localReturnMode || response.update?.diagnostics?.localReturnMode || 'elastic',
+        localFallbackUsed: displayedMaterialState?.localFallbackUsed === true || response.update?.diagnostics?.localFallbackUsed === true,
+        edgeTotalMultiplier: Number(displayedMaterialState?.edgeTotalMultiplier ?? response.update?.diagnostics?.edgeTotalMultiplier) || 0,
+        edgeMixWeight: Number(displayedMaterialState?.edgeMixWeight ?? response.update?.diagnostics?.edgeMixWeight) || 0,
+        plasticMultipliers: Array.isArray(response.update?.diagnostics?.plasticMultipliers) ? [...response.update.diagnostics.plasticMultipliers] : [],
+        branchAcceptanceResidual: Number(response.update?.diagnostics?.branchAcceptanceResidual) || 0,
+        tangentConditionNumber: Number(response.update?.diagnostics?.tangentConditionNumber) || Number.POSITIVE_INFINITY,
+        tangentQuality: response.update?.diagnostics?.tangentQuality || 'unknown',
+        apexAdmissibilityReason: response.update?.diagnostics?.apexAdmissibilityReason || '',
+        localFailureClassification: response.update?.diagnostics?.localFailureClassification || '',
+        fallbackSourceReason: response.update?.diagnostics?.fallbackSourceReason || '',
+        localResidualsBySurface: response.update?.diagnostics?.localResidualsBySurface ? { ...response.update.diagnostics.localResidualsBySurface } : {},
+        currentlyMcActive: anyActive,
+        hasEverExceededMc: anyExceeded,
         committedActiveYieldSurface: committedMaterialState?.activeYieldSurface || 'NONE',
         committedExactBranchKind: committedMaterialState?.exactBranchKind || 'ELASTIC',
         committedCurrentlyMcActive: committedMaterialState?.currentlyMcActive === true,
         committedHasEverExceededMc: committedMaterialState?.hasEverExceededMc === true,
-        initialStateAdmissible: materialPoint.predictorState?.initialStateAdmissible !== false,
-        initialEtaMc: Number(materialPoint.predictorState?.initialEtaMc),
-        initialFMc: Number(materialPoint.predictorState?.initialFMc),
-        predictorDiagnosticYieldSurface: materialPoint.predictorState?.initialDiagnosticYieldSurface || 'NONE',
-        predictorEtaMc: Number(materialPoint.predictorState?.etaMcCurrent ?? materialPoint.predictorState?.initialEtaMc),
-        equilibratedInitialStateAvailable: materialPoint.referenceState?.equilibratedInitialStateAvailable === true,
-        equilibratedInitialStateAdmissible: materialPoint.referenceState?.equilibratedInitialStateAdmissible !== false,
-        equilibratedInitialFMc: Number(materialPoint.referenceState?.equilibratedInitialFMc),
-        equilibratedInitialEtaMc: Number(materialPoint.referenceState?.equilibratedInitialEtaMc ?? materialPoint.referenceState?.etaMcCurrent),
-        equilibratedInitialDiagnosticYieldSurface: materialPoint.referenceState?.equilibratedInitialDiagnosticYieldSurface || 'NONE',
+        initialStateAdmissible: !anyInitialInadmissible,
+        initialEtaMc: Number(materialPoint?.predictorState?.initialEtaMc),
+        initialFMc: Number(materialPoint?.predictorState?.initialFMc),
+        predictorDiagnosticYieldSurface: materialPoint?.predictorState?.initialDiagnosticYieldSurface || 'NONE',
+        predictorEtaMc: Number(materialPoint?.predictorState?.etaMcCurrent ?? materialPoint?.predictorState?.initialEtaMc),
+        equilibratedInitialStateAvailable: materialPoint?.referenceState?.equilibratedInitialStateAvailable === true,
+        equilibratedInitialStateAdmissible: materialPoint?.referenceState?.equilibratedInitialStateAdmissible !== false,
+        equilibratedInitialFMc: Number(materialPoint?.referenceState?.equilibratedInitialFMc),
+        equilibratedInitialEtaMc: Number(materialPoint?.referenceState?.equilibratedInitialEtaMc ?? materialPoint?.referenceState?.etaMcCurrent),
+        equilibratedInitialDiagnosticYieldSurface: materialPoint?.referenceState?.equilibratedInitialDiagnosticYieldSurface || 'NONE',
         tensionCutoffActive,
-        localStrengthReserve: Number(response.update.diagnostics?.localStrengthReserve),
-        etaMcFinal: Number(response.update.diagnostics?.etaMcFinal),
+        localStrengthReserve: maxLocalStrengthReserve,
+        etaMcFinal: maxEtaMcFinal,
         safetyEquivalentPlasticIncrement,
         stateChanged: false
       }
@@ -3806,7 +4036,7 @@ function samplePointCandidates(mesh, x, y) {
   return Array.from({ length: mesh?.cells?.length || 0 }, (_item, index) => index);
 }
 
-function sampleTriangleValue(point, triPoints, triValues) {
+function sampleTriangleValue(point, triPoints, triValues, elementType = 't3') {
   const [a, b, c] = triPoints;
   const denom = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
   if (!(Math.abs(denom) > GEOM_EPS)) return null;
@@ -3814,6 +4044,12 @@ function sampleTriangleValue(point, triPoints, triValues) {
   const l2 = ((c.y - a.y) * (point.x - c.x) + (a.x - c.x) * (point.y - c.y)) / denom;
   const l3 = 1 - l1 - l2;
   if (l1 < -GEOM_EPS || l2 < -GEOM_EPS || l3 < -GEOM_EPS) return null;
+  if (normalizeElementType(elementType) === 't6' && triValues.length >= 6) {
+    const N = shapeFunctionsT6(l1, l2, l3);
+    let out = 0;
+    for (let i = 0; i < 6; i += 1) out += N[i] * (Number(triValues[i]) || 0);
+    return out;
+  }
   return l1 * triValues[0] + l2 * triValues[1] + l3 * triValues[2];
 }
 
@@ -3837,9 +4073,9 @@ export function sampleDeformationState(mesh, result, x, y) {
       const triangleIndex = cell.triangleIndices[j];
       const element = mesh.elements[triangleIndex];
       if (!element) continue;
-      const triPoints = element.map((nodeId) => mesh.nodes[nodeId]);
-      const ux = sampleTriangleValue(point, triPoints, element.map((nodeId) => result.nodalDisplacements[nodeId]?.ux || 0));
-      const uy = sampleTriangleValue(point, triPoints, element.map((nodeId) => result.nodalDisplacements[nodeId]?.uy || 0));
+      const triPoints = element.slice(0, 3).map((nodeId) => mesh.nodes[nodeId]);
+      const ux = sampleTriangleValue(point, triPoints, element.map((nodeId) => result.nodalDisplacements[nodeId]?.ux || 0), mesh.elementType);
+      const uy = sampleTriangleValue(point, triPoints, element.map((nodeId) => result.nodalDisplacements[nodeId]?.uy || 0), mesh.elementType);
       if (!(Number.isFinite(ux) && Number.isFinite(uy))) continue;
       const tensionCutoffActive = result.elementResults?.[triangleIndex]?.materialDiagnostics?.tensionCutoffActive === true;
       const mcEta = Number(result.elementResults?.[triangleIndex]?.mc?.eta);
@@ -3906,6 +4142,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       : 'mc-reduced-stiffness';
   const options = {
     analysisType,
+    meshElementType: normalizeElementType(input?.options?.meshElementType ?? input?.options?.elementOrder),
     meshTargetArea: Math.max(Number(input?.options?.meshTargetArea) || 0.05, 0.01),
     loadMode: input?.options?.loadMode === 'total' ? 'total' : 'pressure',
     totalLoad: input?.options?.totalLoad,
@@ -3967,6 +4204,14 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       : null,
     gpuMinDof: Math.max(Math.round(Number(input?.options?.gpuMinDof) || GPU_DEFAULT_MIN_DOF), 0)
   };
+  if (options.meshElementType === 't6' && options.useGpuAcceleration) {
+    pushUniqueWarning(
+      warnings,
+      'T6 deformation currently uses the CPU f64 element path because the mixed-precision element kernels are T3-only.'
+    );
+    options.useGpuAcceleration = false;
+    options.linearAlgebraBackend = null;
+  }
   const load = normalizeLoad(model, options, warnings, analysisType === 'deformation' ? 'required' : 'optional');
   addDomainExtentWarnings(model, load, warnings);
   const hasSurfaceLoad = !!load;
@@ -4016,6 +4261,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   const loadRhs = new Float64Array(ndof);
   const gravityRhs = new Float64Array(ndof);
   const porePressureByElement = new Float64Array(mesh.elements.length);
+  const porePressureByIntegrationPoint = new Float64Array(elementCaches.integrationPointCount || mesh.elements.length);
   const regionConstitutiveByRegion = prepareRegionConstitutiveModels(mesh, options, warnings);
 
   onProgress({
@@ -4053,18 +4299,32 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     const elementCache = elementCaches[elementIndex];
     const cell = mesh.cells[elementCache.cellIndex];
     const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
-    const initialPorePressure = sampleInitialPorePressure(model, elementCache.centroid.x, elementCache.centroid.y, options, warnings);
-    const gammaBulk = initialBulkUnitWeightFromPorePressure(constitutive.materialParameters, initialPorePressure);
-    if (elasticStiffnessFlat) {
+    let porePressureSum = 0;
+    let gammaSum = 0;
+    const gpCount = Math.max(elementCache.integrationPoints?.length || 0, 1);
+    for (const gp of elementCache.integrationPoints || []) {
+      const porePressure = sampleInitialPorePressure(model, gp.x, gp.y, options, warnings);
+      porePressureByIntegrationPoint[gp.globalIndex] = porePressure;
+      porePressureSum += porePressure;
+      gammaSum += initialBulkUnitWeightFromPorePressure(constitutive.materialParameters, porePressure);
+    }
+    const initialPorePressure = porePressureSum / gpCount;
+    const gammaBulk = gammaSum / gpCount;
+    if (elasticStiffnessFlat && elementCache.kind === 't3') {
       addMatrixBlockFlat(rows, elementCache.dofs, elasticStiffnessFlat, elementIndex * 36);
     } else {
       addMatrixBlock(
         rows,
         elementCache.dofs,
-        elementStiffnessT3FromBAndArea(elementCache.B, elementCache.area, extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6))
+        elementCache.kernel.elementStiffness(
+          elementCache.corners,
+          Array.from({ length: elementCache.numGaussPoints }, () => extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6)),
+          elementCache.area,
+          elementCache
+        )
       );
     }
-    addVectorBlock(gravityRhs, elementCache.dofs, elementGravityVectorT3FromArea(elementCache.area, gammaBulk));
+    addVectorBlock(gravityRhs, elementCache.dofs, elementCache.kernel.elementBodyForceFromArea(elementCache.area, 0, -Math.max(gammaBulk, 0)));
     porePressureByElement[elementIndex] = initialPorePressure;
     if (elementIndex % 250 === 0 && (await runCheckpoint(runControl))) {
       throw new Error('Deformation run was interrupted during stiffness assembly.');
@@ -4080,7 +4340,10 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   });
 
   loadedTerrainEdges(mesh, load).forEach((edge) => {
-    addVectorBlock(loadRhs, [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1], edgeTractionVector(edge, 0, -load.q));
+    const dofs = mesh.elementType === 't6'
+      ? [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1, 2 * edge.nMid, 2 * edge.nMid + 1]
+      : [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1];
+    addVectorBlock(loadRhs, dofs, elementKernelFor(mesh.elementType).edgeTraction(edge, 0, -load.q));
   });
 
   const compressedRows = compressMatrixRows(rows, freeDofs, freeIndexByDof);
@@ -4100,13 +4363,13 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     freeDofs,
     fixedValues,
     gravityCompressedRhs,
-    porePressureByElement,
+    porePressureByIntegrationPoint,
     runControl,
     onProgress
   );
   const wantsPlasticInitialEquilibrium = options.initialStressMode === 'plastic-geostatic';
   const canRunPlasticInitialEquilibrium = wantsPlasticInitialEquilibrium && options.constitutiveModel === 'mc-plastic';
-  const materialPoints = buildElementMaterialPoints(mesh, regionConstitutiveByRegion, geostatic.initialField, options, warnings);
+  const materialPoints = buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByRegion, geostatic.initialField, options, warnings);
   if (wantsPlasticInitialEquilibrium && !canRunPlasticInitialEquilibrium) {
     pushUniqueWarning(
       warnings,
@@ -4458,19 +4721,22 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     summaries,
     solver: {
       method: analysisType === 'safety-cphi'
-        ? 'stage-2-mc-plastic-plane-strain-t3-safety-cphi'
+        ? `stage-2-mc-plastic-plane-strain-${options.meshElementType}-safety-cphi`
         : options.constitutiveModel === 'linear-elastic'
-        ? 'nonlinear-elastic-plane-strain-t3'
+        ? `nonlinear-elastic-plane-strain-${options.meshElementType}`
         : options.constitutiveModel === 'mc-plastic'
-          ? 'stage-2-mc-plastic-plane-strain-t3'
-          : 'stage-1-mc-reduced-stiffness-plane-strain-t3',
+          ? `stage-2-mc-plastic-plane-strain-${options.meshElementType}`
+          : `stage-1-mc-reduced-stiffness-plane-strain-${options.meshElementType}`,
       analysisType,
+      elementType: options.meshElementType,
+      integrationPointsPerElement: options.meshElementType === 't6' ? 3 : 1,
       constitutiveModel: options.constitutiveModel === 'linear-elastic'
         ? 'linear-elastic-material-point'
         : options.constitutiveModel === 'mc-plastic'
           ? 'mc-plastic-material-point'
           : 'mc-reduced-stiffness-material-point',
       materialPointCount: materialPoints.length,
+      integrationPointCount: materialPoints.length,
       initialStressMode: canRunPlasticInitialEquilibrium
         ? 'gravity-step-k0nc-plastic-equilibration'
         : geostatic.mode,

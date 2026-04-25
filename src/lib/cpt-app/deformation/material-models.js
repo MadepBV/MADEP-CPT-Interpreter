@@ -2261,10 +2261,20 @@ export function seedMaterialPointStateFromInitialStress(initialEffectiveStress2D
   return seedMaterialPointStateFromEffectiveStress6(effectiveStress6, materialParameters);
 }
 
-export function createMaterialPoint({ materialModel, materialParameters, committedState = null, elementIndex = -1, regionIndex = -1 } = {}) {
+export function createMaterialPoint({
+  materialModel,
+  materialParameters,
+  committedState = null,
+  elementIndex = -1,
+  integrationPointIndex = -1,
+  gpIndex = -1,
+  regionIndex = -1
+} = {}) {
   const committed = cloneMaterialPointState(committedState);
   return {
     elementIndex,
+    integrationPointIndex,
+    gpIndex,
     regionIndex,
     materialModel,
     materialParameters,
