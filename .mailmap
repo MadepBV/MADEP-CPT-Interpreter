@@ -1,0 +1,11 @@
+# Author identity consolidation for git-shortlog and the GitHub
+# contributors graph. Both tools apply the rules in this file when
+# rendering author attribution; commits themselves are not modified.
+#
+# Format (see `git help mailmap`):
+#   <correct-name> <correct-email> <commit-name> <commit-email>
+#
+# A bare `<commit-email>` form matches every commit with that email
+# regardless of the commit-name, so future co-author trailers using
+# the same address are caught automatically.
+madpelsm <mathiasdepelsmaeker@gmail.com> <noreply@anthropic.com>
