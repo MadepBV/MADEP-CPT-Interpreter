@@ -21,6 +21,7 @@ import {
   extractStress2DFrom6,
   extractTangent2DFrom6,
   liftPlaneStrainStrainTo6,
+  mohrCoulombIndicator3D,
   setMaterialPointReferenceState,
   seedMaterialPointStateFromEffectiveStress6,
   seedMaterialPointStateFromInitialStress,
@@ -34,8 +35,14 @@ import {
   mohrCoulombIndicator,
   negateNormalAndShear,
   principalStress2DCompressionPositive,
-  sampleInitialPorePressure
+  sampleInitialPorePressure,
+  verticalOverburdenStressAt
 } from './post.js';
+import { computeDepthBandReport } from './diagnostics-depth-bands.js';
+import {
+  applyAdditiveSchwarzPreconditioner,
+  buildAdditiveSchwarzPreconditioner
+} from './preconditioners/additive-schwarz.js';
 import { terrainY } from '../stage6-bishop.js';
 import { createLinearAlgebraBackend, GPU_DEFAULT_MIN_DOF } from './gpu/index.js';
 
@@ -379,7 +386,14 @@ function reportGpuVectorMagnitudeFallback(absMax, ceiling) {
 const GPU_MATVEC_SOFT_NAN_BUDGET = 16;
 let gpuMatvecSoftNanCount = 0;
 
-function sparseMatVec(rows, vector) {
+// `sparseMatVec` is async because the WebGPU backend's matvec is
+// inherently async (no synchronous GPU readback exists in WebGPU);
+// the WebGL2 + GPU.js backend is sync but returning a Promise from it
+// is harmless (Promise.resolve of a Float64Array). All call sites in
+// this file `await` the result. Keeping a single async return contract
+// avoids the silent-NaN trap where `dot(p, await-needed-Promise)` ran
+// numeric arithmetic on a Promise instance.
+async function sparseMatVec(rows, vector) {
   if (activeMatvecBackend && typeof activeMatvecBackend.matvec === 'function') {
     // Adaptive pre-check. The GPU matvec produces Infinity/NaN only
     // when |val|·|x| · rowLen exceeds f32 max during a per-row
@@ -402,7 +416,7 @@ function sparseMatVec(rows, vector) {
     }
     const startedPrecisionMode = activeMatvecBackend.precisionMode || 'f32';
     try {
-      return activeMatvecBackend.matvec(rows, vector);
+      return await activeMatvecBackend.matvec(rows, vector);
     } catch (error) {
       // f32 matvec hit a non-finite value. Don't immediately abandon the
       // GPU: the double-single path uses the same WebGL kernel with
@@ -424,7 +438,7 @@ function sparseMatVec(rows, vector) {
         );
         if (escalated) {
           try {
-            return activeMatvecBackend.matvec(rows, vector);
+            return await activeMatvecBackend.matvec(rows, vector);
           } catch (retryError) {
             // Both f32 and double-single produced NaN. Two
             // possibilities: (a) the iterate genuinely doesn't fit in
@@ -632,9 +646,46 @@ function classifyFailureOutcomeClass(code = '') {
     case 'assembly-failure':
     case 'arc-length-limit-point-not-resolved':
       return 'numerical-nonconvergence';
+    case 'geostatic-numerically-stuck':
+      return 'numerically-stuck';
+    case 'geostatic-shallow-free-surface-yielding':
+      return 'shallow-free-surface-yielding';
+    case 'geostatic-likely-unstable-self-weight':
+      return 'likely-unstable-self-weight';
     default:
       return code ? 'unknown-failure' : 'unknown';
   }
+}
+
+function classifyGeostaticNonconvergence(depthBandReport, stepRecord = {}, context = {}) {
+  const dominant = depthBandReport?.dominantBand || null;
+  const shallowPlastic = Number(depthBandReport?.shallowPlasticCount) || 0;
+  const plasticCount = Number(depthBandReport?.plasticCount) || 0;
+  const tensionCount = Number(depthBandReport?.tensionCount) || 0;
+  const maxTau = Number(depthBandReport?.maxTauOverStrength) || 0;
+  const committedFactor = Number(context?.loadFactorCommitted) || 0;
+  const repeated = Number(context?.repeatedBandCount) || 0;
+  const reasonSuffix = dominant?.label ? ` Dominant depth band: ${dominant.label}.` : '';
+  if (plasticCount > 0 && shallowPlastic / Math.max(plasticCount, 1) >= 0.65 && repeated >= 2) {
+    return createFailureRecord(
+      'geostatic-shallow-free-surface-yielding',
+      `Initial self-weight equilibration repeatedly yielded the shallow free-surface band after cutbacks.${reasonSuffix}`
+    );
+  }
+  if (
+    committedFactor <= 0.05 &&
+    plasticCount > 0 &&
+    (maxTau >= 0.98 || tensionCount > 0 || (Number(dominant?.plasticFraction) || 0) >= 0.5)
+  ) {
+    return createFailureRecord(
+      'geostatic-likely-unstable-self-weight',
+      `Initial self-weight equilibration could not accept a stable correction increment and the active stress state is already at its strength envelope.${reasonSuffix}`
+    );
+  }
+  return createFailureRecord(
+    'geostatic-numerically-stuck',
+    `Initial self-weight equilibration became numerically stuck after repeated cutbacks.${reasonSuffix || ` Last step: ${stepRecord?.reason || 'nonlinear iterations exhausted'}.`}`
+  );
 }
 
 function classifyFailureCode(reason = '') {
@@ -706,6 +757,20 @@ function allowPlasticQuasiConvergence(
   const residualTarget = Number(tolerance?.residualTarget);
   if (!(Number.isFinite(residualNorm) && Number.isFinite(residualTarget) && residualTarget > 0)) return false;
   return residualNorm <= 1.1 * residualTarget;
+}
+
+function normalizeTangentSchedule(input, fallback = ['plastic']) {
+  const raw = Array.isArray(input)
+    ? input
+    : typeof input === 'string'
+      ? input.split(/[,\s]+/)
+      : fallback;
+  const out = [];
+  raw.forEach((item) => {
+    const mode = String(item || '').toLowerCase();
+    if ((mode === 'elastic' || mode === 'plastic') && !out.includes(mode)) out.push(mode);
+  });
+  return out.length ? out : fallback;
 }
 
 // =============================================================================
@@ -802,7 +867,78 @@ export function buildBlockJacobiPreconditioner(rows, freeDofs) {
   return precond;
 }
 
+// Convert the object-array preconditioner into a fixed-offset flat
+// form the GPU kernel can consume without dependent texture reads.
+// Block-Jacobi entries always reference one of three neighbours: the
+// row itself (scalar), one row above (block-second reads r[i-1]), or
+// one row below (block-first reads r[i+1]). We split the cross-row
+// coupling into two arrays (prevCoef, nextCoef) so the shader can
+// compose `z[i]` from `r[i-1], r[i], r[i+1]` with three texture fetches
+// at compile-time-known offsets — Apple Metal's WebGL2 driver returns
+// zeros for an `r[idx[i]]`-style dependent read, so a kernel that
+// uses one would silently produce z = 0 and CG would never make
+// progress.
+//
+// Boundary handling: prevCoef[0] = 0 (so the read of r[-1] clamped to
+// r[0] is multiplied by zero) and nextCoef[n-1] = 0 (same for r[n]).
+export function flattenBlockJacobiPreconditioner(precond) {
+  const n = precond.length;
+  const selfCoef = new Float32Array(n);
+  const prevCoef = new Float32Array(n);
+  const nextCoef = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const entry = precond[i];
+    if (!entry || entry.kind === 'scalar') {
+      selfCoef[i] = entry?.invDiag ?? 1;
+    } else if (entry.kind === 'block-first') {
+      // z[i] = a · r[i] + b · r[i+1]
+      selfCoef[i] = entry.a;
+      nextCoef[i] = entry.b;
+    } else if (entry.kind === 'block-second') {
+      // z[i] = d · r[i] + c · r[i-1]
+      selfCoef[i] = entry.d;
+      prevCoef[i] = entry.c;
+    } else {
+      selfCoef[i] = 1;
+    }
+  }
+  // Defensive boundary zeroing.
+  prevCoef[0] = 0;
+  nextCoef[n - 1] = 0;
+  return { selfCoef, prevCoef, nextCoef };
+}
+
+function resolvePreconditionerLevel(options = {}) {
+  const level = String(options?.preconditionerLevel || 'jacobi').toLowerCase();
+  if (level === 'schwarz' || level === 'additive-schwarz') return 'schwarz';
+  if (level === 'ilu0') return 'ilu0';
+  return 'jacobi';
+}
+
+function buildKrylovPreconditioner(rows, options = {}) {
+  const blockJacobi = buildBlockJacobiPreconditioner(rows, options?.freeDofs || null);
+  const level = resolvePreconditionerLevel(options);
+  if (level !== 'schwarz' || options?.allowSchwarzPreconditioner !== true) return blockJacobi;
+  const schwarz = buildAdditiveSchwarzPreconditioner(
+    rows,
+    options?.freeDofs || null,
+    options?.elementCaches || null,
+    options
+  );
+  if (!schwarz) return blockJacobi;
+  return {
+    kind: 'schwarz-with-block-jacobi-fallback',
+    schwarz,
+    fallback: blockJacobi
+  };
+}
+
 export function applyKrylovPreconditioner(precond, r, z) {
+  if (precond?.kind === 'schwarz-with-block-jacobi-fallback') {
+    if (applyAdditiveSchwarzPreconditioner(precond.schwarz, r, z)) return;
+    applyKrylovPreconditioner(precond.fallback, r, z);
+    return;
+  }
   // Computes z = M^(-1) r where M^(-1) is given block-by-block. Block
   // entries reference the residual at the paired row (i+1 for first,
   // i-1 for second), so we read r before writing z. The two arrays may
@@ -846,6 +982,144 @@ function cgToleranceState(residualNorm, rhsNorm, relTol = CG_REL_TOL, absTol = C
   };
 }
 
+// Dispatcher: when the active backend exposes a GPU-resident CG, route
+// through it. The GPU-resident path keeps x, r, z, p, ap as f32 textures
+// across iterations and only crosses the CPU↔GPU boundary at scalar
+// reductions and the periodic residual refresh — eliminating the
+// per-matvec upload/download round-trip that dominated the user's
+// "bursty" GPU usage. Falls back to the legacy hybrid `solveCg` (matvec
+// on GPU, axpy/dot on CPU) when the backend does not support resident
+// CG, when no backend is active, or when the caller's options indicate
+// a path the resident kernel cannot handle (e.g., unsymmetric algorithm).
+async function solveCgDispatched(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options = {}) {
+  // The GPU-resident CG path keeps every vector (x, r, z, p, ap) as
+  // f32 textures across iterations and runs the entire CG inner loop
+  // on the GPU. It eliminates the upload/download round-trip per
+  // matvec — *but* it computes dot products in pure f32 (a multi-pass
+  // reduction with stride 64), and the cumulative ULP error on a
+  // 4000-DOF problem is ~1e-5 relative. That coarse residual stalls
+  // the outer Newton loop on tight problems (low cohesion, near-MC
+  // initial states, anything where the Newton tolerance demands more
+  // than ~1e-4 relative residual). Until we ship a higher-precision
+  // dot product (Kahan reduction, double-single accumulation, or CPU
+  // f64 dots downloaded per iter), the resident path is opt-in only.
+  // The hybrid path (matvec on GPU, axpy/dot on CPU f64) remains the
+  // default — this is what every passing run on this branch has
+  // exercised so far, and it already delivers the bulk of the GPU
+  // speedup on real WebGL2 hardware.
+  // Resident CG dispatch is gated on a *certification* flag, not just
+  // "the dot kernel happens to be DS." `residentCgCertified` only
+  // flips to `true` after the backend's full operator chain (matvec,
+  // axpy, dot, preconditioner, residual) has been verified to give
+  // the same convergence decisions as CPU f64 across the engineering
+  // test sweep. Round 1 of the WebGPU backend has DS dot but f32
+  // matvec, so it ships with `residentCgCertified: false` and the
+  // resident path is opt-in via `options.useResidentCg === true`.
+  // Round 2 (DS matvec + DS axpy + true residual replacement) flips
+  // the flag to `true` and the resident path becomes the default.
+  // `useResidentCg === false` (an explicit decline) always wins.
+  const residentExplicit = options?.useResidentCg;
+  const residentDefault = activeMatvecBackend?.residentCgCertified === true;
+  const wantsResidentPath = activeMatvecBackend?.supportsResidentCg === true
+    && typeof activeMatvecBackend?.solveCgPreconditionedGpu === 'function'
+    && rows.length > 0
+    && (residentExplicit === true || (residentExplicit !== false && residentDefault));
+  if (wantsResidentPath) {
+    const precond = buildBlockJacobiPreconditioner(rows, options?.freeDofs || null);
+    const flat = flattenBlockJacobiPreconditioner(precond);
+    const refreshInterval = backendRequiresResidualRefresh()
+      ? backendResidualRefreshInterval()
+      : 0;
+    try {
+      const result = await activeMatvecBackend.solveCgPreconditionedGpu({
+        rows,
+        rhs,
+        initial,
+        preconditioner: flat,
+        maxIter,
+        relTol,
+        absTol,
+        runControl,
+        iterationObserver,
+        residualRefreshIntervalForCheckpoint: refreshInterval
+      });
+      // Defensive correctness check: the resident path's f32 storage
+      // can in principle produce a non-finite scalar mid-iteration on
+      // a pathologically ill-conditioned matrix. The CPU CG below has
+      // f64 dynamic range and recovers cleanly; route there if we see
+      // any infected output.
+      if (!result
+          || !Number.isFinite(result.residualNorm)
+          || (result.solution && Array.from(result.solution).some((v) => !Number.isFinite(v)))) {
+        if (typeof console !== 'undefined' && console?.warn) {
+          console.warn('GPU-resident CG produced a non-finite output; falling back to CPU CG for this solve.');
+        }
+        return solveCg(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options);
+      }
+      return result;
+    } catch (error) {
+      // Resident kernel threw (compilation, OOB, driver error). Fall
+      // back to CPU CG for this single solve. Don't tear down the
+      // backend — the next solve might be smaller and work fine.
+      if (typeof console !== 'undefined' && console?.warn) {
+        console.warn(`GPU-resident CG threw (${error?.message || 'unknown'}); falling back to CPU CG for this solve.`);
+      }
+      return solveCg(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options);
+    }
+  }
+  return solveCg(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options);
+}
+
+// Dispatcher for GMRES. Mirrors `solveCgDispatched`. Routes to the
+// GPU-resident FGMRES (DS operator chain, MGS with GPU-resident
+// scalars, true-residual restart) when the active backend self-reports
+// `residentGmresCertified` and exposes `solveGmresPreconditionedGpu`.
+// Falls back to the legacy CPU `solveGmresScaled` (which uses the
+// async backend matvec — also DS via the WebGPU `matvec` API — and
+// does Arnoldi + Givens on CPU) when the resident path is unavailable
+// or fails for a single solve.
+async function solveGmresDispatched(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options = {}) {
+  const residentExplicit = options?.useResidentGmres;
+  const residentDefault = activeMatvecBackend?.residentGmresCertified === true;
+  const wantsResidentPath = activeMatvecBackend?.supportsResidentCg === true
+    && typeof activeMatvecBackend?.solveGmresPreconditionedGpu === 'function'
+    && rows.length > 0
+    && (residentExplicit === true || (residentExplicit !== false && residentDefault));
+  if (wantsResidentPath) {
+    const precond = buildBlockJacobiPreconditioner(rows, options?.freeDofs || null);
+    const flat = flattenBlockJacobiPreconditioner(precond);
+    try {
+      const result = await activeMatvecBackend.solveGmresPreconditionedGpu({
+        rows,
+        rhs,
+        initial,
+        preconditioner: flat,
+        maxIter,
+        relTol,
+        absTol,
+        runControl,
+        iterationObserver,
+        restart: Math.max(Math.round(Number(options?.restart) || GMRES_RESTART), 4)
+      });
+      if (!result
+          || !Number.isFinite(result.residualNorm)
+          || (result.solution && Array.from(result.solution).some((v) => !Number.isFinite(v)))) {
+        if (typeof console !== 'undefined' && console?.warn) {
+          console.warn('GPU-resident FGMRES produced a non-finite output; falling back to CPU GMRES for this solve.');
+        }
+        return solveGmresScaled(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options);
+      }
+      return result;
+    } catch (error) {
+      if (typeof console !== 'undefined' && console?.warn) {
+        console.warn(`GPU-resident FGMRES threw (${error?.message || 'unknown'}); falling back to CPU GMRES for this solve.`);
+      }
+      return solveGmresScaled(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options);
+    }
+  }
+  return solveGmresScaled(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options);
+}
+
 async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null, iterationObserver = null, options = {}) {
   const n = rows.length;
   if (!n) {
@@ -868,7 +1142,7 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
     // so warm-start convergence is not judged against a narrowed residual.
     const ax = backendRequiresResidualRefresh()
       ? sparseMatVecFallback(rows, x)
-      : sparseMatVec(rows, x);
+      : await sparseMatVec(rows, x);
     r = new Float64Array(n);
     for (let i = 0; i < n; i += 1) r[i] = rhs[i] - ax[i];
   } else {
@@ -883,7 +1157,7 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
   // and falls back to scalar Jacobi for solitary rows; without it (legacy
   // call sites that have not yet been updated), the builder degrades to
   // pure scalar Jacobi, preserving prior behaviour.
-  const precond = buildBlockJacobiPreconditioner(rows, options?.freeDofs || null);
+  const precond = buildKrylovPreconditioner(rows, options);
   applyKrylovPreconditioner(precond, r, z);
   for (let i = 0; i < n; i += 1) p[i] = z[i];
 
@@ -905,7 +1179,7 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
   await runCheckpoint(runControl, true);
 
   for (let iter = 1; iter <= maxIter; iter += 1) {
-    const ap = sparseMatVec(rows, p);
+    const ap = await sparseMatVec(rows, p);
     const denom = dot(p, ap);
     if (!(Math.abs(denom) > CG_NUMERIC_EPS)) {
       tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
@@ -991,6 +1265,13 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
 }
 
 async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null, iterationObserver = null, options = {}) {
+  // Same async/sync impedance as solveGmresScaled (see comment there).
+  // Default is pure CPU f64. Hybrid (CPU BiCGStab + GPU matvec) is
+  // explicit opt-in via `allowHybridGpuMatvecForCpuKrylov`.
+  const allowHybridGpu = options?.allowHybridGpuMatvecForCpuKrylov === true;
+  const matvec = allowHybridGpu
+    ? (rs, v) => sparseMatVec(rs, v)
+    : (rs, v) => Promise.resolve(sparseMatVecFallback(rs, v));
   const n = rows.length;
   if (!n) {
     return {
@@ -1006,11 +1287,7 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
   }
   const x = initial && initial.length === n ? Float64Array.from(initial) : new Float64Array(n);
   const rhsNorm = Math.sqrt(dot(rhs, rhs));
-  const ax0 = initial
-    ? (backendRequiresResidualRefresh()
-        ? sparseMatVecFallback(rows, x)
-        : sparseMatVec(rows, x))
-    : new Float64Array(n);
+  const ax0 = initial ? await matvec(rows, x) : new Float64Array(n);
   const r = new Float64Array(n);
   for (let i = 0; i < n; i += 1) r[i] = rhs[i] - ax0[i];
   let rHat = Float64Array.from(r);
@@ -1040,7 +1317,7 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
   // per iteration; the application takes one pass over the residual
   // and produces a bounded preconditioned vector even when individual
   // diagonals are tiny.
-  const precond = buildBlockJacobiPreconditioner(rows, options?.freeDofs || null);
+  const precond = buildKrylovPreconditioner(rows, options);
   const phatScratchTarget = phat;
   const shatScratchTarget = shat;
   let rhoOld = 1;
@@ -1084,7 +1361,7 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
       p[i] = r[i] + beta * (p[i] - omega * v[i]);
     }
     applyKrylovPreconditioner(precond, p, phatScratchTarget);
-    const vNext = sparseMatVec(rows, phat);
+    const vNext = await matvec(rows, phat);
     v.set(vNext);
     const rHatDotV = dot(rHat, v);
     if (!(Number.isFinite(rHatDotV) && Math.abs(rHatDotV) > CG_NUMERIC_EPS)) {
@@ -1119,7 +1396,7 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
       };
     }
     applyKrylovPreconditioner(precond, s, shatScratchTarget);
-    const tNext = sparseMatVec(rows, shat);
+    const tNext = await matvec(rows, shat);
     t.set(tNext);
     const tDotT = dot(t, t);
     if (!(Number.isFinite(tDotT) && tDotT > CG_NUMERIC_EPS)) {
@@ -1341,6 +1618,21 @@ function solveUpperTriangularFromHessenberg(hessenberg, rhs, dimension) {
 }
 
 async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null, iterationObserver = null, options = {}) {
+  // GMRES on the CPU side has a hard impedance mismatch with the
+  // WebGPU async matvec: every Arnoldi step round-trips a vector
+  // (writeBuffer + dispatch + mapAsync + unmap) and the latency
+  // dominates the wall-clock on every browser-sized problem we have
+  // measured. Default behaviour is therefore *pure CPU f64* — we do
+  // NOT use `activeMatvecBackend.matvec` here unless the user
+  // explicitly opts into the experimental hybrid via
+  // `allowHybridGpuMatvecForCpuKrylov: true`. The fast GPU path for
+  // unsymmetric / plastic / c-phi solves is the resident FGMRES
+  // (gated by `residentGmresCertified`); this CPU GMRES is the
+  // honest fallback when resident is not available.
+  const allowHybridGpu = options?.allowHybridGpuMatvecForCpuKrylov === true;
+  const matvec = allowHybridGpu
+    ? (rs, v) => sparseMatVec(rs, v)
+    : (rs, v) => Promise.resolve(sparseMatVecFallback(rs, v));
   const n = rows.length;
   if (!n) {
     return {
@@ -1358,25 +1650,41 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
   const scaledSystem = buildScaledLinearSystem(rows, rhs, options);
   const scaledRows = scaledSystem.rows;
   const scaledRhs = scaledSystem.rhs;
-  const rhsNorm = Math.sqrt(dot(scaledRhs, scaledRhs));
+  const rawRhsNorm = Math.sqrt(dot(scaledRhs, scaledRhs));
+  const precond = buildKrylovPreconditioner(scaledRows, options);
+  const preconditionVector = (vector) => {
+    const out = new Float64Array(n);
+    applyKrylovPreconditioner(precond, vector, out);
+    return out;
+  };
+  const preconditionedMatvec = async (rs, vector) => preconditionVector(await matvec(rs, vector));
+  const preconditionedRhs = preconditionVector(scaledRhs);
+  const rhsNorm = Math.sqrt(dot(preconditionedRhs, preconditionedRhs));
+  const rawResidualState = async (solutionScaled) => {
+    const axRaw = await matvec(scaledRows, solutionScaled);
+    const rawResidual = new Float64Array(n);
+    for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
+      rawResidual[entryIndex] = scaledRhs[entryIndex] - axRaw[entryIndex];
+    }
+    const rawResidualNorm = Math.sqrt(dot(rawResidual, rawResidual));
+    const rawTolerance = cgToleranceState(rawResidualNorm, rawRhsNorm, relTol, absTol);
+    return { rawResidual, rawResidualNorm, rawTolerance };
+  };
   const restart = Math.max(Math.round(Number(options?.restart) || GMRES_RESTART), 4);
   let x = scaledSystem.unscaleInitialSolution(initial) || new Float64Array(n);
-  let ax = backendRequiresResidualRefresh()
-    ? sparseMatVecFallback(scaledRows, x)
-    : sparseMatVec(scaledRows, x);
-  let residual = new Float64Array(n);
-  for (let i = 0; i < n; i += 1) residual[i] = scaledRhs[i] - ax[i];
+  let rawState = await rawResidualState(x);
+  let residual = preconditionVector(rawState.rawResidual);
   let residualNorm = Math.sqrt(dot(residual, residual));
   let tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
-  if (tolerance.converged) {
+  if (tolerance.converged && rawState.rawTolerance.converged) {
     return {
       solution: scaledSystem.scaleSolution(x),
       converged: true,
       iterations: 0,
-      residualNorm,
-      relativeResidual: tolerance.relativeResidual,
-      rhsNorm,
-      toleranceTarget: tolerance.target,
+      residualNorm: rawState.rawResidualNorm,
+      relativeResidual: rawState.rawTolerance.relativeResidual,
+      rhsNorm: rawRhsNorm,
+      toleranceTarget: rawState.rawTolerance.target,
       interrupted: false
     };
   }
@@ -1387,15 +1695,16 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
   while (totalIterations < maxIter) {
     const beta = Math.sqrt(dot(residual, residual));
     if (!(beta > CG_NUMERIC_EPS)) {
+      rawState = await rawResidualState(x);
       tolerance = cgToleranceState(0, rhsNorm, relTol, absTol);
       return {
         solution: scaledSystem.scaleSolution(x),
-        converged: true,
+        converged: rawState.rawTolerance.converged,
         iterations: totalIterations,
-        residualNorm: 0,
-        relativeResidual: tolerance.relativeResidual,
-        rhsNorm,
-        toleranceTarget: tolerance.target,
+        residualNorm: rawState.rawResidualNorm,
+        relativeResidual: rawState.rawTolerance.relativeResidual,
+        rhsNorm: rawRhsNorm,
+        toleranceTarget: rawState.rawTolerance.target,
         interrupted: false
       };
     }
@@ -1415,7 +1724,7 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
     for (let columnIndex = 0; columnIndex < krylovDim; columnIndex += 1) {
       totalIterations += 1;
       completedColumns = columnIndex + 1;
-      const arnoldiVector = sparseMatVec(scaledRows, basis[columnIndex]);
+      const arnoldiVector = await preconditionedMatvec(scaledRows, basis[columnIndex]);
       for (let rowIndex = 0; rowIndex <= columnIndex; rowIndex += 1) {
         const projection = dot(arnoldiVector, basis[rowIndex]);
         hessenberg[rowIndex][columnIndex] = projection;
@@ -1485,15 +1794,11 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
         // fallback when a mixed-precision backend is active. Arnoldi steps
         // inside the restart may have been evaluated in f32; we reset the
         // convergence residual with full precision here.
-        ax = backendRequiresResidualRefresh()
-          ? sparseMatVecFallback(scaledRows, x)
-          : sparseMatVec(scaledRows, x);
-        for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
-          residual[entryIndex] = scaledRhs[entryIndex] - ax[entryIndex];
-        }
+        rawState = await rawResidualState(x);
+        residual = preconditionVector(rawState.rawResidual);
         residualNorm = Math.sqrt(dot(residual, residual));
         tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
-        solvedThisRestart = tolerance.converged;
+        solvedThisRestart = tolerance.converged && rawState.rawTolerance.converged;
         break;
       }
 
@@ -1502,10 +1807,10 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
           solution: scaledSystem.scaleSolution(x),
           converged: false,
           iterations: totalIterations,
-          residualNorm,
-          relativeResidual: tolerance.relativeResidual,
-          rhsNorm,
-          toleranceTarget: tolerance.target,
+          residualNorm: rawState?.rawResidualNorm ?? residualNorm,
+          relativeResidual: rawState?.rawTolerance?.relativeResidual ?? tolerance.relativeResidual,
+          rhsNorm: rawRhsNorm,
+          toleranceTarget: rawState?.rawTolerance?.target ?? tolerance.target,
           interrupted: true
         };
       }
@@ -1524,39 +1829,48 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
     }
 
     if (solvedThisRestart || tolerance.converged) {
-      return {
-        solution: scaledSystem.scaleSolution(x),
-        converged: true,
-        iterations: totalIterations,
-        residualNorm,
-        relativeResidual: tolerance.relativeResidual,
-        rhsNorm,
-        toleranceTarget: tolerance.target,
-        interrupted: false
-      };
+      rawState = await rawResidualState(x);
+      if (!rawState.rawTolerance.converged) {
+        residual = preconditionVector(rawState.rawResidual);
+        residualNorm = Math.sqrt(dot(residual, residual));
+        tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+        if (totalIterations >= maxIter) break;
+      } else {
+        tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
+        return {
+          solution: scaledSystem.scaleSolution(x),
+          converged: true,
+          iterations: totalIterations,
+          residualNorm: rawState.rawResidualNorm,
+          relativeResidual: rawState.rawTolerance.relativeResidual,
+          rhsNorm: rawRhsNorm,
+          toleranceTarget: rawState.rawTolerance.target,
+          interrupted: false
+        };
+      }
     }
 
-    // Between restarts: full-precision residual recompute when mixed.
-    ax = backendRequiresResidualRefresh()
-      ? sparseMatVecFallback(scaledRows, x)
-      : sparseMatVec(scaledRows, x);
-    for (let entryIndex = 0; entryIndex < n; entryIndex += 1) {
-      residual[entryIndex] = scaledRhs[entryIndex] - ax[entryIndex];
-    }
+    // Between restarts: full-precision raw residual recompute, then apply
+    // the selected left preconditioner for the next Arnoldi cycle.
+    rawState = await rawResidualState(x);
+    residual = preconditionVector(rawState.rawResidual);
     residualNorm = Math.sqrt(dot(residual, residual));
     tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
     if (totalIterations >= maxIter) break;
   }
 
+  rawState = await rawResidualState(x);
+  residual = preconditionVector(rawState.rawResidual);
+  residualNorm = Math.sqrt(dot(residual, residual));
   tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
   return {
     solution: scaledSystem.scaleSolution(x),
-    converged: false,
+    converged: tolerance.converged && rawState.rawTolerance.converged,
     iterations: totalIterations,
-    residualNorm,
-    relativeResidual: tolerance.relativeResidual,
-    rhsNorm,
-    toleranceTarget: tolerance.target,
+    residualNorm: rawState.rawResidualNorm,
+    relativeResidual: rawState.rawTolerance.relativeResidual,
+    rhsNorm: rawRhsNorm,
+    toleranceTarget: rawState.rawTolerance.target,
     interrupted: false
   };
 }
@@ -2178,6 +2492,233 @@ function buildK0ControlledInitialEffectiveStress6(totalStress6, materialParamete
   ];
 }
 
+function buildCompressionPositiveStress6(sigmaH0Eff, sigmaV0Eff, tauXY = 0) {
+  return [
+    -Math.max(Number(sigmaH0Eff) || 0, 0),
+    -Math.max(Number(sigmaV0Eff) || 0, 0),
+    -Math.max(Number(sigmaH0Eff) || 0, 0),
+    -(Number(tauXY) || 0),
+    0,
+    0
+  ];
+}
+
+function mcYieldToleranceForStress(stress6, materialParameters) {
+  const scale = Math.max(
+    Math.abs(Number(stress6?.[0]) || 0),
+    Math.abs(Number(stress6?.[1]) || 0),
+    Math.abs(Number(stress6?.[2]) || 0),
+    Math.abs(Number(stress6?.[3]) || 0),
+    Number(materialParameters?.cEff) || 0,
+    100
+  );
+  return Math.max(Number(materialParameters?.yieldTolerance) || 0, (Number(materialParameters?.yieldToleranceScale) || 1e-8) * scale);
+}
+
+function isStress6AdmissibleForMc(stress6, materialParameters, tolerance = null) {
+  const mc = mohrCoulombIndicator3D(stress6, materialParameters);
+  const tol = Number.isFinite(Number(tolerance)) ? Math.max(Number(tolerance), 0) : mcYieldToleranceForStress(stress6, materialParameters);
+  return mc?.tensionViolation !== true && (Number(mc?.F) || 0) <= tol;
+}
+
+function terrainSlopeAngleAt(model, x) {
+  const verts = model?.terrain?.vertices || [];
+  if (verts.length < 2) return 0;
+  const numericX = Number(x) || 0;
+  let segmentIndex = 0;
+  if (numericX <= verts[0].x) {
+    segmentIndex = 0;
+  } else if (numericX >= verts[verts.length - 1].x) {
+    segmentIndex = verts.length - 2;
+  } else {
+    for (let index = 0; index < verts.length - 1; index += 1) {
+      if (numericX >= verts[index].x && numericX <= verts[index + 1].x) {
+        segmentIndex = index;
+        break;
+      }
+    }
+  }
+  const a = verts[segmentIndex];
+  const b = verts[Math.min(segmentIndex + 1, verts.length - 1)];
+  const dx = Number(b?.x) - Number(a?.x);
+  const dy = Number(b?.y) - Number(a?.y);
+  return Math.atan2(Number.isFinite(dy) ? dy : 0, Math.abs(dx) > GEOM_EPS ? dx : GEOM_EPS);
+}
+
+function clipHorizontalStressToAdmissibleEnvelope(sigmaV0Eff, sigmaH0TargetEff, materialParameters) {
+  const sigmaV = Math.max(Number(sigmaV0Eff) || 0, 0);
+  const target = Math.max(Number(sigmaH0TargetEff) || 0, 0);
+  const targetStress = buildCompressionPositiveStress6(target, sigmaV, 0);
+  const targetTol = mcYieldToleranceForStress(targetStress, materialParameters);
+  if (isStress6AdmissibleForMc(targetStress, materialParameters, targetTol)) {
+    return {
+      sigmaH: target,
+      clipped: false,
+      deficit: 0
+    };
+  }
+  const hydrostaticStress = buildCompressionPositiveStress6(sigmaV, sigmaV, 0);
+  if (!isStress6AdmissibleForMc(hydrostaticStress, materialParameters)) {
+    return {
+      sigmaH: sigmaV,
+      clipped: true,
+      deficit: Math.abs(target - sigmaV),
+      hydrostaticFallback: true
+    };
+  }
+  let lo = 0;
+  let hi = 1;
+  for (let iter = 0; iter < 60; iter += 1) {
+    const mid = 0.5 * (lo + hi);
+    const candidate = sigmaV + mid * (target - sigmaV);
+    const stress = buildCompressionPositiveStress6(candidate, sigmaV, 0);
+    if (isStress6AdmissibleForMc(stress, materialParameters)) lo = mid;
+    else hi = mid;
+  }
+  const sigmaH = sigmaV + lo * (target - sigmaV);
+  return {
+    sigmaH,
+    clipped: true,
+    deficit: Math.abs(target - sigmaH)
+  };
+}
+
+function largestAdmissibleShearByBisection(sigmaV0Eff, sigmaH0Eff, tauSign, materialParameters) {
+  const sign = Math.sign(Number(tauSign) || 0);
+  if (!sign) return 0;
+  const zeroStress = buildCompressionPositiveStress6(sigmaH0Eff, sigmaV0Eff, 0);
+  if (!isStress6AdmissibleForMc(zeroStress, materialParameters)) return 0;
+  const stressScale = Math.max(
+    Math.abs(Number(sigmaV0Eff) || 0),
+    Math.abs(Number(sigmaH0Eff) || 0),
+    Math.max(Number(materialParameters?.cEff) || 0, 0),
+    1
+  );
+  let lo = 0;
+  let hi = stressScale;
+  for (let grow = 0; grow < 32; grow += 1) {
+    const candidate = buildCompressionPositiveStress6(sigmaH0Eff, sigmaV0Eff, sign * hi);
+    if (!isStress6AdmissibleForMc(candidate, materialParameters)) break;
+    lo = hi;
+    hi *= 2;
+  }
+  for (let iter = 0; iter < 64; iter += 1) {
+    const mid = 0.5 * (lo + hi);
+    const candidate = buildCompressionPositiveStress6(sigmaH0Eff, sigmaV0Eff, sign * mid);
+    if (isStress6AdmissibleForMc(candidate, materialParameters)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function chooseSlopeShearTarget(point, elasticGeostaticStress6, slopeAngleRad, sigmaV0Eff) {
+  const elasticTau = -(Number(elasticGeostaticStress6?.[3]) || 0);
+  const slopeTauEstimate = Math.max(Number(sigmaV0Eff) || 0, 0) * Math.sin(slopeAngleRad) * Math.cos(slopeAngleRad);
+  if (Math.abs(slopeAngleRad) < 1e-5) return 0;
+  const sign = Math.sign(elasticTau) || Math.sign(slopeTauEstimate) || 0;
+  if (!sign) return 0;
+  const terrainBound = Math.max(Math.abs(slopeTauEstimate) * 2, 0.05 * Math.max(Number(sigmaV0Eff) || 0, 0), 1e-9);
+  if (Math.abs(elasticTau) > 1e-12) return sign * Math.min(Math.abs(elasticTau), terrainBound);
+  return sign * Math.abs(slopeTauEstimate);
+}
+
+function clipShearToAdmissibleEnvelope(sigmaV0Eff, sigmaH0Eff, tauTarget, materialParameters) {
+  const sign = Math.sign(Number(tauTarget) || 0);
+  if (!sign) {
+    return {
+      tau: 0,
+      clipped: false,
+      deficit: 0,
+      tauMax: 0
+    };
+  }
+  const tauMax = largestAdmissibleShearByBisection(sigmaV0Eff, sigmaH0Eff, sign, materialParameters);
+  const targetAbs = Math.abs(Number(tauTarget) || 0);
+  const tauAbs = Math.min(targetAbs, tauMax);
+  return {
+    tau: sign * tauAbs,
+    clipped: targetAbs > tauMax + 1e-10,
+    deficit: Math.max(targetAbs - tauAbs, 0),
+    tauMax
+  };
+}
+
+function createSeedDiagnosticsAccumulator() {
+  return {
+    pointCount: 0,
+    shearClippedCount: 0,
+    horizontalClippedCount: 0,
+    hydrostaticFallbackCount: 0,
+    inadmissibleAfterClipCount: 0,
+    maxShearDeficit: 0,
+    maxHorizontalDeficit: 0,
+    depthBands: NEAR_SURFACE_DEPTH_BANDS.map((band) => ({
+      label: band.label,
+      max: band.max,
+      count: 0,
+      shearClipped: 0,
+      horizontalClipped: 0,
+      inadmissibleAfterClip: 0
+    }))
+  };
+}
+
+function recordSeedDiagnostic(accumulator, model, point, diagnostic) {
+  if (!accumulator) return;
+  accumulator.pointCount += 1;
+  const depth = model ? depthBelowTerrainAt(model, point.x, point.y) : Number.POSITIVE_INFINITY;
+  const band = accumulator.depthBands[bandIndexForDepth(depth)];
+  if (band) band.count += 1;
+  if (diagnostic?.shearClipped) {
+    accumulator.shearClippedCount += 1;
+    accumulator.maxShearDeficit = Math.max(accumulator.maxShearDeficit, Number(diagnostic.shearDeficit) || 0);
+    if (band) band.shearClipped += 1;
+  }
+  if (diagnostic?.horizontalClipped) {
+    accumulator.horizontalClippedCount += 1;
+    accumulator.maxHorizontalDeficit = Math.max(accumulator.maxHorizontalDeficit, Number(diagnostic.horizontalDeficit) || 0);
+    if (band) band.horizontalClipped += 1;
+  }
+  if (diagnostic?.hydrostaticFallback) accumulator.hydrostaticFallbackCount += 1;
+  if (diagnostic?.inadmissibleAfterClip) {
+    accumulator.inadmissibleAfterClipCount += 1;
+    if (band) band.inadmissibleAfterClip += 1;
+  }
+}
+
+function buildAdmissibleSlopeInitialEffectiveStress6(point, materialParameters, model, options, elasticGeostaticStress6, warnings = null) {
+  const sigmaVTotal = verticalOverburdenStressAt(model, point.x, point.y);
+  const porePressure = sampleInitialPorePressure(model, point.x, point.y, options, warnings);
+  const sigmaV0Eff = Math.max((Number(sigmaVTotal) || 0) - Math.max(Number(porePressure) || 0, 0), 0);
+  const K0 = Number.isFinite(Number(materialParameters?.K0nc))
+    ? Math.max(Number(materialParameters.K0nc), 0)
+    : fallbackK0(materialParameters?.phiEffDeg);
+  const horizontal = clipHorizontalStressToAdmissibleEnvelope(sigmaV0Eff, K0 * sigmaV0Eff, materialParameters);
+  const slopeAngle = terrainSlopeAngleAt(model, point.x);
+  const tauTarget = chooseSlopeShearTarget(point, elasticGeostaticStress6, slopeAngle, sigmaV0Eff);
+  const shear = clipShearToAdmissibleEnvelope(sigmaV0Eff, horizontal.sigmaH, tauTarget, materialParameters);
+  const stress6 = buildCompressionPositiveStress6(horizontal.sigmaH, sigmaV0Eff, shear.tau);
+  const inadmissibleAfterClip = !isStress6AdmissibleForMc(stress6, materialParameters);
+  return {
+    stress6,
+    diagnostic: {
+      sigmaV0Eff,
+      sigmaH0Eff: horizontal.sigmaH,
+      porePressure,
+      slopeAngle,
+      tauTarget,
+      tauSeed: shear.tau,
+      tauMax: shear.tauMax,
+      shearClipped: shear.clipped,
+      shearDeficit: shear.deficit,
+      horizontalClipped: horizontal.clipped,
+      horizontalDeficit: horizontal.deficit,
+      hydrostaticFallback: horizontal.hydrostaticFallback === true,
+      inadmissibleAfterClip
+    }
+  };
+}
+
 function integrationPointStressSeedPoints(mesh, elementCaches) {
   const out = [];
   elementCaches.forEach((elementCache) => {
@@ -2203,9 +2744,11 @@ function buildFlatK0InitialEffectiveStressFieldForIntegrationPoints(mesh, elemen
   );
 }
 
-function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, regionConstitutiveByRegion, options, porePressureByIntegrationPoint, warnings) {
+function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, model, Ugeo, regionConstitutiveByRegion, options, porePressureByIntegrationPoint, warnings) {
   const out = new Array(elementCaches.integrationPointCount || elementCaches.length);
   const precomputedStrainFlat = backendElementStrain(elementCaches, Ugeo);
+  const useAdmissibleSlopeSeed = options?.useAdmissibleSlopeSeed !== false;
+  const seedDiagnostics = useAdmissibleSlopeSeed ? createSeedDiagnosticsAccumulator() : null;
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
     const cell = mesh.cells[elementCache.cellIndex];
@@ -2243,10 +2786,28 @@ function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, reg
         stage: 'geostatic-initialization'
       }, precomputedStrain);
       const u0 = Math.max(Number(porePressureByIntegrationPoint?.[gp.globalIndex]) || 0, 0);
-      out[gp.globalIndex] = buildK0ControlledInitialEffectiveStress6(response.update?.stressTrial6, constitutive.materialParameters, u0);
+      if (useAdmissibleSlopeSeed) {
+        const seed = buildAdmissibleSlopeInitialEffectiveStress6(
+          { x: Number(gp.x) || 0, y: Number(gp.y) || 0 },
+          constitutive.materialParameters,
+          model,
+          options,
+          response.update?.stressTrial6,
+          warnings
+        );
+        out[gp.globalIndex] = seed.stress6;
+        recordSeedDiagnostic(
+          seedDiagnostics,
+          model,
+          { x: Number(gp.x) || 0, y: Number(gp.y) || 0 },
+          seed.diagnostic
+        );
+      } else {
+        out[gp.globalIndex] = buildK0ControlledInitialEffectiveStress6(response.update?.stressTrial6, constitutive.materialParameters, u0);
+      }
     }
   }
-  return out;
+  return { initialField: out, seedDiagnostics };
 }
 
 async function buildGeostaticInitialization(
@@ -2271,7 +2832,7 @@ async function buildGeostaticInitialization(
     message: 'Solving the geostatic gravity step for the initial stress field...'
   });
 
-  const geostaticCg = await solveCg(
+  const geostaticCg = await solveCgDispatched(
     compressedRows,
     gravityCompressedRhs,
     null,
@@ -2293,7 +2854,18 @@ async function buildGeostaticInitialization(
     // this hint the preconditioner falls back to scalar Jacobi —
     // mathematically valid but susceptible to the near-orphan T6
     // mid-edge ill-conditioning that motivated this whole refactor.
-    { freeDofs }
+    //
+    // Pass `useResidentCg`, `useResidentGmres`, and the hybrid-opt-in
+    // as-is (do NOT coerce to strict booleans). The dispatcher uses
+    // three-state logic where `undefined` means "use the backend's
+    // default", and `false` forces the safe path. Coercion would
+    // erase the third state.
+    {
+      freeDofs,
+      useResidentCg: options?.useResidentCg,
+      useResidentGmres: options?.useResidentGmres,
+      allowHybridGpuMatvecForCpuKrylov: options?.allowHybridGpuMatvecForCpuKrylov
+    }
   );
   if (geostaticCg.interrupted) {
     throw new Error('Deformation run was interrupted before geostatic initialization became available.');
@@ -2307,6 +2879,8 @@ async function buildGeostaticInitialization(
     return {
       initialField: buildFlatK0InitialEffectiveStressFieldForIntegrationPoints(mesh, elementCaches, model, options, warnings),
       mode: 'flat-k0-fallback',
+      seedMode: 'flat-k0-fallback',
+      seedDiagnostics: null,
       iterations: geostaticCg.iterations,
       residualNorm: geostaticCg.residualNorm,
       solution: new Float64Array(ndof)
@@ -2314,7 +2888,18 @@ async function buildGeostaticInitialization(
   }
 
   const Ugeo = expandSolutionVector(ndof, freeDofs, fixedValues, geostaticCg.solution);
-  const initialField = recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, regionConstitutiveByRegion, options, porePressureByIntegrationPoint, warnings);
+  const recoveredInitial = recoverInitialFieldFromGeostaticSolution(
+    mesh,
+    elementCaches,
+    model,
+    Ugeo,
+    regionConstitutiveByRegion,
+    options,
+    porePressureByIntegrationPoint,
+    warnings
+  );
+  const initialField = recoveredInitial.initialField;
+  const seedDiagnostics = recoveredInitial.seedDiagnostics || null;
   const hasInvalidStress = initialField.some((stress6) => !Array.isArray(stress6) || stress6.some((value) => !Number.isFinite(Number(value))));
   if (hasInvalidStress) {
     pushUniqueWarning(
@@ -2324,15 +2909,35 @@ async function buildGeostaticInitialization(
     return {
       initialField: buildFlatK0InitialEffectiveStressFieldForIntegrationPoints(mesh, elementCaches, model, options, warnings),
       mode: 'flat-k0-fallback',
+      seedMode: 'flat-k0-fallback',
+      seedDiagnostics: null,
       iterations: geostaticCg.iterations,
       residualNorm: geostaticCg.residualNorm,
       solution: new Float64Array(ndof)
     };
   }
+  if (seedDiagnostics?.shearClippedCount > 0 || seedDiagnostics?.horizontalClippedCount > 0) {
+    const activeBands = (seedDiagnostics.depthBands || [])
+      .filter((band) => (Number(band.shearClipped) || 0) > 0 || (Number(band.horizontalClipped) || 0) > 0 || (Number(band.inadmissibleAfterClip) || 0) > 0)
+      .map((band) => `${band.label}: ${band.shearClipped || 0} shear, ${band.horizontalClipped || 0} K0`)
+      .join('; ');
+    pushUniqueWarning(
+      warnings,
+      `Admissible slope geostatic seed clipped ${seedDiagnostics.shearClippedCount} shear target(s) and ${seedDiagnostics.horizontalClippedCount} K0 horizontal target(s) to stay inside the exact Mohr-Coulomb/tension envelope${activeBands ? ` (${activeBands})` : ''}. The staged plastic correction then restores global equilibrium gradually.`
+    );
+  }
+  if (seedDiagnostics?.inadmissibleAfterClipCount > 0) {
+    pushUniqueWarning(
+      warnings,
+      `${seedDiagnostics.inadmissibleAfterClipCount} initial geostatic seed point(s) remained inadmissible after shear/K0 clipping. The predictor projection fallback will try the exact return map before plastic equilibration starts.`
+    );
+  }
 
   return {
     initialField,
     mode: 'gravity-step-k0nc',
+    seedMode: options?.useAdmissibleSlopeSeed === false ? 'legacy-k0-elastic-shear' : 'admissible-slope-k0nc',
+    seedDiagnostics,
     iterations: geostaticCg.iterations,
     residualNorm: geostaticCg.residualNorm,
     solution: Ugeo
@@ -2710,6 +3315,8 @@ async function performArmijoLineSearch(
   const minStepScale = Math.min(Math.max(Number(lineSearchOptions?.minStepScale) || 1 / 64, 1e-4), 1);
   const maxBacktracks = Math.max(Math.round(Number(lineSearchOptions?.maxBacktracks) || 5), 1);
   const armijoCoefficient = Math.max(Number(lineSearchOptions?.armijoCoefficient ?? lineSearchOptions?.sufficientDecreaseFactor) || 1e-4, 0);
+  const minResidualRatio = Number(lineSearchOptions?.minResidualRatio);
+  const requiresResidualImprovement = Number.isFinite(minResidualRatio) && minResidualRatio > 0 && minResidualRatio < 1;
   const currentMerit = evaluateResidualMerit(currentResidualNorm);
   const directionalDerivative = approximateNewtonMeritDirectionalDerivative(currentResidualNorm, linearizedResidualNorm);
   let best = null;
@@ -2740,7 +3347,10 @@ async function performArmijoLineSearch(
     const candidateMerit = evaluateResidualMerit(residualNorm);
     const improved = candidateMerit < currentMerit - Math.max(1e-16, 1e-12 * Math.max(currentMerit, 1));
     const armijoTarget = currentMerit + armijoCoefficient * stepScale * Math.min(directionalDerivative, 0);
-    const accepted = candidateMerit <= Math.max(armijoTarget, 0);
+    const residualImprovementAccepted = !requiresResidualImprovement
+      || residualNorm <= minResidualRatio * Math.max(Number(currentResidualNorm) || 0, 0)
+      || stepScale <= minStepScale + 1e-12;
+    const accepted = candidateMerit <= Math.max(armijoTarget, 0) && residualImprovementAccepted;
     if (
       !best
       || candidateMerit < best.candidateMerit - Math.max(1e-16, 1e-12 * Math.max(best.candidateMerit, 1))
@@ -2757,6 +3367,7 @@ async function performArmijoLineSearch(
         assembly,
         improved,
         accepted,
+        residualImprovementAccepted,
         currentMerit,
         directionalDerivative,
         armijoTarget,
@@ -2861,17 +3472,22 @@ async function solveNonlinearPhase(
   const requiresDisplacementTolerance = capabilities.supportsExactReturnMapping !== true;
   const exactPlasticTangentMayBeUnsymmetric = capabilities.algorithmicTangentMayBeUnsymmetric === true &&
     materialPoints.some((materialPoint) => materialPoint?.materialParameters?.symmetrizeEpTangent !== true);
-  // The modified-Newton elastic globalization tangent is a robustness fallback
-  // for difficult initial-gravity runs, but it is much slower and should not
-  // be the default Phase 0b path. Available only for plugins with an
-  // exact return mapping (so the elastic tangent meaningfully softens
-  // the algorithmic one) and a plastic-geostatic phase.
-  const phaseUsesElasticGlobalizationTangent = capabilities.supportsExactReturnMapping === true &&
+  // The initial-gravity phase can use a scheduled elastic-globalization
+  // tangent before switching to the algorithmic plastic tangent. The
+  // elastic tangent is a globalization device only; the residual and
+  // material updates are still the exact plastic ones.
+  const phaseCanUseElasticGlobalizationTangent = capabilities.supportsExactReturnMapping === true &&
     capabilities.supportsPlasticGeostaticPhase === true &&
-    phaseKind === 'initial-gravity' &&
-    options?.initialGravityUseElasticGlobalizationTangent === true;
+    phaseKind === 'initial-gravity';
+  const initialGravityTangentSchedule = phaseCanUseElasticGlobalizationTangent
+    ? normalizeTangentSchedule(
+        options?.initialGravityTangentSchedule,
+        options?.initialGravityUseElasticGlobalizationTangent === true ? ['elastic', 'plastic'] : ['elastic', 'plastic']
+      )
+    : ['plastic'];
+  const elasticGlobalizationIterations = Math.max(Math.round(Number(options?.initialGravityElasticGlobalizationIterations) || 4), 0);
+  const elasticGlobalizationSwitchRelativeResidual = Math.max(Number(options?.elasticGlobalizationSwitchRelativeResidual) || 0.25, 0);
   const mayNeedUnsymmetricSolver = capabilities.algorithmicTangentMayBeUnsymmetric === true
-    && !phaseUsesElasticGlobalizationTangent
     && (exactPlasticTangentMayBeUnsymmetric || options?.useUnsymmetricPlasticSolver === true);
   const unsymmetricLinearSolverMode = options?.unsymmetricLinearSolver === 'bicgstab'
     ? 'bicgstab'
@@ -2904,9 +3520,26 @@ async function solveNonlinearPhase(
       || (isInitialGravityPhase ? (1 / 8192) : NONLINEAR_MIN_LOAD_STEP),
     1e-5
   );
+  const maximumLoadStep = Math.min(
+    Math.max(
+      Number(isInitialGravityPhase ? (options?.initialGravityMaxLoadStep ?? options?.maxLoadStep) : options?.maxLoadStep) || 1,
+      minLoadStep
+    ),
+    1
+  );
+  const geostaticFailFastMinLoadStep = Math.max(Number(options?.geostaticMinLoadStep) || 1e-3, minLoadStep);
+  const geostaticMaxRepeatedBand = Math.max(Math.round(Number(options?.geostaticMaxRepeatedBand) || 3), 1);
+  const geostaticProgressFailFast = options?.geostaticProgressFailFast !== false;
+  const geostaticProgressFailFastSteps = Math.max(Math.round(Number(options?.geostaticProgressFailFastSteps) || 6), 1);
+  const geostaticProgressFailFastLoadFactor = Math.min(Math.max(Number(options?.geostaticProgressFailFastLoadFactor) || 0.50, 0), 1);
+  const geostaticProgressFailFastPlasticFraction = Math.min(Math.max(Number(options?.geostaticProgressFailFastPlasticFraction) || 0.15, 0), 1);
+  const serviceProgressFailFast = options?.serviceProgressFailFast !== false;
+  const serviceProgressFailFastSteps = Math.max(Math.round(Number(options?.serviceProgressFailFastSteps) || 16), 1);
+  const serviceProgressFailFastLoadFactor = Math.min(Math.max(Number(options?.serviceProgressFailFastLoadFactor) || 0.20, 0), 1);
+  const serviceProgressFailFastPlasticFraction = Math.min(Math.max(Number(options?.serviceProgressFailFastPlasticFraction) || 0.35, 0), 1);
   let stepSize = isLinearElastic
     ? 1
-    : Math.min(Math.max(Number(options?.initialLoadStep) || NONLINEAR_INITIAL_LOAD_STEP, minLoadStep), 1);
+    : Math.min(Math.max(Number(options?.initialLoadStep) || NONLINEAR_INITIAL_LOAD_STEP, minLoadStep), maximumLoadStep);
   const maxLoadSteps = allowLoadStepping
     ? Math.max(
       Math.round(
@@ -2986,6 +3619,11 @@ async function solveNonlinearPhase(
   let terminatedByFailure = false;
   let bestDisplayedState = null;
   let warmStartFreeCorrection = null;
+  let finalDepthBandReport = null;
+  let lastDepthBandReport = null;
+  let previousRejectedDominantBandLabel = '';
+  let repeatedRejectedDominantBandCount = 0;
+  const depthBandHistory = [];
   // Display labels are pulled from the plugin so a future plugin gets
   // consistent error/progress messages without solver edits. The
   // initial-gravity and safety-cphi labels are phase-level (not
@@ -3028,6 +3666,10 @@ async function solveNonlinearPhase(
     : null;
   const commitPhaseState = typeof phaseConfig?.commitPhaseState === 'function'
     ? phaseConfig.commitPhaseState
+    : null;
+  const diagnosticModel = phaseConfig?.model || null;
+  const computeCurrentDepthBandReport = () => diagnosticModel
+    ? computeDepthBandReport(null, materialPoints, diagnosticModel, elementCaches, options)
     : null;
   const buildTargetForceFree = (loadFactor) => {
     if (customTargetForceBuilder) return customTargetForceBuilder(loadFactor);
@@ -3097,6 +3739,7 @@ async function solveNonlinearPhase(
       lineSearchEvaluations: 0,
       lineSearchCurrentMerit: 0,
       lineSearchBestMerit: 0,
+      tangentModesUsed: [],
       suggestedNextStepFactor: 1,
       suggestedNextStepSize: actualStep
     };
@@ -3107,6 +3750,8 @@ async function solveNonlinearPhase(
     let suggestedStepCutbackFactor = null;
     let lastCorrection = new Float64Array(ndof);
     let stepBestState = null;
+    let latestRelativeResidualForSchedule = Number.POSITIVE_INFINITY;
+    let stepElasticGlobalizationStalled = false;
     // Warm-starting the linear solve carries the previous Newton's
     // step as the initial guess for the next iteration's Krylov solve.
     // Worth doing whenever the plugin's algorithmic tangent can be
@@ -3133,9 +3778,21 @@ async function solveNonlinearPhase(
 
     for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
       totalNonlinearIterations += 1;
+      const scheduleWantsElastic = initialGravityTangentSchedule.includes('elastic');
+      const scheduleWantsPlastic = initialGravityTangentSchedule.includes('plastic');
+      const useElasticGlobalizationTangent = phaseCanUseElasticGlobalizationTangent &&
+        scheduleWantsElastic &&
+        !stepElasticGlobalizationStalled &&
+        (
+          !scheduleWantsPlastic ||
+          iteration <= elasticGlobalizationIterations ||
+          latestRelativeResidualForSchedule > elasticGlobalizationSwitchRelativeResidual
+        );
+      const tangentMode = useElasticGlobalizationTangent ? 'elastic' : 'plastic';
+      if (!stepRecord.tangentModesUsed.includes(tangentMode)) stepRecord.tangentModesUsed.push(tangentMode);
       const elementAnalysisOptionsForTarget = {
         ...(buildElementAnalysisOptions ? (buildElementAnalysisOptions(targetLoadFactor) || {}) : {}),
-        useElasticGlobalizationTangent: phaseUsesElasticGlobalizationTangent
+        useElasticGlobalizationTangent
       };
       let assembled;
       try {
@@ -3191,6 +3848,19 @@ async function solveNonlinearPhase(
       lastDisplacementNorm = deltaNorm;
       lastRelativeDisplacement = tolerance.relativeDisplacement;
       lastStateChanges = assembled.changedCount;
+      lastDepthBandReport = computeCurrentDepthBandReport();
+      if (lastDepthBandReport) {
+        depthBandHistory.push({
+          loadStepIndex: loadStepCounter,
+          iteration,
+          targetLoadFactor,
+          report: lastDepthBandReport
+        });
+        stepRecord.depthBandReport = lastDepthBandReport;
+      }
+      if (Number.isFinite(Number(tolerance.relativeResidual))) {
+        latestRelativeResidualForSchedule = Number(tolerance.relativeResidual);
+      }
       stepRecord.iterations = iteration;
       stepRecord.peakActiveCount = Math.max(stepRecord.peakActiveCount, assembled.activeCount);
       stepRecord.peakActiveFaceCount = Math.max(stepRecord.peakActiveFaceCount, assembled.activeFaceCount);
@@ -3212,7 +3882,8 @@ async function solveNonlinearPhase(
         activeEdgeCount: assembled.activeEdgeCount,
         activeApexCount: assembled.activeApexCount,
         tensionPendingCount: assembled.tensionPendingCount,
-        stateChanges: assembled.changedCount
+        stateChanges: assembled.changedCount,
+        depthBandReport: lastDepthBandReport
       });
       onProgress({
         stage: 'solving',
@@ -3251,17 +3922,26 @@ async function solveNonlinearPhase(
       //      have very different diagonal magnitudes from corner DOFs.
       const isPlasticGeostatic = capabilities.supportsPlasticGeostaticPhase === true
         && phaseKind === 'initial-gravity';
-      const usesUnsymmetricSolver = mayNeedUnsymmetricSolver && (
+      const usesUnsymmetricSolver = !useElasticGlobalizationTangent && mayNeedUnsymmetricSolver && (
         assembled.activeCount > 0
         || isPlasticGeostatic
       );
+      // Krylov dispatch:
+      //   * unsymmetric (mc-plastic + non-associated tangent) →
+      //     `solveGmresDispatched` (routes to GPU-resident FGMRES if
+      //     `residentGmresCertified` is true, else CPU GMRES with the
+      //     async DS backend matvec) or BiCGStab.
+      //   * symmetric (linear elastic, mc-reduced-stiffness, or any
+      //     case where the algorithmic tangent is symmetric) → CG via
+      //     `solveCgDispatched`, which routes to the GPU-resident CG
+      //     when the active backend exposes it.
       const linearSolve = usesUnsymmetricSolver
         ? (
             unsymmetricLinearSolverMode === 'bicgstab'
               ? solveBiCgStab
-              : solveGmresScaled
+              : solveGmresDispatched
           )
-        : solveCg;
+        : solveCgDispatched;
       stepUsedUnsymmetricSolver = usesUnsymmetricSolver;
       stepRecord.linearSolver = usesUnsymmetricSolver
         ? (unsymmetricLinearSolverMode === 'bicgstab' ? 'bicgstab' : 'gmres-scaled')
@@ -3291,7 +3971,27 @@ async function solveNonlinearPhase(
         // solveBiCgStab honour this option; solveGmresScaled does its
         // own row equilibration scaling and ignores extra options
         // beyond the iteration-observer signature it documents.
-        { freeDofs }
+        // `useResidentCg` and `useResidentGmres` are passed through
+        // (not coerced to boolean) so the dispatcher's three-state
+        // logic can pick the backend default when the user has not
+        // made a manual choice. `allowHybridGpuMatvecForCpuKrylov` is
+        // forwarded so the GMRES dispatcher can route uncertified
+        // resident solves to *pure CPU f64* (the safe default) rather
+        // than the slow CPU-GMRES-with-GPU-matvec hybrid.
+        {
+          freeDofs,
+          elementCaches,
+          allowSchwarzPreconditioner: usesUnsymmetricSolver,
+          preconditionerLevel: options?.preconditionerLevel,
+          schwarzMinFreeDofs: options?.schwarzMinFreeDofs,
+          schwarzOverlap: options?.schwarzOverlap,
+          schwarzMaxPatchDofs: options?.schwarzMaxPatchDofs,
+          schwarzDamping: options?.schwarzDamping,
+          useResidentCg: options?.useResidentCg,
+          useResidentGmres: options?.useResidentGmres,
+          allowHybridGpuMatvecForCpuKrylov: options?.allowHybridGpuMatvecForCpuKrylov,
+          restart: options?.restart
+        }
       );
       const maybeRetryWithDoubleSingle = async () => {
         if (
@@ -3315,7 +4015,20 @@ async function solveNonlinearPhase(
           CG_ABS_TOL,
           runControl,
           linearIterationObserver,
-          { freeDofs }
+          {
+            freeDofs,
+            elementCaches,
+            allowSchwarzPreconditioner: usesUnsymmetricSolver,
+            preconditionerLevel: options?.preconditionerLevel,
+            schwarzMinFreeDofs: options?.schwarzMinFreeDofs,
+            schwarzOverlap: options?.schwarzOverlap,
+            schwarzMaxPatchDofs: options?.schwarzMaxPatchDofs,
+            schwarzDamping: options?.schwarzDamping,
+            useResidentCg: options?.useResidentCg,
+            useResidentGmres: options?.useResidentGmres,
+            allowHybridGpuMatvecForCpuKrylov: options?.allowHybridGpuMatvecForCpuKrylov,
+            restart: options?.restart
+          }
         );
       };
       totalCgIterations += cg.iterations;
@@ -3374,6 +4087,13 @@ async function solveNonlinearPhase(
       let lineSearchStepScale = 1;
       if (capabilities.requiresPlasticLineSearch === true && correctionNorm > 0) {
         try {
+          const lineSearchOptionsForTarget = useElasticGlobalizationTangent
+            ? {
+                ...plasticLineSearchOptions,
+                armijoCoefficient: Math.max(Number(options?.elasticGlobalizationArmijoC1) || 1e-3, 0),
+                minResidualRatio: Math.min(Math.max(Number(options?.elasticGlobalizationMinResidualRatio) || 0.90, 1e-6), 0.999)
+              }
+            : plasticLineSearchOptions;
           const lineSearch = await performArmijoLineSearch(
             elementCaches,
             assemblyPattern,
@@ -3389,7 +4109,7 @@ async function solveNonlinearPhase(
             formulationMode,
             targetForceFree,
             elementAnalysisOptionsForTarget,
-            plasticLineSearchOptions
+            lineSearchOptionsForTarget
           );
           if (lineSearch) {
             suggestedStepCutbackFactor = Number.isFinite(Number(lineSearch.stepScale)) && Number(lineSearch.stepScale) > 0
@@ -3401,7 +4121,13 @@ async function solveNonlinearPhase(
             stepRecord.lineSearchEvaluations = Number(lineSearch.evaluations) || 0;
             stepRecord.lineSearchCurrentMerit = Number(lineSearch.currentMerit) || 0;
             stepRecord.lineSearchBestMerit = Number(lineSearch.candidateMerit) || 0;
+            stepRecord.lineSearchResidualImprovementAccepted = lineSearch.residualImprovementAccepted !== false;
             if (!lineSearch.accepted) {
+              if (useElasticGlobalizationTangent && scheduleWantsPlastic) {
+                stepElasticGlobalizationStalled = true;
+                resetMaterialPointTrials(materialPoints);
+                continue;
+              }
               const candidateCorrection = cloneScaledVector(lastCorrection, lineSearch.stepScale);
               const candidateCorrectionNorm = vectorNorm(candidateCorrection);
               const candidateSolutionNorm = vectorNorm(lineSearch.uCandidate);
@@ -3551,6 +4277,8 @@ async function solveNonlinearPhase(
         lastDisplacementNorm = correctionNorm;
         lastRelativeDisplacement = refreshedTolerance.relativeDisplacement;
         lastStateChanges = refreshed.changedCount;
+        lastDepthBandReport = computeCurrentDepthBandReport();
+        if (lastDepthBandReport) stepRecord.depthBandReport = lastDepthBandReport;
         const refreshedConverged = (
           refreshedTolerance.residualConverged && (!requiresDisplacementTolerance || refreshedTolerance.displacementConverged)
         ) || allowPlasticQuasiConvergence(
@@ -3677,8 +4405,41 @@ async function solveNonlinearPhase(
           })
         : effectiveGrowthFactor;
       stepRecord.suggestedNextStepFactor = nextStepFactor;
-      stepRecord.suggestedNextStepSize = Math.min(actualStep * nextStepFactor, targetLoadFactorFinal - loadFactorCommitted || actualStep);
+      stepRecord.suggestedNextStepSize = Math.min(
+        actualStep * nextStepFactor,
+        maximumLoadStep,
+        targetLoadFactorFinal - loadFactorCommitted || actualStep
+      );
       loadStepHistory.push(stepRecord);
+      if (
+        isInitialGravityPhase &&
+        geostaticProgressFailFast &&
+        acceptedSteps >= geostaticProgressFailFastSteps &&
+        loadFactorCommitted < geostaticProgressFailFastLoadFactor &&
+        (Number(stepRecord.peakActiveCount) || 0) / Math.max(elementCaches.length || 1, 1) >= geostaticProgressFailFastPlasticFraction
+      ) {
+        const classification = classifyGeostaticNonconvergence(lastDepthBandReport || stepRecord.depthBandReport, stepRecord, {
+          loadFactorCommitted,
+          repeatedBandCount: geostaticMaxRepeatedBand
+        });
+        terminalFailureReason = classification.reason || `Initial self-weight equilibration was stopped because ${acceptedSteps} accepted correction steps reached only ${(100 * loadFactorCommitted).toFixed(1)}% while a large plastic zone stayed active.`;
+        terminalFailureCode = classification.code || 'geostatic-numerically-stuck';
+        terminatedByFailure = true;
+        break;
+      }
+      if (
+        phaseKind === 'service-load' &&
+        serviceProgressFailFast &&
+        capabilities.requiresPlasticLineSearch === true &&
+        acceptedSteps >= serviceProgressFailFastSteps &&
+        loadFactorCommitted < serviceProgressFailFastLoadFactor &&
+        (Number(stepRecord.peakActiveCount) || 0) / Math.max(elementCaches.length || 1, 1) >= serviceProgressFailFastPlasticFraction
+      ) {
+        terminalFailureReason = `Service loading was stopped early because ${acceptedSteps} accepted continuation steps advanced only ${(100 * loadFactorCommitted).toFixed(1)}% load while a large plastic zone stayed active.`;
+        terminalFailureCode = 'step-budget-exhausted';
+        terminatedByFailure = true;
+        break;
+      }
       stepSize = stepRecord.suggestedNextStepSize;
       continue;
     }
@@ -3740,6 +4501,36 @@ async function solveNonlinearPhase(
     stepRecord.suggestedNextStepSize = proposedStepSize < minLoadStep - 1e-12 && actualStep > minLoadStep + 1e-12
       ? minLoadStep
       : proposedStepSize;
+    if (isInitialGravityPhase && lastDepthBandReport) {
+      const dominantLabel = lastDepthBandReport.dominantBand?.label || '';
+      if (dominantLabel && dominantLabel === previousRejectedDominantBandLabel) {
+        repeatedRejectedDominantBandCount += 1;
+      } else {
+        previousRejectedDominantBandLabel = dominantLabel;
+        repeatedRejectedDominantBandCount = dominantLabel ? 1 : 0;
+      }
+      stepRecord.repeatedDominantDepthBandCount = repeatedRejectedDominantBandCount;
+      const failFastStep = Math.min(stepRecord.suggestedNextStepSize, actualStep);
+      if (
+        repeatedRejectedDominantBandCount >= geostaticMaxRepeatedBand ||
+        failFastStep <= geostaticFailFastMinLoadStep + 1e-12
+      ) {
+        const classification = classifyGeostaticNonconvergence(lastDepthBandReport, stepRecord, {
+          loadFactorCommitted,
+          repeatedBandCount: repeatedRejectedDominantBandCount
+        });
+        terminalFailureReason = classification.reason;
+        terminalFailureCode = classification.code;
+        stepRecord.failureCode = classification.code;
+        stepRecord.failureOutcomeClass = classification.outcomeClass;
+        stepRecord.reason = classification.reason;
+        loadStepHistory.push(stepRecord);
+        stepSize = stepRecord.suggestedNextStepSize;
+        resetMaterialPointTrials(materialPoints);
+        terminatedByFailure = true;
+        break;
+      }
+    }
     loadStepHistory.push(stepRecord);
     stepSize = stepRecord.suggestedNextStepSize;
     resetMaterialPointTrials(materialPoints);
@@ -3807,7 +4598,7 @@ async function solveNonlinearPhase(
     displayedTargetForceFree,
     {
       ...(buildElementAnalysisOptions ? (buildElementAnalysisOptions(displayedLoadFactor) || {}) : {}),
-      useElasticGlobalizationTangent: phaseUsesElasticGlobalizationTangent
+      useElasticGlobalizationTangent: false
     }
   );
   finalActiveCount = finalAssembly.activeCount;
@@ -3821,6 +4612,7 @@ async function solveNonlinearPhase(
   peakActiveApexCount = Math.max(peakActiveApexCount, finalAssembly.activeApexCount);
   peakTensionPendingCount = Math.max(peakTensionPendingCount, finalAssembly.tensionPendingCount);
   peakEta = Math.max(peakEta, finalAssembly.maxEta);
+  finalDepthBandReport = computeCurrentDepthBandReport();
   lastResidualNorm = vectorNorm(finalAssembly.residualFree);
   const finalRhsNorm = vectorNorm(finalAssembly.targetForceFree);
   const finalTolerance = nonlinearToleranceState(
@@ -3834,7 +4626,7 @@ async function solveNonlinearPhase(
   lastRelativeDisplacement = finalTolerance.relativeDisplacement;
   lastStateChanges = finalAssembly.changedCount;
   const phaseFailureRecord = terminatedByFailure
-    ? createFailureRecord(terminalFailureCode, displayedState?.reason || terminalFailureReason)
+    ? createFailureRecord(terminalFailureCode, terminalFailureReason || displayedState?.reason)
     : createFailureRecord('equilibrium-converged', '');
 
   return {
@@ -3869,9 +4661,11 @@ async function solveNonlinearPhase(
     failureCode: phaseFailureRecord.code,
     failureOutcomeClass: phaseFailureRecord.outcomeClass,
     displayedStateMode: displayedState?.mode || 'committed',
-    failureReason: terminatedByFailure ? (displayedState?.reason || terminalFailureReason) : '',
+    failureReason: terminatedByFailure ? (terminalFailureReason || displayedState?.reason || '') : '',
     loadStepHistory,
-    residualHistory
+    residualHistory,
+    depthBandHistory,
+    finalDepthBandReport
   };
 }
 
@@ -3912,6 +4706,95 @@ async function initializePlasticPredictorReferenceState(
   };
 }
 
+function maxTerrainSlopeAngle(model) {
+  const verts = model?.terrain?.vertices || [];
+  let maxAngle = 0;
+  for (let index = 0; index < verts.length - 1; index += 1) {
+    const dx = Number(verts[index + 1]?.x) - Number(verts[index]?.x);
+    const dy = Number(verts[index + 1]?.y) - Number(verts[index]?.y);
+    if (Math.abs(dx) <= GEOM_EPS) continue;
+    maxAngle = Math.max(maxAngle, Math.abs(Math.atan2(dy, dx)));
+  }
+  return maxAngle;
+}
+
+function planGeostaticCorrectionStages(model, options = {}) {
+  const explicit = Number(options?.geostaticCorrectionStages);
+  let count = Number.isFinite(explicit) && explicit > 0
+    ? Math.round(explicit)
+    : 8;
+  const slopeAngle = maxTerrainSlopeAngle(model);
+  if (!(Number.isFinite(explicit) && explicit > 0)) {
+    if (slopeAngle > 30 * Math.PI / 180) count = Math.max(count, 12);
+    else if (slopeAngle > 15 * Math.PI / 180) count = Math.max(count, 10);
+  }
+  count = Math.min(Math.max(count, 1), 64);
+  return Array.from({ length: count }, (_item, index) => ({
+    kind: 'geostatic-correction',
+    index: index + 1,
+    lambda: (index + 1) / count
+  }));
+}
+
+async function solveStagedGeostaticEquilibrium(
+  elementCaches,
+  assemblyPattern,
+  gravityRhsFreeBase,
+  materialPoints,
+  ndof,
+  freeDofs,
+  fixedValues,
+  initialSolution,
+  runControl,
+  onProgress,
+  options = {},
+  model = null
+) {
+  const initializedPredictor = await initializePlasticPredictorReferenceState(
+    elementCaches,
+    assemblyPattern,
+    gravityRhsFreeBase,
+    materialPoints,
+    initialSolution,
+    runControl
+  );
+  const stages = planGeostaticCorrectionStages(model, options);
+  const stageSize = stages.length > 0 ? 1 / stages.length : 1;
+  const phase = await solveNonlinearPhase(
+    elementCaches,
+    assemblyPattern,
+    gravityRhsFreeBase,
+    materialPoints,
+    ndof,
+    freeDofs,
+    fixedValues,
+    runControl,
+    onProgress,
+    {
+      ...options,
+      initialLoadStep: Math.min(Math.max(Number(options?.initialLoadStep) || NONLINEAR_INITIAL_LOAD_STEP, stageSize), stageSize),
+      initialGravityMaxLoadStep: Math.min(
+        Math.max(Number(options?.initialGravityMaxLoadStep) || stageSize, stageSize),
+        stageSize
+      )
+    },
+    {
+      phaseKind: 'initial-gravity',
+      formulationMode: 'total',
+      allowLoadStepping: true,
+      targetLoadFactor: 1,
+      targetForceBase: initializedPredictor.targetForceBase,
+      initialSolution,
+      model
+    }
+  );
+  return {
+    ...phase,
+    geostaticCorrectionStages: stages,
+    initializedPredictor
+  };
+}
+
 async function solveInitialPlasticEquilibrium(
   elementCaches,
   assemblyPattern,
@@ -3923,8 +4806,25 @@ async function solveInitialPlasticEquilibrium(
   initialSolution,
   runControl,
   onProgress,
-  options = {}
+  options = {},
+  model = null
 ) {
+  if (options?.useStagedGeostaticInit !== false) {
+    return solveStagedGeostaticEquilibrium(
+      elementCaches,
+      assemblyPattern,
+      gravityRhsFreeBase,
+      materialPoints,
+      ndof,
+      freeDofs,
+      fixedValues,
+      initialSolution,
+      runControl,
+      onProgress,
+      options,
+      model
+    );
+  }
   const initializedPredictor = await initializePlasticPredictorReferenceState(
     elementCaches,
     assemblyPattern,
@@ -3950,7 +4850,8 @@ async function solveInitialPlasticEquilibrium(
       allowLoadStepping: true,
       targetLoadFactor: 1,
       targetForceBase: initializedPredictor.targetForceBase,
-      initialSolution
+      initialSolution,
+      model
     }
   );
 }
@@ -3966,7 +4867,8 @@ async function solveServiceLoadPhase(
   initialSolution,
   runControl,
   onProgress,
-  options = {}
+  options = {},
+  model = null
 ) {
   return solveNonlinearPhase(
     elementCaches,
@@ -3984,7 +4886,8 @@ async function solveServiceLoadPhase(
       formulationMode: 'incremental',
       allowLoadStepping: true,
       targetLoadFactor: 1,
-      initialSolution
+      initialSolution,
+      model
     }
   );
 }
@@ -4060,6 +4963,7 @@ async function solveSafetyReductionPhase(
   runControl,
   onProgress,
   options,
+  model,
   sigmaMsfStart,
   sigmaMsfTarget
 ) {
@@ -4096,7 +5000,8 @@ async function solveSafetyReductionPhase(
       }),
       progressLabel: (targetLoadFactor, acceptedSteps, rejectedSteps) =>
         `Safety c-phi reduction: continuation step ${acceptedSteps + rejectedSteps + 1}, target ΣMsf ${safetySigmaMsfAtProgress(sigmaMsfStart, sigmaMsfTarget, targetLoadFactor).toFixed(3)}`,
-      commitPhaseState: (progress, materialPoints) => applySafetyParameters(progress, materialPoints)
+      commitPhaseState: (progress, materialPoints) => applySafetyParameters(progress, materialPoints),
+      model
     }
   );
   return {
@@ -4120,7 +5025,8 @@ async function solveSafetyReductionSearch(
   fixedValues,
   runControl,
   onProgress,
-  options
+  options,
+  model = null
 ) {
   const sigmaMax = Math.max(Number(options?.safetySigmaMsfMax) || SAFETY_SIGMA_MSF_MAX, 1);
   const sigmaBracketTolerance = Math.max(Number(options?.safetySigmaMsfBracketTolerance) || SAFETY_SIGMA_MSF_BRACKET_TOL, 1e-4);
@@ -4206,6 +5112,7 @@ async function solveSafetyReductionSearch(
       runControl,
       onProgress,
       options,
+      model,
       lowerSigmaMsf,
       sigmaTarget
     );
@@ -4848,6 +5755,31 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     initialGravityPlasticLineSearchMinScale: Math.min(Math.max(Number(input?.options?.initialGravityPlasticLineSearchMinScale) || (1 / 32), 1e-4), 1),
     initialGravityPlasticLineSearchSufficientDecreaseFactor: Math.max(Number(input?.options?.initialGravityPlasticLineSearchSufficientDecreaseFactor) || 1e-3, 0),
     initialGravityPlasticLineSearchArmijoCoefficient: Math.max(Number(input?.options?.initialGravityPlasticLineSearchArmijoCoefficient) || 1e-4, 0),
+    useAdmissibleSlopeSeed: input?.options?.useAdmissibleSlopeSeed !== false,
+    useStagedGeostaticInit: input?.options?.useStagedGeostaticInit !== false,
+    geostaticCorrectionStages: Math.min(Math.max(Math.round(Number(input?.options?.geostaticCorrectionStages) || 8), 1), 64),
+    initialGravityTangentSchedule: normalizeTangentSchedule(input?.options?.initialGravityTangentSchedule, ['elastic', 'plastic']),
+    initialGravityElasticGlobalizationIterations: Math.max(Math.round(Number(input?.options?.initialGravityElasticGlobalizationIterations) || 4), 0),
+    elasticGlobalizationArmijoC1: Math.max(Number(input?.options?.elasticGlobalizationArmijoC1) || 1e-3, 0),
+    elasticGlobalizationMinResidualRatio: Math.min(Math.max(Number(input?.options?.elasticGlobalizationMinResidualRatio) || 0.90, 1e-6), 0.999),
+    elasticGlobalizationSwitchRelativeResidual: Math.max(Number(input?.options?.elasticGlobalizationSwitchRelativeResidual) || 0.25, 0),
+    geostaticMinLoadStep: Math.max(Number(input?.options?.geostaticMinLoadStep) || 1e-3, 1e-6),
+    geostaticMaxRepeatedBand: Math.max(Math.round(Number(input?.options?.geostaticMaxRepeatedBand) || 3), 1),
+    geostaticProgressFailFast: input?.options?.geostaticProgressFailFast !== false,
+    geostaticProgressFailFastSteps: Math.max(Math.round(Number(input?.options?.geostaticProgressFailFastSteps) || 6), 1),
+    geostaticProgressFailFastLoadFactor: Math.min(Math.max(Number(input?.options?.geostaticProgressFailFastLoadFactor) || 0.50, 0), 1),
+    geostaticProgressFailFastPlasticFraction: Math.min(Math.max(Number(input?.options?.geostaticProgressFailFastPlasticFraction) || 0.15, 0), 1),
+    serviceProgressFailFast: input?.options?.serviceProgressFailFast !== false,
+    serviceProgressFailFastSteps: Math.max(Math.round(Number(input?.options?.serviceProgressFailFastSteps) || 16), 1),
+    serviceProgressFailFastLoadFactor: Math.min(Math.max(Number(input?.options?.serviceProgressFailFastLoadFactor) || 0.20, 0), 1),
+    serviceProgressFailFastPlasticFraction: Math.min(Math.max(Number(input?.options?.serviceProgressFailFastPlasticFraction) || 0.35, 0), 1),
+    preconditionerLevel: ['jacobi', 'schwarz', 'additive-schwarz'].includes(String(input?.options?.preconditionerLevel || '').toLowerCase())
+      ? String(input.options.preconditionerLevel).toLowerCase()
+      : 'schwarz',
+    schwarzMinFreeDofs: Math.max(Math.round(Number(input?.options?.schwarzMinFreeDofs) || 5000), 0),
+    schwarzOverlap: Math.max(Math.round(Number(input?.options?.schwarzOverlap) || 1), 0),
+    schwarzMaxPatchDofs: Math.max(Math.round(Number(input?.options?.schwarzMaxPatchDofs) || 48), 4),
+    schwarzDamping: Math.min(Math.max(Number(input?.options?.schwarzDamping) || 0.65, 0.05), 1),
     adaptiveContinuation: input?.options?.adaptiveContinuation !== false,
     continuationTargetIterations: Math.max(Number(input?.options?.continuationTargetIterations) || NONLINEAR_CONTINUATION_TARGET_ITERATIONS, 1),
     initialGravityContinuationTargetIterations: Math.max(Number(input?.options?.initialGravityContinuationTargetIterations) || NONLINEAR_CONTINUATION_TARGET_ITERATIONS, 1),
@@ -4869,6 +5801,32 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     safetyMechanismMinIncrementalDisplacementNorm: Math.max(Number(input?.options?.safetyMechanismMinIncrementalDisplacementNorm) || 1e-8, 0),
     safetyMechanismMinPlasticIncrement: Math.max(Number(input?.options?.safetyMechanismMinPlasticIncrement) || 1e-8, 0),
     useGpuAcceleration: input?.options?.useGpuAcceleration === true,
+    // `useResidentCg` is three-valued: `true` forces resident, `false`
+    // forces hybrid, `undefined` lets the backend decide. The WebGPU
+    // backend self-reports `residentCgCertified`, which the dispatcher
+    // uses to default-on the resident path. Preserve `undefined`
+    // here — coercing to `false` would erase the backend default.
+    useResidentCg: typeof input?.options?.useResidentCg === 'boolean'
+      ? input.options.useResidentCg
+      : undefined,
+    // `useResidentGmres` mirrors `useResidentCg` for the unsymmetric
+    // / plastic / c-phi solver path. The WebGPU resident FGMRES
+    // implementation exists but is gated by `residentGmresCertified`
+    // (currently `false` — flipped to `true` only after the browser
+    // certification harness passes against CPU f64). Until certified,
+    // GMRES routes to the *pure CPU f64* path, NOT to the hybrid
+    // (CPU GMRES + GPU matvec) path — that hybrid is the slow
+    // pattern the user diagnosed and we no longer accept it as a
+    // silent default.
+    useResidentGmres: typeof input?.options?.useResidentGmres === 'boolean'
+      ? input.options.useResidentGmres
+      : undefined,
+    // `allowHybridGpuMatvecForCpuKrylov` is the explicit, opt-in
+    // escape hatch for users who want the experimental hybrid path
+    // (CPU GMRES/BiCGStab + GPU async matvec). Default off because
+    // the per-Arnoldi-step round-trip dominates wall-clock on every
+    // browser-sized problem we have measured.
+    allowHybridGpuMatvecForCpuKrylov: input?.options?.allowHybridGpuMatvecForCpuKrylov === true,
     gpuPrecisionMode: String(input?.options?.gpuPrecisionMode || 'auto').toLowerCase() === 'double-single'
       ? 'double-single'
       : 'auto',
@@ -5096,7 +6054,9 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     displayedStateMode: 'predictor',
     failureReason: '',
     loadStepHistory: [],
-    residualHistory: []
+    residualHistory: [],
+    depthBandHistory: [],
+    finalDepthBandReport: null
   };
   let servicePhase = null;
   let servicePhaseStarted = false;
@@ -5124,7 +6084,8 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       new Float64Array(ndof),
       runControl,
       onProgress,
-      options
+      options,
+      model
     );
     if (!initialPhase.converged) {
       const shownInitialPhaseFactor = 100 * Math.max(Number(initialPhase.displayedLoadFactor) || 0, 0);
@@ -5174,7 +6135,8 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       canRunPlasticInitialEquilibrium ? initialBaselineSolution : new Float64Array(ndof),
       runControl,
       onProgress,
-      options
+      options,
+      model
     );
     if (!servicePhase.converged) {
       const shownLoadFactor = 100 * Math.max(Number(servicePhase.displayedLoadFactor) || 0, 0);
@@ -5234,7 +6196,8 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       fixedValues,
       runControl,
       onProgress,
-      options
+      options,
+      model
     );
   }
 
@@ -5429,8 +6392,11 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
         ? 'gravity-step-k0nc-plastic-equilibration'
         : geostatic.mode,
       initialPredictorMode: geostatic.mode,
+      initialPredictorSeedMode: geostatic.seedMode || geostatic.mode,
+      initialPredictorSeedDiagnostics: geostatic.seedDiagnostics || null,
       geostaticIterations: geostatic.iterations,
       geostaticResidualNorm: geostatic.residualNorm,
+      geostaticCorrectionStages: canRunPlasticInitialEquilibrium ? (initialPhase.geostaticCorrectionStages || []) : [],
       initialPhaseStarted: canRunPlasticInitialEquilibrium,
       initialPhaseConverged: canRunPlasticInitialEquilibrium ? initialPhase.converged : null,
       initialPhaseConvergenceState: canRunPlasticInitialEquilibrium ? initialPhase.convergenceState : 'skipped',
@@ -5447,11 +6413,13 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       initialPhasePeakTensionPendingElements: canRunPlasticInitialEquilibrium ? initialPhase.peakTensionPendingCount : 0,
       initialPhaseFinalTensionCutoffActiveElements: canRunPlasticInitialEquilibrium ? initialPhase.finalTensionPendingCount : 0,
       initialPhasePeakTensionCutoffActiveElements: canRunPlasticInitialEquilibrium ? initialPhase.peakTensionPendingCount : 0,
+      initialPhaseDepthBandReport: canRunPlasticInitialEquilibrium ? initialPhase.finalDepthBandReport : null,
       servicePhaseStarted,
       servicePhaseConvergenceState: servicePhaseStarted ? servicePhase.convergenceState : 'not-started',
       servicePhaseFailureCode: servicePhaseStarted ? servicePhase.failureCode : (canRunPlasticInitialEquilibrium ? initialPhase.failureCode : ''),
       servicePhaseFailureOutcomeClass: servicePhaseStarted ? servicePhase.failureOutcomeClass : (canRunPlasticInitialEquilibrium ? initialPhase.failureOutcomeClass : 'unknown'),
       servicePhaseFailureReason: servicePhaseStarted ? servicePhase.failureReason : (canRunPlasticInitialEquilibrium ? initialPhase.failureReason : ''),
+      servicePhaseDepthBandReport: servicePhaseStarted ? servicePhase.finalDepthBandReport : null,
       initialDisplacementResetApplied: displayUsesServiceIncrement,
       linearIterations: totalLinearIterations,
       nonlinearIterations: totalNonlinearIterations,
@@ -5505,6 +6473,8 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
         : (servicePhaseStarted ? servicePhase.residualHistory : []),
       initialLoadStepHistory: canRunPlasticInitialEquilibrium ? initialPhase.loadStepHistory : [],
       initialResidualHistory: canRunPlasticInitialEquilibrium ? initialPhase.residualHistory : [],
+      initialDepthBandHistory: canRunPlasticInitialEquilibrium ? initialPhase.depthBandHistory : [],
+      activeDepthBandReport: activePhase?.finalDepthBandReport || null,
       safetyStarted: analysisType === 'safety-cphi',
       safetyBaseState: analysisType === 'safety-cphi'
         ? (wantsServiceLoadPhase ? 'end-of-service' : 'initial-equilibrium')
@@ -5555,7 +6525,36 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
         failedOperation: activeBackendInfo?.failedOperation || null,
         freeDofCount: freeDofs.length,
         elementType: mesh.elementType === 't6' ? 't6' : 't3',
-        residualRefreshInterval: backendRequiresResidualRefresh() ? backendResidualRefreshInterval() : 0
+        residualRefreshInterval: backendRequiresResidualRefresh() ? backendResidualRefreshInterval() : 0,
+        // Honest path label resolved from active backend + dispatch
+        // gates. Tells the user *exactly* which solver path actually
+        // ran, in plain language. The previous run record only said
+        // "GPU enabled" which was true even when the slow CPU-Krylov
+        // + GPU-matvec hybrid was running — the user could not tell
+        // resident from hybrid from pure-CPU at a glance.
+        //
+        // Resolution order:
+        //   - 'cpu-f64' if no GPU backend is active.
+        //   - 'gpu-resident-cg' if the symmetric path went through
+        //     the WebGPU resident CG (DS chain, true-residual
+        //     replacement, full GPU residence).
+        //   - 'gpu-resident-gmres' if the unsymmetric path went
+        //     through the WebGPU resident FGMRES.
+        //   - 'gpu-cpu-cg' / 'gpu-cpu-gmres' / 'gpu-cpu-bicgstab' for
+        //     CPU Krylov with GPU async DS matvec (only reachable
+        //     when the user explicitly opts in via
+        //     `allowHybridGpuMatvecForCpuKrylov: true`).
+        krylovPath: !activeMatvecBackend
+          ? 'cpu-f64'
+          : activeMatvecBackend.residentCgCertified === true && options.useResidentCg !== false
+            ? (activeMatvecBackend.residentGmresCertified === true || options.useResidentGmres === true
+                ? 'gpu-resident-cg+gmres'
+                : 'gpu-resident-cg')
+            : (options.useResidentGmres === true && activeMatvecBackend.residentGmresCertified === true
+                ? 'gpu-resident-gmres'
+                : (options.allowHybridGpuMatvecForCpuKrylov === true
+                    ? 'hybrid-cpu-krylov-gpu-matvec'
+                    : 'cpu-f64'))
       }
     },
     timing: {

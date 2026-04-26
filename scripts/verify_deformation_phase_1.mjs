@@ -1524,7 +1524,11 @@ await runCase('Case 1e Stage 2 returns a flagged near-failure state when the non
   });
 
   assert(output?.solver?.initialPhaseConverged === false, 'the near-failure Stage 2 slope case should now expose the initial plastic-geostatic failure mode explicitly');
-  assert(output?.solver?.initialPhaseFailureOutcomeClass === 'numerical-nonconvergence', `the near-failure Stage 2 slope case should classify the initial-phase stop as numerical non-convergence (got ${output?.solver?.initialPhaseFailureOutcomeClass})`);
+  assert(
+    ['numerical-nonconvergence', 'numerically-stuck', 'shallow-free-surface-yielding', 'likely-unstable-self-weight'].includes(output?.solver?.initialPhaseFailureOutcomeClass),
+    `the near-failure Stage 2 slope case should classify the initial-phase stop as a geostatic/nonlinear stop (got ${output?.solver?.initialPhaseFailureOutcomeClass})`
+  );
+  assert(output?.solver?.initialPhaseDepthBandReport?.totalCount > 0, 'the near-failure Stage 2 slope case should expose the depth-band diagnostic used for geostatic classification');
   assert(output?.solver?.servicePhaseStarted === false, 'a non-converged initial plastic-geostatic slope case should not start service loading');
   assert(output?.solver?.convergenceState === 'partial', 'a near-failure Stage 2 slope case should return a partial flagged result rather than throwing');
   assert((output?.solver?.initialPhaseDisplayedGravityFactor || 0) > 0, 'the displayed near-failure state should still advance partway along the initial plastic-geostatic correction path');
@@ -1757,7 +1761,11 @@ await runCase('Case 1g Stage 2 plastic geostatic equilibration can fail under se
   if (output?.solver?.servicePhaseStarted === false) {
     assert(output?.solver?.initialPhaseConvergenceState === 'partial', 'when the weak-slope case does not start service loading, the initial phase should be flagged as partial');
     assert(output?.solver?.convergenceState === 'partial', 'when the weak-slope case stops in the initial phase, the overall result should remain a flagged partial state');
-    assert(output?.solver?.failureOutcomeClass === 'numerical-nonconvergence', `when the weak-slope case stops in the initial phase, the overall result should carry a numerical non-convergence classification (got ${output?.solver?.failureOutcomeClass})`);
+    assert(
+      ['numerical-nonconvergence', 'numerically-stuck', 'shallow-free-surface-yielding', 'likely-unstable-self-weight'].includes(output?.solver?.failureOutcomeClass),
+      `when the weak-slope case stops in the initial phase, the overall result should carry a geostatic/nonlinear stop classification (got ${output?.solver?.failureOutcomeClass})`
+    );
+    assert(output?.solver?.initialPhaseDepthBandReport?.totalCount > 0, 'a weak-slope initial-phase stop should expose a depth-band diagnostic');
     assert(output?.solver?.initialDisplacementResetApplied === false, 'no service-phase displacement reset should be reported when the service phase never starts');
     assert((output?.solver?.loadStepHistory || []).length === 0, 'the service phase should not produce load-step history when it never started');
     assert((output?.summaries?.maxInitialSettlement || 0) > 0, 'the returned initial self-weight state should still provide an interpretable settlement field');

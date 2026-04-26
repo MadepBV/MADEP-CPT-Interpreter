@@ -201,10 +201,10 @@ function renderBanner(){
   tabs.innerHTML=PROJECT.cpts.map((cpt,i)=>{
     const isActive=i===PROJECT.activeCptIdx;
     const status=cpt.layers.length?'✓':cpt.data.length?'⚡':'○';
-    const statusCol=cpt.layers.length?'#1D9E75':cpt.data.length?'#BA7517':'#9a9a96';
+    const statusCol=cpt.layers.length?'var(--ok-text)':cpt.data.length?'var(--wn)':'var(--tx3)';
     return`<div onclick="selectCpt(${i})" style="
         display:flex;align-items:center;gap:5px;padding:0 12px;cursor:pointer;
-        border-bottom:2px solid ${isActive?'#1D9E75':'transparent'};
+        border-bottom:2px solid ${isActive?'var(--ac)':'transparent'};
         background:${isActive?'var(--bg)':'transparent'};
         font-size:12px;font-weight:${isActive?'600':'400'};color:var(--tx);
         white-space:nowrap;min-height:44px;transition:.1s">
@@ -613,7 +613,7 @@ function renderSection(){
 
   const projCpts=sectionProjection();
   if(!projCpts||projCpts.length<1){
-    svg.innerHTML='<text x="20" y="40" font-size="13" fill="#9a9a96">Minimaal 2 CPTs met maaiveldshoogte vereist voor doorsnede.</text>';
+    svg.innerHTML=`<text x="20" y="40" font-size="13" fill="${readCssToken('--tx3', '#888890')}">Minimaal 2 CPTs met maaiveldshoogte vereist voor doorsnede.</text>`;
     svg.setAttribute('viewBox','0 0 400 80'); svg.setAttribute('width','400'); svg.setAttribute('height','80');
     return;
   }
@@ -628,7 +628,7 @@ function renderSection(){
     if(c.elev!=null) elevAll.push(c.elev);
     c.layers.forEach(l=>{ if(c.elev!=null) elevAll.push(c.elev-l.bot); });
   });
-  if(!elevAll.length){ svg.innerHTML='<text x="20" y="30" font-size="11" fill="#9a9a96">Geen data.</text>'; return; }
+  if(!elevAll.length){ svg.innerHTML=`<text x="20" y="30" font-size="11" fill="${readCssToken('--tx3', '#888890')}">Geen data.</text>`; return; }
   const maxElev=Math.max(...elevAll)+1;
   const minElev=Math.min(...elevAll)-1;
   const elevRange=maxElev-minElev||1;
@@ -646,6 +646,10 @@ function renderSection(){
   function esc(v){
     return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
+  const svgText = readCssToken('--tx', '#18181a');
+  const svgMuted = readCssToken('--tx2', '#4a4a52');
+  const svgSubtle = readCssToken('--tx3', '#888890');
+  const svgBlue = readCssToken('--chart-blue', '#356F9C');
 
   let s='';
 
@@ -658,7 +662,7 @@ function renderSection(){
     const y=py(e);
     if(y<MT||y>MT+H) continue;
     s+=`<line x1="${ML}" x2="${ML+W}" y1="${y}" y2="${y}" stroke="rgba(128,128,128,0.10)" stroke-width="0.5"/>`;
-    s+=`<text x="${ML-5}" y="${y+3.5}" font-size="9" text-anchor="end" fill="#9a9a96" font-family="sans-serif">${e.toFixed(1)}</text>`;
+    s+=`<text x="${ML-5}" y="${y+3.5}" font-size="9" text-anchor="end" fill="${svgSubtle}" font-family="sans-serif">${e.toFixed(1)}</text>`;
   }
 
   // ── Build interpolated stratigraphy ──
@@ -715,7 +719,7 @@ function renderSection(){
       const fill=SCFILL[valid[0].type]||'#D3D1C7';
       const topPts=valid.map(a=>`${px(a.dist).toFixed(1)},${py(a.top).toFixed(1)}`).join(' ');
       const botPts=[...valid].reverse().map(a=>`${px(a.dist).toFixed(1)},${py(a.bot).toFixed(1)}`).join(' ');
-      s+=`<polygon points="${topPts} ${botPts}" fill="${fill}" fill-opacity="0.80" stroke="#555" stroke-width="0.6"/>`;
+      s+=`<polygon points="${topPts} ${botPts}" fill="${fill}" fill-opacity="0.80" stroke="${svgMuted}" stroke-width="0.6"/>`;
 
       // Label in middle of group
       const midAnchor=valid[Math.floor(valid.length/2)];
@@ -743,7 +747,7 @@ function renderSection(){
     const xc=px(c.dist), colW=14;
     // Surface to toe vertical line
     const toeElev=c.layers.length?c.elev-c.layers[c.layers.length-1].bot:c.elev-10;
-    s+=`<line x1="${xc}" x2="${xc}" y1="${py(c.elev)}" y2="${py(toeElev)}" stroke="#666" stroke-width="0.8" stroke-dasharray="3,2"/>`;
+    s+=`<line x1="${xc}" x2="${xc}" y1="${py(c.elev)}" y2="${py(toeElev)}" stroke="${svgMuted}" stroke-width="0.8" stroke-dasharray="3,2"/>`;
 
     c.layers.forEach(l=>{
       const fill=SCFILL[l.type]||'#D3D1C7';
@@ -774,37 +778,37 @@ function renderSection(){
         x="${(xc-colW/2).toFixed(1)}" y="${y1.toFixed(1)}" width="${colW}" height="${h.toFixed(1)}"
         fill="${fill}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`;
       // Layer boundary tick (left of column)
-      s+=`<line x1="${(xc-colW/2-5).toFixed(1)}" x2="${(xc-colW/2).toFixed(1)}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="#666" stroke-width="0.6"/>`;
+      s+=`<line x1="${(xc-colW/2-5).toFixed(1)}" x2="${(xc-colW/2).toFixed(1)}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${svgMuted}" stroke-width="0.6"/>`;
       // Depth label left
       if(h>12){
         const elmid=(y1+y2)/2;
-        s+=`<text x="${(xc-colW/2-7).toFixed(1)}" y="${(elmid+3).toFixed(1)}" font-size="7.5" text-anchor="end" fill="#555" font-family="sans-serif">${(c.elev-l.bot).toFixed(1)}</text>`;
+        s+=`<text x="${(xc-colW/2-7).toFixed(1)}" y="${(elmid+3).toFixed(1)}" font-size="7.5" text-anchor="end" fill="${svgMuted}" font-family="sans-serif">${(c.elev-l.bot).toFixed(1)}</text>`;
       }
     });
 
     // WT
     if(c.wt!=null){
       const wtY=py(c.elev-c.wt);
-      s+=`<line x1="${(xc-18).toFixed(1)}" x2="${(xc+18).toFixed(1)}" y1="${wtY.toFixed(1)}" y2="${wtY.toFixed(1)}" stroke="#378ADD" stroke-width="2" stroke-dasharray="5,3"/>`;
+      s+=`<line x1="${(xc-18).toFixed(1)}" x2="${(xc+18).toFixed(1)}" y1="${wtY.toFixed(1)}" y2="${wtY.toFixed(1)}" stroke="${svgBlue}" stroke-width="2" stroke-dasharray="5,3"/>`;
     }
     // CPT label
-    s+=`<text x="${xc}" y="${(MT-14).toFixed(1)}" font-size="10" text-anchor="middle" font-weight="600" fill="#333" font-family="sans-serif">${c.id}</text>`;
-    s+=`<text x="${xc}" y="${(MT-4).toFixed(1)}" font-size="9" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">${c.elev!=null?c.elev.toFixed(2)+' m TAW':''}</text>`;
+    s+=`<text x="${xc}" y="${(MT-14).toFixed(1)}" font-size="10" text-anchor="middle" font-weight="600" fill="${svgText}" font-family="sans-serif">${c.id}</text>`;
+    s+=`<text x="${xc}" y="${(MT-4).toFixed(1)}" font-size="9" text-anchor="middle" fill="${svgSubtle}" font-family="sans-serif">${c.elev!=null?c.elev.toFixed(2)+' m TAW':''}</text>`;
     // Distance from start
     const d0=(c.dist-distMin).toFixed(0);
-    s+=`<text x="${xc}" y="${(totalH-8).toFixed(1)}" font-size="9" text-anchor="middle" fill="#9a9a96" font-family="sans-serif">${d0}m</text>`;
+    s+=`<text x="${xc}" y="${(totalH-8).toFixed(1)}" font-size="9" text-anchor="middle" fill="${svgSubtle}" font-family="sans-serif">${d0}m</text>`;
   });
 
   // ── WT interpolated line across section ──
   const wtPts=projCpts.filter(c=>c.wt!=null&&c.elev!=null)
     .map(c=>`${px(c.dist).toFixed(1)},${py(c.elev-c.wt).toFixed(1)}`);
   if(wtPts.length>=2)
-    s+=`<polyline points="${wtPts.join(' ')}" fill="none" stroke="#378ADD" stroke-width="1.8" stroke-dasharray="7,5"/>
-        <text x="${(ML+10).toFixed(1)}" y="${py(projCpts.find(c=>c.wt!=null)?.elev-(projCpts.find(c=>c.wt!=null)?.wt||0)||maxElev).toFixed(1)}" font-size="9" fill="#378ADD" font-family="sans-serif">WT</text>`;
+    s+=`<polyline points="${wtPts.join(' ')}" fill="none" stroke="${svgBlue}" stroke-width="1.8" stroke-dasharray="7,5"/>
+        <text x="${(ML+10).toFixed(1)}" y="${py(projCpts.find(c=>c.wt!=null)?.elev-(projCpts.find(c=>c.wt!=null)?.wt||0)||maxElev).toFixed(1)}" font-size="9" fill="${svgBlue}" font-family="sans-serif">WT</text>`;
 
   // ── Axes labels ──
-  s+=`<text x="${(ML+W/2).toFixed(1)}" y="${(totalH-6).toFixed(1)}" font-size="10" text-anchor="middle" fill="#6b6b68" font-family="sans-serif">Afstand langs doorsnede (m) — vex ×${vex}</text>`;
-  s+=`<text x="12" y="${(MT+H/2).toFixed(1)}" font-size="10" text-anchor="middle" fill="#6b6b68" font-family="sans-serif" transform="rotate(-90,12,${(MT+H/2).toFixed(1)})">Hoogte (m TAW)</text>`;
+  s+=`<text x="${(ML+W/2).toFixed(1)}" y="${(totalH-6).toFixed(1)}" font-size="10" text-anchor="middle" fill="${svgMuted}" font-family="sans-serif">Afstand langs doorsnede (m) — vex ×${vex}</text>`;
+  s+=`<text x="12" y="${(MT+H/2).toFixed(1)}" font-size="10" text-anchor="middle" fill="${svgMuted}" font-family="sans-serif" transform="rotate(-90,12,${(MT+H/2).toFixed(1)})">Hoogte (m TAW)</text>`;
 
   // ── Legend ──
   const legendTypes=[...new Set(PROJECT.cpts.flatMap(c=>c.layers.map(l=>l.type)))].slice(0,8);
@@ -812,7 +816,7 @@ function renderSection(){
   s+=`<rect x="${lx-4}" y="${ly-4}" width="144" height="${legendTypes.length*17+8}" rx="4" fill="var(--bg)" fill-opacity="0.85" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>`;
   legendTypes.forEach((t,i)=>{
     s+=`<rect x="${lx}" y="${ly+i*17}" width="10" height="10" fill="${SCFILL[t]||'#D3D1C7'}" stroke="rgba(0,0,0,0.2)" stroke-width="0.3"/>`;
-    s+=`<text x="${lx+14}" y="${ly+i*17+9}" font-size="8.5" fill="#333" font-family="sans-serif">${t}</text>`;
+    s+=`<text x="${lx+14}" y="${ly+i*17+9}" font-size="8.5" fill="${svgText}" font-family="sans-serif">${t}</text>`;
   });
 
   svg.innerHTML=s;
@@ -1755,9 +1759,9 @@ function initCharts(){
     }));
   }
 
-  S.charts.qc=mk('cQc',qcs,'#1D9E75',maxQc,'qc');
-  S.charts.fs=mk('cFs',fss,'#534AB7',maxFs,'fs');
-  S.charts.rf=mk('cRf',rfs,'#D85A30',12,'Rf');
+  S.charts.qc=mk('cQc',qcs,readCssToken('--chart-green', '#3D6B6A'),maxQc,'qc');
+  S.charts.fs=mk('cFs',fss,readCssToken('--chart-purple', '#6259B5'),maxFs,'fs');
+  S.charts.rf=mk('cRf',rfs,readCssToken('--chart-orange', '#B6653F'),12,'Rf');
   S.chartsReady=true;
 
   // Layer column SVG (placeholder before classification)
@@ -3397,9 +3401,9 @@ function renderModel(){
     // Infiltration class colour
     const infCol={
       'Infiltratie (volledig)':    'var(--ac)',
-      'Infiltratie (effectief)':   '#1D9E75',
+      'Infiltratie (effectief)':   'var(--ok-text)',
       'Infiltratie + buffer':      'var(--wn)',
-      'Buffer (infiltratie marginaal)': '#D85A30'
+      'Buffer (infiltratie marginaal)': 'var(--chart-orange)'
     }[k.infClass]||'var(--tx2)';
 
     return`<div class="mc2">
@@ -3677,12 +3681,19 @@ function tuningPreviewLineData(fit, previewM){
   return{Eoed_ref, logLine, depthLine};
 }
 
+function readCssToken(name, fallback){
+  if(typeof document === 'undefined') return fallback;
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
 function updateTuningPreviewM(i, rawValue){
   const t = S.tuning?.[i];
   if(!t||!t.fit) return;
 
   const parsed = Number(rawValue);
   t.previewM = parsed;
+  const chartRed = readCssToken('--chart-red', '#A32D2D');
+  const chartGreen = readCssToken('--chart-green', '#3D6B6A');
 
   const invalid = !isFinite(parsed) || parsed <= 0;
   const previewM = invalid ? t.fit.m_fit : parsed;
@@ -3690,8 +3701,8 @@ function updateTuningPreviewM(i, rawValue){
 
   const input=document.getElementById('fitPreviewInput'+i);
   if(input){
-    input.style.borderColor = invalid ? '#A32D2D' : 'var(--bd2)';
-    input.style.color = invalid ? '#A32D2D' : 'var(--tx)';
+    input.style.borderColor = invalid ? 'var(--bad)' : 'var(--bd2)';
+    input.style.color = invalid ? 'var(--bad-text)' : 'var(--tx)';
   }
 
   const mEl=document.getElementById('fitPreviewM'+i);
@@ -3705,7 +3716,7 @@ function updateTuningPreviewM(i, rawValue){
     noteEl.textContent = invalid
       ? 'Preview ongeldig: m moet groter zijn dan 0'
       : (Math.abs(previewM - t.fit.m_fit) < 1e-6 ? 'Preview volgt de auto-fit' : 'Preview wijkt af van de auto-fit');
-    noteEl.style.color = invalid ? '#A32D2D' : 'var(--tx2)';
+    noteEl.style.color = invalid ? 'var(--bad-text)' : 'var(--tx2)';
   }
 
   const btn=document.getElementById('fitAcceptBtn'+i);
@@ -3720,7 +3731,7 @@ function updateTuningPreviewM(i, rawValue){
   if(regChart){
     regChart.data.datasets[2].data = preview.logLine;
     regChart.data.datasets[2].label = 'Preview m='+previewM.toFixed(2);
-    regChart.data.datasets[2].borderColor = invalid ? '#A32D2D' : '#1D9E75';
+    regChart.data.datasets[2].borderColor = invalid ? chartRed : chartGreen;
     regChart.data.datasets[2].borderDash = invalid ? [5,4] : (t.fit.quality==='warn'?[5,4]:[]);
     regChart.update('none');
   }
@@ -3730,7 +3741,7 @@ function updateTuningPreviewM(i, rawValue){
   if(depChart){
     depChart.data.datasets[3].data = preview.depthLine;
     depChart.data.datasets[3].label = 'HS preview m='+previewM.toFixed(2);
-    depChart.data.datasets[3].borderColor = invalid ? '#A32D2D' : '#1D9E75';
+    depChart.data.datasets[3].borderColor = invalid ? chartRed : chartGreen;
     depChart.data.datasets[3].borderDash = invalid ? [5,4] : (t.fit.quality==='warn'?[5,4]:[]);
     depChart.update('none');
   }
@@ -3760,10 +3771,10 @@ function renderTuning(){
       </div>`;
     }
 
-    const qColor = fit.quality==='good'?'#0F6E56'
-      : fit.quality==='ok'?'#BA7517'
-      : fit.quality==='invalid'?'#A32D2D'
-      : '#A32D2D';
+    const qColor = fit.quality==='good'?'var(--ok-text)'
+      : fit.quality==='ok'?'var(--wn)'
+      : fit.quality==='invalid'?'var(--bad-text)'
+      : 'var(--bad-text)';
 
     // Build scatter chart data
     const chartId = 'tChart'+t.i;
@@ -3798,8 +3809,8 @@ function renderTuning(){
         <div>
           <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
             E_oed vs diepte (kPa)
-            <span style="margin-left:6px;color:#534AB7">─ default</span>
-            <span style="margin-left:4px;color:#1D9E75">─ preview</span>
+            <span style="margin-left:6px;color:var(--chart-purple)">─ default</span>
+            <span style="margin-left:4px;color:var(--chart-green)">─ preview</span>
             <span style="margin-left:4px;color:rgba(53,162,235,0.7)">· CPT</span>
           </div>
           <div style="position:relative;height:280px">
@@ -3811,8 +3822,8 @@ function renderTuning(){
         <div>
           <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
             ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
-            <span style="margin-left:6px;color:#534AB7">─ default m=${m_def.toFixed(2)}</span>
-            <span style="margin-left:4px;color:#1D9E75">─ preview m=${previewM.toFixed(2)}</span>
+            <span style="margin-left:6px;color:var(--chart-purple)">─ default m=${m_def.toFixed(2)}</span>
+            <span style="margin-left:4px;color:var(--chart-green)">─ preview m=${previewM.toFixed(2)}</span>
           </div>
           <div style="position:relative;height:280px">
             <canvas id="${chartId}" role="img" aria-label="m fitting regression layer ${t.i+1}"></canvas>
@@ -3826,9 +3837,9 @@ function renderTuning(){
             <tr><td>m</td><td>${m_def.toFixed(2)}</td></tr>
             <tr><td>E_oed,ref</td><td>${Eoed_ref_default.toLocaleString()} kPa</td></tr>
             <tr><td>&alpha;E basis</td><td>${S.alphaMethod==='B'?'puntgewijs qc-afhankelijk':'vast per laag'} (${fit.alphaDefault.toFixed(2)})</td></tr>
-            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:#1D9E75;padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Auto-fit</td></tr>
-            <tr><td>m</td><td style="color:#0F6E56;font-weight:700">${fit.m_fit.toFixed(3)}</td></tr>
-            <tr><td>E_oed,ref</td><td style="color:#0F6E56;font-weight:600">${fit.Eoed_ref_fit.toLocaleString()} kPa</td></tr>
+            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--ok-text);padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Auto-fit</td></tr>
+            <tr><td>m</td><td style="color:var(--ok-text);font-weight:700">${fit.m_fit.toFixed(3)}</td></tr>
+            <tr><td>E_oed,ref</td><td style="color:var(--ok-text);font-weight:600">${fit.Eoed_ref_fit.toLocaleString()} kPa</td></tr>
             <tr><td style="padding-top:6px">R²</td><td style="padding-top:6px">${fit.R2.toFixed(3)}</td></tr>
             <tr><td>n</td><td>${fit.n} punten</td></tr>
             <tr><td>σ' bereik</td><td>×${fit.stressRangeFactor}</td></tr>
@@ -3852,7 +3863,7 @@ function renderTuning(){
             <tr><td>Preview E_oed,ref</td><td id="fitPreviewRef${t.i}">${preview.Eoed_ref.toLocaleString()} kPa</td></tr>
           </table>
           ${hasAccepted
-            ?`<div style="font-size:11px;color:#0F6E56;font-weight:600;margin-bottom:8px">✓ Huidige override m = ${l.m_ovr.toFixed(3)}</div>`
+            ?`<div style="font-size:11px;color:var(--ok-text);font-weight:600;margin-bottom:8px">✓ Huidige override m = ${l.m_ovr.toFixed(3)}</div>`
             :`<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Standaard m actief tot je expliciet accepteert</div>`
           }
           <button id="fitAcceptBtn${t.i}" class="btn pri sm" onclick="acceptFit(${t.i})" ${fit.quality==='warn'||fit.quality==='invalid'?'style="background:var(--wn);border-color:var(--wn)"':''}>
@@ -4199,7 +4210,7 @@ function stage6Defaults(){
           initialStressMode:'plastic-geostatic',
           totalLoad:null,
           outOfPlaneLength:10,
-          meshElementType:'t3',
+          meshElementType:'t6',
           meshTargetArea:null,
           meshTargetAreaAuto:true,
           useSeepagePorePressures:false,
@@ -4216,13 +4227,39 @@ function stage6Defaults(){
           loadStepCutbackFactor:0.5,
           plasticLoadStepGrowthFactor:1.05,
           plasticLoadStepCutbackFactor:0.4,
+          useAdmissibleSlopeSeed:true,
+          useStagedGeostaticInit:true,
+          geostaticCorrectionStages:8,
+          initialGravityTangentSchedule:['elastic','plastic'],
+          initialGravityElasticGlobalizationIterations:4,
+          elasticGlobalizationArmijoC1:1e-3,
+          elasticGlobalizationMinResidualRatio:0.90,
+          geostaticMinLoadStep:1e-3,
+          geostaticMaxRepeatedBand:3,
+          geostaticProgressFailFast:true,
+          geostaticProgressFailFastSteps:6,
+          geostaticProgressFailFastLoadFactor:0.50,
+          geostaticProgressFailFastPlasticFraction:0.15,
+          serviceProgressFailFast:true,
+          serviceProgressFailFastSteps:16,
+          serviceProgressFailFastLoadFactor:0.20,
+          serviceProgressFailFastPlasticFraction:0.35,
+          preconditionerLevel:'schwarz',
+          schwarzMinFreeDofs:5000,
+          schwarzOverlap:1,
           safetyInitialSigmaMsfIncrement:0.10,
           safetySigmaMsfGrowthFactor:1.50,
           safetySigmaMsfMax:3.00,
           safetySigmaMsfBracketTolerance:0.01,
           safetyMaxSearchTrials:32,
           useUnsymmetricPlasticSolver:false,
-          useGpuAcceleration:false,
+          // GPU acceleration is ON by default, but the active backend
+          // decides whether a resident Krylov path is certified. Small
+          // problems still stay on CPU f64 because transfer and launch
+          // costs are not worth amortising below the DOF gate.
+          useGpuAcceleration:true,
+          // useResidentCg intentionally omitted (undefined) so the
+          // dispatcher uses the active backend's certified default.
           gpuMinDof:1500
         },
         display:{
@@ -4561,6 +4598,30 @@ function ensureStage6State(){
   bishop.deformation.options.loadStepCutbackFactor = Math.min(Math.max(+bishop.deformation.options.loadStepCutbackFactor || 0.5, 0.1), 0.9);
   bishop.deformation.options.plasticLoadStepGrowthFactor = Math.max(+bishop.deformation.options.plasticLoadStepGrowthFactor || 1.05, 1);
   bishop.deformation.options.plasticLoadStepCutbackFactor = Math.min(Math.max(+bishop.deformation.options.plasticLoadStepCutbackFactor || 0.4, 0.1), 0.9);
+  bishop.deformation.options.useAdmissibleSlopeSeed = bishop.deformation.options.useAdmissibleSlopeSeed !== false;
+  bishop.deformation.options.useStagedGeostaticInit = bishop.deformation.options.useStagedGeostaticInit !== false;
+  bishop.deformation.options.geostaticCorrectionStages = Math.min(Math.max(Math.round(+bishop.deformation.options.geostaticCorrectionStages || 8), 1), 64);
+  bishop.deformation.options.initialGravityTangentSchedule = Array.isArray(bishop.deformation.options.initialGravityTangentSchedule)
+    ? bishop.deformation.options.initialGravityTangentSchedule
+    : String(bishop.deformation.options.initialGravityTangentSchedule || 'elastic,plastic').split(/[,\s]+/).filter(Boolean);
+  bishop.deformation.options.initialGravityElasticGlobalizationIterations = Math.max(Math.round(+bishop.deformation.options.initialGravityElasticGlobalizationIterations || 4), 0);
+  bishop.deformation.options.elasticGlobalizationArmijoC1 = Math.max(+bishop.deformation.options.elasticGlobalizationArmijoC1 || 0.001, 0);
+  bishop.deformation.options.elasticGlobalizationMinResidualRatio = Math.min(Math.max(+bishop.deformation.options.elasticGlobalizationMinResidualRatio || 0.90, 0.000001), 0.999);
+  bishop.deformation.options.geostaticMinLoadStep = Math.max(+bishop.deformation.options.geostaticMinLoadStep || 0.001, 0.000001);
+  bishop.deformation.options.geostaticMaxRepeatedBand = Math.max(Math.round(+bishop.deformation.options.geostaticMaxRepeatedBand || 3), 1);
+  bishop.deformation.options.geostaticProgressFailFast = bishop.deformation.options.geostaticProgressFailFast !== false;
+  bishop.deformation.options.geostaticProgressFailFastSteps = Math.max(Math.round(+bishop.deformation.options.geostaticProgressFailFastSteps || 6), 1);
+  bishop.deformation.options.geostaticProgressFailFastLoadFactor = Math.min(Math.max(+bishop.deformation.options.geostaticProgressFailFastLoadFactor || 0.50, 0), 1);
+  bishop.deformation.options.geostaticProgressFailFastPlasticFraction = Math.min(Math.max(+bishop.deformation.options.geostaticProgressFailFastPlasticFraction || 0.15, 0), 1);
+  bishop.deformation.options.serviceProgressFailFast = bishop.deformation.options.serviceProgressFailFast !== false;
+  bishop.deformation.options.serviceProgressFailFastSteps = Math.max(Math.round(+bishop.deformation.options.serviceProgressFailFastSteps || 16), 1);
+  bishop.deformation.options.serviceProgressFailFastLoadFactor = Math.min(Math.max(+bishop.deformation.options.serviceProgressFailFastLoadFactor || 0.20, 0), 1);
+  bishop.deformation.options.serviceProgressFailFastPlasticFraction = Math.min(Math.max(+bishop.deformation.options.serviceProgressFailFastPlasticFraction || 0.35, 0), 1);
+  bishop.deformation.options.preconditionerLevel = ['jacobi','schwarz'].includes(String(bishop.deformation.options.preconditionerLevel || '').toLowerCase())
+    ? String(bishop.deformation.options.preconditionerLevel).toLowerCase()
+    : 'schwarz';
+  bishop.deformation.options.schwarzMinFreeDofs = Math.max(Math.round(+bishop.deformation.options.schwarzMinFreeDofs || 5000), 0);
+  bishop.deformation.options.schwarzOverlap = Math.max(Math.round(+bishop.deformation.options.schwarzOverlap || 1), 0);
   bishop.deformation.options.safetyInitialSigmaMsfIncrement = Math.max(+bishop.deformation.options.safetyInitialSigmaMsfIncrement || 0.10, 0.001);
   bishop.deformation.options.safetySigmaMsfGrowthFactor = Math.max(+bishop.deformation.options.safetySigmaMsfGrowthFactor || 1.50, 1.01);
   bishop.deformation.options.safetySigmaMsfMax = Math.max(+bishop.deformation.options.safetySigmaMsfMax || 3.00, 1.0);
@@ -4568,6 +4629,27 @@ function ensureStage6State(){
   bishop.deformation.options.safetyMaxSearchTrials = Math.max(Math.round(+bishop.deformation.options.safetyMaxSearchTrials || 32), 1);
   bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver === true;
   bishop.deformation.options.useGpuAcceleration = bishop.deformation.options.useGpuAcceleration === true;
+  // useResidentCg is tri-state: true / false / undefined. Preserve the
+  // raw value when it is a boolean; otherwise leave it undefined so the
+  // dispatcher falls back to the backend-certified default. Coercing to
+  // a strict boolean here would overwrite "no choice" with "explicit
+  // false" and block a backend from using a resident path once it is
+  // certified.
+  bishop.deformation.options.useResidentCg = typeof bishop.deformation.options.useResidentCg === 'boolean'
+    ? bishop.deformation.options.useResidentCg
+    : undefined;
+  // `useResidentGmres` is the same tri-state pattern: opt-in to the
+  // GPU-resident FGMRES for unsymmetric / plastic / c-phi solves
+  // (defaults to the backend's `residentGmresCertified` flag). The
+  // hybrid path (CPU GMRES + GPU async matvec) is no longer the
+  // default — it must be requested explicitly via
+  // `allowHybridGpuMatvecForCpuKrylov: true` because the per-Arnoldi
+  // round-trip dominates wall-clock on browser-sized problems.
+  bishop.deformation.options.useResidentGmres = typeof bishop.deformation.options.useResidentGmres === 'boolean'
+    ? bishop.deformation.options.useResidentGmres
+    : undefined;
+  bishop.deformation.options.allowHybridGpuMatvecForCpuKrylov =
+    bishop.deformation.options.allowHybridGpuMatvecForCpuKrylov === true;
   const rawGpuMinDof = Number(bishop.deformation.options.gpuMinDof);
   bishop.deformation.options.gpuMinDof = Number.isFinite(rawGpuMinDof) && rawGpuMinDof > 0
     ? Math.max(Math.round(rawGpuMinDof), 0)
@@ -6715,6 +6797,26 @@ function stage6BishopRunDeformation(){
         loadStepCutbackFactor:bishop.deformation?.options?.loadStepCutbackFactor,
         plasticLoadStepGrowthFactor:bishop.deformation?.options?.plasticLoadStepGrowthFactor,
         plasticLoadStepCutbackFactor:bishop.deformation?.options?.plasticLoadStepCutbackFactor,
+        useAdmissibleSlopeSeed:bishop.deformation?.options?.useAdmissibleSlopeSeed !== false,
+        useStagedGeostaticInit:bishop.deformation?.options?.useStagedGeostaticInit !== false,
+        geostaticCorrectionStages:bishop.deformation?.options?.geostaticCorrectionStages,
+        initialGravityTangentSchedule:bishop.deformation?.options?.initialGravityTangentSchedule,
+        initialGravityElasticGlobalizationIterations:bishop.deformation?.options?.initialGravityElasticGlobalizationIterations,
+        elasticGlobalizationArmijoC1:bishop.deformation?.options?.elasticGlobalizationArmijoC1,
+        elasticGlobalizationMinResidualRatio:bishop.deformation?.options?.elasticGlobalizationMinResidualRatio,
+        geostaticMinLoadStep:bishop.deformation?.options?.geostaticMinLoadStep,
+        geostaticMaxRepeatedBand:bishop.deformation?.options?.geostaticMaxRepeatedBand,
+        geostaticProgressFailFast:bishop.deformation?.options?.geostaticProgressFailFast !== false,
+        geostaticProgressFailFastSteps:bishop.deformation?.options?.geostaticProgressFailFastSteps,
+        geostaticProgressFailFastLoadFactor:bishop.deformation?.options?.geostaticProgressFailFastLoadFactor,
+        geostaticProgressFailFastPlasticFraction:bishop.deformation?.options?.geostaticProgressFailFastPlasticFraction,
+        serviceProgressFailFast:bishop.deformation?.options?.serviceProgressFailFast !== false,
+        serviceProgressFailFastSteps:bishop.deformation?.options?.serviceProgressFailFastSteps,
+        serviceProgressFailFastLoadFactor:bishop.deformation?.options?.serviceProgressFailFastLoadFactor,
+        serviceProgressFailFastPlasticFraction:bishop.deformation?.options?.serviceProgressFailFastPlasticFraction,
+        preconditionerLevel:bishop.deformation?.options?.preconditionerLevel,
+        schwarzMinFreeDofs:bishop.deformation?.options?.schwarzMinFreeDofs,
+        schwarzOverlap:bishop.deformation?.options?.schwarzOverlap,
         safetyInitialSigmaMsfIncrement:bishop.deformation?.options?.safetyInitialSigmaMsfIncrement,
         safetySigmaMsfGrowthFactor:bishop.deformation?.options?.safetySigmaMsfGrowthFactor,
         safetySigmaMsfMax:bishop.deformation?.options?.safetySigmaMsfMax,
@@ -6722,6 +6824,20 @@ function stage6BishopRunDeformation(){
         safetyMaxSearchTrials:bishop.deformation?.options?.safetyMaxSearchTrials,
         useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true,
         useGpuAcceleration:bishop.deformation?.options?.useGpuAcceleration === true,
+        // useResidentCg is tri-state. Forwarding `true`/`false`
+        // overrides the backend default; forwarding `undefined`
+        // (no explicit choice) lets the selected backend use its
+        // certified default. Coercing with `=== true` would overwrite
+        // "no choice" with "explicit false" and block a backend from
+        // using a resident path once that path is certified.
+        useResidentCg: typeof bishop.deformation?.options?.useResidentCg === 'boolean'
+          ? bishop.deformation.options.useResidentCg
+          : undefined,
+        useResidentGmres: typeof bishop.deformation?.options?.useResidentGmres === 'boolean'
+          ? bishop.deformation.options.useResidentGmres
+          : undefined,
+        allowHybridGpuMatvecForCpuKrylov:
+          bishop.deformation?.options?.allowHybridGpuMatvecForCpuKrylov === true,
         gpuMinDof:bishop.deformation?.options?.gpuMinDof
       }
     }
@@ -6756,6 +6872,34 @@ function stage6SecondsLabelFromMs(value){
   const ms = Number(value);
   if(!Number.isFinite(ms)) return '—';
   return `${stage6CompactNumber(ms / 1000, 3)} s`;
+}
+
+function stage6DepthBandReportHtml(report, title = 'Depth-band plasticity'){
+  const bands = Array.isArray(report?.depthBands) ? report.depthBands.filter((band)=>Number(band?.count) > 0) : [];
+  if(!bands.length) return '';
+  const maxCount = Math.max(1, ...bands.map((band)=>Math.max(Number(band.plastic) || 0, Number(band.tension) || 0)));
+  return `
+    <div class="info st6-depth-band-report" style="background:var(--bg2);border-color:var(--bd2)">
+      <strong>${stage6EscAttr(title)}</strong>
+      ${bands.map((band)=>{
+        const plastic = Number(band.plastic) || 0;
+        const tension = Number(band.tension) || 0;
+        const plasticWidth = Math.min(100, 100 * plastic / maxCount);
+        const tensionWidth = Math.min(100, 100 * tension / maxCount);
+        const tau95 = Number(band.tauOverStrength?.p95);
+        return `
+          <div class="st6-depth-band-row">
+            <span>${stage6EscAttr(band.label)}</span>
+            <div class="st6-depth-band-bars">
+              <i style="width:${plasticWidth.toFixed(1)}%"></i>
+              <b style="width:${tensionWidth.toFixed(1)}%"></b>
+            </div>
+            <em>${plastic}/${band.count} MC${tension ? `, ${tension} T` : ''}${Number.isFinite(tau95) ? `, τ/S p95 ${tau95.toFixed(2)}` : ''}</em>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
 function stage6SeepageFlowErrorLabel(result){
@@ -7026,40 +7170,45 @@ function stage6BishopMeasurementLabel(metrics){
 }
 
 function stage6BishopLineProbeOptions(workspace, analysisType = null){
+  const chartBlue = readCssToken('--chart-blue', '#356F9C');
+  const chartGreen = readCssToken('--chart-green', '#3D6B6A');
+  const chartOrange = readCssToken('--chart-orange', '#B6653F');
+  const chartRed = readCssToken('--chart-red', '#A32D2D');
+  const chartPurple = readCssToken('--chart-purple', '#6259B5');
   if(workspace === 'seepage'){
     return [
-      {id:'head', label:'h', axisTitle:'Head h (m)', unit:'m', color:'#378ADD', digits:3},
-      {id:'porePressure', label:'u', axisTitle:'Pore pressure u (kPa)', unit:'kPa', color:'#2E86C1', digits:3},
-      {id:'gradient', label:'|∇h|', axisTitle:'Hydraulic gradient |∇h| (-)', unit:'', color:'#1D9E75', digits:3},
-      {id:'flow', label:'|q|', axisTitle:'Specific discharge |q| (m/s)', unit:'m/s', color:'#BA7517', digits:3},
-      {id:'qx', label:'qₓ', axisTitle:'Specific discharge qₓ (m/s)', unit:'m/s', color:'#B85C38', digits:3},
-      {id:'qy', label:'qᵧ', axisTitle:'Specific discharge qᵧ (m/s)', unit:'m/s', color:'#9B59B6', digits:3},
-      {id:'normalFlow', label:'qₙ', axisTitle:'Normal discharge qₙ (m/s)', unit:'m/s', color:'#A32D2D', digits:3}
+      {id:'head', label:'h', axisTitle:'Head h (m)', unit:'m', color:chartBlue, digits:3},
+      {id:'porePressure', label:'u', axisTitle:'Pore pressure u (kPa)', unit:'kPa', color:chartBlue, digits:3},
+      {id:'gradient', label:'|∇h|', axisTitle:'Hydraulic gradient |∇h| (-)', unit:'', color:chartGreen, digits:3},
+      {id:'flow', label:'|q|', axisTitle:'Specific discharge |q| (m/s)', unit:'m/s', color:readCssToken('--wn', '#BA7517'), digits:3},
+      {id:'qx', label:'qₓ', axisTitle:'Specific discharge qₓ (m/s)', unit:'m/s', color:chartOrange, digits:3},
+      {id:'qy', label:'qᵧ', axisTitle:'Specific discharge qᵧ (m/s)', unit:'m/s', color:chartPurple, digits:3},
+      {id:'normalFlow', label:'qₙ', axisTitle:'Normal discharge qₙ (m/s)', unit:'m/s', color:chartRed, digits:3}
     ];
   }
   if(workspace === 'deformation'){
     const normalizedAnalysisType = stage6BishopNormalizedDeformationAnalysisType(analysisType);
     const colorById = {
-      settlement:'#D85A30',
-      ux:'#378ADD',
-      uy:'#7D5BA6',
-      uTotal:'#C0392B',
-      epsilonXx:'#0B8F6A',
-      epsilonYy:'#17865D',
-      gammaXy:'#1F7A8C',
-      equivalentPlasticStrain:'#B53A6D',
-      safetyEquivalentPlasticIncrement:'#8C2F8F',
-      deltaSigmaYy:'#BA7517',
-      sigmaYyEffInit:'#9E7A2E',
-      sigmaYyEff:'#C47B10',
-      sigmaYyTotalInit:'#8E5316',
-      sigmaYyTotal:'#A64616',
-      sigmaXxEffInit:'#4E7DA8',
-      sigmaXxEff:'#2E86C1',
-      sigmaXxTotalInit:'#335C8A',
-      sigmaXxTotal:'#1F618D',
-      tauXy:'#6C5CE7',
-      mcEta:'#A32D2D'
+      settlement:chartOrange,
+      ux:chartBlue,
+      uy:chartPurple,
+      uTotal:chartRed,
+      epsilonXx:chartGreen,
+      epsilonYy:chartGreen,
+      gammaXy:chartBlue,
+      equivalentPlasticStrain:chartPurple,
+      safetyEquivalentPlasticIncrement:chartPurple,
+      deltaSigmaYy:readCssToken('--wn', '#BA7517'),
+      sigmaYyEffInit:readCssToken('--wn', '#BA7517'),
+      sigmaYyEff:chartOrange,
+      sigmaYyTotalInit:chartOrange,
+      sigmaYyTotal:chartRed,
+      sigmaXxEffInit:chartBlue,
+      sigmaXxEff:chartBlue,
+      sigmaXxTotalInit:chartBlue,
+      sigmaXxTotal:chartBlue,
+      tauXy:chartPurple,
+      mcEta:chartRed
     };
     return stage6BishopDeformationContourOptions(normalizedAnalysisType).map(({id, label})=>{
       const meta = stage6BishopDeformationContourMeta(id, normalizedAnalysisType);
@@ -7068,7 +7217,7 @@ function stage6BishopLineProbeOptions(workspace, analysisType = null){
         label,
         axisTitle:meta.axisTitle || `${label}${meta.unit ? ` (${meta.unit})` : ''}`,
         unit:meta.unit || '',
-        color:colorById[id] || '#378ADD',
+        color:colorById[id] || chartBlue,
         digits:meta.digits || 3
       };
     });
@@ -8586,7 +8735,7 @@ function stage6BishopDrawCanvas(){
 
     if(bishop.seepage.display?.showPhreatic !== false){
       (seepageResult.phreaticSegments || []).forEach((segment)=>{
-        drawPolyline(segment, '#1D9E75', 2, [8, 4]);
+        drawPolyline(segment, readCssToken('--chart-green', '#3D6B6A'), 2, [8, 4]);
       });
     }
 
@@ -9164,6 +9313,9 @@ function stage6BishopDrawCanvas(){
   if(bishop.terrain?.length >= 2) drawPolyline(bishop.terrain, '#2d3a4a', 3);
 
   if(workspace === 'seepage' && model && bishop.seepage?.display?.showBoundaryConditions !== false){
+    const boundaryBlue = readCssToken('--chart-blue', '#356F9C');
+    const boundaryGreen = readCssToken('--chart-green', '#3D6B6A');
+    const boundaryNeutral = readCssToken('--chart-neutral', '#6b6b68');
     const boundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
     const selectedBoundary = stage6BishopSelectedBoundaryEdge(model);
     const hoveredBoundary = stage6BishopHoveredSeepageEdge(model);
@@ -9172,10 +9324,10 @@ function stage6BishopDrawCanvas(){
       const isSelected = selectedBoundary?.edgeKey === edge.edgeKey;
       const isHovered = hoveredBoundary?.edgeKey === edge.edgeKey;
       const stroke = bc?.type === 'head'
-        ? '#2f7fda'
+        ? boundaryBlue
         : bc?.type === 'seepage-face'
-          ? '#1D9E75'
-          : '#6f7d8a';
+          ? boundaryGreen
+          : boundaryNeutral;
       const dash = bc?.type === 'head' ? [] : bc?.type === 'seepage-face' ? [10, 6] : [7, 5];
       drawPolyline([edge.a, edge.b], stroke, isSelected ? 5 : isHovered ? 4 : 2.5, dash);
       if((isSelected || isHovered) && bc?.status !== 'orphaned'){
@@ -9428,8 +9580,8 @@ function stage6BearingEc7Spec(key){
 function stage6NoteHtml(notes){
   if(!notes || !notes.length) return '';
   return notes.map(note=>{
-    const color = note.level === 'warn' ? 'var(--wn)' : note.level === 'error' ? '#D85A30' : 'var(--ac)';
-    const bg = note.level === 'warn' ? 'var(--wnl)' : 'var(--bg2)';
+    const color = note.level === 'warn' ? 'var(--wn)' : note.level === 'error' ? 'var(--bad)' : 'var(--ac)';
+    const bg = note.level === 'warn' ? 'var(--wnl)' : note.level === 'error' ? 'var(--bad-soft)' : 'var(--bg2)';
     return `<div class="info" style="margin-top:8px;background:${bg};border-color:${color}">${note.text}</div>`;
   }).join('');
 }
@@ -9996,12 +10148,12 @@ function stage6BearingSelectedDepthHtml(sel, governing, governingMode){
       ${sel.useEc7 ? `<tr><td>Belgian EC7 envelope</td><td>${sel.ec7CombinationLabel}</td></tr>` : `<tr><td>Safety route</td><td>Global system factor</td></tr>`}
       <tr><td>σ'v</td><td>${sel.sigVeff.toFixed(1)} kPa</td></tr>
       <tr><td>Applied stress</td><td>${sel.utilDrained!=null?`${sel.utilDrained.toFixed(2)} · drained / ${sel.utilUndrained.toFixed(2)} · undrained`:'—'}</td></tr>
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:#1D9E75;padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Drained</td></tr>
+      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--chart-green);padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Drained</td></tr>
       ${sel.useEc7 ? `<tr><td>Governing combo</td><td>${sel.drainedComboLabel}</td></tr>` : ''}
       <tr><td>q_ult</td><td>${sel.qultDrained.toLocaleString()} kPa</td></tr>
       <tr><td>${sel.capacityLabel}</td><td>${sel.qdDrained.toLocaleString()} kPa</td></tr>
       <tr><td>utilisation</td><td>${sel.utilDrained!=null?sel.utilDrained.toFixed(2):'—'}</td></tr>
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:#D85A30;padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Undrained</td></tr>
+      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--chart-orange);padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Undrained</td></tr>
       ${sel.useEc7 ? `<tr><td>Governing combo</td><td>${sel.undrainedComboLabel}</td></tr>` : ''}
       <tr><td>q_ult</td><td>${sel.qultUndrained.toLocaleString()} kPa</td></tr>
       <tr><td>${sel.capacityLabel}</td><td>${sel.qdUndrained.toLocaleString()} kPa</td></tr>
@@ -10050,7 +10202,7 @@ function stage6BearingMaterialParamsHtml(sel, cfg){
 
 function stage6BearingDrainedFormulaHtml(sel){
   return `
-    <div style="font-size:10px;font-weight:700;color:#1D9E75;text-transform:uppercase;margin-bottom:6px">Drained formula at selected depth</div>
+    <div style="font-size:10px;font-weight:700;color:var(--chart-green);text-transform:uppercase;margin-bottom:6px">Drained formula at selected depth</div>
     <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
       q_ult,d = c'·N_c·s_c·d_c + q'·N_q·s_q·d_q + 0.5·γ'·B'·N_γ·s_γ·d_γ
     </div>
@@ -10078,7 +10230,7 @@ function stage6BearingDrainedFormulaHtml(sel){
 
 function stage6BearingUndrainedFormulaHtml(sel){
   return `
-    <div style="font-size:10px;font-weight:700;color:#D85A30;text-transform:uppercase;margin-bottom:6px">Undrained formula at selected depth</div>
+    <div style="font-size:10px;font-weight:700;color:var(--chart-orange);text-transform:uppercase;margin-bottom:6px">Undrained formula at selected depth</div>
     <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
       q_ult,u = q + 5.14·c_u·s_cu·d_cu
     </div>
@@ -10248,9 +10400,9 @@ function renderStage6BearingApp(profile){
         <div>
           <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
             ${cfg.factorMode==='ec7' ? 'Design bearing capacity vs founding depth' : 'Allowable bearing capacity vs founding depth'}
-            <span style="margin-left:6px;color:#1D9E75">- drained</span>
-            <span style="margin-left:4px;color:#D85A30">- undrained</span>
-            <span style="margin-left:4px;color:#378ADD">- selected Df</span>
+            <span style="margin-left:6px;color:var(--chart-green)">- drained</span>
+            <span style="margin-left:4px;color:var(--chart-orange)">- undrained</span>
+            <span style="margin-left:4px;color:var(--chart-blue)">- selected Df</span>
           </div>
           <div style="position:relative;height:420px"><canvas id="stage6BearingChart" role="img" aria-label="Bearing capacity versus depth"></canvas></div>
         </div>
@@ -10959,6 +11111,22 @@ function renderStage6BishopApp(){
   const deformationLoadStepCutbackFactor = Math.min(Math.max(Number(deformation.options?.loadStepCutbackFactor) || 0.5, 0.1), 0.9);
   const deformationPlasticLoadStepGrowthFactor = Math.max(Number(deformation.options?.plasticLoadStepGrowthFactor) || 1.05, 1);
   const deformationPlasticLoadStepCutbackFactor = Math.min(Math.max(Number(deformation.options?.plasticLoadStepCutbackFactor) || 0.4, 0.1), 0.9);
+  const deformationUseAdmissibleSlopeSeed = deformation.options?.useAdmissibleSlopeSeed !== false;
+  const deformationUseStagedGeostaticInit = deformation.options?.useStagedGeostaticInit !== false;
+  const deformationGeostaticCorrectionStages = Math.min(Math.max(Math.round(Number(deformation.options?.geostaticCorrectionStages) || 8), 1), 64);
+  const deformationInitialGravityElasticIterations = Math.max(Math.round(Number(deformation.options?.initialGravityElasticGlobalizationIterations) || 4), 0);
+  const deformationElasticGlobalizationMinResidualRatio = Math.min(Math.max(Number(deformation.options?.elasticGlobalizationMinResidualRatio) || 0.90, 0.000001), 0.999);
+  const deformationGeostaticMinLoadStep = Math.max(Number(deformation.options?.geostaticMinLoadStep) || 0.001, 0.000001);
+  const deformationGeostaticMaxRepeatedBand = Math.max(Math.round(Number(deformation.options?.geostaticMaxRepeatedBand) || 3), 1);
+  const deformationGeostaticProgressFailFast = deformation.options?.geostaticProgressFailFast !== false;
+  const deformationGeostaticProgressFailFastSteps = Math.max(Math.round(Number(deformation.options?.geostaticProgressFailFastSteps) || 6), 1);
+  const deformationGeostaticProgressFailFastLoadFactor = Math.min(Math.max(Number(deformation.options?.geostaticProgressFailFastLoadFactor) || 0.50, 0), 1);
+  const deformationGeostaticProgressFailFastPlasticFraction = Math.min(Math.max(Number(deformation.options?.geostaticProgressFailFastPlasticFraction) || 0.15, 0), 1);
+  const deformationServiceProgressFailFast = deformation.options?.serviceProgressFailFast !== false;
+  const deformationServiceProgressFailFastSteps = Math.max(Math.round(Number(deformation.options?.serviceProgressFailFastSteps) || 16), 1);
+  const deformationServiceProgressFailFastLoadFactor = Math.min(Math.max(Number(deformation.options?.serviceProgressFailFastLoadFactor) || 0.20, 0), 1);
+  const deformationPreconditionerLevel = String(deformation.options?.preconditionerLevel || 'schwarz').toLowerCase() === 'jacobi' ? 'jacobi' : 'schwarz';
+  const deformationSchwarzMinFreeDofs = Math.max(Math.round(Number(deformation.options?.schwarzMinFreeDofs) || 5000), 0);
   const deformationSafetyInitialSigmaMsfIncrement = Math.max(Number(deformation.options?.safetyInitialSigmaMsfIncrement) || 0.10, 0.001);
   const deformationSafetySigmaMsfGrowthFactor = Math.max(Number(deformation.options?.safetySigmaMsfGrowthFactor) || 1.50, 1.01);
   const deformationSafetySigmaMsfMax = Math.max(Number(deformation.options?.safetySigmaMsfMax) || 3.00, 1.0);
@@ -10966,6 +11134,7 @@ function renderStage6BishopApp(){
   const deformationSafetyMaxSearchTrials = Math.max(Math.round(Number(deformation.options?.safetyMaxSearchTrials) || 32), 1);
   const deformationUseUnsymmetricPlasticSolver = deformation.options?.useUnsymmetricPlasticSolver === true;
   const deformationUseGpuAcceleration = deformation.options?.useGpuAcceleration === true;
+  const deformationUseResidentCg = deformation.options?.useResidentCg === true;
   const deformationGpuMinDof = Math.max(Math.round(Number(deformation.options?.gpuMinDof) || 1500), 0);
   stage6BishopRequestDeformationGpuProbe();
   const deformationGpuProbe = stage6DeformationGpuProbeState.result;
@@ -11082,16 +11251,39 @@ function renderStage6BishopApp(){
         ? ` · ${deformationBackendElementType.toUpperCase()} element kernels active`
         : ` · ${deformationBackendElementType.toUpperCase()} element kernels on CPU`)
     : '';
+  // The honest path label is built from the backend name *and* the
+  // resolved Krylov path (`krylovPath` on the backend info — populated
+  // by the solver after dispatch). This tells the user *exactly* which
+  // path ran:
+  //   gpu-resident-cg            — full DS WebGPU CG, vectors stay on GPU
+  //   gpu-resident-cg+gmres      — same, plus resident FGMRES for
+  //                                unsymmetric phases (after FGMRES is certified)
+  //   gpu-resident-gmres         — opt-in: resident FGMRES only
+  //   hybrid-cpu-krylov-gpu-matvec — explicit experimental hybrid; slow
+  //   cpu-f64                    — pure CPU (no GPU active or below size gate)
+  const deformationKrylovPath = deformationBackendInfo?.krylovPath || (deformationBackendInfo ? 'cpu-f64' : null);
+  const deformationKrylovPathLabel = (() => {
+    switch (deformationKrylovPath) {
+      case 'gpu-resident-cg+gmres': return 'GPU resident CG + FGMRES';
+      case 'gpu-resident-cg': return 'GPU resident CG';
+      case 'gpu-resident-gmres': return 'GPU resident FGMRES';
+      case 'hybrid-cpu-krylov-gpu-matvec': return 'CPU Krylov + GPU matvec (experimental hybrid)';
+      case 'cpu-f64': return 'CPU f64';
+      default: return deformationKrylovPath || 'unknown';
+    }
+  })();
   const deformationBackendLabel = deformationBackendInfo
-    ? ((deformationBackendInfo.name === 'webgl2-f32' || deformationBackendInfo.name === 'webgl2-double-single')
-        ? `GPU (${deformationBackendInfo.precisionMode === 'double-single' ? 'WebGL2 double-single' : 'WebGL2 f32'}, refresh every ${Math.max(Number(deformationBackendInfo.residualRefreshInterval) || 0, 0)} iters)${deformationBackendKernelTag}`
-        : (deformationBackendInfo.name === 'cpu-f32' || deformationBackendInfo.name === 'cpu-double-single')
-          ? (deformationBackendInfo.name === 'cpu-double-single'
-              ? `CPU double-single (diagnostic mixed-precision path)${deformationBackendKernelTag}`
-              : `CPU f32 (diagnostic mixed-precision path)${deformationBackendKernelTag}`)
-          : deformationBackendInfo.requested
-            ? `CPU f64 (GPU requested but unavailable — ${deformationBackendInfo.reason || 'unknown reason'})`
-            : 'CPU f64')
+    ? (deformationBackendInfo.name === 'webgpu-ds' || deformationBackendInfo.name === 'webgpu-f32-ds'
+        ? `${deformationKrylovPathLabel} (WebGPU double-single, twoProd / twoSum chain)${deformationBackendKernelTag}`
+        : (deformationBackendInfo.name === 'webgl2-f32' || deformationBackendInfo.name === 'webgl2-double-single')
+          ? `${deformationKrylovPathLabel} (${deformationBackendInfo.precisionMode === 'double-single' ? 'WebGL2 double-single' : 'WebGL2 f32'}, refresh every ${Math.max(Number(deformationBackendInfo.residualRefreshInterval) || 0, 0)} iters)${deformationBackendKernelTag}`
+          : (deformationBackendInfo.name === 'cpu-f32' || deformationBackendInfo.name === 'cpu-double-single')
+            ? (deformationBackendInfo.name === 'cpu-double-single'
+                ? `CPU double-single (diagnostic mixed-precision path)${deformationBackendKernelTag}`
+                : `CPU f32 (diagnostic mixed-precision path)${deformationBackendKernelTag}`)
+            : deformationBackendInfo.requested
+              ? `CPU f64 (GPU requested but unavailable — ${deformationBackendInfo.reason || 'unknown reason'})`
+              : 'CPU f64')
     : '—';
   const deformationProfileRows = deformationHasResult
     ? (deformation.result?.terrainSettlementProfile || []).map((point, index)=>`
@@ -11647,6 +11839,8 @@ function renderStage6BishopApp(){
                     ${deformationWarnings.map((warning)=>stage6EscAttr(warning)).join('<br>')}
                   </div>
                 ` : ''}
+                ${stage6DepthBandReportHtml(deformation.result?.solver?.initialPhaseDepthBandReport, 'Initial geostatic depth bands')}
+                ${stage6DepthBandReportHtml(deformation.result?.solver?.servicePhaseDepthBandReport, 'Service depth bands')}
               </div>
             </details>
             <details class="st6-adv" data-st6details="bishop-deformation-solver-settings"${stage6DetailsOpen('bishop-deformation-solver-settings')}>
@@ -11668,6 +11862,52 @@ function renderStage6BishopApp(){
                   <input type="number" step="1" min="1" value="${deformationMaxLoadSteps}" onchange="stage6BishopSetField('deformation.options.maxLoadSteps', this.value)">
                 </label>
                 <div class="st6-help">Plastic geostatic equilibration uses the same nonlinear tolerances but solves a total-force self-weight equilibrium problem first. When it converges, the service phase keeps the equilibrated stress and plastic history and resets only the reported displacement baseline.</div>
+                <label class="st6-bishop-check">
+                  <input type="checkbox" ${deformationUseAdmissibleSlopeSeed ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useAdmissibleSlopeSeed', this.checked)">
+                  Use admissible slope seed
+                </label>
+                <label class="st6-bishop-check">
+                  <input type="checkbox" ${deformationUseStagedGeostaticInit ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useStagedGeostaticInit', this.checked)">
+                  Stage the self-weight correction
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Geostatic correction stages
+                  <input type="number" step="1" min="1" max="64" value="${deformationGeostaticCorrectionStages}" onchange="stage6BishopSetField('deformation.options.geostaticCorrectionStages', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Elastic globalization iterations
+                  <input type="number" step="1" min="0" value="${deformationInitialGravityElasticIterations}" onchange="stage6BishopSetField('deformation.options.initialGravityElasticGlobalizationIterations', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Elastic residual ratio
+                  <input type="number" step="0.01" min="0.01" max="0.999" value="${deformationElasticGlobalizationMinResidualRatio.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.elasticGlobalizationMinResidualRatio', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Geostatic fail-fast step
+                  <input type="number" step="0.0001" min="0.000001" value="${deformationGeostaticMinLoadStep.toFixed(6)}" onchange="stage6BishopSetField('deformation.options.geostaticMinLoadStep', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Repeated depth-band limit
+                  <input type="number" step="1" min="1" value="${deformationGeostaticMaxRepeatedBand}" onchange="stage6BishopSetField('deformation.options.geostaticMaxRepeatedBand', this.value)">
+                </label>
+                <label class="st6-bishop-check">
+                  <input type="checkbox" ${deformationGeostaticProgressFailFast ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.geostaticProgressFailFast', this.checked)">
+                  Stop self-weight plastic crawl early
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Geostatic progress-step limit
+                  <input type="number" step="1" min="1" value="${deformationGeostaticProgressFailFastSteps}" onchange="stage6BishopSetField('deformation.options.geostaticProgressFailFastSteps', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Minimum geostatic progress
+                  <input type="number" step="0.01" min="0" max="1" value="${deformationGeostaticProgressFailFastLoadFactor.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.geostaticProgressFailFastLoadFactor', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Geostatic active-zone trigger
+                  <input type="number" step="0.01" min="0" max="1" value="${deformationGeostaticProgressFailFastPlasticFraction.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.geostaticProgressFailFastPlasticFraction', this.value)">
+                </label>
+                <label class="st6-bishop-check">
+                  <input type="checkbox" ${deformationServiceProgressFailFast ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.serviceProgressFailFast', this.checked)">
+                  Stop service-load plastic grind early
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Service progress-step limit
+                  <input type="number" step="1" min="1" value="${deformationServiceProgressFailFastSteps}" onchange="stage6BishopSetField('deformation.options.serviceProgressFailFastSteps', this.value)">
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Minimum service progress
+                  <input type="number" step="0.01" min="0" max="1" value="${deformationServiceProgressFailFastLoadFactor.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.serviceProgressFailFastLoadFactor', this.value)">
+                </label>
                 <label style="font-size:11px;color:var(--tx2)">Residual relative tolerance
                   <input type="number" step="0.00001" min="0.00000001" value="${deformationResidualRelTol.toExponential(3)}" onchange="stage6BishopSetField('deformation.options.residualRelTol', this.value)">
                 </label>
@@ -11697,11 +11937,20 @@ function renderStage6BishopApp(){
                   Use the unsymmetric Stage 2 linear solver path
                 </label>
                 <div class="st6-help">The service phase keeps the previous Stage 2 default unless you explicitly enable this advanced option. The initial plastic equilibration phase now uses the robust Krylov path automatically, because that total-force correction problem is more sensitive to non-SPD linearizations.</div>
+                <label style="font-size:11px;color:var(--tx2)">Unsymmetric preconditioner
+                  <select onchange="stage6BishopSetField('deformation.options.preconditionerLevel', this.value)">
+                    <option value="schwarz"${deformationPreconditionerLevel === 'schwarz' ? ' selected' : ''}>Additive Schwarz</option>
+                    <option value="jacobi"${deformationPreconditionerLevel === 'jacobi' ? ' selected' : ''}>2x2 block Jacobi</option>
+                  </select>
+                </label>
+                <label style="font-size:11px;color:var(--tx2)">Schwarz free-DOF gate
+                  <input type="number" step="100" min="0" value="${deformationSchwarzMinFreeDofs}" onchange="stage6BishopSetField('deformation.options.schwarzMinFreeDofs', this.value)">
+                </label>
                 <label class="st6-bishop-check">
                   <input type="checkbox" ${deformationUseGpuAcceleration ? 'checked' : ''} ${deformationGpuToggleDisabled ? 'disabled' : ''} onchange="stage6BishopSetField('deformation.options.useGpuAcceleration', this.checked)">
-                  Offload matvec to the GPU (WebGL2, experimental)${stage6Tooltip(deformationGpuTooltipText)}
+                  Use GPU acceleration${stage6Tooltip(deformationGpuTooltipText)}
                 </label>
-                <div class="st6-help">When enabled the Krylov inner loop runs a mixed-precision matvec on the GPU with CPU f64 residual refresh at every restart. Requires a WebGL2 context with EXT_color_buffer_float; the solver silently falls back to the CPU path if the probe fails, the bundled browser GPU runtime cannot be loaded, or the problem has fewer than ${deformationGpuMinDof.toLocaleString()} free DOFs. Biggest wins are on linear-elastic and service-load phases; Stage 2 safety runs remain bounded by the CPU MC return-map.</div>
+                <div class="st6-help">WebGPU is preferred (full double-single operator chain — twoProd / twoSum matvec, dot, axpy — equivalent to CPU f64 for engineering tolerances). WebGL2 is used as fallback. Falls back to CPU f64 if no GPU initialises or the problem has fewer than ${deformationGpuMinDof.toLocaleString()} free DOFs.</div>
                 <label style="font-size:11px;color:var(--tx2)">GPU minimum free-DOF gate
                   <input type="number" step="100" min="0" value="${deformationGpuMinDof}" ${deformationGpuToggleDisabled ? 'disabled' : ''} onchange="stage6BishopSetField('deformation.options.gpuMinDof', this.value)">
                 </label>
@@ -11776,7 +12025,7 @@ function renderStage6BishopApp(){
         ? 'The deformation workspace now also supports a PLAXIS-style c-phi reduction safety route. It first requires a converged Stage 2 elastoplastic equilibrium state, then keeps the actions fixed while reducing c, tan(phi), tan(psi), and the tension cut-off strength through the multiplier ΣMsf. Self-weight-only safety runs are allowed when no surcharge is active. Contours and the shared line probe can then be used to inspect the additional safety displacement field and the incremental safety plasticity band.'
         : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the drained plane-strain screen. Stage 2 elastoplastic with plastic geostatic equilibration is now the default route; the fast geostatic predictor, Stage 1 reduced stiffness, and linear elastic routes remain available for comparison. The default contour view is |u|,fin, and the overlay can also show active plastic points, tension cut-off points, and stored plastic history. The stress menus still separate the initial geostatic state from the final post-load state, while contour fill, contour lines, the optional legend, and the shared measurement line all follow the selected deformation field.');
   const lineProbeSelectionPath = workspace === 'seepage' ? 'lineProbe.seepageQuantity' : 'lineProbe.deformationQuantity';
-  const lineProbeCopyToneColor = bishop.lineProbe?.copyTone === 'ok' ? '#1D9E75' : bishop.lineProbe?.copyTone === 'warn' ? '#BA7517' : 'var(--tx2)';
+  const lineProbeCopyToneColor = bishop.lineProbe?.copyTone === 'ok' ? 'var(--ok-text)' : bishop.lineProbe?.copyTone === 'warn' ? 'var(--wn)' : 'var(--tx2)';
   const lineProbeSummaryHtml = lineProbe.status === 'ready' ? `
             <div class="info" style="background:var(--bg2);border-color:var(--bd2);margin-bottom:10px">
               Line: <strong>${stage6EscAttr(stage6BishopMeasurementLabel(measurementMetrics))}</strong><br>
@@ -12839,7 +13088,7 @@ function buildStage6BishopLineProbeChart(){
   const canvas = stage6DestroyChart('stage6BishopLineProbeChart');
   const lineProbe = S.stage6Cache?.bishopLineProbe;
   if(!canvas || !lineProbe || lineProbe.status !== 'ready' || typeof Chart === 'undefined') return;
-  const meta = lineProbe.meta || {label:'Line probe', axisTitle:'Value', color:'#378ADD'};
+  const meta = lineProbe.meta || {label:'Line probe', axisTitle:'Value', color:readCssToken('--chart-blue', '#356F9C')};
   const tickFmt = (value)=>stage6CompactNumber(value, meta.digits || 3);
   canvas._chartRef = new Chart(canvas, buildLineProbeChartConfig({
     points:lineProbe.chartPoints,
