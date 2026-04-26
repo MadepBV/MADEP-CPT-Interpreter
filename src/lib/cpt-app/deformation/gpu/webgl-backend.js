@@ -63,7 +63,7 @@ function destroyKernel(kernel) {
   try { kernel.destroy?.(); } catch { /* ignore */ }
 }
 
-function normalizeKernelOutput(rawOut, expectedLength) {
+function normalizeKernelOutput(rawOut, expectedLength, diagnosticContext = null) {
   if (!Number.isFinite(expectedLength) || expectedLength <= 0) return new Float64Array(0);
   const source = rawOut?.length != null
     ? rawOut
@@ -72,11 +72,47 @@ function normalizeKernelOutput(rawOut, expectedLength) {
   for (let index = 0; index < expectedLength; index += 1) {
     const value = Number(source?.[index]) || 0;
     if (!Number.isFinite(value)) {
-      throw new Error(`GPU kernel produced a non-finite value at index ${index}; forcing CPU fallback.`);
+      // Build a richer diagnostic if the caller provides input
+      // statistics. The message includes the offending row index
+      // alongside the matrix and vector magnitude bounds for that row,
+      // so a downstream "matrix appears too ill-conditioned" warning
+      // points at the specific structural problem rather than at the
+      // generic precision question.
+      const detail = diagnosticContext
+        ? formatKernelOutputNanDetail(diagnosticContext, index, value)
+        : '';
+      throw new Error(`GPU kernel produced a non-finite value at index ${index}${detail ? ` (${detail})` : ''}; forcing CPU fallback.`);
     }
     result[index] = value;
   }
   return result;
+}
+
+function formatKernelOutputNanDetail(context, rowIndex, value) {
+  // `context` carries { rows, vector, maxRowLen, kind: 'matvec'|'element-*' }.
+  // We surface the row's largest |val| and largest |x[col]| so the run
+  // record explains *what* in the row triggered the overflow. If the
+  // context fails to provide what we need we silently return '' — the
+  // outer error message still names the kind and index.
+  if (!context || context.kind !== 'matvec') return '';
+  const { rows, vector } = context;
+  if (!rows || !vector || rowIndex >= rows.length) return '';
+  const row = rows[rowIndex];
+  const indices = row?.indices;
+  const values = row?.values;
+  if (!indices || !values) return '';
+  let maxAbsVal = 0;
+  let maxAbsValAt = -1;
+  let maxAbsVec = 0;
+  let maxAbsVecAt = -1;
+  for (let k = 0; k < indices.length; k += 1) {
+    const v = Math.abs(Number(values[k]) || 0);
+    if (v > maxAbsVal) { maxAbsVal = v; maxAbsValAt = indices[k]; }
+    const x = Math.abs(Number(vector?.[indices[k]]) || 0);
+    if (x > maxAbsVec) { maxAbsVec = x; maxAbsVecAt = indices[k]; }
+  }
+  const product = maxAbsVal * maxAbsVec;
+  return `output ${value}; row max|matrix| ${maxAbsVal.toExponential(2)} at col ${maxAbsValAt}; row max|x| ${maxAbsVec.toExponential(2)} at col ${maxAbsVecAt}; per-term ceiling ${product.toExponential(2)} (f32 max ~3.4e+38)`;
 }
 
 function checkTextureBudget(label, flatLength, maxTextureSize) {
@@ -507,7 +543,20 @@ export async function tryCreateWebglBackend(setup = {}) {
     const target = existing && existing.length === requiredLength
       ? existing
       : new Float32Array(requiredLength);
-    for (let index = 0; index < requiredLength; index += 1) target[index] = Number(source[index]) || 0;
+    for (let index = 0; index < requiredLength; index += 1) {
+      // Coerce to a finite f32-representable scalar at upload time. Two
+      // hazards must be filtered:
+      //   1. NaN / Infinity in the f64 source (handled by isFinite(raw)).
+      //   2. Finite f64 values whose magnitude exceeds f32 range (~3.4e38)
+      //      — Float32Array's implicit conversion silently maps these to
+      //      ±Infinity in storage, which then poisons the GPU matvec
+      //      (Inf · finite = Inf; Inf + (-Inf) = NaN). We re-check the
+      //      stored value after assignment so an f32 overflow never
+      //      reaches the kernel.
+      const raw = Number(source[index]);
+      target[index] = Number.isFinite(raw) ? raw : 0;
+      if (!Number.isFinite(target[index])) target[index] = 0;
+    }
     return target;
   }
 
@@ -523,6 +572,7 @@ export async function tryCreateWebglBackend(setup = {}) {
   function matvec(rows, vector) {
     if (!rows.length) return new Float64Array(0);
     ensureMatrixBuffer(rows);
+    const diagnosticContext = { kind: 'matvec', rows, vector };
     if (precisionMode === 'double-single') {
       vectorNarrowPair = ensureFloat32PairBuffer(vector, vectorNarrowPair);
       return normalizeKernelOutput(
@@ -534,13 +584,15 @@ export async function tryCreateWebglBackend(setup = {}) {
           vectorNarrowPair.lo,
           matrixBuffer.maxRowLen
         ),
-        matrixBuffer.numRows
+        matrixBuffer.numRows,
+        diagnosticContext
       );
     }
     vectorNarrowF32 = ensureFloat32VectorBuffer(vector, vectorNarrowF32);
     return normalizeKernelOutput(
       matvecKernelF32(matrixBuffer.cols, matrixBuffer.vals, vectorNarrowF32, matrixBuffer.maxRowLen),
-      matrixBuffer.numRows
+      matrixBuffer.numRows,
+      diagnosticContext
     );
   }
 
@@ -796,6 +848,14 @@ export async function tryCreateWebglBackend(setup = {}) {
       get precisionMode() { return precisionMode; },
       get residualRefreshInterval() { return residualRefreshInterval; },
       get maxTextureSize() { return maxTextureSize; },
+      // Expose the packed matrix's largest absolute value AND its
+      // maxRowLen so the solver's per-call magnitude pre-check can
+      // compute the exact safe vector ceiling: |val|·|x|·rowLen <
+      // f32_max means |x| < f32_max / (max|val| · rowLen). This is
+      // sharper than a fixed conservative threshold and lets every
+      // matvec the GPU can physically handle stay on GPU.
+      get matrixMaxAbsValue() { return matrixBuffer?.maxAbsValue ?? 0; },
+      get matrixMaxRowLen() { return matrixBuffer?.maxRowLen ?? 0; },
       matvec,
       elementStrain,
       elementInternalForce,

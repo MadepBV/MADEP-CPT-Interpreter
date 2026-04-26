@@ -1,4 +1,9 @@
-import { analyzeDeformationModel, sampleDeformationState } from '../src/lib/cpt-app/deformation/solver.js';
+import {
+  analyzeDeformationModel,
+  applyKrylovPreconditioner,
+  buildBlockJacobiPreconditioner,
+  sampleDeformationState
+} from '../src/lib/cpt-app/deformation/solver.js';
 import {
   computeEllpackShape,
   createEllpackBuffer,
@@ -2272,6 +2277,79 @@ await runCase('Case 40 CPU-f32 backend factory respects the gpuMinDof size gate 
     linearAlgebraBackend: 'cpu-f64'
   }, []);
   assert(explicitF64.backend === null, 'explicit cpu-f64 override should return the native fallback (null backend)');
+});
+
+await runCase('Case 41z Block-Jacobi preconditioner inverts a 2×2 nodal block exactly and falls back to scalar Jacobi on solitary rows', async () => {
+  // 4×4 system representing two FE nodes (node 0 and node 1), each with
+  // x and y DOFs. Node 0 has a near-singular x-DOF diagonal (1e-30) but
+  // a healthy 2×2 block thanks to the off-diagonal coupling that any
+  // real FE element carries; this is exactly the "T6 mid-edge node
+  // connected to one element" pathology block-Jacobi must handle.
+  // Scalar Jacobi would amplify by 1e30; block-Jacobi must produce a
+  // bounded preconditioned residual.
+  const a00 = 1e-30, a01 = 1.5, a10 = 1.5, a11 = 4.0;       // node 0 block
+  const b00 = 2.0,   b01 = 0.5, b10 = 0.5, b11 = 3.0;        // node 1 block
+  const rows = [
+    { indices: new Int32Array([0, 1]), values: new Float64Array([a00, a01]), diag: a00, diagIndex: 0 },
+    { indices: new Int32Array([0, 1]), values: new Float64Array([a10, a11]), diag: a11, diagIndex: 1 },
+    { indices: new Int32Array([2, 3]), values: new Float64Array([b00, b01]), diag: b00, diagIndex: 0 },
+    { indices: new Int32Array([2, 3]), values: new Float64Array([b10, b11]), diag: b11, diagIndex: 1 }
+  ];
+  const freeDofs = [0, 1, 2, 3]; // both nodes' DOFs are free, paired (0,1) and (2,3)
+  const precond = buildBlockJacobiPreconditioner(rows, freeDofs);
+  assert(precond.length === 4, 'preconditioner has one entry per row');
+  assert(precond[0]?.kind === 'block-first', 'row 0 of node 0 should be the first row of a 2×2 block');
+  assert(precond[1]?.kind === 'block-second', 'row 1 of node 0 should be the second row of the same 2×2 block');
+  assert(precond[2]?.kind === 'block-first', 'row 2 of node 1 should be the first row of a 2×2 block');
+  assert(precond[3]?.kind === 'block-second', 'row 3 of node 1 should be the second row of the same 2×2 block');
+
+  // Apply M^{-1} to a residual r and check we recover the analytical
+  // block inverse: for B = [[a00 a01]; [a10 a11]], B^{-1} = (1/det)
+  // [[a11, -a01]; [-a10, a00]]. Applied to r = [r0, r1] gives
+  //   z0 =  (a11*r0 - a01*r1) / det
+  //   z1 = (-a10*r0 + a00*r1) / det
+  const r = new Float64Array([1, 2, 3, 4]);
+  const z = new Float64Array(4);
+  applyKrylovPreconditioner(precond, r, z);
+
+  const det0 = a00 * a11 - a01 * a10;
+  const z0 = (a11 * r[0] - a01 * r[1]) / det0;
+  const z1 = (-a10 * r[0] + a00 * r[1]) / det0;
+  approxRelative(z[0], z0, 1e-12, 'block-Jacobi z[0] matches the analytical 2×2 inverse on node 0');
+  approxRelative(z[1], z1, 1e-12, 'block-Jacobi z[1] matches the analytical 2×2 inverse on node 0');
+
+  const det1 = b00 * b11 - b01 * b10;
+  const z2 = (b11 * r[2] - b01 * r[3]) / det1;
+  const z3 = (-b10 * r[2] + b00 * r[3]) / det1;
+  approxRelative(z[2], z2, 1e-12, 'block-Jacobi z[2] matches the analytical 2×2 inverse on node 1');
+  approxRelative(z[3], z3, 1e-12, 'block-Jacobi z[3] matches the analytical 2×2 inverse on node 1');
+
+  // Bounded-output check: scalar Jacobi on row 0 would give r[0]/a00 = 1/1e-30 = 1e+30.
+  // Block-Jacobi must give a bounded value (here, det0 = -2.25 + 4e-30 ≈ -2.25,
+  // so z[0] = (4·1 - 1.5·2) / (-2.25) = 1/(-2.25) ≈ -0.444). We assert |z[0]| < 1
+  // to show the preconditioner did NOT amplify the tiny diagonal.
+  assert(Math.abs(z[0]) < 1, `block-Jacobi must produce a bounded z on a near-singular diagonal (got ${z[0]})`);
+
+  // Solitary-row fallback: a 5-row system with the last DOF unpaired
+  // (e.g. the y-DOF is pinned for node 2). The builder should emit a
+  // scalar Jacobi entry for row 4.
+  const rowsWithSolitary = [
+    ...rows,
+    { indices: new Int32Array([4]), values: new Float64Array([8]), diag: 8, diagIndex: 0 }
+  ];
+  const freeDofsWithSolitary = [0, 1, 2, 3, 4]; // DOF 4 is the x-DOF of node 2; node 2's y-DOF (DOF 5) is pinned and absent
+  const precondWithSolitary = buildBlockJacobiPreconditioner(rowsWithSolitary, freeDofsWithSolitary);
+  assert(precondWithSolitary[4]?.kind === 'scalar', 'row 4 with no companion DOF should fall back to scalar Jacobi');
+  approxRelative(precondWithSolitary[4].invDiag, 1 / 8, 1e-15, 'scalar Jacobi entry stores 1/diag');
+
+  // No-freeDofs fallback: when the caller does not supply freeDofs (or
+  // is using a non-FE matrix), every row must degrade to scalar Jacobi
+  // — this preserves backward-compatibility for any future call site.
+  const precondNoFreeDofs = buildBlockJacobiPreconditioner(rows, null);
+  assert(
+    precondNoFreeDofs.every((entry) => entry?.kind === 'scalar'),
+    'without freeDofs the preconditioner falls back to scalar Jacobi everywhere'
+  );
 });
 
 await runCase('Case 41 CPU-f32 backend matvec matches the CSR reference within f32 tolerance', async () => {

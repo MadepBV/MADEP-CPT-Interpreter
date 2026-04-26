@@ -78,17 +78,61 @@ export function packEllpackIndices(buffer, rows) {
   buffer.paddingRatio = shape.paddingRatio;
 }
 
+// Sanity threshold for matrix values destined for the GPU's f32 matvec
+// kernel. The kernel computes `sum_k vals[base+k] * x[col_k]`, and an
+// f32 overflow during multiplication or accumulation is the primary
+// mechanism by which the matvec produces NaN (Inf · finite = Inf, then
+// Inf + (-Inf) = NaN in the row reduction).
+//
+// Threshold derivation: f32 max = 3.4e38. The kernel does up to
+// `maxRowLen` ≈ 80 multiply-adds per row. For any single product to
+// stay below f32 max we need `|val| · |x| < 3.4e38`. Krylov iterates in
+// pathologically ill-conditioned T6 systems can reach |x| ≈ 1e15
+// before the residual-refresh interval forces a recompute, so capping
+// |val| at 1e15 keeps the product comfortably under f32 limit even at
+// the worst observed vector magnitudes — and well clear of the
+// summation over 80 entries (worst case 8e31 is still 4×10⁶ under f32
+// max).
+//
+// A typical FE stiffness has max entry ~1e10 (E·n with E ≈ 5×10⁷ and
+// element-scale gradient terms), so values within 5 orders of magnitude
+// of the threshold simply do not arise from real geotechnical inputs.
+// A trip through this guard genuinely indicates either a degenerate
+// element (tiny area inflating B = ∂N/∂x), a tangent with near-singular
+// singular values (rare; usually trapped earlier by the constitutive
+// update), or a numerically broken assembly — all of which deserve CPU
+// fallback rather than a quietly-poisoned GPU run.
+const ELLPACK_F32_VALUE_SANITY_THRESHOLD = 1e15;
+
 export function packEllpackValues(buffer, rows) {
   const { numRows, maxRowLen, vals, valsHi, valsLo, valueDtype } = buffer;
   if (rows.length !== numRows) {
     throw new Error(`ELLPACK pack: row-count mismatch (buffer=${numRows}, rows=${rows.length}).`);
   }
+  let extremeRowIndex = -1;
+  let extremeValue = 0;
   for (let row = 0; row < numRows; row += 1) {
     const values = rows[row].values;
     const rowLen = values.length;
     const base = row * maxRowLen;
     for (let k = 0; k < rowLen; k += 1) {
-      const value = Number(values[k]) || 0;
+      const raw = Number(values[k]);
+      const isFiniteValue = Number.isFinite(raw);
+      // Treat NaN and Infinity as fatal at pack time. NaN typically means
+      // an upstream constitutive/element bug; Infinity typically means a
+      // degenerate element snuck through area validation. Either way,
+      // packing as 0 (the historical behaviour) silently corrupts the
+      // CG/GMRES inner loop downstream — we'd rather reject early so the
+      // run record carries a precise reason for the GPU fallback.
+      if (!isFiniteValue) {
+        throw new Error(`ELLPACK pack: non-finite matrix value (${raw}) at row ${row}, position ${k}. The deformation assembly produced a NaN/Inf entry; falling back to CPU.`);
+      }
+      const absValue = Math.abs(raw);
+      if (absValue > extremeValue) {
+        extremeValue = absValue;
+        extremeRowIndex = row;
+      }
+      const value = raw || 0;
       if (valueDtype === 'ds') {
         const pair = splitFloat64ToFloat32Pair(value);
         valsHi[base + k] = pair.hi;
@@ -96,6 +140,15 @@ export function packEllpackValues(buffer, rows) {
         vals[base + k] = pair.hi;
       } else {
         vals[base + k] = value;
+      }
+      // Defensive: Float32Array storage of a finite f64 with |x| > ~3.4e38
+      // becomes Infinity. The pack-time threshold (1e30) above is meant
+      // to cap this well below f32 max, but we re-verify post-assignment
+      // so a future loosening of the threshold can never silently inject
+      // an Infinity into the matvec. The `vals` view is the f32 one
+      // consumed by the f32 kernel; valsHi mirrors it for double-single.
+      if (!Number.isFinite(vals[base + k])) {
+        throw new Error(`ELLPACK pack: value ${raw} at row ${row}, position ${k} overflows f32 storage to ${vals[base + k]}; falling back to CPU.`);
       }
     }
     for (let k = rowLen; k < maxRowLen; k += 1) {
@@ -106,6 +159,16 @@ export function packEllpackValues(buffer, rows) {
       vals[base + k] = ELLPACK_PAD_VAL;
     }
   }
+  if (extremeValue > ELLPACK_F32_VALUE_SANITY_THRESHOLD) {
+    throw new Error(`ELLPACK pack: max matrix value ${extremeValue.toExponential(2)} at row ${extremeRowIndex} exceeds the f32 sanity threshold ${ELLPACK_F32_VALUE_SANITY_THRESHOLD.toExponential(0)}. The matrix is too ill-conditioned for the GPU's f32 matvec; falling back to CPU.`);
+  }
+  // Stash the matrix's max absolute value so the matvec call can compute
+  // a precise safe-vector-magnitude bound at call time instead of a
+  // fixed conservative one. The kernel's per-term overflow happens when
+  // |val| · |x| > f32 max; with |val| capped here and the row-length
+  // capped by maxRowLen, the safe |x| ceiling is exact arithmetic, not
+  // a guess.
+  buffer.maxAbsValue = extremeValue;
   buffer.rowsRef = rows;
 }
 

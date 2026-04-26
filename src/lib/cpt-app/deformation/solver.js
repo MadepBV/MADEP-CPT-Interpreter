@@ -6,11 +6,15 @@ import { buildDeformationMesh } from './mesh.js';
 import { triangleArea } from './element-t3.js';
 import { elementKernelFor, normalizeElementType } from './element-kernel.js';
 import { shapeFunctionsT6 } from './element-t6.js';
+// material-models.js is also imported for its side effect: it calls
+// `registerMaterialPlugin('linear-elastic' | 'mc-reduced-stiffness' |
+// 'mc-plastic', factory)` at module load time. The solver itself
+// dispatches via the plugin registry (see materialPluginFor below); the
+// concrete factories are not referenced from solver.js any more, so a
+// future plugin (Hardening Soil, Cam-Clay, ...) can be added without
+// any solver edits.
 import {
   cloneMaterialPointState,
-  createLinearElasticMaterial,
-  createMCPlasticMaterial,
-  createMCReducedStiffnessMaterial,
   createMaterialPoint,
   commitMaterialPoint,
   effectiveStress6ToCompressionPositiveStress3D,
@@ -23,6 +27,7 @@ import {
   snapshotMaterialPointState,
 } from './material-models.js';
 import { prepareMechanicalMaterial, reduceMaterialStrengthForSafety } from './material.js';
+import { hasMaterialPlugin, materialPluginFor } from './material-plugin.js';
 import {
   buildFlatK0InitialEffectiveStressFieldAtPoints,
   initialBulkUnitWeightFromPorePressure,
@@ -310,8 +315,92 @@ function backendEscalatePrecisionMode(nextMode, reason = '', nextResidualRefresh
   return true;
 }
 
+// f32 IEEE-754 maximum is 3.4028235e38. The headroom factor is the
+// fraction of f32_max we leave for accumulator margin during the row's
+// multiply-add reduction. The pre-check at this ceiling is purely
+// advisory — its job is to *avoid invoking the GPU* on a matvec we
+// already know will overflow, sparing the cost of an unsuccessful
+// kernel launch and (more importantly) the cost of a downstream NaN
+// detection cascade. Anything above this ceiling still gets a soft
+// per-call CPU fallback inside sparseMatVec, with the backend kept
+// live for subsequent matvecs whose iterate is back within range.
+//
+// We use a 0.5× headroom (was 0.125×). Krylov accumulators benefit
+// from sign cancellation in symmetric positive-definite systems
+// (residuals tend to oscillate in sign), so the worst-case all-positive
+// row-sum bound is overly pessimistic. 0.5× still gives a 2× safety
+// margin against the actual per-term limit.
+const GPU_F32_PRODUCT_HEADROOM = 0.5;
+const GPU_F32_MAX = 3.4028235e38;
+
+function vectorAbsMax(vector) {
+  let maxAbs = 0;
+  for (let i = 0; i < vector.length; i += 1) {
+    const a = Math.abs(Number(vector[i]) || 0);
+    if (a > maxAbs) maxAbs = a;
+  }
+  return maxAbs;
+}
+
+// Compute the precise safe |x| ceiling for the active backend's packed
+// matrix. The math is exact: the kernel computes
+//   sum_k vals[base+k] * x[col_k]
+// for k in [0, rowLen). For each term to be representable in f32:
+//   |vals[base+k]| · |x[col_k]| < f32_max / rowLen (with headroom)
+// Therefore |x| ≤ f32_max · headroom / (max|vals| · rowLen). When the
+// backend doesn't expose its matrix bounds (cpu-f64 fallback or before
+// the first pack), we fall back to a generous 1e30 ceiling — that
+// covers any realistic Krylov iterate without rejecting normal inputs.
+function gpuMatvecSafeVectorCeiling(backend) {
+  const maxVal = Number(backend?.matrixMaxAbsValue) || 0;
+  const rowLen = Math.max(Number(backend?.matrixMaxRowLen) || 0, 1);
+  if (!(maxVal > 0)) return 1e30;
+  return (GPU_F32_MAX * GPU_F32_PRODUCT_HEADROOM) / (maxVal * rowLen);
+}
+
+let gpuVectorMagnitudeFallbacksReported = 0;
+const GPU_VECTOR_MAGNITUDE_FALLBACK_REPORT_LIMIT = 3;
+
+function reportGpuVectorMagnitudeFallback(absMax, ceiling) {
+  gpuVectorMagnitudeFallbacksReported += 1;
+  if (gpuVectorMagnitudeFallbacksReported <= GPU_VECTOR_MAGNITUDE_FALLBACK_REPORT_LIMIT) {
+    const message = `Krylov iterate magnitude reached ${absMax.toExponential(2)} (f32 safe ceiling ${ceiling.toExponential(2)} for max|matrix|=${(Number(activeMatvecBackend?.matrixMaxAbsValue) || 0).toExponential(2)} × row=${activeMatvecBackend?.matrixMaxRowLen ?? '?'}); routing this matvec to CPU f64 to avoid an f32 overflow. The matrix has a near-singular row that the Jacobi preconditioner cannot keep bounded; the GPU stays active for subsequent matvecs.`;
+    pushUniqueWarning(activeBackendRuntimeWarnings, message);
+    if (typeof console !== 'undefined' && console?.warn) console.warn(message);
+  }
+}
+
+// Soft NaN-failure budget: how many f32 matvec NaNs we tolerate per run
+// before concluding the backend itself is broken (kernel compilation
+// quirk on this hardware, driver bug, etc.) and tearing it down. Below
+// this budget, each matvec NaN is treated as "this iterate doesn't fit
+// in f32" and silently routes that single call to CPU; the GPU stays
+// live for every other matvec.
+const GPU_MATVEC_SOFT_NAN_BUDGET = 16;
+let gpuMatvecSoftNanCount = 0;
+
 function sparseMatVec(rows, vector) {
   if (activeMatvecBackend && typeof activeMatvecBackend.matvec === 'function') {
+    // Adaptive pre-check. The GPU matvec produces Infinity/NaN only
+    // when |val|·|x| · rowLen exceeds f32 max during a per-row
+    // accumulation. With the matrix's actual max value reported by the
+    // backend, the safe |x| ceiling is exact arithmetic — we route a
+    // single matvec to CPU f64 only when an iterate is genuinely
+    // beyond what f32 multiplication can represent for THIS matrix.
+    // The check is now PURELY ADVISORY: anything above the ceiling
+    // gets a per-call CPU fallback, but the soft NaN-budget below
+    // ensures that even an iterate that slips past the pre-check and
+    // produces a NaN inside the kernel does NOT tear down the backend.
+    // Net effect: the GPU runs every matvec it can physically handle,
+    // and those that genuinely cannot fit in f32 silently route to
+    // CPU without losing GPU acceleration on subsequent calls.
+    const ceiling = gpuMatvecSafeVectorCeiling(activeMatvecBackend);
+    const absMax = vectorAbsMax(vector);
+    if (absMax > ceiling) {
+      reportGpuVectorMagnitudeFallback(absMax, ceiling);
+      return sparseMatVecFallback(rows, vector);
+    }
+    const startedPrecisionMode = activeMatvecBackend.precisionMode || 'f32';
     try {
       return activeMatvecBackend.matvec(rows, vector);
     } catch (error) {
@@ -337,16 +426,62 @@ function sparseMatVec(rows, vector) {
           try {
             return activeMatvecBackend.matvec(rows, vector);
           } catch (retryError) {
-            handleActiveBackendFailure('matvec', retryError);
+            // Both f32 and double-single produced NaN. Two
+            // possibilities: (a) the iterate genuinely doesn't fit in
+            // f32 (per-call problem; CPU fallback for THIS matvec is
+            // correct), or (b) the kernel itself has a problem (a
+            // permanent issue; fall back the whole run). We
+            // distinguish using the soft NaN-budget: under it, treat
+            // as per-call; over it, tear down the backend. This keeps
+            // the GPU live for the overwhelming majority of cases
+            // while still recovering from a truly broken kernel.
+            gpuMatvecSoftNanCount += 1;
+            if (gpuMatvecSoftNanCount <= GPU_MATVEC_SOFT_NAN_BUDGET) {
+              reportGpuMatvecSoftNanFallback(error, retryError);
+              return sparseMatVecFallback(rows, vector);
+            }
+            handleActiveBackendFailure(
+              'matvec',
+              new Error(
+                `${gpuMatvecSoftNanCount} matvecs produced non-finite GPU output (last: f32 ${error?.message || 'unknown'}; double-single ${retryError?.message || 'unknown'}). Exceeded the soft-fallback budget of ${GPU_MATVEC_SOFT_NAN_BUDGET}; treating the GPU backend as broken for this run and switching to CPU f64.`
+              )
+            );
             return sparseMatVecFallback(rows, vector);
           }
         }
       }
-      handleActiveBackendFailure('matvec', error);
+      // Either escalation was not possible (already double-single, or
+      // backend doesn't expose it) or backendEscalatePrecisionMode
+      // returned false. Apply the same soft NaN-budget as above so a
+      // single overflowing iterate doesn't tear down the GPU.
+      gpuMatvecSoftNanCount += 1;
+      if (gpuMatvecSoftNanCount <= GPU_MATVEC_SOFT_NAN_BUDGET) {
+        reportGpuMatvecSoftNanFallback(error, null);
+        return sparseMatVecFallback(rows, vector);
+      }
+      handleActiveBackendFailure(
+        'matvec',
+        new Error(
+          `${gpuMatvecSoftNanCount} matvecs produced non-finite GPU output (last: ${startedPrecisionMode} ${error?.message || 'unknown'}); GPU escalation was unavailable (supportsDoubleSingle=${activeMatvecBackend?.supportsDoubleSingle === true}, currentPrecision=${activeMatvecBackend?.precisionMode || 'unknown'}). Exceeded the soft-fallback budget of ${GPU_MATVEC_SOFT_NAN_BUDGET}; treating the GPU backend as broken and switching to CPU f64.`
+        )
+      );
       return sparseMatVecFallback(rows, vector);
     }
   }
   return sparseMatVecFallback(rows, vector);
+}
+
+let gpuMatvecSoftNanReported = 0;
+const GPU_MATVEC_SOFT_NAN_REPORT_LIMIT = 3;
+
+function reportGpuMatvecSoftNanFallback(primaryError, retryError) {
+  gpuMatvecSoftNanReported += 1;
+  if (gpuMatvecSoftNanReported > GPU_MATVEC_SOFT_NAN_REPORT_LIMIT) return;
+  const message = retryError
+    ? `GPU matvec produced a non-finite value at f32 (${primaryError?.message || 'unknown'}) and again at double-single (${retryError?.message || 'unknown'}); routing this matvec to CPU f64 (soft NaN budget ${gpuMatvecSoftNanCount}/${GPU_MATVEC_SOFT_NAN_BUDGET}). The GPU stays active for subsequent matvecs.`
+    : `GPU matvec produced a non-finite value (${primaryError?.message || 'unknown'}); routing this matvec to CPU f64 (soft NaN budget ${gpuMatvecSoftNanCount}/${GPU_MATVEC_SOFT_NAN_BUDGET}). The GPU stays active for subsequent matvecs.`;
+  pushUniqueWarning(activeBackendRuntimeWarnings, message);
+  if (typeof console !== 'undefined' && console?.warn) console.warn(message);
 }
 
 function elementCachesAreUniformKind(elementCaches) {
@@ -573,6 +708,128 @@ function allowPlasticQuasiConvergence(
   return residualNorm <= 1.1 * residualTarget;
 }
 
+// =============================================================================
+// Block Jacobi preconditioner (per-node 2×2 blocks)
+// =============================================================================
+//
+// The Jacobi preconditioner z = r / diag fails on near-orphan T6 mid-edge
+// nodes: a node connected to only one element has tiny scalar diagonals,
+// and dividing by them amplifies the residual by 1e+20 to 1e+30, which
+// then flows through CG iterates until they overflow f32. Block Jacobi
+// with 2×2 blocks (one per FE node, x and y DOFs together) is the
+// principled fix — even at a one-element midpoint, the 2×2 block from
+// that element's local stiffness is well-conditioned by construction
+// (the element matrix is SPD for any non-degenerate element), so
+// inv(B_n) bounds the iterate magnitude regardless of the scalar
+// diagonal value. Mathematically the preconditioner is symmetric and
+// positive definite for symmetric A (CG), so PCG convergence proofs
+// carry through unchanged. For unsymmetric A (non-associated MC) the
+// 2×2 inverse is still well defined and the preconditioner is bounded.
+//
+// The preconditioner is built once at the top of each Krylov solve. The
+// `freeDofs` array tells us which compressed-row pairs (i, i+1)
+// correspond to the same FE node (consecutive original DOFs that are
+// both unconstrained). When a node has only one DOF free (mixed
+// boundary condition) the preconditioner falls back to scalar Jacobi
+// for that DOF; when a 2×2 block is itself singular (det ≈ 0, which
+// can happen on truly degenerate elements) we fall back to identity for
+// that pair so Newton/CG never divides by zero.
+
+const BLOCK_JACOBI_DET_EPS = CG_NUMERIC_EPS;
+
+function findRowEntryValue(row, columnIndex) {
+  // Linear search in the row's indices array — rows are short (~15-60
+  // entries) so this is faster than a map lookup. Returns 0 if the
+  // entry is not stored (i.e. the matrix is structurally zero there).
+  const indices = row?.indices;
+  const values = row?.values;
+  if (!indices || !values) return 0;
+  for (let k = 0; k < indices.length; k += 1) {
+    if (indices[k] === columnIndex) return Number(values[k]) || 0;
+  }
+  return 0;
+}
+
+function safeScalarInvDiag(diag) {
+  const value = Math.abs(diag) > CG_NUMERIC_EPS ? diag : 1;
+  return 1 / value;
+}
+
+export function buildBlockJacobiPreconditioner(rows, freeDofs) {
+  // Returns an array of length `rows.length`, one entry per compressed
+  // row. Each entry is one of three kinds:
+  //   { kind: 'block-first', a, b }  — first row of a 2×2 node block
+  //   { kind: 'block-second', c, d } — second row of the same block
+  //   { kind: 'scalar',  invDiag }   — solitary row (single-DOF-free node)
+  // The block coefficients are the inverse of the 2×2 block stored as
+  //   inv(B) = [a b; c d] so that z[i]   = a*r[i] + b*r[i+1]
+  //                              z[i+1] = c*r[i] + d*r[i+1]
+  // For a 2×2 [[A00 A01];[A10 A11]] the inverse is (1/det) [[A11 -A01];[-A10 A00]].
+  // When det is too small the block is treated as singular and we fall
+  // back to scalar Jacobi for both rows so the preconditioner remains
+  // bounded; the underlying mesh issue still warrants attention but the
+  // solver does not collapse on a degenerate element.
+  const n = rows.length;
+  const precond = new Array(n);
+  const safeFreeDofs = Array.isArray(freeDofs) || ArrayBuffer.isView(freeDofs) ? freeDofs : null;
+  let i = 0;
+  while (i < n) {
+    const dofI = safeFreeDofs ? Number(safeFreeDofs[i]) : -1;
+    const dofIp1 = safeFreeDofs && (i + 1 < n) ? Number(safeFreeDofs[i + 1]) : -1;
+    const isCoupledNodeBlock = safeFreeDofs
+      && Number.isFinite(dofI)
+      && Number.isFinite(dofIp1)
+      && dofI % 2 === 0
+      && dofIp1 === dofI + 1;
+    if (isCoupledNodeBlock) {
+      const a00 = Number(rows[i].diag) || 0;
+      const a11 = Number(rows[i + 1].diag) || 0;
+      const a01 = findRowEntryValue(rows[i], i + 1);
+      const a10 = findRowEntryValue(rows[i + 1], i);
+      const det = a00 * a11 - a01 * a10;
+      if (Math.abs(det) > BLOCK_JACOBI_DET_EPS) {
+        const invDet = 1 / det;
+        precond[i]     = { kind: 'block-first',  a:  invDet * a11, b: -invDet * a01 };
+        precond[i + 1] = { kind: 'block-second', c: -invDet * a10, d:  invDet * a00 };
+        i += 2;
+        continue;
+      }
+      // Block is itself singular — fall through to two scalar entries.
+    }
+    precond[i] = { kind: 'scalar', invDiag: safeScalarInvDiag(rows[i].diag) };
+    i += 1;
+  }
+  return precond;
+}
+
+export function applyKrylovPreconditioner(precond, r, z) {
+  // Computes z = M^(-1) r where M^(-1) is given block-by-block. Block
+  // entries reference the residual at the paired row (i+1 for first,
+  // i-1 for second), so we read r before writing z. The two arrays may
+  // alias — we write z[i] only after reading r[i+1] for first-row
+  // blocks, which is safe because z is a separate buffer.
+  const n = r.length;
+  for (let i = 0; i < n; i += 1) {
+    const entry = precond[i];
+    if (!entry) {
+      z[i] = r[i];
+      continue;
+    }
+    if (entry.kind === 'scalar') {
+      z[i] = entry.invDiag * r[i];
+    } else if (entry.kind === 'block-first') {
+      // The companion (i+1) is guaranteed to exist when the builder
+      // emitted a block-first entry — we never produce a dangling block
+      // first at the last row.
+      z[i] = entry.a * r[i] + entry.b * r[i + 1];
+    } else if (entry.kind === 'block-second') {
+      z[i] = entry.c * r[i - 1] + entry.d * r[i];
+    } else {
+      z[i] = r[i];
+    }
+  }
+}
+
 function cgToleranceState(residualNorm, rhsNorm, relTol = CG_REL_TOL, absTol = CG_ABS_TOL) {
   const absoluteTarget = Math.max(Number(absTol) || 0, 0);
   const relativeTarget = Math.max(Number(relTol) || 0, 0) * Math.max(Number(rhsNorm) || 0, 0);
@@ -589,7 +846,7 @@ function cgToleranceState(residualNorm, rhsNorm, relTol = CG_REL_TOL, absTol = C
   };
 }
 
-async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null, iterationObserver = null) {
+async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null, iterationObserver = null, options = {}) {
   const n = rows.length;
   if (!n) {
     return {
@@ -621,11 +878,14 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
   const p = new Float64Array(n);
   const rhsNorm = Math.sqrt(dot(rhs, rhs));
 
-  for (let i = 0; i < n; i += 1) {
-    const diag = Math.abs(rows[i].diag) > CG_NUMERIC_EPS ? rows[i].diag : 1;
-    z[i] = r[i] / diag;
-    p[i] = z[i];
-  }
+  // Build the block-Jacobi preconditioner once per solve. When the caller
+  // supplies `freeDofs`, the builder emits 2×2 blocks for nodal DOF pairs
+  // and falls back to scalar Jacobi for solitary rows; without it (legacy
+  // call sites that have not yet been updated), the builder degrades to
+  // pure scalar Jacobi, preserving prior behaviour.
+  const precond = buildBlockJacobiPreconditioner(rows, options?.freeDofs || null);
+  applyKrylovPreconditioner(precond, r, z);
+  for (let i = 0; i < n; i += 1) p[i] = z[i];
 
   let rzOld = dot(r, z);
   let residualNorm = Math.sqrt(dot(r, r));
@@ -694,10 +954,7 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
         interrupted: false
       };
     }
-    for (let i = 0; i < n; i += 1) {
-      const diag = Math.abs(rows[i].diag) > CG_NUMERIC_EPS ? rows[i].diag : 1;
-      z[i] = r[i] / diag;
-    }
+    applyKrylovPreconditioner(precond, r, z);
     const rzNew = dot(r, z);
     // After a residual refresh we restart the Krylov subspace (p = z) so the
     // momentum term does not drag in stale pre-refresh direction vectors.
@@ -733,7 +990,7 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
   };
 }
 
-async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null, iterationObserver = null) {
+async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null, iterationObserver = null, options = {}) {
   const n = rows.length;
   if (!n) {
     return {
@@ -778,6 +1035,14 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
   const t = new Float64Array(n);
   const phat = new Float64Array(n);
   const shat = new Float64Array(n);
+  // Block-Jacobi preconditioner — same construction as solveCg. The
+  // BiCGStab updates `phat = M^{-1} (p_new)` and `shat = M^{-1} s` once
+  // per iteration; the application takes one pass over the residual
+  // and produces a bounded preconditioned vector even when individual
+  // diagonals are tiny.
+  const precond = buildBlockJacobiPreconditioner(rows, options?.freeDofs || null);
+  const phatScratchTarget = phat;
+  const shatScratchTarget = shat;
   let rhoOld = 1;
   let alpha = 1;
   let omega = 1;
@@ -817,9 +1082,8 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
     const beta = (rhoNew / rhoOld) * (alpha / omega);
     for (let i = 0; i < n; i += 1) {
       p[i] = r[i] + beta * (p[i] - omega * v[i]);
-      const diag = Math.abs(rows[i].diag) > CG_NUMERIC_EPS ? rows[i].diag : 1;
-      phat[i] = p[i] / diag;
     }
+    applyKrylovPreconditioner(precond, p, phatScratchTarget);
     const vNext = sparseMatVec(rows, phat);
     v.set(vNext);
     const rHatDotV = dot(rHat, v);
@@ -854,10 +1118,7 @@ async function solveBiCgStab(rows, rhs, initial = null, maxIter = MAX_CG_ITER, r
         interrupted: false
       };
     }
-    for (let i = 0; i < n; i += 1) {
-      const diag = Math.abs(rows[i].diag) > CG_NUMERIC_EPS ? rows[i].diag : 1;
-      shat[i] = s[i] / diag;
-    }
+    applyKrylovPreconditioner(precond, s, shatScratchTarget);
     const tNext = sparseMatVec(rows, shat);
     t.set(tNext);
     const tDotT = dot(t, t);
@@ -1545,15 +1806,24 @@ function loadedTerrainEdges(mesh, load) {
   });
 }
 
+function resolveConstitutiveModelName(options) {
+  // The UI emits one of three known strings; anything else is normalised
+  // to mc-reduced-stiffness (Stage 1) for backwards compatibility with
+  // pre-plugin run records that did not always set the option.
+  const requested = String(options?.constitutiveModel || '').toLowerCase();
+  if (hasMaterialPlugin(requested)) return requested;
+  if (requested === 'linear-elastic') return 'linear-elastic';
+  if (requested === 'mc-plastic') return 'mc-plastic';
+  return 'mc-reduced-stiffness';
+}
+
 function createMaterialModelForOptions(materialParameters, options, warnings) {
-  const constitutiveModel = options?.constitutiveModel === 'linear-elastic'
-    ? 'linear-elastic'
-    : options?.constitutiveModel === 'mc-plastic'
-      ? 'mc-plastic'
-      : 'mc-reduced-stiffness';
-  if (constitutiveModel === 'linear-elastic') return createLinearElasticMaterial(materialParameters, warnings);
-  if (constitutiveModel === 'mc-plastic') return createMCPlasticMaterial(materialParameters, warnings);
-  return createMCReducedStiffnessMaterial(materialParameters, warnings);
+  // Single source of truth: the plugin registry. The solver does not
+  // import the concrete factories any more; new constitutive models are
+  // discovered via `registerMaterialPlugin(name, factory)` from the
+  // plugin's own module (see material-plugin.js for the contract).
+  const name = resolveConstitutiveModelName(options);
+  return materialPluginFor(name, materialParameters, warnings);
 }
 
 function prepareRegionConstitutiveModels(mesh, options, warnings) {
@@ -1845,8 +2115,13 @@ function recoverIntegrationPointMaterialResponse(elementCache, gp, U, materialPo
       regionIndex: materialPoint.regionIndex
     }
   });
+  // The elastic-globalization tangent path is only safe for plugins
+  // with an exact return mapping (mc-plastic): the elastic tangent is
+  // returned to Newton instead of the algorithmic one to soften
+  // ill-conditioned active-set transitions during early globalisation.
+  // Other plugins should not be coerced into this path.
   const globalizationTangent6x6 = analysisContext?.useElasticGlobalizationTangent === true &&
-    materialPoint.materialModel?.kind === 'mc-plastic' &&
+    materialPoint.materialModel?.capabilities?.supportsExactReturnMapping === true &&
     Array.isArray(materialPoint.materialModel?.elasticTangent6x6)
     ? materialPoint.materialModel.elasticTangent6x6
     : update.tangent6x6;
@@ -1936,8 +2211,15 @@ function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, reg
     const cell = mesh.cells[elementCache.cellIndex];
     const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
     for (const gp of elementCache.integrationPoints || []) {
+      // Geostatic recovery deliberately uses the linear-elastic plugin
+      // (regardless of the run's chosen constitutive model) to back out
+      // the K0-controlled initial stress from the gravity displacement
+      // solution: the recovery is by construction elastic, even when the
+      // service phase will be exact MC. The registry lookup makes the
+      // dependency on the plugin name explicit and routes through the
+      // same shape-validated path as every other plugin instantiation.
       const materialPoint = createMaterialPoint({
-        materialModel: createLinearElasticMaterial(constitutive.materialParameters, warnings),
+        materialModel: materialPluginFor('linear-elastic', constitutive.materialParameters, warnings),
         materialParameters: constitutive.materialParameters,
         elementIndex,
         integrationPointIndex: gp.globalIndex,
@@ -2005,7 +2287,13 @@ async function buildGeostaticInitialization(
         message: `Solving the geostatic gravity step for the initial stress field... CG iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
       });
       await runCheckpoint(runControl);
-    }
+    },
+    // Pass freeDofs so the block-Jacobi preconditioner can identify
+    // nodal (x, y) DOF pairs in the compressed-row layout. Without
+    // this hint the preconditioner falls back to scalar Jacobi —
+    // mathematically valid but susceptible to the near-orphan T6
+    // mid-edge ill-conditioning that motivated this whole refactor.
+    { freeDofs }
   );
   if (geostaticCg.interrupted) {
     throw new Error('Deformation run was interrupted before geostatic initialization became available.');
@@ -2098,7 +2386,17 @@ function buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByReg
   // the pipeline assumes admissible state. Without projection the
   // plastic-geostatic phase has to correct both yield and equilibrium
   // simultaneously and stalls on weak shallow soils on sloping terrain.
-  const projectInadmissibleOntoMc = options?.constitutiveModel === 'mc-plastic';
+  // Predictor projection is only meaningful for plugins that can map an
+  // inadmissible K0 stress onto their yield surface. The capability flag
+  // makes the dependency explicit; flip-flopping the option without
+  // adding the flag would silently ignore the request.
+  const samplePluginForSeed = (() => {
+    for (const constitutive of regionConstitutiveByRegion.values()) {
+      if (constitutive?.materialModel?.capabilities) return constitutive.materialModel;
+    }
+    return null;
+  })();
+  const projectInadmissibleOntoMc = samplePluginForSeed?.capabilities?.supportsPredictorProjection === true;
   const seedOptions = projectInadmissibleOntoMc ? { projectInadmissibleOntoMc: true } : undefined;
   let projectedSeedCount = 0;
   let failedProjectionCount = 0;
@@ -2530,11 +2828,18 @@ async function solveNonlinearPhase(
   options = {},
   phaseConfig = {}
 ) {
-  const constitutiveModel = options?.constitutiveModel === 'linear-elastic'
-    ? 'linear-elastic'
-    : options?.constitutiveModel === 'mc-plastic'
-      ? 'mc-plastic'
-      : 'mc-reduced-stiffness';
+  const constitutiveModel = resolveConstitutiveModelName(options);
+  // Capability snapshot for the plugin in use. The solver gates every
+  // model-specific code path below on these flags rather than on string
+  // comparisons, so a future plugin (e.g. Hardening Soil) plugs in with
+  // no solver edits — only its own capability declaration. We read the
+  // capabilities from any one material point because a single run uses
+  // a uniform plugin across regions; if a future change introduces
+  // per-region plugin selection, this becomes a per-element-cache
+  // lookup instead.
+  const samplePlugin = materialPoints.find((materialPoint) => materialPoint?.materialModel?.capabilities)?.materialModel
+    || null;
+  const capabilities = samplePlugin?.capabilities || {};
   const phaseKind = phaseConfig?.phaseKind === 'initial-gravity'
     ? 'initial-gravity'
     : phaseConfig?.phaseKind === 'safety-cphi'
@@ -2545,21 +2850,29 @@ async function solveNonlinearPhase(
   const targetLoadFactorFinal = Math.max(Number(phaseConfig?.targetLoadFactor) || 1, 0);
   const initialCommittedLoadFactor = Math.max(Math.min(Number(phaseConfig?.initialLoadFactorCommitted) || 0, targetLoadFactorFinal), 0);
   const initialSolutionInput = phaseConfig?.initialSolution;
-  const isLinearElastic = constitutiveModel === 'linear-elastic';
-  const requiresStableActiveSet = constitutiveModel === 'mc-reduced-stiffness';
-  const requiresDisplacementTolerance = constitutiveModel !== 'mc-plastic';
-  const exactPlasticTangentMayBeUnsymmetric = constitutiveModel === 'mc-plastic' &&
+  const isLinearElastic = capabilities.isLinearElastic === true;
+  const requiresStableActiveSet = capabilities.requiresStableActiveSetAtConvergence === true;
+  // Displacement-norm tolerance is dropped for plugins with an exact
+  // return mapping: the residual is already certified by the per-Gauss
+  // active-set, so adding a displacement gate just delays acceptance of
+  // converged states with small but non-zero correction (typical of
+  // late-iteration line-search-stalled steps that are nonetheless at
+  // the residual tolerance).
+  const requiresDisplacementTolerance = capabilities.supportsExactReturnMapping !== true;
+  const exactPlasticTangentMayBeUnsymmetric = capabilities.algorithmicTangentMayBeUnsymmetric === true &&
     materialPoints.some((materialPoint) => materialPoint?.materialParameters?.symmetrizeEpTangent !== true);
   // The modified-Newton elastic globalization tangent is a robustness fallback
   // for difficult initial-gravity runs, but it is much slower and should not
-  // be the default Phase 0b path.
-  const phaseUsesElasticGlobalizationTangent = constitutiveModel === 'mc-plastic' &&
+  // be the default Phase 0b path. Available only for plugins with an
+  // exact return mapping (so the elastic tangent meaningfully softens
+  // the algorithmic one) and a plastic-geostatic phase.
+  const phaseUsesElasticGlobalizationTangent = capabilities.supportsExactReturnMapping === true &&
+    capabilities.supportsPlasticGeostaticPhase === true &&
     phaseKind === 'initial-gravity' &&
     options?.initialGravityUseElasticGlobalizationTangent === true;
-  const mayNeedUnsymmetricSolver = constitutiveModel === 'mc-plastic' && !phaseUsesElasticGlobalizationTangent && (
-    exactPlasticTangentMayBeUnsymmetric ||
-    options?.useUnsymmetricPlasticSolver === true
-  );
+  const mayNeedUnsymmetricSolver = capabilities.algorithmicTangentMayBeUnsymmetric === true
+    && !phaseUsesElasticGlobalizationTangent
+    && (exactPlasticTangentMayBeUnsymmetric || options?.useUnsymmetricPlasticSolver === true);
   const unsymmetricLinearSolverMode = options?.unsymmetricLinearSolver === 'bicgstab'
     ? 'bicgstab'
     : 'gmres-scaled';
@@ -2673,24 +2986,26 @@ async function solveNonlinearPhase(
   let terminatedByFailure = false;
   let bestDisplayedState = null;
   let warmStartFreeCorrection = null;
+  // Display labels are pulled from the plugin so a future plugin gets
+  // consistent error/progress messages without solver edits. The
+  // initial-gravity and safety-cphi labels are phase-level (not
+  // plugin-level), so they stay hardcoded; the phase only runs when the
+  // plugin's capability flag advertises support.
+  const pluginDisplayName = samplePlugin?.displayName || 'Material';
   const phaseDisplayName = phaseKind === 'initial-gravity'
     ? 'Stage 2 initial plastic equilibration'
     : phaseKind === 'safety-cphi'
       ? 'Safety c-phi reduction'
-    : constitutiveModel === 'mc-plastic'
-      ? 'Stage 2 elastoplastic'
-      : constitutiveModel === 'linear-elastic'
-        ? 'Linear elastic'
-        : 'Stage 1 MC-active reduced-stiffness';
+      : pluginDisplayName;
   const analysisStageLabel = phaseKind === 'initial-gravity'
     ? 'initial-gravity-stage-2'
     : phaseKind === 'safety-cphi'
       ? 'safety-cphi-stage'
-    : constitutiveModel === 'mc-plastic'
-      ? 'nonlinear-stage-2'
-      : constitutiveModel === 'linear-elastic'
-        ? 'nonlinear-elastic'
-        : 'nonlinear-stage-1';
+      : `nonlinear-${samplePlugin?.kind || 'unknown'}`;
+  // Short solver label used in error / failure messages. Avoids the
+  // explicit `mc-plastic ? 'Stage 2' : 'Stage 1'` branches scattered
+  // throughout this function — the plugin owns its label.
+  const solveLabel = `${pluginDisplayName} deformation solve`;
   const targetForceBaseInput = phaseConfig?.targetForceBase;
   const targetForceBase = (Array.isArray(targetForceBaseInput) || ArrayBuffer.isView(targetForceBaseInput))
     ? Float64Array.from(targetForceBaseInput)
@@ -2743,7 +3058,7 @@ async function solveNonlinearPhase(
           ? 'Initial plastic equilibration'
           : phaseKind === 'safety-cphi'
             ? 'Safety c-phi reduction phase'
-            : `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve`
+            : `${solveLabel}`
       } exceeded the maximum number of load steps (${maxLoadSteps}).`;
       terminalFailureCode = 'step-budget-exhausted';
       terminatedByFailure = true;
@@ -2792,7 +3107,13 @@ async function solveNonlinearPhase(
     let suggestedStepCutbackFactor = null;
     let lastCorrection = new Float64Array(ndof);
     let stepBestState = null;
-    const shouldWarmStartLinearSolve = constitutiveModel === 'mc-plastic';
+    // Warm-starting the linear solve carries the previous Newton's
+    // step as the initial guess for the next iteration's Krylov solve.
+    // Worth doing whenever the plugin's algorithmic tangent can be
+    // unsymmetric (so we'd be running GMRES, where a good warm start
+    // saves several iterations). Linear elastic skips it because the
+    // first solve already converges in 1 Newton.
+    const shouldWarmStartLinearSolve = capabilities.algorithmicTangentMayBeUnsymmetric === true;
     let stepUsedUnsymmetricSolver = false;
     let iterationLinearGuess = warmStartFreeCorrection && warmStartFreeCorrection.length === freeDofs.length
       ? (shouldWarmStartLinearSolve ? Float64Array.from(warmStartFreeCorrection) : null)
@@ -2928,7 +3249,7 @@ async function solveNonlinearPhase(
       //      Jacobi preconditioning is unreliable here regardless of
       //      element type. T6 makes it much worse because mid-edge DOFs
       //      have very different diagonal magnitudes from corner DOFs.
-      const isPlasticGeostatic = constitutiveModel === 'mc-plastic'
+      const isPlasticGeostatic = capabilities.supportsPlasticGeostaticPhase === true
         && phaseKind === 'initial-gravity';
       const usesUnsymmetricSolver = mayNeedUnsymmetricSolver && (
         assembled.activeCount > 0
@@ -2964,7 +3285,13 @@ async function solveNonlinearPhase(
         CG_REL_TOL,
         CG_ABS_TOL,
         runControl,
-        linearIterationObserver
+        linearIterationObserver,
+        // freeDofs lets the block-Jacobi preconditioner identify nodal
+        // 2×2 DOF blocks in the compressed-row layout. Both solveCg and
+        // solveBiCgStab honour this option; solveGmresScaled does its
+        // own row equilibration scaling and ignores extra options
+        // beyond the iteration-observer signature it documents.
+        { freeDofs }
       );
       const maybeRetryWithDoubleSingle = async () => {
         if (
@@ -2987,7 +3314,8 @@ async function solveNonlinearPhase(
           CG_REL_TOL,
           CG_ABS_TOL,
           runControl,
-          linearIterationObserver
+          linearIterationObserver,
+          { freeDofs }
         );
       };
       totalCgIterations += cg.iterations;
@@ -2997,7 +3325,7 @@ async function solveNonlinearPhase(
             ? 'the initial plastic equilibration phase'
             : phaseKind === 'safety-cphi'
               ? 'the c-phi reduction safety phase'
-              : `the ${constitutiveModel === 'mc-plastic' ? 'Stage 2 elastoplastic' : 'Stage 1 nonlinear'} solve`
+              : `the ${pluginDisplayName} solve`
         }.`);
       }
       const inexactNewtonForcing = isLinearElastic
@@ -3030,7 +3358,7 @@ async function solveNonlinearPhase(
                 ? 'the initial plastic equilibration phase'
                 : phaseKind === 'safety-cphi'
                   ? 'the c-phi reduction safety phase'
-                  : `the ${constitutiveModel === 'mc-plastic' ? 'Stage 2 elastoplastic' : 'Stage 1 nonlinear'} solve`
+                  : `the ${pluginDisplayName} solve`
             }.`);
           }
           allowInexactLinearizedSolve = cg.residualNorm <= acceptableLinearizedResidual;
@@ -3044,7 +3372,7 @@ async function solveNonlinearPhase(
       let correctionNorm = vectorNorm(lastCorrection);
       let refreshed = null;
       let lineSearchStepScale = 1;
-      if (constitutiveModel === 'mc-plastic' && correctionNorm > 0) {
+      if (capabilities.requiresPlasticLineSearch === true && correctionNorm > 0) {
         try {
           const lineSearch = await performArmijoLineSearch(
             elementCaches,
@@ -3244,7 +3572,7 @@ async function solveNonlinearPhase(
             ? 'the initial plastic equilibration phase'
             : phaseKind === 'safety-cphi'
               ? 'the c-phi reduction safety phase'
-              : `the ${constitutiveModel === 'mc-plastic' ? 'Stage 2 elastoplastic' : 'Stage 1 nonlinear'} solve`
+              : `the ${pluginDisplayName} solve`
         }.`);
       }
     }
@@ -3311,19 +3639,24 @@ async function solveNonlinearPhase(
       // limit, the rejection-cutback pair (harsh `Math.min` of default
       // and line-search-derived factor) restores conservative stepping
       // until the system settles again.
-      const benignPlasticStep = constitutiveModel === 'mc-plastic'
+      // The plastic growth / cutback caps are only relevant when the
+      // active set is changing — i.e. for plugins that track a yield
+      // surface and may switch a Gauss point's branch between
+      // iterations. Linear-elastic skips this path entirely; reduced
+      // stiffness and exact MC use it.
+      const benignPlasticStep = capabilities.tracksYieldSurface === true
         && stepRecord.peakActiveCount > 0
         && stepRecord.iterations > 0
         && stepRecord.iterations * 2 <= continuationTargetIterations
         && (!stepRecord.lineSearchEvaluations
             || (stepRecord.lineSearchAccepted
                 && (Number(stepRecord.lineSearchAcceptedScale) || 0) >= 0.999));
-      const effectiveGrowthFactor = constitutiveModel === 'mc-plastic'
+      const effectiveGrowthFactor = capabilities.tracksYieldSurface === true
         && stepRecord.peakActiveCount > 0
         && !benignPlasticStep
         ? Math.min(growthFactor, plasticGrowthFactor)
         : growthFactor;
-      const effectiveCutbackFactor = constitutiveModel === 'mc-plastic'
+      const effectiveCutbackFactor = capabilities.tracksYieldSurface === true
         && stepRecord.peakActiveCount > 0
         && !benignPlasticStep
         ? Math.min(cutbackFactor, plasticCutbackFactor)
@@ -3377,13 +3710,13 @@ async function solveNonlinearPhase(
         ? `Initial plastic equilibration could not converge the full gravity state (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
         : phaseKind === 'safety-cphi'
           ? `Safety c-phi reduction could not converge the target strength-reduced state (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
-          : `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve could not converge the target state (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`;
+          : `${solveLabel} could not converge the target state (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`;
       terminalFailureCode = failureCode || 'nonlinear-iterations-exhausted';
       loadStepHistory.push(stepRecord);
       terminatedByFailure = true;
       break;
     }
-    const effectiveCutbackFactor = constitutiveModel === 'mc-plastic' && stepRecord.peakActiveCount > 0
+    const effectiveCutbackFactor = capabilities.tracksYieldSurface === true && stepRecord.peakActiveCount > 0
       ? Math.min(cutbackFactor, plasticCutbackFactor)
       : cutbackFactor;
     // The line-search-derived cutback (lineSearch.stepScale) is a Newton
@@ -3397,7 +3730,7 @@ async function solveNonlinearPhase(
     // admissible) but never deepen it beyond the configured plastic
     // cutback. Subsequent rejections compound naturally if the larger
     // cutback was insufficient.
-    const suggestedCutbackFactor = constitutiveModel === 'mc-plastic' &&
+    const suggestedCutbackFactor = capabilities.requiresPlasticLineSearch === true &&
       Number.isFinite(Number(suggestedStepCutbackFactor)) &&
       Number(suggestedStepCutbackFactor) > 0
       ? Math.max(effectiveCutbackFactor, Math.min(0.9, Number(suggestedStepCutbackFactor)))
@@ -3415,7 +3748,7 @@ async function solveNonlinearPhase(
         ? `Initial plastic equilibration could not converge the load step to ${(100 * targetLoadFactor).toFixed(1)}% (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
         : phaseKind === 'safety-cphi'
           ? `Safety c-phi reduction could not converge the continuation step (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`
-          : `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve could not converge the load step to ${(100 * targetLoadFactor).toFixed(1)}% (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`;
+          : `${solveLabel} could not converge the load step to ${(100 * targetLoadFactor).toFixed(1)}% (last reason: ${failureReason || 'nonlinear iterations exhausted'}).`;
       terminalFailureCode = 'step-below-minimum';
       terminatedByFailure = true;
       break;
@@ -3442,7 +3775,7 @@ async function solveNonlinearPhase(
   if (shouldPreferDisplayCandidate(fallbackCommittedState, bestDisplayedState)) bestDisplayedState = fallbackCommittedState;
 
   if (terminatedByFailure && !bestDisplayedState) {
-    throw new Error(terminalFailureReason || `${constitutiveModel === 'mc-plastic' ? 'Stage 2' : 'Stage 1'} deformation solve failed before a usable displacement state became available.`);
+    throw new Error(terminalFailureReason || `${solveLabel} failed before a usable displacement state became available.`);
   }
 
   // The initial plastic geostatic phase is an initialization problem, not a service-loading
@@ -4442,6 +4775,14 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   // doesn't carry into a fresh analysis.
   disabledElementKernels.t3 = false;
   disabledElementKernels.t6 = false;
+  // The vector-magnitude warning is cap-limited to a few emissions per
+  // run (otherwise an ill-conditioned solve produces hundreds of
+  // identical lines). Reset the counter so the cap applies per-run.
+  gpuVectorMagnitudeFallbacksReported = 0;
+  // Reset the soft NaN-budget too. The budget is per-run: a single bad
+  // run cannot poison the next one's GPU.
+  gpuMatvecSoftNanCount = 0;
+  gpuMatvecSoftNanReported = 0;
   const model = input?.model;
   if (!model?.terrain?.vertices?.length || !model?.regions?.length) {
     throw new Error('The deformation screen needs a valid Bishop section model first.');
@@ -4449,11 +4790,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
 
   const warnings = [];
   const analysisType = input?.options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
-  const constitutiveModel = input?.options?.constitutiveModel === 'linear-elastic'
-    ? 'linear-elastic'
-    : input?.options?.constitutiveModel === 'mc-plastic'
-      ? 'mc-plastic'
-      : 'mc-reduced-stiffness';
+  const constitutiveModel = resolveConstitutiveModelName(input?.options);
   const options = {
     analysisType,
     meshElementType: normalizeElementType(input?.options?.meshElementType ?? input?.options?.elementOrder),
@@ -4708,12 +5045,23 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     onProgress
   );
   const wantsPlasticInitialEquilibrium = options.initialStressMode === 'plastic-geostatic';
-  const canRunPlasticInitialEquilibrium = wantsPlasticInitialEquilibrium && options.constitutiveModel === 'mc-plastic';
+  // Plastic geostatic equilibration runs only when the active plugin
+  // advertises support for it. The capability flag is the single source
+  // of truth — adding a future plugin (e.g. Hardening Soil) that also
+  // supports the phase just sets the flag in its capabilities object.
+  const samplePluginForPhase = (() => {
+    for (const c of regionConstitutiveByRegion.values()) {
+      if (c?.materialModel?.capabilities) return c.materialModel;
+    }
+    return null;
+  })();
+  const canRunPlasticInitialEquilibrium = wantsPlasticInitialEquilibrium
+    && samplePluginForPhase?.capabilities?.supportsPlasticGeostaticPhase === true;
   const materialPoints = buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByRegion, geostatic.initialField, options, warnings, model);
   if (wantsPlasticInitialEquilibrium && !canRunPlasticInitialEquilibrium) {
     pushUniqueWarning(
       warnings,
-      'Plastic geostatic equilibration is only available with the Stage 2 elastoplastic deformation model, so the solver used the fast geostatic predictor instead.'
+      `Plastic geostatic equilibration is not supported by the ${samplePluginForPhase?.displayName || 'current'} material model, so the solver used the fast geostatic predictor instead.`
     );
   }
 
@@ -4813,7 +5161,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     onProgress({
       stage: 'solving',
       percent: 74,
-      message: `Solving ${freeDofs.length.toLocaleString()} free deformation DOFs with the ${options.constitutiveModel === 'linear-elastic' ? 'elastic' : options.constitutiveModel === 'mc-plastic' ? 'Stage 2 elastoplastic' : 'Stage 1 MC-active reduced-stiffness'} material model...`
+      message: `Solving ${freeDofs.length.toLocaleString()} free deformation DOFs with the ${samplePluginForPhase?.displayName || 'current'} material model...`
     });
     servicePhase = await solveServiceLoadPhase(
       elementCaches,

@@ -92,7 +92,15 @@ export function createCpuF32Backend(setup = {}) {
     const target = existing && existing.length === requiredLength
       ? existing
       : new Float32Array(requiredLength);
-    for (let index = 0; index < requiredLength; index += 1) target[index] = Number(source[index]) || 0;
+    for (let index = 0; index < requiredLength; index += 1) {
+      // Coerce non-finite inputs to 0 and re-check post-assignment so a
+      // huge finite f64 (>~3.4e38) silently becoming Infinity in f32
+      // storage is also caught — mirrors the webgl-backend's defensive
+      // check so the cpu-f32 surrogate produces the same outputs.
+      const raw = Number(source[index]);
+      target[index] = Number.isFinite(raw) ? raw : 0;
+      if (!Number.isFinite(target[index])) target[index] = 0;
+    }
     return target;
   }
 
@@ -168,6 +176,13 @@ export function createCpuF32Backend(setup = {}) {
     supportsT3ElementKernels: true,
     supportsT6ElementKernels: true,
     requiresResidualRefresh: true,
+    // Match webgl-backend's `matrixMaxAbsValue` / `matrixMaxRowLen`
+    // accessors so the solver's adaptive matvec pre-check works
+    // identically on both backends. cpu-f32 doesn't enforce f32
+    // overflow (the host is f64), so an unset bound is fine — the
+    // solver treats `0` as "no information available".
+    get matrixMaxAbsValue() { return buffer?.maxAbsValue ?? 0; },
+    get matrixMaxRowLen() { return buffer?.maxRowLen ?? 0; },
     get precisionMode() { return precisionMode; },
     get residualRefreshInterval() { return residualRefreshInterval; },
     matvec,

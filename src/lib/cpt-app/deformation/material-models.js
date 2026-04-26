@@ -2,6 +2,7 @@
 // @ts-nocheck
 
 import { elasticLameParameters, elasticMatrix6x6, elasticMatrix6x6FromBulkShear } from './material.js';
+import { emptyCapabilities, registerMaterialPlugin } from './material-plugin.js';
 import { negateNormalAndShear } from './post.js';
 
 const VOIGT_XX = 0;
@@ -2444,11 +2445,57 @@ export function snapshotMaterialPointState(state = {}) {
   };
 }
 
+// Capability matrix for the three built-in plugins. Defined here once,
+// next to the factories themselves, so a reviewer can read the model and
+// its capability claims in the same place. Every flag is set explicitly;
+// `emptyCapabilities()` returns a fresh template with all flags false.
+const LINEAR_ELASTIC_CAPABILITIES = (() => {
+  const c = emptyCapabilities();
+  c.isLinearElastic = true;
+  return c;
+})();
+
+const MC_REDUCED_STIFFNESS_CAPABILITIES = (() => {
+  const c = emptyCapabilities();
+  c.tracksYieldSurface = true;
+  c.isPathDependent = true;
+  c.supportsTensionCutoff = true;
+  // Reduced-stiffness uses a smooth softened tangent rather than an exact
+  // return mapping; convergence requires the active-set to settle so the
+  // tangent doesn't oscillate between elastic and reduced.
+  c.requiresStableActiveSetAtConvergence = true;
+  // The reduced tangent is symmetric (it is a positive-definite scalar
+  // shear-modulus reduction), so CG remains valid.
+  c.algorithmicTangentMayBeUnsymmetric = false;
+  c.supportsCphiSafetyReduction = true;
+  return c;
+})();
+
+const MC_PLASTIC_CAPABILITIES = (() => {
+  const c = emptyCapabilities();
+  c.tracksYieldSurface = true;
+  c.isPathDependent = true;
+  c.supportsTensionCutoff = true;
+  c.supportsExactReturnMapping = true;
+  c.algorithmicTangentMayBeUnsymmetric = true;
+  c.requiresPlasticLineSearch = true;
+  c.supportsPredictorProjection = true;
+  c.supportsPlasticGeostaticPhase = true;
+  c.supportsCphiSafetyReduction = true;
+  // Exact return mapping enforces yield admissibility per Gauss point on
+  // every iteration, so CG/Newton convergence does not require the
+  // active-set count to be zero — the residual itself certifies
+  // admissibility.
+  c.requiresStableActiveSetAtConvergence = false;
+  return c;
+})();
+
 export function createLinearElasticMaterial(materialParameters, warnings = []) {
   const label = materialParameters?.label || materialParameters?.id || 'Material';
   const elasticTangent6x6 = elasticMatrix6x6(materialParameters?.Emc, materialParameters?.nu, warnings, label);
   return {
     kind: 'linear-elastic',
+    capabilities: LINEAR_ELASTIC_CAPABILITIES,
     materialParameters,
     elasticTangent6x6,
     initialTangent6x6: cloneMatrix6(elasticTangent6x6),
@@ -2481,6 +2528,8 @@ export function createLinearElasticMaterial(materialParameters, warnings = []) {
         diagnostics: {
           ...diagnostics,
           constitutiveModel: 'linear-elastic',
+          plasticIncrementNorm: 0,
+          localIterations: 0,
           analysisContext
         }
       };
@@ -2495,6 +2544,7 @@ export function createMCReducedStiffnessMaterial(materialParameters, warnings = 
   const reducedTangent6x6 = elasticMatrix6x6FromBulkShear(K, G * Math.min(Math.max(Number(materialParameters?.rShear) || 0.25, 1e-3), 1));
   return {
     kind: 'mc-reduced-stiffness',
+    capabilities: MC_REDUCED_STIFFNESS_CAPABILITIES,
     materialParameters,
     elasticTangent6x6,
     reducedTangent6x6,
@@ -2547,6 +2597,8 @@ export function createMCReducedStiffnessMaterial(materialParameters, warnings = 
           fMcTrial: Number(mcTrial?.F) || 0,
           etaMcTrial: Number.isFinite(Number(mcTrial?.eta)) ? Number(mcTrial.eta) : Number.POSITIVE_INFINITY,
           yieldTolerance,
+          plasticIncrementNorm: 0,
+          localIterations: 0,
           constitutiveModel: 'mc-reduced-stiffness',
           analysisContext
         }
@@ -2560,6 +2612,7 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
   const elasticTangent6x6 = elasticMatrix6x6(materialParameters?.Emc, materialParameters?.nu, warnings, label);
   return {
     kind: 'mc-plastic',
+    capabilities: MC_PLASTIC_CAPABILITIES,
     materialParameters,
     elasticTangent6x6,
     initialTangent6x6: cloneMatrix6(elasticTangent6x6),
@@ -2748,3 +2801,17 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
     }
   };
 }
+
+// ============================================================================
+// Plugin registry registration
+// ============================================================================
+//
+// These calls happen once at module load time. Once registered, the
+// solver looks plugins up via `materialPluginFor(name, ...)` and never
+// needs to know which factory implements which model. Adding a future
+// plugin (Hardening Soil, Cam-Clay, ...) is one new factory file plus
+// one `registerMaterialPlugin(name, factory)` line.
+
+registerMaterialPlugin('linear-elastic', createLinearElasticMaterial);
+registerMaterialPlugin('mc-reduced-stiffness', createMCReducedStiffnessMaterial);
+registerMaterialPlugin('mc-plastic', createMCPlasticMaterial);
