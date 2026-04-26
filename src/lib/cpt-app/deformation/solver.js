@@ -31,6 +31,7 @@ import {
   principalStress2DCompressionPositive,
   sampleInitialPorePressure
 } from './post.js';
+import { terrainY } from '../stage6-bishop.js';
 import { createLinearAlgebraBackend, GPU_DEFAULT_MIN_DOF } from './gpu/index.js';
 
 // Residual-refresh cadence: after every BACKEND_RESIDUAL_REFRESH_INTERVAL
@@ -69,6 +70,14 @@ const SAFETY_SIGMA_MSF_GROWTH_FACTOR = 1.5;
 const SAFETY_SIGMA_MSF_MAX = 3.0;
 const SAFETY_SIGMA_MSF_BRACKET_TOL = 0.01;
 const SAFETY_MAX_SEARCH_TRIALS = 32;
+
+function pickFiniteFallback(...values) {
+  for (let index = 0; index < values.length; index += 1) {
+    const numeric = Number(values[index]);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  }
+  return 0;
+}
 
 function pushUniqueWarning(warnings, message) {
   if (!Array.isArray(warnings) || !message) return;
@@ -306,6 +315,33 @@ function sparseMatVec(rows, vector) {
     try {
       return activeMatvecBackend.matvec(rows, vector);
     } catch (error) {
+      // f32 matvec hit a non-finite value. Don't immediately abandon the
+      // GPU: the double-single path uses the same WebGL kernel with
+      // higher-precision intermediate accumulation and can usually
+      // survive what kills the f32 path (a near-singular tangent during
+      // an active-set transition, a heavy plastic correction pushing a
+      // residual entry past f32 dynamic range, etc.). Only fall back to
+      // CPU when the escalated GPU path also fails — that is the cheapest
+      // recovery and keeps the GPU live for the rest of the run.
+      const canEscalate = !!activeMatvecBackend
+        && activeMatvecBackend.supportsDoubleSingle === true
+        && activeMatvecBackend.precisionMode !== 'double-single'
+        && typeof activeMatvecBackend.setPrecisionMode === 'function';
+      if (canEscalate) {
+        const escalated = backendEscalatePrecisionMode(
+          'double-single',
+          `f32 matvec produced a non-finite value (${error?.message || 'unknown'}); escalated to double-single in-place to keep the GPU active.`,
+          10
+        );
+        if (escalated) {
+          try {
+            return activeMatvecBackend.matvec(rows, vector);
+          } catch (retryError) {
+            handleActiveBackendFailure('matvec', retryError);
+            return sparseMatVecFallback(rows, vector);
+          }
+        }
+      }
       handleActiveBackendFailure('matvec', error);
       return sparseMatVecFallback(rows, vector);
     }
@@ -313,35 +349,77 @@ function sparseMatVec(rows, vector) {
   return sparseMatVecFallback(rows, vector);
 }
 
+function elementCachesAreUniformKind(elementCaches) {
+  if (!(elementCaches?.length > 0)) return false;
+  const first = elementCaches[0]?.kind === 't6' ? 't6' : 't3';
+  for (let i = 1; i < elementCaches.length; i += 1) {
+    const k = elementCaches[i]?.kind === 't6' ? 't6' : 't3';
+    if (k !== first) return false;
+  }
+  return true;
+}
+
+function backendSupportsKind(backend, kind) {
+  if (!backend) return false;
+  if (kind === 't6') return backend.supportsT6ElementKernels !== false;
+  return backend.supportsT3ElementKernels !== false;
+}
+
+// Per-run, per-element-type kernel disable flags. Element kernels can hit
+// non-finite values during transient states (e.g. an iterate about to be
+// backed off by line search) without indicating that the matvec — which
+// is the primary GPU win — is unsafe. So we disable just the offending
+// element-kernel call, route subsequent calls of the same kind to the
+// CPU element path, and leave the matvec on GPU.
+const disabledElementKernels = { t3: false, t6: false };
+
+function disableBackendElementKernel(kind, operation, error) {
+  if (kind !== 't3' && kind !== 't6') return;
+  if (disabledElementKernels[kind]) return;
+  disabledElementKernels[kind] = true;
+  const message = `Linear-algebra backend '${activeMatvecBackend?.name || 'unknown'}' element kernel '${operation}' produced a non-finite value for ${kind.toUpperCase()} elements (${error?.message || 'unknown'}). Routing ${kind.toUpperCase()} element kernels to the CPU path for the remainder of the run; the matvec stays on the active backend.`;
+  pushUniqueWarning(activeBackendRuntimeWarnings, message);
+  if (typeof console !== 'undefined' && console?.warn) console.warn(message);
+}
+
 function backendElementStrain(elementCaches, vector) {
-  if ((elementCaches || []).some((elementCache) => elementCache?.kind !== 't3')) return null;
+  if (!elementCachesAreUniformKind(elementCaches)) return null;
   if (!activeMatvecBackend || typeof activeMatvecBackend.elementStrain !== 'function') return null;
+  const kind = elementCaches[0].kind === 't6' ? 't6' : 't3';
+  if (!backendSupportsKind(activeMatvecBackend, kind)) return null;
+  if (disabledElementKernels[kind]) return null;
   try {
     return activeMatvecBackend.elementStrain(elementCaches, vector);
   } catch (error) {
-    handleActiveBackendFailure('element-strain', error);
+    disableBackendElementKernel(kind, 'element-strain', error);
     return null;
   }
 }
 
 function backendElementInternalForce(elementCaches, stressFlat) {
-  if ((elementCaches || []).some((elementCache) => elementCache?.kind !== 't3')) return null;
+  if (!elementCachesAreUniformKind(elementCaches)) return null;
   if (!activeMatvecBackend || typeof activeMatvecBackend.elementInternalForce !== 'function') return null;
+  const kind = elementCaches[0].kind === 't6' ? 't6' : 't3';
+  if (!backendSupportsKind(activeMatvecBackend, kind)) return null;
+  if (disabledElementKernels[kind]) return null;
   try {
     return activeMatvecBackend.elementInternalForce(elementCaches, stressFlat);
   } catch (error) {
-    handleActiveBackendFailure('element-internal-force', error);
+    disableBackendElementKernel(kind, 'element-internal-force', error);
     return null;
   }
 }
 
 function backendElementElasticStiffness(elementCaches, tangentFlat) {
-  if ((elementCaches || []).some((elementCache) => elementCache?.kind !== 't3')) return null;
+  if (!elementCachesAreUniformKind(elementCaches)) return null;
   if (!activeMatvecBackend || typeof activeMatvecBackend.elementElasticStiffness !== 'function') return null;
+  const kind = elementCaches[0].kind === 't6' ? 't6' : 't3';
+  if (!backendSupportsKind(activeMatvecBackend, kind)) return null;
+  if (disabledElementKernels[kind]) return null;
   try {
     return activeMatvecBackend.elementElasticStiffness(elementCaches, tangentFlat);
   } catch (error) {
-    handleActiveBackendFailure('element-elastic-stiffness', error);
+    disableBackendElementKernel(kind, 'element-elastic-stiffness', error);
     return null;
   }
 }
@@ -1411,11 +1489,51 @@ function buildConstraintSets(mesh) {
   return { fixUx, fixUy };
 }
 
+function findOrphanedNodeIds(mesh) {
+  // A node is orphaned when it appears in mesh.nodes (and therefore counts
+  // toward the global ndof) but no kept element references it. This happens
+  // when section-mesh's centroid-in-polygon filter silently drops a thin
+  // T6 boundary triangle on sloping terrain; the dropped triangle's corner
+  // and midpoint nodes remain in mesh.nodes but have zero stiffness
+  // contribution in the global K, leaving zero rows that would otherwise
+  // make the matrix singular and cause CG to stagnate.
+  const referenced = new Set();
+  const elements = mesh?.elements || [];
+  for (let elementIndex = 0; elementIndex < elements.length; elementIndex += 1) {
+    const element = elements[elementIndex];
+    if (!element) continue;
+    for (let localIndex = 0; localIndex < element.length; localIndex += 1) {
+      const nodeId = Number(element[localIndex]);
+      if (Number.isInteger(nodeId)) referenced.add(nodeId);
+    }
+  }
+  const orphans = new Set();
+  const totalNodes = mesh?.nodes?.length || 0;
+  for (let nodeId = 0; nodeId < totalNodes; nodeId += 1) {
+    if (!referenced.has(nodeId)) orphans.add(nodeId);
+  }
+  return orphans;
+}
+
 function buildFixedDofMap(mesh) {
   const { fixUx, fixUy } = buildConstraintSets(mesh);
   const fixed = new Map();
   [...fixUx].forEach((nodeId) => fixed.set(2 * nodeId, 0));
   [...fixUy].forEach((nodeId) => fixed.set(2 * nodeId + 1, 0));
+  // Pin orphaned nodes (referenced in mesh.nodes but in no kept element)
+  // to zero displacement on both axes. Without this guard, their global
+  // K rows are entirely zero and the linear solver sees a singular system.
+  const orphans = findOrphanedNodeIds(mesh);
+  orphans.forEach((nodeId) => {
+    if (!fixed.has(2 * nodeId)) fixed.set(2 * nodeId, 0);
+    if (!fixed.has(2 * nodeId + 1)) fixed.set(2 * nodeId + 1, 0);
+  });
+  if (orphans.size && Array.isArray(mesh?.warnings)) {
+    pushUniqueWarning(
+      mesh.warnings,
+      `Pinned ${orphans.size} orphaned mesh node(s) at zero displacement to keep the global stiffness matrix non-singular. The orphans came from ${mesh.elementType === 't6' ? 'T6 ' : ''}boundary triangles whose centroids landed marginally outside the section polygon and were filtered out by the post-Triangle safety net.`
+    );
+  }
   return fixed;
 }
 
@@ -1826,12 +1944,18 @@ function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, Ugeo, reg
         gpIndex: gp.gpIndex,
         regionIndex: cell?.regionIndex ?? -1
       });
-      const precomputedStrain = precomputedStrainFlat && elementCache.kind === 't3'
-        ? {
-            exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
-            eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
-            gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
-          }
+      const precomputedStrain = precomputedStrainFlat
+        ? (elementCache.kind === 't6'
+            ? {
+                exx: Number(precomputedStrainFlat[elementIndex * 9 + gp.gpIndex * 3]) || 0,
+                eyy: Number(precomputedStrainFlat[elementIndex * 9 + gp.gpIndex * 3 + 1]) || 0,
+                gxy: Number(precomputedStrainFlat[elementIndex * 9 + gp.gpIndex * 3 + 2]) || 0
+              }
+            : {
+                exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
+                eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
+                gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
+              })
         : null;
       const response = recoverIntegrationPointMaterialResponse(elementCache, gp, Ugeo, materialPoint, {
         stage: 'geostatic-initialization'
@@ -1927,8 +2051,63 @@ async function buildGeostaticInitialization(
   };
 }
 
-function buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByRegion, initialField, options, warnings) {
+// Depth bands for predictor-projection diagnostics. The bands are the
+// natural geotechnical decomposition: the topmost band collects the
+// classic free-surface boundary (where K0 plus elastic shear can sit
+// just outside MC because p ≈ c·cot phi); the deeper bands surface
+// projections that should not normally happen and indicate either a
+// material configuration problem or a slope geometry the K0 predictor
+// cannot represent at all.
+const NEAR_SURFACE_DEPTH_BANDS = [
+  { label: '0.00–0.25 m', max: 0.25 },
+  { label: '0.25–0.50 m', max: 0.50 },
+  { label: '0.50–1.00 m', max: 1.00 },
+  { label: '1.00–2.00 m', max: 2.00 },
+  { label: '2.00–4.00 m', max: 4.00 },
+  { label: '> 4.00 m',    max: Number.POSITIVE_INFINITY }
+];
+
+function depthBelowTerrainAt(model, x, y) {
+  if (!model?.terrain?.vertices?.length) return Number.POSITIVE_INFINITY;
+  const ySurface = terrainY(model.terrain, x);
+  if (!Number.isFinite(ySurface)) return Number.POSITIVE_INFINITY;
+  return Math.max(ySurface - y, 0);
+}
+
+function bandIndexForDepth(depth) {
+  for (let index = 0; index < NEAR_SURFACE_DEPTH_BANDS.length; index += 1) {
+    if (depth <= NEAR_SURFACE_DEPTH_BANDS[index].max) return index;
+  }
+  return NEAR_SURFACE_DEPTH_BANDS.length - 1;
+}
+
+function summarizePredictorProjectionByDepth(bandCounts) {
+  const lines = [];
+  for (let index = 0; index < NEAR_SURFACE_DEPTH_BANDS.length; index += 1) {
+    const count = bandCounts[index] || 0;
+    if (count > 0) lines.push(`${count} at ${NEAR_SURFACE_DEPTH_BANDS[index].label}`);
+  }
+  return lines.length ? lines.join(', ') : 'no projections';
+}
+
+function buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByRegion, initialField, options, warnings, model = null) {
   const materialPoints = new Array(elementCaches.integrationPointCount || elementCaches.length);
+  // Project the K0 predictor onto MC at seed time when the constitutive
+  // model is exact MC plasticity. This is the only place the deformation
+  // workflow has to deal with seeds outside the MC surface; the rest of
+  // the pipeline assumes admissible state. Without projection the
+  // plastic-geostatic phase has to correct both yield and equilibrium
+  // simultaneously and stalls on weak shallow soils on sloping terrain.
+  const projectInadmissibleOntoMc = options?.constitutiveModel === 'mc-plastic';
+  const seedOptions = projectInadmissibleOntoMc ? { projectInadmissibleOntoMc: true } : undefined;
+  let projectedSeedCount = 0;
+  let failedProjectionCount = 0;
+  // Bin projections by depth-below-terrain so the engineer can tell
+  // shallow free-surface activity (expected) from deep inadmissibility
+  // (configuration problem). Indexed by NEAR_SURFACE_DEPTH_BANDS.
+  const projectedBandCounts = new Array(NEAR_SURFACE_DEPTH_BANDS.length).fill(0);
+  const failedBandCounts = new Array(NEAR_SURFACE_DEPTH_BANDS.length).fill(0);
+  let deepProjectionCount = 0;
   elementCaches.forEach((elementCache) => {
     const elementIndex = elementCache.elementIndex;
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
@@ -1936,8 +2115,23 @@ function buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByReg
     (elementCache.integrationPoints || []).forEach((gp) => {
       const initialStress6 = initialField?.[gp.globalIndex];
       const committedState = Array.isArray(initialStress6)
-        ? seedMaterialPointStateFromEffectiveStress6(initialStress6, constitutive.materialParameters)
+        ? seedMaterialPointStateFromEffectiveStress6(initialStress6, constitutive.materialParameters, seedOptions)
         : seedMaterialPointStateFromInitialStress(initialStress6, constitutive.materialParameters);
+      if (committedState?.initialProjectedFromInadmissible || committedState?.initialProjectionFailed) {
+        const depth = model
+          ? depthBelowTerrainAt(model, Number(gp.x) || 0, Number(gp.y) || 0)
+          : Number.POSITIVE_INFINITY;
+        const band = bandIndexForDepth(depth);
+        if (committedState?.initialProjectedFromInadmissible) {
+          projectedSeedCount += 1;
+          projectedBandCounts[band] += 1;
+          if (depth > NEAR_SURFACE_DEPTH_BANDS[2].max) deepProjectionCount += 1;
+        }
+        if (committedState?.initialProjectionFailed) {
+          failedProjectionCount += 1;
+          failedBandCounts[band] += 1;
+        }
+      }
       materialPoints[gp.globalIndex] = createMaterialPoint({
         materialModel: constitutive.materialModel,
         materialParameters: constitutive.materialParameters,
@@ -1949,6 +2143,26 @@ function buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByReg
       });
     });
   });
+  if (projectedSeedCount > 0) {
+    const distribution = summarizePredictorProjectionByDepth(projectedBandCounts);
+    pushUniqueWarning(
+      warnings,
+      `Initial Mohr-Coulomb predictor projection: ${projectedSeedCount} integration point(s) had K0-controlled seed stresses outside the MC surface and were projected onto the exact yield surface before plastic-geostatic equilibration (depth distribution: ${distribution}). This is normal on sloping terrain and shallow weak-soil layers near the surface; deeper projections may indicate a configuration mismatch.`
+    );
+    if (deepProjectionCount > 0) {
+      pushUniqueWarning(
+        warnings,
+        `${deepProjectionCount} integration point(s) deeper than 1 m below the terrain required predictor projection. This is unusual for the K0 closure and may indicate inconsistent material parameters (c', phi', K0nc) or a strongly inclined region boundary that the flat-ground K0 predictor cannot represent. Review the material card and region polygons.`
+      );
+    }
+  }
+  if (failedProjectionCount > 0) {
+    const distribution = summarizePredictorProjectionByDepth(failedBandCounts);
+    pushUniqueWarning(
+      warnings,
+      `${failedProjectionCount} integration point(s) had inadmissible K0 predictor stresses that could not be projected onto the MC surface (depth distribution: ${distribution}). These points start outside yield and the plastic-geostatic phase will treat them as initially active. Check material parameters (c', phi'), the K0 value, and any user-supplied initial stress overrides.`
+    );
+  }
   return materialPoints;
 }
 
@@ -1992,13 +2206,24 @@ async function assembleNonlinearSystem(
   let maxEta = 0;
   let maxStrengthReserve = 0;
   const precomputedStrainFlat = backendElementStrain(elementCaches, UTrial);
+  // Element-kind dispatch for the backend internal-force path. We only
+  // attempt the flat-array round-trip when (a) every cache is the same
+  // kind (mixed meshes are not supported by the backend) and (b) the
+  // active backend advertises the kind. The stride is 3 floats per T3
+  // element (one Gauss point) and 9 per T6 element (three Gauss points,
+  // each carrying sxx, syy, txy).
+  const elementsKindUniform = elementCachesAreUniformKind(elementCaches);
+  const elementsKind = elementsKindUniform ? (elementCaches[0]?.kind === 't6' ? 't6' : 't3') : null;
   const usesBackendInternalForce = !!(
+    elementsKindUniform &&
     activeMatvecBackend &&
     typeof activeMatvecBackend.elementInternalForce === 'function' &&
-    elementCaches.every((elementCache) => elementCache?.kind === 't3')
+    backendSupportsKind(activeMatvecBackend, elementsKind)
   );
+  const stressFlatStride = elementsKind === 't6' ? 9 : 3;
+  const internalForceStride = elementsKind === 't6' ? 12 : 6;
   const stressContributionFlat = usesBackendInternalForce
-    ? new Float64Array(elementCaches.length * 3)
+    ? new Float64Array(elementCaches.length * stressFlatStride)
     : null;
 
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
@@ -2017,12 +2242,18 @@ async function assembleNonlinearSystem(
       const previousTrialActive = materialPoint.trialState?.currentlyMcActive === true;
       const materialParametersOverride = elementAnalysisOptions?.regionMaterialParametersByRegion?.get(materialPoint.regionIndex)
         || null;
-      const precomputedStrain = precomputedStrainFlat && elementCache.kind === 't3'
-        ? {
-            exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
-            eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
-            gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
-          }
+      const precomputedStrain = precomputedStrainFlat
+        ? (elementCache.kind === 't6'
+            ? {
+                exx: Number(precomputedStrainFlat[elementIndex * 9 + gp.gpIndex * 3]) || 0,
+                eyy: Number(precomputedStrainFlat[elementIndex * 9 + gp.gpIndex * 3 + 1]) || 0,
+                gxy: Number(precomputedStrainFlat[elementIndex * 9 + gp.gpIndex * 3 + 2]) || 0
+              }
+            : {
+                exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
+                eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
+                gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
+              })
         : null;
       const response = recoverIntegrationPointMaterialResponse(elementCache, gp, UTrial, materialPoint, {
         stage: stageLabel,
@@ -2067,12 +2298,16 @@ async function assembleNonlinearSystem(
       elementCache.kernel.elementStiffness(elementCache.corners, tangentsAtGp, elementCache.area, elementCache)
     );
 
-    if (stressContributionFlat && elementCache.kind === 't3') {
-      const stressContribution2D = stressContributionAtGp[0];
-      const stressBase = elementIndex * 3;
-      stressContributionFlat[stressBase] = Number(stressContribution2D.sxx) || 0;
-      stressContributionFlat[stressBase + 1] = Number(stressContribution2D.syy) || 0;
-      stressContributionFlat[stressBase + 2] = Number(stressContribution2D.txy) || 0;
+    if (stressContributionFlat) {
+      // T3: 1 GP × (sxx, syy, txy) = 3 floats; T6: 3 GPs × (sxx, syy, txy) = 9 floats.
+      const stressBase = elementIndex * stressFlatStride;
+      const gpCount = stressContributionAtGp.length;
+      for (let g = 0; g < gpCount; g += 1) {
+        const stress2D = stressContributionAtGp[g];
+        stressContributionFlat[stressBase + g * 3] = Number(stress2D?.sxx) || 0;
+        stressContributionFlat[stressBase + g * 3 + 1] = Number(stress2D?.syy) || 0;
+        stressContributionFlat[stressBase + g * 3 + 2] = Number(stress2D?.txy) || 0;
+      }
     } else {
       addVectorBlockToFreeRhs(
         internalForceFree,
@@ -2094,18 +2329,31 @@ async function assembleNonlinearSystem(
           internalForceFree,
           elementCaches[elementIndex].freeRowIndices,
           elementForceFlat,
-          elementIndex * 6
+          elementIndex * internalForceStride
         );
       }
     } else {
+      // Backend dropped out (precision escalation, kernel failure, etc.).
+      // Reconstruct the per-Gauss stress array from the flat buffer and
+      // call the CPU element kernel with the same per-element layout it
+      // expects (T3: one stress entry; T6: three).
       for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
         const elementCache = elementCaches[elementIndex];
-        const stressBase = elementIndex * 3;
-        addElementInternalForceContributionToFreeRhs(internalForceFree, elementCache, {
-          sxx: stressContributionFlat[stressBase],
-          syy: stressContributionFlat[stressBase + 1],
-          txy: stressContributionFlat[stressBase + 2]
-        });
+        const stressBase = elementIndex * stressFlatStride;
+        const gpCount = elementCache.numGaussPoints || (elementsKind === 't6' ? 3 : 1);
+        const stressAtGp = new Array(gpCount);
+        for (let g = 0; g < gpCount; g += 1) {
+          stressAtGp[g] = {
+            sxx: stressContributionFlat[stressBase + g * 3],
+            syy: stressContributionFlat[stressBase + g * 3 + 1],
+            txy: stressContributionFlat[stressBase + g * 3 + 2]
+          };
+        }
+        addVectorBlockToFreeRhs(
+          internalForceFree,
+          elementCache.freeRowIndices,
+          elementCache.kernel.elementInternalForce(elementCache.corners, stressAtGp, elementCache.area, elementCache)
+        );
       }
     }
   }
@@ -2667,7 +2915,25 @@ async function solveNonlinearPhase(
         break;
       }
 
-      const usesUnsymmetricSolver = mayNeedUnsymmetricSolver && (assembled.activeCount > 0);
+      // The unsymmetric scaled solver (GMRES with row/column scaling) is
+      // forced under any of the following conditions:
+      //   1. activeCount > 0 — any plastic Gauss point in the trial
+      //      assembly. The algorithmic tangent is then guaranteed
+      //      unsymmetric for non-associated MC.
+      //   2. The phase is plastic geostatic equilibration (initial-gravity
+      //      with mc-plastic). Even when an iteration's trial happens to
+      //      be elastic, this phase carries a large unbalanced predictor
+      //      residual and the committed plastic state can flip the
+      //      algorithmic tangent unsymmetric mid-line-search. CG with
+      //      Jacobi preconditioning is unreliable here regardless of
+      //      element type. T6 makes it much worse because mid-edge DOFs
+      //      have very different diagonal magnitudes from corner DOFs.
+      const isPlasticGeostatic = constitutiveModel === 'mc-plastic'
+        && phaseKind === 'initial-gravity';
+      const usesUnsymmetricSolver = mayNeedUnsymmetricSolver && (
+        assembled.activeCount > 0
+        || isPlasticGeostatic
+      );
       const linearSolve = usesUnsymmetricSolver
         ? (
             unsymmetricLinearSolverMode === 'bicgstab'
@@ -3031,10 +3297,35 @@ async function solveNonlinearPhase(
         loadStepHistory.push(stepRecord);
         continue;
       }
-      const effectiveGrowthFactor = constitutiveModel === 'mc-plastic' && stepRecord.peakActiveCount > 0
+      // The conservative `plasticGrowthFactor` cap exists for when the active
+      // set keeps flipping or the line search has to back off — both signs
+      // that an aggressive step could overshoot a yield branch transition.
+      // Once a service step converges in well under the target Newton count
+      // *and* the line search accepts at full scale, the step is in a
+      // quasi-steady plastic regime: the algorithmic tangent is locally
+      // accurate, and capping growth at 1.05/step strands the solve well
+      // before the target load (the adaptive formula would otherwise
+      // compute ~sqrt(target/iter) ≈ 1.7×). Detect this benign regime
+      // and fall back to the elastic growth limit; the adaptive formula
+      // still throttles naturally if iterations rise. Near a bearing
+      // limit, the rejection-cutback pair (harsh `Math.min` of default
+      // and line-search-derived factor) restores conservative stepping
+      // until the system settles again.
+      const benignPlasticStep = constitutiveModel === 'mc-plastic'
+        && stepRecord.peakActiveCount > 0
+        && stepRecord.iterations > 0
+        && stepRecord.iterations * 2 <= continuationTargetIterations
+        && (!stepRecord.lineSearchEvaluations
+            || (stepRecord.lineSearchAccepted
+                && (Number(stepRecord.lineSearchAcceptedScale) || 0) >= 0.999));
+      const effectiveGrowthFactor = constitutiveModel === 'mc-plastic'
+        && stepRecord.peakActiveCount > 0
+        && !benignPlasticStep
         ? Math.min(growthFactor, plasticGrowthFactor)
         : growthFactor;
-      const effectiveCutbackFactor = constitutiveModel === 'mc-plastic' && stepRecord.peakActiveCount > 0
+      const effectiveCutbackFactor = constitutiveModel === 'mc-plastic'
+        && stepRecord.peakActiveCount > 0
+        && !benignPlasticStep
         ? Math.min(cutbackFactor, plasticCutbackFactor)
         : cutbackFactor;
       const acceptedLineSearchScale = stepRecord.lineSearchAccepted
@@ -3095,10 +3386,21 @@ async function solveNonlinearPhase(
     const effectiveCutbackFactor = constitutiveModel === 'mc-plastic' && stepRecord.peakActiveCount > 0
       ? Math.min(cutbackFactor, plasticCutbackFactor)
       : cutbackFactor;
+    // The line-search-derived cutback (lineSearch.stepScale) is a Newton
+    // *direction* quality signal, not a load-magnitude one — using the
+    // raw 0.5^k backtrack as the load step factor over-corrects badly
+    // (e.g. a 3-backtrack scale of 0.125 cuts the load 8×, then needs
+    // ~21 accept steps to climb back, eating the load-step budget).
+    // Cap the cutback below at the engineering default
+    // `effectiveCutbackFactor` and above at 0.9; the line-search signal
+    // can soften the cutback (when the Newton step was nearly
+    // admissible) but never deepen it beyond the configured plastic
+    // cutback. Subsequent rejections compound naturally if the larger
+    // cutback was insufficient.
     const suggestedCutbackFactor = constitutiveModel === 'mc-plastic' &&
       Number.isFinite(Number(suggestedStepCutbackFactor)) &&
       Number(suggestedStepCutbackFactor) > 0
-      ? Math.min(effectiveCutbackFactor, Number(suggestedStepCutbackFactor))
+      ? Math.max(effectiveCutbackFactor, Math.min(0.9, Number(suggestedStepCutbackFactor)))
       : effectiveCutbackFactor;
     const proposedStepSize = actualStep * suggestedCutbackFactor;
     stepRecord.suggestedNextStepFactor = suggestedCutbackFactor;
@@ -3822,12 +4124,18 @@ function recoverElementResults(mesh, elementCaches, U, materialPoints, porePress
 
     for (const gp of elementCache.integrationPoints || []) {
       const materialPoint = materialPoints[gp.globalIndex];
-      const precomputedStrain = precomputedStrainFlat && elementCache.kind === 't3'
-        ? {
-            exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
-            eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
-            gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
-          }
+      const precomputedStrain = precomputedStrainFlat
+        ? (elementCache.kind === 't6'
+            ? {
+                exx: Number(precomputedStrainFlat[elementIndex * 9 + gp.gpIndex * 3]) || 0,
+                eyy: Number(precomputedStrainFlat[elementIndex * 9 + gp.gpIndex * 3 + 1]) || 0,
+                gxy: Number(precomputedStrainFlat[elementIndex * 9 + gp.gpIndex * 3 + 2]) || 0
+              }
+            : {
+                exx: Number(precomputedStrainFlat[elementIndex * 3]) || 0,
+                eyy: Number(precomputedStrainFlat[elementIndex * 3 + 1]) || 0,
+                gxy: Number(precomputedStrainFlat[elementIndex * 3 + 2]) || 0
+              })
         : null;
       const response = recoverIntegrationPointMaterialResponse(elementCache, gp, U, materialPoint, {
         stage: 'final-recovery'
@@ -4128,6 +4436,12 @@ export async function analyzeDeformationModel(input, onProgress = () => {}, runC
 async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runControl = null) {
   const startedAt = performance.now();
   activeBackendRuntimeWarnings = [];
+  // Per-run flags. The element kernels are disabled per element type if
+  // they produce a non-finite value during the run; the backend's matvec
+  // stays live regardless. Reset here so a previous run's T6 disable
+  // doesn't carry into a fresh analysis.
+  disabledElementKernels.t3 = false;
+  disabledElementKernels.t6 = false;
   const model = input?.model;
   if (!model?.terrain?.vertices?.length || !model?.regions?.length) {
     throw new Error('The deformation screen needs a valid Bishop section model first.');
@@ -4164,8 +4478,30 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     plasticLoadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.plasticLoadStepCutbackFactor) || 0.4, 0.1), 0.9),
     initialGravityPlasticLoadStepGrowthFactor: Math.max(Number(input?.options?.initialGravityPlasticLoadStepGrowthFactor) || 1.12, 1),
     initialGravityPlasticLoadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.initialGravityPlasticLoadStepCutbackFactor) || 0.5, 0.1), 0.9),
-    initialGravityMinLoadStep: Math.max(Number(input?.options?.initialGravityMinLoadStep) || (1 / 8192), 1e-5),
-    initialGravityMaxLoadSteps: Math.max(Math.round(Number(input?.options?.initialGravityMaxLoadSteps) || 512), 1),
+    // Resolution chain: explicit initial-gravity override → generic
+    // minLoadStep / maxLoadSteps → conservative initial-gravity defaults.
+    // The previous form short-circuited to the conservative default
+    // unconditionally, which silently overrode a user-supplied
+    // `minLoadStep: 0.0005` and let initial plastic equilibration grind
+    // for hundreds of tiny steps the user had asked the solver to skip.
+    initialGravityMinLoadStep: Math.max(
+      pickFiniteFallback(
+        input?.options?.initialGravityMinLoadStep,
+        input?.options?.minLoadStep,
+        1 / 8192
+      ),
+      1e-5
+    ),
+    initialGravityMaxLoadSteps: Math.max(
+      Math.round(
+        pickFiniteFallback(
+          input?.options?.initialGravityMaxLoadSteps,
+          input?.options?.maxLoadSteps,
+          512
+        )
+      ),
+      1
+    ),
     plasticLineSearchReductionFactor: Math.min(Math.max(Number(input?.options?.plasticLineSearchReductionFactor) || 0.5, 0.1), 0.95),
     plasticLineSearchMaxBacktracks: Math.max(Math.round(Number(input?.options?.plasticLineSearchMaxBacktracks) || 4), 1),
     plasticLineSearchMinScale: Math.min(Math.max(Number(input?.options?.plasticLineSearchMinScale) || (1 / 64), 1e-4), 1),
@@ -4204,14 +4540,13 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       : null,
     gpuMinDof: Math.max(Math.round(Number(input?.options?.gpuMinDof) || GPU_DEFAULT_MIN_DOF), 0)
   };
-  if (options.meshElementType === 't6' && options.useGpuAcceleration) {
-    pushUniqueWarning(
-      warnings,
-      'T6 deformation currently uses the CPU f64 element path because the mixed-precision element kernels are T3-only.'
-    );
-    options.useGpuAcceleration = false;
-    options.linearAlgebraBackend = null;
-  }
+  // T6 + GPU is now supported via the dedicated T6 element kernels. The
+  // backend probe (webgl-backend.js / cpu-f32-backend.js) reports
+  // supportsT6ElementKernels separately, so a partial degradation is
+  // possible if the GPU.js compilation of the T6 kernels fails on the
+  // current hardware — the per-call dispatcher in
+  // backendElement{Strain,InternalForce,ElasticStiffness} routes to CPU
+  // automatically in that case.
   const load = normalizeLoad(model, options, warnings, analysisType === 'deformation' ? 'required' : 'optional');
   addDomainExtentWarnings(model, load, warnings);
   const hasSurfaceLoad = !!load;
@@ -4237,6 +4572,9 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     },
     (progress) => onProgress(progress)
   );
+  // Surface mesh-build warnings (sanity guard, orphan diagnostics) to the
+  // run-level warnings list before any solver work begins.
+  (mesh?.warnings || []).forEach((message) => pushUniqueWarning(warnings, message));
 
   const ndof = 2 * mesh.nodes.length;
   const elementCaches = buildDeformationElementCaches(mesh);
@@ -4310,8 +4648,10 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     }
     const initialPorePressure = porePressureSum / gpCount;
     const gammaBulk = gammaSum / gpCount;
-    if (elasticStiffnessFlat && elementCache.kind === 't3') {
-      addMatrixBlockFlat(rows, elementCache.dofs, elasticStiffnessFlat, elementIndex * 36);
+    if (elasticStiffnessFlat) {
+      // T3: 6×6 = 36 floats per element; T6: 12×12 = 144.
+      const stiffnessStride = elementCache.kind === 't6' ? 144 : 36;
+      addMatrixBlockFlat(rows, elementCache.dofs, elasticStiffnessFlat, elementIndex * stiffnessStride);
     } else {
       addMatrixBlock(
         rows,
@@ -4369,7 +4709,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   );
   const wantsPlasticInitialEquilibrium = options.initialStressMode === 'plastic-geostatic';
   const canRunPlasticInitialEquilibrium = wantsPlasticInitialEquilibrium && options.constitutiveModel === 'mc-plastic';
-  const materialPoints = buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByRegion, geostatic.initialField, options, warnings);
+  const materialPoints = buildElementMaterialPoints(mesh, elementCaches, regionConstitutiveByRegion, geostatic.initialField, options, warnings, model);
   if (wantsPlasticInitialEquilibrium && !canRunPlasticInitialEquilibrium) {
     pushUniqueWarning(
       warnings,
@@ -4848,10 +5188,25 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
         precisionMode: activeBackendInfo?.precisionMode || activeMatvecBackend?.precisionMode || null,
         maxTextureSize: activeBackendInfo?.maxTextureSize || null,
         supportsElementKernels: activeBackendInfo?.supportsElementKernels === true,
+        // Per-element-type capability flags: the WebGL probe runs a tiny
+        // kernel for each, so a hardware quirk that breaks T6 (or T3) on
+        // a specific GPU is reported here without disabling the other.
+        supportsT3ElementKernels: activeBackendInfo?.supportsT3ElementKernels !== false,
+        supportsT6ElementKernels: activeBackendInfo?.supportsT6ElementKernels !== false,
+        // True iff the active backend's element kernels are actually
+        // engaged for this run's element type. The UI surfaces this so
+        // the user can see at a glance whether T6 GPU acceleration is
+        // live (vs. e.g. silently degraded to CPU because the per-kernel
+        // sanity probe failed on the user's hardware, or runtime
+        // disabled mid-run after a non-finite value).
+        elementKernelsActive: !!activeMatvecBackend
+          && backendSupportsKind(activeMatvecBackend, mesh.elementType === 't6' ? 't6' : 't3')
+          && !disabledElementKernels[mesh.elementType === 't6' ? 't6' : 't3'],
         supportsDoubleSingle: activeBackendInfo?.supportsDoubleSingle === true,
         failedFrom: activeBackendInfo?.failedFrom || null,
         failedOperation: activeBackendInfo?.failedOperation || null,
         freeDofCount: freeDofs.length,
+        elementType: mesh.elementType === 't6' ? 't6' : 't3',
         residualRefreshInterval: backendRequiresResidualRefresh() ? backendResidualRefreshInterval() : 0
       }
     },

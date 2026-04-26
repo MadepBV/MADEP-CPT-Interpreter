@@ -325,7 +325,7 @@ export async function buildDeformationMesh(model, regions, options, onProgress =
 
   const { triangleOutput, attempt, pslg } = await triangulateMechanicalPslg(model, regions, options, onProgress);
   const elementType = String(options?.meshElementType || '').toLowerCase() === 't6' ? 't6' : 't3';
-  return buildSectionMesh({
+  const mesh = buildSectionMesh({
     triangleOutput,
     pslg,
     regions,
@@ -337,4 +337,60 @@ export async function buildDeformationMesh(model, regions, options, onProgress =
     purpose: 'deformation',
     elementType
   });
+  // Mesh sanity guard. The PSLG segment-collinearity bug previously caused
+  // Triangle to insert orders of magnitude too many Steiner points on
+  // sloping terrain at certain mesh target areas. Even after the
+  // length-normalised pointOnSegment fix and the collinear-overlap dedup,
+  // we still want a runtime warning if the produced mesh is materially
+  // larger than the requested target. The check compares the
+  // mean-element-area to the requested target_area; modest oversampling
+  // is normal (Triangle inserts Steiner points to satisfy quality), but
+  // a 10× overshoot or sliver-dominated distribution is suspect.
+  attachMeshSanityWarnings(mesh, options, attempt);
+  return mesh;
+}
+
+function attachMeshSanityWarnings(mesh, options, attempt) {
+  if (!mesh) return;
+  const requestedArea = Math.max(
+    Number(options?.meshTargetArea ?? attempt?.area) || 0.5,
+    0.01
+  );
+  const meanArea = Number(mesh?.meshStats?.meanTriangleArea) || 0;
+  const triangles = Number(mesh?.meshStats?.triangles) || 0;
+  const nodes = Number(mesh?.meshStats?.nodes) || 0;
+  const elementType = mesh?.elementType || 't3';
+  const messages = Array.isArray(mesh?.warnings) ? mesh.warnings : (mesh.warnings = []);
+
+  // Triangle's quality-driven refinement legitimately produces meanArea
+  // around 30-70% of the requested target. Below 10% is suspect.
+  if (meanArea > 0 && requestedArea > 0 && meanArea < requestedArea * 0.1) {
+    messages.push(
+      `Mesh sanity: actual mean triangle area ${meanArea.toFixed(4)} m² is far below the requested target ${requestedArea.toFixed(2)} m² (${(100 * meanArea / requestedArea).toFixed(1)}%). The triangulation may have over-refined due to nearly overlapping PSLG constraint segments. Consider increasing the mesh target area or reviewing region boundary geometry.`
+    );
+  }
+
+  // T6 explodes node count vs T3 by roughly a factor of 4 on a uniform
+  // mesh (each edge gets a midpoint). A node-to-triangle ratio above 6
+  // is unusual and suggests orphaned/under-utilized Steiner points.
+  const nodesPerTriangle = triangles > 0 ? nodes / triangles : 0;
+  const expectedRatio = elementType === 't6' ? 6 : 3;
+  if (nodesPerTriangle > expectedRatio * 1.5) {
+    messages.push(
+      `Mesh sanity: ${nodes} nodes for ${triangles} ${elementType.toUpperCase()} triangles (${nodesPerTriangle.toFixed(2)} per triangle vs ${expectedRatio} expected). The mesh likely contains orphaned Steiner points from a degenerate constraint-segment configuration.`
+    );
+  }
+
+  // Free-DOF guard for T6. With the default size gate (1500 free DOFs),
+  // a 5000-element T6 mesh easily exceeds 30,000 free DOFs. Above 50,000
+  // the solver becomes uncomfortable on a single browser thread; flag it
+  // so the engineer can choose a coarser mesh or switch to T3.
+  if (elementType === 't6') {
+    const approxFreeDofs = 2 * nodes; // upper bound; constrained DOFs subtract a small fraction
+    if (approxFreeDofs > 50000) {
+      messages.push(
+        `T6 mesh has ~${approxFreeDofs.toLocaleString()} displacement DOFs. The solver will run, but may be very slow on a coarse-mesh target. Consider increasing meshTargetArea, or running T3 first to validate the engineering setup before refining.`
+      );
+    }
+  }
 }

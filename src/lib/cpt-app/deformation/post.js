@@ -168,11 +168,17 @@ export function mohrCoulombIndicator(principal, material) {
     ? Number(material.yieldTolerance)
     : Math.max(1e-8 * Math.max(Math.abs(s1), Math.abs(s3), c, 100), 1e-9);
 
-  if (s3 <= -sigmaTAllow + tensionTolerance) {
+  // T3 = -s3 - sigmaTAllow. Strict violation requires T3 > +tol, i.e.
+  // s3 < -sigmaTAllow - tol. Boundary is |T3| <= tol. Equality of the
+  // cut-off (T3 ≈ 0) is admissible — see the matching three-regime split
+  // in mohrCoulombIndicator3D in material-models.js.
+  if (s3 < -sigmaTAllow - tensionTolerance) {
     return {
       F: Number.POSITIVE_INFINITY,
       eta: Number.POSITIVE_INFINITY,
-      state: 'tension-cutoff'
+      state: 'tension-cutoff',
+      tensionViolation: true,
+      tensionBoundary: false
     };
   }
 
@@ -180,10 +186,15 @@ export function mohrCoulombIndicator(principal, material) {
   const denom = Math.max(rawDenom, 1e-6);
   const F = (s1 - s3) - (s1 + s3) * Math.sin(phi) - 2 * c * Math.cos(phi);
   const eta = (s1 - s3) / denom;
+  const onTensionBoundary = s3 <= -sigmaTAllow + tensionTolerance;
 
   return {
     F,
     eta,
-    state: eta >= 1 ? 'mc-yield' : 'elastic'
+    state: eta >= 1
+      ? 'mc-yield'
+      : (onTensionBoundary ? 'tension-boundary' : 'elastic'),
+    tensionViolation: false,
+    tensionBoundary: onTensionBoundary
   };
 }

@@ -24,10 +24,37 @@ import {
   elementStrainReference,
   ensureElementKernelBuffer
 } from './elements.js';
+import {
+  T6_ELEMENT_FORCE_STRIDE,
+  T6_ELEMENT_STIFFNESS_STRIDE,
+  T6_ELEMENT_STRAIN_STRIDE,
+  T6_ELEMENT_TANGENT_STRIDE_PER_GP,
+  elementElasticStiffnessReferenceT6,
+  elementInternalForceReferenceT6,
+  elementStrainReferenceT6,
+  ensureElementKernelBufferT6
+} from './elements-t6.js';
+
+function elementCachesKindFromCache(elementCaches) {
+  return elementCaches?.[0]?.kind === 't6' ? 't6' : 't3';
+}
 import { createFloat32PairArrays, fillFloat32PairArrays } from './double-single.js';
 import { loadGpuJs, newProbeCanvas } from './probe.js';
 
-const GPU_MAX_PADDING_RATIO = 2.0;
+// ELLPACK padding ratio = flatLen / nnz. The f32 GPU matvec iterates
+// maxRowLen times per row regardless of the actual row length, so a
+// padding ratio of K means the kernel does K× the necessary FLOPs and
+// uploads K× the necessary memory.
+//
+// 2.0 was tuned for T3 (uniform valence). T6 has corner nodes with high
+// valence and mid-edge nodes with valence 2 (each mid-edge sits on
+// exactly two triangles), giving routine padding ratios of 2.5–3.0
+// without indicating any pathology. Even at 4× padding the f32 GPU
+// path still beats CPU f64 on the same matvec because the per-flop
+// cost is far lower; the guard exists to catch truly degenerate
+// configurations (one giant row in a tiny mesh, mesh corruption, etc.)
+// rather than to filter out the normal T6 connectivity pattern.
+const GPU_MAX_PADDING_RATIO = 4.0;
 const GPU_F32_RESIDUAL_REFRESH_INTERVAL = 25;
 const GPU_DOUBLE_SINGLE_RESIDUAL_REFRESH_INTERVAL = 10;
 
@@ -188,6 +215,115 @@ function buildElementElasticStiffnessKernel(gpu, flatLength) {
   });
 }
 
+// T6 kernels. T6 has 12 DOFs / element, 3 Gauss points, B is 3×12 per GP
+// (=36 floats per GP × 3 GP = 108 floats per element). Each kernel
+// computes one output value per (this.thread.x): the strain kernel
+// outputs (gp, component); the internal-force and stiffness kernels
+// sum over Gauss points internally so the host doesn't reduce. The
+// w·detJ scale is hard-coded as (1/6)·(2·area) per the 3-point rule.
+
+function buildElementStrainKernelT6(gpu, flatLength) {
+  return gpu.createKernel(function (bFlat, dofsFlat, displacement) {
+    const flatIndex = this.thread.x;
+    const elementIndex = Math.floor(flatIndex / 9.0);
+    const remainder = flatIndex - elementIndex * 9;
+    const gpIndex = Math.floor(remainder / 3.0);
+    const component = remainder - gpIndex * 3;
+
+    const bElementBase = elementIndex * 108;
+    const bGpBase = bElementBase + gpIndex * 36;
+    const bRowBase = bGpBase + component * 12;
+    const dofBase = elementIndex * 12;
+
+    let sum = 0.0;
+    for (let k = 0; k < 12; k++) {
+      sum += bFlat[bRowBase + k] * displacement[dofsFlat[dofBase + k]];
+    }
+    return sum;
+  }, {
+    output: [Math.max(flatLength, 1)],
+    pipeline: false,
+    precision: 'single',
+    optimizeFloatMemory: true,
+    loopMaxIterations: 12
+  });
+}
+
+function buildElementInternalForceKernelT6(gpu, flatLength) {
+  return gpu.createKernel(function (bFlat, areaFlat, stressFlat) {
+    const flatIndex = this.thread.x;
+    const elementIndex = Math.floor(flatIndex / 12.0);
+    const localDof = flatIndex - elementIndex * 12;
+    const bElementBase = elementIndex * 108;
+    const sigmaElementBase = elementIndex * 9;
+    const detJ = 2.0 * areaFlat[elementIndex];
+    const wDet = (1.0 / 6.0) * detJ;
+    let sum = 0.0;
+    for (let g = 0; g < 3; g++) {
+      const bGpBase = bElementBase + g * 36;
+      const sigmaBase = sigmaElementBase + g * 3;
+      const sxx = stressFlat[sigmaBase];
+      const syy = stressFlat[sigmaBase + 1];
+      const txy = stressFlat[sigmaBase + 2];
+      sum += wDet * (
+        bFlat[bGpBase + localDof] * sxx
+        + bFlat[bGpBase + 12 + localDof] * syy
+        + bFlat[bGpBase + 24 + localDof] * txy
+      );
+    }
+    return sum;
+  }, {
+    output: [Math.max(flatLength, 1)],
+    pipeline: false,
+    precision: 'single',
+    optimizeFloatMemory: true,
+    loopMaxIterations: 3
+  });
+}
+
+function buildElementElasticStiffnessKernelT6(gpu, flatLength) {
+  return gpu.createKernel(function (bFlat, areaFlat, tangentFlat, broadcastTangent) {
+    const flatIndex = this.thread.x;
+    const elementIndex = Math.floor(flatIndex / 144.0);
+    const localOffset = flatIndex - elementIndex * 144;
+    const i = Math.floor(localOffset / 12.0);
+    const j = localOffset - i * 12;
+
+    const bElementBase = elementIndex * 108;
+    const detJ = 2.0 * areaFlat[elementIndex];
+    const wDet = (1.0 / 6.0) * detJ;
+
+    let sum = 0.0;
+    for (let g = 0; g < 3; g++) {
+      const bGpBase = bElementBase + g * 36;
+      let dBase = 0.0;
+      if (broadcastTangent < 0.5) {
+        dBase = elementIndex * 27 + g * 9;
+      }
+
+      const bi0 = bFlat[bGpBase + i];
+      const bi1 = bFlat[bGpBase + 12 + i];
+      const bi2 = bFlat[bGpBase + 24 + i];
+      const bj0 = bFlat[bGpBase + j];
+      const bj1 = bFlat[bGpBase + 12 + j];
+      const bj2 = bFlat[bGpBase + 24 + j];
+
+      const db0 = tangentFlat[dBase    ] * bj0 + tangentFlat[dBase + 1] * bj1 + tangentFlat[dBase + 2] * bj2;
+      const db1 = tangentFlat[dBase + 3] * bj0 + tangentFlat[dBase + 4] * bj1 + tangentFlat[dBase + 5] * bj2;
+      const db2 = tangentFlat[dBase + 6] * bj0 + tangentFlat[dBase + 7] * bj1 + tangentFlat[dBase + 8] * bj2;
+
+      sum += wDet * (bi0 * db0 + bi1 * db1 + bi2 * db2);
+    }
+    return sum;
+  }, {
+    output: [Math.max(flatLength, 1)],
+    pipeline: false,
+    precision: 'single',
+    optimizeFloatMemory: true,
+    loopMaxIterations: 3
+  });
+}
+
 export async function tryCreateWebglBackend(setup = {}) {
   const {
     initialPrecisionMode = 'f32',
@@ -246,26 +382,38 @@ export async function tryCreateWebglBackend(setup = {}) {
   let vectorNarrowF32 = null;
   let vectorNarrowPair = null;
 
-  let elementBuffer = null;
-  let elementShapeKey = '';
-  let elementStrainKernel = null;
-  let elementInternalForceKernel = null;
-  let elementElasticStiffnessKernel = null;
+  let elementBufferT3 = null;
+  let elementShapeKeyT3 = '';
+  let elementStrainKernelT3 = null;
+  let elementInternalForceKernelT3 = null;
+  let elementElasticStiffnessKernelT3 = null;
+  let elementBufferT6 = null;
+  let elementShapeKeyT6 = '';
+  let elementStrainKernelT6 = null;
+  let elementInternalForceKernelT6 = null;
+  let elementElasticStiffnessKernelT6 = null;
   let elementDisplacementBuffer = null;
   let elementStressBuffer = null;
   let elementTangentBuffer = null;
+  let supportsT6ElementKernels = true;
 
   function disposeKernels() {
     destroyKernel(matvecKernelF32);
     destroyKernel(matvecKernelDoubleSingle);
-    destroyKernel(elementStrainKernel);
-    destroyKernel(elementInternalForceKernel);
-    destroyKernel(elementElasticStiffnessKernel);
+    destroyKernel(elementStrainKernelT3);
+    destroyKernel(elementInternalForceKernelT3);
+    destroyKernel(elementElasticStiffnessKernelT3);
+    destroyKernel(elementStrainKernelT6);
+    destroyKernel(elementInternalForceKernelT6);
+    destroyKernel(elementElasticStiffnessKernelT6);
     matvecKernelF32 = null;
     matvecKernelDoubleSingle = null;
-    elementStrainKernel = null;
-    elementInternalForceKernel = null;
-    elementElasticStiffnessKernel = null;
+    elementStrainKernelT3 = null;
+    elementInternalForceKernelT3 = null;
+    elementElasticStiffnessKernelT3 = null;
+    elementStrainKernelT6 = null;
+    elementInternalForceKernelT6 = null;
+    elementElasticStiffnessKernelT6 = null;
   }
 
   function ensureMatrixBuffer(rows) {
@@ -314,24 +462,44 @@ export async function tryCreateWebglBackend(setup = {}) {
     }
   }
 
-  function ensureElementBuffer(elementCaches) {
-    if (elementBuffer && elementBuffer.identityKey === elementCaches) return elementBuffer;
-    elementBuffer = ensureElementKernelBuffer(elementBuffer, elementCaches);
-    const elementCount = elementBuffer.elementCount;
-    checkTextureBudget('Element strain buffer', elementCount * ELEMENT_STRAIN_STRIDE, maxTextureSize);
-    checkTextureBudget('Element internal-force buffer', elementCount * ELEMENT_FORCE_STRIDE, maxTextureSize);
-    checkTextureBudget('Element stiffness buffer', elementCount * ELEMENT_STIFFNESS_STRIDE, maxTextureSize);
+  function ensureElementBufferT3(elementCaches) {
+    if (elementBufferT3 && elementBufferT3.identityKey === elementCaches) return elementBufferT3;
+    elementBufferT3 = ensureElementKernelBuffer(elementBufferT3, elementCaches);
+    const elementCount = elementBufferT3.elementCount;
+    checkTextureBudget('T3 element strain buffer', elementCount * ELEMENT_STRAIN_STRIDE, maxTextureSize);
+    checkTextureBudget('T3 element internal-force buffer', elementCount * ELEMENT_FORCE_STRIDE, maxTextureSize);
+    checkTextureBudget('T3 element stiffness buffer', elementCount * ELEMENT_STIFFNESS_STRIDE, maxTextureSize);
     const shapeKey = `${elementCount}`;
-    if (elementShapeKey !== shapeKey) {
-      destroyKernel(elementStrainKernel);
-      destroyKernel(elementInternalForceKernel);
-      destroyKernel(elementElasticStiffnessKernel);
-      elementStrainKernel = buildElementStrainKernel(gpu, elementCount * ELEMENT_STRAIN_STRIDE);
-      elementInternalForceKernel = buildElementInternalForceKernel(gpu, elementCount * ELEMENT_FORCE_STRIDE);
-      elementElasticStiffnessKernel = buildElementElasticStiffnessKernel(gpu, elementCount * ELEMENT_STIFFNESS_STRIDE);
-      elementShapeKey = shapeKey;
+    if (elementShapeKeyT3 !== shapeKey) {
+      destroyKernel(elementStrainKernelT3);
+      destroyKernel(elementInternalForceKernelT3);
+      destroyKernel(elementElasticStiffnessKernelT3);
+      elementStrainKernelT3 = buildElementStrainKernel(gpu, elementCount * ELEMENT_STRAIN_STRIDE);
+      elementInternalForceKernelT3 = buildElementInternalForceKernel(gpu, elementCount * ELEMENT_FORCE_STRIDE);
+      elementElasticStiffnessKernelT3 = buildElementElasticStiffnessKernel(gpu, elementCount * ELEMENT_STIFFNESS_STRIDE);
+      elementShapeKeyT3 = shapeKey;
     }
-    return elementBuffer;
+    return elementBufferT3;
+  }
+
+  function ensureElementBufferT6(elementCaches) {
+    if (elementBufferT6 && elementBufferT6.identityKey === elementCaches) return elementBufferT6;
+    elementBufferT6 = ensureElementKernelBufferT6(elementBufferT6, elementCaches);
+    const elementCount = elementBufferT6.elementCount;
+    checkTextureBudget('T6 element strain buffer', elementCount * T6_ELEMENT_STRAIN_STRIDE, maxTextureSize);
+    checkTextureBudget('T6 element internal-force buffer', elementCount * T6_ELEMENT_FORCE_STRIDE, maxTextureSize);
+    checkTextureBudget('T6 element stiffness buffer', elementCount * T6_ELEMENT_STIFFNESS_STRIDE, maxTextureSize);
+    const shapeKey = `${elementCount}`;
+    if (elementShapeKeyT6 !== shapeKey) {
+      destroyKernel(elementStrainKernelT6);
+      destroyKernel(elementInternalForceKernelT6);
+      destroyKernel(elementElasticStiffnessKernelT6);
+      elementStrainKernelT6 = buildElementStrainKernelT6(gpu, elementCount * T6_ELEMENT_STRAIN_STRIDE);
+      elementInternalForceKernelT6 = buildElementInternalForceKernelT6(gpu, elementCount * T6_ELEMENT_FORCE_STRIDE);
+      elementElasticStiffnessKernelT6 = buildElementElasticStiffnessKernelT6(gpu, elementCount * T6_ELEMENT_STIFFNESS_STRIDE);
+      elementShapeKeyT6 = shapeKey;
+    }
+    return elementBufferT6;
   }
 
   function ensureFloat32VectorBuffer(source, existing = null) {
@@ -378,30 +546,62 @@ export async function tryCreateWebglBackend(setup = {}) {
 
   function elementStrain(elementCaches, displacementVector) {
     if (!(elementCaches?.length > 0)) return new Float64Array(0);
-    const buffer = ensureElementBuffer(elementCaches);
+    const kind = elementCachesKindFromCache(elementCaches);
+    if (kind === 't6') {
+      const buffer = ensureElementBufferT6(elementCaches);
+      elementDisplacementBuffer = ensureFloat32VectorBuffer(displacementVector, elementDisplacementBuffer);
+      return normalizeKernelOutput(
+        elementStrainKernelT6(buffer.B, buffer.dofs, elementDisplacementBuffer),
+        buffer.elementCount * T6_ELEMENT_STRAIN_STRIDE
+      );
+    }
+    const buffer = ensureElementBufferT3(elementCaches);
     elementDisplacementBuffer = ensureFloat32VectorBuffer(displacementVector, elementDisplacementBuffer);
     return normalizeKernelOutput(
-      elementStrainKernel(buffer.B, buffer.dofs, elementDisplacementBuffer),
+      elementStrainKernelT3(buffer.B, buffer.dofs, elementDisplacementBuffer),
       buffer.elementCount * ELEMENT_STRAIN_STRIDE
     );
   }
 
   function elementInternalForce(elementCaches, stressFlat) {
     if (!(elementCaches?.length > 0)) return new Float64Array(0);
-    const buffer = ensureElementBuffer(elementCaches);
+    const kind = elementCachesKindFromCache(elementCaches);
+    if (kind === 't6') {
+      const buffer = ensureElementBufferT6(elementCaches);
+      elementStressBuffer = ensureFloat32VectorBuffer(stressFlat, elementStressBuffer);
+      return normalizeKernelOutput(
+        elementInternalForceKernelT6(buffer.B, buffer.area, elementStressBuffer),
+        buffer.elementCount * T6_ELEMENT_FORCE_STRIDE
+      );
+    }
+    const buffer = ensureElementBufferT3(elementCaches);
     elementStressBuffer = ensureFloat32VectorBuffer(stressFlat, elementStressBuffer);
     return normalizeKernelOutput(
-      elementInternalForceKernel(buffer.B, buffer.area, elementStressBuffer),
+      elementInternalForceKernelT3(buffer.B, buffer.area, elementStressBuffer),
       buffer.elementCount * ELEMENT_FORCE_STRIDE
     );
   }
 
   function elementElasticStiffness(elementCaches, tangentFlat) {
     if (!(elementCaches?.length > 0)) return new Float64Array(0);
-    const buffer = ensureElementBuffer(elementCaches);
+    const kind = elementCachesKindFromCache(elementCaches);
+    if (kind === 't6') {
+      const buffer = ensureElementBufferT6(elementCaches);
+      elementTangentBuffer = ensureFloat32VectorBuffer(tangentFlat, elementTangentBuffer);
+      return normalizeKernelOutput(
+        elementElasticStiffnessKernelT6(
+          buffer.B,
+          buffer.area,
+          elementTangentBuffer,
+          tangentFlat.length === T6_ELEMENT_TANGENT_STRIDE_PER_GP ? 1 : 0
+        ),
+        buffer.elementCount * T6_ELEMENT_STIFFNESS_STRIDE
+      );
+    }
+    const buffer = ensureElementBufferT3(elementCaches);
     elementTangentBuffer = ensureFloat32VectorBuffer(tangentFlat, elementTangentBuffer);
     return normalizeKernelOutput(
-      elementElasticStiffnessKernel(buffer.B, buffer.area, elementTangentBuffer, tangentFlat.length === 9 ? 1 : 0),
+      elementElasticStiffnessKernelT3(buffer.B, buffer.area, elementTangentBuffer, tangentFlat.length === 9 ? 1 : 0),
       buffer.elementCount * ELEMENT_STIFFNESS_STRIDE
     );
   }
@@ -426,7 +626,8 @@ export async function tryCreateWebglBackend(setup = {}) {
   function dispose() {
     disposeKernels();
     matrixBuffer = null;
-    elementBuffer = null;
+    elementBufferT3 = null;
+    elementBufferT6 = null;
     vectorNarrowF32 = null;
     vectorNarrowPair = null;
     elementDisplacementBuffer = null;
@@ -434,18 +635,26 @@ export async function tryCreateWebglBackend(setup = {}) {
     elementTangentBuffer = null;
     matrixShapeKey = '';
     matrixPrecisionKey = '';
-    elementShapeKey = '';
+    elementShapeKeyT3 = '';
+    elementShapeKeyT6 = '';
     try { gpu.destroy?.(); } catch { /* ignore */ }
   }
 
   try {
+    // 3×3 1D-Laplacian-like matrix
+    //   [[ 2,-1, 0],
+    //    [-1, 2,-1],
+    //    [ 0,-1, 2]]
+    // applied to x = [1, 2, 3] gives A·x = [0, 0, 4]. The interior row 1
+    // satisfies the second-difference identity (linear input → zero), and
+    // the outer rows give the 1D Laplacian boundary values.
     const sampleRows = [
       { indices: new Int32Array([0, 1]), values: new Float64Array([2, -1]), diagIndex: 0, diag: 2 },
       { indices: new Int32Array([0, 1, 2]), values: new Float64Array([-1, 2, -1]), diagIndex: 1, diag: 2 },
       { indices: new Int32Array([1, 2]), values: new Float64Array([-1, 2]), diagIndex: 1, diag: 2 }
     ];
     const got = matvec(sampleRows, new Float64Array([1, 2, 3]));
-    const expected = [0, 0, -1];
+    const expected = [0, 0, 4];
     for (let index = 0; index < expected.length; index += 1) {
       if (Math.abs(got[index] - expected[index]) > 1e-3) {
         dispose();
@@ -506,6 +715,66 @@ export async function tryCreateWebglBackend(setup = {}) {
       dispose();
       return { backend: null, reason: 'element-stiffness-kernel-mismatch' };
     }
+
+    // T6 sanity probe. Build a single-element T6 cache with corner-only B
+    // material (the integration weights and per-GP B-matrix come from
+    // element-t6.js itself via packElementKernelBufferT6). If the GPU
+    // kernel diverges from the CPU reference for any of the three
+    // outputs, mark T6 as unsupported on this backend; the solver then
+    // routes T6 calls to the CPU element path while keeping T3 GPU
+    // active. Mixed-element-type meshes are explicitly rejected at
+    // dispatch time, so the partial degradation is safe.
+    try {
+      const t6Caches = [{
+        kind: 't6',
+        corners: [
+          { x: 0, y: 0 },
+          { x: 1, y: 0 },
+          { x: 0, y: 1 }
+        ],
+        dofs: Int32Array.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+        area: 0.5
+      }];
+      const t6RefBuffer = ensureElementKernelBufferT6(null, t6Caches);
+      const t6Disp = new Float64Array([1, 0, 2, 0, 0, 1, 1.5, 0.25, -0.25, 0.5, 0.75, 0.5]);
+      const t6Stress = new Float64Array([1, 2, 0.5, 0.75, 1.25, -0.5, -0.25, 1, 0.25]);
+      const t6Tangent = new Float64Array([
+        2, 0.5, 0,
+        0.5, 3, 0,
+        0, 0, 1.5
+      ]);
+
+      const t6StrainGpu = elementStrain(t6Caches, t6Disp);
+      const t6StrainRef = elementStrainReferenceT6(t6RefBuffer, t6Disp);
+      for (let index = 0; index < t6StrainRef.length; index += 1) {
+        if (Math.abs(t6StrainGpu[index] - t6StrainRef[index]) > 1e-3) {
+          supportsT6ElementKernels = false;
+          break;
+        }
+      }
+      if (supportsT6ElementKernels) {
+        const t6ForceGpu = elementInternalForce(t6Caches, t6Stress);
+        const t6ForceRef = elementInternalForceReferenceT6(t6RefBuffer, t6Stress);
+        for (let index = 0; index < t6ForceRef.length; index += 1) {
+          if (Math.abs(t6ForceGpu[index] - t6ForceRef[index]) > 1e-3) {
+            supportsT6ElementKernels = false;
+            break;
+          }
+        }
+      }
+      if (supportsT6ElementKernels) {
+        const t6KeGpu = elementElasticStiffness(t6Caches, t6Tangent);
+        const t6KeRef = elementElasticStiffnessReferenceT6(t6RefBuffer, t6Tangent);
+        for (let index = 0; index < t6KeRef.length; index += 1) {
+          if (Math.abs(t6KeGpu[index] - t6KeRef[index]) > 1e-3) {
+            supportsT6ElementKernels = false;
+            break;
+          }
+        }
+      }
+    } catch {
+      supportsT6ElementKernels = false;
+    }
   } catch (error) {
     try { dispose(); } catch { /* ignore */ }
     return { backend: null, reason: `kernel-integration-test-threw:${error?.message || 'unknown'}` };
@@ -521,6 +790,8 @@ export async function tryCreateWebglBackend(setup = {}) {
       },
       supportsDoubleSingle: true,
       supportsElementKernels: true,
+      get supportsT3ElementKernels() { return true; },
+      get supportsT6ElementKernels() { return supportsT6ElementKernels; },
       requiresResidualRefresh: true,
       get precisionMode() { return precisionMode; },
       get residualRefreshInterval() { return residualRefreshInterval; },

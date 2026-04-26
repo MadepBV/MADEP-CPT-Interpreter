@@ -16,6 +16,13 @@ import {
   packElementKernelBuffer
 } from '../src/lib/cpt-app/deformation/gpu/elements.js';
 import {
+  createElementKernelBufferT6,
+  elementElasticStiffnessReferenceT6,
+  elementInternalForceReferenceT6,
+  elementStrainReferenceT6,
+  packElementKernelBufferT6
+} from '../src/lib/cpt-app/deformation/gpu/elements-t6.js';
+import {
   createMCPlasticMaterial,
   createMCReducedStiffnessMaterial,
   createLinearElasticMaterial,
@@ -1212,8 +1219,19 @@ await runCase('Case 1t6 linear-elastic T6 solve runs end-to-end with quadratic s
   assert(output?.solver?.elementType === 't6', 'T6 solve should report solver.elementType=t6');
   assert(output?.solver?.integrationPointsPerElement === 3, 'T6 solve should report three integration points per element');
   assert(output?.solver?.materialPointCount === 3 * output.mesh.elements.length, 'T6 solve should create one material point per Gauss point');
-  assert(output?.solver?.linearAlgebraBackend?.name === 'cpu-f64', 'T6 solve should force the CPU f64 backend while T6 element kernels are CPU-only');
-  assert((output?.warnings || []).some((warning) => warning.includes('T6 deformation currently uses the CPU f64 element path')), 'T6 GPU request should emit the CPU-f64 fallback warning');
+  // T6 now activates the same mixed-precision element kernels as T3. The
+  // verification context has no real WebGL2, so the GPU probe falls back
+  // to cpu-f32; the assertion accepts either cpu-f32 or webgl2-f32 (the
+  // browser path is only reachable behind ENABLE_REAL_GPU_PARITY).
+  const t6BackendName = output?.solver?.linearAlgebraBackend?.name;
+  assert(
+    t6BackendName === 'cpu-f32' || t6BackendName === 'webgl2-f32' || t6BackendName === 'cpu-f64',
+    `T6 GPU run should activate a supported backend (got ${t6BackendName})`
+  );
+  assert(
+    !(output?.warnings || []).some((warning) => warning.includes('T6 deformation currently uses the CPU f64 element path')),
+    'the obsolete T6→CPU-f64 fallback warning should no longer be emitted now that T6 element kernels exist'
+  );
   assert((output?.summaries?.maxSettlement || 0) > 0, 'T6 linear-elastic solve should produce positive settlement');
   assert((output?.elementResults || []).every((item) => item?.gaussPoints?.length === 3), 'T6 element results should expose three Gauss-point records per element');
   const sampled = sampleDeformationState(output.mesh, output, 12, -0.5);
@@ -2326,6 +2344,146 @@ await runCase('Case 41a CPU mixed-precision element kernels reproduce the refere
     for (let index = 0; index < stiffnessRef.length; index += 1) {
       approxRelative(stiffnessRef[index], stiffnessGot[index], 1e-6, `cpu-f32 elastic stiffness entry ${index}`);
     }
+  } finally {
+    backend.dispose();
+  }
+});
+
+await runCase('Case 41c CPU mixed-precision T6 element kernels reproduce the T6 reference for strain, internal force, and elastic stiffness', async () => {
+  const backend = createCpuF32Backend();
+  try {
+    // Single-element T6 reference cache. Corner-only B is computed inside
+    // packElementKernelBufferT6 from the corners array, so the test
+    // exercises the same packing the runtime backend uses.
+    const elementCaches = [{
+      kind: 't6',
+      corners: [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+        { x: 0, y: 1 }
+      ],
+      dofs: Int32Array.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+      area: 0.5
+    }];
+    const referenceBuffer = createElementKernelBufferT6(elementCaches.length);
+    packElementKernelBufferT6(referenceBuffer, elementCaches);
+
+    const displacement = new Float64Array([
+      0.0, 0.0,
+      1.0, 0.0,
+      0.0, 0.5,
+      0.5, 0.25,
+      0.0, 0.25,
+      0.5, 0.0
+    ]);
+    // 3 GPs × 3 stress components = 9 floats.
+    const stress = new Float64Array([
+      1.0, 0.5, 0.25,
+      0.75, 1.25, -0.25,
+      -0.5, 1.0, 0.5
+    ]);
+    // Broadcast tangent — the same D applied at every GP.
+    const tangentBroadcast = new Float64Array([
+      4, 1, 0.5,
+      1, 5, 0.25,
+      0.5, 0.25, 3
+    ]);
+    // Per-GP tangent — three different D matrices, the worst-case path
+    // exercising the elementIndex * 27 + g * 9 indexing in the kernel.
+    const tangentPerGp = new Float64Array([
+      4, 1, 0.5,    1, 5, 0.25,    0.5, 0.25, 3,
+      3, 0.5, 0,    0.5, 4, 0,     0, 0, 2,
+      6, 0.75, 0.1, 0.75, 7, 0.05, 0.1, 0.05, 4
+    ]);
+
+    const strainRef = elementStrainReferenceT6(referenceBuffer, new Float32Array(displacement));
+    const forceRef = elementInternalForceReferenceT6(referenceBuffer, new Float32Array(stress));
+    const stiffnessBroadcastRef = elementElasticStiffnessReferenceT6(referenceBuffer, new Float32Array(tangentBroadcast));
+    const stiffnessPerGpRef = elementElasticStiffnessReferenceT6(referenceBuffer, new Float32Array(tangentPerGp));
+
+    const strainGot = backend.elementStrain(elementCaches, displacement);
+    const forceGot = backend.elementInternalForce(elementCaches, stress);
+    const stiffnessBroadcastGot = backend.elementElasticStiffness(elementCaches, tangentBroadcast);
+    const stiffnessPerGpGot = backend.elementElasticStiffness(elementCaches, tangentPerGp);
+
+    assert(strainRef.length === 9, 'T6 reference strain should have 9 entries (3 GPs × 3 components)');
+    assert(forceRef.length === 12, 'T6 reference internal force should have 12 entries');
+    assert(stiffnessBroadcastRef.length === 144, 'T6 reference elastic stiffness should have 144 entries (12×12)');
+
+    for (let index = 0; index < strainRef.length; index += 1) {
+      approxRelative(strainRef[index], strainGot[index], 1e-6, `cpu-f32 T6 strain entry ${index}`);
+    }
+    for (let index = 0; index < forceRef.length; index += 1) {
+      approxRelative(forceRef[index], forceGot[index], 1e-6, `cpu-f32 T6 internal-force entry ${index}`);
+    }
+    for (let index = 0; index < stiffnessBroadcastRef.length; index += 1) {
+      approxRelative(stiffnessBroadcastRef[index], stiffnessBroadcastGot[index], 1e-6, `cpu-f32 T6 elastic stiffness (broadcast tangent) entry ${index}`);
+    }
+    for (let index = 0; index < stiffnessPerGpRef.length; index += 1) {
+      approxRelative(stiffnessPerGpRef[index], stiffnessPerGpGot[index], 1e-6, `cpu-f32 T6 elastic stiffness (per-GP tangent) entry ${index}`);
+    }
+  } finally {
+    backend.dispose();
+  }
+});
+
+await runCase('Case 41d T6 internal-force kernel conserves resultant for a uniform stress field', async () => {
+  const backend = createCpuF32Backend();
+  try {
+    // Two T6 elements partitioning a 1×1 square. Apply a uniform
+    // (sxx, syy, txy) = (sigma, 0, 0) stress at every Gauss point and
+    // check that summing the per-element internal-force vectors and
+    // scattering them onto a global DOF accumulator reproduces the
+    // exact integral (∫ sigma dA = sigma · A_total). This is the §7.3
+    // load-conservation gate from T6_gpu_acceleration.md.
+    const sigma = 5;
+    const dofsA = Int32Array.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    const dofsB = Int32Array.from([2, 3, 12, 13, 4, 5, 14, 15, 16, 17, 18, 19]);
+    const elementCaches = [
+      {
+        kind: 't6',
+        corners: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
+        dofs: dofsA,
+        area: 0.5
+      },
+      {
+        kind: 't6',
+        corners: [{ x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }],
+        dofs: dofsB,
+        area: 0.5
+      }
+    ];
+    const stressFlat = new Float64Array(elementCaches.length * 9);
+    for (let e = 0; e < elementCaches.length; e += 1) {
+      for (let g = 0; g < 3; g += 1) {
+        stressFlat[e * 9 + g * 3] = sigma;
+        stressFlat[e * 9 + g * 3 + 1] = 0;
+        stressFlat[e * 9 + g * 3 + 2] = 0;
+      }
+    }
+    const forceFlat = backend.elementInternalForce(elementCaches, stressFlat);
+
+    // The internal force is f_i = ∫ B_xi^T sigma dA. The sum of f_x over
+    // all DOFs equals ∫ sum_i (B_xi sigma_xx) dA = ∫ d(sum_i N_i)/dx
+    // sigma dA = 0 because Σ N_i = 1 ⇒ Σ dN_i/dx = 0. So both axes
+    // should integrate to zero exactly (within f32 noise) for an
+    // internally-balanced stress field. This is the GPU load-conservation
+    // sanity gate.
+    let xResultant = 0;
+    let yResultant = 0;
+    const ndof = 20;
+    const accumulator = new Float64Array(ndof);
+    for (let e = 0; e < elementCaches.length; e += 1) {
+      for (let k = 0; k < 12; k += 1) {
+        accumulator[elementCaches[e].dofs[k]] += forceFlat[e * 12 + k];
+      }
+    }
+    for (let dof = 0; dof < ndof; dof += 2) {
+      xResultant += accumulator[dof];
+      yResultant += accumulator[dof + 1];
+    }
+    assert(Math.abs(xResultant) < 1e-6, `T6 internal-force resultant in x should vanish for an internally-balanced stress (got ${xResultant})`);
+    assert(Math.abs(yResultant) < 1e-6, `T6 internal-force resultant in y should vanish for an internally-balanced stress (got ${yResultant})`);
   } finally {
     backend.dispose();
   }

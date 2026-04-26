@@ -10975,16 +10975,17 @@ function renderStage6BishopApp(){
   // Do not hard-disable the GPU request from the page-level preflight. The
   // deformation solve runs in a worker, and the solver has its own guarded
   // backend creation path with CPU fallback and a precise run-record reason.
-  const deformationGpuToggleDisabled = deformationMeshElementType === 't6';
-  const deformationGpuTooltipText = deformationMeshElementType === 't6'
-    ? 'T6 currently runs element assembly on the CPU f64 path because the mixed-precision element kernels are T3-only.'
-    : deformationGpuUnavailable
-      ? `GPU preflight did not pass in this page context. ${stage6BishopGpuProbeReasonLabel(deformationGpuProbe?.reason)} You can still request GPU; the worker will try again and fall back to CPU f64 if needed.`
-      : deformationGpuProbePending
-        ? 'Checking WebGL2 GPU availability for the deformation solver...'
-        : deformationGpuAvailable
-          ? `GPU acceleration is available (${stage6EscAttr(deformationGpuProbe?.mode || 'webgl2')}, ${stage6EscAttr(deformationGpuProbe?.context || 'context')}, max texture ${Number(deformationGpuProbe?.maxTextureSize || 0).toLocaleString()}).`
-          : 'GPU acceleration has not been probed yet.';
+  // T6 + GPU is now supported through the dedicated T6 element kernels;
+  // the worker probes them at backend creation and falls back per-call if
+  // the WebGL compilation fails on the user's hardware.
+  const deformationGpuToggleDisabled = false;
+  const deformationGpuTooltipText = deformationGpuUnavailable
+    ? `GPU preflight did not pass in this page context. ${stage6BishopGpuProbeReasonLabel(deformationGpuProbe?.reason)} You can still request GPU; the worker will try again and fall back to CPU f64 if needed.`
+    : deformationGpuProbePending
+      ? 'Checking WebGL2 GPU availability for the deformation solver...'
+      : deformationGpuAvailable
+        ? `GPU acceleration is available (${stage6EscAttr(deformationGpuProbe?.mode || 'webgl2')}, ${stage6EscAttr(deformationGpuProbe?.context || 'context')}, max texture ${Number(deformationGpuProbe?.maxTextureSize || 0).toLocaleString()}). T3 and T6 element kernels both run on the GPU.`
+        : 'GPU acceleration has not been probed yet.';
   const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
   const deformationTotalLoad = Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null;
@@ -11066,13 +11067,28 @@ function renderStage6BishopApp(){
     ? deformation.result.solver.peakActiveMcElements
     : null;
   const deformationBackendInfo = deformation.result?.solver?.linearAlgebraBackend || null;
+  const deformationBackendElementType = String(deformationBackendInfo?.elementType || '').toLowerCase() === 't6' ? 't6' : 't3';
+  const deformationBackendKernelsActive = deformationBackendInfo?.elementKernelsActive === true;
+  // Tag the label with the element-type kernel state so the user can
+  // immediately see (a) whether the matvec is on GPU and (b) whether the
+  // per-element kernels (strain, internal force, elastic stiffness) are
+  // also dispatched to the GPU for the active mesh element type. The
+  // matvec runs on the GPU regardless of element type whenever the
+  // backend is webgl2-*, but the element kernels are gated per kind via
+  // the per-kernel sanity probe, so the two states can diverge on
+  // hardware where the T6 kernel compilation fails.
+  const deformationBackendKernelTag = deformationBackendInfo
+    ? (deformationBackendKernelsActive
+        ? ` · ${deformationBackendElementType.toUpperCase()} element kernels active`
+        : ` · ${deformationBackendElementType.toUpperCase()} element kernels on CPU`)
+    : '';
   const deformationBackendLabel = deformationBackendInfo
     ? ((deformationBackendInfo.name === 'webgl2-f32' || deformationBackendInfo.name === 'webgl2-double-single')
-        ? `GPU (${deformationBackendInfo.precisionMode === 'double-single' ? 'WebGL2 double-single' : 'WebGL2 f32'}, refresh every ${Math.max(Number(deformationBackendInfo.residualRefreshInterval) || 0, 0)} iters)`
+        ? `GPU (${deformationBackendInfo.precisionMode === 'double-single' ? 'WebGL2 double-single' : 'WebGL2 f32'}, refresh every ${Math.max(Number(deformationBackendInfo.residualRefreshInterval) || 0, 0)} iters)${deformationBackendKernelTag}`
         : (deformationBackendInfo.name === 'cpu-f32' || deformationBackendInfo.name === 'cpu-double-single')
           ? (deformationBackendInfo.name === 'cpu-double-single'
-              ? 'CPU double-single (diagnostic mixed-precision path)'
-              : 'CPU f32 (diagnostic mixed-precision path)')
+              ? `CPU double-single (diagnostic mixed-precision path)${deformationBackendKernelTag}`
+              : `CPU f32 (diagnostic mixed-precision path)${deformationBackendKernelTag}`)
           : deformationBackendInfo.requested
             ? `CPU f64 (GPU requested but unavailable — ${deformationBackendInfo.reason || 'unknown reason'})`
             : 'CPU f64')

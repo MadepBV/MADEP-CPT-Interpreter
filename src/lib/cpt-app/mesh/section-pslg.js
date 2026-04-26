@@ -94,10 +94,27 @@ function segmentOrientation(a, b, c) {
 }
 
 function pointOnSegment(point, a, b, tol = GEOM_EPS) {
+  // Length-normalised perpendicular-distance test. The raw cross product
+  // (twice the signed area of the triangle a-b-point) scales with segment
+  // length, so a fixed `tol` on it forces an effective perpendicular
+  // tolerance of `tol / length`. On long sloped terrain segments (e.g. an
+  // 8 m terrain edge) that becomes ~1.3e-7 m — tighter than the 1e-6 m
+  // SNAP_DECIMALS rounding precision used everywhere else, so points that
+  // should sit on the segment after rounding fail the test. The split/
+  // dedup pipeline then treats two physically identical segments as
+  // distinct and Triangle inserts unbounded Steiner refinement to honour
+  // them, producing an exploded mesh on sloping terrain.
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const length = Math.hypot(abx, aby);
+  if (!(length > EPS)) {
+    return Math.hypot(point.x - a.x, point.y - a.y) <= tol;
+  }
   const cross = segmentOrientation(a, b, point);
-  if (Math.abs(cross) > tol) return false;
-  const dot = (point.x - a.x) * (point.x - b.x) + (point.y - a.y) * (point.y - b.y);
-  return dot <= tol;
+  if (Math.abs(cross) > tol * length) return false;
+  const t = ((point.x - a.x) * abx + (point.y - a.y) * aby) / (length * length);
+  const tolT = tol / length;
+  return t >= -tolT && t <= 1 + tolT;
 }
 
 function segmentIntersection(a, b, c, d, tol = GEOM_EPS) {
@@ -243,6 +260,7 @@ function dedupeSegmentsByPriority(segments) {
       segmentTargetLength: Math.min(...lengths)
     };
   };
+  // Primary dedup: identical-endpoint segments after rounding to SNAP_DECIMALS.
   const map = new Map();
   (segments || []).forEach((segment) => {
     const key = segmentKey(segment);
@@ -263,7 +281,76 @@ function dedupeSegmentsByPriority(segments) {
     }
     map.set(key, mergeRefinement(existing, segment));
   });
-  return [...map.values()];
+  // Secondary dedup: collinear-overlapping segments. After the primary
+  // dedup we may still hold pairs of segments that lie on the same line
+  // and overlap end-to-end, where one segment's endpoints sit on the
+  // other within the length-normalised pointOnSegment tolerance. These
+  // come from terrain segments paired with region polygon top edges that
+  // share the slope but were rounded onto slightly different x values
+  // before snap. Triangle would otherwise see them as two near-parallel
+  // constraints and refine catastrophically. Merge any such pair into a
+  // single longer segment whose endpoints span both inputs, keeping the
+  // higher priority's metadata and the tighter target length.
+  const merged = [...map.values()];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer: for (let i = 0; i < merged.length; i += 1) {
+      const a = merged[i];
+      if (!a) continue;
+      for (let j = i + 1; j < merged.length; j += 1) {
+        const b = merged[j];
+        if (!b) continue;
+        // Both endpoints of one on the other (each direction) and within
+        // GEOM_EPS perpendicular distance proves collinearity overlap.
+        const aOnB = pointOnSegment(a.a, b.a, b.b) || pointOnSegment(a.b, b.a, b.b);
+        const bOnA = pointOnSegment(b.a, a.a, a.b) || pointOnSegment(b.b, a.a, a.b);
+        if (!(aOnB && bOnA)) continue;
+        // Verify both segments are collinear by checking all four endpoint
+        // positions lie on the line through one of them.
+        if (!pointOnSegment(b.a, a.a, a.b) || !pointOnSegment(b.b, a.a, a.b)) {
+          if (!pointOnSegment(a.a, b.a, b.b) || !pointOnSegment(a.b, b.a, b.b)) continue;
+        }
+        // Pick the longer segment as the carrier; project all four endpoints
+        // onto it and take the extreme parameters.
+        const lenA2 = (a.b.x - a.a.x) ** 2 + (a.b.y - a.a.y) ** 2;
+        const lenB2 = (b.b.x - b.a.x) ** 2 + (b.b.y - b.a.y) ** 2;
+        const carrier = lenA2 >= lenB2 ? a : b;
+        const cx = carrier.b.x - carrier.a.x;
+        const cy = carrier.b.y - carrier.a.y;
+        const inv = 1 / (cx * cx + cy * cy);
+        const proj = (p) => (((p.x - carrier.a.x) * cx) + ((p.y - carrier.a.y) * cy)) * inv;
+        const ts = [0, 1, proj(a.a), proj(a.b), proj(b.a), proj(b.b)];
+        const tMin = Math.min(...ts);
+        const tMax = Math.max(...ts);
+        const newA = {
+          x: +lerp(carrier.a.x, carrier.b.x, tMin).toFixed(SNAP_DECIMALS),
+          y: +lerp(carrier.a.y, carrier.b.y, tMin).toFixed(SNAP_DECIMALS)
+        };
+        const newB = {
+          x: +lerp(carrier.a.x, carrier.b.x, tMax).toFixed(SNAP_DECIMALS),
+          y: +lerp(carrier.a.y, carrier.b.y, tMax).toFixed(SNAP_DECIMALS)
+        };
+        const winnerPriority = (a.priority || 0) >= (b.priority || 0) ? a : b;
+        const winnerMarker = (a.markerId || 0) <= (b.markerId || 0) ? a : b;
+        const survivor = {
+          ...mergeRefinement(winnerPriority, winnerMarker === winnerPriority ? a : b),
+          a: newA,
+          b: newB
+        };
+        merged[i] = survivor;
+        merged[j] = null;
+        changed = true;
+        break outer;
+      }
+    }
+    if (changed) {
+      for (let k = merged.length - 1; k >= 0; k -= 1) {
+        if (!merged[k]) merged.splice(k, 1);
+      }
+    }
+  }
+  return merged.filter(Boolean);
 }
 
 function pointKey(point) {

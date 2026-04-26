@@ -56,6 +56,8 @@ export async function createLinearAlgebraBackend(setup = {}, warnings = []) {
         precisionMode: backend.precisionMode,
         residualRefreshInterval: backend.residualRefreshInterval,
         supportsElementKernels: backend.supportsElementKernels === true,
+        supportsT3ElementKernels: backend.supportsT3ElementKernels !== false,
+        supportsT6ElementKernels: backend.supportsT6ElementKernels !== false,
         supportsDoubleSingle: backend.supportsDoubleSingle === true
       }
     };
@@ -73,6 +75,8 @@ export async function createLinearAlgebraBackend(setup = {}, warnings = []) {
         precisionMode: backend.precisionMode,
         residualRefreshInterval: backend.residualRefreshInterval,
         supportsElementKernels: backend.supportsElementKernels === true,
+        supportsT3ElementKernels: backend.supportsT3ElementKernels !== false,
+        supportsT6ElementKernels: backend.supportsT6ElementKernels !== false,
         supportsDoubleSingle: backend.supportsDoubleSingle === true
       }
     };
@@ -185,6 +189,8 @@ export async function createLinearAlgebraBackend(setup = {}, warnings = []) {
       precisionMode: created.backend.precisionMode || requestedPrecisionMode,
       residualRefreshInterval: created.backend.residualRefreshInterval || 0,
       supportsElementKernels: created.backend.supportsElementKernels === true,
+      supportsT3ElementKernels: created.backend.supportsT3ElementKernels !== false,
+      supportsT6ElementKernels: created.backend.supportsT6ElementKernels !== false,
       supportsDoubleSingle: created.backend.supportsDoubleSingle === true
     }
   };

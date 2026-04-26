@@ -2032,6 +2032,8 @@ export function createMaterialPointState(overrides = {}) {
     initialEtaMc: Number(source.initialEtaMc) || 0,
     initialDiagnosticYieldSurface: source.initialDiagnosticYieldSurface || YIELD_SURFACE_NONE,
     initialStateAdmissible: source.initialStateAdmissible !== false,
+    initialProjectedFromInadmissible: source.initialProjectedFromInadmissible === true,
+    initialProjectionFailed: source.initialProjectionFailed === true,
     equilibratedInitialStateAvailable: source.equilibratedInitialStateAvailable === true,
     equilibratedInitialFMc: Number(source.equilibratedInitialFMc) || 0,
     equilibratedInitialEtaMc: Number(source.equilibratedInitialEtaMc) || 0,
@@ -2139,12 +2141,30 @@ export function mohrCoulombIndicator3D(stress6, materialParameters) {
   const s3 = principal.s3;
   const surfaceValues = evaluateExactMcSurfaceValuesFromPrincipal([s1, s2, s3], materialParameters);
   const tensionTolerance = resolveYieldTolerance(materialParameters, { s1, s2, s3 });
+  const T3 = Number(surfaceValues?.T3) || 0;
 
-  if (useTensionCutoff && (Number(surfaceValues?.T3) || 0) >= -tensionTolerance) {
+  // Three regimes for the tension cut-off (compression-positive convention):
+  //   T3 = -s3 - sigma_tAllow
+  //   T3 >  +tol   strictly outside the cut-off  ->  tension VIOLATION (s3 too tensile)
+  //   |T3| <= tol  exactly on the cut-off        ->  tension BOUNDARY (admissible)
+  //   T3 <  -tol   inside the admissible region  ->  interior
+  //
+  // Free terrain surfaces with sigma_t = 0 sit at s3 ≈ 0, so T3 ≈ 0 is the
+  // physical at-rest state, not a failure. The previous condition
+  //   T3 >= -tol
+  // collapsed boundary and violation into one bucket and emitted F = eta = ∞,
+  // which made the seed admissibility check reject every shallow Gauss point
+  // along a free surface and forced the predictor-projection code to do work
+  // it should not have to do. Distinguishing the two regimes restores the
+  // standard Koiter cut-off semantics: only true violations (T3 > +tol) get
+  // the infinite-eta tag.
+  if (useTensionCutoff && T3 > tensionTolerance) {
     return {
       F: Number.POSITIVE_INFINITY,
       eta: Number.POSITIVE_INFINITY,
       state: 'tension-cutoff',
+      tensionViolation: true,
+      tensionBoundary: false,
       surfaceValues,
       ...principal
     };
@@ -2155,10 +2175,21 @@ export function mohrCoulombIndicator3D(stress6, materialParameters) {
   const F = (s1 - s3) - (s1 + s3) * Math.sin(phi) - 2 * c * Math.cos(phi);
   const eta = (s1 - s3) / denom;
 
+  // Tension boundary case: T3 within ±tol of zero. The state is admissible
+  // because the cut-off is satisfied by equality. Report shear-MC F and
+  // eta normally, and flag tensionBoundary so callers can tell apart from
+  // a genuinely interior point.
+  const onTensionBoundary = useTensionCutoff && T3 >= -tensionTolerance;
+  const stateLabel = F > 0
+    ? 'mc-yield'
+    : (onTensionBoundary ? 'tension-boundary' : 'elastic');
+
   return {
     F,
     eta,
-    state: F > 0 ? 'mc-yield' : 'elastic',
+    state: stateLabel,
+    tensionViolation: false,
+    tensionBoundary: onTensionBoundary,
     surfaceValues,
     ...principal
   };
@@ -2232,15 +2263,79 @@ function stampEquilibratedInitialAudit(state, materialParameters) {
   return next;
 }
 
-export function seedMaterialPointStateFromEffectiveStress6(initialEffectiveStress6, materialParameters) {
-  const effectiveStress6 = cloneVector6(initialEffectiveStress6);
-  const diagnostics = evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, materialParameters, null, {
+export function seedMaterialPointStateFromEffectiveStress6(
+  initialEffectiveStress6,
+  materialParameters,
+  options = {}
+) {
+  // The seed function preserves the supplied stress by default. Pass
+  // `{ projectInadmissibleOntoMc: true }` to project a K0-predictor
+  // stress onto the exact MC surface when it is inadmissible — see
+  // §"Predictor admissibility on sloping terrain" in the deformation
+  // theory chapter for why this is needed for plastic-geostatic
+  // equilibration on weak shallow soils.
+  const projectInadmissible = options?.projectInadmissibleOntoMc === true;
+
+  let effectiveStress6 = cloneVector6(initialEffectiveStress6);
+  let diagnostics = evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, materialParameters, null, {
     activeYieldSurface: YIELD_SURFACE_NONE,
     currentlyMcActive: false,
     hasEverExceededMc: false,
     hasExceededNow: false
   });
   const initialTolerance = resolveYieldTolerance(materialParameters, diagnostics.mc);
+  let admissible = (Number(diagnostics.fMcFinal) || 0) <= initialTolerance;
+
+  // Optional projection of an inadmissible predictor onto MC. The flat-
+  // ground K0 predictor (sigma_h = K0 sigma_v, tau = 0) is a proxy. On
+  // sloping terrain the at-rest stress state has nonzero shear on
+  // horizontal planes; the K0 predictor cannot reproduce it. Near the
+  // surface where p ≈ c cot phi the apex region is small and even
+  // modest predictor error puts the seed outside MC. Without
+  // projection, plastic-geostatic equilibration starts from a state
+  // that violates yield AND fails equilibrium and has to correct both
+  // at once — which fails to converge on weak shallow soils.
+  //
+  // The closest admissible state to the K0 predictor is its return
+  // mapping onto MC using the elastic tangent at the seed. After
+  // projection the seed satisfies yield by construction and the
+  // equilibration phase only has to recover force balance — the well-
+  // posed problem the Newton/Krylov pipeline is designed for.
+  let projectedFromInadmissible = false;
+  let projectionFailed = false;
+  if (projectInadmissible && !admissible) {
+    try {
+      const elasticTangent6x6 = elasticMatrix6x6(materialParameters?.Emc, materialParameters?.nu);
+      const returnResult = solveExactMcActiveSetReturn(
+        effectiveStress6,
+        elasticTangent6x6,
+        materialParameters,
+        diagnostics.mc,
+        null
+      );
+      if (
+        returnResult?.converged
+        && Array.isArray(returnResult.stress6)
+        && returnResult.stress6.every(Number.isFinite)
+      ) {
+        effectiveStress6 = cloneVector6(returnResult.stress6);
+        diagnostics = evaluateMaterialPointDiagnosticsFromStress6(effectiveStress6, materialParameters, null, {
+          activeYieldSurface: YIELD_SURFACE_NONE,
+          currentlyMcActive: false,
+          hasEverExceededMc: false,
+          hasExceededNow: false
+        });
+        admissible = (Number(diagnostics.fMcFinal) || 0) <= initialTolerance;
+        projectedFromInadmissible = admissible;
+        if (!admissible) projectionFailed = true;
+      } else {
+        projectionFailed = true;
+      }
+    } catch {
+      projectionFailed = true;
+    }
+  }
+
   return createMaterialPointState({
     effectiveStress6,
     activeYieldSurface: YIELD_SURFACE_NONE,
@@ -2251,7 +2346,9 @@ export function seedMaterialPointStateFromEffectiveStress6(initialEffectiveStres
     initialFMc: diagnostics.fMcFinal,
     initialEtaMc: diagnostics.etaMcFinal,
     initialDiagnosticYieldSurface: diagnostics.diagnosticYieldSurface,
-    initialStateAdmissible: (Number(diagnostics.fMcFinal) || 0) <= initialTolerance,
+    initialStateAdmissible: admissible,
+    initialProjectedFromInadmissible: projectedFromInadmissible,
+    initialProjectionFailed: projectionFailed,
     sigmaY: materialParameters?.sigmaY
   });
 }
@@ -2332,6 +2429,8 @@ export function snapshotMaterialPointState(state = {}) {
     initialEtaMc: Number(source.initialEtaMc) || 0,
     initialDiagnosticYieldSurface: source.initialDiagnosticYieldSurface || YIELD_SURFACE_NONE,
     initialStateAdmissible: source.initialStateAdmissible !== false,
+    initialProjectedFromInadmissible: source.initialProjectedFromInadmissible === true,
+    initialProjectionFailed: source.initialProjectionFailed === true,
     equilibratedInitialStateAvailable: source.equilibratedInitialStateAvailable === true,
     equilibratedInitialFMc: Number(source.equilibratedInitialFMc) || 0,
     equilibratedInitialEtaMc: Number(source.equilibratedInitialEtaMc) || 0,
@@ -2609,7 +2708,16 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
           fMcTrial: Number(mcTrialDiagnostic?.F) || 0,
           etaMcTrial: Number.isFinite(Number(mcTrialDiagnostic?.eta)) ? Number(mcTrialDiagnostic.eta) : Number.POSITIVE_INFINITY,
           fMcFinal: Number(finalMc?.F) || 0,
-          etaMcFinal: Number.isFinite(Number(finalMc?.eta)) ? Number(finalMc.eta) : Number.POSITIVE_INFINITY,
+          // Suppress etaMcFinal when the accepted branch is tension-driven so
+          // downstream consumers can tell tension-governed final states from
+          // MC-governed ones. The new three-regime mohrCoulombIndicator3D
+          // returns a finite eta on the tension boundary (T3 ≈ 0) — that is
+          // correct for *trial* admissibility, but for the *final* diagnostic
+          // we want eta = ∞ when the tension cut-off is the controlling
+          // surface, matching the historical post-return semantics.
+          etaMcFinal: isTensionBranchKind(local.acceptedBranchKind || local.branchKind)
+            ? Number.POSITIVE_INFINITY
+            : (Number.isFinite(Number(finalMc?.eta)) ? Number(finalMc.eta) : Number.POSITIVE_INFINITY),
           exactYieldTrial: exactTrialMaxResidual,
           exactYieldFinal: Number(local?.yieldResidual) || 0,
           activeSurfaceIds: Array.isArray(local?.activeSurfaceIds) ? [...local.activeSurfaceIds] : [],

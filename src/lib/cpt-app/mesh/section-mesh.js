@@ -128,6 +128,54 @@ function addT6ElementEdges(edgeMidNodeByKey, element) {
   edgeMidNodeByKey.set(edgeKey(n1, n2), m12);
 }
 
+// Coordinate-keyed node index used as a robust fallback when the
+// corner-pair edgeMidNodeByKey map is incomplete because both triangles
+// adjacent to a constrained edge were dropped from the kept-elements
+// list (sliver area, centroid-outside-polygon false positive on sloping
+// terrain, or any Triangle/o2 edge-output quirk). Triangle places exactly
+// one node at the geometric midpoint of every triangle edge in o2 mode,
+// so a coordinate lookup is canonical and self-validating.
+const COORD_DECIMALS = 6;
+
+function coordKey(x, y) {
+  return `${Number(x).toFixed(COORD_DECIMALS)}:${Number(y).toFixed(COORD_DECIMALS)}`;
+}
+
+function buildNodeIndexByCoord(nodes) {
+  const index = new Map();
+  for (let id = 0; id < nodes.length; id += 1) {
+    const node = nodes[id];
+    if (!node) continue;
+    const key = coordKey(node.x, node.y);
+    if (!index.has(key)) index.set(key, id);
+  }
+  return index;
+}
+
+function lookupMidpointNodeId(nodeIndexByCoord, nodes, a, b) {
+  const mx = 0.5 * (a.x + b.x);
+  const my = 0.5 * (a.y + b.y);
+  // Try the canonical key first (covers the exact-rounding case for
+  // Triangle midpoints stored at toFixed(8)).
+  const direct = nodeIndexByCoord.get(coordKey(mx, my));
+  if (direct != null) return direct;
+  // Tolerant fallback: a midpoint computed from a/b at COORD_DECIMALS
+  // precision can differ from the stored midpoint by 1 ULP. Probe the
+  // 3x3 neighbourhood of the quantized cell.
+  const step = 10 ** -COORD_DECIMALS;
+  for (let dx = -1; dx <= 1; dx += 1) {
+    for (let dy = -1; dy <= 1; dy += 1) {
+      if (dx === 0 && dy === 0) continue;
+      const id = nodeIndexByCoord.get(coordKey(mx + dx * step, my + dy * step));
+      if (id == null) continue;
+      const node = nodes[id];
+      if (!node) continue;
+      if (Math.hypot(node.x - mx, node.y - my) <= 5e-6) return id;
+    }
+  }
+  return null;
+}
+
 function validateT6Midpoint(nodes, midNodeId, leftNodeId, rightNodeId, elementIndex, localIndex) {
   const mid = nodes[midNodeId];
   const left = nodes[leftNodeId];
@@ -153,7 +201,15 @@ function validateT6Element(nodes, element, elementIndex) {
   validateT6Midpoint(nodes, element[5], element[0], element[1], elementIndex, 5);
 }
 
-function buildConstraintEdges(nodes, triangleOutput, markerInfoById, elementType = 't3', edgeMidNodeByKey = null) {
+function buildConstraintEdges(
+  nodes,
+  triangleOutput,
+  markerInfoById,
+  elementType = 't3',
+  edgeMidNodeByKey = null,
+  nodeIndexByCoord = null,
+  diagnostics = null
+) {
   const out = [];
   const edges = triangleOutput?.edgelist || [];
   const markers = triangleOutput?.edgemarkerlist || [];
@@ -168,9 +224,30 @@ function buildConstraintEdges(nodes, triangleOutput, markerInfoById, elementType
     const a = nodes[n1];
     const b = nodes[n2];
     if (!a || !b || !(dist(a, b) > GEOM_EPS)) continue;
-    const nMid = elementType === 't6' ? edgeMidNodeByKey?.get(edgeKey(n1, n2)) : null;
-    if (elementType === 't6' && !Number.isInteger(nMid)) {
-      throw new Error('T6 boundary edge has no mid-edge node. The constrained Triangle edge was not found in the element edge map.');
+
+    let nMid = null;
+    if (elementType === 't6') {
+      // Primary lookup: the corner-pair index built from kept elements.
+      const fromMap = edgeMidNodeByKey?.get(edgeKey(n1, n2));
+      if (Number.isInteger(fromMap)) {
+        nMid = fromMap;
+      } else if (nodeIndexByCoord) {
+        // Fallback: geometric midpoint search. Triangle emits exactly one
+        // node at the midpoint of every triangle edge under `o2`, so this
+        // succeeds even if both adjacent triangles were dropped from the
+        // kept-elements list (e.g. by the centroid-in-polygon test on
+        // sloping terrain or by the area>eps sliver guard).
+        const fromCoord = lookupMidpointNodeId(nodeIndexByCoord, nodes, a, b);
+        if (Number.isInteger(fromCoord)) {
+          nMid = fromCoord;
+          if (diagnostics) diagnostics.recoveredMidNodeCount += 1;
+        }
+      }
+      if (!Number.isInteger(nMid)) {
+        throw new Error(
+          `T6 boundary edge between corners ${n1} (${a.x.toFixed(4)}, ${a.y.toFixed(4)}) and ${n2} (${b.x.toFixed(4)}, ${b.y.toFixed(4)}) has no mid-edge node. The constrained Triangle edge was not found in the element edge map and no node exists at the geometric midpoint.`
+        );
+      }
     }
     out.push({
       n1,
@@ -296,7 +373,17 @@ export function buildSectionMesh({
       midEdgeNodeIds.add(element[5]);
     });
   }
-  const constraintEdges = buildConstraintEdges(nodes, triangleOutput, pslg.markerInfoById, resolvedElementType, edgeMidNodeByKey);
+  const nodeIndexByCoord = resolvedElementType === 't6' ? buildNodeIndexByCoord(nodes) : null;
+  const constraintDiagnostics = { recoveredMidNodeCount: 0 };
+  const constraintEdges = buildConstraintEdges(
+    nodes,
+    triangleOutput,
+    pslg.markerInfoById,
+    resolvedElementType,
+    edgeMidNodeByKey,
+    nodeIndexByCoord,
+    constraintDiagnostics
+  );
 
   onProgress({
     stage: 'meshing',
@@ -324,7 +411,16 @@ export function buildSectionMesh({
       triangles: elements.length,
       elementType: resolvedElementType,
       meanTriangleArea: average(elementData.map((item) => item.area)),
-      triangleAttempt: attemptLabel || ''
+      triangleAttempt: attemptLabel || '',
+      // Number of T6 boundary edges whose midnode had to be recovered by
+      // geometric search because both adjacent kept elements had been
+      // dropped from the trianglelist (sliver area or
+      // centroid-outside-polygon false positive on sloping terrain).
+      // Non-zero values are not a correctness issue — every recovered
+      // midnode is verified at the geometric edge midpoint to within
+      // 5e-6 m — but it is a signal that the polygon-test tolerance or
+      // the mesh quality settings deserve a look.
+      t6RecoveredMidNodes: resolvedElementType === 't6' ? constraintDiagnostics.recoveredMidNodeCount : 0
     }
   };
 }
