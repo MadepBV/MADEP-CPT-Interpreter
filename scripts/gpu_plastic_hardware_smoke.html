@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GPU full plastic pipeline — hardware smoke</title>
+</head>
+<body>
+<pre id="log"></pre>
+<script type="module">
+const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; console.log(msg); };
+const fail = (reason, detail) => { window.__smokeResult = { ok: false, reason, detail }; log(`FAIL: ${reason} — ${detail}`); };
+const ok = (detail) => { window.__smokeResult = { ok: true, detail }; log(`PASS: ${JSON.stringify(detail)}`); };
+
+try {
+  if (!('gpu' in navigator)) { fail('no-webgpu', 'navigator.gpu undefined'); }
+  else {
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) { fail('no-adapter', 'requestAdapter returned null'); }
+    else {
+      const device = await adapter.requestDevice();
+      log('WebGPU device acquired.');
+
+      const { runFullDeformationAnalysisOnGpu } =
+        await import('/src/lib/cpt-app/deformation/gpu/gpu-controller.js');
+
+      // ---- Same 8-element T3 mesh from the elastic smoke test, with material
+      //      strong enough that the analysis remains effectively elastic
+      //      (verifies the plastic chain degrades to the elastic case).
+      const nodes = [];
+      for (let j = 0; j <= 2; j += 1) for (let i = 0; i <= 2; i += 1) nodes.push({ x: i, y: j });
+      const elements = [
+        [0,1,4],[0,4,3], [1,2,5],[1,5,4],
+        [3,4,7],[3,7,6], [4,5,8],[4,8,7]
+      ];
+      const cells = elements.map(()=>({regionIndex:0}));
+      const mesh = {
+        nodes, elements, cells, elementCell: elements.map((_,i)=>i), elementType: 't3',
+        elementData: elements.map(()=>({centroid:{x:0,y:0}}))
+      };
+      // Elastic-only material (cohesion huge → nothing yields).
+      const regionConstitutiveByRegion = new Map([[0, {
+        materialParameters: {
+          Emc: 20000, nu: 0.3, cEff: 1e9, phiEffDeg: 30, psiEffDeg: 0,
+          gamma: 18, gammaSat: 18, K0nc: 0.5, sigmaTAllow: 1e9
+        }
+      }]]);
+
+      // Build B-matrices and element caches inline (mirror element-t3.js).
+      function triangleSignedArea2(c){ return (c[1].x-c[0].x)*(c[2].y-c[0].y) - (c[2].x-c[0].x)*(c[1].y-c[0].y); }
+      function triangleArea(c){ return Math.abs(triangleSignedArea2(c))/2; }
+      function buildBMatrixT3(c){
+        const sa2 = triangleSignedArea2(c); const inv = 1/sa2;
+        const b1 = c[1].y-c[2].y, b2 = c[2].y-c[0].y, b3 = c[0].y-c[1].y;
+        const c1 = c[2].x-c[1].x, c2 = c[0].x-c[2].x, c3 = c[1].x-c[0].x;
+        return [
+          [b1*inv, 0, b2*inv, 0, b3*inv, 0],
+          [0, c1*inv, 0, c2*inv, 0, c3*inv],
+          [c1*inv, b1*inv, c2*inv, b2*inv, c3*inv, b3*inv]
+        ];
+      }
+      let gpCounter = 0;
+      const elementCaches = elements.map((elem, eIdx) => {
+        const corners = elem.map(nid => nodes[nid]);
+        const area = triangleArea(corners);
+        const B = buildBMatrixT3(corners);
+        const dofs = Int32Array.from([
+          2*elem[0], 2*elem[0]+1, 2*elem[1], 2*elem[1]+1, 2*elem[2], 2*elem[2]+1
+        ]);
+        const integrationPoints = [{
+          gpIndex: 0, globalIndex: gpCounter++, w: 1, areaWeightFactor: 1,
+          areaWeight: area, B, x: 0, y: 0
+        }];
+        return {
+          elementIndex: eIdx, cellIndex: eIdx, element: elem,
+          kind: 't3', kernel: null, localDofCount: 6, numGaussPoints: 1,
+          nodes: corners, corners, area, B, bMatricesPerGp: [B], useBBar: false,
+          centroid: { x: 0, y: 0 }, integrationPoints, dofs
+        };
+      });
+      elementCaches.integrationPointCount = 8;
+
+      const fixedDofSet = new Set([0,1,2,3,4,5]);
+      const ndof = 18;
+      const numGp = 8;
+
+      // Gravity load.
+      const gravityRhsFull = new Float64Array(ndof);
+      const gamma = 18;
+      for (const ec of elementCaches) {
+        const f = -gamma * ec.area / 3;
+        for (let k = 0; k < 3; k += 1) gravityRhsFull[ec.dofs[2*k+1]] += f;
+      }
+      const freeDofs = [];
+      for (let dof = 0; dof < ndof; dof += 1) if (!fixedDofSet.has(dof)) freeDofs.push(dof);
+      const gravityFree = new Float64Array(freeDofs.length);
+      for (let i = 0; i < freeDofs.length; i += 1) gravityFree[i] = gravityRhsFull[freeDofs[i]];
+
+      log('Running full GPU pipeline (no surface load, no safety, elastic regime)...');
+      const t0 = performance.now();
+      const r = await runFullDeformationAnalysisOnGpu({
+        device,
+        mesh, elementCaches, regionConstitutiveByRegion,
+        fixedDofSet,
+        gravityRhsFree: gravityFree,
+        surfaceLoadRhsFree: null,
+        sigmaInitialF64: new Float64Array(6 * numGp),
+        options: { useStagedSurfaceLoad: false, residualRelTol: 1e-4, residualAbsTol: 1e-3 }
+      });
+      const t1 = performance.now();
+      log(`Full pipeline: converged=${r.converged}, t=${(t1-t0).toFixed(1)} ms`);
+      if (!r.converged) { fail('full-pipeline-not-converged', r.reason || 'unknown'); }
+      else {
+        const topUy = r.uFreeF64[r.uFreeF64.length - 1];
+        log(`top-corner uy=${topUy.toExponential(4)}, sigma[0]=${r.sigmaCommittedF64[0].toExponential(2)}, sigma[1]=${r.sigmaCommittedF64[1].toExponential(2)}`);
+        // For elastic regime under gravity, top-corner uy should be negative
+        // and similar magnitude to the elastic-only test (~-1.6e-3).
+        if (topUy < -1e-5 && topUy > -1e-2) {
+          ok({ topCornerUy: topUy, sigmaXxAtGp0: r.sigmaCommittedF64[0], elapsedMs: t1 - t0 });
+        } else {
+          fail('plausibility-check', `topUy=${topUy}`);
+        }
+      }
+    }
+  }
+} catch (err) {
+  fail('exception', `${err?.name || 'Error'}: ${err?.message || err}`);
+  log(`stack: ${err?.stack || '(none)'}`);
+}
+</script>
+</body>
+</html>

@@ -35,6 +35,10 @@ import {
   KERNEL_SCATTER_FREE_RHS_WGSL, KERNEL_SCATTER_CSR_WGSL
 } from './wgsl/elements.js';
 import { KERNEL_MC_RETURN_WGSL } from './wgsl/mc-plastic.js';
+import {
+  KERNEL_STRAIN_TO_TRIAL_STRESS_WGSL,
+  KERNEL_COMMIT_STATE_WGSL
+} from './wgsl/plastic-trial.js';
 
 const WG_SIZE = 64;
 
@@ -125,6 +129,28 @@ const BGL_SCATTER_CSR = { entries: [
   { binding: 5, type: 'uniform' }
 ]};
 
+// Strain → trial stress (plastic mode):
+const BGL_PLASTIC_TRIAL = { entries: [
+  { binding: 0, type: 'read-only-storage' },  // strain (current ε)
+  { binding: 1, type: 'read-only-storage' },  // strainCommitted
+  { binding: 2, type: 'read-only-storage' },  // sigmaCommitted
+  { binding: 3, type: 'read-only-storage' },  // matIndex
+  { binding: 4, type: 'read-only-storage' },  // matParams
+  { binding: 5, type: 'storage' },            // sigmaTrialBuf
+  { binding: 6, type: 'uniform' }
+]};
+
+// Commit-state at end of accepted load step:
+const BGL_COMMIT_STATE = { entries: [
+  { binding: 0, type: 'read-only-storage' },  // sigmaReturned
+  { binding: 1, type: 'read-only-storage' },  // strain
+  { binding: 2, type: 'read-only-storage' },  // branchKind
+  { binding: 3, type: 'storage' },            // sigmaCommitted
+  { binding: 4, type: 'storage' },            // strainCommitted
+  { binding: 5, type: 'storage' },            // branchHistory
+  { binding: 6, type: 'uniform' }
+]};
+
 // =============================================================================
 // Per-pack assembly context.  Owns:
 //   - All compiled pipelines for the pack's element type.
@@ -165,7 +191,10 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
     force:      bgLayoutFromDescriptor(device, BGL_FORCE),
     stiff:      bgLayoutFromDescriptor(device, BGL_STIFF),
     scatterRhs: bgLayoutFromDescriptor(device, BGL_SCATTER_RHS),
-    scatterCsr: bgLayoutFromDescriptor(device, BGL_SCATTER_CSR)
+    scatterCsr: bgLayoutFromDescriptor(device, BGL_SCATTER_CSR),
+    plasticTrial: bgLayoutFromDescriptor(device, BGL_PLASTIC_TRIAL),
+    commitState:  bgLayoutFromDescriptor(device, BGL_COMMIT_STATE),
+    voigt6to3:    bgLayoutFromDescriptor(device, BGL_VOIGT6_TO_VOIGT3)
   };
   const pipes = {
     strain:     compilePipeline(device, `gpu-strain-${elementType}`,     strainWgsl,                  layouts.strain),
@@ -173,7 +202,10 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
     force:      compilePipeline(device, `gpu-force-${elementType}`,      forceWgsl,                   layouts.force),
     stiff:      compilePipeline(device, `gpu-stiff-${elementType}`,      stiffWgsl,                   layouts.stiff),
     scatterRhs: compilePipeline(device, 'gpu-scatter-free-rhs',          KERNEL_SCATTER_FREE_RHS_WGSL,layouts.scatterRhs),
-    scatterCsr: compilePipeline(device, 'gpu-scatter-csr',               KERNEL_SCATTER_CSR_WGSL,     layouts.scatterCsr)
+    scatterCsr: compilePipeline(device, 'gpu-scatter-csr',               KERNEL_SCATTER_CSR_WGSL,     layouts.scatterCsr),
+    plasticTrial: compilePipeline(device, 'gpu-plastic-trial',           KERNEL_STRAIN_TO_TRIAL_STRESS_WGSL, layouts.plasticTrial),
+    commitState:  compilePipeline(device, 'gpu-commit-state',            KERNEL_COMMIT_STATE_WGSL,    layouts.commitState),
+    voigt6to3:    compilePipeline(device, 'gpu-voigt6-to-3',             KERNEL_VOIGT6_TO_VOIGT3_STRESS_WGSL, layouts.voigt6to3)
   };
 
   // -------------------------------------------------------------------------
@@ -203,7 +235,21 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
     kOut:         8 * numLocalDofs * numLocalDofs * numElements,
     rhsFree:      8 * numFree,
     csrValHi:     4 * nnz,
-    csrValLo:     4 * nnz
+    csrValLo:     4 * nnz,
+    // Persistent material-point state (Step 1 of the full-plastic plan).
+    // sigmaCommitted: σ at last accepted load step (Voigt-6 DS).
+    // strainCommitted: ε_total at last accepted load step (Voigt-3 DS).
+    // branchHistory:  last accepted MC branch id (u32).
+    // uCommitted:     u at last accepted load step (DS, length numFree) — used
+    //                 by the residual-only re-pass during line search.
+    sigmaCommitted:    8 * 6 * numGp,
+    strainCommitted:   8 * 3 * numGp,
+    branchHistory:     4 * numGp,
+    uCommitted:        8 * numFree,
+    // Trial state and tangent in physical Voigt-3 (xx, yy, xy) — emitted by
+    // the MC kernel in plastic mode.
+    tangentVoigt3:     8 * 9 * numGp,
+    sigmaTrialBuf:     8 * 6 * numGp
   };
 
   const usageRO  = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
@@ -234,13 +280,22 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
     rhsFree:       device.createBuffer({ size: bytes.rhsFree,       usage: usageRW }),
     csrValHi:      device.createBuffer({ size: bytes.csrValHi,      usage: usageRW }),
     csrValLo:      device.createBuffer({ size: bytes.csrValLo,      usage: usageRW }),
+    // Persistent material-point state for the plastic Newton.
+    sigmaCommitted:  device.createBuffer({ size: bytes.sigmaCommitted,  usage: usageRW }),
+    strainCommitted: device.createBuffer({ size: bytes.strainCommitted, usage: usageRW }),
+    branchHistory:   device.createBuffer({ size: bytes.branchHistory,   usage: usageRW }),
+    uCommitted:      device.createBuffer({ size: bytes.uCommitted,      usage: usageRW }),
+    tangentVoigt3:   device.createBuffer({ size: bytes.tangentVoigt3,   usage: usageRW }),
+    sigmaTrialBuf:   device.createBuffer({ size: bytes.sigmaTrialBuf,   usage: usageRW }),
     // Uniforms.
     paramsStrain: device.createBuffer({ size: 32, usage: usageU }),
     paramsMc:     device.createBuffer({ size: 32, usage: usageU }),
     paramsForce:  device.createBuffer({ size: 32, usage: usageU }),
     paramsStiff:  device.createBuffer({ size: 32, usage: usageU }),
     paramsRhsScat:device.createBuffer({ size: 32, usage: usageU }),
-    paramsCsrScat:device.createBuffer({ size: 32, usage: usageU })
+    paramsCsrScat:device.createBuffer({ size: 32, usage: usageU }),
+    paramsTrial:  device.createBuffer({ size: 32, usage: usageU }),
+    paramsCommit: device.createBuffer({ size: 32, usage: usageU })
   };
 
   // -------------------------------------------------------------------------
@@ -270,6 +325,8 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
   writeU32Uniform(buffers.paramsStiff,  numElements);
   writeU32Uniform(buffers.paramsRhsScat,numFree);
   writeU32Uniform(buffers.paramsCsrScat,nnz);
+  writeU32Uniform(buffers.paramsTrial,  numGp);
+  writeU32Uniform(buffers.paramsCommit, numGp);
 
   return {
     device,
@@ -283,6 +340,123 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
       numWgGp, numWgElem, numWgElemStiff, numWgFree, numWgNnz
     }
   };
+}
+
+// =============================================================================
+// Committed-state lifecycle helpers.
+//
+// These manage the persistent material-point state buffers (σ_committed,
+// ε_committed, u_committed, branchHistory) without invoking any kernels —
+// the kernels write/read these buffers directly during normal assembly,
+// these helpers just seed/snapshot/restore them at phase boundaries.
+// =============================================================================
+
+// Zero out all committed state at the start of a fresh analysis.
+export function clearCommittedState(ctx) {
+  const { device, buffers, sizes, pack } = ctx;
+  const zeroSigma = new Float32Array(2 * 6 * sizes.numGp);
+  const zeroStrain = new Float32Array(2 * 3 * sizes.numGp);
+  const zeroBranch = new Uint32Array(sizes.numGp);
+  const zeroU = new Float32Array(2 * sizes.numFree);
+  device.queue.writeBuffer(buffers.sigmaCommitted, 0, zeroSigma);
+  device.queue.writeBuffer(buffers.strainCommitted, 0, zeroStrain);
+  device.queue.writeBuffer(buffers.branchHistory, 0, zeroBranch);
+  device.queue.writeBuffer(buffers.uCommitted, 0, zeroU);
+}
+
+// Seed σ_committed from a CPU-side Voigt-6 array (length 6 * numGp f64) —
+// used after K0 recovery to set the initial geostatic stress.
+export function uploadCommittedSigmaFromF64(ctx, sigmaF64) {
+  const { device, buffers, sizes } = ctx;
+  if (sigmaF64.length !== 6 * sizes.numGp) {
+    throw new Error(`uploadCommittedSigmaFromF64: expected 6*numGp=${6*sizes.numGp}, got ${sigmaF64.length}`);
+  }
+  const packed = new Float32Array(2 * sigmaF64.length);
+  for (let i = 0; i < sigmaF64.length; i += 1) {
+    const v = Number(sigmaF64[i]) || 0;
+    const hi = Math.fround(v);
+    packed[2 * i] = hi;
+    packed[2 * i + 1] = Math.fround(v - hi);
+  }
+  device.queue.writeBuffer(buffers.sigmaCommitted, 0, packed);
+}
+
+export function uploadCommittedSigmaFromDsArray(ctx, sigmaDsArray) {
+  // sigmaDsArray: Array of length 6*numGp, each entry [hi, lo].
+  const { device, buffers, sizes } = ctx;
+  if (sigmaDsArray.length !== 6 * sizes.numGp) {
+    throw new Error(`uploadCommittedSigmaFromDsArray: expected 6*numGp=${6*sizes.numGp}, got ${sigmaDsArray.length}`);
+  }
+  const packed = new Float32Array(2 * sigmaDsArray.length);
+  for (let i = 0; i < sigmaDsArray.length; i += 1) {
+    packed[2 * i] = sigmaDsArray[i][0];
+    packed[2 * i + 1] = sigmaDsArray[i][1];
+  }
+  device.queue.writeBuffer(buffers.sigmaCommitted, 0, packed);
+}
+
+// Snapshot committed state into a fresh GPU buffer (used by safety to save
+// the pre-safety reference state).  Returns { sigmaSnap, strainSnap, branchSnap, uSnap }.
+export async function snapshotCommittedState(ctx) {
+  const { device, buffers, sizes } = ctx;
+  const make = (size) => device.createBuffer({ size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+  const sigmaSnap  = make(8 * 6 * sizes.numGp);
+  const strainSnap = make(8 * 3 * sizes.numGp);
+  const branchSnap = make(4 * sizes.numGp);
+  const uSnap      = make(8 * sizes.numFree);
+  const enc = device.createCommandEncoder();
+  enc.copyBufferToBuffer(buffers.sigmaCommitted,  0, sigmaSnap,  0, 8 * 6 * sizes.numGp);
+  enc.copyBufferToBuffer(buffers.strainCommitted, 0, strainSnap, 0, 8 * 3 * sizes.numGp);
+  enc.copyBufferToBuffer(buffers.branchHistory,   0, branchSnap, 0, 4 * sizes.numGp);
+  enc.copyBufferToBuffer(buffers.uCommitted,      0, uSnap,      0, 8 * sizes.numFree);
+  device.queue.submit([enc.finish()]);
+  if (typeof device.queue.onSubmittedWorkDone === 'function') {
+    await device.queue.onSubmittedWorkDone();
+  }
+  return { sigmaSnap, strainSnap, branchSnap, uSnap };
+}
+
+// Restore from a previous snapshot.  Used by safety between ΣMsf trials.
+export async function restoreCommittedState(ctx, snapshot) {
+  const { device, buffers, sizes } = ctx;
+  const enc = device.createCommandEncoder();
+  enc.copyBufferToBuffer(snapshot.sigmaSnap,  0, buffers.sigmaCommitted,  0, 8 * 6 * sizes.numGp);
+  enc.copyBufferToBuffer(snapshot.strainSnap, 0, buffers.strainCommitted, 0, 8 * 3 * sizes.numGp);
+  enc.copyBufferToBuffer(snapshot.branchSnap, 0, buffers.branchHistory,   0, 4 * sizes.numGp);
+  enc.copyBufferToBuffer(snapshot.uSnap,      0, buffers.uCommitted,      0, 8 * sizes.numFree);
+  device.queue.submit([enc.finish()]);
+  if (typeof device.queue.onSubmittedWorkDone === 'function') {
+    await device.queue.onSubmittedWorkDone();
+  }
+}
+
+// Read back σ_committed as a flat Float64Array of length 6 * numGp.
+export async function readbackCommittedSigma(ctx) {
+  const { device, buffers, sizes } = ctx;
+  const out = device.createBuffer({ size: 8 * 6 * sizes.numGp, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  const enc = device.createCommandEncoder();
+  enc.copyBufferToBuffer(buffers.sigmaCommitted, 0, out, 0, 8 * 6 * sizes.numGp);
+  device.queue.submit([enc.finish()]);
+  await out.mapAsync(GPUMapMode.READ);
+  const packed = new Float32Array(out.getMappedRange().slice(0));
+  out.unmap(); out.destroy();
+  const f64 = new Float64Array(packed.length >> 1);
+  for (let i = 0; i < f64.length; i += 1) f64[i] = packed[2 * i] + packed[2 * i + 1];
+  return f64;
+}
+
+export async function readbackCommittedDisplacement(ctx) {
+  const { device, buffers, sizes } = ctx;
+  const out = device.createBuffer({ size: 8 * sizes.numFree, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  const enc = device.createCommandEncoder();
+  enc.copyBufferToBuffer(buffers.uCommitted, 0, out, 0, 8 * sizes.numFree);
+  device.queue.submit([enc.finish()]);
+  await out.mapAsync(GPUMapMode.READ);
+  const packed = new Float32Array(out.getMappedRange().slice(0));
+  out.unmap(); out.destroy();
+  const f64 = new Float64Array(packed.length >> 1);
+  for (let i = 0; i < f64.length; i += 1) f64[i] = packed[2 * i] + packed[2 * i + 1];
+  return f64;
 }
 
 // =============================================================================
@@ -315,6 +489,37 @@ function bge(binding, buffer) { return { binding, resource: { buffer } }; }
 // orchestration change, not a kernel change.
 // =============================================================================
 import { DS_WGSL } from './wgsl/ds.js';
+
+// =============================================================================
+// Voigt-6 → Voigt-3 plane-strain stress slicer.
+//
+// The MC return-mapping kernel emits σ_returned in Voigt-6 layout
+// (σxx, σyy, σzz, σxy, σyz, σxz).  The internal-force and stiffness kernels
+// consume σ in Voigt-3 (σxx, σyy, σxy).  This kernel slices off the in-plane
+// triple — one thread per Gauss point.
+// =============================================================================
+export const KERNEL_VOIGT6_TO_VOIGT3_STRESS_WGSL = /* wgsl */ `
+struct Voigt6to3Params { numGp: u32, _pad0: u32, _pad1: u32, _pad2: u32 };
+
+@group(0) @binding(0) var<storage, read>       sigma6: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> sigma3: array<vec2<f32>>;
+@group(0) @binding(2) var<uniform>             params: Voigt6to3Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let gp: u32 = gid.x;
+  if (gp >= params.numGp) { return; }
+  sigma3[gp * 3u + 0u] = sigma6[gp * 6u + 0u];   // σxx
+  sigma3[gp * 3u + 1u] = sigma6[gp * 6u + 1u];   // σyy
+  sigma3[gp * 3u + 2u] = sigma6[gp * 6u + 3u];   // σxy
+}
+`;
+
+const BGL_VOIGT6_TO_VOIGT3 = { entries: [
+  { binding: 0, type: 'read-only-storage' },
+  { binding: 1, type: 'storage' },
+  { binding: 2, type: 'uniform' }
+]};
 
 export const KERNEL_STRAIN_TO_STRESS_WGSL = /* wgsl */ `
 ${DS_WGSL}
@@ -428,6 +633,258 @@ export function recordResidualOnly(ctx, encoder) {
   pass.dispatchWorkgroups(sizes.numWgGp);
   pass.end();
   recordElasticForceTail(ctx, encoder);
+}
+
+// =============================================================================
+// PLASTIC mode recording.
+// strain → strain-to-trial-stress → MC return → voigt6→voigt3 → force →
+// stiffness → scatter free RHS → scatter CSR.
+//
+// All kernels in this chain use distinct uniform buffers; same encoder + one
+// submit is safe (no uniform aliasing).
+// =============================================================================
+export function recordResidualAndTangentPlastic(ctx, encoder) {
+  const { device, pipes, buffers, sizes } = ctx;
+  // 1. Strain.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.strain.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.strain.bgLayout, [
+      bge(0, buffers.uvec),
+      bge(1, buffers.bMatrices),
+      bge(2, buffers.dofMap),
+      bge(3, buffers.strain),
+      bge(4, buffers.paramsStrain)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgGp);
+    pass.end();
+  }
+  // 2. Strain → trial stress (Voigt-6).
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.plasticTrial.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.plasticTrial.bgLayout, [
+      bge(0, buffers.strain),
+      bge(1, buffers.strainCommitted),
+      bge(2, buffers.sigmaCommitted),
+      bge(3, buffers.matIndex),
+      bge(4, buffers.matParams),
+      bge(5, buffers.sigmaTrialBuf),
+      bge(6, buffers.paramsTrial)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgGp);
+    pass.end();
+  }
+  // 3. MC return mapping: σ_trial → σ_returned + tangentVoigt3 + branchKind.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.mc.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.mc.bgLayout, [
+      bge(0, buffers.sigmaTrialBuf),
+      bge(1, buffers.matIndex),
+      bge(2, buffers.matParams),
+      bge(3, buffers.sigmaReturned),
+      bge(4, buffers.branchKind),
+      bge(5, buffers.tangentVoigt3),
+      bge(6, buffers.converged),
+      bge(7, buffers.paramsMc)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgGp);
+    pass.end();
+  }
+  // 4. σ Voigt-6 → Voigt-3 slice for the force/stiffness consumers.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.voigt6to3.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.voigt6to3.bgLayout, [
+      bge(0, buffers.sigmaReturned),
+      bge(1, buffers.stressVoigt3),
+      bge(2, buffers.paramsMc)            // shares numGp uniform
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgGp);
+    pass.end();
+  }
+  // 5. Internal force per element (consumes stressVoigt3).
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.force.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.force.bgLayout, [
+      bge(0, buffers.bMatrices),
+      bge(1, buffers.gpWeights),
+      bge(2, buffers.stressVoigt3),
+      bge(3, buffers.forceOut),
+      bge(4, buffers.paramsForce)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgElem);
+    pass.end();
+  }
+  // 6. Element stiffness (consumes tangentVoigt3 from MC).
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.stiff.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.stiff.bgLayout, [
+      bge(0, buffers.bMatrices),
+      bge(1, buffers.gpWeights),
+      bge(2, buffers.tangentVoigt3),
+      bge(3, buffers.kOut),
+      bge(4, buffers.paramsStiff)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgElemStiff);
+    pass.end();
+  }
+  // 7. Scatter to free RHS.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.scatterRhs.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.scatterRhs.bgLayout, [
+      bge(0, buffers.forceOut),
+      bge(1, buffers.forceIncPtr),
+      bge(2, buffers.forceIncList),
+      bge(3, buffers.rhsFree),
+      bge(4, buffers.paramsRhsScat)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgFree);
+    pass.end();
+  }
+  // 8. Scatter to CSR.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.scatterCsr.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.scatterCsr.bgLayout, [
+      bge(0, buffers.kOut),
+      bge(1, buffers.csrIncPtr),
+      bge(2, buffers.csrIncList),
+      bge(3, buffers.csrValHi),
+      bge(4, buffers.csrValLo),
+      bge(5, buffers.paramsCsrScat)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgNnz);
+    pass.end();
+  }
+}
+
+// =============================================================================
+// Plastic residual-only pass (no stiffness, no CSR scatter).  Used during
+// line search.
+// =============================================================================
+export function recordResidualOnlyPlastic(ctx, encoder) {
+  const { device, pipes, buffers, sizes } = ctx;
+  // 1. Strain.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.strain.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.strain.bgLayout, [
+      bge(0, buffers.uvec),
+      bge(1, buffers.bMatrices),
+      bge(2, buffers.dofMap),
+      bge(3, buffers.strain),
+      bge(4, buffers.paramsStrain)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgGp);
+    pass.end();
+  }
+  // 2. Strain → trial stress.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.plasticTrial.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.plasticTrial.bgLayout, [
+      bge(0, buffers.strain),
+      bge(1, buffers.strainCommitted),
+      bge(2, buffers.sigmaCommitted),
+      bge(3, buffers.matIndex),
+      bge(4, buffers.matParams),
+      bge(5, buffers.sigmaTrialBuf),
+      bge(6, buffers.paramsTrial)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgGp);
+    pass.end();
+  }
+  // 3. MC return.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.mc.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.mc.bgLayout, [
+      bge(0, buffers.sigmaTrialBuf),
+      bge(1, buffers.matIndex),
+      bge(2, buffers.matParams),
+      bge(3, buffers.sigmaReturned),
+      bge(4, buffers.branchKind),
+      bge(5, buffers.tangentVoigt3),
+      bge(6, buffers.converged),
+      bge(7, buffers.paramsMc)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgGp);
+    pass.end();
+  }
+  // 4. Voigt-6 → Voigt-3 slice.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.voigt6to3.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.voigt6to3.bgLayout, [
+      bge(0, buffers.sigmaReturned),
+      bge(1, buffers.stressVoigt3),
+      bge(2, buffers.paramsMc)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgGp);
+    pass.end();
+  }
+  // 5. Internal force.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.force.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.force.bgLayout, [
+      bge(0, buffers.bMatrices),
+      bge(1, buffers.gpWeights),
+      bge(2, buffers.stressVoigt3),
+      bge(3, buffers.forceOut),
+      bge(4, buffers.paramsForce)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgElem);
+    pass.end();
+  }
+  // 6. Scatter to free RHS only.
+  {
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipes.scatterRhs.pipeline);
+    pass.setBindGroup(0, bg(device, pipes.scatterRhs.bgLayout, [
+      bge(0, buffers.forceOut),
+      bge(1, buffers.forceIncPtr),
+      bge(2, buffers.forceIncList),
+      bge(3, buffers.rhsFree),
+      bge(4, buffers.paramsRhsScat)
+    ]));
+    pass.dispatchWorkgroups(sizes.numWgFree);
+    pass.end();
+  }
+}
+
+// =============================================================================
+// Commit-state recording.  Persists σ_returned → σ_committed and current
+// strain → strain_committed, plus branch history.  Run ONCE per accepted
+// load increment (after Newton converges).  Caller supplies the encoder.
+// =============================================================================
+export function recordCommitState(ctx, encoder) {
+  const { device, pipes, buffers, sizes } = ctx;
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipes.commitState.pipeline);
+  pass.setBindGroup(0, bg(device, pipes.commitState.bgLayout, [
+    bge(0, buffers.sigmaReturned),
+    bge(1, buffers.strain),
+    bge(2, buffers.branchKind),
+    bge(3, buffers.sigmaCommitted),
+    bge(4, buffers.strainCommitted),
+    bge(5, buffers.branchHistory),
+    bge(6, buffers.paramsCommit)
+  ]));
+  pass.dispatchWorkgroups(sizes.numWgGp);
+  pass.end();
+}
+
+// Commit u ← u_trial.  Used by the Newton orchestrator after line search
+// accepts the trial step (parallels the σ commit, but for the displacement).
+// Implemented via copyBufferToBuffer (no kernel needed).
+export function recordCommitDisplacement(ctx, encoder) {
+  encoder.copyBufferToBuffer(ctx.buffers.uvec, 0, ctx.buffers.uCommitted, 0, 8 * ctx.sizes.numFree);
 }
 
 function recordElasticAssemblyTail(ctx, encoder) {

@@ -50,7 +50,10 @@ import { terrainY } from '../stage6-bishop.js';
 // New GPU resident pipeline (engineer-controlled opt-in via
 // `options.useNewGpuPipeline`). The controller probes WebGPU at runtime;
 // any failure falls back to the CPU path and surfaces a warning.
-import { probeGpuPipeline as gpuProbeGpuPipeline, runDeformationOnGpu as gpuRunDeformationOnGpu } from './gpu/gpu-controller.js';
+import {
+  probeGpuPipeline as gpuProbeGpuPipeline,
+  runFullDeformationAnalysisOnGpu as gpuRunFullDeformationAnalysisOnGpu
+} from './gpu/gpu-controller.js';
 
 // GPU acceleration is being rebuilt as a separate, fully resident
 // double-single pipeline. Until that pipeline lands the deformation solver
@@ -803,60 +806,188 @@ async function solveCgDispatched(rows, rhs, initial, maxIter, relTol, absTol, ru
 // All errors are caught and logged to the warnings array; this function
 // never throws.
 // =============================================================================
-async function tryGpuElasticGravitySolve({
+// =============================================================================
+// Full-pipeline GPU hook.
+//
+// Drives the *entire* deformation analysis on the GPU: elastic gravity step
+// (implicit in the plastic Newton), plastic geostatic correction, staged
+// surface-load increments, and (for safety analyses) the c-φ outer loop.
+//
+// On success, returns an object with the final displacement field, the per-
+// Gauss-point committed σ, and (for safety) the FoS bracket.  The caller
+// uses these to populate solver.js's CPU material-point structures so the
+// existing result-builder can finalize the analysis.
+//
+// On any failure (no WebGPU, kernel error, non-convergence) returns null.
+// =============================================================================
+// Build a complete solver-result object from a successful GPU analysis.
+// Reuses the CPU summarize/terrain helpers; populates element-level stress
+// from σ_committed at every Gauss point.
+function buildSolverResultFromGpuOutput({
+  gpuResult, mesh, elementCaches, regionConstitutiveByRegion,
+  options, load, warnings, analysisType, model, porePressureByElement
+}) {
+  const ndof = 2 * mesh.nodes.length;
+  const uFull = gpuResult.uFullF64 || new Float64Array(ndof);
+  // 1. Per-node displacements.
+  const nodalDisplacements = mesh.nodes.map((_, nid) => ({
+    ux: uFull[2 * nid] || 0,
+    uy: uFull[2 * nid + 1] || 0
+  }));
+  const totalNodalDisplacements = nodalDisplacements;
+  const initialNodalDisplacements = mesh.nodes.map(() => ({ ux: 0, uy: 0 }));
+  const serviceIncrementNodalDisplacements = nodalDisplacements;
+  // 2. Per-element stress + MC state from σ_committed.
+  const sigmaCommittedF64 = gpuResult.sigmaCommittedF64 || new Float64Array(0);
+  const elementResults = elementCaches.map((cache, elemIdx) => {
+    const cell = mesh.cells[cache.cellIndex];
+    const constitutive = regionConstitutiveByRegion.get(cell?.regionIndex);
+    const params = constitutive?.materialParameters || {};
+    const numGp = cache.integrationPoints?.length || 1;
+    let avgSxx = 0, avgSyy = 0, avgTxy = 0, avgSzz = 0;
+    let maxEta = 0;
+    let anyTension = false, anyActive = false;
+    const gpRecords = cache.integrationPoints?.map((gp) => {
+      const base = gp.globalIndex * 6;
+      const sxxFe = sigmaCommittedF64[base + 0] || 0;
+      const syyFe = sigmaCommittedF64[base + 1] || 0;
+      const szzFe = sigmaCommittedF64[base + 2] || 0;
+      const txyFe = sigmaCommittedF64[base + 3] || 0;
+      // Convert FE-positive (tension-positive) to compression-positive for MC.
+      const stress2DFe = { sxx: sxxFe, syy: syyFe, txy: txyFe };
+      const principal = principalStress2DCompressionPositive(negateNormalAndShear(stress2DFe));
+      const mc = mohrCoulombIndicator(principal, params);
+      const eta = Number(mc?.eta) || 0;
+      maxEta = Math.max(maxEta, eta);
+      avgSxx += sxxFe / numGp;
+      avgSyy += syyFe / numGp;
+      avgSzz += szzFe / numGp;
+      avgTxy += txyFe / numGp;
+      return {
+        gpIndex: gp.gpIndex,
+        integrationPointIndex: gp.globalIndex,
+        x: gp.x, y: gp.y,
+        areaWeight: gp.areaWeight,
+        strain: { exx: 0, eyy: 0, gxy: 0 },     // not tracked separately in v1 GPU output
+        stress2D: stress2DFe,
+        effectiveStress: negateNormalAndShear(stress2DFe),
+        materialState: { currentlyMcActive: eta >= 1 - 1e-6, hasEverExceededMc: eta >= 1 - 1e-6 },
+        materialDiagnostics: { etaMcFinal: eta },
+        mc,
+        tensionCutoffActive: false
+      };
+    }) || [];
+    return {
+      elementIndex: elemIdx,
+      cellIndex: cache.cellIndex,
+      element: cache.element,
+      kind: cache.kind,
+      area: cache.area,
+      centroid: cache.centroid,
+      stress2D: { sxx: avgSxx, syy: avgSyy, txy: avgTxy },
+      effectiveStress: negateNormalAndShear({ sxx: avgSxx, syy: avgSyy, txy: avgTxy }),
+      strain: { exx: 0, eyy: 0, gxy: 0 },
+      materialState: { currentlyMcActive: maxEta >= 1 - 1e-6 },
+      materialDiagnostics: { etaMcFinal: maxEta, etaMcContour: maxEta },
+      mc: { eta: maxEta },
+      tensionCutoffActive: false,
+      gaussPoints: gpRecords,
+      porePressure: Math.max(Number(porePressureByElement?.[elemIdx]) || 0, 0)
+    };
+  });
+  // 3. Terrain profile + summaries.
+  const terrainSettlementProfile = buildTerrainSettlementProfile(mesh, nodalDisplacements);
+  const summaries = summarizeDeformation(nodalDisplacements, elementResults);
+  summaries.maxInitialSettlement = 0;
+  summaries.serviceSettlementIncrement = summaries.maxSettlement;
+  summaries.safetySettlementIncrement = analysisType === 'safety-cphi' ? summaries.maxSettlement : 0;
+  return {
+    mesh,
+    load,
+    warnings,
+    nodalDisplacements,
+    totalNodalDisplacements,
+    initialNodalDisplacements,
+    terrainSettlementProfile,
+    elementResults,
+    summaries,
+    solver: {
+      method: `gpu-resident-${analysisType}`,
+      analysisType,
+      elementType: options.meshElementType,
+      integrationPointsPerElement: options.meshElementType === 't6' ? 3 : 1,
+      constitutiveModel: 'gpu-resident-mc-plastic',
+      materialPointCount: gpuResult.pack?.numGp || 0,
+      integrationPointCount: gpuResult.pack?.numGp || 0,
+      initialStressMode: 'gpu-resident-k0',
+      gpuPipeline: true,
+      gpuDiagnostics: gpuResult.diagnostics || null,
+      gpuSafety: gpuResult.safety || null,
+      gpuElapsedMs: gpuResult.elapsedMsGpu || null,
+      gpuAdapterInfo: gpuResult.adapterInfo || null
+    }
+  };
+}
+
+async function tryGpuFullDeformation({
   options, mesh, elementCaches, regionConstitutiveByRegion,
-  fixedValues, bFreeF64, porePressureByIntegrationPoint, warnings
+  fixedValues, gravityRhsFree, surfaceLoadRhsFree,
+  sigmaInitialF64, porePressureByIntegrationPoint, warnings
 }) {
   if (options?.useNewGpuPipeline !== true) return null;
-  let device = null;
+  // STRICT BY DESIGN.  When the toggle is on, the GPU path must run.  Any
+  // failure (no WebGPU, kernel error, non-convergence) throws — there is
+  // no silent CPU fallback.  Uncheck the toggle to use CPU.
+  console.log('[deformation] GPU pipeline requested — probing WebGPU…');
+  const probe = await gpuProbeGpuPipeline();
+  if (!probe?.available) {
+    throw new Error(
+      `Use new GPU resident pipeline is enabled, but WebGPU is not available (${probe?.reason || 'unknown'}). ` +
+      `Open the page in a browser with WebGPU support (Chrome/Edge stable, or Safari Technology Preview), ` +
+      `or uncheck "Use new GPU resident pipeline" to run on CPU.`
+    );
+  }
+  const ad = probe.info?.vendor || 'unknown';
+  const arch = probe.info?.architecture || 'unknown';
+  console.log(`[deformation] GPU adapter acquired: vendor=${ad}, arch=${arch} — running full GPU pipeline`);
+  const t0 = performance.now();
+  let result;
   try {
-    const probe = await gpuProbeGpuPipeline();
-    if (!probe?.available) {
-      pushUniqueWarning(warnings, `New GPU pipeline requested but unavailable (${probe?.reason || 'unknown'}); using CPU.`);
-      return null;
-    }
-    device = probe.device;
-    const gpuResult = await gpuRunDeformationOnGpu({
-      device,
+    result = await gpuRunFullDeformationAnalysisOnGpu({
+      device: probe.device,
       mesh,
       elementCaches,
       regionConstitutiveByRegion,
       fixedDofSet: new Set(fixedValues.keys()),
-      bF64: bFreeF64,
+      gravityRhsFree,
+      surfaceLoadRhsFree,
+      sigmaInitialF64,
       porePressureByIntegrationPoint,
-      cgOptions: {
-        maxIter: MAX_CG_ITER,
-        relTol: CG_REL_TOL,
-        absTol: CG_ABS_TOL
-      },
+      options,
       warnings
     });
-    if (!gpuResult?.converged) {
-      pushUniqueWarning(warnings, 'New GPU pipeline elastic CG did not converge; falling back to CPU.');
-      return null;
-    }
-    return decorateLinearSolveResult(
-      {
-        solution: gpuResult.uFreeF64,
-        converged: true,
-        iterations: gpuResult.iterations,
-        residualNorm: gpuResult.residualNorm,
-        relativeResidual: gpuResult.relativeResidual ?? 0,
-        rhsNorm: 0,
-        toleranceTarget: 0,
-        interrupted: false
-      },
-      {
-        solver: 'cg',
-        path: 'gpu-resident-elastic',
-        preconditioner: 'nodal-block-jacobi-ds',
-        gpuDiagnostics: gpuResult.diagnostics
-      }
-    );
   } catch (err) {
-    pushUniqueWarning(warnings, `New GPU pipeline elastic CG failed: ${err?.message || err}; falling back to CPU.`);
-    return null;
+    console.error('[deformation] GPU pipeline threw:', err);
+    throw new Error(
+      `GPU pipeline failed during execution: ${err?.message || err}. ` +
+      `See console for details, or uncheck "Use new GPU resident pipeline" to run on CPU.`
+    );
   }
+  if (!result?.converged) {
+    console.error('[deformation] GPU pipeline did not converge:', result?.reason);
+    throw new Error(
+      `GPU pipeline did not converge: ${result?.reason || 'unknown'}. ` +
+      `Check the model setup (mesh quality, materials, loads), or uncheck the GPU toggle.`
+    );
+  }
+  const t1 = performance.now();
+  result.elapsedMsGpu = t1 - t0;
+  result.adapterInfo = probe.info || null;
+  pushUniqueWarning(warnings,
+    `[GPU] Analysis ran on the new GPU resident pipeline ` +
+    `(${ad}/${arch}, ${(t1 - t0).toFixed(0)} ms).`);
+  console.log(`[deformation] GPU pipeline completed in ${(t1 - t0).toFixed(0)} ms`);
+  return result;
 }
 
 async function solveGmresDispatched(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options = {}) {
@@ -2419,41 +2550,31 @@ async function buildGeostaticInitialization(
     percent: 64,
     message: 'Solving the elastic gravity step for the initial stress field...'
   });
-  // New GPU resident pipeline (engineer-controlled).  Tries the GPU first;
-  // any failure (no WebGPU, kernel compile error, runtime error, non-
-  // convergence) silently falls back to the CPU CG path.  When the GPU
-  // path succeeds the result is shape-identical to solveCgDispatched.
-  let geostaticCg = await tryGpuElasticGravitySolve({
-    options,
-    mesh,
-    elementCaches,
-    regionConstitutiveByRegion,
-    fixedValues,
-    bFreeF64: gravityCompressedRhs,
-    porePressureByIntegrationPoint,
-    warnings
-  });
-  if (!geostaticCg) {
-    geostaticCg = await solveCgDispatched(
-      compressedRows,
-      gravityCompressedRhs,
-      null,
-      MAX_CG_ITER,
-      CG_REL_TOL,
-      CG_ABS_TOL,
-      runControl,
-      async ({ iterations, relativeResidual }) => {
-        const percent = Math.min(69, 64 + Math.min(iterations / GEOSTATIC_CG_PROGRESS_INTERVAL, 5));
-        onProgress({
-          stage: 'solving',
-          percent,
-          message: `Elastic gravity step... CG iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
-        });
-        await runCheckpoint(runControl);
-      },
-      { freeDofs }
-    );
-  }
+  // The elastic gravity step here is for the K0 stress recovery (a CPU-side
+  // computation that needs the elastic gravity displacement).  When the user
+  // enables the new GPU pipeline, the full plastic Newton (which subsumes
+  // this step) runs later in `_analyzeDeformationModelImpl`; this CPU CG
+  // pass is needed only for K0 seeding and is small.  We keep it on CPU
+  // unconditionally to avoid duplicate GPU work.
+  const geostaticCg = await solveCgDispatched(
+    compressedRows,
+    gravityCompressedRhs,
+    null,
+    MAX_CG_ITER,
+    CG_REL_TOL,
+    CG_ABS_TOL,
+    runControl,
+    async ({ iterations, relativeResidual }) => {
+      const percent = Math.min(69, 64 + Math.min(iterations / GEOSTATIC_CG_PROGRESS_INTERVAL, 5));
+      onProgress({
+        stage: 'solving',
+        percent,
+        message: `Elastic gravity step... CG iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
+      });
+      await runCheckpoint(runControl);
+    },
+    { freeDofs }
+  );
   if (geostaticCg.interrupted) {
     throw new Error('Deformation run was interrupted before geostatic initialization became available.');
   }
@@ -5718,6 +5839,46 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   }
 
   const warnings = [];
+
+  // ---------------------------------------------------------------------------
+  // EARLY GPU PROBE.  If "Use new GPU resident pipeline" is checked, verify
+  // that WebGPU is reachable from this execution context (the deformation
+  // worker) BEFORE we burn CPU on meshing / assembly / etc.  Any problem
+  // surfaces here as a loud, fast error — not a 30-second analysis that
+  // turns out to have run on CPU.
+  //
+  // This probe also seeds `warnings` with an explicit "GPU pipeline armed"
+  // entry so the user can see in the UI's warnings panel that the toggle
+  // actually took effect.
+  // ---------------------------------------------------------------------------
+  if (input?.options?.useNewGpuPipeline === true) {
+    console.log('[deformation] GPU toggle is ON — probing WebGPU before mesh build…');
+    if (typeof navigator === 'undefined' || !('gpu' in navigator)) {
+      throw new Error(
+        '"Use new GPU resident pipeline" is enabled, but WebGPU is not available in this context. ' +
+        'The deformation analysis runs in a Web Worker; some browsers (notably Safari stable as of 2025) ' +
+        'do not expose navigator.gpu in workers. Try Chrome or Edge ≥ 113 (which support WebGPU in workers), ' +
+        'or uncheck the toggle to run on CPU.'
+      );
+    }
+    let probeAdapter;
+    try {
+      probeAdapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    } catch (err) {
+      throw new Error(`"Use new GPU resident pipeline" is enabled, but navigator.gpu.requestAdapter() threw: ${err?.message || err}.`);
+    }
+    if (!probeAdapter) {
+      throw new Error(
+        '"Use new GPU resident pipeline" is enabled, but navigator.gpu.requestAdapter() returned null. ' +
+        'No GPU adapter is available in this context. Uncheck the toggle to run on CPU.'
+      );
+    }
+    const adVendor = probeAdapter.info?.vendor || 'unknown';
+    const adArch   = probeAdapter.info?.architecture || 'unknown';
+    const earlyMsg = `[GPU] WebGPU adapter detected (vendor=${adVendor}, arch=${adArch}). The deformation analysis will run on the GPU resident pipeline.`;
+    console.log(`[deformation] ${earlyMsg}`);
+    warnings.push(earlyMsg);
+  }
   const analysisType = input?.options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
   const constitutiveModel = resolveConstitutiveModelName(input?.options);
   const options = {
@@ -5807,6 +5968,11 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     continuationLineSearchExponent: Math.max(Number(input?.options?.continuationLineSearchExponent) || NONLINEAR_CONTINUATION_LINE_SEARCH_EXPONENT, 0),
     useUnsymmetricPlasticSolver: input?.options?.useUnsymmetricPlasticSolver !== false,
     unsymmetricLinearSolver: 'gmres-scaled',
+    // Routes the entire plastic Newton (geostatic correction + load steps +
+    // c-φ safety) through the new GPU resident pipeline.  Strict by design:
+    // any failure (no WebGPU, kernel error, non-convergence) throws — there
+    // is no silent CPU fallback.  Default false; the UI toggle sets it true.
+    useNewGpuPipeline: input?.options?.useNewGpuPipeline === true,
     safetyInitialSigmaMsfIncrement: Math.max(Number(input?.options?.safetyInitialSigmaMsfIncrement) || SAFETY_INITIAL_SIGMA_MSF_INCREMENT, 1e-3),
     safetySigmaMsfGrowthFactor: Math.max(Number(input?.options?.safetySigmaMsfGrowthFactor) || SAFETY_SIGMA_MSF_GROWTH_FACTOR, 1.05),
     safetySigmaMsfCutbackFactor: Math.min(Math.max(Number(input?.options?.safetySigmaMsfCutbackFactor) || 0.5, 0.1), 0.95),
@@ -5959,6 +6125,46 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       warnings,
       `Plastic geostatic equilibration is not supported by the ${samplePluginForPhase?.displayName || 'current'} material model, so the solver used the audited geostatic stress reference instead.`
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // FULL GPU PIPELINE HOOK
+  //
+  // When `options.useNewGpuPipeline === true` AND a WebGPU device is available
+  // AND the kernels run successfully, the entire plastic Newton (geostatic
+  // correction + staged surface load + optional c-φ safety) runs on the GPU.
+  // The GPU returns the final displacement and committed σ field; we use them
+  // to populate a complete solver result and return early — bypassing the CPU
+  // plastic Newton and surface-load loop entirely.
+  //
+  // Any failure (no WebGPU, kernel error, non-convergence) falls back to the
+  // CPU pipeline below; the CPU path is unchanged from before this hook.
+  // ---------------------------------------------------------------------------
+  {
+    // Flatten initialField to a Voigt-6 Float64Array for the GPU seed.
+    const sigmaInitialF64 = new Float64Array(6 * (geostatic.initialField || []).length);
+    for (let gp = 0; gp < (geostatic.initialField || []).length; gp += 1) {
+      const s6 = geostatic.initialField[gp] || [0, 0, 0, 0, 0, 0];
+      for (let k = 0; k < 6; k += 1) sigmaInitialF64[gp * 6 + k] = Number(s6[k]) || 0;
+    }
+    const gpuFull = await tryGpuFullDeformation({
+      options, mesh, elementCaches, regionConstitutiveByRegion,
+      fixedValues,
+      gravityRhsFree: gravityCompressedRhs,
+      surfaceLoadRhsFree: loadRhsFreeBase,
+      sigmaInitialF64,
+      porePressureByIntegrationPoint,
+      warnings
+    });
+    if (gpuFull) {
+      onProgress({ stage: 'post', percent: 96, message: 'Finalizing GPU deformation output...' });
+      return buildSolverResultFromGpuOutput({
+        gpuResult: gpuFull,
+        mesh, elementCaches, regionConstitutiveByRegion,
+        options, load, warnings,
+        analysisType, model, porePressureByElement
+      });
+    }
   }
 
   let initialPhase = {

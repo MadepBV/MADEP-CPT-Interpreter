@@ -373,3 +373,96 @@ export function lowerDs(dsArr) {
   for (let i = 0; i < dsArr.length; i += 1) out[i] = dsToF64(dsArr[i]);
   return out;
 }
+
+// =============================================================================
+// Build the 2×2 nodal block-Jacobi inverse on device, from a CSR matrix.
+//
+// One thread per node n.  For each node it scans rows (2n) and (2n+1) of the
+// CSR for the four entries (a=K[2n][2n], b=K[2n][2n+1], c=K[2n+1][2n],
+// d=K[2n+1][2n+1]), then computes the 2×2 inverse:
+//
+//     M_n^-1 = (1 / det) · [ d  -b ]
+//                          [-c   a ]   where det = ad - bc
+//
+// If the 2×2 is degenerate, falls back to scalar Jacobi on the diagonal.
+// Output layout: 4 DS scalars per node, packed as (A, B, C, D) — same layout
+// the block-Jacobi APPLY kernel reads.
+//
+// This kernel exists so the plastic Newton can rebuild the preconditioner
+// per iteration WITHOUT round-tripping the CSR to CPU.
+// =============================================================================
+export const KERNEL_BUILD_BLOCK_JACOBI_FROM_CSR_WGSL = /* wgsl */ `
+${DS_WGSL}
+
+struct BuildBjParams { numNodes: u32, numFree: u32, _pad0: u32, _pad1: u32 };
+
+@group(0) @binding(0) var<storage, read>       rowPtr: array<u32>;
+@group(0) @binding(1) var<storage, read>       colInd: array<u32>;
+@group(0) @binding(2) var<storage, read>       valHi:  array<f32>;
+@group(0) @binding(3) var<storage, read>       valLo:  array<f32>;
+@group(0) @binding(4) var<storage, read_write> blocks: array<vec2<f32>>;   // 4 DS per node
+@group(0) @binding(5) var<uniform>             params: BuildBjParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let n: u32 = gid.x;
+  if (n >= params.numNodes) { return; }
+  let r0: u32 = 2u * n;
+  let r1: u32 = 2u * n + 1u;
+  let zero: vec2<f32> = vec2<f32>(0.0, 0.0);
+  var a: vec2<f32> = zero;
+  var b: vec2<f32> = zero;
+  var c: vec2<f32> = zero;
+  var d: vec2<f32> = zero;
+  // Scan row r0 for cols r0 (→ a) and r1 (→ b).
+  if (r0 < params.numFree) {
+    let begin: u32 = rowPtr[r0];
+    let end:   u32 = rowPtr[r0 + 1u];
+    for (var k: u32 = begin; k < end; k = k + 1u) {
+      let col: u32 = colInd[k];
+      let val: vec2<f32> = vec2<f32>(valHi[k], valLo[k]);
+      if (col == r0) { a = val; }
+      else if (r1 < params.numFree && col == r1) { b = val; }
+    }
+  }
+  // Scan row r1 for cols r0 (→ c) and r1 (→ d).
+  if (r1 < params.numFree) {
+    let begin: u32 = rowPtr[r1];
+    let end:   u32 = rowPtr[r1 + 1u];
+    for (var k: u32 = begin; k < end; k = k + 1u) {
+      let col: u32 = colInd[k];
+      let val: vec2<f32> = vec2<f32>(valHi[k], valLo[k]);
+      if (col == r1) { d = val; }
+      else if (r0 < params.numFree && col == r0) { c = val; }
+    }
+  }
+  // Invert 2×2 if non-degenerate; otherwise scalar Jacobi or identity.
+  let det: vec2<f32> = dsAdd(dsMul(a, d), dsNeg(dsMul(b, c)));
+  let oneId: vec2<f32> = vec2<f32>(1.0, 0.0);
+  var A: vec2<f32> = zero;
+  var B: vec2<f32> = zero;
+  var C: vec2<f32> = zero;
+  var D: vec2<f32> = zero;
+  if (abs(det.x) > 1e-30 && r1 < params.numFree) {
+    let invDet: vec2<f32> = dsRecip(det);
+    A = dsMul(d, invDet);
+    B = dsNeg(dsMul(b, invDet));
+    C = dsNeg(dsMul(c, invDet));
+    D = dsMul(a, invDet);
+  } else if (r0 < params.numFree && abs(a.x) > 1e-30) {
+    A = dsRecip(a);
+    if (r1 < params.numFree && abs(d.x) > 1e-30) { D = dsRecip(d); }
+    else { D = oneId; }
+  } else if (r1 < params.numFree && abs(d.x) > 1e-30) {
+    A = oneId;
+    D = dsRecip(d);
+  } else {
+    A = oneId;
+    D = oneId;
+  }
+  blocks[n * 4u + 0u] = A;
+  blocks[n * 4u + 1u] = B;
+  blocks[n * 4u + 2u] = C;
+  blocks[n * 4u + 3u] = D;
+}
+`;
