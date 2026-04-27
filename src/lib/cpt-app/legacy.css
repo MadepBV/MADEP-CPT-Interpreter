@@ -231,18 +231,18 @@ input[type=range]{accent-color:var(--ac)}
 .layerwarn-adj .layerwarn-k{
   color:var(--wn);
 }
-.st6-adv{margin-top:4px;border:1px solid var(--bd);border-radius:var(--r);background:var(--panel-soft)}
+.st6-adv{margin-top:4px;border:1px solid var(--bd);border-radius:var(--r);background:var(--panel-soft);min-width:0;max-width:100%;box-sizing:border-box}
 .st6-adv summary{cursor:pointer;list-style:none;padding:9px 11px;font-size:11px;font-weight:600;color:var(--tx2)}
 .st6-adv summary::-webkit-details-marker{display:none}
 .st6-adv summary::after{content:'+';float:right;color:var(--tx3)}
 .st6-adv[open] summary::after{content:'−'}
-.st6-adv-body{padding:0 11px 11px;display:grid;grid-template-columns:1fr;gap:10px}
+.st6-adv-body{padding:0 11px 11px;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;min-width:0}
 .st6-help{font-size:11px;line-height:1.45;color:var(--tx2);background:var(--panel-soft);border:1px solid var(--bd);border-radius:var(--r);padding:8px 9px}
-.st6-depth-band-report{display:grid;gap:7px}
-.st6-depth-band-row{display:grid;grid-template-columns:88px minmax(80px,1fr) auto;gap:8px;align-items:center;font-size:11px;color:var(--tx2)}
+.st6-depth-band-report{display:grid;gap:7px;min-width:0;max-width:100%;box-sizing:border-box}
+.st6-depth-band-row{display:grid;grid-template-columns:minmax(52px,72px) minmax(0,1fr) minmax(62px,82px);gap:6px;align-items:center;min-width:0;font-size:11px;color:var(--tx2)}
 .st6-depth-band-row span{font-weight:600;color:var(--tx)}
-.st6-depth-band-row em{font-style:normal;color:var(--tx3);white-space:nowrap}
-.st6-depth-band-bars{position:relative;height:8px;border-radius:4px;background:var(--panel);overflow:hidden;border:1px solid var(--bd)}
+.st6-depth-band-row em{font-style:normal;color:var(--tx3);overflow-wrap:anywhere;text-align:right}
+.st6-depth-band-bars{position:relative;min-width:0;height:8px;border-radius:4px;background:var(--panel);overflow:hidden;border:1px solid var(--bd)}
 .st6-depth-band-bars i,.st6-depth-band-bars b{position:absolute;left:0;top:0;bottom:0;display:block}
 .st6-depth-band-bars i{background:var(--ac)}
 .st6-depth-band-bars b{background:var(--bad);opacity:.72}
@@ -334,6 +334,8 @@ input[type=range]{accent-color:var(--ac)}
   gap:8px;
   font-size:11px;
   color:var(--tx2);
+  min-width:0;
+  overflow-wrap:anywhere;
 }
 .st6-bishop-check input{
   width:auto;
@@ -669,6 +671,22 @@ input[type=range]{accent-color:var(--ac)}
 .st6-bishop-materials input{
   width:100%;
   min-width:74px;
+}
+.st6-bishop .info,
+.st6-bishop .st6-help{
+  overflow-wrap:anywhere;
+}
+.st6-bishop .pt{
+  table-layout:fixed;
+}
+.st6-bishop .pt td:first-child{
+  width:46%;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.st6-bishop .pt td:last-child{
+  text-align:left;
+  overflow-wrap:anywhere;
 }
 .st6-bishop-source-pill{
   display:inline-flex;

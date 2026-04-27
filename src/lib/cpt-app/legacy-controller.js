@@ -27,7 +27,6 @@ import { resolveMaterialPermeability, seepageSourceLabel } from './seepage/mater
 import { contourSegmentsForTriangles, sampleSeepageFlowState, sampleSeepageHead, sampleSeepagePorePressure } from './seepage/solver';
 import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-regions';
 import { sampleDeformationState } from './deformation/solver.js';
-import { probeGpuBackend as probeDeformationGpuBackend } from './deformation/gpu/index.js';
 import {
   buildBeamDeflectionChartConfig,
   buildBeamMomentChartConfig,
@@ -60,11 +59,6 @@ let stage6BishopSeepageRunId = 0;
 let stage6BishopDeformationWorker = null;
 let stage6BishopDeformationRunId = 0;
 let classificationRefreshTimer = null;
-const stage6DeformationGpuProbeState = {
-  status:'idle',
-  result:null,
-  error:''
-};
 const stage6BishopCanvasState = {
   canvas:null,
   pointerDrag:null,
@@ -4253,16 +4247,7 @@ function stage6Defaults(){
           safetySigmaMsfMax:3.00,
           safetySigmaMsfBracketTolerance:0.01,
           safetyMaxSearchTrials:32,
-          useUnsymmetricPlasticSolver:true,
-          // The default deformation preset is convergence-first, not
-          // speed-first: CPU f64 Krylov remains the trusted production
-          // path until resident GPU Krylov is explicitly certified and
-          // selected by the user.
-          useGpuAcceleration:false,
-          useResidentCg:false,
-          useResidentGmres:false,
-          allowHybridGpuMatvecForCpuKrylov:false,
-          gpuMinDof:1500
+          useUnsymmetricPlasticSolver:true
         },
         display:{
           contourMode:'uTotal',
@@ -4660,32 +4645,15 @@ function ensureStage6State(){
   bishop.deformation.options.safetySigmaMsfBracketTolerance = Math.max(+bishop.deformation.options.safetySigmaMsfBracketTolerance || 0.01, 0.0001);
   bishop.deformation.options.safetyMaxSearchTrials = Math.max(Math.round(+bishop.deformation.options.safetyMaxSearchTrials || 32), 1);
   bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver !== false;
-  bishop.deformation.options.useGpuAcceleration = bishop.deformation.options.useGpuAcceleration === true;
-  // useResidentCg is tri-state: true / false / undefined. Preserve the
-  // raw value when it is a boolean; otherwise leave it undefined so the
-  // dispatcher falls back to the backend-certified default. Coercing to
-  // a strict boolean here would overwrite "no choice" with "explicit
-  // false" and block a backend from using a resident path once it is
-  // certified.
-  bishop.deformation.options.useResidentCg = typeof bishop.deformation.options.useResidentCg === 'boolean'
-    ? bishop.deformation.options.useResidentCg
-    : undefined;
-  // `useResidentGmres` is the same tri-state pattern: opt-in to the
-  // GPU-resident FGMRES for unsymmetric / plastic / c-phi solves
-  // (defaults to the backend's `residentGmresCertified` flag). The
-  // hybrid path (CPU GMRES + GPU async matvec) is no longer the
-  // default — it must be requested explicitly via
-  // `allowHybridGpuMatvecForCpuKrylov: true` because the per-Arnoldi
-  // round-trip dominates wall-clock on browser-sized problems.
-  bishop.deformation.options.useResidentGmres = typeof bishop.deformation.options.useResidentGmres === 'boolean'
-    ? bishop.deformation.options.useResidentGmres
-    : undefined;
-  bishop.deformation.options.allowHybridGpuMatvecForCpuKrylov =
-    bishop.deformation.options.allowHybridGpuMatvecForCpuKrylov === true;
-  const rawGpuMinDof = Number(bishop.deformation.options.gpuMinDof);
-  bishop.deformation.options.gpuMinDof = Number.isFinite(rawGpuMinDof) && rawGpuMinDof > 0
-    ? Math.max(Math.round(rawGpuMinDof), 0)
-    : 1500;
+  // Strip legacy GPU-related option carriers from saved sessions. The current
+  // production deformation UI exposes the CPU f64 route only.
+  delete bishop.deformation.options.useGpuAcceleration;
+  delete bishop.deformation.options.useResidentCg;
+  delete bishop.deformation.options.useResidentGmres;
+  delete bishop.deformation.options.allowHybridGpuMatvecForCpuKrylov;
+  delete bishop.deformation.options.gpuPrecisionMode;
+  delete bishop.deformation.options.linearAlgebraBackend;
+  delete bishop.deformation.options.gpuMinDof;
   const rawDeformationMeshTargetArea = Number(bishop.deformation.options.meshTargetArea);
   const deformationAutoMeshTargetArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
   if(bishop.deformation.options.meshTargetAreaAuto == null){
@@ -6889,23 +6857,7 @@ function stage6BishopRunDeformation(){
         safetySigmaMsfMax:bishop.deformation?.options?.safetySigmaMsfMax,
         safetySigmaMsfBracketTolerance:bishop.deformation?.options?.safetySigmaMsfBracketTolerance,
         safetyMaxSearchTrials:bishop.deformation?.options?.safetyMaxSearchTrials,
-        useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true,
-        useGpuAcceleration:bishop.deformation?.options?.useGpuAcceleration === true,
-        // useResidentCg is tri-state. Forwarding `true`/`false`
-        // overrides the backend default; forwarding `undefined`
-        // (no explicit choice) lets the selected backend use its
-        // certified default. Coercing with `=== true` would overwrite
-        // "no choice" with "explicit false" and block a backend from
-        // using a resident path once that path is certified.
-        useResidentCg: typeof bishop.deformation?.options?.useResidentCg === 'boolean'
-          ? bishop.deformation.options.useResidentCg
-          : undefined,
-        useResidentGmres: typeof bishop.deformation?.options?.useResidentGmres === 'boolean'
-          ? bishop.deformation.options.useResidentGmres
-          : undefined,
-        allowHybridGpuMatvecForCpuKrylov:
-          bishop.deformation?.options?.allowHybridGpuMatvecForCpuKrylov === true,
-        gpuMinDof:bishop.deformation?.options?.gpuMinDof
+        useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true
       }
     }
   });
@@ -9666,39 +9618,6 @@ function stage6Tooltip(text){
   return `<span class="st6-tip" tabindex="0" data-tip="${safe}" aria-label="${safe}">ⓘ</span>`;
 }
 
-function stage6BishopGpuProbeReasonLabel(reason){
-  if(reason === 'gpu-js-load-failed') return 'The bundled browser GPU runtime could not be loaded in this browser context.';
-  if(reason === 'no-canvas-in-context') return 'This browser context does not expose a usable canvas for WebGL2.';
-  if(reason === 'webgl2-float-rt-missing') return 'WebGL2 with EXT_color_buffer_float is unavailable.';
-  if(reason === 'probe-kernel-mismatch') return 'A trivial WebGL2 GPU kernel compiled, but its output was not numerically correct.';
-  if(typeof reason === 'string' && reason.startsWith('probe-kernel-threw:')) return `The GPU probe kernel failed: ${reason.slice('probe-kernel-threw:'.length)}`;
-  if(typeof reason === 'string' && reason.startsWith('probe-threw:')) return `The GPU capability probe failed: ${reason.slice('probe-threw:'.length)}`;
-  return reason ? String(reason) : 'Unknown GPU capability failure.';
-}
-
-function stage6BishopRequestDeformationGpuProbe(){
-  if(stage6DeformationGpuProbeState.status === 'pending' || stage6DeformationGpuProbeState.status === 'ready') return;
-  stage6DeformationGpuProbeState.status = 'pending';
-  stage6DeformationGpuProbeState.error = '';
-  Promise.resolve()
-    .then(()=>probeDeformationGpuBackend())
-    .then((result)=>{
-      stage6DeformationGpuProbeState.status = 'ready';
-      stage6DeformationGpuProbeState.result = result || {ok:false, reason:'probe-returned-empty'};
-      stage6DeformationGpuProbeState.error = '';
-      try{ renderStage6(); }catch(_e){}
-    })
-    .catch((error)=>{
-      stage6DeformationGpuProbeState.status = 'ready';
-      stage6DeformationGpuProbeState.result = {
-        ok:false,
-        reason:`probe-threw:${error?.message || 'unknown'}`
-      };
-      stage6DeformationGpuProbeState.error = error?.message || String(error);
-      try{ renderStage6(); }catch(_e){}
-    });
-}
-
 function stage6UseCategoryOptions(selected){
   const labels = {
     A:'A - residential / domestic',
@@ -11163,7 +11082,7 @@ function renderStage6BishopApp(){
   const deformationAutoMeshTargetArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
   const deformationMeshTargetArea = stage6BishopResolvedDeformationMeshTargetArea(bishop);
   const deformationMeshElementType = String(deformation.options?.meshElementType || '').toLowerCase() === 't6' ? 't6' : 't3';
-  const deformationMeshElementLabel = deformation.result?.solver?.elementType === 't6' || deformation.mesh?.elementType === 't6'
+  const deformationMeshElementLabel = deformation.result?.solver?.elementType === 't6' || deformation.mesh?.elementType === 't6' || deformationMeshElementType === 't6'
     ? 'T6 quadratic triangles'
     : 'T3 constant-strain triangles';
   const deformationNonlinearMaxIterations = Math.max(Math.round(Number(deformation.options?.nonlinearMaxIterations) || 32), 1);
@@ -11182,49 +11101,12 @@ function renderStage6BishopApp(){
     ? String(deformation.options.geostaticInitializationMethod).toLowerCase()
     : 'auto';
   const deformationGeostaticCorrectionStages = Math.min(Math.max(Math.round(Number(deformation.options?.geostaticCorrectionStages) || 1), 1), 64);
-  const deformationGeostaticMinLoadStep = Math.max(Number(deformation.options?.geostaticMinLoadStep) || 0.0005, 0.000001);
-  const deformationGeostaticMaxRepeatedBand = Math.max(Math.round(Number(deformation.options?.geostaticMaxRepeatedBand) || 3), 1);
-  const deformationGeostaticProgressFailFast = deformation.options?.geostaticProgressFailFast === true;
-  const deformationGeostaticProgressFailFastSteps = Math.max(Math.round(Number(deformation.options?.geostaticProgressFailFastSteps) || 6), 1);
-  const deformationGeostaticProgressFailFastLoadFactor = Math.min(Math.max(Number(deformation.options?.geostaticProgressFailFastLoadFactor) || 0.50, 0), 1);
-  const deformationGeostaticProgressFailFastPlasticFraction = Math.min(Math.max(Number(deformation.options?.geostaticProgressFailFastPlasticFraction) || 0.15, 0), 1);
-  const deformationServiceProgressFailFast = deformation.options?.serviceProgressFailFast === true;
-  const deformationServiceProgressFailFastSteps = Math.max(Math.round(Number(deformation.options?.serviceProgressFailFastSteps) || 16), 1);
-  const deformationServiceProgressFailFastLoadFactor = Math.min(Math.max(Number(deformation.options?.serviceProgressFailFastLoadFactor) || 0.20, 0), 1);
   const deformationSafetyInitialSigmaMsfIncrement = Math.max(Number(deformation.options?.safetyInitialSigmaMsfIncrement) || 0.10, 0.001);
   const deformationSafetySigmaMsfGrowthFactor = Math.max(Number(deformation.options?.safetySigmaMsfGrowthFactor) || 1.50, 1.01);
   const deformationSafetySigmaMsfMax = Math.max(Number(deformation.options?.safetySigmaMsfMax) || 3.00, 1.0);
   const deformationSafetySigmaMsfBracketTolerance = Math.max(Number(deformation.options?.safetySigmaMsfBracketTolerance) || 0.01, 0.0001);
   const deformationSafetyMaxSearchTrials = Math.max(Math.round(Number(deformation.options?.safetyMaxSearchTrials) || 32), 1);
   const deformationUseUnsymmetricPlasticSolver = deformation.options?.useUnsymmetricPlasticSolver === true;
-  const deformationUseGpuAcceleration = deformation.options?.useGpuAcceleration === true;
-  const deformationResidentCgMode = typeof deformation.options?.useResidentCg === 'boolean'
-    ? (deformation.options.useResidentCg ? 'force' : 'off')
-    : 'off';
-  const deformationResidentGmresMode = typeof deformation.options?.useResidentGmres === 'boolean'
-    ? (deformation.options.useResidentGmres ? 'force' : 'off')
-    : 'off';
-  const deformationAllowHybridGpuMatvec = deformation.options?.allowHybridGpuMatvecForCpuKrylov === true;
-  const deformationGpuMinDof = Math.max(Math.round(Number(deformation.options?.gpuMinDof) || 1500), 0);
-  stage6BishopRequestDeformationGpuProbe();
-  const deformationGpuProbe = stage6DeformationGpuProbeState.result;
-  const deformationGpuProbePending = stage6DeformationGpuProbeState.status === 'pending' || stage6DeformationGpuProbeState.status === 'idle';
-  const deformationGpuAvailable = deformationGpuProbe?.ok === true;
-  const deformationGpuUnavailable = stage6DeformationGpuProbeState.status === 'ready' && deformationGpuProbe?.ok === false;
-  // Do not hard-disable the GPU request from the page-level preflight. The
-  // deformation solve runs in a worker, and the solver has its own guarded
-  // backend creation path with CPU fallback and a precise run-record reason.
-  // T6 + GPU is now supported through the dedicated T6 element kernels;
-  // the worker probes them at backend creation and falls back per-call if
-  // the WebGL compilation fails on the user's hardware.
-  const deformationGpuToggleDisabled = false;
-  const deformationGpuTooltipText = deformationGpuUnavailable
-    ? `GPU preflight did not pass in this page context. ${stage6BishopGpuProbeReasonLabel(deformationGpuProbe?.reason)} You can still request GPU; the worker will try again and fall back to CPU f64 if needed.`
-    : deformationGpuProbePending
-      ? 'Checking GPU availability for the deformation solver...'
-      : deformationGpuAvailable
-        ? `Linear-algebra GPU acceleration is available (${stage6EscAttr(deformationGpuProbe?.mode || 'webgl2')}, ${stage6EscAttr(deformationGpuProbe?.context || 'context')}, max texture ${Number(deformationGpuProbe?.maxTextureSize || 0).toLocaleString()}). The run record will show whether Krylov and element kernels actually used GPU paths.`
-        : 'Linear-algebra GPU acceleration has not been probed yet.';
   const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
   const deformationTotalLoad = Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null;
@@ -11243,14 +11125,14 @@ function renderStage6BishopApp(){
   const deformationStatusLabel = deformationHasResult && deformation.stale ? 'success (stale)' : (deformation.status || 'idle');
   const deformationAppliedQ = Math.max(Number(deformationDerivedQ) || 0, 0);
   const deformationWarnings = Array.isArray(deformation.warnings) ? deformation.warnings : [];
-	  const deformationInitialStressLabel = (mode)=>{
-	    if(!mode) return '—';
-	    if(mode === 'elastic-k0-recovery') return 'elastic gravity step with K0 stress recovery';
-	    if(mode === 'slope-aware-elastic-k0-recovery') return 'slope-aware elastic K0 recovery';
-	    if(mode === 'slope-aware-elastic-k0-recovery-stress-only-reference') return 'slope-aware K0 stress-only reference';
-	    if(mode === 'slope-aware-elastic-k0-recovery-plastic-equilibration') return 'slope-aware K0 recovery with self-weight equilibrium';
-	    if(mode === 'elastic-k0-recovery-stress-only-reference') return 'elastic K0 stress-only reference';
-	    if(mode === 'elastic-k0-recovery-plastic-equilibration') return 'elastic K0 recovery with plastic equilibration';
+  const deformationInitialStressLabel = (mode)=>{
+    if(!mode) return '—';
+    if(mode === 'elastic-k0-recovery') return 'elastic gravity step with K0 stress recovery';
+    if(mode === 'slope-aware-elastic-k0-recovery') return 'slope-aware elastic K0 recovery';
+    if(mode === 'slope-aware-elastic-k0-recovery-stress-only-reference') return 'slope-aware K0 stress-only reference';
+    if(mode === 'slope-aware-elastic-k0-recovery-plastic-equilibration') return 'slope-aware K0 recovery with self-weight equilibrium';
+    if(mode === 'elastic-k0-recovery-stress-only-reference') return 'elastic K0 stress-only reference';
+    if(mode === 'elastic-k0-recovery-plastic-equilibration') return 'elastic K0 recovery with plastic equilibration';
     if(mode === 'gravity-ramp-zero-stress') return 'gravity ramp from zero stress';
     if(mode === 'zero-stress-plastic-equilibration') return 'gravity ramp from zero stress';
     if(mode === 'flat-k0-fallback') return 'hydrostatic K0 fallback';
@@ -11258,20 +11140,13 @@ function renderStage6BishopApp(){
     if(mode === 'predictor') return 'stress-only predictor';
     return String(mode).replaceAll('-', ' ');
   };
-	  const deformationRequestedWorkflowLabel = (mode)=>{
-	    if(mode === 'auto') return deformationIsSafety
-	      ? 'auto: slope-aware K0 recovery + self-weight equilibrium for c-phi'
-	      : 'auto: slope-aware K0 recovery + self-weight equilibrium';
+  const deformationRequestedWorkflowLabel = (mode)=>{
+    if(mode === 'auto') return 'Auto K0 recovery + self-weight equilibrium';
     if(mode === 'gravity-ramp') return 'gravity ramp equilibrium';
     return deformationInitialStressLabel(mode);
   };
   const deformationRequestedInitialStressMode = deformationRequestedWorkflowLabel(deformationGeostaticInitializationMethod);
   const deformationInitialStressMode = deformationInitialStressLabel(deformation.result?.solver?.initialStressMode);
-  const deformationInitialPredictorMode = deformationInitialStressLabel(deformation.result?.solver?.initialPredictorMode);
-  const deformationGeostaticAudit = deformation.result?.solver?.geostaticEquilibriumAudit || null;
-  const deformationGeostaticAuditResidual = Number.isFinite(Number(deformationGeostaticAudit?.relativeResidualBeforeCorrection))
-    ? Number(deformationGeostaticAudit.relativeResidualBeforeCorrection).toExponential(2)
-    : '—';
   const deformationSafetyStatus = deformation.result?.solver?.safetyStatus || 'not-applicable';
   const deformationSafetyFoSLower = Number.isFinite(deformation.result?.solver?.safetyFactorOfSafetyLower)
     ? Number(deformation.result.solver.safetyFactorOfSafetyLower)
@@ -11291,7 +11166,6 @@ function renderStage6BishopApp(){
   const deformationServicePhaseStatus = deformation.result?.solver?.servicePhaseStarted === true
     ? String(deformation.result?.solver?.servicePhaseConvergenceState || deformation.result?.solver?.convergenceState || 'unknown')
     : (deformation.result?.solver?.initialPhaseStarted === true ? 'not started' : 'not applicable');
-  const deformationInitialDisplacementReset = deformation.result?.solver?.initialDisplacementResetApplied === true ? 'yes' : 'no';
   const deformationGeostaticIterations = Number.isFinite(deformation.result?.solver?.geostaticIterations)
     ? deformation.result.solver.geostaticIterations
     : null;
@@ -11299,9 +11173,9 @@ function renderStage6BishopApp(){
     ? Number(deformation.result.solver.geostaticResidualNorm).toExponential(2)
     : '—';
   const deformationSolverLabel = deformation.result?.solver?.constitutiveModel === 'mc-reduced-stiffness-material-point'
-    ? 'Stage 1 MC-active reduced-stiffness plane strain'
+    ? 'Reduced-stiffness Mohr-Coulomb screen'
     : deformation.result?.solver?.constitutiveModel === 'mc-plastic-material-point'
-      ? (deformation.result?.solver?.analysisType === 'safety-cphi' ? 'Stage 2 elastoplastic plane strain + c-phi reduction safety' : 'Stage 2 elastoplastic plane strain')
+      ? (deformation.result?.solver?.analysisType === 'safety-cphi' ? 'Mohr-Coulomb plastic + c-phi reduction safety' : 'Mohr-Coulomb plastic plane strain')
       : deformation.result?.solver?.constitutiveModel === 'linear-elastic-material-point'
       ? 'Linear elastic plane strain'
       : '—';
@@ -11320,65 +11194,6 @@ function renderStage6BishopApp(){
   const deformationPeakActive = Number.isFinite(deformation.result?.solver?.peakActiveMcElements)
     ? deformation.result.solver.peakActiveMcElements
     : null;
-  const deformationBackendInfo = deformation.result?.solver?.linearAlgebraBackend || null;
-  const deformationBackendElementType = String(deformationBackendInfo?.elementType || '').toLowerCase() === 't6' ? 't6' : 't3';
-  const deformationBackendKernelsActive = deformationBackendInfo?.elementKernelsActive === true;
-  // Tag the label with the element-type kernel state so the user can
-  // immediately see whether per-element kernels (strain, internal force,
-  // elastic stiffness) were dispatched through the selected backend for the
-  // active mesh element type. Krylov residence is reported separately via
-  // the actual per-solve path summary.
-  const deformationBackendKernelTag = deformationBackendInfo
-    ? (deformationBackendKernelsActive
-        ? ` · ${deformationBackendElementType.toUpperCase()} element kernels active`
-        : ` · ${deformationBackendElementType.toUpperCase()} element kernels on CPU`)
-    : '';
-  // The honest path label is built from the backend name *and* the
-  // resolved Krylov path (`krylovPath` on the backend info — populated
-  // by the solver after dispatch). This tells the user *exactly* which
-  // path ran:
-  //   webgpu-resident-cg         — DS WebGPU CG, vectors stay on GPU
-  //   webgpu-resident-fgmres     — opt-in WebGPU FGMRES for unsymmetric phases
-  //   webgl-resident-cg          — legacy WebGL resident CG
-  //   hybrid-cpu-krylov-gpu-matvec — explicit experimental hybrid; slow
-  //   cpu-f64                    — pure CPU (no GPU active or below size gate)
-  const deformationKrylovPath = deformationBackendInfo?.krylovPath || (deformationBackendInfo ? 'cpu-f64' : null);
-  const deformationKrylovPathLabel = (() => {
-    switch (deformationKrylovPath) {
-      case 'webgpu-resident-cg': return 'WebGPU resident CG';
-      case 'webgpu-resident-fgmres': return 'WebGPU resident FGMRES';
-      case 'webgl-resident-cg': return 'WebGL resident CG';
-      case 'hybrid-cpu-krylov-gpu-matvec': return 'CPU Krylov + GPU matvec (experimental hybrid)';
-      case 'cpu-f64': return 'CPU f64';
-      default: return deformationKrylovPath || 'unknown';
-    }
-  })();
-  const deformationBackendCertification = deformationBackendInfo?.certification || {};
-  const deformationBackendCertLabel = deformationBackendInfo
-    ? ` · certification: CG ${deformationBackendCertification.residentCg || 'none'}, FGMRES ${deformationBackendCertification.residentGmres || 'none'}, Schwarz ${deformationBackendCertification.residentSchwarz || 'none'}`
-    : '';
-  const deformationBackendLabel = deformationBackendInfo
-    ? (deformationBackendInfo.name === 'webgpu-ds' || deformationBackendInfo.name === 'webgpu-f32-ds'
-        ? `${deformationKrylovPathLabel} (WebGPU double-single, experimental until certified)${deformationBackendKernelTag}${deformationBackendCertLabel}`
-        : (deformationBackendInfo.name === 'webgl2-f32' || deformationBackendInfo.name === 'webgl2-double-single')
-          ? `${deformationKrylovPathLabel} (${deformationBackendInfo.precisionMode === 'double-single' ? 'WebGL2 double-single' : 'WebGL2 f32'}, refresh every ${Math.max(Number(deformationBackendInfo.residualRefreshInterval) || 0, 0)} iters)${deformationBackendKernelTag}${deformationBackendCertLabel}`
-          : (deformationBackendInfo.name === 'cpu-f32' || deformationBackendInfo.name === 'cpu-double-single')
-            ? (deformationBackendInfo.name === 'cpu-double-single'
-                ? `CPU double-single (diagnostic mixed-precision path)${deformationBackendKernelTag}`
-                : `CPU f32 (diagnostic mixed-precision path)${deformationBackendKernelTag}`)
-            : deformationBackendInfo.requested
-              ? `CPU f64 (GPU requested but unavailable — ${deformationBackendInfo.reason || 'unknown reason'})`
-              : 'CPU f64')
-    : '—';
-  const deformationKrylovCountsLabel = deformationBackendInfo?.krylovCountsByPath
-    ? Object.entries(deformationBackendInfo.krylovCountsByPath)
-        .filter(([, count])=>Number(count) > 0)
-        .map(([path, count])=>`${path}: ${count}`)
-        .join(', ')
-    : '';
-  const deformationKrylovFallbackLabel = Array.isArray(deformationBackendInfo?.krylovFallbackReasons)
-    ? deformationBackendInfo.krylovFallbackReasons.filter(Boolean).join(', ')
-    : '';
   const deformationProfileRows = deformationHasResult
     ? (deformation.result?.terrainSettlementProfile || []).map((point, index)=>`
         <tr>
@@ -11462,12 +11277,12 @@ function renderStage6BishopApp(){
     : workspace === 'deformation'
       ? (deformation.progress?.running ? (deformation.progress.percent || 0) : (deformation.status === 'success' ? 100 : 0))
       : (bishop.progress.percent || 0);
-  const workspaceSwitchNote = workspace==='seepage'
-    ? 'Shared canvas and geometry; seepage settings are additive.'
-    : workspace === 'deformation'
-      ? (deformationIsSafety
-        ? 'Shared canvas and geometry; the safety phase starts from the converged deformation equilibrium state and reduces c, tan(phi), tan(psi), and tension cut-off strength with fixed actions.'
-        : 'Shared canvas and geometry; deformation reuses the section mesh with its own solver settings.')
+	  const workspaceSwitchNote = workspace==='seepage'
+	    ? 'Shared canvas and geometry; seepage settings are additive.'
+	    : workspace === 'deformation'
+	      ? (deformationIsSafety
+	        ? 'Shared canvas and geometry; the safety phase starts from a converged equilibrium state and reduces strength with fixed actions.'
+	        : 'Shared canvas and geometry; deformation reuses the section mesh with its own solver settings.')
       : 'Shared canvas and geometry; Bishop/Spencer remain the default workspace.';
   const workspaceReadyHint = workspace === 'seepage'
     ? seepageSetupMessage
@@ -11514,6 +11329,7 @@ function renderStage6BishopApp(){
       <td><input type="number" step="0.01" min="0.01" max="1" value="${(Number.isFinite(Number(mat.rShear)) ? Number(mat.rShear) : 0.25).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'rShear', this.value)"></td>
       <td><input type="number" step="1" min="0" value="${Number(mat.cEff || 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'cEff', this.value)"></td>
       <td><input type="number" step="1" min="0" value="${Number(mat.phiEffDeg || 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'phiEffDeg', this.value)"></td>
+      <td><input type="number" step="1" min="0" value="${Number(mat.psiEffDeg ?? mat.psi ?? 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'psi', this.value)"></td>
     </tr>
   `).join('');
   const wallRows = (bishop.walls || []).map((wall, index)=>`
@@ -11615,7 +11431,7 @@ function renderStage6BishopApp(){
                 <summary>Mechanical inputs</summary>
                 <div class="st6-adv-body">
                   <div class="st6-help">${deformationIsSafety
-                    ? 'The safety route starts from a fully converged Stage 2 elastoplastic equilibrium state and then runs a PLAXIS-style c-phi reduction phase with fixed actions. External loading is optional here: if no load interval and positive surcharge are present, the analysis reduces strength under self-weight only.'
+                    ? 'The safety route starts from a converged Mohr-Coulomb plastic equilibrium state and then runs a c-phi reduction phase with fixed actions. External loading is optional: without an active surcharge interval, the analysis reduces strength under self-weight only.'
                     : 'This first deformation tool is a long-term drained screening solve on the shared triangular mesh. Draw the load interval on the terrain, choose whether you want to drive the model by applied pressure or total slab load, then size the out-of-plane length to approximate strip behaviour.'}</div>
                   <label style="font-size:11px;color:var(--tx2)">Analysis mode
                     <select onchange="stage6BishopSetField('deformation.options.analysisType', this.value)">
@@ -11631,14 +11447,14 @@ function renderStage6BishopApp(){
                   </label>
                   <label style="font-size:11px;color:var(--tx2)">Constitutive model
                     <select onchange="stage6BishopSetField('deformation.options.constitutiveModel', this.value)">
-                      <option value="mc-plastic"${bishop.deformation?.options?.constitutiveModel==='mc-plastic'?' selected':''}>Stage 2 elastoplastic</option>
-                      <option value="mc-reduced-stiffness"${bishop.deformation?.options?.constitutiveModel==='mc-reduced-stiffness'?' selected':''}>Stage 1 reduced stiffness</option>
+                      <option value="mc-plastic"${bishop.deformation?.options?.constitutiveModel==='mc-plastic'?' selected':''}>Mohr-Coulomb plastic</option>
+                      <option value="mc-reduced-stiffness"${bishop.deformation?.options?.constitutiveModel==='mc-reduced-stiffness'?' selected':''}>Reduced-stiffness screen</option>
                       <option value="linear-elastic"${bishop.deformation?.options?.constitutiveModel==='linear-elastic'?' selected':''}>Linear elastic</option>
                     </select>
                   </label>
-	                  <label style="font-size:11px;color:var(--tx2)">Initial stress workflow
+	                  <label style="font-size:11px;color:var(--tx2)">Initial equilibrium workflow
 	                    <select onchange="stage6BishopSetField('deformation.options.geostaticInitializationMethod', this.value)">
-	                      <option value="auto"${deformationGeostaticInitializationMethod==='auto'?' selected':''}>Auto - slope-aware K0 equilibrium</option>
+	                      <option value="auto"${deformationGeostaticInitializationMethod==='auto'?' selected':''}>Auto K0 + self-weight equilibrium</option>
 	                      ${bishop.deformation?.options?.constitutiveModel === 'mc-plastic' ? `<option value="gravity-ramp"${deformationGeostaticInitializationMethod==='gravity-ramp'?' selected':''}>Gravity ramp equilibrium</option>` : ''}
                     </select>
                   </label>
@@ -11858,17 +11674,17 @@ function renderStage6BishopApp(){
             <details class="st6-adv" data-st6details="bishop-deformation-materials"${stage6DetailsOpen('bishop-deformation-materials')}>
               <summary>Imported deformation materials</summary>
               <div class="st6-adv-body">
-                <div class="st6-help">The deformation screen reuses the active CPT-derived layer column across the whole section. <strong>Stage 2 elastoplastic</strong> now runs an exact Mohr-Coulomb active-set return with face, edge, apex, and tension cut-off handling, while Stage 1 remains available as the reduced-stiffness screening route. The key inputs are <strong>E<sub>mc</sub></strong>, <strong>nu</strong>, <strong>K<sub>0,NC</sub></strong>, <strong>r<sub>shear</sub></strong>, <strong>c'</strong>, <strong>phi'</strong>, and <strong>psi</strong>.</div>
+                <div class="st6-help">The deformation screen reuses the active CPT-derived layer column across the whole section. The default Mohr-Coulomb plastic route uses an exact active-set return with face, edge, apex, and tension cut-off handling. The reduced-stiffness screen and linear elastic route remain available for sensitivity checks.</div>
                 <div style="overflow:auto">
                   <table class="tbl st6-bishop-materials">
-                    <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th></tr></thead>
+                    <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th><th>psi</th></tr></thead>
                     <tbody>${deformationMaterialRows}</tbody>
                   </table>
                 </div>
               </div>
             </details>
             <details class="st6-adv" data-st6details="bishop-deformation-solve"${stage6DetailsOpen('bishop-deformation-solve')}>
-              <summary>Mesh & solve</summary>
+              <summary>Mesh & run state</summary>
               <div class="st6-adv-body">
                 <label class="st6-bishop-check">
                   <input type="checkbox" ${deformationMeshTargetAreaAuto ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.meshTargetAreaAuto', this.checked)">
@@ -11889,13 +11705,12 @@ function renderStage6BishopApp(){
                 </label>
                 <div class="st6-help">${deformationIsSafety
                   ? `The safety mesh still follows the shared section geometry, with local refinement under the drawn surcharge interval when one is active. The automatic target area scales from the current section and is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. The safety phase starts from a converged self-weight equilibrium state before the strength-reduction multiplier ΣMsf is advanced.`
-	                  : `The deformation mesh is intentionally refined beneath the loaded interval and both load edges. T3 is the fast constant-strain production path; T6 uses six-node quadratic triangles, three integration points per element, and CPU f64 element assembly to resolve bending and stress gradients with lower mesh sensitivity. The automatic target area is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. The default initial-state workflow recovers a slope-aware K0 stress field, clips shear to the exact Mohr-Coulomb envelope, and requires self-weight equilibrium before service loading.`}</div>
+		                  : `The deformation mesh is intentionally refined beneath the loaded interval and both load edges. T3 is the fast constant-strain path; T6 uses six-node quadratic triangles and three integration points per element to resolve bending and stress gradients with lower mesh sensitivity. The automatic target area is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. The default workflow recovers a K0 stress field and requires self-weight equilibrium before service loading.`}</div>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(deformationStatusMessage)}</strong><br>
                   Solver: <strong>${stage6EscAttr(deformationSolverLabel)}</strong><br>
-                  Requested workflow: <strong>${stage6EscAttr(deformationRequestedInitialStressMode)}</strong><br>
+                  Initial workflow: <strong>${stage6EscAttr(deformationRequestedInitialStressMode)}</strong><br>
                   Initial stress: <strong>${stage6EscAttr(deformationInitialStressMode)}</strong><br>
-                  Initial predictor: <strong>${stage6EscAttr(deformationInitialPredictorMode)}</strong><br>
                   Initial equilibration: <strong>${stage6EscAttr(deformationInitialPhaseStatus)}</strong><br>
                   Service phase: <strong>${stage6EscAttr(deformationServicePhaseStatus)}</strong><br>
                   ${deformationIsSafety ? `Safety phase: <strong>${stage6EscAttr(deformationSafetyStatus)}</strong><br>` : ''}
@@ -11903,7 +11718,6 @@ function renderStage6BishopApp(){
                   ${deformationIsSafety ? `FoS upper bound: <strong>${deformationSafetyFoSUpper != null ? deformationSafetyFoSUpper.toFixed(3) : '—'}</strong><br>` : ''}
                   ${deformationIsSafety ? `Displayed ΣMsf: <strong>${deformationSafetyDisplayedSigmaMsf != null ? deformationSafetyDisplayedSigmaMsf.toFixed(3) : '—'}</strong><br>` : ''}
                   ${deformationIsSafety ? `Displayed retained strength: <strong>${deformationSafetyStrengthRetained != null ? `${(100 * deformationSafetyStrengthRetained).toFixed(2)} %` : '—'}</strong><br>` : ''}
-                  Displacements reset before service reporting: <strong>${stage6EscAttr(deformationInitialDisplacementReset)}</strong><br>
                   Element type: <strong>${stage6EscAttr(deformationMeshElementLabel)}</strong><br>
                   Nodes: <strong>${deformation.mesh?.nodes?.length || 0}</strong><br>
                   Mid-edge nodes: <strong>${deformation.mesh?.meshStats?.midEdgeNodes || 0}</strong><br>
@@ -11912,7 +11726,6 @@ function renderStage6BishopApp(){
                   Free DOFs: <strong>${deformation.result?.solver?.freeDofs || 0}</strong><br>
                   Geostatic CG iterations: <strong>${deformationGeostaticIterations ?? '—'}</strong><br>
                   Geostatic residual: <strong>${deformationGeostaticResidual}</strong><br>
-                  Stress-field audit residual: <strong>${deformationGeostaticAuditResidual}</strong><br>
                   ${deformationIsSafety
                     ? `Safety continuation steps: <strong>${deformation.result?.solver?.safetyAcceptedContinuationSteps || 0}</strong>${deformation.result?.solver?.safetyRejectedContinuationSteps ? ` accepted, ${deformation.result.solver.safetyRejectedContinuationSteps} cut back` : ''}<br>`
                     : `Load steps: <strong>${deformationAcceptedSteps ?? '—'}</strong>${deformationRejectedSteps ? ` accepted, ${deformationRejectedSteps} cut back` : ''}<br>`}
@@ -11921,7 +11734,7 @@ function renderStage6BishopApp(){
                     : `Load factor shown: <strong>${deformationDisplayedLoadFactor != null ? `${(100 * deformationDisplayedLoadFactor).toFixed(1)} %` : '—'}</strong><br>
                   Last converged load factor: <strong>${deformationCommittedLoadFactor != null ? `${(100 * deformationCommittedLoadFactor).toFixed(1)} %` : '—'}</strong><br>`}
                   Nonlinear iterations: <strong>${deformation.result?.solver?.nonlinearIterations || 0}</strong><br>
-                  CG iterations: <strong>${deformation.result?.solver?.linearIterations || 0}</strong><br>
+                  Linear iterations: <strong>${deformation.result?.solver?.linearIterations || 0}</strong><br>
                   Residual: <strong>${Number.isFinite(deformation.result?.solver?.residualNorm) ? Number(deformation.result.solver.residualNorm).toExponential(2) : '—'}</strong><br>
                   Peak active MC elements: <strong>${deformationPeakActive ?? '—'}</strong><br>
                   ${deformationIsSafety
@@ -11934,8 +11747,15 @@ function renderStage6BishopApp(){
                     ${deformationWarnings.map((warning)=>stage6EscAttr(warning)).join('<br>')}
                   </div>
                 ` : ''}
-                ${stage6DepthBandReportHtml(deformation.result?.solver?.initialPhaseDepthBandReport, 'Initial geostatic depth bands')}
-                ${stage6DepthBandReportHtml(deformation.result?.solver?.servicePhaseDepthBandReport, 'Service depth bands')}
+                ${(deformation.result?.solver?.initialPhaseDepthBandReport || deformation.result?.solver?.servicePhaseDepthBandReport) ? `
+                  <details class="st6-adv" data-st6details="bishop-deformation-diagnostics"${stage6DetailsOpen('bishop-deformation-diagnostics')}>
+                    <summary>Plasticity diagnostics</summary>
+                    <div class="st6-adv-body">
+                      ${stage6DepthBandReportHtml(deformation.result?.solver?.initialPhaseDepthBandReport, 'Initial self-weight')}
+                      ${stage6DepthBandReportHtml(deformation.result?.solver?.servicePhaseDepthBandReport, 'Service loading')}
+                    </div>
+                  </details>
+                ` : ''}
               </div>
             </details>
             <details class="st6-adv" data-st6details="bishop-deformation-solver-settings"${stage6DetailsOpen('bishop-deformation-solver-settings')}>
@@ -11956,39 +11776,10 @@ function renderStage6BishopApp(){
                 <label style="font-size:11px;color:var(--tx2)">Maximum load steps
                   <input type="number" step="1" min="1" value="${deformationMaxLoadSteps}" onchange="stage6BishopSetField('deformation.options.maxLoadSteps', this.value)">
                 </label>
-	                <div class="st6-help">Auto is the production workflow: slope-aware K0 recovery followed by self-weight equilibrium. Gravity ramp remains available for rare construction-style starts from zero stress.</div>
-	                <label style="font-size:11px;color:var(--tx2)">Geostatic correction stages
-	                  <input type="number" step="1" min="1" max="64" value="${deformationGeostaticCorrectionStages}" onchange="stage6BishopSetField('deformation.options.geostaticCorrectionStages', this.value)">
-	                </label>
-                <label style="font-size:11px;color:var(--tx2)">Geostatic fail-fast step
-                  <input type="number" step="0.0001" min="0.000001" value="${deformationGeostaticMinLoadStep.toFixed(6)}" onchange="stage6BishopSetField('deformation.options.geostaticMinLoadStep', this.value)">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Repeated depth-band limit
-                  <input type="number" step="1" min="1" value="${deformationGeostaticMaxRepeatedBand}" onchange="stage6BishopSetField('deformation.options.geostaticMaxRepeatedBand', this.value)">
-                </label>
-                <label class="st6-bishop-check">
-                  <input type="checkbox" ${deformationGeostaticProgressFailFast ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.geostaticProgressFailFast', this.checked)">
-                  Stop self-weight plastic crawl early
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Geostatic progress-step limit
-                  <input type="number" step="1" min="1" value="${deformationGeostaticProgressFailFastSteps}" onchange="stage6BishopSetField('deformation.options.geostaticProgressFailFastSteps', this.value)">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Minimum geostatic progress
-                  <input type="number" step="0.01" min="0" max="1" value="${deformationGeostaticProgressFailFastLoadFactor.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.geostaticProgressFailFastLoadFactor', this.value)">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Geostatic active-zone trigger
-                  <input type="number" step="0.01" min="0" max="1" value="${deformationGeostaticProgressFailFastPlasticFraction.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.geostaticProgressFailFastPlasticFraction', this.value)">
-                </label>
-                <label class="st6-bishop-check">
-                  <input type="checkbox" ${deformationServiceProgressFailFast ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.serviceProgressFailFast', this.checked)">
-                  Stop service-load plastic grind early
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Service progress-step limit
-                  <input type="number" step="1" min="1" value="${deformationServiceProgressFailFastSteps}" onchange="stage6BishopSetField('deformation.options.serviceProgressFailFastSteps', this.value)">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Minimum service progress
-                  <input type="number" step="0.01" min="0" max="1" value="${deformationServiceProgressFailFastLoadFactor.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.serviceProgressFailFastLoadFactor', this.value)">
-                </label>
+		                <div class="st6-help">Auto is the production workflow: one K0 stress-recovery seed, followed by the required self-weight equilibrium solve before service or safety loading.</div>
+		                <label style="font-size:11px;color:var(--tx2)">Geostatic correction stages
+		                  <input type="number" step="1" min="1" max="64" value="${deformationGeostaticCorrectionStages}" onchange="stage6BishopSetField('deformation.options.geostaticCorrectionStages', this.value)">
+		                </label>
                 <label style="font-size:11px;color:var(--tx2)">Residual relative tolerance
                   <input type="number" step="0.00001" min="0.00000001" value="${deformationResidualRelTol.toExponential(3)}" onchange="stage6BishopSetField('deformation.options.residualRelTol', this.value)">
                 </label>
@@ -12013,36 +11804,11 @@ function renderStage6BishopApp(){
                 <label style="font-size:11px;color:var(--tx2)">Plastic cutback factor
                   <input type="number" step="0.01" min="0.1" max="0.9" value="${deformationPlasticLoadStepCutbackFactor.toFixed(2)}" onchange="stage6BishopSetField('deformation.options.plasticLoadStepCutbackFactor', this.value)">
                 </label>
-                <label class="st6-bishop-check">
-                  <input type="checkbox" ${deformationUseUnsymmetricPlasticSolver ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useUnsymmetricPlasticSolver', this.checked)">
-                  Use the unsymmetric Stage 2 linear solver path
-                </label>
-                <div class="st6-help">Default on. Plastic active-set tangents can become non-SPD, especially in slope and c-phi runs, so the robust path uses GMRES with block-Jacobi 2x2 preconditioning instead of relying on CG.</div>
-                <label class="st6-bishop-check">
-                  <input type="checkbox" ${deformationUseGpuAcceleration ? 'checked' : ''} ${deformationGpuToggleDisabled ? 'disabled' : ''} onchange="stage6BishopSetField('deformation.options.useGpuAcceleration', this.checked)">
-                  Use GPU linear-algebra acceleration${stage6Tooltip(deformationGpuTooltipText)}
-                </label>
-                <div class="st6-help">Default off for the convergence-first preset. GPU paths are for comparison or speed trials until resident WebGPU Krylov is certified on real hardware; CPU f64 remains the trusted default.</div>
-                <label style="font-size:11px;color:var(--tx2)">GPU minimum free-DOF gate
-                  <input type="number" step="100" min="0" value="${deformationGpuMinDof}" ${deformationGpuToggleDisabled ? 'disabled' : ''} onchange="stage6BishopSetField('deformation.options.gpuMinDof', this.value)">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Resident CG policy
-                  <select ${deformationGpuToggleDisabled ? 'disabled' : ''} onchange="stage6BishopSetField('deformation.options.useResidentCg', this.value === 'force')">
-                    <option value="off"${deformationResidentCgMode === 'off' ? ' selected' : ''}>CPU f64 only</option>
-                    <option value="force"${deformationResidentCgMode === 'force' ? ' selected' : ''}>Force experimental</option>
-                  </select>
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Resident FGMRES policy
-                  <select ${deformationGpuToggleDisabled ? 'disabled' : ''} onchange="stage6BishopSetField('deformation.options.useResidentGmres', this.value === 'force')">
-                    <option value="off"${deformationResidentGmresMode === 'off' ? ' selected' : ''}>CPU f64 only</option>
-                    <option value="force"${deformationResidentGmresMode === 'force' ? ' selected' : ''}>Force experimental</option>
-                  </select>
-                </label>
-                <label class="st6-bishop-check">
-                  <input type="checkbox" ${deformationAllowHybridGpuMatvec ? 'checked' : ''} ${deformationGpuToggleDisabled ? 'disabled' : ''} onchange="stage6BishopSetField('deformation.options.allowHybridGpuMatvecForCpuKrylov', this.checked)">
-                  Allow CPU Krylov + GPU matvec experiment
-                </label>
-                <div class="st6-help">Use the experimental resident or hybrid policies only for comparison runs. The production default for plastic geostatic and c-phi remains CPU f64 until resident WebGPU FGMRES is certified on real hardware.</div>
+	                <label class="st6-bishop-check">
+	                  <input type="checkbox" ${deformationUseUnsymmetricPlasticSolver ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useUnsymmetricPlasticSolver', this.checked)">
+	                  Use GMRES for plastic tangents
+	                </label>
+	                <div class="st6-help">Default on. Plastic active-set tangents can become non-SPD, especially in slope and c-phi runs, so the robust CPU path uses GMRES with block-Jacobi 2x2 preconditioning instead of relying on CG.</div>
                 ${deformationIsSafety ? `
                   <label style="font-size:11px;color:var(--tx2)">Initial ΣMsf increment
                     <input type="number" step="0.01" min="0.001" value="${deformationSafetyInitialSigmaMsfIncrement.toFixed(3)}" onchange="stage6BishopSetField('deformation.options.safetyInitialSigmaMsfIncrement', this.value)">
@@ -12100,7 +11866,7 @@ function renderStage6BishopApp(){
               Element type: <strong>${stage6EscAttr(deformationMeshElementLabel)}</strong><br>
               Out-of-plane length: <strong>${deformationOutOfPlaneLength.toFixed(2)} m</strong><br>
               Seepage pore pressures: <strong>${deformation.options?.useSeepagePorePressures ? 'enabled when available' : 'off'}</strong><br>
-              Initial stress: <strong>${stage6EscAttr(deformationInitialStressMode)}</strong><br>
+              Initial workflow: <strong>${stage6EscAttr(deformationRequestedInitialStressMode)}</strong><br>
               Solver status: <strong>${stage6EscAttr(deformationStatusLabel)}</strong><br>
               Last max settlement: <strong>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxSettlement || 0)).toFixed(2)} mm` : '—'}</strong><br>
               Measurement: <strong>${stage6EscAttr(measurementStatus)}</strong>
@@ -12110,9 +11876,9 @@ function renderStage6BishopApp(){
     ? 'Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.'
     : workspace === 'seepage'
       ? 'The seepage workspace reuses the same Bishop section. Use <strong>Assign BC</strong> and click the terrain, model base, or side boundaries to assign prescribed head, no-flow, or seepage-face conditions, then click <strong>Run seepage</strong>. The same terrain, polygons, walls, snap settings, and viewport stay active while you switch between stability and seepage. Contour fill, contour lines, and the legend now follow the selected seepage field, while flow lines, the phreatic line, and exit-gradient highlights remain optional overlays. When a measurement line exists, the results panel can also probe heads, gradients, and discharge along it.'
-      : (deformationIsSafety
-        ? 'The deformation workspace now also supports a PLAXIS-style c-phi reduction safety route. It first requires a converged Stage 2 elastoplastic equilibrium state, then keeps the actions fixed while reducing c, tan(phi), tan(psi), and the tension cut-off strength through the multiplier ΣMsf. Self-weight-only safety runs are allowed when no surcharge is active. Contours and the shared line probe can then be used to inspect the additional safety displacement field and the incremental safety plasticity band.'
-        : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the drained plane-strain screen. The default Stage 2 route builds a slope-aware K0 seed, clips recovered shear to the exact Mohr-Coulomb envelope, and requires self-weight equilibrium before service loading. The default contour view is |u|,fin, and the overlay can also show active plastic points, tension cut-off points, and stored plastic history. The stress menus still separate the initial geostatic state from the final post-load state, while contour fill, contour lines, the optional legend, and the shared measurement line all follow the selected deformation field.');
+	      : (deformationIsSafety
+	        ? 'The deformation workspace also supports a c-phi reduction safety route. It first requires a converged Mohr-Coulomb plastic equilibrium state, then keeps the actions fixed while reducing strength through the multiplier ΣMsf. Self-weight-only safety runs are allowed when no surcharge is active. Contours and the shared line probe can inspect the additional safety displacement field and incremental safety plasticity band.'
+	        : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the drained plane-strain screen. The default Mohr-Coulomb plastic route builds a K0 seed and requires self-weight equilibrium before service loading. Contour fill, contour lines, the optional legend, and the shared measurement line all follow the selected deformation field.');
   const lineProbeSelectionPath = workspace === 'seepage' ? 'lineProbe.seepageQuantity' : 'lineProbe.deformationQuantity';
   const lineProbeCopyToneColor = bishop.lineProbe?.copyTone === 'ok' ? 'var(--ok-text)' : bishop.lineProbe?.copyTone === 'warn' ? 'var(--wn)' : 'var(--tx2)';
   const lineProbeSummaryHtml = lineProbe.status === 'ready' ? `
@@ -12292,7 +12058,7 @@ function renderStage6BishopApp(){
                           <input type="checkbox" ${bishop.deformation?.display?.showDisplacementVectors ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showDisplacementVectors', this.checked)" ${deformationDisplacementVectorAvailable ? '' : 'disabled'}>
                           Show displacement direction vectors
                         </label>
-                        <div class="st6-help">Filled red points mark currently active Stage 2 plastic points, amber points mark active tension cut-off points, and magenta rings show stored plastic history. In the Stage 1 screen the same overlay marks MC-active reduced-stiffness hotspots.</div>
+                        <div class="st6-help">Filled red points mark currently active plastic points, amber points mark active tension cut-off points, and magenta rings show stored plastic history. In the reduced-stiffness screen the same overlay marks MC-active hotspots.</div>
                         <label style="font-size:11px;color:var(--tx2)">Deformed-shape scale factor
                           <input type="number" step="0.1" min="0.05" value="${Number(bishop.deformation?.options?.displacementScale || 1).toFixed(2)}" onchange="stage6BishopSetField('deformation.options.displacementScale', this.value)">
                         </label>
@@ -12487,17 +12253,13 @@ function renderStage6BishopApp(){
                   <tr><td>Applied q</td><td>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</td></tr>
                   <tr><td>Total load</td><td>${deformationTotalLoad != null ? `${deformationTotalLoad.toFixed(1)} kN` : '—'}</td></tr>
                   <tr><td>Out-of-plane length</td><td>${deformationOutOfPlaneLength.toFixed(2)} m</td></tr>
-                  <tr><td>Nodes</td><td>${deformation.mesh?.nodes?.length || 0}</td></tr>
-                  <tr><td>Triangles</td><td>${deformation.mesh?.elements?.length || 0}</td></tr>
-                  <tr><td>Solver</td><td>${stage6EscAttr(deformationSolverLabel)}</td></tr>
-                  <tr><td>Linear-algebra backend</td><td>${stage6EscAttr(deformationBackendLabel)}</td></tr>
-                  <tr><td>Linear solve paths</td><td>${stage6EscAttr(deformationKrylovCountsLabel || '—')}</td></tr>
-                  <tr><td>Linear fallbacks</td><td>${stage6EscAttr(deformationKrylovFallbackLabel || '—')}</td></tr>
-                  <tr><td>Initial stress</td><td>${stage6EscAttr(deformationInitialStressMode)}</td></tr>
-                  <tr><td>Free DOFs</td><td>${deformation.result?.solver?.freeDofs || 0}</td></tr>
-                  <tr><td>Geostatic CG iterations</td><td>${deformationGeostaticIterations ?? '—'}</td></tr>
-                  <tr><td>Geostatic residual</td><td>${deformationGeostaticResidual}</td></tr>
-                  <tr><td>Stress audit residual</td><td>${deformationGeostaticAuditResidual}</td></tr>
+	                  <tr><td>Nodes</td><td>${deformation.mesh?.nodes?.length || 0}</td></tr>
+	                  <tr><td>Triangles</td><td>${deformation.mesh?.elements?.length || 0}</td></tr>
+	                  <tr><td>Solver</td><td>${stage6EscAttr(deformationSolverLabel)}</td></tr>
+	                  <tr><td>Initial stress</td><td>${stage6EscAttr(deformationInitialStressMode)}</td></tr>
+	                  <tr><td>Free DOFs</td><td>${deformation.result?.solver?.freeDofs || 0}</td></tr>
+	                  <tr><td>Geostatic CG iterations</td><td>${deformationGeostaticIterations ?? '—'}</td></tr>
+	                  <tr><td>Geostatic residual</td><td>${deformationGeostaticResidual}</td></tr>
                   ${deformationIsSafety
                     ? `<tr><td>Safety status</td><td>${stage6EscAttr(deformationSafetyStatus)}</td></tr>
                   <tr><td>FoS lower bound</td><td>${deformationSafetyFoSLower != null ? deformationSafetyFoSLower.toFixed(3) : '—'}</td></tr>
@@ -12509,17 +12271,16 @@ function renderStage6BishopApp(){
                     : `<tr><td>Accepted load steps</td><td>${deformationAcceptedSteps ?? '—'}</td></tr>
                   <tr><td>Rejected load steps</td><td>${deformationRejectedSteps ?? '—'}</td></tr>`}
                   <tr><td>Nonlinear iterations</td><td>${deformation.result?.solver?.nonlinearIterations || 0}</td></tr>
-                  <tr><td>CG iterations</td><td>${deformation.result?.solver?.linearIterations || 0}</td></tr>
+	                  <tr><td>Linear iterations</td><td>${deformation.result?.solver?.linearIterations || 0}</td></tr>
                   <tr><td>Residual</td><td>${Number.isFinite(deformation.result?.solver?.residualNorm) ? Number(deformation.result.solver.residualNorm).toExponential(2) : '—'}</td></tr>
                   <tr><td>Peak active MC elements</td><td>${deformationPeakActive ?? '—'}</td></tr>
                   <tr><td>Max settlement</td><td>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxSettlement || 0)).toFixed(2)} mm` : '—'}</td></tr>
                   <tr><td>Max |u_x|</td><td>${deformation.result ? `${(1000 * (deformation.result.summaries?.maxHorizontalDisplacement || 0)).toFixed(2)} mm` : '—'}</td></tr>
                   <tr><td>Max delta sigma_yy</td><td>${deformation.result ? `${(deformation.result.summaries?.maxDeltaSigmaYy || 0).toFixed(2)} kPa` : '—'}</td></tr>
-                  <tr><td>Max MC eta</td><td>${deformation.result ? (deformation.result.summaries?.hasInfiniteMcEta ? '∞' : `${(deformation.result.summaries?.maxMcEta || 0).toFixed(3)}`) : '—'}</td></tr>
-                  <tr><td>Active MC elements</td><td>${deformation.result ? `${deformation.result.summaries?.activeMcElementCount || 0}` : '—'}</td></tr>
-                  <tr><td>MC-exceeded elements</td><td>${deformation.result ? `${deformation.result.summaries?.exceededMcElementCount || 0}` : '—'}</td></tr>
-                  <tr><td>Initial predictor inadmissible elements</td><td>${deformation.result ? `${deformation.result.summaries?.inadmissibleInitialElementCount || 0}` : '—'}</td></tr>
-                  <tr><td>Max ε̄ᵖ,acc</td><td>${deformation.result ? `${(100 * (deformation.result.summaries?.maxEquivalentPlasticStrain || 0)).toFixed(3)} %` : '—'}</td></tr>
+	                  <tr><td>Max MC eta</td><td>${deformation.result ? (deformation.result.summaries?.hasInfiniteMcEta ? '∞' : `${(deformation.result.summaries?.maxMcEta || 0).toFixed(3)}`) : '—'}</td></tr>
+	                  <tr><td>Active MC elements</td><td>${deformation.result ? `${deformation.result.summaries?.activeMcElementCount || 0}` : '—'}</td></tr>
+	                  <tr><td>MC-exceeded elements</td><td>${deformation.result ? `${deformation.result.summaries?.exceededMcElementCount || 0}` : '—'}</td></tr>
+	                  <tr><td>Max ε̄ᵖ,acc</td><td>${deformation.result ? `${(100 * (deformation.result.summaries?.maxEquivalentPlasticStrain || 0)).toFixed(3)} %` : '—'}</td></tr>
                   ${deformationIsSafety ? `<tr><td>Max Δε̄ᵖ,safety</td><td>${deformation.result ? `${(100 * (deformation.result.summaries?.maxSafetyEquivalentPlasticIncrement || 0)).toFixed(3)} %` : '—'}</td></tr>` : ''}
                   <tr><td>Runtime</td><td>${stage6SecondsLabelFromMs(deformation.result?.timing?.totalMs)}</td></tr>
                 </table>
@@ -12544,10 +12305,10 @@ function renderStage6BishopApp(){
   return `
     <div class="mc2 st6-bishop">
       <div class="mc2-head" style="margin-bottom:12px">
-        <span style="font-size:13px;font-weight:600">${workspace === 'deformation' ? 'Section deformation screening' : 'Seep/Slope + Spencer equilibrium check'}</span>
-        <span style="font-size:11px;color:var(--tx2)">${workspace === 'deformation'
-          ? 'Shared Stage 6 geometry with a drained plane-strain mesh, geostatic initialization, and a selectable linear-elastic / Stage 1 / Stage 2 deformation solve.'
-          : 'Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.'}</span>
+	        <span style="font-size:13px;font-weight:600">${workspace === 'deformation' ? 'Section deformation screening' : 'Seep/Slope + Spencer equilibrium check'}</span>
+	        <span style="font-size:11px;color:var(--tx2)">${workspace === 'deformation'
+	          ? 'Shared Stage 6 geometry with a drained plane-strain mesh, required self-weight equilibrium, and selectable elastic or Mohr-Coulomb material behaviour.'
+	          : 'Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.'}</span>
       </div>
       <div class="st6-bishop-workspace-switch">
         <button class="btn sm ${workspace==='stability'?'active':''}" onclick="stage6BishopSetWorkspace('stability')">Stability</button>
@@ -12755,14 +12516,14 @@ function renderStage6BishopApp(){
           ${workspaceResultsHtml}
         </div>
       </div>
-      ${stage6NoteHtml(workspace === 'deformation'
-        ? [
-            {level:'warn', text:'This deformation workspace is a drained small-strain plane-strain tool on T3 triangles. Stage 1 reduced stiffness remains available as the conservative screen, while Stage 2 now uses an exact Mohr-Coulomb active-set return with face, edge, apex, and tension cut-off handling as the advanced plastic path.'},
-            {level:'info', text:'Stage 2 stores plastic strain and performs an exact Mohr-Coulomb elastoplastic return in principal stress space. Tension-governed accepted states are reported separately from ηMC-driven shear utilization.'},
-            {level:'info', text:'The soil model is still derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section, and retaining walls are not yet active mechanical elements in the deformation solve.'},
-	            {level:'info', text:'Initial stress is selected by workflow: Auto uses slope-aware K0 recovery and a self-weight equilibrium correction by default. C-phi safety and service loading both require a converged self-weight state.'},
-            {level:'info', text:'MC utilization remains an exact diagnostic on the current effective stress state. Plastic zones should be interpreted from the active yield surface and accumulated plastic strain, while inadmissible initial stresses are reported separately from plastic history.'}
-          ]
+	      ${stage6NoteHtml(workspace === 'deformation'
+	        ? [
+	            {level:'warn', text:'This deformation workspace is a drained small-strain plane-strain tool on T3 or T6 triangles. T6 improves stress-gradient resolution but is slower; mesh sensitivity still needs engineering review.'},
+	            {level:'info', text:'The Mohr-Coulomb plastic route stores plastic strain and performs an exact elastoplastic return in principal stress space. Tension-governed accepted states are reported separately from ηMC-driven shear utilisation.'},
+	            {level:'info', text:'The soil model is still derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section, and retaining walls are not yet active mechanical elements in the deformation solve.'},
+		            {level:'info', text:'Initial stress is selected by workflow: Auto uses K0 recovery and a self-weight equilibrium correction by default. C-phi safety and service loading both require a converged self-weight state.'},
+	            {level:'info', text:'MC utilization remains an exact diagnostic on the current effective stress state. Plastic zones should be interpreted from the active yield surface and accumulated plastic strain, while inadmissible initial stresses are reported separately from plastic history.'}
+	          ]
         : workspace === 'seepage'
           ? [
               {level:'warn', text:'This Stage 6 seepage workflow is experimental. It solves steady-state 2D seepage on a constrained triangular FEM mesh built from the shared section geometry.'},

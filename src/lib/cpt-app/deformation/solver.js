@@ -46,7 +46,12 @@ import { computeDepthBandReport } from './diagnostics-depth-bands.js';
 // 2×2 preconditioner path. The Schwarz module is preserved on disk for any
 // future reintroduction but is no longer imported here.
 import { terrainY } from '../stage6-bishop.js';
-import { createLinearAlgebraBackend, GPU_DEFAULT_MIN_DOF } from './gpu/index.js';
+
+// GPU acceleration is being rebuilt as a separate, fully resident
+// double-single pipeline. Until that pipeline lands the deformation solver
+// runs CPU f64 only. No backend dispatchers, no precision escalation, no
+// resident kernels, no hybrid mode — just the CPU path that the CPU
+// regression suite already validates.
 
 // Residual-refresh cadence: after every BACKEND_RESIDUAL_REFRESH_INTERVAL
 // Krylov iterations a mixed-precision backend triggers a CPU f64 recompute
@@ -275,316 +280,20 @@ function branchActivityCounts(materialState) {
   };
 }
 
-let activeMatvecBackend = null;
-let activeBackendInfo = { name: 'cpu-f64', reason: 'gpu-disabled' };
-let activeBackendRuntimeWarnings = [];
+// CPU f64 is the only active linear-algebra backend until the new GPU
+// resident double-single pipeline is built. The two records below are
+// kept so the run record (and any UI) has a stable shape — when the new
+// pipeline lands they will report `'gpu-resident-ds'`.
+const activeBackendInfo = { name: 'cpu-f64', reason: 'cpu-only' };
+const activeBackendRuntimeWarnings = [];
 
-function backendRequiresResidualRefresh() {
-  return !!(activeMatvecBackend && activeMatvecBackend.requiresResidualRefresh);
-}
-
-function backendResidualRefreshInterval() {
-  return Math.max(
-    Math.round(Number(activeMatvecBackend?.residualRefreshInterval) || BACKEND_RESIDUAL_REFRESH_INTERVAL),
-    1
-  );
-}
-
-function handleActiveBackendFailure(operation, error) {
-  const operationLabel = String(operation || 'unknown-operation');
-  const message = `Linear-algebra backend '${activeMatvecBackend?.name || 'unknown'}' failed during ${operationLabel} (${error?.message || 'unknown'}); falling back to the CPU f64 path for the remainder of the run.`;
-  activeBackendInfo = {
-    ...activeBackendInfo,
-    name: 'cpu-f64',
-    reason: `runtime-fallback:${operationLabel}:${error?.message || 'unknown'}`,
-    failedFrom: activeMatvecBackend?.name || null,
-    failedOperation: operationLabel,
-    precisionMode: null,
-    supportsElementKernels: false,
-    supportsDoubleSingle: false
-  };
-  try { activeMatvecBackend?.dispose?.(); } catch { /* ignore */ }
-  activeMatvecBackend = null;
-  pushUniqueWarning(activeBackendRuntimeWarnings, message);
-  if (typeof console !== 'undefined' && console?.warn) console.warn(message);
-}
-
-function backendEscalatePrecisionMode(nextMode, reason = '', nextResidualRefreshInterval = null) {
-  if (!activeMatvecBackend?.setPrecisionMode) return false;
-  const resolvedMode = activeMatvecBackend.setPrecisionMode(nextMode);
-  if (nextResidualRefreshInterval != null) {
-    try { activeMatvecBackend.setResidualRefreshInterval?.(nextResidualRefreshInterval); } catch { /* ignore */ }
-  }
-  activeBackendInfo = {
-    ...activeBackendInfo,
-    name: activeMatvecBackend?.name || activeBackendInfo?.name || 'cpu-f64',
-    precisionMode: activeMatvecBackend?.precisionMode || resolvedMode || null,
-    residualRefreshInterval: backendRequiresResidualRefresh() ? backendResidualRefreshInterval() : 0,
-    precisionEscalationReason: reason || activeBackendInfo?.precisionEscalationReason || ''
-  };
-  return true;
-}
-
-// f32 IEEE-754 maximum is 3.4028235e38. The headroom factor is the
-// fraction of f32_max we leave for accumulator margin during the row's
-// multiply-add reduction. The pre-check at this ceiling is purely
-// advisory — its job is to *avoid invoking the GPU* on a matvec we
-// already know will overflow, sparing the cost of an unsuccessful
-// kernel launch and (more importantly) the cost of a downstream NaN
-// detection cascade. Anything above this ceiling still gets a soft
-// per-call CPU fallback inside sparseMatVec, with the backend kept
-// live for subsequent matvecs whose iterate is back within range.
-//
-// We use a 0.5× headroom (was 0.125×). Krylov accumulators benefit
-// from sign cancellation in symmetric positive-definite systems
-// (residuals tend to oscillate in sign), so the worst-case all-positive
-// row-sum bound is overly pessimistic. 0.5× still gives a 2× safety
-// margin against the actual per-term limit.
-const GPU_F32_PRODUCT_HEADROOM = 0.5;
-const GPU_F32_MAX = 3.4028235e38;
-
-function vectorAbsMax(vector) {
-  let maxAbs = 0;
-  for (let i = 0; i < vector.length; i += 1) {
-    const a = Math.abs(Number(vector[i]) || 0);
-    if (a > maxAbs) maxAbs = a;
-  }
-  return maxAbs;
-}
-
-// Compute the precise safe |x| ceiling for the active backend's packed
-// matrix. The math is exact: the kernel computes
-//   sum_k vals[base+k] * x[col_k]
-// for k in [0, rowLen). For each term to be representable in f32:
-//   |vals[base+k]| · |x[col_k]| < f32_max / rowLen (with headroom)
-// Therefore |x| ≤ f32_max · headroom / (max|vals| · rowLen). When the
-// backend doesn't expose its matrix bounds (cpu-f64 fallback or before
-// the first pack), we fall back to a generous 1e30 ceiling — that
-// covers any realistic Krylov iterate without rejecting normal inputs.
-function gpuMatvecSafeVectorCeiling(backend) {
-  const maxVal = Number(backend?.matrixMaxAbsValue) || 0;
-  const rowLen = Math.max(Number(backend?.matrixMaxRowLen) || 0, 1);
-  if (!(maxVal > 0)) return 1e30;
-  return (GPU_F32_MAX * GPU_F32_PRODUCT_HEADROOM) / (maxVal * rowLen);
-}
-
-let gpuVectorMagnitudeFallbacksReported = 0;
-const GPU_VECTOR_MAGNITUDE_FALLBACK_REPORT_LIMIT = 3;
-
-function reportGpuVectorMagnitudeFallback(absMax, ceiling) {
-  gpuVectorMagnitudeFallbacksReported += 1;
-  if (gpuVectorMagnitudeFallbacksReported <= GPU_VECTOR_MAGNITUDE_FALLBACK_REPORT_LIMIT) {
-    const message = `Krylov iterate magnitude reached ${absMax.toExponential(2)} (f32 safe ceiling ${ceiling.toExponential(2)} for max|matrix|=${(Number(activeMatvecBackend?.matrixMaxAbsValue) || 0).toExponential(2)} × row=${activeMatvecBackend?.matrixMaxRowLen ?? '?'}); routing this matvec to CPU f64 to avoid an f32 overflow. The matrix has a near-singular row that the Jacobi preconditioner cannot keep bounded; the GPU stays active for subsequent matvecs.`;
-    pushUniqueWarning(activeBackendRuntimeWarnings, message);
-    if (typeof console !== 'undefined' && console?.warn) console.warn(message);
-  }
-}
-
-// Soft NaN-failure budget: how many f32 matvec NaNs we tolerate per run
-// before concluding the backend itself is broken (kernel compilation
-// quirk on this hardware, driver bug, etc.) and tearing it down. Below
-// this budget, each matvec NaN is treated as "this iterate doesn't fit
-// in f32" and silently routes that single call to CPU; the GPU stays
-// live for every other matvec.
-const GPU_MATVEC_SOFT_NAN_BUDGET = 16;
-let gpuMatvecSoftNanCount = 0;
-
-// `sparseMatVec` is async because the WebGPU backend's matvec is
-// inherently async (no synchronous GPU readback exists in WebGPU);
-// the WebGL2 + GPU.js backend is sync but returning a Promise from it
-// is harmless (Promise.resolve of a Float64Array). All call sites in
-// this file `await` the result. Keeping a single async return contract
-// avoids the silent-NaN trap where `dot(p, await-needed-Promise)` ran
-// numeric arithmetic on a Promise instance.
+// Sparse matrix-vector product with compensated (Kahan) accumulation.
+// CSR rows carry `{ indices: Int32Array, values: Float64Array, diag, ... }`.
+// All Krylov solvers in the CPU pipeline use this as their single matvec.
+// `sparseMatVec` is async only because the future GPU dispatch will be
+// async; today the implementation is synchronous f64 throughout.
 async function sparseMatVec(rows, vector) {
-  if (activeMatvecBackend && typeof activeMatvecBackend.matvec === 'function') {
-    // Adaptive pre-check. The GPU matvec produces Infinity/NaN only
-    // when |val|·|x| · rowLen exceeds f32 max during a per-row
-    // accumulation. With the matrix's actual max value reported by the
-    // backend, the safe |x| ceiling is exact arithmetic — we route a
-    // single matvec to CPU f64 only when an iterate is genuinely
-    // beyond what f32 multiplication can represent for THIS matrix.
-    // The check is now PURELY ADVISORY: anything above the ceiling
-    // gets a per-call CPU fallback, but the soft NaN-budget below
-    // ensures that even an iterate that slips past the pre-check and
-    // produces a NaN inside the kernel does NOT tear down the backend.
-    // Net effect: the GPU runs every matvec it can physically handle,
-    // and those that genuinely cannot fit in f32 silently route to
-    // CPU without losing GPU acceleration on subsequent calls.
-    const ceiling = gpuMatvecSafeVectorCeiling(activeMatvecBackend);
-    const absMax = vectorAbsMax(vector);
-    if (absMax > ceiling) {
-      reportGpuVectorMagnitudeFallback(absMax, ceiling);
-      return sparseMatVecFallback(rows, vector);
-    }
-    const startedPrecisionMode = activeMatvecBackend.precisionMode || 'f32';
-    try {
-      return await activeMatvecBackend.matvec(rows, vector);
-    } catch (error) {
-      // f32 matvec hit a non-finite value. Don't immediately abandon the
-      // GPU: the double-single path uses the same WebGL kernel with
-      // higher-precision intermediate accumulation and can usually
-      // survive what kills the f32 path (a near-singular tangent during
-      // an active-set transition, a heavy plastic correction pushing a
-      // residual entry past f32 dynamic range, etc.). Only fall back to
-      // CPU when the escalated GPU path also fails — that is the cheapest
-      // recovery and keeps the GPU live for the rest of the run.
-      const canEscalate = !!activeMatvecBackend
-        && activeMatvecBackend.supportsDoubleSingle === true
-        && activeMatvecBackend.precisionMode !== 'double-single'
-        && typeof activeMatvecBackend.setPrecisionMode === 'function';
-      if (canEscalate) {
-        const escalated = backendEscalatePrecisionMode(
-          'double-single',
-          `f32 matvec produced a non-finite value (${error?.message || 'unknown'}); escalated to double-single in-place to keep the GPU active.`,
-          10
-        );
-        if (escalated) {
-          try {
-            return await activeMatvecBackend.matvec(rows, vector);
-          } catch (retryError) {
-            // Both f32 and double-single produced NaN. Two
-            // possibilities: (a) the iterate genuinely doesn't fit in
-            // f32 (per-call problem; CPU fallback for THIS matvec is
-            // correct), or (b) the kernel itself has a problem (a
-            // permanent issue; fall back the whole run). We
-            // distinguish using the soft NaN-budget: under it, treat
-            // as per-call; over it, tear down the backend. This keeps
-            // the GPU live for the overwhelming majority of cases
-            // while still recovering from a truly broken kernel.
-            gpuMatvecSoftNanCount += 1;
-            if (gpuMatvecSoftNanCount <= GPU_MATVEC_SOFT_NAN_BUDGET) {
-              reportGpuMatvecSoftNanFallback(error, retryError);
-              return sparseMatVecFallback(rows, vector);
-            }
-            handleActiveBackendFailure(
-              'matvec',
-              new Error(
-                `${gpuMatvecSoftNanCount} matvecs produced non-finite GPU output (last: f32 ${error?.message || 'unknown'}; double-single ${retryError?.message || 'unknown'}). Exceeded the soft-fallback budget of ${GPU_MATVEC_SOFT_NAN_BUDGET}; treating the GPU backend as broken for this run and switching to CPU f64.`
-              )
-            );
-            return sparseMatVecFallback(rows, vector);
-          }
-        }
-      }
-      // Either escalation was not possible (already double-single, or
-      // backend doesn't expose it) or backendEscalatePrecisionMode
-      // returned false. Apply the same soft NaN-budget as above so a
-      // single overflowing iterate doesn't tear down the GPU.
-      gpuMatvecSoftNanCount += 1;
-      if (gpuMatvecSoftNanCount <= GPU_MATVEC_SOFT_NAN_BUDGET) {
-        reportGpuMatvecSoftNanFallback(error, null);
-        return sparseMatVecFallback(rows, vector);
-      }
-      handleActiveBackendFailure(
-        'matvec',
-        new Error(
-          `${gpuMatvecSoftNanCount} matvecs produced non-finite GPU output (last: ${startedPrecisionMode} ${error?.message || 'unknown'}); GPU escalation was unavailable (supportsDoubleSingle=${activeMatvecBackend?.supportsDoubleSingle === true}, currentPrecision=${activeMatvecBackend?.precisionMode || 'unknown'}). Exceeded the soft-fallback budget of ${GPU_MATVEC_SOFT_NAN_BUDGET}; treating the GPU backend as broken and switching to CPU f64.`
-        )
-      );
-      return sparseMatVecFallback(rows, vector);
-    }
-  }
   return sparseMatVecFallback(rows, vector);
-}
-
-let gpuMatvecSoftNanReported = 0;
-const GPU_MATVEC_SOFT_NAN_REPORT_LIMIT = 3;
-
-function reportGpuMatvecSoftNanFallback(primaryError, retryError) {
-  gpuMatvecSoftNanReported += 1;
-  if (gpuMatvecSoftNanReported > GPU_MATVEC_SOFT_NAN_REPORT_LIMIT) return;
-  const message = retryError
-    ? `GPU matvec produced a non-finite value at f32 (${primaryError?.message || 'unknown'}) and again at double-single (${retryError?.message || 'unknown'}); routing this matvec to CPU f64 (soft NaN budget ${gpuMatvecSoftNanCount}/${GPU_MATVEC_SOFT_NAN_BUDGET}). The GPU stays active for subsequent matvecs.`
-    : `GPU matvec produced a non-finite value (${primaryError?.message || 'unknown'}); routing this matvec to CPU f64 (soft NaN budget ${gpuMatvecSoftNanCount}/${GPU_MATVEC_SOFT_NAN_BUDGET}). The GPU stays active for subsequent matvecs.`;
-  pushUniqueWarning(activeBackendRuntimeWarnings, message);
-  if (typeof console !== 'undefined' && console?.warn) console.warn(message);
-}
-
-function elementCachesAreUniformKind(elementCaches) {
-  if (!(elementCaches?.length > 0)) return false;
-  const first = elementCaches[0]?.kind === 't6' ? 't6' : 't3';
-  for (let i = 1; i < elementCaches.length; i += 1) {
-    const k = elementCaches[i]?.kind === 't6' ? 't6' : 't3';
-    if (k !== first) return false;
-  }
-  return true;
-}
-
-function backendSupportsKind(backend, kind) {
-  if (!backend) return false;
-  if (kind === 't6') return backend.supportsT6ElementKernels === true;
-  return backend.supportsT3ElementKernels === true;
-}
-
-// Per-run, per-element-type kernel disable flags. Element kernels can hit
-// non-finite values during transient states (e.g. an iterate about to be
-// backed off by line search) without indicating that the matvec — which
-// is the primary GPU win — is unsafe. So we disable just the offending
-// element-kernel call, route subsequent calls of the same kind to the
-// CPU element path, and leave the matvec on GPU.
-const disabledElementKernels = { t3: false, t6: false };
-
-function disableBackendElementKernel(kind, operation, error) {
-  if (kind !== 't3' && kind !== 't6') return;
-  if (disabledElementKernels[kind]) return;
-  disabledElementKernels[kind] = true;
-  const message = `Linear-algebra backend '${activeMatvecBackend?.name || 'unknown'}' element kernel '${operation}' produced a non-finite value for ${kind.toUpperCase()} elements (${error?.message || 'unknown'}). Routing ${kind.toUpperCase()} element kernels to the CPU path for the remainder of the run; the matvec stays on the active backend.`;
-  pushUniqueWarning(activeBackendRuntimeWarnings, message);
-  if (typeof console !== 'undefined' && console?.warn) console.warn(message);
-}
-
-// B-bar T6 routes the strain through the same B-bar matrices the kernel
-// uses for K and F_int. The packed GPU element-kernel buffers ship with
-// the standard B (because they're built outside this code path), so when
-// B-bar is active we MUST take the CPU path for element kernels —
-// otherwise strain and stiffness would integrate different operators and
-// the formulation would be variationally inconsistent. Engineers can opt
-// out of B-bar (`useBBarFormulationT6: false`) to re-enable the GPU
-// element-kernel fast path on T6.
-function backendElementStrain(elementCaches, vector) {
-  if (!elementCachesAreUniformKind(elementCaches)) return null;
-  if (elementCaches.useBBarT6 === true) return null;
-  if (!activeMatvecBackend || typeof activeMatvecBackend.elementStrain !== 'function') return null;
-  const kind = elementCaches[0].kind === 't6' ? 't6' : 't3';
-  if (!backendSupportsKind(activeMatvecBackend, kind)) return null;
-  if (disabledElementKernels[kind]) return null;
-  try {
-    return activeMatvecBackend.elementStrain(elementCaches, vector);
-  } catch (error) {
-    disableBackendElementKernel(kind, 'element-strain', error);
-    return null;
-  }
-}
-
-function backendElementInternalForce(elementCaches, stressFlat) {
-  if (!elementCachesAreUniformKind(elementCaches)) return null;
-  if (elementCaches.useBBarT6 === true) return null;
-  if (!activeMatvecBackend || typeof activeMatvecBackend.elementInternalForce !== 'function') return null;
-  const kind = elementCaches[0].kind === 't6' ? 't6' : 't3';
-  if (!backendSupportsKind(activeMatvecBackend, kind)) return null;
-  if (disabledElementKernels[kind]) return null;
-  try {
-    return activeMatvecBackend.elementInternalForce(elementCaches, stressFlat);
-  } catch (error) {
-    disableBackendElementKernel(kind, 'element-internal-force', error);
-    return null;
-  }
-}
-
-function backendElementElasticStiffness(elementCaches, tangentFlat) {
-  if (!elementCachesAreUniformKind(elementCaches)) return null;
-  if (elementCaches.useBBarT6 === true) return null;
-  if (!activeMatvecBackend || typeof activeMatvecBackend.elementElasticStiffness !== 'function') return null;
-  const kind = elementCaches[0].kind === 't6' ? 't6' : 't3';
-  if (!backendSupportsKind(activeMatvecBackend, kind)) return null;
-  if (disabledElementKernels[kind]) return null;
-  try {
-    return activeMatvecBackend.elementElasticStiffness(elementCaches, tangentFlat);
-  } catch (error) {
-    disableBackendElementKernel(kind, 'element-elastic-stiffness', error);
-    return null;
-  }
 }
 
 function sparseMatVecFallback(rows, vector) {
@@ -990,14 +699,7 @@ function decorateLinearSolveResult(result, metadata = {}) {
     ? Number(result.trueResidualNorm)
     : residualNorm;
   const path = metadata.path || result?.path || 'cpu-f64';
-  const defaultPrecision = path === 'cpu-f64'
-    ? { vector: 'f64', matrix: 'f64', reductions: 'f64', material: 'cpu-f64' }
-    : {
-        vector: activeMatvecBackend?.vectorPrecision || activeMatvecBackend?.precisionMode || 'f64',
-        matrix: activeMatvecBackend?.matrixPrecision || activeMatvecBackend?.precisionMode || 'f64',
-        reductions: activeMatvecBackend?.dotPrecision || activeMatvecBackend?.precisionMode || 'f64',
-        material: 'cpu-f64'
-      };
+  const defaultPrecision = { vector: 'f64', matrix: 'f64', reductions: 'f64', material: 'cpu-f64' };
   return {
     ...result,
     solver: metadata.solver || result?.solver || 'unknown',
@@ -1073,229 +775,26 @@ function aggregateLinearSolveHistory(...histories) {
   };
 }
 
-// Dispatcher: when the active backend exposes a GPU-resident CG, route
-// through it. The WebGPU resident path keeps x, r, z, p, ap as DS
-// buffer pairs across iterations and only crosses the CPU/GPU boundary
-// for the Krylov scalars and final true-residual acceptance. Falls
-// back to CPU f64 when the backend is uncertified, unavailable, or
-// missing the requested resident preconditioner.
+// Dispatchers. CPU f64 is the only active path until the new GPU resident
+// pipeline lands; both dispatchers are thin wrappers that decorate the
+// solver result with a stable `path: 'cpu-f64'` label so the run record
+// shape stays unchanged.
 async function solveCgDispatched(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options = {}) {
-  // Resident CG dispatch is gated on a *certification* flag, not just
-  // "the kernels happen to be DS." `residentCgCertified` only
-  // flips to `true` after the backend's full operator chain (matvec,
-  // axpy, dot, preconditioner, residual) has been verified to give
-  // the same convergence decisions as CPU f64 across the engineering
-  // test sweep. Until that suite certifies the path, resident CG is
-  // opt-in via `options.useResidentCg === true`.
-  // `useResidentCg === false` (an explicit decline) always wins.
-  const fallbackPath = options?.allowHybridGpuMatvecForCpuKrylov === true && activeMatvecBackend
-    ? 'hybrid-cpu-krylov-gpu-matvec'
-    : 'cpu-f64';
-  const residentExplicit = options?.useResidentCg;
-  const residentDefault = activeMatvecBackend?.residentCgCertified === true;
-  const wantsResidentPath = activeMatvecBackend?.supportsResidentCg === true
-    && typeof activeMatvecBackend?.solveCgPreconditionedGpu === 'function'
-    && rows.length > 0
-    && (residentExplicit === true || (residentExplicit !== false && residentDefault));
-  if (wantsResidentPath) {
-    const residentPrecond = flattenKrylovPreconditionerForResidentGpu(rows, options);
-    const refreshInterval = backendRequiresResidualRefresh()
-      ? backendResidualRefreshInterval()
-      : 0;
-    const cpuF64FallbackOptions = {
-      ...options,
-      allowHybridGpuMatvecForCpuKrylov: false
-    };
-    if (!residentPrecond.preconditioner) {
-      return decorateLinearSolveResult(
-        await solveCg(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, cpuF64FallbackOptions),
-        {
-          solver: 'cg',
-          path: 'cpu-f64',
-          preconditioner: residentPrecond.label,
-          fallbackReason: residentPrecond.fallbackReason || 'resident-cg-preconditioner-unavailable'
-        }
-      );
-    }
-    try {
-      const result = await activeMatvecBackend.solveCgPreconditionedGpu({
-        rows,
-        rhs,
-        initial,
-        preconditioner: residentPrecond.preconditioner,
-        maxIter,
-        relTol,
-        absTol,
-        runControl,
-        iterationObserver,
-        residualRefreshIntervalForCheckpoint: refreshInterval,
-        residentTrueResidualAcceptanceBand: options?.residentTrueResidualAcceptanceBand,
-        residentTrueResidualSkipRatio: options?.residentTrueResidualSkipRatio
-      });
-      // Defensive correctness check: the resident path's f32 storage
-      // can in principle produce a non-finite scalar mid-iteration on
-      // a pathologically ill-conditioned matrix. The CPU CG below has
-      // f64 dynamic range and recovers cleanly; route there if we see
-      // any infected output.
-      if (!result
-          || !Number.isFinite(result.residualNorm)
-          || (result.solution && Array.from(result.solution).some((v) => !Number.isFinite(v)))) {
-        if (typeof console !== 'undefined' && console?.warn) {
-          console.warn('GPU-resident CG produced a non-finite output; falling back to CPU CG for this solve.');
-        }
-        return decorateLinearSolveResult(
-          await solveCg(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, cpuF64FallbackOptions),
-          { solver: 'cg', path: 'cpu-f64', fallbackReason: 'resident-cg-non-finite-output' }
-        );
-      }
-      const residentFallbackReason = String(result.fallbackReason || '');
-      if (result.interrupted !== true && result.converged !== true && residentFallbackReason) {
-        if (typeof console !== 'undefined' && console?.warn) {
-          console.warn(`GPU-resident CG rejected by true residual (${residentFallbackReason}); falling back to CPU CG for this solve.`);
-        }
-        return decorateLinearSolveResult(
-          await solveCg(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, cpuF64FallbackOptions),
-          {
-            solver: 'cg',
-            path: 'cpu-f64',
-            fallbackReason: residentFallbackReason,
-            previousPath: activeMatvecBackend?.name === 'webgpu-ds' ? 'webgpu-resident-cg' : 'webgl-resident-cg'
-          }
-        );
-      }
-      return decorateLinearSolveResult(result, {
-        solver: 'cg',
-        path: activeMatvecBackend?.name === 'webgpu-ds' ? 'webgpu-resident-cg' : 'webgl-resident-cg',
-        preconditioner: residentPrecond.label,
-        usedTrueResidualAcceptance: result.usedTrueResidualAcceptance === true
-      });
-    } catch (error) {
-      // Resident kernel threw (compilation, OOB, driver error). Fall
-      // back to CPU CG for this single solve. Don't tear down the
-      // backend — the next solve might be smaller and work fine.
-      if (typeof console !== 'undefined' && console?.warn) {
-        console.warn(`GPU-resident CG threw (${error?.message || 'unknown'}); falling back to CPU CG for this solve.`);
-      }
-      return decorateLinearSolveResult(
-        await solveCg(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, cpuF64FallbackOptions),
-        { solver: 'cg', path: 'cpu-f64', fallbackReason: `resident-cg-throw:${error?.message || 'unknown'}` }
-      );
-    }
-  }
   return decorateLinearSolveResult(
     await solveCg(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options),
-    {
-      solver: 'cg',
-      path: fallbackPath,
-      fallbackReason: ''
-    }
+    { solver: 'cg', path: 'cpu-f64', preconditioner: 'nodal-block-jacobi' }
   );
 }
 
-// Dispatcher for GMRES. Mirrors `solveCgDispatched`. Routes to the
-// GPU-resident FGMRES (DS operator chain, MGS with GPU-resident
-// scalars, true-residual restart) when the active backend self-reports
-// `residentGmresCertified` and exposes `solveGmresPreconditionedGpu`.
-// Falls back to the legacy CPU `solveGmresScaled` (which uses the
-// async backend matvec — also DS via the WebGPU `matvec` API — and
-// does Arnoldi + Givens on CPU) when the resident path is unavailable
-// or fails for a single solve.
 async function solveGmresDispatched(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options = {}) {
-  const residentExplicit = options?.useResidentGmres;
-  const residentDefault = activeMatvecBackend?.residentGmresCertified === true;
-  const wantsResidentPath = activeMatvecBackend?.supportsResidentGmres === true
-    && typeof activeMatvecBackend?.solveGmresPreconditionedGpu === 'function'
-    && rows.length > 0
-    && (residentExplicit === true || (residentExplicit !== false && residentDefault));
-  if (wantsResidentPath) {
-    const residentPrecond = flattenKrylovPreconditionerForResidentGpu(rows, options);
-    const cpuF64FallbackOptions = {
-      ...options,
-      allowHybridGpuMatvecForCpuKrylov: false
-    };
-    if (!residentPrecond.preconditioner) {
-      return decorateLinearSolveResult(
-        await solveGmresScaled(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, cpuF64FallbackOptions),
-        {
-          solver: 'fgmres',
-          path: 'cpu-f64',
-          preconditioner: residentPrecond.label,
-          fallbackReason: residentPrecond.fallbackReason || 'resident-fgmres-preconditioner-unavailable'
-        }
-      );
-    }
-    try {
-      const result = await activeMatvecBackend.solveGmresPreconditionedGpu({
-        rows,
-        rhs,
-        initial,
-        preconditioner: residentPrecond.preconditioner,
-        maxIter,
-        relTol,
-        absTol,
-        runControl,
-        iterationObserver,
-        restart: Math.max(Math.round(Number(options?.restart) || GMRES_RESTART), 4)
-      });
-      if (!result
-          || !Number.isFinite(result.residualNorm)
-          || (result.solution && Array.from(result.solution).some((v) => !Number.isFinite(v)))) {
-        if (typeof console !== 'undefined' && console?.warn) {
-          console.warn('GPU-resident FGMRES produced a non-finite output; falling back to CPU GMRES for this solve.');
-        }
-        return decorateLinearSolveResult(
-          await solveGmresScaled(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, cpuF64FallbackOptions),
-          { solver: 'fgmres', path: 'cpu-f64', fallbackReason: 'resident-fgmres-non-finite-output' }
-        );
-      }
-      const residentFallbackReason = String(result.fallbackReason || '');
-      if (result.interrupted !== true && result.converged !== true && residentFallbackReason) {
-        if (typeof console !== 'undefined' && console?.warn) {
-          console.warn(`GPU-resident FGMRES rejected by true residual (${residentFallbackReason}); falling back to CPU GMRES for this solve.`);
-        }
-        return decorateLinearSolveResult(
-          await solveGmresScaled(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, cpuF64FallbackOptions),
-          {
-            solver: 'fgmres',
-            path: 'cpu-f64',
-            fallbackReason: residentFallbackReason,
-            previousPath: activeMatvecBackend?.name === 'webgpu-ds' ? 'webgpu-resident-fgmres' : 'webgl-resident-fgmres'
-          }
-        );
-      }
-      return decorateLinearSolveResult(result, {
-        solver: 'fgmres',
-        path: activeMatvecBackend?.name === 'webgpu-ds' ? 'webgpu-resident-fgmres' : 'webgl-resident-fgmres',
-        preconditioner: residentPrecond.label,
-        usedTrueResidualAcceptance: result.usedTrueResidualAcceptance === true
-      });
-    } catch (error) {
-      if (typeof console !== 'undefined' && console?.warn) {
-        console.warn(`GPU-resident FGMRES threw (${error?.message || 'unknown'}); falling back to CPU GMRES for this solve.`);
-      }
-      return decorateLinearSolveResult(
-        await solveGmresScaled(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, cpuF64FallbackOptions),
-        { solver: 'fgmres', path: 'cpu-f64', fallbackReason: `resident-fgmres-throw:${error?.message || 'unknown'}` }
-      );
-    }
-  }
   return decorateLinearSolveResult(
     await solveGmresScaled(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options),
-    {
-      solver: 'gmres',
-      path: options?.allowHybridGpuMatvecForCpuKrylov === true && activeMatvecBackend
-        ? 'hybrid-cpu-krylov-gpu-matvec'
-        : 'cpu-f64',
-      fallbackReason: ''
-    }
+    { solver: 'gmres', path: 'cpu-f64', preconditioner: 'nodal-block-jacobi' }
   );
 }
 
 async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol = CG_REL_TOL, absTol = CG_ABS_TOL, runControl = null, iterationObserver = null, options = {}) {
-  const allowHybridGpu = options?.allowHybridGpuMatvecForCpuKrylov === true;
-  const matvec = allowHybridGpu
-    ? (rs, v) => sparseMatVec(rs, v)
-    : (rs, v) => Promise.resolve(sparseMatVecFallback(rs, v));
+  const matvec = (rs, v) => Promise.resolve(sparseMatVecFallback(rs, v));
   const n = rows.length;
   if (!n) {
     return {
@@ -1312,12 +811,7 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
   const x = initial && initial.length === n ? Float64Array.from(initial) : new Float64Array(n);
   let r = rhs;
   if (initial) {
-    // The initial residual sets convergence expectations for the rest of the
-    // solve. Use the f64 fallback when a mixed-precision backend is active
-    // so warm-start convergence is not judged against a narrowed residual.
-    const ax = backendRequiresResidualRefresh() && allowHybridGpu
-      ? sparseMatVecFallback(rows, x)
-      : await matvec(rows, x);
+    const ax = await matvec(rows, x);
     r = new Float64Array(n);
     for (let i = 0; i < n; i += 1) r[i] = rhs[i] - ax[i];
   } else {
@@ -1377,12 +871,6 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
       x[i] += alpha * p[i];
       r[i] -= alpha * ap[i];
     }
-    let didResidualRefresh = false;
-    if (allowHybridGpu && backendRequiresResidualRefresh() && iter % backendResidualRefreshInterval() === 0) {
-      const axRefresh = sparseMatVecFallback(rows, x);
-      for (let i = 0; i < n; i += 1) r[i] = rhs[i] - axRefresh[i];
-      didResidualRefresh = true;
-    }
     residualNorm = Math.sqrt(dot(r, r));
     tolerance = cgToleranceState(residualNorm, rhsNorm, relTol, absTol);
     if (iterationObserver && (iter === 1 || iter % GEOSTATIC_CG_PROGRESS_INTERVAL === 0)) {
@@ -1409,12 +897,8 @@ async function solveCg(rows, rhs, initial = null, maxIter = MAX_CG_ITER, relTol 
     }
     applyKrylovPreconditioner(precond, r, z);
     const rzNew = dot(r, z);
-    // After a residual refresh we restart the Krylov subspace (p = z) so the
-    // momentum term does not drag in stale pre-refresh direction vectors.
-    const beta = didResidualRefresh
-      ? 0
-      : (Math.abs(rzOld) > CG_NUMERIC_EPS ? rzNew / rzOld : 0);
-    for (let i = 0; i < n; i += 1) p[i] = didResidualRefresh ? z[i] : z[i] + beta * p[i];
+    const beta = Math.abs(rzOld) > CG_NUMERIC_EPS ? rzNew / rzOld : 0;
+    for (let i = 0; i < n; i += 1) p[i] = z[i] + beta * p[i];
     rzOld = rzNew;
     if (iter % CG_CHECKPOINT_INTERVAL === 0 && (await runCheckpoint(runControl))) {
       return {
@@ -1563,16 +1047,10 @@ async function solveGmresScaled(rows, rhs, initial = null, maxIter = MAX_CG_ITER
   // (writeBuffer + dispatch + mapAsync + unmap) and the latency
   // dominates the wall-clock on every browser-sized problem we have
   // measured. Default behaviour is therefore *pure CPU f64* — we do
-  // NOT use `activeMatvecBackend.matvec` here unless the user
-  // explicitly opts into the experimental hybrid via
-  // `allowHybridGpuMatvecForCpuKrylov: true`. The fast GPU path for
-  // unsymmetric / plastic / c-phi solves is the resident FGMRES
-  // (gated by `residentGmresCertified`); this CPU GMRES is the
-  // honest fallback when resident is not available.
-  const allowHybridGpu = options?.allowHybridGpuMatvecForCpuKrylov === true;
-  const matvec = allowHybridGpu
-    ? (rs, v) => sparseMatVec(rs, v)
-    : (rs, v) => Promise.resolve(sparseMatVecFallback(rs, v));
+  // CPU f64 matvec is the only path. The new GPU resident pipeline (when
+  // it lands) replaces this entire solver function with a resident GMRES
+  // kernel; until then there is no hybrid.
+  const matvec = (rs, v) => Promise.resolve(sparseMatVecFallback(rs, v));
   const n = rows.length;
   if (!n) {
     return {
@@ -2758,7 +2236,7 @@ function recoverInitialFieldFromGeostaticSolution(mesh, elementCaches, model, Ug
   // shear is zero apart from roundoff.
   const out = new Array(elementCaches.integrationPointCount || elementCaches.length);
   const seedDiagnostics = createSlopeAwareSeedDiagnostics();
-  const precomputedStrainFlat = backendElementStrain(elementCaches, Ugeo);
+  const precomputedStrainFlat = null;
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
     const cell = mesh.cells[elementCache.cellIndex];
@@ -2885,12 +2363,7 @@ async function buildGeostaticInitialization(
       });
       await runCheckpoint(runControl);
     },
-    {
-      freeDofs,
-      useResidentCg: options?.useResidentCg,
-      useResidentGmres: options?.useResidentGmres,
-      allowHybridGpuMatvecForCpuKrylov: options?.allowHybridGpuMatvecForCpuKrylov
-    }
+    { freeDofs }
   );
   if (geostaticCg.interrupted) {
     throw new Error('Deformation run was interrupted before geostatic initialization became available.');
@@ -3335,26 +2808,12 @@ async function assembleNonlinearSystem(
   let changedCount = 0;
   let maxEta = 0;
   let maxStrengthReserve = 0;
-  const precomputedStrainFlat = backendElementStrain(elementCaches, UTrial);
+  const precomputedStrainFlat = null;
   // Element-kind dispatch for the backend internal-force path. We only
-  // attempt the flat-array round-trip when (a) every cache is the same
-  // kind (mixed meshes are not supported by the backend) and (b) the
-  // active backend advertises the kind. The stride is 3 floats per T3
-  // element (one Gauss point) and 9 per T6 element (three Gauss points,
-  // each carrying sxx, syy, txy).
-  const elementsKindUniform = elementCachesAreUniformKind(elementCaches);
-  const elementsKind = elementsKindUniform ? (elementCaches[0]?.kind === 't6' ? 't6' : 't3') : null;
-  const usesBackendInternalForce = !!(
-    elementsKindUniform &&
-    activeMatvecBackend &&
-    typeof activeMatvecBackend.elementInternalForce === 'function' &&
-    backendSupportsKind(activeMatvecBackend, elementsKind)
-  );
-  const stressFlatStride = elementsKind === 't6' ? 9 : 3;
-  const internalForceStride = elementsKind === 't6' ? 12 : 6;
-  const stressContributionFlat = usesBackendInternalForce
-    ? new Float64Array(elementCaches.length * stressFlatStride)
-    : null;
+  // CPU f64 assembly only. The new GPU resident pipeline (when it lands)
+  // will replace this entire function with a per-element compute kernel
+  // that builds K and F_int in DS arithmetic on GPU buffers.
+  const stressContributionFlat = null;
 
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
@@ -3431,63 +2890,14 @@ async function assembleNonlinearSystem(
       );
     }
 
-    if (stressContributionFlat) {
-      // T3: 1 GP × (sxx, syy, txy) = 3 floats; T6: 3 GPs × (sxx, syy, txy) = 9 floats.
-      const stressBase = elementIndex * stressFlatStride;
-      const gpCount = stressContributionAtGp.length;
-      for (let g = 0; g < gpCount; g += 1) {
-        const stress2D = stressContributionAtGp[g];
-        stressContributionFlat[stressBase + g * 3] = Number(stress2D?.sxx) || 0;
-        stressContributionFlat[stressBase + g * 3 + 1] = Number(stress2D?.syy) || 0;
-        stressContributionFlat[stressBase + g * 3 + 2] = Number(stress2D?.txy) || 0;
-      }
-    } else {
-      addVectorBlockToFreeRhs(
-        internalForceFree,
-        elementCache.freeRowIndices,
-        elementCache.kernel.elementInternalForce(elementCache.corners, stressContributionAtGp, elementCache.area, elementCache)
-      );
-    }
+    addVectorBlockToFreeRhs(
+      internalForceFree,
+      elementCache.freeRowIndices,
+      elementCache.kernel.elementInternalForce(elementCache.corners, stressContributionAtGp, elementCache.area, elementCache)
+    );
 
     if (elementIndex % 200 === 0 && (await runCheckpoint(runControl))) {
       throw new Error('Deformation run was interrupted during nonlinear assembly.');
-    }
-  }
-
-  if (stressContributionFlat) {
-    const elementForceFlat = backendElementInternalForce(elementCaches, stressContributionFlat);
-    if (elementForceFlat) {
-      for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
-        addVectorBlockFlatToFreeRhs(
-          internalForceFree,
-          elementCaches[elementIndex].freeRowIndices,
-          elementForceFlat,
-          elementIndex * internalForceStride
-        );
-      }
-    } else {
-      // Backend dropped out (precision escalation, kernel failure, etc.).
-      // Reconstruct the per-Gauss stress array from the flat buffer and
-      // call the CPU element kernel with the same per-element layout it
-      // expects (T3: one stress entry; T6: three).
-      for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
-        const elementCache = elementCaches[elementIndex];
-        const stressBase = elementIndex * stressFlatStride;
-        const gpCount = elementCache.numGaussPoints || (elementsKind === 't6' ? 3 : 1);
-        const stressAtGp = new Array(gpCount);
-        for (let g = 0; g < gpCount; g += 1) {
-          stressAtGp[g] = {
-            sxx: stressContributionFlat[stressBase + g * 3],
-            syy: stressContributionFlat[stressBase + g * 3 + 1],
-            txy: stressContributionFlat[stressBase + g * 3 + 2]
-          };
-        }
-        addVectorBlockToFreeRhs(
-          internalForceFree,
-          elementCache.freeRowIndices,
-          elementCache.kernel.elementInternalForce(elementCache.corners, stressAtGp, elementCache.area, elementCache)
-        );
-      }
     }
   }
 
@@ -4193,7 +3603,7 @@ async function solveNonlinearPhase(
       // Krylov dispatch:
       //   * unsymmetric (mc-plastic + non-associated tangent) →
       //     `solveGmresDispatched` (routes to GPU-resident FGMRES if
-      //     `residentGmresCertified` is true, else CPU GMRES with the
+      //     CPU GMRES with the
       //     async DS backend matvec).
       //   * symmetric (linear elastic, mc-reduced-stiffness, or any
       //     case where the algorithmic tangent is symmetric) → CG via
@@ -4203,7 +3613,7 @@ async function solveNonlinearPhase(
       const linearSolve = usesUnsymmetricSolver ? solveGmresDispatched : solveCgDispatched;
       stepUsedUnsymmetricSolver = usesUnsymmetricSolver;
       stepRecord.linearSolver = usesUnsymmetricSolver ? 'gmres-scaled' : 'cg';
-      stepRecord.linearSolverPrecisionMode = activeMatvecBackend?.precisionMode || 'cpu-f64';
+      stepRecord.linearSolverPrecisionMode = 'cpu-f64';
       const solverNameForProgress = usesUnsymmetricSolver ? 'GMRES' : 'CG';
       const linearIterationObserver = async ({ iterations, relativeResidual }) => {
         onProgress({
@@ -4223,68 +3633,18 @@ async function solveNonlinearPhase(
         runControl,
         linearIterationObserver,
         // freeDofs lets the block-Jacobi preconditioner identify nodal
-        // 2×2 DOF blocks in the compressed-row layout. solveCg honours
-        // this option; solveGmresScaled does its own row equilibration
-        // scaling and ignores extra options beyond the iteration-observer
-        // signature it documents.
-        // `useResidentCg` and `useResidentGmres` are passed through
-        // (not coerced to boolean) so the dispatcher's three-state
-        // logic can pick the backend default when the user has not
-        // made a manual choice. `allowHybridGpuMatvecForCpuKrylov` is
-        // forwarded so the GMRES dispatcher can route uncertified
-        // resident solves to *pure CPU f64* (the safe default) rather
-        // than the slow CPU-GMRES-with-GPU-matvec hybrid.
-        // Block-Jacobi is the convergence-first default on both CPU and
-        // GPU. Additive Schwarz remains available for diagnostics and
-        // difficult local-coupling experiments, but it is used only when
-        // the selected preconditioner level explicitly asks for it.
+        // 2×2 DOF blocks in the compressed-row layout. CPU f64 is the only
+        // path until the GPU resident pipeline is built.
         {
           freeDofs,
           elementCaches,
           preconditionerCache,
           enablePreconditionerCache: options?.enablePreconditionerCache,
           preconditionerReuseDiagDriftTolerance: options?.preconditionerReuseDiagDriftTolerance,
-          useResidentCg: options?.useResidentCg,
-          useResidentGmres: options?.useResidentGmres,
-          allowHybridGpuMatvecForCpuKrylov: options?.allowHybridGpuMatvecForCpuKrylov,
           restart: options?.restart
         }
       );
-      const maybeRetryWithDoubleSingle = async () => {
-        if (
-          !usesUnsymmetricSolver
-          || constitutiveModel !== 'mc-plastic'
-          || !activeMatvecBackend?.supportsDoubleSingle
-          || activeMatvecBackend?.precisionMode === 'double-single'
-        ) return cg;
-        backendEscalatePrecisionMode(
-          'double-single',
-          'Stage 2 unsymmetric solve escalated from f32 to double-single after a non-converged mixed-precision Krylov step.',
-          10
-        );
-        stepRecord.linearSolverPrecisionMode = activeMatvecBackend?.precisionMode || 'double-single';
-        return linearSolve(
-          assembled.compressedRows,
-          assembled.residualFree,
-          shouldWarmStartLinearSolve ? iterationLinearGuess : null,
-          MAX_CG_ITER,
-          CG_REL_TOL,
-          CG_ABS_TOL,
-          runControl,
-          linearIterationObserver,
-          {
-            freeDofs,
-            elementCaches,
-            preconditionerCache,
-            enablePreconditionerCache: options?.enablePreconditionerCache,
-            preconditionerReuseDiagDriftTolerance: options?.preconditionerReuseDiagDriftTolerance,
-            useResidentCg: options?.useResidentCg,
-            useResidentGmres: options?.useResidentGmres,
-            allowHybridGpuMatvecForCpuKrylov: options?.allowHybridGpuMatvecForCpuKrylov,
-            restart: options?.restart
-          }
-        );
-      };
+      const maybeRetryWithDoubleSingle = async () => cg;
       totalCgIterations += cg.iterations;
       if (cg.interrupted) {
         throw new Error(`Deformation run was interrupted during ${
@@ -4334,9 +3694,7 @@ async function solveNonlinearPhase(
       if (!cg.path) {
         cg = decorateLinearSolveResult(cg, {
           solver: usesUnsymmetricSolver ? 'gmres' : 'cg',
-          path: options?.allowHybridGpuMatvecForCpuKrylov === true && activeMatvecBackend
-            ? 'hybrid-cpu-krylov-gpu-matvec'
-            : 'cpu-f64',
+          path: 'cpu-f64',
           preconditioner: 'nodal-block-jacobi'
         });
       }
@@ -5933,7 +5291,7 @@ function summarizeDeformation(nodalDisplacements, elementResults) {
 
 function recoverElementResults(mesh, elementCaches, U, materialPoints, porePressureByElement = null, comparisonMaterialPoints = null) {
   const out = [];
-  const precomputedStrainFlat = backendElementStrain(elementCaches, U);
+  const precomputedStrainFlat = null;
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
     const cell = mesh.cells[elementCache.cellIndex];
@@ -6260,36 +5618,11 @@ export function sampleDeformationState(mesh, result, x, y) {
 }
 
 export async function analyzeDeformationModel(input, onProgress = () => {}, runControl = null) {
-  try {
-    return await _analyzeDeformationModelImpl(input, onProgress, runControl);
-  } finally {
-    // The inner implementation disposes the backend on the happy path, but
-    // we belt-and-suspender the release here so a throw mid-run cannot leak
-    // a WebGL context or GPU.js kernel cache into a subsequent invocation.
-    try { activeMatvecBackend?.dispose?.(); } catch { /* ignore */ }
-    activeMatvecBackend = null;
-    activeBackendInfo = { name: 'cpu-f64', reason: 'gpu-disabled' };
-    activeBackendRuntimeWarnings = [];
-  }
+  return _analyzeDeformationModelImpl(input, onProgress, runControl);
 }
 
 async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runControl = null) {
   const startedAt = performance.now();
-  activeBackendRuntimeWarnings = [];
-  // Per-run flags. The element kernels are disabled per element type if
-  // they produce a non-finite value during the run; the backend's matvec
-  // stays live regardless. Reset here so a previous run's T6 disable
-  // doesn't carry into a fresh analysis.
-  disabledElementKernels.t3 = false;
-  disabledElementKernels.t6 = false;
-  // The vector-magnitude warning is cap-limited to a few emissions per
-  // run (otherwise an ill-conditioned solve produces hundreds of
-  // identical lines). Reset the counter so the cap applies per-run.
-  gpuVectorMagnitudeFallbacksReported = 0;
-  // Reset the soft NaN-budget too. The budget is per-run: a single bad
-  // run cannot poison the next one's GPU.
-  gpuMatvecSoftNanCount = 0;
-  gpuMatvecSoftNanReported = 0;
   const model = input?.model;
   if (!model?.terrain?.vertices?.length || !model?.regions?.length) {
     throw new Error('The deformation screen needs a valid Bishop section model first.');
@@ -6396,58 +5729,14 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     safetyMechanismPlateauRelativeTolerance: Math.max(Number(input?.options?.safetyMechanismPlateauRelativeTolerance) || 0.01, 1e-4),
     safetyMechanismMinIncrementalDisplacementNorm: Math.max(Number(input?.options?.safetyMechanismMinIncrementalDisplacementNorm) || 1e-8, 0),
     safetyMechanismMinPlasticIncrement: Math.max(Number(input?.options?.safetyMechanismMinPlasticIncrement) || 1e-8, 0),
-    useGpuAcceleration: input?.options?.useGpuAcceleration === true,
-    // `useResidentCg` is three-valued: `true` forces resident, `false`
-    // forces CPU f64, `undefined` lets a certified backend decide.
-    // The app's convergence-first defaults send `false`; preserving
-    // `undefined` here keeps the explicit "auto" UI mode meaningful.
-    useResidentCg: typeof input?.options?.useResidentCg === 'boolean'
-      ? input.options.useResidentCg
-      : undefined,
-    // `useResidentGmres` mirrors `useResidentCg` for the unsymmetric
-    // / plastic / c-phi solver path. The WebGPU resident FGMRES
-    // implementation exists but is gated by `residentGmresCertified`
-    // (currently `false` — flipped to `true` only after the browser
-    // certification harness passes against CPU f64). Until certified,
-    // GMRES routes to the *pure CPU f64* path, NOT to the hybrid
-    // (CPU GMRES + GPU matvec) path — that hybrid is the slow
-    // pattern the user diagnosed and we no longer accept it as a
-    // silent default.
-    useResidentGmres: typeof input?.options?.useResidentGmres === 'boolean'
-      ? input.options.useResidentGmres
-      : undefined,
-    // `allowHybridGpuMatvecForCpuKrylov` is the explicit, opt-in
-    // escape hatch for users who want the experimental hybrid path
-    // (CPU GMRES/BiCGStab + GPU async matvec). Default off because
-    // the per-Arnoldi-step round-trip dominates wall-clock on every
-    // browser-sized problem we have measured.
-    allowHybridGpuMatvecForCpuKrylov: input?.options?.allowHybridGpuMatvecForCpuKrylov === true,
-    gpuPrecisionMode: String(input?.options?.gpuPrecisionMode || 'auto').toLowerCase() === 'double-single'
-      ? 'double-single'
-      : 'auto',
-    linearAlgebraBackend: typeof input?.options?.linearAlgebraBackend === 'string'
-      ? input.options.linearAlgebraBackend
-      : null,
-    gpuMinDof: Math.max(Math.round(Number(input?.options?.gpuMinDof) || GPU_DEFAULT_MIN_DOF), 0)
   };
-  // T6 + GPU is now supported via the dedicated T6 element kernels. The
-  // backend probe (webgl-backend.js / cpu-f32-backend.js) reports
-  // supportsT6ElementKernels separately, so a partial degradation is
-  // possible if the GPU.js compilation of the T6 kernels fails on the
-  // current hardware — the per-call dispatcher in
-  // backendElement{Strain,InternalForce,ElasticStiffness} routes to CPU
-  // automatically in that case.
+  // GPU acceleration plumbing has been removed; CPU f64 is the only path
+  // until the new resident double-single pipeline is built (Phases 1-12).
   const load = normalizeLoad(model, options, warnings, analysisType === 'deformation' ? 'required' : 'optional');
   addDomainExtentWarnings(model, load, warnings);
   const hasSurfaceLoad = !!load;
-  if (analysisType === 'safety-cphi') {
-    if (options.constitutiveModel !== 'mc-plastic') {
-      throw new Error('C-phi reduction safety analysis is only available with the Stage 2 elastoplastic constitutive model.');
-    }
-    const safetyGeostaticMethod = normalizeGeostaticInitializationMethod(options.geostaticInitializationMethod);
-    if (safetyGeostaticMethod === 'direct-k0' || safetyGeostaticMethod === 'admissible-k0' || safetyGeostaticMethod === 'field-stress') {
-      throw new Error('C-phi reduction safety analysis requires a converged self-weight equilibrium base state. Select Auto, K0 nil-step, gravity ramp, or a future staged-deposition workflow instead of a stress-only initial field.');
-    }
+  if (analysisType === 'safety-cphi' && options.constitutiveModel !== 'mc-plastic') {
+    throw new Error('C-phi reduction safety analysis is only available with the Stage 2 elastoplastic constitutive model.');
   }
 
   if (await runCheckpoint(runControl, true)) {
@@ -6477,15 +5766,6 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     freeIndexByDof.set(dof, freeDofs.length);
     freeDofs.push(dof);
   }
-  const backendSetup = await createLinearAlgebraBackend({
-    useGpuAcceleration: options.useGpuAcceleration,
-    linearAlgebraBackend: options.linearAlgebraBackend,
-    ndof: freeDofs.length,
-    gpuMinDof: options.gpuMinDof,
-    gpuPrecisionMode: options.gpuPrecisionMode
-  }, warnings);
-  activeMatvecBackend = backendSetup.backend;
-  activeBackendInfo = backendSetup.info;
   const rows = Array.from({ length: ndof }, () => new Map());
   const loadRhs = new Float64Array(ndof);
   const gravityRhs = new Float64Array(ndof);
@@ -6498,35 +5778,6 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     percent: 46,
     message: 'Assembling the plane-strain stiffness matrix and geostatic gravity load...'
   });
-
-  const elasticStiffnessTangentStride = elementCaches[0]?.kind === 't6' ? 27 : 9;
-  const elasticStiffnessTangentFlat = activeMatvecBackend?.elementElasticStiffness
-    ? new Float64Array(elementCaches.length * elasticStiffnessTangentStride)
-    : null;
-  if (elasticStiffnessTangentFlat) {
-    for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
-      const elementCache = elementCaches[elementIndex];
-      const cell = mesh.cells[elementCache.cellIndex];
-      const constitutive = regionConstitutiveForCell(regionConstitutiveByRegion, cell, options, warnings);
-      const tangent2D = extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6);
-      const gpCountForTangent = elementCache.kind === 't6' ? Math.max(elementCache.numGaussPoints || 3, 1) : 1;
-      for (let gpIndex = 0; gpIndex < gpCountForTangent; gpIndex += 1) {
-        const base = elementIndex * elasticStiffnessTangentStride + gpIndex * 9;
-        elasticStiffnessTangentFlat[base] = tangent2D[0][0];
-        elasticStiffnessTangentFlat[base + 1] = tangent2D[0][1];
-        elasticStiffnessTangentFlat[base + 2] = tangent2D[0][2];
-        elasticStiffnessTangentFlat[base + 3] = tangent2D[1][0];
-        elasticStiffnessTangentFlat[base + 4] = tangent2D[1][1];
-        elasticStiffnessTangentFlat[base + 5] = tangent2D[1][2];
-        elasticStiffnessTangentFlat[base + 6] = tangent2D[2][0];
-        elasticStiffnessTangentFlat[base + 7] = tangent2D[2][1];
-        elasticStiffnessTangentFlat[base + 8] = tangent2D[2][2];
-      }
-    }
-  }
-  const elasticStiffnessFlat = elasticStiffnessTangentFlat
-    ? backendElementElasticStiffness(elementCaches, elasticStiffnessTangentFlat)
-    : null;
 
   for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
@@ -6543,22 +5794,16 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     }
     const initialPorePressure = porePressureSum / gpCount;
     const gammaBulk = gammaSum / gpCount;
-    if (elasticStiffnessFlat) {
-      // T3: 6×6 = 36 floats per element; T6: 12×12 = 144.
-      const stiffnessStride = elementCache.kind === 't6' ? 144 : 36;
-      addMatrixBlockFlat(rows, elementCache.dofs, elasticStiffnessFlat, elementIndex * stiffnessStride);
-    } else {
-      addMatrixBlock(
-        rows,
-        elementCache.dofs,
-        elementCache.kernel.elementStiffness(
-          elementCache.corners,
-          Array.from({ length: elementCache.numGaussPoints }, () => extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6)),
-          elementCache.area,
-          elementCache
-        )
-      );
-    }
+    addMatrixBlock(
+      rows,
+      elementCache.dofs,
+      elementCache.kernel.elementStiffness(
+        elementCache.corners,
+        Array.from({ length: elementCache.numGaussPoints }, () => extractTangent2DFrom6(constitutive.materialModel.initialTangent6x6)),
+        elementCache.area,
+        elementCache
+      )
+    );
     addVectorBlock(gravityRhs, elementCache.dofs, elementCache.kernel.elementBodyForceFromArea(elementCache.area, 0, -Math.max(gammaBulk, 0)));
     porePressureByElement[elementIndex] = initialPorePressure;
     if (elementIndex % 250 === 0 && (await runCheckpoint(runControl))) {
@@ -7256,62 +6501,16 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       safetyAcceptedContinuationSteps: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalAcceptedContinuationSteps) || 0 : 0,
       safetyRejectedContinuationSteps: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalRejectedContinuationSteps) || 0 : 0,
       linearAlgebraBackend: {
-        name: activeBackendInfo?.name || 'cpu-f64',
-        reason: activeBackendInfo?.reason || '',
-        requested: !!options.useGpuAcceleration,
-        requestedPrecisionMode: options.gpuPrecisionMode || 'auto',
-        override: options.linearAlgebraBackend || null,
-        probeMode: activeBackendInfo?.probeMode || null,
-        probeContext: activeBackendInfo?.probeContext || null,
-        precisionMode: activeBackendInfo?.precisionMode || activeMatvecBackend?.precisionMode || null,
-        maxTextureSize: activeBackendInfo?.maxTextureSize || null,
-        supportsElementKernels: activeBackendInfo?.supportsElementKernels === true,
-        // Per-element-type capability flags: the WebGL probe runs a tiny
-        // kernel for each, so a hardware quirk that breaks T6 (or T3) on
-        // a specific GPU is reported here without disabling the other.
-        supportsT3ElementKernels: activeBackendInfo?.supportsT3ElementKernels === true,
-        supportsT6ElementKernels: activeBackendInfo?.supportsT6ElementKernels === true,
-        // True iff the active backend's element kernels are actually
-        // engaged for this run's element type. The UI surfaces this so
-        // the user can see at a glance whether T6 GPU acceleration is
-        // live (vs. e.g. silently degraded to CPU because the per-kernel
-        // sanity probe failed on the user's hardware, or runtime
-        // disabled mid-run after a non-finite value).
-        elementKernelsActive: !!activeMatvecBackend
-          && backendSupportsKind(activeMatvecBackend, mesh.elementType === 't6' ? 't6' : 't3')
-          && !disabledElementKernels[mesh.elementType === 't6' ? 't6' : 't3'],
-        supportsDoubleSingle: activeBackendInfo?.supportsDoubleSingle === true,
-        failedFrom: activeBackendInfo?.failedFrom || null,
-        failedOperation: activeBackendInfo?.failedOperation || null,
+        name: activeBackendInfo.name,
+        reason: activeBackendInfo.reason,
+        precisionMode: 'f64',
         freeDofCount: freeDofs.length,
         elementType: mesh.elementType === 't6' ? 't6' : 't3',
-        residualRefreshInterval: backendRequiresResidualRefresh() ? backendResidualRefreshInterval() : 0,
-        // Honest path label resolved from active backend + dispatch
-        // gates. Tells the user *exactly* which solver path actually
-        // ran, in plain language. The previous run record only said
-        // "GPU enabled" which was true even when the slow CPU-Krylov
-        // + GPU-matvec hybrid was running — the user could not tell
-        // resident from hybrid from pure-CPU at a glance.
-        //
-        // Resolution comes from the actual per-solve results:
-        //   - 'cpu-f64'
-        //   - 'webgpu-resident-cg'
-        //   - 'webgpu-resident-fgmres'
-        //   - 'webgl-resident-cg'
-        //   - 'hybrid-cpu-krylov-gpu-matvec' (explicit experiment only)
         krylovPath: linearSolveSummary.primaryPath,
         krylovCountsByPath: linearSolveSummary.countsByPath,
         krylovCountsBySolver: linearSolveSummary.countsBySolver,
         krylovFallbackReasons: linearSolveSummary.fallbackReasons,
-        worstTrueResidualMismatch: linearSolveSummary.worstTrueResidualMismatch,
-        supportsResidentCg: activeBackendInfo?.supportsResidentCg === true,
-        supportsResidentGmres: activeBackendInfo?.supportsResidentGmres === true,
-        supportsResidentSchwarz: activeBackendInfo?.supportsResidentSchwarz === true,
-        residentCgCertified: activeBackendInfo?.residentCgCertified === true,
-        residentGmresCertified: activeBackendInfo?.residentGmresCertified === true,
-        residentSchwarzCertified: activeBackendInfo?.residentSchwarzCertified === true,
-        certification: activeBackendInfo?.certification || null,
-        capabilities: activeBackendInfo?.capabilities || null
+        worstTrueResidualMismatch: linearSolveSummary.worstTrueResidualMismatch
       }
     },
     timing: {

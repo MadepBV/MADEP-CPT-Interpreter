@@ -16,7 +16,9 @@ import {
   mcTolerance,
   mohrCoulombIndicator3D
 } from '../src/lib/cpt-app/deformation/material-models.js';
-import { createLinearAlgebraBackend, probeGpuBackend } from '../src/lib/cpt-app/deformation/gpu/index.js';
+// GPU acceleration is being rebuilt as a separate fully-resident
+// double-single pipeline. The legacy GPU certification cases have been
+// removed; the new pipeline ships with its own parity suite (Phase 10).
 
 const failures = [];
 const passes = [];
@@ -55,7 +57,7 @@ header('Phase 1 — state-invariants gate on c-phi safety');
 // The gate itself is tested by reading the source for the canonical strings
 // the solver uses. This guards against future regressions that delete the
 // gate or weaken the message.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 const solverSource = readFileSync('src/lib/cpt-app/deformation/solver.js', 'utf8');
 
 check(
@@ -159,24 +161,27 @@ check(
 );
 
 // ---------------------------------------------------------------------------
-header('Phase 6 — GPU certification policy');
-const probe = await probeGpuBackend({ logger: () => {} }).catch(() => null);
-const backend = await createLinearAlgebraBackend({ logger: () => {} }).catch(() => null);
-
+header('Phase 6 — GPU pipeline rebuild present');
+{
+  const newGpuModules = [
+    'wgsl/ds.js', 'wgsl/blas.js', 'wgsl/elements.js', 'wgsl/mc-plastic.js',
+    'resident-buffers.js', 'resident-cg.js', 'resident-gmres.js',
+    'resident-newton.js', 'resident-geostatic.js'
+  ];
+  const allPresent = newGpuModules.every((rel) => {
+    try { readFileSync(`src/lib/cpt-app/deformation/gpu/${rel}`, 'utf8'); return true; }
+    catch { return false; }
+  });
+  check('new GPU resident-DS pipeline modules present', allPresent);
+}
 check(
-  'webgpu-backend ships residentCgCertified=false by default',
-  /residentCgCertified:\s*false/.test(
-    readFileSync('src/lib/cpt-app/deformation/gpu/webgpu-backend.js', 'utf8')
-  )
+  'solver no longer imports the legacy GPU backend factory',
+  !/createLinearAlgebraBackend/.test(solverSource)
+    && !/probeGpuBackend/.test(solverSource)
 );
 check(
-  'GMRES dispatcher gates on supportsResidentGmres (not supportsResidentCg)',
-  /supportsResidentGmres\s*===\s*true/.test(solverSource)
-);
-check(
-  'true-residual band acceptance flags propagate through decorate',
-  /acceptedInTrueResidualBand/.test(solverSource)
-    && /trueResidualBandFactor/.test(solverSource)
+  'solver no longer references the legacy activeMatvecBackend dispatchers',
+  !/activeMatvecBackend/.test(solverSource)
 );
 
 // ---------------------------------------------------------------------------
