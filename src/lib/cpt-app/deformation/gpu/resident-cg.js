@@ -402,10 +402,23 @@ async function readbackDsScalar(ctx) {
 // Returns:
 //   { solution: Float64Array, iterations, residualNorm, converged }
 // -----------------------------------------------------------------------------
-export async function solveResidentCg(ctx, { bF64, x0F64 = null, maxIter = 25000, relTol = 1e-8, absTol = 1e-12, observer = null }) {
+export async function solveResidentCg(ctx, {
+  bF64, x0F64 = null, maxIter = 25000, relTol = 1e-8, absTol = 1e-12, observer = null,
+  // When `bAlreadyOnDevice === true`, the caller has already populated
+  // ctx.buffers.b with the right-hand side via copyBufferToBuffer; we skip
+  // the host→device upload and use whatever is on device.  Used by the
+  // plastic Newton orchestrator to avoid CPU round-trips.
+  bAlreadyOnDevice = false,
+  // When `keepSolutionOnDevice === true`, skip the final readback of x to
+  // CPU.  The caller can use ctx.buffers.x directly for downstream device
+  // operations (e.g., line-search axpy).  Returns { solution: null, ... }.
+  keepSolutionOnDevice = false
+}) {
   const { device, N } = ctx;
-  // Initial uploads.
-  uploadDsVector(ctx, 'b', bF64);
+  // Initial uploads.  Skip b if the caller has already placed it on device.
+  if (!bAlreadyOnDevice) {
+    uploadDsVector(ctx, 'b', bF64);
+  }
   uploadDsVector(ctx, 'x', x0F64 || new Float64Array(N));
 
   const rhsNormSq = await computeDot(ctx, 'b', 'b');
@@ -441,7 +454,7 @@ export async function solveResidentCg(ctx, { bF64, x0F64 = null, maxIter = 25000
   let residualNormSq = await computeDot(ctx, 'r', 'r');
   let residualNorm = Math.sqrt(Math.max(residualNormSq, 0));
   if (residualNorm <= targetTol) {
-    return finalize(ctx, 0, residualNorm, rhsNorm, true);
+    return finalize(ctx, 0, residualNorm, rhsNorm, true, null, keepSolutionOnDevice);
   }
 
   for (let iter = 1; iter <= maxIter; iter += 1) {
@@ -453,7 +466,7 @@ export async function solveResidentCg(ctx, { bF64, x0F64 = null, maxIter = 25000
     }
     const pAp = await computeDot(ctx, 'p', 'Ap');
     if (!Number.isFinite(pAp) || Math.abs(pAp) < 1e-300) {
-      return finalize(ctx, iter, residualNorm, rhsNorm, false, 'breakdown:pAp');
+      return finalize(ctx, iter, residualNorm, rhsNorm, false, 'breakdown:pAp', keepSolutionOnDevice);
     }
     const alpha = rz / pAp;
     // x = x + alpha p,   r = r - alpha Ap
@@ -489,7 +502,7 @@ export async function solveResidentCg(ctx, { bF64, x0F64 = null, maxIter = 25000
       await observer({ iterations: iter, residualNorm, relativeResidual: rhsNorm > 0 ? residualNorm / rhsNorm : 0 });
     }
     if (residualNorm <= targetTol) {
-      return finalize(ctx, iter, residualNorm, rhsNorm, true);
+      return finalize(ctx, iter, residualNorm, rhsNorm, true, null, keepSolutionOnDevice);
     }
     // z = M^-1 r,  rzNew = r·z,  beta = rzNew / rz,  p = z + beta p
     {
@@ -506,7 +519,7 @@ export async function solveResidentCg(ctx, { bF64, x0F64 = null, maxIter = 25000
     }
     rz = rzNew;
   }
-  return finalize(ctx, maxIter, residualNorm, rhsNorm, false, 'maxiter');
+  return finalize(ctx, maxIter, residualNorm, rhsNorm, false, 'maxiter', keepSolutionOnDevice);
 }
 
 function dispatchCopy(ctx, encoder, srcName, dstName) {
@@ -532,18 +545,21 @@ async function computeDot(ctx, xName, yName) {
   return readbackDsScalar(ctx);
 }
 
-async function finalize(ctx, iterations, residualNorm, rhsNorm, converged, fallbackReason = null) {
-  // Read x off the device.
-  const dim = ctx.N;
-  const out = ctx.device.createBuffer({ size: 8 * dim, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-  const enc = ctx.device.createCommandEncoder();
-  enc.copyBufferToBuffer(ctx.buffers.x, 0, out, 0, 8 * dim);
-  ctx.device.queue.submit([enc.finish()]);
-  await out.mapAsync(GPUMapMode.READ);
-  const packed = new Float32Array(out.getMappedRange().slice(0));
-  out.unmap();
-  out.destroy();
-  const solution = unpackDsVector(packed);
+async function finalize(ctx, iterations, residualNorm, rhsNorm, converged, fallbackReason = null, keepSolutionOnDevice = false) {
+  let solution = null;
+  if (!keepSolutionOnDevice) {
+    // Read x off the device.
+    const dim = ctx.N;
+    const out = ctx.device.createBuffer({ size: 8 * dim, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const enc = ctx.device.createCommandEncoder();
+    enc.copyBufferToBuffer(ctx.buffers.x, 0, out, 0, 8 * dim);
+    ctx.device.queue.submit([enc.finish()]);
+    await out.mapAsync(GPUMapMode.READ);
+    const packed = new Float32Array(out.getMappedRange().slice(0));
+    out.unmap();
+    out.destroy();
+    solution = unpackDsVector(packed);
+  }
   return {
     solution,
     iterations,
