@@ -42,7 +42,8 @@ import {
   KERNEL_DOT_PASS1_WGSL,
   KERNEL_DOT_PASS2_WGSL,
   KERNEL_CSR_MATVEC_WGSL,
-  KERNEL_BLOCK_JACOBI_WGSL
+  KERNEL_BLOCK_JACOBI_WGSL,
+  KERNEL_BUILD_BLOCK_JACOBI_FROM_CSR_WGSL
 } from './wgsl/blas.js';
 
 import {
@@ -136,6 +137,16 @@ const BGL_BLOCK_JACOBI = {
     { binding: 3, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'uniform' } }
   ]
 };
+const BGL_BUILD_BLOCK_JACOBI = {
+  entries: [
+    { binding: 0, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'read-only-storage' } },
+    { binding: 1, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'read-only-storage' } },
+    { binding: 2, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'read-only-storage' } },
+    { binding: 3, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'read-only-storage' } },
+    { binding: 4, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'storage' } },
+    { binding: 5, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'uniform' } }
+  ]
+};
 
 // -----------------------------------------------------------------------------
 // GPUShaderStage_COMPUTE() helper.  Direct reference to GPUShaderStage.COMPUTE
@@ -198,6 +209,7 @@ export function createResidentCgContext({ device, ndof, numNonzeros }) {
     paramsDotP2: device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
     paramsCsr:   device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
     paramsBj:    device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    paramsBuildBj: device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
     // Reduction scratch / outputs.
     dotPartials: device.createBuffer({ size: partialsBytes, usage: GPUBufferUsage.STORAGE }),
     dotResult:   device.createBuffer({ size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC }),
@@ -214,7 +226,9 @@ export function createResidentCgContext({ device, ndof, numNonzeros }) {
     dot1:    getOrCompilePipeline(device, 'cg-dot-pass1',KERNEL_DOT_PASS1_WGSL,   BGL_DOT_PASS1),
     dot2:    getOrCompilePipeline(device, 'cg-dot-pass2',KERNEL_DOT_PASS2_WGSL,   BGL_DOT_PASS2),
     matvec:  getOrCompilePipeline(device, 'cg-csr-matvec',KERNEL_CSR_MATVEC_WGSL, BGL_CSR_MATVEC),
-    bj:      getOrCompilePipeline(device, 'cg-block-jacobi',KERNEL_BLOCK_JACOBI_WGSL, BGL_BLOCK_JACOBI)
+    bj:      getOrCompilePipeline(device, 'cg-block-jacobi',KERNEL_BLOCK_JACOBI_WGSL, BGL_BLOCK_JACOBI),
+    buildBj: getOrCompilePipeline(device, 'cg-build-block-jacobi-from-csr',
+                                   KERNEL_BUILD_BLOCK_JACOBI_FROM_CSR_WGSL, BGL_BUILD_BLOCK_JACOBI)
   };
 
   return {
