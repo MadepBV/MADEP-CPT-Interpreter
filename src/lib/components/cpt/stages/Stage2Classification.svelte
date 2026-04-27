@@ -43,7 +43,7 @@
 				}
 			}}
 		>
-			<h3>Robertson (2016) — SBT / Qtn <span style="color:var(--acc)">Recommended</span></h3>
+			<h3>Robertson (2016) — SBT / Qtn <span style="color:var(--ac)">Recommended</span></h3>
 			<p>
 				Iterative Qtn and Fr. Preferred default; may be especially useful when the input is a CPTu; still works when
 				u2 is absent.

@@ -17,10 +17,6 @@
 			<button class="btn sm" onclick={() => call('openStage7Report')}>Stage 7 Report</button>
 		</div>
 	</div>
-	<div class="info" style="background:var(--wnl);border-color:var(--wn)">
-		Stage 6 is a screening workspace. Where the underlying method or a default assumption is
-		uncertain, the application now shows that explicitly inside the relevant calculator.
-	</div>
 	<div id="stage6Area"></div>
 	<div class="foot">
 		<button class="btn" onclick={() => call('goS', 4)}>← Back to tuning</button>

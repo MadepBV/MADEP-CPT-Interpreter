@@ -87,17 +87,103 @@ export function buildBMatrixT6AtGauss(corners, L1, L2, L3) {
   return B;
 }
 
-export function elementStiffnessT6FromTangents2D(corners, tangents2DAtGp, area) {
+// B-bar projection for T6 in 2D plane strain. Volumetric locking arises
+// when the plastic flow is incompressible (ψ → 0 in MC, undrained clays in
+// general). For 3-point T6 the constraint εxx + εyy = 0 evaluated at every
+// Gauss point over-constrains the 12-DOF kinematics. The B-bar method
+// (Hughes, 1980; Simo & Hughes, 1998) replaces the volumetric part of the
+// strain operator at every GP by its element-average, leaving the
+// deviatoric part untouched. The result is a single in-plane volumetric
+// constraint per element instead of one per Gauss point — sufficient for
+// equilibrium without locking.
+//
+// Decomposition (plane strain, 3-component strain vector):
+//   ε = [εxx, εyy, γxy]^T,  m = [1, 1, 0]^T  (in-plane volumetric vector)
+//   εv = m^T ε = εxx + εyy
+//   B = B_dev + (1/2) m m^T B   ⇒   B-bar = B_dev + (1/2) m m^T <B>
+//                                       = B + (1/2) m (<m^T B> - m^T B)
+// Per-DOF:
+//   B_bar[0][d] = B[0][d] + (1/2) (<B[0][d] + B[1][d]> - (B[0][d] + B[1][d]))
+//   B_bar[1][d] = B[1][d] + (1/2) (<B[0][d] + B[1][d]> - (B[0][d] + B[1][d]))
+//   B_bar[2][d] = B[2][d]
+// The deviatoric pair εxx − εyy = (B[0] − B[1]) u and the shear γxy = B[2] u
+// are unchanged at every GP. Only εxx + εyy is now the element-average. For
+// T6 with equal Gauss weights and constant Jacobian per element the average
+// reduces to the arithmetic mean of B[0]+B[1] across the 3 GPs.
+//
+// IMPORTANT: this preserves volumetric strain only in the in-plane sense
+// (m = [1,1,0]). The plastic flow rule operates on the full 6-component
+// stress / strain in 3D; B-bar does not constrain εzz_p which is only
+// implicit through the plane-strain ε_zz = 0 condition. Standard
+// formulation, accepted for non-associated MC plane-strain plasticity.
+export function applyBBarToT6BMatrices(bMatricesPerGp, weightedJacobiansPerGp) {
+  if (!Array.isArray(bMatricesPerGp) || bMatricesPerGp.length === 0) return bMatricesPerGp;
+  const weights = Array.isArray(weightedJacobiansPerGp) && weightedJacobiansPerGp.length === bMatricesPerGp.length
+    ? weightedJacobiansPerGp
+    : bMatricesPerGp.map(() => 1);
+  let totalWeight = 0;
+  for (let g = 0; g < weights.length; g += 1) totalWeight += Math.max(Number(weights[g]) || 0, 0);
+  if (!(totalWeight > 0)) return bMatricesPerGp;
+  const bVolAvg = new Float64Array(12);
+  for (let g = 0; g < bMatricesPerGp.length; g += 1) {
+    const w = Math.max(Number(weights[g]) || 0, 0);
+    if (!(w > 0)) continue;
+    const B = bMatricesPerGp[g];
+    for (let d = 0; d < 12; d += 1) {
+      bVolAvg[d] += w * ((Number(B?.[0]?.[d]) || 0) + (Number(B?.[1]?.[d]) || 0));
+    }
+  }
+  for (let d = 0; d < 12; d += 1) bVolAvg[d] /= totalWeight;
+  const result = new Array(bMatricesPerGp.length);
+  for (let g = 0; g < bMatricesPerGp.length; g += 1) {
+    const B = bMatricesPerGp[g];
+    const Bbar = [
+      Float64Array.from(B?.[0] || new Float64Array(12)),
+      Float64Array.from(B?.[1] || new Float64Array(12)),
+      Float64Array.from(B?.[2] || new Float64Array(12))
+    ];
+    for (let d = 0; d < 12; d += 1) {
+      const localVol = (Number(B?.[0]?.[d]) || 0) + (Number(B?.[1]?.[d]) || 0);
+      const correction = 0.5 * (bVolAvg[d] - localVol);
+      Bbar[0][d] += correction;
+      Bbar[1][d] += correction;
+    }
+    result[g] = Bbar;
+  }
+  return result;
+}
+
+// Convenience: build the 3 B-bar matrices for a T6 element. Used by both
+// stiffness and internal-force assembly when `useBBar === true`.
+export function buildBBarMatricesT6(corners) {
+  const detJ = 2 * triangleArea(corners);
+  const matrices = GAUSS_T6_3PT.map((gp) => buildBMatrixT6AtGauss(corners, gp.L1, gp.L2, gp.L3));
+  const weights = GAUSS_T6_3PT.map((gp) => gp.w * detJ);
+  return applyBBarToT6BMatrices(matrices, weights);
+}
+
+export function elementStiffnessT6FromTangents2D(corners, tangents2DAtGp, area, options = null) {
   if (!(area > AREA_EPS)) {
     throw new Error('Encountered a zero-area T6 element during deformation stiffness assembly.');
   }
   const out = Array.from({ length: 12 }, () => new Float64Array(12));
   const detJ = 2 * area;
+  // B-matrix selection priority: explicit `options.bMatricesPerGp` (used when
+  // the calling solver pre-caches B-bar with the rest of the element data
+  // so strain, F_int and K all read from the same source) → opt-in
+  // `options.useBBar === true` (computes B-bar from corners) → standard B
+  // rebuilt at every GP. Caching is the canonical path; the rebuild flag
+  // exists for kernel-level testing.
+  const cachedBs = Array.isArray(options?.bMatricesPerGp) && options.bMatricesPerGp.length === GAUSS_T6_3PT.length
+    ? options.bMatricesPerGp
+    : null;
+  const useBBarFlag = options?.useBBar === true;
+  const bMatrices = cachedBs || (useBBarFlag ? buildBBarMatricesT6(corners) : null);
   for (let g = 0; g < GAUSS_T6_3PT.length; g += 1) {
     const gp = GAUSS_T6_3PT[g];
     const D = tangents2DAtGp?.[g];
     if (!D) throw new Error(`Missing T6 material tangent at Gauss point ${g}.`);
-    const B = buildBMatrixT6AtGauss(corners, gp.L1, gp.L2, gp.L3);
+    const B = bMatrices ? bMatrices[g] : buildBMatrixT6AtGauss(corners, gp.L1, gp.L2, gp.L3);
     const wDet = gp.w * detJ;
     for (let i = 0; i < 12; i += 1) {
       const Bi0 = B[0][i];
@@ -117,17 +203,23 @@ export function elementStiffnessT6FromTangents2D(corners, tangents2DAtGp, area) 
   return out;
 }
 
-export function elementInternalForceVectorT6(corners, stress2DAtGp, area) {
+export function elementInternalForceVectorT6(corners, stress2DAtGp, area, options = null) {
   if (!(area > AREA_EPS)) {
     throw new Error('Encountered a zero-area T6 element during deformation internal-force assembly.');
   }
   const out = new Float64Array(12);
   const detJ = 2 * area;
+  // Same precedence as elementStiffnessT6FromTangents2D — see comment there.
+  const cachedBs = Array.isArray(options?.bMatricesPerGp) && options.bMatricesPerGp.length === GAUSS_T6_3PT.length
+    ? options.bMatricesPerGp
+    : null;
+  const useBBarFlag = options?.useBBar === true;
+  const bMatrices = cachedBs || (useBBarFlag ? buildBBarMatricesT6(corners) : null);
   for (let g = 0; g < GAUSS_T6_3PT.length; g += 1) {
     const gp = GAUSS_T6_3PT[g];
     const sigma = stress2DAtGp?.[g];
     if (!sigma) throw new Error(`Missing T6 stress state at Gauss point ${g}.`);
-    const B = buildBMatrixT6AtGauss(corners, gp.L1, gp.L2, gp.L3);
+    const B = bMatrices ? bMatrices[g] : buildBMatrixT6AtGauss(corners, gp.L1, gp.L2, gp.L3);
     const wDet = gp.w * detJ;
     const sxx = Number(sigma.sxx) || 0;
     const syy = Number(sigma.syy) || 0;

@@ -16,7 +16,16 @@ function getChartTheme() {
     grid: prefersDark ? 'rgba(237,233,225,0.14)' : 'rgba(24,24,26,0.08)',
     gridStrong: prefersDark ? 'rgba(237,233,225,0.24)' : 'rgba(24,24,26,0.14)',
     bandFill: prefersDark ? 'rgba(237,233,225,0.08)' : 'rgba(24,24,26,0.05)',
-    tooltipBg: prefersDark ? 'rgba(21,22,21,0.96)' : 'rgba(255,255,255,0.96)'
+    tooltipBg: prefersDark ? 'rgba(21,22,21,0.96)' : 'rgba(255,255,255,0.96)',
+    blue: prefersDark ? '#8dc3ff' : '#356F9C',
+    purple: prefersDark ? '#bbb6ff' : '#6259B5',
+    green: prefersDark ? '#9fd0cf' : '#3D6B6A',
+    orange: prefersDark ? '#ffb08c' : '#B6653F',
+    red: prefersDark ? '#ff9a9a' : '#A32D2D',
+    neutral: prefersDark ? '#c5c1ba' : '#6b6b68',
+    blueSoft: prefersDark ? 'rgba(141,195,255,0.28)' : 'rgba(53,111,156,0.22)',
+    greenSoft: prefersDark ? 'rgba(159,208,207,0.26)' : 'rgba(61,107,106,0.18)',
+    orangeSoft: prefersDark ? 'rgba(255,176,140,0.28)' : 'rgba(182,101,63,0.18)'
   };
   if (typeof document === 'undefined') return fallback;
   const styles = getComputedStyle(document.documentElement);
@@ -28,7 +37,16 @@ function getChartTheme() {
     grid: read('--chart-grid', fallback.grid),
     gridStrong: read('--chart-grid-strong', fallback.gridStrong),
     bandFill: fallback.bandFill,
-    tooltipBg: fallback.tooltipBg
+    tooltipBg: fallback.tooltipBg,
+    blue: read('--chart-blue', fallback.blue),
+    purple: read('--chart-purple', fallback.purple),
+    green: read('--chart-green', fallback.green),
+    orange: read('--chart-orange', fallback.orange),
+    red: read('--chart-red', fallback.red),
+    neutral: read('--chart-neutral', fallback.neutral),
+    blueSoft: read('--chart-blue-soft', fallback.blueSoft),
+    greenSoft: fallback.greenSoft,
+    orangeSoft: fallback.orangeSoft
   };
 }
 
@@ -89,6 +107,7 @@ export function buildRawProfileChartConfig({
   color,
   valueLabel = 'value'
 }) {
+  const theme = getChartTheme();
   return applyChartTheme({
     type: 'line',
     data: {
@@ -109,7 +128,7 @@ export function buildRawProfileChartConfig({
             { x: 0, y: wt },
             { x: xMax, y: wt }
           ],
-          borderColor: '#378ADD',
+          borderColor: theme.blue,
           borderWidth: 1.5,
           borderDash: [6, 4],
           pointRadius: 0,
@@ -153,6 +172,7 @@ export function buildTuningRegressionChartConfig({
   quality,
   invalidSlope = false
 }) {
+  const theme = getChartTheme();
   return applyChartTheme({
     type: 'scatter',
     data: {
@@ -160,7 +180,7 @@ export function buildTuningRegressionChartConfig({
         {
           label: 'CPT data',
           data: scatter,
-          backgroundColor: 'rgba(53,162,235,0.55)',
+          backgroundColor: theme.blueSoft,
           pointRadius: 3,
           pointHoverRadius: 5
         },
@@ -168,7 +188,7 @@ export function buildTuningRegressionChartConfig({
           label: `Default m=${mDefault}`,
           data: defaultLine,
           type: 'line',
-          borderColor: '#534AB7',
+          borderColor: theme.purple,
           borderWidth: 1.5,
           pointRadius: 0,
           fill: false
@@ -177,7 +197,7 @@ export function buildTuningRegressionChartConfig({
           label: `Preview m=${mPreview}`,
           data: previewLine,
           type: 'line',
-          borderColor: invalidSlope ? '#A32D2D' : '#1D9E75',
+          borderColor: invalidSlope ? theme.red : theme.green,
           borderWidth: 2,
           pointRadius: 0,
           fill: false,
@@ -262,7 +282,7 @@ export function buildTuningDepthChartConfig({
         {
           label: 'E_oed,i (CPT)',
           data: scatterDep,
-          backgroundColor: 'rgba(53,162,235,0.5)',
+          backgroundColor: theme.blueSoft,
           pointRadius: 2.5,
           pointHoverRadius: 5
         },
@@ -270,7 +290,7 @@ export function buildTuningDepthChartConfig({
           label: `HS default m=${mDefault}`,
           data: defDep,
           type: 'line',
-          borderColor: '#534AB7',
+          borderColor: theme.purple,
           borderWidth: 1.5,
           pointRadius: 0,
           fill: false,
@@ -280,7 +300,7 @@ export function buildTuningDepthChartConfig({
           label: `HS preview m=${mPreview}`,
           data: fitDep,
           type: 'line',
-          borderColor: invalidSlope ? '#A32D2D' : '#1D9E75',
+          borderColor: invalidSlope ? theme.red : theme.green,
           borderWidth: 2.5,
           pointRadius: 0,
           fill: false,
@@ -291,7 +311,7 @@ export function buildTuningDepthChartConfig({
           label: 'WT',
           data: wtLine,
           type: 'line',
-          borderColor: '#378ADD',
+          borderColor: theme.blue,
           borderWidth: 1.5,
           borderDash: [6, 4],
           pointRadius: 0,
@@ -359,6 +379,7 @@ export function buildTuningDepthChartConfig({
 }
 
 export function buildBearingChartConfig({ data, cfg, capacityAxisTitle, showLegend = false }) {
+  const theme = getChartTheme();
   const drained = data.drained;
   const undrained = data.undrained;
   const xMax =
@@ -368,7 +389,7 @@ export function buildBearingChartConfig({ data, cfg, capacityAxisTitle, showLege
     datasets.push({
       label: 'Drained',
       data: drained,
-      borderColor: '#1D9E75',
+      borderColor: theme.green,
       borderWidth: 2.4,
       pointRadius: 0,
       fill: false,
@@ -379,7 +400,7 @@ export function buildBearingChartConfig({ data, cfg, capacityAxisTitle, showLege
     datasets.push({
       label: 'Undrained',
       data: undrained,
-      borderColor: '#D85A30',
+      borderColor: theme.orange,
       borderWidth: 2.4,
       pointRadius: 0,
       fill: false,
@@ -392,7 +413,7 @@ export function buildBearingChartConfig({ data, cfg, capacityAxisTitle, showLege
       { x: 0, y: cfg.Df },
       { x: xMax, y: cfg.Df }
     ],
-    borderColor: '#378ADD',
+    borderColor: theme.blue,
     borderWidth: 1.5,
     borderDash: [6, 4],
     pointRadius: 0,
@@ -451,6 +472,7 @@ export function buildBearingChartConfig({ data, cfg, capacityAxisTitle, showLege
 }
 
 export function buildSettlementStressChartConfig({ analysis, maxDepth, showLegend = false }) {
+  const theme = getChartTheme();
   return applyChartTheme({
     type: 'line',
     data: {
@@ -458,7 +480,7 @@ export function buildSettlementStressChartConfig({ analysis, maxDepth, showLegen
         {
           label: 'Delta sigma_v',
           data: analysis.deltaStressCurve,
-          borderColor: '#1D9E75',
+          borderColor: theme.green,
           borderWidth: 2.2,
           pointRadius: 0,
           tension: 0.15,
@@ -504,6 +526,7 @@ export function buildSettlementStressChartConfig({ analysis, maxDepth, showLegen
 }
 
 export function buildSettlementCumulativeChartConfig({ analysis }) {
+  const theme = getChartTheme();
   return applyChartTheme({
     type: 'line',
     data: {
@@ -511,7 +534,7 @@ export function buildSettlementCumulativeChartConfig({ analysis }) {
         {
           label: 'Cumulative S',
           data: analysis.cumulativeCurve,
-          borderColor: '#378ADD',
+          borderColor: theme.blue,
           borderWidth: 2.2,
           pointRadius: 0,
           tension: 0.12,
@@ -545,6 +568,7 @@ export function buildSettlementCumulativeChartConfig({ analysis }) {
 }
 
 export function buildTimeChartConfig({ curve, xTitle = 'Time (days)', yTitle = 'Settlement (mm)' }) {
+  const theme = getChartTheme();
   return applyChartTheme({
     type: 'line',
     data: {
@@ -552,7 +576,7 @@ export function buildTimeChartConfig({ curve, xTitle = 'Time (days)', yTitle = '
         {
           label: 'S(t)',
           data: curve,
-          borderColor: '#D85A30',
+          borderColor: theme.orange,
           borderWidth: 2.2,
           pointRadius: 0,
           fill: false,
@@ -582,6 +606,7 @@ export function buildTimeChartConfig({ curve, xTitle = 'Time (days)', yTitle = '
 }
 
 export function buildDewateringDrawdownChartConfig({ analysis, originalWt }) {
+  const theme = getChartTheme();
   const profile = analysis.drawdownDisplayCurve?.length ? analysis.drawdownDisplayCurve : analysis.drawdownCurve;
   const influenceX = Math.max(analysis.radiusInfluence || 0, analysis.geometry.distanceToCpt || 0, 1);
   const maxX = influenceX * 1.1;
@@ -619,7 +644,7 @@ export function buildDewateringDrawdownChartConfig({ analysis, originalWt }) {
         {
           label: 'Original WT',
           data: originalLine,
-          borderColor: 'rgba(107,107,104,.50)',
+          borderColor: theme.neutral,
           borderWidth: 1.3,
           borderDash: [5, 4],
           pointRadius: 0,
@@ -628,8 +653,8 @@ export function buildDewateringDrawdownChartConfig({ analysis, originalWt }) {
         {
           label: 'WT profile',
           data: profile,
-          borderColor: '#378ADD',
-          backgroundColor: 'rgba(55,138,221,.12)',
+          borderColor: theme.blue,
+          backgroundColor: theme.blueSoft,
           borderWidth: 2.4,
           pointRadius: 0,
           tension: 0,
@@ -638,7 +663,7 @@ export function buildDewateringDrawdownChartConfig({ analysis, originalWt }) {
         {
           label: 'Influence radius',
           data: influenceLine,
-          borderColor: 'rgba(29,158,117,.45)',
+          borderColor: theme.green,
           borderWidth: 1.2,
           borderDash: [4, 4],
           pointRadius: 0,
@@ -650,7 +675,7 @@ export function buildDewateringDrawdownChartConfig({ analysis, originalWt }) {
             { x: analysis.geometry.distanceToCpt || 0, y: 0 },
             { x: analysis.geometry.distanceToCpt || 0, y: maxY }
           ],
-          borderColor: 'rgba(216,90,48,.55)',
+          borderColor: theme.orange,
           borderWidth: 1.4,
           borderDash: [6, 4],
           pointRadius: 0,
@@ -659,7 +684,7 @@ export function buildDewateringDrawdownChartConfig({ analysis, originalWt }) {
         {
           label: 'Target head at source',
           data: [{ x: 0, y: analysis.targetWt }],
-          borderColor: '#1D9E75',
+          borderColor: theme.green,
           pointRadius: 4,
           pointHoverRadius: 4,
           showLine: false
@@ -667,7 +692,7 @@ export function buildDewateringDrawdownChartConfig({ analysis, originalWt }) {
         {
           label: 'WT at CPT',
           data: [{ x: analysis.geometry.distanceToCpt || 0, y: analysis.newWtAtCpt }],
-          borderColor: '#D85A30',
+          borderColor: theme.orange,
           pointRadius: 4,
           pointHoverRadius: 4,
           showLine: false
@@ -729,6 +754,7 @@ export function buildDewateringDrawdownChartConfig({ analysis, originalWt }) {
 }
 
 export function buildDewateringStressChartConfig({ analysis, maxDepth, showLegend = false }) {
+  const theme = getChartTheme();
   return applyChartTheme({
     type: 'line',
     data: {
@@ -736,7 +762,7 @@ export function buildDewateringStressChartConfig({ analysis, maxDepth, showLegen
         {
           label: 'sigma_v before',
           data: analysis.beforeTotalStressCurve,
-          borderColor: 'rgba(107,107,104,.60)',
+          borderColor: theme.neutral,
           borderWidth: 1.2,
           borderDash: [5, 4],
           pointRadius: 0,
@@ -745,7 +771,7 @@ export function buildDewateringStressChartConfig({ analysis, maxDepth, showLegen
         {
           label: 'sigma_v after',
           data: analysis.afterTotalStressCurve,
-          borderColor: 'rgba(29,158,117,.55)',
+          borderColor: theme.green,
           borderWidth: 1.2,
           borderDash: [5, 4],
           pointRadius: 0,
@@ -754,7 +780,7 @@ export function buildDewateringStressChartConfig({ analysis, maxDepth, showLegen
         {
           label: 'sigma_eff before',
           data: analysis.beforeStressCurve,
-          borderColor: '#6b6b68',
+          borderColor: theme.neutral,
           borderWidth: 2,
           pointRadius: 0,
           fill: false
@@ -762,7 +788,7 @@ export function buildDewateringStressChartConfig({ analysis, maxDepth, showLegen
         {
           label: 'sigma_eff after',
           data: analysis.afterStressCurve,
-          borderColor: '#1D9E75',
+          borderColor: theme.green,
           borderWidth: 2,
           pointRadius: 0,
           fill: false
@@ -770,7 +796,7 @@ export function buildDewateringStressChartConfig({ analysis, maxDepth, showLegen
         {
           label: 'Delta sigma',
           data: analysis.deltaStressCurve,
-          borderColor: '#D85A30',
+          borderColor: theme.orange,
           borderWidth: 1.6,
           pointRadius: 0,
           fill: false
@@ -815,6 +841,7 @@ export function buildDewateringStressChartConfig({ analysis, maxDepth, showLegen
 }
 
 export function buildDewateringSettlementChartConfig({ analysis }) {
+  const theme = getChartTheme();
   return applyChartTheme({
     type: 'line',
     data: {
@@ -822,7 +849,7 @@ export function buildDewateringSettlementChartConfig({ analysis }) {
         {
           label: 'Total settlement',
           data: analysis.settlementDistanceCurve,
-          borderColor: '#378ADD',
+          borderColor: theme.blue,
           borderWidth: 2.2,
           pointRadius: 0,
           fill: false,
@@ -834,7 +861,7 @@ export function buildDewateringSettlementChartConfig({ analysis }) {
             { x: analysis.geometry.distanceToCpt || 0, y: 0 },
             { x: analysis.geometry.distanceToCpt || 0, y: analysis.totalSettlementMm }
           ],
-          borderColor: 'rgba(216,90,48,.55)',
+          borderColor: theme.orange,
           borderWidth: 1.4,
           borderDash: [6, 4],
           pointRadius: 0,
@@ -843,7 +870,7 @@ export function buildDewateringSettlementChartConfig({ analysis }) {
         {
           label: 'Settlement at CPT',
           data: [{ x: analysis.geometry.distanceToCpt || 0, y: analysis.totalSettlementMm }],
-          borderColor: '#D85A30',
+          borderColor: theme.orange,
           pointRadius: 4,
           pointHoverRadius: 4,
           showLine: false
@@ -893,6 +920,7 @@ export function buildDewateringSettlementChartConfig({ analysis }) {
 }
 
 export function buildBeamDeflectionChartConfig({ analysis, tickFormatter }) {
+  const theme = getChartTheme();
   const deflectionData = analysis.sls.xSamples.map((x, i) => ({ x, y: analysis.sls.wSamples[i] * 1000 }));
   return applyChartTheme({
     type: 'line',
@@ -901,7 +929,7 @@ export function buildBeamDeflectionChartConfig({ analysis, tickFormatter }) {
         {
           label: 'w(x)',
           data: deflectionData,
-          borderColor: '#378ADD',
+          borderColor: theme.blue,
           borderWidth: 2.2,
           pointRadius: 0,
           fill: false,
@@ -939,6 +967,7 @@ export function buildBeamDeflectionChartConfig({ analysis, tickFormatter }) {
 }
 
 export function buildBeamMomentChartConfig({ analysis, tickFormatter }) {
+  const theme = getChartTheme();
   const momentData = analysis.uls.xSamples.map((x, i) => ({ x, y: analysis.uls.mSamples[i] }));
   return applyChartTheme({
     type: 'line',
@@ -947,7 +976,7 @@ export function buildBeamMomentChartConfig({ analysis, tickFormatter }) {
         {
           label: 'M(x)',
           data: momentData,
-          borderColor: '#D85A30',
+          borderColor: theme.orange,
           borderWidth: 2.2,
           pointRadius: 0,
           fill: false,
@@ -988,13 +1017,15 @@ export function buildLineProbeChartConfig({
   points,
   title = '',
   seriesLabel = 'Line probe',
-  color = '#378ADD',
+  color = null,
   xAxisTitle = 'Distance along line s (m)',
   yAxisTitle = 'Value',
   xTickFormatter = (value) => value,
   yTickFormatter = (value) => value,
   tooltipLabel = null
 }) {
+  const theme = getChartTheme();
+  const seriesColor = color || theme.blue;
   return applyChartTheme({
     type: 'line',
     data: {
@@ -1002,8 +1033,8 @@ export function buildLineProbeChartConfig({
         {
           label: seriesLabel,
           data: points,
-          borderColor: color,
-          backgroundColor: color,
+          borderColor: seriesColor,
+          backgroundColor: seriesColor,
           borderWidth: 2,
           pointRadius: 0,
           pointHoverRadius: 3,

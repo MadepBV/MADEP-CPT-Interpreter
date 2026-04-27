@@ -31,5 +31,8 @@ pnpm-debug.log*
 # Claude Code workspace
 .claude/
 
+# Local engineering notes and scratch specs
+/docs/
+
 # Local sample CPT files
 docs/classification/2306609_S1.xls

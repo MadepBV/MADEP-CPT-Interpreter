@@ -353,10 +353,10 @@
   .report-gateway__error {
     margin: 0;
     padding: 12px 14px;
-    border: 1px solid rgba(159, 45, 45, 0.24);
+    border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
     border-radius: var(--r);
-    background: rgba(159, 45, 45, 0.08);
-    color: #7f1f1f;
+    background: var(--bad-soft);
+    color: var(--bad-text);
     font-size: 13px;
     font-weight: 600;
   }

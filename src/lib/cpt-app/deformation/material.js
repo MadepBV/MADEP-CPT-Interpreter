@@ -91,6 +91,13 @@ export function prepareMechanicalMaterial(material, warnings = []) {
     activeSetComplementarityTolerance: rawComplementarityTolerance !== null ? Math.max(rawComplementarityTolerance, 0) : null,
     eigenSubspaceTolerance: rawEigenSubspaceTolerance !== null ? Math.max(rawEigenSubspaceTolerance, 1e-12) : null,
     allowFormalApexBranch: material?.allowFormalApexBranch === true,
+    // Off by default: applying a hydrostatic preload is materially
+    // equivalent to apparent cohesion and is therefore an engineer-
+    // controlled knob, not a silent default.
+    nearSurfaceMinConfiningStress: Number.isFinite(Number(material?.nearSurfaceMinConfiningStress))
+      && Number(material.nearSurfaceMinConfiningStress) >= 0
+      ? Number(material.nearSurfaceMinConfiningStress)
+      : 0,
     representativeBasisPolicy: typeof material?.representativeBasisPolicy === 'string' && material.representativeBasisPolicy
       ? material.representativeBasisPolicy
       : 'committed-trial-canonical',

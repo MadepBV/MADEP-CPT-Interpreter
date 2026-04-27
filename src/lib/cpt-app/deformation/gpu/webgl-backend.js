@@ -317,6 +317,296 @@ function buildElementInternalForceKernelT6(gpu, flatLength) {
   });
 }
 
+// =============================================================================
+// GPU-resident Krylov primitives
+// =============================================================================
+//
+// These kernels exist so the entire CG inner loop can stay on the GPU.
+// Per-iteration vector data (x, r, z, p, ap) lives as f32 textures and
+// only flows back to CPU when (a) the run finishes, (b) the residual
+// refresh interval triggers an f64 recompute, or (c) the host needs a
+// scalar (alpha/beta numerator/denominator, ‖r‖² for convergence).
+// Everything else stays on the GPU pipeline, eliminating the per-matvec
+// upload/download round trip that produced the "bursty" GPU usage on
+// the user's M3 Pro.
+//
+// All kernels declare `pipeline: true` so their outputs are returned as
+// GPU.Texture objects. They are chained directly into the next kernel
+// without an intervening CPU readback. The GPU's command queue absorbs
+// multiple submissions before any sync is required, so M3 Pro Metal can
+// run them back-to-back.
+
+// Matvec resident form: takes the input vector AS A TEXTURE (or a
+// CPU-side Float32Array — GPU.js auto-uploads either) and returns the
+// result as a texture. Identical math to buildMatvecKernelF32 but the
+// pipeline flag is true.
+function buildMatvecKernelF32Pipelined(gpu, numRows, maxRowLen) {
+  // immutable: true is required for the resident-CG path. Without it,
+  // GPU.js reuses a single output texture per kernel; calling the same
+  // kernel back-to-back with its previous output as input triggers the
+  // Safari WebGL2 driver's source-equals-destination guard ("Source and
+  // destination textures are the same"). Immutable means each call
+  // allocates a fresh output texture; we own its lifecycle and call
+  // .delete() once we no longer need it.
+  return gpu.createKernel(function (cols, vals, x, maxLen) {
+    const row = this.thread.x;
+    let sum = 0.0;
+    for (let k = 0; k < this.constants.MAX_LOOP; k++) {
+      if (k >= maxLen) break;
+      const col = cols[row * this.constants.MAX_LOOP + k];
+      sum += vals[row * this.constants.MAX_LOOP + k] * x[col];
+    }
+    return sum;
+  }, {
+    constants: { MAX_LOOP: Math.max(maxRowLen, 1) },
+    loopMaxIterations: Math.max(maxRowLen, 1),
+    output: [Math.max(numRows, 1)],
+    pipeline: true,
+    immutable: true,
+    precision: 'single',
+    optimizeFloatMemory: true
+  });
+}
+
+// axby: out[i] = alpha * a[i] + beta * b[i]
+//
+// Drives every CG vector update. We pass alpha and beta as 1-element
+// Float32Arrays so GPU.js can supply them as uniform-style inputs the
+// shader reads directly.
+function buildAxbyKernel(gpu, n) {
+  return gpu.createKernel(function (a, b, alphaScalar, betaScalar) {
+    const i = this.thread.x;
+    return alphaScalar[0] * a[i] + betaScalar[0] * b[i];
+  }, {
+    output: [Math.max(n, 1)],
+    pipeline: true,
+    immutable: true,
+    precision: 'single',
+    optimizeFloatMemory: true
+  });
+}
+
+// dotElementWise: produces `c[i] = a[i] * b[i]` as a texture. We then
+// reduce `c` to a scalar via the reduction kernel below. Splitting the
+// elementwise multiply from the reduction lets us reuse the same
+// reduction kernel for ‖x‖² (call with a==b).
+function buildDotElementwiseKernel(gpu, n) {
+  return gpu.createKernel(function (a, b) {
+    const i = this.thread.x;
+    return a[i] * b[i];
+  }, {
+    output: [Math.max(n, 1)],
+    pipeline: true,
+    immutable: true,
+    precision: 'single',
+    optimizeFloatMemory: true
+  });
+}
+
+// reduceSum: reduces a length-N input to length-ceil(N/STRIDE). Repeat
+// log_STRIDE(N) times to get a scalar. We use a stride of 64 because
+// it's a typical GPU warp size that maps well to WebGL's hardware.
+const REDUCTION_STRIDE = 64;
+function buildReduceSumKernel(gpu, inputLength, outputLength) {
+  return gpu.createKernel(function (input, validLen) {
+    const i = this.thread.x;
+    const stride = this.constants.STRIDE;
+    let sum = 0.0;
+    for (let k = 0; k < stride; k++) {
+      const idx = i * stride + k;
+      if (idx >= validLen) break;
+      sum += input[idx];
+    }
+    return sum;
+  }, {
+    constants: { STRIDE: REDUCTION_STRIDE },
+    loopMaxIterations: REDUCTION_STRIDE,
+    output: [Math.max(outputLength, 1)],
+    pipeline: true,
+    immutable: true,
+    precision: 'single',
+    optimizeFloatMemory: true
+  });
+}
+
+// vectorAbsMaxElementwise: |x[i]|. Reduce with max-reduction kernel
+// below. Same two-pass pattern as dot.
+function buildAbsKernel(gpu, n) {
+  return gpu.createKernel(function (x) {
+    return Math.abs(x[this.thread.x]);
+  }, {
+    output: [Math.max(n, 1)],
+    pipeline: true,
+    immutable: true,
+    precision: 'single',
+    optimizeFloatMemory: true
+  });
+}
+
+function buildReduceMaxKernel(gpu, inputLength, outputLength) {
+  return gpu.createKernel(function (input, validLen) {
+    const i = this.thread.x;
+    const stride = this.constants.STRIDE;
+    let maxVal = 0.0;
+    for (let k = 0; k < stride; k++) {
+      const idx = i * stride + k;
+      if (idx >= validLen) break;
+      const v = input[idx];
+      if (v > maxVal) maxVal = v;
+    }
+    return maxVal;
+  }, {
+    constants: { STRIDE: REDUCTION_STRIDE },
+    loopMaxIterations: REDUCTION_STRIDE,
+    output: [Math.max(outputLength, 1)],
+    pipeline: true,
+    immutable: true,
+    precision: 'single',
+    optimizeFloatMemory: true
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Double-single (DS) reduction kernels: f64-grade dot products in WebGL2 f32
+// ---------------------------------------------------------------------------
+//
+// Naive f32 summation accumulates ~O(N · ULP) error over a row of 4000
+// elements — roughly 1e-4 relative on a CG iterate, which is too coarse
+// to drive the outer Newton residual below 1e-6. The fix is to carry a
+// compensation term `lo` alongside the running sum `hi` so that
+// `hi + lo` represents the true sum to ~14 decimal digits, and to combine
+// running sums with Knuth's twoSum so the new compensation captures the
+// rounding error of every f32 add. Final precision: ~K · 2^-48 relative
+// where K is the number of additions. For 4000 elements that's ~1.4e-11,
+// effectively f64.
+//
+// Output layout: interleaved (hi, lo) pairs in a single f32 texture of
+// length 2 · M, where M is the number of partitions for that pass. The
+// even-indexed threads emit `hi`, odd-indexed threads emit `lo`. Both
+// run the same scan internally and select one component to return — a
+// 2× compute factor, but trivial on a GPU with parallelism to spare.
+
+function buildDsReduceFromF32Kernel(gpu, outputPairsLength) {
+  // First DS pass: f32 input → interleaved DS pair output.
+  // Each pair represents a partition of STRIDE input values summed via
+  // twoSum-cumulate. The kernel uses Knuth twoSum:
+  //   s = hi + x
+  //   bb = s - hi
+  //   e = (hi - (s - bb)) + (x - bb)
+  //   hi := s ; lo += e
+  // and a final renormalisation so |lo| ≤ 0.5 · ULP(hi).
+  return gpu.createKernel(function (input, validLen) {
+    const flat = this.thread.x;
+    const partition = Math.floor(flat * 0.5);
+    const isLo = flat - partition * 2;
+    let hi = 0.0;
+    let lo = 0.0;
+    for (let k = 0; k < this.constants.STRIDE; k++) {
+      const idx = partition * this.constants.STRIDE + k;
+      if (idx >= validLen) break;
+      const x = input[idx];
+      const s = hi + x;
+      const bb = s - hi;
+      const e = (hi - (s - bb)) + (x - bb);
+      hi = s;
+      lo = lo + e;
+    }
+    const sFinal = hi + lo;
+    const bbFinal = sFinal - hi;
+    const eFinal = (hi - (sFinal - bbFinal)) + (lo - bbFinal);
+    if (isLo > 0.5) return eFinal;
+    return sFinal;
+  }, {
+    constants: { STRIDE: REDUCTION_STRIDE },
+    loopMaxIterations: REDUCTION_STRIDE,
+    output: [Math.max(2 * outputPairsLength, 1)],
+    pipeline: true,
+    immutable: true,
+    precision: 'single',
+    optimizeFloatMemory: true
+  });
+}
+
+function buildDsReducePairsKernel(gpu, outputPairsLength) {
+  // Subsequent DS pass: interleaved DS pair input → interleaved DS pair
+  // output. Each thread DS-adds STRIDE input pairs into one output pair
+  // using
+  //   twoSum(hi, xHi) → (s, e)
+  //   lo := lo + e + xLo
+  //   renormalise (s, lo) at the end.
+  // The xLo terms accumulate naively (they are O(ULP) and their sum
+  // remains O(ULP · stride)) — the renormalisation absorbs them into
+  // the high-precision pair before the next pass reads them.
+  return gpu.createKernel(function (inputPairs, validPairLen) {
+    const flat = this.thread.x;
+    const partition = Math.floor(flat * 0.5);
+    const isLo = flat - partition * 2;
+    let hi = 0.0;
+    let lo = 0.0;
+    for (let k = 0; k < this.constants.STRIDE; k++) {
+      const idx = partition * this.constants.STRIDE + k;
+      if (idx >= validPairLen) break;
+      const xHi = inputPairs[idx * 2];
+      const xLo = inputPairs[idx * 2 + 1];
+      const s = hi + xHi;
+      const bb = s - hi;
+      const e = (hi - (s - bb)) + (xHi - bb);
+      hi = s;
+      lo = lo + e + xLo;
+    }
+    const sFinal = hi + lo;
+    const bbFinal = sFinal - hi;
+    const eFinal = (hi - (sFinal - bbFinal)) + (lo - bbFinal);
+    if (isLo > 0.5) return eFinal;
+    return sFinal;
+  }, {
+    constants: { STRIDE: REDUCTION_STRIDE },
+    loopMaxIterations: REDUCTION_STRIDE,
+    output: [Math.max(2 * outputPairsLength, 1)],
+    pipeline: true,
+    immutable: true,
+    precision: 'single',
+    optimizeFloatMemory: true
+  });
+}
+
+// applyBlockJacobi: z[i] = selfCoef[i]·r[i] + prevCoef[i]·r[i-1] + nextCoef[i]·r[i+1]
+//
+// Branchless block-Jacobi application using ONLY fixed-offset reads
+// (i-1, i, i+1). The earlier formulation `z[i] = self·r[i] + other·r[idx[i]]`
+// looked branchless in JS but compiled to a *dependent texture read*
+// in GLSL — the kernel had to sample `idx` to get an integer, then
+// sample `r` at that integer. Apple Metal's WebGL2 driver returns
+// stale or zero values for that pattern under some optimisation
+// settings, producing z = 0, then p = 0, then K·p = 0, then
+// `Math.abs(denom) < eps` → CG returns the initial zero solution.
+// Splitting the cross-row coupling into separate prev/next channels
+// avoids the dependent read entirely and works on every WebGL2
+// driver we've tested.
+function buildBlockJacobiKernel(gpu, n) {
+  return gpu.createKernel(function (selfCoef, prevCoef, nextCoef, r) {
+    const i = this.thread.x;
+    // Clamp neighbour indices at the boundaries — `i = 0` reads r[0]
+    // for `prev` (multiplied by 0 thanks to the clamped prevCoef) and
+    // `i = n - 1` reads r[n-1] for `next`. The shader still touches
+    // valid memory; the boundary correctness is enforced by the
+    // builder zeroing prevCoef[0] and nextCoef[n-1].
+    const last = this.constants.LAST_INDEX;
+    let iPrev = i - 1;
+    if (iPrev < 0) iPrev = 0;
+    let iNext = i + 1;
+    if (iNext > last) iNext = last;
+    return selfCoef[i] * r[i] + prevCoef[i] * r[iPrev] + nextCoef[i] * r[iNext];
+  }, {
+    constants: { LAST_INDEX: Math.max(n - 1, 0) },
+    output: [Math.max(n, 1)],
+    pipeline: true,
+    immutable: true,
+    precision: 'single',
+    optimizeFloatMemory: true
+  });
+}
+
 function buildElementElasticStiffnessKernelT6(gpu, flatLength) {
   return gpu.createKernel(function (bFlat, areaFlat, tangentFlat, broadcastTangent) {
     const flatIndex = this.thread.x;
@@ -433,6 +723,64 @@ export async function tryCreateWebglBackend(setup = {}) {
   let elementTangentBuffer = null;
   let supportsT6ElementKernels = true;
 
+  // GPU-resident CG kernel cache. These persist across solve calls and
+  // are rebuilt only when the problem dimension changes. The CG inner
+  // loop dispatches them in a chain so the GPU command queue stays
+  // saturated; CPU only sees three scalar downloads per iteration
+  // (denom, rzNew, ‖r‖²), which is the irreducible synchronization
+  // point of preconditioned conjugate gradients.
+  let residentDimensionKey = '';
+  let pipelinedMatvecKernel = null;
+  let axbyKernel = null;
+  let dotElementwiseKernel = null;
+  let absKernel = null;
+  let blockJacobiKernel = null;
+  // Reduction kernels are size-dependent; we cache one per output
+  // length, since each pass shrinks the input by REDUCTION_STRIDE.
+  // For N=4000 we typically need 2 sum-reduce kernels (4000 → 63 → 1)
+  // and 2 max-reduce kernels.
+  let reduceSumKernels = [];
+  let reduceMaxKernels = [];
+  // Double-single reduction chain. The first pass converts f32 input
+  // into interleaved (hi, lo) pairs; subsequent passes operate on pair
+  // textures. We build one of each per problem size.
+  let dsReduceFromF32Kernel = null;
+  let dsReducePairsKernels = [];
+  // Persistent f32 input buffers for the resident path. The GPU
+  // textures themselves live inside the pipelined Texture handles
+  // returned by each kernel; these CPU mirrors exist solely so we can
+  // upload `rhs` and the preconditioner once per solve.
+  let residentRhsBuffer = null;
+  let residentInitialBuffer = null;
+  let residentPrecondSelfBuffer = null;
+  let residentPrecondPrevCoefBuffer = null;
+  let residentPrecondNextCoefBuffer = null;
+  let residentScalarAlphaBuffer = null;   // Float32Array(1)
+  let residentScalarBetaBuffer = null;    // Float32Array(1)
+  let residentScalarNegAlphaBuffer = null;// Float32Array(1)
+
+  function disposeResidentKernels() {
+    destroyKernel(pipelinedMatvecKernel);
+    destroyKernel(axbyKernel);
+    destroyKernel(dotElementwiseKernel);
+    destroyKernel(absKernel);
+    destroyKernel(blockJacobiKernel);
+    pipelinedMatvecKernel = null;
+    axbyKernel = null;
+    dotElementwiseKernel = null;
+    absKernel = null;
+    blockJacobiKernel = null;
+    for (const k of reduceSumKernels) destroyKernel(k);
+    for (const k of reduceMaxKernels) destroyKernel(k);
+    destroyKernel(dsReduceFromF32Kernel);
+    for (const k of dsReducePairsKernels) destroyKernel(k);
+    reduceSumKernels = [];
+    reduceMaxKernels = [];
+    dsReduceFromF32Kernel = null;
+    dsReducePairsKernels = [];
+    residentDimensionKey = '';
+  }
+
   function disposeKernels() {
     destroyKernel(matvecKernelF32);
     destroyKernel(matvecKernelDoubleSingle);
@@ -442,6 +790,7 @@ export async function tryCreateWebglBackend(setup = {}) {
     destroyKernel(elementStrainKernelT6);
     destroyKernel(elementInternalForceKernelT6);
     destroyKernel(elementElasticStiffnessKernelT6);
+    disposeResidentKernels();
     matvecKernelF32 = null;
     matvecKernelDoubleSingle = null;
     elementStrainKernelT3 = null;
@@ -658,6 +1007,421 @@ export async function tryCreateWebglBackend(setup = {}) {
     );
   }
 
+  // =========================================================================
+  // GPU-resident CG: full Krylov inner-loop on the GPU
+  // =========================================================================
+
+  function ensureResidentKernels(numRows, maxRowLen) {
+    const dimensionKey = `${numRows}x${maxRowLen}`;
+    if (residentDimensionKey === dimensionKey) return;
+    disposeResidentKernels();
+    pipelinedMatvecKernel = buildMatvecKernelF32Pipelined(gpu, numRows, maxRowLen);
+    axbyKernel = buildAxbyKernel(gpu, numRows);
+    dotElementwiseKernel = buildDotElementwiseKernel(gpu, numRows);
+    absKernel = buildAbsKernel(gpu, numRows);
+    blockJacobiKernel = buildBlockJacobiKernel(gpu, numRows);
+    // Build a chain of reduction kernels that successively shrinks N
+    // by REDUCTION_STRIDE per pass until the output is length 1. Cache
+    // them in order so consecutive `reduceSum`/`reduceMax` calls find
+    // the right kernel for each pass.
+    let length = numRows;
+    while (length > 1) {
+      const nextLength = Math.max(1, Math.ceil(length / REDUCTION_STRIDE));
+      reduceSumKernels.push(buildReduceSumKernel(gpu, length, nextLength));
+      reduceMaxKernels.push(buildReduceMaxKernel(gpu, length, nextLength));
+      length = nextLength;
+    }
+    // DS reduction chain: first pass takes f32 input of length numRows
+    // and produces ceil(numRows/STRIDE) DS pairs. Subsequent passes
+    // shrink by STRIDE until we have one pair. Output length is always
+    // 2 × pairCount (interleaved hi/lo).
+    let dsPairLength = Math.max(1, Math.ceil(numRows / REDUCTION_STRIDE));
+    dsReduceFromF32Kernel = buildDsReduceFromF32Kernel(gpu, dsPairLength);
+    while (dsPairLength > 1) {
+      const nextPairs = Math.max(1, Math.ceil(dsPairLength / REDUCTION_STRIDE));
+      dsReducePairsKernels.push(buildDsReducePairsKernel(gpu, nextPairs));
+      dsPairLength = nextPairs;
+    }
+    residentDimensionKey = dimensionKey;
+  }
+
+  // Cleanup helpers for the resident CG path. Each call to a kernel
+  // with `immutable: true` allocates a fresh GPU texture; we own its
+  // lifecycle, and leaking textures across iterations exhausts GPU
+  // memory in dozens of solves. `safeDelete` tolerates non-texture
+  // inputs (e.g. CPU Float32Arrays passed in as the very first
+  // iteration's seed) so the caller can use the same disposal pattern
+  // for every handle without branching.
+  function safeDelete(handle) {
+    if (handle && typeof handle.delete === 'function') {
+      try { handle.delete(); } catch { /* GPU.js sometimes double-frees benign */ }
+    }
+  }
+
+  function reduceTextureToScalar(kernels, inputTexture, lastValidLength, ownsInput = true) {
+    // Walk the reduction-kernel chain, disposing each intermediate
+    // texture after the next pass consumes it. The input may or may
+    // not be ours to delete — the caller controls via ownsInput. The
+    // final 1-element texture is always disposed after we read its
+    // scalar value, since no further kernel needs it.
+    let texture = inputTexture;
+    let validLen = lastValidLength;
+    let ownsCurrent = ownsInput;
+    for (const kernel of kernels) {
+      const next = kernel(texture, validLen);
+      if (ownsCurrent) safeDelete(texture);
+      texture = next;
+      ownsCurrent = true;
+      validLen = Math.max(1, Math.ceil(validLen / REDUCTION_STRIDE));
+    }
+    const downloaded = typeof texture.toArray === 'function'
+      ? texture.toArray()
+      : texture;
+    if (ownsCurrent) safeDelete(texture);
+    return Number(downloaded?.[0]) || 0;
+  }
+
+  function reduceTextureToScalarDs(elementwiseTexture, n, ownsInput = true) {
+    // Run the DS reduction chain. The first kernel reads f32 input
+    // and produces an interleaved (hi, lo) pair texture; subsequent
+    // kernels consume and produce DS pair textures. The final pair
+    // is downloaded as Float32Array of length 2; the scalar result is
+    // `hi + lo` in JS f64 (which is exact since both are representable
+    // f32 values and f64 has more than enough precision to hold their
+    // sum).
+    let pairTex = dsReduceFromF32Kernel(elementwiseTexture, n);
+    if (ownsInput) safeDelete(elementwiseTexture);
+    let pairCount = Math.max(1, Math.ceil(n / REDUCTION_STRIDE));
+    for (const kernel of dsReducePairsKernels) {
+      const next = kernel(pairTex, pairCount);
+      safeDelete(pairTex);
+      pairTex = next;
+      pairCount = Math.max(1, Math.ceil(pairCount / REDUCTION_STRIDE));
+    }
+    const downloaded = typeof pairTex.toArray === 'function'
+      ? pairTex.toArray()
+      : pairTex;
+    safeDelete(pairTex);
+    const hi = Number(downloaded?.[0]) || 0;
+    const lo = Number(downloaded?.[1]) || 0;
+    return hi + lo;
+  }
+
+  function ensureScalarBuffers() {
+    if (!residentScalarAlphaBuffer) residentScalarAlphaBuffer = new Float32Array(1);
+    if (!residentScalarBetaBuffer) residentScalarBetaBuffer = new Float32Array(1);
+    if (!residentScalarNegAlphaBuffer) residentScalarNegAlphaBuffer = new Float32Array(1);
+  }
+
+  // Solve K x = b on the GPU, with vectors x, r, z, p, ap held as
+  // pipelined Texture handles between iterations. CPU only handles the
+  // three scalars (denom, rzNew, ‖r‖²) per iteration plus the
+  // residual-refresh f64 recompute on a fixed cadence.
+  //
+  // Returns the same shape as the CPU solveCg so the caller can swap
+  // implementations without changing convergence semantics.
+  async function solveCgPreconditionedGpu({
+    rows,
+    rhs,
+    initial = null,
+    preconditioner,
+    maxIter,
+    relTol,
+    absTol,
+    runControl,
+    iterationObserver,
+    residualRefreshIntervalForCheckpoint
+  }) {
+    const n = rows.length;
+    if (!n) {
+      return {
+        solution: new Float64Array(0),
+        converged: true,
+        iterations: 0,
+        residualNorm: 0,
+        relativeResidual: 0,
+        rhsNorm: 0,
+        toleranceTarget: 0,
+        interrupted: false
+      };
+    }
+    ensureMatrixBuffer(rows);
+    ensureResidentKernels(matrixBuffer.numRows, matrixBuffer.maxRowLen);
+    ensureScalarBuffers();
+
+    // RHS upload (defensive: re-zero non-finite values).
+    residentRhsBuffer = ensureFloat32VectorBuffer(rhs, residentRhsBuffer);
+
+    // Preconditioner upload. New flat layout: (self, prev, next) so the
+    // shader uses only fixed-offset reads (i-1, i, i+1) and avoids the
+    // dependent-texture-read pattern that returns zero on Apple Metal
+    // WebGL2 drivers.
+    const { selfCoef, prevCoef, nextCoef } = preconditioner;
+    residentPrecondSelfBuffer = residentPrecondSelfBuffer && residentPrecondSelfBuffer.length === n
+      ? residentPrecondSelfBuffer : new Float32Array(n);
+    residentPrecondPrevCoefBuffer = residentPrecondPrevCoefBuffer && residentPrecondPrevCoefBuffer.length === n
+      ? residentPrecondPrevCoefBuffer : new Float32Array(n);
+    residentPrecondNextCoefBuffer = residentPrecondNextCoefBuffer && residentPrecondNextCoefBuffer.length === n
+      ? residentPrecondNextCoefBuffer : new Float32Array(n);
+    for (let i = 0; i < n; i += 1) {
+      residentPrecondSelfBuffer[i] = Number(selfCoef[i]) || 0;
+      residentPrecondPrevCoefBuffer[i] = Number(prevCoef[i]) || 0;
+      residentPrecondNextCoefBuffer[i] = Number(nextCoef[i]) || 0;
+    }
+
+    // Initial guess upload (or zero).
+    let initialF32;
+    if (initial && initial.length === n) {
+      residentInitialBuffer = ensureFloat32VectorBuffer(initial, residentInitialBuffer);
+      initialF32 = residentInitialBuffer;
+    } else {
+      residentInitialBuffer = residentInitialBuffer && residentInitialBuffer.length === n
+        ? residentInitialBuffer : new Float32Array(n);
+      residentInitialBuffer.fill(0);
+      initialF32 = residentInitialBuffer;
+    }
+
+    // Compute ‖rhs‖² on CPU (used for relative-residual tolerance) — single
+    // pass, not on the hot path.
+    let rhsNorm2 = 0;
+    for (let i = 0; i < n; i += 1) rhsNorm2 += rhs[i] * rhs[i];
+    const rhsNorm = Math.sqrt(rhsNorm2);
+    const tolTarget = Math.max(absTol || 0, (relTol || 0) * rhsNorm);
+
+    // Persistent vector textures live in this object so the cleanup
+    // path at the bottom can dispose any that still exist (e.g. on
+    // exception or early return). `swap` deletes the previous texture
+    // before assigning the new one — that's the standard "I produced
+    // a fresh immutable texture; the old one is now orphaned" pattern.
+    const live = { xTex: null, rTex: null, zTex: null, pTex: null };
+    const swap = (key, newTex) => {
+      const old = live[key];
+      live[key] = newTex;
+      if (old) safeDelete(old);
+    };
+    const finish = (result) => {
+      // Dispose any remaining persistent textures before returning so
+      // a single solve never leaks beyond its scope. Temporary
+      // textures inside the iteration body are disposed inline.
+      safeDelete(live.xTex);
+      safeDelete(live.rTex);
+      safeDelete(live.zTex);
+      safeDelete(live.pTex);
+      live.xTex = live.rTex = live.zTex = live.pTex = null;
+      return result;
+    };
+    const isStopRequested = () => {
+      if (typeof runControl?.shouldStop === 'function') return !!runControl.shouldStop();
+      if (typeof runControl?.shouldInterrupt === 'function') return !!runControl.shouldInterrupt();
+      return false;
+    };
+    const checkpoint = async (force = false) => {
+      if (typeof runControl?.checkpoint === 'function') {
+        return !!(await runControl.checkpoint({ force }));
+      }
+      return isStopRequested();
+    };
+    const trueResidualNormForSolution = (solution) => {
+      const ax = sparseMatVecCpu(rows, solution);
+      let r2 = 0;
+      for (let i = 0; i < n; i += 1) {
+        const ri = rhs[i] - ax[i];
+        r2 += ri * ri;
+      }
+      return Math.sqrt(Math.max(r2, 0));
+    };
+    const finishWithTrueResidual = (solution, iterations, recurrenceResidualNorm, label) => {
+      const trueResidualNorm = trueResidualNormForSolution(solution);
+      const converged = trueResidualNorm <= tolTarget;
+      return finish({
+        solution,
+        converged,
+        iterations,
+        residualNorm: trueResidualNorm,
+        trueResidualNorm,
+        recurrenceResidualNorm,
+        relativeResidual: rhsNorm > CG_NUMERIC_EPS_F32 ? trueResidualNorm / rhsNorm : 0,
+        rhsNorm,
+        toleranceTarget: tolTarget,
+        usedTrueResidualAcceptance: true,
+        fallbackReason: converged ? '' : `${label}-true-residual-mismatch:${recurrenceResidualNorm}->${trueResidualNorm}`,
+        interrupted: false
+      });
+    };
+
+    try {
+      // Seed: x = initial (copy via axby with identity), ap = K · x,
+      // r = rhs − ap. The intermediate apTex is consumed by the next
+      // axby and immediately disposed.
+      swap('xTex', axbyKernel(initialF32, initialF32, _scalarOne(), _scalarZero()));
+      let apSeed = pipelinedMatvecKernel(
+        matrixBuffer.cols,
+        matrixBuffer.vals,
+        initialF32,
+        matrixBuffer.maxRowLen
+      );
+      swap('rTex', axbyKernel(residentRhsBuffer, apSeed, _scalarOne(), _scalarMinusOne()));
+      safeDelete(apSeed);
+      apSeed = null;
+
+      // ‖r‖² → CPU; the elementwise dot output is consumed by the
+      // reduction chain and disposed inside reduceTextureToScalar.
+      let dotE = dotElementwiseKernel(live.rTex, live.rTex);
+      let rNorm2 = reduceTextureToScalarDs(dotE, n, true);
+      let residualNorm = Math.sqrt(Math.max(rNorm2, 0));
+      if (residualNorm <= tolTarget) {
+        return finishWithTrueResidual(downloadTextureToFloat64(live.xTex, n), 0, residualNorm, 'webgl-resident-cg');
+      }
+
+      // z = M⁻¹ r ;  p = z (copy)
+      swap('zTex', blockJacobiKernel(
+        residentPrecondSelfBuffer,
+        residentPrecondPrevCoefBuffer,
+        residentPrecondNextCoefBuffer,
+        live.rTex
+      ));
+      swap('pTex', axbyKernel(live.zTex, live.zTex, _scalarOne(), _scalarZero()));
+
+      let dotRZ = dotElementwiseKernel(live.rTex, live.zTex);
+      let rzOld = reduceTextureToScalarDs(dotRZ, n, true);
+
+      let iter = 0;
+      for (iter = 1; iter <= maxIter; iter += 1) {
+        if ((iter === 1 || iter % 25 === 0) && await checkpoint()) {
+          return finish({
+            solution: downloadTextureToFloat64(live.xTex, n),
+            converged: false,
+            iterations: iter,
+            residualNorm,
+            trueResidualNorm: residualNorm,
+            relativeResidual: rhsNorm > CG_NUMERIC_EPS_F32 ? residualNorm / rhsNorm : 0,
+            rhsNorm,
+            toleranceTarget: tolTarget,
+            interrupted: true
+          });
+        }
+        // ap = K · p — apTex is a fresh texture each iter; disposed
+        // after the dot product reduces it via axby (which references
+        // it) and the second axby completes.
+        let apTex = pipelinedMatvecKernel(
+          matrixBuffer.cols,
+          matrixBuffer.vals,
+          live.pTex,
+          matrixBuffer.maxRowLen
+        );
+        let dotPAp = dotElementwiseKernel(live.pTex, apTex);
+        const denom = reduceTextureToScalarDs(dotPAp, n, true);
+        if (!Number.isFinite(denom) || Math.abs(denom) < CG_NUMERIC_EPS_F32) {
+          safeDelete(apTex);
+          residualNorm = Math.sqrt(Math.max(rNorm2, 0));
+          return finishWithTrueResidual(downloadTextureToFloat64(live.xTex, n), iter, residualNorm, 'webgl-resident-cg-breakdown');
+        }
+        const alpha = rzOld / denom;
+        residentScalarAlphaBuffer[0] = alpha;
+        residentScalarNegAlphaBuffer[0] = -alpha;
+
+        // x = x + α p ; r = r − α ap
+        swap('xTex', axbyKernel(live.xTex, live.pTex, _scalarOne(), residentScalarAlphaBuffer));
+        swap('rTex', axbyKernel(live.rTex, apTex, _scalarOne(), residentScalarNegAlphaBuffer));
+        safeDelete(apTex);
+        apTex = null;
+
+        // Periodic residual refresh on CPU f64 — same cadence as the
+        // CPU CG path. We download x, recompute b − Ax in f64, then
+        // re-upload r and discard any drift the f32 path accumulated.
+        let didRefresh = false;
+        if (residualRefreshIntervalForCheckpoint > 0
+            && iter % residualRefreshIntervalForCheckpoint === 0) {
+          const xCpu = downloadTextureToFloat64(live.xTex, n);
+          const ax = sparseMatVecCpu(rows, xCpu);
+          const rRefreshed = new Float64Array(n);
+          for (let i = 0; i < n; i += 1) rRefreshed[i] = rhs[i] - ax[i];
+          const rRefreshedF32 = ensureFloat32VectorBuffer(rRefreshed, null);
+          // axby with α=1, β=0 is just a copy onto a fresh texture.
+          swap('rTex', axbyKernel(rRefreshedF32, rRefreshedF32, _scalarOne(), _scalarZero()));
+          didRefresh = true;
+        }
+
+        let dotRR = dotElementwiseKernel(live.rTex, live.rTex);
+        rNorm2 = reduceTextureToScalarDs(dotRR, n, true);
+        residualNorm = Math.sqrt(Math.max(rNorm2, 0));
+
+        if (iterationObserver && (iter === 1 || iter % 25 === 0)) {
+          await iterationObserver({
+            iterations: iter,
+            residualNorm,
+            relativeResidual: rhsNorm > CG_NUMERIC_EPS_F32 ? residualNorm / rhsNorm : 0,
+            rhsNorm,
+            toleranceTarget: tolTarget
+          });
+        }
+
+        if (residualNorm <= tolTarget) {
+          return finishWithTrueResidual(downloadTextureToFloat64(live.xTex, n), iter, residualNorm, 'webgl-resident-cg');
+        }
+
+        // z = M⁻¹ r ; β = (rzNew/rzOld) ; p = z + β p
+        swap('zTex', blockJacobiKernel(
+          residentPrecondSelfBuffer,
+          residentPrecondPrevCoefBuffer,
+          residentPrecondNextCoefBuffer,
+          live.rTex
+        ));
+        let dotRZNew = dotElementwiseKernel(live.rTex, live.zTex);
+        const rzNew = reduceTextureToScalarDs(dotRZNew, n, true);
+        const beta = didRefresh ? 0 : (Math.abs(rzOld) > CG_NUMERIC_EPS_F32 ? rzNew / rzOld : 0);
+        residentScalarBetaBuffer[0] = beta;
+        swap('pTex', axbyKernel(live.zTex, live.pTex, _scalarOne(), residentScalarBetaBuffer));
+        rzOld = rzNew;
+      }
+
+      // Iteration budget exhausted — return the best-effort solution.
+      return finishWithTrueResidual(downloadTextureToFloat64(live.xTex, n), maxIter, residualNorm, 'webgl-resident-cg-not-converged');
+    } catch (error) {
+      // Any thrown error inside the resident loop must still dispose
+      // the live textures before propagating, otherwise GPU memory
+      // leaks across falled-back solves.
+      finish(null);
+      throw error;
+    }
+  }
+
+  // Shared scalar 1-element buffers — reused across calls so we are not
+  // allocating Float32Array(1) on every kernel invocation.
+  const _scalarOneBuf = new Float32Array([1]);
+  const _scalarZeroBuf = new Float32Array([0]);
+  const _scalarMinusOneBuf = new Float32Array([-1]);
+  function _scalarOne() { return _scalarOneBuf; }
+  function _scalarZero() { return _scalarZeroBuf; }
+  function _scalarMinusOne() { return _scalarMinusOneBuf; }
+
+  function downloadTextureToFloat64(texture, length) {
+    const arr = typeof texture.toArray === 'function' ? texture.toArray() : texture;
+    const out = new Float64Array(length);
+    for (let i = 0; i < length; i += 1) out[i] = Number(arr?.[i]) || 0;
+    return out;
+  }
+
+  // CPU f64 reference matvec for the residual refresh inside the
+  // resident solver. Identical math to sparseMatVecFallback in
+  // solver.js but local so this module stays self-contained.
+  function sparseMatVecCpu(rows, vector) {
+    const out = new Float64Array(rows.length);
+    for (let i = 0; i < rows.length; i += 1) {
+      let sum = 0;
+      const row = rows[i];
+      const indices = row.indices;
+      const values = row.values;
+      for (let k = 0; k < indices.length; k += 1) {
+        sum += (Number(values[k]) || 0) * (Number(vector[indices[k]]) || 0);
+      }
+      out[i] = sum;
+    }
+    return out;
+  }
+
+  const CG_NUMERIC_EPS_F32 = 1e-30;
+
   function setPrecisionMode(nextMode = 'f32') {
     const normalized = String(nextMode || 'f32').toLowerCase();
     const resolved = normalized === 'double-single' ? 'double-single' : 'f32';
@@ -856,6 +1620,35 @@ export async function tryCreateWebglBackend(setup = {}) {
       // matvec the GPU can physically handle stay on GPU.
       get matrixMaxAbsValue() { return matrixBuffer?.maxAbsValue ?? 0; },
       get matrixMaxRowLen() { return matrixBuffer?.maxRowLen ?? 0; },
+      // GPU-resident CG: keeps the iterate vectors as f32 textures
+      // across iterations and runs the entire inner loop on the GPU.
+      // The solver-side code consults `supportsResidentCg` to decide
+      // whether to dispatch through this path or the legacy hybrid
+      // path. Always present on this backend; the cpu-f32-backend
+      // exposes a deterministic CPU surrogate with the same name so
+      // verification can exercise the algorithm without WebGL2.
+      supportsResidentCg: true,
+      supportsResidentGmres: false,
+      residentCgCertified: false,
+      residentGmresCertified: false,
+      capabilities: {
+        residentCg: true,
+        residentGmres: false,
+        residentBicgstab: false,
+        t3ElementKernels: true,
+        t6ElementKernels: true,
+        nonlinearAssembly: false,
+        materialKernels: false,
+        trueResidualOnGpu: false,
+        supportsCancellation: true
+      },
+      certification: {
+        residentCg: 'none',
+        residentGmres: 'none',
+        nonlinearAssembly: 'none',
+        mcMaterial: 'none'
+      },
+      solveCgPreconditionedGpu,
       matvec,
       elementStrain,
       elementInternalForce,

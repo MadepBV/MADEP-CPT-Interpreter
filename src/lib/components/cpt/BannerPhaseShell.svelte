@@ -7,9 +7,7 @@
 	id="banner"
 	style="background:var(--bg2);border-bottom:1px solid var(--bd);padding:0 16px;display:flex;align-items:center;gap:0;min-height:44px;flex-wrap:wrap"
 >
-	<span style="font-size:12px;font-weight:600;color:var(--tx2);margin-right:10px;white-space:nowrap"
-		>📁</span
-	>
+	<span class="app-brand-mark" style="margin-right:10px" aria-hidden="true">MD</span>
 	<input
 		id="projName"
 		type="text"

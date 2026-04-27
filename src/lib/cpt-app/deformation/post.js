@@ -71,14 +71,35 @@ export function verticalOverburdenStressAt(model, x, y) {
   );
 }
 
+export function resolveNearSurfaceMinConfiningStress(material, options = {}) {
+  // Optional engineer-controlled floor on the seed effective confining
+  // stress. The solver does NOT apply this by default: silently adding
+  // a hydrostatic preload is equivalent to silently adding apparent
+  // cohesion, and that is a material-modelling decision that belongs
+  // to the engineer, not to the solver. The option exists so engineers
+  // who explicitly want the PLAXIS-style numerical preload can opt in
+  // by setting `nearSurfaceMinConfiningStress` on the material or in
+  // run options. Default is 0 (off) — surface seeds remain identically
+  // zero and shallow degeneracies surface as honest convergence
+  // failures with depth-band diagnostics, exactly as without this knob.
+  const explicit = Number(options?.nearSurfaceMinConfiningStress);
+  if (Number.isFinite(explicit) && explicit >= 0) return explicit;
+  const baked = Number(material?.nearSurfaceMinConfiningStress);
+  if (Number.isFinite(baked) && baked >= 0) return baked;
+  return 0;
+}
+
 export function initialEffectiveStress6AtPoint(model, point, options, warnings) {
   const material = model?.regions?.[point.regionIndex]?.material || point.material || null;
   const sigmaV0 = verticalOverburdenStressAt(model, point.x, point.y);
   const u0 = sampleInitialPorePressure(model, point.x, point.y, options, warnings, GAMMA_W);
-  const sigmaV0Eff = Math.max(sigmaV0 - u0, 0);
+  const sigmaV0EffNatural = Math.max(sigmaV0 - u0, 0);
+  const sigmaMin = resolveNearSurfaceMinConfiningStress(material, options);
+  const sigmaV0Eff = sigmaMin > 0 ? Math.max(sigmaV0EffNatural, sigmaMin) : sigmaV0EffNatural;
   const phi = (Math.max(Number(material?.phiEffDeg) || 0, 0) * Math.PI) / 180;
   const K0 = Number.isFinite(Number(material?.K0nc)) ? Math.max(Number(material.K0nc), 0) : Math.max(1 - Math.sin(phi), 0);
-  const sigmaH0Eff = K0 * sigmaV0Eff;
+  const sigmaH0EffTarget = K0 * sigmaV0Eff;
+  const sigmaH0Eff = sigmaMin > 0 ? Math.max(sigmaH0EffTarget, sigmaMin) : sigmaH0EffTarget;
   return [
     -sigmaH0Eff,
     -sigmaV0Eff,

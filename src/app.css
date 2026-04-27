@@ -1,3 +1,35 @@
+@font-face {
+	font-family: 'Manrope';
+	src: url('/fonts/Manrope-0.woff2') format('woff2');
+	font-weight: 200 800;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'DM Sans';
+	src: url('/fonts/DMSans-0.woff2') format('woff2');
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'DM Sans';
+	src: url('/fonts/DMSans-1.woff2') format('woff2');
+	font-weight: 100 900;
+	font-style: italic;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'JetBrains Mono';
+	src: url('/fonts/JetBrainsMono-0.woff2') format('woff2');
+	font-weight: 100 800;
+	font-style: normal;
+	font-display: swap;
+}
+
 html,
 body {
 	margin: 0;
@@ -6,8 +38,9 @@ body {
 }
 
 body {
-	background: #f4f5f1;
-	color: #1a1a18;
+	background: #f7f4ef;
+	color: #18181a;
+	font-family: 'Manrope', system-ui, sans-serif;
 }
 
 * {
@@ -16,7 +49,7 @@ body {
 
 @media (prefers-color-scheme: dark) {
 	body {
-		background: #111513;
-		color: #ebe6dc;
+		background: #111110;
+		color: #ede9e1;
 	}
 }

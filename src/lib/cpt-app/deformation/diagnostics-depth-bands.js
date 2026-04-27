@@ -4,6 +4,7 @@
 import { terrainY } from '../stage6-bishop.js';
 import {
   effectiveStress6ToCompressionPositiveStress2D,
+  mcTolerance,
   mohrCoulombIndicator3D
 } from './material-models.js';
 
@@ -172,7 +173,7 @@ export function computeDepthBandReport(mesh, materialPoints, model, elementCache
     const band = bands[bandIndexForDepth(depth, configuredBands)];
     if (!band) return;
     const mc = mohrCoulombIndicator3D(stress6, materialPoint.materialParameters);
-    const tolerance = Math.max(Number(materialPoint.materialParameters?.yieldTolerance) || 0, 1e-8);
+    const tolerance = mcTolerance(materialPoint.materialParameters, mc);
     const plastic = isPlasticActive(state, materialPoint.diagnostics, mc, tolerance);
     const tension = isTensionActive(state, mc);
     const yielded = mc?.state === 'mc-yield' || plastic;
