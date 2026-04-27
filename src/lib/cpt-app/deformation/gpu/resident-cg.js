@@ -193,11 +193,11 @@ export function createResidentCgContext({ device, ndof, numNonzeros }) {
     paramsAxpy:  device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
     paramsAxpby: device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
     paramsScale: device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
-    paramsCopy:  device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
-    paramsDot:   device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
-    paramsDotP2: device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
-    paramsCsr:   device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
-    paramsBj:    device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    paramsCopy:  device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    paramsDot:   device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    paramsDotP2: device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    paramsCsr:   device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    paramsBj:    device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
     // Reduction scratch / outputs.
     dotPartials: device.createBuffer({ size: partialsBytes, usage: GPUBufferUsage.STORAGE }),
     dotResult:   device.createBuffer({ size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC }),
@@ -457,9 +457,21 @@ export async function solveResidentCg(ctx, { bF64, x0F64 = null, maxIter = 25000
     }
     const alpha = rz / pAp;
     // x = x + alpha p,   r = r - alpha Ap
+    //
+    // CRITICAL: each AXPY must be in its own encoder + submit because both
+    // calls share the same `paramsAxpy` uniform buffer.  Within one
+    // encoder + submit, all `queue.writeBuffer` calls run before the compute
+    // passes — the second writeBuffer overwrites the first, and BOTH passes
+    // then read the SECOND alpha.  This previously sign-flipped x.  Splitting
+    // into two submits ensures the uniform write and its dependent dispatch
+    // execute atomically.
     {
       const enc = device.createCommandEncoder();
       dispatchAxpy(ctx, enc, dsFromF64(alpha), 'p', 'x');
+      device.queue.submit([enc.finish()]);
+    }
+    {
+      const enc = device.createCommandEncoder();
       dispatchAxpy(ctx, enc, dsFromF64(-alpha), 'Ap', 'r');
       device.queue.submit([enc.finish()]);
     }

@@ -183,6 +183,18 @@ fn dsAbs(a: vec2<f32>) -> vec2<f32> {
 }
 
 // -----------------------------------------------------------------------------
+// DS sign:  returns +1, 0, or -1 as a DS scalar.  The sign is determined by
+// the high part; the low part is irrelevant because non-overlapping DS pairs
+// have the same sign in their finite components by construction (if hi == 0
+// then lo == 0, and a finite hi dominates the sign).
+// -----------------------------------------------------------------------------
+fn dsSign(a: vec2<f32>) -> vec2<f32> {
+  if (a.x > 0.0) { return vec2<f32>(1.0, 0.0); }
+  if (a.x < 0.0) { return vec2<f32>(-1.0, 0.0); }
+  return vec2<f32>(0.0, 0.0);
+}
+
+// -----------------------------------------------------------------------------
 // DS comparison: returns -1, 0, +1.  Compares high parts first; on tie
 // compares the low parts so that (hi, lo) ordering matches the real-line
 // ordering of hi + lo for all finite inputs.
@@ -316,6 +328,12 @@ export function dsSqrt(a) {
 
 export function dsAbs(a) {
   return a[0] < 0 ? [-a[0], -a[1]] : [a[0], a[1]];
+}
+
+export function dsSign(a) {
+  if (a[0] > 0) return [1, 0];
+  if (a[0] < 0) return [-1, 0];
+  return [0, 0];
 }
 
 export function dsFma(a, b, c) {

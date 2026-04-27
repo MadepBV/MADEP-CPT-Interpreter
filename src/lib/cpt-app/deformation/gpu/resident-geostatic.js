@@ -167,3 +167,180 @@ export function cpuRefK0Recovery({ strainPerGp, regionId, regions, porePressure 
 
 // dsDiv reference for use in CPU verification.
 import { dsDiv, dsRecip } from './wgsl/ds.js';
+
+import { KERNEL_STRAIN_T3_WGSL, KERNEL_STRAIN_T6_WGSL } from './wgsl/elements.js';
+import {
+  createResidentCgContext, uploadDsVector, uploadDsCsr, uploadBlockJacobi,
+  solveResidentCg
+} from './resident-cg.js';
+import { packDsVector, unpackDsVector } from './resident-buffers.js';
+
+// =============================================================================
+// Device-bound geostatic orchestrator (elastic gravity solve + K0 recovery).
+//
+// One-shot operation that produces the K0-controlled initial effective stress
+// at every Gauss point.  Mirrors the CPU `runElasticK0Recovery` step that the
+// solver currently uses as the single canonical initialization workflow.
+//
+// Caller responsibilities:
+//   - Build the elastic CSR + block-Jacobi (one-time, CPU; cheap because the
+//     elastic stiffness is constant under fixed mesh + fixed elastic constants).
+//   - Build the gravity load vector b_g (one-time, CPU).
+//   - Provide a `dispatchStrainAtGauss(encoder)` callback that records the
+//     element-strain kernel against the device's u-buffer + B-matrix buffers,
+//     producing per-GP DS strain.
+//
+// This orchestrator:
+//   1. Allocates a resident CG context for the elastic system.
+//   2. Uploads CSR, block-Jacobi, b_g.
+//   3. Runs CG to solve K_e u = b_g entirely on GPU.
+//   4. Allocates the K0 recovery resources (regions buffer, pore-pressure
+//      buffer, sigma-initial output buffer, params uniform).
+//   5. Records the strain kernel + the K0 kernel in one encoder.
+//   6. Submits, reads back σ_initial.
+//
+// The σ_initial output is the engineer-controlled, K0-correct initial stress
+// state that feeds the plastic Newton loop.
+// =============================================================================
+function GPUShaderStage_COMPUTE_g() {
+  /* global GPUShaderStage */
+  return typeof GPUShaderStage !== 'undefined' ? GPUShaderStage.COMPUTE : 0x4;
+}
+
+const BGL_K0 = {
+  entries: [
+    { binding: 0, type: 'read-only-storage' },
+    { binding: 1, type: 'read-only-storage' },
+    { binding: 2, type: 'read-only-storage' },
+    { binding: 3, type: 'read-only-storage' },
+    { binding: 4, type: 'storage' },
+    { binding: 5, type: 'uniform' }
+  ]
+};
+
+function getOrCompileK0(device) {
+  if (device.__residentK0Pipeline) return device.__residentK0Pipeline;
+  const stage = GPUShaderStage_COMPUTE_g();
+  const desc = {
+    entries: BGL_K0.entries.map((e) => ({
+      binding: e.binding,
+      visibility: stage,
+      buffer: { type: e.type === 'uniform' ? 'uniform' : (e.type === 'read-only-storage' ? 'read-only-storage' : 'storage') }
+    }))
+  };
+  const module = device.createShaderModule({ code: KERNEL_K0_RECOVERY_WGSL });
+  const bgLayout = device.createBindGroupLayout(desc);
+  const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bgLayout] });
+  const pipeline = device.createComputePipeline({ layout: pipelineLayout, compute: { module, entryPoint: 'main' } });
+  device.__residentK0Pipeline = { pipeline, bgLayout };
+  return device.__residentK0Pipeline;
+}
+
+function packRegions(regions) {
+  // Each region = 4 DS scalars: K0, E, nu, gamma; total 8 f32 per region.
+  const out = new Float32Array(8 * regions.length);
+  for (let i = 0; i < regions.length; i += 1) {
+    const r = regions[i];
+    out[8 * i + 0] = r.K0[0];    out[8 * i + 1] = r.K0[1];
+    out[8 * i + 2] = r.E[0];     out[8 * i + 3] = r.E[1];
+    out[8 * i + 4] = r.nu[0];    out[8 * i + 5] = r.nu[1];
+    out[8 * i + 6] = r.gamma[0]; out[8 * i + 7] = r.gamma[1];
+  }
+  return out;
+}
+
+export async function runResidentGeostatic({
+  device,
+  ndof,
+  numNonzeros,
+  numGp,
+  csrPacked,             // packed elastic CSR ({ rowPtr, colInd, valHi, valLo })
+  blockJacobiPacked,     // Float32Array of packed DS block-Jacobi
+  bGravityF64,           // Float64Array of length ndof
+  regions,               // Array<{ K0: ds, E: ds, nu: ds, gamma: ds }>
+  regionIdU32,           // Uint32Array of length numGp
+  porePressureF64,       // Float64Array of length numGp
+  recordStrainKernel,    // (encoder, uBuf, strainBuf) → records strain dispatch
+  cgOptions = { maxIter: 5000, relTol: 1e-10, absTol: 1e-12 }
+}) {
+  // 1. Build elastic CG context, upload, solve.
+  const cgCtx = createResidentCgContext({ device, ndof, numNonzeros });
+  uploadDsCsr(cgCtx, csrPacked);
+  uploadBlockJacobi(cgCtx, blockJacobiPacked);
+  const cgResult = await solveResidentCg(cgCtx, {
+    bF64: bGravityF64,
+    maxIter: cgOptions.maxIter,
+    relTol: cgOptions.relTol,
+    absTol: cgOptions.absTol
+  });
+  if (!cgResult.converged) {
+    return { converged: false, reason: 'elastic-gravity-cg-not-converged', cgResult };
+  }
+  const uBuf = cgCtx.buffers.x;
+
+  // 2. Allocate strain + K0 buffers.
+  const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
+  const strainBuf = device.createBuffer({ size: 8 * 3 * numGp, usage });
+  const sigmaInitialBuf = device.createBuffer({ size: 8 * 6 * numGp, usage });
+  const regionIdBuf = device.createBuffer({ size: 4 * numGp, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const regionsBuf  = device.createBuffer({ size: 32 * regions.length, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const poreBuf     = device.createBuffer({ size: 8 * numGp, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const paramsBuf   = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+
+  device.queue.writeBuffer(regionIdBuf, 0, regionIdU32);
+  device.queue.writeBuffer(regionsBuf, 0, packRegions(regions));
+  device.queue.writeBuffer(poreBuf, 0, packDsVector(porePressureF64));
+  const paramsArr = new ArrayBuffer(16);
+  new Uint32Array(paramsArr, 0, 1).set([numGp]);
+  device.queue.writeBuffer(paramsBuf, 0, paramsArr);
+
+  // 3. Dispatch strain (elastic u → strain) + K0 (strain → σ_initial).
+  const k0 = getOrCompileK0(device);
+  const enc = device.createCommandEncoder();
+  recordStrainKernel(enc, uBuf, strainBuf);
+  const pass = enc.beginComputePass();
+  pass.setPipeline(k0.pipeline);
+  pass.setBindGroup(0, device.createBindGroup({
+    layout: k0.bgLayout,
+    entries: [
+      { binding: 0, resource: { buffer: strainBuf } },
+      { binding: 1, resource: { buffer: regionIdBuf } },
+      { binding: 2, resource: { buffer: regionsBuf } },
+      { binding: 3, resource: { buffer: poreBuf } },
+      { binding: 4, resource: { buffer: sigmaInitialBuf } },
+      { binding: 5, resource: { buffer: paramsBuf } }
+    ]
+  }));
+  const numWg = Math.ceil(numGp / 64);
+  pass.dispatchWorkgroups(numWg);
+  pass.end();
+  device.queue.submit([enc.finish()]);
+
+  // 4. Read back σ_initial.
+  const out = device.createBuffer({ size: 8 * 6 * numGp, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  const enc2 = device.createCommandEncoder();
+  enc2.copyBufferToBuffer(sigmaInitialBuf, 0, out, 0, 8 * 6 * numGp);
+  device.queue.submit([enc2.finish()]);
+  await out.mapAsync(GPUMapMode.READ);
+  const packed = new Float32Array(out.getMappedRange().slice(0));
+  out.unmap();
+  out.destroy();
+
+  // Voigt-6 layout: 6 DS scalars per GP.
+  const sigmaInitial = new Array(numGp);
+  for (let gp = 0; gp < numGp; gp += 1) {
+    const v6 = new Array(6);
+    for (let k = 0; k < 6; k += 1) {
+      const base = (gp * 6 + k) * 2;
+      v6[k] = [packed[base], packed[base + 1]];
+    }
+    sigmaInitial[gp] = v6;
+  }
+  return {
+    converged: true,
+    sigmaInitial,
+    elasticDisplacements: cgResult.solution,
+    cgIterations: cgResult.iterations,
+    cgResidualNorm: cgResult.residualNorm
+  };
+}

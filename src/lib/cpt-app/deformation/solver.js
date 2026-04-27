@@ -47,6 +47,11 @@ import { computeDepthBandReport } from './diagnostics-depth-bands.js';
 // future reintroduction but is no longer imported here.
 import { terrainY } from '../stage6-bishop.js';
 
+// New GPU resident pipeline (engineer-controlled opt-in via
+// `options.useNewGpuPipeline`). The controller probes WebGPU at runtime;
+// any failure falls back to the CPU path and surfaces a warning.
+import { probeGpuPipeline as gpuProbeGpuPipeline, runDeformationOnGpu as gpuRunDeformationOnGpu } from './gpu/gpu-controller.js';
+
 // GPU acceleration is being rebuilt as a separate, fully resident
 // double-single pipeline. Until that pipeline lands the deformation solver
 // runs CPU f64 only. No backend dispatchers, no precision escalation, no
@@ -784,6 +789,74 @@ async function solveCgDispatched(rows, rhs, initial, maxIter, relTol, absTol, ru
     await solveCg(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options),
     { solver: 'cg', path: 'cpu-f64', preconditioner: 'nodal-block-jacobi' }
   );
+}
+
+// =============================================================================
+// New GPU resident pipeline router for the elastic gravity solve.
+//
+// Returns either:
+//   - a CG-shaped result object  ({ solution, converged, iterations,
+//     residualNorm, ...}, decorated with path: 'gpu-resident-elastic'), or
+//   - null if the GPU path is not requested or not available, in which case
+//     the caller routes to the CPU CG.
+//
+// All errors are caught and logged to the warnings array; this function
+// never throws.
+// =============================================================================
+async function tryGpuElasticGravitySolve({
+  options, mesh, elementCaches, regionConstitutiveByRegion,
+  fixedValues, bFreeF64, porePressureByIntegrationPoint, warnings
+}) {
+  if (options?.useNewGpuPipeline !== true) return null;
+  let device = null;
+  try {
+    const probe = await gpuProbeGpuPipeline();
+    if (!probe?.available) {
+      pushUniqueWarning(warnings, `New GPU pipeline requested but unavailable (${probe?.reason || 'unknown'}); using CPU.`);
+      return null;
+    }
+    device = probe.device;
+    const gpuResult = await gpuRunDeformationOnGpu({
+      device,
+      mesh,
+      elementCaches,
+      regionConstitutiveByRegion,
+      fixedDofSet: new Set(fixedValues.keys()),
+      bF64: bFreeF64,
+      porePressureByIntegrationPoint,
+      cgOptions: {
+        maxIter: MAX_CG_ITER,
+        relTol: CG_REL_TOL,
+        absTol: CG_ABS_TOL
+      },
+      warnings
+    });
+    if (!gpuResult?.converged) {
+      pushUniqueWarning(warnings, 'New GPU pipeline elastic CG did not converge; falling back to CPU.');
+      return null;
+    }
+    return decorateLinearSolveResult(
+      {
+        solution: gpuResult.uFreeF64,
+        converged: true,
+        iterations: gpuResult.iterations,
+        residualNorm: gpuResult.residualNorm,
+        relativeResidual: gpuResult.relativeResidual ?? 0,
+        rhsNorm: 0,
+        toleranceTarget: 0,
+        interrupted: false
+      },
+      {
+        solver: 'cg',
+        path: 'gpu-resident-elastic',
+        preconditioner: 'nodal-block-jacobi-ds',
+        gpuDiagnostics: gpuResult.diagnostics
+      }
+    );
+  } catch (err) {
+    pushUniqueWarning(warnings, `New GPU pipeline elastic CG failed: ${err?.message || err}; falling back to CPU.`);
+    return null;
+  }
 }
 
 async function solveGmresDispatched(rows, rhs, initial, maxIter, relTol, absTol, runControl, iterationObserver, options = {}) {
@@ -2346,25 +2419,41 @@ async function buildGeostaticInitialization(
     percent: 64,
     message: 'Solving the elastic gravity step for the initial stress field...'
   });
-  const geostaticCg = await solveCgDispatched(
-    compressedRows,
-    gravityCompressedRhs,
-    null,
-    MAX_CG_ITER,
-    CG_REL_TOL,
-    CG_ABS_TOL,
-    runControl,
-    async ({ iterations, relativeResidual }) => {
-      const percent = Math.min(69, 64 + Math.min(iterations / GEOSTATIC_CG_PROGRESS_INTERVAL, 5));
-      onProgress({
-        stage: 'solving',
-        percent,
-        message: `Elastic gravity step... CG iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
-      });
-      await runCheckpoint(runControl);
-    },
-    { freeDofs }
-  );
+  // New GPU resident pipeline (engineer-controlled).  Tries the GPU first;
+  // any failure (no WebGPU, kernel compile error, runtime error, non-
+  // convergence) silently falls back to the CPU CG path.  When the GPU
+  // path succeeds the result is shape-identical to solveCgDispatched.
+  let geostaticCg = await tryGpuElasticGravitySolve({
+    options,
+    mesh,
+    elementCaches,
+    regionConstitutiveByRegion,
+    fixedValues,
+    bFreeF64: gravityCompressedRhs,
+    porePressureByIntegrationPoint,
+    warnings
+  });
+  if (!geostaticCg) {
+    geostaticCg = await solveCgDispatched(
+      compressedRows,
+      gravityCompressedRhs,
+      null,
+      MAX_CG_ITER,
+      CG_REL_TOL,
+      CG_ABS_TOL,
+      runControl,
+      async ({ iterations, relativeResidual }) => {
+        const percent = Math.min(69, 64 + Math.min(iterations / GEOSTATIC_CG_PROGRESS_INTERVAL, 5));
+        onProgress({
+          stage: 'solving',
+          percent,
+          message: `Elastic gravity step... CG iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
+        });
+        await runCheckpoint(runControl);
+      },
+      { freeDofs }
+    );
+  }
   if (geostaticCg.interrupted) {
     throw new Error('Deformation run was interrupted before geostatic initialization became available.');
   }

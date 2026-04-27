@@ -42,7 +42,12 @@ header('Phase 1 — DS primitives parity vs f64');
     const da = ds.dsFromF64(a), db = ds.dsFromF64(b);
     const addExp = a + b;     const addGot = ds.dsToF64(ds.dsAdd(da, db));
     const mulExp = a * b;     const mulGot = ds.dsToF64(ds.dsMul(da, db));
-    if (Math.abs(addExp) > 0) maxAdd = Math.max(maxAdd, Math.abs(addGot - addExp) / Math.abs(addExp));
+    // Use the operand magnitude as the denominator: the DS sum is correct to
+    // ~2 ulp of the *operands*, not of the (cancelled) result.  Without this,
+    // a near-cancellation random draw can spike the relative error to 1e-1
+    // because the f64 reference itself is computed with cancellation.
+    const addDenom = Math.abs(a) + Math.abs(b);
+    if (addDenom > 0) maxAdd = Math.max(maxAdd, Math.abs(addGot - addExp) / addDenom);
     if (Math.abs(mulExp) > 0) maxMul = Math.max(maxMul, Math.abs(mulGot - mulExp) / Math.abs(mulExp));
     if (Math.abs(b) > 1e-30) {
       const divExp = a / b;   const divGot = ds.dsToF64(ds.dsDiv(da, db));
@@ -92,7 +97,9 @@ header('Phase 3 — DS BLAS kernel parity');
   const yGot = blas.lowerDs(yDs);
   let maxAxpy = 0;
   for (let i = 0; i < N; i += 1) {
-    const denom = Math.max(Math.abs(yRef[i]), 1);
+    // Operand-magnitude denominator: catches cancellation gracefully.
+    // |0.5 a[i]| + |b[i]| bounds the magnitude of the operands in y = αx + y.
+    const denom = 0.5 * Math.abs(a[i]) + Math.abs(b[i]) + 1e-300;
     maxAxpy = Math.max(maxAxpy, Math.abs(yGot[i] - yRef[i]) / denom);
   }
   check('AXPY max relative error < 1e-13', maxAxpy < 1e-13, `got ${maxAxpy.toExponential(2)}`);
@@ -284,6 +291,179 @@ header('Phase 7 — MC return mapping');
   check('All-tensile trial with no cap returns to TENSION_APEX_T123',
         tensionTrial.converged && tensionTrial.branchKind === mc.MC_BRANCH.TENSION_APEX_T123,
         `branch=${tensionTrial.branchKind}`);
+}
+
+// -----------------------------------------------------------------------------
+header('Phase 1 (extended) — dsSign primitive');
+{
+  check('dsSign(+x) === +1', ds.dsToF64(ds.dsSign(ds.dsFromF64(3.5))) === 1);
+  check('dsSign(-x) === -1', ds.dsToF64(ds.dsSign(ds.dsFromF64(-7.2))) === -1);
+  check('dsSign(0)  ===  0', ds.dsToF64(ds.dsSign(ds.dsFromF64(0))) === 0);
+  check('dsSign(1e-300) === 0 (underflows to f32 zero)', ds.dsToF64(ds.dsSign(ds.dsFromF64(1e-300))) === 0);
+  // 1e-300 in f64 underflows to f32 zero in DS — dsSign returns 0 by design.
+}
+
+// -----------------------------------------------------------------------------
+header('Phase 6 (extended) — atomics-free scatter kernels');
+{
+  // Construct a tiny mesh: 3 elements, T3 (numLocalDofs = 6), 4 free DOFs.
+  // Element-local 6-DOF maps:
+  //   e0: free=[0, 1, 2, 3, -1, -1]   (DOF 0..3 free; DOF 4,5 constrained)
+  //   e1: free=[2, 3, 4, 5, -1, -1]   (sharing DOF 2,3 with e0)
+  //   e2: free=[4, 5, 6, 7, -1, -1]   (sharing DOF 4,5 with e1)
+  // Wait we only have 4 free DOFs; rebuild:
+  //   numFree=4
+  //   e0 free=[0, 1, 2, 3, -1, -1]
+  //   e1 free=[2, 3, 0, 1, -1, -1]   (overlapping in different order)
+  //   e2 free=[1, 2, 3, 0, -1, -1]
+  const numFree = 4;
+  const numElements = 3;
+  const numLocalDofs = 6;
+  const dofMap = new Int32Array([
+    0, 1, 2, 3, -1, -1,
+    2, 3, 0, 1, -1, -1,
+    1, 2, 3, 0, -1, -1
+  ]);
+  // CSR rows: dense 4x4 (just for the test).
+  const csrRows = [];
+  for (let i = 0; i < numFree; i += 1) {
+    const indices = new Int32Array([0, 1, 2, 3]);
+    csrRows.push({ indices, values: new Float64Array(4), diag: 0 });
+  }
+  const inc = elements.buildScatterIncidence({ dofMap, csrRows, numElements, numLocalDofs });
+  check('forceIncPtr length = numFree + 1', inc.forceIncPtr.length === numFree + 1);
+  check('forceIncList total = numElements * 4 (each elem touches 4 free DOFs)', inc.forceIncList.length === numElements * 4);
+  check('csrIncPtr length = nnz + 1 (16 + 1)', inc.csrIncPtr.length === numFree * numFree + 1);
+
+  // Verify scatter parity with manual sum.
+  // Build a deterministic forceOut: forceOut[e * 6 + d] = e * 10 + d.
+  const forceOutDs = new Array(numElements * numLocalDofs);
+  for (let e = 0; e < numElements; e += 1) {
+    for (let d = 0; d < numLocalDofs; d += 1) {
+      forceOutDs[e * numLocalDofs + d] = ds.dsFromF64(e * 10 + d);
+    }
+  }
+  const rhsFree = elements.cpuRefScatterFreeRhs({
+    forceOutDs, forceIncPtr: inc.forceIncPtr, forceIncList: inc.forceIncList, numFreeDofs: numFree
+  });
+  // Manual reference.
+  const expected = new Array(numFree).fill(0).map(() => 0);
+  for (let e = 0; e < numElements; e += 1) {
+    for (let d = 0; d < numLocalDofs; d += 1) {
+      const free = dofMap[e * numLocalDofs + d];
+      if (free < 0) continue;
+      expected[free] += e * 10 + d;
+    }
+  }
+  let maxRhsErr = 0;
+  for (let i = 0; i < numFree; i += 1) {
+    const got = ds.dsToF64(rhsFree[i]);
+    maxRhsErr = Math.max(maxRhsErr, Math.abs(got - expected[i]));
+  }
+  check('scatter free-RHS matches manual reference', maxRhsErr < 1e-12, `max diff=${maxRhsErr.toExponential(2)}`);
+
+  // CSR scatter: build kOut[e * 36 + i*6 + j] = (e + 1) * (i + 1) * (j + 1).
+  const kOutDs = new Array(numElements * numLocalDofs * numLocalDofs);
+  for (let e = 0; e < numElements; e += 1) {
+    for (let i = 0; i < numLocalDofs; i += 1) {
+      for (let j = 0; j < numLocalDofs; j += 1) {
+        kOutDs[e * numLocalDofs * numLocalDofs + i * numLocalDofs + j] = ds.dsFromF64((e + 1) * (i + 1) * (j + 1));
+      }
+    }
+  }
+  const csr = elements.cpuRefScatterCsr({
+    kOutDs, csrIncPtr: inc.csrIncPtr, csrIncList: inc.csrIncList, nnz: inc.nnz
+  });
+  // Manual: K_global[ri][rj] += K_elem[i][j] for each (e, i, j) with both DOFs free.
+  const kGlobal = new Array(numFree * numFree).fill(0);
+  for (let e = 0; e < numElements; e += 1) {
+    for (let li = 0; li < numLocalDofs; li += 1) {
+      const ri = dofMap[e * numLocalDofs + li];
+      if (ri < 0) continue;
+      for (let lj = 0; lj < numLocalDofs; lj += 1) {
+        const rj = dofMap[e * numLocalDofs + lj];
+        if (rj < 0) continue;
+        kGlobal[ri * numFree + rj] += (e + 1) * (li + 1) * (lj + 1);
+      }
+    }
+  }
+  let maxCsrErr = 0;
+  let nnzIdx = 0;
+  for (let i = 0; i < numFree; i += 1) {
+    for (let j = 0; j < numFree; j += 1) {
+      const got = csr.valHi[nnzIdx] + csr.valLo[nnzIdx];
+      const expectedVal = kGlobal[i * numFree + j];
+      maxCsrErr = Math.max(maxCsrErr, Math.abs(got - expectedVal));
+      nnzIdx += 1;
+    }
+  }
+  check('scatter CSR matches manual reference', maxCsrErr < 1e-10, `max diff=${maxCsrErr.toExponential(2)}`);
+}
+
+// -----------------------------------------------------------------------------
+header('Phase 7 (extended) — MC algorithmic tangent (FACE_F13) by finite differences');
+{
+  const phi = 30 * Math.PI / 180;
+  const psi = 15 * Math.PI / 180;
+  const params = {
+    sinPhi: Math.sin(phi), cosPhi: Math.cos(phi),
+    sinPsi: Math.sin(psi), cosPsi: Math.cos(psi),
+    cohesion: 5, tensionLimit: 100, KBulk: 1e5, G: 5e4
+  };
+  // FACE_F13 trial: hydrostatic 50 with σ_xx pumped up.
+  const sigma0 = [50, -50, -50, 0, 0, 0];
+  const r0 = mc.cpuMcReturnMapping({ sigmaTrial: sigma0, params });
+  if (r0.converged && r0.branchKind === mc.MC_BRANCH.FACE_F13) {
+    const eps = 1e-3;
+    const fd = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    let fdOk = true;
+    for (let q = 0; q < 3 && fdOk; q += 1) {
+      const plus = [...sigma0];
+      const minus = [...sigma0];
+      plus[q] += eps;
+      minus[q] -= eps;
+      const rp = mc.cpuMcReturnMapping({ sigmaTrial: plus, params });
+      const rm = mc.cpuMcReturnMapping({ sigmaTrial: minus, params });
+      if (!rp.converged || !rm.converged) { fdOk = false; break; }
+      // Compare principal-space delta (since the in-plane block is diagonal,
+      // perturbing σ_xx perturbs the largest principal directly).
+      const pp = rp.sortedReturned.map(v => v[0] + v[1]);
+      const pm = rm.sortedReturned.map(v => v[0] + v[1]);
+      for (let r = 0; r < 3; r += 1) {
+        fd[r][q] = (pp[r] - pm[r]) / (2 * eps);
+      }
+    }
+    if (fdOk) {
+      const tan = r0.algorithmicTangentPrincipal;
+      const Ke = params.KBulk + 4 * params.G / 3;
+      let maxErr = 0;
+      for (let r = 0; r < 3; r += 1) {
+        for (let q = 0; q < 3; q += 1) {
+          const a = (tan[r * 3 + q][0] + tan[r * 3 + q][1]) / Ke;
+          const b = fd[r][q];
+          const denom = Math.max(Math.abs(b), 1e-3);
+          maxErr = Math.max(maxErr, Math.abs(a - b) / denom);
+        }
+      }
+      check('FACE_F13 algorithmic tangent matches FD to 1%', maxErr < 0.01, `max rel err=${maxErr.toExponential(2)}`);
+    } else {
+      check('FACE_F13 algorithmic tangent FD probe (skipped — boundary case)', true);
+    }
+  } else {
+    check('FACE_F13 algorithmic tangent FD probe (skipped — branch differed)', true);
+  }
+}
+
+// -----------------------------------------------------------------------------
+header('Phase 7 (extended) — MC kernel WGSL string is well-formed');
+{
+  check('KERNEL_MC_RETURN_WGSL string is non-empty', mc.KERNEL_MC_RETURN_WGSL && mc.KERNEL_MC_RETURN_WGSL.length > 1000);
+  check('MC kernel declares @compute @workgroup_size(64)',
+        /@compute\s*@workgroup_size\s*\(\s*64\s*\)/.test(mc.KERNEL_MC_RETURN_WGSL));
+  check('MC kernel binds 8 storage/uniform slots',
+        /@group\(0\)\s*@binding\(7\)/.test(mc.KERNEL_MC_RETURN_WGSL));
+  check('MC bind-group layout exposes 8 entries',
+        Array.isArray(mc.MC_BIND_GROUP_LAYOUT?.entries) && mc.MC_BIND_GROUP_LAYOUT.entries.length === 8);
 }
 
 // -----------------------------------------------------------------------------

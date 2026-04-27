@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GPU resident pipeline — hardware smoke test</title>
+</head>
+<body>
+<pre id="log"></pre>
+<script type="module">
+const log = (msg) => {
+  document.getElementById('log').textContent += msg + '\n';
+  console.log(msg);
+};
+const fail = (reason, detail) => {
+  window.__smokeResult = { ok: false, reason, detail };
+  log(`FAIL: ${reason} — ${detail}`);
+};
+const ok = (detail) => {
+  window.__smokeResult = { ok: true, detail };
+  log(`PASS: ${JSON.stringify(detail)}`);
+};
+
+try {
+  if (!('gpu' in navigator)) {
+    fail('no-webgpu', 'navigator.gpu is undefined');
+  } else {
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) {
+      fail('no-adapter', 'requestAdapter returned null');
+    } else {
+      const device = await adapter.requestDevice();
+      if (!device) {
+        fail('no-device', 'requestDevice returned null');
+      } else {
+        log('WebGPU device acquired.');
+        log(`  features: ${[...device.features].join(', ') || '(none)'}`);
+        // Build a tiny test mesh inline (8 T3 elements, 9 nodes, 12 free DOFs)
+        // and run it through the full GPU pipeline.
+        const { runDeformationOnGpu, probeGpuPipeline } =
+          await import('/src/lib/cpt-app/deformation/gpu/gpu-controller.js');
+
+        // Inline the same test mesh from verify_gpu_e2e_parity.mjs.
+        const nodes = [];
+        for (let j = 0; j <= 2; j += 1) for (let i = 0; i <= 2; i += 1) nodes.push({ x: i, y: j });
+        const elements = [
+          [0,1,4],[0,4,3], [1,2,5],[1,5,4],
+          [3,4,7],[3,7,6], [4,5,8],[4,8,7]
+        ];
+        const cells = elements.map(()=>({regionIndex:0}));
+        const mesh = {
+          nodes, elements, cells, elementCell: elements.map((_,i)=>i), elementType: 't3',
+          elementData: elements.map(()=>({centroid:{x:0,y:0}}))
+        };
+        const regionConstitutiveByRegion = new Map([[0, {
+          materialParameters: { Emc: 20000, nu: 0.3, cEff: 0, phiEffDeg: 30, psiEffDeg: 0,
+            gamma: 18, gammaSat: 18, K0nc: 0.5, sigmaTAllow: 0 }
+        }]]);
+
+        // Build B-matrices and element caches inline (mirror element-t3.js).
+        function triangleSignedArea2(c){ return (c[1].x-c[0].x)*(c[2].y-c[0].y) - (c[2].x-c[0].x)*(c[1].y-c[0].y); }
+        function triangleArea(c){ return Math.abs(triangleSignedArea2(c))/2; }
+        function buildBMatrixT3(c){
+          const sa2 = triangleSignedArea2(c); const inv = 1/sa2;
+          const b1 = c[1].y-c[2].y, b2 = c[2].y-c[0].y, b3 = c[0].y-c[1].y;
+          const c1 = c[2].x-c[1].x, c2 = c[0].x-c[2].x, c3 = c[1].x-c[0].x;
+          return [
+            [b1*inv, 0, b2*inv, 0, b3*inv, 0],
+            [0, c1*inv, 0, c2*inv, 0, c3*inv],
+            [c1*inv, b1*inv, c2*inv, b2*inv, c3*inv, b3*inv]
+          ];
+        }
+
+        let gpCounter = 0;
+        const elementCaches = elements.map((elem, eIdx) => {
+          const corners = elem.map(nid => nodes[nid]);
+          const area = triangleArea(corners);
+          const B = buildBMatrixT3(corners);
+          const dofs = Int32Array.from([
+            2*elem[0], 2*elem[0]+1, 2*elem[1], 2*elem[1]+1, 2*elem[2], 2*elem[2]+1
+          ]);
+          const integrationPoints = [{
+            gpIndex: 0, globalIndex: gpCounter++, w: 1, areaWeightFactor: 1,
+            areaWeight: area, B, x: 0, y: 0
+          }];
+          return {
+            elementIndex: eIdx, cellIndex: eIdx, element: elem,
+            kind: 't3', kernel: null, localDofCount: 6, numGaussPoints: 1,
+            nodes: corners, corners, area, B, bMatricesPerGp: [B], useBBar: false,
+            centroid: { x: 0, y: 0 }, integrationPoints, dofs
+          };
+        });
+        elementCaches.integrationPointCount = 8;
+
+        // Bottom edge fixed.
+        const fixedDofSet = new Set([0,1,2,3,4,5]);
+        const ndof = 18;
+
+        // Gravity rhs (full DOF), then compress to free.
+        const gravityRhsFull = new Float64Array(ndof);
+        const gamma = 18;
+        for (const ec of elementCaches) {
+          const f = -gamma * ec.area / 3;
+          for (let k = 0; k < 3; k += 1) {
+            gravityRhsFull[ec.dofs[2*k+1]] += f;  // y-component
+          }
+        }
+        const freeDofs = [];
+        for (let dof = 0; dof < ndof; dof += 1) if (!fixedDofSet.has(dof)) freeDofs.push(dof);
+        const gravityFree = new Float64Array(freeDofs.length);
+        for (let i = 0; i < freeDofs.length; i += 1) gravityFree[i] = gravityRhsFull[freeDofs[i]];
+
+        // === Bare-minimum AXPY test: y = alpha*x + y with alpha = -1 should flip sign.
+        log('Running 4-element AXPY sanity test on real GPU...');
+        await (async () => {
+          const { KERNEL_AXPY_WGSL } = await import('/src/lib/cpt-app/deformation/gpu/wgsl/blas.js');
+          const { packDsVector, unpackDsVector } = await import('/src/lib/cpt-app/deformation/gpu/resident-buffers.js');
+          const N = 4;
+          const xBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const yBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+          device.queue.writeBuffer(xBuf, 0, packDsVector(new Float64Array([1,2,3,4])));
+          device.queue.writeBuffer(yBuf, 0, packDsVector(new Float64Array([10,20,30,40])));
+          const paramsBuf = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+          // alpha = -1 = (hi=-1, lo=0).  N = 4.
+          const u = new ArrayBuffer(32);
+          const fv = new Float32Array(u);
+          fv[0] = -1; fv[1] = 0;     // alpha
+          new Uint32Array(u, 8, 1)[0] = N;
+          device.queue.writeBuffer(paramsBuf, 0, u);
+          const module = device.createShaderModule({ code: KERNEL_AXPY_WGSL });
+          const pipeline = await device.createComputePipelineAsync({
+            layout: 'auto', compute: { module, entryPoint: 'main' }
+          });
+          const bg = device.createBindGroup({
+            layout: pipeline.getBindGroupLayout(0),
+            entries: [
+              { binding: 0, resource: { buffer: xBuf } },
+              { binding: 1, resource: { buffer: yBuf } },
+              { binding: 2, resource: { buffer: paramsBuf } }
+            ]
+          });
+          const enc = device.createCommandEncoder();
+          const pass = enc.beginComputePass();
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, bg);
+          pass.dispatchWorkgroups(1);
+          pass.end();
+          const readBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+          enc.copyBufferToBuffer(yBuf, 0, readBuf, 0, 8*N);
+          device.queue.submit([enc.finish()]);
+          await readBuf.mapAsync(GPUMapMode.READ);
+          const got = unpackDsVector(new Float32Array(readBuf.getMappedRange().slice(0)));
+          readBuf.unmap();
+          // Expected: y = -1*x + y = [-1+10, -2+20, -3+30, -4+40] = [9, 18, 27, 36]
+          log(`AXPY result: [${[...got].map(v=>v.toFixed(3)).join(', ')}]`);
+          log(`AXPY expect: [9, 18, 27, 36]`);
+        })();
+
+        // === COPY isolation: copy b=[-1,-1,-1,-1] to r and read back r.
+        log('Running COPY sanity test on real GPU...');
+        await (async () => {
+          const { KERNEL_COPY_WGSL } = await import('/src/lib/cpt-app/deformation/gpu/wgsl/blas.js');
+          const { packDsVector, unpackDsVector } = await import('/src/lib/cpt-app/deformation/gpu/resident-buffers.js');
+          const N = 4;
+          const bBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const rBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+          device.queue.writeBuffer(bBuf, 0, packDsVector(new Float64Array([-1,-2,-3,-4])));
+          const paramsBuf = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+          const u = new ArrayBuffer(32);
+          new Uint32Array(u, 0, 1)[0] = N;
+          device.queue.writeBuffer(paramsBuf, 0, u);
+          const module = device.createShaderModule({ code: KERNEL_COPY_WGSL });
+          const pipeline = await device.createComputePipelineAsync({
+            layout: 'auto', compute: { module, entryPoint: 'main' }
+          });
+          const bg = device.createBindGroup({
+            layout: pipeline.getBindGroupLayout(0),
+            entries: [
+              { binding: 0, resource: { buffer: bBuf } },
+              { binding: 1, resource: { buffer: rBuf } },
+              { binding: 2, resource: { buffer: paramsBuf } }
+            ]
+          });
+          const enc = device.createCommandEncoder();
+          const pass = enc.beginComputePass();
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, bg);
+          pass.dispatchWorkgroups(1);
+          pass.end();
+          const readBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+          enc.copyBufferToBuffer(rBuf, 0, readBuf, 0, 8*N);
+          device.queue.submit([enc.finish()]);
+          await readBuf.mapAsync(GPUMapMode.READ);
+          const got = unpackDsVector(new Float32Array(readBuf.getMappedRange().slice(0)));
+          readBuf.unmap();
+          log(`COPY result: [${[...got].map(v=>v.toFixed(3)).join(', ')}]`);
+          log(`COPY expect: [-1, -2, -3, -4]`);
+        })();
+
+        // === CSR matvec isolation.
+        log('Running CSR matvec sanity test on real GPU...');
+        await (async () => {
+          const { KERNEL_CSR_MATVEC_WGSL } = await import('/src/lib/cpt-app/deformation/gpu/wgsl/blas.js');
+          const { packDsVector, unpackDsVector, packDsCsr } = await import('/src/lib/cpt-app/deformation/gpu/resident-buffers.js');
+          const N = 4;
+          const rows = [
+            { indices: new Int32Array([0,1]), values: new Float64Array([2,-1]) },
+            { indices: new Int32Array([0,1,2]), values: new Float64Array([-1,2,-1]) },
+            { indices: new Int32Array([1,2,3]), values: new Float64Array([-1,2,-1]) },
+            { indices: new Int32Array([2,3]), values: new Float64Array([-1,2]) }
+          ];
+          const csr = packDsCsr(rows);
+          const xVal = new Float64Array([-0.5, -0.5, -0.5, -0.5]);
+          // Expected: A * x = [2*-0.5 + (-1)*-0.5, ...] = [-0.5, -0.5, -0.5, -0.5]
+          const rowPtrBuf = device.createBuffer({ size: csr.rowPtr.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const colIndBuf = device.createBuffer({ size: csr.colInd.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const valHiBuf  = device.createBuffer({ size: csr.valHi.byteLength,  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const valLoBuf  = device.createBuffer({ size: csr.valLo.byteLength,  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const xBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const yBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+          device.queue.writeBuffer(rowPtrBuf, 0, csr.rowPtr);
+          device.queue.writeBuffer(colIndBuf, 0, csr.colInd);
+          device.queue.writeBuffer(valHiBuf, 0, csr.valHi);
+          device.queue.writeBuffer(valLoBuf, 0, csr.valLo);
+          device.queue.writeBuffer(xBuf, 0, packDsVector(xVal));
+          const paramsBuf = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+          new Uint32Array(new ArrayBuffer(32))[0] = N;  // unused
+          {
+            const u = new ArrayBuffer(32);
+            new Uint32Array(u, 0, 1)[0] = N;
+            device.queue.writeBuffer(paramsBuf, 0, u);
+          }
+          const module = device.createShaderModule({ code: KERNEL_CSR_MATVEC_WGSL });
+          const pipeline = await device.createComputePipelineAsync({
+            layout: 'auto', compute: { module, entryPoint: 'main' }
+          });
+          const bg = device.createBindGroup({
+            layout: pipeline.getBindGroupLayout(0),
+            entries: [
+              { binding: 0, resource: { buffer: rowPtrBuf } },
+              { binding: 1, resource: { buffer: colIndBuf } },
+              { binding: 2, resource: { buffer: valHiBuf } },
+              { binding: 3, resource: { buffer: valLoBuf } },
+              { binding: 4, resource: { buffer: xBuf } },
+              { binding: 5, resource: { buffer: yBuf } },
+              { binding: 6, resource: { buffer: paramsBuf } }
+            ]
+          });
+          const enc = device.createCommandEncoder();
+          const pass = enc.beginComputePass();
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, bg);
+          pass.dispatchWorkgroups(1);
+          pass.end();
+          const readBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+          enc.copyBufferToBuffer(yBuf, 0, readBuf, 0, 8*N);
+          device.queue.submit([enc.finish()]);
+          await readBuf.mapAsync(GPUMapMode.READ);
+          const got = unpackDsVector(new Float32Array(readBuf.getMappedRange().slice(0)));
+          readBuf.unmap();
+          log(`CSR matvec result: [${[...got].map(v=>v.toFixed(3)).join(', ')}]`);
+          log(`CSR matvec expect: [-0.5, -0.5, -0.5, -0.5]`);
+        })();
+
+        // === BLOCK_JACOBI isolation: r = [-1,-1,-1,-1], M^-1 = diag(0.5), expect z = [-0.5, ...].
+        log('Running BLOCK_JACOBI sanity test on real GPU...');
+        await (async () => {
+          const { KERNEL_BLOCK_JACOBI_WGSL } = await import('/src/lib/cpt-app/deformation/gpu/wgsl/blas.js');
+          const { packDsVector, unpackDsVector } = await import('/src/lib/cpt-app/deformation/gpu/resident-buffers.js');
+          const N = 4;
+          const numNodes = N / 2;
+          const blocksBuf = device.createBuffer({ size: 32 * numNodes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          // Pack 4 DS scalars per node (a, b, c, d) = (0.5, 0, 0, 0.5).
+          const blocksPacked = new Float32Array(8 * numNodes);
+          for (let n = 0; n < numNodes; n += 1) {
+            blocksPacked[8*n + 0] = 0.5; blocksPacked[8*n + 1] = 0;  // a
+            blocksPacked[8*n + 2] = 0;   blocksPacked[8*n + 3] = 0;  // b
+            blocksPacked[8*n + 4] = 0;   blocksPacked[8*n + 5] = 0;  // c
+            blocksPacked[8*n + 6] = 0.5; blocksPacked[8*n + 7] = 0;  // d
+          }
+          device.queue.writeBuffer(blocksBuf, 0, blocksPacked);
+          const rBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const zBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+          device.queue.writeBuffer(rBuf, 0, packDsVector(new Float64Array([-1,-1,-1,-1])));
+          const paramsBuf = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+          {
+            const u = new ArrayBuffer(32);
+            new Uint32Array(u, 0, 1)[0] = numNodes;
+            device.queue.writeBuffer(paramsBuf, 0, u);
+          }
+          const module = device.createShaderModule({ code: KERNEL_BLOCK_JACOBI_WGSL });
+          const pipeline = await device.createComputePipelineAsync({
+            layout: 'auto', compute: { module, entryPoint: 'main' }
+          });
+          const bg = device.createBindGroup({
+            layout: pipeline.getBindGroupLayout(0),
+            entries: [
+              { binding: 0, resource: { buffer: blocksBuf } },
+              { binding: 1, resource: { buffer: rBuf } },
+              { binding: 2, resource: { buffer: zBuf } },
+              { binding: 3, resource: { buffer: paramsBuf } }
+            ]
+          });
+          const enc = device.createCommandEncoder();
+          const pass = enc.beginComputePass();
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, bg);
+          pass.dispatchWorkgroups(1);
+          pass.end();
+          const readBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+          enc.copyBufferToBuffer(zBuf, 0, readBuf, 0, 8*N);
+          device.queue.submit([enc.finish()]);
+          await readBuf.mapAsync(GPUMapMode.READ);
+          const got = unpackDsVector(new Float32Array(readBuf.getMappedRange().slice(0)));
+          readBuf.unmap();
+          log(`BJ result: [${[...got].map(v=>v.toFixed(3)).join(', ')}]`);
+          log(`BJ expect: [-0.5, -0.5, -0.5, -0.5]`);
+        })();
+
+        // === DOT isolation: r·z with both negative.
+        log('Running DOT sanity test on real GPU...');
+        await (async () => {
+          const { KERNEL_DOT_PASS1_WGSL, KERNEL_DOT_PASS2_WGSL } = await import('/src/lib/cpt-app/deformation/gpu/wgsl/blas.js');
+          const { packDsVector, unpackDsScalar } = await import('/src/lib/cpt-app/deformation/gpu/resident-buffers.js');
+          const N = 4;
+          const xBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const yBuf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+          const partials = device.createBuffer({ size: 8, usage: GPUBufferUsage.STORAGE });
+          const result = device.createBuffer({ size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+          device.queue.writeBuffer(xBuf, 0, packDsVector(new Float64Array([-1,-1,-1,-1])));
+          device.queue.writeBuffer(yBuf, 0, packDsVector(new Float64Array([-0.5,-0.5,-0.5,-0.5])));
+          const params1 = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+          const params2 = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+          { const u = new ArrayBuffer(32); new Uint32Array(u, 0, 1)[0] = N; device.queue.writeBuffer(params1, 0, u); }
+          { const u = new ArrayBuffer(32); new Uint32Array(u, 0, 1)[0] = 1; device.queue.writeBuffer(params2, 0, u); }
+          const m1 = device.createShaderModule({ code: KERNEL_DOT_PASS1_WGSL });
+          const p1 = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: m1, entryPoint: 'main' } });
+          const m2 = device.createShaderModule({ code: KERNEL_DOT_PASS2_WGSL });
+          const p2 = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: m2, entryPoint: 'main' } });
+          const enc = device.createCommandEncoder();
+          {
+            const pass = enc.beginComputePass();
+            pass.setPipeline(p1);
+            pass.setBindGroup(0, device.createBindGroup({
+              layout: p1.getBindGroupLayout(0),
+              entries: [
+                { binding: 0, resource: { buffer: xBuf } },
+                { binding: 1, resource: { buffer: yBuf } },
+                { binding: 2, resource: { buffer: partials } },
+                { binding: 3, resource: { buffer: params1 } }
+              ]
+            }));
+            pass.dispatchWorkgroups(1);
+            pass.end();
+          }
+          {
+            const pass = enc.beginComputePass();
+            pass.setPipeline(p2);
+            pass.setBindGroup(0, device.createBindGroup({
+              layout: p2.getBindGroupLayout(0),
+              entries: [
+                { binding: 0, resource: { buffer: partials } },
+                { binding: 1, resource: { buffer: result } },
+                { binding: 2, resource: { buffer: params2 } }
+              ]
+            }));
+            pass.dispatchWorkgroups(1);
+            pass.end();
+          }
+          const readBuf = device.createBuffer({ size: 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+          enc.copyBufferToBuffer(result, 0, readBuf, 0, 8);
+          device.queue.submit([enc.finish()]);
+          await readBuf.mapAsync(GPUMapMode.READ);
+          const arr = new Float32Array(readBuf.getMappedRange().slice(0));
+          readBuf.unmap();
+          const dot = arr[0] + arr[1];
+          log(`DOT result: ${dot.toFixed(6)}`);
+          log(`DOT expect: 2.0  (4 * 0.5)`);
+        })();
+
+        // === Bare-minimum CG test on a 4-DOF SPD problem with negative RHS.
+        // K = [[2 -1 0 0]; [-1 2 -1 0]; [0 -1 2 -1]; [0 0 -1 2]]
+        // b = [-1 -1 -1 -1].  Solution is u_i quadratic in i, all negative.
+        log('Running 4-DOF CG sanity test on real GPU...');
+        const sanity = await (async () => {
+          const { createResidentCgContext, uploadDsCsr, uploadBlockJacobi, solveResidentCg } =
+            await import('/src/lib/cpt-app/deformation/gpu/resident-cg.js');
+          const { packDsCsr } = await import('/src/lib/cpt-app/deformation/gpu/resident-buffers.js');
+          const N = 4;
+          const rows = [
+            { indices: new Int32Array([0,1]), values: new Float64Array([2,-1]) },
+            { indices: new Int32Array([0,1,2]), values: new Float64Array([-1,2,-1]) },
+            { indices: new Int32Array([1,2,3]), values: new Float64Array([-1,2,-1]) },
+            { indices: new Int32Array([2,3]), values: new Float64Array([-1,2]) }
+          ];
+          const csr = packDsCsr(rows);
+          const ctx = createResidentCgContext({ device, ndof: N, numNonzeros: csr.nnz });
+          uploadDsCsr(ctx, csr);
+          // Block-Jacobi for 2x2 nodal blocks (N=4 → 2 nodes).  Use scalar Jacobi.
+          const numNodes = N / 2;
+          const blocksPacked = new Float32Array(8 * numNodes);
+          // Diagonal entries of K are all 2.
+          for (let n = 0; n < numNodes; n += 1) {
+            blocksPacked[8 * n + 0] = 0.5; blocksPacked[8 * n + 1] = 0;  // a = 1/2
+            blocksPacked[8 * n + 2] = 0;   blocksPacked[8 * n + 3] = 0;  // b = 0
+            blocksPacked[8 * n + 4] = 0;   blocksPacked[8 * n + 5] = 0;  // c = 0
+            blocksPacked[8 * n + 6] = 0.5; blocksPacked[8 * n + 7] = 0;  // d = 1/2
+          }
+          uploadBlockJacobi(ctx, blocksPacked);
+          const b = new Float64Array([-1, -1, -1, -1]);
+          const out = await solveResidentCg(ctx, { bF64: b, maxIter: 50, relTol: 1e-12, absTol: 1e-15 });
+          return out;
+        })();
+        log(`sanity CG (GPU):  converged=${sanity.converged}, iters=${sanity.iterations}, solution=[${[...sanity.solution].map(v=>v.toFixed(4)).join(', ')}]`);
+        // Snapshot CG state after a 1-iter run so we can see where it diverges.
+        await (async () => {
+          const { createResidentCgContext, uploadDsCsr, uploadBlockJacobi, solveResidentCg, uploadDsVector } =
+            await import('/src/lib/cpt-app/deformation/gpu/resident-cg.js');
+          const { packDsCsr, packDsVector, unpackDsVector } = await import('/src/lib/cpt-app/deformation/gpu/resident-buffers.js');
+          const N = 4;
+          const rows = [
+            { indices: new Int32Array([0,1]), values: new Float64Array([2,-1]) },
+            { indices: new Int32Array([0,1,2]), values: new Float64Array([-1,2,-1]) },
+            { indices: new Int32Array([1,2,3]), values: new Float64Array([-1,2,-1]) },
+            { indices: new Int32Array([2,3]), values: new Float64Array([-1,2]) }
+          ];
+          const csr = packDsCsr(rows);
+          const ctx = createResidentCgContext({ device, ndof: N, numNonzeros: csr.nnz });
+          uploadDsCsr(ctx, csr);
+          const numNodes = N / 2;
+          const blocksPacked = new Float32Array(8 * numNodes);
+          for (let n = 0; n < numNodes; n += 1) {
+            blocksPacked[8*n+0]=0.5; blocksPacked[8*n+6]=0.5;
+          }
+          uploadBlockJacobi(ctx, blocksPacked);
+          const b = new Float64Array([-1,-1,-1,-1]);
+          // Manually upload b and x; then run JUST the initial r=b setup to verify r.
+          uploadDsVector(ctx, 'b', b);
+          uploadDsVector(ctx, 'x', new Float64Array(N));
+          // Read back b to confirm what's on device.
+          async function rb(name) {
+            const buf = device.createBuffer({ size: 8*N, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+            const enc = device.createCommandEncoder();
+            enc.copyBufferToBuffer(ctx.buffers[name], 0, buf, 0, 8*N);
+            device.queue.submit([enc.finish()]);
+            await buf.mapAsync(GPUMapMode.READ);
+            const arr = unpackDsVector(new Float32Array(buf.getMappedRange().slice(0)));
+            buf.unmap(); buf.destroy();
+            return arr;
+          }
+          log(`b on device: [${[...await rb('b')].map(v=>v.toFixed(3)).join(', ')}]`);
+          log(`x on device: [${[...await rb('x')].map(v=>v.toFixed(3)).join(', ')}]`);
+          // Run 1 iter of CG with maxIter=1.
+          const o1 = await solveResidentCg(ctx, { bF64: b, maxIter: 1, relTol: 0, absTol: 0 });
+          log(`after iter 1: solution=[${[...o1.solution].map(v=>v.toFixed(4)).join(', ')}]`);
+          log(`r after iter 1: [${[...await rb('r')].map(v=>v.toFixed(4)).join(', ')}]`);
+          log(`p after iter 1: [${[...await rb('p')].map(v=>v.toFixed(4)).join(', ')}]`);
+          log(`Ap after iter 1: [${[...await rb('Ap')].map(v=>v.toFixed(4)).join(', ')}]`);
+          log(`z after iter 1: [${[...await rb('z')].map(v=>v.toFixed(4)).join(', ')}]`);
+        })();
+        // Run the SAME input through the CPU-reference resident CG.
+        const sanityCpu = await (async () => {
+          const { cpuReferenceResidentCg } = await import('/src/lib/cpt-app/deformation/gpu/resident-cg.js');
+          const { packDsCsr } = await import('/src/lib/cpt-app/deformation/gpu/resident-buffers.js');
+          const { dsFromF64 } = await import('/src/lib/cpt-app/deformation/gpu/wgsl/ds.js');
+          const N = 4;
+          const rows = [
+            { indices: new Int32Array([0,1]), values: new Float64Array([2,-1]) },
+            { indices: new Int32Array([0,1,2]), values: new Float64Array([-1,2,-1]) },
+            { indices: new Int32Array([1,2,3]), values: new Float64Array([-1,2,-1]) },
+            { indices: new Int32Array([2,3]), values: new Float64Array([-1,2]) }
+          ];
+          const csr = packDsCsr(rows);
+          const csrShape = { rowPtr: csr.rowPtr, colInd: csr.colInd, valHi: csr.valHi, valLo: csr.valLo, dim: N };
+          const numNodes = N / 2;
+          const blocksDs = new Array(4 * numNodes);
+          for (let n = 0; n < numNodes; n += 1) {
+            blocksDs[4*n + 0] = dsFromF64(0.5);
+            blocksDs[4*n + 1] = dsFromF64(0);
+            blocksDs[4*n + 2] = dsFromF64(0);
+            blocksDs[4*n + 3] = dsFromF64(0.5);
+          }
+          return cpuReferenceResidentCg({
+            csr: csrShape, blockJacobiDs: blocksDs,
+            bF64: new Float64Array([-1,-1,-1,-1]),
+            maxIter: 50, relTol: 1e-12, absTol: 1e-15
+          });
+        })();
+        log(`sanity CG (CPU-ref): converged=${sanityCpu.converged}, iters=${sanityCpu.iterations}, solution=[${[...sanityCpu.solution].map(v=>v.toFixed(4)).join(', ')}]`);
+        const expectedU = [-2, -3, -3, -2];
+        log(`expected = [${expectedU.join(', ')}]`);
+
+        log('Building GPU pack and running solve...');
+        // Diagnostic: assemble on host (CPU reference) for comparison.
+        const { cpuReferenceAssemble, runDeformationOnGpuCpuReference } =
+          await import('/src/lib/cpt-app/deformation/gpu/gpu-controller.js');
+        const cpuRef = cpuReferenceAssemble({
+          mesh, elementCaches, regionConstitutiveByRegion, fixedDofSet
+        });
+        log(`CPU-ref CSR diagonal[0]=${(cpuRef.csrPacked.valHi[0] + cpuRef.csrPacked.valLo[0]).toExponential(2)}, nnz=${cpuRef.csrPacked.nnz}`);
+        log(`bF64 first-3: ${[...gravityFree].slice(0,3).map(v=>v.toExponential(2)).join(', ')}`);
+        const t0 = performance.now();
+        const r = await runDeformationOnGpu({
+          device, mesh, elementCaches, regionConstitutiveByRegion,
+          fixedDofSet, bF64: gravityFree,
+          cgOptions: { maxIter: 5000, relTol: 1e-12, absTol: 1e-15 }
+        });
+        const gpuD0 = r.csrPacked.valHi[0] + r.csrPacked.valLo[0];
+        log(`GPU CSR diagonal[0]=${gpuD0.toExponential(2)}`);
+        log(`GPU CSR nnz=${r.csrPacked.nnz}`);
+        // Check sign of GPU K vs CPU K at first 5 entries.
+        for (let k = 0; k < 5 && k < r.csrPacked.nnz; k += 1) {
+          const gv = r.csrPacked.valHi[k] + r.csrPacked.valLo[k];
+          const cv = cpuRef.csrPacked.valHi[k] + cpuRef.csrPacked.valLo[k];
+          log(`  K[${k}]: GPU=${gv.toExponential(3)}  CPU=${cv.toExponential(3)}  ratio=${(gv/cv).toFixed(4)}`);
+        }
+        const t1 = performance.now();
+        log(`GPU solve: converged=${r.converged}, iters=${r.iterations}, t=${(t1-t0).toFixed(1)} ms`);
+        log(`top-corner uy: ${r.uFreeF64[r.uFreeF64.length - 1].toExponential(4)}`);
+
+        // Sanity: top-corner uy under self-weight is around -1.6e-3 (CPU baseline).
+        const topCornerUy = r.uFreeF64[r.uFreeF64.length - 1];
+        const ok_phys = r.converged && topCornerUy < 0 && Math.abs(topCornerUy) > 1e-5;
+        if (ok_phys) {
+          ok({
+            iterations: r.iterations,
+            residualNorm: r.residualNorm,
+            topCornerUy,
+            elapsedMs: t1 - t0,
+            adapter: adapter.info?.vendor || 'unknown'
+          });
+        } else {
+          fail('physical-result-implausible', `topCornerUy=${topCornerUy}, converged=${r.converged}`);
+        }
+      }
+    }
+  }
+} catch (err) {
+  fail('exception', `${err?.name || 'Error'}: ${err?.message || err}`);
+  log(`stack: ${err?.stack || '(none)'}`);
+}
+</script>
+</body>
+</html>

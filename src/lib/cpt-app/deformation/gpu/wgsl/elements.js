@@ -255,6 +255,130 @@ export const KERNEL_STIFFNESS_T3_WGSL = makeStiffnessKernel(6, 1);
 export const KERNEL_STIFFNESS_T6_WGSL = makeStiffnessKernel(12, 3);
 
 // =============================================================================
+// Atomics-free SCATTER kernels.
+//
+// Element kernels above produce per-element contributions:
+//   - forceOut[elementIndex * numLocalDofs + d]  : DS internal-force entry
+//   - kOut[elementIndex * numLocalDofs² + i*numLocalDofs + j] : DS stiffness
+//
+// These must be summed into:
+//   - rhsFree[freeDof]                           : global internal force,
+//                                                  restricted to free DOFs
+//   - csrVal[csrEntry]                           : CSR(rowFree, colFree)
+//
+// To avoid atomics (and to give bit-identical reductions across GPU runs),
+// we use a "gather-style" scatter: for each *output* slot, run one thread
+// that walks a precomputed incidence list and sums the contributing entries.
+//
+// Incidence layout for the free-RHS scatter:
+//
+//   forceIncPtr   : Uint32Array(numFreeDofs + 1)
+//   forceIncList  : Uint32Array(totalIncidence)
+//                   For free DOF i, the list spans [forceIncPtr[i], forceIncPtr[i+1])
+//                   and each entry is `elementIndex * numLocalDofs + localDof`,
+//                   i.e. an index into `forceOut`.
+//
+// Incidence layout for the CSR scatter:
+//
+//   csrIncPtr     : Uint32Array(nnz + 1)
+//   csrIncList    : Uint32Array(totalIncidence)
+//                   For CSR entry `e`, the list spans [csrIncPtr[e], csrIncPtr[e+1])
+//                   and each entry is
+//                       elementIndex * numLocalDofs² + localI * numLocalDofs + localJ
+//                   i.e. an index into `kOut`.
+//
+// The host-side builder (cpu cache builder, when uploading the mesh) computes
+// these incidence lists once and uploads them with the mesh.  At iteration
+// time, the scatter kernels are pure DS sums in the gather direction —
+// completely deterministic, atomics-free, and load-balanced because every
+// thread does roughly the same amount of work (proportional to mesh valence).
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Scatter element internal force into the global free-DOF RHS.  One thread
+// per free DOF.  Each thread walks its incidence list and sums.
+// -----------------------------------------------------------------------------
+export const KERNEL_SCATTER_FREE_RHS_WGSL = /* wgsl */ `
+${DS_WGSL}
+
+struct ScatterParams { numFreeDofs: u32, _pad: vec3<u32> };
+
+@group(0) @binding(0) var<storage, read>       forceOut:    array<vec2<f32>>; // length: numElements * numLocalDofs
+@group(0) @binding(1) var<storage, read>       forceIncPtr: array<u32>;       // length: numFreeDofs + 1
+@group(0) @binding(2) var<storage, read>       forceIncList:array<u32>;       // length: totalIncidence
+@group(0) @binding(3) var<storage, read_write> rhsFree:     array<vec2<f32>>; // length: numFreeDofs
+@group(0) @binding(4) var<uniform>             params: ScatterParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i: u32 = gid.x;
+  if (i >= params.numFreeDofs) { return; }
+  let begin: u32 = forceIncPtr[i];
+  let end:   u32 = forceIncPtr[i + 1u];
+  var acc: vec2<f32> = vec2<f32>(0.0, 0.0);
+  for (var k: u32 = begin; k < end; k = k + 1u) {
+    acc = dsAdd(acc, forceOut[forceIncList[k]]);
+  }
+  rhsFree[i] = acc;
+}
+`;
+
+// -----------------------------------------------------------------------------
+// Scatter element K_e into the global CSR.  One thread per CSR nonzero.
+// Each thread walks its incidence list and sums.
+// -----------------------------------------------------------------------------
+export const KERNEL_SCATTER_CSR_WGSL = /* wgsl */ `
+${DS_WGSL}
+
+struct CsrScatterParams { nnz: u32, _pad: vec3<u32> };
+
+@group(0) @binding(0) var<storage, read>       kOut:        array<vec2<f32>>; // numElements * numLocalDofs²
+@group(0) @binding(1) var<storage, read>       csrIncPtr:   array<u32>;
+@group(0) @binding(2) var<storage, read>       csrIncList:  array<u32>;
+@group(0) @binding(3) var<storage, read_write> csrValHi:    array<f32>;
+@group(0) @binding(4) var<storage, read_write> csrValLo:    array<f32>;
+@group(0) @binding(5) var<uniform>             params: CsrScatterParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let e: u32 = gid.x;
+  if (e >= params.nnz) { return; }
+  let begin: u32 = csrIncPtr[e];
+  let end:   u32 = csrIncPtr[e + 1u];
+  var acc: vec2<f32> = vec2<f32>(0.0, 0.0);
+  for (var k: u32 = begin; k < end; k = k + 1u) {
+    acc = dsAdd(acc, kOut[csrIncList[k]]);
+  }
+  csrValHi[e] = acc.x;
+  csrValLo[e] = acc.y;
+}
+`;
+
+// -----------------------------------------------------------------------------
+// Bind-group layout descriptors for the scatter kernels.
+// -----------------------------------------------------------------------------
+export const SCATTER_FREE_RHS_LAYOUT = {
+  entries: [
+    { binding: 0, type: 'read-only-storage' }, // forceOut
+    { binding: 1, type: 'read-only-storage' }, // forceIncPtr
+    { binding: 2, type: 'read-only-storage' }, // forceIncList
+    { binding: 3, type: 'storage' },           // rhsFree
+    { binding: 4, type: 'uniform' }            // params
+  ]
+};
+
+export const SCATTER_CSR_LAYOUT = {
+  entries: [
+    { binding: 0, type: 'read-only-storage' }, // kOut
+    { binding: 1, type: 'read-only-storage' }, // csrIncPtr
+    { binding: 2, type: 'read-only-storage' }, // csrIncList
+    { binding: 3, type: 'storage' },           // csrValHi
+    { binding: 4, type: 'storage' },           // csrValLo
+    { binding: 5, type: 'uniform' }            // params
+  ]
+};
+
+// =============================================================================
 // CPU references for parity testing.
 // =============================================================================
 
@@ -325,6 +449,128 @@ export function cpuRefElementInternalForce({ bMatrices, gpWeights, stress, numEl
     }
   }
   return out;
+}
+
+// -----------------------------------------------------------------------------
+// Build the gather-style incidence lists used by the scatter kernels.
+//
+// Inputs:
+//   dofMap          : Int32Array(numElements * numLocalDofs)
+//                     Free-DOF index for each (element, localDof). -1 = constrained.
+//   csrRows         : Array of { indices: Int32Array, values: Float64Array }
+//                     One entry per free DOF.  csrRows[i].indices is the column
+//                     list (free-DOF indices) for row i; the values array is
+//                     unused here (we only care about the structure).
+//
+// Outputs:
+//   forceIncPtr  : Uint32Array(numFreeDofs + 1)
+//   forceIncList : Uint32Array(totalIncidence)
+//   csrIncPtr    : Uint32Array(nnz + 1)
+//   csrIncList   : Uint32Array(totalCsrIncidence)
+//
+// Each list entry encodes a position into `forceOut` or `kOut` respectively,
+// matching the scatter kernels' expected layout.  Bit-identical reductions
+// across runs because the incidence lists are deterministic.
+// -----------------------------------------------------------------------------
+export function buildScatterIncidence({ dofMap, csrRows, numElements, numLocalDofs }) {
+  const numFree = csrRows.length;
+  // Free-RHS incidence: bucket by free DOF.
+  const forceBuckets = Array.from({ length: numFree }, () => []);
+  for (let e = 0; e < numElements; e += 1) {
+    for (let d = 0; d < numLocalDofs; d += 1) {
+      const free = dofMap[e * numLocalDofs + d];
+      if (free < 0) continue;
+      forceBuckets[free].push(e * numLocalDofs + d);
+    }
+  }
+  let totalForce = 0;
+  for (let i = 0; i < numFree; i += 1) totalForce += forceBuckets[i].length;
+  const forceIncPtr = new Uint32Array(numFree + 1);
+  const forceIncList = new Uint32Array(totalForce);
+  let cursor = 0;
+  for (let i = 0; i < numFree; i += 1) {
+    forceIncPtr[i] = cursor;
+    const bucket = forceBuckets[i];
+    for (let k = 0; k < bucket.length; k += 1) {
+      forceIncList[cursor] = bucket[k];
+      cursor += 1;
+    }
+  }
+  forceIncPtr[numFree] = cursor;
+
+  // CSR incidence: bucket by (rowFree, colFree) → linearized into csrEntry.
+  // First, build a flat (row, col) → entryIndex map from csrRows.
+  const csrEntryByPair = new Map();
+  let nnz = 0;
+  for (let i = 0; i < numFree; i += 1) {
+    const indices = csrRows[i].indices;
+    for (let k = 0; k < indices.length; k += 1) {
+      csrEntryByPair.set(i * numFree + indices[k], nnz);
+      nnz += 1;
+    }
+  }
+  const csrBuckets = Array.from({ length: nnz }, () => []);
+  for (let e = 0; e < numElements; e += 1) {
+    for (let li = 0; li < numLocalDofs; li += 1) {
+      const ri = dofMap[e * numLocalDofs + li];
+      if (ri < 0) continue;
+      for (let lj = 0; lj < numLocalDofs; lj += 1) {
+        const rj = dofMap[e * numLocalDofs + lj];
+        if (rj < 0) continue;
+        const pair = ri * numFree + rj;
+        const entry = csrEntryByPair.get(pair);
+        if (entry === undefined) continue;  // pair is structurally absent
+        csrBuckets[entry].push(e * numLocalDofs * numLocalDofs + li * numLocalDofs + lj);
+      }
+    }
+  }
+  let totalCsr = 0;
+  for (let e = 0; e < nnz; e += 1) totalCsr += csrBuckets[e].length;
+  const csrIncPtr = new Uint32Array(nnz + 1);
+  const csrIncList = new Uint32Array(totalCsr);
+  cursor = 0;
+  for (let e = 0; e < nnz; e += 1) {
+    csrIncPtr[e] = cursor;
+    const bucket = csrBuckets[e];
+    for (let k = 0; k < bucket.length; k += 1) {
+      csrIncList[cursor] = bucket[k];
+      cursor += 1;
+    }
+  }
+  csrIncPtr[nnz] = cursor;
+  return { forceIncPtr, forceIncList, csrIncPtr, csrIncList, nnz };
+}
+
+// CPU reference for the free-RHS scatter kernel.
+export function cpuRefScatterFreeRhs({ forceOutDs, forceIncPtr, forceIncList, numFreeDofs }) {
+  const out = new Array(numFreeDofs);
+  for (let i = 0; i < numFreeDofs; i += 1) {
+    let acc = [0, 0];
+    const begin = forceIncPtr[i];
+    const end = forceIncPtr[i + 1];
+    for (let k = begin; k < end; k += 1) {
+      acc = dsAdd(acc, forceOutDs[forceIncList[k]]);
+    }
+    out[i] = acc;
+  }
+  return out;
+}
+
+// CPU reference for the CSR scatter kernel.  Returns { valHi, valLo }.
+export function cpuRefScatterCsr({ kOutDs, csrIncPtr, csrIncList, nnz }) {
+  const valHi = new Float32Array(nnz);
+  const valLo = new Float32Array(nnz);
+  for (let e = 0; e < nnz; e += 1) {
+    let acc = [0, 0];
+    const begin = csrIncPtr[e];
+    const end = csrIncPtr[e + 1];
+    for (let k = begin; k < end; k += 1) {
+      acc = dsAdd(acc, kOutDs[csrIncList[k]]);
+    }
+    valHi[e] = Math.fround(acc[0]);
+    valLo[e] = Math.fround(acc[1]);
+  }
+  return { valHi, valLo };
 }
 
 export function cpuRefElementStiffness({ bMatrices, gpWeights, tangents, numElements, gpsPerElem, numLocalDofs }) {

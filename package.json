@@ -17,7 +17,9 @@
 		"verify:nen6740": "node scripts/verify_nen6740.mjs",
 		"verify:bishop-phase-a": "node scripts/verify_bishop_phase_a_parity.mjs",
 		"verify:deformation-phase-1": "node scripts/verify_deformation_phase_1.mjs",
-		"verify:seepage-phase-2": "node scripts/verify_seepage_phase_2.mjs"
+		"verify:seepage-phase-2": "node scripts/verify_seepage_phase_2.mjs",
+		"verify:gpu": "node scripts/verify_gpu_pipeline.mjs && node scripts/verify_gpu_wgsl_syntax.mjs && node scripts/verify_gpu_e2e_parity.mjs",
+		"verify:integrated-plan": "node scripts/verify_integrated_plan.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.1",

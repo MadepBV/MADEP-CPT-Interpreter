@@ -4654,6 +4654,8 @@ function ensureStage6State(){
   delete bishop.deformation.options.gpuPrecisionMode;
   delete bishop.deformation.options.linearAlgebraBackend;
   delete bishop.deformation.options.gpuMinDof;
+  // The new GPU resident pipeline is opt-in.  Persist as a clean boolean.
+  bishop.deformation.options.useNewGpuPipeline = !!bishop.deformation.options.useNewGpuPipeline;
   const rawDeformationMeshTargetArea = Number(bishop.deformation.options.meshTargetArea);
   const deformationAutoMeshTargetArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
   if(bishop.deformation.options.meshTargetAreaAuto == null){
@@ -11107,6 +11109,7 @@ function renderStage6BishopApp(){
   const deformationSafetySigmaMsfBracketTolerance = Math.max(Number(deformation.options?.safetySigmaMsfBracketTolerance) || 0.01, 0.0001);
   const deformationSafetyMaxSearchTrials = Math.max(Math.round(Number(deformation.options?.safetyMaxSearchTrials) || 32), 1);
   const deformationUseUnsymmetricPlasticSolver = deformation.options?.useUnsymmetricPlasticSolver === true;
+  const deformationUseNewGpuPipeline = deformation.options?.useNewGpuPipeline === true;
   const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
   const deformationTotalLoad = Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null;
@@ -11809,6 +11812,11 @@ function renderStage6BishopApp(){
 	                  Use GMRES for plastic tangents
 	                </label>
 	                <div class="st6-help">Default on. Plastic active-set tangents can become non-SPD, especially in slope and c-phi runs, so the robust CPU path uses GMRES with block-Jacobi 2x2 preconditioning instead of relying on CG.</div>
+	                <label class="st6-bishop-check">
+	                  <input type="checkbox" ${deformationUseNewGpuPipeline ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useNewGpuPipeline', this.checked)">
+	                  Use new GPU resident pipeline (experimental)
+	                </label>
+	                <div class="st6-help">Off by default. Routes the deformation solve through the new fully-resident GPU pipeline (double-single arithmetic, no CPU/GPU handoffs). Falls back to CPU if WebGPU is unavailable. Currently mid-rebuild; only enable for testing.</div>
                 ${deformationIsSafety ? `
                   <label style="font-size:11px;color:var(--tx2)">Initial ΣMsf increment
                     <input type="number" step="0.01" min="0.001" value="${deformationSafetyInitialSigmaMsfIncrement.toFixed(3)}" onchange="stage6BishopSetField('deformation.options.safetyInitialSigmaMsfIncrement', this.value)">
