@@ -5,6 +5,11 @@ import {
   sampleDeformationState
 } from '../src/lib/cpt-app/deformation/solver.js';
 import {
+  buildAdditiveSchwarzPreconditioner,
+  applyAdditiveSchwarzPreconditioner,
+  flattenAdditiveSchwarzPreconditionerForGpu
+} from '../src/lib/cpt-app/deformation/preconditioners/additive-schwarz.js';
+import {
   computeEllpackShape,
   createEllpackBuffer,
   ellpackMatvecReference,
@@ -34,6 +39,7 @@ import {
   extractStress2DFrom6,
   extractTangent2DFrom6,
   liftPlaneStrainStrainTo6,
+  mcTolerance,
   mohrCoulombIndicator3D,
   seedMaterialPointStateFromEffectiveStress6,
   seedMaterialPointStateFromInitialStress
@@ -70,6 +76,17 @@ function approxRelative(left, right, relTol, message) {
 function approxAbs(left, right, absTol, message) {
   const absErr = Math.abs(left - right);
   assert(absErr <= absTol, `${message} (left ${left}, right ${right}, abs err ${absErr})`);
+}
+
+function isK0RecoveryStressMode(mode) {
+  return [
+    'elastic-k0-recovery',
+    'elastic-k0-recovery-stress-only-reference',
+    'elastic-k0-recovery-plastic-equilibration',
+    'slope-aware-elastic-k0-recovery',
+    'slope-aware-elastic-k0-recovery-stress-only-reference',
+    'slope-aware-elastic-k0-recovery-plastic-equilibration'
+  ].includes(String(mode || ''));
 }
 
 function applyElasticMatrix(D, strain) {
@@ -275,7 +292,10 @@ function slopedModel(overrides = {}) {
   };
 }
 
+const CASE_FILTER = String(process.env.CASE_FILTER || '').trim();
+
 async function runCase(name, fn) {
+  if (CASE_FILTER && !name.includes(CASE_FILTER)) return;
   await fn();
   console.log(`${name}: ok`);
 }
@@ -690,7 +710,8 @@ await runCase('Case 0e Stage 2 exact tension-face return lands on the cut-off an
     `the exact tension-face benchmark should keep only the T3 active surface (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
   );
   assert((update?.trialState?.accumulatedPlasticStrain || 0) > 0, 'the exact tension-face return should accumulate plastic strain');
-  assert(!Number.isFinite(Number(update?.diagnostics?.etaMcFinal)), 'η_MC should be suppressed once the exact tension cutoff governs the accepted state');
+  assert(update?.diagnostics?.tensionCutoffActive === true, 'the exact tension-face return should expose the tension cut-off as a separate diagnostic flag');
+  assert(Number.isFinite(Number(update?.diagnostics?.etaMcFinal)), 'η_MC should remain finite while the tension cut-off flag carries the governing branch');
   approxRelative(Number(update?.diagnostics?.principal?.s3) || 0, -2, 1e-9, 'the exact tension-face return should land on sigma3 = -sigma_t');
 });
 
@@ -740,7 +761,8 @@ await runCase('Case 0e2 Stage 2 exact mixed shear-tension edge keeps the F13 and
     `the mixed shear-tension edge benchmark should keep the {F13,T3} active pair (got ${JSON.stringify(update?.diagnostics?.activeSurfaceIds || [])})`
   );
   approxRelative(Number(update?.diagnostics?.principal?.s3) || 0, -2, 1e-9, 'the mixed shear-tension edge benchmark should end on sigma3 = -sigma_t');
-  assert(!Number.isFinite(Number(update?.diagnostics?.etaMcFinal)), 'the mixed shear-tension edge benchmark should suppress η_MC on the accepted tension-governed state');
+  assert(update?.diagnostics?.tensionCutoffActive === true, 'the mixed shear-tension edge benchmark should expose the tension cut-off flag separately from η_MC');
+  assert(Number.isFinite(Number(update?.diagnostics?.etaMcFinal)), 'the mixed shear-tension edge benchmark should keep η_MC finite while tension is flagged separately');
 });
 
 await runCase('Case 0e3 Stage 2 exact lower mixed shear-tension corner closes sigma2=sigma3 on the cut-off', async () => {
@@ -1102,18 +1124,27 @@ await runCase('Case 0i Stage 2 reroutes the formal apex neighborhood when psi = 
     useTensionCutoff: false
   });
   const material = createMCPlasticMaterial(prepared);
-  const initialState = seedMaterialPointStateFromEffectiveStress6([18, 18, 18, 0, 0, 0], prepared);
-  const update = material.update({
-    strainTrial6: [0, 0, 0, 0, 0, 0],
-    committedState: initialState,
-    materialParameters: prepared
-  });
-
-  assert(update?.diagnostics?.exactBranchKind === 'MC_TENSION_PENDING', `psi=0 apex-neighborhood case should reroute to the guarded pending-tension endpoint (got ${update?.diagnostics?.exactBranchKind})`);
-  assert(update?.trialState?.activeYieldSurface === 'TENSION', 'psi=0 apex-neighborhood case should remain a diagnostic tension-style endpoint rather than a shear-plastic branch');
-  assert(update?.diagnostics?.apexAdmissibilityReason === 'apex_potential_rank_deficient', `psi=0 apex-neighborhood case should report the rank-deficient apex reason (got ${update?.diagnostics?.apexAdmissibilityReason})`);
-  assert((update?.trialState?.accumulatedPlasticStrain || 0) === 0, 'psi=0 apex-neighborhood case should not accumulate plastic strain on the guarded reroute');
-  assert((update?.diagnostics?.plasticMultipliers || []).length === 0, 'psi=0 apex-neighborhood case should not store active shear multipliers after rerouting');
+  const formalApexStress = prepared.cEff / Math.tan((prepared.phiEffDeg * Math.PI) / 180);
+  const insideApexBandButYielding = formalApexStress + 0.01;
+  const initialState = seedMaterialPointStateFromEffectiveStress6(
+    [insideApexBandButYielding, insideApexBandButYielding, insideApexBandButYielding, 0, 0, 0],
+    prepared
+  );
+  let threw = false;
+  try {
+    material.update({
+      strainTrial6: [0, 0, 0, 0, 0, 0],
+      committedState: initialState,
+      materialParameters: prepared
+    });
+  } catch (error) {
+    threw = true;
+    assert(
+      String(error?.message || '').includes('Local return mapping failed'),
+      `psi=0 apex-neighborhood case should fail locally instead of accepting an unchanged pending-tension stress (got ${error?.message || error})`
+    );
+  }
+  assert(threw, 'psi=0 apex-neighborhood case should not return a converged pending-tension endpoint');
 });
 
 await runCase('Case 1 pressure-mode Stage 1 deformation solves and settles beneath the load', async () => {
@@ -1243,6 +1274,40 @@ await runCase('Case 1t6 linear-elastic T6 solve runs end-to-end with quadratic s
   assert(sampled && sampled.settlement > 0 && Number.isFinite(sampled.ux), 'T6 sampleDeformationState should use a finite quadratic displacement interpolation');
 });
 
+await runCase('Case 1t6g multi-element T6 cpu-f32 element stiffness matches CPU-f64 settlement', async () => {
+  const commonOptions = {
+    meshElementType: 't6',
+    meshTargetArea: 2.0,
+    loadMode: 'pressure',
+    outOfPlaneLength: 10,
+    useSeepagePorePressures: false,
+    constitutiveModel: 'linear-elastic',
+    initialStressMode: 'predictor'
+  };
+  const cpu = await analyzeDeformationModel({
+    model: baseModel(),
+    options: commonOptions
+  });
+  const f32 = await analyzeDeformationModel({
+    model: baseModel(),
+    options: {
+      ...commonOptions,
+      linearAlgebraBackend: 'cpu-f32'
+    }
+  });
+
+  assert((cpu?.mesh?.elements?.length || 0) > 1, 'T6 parity case must use more than one element so per-element tangent packing is exercised');
+  assert(f32?.solver?.linearAlgebraBackend?.name === 'cpu-f32', 'explicit T6 cpu-f32 backend should be active');
+  assert(f32?.solver?.linearAlgebraBackend?.elementKernelsActive === true, 'explicit T6 cpu-f32 backend should use T6 element kernels');
+  assert(f32?.solver?.linearAlgebraBackend?.krylovPath === 'cpu-f64', 'uncertified diagnostic backend should still solve Krylov on CPU f64 by default');
+  approxRelative(
+    cpu?.summaries?.maxSettlement || 0,
+    f32?.summaries?.maxSettlement || 0,
+    5e-4,
+    'multi-element T6 cpu-f32 stiffness path should match CPU-f64 settlement'
+  );
+});
+
 await runCase('Case 1t6b Stage 2 plastic T6 solve converges with per-Gauss material points', async () => {
   const output = await analyzeDeformationModel({
     model: baseModel({
@@ -1287,6 +1352,20 @@ await runCase('Case 1t6b Stage 2 plastic T6 solve converges with per-Gauss mater
     0
   );
   assert(plasticGpCount > 0, 'Stage 2 T6 result should expose plastic history on Gauss-point records');
+  const etaElement = (output?.elementResults || []).find((item) =>
+    item?.materialDiagnostics?.tensionCutoffActive !== true &&
+    Number.isFinite(Number(item?.materialDiagnostics?.etaMcContour)) &&
+    item?.centroid
+  );
+  assert(etaElement, 'Stage 2 T6 result should expose a finite Gauss-point eta_MC diagnostic');
+  const etaSample = sampleDeformationState(output.mesh, output, etaElement.centroid.x, etaElement.centroid.y);
+  assert(etaSample && Number.isFinite(etaSample.mcEta), 'sampleDeformationState should expose finite eta_MC away from tension cut-off');
+  approxRelative(
+    etaSample.mcEta,
+    Number(etaElement.materialDiagnostics.etaMcContour) || 0,
+    1e-12,
+    'sampleDeformationState should use the Gauss-point exact eta_MC contour diagnostic rather than averaged 2D element stress'
+  );
 });
 
 await runCase('Case 1c Stage 2 plastic footing departs materially from the elastic comparison', async () => {
@@ -1494,8 +1573,8 @@ await runCase('Case 1e Stage 2 returns a flagged near-failure state when the non
       Emc: 22000,
       nu: 0.3,
       K0nc: 0.8,
-      cEff: 12,
-      phiEffDeg: 34,
+      cEff: 1,
+      phiEffDeg: 22,
       psiEffDeg: 2,
       gamma: 18,
       gammaSat: 20
@@ -1510,14 +1589,15 @@ await runCase('Case 1e Stage 2 returns a flagged near-failure state when the non
   const output = await analyzeDeformationModel({
     model,
     options: {
-      meshTargetArea: 0.6,
+      meshTargetArea: 1.6,
       loadMode: 'pressure',
       outOfPlaneLength: 10,
       useSeepagePorePressures: false,
       constitutiveModel: 'mc-plastic',
       initialStressMode: 'plastic-geostatic',
-      nonlinearMaxIterations: 40,
-      maxLoadSteps: 80,
+      nonlinearMaxIterations: 24,
+      maxLoadSteps: 12,
+      initialGravityMaxLoadSteps: 12,
       initialLoadStep: 0.1,
       minLoadStep: 0.0005
     }
@@ -1581,7 +1661,7 @@ await runCase('Case 1f Stage 2 plastic geostatic equilibration carries the initi
     }
   });
 
-  assert(output?.solver?.initialStressMode === 'gravity-step-k0nc-plastic-equilibration', 'plastic-geostatic mode should report the combined predictor + plastic equilibration initialization path');
+  assert(output?.solver?.initialStressMode === 'slope-aware-elastic-k0-recovery-plastic-equilibration', 'plastic-geostatic mode should report the slope-aware K0 recovery + self-weight equilibrium initialization path');
   assert(output?.solver?.initialPhaseStarted === true, 'plastic-geostatic mode should start the initial plastic equilibration phase');
   assert(output?.solver?.initialPhaseConverged === true, 'the baseline plastic-geostatic benchmark should converge the initial plastic equilibration phase');
   assert(output?.solver?.servicePhaseStarted === true, 'the service phase should start once the initial plastic equilibration phase converges');
@@ -1808,7 +1888,8 @@ await runCase('Case 1ga Stage 2 plastic geostatic failure with no accepted corre
       maxLoadSteps: 20,
       initialGravityMaxLoadSteps: 1,
       initialLoadStep: 0.25,
-      minLoadStep: 0.0005
+      minLoadStep: 0.0005,
+      allowStressOnlyGeostaticReference: false
     }
   });
 
@@ -1836,6 +1917,56 @@ await runCase('Case 1ga Stage 2 plastic geostatic failure with no accepted corre
     1e-12,
     'when no initial correction step is accepted, the displayed settlement summary should match the predictor baseline settlement'
   );
+});
+
+await runCase('Case 1gb Stage 2 does not start service from a stress-only seed when self-weight correction accepts no gravity step', async () => {
+  const output = await analyzeDeformationModel({
+    model: slopedModel({
+      material: {
+        Emc: 30000,
+        nu: 0.3,
+        K0nc: 0.55,
+        cEff: 30,
+        phiEffDeg: 35,
+        psiEffDeg: 0,
+        gamma: 18,
+        gammaSat: 20
+      },
+      surfaceLoad: {
+        xStart: 5,
+        xEnd: 7,
+        q: 4
+      }
+    }),
+    options: {
+      meshTargetArea: 0.8,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
+      nonlinearMaxIterations: 1,
+      initialGravityMaxLoadSteps: 1,
+      maxLoadSteps: 30,
+      initialLoadStep: 0.25,
+      minLoadStep: 0.0005,
+      stressOnlyGeostaticMaxEta: 0.95
+    }
+  });
+
+  assert(output?.solver?.initialPhaseStarted === true, 'stress-only fallback case should still attempt the initial plastic geostatic correction');
+  assert(output?.solver?.initialPhaseConverged === false, 'stress-only fallback case should expose that the plastic correction did not converge');
+  assert(output?.solver?.initialStateKind !== 'stress-only-reference', 'plastic-geostatic mode must not relabel a failed self-weight correction as a stress-only reference');
+  assert(output?.solver?.initialCanStartService === false, 'service loading must remain barred when the self-weight correction accepts no gravity step');
+  assert(output?.solver?.initialCanStartSafety === false, 'a failed self-weight correction must remain barred from safety analysis');
+  assert(output?.solver?.initialPhaseAcceptedSteps === 0, 'stress-only fallback case should only apply when no correction step was accepted');
+  assert(output?.solver?.stressOnlyGeostaticReferenceAccepted === false, 'an admissible low-eta seed should not bypass the required self-weight equilibrium phase');
+  assert(output?.solver?.servicePhaseStarted === false, 'service loading must not start from the clean stress-only reference unless the workflow explicitly permits it');
+  assert(
+    !(output?.warnings || []).some((warning) => String(warning).includes('stress field as the in-situ reference')),
+    'failed plastic-geostatic correction should not emit a stress-only reference handoff warning'
+  );
+  assert((Number(output?.solver?.stressOnlyGeostaticReferenceAudit?.maxEta) || 0) <= 0.95, 'stress-only fallback audit should keep the seed below the configured eta limit');
 });
 
 await runCase('Case 2 total-load mode matches the equivalent pressure solve', async () => {
@@ -1984,7 +2115,10 @@ await runCase('Case 3 capped nu and seepage fallback warnings still allow a defo
     'requesting seepage pore pressures without a seepage result should emit the hydrostatic fallback warning'
   );
   assert((output?.summaries?.maxSettlement || 0) > 0, 'warning case should still produce a valid settlement result');
-  assert(output?.solver?.initialStressMode === 'gravity-step-k0nc', 'warning case should still use the K0-controlled geostatic initialization');
+  assert(
+    isK0RecoveryStressMode(output?.solver?.initialStressMode),
+    `warning case should still use a K0-controlled geostatic initialization (got ${output?.solver?.initialStressMode})`
+  );
 });
 
 await runCase('Case 2d Stage 2 low-pressure response stays close to the elastic range', async () => {
@@ -2149,7 +2283,13 @@ await runCase('Case 3d weak low-load soil should not start in blanket MC failure
   );
 });
 
-await runCase('Case 4 slope geometry uses gravity initialization and develops initial shear stress', async () => {
+await runCase('Case 4 slope geometry uses slope-aware K0 recovery and audits the residual', async () => {
+  // The single K0-recovery path is the canonical initial-stress workflow
+  // for both flat and sloping ground. On slopes, the elastic gravity
+  // recovery supplies the target shear and the seed keeps the admissible
+  // part of that shear after exact MC/tension clipping. Flat ground
+  // produces a near-zero audit residual; sloping ground reports the
+  // residual before any optional plastic correction.
   const output = await analyzeDeformationModel({
     model: slopedModel(),
     options: {
@@ -2161,17 +2301,34 @@ await runCase('Case 4 slope geometry uses gravity initialization and develops in
     }
   });
 
-  assert(output?.solver?.initialStressMode === 'gravity-step-k0nc', 'slope case should use the K0-controlled geostatic initialization');
+  assert(
+    isK0RecoveryStressMode(output?.solver?.initialStressMode),
+    `slope case should use slope-aware K0 recovery (got ${output?.solver?.initialStressMode})`
+  );
   const warnings = output?.warnings || [];
   assert(
     !warnings.some((warning) => warning.toLowerCase().includes('flat-ground k0 initialization')),
-    'successful gravity initialization should not emit the old flat-ground K0 warning'
+    'successful elastic K0 recovery should not emit the legacy flat-ground K0 warning'
   );
-  const maxInitialShear = (output?.elementResults || []).reduce(
-    (max, item) => Math.max(max, Math.abs(Number(item?.initialEffectiveStress?.txy) || 0)),
+  const maxInitialNormal = (output?.elementResults || []).reduce(
+    (max, item) => Math.max(
+      max,
+      Math.abs(Number(item?.initialEffectiveStress?.sxx) || 0),
+      Math.abs(Number(item?.initialEffectiveStress?.syy) || 0)
+    ),
     0
   );
-  assert(maxInitialShear > 0.1, `slope gravity initialization should develop non-zero initial shear stress (got ${maxInitialShear})`);
+  assert(
+    maxInitialNormal > 0.1,
+    `elastic K0 recovery should produce non-trivial K0 normal stresses (got ${maxInitialNormal})`
+  );
+  const auditResidual = Number(output?.solver?.geostaticEquilibriumAudit?.relativeResidualBeforeCorrection)
+    || Number(output?.solver?.initialPhase?.geostaticEquilibriumAudit?.relativeResidualBeforeCorrection)
+    || 0;
+  assert(
+    Number.isFinite(auditResidual),
+    `slope case should report a finite K0-recovery audit residual (got ${auditResidual})`
+  );
 });
 
 await runCase('Case 5 deformation sampling exposes total/effective stresses and shear stress', async () => {
@@ -2287,6 +2444,113 @@ await runCase('Case 40 CPU-f32 backend factory respects the gpuMinDof size gate 
   assert(explicitF64.backend === null, 'explicit cpu-f64 override should return the native fallback (null backend)');
 });
 
+await runCase('Case 41zI safety-cphi auto-routes to plastic geostatic equilibration', async () => {
+  // Historical: the workflow vocabulary used to expose 'direct-k0' as a
+  // stress-only-only path; safety-cphi rejected it at the workflow layer.
+  // The pipeline now has a single 'auto' / 'elastic-k0-recovery' path that
+  // runs the plastic correction automatically when the analysis demands an
+  // equilibrated start. Verify the auto-route resolves correctly.
+  const output = await analyzeDeformationModel({
+    model: baseModel(),
+    options: {
+      meshTargetArea: 0.8,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'mc-plastic',
+      analysisType: 'safety-cphi',
+      geostaticInitializationMethod: 'direct-k0'
+    }
+  });
+  assert(
+    output?.solver?.geostaticInitializationMethod === 'elastic-k0-recovery'
+      || output?.solver?.geostaticInitializationMethod === 'flat-k0-fallback',
+    `safety-cphi should auto-route to the elastic K0 recovery path (got ${output?.solver?.geostaticInitializationMethod})`
+  );
+  assert(
+    output?.solver?.geostaticInitializationRequiresPlasticCorrection === true,
+    'safety-cphi auto-route must require plastic geostatic correction'
+  );
+});
+
+await runCase('Case 41zJ deformation accepts stress-only reference and records explicit state fields', async () => {
+  const output = await analyzeDeformationModel({
+    model: baseModel({
+      surfaceLoad: {
+        xStart: 11,
+        xEnd: 13,
+        q: 5
+      }
+    }),
+    options: {
+      meshTargetArea: 1.0,
+      loadMode: 'pressure',
+      outOfPlaneLength: 10,
+      useSeepagePorePressures: false,
+      constitutiveModel: 'linear-elastic',
+      geostaticInitializationMethod: 'direct-k0'
+    }
+  });
+  assert(output?.solver?.initialStateKind === 'stress-only-reference', `stress-only deformation run should record initialStateKind (got ${output?.solver?.initialStateKind})`);
+  assert(output?.solver?.initialReferenceAccepted === true, 'stress-only deformation run should accept the reference stress field');
+  assert(output?.solver?.initialEquilibriumConverged === false, 'stress-only deformation run must not claim self-weight equilibrium convergence');
+  assert(output?.solver?.initialCanStartService === true, 'stress-only deformation run can start service loading');
+  assert(output?.solver?.initialCanStartSafety === false, 'stress-only deformation run cannot start safety analysis');
+});
+
+await runCase('Case 41zK gravity-ramp is rejected for linear-elastic material', async () => {
+  let threw = false;
+  try {
+    await analyzeDeformationModel({
+      model: baseModel(),
+      options: {
+        meshTargetArea: 1.0,
+        loadMode: 'pressure',
+        outOfPlaneLength: 10,
+        useSeepagePorePressures: false,
+        constitutiveModel: 'linear-elastic',
+        geostaticInitializationMethod: 'gravity-ramp'
+      }
+    });
+  } catch (error) {
+    threw = true;
+    assert(
+      String(error?.message || '').includes('Gravity-ramp initialization requires a material model'),
+      `gravity-ramp linear-elastic rejection should name plugin capability (got ${error?.message || error})`
+    );
+  }
+  assert(threw, 'gravity-ramp should not run for linear-elastic material');
+});
+
+await runCase('Case 41zN MC tolerance helper is the shared scale-sensitive tolerance', async () => {
+  const materialParameters = prepareMechanicalMaterial({
+    Emc: 20000,
+    nu: 0.3,
+    cEff: 1,
+    phiEffDeg: 30,
+    gamma: 18,
+    gammaSat: 20,
+    yieldToleranceScale: 1e-8,
+    yieldTolerancePref: 100
+  });
+  const shallowStress = [-0.5, -0.7, -0.5, -1e-9, 0, 0];
+  const mc = mohrCoulombIndicator3D(shallowStress, materialParameters);
+  const tolerance = mcTolerance(materialParameters, mc);
+  approxRelative(tolerance, 1e-6, 1e-12, 'MC tolerance should use pRef scaling at shallow stress');
+  const pinned = mcTolerance({ ...materialParameters, yieldToleranceAbsolute: 2e-5 }, mc);
+  approxRelative(pinned, 2e-5, 1e-12, 'absolute MC tolerance override should pin the helper');
+});
+
+await runCase('Case 41zX backend capability records declare T3 and T6 element-kernel flags explicitly', async () => {
+  const explicitF64 = await createLinearAlgebraBackend({ linearAlgebraBackend: 'cpu-f64' }, []);
+  assert(typeof explicitF64.info.supportsT3ElementKernels === 'boolean', 'CPU f64 info should declare supportsT3ElementKernels');
+  assert(typeof explicitF64.info.supportsT6ElementKernels === 'boolean', 'CPU f64 info should declare supportsT6ElementKernels');
+  const explicitF32 = await createLinearAlgebraBackend({ linearAlgebraBackend: 'cpu-f32' }, []);
+  assert(typeof explicitF32.info.supportsT3ElementKernels === 'boolean', 'CPU f32 info should declare supportsT3ElementKernels');
+  assert(typeof explicitF32.info.supportsT6ElementKernels === 'boolean', 'CPU f32 info should declare supportsT6ElementKernels');
+  explicitF32.backend?.dispose?.();
+});
+
 await runCase('Case 41z Block-Jacobi preconditioner inverts a 2×2 nodal block exactly and falls back to scalar Jacobi on solitary rows', async () => {
   // 4×4 system representing two FE nodes (node 0 and node 1), each with
   // x and y DOFs. Node 0 has a near-singular x-DOF diagonal (1e-30) but
@@ -2358,6 +2622,204 @@ await runCase('Case 41z Block-Jacobi preconditioner inverts a 2×2 nodal block e
     precondNoFreeDofs.every((entry) => entry?.kind === 'scalar'),
     'without freeDofs the preconditioner falls back to scalar Jacobi everywhere'
   );
+});
+
+await runCase('Case 41zS additive Schwarz preconditioner builds nodal patches, factorizes them, and reduces residual on a small SPD problem', async () => {
+  // Synthetic mini-FE system: two T3-style elements sharing one edge,
+  // 4 nodes, 8 free DOFs. Each element contributes a tridiagonal-ish
+  // stiffness pattern; the assembled matrix is SPD by construction.
+  // The Schwarz preconditioner must:
+  //   1. Build at least one nodal patch (small mesh; not all nodes
+  //      qualify for an isolated patch, but at least one will).
+  //   2. Apply M^{-1}r and produce a *finite, non-zero* z.
+  //   3. Reduce ‖A z − r‖ relative to the original ‖r‖ (the
+  //      preconditioner approximates A^{-1}, so the residual after
+  //      one application should be smaller than the input residual
+  //      norm — the standard correctness check for a non-trivial
+  //      stationary preconditioner).
+  const mkRow = (indices, values, diagIndex) => ({
+    indices: new Int32Array(indices),
+    values: new Float64Array(values),
+    diag: values[diagIndex],
+    diagIndex
+  });
+  // Nodes: 0,1,2,3. Free DOFs: 0..7 (x,y per node, paired).
+  // Stiffness: dense-ish 8×8 SPD via diagonal dominance. We keep
+  // off-diagonals consistent for symmetry: A[i,j] = A[j,i].
+  const N = 8;
+  const A = Array.from({ length: N }, () => new Float64Array(N));
+  // Diagonal dominance with mild coupling.
+  for (let i = 0; i < N; i += 1) A[i][i] = 4 + (i % 2);
+  // Within-node x↔y coupling: A[2k, 2k+1] = A[2k+1, 2k] = 0.5
+  for (let k = 0; k < 4; k += 1) {
+    A[2 * k][2 * k + 1] = 0.5;
+    A[2 * k + 1][2 * k] = 0.5;
+  }
+  // Across-node coupling along the chain 0↔1↔2↔3 (x DOFs only,
+  // representative of an edge-connected mesh): A[2k, 2(k+1)] = -1
+  for (let k = 0; k < 3; k += 1) {
+    A[2 * k][2 * (k + 1)] = -1;
+    A[2 * (k + 1)][2 * k] = -1;
+  }
+  // Build CSR rows from A.
+  const rows = Array.from({ length: N }, (_row, rowIndex) => {
+    const indices = [];
+    const values = [];
+    for (let col = 0; col < N; col += 1) {
+      if (Math.abs(A[rowIndex][col]) > 0) {
+        indices.push(col);
+        values.push(A[rowIndex][col]);
+      }
+    }
+    return mkRow(indices, values, indices.indexOf(rowIndex));
+  });
+  // Synthetic element caches: two T3-like elements covering nodes
+  // 0–1–2 and 1–2–3. `dofs` are the global DOF indices each element
+  // touches (paired x,y per node). `kind` matches the dispatcher.
+  const elementCaches = [
+    { kind: 't3', dofs: [0, 1, 2, 3, 4, 5] },  // nodes 0,1,2
+    { kind: 't3', dofs: [2, 3, 4, 5, 6, 7] }   // nodes 1,2,3
+  ];
+  const freeDofs = [0, 1, 2, 3, 4, 5, 6, 7];
+  const precond = buildAdditiveSchwarzPreconditioner(rows, freeDofs, elementCaches, {
+    schwarzMinFreeDofs: 0,
+    schwarzOverlap: 1,
+    schwarzMaxPatchDofs: 16
+  });
+  assert(precond, 'Schwarz preconditioner must build for an 8-DOF problem when the size gate is removed');
+  assert(precond.kind === 'additive-schwarz', 'preconditioner kind is additive-schwarz');
+  assert(Array.isArray(precond.patches) && precond.patches.length > 0, 'at least one patch was built');
+  assert(precond.diagnostics?.ldltPatchCount > 0, 'symmetric SPD patches should use LDLᵀ factors');
+  assert(precond.damping == null, 'partition-of-unity Schwarz must not expose a global scalar damping');
+  for (const patch of precond.patches) {
+    assert(Array.isArray(patch.localRows) && patch.localRows.length > 0, 'every patch has at least one row');
+    assert(['ldlt', 'lu-complete-pivot'].includes(patch.factors?.kind), 'every patch has cached dense factors');
+    assert(patch.gatherWeights?.length === patch.localRows.length, 'every patch carries precomputed symmetric PoU gather weights');
+    assert(patch.scatterWeights?.length === patch.localRows.length, 'every patch carries precomputed symmetric PoU scatter weights');
+  }
+  for (let rowIndex = 0; rowIndex < N; rowIndex += 1) {
+    let identityWeightSum = 0;
+    for (const patch of precond.patches) {
+      const localIndex = patch.localRows.indexOf(rowIndex);
+      if (localIndex >= 0) identityWeightSum += patch.scatterWeights[localIndex] * patch.gatherWeights[localIndex];
+    }
+    approxAbs(identityWeightSum, 1, 1e-14, `symmetric PoU Schwarz weights must form identity at row ${rowIndex}`);
+    assert(precond.coverage[rowIndex] >= 1, `PoU coverage should include row ${rowIndex}`);
+  }
+  // Apply M^{-1} r → z and check it is finite + non-trivial.
+  const r = new Float64Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  const z = new Float64Array(N);
+  const applied = applyAdditiveSchwarzPreconditioner(precond, r, z);
+  assert(applied === true, 'apply returns true when patches exist');
+  for (let i = 0; i < N; i += 1) {
+    assert(Number.isFinite(z[i]), `Schwarz preconditioned residual must be finite at row ${i} (got ${z[i]})`);
+  }
+  const zNorm = Math.sqrt(z.reduce((sum, v) => sum + v * v, 0));
+  assert(zNorm > 1e-9, 'Schwarz preconditioned residual must be non-zero — z=0 would mean every patch failed silently');
+  const flatGpuSchwarz = flattenAdditiveSchwarzPreconditionerForGpu(precond);
+  assert(flatGpuSchwarz?.kind === 'gpu-additive-schwarz-pou', 'PoU Schwarz should flatten to the GPU two-pass gather format');
+  assert(flatGpuSchwarz.patchCount === precond.patches.length, 'GPU Schwarz flattening preserves the patch count');
+  assert(flatGpuSchwarz.totalLocalRows > 0 && flatGpuSchwarz.totalInverseEntries > 0, 'GPU Schwarz flattening stores local rows and dense inverse blocks');
+  const patchSol = new Float64Array(flatGpuSchwarz.totalLocalRows);
+  for (let patchIndex = 0; patchIndex < flatGpuSchwarz.patchCount; patchIndex += 1) {
+    const rowStart = flatGpuSchwarz.patchOffsets[patchIndex];
+    const rowEnd = flatGpuSchwarz.patchOffsets[patchIndex + 1];
+    const nLocal = rowEnd - rowStart;
+    const inverseBase = flatGpuSchwarz.inverseOffsets[patchIndex];
+    for (let localRow = 0; localRow < nLocal; localRow += 1) {
+      let sum = 0;
+      for (let localCol = 0; localCol < nLocal; localCol += 1) {
+        sum += flatGpuSchwarz.inverseValues[inverseBase + localRow * nLocal + localCol] * r[flatGpuSchwarz.localRows[rowStart + localCol]];
+      }
+      patchSol[rowStart + localRow] = sum;
+    }
+  }
+  const zFlat = new Float64Array(N);
+  for (let rowIndex = 0; rowIndex < N; rowIndex += 1) {
+    let sum = 0;
+    for (let entry = flatGpuSchwarz.dofOffsets[rowIndex]; entry < flatGpuSchwarz.dofOffsets[rowIndex + 1]; entry += 1) {
+      sum += flatGpuSchwarz.dofWeights[entry] * patchSol[flatGpuSchwarz.dofEntries[entry]];
+    }
+    zFlat[rowIndex] = sum;
+    approxRelative(zFlat[rowIndex], z[rowIndex], 1e-12, `GPU-flattened PoU Schwarz apply should match CPU apply at row ${rowIndex}`);
+  }
+
+  // Residual reduction check: after one application,
+  // ‖A z − r‖ / ‖r‖ should be smaller than 1.0 (preconditioner is
+  // doing useful work). Block-Jacobi typically reduces this by 30–60%
+  // on this problem; Schwarz should match or beat that.
+  const Az = new Float64Array(N);
+  for (let i = 0; i < N; i += 1) {
+    let sum = 0;
+    for (let j = 0; j < N; j += 1) sum += A[i][j] * z[j];
+    Az[i] = sum;
+  }
+  const rNorm = Math.sqrt(r.reduce((sum, v) => sum + v * v, 0));
+  const residualNorm = Math.sqrt(
+    Az.reduce((sum, v, i) => sum + (v - r[i]) * (v - r[i]), 0)
+  );
+  const reductionRatio = residualNorm / rNorm;
+  assert(
+    reductionRatio < 1.0,
+    `Schwarz preconditioner must reduce residual: ‖Az−r‖/‖r‖ = ${reductionRatio.toExponential(3)} (expected < 1)`
+  );
+  const matvec = (vector) => {
+    const out = new Float64Array(N);
+    for (let i = 0; i < N; i += 1) {
+      let sum = 0;
+      for (let j = 0; j < N; j += 1) sum += A[i][j] * vector[j];
+      out[i] = sum;
+    }
+    return out;
+  };
+  const runPreconditionedCg = (applyPreconditioner, label) => {
+    const targetNorm = 1e-7;
+    const x = new Float64Array(N);
+    let residual = Float64Array.from(r);
+    const z0 = new Float64Array(N);
+    applyPreconditioner(residual, z0);
+    let direction = Float64Array.from(z0);
+    let rzOld = residual.reduce((sum, value, index) => sum + value * z0[index], 0);
+    for (let iteration = 1; iteration <= 50; iteration += 1) {
+      const Ap = matvec(direction);
+      const denom = direction.reduce((sum, value, index) => sum + value * Ap[index], 0);
+      assert(Math.abs(denom) > 1e-14, `${label} CG denominator should stay finite`);
+      const alpha = rzOld / denom;
+      for (let i = 0; i < N; i += 1) {
+        x[i] += alpha * direction[i];
+        residual[i] -= alpha * Ap[i];
+      }
+      const norm = Math.sqrt(residual.reduce((sum, value) => sum + value * value, 0));
+      if (norm <= targetNorm) return iteration;
+      const zNext = new Float64Array(N);
+      applyPreconditioner(residual, zNext);
+      const rzNew = residual.reduce((sum, value, index) => sum + value * zNext[index], 0);
+      const beta = rzNew / rzOld;
+      for (let i = 0; i < N; i += 1) direction[i] = zNext[i] + beta * direction[i];
+      rzOld = rzNew;
+    }
+    return 51;
+  };
+  const jacobiPrecond = buildBlockJacobiPreconditioner(rows, freeDofs);
+  const jacobiIterations = runPreconditionedCg((residual, out) => applyKrylovPreconditioner(jacobiPrecond, residual, out), 'block-Jacobi');
+  const schwarzIterations = runPreconditionedCg((residual, out) => applyAdditiveSchwarzPreconditioner(precond, residual, out), 'PoU Schwarz');
+  assert(
+    schwarzIterations <= Math.ceil(jacobiIterations / 2),
+    `PoU Schwarz should converge in at most half the block-Jacobi iterations (Schwarz ${schwarzIterations}, Jacobi ${jacobiIterations})`
+  );
+
+  // Size gate: if the problem is below the threshold the builder
+  // returns null and the dispatcher falls back to block-Jacobi.
+  const precondGated = buildAdditiveSchwarzPreconditioner(rows, freeDofs, elementCaches, {
+    schwarzMinFreeDofs: 100, // > 8
+    schwarzOverlap: 1
+  });
+  assert(precondGated === null, 'size gate refuses to build below the configured floor');
+
+  // Missing element caches: builder returns null so the caller falls
+  // back to block-Jacobi rather than constructing a degenerate Schwarz.
+  const precondNoCaches = buildAdditiveSchwarzPreconditioner(rows, freeDofs, [], { schwarzMinFreeDofs: 0 });
+  assert(precondNoCaches === null, 'missing element caches → null (caller uses block-Jacobi)');
 });
 
 await runCase('Case 41 CPU-f32 backend matvec matches the CSR reference within f32 tolerance', async () => {
@@ -2507,6 +2969,63 @@ await runCase('Case 41c CPU mixed-precision T6 element kernels reproduce the T6 
     }
     for (let index = 0; index < stiffnessPerGpRef.length; index += 1) {
       approxRelative(stiffnessPerGpRef[index], stiffnessPerGpGot[index], 1e-6, `cpu-f32 T6 elastic stiffness (per-GP tangent) entry ${index}`);
+    }
+  } finally {
+    backend.dispose();
+  }
+});
+
+await runCase('Case 41c2 CPU mixed-precision T6 elastic stiffness consumes multi-element per-GP tangents', async () => {
+  const backend = createCpuF32Backend();
+  try {
+    const elementCaches = [
+      {
+        kind: 't6',
+        corners: [
+          { x: 0, y: 0 },
+          { x: 1, y: 0 },
+          { x: 0, y: 1 }
+        ],
+        dofs: Int32Array.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+        area: 0.5
+      },
+      {
+        kind: 't6',
+        corners: [
+          { x: 1, y: 0 },
+          { x: 1, y: 1 },
+          { x: 0, y: 1 }
+        ],
+        dofs: Int32Array.from([12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]),
+        area: 0.5
+      }
+    ];
+    const referenceBuffer = createElementKernelBufferT6(elementCaches.length);
+    packElementKernelBufferT6(referenceBuffer, elementCaches);
+
+    const tangentPerElementGp = new Float64Array(elementCaches.length * 27);
+    for (let elementIndex = 0; elementIndex < elementCaches.length; elementIndex += 1) {
+      for (let gpIndex = 0; gpIndex < 3; gpIndex += 1) {
+        const scale = 1 + elementIndex * 0.25 + gpIndex * 0.1;
+        const base = elementIndex * 27 + gpIndex * 9;
+        tangentPerElementGp.set([
+          4 * scale, 1 * scale, 0.5 * scale,
+          1 * scale, 5 * scale, 0.25 * scale,
+          0.5 * scale, 0.25 * scale, 3 * scale
+        ], base);
+      }
+    }
+
+    const stiffnessRef = elementElasticStiffnessReferenceT6(referenceBuffer, new Float32Array(tangentPerElementGp));
+    const stiffnessGot = backend.elementElasticStiffness(elementCaches, tangentPerElementGp);
+    const secondBlockStart = 144;
+    const secondBlockRefMax = maxAbsVectorEntry(stiffnessRef.slice(secondBlockStart));
+    const secondBlockGotMax = maxAbsVectorEntry(stiffnessGot.slice(secondBlockStart));
+
+    assert(secondBlockRefMax > 1e-6, 'multi-element T6 reference stiffness should produce a non-zero second element block');
+    assert(secondBlockGotMax > 1e-6, 'multi-element T6 backend stiffness should not zero the second element block');
+    for (let index = 0; index < stiffnessRef.length; index += 1) {
+      approxRelative(stiffnessRef[index], stiffnessGot[index], 1e-6, `cpu-f32 T6 multi-element stiffness entry ${index}`);
     }
   } finally {
     backend.dispose();

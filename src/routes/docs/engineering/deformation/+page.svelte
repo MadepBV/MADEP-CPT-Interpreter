@@ -677,13 +677,13 @@
 							</div>
 						</dl>
 					</div>
-					<p>
-						This gives a geometry-driven total stress state including non-zero initial shear stress
-						on slopes and near geometry breaks. In the fast mode, that predictor is used directly
-						after K<sub>0,nc</sub>-based confinement reconstruction. In the exact Stage 2
-						initial-phase mode, it becomes the starting guess for the later plastic self-weight
-						equilibration phase.
-					</p>
+						<p>
+							This gives a geometry-driven total stress state including non-zero initial shear stress
+							on slopes and near geometry breaks. The production Stage 2 route does not use that
+							field blindly: it rebuilds the normal confinement from K<sub>0,nc</sub>, keeps the
+							recovered shear only as far as the exact Mohr-Coulomb and tension-cutoff envelope
+							allow, and then solves the remaining self-weight equilibrium correction.
+						</p>
 				</section>
 
 				<section class="doc-subsection">
@@ -727,24 +727,24 @@
 						<div class="formula">σ′<sub>yy,0</sub> = σ<sub>yy,total,gravity</sub> − u<sub>0</sub></div>
 						<div class="formula">σ′<sub>xx,0</sub> = K<sub>0,nc</sub> σ′<sub>yy,0</sub></div>
 						<div class="formula">σ′<sub>zz,0</sub> = K<sub>0,nc</sub> σ′<sub>yy,0</sub></div>
-						<div class="formula">τ′<sub>xy,0</sub> = τ<sub>xy,total,gravity</sub></div>
-					</div>
-					<p>
-						So the current predictor preserves geometry-driven shear stress but forces the normal
-						in-situ confinement back to the interpreted K<sub>0,nc</sub> state. This is the
-						deliberate engineering distinction between <strong>in-situ confinement</strong> and
-						<strong>elastic stiffness</strong>.
-					</p>
-				</section>
+							<div class="formula">τ′<sub>xy,0</sub> = λ τ<sub>xy,total,gravity</sub>, 0 ≤ λ ≤ 1</div>
+						</div>
+						<p>
+							Here λ is chosen per integration point by admissibility clipping: λ = 1 when the
+							full recovered shear is inside the exact Mohr-Coulomb and tension envelope; otherwise
+							a bisection search selects the largest admissible value. This preserves the useful
+							slope-equilibrium shear without seeding an inadmissible stress state.
+						</p>
+					</section>
 
-				<section class="doc-subsection">
-					<h3>6.3 Optional plastic self-weight equilibration</h3>
-					<p>
-						When the deformation workspace is run in the <strong>plastic geostatic
-						equilibration</strong> mode, the predictor state above is not yet accepted as the
-						final initial condition. Instead, it becomes the starting point for a full Stage 2
-						self-weight equilibrium correction under exact Mohr-Coulomb elastoplasticity.
-					</p>
+					<section class="doc-subsection">
+						<h3>6.3 Plastic self-weight equilibration</h3>
+						<p>
+							The predictor state above is not accepted as the final production initial condition.
+							It becomes the starting point for a full Stage 2 self-weight equilibrium correction
+							under exact Mohr-Coulomb elastoplasticity. Service loading and c-phi reduction require
+							this self-weight phase to converge.
+						</p>
 					<div class="equations">
 						<div class="formula">R<sub>0b</sub>(Δu) = F<sub>g</sub> − F<sub>int</sub>(σ′<sub>pred</sub> + Δσ′(Δu, history)) = 0</div>
 						<div class="formula">Δε = B Δu</div>
