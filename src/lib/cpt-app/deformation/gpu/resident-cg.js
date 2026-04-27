@@ -659,3 +659,126 @@ export function cpuReferenceResidentCg({ csr, blockJacobiDs, bF64, x0F64 = null,
   }
   return { solution: lowerDs(xDs), iterations: maxIter, residualNorm, converged: false };
 }
+
+// =============================================================================
+// Public dispatch helpers for the plastic-Newton orchestrator.
+//
+// These let the orchestrator record device-side BLAS / preconditioner
+// operations directly into its own command encoder, keeping data on the GPU
+// across the entire Newton iteration (no host round-trips beyond the scalar
+// norm readbacks for convergence checks).
+// =============================================================================
+
+// y = alpha * x + y (DS axpy).  External buffers (not necessarily owned by
+// `ctx`).  Uses ctx's paramsAxpy uniform.
+export function dispatchAxpyExternal(ctx, encoder, alphaDs, srcBuf, dstBuf) {
+  const u = new ArrayBuffer(32);
+  const fv = new Float32Array(u);
+  fv[0] = alphaDs[0]; fv[1] = alphaDs[1];
+  new Uint32Array(u, 8, 1)[0] = ctx.N;
+  ctx.device.queue.writeBuffer(ctx.buffers.paramsAxpy, 0, u);
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(ctx.pipelines.axpy.pipeline);
+  pass.setBindGroup(0, ctx.device.createBindGroup({
+    layout: ctx.pipelines.axpy.bgLayout,
+    entries: [
+      { binding: 0, resource: { buffer: srcBuf } },
+      { binding: 1, resource: { buffer: dstBuf } },
+      { binding: 2, resource: { buffer: ctx.buffers.paramsAxpy } }
+    ]
+  }));
+  pass.dispatchWorkgroups(ctx.numWorkgroupsBlas);
+  pass.end();
+}
+
+// y = x  (DS copy).  External buffers.  Uses ctx's paramsCopy uniform.
+export function dispatchCopyExternal(ctx, encoder, srcBuf, dstBuf) {
+  const u = new ArrayBuffer(32);
+  new Uint32Array(u, 0, 1)[0] = ctx.N;
+  ctx.device.queue.writeBuffer(ctx.buffers.paramsCopy, 0, u);
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(ctx.pipelines.copy.pipeline);
+  pass.setBindGroup(0, ctx.device.createBindGroup({
+    layout: ctx.pipelines.copy.bgLayout,
+    entries: [
+      { binding: 0, resource: { buffer: srcBuf } },
+      { binding: 1, resource: { buffer: dstBuf } },
+      { binding: 2, resource: { buffer: ctx.buffers.paramsCopy } }
+    ]
+  }));
+  pass.dispatchWorkgroups(ctx.numWorkgroupsBlas);
+  pass.end();
+}
+
+// Build the block-Jacobi 2×2 inverse on device from the CSR currently in the
+// CG context.  Output goes to ctx.buffers.blockJacobi.  After this call, the
+// CG can run with the freshly-built preconditioner without any host round-trip.
+export function dispatchBuildBlockJacobiFromCsr(ctx, encoder) {
+  const u = new ArrayBuffer(32);
+  new Uint32Array(u, 0, 1)[0] = ctx.numNodes;
+  new Uint32Array(u, 4, 1)[0] = ctx.N;
+  ctx.device.queue.writeBuffer(ctx.buffers.paramsBuildBj, 0, u);
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(ctx.pipelines.buildBj.pipeline);
+  pass.setBindGroup(0, ctx.device.createBindGroup({
+    layout: ctx.pipelines.buildBj.bgLayout,
+    entries: [
+      { binding: 0, resource: { buffer: ctx.buffers.rowPtr } },
+      { binding: 1, resource: { buffer: ctx.buffers.colInd } },
+      { binding: 2, resource: { buffer: ctx.buffers.valHi } },
+      { binding: 3, resource: { buffer: ctx.buffers.valLo } },
+      { binding: 4, resource: { buffer: ctx.buffers.blockJacobi } },
+      { binding: 5, resource: { buffer: ctx.buffers.paramsBuildBj } }
+    ]
+  }));
+  pass.dispatchWorkgroups(ctx.numWorkgroupsBj);
+  pass.end();
+}
+
+// Compute ⟨a, b⟩ on device, return scalar f64.  Single readback (8 bytes).
+export async function computeDotExternal(ctx, bufA, bufB) {
+  const enc = ctx.device.createCommandEncoder();
+  // Pass 1.
+  {
+    const u = new ArrayBuffer(32);
+    new Uint32Array(u, 0, 1)[0] = ctx.N;
+    ctx.device.queue.writeBuffer(ctx.buffers.paramsDot, 0, u);
+    const pass = enc.beginComputePass();
+    pass.setPipeline(ctx.pipelines.dot1.pipeline);
+    pass.setBindGroup(0, ctx.device.createBindGroup({
+      layout: ctx.pipelines.dot1.bgLayout,
+      entries: [
+        { binding: 0, resource: { buffer: bufA } },
+        { binding: 1, resource: { buffer: bufB } },
+        { binding: 2, resource: { buffer: ctx.buffers.dotPartials } },
+        { binding: 3, resource: { buffer: ctx.buffers.paramsDot } }
+      ]
+    }));
+    pass.dispatchWorkgroups(ctx.numWorkgroupsBlas);
+    pass.end();
+  }
+  // Pass 2.
+  {
+    const u = new ArrayBuffer(32);
+    new Uint32Array(u, 0, 1)[0] = ctx.numWorkgroupsBlas;
+    ctx.device.queue.writeBuffer(ctx.buffers.paramsDotP2, 0, u);
+    const pass = enc.beginComputePass();
+    pass.setPipeline(ctx.pipelines.dot2.pipeline);
+    pass.setBindGroup(0, ctx.device.createBindGroup({
+      layout: ctx.pipelines.dot2.bgLayout,
+      entries: [
+        { binding: 0, resource: { buffer: ctx.buffers.dotPartials } },
+        { binding: 1, resource: { buffer: ctx.buffers.dotResult } },
+        { binding: 2, resource: { buffer: ctx.buffers.paramsDotP2 } }
+      ]
+    }));
+    pass.dispatchWorkgroups(1);
+    pass.end();
+  }
+  enc.copyBufferToBuffer(ctx.buffers.dotResult, 0, ctx.buffers.readback, 0, 8);
+  ctx.device.queue.submit([enc.finish()]);
+  await ctx.buffers.readback.mapAsync(GPUMapMode.READ);
+  const arr = new Float32Array(ctx.buffers.readback.getMappedRange().slice(0));
+  ctx.buffers.readback.unmap();
+  return arr[0] + arr[1];
+}

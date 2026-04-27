@@ -43,7 +43,10 @@ import {
   snapshotCommittedState,
   restoreCommittedState,
   readbackCommittedSigma,
-  readbackCommittedDisplacement
+  readbackCommittedDisplacement,
+  recordK0Recovery,
+  recordStrainOnly,
+  recordZeroUvec
 } from './gpu-assembly.js';
 import {
   createResidentCgContext, uploadDsCsr, uploadBlockJacobi, uploadDsVector,
@@ -390,7 +393,8 @@ export async function runFullDeformationAnalysisOnGpu({
   sigmaInitialF64 = null,
   porePressureByIntegrationPoint = null,
   options = {},
-  warnings = []
+  warnings = [],
+  onProgress = () => {}
 }) {
   if (!device) throw new Error('runFullDeformationAnalysisOnGpu: a GPUDevice is required.');
   // 1. Build pack + assembly context.
@@ -404,12 +408,19 @@ export async function runFullDeformationAnalysisOnGpu({
   const elementType = elementCaches[0]?.kind === 't6' ? 't6' : 't3';
   const asmCtx = createGpuAssemblyContext({ device, pack, elementType });
 
-  // 2. Initialize committed state (zero everywhere).  If the caller passes
-  //    sigmaInitialF64 (e.g. from CPU K0 recovery), seed σ_committed.
+  // 2. Initialize committed state.  σ_initial seed is REQUIRED — the caller
+  //    (solver.js) plumbs `geostatic.initialField` from the standard
+  //    pre-solve K0 recovery.  This is data piped through, not a CPU
+  //    algorithm change: geostatic.initialField is computed unconditionally
+  //    by the existing analysis prep regardless of which solver path runs.
   clearCommittedState(asmCtx);
-  if (sigmaInitialF64 && sigmaInitialF64.length === 6 * pack.numGp) {
-    uploadCommittedSigmaFromF64(asmCtx, sigmaInitialF64);
+  if (!sigmaInitialF64 || sigmaInitialF64.length !== 6 * pack.numGp) {
+    throw new Error(
+      `runFullDeformationAnalysisOnGpu: sigmaInitialF64 (length ${6 * pack.numGp}) is required.  ` +
+      `Pass the flattened geostatic.initialField from the analysis prep.`
+    );
   }
+  uploadCommittedSigmaFromF64(asmCtx, sigmaInitialF64);
 
   // 3. Build the resident CG context (used by every linear solve below).
   const cgCtx = createResidentCgContext({
@@ -419,6 +430,27 @@ export async function runFullDeformationAnalysisOnGpu({
   const history = { newton: [], loadSteps: [], safety: [] };
   const analysisType = options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
   const requireSurfaceLoad = !!surfaceLoadRhsFree && surfaceLoadRhsFree.some((v) => v !== 0);
+
+  // Progress-observer factory.  Each phase passes a label so the UI sees
+  // "GPU geostatic Newton 3, ‖r‖=…" and "GPU CG iter 600, rel residual=…"
+  // — matching the granularity of the CPU pipeline's progress messages.
+  const makeProgressObservers = (phaseLabel, basePercent) => ({
+    onNewtonProgress: ({ iter, residualNorm, rhsNorm }) => {
+      const rel = rhsNorm > 0 ? residualNorm / rhsNorm : 0;
+      onProgress({
+        stage: 'solving',
+        percent: Math.min(95, basePercent + Math.min(iter / 4, 5)),
+        message: `GPU ${phaseLabel} Newton iter ${iter}, ‖r‖ = ${residualNorm.toExponential(2)} (rel ${rel.toExponential(2)})`
+      });
+    },
+    onCgProgress: async ({ iterations, residualNorm, relativeResidual }) => {
+      onProgress({
+        stage: 'solving',
+        percent: Math.min(95, basePercent + Math.min(iterations / 250, 4)),
+        message: `GPU ${phaseLabel} CG iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
+      });
+    }
+  });
 
   // ---------------------------------------------------------------------------
   // Phase A — plastic geostatic correction (gravity-only Newton).
@@ -434,7 +466,8 @@ export async function runFullDeformationAnalysisOnGpu({
       bF64: gravityRhsFree,
       maxIter: Math.max(Math.round(options?.geostaticMaxIter || 32), 1),
       relTol: options?.residualRelTol ?? 1e-4,
-      absTol: options?.residualAbsTol ?? 1e-3
+      absTol: options?.residualAbsTol ?? 1e-3,
+      ...makeProgressObservers('geostatic', 65)
     });
     history.newton.push({ phase: 'geostatic', ...summarizeNewton(newton) });
     if (!newton.converged) {
@@ -458,7 +491,8 @@ export async function runFullDeformationAnalysisOnGpu({
         asmCtx, cgCtx, bF64: bFull,
         maxIter: Math.max(Math.round(options?.nonlinearMaxIterations || 32), 1),
         relTol: options?.residualRelTol ?? 1e-4,
-        absTol: options?.residualAbsTol ?? 1e-3
+        absTol: options?.residualAbsTol ?? 1e-3,
+        ...makeProgressObservers('surface-load', 75)
       });
       history.newton.push({ phase: 'load-direct', lambda: 1, ...summarizeNewton(newton) });
       if (!newton.converged) {
@@ -471,7 +505,8 @@ export async function runFullDeformationAnalysisOnGpu({
     } else {
       // Staged surface-load loop.
       const stagedResult = await runStagedSurfaceLoadOnGpu({
-        asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree, options, history
+        asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree, options, history,
+        makeProgressObservers
       });
       if (!stagedResult.converged) {
         return {
@@ -489,7 +524,8 @@ export async function runFullDeformationAnalysisOnGpu({
   if (analysisType === 'safety-cphi') {
     safetyResult = await runSafetyOnGpu({
       asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree,
-      pack, regionConstitutiveByRegion, options, history
+      pack, regionConstitutiveByRegion, options, history,
+      makeProgressObservers
     });
   }
 
@@ -552,7 +588,8 @@ function summarizeNewton(newton) {
 // not committing.
 // =============================================================================
 async function runStagedSurfaceLoadOnGpu({
-  asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree, options, history
+  asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree, options, history,
+  makeProgressObservers = () => ({})
 }) {
   let lambda = 0;
   let dLambda = Math.max(Math.min(Number(options?.initialLoadStep) || 0.25, 1), 1e-6);
@@ -569,7 +606,8 @@ async function runStagedSurfaceLoadOnGpu({
       asmCtx, cgCtx, bF64: bTrial,
       maxIter: Math.max(Math.round(options?.nonlinearMaxIterations || 32), 1),
       relTol: options?.residualRelTol ?? 1e-4,
-      absTol: options?.residualAbsTol ?? 1e-3
+      absTol: options?.residualAbsTol ?? 1e-3,
+      ...makeProgressObservers(`load-step λ=${trialLambda.toFixed(2)}`, 75)
     });
     history.loadSteps.push({ step, lambda: trialLambda, ...summarizeNewton(newton) });
     if (newton.converged) {
@@ -601,7 +639,8 @@ import { reduceMaterialStrengthForSafety } from '../material.js';
 
 async function runSafetyOnGpu({
   asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree,
-  pack, regionConstitutiveByRegion, options, history
+  pack, regionConstitutiveByRegion, options, history,
+  makeProgressObservers = () => ({})
 }) {
   const sigmaMsfMax = Math.max(Number(options?.safetySigmaMsfMax) || 3.0, 1);
   const bracketTol  = Math.max(Number(options?.safetySigmaMsfBracketTolerance) || 0.01, 1e-4);
@@ -633,7 +672,8 @@ async function runSafetyOnGpu({
       asmCtx, cgCtx, bF64: bSafety,
       maxIter: Math.max(Math.round(options?.nonlinearMaxIterations || 32), 1),
       relTol: options?.residualRelTol ?? 1e-4,
-      absTol: options?.residualAbsTol ?? 1e-3
+      absTol: options?.residualAbsTol ?? 1e-3,
+      ...makeProgressObservers(`safety ΣMsf=${sigmaTrial.toFixed(3)}`, 80)
     });
     history.safety.push({ trial: t, sigmaMsf: sigmaTrial, ...summarizeNewton(newton) });
     if (newton.converged) {

@@ -346,72 +346,104 @@ export function unpackFreeDofVector(packed) {
 }
 
 // =============================================================================
-// Block-Jacobi 2x2 inverse pack from the assembled CSR.  The block at node n
-// has rows (2n, 2n+1) and the same two columns; we extract (a, b, c, d) from
-// the unpacked CSR and invert the 2x2.
+// Block-Jacobi 2×2 inverse pack from the assembled CSR (pair-slot indexing).
 //
-// This needs the freeDofs → globalDofs mapping to identify which free rows
-// belong to the same nodal block (i.e., free rows ri, rj such that
-// freeDofs[ri] = 2n + 0 and freeDofs[rj] = 2n + 1 for the same node n).
+// CRITICAL CONVENTION: This function and the WGSL apply kernel
+// (KERNEL_BLOCK_JACOBI_WGSL) BOTH use **pair-slot indexing** — slot `i`
+// covers free indices (2i, 2i+1), regardless of which geometric node those
+// belong to.  This convention matches the apply kernel's `r[2n], r[2n+1]`
+// reads and is correct on any mesh — including meshes where some geometric
+// nodes have only one free DOF (rollers, prescribed displacement on one
+// direction, etc.).
+//
+// For each pair slot i:
+//   - row0 = 2i, row1 = 2i + 1 (free-row indices into the assembled CSR).
+//   - Look up M = K[row0..row0+1; row0..row0+1] from CSR.  When the
+//     cross-coupling K[row0][row1] is structurally absent (no shared
+//     element between those two free DOFs), it is exactly zero and the
+//     2×2 inverse degenerates to scalar Jacobi on the diagonal — which is
+//     the correct preconditioner for unrelated DOFs.
+//   - Invert M.  The 2×2 sub-block of an SPD matrix is itself SPD, so
+//     det = ad - bc > 0 and the inverse exists.
+//
+// Edge cases:
+//   - row1 = numFree (last pair slot when numFree is odd): only row0 is a
+//     valid free DOF.  Use scalar Jacobi A = 1/a, leave B = C = 0, D = 1
+//     (D is read but the apply kernel writes z[2*i+1] which is OOB by one
+//     and silently dropped by WGSL — harmless).
+//   - Singular row0 diagonal: identity fallback (should never happen for a
+//     well-posed FE assembly).
+//
+// Pre-condition: rowPtr/colInd/valHi/valLo describe a CSR over `numFree`
+// rows, with sorted-ascending column indices per row (which buildCsrPattern
+// guarantees).
 // =============================================================================
 export function buildBlockJacobiPackForFreeDofs({ freeDofs, csrRowPtr, csrColInd, csrValHi, csrValLo }) {
   const numFree = freeDofs.length;
-  // Reverse map: globalDof → free index.
-  const freeIndexByDof = new Map();
-  for (let i = 0; i < numFree; i += 1) freeIndexByDof.set(freeDofs[i], i);
-  // Group free rows by node (n = global DOF / 2).
-  const blocksByNode = new Map();
-  for (let i = 0; i < numFree; i += 1) {
-    const dof = freeDofs[i];
-    const node = dof >> 1;
-    const isY = dof & 1;
-    if (!blocksByNode.has(node)) blocksByNode.set(node, { row0: -1, row1: -1 });
-    const slot = blocksByNode.get(node);
-    if (isY) slot.row1 = i; else slot.row0 = i;
-  }
-  // Build the per-node packed block (4 DS scalars per node).
-  // For nodes that have only one free DOF (the other is constrained), use
-  // scalar Jacobi for that DOF.
   const numNodes = Math.ceil(numFree / 2);
   const out = new Float32Array(8 * numNodes);
-  let nodeSlot = 0;
-  for (const [, { row0, row1 }] of blocksByNode) {
-    let a = 0, b = 0, c = 0, d = 0;
-    // Read diagonal of row0 from CSR if available.
-    if (row0 >= 0) {
-      const begin = csrRowPtr[row0], end = csrRowPtr[row0 + 1];
-      for (let k = begin; k < end; k += 1) {
-        if (csrColInd[k] === row0) a = csrValHi[k] + csrValLo[k];
-        if (row1 >= 0 && csrColInd[k] === row1) b = csrValHi[k] + csrValLo[k];
-      }
+
+  // Look up K[row][col] from CSR; returns 0 if absent (sparsity says no entry).
+  const lookup = (row, col) => {
+    if (row < 0 || row >= numFree) return 0;
+    const begin = csrRowPtr[row];
+    const end = csrRowPtr[row + 1];
+    // Linear scan; row entries are typically O(20) for 2D FE.  A binary
+    // search is possible since columns are sorted ascending, but the
+    // overhead is rarely worth it at this size.
+    for (let k = begin; k < end; k += 1) {
+      if (csrColInd[k] === col) return csrValHi[k] + csrValLo[k];
     }
-    if (row1 >= 0) {
-      const begin = csrRowPtr[row1], end = csrRowPtr[row1 + 1];
-      for (let k = begin; k < end; k += 1) {
-        if (row0 >= 0 && csrColInd[k] === row0) c = csrValHi[k] + csrValLo[k];
-        if (csrColInd[k] === row1) d = csrValHi[k] + csrValLo[k];
+    return 0;
+  };
+
+  for (let i = 0; i < numNodes; i += 1) {
+    const row0 = 2 * i;
+    const row1 = 2 * i + 1;
+    const r1Valid = row1 < numFree;
+
+    const a = lookup(row0, row0);
+    const b = r1Valid ? lookup(row0, row1) : 0;
+    const c = r1Valid ? lookup(row1, row0) : 0;
+    const d = r1Valid ? lookup(row1, row1) : 0;
+
+    let A, B = 0, C = 0, D;
+    if (r1Valid) {
+      const det = a * d - b * c;
+      // Relative determinant test: SPD principal sub-block has det >> ε for
+      // any normal FE assembly.  Using a relative threshold (rather than
+      // absolute 1e-30) is more numerically appropriate when stiffnesses
+      // span many orders of magnitude.
+      const scale = Math.max(Math.abs(a) * Math.abs(d), 1);
+      if (Math.abs(det) > 1e-12 * scale) {
+        A = d / det;
+        B = -b / det;
+        C = -c / det;
+        D = a / det;
+      } else if (Math.abs(a) > 1e-30 && Math.abs(d) > 1e-30) {
+        // Degenerate det but both diagonals OK: use scalar Jacobi.
+        A = 1 / a;
+        D = 1 / d;
+      } else if (Math.abs(a) > 1e-30) {
+        A = 1 / a; D = 1;
+      } else if (Math.abs(d) > 1e-30) {
+        A = 1; D = 1 / d;
+      } else {
+        A = 1; D = 1;
       }
-    }
-    // Invert 2x2 if possible; else fall back to scalar.
-    const det = a * d - b * c;
-    let A, B, C, D;
-    if (Math.abs(det) > 1e-30 && row0 >= 0 && row1 >= 0) {
-      A = d / det; B = -b / det; C = -c / det; D = a / det;
-    } else if (row0 >= 0 && Math.abs(a) > 1e-30) {
-      A = 1 / a; B = 0; C = 0; D = (row1 >= 0 && Math.abs(d) > 1e-30) ? 1 / d : 1;
-    } else if (row1 >= 0 && Math.abs(d) > 1e-30) {
-      A = 1; B = 0; C = 0; D = 1 / d;
     } else {
-      A = 1; B = 0; C = 0; D = 1;
+      // Last pair slot, numFree odd — only row0 is a valid free DOF.
+      A = Math.abs(a) > 1e-30 ? 1 / a : 1;
+      D = 1;
     }
+
     const pack = (v, k) => {
       const hi = Math.fround(v);
       const lo = Math.fround(v - hi);
-      out[8 * nodeSlot + 2 * k] = hi;
-      out[8 * nodeSlot + 2 * k + 1] = lo;
+      out[8 * i + 2 * k] = hi;
+      out[8 * i + 2 * k + 1] = lo;
     };
     pack(A, 0); pack(B, 1); pack(C, 2); pack(D, 3);
-    nodeSlot += 1;
   }
   return out;
 }

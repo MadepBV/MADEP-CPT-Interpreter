@@ -6859,7 +6859,8 @@ function stage6BishopRunDeformation(){
         safetySigmaMsfMax:bishop.deformation?.options?.safetySigmaMsfMax,
         safetySigmaMsfBracketTolerance:bishop.deformation?.options?.safetySigmaMsfBracketTolerance,
         safetyMaxSearchTrials:bishop.deformation?.options?.safetyMaxSearchTrials,
-        useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true
+        useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true,
+        useNewGpuPipeline:bishop.deformation?.options?.useNewGpuPipeline === true
       }
     }
   });

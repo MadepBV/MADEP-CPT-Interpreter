@@ -932,7 +932,8 @@ function buildSolverResultFromGpuOutput({
 async function tryGpuFullDeformation({
   options, mesh, elementCaches, regionConstitutiveByRegion,
   fixedValues, gravityRhsFree, surfaceLoadRhsFree,
-  sigmaInitialF64, porePressureByIntegrationPoint, warnings
+  sigmaInitialF64, porePressureByIntegrationPoint, warnings,
+  onProgress = () => {}
 }) {
   if (options?.useNewGpuPipeline !== true) return null;
   // STRICT BY DESIGN.  When the toggle is on, the GPU path must run.  Any
@@ -964,7 +965,8 @@ async function tryGpuFullDeformation({
       sigmaInitialF64,
       porePressureByIntegrationPoint,
       options,
-      warnings
+      warnings,
+      onProgress
     });
   } catch (err) {
     console.error('[deformation] GPU pipeline threw:', err);
@@ -6086,6 +6088,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   const loadRhsFreeBase = gatherFreeVector(loadRhs, freeDofs);
   const totalExternalForceFree = addSolutionVectors(gravityCompressedRhs, loadRhsFreeBase);
   const nonlinearAssemblyPattern = buildCompressedAssemblyPattern(elementCaches, freeIndexByDof, freeDofs.length);
+
   const geostatic = await buildGeostaticInitialization(
     mesh,
     elementCaches,
@@ -6102,6 +6105,44 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     runControl,
     onProgress
   );
+
+  // ===========================================================================
+  // GPU FAST PATH.
+  //
+  // When `useNewGpuPipeline === true`, hand the analysis off to the GPU
+  // pipeline.  The GPU consumes `geostatic.initialField` (computed by the
+  // standard CPU prep above — same field both paths use) as the σ_initial
+  // seed, and runs the entire plastic Newton + load-staging + safety on
+  // device.
+  //
+  // Strict: any GPU failure throws (no silent CPU fallback).  Uncheck the
+  // toggle to reach the CPU path below.
+  // ===========================================================================
+  if (options?.useNewGpuPipeline === true) {
+    const sigmaInitialF64 = new Float64Array(6 * (geostatic.initialField || []).length);
+    for (let gp = 0; gp < (geostatic.initialField || []).length; gp += 1) {
+      const s6 = geostatic.initialField[gp] || [0, 0, 0, 0, 0, 0];
+      for (let k = 0; k < 6; k += 1) sigmaInitialF64[gp * 6 + k] = Number(s6[k]) || 0;
+    }
+    const gpuFull = await tryGpuFullDeformation({
+      options, mesh, elementCaches, regionConstitutiveByRegion,
+      fixedValues,
+      gravityRhsFree: gravityCompressedRhs,
+      surfaceLoadRhsFree: loadRhsFreeBase,
+      sigmaInitialF64,
+      porePressureByIntegrationPoint,
+      warnings,
+      onProgress
+    });
+    onProgress({ stage: 'post', percent: 96, message: 'Finalizing GPU deformation output...' });
+    return buildSolverResultFromGpuOutput({
+      gpuResult: gpuFull,
+      mesh, elementCaches, regionConstitutiveByRegion,
+      options, load, warnings,
+      analysisType, model, porePressureByElement
+    });
+  }
+
   const geostaticWorkflow = geostatic.workflow || resolveGeostaticInitializationWorkflow(model, options, analysisType);
   const wantsPlasticInitialEquilibrium = options.initialStressMode === 'plastic-geostatic';
   // Plastic geostatic equilibration runs only when the active plugin
@@ -6125,46 +6166,6 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       warnings,
       `Plastic geostatic equilibration is not supported by the ${samplePluginForPhase?.displayName || 'current'} material model, so the solver used the audited geostatic stress reference instead.`
     );
-  }
-
-  // ---------------------------------------------------------------------------
-  // FULL GPU PIPELINE HOOK
-  //
-  // When `options.useNewGpuPipeline === true` AND a WebGPU device is available
-  // AND the kernels run successfully, the entire plastic Newton (geostatic
-  // correction + staged surface load + optional c-φ safety) runs on the GPU.
-  // The GPU returns the final displacement and committed σ field; we use them
-  // to populate a complete solver result and return early — bypassing the CPU
-  // plastic Newton and surface-load loop entirely.
-  //
-  // Any failure (no WebGPU, kernel error, non-convergence) falls back to the
-  // CPU pipeline below; the CPU path is unchanged from before this hook.
-  // ---------------------------------------------------------------------------
-  {
-    // Flatten initialField to a Voigt-6 Float64Array for the GPU seed.
-    const sigmaInitialF64 = new Float64Array(6 * (geostatic.initialField || []).length);
-    for (let gp = 0; gp < (geostatic.initialField || []).length; gp += 1) {
-      const s6 = geostatic.initialField[gp] || [0, 0, 0, 0, 0, 0];
-      for (let k = 0; k < 6; k += 1) sigmaInitialF64[gp * 6 + k] = Number(s6[k]) || 0;
-    }
-    const gpuFull = await tryGpuFullDeformation({
-      options, mesh, elementCaches, regionConstitutiveByRegion,
-      fixedValues,
-      gravityRhsFree: gravityCompressedRhs,
-      surfaceLoadRhsFree: loadRhsFreeBase,
-      sigmaInitialF64,
-      porePressureByIntegrationPoint,
-      warnings
-    });
-    if (gpuFull) {
-      onProgress({ stage: 'post', percent: 96, message: 'Finalizing GPU deformation output...' });
-      return buildSolverResultFromGpuOutput({
-        gpuResult: gpuFull,
-        mesh, elementCaches, regionConstitutiveByRegion,
-        options, load, warnings,
-        analysisType, model, porePressureByElement
-      });
-    }
   }
 
   let initialPhase = {

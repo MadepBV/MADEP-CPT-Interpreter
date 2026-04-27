@@ -407,59 +407,87 @@ struct BuildBjParams { numNodes: u32, numFree: u32, _pad0: u32, _pad1: u32 };
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let n: u32 = gid.x;
   if (n >= params.numNodes) { return; }
+
+  // Pair-slot indexing — matches the block-Jacobi APPLY kernel.  Slot n
+  // covers free indices (2n, 2n+1) regardless of which geometric node
+  // those belong to.  When r1 maps to a different node than r0 (mixed-
+  // constraint mesh) the cross-coupling K[r0][r1] is structurally zero
+  // by sparsity, and the 2×2 inverse degenerates cleanly to scalar
+  // Jacobi — which is the correct preconditioner for unrelated DOFs.
   let r0: u32 = 2u * n;
   let r1: u32 = 2u * n + 1u;
+  let r1Valid: bool = r1 < params.numFree;
+
   let zero: vec2<f32> = vec2<f32>(0.0, 0.0);
+  let one:  vec2<f32> = vec2<f32>(1.0, 0.0);
   var a: vec2<f32> = zero;
   var b: vec2<f32> = zero;
   var c: vec2<f32> = zero;
   var d: vec2<f32> = zero;
-  // Scan row r0 for cols r0 (→ a) and r1 (→ b).
-  if (r0 < params.numFree) {
-    let begin: u32 = rowPtr[r0];
-    let end:   u32 = rowPtr[r0 + 1u];
-    for (var k: u32 = begin; k < end; k = k + 1u) {
-      let col: u32 = colInd[k];
-      let val: vec2<f32> = vec2<f32>(valHi[k], valLo[k]);
-      if (col == r0) { a = val; }
-      else if (r1 < params.numFree && col == r1) { b = val; }
-    }
+
+  // Scan row r0 for K[r0][r0] (-> a) and K[r0][r1] (-> b).
+  // Independent if-statements; no else-if chain (some WGSL backends
+  // optimize chained forms more conservatively).
+  let beg0: u32 = rowPtr[r0];
+  let end0: u32 = rowPtr[r0 + 1u];
+  for (var k: u32 = beg0; k < end0; k = k + 1u) {
+    let col: u32 = colInd[k];
+    let val: vec2<f32> = vec2<f32>(valHi[k], valLo[k]);
+    if (col == r0) { a = val; }
+    if (r1Valid && col == r1) { b = val; }
   }
-  // Scan row r1 for cols r0 (→ c) and r1 (→ d).
-  if (r1 < params.numFree) {
-    let begin: u32 = rowPtr[r1];
-    let end:   u32 = rowPtr[r1 + 1u];
-    for (var k: u32 = begin; k < end; k = k + 1u) {
+  // Scan row r1 for K[r1][r0] (→ c) and K[r1][r1] (→ d).
+  if (r1Valid) {
+    let beg1: u32 = rowPtr[r1];
+    let end1: u32 = rowPtr[r1 + 1u];
+    for (var k: u32 = beg1; k < end1; k = k + 1u) {
       let col: u32 = colInd[k];
       let val: vec2<f32> = vec2<f32>(valHi[k], valLo[k]);
       if (col == r1) { d = val; }
-      else if (r0 < params.numFree && col == r0) { c = val; }
+      if (col == r0) { c = val; }
     }
   }
-  // Invert 2×2 if non-degenerate; otherwise scalar Jacobi or identity.
-  let det: vec2<f32> = dsAdd(dsMul(a, d), dsNeg(dsMul(b, c)));
-  let oneId: vec2<f32> = vec2<f32>(1.0, 0.0);
-  var A: vec2<f32> = zero;
+
+  var A: vec2<f32> = one;
   var B: vec2<f32> = zero;
   var C: vec2<f32> = zero;
-  var D: vec2<f32> = zero;
-  if (abs(det.x) > 1e-30 && r1 < params.numFree) {
-    let invDet: vec2<f32> = dsRecip(det);
-    A = dsMul(d, invDet);
-    B = dsNeg(dsMul(b, invDet));
-    C = dsNeg(dsMul(c, invDet));
-    D = dsMul(a, invDet);
-  } else if (r0 < params.numFree && abs(a.x) > 1e-30) {
-    A = dsRecip(a);
-    if (r1 < params.numFree && abs(d.x) > 1e-30) { D = dsRecip(d); }
-    else { D = oneId; }
-  } else if (r1 < params.numFree && abs(d.x) > 1e-30) {
-    A = oneId;
-    D = dsRecip(d);
+  var D: vec2<f32> = one;
+
+  if (r1Valid) {
+    // Both rows valid.  SPD principal sub-block of an SPD K is itself
+    // SPD, so det = ad − bc is strictly positive in exact arithmetic.
+    // Use a RELATIVE threshold scaled by |a||d|: an absolute 1e-30 is
+    // not meaningful when stiffnesses scale with E ~ 1e6.
+    let det: vec2<f32> = dsAdd(dsMul(a, d), dsNeg(dsMul(b, c)));
+    let aMag: f32 = abs(a.x);
+    let dMag: f32 = abs(d.x);
+    let scale: f32 = max(aMag * dMag, 1.0);
+    if (abs(det.x) > 1e-12 * scale) {
+      let invDet: vec2<f32> = dsRecip(det);
+      A = dsMul(d, invDet);
+      B = dsNeg(dsMul(b, invDet));
+      C = dsNeg(dsMul(c, invDet));
+      D = dsMul(a, invDet);
+    } else if (aMag > 1e-30 && dMag > 1e-30) {
+      // Degenerate det but both diagonals OK — fall back to scalar
+      // Jacobi independently on each row.  This is the right thing
+      // when b ≈ ±√(ad) (highly correlated DOFs).
+      A = dsRecip(a);
+      D = dsRecip(d);
+    } else if (aMag > 1e-30) {
+      A = dsRecip(a);
+      D = one;
+    } else if (dMag > 1e-30) {
+      A = one;
+      D = dsRecip(d);
+    }
   } else {
-    A = oneId;
-    D = oneId;
+    // Last pair slot when numFree is odd — only r0 is a valid free DOF.
+    if (abs(a.x) > 1e-30) { A = dsRecip(a); }
+    // D = 1 (identity); the apply kernel writes z[2n+1] OOB and the
+    // write is silently dropped per WGSL spec.
   }
+
   blocks[n * 4u + 0u] = A;
   blocks[n * 4u + 1u] = B;
   blocks[n * 4u + 2u] = C;

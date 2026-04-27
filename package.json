@@ -18,7 +18,7 @@
 		"verify:bishop-phase-a": "node scripts/verify_bishop_phase_a_parity.mjs",
 		"verify:deformation-phase-1": "node scripts/verify_deformation_phase_1.mjs",
 		"verify:seepage-phase-2": "node scripts/verify_seepage_phase_2.mjs",
-		"verify:gpu": "node scripts/verify_gpu_pipeline.mjs && node scripts/verify_gpu_wgsl_syntax.mjs && node scripts/verify_gpu_e2e_parity.mjs && node scripts/verify_gpu_plastic_e2e.mjs",
+		"verify:gpu": "node scripts/verify_gpu_pipeline.mjs && node scripts/verify_gpu_wgsl_syntax.mjs && node scripts/verify_gpu_e2e_parity.mjs && node scripts/verify_gpu_plastic_e2e.mjs && node scripts/verify_gpu_block_jacobi_pair_slot.mjs",
 		"verify:integrated-plan": "node scripts/verify_integrated_plan.mjs"
 	},
 	"devDependencies": {

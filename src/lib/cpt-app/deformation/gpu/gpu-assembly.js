@@ -39,6 +39,7 @@ import {
   KERNEL_STRAIN_TO_TRIAL_STRESS_WGSL,
   KERNEL_COMMIT_STATE_WGSL
 } from './wgsl/plastic-trial.js';
+import { KERNEL_K0_RECOVERY_WGSL } from './resident-geostatic.js';
 
 const WG_SIZE = 64;
 
@@ -151,6 +152,18 @@ const BGL_COMMIT_STATE = { entries: [
   { binding: 6, type: 'uniform' }
 ]};
 
+// K0 stress recovery (Phase 0 of the GPU pipeline).  Reads strain at every
+// GP from a converged elastic gravity solve and writes σ_K0 directly to the
+// committed-σ buffer — replacing the CPU-side K0 recovery entirely.
+const BGL_K0_RECOVERY = { entries: [
+  { binding: 0, type: 'read-only-storage' },  // strain (Voigt-3 ε per GP)
+  { binding: 1, type: 'read-only-storage' },  // regionId per GP
+  { binding: 2, type: 'read-only-storage' },  // k0Regions (4 DS per material)
+  { binding: 3, type: 'read-only-storage' },  // porePressure per GP
+  { binding: 4, type: 'storage' },            // sigmaInitial output (binds to sigmaCommitted)
+  { binding: 5, type: 'uniform' }
+]};
+
 // =============================================================================
 // Per-pack assembly context.  Owns:
 //   - All compiled pipelines for the pack's element type.
@@ -194,7 +207,8 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
     scatterCsr: bgLayoutFromDescriptor(device, BGL_SCATTER_CSR),
     plasticTrial: bgLayoutFromDescriptor(device, BGL_PLASTIC_TRIAL),
     commitState:  bgLayoutFromDescriptor(device, BGL_COMMIT_STATE),
-    voigt6to3:    bgLayoutFromDescriptor(device, BGL_VOIGT6_TO_VOIGT3)
+    voigt6to3:    bgLayoutFromDescriptor(device, BGL_VOIGT6_TO_VOIGT3),
+    k0Recovery:   bgLayoutFromDescriptor(device, BGL_K0_RECOVERY)
   };
   const pipes = {
     strain:     compilePipeline(device, `gpu-strain-${elementType}`,     strainWgsl,                  layouts.strain),
@@ -205,7 +219,8 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
     scatterCsr: compilePipeline(device, 'gpu-scatter-csr',               KERNEL_SCATTER_CSR_WGSL,     layouts.scatterCsr),
     plasticTrial: compilePipeline(device, 'gpu-plastic-trial',           KERNEL_STRAIN_TO_TRIAL_STRESS_WGSL, layouts.plasticTrial),
     commitState:  compilePipeline(device, 'gpu-commit-state',            KERNEL_COMMIT_STATE_WGSL,    layouts.commitState),
-    voigt6to3:    compilePipeline(device, 'gpu-voigt6-to-3',             KERNEL_VOIGT6_TO_VOIGT3_STRESS_WGSL, layouts.voigt6to3)
+    voigt6to3:    compilePipeline(device, 'gpu-voigt6-to-3',             KERNEL_VOIGT6_TO_VOIGT3_STRESS_WGSL, layouts.voigt6to3),
+    k0Recovery:   compilePipeline(device, 'gpu-k0-recovery',             KERNEL_K0_RECOVERY_WGSL,     layouts.k0Recovery)
   };
 
   // -------------------------------------------------------------------------
@@ -249,7 +264,12 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
     // Trial state and tangent in physical Voigt-3 (xx, yy, xy) — emitted by
     // the MC kernel in plastic mode.
     tangentVoigt3:     8 * 9 * numGp,
-    sigmaTrialBuf:     8 * 6 * numGp
+    sigmaTrialBuf:     8 * 6 * numGp,
+    // Phase-0 K0 recovery: per-region K0/E/ν/γ (4 DS) + per-GP region id
+    // and pore pressure (already on pack).
+    k0Regions:         pack.k0RegionsPacked.byteLength,
+    regionIdBuf:       pack.regionId.byteLength,
+    porePressureBuf:   pack.porePressurePacked.byteLength
   };
 
   const usageRO  = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
@@ -287,6 +307,9 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
     uCommitted:      device.createBuffer({ size: bytes.uCommitted,      usage: usageRW }),
     tangentVoigt3:   device.createBuffer({ size: bytes.tangentVoigt3,   usage: usageRW }),
     sigmaTrialBuf:   device.createBuffer({ size: bytes.sigmaTrialBuf,   usage: usageRW }),
+    k0Regions:       device.createBuffer({ size: bytes.k0Regions,       usage: usageRO }),
+    regionIdBuf:     device.createBuffer({ size: bytes.regionIdBuf,     usage: usageRO }),
+    porePressureBuf: device.createBuffer({ size: bytes.porePressureBuf, usage: usageRO }),
     // Uniforms.
     paramsStrain: device.createBuffer({ size: 32, usage: usageU }),
     paramsMc:     device.createBuffer({ size: 32, usage: usageU }),
@@ -295,7 +318,8 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
     paramsRhsScat:device.createBuffer({ size: 32, usage: usageU }),
     paramsCsrScat:device.createBuffer({ size: 32, usage: usageU }),
     paramsTrial:  device.createBuffer({ size: 32, usage: usageU }),
-    paramsCommit: device.createBuffer({ size: 32, usage: usageU })
+    paramsCommit: device.createBuffer({ size: 32, usage: usageU }),
+    paramsK0:     device.createBuffer({ size: 32, usage: usageU })
   };
 
   // -------------------------------------------------------------------------
@@ -310,6 +334,9 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
   device.queue.writeBuffer(buffers.forceIncList, 0, pack.forceIncList);
   device.queue.writeBuffer(buffers.csrIncPtr,    0, pack.csrIncPtr);
   device.queue.writeBuffer(buffers.csrIncList,   0, pack.csrIncList);
+  device.queue.writeBuffer(buffers.k0Regions,    0, pack.k0RegionsPacked);
+  device.queue.writeBuffer(buffers.regionIdBuf,  0, pack.regionId);
+  device.queue.writeBuffer(buffers.porePressureBuf, 0, pack.porePressurePacked);
 
   // -------------------------------------------------------------------------
   // Write static uniform values once (each one is a u32 count + padding).
@@ -327,6 +354,7 @@ export function createGpuAssemblyContext({ device, pack, elementType }) {
   writeU32Uniform(buffers.paramsCsrScat,nnz);
   writeU32Uniform(buffers.paramsTrial,  numGp);
   writeU32Uniform(buffers.paramsCommit, numGp);
+  writeU32Uniform(buffers.paramsK0,     numGp);
 
   return {
     device,
@@ -885,6 +913,60 @@ export function recordCommitState(ctx, encoder) {
 // Implemented via copyBufferToBuffer (no kernel needed).
 export function recordCommitDisplacement(ctx, encoder) {
   encoder.copyBufferToBuffer(ctx.buffers.uvec, 0, ctx.buffers.uCommitted, 0, 8 * ctx.sizes.numFree);
+}
+
+// =============================================================================
+// On-device K0 stress recovery (Phase 0 of the GPU pipeline).
+//
+// Reads the strain at every Gauss point (left in `ctx.buffers.strain` by the
+// most recent strain dispatch) and writes σ_K0 directly into σ_committed —
+// replacing the CPU-side `recoverInitialFieldFromGeostaticSolution` step.
+// =============================================================================
+export function recordK0Recovery(ctx, encoder) {
+  const { device, pipes, buffers, sizes } = ctx;
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipes.k0Recovery.pipeline);
+  pass.setBindGroup(0, bg(device, pipes.k0Recovery.bgLayout, [
+    bge(0, buffers.strain),
+    bge(1, buffers.regionIdBuf),
+    bge(2, buffers.k0Regions),
+    bge(3, buffers.porePressureBuf),
+    bge(4, buffers.sigmaCommitted),     // direct write into committed σ
+    bge(5, buffers.paramsK0)
+  ]));
+  pass.dispatchWorkgroups(sizes.numWgGp);
+  pass.end();
+}
+
+// =============================================================================
+// Record only the strain kernel (used after a converged elastic gravity
+// solve, just before K0 recovery, to ensure the strain buffer reflects the
+// current u_committed/uvec).
+// =============================================================================
+export function recordStrainOnly(ctx, encoder) {
+  const { device, pipes, buffers, sizes } = ctx;
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipes.strain.pipeline);
+  pass.setBindGroup(0, bg(device, pipes.strain.bgLayout, [
+    bge(0, buffers.uvec),
+    bge(1, buffers.bMatrices),
+    bge(2, buffers.dofMap),
+    bge(3, buffers.strain),
+    bge(4, buffers.paramsStrain)
+  ]));
+  pass.dispatchWorkgroups(sizes.numWgGp);
+  pass.end();
+}
+
+// Reset uvec ← 0 on device.  Used after K0 recovery: σ_K0 corresponds to
+// the engineer's reference state with u = 0, so we discard the elastic
+// gravity displacement that produced σ_K0.
+export function recordZeroUvec(ctx, encoder) {
+  // copyBufferToBuffer can't write zeros directly; we use the
+  // already-zeroed uCommitted buffer (which is zeroed at clearCommittedState
+  // before Phase 0 runs).  This is safe because Phase 0 hasn't committed
+  // anything yet, so uCommitted is still 0.
+  encoder.copyBufferToBuffer(ctx.buffers.uCommitted, 0, ctx.buffers.uvec, 0, 8 * ctx.sizes.numFree);
 }
 
 function recordElasticAssemblyTail(ctx, encoder) {
