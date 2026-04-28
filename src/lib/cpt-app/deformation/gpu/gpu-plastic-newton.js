@@ -37,10 +37,10 @@ import {
   uploadDisplacement
 } from './gpu-assembly.js';
 import {
-  uploadDsCsr, uploadDsVector, solveResidentCg,
-  dispatchAxpyExternal, dispatchCopyExternal,
-  dispatchBuildBlockJacobiFromCsr, computeDotExternal
+  uploadDsCsr, uploadDsVector, uploadBlockJacobi, solveResidentCg,
+  dispatchAxpyExternal, dispatchCopyExternal, computeDotExternal
 } from './resident-cg.js';
+import { buildBlockJacobiPackForFreeDofs } from './gpu-mesh-pack.js';
 import { dsFromF64 } from './wgsl/ds.js';
 
 export async function runPlasticNewtonOnGpu({
@@ -92,14 +92,30 @@ export async function runPlasticNewtonOnGpu({
       recordResidualAndTangentPlastic(asmCtx, enc);
       device.queue.submit([enc.finish()]);
     }
+    // Copy assembled CSR values device-to-device, then read back to host
+    // briefly to build the block-Jacobi using the SAME mathematical contract
+    // as the CPU `buildBlockJacobiPreconditioner` (nodal-pair detection +
+    // scalar-Jacobi fallback for cross-node pairs).  Going via host-side
+    // pack costs one readback per Newton iter but produces the correct
+    // preconditioner — without it CG stagnates on any mesh with partial
+    // constraints.
     {
       const enc = device.createCommandEncoder();
-      // Device-to-device: assembled CSR values into the CG matrix slot.
       enc.copyBufferToBuffer(asmCtx.buffers.csrValHi, 0, cgCtx.buffers.valHi, 0, nnzBytes);
       enc.copyBufferToBuffer(asmCtx.buffers.csrValLo, 0, cgCtx.buffers.valLo, 0, nnzBytes);
-      // GPU block-Jacobi build from CSR.
-      dispatchBuildBlockJacobiFromCsr(cgCtx, enc);
       device.queue.submit([enc.finish()]);
+    }
+    {
+      const csrValHi = await readbackBuffer(device, cgCtx.buffers.valHi, nnzBytes);
+      const csrValLo = await readbackBuffer(device, cgCtx.buffers.valLo, nnzBytes);
+      const blockJacobiPacked = buildBlockJacobiPackForFreeDofs({
+        freeDofs: asmCtx.pack.freeDofs,
+        csrRowPtr: asmCtx.pack.csrRowPtr,
+        csrColInd: asmCtx.pack.csrColInd,
+        csrValHi,
+        csrValLo
+      });
+      uploadBlockJacobi(cgCtx, blockJacobiPacked);
     }
     {
       const enc = device.createCommandEncoder();
@@ -218,6 +234,20 @@ export async function runPlasticNewtonOnGpu({
   const finalSq = await computeDotExternal(cgCtx, cgCtx.buffers.r, cgCtx.buffers.r);
   const finalNorm = Math.sqrt(Math.max(finalSq, 0));
   return makeNewtonResult({ converged: false, iter: maxIter, residualNorm: finalNorm, history, asmCtx, reason: 'max-iter' });
+}
+
+// Read a Float32 typed-array snapshot of a device buffer.  Used per Newton
+// iter to pull the assembled CSR values for the host-side block-Jacobi pack.
+async function readbackBuffer(device, srcBuffer, byteLength) {
+  const out = device.createBuffer({ size: byteLength, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  const enc = device.createCommandEncoder();
+  enc.copyBufferToBuffer(srcBuffer, 0, out, 0, byteLength);
+  device.queue.submit([enc.finish()]);
+  await out.mapAsync(GPUMapMode.READ);
+  const arr = new Float32Array(out.getMappedRange().slice(0));
+  out.unmap();
+  out.destroy();
+  return arr;
 }
 
 function makeNewtonResult({ converged, iter, residualNorm, history, asmCtx, reason }) {

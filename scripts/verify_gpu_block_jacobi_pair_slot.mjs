@@ -50,8 +50,13 @@ function buildCsrFromTriplets(numFree, triplets) {
   return { rowPtr, colInd, valHi, valLo };
 }
 
-// Verify the pack: for each pair slot i, M_i · K[(2i,2i+1); (2i,2i+1)] ≈ I.
-function verifyPackMatchesInverse({ packed, freeDofs, csr, label }) {
+// Verify the pack matches the CPU's block-Jacobi mathematical contract:
+// for each pair slot i, the block (A, B, C, D) satisfies:
+//   - If freeDofs[2i] and freeDofs[2i+1] are the (x, y) of the same node:
+//       M·K = I (true 2×2 nodal block-Jacobi).
+//   - Otherwise (cross-node pair, or solitary):
+//       A = 1/diag(row0), D = 1/diag(row1), B = C = 0  (scalar Jacobi).
+function verifyPackMatchesContract({ packed, freeDofs, csr, label }) {
   const numFree = freeDofs.length;
   const numNodes = Math.ceil(numFree / 2);
   const lookup = (r, c) => {
@@ -68,30 +73,33 @@ function verifyPackMatchesInverse({ packed, freeDofs, csr, label }) {
     const row0 = 2 * i;
     const row1 = 2 * i + 1;
     const r1Valid = row1 < numFree;
-    // Read packed M_i.
     const A = packed[8 * i + 0] + packed[8 * i + 1];
     const B = packed[8 * i + 2] + packed[8 * i + 3];
     const C = packed[8 * i + 4] + packed[8 * i + 5];
     const D = packed[8 * i + 6] + packed[8 * i + 7];
-    // Read K[(row0..1); (row0..1)].
+    const dof0 = freeDofs[row0];
+    const dof1 = r1Valid ? freeDofs[row1] : -1;
+    const isNodalPair = r1Valid && (dof0 % 2 === 0) && (dof1 === dof0 + 1);
     const a = lookup(row0, row0);
-    const b = r1Valid ? lookup(row0, row1) : 0;
-    const c = r1Valid ? lookup(row1, row0) : 0;
     const d = r1Valid ? lookup(row1, row1) : 0;
-    // M · K  (2×2 product).  Should be I_{2×2} when both DOFs are valid.
-    const m00 = A * a + B * c;
-    const m01 = A * b + B * d;
-    const m10 = C * a + D * c;
-    const m11 = C * b + D * d;
-    if (r1Valid) {
-      // Both DOFs valid: M = K^{-1}, so M·K = I.
+    if (isNodalPair) {
+      // True nodal pair → M·K = I_{2×2}.
+      const b = lookup(row0, row1);
+      const c = lookup(row1, row0);
+      const m00 = A * a + B * c;
+      const m01 = A * b + B * d;
+      const m10 = C * a + D * c;
+      const m11 = C * b + D * d;
       maxErr = Math.max(maxErr, Math.abs(m00 - 1), Math.abs(m11 - 1), Math.abs(m01), Math.abs(m10));
+    } else if (r1Valid) {
+      // Cross-node pair → independent scalar Jacobi.
+      maxErr = Math.max(maxErr, Math.abs(A - 1 / a), Math.abs(D - 1 / d), Math.abs(B), Math.abs(C));
     } else {
-      // Only row0 valid: M is scalar 1/a in slot A; D=1 (unused).
-      maxErr = Math.max(maxErr, Math.abs(m00 - 1));
+      // Solitary slot.
+      maxErr = Math.max(maxErr, Math.abs(A - 1 / a), Math.abs(B), Math.abs(C));
     }
   }
-  check(`${label}: M_i · K[(2i,2i+1); (2i,2i+1)] ≈ I (max err < 1e-6)`,
+  check(`${label}: pack matches CPU contract (nodal-pair → 2×2 inverse; cross-node → scalar)`,
         maxErr < 1e-6, `max err = ${maxErr.toExponential(3)}`);
 }
 
@@ -114,7 +122,7 @@ process.stdout.write('\n=== Block-Jacobi pair-slot indexing — fully-free mesh 
     freeDofs, csrRowPtr: csr.rowPtr, csrColInd: csr.colInd, csrValHi: csr.valHi, csrValLo: csr.valLo
   });
   check('packed length is 8 × ceil(numFree/2) = 32', packed.length === 32);
-  verifyPackMatchesInverse({ packed, freeDofs, csr, label: 'fully-free' });
+  verifyPackMatchesContract({ packed, freeDofs, csr, label: 'fully-free' });
 }
 
 // ---------------------------------------------------------------------------
@@ -156,21 +164,23 @@ process.stdout.write('\n=== Block-Jacobi pair-slot indexing — mixed-constraint
   });
   // numNodes = ceil(5/2) = 3.  packed length = 8 × 3 = 24.
   check('packed length is 8 × ceil(5/2) = 24', packed.length === 24);
-  verifyPackMatchesInverse({ packed, freeDofs, csr, label: 'mixed-constraint' });
-  // Specific case: pair slot 0 spans free indices (0, 1) — different nodes.
-  // The 2×2 K sub-block is [[10, -1], [-1, 11]], det = 109.  Inverse:
-  // [[11/109, 1/109], [1/109, 10/109]].
+  verifyPackMatchesContract({ packed, freeDofs, csr, label: 'mixed-constraint' });
+  // Specific case: pair slot 0 spans free indices (0, 1) — DIFFERENT nodes
+  // (free index 0 = node 1's x-DOF, free index 1 = node 2's x-DOF).
+  // freeDofs[0] = 2 (even — could be x of some node), freeDofs[1] = 4
+  // (NOT freeDofs[0] + 1).  Therefore NOT a nodal pair → scalar Jacobi:
+  // A = 1/K[0][0] = 1/10,  D = 1/K[1][1] = 1/11,  B = C = 0.
   const A = packed[0] + packed[1];
   const B = packed[2] + packed[3];
   const C = packed[4] + packed[5];
   const D = packed[6] + packed[7];
-  const expA = 11 / 109, expB = 1 / 109, expC = 1 / 109, expD = 10 / 109;
-  const err = Math.max(
-    Math.abs(A - expA), Math.abs(B - expB),
-    Math.abs(C - expC), Math.abs(D - expD)
-  );
-  check('pair slot 0 (cross-node) inverse matches analytic [11,1;1,10]/109',
-        err < 1e-6, `max err = ${err.toExponential(2)}`);
+  check('pair slot 0 (cross-node) is scalar Jacobi: A = 1/10',
+        Math.abs(A - 1 / 10) < 1e-6, `A = ${A.toFixed(6)}`);
+  check('pair slot 0 (cross-node) is scalar Jacobi: D = 1/11',
+        Math.abs(D - 1 / 11) < 1e-6, `D = ${D.toFixed(6)}`);
+  check('pair slot 0 (cross-node) B = 0 (no spurious coupling)',
+        Math.abs(B) < 1e-12 && Math.abs(C) < 1e-12,
+        `B = ${B.toExponential(2)}, C = ${C.toExponential(2)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -195,7 +205,7 @@ process.stdout.write('\n=== Block-Jacobi pair-slot indexing — odd numFree ===\
   const D1 = packed[8 + 6] + packed[8 + 7];
   check('odd numFree: last slot A = 1/11', Math.abs(A1 - 1 / 11) < 1e-6);
   check('odd numFree: last slot D = 1 (identity)', Math.abs(D1 - 1) < 1e-6);
-  verifyPackMatchesInverse({ packed, freeDofs, csr, label: 'odd-numFree' });
+  verifyPackMatchesContract({ packed, freeDofs, csr, label: 'odd-numFree' });
 }
 
 // ---------------------------------------------------------------------------

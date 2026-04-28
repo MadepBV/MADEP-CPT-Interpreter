@@ -346,51 +346,42 @@ export function unpackFreeDofVector(packed) {
 }
 
 // =============================================================================
-// Block-Jacobi 2×2 inverse pack from the assembled CSR (pair-slot indexing).
+// Block-Jacobi 2×2 inverse pack from the assembled CSR.
 //
-// CRITICAL CONVENTION: This function and the WGSL apply kernel
-// (KERNEL_BLOCK_JACOBI_WGSL) BOTH use **pair-slot indexing** — slot `i`
-// covers free indices (2i, 2i+1), regardless of which geometric node those
-// belong to.  This convention matches the apply kernel's `r[2n], r[2n+1]`
-// reads and is correct on any mesh — including meshes where some geometric
-// nodes have only one free DOF (rollers, prescribed displacement on one
-// direction, etc.).
+// MATHEMATICAL CONTRACT (matches solver.js's CPU-side
+// `buildBlockJacobiPreconditioner` exactly):
 //
-// For each pair slot i:
-//   - row0 = 2i, row1 = 2i + 1 (free-row indices into the assembled CSR).
-//   - Look up M = K[row0..row0+1; row0..row0+1] from CSR.  When the
-//     cross-coupling K[row0][row1] is structurally absent (no shared
-//     element between those two free DOFs), it is exactly zero and the
-//     2×2 inverse degenerates to scalar Jacobi on the diagonal — which is
-//     the correct preconditioner for unrelated DOFs.
-//   - Invert M.  The 2×2 sub-block of an SPD matrix is itself SPD, so
-//     det = ad - bc > 0 and the inverse exists.
+//   For each pair slot i, examine `freeDofs[2i]` and `freeDofs[2i+1]`:
+//     • If they are the (x, y) DOFs of the SAME geometric node — i.e.
+//       freeDofs[2i] is even AND freeDofs[2i+1] === freeDofs[2i] + 1 —
+//       this is a TRUE NODAL PAIR: invert the 2×2 sub-block of K to get a
+//       genuine nodal block-Jacobi.
+//     • Otherwise (cross-node pair, or last pair slot is solitary):
+//       use SCALAR JACOBI on each row independently — A = 1/diag(row0),
+//       D = 1/diag(row1), B = C = 0.
 //
-// Edge cases:
-//   - row1 = numFree (last pair slot when numFree is odd): only row0 is a
-//     valid free DOF.  Use scalar Jacobi A = 1/a, leave B = C = 0, D = 1
-//     (D is read but the apply kernel writes z[2*i+1] which is OOB by one
-//     and silently dropped by WGSL — harmless).
-//   - Singular row0 diagonal: identity fallback (should never happen for a
-//     well-posed FE assembly).
+// Why this matters: cross-node pair slots arise on every mesh that has
+// any partial constraint (rollers, symmetry, prescribed displacement on
+// one direction).  Inverting the cross-node 2×2 IS mathematically valid
+// (the sub-block is SPD), but it introduces spurious coupling between
+// unrelated DOFs that ruins CG convergence rate — observed empirically
+// as 20,000+ iters with no progress on a problem the CPU CG solves in
+// 600.  The fix is to use the SAME selection rule as the CPU.
 //
-// Pre-condition: rowPtr/colInd/valHi/valLo describe a CSR over `numFree`
-// rows, with sorted-ascending column indices per row (which buildCsrPattern
-// guarantees).
+// Output layout: 4 DS scalars per pair slot (A, B, C, D), totalling
+// 8 × ceil(numFree/2) Float32 entries.  The apply kernel computes:
+//   z[2i]   = A · r[2i] + B · r[2i+1]
+//   z[2i+1] = C · r[2i] + D · r[2i+1]
 // =============================================================================
 export function buildBlockJacobiPackForFreeDofs({ freeDofs, csrRowPtr, csrColInd, csrValHi, csrValLo }) {
   const numFree = freeDofs.length;
   const numNodes = Math.ceil(numFree / 2);
   const out = new Float32Array(8 * numNodes);
 
-  // Look up K[row][col] from CSR; returns 0 if absent (sparsity says no entry).
   const lookup = (row, col) => {
     if (row < 0 || row >= numFree) return 0;
     const begin = csrRowPtr[row];
     const end = csrRowPtr[row + 1];
-    // Linear scan; row entries are typically O(20) for 2D FE.  A binary
-    // search is possible since columns are sorted ascending, but the
-    // overhead is rarely worth it at this size.
     for (let k = begin; k < end; k += 1) {
       if (csrColInd[k] === col) return csrValHi[k] + csrValLo[k];
     }
@@ -401,39 +392,40 @@ export function buildBlockJacobiPackForFreeDofs({ freeDofs, csrRowPtr, csrColInd
     const row0 = 2 * i;
     const row1 = 2 * i + 1;
     const r1Valid = row1 < numFree;
-
-    const a = lookup(row0, row0);
-    const b = r1Valid ? lookup(row0, row1) : 0;
-    const c = r1Valid ? lookup(row1, row0) : 0;
-    const d = r1Valid ? lookup(row1, row1) : 0;
+    const dof0 = Number(freeDofs[row0]);
+    const dof1 = r1Valid ? Number(freeDofs[row1]) : -1;
+    const isNodalPair = r1Valid
+      && Number.isFinite(dof0)
+      && Number.isFinite(dof1)
+      && (dof0 % 2 === 0)
+      && (dof1 === dof0 + 1);
 
     let A, B = 0, C = 0, D;
-    if (r1Valid) {
+    const a = lookup(row0, row0);
+    if (isNodalPair) {
+      const b = lookup(row0, row1);
+      const c = lookup(row1, row0);
+      const d = lookup(row1, row1);
       const det = a * d - b * c;
-      // Relative determinant test: SPD principal sub-block has det >> ε for
-      // any normal FE assembly.  Using a relative threshold (rather than
-      // absolute 1e-30) is more numerically appropriate when stiffnesses
-      // span many orders of magnitude.
       const scale = Math.max(Math.abs(a) * Math.abs(d), 1);
       if (Math.abs(det) > 1e-12 * scale) {
-        A = d / det;
-        B = -b / det;
-        C = -c / det;
-        D = a / det;
+        A = d / det; B = -b / det; C = -c / det; D = a / det;
       } else if (Math.abs(a) > 1e-30 && Math.abs(d) > 1e-30) {
-        // Degenerate det but both diagonals OK: use scalar Jacobi.
-        A = 1 / a;
-        D = 1 / d;
-      } else if (Math.abs(a) > 1e-30) {
-        A = 1 / a; D = 1;
-      } else if (Math.abs(d) > 1e-30) {
-        A = 1; D = 1 / d;
+        // Block degenerate but diagonals OK — scalar Jacobi each.
+        A = 1 / a; D = 1 / d;
       } else {
-        A = 1; D = 1;
+        A = (Math.abs(a) > 1e-30) ? 1 / a : 1;
+        D = (Math.abs(d) > 1e-30) ? 1 / d : 1;
       }
+    } else if (r1Valid) {
+      // Cross-node or otherwise non-nodal pair — independent scalar Jacobi
+      // (do NOT invert the 2×2 cross-block; it ruins CG conditioning).
+      const d = lookup(row1, row1);
+      A = (Math.abs(a) > 1e-30) ? 1 / a : 1;
+      D = (Math.abs(d) > 1e-30) ? 1 / d : 1;
     } else {
-      // Last pair slot, numFree odd — only row0 is a valid free DOF.
-      A = Math.abs(a) > 1e-30 ? 1 / a : 1;
+      // Solitary slot (last pair slot when numFree is odd).
+      A = (Math.abs(a) > 1e-30) ? 1 / a : 1;
       D = 1;
     }
 
