@@ -1493,11 +1493,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let gp: u32 = gid.x;
   if (gp >= params.numGp) { return; }
 
-  // Load trial stress (Voigt-6).
-  let sxx: vec2<f32> = sigmaTrial[gp * 6u + 0u];
-  let syy: vec2<f32> = sigmaTrial[gp * 6u + 1u];
-  let szz: vec2<f32> = sigmaTrial[gp * 6u + 2u];
-  let sxy: vec2<f32> = sigmaTrial[gp * 6u + 3u];
+  // Load trial stress (Voigt-6) and negate to convert from the rest of
+  // the pipeline's tension-positive convention (CPU's effectiveStress6,
+  // and what the strain + plastic-trial kernels propagate) to the
+  // compression-positive convention used by the MC return-mapping math
+  // below (yield surfaces, cap violations, principal sort).  The dual
+  // negation at the sigmaReturned write site below restores the
+  // pipeline-wide tension-positive output.  Tangent (tangentVoigt3) is
+  // sign-invariant — dσ/dε flips both numerator and denominator, so no
+  // adjustment is needed there.
+  let sxx: vec2<f32> = dsNeg(sigmaTrial[gp * 6u + 0u]);
+  let syy: vec2<f32> = dsNeg(sigmaTrial[gp * 6u + 1u]);
+  let szz: vec2<f32> = dsNeg(sigmaTrial[gp * 6u + 2u]);
+  let sxy: vec2<f32> = dsNeg(sigmaTrial[gp * 6u + 3u]);
 
   // Load material params.
   let mi: u32 = matIndex[gp];
@@ -1831,10 +1839,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
   }
 
-  // Rotate principal-space sigma back to Voigt-6.
+  // Rotate principal-space sigma back to Voigt-6 and negate to restore
+  // the pipeline-wide tension-positive convention (the MC math above
+  // operated in compression-positive — see the dsNeg at sigmaTrial
+  // load for the matched entry-side sign flip).
   let voigt: array<vec2<f32>, 6> = principalToVoigt6(sigmaOut, rec);
   for (var k: u32 = 0u; k < 6u; k = k + 1u) {
-    sigmaReturned[gp * 6u + k] = voigt[k];
+    sigmaReturned[gp * 6u + k] = dsNeg(voigt[k]);
   }
   branchKind[gp] = branch;
   for (var k: u32 = 0u; k < 9u; k = k + 1u) {

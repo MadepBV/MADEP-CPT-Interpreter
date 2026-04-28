@@ -825,7 +825,8 @@ async function solveCgDispatched(rows, rhs, initial, maxIter, relTol, absTol, ru
 // from σ_committed at every Gauss point.
 function buildSolverResultFromGpuOutput({
   gpuResult, mesh, elementCaches, regionConstitutiveByRegion,
-  options, load, warnings, analysisType, model, porePressureByElement
+  options, load, warnings, analysisType, model, porePressureByElement,
+  startedAt = null
 }) {
   const ndof = 2 * mesh.nodes.length;
   const uFull = gpuResult.uFullF64 || new Float64Array(ndof);
@@ -925,6 +926,16 @@ function buildSolverResultFromGpuOutput({
       gpuSafety: gpuResult.safety || null,
       gpuElapsedMs: gpuResult.elapsedMsGpu || null,
       gpuAdapterInfo: gpuResult.adapterInfo || null
+    },
+    // Same shape and scope as the CPU return at the bottom of
+    // `_analyzeDeformationModelImpl` so the UI's
+    // `deformation.result.timing.totalMs` reads on both paths.  Covers
+    // mesh build + CPU K0 recovery + GPU pipeline + post-processing,
+    // not just the GPU pipeline itself (`solver.gpuElapsedMs` carries
+    // the kernel-only number for users that want to break the two
+    // apart).
+    timing: {
+      totalMs: startedAt != null ? performance.now() - startedAt : null
     }
   };
 }
@@ -6124,8 +6135,31 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       const s6 = geostatic.initialField[gp] || [0, 0, 0, 0, 0, 0];
       for (let k = 0; k < 6; k += 1) sigmaInitialF64[gp * 6 + k] = Number(s6[k]) || 0;
     }
+    // Derive the effective `useUnsymmetricPlasticSolver` flag exactly the
+    // way `_runPlasticPhase` does for the CPU path (`mayNeedUnsymmetricSolver`,
+    // lines ~3337-3360 above).  The UI checkbox is opt-in and undefined by
+    // default → forwarded as `false` by legacy-controller.js, so without
+    // this derivation the GPU pipeline silently picks CG even for
+    // Mohr-Coulomb with non-associated flow (φ ≠ ψ) — and CG cannot
+    // converge on the resulting non-SPD consistent tangent.  We OR the
+    // material-capability-derived decision with the explicit option, so
+    // the user can still force GMRES when desired.
+    const samplePluginForGpu = (() => {
+      for (const c of regionConstitutiveByRegion.values()) {
+        if (c?.materialModel?.capabilities) return c.materialModel;
+      }
+      return null;
+    })();
+    const gpuCapabilities = samplePluginForGpu?.capabilities || {};
+    const gpuAnyRegionAsymmetric = [...regionConstitutiveByRegion.values()]
+      .some((c) => c?.materialParameters?.symmetrizeEpTangent !== true);
+    const gpuExactPlasticTangentMayBeUnsymmetric =
+      gpuCapabilities.algorithmicTangentMayBeUnsymmetric === true && gpuAnyRegionAsymmetric;
+    const useUnsymmetricForGpu =
+      gpuExactPlasticTangentMayBeUnsymmetric || options?.useUnsymmetricPlasticSolver === true;
+    const gpuOptions = { ...options, useUnsymmetricPlasticSolver: useUnsymmetricForGpu };
     const gpuFull = await tryGpuFullDeformation({
-      options, mesh, elementCaches, regionConstitutiveByRegion,
+      options: gpuOptions, mesh, elementCaches, regionConstitutiveByRegion,
       fixedValues,
       gravityRhsFree: gravityCompressedRhs,
       surfaceLoadRhsFree: loadRhsFreeBase,
@@ -6139,7 +6173,8 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       gpuResult: gpuFull,
       mesh, elementCaches, regionConstitutiveByRegion,
       options, load, warnings,
-      analysisType, model, porePressureByElement
+      analysisType, model, porePressureByElement,
+      startedAt
     });
   }
 

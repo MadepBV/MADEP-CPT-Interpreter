@@ -396,12 +396,13 @@ ${DS_WGSL}
 
 struct BuildBjParams { numNodes: u32, numFree: u32, _pad0: u32, _pad1: u32 };
 
-@group(0) @binding(0) var<storage, read>       rowPtr: array<u32>;
-@group(0) @binding(1) var<storage, read>       colInd: array<u32>;
-@group(0) @binding(2) var<storage, read>       valHi:  array<f32>;
-@group(0) @binding(3) var<storage, read>       valLo:  array<f32>;
-@group(0) @binding(4) var<storage, read_write> blocks: array<vec2<f32>>;   // 4 DS per node
-@group(0) @binding(5) var<uniform>             params: BuildBjParams;
+@group(0) @binding(0) var<storage, read>       rowPtr:      array<u32>;
+@group(0) @binding(1) var<storage, read>       colInd:      array<u32>;
+@group(0) @binding(2) var<storage, read>       valHi:       array<f32>;
+@group(0) @binding(3) var<storage, read>       valLo:       array<f32>;
+@group(0) @binding(4) var<storage, read_write> blocks:      array<vec2<f32>>;   // 4 DS per slot
+@group(0) @binding(5) var<storage, read>       pairIsNodal: array<u32>;          // 1 = nodal pair, 0 = cross-node / solitary
+@group(0) @binding(6) var<uniform>             params:      BuildBjParams;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -409,14 +410,23 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (n >= params.numNodes) { return; }
 
   // Pair-slot indexing — matches the block-Jacobi APPLY kernel.  Slot n
-  // covers free indices (2n, 2n+1) regardless of which geometric node
-  // those belong to.  When r1 maps to a different node than r0 (mixed-
-  // constraint mesh) the cross-coupling K[r0][r1] is structurally zero
-  // by sparsity, and the 2×2 inverse degenerates cleanly to scalar
-  // Jacobi — which is the correct preconditioner for unrelated DOFs.
+  // covers free indices (2n, 2n+1).  Whether the pair is a true nodal
+  // pair (the x and y DOFs of one geometric node) or a cross-node pair
+  // (two unrelated free DOFs that happen to be packed adjacently because
+  // of constraints) is precomputed in pairIsNodal[n] by the host pack.
+  //
+  //   pairIsNodal[n] = 1  →  invert the full 2×2 [a,b;c,d] sub-block.
+  //   pairIsNodal[n] = 0  →  scalar Jacobi: A = 1/a, D = 1/d, B = C = 0.
+  //
+  // This matches the CPU buildBlockJacobiPreconditioner exactly and is
+  // critical: forcing a 2×2 inverse for cross-node slots introduces
+  // spurious coupling between unrelated DOFs that empirically ruins CG
+  // convergence rate (20,000+ iters with no progress on problems CPU
+  // solves in 600).
   let r0: u32 = 2u * n;
   let r1: u32 = 2u * n + 1u;
   let r1Valid: bool = r1 < params.numFree;
+  let isNodal: bool = pairIsNodal[n] != 0u;
 
   let zero: vec2<f32> = vec2<f32>(0.0, 0.0);
   let one:  vec2<f32> = vec2<f32>(1.0, 0.0);
@@ -425,18 +435,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   var c: vec2<f32> = zero;
   var d: vec2<f32> = zero;
 
-  // Scan row r0 for K[r0][r0] (-> a) and K[r0][r1] (-> b).
-  // Independent if-statements; no else-if chain (some WGSL backends
-  // optimize chained forms more conservatively).
+  // Scan row r0 for K[r0][r0] (→ a) and (only if nodal+valid) K[r0][r1] (→ b).
   let beg0: u32 = rowPtr[r0];
   let end0: u32 = rowPtr[r0 + 1u];
   for (var k: u32 = beg0; k < end0; k = k + 1u) {
     let col: u32 = colInd[k];
     let val: vec2<f32> = vec2<f32>(valHi[k], valLo[k]);
     if (col == r0) { a = val; }
-    if (r1Valid && col == r1) { b = val; }
+    if (r1Valid && isNodal && col == r1) { b = val; }
   }
-  // Scan row r1 for K[r1][r0] (→ c) and K[r1][r1] (→ d).
+  // Scan row r1 for K[r1][r1] (→ d) and (only if nodal) K[r1][r0] (→ c).
   if (r1Valid) {
     let beg1: u32 = rowPtr[r1];
     let end1: u32 = rowPtr[r1 + 1u];
@@ -444,7 +452,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       let col: u32 = colInd[k];
       let val: vec2<f32> = vec2<f32>(valHi[k], valLo[k]);
       if (col == r1) { d = val; }
-      if (col == r0) { c = val; }
+      if (isNodal && col == r0) { c = val; }
     }
   }
 
@@ -453,11 +461,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   var C: vec2<f32> = zero;
   var D: vec2<f32> = one;
 
-  if (r1Valid) {
-    // Both rows valid.  SPD principal sub-block of an SPD K is itself
-    // SPD, so det = ad − bc is strictly positive in exact arithmetic.
-    // Use a RELATIVE threshold scaled by |a||d|: an absolute 1e-30 is
-    // not meaningful when stiffnesses scale with E ~ 1e6.
+  if (r1Valid && isNodal) {
+    // True nodal 2×2.  SPD sub-block of SPD K → det > 0.  Relative
+    // threshold scaled by |a||d| so an E ~ 1e6 problem doesn't trigger
+    // the absolute-1e-30 fallback erroneously.
     let det: vec2<f32> = dsAdd(dsMul(a, d), dsNeg(dsMul(b, c)));
     let aMag: f32 = abs(a.x);
     let dMag: f32 = abs(d.x);
@@ -469,20 +476,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       C = dsNeg(dsMul(c, invDet));
       D = dsMul(a, invDet);
     } else if (aMag > 1e-30 && dMag > 1e-30) {
-      // Degenerate det but both diagonals OK — fall back to scalar
-      // Jacobi independently on each row.  This is the right thing
-      // when b ≈ ±√(ad) (highly correlated DOFs).
       A = dsRecip(a);
       D = dsRecip(d);
     } else if (aMag > 1e-30) {
       A = dsRecip(a);
-      D = one;
     } else if (dMag > 1e-30) {
-      A = one;
       D = dsRecip(d);
     }
+  } else if (r1Valid) {
+    // Cross-node pair → independent scalar Jacobi.  B and C stay zero.
+    if (abs(a.x) > 1e-30) { A = dsRecip(a); }
+    if (abs(d.x) > 1e-30) { D = dsRecip(d); }
   } else {
-    // Last pair slot when numFree is odd — only r0 is a valid free DOF.
+    // Last pair slot when numFree is odd.  Only r0 is a valid free DOF.
     if (abs(a.x) > 1e-30) { A = dsRecip(a); }
     // D = 1 (identity); the apply kernel writes z[2n+1] OOB and the
     // write is silently dropped per WGSL spec.

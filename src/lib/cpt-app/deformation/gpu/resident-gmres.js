@@ -510,17 +510,43 @@ async function dispGmresDot(ctx, srcA, srcB) {
 // -----------------------------------------------------------------------------
 // solveResidentGmres: device-bound restarted GMRES.
 // -----------------------------------------------------------------------------
-export async function solveResidentGmres(ctx, { bF64, x0F64 = null, maxIter = 1000, relTol = 1e-8, absTol = 1e-12 }) {
+export async function solveResidentGmres(ctx, {
+  bF64, x0F64 = null, maxIter = 1000, relTol = 1e-8, absTol = 1e-12,
+  // When the caller has already copied the right-hand side into
+  // `ctx.buffers.b` via copyBufferToBuffer (e.g., the plastic-Newton
+  // orchestrator), skip the host→device upload.  Mirrors solveResidentCg.
+  bAlreadyOnDevice = false,
+  // When true, leave the converged x on `ctx.buffers.x` and skip the
+  // final readback to host.  The caller can use the device-resident
+  // solution for downstream device ops (e.g., a line-search axpy).
+  keepSolutionOnDevice = false,
+  // Optional progress observer, called periodically with the current
+  // outer-iteration count and most recent estimated residual norm.
+  observer = null
+}) {
   const { device, N, m, buffers } = ctx;
-  uploadGmresVector(ctx, 'b', bF64);
+  if (!bAlreadyOnDevice) {
+    uploadGmresVector(ctx, 'b', bF64);
+  }
   uploadGmresVector(ctx, 'x', x0F64 || new Float64Array(N));
 
+  // Compute ||b|| and the convergence target ONCE, before the main loop.
+  // The target is in TRUE-residual space (matches solveResidentCg and
+  // matches CPU's CG/GMRES tolerance contract — both expect cgRelTol /
+  // cgAbsTol to be measured against the unpreconditioned residual norm).
   const rhsNormSq = await dispGmresDot(ctx, buffers.b, buffers.b);
   const rhsNorm = Math.sqrt(Math.max(rhsNormSq, 0));
   const targetTol = Math.max(absTol, relTol * rhsNorm);
 
+  // Trivial-RHS short-circuit: if the unpreconditioned RHS is already
+  // below the target (rare — typically only when b is essentially zero),
+  // x = 0 satisfies the system.
+  if (rhsNorm <= targetTol) {
+    return finalizeGmres(ctx, 0, rhsNorm, rhsNorm, true, keepSolutionOnDevice);
+  }
+
   let totalIters = 0;
-  let lastResidualNorm = 0;
+  let lastResidualNorm = rhsNorm;
 
   while (totalIters < maxIter) {
     // r = b - A x  (or just b if x = 0).
@@ -531,7 +557,32 @@ export async function solveResidentGmres(ctx, { bF64, x0F64 = null, maxIter = 10
       dispGmresAxpy(ctx, enc, [-1, 0], buffers.Ap, buffers.r);
       device.queue.submit([enc.finish()]);
     }
-    // z = M^-1 r,  beta = ||z||,  V[0] = z / beta
+
+    // CANONICAL restart-time convergence test on the TRUE residual ||r||.
+    //
+    // This is the only convergence test that actually carries the
+    // tolerance contract.  Left-preconditioned GMRES (this implementation:
+    // M^-1 K x = M^-1 b) minimizes ||M^-1 r|| internally and the Givens
+    // rotations track ||M^-1 r||, NOT ||r||.  Comparing the preconditioned
+    // residual to the unpreconditioned target (the bug that previously
+    // returned x = 0 immediately on stiff problems where κ(M) is large)
+    // is unsound — for block-Jacobi M ≈ E·I, ||M^-1 r|| ≈ ||r||/E, so the
+    // old `beta0 <= targetTol` check passed at any modestly-stiff problem
+    // before any actual work was done.
+    const trueResNormSq = await dispGmresDot(ctx, buffers.r, buffers.r);
+    const trueResNorm = Math.sqrt(Math.max(trueResNormSq, 0));
+    lastResidualNorm = trueResNorm;
+    if (trueResNorm <= targetTol) {
+      return finalizeGmres(ctx, totalIters, trueResNorm, rhsNorm, true, keepSolutionOnDevice);
+    }
+    if (observer && (totalIters > 0)) {
+      await observer({
+        iterations: totalIters, residualNorm: trueResNorm,
+        relativeResidual: rhsNorm > 0 ? trueResNorm / rhsNorm : 0
+      });
+    }
+
+    // z = M^-1 r,  beta = ||z||,  V[0] = z / beta.
     {
       const enc = device.createCommandEncoder();
       dispGmresBj(ctx, enc, buffers.r, buffers.z);
@@ -539,9 +590,11 @@ export async function solveResidentGmres(ctx, { bF64, x0F64 = null, maxIter = 10
     }
     const beta0Sq = await dispGmresDot(ctx, buffers.z, buffers.z);
     const beta0 = Math.sqrt(Math.max(beta0Sq, 0));
-    if (beta0 <= targetTol) {
-      lastResidualNorm = beta0;
-      return finalizeGmres(ctx, totalIters, lastResidualNorm, rhsNorm, true);
+    if (beta0 <= 0) {
+      // Numerically zero preconditioned residual; cannot continue Krylov.
+      // Treat as converged at the current x (true residual already
+      // checked above).
+      return finalizeGmres(ctx, totalIters, trueResNorm, rhsNorm, true, keepSolutionOnDevice);
     }
     {
       const enc = device.createCommandEncoder();
@@ -551,6 +604,16 @@ export async function solveResidentGmres(ctx, { bF64, x0F64 = null, maxIter = 10
       device.queue.submit([enc.finish()]);
     }
 
+    // Inner-cycle stopping threshold — relative reduction of the
+    // PRECONDITIONED residual (Givens estimate) from this restart's
+    // beta0.  This stops the Arnoldi cycle once it has stopped
+    // contributing meaningful reductions, but does NOT declare final
+    // convergence (the canonical true-residual check at the next restart
+    // does that).  Using a relative measure here makes the test
+    // dimensionally consistent: both lastResidualNorm and innerStopThreshold
+    // are in M^-1 r space.
+    const innerStopThreshold = relTol * beta0;
+
     const H = Array.from({ length: m + 1 }, () => new Float64Array(m));
     const g = new Float64Array(m + 1);
     g[0] = beta0;
@@ -558,7 +621,6 @@ export async function solveResidentGmres(ctx, { bF64, x0F64 = null, maxIter = 10
     const sArr = new Float64Array(m);
 
     let innerIters = 0;
-    let breakReason = 'maxinner';
 
     for (let j = 0; j < m && totalIters + 1 <= maxIter; j += 1) {
       innerIters = j + 1;
@@ -603,8 +665,11 @@ export async function solveResidentGmres(ctx, { bF64, x0F64 = null, maxIter = 10
       const gj = cArr[j] * g[j];
       g[j + 1] = -sArr[j] * g[j];
       g[j] = gj;
-      lastResidualNorm = Math.abs(g[j + 1]);
-      if (lastResidualNorm <= targetTol) { breakReason = 'tolerance'; break; }
+      // Relative-only inner break, in preconditioned space.  Final
+      // convergence is asserted by the true-residual check at the top
+      // of the next restart cycle.
+      const innerEstimate = Math.abs(g[j + 1]);
+      if (innerEstimate <= innerStopThreshold) { break; }
     }
 
     // Solve upper-triangular H y = g.
@@ -626,26 +691,44 @@ export async function solveResidentGmres(ctx, { bF64, x0F64 = null, maxIter = 10
       device.queue.submit([enc.finish()]);
     }
 
-    if (breakReason === 'tolerance') {
-      return finalizeGmres(ctx, totalIters, lastResidualNorm, rhsNorm, true);
-    }
     if (totalIters >= maxIter) break;
   }
-  return finalizeGmres(ctx, totalIters, lastResidualNorm, rhsNorm, false);
+
+  // Max-iter exit — recompute the true residual at the final x so the
+  // caller (inexact-Newton acceptance) sees the actual unpreconditioned
+  // norm, not a stale Givens estimate.
+  {
+    const enc = device.createCommandEncoder();
+    dispGmresMatvec(ctx, enc, buffers.x, buffers.Ap);
+    dispGmresCopy(ctx, enc, buffers.b, buffers.r);
+    dispGmresAxpy(ctx, enc, [-1, 0], buffers.Ap, buffers.r);
+    device.queue.submit([enc.finish()]);
+  }
+  const finalResNormSq = await dispGmresDot(ctx, buffers.r, buffers.r);
+  const finalResNorm = Math.sqrt(Math.max(finalResNormSq, 0));
+  return finalizeGmres(ctx, totalIters, finalResNorm, rhsNorm, false, keepSolutionOnDevice);
 }
 
-async function finalizeGmres(ctx, iterations, residualNorm, rhsNorm, converged) {
-  const out = ctx.device.createBuffer({ size: 8 * ctx.N, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-  const enc = ctx.device.createCommandEncoder();
-  enc.copyBufferToBuffer(ctx.buffers.x, 0, out, 0, 8 * ctx.N);
-  ctx.device.queue.submit([enc.finish()]);
-  await out.mapAsync(GPUMapMode.READ);
-  const packed = new Float32Array(out.getMappedRange().slice(0));
-  out.unmap();
-  out.destroy();
-  const solution = unpackDsVector(packed);
+async function finalizeGmres(ctx, iterations, residualNorm, rhsNorm, converged, keepSolutionOnDevice = false) {
+  let solution = null;
+  if (!keepSolutionOnDevice) {
+    const out = ctx.device.createBuffer({ size: 8 * ctx.N, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const enc = ctx.device.createCommandEncoder();
+    enc.copyBufferToBuffer(ctx.buffers.x, 0, out, 0, 8 * ctx.N);
+    ctx.device.queue.submit([enc.finish()]);
+    await out.mapAsync(GPUMapMode.READ);
+    const packed = new Float32Array(out.getMappedRange().slice(0));
+    out.unmap();
+    out.destroy();
+    solution = unpackDsVector(packed);
+    return {
+      solution, iterations, residualNorm,
+      relativeResidual: rhsNorm > 0 ? residualNorm / rhsNorm : 0,
+      rhsNorm, converged, path: 'gpu-resident-gmres'
+    };
+  }
   return {
-    solution, iterations, residualNorm,
+    solution: null, iterations, residualNorm,
     relativeResidual: rhsNorm > 0 ? residualNorm / rhsNorm : 0,
     rhsNorm, converged, path: 'gpu-resident-gmres'
   };

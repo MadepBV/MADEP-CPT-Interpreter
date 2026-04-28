@@ -4213,10 +4213,10 @@ function stage6Defaults(){
           initialLoadStep:0.25,
           minLoadStep:1/2048,
           maxLoadSteps:256,
-          residualRelTol:1e-4,
-          residualAbsTol:1e-3,
-          displacementRelTol:1e-5,
-          displacementAbsTol:1e-8,
+          residualRelTol:1e-3,
+          residualAbsTol:1e-2,
+          displacementRelTol:1e-4,
+          displacementAbsTol:1e-6,
           loadStepGrowthFactor:1.25,
           loadStepCutbackFactor:0.5,
           plasticLoadStepGrowthFactor:1.05,
@@ -4360,9 +4360,18 @@ function stage6BishopResolvedSeepageMeshTargetArea(bishop){
 }
 
 function stage6BishopAutoDeformationMeshTargetArea(bishop){
+  // Auto target area for the deformation mesh.  Coarser than seepage by
+  // a factor of 9 (was 3): the deformation analysis is dominated by the
+  // nonlinear inner-Newton + GMRES cost, which scales much more strongly
+  // with the number of free DOFs than the assembly cost — a 3× coarser
+  // mesh in each direction (≈ 9× area per element) cuts numFree by 3×
+  // and the GMRES Arnoldi cost by ~9× while keeping engineering-grade
+  // resolution for the ground-improvement problem class this app targets.
+  // Users can still tighten the mesh manually via the meshTargetArea field
+  // (turning auto off).
   const domainArea = stage6BishopSeepageDomainArea(bishop);
-  if(!(domainArea > 0)) return 0.15;
-  return +Math.min(Math.max(3 * (domainArea / 3500), 0.15), 3.0).toFixed(3);
+  if(!(domainArea > 0)) return 0.45;
+  return +Math.min(Math.max(9 * (domainArea / 3500), 0.45), 9.0).toFixed(3);
 }
 
 function stage6BishopResolvedDeformationMeshTargetArea(bishop){
@@ -4578,10 +4587,10 @@ function ensureStage6State(){
     bishop.deformation.options.initialLoadStep = bishop.deformation.options.minLoadStep;
   }
   bishop.deformation.options.maxLoadSteps = Math.max(Math.round(+bishop.deformation.options.maxLoadSteps || 256), 1);
-  bishop.deformation.options.residualRelTol = Math.max(+bishop.deformation.options.residualRelTol || 1e-4, 1e-8);
-  bishop.deformation.options.residualAbsTol = Math.max(+bishop.deformation.options.residualAbsTol || 1e-3, 1e-9);
-  bishop.deformation.options.displacementRelTol = Math.max(+bishop.deformation.options.displacementRelTol || 1e-5, 1e-8);
-  bishop.deformation.options.displacementAbsTol = Math.max(+bishop.deformation.options.displacementAbsTol || 1e-8, 1e-12);
+  bishop.deformation.options.residualRelTol = Math.max(+bishop.deformation.options.residualRelTol || 1e-3, 1e-8);
+  bishop.deformation.options.residualAbsTol = Math.max(+bishop.deformation.options.residualAbsTol || 1e-2, 1e-9);
+  bishop.deformation.options.displacementRelTol = Math.max(+bishop.deformation.options.displacementRelTol || 1e-4, 1e-8);
+  bishop.deformation.options.displacementAbsTol = Math.max(+bishop.deformation.options.displacementAbsTol || 1e-6, 1e-12);
   bishop.deformation.options.loadStepGrowthFactor = Math.max(+bishop.deformation.options.loadStepGrowthFactor || 1.25, 1);
   bishop.deformation.options.loadStepCutbackFactor = Math.min(Math.max(+bishop.deformation.options.loadStepCutbackFactor || 0.5, 0.1), 0.9);
   bishop.deformation.options.plasticLoadStepGrowthFactor = Math.max(+bishop.deformation.options.plasticLoadStepGrowthFactor || 1.05, 1);

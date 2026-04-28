@@ -144,7 +144,8 @@ const BGL_BUILD_BLOCK_JACOBI = {
     { binding: 2, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'read-only-storage' } },
     { binding: 3, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'read-only-storage' } },
     { binding: 4, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'storage' } },
-    { binding: 5, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'uniform' } }
+    { binding: 5, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'read-only-storage' } },
+    { binding: 6, visibility: GPUShaderStage_COMPUTE(), buffer: { type: 'uniform' } }
   ]
 };
 
@@ -198,8 +199,17 @@ export function createResidentCgContext({ device, ndof, numNonzeros }) {
     colInd: device.createBuffer({ size: 4 * numNonzeros, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }),
     valHi:  device.createBuffer({ size: 4 * numNonzeros, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }),
     valLo:  device.createBuffer({ size: 4 * numNonzeros, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }),
-    // Preconditioner.
-    blockJacobi: device.createBuffer({ size: 32 * numNodes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }),
+    // Preconditioner output (built on device by KERNEL_BUILD_BLOCK_JACOBI).
+    // COPY_SRC lets the orchestrator mirror the built BJ to a separate
+    // gmresCtx.blockJacobi via device-to-device copy when GMRES is the
+    // active inner solver — no host round-trip per Newton iter.
+    blockJacobi: device.createBuffer({
+      size: 32 * numNodes,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+    }),
+    // Per-pair-slot mask (1 = nodal pair → 2x2 inverse, 0 = cross-node →
+    // scalar Jacobi).  Uploaded once per analysis from `pack.pairIsNodal`.
+    pairIsNodal: device.createBuffer({ size: 4 * Math.max(numNodes, 1), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }),
     // Scalar uniforms reused across iterations (overwritten via writeBuffer).
     paramsAxpy:  device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
     paramsAxpby: device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
@@ -262,6 +272,13 @@ export function uploadDsCsr(ctx, csrPacked) {
 
 export function uploadBlockJacobi(ctx, blocksDsPacked) {
   ctx.device.queue.writeBuffer(ctx.buffers.blockJacobi, 0, blocksDsPacked);
+}
+
+// Upload the precomputed nodal-vs-cross-node mask once per analysis.  After
+// this, the on-device build-BJ kernel can run per Newton iter without any
+// host round-trip to rebuild the preconditioner.
+export function uploadPairIsNodal(ctx, pairIsNodalU32) {
+  ctx.device.queue.writeBuffer(ctx.buffers.pairIsNodal, 0, pairIsNodalU32);
 }
 
 // -----------------------------------------------------------------------------
@@ -713,6 +730,9 @@ export function dispatchCopyExternal(ctx, encoder, srcBuf, dstBuf) {
 // Build the block-Jacobi 2×2 inverse on device from the CSR currently in the
 // CG context.  Output goes to ctx.buffers.blockJacobi.  After this call, the
 // CG can run with the freshly-built preconditioner without any host round-trip.
+//
+// Reads `ctx.buffers.pairIsNodal` for the nodal-vs-cross-node mask
+// (uploaded once via `uploadPairIsNodal` per analysis).
 export function dispatchBuildBlockJacobiFromCsr(ctx, encoder) {
   const u = new ArrayBuffer(32);
   new Uint32Array(u, 0, 1)[0] = ctx.numNodes;
@@ -728,7 +748,8 @@ export function dispatchBuildBlockJacobiFromCsr(ctx, encoder) {
       { binding: 2, resource: { buffer: ctx.buffers.valHi } },
       { binding: 3, resource: { buffer: ctx.buffers.valLo } },
       { binding: 4, resource: { buffer: ctx.buffers.blockJacobi } },
-      { binding: 5, resource: { buffer: ctx.buffers.paramsBuildBj } }
+      { binding: 5, resource: { buffer: ctx.buffers.pairIsNodal } },
+      { binding: 6, resource: { buffer: ctx.buffers.paramsBuildBj } }
     ]
   }));
   pass.dispatchWorkgroups(ctx.numWorkgroupsBj);

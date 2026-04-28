@@ -35,6 +35,8 @@ import { buildGpuMeshPack, packFreeDofVector, unpackFreeDofVector, buildBlockJac
 import {
   createGpuAssemblyContext,
   recordResidualAndTangent,
+  recordResidualOnlyPlastic,
+  recordCommitState,
   uploadDisplacement,
   readbackCsr,
   readbackRhsFree,
@@ -52,6 +54,7 @@ import {
   createResidentCgContext, uploadDsCsr, uploadBlockJacobi, uploadDsVector,
   solveResidentCg
 } from './resident-cg.js';
+import { createResidentGmresContext } from './resident-gmres.js';
 import { runPlasticNewtonOnGpu } from './gpu-plastic-newton.js';
 
 // ---------------------------------------------------------------------------
@@ -422,61 +425,129 @@ export async function runFullDeformationAnalysisOnGpu({
   }
   uploadCommittedSigmaFromF64(asmCtx, sigmaInitialF64);
 
-  // 3. Build the resident CG context (used by every linear solve below).
+  // 3. Build the resident inner-solver contexts.  CG handles the SPD case
+  //    (linear-elastic blocks, fully-associated plasticity); GMRES handles
+  //    the non-SPD case (Mohr-Coulomb with non-associated flow, where the
+  //    consistent algorithmic tangent is asymmetric).  We mirror the CPU
+  //    pipeline's choice — solver.js picks `solveGmresDispatched` whenever
+  //    `useUnsymmetricPlasticSolver !== false` (the default), and CG would
+  //    otherwise stagnate near max-iter on the very same operator.  Both
+  //    contexts share the cg context as the BLAS scratch space (the line-
+  //    search axpy and residual norms in `gpu-plastic-newton.js` dispatch
+  //    through cg's external helpers); GMRES is only the inner Newton solve.
   const cgCtx = createResidentCgContext({
     device, ndof: pack.numFree, numNonzeros: pack.nnz
   });
+  const useUnsymmetricPlasticSolver = options?.useUnsymmetricPlasticSolver !== false;
+  // GMRES restart defaults to CPU's `GMRES_RESTART = 40` (solver.js:77).
+  // The Krylov dimension governs how much information GMRES retains
+  // before recycling its basis; matching CPU avoids a slower-convergence
+  // gap when the inner solve is dispatched on the same matrix.
+  const gmresCtx = useUnsymmetricPlasticSolver
+    ? createResidentGmresContext({
+        device, ndof: pack.numFree, numNonzeros: pack.nnz,
+        restart: Math.max(Math.round(Number(options?.gmresRestart) || 40), 1)
+      })
+    : null;
+  // One-shot diagnostic so the engineer can confirm in the worker console
+  // which inner Krylov is running and what the device-side workload size
+  // is.  Per-iter the orchestrator now picks CG when the active set is
+  // empty (purely elastic K, SPD) and GMRES once any Gauss point has
+  // become plastic in this Newton solve — mirroring CPU's
+  // `usesUnsymmetricSolver = mayNeedUnsymmetricSolver && activeCount > 0`
+  // gate via orchestrator-level branch persistence (`everActive` in
+  // gpu-plastic-newton.js).  GMRES on an SPD operator wastes a lot of
+  // host-device sync per Arnoldi MGS step (m+1 sequential readbacks per
+  // iter, ~820 per restart cycle on Apple Metal); CG keeps that to 2-3
+  // per iter.  For purely elastic Newton iters this is the dominant
+  // wall-clock factor.
+  console.log(
+    `[deformation/gpu] inner solver dispatcher = ` +
+    `${useUnsymmetricPlasticSolver ? 'CG when activeCount=0, GMRES when activeCount>0 (with branch persistence)' : 'CG (always)'} ` +
+    `(useUnsymmetricPlasticSolver=${useUnsymmetricPlasticSolver}); ` +
+    `numFree=${pack.numFree}, nnz=${pack.nnz}, numGp=${pack.numGp}, numNodes=${pack.numNodes}; ` +
+    `BJ build = on-device (no per-iter CSR readback)`
+  );
 
   const history = { newton: [], loadSteps: [], safety: [] };
   const analysisType = options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
   const requireSurfaceLoad = !!surfaceLoadRhsFree && surfaceLoadRhsFree.some((v) => v !== 0);
 
+  // Inner-Krylov tolerances and outer-Newton iteration cap — single source of
+  // truth, mirroring the CPU pipeline's constants in solver.js
+  // (CG_REL_TOL = 1e-5, CG_ABS_TOL = 5e-5, MAX_CG_ITER = 25000,
+  //  NONLINEAR_MAX_ITER = 32, NONLINEAR_RESIDUAL_REL_TOL = 1e-4,
+  //  NONLINEAR_RESIDUAL_ABS_TOL = 1e-3).  CPU's outer Newton tolerances are
+  // already plumbed through `options.residualRelTol/AbsTol` (solver.js
+  // _analyzeDeformationModelImpl); the inner-Krylov ones are added here with
+  // explicit numerical defaults rather than being silently hardcoded inside
+  // `runPlasticNewtonOnGpu`, so a single override surface controls both.
+  const innerSolveSettings = {
+    cgRelTol:  Math.max(Number(options?.cgRelTol)  || 1e-5,  1e-12),
+    cgAbsTol:  Math.max(Number(options?.cgAbsTol)  || 5e-5,  1e-12),
+    cgMaxIter: Math.max(Math.round(Number(options?.cgMaxIter) || 25000), 1)
+  };
+  const outerNewtonSettings = {
+    relTol: Math.max(Number(options?.residualRelTol) || 1e-4, 1e-12),
+    absTol: Math.max(Number(options?.residualAbsTol) || 1e-3, 1e-12),
+    maxIter: Math.max(Math.round(Number(options?.nonlinearMaxIterations) || 32), 1)
+  };
+
   // Progress-observer factory.  Each phase passes a label so the UI sees
-  // "GPU geostatic Newton 3, ‖r‖=…" and "GPU CG iter 600, rel residual=…"
-  // — matching the granularity of the CPU pipeline's progress messages.
+  // "GPU geostatic Newton 3, ‖r‖=…" and "GPU geostatic GMRES iter 600,
+  // rel residual=…" — matching the granularity of the CPU pipeline's
+  // progress messages.  The inner solver's name (CG vs GMRES) is supplied
+  // by `runPlasticNewtonOnGpu` via the `solverName` field on the observer
+  // payload, so the label always reflects what is actually running.
   const makeProgressObservers = (phaseLabel, basePercent) => ({
-    onNewtonProgress: ({ iter, residualNorm, rhsNorm }) => {
+    onNewtonProgress: ({ iter, residualNorm, rhsNorm, changedCount, activeCount }) => {
       const rel = rhsNorm > 0 ? residualNorm / rhsNorm : 0;
+      const setSuffix = Number.isFinite(changedCount) ? `, Δactive ${changedCount}` : '';
+      const activeSuffix = Number.isFinite(activeCount) ? `, active ${activeCount}` : '';
       onProgress({
         stage: 'solving',
         percent: Math.min(95, basePercent + Math.min(iter / 4, 5)),
-        message: `GPU ${phaseLabel} Newton iter ${iter}, ‖r‖ = ${residualNorm.toExponential(2)} (rel ${rel.toExponential(2)})`
+        message: `GPU ${phaseLabel} Newton iter ${iter}, ‖r‖ = ${residualNorm.toExponential(2)} (rel ${rel.toExponential(2)})${activeSuffix}${setSuffix}`
       });
     },
-    onCgProgress: async ({ iterations, residualNorm, relativeResidual }) => {
+    onCgProgress: async ({ iterations, residualNorm, relativeResidual, solverName }) => {
+      const name = solverName || 'CG';
       onProgress({
         stage: 'solving',
         percent: Math.min(95, basePercent + Math.min(iterations / 250, 4)),
-        message: `GPU ${phaseLabel} CG iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
+        message: `GPU ${phaseLabel} ${name} iter ${iterations.toLocaleString()}, relative residual ${relativeResidual.toExponential(2)}`
       });
     }
   });
 
   // ---------------------------------------------------------------------------
-  // Phase A — plastic geostatic correction (gravity-only Newton).
+  // Phase A — staged plastic geostatic correction.
   //
-  // The σ_initial seed encodes the engineer's reference state (K0).  We
-  // verify it is consistent with the gravity RHS by running a full plastic
-  // Newton with b = gravityRhs.  If σ_initial is admissible, this typically
-  // converges in 1–2 iterations (residual is already near zero).
+  // Adaptive gravity-ramp Newton: λ runs 0 → 1 in adaptive steps, growing
+  // on success and cutting back on failure.  Mirrors CPU's
+  // `_runPlasticPhase` for `phaseKind = 'initial-gravity'`.  At each
+  // accepted step the committed state advances, so the next step starts
+  // from the previous incremental equilibrium — the canonical fix for
+  // single-shot Newton at λ=1 stalling on slope-corner / weak-material
+  // residuals when the σ_initial seed (K0 estimate) is admissible but
+  // not in gravity equilibrium.  Each step's `runPlasticNewtonOnGpu`
+  // commits its converged state internally; the staged loop owns the λ
+  // bookkeeping and the per-step history entries.
   // ---------------------------------------------------------------------------
   {
-    const newton = await runPlasticNewtonOnGpu({
-      asmCtx, cgCtx,
-      bF64: gravityRhsFree,
-      maxIter: Math.max(Math.round(options?.geostaticMaxIter || 32), 1),
-      relTol: options?.residualRelTol ?? 1e-4,
-      absTol: options?.residualAbsTol ?? 1e-3,
-      ...makeProgressObservers('geostatic', 65)
+    const stagedGeostatic = await runStagedGeostaticOnGpu({
+      asmCtx, cgCtx, gmresCtx, useGmres: useUnsymmetricPlasticSolver,
+      outerNewtonSettings, innerSolveSettings,
+      gravityRhsFree, options, history,
+      makeProgressObservers
     });
-    history.newton.push({ phase: 'geostatic', ...summarizeNewton(newton) });
-    if (!newton.converged) {
+    if (!stagedGeostatic.converged) {
       return {
-        converged: false, reason: `geostatic-plastic-correction-${newton.reason || 'failed'}`,
+        converged: false,
+        reason: `geostatic-plastic-correction-${stagedGeostatic.reason || 'failed'}`,
         diagnostics: { history }, pack
       };
     }
-    newton.commit();
   }
 
   // ---------------------------------------------------------------------------
@@ -488,10 +559,13 @@ export async function runFullDeformationAnalysisOnGpu({
       // Direct full-load step.
       const bFull = combineFreeDofVectors(gravityRhsFree, surfaceLoadRhsFree, 1);
       const newton = await runPlasticNewtonOnGpu({
-        asmCtx, cgCtx, bF64: bFull,
-        maxIter: Math.max(Math.round(options?.nonlinearMaxIterations || 32), 1),
-        relTol: options?.residualRelTol ?? 1e-4,
-        absTol: options?.residualAbsTol ?? 1e-3,
+        asmCtx, cgCtx, gmresCtx, useGmres: useUnsymmetricPlasticSolver,
+        phaseKind: 'service-load',
+        bF64: bFull,
+        maxIter: outerNewtonSettings.maxIter,
+        relTol: outerNewtonSettings.relTol,
+        absTol: outerNewtonSettings.absTol,
+        ...innerSolveSettings,
         ...makeProgressObservers('surface-load', 75)
       });
       history.newton.push({ phase: 'load-direct', lambda: 1, ...summarizeNewton(newton) });
@@ -505,7 +579,9 @@ export async function runFullDeformationAnalysisOnGpu({
     } else {
       // Staged surface-load loop.
       const stagedResult = await runStagedSurfaceLoadOnGpu({
-        asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree, options, history,
+        asmCtx, cgCtx, gmresCtx, useGmres: useUnsymmetricPlasticSolver,
+        outerNewtonSettings, innerSolveSettings,
+        gravityRhsFree, surfaceLoadRhsFree, options, history,
         makeProgressObservers
       });
       if (!stagedResult.converged) {
@@ -523,7 +599,9 @@ export async function runFullDeformationAnalysisOnGpu({
   let safetyResult = null;
   if (analysisType === 'safety-cphi') {
     safetyResult = await runSafetyOnGpu({
-      asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree,
+      asmCtx, cgCtx, gmresCtx, useGmres: useUnsymmetricPlasticSolver,
+      outerNewtonSettings, innerSolveSettings,
+      gravityRhsFree, surfaceLoadRhsFree,
       pack, regionConstitutiveByRegion, options, history,
       makeProgressObservers
     });
@@ -557,6 +635,12 @@ export async function runFullDeformationAnalysisOnGpu({
 }
 
 // =============================================================================
+// Diagnostic: branch-history readback + histogram.  Used in the staged
+// geostatic pre-loop to surface whether the seed left every GP on the
+// elastic branch (branchKind = 0) or projected some onto a yield surface
+// (which would change CG convergence behavior and the active-set delta).
+// =============================================================================
+// =============================================================================
 // Helper: combine two free-DOF vectors as a + λ b.
 // =============================================================================
 function combineFreeDofVectors(a, b, lambda) {
@@ -580,6 +664,168 @@ function summarizeNewton(newton) {
 }
 
 // =============================================================================
+// Staged plastic geostatic correction on GPU.
+//
+// Adaptive load-factor Newton with TARGET-FORCE HOMOTOPY.  Mirrors CPU's
+// `_runPlasticPhase` (phaseKind='initial-gravity') driven by
+// `solveStagedGeostaticEquilibrium` / `initializePlasticPredictorReferenceState`.
+//
+// The homotopy interpolates between two RHS endpoints rather than ramping
+// gravity from zero:
+//
+//   b(λ) = (1 − λ) · F_int(0, σ_initial-after-MC-return)  +  λ · gravityRhsFree
+//
+// At λ = 0:  b(0) = F_int(0, σ_committed-after-seed-commit)  →  residual at
+//            u = 0 is identically zero.  The seeded state is the implicit
+//            λ = 0 reference.
+// At λ = 1:  b(1) = gravityRhsFree                          →  the actual
+//            equilibrium we want.
+//
+// Each accepted step persists u and σ via `newton.commit()`, so step k+1's
+// Newton starts from the previous step's equilibrium.  The per-step task is
+// the small incremental gap b(λ_{k+1}) − b(λ_k), which is well-conditioned
+// even when the full σ_initial → σ_geostatic correction is not.
+//
+// IMPORTANT — why this is NOT a gravity ramp 0 → 1:
+//   For a K0-seeded mesh, σ_initial is APPROXIMATELY in equilibrium with
+//   gravity.  Ramping gravity from 0 produces a residual at u = 0 of
+//   −F_int(0) ≈ −gravity, which Newton would interpret as "push u opposite
+//   to the gravity direction" — physically backwards, and a guaranteed
+//   stall.  CPU avoids this by using the seed's own internal force as the
+//   λ = 0 endpoint of the homotopy; we do the same.
+//
+// Defaults match CPU constants exactly so a tuned model behaves the same
+// on either path:
+//   initial dλ      = NONLINEAR_INITIAL_LOAD_STEP         = 0.25
+//   min     dλ      = NONLINEAR_MIN_LOAD_STEP             = 1/2048
+//   max     steps   = NONLINEAR_MAX_LOAD_STEPS            = 256
+//   growth  factor  = initial-gravity default             = 1.12
+//   cutback factor  = initial-gravity default             = 0.5
+// =============================================================================
+async function runStagedGeostaticOnGpu({
+  asmCtx, cgCtx, gmresCtx = null, useGmres = false,
+  outerNewtonSettings, innerSolveSettings,
+  gravityRhsFree, options, history,
+  makeProgressObservers = () => ({})
+}) {
+  const { device } = asmCtx;
+  const numFree = gravityRhsFree.length;
+  const initialDLambda = Math.max(
+    Math.min(
+      Number(options?.initialGravityInitialLoadStep ?? options?.initialLoadStep) || 0.25,
+      1
+    ),
+    1e-6
+  );
+  const minDLambda = Math.max(
+    Number(options?.initialGravityMinLoadStep ?? options?.minLoadStep) || (1 / 2048),
+    1e-6
+  );
+  const maxSteps = Math.max(Math.round(Number(options?.maxLoadSteps) || 256), 1);
+  const growFactor = Math.max(
+    Number(options?.initialGravityPlasticLoadStepGrowthFactor ?? options?.plasticLoadStepGrowthFactor) || 1.12,
+    1
+  );
+  const cutFactor = Math.min(
+    Math.max(
+      Number(options?.initialGravityPlasticLoadStepCutbackFactor ?? options?.plasticLoadStepCutbackFactor) || 0.5,
+      0.05
+    ),
+    0.95
+  );
+
+  // ---------------------------------------------------------------------------
+  // Pre-loop: capture the homotopy starting endpoint.
+  //
+  // Mirrors CPU's `initializePlasticPredictorReferenceState`:
+  //   1. uvec ← uCommitted = 0   (clearCommittedState already ran upstream)
+  //   2. Run a residual-only assembly on the seeded σ_committed.  This
+  //      computes σ_returned = MC(σ_initial) at every Gauss point and
+  //      writes F_int = ∫Bᵀσ_returned dV into asmCtx.buffers.rhsFree.
+  //   3. Commit σ_returned as the new σ_committed.  This is the
+  //      equivalent of CPU's `commitMaterialPoint` loop after the
+  //      predictor reference: any small inadmissibility in σ_initial is
+  //      projected out, and the homotopy starts from a strictly
+  //      admissible reference.
+  //   4. Read back rhsFree as `targetForceBaseF64` (Float64).
+  // ---------------------------------------------------------------------------
+  {
+    const enc = device.createCommandEncoder();
+    enc.copyBufferToBuffer(
+      asmCtx.buffers.uCommitted, 0,
+      asmCtx.buffers.uvec, 0,
+      8 * numFree
+    );
+    device.queue.submit([enc.finish()]);
+  }
+  {
+    const enc = device.createCommandEncoder();
+    recordResidualOnlyPlastic(asmCtx, enc);
+    recordCommitState(asmCtx, enc);
+    device.queue.submit([enc.finish()]);
+  }
+  const targetForceBaseF64 = await readbackRhsFree(asmCtx);
+
+  // Per-step trial RHS = (1 − λ) targetForceBase + λ gravity.  Single
+  // scratch buffer reused across steps.
+  const bTrial = new Float64Array(numFree);
+  let lambda = 0;
+  let dLambda = initialDLambda;
+
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (lambda >= 1 - 1e-12) break;
+    const trialLambda = Math.min(lambda + dLambda, 1);
+    const oneMinusLambda = 1 - trialLambda;
+    for (let i = 0; i < numFree; i += 1) {
+      bTrial[i] = oneMinusLambda * targetForceBaseF64[i] + trialLambda * gravityRhsFree[i];
+    }
+    const newton = await runPlasticNewtonOnGpu({
+      asmCtx, cgCtx, gmresCtx, useGmres,
+      phaseKind: 'initial-gravity',
+      bF64: bTrial,
+      maxIter: outerNewtonSettings.maxIter,
+      relTol: outerNewtonSettings.relTol,
+      absTol: outerNewtonSettings.absTol,
+      ...innerSolveSettings,
+      ...makeProgressObservers(`geostatic λ=${trialLambda.toFixed(3)}`, 65)
+    });
+    history.newton.push({
+      phase: 'geostatic-staged',
+      step, lambda: trialLambda,
+      ...summarizeNewton(newton)
+    });
+    if (newton.converged) {
+      // Persist u, σ, branch state at this λ_k.  Next step's Newton
+      // starts from this committed equilibrium.
+      newton.commit();
+      lambda = trialLambda;
+      // Cap growth so we never overshoot λ = 1 in a single step.
+      dLambda = Math.min(dLambda * growFactor, 1 - lambda + 1e-12);
+    } else {
+      // Reject the trial.  No commit ⇒ uCommitted, σCommitted, branchHistory
+      // are unchanged.  Cut dλ and retry from the previous accepted λ.
+      dLambda *= cutFactor;
+      if (dLambda < minDLambda) {
+        return {
+          converged: false,
+          reason: `geostatic-step-too-small-at-${lambda.toExponential(2)}-after-${newton.reason || 'failed'}`,
+          finalLambda: lambda
+        };
+      }
+    }
+  }
+
+  if (lambda < 1 - 1e-12) {
+    return {
+      converged: false,
+      reason: `geostatic-not-fully-loaded-stopped-at-${lambda.toExponential(2)}`,
+      finalLambda: lambda
+    };
+  }
+  return { converged: true, finalLambda: lambda };
+}
+
+// =============================================================================
 // Staged surface-load loop on GPU.  Mirrors the CPU adaptive-continuation
 // pattern: grow load step on success, cut back on failure.
 //
@@ -588,7 +834,9 @@ function summarizeNewton(newton) {
 // not committing.
 // =============================================================================
 async function runStagedSurfaceLoadOnGpu({
-  asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree, options, history,
+  asmCtx, cgCtx, gmresCtx = null, useGmres = false,
+  outerNewtonSettings, innerSolveSettings,
+  gravityRhsFree, surfaceLoadRhsFree, options, history,
   makeProgressObservers = () => ({})
 }) {
   let lambda = 0;
@@ -603,10 +851,13 @@ async function runStagedSurfaceLoadOnGpu({
     const trialLambda = Math.min(lambda + dLambda, 1);
     const bTrial = combineFreeDofVectors(gravityRhsFree, surfaceLoadRhsFree, trialLambda);
     const newton = await runPlasticNewtonOnGpu({
-      asmCtx, cgCtx, bF64: bTrial,
-      maxIter: Math.max(Math.round(options?.nonlinearMaxIterations || 32), 1),
-      relTol: options?.residualRelTol ?? 1e-4,
-      absTol: options?.residualAbsTol ?? 1e-3,
+      asmCtx, cgCtx, gmresCtx, useGmres,
+      phaseKind: 'service-load',
+      bF64: bTrial,
+      maxIter: outerNewtonSettings.maxIter,
+      relTol: outerNewtonSettings.relTol,
+      absTol: outerNewtonSettings.absTol,
+      ...innerSolveSettings,
       ...makeProgressObservers(`load-step λ=${trialLambda.toFixed(2)}`, 75)
     });
     history.loadSteps.push({ step, lambda: trialLambda, ...summarizeNewton(newton) });
@@ -638,7 +889,9 @@ async function runStagedSurfaceLoadOnGpu({
 import { reduceMaterialStrengthForSafety } from '../material.js';
 
 async function runSafetyOnGpu({
-  asmCtx, cgCtx, gravityRhsFree, surfaceLoadRhsFree,
+  asmCtx, cgCtx, gmresCtx = null, useGmres = false,
+  outerNewtonSettings, innerSolveSettings,
+  gravityRhsFree, surfaceLoadRhsFree,
   pack, regionConstitutiveByRegion, options, history,
   makeProgressObservers = () => ({})
 }) {
@@ -669,10 +922,13 @@ async function runSafetyOnGpu({
     await restoreCommittedState(asmCtx, snapshot);
     // Run plastic Newton.
     const newton = await runPlasticNewtonOnGpu({
-      asmCtx, cgCtx, bF64: bSafety,
-      maxIter: Math.max(Math.round(options?.nonlinearMaxIterations || 32), 1),
-      relTol: options?.residualRelTol ?? 1e-4,
-      absTol: options?.residualAbsTol ?? 1e-3,
+      asmCtx, cgCtx, gmresCtx, useGmres,
+      phaseKind: 'safety-cphi',
+      bF64: bSafety,
+      maxIter: outerNewtonSettings.maxIter,
+      relTol: outerNewtonSettings.relTol,
+      absTol: outerNewtonSettings.absTol,
+      ...innerSolveSettings,
       ...makeProgressObservers(`safety ΣMsf=${sigmaTrial.toFixed(3)}`, 80)
     });
     history.safety.push({ trial: t, sigmaMsf: sigmaTrial, ...summarizeNewton(newton) });

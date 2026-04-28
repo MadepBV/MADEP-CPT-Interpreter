@@ -290,6 +290,25 @@ export function buildGpuMeshPack({
     dofMap, csrRows: csr.rows, numElements, numLocalDofs
   });
 
+  // pairIsNodal[n] = 1 iff pair slot n covers the (x, y) free indices of a
+  // single geometric node — i.e. freeDofs[2n] is even AND
+  // freeDofs[2n+1] === freeDofs[2n] + 1.  Otherwise (cross-node pair, or
+  // last pair slot when numFree is odd) the slot is "solitary" and the
+  // block-Jacobi build kernel must fall back to scalar Jacobi on the
+  // diagonal.  Precomputing the mask once here lets the on-device build
+  // kernel be branch-light and identically valid on any mesh — no host
+  // round-trip per Newton iter to rebuild the preconditioner.
+  const numNodes = Math.ceil(numFree / 2);
+  const pairIsNodal = new Uint32Array(numNodes);
+  for (let n = 0; n < numNodes; n += 1) {
+    const r0 = 2 * n;
+    const r1 = 2 * n + 1;
+    if (r1 >= numFree) { pairIsNodal[n] = 0; continue; }
+    const dof0 = freeDofs[r0];
+    const dof1 = freeDofs[r1];
+    pairIsNodal[n] = (dof0 % 2 === 0 && dof1 === dof0 + 1) ? 1 : 0;
+  }
+
   return {
     // Structural
     ndof,
@@ -321,7 +340,10 @@ export function buildGpuMeshPack({
     forceIncPtr:  incidence.forceIncPtr,
     forceIncList: incidence.forceIncList,
     csrIncPtr:    incidence.csrIncPtr,
-    csrIncList:   incidence.csrIncList
+    csrIncList:   incidence.csrIncList,
+    // Block-Jacobi shape mask (see comment above).
+    numNodes,
+    pairIsNodal
   };
 }
 
