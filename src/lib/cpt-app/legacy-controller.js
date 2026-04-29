@@ -84,6 +84,7 @@ function newCptState(id){
     method:'robertson2016',
     alphaMethod:'B',
     stiffMethod:'B',
+    khKvMethod:'A',  // 'A' = OVAM / I/RA/11461 (default); 'B' = Bear (1979) academic
     paramMethod:'sb260',
     stage6: stage6Defaults(),
     stage6Cache:{},
@@ -149,6 +150,11 @@ function selectCpt(idx){
   document.getElementById('btnAlphaB').classList.toggle('active',S.alphaMethod==='B');
   document.getElementById('btnStiffA').classList.toggle('active',S.stiffMethod==='A');
   document.getElementById('btnStiffB').classList.toggle('active',S.stiffMethod==='B');
+  // khKvMethod buttons are added in Stage 4; tolerate missing nodes during early init.
+  const btnKhKvA = document.getElementById('btnKhKvA');
+  const btnKhKvB = document.getElementById('btnKhKvB');
+  if (btnKhKvA) btnKhKvA.classList.toggle('active', S.khKvMethod==='A');
+  if (btnKhKvB) btnKhKvB.classList.toggle('active', S.khKvMethod==='B');
   syncClassificationMethodCards(S.method);
 
   if(S.data.length){
@@ -3269,11 +3275,36 @@ function khParams(l){
     kh_min=1e-6; kh_max=1e-4; kh_rep=1e-5; // fallback
   }
 
-  // kh/kv ratio (CUR 2003-7)
-  const khkv = isGranular ? 1 : 3;
+  // kh/kv ratio — engineer-selectable method.
+  //
+  //   Method A — OVAM / I/RA/11461 (default)
+  //     Conservative engineering practice value used in the Belgian
+  //     OVAM 2002 / I/RA/11461.15.066 reference.  Silty sand ("fijn zand"
+  //     in the source) is grouped with the fine soils → k_h/k_v = 3.
+  //
+  //   Method B — Bear (1979) academic
+  //     Bear's Hydraulics of Groundwater gives a literature-typical
+  //     intermediate value for fine/silty sand: k_h/k_v ≈ 2.  Reflects
+  //     the partly-cohesive nature of silty sand without lumping it
+  //     fully with cohesive soils.
+  //
+  // Sand and gravel remain isotropic (k_h/k_v = 1) under both methods.
+  // All cohesive soils (clay, sandy clay/leem, peat) get k_h/k_v = 3
+  // under both methods.
+  const isFineSand = l.type==='Silty sand';
+  let khkv;
+  if (isGranular && !isFineSand) {
+    khkv = 1;                                   // clean sand or gravel
+  } else if (isFineSand) {
+    khkv = (S.khKvMethod === 'B') ? 2 : 3;      // OVAM=3 (default), Bear=2
+  } else {
+    khkv = 3;                                   // cohesive
+  }
   const kv_rep = +(kh_rep / khkv).toExponential(1);
 
-  // psi_unsat (Plaxis 2D Manual)
+  // psi_unsat (Plaxis 2D Manual): granular 0.1 m, leem 1.0 m, cohesive 3.0 m.
+  // Silty sand stays in the granular branch for ψ_unsat (height of partially
+  // saturated zone above the water table) — it dries similarly to clean sand.
   const psi_unsat = isGranular ? 0.1 : isLeem ? 1.0 : 3.0;
 
   // Infiltration design class (VMM §5.2, I/RA/11461/15.066/JSW)
@@ -3305,6 +3336,20 @@ function setStiffMethod(v){
   S.stiffMethod=v;
   document.getElementById('btnStiffA').classList.toggle('active',v==='A');
   document.getElementById('btnStiffB').classList.toggle('active',v==='B');
+  if(S.layers.length) renderModel();
+}
+
+/* k_h/k_v anisotropy method.
+   A — OVAM / I/RA/11461 (default): conservative engineering practice value.
+       Silty sand grouped with fine soils → k_h/k_v = 3.
+   B — Bear (1979): literature-typical intermediate value for fine/silty sand.
+       Silty sand → k_h/k_v = 2.
+   Sand and gravel are isotropic (k_h/k_v = 1) under both methods.
+   Cohesive soils (clay, sandy clay/leem, peat) get k_h/k_v = 3 under both. */
+function setKhKvMethod(v){
+  S.khKvMethod=v;
+  document.getElementById('btnKhKvA').classList.toggle('active',v==='A');
+  document.getElementById('btnKhKvB').classList.toggle('active',v==='B');
   if(S.layers.length) renderModel();
 }
 
@@ -3342,11 +3387,15 @@ function hsParams(l){
   /* ── Eoed,i ── */
   const Eoed_i=+(aE*l.avgQc*1000).toFixed(0);
 
-  /* ── m (type default, engineer can override) ── */
+  /* ── m (type default, engineer can override) ──
+     CUR 2003-7 binary stress-exponent convention: m = 0.5 for granular soils
+     (sand, silty sand, gravel) and m = 1.0 for cohesive soils (clay, soft
+     clay, sandy clay / leem, peat).  This is the documented method's
+     conservative default — Stage 5 m-fitting is available per layer when
+     site-specific evidence supports a different value.
+     References: CUR 2003-7; Schanz, Vermeer & Bonnier (1999). */
   const m=l.ovr.m ? l.m_ovr
-          : l.type==='Peat / organic'?1.0
-          : cohesive?0.85
-          : l.type==='Sandy clay'?0.65
+          : (cohesive || l.type==='Sandy clay') ? 1.0
           : 0.50;
 
   /* ── Eoed,ref (full cohesion-corrected formula per SB260-21-6.4.10) ── */
@@ -3355,7 +3404,11 @@ function hsParams(l){
   const ratio = Math.max((sigVeff + cCotPhi) / (pref + cCotPhi), 0.05);
   const Eoed_ref = +(Eoed_i / Math.pow(ratio, m)).toFixed(0);
 
-  /* ── Stiffness Method A (CUR 2003-7) or B (E50 = Eoed) ── */
+  /* ── Stiffness Method A (CUR 2003-7) or B (E50 = Eoed) ──
+     CUR 2003-7 treats klei AND leem (Sandy clay) as the cohesive set for
+     the E50/Eoed = 1.25 ratio.  The earlier code excluded Sandy clay,
+     which disagreed with the documented method. */
+  const cohesiveForE50 = cohesive || l.type==='Sandy clay';
   let E50_i, E50_ref, Eur_ref;
   if(S.stiffMethod==='B'){
     E50_i = Eoed_i;
@@ -3363,8 +3416,8 @@ function hsParams(l){
     Eur_ref = +(3*Eoed_ref).toFixed(0);
   } else {
     // Method A: CUR 2003-7
-    E50_i = cohesive ? +(1.25*Eoed_i).toFixed(0) : Eoed_i;
-    E50_ref = cohesive ? +(1.25*Eoed_ref).toFixed(0) : Eoed_ref;
+    E50_i = cohesiveForE50 ? +(1.25*Eoed_i).toFixed(0) : Eoed_i;
+    E50_ref = cohesiveForE50 ? +(1.25*Eoed_ref).toFixed(0) : Eoed_ref;
     Eur_ref = +(3*E50_ref).toFixed(0);
   }
 
@@ -3507,10 +3560,11 @@ function fitLayer(l){
     : 0;
   const cCotPhi = l.c * cotphi;
 
-  const mDefault = l.type==='Peat / organic'?1.0
-    : (l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic')?0.85
-    : l.type==='Sandy clay'?0.65
-    : 0.50;
+  // CUR 2003-7 binary default — must match hsParams().
+  const mDefault =
+      (l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic'||l.type==='Sandy clay')
+        ? 1.0
+        : 0.50;
   const alphaDefault = (l.ovr.aE ? l.aE_ovr
     : S.alphaMethod==='B' ? alphaEB(l.type, l.avgQc, l.subtype, l.avgRf)
     : (AE[l.type] || 10));
@@ -13913,6 +13967,7 @@ const legacyApi={
   khParams,
   setAlphaMethod,
   setStiffMethod,
+  setKhKvMethod,
   setParamMethod,
   hsParams,
   renderModel,

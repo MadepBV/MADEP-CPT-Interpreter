@@ -87,18 +87,22 @@
 	];
 
 	const alphaMethodRows: Record<string, string>[] = [
-		{ method: 'A', family: 'Behavioural type', soil: 'Peat / organic', qc: 'any', rule: 'fixed α', expression: 'α = 1.5' },
-		{ method: 'A', family: 'Behavioural type', soil: 'Soft clay / Clay', qc: 'any', rule: 'fixed α', expression: 'α = 3.0 or 5.0' },
-		{ method: 'A', family: 'Behavioural type', soil: 'Sandy clay / Silty sand / Sand / Gravel', qc: 'any', rule: 'fixed α', expression: 'α = 8.0 / 10.0 / 13.0 / 15.0' },
-		{ method: 'B', family: 'Cohesive', soil: 'veen, ...', qc: 'any', rule: 'SB260 default when w unknown', expression: 'α = 1.5' },
-		{ method: 'B', family: 'Cohesive', soil: 'klei, ...', qc: 'q<sub>c</sub> &lt; 0.7; 0.7 ≤ q<sub>c</sub> &lt; 2.0; q<sub>c</sub> ≥ 2.0', rule: 'GEO values by q<sub>c</sub> band', expression: 'α = 5.0; 3.0; 1.5' },
-		{ method: 'B', family: 'Cohesive', soil: 'leem, ...', qc: 'q<sub>c</sub> &lt; 2.0; q<sub>c</sub> ≥ 2.0', rule: 'GEO values by q<sub>c</sub> band', expression: 'α = 4.0; 2.0' },
-		{ method: 'B', family: 'Transition', soil: 'klei (zh), ... / leem (zh), ... / zand (lh), ...', qc: 'q<sub>c</sub> &lt; 2.5', rule: 'transition rule', expression: 'α = 2.0' },
-		{ method: 'B', family: 'Transition', soil: 'klei (zh), ... / leem (zh), ... / zand (lh), ...', qc: '2.5 ≤ q<sub>c</sub> &lt; 5.0', rule: 'E<sub>s</sub> = 4q<sub>c</sub> − 5', expression: 'α = (4q<sub>c</sub> − 5) / q<sub>c</sub>' },
-		{ method: 'B', family: 'Transition', soil: 'klei (zh), ... / leem (zh), ... / zand (lh), ...', qc: 'q<sub>c</sub> ≥ 5.0', rule: 'transition cap', expression: 'α = 2.0' },
-		{ method: 'B', family: 'Granular', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: 'q<sub>c</sub> ≤ 10', rule: 'NC granular rule', expression: 'E<sub>s</sub> = 4q<sub>c</sub>, so α = 4.0' },
-		{ method: 'B', family: 'Granular', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: '10 &lt; q<sub>c</sub> ≤ 50', rule: 'NC granular rule', expression: 'E<sub>s</sub> = 2q<sub>c</sub> + 20, so α = (2q<sub>c</sub> + 20) / q<sub>c</sub>' },
-		{ method: 'B', family: 'Granular', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: 'q<sub>c</sub> &gt; 50', rule: 'NC granular rule', expression: 'E<sub>s</sub> = 120, so α = 120 / q<sub>c</sub>' }
+		{ method: 'A — Sanglerat', family: 'Behavioural type', soil: 'Peat / organic', qc: 'any', rule: 'Sanglerat fixed default', expression: 'α = 1.5' },
+		{ method: 'A — Sanglerat', family: 'Behavioural type', soil: 'Soft clay', qc: 'any', rule: 'Sanglerat fixed default', expression: 'α = 3.0' },
+		{ method: 'A — Sanglerat', family: 'Behavioural type', soil: 'Clay', qc: 'any', rule: 'Sanglerat fixed default', expression: 'α = 5.0' },
+		{ method: 'A — Sanglerat', family: 'Behavioural type', soil: 'Sandy clay', qc: 'any', rule: 'Sanglerat fixed default', expression: 'α = 8.0' },
+		{ method: 'A — Sanglerat', family: 'Behavioural type', soil: 'Silty sand', qc: 'any', rule: 'Sanglerat fixed default', expression: 'α = 10.0' },
+		{ method: 'A — Sanglerat', family: 'Behavioural type', soil: 'Sand', qc: 'any', rule: 'Sanglerat fixed default', expression: 'α = 13.0' },
+		{ method: 'A — Sanglerat', family: 'Behavioural type', soil: 'Gravel', qc: 'any', rule: 'Sanglerat fixed default', expression: 'α = 15.0' },
+		{ method: 'B — SB260', family: 'Cohesive', soil: 'veen, ...', qc: 'any', rule: 'SB260 default when w unknown', expression: 'α = 1.5' },
+		{ method: 'B — SB260', family: 'Cohesive', soil: 'klei, ...', qc: 'q<sub>c</sub> &lt; 0.7; 0.7 ≤ q<sub>c</sub> &lt; 2.0; q<sub>c</sub> ≥ 2.0', rule: 'SB260 GEO column by q<sub>c</sub> band', expression: 'α = 5.0; 3.0; 1.5' },
+		{ method: 'B — SB260', family: 'Cohesive', soil: 'leem, ...', qc: 'q<sub>c</sub> &lt; 2.0; q<sub>c</sub> ≥ 2.0', rule: 'SB260 GEO column by q<sub>c</sub> band', expression: 'α = 4.0; 2.0' },
+		{ method: 'B — SB260', family: 'Transition (overgangsgronden)', soil: 'klei (zh), ... / leem (zh), ... / zand (lh), ...', qc: 'q<sub>c</sub> &lt; 2.5', rule: 'SB260 transition rule', expression: 'α = 2.0' },
+		{ method: 'B — SB260', family: 'Transition (overgangsgronden)', soil: 'klei (zh), ... / leem (zh), ... / zand (lh), ...', qc: '2.5 ≤ q<sub>c</sub> &lt; 5.0', rule: 'SB260 E<sub>s</sub> = 4q<sub>c</sub> − 5', expression: 'α = (4q<sub>c</sub> − 5) / q<sub>c</sub>' },
+		{ method: 'B — SB260', family: 'Transition (overgangsgronden)', soil: 'klei (zh), ... / leem (zh), ... / zand (lh), ...', qc: 'q<sub>c</sub> ≥ 5.0', rule: 'SB260 transition cap (extrapolated)', expression: 'α = 2.0' },
+		{ method: 'B — SB260', family: 'Granular (zandgronden)', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: 'q<sub>c</sub> ≤ 10', rule: 'SB260 NC zandgronden', expression: 'E<sub>s</sub> = 4q<sub>c</sub>, so α = 4.0' },
+		{ method: 'B — SB260', family: 'Granular (zandgronden)', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: '10 &lt; q<sub>c</sub> ≤ 50', rule: 'SB260 NC zandgronden', expression: 'E<sub>s</sub> = 2q<sub>c</sub> + 20, so α = (2q<sub>c</sub> + 20) / q<sub>c</sub>' },
+		{ method: 'B — SB260', family: 'Granular (zandgronden)', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: 'q<sub>c</sub> &gt; 50', rule: 'SB260 NC zandgronden', expression: 'E<sub>s</sub> = 120, so α = 120 / q<sub>c</sub>' }
 	];
 
 	const referenceGroups: ReferenceGroup[] = [
@@ -681,25 +685,37 @@
 					id: 'stage4-alpha',
 					title: '4.2 q<sub>c</sub>-to-E<sub>oed,i</sub> correlation and α methods',
 					paragraphs: [
-						'The first stiffness step converts the representative cone resistance into an oedometric modulus through the Sanglerat or SB260 α correlation.',
-						'Method A uses a fixed α per behavioural soil type. Method B uses the selected NEN Tabel 3 family and then applies the SB260 family-specific q<sub>c</sub> rules.',
+						'The first stiffness step converts the representative cone resistance into an oedometric modulus through one of two α correlations selected in the Stage 4 UI: <strong>Method A — Sanglerat literature</strong> (fixed α per behavioural soil type) or <strong>Method B — SB260-21-6.4.10</strong> (q<sub>c</sub>-graded family rules). Method A and Method B are alternative routes that produce different α — and hence different E<sub>oed,i</sub> — for the same layer.',
+						'Method A applies fixed Sanglerat-style α defaults keyed to the broad layer <em>type</em> (Peat, Soft clay, Clay, Sandy clay, Silty sand, Sand, Gravel). All rows in the layer share one α regardless of q<sub>c</sub>.',
+						'Method B applies the SB260-21-6.4.10 Tabel 21-6-5 rules, structured around three families — <strong>cohesive</strong> (klei, leem, veen), <strong>transition / overgangsgronden</strong> (the (zh) and (lh) subtype variants), and <strong>granular / zandgronden</strong> (zand, grind, grind (kh)). The family is selected from the EC7 subtype string first, falling back to the broad type when no subtype is set, and α (or E<sub>s</sub>) varies with q<sub>c</sub> within the family.',
 						'The full implemented α mapping is shown in the expandable reference table below so the reader can audit exactly which family, q<sub>c</sub> band, or modulus formula is applied.'
 					],
 					equations: [
 						'E<sub>oed,i</sub> = α · avg q<sub>c</sub> · 1000',
-						'α = 5, 3, 1.5 &nbsp;&nbsp; for klei with q<sub>c</sub> &lt; 0.7, 0.7–2.0, ≥ 2.0 MPa',
-						'α = 4 or 2 &nbsp;&nbsp; for leem below or above q<sub>c</sub> = 2.0 MPa',
-						'E<sub>s</sub> = 4q<sub>c</sub> − 5 &nbsp;&nbsp; for SB260 overgangsgronden with 2.5 &lt; q<sub>c</sub> &lt; 5.0 MPa',
-						'E<sub>s</sub> = 4q<sub>c</sub>, &nbsp; 2q<sub>c</sub> + 20, &nbsp; 120 &nbsp;&nbsp; for zandgronden over the SB260 q<sub>c</sub> ranges'
+						'<em>Method A — Sanglerat fixed α by behavioural type:</em>',
+						'α = 1.5 (Peat / organic), 3.0 (Soft clay), 5.0 (Clay), 8.0 (Sandy clay)',
+						'α = 10.0 (Silty sand), 13.0 (Sand), 15.0 (Gravel)',
+						'<em>Method B — SB260-21-6.4.10 by family, keyed to the EC7 subtype:</em>',
+						'<em>Cohesive:</em>',
+						'α = 1.5 &nbsp;&nbsp; for veen, ... (any q<sub>c</sub>; w unknown in app)',
+						'α = 5, 3, 1.5 &nbsp;&nbsp; for klei, ... with q<sub>c</sub> &lt; 0.7, 0.7–2.0, ≥ 2.0 MPa',
+						'α = 4, 2 &nbsp;&nbsp; for leem, ... with q<sub>c</sub> &lt; 2.0, ≥ 2.0 MPa',
+						'<em>Transition (overgangsgronden):</em>',
+						'α = 2.0; (4q<sub>c</sub> − 5)/q<sub>c</sub>; 2.0 &nbsp;&nbsp; for klei (zh) / leem (zh) / zand (lh) with q<sub>c</sub> &lt; 2.5, 2.5–5.0, ≥ 5.0 MPa',
+						'<em>Granular (zandgronden):</em>',
+						'α = 4.0; (2q<sub>c</sub> + 20)/q<sub>c</sub>; 120/q<sub>c</sub> &nbsp;&nbsp; for zand / grind / grind (kh) with q<sub>c</sub> ≤ 10, 10–50, &gt; 50 MPa'
 					],
 					symbols: [
-						{ term: 'α', meaning: 'Sanglerat / SB260 stiffness correlation factor [-]' },
+						{ term: 'α', meaning: 'q<sub>c</sub>-to-stiffness correlation factor [-] (Sanglerat literature in Method A; SB260-21-6.4.10 in Method B)' },
 						{ term: 'avg q<sub>c</sub>', meaning: 'mean cone resistance of the layer [MPa]' },
-						{ term: 'E<sub>oed,i</sub>', meaning: 'CPT-derived oedometric stiffness before reference-stress correction [kPa]' }
+						{ term: 'E<sub>oed,i</sub>', meaning: 'CPT-derived oedometric stiffness before reference-stress correction [kPa]' },
+						{ term: 'E<sub>s</sub>', meaning: 'SB260 secant stiffness used in the granular and transition rules [MPa]' }
 					],
 					bullets: [
-						'For peat, water content w is not available in the app, so the SB260 default α = 1.5 is used.',
-						'Transition soils are mapped from the selected EC7 subtype rather than from q<sub>c</sub> and R<sub>f</sub> alone.'
+						'Method A produces the higher α values for granular soils (Sand = 13, Gravel = 15) characteristic of Sanglerat literature. Method B uses the SB260 zandgronden rule E<sub>s</sub> = 4q<sub>c</sub> / 2q<sub>c</sub>+20 / 120, which gives much smaller effective α (e.g. α = 4 for q<sub>c</sub> ≤ 10 MPa). The two methods are not interchangeable — Method A and Method B will give different E<sub>oed,i</sub> for the same layer.',
+						'Method A keys off the broad layer type (l.type) only. Method B keys off the EC7 subtype string first and falls back to type when no subtype is available.',
+						'For peat, water content w is not available in the app, so Method B uses the SB260 default α = 1.5 (the conservative branch of Tabel 21-6-5 for veen).',
+						'The (zh) / (lh) suffix on klei / leem / zand routes to the transition family. The (kh) suffix on grind routes to the granular family.'
 					],
 					table: {
 						caption:
@@ -720,21 +736,38 @@
 					}
 				},
 				{
-					id: 'stage4-method-a',
-					title: '4.3 Method A — CUR 2003-7 ratios',
+					id: 'stage4-refstress',
+					title: '4.3 Reference-stress correction (shared by Methods A and B)',
 					paragraphs: [
-						'Method A applies a type-default stress exponent m and then corrects E<sub>oed,i</sub> to the reference stress p<sub>ref</sub> with the full cohesion-corrected Hardening Soil expression. E<sub>50,ref</sub> follows the CUR ratio rule and E<sub>ur,ref</sub> is taken as three times E<sub>50,ref</sub>.',
-						'For cohesive soils, E<sub>50,ref</sub> is larger than E<sub>oed,ref</sub>; for granular soils they are set equal.'
+						'Both Method A and Method B apply the same Hardening Soil reference-stress correction to convert the in-situ E<sub>oed,i</sub> from §4.2 into the reference-stress quantity E<sub>oed,ref</sub> at p<sub>ref</sub> = 100 kPa. The cohesion-corrected form is used so the correction remains well-behaved in cohesive layers where σ′<sub>v0</sub> can be small relative to c′cotφ′.',
+						'Methods A and B differ <em>only</em> in how E<sub>50,ref</sub> and E<sub>ur,ref</sub> are derived from this shared E<sub>oed,ref</sub>; the depth correction itself is identical in both routes.',
+						'The CUR 2003-7 stress-exponent default is binary: m = 0.5 for granular soils (Sand, Silty sand, Gravel) and m = 1.0 for cohesive soils (Sandy clay / leem, Clay, Soft clay, Peat / organic). Stage 5 m-fitting can override the m default per layer.'
 					],
 					equations: [
 						"E<sub>oed,ref</sub> = E<sub>oed,i</sub> · [(p<sub>ref</sub> + c′cotφ′)/(σ′<sub>v0</sub> + c′cotφ′)]<sup>m</sup>",
+						'p<sub>ref</sub> = 100 kPa',
+						'm = 0.5 &nbsp;&nbsp; granular soils (Sand, Silty sand, Gravel)',
+						'm = 1.0 &nbsp;&nbsp; cohesive soils (Sandy clay / leem, Clay, Soft clay, Peat)'
+					],
+					symbols: [
+						{ term: 'E<sub>oed,ref</sub>', meaning: 'reference oedometric stiffness at p<sub>ref</sub> [kPa]' },
+						{ term: 'm', meaning: 'Hardening Soil stress exponent [-]' },
+						{ term: 'p<sub>ref</sub>', meaning: 'reference confining stress, 100 kPa' }
+					]
+				},
+				{
+					id: 'stage4-method-a',
+					title: '4.4 Method A — CUR 2003-7 stiffness ratios',
+					paragraphs: [
+						'Method A takes the shared E<sub>oed,ref</sub> from §4.3 and applies the CUR 2003-7 family rule to derive E<sub>50,ref</sub>. E<sub>ur,ref</sub> is taken as three times E<sub>50,ref</sub>. The family rule treats klei and leem together, so Sandy clay (leem) is in the cohesive set with the 1.25 factor; for granular soils E<sub>50,ref</sub> is set equal to E<sub>oed,ref</sub>.'
+					],
+					equations: [
 						'E<sub>50,ref</sub> = E<sub>oed,ref</sub> &nbsp;&nbsp; granular soils',
-						'E<sub>50,ref</sub> = 1.25E<sub>oed,ref</sub> &nbsp;&nbsp; cohesive soils',
+						'E<sub>50,ref</sub> = 1.25E<sub>oed,ref</sub> &nbsp;&nbsp; cohesive soils (klei en leem)',
 						'E<sub>ur,ref</sub> = 3E<sub>50,ref</sub>',
 						'K<sub>0,nc</sub> = 1 − sinφ′'
 					],
 					symbols: [
-						{ term: 'E<sub>oed,ref</sub>', meaning: 'reference oedometric stiffness at p<sub>ref</sub> [kPa]' },
 						{ term: 'E<sub>50,ref</sub>', meaning: 'reference secant stiffness for primary loading [kPa]' },
 						{ term: 'E<sub>ur,ref</sub>', meaning: 'reference unloading/reloading stiffness [kPa]' },
 						{ term: 'K<sub>0,nc</sub>', meaning: 'at-rest earth-pressure coefficient for normally consolidated state [-]' }
@@ -742,9 +775,9 @@
 				},
 				{
 					id: 'stage4-method-b',
-					title: '4.4 Method B — E<sub>50,ref</sub> = E<sub>oed,ref</sub>',
+					title: '4.5 Method B — E<sub>50,ref</sub> = E<sub>oed,ref</sub>',
 					paragraphs: [
-						'Method B uses the same E<sub>oed,i</sub> and reference-stress correction, but then sets E<sub>50,ref</sub> equal to E<sub>oed,ref</sub> for all soils. E<sub>ur,ref</sub> remains three times the selected E<sub>50,ref</sub>.',
+						'Method B takes the shared E<sub>oed,ref</sub> from §4.3 and sets E<sub>50,ref</sub> equal to E<sub>oed,ref</sub> for all soils. E<sub>ur,ref</sub> remains three times the selected E<sub>50,ref</sub>.',
 						'This gives a single consistent reference stiffness and is sometimes preferred in practice when the engineer wants to avoid the cohesive-soil E<sub>50</sub>/E<sub>oed</sub> split.'
 					],
 					equations: [
@@ -754,7 +787,7 @@
 				},
 				{
 					id: 'stage4-conductivity',
-					title: '4.5 Hydraulic conductivity basis',
+					title: '4.6 Hydraulic conductivity basis',
 					paragraphs: [
 						'The app uses indicative hydraulic conductivity values tied to Belgian and USDA-style texture classes, with OVAM and De Smedt as the principal reference sources. The representative value is treated as a geometric-mean estimate within the adopted class range rather than a deterministic measurement.',
 						'Anisotropy is then introduced through a k<sub>h</sub>/k<sub>v</sub> ratio: isotropic for coarse granular soils, higher horizontal-than-vertical conductivity for fine-grained and layered soils.',
@@ -779,7 +812,7 @@
 				},
 				{
 					id: 'stage4-plaxis-export',
-					title: '4.6 PLAXIS material-command export',
+					title: '4.7 PLAXIS material-command export',
 					paragraphs: [
 						'Stage 4 includes a dedicated PLAXIS material export in addition to the CSV layer table. The implemented export writes a text file containing supported soilmat commands, not a directly generated native .matXdb database.',
 						'That choice is deliberate: in the modern PLAXIS workflow the app reliably creates project materials through command-line material creation, after which the engineer can copy those project materials into a reusable global material database from inside PLAXIS if desired.',
@@ -1065,7 +1098,7 @@
 						'T(h) expresses how that flow capacity changes as the water table rises or falls relative to the aquifer base.',
 						'M(h) is the cumulative transmissivity moment used to solve the radial unconfined flow relation.',
 						'For a homogeneous aquifer, the formulation reduces exactly to the classical Dupuit expression.',
-						'The CPT does not measure b<sub>i</sub>, T(h), or M(h) directly. The app derives them from the interpreted layer model: each layer receives k<sub>h</sub> in Stage 4.5, the aquifer base is set by the hydraulic screening setup, and b<sub>i</sub>(h) is then the overlap of layer i with the currently saturated interval between that base and the phreatic level.',
+						'The CPT does not measure b<sub>i</sub>, T(h), or M(h) directly. The app derives them from the interpreted layer model: each layer receives k<sub>h</sub> in Stage 4.6, the aquifer base is set by the hydraulic screening setup, and b<sub>i</sub>(h) is then the overlap of layer i with the currently saturated interval between that base and the phreatic level.',
 						'Once the interpreted layers and their k<sub>h</sub> values are known, T(h) follows by summing k<sub>h,i</sub>b<sub>i</sub>(h) over the intersected layers, and M(h) is the corresponding cumulative transmissivity moment of that piecewise profile.'
 					]
 				},
