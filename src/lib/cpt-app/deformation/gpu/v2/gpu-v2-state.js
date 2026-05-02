@@ -54,6 +54,7 @@ import {
 import { KERNEL_MF_ELASTIC_D_WGSL, MF_ELASTIC_D_LAYOUT } from './wgsl-v2/mf-elastic-d.js';
 import { KERNEL_MF_APPLY_JACOBI_WGSL, MF_APPLY_JACOBI_LAYOUT } from './wgsl-v2/mf-apply-jacobi.js';
 import { KERNEL_MF_TRIAL_STRESS_WGSL, MF_TRIAL_STRESS_LAYOUT } from './wgsl-v2/mf-trial-stress.js';
+import { KERNEL_MF_PLASTIC_STRAIN_WGSL, MF_PLASTIC_STRAIN_LAYOUT } from './wgsl-v2/mf-plastic-strain.js';
 import {
   KERNEL_MF_BLOCK_BUILD_T3_WGSL, KERNEL_MF_BLOCK_BUILD_T6_WGSL,
   KERNEL_MF_BLOCK_BUILD_T3_TANGENT_WGSL, KERNEL_MF_BLOCK_BUILD_T6_TANGENT_WGSL,
@@ -358,6 +359,7 @@ export function createV2Context({
     applyJacobi:  lazyPipeline(device, 'mfApplyJacobi',               KERNEL_MF_APPLY_JACOBI_WGSL, MF_APPLY_JACOBI_LAYOUT),
     buildD:       lazyPipeline(device, 'mfBuildD',                    KERNEL_MF_ELASTIC_D_WGSL,    MF_ELASTIC_D_LAYOUT),
     trialStress:  lazyPipeline(device, 'mfTrialStress',               KERNEL_MF_TRIAL_STRESS_WGSL, MF_TRIAL_STRESS_LAYOUT),
+    plasticStrain: lazyPipeline(device, 'mfPlasticStrain',            KERNEL_MF_PLASTIC_STRAIN_WGSL, MF_PLASTIC_STRAIN_LAYOUT),
     blockBuild:   lazyPipeline(device, `mfBlockBuild-${elementType}`, blkBuildSrc, MF_BLOCK_BUILD_LAYOUT),
     blockBuildTangent: lazyPipeline(device, `mfBlockBuildTangent-${elementType}`, blkBuildTangentSrc, MF_BLOCK_BUILD_LAYOUT),
     blockDiagFromKElem: lazyPipeline(device, `mfBlockDiagFromKElem-${elementType}`, blkDiagFromKElemSrc, MF_BLOCK_DIAG_FROM_KELEM_LAYOUT),
@@ -413,6 +415,10 @@ export function createV2Context({
   buffers.sigmaCommitted = buf(device, sigmaBytes, SRW, 'mf-sigmaC');
   buffers.sigmaTrial     = buf(device, sigmaBytes, SRW, 'mf-sigmaT');
   buffers.sigmaReturned  = buf(device, sigmaBytes, SRW, 'mf-sigmaR');
+  buffers.plasticStrainCommitted = buf(device, sigmaBytes, SRW, 'mf-plasticC');
+  buffers.plasticStrainReturned  = buf(device, sigmaBytes, SRW, 'mf-plasticR');
+  buffers.plasticEqCommitted = buf(device, numGp * 8, SRW, 'mf-plasticEqC');
+  buffers.plasticEqReturned  = buf(device, numGp * 8, SRW, 'mf-plasticEqR');
   // Voigt-3 (xx, yy, xy) slice of σ_returned — fed to v1's internal-force
   // kernel which expects 3 DS per GP, NOT the full Voigt-6 we keep on
   // sigmaReturned for the MC return mapping.

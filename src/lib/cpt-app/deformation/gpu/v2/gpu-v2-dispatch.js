@@ -101,6 +101,16 @@ export function dispatchReturnMapping(ctx, encoder) {
   pass1(encoder, pipelines.mcReturn.pipeline, grp, numWgGp);
 }
 
+export function dispatchPlasticStrainState(ctx, encoder) {
+  const { device, pipelines, buffers, numWgGp } = ctx;
+  const grp = bg(device, pipelines.plasticStrain.bgLayout,
+    [buffers.sigmaTrial, buffers.sigmaReturned,
+     buffers.plasticStrainCommitted, buffers.plasticEqCommitted,
+     buffers.matParams, buffers.matIndex,
+     buffers.plasticStrainReturned, buffers.plasticEqReturned]);
+  pass1(encoder, pipelines.plasticStrain.pipeline, grp, numWgGp);
+}
+
 // -----------------------------------------------------------------------------
 // Internal force: σ_returned (Voigt-6) → σ_voigt3 (xx, yy, xy) → per-element
 // ∑_g w·|J| Bᵀσ → elemScatter → scatter to fInt.
@@ -433,6 +443,8 @@ export function createV2Snapshot(ctx, label = 'mf-snapshot') {
   return {
     u: device.createBuffer({ size: Math.max(numFree * 8, 16), usage: C, label: `${label}-u` }),
     sigma: device.createBuffer({ size: Math.max(numGp * 6 * 8, 16), usage: C, label: `${label}-sigma` }),
+    plastic: device.createBuffer({ size: Math.max(numGp * 6 * 8, 16), usage: C, label: `${label}-plastic` }),
+    plasticEq: device.createBuffer({ size: Math.max(numGp * 8, 16), usage: C, label: `${label}-plasticEq` }),
     branch: device.createBuffer({ size: Math.max(numGp * 4, 16), usage: C, label: `${label}-branch` })
   };
 }
@@ -440,6 +452,8 @@ export function createV2Snapshot(ctx, label = 'mf-snapshot') {
 export function destroyV2Snapshot(snapshot) {
   snapshot?.u?.destroy?.();
   snapshot?.sigma?.destroy?.();
+  snapshot?.plastic?.destroy?.();
+  snapshot?.plasticEq?.destroy?.();
   snapshot?.branch?.destroy?.();
 }
 
@@ -447,6 +461,8 @@ export function recordSnapshotState(ctx, encoder, snapshot) {
   const { buffers, numFree, numGp } = ctx;
   recordCopyBuffer(ctx, encoder, buffers.utotal, snapshot.u, numFree * 8);
   recordCopyBuffer(ctx, encoder, buffers.sigmaCommitted, snapshot.sigma, numGp * 6 * 8);
+  recordCopyBuffer(ctx, encoder, buffers.plasticStrainCommitted, snapshot.plastic, numGp * 6 * 8);
+  recordCopyBuffer(ctx, encoder, buffers.plasticEqCommitted, snapshot.plasticEq, numGp * 8);
   recordCopyBuffer(ctx, encoder, buffers.branchKind, snapshot.branch, numGp * 4);
 }
 
@@ -455,6 +471,8 @@ export function recordRestoreState(ctx, encoder, snapshot) {
   recordCopyBuffer(ctx, encoder, snapshot.u, buffers.utotal, numFree * 8);
   recordCopyBuffer(ctx, encoder, snapshot.u, buffers.uPrev, numFree * 8);
   recordCopyBuffer(ctx, encoder, snapshot.sigma, buffers.sigmaCommitted, numGp * 6 * 8);
+  recordCopyBuffer(ctx, encoder, snapshot.plastic, buffers.plasticStrainCommitted, numGp * 6 * 8);
+  recordCopyBuffer(ctx, encoder, snapshot.plasticEq, buffers.plasticEqCommitted, numGp * 8);
   recordCopyBuffer(ctx, encoder, snapshot.branch, buffers.branchKind, numGp * 4);
 }
 
@@ -469,6 +487,7 @@ export function recordPlasticResidual(ctx, encoder) {
   dispatchStrain(ctx, encoder, ctx.buffers.du, ctx.buffers.deltaEps);
   dispatchTrialStress(ctx, encoder);
   dispatchReturnMapping(ctx, encoder);
+  dispatchPlasticStrainState(ctx, encoder);
   dispatchInternalForce(ctx, encoder);
   dispatchResidualFromFint(ctx, encoder);
 }
@@ -476,6 +495,8 @@ export function recordPlasticResidual(ctx, encoder) {
 export function recordCommitPlasticState(ctx, encoder) {
   const { buffers, numFree, numGp } = ctx;
   recordCopyBuffer(ctx, encoder, buffers.sigmaReturned, buffers.sigmaCommitted, numGp * 6 * 8);
+  recordCopyBuffer(ctx, encoder, buffers.plasticStrainReturned, buffers.plasticStrainCommitted, numGp * 6 * 8);
+  recordCopyBuffer(ctx, encoder, buffers.plasticEqReturned, buffers.plasticEqCommitted, numGp * 8);
   recordCopyBuffer(ctx, encoder, buffers.utotal, buffers.uPrev, numFree * 8);
 }
 
@@ -527,10 +548,14 @@ export async function uploadInitialState(ctx, { uF64, sigmaCommittedF64, bF64, p
   await replaceStorageBufferData(ctx, 'uPrev', u8, 'mf-upload-uprev');
   if (sigmaCommittedF64) {
     await replaceStorageBufferData(ctx, 'sigmaCommitted', packDsVector(sigmaCommittedF64), 'mf-upload-sigma-committed');
+    await replaceStorageBufferData(ctx, 'plasticStrainCommitted', packDsVector(new Float64Array(numGp * 6)), 'mf-upload-plastic-zero');
+    await replaceStorageBufferData(ctx, 'plasticEqCommitted', packDsVector(new Float64Array(numGp)), 'mf-upload-plastic-eq-zero');
   } else if (!preserveSigmaCommitted) {
     // Default: zero σ_committed unless caller explicitly asks to preserve
     // (e.g., second load step after gravity has committed σ on-device).
     await replaceStorageBufferData(ctx, 'sigmaCommitted', packDsVector(new Float64Array(numGp * 6)), 'mf-upload-sigma-zero');
+    await replaceStorageBufferData(ctx, 'plasticStrainCommitted', packDsVector(new Float64Array(numGp * 6)), 'mf-upload-plastic-zero');
+    await replaceStorageBufferData(ctx, 'plasticEqCommitted', packDsVector(new Float64Array(numGp)), 'mf-upload-plastic-eq-zero');
   }
   if (bF64) {
     await replaceStorageBufferData(ctx, 'b', packDsVector(bF64), 'mf-upload-rhs-b');

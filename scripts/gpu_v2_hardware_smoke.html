@@ -10,6 +10,7 @@
 const params = new URLSearchParams(location.search);
 const allowSoftware = params.get('software') === '1';
 const debug = params.get('debug') === '1';
+const plasticMode = params.get('plastic') === '1';
 const forcedSolver = /^(cg|bicgstab)$/.test(params.get('solver') || '') ? params.get('solver') : null;
 const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; console.log(msg); };
 const fail = (reason, detail) => { window.__smokeResult = { ok: false, reason, detail }; log(`FAIL: ${reason} - ${detail}`); };
@@ -34,6 +35,56 @@ function norm(vector) {
   let s = 0;
   for (const value of vector || []) s += value * value;
   return Math.sqrt(s);
+}
+function maxAbs(vector) {
+  let out = 0;
+  for (const value of vector || []) out = Math.max(out, Math.abs(Number(value) || 0));
+  return out;
+}
+
+async function runPlasticStrainKernelCheck({ device, mesh, elementCaches, regionConstitutiveByRegion, fixedDofSet, gpCount }) {
+  const { createV2Context } =
+    await import('/src/lib/cpt-app/deformation/gpu/v2/gpu-v2-state.js');
+  const { dispatchPlasticStrainState, replaceStorageBufferData, readDsVector } =
+    await import('/src/lib/cpt-app/deformation/gpu/v2/gpu-v2-dispatch.js');
+  const { packDsVector } =
+    await import('/src/lib/cpt-app/deformation/gpu/resident-buffers.js');
+
+  const ctx = createV2Context({
+    device,
+    mesh,
+    elementCaches,
+    regionConstitutiveByRegion,
+    fixedDofSet,
+    preconditioner: 'block-jacobi'
+  });
+  const sigmaTrial = new Float64Array(gpCount * 6);
+  const sigmaReturned = new Float64Array(gpCount * 6);
+  for (let gp = 0; gp < gpCount; gp += 1) {
+    const base = gp * 6;
+    sigmaTrial[base + 0] = 100;
+    sigmaTrial[base + 1] = 60;
+    sigmaTrial[base + 2] = 40;
+    sigmaTrial[base + 3] = 20;
+    sigmaReturned[base + 0] = 90;
+    sigmaReturned[base + 1] = 58;
+    sigmaReturned[base + 2] = 42;
+    sigmaReturned[base + 3] = 12;
+  }
+  await replaceStorageBufferData(ctx, 'sigmaTrial', packDsVector(sigmaTrial), 'smoke-plastic-sigma-trial');
+  await replaceStorageBufferData(ctx, 'sigmaReturned', packDsVector(sigmaReturned), 'smoke-plastic-sigma-returned');
+  await replaceStorageBufferData(ctx, 'plasticStrainCommitted', packDsVector(new Float64Array(gpCount * 6)), 'smoke-plastic-zero');
+  await replaceStorageBufferData(ctx, 'plasticEqCommitted', packDsVector(new Float64Array(gpCount)), 'smoke-plastic-eq-zero');
+  const enc = device.createCommandEncoder({ label: 'smoke-plastic-strain-state' });
+  dispatchPlasticStrainState(ctx, enc);
+  device.queue.submit([enc.finish()]);
+  if (typeof device.queue.onSubmittedWorkDone === 'function') await device.queue.onSubmittedWorkDone();
+  const plasticStrain = await readDsVector(ctx, ctx.buffers.plasticStrainReturned, gpCount * 6, 'smoke-read-plastic-strain');
+  const plasticEq = await readDsVector(ctx, ctx.buffers.plasticEqReturned, gpCount, 'smoke-read-plastic-eq');
+  return {
+    plasticKernelNorm: norm(plasticStrain),
+    plasticKernelEqMax: maxAbs(plasticEq)
+  };
 }
 
 try {
@@ -194,12 +245,20 @@ try {
           const uNorm = norm(result.uFullF64);
           const serviceNorm = norm(result.uServiceIncrementFullF64);
           const sigmaNorm = norm(result.sigmaCommittedF64);
+          const plasticNorm = norm(result.plasticStrainCommittedF64);
+          const plasticEqMax = maxAbs(result.plasticEqCommittedF64);
+          const plasticKernel = plasticMode
+            ? await runPlasticStrainKernelCheck({ device, mesh, elementCaches, regionConstitutiveByRegion, fixedDofSet, gpCount: gpCounter })
+            : null;
           const topUy = result.uFullF64[2 * 8 + 1];
           const history = result.diagnostics?.history || {};
+          const branchPlastic = Number(result.branchCounts?.plastic) || 0;
           const checks = {
             uNorm,
             serviceNorm,
             sigmaNorm,
+            plasticNorm,
+            plasticEqMax,
             topUy,
             geostaticSteps: history.geostatic?.length || 0,
             surfaceSteps: history.loadSteps?.length || 0,
@@ -207,13 +266,18 @@ try {
             linearIterations: result.diagnostics?.linearIterations || 0,
             primarySolver: result.diagnostics?.primarySolver || null,
             branchTotal: result.branchCounts?.total || 0,
+            branchPlastic,
             safetyStatus: result.safety?.status || null,
+            plasticMode,
+            plasticKernelNorm: plasticKernel?.plasticKernelNorm || 0,
+            plasticKernelEqMax: plasticKernel?.plasticKernelEqMax || 0,
             elapsedMs
           };
           if (
             uNorm > 1e-8 &&
             serviceNorm > 1e-10 &&
             sigmaNorm > 1e-8 &&
+            (!plasticMode || (checks.plasticKernelNorm > 1e-14 && checks.plasticKernelEqMax > 1e-14)) &&
             topUy < 0 &&
             checks.geostaticSteps > 0 &&
             checks.surfaceSteps > 0 &&

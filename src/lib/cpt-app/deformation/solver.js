@@ -866,6 +866,67 @@ function gpuV2StrainAtPoint(B, dofs, uFull) {
   return { exx: out[0], eyy: out[1], gxy: out[2] };
 }
 
+function stress6FromPacked(array, base) {
+  return [
+    array?.[base + 0] || 0,
+    array?.[base + 1] || 0,
+    array?.[base + 2] || 0,
+    array?.[base + 3] || 0,
+    array?.[base + 4] || 0,
+    array?.[base + 5] || 0
+  ];
+}
+
+function equivalentEngineeringPlasticStrain(strain6) {
+  const exx = Number(strain6?.[0]) || 0;
+  const eyy = Number(strain6?.[1]) || 0;
+  const ezz = Number(strain6?.[2]) || 0;
+  const mean = (exx + eyy + ezz) / 3;
+  const dev = [
+    exx - mean,
+    eyy - mean,
+    ezz - mean,
+    Number(strain6?.[3]) || 0,
+    Number(strain6?.[4]) || 0,
+    Number(strain6?.[5]) || 0
+  ];
+  const normSq = (
+    dev[0] * dev[0] +
+    dev[1] * dev[1] +
+    dev[2] * dev[2] +
+    0.5 * dev[3] * dev[3] +
+    0.5 * dev[4] * dev[4] +
+    0.5 * dev[5] * dev[5]
+  );
+  return Math.sqrt(Math.max((2 / 3) * normSq, 0));
+}
+
+function gpuV2EquivalentPlasticStrainFromStressDelta(strain, stress6, baselineStress6, params) {
+  const E = Math.max(Number(params?.Emc) || 1000, 1);
+  const nu = Math.max(Math.min(Number(params?.nu) || 0.3, 0.499), -0.999);
+  const G = E / (2 * (1 + nu));
+  const ds = Array.from({ length: 6 }, (_item, index) => (Number(stress6?.[index]) || 0) - (Number(baselineStress6?.[index]) || 0));
+  const elastic = [
+    (ds[0] - nu * (ds[1] + ds[2])) / E,
+    (ds[1] - nu * (ds[0] + ds[2])) / E,
+    (ds[2] - nu * (ds[0] + ds[1])) / E,
+    ds[3] / G,
+    ds[4] / G,
+    ds[5] / G
+  ];
+  const total = [
+    Number(strain?.exx) || 0,
+    Number(strain?.eyy) || 0,
+    0,
+    Number(strain?.gxy) || 0,
+    0,
+    0
+  ];
+  const plastic = total.map((value, index) => value - elastic[index]);
+  const equivalent = equivalentEngineeringPlasticStrain(plastic);
+  return Number.isFinite(equivalent) && equivalent > 1e-14 ? equivalent : 0;
+}
+
 // Build a complete solver-result object from a successful GPU analysis.
 // Reuses the CPU summarize/terrain helpers; populates element-level stress
 // from sigma_committed at every Gauss point.
@@ -902,6 +963,10 @@ function buildSolverResultFromGpuOutput({
   const sigmaInitialF64 = gpuResult.sigmaInitialF64
     || gpuResult.sigmaGravityCommittedF64
     || new Float64Array(sigmaCommittedF64.length);
+  const sigmaServiceCommittedF64 = gpuResult.sigmaServiceCommittedF64 || sigmaCommittedF64;
+  const plasticStrainCommittedF64 = gpuResult.plasticStrainCommittedF64 || null;
+  const plasticEqCommittedF64 = gpuResult.plasticEqCommittedF64 || null;
+  const plasticEqServiceCommittedF64 = gpuResult.plasticEqServiceCommittedF64 || null;
   const branchKind = gpuResult.branchKind || new Uint32Array(0);
   const elementResults = elementCaches.map((cache, elemIdx) => {
     const cell = mesh.cells[cache.cellIndex];
@@ -917,24 +982,14 @@ function buildSolverResultFromGpuOutput({
     let maxEta = 0;
     let anyTension = false, anyActive = false;
     let faceCount = 0, edgeCount = 0, apexCount = 0, tensionCount = 0;
+    let maxEquivalentPlasticStrain = 0;
+    let maxSafetyEquivalentPlasticIncrement = 0;
     const gpRecords = cache.integrationPoints?.map((gp) => {
       const base = gp.globalIndex * 6;
-      const stress6 = [
-        sigmaCommittedF64[base + 0] || 0,
-        sigmaCommittedF64[base + 1] || 0,
-        sigmaCommittedF64[base + 2] || 0,
-        sigmaCommittedF64[base + 3] || 0,
-        sigmaCommittedF64[base + 4] || 0,
-        sigmaCommittedF64[base + 5] || 0
-      ];
-      const initialStress6 = [
-        sigmaInitialF64[base + 0] || 0,
-        sigmaInitialF64[base + 1] || 0,
-        sigmaInitialF64[base + 2] || 0,
-        sigmaInitialF64[base + 3] || 0,
-        sigmaInitialF64[base + 4] || 0,
-        sigmaInitialF64[base + 5] || 0
-      ];
+      const stress6 = stress6FromPacked(sigmaCommittedF64, base);
+      const initialStress6 = stress6FromPacked(sigmaInitialF64, base);
+      const serviceStress6 = stress6FromPacked(sigmaServiceCommittedF64, base);
+      const plasticStrain6 = stress6FromPacked(plasticStrainCommittedF64, base);
       const sxxFe = stress6[0];
       const syyFe = stress6[1];
       const szzFe = stress6[2];
@@ -961,9 +1016,40 @@ function buildSolverResultFromGpuOutput({
       const exactBranchKind = gpuV2BranchName(branchValue);
       const activity = gpuV2BranchActivity(branchValue);
       const strain = gpuV2StrainAtPoint(gp.B || cache.bMatricesPerGp?.[gp.gpIndex] || cache.B, cache.dofs, uRecoveryFull);
+      const serviceIncrementStrain = gpuV2StrainAtPoint(gp.B || cache.bMatricesPerGp?.[gp.gpIndex] || cache.B, cache.dofs, uServiceIncrementFull);
+      const displayIncrementStrain = gpuV2StrainAtPoint(gp.B || cache.bMatricesPerGp?.[gp.gpIndex] || cache.B, cache.dofs, uDisplayFull);
+      const serviceEquivalentPlasticStrain = gpuV2EquivalentPlasticStrainFromStressDelta(
+        serviceIncrementStrain,
+        serviceStress6,
+        initialStress6,
+        params
+      );
+      const displayedEquivalentPlasticIncrement = gpuV2EquivalentPlasticStrainFromStressDelta(
+        displayIncrementStrain,
+        stress6,
+        analysisType === 'safety-cphi' ? serviceStress6 : initialStress6,
+        params
+      );
+      const hasGpuPlasticEq = plasticEqCommittedF64 && plasticEqCommittedF64.length > gp.globalIndex;
+      const equivalentPlasticStrain = hasGpuPlasticEq
+        ? Math.max(Number(plasticEqCommittedF64[gp.globalIndex]) || 0, 0)
+        : (analysisType === 'safety-cphi'
+            ? serviceEquivalentPlasticStrain + displayedEquivalentPlasticIncrement
+            : displayedEquivalentPlasticIncrement);
+      const safetyEquivalentPlasticIncrement = analysisType === 'safety-cphi'
+        ? (hasGpuPlasticEq
+            ? Math.max(
+                (Number(plasticEqCommittedF64[gp.globalIndex]) || 0) -
+                (Number(plasticEqServiceCommittedF64?.[gp.globalIndex]) || 0),
+                0
+              )
+            : displayedEquivalentPlasticIncrement)
+        : 0;
       maxEta = Math.max(maxEta, eta);
       anyActive = anyActive || activity.active === 1;
       anyTension = anyTension || activity.tension === 1 || mc?.state === 'tension-cutoff';
+      maxEquivalentPlasticStrain = Math.max(maxEquivalentPlasticStrain, equivalentPlasticStrain);
+      maxSafetyEquivalentPlasticIncrement = Math.max(maxSafetyEquivalentPlasticIncrement, safetyEquivalentPlasticIncrement);
       faceCount += activity.face;
       edgeCount += activity.edge;
       apexCount += activity.apex;
@@ -1000,7 +1086,8 @@ function buildSolverResultFromGpuOutput({
           currentlyMcActive: activity.active === 1,
           hasEverExceededMc: activity.active === 1 || eta >= 1 - 1e-6,
           exactBranchKind,
-          accumulatedPlasticStrain: 0
+          plasticStrain6,
+          accumulatedPlasticStrain: equivalentPlasticStrain
         },
         materialDiagnostics: {
           currentlyMcActive: activity.active === 1,
@@ -1011,7 +1098,7 @@ function buildSolverResultFromGpuOutput({
           activeYieldSurface: activity.tension ? 'TENSION' : (activity.active ? 'MC_SHEAR' : 'NONE'),
           tensionCutoffActive: activity.tension === 1 || mc?.state === 'tension-cutoff',
           initialStateAdmissible: true,
-          safetyEquivalentPlasticIncrement: 0
+          safetyEquivalentPlasticIncrement
         },
         mc,
         tensionCutoffActive: activity.tension === 1 || mc?.state === 'tension-cutoff'
@@ -1083,7 +1170,7 @@ function buildSolverResultFromGpuOutput({
         hasEverExceededMc: anyActive || maxEta >= 1 - 1e-6,
         exactBranchKind: dominantBranch,
         activeYieldSurface: anyTension ? 'TENSION' : (anyActive ? 'MC_SHEAR' : 'NONE'),
-        accumulatedPlasticStrain: 0
+        accumulatedPlasticStrain: maxEquivalentPlasticStrain
       },
       materialDiagnostics: {
         currentlyMcActive: anyActive,
@@ -1094,7 +1181,7 @@ function buildSolverResultFromGpuOutput({
         activeYieldSurface: anyTension ? 'TENSION' : (anyActive ? 'MC_SHEAR' : 'NONE'),
         tensionCutoffActive: anyTension,
         initialStateAdmissible: true,
-        safetyEquivalentPlasticIncrement: 0
+        safetyEquivalentPlasticIncrement: maxSafetyEquivalentPlasticIncrement
       },
       mc,
       tensionCutoffActive: anyTension,
@@ -1125,7 +1212,8 @@ function buildSolverResultFromGpuOutput({
       analysisType,
       elementType: options.meshElementType,
       integrationPointsPerElement: options.meshElementType === 't6' ? 3 : 1,
-      constitutiveModel: 'gpu-resident-mc-plastic',
+      constitutiveModel: 'mc-plastic-material-point',
+      gpuConstitutiveModel: 'gpu-resident-mc-plastic',
       materialPointCount: gpuResult.pack?.numGp || 0,
       integrationPointCount: gpuResult.pack?.numGp || 0,
       initialStressMode: 'gpu-resident-k0',

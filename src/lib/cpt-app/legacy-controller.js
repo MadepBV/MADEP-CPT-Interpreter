@@ -5318,6 +5318,7 @@ function stage6BishopT6VisualSubtriangles(element){
 
 function stage6BishopDeformationPlasticPointSets(result){
   const constitutiveModel = String(result?.solver?.constitutiveModel || '');
+  const isMcPlastic = constitutiveModel === 'mc-plastic-material-point' || constitutiveModel === 'gpu-resident-mc-plastic';
   const activePoints = [];
   const tensionPoints = [];
   const historyPoints = [];
@@ -5330,7 +5331,7 @@ function stage6BishopDeformationPlasticPointSets(result){
         const materialState = gp?.materialState || {};
         const tensionCutoffActive = gp?.tensionCutoffActive === true || diagnostics.tensionCutoffActive === true;
         const currentlyMcActive = diagnostics.currentlyMcActive === true || materialState.currentlyMcActive === true;
-        if(constitutiveModel === 'mc-plastic-material-point'){
+        if(isMcPlastic){
           if(tensionCutoffActive){
             tensionPoints.push(point);
             return;
@@ -5351,7 +5352,7 @@ function stage6BishopDeformationPlasticPointSets(result){
     const diagnostics = item?.materialDiagnostics || {};
     const tensionCutoffActive = diagnostics.tensionCutoffActive === true;
     const currentlyMcActive = diagnostics.currentlyMcActive === true;
-    if(constitutiveModel === 'mc-plastic-material-point'){
+    if(isMcPlastic){
       if(tensionCutoffActive){
         tensionPoints.push(centroid);
         return;
@@ -11248,7 +11249,7 @@ function renderStage6BishopApp(){
     : '—';
   const deformationSolverLabel = deformation.result?.solver?.constitutiveModel === 'mc-reduced-stiffness-material-point'
     ? 'Reduced-stiffness Mohr-Coulomb screen'
-    : deformation.result?.solver?.constitutiveModel === 'mc-plastic-material-point'
+    : (deformation.result?.solver?.constitutiveModel === 'mc-plastic-material-point' || deformation.result?.solver?.constitutiveModel === 'gpu-resident-mc-plastic')
       ? (deformation.result?.solver?.analysisType === 'safety-cphi' ? 'Mohr-Coulomb plastic + c-phi reduction safety' : 'Mohr-Coulomb plastic plane strain')
       : deformation.result?.solver?.constitutiveModel === 'linear-elastic-material-point'
       ? 'Linear elastic plane strain'

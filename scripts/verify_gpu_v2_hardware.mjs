@@ -48,10 +48,11 @@ const server = http.createServer(async (req, res) => {
 await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
 const allowSoftware = process.env.GPU_TEST_SOFTWARE === '1';
 const debug = process.env.GPU_TEST_DEBUG === '1';
+const plastic = process.env.GPU_TEST_PLASTIC === '1';
 const solver = /^(cg|bicgstab)$/.test(process.env.GPU_TEST_SOLVER || '')
   ? process.env.GPU_TEST_SOLVER
   : '';
-const url = `http://127.0.0.1:${server.address().port}/scripts/gpu_v2_hardware_smoke.html?software=${allowSoftware ? '1' : '0'}&debug=${debug ? '1' : '0'}${solver ? `&solver=${solver}` : ''}`;
+const url = `http://127.0.0.1:${server.address().port}/scripts/gpu_v2_hardware_smoke.html?software=${allowSoftware ? '1' : '0'}&debug=${debug ? '1' : '0'}&plastic=${plastic ? '1' : '0'}${solver ? `&solver=${solver}` : ''}`;
 console.log(`[v2-hardware-smoke] static server on ${url}`);
 
 let browser = null;

@@ -28,6 +28,7 @@ import * as v2Diag from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-jacobi
 import * as v2ElasticD from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-elastic-d.js';
 import * as v2ApplyJacobi from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-apply-jacobi.js';
 import * as v2TrialStress from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-trial-stress.js';
+import * as v2PlasticStrain from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-plastic-strain.js';
 import * as v2BlockJacobi from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-block-jacobi.js';
 import * as v2Residual from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-residual-and-flag.js';
 import * as v2StressSlice from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-stress-slice.js';
@@ -52,6 +53,7 @@ collectFrom(v2Diag, 'v2Diag');
 collectFrom(v2ElasticD, 'v2ElasticD');
 collectFrom(v2ApplyJacobi, 'v2ApplyJacobi');
 collectFrom(v2TrialStress, 'v2TrialStress');
+collectFrom(v2PlasticStrain, 'v2PlasticStrain');
 collectFrom(v2BlockJacobi, 'v2BlockJacobi');
 collectFrom(v2Residual, 'v2Residual');
 collectFrom(v2StressSlice, 'v2StressSlice');

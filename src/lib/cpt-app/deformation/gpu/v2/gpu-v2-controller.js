@@ -611,6 +611,8 @@ async function runSafetyV2({ ctx, gravityRhsFree, surfaceLoadRhsFree, baseUFree,
   }
 
   const sigmaCommittedF64 = await readDsVector(ctx, acceptedSnapshot.sigma, ctx.numGp * 6, 'mf-v2-read-safety-sigma');
+  const plasticStrainCommittedF64 = await readDsVector(ctx, acceptedSnapshot.plastic, ctx.numGp * 6, 'mf-v2-read-safety-plastic');
+  const plasticEqCommittedF64 = await readDsVector(ctx, acceptedSnapshot.plasticEq, ctx.numGp, 'mf-v2-read-safety-plastic-eq');
   const branchKind = await readU32Vector(ctx, acceptedSnapshot.branch, ctx.numGp, 'mf-v2-read-safety-branch');
   destroyV2Snapshot(snapshot);
   destroyV2Snapshot(acceptedSnapshot);
@@ -625,6 +627,8 @@ async function runSafetyV2({ ctx, gravityRhsFree, surfaceLoadRhsFree, baseUFree,
     uFreeF64: lastSafeU,
     uFullF64: expandFreeToFull(ctx, lastSafeU),
     sigmaCommittedF64,
+    plasticStrainCommittedF64,
+    plasticEqCommittedF64,
     branchKind,
     lastNewton: lastSafeNewton,
     history: history.safety
@@ -769,6 +773,8 @@ export async function runFullDeformationAnalysisOnGpuV2({
   const sigmaGravityCommittedF64 = await readDsVector(ctx, gravitySnapshot.sigma, ctx.numGp * 6, 'mf-v2-read-gravity-sigma');
   const branchGravityKind = await readU32Vector(ctx, gravitySnapshot.branch, ctx.numGp, 'mf-v2-read-gravity-branch');
   const sigmaServiceCommittedF64 = await readDsVector(ctx, serviceSnapshot.sigma, ctx.numGp * 6, 'mf-v2-read-service-sigma');
+  const plasticStrainServiceCommittedF64 = await readDsVector(ctx, serviceSnapshot.plastic, ctx.numGp * 6, 'mf-v2-read-service-plastic');
+  const plasticEqServiceCommittedF64 = await readDsVector(ctx, serviceSnapshot.plasticEq, ctx.numGp, 'mf-v2-read-service-plastic-eq');
   const branchServiceKind = await readU32Vector(ctx, serviceSnapshot.branch, ctx.numGp, 'mf-v2-read-service-branch');
   destroyV2Snapshot(gravitySnapshot);
   destroyV2Snapshot(serviceSnapshot);
@@ -776,6 +782,8 @@ export async function runFullDeformationAnalysisOnGpuV2({
   const activeUFreeF64 = safety?.uFreeF64 || service.uFreeF64;
   const activeUFullF64 = safety?.uFullF64 || service.uFullF64;
   const sigmaCommittedF64 = safety?.sigmaCommittedF64 || sigmaServiceCommittedF64;
+  const plasticStrainCommittedF64 = safety?.plasticStrainCommittedF64 || plasticStrainServiceCommittedF64;
+  const plasticEqCommittedF64 = safety?.plasticEqCommittedF64 || plasticEqServiceCommittedF64;
   const branchKind = safety?.branchKind || branchServiceKind;
   const uServiceIncrementFreeF64 = subtractVectors(service.uFreeF64, gravityUFreeF64);
   const uServiceIncrementFullF64 = expandFreeToFull(ctx, uServiceIncrementFreeF64);
@@ -840,6 +848,10 @@ export async function runFullDeformationAnalysisOnGpuV2({
     sigmaGravityCommittedF64,
     sigmaServiceCommittedF64,
     sigmaCommittedF64,
+    plasticStrainServiceCommittedF64,
+    plasticEqServiceCommittedF64,
+    plasticStrainCommittedF64,
+    plasticEqCommittedF64,
     branchInitialKind: branchGravityKind,
     branchServiceKind,
     branchKind,
