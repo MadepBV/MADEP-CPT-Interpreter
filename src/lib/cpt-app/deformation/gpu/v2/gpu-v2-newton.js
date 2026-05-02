@@ -244,12 +244,13 @@ function canAcceptNonlinearResidual({
 function resolveLineSearchOptions(options = {}, phaseKind = 'service-load', usingAlgorithmicTangent = true) {
   const isInitialGravity = phaseKind === 'initial-gravity';
   const reductionFactor = Number(options?.reductionFactor ?? options?.plasticLineSearchReductionFactor) || 0.5;
+  const defaultMaxBacktracks = isInitialGravity ? 6 : 7;
   const maxBacktracks = Math.max(
     Math.round(Number(
       isInitialGravity
         ? (options?.initialGravityPlasticLineSearchMaxBacktracks ?? options?.maxBacktracks)
         : (options?.plasticLineSearchMaxBacktracks ?? options?.maxBacktracks)
-    ) || (isInitialGravity ? 5 : 4)),
+    ) || defaultMaxBacktracks),
     1
   );
   const minStepScale = Number(
@@ -292,9 +293,20 @@ async function solveLinearWithFallback(ctx, rhsBuf, primarySolver, cgOptions, de
     copyBuffer(ctx, rhsBuf, immutableRhsBuf, ctx.numFree * 8, 'mf-linear-save-rhs');
   }
   const run = async (solverName, fallbackFrom = '') => {
+    const solverOptions = solverName === 'bicgstab'
+      ? {
+          ...cgOptions,
+          stagnationWindow: Math.max(
+            Math.round(Number(cgOptions?.bicgstabStagnationWindow) || 64),
+            Math.round(Number(cgOptions?.stagnationWindow) || 0),
+            1
+          ),
+          stagnationRatio: Math.min(Math.max(Number(cgOptions?.bicgstabStagnationRatio) || 0.9995, 0.9), 0.999999)
+        }
+      : cgOptions;
     const result = solverName === 'bicgstab'
-      ? await solveBicgstabV2(ctx, { rhsBuf: immutableRhsBuf, ...cgOptions, debug })
-      : await solveCgV2(ctx, { rhsBuf: immutableRhsBuf, ...cgOptions, debug });
+      ? await solveBicgstabV2(ctx, { rhsBuf: immutableRhsBuf, ...solverOptions, debug })
+      : await solveCgV2(ctx, { rhsBuf: immutableRhsBuf, ...solverOptions, debug });
     history.push({
       solver: solverName,
       path: `gpu-v2-${solverName}`,

@@ -180,6 +180,10 @@ function useAdaptiveContinuationForV2(options) {
   return options?.v2AdaptiveContinuation === true || options?.gpuV2AdaptiveContinuation === true;
 }
 
+function v2LineSearchBacktrackCount(value, floor) {
+  return Math.max(Math.round(Number(value) || 0), floor);
+}
+
 function nextAcceptedStepSize(currentStep, lambda, newton, options, {
   grow,
   cut,
@@ -224,7 +228,7 @@ function shouldRetryWithElasticTangent(newton) {
 
 async function runNewtonWithAdaptiveTangent(ctx, args, { options, warnings, phase }) {
   const triedAlgorithmic = ctx.useAlgorithmicTangent === true;
-  const fallbackEnabled = options?.v2EnableElasticTangentFallback === true;
+  const fallbackEnabled = options?.v2EnableElasticTangentFallback !== false;
   if (!fallbackEnabled || !triedAlgorithmic) {
     const result = await runPlasticNewtonOnGpuV2(ctx, args);
     result.tangentMode = triedAlgorithmic ? 'algorithmic' : 'elastic';
@@ -668,7 +672,9 @@ export async function runFullDeformationAnalysisOnGpuV2({
   const cgOptions = {
     maxIter: Math.max(Math.round(Number(options?.cgMaxIter) || 25000), 1),
     relTol: Math.max(Number(options?.cgRelTol) || 1e-5, 1e-12),
-    absTol: Math.max(Number(options?.cgAbsTol) || 5e-5, 1e-12)
+    absTol: Math.max(Number(options?.cgAbsTol) || 5e-5, 1e-12),
+    bicgstabStagnationWindow: Math.max(Math.round(Number(options?.v2BicgstabStagnationWindow ?? options?.bicgstabStagnationWindow) || 64), 1),
+    bicgstabStagnationRatio: Math.min(Math.max(Number(options?.v2BicgstabStagnationRatio ?? options?.bicgstabStagnationRatio) || 0.9995, 0.9), 0.999999)
   };
   const newtonOptions = {
     maxNewton: Math.max(Math.round(Number(options?.nonlinearMaxIterations ?? options?.maxNewton) || 32), 1),
@@ -678,10 +684,10 @@ export async function runFullDeformationAnalysisOnGpuV2({
     cgOptions,
     lineSearchOptions: {
       reductionFactor: options?.plasticLineSearchReductionFactor,
-      maxBacktracks: options?.plasticLineSearchMaxBacktracks,
+      maxBacktracks: v2LineSearchBacktrackCount(options?.plasticLineSearchMaxBacktracks, 7),
       minStepScale: options?.plasticLineSearchMinScale,
       armijoCoefficient: options?.plasticLineSearchArmijoCoefficient ?? options?.plasticLineSearchSufficientDecreaseFactor,
-      initialGravityPlasticLineSearchMaxBacktracks: options?.initialGravityPlasticLineSearchMaxBacktracks,
+      initialGravityPlasticLineSearchMaxBacktracks: v2LineSearchBacktrackCount(options?.initialGravityPlasticLineSearchMaxBacktracks, 6),
       initialGravityPlasticLineSearchMinScale: options?.initialGravityPlasticLineSearchMinScale,
       initialGravityPlasticLineSearchArmijoCoefficient: options?.initialGravityPlasticLineSearchArmijoCoefficient ?? options?.initialGravityPlasticLineSearchSufficientDecreaseFactor,
       elasticGlobalizationArmijoC1: options?.elasticGlobalizationArmijoC1,
