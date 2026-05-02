@@ -1485,13 +1485,34 @@ fn algoTangentVoigt3_3(n0_pp: array<vec2<f32>, 3>, m0_pp: array<vec2<f32>, 3>,
   return Dep;
 }
 
+fn formalApexTangentVoigt3(sinPhi: vec2<f32>, sinPsi: vec2<f32>,
+                            kinds: array<u32, 3>, cos2: vec2<f32>, sin2: vec2<f32>,
+                            KBulk: vec2<f32>, G: vec2<f32>) -> array<vec2<f32>, 9> {
+  let nF12: array<vec2<f32>, 3> = flowGradF12(sinPhi);
+  let nF13: array<vec2<f32>, 3> = flowGradF13(sinPhi);
+  let nF23: array<vec2<f32>, 3> = flowGradF23(sinPhi);
+  let mF12: array<vec2<f32>, 3> = flowGradF12(sinPsi);
+  let mF13: array<vec2<f32>, 3> = flowGradF13(sinPsi);
+  let mF23: array<vec2<f32>, 3> = flowGradF23(sinPsi);
+  return algoTangentVoigt3_3(nF12, mF12, nF13, mF13, nF23, mF23, kinds, cos2, sin2, KBulk, G);
+}
+
+fn tensionApexTangentVoigt3(kinds: array<u32, 3>, cos2: vec2<f32>, sin2: vec2<f32>,
+                            KBulk: vec2<f32>, G: vec2<f32>) -> array<vec2<f32>, 9> {
+  let minusThird: vec2<f32> = vec2<f32>(-0.33333334, 9.9341078e-9);
+  let nApex: array<vec2<f32>, 3> = array<vec2<f32>, 3>(minusThird, minusThird, minusThird);
+  let mApex: array<vec2<f32>, 3> = array<vec2<f32>, 3>(minusThird, minusThird, minusThird);
+  return algoTangentVoigt3_1(nApex, mApex, kinds, cos2, sin2, KBulk, G);
+}
+
 // =============================================================================
 // Top-level dispatcher (per Gauss point).
 // =============================================================================
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let gp: u32 = gid.x;
-  if (gp >= params.numGp) { return; }
+  let numGp: u32 = min(min(arrayLength(&matIndex), arrayLength(&branchKind)), min(arrayLength(&converged), arrayLength(&sigmaReturned) / 6u));
+  if (gp >= numGp) { return; }
 
   // Load trial stress (Voigt-6) and negate to convert from the rest of
   // the pipeline's tension-positive convention (CPU's effectiveStress6,
@@ -1568,9 +1589,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       let mt: vec2<f32> = dsNeg(tensionLimit);
       sigmaOut = array<vec2<f32>, 3>(mt, mt, mt);
       branch = BR_TENSION_APEX_T123;
-      // Apex tangent is degenerate; emit elastic D as a benign default
-      // (downstream code never builds K from a fully-collapsed apex).
-      tangent = Dvoigt3;
+      tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
     } else {
       // Build the surface gradients we may need.
       let nF12: array<vec2<f32>, 3> = flowGradF12(sinPhi);
@@ -1599,7 +1618,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             tangent = algoTangentVoigt3_2(er.n0, er.m0, er.n1, er.m1, rec.sortedKinds, cos2, sin2, KBulk, G);
           } else if (uV && lV) {
             let mt: vec2<f32> = dsNeg(tensionLimit);
-            sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+            sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+            tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
           } else if (lV) {
             let cr: ActiveSet3 = cornerReturn3(sortedTrial, nF12, nF13, nT3, mF12, mF13, mT3,
                                                 surf.F12, surf.F13, surf.T3, KBulk, G);
@@ -1608,7 +1628,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
               let upV2: bool = (cr.sigma[0].x + cr.sigma[0].y) + ORDERING_TOL < (cr.sigma[1].x + cr.sigma[1].y);
               if (upV2) {
                 let mt: vec2<f32> = dsNeg(tensionLimit);
-                sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+                sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+                tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
               } else {
                 sigmaOut = cr.sigma; branch = BR_TENSION_CORNER_S23_T3;
                 tangent = algoTangentVoigt3_3(cr.n0, cr.m0, cr.n1, cr.m1, cr.n2, cr.m2, rec.sortedKinds, cos2, sin2, KBulk, G);
@@ -1623,7 +1644,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
               let lwV2: bool = (cr.sigma[1].x + cr.sigma[1].y) + ORDERING_TOL < (cr.sigma[2].x + cr.sigma[2].y);
               if (lwV2) {
                 let mt: vec2<f32> = dsNeg(tensionLimit);
-                sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+                sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+                tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
               } else {
                 sigmaOut = cr.sigma; branch = BR_TENSION_CORNER_S12_T3;
                 tangent = algoTangentVoigt3_3(cr.n0, cr.m0, cr.n1, cr.m1, cr.n2, cr.m2, rec.sortedKinds, cos2, sin2, KBulk, G);
@@ -1639,7 +1661,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
           else {
             let cot: vec2<f32> = dsDiv(cosPhi, sinPhi);
             let apex: vec2<f32> = dsMul(cohesion, cot);
-            sigmaOut = array<vec2<f32>, 3>(apex, apex, apex); branch = BR_APEX_FORMAL; tangent = Dvoigt3;
+            sigmaOut = array<vec2<f32>, 3>(apex, apex, apex); branch = BR_APEX_FORMAL;
+            tangent = formalApexTangentVoigt3(sinPhi, sinPsi, rec.sortedKinds, cos2, sin2, KBulk, G);
           }
         } else if (lowerVio) {
           // EDGE_S23: {F12, F13}.
@@ -1653,7 +1676,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
               else {
                 let cot: vec2<f32> = dsDiv(cosPhi, sinPhi);
                 let apex: vec2<f32> = dsMul(cohesion, cot);
-                sigmaOut = array<vec2<f32>, 3>(apex, apex, apex); branch = BR_APEX_FORMAL; tangent = Dvoigt3;
+                sigmaOut = array<vec2<f32>, 3>(apex, apex, apex); branch = BR_APEX_FORMAL;
+                tangent = formalApexTangentVoigt3(sinPhi, sinPsi, rec.sortedKinds, cos2, sin2, KBulk, G);
               }
             } else if (postT3e > SURFACE_TOL) {
               // Promote to corner {F12, F13, T3}.
@@ -1664,7 +1688,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 let upV2: bool = (cr.sigma[0].x + cr.sigma[0].y) + ORDERING_TOL < (cr.sigma[1].x + cr.sigma[1].y);
                 if (upV2) {
                   let mt: vec2<f32> = dsNeg(tensionLimit);
-                  sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+                  sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+                  tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
                 } else {
                   sigmaOut = cr.sigma; branch = BR_TENSION_CORNER_S23_T3;
                   tangent = algoTangentVoigt3_3(cr.n0, cr.m0, cr.n1, cr.m1, cr.n2, cr.m2, rec.sortedKinds, cos2, sin2, KBulk, G);
@@ -1687,7 +1712,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
               else {
                 let cot: vec2<f32> = dsDiv(cosPhi, sinPhi);
                 let apex: vec2<f32> = dsMul(cohesion, cot);
-                sigmaOut = array<vec2<f32>, 3>(apex, apex, apex); branch = BR_APEX_FORMAL; tangent = Dvoigt3;
+                sigmaOut = array<vec2<f32>, 3>(apex, apex, apex); branch = BR_APEX_FORMAL;
+                tangent = formalApexTangentVoigt3(sinPhi, sinPsi, rec.sortedKinds, cos2, sin2, KBulk, G);
               }
             } else if (postT3e > SURFACE_TOL) {
               let cr: ActiveSet3 = cornerReturn3(sortedTrial, nF13, nF23, nT3, mF13, mF23, mT3,
@@ -1697,7 +1723,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 let lwV2: bool = (cr.sigma[1].x + cr.sigma[1].y) + ORDERING_TOL < (cr.sigma[2].x + cr.sigma[2].y);
                 if (lwV2) {
                   let mt: vec2<f32> = dsNeg(tensionLimit);
-                  sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+                  sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+                  tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
                 } else {
                   sigmaOut = cr.sigma; branch = BR_TENSION_CORNER_S12_T3;
                   tangent = algoTangentVoigt3_3(cr.n0, cr.m0, cr.n1, cr.m1, cr.n2, cr.m2, rec.sortedKinds, cos2, sin2, KBulk, G);
@@ -1732,7 +1759,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
               tangent = algoTangentVoigt3_2(er.n0, er.m0, er.n1, er.m1, rec.sortedKinds, cos2, sin2, KBulk, G);
             } else if (uV2 && lV2) {
               let mt: vec2<f32> = dsNeg(tensionLimit);
-              sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+              sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+              tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
             } else if (lV2) {
               let cr: ActiveSet3 = cornerReturn3(sortedTrial, nF12, nF13, nT3, mF12, mF13, mT3,
                                                   surf.F12, surf.F13, surf.T3, KBulk, G);
@@ -1741,7 +1769,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 let upV3: bool = (cr.sigma[0].x + cr.sigma[0].y) + ORDERING_TOL < (cr.sigma[1].x + cr.sigma[1].y);
                 if (upV3) {
                   let mt: vec2<f32> = dsNeg(tensionLimit);
-                  sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+                  sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+                  tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
                 } else {
                   sigmaOut = cr.sigma; branch = BR_TENSION_CORNER_S23_T3;
                   tangent = algoTangentVoigt3_3(cr.n0, cr.m0, cr.n1, cr.m1, cr.n2, cr.m2, rec.sortedKinds, cos2, sin2, KBulk, G);
@@ -1755,7 +1784,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 let lwV3: bool = (cr.sigma[1].x + cr.sigma[1].y) + ORDERING_TOL < (cr.sigma[2].x + cr.sigma[2].y);
                 if (lwV3) {
                   let mt: vec2<f32> = dsNeg(tensionLimit);
-                  sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+                  sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+                  tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
                 } else {
                   sigmaOut = cr.sigma; branch = BR_TENSION_CORNER_S12_T3;
                   tangent = algoTangentVoigt3_3(cr.n0, cr.m0, cr.n1, cr.m1, cr.n2, cr.m2, rec.sortedKinds, cos2, sin2, KBulk, G);
@@ -1771,7 +1801,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let uV2: bool = (er.sigma[0].x + er.sigma[0].y) + ORDERING_TOL < (er.sigma[1].x + er.sigma[1].y);
             if (uV2) {
               let mt: vec2<f32> = dsNeg(tensionLimit);
-              sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+              sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+              tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
             } else {
               sigmaOut = er.sigma; branch = BR_TENSION_EDGE_T23;
               tangent = algoTangentVoigt3_2(er.n0, er.m0, er.n1, er.m1, rec.sortedKinds, cos2, sin2, KBulk, G);
@@ -1785,7 +1816,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let lV2: bool = (er.sigma[1].x + er.sigma[1].y) + ORDERING_TOL < (er.sigma[2].x + er.sigma[2].y);
             if (lV2) {
               let mt: vec2<f32> = dsNeg(tensionLimit);
-              sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+              sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+              tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
             } else {
               sigmaOut = er.sigma; branch = BR_TENSION_EDGE_T23;
               tangent = algoTangentVoigt3_2(er.n0, er.m0, er.n1, er.m1, rec.sortedKinds, cos2, sin2, KBulk, G);
@@ -1804,7 +1836,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             tangent = algoTangentVoigt3_2(er.n0, er.m0, er.n1, er.m1, rec.sortedKinds, cos2, sin2, KBulk, G);
           } else if (upperVio && lowerVio) {
             let mt: vec2<f32> = dsNeg(tensionLimit);
-            sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+            sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+            tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
           } else if (lowerVio) {
             let cr: ActiveSet3 = cornerReturn3(sortedTrial, nF12, nF13, nT3, mF12, mF13, mT3,
                                                 surf.F12, surf.F13, surf.T3, KBulk, G);
@@ -1813,7 +1846,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
               let upV2: bool = (cr.sigma[0].x + cr.sigma[0].y) + ORDERING_TOL < (cr.sigma[1].x + cr.sigma[1].y);
               if (upV2) {
                 let mt: vec2<f32> = dsNeg(tensionLimit);
-                sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+                sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+                tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
               } else {
                 sigmaOut = cr.sigma; branch = BR_TENSION_CORNER_S23_T3;
                 tangent = algoTangentVoigt3_3(cr.n0, cr.m0, cr.n1, cr.m1, cr.n2, cr.m2, rec.sortedKinds, cos2, sin2, KBulk, G);
@@ -1827,7 +1861,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
               let lwV2: bool = (cr.sigma[1].x + cr.sigma[1].y) + ORDERING_TOL < (cr.sigma[2].x + cr.sigma[2].y);
               if (lwV2) {
                 let mt: vec2<f32> = dsNeg(tensionLimit);
-                sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123; tangent = Dvoigt3;
+                sigmaOut = array<vec2<f32>, 3>(mt, mt, mt); branch = BR_TENSION_APEX_T123;
+                tangent = tensionApexTangentVoigt3(rec.sortedKinds, cos2, sin2, KBulk, G);
               } else {
                 sigmaOut = cr.sigma; branch = BR_TENSION_CORNER_S12_T3;
                 tangent = algoTangentVoigt3_3(cr.n0, cr.m0, cr.n1, cr.m1, cr.n2, cr.m2, rec.sortedKinds, cos2, sin2, KBulk, G);

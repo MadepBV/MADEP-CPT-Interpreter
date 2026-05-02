@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GPU v2 pipeline - hardware smoke</title>
+</head>
+<body>
+<pre id="log"></pre>
+<script type="module">
+const params = new URLSearchParams(location.search);
+const allowSoftware = params.get('software') === '1';
+const debug = params.get('debug') === '1';
+const forcedSolver = /^(cg|bicgstab)$/.test(params.get('solver') || '') ? params.get('solver') : null;
+const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; console.log(msg); };
+const fail = (reason, detail) => { window.__smokeResult = { ok: false, reason, detail }; log(`FAIL: ${reason} - ${detail}`); };
+const ok = (detail) => { window.__smokeResult = { ok: true, detail }; log(`PASS: ${JSON.stringify(detail)}`); };
+
+function triangleSignedArea2(c) {
+  return (c[1].x - c[0].x) * (c[2].y - c[0].y) - (c[2].x - c[0].x) * (c[1].y - c[0].y);
+}
+function triangleArea(c) { return Math.abs(triangleSignedArea2(c)) / 2; }
+function buildBMatrixT3(c) {
+  const sa2 = triangleSignedArea2(c);
+  const inv = 1 / sa2;
+  const b1 = c[1].y - c[2].y, b2 = c[2].y - c[0].y, b3 = c[0].y - c[1].y;
+  const c1 = c[2].x - c[1].x, c2 = c[0].x - c[2].x, c3 = c[1].x - c[0].x;
+  return [
+    [b1 * inv, 0, b2 * inv, 0, b3 * inv, 0],
+    [0, c1 * inv, 0, c2 * inv, 0, c3 * inv],
+    [c1 * inv, b1 * inv, c2 * inv, b2 * inv, c3 * inv, b3 * inv]
+  ];
+}
+function norm(vector) {
+  let s = 0;
+  for (const value of vector || []) s += value * value;
+  return Math.sqrt(s);
+}
+
+try {
+  if (!('gpu' in navigator)) {
+    fail('no-webgpu', 'navigator.gpu is undefined');
+  } else {
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) {
+      fail('no-adapter', 'requestAdapter returned null');
+    } else {
+      const rawAdapterInfo = typeof adapter.requestAdapterInfo === 'function'
+        ? await adapter.requestAdapterInfo()
+        : (adapter.info || {});
+      const adapterInfo = {
+        vendor: rawAdapterInfo.vendor || null,
+        architecture: rawAdapterInfo.architecture || null,
+        device: rawAdapterInfo.device || null,
+        description: rawAdapterInfo.description || null
+      };
+      const adapterText = `${adapterInfo.vendor || ''} ${adapterInfo.architecture || ''} ${adapterInfo.device || ''} ${adapterInfo.description || ''}`.toLowerCase();
+      if (!allowSoftware && /swiftshader|llvmpipe|software|mesa/.test(adapterText)) {
+        fail('software-adapter', JSON.stringify(adapterInfo));
+      } else {
+        const device = await adapter.requestDevice();
+        log(`WebGPU adapter: ${JSON.stringify(adapterInfo)}`);
+        const { runFullDeformationAnalysisOnGpuV2 } =
+          await import('/src/lib/cpt-app/deformation/gpu/v2/gpu-v2-controller.js');
+
+        const nodes = [];
+        for (let j = 0; j <= 2; j += 1) {
+          for (let i = 0; i <= 2; i += 1) nodes.push({ x: i, y: j });
+        }
+        const elements = [
+          [0, 1, 4], [0, 4, 3],
+          [1, 2, 5], [1, 5, 4],
+          [3, 4, 7], [3, 7, 6],
+          [4, 5, 8], [4, 8, 7]
+        ];
+        const mesh = {
+          nodes,
+          elements,
+          cells: elements.map(() => ({ regionIndex: 0 })),
+          elementCell: elements.map((_item, i) => i),
+          elementType: 't3',
+          elementData: elements.map(() => ({ centroid: { x: 0, y: 0 } }))
+        };
+        const regionConstitutiveByRegion = new Map([[0, {
+          materialParameters: {
+            Emc: 20000,
+            nu: 0.3,
+            cEff: 1e9,
+            phiEffDeg: 30,
+            psiEffDeg: 0,
+            gamma: 18,
+            gammaSat: 18,
+            K0nc: 0.5,
+            sigmaTAllow: 1e9
+          }
+        }]]);
+
+        let gpCounter = 0;
+        const elementCaches = elements.map((elem, eIdx) => {
+          const corners = elem.map((nid) => nodes[nid]);
+          const area = triangleArea(corners);
+          const B = buildBMatrixT3(corners);
+          const dofs = Int32Array.from([
+            2 * elem[0], 2 * elem[0] + 1,
+            2 * elem[1], 2 * elem[1] + 1,
+            2 * elem[2], 2 * elem[2] + 1
+          ]);
+          const integrationPoints = [{
+            gpIndex: 0,
+            globalIndex: gpCounter,
+            w: 1,
+            areaWeightFactor: 1,
+            areaWeight: area,
+            B,
+            x: corners.reduce((sum, p) => sum + p.x, 0) / 3,
+            y: corners.reduce((sum, p) => sum + p.y, 0) / 3
+          }];
+          gpCounter += 1;
+          return {
+            elementIndex: eIdx,
+            cellIndex: eIdx,
+            element: elem,
+            kind: 't3',
+            kernel: null,
+            localDofCount: 6,
+            numGaussPoints: 1,
+            nodes: corners,
+            corners,
+            area,
+            B,
+            bMatricesPerGp: [B],
+            useBBar: false,
+            centroid: integrationPoints[0],
+            integrationPoints,
+            dofs
+          };
+        });
+        elementCaches.integrationPointCount = gpCounter;
+
+        const fixedDofSet = new Set([0, 1, 2, 3, 4, 5]);
+        const ndof = nodes.length * 2;
+        const gravityFull = new Float64Array(ndof);
+        for (const ec of elementCaches) {
+          const fy = -18 * ec.area / 3;
+          for (let k = 0; k < 3; k += 1) gravityFull[ec.dofs[2 * k + 1]] += fy;
+        }
+        const surfaceFull = new Float64Array(ndof);
+        for (const nodeId of [6, 7, 8]) surfaceFull[2 * nodeId + 1] = -0.5;
+        const freeDofs = [];
+        for (let dof = 0; dof < ndof; dof += 1) if (!fixedDofSet.has(dof)) freeDofs.push(dof);
+        const gravityFree = new Float64Array(freeDofs.length);
+        const surfaceFree = new Float64Array(freeDofs.length);
+        for (let i = 0; i < freeDofs.length; i += 1) {
+          gravityFree[i] = gravityFull[freeDofs[i]];
+          surfaceFree[i] = surfaceFull[freeDofs[i]];
+        }
+
+        const started = performance.now();
+        const result = await runFullDeformationAnalysisOnGpuV2({
+          device,
+          mesh,
+          elementCaches,
+          regionConstitutiveByRegion,
+          fixedDofSet,
+          gravityRhsFree: gravityFree,
+          surfaceLoadRhsFree: surfaceFree,
+          sigmaInitialF64: new Float64Array(6 * gpCounter),
+          options: {
+            analysisType: 'safety-cphi',
+            preconditioner: 'block-jacobi',
+            useStagedSurfaceLoad: true,
+            initialLoadStep: 0.5,
+            maxLoadSteps: 16,
+            nonlinearMaxIterations: 16,
+            residualRelTol: 1e-4,
+            residualAbsTol: 1e-5,
+            cgRelTol: 1e-5,
+            cgAbsTol: 1e-7,
+            cgMaxIter: 2000,
+            safetySigmaMsfMax: 1.05,
+            safetyInitialSigmaMsfIncrement: 0.025,
+            safetyMaxSearchTrials: 3,
+            v2LinearSolver: forcedSolver,
+            gpuV2Debug: debug
+          }
+        });
+        const elapsedMs = performance.now() - started;
+
+        if (!result?.converged) {
+          fail('not-converged', JSON.stringify({
+            reason: result?.reason || 'unknown',
+            diagnostics: result?.diagnostics || null
+          }));
+        } else {
+          const uNorm = norm(result.uFullF64);
+          const serviceNorm = norm(result.uServiceIncrementFullF64);
+          const sigmaNorm = norm(result.sigmaCommittedF64);
+          const topUy = result.uFullF64[2 * 8 + 1];
+          const history = result.diagnostics?.history || {};
+          const checks = {
+            uNorm,
+            serviceNorm,
+            sigmaNorm,
+            topUy,
+            geostaticSteps: history.geostatic?.length || 0,
+            surfaceSteps: history.loadSteps?.length || 0,
+            safetyTrials: history.safety?.length || 0,
+            linearIterations: result.diagnostics?.linearIterations || 0,
+            primarySolver: result.diagnostics?.primarySolver || null,
+            branchTotal: result.branchCounts?.total || 0,
+            safetyStatus: result.safety?.status || null,
+            elapsedMs
+          };
+          if (
+            uNorm > 1e-8 &&
+            serviceNorm > 1e-10 &&
+            sigmaNorm > 1e-8 &&
+            topUy < 0 &&
+            checks.geostaticSteps > 0 &&
+            checks.surfaceSteps > 0 &&
+            checks.safetyTrials > 0 &&
+            checks.linearIterations > 0 &&
+            checks.branchTotal === gpCounter
+          ) {
+            ok({ adapterInfo, ...checks });
+          } else {
+            fail('plausibility-check', JSON.stringify(checks));
+          }
+        }
+      }
+    }
+  }
+} catch (err) {
+  fail('exception', `${err?.name || 'Error'}: ${err?.message || err}`);
+  log(`stack: ${err?.stack || '(none)'}`);
+}
+</script>
+</body>
+</html>

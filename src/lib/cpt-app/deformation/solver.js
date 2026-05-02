@@ -55,6 +55,13 @@ import {
   runFullDeformationAnalysisOnGpu as gpuRunFullDeformationAnalysisOnGpu
 } from './gpu/gpu-controller.js';
 
+// v2 GPU pipeline (matrix-free, single-handoff).  Opt-in via
+// `options.gpuPipelineVersion === 'v2'`; the controller owns the full
+// elastoplastic Newton staging on device and leaves v1/CPU untouched.
+import {
+  runFullDeformationAnalysisOnGpuV2 as gpuV2RunFullDeformationAnalysis
+} from './gpu/v2/gpu-v2-controller.js';
+
 // GPU acceleration is being rebuilt as a separate, fully resident
 // double-single pipeline. Until that pipeline lands the deformation solver
 // runs CPU f64 only. No backend dispatchers, no precision escalation, no
@@ -820,9 +827,48 @@ async function solveCgDispatched(rows, rhs, initial, maxIter, relTol, absTol, ru
 //
 // On any failure (no WebGPU, kernel error, non-convergence) returns null.
 // =============================================================================
+function gpuV2BranchName(branchValue) {
+  switch (Number(branchValue) || 0) {
+    case 1: return 'MC_FACE_F13';
+    case 2: return 'MC_EDGE_S23_EQUAL';
+    case 3: return 'MC_EDGE_S12_EQUAL';
+    case 4: return 'MC_APEX_FORMAL';
+    case 5: return 'TENSION_FACE_T3';
+    case 6: return 'TENSION_EDGE_T23';
+    case 7: return 'TENSION_EDGE_F13_T3';
+    case 8: return 'TENSION_CORNER_S23_T3';
+    case 9: return 'TENSION_CORNER_S12_T3';
+    case 10: return 'TENSION_APEX_T123';
+    default: return 'ELASTIC';
+  }
+}
+
+function gpuV2BranchActivity(branchValue) {
+  const value = Number(branchValue) || 0;
+  return {
+    face: value === 1 ? 1 : 0,
+    edge: value === 2 || value === 3 ? 1 : 0,
+    apex: value === 4 ? 1 : 0,
+    tension: value >= 5 ? 1 : 0,
+    active: value !== 0 ? 1 : 0
+  };
+}
+
+function gpuV2StrainAtPoint(B, dofs, uFull) {
+  const out = [0, 0, 0];
+  for (let row = 0; row < 3; row += 1) {
+    let sum = 0;
+    for (let col = 0; col < (dofs?.length || 0); col += 1) {
+      sum += (Number(B?.[row]?.[col]) || 0) * (Number(uFull?.[dofs[col]]) || 0);
+    }
+    out[row] = sum;
+  }
+  return { exx: out[0], eyy: out[1], gxy: out[2] };
+}
+
 // Build a complete solver-result object from a successful GPU analysis.
 // Reuses the CPU summarize/terrain helpers; populates element-level stress
-// from σ_committed at every Gauss point.
+// from sigma_committed at every Gauss point.
 function buildSolverResultFromGpuOutput({
   gpuResult, mesh, elementCaches, regionConstitutiveByRegion,
   options, load, warnings, analysisType, model, porePressureByElement,
@@ -830,54 +876,187 @@ function buildSolverResultFromGpuOutput({
 }) {
   const ndof = 2 * mesh.nodes.length;
   const uFull = gpuResult.uFullF64 || new Float64Array(ndof);
+  const uGravityFull = gpuResult.uGravityFullF64 || new Float64Array(ndof);
+  const uServiceIncrementFull = gpuResult.uServiceIncrementFullF64 || subtractSolutionVectors(uFull, uGravityFull);
+  const uServiceFull = gpuResult.uServiceFullF64 || addSolutionVectors(uGravityFull, uServiceIncrementFull);
+  const uInitialBaselineFull = analysisType === 'safety-cphi' ? uServiceFull : uGravityFull;
+  const computedDisplayFull = subtractSolutionVectors(uFull, uInitialBaselineFull);
+  const rawDisplayFull = gpuResult.uDisplayFullF64
+    || (analysisType === 'safety-cphi'
+      ? computedDisplayFull
+      : (gpuResult.uServiceIncrementFullF64 || computedDisplayFull || uFull));
+  const rawDisplayNorm = vectorNorm(rawDisplayFull || []);
+  const computedDisplayNorm = vectorNorm(computedDisplayFull || []);
+  const uDisplayFull = rawDisplayNorm > 1e-18 || computedDisplayNorm <= 1e-18
+    ? rawDisplayFull
+    : computedDisplayFull;
+  const uRecoveryFull = gpuResult.uRecoveryFullF64 || uFull;
+  const hasServiceIncrement = vectorNorm(uServiceIncrementFull || []) > 1e-18;
   // 1. Per-node displacements.
-  const nodalDisplacements = mesh.nodes.map((_, nid) => ({
-    ux: uFull[2 * nid] || 0,
-    uy: uFull[2 * nid + 1] || 0
-  }));
-  const totalNodalDisplacements = nodalDisplacements;
-  const initialNodalDisplacements = mesh.nodes.map(() => ({ ux: 0, uy: 0 }));
-  const serviceIncrementNodalDisplacements = nodalDisplacements;
+  const nodalDisplacements = buildNodalDisplacements(mesh, uDisplayFull);
+  const totalNodalDisplacements = buildNodalDisplacements(mesh, uFull);
+  const initialNodalDisplacements = buildNodalDisplacements(mesh, uInitialBaselineFull);
+  const serviceIncrementNodalDisplacements = buildNodalDisplacements(mesh, uServiceIncrementFull);
   // 2. Per-element stress + MC state from σ_committed.
   const sigmaCommittedF64 = gpuResult.sigmaCommittedF64 || new Float64Array(0);
+  const sigmaInitialF64 = gpuResult.sigmaInitialF64
+    || gpuResult.sigmaGravityCommittedF64
+    || new Float64Array(sigmaCommittedF64.length);
+  const branchKind = gpuResult.branchKind || new Uint32Array(0);
   const elementResults = elementCaches.map((cache, elemIdx) => {
     const cell = mesh.cells[cache.cellIndex];
     const constitutive = regionConstitutiveByRegion.get(cell?.regionIndex);
     const params = constitutive?.materialParameters || {};
     const numGp = cache.integrationPoints?.length || 1;
+    const area = Math.max(Number(cache.area) || 0, 1e-12);
     let avgSxx = 0, avgSyy = 0, avgTxy = 0, avgSzz = 0;
+    let avgInitialSxx = 0, avgInitialSyy = 0, avgInitialTxy = 0, avgInitialSzz = 0;
+    const avgStress6 = [0, 0, 0, 0, 0, 0];
+    const avgInitialStress6 = [0, 0, 0, 0, 0, 0];
+    let avgExx = 0, avgEyy = 0, avgGxy = 0;
     let maxEta = 0;
     let anyTension = false, anyActive = false;
+    let faceCount = 0, edgeCount = 0, apexCount = 0, tensionCount = 0;
     const gpRecords = cache.integrationPoints?.map((gp) => {
       const base = gp.globalIndex * 6;
-      const sxxFe = sigmaCommittedF64[base + 0] || 0;
-      const syyFe = sigmaCommittedF64[base + 1] || 0;
-      const szzFe = sigmaCommittedF64[base + 2] || 0;
-      const txyFe = sigmaCommittedF64[base + 3] || 0;
-      // Convert FE-positive (tension-positive) to compression-positive for MC.
-      const stress2DFe = { sxx: sxxFe, syy: syyFe, txy: txyFe };
-      const principal = principalStress2DCompressionPositive(negateNormalAndShear(stress2DFe));
-      const mc = mohrCoulombIndicator(principal, params);
+      const stress6 = [
+        sigmaCommittedF64[base + 0] || 0,
+        sigmaCommittedF64[base + 1] || 0,
+        sigmaCommittedF64[base + 2] || 0,
+        sigmaCommittedF64[base + 3] || 0,
+        sigmaCommittedF64[base + 4] || 0,
+        sigmaCommittedF64[base + 5] || 0
+      ];
+      const initialStress6 = [
+        sigmaInitialF64[base + 0] || 0,
+        sigmaInitialF64[base + 1] || 0,
+        sigmaInitialF64[base + 2] || 0,
+        sigmaInitialF64[base + 3] || 0,
+        sigmaInitialF64[base + 4] || 0,
+        sigmaInitialF64[base + 5] || 0
+      ];
+      const sxxFe = stress6[0];
+      const syyFe = stress6[1];
+      const szzFe = stress6[2];
+      const txyFe = stress6[3];
+      const initialSxxFe = initialStress6[0];
+      const initialSyyFe = initialStress6[1];
+      const initialSzzFe = initialStress6[2];
+      const initialTxyFe = initialStress6[3];
+      const weight = Number.isFinite(Number(gp.areaWeight)) && area > 0
+        ? Math.max(Number(gp.areaWeight) || 0, 0) / area
+        : 1 / numGp;
+      const stress2DFe = extractStress2DFrom6(stress6);
+      const initialStress2DFe = extractStress2DFrom6(initialStress6);
+      const effectiveStress = effectiveStress6ToCompressionPositiveStress3D(stress6);
+      const initialEffectiveStress = effectiveStress6ToCompressionPositiveStress3D(initialStress6);
+      const stressIncrement = {
+        sxx: stress2DFe.sxx - initialStress2DFe.sxx,
+        syy: stress2DFe.syy - initialStress2DFe.syy,
+        txy: stress2DFe.txy - initialStress2DFe.txy
+      };
+      const mc = mohrCoulombIndicator3D(stress6, params);
       const eta = Number(mc?.eta) || 0;
+      const branchValue = branchKind[gp.globalIndex] || 0;
+      const exactBranchKind = gpuV2BranchName(branchValue);
+      const activity = gpuV2BranchActivity(branchValue);
+      const strain = gpuV2StrainAtPoint(gp.B || cache.bMatricesPerGp?.[gp.gpIndex] || cache.B, cache.dofs, uRecoveryFull);
       maxEta = Math.max(maxEta, eta);
-      avgSxx += sxxFe / numGp;
-      avgSyy += syyFe / numGp;
-      avgSzz += szzFe / numGp;
-      avgTxy += txyFe / numGp;
+      anyActive = anyActive || activity.active === 1;
+      anyTension = anyTension || activity.tension === 1 || mc?.state === 'tension-cutoff';
+      faceCount += activity.face;
+      edgeCount += activity.edge;
+      apexCount += activity.apex;
+      tensionCount += activity.tension;
+      avgSxx += weight * sxxFe;
+      avgSyy += weight * syyFe;
+      avgSzz += weight * szzFe;
+      avgTxy += weight * txyFe;
+      avgInitialSxx += weight * initialSxxFe;
+      avgInitialSyy += weight * initialSyyFe;
+      avgInitialSzz += weight * initialSzzFe;
+      avgInitialTxy += weight * initialTxyFe;
+      for (let k = 0; k < 6; k += 1) {
+        avgStress6[k] += weight * stress6[k];
+        avgInitialStress6[k] += weight * initialStress6[k];
+      }
+      avgExx += weight * strain.exx;
+      avgEyy += weight * strain.eyy;
+      avgGxy += weight * strain.gxy;
       return {
         gpIndex: gp.gpIndex,
         integrationPointIndex: gp.globalIndex,
         x: gp.x, y: gp.y,
         areaWeight: gp.areaWeight,
-        strain: { exx: 0, eyy: 0, gxy: 0 },     // not tracked separately in v1 GPU output
+        strain,
         stress2D: stress2DFe,
-        effectiveStress: negateNormalAndShear(stress2DFe),
-        materialState: { currentlyMcActive: eta >= 1 - 1e-6, hasEverExceededMc: eta >= 1 - 1e-6 },
-        materialDiagnostics: { etaMcFinal: eta },
+        effectiveStress,
+        effectiveStress3D: effectiveStress,
+        stressIncrement,
+        stressIncrementGeo: negateNormalAndShear(stressIncrement),
+        initialEffectiveStress,
+        initialEffectiveStress3D: initialEffectiveStress,
+        materialState: {
+          currentlyMcActive: activity.active === 1,
+          hasEverExceededMc: activity.active === 1 || eta >= 1 - 1e-6,
+          exactBranchKind,
+          accumulatedPlasticStrain: 0
+        },
+        materialDiagnostics: {
+          currentlyMcActive: activity.active === 1,
+          hasEverExceededMc: activity.active === 1 || eta >= 1 - 1e-6,
+          etaMcFinal: eta,
+          etaMcContour: eta,
+          exactBranchKind,
+          activeYieldSurface: activity.tension ? 'TENSION' : (activity.active ? 'MC_SHEAR' : 'NONE'),
+          tensionCutoffActive: activity.tension === 1 || mc?.state === 'tension-cutoff',
+          initialStateAdmissible: true,
+          safetyEquivalentPlasticIncrement: 0
+        },
         mc,
-        tensionCutoffActive: false
+        tensionCutoffActive: activity.tension === 1 || mc?.state === 'tension-cutoff'
       };
     }) || [];
+    const avgStress2DFe = { sxx: avgSxx, syy: avgSyy, txy: avgTxy };
+    const avgInitialStress2DFe = { sxx: avgInitialSxx, syy: avgInitialSyy, txy: avgInitialTxy };
+    const initialEffectiveStress = negateNormalAndShear(avgInitialStress2DFe);
+    const initialEffectiveStress3D = effectiveStress6ToCompressionPositiveStress3D(avgInitialStress6);
+    const stressIncrement = {
+      sxx: avgStress2DFe.sxx - avgInitialStress2DFe.sxx,
+      syy: avgStress2DFe.syy - avgInitialStress2DFe.syy,
+      txy: avgStress2DFe.txy - avgInitialStress2DFe.txy
+    };
+    const sigmaIncrementGeo = negateNormalAndShear(stressIncrement);
+    const sigmaEff = negateNormalAndShear(avgStress2DFe);
+    const avgEffective3D = effectiveStress6ToCompressionPositiveStress3D(avgStress6);
+    const porePressure = Math.max(Number(porePressureByElement?.[elemIdx]) || 0, 0);
+    const initialTotalStress = {
+      sxx: (Number(initialEffectiveStress?.sxx) || 0) + porePressure,
+      syy: (Number(initialEffectiveStress?.syy) || 0) + porePressure,
+      txy: Number(initialEffectiveStress?.txy) || 0
+    };
+    const initialTotalStress3D = {
+      sxx: (Number(initialEffectiveStress3D?.sxx) || 0) + porePressure,
+      syy: (Number(initialEffectiveStress3D?.syy) || 0) + porePressure,
+      szz: (Number(initialEffectiveStress3D?.szz) || 0) + porePressure,
+      txy: Number(initialEffectiveStress3D?.txy) || 0
+    };
+    const totalStress = {
+      sxx: (Number(sigmaEff?.sxx) || 0) + porePressure,
+      syy: (Number(sigmaEff?.syy) || 0) + porePressure,
+      txy: Number(sigmaEff?.txy) || 0
+    };
+    const totalStress3D = {
+      sxx: (Number(avgEffective3D?.sxx) || 0) + porePressure,
+      syy: (Number(avgEffective3D?.syy) || 0) + porePressure,
+      szz: (Number(avgEffective3D?.szz) || 0) + porePressure,
+      txy: Number(avgEffective3D?.txy) || 0
+    };
+    const principal = principalStress2DCompressionPositive(sigmaEff);
+    const mc = mohrCoulombIndicator3D(avgStress6, params);
+    const dominantBranch = tensionCount > 0
+      ? 'TENSION_APEX_T123'
+      : (apexCount > 0 ? 'MC_APEX_FORMAL' : (edgeCount > 0 ? 'MC_EDGE_S23_EQUAL' : (faceCount > 0 ? 'MC_FACE_F13' : 'ELASTIC')));
     return {
       elementIndex: elemIdx,
       cellIndex: cache.cellIndex,
@@ -885,22 +1064,50 @@ function buildSolverResultFromGpuOutput({
       kind: cache.kind,
       area: cache.area,
       centroid: cache.centroid,
-      stress2D: { sxx: avgSxx, syy: avgSyy, txy: avgTxy },
-      effectiveStress: negateNormalAndShear({ sxx: avgSxx, syy: avgSyy, txy: avgTxy }),
-      strain: { exx: 0, eyy: 0, gxy: 0 },
-      materialState: { currentlyMcActive: maxEta >= 1 - 1e-6 },
-      materialDiagnostics: { etaMcFinal: maxEta, etaMcContour: maxEta },
-      mc: { eta: maxEta },
-      tensionCutoffActive: false,
-      gaussPoints: gpRecords,
-      porePressure: Math.max(Number(porePressureByElement?.[elemIdx]) || 0, 0)
+      stress2D: avgStress2DFe,
+      stressIncrement,
+      stressIncrementGeo: sigmaIncrementGeo,
+      porePressure,
+      initialEffectiveStress,
+      initialEffectiveStress3D,
+      initialTotalStress,
+      initialTotalStress3D,
+      effectiveStress: sigmaEff,
+      effectiveStress3D: avgEffective3D,
+      totalStress,
+      totalStress3D,
+      principal,
+      strain: { exx: avgExx, eyy: avgEyy, gxy: avgGxy },
+      materialState: {
+        currentlyMcActive: anyActive,
+        hasEverExceededMc: anyActive || maxEta >= 1 - 1e-6,
+        exactBranchKind: dominantBranch,
+        activeYieldSurface: anyTension ? 'TENSION' : (anyActive ? 'MC_SHEAR' : 'NONE'),
+        accumulatedPlasticStrain: 0
+      },
+      materialDiagnostics: {
+        currentlyMcActive: anyActive,
+        hasEverExceededMc: anyActive || maxEta >= 1 - 1e-6,
+        etaMcFinal: maxEta,
+        etaMcContour: maxEta,
+        exactBranchKind: dominantBranch,
+        activeYieldSurface: anyTension ? 'TENSION' : (anyActive ? 'MC_SHEAR' : 'NONE'),
+        tensionCutoffActive: anyTension,
+        initialStateAdmissible: true,
+        safetyEquivalentPlasticIncrement: 0
+      },
+      mc,
+      tensionCutoffActive: anyTension,
+      gaussPoints: gpRecords
     };
   });
   // 3. Terrain profile + summaries.
   const terrainSettlementProfile = buildTerrainSettlementProfile(mesh, nodalDisplacements);
   const summaries = summarizeDeformation(nodalDisplacements, elementResults);
-  summaries.maxInitialSettlement = 0;
-  summaries.serviceSettlementIncrement = summaries.maxSettlement;
+  summaries.maxInitialSettlement = Math.max(0, ...initialNodalDisplacements.map((item) => -(item?.uy || 0)));
+  summaries.serviceSettlementIncrement = hasServiceIncrement
+    ? Math.max(0, ...serviceIncrementNodalDisplacements.map((item) => -(item?.uy || 0)))
+    : 0;
   summaries.safetySettlementIncrement = analysisType === 'safety-cphi' ? summaries.maxSettlement : 0;
   return {
     mesh,
@@ -909,6 +1116,7 @@ function buildSolverResultFromGpuOutput({
     nodalDisplacements,
     totalNodalDisplacements,
     initialNodalDisplacements,
+    serviceIncrementNodalDisplacements,
     terrainSettlementProfile,
     elementResults,
     summaries,
@@ -924,6 +1132,36 @@ function buildSolverResultFromGpuOutput({
       gpuPipeline: true,
       gpuDiagnostics: gpuResult.diagnostics || null,
       gpuSafety: gpuResult.safety || null,
+      displacementNorms: {
+        display: vectorNorm(uDisplayFull || []),
+        total: vectorNorm(uFull || []),
+        initialBaseline: vectorNorm(uInitialBaselineFull || []),
+        gravity: vectorNorm(uGravityFull || []),
+        service: vectorNorm(uServiceFull || []),
+        serviceIncrement: vectorNorm(uServiceIncrementFull || [])
+      },
+      linearIterations: Number(gpuResult.diagnostics?.linearIterations) || 0,
+      nonlinearIterations: (
+        Number(gpuResult.diagnostics?.gravityNewtonIters) || 0
+      ) + (
+        Number(gpuResult.diagnostics?.surfaceNewtonIters) || 0
+      ) + (
+        Number(gpuResult.diagnostics?.safetyNewtonIters) || 0
+      ),
+      acceptedLoadSteps: Number(gpuResult.diagnostics?.surfaceAcceptedSteps) || 0,
+      rejectedLoadSteps: Number(gpuResult.diagnostics?.surfaceRejectedSteps) || 0,
+      initialPhaseAcceptedSteps: Number(gpuResult.diagnostics?.geostaticAcceptedSteps) || 0,
+      initialPhaseRejectedSteps: Number(gpuResult.diagnostics?.geostaticRejectedSteps) || 0,
+      residualNorm: Number(gpuResult.diagnostics?.history?.loadSteps?.at?.(-1)?.residualNorm
+        ?? gpuResult.diagnostics?.history?.geostatic?.at?.(-1)?.residualNorm) || 0,
+      converged: gpuResult.converged === true,
+      convergenceState: gpuResult.converged === true ? 'converged' : 'failed',
+      failureReason: gpuResult.reason || '',
+      finalActiveMcElements: elementResults.filter((item) => item?.materialDiagnostics?.currentlyMcActive).length,
+      peakActiveMcElements: Math.max(0, Number(gpuResult.branchCounts?.plastic) || 0),
+      finalTensionCutoffActiveElements: elementResults.filter((item) => item?.tensionCutoffActive).length,
+      linearSolveHistory: gpuResult.diagnostics?.linearSolveHistory || [],
+      linearSolveSummary: gpuResult.diagnostics?.linearSolveSummary || null,
       gpuElapsedMs: gpuResult.elapsedMsGpu || null,
       gpuAdapterInfo: gpuResult.adapterInfo || null
     },
@@ -950,7 +1188,8 @@ async function tryGpuFullDeformation({
   // STRICT BY DESIGN.  When the toggle is on, the GPU path must run.  Any
   // failure (no WebGPU, kernel error, non-convergence) throws — there is
   // no silent CPU fallback.  Uncheck the toggle to use CPU.
-  console.log('[deformation] GPU pipeline requested — probing WebGPU…');
+  const v2 = options?.gpuPipelineVersion === 'v2';
+  console.log(`[deformation] GPU pipeline (${v2 ? 'v2 matrix-free' : 'v1 CSR'}) requested — probing WebGPU…`);
   const probe = await gpuProbeGpuPipeline();
   if (!probe?.available) {
     throw new Error(
@@ -965,20 +1204,34 @@ async function tryGpuFullDeformation({
   const t0 = performance.now();
   let result;
   try {
-    result = await gpuRunFullDeformationAnalysisOnGpu({
-      device: probe.device,
-      mesh,
-      elementCaches,
-      regionConstitutiveByRegion,
-      fixedDofSet: new Set(fixedValues.keys()),
-      gravityRhsFree,
-      surfaceLoadRhsFree,
-      sigmaInitialF64,
-      porePressureByIntegrationPoint,
-      options,
-      warnings,
-      onProgress
-    });
+    if (v2) {
+      // v2 — matrix-free GPU pipeline with modified Newton, local return
+      // mapping at every Gauss point, BiCGStab fallback for non-associated
+      // tangents, block-Jacobi 2×2 preconditioner.  Single GPU handoff.
+      result = await gpuV2RunFullDeformationAnalysis({
+        device: probe.device,
+        mesh, elementCaches, regionConstitutiveByRegion,
+        fixedDofSet: new Set(fixedValues.keys()),
+        gravityRhsFree, surfaceLoadRhsFree,
+        sigmaInitialF64, porePressureByIntegrationPoint,
+        options, warnings, onProgress
+      });
+    } else {
+      result = await gpuRunFullDeformationAnalysisOnGpu({
+        device: probe.device,
+        mesh,
+        elementCaches,
+        regionConstitutiveByRegion,
+        fixedDofSet: new Set(fixedValues.keys()),
+        gravityRhsFree,
+        surfaceLoadRhsFree,
+        sigmaInitialF64,
+        porePressureByIntegrationPoint,
+        options,
+        warnings,
+        onProgress
+      });
+    }
   } catch (err) {
     console.error('[deformation] GPU pipeline threw:', err);
     throw new Error(
@@ -996,6 +1249,30 @@ async function tryGpuFullDeformation({
   const t1 = performance.now();
   result.elapsedMsGpu = t1 - t0;
   result.adapterInfo = probe.info || null;
+  if (v2) {
+    const norms = result.diagnostics?.norms || {};
+    const surfaceRhs = Number(norms.surfaceRhs) || 0;
+    const serviceIncrementU = Number(norms.serviceIncrementU) || 0;
+    const displayU = Number(norms.displayU) || 0;
+    const activeU = Number(norms.activeU) || 0;
+    const sigmaActive = Number(norms.sigmaActive) || 0;
+    const gpuSurfaceRhs = Number(norms.gpuFirstSurfaceRhs) || 0;
+    const gpuSurfaceResidual = Number(norms.gpuFirstSurfaceResidual) || 0;
+    const surfaceStepCount = Math.max(Math.round(Number(norms.surfaceStepCount) || 0), 0);
+    const hasSurfaceLoadFlag = Number(norms.hasSurfaceLoad) || 0;
+    if (
+      (surfaceRhs > 1e-10 && serviceIncrementU <= 1e-18) ||
+      (displayU <= 1e-18 && (activeU > 1e-18 || sigmaActive > 1e-18))
+    ) {
+      console.warn(
+        `[deformation] GPU v2 suspicious zero display: |rhs_surface|=${surfaceRhs.toExponential(3)}, ` +
+        `|u_service_inc|=${serviceIncrementU.toExponential(3)}, |u_display|=${displayU.toExponential(3)}, ` +
+        `|u_active|=${activeU.toExponential(3)}, |sigma_active|=${sigmaActive.toExponential(3)}, ` +
+        `|gpu_rhs_surface|=${gpuSurfaceRhs.toExponential(3)}, |gpu_resid_surface|=${gpuSurfaceResidual.toExponential(3)}, ` +
+        `surface_steps=${surfaceStepCount}, has_surface=${hasSurfaceLoadFlag}`
+      );
+    }
+  }
   pushUniqueWarning(warnings,
     `[GPU] Analysis ran on the new GPU resident pipeline ` +
     `(${ad}/${arch}, ${(t1 - t0).toFixed(0)} ms).`);
@@ -5986,6 +6263,13 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     // any failure (no WebGPU, kernel error, non-convergence) throws — there
     // is no silent CPU fallback.  Default false; the UI toggle sets it true.
     useNewGpuPipeline: input?.options?.useNewGpuPipeline === true,
+    // GPU pipeline version selector — 'v1' (CSR + plastic Newton, full
+    // production) or 'v2' (matrix-free + modified Newton, experimental).
+    // Default 'v1'.  UI dropdown sets this when the GPU toggle is on.
+    gpuPipelineVersion: input?.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1',
+    // Optional v2 sub-options.
+    preconditioner: input?.options?.preconditioner === 'jacobi' ? 'jacobi' : 'block-jacobi',
+    gpuV2Debug: input?.options?.gpuV2Debug === true,
     safetyInitialSigmaMsfIncrement: Math.max(Number(input?.options?.safetyInitialSigmaMsfIncrement) || SAFETY_INITIAL_SIGMA_MSF_INCREMENT, 1e-3),
     safetySigmaMsfGrowthFactor: Math.max(Number(input?.options?.safetySigmaMsfGrowthFactor) || SAFETY_SIGMA_MSF_GROWTH_FACTOR, 1.05),
     safetySigmaMsfCutbackFactor: Math.min(Math.max(Number(input?.options?.safetySigmaMsfCutbackFactor) || 0.5, 0.1), 0.95),
@@ -6157,7 +6441,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       gpuCapabilities.algorithmicTangentMayBeUnsymmetric === true && gpuAnyRegionAsymmetric;
     const useUnsymmetricForGpu =
       gpuExactPlasticTangentMayBeUnsymmetric || options?.useUnsymmetricPlasticSolver === true;
-    const gpuOptions = { ...options, useUnsymmetricPlasticSolver: useUnsymmetricForGpu };
+    const gpuOptions = { ...options, analysisType, hasSurfaceLoad, useUnsymmetricPlasticSolver: useUnsymmetricForGpu };
     const gpuFull = await tryGpuFullDeformation({
       options: gpuOptions, mesh, elementCaches, regionConstitutiveByRegion,
       fixedValues,

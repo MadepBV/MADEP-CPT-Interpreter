@@ -23,6 +23,15 @@ import * as elements from '../src/lib/cpt-app/deformation/gpu/wgsl/elements.js';
 import * as mc from '../src/lib/cpt-app/deformation/gpu/wgsl/mc-plastic.js';
 import * as geo from '../src/lib/cpt-app/deformation/gpu/resident-geostatic.js';
 import * as asm from '../src/lib/cpt-app/deformation/gpu/gpu-assembly.js';
+import * as v2Kx from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-kx-element.js';
+import * as v2Diag from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-jacobi-diag.js';
+import * as v2ElasticD from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-elastic-d.js';
+import * as v2ApplyJacobi from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-apply-jacobi.js';
+import * as v2TrialStress from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-trial-stress.js';
+import * as v2BlockJacobi from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-block-jacobi.js';
+import * as v2Residual from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-residual-and-flag.js';
+import * as v2StressSlice from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-stress-slice.js';
+import * as v2Blas from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-blas.js';
 
 // Collect every (name, string) WGSL kernel.
 const kernels = [];
@@ -38,6 +47,15 @@ collectFrom(elements, 'elements');
 collectFrom(mc, 'mc');
 collectFrom(geo, 'geo');
 collectFrom(asm, 'asm');
+collectFrom(v2Kx, 'v2Kx');
+collectFrom(v2Diag, 'v2Diag');
+collectFrom(v2ElasticD, 'v2ElasticD');
+collectFrom(v2ApplyJacobi, 'v2ApplyJacobi');
+collectFrom(v2TrialStress, 'v2TrialStress');
+collectFrom(v2BlockJacobi, 'v2BlockJacobi');
+collectFrom(v2Residual, 'v2Residual');
+collectFrom(v2StressSlice, 'v2StressSlice');
+collectFrom(v2Blas, 'v2Blas');
 
 const failures = [];
 const passes = [];
@@ -111,6 +129,17 @@ for (const { name, source } of kernels) {
   check('every fn declaration parses with body opener',
         fnMatches.length === fnDeclarations,
         `fnSignatures=${fnMatches.length} fnNames=${fnDeclarations}`);
+
+  // 9. v2 production kernels run on Safari/Metal worker paths where tiny
+  // uniform dispatch-size counters have previously read back as zero. Bounds
+  // must come from storage-buffer arrayLength() instead; scalar uniforms such
+  // as convergence tolerances are still fine.
+  if (name.startsWith('v2')) {
+    const uniformDispatchCounter = source.match(/\bparams\.(?:n|num[A-Za-z0-9_]*)\b/g) || [];
+    check('v2 avoids uniform dispatch-size counters',
+          uniformDispatchCounter.length === 0,
+          uniformDispatchCounter.length ? uniformDispatchCounter.join(', ') : '');
+  }
 }
 
 process.stdout.write(`\n=== Summary ===\n`);

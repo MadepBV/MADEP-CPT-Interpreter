@@ -4719,6 +4719,11 @@ function ensureStage6State(){
   delete bishop.deformation.options.gpuMinDof;
   // The new GPU resident pipeline is opt-in.  Persist as a clean boolean.
   bishop.deformation.options.useNewGpuPipeline = !!bishop.deformation.options.useNewGpuPipeline;
+  // Pipeline version selector — 'v1' is the default production GPU path,
+  // 'v2' is the matrix-free reformulation (elastic-only on-device).
+  if (bishop.deformation.options.gpuPipelineVersion !== 'v2') {
+    bishop.deformation.options.gpuPipelineVersion = 'v1';
+  }
   const rawDeformationMeshTargetArea = Number(bishop.deformation.options.meshTargetArea);
   const deformationAutoMeshTargetArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
   if(bishop.deformation.options.meshTargetAreaAuto == null){
@@ -6923,7 +6928,8 @@ function stage6BishopRunDeformation(){
         safetySigmaMsfBracketTolerance:bishop.deformation?.options?.safetySigmaMsfBracketTolerance,
         safetyMaxSearchTrials:bishop.deformation?.options?.safetyMaxSearchTrials,
         useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true,
-        useNewGpuPipeline:bishop.deformation?.options?.useNewGpuPipeline === true
+        useNewGpuPipeline:bishop.deformation?.options?.useNewGpuPipeline === true,
+        gpuPipelineVersion:bishop.deformation?.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1'
       }
     }
   });
@@ -11174,6 +11180,7 @@ function renderStage6BishopApp(){
   const deformationSafetyMaxSearchTrials = Math.max(Math.round(Number(deformation.options?.safetyMaxSearchTrials) || 32), 1);
   const deformationUseUnsymmetricPlasticSolver = deformation.options?.useUnsymmetricPlasticSolver === true;
   const deformationUseNewGpuPipeline = deformation.options?.useNewGpuPipeline === true;
+  const deformationGpuPipelineVersion = deformation.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1';
   const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
   const deformationTotalLoad = Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null;
@@ -11881,6 +11888,16 @@ function renderStage6BishopApp(){
 	                  Use new GPU resident pipeline (experimental)
 	                </label>
 	                <div class="st6-help">Off by default. Routes the deformation solve through the new fully-resident GPU pipeline (double-single arithmetic, no CPU/GPU handoffs). Falls back to CPU if WebGPU is unavailable. Currently mid-rebuild; only enable for testing.</div>
+	                ${deformationUseNewGpuPipeline ? `
+	                <label class="st6-bishop-check">
+	                  <span style="font-size:11px;color:var(--tx2);min-width:100px">GPU pipeline:</span>
+	                  <select onchange="stage6BishopSetField('deformation.options.gpuPipelineVersion', this.value)" style="font-size:11px">
+	                    <option value="v1" ${deformationGpuPipelineVersion === 'v1' ? 'selected' : ''}>v1 — CSR + block-Jacobi (full plastic)</option>
+	                    <option value="v2" ${deformationGpuPipelineVersion === 'v2' ? 'selected' : ''}>v2 — matrix-free + block-Jacobi (full elastoplastic, experimental)</option>
+	                  </select>
+	                </label>
+	                <div class="st6-help">v1 is the production GPU path: assembled CSR stiffness, plastic Newton with block-Jacobi 2×2 preconditioning. v2 is a matrix-free reformulation: no global K assembly, single GPU handoff, modified Newton with local return mapping at every Gauss point, BiCGStab auto-selection for non-associated MC, 2×2 block-Jacobi preconditioner, GPU-resident DS (f64-equivalent) arithmetic. CPU-reference validated end-to-end (see scripts/verify_gpu_v2_parity.mjs); GPU runtime untested without hardware.</div>
+	                ` : ''}
                 ${deformationIsSafety ? `
                   <label style="font-size:11px;color:var(--tx2)">Initial ΣMsf increment
                     <input type="number" step="0.01" min="0.001" value="${deformationSafetyInitialSigmaMsfIncrement.toFixed(3)}" onchange="stage6BishopSetField('deformation.options.safetyInitialSigmaMsfIncrement', this.value)">

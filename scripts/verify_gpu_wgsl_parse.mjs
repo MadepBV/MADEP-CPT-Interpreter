@@ -25,6 +25,15 @@ import * as mc from '../src/lib/cpt-app/deformation/gpu/wgsl/mc-plastic.js';
 import * as geo from '../src/lib/cpt-app/deformation/gpu/resident-geostatic.js';
 import * as asm from '../src/lib/cpt-app/deformation/gpu/gpu-assembly.js';
 import * as ds from '../src/lib/cpt-app/deformation/gpu/wgsl/ds.js';
+import * as v2Kx from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-kx-element.js';
+import * as v2Diag from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-jacobi-diag.js';
+import * as v2ElasticD from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-elastic-d.js';
+import * as v2ApplyJacobi from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-apply-jacobi.js';
+import * as v2TrialStress from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-trial-stress.js';
+import * as v2BlockJacobi from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-block-jacobi.js';
+import * as v2Residual from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-residual-and-flag.js';
+import * as v2StressSlice from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-stress-slice.js';
+import * as v2Blas from '../src/lib/cpt-app/deformation/gpu/v2/wgsl-v2/mf-blas.js';
 
 const kernels = [];
 const collect = (mod, modName) => {
@@ -39,6 +48,15 @@ collect(elements, 'elements');
 collect(mc, 'mc');
 collect(geo, 'geo');
 collect(asm, 'asm');
+collect(v2Kx, 'v2Kx');
+collect(v2Diag, 'v2Diag');
+collect(v2ElasticD, 'v2ElasticD');
+collect(v2ApplyJacobi, 'v2ApplyJacobi');
+collect(v2TrialStress, 'v2TrialStress');
+collect(v2BlockJacobi, 'v2BlockJacobi');
+collect(v2Residual, 'v2Residual');
+collect(v2StressSlice, 'v2StressSlice');
+collect(v2Blas, 'v2Blas');
 // Plus DS_WGSL on its own (it is a prelude, not a kernel, but should also parse).
 kernels.unshift({ name: 'ds.DS_WGSL', source: ds.DS_WGSL });
 

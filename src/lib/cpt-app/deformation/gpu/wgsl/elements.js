@@ -70,7 +70,7 @@ struct StrainParams { numElements: u32, _pad: vec3<u32> };
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let totalGp: u32 = params.numElements * GPS_PER_ELEM;
+  let totalGp: u32 = min(arrayLength(&strain) / STRAIN_DIM, (arrayLength(&dofMap) / NUM_LOCAL_DOFS) * GPS_PER_ELEM);
   let gp: u32 = gid.x;
   if (gp >= totalGp) { return; }
   let elementIndex: u32 = gp / GPS_PER_ELEM;
@@ -131,7 +131,8 @@ struct ForceParams { numElements: u32, _pad: vec3<u32> };
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let elementIndex: u32 = gid.x;
-  if (elementIndex >= params.numElements) { return; }
+  let numElements: u32 = arrayLength(&forceOut) / NUM_LOCAL_DOFS;
+  if (elementIndex >= numElements) { return; }
   let bBaseElem: u32 = elementIndex * GPS_PER_ELEM * STRAIN_DIM * NUM_LOCAL_DOFS;
   let stressBase: u32 = elementIndex * GPS_PER_ELEM * STRAIN_DIM;
   let weightBase: u32 = elementIndex * GPS_PER_ELEM;
@@ -194,7 +195,8 @@ struct StiffParams { numElements: u32, _pad: vec3<u32> };
 @compute @workgroup_size(32)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let elementIndex: u32 = gid.x;
-  if (elementIndex >= params.numElements) { return; }
+  let numElements: u32 = arrayLength(&kOut) / (NUM_LOCAL_DOFS * NUM_LOCAL_DOFS);
+  if (elementIndex >= numElements) { return; }
   let bBaseElem: u32 = elementIndex * GPS_PER_ELEM * STRAIN_DIM * NUM_LOCAL_DOFS;
   let dBaseElem: u32 = elementIndex * GPS_PER_ELEM * 9u;
   let weightBase: u32 = elementIndex * GPS_PER_ELEM;
@@ -312,7 +314,9 @@ struct ScatterParams { numFreeDofs: u32, _pad: vec3<u32> };
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i: u32 = gid.x;
-  if (i >= params.numFreeDofs) { return; }
+  let nPtr: u32 = select(0u, arrayLength(&forceIncPtr) - 1u, arrayLength(&forceIncPtr) > 0u);
+  let n: u32 = min(arrayLength(&rhsFree), nPtr);
+  if (i >= n) { return; }
   let begin: u32 = forceIncPtr[i];
   let end:   u32 = forceIncPtr[i + 1u];
   var acc: vec2<f32> = vec2<f32>(0.0, 0.0);
@@ -342,7 +346,9 @@ struct CsrScatterParams { nnz: u32, _pad: vec3<u32> };
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let e: u32 = gid.x;
-  if (e >= params.nnz) { return; }
+  let nPtr: u32 = select(0u, arrayLength(&csrIncPtr) - 1u, arrayLength(&csrIncPtr) > 0u);
+  let nnz: u32 = min(min(arrayLength(&csrValHi), arrayLength(&csrValLo)), nPtr);
+  if (e >= nnz) { return; }
   let begin: u32 = csrIncPtr[e];
   let end:   u32 = csrIncPtr[e + 1u];
   var acc: vec2<f32> = vec2<f32>(0.0, 0.0);
