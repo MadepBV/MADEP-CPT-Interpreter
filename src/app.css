@@ -35,21 +35,21 @@ body {
 	margin: 0;
 	padding: 0;
 	min-height: 100%;
+	min-width: 320px;
+	background: #f7f4ef;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
 
 body {
 	background: #f7f4ef;
 	color: #18181a;
 	font-family: 'Manrope', system-ui, sans-serif;
+	font-size: 16px;
+	line-height: 1.78;
+	overflow-x: hidden;
 }
 
 * {
 	box-sizing: border-box;
-}
-
-@media (prefers-color-scheme: dark) {
-	body {
-		background: #111110;
-		color: #ede9e1;
-	}
 }

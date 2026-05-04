@@ -3,35 +3,35 @@
 	import { call, getLegacy } from '$lib/cpt-app/ui';
 </script>
 
-<div
-	id="banner"
-	style="background:var(--bg2);border-bottom:1px solid var(--bd);padding:0 16px;display:flex;align-items:center;gap:0;min-height:44px;flex-wrap:wrap"
->
-	<span class="app-brand-mark" style="margin-right:10px" aria-hidden="true">MD</span>
-	<input
-		id="projName"
-		type="text"
-		value="CPT Project"
-		oninput={(event) => {
-			const target = event.currentTarget as HTMLInputElement;
-			const legacy = getLegacy();
-			if (legacy.PROJECT) legacy.PROJECT.name = target.value;
-		}}
-		style="font-size:12px;font-weight:600;border:none;background:transparent;color:var(--tx);width:120px;padding:0;outline:none"
-	/>
+<div id="banner" class="app-header">
+	<label class="app-brand" for="projName">
+		<span class="app-brand-mark" aria-hidden="true">MD</span>
+		<span class="app-brand__text">
+			<span>MADEP</span>
+			<input
+				id="projName"
+				type="text"
+				value="CPT Project"
+				aria-label="Project name"
+				oninput={(event) => {
+					const target = event.currentTarget as HTMLInputElement;
+					const legacy = getLegacy();
+					if (legacy.PROJECT) legacy.PROJECT.name = target.value;
+				}}
+			/>
+		</span>
+	</label>
 
-	<div style="width:1px;height:24px;background:var(--bd);margin:0 12px"></div>
+	<div class="app-divider" aria-hidden="true"></div>
 
-	<div id="cptTabs" style="display:flex;align-items:stretch;gap:2px;flex:1;overflow-x:auto"></div>
-	<button class="btn sm" onclick={() => call('addCpt')} style="margin-left:8px;flex-shrink:0"
-		>+ Import CPT(s)</button
-	>
+	<div class="cpt-tabs-wrap">
+		<div id="cptTabs" class="cpt-tabs" aria-label="Imported CPT profiles"></div>
+		<button class="btn btn--compact" onclick={() => call('addCpt')}>Import CPT(s)</button>
+	</div>
 
-	<div style="width:1px;height:24px;background:var(--bd);margin:0 12px"></div>
+	<div class="app-divider" aria-hidden="true"></div>
 
-	<div
-		style="display:flex;border:1px solid var(--bd2);border-radius:var(--r);overflow:hidden;flex-shrink:0"
-	>
+	<div class="segmented" aria-label="Application phase">
 		<button id="phaseA" class="togbtn active" onclick={() => call('setPhase', 'analysis')}
 			>Analysis</button
 		>
@@ -44,7 +44,7 @@
 	</div>
 </div>
 
-<div id="phaseCorr" style="display:none;padding:20px 24px;max-width:1280px;margin:0 auto">
+<div id="phaseCorr" class="phase-panel">
 	<div class="sec">
 		<div>
 			<div class="sec-title">Cross-CPT correlatie</div>
@@ -59,7 +59,7 @@
 	<div id="corrTable" style="overflow-x:auto;margin-top:12px"></div>
 </div>
 
-<div id="phaseSection" style="display:none;padding:20px 24px;max-width:1280px;margin:0 auto">
+<div id="phaseSection" class="phase-panel">
 	<div class="sec">
 		<div>
 			<div class="sec-title">Geologische doorsnede</div>

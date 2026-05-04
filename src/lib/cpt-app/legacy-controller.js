@@ -200,18 +200,13 @@ function renderBanner(){
   if(!tabs)return;
   tabs.innerHTML=PROJECT.cpts.map((cpt,i)=>{
     const isActive=i===PROJECT.activeCptIdx;
-    const status=cpt.layers.length?'✓':cpt.data.length?'⚡':'○';
-    const statusCol=cpt.layers.length?'var(--ok-text)':cpt.data.length?'var(--wn)':'var(--tx3)';
-    return`<div onclick="selectCpt(${i})" style="
-        display:flex;align-items:center;gap:5px;padding:0 12px;cursor:pointer;
-        border-bottom:2px solid ${isActive?'var(--ac)':'transparent'};
-        background:${isActive?'var(--bg)':'transparent'};
-        font-size:12px;font-weight:${isActive?'600':'400'};color:var(--tx);
-        white-space:nowrap;min-height:44px;transition:.1s">
-      <span style="color:${statusCol};font-size:10px">${status}</span>
+    const status=cpt.layers.length?'Ready':cpt.data.length?'Data':'Empty';
+    const statusClass=cpt.layers.length?'ready':cpt.data.length?'data':'empty';
+    return`<div class="cpt-tab ${isActive?'active':''}" data-cpt-index="${i}" role="button" tabindex="0" onclick="selectCpt(${i})" aria-label="Select ${cpt.id}">
+      <span class="cpt-tab__status cpt-tab__status--${statusClass}">${status}</span>
       <span>${cpt.id}</span>
       ${PROJECT.cpts.length>1?`<span data-remove="${i}"
-        style="color:var(--tx3);font-size:10px;margin-left:3px;cursor:pointer;padding:2px 4px;border-radius:3px" title="Verwijder CPT">✕</span>`:''}
+        class="cpt-tab__remove" title="Verwijder CPT" aria-label="Verwijder ${cpt.id}">x</span>`:''}
     </div>`;
   }).join('');
   document.getElementById('projName').value=PROJECT.name;
@@ -221,6 +216,13 @@ function renderBanner(){
       e.stopPropagation();
       const i=+el.dataset.remove;
       removeCpt(i);
+    });
+  });
+  tabs.querySelectorAll('.cpt-tab').forEach(el=>{
+    el.addEventListener('keydown', e=>{
+      if(e.key!=='Enter'&&e.key!==' ') return;
+      e.preventDefault();
+      selectCpt(+el.dataset.cptIndex || 0);
     });
   });
 }
@@ -649,7 +651,7 @@ function renderSection(){
   const svgText = readCssToken('--tx', '#18181a');
   const svgMuted = readCssToken('--tx2', '#4a4a52');
   const svgSubtle = readCssToken('--tx3', '#888890');
-  const svgBlue = readCssToken('--chart-blue', '#356F9C');
+  const svgBlue = readCssToken('--chart-blue', '#4F8584');
 
   let s='';
 
@@ -1760,8 +1762,8 @@ function initCharts(){
   }
 
   S.charts.qc=mk('cQc',qcs,readCssToken('--chart-green', '#3D6B6A'),maxQc,'qc');
-  S.charts.fs=mk('cFs',fss,readCssToken('--chart-purple', '#6259B5'),maxFs,'fs');
-  S.charts.rf=mk('cRf',rfs,readCssToken('--chart-orange', '#B6653F'),12,'Rf');
+  S.charts.fs=mk('cFs',fss,readCssToken('--chart-purple', '#18181A'),maxFs,'fs');
+  S.charts.rf=mk('cRf',rfs,readCssToken('--chart-orange', '#8A620D'),12,'Rf');
   S.chartsReady=true;
 
   // Layer column SVG (placeholder before classification)
@@ -3740,7 +3742,7 @@ function updateTuningPreviewM(i, rawValue){
 
   const parsed = Number(rawValue);
   t.previewM = parsed;
-  const chartRed = readCssToken('--chart-red', '#A32D2D');
+  const chartRed = readCssToken('--chart-red', '#9B3A32');
   const chartGreen = readCssToken('--chart-green', '#3D6B6A');
 
   const invalid = !isFinite(parsed) || parsed <= 0;
@@ -7262,11 +7264,11 @@ function stage6BishopMeasurementLabel(metrics){
 }
 
 function stage6BishopLineProbeOptions(workspace, analysisType = null){
-  const chartBlue = readCssToken('--chart-blue', '#356F9C');
+  const chartBlue = readCssToken('--chart-blue', '#4F8584');
   const chartGreen = readCssToken('--chart-green', '#3D6B6A');
-  const chartOrange = readCssToken('--chart-orange', '#B6653F');
-  const chartRed = readCssToken('--chart-red', '#A32D2D');
-  const chartPurple = readCssToken('--chart-purple', '#6259B5');
+  const chartOrange = readCssToken('--chart-orange', '#8A620D');
+  const chartRed = readCssToken('--chart-red', '#9B3A32');
+  const chartPurple = readCssToken('--chart-purple', '#18181A');
   if(workspace === 'seepage'){
     return [
       {id:'head', label:'h', axisTitle:'Head h (m)', unit:'m', color:chartBlue, digits:3},
@@ -9405,7 +9407,7 @@ function stage6BishopDrawCanvas(){
   if(bishop.terrain?.length >= 2) drawPolyline(bishop.terrain, '#2d3a4a', 3);
 
   if(workspace === 'seepage' && model && bishop.seepage?.display?.showBoundaryConditions !== false){
-    const boundaryBlue = readCssToken('--chart-blue', '#356F9C');
+    const boundaryBlue = readCssToken('--chart-blue', '#4F8584');
     const boundaryGreen = readCssToken('--chart-green', '#3D6B6A');
     const boundaryNeutral = readCssToken('--chart-neutral', '#6b6b68');
     const boundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
@@ -13031,7 +13033,7 @@ function buildStage6BishopLineProbeChart(){
   const canvas = stage6DestroyChart('stage6BishopLineProbeChart');
   const lineProbe = S.stage6Cache?.bishopLineProbe;
   if(!canvas || !lineProbe || lineProbe.status !== 'ready' || typeof Chart === 'undefined') return;
-  const meta = lineProbe.meta || {label:'Line probe', axisTitle:'Value', color:readCssToken('--chart-blue', '#356F9C')};
+  const meta = lineProbe.meta || {label:'Line probe', axisTitle:'Value', color:readCssToken('--chart-blue', '#4F8584')};
   const tickFmt = (value)=>stage6CompactNumber(value, meta.digits || 3);
   canvas._chartRef = new Chart(canvas, buildLineProbeChartConfig({
     points:lineProbe.chartPoints,

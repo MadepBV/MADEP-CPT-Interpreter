@@ -5,27 +5,23 @@ function chartTitle(text) {
 }
 
 function getChartTheme() {
-  const prefersDark =
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-      : false;
   const fallback = {
-    text: prefersDark ? '#ede9e1' : '#18181a',
-    textMuted: prefersDark ? '#d3cec5' : '#4a4a52',
-    border: prefersDark ? 'rgba(237,233,225,0.28)' : 'rgba(24,24,26,0.18)',
-    grid: prefersDark ? 'rgba(237,233,225,0.14)' : 'rgba(24,24,26,0.08)',
-    gridStrong: prefersDark ? 'rgba(237,233,225,0.24)' : 'rgba(24,24,26,0.14)',
-    bandFill: prefersDark ? 'rgba(237,233,225,0.08)' : 'rgba(24,24,26,0.05)',
-    tooltipBg: prefersDark ? 'rgba(21,22,21,0.96)' : 'rgba(255,255,255,0.96)',
-    blue: prefersDark ? '#8dc3ff' : '#356F9C',
-    purple: prefersDark ? '#bbb6ff' : '#6259B5',
-    green: prefersDark ? '#9fd0cf' : '#3D6B6A',
-    orange: prefersDark ? '#ffb08c' : '#B6653F',
-    red: prefersDark ? '#ff9a9a' : '#A32D2D',
-    neutral: prefersDark ? '#c5c1ba' : '#6b6b68',
-    blueSoft: prefersDark ? 'rgba(141,195,255,0.28)' : 'rgba(53,111,156,0.22)',
-    greenSoft: prefersDark ? 'rgba(159,208,207,0.26)' : 'rgba(61,107,106,0.18)',
-    orangeSoft: prefersDark ? 'rgba(255,176,140,0.28)' : 'rgba(182,101,63,0.18)'
+    text: '#18181a',
+    textMuted: '#4a4a52',
+    border: 'rgba(24,24,26,0.18)',
+    grid: 'rgba(24,24,26,0.08)',
+    gridStrong: 'rgba(24,24,26,0.14)',
+    bandFill: 'rgba(24,24,26,0.05)',
+    tooltipBg: 'rgba(255,255,255,0.96)',
+    blue: '#4F8584',
+    purple: '#18181A',
+    green: '#3D6B6A',
+    orange: '#8A620D',
+    red: '#9B3A32',
+    neutral: '#6D6962',
+    blueSoft: 'rgba(61,107,106,0.10)',
+    greenSoft: 'rgba(61,107,106,0.18)',
+    orangeSoft: 'rgba(138,98,13,0.18)'
   };
   if (typeof document === 'undefined') return fallback;
   const styles = getComputedStyle(document.documentElement);

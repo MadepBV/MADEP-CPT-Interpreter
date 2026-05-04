@@ -26,11 +26,16 @@
 			}
 		}}
 	>
-		<div style="font-size:28px;margin-bottom:10px">📂</div>
-		<div style="font-size:14px;font-weight:600;margin-bottom:4px">
+		<svg class="dz-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+			<path d="M4 7.5h5.2l1.5 2H20v8.5H4V7.5Z" />
+			<path d="M4 9.5V6h4.3l1.6 1.5" />
+			<path d="M12 12.5v4" />
+			<path d="m10.3 14.2 1.7-1.7 1.7 1.7" />
+		</svg>
+		<div class="dz-title">
 			Drop one or more .GEF, .XLS, .XLSX or .CSV files here or click to browse
 		</div>
-		<div style="font-size:12px;color:var(--tx2)">
+		<div class="dz-copy">
 			Select multiple files at once to create multiple CPT tabs. GEF column order comes from
 			COLUMNINFO; Excel and CSV columns are detected from their headers.
 		</div>
@@ -43,7 +48,7 @@
 		onchange={(event) => call('loadGEF', event)}
 		multiple
 	/>
-	<div style="margin-top:10px;text-align:center">
+	<div class="load-demo-row">
 		<span style="font-size:12px;color:var(--tx2)">No file?&nbsp;</span>
 		<button class="btn sm" onclick={() => call('loadDemo')}>Load demo — anonymous profile</button>
 	</div>

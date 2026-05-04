@@ -11,39 +11,48 @@
 	import Stage6Applications from './stages/Stage6Applications.svelte';
 </script>
 
-<BannerPhaseShell />
-<StageNav />
+<a class="skip-link" href="#main">Ga naar inhoud</a>
 
-<div class="wrap">
-	<Stage1Load />
-	<Stage2Classification />
-	<Stage3Layers />
-	<Stage4Model />
-	<Stage5Tuning />
-	<Stage6Applications />
-</div>
+<main id="main" class="cpt-app" aria-label="MADEP CPT Interpreter">
+	<BannerPhaseShell />
+	<StageNav />
 
-<footer class="docs-footer">
-	<a href="/docs">Technical documentation</a>
-</footer>
+	<div class="wrap">
+		<Stage1Load />
+		<Stage2Classification />
+		<Stage3Layers />
+		<Stage4Model />
+		<Stage5Tuning />
+		<Stage6Applications />
+	</div>
+
+	<footer class="docs-footer">
+		<a href="/docs">Technical documentation</a>
+	</footer>
+</main>
 
 <style>
 	.docs-footer {
-		max-width: 1280px;
-		margin: 8px auto 28px;
-		padding: 0 24px;
+		width: 100%;
+		max-width: var(--container-max);
+		margin: 0 auto;
+		padding: 0 var(--section-px) 2rem;
 		text-align: right;
 	}
 
 	.docs-footer a {
-		font-size: 12px;
 		color: var(--tx3);
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		text-transform: uppercase;
 		text-decoration: none;
+		transition:
+			color var(--transition-fast),
+			transform var(--motion-base) var(--ease-luxury);
 	}
 
 	.docs-footer a:hover {
-		color: var(--tx2);
-		text-decoration: underline;
+		color: var(--acd);
 	}
 	
 	@media (max-width: 700px) {

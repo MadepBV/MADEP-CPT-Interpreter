@@ -1407,12 +1407,13 @@
 <style>
   :global(body) {
     margin: 0;
+    background: var(--color-bg);
   }
 
   .report-shell {
-    max-width: 1180px;
+    max-width: var(--container-max);
     margin: 0 auto;
-    padding: 24px 24px 56px;
+    padding: 24px var(--section-px) 56px;
   }
 
   .report-toolbar {
@@ -1430,11 +1431,13 @@
     min-height: 36px;
     padding: 0 10px;
     border: 1px solid var(--bd);
-    border-radius: var(--r);
-    background: var(--panel);
+    border-radius: var(--radius-sm);
+    background: var(--app-panel);
     color: var(--tx);
-    font-size: 12px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
     font-weight: 600;
+    text-transform: uppercase;
     white-space: nowrap;
   }
 
@@ -1450,10 +1453,10 @@
   .report-cover,
   .report-section,
   .report-error {
-    background: var(--panel-solid);
+    background: var(--app-panel);
     border: 1px solid var(--bd);
-    border-radius: var(--r2);
-    box-shadow: var(--sh);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
     padding: 28px;
   }
 
@@ -1462,9 +1465,8 @@
     display: grid;
     align-content: start;
     gap: 14px;
-    background:
-      linear-gradient(135deg, rgba(61, 107, 106, 0.16), transparent 36%),
-      var(--panel-strong);
+    background: var(--app-panel-dark);
+    color: var(--color-text-on-dark);
   }
 
   .report-cover__topline {
@@ -1483,10 +1485,16 @@
 
   .report-cover__brand,
   .report-cover__eyebrow {
+    color: var(--color-text-on-dark-muted);
+  }
+
+  .report-cover__brand,
+  .report-cover__eyebrow {
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 11px;
-    font-weight: 700;
+    letter-spacing: 0;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
   }
 
   .report-cover__eyebrow {
@@ -1497,7 +1505,7 @@
   .report-section h2 {
     margin: 0;
     font-family: var(--font-heading);
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
   }
 
   .report-cover h1 {
@@ -1537,9 +1545,9 @@
   }
 
   .report-card {
-    background: var(--panel);
+    background: var(--app-panel);
     border: 1px solid var(--bd);
-    border-radius: var(--r);
+    border-radius: var(--radius-md);
     padding: 16px;
     min-width: 0;
   }
@@ -1565,18 +1573,32 @@
   .report-stat {
     background: var(--panel-soft);
     border: 1px solid var(--bd);
-    border-radius: var(--r);
+    border-radius: var(--radius-sm);
     padding: 10px 12px;
+  }
+
+  .report-cover__meta div {
+    border-color: rgba(237, 233, 225, 0.12);
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .report-cover__meta span,
   .report-stat span {
     display: block;
-    font-size: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
     color: var(--tx2);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0;
     margin-bottom: 4px;
+  }
+
+  .report-cover__meta span {
+    color: var(--color-text-on-dark-muted);
+  }
+
+  .report-cover__meta strong {
+    color: var(--color-text-on-dark);
   }
 
   .report-cover__meta strong,
@@ -1661,7 +1683,7 @@
     display: inline-block;
     width: 10px;
     height: 10px;
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
     border: 1px solid rgba(24, 24, 26, 0.18);
     flex: 0 0 auto;
   }
@@ -1678,6 +1700,13 @@
   .report-canvas {
     position: relative;
     height: 260px;
+    border: 1px solid var(--bd2);
+    border-radius: var(--radius-md);
+    background:
+      linear-gradient(rgba(24, 24, 26, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(24, 24, 26, 0.05) 1px, transparent 1px),
+      #fbf9f5;
+    background-size: 2rem 2rem;
   }
 
   .report-canvas canvas {
@@ -1750,16 +1779,17 @@
     width: 100%;
     height: auto;
     border: 1px solid rgba(24, 24, 26, 0.12);
-    border-radius: 10px;
-    background: #fff;
+    border-radius: var(--radius-md);
+    background: #fbf9f5;
   }
 
   .report-chip {
     display: inline-flex;
     align-items: center;
     padding: 3px 8px;
-    border-radius: 999px;
-    font-size: 10px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
     font-weight: 700;
     margin-right: 8px;
   }

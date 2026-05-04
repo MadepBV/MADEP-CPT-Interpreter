@@ -94,7 +94,7 @@
 			<button class="btn sm" onclick={() => call('openStage7Report')}>Stage 7 Report</button>
 		</div>
 		<button class="btn" onclick={() => call('goS', 4)} style="border-color:var(--wn);color:var(--wn)">
-			Stage 5 — Tuning ⚗
+			Stage 5 — Tuning
 		</button>
 	</div>
 </div>
