@@ -125,6 +125,26 @@ button{border:0;background:none;cursor:pointer}
   background-size:2rem 2rem;
   color:var(--tx)
 }
+.cpt-app,
+.app-header,
+.cpt-tabs-wrap,
+.cpt-tabs,
+.wrap,
+.panel,
+.phase-panel,
+.sec,
+.sec>div,
+.mcards,
+.mc,
+.mc2,
+.mc2-head,
+.ctrl-row,
+.foot,
+.class-layout,
+.class-layout>*,
+.mrow{
+  min-width:0
+}
 
 .app-header{
   position:sticky;top:0;z-index:40;
@@ -308,6 +328,18 @@ button{border:0;background:none;cursor:pointer}
 .dz-icon{width:2.4rem;height:2.4rem;color:var(--acd);stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .dz-title{max-width:46rem;font-family:var(--font-heading);font-size:var(--text-lg);font-weight:600;line-height:1.2}
 .dz-copy{max-width:50rem;color:var(--tx2);font-size:0.84rem;line-height:1.55}
+.dz-title,
+.dz-copy,
+.sec-title,
+.sec-sub,
+.mc h3,
+.mc p,
+.mi-v,
+.met-v,
+.info,
+.st6-help{
+  overflow-wrap:anywhere
+}
 .load-demo-row{
   margin:0.85rem 0 1.35rem;
   text-align:center
@@ -1105,6 +1137,18 @@ input[type=range]{accent-color:var(--ac)}
   opacity:0;visibility:hidden;pointer-events:none;z-index:40
 }
 .st6-tip:hover::after,.st6-tip:hover::before,.st6-tip:focus::after,.st6-tip:focus::before{opacity:1;visibility:visible}
+.st6-tip::after,
+.st6-tip::before{
+  content:none
+}
+.st6-tip:hover::after,
+.st6-tip:focus::after{
+  content:attr(data-tip)
+}
+.st6-tip:hover::before,
+.st6-tip:focus::before{
+  content:''
+}
 
 .st6-bishop-layout{grid-template-columns:minmax(17rem,19rem) minmax(0,1fr);gap:1rem}
 .st6-bishop-main,.st6-bishop-results-panel{gap:1rem}
@@ -1174,6 +1218,44 @@ input[type=range]{accent-color:var(--ac)}
 ::-webkit-scrollbar-thumb{border:2px solid var(--color-bg-alt);border-radius:999px;background:rgba(74,74,82,0.25)}
 ::-webkit-scrollbar-thumb:hover{background:rgba(74,74,82,0.40)}
 
+@media(max-width:900px){
+  .app-header{position:static}
+  .wrap{padding:1rem var(--section-px) 2rem}
+  .panel.active{overflow:hidden}
+  .sec{padding:0.85rem}
+  .sec>div:first-child{flex:1 1 18rem}
+  .btn{white-space:normal}
+  .btn.sm,.btn--compact{min-height:2.35rem}
+  .ctrl-row{align-items:stretch}
+  .ctrl-row>*{min-width:0}
+  .ctrl-row input[type="range"]{flex:1 1 11rem;max-width:100%}
+  .mcards{grid-template-columns:repeat(auto-fit,minmax(min(13rem,100%),1fr))}
+  #stage6Area>.mcards{
+    grid-template-columns:repeat(auto-fit,minmax(min(13rem,100%),1fr))!important
+  }
+  .chart-area{
+    grid-template-columns:minmax(4rem,4.5rem) repeat(3,minmax(11rem,1fr));
+    overflow-x:auto
+  }
+  .cpt-app [style*="grid-template-columns:1fr 1fr 1fr"],
+  .cpt-app [style*="grid-template-columns:200px 1fr 200px"],
+  .cpt-app [style*="grid-template-columns:260px 1fr 250px"],
+  .cpt-app [style*="grid-template-columns:280px 1fr 260px"],
+  .cpt-app [style*="grid-template-columns:300px 1fr 280px"],
+  .cpt-app [style*="grid-template-columns:1fr 1fr"]{
+    grid-template-columns:minmax(0,1fr)!important
+  }
+  .cpt-app [style*="height:420px"],
+  .cpt-app [style*="height:380px"]{
+    height:min(420px,62vh)!important
+  }
+  .st6-bishop-layout,
+  .st6-bishop-results-top{
+    grid-template-columns:minmax(0,1fr)
+  }
+  .st6-bishop-canvas{height:min(460px,62vh)}
+}
+
 @media(max-width:1100px){
   .app-header{grid-template-columns:minmax(13rem,18rem) minmax(0,1fr);align-items:stretch}
   .app-divider{display:none}
@@ -1183,12 +1265,40 @@ input[type=range]{accent-color:var(--ac)}
 @media(max-width:760px){
   .app-header{position:static;display:grid;grid-template-columns:1fr;padding:0.75rem}
   .cpt-tabs-wrap{display:grid;grid-template-columns:1fr}
+  .cpt-tabs-wrap>.btn{width:100%}
+  .cpt-tabs{width:100%}
   .segmented{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .app-header .togbtn{min-width:0;padding:0.55rem 0.4rem;font-size:0.68rem}
   .nav{position:static;padding:0.55rem 0.75rem}
-  .si{padding:0 0.7rem}
+  .si{padding:0 0.6rem;font-size:0.66rem}
   .wrap{padding:1rem 0.75rem 2rem}
   .panel>.dz,.panel>#s1body,.panel>.mcards,.panel>.ctrl-row,.panel>.class-layout,.panel>.info,.panel>[style*="overflow-x"],.panel>#ma,.panel>#tuningArea,.panel>#stage6Area{margin:0.75rem}
-  .mcards,.class-layout{grid-template-columns:1fr}
+  .mcards,.class-layout{grid-template-columns:minmax(0,1fr)!important}
+  .ctrl-row{display:grid;grid-template-columns:minmax(0,1fr);gap:0.65rem}
+  .ctrl-row [style*="display:flex"]{flex-wrap:wrap}
+  .ctrl-row input[type="range"]{width:100%!important}
+  .ctrl-sep{display:none}
+  .ctrl-num,
+  .ed,
+  .cpt-app input,
+  .cpt-app select,
+  .cpt-app textarea{
+    max-width:100%;
+    font-size:16px!important
+  }
+  .cpt-app select{min-width:0}
+  .dz{padding:1.35rem 0.9rem}
+  .dz-title{font-size:1rem}
+  .dz-copy{font-size:0.8rem}
+  .load-demo-row{display:grid;justify-items:center;gap:0.45rem}
+  .st6-tip::after{
+    left:auto;
+    right:0;
+    min-width:0;
+    width:min(17rem,calc(100vw - 2rem));
+    transform:none
+  }
+  .st6-tip::before{left:auto;right:0.25rem;transform:none}
   .foot{align-items:stretch}
   .foot .btn{width:100%}
 }
