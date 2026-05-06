@@ -166,7 +166,7 @@ export function buildPileSectionMarkup({
   const partsTooltip = drawHoverOverlay(hover, analysis, layers, cfg, v, W, H);
 
   return `
-    ${defs()}
+    ${defs(zMax)}
     <g class="pile-bg">${partsBg}</g>
     <g class="pile-soil" pointer-events="visible">${partsSoil}</g>
     <g class="pile-wt" pointer-events="none">${partsWt}</g>
@@ -184,23 +184,50 @@ export function buildPileSectionMarkup({
 // Drawing primitives
 // ---------------------------------------------------------------------
 
-function defs() {
+// Drawing-style note (mirrors the Bishop/Seep/Def canvas feel):
+// - subtle coordinate grid behind everything;
+// - low-opacity soil fills with confident strokes — borders dominate;
+// - all on-canvas text painted with a white halo so labels read on any soil
+//   colour (paint-order: stroke fill);
+// - accent colours grouped by engineering meaning rather than competing:
+//     · water table        — cool navy (universal convention)
+//     · active shaft       — quiet green (positive contribution)
+//     · downdrag + N.P.    — same amber family (paired warning state)
+function defs(zMax) {
+  // Grid spacing chosen so the rendered grid sits comfortably at the active
+  // viewport scale; matches the Bishop logic of "only show the grid when the
+  // step is big enough to read." The subtle dot-grid pattern reads as a
+  // measured-drawing background without competing with the geometry.
+  const gridStep = chooseDepthTick(zMax);
   return `<defs>
+    <pattern id="pileGrid" width="${gridStep * 36}" height="${gridStep * 36}" patternUnits="userSpaceOnUse">
+      <path d="M ${gridStep * 36} 0 L 0 0 0 ${gridStep * 36}" fill="none"
+        stroke="rgba(140, 150, 170, 0.18)" stroke-width="1"/>
+    </pattern>
     <pattern id="pileHatchConcrete" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(80,80,80,0.6)" stroke-width="1.4"/>
+      <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(40, 50, 65, 0.55)" stroke-width="1.4"/>
     </pattern>
     <pattern id="pileHatchSteel" width="6" height="6" patternUnits="userSpaceOnUse">
-      <line x1="0" y1="0" x2="6" y2="6" stroke="rgba(40,40,40,0.7)" stroke-width="0.9"/>
-      <line x1="6" y1="0" x2="0" y2="6" stroke="rgba(40,40,40,0.7)" stroke-width="0.9"/>
+      <line x1="0" y1="0" x2="6" y2="6" stroke="rgba(30, 40, 55, 0.65)" stroke-width="0.9"/>
+      <line x1="6" y1="0" x2="0" y2="6" stroke="rgba(30, 40, 55, 0.65)" stroke-width="0.9"/>
     </pattern>
     <pattern id="pileHatchTimber" width="8" height="6" patternUnits="userSpaceOnUse">
-      <rect width="8" height="6" fill="rgba(180,120,60,0.2)"/>
-      <path d="M0 3 Q2 1 4 3 T8 3" stroke="rgba(120,80,30,0.55)" stroke-width="0.9" fill="none"/>
+      <rect width="8" height="6" fill="rgba(180, 120, 60, 0.18)"/>
+      <path d="M0 3 Q2 1 4 3 T8 3" stroke="rgba(120, 80, 30, 0.55)" stroke-width="0.9" fill="none"/>
     </pattern>
     <pattern id="pileHatchDowndrag" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
-      <rect width="7" height="7" fill="rgba(200,40,40,0.10)"/>
-      <line x1="0" y1="0" x2="0" y2="7" stroke="rgba(200,40,40,0.5)" stroke-width="1.1"/>
+      <line x1="0" y1="0" x2="0" y2="7" stroke="rgba(180, 90, 30, 0.55)" stroke-width="1.1"/>
     </pattern>
+    <style>
+      .pile-soil rect { vector-effect: non-scaling-stroke; }
+      .pile-text-haloed {
+        paint-order: stroke fill;
+        stroke: rgba(255, 255, 255, 0.92);
+        stroke-width: 3;
+        stroke-linejoin: round;
+        stroke-linecap: round;
+      }
+    </style>
   </defs>`;
 }
 
@@ -208,13 +235,17 @@ function drawBackground(viewport, W, H, zMax) {
   const lines = [];
   const labels = [];
   const tickStep = chooseDepthTick(zMax);
+  // Show the SVG grid only when the rendered spacing is comfortably readable
+  // (≥ 18 px), matching the Bishop canvas's grid-visibility rule.
+  const showGrid = viewport && viewport.scale * tickStep >= 18;
   for (let z = 0; z <= zMax; z += tickStep) {
     const py = worldToScreen({ x: 0, z }, viewport).y;
     if (py < 0 || py > H) continue;
     lines.push(`<line x1="${W - PADDING_X + 4}" y1="${py.toFixed(1)}" x2="${W - PADDING_X + 10}" y2="${py.toFixed(1)}" stroke="var(--bd2,#bbb)" stroke-width="0.8"/>`);
-    labels.push(`<text x="${W - 2}" y="${(py + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--tx2,#666)">${z.toFixed(z >= 10 ? 0 : 1)} m</text>`);
+    labels.push(`<text class="pile-text-haloed" x="${W - 2}" y="${(py + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="rgba(33, 49, 66, 0.85)">${z.toFixed(z >= 10 ? 0 : 1)} m</text>`);
   }
   return `<rect x="0" y="0" width="${W}" height="${H}" fill="var(--bg,#fbfaf6)"/>
+    ${showGrid ? `<rect x="0" y="0" width="${W - PADDING_X}" height="${H}" fill="url(#pileGrid)"/>` : ''}
     <line x1="${W - PADDING_X}" y1="${PADDING_TOP}" x2="${W - PADDING_X}" y2="${H - PADDING_BOT}" stroke="var(--bd2,#bbb)" stroke-width="0.8"/>
     ${lines.join('')}
     ${labels.join('')}`;
@@ -235,20 +266,24 @@ function drawSoilColumn(layers, viewport, W, hover) {
     const yBot = worldToScreen({ x: 0, z: layer.bot }, viewport).y;
     const fill = SOIL_FILL_COLORS[layer.type] || '#dcdacf';
     const isHover = hover?.layerIndex === i;
-    const stroke = isHover ? 'rgba(40,40,40,0.85)' : 'rgba(40,40,40,0.45)';
-    const strokeW = isHover ? 1.5 : 0.8;
+    // Bishop-style hierarchy: low-opacity fill, confident stroke. Borders
+    // dominate, soil colour reads as a tint, the geometry stays primary.
+    const fillOp = isHover ? 0.45 : 0.32;
+    const strokeOp = isHover ? 1.0 : 0.78;
+    const stroke = `rgba(40, 50, 65, ${strokeOp})`;
+    const strokeW = isHover ? 1.6 : 1.2;
     const x0 = 1;
     const x1 = W - PADDING_X;
     out.push(`<rect data-pile-layer="${i}" data-z-top="${layer.top}" data-z-bot="${layer.bot}"
       x="${x0}" y="${yTop.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${Math.max(0.5, yBot - yTop).toFixed(1)}"
-      fill="${fill}" fill-opacity="${isHover ? 0.95 : 0.85}" stroke="${stroke}" stroke-width="${strokeW}"
+      fill="${fill}" fill-opacity="${fillOp}" stroke="${stroke}" stroke-width="${strokeW}"
       style="cursor:pointer"/>`);
-    // small per-layer label (right-aligned, only if room)
+    // Per-layer label, haloed so it reads on any soil colour.
     const h = yBot - yTop;
     if (h > 18) {
       const labelY = (yTop + Math.min(13, h / 2)).toFixed(1);
       const qcText = Number.isFinite(+layer.avgQc) ? `q_c=${(+layer.avgQc).toFixed(1)} MPa` : '';
-      out.push(`<text x="${x1 - 4}" y="${labelY}" text-anchor="end" font-size="9" fill="rgba(0,0,0,0.65)" pointer-events="none">${escapeText(layer.type)} · ${qcText}</text>`);
+      out.push(`<text class="pile-text-haloed" x="${x1 - 4}" y="${labelY}" text-anchor="end" font-size="9" font-weight="600" fill="#213142" pointer-events="none">${escapeText(layer.type)} · ${qcText}</text>`);
     }
   }
   return out.join('');
@@ -257,9 +292,11 @@ function drawSoilColumn(layers, viewport, W, hover) {
 function drawWaterTable(wt, viewport, W) {
   if (!Number.isFinite(+wt)) return '';
   const y = worldToScreen({ x: 0, z: +wt }, viewport).y;
+  // Cool navy — universal phreatic-line convention; restrained so it reads as
+  // technical signal, not as a competing accent.
   return `<line x1="0" y1="${y.toFixed(1)}" x2="${W - PADDING_X}" y2="${y.toFixed(1)}"
-    stroke="rgba(40,120,200,0.85)" stroke-width="1.4" stroke-dasharray="6 3"/>
-    <text x="2" y="${(y - 3).toFixed(1)}" font-size="9" fill="rgba(40,120,200,0.95)">WT ${(+wt).toFixed(2)} m</text>`;
+    stroke="rgba(38, 90, 150, 0.78)" stroke-width="1.2" stroke-dasharray="6 3"/>
+    <text class="pile-text-haloed" x="2" y="${(y - 3).toFixed(1)}" font-size="9" font-weight="600" fill="rgba(38, 90, 150, 0.95)">WT ${(+wt).toFixed(2)} m</text>`;
 }
 
 function drawActiveShaftBand(analysis, viewport, cfg, displayWidth) {
@@ -272,9 +309,11 @@ function drawActiveShaftBand(analysis, viewport, cfg, displayWidth) {
     if (row.excluded || row.aboveNeutral) continue;
     const yTop = worldToScreen({ x: 0, z: row.top }, viewport).y;
     const yBot = worldToScreen({ x: 0, z: row.bot }, viewport).y;
+    // Quiet positive-action green; lower opacity so it tints the new
+    // low-opacity soil fills without overpowering them.
     out.push(`<rect x="${(xCenter - halfPx).toFixed(1)}" y="${yTop.toFixed(1)}"
       width="${(2 * halfPx).toFixed(1)}" height="${Math.max(0.5, yBot - yTop).toFixed(1)}"
-      fill="rgba(60,170,90,0.18)"/>`);
+      fill="rgba(60, 140, 80, 0.16)"/>`);
   }
   return out.join('');
 }
@@ -302,9 +341,13 @@ function drawNeutralPlane(analysis, viewport, W, hover, cfg) {
   const np = cap.neutralPlane;
   const y = worldToScreen({ x: 0, z: np }, viewport).y;
   const isHover = hover?.handleId === 'np';
+  // Same amber family as the downdrag hatch — they belong together. Treats
+  // the downdrag zone + neutral plane as one paired warning state instead
+  // of two competing accents.
+  const stroke = `rgba(180, 90, 30, ${isHover ? 1.0 : 0.88})`;
   return `<line x1="0" y1="${y.toFixed(1)}" x2="${W - PADDING_X}" y2="${y.toFixed(1)}"
-    stroke="rgba(220,120,40,${isHover ? 1.0 : 0.85})" stroke-width="${isHover ? 2 : 1.4}" stroke-dasharray="4 3"/>
-    <text x="${W - PADDING_X - 4}" y="${(y - 3).toFixed(1)}" text-anchor="end" font-size="9" fill="rgba(220,120,40,0.95)">Neutral plane ${np.toFixed(2)} m</text>`;
+    stroke="${stroke}" stroke-width="${isHover ? 2 : 1.3}" stroke-dasharray="4 3"/>
+    <text class="pile-text-haloed" x="${W - PADDING_X - 4}" y="${(y - 3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="600" fill="rgba(180, 90, 30, 0.96)">Neutral plane ${np.toFixed(2)} m</text>`;
 }
 
 function drawPile(cfg, viewport, displayWidth) {
@@ -403,21 +446,21 @@ function drawDimensions(cfg, viewport, displayWidth, W, H) {
   const dsLabel = displayWidth < 0.6 ? `${(displayWidth * 1000).toFixed(0)} mm` : `${displayWidth.toFixed(2)} m`;
   out.push(`<line x1="${(xCenter - halfShaftPx).toFixed(1)}" y1="${yDs.toFixed(1)}" x2="${(xCenter + halfShaftPx).toFixed(1)}" y2="${yDs.toFixed(1)}"
     stroke="rgba(40,40,40,0.7)" stroke-width="0.8"/>`);
-  out.push(`<text x="${xCenter.toFixed(1)}" y="${(yDs - 2).toFixed(1)}" text-anchor="middle" font-size="9" fill="rgba(40,40,40,0.85)">${svgSub('D','s')} ${dsLabel}</text>`);
+  out.push(`<text x="${xCenter.toFixed(1)}" y="${(yDs - 2).toFixed(1)}" text-anchor="middle" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142">${svgSub('D','s')} ${dsLabel}</text>`);
   if (cfg.Db > cfg.Ds + 0.05) {
     const yDb = yToe + 14;
     const dbLabel = baseDisplayWidth < 0.6 ? `${(baseDisplayWidth * 1000).toFixed(0)} mm` : `${baseDisplayWidth.toFixed(2)} m`;
     out.push(`<line x1="${(xCenter - halfBasePx).toFixed(1)}" y1="${yDb.toFixed(1)}" x2="${(xCenter + halfBasePx).toFixed(1)}" y2="${yDb.toFixed(1)}"
       stroke="rgba(40,40,40,0.7)" stroke-width="0.8"/>`);
-    out.push(`<text x="${xCenter.toFixed(1)}" y="${(yDb + 9).toFixed(1)}" text-anchor="middle" font-size="9" fill="rgba(40,40,40,0.85)">${svgSub('D','b')} ${dbLabel}</text>`);
+    out.push(`<text x="${xCenter.toFixed(1)}" y="${(yDb + 9).toFixed(1)}" text-anchor="middle" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142">${svgSub('D','b')} ${dbLabel}</text>`);
   }
   const xL = Math.max(8, xCenter - halfShaftPx - 18);
   const yMid = (yHead + yToe) / 2;
   out.push(`<line x1="${xL.toFixed(1)}" y1="${yHead.toFixed(1)}" x2="${xL.toFixed(1)}" y2="${yToe.toFixed(1)}"
     stroke="rgba(40,40,40,0.7)" stroke-width="0.8" marker-start="url(#dimArrow)" marker-end="url(#dimArrow)"/>`);
-  out.push(`<text x="${(xL - 3).toFixed(1)}" y="${yMid.toFixed(1)}" text-anchor="end" font-size="9" fill="rgba(40,40,40,0.85)" transform="rotate(-90 ${(xL - 3).toFixed(1)} ${yMid.toFixed(1)})">L=${(cfg.zToe - cfg.zHead).toFixed(2)} m</text>`);
-  out.push(`<text x="${(xCenter + halfShaftPx + 10).toFixed(1)}" y="${(yHead + 3).toFixed(1)}" font-size="9" fill="rgba(40,40,40,0.85)">${svgSub('z','head')} ${cfg.zHead.toFixed(2)} m</text>`);
-  out.push(`<text x="${(xCenter + halfBasePx + 10).toFixed(1)}" y="${(yToe + 3).toFixed(1)}" font-size="9" fill="rgba(40,40,40,0.85)">${svgSub('z','toe')} ${cfg.zToe.toFixed(2)} m</text>`);
+  out.push(`<text x="${(xL - 3).toFixed(1)}" y="${yMid.toFixed(1)}" text-anchor="end" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142" transform="rotate(-90 ${(xL - 3).toFixed(1)} ${yMid.toFixed(1)})">L=${(cfg.zToe - cfg.zHead).toFixed(2)} m</text>`);
+  out.push(`<text x="${(xCenter + halfShaftPx + 10).toFixed(1)}" y="${(yHead + 3).toFixed(1)}" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142">${svgSub('z','head')} ${cfg.zHead.toFixed(2)} m</text>`);
+  out.push(`<text x="${(xCenter + halfBasePx + 10).toFixed(1)}" y="${(yToe + 3).toFixed(1)}" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142">${svgSub('z','toe')} ${cfg.zToe.toFixed(2)} m</text>`);
   return out.join('');
 }
 
