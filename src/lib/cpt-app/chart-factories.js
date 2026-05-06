@@ -1073,3 +1073,299 @@ export function buildLineProbeChartConfig({
     }
   });
 }
+
+// =====================================================================
+// Stage 6 — Pile Estimator chart factories
+// =====================================================================
+
+// De Beer transformation chain — q_c, q_h, q_d, q_u, q_p overlay vs depth.
+export function buildPileDeBeerChartConfig({ deBeer, maxDepth, zToe }) {
+  const series = (arr, color, label, dash) => ({
+    label,
+    data: (arr || []).map((p) => ({ x: p.q, y: p.z })),
+    borderColor: color,
+    borderDash: dash || [],
+    borderWidth: 1.6,
+    pointRadius: 0,
+    fill: false,
+    tension: 0
+  });
+  const datasets = [
+    series(deBeer?.qc, 'rgba(120,120,120,0.85)', 'q_c (cone)'),
+    series(deBeer?.qh, 'rgba(70,70,70,0.85)', 'q_h (homogeneous)', [3, 3]),
+    series(deBeer?.qd, 'rgba(216,90,48,0.95)', 'q_d (downward)'),
+    series(deBeer?.qu, 'rgba(40,90,180,0.95)', 'q_u (upward)'),
+    series(deBeer?.qp, 'rgba(29,158,117,1.00)', 'q_p (mixed)')
+  ];
+  const allQ = (deBeer?.qp || []).map((p) => p.q);
+  const xMax = Math.max(2, ...allQ) * 1.1;
+  if (Number.isFinite(zToe)) {
+    datasets.push({
+      label: 'Pile toe',
+      data: [{ x: 0, y: zToe }, { x: xMax, y: zToe }],
+      borderColor: 'rgba(220,120,40,0.9)',
+      borderWidth: 1.4,
+      borderDash: [6, 4],
+      pointRadius: 0,
+      fill: false
+    });
+  }
+  return applyChartTheme({
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          align: 'start',
+          labels: { boxWidth: 10, boxHeight: 10, padding: 6, font: { size: 9 } }
+        },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              return `${ctx.dataset.label}: ${ctx.parsed.x.toFixed(2)} MPa @ ${ctx.parsed.y.toFixed(2)} m`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          position: 'top',
+          min: 0,
+          max: xMax,
+          title: chartTitle('q (MPa)'),
+          ticks: { font: { size: 10 } }
+        },
+        y: {
+          type: 'linear',
+          reverse: true,
+          min: 0,
+          max: (maxDepth || 1) + 0.25,
+          title: chartTitle('Depth (m)'),
+          ticks: { font: { size: 10 } }
+        }
+      }
+    }
+  });
+}
+
+// Per-layer shaft friction — point per layer at its mid-depth.
+export function buildPileShaftChartConfig({ perLayer, maxDepth }) {
+  const points = [];
+  const colours = [];
+  const labels = [];
+  for (const row of (perLayer || [])) {
+    const yMid = (row.top + row.bot) / 2;
+    points.push({ x: row.qs, y: yMid });
+    if (row.excluded) colours.push('rgba(160,160,160,0.6)');
+    else if (row.aboveNeutral) colours.push('rgba(200,80,40,0.85)');
+    else colours.push('rgba(60,170,90,0.95)');
+    labels.push(`Layer ${row.layerIndex + 1} (${row.category})`);
+  }
+  const xMax = Math.max(50, ...points.map((p) => p.x));
+  return applyChartTheme({
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'q_s per layer',
+        data: points,
+        backgroundColor: colours,
+        borderColor: colours,
+        pointRadius: 6,
+        pointHoverRadius: 7,
+        showLine: false
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const i = ctx.dataIndex;
+              const row = (perLayer || [])[i];
+              const tag = row?.excluded ? ' · excluded'
+                : row?.aboveNeutral ? ' · above neutral plane' : '';
+              return `${labels[i]}: q_s = ${ctx.parsed.x.toFixed(0)} kPa @ z=${ctx.parsed.y.toFixed(2)} m${tag}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          position: 'top',
+          min: 0,
+          max: xMax * 1.1,
+          title: chartTitle('q_s (kPa)'),
+          ticks: { font: { size: 10 } }
+        },
+        y: {
+          type: 'linear',
+          reverse: true,
+          min: 0,
+          max: (maxDepth || 1) + 0.25,
+          title: chartTitle('Depth (m)'),
+          ticks: { font: { size: 10 } }
+        }
+      }
+    }
+  });
+}
+
+// Load–settlement curve — F (kN) vs s_head (mm), settlement increasing down.
+export function buildPileLoadSettlementChartConfig({ curve, Frep, Rcd, sAllowable }) {
+  const data = (curve || []).map((p) => ({ x: p.F, y: p.s }));
+  const Fmax = Math.max(1, ...data.map((d) => d.x), Rcd || 0, Frep || 0) * 1.1;
+  const sMax = Math.max(10, ...data.map((d) => d.y), sAllowable || 0) * 1.1;
+  const datasets = [
+    {
+      label: 'Load–settlement',
+      data,
+      borderColor: 'rgba(40,90,180,0.95)',
+      backgroundColor: 'rgba(40,90,180,0.10)',
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: 'origin',
+      tension: 0
+    }
+  ];
+  if (Number.isFinite(Frep) && Frep > 0) {
+    datasets.push({
+      label: 'F_rep',
+      data: [{ x: Frep, y: 0 }, { x: Frep, y: sMax }],
+      borderColor: 'rgba(216,90,48,0.85)',
+      borderDash: [4, 3],
+      borderWidth: 1.4,
+      pointRadius: 0,
+      fill: false
+    });
+  }
+  if (Number.isFinite(Rcd) && Rcd > 0) {
+    datasets.push({
+      label: 'R_c,d',
+      data: [{ x: Rcd, y: 0 }, { x: Rcd, y: sMax }],
+      borderColor: 'rgba(29,158,117,0.85)',
+      borderDash: [6, 4],
+      borderWidth: 1.4,
+      pointRadius: 0,
+      fill: false
+    });
+  }
+  if (Number.isFinite(sAllowable) && sAllowable > 0) {
+    datasets.push({
+      label: 's_allow',
+      data: [{ x: 0, y: sAllowable }, { x: Fmax, y: sAllowable }],
+      borderColor: 'rgba(220,120,40,0.7)',
+      borderDash: [3, 3],
+      borderWidth: 1.2,
+      pointRadius: 0,
+      fill: false
+    });
+  }
+  return applyChartTheme({
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          align: 'start',
+          labels: { boxWidth: 10, boxHeight: 10, padding: 6, font: { size: 9 } }
+        },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              if (ctx.dataset.label === 'Load–settlement') {
+                return `${ctx.parsed.x.toFixed(0)} kN · ${ctx.parsed.y.toFixed(2)} mm`;
+              }
+              return ctx.dataset.label;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          min: 0,
+          max: Fmax,
+          title: chartTitle('Load F (kN)'),
+          ticks: { font: { size: 10 } }
+        },
+        y: {
+          type: 'linear',
+          reverse: true,
+          min: 0,
+          max: sMax,
+          title: chartTitle('Pile-head settlement s (mm)'),
+          ticks: { font: { size: 10 } }
+        }
+      }
+    }
+  });
+}
+
+// Axial-force distribution — N(z) along the pile.
+export function buildPileAxialForceChartConfig({ trace, zHead, zToe, Frep }) {
+  const data = (trace || []).map((p) => ({ x: p.N, y: p.z }));
+  const xMax = Math.max(1, ...data.map((d) => d.x), Frep || 0) * 1.1;
+  const datasets = [{
+    label: 'N(z)',
+    data,
+    borderColor: 'rgba(40,90,180,0.95)',
+    backgroundColor: 'rgba(40,90,180,0.10)',
+    borderWidth: 2,
+    pointRadius: 0,
+    fill: 'origin',
+    tension: 0
+  }];
+  return applyChartTheme({
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              return `N = ${ctx.parsed.x.toFixed(0)} kN @ z = ${ctx.parsed.y.toFixed(2)} m`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          position: 'top',
+          min: 0,
+          max: xMax,
+          title: chartTitle('Axial force N (kN)'),
+          ticks: { font: { size: 10 } }
+        },
+        y: {
+          type: 'linear',
+          reverse: true,
+          min: Math.min(0, zHead || 0) - 0.1,
+          max: (zToe || 1) + 0.5,
+          title: chartTitle('Depth (m)'),
+          ticks: { font: { size: 10 } }
+        }
+      }
+    }
+  });
+}

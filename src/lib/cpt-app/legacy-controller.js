@@ -35,6 +35,10 @@ import {
   buildDewateringSettlementChartConfig,
   buildDewateringStressChartConfig,
   buildLineProbeChartConfig,
+  buildPileAxialForceChartConfig,
+  buildPileDeBeerChartConfig,
+  buildPileLoadSettlementChartConfig,
+  buildPileShaftChartConfig,
   buildRawProfileChartConfig,
   buildSettlementCumulativeChartConfig,
   buildSettlementStressChartConfig,
@@ -42,6 +46,12 @@ import {
   buildTuningDepthChartConfig,
   buildTuningRegressionChartConfig
 } from './chart-factories';
+import { analyzePile, PILE_CONSTANTS } from './stage6-pile';
+import {
+  drawStage6PileSection,
+  ensurePileCanvasState,
+  stage6PileSnapZ
+} from './stage6-pile-canvas';
 import { classifyNen6740Reading } from './nen6740';
 import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report-svg';
 import { cleanupStage7Payloads, saveStage7Payload } from './report-storage';
@@ -4063,6 +4073,48 @@ function stage6Defaults(){
       dz:0.10,
       timeDays:0
     },
+    pile:{
+      pileType:'driven',
+      shape:'circular',
+      Ds:0.40,
+      Db:0.40,
+      a:null,
+      b:null,
+      Ap:null,
+      zHead:0.00,
+      zToe:10.00,
+      Fcd:500,
+      Frep:350,
+      loadFromComponents:false,
+      GkPerPile:null,
+      QLeadPerPile:null,
+      QOtherPerPile:null,
+      loadCategory:'A',
+      slsCombination:'qp',
+      ulsSet:'A1',
+      sltCondition:'none',
+      qaToggle:false,
+      nCpt:1,
+      nPiles:'1-3',
+      cptDensity:'1/100m2',
+      useAtg:false,
+      atgAlphaB:null,
+      atgAlphaS:null,
+      atgGammaRd:null,
+      atgGammaB:null,
+      lambdaOverride:null,
+      downdrag:'none',
+      neutralPlane:null,
+      pileMaterial:'concrete',
+      Ep:30,
+      EbOverride:null,
+      MsOverride:null,
+      MbOverride:null,
+      sAllowable:10,
+      mechanicalCone:false,
+      coneType:'M1',
+      settlementMethod:'transfer'
+    },
     beam:{
       modelMode:'slab_strip',
       foundationModel:'pasternak',
@@ -4468,6 +4520,7 @@ function ensureStage6State(){
   if(!stage6BishopEnabled() && S.stage6.app === 'bishop'){
     S.stage6.app = 'bearing';
   }
+  ensurePileState(maxDepth);
   const bishop = S.stage6.bishop;
   const bishopMinDepth = Math.max(stage6MaxDepth(), 15);
   if(!['stability','seepage','deformation'].includes(bishop.workspace)) bishop.workspace = 'stability';
@@ -10356,6 +10409,7 @@ function stage6SharedBanner(){
 function stage6CardsHtml(app){
   const cards = [
     {id:'bearing', title:'Bearing capacity', desc:'Drained and undrained shallow-foundation resistance vs founding depth.'},
+    {id:'pile', title:'Pile capacity', desc:'Axial pile resistance and settlement from CPT (DM20 / De Beer).'},
     {id:'settlement', title:'Settlement', desc:'SLS settlement from CPT-derived E_oed with Boussinesq or 2:1 stress spread.'},
     {id:'dewatering', title:'Dewatering', desc:'Analytical drawdown screening plus induced stress change and settlement at the CPT.'},
     {id:'beam', title:'Beam / slab on Winkler', desc:'1D strip-on-elastic-foundation screening with EC2 reinforcement output.'}
@@ -10363,13 +10417,492 @@ function stage6CardsHtml(app){
   if(stage6BishopEnabled()){
     cards.push({id:'bishop', title:'Seep/Slope', desc:'Experimental slope-stability workspace using the current active CPT soil model.'});
   }
+  // When the card count exceeds 5 the row gets cramped — wrap with auto-fit
+  // so cards reflow onto a second row.
+  const colTemplate = cards.length > 5
+    ? 'repeat(auto-fit, minmax(220px, 1fr))'
+    : `repeat(${cards.length}, minmax(0, 1fr))`;
   return `
-    <div class="mcards" style="grid-template-columns:repeat(${cards.length},minmax(0,1fr));margin-bottom:14px">
+    <div class="mcards" style="grid-template-columns:${colTemplate};margin-bottom:14px">
       ${cards.map(c=>`<div class="mc ${c.id===app?'sel':''}" onclick="setStage6App('${c.id}')">
         <h3>${c.title}</h3><p>${c.desc}</p>
       </div>`).join('')}
     </div>
   `;
+}
+
+// =====================================================================
+// Stage 6 — Pile Estimator (Option A++ interactive section view)
+// =====================================================================
+
+function ensurePileState(maxDepth){
+  if(!S.stage6.pile) S.stage6.pile = stage6Defaults().pile;
+  const p = S.stage6.pile;
+  const def = stage6Defaults().pile;
+  // Enums
+  const pileTypes = ['driven','screw_displacement','screw_cased','cfa','bored'];
+  if(!pileTypes.includes(p.pileType)) p.pileType = 'driven';
+  if(!['circular','square','rectangular'].includes(p.shape)) p.shape = 'circular';
+  if(!['none','comparable','jobsite'].includes(p.sltCondition)) p.sltCondition = 'none';
+  if(!['1-3','4-10','>10'].includes(p.nPiles)) p.nPiles = '1-3';
+  if(!['1/10m2','1/50m2','1/100m2','1/300m2','1/1000m2'].includes(p.cptDensity)) p.cptDensity = '1/100m2';
+  if(!['M1','M2','M4'].includes(p.coneType)) p.coneType = 'M1';
+  if(!['none','moderate','severe'].includes(p.downdrag)) p.downdrag = 'none';
+  if(!['concrete','steel','timber'].includes(p.pileMaterial)) p.pileMaterial = 'concrete';
+  if(!['transfer','typical-curve'].includes(p.settlementMethod)) p.settlementMethod = 'transfer';
+  if(!['qp','frequent','characteristic'].includes(p.slsCombination)) p.slsCombination = 'qp';
+  if(!['A1','A2'].includes(p.ulsSet)) p.ulsSet = 'A1';
+  if(!['A','B','C','D','E','W','S','T'].includes(p.loadCategory)) p.loadCategory = 'A';
+  // Geometry
+  p.Ds = Math.max(+p.Ds || def.Ds, 0.05);
+  p.Db = Math.max(+p.Db || p.Ds, p.Ds);
+  if(p.shape === 'rectangular'){
+    p.a = Math.max(+p.a || p.Ds, 0.05);
+    p.b = Math.max(+p.b || p.a, p.a);
+  } else if(p.shape === 'square'){
+    p.a = Math.max(+p.a || p.Ds, 0.05);
+    p.b = null;
+  } else {
+    p.a = null;
+    p.b = null;
+  }
+  if(p.Ap != null && p.Ap !== '' && Number.isFinite(+p.Ap) && +p.Ap > 0) p.Ap = +p.Ap;
+  else p.Ap = null;
+  // Depths
+  p.zHead = Math.max(+p.zHead || 0, 0);
+  if(p.zHead > maxDepth - 0.5) p.zHead = Math.max(0, maxDepth - 0.5);
+  p.zToe = Math.min(Math.max(+p.zToe || def.zToe, p.zHead + 0.50), maxDepth);
+  // Loads
+  p.Fcd = Math.max(+p.Fcd || 0, 0);
+  p.Frep = Math.max(+p.Frep || 0, 0);
+  // Toggles / counts
+  p.qaToggle = !!p.qaToggle;
+  p.useAtg = !!p.useAtg;
+  p.mechanicalCone = !!p.mechanicalCone;
+  p.loadFromComponents = !!p.loadFromComponents;
+  p.nCpt = Math.max(1, Math.round(+p.nCpt || 1));
+  p.sAllowable = Math.max(+p.sAllowable || 10, 0.1);
+  // Material modulus
+  if(p.pileMaterial === 'steel') p.Ep = +p.Ep > 0 ? +p.Ep : 210;
+  else if(p.pileMaterial === 'timber') p.Ep = +p.Ep > 0 ? +p.Ep : 12;
+  else p.Ep = +p.Ep > 0 ? +p.Ep : 30;
+  // Optional overrides
+  for(const key of ['atgAlphaB','atgAlphaS','atgGammaRd','atgGammaB','lambdaOverride','EbOverride','MsOverride','MbOverride','GkPerPile','QLeadPerPile','QOtherPerPile']){
+    const v = p[key];
+    if(v == null || v === '' || !Number.isFinite(+v) || +v <= 0) p[key] = null;
+    else p[key] = +v;
+  }
+  // Lambda special: default 1.0 when relaxing flagged
+  if(p.lambdaOverride != null && p.lambdaOverride > 1.0) p.lambdaOverride = 1.0;
+  // Downdrag / neutral plane
+  if(p.downdrag !== 'none'){
+    if(p.neutralPlane == null || !Number.isFinite(+p.neutralPlane)){
+      p.neutralPlane = Math.max(p.zHead + 0.5, p.zToe / 2);
+    } else {
+      p.neutralPlane = Math.min(Math.max(+p.neutralPlane, p.zHead + 0.05), p.zToe - 0.05);
+    }
+  } else {
+    p.neutralPlane = null;
+  }
+}
+
+function renderStage6PileApp(analysis){
+  const cfg = S.stage6.pile;
+  const cap = analysis?.capacity || {};
+  const set = analysis?.settlement;
+  const notes = analysis?.notes || [];
+  const xi = cap.xi || {};
+  const lengthM = (cfg.zToe - cfg.zHead);
+  const sHead = set ? set.sHead_mm : 0;
+  const sUtil = sHead && cfg.sAllowable > 0 ? sHead / cfg.sAllowable : 0;
+  const ulsPass = cap.ulsUtil != null && cap.ulsUtil <= 1.0;
+  const slsPass = sUtil != null && sUtil <= 1.0;
+  return `
+    <div class="mc2 st6-pile">
+      <div class="mc2-head" style="margin-bottom:12px">
+        <span style="font-size:13px;font-weight:600">Pile capacity (Belgian DM20 / De Beer)</span>
+        <span style="font-size:11px;color:var(--tx2)">CPT-based axial pile resistance and SLS settlement for a single pile, with the De Beer scale-effect base resistance and the Belgian load-transfer settlement method.</span>
+      </div>
+      <div style="display:grid;grid-template-columns:300px 1fr 280px;gap:14px;align-items:start">
+        ${renderPileInputsColumn(cfg)}
+        ${renderPileVisualsColumn(cfg, analysis)}
+        ${renderPileSummaryColumn(cap, set, sHead, sUtil, ulsPass, slsPass, lengthM, cfg)}
+      </div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        ${renderPilePerLayerTable(cap)}
+        ${renderPileFactorChainTable(cap)}
+      </div>
+      ${stage6NoteHtml(notes)}
+    </div>
+  `;
+}
+
+function renderPileInputsColumn(cfg){
+  const numField = (path, label, value, opts={}) => `
+    <label style="font-size:11px;color:var(--tx2)">${label}
+      <input type="number" step="${opts.step || 0.01}" min="${opts.min ?? 0}" ${opts.max != null ? `max="${opts.max}"` : ''}
+        value="${value != null && value !== '' ? value : ''}" placeholder="${opts.placeholder || ''}"
+        onchange="setStage6Field('pile.${path}', this.value)"
+        style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+    </label>`;
+  const selectField = (path, label, value, options) => `
+    <label style="font-size:11px;color:var(--tx2)">${label}
+      <select onchange="setStage6Field('pile.${path}', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
+        ${options.map(([v,l])=>`<option value="${v}"${value===v?' selected':''}>${l}</option>`).join('')}
+      </select>
+    </label>`;
+  const checkField = (path, label, value) => `
+    <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px">
+      <input type="checkbox" ${value?'checked':''} onchange="setStage6Field('pile.${path}', this.checked)">
+      ${label}
+    </label>`;
+
+  return `
+    <div>
+      <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
+      <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
+        <div class="st6-help">Drag the pile toe and head on the section view to set z<sub>toe</sub> and z<sub>head</sub>, or type values here. Drag the shaft / base edges to change D<sub>s</sub> / D<sub>b</sub>. Click any soil layer to snap the toe to its top, mid, or bottom.</div>
+        ${selectField('pileType','Pile type',cfg.pileType,[
+          ['driven','Driven / jacked'],
+          ['screw_displacement','Displacement screw (plastic-concrete shaft)'],
+          ['screw_cased','Screw with lost / temporary casing'],
+          ['cfa','CFA (continuous flight auger)'],
+          ['bored','Bored']
+        ])}
+        ${selectField('shape','Cross-section',cfg.shape,[
+          ['circular','Circular'],
+          ['square','Square'],
+          ['rectangular','Rectangular']
+        ])}
+        ${cfg.shape === 'circular' ? `
+          ${numField('Ds','Shaft diameter D<sub>s</sub> (m)',cfg.Ds,{step:0.01,min:0.05})}
+          ${numField('Db','Base diameter D<sub>b</sub> (m)',cfg.Db,{step:0.01,min:cfg.Ds})}
+        ` : cfg.shape === 'square' ? `
+          ${numField('a','Side a (m)',cfg.a ?? cfg.Ds,{step:0.01,min:0.05})}
+          ${numField('Ds','Shaft equivalent D<sub>s</sub> (m, perimeter use)',cfg.Ds,{step:0.01,min:0.05})}
+          ${numField('Db','Base equivalent D<sub>b</sub> (m, base use)',cfg.Db,{step:0.01,min:cfg.Ds})}
+        ` : `
+          ${numField('a','Short side a (m)',cfg.a ?? cfg.Ds,{step:0.01,min:0.05})}
+          ${numField('b','Long side b (m)',cfg.b ?? cfg.a ?? cfg.Ds,{step:0.01,min:cfg.a ?? cfg.Ds})}
+          ${numField('Ds','Shaft equivalent D<sub>s</sub> (m)',cfg.Ds,{step:0.01,min:0.05})}
+          ${numField('Db','Base equivalent D<sub>b</sub> (m)',cfg.Db,{step:0.01,min:cfg.Ds})}
+        `}
+        ${numField('Ap','Pile axial cross-section A<sub>p</sub> (m², blank = auto)',cfg.Ap,{step:0.001,min:0.001,placeholder:'auto'})}
+        ${numField('zHead','Pile head depth z<sub>head</sub> (m)',cfg.zHead.toFixed(2),{step:0.05,min:0})}
+        ${numField('zToe','Pile toe depth z<sub>toe</sub> (m)',cfg.zToe.toFixed(2),{step:0.05,min:cfg.zHead+0.5})}
+        ${numField('Fcd','ULS design load F<sub>c,d</sub> (kN)',cfg.Fcd,{step:10,min:0})}
+        ${numField('Frep','SLS representative load F<sub>rep</sub> (kN)',cfg.Frep,{step:10,min:0})}
+        ${numField('sAllowable','Allowable settlement s<sub>allow</sub> (mm)',cfg.sAllowable,{step:1,min:0.5})}
+        <details class="st6-adv" data-st6details="pile-factors"${stage6DetailsOpen('pile-factors')}>
+          <summary>Factor chain (γ<sub>Rd</sub> / ξ / γ<sub>b</sub>·γ<sub>s</sub>)</summary>
+          <div class="st6-adv-body">
+            ${selectField('sltCondition','Static load test condition',cfg.sltCondition,[
+              ['none','No SLT — γ<sub>Rd1</sub>'],
+              ['comparable','SLT in comparable conditions — γ<sub>Rd2</sub>'],
+              ['jobsite','SLT on the job site — γ<sub>Rd3</sub>']
+            ])}
+            ${selectField('nPiles','Number of piles',cfg.nPiles,[
+              ['1-3','1–3'],['4-10','4–10'],['>10','>10']
+            ])}
+            ${selectField('cptDensity','CPT density',cfg.cptDensity,[
+              ['1/10m2','1 CPT / 10 m²'],
+              ['1/50m2','1 CPT / 50 m²'],
+              ['1/100m2','1 CPT / 100 m²'],
+              ['1/300m2','1 CPT / 300 m²'],
+              ['1/1000m2','1 CPT / 1000 m²']
+            ])}
+            ${numField('nCpt','Number of CPTs in zone',cfg.nCpt,{step:1,min:1})}
+            ${checkField('qaToggle','Quality assurance (QA) — favourable γ<sub>b</sub> column',cfg.qaToggle)}
+          </div>
+        </details>
+        <details class="st6-adv" data-st6details="pile-atg"${stage6DetailsOpen('pile-atg')}>
+          <summary>ATG / DM20 factor overrides</summary>
+          <div class="st6-adv-body">
+            ${checkField('useAtg','Use ATG / DM20 overrides',cfg.useAtg)}
+            ${cfg.useAtg ? `
+              ${numField('atgAlphaB','α<sub>b</sub> override',cfg.atgAlphaB,{step:0.01,min:0.01,placeholder:'default'})}
+              ${numField('atgAlphaS','α<sub>s</sub> override',cfg.atgAlphaS,{step:0.01,min:0.01,placeholder:'default'})}
+              ${numField('atgGammaRd','γ<sub>Rd</sub> override',cfg.atgGammaRd,{step:0.05,min:0.5,placeholder:'default'})}
+              ${numField('atgGammaB','γ<sub>b</sub> override',cfg.atgGammaB,{step:0.05,min:0.5,placeholder:'default'})}
+            ` : '<div class="st6-help">Tick the box above to expose α<sub>b</sub>, α<sub>s</sub>, γ<sub>Rd</sub>, γ<sub>b</sub> override fields for ATG-certified pile systems.</div>'}
+            ${numField('lambdaOverride','λ override (relaxing enlarged base)',cfg.lambdaOverride,{step:0.01,min:0.1,max:1.0,placeholder:'default 1.00'})}
+          </div>
+        </details>
+        <details class="st6-adv" data-st6details="pile-cone"${stage6DetailsOpen('pile-cone')}>
+          <summary>Mechanical cone correction</summary>
+          <div class="st6-adv-body">
+            ${checkField('mechanicalCone','Apply mechanical-cone ω correction',cfg.mechanicalCone)}
+            ${cfg.mechanicalCone ? selectField('coneType','Cone type',cfg.coneType,[
+              ['M1','M1'],['M2','M2'],['M4','M4']
+            ]) : '<div class="st6-help">Default: CPT-E (electric cone, ω = 1.00). Tick the box for mechanical cones.</div>'}
+          </div>
+        </details>
+        <details class="st6-adv" data-st6details="pile-downdrag"${stage6DetailsOpen('pile-downdrag')}>
+          <summary>Negative skin friction / downdrag</summary>
+          <div class="st6-adv-body">
+            ${selectField('downdrag','Downdrag preset',cfg.downdrag,[
+              ['none','No downdrag expected'],
+              ['moderate','Moderate (4–10 cm settlement → ½ F<sub>nk</sub>)'],
+              ['severe','Severe (>10 cm settlement → full F<sub>nk</sub>)']
+            ])}
+            ${cfg.downdrag !== 'none' ? `
+              ${numField('neutralPlane','Neutral plane depth (m)',cfg.neutralPlane,{step:0.05,min:cfg.zHead+0.05,max:cfg.zToe-0.05})}
+              <div class="st6-help">Layers above the neutral plane lose positive shaft friction and contribute to F<sub>nk</sub> via slip + analogy methods.</div>
+            ` : ''}
+          </div>
+        </details>
+        <details class="st6-adv" data-st6details="pile-settlement"${stage6DetailsOpen('pile-settlement')}>
+          <summary>Settlement parameters</summary>
+          <div class="st6-adv-body">
+            ${selectField('settlementMethod','Method',cfg.settlementMethod,[
+              ['transfer','Belgian load-transfer (recommended)'],
+              ['typical-curve','Simplified typical-curve (short, homogeneous piles only)']
+            ])}
+            ${selectField('pileMaterial','Pile material',cfg.pileMaterial,[
+              ['concrete','Reinforced concrete'],
+              ['steel','Steel'],
+              ['timber','Timber']
+            ])}
+            ${numField('Ep','E<sub>p</sub> (GPa)',cfg.Ep,{step:1,min:1})}
+            ${numField('EbOverride','E<sub>b</sub> override (kPa, blank = oedometric default)',cfg.EbOverride,{step:1000,min:1000,placeholder:'auto'})}
+            ${numField('MsOverride','M<sub>s</sub> override (×10⁻³, blank = table)',cfg.MsOverride,{step:0.5,min:0.1,placeholder:'auto'})}
+            ${numField('MbOverride','M<sub>b</sub> override (blank = table)',cfg.MbOverride,{step:1,min:0.1,placeholder:'auto'})}
+          </div>
+        </details>
+      </div>
+    </div>
+  `;
+}
+
+function renderPileVisualsColumn(cfg, analysis){
+  return `
+    <div>
+      <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Pile + soil section view (drag to edit)</div>
+      <div style="position:relative">
+        <svg id="stage6PileSection" width="100%" style="height:520px;display:block;background:var(--bg2);border:1px solid var(--bd2);border-radius:6px"></svg>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+        <div>
+          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">De Beer transformation chain</div>
+          <div style="position:relative;height:220px"><canvas id="stage6PileDeBeerChart" role="img" aria-label="De Beer profile"></canvas></div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Per-layer shaft friction q<sub>s</sub></div>
+          <div style="position:relative;height:220px"><canvas id="stage6PileShaftChart" role="img" aria-label="Shaft friction profile"></canvas></div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Load–settlement curve</div>
+          <div style="position:relative;height:220px"><canvas id="stage6PileLoadSettlementChart" role="img" aria-label="Load-settlement curve"></canvas></div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Axial force N(z)</div>
+          <div style="position:relative;height:220px"><canvas id="stage6PileAxialForceChart" role="img" aria-label="Axial force profile"></canvas></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPileSummaryColumn(cap, set, sHead, sUtil, ulsPass, slsPass, lengthM, cfg){
+  const fmt = (v, dp=0, unit='') => Number.isFinite(+v) ? `${(+v).toFixed(dp)}${unit?(' '+unit):''}` : '—';
+  const utilColor = (u) => !Number.isFinite(+u) ? 'var(--tx2)' : (+u <= 1.0 ? '#1D9E75' : '#D85A30');
+  const passBadge = (pass, label) => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;color:#fff;background:${pass?'#1D9E75':'#D85A30'}">${pass?'PASS':'FAIL'} · ${label}</span>`;
+  return `
+    <div>
+      <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Summary</div>
+      <table class="pt" style="margin-bottom:10px">
+        <tr><td>Pile length L</td><td>${lengthM.toFixed(2)} m</td></tr>
+        <tr><td>D<sub>b,eq</sub></td><td>${fmt(cap.Dbeq, 3, 'm')}</td></tr>
+        <tr><td>A<sub>b</sub></td><td>${fmt(cap.A_b, 4, 'm²')}</td></tr>
+        <tr><td>χ<sub>s</sub></td><td>${fmt(cap.chi_s, 3, 'm')}</td></tr>
+        <tr><td>Layer at toe</td><td>${cap.categoryAtToe || '—'}</td></tr>
+        <tr><td>q<sub>b</sub> (De Beer)</td><td>${fmt(cap.qb_kPa, 0, 'kPa')}</td></tr>
+        <tr><td>α<sub>b</sub> · e<sub>b</sub> · β · λ</td><td>${(cap.alphaB||0).toFixed(2)} · ${(cap.eb||1).toFixed(3)} · ${(cap.beta||1).toFixed(3)} · ${(cap.lambda||1).toFixed(2)}</td></tr>
+        <tr><td>R<sub>b</sub></td><td>${fmt(cap.R_b, 0, 'kN')}</td></tr>
+        <tr><td>R<sub>s</sub></td><td>${fmt(cap.R_s, 0, 'kN')}</td></tr>
+        <tr><td>R<sub>c</sub> = R<sub>b</sub> + R<sub>s</sub></td><td>${fmt(cap.R_c, 0, 'kN')}</td></tr>
+        <tr><td>γ<sub>Rd</sub></td><td>${fmt(cap.gammaRd, 2)}</td></tr>
+        <tr><td>R<sub>c,cal</sub></td><td>${fmt(cap.R_c_cal, 0, 'kN')}</td></tr>
+        <tr><td>ξ<sub>3</sub> / ξ<sub>4</sub> / max</td><td>${(cap.xi?.xi3||0).toFixed(2)} / ${(cap.xi?.xi4||0).toFixed(2)} / <strong>${(cap.xi?.governing||0).toFixed(2)}</strong></td></tr>
+        <tr><td>R<sub>c,k</sub></td><td>${fmt(cap.R_c_k, 0, 'kN')}</td></tr>
+        <tr><td>γ<sub>b</sub> / γ<sub>s</sub></td><td>${(cap.gamma_b||1).toFixed(2)} / ${(cap.gamma_s||1).toFixed(2)}</td></tr>
+        <tr><td>R<sub>c,d</sub></td><td><strong>${fmt(cap.R_c_d, 0, 'kN')}</strong></td></tr>
+        ${cap.neutralPlane != null ? `
+          <tr><td>F<sub>nk</sub> slip</td><td>${fmt(cap.F_nk_slip, 0, 'kN')}</td></tr>
+          <tr><td>F<sub>nk</sub> analogy</td><td>${fmt(cap.F_nk_analogy, 0, 'kN')}</td></tr>
+          <tr><td>F<sub>nk,d</sub> (governing)</td><td><strong>${fmt(cap.F_nk_design, 0, 'kN')}</strong></td></tr>
+        ` : ''}
+        <tr><td>Effective ULS load</td><td>${fmt(cap.ulsLoad, 0, 'kN')}</td></tr>
+        <tr><td style="color:${utilColor(cap.ulsUtil)}">ULS utilisation</td><td style="color:${utilColor(cap.ulsUtil)};font-weight:700">${fmt(cap.ulsUtil, 3)}</td></tr>
+        ${set ? `
+          <tr><td>s<sub>head</sub> (SLS)</td><td>${fmt(sHead, 2, 'mm')}</td></tr>
+          <tr><td>z<sub>b</sub> (base)</td><td>${fmt((set.zb_m||0)*1000, 2, 'mm')}</td></tr>
+          <tr><td>s<sub>allow</sub></td><td>${cfg.sAllowable.toFixed(1)} mm</td></tr>
+          <tr><td style="color:${utilColor(sUtil)}">SLS utilisation</td><td style="color:${utilColor(sUtil)};font-weight:700">${fmt(sUtil, 3)}</td></tr>
+        ` : ''}
+      </table>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${passBadge(ulsPass, 'ULS')}
+        ${set ? passBadge(slsPass, 'SLS') : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderPilePerLayerTable(cap){
+  const rows = (cap?.perLayer || []).map((row) => {
+    const tag = row.excluded ? '<span style="color:var(--tx2)">excluded</span>'
+      : row.aboveNeutral ? '<span style="color:#D85A30">above N.P.</span>'
+      : '<span style="color:#1D9E75">contributing</span>';
+    const etaP = row.etaP != null ? row.etaP.toFixed(4) : 'cap';
+    return `<tr>
+      <td>${row.layerIndex + 1}</td>
+      <td>${row.top.toFixed(2)}</td>
+      <td>${row.bot.toFixed(2)}</td>
+      <td>${row.category}</td>
+      <td>${row.qcMean.toFixed(2)}</td>
+      <td>${etaP}</td>
+      <td>${row.qs.toFixed(0)}</td>
+      <td>${row.alphaS.toFixed(2)}</td>
+      <td>${row.h.toFixed(2)}</td>
+      <td>${tag}</td>
+      <td>${row.RsLayer.toFixed(0)}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Per-layer shaft resistance</div>
+      <div style="overflow:auto">
+        <table class="tbl" style="font-size:11px;width:100%">
+          <thead><tr><th>i</th><th>Top (m)</th><th>Bot (m)</th><th>Cat.</th><th>q<sub>c,m</sub> (MPa)</th><th>η*<sub>p</sub></th><th>q<sub>s</sub> (kPa)</th><th>α<sub>s</sub></th><th>h (m)</th><th>Status</th><th>R<sub>s</sub> (kN)</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="11" style="text-align:center;color:var(--tx2)">No layers intersect the pile shaft.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderPileFactorChainTable(cap){
+  const fmt = (v, dp=0) => Number.isFinite(+v) ? (+v).toFixed(dp) : '—';
+  return `
+    <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Factor chain audit</div>
+      <table class="pt" style="font-size:11px;width:100%">
+        <tr><td>R<sub>c</sub> = R<sub>b</sub> + R<sub>s</sub></td><td>${fmt(cap.R_c, 0)} kN</td><td>per-CPT calculated</td></tr>
+        <tr><td>÷ γ<sub>Rd</sub></td><td>${fmt(cap.gammaRd, 2)}</td><td>${cap.lambdaSource === 'override' ? 'ATG override' : 'DM20 default'}</td></tr>
+        <tr><td>= R<sub>c,cal</sub></td><td>${fmt(cap.R_c_cal, 0)} kN</td><td>calibrated</td></tr>
+        <tr><td>÷ max(ξ<sub>3</sub>, ξ<sub>4</sub>)</td><td>${fmt(cap.xi?.governing, 2)}</td><td>single-CPT governing branch (${cap.xi?.branch || '—'})</td></tr>
+        <tr><td>= R<sub>c,k</sub></td><td>${fmt(cap.R_c_k, 0)} kN</td><td>characteristic</td></tr>
+        <tr><td>R<sub>b,k</sub> = ${(cap.RbShare*100).toFixed(0)}% of R<sub>c,k</sub></td><td>${fmt(cap.R_b_k, 0)} kN</td><td></td></tr>
+        <tr><td>R<sub>s,k</sub> = ${(cap.RsShare*100).toFixed(0)}% of R<sub>c,k</sub></td><td>${fmt(cap.R_s_k, 0)} kN</td><td></td></tr>
+        <tr><td>R<sub>c,d</sub> = R<sub>b,k</sub>/γ<sub>b</sub> + R<sub>s,k</sub>/γ<sub>s</sub></td><td><strong>${fmt(cap.R_c_d, 0)} kN</strong></td><td>γ<sub>b</sub>=${(cap.gamma_b||1).toFixed(2)}, γ<sub>s</sub>=${(cap.gamma_s||1).toFixed(2)}</td></tr>
+      </table>
+    </div>
+  `;
+}
+
+function buildStage6PileCharts(){
+  const analysis = S.stage6Cache?.pile;
+  if(!analysis || typeof Chart === 'undefined') return;
+  const cap = analysis.capacity || {};
+  const set = analysis.settlement;
+  const cfg = S.stage6.pile;
+  const maxDepth = stage6MaxDepth();
+  const deBeerCanvas = stage6DestroyChart('stage6PileDeBeerChart');
+  if(deBeerCanvas){
+    deBeerCanvas._chartRef = new Chart(deBeerCanvas, buildPileDeBeerChartConfig({
+      deBeer: cap.deBeer,
+      maxDepth,
+      zToe: cfg.zToe
+    }));
+  }
+  const shaftCanvas = stage6DestroyChart('stage6PileShaftChart');
+  if(shaftCanvas){
+    shaftCanvas._chartRef = new Chart(shaftCanvas, buildPileShaftChartConfig({
+      perLayer: cap.perLayer || [],
+      maxDepth
+    }));
+  }
+  const lsCanvas = stage6DestroyChart('stage6PileLoadSettlementChart');
+  if(lsCanvas && set){
+    lsCanvas._chartRef = new Chart(lsCanvas, buildPileLoadSettlementChartConfig({
+      curve: set.curve || [],
+      Frep: cfg.Frep,
+      Rcd: cap.R_c_d,
+      sAllowable: cfg.sAllowable
+    }));
+  }
+  const nCanvas = stage6DestroyChart('stage6PileAxialForceChart');
+  if(nCanvas && set){
+    nCanvas._chartRef = new Chart(nCanvas, buildPileAxialForceChartConfig({
+      trace: set.trace || [],
+      zHead: cfg.zHead,
+      zToe: cfg.zToe,
+      Frep: cfg.Frep
+    }));
+  }
+}
+
+function drawStage6PileSectionLive(){
+  const analysis = S.stage6Cache?.pile;
+  if(!analysis) return;
+  const canvasState = ensurePileCanvasState(S.stage6Cache);
+  drawStage6PileSection('stage6PileSection', analysis, S.stage6.pile, canvasState, {
+    getLayers: () => stage6WorkingLayers(),
+    getWt: () => S.wt,
+    getMaxDepth: () => stage6MaxDepth(),
+    setField: (path, value) => {
+      // Drag-driven writes: bypass the full setStage6Field rebuild for the live
+      // drag path, but still go through the same state shape. We update the
+      // pile config in place; ensurePileState() re-clamps on next render.
+      const segs = path.split('.');
+      let cur = S.stage6;
+      for(let i = 0; i < segs.length - 1; i += 1){
+        if(!cur[segs[i]]) cur[segs[i]] = {};
+        cur = cur[segs[i]];
+      }
+      cur[segs[segs.length - 1]] = value;
+    },
+    requestRedraw: () => requestStage6PileLightRedraw(),
+    commitChange: () => {
+      // Full re-render on drag-end so the column-3 summary, audit tables and
+      // four Chart.js panels also reflect the new state.
+      renderStage6();
+    }
+  });
+}
+
+let __stage6PileLightRedrawHandle = null;
+function requestStage6PileLightRedraw(){
+  if(__stage6PileLightRedrawHandle) return;
+  __stage6PileLightRedrawHandle = requestAnimationFrame(()=>{
+    __stage6PileLightRedrawHandle = null;
+    if(S.stage6.app !== 'pile') return;
+    // Re-clamp config and recompute the analysis so the active-shaft band,
+    // downdrag overlay, and per-layer hover tooltips track the live drag.
+    // analyzePile is fast (~ms-range on a typical CPT); doing it at 60 Hz
+    // is well within budget on modern browsers.
+    ensureStage6State();
+    const analysis = analyzePile(stage6WorkingLayers(), S.wt, S.data, S.stage6.pile);
+    S.stage6Cache.pile = analysis;
+    const canvasState = ensurePileCanvasState(S.stage6Cache);
+    drawStage6PileSection('stage6PileSection', analysis, S.stage6.pile, canvasState, {
+      getLayers: () => stage6WorkingLayers(),
+      getWt: () => S.wt,
+      getMaxDepth: () => stage6MaxDepth(),
+      setField: (path, value) => {
+        const segs = path.split('.');
+        let cur = S.stage6;
+        for(let i = 0; i < segs.length - 1; i += 1){
+          if(!cur[segs[i]]) cur[segs[i]] = {};
+          cur = cur[segs[i]];
+        }
+        cur[segs[segs.length - 1]] = value;
+      },
+      requestRedraw: () => requestStage6PileLightRedraw(),
+      commitChange: () => renderStage6()
+    });
+  });
 }
 
 function renderStage6BearingApp(profile){
@@ -12650,6 +13183,11 @@ function renderStage6(){
     const profile = bearingProfile(S.stage6.bearing, layers);
     S.stage6Cache.bearing = profile;
     body = renderStage6BearingApp(profile);
+  } else if(app === 'pile'){
+    const analysis = analyzePile(layers, S.wt, S.data, S.stage6.pile);
+    S.stage6Cache.pile = analysis;
+    ensurePileCanvasState(S.stage6Cache);
+    body = renderStage6PileApp(analysis);
   } else if(app === 'settlement'){
     const analysis = analyzeSettlement(layers, S.wt, S.stage6.settlement);
     S.stage6Cache.settlement = analysis;
@@ -12668,6 +13206,10 @@ function renderStage6(){
   el.innerHTML = `${stage6CardsHtml(app)}${stage6SharedBanner()}${body}`;
   requestAnimationFrame(()=>{
     if(app === 'bearing') buildStage6BearingChart();
+    if(app === 'pile'){
+      drawStage6PileSectionLive();
+      buildStage6PileCharts();
+    }
     if(app === 'settlement') buildStage6SettlementCharts();
     if(app === 'dewatering') buildStage6DewateringCharts();
     if(app === 'beam') buildStage6BeamCharts();

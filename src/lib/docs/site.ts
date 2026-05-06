@@ -83,6 +83,12 @@ export const docsGroups: DocsGroup[] = [
 				summary: 'Shallow-foundation bearing resistance, EC7 Annex D style factors, and Belgian DA1 handling.'
 			},
 			{
+				title: 'Pile capacity',
+				path: '/docs/engineering/pile',
+				summary:
+					'CPT-based axial pile resistance and SLS settlement: De Beer scale-effect base resistance, Belgian shaft-friction table, ULS factor chain, F_nk screening, and load-transfer settlement.'
+			},
+			{
 				title: 'Dewatering',
 				path: '/docs/engineering/dewatering',
 				summary:

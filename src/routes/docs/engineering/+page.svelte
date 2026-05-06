@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
 	import '$lib/styles/docs.css';
+	import DocsHeader from '$lib/components/DocsHeader.svelte';
 	import { docsGroups } from '$lib/docs/site';
 
 	const engineering = docsGroups.find((group) => group.path === '/docs/engineering')!;
@@ -23,20 +24,7 @@
 </svelte:head>
 
 <div class="docs-page">
-	<header class="docs-header">
-		<div class="docs-header__inner">
-			<a class="docs-header__logo" href="https://madep.be">MADEP CPT Interpreter</a>
-			<nav class="docs-header__nav" aria-label="Documentation navigation">
-				<a href="/docs">Documentation</a>
-				<a href="/docs/workflow">Interpretation</a>
-				<a href="/docs/engineering">Stage 6</a>
-				<a href="/docs/theory">Methods</a>
-				<a href="/docs/reference">References</a>
-				<a href="/docs/full">Specification</a>
-				<a href="/">App</a>
-			</nav>
-		</div>
-	</header>
+	<DocsHeader />
 
 	<header class="hero hero--compact">
 		<div class="hero__inner">
@@ -54,9 +42,11 @@
 		<aside class="docs-nav" aria-label="Engineering documentation navigation">
 			<div class="docs-nav__title">Stage 6</div>
 			<a href="#overview">Scope</a>
-			<a href="#analysis-classes">Analysis classes</a>
-			<a href="#modules">Core analyses</a>
-			<a href="#checks">Supporting checks</a>
+			<a href="#families">Analysis families</a>
+			<a href="#foundation">Foundation design</a>
+			<a href="#slope">Slope stability</a>
+			<a href="#groundwater">Groundwater</a>
+			<a href="#deformation">Deformation</a>
 			<a href="#reading">Reading sequence</a>
 		</aside>
 
@@ -66,74 +56,129 @@
 				<h2>Stage 6 scope</h2>
 				<p>{engineering.summary}</p>
 				<p>
-					This chapter is organized by analysis class. Each route documents one engineering
+					This chapter is organized by analysis family. Each route documents one engineering
 					formulation, its governing equations, required inputs, reported outputs, and
-					boundaries of validity.
+					boundaries of validity. The chapters are equally first-class deliverables; the
+					grouping below is by physical question, not by implementation cost.
 				</p>
 			</section>
 
-			<section id="analysis-classes" class="doc-card">
-				<p class="section-label">Analysis classes</p>
+			<section id="families" class="doc-card">
+				<p class="section-label">Analysis families</p>
 				<h2>Implemented analysis families</h2>
 				<div class="equations">
+					<div class="formula">foundation design → CPT-direct resistance + EC7 / Belgian ANB factors</div>
 					<div class="formula">slope stability → limit equilibrium on slices</div>
-					<div class="formula">seepage → steady-state Darcy flow on a T3 mesh</div>
+					<div class="formula">groundwater → analytical drawdown screen and steady-state FE Darcy flow</div>
 					<div class="formula">deformation → small-strain plane-strain FE equilibrium</div>
 				</div>
 				<ul class="notes">
-					<li><strong>Bishop + Spencer</strong> is the most mature route for global slope failure interpretation.</li>
-					<li><strong>Seepage</strong> is a steady-state hydraulic screen and can provide pore pressure to the stability workflow.</li>
-					<li><strong>Deformation</strong> is a mesh-based mechanical screen with geostatic preparation and constitutive branching.</li>
+					<li><strong>Foundation design</strong> covers the shallow- and deep-foundation routes (bearing, pile, settlement, beam / slab on elastic foundation, EC2 reinforcement) under EC7 with the Belgian National Annex and DM20 / ATG pile factors.</li>
+					<li><strong>Slope stability</strong> uses Bishop simplified for the search and a full Spencer recheck on shortlisted circles.</li>
+					<li><strong>Groundwater</strong> covers analytical radius-of-influence drawdown screening and a steady-state FE Darcy solver with free-surface iteration.</li>
+					<li><strong>Deformation</strong> is a plane-strain FE solver with geostatic initialization and exact Mohr-Coulomb elastoplasticity with tension cut-off.</li>
 				</ul>
 			</section>
 
-			<section id="modules" class="doc-card">
-				<p class="section-label">Modules</p>
-				<h2>Core analysis chapters</h2>
+			<section id="foundation" class="doc-card">
+				<p class="section-label">Foundation design</p>
+				<h2>Foundation analyses</h2>
+				<div class="docs-link-grid">
+					<a class="docs-link-card" href="/docs/engineering/bearing">
+						<div class="docs-link-card__meta">Shallow foundations · ULS</div>
+						<h3>Bearing capacity</h3>
+						<p>
+							Brinch Hansen / EC7 Annex D factor chain, drained and undrained envelopes,
+							effective dimensions, water-table averaging, and Belgian DA1 handling.
+						</p>
+					</a>
+					<a class="docs-link-card" href="/docs/engineering/pile">
+						<div class="docs-link-card__meta">Deep foundations · ULS &amp; SLS</div>
+						<h3>Pile capacity</h3>
+						<p>
+							Axial pile resistance and SLS settlement: De Beer scale-effect base
+							resistance, Belgian shaft-friction table, full ULS factor chain
+							(γ<sub>Rd</sub>, ξ<sub>3</sub> / ξ<sub>4</sub>, γ<sub>b</sub>, γ<sub>s</sub>),
+							F<sub>nk</sub> screening, and load-transfer settlement.
+						</p>
+					</a>
+					<a class="docs-link-card" href="/docs/engineering/settlement">
+						<div class="docs-link-card__meta">Shallow foundations · SLS</div>
+						<h3>Settlement</h3>
+						<p>
+							Stress-increase integration, constrained-modulus settlement, truncation
+							rules, and optional time-dependent interpretation.
+						</p>
+					</a>
+					<a class="docs-link-card" href="/docs/engineering/beam">
+						<div class="docs-link-card__meta">Structural–geotechnical strip</div>
+						<h3>Beam / slab on elastic foundation</h3>
+						<p>
+							k<sub>s</sub> derivation from the CPT stiffness profile, Winkler and
+							Pasternak strip equations, and the present screening route.
+						</p>
+					</a>
+					<a class="docs-link-card" href="/docs/engineering/reinforcement">
+						<div class="docs-link-card__meta">EC2 ULS output</div>
+						<h3>ULS reinforcement output</h3>
+						<p>
+							Strip-based EC2 reinforcement screening from the design moment, material
+							factors, and cover assumptions.
+						</p>
+					</a>
+				</div>
+			</section>
+
+			<section id="slope" class="doc-card">
+				<p class="section-label">Slope stability</p>
+				<h2>Slope-stability analysis</h2>
 				<div class="docs-link-grid">
 					<a class="docs-link-card" href="/docs/engineering/bishop">
-						<div class="docs-link-card__meta">Limit equilibrium</div>
+						<div class="docs-link-card__meta">Limit equilibrium · circular</div>
 						<h3>Bishop + Spencer</h3>
 						<p>
 							Circular slip-surface search, slice equilibrium, Spencer verification, and
 							references for the Stage 6 slope-stability route.
 						</p>
 					</a>
+				</div>
+			</section>
+
+			<section id="groundwater" class="doc-card">
+				<p class="section-label">Groundwater</p>
+				<h2>Groundwater analyses</h2>
+				<div class="docs-link-grid">
 					<a class="docs-link-card" href="/docs/engineering/seepage">
-						<div class="docs-link-card__meta">Finite element seepage</div>
+						<div class="docs-link-card__meta">Steady-state FE Darcy flow</div>
 						<h3>Seepage analysis</h3>
 						<p>
-							Steady-state Darcy flow, boundary-condition semantics, free-surface iteration,
-							and coupled pore-pressure interpretation.
+							Steady-state Darcy flow, boundary-condition semantics, free-surface
+							iteration, and coupled pore-pressure interpretation.
 						</p>
 					</a>
+					<a class="docs-link-card" href="/docs/engineering/dewatering">
+						<div class="docs-link-card__meta">Analytical drawdown screen</div>
+						<h3>Dewatering</h3>
+						<p>
+							Radius-of-influence screening, layered transmissivity, drawdown profiles,
+							and drawdown-induced effective-stress effects.
+						</p>
+					</a>
+				</div>
+			</section>
+
+			<section id="deformation" class="doc-card">
+				<p class="section-label">Deformation</p>
+				<h2>Deformation analysis</h2>
+				<div class="docs-link-grid">
 					<a class="docs-link-card" href="/docs/engineering/deformation">
-						<div class="docs-link-card__meta">Finite element deformation</div>
+						<div class="docs-link-card__meta">Plane-strain FE equilibrium</div>
 						<h3>Deformation analysis</h3>
 						<p>
 							Geostatic initialization, exact Mohr-Coulomb elastoplasticity with tension
 							cut-off, plotted fields, and solver interpretation.
 						</p>
 					</a>
-				</div>
-			</section>
-
-			<section id="checks" class="doc-card">
-				<p class="section-label">Supporting engineering checks</p>
-				<h2>Additional Stage 6 analysis chapters</h2>
-				<p>
-					Stage 6 also contains supplementary screening and design-check modules. These are
-					documented as separate technical chapters. The long technical specification remains
-					the complete audit route.
-				</p>
-				<div class="docs-link-grid">
-					{#each engineering.pages.filter((page) => !['/docs/engineering/bishop', '/docs/engineering/seepage', '/docs/engineering/deformation'].includes(page.path)) as page}
-						<a class="docs-link-card" href={page.path}>
-							<div class="docs-link-card__meta">Stage 6 chapter</div>
-							<h3>{page.title}</h3>
-							<p>{page.summary}</p>
-						</a>
-					{/each}
 				</div>
 			</section>
 

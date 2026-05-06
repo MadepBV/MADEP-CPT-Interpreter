@@ -1,5 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
+	import DocsHeader from '$lib/components/DocsHeader.svelte';
+
 	const pageTitle = 'Technical Specification — MADEP CPT Interpreter';
 	const pageDescription =
 		'Technical documentation for the MADEP CPT Interpreter: GEF/Excel/CSV loading, classification, layer derivation, model parameters, tuning, and Stage 6 engineering applications including Bishop/Spencer, seepage, and deformation, with formulas, notation, and references.';
@@ -1517,14 +1519,7 @@
 </svelte:head>
 
 <div class="docs-page">
-	<header class="docs-header">
-		<div class="docs-header__inner">
-			<a class="docs-header__logo" href="https://madep.be">MADEP CPT Interpreter</a>
-			<nav class="docs-header__nav" aria-label="Documentation navigation">
-				<a href="/">App</a>
-			</nav>
-		</div>
-	</header>
+	<DocsHeader />
 
 	<header class="hero">
 		<div class="hero__inner">
@@ -1777,58 +1772,6 @@
 		--shadow-sm: 0 2px 8px rgba(18, 18, 20, 0.05);
 		--shadow-md: 0 6px 24px rgba(18, 18, 20, 0.07);
 		font-family: var(--font-body);
-	}
-
-	.docs-header {
-		position: sticky;
-		top: 0;
-		z-index: 20;
-		padding: 10px 16px 0;
-		margin-bottom: -5.75rem;
-		background: transparent;
-	}
-
-	.docs-header__inner {
-		max-width: 1300px;
-		margin: 0 auto;
-		padding: 0.85rem 1.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1.5rem;
-		border: 1px solid rgba(24, 24, 26, 0.1);
-		border-radius: 6px;
-		background: rgba(247, 244, 239, 0.86);
-		backdrop-filter: blur(16px);
-		box-shadow: 0 8px 24px rgba(17, 17, 16, 0.08);
-	}
-
-	.docs-header__logo {
-		font-family: var(--font-heading);
-		font-size: 0.94rem;
-		font-weight: 600;
-		letter-spacing: -0.02em;
-		color: var(--color-primary);
-		text-decoration: none;
-	}
-
-	.docs-header__nav {
-		display: flex;
-		align-items: center;
-		gap: 1.25rem;
-	}
-
-	.docs-header__nav a {
-		font-size: 0.76rem;
-		font-weight: 500;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--color-text-light);
-		text-decoration: none;
-	}
-
-	.docs-header__nav a:hover {
-		color: var(--color-primary);
 	}
 
 	.hero {
@@ -2346,9 +2289,6 @@
 	}
 
 	@media (max-width: 900px) {
-		.docs-header__inner {
-			padding: 0.8rem 1rem;
-		}
 
 		.docs-shell {
 			grid-template-columns: 1fr;
@@ -2368,22 +2308,6 @@
 	}
 
 	@media (max-width: 680px) {
-		.docs-header {
-			padding: 8px 12px 0;
-		}
-
-		.docs-header__inner {
-			padding: 0.8rem 0.9rem;
-			gap: 0.85rem;
-			flex-wrap: wrap;
-		}
-
-		.docs-header__nav {
-			width: 100%;
-			justify-content: flex-start;
-			gap: 0.9rem;
-			flex-wrap: wrap;
-		}
 
 		.hero {
 			padding: 5rem 18px 2.75rem;
@@ -2526,28 +2450,6 @@
 			--color-text-muted: #8a8a82;
 			--color-border: rgba(237, 233, 225, 0.09);
 			--color-border-strong: rgba(237, 233, 225, 0.18);
-		}
-
-		.docs-header {
-			margin-bottom: -5.75rem;
-			background: transparent;
-		}
-
-		.docs-header__inner {
-			background: rgba(17, 17, 16, 0.88);
-			border-color: rgba(237, 233, 225, 0.08);
-			box-shadow: 0 8px 24px rgba(12, 12, 11, 0.32);
-		}
-
-		.docs-header__logo,
-		.docs-header__nav a {
-			color: var(--color-text-on-dark);
-		}
-
-		.hero {
-			background:
-				linear-gradient(135deg, rgba(79, 133, 132, 0.12), transparent 38%),
-				linear-gradient(180deg, #111110 0%, #181818 100%);
 		}
 
 		.hero__eyebrow,

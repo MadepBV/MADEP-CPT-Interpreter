@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
 	import '$lib/styles/docs.css';
+	import DocsHeader from '$lib/components/DocsHeader.svelte';
 
 	const pageTitle = 'Slope Stability — Bishop and Spencer';
 	const pageDescription =
@@ -35,14 +36,7 @@
 </svelte:head>
 
 <div class="docs-page">
-	<header class="docs-header">
-		<div class="docs-header__inner">
-			<a class="docs-header__logo" href="https://madep.be">MADEP CPT Interpreter</a>
-			<nav class="docs-header__nav" aria-label="Documentation navigation">
-				<a href="/">App</a>
-			</nav>
-		</div>
-	</header>
+	<DocsHeader />
 
 	<header class="hero">
 		<div class="hero__inner">

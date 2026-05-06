@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
 	import '$lib/styles/docs.css';
+	import DocsHeader from '$lib/components/DocsHeader.svelte';
 	import { docsGroups, docsQuickLinks } from '$lib/docs/site';
 
 	const pageTitle = 'Documentation — MADEP CPT Interpreter';
@@ -22,19 +23,7 @@
 </svelte:head>
 
 <div class="docs-page">
-	<header class="docs-header">
-		<div class="docs-header__inner">
-			<a class="docs-header__logo" href="https://madep.be">MADEP CPT Interpreter</a>
-			<nav class="docs-header__nav" aria-label="Documentation navigation">
-				<a href="/">App</a>
-				<a href="/docs/workflow">Interpretation</a>
-				<a href="/docs/engineering">Stage 6</a>
-				<a href="/docs/theory">Methods</a>
-				<a href="/docs/reference">References</a>
-				<a href="/docs/full">Specification</a>
-			</nav>
-		</div>
-	</header>
+	<DocsHeader />
 
 	<header class="hero hero--compact">
 		<div class="hero__inner">

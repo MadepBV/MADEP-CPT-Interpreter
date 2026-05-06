@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
 	import '$lib/styles/docs.css';
+	import DocsHeader from '$lib/components/DocsHeader.svelte';
 
 	const pageTitle = 'Deformation Analysis — MADEP CPT Interpreter';
 	const pageDescription =
@@ -21,19 +22,7 @@
 </svelte:head>
 
 <div class="docs-page">
-	<header class="docs-header">
-		<div class="docs-header__inner">
-			<a class="docs-header__logo" href="https://madep.be">MADEP CPT Interpreter</a>
-			<nav class="docs-header__nav" aria-label="Documentation navigation">
-				<a href="/docs">Documentation</a>
-				<a href="/docs/workflow">Interpretation</a>
-				<a href="/docs/engineering">Stage 6</a>
-				<a href="/docs/theory">Methods</a>
-				<a href="/docs/reference">References</a>
-				<a href="/docs/full#deformation-stage6">Specification anchor</a>
-			</nav>
-		</div>
-	</header>
+	<DocsHeader />
 
 	<header class="hero hero--compact">
 		<div class="hero__inner">
@@ -327,14 +316,24 @@
 				<section class="doc-subsection">
 					<h3>3.5 Mesh model</h3>
 					<p>
-						The current route uses a constrained triangular mesh with three-node constant-strain
-						triangles. Automatic meshing starts relatively coarse for first-pass user runs and can
-						be manually refined where needed.
+						The current route uses a constrained triangular mesh and supports two element
+						families, dispatched per analysis through a unified element kernel:
+					</p>
+					<ul class="notes">
+						<li><strong>T3</strong> — three-node constant-strain triangle, 1 Gauss point. Default for first-pass screening; fast and easy to audit.</li>
+						<li><strong>T6</strong> — six-node quadratic triangle, 3 Gauss points. Used where bending response or near-incompressible behaviour matters; combines naturally with the B-bar near-incompressibility projection (§5.4).</li>
+					</ul>
+					<p>
+						Automatic meshing starts relatively coarse for first-pass user runs and can be
+						manually refined where needed. The element type is selected through the analysis
+						options; T6 increases the free-DOF count by roughly 4× over a comparable T3 mesh
+						and the solver warns when the resulting DOF count is large enough to slow the
+						run materially.
 					</p>
 					<ul class="notes">
 						<li>Local load-edge refinement is important because stresses and strains concentrate there.</li>
 						<li>Slope crests and geometry kinks can legitimately create high gradients and local plasticity.</li>
-						<li>Because the element is T3, mesh convergence should be checked for sensitive problems.</li>
+						<li>For T3, mesh convergence should be checked for sensitive bending-dominated problems.</li>
 					</ul>
 				</section>
 			</section>
@@ -623,15 +622,22 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>5.4 Near-incompressibility safeguard</h3>
+					<h3>5.4 Near-incompressibility handling</h3>
 					<p>
-						The public route presently uses T3 triangles. These are robust and easy to audit, but
-						they are not ideal for near-incompressible elasticity. Poisson’s ratio is therefore
-						capped for numerical stability in the current implementation.
+						Plane-strain analysis can drive the volumetric response toward incompressibility,
+						either through high Poisson ratio in elasticity or through low dilation angle
+						(ψ → 0) under non-associated Mohr-Coulomb plastic flow. The current route treats
+						this in two element-specific ways:
 					</p>
-					<div class="doc-callout doc-callout--warn">
-						<strong>Transparency note.</strong> This cap is not a material law. It is a numerical
-						safeguard for the current T3 plane-strain formulation.
+					<ul class="notes">
+						<li><strong>T3</strong> — single-Gauss-point constant-strain element. Volumetric locking is mitigated by capping Poisson’s ratio for numerical stability. The cap is a numerical safeguard, not a material law, and only matters as the ratio approaches 0.5.</li>
+						<li><strong>T6</strong> — three-Gauss-point quadratic element. Volumetric locking is removed by the B-bar projection: the volumetric part of the strain-displacement matrix B is replaced by its element-average <strong>&lt;B&gt;</strong> while the deviatoric part is left untouched. The 2D plane-strain B-bar form is applied per Gauss point at element-stiffness assembly, so the same projection is consistent between K<sub>tan</sub> and the internal-force integration.</li>
+					</ul>
+					<div class="doc-callout">
+						<strong>Engineering reading.</strong> Use T6 with B-bar where near-incompressible
+						elastic or non-associated plastic flow is expected (undrained-like dilation angle,
+						high-ν elasticity). Use T3 for first-pass screening on drained problems with
+						moderate ν.
 					</div>
 				</section>
 			</section>
@@ -1370,15 +1376,16 @@
 						Mohr-Coulomb branch physics:
 					</p>
 					<ul class="notes">
-						<li>it is not a strength-reduction FEM driver,</li>
 						<li>it is not a large-deformation or post-failure formulation,</li>
-						<li>it remains a drained small-strain section analysis on T3 triangles.</li>
+						<li>it remains a drained small-strain section analysis on T3 / T6 triangles.</li>
 					</ul>
 					<div class="doc-callout">
 						<strong>Current engineering reading.</strong> Stage 2 is the reference constitutive
-						route for drained small-strain Mohr-Coulomb analysis in the present app. The key
-						remaining extensions are alternative constitutive models and alternative analysis
-						drivers, not completion of the classical MC local branch set.
+						route for drained small-strain Mohr-Coulomb analysis in the present app. It is
+						available across all three solver phases (gravity, service load, and c-phi safety
+						reduction — see §10.5). The key remaining extensions are alternative constitutive
+						models and alternative analysis drivers, not completion of the classical MC local
+						branch set.
 					</div>
 				</section>
 			</section>
@@ -1470,6 +1477,62 @@
 						useful for plastic-zone visualization and trend diagnosis near failure, but it should
 						not be read as a fully converged final equilibrium solution.
 					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>10.5 Three-phase staging: gravity → service → c-phi safety</h3>
+					<p>
+						The shipped solver runs as a three-phase staged analysis. Each phase reuses the
+						previous phase's committed material-point state and plastic history; only the
+						driving load and the convergence target change.
+					</p>
+					<ul class="notes">
+						<li><strong>initial-gravity</strong> — geostatic predictor and plastic self-weight equilibration (§6).</li>
+						<li><strong>service-load</strong> — drained service-load increment over the equilibrated initial state (§6.5, §6.7).</li>
+						<li><strong>safety-cphi</strong> — c-phi (φ′ / c′) strength reduction safety analysis. Strength is reduced by a per-phase factor; the solver follows the load-factor branch until equilibrium is no longer attainable. Reports a safety load factor with the meaning <em>safety-strength-reduction</em>, plus the safety-phase plastic increment and settlement.</li>
+					</ul>
+					<div class="doc-callout">
+						<strong>Engineering reading.</strong> The c-phi safety driver is an integrated
+						strength-reduction FEM analysis on the same Stage 2 elastoplastic constitutive
+						route used by the service phase. It is not a separate slip-line or limit-equilibrium
+						calculation.
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>10.6 Material plugin registry</h3>
+					<p>
+						The deformation solver is constitutive-model-agnostic. Every constitutive route
+						(linear elastic, Stage 1 reduced-stiffness, Stage 2 exact Mohr-Coulomb) is
+						registered through the same material-plugin contract, dispatched by capability
+						flags rather than by name string. Adding a new material model is a one-file
+						change: write a factory returning a plugin object with the documented capability
+						flags, then call <code>registerMaterialPlugin(name, factory)</code> once at module
+						load. The solver picks up support for staged analysis, c-phi safety reduction,
+						line-search, and predictor projection through the advertised flags.
+					</p>
+					<p>
+						Three plugins ship at present:
+					</p>
+					<ul class="notes">
+						<li><code>linear-elastic</code> — the baseline regression and comparison route.</li>
+						<li><code>mc-reduced-stiffness</code> — Stage 1 pseudo-plastic reduced-shear path.</li>
+						<li><code>mc-plastic</code> — Stage 2 exact Mohr-Coulomb elastoplasticity with tension cut-off.</li>
+					</ul>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>10.7 GPU pipeline (linear-elastic)</h3>
+					<p>
+						A WebGPU pipeline is shipped for the linear-elastic route. It mirrors the relevant
+						subset of the CPU analyzer's contract: K<sub>0</sub>-controlled initial stress
+						recovery, surface load, and gravity, all assembled and solved on the GPU. The
+						caller probes WebGPU availability through <code>probeGpuPipeline</code> and routes
+						to <code>runDeformationOnGpu</code> when the device is present and the analysis is
+						in scope; fallback to the CPU path is automatic on probe failure or unsupported
+						scope. The Stage 1 and Stage 2 plastic routes remain CPU-resident in the present
+						release.
+					</p>
 				</section>
 			</section>
 
@@ -1651,21 +1714,21 @@
 					<ul class="notes">
 						<li>Section-based plane strain only.</li>
 						<li>Small-strain kinematics only.</li>
-						<li>T3 triangle formulation, with the usual limitations for bending-dominated and near-incompressible cases.</li>
+						<li>T3 / T6 triangle formulations on the shared mesh; T6 with B-bar handles the near-incompressible case.</li>
 						<li>Drained effective-stress loading step only; no coupled excess pore-pressure generation.</li>
 						<li>No constitutive softening, fracture energy regularization, or strain localization control.</li>
-						<li>No strength-reduction analysis driver.</li>
 						<li>No contact, interface, or structural-element coupling in the deformation solve.</li>
+						<li>GPU pipeline covers the linear-elastic route only; Stage 1 and Stage 2 plastic remain CPU-resident.</li>
 					</ul>
 				</section>
 
 				<section class="doc-subsection">
 					<h3>14.2 Natural next steps</h3>
 					<ul class="notes">
-						<li>Strength-reduction analysis as a separate driver above the existing constitutive law.</li>
 						<li>Alternative constitutive families, in particular Hardening Soil class formulations for serviceability realism.</li>
-						<li>Unsymmetric global Newton support as the default path once benchmarked sufficiently on the present exact tangent set.</li>
+						<li>Unsymmetric global Newton (GMRES) as the default path once benchmarked further on the present exact tangent set; the path is already used inside the solver when active non-associated plasticity is detected.</li>
 						<li>Hydro-mechanical and consolidation extensions beyond the present drained load-step assumption.</li>
+						<li>GPU coverage of the Stage 1 and Stage 2 plastic constitutive routes.</li>
 					</ul>
 				</section>
 			</section>
