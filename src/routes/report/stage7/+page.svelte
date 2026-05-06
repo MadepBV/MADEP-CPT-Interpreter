@@ -1328,6 +1328,175 @@
               </div>
             </div>
           {/if}
+
+          {#if hasStage6('pile')}
+            {@const pile = payload.stage6.pile || {}}
+            {@const pileCfg = pile.config || {}}
+            {@const pileAnalysis = pile.analysis || {}}
+            {@const pileCap = pileAnalysis.capacity || {}}
+            {@const pileSet = pileAnalysis.settlement || null}
+            {@const pileXi = pileCap.xi || {}}
+            {@const pilePerLayer = pileCap.perLayer || []}
+            {@const pileNotes = pileAnalysis.notes || []}
+            <div class="report-card report-annex report-annex--pile">
+              <h3>Pile capacity (DM20 / De Beer)</h3>
+              <div class="report-grid report-grid--4">
+                <div class="report-stat"><span>Pile type</span><strong>{pileCfg.pileType || '—'}</strong></div>
+                <div class="report-stat"><span>Shape</span><strong>{pileCfg.shape || '—'}</strong></div>
+                <div class="report-stat"><span>D<sub>s</sub> / D<sub>b</sub></span><strong>{fmt(pileCfg.Ds, 3)} / {fmt(pileCfg.Db, 3)} m</strong></div>
+                <div class="report-stat"><span>z<sub>head</sub> / z<sub>toe</sub></span><strong>{fmt(pileCfg.zHead, 2)} / {fmt(pileCfg.zToe, 2)} m</strong></div>
+                <div class="report-stat"><span>F<sub>c,d</sub></span><strong>{fmtInt(pileCfg.Fcd)} kN</strong></div>
+                <div class="report-stat"><span>F<sub>rep</sub></span><strong>{fmtInt(pileCfg.Frep)} kN</strong></div>
+                <div class="report-stat"><span>R<sub>c,d</sub></span><strong>{fmtInt(pileCap.R_c_d)} kN</strong></div>
+                <div class="report-stat"><span>ULS utilisation</span><strong>{pileCap.ulsUtil != null ? fmt(pileCap.ulsUtil, 3) : '—'}</strong></div>
+              </div>
+              <div class="report-grid report-grid--2">
+                <div class="report-card report-card--nested">
+                  <h4>Geometry &amp; base</h4>
+                  <table class="pt report-pt">
+                    <tbody>
+                      <tr><td>D<sub>b,eq</sub></td><td>{fmt(pileCap.Dbeq, 3)} m</td></tr>
+                      <tr><td>A<sub>b</sub></td><td>{fmt(pileCap.A_b, 4)} m²</td></tr>
+                      <tr><td>χ<sub>s</sub></td><td>{fmt(pileCap.chi_s, 3)} m</td></tr>
+                      <tr><td>Layer at toe</td><td>{pileCap.categoryAtToe || '—'}</td></tr>
+                      <tr><td>q<sub>b</sub> (De Beer)</td><td>{fmtInt(pileCap.qb_kPa)} kPa</td></tr>
+                      <tr><td>α<sub>b</sub> · e<sub>b</sub> · β · λ</td><td>{fmt(pileCap.alphaB ?? 0, 2)} · {fmt(pileCap.eb ?? 1, 3)} · {fmt(pileCap.beta ?? 1, 3)} · {fmt(pileCap.lambda ?? 1, 2)}</td></tr>
+                      <tr><td>R<sub>b</sub></td><td>{fmtInt(pileCap.R_b)} kN</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="report-card report-card--nested">
+                  <h4>Factor chain</h4>
+                  <table class="pt report-pt">
+                    <tbody>
+                      <tr><td>R<sub>s</sub></td><td>{fmtInt(pileCap.R_s)} kN</td></tr>
+                      <tr><td>R<sub>c</sub> = R<sub>b</sub> + R<sub>s</sub></td><td>{fmtInt(pileCap.R_c)} kN</td></tr>
+                      <tr><td>γ<sub>Rd</sub></td><td>{fmt(pileCap.gammaRd, 2)}</td></tr>
+                      <tr><td>R<sub>c,cal</sub></td><td>{fmtInt(pileCap.R_c_cal)} kN</td></tr>
+                      <tr><td>ξ<sub>3</sub> / ξ<sub>4</sub> / max</td><td>{fmt(pileXi.xi3, 2)} / {fmt(pileXi.xi4, 2)} / <strong>{fmt(pileXi.governing, 2)}</strong></td></tr>
+                      <tr><td>R<sub>c,k</sub></td><td>{fmtInt(pileCap.R_c_k)} kN</td></tr>
+                      <tr><td>γ<sub>b</sub> / γ<sub>s</sub></td><td>{fmt(pileCap.gamma_b ?? 1, 2)} / {fmt(pileCap.gamma_s ?? 1, 2)}</td></tr>
+                      <tr><td>R<sub>c,d</sub></td><td><strong>{fmtInt(pileCap.R_c_d)} kN</strong></td></tr>
+                      {#if pileCap.neutralPlane != null}
+                        <tr><td>F<sub>nk</sub> slip</td><td>{fmtInt(pileCap.F_nk_slip)} kN</td></tr>
+                        <tr><td>F<sub>nk</sub> analogy</td><td>{fmtInt(pileCap.F_nk_analogy)} kN</td></tr>
+                        <tr><td>F<sub>nk,d</sub> (governing)</td><td><strong>{fmtInt(pileCap.F_nk_design)} kN</strong></td></tr>
+                      {/if}
+                      {#if pileSet}
+                        <tr><td>s<sub>head</sub> (SLS)</td><td>{fmt(pileSet.sHead_mm, 2)} mm</td></tr>
+                        <tr><td>s<sub>allow</sub></td><td>{fmt(pileCfg.sAllowable, 1)} mm</td></tr>
+                      {/if}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {#if pilePerLayer.length}
+                <div class="report-card report-card--nested" style="margin-top:16px">
+                  <h4>Per-layer shaft resistance</h4>
+                  <table class="tbl report-table">
+                    <thead>
+                      <tr><th>i</th><th>Top (m)</th><th>Bot (m)</th><th>Cat.</th><th>q<sub>c,m</sub> (MPa)</th><th>η*<sub>p</sub></th><th>q<sub>s</sub> (kPa)</th><th>α<sub>s</sub></th><th>h (m)</th><th>Status</th><th>R<sub>s</sub> (kN)</th></tr>
+                    </thead>
+                    <tbody>
+                      {#each pilePerLayer as row}
+                        <tr>
+                          <td>{row.layerIndex + 1}</td>
+                          <td>{fmt(row.top, 2)}</td>
+                          <td>{fmt(row.bot, 2)}</td>
+                          <td>{row.category}</td>
+                          <td>{fmt(row.qcMean, 2)}</td>
+                          <td>{row.etaP != null ? row.etaP.toFixed(4) : 'cap'}</td>
+                          <td>{fmtInt(row.qs)}</td>
+                          <td>{fmt(row.alphaS, 2)}</td>
+                          <td>{fmt(row.h, 2)}</td>
+                          <td>{row.excluded ? 'excluded' : row.aboveNeutral ? 'above N.P.' : 'contributing'}</td>
+                          <td>{fmtInt(row.RsLayer)}</td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {/if}
+              {#if pileNotes.length}
+                <div class="report-card report-card--nested" style="margin-top:16px">
+                  <h4>Notes</h4>
+                  <ul class="report-notes-list">
+                    {#each pileNotes as note}
+                      <li class={`report-note report-note--${note.level || 'info'}`}>{note.text}</li>
+                    {/each}
+                  </ul>
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          {#if hasStage6('deformation')}
+            {@const def = payload.stage6.deformation || {}}
+            {@const defSummary = def.summary || {}}
+            {@const defView = def.view || null}
+            {@const defWarnings = def.warnings || []}
+            <div class="report-card report-annex report-annex--deformation">
+              <h3>Deformation analysis</h3>
+              <div class="report-grid report-grid--4">
+                <div class="report-stat"><span>Analysis type</span><strong>{defSummary.analysisType || '—'}</strong></div>
+                <div class="report-stat"><span>Constitutive model</span><strong>{defSummary.constitutiveModel || '—'}</strong></div>
+                <div class="report-stat"><span>Element</span><strong>{(defSummary.elementType || 't3').toUpperCase()}</strong></div>
+                <div class="report-stat"><span>Converged</span><strong>{defSummary.converged ? 'Yes' : 'No'}</strong></div>
+                {#if defSummary.safetyFactorOfSafetyLower != null}
+                  <div class="report-stat"><span>FoS (c-phi)</span><strong>{fmt(defSummary.safetyFactorOfSafetyLower, 3)}{defSummary.safetyFactorOfSafetyUpper != null && defSummary.safetyFactorOfSafetyUpper !== defSummary.safetyFactorOfSafetyLower ? ` — ${fmt(defSummary.safetyFactorOfSafetyUpper, 3)}` : ''}</strong></div>
+                {:else if defSummary.safetyLoadFactor != null}
+                  <div class="report-stat"><span>Safety factor (c-phi)</span><strong>{fmt(defSummary.safetyLoadFactor, 3)}</strong></div>
+                {:else if defSummary.loadFactor != null}
+                  <div class="report-stat"><span>Load factor</span><strong>{fmt(defSummary.loadFactor, 3)}</strong></div>
+                {/if}
+                {#if defSummary.safetyStatus && defSummary.safetyStatus !== 'not-applicable'}
+                  <div class="report-stat"><span>Safety status</span><strong>{defSummary.safetyStatus}</strong></div>
+                {/if}
+                {#if defSummary.iterations != null}
+                  <div class="report-stat"><span>Iterations</span><strong>{defSummary.iterations}</strong></div>
+                {/if}
+                {#if defSummary.nodeCount != null}
+                  <div class="report-stat"><span>Mesh nodes</span><strong>{defSummary.nodeCount}</strong></div>
+                {/if}
+                {#if defSummary.elementCount != null}
+                  <div class="report-stat"><span>Mesh elements</span><strong>{defSummary.elementCount}</strong></div>
+                {/if}
+                {#if defSummary.timing?.totalMs != null}
+                  <div class="report-stat"><span>Runtime</span><strong>{secondsLabelFromMs(defSummary.timing.totalMs)}</strong></div>
+                {/if}
+              </div>
+              {#if defView?.image?.dataUrl}
+                <div class="report-card report-card--nested report-card--figure" style="margin-top:16px">
+                  <h4>Deformation field view</h4>
+                  <figure class="report-figure">
+                    <img
+                      class="report-figure__image"
+                      src={defView.image.dataUrl}
+                      alt="Frozen deformation field view from the Stage 6 canvas"
+                    />
+                    <figcaption class="report-note">
+                      {defView.source === 'manual' ? 'User-captured' : 'Auto-captured'} Stage 6 deformation view{defView.capturedAt ? ` at ${new Date(defView.capturedAt).toLocaleString()}` : ''}.
+                    </figcaption>
+                  </figure>
+                </div>
+              {:else}
+                <p class="report-note" style="margin-top:12px">
+                  No deformation view was captured. Open the deformation workspace and press
+                  <strong>Capture for report</strong> to include a screenshot.
+                </p>
+              {/if}
+              {#if defWarnings.length}
+                <div class="report-card report-card--nested" style="margin-top:16px">
+                  <h4>Solver warnings</h4>
+                  <ul class="report-notes-list">
+                    {#each defWarnings as w}
+                      <li class="report-note report-note--warn">{typeof w === 'string' ? w : (w?.text || w?.message || JSON.stringify(w))}</li>
+                    {/each}
+                  </ul>
+                </div>
+              {/if}
+            </div>
+          {/if}
         </section>
       {/if}
 

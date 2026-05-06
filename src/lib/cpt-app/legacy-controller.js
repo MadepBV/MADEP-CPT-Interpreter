@@ -4371,7 +4371,12 @@ function stage6Defaults(){
       },
       results:null,
       selectedResult:0,
-      stale:true
+      stale:true,
+      capturedView:{
+        stability:null,
+        seepage:null,
+        deformation:null
+      }
     }
   };
 }
@@ -13090,6 +13095,14 @@ function renderStage6BishopApp(){
                 </div>
                 <div class="st6-bishop-toolbar-secondary">
                   <button class="btn sm" onclick="fitStage6BishopViewport()">Fit view</button>
+                  <button
+                    class="btn sm st6-capture-btn ${bishop.capturedView?.[workspace] ? 'has-capture' : ''}"
+                    onclick="stage7CaptureWorkspaceView('${workspace}')"
+                    ${toolbarHasResult ? '' : 'disabled'}
+                    title="${bishop.capturedView?.[workspace]
+                      ? 'Captured ' + new Date(bishop.capturedView[workspace].capturedAt).toLocaleTimeString() + '. Click to recapture the current view.'
+                      : 'Capture the current canvas view for the Stage 7 report.'}"
+                  >${bishop.capturedView?.[workspace] ? '✓ Captured' : 'Capture for report'}</button>
                   <button class="btn sm" onclick="${toolbarClearAction}" ${toolbarHasResult ? '' : 'disabled'}>${toolbarClearLabel}</button>
                 </div>
               </div>
@@ -14147,6 +14160,69 @@ function stage7SeepagePayload(){
   }
 }
 
+// Deformation annex — included only when a result has been solved. The
+// captured view (manual via the toolbar button, or automatic at report-build
+// time when none exists) is the primary visual; the surrounding payload
+// captures the analysis context so the report can be reproduced and audited.
+function stage7DeformationPayload(){
+  ensureStage6State();
+  const stage6 = S.stage6;
+  const bishop = stage6?.bishop;
+  if(!bishop) return null;
+  const deformation = bishop.deformation;
+  if(!deformation || !deformation.result) return null;
+  const result = deformation.result;
+  const solver = result?.solver || {};
+  const elementType = solver.elementType
+    || result?.mesh?.elementType
+    || deformation.options?.meshElementType
+    || 't3';
+  const safetyFosLower = Number.isFinite(solver.safetyFactorOfSafetyLower) ? Number(solver.safetyFactorOfSafetyLower) : null;
+  const safetyFosUpper = Number.isFinite(solver.safetyFactorOfSafetyUpper) ? Number(solver.safetyFactorOfSafetyUpper) : null;
+  const summary = {
+    analysisType: deformation.options?.analysisType || 'deformation',
+    constitutiveModel: deformation.options?.constitutiveModel || 'linear-elastic',
+    elementType,
+    converged: solver.convergenceState === 'converged' || result?.converged === true,
+    convergenceState: solver.convergenceState || null,
+    loadFactor: result?.loadFactor != null ? Number(result.loadFactor) : null,
+    loadFactorMeaning: result?.loadFactorMeaning || null,
+    safetyStatus: solver.safetyStatus || null,
+    safetyFactorOfSafetyLower: safetyFosLower,
+    safetyFactorOfSafetyUpper: safetyFosUpper,
+    safetyLoadFactor: safetyFosLower != null
+      ? safetyFosLower
+      : (result?.safetyLoadFactor != null ? Number(result.safetyLoadFactor) : null),
+    initialPhaseConvergenceState: solver.initialPhaseConvergenceState || null,
+    servicePhaseConvergenceState: solver.servicePhaseConvergenceState || null,
+    iterations: solver.iterations != null
+      ? Number(solver.iterations)
+      : (result?.iterations != null ? Number(result.iterations) : null),
+    timing: result?.timing ? safeClone(result.timing) : null,
+    nodeCount: Array.isArray(result?.mesh?.nodes) ? result.mesh.nodes.length : (result?.mesh?.nodeCount ?? null),
+    elementCount: Array.isArray(result?.mesh?.triangles) ? result.mesh.triangles.length : (result?.mesh?.elementCount ?? null),
+    maxSettlementMm: result?.summary?.maxSettlementMm ?? null,
+    maxDisplacementMm: result?.summary?.maxDisplacementMm ?? null
+  };
+  const manualView = bishop.capturedView?.deformation || null;
+  const view = manualView
+    ? safeClone(manualView)
+    : stage7CaptureBishopWorkspaceView('deformation');
+  if(!view) return null;
+  view.source = manualView ? 'manual' : 'auto';
+  return {
+    config: safeClone(deformation.options || {}),
+    summary,
+    warnings: Array.isArray(deformation.warnings) ? safeClone(deformation.warnings) : [],
+    view
+  };
+}
+
+// Extend stage7CaptureBishopWorkspaceView to also support 'deformation' so the
+// auto-capture fallback works for the deformation annex.
+//
+// (The function itself is defined further down; this comment documents the
+// contract.)
 function stage7CaptureCanvasImage(canvasId, {
   maxWidth=1400,
   quality=0.9,
@@ -14177,15 +14253,74 @@ function stage7CaptureCanvasImage(canvasId, {
   }
 }
 
+// User-initiated workspace screenshot. Press the "Capture" button in the
+// stability / seepage / deformation toolbar; the canvas is grabbed exactly as
+// shown (selected result, contour mode, viewport zoom, ...) and stored on the
+// bishop state. The Stage 7 payload prefers this manual capture over the
+// automatic capture done at report-build time, so the user controls which
+// view of the analysis appears in the printed report.
+function stage7CaptureWorkspaceView(workspace){
+  if(typeof document === 'undefined') return;
+  ensureStage6State();
+  const valid = ['stability', 'seepage', 'deformation'];
+  if(!valid.includes(workspace)) return;
+  const image = stage7CaptureCanvasImage('stage6BishopCanvas');
+  if(!image?.dataUrl){
+    console.warn(`Stage 7 capture (${workspace}) failed: canvas not ready.`);
+    return;
+  }
+  const bishop = S.stage6.bishop;
+  if(!bishop.capturedView || typeof bishop.capturedView !== 'object'){
+    bishop.capturedView = { stability:null, seepage:null, deformation:null };
+  }
+  let display = null;
+  if(workspace === 'stability'){
+    display = {
+      selectedResult: Math.max(0, bishop.selectedResult || 0),
+      methodMode: bishop.methodMode || 'bishop_spencer'
+    };
+  } else if(workspace === 'seepage'){
+    display = safeClone(bishop.seepage?.display || null);
+  } else if(workspace === 'deformation'){
+    display = safeClone(bishop.deformation?.display || null);
+  }
+  bishop.capturedView[workspace] = {
+    workspace,
+    app:'bishop',
+    capturedAt: new Date().toISOString(),
+    image,
+    viewport: safeClone(bishop.viewport || null),
+    display
+  };
+  // Re-render so the toolbar shows the new captured-state badge.
+  renderStage6();
+}
+
+function stage7ClearWorkspaceCapture(workspace){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  if(!bishop.capturedView) return;
+  if(['stability','seepage','deformation'].includes(workspace)){
+    bishop.capturedView[workspace] = null;
+    renderStage6();
+  }
+}
+
 function stage7CaptureBishopWorkspaceView(workspace){
   if(typeof document === 'undefined') return null;
   ensureStage6State();
   const stage6=S.stage6;
   const bishop=stage6?.bishop;
   if(!stage6 || !bishop) return null;
-  const targetWorkspace=workspace === 'seepage' ? 'seepage' : 'stability';
-  const hasContent=targetWorkspace === 'seepage'
+  const targetWorkspace = workspace === 'seepage'
+    ? 'seepage'
+    : workspace === 'deformation'
+    ? 'deformation'
+    : 'stability';
+  const hasContent = targetWorkspace === 'seepage'
     ? !!(bishop.seepage?.mesh && bishop.seepage?.result)
+    : targetWorkspace === 'deformation'
+    ? !!(bishop.deformation?.result)
     : !!(bishop.results?.allResults?.length);
   if(!hasContent) return null;
 
@@ -14223,7 +14358,7 @@ function stage7CaptureBishopWorkspaceView(workspace){
       workspace:targetWorkspace,
       app:'bishop',
       capturedAt:new Date().toISOString(),
-      display:targetWorkspace === 'seepage'
+      display: targetWorkspace === 'seepage'
         ? {
             contourMode:bishop.seepage?.display?.contourMode || 'head',
             showContours:bishop.seepage?.display?.showContours !== false,
@@ -14235,6 +14370,8 @@ function stage7CaptureBishopWorkspaceView(workspace){
             showFlowVectors:!!bishop.seepage?.display?.showFlowVectors,
             showExitGradient:!!bishop.seepage?.display?.showExitGradient
           }
+        : targetWorkspace === 'deformation'
+        ? safeClone(bishop.deformation?.display || null)
         : {
             selectedResult:Math.min(Math.max(bishop.selectedResult || 0, 0), Math.max((bishop.results?.allResults?.length || 1) - 1, 0)),
             methodMode:bishop.methodMode || 'bishop_spencer'
@@ -14281,17 +14418,50 @@ function stage7Stage6Payload(workingLayers){
       analysis:safeClone(S.stage6Cache.beam)
     };
   }
+  // Pile capacity — added once the pile estimator was built (the cache is
+  // populated by analyzePile in renderStage6() when app === 'pile').
+  if(S.stage6Cache?.pile?.capacity){
+    annexes.pile={
+      config:safeClone(S.stage6.pile),
+      analysis:safeClone(S.stage6Cache.pile)
+    };
+  }
+  // Bishop / seepage / deformation each get a workspace screenshot. The user
+  // can press the "Capture for report" button in the workspace toolbar at any
+  // time to freeze a specific view (selected result, contour mode, viewport)
+  // for the report. We prefer that manual capture; if the user never pressed
+  // it, fall back to the automatic capture done here at report-build time.
   const bishop=stage7BishopPayload();
   if(bishop){
-    const bishopView=stage7CaptureBishopWorkspaceView('stability');
-    if(bishopView) bishop.view=bishopView;
+    const manualBishopView = S.stage6.bishop?.capturedView?.stability || null;
+    const bishopView = manualBishopView
+      ? safeClone(manualBishopView)
+      : stage7CaptureBishopWorkspaceView('stability');
+    if(bishopView){
+      bishopView.source = manualBishopView ? 'manual' : 'auto';
+      bishop.view = bishopView;
+    }
     annexes.bishop=bishop;
   }
   const seepage=stage7SeepagePayload();
   if(seepage){
-    const seepageView=stage7CaptureBishopWorkspaceView('seepage');
-    if(seepageView) seepage.view=seepageView;
+    const manualSeepageView = S.stage6.bishop?.capturedView?.seepage || null;
+    const seepageView = manualSeepageView
+      ? safeClone(manualSeepageView)
+      : stage7CaptureBishopWorkspaceView('seepage');
+    if(seepageView){
+      seepageView.source = manualSeepageView ? 'manual' : 'auto';
+      seepage.view = seepageView;
+    }
     annexes.seepage=seepage;
+  }
+  // Deformation annex — was previously absent. Only included when a result
+  // is solved AND the user has captured a view (the captured view IS the
+  // deformation reporting; without a screenshot we have nothing meaningful
+  // to show in the printed report at present).
+  const deformation = stage7DeformationPayload();
+  if(deformation){
+    annexes.deformation = deformation;
   }
   const available=Object.keys(annexes);
   if(!available.length) return null;
@@ -14578,6 +14748,8 @@ const legacyApi={
   stage6BishopStopSearch,
   stage6BishopSelectResult,
   fitStage6BishopViewport,
+  stage7CaptureWorkspaceView,
+  stage7ClearWorkspaceCapture,
   layerAtDepth,
   stage6ShapeFactors,
   bearingAtDepth,

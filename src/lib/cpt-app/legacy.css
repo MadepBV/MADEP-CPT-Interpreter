@@ -1156,6 +1156,10 @@ input[type=range]{accent-color:var(--ac)}
 .st6-bishop-controls{padding:0.8rem;display:grid;grid-template-columns:1fr;gap:0.65rem}
 .st6-bishop-workspace-switch,.st6-bishop-tools,.st6-bishop-mini-actions,.st6-bishop-toolbar-main,.st6-bishop-toolbar-secondary{gap:0.5rem}
 .st6-bishop-workspace-note{margin:0.3rem 0 0.8rem;font-size:0.72rem;color:var(--tx2)}
+.st6-capture-btn{transition:background 0.18s ease,color 0.18s ease,border-color 0.18s ease}
+.st6-capture-btn.has-capture{color:#1d6f3a;border-color:rgba(29,111,58,0.45);background:rgba(29,111,58,0.08)}
+.st6-capture-btn.has-capture:hover{background:rgba(29,111,58,0.16)}
+.st6-capture-btn.has-capture:disabled{opacity:0.6}
 .st6-bishop-visuals,
 .st6-bishop-tool-group,
 .st6-bishop-status-card,
