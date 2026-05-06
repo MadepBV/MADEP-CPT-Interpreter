@@ -1522,16 +1522,37 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>10.7 GPU pipeline (linear-elastic)</h3>
+					<h3>10.7 GPU pipelines</h3>
 					<p>
-						A WebGPU pipeline is shipped for the linear-elastic route. It mirrors the relevant
-						subset of the CPU analyzer's contract: K<sub>0</sub>-controlled initial stress
-						recovery, surface load, and gravity, all assembled and solved on the GPU. The
-						caller probes WebGPU availability through <code>probeGpuPipeline</code> and routes
-						to <code>runDeformationOnGpu</code> when the device is present and the analysis is
-						in scope; fallback to the CPU path is automatic on probe failure or unsupported
-						scope. The Stage 1 and Stage 2 plastic routes remain CPU-resident in the present
-						release.
+						Two WebGPU pipelines are shipped alongside the CPU solver, both opt-in and selected
+						through the analysis options.
+					</p>
+					<ul class="notes">
+						<li><strong>v1</strong> (<code>runDeformationOnGpu</code>) — linear-elastic only. Mirrors
+							the relevant subset of the CPU analyzer's contract: K<sub>0</sub>-controlled
+							initial stress recovery, gravity, and surface load. Assembles a CSR-form K on
+							device and runs CG with a 2×2 nodal block-Jacobi preconditioner. Bandwidth-
+							bound at scale; remains the simpler audit path.</li>
+						<li><strong>v2</strong> (<code>runFullDeformationAnalysisOnGpuV2</code>) — full
+							elastoplastic resident pipeline. Single static-data handoff into device memory,
+							then a resident Newton outer loop performs all three staged phases on device:
+							<strong>geostatic predictor</strong>, <strong>service-load increment</strong>,
+							and the optional <strong>c-phi safety reduction</strong>. The matrix-free K·x
+							kernel recomputes element-wise <em>B<sup>T</sup>DB·u<sub>e</sub></em> on every
+							iteration through a precomputed incidence list, eliminating the global K
+							assembly. Per-GP exact Mohr-Coulomb return mapping (face / edge / apex / tension
+							/ mixed branches) runs on device. CG is the primary linear solver; BiCGStab
+							activates when the consistent tangent becomes unsymmetric under non-associated
+							active plasticity, and as fallback. Jacobi or 2×2 block-Jacobi preconditioning
+							per phase. Line-search residual trials happen on device; only one readback at
+							the end.</li>
+					</ul>
+					<p>
+						Probing and fall-back: callers test WebGPU availability through
+						<code>probeGpuPipeline</code> (v1) and the v2 controller's analogous probe; failure
+						or unsupported scope automatically routes to the CPU path. The matrix-free Kx
+						kernels and plastic Newton loop are parity-tested against the v1 and CPU
+						references through <code>scripts/verify_gpu_v2_parity.mjs</code>.
 					</p>
 				</section>
 			</section>
@@ -1718,7 +1739,7 @@
 						<li>Drained effective-stress loading step only; no coupled excess pore-pressure generation.</li>
 						<li>No constitutive softening, fracture energy regularization, or strain localization control.</li>
 						<li>No contact, interface, or structural-element coupling in the deformation solve.</li>
-						<li>GPU pipeline covers the linear-elastic route only; Stage 1 and Stage 2 plastic remain CPU-resident.</li>
+						<li>GPU v1 covers the linear-elastic route. GPU v2 covers the full elastoplastic pipeline including geostatic, service-load and c-phi safety phases with per-GP exact Mohr-Coulomb return mapping.</li>
 					</ul>
 				</section>
 
@@ -1726,9 +1747,9 @@
 					<h3>14.2 Natural next steps</h3>
 					<ul class="notes">
 						<li>Alternative constitutive families, in particular Hardening Soil class formulations for serviceability realism.</li>
-						<li>Unsymmetric global Newton (GMRES) as the default path once benchmarked further on the present exact tangent set; the path is already used inside the solver when active non-associated plasticity is detected.</li>
+						<li>Unsymmetric global Newton (GMRES / BiCGStab) as the default path once benchmarked further on the present exact tangent set; the path is already used inside the CPU and GPU v2 solvers when active non-associated plasticity is detected.</li>
 						<li>Hydro-mechanical and consolidation extensions beyond the present drained load-step assumption.</li>
-						<li>GPU coverage of the Stage 1 and Stage 2 plastic constitutive routes.</li>
+						<li>T6 element coverage in the GPU v2 pipeline (currently T3-resident for the matrix-free Kx kernel).</li>
 					</ul>
 				</section>
 			</section>
