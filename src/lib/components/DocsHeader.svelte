@@ -216,22 +216,42 @@
 	}
 
 	/* ─── backdrop (only visible when menu is open) ───────────────────── */
+	/*
+	 * iOS Safari leaves a rasterized "ghost band" at the top of a
+	 * position:fixed element with backdrop-filter when its opacity
+	 * transitions to 0 — the filter pass keeps drawing a faint blur strip
+	 * even at opacity 0. Two-pronged fix:
+	 *   1. Apply backdrop-filter ONLY in the .visible state, so the closed
+	 *      element has no filter pass to leak.
+	 *   2. Toggle visibility (transitioned with the same timing as opacity)
+	 *      so the closed element is fully removed from compositing.
+	 */
 	.dh__backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(18, 20, 22, 0.36);
-		-webkit-backdrop-filter: blur(4px);
-		backdrop-filter: blur(4px);
+		background: rgba(18, 20, 22, 0);
 		z-index: 998;
 		opacity: 0;
+		visibility: hidden;
 		pointer-events: none;
-		transition: opacity 0.25s ease-in-out;
+		transition:
+			opacity 0.25s ease-in-out,
+			background 0.25s ease-in-out,
+			visibility 0s linear 0.25s;
 		cursor: pointer;
 	}
 
 	.dh__backdrop.visible {
 		opacity: 1;
+		visibility: visible;
 		pointer-events: auto;
+		background: rgba(18, 20, 22, 0.36);
+		-webkit-backdrop-filter: blur(4px);
+		backdrop-filter: blur(4px);
+		transition:
+			opacity 0.25s ease-in-out,
+			background 0.25s ease-in-out,
+			visibility 0s linear 0s;
 	}
 
 	/* ─── responsive: collapse to hamburger panel ─────────────────────── */
@@ -249,6 +269,12 @@
 			display: flex;
 		}
 
+		/*
+		 * iOS Safari leaves a backdrop-filter ghost band when the panel
+		 * fades from opacity 1 → 0 while still position:absolute. Same
+		 * pattern as the backdrop above: filter + visibility flip on the
+		 * .open state only.
+		 */
 		.dh__nav {
 			position: absolute;
 			top: calc(100% + 0.6rem);
@@ -259,24 +285,40 @@
 			padding: 1.1rem;
 			margin-left: 0;
 			border-radius: 6px;
-			background: rgba(17, 17, 16, 0.97);
-			border: 1px solid rgba(237, 233, 225, 0.1);
-			box-shadow: 0 16px 40px rgba(17, 17, 16, 0.22);
-			-webkit-backdrop-filter: blur(16px);
-			backdrop-filter: blur(16px);
+			background: rgba(17, 17, 16, 0);
+			border: 1px solid rgba(237, 233, 225, 0);
+			box-shadow: 0 16px 40px rgba(17, 17, 16, 0);
 			opacity: 0;
+			visibility: hidden;
 			transform: translateY(-8px);
 			pointer-events: none;
 			z-index: 999;
 			transition:
 				opacity 0.25s ease-in-out,
-				transform 0.25s ease-in-out;
+				transform 0.25s ease-in-out,
+				background 0.25s ease-in-out,
+				border-color 0.25s ease-in-out,
+				box-shadow 0.25s ease-in-out,
+				visibility 0s linear 0.25s;
 		}
 
 		.dh__nav.open {
 			opacity: 1;
+			visibility: visible;
 			transform: translateY(0);
 			pointer-events: auto;
+			background: rgba(17, 17, 16, 0.97);
+			border-color: rgba(237, 233, 225, 0.1);
+			box-shadow: 0 16px 40px rgba(17, 17, 16, 0.22);
+			-webkit-backdrop-filter: blur(16px);
+			backdrop-filter: blur(16px);
+			transition:
+				opacity 0.25s ease-in-out,
+				transform 0.25s ease-in-out,
+				background 0.25s ease-in-out,
+				border-color 0.25s ease-in-out,
+				box-shadow 0.25s ease-in-out,
+				visibility 0s linear 0s;
 		}
 
 		/* staggered entry of nav items, matching madep.be */
