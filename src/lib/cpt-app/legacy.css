@@ -1156,10 +1156,71 @@ input[type=range]{accent-color:var(--ac)}
 .st6-bishop-controls{padding:0.8rem;display:grid;grid-template-columns:1fr;gap:0.65rem}
 .st6-bishop-workspace-switch,.st6-bishop-tools,.st6-bishop-mini-actions,.st6-bishop-toolbar-main,.st6-bishop-toolbar-secondary{gap:0.5rem}
 .st6-bishop-workspace-note{margin:0.3rem 0 0.8rem;font-size:0.72rem;color:var(--tx2)}
-.st6-capture-btn{transition:background 0.18s ease,color 0.18s ease,border-color 0.18s ease}
-.st6-capture-btn.has-capture{color:#1d6f3a;border-color:rgba(29,111,58,0.45);background:rgba(29,111,58,0.08)}
-.st6-capture-btn.has-capture:hover{background:rgba(29,111,58,0.16)}
-.st6-capture-btn.has-capture:disabled{opacity:0.6}
+/* Subtle camera-icon overlay at the bottom-left of the Bishop / Seep / Def
+   canvas. Action: capture the current canvas view for the Stage 7 report.
+   Mirrors the position style of the contour legend (bottom-right) so the two
+   overlays read as a pair without competing visually. */
+.st6-canvas-capture{
+	position:absolute;
+	bottom:12px;
+	left:12px;
+	z-index:2;
+	width:30px;
+	height:30px;
+	display:inline-flex;
+	align-items:center;
+	justify-content:center;
+	padding:0;
+	border:1px solid var(--bd2);
+	border-radius:8px;
+	background:var(--panel-solid);
+	color:var(--tx2);
+	cursor:pointer;
+	box-shadow:var(--sh);
+	backdrop-filter:blur(4px);
+	transition:opacity 0.15s ease,color 0.15s ease,border-color 0.15s ease,transform 0.15s ease,background 0.15s ease;
+	opacity:0.7;
+}
+.st6-canvas-capture:hover,
+.st6-canvas-capture:focus-visible{
+	opacity:1;
+	color:var(--tx);
+	transform:translateY(-1px);
+}
+.st6-canvas-capture:focus-visible{
+	outline:2px solid rgba(40,90,180,0.4);
+	outline-offset:2px;
+}
+.st6-canvas-capture:active{
+	transform:translateY(0);
+}
+.st6-canvas-capture.has-capture{
+	color:#1d6f3a;
+	border-color:rgba(29,111,58,0.55);
+	background:rgba(29,111,58,0.08);
+	opacity:1;
+}
+.st6-canvas-capture.has-capture:hover,
+.st6-canvas-capture.has-capture:focus-visible{
+	background:rgba(29,111,58,0.16);
+}
+.st6-canvas-capture__check{
+	position:absolute;
+	bottom:-3px;
+	right:-3px;
+	width:12px;
+	height:12px;
+	border-radius:999px;
+	background:#1d6f3a;
+	color:#fff;
+	font-size:9px;
+	line-height:12px;
+	text-align:center;
+	font-weight:700;
+	letter-spacing:0;
+	box-shadow:0 1px 3px rgba(0,0,0,0.18);
+	pointer-events:none;
+}
 .st6-bishop-visuals,
 .st6-bishop-tool-group,
 .st6-bishop-status-card,

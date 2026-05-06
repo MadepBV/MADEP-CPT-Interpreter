@@ -13095,14 +13095,6 @@ function renderStage6BishopApp(){
                 </div>
                 <div class="st6-bishop-toolbar-secondary">
                   <button class="btn sm" onclick="fitStage6BishopViewport()">Fit view</button>
-                  <button
-                    class="btn sm st6-capture-btn ${bishop.capturedView?.[workspace] ? 'has-capture' : ''}"
-                    onclick="stage7CaptureWorkspaceView('${workspace}')"
-                    ${toolbarHasResult ? '' : 'disabled'}
-                    title="${bishop.capturedView?.[workspace]
-                      ? 'Captured ' + new Date(bishop.capturedView[workspace].capturedAt).toLocaleTimeString() + '. Click to recapture the current view.'
-                      : 'Capture the current canvas view for the Stage 7 report.'}"
-                  >${bishop.capturedView?.[workspace] ? '✓ Captured' : 'Capture for report'}</button>
                   <button class="btn sm" onclick="${toolbarClearAction}" ${toolbarHasResult ? '' : 'disabled'}>${toolbarClearLabel}</button>
                 </div>
               </div>
@@ -13129,6 +13121,25 @@ function renderStage6BishopApp(){
             <div class="st6-bishop-progress-track"><div id="stage6BishopProgressBar" class="st6-bishop-progress-bar" style="width:${Math.max(0, Math.min(100, toolbarProgressPercent))}%"></div></div>
             <div class="st6-bishop-canvas-stage">
               <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Seep/Slope section and slip circles"></canvas>
+              ${toolbarHasResult ? `
+                <button
+                  type="button"
+                  class="st6-canvas-capture${bishop.capturedView?.[workspace] ? ' has-capture' : ''}"
+                  onclick="stage7CaptureWorkspaceView('${workspace}')"
+                  aria-label="${bishop.capturedView?.[workspace]
+                    ? 'Recapture the current canvas view for the Stage 7 report. Last captured at ' + new Date(bishop.capturedView[workspace].capturedAt).toLocaleTimeString() + '.'
+                    : 'Capture the current canvas view for the Stage 7 report.'}"
+                  title="${bishop.capturedView?.[workspace]
+                    ? 'Captured ' + new Date(bishop.capturedView[workspace].capturedAt).toLocaleTimeString() + ' · click to recapture'
+                    : 'Capture for Stage 7 report'}"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                    <path d="M4 7h3.2l1.6-2h6.4l1.6 2H20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                    <circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  </svg>
+                  ${bishop.capturedView?.[workspace] ? '<span class="st6-canvas-capture__check" aria-hidden="true">✓</span>' : ''}
+                </button>
+              ` : ''}
               ${bishop.display?.showRegionLegend !== false && regionLegendItems.length ? `
                 <details class="st6-bishop-region-legend" data-st6details="bishop-region-legend"${stage6DetailsOpen('bishop-region-legend')}>
                   <summary>
