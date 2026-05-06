@@ -8711,9 +8711,12 @@ function stage6BishopDrawCanvas(){
   const width = rect.width;
   const height = rect.height;
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#fff';
+  const rootStyle = getComputedStyle(document.documentElement);
+  ctx.fillStyle = rootStyle.getPropertyValue('--bg').trim() || '#fff';
   ctx.fillRect(0, 0, width, height);
   stage6BishopDrawGrid(ctx, width, height);
+  const canvasTextColor = rootStyle.getPropertyValue('--canvas-text').trim() || '#213142';
+  const canvasHaloColor = rootStyle.getPropertyValue('--canvas-text-halo').trim() || 'rgba(255,255,255,0.92)';
 
   const bishop = S.stage6.bishop;
   const workspace = bishop.workspace === 'seepage' ? 'seepage' : bishop.workspace === 'deformation' ? 'deformation' : 'stability';
@@ -8771,9 +8774,9 @@ function stage6BishopDrawCanvas(){
             ctx.textBaseline = 'middle';
             ctx.lineWidth = 4;
             ctx.lineJoin = 'round';
-            ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+            ctx.strokeStyle = canvasHaloColor;
             ctx.strokeText(label, labelPos.x, labelPos.y);
-            ctx.fillStyle = '#213142';
+            ctx.fillStyle = canvasTextColor;
             ctx.fillText(label, labelPos.x, labelPos.y);
             ctx.restore();
           }
@@ -9498,7 +9501,7 @@ function stage6BishopDrawCanvas(){
           ctx.textAlign = 'center';
           ctx.textBaseline = 'bottom';
           ctx.lineWidth = 4;
-          ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+          ctx.strokeStyle = canvasHaloColor;
           ctx.strokeText(label, mid.x, mid.y - 6);
           ctx.fillStyle = stroke;
           ctx.fillText(label, mid.x, mid.y - 6);

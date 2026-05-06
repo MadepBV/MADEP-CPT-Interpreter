@@ -227,6 +227,15 @@ function defs(zMax) {
         stroke-linejoin: round;
         stroke-linecap: round;
       }
+      @media (prefers-color-scheme: dark) {
+        .pile-text-haloed {
+          stroke: rgba(17, 17, 16, 0.92);
+          fill: #EDE9E1 !important;
+        }
+        .pile-label-water { fill: #6FB0E0 !important; }
+        .pile-label-neutral { fill: #E0A571 !important; }
+        .pile-grid-line { stroke: rgba(237, 233, 225, 0.18) !important; }
+      }
     </style>
   </defs>`;
 }
@@ -296,7 +305,7 @@ function drawWaterTable(wt, viewport, W) {
   // technical signal, not as a competing accent.
   return `<line x1="0" y1="${y.toFixed(1)}" x2="${W - PADDING_X}" y2="${y.toFixed(1)}"
     stroke="rgba(38, 90, 150, 0.78)" stroke-width="1.2" stroke-dasharray="6 3"/>
-    <text class="pile-text-haloed" x="2" y="${(y - 3).toFixed(1)}" font-size="9" font-weight="600" fill="rgba(38, 90, 150, 0.95)">WT ${(+wt).toFixed(2)} m</text>`;
+    <text class="pile-text-haloed pile-label-water" x="2" y="${(y - 3).toFixed(1)}" font-size="9" font-weight="600" fill="rgba(38, 90, 150, 0.95)">WT ${(+wt).toFixed(2)} m</text>`;
 }
 
 function drawActiveShaftBand(analysis, viewport, cfg, displayWidth) {
@@ -347,7 +356,7 @@ function drawNeutralPlane(analysis, viewport, W, hover, cfg) {
   const stroke = `rgba(180, 90, 30, ${isHover ? 1.0 : 0.88})`;
   return `<line x1="0" y1="${y.toFixed(1)}" x2="${W - PADDING_X}" y2="${y.toFixed(1)}"
     stroke="${stroke}" stroke-width="${isHover ? 2 : 1.3}" stroke-dasharray="4 3"/>
-    <text class="pile-text-haloed" x="${W - PADDING_X - 4}" y="${(y - 3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="600" fill="rgba(180, 90, 30, 0.96)">Neutral plane ${np.toFixed(2)} m</text>`;
+    <text class="pile-text-haloed pile-label-neutral" x="${W - PADDING_X - 4}" y="${(y - 3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="600" fill="rgba(180, 90, 30, 0.96)">Neutral plane ${np.toFixed(2)} m</text>`;
 }
 
 function drawPile(cfg, viewport, displayWidth) {
