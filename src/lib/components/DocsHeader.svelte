@@ -1,8 +1,10 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
-	// Shared documentation site header. Structural pattern adopted from
-	// docs/style.md (4 px radius, 0.2 s ease-in-out transitions, 700-weight
-	// labels, 3 px hamburger bars morphing to X), brand colours from MADEP.
+	// Shared documentation site header. Visual identity matches madep.be:
+	// a dark, glass-blur floating bar on the cream page, cream nav links
+	// with an animated underline, a subtle outlined CTA, and a hamburger
+	// that morphs to an X. Hamburger / mobile-panel pattern follows
+	// docs/style.md.
 	let menuOpen = $state(false);
 	const close = () => { menuOpen = false; };
 </script>
@@ -38,166 +40,209 @@
 	</div>
 </header>
 
-{#if menuOpen}
-	<div
-		class="dh__backdrop"
-		role="button"
-		tabindex="-1"
-		aria-label="Close menu"
-		onclick={close}
-		onkeydown={(e) => { if (e.key === 'Escape') close(); }}
-	></div>
-{/if}
+<div
+	class="dh__backdrop"
+	class:visible={menuOpen}
+	role="button"
+	tabindex="-1"
+	aria-label="Close menu"
+	aria-hidden={!menuOpen}
+	onclick={close}
+	onkeydown={(e) => { if (e.key === 'Escape') close(); }}
+></div>
 
 <style>
-	/* ─── header bar ───────────────────────────────────────────── */
+	/* ─── outer fixed shell ───────────────────────────────────────────── */
 	.dh {
-		position: sticky;
+		position: fixed;
 		top: 0;
-		z-index: 30;
-		padding: 10px 16px 0;
-		background: linear-gradient(180deg, rgba(247, 244, 239, 0.92), rgba(247, 244, 239, 0));
+		left: 0;
+		right: 0;
+		z-index: 1000;
+		padding:
+			calc(env(safe-area-inset-top, 0px) + 0.65rem)
+			clamp(0.75rem, 2vw, 1.25rem)
+			0;
+		pointer-events: none; /* outer padding is click-through */
+		transition: padding-top 0.25s ease-in-out;
 	}
 
+	/* ─── inner glass bar (dark, blur, floating on cream page) ────────── */
 	.dh__inner {
-		max-width: 1300px;
-		margin: 0 auto;
-		padding: 0.7rem 1.25rem;
+		pointer-events: auto;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 1.25rem;
-		border: 1px solid rgba(24, 24, 26, 0.1);
-		border-radius: 0.25rem;            /* 4 px per style guide */
-		background: rgba(247, 244, 239, 0.94);
+		gap: 1.5rem;
+		max-width: 1300px;
+		margin: 0 auto;
+		padding: 0.85rem 1.5rem;
+		border: 1px solid rgba(237, 233, 225, 0.1);
+		border-radius: 6px;
+		background: rgba(17, 17, 16, 0.62);
 		backdrop-filter: blur(16px);
-		box-shadow: 0 8px 24px rgba(17, 17, 16, 0.08);
+		-webkit-backdrop-filter: blur(16px);
+		box-shadow: 0 8px 24px rgba(17, 17, 16, 0.1);
+		transition:
+			background 0.25s ease-in-out,
+			border-color 0.25s ease-in-out,
+			box-shadow 0.25s ease-in-out;
 	}
 
+	/* ─── logo (cream wordmark on dark) ───────────────────────────────── */
 	.dh__logo {
+		flex-shrink: 0;
 		font-family: 'DM Sans', system-ui, sans-serif;
 		font-size: 0.94rem;
-		font-weight: 700;
+		font-weight: 600;
 		letter-spacing: -0.02em;
-		color: #18181a;
+		color: #ede9e1;
 		text-decoration: none;
 		white-space: nowrap;
+		opacity: 0.94;
+		transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
 	}
 
+	.dh__logo:hover {
+		opacity: 1;
+		transform: translate3d(0, -1px, 0);
+	}
+
+	/* ─── nav (desktop layout) ────────────────────────────────────────── */
 	.dh__nav {
 		display: flex;
 		align-items: center;
-		gap: 1.25rem;
-		flex: 1;
-		justify-content: flex-end;
+		gap: 1.6rem;
+		margin-left: auto;
 	}
 
 	.dh__link {
-		font-size: 0.78rem;
-		font-weight: 700;
-		letter-spacing: 0.1em;
+		position: relative;
+		font-size: 0.76rem;
+		font-weight: 400;
+		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: #18181a;
+		color: rgba(237, 233, 225, 0.78);
 		text-decoration: none;
 		transition: color 0.2s ease-in-out;
 	}
 
-	.dh__link:hover,
-	.dh__link:focus-visible {
-		color: #3d6b6a;                    /* MADEP accent */
+	/* animated underline indicator (matches madep.be) */
+	.dh__link::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: -0.45rem;
+		height: 1px;
+		background: currentColor;
+		opacity: 0;
+		transform: scaleX(0.45);
+		transform-origin: left;
+		transition:
+			opacity 0.25s ease-in-out,
+			transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
+	.dh__link:hover {
+		color: rgba(237, 233, 225, 0.96);
+	}
+
+	.dh__link:hover::after,
+	.dh__link:focus-visible::after {
+		opacity: 0.72;
+		transform: scaleX(1);
+	}
+
+	/* ─── CTA (subtle outlined, matches madep.be "Contacteer ons") ─────── */
 	.dh__cta {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3rem;
-		padding: 0.55rem 1rem;
-		font-size: 0.78rem;
-		font-weight: 700;
-		letter-spacing: 0.08em;
+		font-size: 0.72rem;
+		font-weight: 600;
+		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: #f7f4ef;
-		background: #18181a;
-		border: 2px solid #18181a;         /* 2 px button border per style guide */
-		border-radius: 0.25rem;
+		color: #ede9e1;
+		background-color: rgba(237, 233, 225, 0.08);
+		padding: 0.65rem 1.1rem;
+		border: 1px solid rgba(237, 233, 225, 0.16);
+		border-radius: 3px;
 		text-decoration: none;
-		transition: all 0.2s ease-in-out;
+		transition:
+			background-color 0.25s ease-in-out,
+			border-color 0.25s ease-in-out,
+			transform 0.2s ease-in-out;
 	}
 
 	.dh__cta:hover,
 	.dh__cta:focus-visible {
-		background: #f7f4ef;
-		color: #18181a;                    /* invert on hover per style guide */
+		background-color: rgba(237, 233, 225, 0.14);
+		border-color: rgba(237, 233, 225, 0.28);
+		transform: translate3d(0, -1px, 0);
 	}
 
-	/* ─── hamburger (mobile only) ──────────────────────────────── */
+	/* ─── hamburger (cream bars on dark; 22×2 px, matches madep.be) ────── */
 	.dh__hamburger {
 		display: none;
 		flex-direction: column;
 		gap: 5px;
-		width: 40px;
-		height: 40px;
-		padding: 8px 9px;
+		padding: 4px;
 		background: transparent;
 		border: 0;
-		border-radius: 0.25rem;
 		cursor: pointer;
+		z-index: 1001;
 		align-items: center;
 		justify-content: center;
-		transition: background 0.2s ease-in-out;
-	}
-
-	.dh__hamburger:hover,
-	.dh__hamburger:focus-visible {
-		background: rgba(24, 24, 26, 0.06);
 	}
 
 	.dh__hamburger span {
 		display: block;
 		width: 22px;
-		height: 3px;                       /* 3 px per style guide */
-		background: #18181a;
-		border-radius: 1.5px;
+		height: 2px;
+		background-color: #ede9e1;
 		transform-origin: center;
 		transition:
+			opacity 0.25s ease-in-out,
 			transform 0.25s ease-in-out,
-			opacity 0.15s ease-in-out;
+			background-color 0.25s ease-in-out;
 	}
 
 	.dh__hamburger.open span:nth-child(1) {
-		transform: translateY(8px) rotate(45deg);
+		transform: translateY(7px) rotate(45deg);
 	}
 	.dh__hamburger.open span:nth-child(2) {
 		opacity: 0;
-		transform: scaleX(0.6);
 	}
 	.dh__hamburger.open span:nth-child(3) {
-		transform: translateY(-8px) rotate(-45deg);
+		transform: translateY(-7px) rotate(-45deg);
 	}
 
+	/* ─── backdrop (only visible when menu is open) ───────────────────── */
 	.dh__backdrop {
 		position: fixed;
 		inset: 0;
-		z-index: 25;
-		background: rgba(15, 15, 16, 0.45);
+		background: rgba(18, 20, 22, 0.36);
+		-webkit-backdrop-filter: blur(4px);
+		backdrop-filter: blur(4px);
+		z-index: 998;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.25s ease-in-out;
 		cursor: pointer;
-		animation: dh-fade-in 0.2s ease-in-out;
 	}
 
-	@keyframes dh-fade-in {
-		from { opacity: 0; }
-		to   { opacity: 1; }
+	.dh__backdrop.visible {
+		opacity: 1;
+		pointer-events: auto;
 	}
 
-	/* ─── responsive: collapse to hamburger ────────────────────── */
-	@media (max-width: 760px) {
+	/* ─── responsive: collapse to hamburger panel ─────────────────────── */
+	@media (max-width: 920px) {
 		.dh {
-			padding: 8px 12px 0;
+			padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
 		}
 
 		.dh__inner {
-			padding: 0.6rem 0.85rem;
-			gap: 0.75rem;
+			position: relative;
+			padding: 0.75rem 1.1rem;
 		}
 
 		.dh__hamburger {
@@ -206,63 +251,71 @@
 
 		.dh__nav {
 			position: absolute;
-			top: calc(100% + 6px);
-			left: 12px;
-			right: 12px;
-			flex-direction: column;
-			align-items: stretch;
-			justify-content: flex-start;
-			gap: 0.15rem;
-			padding: 0.85rem 1rem 1.1rem;
-			background: rgba(247, 244, 239, 0.98);
-			border: 1px solid rgba(24, 24, 26, 0.1);
-			border-radius: 0.25rem;
-			box-shadow: 0 12px 32px rgba(17, 17, 16, 0.16);
+			top: calc(100% + 0.6rem);
+			left: 0;
+			right: 0;
+			display: grid;
+			gap: 0.85rem;
+			padding: 1.1rem;
+			margin-left: 0;
+			border-radius: 6px;
+			background: rgba(17, 17, 16, 0.97);
+			border: 1px solid rgba(237, 233, 225, 0.1);
+			box-shadow: 0 16px 40px rgba(17, 17, 16, 0.22);
+			-webkit-backdrop-filter: blur(16px);
 			backdrop-filter: blur(16px);
-			max-height: 0;
-			overflow: hidden;
-			pointer-events: none;
 			opacity: 0;
-			transform: translateY(-4px);
+			transform: translateY(-8px);
+			pointer-events: none;
+			z-index: 999;
 			transition:
-				max-height 0.25s ease-in-out,
-				opacity 0.2s ease-in-out,
-				transform 0.25s ease-in-out,
-				padding 0.25s ease-in-out;
+				opacity 0.25s ease-in-out,
+				transform 0.25s ease-in-out;
 		}
 
 		.dh__nav.open {
-			max-height: 80vh;
 			opacity: 1;
-			pointer-events: auto;
 			transform: translateY(0);
+			pointer-events: auto;
 		}
+
+		/* staggered entry of nav items, matching madep.be */
+		.dh__nav.open .dh__link,
+		.dh__nav.open .dh__cta {
+			animation: dh-nav-item-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+		}
+		.dh__nav.open .dh__link:nth-child(1) { animation-delay: 30ms; }
+		.dh__nav.open .dh__link:nth-child(2) { animation-delay: 60ms; }
+		.dh__nav.open .dh__link:nth-child(3) { animation-delay: 90ms; }
+		.dh__nav.open .dh__link:nth-child(4) { animation-delay: 120ms; }
+		.dh__nav.open .dh__link:nth-child(5) { animation-delay: 150ms; }
+		.dh__nav.open .dh__cta { animation-delay: 180ms; }
 
 		.dh__link {
-			padding: 0.7rem 0.6rem;
-			font-size: 0.86rem;
-			letter-spacing: 0.08em;
-			border-radius: 0.25rem;
-			transition: background 0.2s ease-in-out, color 0.2s ease-in-out;
+			font-size: 0.8rem;
+			padding: 0.1rem 0;
 		}
 
-		.dh__link:hover,
-		.dh__link:focus-visible {
-			background: rgba(24, 24, 26, 0.06);
-			color: #3d6b6a;
+		.dh__link::after {
+			bottom: -0.3rem;
 		}
 
 		.dh__cta {
-			margin-top: 0.4rem;
 			justify-content: center;
-			padding: 0.7rem 1rem;
-			font-size: 0.82rem;
+			padding: 0.8rem 1.1rem;
+			text-align: center;
 		}
 	}
 
-	@media (min-width: 761px) {
-		.dh__backdrop {
-			display: none;
+	@keyframes dh-nav-item-in {
+		from { opacity: 0; transform: translateY(-6px); }
+		to { opacity: 1; transform: translateY(0); }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.dh__nav.open .dh__link,
+		.dh__nav.open .dh__cta {
+			animation: none;
 		}
 	}
 </style>
