@@ -254,11 +254,93 @@
 		{ symbol: 'u_x, u_y', meaning: 'Horizontal and vertical displacement components.', unit: 'mm in plots; m internally', note: 'Public charts use millimetres.' },
 		{ symbol: '|u|', meaning: 'Total displacement magnitude.', unit: 'mm in plots; m internally', note: 'Public charts use millimetres.' },
 		{ symbol: 'epsilon_xx, epsilon_yy, gamma_xy', meaning: 'Strain components.', unit: '% in plots; [-] internally', note: 'Displayed as percentages for readability.' },
-		{ symbol: 'epsilon_p_acc', meaning: 'Accumulated equivalent plastic strain.', unit: '% in plots; [-] internally', note: 'Available only in Stage 2 routes.' },
+		{ symbol: 'epsilon_p_acc', meaning: 'Accumulated equivalent plastic strain.', unit: '% in plots; [-] internally', note: 'Stage 2 elastoplastic route only.' },
 		{ symbol: 'delta sigma_yy', meaning: 'Effective vertical stress increment.', unit: 'kPa', note: 'Incremental stress view.' },
 		{ symbol: 'sigma_yy, sigma_xx families', meaning: 'Initial and final vertical and horizontal effective and total stresses.', unit: 'kPa', note: 'Compression-positive engineering interpretation.' },
 		{ symbol: 'tau_xy', meaning: 'Shear stress.', unit: 'kPa', note: 'Same for total and effective stress under the current pore-pressure interpretation.' },
-		{ symbol: 'eta_MC', meaning: 'Mohr-Coulomb utilization ratio.', unit: '[-]', note: 'Local indicator, not a global factor of safety.' }
+		{ symbol: 'eta_MC', meaning: 'Mohr-Coulomb utilization ratio.', unit: '[-]', note: 'Local indicator, not a global factor of safety. Suppressed in tension-cutoff-active zones.' },
+		{ symbol: 'safetyLoadFactor', meaning: 'C-phi strength-reduction safety factor.', unit: '[-]', note: 'Output of the safety-cphi staging phase; loadFactorMeaning = "safety-strength-reduction".' },
+		{ symbol: 'phaseKind', meaning: 'Solver staging-phase identifier.', unit: 'enum: initial-gravity / service-load / safety-cphi', note: 'Distinguishes the geostatic predictor, service increment, and safety-reduction passes.' },
+		{ symbol: 'elementType', meaning: 'Element family used in the analysis.', unit: 'enum: t3 / t6', note: 'T6 uses 3 Gauss points and the B-bar projection for near-incompressible flow.' },
+		{ symbol: 'activeBranch', meaning: 'Accepted Mohr-Coulomb branch at each Gauss point.', unit: 'enum: face / edge / apex / tension / mixed', note: 'Diagnostic for the exact active-set return mapping in Stage 2.' },
+		{ symbol: 'gpu (v1 / v2)', meaning: 'GPU pipeline path used.', unit: 'pipeline tag', note: 'v1 = linear-elastic; v2 = full elastoplastic resident pipeline including geostatic, service-load, and c-phi safety phases.' }
+	];
+
+	const bearingQuantities = [
+		{ symbol: 'q_ult,d', meaning: 'Ultimate drained bearing resistance.', unit: 'kPa', note: 'Brinch Hansen / EC7 Annex D summed over the c\'·N_c, q\'·N_q, and 0.5·γ\'·B\'·N_γ terms with shape, depth, and inclination factors.' },
+		{ symbol: 'q_ult,u', meaning: 'Ultimate undrained bearing resistance.', unit: 'kPa', note: 'Prandtl 1921 result q_ult = q + (π+2) c_u with shape / depth / inclination factors.' },
+		{ symbol: 'B\', L\'', meaning: 'Effective footing dimensions after eccentricity reduction.', unit: 'm', note: 'B\' = B − 2 e_B, L\' = L − 2 e_L (Meyerhof 1953).' },
+		{ symbol: 'N_c, N_q, N_gamma', meaning: 'Bearing-capacity factors.', unit: '[-]', note: 'EC7 Annex D rough base; N_gamma = 2(N_q − 1) tan φ\'.' },
+		{ symbol: 's_c, s_q, s_gamma, s_cu', meaning: 'Shape factors evaluated on the effective dimensions.', unit: '[-]', note: 'Brinch Hansen, with conservative-mode toggle that fixes them at 1.0.' },
+		{ symbol: 'd_c, d_q, d_gamma, d_cu', meaning: 'Depth factors.', unit: '[-]', note: 'Function of D_f / B\' and the bearing-capacity factors.' },
+		{ symbol: 'i_c, i_q, i_gamma, i_cu', meaning: 'Inclination factors for horizontal load on the base.', unit: '[-]', note: 'Brinch Hansen form with directional exponent m.' },
+		{ symbol: 'gamma\'_B', meaning: 'Effective unit weight in the N_gamma term.', unit: 'kN/m^3', note: 'Three-case water-table averaging across the failure wedge depth.' },
+		{ symbol: 'gamma_Rd', meaning: 'Belgian ANB resistance-side factor.', unit: '[-]', note: '1.40 for drained shallow-foundation bearing; applied to q_ult to obtain q_d.' }
+	];
+
+	const pileQuantities = [
+		{ symbol: 'D_s, D_b', meaning: 'Pile shaft diameter and base diameter.', unit: 'm', note: 'D_b > D_s indicates an enlarged base.' },
+		{ symbol: 'D_b,eq', meaning: 'Equivalent base diameter for non-circular cross-sections.', unit: 'm', note: 'Circular: D_b. Square / rect (b ≤ 1.5 a): √(4 a b / π). Rect (b > 1.5 a): √(6 a^2 / π).' },
+		{ symbol: 'A_b, A_p', meaning: 'Base bearing area and pile axial-stiffness cross-section.', unit: 'm^2', note: 'A_p = A_b for closed concrete piles; differs for open tubes / steel sections.' },
+		{ symbol: 'chi_s', meaning: 'Pile shaft perimeter.', unit: 'm', note: 'π D_s circular, 4 a square, 2 (a + b) rectangular.' },
+		{ symbol: 'z_head, z_toe, L', meaning: 'Pile head depth, toe depth, and length.', unit: 'm', note: 'L = z_toe − z_head. z_head defaults to 0 (ground level) but can be set in an excavation.' },
+		{ symbol: 'q_b', meaning: 'Unit pile-base resistance from De Beer.', unit: 'kPa', note: 'Output of the BGGG four-stage transformation: homogeneous q_h, downward q_d, upward q_u, mixed q_p.' },
+		{ symbol: 'q_h, q_d, q_u, q_p', meaning: 'De Beer transformation chain.', unit: 'MPa internally; kPa for q_b at toe', note: 'Diameter scale-effect smoothing with ratio D_c / D_b,eq, D_c = 0.0357 m.' },
+		{ symbol: 'eta_p* (eta star sub p)', meaning: 'Soil-dependent ratio between cone resistance and unit shaft friction.', unit: '[-]', note: 'Belgian table by soil category and q_c range (clay 1/30, loam 1/60, sandy clay 1/80, sand 1/90, with caps).' },
+		{ symbol: 'q_s', meaning: 'Unit shaft friction in layer i.', unit: 'kPa', note: 'q_s = eta_p* · q_c,m · 1000, with soil-specific upper-bound caps; layers with q_c,m < 1 MPa excluded.' },
+		{ symbol: 'alpha_b, alpha_s', meaning: 'Installation factors for base and shaft.', unit: '[-]', note: 'Pile-type and soil-category dependent. Defaults are screening midpoints; production values come from DM20 / ATG via the override block.' },
+		{ symbol: 'e_b, beta, lambda', meaning: 'Tertiary-clay scale, shape, and relaxing-base factors for R_b.', unit: '[-]', note: 'e_b = 1.0 except tertiary OC clay; β shape for rectangular bases; λ requires user override for relaxing prefab enlarged bases.' },
+		{ symbol: 'R_b, R_s, R_c', meaning: 'Calculated pile base, shaft, and total compression resistance.', unit: 'kN', note: 'R_b = α_b · e_b · β · λ · A_b · q_b. R_s = χ_s · Σ α_s · h · q_s. R_c = R_b + R_s.' },
+		{ symbol: 'gamma_Rd', meaning: 'Pile model factor.', unit: '[-]', note: 'γ_Rd1 (no SLT) / γ_Rd2 (SLT comparable) / γ_Rd3 (SLT on job site) per pile type.' },
+		{ symbol: 'xi_3, xi_4', meaning: 'Correlation factors on the average and minimum calibrated resistances.', unit: '[-]', note: 'Public Belgian table by pile count and CPT density. Single-CPT branch uses max(ξ_3, ξ_4).' },
+		{ symbol: 'gamma_b, gamma_s', meaning: 'Partial resistance factors on base and shaft.', unit: '[-]', note: 'No-QA / QA columns from public Belgian practice tables.' },
+		{ symbol: 'R_c,cal, R_c,k, R_c,d', meaning: 'Calibrated, characteristic, and design pile compression resistance.', unit: 'kN', note: 'R_c,cal = R_c / γ_Rd. R_c,k = R_c,cal / max(ξ_3, ξ_4). R_c,d = R_b,k / γ_b + R_s,k / γ_s.' },
+		{ symbol: 'F_c,d, F_rep', meaning: 'ULS design and SLS representative load on the pile.', unit: 'kN', note: 'Direct entry, with optional Gk / Qk-from-components builder mirroring the settlement and beam apps.' },
+		{ symbol: 'F_nk,slip, F_nk,analogy, F_nk,d', meaning: 'Negative-skin-friction loads.', unit: 'kN', note: 'Slip method (χ_s · Σ h · K_0 · tan(δ) · σ\'_v) and analogy method (χ_s · Σ α_s · h · q_s) above the user-entered neutral plane; the larger drives the design value with γ_F = 1.0.' },
+		{ symbol: 's_head, z_b', meaning: 'Pile-head settlement and pile-base settlement.', unit: 'mm in plots; m internally', note: 'Allani-Huybrechts (2022) load-transfer ODE with bisection on z_b; s_head = z_b + Σ N · Δz / (E_p A_p).' },
+		{ symbol: 't-z, q-z', meaning: 'Hyperbolic shaft and base springs.', unit: 'kPa, kPa', note: 't = w / (1/k_s + w/t_max), q = z_b / (1/k_b + z_b/q_max). t_max = t_10% (1 + 10 M_s); q_max ≈ q_b,10% (1 + 4.55/M_b).' },
+		{ symbol: 'M_s, M_b', meaning: 'Dimensionless shaft and base flexibility / stiffness factors.', unit: '×10^-3 for M_s; [-] for M_b', note: 'Tabulated in [5] by pile type (driven / screw / replacement) and soil group (sand / mixed / clay); midpoints used by default with per-layer override.' },
+		{ symbol: 'E_b, beta_b, k_b', meaning: 'Soil modulus at the base, calibrated coefficient, and base-spring stiffness.', unit: 'kPa, m, kN/m^3', note: 'β_b ≈ 0.455 D_b. E_b defaults to eoedAtStress at z_toe with σ\'_v + 0.5 q_b,10%; CPT-correlation fallback E_b ≈ α_E · q_c,b · 1000 when Stage 4 parameters are absent.' },
+		{ symbol: 'k_s,i', meaning: 'Per-layer shaft-spring stiffness.', unit: 'kN/m^3 (kPa/m)', note: 'k_s,i = t_max,i / (M_s,i · D_s).' },
+		{ symbol: 'omega', meaning: 'Mechanical-cone correction factor.', unit: '[-]', note: '1.30 for M1/M2 in tertiary clay, 1.15 for M4 in tertiary clay, 1.00 elsewhere; CPT-E (electric cone) is the reference.' }
+	];
+
+	const settlementQuantities = [
+		{ symbol: 'q_gross, q_net', meaning: 'Applied SLS pressure and net pressure after subtracting in-situ overburden at D_f.', unit: 'kPa', note: 'q_gross from the selected SLS combination; q_net = q_gross − σ_v(D_f).' },
+		{ symbol: 'sigma_v0, delta sigma_v', meaning: 'Initial vertical effective stress and stress increment from the loaded area.', unit: 'kPa', note: 'Per sublayer, with Boussinesq / Newmark or 2:1 stress spread.' },
+		{ symbol: 'E_oed,i', meaning: 'Constrained modulus at the sublayer mean stress.', unit: 'kPa', note: 'Hardening-Soil stress-dependent law from Stage 4 parameters.' },
+		{ symbol: 'totalSettlementMm', meaning: 'Cumulative one-dimensional settlement at the centreline.', unit: 'mm', note: 'Σ (Δσ_v / E_oed,i) · h_i over the active influence zone with the selected truncation rule.' },
+		{ symbol: 'truncationRule', meaning: 'Influence-zone truncation criterion.', unit: 'enum: 10% sigma_eff / 20% q_net / CPT_bottom', note: 'Determines the active integration depth.' },
+		{ symbol: 'timeCurve', meaning: 'Optional time-dependent consolidation curve.', unit: 'mm vs days', note: 'Per-layer cv from Eoed and kv; Terzaghi 1D consolidation solution per fine-grained sublayer.' }
+	];
+
+	const dewateringQuantities = [
+		{ symbol: 'targetWt, drawdownAtCpt', meaning: 'Target water-table elevation and drawdown at the active CPT.', unit: 'm', note: 'Drawdown = current WT − target WT.' },
+		{ symbol: 'C (Sichardt)', meaning: 'Sichardt-style proportionality constant for the radius-of-influence relation.', unit: '[-]', note: 'R_inf = C · drawdown · √k (typical C ≈ 3000 for sand; user-editable).' },
+		{ symbol: 'R_inf', meaning: 'Estimated radius of influence.', unit: 'm', note: 'Analytical screening; not a coupled-flow result.' },
+		{ symbol: 'newWtAtCpt', meaning: 'Reconstructed water-table elevation at the CPT during dewatering.', unit: 'm', note: 'Interpolated from the analytical drawdown curve.' },
+		{ symbol: 'sigmaVMode', meaning: 'Drawdown-induced effective-stress treatment.', unit: 'enum: conservative / progressive', note: 'Conservative routes the entire drawdown into σ\'_v gain; progressive uses depth-dependent reduction.' },
+		{ symbol: 'totalSettlementMm', meaning: 'Drawdown-induced consolidation settlement.', unit: 'mm', note: 'Σ (Δσ\'_v / E_oed,i) · h_i over the affected depth band.' }
+	];
+
+	const beamQuantities = [
+		{ symbol: 'k_s', meaning: 'Subgrade reaction modulus (Winkler bedding).', unit: 'kN/m^3', note: 'Derived from the CPT stiffness profile (Vesić-style closed form on the averaged Es over the influence depth).' },
+		{ symbol: 'G_p', meaning: 'Pasternak shear-layer parameter.', unit: 'kN/m', note: 'Inferred from the CPT shear-modulus profile and the user-editable η coupling factor; user override accepted.' },
+		{ symbol: 'lambda, beta·L', meaning: 'Characteristic length of the elastic foundation and dimensionless beam length.', unit: 'm, [-]', note: 'Used by the closed-form Winkler / Pasternak strip solution and by the convergence classification.' },
+		{ symbol: 'w(x), w_max', meaning: 'Strip deflection profile and maximum deflection.', unit: 'mm in plots; m internally', note: 'SLS quantity. w_max is compared against L / allowableDeflectionRatio.' },
+		{ symbol: 'M(x), M_Ed', meaning: 'Bending-moment profile and design-moment magnitude.', unit: 'kNm/m', note: 'ULS quantity per metre strip width; drives the EC2 reinforcement step.' },
+		{ symbol: 'loadPattern', meaning: 'Load-application pattern.', unit: 'enum: uniform_full / uniform_patch / point_centre / point_at_x', note: 'Determines the bending-moment distribution.' }
+	];
+
+	const reinforcementQuantities = [
+		{ symbol: 'M_Ed', meaning: 'Design bending moment carried into the reinforcement step.', unit: 'kNm/m', note: 'From the beam ULS analysis (above).' },
+		{ symbol: 'd', meaning: 'Effective depth.', unit: 'mm', note: 'h − c_nom − φ_bar / 2.' },
+		{ symbol: 'f_cd, f_yd', meaning: 'Design concrete and steel strengths.', unit: 'MPa', note: 'f_cd = α_cc f_ck / γ_C, f_yd = f_yk / γ_S, with α_cc and material factors per EC2 / Belgian ANB.' },
+		{ symbol: 'c_nom', meaning: 'Nominal concrete cover.', unit: 'mm', note: 'EC2 Table 4.4N + Δc_dev, with structural-class adjustments and exposure-class drive; user override accepted.' },
+		{ symbol: 'A_s,req', meaning: 'Required steel area per metre strip.', unit: 'mm^2/m', note: 'Computed from M_Ed and the EC2 rectangular concrete stress block.' },
+		{ symbol: 'A_s,min', meaning: 'Minimum steel area per metre strip.', unit: 'mm^2/m', note: 'EC2 §9.2.1.1 minimum reinforcement requirement.' },
+		{ symbol: 'A_s', meaning: 'Governing steel area.', unit: 'mm^2/m', note: 'max(A_s,req, A_s,min).' },
+		{ symbol: 'structuralClass', meaning: 'EC2 structural class S1 to S6.', unit: '[-]', note: 'Function of design working life, exposure class, fck, slab/plate flag, special-QC flag, and casting conditions.' }
 	];
 
 	const bishopQuantities = [
@@ -277,9 +359,10 @@
 
 	const stage7Annexes = [
 		{ annex: 'bearing', status: 'exported', fields: 'Df, B, L, eB, eL, Bprime, Lprime, qdDrained, qdUndrained, layer selection and chart inputs', units: 'm and kPa', note: 'Frozen only when a bearing analysis exists in the Stage 6 cache.' },
+		{ annex: 'pile', status: 'not yet exported as a Stage 7 annex', fields: 'Pile capacity is solved and cached in S.stage6Cache.pile but not currently frozen into the Stage 7 payload. The full set of solved fields is documented in the pile quantity registry below.', units: 'see pile quantity registry', note: 'Display and solver state are present in Stage 6; the Stage 7 freeze is a current reporting boundary.' },
 		{ annex: 'settlement', status: 'exported', fields: 'qGross, qNet, totalSettlementMm, sublayer stress and settlement curves, optional time curve', units: 'kPa, mm, days where applicable', note: 'Frozen only when a settlement analysis exists.' },
 		{ annex: 'dewatering', status: 'exported', fields: 'targetWt, newWtAtCpt, drawdownAtCpt, totalSettlementMm, drawdown and stress curves', units: 'm, mm, kPa, days where applicable', note: 'Frozen only when a dewatering analysis exists.' },
-		{ annex: 'beam', status: 'exported', fields: 'k_s, G_p, deflection, moment, x-samples and chart inputs', units: 'kN/m^3, kN/m, mm or m, kNm/m', note: 'Frozen only when a beam/slab analysis exists.' },
+		{ annex: 'beam', status: 'exported', fields: 'k_s, G_p, deflection, moment, x-samples, EC2 reinforcement (As_req, As_min, c_nom, structural class), and chart inputs', units: 'kN/m^3, kN/m, mm or m, kNm/m, mm^2/m', note: 'Frozen only when a beam/slab analysis exists. The reinforcement output is part of the beam annex; there is no separate reinforcement annex.' },
 		{ annex: 'bishop', status: 'exported', fields: 'selected result, top results, lambda, residuals, wall interaction, timing, and frozen canvas view', units: 'dimensionless, kN/m, m, ms', note: 'Included only when Bishop results exist.' },
 		{ annex: 'seepage', status: 'exported', fields: 'boundary conditions, permeability set, head range, flow rates, gradients, mesh and solver timing, and frozen canvas view', units: 'm, m/s, m^3/s/m, -, ms', note: 'Included only when seepage results exist.' },
 		{ annex: 'deformation', status: 'not yet exported as a Stage 7 annex', fields: 'Display and solver fields exist in Stage 6 but are not currently frozen into the Stage 7 payload', units: 'see deformation quantity registry', note: 'This absence is intentional and should be read as a current reporting boundary.' }
@@ -326,6 +409,7 @@
 			<a href="#registries">Quantity registries</a>
 			<a href="#anchors">Reference map</a>
 		</aside>
+
 
 		<main class="docs-content">
 			<section id="overview" class="doc-card">
@@ -421,9 +505,31 @@
 					<h3>3.3 Stage 6 engineering analyses</h3>
 					<ul class="reference-list">
 						<li><strong>Bishop (1955)</strong> and <strong>Spencer (1967)</strong> — slope-stability foundation methods.</li>
+						<li><strong>Prandtl (1921)</strong>, <strong>Reissner (1924)</strong>, <strong>Brinch Hansen (1970)</strong>, <strong>Meyerhof (1953)</strong>, <strong>Vesić (1973)</strong> — slip-line and shape/depth/inclination-factor basis for the bearing-capacity route.</li>
 						<li><strong>Standard Darcy seepage theory</strong> — basis for the seepage route.</li>
-						<li><strong>Classical small-strain finite-element mechanics</strong> and <strong>Mohr-Coulomb plasticity</strong> — basis for the deformation route.</li>
-						<li><strong>Boussinesq</strong> and related elastic half-space solutions — verification and interpretation context for settlement-type fields.</li>
+						<li><strong>Classical small-strain finite-element mechanics</strong>, <strong>Mohr-Coulomb plasticity</strong>, <strong>Clausen, Damkilde and Andersen (2007)</strong>, <strong>Simo and Taylor (1985)</strong>, <strong>de Souza Neto, Perić and Owen (2008)</strong> — basis for the deformation route's principal-stress active-set return mapping and consistent tangent.</li>
+						<li><strong>Boussinesq</strong> and related elastic half-space solutions — basis for the settlement-route stress integration; oedometric modulus from CPT-derived stiffness.</li>
+						<li><strong>Sichardt-style radius-of-influence relations</strong> — basis for the analytical dewatering screen.</li>
+						<li><strong>Winkler (1867)</strong> and <strong>Pasternak (1954)</strong> — basis for the beam / slab on elastic-foundation strip analysis.</li>
+					</ul>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>3.4 Belgian axial pile design</h3>
+					<ul class="reference-list">
+						<li><strong>BUtgb-UBAtc Informatieblad 2025/3</strong> (versie van 16 september 2025) — current Belgian transition framework for pile and micropile design factor sources.</li>
+						<li><strong>Buildwise Dimensioneringsmethode 20</strong> (DM20, 2020) — geotechnical ULS design of axially loaded piles and micropiles from CPTs; the current Belgian reference method.</li>
+						<li><strong>Huybrechts, De Vos, Bottiau and Maertens — Buildwise / BBRI</strong> (2016), <em>Design of piles — Belgian practice</em> — the public source for the η*<sub>p</sub> table, ξ<sub>3</sub>/ξ<sub>4</sub>, γ<sub>Rd</sub>, γ<sub>b</sub>/γ<sub>s</sub> tables, and the F<sub>nk</sub> slip method.</li>
+						<li><strong>BGGG-GBMS</strong> — <em>Reference document for the application of the De Beer method</em> (the de Beer scale-effect base-resistance procedure) and <strong>De Beer, E.</strong>, <em>Méthodes de déduction de la capacité portante d'un pieu à partir des résultats des essais de pénétration</em>.</li>
+						<li><strong>Allani and Huybrechts</strong> — <em>Pile settlement under vertical static load: SLS design method based on Belgian experience</em>, ICSMGE 2022 — basis for the load-transfer SLS settlement model with hyperbolic t-z and q-z curves linked to the Belgian 10 % D<sub>b</sub> ULS resistance convention.</li>
+						<li><strong>BCCA</strong> — ATG-with-certification framework for foundation piles (publication of 8 May 2023, expanding through CFA and micro-piles in subsequent phases).</li>
+					</ul>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>3.5 Reinforcement design</h3>
+					<ul class="reference-list">
+						<li><strong>EN 1992-1-1</strong> (Eurocode 2) — the source for the strip-based ULS reinforcement screening output (As<sub>req</sub>, As<sub>min</sub>), durability cover (c<sub>nom</sub>) per Table 4.4N, and structural-class adjustment.</li>
 					</ul>
 				</section>
 			</section>
@@ -443,9 +549,14 @@
 							</thead>
 							<tbody>
 								<tr>
-									<td>EN 1997 and national-annex context</td>
-									<td>General geotechnical design context and hydraulic-heave / piping framing.</td>
-									<td>Reference basis for engineering interpretation and some design-oriented routes.</td>
+									<td>NBN EN 1997-1 + Belgian National Annex (2022)</td>
+									<td>Eurocode 7 Part 1 — general geotechnical design rules with the Belgian ANB.</td>
+									<td>Reference basis for the bearing, pile, and Stage 6 design-route factor chains.</td>
+								</tr>
+								<tr>
+									<td>NBN EN 1997-2:2007</td>
+									<td>Eurocode 7 Part 2 — ground investigation and testing; remains the legally applicable Belgian standard during the EN 1997-2:2024 transition (until 30 March 2028).</td>
+									<td>Cited for CPT-test-result interpretation context.</td>
 								</tr>
 								<tr>
 									<td>NEN 6740</td>
@@ -453,9 +564,34 @@
 									<td>Available directly in Stage 2 classification.</td>
 								</tr>
 								<tr>
-									<td>SB260</td>
-									<td>Characteristic parameter and stiffness-family mapping.</td>
-									<td>Used directly in Stage 4 parameter derivation.</td>
+									<td>Standaardbestek 260 (SB260, v3.0, July 2025)</td>
+									<td>Flemish standard specification for civil-structure and hydraulic-engineering execution.</td>
+									<td>Used directly in Stage 4 characteristic parameter derivation; project-specification reference for execution and reporting.</td>
+								</tr>
+								<tr>
+									<td>Buildwise Dimensioneringsmethode 20 (DM20, 2020)</td>
+									<td>Geotechnical ULS design of axially loaded piles and micropiles from CPTs — the current Belgian reference method.</td>
+									<td>Source of the α<sub>b</sub>, α<sub>s</sub>, γ<sub>Rd</sub>, γ<sub>b</sub>, γ<sub>s</sub> factor tables driving the Stage 6 pile-capacity route.</td>
+								</tr>
+								<tr>
+									<td>BUtgb-UBAtc Informatieblad 2025/3</td>
+									<td>Current transition framework for pile-system factor sources (DM20 vs DM19 vs ATG by pile category and date).</td>
+									<td>Reference for the pile-type categorization in the Stage 6 pile-capacity route.</td>
+								</tr>
+								<tr>
+									<td>BCCA ATG-with-certification (May 2023 onward)</td>
+									<td>Belgian Approval and Certification framework that links favourable design factors to verified quality systems and instrumented load tests.</td>
+									<td>Activated through the ATG override block on the pile-capacity panel.</td>
+								</tr>
+								<tr>
+									<td>BGGG-GBMS De Beer reference</td>
+									<td>Algorithmic specification of the De Beer scale-effect transformation from CPT q<sub>c</sub> to pile-base unit resistance q<sub>b</sub>.</td>
+									<td>Implemented in the Stage 6 pile-capacity route (see /docs/engineering/pile §3.3).</td>
+								</tr>
+								<tr>
+									<td>EN 1992-1-1 (Eurocode 2)</td>
+									<td>Concrete structural design rules.</td>
+									<td>Basis of the Stage 6 strip-based ULS reinforcement screening (As<sub>req</sub>, As<sub>min</sub>, c<sub>nom</sub>, structural-class output).</td>
 								</tr>
 								<tr>
 									<td>PLAXIS manuals</td>
@@ -839,6 +975,174 @@
 								</thead>
 								<tbody>
 									{#each bishopQuantities as row}
+										<tr>
+											<td>{row.symbol}</td>
+											<td>{row.meaning}</td>
+											<td>{row.unit}</td>
+											<td>{row.note}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>8.4 Bearing-capacity quantity registry</h3>
+					<div class="doc-table-wrap">
+						<div class="doc-table-scroll">
+							<table class="doc-table">
+								<thead>
+									<tr>
+										<th>Symbol</th>
+										<th>Meaning</th>
+										<th>Public unit</th>
+										<th>Technical note</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each bearingQuantities as row}
+										<tr>
+											<td>{row.symbol}</td>
+											<td>{row.meaning}</td>
+											<td>{row.unit}</td>
+											<td>{row.note}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>8.5 Pile-capacity quantity registry</h3>
+					<div class="doc-table-wrap">
+						<div class="doc-table-scroll">
+							<table class="doc-table">
+								<thead>
+									<tr>
+										<th>Symbol</th>
+										<th>Meaning</th>
+										<th>Public unit</th>
+										<th>Technical note</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each pileQuantities as row}
+										<tr>
+											<td>{row.symbol}</td>
+											<td>{row.meaning}</td>
+											<td>{row.unit}</td>
+											<td>{row.note}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>8.6 Settlement quantity registry</h3>
+					<div class="doc-table-wrap">
+						<div class="doc-table-scroll">
+							<table class="doc-table">
+								<thead>
+									<tr>
+										<th>Symbol</th>
+										<th>Meaning</th>
+										<th>Public unit</th>
+										<th>Technical note</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each settlementQuantities as row}
+										<tr>
+											<td>{row.symbol}</td>
+											<td>{row.meaning}</td>
+											<td>{row.unit}</td>
+											<td>{row.note}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>8.7 Dewatering quantity registry</h3>
+					<div class="doc-table-wrap">
+						<div class="doc-table-scroll">
+							<table class="doc-table">
+								<thead>
+									<tr>
+										<th>Symbol</th>
+										<th>Meaning</th>
+										<th>Public unit</th>
+										<th>Technical note</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each dewateringQuantities as row}
+										<tr>
+											<td>{row.symbol}</td>
+											<td>{row.meaning}</td>
+											<td>{row.unit}</td>
+											<td>{row.note}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>8.8 Beam / slab on elastic foundation quantity registry</h3>
+					<div class="doc-table-wrap">
+						<div class="doc-table-scroll">
+							<table class="doc-table">
+								<thead>
+									<tr>
+										<th>Symbol</th>
+										<th>Meaning</th>
+										<th>Public unit</th>
+										<th>Technical note</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each beamQuantities as row}
+										<tr>
+											<td>{row.symbol}</td>
+											<td>{row.meaning}</td>
+											<td>{row.unit}</td>
+											<td>{row.note}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>8.9 EC2 reinforcement-output quantity registry</h3>
+					<div class="doc-table-wrap">
+						<div class="doc-table-scroll">
+							<table class="doc-table">
+								<thead>
+									<tr>
+										<th>Symbol</th>
+										<th>Meaning</th>
+										<th>Public unit</th>
+										<th>Technical note</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each reinforcementQuantities as row}
 										<tr>
 											<td>{row.symbol}</td>
 											<td>{row.meaning}</td>
