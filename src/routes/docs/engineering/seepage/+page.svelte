@@ -587,7 +587,7 @@
 				</ul>
 				<p class="refs-inline">
 					For the exhaustive derivation, pseudocode, and implementation-specific notes, continue
-					to the <a href="/docs/full#seepage-stage6">full seepage reference section</a>.
+					to the <a href="/docs/full">full seepage reference section</a>.
 				</p>
 			</section>
 		</main>

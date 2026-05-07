@@ -377,7 +377,7 @@
 					<li>Ground slope, base tilt, dynamic or seismic inclination, uplift, and sliding are not in the current route.</li>
 					<li>Piled or combined-pile-raft foundations are outside the shallow-foundation screen.</li>
 					<li>For two-layer soils where a stiff stratum is within 2B of the footing base, the slip-line solution can over-estimate capacity; the app flags the configuration for the engineer to reconsider.</li>
-					<li>The deeper audit trail remains in <a href="/docs/full#bearing">the full technical specification</a>.</li>
+					<li>The deeper audit trail remains in <a href="/docs/full">the full technical specification</a>.</li>
 				</ul>
 			</section>
 

@@ -595,7 +595,7 @@
 					<li>Shear, punching, torsion, fatigue, and anchorage checks are outside this route.</li>
 					<li>Compression reinforcement is not sized; the app warns once μ exceeds about 0.295 rather than auto-sizing A′<sub>s</sub>.</li>
 					<li>The current public route assumes a rectangular strip section only. Flanged T-sections, ribbed slabs, and orthotropic plate reinforcement are outside this screen.</li>
-					<li>The underlying specification anchor is <a href="/docs/full#reinforcement">the full technical specification</a>.</li>
+					<li>The underlying specification anchor is <a href="/docs/full">the full technical specification</a>.</li>
 				</ul>
 			</section>
 

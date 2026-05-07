@@ -321,7 +321,7 @@
 					<li>Creep (secondary compression) is not integrated; the result is the primary-consolidation estimate.</li>
 					<li>Soft clay at high stress level sits outside the Janbu-style constitutive form; the app warns when the mean stress exceeds a configurable limit relative to the yield stress.</li>
 					<li>Time-rate output is a 1D comparison; true 3D consolidation with radial drainage requires a dedicated transient model.</li>
-					<li>The deeper audit trail remains in <a href="/docs/full#settlement">the full technical specification</a>.</li>
+					<li>The deeper audit trail remains in <a href="/docs/full">the full technical specification</a>.</li>
 				</ul>
 			</section>
 

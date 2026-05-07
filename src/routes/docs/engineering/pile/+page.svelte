@@ -530,8 +530,6 @@
 						DM20 / ATG values via the override block.</li>
 					<li>De Beer Stage 1 is implemented as identity; the diameter scale-effect is captured
 						entirely through the Stages 2 / 3 gradient limits.</li>
-					<li>The deeper audit trail remains in <a href="/docs/full#pile">the full technical
-						specification</a>.</li>
 				</ul>
 			</section>
 

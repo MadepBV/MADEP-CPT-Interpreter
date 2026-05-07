@@ -356,7 +356,7 @@
 					<li>Radial symmetry breaks down near streams, sheet piles, and other hydraulic boundaries. The trench image limit helps but does not reproduce partial boundary conditions.</li>
 					<li>Partial-penetration effects (well screen shorter than saturated thickness) are not modelled; the app assumes full penetration.</li>
 					<li>Unsaturated-zone transient effects in the capillary fringe are not captured.</li>
-					<li>The deeper audit trail remains in <a href="/docs/full#dewatering">the full technical specification</a>.</li>
+					<li>The deeper audit trail remains in <a href="/docs/full">the full technical specification</a>.</li>
 				</ul>
 			</section>
 

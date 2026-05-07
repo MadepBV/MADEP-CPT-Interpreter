@@ -1767,11 +1767,11 @@
 					<li><strong>Potts, D. M., and Zdravković, L.</strong> <em>Finite Element Analysis in Geotechnical Engineering: Theory</em>. Thomas Telford, 1999. Geotechnical interpretation reference for nonlinear soil analysis.</li>
 					<li><strong>Itasca Consulting Group.</strong> <em>FLAC3D Theory and Background: Mohr-Coulomb Model</em>. Reference source for principal-stress formulation, non-associated flow, and tension cut-off semantics.</li>
 					<li><strong>PLAXIS.</strong> <em>PLAXIS 2D Material Models Manual</em>, 2025.1. Reference source for staged deformation interpretation and drained small-strain Mohr-Coulomb benchmarking practice.</li>
-					<li><strong>Internal implementation notes.</strong> The app-specific theory basis is consolidated in the MADEP deformation notes <em>MC_pl</em>, <em>stage 2.2-f_MC_pl</em>, <em>stage 2.3-f_MC_pl</em>, and <em>stage 2.4-f_MC_pl</em>, with the website specification anchor at <a href="/docs/full#deformation-stage6">/docs/full#deformation-stage6</a>.</li>
+					<li><strong>Internal implementation notes.</strong> The app-specific theory basis is consolidated in the MADEP deformation notes <em>MC_pl</em>, <em>stage 2.2-f_MC_pl</em>, <em>stage 2.3-f_MC_pl</em>, and <em>stage 2.4-f_MC_pl</em>, with the website specification anchor at <a href="/docs/full">/docs/full</a>.</li>
 				</ul>
 				<p>
 					The long-form audit trail remains available in the
-					<a href="/docs/full#deformation-stage6">technical specification</a>, but the public
+					<a href="/docs/full">technical specification</a>, but the public
 					chapter above is intended to carry the actual theory and engineering interpretation of
 					the shipped deformation route rather than only a short summary.
 				</p>
