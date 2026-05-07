@@ -2199,6 +2199,34 @@
       page-break-before: auto;
     }
 
+    /* The on-screen cover is a dark navy panel with cream text. In print
+       the background is flipped to white above, so the cover text and
+       metadata-card colours must be re-flipped to dark for readability. */
+    .report-cover,
+    .report-cover h1 {
+      color: #111;
+    }
+
+    .report-cover__brand,
+    .report-cover__eyebrow,
+    .report-section__head p,
+    .report-muted {
+      color: #444;
+    }
+
+    .report-cover__meta div {
+      background: #fff;
+      border: 0.35px solid rgba(24, 24, 26, 0.18);
+    }
+
+    .report-cover__meta span {
+      color: #555;
+    }
+
+    .report-cover__meta strong {
+      color: #111;
+    }
+
     .report-section {
       padding-top: 2.8mm;
       padding-bottom: 3.6mm;
