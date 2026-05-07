@@ -430,15 +430,29 @@ function drawHandles(cfg, viewport, displayWidth, analysis, hover) {
   if (yNp != null) {
     handles.push({ id: 'np', cx: xCenter, cy: yNp, cursor: 'ns-resize' });
   }
+  // Dot styling: subtle by default so the geometry stays readable, full
+  // colour on hover/drag. The transparent hit-buffer is ~2.4× the visible
+  // dot so the target is generous on touch without visually obscuring the
+  // canvas. We render the buffer first, then the visible dot — both share
+  // the same data-pile-handle attribute so any pointer in the buffer
+  // counts as a grab.
   return handles.map((h) => {
     const isHover = hover?.handleId === h.id;
-    const r = HANDLE_RADIUS + (isHover ? 1.5 : 0);
-    const fill = h.id === 'np' ? 'rgba(220,120,40,0.95)' : 'rgba(40,90,180,0.95)';
-    const stroke = isHover ? '#fff' : 'rgba(255,255,255,0.85)';
-    return `<circle data-pile-handle="${h.id}" cx="${h.cx.toFixed(1)}" cy="${h.cy.toFixed(1)}" r="${r.toFixed(1)}"
-      fill="${fill}" stroke="${stroke}" stroke-width="2"
-      tabindex="0" role="slider" aria-label="${h.id}"
-      style="cursor:${h.cursor}; outline:none"/>`;
+    const isDragging = hover?.drag?.handleId === h.id;
+    const active = isHover || isDragging;
+    const baseColor = h.id === 'np' ? 'rgba(220,120,40,' : 'rgba(40,90,180,';
+    const fill = baseColor + (active ? '0.95)' : '0.55)');
+    const stroke = active ? '#fff' : 'rgba(255,255,255,0.55)';
+    const r = active ? 5.5 : 4;
+    const hitR = HANDLE_RADIUS + 4;
+    return `
+      <circle data-pile-handle="${h.id}" cx="${h.cx.toFixed(1)}" cy="${h.cy.toFixed(1)}" r="${hitR.toFixed(1)}"
+        fill="transparent" style="cursor:${h.cursor}; outline:none"/>
+      <circle data-pile-handle="${h.id}" cx="${h.cx.toFixed(1)}" cy="${h.cy.toFixed(1)}" r="${r.toFixed(1)}"
+        fill="${fill}" stroke="${stroke}" stroke-width="${active ? 1.75 : 1.25}"
+        tabindex="0" role="slider" aria-label="${h.id}"
+        style="cursor:${h.cursor}; outline:none; pointer-events:none"/>
+    `;
   }).join('');
 }
 

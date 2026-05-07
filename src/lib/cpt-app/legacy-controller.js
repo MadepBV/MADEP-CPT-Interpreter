@@ -10531,12 +10531,12 @@ function renderStage6PileApp(analysis){
         <span style="font-size:13px;font-weight:600">Pile capacity (Belgian DM20 / De Beer)</span>
         <span style="font-size:11px;color:var(--tx2)">CPT-based axial pile resistance and SLS settlement for a single pile, with the De Beer scale-effect base resistance and the Belgian load-transfer settlement method.</span>
       </div>
-      <div style="display:grid;grid-template-columns:300px 1fr 280px;gap:14px;align-items:start">
+      <div class="st6-pile-cols">
         ${renderPileInputsColumn(cfg)}
         ${renderPileVisualsColumn(cfg, analysis)}
         ${renderPileSummaryColumn(cap, set, sHead, sUtil, ulsPass, slsPass, lengthM, cfg)}
       </div>
-      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="st6-pile-tables">
         ${renderPilePerLayerTable(cap)}
         ${renderPileFactorChainTable(cap)}
       </div>
@@ -10684,27 +10684,27 @@ function renderPileInputsColumn(cfg){
 
 function renderPileVisualsColumn(cfg, analysis){
   return `
-    <div>
+    <div class="st6-pile-visuals">
       <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Pile + soil section view (drag to edit)</div>
       <div style="position:relative">
         <svg id="stage6PileSection" width="100%" style="height:520px;display:block;background:var(--bg2);border:1px solid var(--bd2);border-radius:6px"></svg>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">De Beer transformation chain</div>
-          <div style="position:relative;height:220px"><canvas id="stage6PileDeBeerChart" role="img" aria-label="De Beer profile"></canvas></div>
+      <div class="st6-pile-charts">
+        <div class="st6-pile-chart">
+          <div class="st6-pile-chart__title">De Beer transformation chain</div>
+          <div class="st6-pile-chart__cv"><canvas id="stage6PileDeBeerChart" role="img" aria-label="De Beer profile"></canvas></div>
         </div>
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Per-layer shaft friction q<sub>s</sub></div>
-          <div style="position:relative;height:220px"><canvas id="stage6PileShaftChart" role="img" aria-label="Shaft friction profile"></canvas></div>
+        <div class="st6-pile-chart">
+          <div class="st6-pile-chart__title">Per-layer shaft friction q<sub>s</sub></div>
+          <div class="st6-pile-chart__cv"><canvas id="stage6PileShaftChart" role="img" aria-label="Shaft friction profile"></canvas></div>
         </div>
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Load–settlement curve</div>
-          <div style="position:relative;height:220px"><canvas id="stage6PileLoadSettlementChart" role="img" aria-label="Load-settlement curve"></canvas></div>
+        <div class="st6-pile-chart">
+          <div class="st6-pile-chart__title">Load–settlement curve</div>
+          <div class="st6-pile-chart__cv"><canvas id="stage6PileLoadSettlementChart" role="img" aria-label="Load-settlement curve"></canvas></div>
         </div>
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Axial force N(z)</div>
-          <div style="position:relative;height:220px"><canvas id="stage6PileAxialForceChart" role="img" aria-label="Axial force profile"></canvas></div>
+        <div class="st6-pile-chart">
+          <div class="st6-pile-chart__title">Axial force N(z)</div>
+          <div class="st6-pile-chart__cv"><canvas id="stage6PileAxialForceChart" role="img" aria-label="Axial force profile"></canvas></div>
         </div>
       </div>
     </div>

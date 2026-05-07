@@ -715,6 +715,43 @@ input[type=range]{accent-color:var(--ac)}
   text-transform:uppercase;
   letter-spacing:0.04em;
 }
+.st6-pile-cols{
+  display:grid;
+  grid-template-columns:300px minmax(0,1fr) 280px;
+  gap:14px;
+  align-items:start;
+}
+.st6-pile-tables{
+  margin-top:14px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+.st6-pile-visuals{min-width:0}
+.st6-pile-charts{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:12px;
+  margin-top:14px;
+}
+.st6-pile-chart{min-width:0}
+.st6-pile-chart__title{
+  font-size:10px;
+  color:var(--tx2);
+  margin-bottom:4px;
+  text-transform:uppercase;
+  letter-spacing:0.02em;
+}
+.st6-pile-chart__cv{position:relative;height:220px}
+@media(max-width:1100px){
+  .st6-pile-cols{grid-template-columns:minmax(0,1fr);}
+  .st6-pile-tables{grid-template-columns:1fr;}
+}
+@media(max-width:560px){
+  .st6-pile-chart__cv{height:200px}
+  .st6-pile-charts{gap:10px}
+}
+
 .st6-bishop-tools,
 .st6-bishop-mini-actions{
   display:flex;
