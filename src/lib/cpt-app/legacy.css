@@ -96,6 +96,11 @@
   --chart-band-fill:rgba(24,24,26,0.05);
   --chart-tooltip-bg:rgba(255,255,255,0.96);
 
+  --nav-bg:rgba(237,233,225,0.88);
+  --canvas-bg:#FBF9F5;
+  --canvas-grid-line:rgba(24,24,26,0.05);
+  --btn-pri-hover:var(--color-bg-darker);
+
   font-family:var(--font-body);
 }
 
@@ -159,6 +164,11 @@
 
     --chart-band-fill:rgba(237,233,225,0.06);
     --chart-tooltip-bg:rgba(24,24,22,0.96);
+
+    --nav-bg:rgba(17,17,16,0.88);
+    --canvas-bg:#181816;
+    --canvas-grid-line:rgba(237,233,225,0.06);
+    --btn-pri-hover:var(--color-primary-lighter);
   }
   html{background:var(--color-bg)}
 }
@@ -312,7 +322,7 @@ button{border:0;background:none;cursor:pointer}
   min-height:3.65rem;overflow-x:auto;
   padding:0.55rem var(--section-px);
   border-bottom:1px solid var(--app-line);
-  background:rgba(237,233,225,0.88);
+  background:var(--nav-bg);
   backdrop-filter:blur(14px);
   -webkit-backdrop-filter:blur(14px)
 }
@@ -374,8 +384,8 @@ button{border:0;background:none;cursor:pointer}
 }
 .btn:hover::before{opacity:1;transform:translate3d(120%,0,0)}
 .btn:hover{border-color:var(--color-primary);background:var(--hover-soft);color:var(--color-primary);transform:translateY(-1px)}
-.btn.pri{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-text-on-dark)}
-.btn.pri:hover{background:var(--color-bg-darker);border-color:var(--color-bg-darker);box-shadow:var(--shadow-sm)}
+.btn.pri{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-bg)}
+.btn.pri:hover{background:var(--btn-pri-hover);border-color:var(--btn-pri-hover);box-shadow:var(--shadow-sm)}
 .btn.sm,.btn--compact{min-height:2.1rem;padding:0.5rem 0.65rem;font-size:0.68rem}
 .app-header .btn{border-color:rgba(237,233,225,0.20);color:var(--color-text-on-dark)}
 .app-header .btn:hover{border-color:rgba(237,233,225,0.45);background:rgba(255,255,255,0.04);color:var(--color-text-on-dark)}
@@ -454,9 +464,9 @@ button{border:0;background:none;cursor:pointer}
 .cc,.col-card,.report-canvas{
   overflow:hidden;border:1px solid var(--bd2);border-radius:var(--radius-md);
   background:
-    linear-gradient(rgba(24,24,26,0.05) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(24,24,26,0.05) 1px,transparent 1px),
-    #FBF9F5;
+    linear-gradient(var(--canvas-grid-line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--canvas-grid-line) 1px,transparent 1px),
+    var(--canvas-bg);
   background-size:2rem 2rem;
   box-shadow:var(--shadow-sm)
 }
