@@ -140,8 +140,14 @@ export function snapToAnchors(value, anchors, tolerance) {
 // when the same `el` is passed: a `__stage6PanZoom` marker is checked.
 export function attachPanZoomPointer(el, getViewport, setViewport, opts = {}) {
   if (!el) return { dispose() {} };
+  // Idempotent re-bind: a redraw mid-drag must not dispose the listeners,
+  // because doing so orphans the in-flight `state.drag` and the next
+  // pointermove falls through to hover. Instead, update the closure refs
+  // in place — listeners read the latest viewport getter, viewport setter,
+  // and opts via lexical-scope mutation below.
   if (el.__stage6PanZoom) {
-    el.__stage6PanZoom.dispose();
+    el.__stage6PanZoom._update(getViewport, setViewport, opts);
+    return el.__stage6PanZoom;
   }
   const state = {
     pointers: new Map(),
@@ -281,6 +287,13 @@ export function attachPanZoomPointer(el, getViewport, setViewport, opts = {}) {
   el.addEventListener('contextmenu', onContextMenu);
 
   const handle = {
+    _update(newGetViewport, newSetViewport, newOpts) {
+      // Reassigning these locals updates the references the listeners read
+      // via closure — no listener swap required, drag state preserved.
+      getViewport = newGetViewport;
+      setViewport = newSetViewport;
+      opts = newOpts || {};
+    },
     dispose() {
       el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('pointermove', onPointerMove);
