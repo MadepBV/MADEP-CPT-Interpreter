@@ -61,6 +61,11 @@ enum class ArcLengthDerivativeMode : std::uint8_t {
   AnalyticVerified = 2
 };
 
+enum class ArcLengthMeritMode : std::uint8_t {
+  OneNormScaled = 0,
+  Quadratic = 1
+};
+
 // Boundary condition flags per node DOF. The CPU solver locks Ux on the
 // side boundaries and Uy on the base; we pass an explicit list of fixed
 // DOF indices so the WASM module is agnostic to how the BCs were derived.
@@ -243,6 +248,7 @@ struct SolverOptions {
   std::uint8_t robustNonlinearMode{ 0 };
   RequestedContinuationMode requestedContinuationMode{ RequestedContinuationMode::Auto };
   ArcLengthDerivativeMode arcLengthDerivativeMode{ ArcLengthDerivativeMode::FiniteDifference };
+  ArcLengthMeritMode arcLengthMeritMode{ ArcLengthMeritMode::OneNormScaled };
   std::int32_t nonlinearMaxIter{ 32 };
   std::int32_t maxLoadSteps{ 256 };
   double initialLoadStep{ 0.25 };

@@ -1016,6 +1016,29 @@ inline int arc_length_line_search_max_backtracks(const SolverOptions& opts) {
   return std::max(opts.arcLengthLineSearchMaxBacktracks, 1);
 }
 
+inline double arc_length_quadratic_merit_beta(
+    double stepInitialResidualNorm,
+    double stepInitialConstraintResidual) {
+  const double initialResSq = stepInitialResidualNorm * stepInitialResidualNorm;
+  const double initialConstraintSq =
+      stepInitialConstraintResidual * stepInitialConstraintResidual;
+  return std::max(1.0, initialResSq / std::max(initialConstraintSq, 1e-30));
+}
+
+inline double arc_length_line_search_merit(
+    double residualNorm,
+    double constraintResidual,
+    double deltaS,
+    double quadraticBeta,
+    const SolverOptions& opts) {
+  if (opts.arcLengthMeritMode == ArcLengthMeritMode::Quadratic) {
+    return 0.5 * residualNorm * residualNorm
+        + 0.5 * quadraticBeta * constraintResidual * constraintResidual;
+  }
+  const double currentConstraintScale = std::max(deltaS * deltaS, 1e-16);
+  return residualNorm + std::abs(constraintResidual) / currentConstraintScale;
+}
+
 inline ArcLengthPredictor make_load_control_arc_length_predictor(
     const CsrMatrix& K,
     const std::vector<std::int32_t>& freeDofs,
@@ -1578,6 +1601,8 @@ inline PhaseResult run_safety_arc_length_phase(
       double stepInitialResidualNorm = std::numeric_limits<double>::quiet_NaN();
       double lastConstraintResidual = std::numeric_limits<double>::quiet_NaN();
       double lastCorrectionDenominator = std::numeric_limits<double>::quiet_NaN();
+      double stepMeritBeta = 1.0;
+      bool hasStepMeritBeta = false;
       std::uint16_t lastFailureCode = 0u;
       std::int32_t stepLinearIterations = predictor.linearIterations;
       std::int32_t newtonIterUsed = 0;
@@ -1616,6 +1641,11 @@ inline PhaseResult run_safety_arc_length_phase(
 
         lastConstraintResidual = arc_length_constraint_residual(
             stepDeltaUFree, stepDeltaSigma, stepState.deltaS, stepState.alpha);
+        if (!hasStepMeritBeta) {
+          stepMeritBeta = arc_length_quadratic_merit_beta(
+              a.residualNorm, lastConstraintResidual);
+          hasStepMeritBeta = true;
+        }
         const double residualTarget = std::max(
             opts.residualAbsTol, opts.residualRelTol * std::max(a.rhsNorm, 0.0));
         const double constraintTarget = std::max(
@@ -1650,9 +1680,8 @@ inline PhaseResult run_safety_arc_length_phase(
           break;
         }
 
-        const double currentConstraintScale = std::max(stepState.deltaS * stepState.deltaS, 1e-16);
-        const double currentMerit =
-            a.residualNorm + std::abs(lastConstraintResidual) / currentConstraintScale;
+        const double currentMerit = arc_length_line_search_merit(
+            a.residualNorm, lastConstraintResidual, stepState.deltaS, stepMeritBeta, opts);
         double bestMerit = std::numeric_limits<double>::infinity();
         double bestScale = 0.0;
         lineSearchBestDeltaU.assign(stepDeltaUFree.begin(), stepDeltaUFree.end());
@@ -1686,7 +1715,8 @@ inline PhaseResult run_safety_arc_length_phase(
                 K, internalForceFree, residualFree);
             const double constraint = arc_length_constraint_residual(
                 lineSearchCandidateDeltaU, candidateDeltaSigma, stepState.deltaS, stepState.alpha);
-            const double merit = probe.residualNorm + std::abs(constraint) / currentConstraintScale;
+            const double merit = arc_length_line_search_merit(
+                probe.residualNorm, constraint, stepState.deltaS, stepMeritBeta, opts);
             if (std::isfinite(merit) && merit < bestMerit) {
               bestMerit = merit;
               bestScale = eta;
