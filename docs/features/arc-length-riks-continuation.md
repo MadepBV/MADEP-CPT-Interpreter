@@ -843,6 +843,33 @@ Validation:
 
 Goal: use arc-length only where it adds value.
 
+Binding resolution for the Phase-7 implementation:
+
+- `auto` starts every safety trial with the existing strength-control
+  continuation. It may retry the same trial target with arc-length only after
+  the strength-control attempt has already failed.
+- The initial production trigger is deliberately conservative. Retry with
+  arc-length only when all of these are true:
+  - `requestedContinuationMode = 'auto'`;
+  - the phase is a c-phi safety trial using the `mc-plastic` constitutive path;
+  - the strength-control trial failed before any upper safety bracket existed;
+  - the strength-control trial accepted at least one continuation step, rejected
+    at least two continuation steps, and reached at least `90%` of the trial's
+    local `lambda` interval;
+  - active plasticity or tension was observed in the failed trial;
+  - the target interval is wider than the active safety bracket tolerance.
+- The `90%` threshold is measured in the trial-local continuation coordinate
+  `lambda`, not in absolute `SigmaMsf`.
+- The arc-length retry starts from the last stable safety checkpoint
+  (`sigmaLow`, committed material points, and displacement at the beginning of
+  the trial), never from the failed strength-control state.
+- The retry writes to a temporary safety-curve buffer. If the arc-length retry
+  converges, the failed strength-control suffix for that trial is replaced by
+  the accepted arc-length suffix. If the retry fails, the original
+  strength-control failure state and curve suffix are kept.
+- Explicit `load-control`, `strength-control`, and `arc-length` requests are
+  unchanged by auto-mode trigger logic.
+
 Tasks:
 
 - Add trigger logic from strength-control diagnostics.

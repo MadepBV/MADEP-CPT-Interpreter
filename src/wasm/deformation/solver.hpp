@@ -1260,6 +1260,46 @@ struct PhaseResult {
   std::vector<MaterialPoint> displayMp;
 };
 
+inline void accumulate_phase_cost(PhaseResult& total, const PhaseResult& extra) {
+  total.accepted += extra.accepted;
+  total.rejected += extra.rejected;
+  total.newtonIterations += extra.newtonIterations;
+  total.cgIterations += extra.cgIterations;
+  total.maxEta = std::max(total.maxEta, extra.maxEta);
+}
+
+inline void apply_phase_cost_counts(PhaseResult& result, const PhaseResult& cost) {
+  result.accepted = cost.accepted;
+  result.rejected = cost.rejected;
+  result.newtonIterations = cost.newtonIterations;
+  result.cgIterations = cost.cgIterations;
+  result.maxEta = std::max(result.maxEta, cost.maxEta);
+}
+
+inline bool should_attempt_safety_arc_length_auto(
+    const PhaseResult& strengthResult,
+    const SolverOptions& opts,
+    ConstitutiveKind kind,
+    double sigmaLow,
+    double sigmaTarget,
+    double sigmaHigh,
+    double safetyBracketTolerance) {
+  if (opts.requestedContinuationMode != RequestedContinuationMode::Auto) return false;
+  if (kind != ConstitutiveKind::McPlastic) return false;
+  if (strengthResult.converged) return false;
+  if (sigmaHigh > 0.0) return false;
+  if (!std::isfinite(strengthResult.loadFactor) || strengthResult.loadFactor < 0.90) return false;
+  if (strengthResult.accepted < 1 || strengthResult.rejected < 2) return false;
+  if ((strengthResult.activeCount + strengthResult.tensionCount +
+       strengthResult.displayActiveCount + strengthResult.displayTensionCount) <= 0) {
+    return false;
+  }
+  if (!std::isfinite(sigmaLow) || !std::isfinite(sigmaTarget) || !(sigmaTarget > sigmaLow)) return false;
+  const double interval = sigmaTarget - sigmaLow;
+  const double tol = std::max(safetyBracketTolerance, 1e-12);
+  return interval > tol;
+}
+
 inline SafetyCurvePoint make_safety_curve_point(
     const PhaseContext& ctx,
     const AssembleOutput& assembly,
@@ -2729,7 +2769,38 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     sctx.baseRhsFree = &combinedRhs;  // gravity + load at full strength
     sctx.rampedRhsFree = &zeroRhs;
 
+    const std::size_t curveSizeBeforeTrial = out.safety.curve.size();
     PhaseResult sr = run_nonlinear_phase(sctx, in.opts);
+    PhaseResult trialCost = sr;
+    if (should_attempt_safety_arc_length_auto(
+            sr, in.opts, in.opts.constitutive, sigmaLow, target, sigmaHigh, bracketTol)) {
+      const std::vector<MaterialPoint> strengthResultMp = *in.materialPoints;
+      const std::vector<double> strengthResultU = *in.U_global;
+      const std::vector<MaterialPoint> strengthTrialScratch = trialMp;
+      std::vector<SafetyCurvePoint> arcTrialCurve;
+
+      *in.materialPoints = trialStartMp;
+      *in.U_global = trialStartU;
+      trialMp = trialStartMp;
+      PhaseContext arcCtx = sctx;
+      arcCtx.safetyCurve = &arcTrialCurve;
+      SolverOptions arcOpts = in.opts;
+      arcOpts.requestedContinuationMode = RequestedContinuationMode::ArcLength;
+      PhaseResult arcSr = run_nonlinear_phase(arcCtx, arcOpts);
+      accumulate_phase_cost(trialCost, arcSr);
+
+      if (arcSr.converged) {
+        out.safety.curve.resize(curveSizeBeforeTrial);
+        out.safety.curve.insert(
+            out.safety.curve.end(), arcTrialCurve.begin(), arcTrialCurve.end());
+        sr = std::move(arcSr);
+      } else {
+        *in.materialPoints = strengthResultMp;
+        *in.U_global = strengthResultU;
+        trialMp = strengthTrialScratch;
+      }
+      apply_phase_cost_counts(sr, trialCost);
+    }
     out.summary.loadStepsAccepted += sr.accepted;
     out.summary.loadStepsRejected += sr.rejected;
     out.summary.newtonIterations += sr.newtonIterations;
