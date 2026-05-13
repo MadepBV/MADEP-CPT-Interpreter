@@ -807,6 +807,24 @@ Validation:
 
 Goal: improve performance after correctness is established.
 
+Binding resolution for the Phase-6 implementation:
+
+- Only analytically exact derivatives are enabled. For `linear-elastic`, safety
+  strength reduction does not affect the stress update, so
+  `dR/dSigmaMsf = 0` exactly.
+- `mc-plastic` and `mc-reduced-stiffness` continue to use the validated
+  finite-difference oracle even when `arcLengthDerivativeMode` requests
+  `analytic` or `analytic-verified`. The active-set return mapping is
+  piecewise, branch-cached, and non-smooth at face/edge/apex/tension switches;
+  shipping an approximate closed-form derivative under an analytic label is not
+  allowed.
+- The analytic selector returns numeric failure code `4=unsupported-regime`
+  before falling back to finite difference. This is a controlled fallback, not
+  a silent change in the reported derivative.
+- A future full-plastic analytic derivative must differentiate each accepted
+  active-set solve and pass the finite-difference oracle before it can replace
+  the fallback.
+
 Tasks:
 
 - Derive `dF_int/dSigmaMsf` for elastic, plastic face, edge, apex, tension, and

@@ -1194,6 +1194,46 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
   return out;
 }
 
+inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_analytic(
+    PhaseContext& ctx,
+    double sigmaMsf) {
+  SafetyResidualDerivativeFd out;
+  const std::int32_t nfree = ctx.K ? ctx.K->nrows : 0;
+  out.rLambdaFree.assign(static_cast<std::size_t>(std::max(nfree, 0)), 0.0);
+  out.continuationRhsFree.assign(static_cast<std::size_t>(std::max(nfree, 0)), 0.0);
+  out.sigmaMsf = std::max(sigmaMsf, 1.0);
+  out.lowerSigmaMsf = out.sigmaMsf;
+  out.upperSigmaMsf = out.sigmaMsf;
+  out.h = 0.0;
+  if (ctx.phaseKind != PhaseKind::SafetyCphi || !ctx.K || nfree < 0) {
+    out.failureCode = 1u;
+    return out;
+  }
+  if (ctx.kind != ConstitutiveKind::LinearElastic) {
+    out.failureCode = 4u;
+    return out;
+  }
+  // Linear-elastic stress is independent of c, phi, psi, and the tension
+  // cap, so the exact safety strength derivative is zero.
+  out.converged = true;
+  out.failureCode = 0u;
+  return out;
+}
+
+inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative(
+    PhaseContext& ctx,
+    const std::vector<double>& U,
+    double loadFactor,
+    double sigmaMsf,
+    const SolverOptions& opts) {
+  if (opts.arcLengthDerivativeMode != ArcLengthDerivativeMode::FiniteDifference) {
+    SafetyResidualDerivativeFd analytic =
+        compute_safety_sigma_msf_residual_derivative_analytic(ctx, sigmaMsf);
+    if (analytic.converged) return analytic;
+  }
+  return compute_safety_sigma_msf_residual_derivative_fd(ctx, U, loadFactor, sigmaMsf, opts);
+}
+
 struct PhaseResult {
   std::int32_t accepted{ 0 };
   std::int32_t rejected{ 0 };
@@ -1396,7 +1436,7 @@ inline PhaseResult run_safety_arc_length_phase(
       const bool startHasPlastic = startAssembly.plasticActiveCount > 0 || startAssembly.tensionCount > 0;
       const bool useUnsymmetricSolver = mayNeedUnsymmetricSolver && startHasPlastic;
 
-      SafetyResidualDerivativeFd derivative = compute_safety_sigma_msf_residual_derivative_fd(
+      SafetyResidualDerivativeFd derivative = compute_safety_sigma_msf_residual_derivative(
           ctx, U, stepStartLambda, stepStartSigma, opts);
       if (!derivative.converged) {
         committedMp = stepStartCommitted;
@@ -1499,7 +1539,7 @@ inline PhaseResult run_safety_arc_length_phase(
         const bool hasPlastic = a.plasticActiveCount > 0 || a.tensionCount > 0;
         const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
         SafetyResidualDerivativeFd correctionDerivative =
-            compute_safety_sigma_msf_residual_derivative_fd(
+            compute_safety_sigma_msf_residual_derivative(
                 ctx, U, candidateLambda, candidateSigma, opts);
         if (!correctionDerivative.converged) {
           lastFailureCode = correctionDerivative.failureCode;
