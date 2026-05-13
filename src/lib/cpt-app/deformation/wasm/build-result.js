@@ -362,6 +362,17 @@ export function buildWasmDeformationResult({
   const summary = wasmResult.summary;
   const safety = wasmResult.safety || {};
   const isSafety = analysisType === 'safety-cphi';
+  const safetyTrials = Array.isArray(safety.trials) ? safety.trials : [];
+  const displayedSafetyTrial = isSafety
+    ? [...safetyTrials].reverse().find((trial) =>
+      trial?.converged === false && Number.isFinite(Number(trial?.committed))
+    )
+    : null;
+  const safetyDisplayedSigmaMsf = isSafety
+    ? (Number.isFinite(Number(displayedSafetyTrial?.committed))
+        ? Number(displayedSafetyTrial.committed)
+        : Number(safety.factorOfSafetyLower) || 1)
+    : null;
   const usesUnsymmetricPlasticKrylov =
     options.constitutiveModel === 'mc-plastic' && options.symmetrizeEpTangent !== true;
 
@@ -421,9 +432,9 @@ export function buildWasmDeformationResult({
       safetyFactorOfSafetyLower: isSafety ? safety.factorOfSafetyLower : null,
       safetyFactorOfSafetyUpper: isSafety ? safety.factorOfSafetyUpper : null,
       safetyStrengthRetained: isSafety ? safety.strengthRetained : null,
-      safetyDisplayedSigmaMsf: isSafety ? safety.factorOfSafetyLower : null,
+      safetyDisplayedSigmaMsf,
       safetyCommittedSigmaMsf: isSafety ? safety.factorOfSafetyLower : null,
-      safetyTrialHistory: isSafety ? (safety.trials || []) : [],
+      safetyTrialHistory: isSafety ? safetyTrials : [],
       safetyAcceptedContinuationSteps: 0,
       safetyRejectedContinuationSteps: 0,
       linearAlgebraBackend: {

@@ -1822,7 +1822,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   out.safety.factorOfSafetyLower = sigmaLow;
   out.safety.factorOfSafetyUpper = sigmaHigh > 0 ? sigmaHigh : sigmaMax;
   out.safety.strengthRetained = 1.0 / std::max(sigmaLow, 1.0);
-  if (sigmaHigh > 0 && (sigmaHigh - sigmaLow) <= bracketTolWithRoundoff) {
+  if (sigmaHigh > 0) {
     out.safety.status = 1;  // bracketed
   } else if (sigmaHigh < 0 && sigmaLow >= sigmaMax - bracketTol) {
     out.safety.status = 3;  // no failure found
