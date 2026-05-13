@@ -6360,11 +6360,12 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     useNewGpuPipeline: input?.options?.useNewGpuPipeline === true,
     // Routes the deformation solve through the WASM CPU pipeline (full
     // C++ port of the elastoplastic Newton + load-stepping path). Strict:
-    // any decode/encode/run failure throws. Default false. The pipeline
-    // uses gravity-ramp initialisation, not K0-controlled geostatic, so
-    // engineering values match but a bit-for-bit comparison against the
-    // CPU path's K0 seed is not expected.
+    // any decode/encode/run failure throws. Default false.
     useWasmCpuPipeline: input?.options?.useWasmCpuPipeline === true,
+    // Hidden, opt-in WASM robustness lane. Default false keeps the strict
+    // JS-parity path unchanged; individual robustness features are added
+    // behind this flag in separate, reversible commits.
+    wasmRobustNonlinearMode: input?.options?.wasmRobustNonlinearMode === true,
     // GPU pipeline version selector — 'v1' (CSR + plastic Newton, full
     // production) or 'v2' (matrix-free + modified Newton, experimental).
     // Default 'v1'.  UI dropdown sets this when the GPU toggle is on.

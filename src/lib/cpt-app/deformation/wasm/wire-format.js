@@ -3,11 +3,11 @@
 //
 // Wire-format encoder/decoder shared between the JS bridge and the C++
 // WASM module. Both sides MUST agree on this layout exactly; the C++
-// reader lives in deformation_wasm.cpp. Wire version 4.
+// reader lives in deformation_wasm.cpp. Wire version 5.
 
 const INPUT_MAGIC = 0x4D434454; // 'TDCM'
 const OUTPUT_MAGIC = 0x4D444B54; // 'TDKM'
-const WIRE_VERSION = 4;
+const WIRE_VERSION = 5;
 
 export const CONSTITUTIVE_KIND = Object.freeze({
   LinearElastic: 0,
@@ -127,7 +127,8 @@ export function encodeInputBuffer({
   writeU8(options.symmetrizeTangent === true ? 1 : 0);
   writeU8(elementKind === 6 && options.useBBar !== false ? 1 : 0);
   writeU8(options.useK0Init !== false ? 1 : 0);
-  writeU8(0); writeU8(0); writeU8(0);
+  writeU8(options.robustNonlinearMode === true ? 1 : 0);
+  writeU8(0); writeU8(0);
   writeU32(Math.max(Math.round(options.nonlinearMaxIter || 32), 1));
   writeU32(Math.max(Math.round(options.maxLoadSteps || 256), 1));
   writeU32(Math.max(Math.round(options.cgMaxIter || 25000), 1));

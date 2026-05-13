@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// WASM entry point — wire format v3.
+// WASM entry point — wire format v5.
 //
 // INPUT (uint8_t* in, std::size_t len):
 //   Header (offsets in bytes from the start):
 //     u32  magic              = 'TDCM' (0x4D434454)
-//     u32  version            = 3
+//     u32  version            = 5
 //     u32  elementKind        (3 or 6)
 //     u32  constitutive       (0 = LE, 1 = MC-RS, 2 = MC-P)
 //     u32  analysisMode       (0 = service-only, 1 = geostatic+service,
@@ -20,7 +20,7 @@
 //     u8   symmetrize
 //     u8   bbar
 //     u8   useK0Init
-//     u8   pad0
+//     u8   robustNonlinearMode
 //     u8   pad1
 //     u8   pad2
 //     u32  nonlinearMaxIter
@@ -50,7 +50,7 @@
 //
 // OUTPUT layout (uint8_t*, std::size_t):
 //   u32  magic                 = 'TDKM' (0x4D444B54)
-//   u32  version               = 3
+//   u32  version               = 5
 //   u32  numNodes
 //   u32  numElements
 //   u32  numGpTotal
@@ -120,7 +120,7 @@ std::uint8_t* write_f64(std::uint8_t* p, double v)         { std::memcpy(p, &v, 
 
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
-constexpr std::uint32_t WIRE_VERSION = 4u;
+constexpr std::uint32_t WIRE_VERSION = 5u;
 
 constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 84 bytes
 constexpr std::size_t kGpStateBytes = (6 + 6 + 1 + 1 + 6 + 6 + 6 + 1 + 1) * 8 + 4;  // 34 f64 + 4 u8 = 276 bytes
@@ -208,7 +208,8 @@ int madepRunDeformationAnalysis(
   const std::uint8_t* p = inputPtr;
   std::uint32_t magic, version, elementKindU, constitutiveU, analysisModeU;
   std::uint32_t numNodes, numElements, numRegions, numConstraints, numGpTotalU;
-  std::uint8_t hasSurfaceLoad, useTensionCutoff, symmetrize, bbar, useK0Init, pad0, pad1, pad2;
+  std::uint8_t hasSurfaceLoad, useTensionCutoff, symmetrize, bbar, useK0Init;
+  std::uint8_t robustNonlinearMode, pad1, pad2;
   std::uint32_t nonlinearMaxIter, maxLoadSteps, cgMaxIter, safetyMaxSearchTrials;
   std::uint32_t plasticLineSearchMaxBacktracks, initialGravityPlasticLineSearchMaxBacktracks;
   double initialLoadStep, minLoadStep, growth, cutback;
@@ -238,7 +239,7 @@ int madepRunDeformationAnalysis(
   p = read_u8(p, symmetrize);
   p = read_u8(p, bbar);
   p = read_u8(p, useK0Init);
-  p = read_u8(p, pad0); p = read_u8(p, pad1); p = read_u8(p, pad2);
+  p = read_u8(p, robustNonlinearMode); p = read_u8(p, pad1); p = read_u8(p, pad2);
   p = read_u32(p, nonlinearMaxIter);
   p = read_u32(p, maxLoadSteps);
   p = read_u32(p, cgMaxIter);
@@ -434,6 +435,7 @@ int madepRunDeformationAnalysis(
   opts.useTensionCutoff = useTensionCutoff;
   opts.symmetrizeTangent = symmetrize;
   opts.bbarForT6 = bbar;
+  opts.robustNonlinearMode = robustNonlinearMode;
   opts.nonlinearMaxIter = static_cast<std::int32_t>(nonlinearMaxIter);
   opts.maxLoadSteps = static_cast<std::int32_t>(maxLoadSteps);
   opts.initialLoadStep = initialLoadStep;

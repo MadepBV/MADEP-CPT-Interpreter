@@ -7020,7 +7020,8 @@ function stage6BishopRunDeformation(){
         solverBackend:bishop.deformation?.options?.solverBackend || 'js-cpu',
         useNewGpuPipeline:bishop.deformation?.options?.useNewGpuPipeline === true,
         gpuPipelineVersion:bishop.deformation?.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1',
-        useWasmCpuPipeline:bishop.deformation?.options?.useWasmCpuPipeline === true
+        useWasmCpuPipeline:bishop.deformation?.options?.useWasmCpuPipeline === true,
+        wasmRobustNonlinearMode:bishop.deformation?.options?.wasmRobustNonlinearMode === true
       }
     }
   });

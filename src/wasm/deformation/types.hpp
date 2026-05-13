@@ -221,7 +221,7 @@ struct SolverOptions {
   std::uint8_t symmetrizeTangent{ 0 };
   std::uint8_t enableLoadStepping{ 1 };
   std::uint8_t bbarForT6{ 1 };
-  std::uint8_t pad0{ 0 };
+  std::uint8_t robustNonlinearMode{ 0 };
   std::uint8_t pad1{ 0 };
   std::uint8_t pad2{ 0 };
   std::int32_t nonlinearMaxIter{ 32 };

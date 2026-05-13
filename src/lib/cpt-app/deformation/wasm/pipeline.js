@@ -114,7 +114,8 @@ export async function runWasmDeformationPipeline(ctx) {
       // Match the CPU path's default: B-bar only when explicitly opted
       // into via `useBBarFormulationT6: true`. Without the flag the
       // standard B matrix is used at every Gauss point.
-      useBBar: options.useBBarFormulationT6 === true
+      useBBar: options.useBBarFormulationT6 === true,
+      robustNonlinearMode: options.wasmRobustNonlinearMode === true
     },
     onProgress
   });
