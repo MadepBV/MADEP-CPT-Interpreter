@@ -523,6 +523,21 @@ function normalizeTangentSchedule(input, fallback = ['plastic']) {
   return out.length ? out : fallback;
 }
 
+function normalizeRequestedContinuationMode(input) {
+  const mode = String(input || '').toLowerCase();
+  if (mode === 'load-control') return 'load-control';
+  if (mode === 'strength-control') return 'strength-control';
+  if (mode === 'arc-length') return 'arc-length';
+  return 'auto';
+}
+
+function normalizeArcLengthDerivativeMode(input) {
+  const mode = String(input || '').toLowerCase();
+  if (mode === 'analytic') return 'analytic';
+  if (mode === 'analytic-verified') return 'analytic-verified';
+  return 'finite-difference';
+}
+
 // =============================================================================
 // Block Jacobi preconditioner (per-node 2×2 blocks)
 // =============================================================================
@@ -6387,6 +6402,20 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     safetySigmaMsfBracketTolerance: Math.max(Number(input?.options?.safetySigmaMsfBracketTolerance) || SAFETY_SIGMA_MSF_BRACKET_TOL, 1e-4),
     safetyMaxSearchTrials: Math.max(Math.round(Number(input?.options?.safetyMaxSearchTrials) || SAFETY_MAX_SEARCH_TRIALS), 1),
     safetyFinalizationMode: normalizeSafetyFinalizationMode(input?.options?.safetyFinalizationMode, 'production-msf'),
+    requestedContinuationMode: normalizeRequestedContinuationMode(input?.options?.requestedContinuationMode),
+    arcLengthDerivativeMode: normalizeArcLengthDerivativeMode(input?.options?.arcLengthDerivativeMode),
+    arcLengthInitialRadius: Math.max(Number(input?.options?.arcLengthInitialRadius) || 1e-3, 1e-12),
+    arcLengthMinRadius: Math.max(Number(input?.options?.arcLengthMinRadius) || 1e-6, 1e-12),
+    arcLengthMaxRadius: Math.max(Number(input?.options?.arcLengthMaxRadius) || 5e-2, 1e-12),
+    arcLengthGrowthFactor: Math.max(Number(input?.options?.arcLengthGrowthFactor) || 1.2, 1.0),
+    arcLengthShrinkFactor: Math.min(Math.max(Number(input?.options?.arcLengthShrinkFactor) || 0.7, 1e-3), 1.0),
+    arcLengthFailureShrinkFactor: Math.min(Math.max(Number(input?.options?.arcLengthFailureShrinkFactor) || 0.5, 1e-3), 1.0),
+    arcLengthTargetIterations: Math.max(Number(input?.options?.arcLengthTargetIterations) || 6, 1),
+    arcLengthMaxRetries: Math.max(Math.round(Number(input?.options?.arcLengthMaxRetries) || 6), 1),
+    arcLengthConstraintTolerance: Math.max(Number(input?.options?.arcLengthConstraintTolerance) || 1e-8, 1e-14),
+    arcLengthAlphaMin: Math.max(Number(input?.options?.arcLengthAlphaMin) || 1e-8, 1e-16),
+    arcLengthAlphaMax: Math.max(Number(input?.options?.arcLengthAlphaMax) || 1e8, 1e-16),
+    arcLengthAllowPostPeakSafetyPath: input?.options?.arcLengthAllowPostPeakSafetyPath !== false,
     safetyMechanismPlateauWindow: Math.max(Math.round(Number(input?.options?.safetyMechanismPlateauWindow) || 3), 2),
     safetyMechanismPlateauRelativeTolerance: Math.max(Number(input?.options?.safetyMechanismPlateauRelativeTolerance) || 0.01, 1e-4),
     safetyMechanismMinIncrementalDisplacementNorm: Math.max(Number(input?.options?.safetyMechanismMinIncrementalDisplacementNorm) || 1e-8, 0),

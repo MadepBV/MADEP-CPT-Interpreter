@@ -625,6 +625,21 @@ Validation:
 Goal: support accepted/rejected arc-length steps without changing material
 behavior.
 
+Binding resolution for the Phase-2 implementation:
+
+- Arc-length remains disabled as an executed continuation controller in this
+  phase. The current controller still records actual mode as load-control for
+  service/geostatic phases and strength-control for safety.
+- `requestedContinuationMode` and `arcLengthDerivativeMode` are encoded through
+  the two reserved v7 input-header mode bytes. This does not change output
+  records and does not bump the output wire version.
+- Numeric arc-length tuning options are normalized in JS and stored with C++
+  defaults, but the v7 WASM input does not yet transmit them. The default
+  predictor shell is therefore the only Phase-2 C++ consumer.
+- The first-step predictor sign rule is binding: if no previous accepted
+  arc-length step exists, the predictor must force `deltaLambda > 0`; later
+  steps use the path dot product.
+
 Tasks:
 
 - Add `ArcLengthState`.

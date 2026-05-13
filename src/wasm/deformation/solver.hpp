@@ -833,6 +833,136 @@ inline cg::LinearSolveResult solve_phase_linear_system(
                       opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
 }
 
+struct ArcLengthState {
+  double lambda{ 0.0 };
+  double sigmaMsf{ 1.0 };
+  double deltaS{ 1e-3 };
+  double alpha{ 1.0 };
+  std::vector<double> previousDeltaU;
+  double previousDeltaLambda{ 0.0 };
+  std::int32_t stepIndex{ 0 };
+  std::int32_t acceptedStepCount{ 0 };
+  std::int32_t rejectedStepCount{ 0 };
+};
+
+struct ContinuationControllerState {
+  RequestedContinuationMode requestedMode{ RequestedContinuationMode::Auto };
+  ActualContinuationMode actualMode{ ActualContinuationMode::LoadControl };
+  ArcLengthState arcLength;
+};
+
+struct ArcLengthPredictor {
+  std::vector<double> deltaUFree;
+  double deltaLambda{ 0.0 };
+  double weightedNorm{ 0.0 };
+  double scale{ 0.0 };
+  std::int32_t linearIterations{ 0 };
+  bool converged{ false };
+};
+
+inline ActualContinuationMode default_actual_continuation_mode(PhaseKind phaseKind) {
+  return phaseKind == PhaseKind::SafetyCphi
+      ? ActualContinuationMode::StrengthControl
+      : ActualContinuationMode::LoadControl;
+}
+
+inline void initialise_arc_length_state(
+    ArcLengthState& state,
+    const SolverOptions& opts,
+    std::int32_t nfree,
+    double lambda,
+    double sigmaMsf) {
+  state.lambda = lambda;
+  state.sigmaMsf = std::max(sigmaMsf, 1.0);
+  state.deltaS = std::clamp(
+      opts.arcLengthInitialRadius,
+      std::max(opts.arcLengthMinRadius, 1e-12),
+      std::max(opts.arcLengthMaxRadius, opts.arcLengthMinRadius));
+  state.alpha = std::clamp(1.0, opts.arcLengthAlphaMin, opts.arcLengthAlphaMax);
+  state.previousDeltaU.assign(static_cast<std::size_t>(std::max(nfree, 0)), 0.0);
+  state.previousDeltaLambda = 0.0;
+  state.stepIndex = 0;
+  state.acceptedStepCount = 0;
+  state.rejectedStepCount = 0;
+}
+
+inline double arc_length_weighted_norm2(const std::vector<double>& v, double displacementScale = 1.0) {
+  const double w = std::max(displacementScale, 0.0);
+  double out = 0.0;
+  for (double x : v) {
+    const double wx = w * x;
+    out += wx * wx;
+  }
+  return out;
+}
+
+inline double arc_length_path_dot(
+    const std::vector<double>& a,
+    const std::vector<double>& b,
+    double aLambda,
+    double bLambda,
+    double alpha,
+    double displacementScale = 1.0) {
+  const std::size_t n = std::min(a.size(), b.size());
+  const double w2 = displacementScale * displacementScale;
+  double out = 0.0;
+  for (std::size_t i = 0; i < n; ++i) out += w2 * a[i] * b[i];
+  return out + alpha * alpha * aLambda * bLambda;
+}
+
+inline void choose_arc_length_predictor_sign(
+    ArcLengthState& state,
+    ArcLengthPredictor& predictor,
+    double alpha,
+    double displacementScale = 1.0) {
+  bool flip = false;
+  if (state.acceptedStepCount <= 0) {
+    flip = predictor.deltaLambda < 0.0;
+  } else {
+    const double dot = arc_length_path_dot(
+        predictor.deltaUFree,
+        state.previousDeltaU,
+        predictor.deltaLambda,
+        state.previousDeltaLambda,
+        alpha,
+        displacementScale);
+    flip = dot < 0.0;
+  }
+  if (!flip) return;
+  predictor.deltaLambda = -predictor.deltaLambda;
+  for (double& v : predictor.deltaUFree) v = -v;
+}
+
+inline ArcLengthPredictor make_load_control_arc_length_predictor(
+    const CsrMatrix& K,
+    const std::vector<std::int32_t>& freeDofs,
+    const std::vector<double>& loadRhsFree,
+    std::vector<double>& diagInv,
+    const SolverOptions& opts,
+    ArcLengthState& state,
+    bool useUnsymmetricSolver = false) {
+  ArcLengthPredictor predictor;
+  predictor.deltaUFree.assign(static_cast<std::size_t>(K.nrows), 0.0);
+  cg::LinearSolveResult lr = solve_phase_linear_system(
+      K, freeDofs, loadRhsFree, predictor.deltaUFree, diagInv, opts, useUnsymmetricSolver);
+  predictor.linearIterations = lr.iterations;
+  predictor.converged = lr.converged;
+
+  const double alpha = std::clamp(state.alpha, opts.arcLengthAlphaMin, opts.arcLengthAlphaMax);
+  const double norm2 = arc_length_weighted_norm2(predictor.deltaUFree);
+  const double denom = std::sqrt(std::max(norm2 + alpha * alpha, 0.0));
+  if (!(denom > 0.0) || !std::isfinite(denom)) {
+    predictor.converged = false;
+    return predictor;
+  }
+  predictor.scale = state.deltaS / denom;
+  predictor.deltaLambda = predictor.scale;
+  for (double& v : predictor.deltaUFree) v *= predictor.scale;
+  predictor.weightedNorm = std::sqrt(arc_length_weighted_norm2(predictor.deltaUFree));
+  choose_arc_length_predictor_sign(state, predictor, alpha);
+  return predictor;
+}
+
 struct PhaseResult {
   std::int32_t accepted{ 0 };
   std::int32_t rejected{ 0 };
@@ -1010,6 +1140,15 @@ inline PhaseResult run_nonlinear_phase(
   double loadFactor = 0.0;
   double dLambda = std::min(std::max(opts.initialLoadStep, phaseMinLoadStep), 1.0);
   if (ctx.kind == ConstitutiveKind::LinearElastic) dLambda = 1.0;
+  ContinuationControllerState continuationState;
+  continuationState.requestedMode = opts.requestedContinuationMode;
+  continuationState.actualMode = default_actual_continuation_mode(ctx.phaseKind);
+  initialise_arc_length_state(
+      continuationState.arcLength,
+      opts,
+      nfree,
+      loadFactor,
+      ctx.phaseKind == PhaseKind::SafetyCphi ? ctx.safetySigmaMsfStart : 1.0);
 
   PhaseResult res;
   bool overall = true;

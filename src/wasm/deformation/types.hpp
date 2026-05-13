@@ -42,6 +42,25 @@ enum class AnalysisMode : std::uint8_t {
   GeostaticServiceSafety = 2
 };
 
+enum class RequestedContinuationMode : std::uint8_t {
+  LoadControl = 0,
+  StrengthControl = 1,
+  ArcLength = 2,
+  Auto = 3
+};
+
+enum class ActualContinuationMode : std::uint8_t {
+  LoadControl = 0,
+  StrengthControl = 1,
+  ArcLength = 2
+};
+
+enum class ArcLengthDerivativeMode : std::uint8_t {
+  FiniteDifference = 0,
+  Analytic = 1,
+  AnalyticVerified = 2
+};
+
 // Boundary condition flags per node DOF. The CPU solver locks Ux on the
 // side boundaries and Uy on the base; we pass an explicit list of fixed
 // DOF indices so the WASM module is agnostic to how the BCs were derived.
@@ -222,8 +241,8 @@ struct SolverOptions {
   std::uint8_t enableLoadStepping{ 1 };
   std::uint8_t bbarForT6{ 1 };
   std::uint8_t robustNonlinearMode{ 0 };
-  std::uint8_t pad1{ 0 };
-  std::uint8_t pad2{ 0 };
+  RequestedContinuationMode requestedContinuationMode{ RequestedContinuationMode::Auto };
+  ArcLengthDerivativeMode arcLengthDerivativeMode{ ArcLengthDerivativeMode::FiniteDifference };
   std::int32_t nonlinearMaxIter{ 32 };
   std::int32_t maxLoadSteps{ 256 };
   double initialLoadStep{ 0.25 };
@@ -254,6 +273,18 @@ struct SolverOptions {
   double safetySigmaMax{ 3.0 };
   double safetyBracketTolerance{ 0.01 };
   std::int32_t safetyMaxSearchTrials{ 32 };
+  double arcLengthInitialRadius{ 1e-3 };
+  double arcLengthMinRadius{ 1e-6 };
+  double arcLengthMaxRadius{ 5e-2 };
+  double arcLengthGrowthFactor{ 1.2 };
+  double arcLengthShrinkFactor{ 0.7 };
+  double arcLengthFailureShrinkFactor{ 0.5 };
+  double arcLengthTargetIterations{ 6.0 };
+  std::int32_t arcLengthMaxRetries{ 6 };
+  double arcLengthConstraintTolerance{ 1e-8 };
+  double arcLengthAlphaMin{ 1e-8 };
+  double arcLengthAlphaMax{ 1e8 };
+  std::uint8_t arcLengthAllowPostPeakSafetyPath{ 1 };
 };
 
 // One accepted c-φ safety continuation point. This is a dense history record,

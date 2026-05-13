@@ -55,6 +55,21 @@ export function analysisModeFor(analysisType, hasGeostatic) {
   return ANALYSIS_MODE.ServiceOnly;
 }
 
+export function requestedContinuationModeCode(value) {
+  const mode = String(value || '').toLowerCase();
+  if (mode === 'load-control') return 0;
+  if (mode === 'strength-control') return 1;
+  if (mode === 'arc-length') return 2;
+  return 3;
+}
+
+export function arcLengthDerivativeModeCode(value) {
+  const mode = String(value || '').toLowerCase();
+  if (mode === 'analytic') return 1;
+  if (mode === 'analytic-verified') return 2;
+  return 0;
+}
+
 function clampAngleRad(deg) {
   const d = Math.max(Math.min(Number(deg) || 0, 89.5), 0);
   return (d * Math.PI) / 180;
@@ -64,7 +79,7 @@ function computeInputSize({ numNodes, numElements, numRegions, numConstraints, n
   // Header:
   //   10 u32 (magic, version, elementKind, constitutive, analysisMode,
   //           numNodes, numElements, numRegions, numConstraints, numGpTotal) = 40
-  //   8 u8 flags                                                              = 8
+  //   8 u8 flags/modes                                                        = 8
   //   6 u32 (nonlinearMaxIter, maxLoadSteps, cgMaxIter, safetyMaxSearchTrials,
   //           plasticLineSearchMaxBacktracks,
   //           initialGravityPlasticLineSearchMaxBacktracks)                    = 24
@@ -149,7 +164,8 @@ export function encodeInputBuffer({
   writeU8(elementKind === 6 && options.useBBar !== false ? 1 : 0);
   writeU8(options.useK0Init !== false ? 1 : 0);
   writeU8(options.robustNonlinearMode === true ? 1 : 0);
-  writeU8(0); writeU8(0);
+  writeU8(requestedContinuationModeCode(options.requestedContinuationMode));
+  writeU8(arcLengthDerivativeModeCode(options.arcLengthDerivativeMode));
   writeU32(Math.max(Math.round(options.nonlinearMaxIter || 32), 1));
   writeU32(Math.max(Math.round(options.maxLoadSteps || 256), 1));
   writeU32(Math.max(Math.round(options.cgMaxIter || 25000), 1));

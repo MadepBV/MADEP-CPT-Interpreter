@@ -21,8 +21,8 @@
 //     u8   bbar
 //     u8   useK0Init
 //     u8   robustNonlinearMode
-//     u8   pad1
-//     u8   pad2
+//     u8   requestedContinuationMode (0=load, 1=strength, 2=arc-length, 3=auto)
+//     u8   arcLengthDerivativeMode   (0=FD, 1=analytic, 2=analytic-verified)
 //     u32  nonlinearMaxIter
 //     u32  maxLoadSteps
 //     u32  cgMaxIter
@@ -123,6 +123,19 @@ std::uint8_t* write_i32(std::uint8_t* p, std::int32_t v)  { std::memcpy(p, &v, 4
 std::uint8_t* write_u16(std::uint8_t* p, std::uint16_t v) { std::memcpy(p, &v, 2); return p + 2; }
 std::uint8_t* write_u8 (std::uint8_t* p, std::uint8_t v)  { *p = v; return p + 1; }
 std::uint8_t* write_f64(std::uint8_t* p, double v)         { std::memcpy(p, &v, 8); return p + 8; }
+
+RequestedContinuationMode requested_continuation_mode_from_wire(std::uint8_t value) {
+  if (value == 0u) return RequestedContinuationMode::LoadControl;
+  if (value == 1u) return RequestedContinuationMode::StrengthControl;
+  if (value == 2u) return RequestedContinuationMode::ArcLength;
+  return RequestedContinuationMode::Auto;
+}
+
+ArcLengthDerivativeMode arc_length_derivative_mode_from_wire(std::uint8_t value) {
+  if (value == 1u) return ArcLengthDerivativeMode::Analytic;
+  if (value == 2u) return ArcLengthDerivativeMode::AnalyticVerified;
+  return ArcLengthDerivativeMode::FiniteDifference;
+}
 
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
@@ -443,6 +456,8 @@ int madepRunDeformationAnalysis(
   opts.symmetrizeTangent = symmetrize;
   opts.bbarForT6 = bbar;
   opts.robustNonlinearMode = robustNonlinearMode;
+  opts.requestedContinuationMode = requested_continuation_mode_from_wire(pad1);
+  opts.arcLengthDerivativeMode = arc_length_derivative_mode_from_wire(pad2);
   opts.nonlinearMaxIter = static_cast<std::int32_t>(nonlinearMaxIter);
   opts.maxLoadSteps = static_cast<std::int32_t>(maxLoadSteps);
   opts.initialLoadStep = initialLoadStep;
