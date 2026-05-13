@@ -14,7 +14,7 @@ try {
   const solverSource = readFileSync(join(repoRoot, 'src/wasm/deformation/solver.hpp'), 'utf8');
   assert.match(
     solverSource,
-    /arc_length_line_search_max_backtracks\(opts\)/,
+    /arc_length_line_search_max_backtracks\((?:arcOpts|opts)\)/,
     'arc-length line search loop must use the SolverOptions backtrack cap'
   );
   assert.doesNotMatch(

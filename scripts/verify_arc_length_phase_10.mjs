@@ -14,12 +14,12 @@ try {
   const solverSource = readFileSync(join(repoRoot, 'src/wasm/deformation/solver.hpp'), 'utf8');
   assert.match(
     solverSource,
-    /arc_length_line_search_merit\(\s*a\.residualNorm,\s*lastConstraintResidual,\s*stepState\.deltaS,\s*stepMeritBeta,\s*opts\s*\)/s,
+    /arc_length_line_search_merit\(\s*a\.residualNorm,\s*lastConstraintResidual,\s*stepState\.deltaS,\s*stepMeritBeta,\s*(?:arcOpts|opts)\s*\)/s,
     'current arc-length merit must route through the merit-mode helper'
   );
   assert.match(
     solverSource,
-    /arc_length_line_search_merit\(\s*probe\.residualNorm,\s*constraint,\s*stepState\.deltaS,\s*stepMeritBeta,\s*opts\s*\)/s,
+    /arc_length_line_search_merit\(\s*probe\.residualNorm,\s*constraint,\s*stepState\.deltaS,\s*stepMeritBeta,\s*(?:arcOpts|opts)\s*\)/s,
     'probe arc-length merit must route through the merit-mode helper'
   );
 

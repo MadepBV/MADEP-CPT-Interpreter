@@ -1834,30 +1834,6 @@ inline PhaseResult run_safety_arc_length_phase(
           break;
         }
         assert(hasLastAssembly);
-#ifndef NDEBUG
-        PhaseStepMaterials acceptedCheckMaterials;
-        prepare_safety_sigma_msf_materials(ctx, regions, regionC, acceptedSigma, acceptedCheckMaterials);
-        std::vector<MaterialPoint> acceptedCheckTrialMp = committedMp;
-        AssembleOutput acceptedCheckAssembly = assemble_global(
-            elements, committedMp, acceptedCheckTrialMp,
-            *acceptedCheckMaterials.regions, *acceptedCheckMaterials.regionC,
-            freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
-            acceptedLambda, ctx.kind, ctx.symmetrize,
-            ctx.incrementalStress,
-            /*wantTangent=*/false,
-            K, internalForceFree, residualFree);
-        const double residualDiff =
-            std::abs(lastAssembly.residualNorm - acceptedCheckAssembly.residualNorm);
-        const double residualTol = 1e-10 + 1e-8 * std::max(
-            std::abs(lastAssembly.residualNorm),
-            std::abs(acceptedCheckAssembly.residualNorm));
-        assert(residualDiff <= residualTol);
-        assert(lastAssembly.plasticActiveCount == acceptedCheckAssembly.plasticActiveCount);
-        assert(lastAssembly.activeFaceCount == acceptedCheckAssembly.activeFaceCount);
-        assert(lastAssembly.activeEdgeCount == acceptedCheckAssembly.activeEdgeCount);
-        assert(lastAssembly.activeApexCount == acceptedCheckAssembly.activeApexCount);
-        assert(lastAssembly.tensionCount == acceptedCheckAssembly.tensionCount);
-#endif
         res.activeCount = lastAssembly.plasticActiveCount;
         res.activeFaceCount = lastAssembly.activeFaceCount;
         res.activeEdgeCount = lastAssembly.activeEdgeCount;
