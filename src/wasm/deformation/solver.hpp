@@ -860,6 +860,16 @@ struct ArcLengthPredictor {
   bool converged{ false };
 };
 
+struct ArcLengthCorrector {
+  std::vector<double> deltaUFree;
+  double deltaLambda{ 0.0 };
+  double constraintResidual{ 0.0 };
+  double denominator{ 0.0 };
+  std::int32_t linearIterations{ 0 };
+  std::uint16_t failureCode{ 0 };
+  bool converged{ false };
+};
+
 inline ActualContinuationMode default_actual_continuation_mode(PhaseKind phaseKind) {
   return phaseKind == PhaseKind::SafetyCphi
       ? ActualContinuationMode::StrengthControl
@@ -961,6 +971,88 @@ inline ArcLengthPredictor make_load_control_arc_length_predictor(
   predictor.weightedNorm = std::sqrt(arc_length_weighted_norm2(predictor.deltaUFree));
   choose_arc_length_predictor_sign(state, predictor, alpha);
   return predictor;
+}
+
+inline double arc_length_constraint_residual(
+    const std::vector<double>& stepDeltaUFree,
+    double stepDeltaLambda,
+    double deltaS,
+    double alpha,
+    double displacementScale = 1.0) {
+  return arc_length_weighted_norm2(stepDeltaUFree, displacementScale)
+      + alpha * alpha * stepDeltaLambda * stepDeltaLambda
+      - deltaS * deltaS;
+}
+
+inline double arc_length_constraint_directional_derivative_u(
+    const std::vector<double>& stepDeltaUFree,
+    const std::vector<double>& correctionFree,
+    double displacementScale = 1.0) {
+  const std::size_t n = std::min(stepDeltaUFree.size(), correctionFree.size());
+  const double w2 = displacementScale * displacementScale;
+  double out = 0.0;
+  for (std::size_t i = 0; i < n; ++i) {
+    out += 2.0 * w2 * stepDeltaUFree[i] * correctionFree[i];
+  }
+  return out;
+}
+
+inline ArcLengthCorrector compute_arc_length_corrector(
+    const CsrMatrix& K,
+    const std::vector<std::int32_t>& freeDofs,
+    const std::vector<double>& residualFree,
+    const std::vector<double>& continuationRhsFree,
+    const std::vector<double>& stepDeltaUFree,
+    double stepDeltaLambda,
+    ArcLengthState& state,
+    std::vector<double>& diagInv,
+    const SolverOptions& opts,
+    bool useUnsymmetricSolver = false) {
+  ArcLengthCorrector out;
+  out.deltaUFree.assign(static_cast<std::size_t>(K.nrows), 0.0);
+
+  std::vector<double> duResidual(static_cast<std::size_t>(K.nrows), 0.0);
+  cg::LinearSolveResult residualSolve = solve_phase_linear_system(
+      K, freeDofs, residualFree, duResidual, diagInv, opts, useUnsymmetricSolver);
+  out.linearIterations += residualSolve.iterations;
+  if (!residualSolve.converged) {
+    out.failureCode = 1u;
+    return out;
+  }
+
+  std::vector<double> duContinuation(static_cast<std::size_t>(K.nrows), 0.0);
+  cg::LinearSolveResult continuationSolve = solve_phase_linear_system(
+      K, freeDofs, continuationRhsFree, duContinuation, diagInv, opts, useUnsymmetricSolver);
+  out.linearIterations += continuationSolve.iterations;
+  if (!continuationSolve.converged) {
+    out.failureCode = 2u;
+    return out;
+  }
+
+  const double alpha = std::clamp(state.alpha, opts.arcLengthAlphaMin, opts.arcLengthAlphaMax);
+  out.constraintResidual = arc_length_constraint_residual(
+      stepDeltaUFree, stepDeltaLambda, state.deltaS, alpha);
+  const double guDuResidual = arc_length_constraint_directional_derivative_u(
+      stepDeltaUFree, duResidual);
+  const double guDuContinuation = arc_length_constraint_directional_derivative_u(
+      stepDeltaUFree, duContinuation);
+  const double gLambda = 2.0 * alpha * alpha * stepDeltaLambda;
+  out.denominator = guDuContinuation + gLambda;
+  const double denominatorTol = std::max(1e-14, 1e-12 * std::max(std::abs(gLambda), 1.0));
+  if (!(std::abs(out.denominator) > denominatorTol) || !std::isfinite(out.denominator)) {
+    out.failureCode = 3u;
+    return out;
+  }
+
+  out.deltaLambda = (-out.constraintResidual - guDuResidual) / out.denominator;
+  for (std::int32_t i = 0; i < K.nrows; ++i) {
+    out.deltaUFree[static_cast<std::size_t>(i)] =
+        duResidual[static_cast<std::size_t>(i)]
+        + out.deltaLambda * duContinuation[static_cast<std::size_t>(i)];
+  }
+  out.converged = std::isfinite(out.deltaLambda);
+  out.failureCode = out.converged ? 0u : 4u;
+  return out;
 }
 
 struct PhaseResult {

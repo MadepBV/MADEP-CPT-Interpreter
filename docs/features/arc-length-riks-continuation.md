@@ -660,6 +660,19 @@ Validation:
 
 Goal: solve the augmented correction without assembling a larger matrix.
 
+Binding resolution for the Phase-3 implementation:
+
+- The reusable corrector follows the current WASM solver sign convention:
+  the first solve uses the current residual RHS that the existing Newton path
+  already solves, and the second solve uses a caller-supplied continuation RHS.
+  For load control that RHS is the reference external load vector.
+- The helper returns numeric failure codes only:
+  `0=ok`, `1=residual-solve-failed`, `2=continuation-solve-failed`,
+  `3=ill-conditioned-denominator`, `4=non-finite-correction`.
+- The production load/strength-control controller is still the only executed
+  controller in this phase. Arc-length execution is introduced only after the
+  safety derivative and result-record contracts are available.
+
 Tasks:
 
 - Reuse the existing tangent matrix.
