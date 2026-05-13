@@ -4768,6 +4768,7 @@ function ensureStage6State(){
   bishop.deformation.options.safetySigmaMsfBracketTolerance = Math.max(+bishop.deformation.options.safetySigmaMsfBracketTolerance || 0.01, 0.0001);
   bishop.deformation.options.safetyMaxSearchTrials = Math.max(Math.round(+bishop.deformation.options.safetyMaxSearchTrials || 32), 1);
   bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver !== false;
+  bishop.deformation.options.wasmRobustNonlinearMode = bishop.deformation.options.wasmRobustNonlinearMode === true;
   // Strip legacy GPU-related option carriers from saved sessions. The current
   // production deformation UI exposes the CPU f64 route only.
   delete bishop.deformation.options.useGpuAcceleration;
@@ -11757,6 +11758,7 @@ function renderStage6BishopApp(){
   const deformationUseNewGpuPipeline = deformation.options?.useNewGpuPipeline === true;
   const deformationGpuPipelineVersion = deformation.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1';
   const deformationUseWasmCpuPipeline = deformation.options?.useWasmCpuPipeline === true;
+  const deformationWasmRobustNonlinearMode = deformation.options?.wasmRobustNonlinearMode === true;
   const deformationSolverBackend = (() => {
     const raw = deformation.options?.solverBackend;
     if (raw === 'gpu-v3') return 'gpu-v2';
@@ -12475,6 +12477,12 @@ function renderStage6BishopApp(){
 	                    <option value="gpu-v2" ${deformationSolverBackend === 'gpu-v2' ? 'selected' : ''}>GPU v2</option>
 	                  </select>
 	                </label>
+                ${deformationSolverBackend === 'wasm-cpu' ? `
+                  <label class="st6-bishop-check">
+                    <input type="checkbox" ${deformationWasmRobustNonlinearMode ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.wasmRobustNonlinearMode', this.checked)">
+                    Robust WASM nonlinear mode
+                  </label>
+                ` : ''}
                 ${deformationIsSafety ? `
                   <label style="font-size:11px;color:var(--tx2)">Initial ΣMsf increment
                     <input type="number" step="0.01" min="0.001" value="${deformationSafetyInitialSigmaMsfIncrement.toFixed(3)}" onchange="stage6BishopSetField('deformation.options.safetyInitialSigmaMsfIncrement', this.value)">
