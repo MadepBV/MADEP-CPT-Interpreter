@@ -415,21 +415,22 @@ Mechanism scalar definitions:
 - `largestConnectedComponentPlasticMass` is the sum of
   `deltaEquivalentPlasticStrainSafety * integrationWeight` over the largest
   component by plastic mass.
-- `mechanismLength` is the projected span of active element centroids in the
-  largest connected component along that component's principal axis. Compute the
-  axis from the plastic-mass-weighted 2D covariance of active element centroids;
-  then use `max(dot(x_i, axis)) - min(dot(x_i, axis))`. If the component has
-  fewer than two active elements, `mechanismLength = 0`.
-- `displacementDirectionCoherence` is the normalized weighted resultant of
-  active element displacement directions in the largest component:
+- `mechanismLength` is the bounding-box diagonal of the largest connected
+  active-element component, in model units. The box is computed from all corner
+  nodes belonging to elements in that component. If the component has fewer than
+  two active elements, `mechanismLength = 0`.
+- `displacementDirectionCoherence` is the mean cosine of each active element's
+  displacement vector with the principal-direction unit vector of the
+  displacement covariance over active elements:
 
 ```text
 u_i = centroid displacement increment of active element i
 n_i = u_i / max(norm(u_i), eps)
+p = principal unit eigenvector of covariance({u_i})
 w_i = element plastic mass
 
 displacementDirectionCoherence =
-  norm(sum_i(w_i * n_i)) / max(sum_i(w_i), eps)
+  clamp(sum_i(w_i * dot(n_i, p)) / max(sum_i(w_i), eps), 0, 1)
 ```
 
 Ignore elements with displacement norm below the displacement tolerance. If no
@@ -655,15 +656,14 @@ finalization wire-status enum from the canonical status table.
 | 0 | `converged` |
 | 1 | `newton-failed` |
 | 2 | `cutback-exhausted` |
-| 3 | `arc-length-rejected` |
-| 4 | `trial-budget-exhausted` |
-| 5 | `interrupted` |
+| 3 | `rejected` |
 
 `SafetyTrialTarget.displayed` means this target supplied the displayed
 near-failure or final safety field state for contours and displacement vectors.
-At most one `SafetyTrialTarget` may have `displayed === true`. If no trial target
-is displayed, the displayed state is the lower-bound checkpoint or the safety
-base state identified by `displayedSigmaMsf`.
+For a safety run with at least one trial target, exactly one `SafetyTrialTarget`
+must have `displayed === true`; decoders and tests assert this. If no safety
+trial target exists, the displayed state is the lower-bound checkpoint or the
+safety base state identified by `displayedSigmaMsf`.
 
 `curve` and `mechanism` belong to the top-level `SafetyResult`, not to
 `SafetyFinalization`, so both `legacy-bracket` and `production-msf` can emit the
@@ -740,6 +740,59 @@ WASM binary wire format rules:
 - Failure codes inside fixed-width records must be numeric enums, for example
   `u16 failureCode`, with JS-side label mapping.
 - Saved-project option migration must be explicit and tested.
+
+Phase-1 `WIRE_VERSION = 7` safety-history layout:
+
+```text
+SafetyHeaderV7 (48 bytes)
+  u8  finalizationWireStatus
+  u8  pad[7]
+  f64 factorOfSafetyLower
+  f64 factorOfSafetyUpper
+  f64 strengthRetained
+  i32 trialCount
+  i32 totalNewtonIterations
+  i32 curveCount
+  i32 reserved
+
+SafetyTrialTargetV7 (40 bytes each)
+  f64 sigmaMsfStart
+  f64 sigmaMsfTarget
+  f64 sigmaMsfCommitted
+  i32 iterations
+  u16 failureCode
+  u8  converged
+  u8  trialOutcome
+  u8  displayed
+  u8  pad[7]
+
+SafetyCurvePointV7 (152 bytes each)
+  i32 trialIndex
+  i32 continuationStepIndex
+  i32 nonlinearIterations
+  i32 linearIterations
+  i32 activeCount
+  i32 activeFaceCount
+  i32 activeEdgeCount
+  i32 activeApexCount
+  i32 tensionCount
+  i32 dominantNode
+  i32 dominantDof
+  i32 activePlasticElementCount
+  f64 sigmaMsf
+  f64 lambda
+  f64 initialResidualNorm
+  f64 residualNorm
+  f64 relativeResidual
+  f64 lineSearchAcceptedScale
+  f64 uMaxAbs
+  f64 uNorm
+  f64 uSettlementMax
+  f64 uHorizontalMax
+  f64 maxDeltaPlasticStrain
+  f64 totalDeltaPlasticStrain
+  f64 mechanismScore  // NaN means not evaluated on this point.
+```
 
 Saved-project migration defaults:
 

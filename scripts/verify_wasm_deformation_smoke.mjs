@@ -26,7 +26,34 @@ const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, '..');
 const wasmGlueUrl = pathToFileURL(resolve(repoRoot, 'static/wasm/deformation/deformation.js'));
 
-import { encodeInputBuffer, decodeOutputBuffer } from '../src/lib/cpt-app/deformation/wasm/wire-format.js';
+import {
+  WASM_OUTPUT_MAGIC,
+  encodeInputBuffer,
+  decodeOutputBuffer
+} from '../src/lib/cpt-app/deformation/wasm/wire-format.js';
+
+function makeLegacyV6OutputBuffer() {
+  const buffer = new ArrayBuffer(20 + 88 + 40);
+  const view = new DataView(buffer);
+  let offset = 0;
+  const writeU32 = (v) => { view.setUint32(offset, v >>> 0, true); offset += 4; };
+  const writeI32 = (v) => { view.setInt32(offset, v | 0, true); offset += 4; };
+  const writeU8 = (v) => { view.setUint8(offset, v & 0xFF); offset += 1; };
+  const writeF64 = (v) => { view.setFloat64(offset, Number(v) || 0, true); offset += 8; };
+
+  writeU32(WASM_OUTPUT_MAGIC);
+  writeU32(6);
+  writeU32(0); writeU32(0); writeU32(0);
+  for (let i = 0; i < 10; i += 1) writeI32(0);
+  writeF64(0); writeF64(0); writeF64(0); writeF64(0); writeF64(0);
+  writeU8(1); writeU8(1); writeU8(0);
+  for (let i = 0; i < 5; i += 1) writeU8(0);
+  writeU8(0);
+  for (let i = 0; i < 7; i += 1) writeU8(0);
+  writeF64(1); writeF64(1); writeF64(1);
+  writeI32(0); writeI32(0);
+  return new Uint8Array(buffer);
+}
 
 function makePatchMesh() {
   // 1×1 m square patched with four T3 triangles around a central node.
@@ -199,6 +226,15 @@ async function main() {
   mod._free(outLenSlot);
 
   const decoded = decodeOutputBuffer(outBytes);
+  const legacyDecoded = decodeOutputBuffer(makeLegacyV6OutputBuffer());
+  if (
+    legacyDecoded?.safety?.safetyResult?.finalization?.status !== 'not-run' ||
+    (legacyDecoded?.safety?.curve || []).length !== 0 ||
+    (legacyDecoded?.safety?.trialTargets || []).length !== 0
+  ) {
+    console.error('FAIL: version-7 decoder did not preserve the legacy version-6 safety-output path.');
+    process.exit(5);
+  }
 
   console.log('Summary:', decoded.summary);
   console.log('Displacements:');

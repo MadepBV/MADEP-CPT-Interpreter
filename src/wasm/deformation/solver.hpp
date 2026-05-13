@@ -595,6 +595,9 @@ struct AssembleOutput {
   double residualNorm{ 0.0 };
   double rhsNorm{ 0.0 };
   std::int32_t plasticActiveCount{ 0 };
+  std::int32_t activeFaceCount{ 0 };
+  std::int32_t activeEdgeCount{ 0 };
+  std::int32_t activeApexCount{ 0 };
   std::int32_t tensionCount{ 0 };
   std::int32_t changedCount{ 0 };
   double maxEta{ 0.0 };
@@ -641,6 +644,9 @@ inline AssembleOutput assemble_global(
     const auto& C = regionC[el.regionIndex];
     const auto& rp = regions[el.regionIndex];
     bool elementActive = false;
+    bool elementFaceActive = false;
+    bool elementEdgeActive = false;
+    bool elementApexActive = false;
     bool elementTension = false;
     bool elementChanged = false;
 
@@ -694,7 +700,14 @@ inline AssembleOutput assemble_global(
       trialMp.localReturnMode = extra.localReturnMode;
       trialMp.localFallbackUsed = extra.localFallbackUsed;
 
-      if (resp.plasticActive) elementActive = true;
+      if (resp.plasticActive) {
+        elementActive = true;
+        const auto activeSurface = mc_exact::active_yield_surface_from_branch_kind(
+            static_cast<mc_exact::BranchKind>(extra.exactBranchKind));
+        if (activeSurface == madep::js_mirror::YieldSurface::MC_FACE) elementFaceActive = true;
+        if (activeSurface == madep::js_mirror::YieldSurface::MC_EDGE) elementEdgeActive = true;
+        if (activeSurface == madep::js_mirror::YieldSurface::MC_APEX) elementApexActive = true;
+      }
       if (resp.tensionActive) elementTension = true;
       if (previousTrialActive != (resp.plasticActive != 0)) elementChanged = true;
       if (resp.eta > out.maxEta) out.maxEta = resp.eta;
@@ -713,6 +726,9 @@ inline AssembleOutput assemble_global(
     }
 
     if (elementActive) out.plasticActiveCount += 1;
+    if (elementFaceActive) out.activeFaceCount += 1;
+    if (elementEdgeActive) out.activeEdgeCount += 1;
+    if (elementApexActive) out.activeApexCount += 1;
     if (elementTension) out.tensionCount += 1;
     if (elementChanged) out.changedCount += 1;
 
@@ -764,6 +780,10 @@ struct PhaseContext {
   const std::vector<RegionParams>* safetyStrengthBaseRegions{ nullptr };
   double safetySigmaMsfStart{ 1.0 };
   double safetySigmaMsfTarget{ 1.0 };
+  const std::vector<double>* safetyBaseU{ nullptr };
+  const std::vector<MaterialPoint>* safetyComparison{ nullptr };
+  std::vector<SafetyCurvePoint>* safetyCurve{ nullptr };
+  std::int32_t safetyTrialIndex{ -1 };
 };
 
 struct PhaseResult {
@@ -772,8 +792,14 @@ struct PhaseResult {
   std::int32_t newtonIterations{ 0 };
   std::int32_t cgIterations{ 0 };
   std::int32_t activeCount{ 0 };
+  std::int32_t activeFaceCount{ 0 };
+  std::int32_t activeEdgeCount{ 0 };
+  std::int32_t activeApexCount{ 0 };
   std::int32_t tensionCount{ 0 };
   std::int32_t displayActiveCount{ 0 };
+  std::int32_t displayActiveFaceCount{ 0 };
+  std::int32_t displayActiveEdgeCount{ 0 };
+  std::int32_t displayActiveApexCount{ 0 };
   std::int32_t displayTensionCount{ 0 };
   double maxEta{ 0.0 };
   double residualNorm{ 0.0 };
@@ -785,6 +811,80 @@ struct PhaseResult {
   std::vector<double> displayU;
   std::vector<MaterialPoint> displayMp;
 };
+
+inline SafetyCurvePoint make_safety_curve_point(
+    const PhaseContext& ctx,
+    const AssembleOutput& assembly,
+    const std::vector<double>& U,
+    const std::vector<MaterialPoint>& acceptedMp,
+    double lambda,
+    std::int32_t continuationStepIndex,
+    std::int32_t nonlinearIterations,
+    std::int32_t linearIterations,
+    double initialResidualNorm,
+    double lineSearchAcceptedScale,
+    const SolverOptions& opts) {
+  SafetyCurvePoint point;
+  point.trialIndex = ctx.safetyTrialIndex;
+  point.continuationStepIndex = continuationStepIndex;
+  point.nonlinearIterations = nonlinearIterations;
+  point.linearIterations = linearIterations;
+  point.activeCount = assembly.plasticActiveCount;
+  point.activeFaceCount = assembly.activeFaceCount;
+  point.activeEdgeCount = assembly.activeEdgeCount;
+  point.activeApexCount = assembly.activeApexCount;
+  point.tensionCount = assembly.tensionCount;
+  point.activePlasticElementCount = assembly.plasticActiveCount;
+  point.sigmaMsf = ctx.safetySigmaMsfStart +
+      (ctx.safetySigmaMsfTarget - ctx.safetySigmaMsfStart) * std::clamp(lambda, 0.0, 1.0);
+  point.lambda = lambda;
+  point.initialResidualNorm = std::isfinite(initialResidualNorm) ? initialResidualNorm : assembly.residualNorm;
+  point.residualNorm = assembly.residualNorm;
+  point.relativeResidual = assembly.residualNorm /
+      std::max(point.initialResidualNorm, opts.residualAbsTol);
+  point.lineSearchAcceptedScale = lineSearchAcceptedScale;
+
+  const std::vector<double>& baseU = ctx.safetyBaseU ? *ctx.safetyBaseU : U;
+  const std::int32_t ndof = std::min<std::int32_t>(
+      static_cast<std::int32_t>(U.size()),
+      static_cast<std::int32_t>(baseU.size()));
+  double u2 = 0.0;
+  double maxAbs = 0.0;
+  std::int32_t dominantDofIndex = -1;
+  for (std::int32_t dof = 0; dof < ndof; ++dof) {
+    const double du = U[static_cast<std::size_t>(dof)] - baseU[static_cast<std::size_t>(dof)];
+    u2 += du * du;
+    const double a = std::abs(du);
+    if (a > maxAbs) {
+      maxAbs = a;
+      dominantDofIndex = dof;
+    }
+    if ((dof & 1) == 0) {
+      point.uHorizontalMax = std::max(point.uHorizontalMax, a);
+    } else {
+      point.uSettlementMax = std::max(point.uSettlementMax, -du);
+    }
+  }
+  point.uMaxAbs = maxAbs;
+  point.uNorm = std::sqrt(u2);
+  if (dominantDofIndex >= 0) {
+    point.dominantNode = dominantDofIndex / 2;
+    point.dominantDof = dominantDofIndex & 1;
+  }
+
+  const std::vector<MaterialPoint>& comparison =
+      ctx.safetyComparison ? *ctx.safetyComparison : acceptedMp;
+  const std::size_t nmp = std::min(acceptedMp.size(), comparison.size());
+  for (std::size_t i = 0; i < nmp; ++i) {
+    const double delta = std::max(
+        0.0,
+        acceptedMp[i].accumulatedPlasticStrain - comparison[i].accumulatedPlasticStrain);
+    point.maxDeltaPlasticStrain = std::max(point.maxDeltaPlasticStrain, delta);
+    point.totalDeltaPlasticStrain += delta;
+  }
+  point.mechanismScore = std::numeric_limits<double>::quiet_NaN();
+  return point;
+}
 
 // Run a single nonlinear Newton-Raphson phase with adaptive load
 // stepping from λ = 0 → 1. 1:1 mirror of JS solveNonlinearPhase
@@ -880,6 +980,9 @@ inline PhaseResult run_nonlinear_phase(
     res.displayLoadFactor = candidateLoadFactor;
     res.displayResidualNorm = assembly.residualNorm;
     res.displayActiveCount = assembly.plasticActiveCount;
+    res.displayActiveFaceCount = assembly.activeFaceCount;
+    res.displayActiveEdgeCount = assembly.activeEdgeCount;
+    res.displayActiveApexCount = assembly.activeApexCount;
     res.displayTensionCount = assembly.tensionCount;
     res.displayU = U;
     res.displayMp = trialMp;
@@ -928,6 +1031,8 @@ inline PhaseResult run_nonlinear_phase(
     bool stepLineSearchAccepted = false;
     double stepLineSearchAcceptedScale = 1.0;
     double stepSuggestedCutbackFactor = std::numeric_limits<double>::quiet_NaN();
+    double stepInitialResidualNorm = std::numeric_limits<double>::quiet_NaN();
+    std::int32_t stepLinearIterations = 0;
     std::vector<double> iterationLinearGuess(static_cast<std::size_t>(nfree), 0.0);
     bool hasIterationLinearGuess =
         shouldWarmStartLinearSolve &&
@@ -945,8 +1050,14 @@ inline PhaseResult run_nonlinear_phase(
       remember_display_state(targetLambda, a);
       ++res.newtonIterations;
       newtonIterUsed = newtonIter;
+      if (!std::isfinite(stepInitialResidualNorm)) {
+        stepInitialResidualNorm = a.residualNorm;
+      }
       res.maxEta = std::max(res.maxEta, a.maxEta);
       res.activeCount = a.plasticActiveCount;
+      res.activeFaceCount = a.activeFaceCount;
+      res.activeEdgeCount = a.activeEdgeCount;
+      res.activeApexCount = a.activeApexCount;
       res.tensionCount = a.tensionCount;
       res.residualNorm = a.residualNorm;
       stepPeakActiveCount = std::max(stepPeakActiveCount, a.plasticActiveCount);
@@ -1007,6 +1118,7 @@ inline PhaseResult run_nonlinear_phase(
                           opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
       }
       res.cgIterations += lr.iterations;
+      stepLinearIterations += lr.iterations;
       double linearRhsNorm = 0.0;
       for (double v : residualFree) linearRhsNorm += v * v;
       linearRhsNorm = std::sqrt(linearRhsNorm);
@@ -1164,6 +1276,7 @@ inline PhaseResult run_nonlinear_phase(
                 residualFree.data(), fallbackDeltaUFree.data(),
                 opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
             res.cgIterations += fallbackLr.iterations;
+            stepLinearIterations += fallbackLr.iterations;
 
             double fallbackLinearRhsNorm = 0.0;
             for (double v : residualFree) fallbackLinearRhsNorm += v * v;
@@ -1331,6 +1444,35 @@ inline PhaseResult run_nonlinear_phase(
       loadFactor = targetLambda;
       ++res.accepted;
       committedMp = trialMp;
+      if (ctx.safetyCurve) {
+        std::vector<MaterialPoint> acceptedTrialMp = committedMp;
+        AssembleOutput acceptedAssembly = assemble_global(
+            elements, committedMp, acceptedTrialMp, *regionsForStep, *regionCForStep,
+            freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+            targetLambda, ctx.kind, ctx.symmetrize,
+            ctx.incrementalStress,
+            /*wantTangent=*/false,
+            K, internalForceFree, residualFree);
+        res.maxEta = std::max(res.maxEta, acceptedAssembly.maxEta);
+        res.activeCount = acceptedAssembly.plasticActiveCount;
+        res.activeFaceCount = acceptedAssembly.activeFaceCount;
+        res.activeEdgeCount = acceptedAssembly.activeEdgeCount;
+        res.activeApexCount = acceptedAssembly.activeApexCount;
+        res.tensionCount = acceptedAssembly.tensionCount;
+        res.residualNorm = acceptedAssembly.residualNorm;
+        ctx.safetyCurve->push_back(make_safety_curve_point(
+            ctx,
+            acceptedAssembly,
+            U,
+            committedMp,
+            targetLambda,
+            res.accepted - 1,
+            newtonIterUsed,
+            stepLinearIterations,
+            stepInitialResidualNorm,
+            lastAcceptedScale,
+            opts));
+      }
       if (shouldWarmStartLinearSolve && stepUsedUnsymmetricSolver && hasIterationLinearGuess) {
         warmStartFreeCorrection = iterationLinearGuess;
       } else if (!stepUsedUnsymmetricSolver) {
@@ -1702,6 +1844,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   std::vector<MaterialPoint> comparisonMp = safetyBase;
   std::int32_t displayActiveCount = out.summary.finalActiveCount;
   std::int32_t displayTensionCount = out.summary.finalTensionCount;
+  std::int32_t displayedTrialIndex = -1;
   auto sigma_at_progress = [](double start, double target, double progress) {
     const double t = std::clamp(progress, 0.0, 1.0);
     return start + (target - start) * t;
@@ -1745,6 +1888,10 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     sctx.safetyStrengthBaseRegions = in.regions;
     sctx.safetySigmaMsfStart = sigmaLow;
     sctx.safetySigmaMsfTarget = target;
+    sctx.safetyBaseU = &safetyBaseU;
+    sctx.safetyComparison = &safetyBase;
+    sctx.safetyCurve = &out.safety.curve;
+    sctx.safetyTrialIndex = static_cast<std::int32_t>(out.safety.trials.size());
     // Keep safety in the same correction-coordinate displacement frame as
     // geostatic and service. The display layer adds the elastic predictor
     // displacement after the solve, matching the JS CPU path.
@@ -1765,15 +1912,19 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     out.safety.trialCount += 1;
     out.safety.totalNewtonIterations += sr.newtonIterations;
     SafetyTrial st;
+    st.sigmaMsfStart = sigmaLow;
     st.sigmaMsfTarget = target;
     st.sigmaMsfCommitted = sr.converged
         ? target
         : sigma_at_progress(sigmaLow, target, sr.loadFactor);
     st.converged = sr.converged ? 1 : 0;
+    st.trialOutcome = sr.converged ? 0u : 1u;
+    st.failureCode = sr.converged ? 0u : 1u;
     st.iterations = sr.newtonIterations;
     out.safety.trials.push_back(st);
 
     if (sr.converged) {
+      displayedTrialIndex = static_cast<std::int32_t>(out.safety.trials.size()) - 1;
       sigmaLow = target;
       stableMp = *in.materialPoints;
       stableU = *in.U_global;
@@ -1788,6 +1939,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
           std::max(sigmaIncrement * sigmaGrowthFactor, sigmaMinIncrement),
           std::max(sigmaMax - sigmaLow, sigmaMinIncrement));
     } else {
+      displayedTrialIndex = static_cast<std::int32_t>(out.safety.trials.size()) - 1;
       displayMp = sr.hasDisplayState ? sr.displayMp : *in.materialPoints;
       displayU = sr.hasDisplayState ? sr.displayU : *in.U_global;
       comparisonMp = trialStartMp;
@@ -1818,6 +1970,10 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   }
   out.summary.finalActiveCount = displayActiveCount;
   out.summary.finalTensionCount = displayTensionCount;
+  for (std::size_t i = 0; i < out.safety.trials.size(); ++i) {
+    out.safety.trials[i].displayed =
+        static_cast<std::int32_t>(i) == displayedTrialIndex ? 1u : 0u;
+  }
 
   out.safety.factorOfSafetyLower = sigmaLow;
   out.safety.factorOfSafetyUpper = sigmaHigh > 0 ? sigmaHigh : sigmaMax;

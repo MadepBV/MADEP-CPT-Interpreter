@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// WASM entry point — wire format v6.
+// WASM entry point — wire format v7.
 //
 // INPUT (uint8_t* in, std::size_t len):
 //   Header (offsets in bytes from the start):
 //     u32  magic              = 'TDCM' (0x4D434454)
-//     u32  version            = 6
+//     u32  version            = 7
 //     u32  elementKind        (3 or 6)
 //     u32  constitutive       (0 = LE, 1 = MC-RS, 2 = MC-P)
 //     u32  analysisMode       (0 = service-only, 1 = geostatic+service,
@@ -50,7 +50,7 @@
 //
 // OUTPUT layout (uint8_t*, std::size_t):
 //   u32  magic                 = 'TDKM' (0x4D444B54)
-//   u32  version               = 6
+//   u32  version               = 7
 //   u32  numNodes
 //   u32  numElements
 //   u32  numGpTotal
@@ -73,8 +73,12 @@
 //     u8 plasticEverActive,
 //     u8 _pad
 //   )
-//   SafetyResult: { u8 status, 7 u8 pad, 3 f64 fos_lower / fos_upper / strength_retained,
-//                   2 i32 trialCount / totalNewton, then trialCount × SafetyTrial entries }
+//   SafetyResult:
+//     u8 status, 7 u8 pad,
+//     3 f64 fos_lower / fos_upper / strength_retained,
+//     i32 trialCount, i32 totalNewton, i32 curveCount, i32 reserved,
+//     trialCount × SafetyTrialTargetV7 (40 bytes),
+//     curveCount × SafetyCurvePointV7 (152 bytes)
 //
 // All multi-byte fields are little-endian.
 
@@ -116,17 +120,19 @@ const std::uint8_t* read_f64(const std::uint8_t* p, double& v)          { std::m
 
 std::uint8_t* write_u32(std::uint8_t* p, std::uint32_t v) { std::memcpy(p, &v, 4); return p + 4; }
 std::uint8_t* write_i32(std::uint8_t* p, std::int32_t v)  { std::memcpy(p, &v, 4); return p + 4; }
+std::uint8_t* write_u16(std::uint8_t* p, std::uint16_t v) { std::memcpy(p, &v, 2); return p + 2; }
 std::uint8_t* write_u8 (std::uint8_t* p, std::uint8_t v)  { *p = v; return p + 1; }
 std::uint8_t* write_f64(std::uint8_t* p, double v)         { std::memcpy(p, &v, 8); return p + 8; }
 
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
-constexpr std::uint32_t WIRE_VERSION = 6u;
+constexpr std::uint32_t WIRE_VERSION = 7u;
 
-constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 84 bytes
+constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 88 bytes
 constexpr std::size_t kGpStateBytes = (6 + 6 + 1 + 1 + 6 + 6 + 6 + 1 + 1 + 1) * 8 + 4;  // 35 f64 + 4 u8 = 284 bytes
-constexpr std::size_t kSafetyHeaderBytes = 1 + 7 + 3 * 8 + 2 * 4;  // 40 bytes
-constexpr std::size_t kSafetyTrialBytes = 2 * 8 + 4 + 4;            // 24 bytes (1 f64 target, 1 f64 committed, 1 i32 iter, 1 i32 with u8 converged + pad)
+constexpr std::size_t kSafetyHeaderBytes = 1 + 7 + 3 * 8 + 4 * 4;  // 48 bytes
+constexpr std::size_t kSafetyTrialBytes = 3 * 8 + 4 + 2 + 3 + 7;   // 40 bytes
+constexpr std::size_t kSafetyCurvePointBytes = 12 * 4 + 13 * 8;   // 152 bytes
 constexpr std::uint32_t LOCAL_MC_INPUT_MAGIC  = 0x504C434Du;  // 'MCLP'
 constexpr std::uint32_t LOCAL_MC_OUTPUT_MAGIC = 0x4F4C434Du;  // 'MCLO'
 constexpr std::uint32_t LOCAL_MC_VERSION = 1u;
@@ -493,10 +499,11 @@ int madepRunDeformationAnalysis(
       5 * 4 +                                  // header
       kSummaryBytes +                          // summary
       static_cast<std::size_t>(numNodes) * 16 + // service displacements
-      static_cast<std::size_t>(numNodes) * 16 + // geostatic displacements
-      static_cast<std::size_t>(numGpTotal) * kGpStateBytes +
-      kSafetyHeaderBytes +
-      static_cast<std::size_t>(result.safety.trials.size()) * kSafetyTrialBytes;
+	      static_cast<std::size_t>(numNodes) * 16 + // geostatic displacements
+	      static_cast<std::size_t>(numGpTotal) * kGpStateBytes +
+	      kSafetyHeaderBytes +
+	      static_cast<std::size_t>(result.safety.trials.size()) * kSafetyTrialBytes +
+	      static_cast<std::size_t>(result.safety.curve.size()) * kSafetyCurvePointBytes;
 
   std::uint8_t* out = new (std::nothrow) std::uint8_t[outLen];
   if (!out) { g_last_error = "WASM output allocation failed"; return 0; }
@@ -567,16 +574,49 @@ int madepRunDeformationAnalysis(
   for (int i = 0; i < 7; ++i) q = write_u8(q, 0);
   q = write_f64(q, result.safety.factorOfSafetyLower);
   q = write_f64(q, result.safety.factorOfSafetyUpper);
-  q = write_f64(q, result.safety.strengthRetained);
-  q = write_i32(q, result.safety.trialCount);
-  q = write_i32(q, result.safety.totalNewtonIterations);
-  for (const auto& trial : result.safety.trials) {
-    q = write_f64(q, trial.sigmaMsfTarget);
-    q = write_f64(q, trial.sigmaMsfCommitted);
-    q = write_i32(q, trial.iterations);
-    q = write_u8(q, trial.converged);
-    q = write_u8(q, 0); q = write_u8(q, 0); q = write_u8(q, 0);
-  }
+	  q = write_f64(q, result.safety.strengthRetained);
+	  q = write_i32(q, result.safety.trialCount);
+	  q = write_i32(q, result.safety.totalNewtonIterations);
+	  q = write_i32(q, static_cast<std::int32_t>(result.safety.curve.size()));
+	  q = write_i32(q, 0);
+	  for (const auto& trial : result.safety.trials) {
+	    q = write_f64(q, trial.sigmaMsfStart);
+	    q = write_f64(q, trial.sigmaMsfTarget);
+	    q = write_f64(q, trial.sigmaMsfCommitted);
+	    q = write_i32(q, trial.iterations);
+	    q = write_u16(q, trial.failureCode);
+	    q = write_u8(q, trial.converged);
+	    q = write_u8(q, trial.trialOutcome);
+	    q = write_u8(q, trial.displayed);
+	    for (int i = 0; i < 7; ++i) q = write_u8(q, 0);
+	  }
+	  for (const auto& point : result.safety.curve) {
+	    q = write_i32(q, point.trialIndex);
+	    q = write_i32(q, point.continuationStepIndex);
+	    q = write_i32(q, point.nonlinearIterations);
+	    q = write_i32(q, point.linearIterations);
+	    q = write_i32(q, point.activeCount);
+	    q = write_i32(q, point.activeFaceCount);
+	    q = write_i32(q, point.activeEdgeCount);
+	    q = write_i32(q, point.activeApexCount);
+	    q = write_i32(q, point.tensionCount);
+	    q = write_i32(q, point.dominantNode);
+	    q = write_i32(q, point.dominantDof);
+	    q = write_i32(q, point.activePlasticElementCount);
+	    q = write_f64(q, point.sigmaMsf);
+	    q = write_f64(q, point.lambda);
+	    q = write_f64(q, point.initialResidualNorm);
+	    q = write_f64(q, point.residualNorm);
+	    q = write_f64(q, point.relativeResidual);
+	    q = write_f64(q, point.lineSearchAcceptedScale);
+	    q = write_f64(q, point.uMaxAbs);
+	    q = write_f64(q, point.uNorm);
+	    q = write_f64(q, point.uSettlementMax);
+	    q = write_f64(q, point.uHorizontalMax);
+	    q = write_f64(q, point.maxDeltaPlasticStrain);
+	    q = write_f64(q, point.totalDeltaPlasticStrain);
+	    q = write_f64(q, point.mechanismScore);
+	  }
 
   *outPtrPtr = out;
   *outLenPtr = static_cast<std::uint32_t>(outLen);

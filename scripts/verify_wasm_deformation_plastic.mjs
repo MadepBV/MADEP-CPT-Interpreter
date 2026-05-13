@@ -260,6 +260,42 @@ async function main() {
     console.error('FAIL: safety c-phi phase did not run any strength-reduction trial.');
     process.exit(5);
   }
+  const safetyCurve = safetyDecoded.safety.curve || [];
+  const trialTargets = safetyDecoded.safety.trialTargets || [];
+  if (safetyCurve.length < 1) {
+    console.error('FAIL: safety c-phi phase did not emit accepted continuation curve points.');
+    process.exit(8);
+  }
+  const displayedTargets = trialTargets.filter((trial) => trial.displayed === true);
+  if (trialTargets.length > 0 && displayedTargets.length !== 1) {
+    console.error(`FAIL: expected exactly one displayed safety trial target, got ${displayedTargets.length}.`);
+    process.exit(9);
+  }
+  const badArcLengthDetails = safetyCurve.find((point) => point.arcLengthDetails !== null);
+  if (badArcLengthDetails) {
+    console.error('FAIL: v7 strength-control safety curve point carried arc-length details.');
+    process.exit(10);
+  }
+  const badMetric = safetyCurve.find((point) =>
+    !Number.isFinite(Number(point.sigmaMsf)) ||
+    !Number.isFinite(Number(point.uMaxAbs)) ||
+    !Number.isFinite(Number(point.maxDeltaPlasticStrain)) ||
+    point.activeFaceCount < 0 ||
+    point.activeEdgeCount < 0 ||
+    point.activeApexCount < 0
+  );
+  if (badMetric) {
+    console.error('FAIL: safety curve contains invalid displacement/plasticity/active-set metrics.', badMetric);
+    process.exit(11);
+  }
+  const displayedTarget = displayedTargets[0] || null;
+  if (displayedTarget?.converged === true) {
+    const lastCurve = safetyCurve[safetyCurve.length - 1];
+    if (Math.abs(Number(lastCurve?.sigmaMsf) - Number(displayedTarget.committed)) > 1e-9) {
+      console.error('FAIL: safety curve endpoint does not match the displayed converged safety target.');
+      process.exit(12);
+    }
+  }
   if (!(maxSafetyPlasticIncrement > 0)) {
     console.error('FAIL: safety c-phi display state did not accumulate plastic strain beyond its comparison checkpoint.');
     process.exit(7);

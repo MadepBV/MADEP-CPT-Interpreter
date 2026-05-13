@@ -3,11 +3,32 @@
 //
 // Wire-format encoder/decoder shared between the JS bridge and the C++
 // WASM module. Both sides MUST agree on this layout exactly; the C++
-// reader lives in deformation_wasm.cpp. Wire version 6.
+// reader lives in deformation_wasm.cpp. Wire version 7.
 
 const INPUT_MAGIC = 0x4D434454; // 'TDCM'
 const OUTPUT_MAGIC = 0x4D444B54; // 'TDKM'
-const WIRE_VERSION = 6;
+const WIRE_VERSION = 7;
+const LEGACY_OUTPUT_WIRE_VERSION = 6;
+
+const SAFETY_WIRE_LABELS = Object.freeze([
+  'not-run',
+  'bracketed',
+  'mechanism',
+  'no-failure-found',
+  'numerical-limit',
+  'insufficient-mechanism',
+  'needs-more-steps'
+]);
+
+const SAFETY_FINALIZATION_STATUS_BY_WIRE = Object.freeze([
+  'not-run',
+  'bracketed-failure',
+  'mechanism-developed',
+  'no-failure-found',
+  'numerical-nonconvergence',
+  'insufficient-mechanism',
+  'needs-more-steps'
+]);
 
 export const CONSTITUTIVE_KIND = Object.freeze({
   LinearElastic: 0,
@@ -223,12 +244,16 @@ export function decodeOutputBuffer(bytes) {
   let offset = 0;
   const readU32 = () => { const v = view.getUint32(offset, true); offset += 4; return v; };
   const readI32 = () => { const v = view.getInt32(offset, true); offset += 4; return v; };
+  const readU16 = () => { const v = view.getUint16(offset, true); offset += 2; return v; };
   const readU8  = () => { const v = view.getUint8(offset); offset += 1; return v; };
   const readF64 = () => { const v = view.getFloat64(offset, true); offset += 8; return v; };
 
   const magic = readU32();
   const version = readU32();
-  if (magic !== OUTPUT_MAGIC || version !== WIRE_VERSION) {
+  if (
+    magic !== OUTPUT_MAGIC ||
+    (version !== WIRE_VERSION && version !== LEGACY_OUTPUT_WIRE_VERSION)
+  ) {
     throw new Error(`WASM output header mismatch (magic=${magic.toString(16)}, version=${version}).`);
   }
   const numNodes = readU32();
@@ -312,16 +337,150 @@ export function decodeOutputBuffer(bytes) {
   const safetyStrengthRetained = readF64();
   const safetyTrialCount = readI32();
   const safetyTotalNewton = readI32();
+  const safetyCurveCount = version >= 7 ? readI32() : 0;
+  if (version >= 7) readI32();
   const safetyTrials = new Array(safetyTrialCount);
+  const safetyTrialTargets = version >= 7 ? new Array(safetyTrialCount) : [];
   for (let i = 0; i < safetyTrialCount; i += 1) {
-    safetyTrials[i] = {
-      target: readF64(),
-      committed: readF64(),
-      iterations: readI32(),
-      converged: readU8() === 1
-    };
-    readU8(); readU8(); readU8();
+    if (version >= 7) {
+      const sigmaMsfStart = readF64();
+      const sigmaMsfTarget = readF64();
+      const sigmaMsfCommitted = readF64();
+      const iterations = readI32();
+      const failureCode = readU16();
+      const converged = readU8() === 1;
+      const trialOutcome = readU8();
+      const displayed = readU8() === 1;
+      for (let pad = 0; pad < 7; pad += 1) readU8();
+      const trial = {
+        index: i,
+        sigmaMsfStart,
+        sigmaMsfTarget,
+        sigmaMsfCommitted,
+        target: sigmaMsfTarget,
+        committed: sigmaMsfCommitted,
+        iterations,
+        converged,
+        trialOutcome,
+        failureCode,
+        displayed
+      };
+      safetyTrials[i] = trial;
+      safetyTrialTargets[i] = trial;
+    } else {
+      safetyTrials[i] = {
+        target: readF64(),
+        committed: readF64(),
+        iterations: readI32(),
+        converged: readU8() === 1
+      };
+      readU8(); readU8(); readU8();
+    }
   }
+
+  const safetyCurve = new Array(safetyCurveCount);
+  for (let i = 0; i < safetyCurveCount; i += 1) {
+    const trialIndex = readI32();
+    const continuationStepIndex = readI32();
+    const nonlinearIterations = readI32();
+    const linearIterations = readI32();
+    const activeCount = readI32();
+    const activeFaceCount = readI32();
+    const activeEdgeCount = readI32();
+    const activeApexCount = readI32();
+    const tensionCount = readI32();
+    const dominantNode = readI32();
+    const dominantDof = readI32();
+    const activePlasticElementCount = readI32();
+    const sigmaMsf = readF64();
+    const lambda = readF64();
+    const initialResidualNorm = readF64();
+    const residualNorm = readF64();
+    const relativeResidual = readF64();
+    const lineSearchAcceptedScale = readF64();
+    const uMaxAbs = readF64();
+    const uNorm = readF64();
+    const uSettlementMax = readF64();
+    const uHorizontalMax = readF64();
+    const maxDeltaPlasticStrain = readF64();
+    const totalDeltaPlasticStrain = readF64();
+    const mechanismScoreRaw = readF64();
+    safetyCurve[i] = {
+      index: i,
+      trialIndex,
+      continuationStepIndex,
+      sigmaMsf,
+      lambda,
+      converged: true,
+      initialResidualNorm,
+      residualNorm,
+      relativeResidual,
+      nonlinearIterations,
+      linearIterations,
+      lineSearchAcceptedScale,
+      activeCount,
+      activeFaceCount,
+      activeEdgeCount,
+      activeApexCount,
+      tensionCount,
+      uMaxAbs,
+      uNorm,
+      uSettlementMax,
+      uHorizontalMax,
+      dominantNode,
+      dominantDof,
+      activePlasticElementCount,
+      maxDeltaPlasticStrain,
+      totalDeltaPlasticStrain,
+      mechanismScore: Number.isFinite(mechanismScoreRaw) ? mechanismScoreRaw : null,
+      arcLengthDetails: null
+    };
+  }
+
+  const finalizationStatus = SAFETY_FINALIZATION_STATUS_BY_WIRE[safetyStatus] || 'numerical-nonconvergence';
+  const factorOfSafetyUpper = safetyStatus === 3 ? null : safetyFosUpper;
+  const bracketWidth = factorOfSafetyUpper !== null
+    ? Math.max(0, safetyFosUpper - safetyFosLower)
+    : null;
+  const emptyMechanism = {
+    status: 'none',
+    score: 0,
+    threshold: 0.65,
+    maxDeltaPlasticStrain: 0,
+    totalDeltaPlasticStrain: 0,
+    activePlasticPointCount: 0,
+    activePlasticElementCount: 0,
+    connectedComponentCount: 0,
+    largestConnectedComponentElementCount: 0,
+    largestConnectedComponentPlasticMass: 0,
+    componentMassRatio: 0,
+    mechanismLength: 0,
+    plasticGrowthOverWindow: 0,
+    mechanismTouchesLoadedZone: false,
+    mechanismTouchesFreeSurface: false,
+    mechanismTouchesBoundary: false,
+    mechanismCrossesSlopeOrFoundationZone: false,
+    displacementDirectionCoherence: 0
+  };
+  const safetyResult = {
+    finalizationMode: 'legacy-bracket',
+    finalization: {
+      status: summary.safetyRan ? finalizationStatus : 'not-run',
+      factorOfSafety: safetyFosLower,
+      factorOfSafetyLower: safetyFosLower,
+      factorOfSafetyUpper,
+      factorOfSafetyIsOpenEnded: safetyStatus === 3,
+      bracketWidth,
+      strengthRetained: safetyStrengthRetained,
+      displayedSigmaMsf: safetyFosLower,
+      plateauDetected: false,
+      plateauWindowStart: null,
+      plateauWindowEnd: null
+    },
+    mechanism: emptyMechanism,
+    curve: summary.safetyRan ? safetyCurve : [],
+    trialTargets: summary.safetyRan ? safetyTrialTargets : []
+  };
 
   return {
     numNodes,
@@ -334,14 +493,17 @@ export function decodeOutputBuffer(bytes) {
     gpStates,
     safety: {
       status: safetyStatus,
-      statusLabel: ['not-run', 'bracketed', 'mechanism', 'no-failure-found'][safetyStatus] || 'unknown',
+      statusLabel: SAFETY_WIRE_LABELS[safetyStatus] || 'unknown',
       ran: summary.safetyRan,
       factorOfSafetyLower: safetyFosLower,
       factorOfSafetyUpper: safetyFosUpper,
       strengthRetained: safetyStrengthRetained,
       trialCount: safetyTrialCount,
       totalNewtonIterations: safetyTotalNewton,
-      trials: safetyTrials
+      trials: safetyTrials,
+      curve: summary.safetyRan ? safetyCurve : [],
+      trialTargets: summary.safetyRan ? safetyTrialTargets : [],
+      safetyResult
     }
   };
 }

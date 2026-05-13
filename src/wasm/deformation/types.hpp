@@ -256,12 +256,46 @@ struct SolverOptions {
   std::int32_t safetyMaxSearchTrials{ 32 };
 };
 
-// One safety c-φ trial record.
+// One accepted c-φ safety continuation point. This is a dense history record,
+// emitted for accepted continuation steps only.
+struct SafetyCurvePoint {
+  std::int32_t trialIndex{ -1 };
+  std::int32_t continuationStepIndex{ 0 };
+  std::int32_t nonlinearIterations{ 0 };
+  std::int32_t linearIterations{ 0 };
+  std::int32_t activeCount{ 0 };
+  std::int32_t activeFaceCount{ 0 };
+  std::int32_t activeEdgeCount{ 0 };
+  std::int32_t activeApexCount{ 0 };
+  std::int32_t tensionCount{ 0 };
+  std::int32_t dominantNode{ -1 };
+  std::int32_t dominantDof{ -1 };
+  std::int32_t activePlasticElementCount{ 0 };
+  double sigmaMsf{ 1.0 };
+  double lambda{ 0.0 };
+  double initialResidualNorm{ 0.0 };
+  double residualNorm{ 0.0 };
+  double relativeResidual{ 0.0 };
+  double lineSearchAcceptedScale{ 1.0 };
+  double uMaxAbs{ 0.0 };
+  double uNorm{ 0.0 };
+  double uSettlementMax{ 0.0 };
+  double uHorizontalMax{ 0.0 };
+  double maxDeltaPlasticStrain{ 0.0 };
+  double totalDeltaPlasticStrain{ 0.0 };
+  double mechanismScore{ 0.0 };  // NaN means "not evaluated on this point".
+};
+
+// One safety c-φ trial target record.
 struct SafetyTrial {
+  double sigmaMsfStart{ 1.0 };
   double sigmaMsfTarget{ 1.0 };
   double sigmaMsfCommitted{ 1.0 };
   std::uint8_t converged{ 0 };
-  std::uint8_t pad[7]{};
+  std::uint8_t trialOutcome{ 0 };  // 0=converged, 1=newton-failed, 2=cutback-exhausted, 3=rejected.
+  std::uint8_t displayed{ 0 };
+  std::uint8_t pad[5]{};
+  std::uint16_t failureCode{ 0 };
   std::int32_t iterations{ 0 };
 };
 
@@ -275,6 +309,7 @@ struct SafetyResult {
   std::int32_t trialCount{ 0 };
   std::int32_t totalNewtonIterations{ 0 };
   std::vector<SafetyTrial> trials;
+  std::vector<SafetyCurvePoint> curve;
 };
 
 // Summary stats returned with the result.
