@@ -6386,7 +6386,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     safetySigmaMsfMax: Math.max(Number(input?.options?.safetySigmaMsfMax) || SAFETY_SIGMA_MSF_MAX, 1),
     safetySigmaMsfBracketTolerance: Math.max(Number(input?.options?.safetySigmaMsfBracketTolerance) || SAFETY_SIGMA_MSF_BRACKET_TOL, 1e-4),
     safetyMaxSearchTrials: Math.max(Math.round(Number(input?.options?.safetyMaxSearchTrials) || SAFETY_MAX_SEARCH_TRIALS), 1),
-    safetyFinalizationMode: normalizeSafetyFinalizationMode(input?.options?.safetyFinalizationMode),
+    safetyFinalizationMode: normalizeSafetyFinalizationMode(input?.options?.safetyFinalizationMode, 'production-msf'),
     safetyMechanismPlateauWindow: Math.max(Math.round(Number(input?.options?.safetyMechanismPlateauWindow) || 3), 2),
     safetyMechanismPlateauRelativeTolerance: Math.max(Number(input?.options?.safetyMechanismPlateauRelativeTolerance) || 0.01, 1e-4),
     safetyMechanismMinIncrementalDisplacementNorm: Math.max(Number(input?.options?.safetyMechanismMinIncrementalDisplacementNorm) || 1e-8, 0),

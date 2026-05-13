@@ -7,9 +7,15 @@ const DEFAULT_PLATEAU_WINDOW = 4;
 const DEFAULT_PLATEAU_RELATIVE_TOLERANCE = 0.01;
 const DEFAULT_MIN_PLATEAU_DISPLACEMENT_GROWTH = 1e-8;
 const DEFAULT_MIN_PLATEAU_PLASTIC_GROWTH = 1e-8;
+const BRACKET_TOLERANCE_ROUNDOFF = 1e-12;
 
-export function normalizeSafetyFinalizationMode(value) {
-  return value === 'production-msf' ? 'production-msf' : 'legacy-bracket';
+export function normalizeSafetyFinalizationMode(value, fallback = 'legacy-bracket') {
+  const fallbackMode = fallback === 'production-msf' ? 'production-msf' : 'legacy-bracket';
+  return value === 'production-msf'
+    ? 'production-msf'
+    : value === 'legacy-bracket'
+      ? 'legacy-bracket'
+      : fallbackMode;
 }
 
 export function safetyFinalizationStatusFromRaw(rawStatus, rawWireStatus = null) {
@@ -115,6 +121,8 @@ export function buildSafetyFinalization({
     Number(options?.safetySigmaMsfBracketTolerance) || DEFAULT_BRACKET_TOLERANCE,
     1e-4
   );
+  const bracketWithinTolerance = bracketWidth != null
+    && bracketWidth <= bracketTolerance + BRACKET_TOLERANCE_ROUNDOFF;
   const plateau = plateauEvidence(curve, options);
   const score = Number(mechanism?.score) || 0;
   const threshold = Number(mechanism?.threshold) || 0.65;
@@ -135,7 +143,7 @@ export function buildSafetyFinalization({
       status = 'no-failure-found';
     } else if (rawFinalStatus === 'mechanism-developed') {
       status = 'mechanism-developed';
-    } else if (bracketWidth != null && bracketWidth <= bracketTolerance) {
+    } else if (bracketWithinTolerance) {
       status = 'bracketed-failure';
     } else if ((plateau.detected || hasRejectedTrial) && mechanismCoherent) {
       status = 'mechanism-developed';

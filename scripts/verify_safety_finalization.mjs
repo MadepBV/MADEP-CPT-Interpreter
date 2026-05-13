@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import {
   buildSafetyFinalization,
+  normalizeSafetyFinalizationMode,
   safetyStatusAliasFromFinalizationStatus
 } from '../src/lib/cpt-app/deformation/safety-finalization.js';
 
@@ -25,6 +26,10 @@ const emptyMechanism = {
   threshold: 0.65,
   activePlasticElementCount: 0
 };
+
+assert.equal(normalizeSafetyFinalizationMode(undefined), 'legacy-bracket');
+assert.equal(normalizeSafetyFinalizationMode(undefined, 'production-msf'), 'production-msf');
+assert.equal(normalizeSafetyFinalizationMode('legacy-bracket', 'production-msf'), 'legacy-bracket');
 
 const base = {
   factorOfSafetyLower: 1.46,
@@ -66,6 +71,17 @@ const productionBracket = buildSafetyFinalization({
 });
 assert.equal(productionBracket.status, 'bracketed-failure');
 assert.equal(productionBracket.factorOfSafety, productionBracket.factorOfSafetyLower);
+
+const productionBracketAtRoundoffBoundary = buildSafetyFinalization({
+  ...base,
+  mode: 'production-msf',
+  rawStatus: 'bracketed',
+  factorOfSafetyLower: 1.4609375,
+  factorOfSafetyUpper: 1.4709375000000001,
+  mechanism: coherentMechanism,
+  trialTargets: [{ converged: false }]
+});
+assert.equal(productionBracketAtRoundoffBoundary.status, 'bracketed-failure');
 
 const productionMechanism = buildSafetyFinalization({
   ...base,

@@ -4355,7 +4355,7 @@ function stage6Defaults(){
           safetySigmaMsfMax:3.00,
           safetySigmaMsfBracketTolerance:0.01,
           safetyMaxSearchTrials:32,
-          safetyFinalizationMode:'legacy-bracket',
+          safetyFinalizationMode:'production-msf',
           useUnsymmetricPlasticSolver:true
         },
         display:{
@@ -4768,9 +4768,12 @@ function ensureStage6State(){
   bishop.deformation.options.safetySigmaMsfMax = Math.max(+bishop.deformation.options.safetySigmaMsfMax || 3.00, 1.0);
   bishop.deformation.options.safetySigmaMsfBracketTolerance = Math.max(+bishop.deformation.options.safetySigmaMsfBracketTolerance || 0.01, 0.0001);
   bishop.deformation.options.safetyMaxSearchTrials = Math.max(Math.round(+bishop.deformation.options.safetyMaxSearchTrials || 32), 1);
+  const hadSafetyFinalizationMode = typeof bishop.deformation.options.safetyFinalizationMode === 'string';
   bishop.deformation.options.safetyFinalizationMode = bishop.deformation.options.safetyFinalizationMode === 'production-msf'
     ? 'production-msf'
-    : 'legacy-bracket';
+    : bishop.deformation.options.safetyFinalizationMode === 'legacy-bracket'
+      ? 'legacy-bracket'
+      : (hadSafetyFinalizationMode ? 'production-msf' : 'legacy-bracket');
   bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver !== false;
   bishop.deformation.options.wasmRobustNonlinearMode = false;
   // Strip legacy GPU-related option carriers from saved sessions. The current

@@ -164,12 +164,13 @@ bracketWidth =
 
 bracketed-failure =
   bracketWidth != null
-  && bracketWidth <= safetySigmaMsfBracketTolerance
+  && bracketWidth <= safetySigmaMsfBracketTolerance + 1e-12
 ```
 
 Use the same `safetySigmaMsfBracketTolerance` value that controls the safety
-search. Do not apply a relative tolerance or a display-rounded tolerance in the
-finalization classifier.
+search. The `1e-12` absolute guard is only for binary roundoff at exact bracket
+boundaries; do not apply a relative tolerance or a display-rounded tolerance in
+the finalization classifier.
 
 Do not call soil-body failure solely because Newton failed. Non-convergence is
 evidence only when it occurs near a stable bracket or together with a coherent,
@@ -204,6 +205,13 @@ The classifier never changes `factorOfSafetyLower`; it only classifies the
 evidence attached to that lower bound. In Phase 4 the UI still defaults to
 `legacy-bracket` for compatibility. `production-msf` is available through the
 solver option and becomes the default only in Phase 5 after regression approval.
+
+Phase-5 switch-over rule: new solver calls default to `production-msf` when
+`safetyFinalizationMode` is absent, and new UI sessions store
+`safetyFinalizationMode = 'production-msf'`. Version-6-era saved UI state that
+does not contain the option is migrated to `legacy-bracket` so the old project
+can be rerun without a silent status-classification change. The numerical
+lower-bound FoS must remain unchanged in either mode.
 
 ## Canonical Status Contract
 
