@@ -22,6 +22,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -66,13 +67,20 @@ inline void strain_at_gauss(
 
 // Build the per-region 6×6 elastic stiffness (cached per phase since the
 // safety phase scales material parameters).
-inline std::vector<Mat6> build_region_elastic(
-    const std::vector<RegionParams>& regions) {
-  std::vector<Mat6> out;
+inline void build_region_elastic_into(
+    const std::vector<RegionParams>& regions,
+    std::vector<Mat6>& out) {
+  out.clear();
   out.reserve(regions.size());
   for (const auto& r : regions) {
     out.push_back(linalg::elastic_matrix_E_nu(r.Emc, r.nu));
   }
+}
+
+inline std::vector<Mat6> build_region_elastic(
+    const std::vector<RegionParams>& regions) {
+  std::vector<Mat6> out;
+  build_region_elastic_into(regions, out);
   return out;
 }
 
@@ -810,7 +818,7 @@ inline void prepare_phase_step_materials(
       (ctx.safetySigmaMsfTarget - ctx.safetySigmaMsfStart) * targetLambda;
   out.ownedRegions = *ctx.safetyStrengthBaseRegions;
   for (auto& r : out.ownedRegions) r = reduce_strength(r, sigmaMsf);
-  out.ownedRegionC = build_region_elastic(out.ownedRegions);
+  build_region_elastic_into(out.ownedRegions, out.ownedRegionC);
   out.regions = &out.ownedRegions;
   out.regionC = &out.ownedRegionC;
 }
@@ -829,7 +837,7 @@ inline void prepare_safety_sigma_msf_materials(
 
   out.ownedRegions = *ctx.safetyStrengthBaseRegions;
   for (auto& r : out.ownedRegions) r = reduce_strength(r, std::max(sigmaMsf, 1.0));
-  out.ownedRegionC = build_region_elastic(out.ownedRegions);
+  build_region_elastic_into(out.ownedRegions, out.ownedRegionC);
   out.regions = &out.ownedRegions;
   out.regionC = &out.ownedRegionC;
 }
@@ -893,6 +901,9 @@ struct ArcLengthCorrector {
 struct SafetyResidualDerivativeFd {
   std::vector<double> rLambdaFree;
   std::vector<double> continuationRhsFree;
+  std::vector<MaterialPoint> trialScratch;
+  std::vector<RegionParams> regionsScratch;
+  std::vector<Mat6> regionCScratch;
   double sigmaMsf{ 1.0 };
   double lowerSigmaMsf{ 1.0 };
   double upperSigmaMsf{ 1.0 };
@@ -1134,16 +1145,17 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
   std::vector<double> residualScratch(static_cast<std::size_t>(nfree), 0.0);
 
   auto assemble_at_sigma = [&](double sigma, std::vector<double>& residualOut) -> bool {
-    std::vector<RegionParams> probeRegions = *ctx.safetyStrengthBaseRegions;
-    for (auto& r : probeRegions) r = reduce_strength(r, sigma);
-    std::vector<Mat6> probeC = build_region_elastic(probeRegions);
-    std::vector<MaterialPoint> trialProbe = trialBackup;
+    out.regionsScratch.assign(
+        ctx.safetyStrengthBaseRegions->begin(), ctx.safetyStrengthBaseRegions->end());
+    for (auto& r : out.regionsScratch) r = reduce_strength(r, sigma);
+    build_region_elastic_into(out.regionsScratch, out.regionCScratch);
+    out.trialScratch.assign(trialBackup.begin(), trialBackup.end());
     AssembleOutput probe = assemble_global(
         *ctx.elements,
         committedBackup,
-        trialProbe,
-        probeRegions,
-        probeC,
+        out.trialScratch,
+        out.regionsScratch,
+        out.regionCScratch,
         *ctx.freeIndexByDof,
         U.data(),
         ctx.U_base ? ctx.U_base->data() : nullptr,
@@ -1415,6 +1427,17 @@ inline PhaseResult run_safety_arc_length_phase(
 
   ArcLengthState arcState;
   initialise_arc_length_state(arcState, opts, nfree, safety_sigma_to_phase_lambda(ctx, sigma), sigma);
+  PhaseStepMaterials startMaterials;
+  PhaseStepMaterials candidateMaterials;
+  PhaseStepMaterials probeMaterials;
+  std::vector<double> lineSearchCandidateDeltaU;
+  std::vector<double> lineSearchBestDeltaU;
+  std::vector<double> lineSearchBestU;
+  std::vector<MaterialPoint> lineSearchBestTrial;
+  lineSearchCandidateDeltaU.reserve(static_cast<std::size_t>(std::max(nfree, 0)));
+  lineSearchBestDeltaU.reserve(static_cast<std::size_t>(std::max(nfree, 0)));
+  lineSearchBestU.reserve(U.size());
+  lineSearchBestTrial.reserve(trialMp.size());
 
   auto apply_step_delta = [&](const std::vector<double>& startU,
                               const std::vector<double>& deltaFree) {
@@ -1456,7 +1479,6 @@ inline PhaseResult run_safety_arc_length_phase(
       const std::vector<MaterialPoint> stepStartTrial = trialMp;
       const double stepStartLambda = safety_sigma_to_phase_lambda(ctx, stepStartSigma);
 
-      PhaseStepMaterials startMaterials;
       prepare_safety_sigma_msf_materials(ctx, regions, regionC, stepStartSigma, startMaterials);
       trialMp = committedMp;
       AssembleOutput startAssembly = assemble_global(
@@ -1533,6 +1555,8 @@ inline PhaseResult run_safety_arc_length_phase(
       std::int32_t stepLinearIterations = predictor.linearIterations;
       std::int32_t newtonIterUsed = 0;
       bool invalidStep = false;
+      AssembleOutput lastAssembly;
+      bool hasLastAssembly = false;
 
       for (std::int32_t newtonIter = 1; newtonIter <= opts.nonlinearMaxIter; ++newtonIter) {
         const double candidateSigma = stepStartSigma + stepDeltaSigma;
@@ -1541,7 +1565,6 @@ inline PhaseResult run_safety_arc_length_phase(
           break;
         }
         const double candidateLambda = safety_sigma_to_phase_lambda(ctx, candidateSigma);
-        PhaseStepMaterials candidateMaterials;
         prepare_safety_sigma_msf_materials(ctx, regions, regionC, candidateSigma, candidateMaterials);
         AssembleOutput a = assemble_global(
             elements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
@@ -1550,6 +1573,8 @@ inline PhaseResult run_safety_arc_length_phase(
             ctx.incrementalStress,
             /*wantTangent=*/true,
             K, internalForceFree, residualFree);
+        lastAssembly = a;
+        hasLastAssembly = true;
         ++res.newtonIterations;
         newtonIterUsed = newtonIter;
         res.maxEta = std::max(res.maxEta, a.maxEta);
@@ -1603,27 +1628,26 @@ inline PhaseResult run_safety_arc_length_phase(
             a.residualNorm + std::abs(lastConstraintResidual) / currentConstraintScale;
         double bestMerit = std::numeric_limits<double>::infinity();
         double bestScale = 0.0;
-        std::vector<double> bestDeltaU = stepDeltaUFree;
+        lineSearchBestDeltaU.assign(stepDeltaUFree.begin(), stepDeltaUFree.end());
         double bestDeltaSigma = stepDeltaSigma;
-        std::vector<double> bestU = U;
-        std::vector<MaterialPoint> bestTrial = trialMp;
+        lineSearchBestU.assign(U.begin(), U.end());
+        lineSearchBestTrial.assign(trialMp.begin(), trialMp.end());
         AssembleOutput bestAssembly;
 
         double eta = 1.0;
         constexpr int kArcLengthLineSearchMaxBacktracks = 6;
         for (int bt = 0; bt < kArcLengthLineSearchMaxBacktracks; ++bt) {
-          std::vector<double> candidateDeltaU = stepDeltaUFree;
+          lineSearchCandidateDeltaU.assign(stepDeltaUFree.begin(), stepDeltaUFree.end());
           for (std::int32_t i = 0; i < nfree; ++i) {
-            candidateDeltaU[static_cast<std::size_t>(i)] +=
+            lineSearchCandidateDeltaU[static_cast<std::size_t>(i)] +=
                 eta * corrector.deltaUFree[static_cast<std::size_t>(i)];
           }
           const double candidateDeltaSigma = stepDeltaSigma + eta * corrector.deltaLambda;
           const double probeSigma = stepStartSigma + candidateDeltaSigma;
           if (probeSigma >= 1.0 && probeSigma <= sigmaTarget + 1e-10) {
-            apply_step_delta(stepStartU, candidateDeltaU);
+            apply_step_delta(stepStartU, lineSearchCandidateDeltaU);
             trialMp = committedMp;
             const double probeLambda = safety_sigma_to_phase_lambda(ctx, probeSigma);
-            PhaseStepMaterials probeMaterials;
             prepare_safety_sigma_msf_materials(ctx, regions, regionC, probeSigma, probeMaterials);
             AssembleOutput probe = assemble_global(
                 elements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
@@ -1633,15 +1657,16 @@ inline PhaseResult run_safety_arc_length_phase(
                 /*wantTangent=*/false,
                 K, internalForceFree, residualFree);
             const double constraint = arc_length_constraint_residual(
-                candidateDeltaU, candidateDeltaSigma, stepState.deltaS, stepState.alpha);
+                lineSearchCandidateDeltaU, candidateDeltaSigma, stepState.deltaS, stepState.alpha);
             const double merit = probe.residualNorm + std::abs(constraint) / currentConstraintScale;
             if (std::isfinite(merit) && merit < bestMerit) {
               bestMerit = merit;
               bestScale = eta;
-              bestDeltaU = std::move(candidateDeltaU);
+              lineSearchBestDeltaU.assign(
+                  lineSearchCandidateDeltaU.begin(), lineSearchCandidateDeltaU.end());
               bestDeltaSigma = candidateDeltaSigma;
-              bestU = U;
-              bestTrial = trialMp;
+              lineSearchBestU.assign(U.begin(), U.end());
+              lineSearchBestTrial.assign(trialMp.begin(), trialMp.end());
               bestAssembly = probe;
             }
             if (merit <= currentMerit || eta <= opts.plasticLineSearchMinScale + 1e-12) break;
@@ -1652,10 +1677,10 @@ inline PhaseResult run_safety_arc_length_phase(
           invalidStep = true;
           break;
         }
-        stepDeltaUFree = std::move(bestDeltaU);
+        stepDeltaUFree.assign(lineSearchBestDeltaU.begin(), lineSearchBestDeltaU.end());
         stepDeltaSigma = bestDeltaSigma;
-        U = std::move(bestU);
-        trialMp = std::move(bestTrial);
+        U.assign(lineSearchBestU.begin(), lineSearchBestU.end());
+        trialMp.assign(lineSearchBestTrial.begin(), lineSearchBestTrial.end());
         lastAcceptedScale = bestScale;
         res.maxEta = std::max(res.maxEta, bestAssembly.maxEta);
       }
@@ -1667,27 +1692,46 @@ inline PhaseResult run_safety_arc_length_phase(
         ++res.accepted;
         committedMp = trialMp;
         const double acceptedLambda = safety_sigma_to_phase_lambda(ctx, acceptedSigma);
-        PhaseStepMaterials acceptedMaterials;
-        prepare_safety_sigma_msf_materials(ctx, regions, regionC, acceptedSigma, acceptedMaterials);
-        std::vector<MaterialPoint> acceptedTrialMp = committedMp;
-        AssembleOutput acceptedAssembly = assemble_global(
-            elements, committedMp, acceptedTrialMp, *acceptedMaterials.regions, *acceptedMaterials.regionC,
+        if (!hasLastAssembly) {
+          overall = false;
+          break;
+        }
+        assert(hasLastAssembly);
+#ifndef NDEBUG
+        PhaseStepMaterials acceptedCheckMaterials;
+        prepare_safety_sigma_msf_materials(ctx, regions, regionC, acceptedSigma, acceptedCheckMaterials);
+        std::vector<MaterialPoint> acceptedCheckTrialMp = committedMp;
+        AssembleOutput acceptedCheckAssembly = assemble_global(
+            elements, committedMp, acceptedCheckTrialMp,
+            *acceptedCheckMaterials.regions, *acceptedCheckMaterials.regionC,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             acceptedLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
             /*wantTangent=*/false,
             K, internalForceFree, residualFree);
-        res.activeCount = acceptedAssembly.plasticActiveCount;
-        res.activeFaceCount = acceptedAssembly.activeFaceCount;
-        res.activeEdgeCount = acceptedAssembly.activeEdgeCount;
-        res.activeApexCount = acceptedAssembly.activeApexCount;
-        res.tensionCount = acceptedAssembly.tensionCount;
-        res.residualNorm = acceptedAssembly.residualNorm;
-        remember_display_state(acceptedSigma, acceptedAssembly);
+        const double residualDiff =
+            std::abs(lastAssembly.residualNorm - acceptedCheckAssembly.residualNorm);
+        const double residualTol = 1e-10 + 1e-8 * std::max(
+            std::abs(lastAssembly.residualNorm),
+            std::abs(acceptedCheckAssembly.residualNorm));
+        assert(residualDiff <= residualTol);
+        assert(lastAssembly.plasticActiveCount == acceptedCheckAssembly.plasticActiveCount);
+        assert(lastAssembly.activeFaceCount == acceptedCheckAssembly.activeFaceCount);
+        assert(lastAssembly.activeEdgeCount == acceptedCheckAssembly.activeEdgeCount);
+        assert(lastAssembly.activeApexCount == acceptedCheckAssembly.activeApexCount);
+        assert(lastAssembly.tensionCount == acceptedCheckAssembly.tensionCount);
+#endif
+        res.activeCount = lastAssembly.plasticActiveCount;
+        res.activeFaceCount = lastAssembly.activeFaceCount;
+        res.activeEdgeCount = lastAssembly.activeEdgeCount;
+        res.activeApexCount = lastAssembly.activeApexCount;
+        res.tensionCount = lastAssembly.tensionCount;
+        res.residualNorm = lastAssembly.residualNorm;
+        remember_display_state(acceptedSigma, lastAssembly);
         if (ctx.safetyCurve) {
           SafetyCurvePoint point = make_safety_curve_point(
               ctx,
-              acceptedAssembly,
+              lastAssembly,
               U,
               committedMp,
               acceptedLambda,
@@ -1713,7 +1757,7 @@ inline PhaseResult run_safety_arc_length_phase(
           ctx.safetyCurve->push_back(point);
         }
 
-        arcState.previousDeltaU = stepDeltaUFree;
+        arcState.previousDeltaU = std::move(stepDeltaUFree);
         arcState.previousDeltaLambda = stepDeltaSigma;
         arcState.lambda = acceptedLambda;
         arcState.sigmaMsf = acceptedSigma;
