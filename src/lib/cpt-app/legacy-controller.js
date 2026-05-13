@@ -7247,6 +7247,37 @@ function stage6BishopSafetyCurveHtml(solver){
   `;
 }
 
+function stage6BishopSafetyMechanismHtml(mechanism){
+  if(!mechanism) return '';
+  const activeElements = Math.max(Math.round(Number(mechanism.activePlasticElementCount) || 0), 0);
+  const largestComponent = Math.max(Math.round(Number(mechanism.largestConnectedComponentElementCount) || 0), 0);
+  const activePoints = Math.max(Math.round(Number(mechanism.activePlasticPointCount) || 0), 0);
+  const components = Math.max(Math.round(Number(mechanism.connectedComponentCount) || 0), 0);
+  const score = Number(mechanism.score) || 0;
+  const threshold = Number(mechanism.threshold) || 0.65;
+  const flags = [
+    mechanism.mechanismTouchesLoadedZone ? 'loaded zone' : '',
+    mechanism.mechanismTouchesFreeSurface ? 'free surface' : '',
+    mechanism.mechanismTouchesBoundary ? 'outer boundary' : '',
+    mechanism.mechanismCrossesSlopeOrFoundationZone ? 'connected path' : ''
+  ].filter(Boolean);
+  return `
+    <div class="info st6-safety-mechanism" style="background:var(--bg2);border-color:var(--bd2)">
+      <strong>Mechanism</strong>
+      <div class="st6-safety-mechanism-grid">
+        <span>Status</span><b>${stage6EscAttr(mechanism.status || 'none')}</b>
+        <span>Score</span><b>${stage6CompactNumber(score, 3)} / ${stage6CompactNumber(threshold, 3)}</b>
+        <span>Active elements</span><b>${activeElements}</b>
+        <span>Largest component</span><b>${largestComponent} of ${components || 0}</b>
+        <span>Active points</span><b>${activePoints}</b>
+        <span>Length</span><b>${stage6CompactNumber(Number(mechanism.mechanismLength) || 0, 3)} m</b>
+        <span>Direction coherence</span><b>${stage6CompactNumber(Number(mechanism.displacementDirectionCoherence) || 0, 3)}</b>
+        <span>Contact</span><b>${flags.length ? flags.map(stage6EscAttr).join(', ') : 'none'}</b>
+      </div>
+    </div>
+  `;
+}
+
 function stage6SeepageFlowErrorLabel(result){
   return result?.flowError != null ? `${stage6CompactNumber(100 * result.flowError, 3)} %` : '—';
 }
@@ -11976,6 +12007,9 @@ function renderStage6BishopApp(){
   const deformationSafetyStrengthRetained = Number.isFinite(deformation.result?.solver?.safetyStrengthRetained)
     ? Number(deformation.result.solver.safetyStrengthRetained)
     : null;
+  const deformationSafetyMechanism = deformation.result?.solver?.safetyResult?.mechanism
+    || deformation.result?.solver?.safetyMechanism
+    || null;
   const deformationInitialPhaseStatus = deformation.result?.solver?.initialPhaseStarted === true
     ? String(deformation.result?.solver?.initialPhaseConvergenceState || 'unknown')
     : 'not requested';
@@ -13089,7 +13123,8 @@ function renderStage6BishopApp(){
                   <tr><td>Displayed ΣMsf</td><td>${deformationSafetyDisplayedSigmaMsf != null ? deformationSafetyDisplayedSigmaMsf.toFixed(3) : '—'}</td></tr>
                   <tr><td>Displayed retained strength</td><td>${deformationSafetyStrengthRetained != null ? `${(100 * deformationSafetyStrengthRetained).toFixed(2)} %` : '—'}</td></tr>
                   <tr><td>Accepted continuation steps</td><td>${deformation.result?.solver?.safetyAcceptedContinuationSteps || 0}</td></tr>
-                  <tr><td>Rejected continuation steps</td><td>${deformation.result?.solver?.safetyRejectedContinuationSteps || 0}</td></tr>`
+                  <tr><td>Rejected continuation steps</td><td>${deformation.result?.solver?.safetyRejectedContinuationSteps || 0}</td></tr>
+                  <tr><td>Mechanism</td><td>${deformationSafetyMechanism ? `${stage6EscAttr(deformationSafetyMechanism.status || 'none')} · ${stage6CompactNumber(deformationSafetyMechanism.score || 0, 3)}` : '—'}</td></tr>`
                     : `<tr><td>Accepted load steps</td><td>${deformationAcceptedSteps ?? '—'}</td></tr>
                   <tr><td>Rejected load steps</td><td>${deformationRejectedSteps ?? '—'}</td></tr>`}
                   <tr><td>Nonlinear iterations</td><td>${deformation.result?.solver?.nonlinearIterations || 0}</td></tr>
@@ -13122,6 +13157,7 @@ function renderStage6BishopApp(){
 	              </div>
 	            </div>
 	            ${deformationIsSafety ? stage6BishopSafetyCurveHtml(deformation.result?.solver) : ''}
+	            ${deformationIsSafety ? stage6BishopSafetyMechanismHtml(deformationSafetyMechanism) : ''}
 	            ${lineProbeHtml}
 	          </div>
 	  `;

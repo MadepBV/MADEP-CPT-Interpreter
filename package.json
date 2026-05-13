@@ -22,6 +22,7 @@
 		"verify:gpu:v2": "node scripts/verify_gpu_v2_parity.mjs",
 		"verify:gpu:v2:hardware": "node scripts/verify_gpu_v2_hardware.mjs",
 		"verify:integrated-plan": "node scripts/verify_integrated_plan.mjs",
+		"verify:safety-mechanism": "node scripts/verify_safety_mechanism_summary.mjs",
 		"build:wasm:deformation": "bash src/wasm/deformation/build.sh",
 		"verify:wasm": "node scripts/verify_wasm_deformation_smoke.mjs && node scripts/verify_wasm_deformation_t6.mjs && node scripts/verify_wasm_deformation_plastic.mjs && node scripts/verify_wasm_mc_unit.mjs && node scripts/verify_wasm_mc_local_parity.mjs"
 	},

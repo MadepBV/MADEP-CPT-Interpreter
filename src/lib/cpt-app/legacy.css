@@ -612,6 +612,13 @@ input[type=range]{accent-color:var(--ac)}
 .st6-safety-curve-legend i.accepted{background:var(--ac)}
 .st6-safety-curve-legend i.failed{background:var(--bad);clip-path:polygon(50% 0,100% 100%,0 100%)}
 .st6-safety-curve-legend i.reported{background:transparent;border:2px solid var(--tx);box-sizing:border-box}
+.st6-safety-mechanism{display:grid;gap:0.55rem;margin-top:0.7rem}
+.st6-safety-mechanism-grid{
+  display:grid;grid-template-columns:minmax(7.5rem,auto) minmax(0,1fr);
+  gap:0.35rem 0.7rem;font-size:0.72rem;min-width:0
+}
+.st6-safety-mechanism-grid span{color:var(--tx2)}
+.st6-safety-mechanism-grid b{font-weight:600;color:var(--tx);overflow-wrap:anywhere}
 .st6-tip{
   position:relative;
   display:inline-flex;align-items:center;justify-content:center;

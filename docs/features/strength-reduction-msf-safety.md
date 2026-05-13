@@ -404,6 +404,20 @@ Connectivity:
 - Compute connected components over active elements.
 - The largest component must represent a meaningful fraction of plastic activity.
 
+Default mechanism thresholds:
+
+```text
+mechanismPlasticThreshold = 1e-8
+mechanismScoreThreshold   = 0.65
+mechanismCandidateThreshold = 0.40
+```
+
+The plastic threshold is absolute equivalent plastic strain. It is intentionally
+small but non-zero so linear-elastic and stress-only service plasticity do not
+create a safety mechanism when the safety phase itself adds no incremental
+plastic strain. Implementations may expose the threshold as a solver option, but
+the default must remain identical in JS and WASM result builders.
+
 Mechanism scalar definitions:
 
 - `activePlasticPointCount` is the number of Gauss points with
@@ -525,6 +539,22 @@ Performance rule:
   - explicit diagnostic requests.
 - If a curve point did not run full scoring, store `mechanismScore = null` and
   do not fabricate a score from cheap proxies.
+
+Phase-3 legacy mode binding: before production finalization is enabled, full
+connected-component scoring is computed for the displayed safety state only
+(the selected lower-bound, no-failure, plateau, or near-failure display state).
+Accepted curve points still carry only cheap proxies and `mechanismScore = null`.
+Phase 4 is responsible for invoking the same scoring contract inside the
+production classifier at every candidate state whose mechanism score can affect
+the reported FoS.
+
+The v7 fixed-width WASM wire record does not carry the full mechanism summary as
+an additional binary section. The raw decoder returns an empty placeholder, and
+the JS result builder populates `SafetyResult.mechanism` from decoded Gauss-point
+safety increments, mesh topology, boundary metadata, load footprint, and the
+display displacement field. The JS CPU result builder uses the same helper and
+the same thresholds. This keeps the Phase-3 mechanism definition identical
+between JS and WASM without adding a second mesh-topology wire payload.
 
 ## Result Data Contract
 

@@ -7,6 +7,8 @@
 // the CPU JS path, so the two backends are interchangeable from the
 // outside.
 
+import { buildSafetyMechanismSummary, emptySafetyMechanismSummary } from '../safety-mechanism.js';
+
 const GEOM_EPS = 1e-6;
 
 function negateNormalAndShear(s) {
@@ -365,6 +367,20 @@ export function buildWasmDeformationResult({
   const safetyTrials = Array.isArray(safety.trials) ? safety.trials : [];
   const safetyCurve = Array.isArray(safety.curve) ? safety.curve : [];
   const safetyTrialTargets = Array.isArray(safety.trialTargets) ? safety.trialTargets : [];
+  const safetyMechanism = isSafety
+    ? buildSafetyMechanismSummary({
+        mesh,
+        load,
+        elementResults,
+        nodalDisplacements,
+        safetyCurve,
+        options
+      })
+    : emptySafetyMechanismSummary();
+  summaries.safetyMechanismStatus = safetyMechanism.status;
+  summaries.safetyMechanismScore = safetyMechanism.score;
+  summaries.safetyMechanismActiveElements = safetyMechanism.activePlasticElementCount;
+  summaries.safetyMechanismLargestComponentElements = safetyMechanism.largestConnectedComponentElementCount;
   const decodedSafetyResult = safety.safetyResult || {
     finalizationMode: 'legacy-bracket',
     finalization: {
@@ -402,6 +418,7 @@ export function buildWasmDeformationResult({
   const resultSafetyObject = isSafety
     ? {
         ...decodedSafetyResult,
+        mechanism: safetyMechanism,
         finalization: {
           ...decodedSafetyResult.finalization,
           displayedSigmaMsf: safetyDisplayedSigmaMsf
@@ -411,6 +428,7 @@ export function buildWasmDeformationResult({
       }
     : {
         ...decodedSafetyResult,
+        mechanism: safetyMechanism,
         finalization: { ...decodedSafetyResult.finalization, status: 'not-run' },
         curve: [],
         trialTargets: []
@@ -479,6 +497,7 @@ export function buildWasmDeformationResult({
       safetyTrialHistory: isSafety ? (safetyTrialTargets.length ? safetyTrialTargets : safetyTrials) : [],
       safetyTrialTargets: isSafety ? safetyTrialTargets : [],
       safetyCurve: isSafety ? safetyCurve : [],
+      safetyMechanism,
       safetyResult: resultSafetyObject,
       safetyAcceptedContinuationSteps: isSafety ? safetyCurve.length : 0,
       safetyRejectedContinuationSteps: isSafety

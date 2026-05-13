@@ -42,6 +42,7 @@ import {
   verticalOverburdenStressAt
 } from './post.js';
 import { computeDepthBandReport } from './diagnostics-depth-bands.js';
+import { buildSafetyMechanismSummary, emptySafetyMechanismSummary } from './safety-mechanism.js';
 // Additive Schwarz support was removed in favour of a single block-Jacobi
 // 2×2 preconditioner path. The Schwarz module is preserved on disk for any
 // future reintroduction but is no longer imported here.
@@ -7069,6 +7070,115 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     ? Math.max(0, ...serviceIncrementNodalDisplacements.map((item) => -(item?.uy || 0)))
     : (servicePhaseStarted ? summaries.maxSettlement : 0);
   summaries.safetySettlementIncrement = analysisType === 'safety-cphi' ? summaries.maxSettlement : 0;
+  const jsSafetyCurve = analysisType === 'safety-cphi'
+    ? (safetyAnalysis?.history || [])
+        .filter((trial) => trial?.converged === true)
+        .map((trial, index) => ({
+          index,
+          trialIndex: Number.isFinite(Number(trial?.index)) ? Number(trial.index) : index,
+          continuationStepIndex: index,
+          sigmaMsf: Number(trial?.sigmaMsfCommitted ?? trial?.sigmaMsfTarget ?? trial?.target) || 1,
+          lambda: 1,
+          converged: true,
+          initialResidualNorm: 0,
+          residualNorm: 0,
+          relativeResidual: 0,
+          nonlinearIterations: Number(trial?.iterations) || 0,
+          linearIterations: 0,
+          lineSearchAcceptedScale: 1,
+          activeCount: 0,
+          activeFaceCount: 0,
+          activeEdgeCount: 0,
+          activeApexCount: 0,
+          tensionCount: 0,
+          uMaxAbs: Math.max(Number(trial?.incrementalDisplacementMaxAbs) || 0, 0),
+          uNorm: Math.max(Number(trial?.incrementalDisplacementNorm) || 0, 0),
+          uSettlementMax: 0,
+          uHorizontalMax: 0,
+          dominantNode: -1,
+          dominantDof: -1,
+          activePlasticElementCount: 0,
+          maxDeltaPlasticStrain: Math.max(Number(trial?.maxAccumulatedPlasticIncrement) || 0, 0),
+          totalDeltaPlasticStrain: Math.max(Number(trial?.totalAccumulatedPlasticIncrement) || 0, 0),
+          mechanismScore: null,
+          arcLengthDetails: null
+        }))
+    : [];
+  const jsSafetyTrialTargets = analysisType === 'safety-cphi'
+    ? (safetyAnalysis?.history || []).map((trial, index) => ({
+        index,
+        sigmaMsfStart: Number(trial?.sigmaMsfStart) || 1,
+        sigmaMsfTarget: Number(trial?.sigmaMsfTarget ?? trial?.target) || 1,
+        sigmaMsfCommitted: Number(trial?.sigmaMsfCommitted ?? trial?.committed) || 1,
+        target: Number(trial?.sigmaMsfTarget ?? trial?.target) || 1,
+        committed: Number(trial?.sigmaMsfCommitted ?? trial?.committed) || 1,
+        iterations: Number(trial?.iterations) || 0,
+        converged: trial?.converged === true,
+        trialOutcome: trial?.converged === true ? 0 : (trial?.failureCode === 'step-below-minimum' ? 2 : 1),
+        failureCode: 0,
+        displayed: false,
+        incrementalDisplacementMaxAbs: Number(trial?.incrementalDisplacementMaxAbs) || 0
+      }))
+    : [];
+  if (jsSafetyTrialTargets.length) {
+    const displayedSigma = Number(activePhase?.sigmaMsfDisplayed ?? safetyAnalysis?.factorOfSafetyLower);
+    let bestIndex = 0;
+    let bestDiff = Number.POSITIVE_INFINITY;
+    jsSafetyTrialTargets.forEach((trial, index) => {
+      const diff = Math.abs((Number(trial.committed) || Number(trial.target) || 1) - displayedSigma);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestIndex = index;
+      }
+    });
+    jsSafetyTrialTargets[bestIndex].displayed = true;
+  }
+  const safetyMechanism = analysisType === 'safety-cphi'
+    ? buildSafetyMechanismSummary({
+        mesh,
+        load,
+        elementResults,
+        nodalDisplacements,
+        safetyCurve: jsSafetyCurve,
+        options
+      })
+    : emptySafetyMechanismSummary();
+  summaries.safetyMechanismStatus = safetyMechanism.status;
+  summaries.safetyMechanismScore = safetyMechanism.score;
+  summaries.safetyMechanismActiveElements = safetyMechanism.activePlasticElementCount;
+  summaries.safetyMechanismLargestComponentElements = safetyMechanism.largestConnectedComponentElementCount;
+  const safetyFinalizationStatus = analysisType !== 'safety-cphi'
+    ? 'not-run'
+    : safetyAnalysis?.status === 'bracketed'
+      ? 'bracketed-failure'
+      : safetyAnalysis?.status === 'mechanism-developed'
+        ? 'mechanism-developed'
+        : safetyAnalysis?.status === 'no-failure-found'
+          ? 'no-failure-found'
+          : 'numerical-nonconvergence';
+  const safetyFactorLower = Number(safetyAnalysis?.factorOfSafetyLower) || 1;
+  const safetyFactorUpper = analysisType === 'safety-cphi' && safetyAnalysis?.factorOfSafetyUpper != null && Number.isFinite(Number(safetyAnalysis?.factorOfSafetyUpper))
+    ? Number(safetyAnalysis.factorOfSafetyUpper)
+    : null;
+  const safetyResult = {
+    finalizationMode: 'legacy-bracket',
+    finalization: {
+      status: safetyFinalizationStatus,
+      factorOfSafety: safetyFactorLower,
+      factorOfSafetyLower: safetyFactorLower,
+      factorOfSafetyUpper: safetyFactorUpper,
+      factorOfSafetyIsOpenEnded: safetyFinalizationStatus === 'no-failure-found',
+      bracketWidth: safetyFactorUpper != null ? Math.max(safetyFactorUpper - safetyFactorLower, 0) : null,
+      strengthRetained: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.strengthRetained) || 1 : 1,
+      displayedSigmaMsf: analysisType === 'safety-cphi' ? Number(activePhase?.sigmaMsfDisplayed ?? safetyFactorLower) || 1 : 1,
+      plateauDetected: safetyFinalizationStatus === 'mechanism-developed',
+      plateauWindowStart: null,
+      plateauWindowEnd: null
+    },
+    mechanism: safetyMechanism,
+    curve: analysisType === 'safety-cphi' ? jsSafetyCurve : [],
+    trialTargets: analysisType === 'safety-cphi' ? jsSafetyTrialTargets : []
+  };
   activeBackendRuntimeWarnings.forEach((warning) => pushUniqueWarning(warnings, warning));
 
   onProgress({
@@ -7258,6 +7368,10 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
         ? Number(safetyAnalysis?.lowerBoundCheckpoint?.sigmaMsf ?? safetyAnalysis?.factorOfSafetyLower) || 1
         : null,
       safetyTrialHistory: analysisType === 'safety-cphi' ? (safetyAnalysis?.history || []) : [],
+      safetyTrialTargets: analysisType === 'safety-cphi' ? jsSafetyTrialTargets : [],
+      safetyCurve: analysisType === 'safety-cphi' ? jsSafetyCurve : [],
+      safetyMechanism,
+      safetyResult,
       safetyAcceptedContinuationSteps: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalAcceptedContinuationSteps) || 0 : 0,
       safetyRejectedContinuationSteps: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.totalRejectedContinuationSteps) || 0 : 0,
       linearAlgebraBackend: {
