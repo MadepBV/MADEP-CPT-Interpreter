@@ -4768,7 +4768,7 @@ function ensureStage6State(){
   bishop.deformation.options.safetySigmaMsfBracketTolerance = Math.max(+bishop.deformation.options.safetySigmaMsfBracketTolerance || 0.01, 0.0001);
   bishop.deformation.options.safetyMaxSearchTrials = Math.max(Math.round(+bishop.deformation.options.safetyMaxSearchTrials || 32), 1);
   bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver !== false;
-  bishop.deformation.options.wasmRobustNonlinearMode = bishop.deformation.options.wasmRobustNonlinearMode === true;
+  bishop.deformation.options.wasmRobustNonlinearMode = false;
   // Strip legacy GPU-related option carriers from saved sessions. The current
   // production deformation UI exposes the CPU f64 route only.
   delete bishop.deformation.options.useGpuAcceleration;
@@ -4779,7 +4779,9 @@ function ensureStage6State(){
   delete bishop.deformation.options.linearAlgebraBackend;
   delete bishop.deformation.options.gpuMinDof;
   // Solver backend — single canonical option that drives the dispatch.
-  // Valid values: 'js-cpu' (default), 'wasm-cpu', 'gpu-v1', 'gpu-v2'.
+  // Valid visible values: 'wasm-cpu' (default) and 'js-cpu'. GPU
+  // backends remain in the codebase, but are not selectable in the app
+  // while the production path is WASM-first.
   // Migration: if `solverBackend` is missing but a legacy toggle is set,
   // derive it from the legacy fields. Then mirror the canonical value
   // back onto the legacy fields so the existing worker payload + solver
@@ -4787,19 +4789,13 @@ function ensureStage6State(){
   let solverBackend = bishop.deformation.options.solverBackend;
   if (typeof solverBackend !== 'string') {
     if (bishop.deformation.options.useWasmCpuPipeline === true) solverBackend = 'wasm-cpu';
-    else if (bishop.deformation.options.useNewGpuPipeline === true) {
-      solverBackend = bishop.deformation.options.gpuPipelineVersion === 'v2' ||
-        bishop.deformation.options.gpuPipelineVersion === 'v3'
-        ? 'gpu-v2'
-        : 'gpu-v1';
-    } else solverBackend = 'js-cpu';
+    else solverBackend = 'wasm-cpu';
   }
-  if (solverBackend === 'gpu-v3') solverBackend = 'gpu-v2';
-  if (!['js-cpu', 'wasm-cpu', 'gpu-v1', 'gpu-v2'].includes(solverBackend)) solverBackend = 'js-cpu';
+  if (!['js-cpu', 'wasm-cpu'].includes(solverBackend)) solverBackend = 'wasm-cpu';
   bishop.deformation.options.solverBackend = solverBackend;
   bishop.deformation.options.useWasmCpuPipeline = solverBackend === 'wasm-cpu';
-  bishop.deformation.options.useNewGpuPipeline = solverBackend === 'gpu-v1' || solverBackend === 'gpu-v2';
-  bishop.deformation.options.gpuPipelineVersion = solverBackend === 'gpu-v2' ? 'v2' : 'v1';
+  bishop.deformation.options.useNewGpuPipeline = false;
+  bishop.deformation.options.gpuPipelineVersion = 'v1';
   const rawDeformationMeshTargetArea = Number(bishop.deformation.options.meshTargetArea);
   const deformationAutoMeshTargetArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
   if(bishop.deformation.options.meshTargetAreaAuto == null){
@@ -6117,14 +6113,12 @@ function stage6BishopSetField(path, value){
     // Sync the legacy fields so the worker payload + solver dispatch
     // keep working off the same source of truth without waiting for the
     // next render-time normalisation.
-    const backend = String(nextValue || 'js-cpu');
-    const canonicalBackend = backend === 'gpu-v3'
-      ? 'gpu-v2'
-      : (['js-cpu', 'wasm-cpu', 'gpu-v1', 'gpu-v2'].includes(backend) ? backend : 'js-cpu');
+    const backend = String(nextValue || 'wasm-cpu');
+    const canonicalBackend = ['js-cpu', 'wasm-cpu'].includes(backend) ? backend : 'wasm-cpu';
     S.stage6.bishop.deformation.options.solverBackend = canonicalBackend;
     S.stage6.bishop.deformation.options.useWasmCpuPipeline = canonicalBackend === 'wasm-cpu';
-    S.stage6.bishop.deformation.options.useNewGpuPipeline = canonicalBackend === 'gpu-v1' || canonicalBackend === 'gpu-v2';
-    S.stage6.bishop.deformation.options.gpuPipelineVersion = canonicalBackend === 'gpu-v2' ? 'v2' : 'v1';
+    S.stage6.bishop.deformation.options.useNewGpuPipeline = false;
+    S.stage6.bishop.deformation.options.gpuPipelineVersion = 'v1';
   }
   if(path === 'deformation.options.analysisType' && nextValue === 'safety-cphi'){
     S.stage6.bishop.deformation.options.constitutiveModel = 'mc-plastic';
@@ -7018,11 +7012,11 @@ function stage6BishopRunDeformation(){
         safetySigmaMsfBracketTolerance:bishop.deformation?.options?.safetySigmaMsfBracketTolerance,
         safetyMaxSearchTrials:bishop.deformation?.options?.safetyMaxSearchTrials,
         useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true,
-        solverBackend:bishop.deformation?.options?.solverBackend || 'js-cpu',
-        useNewGpuPipeline:bishop.deformation?.options?.useNewGpuPipeline === true,
-        gpuPipelineVersion:bishop.deformation?.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1',
-        useWasmCpuPipeline:bishop.deformation?.options?.useWasmCpuPipeline === true,
-        wasmRobustNonlinearMode:bishop.deformation?.options?.wasmRobustNonlinearMode === true
+        solverBackend:bishop.deformation?.options?.solverBackend === 'js-cpu' ? 'js-cpu' : 'wasm-cpu',
+        useNewGpuPipeline:false,
+        gpuPipelineVersion:'v1',
+        useWasmCpuPipeline:bishop.deformation?.options?.solverBackend !== 'js-cpu',
+        wasmRobustNonlinearMode:false
       }
     }
   });
@@ -11755,17 +11749,12 @@ function renderStage6BishopApp(){
   const deformationSafetySigmaMsfBracketTolerance = Math.max(Number(deformation.options?.safetySigmaMsfBracketTolerance) || 0.01, 0.0001);
   const deformationSafetyMaxSearchTrials = Math.max(Math.round(Number(deformation.options?.safetyMaxSearchTrials) || 32), 1);
   const deformationUseUnsymmetricPlasticSolver = deformation.options?.useUnsymmetricPlasticSolver === true;
-  const deformationUseNewGpuPipeline = deformation.options?.useNewGpuPipeline === true;
-  const deformationGpuPipelineVersion = deformation.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1';
   const deformationUseWasmCpuPipeline = deformation.options?.useWasmCpuPipeline === true;
-  const deformationWasmRobustNonlinearMode = deformation.options?.wasmRobustNonlinearMode === true;
   const deformationSolverBackend = (() => {
     const raw = deformation.options?.solverBackend;
-    if (raw === 'gpu-v3') return 'gpu-v2';
-    if (raw === 'wasm-cpu' || raw === 'gpu-v1' || raw === 'gpu-v2') return raw;
+    if (raw === 'wasm-cpu' || raw === 'js-cpu') return raw;
     if (deformationUseWasmCpuPipeline) return 'wasm-cpu';
-    if (deformationUseNewGpuPipeline) return deformationGpuPipelineVersion === 'v2' ? 'gpu-v2' : 'gpu-v1';
-    return 'js-cpu';
+    return 'wasm-cpu';
   })();
   const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
@@ -12473,16 +12462,8 @@ function renderStage6BishopApp(){
 	                  <select onchange="stage6BishopSetField('deformation.options.solverBackend', this.value)" style="font-size:11px">
 	                    <option value="js-cpu" ${deformationSolverBackend === 'js-cpu' ? 'selected' : ''}>JS CPU</option>
 	                    <option value="wasm-cpu" ${deformationSolverBackend === 'wasm-cpu' ? 'selected' : ''}>WASM CPU</option>
-	                    <option value="gpu-v1" ${deformationSolverBackend === 'gpu-v1' ? 'selected' : ''}>GPU v1</option>
-	                    <option value="gpu-v2" ${deformationSolverBackend === 'gpu-v2' ? 'selected' : ''}>GPU v2</option>
 	                  </select>
 	                </label>
-                ${deformationSolverBackend === 'wasm-cpu' ? `
-                  <label class="st6-bishop-check">
-                    <input type="checkbox" ${deformationWasmRobustNonlinearMode ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.wasmRobustNonlinearMode', this.checked)">
-                    Robust WASM nonlinear mode
-                  </label>
-                ` : ''}
                 ${deformationIsSafety ? `
                   <label style="font-size:11px;color:var(--tx2)">Initial ΣMsf increment
                     <input type="number" step="0.01" min="0.001" value="${deformationSafetyInitialSigmaMsfIncrement.toFixed(3)}" onchange="stage6BishopSetField('deformation.options.safetyInitialSigmaMsfIncrement', this.value)">
