@@ -54,6 +54,9 @@ async function main() {
   const surfacePressure = Number.isFinite(Number(process.env.PROBE_Q))
     ? Number(process.env.PROBE_Q)
     : 80;
+  const maxLoadSteps = Number.isFinite(Number(process.env.PROBE_MAX_STEPS))
+    ? Math.max(Math.round(Number(process.env.PROBE_MAX_STEPS)), 1)
+    : 256;
   const input = {
     model: buildModel(surfacePressure),
     options: {
@@ -61,13 +64,14 @@ async function main() {
       loadMode: 'pressure', constitutiveModel: 'mc-plastic', outOfPlaneLength: 10,
       useSeepagePorePressures: false, initialStressMode: 'plastic-geostatic',
       residualRelTol: 1e-4, residualAbsTol: 1e-3, nonlinearMaxIterations: 32,
-      initialLoadStep: 0.25, minLoadStep: 1 / 2048, maxLoadSteps: 256,
+      initialLoadStep: 0.25, minLoadStep: 1 / 2048, maxLoadSteps,
       useUnsymmetricPlasticSolver: false, useWasmCpuPipeline: true, useNewGpuPipeline: false,
       wasmRobustNonlinearMode
     }
   };
   const r = await analyzeDeformationModel(input);
   console.log('surfacePressure:', surfacePressure);
+  console.log('maxLoadSteps:', maxLoadSteps);
   console.log('wasmRobustNonlinearMode:', wasmRobustNonlinearMode);
   console.log('CONVERGED:', r?.solver?.converged);
   console.log('loadFactorCommitted:', r?.solver?.loadFactorCommitted);
