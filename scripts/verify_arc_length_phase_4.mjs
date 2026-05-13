@@ -116,9 +116,10 @@ int main() {
   opts.constitutive = ConstitutiveKind::McPlastic;
   opts.arcLengthFiniteDifferenceStepScale = 1e-5;
   opts.arcLengthFiniteDifferenceMinStep = 1e-7;
+  ArcLengthFdScratch fdScratch;
 
   const SafetyResidualDerivativeFd atBoundary =
-      compute_safety_sigma_msf_residual_derivative_fd(ctx, U, 1.0, 1.0, opts);
+      compute_safety_sigma_msf_residual_derivative_fd(ctx, U, 1.0, 1.0, fdScratch, opts);
   assert(atBoundary.converged);
   assert(atBoundary.failureCode == 0u);
   assert(!atBoundary.usedCentralDifference);
@@ -128,7 +129,7 @@ int main() {
   assert(same_point(trial[0], trialBefore[0]));
 
   const SafetyResidualDerivativeFd central =
-      compute_safety_sigma_msf_residual_derivative_fd(ctx, U, 1.0, 1.4, opts);
+      compute_safety_sigma_msf_residual_derivative_fd(ctx, U, 1.0, 1.4, fdScratch, opts);
   assert(central.converged);
   assert(central.failureCode == 0u);
   assert(central.usedCentralDifference);
@@ -149,7 +150,7 @@ int main() {
   SolverOptions coarser = opts;
   coarser.arcLengthFiniteDifferenceStepScale = 2e-5;
   const SafetyResidualDerivativeFd centralCoarse =
-      compute_safety_sigma_msf_residual_derivative_fd(ctx, U, 1.0, 1.4, coarser);
+      compute_safety_sigma_msf_residual_derivative_fd(ctx, U, 1.0, 1.4, fdScratch, coarser);
   assert(centralCoarse.converged);
   double diff = 0.0;
   double ref = 0.0;

@@ -904,9 +904,6 @@ struct ArcLengthCorrector {
 struct SafetyResidualDerivativeFd {
   std::vector<double> rLambdaFree;
   std::vector<double> continuationRhsFree;
-  std::vector<MaterialPoint> trialScratch;
-  std::vector<RegionParams> regionsScratch;
-  std::vector<Mat6> regionCScratch;
   double sigmaMsf{ 1.0 };
   double lowerSigmaMsf{ 1.0 };
   double upperSigmaMsf{ 1.0 };
@@ -914,6 +911,16 @@ struct SafetyResidualDerivativeFd {
   bool usedCentralDifference{ false };
   std::uint16_t failureCode{ 0 };
   bool converged{ false };
+};
+
+struct ArcLengthFdScratch {
+  std::vector<MaterialPoint> trial;
+  std::vector<RegionParams> regions;
+  std::vector<Mat6> regionC;
+  std::vector<double> internalForce;
+  std::vector<double> residual;
+  std::vector<double> lowerResidual;
+  std::vector<double> upperResidual;
 };
 
 inline ActualContinuationMode default_actual_continuation_mode(PhaseKind phaseKind) {
@@ -1123,6 +1130,7 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
     const std::vector<double>& U,
     double loadFactor,
     double sigmaMsf,
+    ArcLengthFdScratch& scratch,
     const SolverOptions& opts) {
   SafetyResidualDerivativeFd out;
   const std::int32_t nfree = ctx.K ? ctx.K->nrows : 0;
@@ -1152,23 +1160,24 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
 
   const std::vector<MaterialPoint> trialBackup = *ctx.trial;
   const std::vector<MaterialPoint>& committedRef = *ctx.committed;
-  std::vector<double> lowerResidual(static_cast<std::size_t>(nfree), 0.0);
-  std::vector<double> upperResidual(static_cast<std::size_t>(nfree), 0.0);
-  std::vector<double> internalScratch(static_cast<std::size_t>(nfree), 0.0);
-  std::vector<double> residualScratch(static_cast<std::size_t>(nfree), 0.0);
+  const std::size_t freeCount = static_cast<std::size_t>(nfree);
+  scratch.lowerResidual.assign(freeCount, 0.0);
+  scratch.upperResidual.assign(freeCount, 0.0);
 
   auto assemble_at_sigma = [&](double sigma, std::vector<double>& residualOut) -> bool {
-    out.regionsScratch.assign(
+    scratch.regions.assign(
         ctx.safetyStrengthBaseRegions->begin(), ctx.safetyStrengthBaseRegions->end());
-    for (auto& r : out.regionsScratch) r = reduce_strength(r, sigma);
-    build_region_elastic_into(out.regionsScratch, out.regionCScratch);
-    out.trialScratch.assign(trialBackup.begin(), trialBackup.end());
+    for (auto& r : scratch.regions) r = reduce_strength(r, sigma);
+    build_region_elastic_into(scratch.regions, scratch.regionC);
+    scratch.trial.assign(trialBackup.begin(), trialBackup.end());
+    scratch.internalForce.assign(freeCount, 0.0);
+    scratch.residual.assign(freeCount, 0.0);
     AssembleOutput probe = assemble_global(
         *ctx.elements,
         committedRef,
-        out.trialScratch,
-        out.regionsScratch,
-        out.regionCScratch,
+        scratch.trial,
+        scratch.regions,
+        scratch.regionC,
         *ctx.freeIndexByDof,
         U.data(),
         ctx.U_base ? ctx.U_base->data() : nullptr,
@@ -1180,18 +1189,18 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
         ctx.incrementalStress,
         /*wantTangent=*/false,
         *ctx.K,
-        internalScratch,
-        residualScratch);
-    if (!std::isfinite(probe.residualNorm) || residualScratch.size() != residualOut.size()) return false;
-    residualOut = residualScratch;
+        scratch.internalForce,
+        scratch.residual);
+    if (!std::isfinite(probe.residualNorm) || scratch.residual.size() != residualOut.size()) return false;
+    residualOut.assign(scratch.residual.begin(), scratch.residual.end());
     for (double v : residualOut) {
       if (!std::isfinite(v)) return false;
     }
     return true;
   };
 
-  const bool lowerOk = assemble_at_sigma(out.lowerSigmaMsf, lowerResidual);
-  const bool upperOk = assemble_at_sigma(out.upperSigmaMsf, upperResidual);
+  const bool lowerOk = assemble_at_sigma(out.lowerSigmaMsf, scratch.lowerResidual);
+  const bool upperOk = assemble_at_sigma(out.upperSigmaMsf, scratch.upperResidual);
   *ctx.trial = trialBackup;
   if (!lowerOk || !upperOk) {
     out.failureCode = 3u;
@@ -1204,8 +1213,8 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
     return out;
   }
   for (std::int32_t i = 0; i < nfree; ++i) {
-    const double dR = (upperResidual[static_cast<std::size_t>(i)] -
-                      lowerResidual[static_cast<std::size_t>(i)]) / denom;
+    const double dR = (scratch.upperResidual[static_cast<std::size_t>(i)] -
+                      scratch.lowerResidual[static_cast<std::size_t>(i)]) / denom;
     if (!std::isfinite(dR)) {
       out.failureCode = 3u;
       return out;
@@ -1249,13 +1258,14 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative(
     const std::vector<double>& U,
     double loadFactor,
     double sigmaMsf,
+    ArcLengthFdScratch& scratch,
     const SolverOptions& opts) {
   if (opts.arcLengthDerivativeMode != ArcLengthDerivativeMode::FiniteDifference) {
     SafetyResidualDerivativeFd analytic =
         compute_safety_sigma_msf_residual_derivative_analytic(ctx, sigmaMsf);
     if (analytic.converged) return analytic;
   }
-  return compute_safety_sigma_msf_residual_derivative_fd(ctx, U, loadFactor, sigmaMsf, opts);
+  return compute_safety_sigma_msf_residual_derivative_fd(ctx, U, loadFactor, sigmaMsf, scratch, opts);
 }
 
 struct PhaseResult {
@@ -1439,6 +1449,7 @@ inline PhaseResult run_safety_arc_length_phase(
 
   ArcLengthState arcState;
   initialise_arc_length_state(arcState, opts, nfree, safety_sigma_to_phase_lambda(ctx, sigma), sigma);
+  ArcLengthFdScratch fdScratch;
   PhaseStepMaterials startMaterials;
   PhaseStepMaterials candidateMaterials;
   PhaseStepMaterials probeMaterials;
@@ -1511,7 +1522,7 @@ inline PhaseResult run_safety_arc_length_phase(
       const bool useUnsymmetricSolver = mayNeedUnsymmetricSolver && startHasPlastic;
 
       SafetyResidualDerivativeFd derivative = compute_safety_sigma_msf_residual_derivative(
-          ctx, U, stepStartLambda, stepStartSigma, opts);
+          ctx, U, stepStartLambda, stepStartSigma, fdScratch, opts);
       if (!derivative.converged) {
         committedMp = stepStartCommitted;
         trialMp = stepStartTrial;
@@ -1617,7 +1628,7 @@ inline PhaseResult run_safety_arc_length_phase(
         const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
         SafetyResidualDerivativeFd correctionDerivative =
             compute_safety_sigma_msf_residual_derivative(
-                ctx, U, candidateLambda, candidateSigma, opts);
+                ctx, U, candidateLambda, candidateSigma, fdScratch, opts);
         if (!correctionDerivative.converged) {
           lastFailureCode = correctionDerivative.failureCode;
           invalidStep = true;
@@ -1689,10 +1700,10 @@ inline PhaseResult run_safety_arc_length_phase(
           invalidStep = true;
           break;
         }
-        stepDeltaUFree.assign(lineSearchBestDeltaU.begin(), lineSearchBestDeltaU.end());
+        std::swap(stepDeltaUFree, lineSearchBestDeltaU);
         stepDeltaSigma = bestDeltaSigma;
-        U.assign(lineSearchBestU.begin(), lineSearchBestU.end());
-        trialMp.assign(lineSearchBestTrial.begin(), lineSearchBestTrial.end());
+        std::swap(U, lineSearchBestU);
+        std::swap(trialMp, lineSearchBestTrial);
         lastAcceptedScale = bestScale;
         res.maxEta = std::max(res.maxEta, bestAssembly.maxEta);
       }
