@@ -154,6 +154,23 @@ factorOfSafetyIsOpenEnded   = true
 No consumer may infer open-ended safety from a formatted string. It must use the
 boolean field.
 
+Bracket width contract:
+
+```text
+bracketWidth =
+  factorOfSafetyUpper != null
+    ? factorOfSafetyUpper - factorOfSafetyLower
+    : null
+
+bracketed-failure =
+  bracketWidth != null
+  && bracketWidth <= safetySigmaMsfBracketTolerance
+```
+
+Use the same `safetySigmaMsfBracketTolerance` value that controls the safety
+search. Do not apply a relative tolerance or a display-rounded tolerance in the
+finalization classifier.
+
 Do not call soil-body failure solely because Newton failed. Non-convergence is
 evidence only when it occurs near a stable bracket or together with a coherent,
 growing mechanism.
@@ -387,6 +404,48 @@ Connectivity:
 - Compute connected components over active elements.
 - The largest component must represent a meaningful fraction of plastic activity.
 
+Mechanism scalar definitions:
+
+- `activePlasticPointCount` is the number of Gauss points with
+  `deltaEquivalentPlasticStrainSafety >= mechanismPlasticThreshold`.
+- `activePlasticElementCount` is the number of elements with at least one active
+  plastic Gauss point.
+- `connectedComponentCount` is the number of edge-connected active-element
+  components.
+- `largestConnectedComponentPlasticMass` is the sum of
+  `deltaEquivalentPlasticStrainSafety * integrationWeight` over the largest
+  component by plastic mass.
+- `mechanismLength` is the projected span of active element centroids in the
+  largest connected component along that component's principal axis. Compute the
+  axis from the plastic-mass-weighted 2D covariance of active element centroids;
+  then use `max(dot(x_i, axis)) - min(dot(x_i, axis))`. If the component has
+  fewer than two active elements, `mechanismLength = 0`.
+- `displacementDirectionCoherence` is the normalized weighted resultant of
+  active element displacement directions in the largest component:
+
+```text
+u_i = centroid displacement increment of active element i
+n_i = u_i / max(norm(u_i), eps)
+w_i = element plastic mass
+
+displacementDirectionCoherence =
+  norm(sum_i(w_i * n_i)) / max(sum_i(w_i), eps)
+```
+
+Ignore elements with displacement norm below the displacement tolerance. If no
+eligible displacement vectors remain, `displacementDirectionCoherence = 0`.
+- `mechanismTouchesLoadedZone` is true when at least one element in the largest
+  component intersects the loaded footprint or its directly loaded boundary
+  segment.
+- `mechanismTouchesFreeSurface` is true when at least one element in the largest
+  component shares an edge or node with the terrain/free-surface boundary.
+- `mechanismTouchesBoundary` is true when at least one element in the largest
+  component touches a model boundary other than the free surface.
+- `mechanismCrossesSlopeOrFoundationZone` is true when the largest component
+  forms a connected path between the loaded zone and either the free surface or
+  an external model boundary. This is evaluated on the edge-shared component
+  graph, not by visual contour inspection.
+
 Initial scoring rule:
 
 ```text
@@ -448,9 +507,10 @@ else:
   status = 'scattered'
 ```
 
-If full mechanism scoring has not been run yet, the summary status must remain
-`none` for no active plasticity or `candidate` for active plasticity requiring
-final scoring. It must not report `coherent` from cheap proxy fields alone.
+`SafetyMechanismSummary` is a final result/display-state summary and must be
+emitted only after full mechanism scoring has run for that state. Cheap
+per-curve-point proxy fields must not be promoted into a summary, and must never
+produce `status = 'coherent'` by themselves.
 
 Performance rule:
 
@@ -487,7 +547,7 @@ type SafetyTrialTarget = {
   sigmaMsfTarget: number;
   sigmaMsfCommitted: number;
   converged: boolean;
-  wireStatus: number;
+  trialOutcome: number;
   failureCode: number;
   displayed: boolean;
 };
@@ -538,13 +598,20 @@ type SafetyMechanismSummary = {
   status: 'none' | 'scattered' | 'candidate' | 'coherent';
   score: number;
   threshold: number;
+  maxDeltaPlasticStrain: number;
+  totalDeltaPlasticStrain: number;
+  activePlasticPointCount: number;
   activePlasticElementCount: number;
+  connectedComponentCount: number;
   largestConnectedComponentElementCount: number;
+  largestConnectedComponentPlasticMass: number;
   componentMassRatio: number;
   mechanismLength: number;
-  touchesLoadedZone: boolean;
-  touchesFreeSurface: boolean;
-  touchesBoundary: boolean;
+  plasticGrowthOverWindow: number;
+  mechanismTouchesLoadedZone: boolean;
+  mechanismTouchesFreeSurface: boolean;
+  mechanismTouchesBoundary: boolean;
+  mechanismCrossesSlopeOrFoundationZone: boolean;
   displacementDirectionCoherence: number;
 };
 
@@ -570,10 +637,33 @@ type SafetyFinalization = {
 };
 ```
 
+`arcLengthDetails !== null` if and only if this `SafetyCurvePoint` was accepted
+with `actualContinuationMode === 'arc-length'`. A null value on an arc-length
+accepted point, or a non-null value on a non-arc-length accepted point, is a
+wire-emission bug.
+
 `SafetyCurvePoint` is the canonical accepted-equilibrium history record. It is
 emitted only for accepted continuation states. Failed trial targets and rejected
 trial endpoints are represented in `SafetyTrialTarget`, not duplicated as curve
 points.
+
+`SafetyTrialTarget.trialOutcome` is a per-trial outcome enum. It is not the
+finalization wire-status enum from the canonical status table.
+
+| Trial outcome | Meaning |
+| --- | --- |
+| 0 | `converged` |
+| 1 | `newton-failed` |
+| 2 | `cutback-exhausted` |
+| 3 | `arc-length-rejected` |
+| 4 | `trial-budget-exhausted` |
+| 5 | `interrupted` |
+
+`SafetyTrialTarget.displayed` means this target supplied the displayed
+near-failure or final safety field state for contours and displacement vectors.
+At most one `SafetyTrialTarget` may have `displayed === true`. If no trial target
+is displayed, the displayed state is the lower-bound checkpoint or the safety
+base state identified by `displayedSigmaMsf`.
 
 `curve` and `mechanism` belong to the top-level `SafetyResult`, not to
 `SafetyFinalization`, so both `legacy-bracket` and `production-msf` can emit the
@@ -597,6 +687,10 @@ corrector solves across all Newton iterations. Do not duplicate that total
 inside `ArcLengthStepDetails`; use implementation-only diagnostics if a split by
 solve is needed.
 
+`lineSearchAcceptedScale` is the accepted Armijo scale on the displacement
+correction for load-control or strength-control points. For arc-length points it
+is the joint scalar `eta` applied to both `(du, dlam)`.
+
 Arc-length must add `arcLengthDetails` inside the same point rather than
 emitting a second parallel step-history array for the same accepted safety
 state.
@@ -606,8 +700,37 @@ If safety is not run, `SafetyMechanismSummary` must still be populated as:
 ```text
 status = 'none'
 score = 0
+maxDeltaPlasticStrain = 0
+totalDeltaPlasticStrain = 0
+activePlasticPointCount = 0
 activePlasticElementCount = 0
+connectedComponentCount = 0
+largestConnectedComponentPlasticMass = 0
 ```
+
+Wire-encoded `SafetyResult` is emitted only when the analysis mode is a safety
+run. For non-safety analyses, the JS decoder must return a `SafetyResult` with:
+
+```text
+finalization.status = 'not-run'
+curve = []
+trialTargets = []
+mechanism.status = 'none'
+```
+
+Version compatibility:
+
+- The version-7 decoder must decode version-6 safety results by mapping the
+  legacy wire label to `finalization.status` and returning empty `curve` and
+  `trialTargets`.
+- The version-6 decoder is allowed to reject version-7 results.
+- Version mismatches must fail explicitly when compatibility is not supported.
+
+`safetyFinalizationMode` and `requestedContinuationMode` are orthogonal. If
+`requestedContinuationMode = 'arc-length'`, accepted arc-length points carry
+`arcLengthDetails`; the safety-curve schema is otherwise unchanged.
+`safetyFinalizationMode` chooses how those points and trial targets are
+classified into the reported safety result.
 
 WASM binary wire format rules:
 
@@ -617,6 +740,19 @@ WASM binary wire format rules:
 - Failure codes inside fixed-width records must be numeric enums, for example
   `u16 failureCode`, with JS-side label mapping.
 - Saved-project option migration must be explicit and tested.
+
+Saved-project migration defaults:
+
+| Missing option | Version-6-era saved project | New project after switch-over |
+| --- | --- | --- |
+| `safetyFinalizationMode` | `legacy-bracket` | `production-msf` |
+| `requestedContinuationMode` | `strength-control` for safety phases | `auto` |
+| `arcLengthDerivativeMode` | `finite-difference` | `finite-difference` |
+| `arcLengthAllowPostPeakSafetyPath` | `true` | `true` |
+| `arcLengthInitialRadius` and related radius options | defaulted but unused unless arc-length is requested | calibrated production defaults |
+
+A version-6-era saved project loaded through the migration path must reproduce
+the pre-feature lower-bound FoS before any user changes the new solver options.
 
 ## UI Requirements
 
@@ -669,6 +805,9 @@ Tasks:
 - Compute safety plastic increments relative to the correct comparison material
   point state.
 - Include active-set and solver metrics in each point.
+- Extend WASM `PhaseResult` and per-accepted-step summaries to track
+  `activeFaceCount`, `activeEdgeCount`, and `activeApexCount`, matching the JS
+  solver's existing face/edge/apex breakdown.
 - Extend the WASM output writer and JS decoder with a versioned safety-history
   section.
 - Bump the WASM deformation wire contract to `WIRE_VERSION = 7`.
@@ -749,6 +888,10 @@ safetyFinalizationMode:
 - Wire raw statuses through the canonical mapping table.
 - Audit all exact safety-status comparisons in the UI, result builder, and
   report/export code.
+- Rewrite `src/lib/cpt-app/deformation/wasm/build-result.js` so the canonical
+  safety output is `safetyResult.finalization.status`. Keep the old
+  `solver.safetyStatus` string only as a rollout-period legacy alias derived
+  from `finalization.status`, not from the raw wire-label table.
 - Use `factorOfSafetyIsOpenEnded` for open-ended display text; never encode
   `FoS > ...` inside the numeric factor field.
 
@@ -795,6 +938,8 @@ The feature is complete only when:
   `SafetyResult.trialTargets` are populated in both `legacy-bracket` and
   `production-msf` modes.
 - Accepted curve points and failed trial targets are not double-counted.
+- `arcLengthDetails !== null` exactly matches accepted arc-length curve points.
+- `SafetyTrialTarget.displayed` selects at most one displayed target state.
 - `relativeResidual` uses the same per-step initial residual definition in WASM
   and JS consumers.
 - Existing safety examples still solve.
@@ -823,7 +968,9 @@ Required tests:
   targets appear in `trialTargets`, and no target is duplicated.
 - Relative-residual fixture: `relativeResidual` equals
   `residualNorm / max(initialResidualNorm, residualAbsTol)`.
-- Saved-project migration: old projects run with production defaults.
+- Saved-project migration: a version-6-era saved project with missing safety and
+  arc-length options migrates to compatibility defaults and reproduces the
+  pre-feature lower-bound FoS.
 
 ## Engineering Risks
 

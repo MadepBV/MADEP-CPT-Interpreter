@@ -457,6 +457,10 @@ lambda_trial = lambda_current + eta * dlam
 - Recompute residual and constraint merit.
 - Accept if the combined merit decreases.
 
+For arc-length curve points, `lineSearchAcceptedScale` is this joint scalar
+`eta`. For non-arc-length points, `lineSearchAcceptedScale` remains the existing
+Armijo scale applied to the displacement correction.
+
 Combined merit:
 
 ```text
@@ -572,6 +576,9 @@ type ArcLengthStepDetails = {
 For safety curve points, `SafetyCurvePoint.linearIterations` is the total number
 of linear iterations across all arc-length corrector solves. It is not repeated
 inside `ArcLengthStepDetails`.
+
+`SafetyCurvePoint.arcLengthDetails !== null` if and only if the accepted point
+used `actualContinuationMode === 'arc-length'`.
 
 Non-safety arc-length phases may emit a compact phase history, but the record
 must still use numeric failure/status enums. Fixed-width WASM records must not
