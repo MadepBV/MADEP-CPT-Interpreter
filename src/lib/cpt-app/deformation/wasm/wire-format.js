@@ -330,7 +330,7 @@ export function decodeOutputBuffer(bytes) {
     gpStates[gp] = state;
   }
 
-  const safetyStatus = readU8();
+  const wireStatus = readU8();
   for (let i = 0; i < 7; i += 1) readU8();
   const safetyFosLower = readF64();
   const safetyFosUpper = readF64();
@@ -437,8 +437,8 @@ export function decodeOutputBuffer(bytes) {
     };
   }
 
-  const finalizationStatus = SAFETY_FINALIZATION_STATUS_BY_WIRE[safetyStatus] || 'numerical-nonconvergence';
-  const factorOfSafetyUpper = safetyStatus === 3 ? null : safetyFosUpper;
+  const finalizationStatus = SAFETY_FINALIZATION_STATUS_BY_WIRE[wireStatus] || 'numerical-nonconvergence';
+  const factorOfSafetyUpper = wireStatus === 3 ? null : safetyFosUpper;
   const bracketWidth = factorOfSafetyUpper !== null
     ? Math.max(0, safetyFosUpper - safetyFosLower)
     : null;
@@ -469,7 +469,7 @@ export function decodeOutputBuffer(bytes) {
       factorOfSafety: safetyFosLower,
       factorOfSafetyLower: safetyFosLower,
       factorOfSafetyUpper,
-      factorOfSafetyIsOpenEnded: safetyStatus === 3,
+      factorOfSafetyIsOpenEnded: wireStatus === 3,
       bracketWidth,
       strengthRetained: safetyStrengthRetained,
       displayedSigmaMsf: safetyFosLower,
@@ -492,8 +492,8 @@ export function decodeOutputBuffer(bytes) {
     displacements: serviceDisp,  // alias for backward-compat
     gpStates,
     safety: {
-      status: safetyStatus,
-      statusLabel: SAFETY_WIRE_LABELS[safetyStatus] || 'unknown',
+      status: wireStatus,
+      statusLabel: SAFETY_WIRE_LABELS[wireStatus] || 'unknown',
       ran: summary.safetyRan,
       factorOfSafetyLower: safetyFosLower,
       factorOfSafetyUpper: safetyFosUpper,

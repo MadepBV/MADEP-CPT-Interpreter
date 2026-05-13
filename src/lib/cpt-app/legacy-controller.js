@@ -4355,6 +4355,7 @@ function stage6Defaults(){
           safetySigmaMsfMax:3.00,
           safetySigmaMsfBracketTolerance:0.01,
           safetyMaxSearchTrials:32,
+          safetyFinalizationMode:'legacy-bracket',
           useUnsymmetricPlasticSolver:true
         },
         display:{
@@ -4767,6 +4768,9 @@ function ensureStage6State(){
   bishop.deformation.options.safetySigmaMsfMax = Math.max(+bishop.deformation.options.safetySigmaMsfMax || 3.00, 1.0);
   bishop.deformation.options.safetySigmaMsfBracketTolerance = Math.max(+bishop.deformation.options.safetySigmaMsfBracketTolerance || 0.01, 0.0001);
   bishop.deformation.options.safetyMaxSearchTrials = Math.max(Math.round(+bishop.deformation.options.safetyMaxSearchTrials || 32), 1);
+  bishop.deformation.options.safetyFinalizationMode = bishop.deformation.options.safetyFinalizationMode === 'production-msf'
+    ? 'production-msf'
+    : 'legacy-bracket';
   bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver !== false;
   bishop.deformation.options.wasmRobustNonlinearMode = false;
   // Strip legacy GPU-related option carriers from saved sessions. The current
@@ -6715,13 +6719,24 @@ function stage6BishopEnsureDeformationWorker(){
       const inadmissibleInitialSuffix = inadmissibleInitialCount > 0
         ? ` Initial exact MC audit flagged ${inadmissibleInitialCount} inadmissible predictor element${inadmissibleInitialCount === 1 ? '' : 's'}.`
         : '';
+      const safetyFinalization = solver?.safetyResult?.finalization || null;
+      const safetyFinalizationStatus = stage6SafetyFinalizationStatusFromSolver(solver);
+      const safetyOpenEnded = safetyFinalization?.factorOfSafetyIsOpenEnded === true
+        || safetyFinalizationStatus === 'no-failure-found';
+      const safetyPhysicalFailure = safetyFinalizationStatus === 'bracketed-failure'
+        || safetyFinalizationStatus === 'mechanism-developed';
+      const safetyPhysicalLead = safetyFinalizationStatus === 'mechanism-developed'
+        ? `C-phi reduction developed a coherent mechanism at ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}.`
+        : `C-phi reduction bracketed failure between ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)} and ${Number(solver?.safetyFactorOfSafetyUpper || solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}.`;
       deformation.progress.message = deformation.status === 'success'
         ? (
             analysisType === 'safety-cphi'
               ? (
-                  solver?.safetyStatus === 'bracketed'
-                    ? `C-phi reduction bracketed failure between ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)} and ${Number(solver?.safetyFactorOfSafetyUpper || solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Conservative FoS ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Showing the near-failure mechanism at ΣMsf ${Number(solver?.safetyDisplayedSigmaMsf || solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Max additional settlement ${maxSettlementLabel} mm; max safety Δε̄ᵖ ${maxSafetyPlasticLabel}.${inadmissibleInitialSuffix}`
-                    : `C-phi reduction remained stable up to ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Report FoS > ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Max additional settlement ${maxSettlementLabel} mm; max safety Δε̄ᵖ ${maxSafetyPlasticLabel}.${inadmissibleInitialSuffix}`
+                  safetyPhysicalFailure
+                    ? `${safetyPhysicalLead} Conservative FoS ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Showing the near-failure mechanism at ΣMsf ${Number(solver?.safetyDisplayedSigmaMsf || solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Max additional settlement ${maxSettlementLabel} mm; max safety Δε̄ᵖ ${maxSafetyPlasticLabel}.${inadmissibleInitialSuffix}`
+                    : safetyOpenEnded
+                      ? `C-phi reduction remained stable up to ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Report FoS > ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Max additional settlement ${maxSettlementLabel} mm; max safety Δε̄ᵖ ${maxSafetyPlasticLabel}.${inadmissibleInitialSuffix}`
+                      : `C-phi reduction stopped at ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)} with status ${safetyFinalizationStatus.replaceAll('-', ' ')}. Treat the FoS as a lower-bound numerical result, not confirmed soil body failure. Max additional settlement ${maxSettlementLabel} mm; max safety Δε̄ᵖ ${maxSafetyPlasticLabel}.${inadmissibleInitialSuffix}`
                 )
               : convergenceState === 'partial'
               ? (
@@ -7011,6 +7026,7 @@ function stage6BishopRunDeformation(){
         safetySigmaMsfMax:bishop.deformation?.options?.safetySigmaMsfMax,
         safetySigmaMsfBracketTolerance:bishop.deformation?.options?.safetySigmaMsfBracketTolerance,
         safetyMaxSearchTrials:bishop.deformation?.options?.safetyMaxSearchTrials,
+        safetyFinalizationMode:bishop.deformation?.options?.safetyFinalizationMode === 'production-msf' ? 'production-msf' : 'legacy-bracket',
         useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true,
         solverBackend:bishop.deformation?.options?.solverBackend === 'js-cpu' ? 'js-cpu' : 'wasm-cpu',
         useNewGpuPipeline:false,
@@ -7050,6 +7066,14 @@ function stage6SecondsLabelFromMs(value){
   const ms = Number(value);
   if(!Number.isFinite(ms)) return '—';
   return `${stage6CompactNumber(ms / 1000, 3)} s`;
+}
+
+function stage6SafetyFinalizationStatusFromSolver(solver){
+  const finalStatus = solver?.safetyResult?.finalization?.status;
+  if(finalStatus) return finalStatus;
+  const legacyStatus = solver?.safetyStatus;
+  if(legacyStatus === 'bracketed') return 'bracketed-failure';
+  return legacyStatus || 'not-applicable';
 }
 
 function stage6DepthBandReportHtml(report, title = 'Depth-band plasticity'){
@@ -11994,13 +12018,18 @@ function renderStage6BishopApp(){
   };
   const deformationRequestedInitialStressMode = deformationRequestedWorkflowLabel(deformationGeostaticInitializationMethod);
   const deformationInitialStressMode = deformationInitialStressLabel(deformation.result?.solver?.initialStressMode);
-  const deformationSafetyStatus = deformation.result?.solver?.safetyStatus || 'not-applicable';
+  const deformationSafetyFinalization = deformation.result?.solver?.safetyResult?.finalization || null;
+  const deformationSafetyStatus = stage6SafetyFinalizationStatusFromSolver(deformation.result?.solver);
   const deformationSafetyFoSLower = Number.isFinite(deformation.result?.solver?.safetyFactorOfSafetyLower)
     ? Number(deformation.result.solver.safetyFactorOfSafetyLower)
     : null;
-  const deformationSafetyFoSUpper = Number.isFinite(deformation.result?.solver?.safetyFactorOfSafetyUpper)
+  const deformationSafetyFoSUpper = Number.isFinite(deformationSafetyFinalization?.factorOfSafetyUpper)
+    ? Number(deformationSafetyFinalization.factorOfSafetyUpper)
+    : Number.isFinite(deformation.result?.solver?.safetyFactorOfSafetyUpper)
     ? Number(deformation.result.solver.safetyFactorOfSafetyUpper)
     : null;
+  const deformationSafetyOpenEnded = deformationSafetyFinalization?.factorOfSafetyIsOpenEnded === true
+    || deformationSafetyStatus === 'no-failure-found';
   const deformationSafetyDisplayedSigmaMsf = Number.isFinite(deformation.result?.solver?.safetyDisplayedSigmaMsf)
     ? Number(deformation.result.solver.safetyDisplayedSigmaMsf)
     : null;
@@ -12565,7 +12594,7 @@ function renderStage6BishopApp(){
                   Service phase: <strong>${stage6EscAttr(deformationServicePhaseStatus)}</strong><br>
                   ${deformationIsSafety ? `Safety phase: <strong>${stage6EscAttr(deformationSafetyStatus)}</strong><br>` : ''}
                   ${deformationIsSafety ? `FoS lower bound: <strong>${deformationSafetyFoSLower != null ? deformationSafetyFoSLower.toFixed(3) : '—'}</strong><br>` : ''}
-                  ${deformationIsSafety ? `FoS upper bound: <strong>${deformationSafetyFoSUpper != null ? deformationSafetyFoSUpper.toFixed(3) : '—'}</strong><br>` : ''}
+                  ${deformationIsSafety ? `FoS upper bound: <strong>${deformationSafetyOpenEnded && deformationSafetyFoSLower != null ? `> ${deformationSafetyFoSLower.toFixed(3)}` : (deformationSafetyFoSUpper != null ? deformationSafetyFoSUpper.toFixed(3) : '—')}</strong><br>` : ''}
                   ${deformationIsSafety ? `Displayed ΣMsf: <strong>${deformationSafetyDisplayedSigmaMsf != null ? deformationSafetyDisplayedSigmaMsf.toFixed(3) : '—'}</strong><br>` : ''}
                   ${deformationIsSafety ? `Displayed retained strength: <strong>${deformationSafetyStrengthRetained != null ? `${(100 * deformationSafetyStrengthRetained).toFixed(2)} %` : '—'}</strong><br>` : ''}
                   Element type: <strong>${stage6EscAttr(deformationMeshElementLabel)}</strong><br>
@@ -13119,7 +13148,7 @@ function renderStage6BishopApp(){
                   ${deformationIsSafety
                     ? `<tr><td>Safety status</td><td>${stage6EscAttr(deformationSafetyStatus)}</td></tr>
                   <tr><td>FoS lower bound</td><td>${deformationSafetyFoSLower != null ? deformationSafetyFoSLower.toFixed(3) : '—'}</td></tr>
-                  <tr><td>FoS upper bound</td><td>${deformationSafetyFoSUpper != null ? deformationSafetyFoSUpper.toFixed(3) : '—'}</td></tr>
+                  <tr><td>FoS upper bound</td><td>${deformationSafetyOpenEnded && deformationSafetyFoSLower != null ? `> ${deformationSafetyFoSLower.toFixed(3)}` : (deformationSafetyFoSUpper != null ? deformationSafetyFoSUpper.toFixed(3) : '—')}</td></tr>
                   <tr><td>Displayed ΣMsf</td><td>${deformationSafetyDisplayedSigmaMsf != null ? deformationSafetyDisplayedSigmaMsf.toFixed(3) : '—'}</td></tr>
                   <tr><td>Displayed retained strength</td><td>${deformationSafetyStrengthRetained != null ? `${(100 * deformationSafetyStrengthRetained).toFixed(2)} %` : '—'}</td></tr>
                   <tr><td>Accepted continuation steps</td><td>${deformation.result?.solver?.safetyAcceptedContinuationSteps || 0}</td></tr>
@@ -14419,6 +14448,7 @@ function stage7DeformationPayload(){
     || 't3';
   const safetyFosLower = Number.isFinite(solver.safetyFactorOfSafetyLower) ? Number(solver.safetyFactorOfSafetyLower) : null;
   const safetyFosUpper = Number.isFinite(solver.safetyFactorOfSafetyUpper) ? Number(solver.safetyFactorOfSafetyUpper) : null;
+  const safetyFinalization = solver.safetyResult?.finalization || null;
   const summary = {
     analysisType: deformation.options?.analysisType || 'deformation',
     constitutiveModel: deformation.options?.constitutiveModel || 'linear-elastic',
@@ -14428,6 +14458,8 @@ function stage7DeformationPayload(){
     loadFactor: result?.loadFactor != null ? Number(result.loadFactor) : null,
     loadFactorMeaning: result?.loadFactorMeaning || null,
     safetyStatus: solver.safetyStatus || null,
+    safetyFinalizationStatus: safetyFinalization?.status || null,
+    safetyFactorOfSafetyIsOpenEnded: safetyFinalization?.factorOfSafetyIsOpenEnded === true,
     safetyFactorOfSafetyLower: safetyFosLower,
     safetyFactorOfSafetyUpper: safetyFosUpper,
     safetyLoadFactor: safetyFosLower != null

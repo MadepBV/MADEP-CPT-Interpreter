@@ -43,6 +43,11 @@ import {
 } from './post.js';
 import { computeDepthBandReport } from './diagnostics-depth-bands.js';
 import { buildSafetyMechanismSummary, emptySafetyMechanismSummary } from './safety-mechanism.js';
+import {
+  buildSafetyFinalization,
+  normalizeSafetyFinalizationMode,
+  safetyStatusAliasFromFinalizationStatus
+} from './safety-finalization.js';
 // Additive Schwarz support was removed in favour of a single block-Jacobi
 // 2×2 preconditioner path. The Schwarz module is preserved on disk for any
 // future reintroduction but is no longer imported here.
@@ -6381,6 +6386,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     safetySigmaMsfMax: Math.max(Number(input?.options?.safetySigmaMsfMax) || SAFETY_SIGMA_MSF_MAX, 1),
     safetySigmaMsfBracketTolerance: Math.max(Number(input?.options?.safetySigmaMsfBracketTolerance) || SAFETY_SIGMA_MSF_BRACKET_TOL, 1e-4),
     safetyMaxSearchTrials: Math.max(Math.round(Number(input?.options?.safetyMaxSearchTrials) || SAFETY_MAX_SEARCH_TRIALS), 1),
+    safetyFinalizationMode: normalizeSafetyFinalizationMode(input?.options?.safetyFinalizationMode),
     safetyMechanismPlateauWindow: Math.max(Math.round(Number(input?.options?.safetyMechanismPlateauWindow) || 3), 2),
     safetyMechanismPlateauRelativeTolerance: Math.max(Number(input?.options?.safetyMechanismPlateauRelativeTolerance) || 0.01, 1e-4),
     safetyMechanismMinIncrementalDisplacementNorm: Math.max(Number(input?.options?.safetyMechanismMinIncrementalDisplacementNorm) || 1e-8, 0),
@@ -7147,34 +7153,25 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   summaries.safetyMechanismScore = safetyMechanism.score;
   summaries.safetyMechanismActiveElements = safetyMechanism.activePlasticElementCount;
   summaries.safetyMechanismLargestComponentElements = safetyMechanism.largestConnectedComponentElementCount;
-  const safetyFinalizationStatus = analysisType !== 'safety-cphi'
-    ? 'not-run'
-    : safetyAnalysis?.status === 'bracketed'
-      ? 'bracketed-failure'
-      : safetyAnalysis?.status === 'mechanism-developed'
-        ? 'mechanism-developed'
-        : safetyAnalysis?.status === 'no-failure-found'
-          ? 'no-failure-found'
-          : 'numerical-nonconvergence';
   const safetyFactorLower = Number(safetyAnalysis?.factorOfSafetyLower) || 1;
   const safetyFactorUpper = analysisType === 'safety-cphi' && safetyAnalysis?.factorOfSafetyUpper != null && Number.isFinite(Number(safetyAnalysis?.factorOfSafetyUpper))
     ? Number(safetyAnalysis.factorOfSafetyUpper)
     : null;
+  const safetyFinalization = buildSafetyFinalization({
+    mode: options.safetyFinalizationMode,
+    rawStatus: analysisType === 'safety-cphi' ? safetyAnalysis?.status : 'not-run',
+    factorOfSafetyLower: safetyFactorLower,
+    factorOfSafetyUpper: safetyFactorUpper,
+    strengthRetained: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.strengthRetained) || 1 : 1,
+    displayedSigmaMsf: analysisType === 'safety-cphi' ? Number(activePhase?.sigmaMsfDisplayed ?? safetyFactorLower) || 1 : 1,
+    mechanism: safetyMechanism,
+    curve: jsSafetyCurve,
+    trialTargets: jsSafetyTrialTargets,
+    options
+  });
   const safetyResult = {
-    finalizationMode: 'legacy-bracket',
-    finalization: {
-      status: safetyFinalizationStatus,
-      factorOfSafety: safetyFactorLower,
-      factorOfSafetyLower: safetyFactorLower,
-      factorOfSafetyUpper: safetyFactorUpper,
-      factorOfSafetyIsOpenEnded: safetyFinalizationStatus === 'no-failure-found',
-      bracketWidth: safetyFactorUpper != null ? Math.max(safetyFactorUpper - safetyFactorLower, 0) : null,
-      strengthRetained: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.strengthRetained) || 1 : 1,
-      displayedSigmaMsf: analysisType === 'safety-cphi' ? Number(activePhase?.sigmaMsfDisplayed ?? safetyFactorLower) || 1 : 1,
-      plateauDetected: safetyFinalizationStatus === 'mechanism-developed',
-      plateauWindowStart: null,
-      plateauWindowEnd: null
-    },
+    finalizationMode: options.safetyFinalizationMode,
+    finalization: safetyFinalization,
     mechanism: safetyMechanism,
     curve: analysisType === 'safety-cphi' ? jsSafetyCurve : [],
     trialTargets: analysisType === 'safety-cphi' ? jsSafetyTrialTargets : []
@@ -7354,16 +7351,16 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       safetyBaseState: analysisType === 'safety-cphi'
         ? (wantsServiceLoadPhase ? 'end-of-service' : 'initial-equilibrium')
         : 'not-applicable',
-      safetyStatus: analysisType === 'safety-cphi' ? (safetyAnalysis?.status || 'unknown') : 'not-applicable',
+      safetyStatus: analysisType === 'safety-cphi'
+        ? safetyStatusAliasFromFinalizationStatus(safetyFinalization.status)
+        : 'not-applicable',
       safetyFailureCode: analysisType === 'safety-cphi' ? (safetyAnalysis?.failureCode || '') : '',
       safetyFailureOutcomeClass: analysisType === 'safety-cphi' ? (safetyAnalysis?.failureOutcomeClass || 'unknown') : 'not-applicable',
-      safetyFactorOfSafety: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.factorOfSafety) || 1 : null,
-      safetyFactorOfSafetyLower: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.factorOfSafetyLower) || 1 : null,
-      safetyFactorOfSafetyUpper: analysisType === 'safety-cphi' && safetyAnalysis?.factorOfSafetyUpper != null && Number.isFinite(Number(safetyAnalysis?.factorOfSafetyUpper))
-        ? Number(safetyAnalysis?.factorOfSafetyUpper)
-        : null,
-      safetyStrengthRetained: analysisType === 'safety-cphi' ? Number(safetyAnalysis?.strengthRetained) || 1 : null,
-      safetyDisplayedSigmaMsf: analysisType === 'safety-cphi' ? Number(activePhase?.sigmaMsfDisplayed ?? safetyAnalysis?.factorOfSafetyLower) || 1 : null,
+      safetyFactorOfSafety: analysisType === 'safety-cphi' ? safetyFinalization.factorOfSafety : null,
+      safetyFactorOfSafetyLower: analysisType === 'safety-cphi' ? safetyFinalization.factorOfSafetyLower : null,
+      safetyFactorOfSafetyUpper: analysisType === 'safety-cphi' ? safetyFinalization.factorOfSafetyUpper : null,
+      safetyStrengthRetained: analysisType === 'safety-cphi' ? safetyFinalization.strengthRetained : null,
+      safetyDisplayedSigmaMsf: analysisType === 'safety-cphi' ? safetyFinalization.displayedSigmaMsf : null,
       safetyCommittedSigmaMsf: analysisType === 'safety-cphi'
         ? Number(safetyAnalysis?.lowerBoundCheckpoint?.sigmaMsf ?? safetyAnalysis?.factorOfSafetyLower) || 1
         : null,

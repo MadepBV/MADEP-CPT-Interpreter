@@ -175,6 +175,36 @@ Do not call soil-body failure solely because Newton failed. Non-convergence is
 evidence only when it occurs near a stable bracket or together with a coherent,
 growing mechanism.
 
+Phase-4 production classifier:
+
+```text
+rawStatus = mapped wire/JS solver status
+
+if safetyFinalizationMode == 'legacy-bracket':
+  status = canonical mapping of rawStatus
+else if rawStatus == not-run:
+  status = not-run
+else if rawStatus == no-failure-found:
+  status = no-failure-found
+else if rawStatus == mechanism-developed:
+  status = mechanism-developed
+else if bracketWidth != null and bracketWidth <= safetySigmaMsfBracketTolerance:
+  status = bracketed-failure
+else if (plateauDetected or rejectedUpperTrialExists) and mechanism.status == coherent:
+  status = mechanism-developed
+else if rawStatus == bracketed-failure or searchBudgetExhausted:
+  status = needs-more-steps when searchBudgetExhausted, otherwise insufficient-mechanism
+else if activePlasticElementCount > 0:
+  status = insufficient-mechanism
+else:
+  status = numerical-nonconvergence
+```
+
+The classifier never changes `factorOfSafetyLower`; it only classifies the
+evidence attached to that lower bound. In Phase 4 the UI still defaults to
+`legacy-bracket` for compatibility. `production-msf` is available through the
+solver option and becomes the default only in Phase 5 after regression approval.
+
 ## Canonical Status Contract
 
 The current code has several status layers: fixed-width WASM wire codes, decoded

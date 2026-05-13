@@ -8,6 +8,10 @@
 // outside.
 
 import { buildSafetyMechanismSummary, emptySafetyMechanismSummary } from '../safety-mechanism.js';
+import {
+  buildSafetyFinalization,
+  safetyStatusAliasFromFinalizationStatus
+} from '../safety-finalization.js';
 
 const GEOM_EPS = 1e-6;
 
@@ -415,21 +419,34 @@ export function buildWasmDeformationResult({
         ? Number(displayedSafetyTrial.committed)
         : Number(safety.factorOfSafetyLower) || 1)
     : null;
+  const safetyFinalization = buildSafetyFinalization({
+    mode: options.safetyFinalizationMode,
+    rawStatus: isSafety ? safety.statusLabel : 'not-run',
+    rawWireStatus: isSafety ? safety.status : 0,
+    factorOfSafetyLower: safety.factorOfSafetyLower,
+    factorOfSafetyUpper: safety.factorOfSafetyUpper,
+    strengthRetained: safety.strengthRetained,
+    displayedSigmaMsf: safetyDisplayedSigmaMsf,
+    mechanism: safetyMechanism,
+    curve: safetyCurve,
+    trialTargets: safetyTrialTargets,
+    options
+  });
+  const safetyStatusAlias = isSafety
+    ? safetyStatusAliasFromFinalizationStatus(safetyFinalization.status)
+    : 'not-applicable';
   const resultSafetyObject = isSafety
     ? {
         ...decodedSafetyResult,
         mechanism: safetyMechanism,
-        finalization: {
-          ...decodedSafetyResult.finalization,
-          displayedSigmaMsf: safetyDisplayedSigmaMsf
-        },
+        finalization: safetyFinalization,
         curve: safetyCurve,
         trialTargets: safetyTrialTargets
       }
     : {
         ...decodedSafetyResult,
         mechanism: safetyMechanism,
-        finalization: { ...decodedSafetyResult.finalization, status: 'not-run' },
+        finalization: safetyFinalization,
         curve: [],
         trialTargets: []
       };
@@ -486,13 +503,13 @@ export function buildWasmDeformationResult({
       servicePhaseConvergenceState: summary.serviceConverged ? 'converged' : 'partial',
       // Safety c-phi.
       safetyStarted: isSafety,
-      safetyStatus: isSafety ? (['not-run', 'bracketed', 'mechanism-developed', 'no-failure-found'][safety.status] || 'unknown') : 'not-applicable',
+      safetyStatus: safetyStatusAlias,
       safetyBaseState: isSafety ? (hasSurfaceLoad ? 'end-of-service' : 'initial-equilibrium') : 'not-applicable',
-      safetyFactorOfSafety: isSafety ? safety.factorOfSafetyLower : null,
-      safetyFactorOfSafetyLower: isSafety ? safety.factorOfSafetyLower : null,
-      safetyFactorOfSafetyUpper: isSafety ? safety.factorOfSafetyUpper : null,
-      safetyStrengthRetained: isSafety ? safety.strengthRetained : null,
-      safetyDisplayedSigmaMsf,
+      safetyFactorOfSafety: isSafety ? safetyFinalization.factorOfSafety : null,
+      safetyFactorOfSafetyLower: isSafety ? safetyFinalization.factorOfSafetyLower : null,
+      safetyFactorOfSafetyUpper: isSafety ? safetyFinalization.factorOfSafetyUpper : null,
+      safetyStrengthRetained: isSafety ? safetyFinalization.strengthRetained : null,
+      safetyDisplayedSigmaMsf: isSafety ? safetyFinalization.displayedSigmaMsf : null,
       safetyCommittedSigmaMsf: isSafety ? safety.factorOfSafetyLower : null,
       safetyTrialHistory: isSafety ? (safetyTrialTargets.length ? safetyTrialTargets : safetyTrials) : [],
       safetyTrialTargets: isSafety ? safetyTrialTargets : [],
