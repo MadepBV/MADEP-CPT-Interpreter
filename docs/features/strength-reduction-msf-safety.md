@@ -828,7 +828,9 @@ Safety curve panel:
 - Shade the lower/upper bracket when available.
 - Mark the final reported point.
 - Mark the plateau window.
-- Allow switching between default max displacement and selected node/component.
+- Use default max displacement for `WIRE_VERSION = 7`; selected node/component
+  curves require a monitored-DOF history field and must be added only when that
+  data exists.
 
 Mechanism panel:
 
@@ -880,6 +882,12 @@ Validation:
 
 Goal: make the safety progression auditable.
 
+Binding implementation rule for this phase: the first chart uses
+`SafetyCurvePoint.uMaxAbs` as the displacement axis because `WIRE_VERSION = 7`
+stores scalar accepted-step records, not full displacement histories. A fixed
+user-selected node/component curve must not be faked from the final displacement
+field; it requires a later monitored-DOF field written during the solve.
+
 Tasks:
 
 - Add a compact chart under the safety result panel.
@@ -887,6 +895,8 @@ Tasks:
   bound, upper bound, and final FoS.
 - Add hover details for solver and mechanism metrics.
 - Keep the existing safety text concise.
+- Keep the chart data-driven for both WASM v7 records and JS CPU legacy trial
+  history fallbacks.
 
 Validation:
 
