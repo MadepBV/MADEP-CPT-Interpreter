@@ -163,6 +163,20 @@ The augmented Newton system is:
 [ g_u    g_lam ] [ correction_lambda ]   [ -g ]
 ```
 
+Dimensions:
+
+```text
+K      in R^(n x n)
+R_lam  in R^(n x 1)
+g_u    in R^(1 x n)
+g_lam  in R
+R      in R^(n x 1)
+g      in R
+```
+
+`g_u` is a row vector in the augmented system. Do not assemble it as the
+transpose column block.
+
 Because the Mohr-Coulomb tangent can be unsymmetric, the linear solves must
 continue to use GMRES for plastic phases. Do not symmetrize plastic tangents to
 make the augmented solve easier.
@@ -229,6 +243,16 @@ if dot_path < 0:
   flip predictor sign
 ```
 
+On the first arc-length step within a phase, the previous path increment is not
+defined. Force `delta_lambda_predictor > 0` for that first step:
+
+- load-control: load increases,
+- safety reduction: `SigmaMsf` increases.
+
+Apply the path-sign dot-product rule from the second accepted arc-length step
+onward. A first safety predictor must never drive `SigmaMsf` toward the
+inadmissible region below `1`.
+
 For safety reduction, initial production mode should prefer increasing
 `SigmaMsf`. Post-peak decreases in `SigmaMsf` may be useful for diagnostics, but
 the reported FoS remains the conservative stable peak/lower-bound value.
@@ -253,6 +277,10 @@ Compute:
 ```text
 R_lam ~= (R(u, SigmaMsf + h) - R(u, SigmaMsf - h)) / (2h)
 ```
+
+Use this central form only when both probes stay in the admissible domain
+`SigmaMsf >= 1`. At `SigmaMsf = 1`, or whenever the lower probe would fall below
+`1`, use the forward-only form specified in Phase 4.
 
 Use the same committed material state for both probes and do not commit probe
 states.
@@ -493,6 +521,11 @@ Triggers:
 - safety curve slope indicates a plateau,
 - upper-bound failure is suspected but mechanism evidence is incomplete.
 
+Cutback triggers are measured in the active continuation parameter `lambda`, not
+directly in absolute `SigmaMsf`. In safety mode, `lambda` maps to `SigmaMsf`
+through the current trial interval, so comparing `deltaSigmaMsf` directly to
+`minLoadStep * 4` is a different trigger and must not be used for this rule.
+
 The fallback should start from the last stable safety checkpoint, not from a
 failed trial state.
 
@@ -505,6 +538,10 @@ that same curve point.
 
 Reserve `WIRE_VERSION = 8` for arc-length additions after the safety-curve
 contract in `WIRE_VERSION = 7`.
+
+Arc-length wire work must not start before the `WIRE_VERSION = 7` safety-curve
+contract is merged. Version 8 is an extension of version 7, not a replacement
+that skips it.
 
 Shared mode types:
 
@@ -527,11 +564,14 @@ type ArcLengthStepDetails = {
   alpha: number;
   constraintResidual: number;
   linearSolveCount: number;
-  linearIterationsTotal: number;
   correctionDenominator: number;
   failureCode: number;
 };
 ```
+
+For safety curve points, `SafetyCurvePoint.linearIterations` is the total number
+of linear iterations across all arc-length corrector solves. It is not repeated
+inside `ArcLengthStepDetails`.
 
 Non-safety arc-length phases may emit a compact phase history, but the record
 must still use numeric failure/status enums. Fixed-width WASM records must not
@@ -650,6 +690,8 @@ Tasks:
 - Feed mechanism scoring and finalization.
 - Bump the WASM deformation wire contract to `WIRE_VERSION = 8` only when the
   arc-length details are added to the wire payload.
+- This phase must not start until the `WIRE_VERSION = 7` safety-curve contract
+  is merged.
 
 Validation:
 
@@ -730,6 +772,11 @@ Rules:
 - `requestedContinuationMode = 'load-control'` or `'strength-control'` means
   arc-length is disabled for that phase unless a higher-level development flag
   explicitly overrides it.
+- `requestedContinuationMode` and `safetyFinalizationMode` are orthogonal.
+  For validation, `requestedContinuationMode = 'arc-length'` may be combined
+  with `safetyFinalizationMode = 'legacy-bracket'`; the solver still emits the
+  safety curve, while the finalizer chooses the legacy bracket result from trial
+  targets.
 
 Initial production defaults:
 
@@ -768,6 +815,8 @@ Required checks:
 - safety curve points are monotonic in step index,
 - safety curve points carry `arcLengthDetails` instead of duplicate records,
 - actual continuation mode never equals `auto`,
+- `requestedContinuationMode = 'arc-length'` and
+  `safetyFinalizationMode = 'legacy-bracket'` work together for validation,
 - reported FoS remains lower-bound conservative,
 - post-peak path is not reported as a lower FoS.
 

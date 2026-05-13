@@ -219,7 +219,7 @@ Why this chart matters:
 Required chart elements:
 
 - accepted continuation points,
-- rejected or failed trial targets,
+- rejected or failed trial targets from `SafetyResult.trialTargets`,
 - final reported lower bound,
 - upper-bound band if available,
 - plateau window used for finalization,
@@ -228,7 +228,9 @@ Required chart elements:
   count, and plastic increment.
 
 The chart must be built from solver-emitted data, not reconstructed from final
-state only.
+state only. Accepted equilibrium states come from `SafetyResult.curve`; failed
+targets come from `SafetyResult.trialTargets`. The same failed target must not
+be logged in both arrays.
 
 ## Monitoring Displacement
 
@@ -262,7 +264,9 @@ UI behavior:
 
 - Use `uMaxAbs` as the default chart x-value.
 - If the user selects a node and component, show that curve as the main curve
-  and keep the default curve as a secondary option.
+  and keep the default curve as a secondary option. A user-selected curve must
+  use that fixed node and DOF for every point; it must not follow each point's
+  `dominantNode`.
 - Display units in the project displacement unit.
 - Keep signs available in tooltips, but make the default curve monotonic by
   using absolute magnitude.
@@ -293,6 +297,19 @@ uGrowth =
 plasticGrowth =
   maxSafetyPlastic_last - maxSafetyPlastic_first
 ```
+
+Where:
+
+```text
+maxSafetyPlastic_k =
+  max over all Gauss points of
+    accumulatedPlasticStrain_at_curve_point_k
+    - accumulatedPlasticStrain_at_safety_base
+```
+
+`maxSafetyPlastic_k` is cumulative from the safety-base checkpoint. It is not a
+per-step increment. This makes `maxSafetyPlastic_last - maxSafetyPlastic_first`
+the plastic growth over the plateau window, not a change in plastic strain rate.
 
 A plateau is eligible when:
 
@@ -373,17 +390,41 @@ Connectivity:
 Initial scoring rule:
 
 ```text
+eps = 1e-12
+
 componentMassRatio =
   largestConnectedComponentPlasticMass / max(totalDeltaPlasticStrain, eps)
 
+componentMassScore =
+  clamp(componentMassRatio, 0, 1)
+
+mechanismLengthScore =
+  clamp(mechanismLength / max(modelLength, eps), 0, 1)
+
+boundaryContactScore =
+  0.4 * indicator(mechanismTouchesLoadedZone)
+  + 0.4 * indicator(mechanismTouchesFreeSurface or mechanismTouchesBoundary)
+  + 0.2 * indicator(mechanismCrossesSlopeOrFoundationZone)
+
+directionScore =
+  clamp(displacementDirectionCoherence, 0, 1)
+
+plasticGrowthScore =
+  clamp(plasticGrowthOverWindow / max(minPlateauPlasticGrowth, eps), 0, 1)
+
 mechanismScore =
-  weighted combination of:
-    componentMassRatio,
-    mechanismLength / modelLength,
-    loaded/free-surface/boundary contact,
-    displacementDirectionCoherence,
-    plasticGrowthOverWindow
+  0.35 * componentMassScore
+  + 0.20 * mechanismLengthScore
+  + 0.15 * boundaryContactScore
+  + 0.15 * directionScore
+  + 0.15 * plasticGrowthScore
 ```
+
+All component scores must be normalized to `[0, 1]`, all weights must be
+non-negative, and the weights must sum to `1.0`. The weights above are the
+initial production proposal and may be calibrated through validation, but a
+calibrated implementation must still preserve the normalized convex-combination
+contract.
 
 Finalization threshold:
 
@@ -393,6 +434,23 @@ mechanismScore >= 0.65
 
 This threshold is not a universal truth. It must be calibrated on validation
 models and kept configurable in solver options.
+
+Mechanism-status transitions:
+
+```text
+if activePlasticElementCount == 0:
+  status = 'none'
+else if mechanismScore >= 0.65:
+  status = 'coherent'
+else if mechanismScore >= 0.40:
+  status = 'candidate'
+else:
+  status = 'scattered'
+```
+
+If full mechanism scoring has not been run yet, the summary status must remain
+`none` for no active plasticity or `candidate` for active plasticity requiring
+final scoring. It must not report `coherent` from cheap proxy fields alone.
 
 Performance rule:
 
@@ -415,14 +473,33 @@ safety decision.
 Add or extend:
 
 ```ts
+type SafetyResult = {
+  finalizationMode: 'legacy-bracket' | 'production-msf';
+  finalization: SafetyFinalization;
+  mechanism: SafetyMechanismSummary;
+  curve: SafetyCurvePoint[];
+  trialTargets: SafetyTrialTarget[];
+};
+
+type SafetyTrialTarget = {
+  index: number;
+  sigmaMsfStart: number;
+  sigmaMsfTarget: number;
+  sigmaMsfCommitted: number;
+  converged: boolean;
+  wireStatus: number;
+  failureCode: number;
+  displayed: boolean;
+};
+
 type SafetyCurvePoint = {
   index: number;
   trialIndex: number;
   continuationStepIndex: number;
   sigmaMsf: number;
   lambda: number;
-  converged: boolean;
-  accepted: boolean;
+  converged: true;
+  initialResidualNorm: number;
   residualNorm: number;
   relativeResidual: number;
   nonlinearIterations: number;
@@ -453,7 +530,6 @@ type ArcLengthStepDetails = {
   alpha: number;
   constraintResidual: number;
   linearSolveCount: number;
-  linearIterationsTotal: number;
   correctionDenominator: number;
   failureCode: number;
 };
@@ -462,7 +538,7 @@ type SafetyMechanismSummary = {
   status: 'none' | 'scattered' | 'candidate' | 'coherent';
   score: number;
   threshold: number;
-  activeElementCount: number;
+  activePlasticElementCount: number;
   largestConnectedComponentElementCount: number;
   componentMassRatio: number;
   mechanismLength: number;
@@ -491,14 +567,47 @@ type SafetyFinalization = {
   plateauDetected: boolean;
   plateauWindowStart: number | null;
   plateauWindowEnd: number | null;
-  mechanism: SafetyMechanismSummary;
-  curve: SafetyCurvePoint[];
 };
 ```
 
-`SafetyCurvePoint` is the canonical accepted-step history record. Arc-length
-must add `arcLengthDetails` inside the same point rather than emitting a second
-parallel step-history array for the same accepted safety state.
+`SafetyCurvePoint` is the canonical accepted-equilibrium history record. It is
+emitted only for accepted continuation states. Failed trial targets and rejected
+trial endpoints are represented in `SafetyTrialTarget`, not duplicated as curve
+points.
+
+`curve` and `mechanism` belong to the top-level `SafetyResult`, not to
+`SafetyFinalization`, so both `legacy-bracket` and `production-msf` can emit the
+same diagnostics. `SafetyFinalization` owns only the classification and factor
+numbers.
+
+`relativeResidual` is defined as:
+
+```text
+relativeResidual =
+  residualNorm / max(initialResidualNorm, residualAbsTol)
+```
+
+`initialResidualNorm` is the residual norm at the start of the same accepted
+continuation step. Do not normalize against the first residual of the whole
+safety phase or against a load-scaled external force.
+
+`linearIterations` is the total number of linear iterations spent to accept this
+curve point, regardless of continuation mode. For arc-length this includes both
+corrector solves across all Newton iterations. Do not duplicate that total
+inside `ArcLengthStepDetails`; use implementation-only diagnostics if a split by
+solve is needed.
+
+Arc-length must add `arcLengthDetails` inside the same point rather than
+emitting a second parallel step-history array for the same accepted safety
+state.
+
+If safety is not run, `SafetyMechanismSummary` must still be populated as:
+
+```text
+status = 'none'
+score = 0
+activePlasticElementCount = 0
+```
 
 WASM binary wire format rules:
 
@@ -554,6 +663,8 @@ Tasks:
 - Extend `PhaseResult` to store accepted continuation step summaries.
 - During safety phases, append a `SafetyCurvePoint` at every accepted
   continuation step, not only at each search trial.
+- Append failed or rejected target endpoints to `SafetyTrialTarget`, not to
+  `SafetyCurvePoint`.
 - Compute displacement metrics relative to the safety-base displacement vector.
 - Compute safety plastic increments relative to the correct comparison material
   point state.
@@ -569,6 +680,7 @@ Validation:
   changes.
 - Safety curve endpoint must match `safetyDisplayedSigmaMsf`.
 - Displacement metrics must match direct JS recomputation from the result arrays.
+- Failed target markers are present exactly once through `trialTargets`.
 - Version-6 outputs still decode through the current path; version mismatch
   errors are explicit and cannot silently degrade.
 
@@ -579,7 +691,8 @@ Goal: make the safety progression auditable.
 Tasks:
 
 - Add a compact chart under the safety result panel.
-- Plot accepted points, failed targets, lower bound, upper bound, and final FoS.
+- Plot accepted points from `curve`, failed targets from `trialTargets`, lower
+  bound, upper bound, and final FoS.
 - Add hover details for solver and mechanism metrics.
 - Keep the existing safety text concise.
 
@@ -678,6 +791,12 @@ The feature is complete only when:
 - Full mechanism scoring is not run for every accepted curve point.
 - `factorOfSafetyIsOpenEnded` controls all `FoS > ...` display text.
 - Status mappings are tested from WASM wire code through UI/report labels.
+- `SafetyResult.curve`, `SafetyResult.mechanism`, and
+  `SafetyResult.trialTargets` are populated in both `legacy-bracket` and
+  `production-msf` modes.
+- Accepted curve points and failed trial targets are not double-counted.
+- `relativeResidual` uses the same per-step initial residual definition in WASM
+  and JS consumers.
 - Existing safety examples still solve.
 - Regression fixtures cover bracketed, plateau, no-failure, scattered-plasticity,
   and numerical-limit cases.
@@ -700,6 +819,10 @@ Required tests:
   finalization status, mechanism status, and UI text.
 - Open-ended FoS fixture: `no-failure-found` keeps numeric FoS but displays
   `FoS > lower`.
+- Safety history fixture: accepted continuation states appear in `curve`, failed
+  targets appear in `trialTargets`, and no target is duplicated.
+- Relative-residual fixture: `relativeResidual` equals
+  `residualNorm / max(initialResidualNorm, residualAbsTol)`.
 - Saved-project migration: old projects run with production defaults.
 
 ## Engineering Risks
@@ -728,4 +851,6 @@ safetyFinalizationMode = 'legacy-bracket'
 ```
 
 The solver should still emit curve and mechanism diagnostics in legacy mode so
-validation data is not lost.
+validation data is not lost. In `legacy-bracket`, populate
+`SafetyResult.curve`, `SafetyResult.mechanism`, and
+`SafetyResult.trialTargets`; only the finalization classifier remains legacy.
