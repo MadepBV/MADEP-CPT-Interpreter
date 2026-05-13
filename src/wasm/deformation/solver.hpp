@@ -849,13 +849,16 @@ inline cg::LinearSolveResult solve_phase_linear_system(
     std::vector<double>& correctionFree,
     std::vector<double>& diagInv,
     const SolverOptions& opts,
-    bool useUnsymmetricSolver) {
+    bool useUnsymmetricSolver,
+    bool reuseDiagInv = false) {
   if (useUnsymmetricSolver) {
     return cg::solve_gmres_scaled(K, freeDofs,
                                   residualFree.data(), correctionFree.data(),
                                   opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
   }
-  sparse::build_block_jacobi(K, freeDofs, diagInv);
+  if (!reuseDiagInv) {
+    sparse::build_block_jacobi(K, freeDofs, diagInv);
+  }
   return cg::solve_cg(K, diagInv, freeDofs,
                       residualFree.data(), correctionFree.data(),
                       opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
@@ -993,6 +996,15 @@ inline void choose_arc_length_predictor_sign(
   for (double& v : predictor.deltaUFree) v = -v;
 }
 
+inline bool arc_length_predictor_direction_allowed(
+    const ArcLengthPredictor& predictor,
+    const ArcLengthState& state,
+    const SolverOptions& opts) {
+  const bool descentAllowed =
+      opts.arcLengthAllowPostPeakSafetyPath != 0u && state.acceptedStepCount > 0;
+  return predictor.converged && (descentAllowed || predictor.deltaLambda > 0.0);
+}
+
 inline ArcLengthPredictor make_load_control_arc_length_predictor(
     const CsrMatrix& K,
     const std::vector<std::int32_t>& freeDofs,
@@ -1072,7 +1084,8 @@ inline ArcLengthCorrector compute_arc_length_corrector(
 
   std::vector<double> duContinuation(static_cast<std::size_t>(K.nrows), 0.0);
   cg::LinearSolveResult continuationSolve = solve_phase_linear_system(
-      K, freeDofs, continuationRhsFree, duContinuation, diagInv, opts, useUnsymmetricSolver);
+      K, freeDofs, continuationRhsFree, duContinuation, diagInv, opts, useUnsymmetricSolver,
+      !useUnsymmetricSolver);
   out.linearIterations += continuationSolve.iterations;
   if (!continuationSolve.converged) {
     out.failureCode = 2u;
@@ -1138,7 +1151,7 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
   }
 
   const std::vector<MaterialPoint> trialBackup = *ctx.trial;
-  const std::vector<MaterialPoint> committedBackup = *ctx.committed;
+  const std::vector<MaterialPoint>& committedRef = *ctx.committed;
   std::vector<double> lowerResidual(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> upperResidual(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> internalScratch(static_cast<std::size_t>(nfree), 0.0);
@@ -1152,7 +1165,7 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
     out.trialScratch.assign(trialBackup.begin(), trialBackup.end());
     AssembleOutput probe = assemble_global(
         *ctx.elements,
-        committedBackup,
+        committedRef,
         out.trialScratch,
         out.regionsScratch,
         out.regionCScratch,
@@ -1180,7 +1193,6 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
   const bool lowerOk = assemble_at_sigma(out.lowerSigmaMsf, lowerResidual);
   const bool upperOk = assemble_at_sigma(out.upperSigmaMsf, upperResidual);
   *ctx.trial = trialBackup;
-  *ctx.committed = committedBackup;
   if (!lowerOk || !upperOk) {
     out.failureCode = 3u;
     return out;
@@ -1510,7 +1522,7 @@ inline PhaseResult run_safety_arc_length_phase(
       ArcLengthPredictor predictor = make_load_control_arc_length_predictor(
           K, freeDofs, derivative.continuationRhsFree, diagInv, opts, arcState, useUnsymmetricSolver);
       res.cgIterations += predictor.linearIterations;
-      if (!predictor.converged || !(predictor.deltaLambda > 0.0)) {
+      if (!arc_length_predictor_direction_allowed(predictor, arcState, opts)) {
         committedMp = stepStartCommitted;
         trialMp = stepStartTrial;
         U = stepStartU;

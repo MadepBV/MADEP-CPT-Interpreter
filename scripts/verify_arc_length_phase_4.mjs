@@ -184,7 +184,8 @@ int main() {
   assert.match(solverSource, /compute_safety_sigma_msf_residual_derivative_fd/);
   assert.match(solverSource, /candidateLower >= 1\.0/);
   assert.match(solverSource, /std::vector<MaterialPoint> trialBackup/);
-  assert.match(solverSource, /std::vector<MaterialPoint> committedBackup/);
+  assert.match(solverSource, /const std::vector<MaterialPoint>& committedRef = \*ctx\.committed/);
+  assert.doesNotMatch(solverSource, /\*ctx\.committed = committedBackup/);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
