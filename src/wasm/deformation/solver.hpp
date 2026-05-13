@@ -786,6 +786,53 @@ struct PhaseContext {
   std::int32_t safetyTrialIndex{ -1 };
 };
 
+struct PhaseStepMaterials {
+  const std::vector<RegionParams>* regions{ nullptr };
+  const std::vector<Mat6>* regionC{ nullptr };
+  std::vector<RegionParams> ownedRegions;
+  std::vector<Mat6> ownedRegionC;
+};
+
+inline void prepare_phase_step_materials(
+    const PhaseContext& ctx,
+    const std::vector<RegionParams>& phaseRegions,
+    const std::vector<Mat6>& phaseRegionC,
+    double targetLambda,
+    PhaseStepMaterials& out) {
+  out.ownedRegions.clear();
+  out.ownedRegionC.clear();
+  out.regions = &phaseRegions;
+  out.regionC = &phaseRegionC;
+  if (ctx.phaseKind != PhaseKind::SafetyCphi || !ctx.safetyStrengthBaseRegions) return;
+
+  const double sigmaMsf = ctx.safetySigmaMsfStart +
+      (ctx.safetySigmaMsfTarget - ctx.safetySigmaMsfStart) * targetLambda;
+  out.ownedRegions = *ctx.safetyStrengthBaseRegions;
+  for (auto& r : out.ownedRegions) r = reduce_strength(r, sigmaMsf);
+  out.ownedRegionC = build_region_elastic(out.ownedRegions);
+  out.regions = &out.ownedRegions;
+  out.regionC = &out.ownedRegionC;
+}
+
+inline cg::LinearSolveResult solve_phase_linear_system(
+    const CsrMatrix& K,
+    const std::vector<std::int32_t>& freeDofs,
+    const std::vector<double>& residualFree,
+    std::vector<double>& correctionFree,
+    std::vector<double>& diagInv,
+    const SolverOptions& opts,
+    bool useUnsymmetricSolver) {
+  if (useUnsymmetricSolver) {
+    return cg::solve_gmres_scaled(K, freeDofs,
+                                  residualFree.data(), correctionFree.data(),
+                                  opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
+  }
+  sparse::build_block_jacobi(K, freeDofs, diagInv);
+  return cg::solve_cg(K, diagInv, freeDofs,
+                      residualFree.data(), correctionFree.data(),
+                      opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
+}
+
 struct PhaseResult {
   std::int32_t accepted{ 0 };
   std::int32_t rejected{ 0 };
@@ -1005,19 +1052,10 @@ inline PhaseResult run_nonlinear_phase(
 	    const double remaining = 1.0 - loadFactor;
 	    const double actualStep = std::min(dLambda, remaining);
 	    const double targetLambda = loadFactor + actualStep;
-	    std::vector<RegionParams> stepRegions;
-	    std::vector<Mat6> stepRegionC;
-	    const std::vector<RegionParams>* regionsForStep = &regions;
-	    const std::vector<Mat6>* regionCForStep = &regionC;
-	    if (ctx.phaseKind == PhaseKind::SafetyCphi && ctx.safetyStrengthBaseRegions) {
-	      const double sigmaMsf = ctx.safetySigmaMsfStart +
-	          (ctx.safetySigmaMsfTarget - ctx.safetySigmaMsfStart) * targetLambda;
-	      stepRegions = *ctx.safetyStrengthBaseRegions;
-	      for (auto& r : stepRegions) r = reduce_strength(r, sigmaMsf);
-	      stepRegionC = build_region_elastic(stepRegions);
-	      regionsForStep = &stepRegions;
-	      regionCForStep = &stepRegionC;
-	    }
+	    PhaseStepMaterials stepMaterials;
+	    prepare_phase_step_materials(ctx, regions, regionC, targetLambda, stepMaterials);
+	    const std::vector<RegionParams>* regionsForStep = stepMaterials.regions;
+	    const std::vector<Mat6>* regionCForStep = stepMaterials.regionC;
 	    const std::vector<double> stepStartU = U;
 	    trialMp = committedMp;
 
@@ -1103,20 +1141,11 @@ inline PhaseResult run_nonlinear_phase(
       } else {
         std::fill(deltaUFree.begin(), deltaUFree.end(), 0.0);
       }
-      cg::LinearSolveResult lr{};
       const bool hasPlastic = (a.plasticActiveCount > 0) || (a.tensionCount > 0);
       const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
       if (tangentAsymmetric) stepUsedUnsymmetricSolver = true;
-      if (tangentAsymmetric) {
-        lr = cg::solve_gmres_scaled(K, freeDofs,
-                                    residualFree.data(), deltaUFree.data(),
-                                    opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
-      } else {
-        sparse::build_block_jacobi(K, freeDofs, diag_inv);
-        lr = cg::solve_cg(K, diag_inv, freeDofs,
-                          residualFree.data(), deltaUFree.data(),
-                          opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
-      }
+      cg::LinearSolveResult lr = solve_phase_linear_system(
+          K, freeDofs, residualFree, deltaUFree, diag_inv, opts, tangentAsymmetric);
       res.cgIterations += lr.iterations;
       stepLinearIterations += lr.iterations;
       double linearRhsNorm = 0.0;
@@ -1270,11 +1299,9 @@ inline PhaseResult run_nonlinear_phase(
             stepPeakActiveCount = std::max(stepPeakActiveCount, fallbackA.plasticActiveCount);
 
             std::vector<double> fallbackDeltaUFree(static_cast<std::size_t>(nfree), 0.0);
-            sparse::build_block_jacobi(K, freeDofs, diag_inv);
-            cg::LinearSolveResult fallbackLr = cg::solve_cg(
-                K, diag_inv, freeDofs,
-                residualFree.data(), fallbackDeltaUFree.data(),
-                opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
+            cg::LinearSolveResult fallbackLr = solve_phase_linear_system(
+                K, freeDofs, residualFree, fallbackDeltaUFree, diag_inv, opts,
+                /*useUnsymmetricSolver=*/false);
             res.cgIterations += fallbackLr.iterations;
             stepLinearIterations += fallbackLr.iterations;
 

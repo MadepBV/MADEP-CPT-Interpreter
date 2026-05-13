@@ -590,6 +590,18 @@ contain strings. JS-side decoders map numeric failure codes to labels.
 
 Goal: isolate control strategy from assembly and material update.
 
+Binding resolution for the Phase-1 implementation:
+
+- Phase 1 is a no-behavior-change refactor. It must not add arc-length options,
+  result fields, or wire records.
+- Safety strength continuation remains the current `lambda -> SigmaMsf`
+  interpolation; the refactor only moves the per-step material reduction into a
+  named boundary helper.
+- Linear solve dispatch is isolated behind a helper that preserves the existing
+  CG/GMRES decision. Unsymmetric plastic tangents continue to use GMRES.
+- The current load-control and strength-control continuation controller remains
+  the executed controller until Phase 2 introduces disabled arc-length state.
+
 Tasks:
 
 - Split `run_nonlinear_phase` into:
