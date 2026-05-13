@@ -172,13 +172,17 @@ async function main() {
 
   console.log('Model: 20×10 m three-layer profile with 4 m strip load q=80 kPa.');
 
-  const cases = [
+  const allCases = [
     { constitutiveModel: 'linear-elastic', meshElementType: 't3', analysisType: 'deformation' },
     { constitutiveModel: 'mc-plastic',      meshElementType: 't3', analysisType: 'deformation' },
     { constitutiveModel: 'linear-elastic', meshElementType: 't6', analysisType: 'deformation' },
     { constitutiveModel: 'mc-plastic',      meshElementType: 't6', analysisType: 'deformation' },
     { constitutiveModel: 'mc-plastic',      meshElementType: 't3', analysisType: 'safety-cphi' }
   ];
+  const caseFilter = String(process.env.PARITY_CASE || '').trim().toLowerCase();
+  const cases = caseFilter
+    ? allCases.filter((tc) => `${tc.analysisType}/${tc.meshElementType}/${tc.constitutiveModel}`.includes(caseFilter))
+    : allCases;
 
   for (const tc of cases) {
     const { constitutiveModel, meshElementType, analysisType } = tc;
@@ -215,6 +219,15 @@ async function main() {
       const cpuFos = Number(cpu?.solver?.safetyFactorOfSafetyLower) || 0;
       const wasmFos = Number(wasm?.solver?.safetyFactorOfSafetyLower) || 0;
       console.log(` factor of safety — CPU: ${cpuFos.toFixed(3)}, WASM: ${wasmFos.toFixed(3)}`);
+      console.log(` safety status — CPU: ${cpu?.solver?.safetyStatus}, WASM: ${wasm?.solver?.safetyStatus}`);
+      console.log(` displayed ΣMsf — CPU: ${Number(cpu?.solver?.safetyDisplayedSigmaMsf || 0).toFixed(3)}, WASM: ${Number(wasm?.solver?.safetyDisplayedSigmaMsf || 0).toFixed(3)}`);
+      const maxSafetyPlastic = (result) => Math.max(
+        0,
+        ...(result?.elementResults || []).map((item) => Number(item?.materialDiagnostics?.safetyEquivalentPlasticIncrement) || 0)
+      );
+      console.log(` max Δepsp safety — CPU: ${maxSafetyPlastic(cpu).toExponential(3)}, WASM: ${maxSafetyPlastic(wasm).toExponential(3)}`);
+      console.log(' CPU safety trials:', (cpu?.solver?.safetyTrialHistory || []).slice(-4));
+      console.log('WASM safety trials:', (wasm?.solver?.safetyTrialHistory || []).slice(-4));
     }
   }
 

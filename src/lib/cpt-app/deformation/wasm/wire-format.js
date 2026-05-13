@@ -3,11 +3,11 @@
 //
 // Wire-format encoder/decoder shared between the JS bridge and the C++
 // WASM module. Both sides MUST agree on this layout exactly; the C++
-// reader lives in deformation_wasm.cpp. Wire version 5.
+// reader lives in deformation_wasm.cpp. Wire version 6.
 
 const INPUT_MAGIC = 0x4D434454; // 'TDCM'
 const OUTPUT_MAGIC = 0x4D444B54; // 'TDKM'
-const WIRE_VERSION = 5;
+const WIRE_VERSION = 6;
 
 export const CONSTITUTIVE_KIND = Object.freeze({
   LinearElastic: 0,
@@ -295,6 +295,7 @@ export function decodeOutputBuffer(bytes) {
         exy: readF64(), eyz: readF64(), exz: readF64()
       },
       geostaticAccumulatedPlasticStrain: readF64(),
+      comparisonAccumulatedPlasticStrain: readF64(),
       porePressure: readF64(),
       plasticActive: readU8() === 1,
       tensionActive: readU8() === 1,

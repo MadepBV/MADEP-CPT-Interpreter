@@ -145,6 +145,8 @@ export function buildWasmDeformationResult({
     let elementTensionActive = false;
     let elementPlasticEver = false;
     let maxAccumulatedPlastic = 0;
+    let maxServiceEquivalentPlasticIncrement = 0;
+    let maxSafetyEquivalentPlasticIncrement = 0;
     const gaussPoints = [];
 
     const ips = elementCache?.integrationPoints || [];
@@ -153,6 +155,18 @@ export function buildWasmDeformationResult({
       const wasm = wasmResult.gpStates[gp.globalIndex];
       if (!wasm) continue;
       const weight = ips.length > 0 ? (1.0 / ips.length) : 1;
+      const accumulatedPlasticStrain = Number(wasm.accumulatedPlasticStrain) || 0;
+      const geostaticAccumulatedPlasticStrain = Number(wasm.geostaticAccumulatedPlasticStrain) || 0;
+      const comparisonAccumulatedPlasticStrain = Number.isFinite(Number(wasm.comparisonAccumulatedPlasticStrain))
+        ? Number(wasm.comparisonAccumulatedPlasticStrain)
+        : geostaticAccumulatedPlasticStrain;
+      const serviceEquivalentPlasticIncrement = Math.max(
+        accumulatedPlasticStrain - geostaticAccumulatedPlasticStrain,
+        0
+      );
+      const safetyEquivalentPlasticIncrement = analysisType === 'safety-cphi'
+        ? Math.max(accumulatedPlasticStrain - comparisonAccumulatedPlasticStrain, 0)
+        : 0;
 
       const eff2D = negateNormalAndShear({ sxx: wasm.stress.sxx, syy: wasm.stress.syy, txy: wasm.stress.sxy });
       const eff3D = negateStress3D({ sxx: wasm.stress.sxx, syy: wasm.stress.syy, szz: wasm.stress.szz, txy: wasm.stress.sxy });
@@ -188,8 +202,14 @@ export function buildWasmDeformationResult({
         etaSumWeighted += weight * wasm.eta;
         etaWeight += weight;
       }
-      if (wasm.accumulatedPlasticStrain > maxAccumulatedPlastic) {
-        maxAccumulatedPlastic = wasm.accumulatedPlasticStrain;
+      if (accumulatedPlasticStrain > maxAccumulatedPlastic) {
+        maxAccumulatedPlastic = accumulatedPlasticStrain;
+      }
+      if (serviceEquivalentPlasticIncrement > maxServiceEquivalentPlasticIncrement) {
+        maxServiceEquivalentPlasticIncrement = serviceEquivalentPlasticIncrement;
+      }
+      if (safetyEquivalentPlasticIncrement > maxSafetyEquivalentPlasticIncrement) {
+        maxSafetyEquivalentPlasticIncrement = safetyEquivalentPlasticIncrement;
       }
 
       gaussPoints.push({
@@ -206,10 +226,12 @@ export function buildWasmDeformationResult({
         materialDiagnostics: {
           etaMcFinal: wasm.eta,
           tensionCutoffActive: wasm.tensionActive,
-          currentlyMcActive: wasm.plasticActive
+          currentlyMcActive: wasm.plasticActive,
+          serviceEquivalentPlasticIncrement,
+          safetyEquivalentPlasticIncrement
         },
         materialState: {
-          accumulatedPlasticStrain: wasm.accumulatedPlasticStrain,
+          accumulatedPlasticStrain,
           currentlyMcActive: wasm.plasticActive,
           hasEverExceededMc: wasm.plasticEverActive
         }
@@ -289,7 +311,8 @@ export function buildWasmDeformationResult({
         tensionCutoffActive: elementTensionActive,
         etaMcFinal: maxEtaInElement,
         etaMcContour: etaWeight > 0 ? etaSumWeighted / etaWeight : 0,
-        safetyEquivalentPlasticIncrement: 0
+        serviceEquivalentPlasticIncrement: maxServiceEquivalentPlasticIncrement,
+        safetyEquivalentPlasticIncrement: maxSafetyEquivalentPlasticIncrement
       }
     };
   }

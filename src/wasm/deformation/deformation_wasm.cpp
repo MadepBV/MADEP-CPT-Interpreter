@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// WASM entry point — wire format v5.
+// WASM entry point — wire format v6.
 //
 // INPUT (uint8_t* in, std::size_t len):
 //   Header (offsets in bytes from the start):
 //     u32  magic              = 'TDCM' (0x4D434454)
-//     u32  version            = 5
+//     u32  version            = 6
 //     u32  elementKind        (3 or 6)
 //     u32  constitutive       (0 = LE, 1 = MC-RS, 2 = MC-P)
 //     u32  analysisMode       (0 = service-only, 1 = geostatic+service,
@@ -50,7 +50,7 @@
 //
 // OUTPUT layout (uint8_t*, std::size_t):
 //   u32  magic                 = 'TDKM' (0x4D444B54)
-//   u32  version               = 5
+//   u32  version               = 6
 //   u32  numNodes
 //   u32  numElements
 //   u32  numGpTotal
@@ -66,6 +66,7 @@
 //     6 f64 geostaticEffectiveStress,
 //     6 f64 geostaticPlasticStrain,
 //     1 f64 geostaticAccumulatedPlasticStrain,
+//     1 f64 comparisonAccumulatedPlasticStrain,
 //     1 f64 porePressure,
 //     u8 plasticActive,
 //     u8 tensionActive,
@@ -120,10 +121,10 @@ std::uint8_t* write_f64(std::uint8_t* p, double v)         { std::memcpy(p, &v, 
 
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
-constexpr std::uint32_t WIRE_VERSION = 5u;
+constexpr std::uint32_t WIRE_VERSION = 6u;
 
 constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 84 bytes
-constexpr std::size_t kGpStateBytes = (6 + 6 + 1 + 1 + 6 + 6 + 6 + 1 + 1) * 8 + 4;  // 34 f64 + 4 u8 = 276 bytes
+constexpr std::size_t kGpStateBytes = (6 + 6 + 1 + 1 + 6 + 6 + 6 + 1 + 1 + 1) * 8 + 4;  // 35 f64 + 4 u8 = 284 bytes
 constexpr std::size_t kSafetyHeaderBytes = 1 + 7 + 3 * 8 + 2 * 4;  // 40 bytes
 constexpr std::size_t kSafetyTrialBytes = 2 * 8 + 4 + 4;            // 24 bytes (1 f64 target, 1 f64 committed, 1 i32 iter, 1 i32 with u8 converged + pad)
 constexpr std::uint32_t LOCAL_MC_INPUT_MAGIC  = 0x504C434Du;  // 'MCLP'
@@ -549,6 +550,11 @@ int madepRunDeformationAnalysis(
     for (int k = 0; k < 6; ++k) q = write_f64(q, mp.geostaticEffectiveStress[k]);
     for (int k = 0; k < 6; ++k) q = write_f64(q, mp.geostaticPlasticStrain[k]);
     q = write_f64(q, mp.geostaticAccumulatedPlasticStrain);
+    const double comparisonAccumulatedPlasticStrain =
+        gp < result.displayComparisonAccumulatedPlasticStrain.size()
+            ? result.displayComparisonAccumulatedPlasticStrain[gp]
+            : mp.geostaticAccumulatedPlasticStrain;
+    q = write_f64(q, comparisonAccumulatedPlasticStrain);
     q = write_f64(q, mp.porePressure);
     q = write_u8(q, mp.plasticActive);
     q = write_u8(q, mp.tensionCutoffActive);

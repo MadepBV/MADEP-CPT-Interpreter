@@ -773,10 +773,17 @@ struct PhaseResult {
   std::int32_t cgIterations{ 0 };
   std::int32_t activeCount{ 0 };
   std::int32_t tensionCount{ 0 };
+  std::int32_t displayActiveCount{ 0 };
+  std::int32_t displayTensionCount{ 0 };
   double maxEta{ 0.0 };
   double residualNorm{ 0.0 };
   double loadFactor{ 0.0 };
+  double displayLoadFactor{ 0.0 };
+  double displayResidualNorm{ 0.0 };
   bool converged{ false };
+  bool hasDisplayState{ false };
+  std::vector<double> displayU;
+  std::vector<MaterialPoint> displayMp;
 };
 
 // Run a single nonlinear Newton-Raphson phase with adaptive load
@@ -859,6 +866,24 @@ inline PhaseResult run_nonlinear_phase(
 
   PhaseResult res;
   bool overall = true;
+  const bool keepDisplayState = ctx.phaseKind == PhaseKind::SafetyCphi;
+
+  auto remember_display_state = [&](double candidateLoadFactor, const AssembleOutput& assembly) {
+    if (!keepDisplayState) return;
+    const bool prefer =
+        !res.hasDisplayState ||
+        candidateLoadFactor > res.displayLoadFactor + 1e-10 ||
+        (std::abs(candidateLoadFactor - res.displayLoadFactor) <= 1e-10 &&
+         assembly.residualNorm < res.displayResidualNorm - 1e-12);
+    if (!prefer) return;
+    res.hasDisplayState = true;
+    res.displayLoadFactor = candidateLoadFactor;
+    res.displayResidualNorm = assembly.residualNorm;
+    res.displayActiveCount = assembly.plasticActiveCount;
+    res.displayTensionCount = assembly.tensionCount;
+    res.displayU = U;
+    res.displayMp = trialMp;
+  };
 
   auto evaluate_residual_merit = [](double residualNorm) {
     const double r = std::max(residualNorm, 0.0);
@@ -910,14 +935,15 @@ inline PhaseResult run_nonlinear_phase(
     if (hasIterationLinearGuess) iterationLinearGuess = warmStartFreeCorrection;
 
     for (std::int32_t newtonIter = 1; newtonIter <= opts.nonlinearMaxIter; ++newtonIter) {
-	      AssembleOutput a = assemble_global(elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
-	                                         freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+      AssembleOutput a = assemble_global(elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+                                         freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                                          targetLambda, ctx.kind, ctx.symmetrize,
                                          ctx.incrementalStress,
-	                                         /*wantTangent=*/true,
-	                                         K, internalForceFree, residualFree);
-	      const std::vector<MaterialPoint> assembledTrialMp = trialMp;
-	      ++res.newtonIterations;
+                                         /*wantTangent=*/true,
+                                         K, internalForceFree, residualFree);
+      const std::vector<MaterialPoint> assembledTrialMp = trialMp;
+      remember_display_state(targetLambda, a);
+      ++res.newtonIterations;
       newtonIterUsed = newtonIter;
       res.maxEta = std::max(res.maxEta, a.maxEta);
       res.activeCount = a.plasticActiveCount;
@@ -1497,6 +1523,7 @@ struct DriverInput {
 struct DriverOutput {
   RunSummary summary;
   SafetyResult safety;
+  std::vector<double> displayComparisonAccumulatedPlasticStrain;
 };
 
 inline DriverOutput run_full_analysis(DriverInput& in) {
@@ -1668,6 +1695,17 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   // Save the state at end-of-service as the safety baseline.
   const std::vector<MaterialPoint> safetyBase = *in.materialPoints;
   const std::vector<double> safetyBaseU = *in.U_global;
+  std::vector<MaterialPoint> stableMp = safetyBase;
+  std::vector<double> stableU = safetyBaseU;
+  std::vector<MaterialPoint> displayMp = safetyBase;
+  std::vector<double> displayU = safetyBaseU;
+  std::vector<MaterialPoint> comparisonMp = safetyBase;
+  std::int32_t displayActiveCount = out.summary.finalActiveCount;
+  std::int32_t displayTensionCount = out.summary.finalTensionCount;
+  auto sigma_at_progress = [](double start, double target, double progress) {
+    const double t = std::clamp(progress, 0.0, 1.0);
+    return start + (target - start) * t;
+  };
 
   // 1:1 mirror of JS solveSafetyCphi (solver.js:5519) bracketing loop.
   double sigmaLow = 1.0;
@@ -1678,31 +1716,35 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   double sigmaIncrement = std::max(in.opts.safetyInitialIncrement, sigmaMinIncrement);
   const double sigmaGrowthFactor = std::max(in.opts.safetyGrowthFactor, 1.05);
   const double sigmaCutbackFactor = std::clamp(in.opts.safetyCutbackFactor, 0.1, 0.95);
+  const double bracketTolWithRoundoff = bracketTol + 1e-12;
 
   for (std::int32_t trial = 0; trial < in.opts.safetyMaxSearchTrials; ++trial) {
-    if (sigmaHigh > 0 && (sigmaHigh - sigmaLow) <= bracketTol) break;
+    if (sigmaHigh > 0 && (sigmaHigh - sigmaLow) <= bracketTolWithRoundoff) break;
     if (sigmaLow >= sigmaMax - bracketTol) break;
     // JS line 5623: target = min(lower + increment, sigmaMax). No
     // bisection — the increment shrinks on failure with a *0.5
     // clamp on the upper-lower band, which acts like a soft bisection
     // without overshooting.
     const double target = std::min(sigmaLow + sigmaIncrement, sigmaMax);
-	    // JS safety continuation interpolates strength from sigmaLow to the
-	    // target inside solveNonlinearPhase as lambda advances.
-	    std::vector<RegionParams> trialRegions = *in.regions;
-	    for (auto& r : trialRegions) r = reduce_strength(r, sigmaLow);
-	    std::vector<Mat6> trialC = build_region_elastic(trialRegions);
+    const std::vector<MaterialPoint> trialStartMp = stableMp;
+    const std::vector<double> trialStartU = stableU;
+    // JS safety continuation starts each trial from the last converged
+    // reduced-strength checkpoint and then interpolates strength from
+    // sigmaLow to the target inside solveNonlinearPhase as lambda advances.
+    std::vector<RegionParams> trialRegions = *in.regions;
+    for (auto& r : trialRegions) r = reduce_strength(r, sigmaLow);
+    std::vector<Mat6> trialC = build_region_elastic(trialRegions);
 
-    *in.materialPoints = safetyBase;
-    *in.U_global = safetyBaseU;
+    *in.materialPoints = trialStartMp;
+    *in.U_global = trialStartU;
     PhaseContext sctx = ctx;
     sctx.regions = &trialRegions;
-	    sctx.regionC = &trialC;
-	    sctx.phaseKind = PhaseKind::SafetyCphi;
-	    sctx.incrementalStress = false;
-	    sctx.safetyStrengthBaseRegions = in.regions;
-	    sctx.safetySigmaMsfStart = sigmaLow;
-	    sctx.safetySigmaMsfTarget = target;
+    sctx.regionC = &trialC;
+    sctx.phaseKind = PhaseKind::SafetyCphi;
+    sctx.incrementalStress = false;
+    sctx.safetyStrengthBaseRegions = in.regions;
+    sctx.safetySigmaMsfStart = sigmaLow;
+    sctx.safetySigmaMsfTarget = target;
     // Keep safety in the same correction-coordinate displacement frame as
     // geostatic and service. The display layer adds the elastic predictor
     // displacement after the solve, matching the JS CPU path.
@@ -1715,25 +1757,42 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     sctx.rampedRhsFree = &zeroRhs;
 
     PhaseResult sr = run_nonlinear_phase(sctx, in.opts);
+    out.summary.loadStepsAccepted += sr.accepted;
+    out.summary.loadStepsRejected += sr.rejected;
     out.summary.newtonIterations += sr.newtonIterations;
     out.summary.cgIterations += sr.cgIterations;
+    out.summary.maxEta = std::max(out.summary.maxEta, sr.maxEta);
     out.safety.trialCount += 1;
     out.safety.totalNewtonIterations += sr.newtonIterations;
     SafetyTrial st;
     st.sigmaMsfTarget = target;
-    st.sigmaMsfCommitted = sr.converged ? target : sigmaLow;
+    st.sigmaMsfCommitted = sr.converged
+        ? target
+        : sigma_at_progress(sigmaLow, target, sr.loadFactor);
     st.converged = sr.converged ? 1 : 0;
     st.iterations = sr.newtonIterations;
     out.safety.trials.push_back(st);
 
     if (sr.converged) {
       sigmaLow = target;
+      stableMp = *in.materialPoints;
+      stableU = *in.U_global;
+      displayMp = stableMp;
+      displayU = stableU;
+      comparisonMp = safetyBase;
+      displayActiveCount = sr.activeCount;
+      displayTensionCount = sr.tensionCount;
       // JS line 5698: grow the increment after a successful trial,
       // capped at the remaining headroom to sigmaMax.
       sigmaIncrement = std::min(
           std::max(sigmaIncrement * sigmaGrowthFactor, sigmaMinIncrement),
           std::max(sigmaMax - sigmaLow, sigmaMinIncrement));
     } else {
+      displayMp = sr.hasDisplayState ? sr.displayMp : *in.materialPoints;
+      displayU = sr.hasDisplayState ? sr.displayU : *in.U_global;
+      comparisonMp = trialStartMp;
+      displayActiveCount = sr.hasDisplayState ? sr.displayActiveCount : sr.activeCount;
+      displayTensionCount = sr.hasDisplayState ? sr.displayTensionCount : sr.tensionCount;
       sigmaHigh = (sigmaHigh < 0) ? target : std::min(sigmaHigh, target);
       // JS line 5703: shrink increment, clamped by half the bracket band.
       const double bandHalf = (sigmaHigh > 0) ? std::max((sigmaHigh - sigmaLow) * 0.5, sigmaMinIncrement) : sigmaIncrement;
@@ -1743,15 +1802,27 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       if (sigmaIncrement < 1e-4) break;
     }
   }
-  // Restore committed state to end-of-service so the result builder can
-  // read the converged service state, not the failed safety probe.
-  *in.materialPoints = safetyBase;
-  *in.U_global = safetyBaseU;
+  // For safety runs the displayed field is the active safety phase:
+  // a failed probe when failure is bracketed, or the highest converged
+  // reduced-strength state when no upper failure was found. Displacements are
+  // shown relative to the original safety base equilibrium; plastic strain
+  // increments are compared against the lower-bound checkpoint for bracketed
+  // failures, matching the JS CPU result builder.
+  *in.materialPoints = displayMp;
+  *in.U_global = displayU;
+  if (in.U_geostatic) *in.U_geostatic = safetyBaseU;
+  out.displayComparisonAccumulatedPlasticStrain.resize(displayMp.size(), 0.0);
+  for (std::size_t i = 0; i < displayMp.size(); ++i) {
+    out.displayComparisonAccumulatedPlasticStrain[i] =
+        i < comparisonMp.size() ? comparisonMp[i].accumulatedPlasticStrain : 0.0;
+  }
+  out.summary.finalActiveCount = displayActiveCount;
+  out.summary.finalTensionCount = displayTensionCount;
 
   out.safety.factorOfSafetyLower = sigmaLow;
   out.safety.factorOfSafetyUpper = sigmaHigh > 0 ? sigmaHigh : sigmaMax;
   out.safety.strengthRetained = 1.0 / std::max(sigmaLow, 1.0);
-  if (sigmaHigh > 0 && (sigmaHigh - sigmaLow) <= bracketTol) {
+  if (sigmaHigh > 0 && (sigmaHigh - sigmaLow) <= bracketTolWithRoundoff) {
     out.safety.status = 1;  // bracketed
   } else if (sigmaHigh < 0 && sigmaLow >= sigmaMax - bracketTol) {
     out.safety.status = 3;  // no failure found

@@ -244,9 +244,25 @@ async function main() {
   });
   const safetyDecoded = runAnalysis(mod, safetyInputBytes);
   console.log('MC plastic safety summary:', safetyDecoded.safety);
+  let maxSafetyPlasticIncrement = 0;
+  for (const gp of safetyDecoded.gpStates) {
+    if (!Number.isFinite(gp.comparisonAccumulatedPlasticStrain)) {
+      console.error('FAIL: safety output did not include a finite comparison plastic-strain baseline.');
+      process.exit(6);
+    }
+    maxSafetyPlasticIncrement = Math.max(
+      maxSafetyPlasticIncrement,
+      (Number(gp.accumulatedPlasticStrain) || 0) - (Number(gp.comparisonAccumulatedPlasticStrain) || 0)
+    );
+  }
+  console.log(`  max safety plastic increment: ${maxSafetyPlasticIncrement.toExponential(4)}`);
   if (!safetyDecoded.summary.safetyRan || safetyDecoded.safety.trialCount < 1) {
     console.error('FAIL: safety c-phi phase did not run any strength-reduction trial.');
     process.exit(5);
+  }
+  if (!(maxSafetyPlasticIncrement > 0)) {
+    console.error('FAIL: safety c-phi display state did not accumulate plastic strain beyond its comparison checkpoint.');
+    process.exit(7);
   }
   console.log('PASS: MC plastic WASM safety c-phi phase ran strength continuation.');
 }
