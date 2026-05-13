@@ -1,0 +1,1589 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Multi-phase Newton-Raphson driver:
+//   - Phase A — plastic geostatic equilibration from a K0 stress seed.
+//   - Phase B — service-load increment from the geostatic baseline.
+//   - Phase C — c-φ strength-reduction safety bracketing.
+//
+// Each phase calls into a shared `run_nonlinear_phase` that does:
+//   assemble K + F_int, solve K δu = r (CG / GMRES), Armijo line search,
+//   plastic return mapping at every Gauss point.
+//
+// Material-point state is split into:
+//   - referenceStress: JS `referenceState.effectiveStress6`; starts at the
+//     K0 seed and is overwritten with the equilibrated geostatic state when
+//     the JS path calls setReferenceStateFromCommittedStates().
+//   - committed*: the converged state at the end of the most recent
+//     accepted load step. Newton iterations work against this baseline.
+//   - trial*: the in-flight state produced by the current Newton iterate
+//     (only updated via `assemble_global`, never read by the global
+//     solver outside that function).
+
+#pragma once
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <vector>
+
+#include "cg.hpp"
+#include "element.hpp"
+#include "material_mc.hpp"
+#include "material_mc_exact.hpp"
+#include "sparse.hpp"
+#include "types.hpp"
+
+namespace madep::solver {
+
+enum class PhaseKind : std::uint8_t {
+  InitialGravity = 0,
+  ServiceLoad = 1,
+  SafetyCphi = 2
+};
+
+// Compute strain at a single Gauss point given the global displacement
+// vector and the element's DOF map.
+inline void strain_at_gauss(
+    const ElementCache& el,
+    int gpIndex,
+    const double* U_global,
+    const double* U_base,
+    Vec6& strain6) {
+  double exx = 0.0, eyy = 0.0, gxy = 0.0;
+  const auto& B = el.gp[gpIndex].B;
+  const int n = el.numDofs;
+  for (int i = 0; i < n; ++i) {
+    const std::int32_t dof = el.dofs[i];
+    const double ui = U_global[dof] + (U_base ? U_base[dof] : 0.0);
+    exx += B[0][i] * ui;
+    eyy += B[1][i] * ui;
+    gxy += B[2][i] * ui;
+  }
+  strain6 = linalg::lift_strain_2D(exx, eyy, gxy);
+}
+
+// Build the per-region 6×6 elastic stiffness (cached per phase since the
+// safety phase scales material parameters).
+inline std::vector<Mat6> build_region_elastic(
+    const std::vector<RegionParams>& regions) {
+  std::vector<Mat6> out;
+  out.reserve(regions.size());
+  for (const auto& r : regions) {
+    out.push_back(linalg::elastic_matrix_E_nu(r.Emc, r.nu));
+  }
+  return out;
+}
+
+inline std::vector<Mat6> build_region_reduced_elastic(
+    const std::vector<RegionParams>& regions) {
+  std::vector<Mat6> out;
+  out.reserve(regions.size());
+  for (const auto& r : regions) {
+    const double E = std::max(r.Emc, 1.0);
+    const double nu = std::clamp(r.nu, -0.99, 0.49);
+    const double K = E / (3.0 * (1.0 - 2.0 * nu));
+    const double G = E / (2.0 * (1.0 + nu));
+    const double rShear = std::clamp(r.rShear, 1e-3, 1.0);
+    const double Gr = G * rShear;
+    const double lam = K - (2.0 * Gr) / 3.0;
+    Mat6 D{};
+    D[0][0] = lam + 2.0 * Gr; D[0][1] = lam;              D[0][2] = lam;
+    D[1][0] = lam;              D[1][1] = lam + 2.0 * Gr; D[1][2] = lam;
+    D[2][0] = lam;              D[2][1] = lam;              D[2][2] = lam + 2.0 * Gr;
+    D[3][3] = Gr; D[4][4] = Gr; D[5][5] = Gr;
+    out.push_back(D);
+  }
+  return out;
+}
+
+struct GpResponse {
+  Vec6 stress{};
+  Vec6 plasticInc{};
+  Mat6 tangent{};
+  double eta{ 0.0 };
+  double equivPlasticInc{ 0.0 };
+  std::uint8_t plasticActive{ 0 };
+  std::uint8_t tensionActive{ 0 };
+};
+
+// Build the exact-return material-parameter bag from the wire-region
+// parameters. Defaults mirror JS material-model fallbacks.
+inline mc_exact::MaterialParameters material_parameters_from_region(const RegionParams& rp, bool symmetrize) {
+  mc_exact::MaterialParameters mp;
+  mp.Emc = rp.Emc;
+  mp.nu = rp.nu;
+  mp.phiEffDeg = rp.phi * 180.0 / M_PI;
+  mp.psiEffDeg = rp.psi * 180.0 / M_PI;
+  mp.cEff = rp.cEff;
+  mp.sigmaTAllow = rp.sigmaTAllow;
+  mp.useTensionCutoff = rp.useTensionCutoff != 0u;
+  mp.symmetrizeEpTangent = symmetrize;
+  return mp;
+}
+
+inline double mc_eta_from_stress(const Vec6& stress6, const mc_exact::MaterialParameters& mp) {
+  const mc_exact::PrincipalAndValues exact = mc_exact::evaluate_exact_mc_surface_values_from_stress(stress6, mp);
+  mc_exact::McTrial trial;
+  trial.s1 = exact.principal.s1;
+  trial.s2 = exact.principal.s2;
+  trial.s3 = exact.principal.s3;
+  trial.maxAbsStress = std::max({
+      std::abs(stress6[V_XX]), std::abs(stress6[V_YY]), std::abs(stress6[V_ZZ]),
+      std::abs(stress6[V_XY]), std::abs(stress6[V_YZ]), std::abs(stress6[V_XZ])});
+  const double tol = mc_exact::local_return_tolerance(mp, trial);
+  if (exact.values.useTensionCutoff && exact.values.T3 > tol) {
+    return std::numeric_limits<double>::infinity();
+  }
+  const mc_exact::SurfaceParameters sp = mc_exact::exact_mc_surface_parameters(mp);
+  const double s1 = exact.principal.s1;
+  const double s3 = exact.principal.s3;
+  const double rawDenom = (s1 + s3) * sp.sinPhi + 2.0 * sp.c * sp.cosPhi;
+  const double denom = std::max(rawDenom, 1e-6);
+  return (s1 - s3) / denom;
+}
+
+struct SmoothSurfaceValue {
+  double f{ 0.0 };
+};
+
+inline double smooth_q_scale(const mc_exact::MaterialParameters& mp) {
+  const double pRef = std::max(mp.yieldTolerancePref, 1e-6);
+  return std::max(1e-8 * pRef, 1e-10);
+}
+
+inline std::pair<double, double> pressure_dependent_mc_parameters(double angleDeg, double cohesion) {
+  const double angle = mc_exact::clamp_mc_angle_deg(angleDeg) * M_PI / 180.0;
+  const double sinA = std::sin(angle);
+  const double cosA = std::cos(angle);
+  const double denom = std::max(3.0 - sinA, 1e-9);
+  return {
+    (6.0 * sinA) / denom,
+    (6.0 * std::max(cohesion, 0.0) * cosA) / denom
+  };
+}
+
+inline SmoothSurfaceValue evaluate_smoothed_plastic_surface(
+    const Vec6& stress6,
+    double angleDeg,
+    double cohesion,
+    const mc_exact::MaterialParameters& mp,
+    bool includeCohesion) {
+  const double sxx = -stress6[V_XX];
+  const double syy = -stress6[V_YY];
+  const double szz = -stress6[V_ZZ];
+  const double txy = -stress6[V_XY];
+  const double tyz = -stress6[V_YZ];
+  const double txz = -stress6[V_XZ];
+  const double p = (sxx + syy + szz) / 3.0;
+  const double dxx = sxx - p;
+  const double dyy = syy - p;
+  const double dzz = szz - p;
+  const double J2 = 0.5 * (dxx * dxx + dyy * dyy + dzz * dzz +
+                           2.0 * (txy * txy + tyz * tyz + txz * txz));
+  const double q0 = smooth_q_scale(mp);
+  const double q = std::sqrt(std::max(3.0 * J2, 0.0) + q0 * q0) - q0;
+  const auto [alpha, kRaw] = pressure_dependent_mc_parameters(
+      angleDeg, includeCohesion ? cohesion : 0.0);
+  const double k = includeCohesion ? kRaw : 0.0;
+  return SmoothSurfaceValue{q - alpha * p - k};
+}
+
+inline Vec6 smooth_surface_gradient6(
+    const Vec6& stress6,
+    double angleDeg,
+    double cohesion,
+    const mc_exact::MaterialParameters& mp,
+    bool includeCohesion) {
+  const double sxx = -stress6[V_XX];
+  const double syy = -stress6[V_YY];
+  const double szz = -stress6[V_ZZ];
+  const double txy = -stress6[V_XY];
+  const double tyz = -stress6[V_YZ];
+  const double txz = -stress6[V_XZ];
+  const double p = (sxx + syy + szz) / 3.0;
+  const double dxx = sxx - p;
+  const double dyy = syy - p;
+  const double dzz = szz - p;
+  const double J2 = 0.5 * (dxx * dxx + dyy * dyy + dzz * dzz +
+                           2.0 * (txy * txy + tyz * tyz + txz * txz));
+  const double q0 = smooth_q_scale(mp);
+  const double qTilde = std::sqrt(std::max(3.0 * J2, 0.0) + q0 * q0);
+  const auto [alpha, unusedK] = pressure_dependent_mc_parameters(
+      angleDeg, includeCohesion ? cohesion : 0.0);
+  (void)unusedK;
+  const double qFactor = qTilde > 1e-12 ? 3.0 / (2.0 * qTilde) : 0.0;
+  const Vec6 gComp{
+    qFactor * dxx - alpha / 3.0,
+    qFactor * dyy - alpha / 3.0,
+    qFactor * dzz - alpha / 3.0,
+    qFactor * txy,
+    qFactor * tyz,
+    qFactor * txz
+  };
+  return Vec6{-gComp[V_XX], -gComp[V_YY], -gComp[V_ZZ],
+              -2.0 * gComp[V_XY], -2.0 * gComp[V_YZ], -2.0 * gComp[V_XZ]};
+}
+
+inline Mat6 compute_approximate_elastoplastic_tangent(
+    const Mat6& De,
+    const Vec6& yieldGradient6,
+    const Vec6& potentialGradient6,
+    const mc_exact::MaterialParameters& mp) {
+  const Vec6 Dm = linalg::mul6x6(De, potentialGradient6);
+  const Vec6 Dn = linalg::mul6x6(De, yieldGradient6);
+  const double denominator = madep::js_mirror::dot_vector6(yieldGradient6, Dm);
+  if (!(std::isfinite(denominator) && std::abs(denominator) > 1e-12)) return De;
+  const Mat6 outer = madep::js_mirror::outer_product6(Dm, Dn, 1.0 / denominator);
+  Mat6 tangent = madep::js_mirror::subtract_matrix6(De, outer);
+  return mp.symmetrizeEpTangent ? madep::js_mirror::symmetrize_matrix6(tangent) : tangent;
+}
+
+struct SmoothReturnResult {
+  bool converged{ false };
+  int iterations{ 0 };
+  Vec6 stress6{};
+  Vec6 plasticStrainIncrement6{};
+  Mat6 algorithmicTangent6x6{};
+  double yieldResidual{ 0.0 };
+};
+
+inline SmoothReturnResult return_map_smooth_mc_plastic(
+    const Vec6& stressTrial6,
+    const Mat6& elasticTangent6x6,
+    const mc_exact::MaterialParameters& mp,
+    const mc_exact::McTrial& mcTrial) {
+  SmoothReturnResult out;
+  Vec6 stress6 = stressTrial6;
+  Vec6 deltaPlastic{};
+  const double tolerance = std::max(1e-8, mc_exact::local_return_tolerance(mp, mcTrial));
+  const int maxIterations = 40;
+  const SmoothSurfaceValue smoothTrial = evaluate_smoothed_plastic_surface(
+      stressTrial6, mp.phiEffDeg, mp.cEff, mp, true);
+  if (std::abs(smoothTrial.f) <= tolerance) {
+    const Vec6 n = smooth_surface_gradient6(stressTrial6, mp.phiEffDeg, mp.cEff, mp, true);
+    const Vec6 m = smooth_surface_gradient6(stressTrial6, mp.psiEffDeg, 0.0, mp, false);
+    out.converged = true;
+    out.iterations = 0;
+    out.stress6 = stress6;
+    out.plasticStrainIncrement6 = deltaPlastic;
+    out.algorithmicTangent6x6 = compute_approximate_elastoplastic_tangent(elasticTangent6x6, n, m, mp);
+    out.yieldResidual = smoothTrial.f;
+    return out;
+  }
+
+  for (int iteration = 1; iteration <= maxIterations; ++iteration) {
+    const SmoothSurfaceValue current = evaluate_smoothed_plastic_surface(
+        stress6, mp.phiEffDeg, mp.cEff, mp, true);
+    const double fCurrent = current.f;
+    if (std::abs(fCurrent) <= tolerance) {
+      const Vec6 n = smooth_surface_gradient6(stress6, mp.phiEffDeg, mp.cEff, mp, true);
+      const Vec6 m = smooth_surface_gradient6(stress6, mp.psiEffDeg, 0.0, mp, false);
+      out.converged = true;
+      out.iterations = iteration;
+      out.stress6 = stress6;
+      out.plasticStrainIncrement6 = deltaPlastic;
+      out.algorithmicTangent6x6 = compute_approximate_elastoplastic_tangent(elasticTangent6x6, n, m, mp);
+      out.yieldResidual = fCurrent;
+      return out;
+    }
+
+    const Vec6 n = smooth_surface_gradient6(stress6, mp.phiEffDeg, mp.cEff, mp, true);
+    const Vec6 m = smooth_surface_gradient6(stress6, mp.psiEffDeg, 0.0, mp, false);
+    const Vec6 flowStressDirection = linalg::mul6x6(elasticTangent6x6, m);
+    const double denominator = madep::js_mirror::dot_vector6(n, flowStressDirection);
+    if (!(std::isfinite(denominator) && denominator > 1e-12)) {
+      out.yieldResidual = fCurrent;
+      return out;
+    }
+    const double deltaLambda = fCurrent / denominator;
+    if (!(std::isfinite(deltaLambda) && deltaLambda >= 0.0)) {
+      out.yieldResidual = fCurrent;
+      return out;
+    }
+
+    bool haveBest = false;
+    Vec6 bestStress{};
+    Vec6 bestPlasticInc{};
+    double bestF = 0.0;
+    bool accepted = false;
+    Vec6 acceptedStress{};
+    Vec6 acceptedPlasticInc{};
+    double acceptedF = 0.0;
+    for (double stepScale : {1.0, 0.5, 0.25, 0.125, 0.0625}) {
+      const double effectiveDeltaLambda = deltaLambda * stepScale;
+      if (!(effectiveDeltaLambda > 0.0)) continue;
+      const Vec6 candidateStress = linalg::sub(
+          stress6, linalg::scale(flowStressDirection, effectiveDeltaLambda));
+      const double fCandidate = evaluate_smoothed_plastic_surface(
+          candidateStress, mp.phiEffDeg, mp.cEff, mp, true).f;
+      if (!std::isfinite(fCandidate)) continue;
+      if (!haveBest || std::abs(fCandidate) < std::abs(bestF)) {
+        haveBest = true;
+        bestStress = candidateStress;
+        bestF = fCandidate;
+        bestPlasticInc = linalg::scale(m, effectiveDeltaLambda);
+      }
+      if (std::abs(fCandidate) <= tolerance || std::abs(fCandidate) < std::abs(fCurrent) * 0.9) {
+        accepted = true;
+        acceptedStress = candidateStress;
+        acceptedPlasticInc = linalg::scale(m, effectiveDeltaLambda);
+        acceptedF = fCandidate;
+        break;
+      }
+    }
+    const Vec6 nextStress = accepted ? acceptedStress : bestStress;
+    const Vec6 nextPlasticInc = accepted ? acceptedPlasticInc : bestPlasticInc;
+    const double nextF = accepted ? acceptedF : bestF;
+    if ((!accepted && !haveBest) ||
+        !(std::abs(nextF) < std::abs(fCurrent) - 1e-12 || std::abs(nextF) <= tolerance)) {
+      out.yieldResidual = fCurrent;
+      return out;
+    }
+    stress6 = nextStress;
+    deltaPlastic = linalg::add(deltaPlastic, nextPlasticInc);
+  }
+
+  out.yieldResidual = evaluate_smoothed_plastic_surface(
+      stress6, mp.phiEffDeg, mp.cEff, mp, true).f;
+  return out;
+}
+
+struct GpResponseExtra {
+  std::uint8_t exactBranchKind{ 0 };
+  std::uint8_t multiplicityKind{ 0 };
+  std::uint8_t stateChanged{ 0 };
+  std::uint8_t hasRepresentativeProjectors{ 0 };
+  std::uint8_t localReturnMode{ 0 };
+  std::uint8_t localFallbackUsed{ 0 };
+  std::array<std::array<double, 3>, 3> repP1{};
+  std::array<std::array<double, 3>, 3> repP2{};
+  std::array<std::array<double, 3>, 3> repP3{};
+};
+
+// Evaluate the constitutive response at a single Gauss point. Treats
+// `committed` as the converged state at the start of the current load
+// step and `previousTrial` as the last trial state for branch-cache
+// selection, matching the JS plugin contract.
+inline GpResponse evaluate_gp_response_ex(
+    ConstitutiveKind kind,
+    const Mat6& C,
+    const RegionParams& rp,
+    const MaterialPoint* previousTrial,
+    const MaterialPoint& committed,
+    const Vec6& strainTotal,
+    bool symmetrize,
+    GpResponseExtra& extra) {
+  GpResponse out;
+  const Vec6 dStrain = linalg::sub(strainTotal, committed.totalStrain);
+
+  if (kind == ConstitutiveKind::LinearElastic) {
+    out.tangent = C;
+    const Vec6 dSigma = linalg::mul6x6(C, dStrain);
+    out.stress = linalg::add(committed.effectiveStress, dSigma);
+    extra.exactBranchKind = static_cast<std::uint8_t>(mc_exact::BranchKind::ELASTIC);
+    extra.multiplicityKind = static_cast<std::uint8_t>(mc_exact::MultiplicityKind::DISTINCT);
+    extra.localReturnMode = 0;
+    extra.stateChanged = 0;
+    return out;
+  }
+
+  (void)symmetrize;
+  const bool materialSymmetrize = rp.symmetrize != 0u;
+  const mc_exact::MaterialParameters mp = material_parameters_from_region(rp, materialSymmetrize);
+
+  if (kind == ConstitutiveKind::McReducedStiffness) {
+    const Vec6 elasticTrial = linalg::add(committed.effectiveStress, linalg::mul6x6(C, dStrain));
+    const mc_exact::PrincipalAndValues exactTrial =
+        mc_exact::evaluate_exact_mc_surface_values_from_stress(elasticTrial, mp);
+    mc_exact::McTrial mcTrial;
+    mcTrial.s1 = exactTrial.principal.s1;
+    mcTrial.s2 = exactTrial.principal.s2;
+    mcTrial.s3 = exactTrial.principal.s3;
+    mcTrial.maxAbsStress = std::max({
+        std::abs(elasticTrial[V_XX]), std::abs(elasticTrial[V_YY]), std::abs(elasticTrial[V_ZZ]),
+        std::abs(elasticTrial[V_XY]), std::abs(elasticTrial[V_YZ]), std::abs(elasticTrial[V_XZ])});
+    const double yieldTol = mc_exact::local_return_tolerance(mp, mcTrial);
+    const double maxShearViolation = std::max({0.0, exactTrial.values.F12, exactTrial.values.F13, exactTrial.values.F23});
+    const bool previousTrialActive = previousTrial && previousTrial->currentlyMcActive != 0u;
+    const bool retainedActive = committed.currentlyMcActive != 0u || previousTrialActive;
+    const bool currentlyActive = retainedActive || maxShearViolation > yieldTol;
+    Mat6 reduced = build_region_reduced_elastic(std::vector<RegionParams>{rp})[0];
+    out.tangent = currentlyActive ? reduced : C;
+    out.stress = currentlyActive
+        ? linalg::add(committed.effectiveStress, linalg::mul6x6(reduced, dStrain))
+        : elasticTrial;
+    out.eta = mc_eta_from_stress(out.stress, mp);
+    out.plasticActive = currentlyActive ? 1u : 0u;
+    out.tensionActive = 0u;
+    out.equivPlasticInc = 0.0;
+    extra.exactBranchKind = currentlyActive
+        ? static_cast<std::uint8_t>(mc_exact::BranchKind::FACE_F13)
+        : static_cast<std::uint8_t>(mc_exact::BranchKind::ELASTIC);
+    extra.multiplicityKind = static_cast<std::uint8_t>(mc_exact::MultiplicityKind::DISTINCT);
+    extra.localReturnMode = currentlyActive ? 1u : 0u;
+    extra.stateChanged = (committed.currentlyMcActive != out.plasticActive) ? 1u : 0u;
+    return out;
+  }
+
+  const Vec6 stressTrial = linalg::add(committed.effectiveStress, linalg::mul6x6(C, dStrain));
+  const mc_exact::PrincipalAndValues exactTrial =
+      mc_exact::evaluate_exact_mc_surface_values_from_stress(stressTrial, mp);
+  mc_exact::McTrial mcTrial;
+  mcTrial.s1 = exactTrial.principal.s1;
+  mcTrial.s2 = exactTrial.principal.s2;
+  mcTrial.s3 = exactTrial.principal.s3;
+  mcTrial.maxAbsStress = std::max({
+      std::abs(stressTrial[V_XX]), std::abs(stressTrial[V_YY]), std::abs(stressTrial[V_ZZ]),
+      std::abs(stressTrial[V_XY]), std::abs(stressTrial[V_YZ]), std::abs(stressTrial[V_XZ])});
+
+  mc_exact::CommittedStateSummary committedSummary;
+  committedSummary.exactBranchKind = static_cast<mc_exact::BranchKind>(committed.exactBranchKind);
+  committedSummary.multiplicityKind = static_cast<mc_exact::MultiplicityKind>(committed.multiplicityKind);
+  committedSummary.activeYieldSurface = committed.plasticActive
+      ? mc_exact::active_yield_surface_from_branch_kind(committedSummary.exactBranchKind)
+      : madep::js_mirror::YieldSurface::NONE;
+  committedSummary.hasRepresentativeProjectors = committed.hasRepresentativeProjectors != 0u;
+  committedSummary.representativeProjectors.P1 = committed.repP1;
+  committedSummary.representativeProjectors.P2 = committed.repP2;
+  committedSummary.representativeProjectors.P3 = committed.repP3;
+
+  mc_exact::PreviousTrialSummary previousSummary;
+  if (previousTrial && previousTrial->plasticActive) {
+    previousSummary.hasExactBranchKind = true;
+    previousSummary.exactBranchKind = static_cast<mc_exact::BranchKind>(previousTrial->exactBranchKind);
+    previousSummary.activeYieldSurface =
+        mc_exact::active_yield_surface_from_branch_kind(previousSummary.exactBranchKind);
+  }
+
+  bool usedSmoothFallback = false;
+  SmoothReturnResult smooth;
+  const double yieldTol = mc_exact::local_return_tolerance(mp, mcTrial);
+  const double exactTrialMaxResidual = std::max({
+      0.0, exactTrial.values.F12, exactTrial.values.F13, exactTrial.values.F23,
+      (exactTrial.values.useTensionCutoff ? exactTrial.values.T3 : 0.0)});
+  const bool committedHasRetainableExactBranch =
+      !mc_exact::active_surface_ids_for_branch_kind(committedSummary.exactBranchKind).empty() &&
+      committedSummary.activeYieldSurface != madep::js_mirror::YieldSurface::NONE;
+  const bool committedHasRetainableSmoothFallback =
+      committed.currentlyMcActive != 0u &&
+      committed.localReturnMode == 2u &&
+      exactTrial.values.T3 <= yieldTol;
+
+  if (!(exactTrialMaxResidual > yieldTol) &&
+      !committedHasRetainableExactBranch &&
+      !committedHasRetainableSmoothFallback) {
+    out.stress = stressTrial;
+    out.plasticInc = Vec6{};
+    out.tangent = C;
+    out.plasticActive = 0u;
+    out.tensionActive = 0u;
+    out.eta = mc_eta_from_stress(stressTrial, mp);
+    out.equivPlasticInc = 0.0;
+    extra.exactBranchKind = static_cast<std::uint8_t>(mc_exact::BranchKind::ELASTIC);
+    extra.multiplicityKind = static_cast<std::uint8_t>(mc_exact::MultiplicityKind::DISTINCT);
+    extra.hasRepresentativeProjectors = 1u;
+    extra.repP1 = exactTrial.principal.P1;
+    extra.repP2 = exactTrial.principal.P2;
+    extra.repP3 = exactTrial.principal.P3;
+    extra.localReturnMode = 0u;
+    extra.localFallbackUsed = 0u;
+    extra.stateChanged = 0u;
+    return out;
+  }
+
+  mc_exact::ActiveSetReturnResult local;
+  if (committedHasRetainableSmoothFallback) {
+    smooth = return_map_smooth_mc_plastic(stressTrial, C, mp, mcTrial);
+    usedSmoothFallback = smooth.converged;
+  } else {
+    local = mc_exact::solve_exact_mc_active_set_return(
+        stressTrial, C, mp, mcTrial,
+        &committedSummary,
+        previousSummary.hasExactBranchKind ? &previousSummary : nullptr);
+  }
+
+  if (!committedHasRetainableSmoothFallback && !local.converged) {
+    const bool canAttemptSmoothFallback =
+        exactTrial.values.T3 <= yieldTol &&
+        !(exactTrial.values.useTensionCutoff && exactTrial.values.T3 > yieldTol);
+    if (canAttemptSmoothFallback) {
+      smooth = return_map_smooth_mc_plastic(stressTrial, C, mp, mcTrial);
+      usedSmoothFallback = smooth.converged;
+    }
+  }
+
+  if (usedSmoothFallback) {
+    out.stress = smooth.stress6;
+    out.plasticInc = smooth.plasticStrainIncrement6;
+    out.tangent = smooth.algorithmicTangent6x6;
+    out.equivPlasticInc = madep::js_mirror::equivalent_plastic_strain_increment(out.plasticInc);
+    out.eta = mc_eta_from_stress(out.stress, mp);
+    out.plasticActive = 1u;
+    out.tensionActive = 0u;
+    const mc_exact::BranchKind retainedBranch =
+        mc_exact::active_surface_ids_for_branch_kind(committedSummary.exactBranchKind).empty()
+            ? mc_exact::BranchKind::FACE_F13
+            : committedSummary.exactBranchKind;
+    extra.exactBranchKind = static_cast<std::uint8_t>(retainedBranch);
+    extra.multiplicityKind = static_cast<std::uint8_t>(madep::js_mirror::MultiplicityKind::DISTINCT);
+    extra.hasRepresentativeProjectors = committed.hasRepresentativeProjectors;
+    extra.repP1 = committed.repP1;
+    extra.repP2 = committed.repP2;
+    extra.repP3 = committed.repP3;
+    extra.localReturnMode = 2u;
+    extra.localFallbackUsed = 1u;
+    extra.stateChanged = (committed.exactBranchKind != extra.exactBranchKind) ? 1u : 0u;
+    return out;
+  }
+
+  if (!local.converged) {
+    out.stress = stressTrial;
+    out.plasticInc = Vec6{};
+    out.tangent = C;
+    out.plasticActive = 0u;
+    out.tensionActive = 0u;
+    out.eta = mc_eta_from_stress(stressTrial, mp);
+    out.equivPlasticInc = 0.0;
+    extra.exactBranchKind = static_cast<std::uint8_t>(mc_exact::BranchKind::ELASTIC);
+    extra.multiplicityKind = static_cast<std::uint8_t>(mc_exact::MultiplicityKind::DISTINCT);
+    extra.localReturnMode = 0;
+    extra.stateChanged = 1u;
+    return out;
+  }
+
+  const bool finalIsPlasticActive =
+      local.activeYieldSurface == madep::js_mirror::YieldSurface::MC_FACE ||
+      local.activeYieldSurface == madep::js_mirror::YieldSurface::MC_EDGE ||
+      local.activeYieldSurface == madep::js_mirror::YieldSurface::MC_APEX ||
+      local.activeYieldSurface == madep::js_mirror::YieldSurface::TENSION;
+
+  out.stress = local.stress6_tens;
+  out.plasticInc = local.plasticStrainIncrement6;
+  out.tangent = local.algorithmicTangent6x6;
+  out.plasticActive = finalIsPlasticActive ? 1u : 0u;
+  out.tensionActive = mc_exact::is_tension_branch_kind(local.acceptedBranchKind) ? 1u : 0u;
+  out.equivPlasticInc = madep::js_mirror::equivalent_plastic_strain_increment(local.plasticStrainIncrement6);
+  out.eta = mc_eta_from_stress(local.stress6_tens, mp);
+  extra.exactBranchKind = static_cast<std::uint8_t>(local.acceptedBranchKind);
+  extra.multiplicityKind = static_cast<std::uint8_t>(local.finalMultiplicityKind);
+  extra.hasRepresentativeProjectors = 1u;
+  extra.repP1 = local.representativeProjectors.P1;
+  extra.repP2 = local.representativeProjectors.P2;
+  extra.repP3 = local.representativeProjectors.P3;
+  extra.localReturnMode = 1u;
+  extra.localFallbackUsed = 0u;
+  extra.stateChanged = (committed.exactBranchKind != extra.exactBranchKind) ? 1u : 0u;
+  return out;
+}
+
+// Back-compat shim — keeps the existing solver code compiling while we
+// migrate callers to the _ex variant. Bypasses previous-trial caching;
+// only used by paths that haven't been refactored yet.
+inline GpResponse evaluate_gp_response(
+    ConstitutiveKind kind,
+    const Mat6& C,
+    const RegionParams& rp,
+    const MaterialPoint& committed,
+    const Vec6& strainTotal,
+    bool symmetrize) {
+  GpResponseExtra extra;
+  return evaluate_gp_response_ex(kind, C, rp, nullptr, committed, strainTotal, symmetrize, extra);
+}
+
+struct AssembleOutput {
+  double residualNorm{ 0.0 };
+  double rhsNorm{ 0.0 };
+  std::int32_t plasticActiveCount{ 0 };
+  std::int32_t tensionCount{ 0 };
+  std::int32_t changedCount{ 0 };
+  double maxEta{ 0.0 };
+};
+
+// Re-build internal force, residual, and (optionally) tangent K from
+// the trial displacement U, using `committed` as the constitutive
+// baseline. Trial responses are written into `trial`.
+//
+// Target external force = baseRhsFree + loadFactor * rampedRhsFree.
+// When the phase has only one component the caller passes the same
+// pointer twice (with loadFactor = 0 / 1) or nullptr for the unused side.
+inline AssembleOutput assemble_global(
+    std::vector<ElementCache>& elements,
+    const std::vector<MaterialPoint>& committed,
+    std::vector<MaterialPoint>& trial,
+    const std::vector<RegionParams>& regions,
+    const std::vector<Mat6>& regionC,
+    const std::vector<std::int32_t>& freeIndexByDof,
+    const double* U_global,
+    const double* U_base,
+    const double* baseRhsFree,
+    const double* rampedRhsFree,
+    double loadFactor,
+    ConstitutiveKind kind,
+    bool symmetrize,
+    bool incrementalStress,
+    bool wantTangent,
+    CsrMatrix& K,
+    std::vector<double>& internalForceFree,
+    std::vector<double>& residualFree) {
+  const std::int32_t nfree = K.nrows;
+  internalForceFree.assign(static_cast<std::size_t>(nfree), 0.0);
+  if (wantTangent) K.clear_values();
+  AssembleOutput out;
+  out.maxEta = 0.0;
+
+  std::array<double, 144> Ke{};
+  std::array<double, 12> Fe{};
+
+  for (auto& el : elements) {
+    const int n = el.numDofs;
+    const auto& C = regionC[el.regionIndex];
+    const auto& rp = regions[el.regionIndex];
+    bool elementActive = false;
+    bool elementTension = false;
+    bool elementChanged = false;
+
+    std::array<std::array<std::array<double, 3>, 3>, 3> D2D{};
+    std::array<std::array<double, 3>, 3> stress2D{};
+
+    for (int g = 0; g < el.numGp; ++g) {
+      const std::int32_t mpIdx = el.mpIdx[g];
+      const MaterialPoint& committedMp = committed[mpIdx];
+      MaterialPoint& trialMp = trial[mpIdx];
+      const MaterialPoint previousTrialMp = trialMp;
+      const bool previousTrialActive = previousTrialMp.currentlyMcActive != 0;
+      Vec6 strainTotal{};
+      strain_at_gauss(el, g, U_global, U_base, strainTotal);
+
+      GpResponseExtra extra;
+      GpResponse resp = evaluate_gp_response_ex(
+          kind, C, rp, &previousTrialMp, committedMp, strainTotal, symmetrize, extra);
+
+      // Write the trial state — fully derived from the committed
+      // baseline + current U.
+      trialMp.totalStrain = strainTotal;
+      trialMp.effectiveStress = resp.stress;
+      trialMp.plasticActive = resp.plasticActive;
+      trialMp.tensionCutoffActive = resp.tensionActive;
+      trialMp.etaMcCurrent = resp.eta;
+      trialMp.etaMcMax = std::max(committedMp.etaMcMax, resp.eta);
+      trialMp.plasticEverActive = committedMp.plasticEverActive | resp.plasticActive;
+      trialMp.regionIndex = committedMp.regionIndex;
+      trialMp.porePressure = committedMp.porePressure;
+      trialMp.referenceStress = committedMp.referenceStress;
+      trialMp.geostaticEffectiveStress = committedMp.geostaticEffectiveStress;
+      trialMp.geostaticTotalStrain = committedMp.geostaticTotalStrain;
+      trialMp.geostaticPlasticStrain = committedMp.geostaticPlasticStrain;
+      trialMp.geostaticAccumulatedPlasticStrain = committedMp.geostaticAccumulatedPlasticStrain;
+      trialMp.plasticStrain = committedMp.plasticStrain;
+      trialMp.plasticStrain[V_XX] += resp.plasticInc[V_XX];
+      trialMp.plasticStrain[V_YY] += resp.plasticInc[V_YY];
+      trialMp.plasticStrain[V_ZZ] += resp.plasticInc[V_ZZ];
+      trialMp.plasticStrain[V_XY] += resp.plasticInc[V_XY];
+      trialMp.plasticStrain[V_YZ] += resp.plasticInc[V_YZ];
+      trialMp.plasticStrain[V_XZ] += resp.plasticInc[V_XZ];
+      trialMp.accumulatedPlasticStrain = committedMp.accumulatedPlasticStrain + resp.equivPlasticInc;
+      trialMp.exactBranchKind = extra.exactBranchKind;
+      trialMp.multiplicityKind = extra.multiplicityKind;
+      trialMp.hasRepresentativeProjectors = extra.hasRepresentativeProjectors;
+      trialMp.repP1 = extra.repP1;
+      trialMp.repP2 = extra.repP2;
+      trialMp.repP3 = extra.repP3;
+      trialMp.currentlyMcActive = resp.plasticActive;
+      trialMp.localReturnMode = extra.localReturnMode;
+      trialMp.localFallbackUsed = extra.localFallbackUsed;
+
+      if (resp.plasticActive) elementActive = true;
+      if (resp.tensionActive) elementTension = true;
+      if (previousTrialActive != (resp.plasticActive != 0)) elementChanged = true;
+      if (resp.eta > out.maxEta) out.maxEta = resp.eta;
+
+      const Vec6& referenceStress = incrementalStress
+          ? committedMp.referenceStress
+          : linalg::zero6();
+      stress2D[g][0] = resp.stress[V_XX] - referenceStress[V_XX];
+      stress2D[g][1] = resp.stress[V_YY] - referenceStress[V_YY];
+      stress2D[g][2] = resp.stress[V_XY] - referenceStress[V_XY];
+      D2D[g] = linalg::tangent2D_from_6x6(resp.tangent);
+    }
+
+    if (elementActive) out.plasticActiveCount += 1;
+    if (elementTension) out.tensionCount += 1;
+    if (elementChanged) out.changedCount += 1;
+
+    if (wantTangent) {
+      elem::element_stiffness(el, D2D, Ke.data());
+      sparse::scatter_element_matrix(K, el, freeIndexByDof, Ke.data());
+    }
+    elem::element_internal_force(el, stress2D, Fe.data());
+    sparse::scatter_element_rhs(internalForceFree.data(), el, freeIndexByDof, Fe.data());
+  }
+
+  // Residual = (base + λ * ramped) - F_int.
+  residualFree.assign(static_cast<std::size_t>(nfree), 0.0);
+  double r2 = 0.0, b2 = 0.0;
+  for (std::int32_t i = 0; i < nfree; ++i) {
+    const double base = baseRhsFree ? baseRhsFree[i] : 0.0;
+    const double ramped = rampedRhsFree ? rampedRhsFree[i] : 0.0;
+    const double rhs = base + loadFactor * ramped;
+    const double resid = rhs - internalForceFree[i];
+    residualFree[i] = resid;
+    r2 += resid * resid;
+    b2 += rhs * rhs;
+  }
+  out.residualNorm = std::sqrt(r2);
+  out.rhsNorm = std::sqrt(b2);
+  return out;
+}
+
+// Phase context shared between the geostatic, service, and safety calls.
+struct PhaseContext {
+  std::vector<ElementCache>* elements{ nullptr };
+  std::vector<MaterialPoint>* committed{ nullptr };
+  std::vector<MaterialPoint>* trial{ nullptr };
+  const std::vector<RegionParams>* regions{ nullptr };
+  const std::vector<Mat6>* regionC{ nullptr };
+  const std::vector<std::int32_t>* freeDofs{ nullptr };
+  const std::vector<std::int32_t>* freeIndexByDof{ nullptr };
+  CsrMatrix* K{ nullptr };
+  std::vector<double>* U_global{ nullptr };
+  const std::vector<double>* U_base{ nullptr };
+  // External-force decomposition: target(λ) = baseRhsFree + λ * rampedRhsFree.
+  const std::vector<double>* baseRhsFree{ nullptr };
+  const std::vector<double>* rampedRhsFree{ nullptr };
+  std::int32_t ndof{ 0 };
+  ConstitutiveKind kind{ ConstitutiveKind::McPlastic };
+  PhaseKind phaseKind{ PhaseKind::ServiceLoad };
+  bool symmetrize{ true };
+  bool incrementalStress{ false };
+  const std::vector<RegionParams>* safetyStrengthBaseRegions{ nullptr };
+  double safetySigmaMsfStart{ 1.0 };
+  double safetySigmaMsfTarget{ 1.0 };
+};
+
+struct PhaseResult {
+  std::int32_t accepted{ 0 };
+  std::int32_t rejected{ 0 };
+  std::int32_t newtonIterations{ 0 };
+  std::int32_t cgIterations{ 0 };
+  std::int32_t activeCount{ 0 };
+  std::int32_t tensionCount{ 0 };
+  double maxEta{ 0.0 };
+  double residualNorm{ 0.0 };
+  double loadFactor{ 0.0 };
+  bool converged{ false };
+};
+
+// Run a single nonlinear Newton-Raphson phase with adaptive load
+// stepping from λ = 0 → 1. 1:1 mirror of JS solveNonlinearPhase
+// (src/lib/cpt-app/deformation/solver.js:3700) for the algorithmic
+// core: outer load-step loop with adaptive continuation, inner Newton
+// with active-set certified convergence, Armijo line search on the
+// residual merit function, GMRES dispatch when the tangent may be
+// unsymmetric.
+inline PhaseResult run_nonlinear_phase(
+    PhaseContext& ctx,
+    const SolverOptions& opts) {
+  auto& elements = *ctx.elements;
+  auto& committedMp = *ctx.committed;
+  auto& trialMp = *ctx.trial;
+  auto& regions = *ctx.regions;
+  auto& regionC = *ctx.regionC;
+  auto& freeDofs = *ctx.freeDofs;
+  auto& freeIndexByDof = *ctx.freeIndexByDof;
+  auto& K = *ctx.K;
+  auto& U = *ctx.U_global;
+  const double* U_base = ctx.U_base ? ctx.U_base->data() : nullptr;
+  const double* baseRhs = ctx.baseRhsFree ? ctx.baseRhsFree->data() : nullptr;
+  const double* rampedRhs = ctx.rampedRhsFree ? ctx.rampedRhsFree->data() : nullptr;
+
+  const std::int32_t nfree = K.nrows;
+  std::vector<double> internalForceFree(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> residualFree(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> deltaUFree(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> diag_inv;
+
+  trialMp = committedMp;
+
+  // JS solveNonlinearPhase tuning constants (NONLINEAR_*).
+  constexpr double kContinuationTargetIterations = 6.0;
+  constexpr double kContinuationTargetLineSearchScale = 0.9;
+  constexpr double kContinuationIterationExponent = 0.5;
+  constexpr double kContinuationLineSearchExponent = 0.25;
+  const bool isInitialGravityPhase = ctx.phaseKind == PhaseKind::InitialGravity;
+  const double plasticGrowthFactor = isInitialGravityPhase
+      ? std::max(opts.initialGravityPlasticLoadStepGrowthFactor, 1.0)
+      : std::max(opts.plasticLoadStepGrowthFactor, 1.0);
+  const double plasticCutbackFactor = isInitialGravityPhase
+      ? std::clamp(opts.initialGravityPlasticLoadStepCutbackFactor, 0.1, 0.9)
+      : std::clamp(opts.plasticLoadStepCutbackFactor, 0.1, 0.9);
+  const double kLineSearchReductionFactor =
+      std::clamp(opts.plasticLineSearchReductionFactor, 0.1, 0.95);
+  const double kLineSearchMinStepScale = isInitialGravityPhase
+      ? std::clamp(opts.initialGravityPlasticLineSearchMinScale, 1e-4, 1.0)
+      : std::clamp(opts.plasticLineSearchMinScale, 1e-4, 1.0);
+  const int kLineSearchMaxBacktracks = std::max(
+      isInitialGravityPhase ? opts.initialGravityPlasticLineSearchMaxBacktracks
+                            : opts.plasticLineSearchMaxBacktracks,
+      1);
+  const double kLineSearchArmijoC1 = std::max(opts.plasticLineSearchArmijoCoefficient, 0.0);
+
+  // Plugin capability: mc-plastic does NOT require stable active-set
+  // at convergence (the exact return map enforces admissibility per
+  // GP). McReducedStiffness does require stable active-set.
+  const bool requiresStableActiveSet =
+      ctx.kind == ConstitutiveKind::McReducedStiffness;
+  // Displacement-norm tolerance dropped for exact return mapping
+  // (mc-plastic) per JS line 3743.
+  const bool requiresDisplacementTolerance =
+      ctx.kind != ConstitutiveKind::McPlastic;
+  // mayNeedUnsymmetricSolver: tracks whether the tangent might be
+  // unsymmetric → GMRES dispatch when at least one GP yields.
+  const bool mayNeedUnsymmetricSolver =
+      ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize;
+
+  const double phaseMinLoadStep = opts.minLoadStep;
+  const std::int32_t phaseMaxLoadSteps = opts.maxLoadSteps;
+  double loadFactor = 0.0;
+  double dLambda = std::min(std::max(opts.initialLoadStep, phaseMinLoadStep), 1.0);
+  if (ctx.kind == ConstitutiveKind::LinearElastic) dLambda = 1.0;
+
+  PhaseResult res;
+  bool overall = true;
+
+  auto evaluate_residual_merit = [](double residualNorm) {
+    const double r = std::max(residualNorm, 0.0);
+    return 0.5 * r * r;
+  };
+  auto approximate_newton_merit_dd = [](double residualNorm, double linearizedResidualNorm) {
+    const double r = std::max(residualNorm, 0.0);
+    const double rl = std::max(linearizedResidualNorm, 0.0);
+    const double dd = std::max(r - rl, 0.0);
+    return -r * dd;
+  };
+  std::vector<double> warmStartFreeCorrection;
+  const bool shouldWarmStartLinearSolve = ctx.kind == ConstitutiveKind::McPlastic;
+  for (std::int32_t step = 0; step < phaseMaxLoadSteps; ++step) {
+    if (loadFactor >= 1.0 - 1e-12) break;
+	    const double remaining = 1.0 - loadFactor;
+	    const double actualStep = std::min(dLambda, remaining);
+	    const double targetLambda = loadFactor + actualStep;
+	    std::vector<RegionParams> stepRegions;
+	    std::vector<Mat6> stepRegionC;
+	    const std::vector<RegionParams>* regionsForStep = &regions;
+	    const std::vector<Mat6>* regionCForStep = &regionC;
+	    if (ctx.phaseKind == PhaseKind::SafetyCphi && ctx.safetyStrengthBaseRegions) {
+	      const double sigmaMsf = ctx.safetySigmaMsfStart +
+	          (ctx.safetySigmaMsfTarget - ctx.safetySigmaMsfStart) * targetLambda;
+	      stepRegions = *ctx.safetyStrengthBaseRegions;
+	      for (auto& r : stepRegions) r = reduce_strength(r, sigmaMsf);
+	      stepRegionC = build_region_elastic(stepRegions);
+	      regionsForStep = &stepRegions;
+	      regionCForStep = &stepRegionC;
+	    }
+	    const std::vector<double> stepStartU = U;
+	    trialMp = committedMp;
+
+    bool stepConverged = false;
+    double lastAcceptedScale = 1.0;
+    int newtonIterUsed = 0;
+    std::int32_t stepPeakActiveCount = 0;
+    std::vector<double> lastCorrection(static_cast<std::size_t>(nfree), 0.0);
+    bool stepUsedUnsymmetricSolver = false;
+    bool stepLineSearchEvaluated = false;
+    bool stepLineSearchAccepted = false;
+    double stepLineSearchAcceptedScale = 1.0;
+    double stepSuggestedCutbackFactor = std::numeric_limits<double>::quiet_NaN();
+    std::vector<double> iterationLinearGuess(static_cast<std::size_t>(nfree), 0.0);
+    bool hasIterationLinearGuess =
+        shouldWarmStartLinearSolve &&
+        warmStartFreeCorrection.size() == static_cast<std::size_t>(nfree);
+    if (hasIterationLinearGuess) iterationLinearGuess = warmStartFreeCorrection;
+
+    for (std::int32_t newtonIter = 1; newtonIter <= opts.nonlinearMaxIter; ++newtonIter) {
+	      AssembleOutput a = assemble_global(elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+	                                         freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+                                         targetLambda, ctx.kind, ctx.symmetrize,
+                                         ctx.incrementalStress,
+	                                         /*wantTangent=*/true,
+	                                         K, internalForceFree, residualFree);
+	      const std::vector<MaterialPoint> assembledTrialMp = trialMp;
+	      ++res.newtonIterations;
+      newtonIterUsed = newtonIter;
+      res.maxEta = std::max(res.maxEta, a.maxEta);
+      res.activeCount = a.plasticActiveCount;
+      res.tensionCount = a.tensionCount;
+      res.residualNorm = a.residualNorm;
+      stepPeakActiveCount = std::max(stepPeakActiveCount, a.plasticActiveCount);
+
+      // JS nonlinearToleranceState: residualTarget = max(absTol, relTol * rhsNorm).
+      const double residualTarget = std::max(opts.residualAbsTol,
+                                             opts.residualRelTol * std::max(a.rhsNorm, 0.0));
+      double solutionNorm = 0.0;
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        const double v = U[freeDofs[i]];
+        solutionNorm += v * v;
+      }
+      solutionNorm = std::sqrt(solutionNorm);
+      double deltaNorm = 0.0;
+      for (std::int32_t i = 0; i < nfree; ++i) deltaNorm += lastCorrection[i] * lastCorrection[i];
+      deltaNorm = std::sqrt(deltaNorm);
+      const double displacementTarget = std::max(opts.displacementAbsTol,
+                                                 opts.displacementRelTol * std::max(solutionNorm, 0.0));
+      const bool residualConverged = a.residualNorm <= residualTarget;
+      const bool displacementConverged = deltaNorm <= displacementTarget;
+      const bool toleranceConverged = residualConverged &&
+                                      (!requiresDisplacementTolerance || displacementConverged);
+      const bool plasticQuasiConverged =
+          ctx.kind == ConstitutiveKind::McPlastic &&
+          ctx.phaseKind == PhaseKind::InitialGravity &&
+          a.changedCount == 0 &&
+          a.residualNorm <= 1.1 * residualTarget;
+
+      // JS line 4211: converged when residual+disp ok AND (no stable-active-set
+      // requirement OR changedCount == 0). For mc-plastic, requiresStableActiveSet
+      // is false. For mc-reduced-stiffness it's true. Also requires iteration > 1
+      // (first iteration's tangent comes from the elastic predictor; a stable
+      // active set must survive at least one true Newton step).
+      if (newtonIter > 1 && (toleranceConverged || plasticQuasiConverged) &&
+          (!requiresStableActiveSet || a.changedCount == 0)) {
+        stepConverged = true;
+        break;
+      }
+
+      // Linear solve dispatch.
+      if (shouldWarmStartLinearSolve && hasIterationLinearGuess) {
+        deltaUFree = iterationLinearGuess;
+      } else {
+        std::fill(deltaUFree.begin(), deltaUFree.end(), 0.0);
+      }
+      cg::LinearSolveResult lr{};
+      const bool hasPlastic = (a.plasticActiveCount > 0) || (a.tensionCount > 0);
+      const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
+      if (tangentAsymmetric) stepUsedUnsymmetricSolver = true;
+      if (tangentAsymmetric) {
+        lr = cg::solve_gmres_scaled(K, freeDofs,
+                                    residualFree.data(), deltaUFree.data(),
+                                    opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
+      } else {
+        sparse::build_block_jacobi(K, freeDofs, diag_inv);
+        lr = cg::solve_cg(K, diag_inv, freeDofs,
+                          residualFree.data(), deltaUFree.data(),
+                          opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
+      }
+      res.cgIterations += lr.iterations;
+      double linearRhsNorm = 0.0;
+      for (double v : residualFree) linearRhsNorm += v * v;
+      linearRhsNorm = std::sqrt(linearRhsNorm);
+      const double relativeResidualForForcing = a.rhsNorm > 1e-30
+          ? a.residualNorm / a.rhsNorm
+          : a.residualNorm;
+      const double inexactNewtonForcing = ctx.kind == ConstitutiveKind::LinearElastic
+          ? 1e-8
+          : std::max(isInitialGravityPhase ? 0.1 : 0.05,
+                     std::min(isInitialGravityPhase ? 0.6 : 0.4,
+                              std::sqrt(std::max(relativeResidualForForcing, 0.0))));
+      const double acceptableLinearizedResidual = ctx.kind == ConstitutiveKind::LinearElastic
+          ? std::max(opts.cgAbsTol, inexactNewtonForcing * linearRhsNorm)
+          : std::max({opts.cgAbsTol,
+                      0.25 * std::max(opts.residualAbsTol, 1e-3),
+                      inexactNewtonForcing * linearRhsNorm});
+      if (!lr.converged && lr.residualNorm > acceptableLinearizedResidual) {
+        break;
+      }
+      iterationLinearGuess = deltaUFree;
+      hasIterationLinearGuess = shouldWarmStartLinearSolve;
+      for (std::int32_t i = 0; i < nfree; ++i) lastCorrection[i] = deltaUFree[i];
+
+      const bool requiresPlasticLineSearch = ctx.kind == ConstitutiveKind::McPlastic;
+      double lineSearchStepScale = 1.0;
+      if (requiresPlasticLineSearch) {
+        // JS performArmijoLineSearch (line 3556): merit-function-based
+        // Armijo backtracking. Merit m(u) = 0.5 |r|^2. Directional
+        // derivative approximation: -|r| * max(|r| - |r_linearized|, 0).
+        // Accept if m(u + s δu) <= m(u) + c1 s · min(dd, 0).
+        const std::vector<double> uBackup = U;
+        const double currentResidualNorm = a.residualNorm;
+        const double currentMerit = evaluate_residual_merit(currentResidualNorm);
+        const double linearizedResidualNorm = std::max(lr.residualNorm, 0.0);
+        const double dd = approximate_newton_merit_dd(currentResidualNorm, linearizedResidualNorm);
+
+        double stepScale = 1.0;
+        double bestScale = 1.0;
+        double bestMerit = std::numeric_limits<double>::infinity();
+        double bestResidual = std::numeric_limits<double>::infinity();
+        double bestRhsNorm = a.rhsNorm;
+        std::int32_t bestChangedCount = a.changedCount;
+        std::vector<double> bestU = U;
+        std::vector<MaterialPoint> bestTrialMp = trialMp;
+        bool bestAccepted = false;
+        for (int bt = 0; bt < kLineSearchMaxBacktracks; ++bt) {
+          // Apply scaled correction.
+          U = uBackup;
+          trialMp = committedMp;
+          for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += stepScale * deltaUFree[i];
+          AssembleOutput probe = assemble_global(elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+                                                 freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+                                                 targetLambda, ctx.kind, ctx.symmetrize,
+                                                 ctx.incrementalStress,
+                                                 /*wantTangent=*/false,
+                                                 K, internalForceFree, residualFree);
+          const double candidateResidualNorm = probe.residualNorm;
+          const double candidateMerit = evaluate_residual_merit(candidateResidualNorm);
+          stepPeakActiveCount = std::max(stepPeakActiveCount, probe.plasticActiveCount);
+          const double armijoTarget = currentMerit + kLineSearchArmijoC1 * stepScale * std::min(dd, 0.0);
+          const bool candidateAccepted = candidateMerit <= std::max(armijoTarget, 0.0);
+          const double improveTol = std::max(1e-16, 1e-12 * std::max(bestMerit, 1.0));
+          const double tieTol = std::max(1e-16, 1e-12 * std::max({candidateMerit, bestMerit, 1.0}));
+          if (candidateMerit < bestMerit - improveTol ||
+              (std::abs(candidateMerit - bestMerit) <= tieTol &&
+               candidateResidualNorm < bestResidual)) {
+            bestMerit = candidateMerit;
+            bestResidual = candidateResidualNorm;
+            bestRhsNorm = probe.rhsNorm;
+            bestChangedCount = probe.changedCount;
+            bestScale = stepScale;
+            bestU = U;
+            bestTrialMp = trialMp;
+            bestAccepted = candidateAccepted;
+          }
+          if (candidateAccepted) {
+            break;
+          }
+          if (stepScale <= kLineSearchMinStepScale + 1e-12) break;
+          stepScale = std::max(stepScale * kLineSearchReductionFactor, kLineSearchMinStepScale);
+        }
+        stepLineSearchEvaluated = true;
+        stepSuggestedCutbackFactor = bestScale;
+        if (bestAccepted) {
+          stepLineSearchAccepted = true;
+          stepLineSearchAcceptedScale = bestScale;
+        }
+	        double correctionNorm = 0.0;
+	        for (std::int32_t i = 0; i < nfree; ++i) {
+	          const double v = bestScale * deltaUFree[i];
+	          correctionNorm += v * v;
+	        }
+	        correctionNorm = std::sqrt(correctionNorm);
+	        double bestSolutionNorm = 0.0;
+	        for (std::int32_t i = 0; i < nfree; ++i) {
+	          const double v = bestU[freeDofs[i]];
+	          bestSolutionNorm += v * v;
+	        }
+	        bestSolutionNorm = std::sqrt(bestSolutionNorm);
+	        const double bestResidualTarget = std::max(
+	            opts.residualAbsTol, opts.residualRelTol * std::max(bestRhsNorm, 0.0));
+	        const double bestDisplacementTarget = std::max(
+	            opts.displacementAbsTol, opts.displacementRelTol * std::max(bestSolutionNorm, 0.0));
+	        const bool stalledCandidateAcceptable =
+	            bestResidual <= bestResidualTarget &&
+	            (!requiresDisplacementTolerance || correctionNorm <= bestDisplacementTarget);
+	        const bool currentQuasiConverged =
+	            ctx.kind == ConstitutiveKind::McPlastic &&
+	            ctx.phaseKind == PhaseKind::InitialGravity &&
+	            a.changedCount == 0 &&
+	            newtonIter >= 2 &&
+	            a.residualNorm <= 1.1 * residualTarget;
+
+	        if (!bestAccepted) {
+	          if (stalledCandidateAcceptable &&
+	              (!requiresStableActiveSet || bestChangedCount == 0)) {
+	            U = bestU;
+	            trialMp = bestTrialMp;
+	            lastAcceptedScale = bestScale;
+	            for (std::int32_t i = 0; i < nfree; ++i) {
+	              lastCorrection[i] = bestScale * deltaUFree[i];
+	            }
+	            stepConverged = true;
+	            break;
+	          }
+	          if (currentQuasiConverged) {
+	            U = uBackup;
+	            trialMp = assembledTrialMp;
+	            stepConverged = true;
+	            break;
+	          }
+	          U = uBackup;
+	          trialMp = committedMp;
+	          break;
+	        }
+	        U = bestU;
+	        trialMp = bestTrialMp;
+	        lastAcceptedScale = bestScale;
+	        lineSearchStepScale = bestScale;
+	        for (std::int32_t i = 0; i < nfree; ++i) {
+	          lastCorrection[i] = bestScale * deltaUFree[i];
+	        }
+	      } else {
+	        for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += deltaUFree[i];
+	        lastAcceptedScale = 1.0;
+      }
+      if (shouldWarmStartLinearSolve && hasIterationLinearGuess) {
+        if (lineSearchStepScale != 1.0) {
+          for (double& v : iterationLinearGuess) v *= lineSearchStepScale;
+        }
+      }
+    }
+
+    if (stepConverged) {
+      loadFactor = targetLambda;
+      ++res.accepted;
+      committedMp = trialMp;
+      if (shouldWarmStartLinearSolve && stepUsedUnsymmetricSolver && hasIterationLinearGuess) {
+        warmStartFreeCorrection = iterationLinearGuess;
+      } else if (!stepUsedUnsymmetricSolver) {
+        warmStartFreeCorrection.clear();
+      }
+      // JS adaptive continuation — grow / shrink based on iteration
+      // count and accepted line-search scale.
+      const bool benignPlasticStep =
+          ctx.kind == ConstitutiveKind::McPlastic &&
+          stepPeakActiveCount > 0 &&
+          newtonIterUsed > 0 &&
+          newtonIterUsed * 2 <= kContinuationTargetIterations &&
+          (!stepLineSearchEvaluated ||
+           (stepLineSearchAccepted && stepLineSearchAcceptedScale >= 0.999));
+      const double effectiveGrowthFactor =
+          ctx.kind == ConstitutiveKind::McPlastic && stepPeakActiveCount > 0 && !benignPlasticStep
+              ? std::min(opts.loadStepGrowthFactor, plasticGrowthFactor)
+              : opts.loadStepGrowthFactor;
+      const double effectiveCutbackFactor =
+          ctx.kind == ConstitutiveKind::McPlastic && stepPeakActiveCount > 0 && !benignPlasticStep
+              ? std::min(opts.loadStepCutbackFactor, plasticCutbackFactor)
+              : opts.loadStepCutbackFactor;
+      auto compute_step_factor = [&](int iterCount, double acceptedLineSearchScale) {
+        const double effIter = std::max(static_cast<double>(iterCount), 1.0);
+        const double effScale = std::max(std::min(acceptedLineSearchScale, 1.0), 1e-6);
+        const double raw = std::pow(kContinuationTargetIterations / effIter, kContinuationIterationExponent) *
+                           std::pow(effScale / kContinuationTargetLineSearchScale, kContinuationLineSearchExponent);
+        if (!std::isfinite(raw) || raw <= 0.0) return effectiveCutbackFactor;
+        return std::clamp(raw, effectiveCutbackFactor, effectiveGrowthFactor);
+      };
+      const double factor = compute_step_factor(newtonIterUsed, lastAcceptedScale);
+      dLambda = std::min(dLambda * factor, 1.0 - loadFactor);
+      if (dLambda < phaseMinLoadStep && loadFactor < 1.0 - 1e-12) {
+        dLambda = phaseMinLoadStep;
+      }
+    } else {
+      ++res.rejected;
+      U = stepStartU;
+      trialMp = committedMp;
+      if (shouldWarmStartLinearSolve && hasIterationLinearGuess) {
+        warmStartFreeCorrection = iterationLinearGuess;
+      }
+      const double effectiveCutbackFactor =
+          ctx.kind == ConstitutiveKind::McPlastic && stepPeakActiveCount > 0
+              ? std::min(opts.loadStepCutbackFactor, plasticCutbackFactor)
+              : opts.loadStepCutbackFactor;
+      double suggestedCutbackFactor = effectiveCutbackFactor;
+      if (std::isfinite(stepSuggestedCutbackFactor) && stepSuggestedCutbackFactor > 0.0) {
+        suggestedCutbackFactor = std::max(effectiveCutbackFactor, std::min(0.9, stepSuggestedCutbackFactor));
+      }
+      const double proposedStep = actualStep * suggestedCutbackFactor;
+      dLambda = (proposedStep < phaseMinLoadStep - 1e-12 && actualStep > phaseMinLoadStep + 1e-12)
+          ? phaseMinLoadStep
+          : proposedStep;
+      if (dLambda < phaseMinLoadStep) {
+        overall = false;
+        break;
+      }
+    }
+  }
+
+  res.loadFactor = loadFactor;
+  res.converged = overall && (loadFactor >= 1.0 - 1e-6);
+  return res;
+}
+
+// Initialise material points from the K0 stress seed.
+// `initialSigmaByGp` is `numGpTotal * 6` doubles in Voigt-6 order
+// (tension positive). When useK0Init is false, the initial stress is
+// zero (gravity-ramp).
+//
+// When the constitutive model is McPlastic and the supplied K0 seed
+// violates the MC envelope at a Gauss point, we run a zero-strain
+// return mapping at seed time so the committed state is admissible
+// before the plastic Newton starts. This mirrors the CPU path's
+// `seedMaterialPointStateFromEffectiveStress6` with
+// `projectInadmissibleOntoMc: true`: without it, the plastic Newton
+// would have to fix both yield admissibility and force equilibrium
+// simultaneously, which stalls in weak shallow soils.
+//
+// `regions` and `regionC` are needed to run the return mapping per GP.
+inline void initialise_material_points(
+    std::vector<MaterialPoint>& mp,
+    const std::vector<RegionParams>& regions,
+    const std::vector<Mat6>& regionC,
+    const double* initialSigmaByGp,
+    const double* porePressureByGp,
+    bool useK0Init,
+    ConstitutiveKind kind) {
+  for (std::size_t i = 0; i < mp.size(); ++i) {
+    auto& m = mp[i];
+    Vec6 sigma{};
+    if (useK0Init && initialSigmaByGp) {
+      for (int k = 0; k < 6; ++k) sigma[k] = initialSigmaByGp[i * 6 + k];
+    }
+    // Reference stress is the unprojected K0 seed (so consumers see the
+    // raw geostatic predictor when they report "initial effective
+    // stress"). The committed state stores the projected, admissible
+    // stress that the Newton will iterate against.
+    for (int k = 0; k < 6; ++k) m.referenceStress[k] = sigma[k];
+    Vec6 committedSigma = sigma;
+
+    if (kind == ConstitutiveKind::McPlastic) {
+      const std::int32_t r = m.regionIndex >= 0 && static_cast<std::size_t>(m.regionIndex) < regions.size()
+          ? m.regionIndex : 0;
+      const auto& rp = regions[r];
+      const mc_exact::MaterialParameters mp = material_parameters_from_region(rp, rp.symmetrize != 0u);
+      const mc_exact::PrincipalAndValues exact = mc_exact::evaluate_exact_mc_surface_values_from_stress(sigma, mp);
+      mc_exact::McTrial trial;
+      trial.s1 = exact.principal.s1;
+      trial.s2 = exact.principal.s2;
+      trial.s3 = exact.principal.s3;
+      trial.maxAbsStress = std::max({
+          std::abs(sigma[V_XX]), std::abs(sigma[V_YY]), std::abs(sigma[V_ZZ]),
+          std::abs(sigma[V_XY]), std::abs(sigma[V_YZ]), std::abs(sigma[V_XZ])});
+      const double yieldTol = mc_exact::local_return_tolerance(mp, trial);
+      const double maxResidual = std::max({
+          0.0, exact.values.F12, exact.values.F13, exact.values.F23,
+          exact.values.useTensionCutoff ? exact.values.T3 : 0.0});
+      if (maxResidual > yieldTol) {
+        mc_exact::ActiveSetReturnResult projected = mc_exact::solve_exact_mc_active_set_return(
+            sigma, regionC[r], mp, trial, nullptr, nullptr);
+        if (projected.converged) committedSigma = projected.stress6_tens;
+      }
+    }
+
+    for (int k = 0; k < 6; ++k) {
+      m.effectiveStress[k] = committedSigma[k];
+      m.totalStrain[k] = 0.0;
+      m.plasticStrain[k] = 0.0;
+      m.geostaticEffectiveStress[k] = committedSigma[k];
+      m.geostaticTotalStrain[k] = 0.0;
+      m.geostaticPlasticStrain[k] = 0.0;
+    }
+    m.accumulatedPlasticStrain = 0.0;
+    m.geostaticAccumulatedPlasticStrain = 0.0;
+    m.porePressure = porePressureByGp ? porePressureByGp[i] : 0.0;
+    m.plasticActive = 0;
+    m.plasticEverActive = 0;
+    m.tensionCutoffActive = 0;
+    if (kind == ConstitutiveKind::McPlastic || kind == ConstitutiveKind::McReducedStiffness) {
+      const std::int32_t r = m.regionIndex >= 0 && static_cast<std::size_t>(m.regionIndex) < regions.size()
+          ? m.regionIndex : 0;
+      const mc_exact::MaterialParameters mp = material_parameters_from_region(regions[r], regions[r].symmetrize != 0u);
+      m.etaMcCurrent = mc_eta_from_stress(committedSigma, mp);
+      m.etaMcMax = m.etaMcCurrent;
+    } else {
+      m.etaMcCurrent = 0.0;
+      m.etaMcMax = 0.0;
+    }
+    m.exactBranchKind = static_cast<std::uint8_t>(mc_exact::BranchKind::ELASTIC);
+    m.multiplicityKind = static_cast<std::uint8_t>(mc_exact::MultiplicityKind::DISTINCT);
+    m.currentlyMcActive = 0;
+    m.hasRepresentativeProjectors = 0;
+    m.localReturnMode = 0;
+    m.localFallbackUsed = 0;
+  }
+}
+
+// Capture the geostatic baseline into MaterialPoint's geostatic*
+// fields. Called once at the end of the geostatic phase.
+inline void snapshot_geostatic_baseline(std::vector<MaterialPoint>& mp) {
+  for (auto& m : mp) {
+    m.referenceStress = m.effectiveStress;
+    m.geostaticEffectiveStress = m.effectiveStress;
+    m.geostaticTotalStrain = m.totalStrain;
+    m.geostaticPlasticStrain = m.plasticStrain;
+    m.geostaticAccumulatedPlasticStrain = m.accumulatedPlasticStrain;
+  }
+}
+
+// Top-level driver — runs the geostatic + service + safety phases as
+// configured.
+struct DriverInput {
+  std::vector<ElementCache>* elements{ nullptr };
+  std::vector<MaterialPoint>* materialPoints{ nullptr };
+  const std::vector<RegionParams>* regions{ nullptr };
+  const std::vector<std::int32_t>* freeDofs{ nullptr };
+  const std::vector<std::int32_t>* freeIndexByDof{ nullptr };
+  CsrMatrix* K{ nullptr };
+  std::int32_t ndof{ 0 };
+  const std::vector<double>* gravityRhsFree{ nullptr };
+  const std::vector<double>* loadRhsFree{ nullptr };  // surface traction
+  const std::vector<double>* predictorUFull{ nullptr };
+  std::vector<double>* U_global{ nullptr };           // service displacement
+  std::vector<double>* U_geostatic{ nullptr };        // baseline at end of geostatic
+  SolverOptions opts{};
+};
+
+struct DriverOutput {
+  RunSummary summary;
+  SafetyResult safety;
+};
+
+inline DriverOutput run_full_analysis(DriverInput& in) {
+  DriverOutput out;
+  const std::int32_t nfree = in.K->nrows;
+  const std::int32_t ndof = in.ndof;
+
+  // Always-needed combined RHS (gravity + load) at full lambda; used to
+  // initialise the safety phase load target.
+  std::vector<double> combinedRhs(static_cast<std::size_t>(nfree), 0.0);
+  for (std::int32_t i = 0; i < nfree; ++i) {
+    combinedRhs[i] = (*in.gravityRhsFree)[i] + (*in.loadRhsFree)[i];
+  }
+
+  std::vector<MaterialPoint> trialMp = *in.materialPoints;
+
+  PhaseContext ctx;
+  ctx.elements = in.elements;
+  ctx.committed = in.materialPoints;
+  ctx.trial = &trialMp;
+  ctx.regions = in.regions;
+  ctx.freeDofs = in.freeDofs;
+  ctx.freeIndexByDof = in.freeIndexByDof;
+  ctx.K = in.K;
+  ctx.U_global = in.U_global;
+  // JS exact-plastic uses the K0 predictor as a stress seed only. The
+  // nonlinear unknowns are correction displacements from zero; the elastic
+  // predictor displacement is stitched back into output fields later for
+  // display, not replayed into constitutive strain.
+  ctx.U_base = nullptr;
+  ctx.ndof = ndof;
+  ctx.kind = in.opts.constitutive;
+  ctx.symmetrize = in.opts.symmetrizeTangent != 0;
+
+  // ---------------------------------------------------------------------------
+  // Phase A — geostatic equilibration under gravity body force.
+  // ---------------------------------------------------------------------------
+  std::vector<Mat6> regionC = build_region_elastic(*in.regions);
+  ctx.regionC = &regionC;
+  out.summary.geostaticConverged = 0;
+  const bool runPlasticGeostatic =
+      in.opts.analysisMode != AnalysisMode::ServiceOnly &&
+      in.opts.constitutive == ConstitutiveKind::McPlastic;
+
+  if (runPlasticGeostatic) {
+    ctx.phaseKind = PhaseKind::InitialGravity;
+    ctx.incrementalStress = false;
+    // Mirror JS initializePlasticPredictorReferenceState: the K0 predictor is
+    // a stress seed, not a displacement preload. Assemble and commit that
+    // stress-only state, then continue from its internal-force field to the
+    // full gravity RHS.
+    std::vector<double> predictorInternal(static_cast<std::size_t>(nfree), 0.0);
+    std::vector<double> predictorResidual(static_cast<std::size_t>(nfree), 0.0);
+    trialMp = *in.materialPoints;
+    AssembleOutput predictorAssembly = assemble_global(
+        *in.elements, *in.materialPoints, trialMp, *in.regions, regionC,
+        *in.freeIndexByDof, in.U_global->data(),
+        nullptr,
+        nullptr, nullptr, 0.0,
+        in.opts.constitutive, in.opts.symmetrizeTangent != 0,
+        /*incrementalStress=*/false,
+        /*wantTangent=*/false,
+        *in.K, predictorInternal, predictorResidual);
+    (void)predictorAssembly;
+    *in.materialPoints = trialMp;
+    trialMp = *in.materialPoints;
+
+    std::vector<double> geostaticRamp(static_cast<std::size_t>(nfree), 0.0);
+    for (std::int32_t i = 0; i < nfree; ++i) {
+      geostaticRamp[static_cast<std::size_t>(i)] =
+          (*in.gravityRhsFree)[static_cast<std::size_t>(i)] -
+          predictorInternal[static_cast<std::size_t>(i)];
+    }
+    ctx.baseRhsFree = &predictorInternal;
+    ctx.rampedRhsFree = &geostaticRamp;
+    PhaseResult geostatic = run_nonlinear_phase(ctx, in.opts);
+    out.summary.geostaticAccepted = geostatic.accepted;
+    out.summary.geostaticRejected = geostatic.rejected;
+    out.summary.loadStepsAccepted += geostatic.accepted;
+    out.summary.loadStepsRejected += geostatic.rejected;
+    out.summary.newtonIterations += geostatic.newtonIterations;
+    out.summary.cgIterations += geostatic.cgIterations;
+    out.summary.geostaticLoadFactor = geostatic.loadFactor;
+    out.summary.geostaticConverged = geostatic.converged ? 1 : 0;
+    out.summary.maxEta = std::max(out.summary.maxEta, geostatic.maxEta);
+    out.summary.finalActiveCount = geostatic.activeCount;
+    out.summary.finalTensionCount = geostatic.tensionCount;
+    if (!geostatic.converged) {
+      out.summary.residualNorm = geostatic.residualNorm;
+      out.summary.maxEta = std::max(out.summary.maxEta, geostatic.maxEta);
+      out.summary.finalActiveCount = geostatic.activeCount;
+      out.summary.finalTensionCount = geostatic.tensionCount;
+      out.summary.finalLoadFactor = geostatic.loadFactor;
+      return out;
+    }
+    // Snapshot U_geostatic and the geostatic state baseline.
+    if (in.U_geostatic) *in.U_geostatic = *in.U_global;
+    snapshot_geostatic_baseline(*in.materialPoints);
+  } else {
+    // The JS path only runs a nonlinear plastic geostatic correction for
+    // plugins that support it. Linear-elastic and reduced-stiffness analyses
+    // use the K0 seed as a stress-only reference and solve the service
+    // increment directly.
+    if (in.U_geostatic) {
+      std::fill(in.U_geostatic->begin(), in.U_geostatic->end(), 0.0);
+    }
+    out.summary.geostaticConverged = 1;
+    snapshot_geostatic_baseline(*in.materialPoints);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase B — service-load increment.
+  // ---------------------------------------------------------------------------
+  // The geostatic phase converged with F_int ≈ gravity. For the normal
+  // geostatic+service workflow, mirror JS's incremental formulation:
+  // subtract the geostatic reference stress from F_int and solve
+  // target(λ_load) = λ_load * surface load.
+  //
+  // For the ServiceOnly mode we have no geostatic baseline and bake the
+  // entire (gravity + load) into the ramped portion, which gives the
+  // historical "gravity-ramp from σ = 0" behaviour.
+
+  bool hasService = (*in.loadRhsFree).size() > 0 && std::any_of(
+      in.loadRhsFree->begin(), in.loadRhsFree->end(),
+      [](double v) { return v != 0.0; });
+
+  if (hasService || in.opts.analysisMode == AnalysisMode::ServiceOnly) {
+    ctx.phaseKind = PhaseKind::ServiceLoad;
+    if (in.opts.analysisMode == AnalysisMode::ServiceOnly) {
+      ctx.baseRhsFree = nullptr;
+      ctx.rampedRhsFree = &combinedRhs;
+      ctx.incrementalStress = false;
+    } else {
+      ctx.baseRhsFree = nullptr;
+      ctx.rampedRhsFree = in.loadRhsFree;
+      ctx.incrementalStress = true;
+    }
+    PhaseResult service = run_nonlinear_phase(ctx, in.opts);
+    out.summary.serviceAccepted = service.accepted;
+    out.summary.serviceRejected = service.rejected;
+    out.summary.loadStepsAccepted += service.accepted;
+    out.summary.loadStepsRejected += service.rejected;
+    out.summary.newtonIterations += service.newtonIterations;
+    out.summary.cgIterations += service.cgIterations;
+    out.summary.finalLoadFactor = service.loadFactor;
+    out.summary.residualNorm = service.residualNorm;
+    out.summary.maxEta = std::max(out.summary.maxEta, service.maxEta);
+    out.summary.finalActiveCount = service.activeCount;
+    out.summary.finalTensionCount = service.tensionCount;
+    out.summary.serviceConverged = service.converged ? 1 : 0;
+    if (!service.converged) return out;
+  } else {
+    // No service load: take the geostatic state as the final result.
+    out.summary.serviceConverged = 1;
+    out.summary.finalLoadFactor = 1.0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase C — c-φ safety bracketing.
+  // ---------------------------------------------------------------------------
+  if (in.opts.analysisMode != AnalysisMode::GeostaticServiceSafety) {
+    return out;
+  }
+  out.summary.safetyRan = 1;
+  out.safety.status = 0;
+  out.safety.factorOfSafetyLower = 1.0;
+  out.safety.factorOfSafetyUpper = 1.0;
+
+  // Save the state at end-of-service as the safety baseline.
+  const std::vector<MaterialPoint> safetyBase = *in.materialPoints;
+  const std::vector<double> safetyBaseU = *in.U_global;
+
+  // 1:1 mirror of JS solveSafetyCphi (solver.js:5519) bracketing loop.
+  double sigmaLow = 1.0;
+  double sigmaHigh = -1.0;  // -1 = unset
+  const double sigmaMax = std::max(in.opts.safetySigmaMax, 1.05);
+  const double bracketTol = std::max(in.opts.safetyBracketTolerance, 1e-4);
+  const double sigmaMinIncrement = std::max(std::min(bracketTol, 0.01), 1e-4);
+  double sigmaIncrement = std::max(in.opts.safetyInitialIncrement, sigmaMinIncrement);
+  const double sigmaGrowthFactor = std::max(in.opts.safetyGrowthFactor, 1.05);
+  const double sigmaCutbackFactor = std::clamp(in.opts.safetyCutbackFactor, 0.1, 0.95);
+
+  for (std::int32_t trial = 0; trial < in.opts.safetyMaxSearchTrials; ++trial) {
+    if (sigmaHigh > 0 && (sigmaHigh - sigmaLow) <= bracketTol) break;
+    if (sigmaLow >= sigmaMax - bracketTol) break;
+    // JS line 5623: target = min(lower + increment, sigmaMax). No
+    // bisection — the increment shrinks on failure with a *0.5
+    // clamp on the upper-lower band, which acts like a soft bisection
+    // without overshooting.
+    const double target = std::min(sigmaLow + sigmaIncrement, sigmaMax);
+	    // JS safety continuation interpolates strength from sigmaLow to the
+	    // target inside solveNonlinearPhase as lambda advances.
+	    std::vector<RegionParams> trialRegions = *in.regions;
+	    for (auto& r : trialRegions) r = reduce_strength(r, sigmaLow);
+	    std::vector<Mat6> trialC = build_region_elastic(trialRegions);
+
+    *in.materialPoints = safetyBase;
+    *in.U_global = safetyBaseU;
+    PhaseContext sctx = ctx;
+    sctx.regions = &trialRegions;
+	    sctx.regionC = &trialC;
+	    sctx.phaseKind = PhaseKind::SafetyCphi;
+	    sctx.incrementalStress = false;
+	    sctx.safetyStrengthBaseRegions = in.regions;
+	    sctx.safetySigmaMsfStart = sigmaLow;
+	    sctx.safetySigmaMsfTarget = target;
+    // Keep safety in the same correction-coordinate displacement frame as
+    // geostatic and service. The display layer adds the elastic predictor
+    // displacement after the solve, matching the JS CPU path.
+    sctx.U_base = nullptr;
+    // Safety solves at the full external force while strength is reduced.
+    // Keep the RHS constant through the continuation phase; lambda only
+    // controls the Newton driver's step bookkeeping.
+    std::vector<double> zeroRhs(static_cast<std::size_t>(nfree), 0.0);
+    sctx.baseRhsFree = &combinedRhs;  // gravity + load at full strength
+    sctx.rampedRhsFree = &zeroRhs;
+
+    PhaseResult sr = run_nonlinear_phase(sctx, in.opts);
+    out.summary.newtonIterations += sr.newtonIterations;
+    out.summary.cgIterations += sr.cgIterations;
+    out.safety.trialCount += 1;
+    out.safety.totalNewtonIterations += sr.newtonIterations;
+    SafetyTrial st;
+    st.sigmaMsfTarget = target;
+    st.sigmaMsfCommitted = sr.converged ? target : sigmaLow;
+    st.converged = sr.converged ? 1 : 0;
+    st.iterations = sr.newtonIterations;
+    out.safety.trials.push_back(st);
+
+    if (sr.converged) {
+      sigmaLow = target;
+      // JS line 5698: grow the increment after a successful trial,
+      // capped at the remaining headroom to sigmaMax.
+      sigmaIncrement = std::min(
+          std::max(sigmaIncrement * sigmaGrowthFactor, sigmaMinIncrement),
+          std::max(sigmaMax - sigmaLow, sigmaMinIncrement));
+    } else {
+      sigmaHigh = (sigmaHigh < 0) ? target : std::min(sigmaHigh, target);
+      // JS line 5703: shrink increment, clamped by half the bracket band.
+      const double bandHalf = (sigmaHigh > 0) ? std::max((sigmaHigh - sigmaLow) * 0.5, sigmaMinIncrement) : sigmaIncrement;
+      sigmaIncrement = std::max(
+          std::min(sigmaIncrement * sigmaCutbackFactor, bandHalf),
+          sigmaMinIncrement);
+      if (sigmaIncrement < 1e-4) break;
+    }
+  }
+  // Restore committed state to end-of-service so the result builder can
+  // read the converged service state, not the failed safety probe.
+  *in.materialPoints = safetyBase;
+  *in.U_global = safetyBaseU;
+
+  out.safety.factorOfSafetyLower = sigmaLow;
+  out.safety.factorOfSafetyUpper = sigmaHigh > 0 ? sigmaHigh : sigmaMax;
+  out.safety.strengthRetained = 1.0 / std::max(sigmaLow, 1.0);
+  if (sigmaHigh > 0 && (sigmaHigh - sigmaLow) <= bracketTol) {
+    out.safety.status = 1;  // bracketed
+  } else if (sigmaHigh < 0 && sigmaLow >= sigmaMax - bracketTol) {
+    out.safety.status = 3;  // no failure found
+  } else {
+    out.safety.status = 2;  // mechanism
+  }
+
+  return out;
+}
+
+}  // namespace madep::solver

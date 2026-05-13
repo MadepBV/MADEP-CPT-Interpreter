@@ -4777,13 +4777,28 @@ function ensureStage6State(){
   delete bishop.deformation.options.gpuPrecisionMode;
   delete bishop.deformation.options.linearAlgebraBackend;
   delete bishop.deformation.options.gpuMinDof;
-  // The new GPU resident pipeline is opt-in.  Persist as a clean boolean.
-  bishop.deformation.options.useNewGpuPipeline = !!bishop.deformation.options.useNewGpuPipeline;
-  // Pipeline version selector — 'v1' is the default production GPU path,
-  // 'v2' is the matrix-free reformulation (elastic-only on-device).
-  if (bishop.deformation.options.gpuPipelineVersion !== 'v2') {
-    bishop.deformation.options.gpuPipelineVersion = 'v1';
+  // Solver backend — single canonical option that drives the dispatch.
+  // Valid values: 'js-cpu' (default), 'wasm-cpu', 'gpu-v1', 'gpu-v2'.
+  // Migration: if `solverBackend` is missing but a legacy toggle is set,
+  // derive it from the legacy fields. Then mirror the canonical value
+  // back onto the legacy fields so the existing worker payload + solver
+  // dispatch keep working unchanged.
+  let solverBackend = bishop.deformation.options.solverBackend;
+  if (typeof solverBackend !== 'string') {
+    if (bishop.deformation.options.useWasmCpuPipeline === true) solverBackend = 'wasm-cpu';
+    else if (bishop.deformation.options.useNewGpuPipeline === true) {
+      solverBackend = bishop.deformation.options.gpuPipelineVersion === 'v2' ||
+        bishop.deformation.options.gpuPipelineVersion === 'v3'
+        ? 'gpu-v2'
+        : 'gpu-v1';
+    } else solverBackend = 'js-cpu';
   }
+  if (solverBackend === 'gpu-v3') solverBackend = 'gpu-v2';
+  if (!['js-cpu', 'wasm-cpu', 'gpu-v1', 'gpu-v2'].includes(solverBackend)) solverBackend = 'js-cpu';
+  bishop.deformation.options.solverBackend = solverBackend;
+  bishop.deformation.options.useWasmCpuPipeline = solverBackend === 'wasm-cpu';
+  bishop.deformation.options.useNewGpuPipeline = solverBackend === 'gpu-v1' || solverBackend === 'gpu-v2';
+  bishop.deformation.options.gpuPipelineVersion = solverBackend === 'gpu-v2' ? 'v2' : 'v1';
   const rawDeformationMeshTargetArea = Number(bishop.deformation.options.meshTargetArea);
   const deformationAutoMeshTargetArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
   if(bishop.deformation.options.meshTargetAreaAuto == null){
@@ -6097,6 +6112,19 @@ function stage6BishopSetField(path, value){
     S.stage6.bishop.deformation.options.meshTargetArea = stage6BishopAutoDeformationMeshTargetArea(S.stage6.bishop);
   }
   stage6Set(S.stage6.bishop, path, nextValue);
+  if(path === 'deformation.options.solverBackend'){
+    // Sync the legacy fields so the worker payload + solver dispatch
+    // keep working off the same source of truth without waiting for the
+    // next render-time normalisation.
+    const backend = String(nextValue || 'js-cpu');
+    const canonicalBackend = backend === 'gpu-v3'
+      ? 'gpu-v2'
+      : (['js-cpu', 'wasm-cpu', 'gpu-v1', 'gpu-v2'].includes(backend) ? backend : 'js-cpu');
+    S.stage6.bishop.deformation.options.solverBackend = canonicalBackend;
+    S.stage6.bishop.deformation.options.useWasmCpuPipeline = canonicalBackend === 'wasm-cpu';
+    S.stage6.bishop.deformation.options.useNewGpuPipeline = canonicalBackend === 'gpu-v1' || canonicalBackend === 'gpu-v2';
+    S.stage6.bishop.deformation.options.gpuPipelineVersion = canonicalBackend === 'gpu-v2' ? 'v2' : 'v1';
+  }
   if(path === 'deformation.options.analysisType' && nextValue === 'safety-cphi'){
     S.stage6.bishop.deformation.options.constitutiveModel = 'mc-plastic';
   }
@@ -6989,8 +7017,10 @@ function stage6BishopRunDeformation(){
         safetySigmaMsfBracketTolerance:bishop.deformation?.options?.safetySigmaMsfBracketTolerance,
         safetyMaxSearchTrials:bishop.deformation?.options?.safetyMaxSearchTrials,
         useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true,
+        solverBackend:bishop.deformation?.options?.solverBackend || 'js-cpu',
         useNewGpuPipeline:bishop.deformation?.options?.useNewGpuPipeline === true,
-        gpuPipelineVersion:bishop.deformation?.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1'
+        gpuPipelineVersion:bishop.deformation?.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1',
+        useWasmCpuPipeline:bishop.deformation?.options?.useWasmCpuPipeline === true
       }
     }
   });
@@ -11725,6 +11755,15 @@ function renderStage6BishopApp(){
   const deformationUseUnsymmetricPlasticSolver = deformation.options?.useUnsymmetricPlasticSolver === true;
   const deformationUseNewGpuPipeline = deformation.options?.useNewGpuPipeline === true;
   const deformationGpuPipelineVersion = deformation.options?.gpuPipelineVersion === 'v2' ? 'v2' : 'v1';
+  const deformationUseWasmCpuPipeline = deformation.options?.useWasmCpuPipeline === true;
+  const deformationSolverBackend = (() => {
+    const raw = deformation.options?.solverBackend;
+    if (raw === 'gpu-v3') return 'gpu-v2';
+    if (raw === 'wasm-cpu' || raw === 'gpu-v1' || raw === 'gpu-v2') return raw;
+    if (deformationUseWasmCpuPipeline) return 'wasm-cpu';
+    if (deformationUseNewGpuPipeline) return deformationGpuPipelineVersion === 'v2' ? 'gpu-v2' : 'gpu-v1';
+    return 'js-cpu';
+  })();
   const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
   const deformationTotalLoad = Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null;
@@ -12424,24 +12463,17 @@ function renderStage6BishopApp(){
                 </label>
 	                <label class="st6-bishop-check">
 	                  <input type="checkbox" ${deformationUseUnsymmetricPlasticSolver ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useUnsymmetricPlasticSolver', this.checked)">
-	                  Use GMRES for plastic tangents
+	                  Nonsymmetric plastic tangents
 	                </label>
-	                <div class="st6-help">Default on. Plastic active-set tangents can become non-SPD, especially in slope and c-phi runs, so the robust CPU path uses GMRES with block-Jacobi 2x2 preconditioning instead of relying on CG.</div>
 	                <label class="st6-bishop-check">
-	                  <input type="checkbox" ${deformationUseNewGpuPipeline ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useNewGpuPipeline', this.checked)">
-	                  Use new GPU resident pipeline (experimental)
-	                </label>
-	                <div class="st6-help">Off by default. Routes the deformation solve through the new fully-resident GPU pipeline (double-single arithmetic, no CPU/GPU handoffs). Falls back to CPU if WebGPU is unavailable. Currently mid-rebuild; only enable for testing.</div>
-	                ${deformationUseNewGpuPipeline ? `
-	                <label class="st6-bishop-check">
-	                  <span style="font-size:11px;color:var(--tx2);min-width:100px">GPU pipeline:</span>
-	                  <select onchange="stage6BishopSetField('deformation.options.gpuPipelineVersion', this.value)" style="font-size:11px">
-	                    <option value="v1" ${deformationGpuPipelineVersion === 'v1' ? 'selected' : ''}>v1 — CSR + block-Jacobi (full plastic)</option>
-	                    <option value="v2" ${deformationGpuPipelineVersion === 'v2' ? 'selected' : ''}>v2 — matrix-free + block-Jacobi (full elastoplastic, experimental)</option>
+	                  <span style="font-size:11px;color:var(--tx2);min-width:80px">Solve path:</span>
+	                  <select onchange="stage6BishopSetField('deformation.options.solverBackend', this.value)" style="font-size:11px">
+	                    <option value="js-cpu" ${deformationSolverBackend === 'js-cpu' ? 'selected' : ''}>JS CPU</option>
+	                    <option value="wasm-cpu" ${deformationSolverBackend === 'wasm-cpu' ? 'selected' : ''}>WASM CPU</option>
+	                    <option value="gpu-v1" ${deformationSolverBackend === 'gpu-v1' ? 'selected' : ''}>GPU v1</option>
+	                    <option value="gpu-v2" ${deformationSolverBackend === 'gpu-v2' ? 'selected' : ''}>GPU v2</option>
 	                  </select>
 	                </label>
-	                <div class="st6-help">v1 is the production GPU path: assembled CSR stiffness, plastic Newton with block-Jacobi 2×2 preconditioning. v2 is a matrix-free reformulation: no global K assembly, single GPU handoff, modified Newton with local return mapping at every Gauss point, BiCGStab auto-selection for non-associated MC, 2×2 block-Jacobi preconditioner, GPU-resident DS (f64-equivalent) arithmetic. CPU-reference validated end-to-end (see scripts/verify_gpu_v2_parity.mjs); GPU runtime untested without hardware.</div>
-	                ` : ''}
                 ${deformationIsSafety ? `
                   <label style="font-size:11px;color:var(--tx2)">Initial ΣMsf increment
                     <input type="number" step="0.01" min="0.001" value="${deformationSafetyInitialSigmaMsfIncrement.toFixed(3)}" onchange="stage6BishopSetField('deformation.options.safetyInitialSigmaMsfIncrement', this.value)">

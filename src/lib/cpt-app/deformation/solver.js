@@ -62,6 +62,12 @@ import {
   runFullDeformationAnalysisOnGpuV2 as gpuV2RunFullDeformationAnalysis
 } from './gpu/v2/gpu-v2-controller.js';
 
+// WASM CPU pipeline (full C++ port of the elastoplastic Newton path).
+// Opt-in via `options.useWasmCpuPipeline === true`. The pipeline module
+// owns the encode/run/decode round trip and synthesises a result with
+// the same shape as the CPU path.
+import { runWasmDeformationPipeline } from './wasm/pipeline.js';
+
 // GPU acceleration is being rebuilt as a separate, fully resident
 // double-single pipeline. Until that pipeline lands the deformation solver
 // runs CPU f64 only. No backend dispatchers, no precision escalation, no
@@ -1277,6 +1283,7 @@ async function tryGpuFullDeformation({
   // failure (no WebGPU, kernel error, non-convergence) throws — there is
   // no silent CPU fallback.  Uncheck the toggle to use CPU.
   const v2 = options?.gpuPipelineVersion === 'v2';
+  const gpuVersion = v2 ? 'v2' : 'v1';
   console.log(`[deformation] GPU pipeline (${v2 ? 'v2 matrix-free' : 'v1 CSR'}) requested — probing WebGPU…`);
   const probe = await gpuProbeGpuPipeline();
   if (!probe?.available) {
@@ -1362,7 +1369,7 @@ async function tryGpuFullDeformation({
     }
   }
   pushUniqueWarning(warnings,
-    `[GPU] Analysis ran on the new GPU resident pipeline ` +
+    `[GPU] Analysis ran on the new GPU resident pipeline (${gpuVersion}) ` +
     `(${ad}/${arch}, ${(t1 - t0).toFixed(0)} ms).`);
   console.log(`[deformation] GPU pipeline completed in ${(t1 - t0).toFixed(0)} ms`);
   return result;
@@ -6351,6 +6358,13 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     // any failure (no WebGPU, kernel error, non-convergence) throws — there
     // is no silent CPU fallback.  Default false; the UI toggle sets it true.
     useNewGpuPipeline: input?.options?.useNewGpuPipeline === true,
+    // Routes the deformation solve through the WASM CPU pipeline (full
+    // C++ port of the elastoplastic Newton + load-stepping path). Strict:
+    // any decode/encode/run failure throws. Default false. The pipeline
+    // uses gravity-ramp initialisation, not K0-controlled geostatic, so
+    // engineering values match but a bit-for-bit comparison against the
+    // CPU path's K0 seed is not expected.
+    useWasmCpuPipeline: input?.options?.useWasmCpuPipeline === true,
     // GPU pipeline version selector — 'v1' (CSR + plastic Newton, full
     // production) or 'v2' (matrix-free + modified Newton, experimental).
     // Default 'v1'.  UI dropdown sets this when the GPU toggle is on.
@@ -6488,6 +6502,48 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     runControl,
     onProgress
   );
+
+  // ===========================================================================
+  // WASM CPU pipeline.
+  //
+  // Strict: any failure throws (no silent CPU fallback). Dispatched here
+  // so the C++ solver consumes the exact same slope-aware K0 stress field
+  // (`geostatic.initialField`) and predictor displacement
+  // (`geostatic.solution`) that the CPU plastic Newton would consume.
+  // The WASM module owns the plastic geostatic equilibration, the
+  // service-load Newton, and (when analysisType === 'safety-cphi') the
+  // c-φ strength-reduction bracketing.
+  // ===========================================================================
+  // The WASM CPU pipeline runs fully in WebAssembly: deformation (T3 /
+  // T6, linear-elastic / mc-reduced / mc-plastic) plus the c-φ safety
+  // bracketing. No silent JS fallback — any WASM failure throws. The
+  // intent is for this path to eventually become the default; until
+  // then, the existing JS path stays the reference for engineering
+  // sign-off.
+  if (options?.useWasmCpuPipeline === true) {
+    return runWasmDeformationPipeline({
+      mesh,
+      elementCaches,
+      regionConstitutiveByRegion,
+      fixedValues,
+      gravityRhs,
+      loadRhs,
+      gravityRhsFreeCompressed: gravityCompressedRhs,
+      loadRhsFreeCompressed: loadRhsFreeBase,
+      freeDofs,
+      ndof,
+      initialField: geostatic.initialField,
+      predictorSolution: geostatic.solution,
+      porePressureByIntegrationPoint,
+      options,
+      load,
+      warnings,
+      onProgress,
+      startedAt,
+      model,
+      analysisType
+    });
+  }
 
   // ===========================================================================
   // GPU FAST PATH.

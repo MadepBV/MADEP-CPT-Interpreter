@@ -21,7 +21,9 @@
 		"verify:gpu": "node scripts/verify_gpu_pipeline.mjs && node scripts/verify_gpu_wgsl_syntax.mjs && node scripts/verify_gpu_e2e_parity.mjs && node scripts/verify_gpu_plastic_e2e.mjs && node scripts/verify_gpu_block_jacobi_pair_slot.mjs && node scripts/verify_gpu_v2_parity.mjs",
 		"verify:gpu:v2": "node scripts/verify_gpu_v2_parity.mjs",
 		"verify:gpu:v2:hardware": "node scripts/verify_gpu_v2_hardware.mjs",
-		"verify:integrated-plan": "node scripts/verify_integrated_plan.mjs"
+		"verify:integrated-plan": "node scripts/verify_integrated_plan.mjs",
+		"build:wasm:deformation": "bash src/wasm/deformation/build.sh",
+		"verify:wasm": "node scripts/verify_wasm_deformation_smoke.mjs && node scripts/verify_wasm_deformation_t6.mjs && node scripts/verify_wasm_deformation_plastic.mjs && node scripts/verify_wasm_mc_unit.mjs && node scripts/verify_wasm_mc_local_parity.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.1",
