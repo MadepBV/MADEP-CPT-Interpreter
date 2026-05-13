@@ -3,12 +3,13 @@
 //
 // Wire-format encoder/decoder shared between the JS bridge and the C++
 // WASM module. Both sides MUST agree on this layout exactly; the C++
-// reader lives in deformation_wasm.cpp. Wire version 7.
+// reader lives in deformation_wasm.cpp. Wire version 8.
 
 const INPUT_MAGIC = 0x4D434454; // 'TDCM'
 const OUTPUT_MAGIC = 0x4D444B54; // 'TDKM'
-const WIRE_VERSION = 7;
+const WIRE_VERSION = 8;
 const LEGACY_OUTPUT_WIRE_VERSION = 6;
+const SAFETY_HISTORY_OUTPUT_WIRE_VERSION = 7;
 
 const SAFETY_WIRE_LABELS = Object.freeze([
   'not-run',
@@ -268,7 +269,9 @@ export function decodeOutputBuffer(bytes) {
   const version = readU32();
   if (
     magic !== OUTPUT_MAGIC ||
-    (version !== WIRE_VERSION && version !== LEGACY_OUTPUT_WIRE_VERSION)
+    (version !== WIRE_VERSION &&
+      version !== SAFETY_HISTORY_OUTPUT_WIRE_VERSION &&
+      version !== LEGACY_OUTPUT_WIRE_VERSION)
   ) {
     throw new Error(`WASM output header mismatch (magic=${magic.toString(16)}, version=${version}).`);
   }
@@ -421,6 +424,37 @@ export function decodeOutputBuffer(bytes) {
     const maxDeltaPlasticStrain = readF64();
     const totalDeltaPlasticStrain = readF64();
     const mechanismScoreRaw = readF64();
+    let actualContinuationModeCode = 1;
+    let arcLengthDetails = null;
+    if (version >= 8) {
+      actualContinuationModeCode = readU8();
+      const hasArcLengthDetails = readU8() === 1;
+      const failureCode = readU16();
+      const linearSolveCount = readI32();
+      const deltaLambda = readF64();
+      const deltaS = readF64();
+      const alpha = readF64();
+      const constraintResidual = readF64();
+      const correctionDenominator = readF64();
+      if (hasArcLengthDetails) {
+        arcLengthDetails = {
+          actualContinuationMode: 'arc-length',
+          deltaLambda,
+          deltaS,
+          alpha,
+          constraintResidual,
+          linearSolveCount,
+          correctionDenominator,
+          failureCode
+        };
+      }
+    }
+    if (arcLengthDetails === null && actualContinuationModeCode === 2) {
+      throw new Error('WASM safety curve invariant violated: arc-length point has no details.');
+    }
+    if (arcLengthDetails !== null && actualContinuationModeCode !== 2) {
+      throw new Error('WASM safety curve invariant violated: non-arc point has arc-length details.');
+    }
     safetyCurve[i] = {
       index: i,
       trialIndex,
@@ -449,7 +483,7 @@ export function decodeOutputBuffer(bytes) {
       maxDeltaPlasticStrain,
       totalDeltaPlasticStrain,
       mechanismScore: Number.isFinite(mechanismScoreRaw) ? mechanismScoreRaw : null,
-      arcLengthDetails: null
+      arcLengthDetails
     };
   }
 

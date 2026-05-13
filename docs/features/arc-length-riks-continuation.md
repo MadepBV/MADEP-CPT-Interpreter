@@ -747,6 +747,39 @@ Validation:
 
 Goal: make arc-length useful for final FoS decisions.
 
+Binding resolution for the Phase-5 implementation:
+
+- `WIRE_VERSION = 8` extends each `SafetyCurvePointV7` record with a fixed
+  48-byte numeric `ArcLengthDetailsV8` tail:
+
+```text
+SafetyCurvePointV8 (200 bytes each)
+  SafetyCurvePointV7 fields (152 bytes)
+  u8  actualContinuationMode  // 0=load, 1=strength, 2=arc-length
+  u8  hasArcLengthDetails
+  u16 failureCode
+  i32 linearSolveCount
+  f64 deltaLambda
+  f64 deltaS
+  f64 alpha
+  f64 constraintResidual
+  f64 correctionDenominator
+```
+
+- Version-8 decoders must still decode version-7 safety-curve records and set
+  `arcLengthDetails = null`.
+- `hasArcLengthDetails === true` is valid only when
+  `actualContinuationMode === 2`. Any other combination is a wire bug.
+- Phase 5 enables WASM safety arc-length only when
+  `requestedContinuationMode = 'arc-length'`; `auto` remains strength-control
+  until Phase 7. This keeps regular production solves from paying the two-solve
+  arc-length cost before the auto trigger is validated.
+- The Phase-5 safety arc-length controller follows the increasing-`SigmaMsf`
+  branch inside the current bracketing trial and never reports a non-equilibrium
+  point as a lower-bound FoS. Post-peak diagnostics remain conservative: curve
+  points can inform the UI, but the reported FoS is still the highest accepted
+  lower-bound `SigmaMsf` from the trial/finalization contract.
+
 Tasks:
 
 - Emit arc-length accepted points into `SafetyCurvePoint`.

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// WASM entry point — wire format v7.
+// WASM entry point — wire format v8.
 //
 // INPUT (uint8_t* in, std::size_t len):
 //   Header (offsets in bytes from the start):
 //     u32  magic              = 'TDCM' (0x4D434454)
-//     u32  version            = 7
+//     u32  version            = 8
 //     u32  elementKind        (3 or 6)
 //     u32  constitutive       (0 = LE, 1 = MC-RS, 2 = MC-P)
 //     u32  analysisMode       (0 = service-only, 1 = geostatic+service,
@@ -50,7 +50,7 @@
 //
 // OUTPUT layout (uint8_t*, std::size_t):
 //   u32  magic                 = 'TDKM' (0x4D444B54)
-//   u32  version               = 7
+//   u32  version               = 8
 //   u32  numNodes
 //   u32  numElements
 //   u32  numGpTotal
@@ -78,7 +78,7 @@
 //     3 f64 fos_lower / fos_upper / strength_retained,
 //     i32 trialCount, i32 totalNewton, i32 curveCount, i32 reserved,
 //     trialCount × SafetyTrialTargetV7 (40 bytes),
-//     curveCount × SafetyCurvePointV7 (152 bytes)
+//     curveCount × SafetyCurvePointV8 (200 bytes)
 //
 // All multi-byte fields are little-endian.
 
@@ -139,13 +139,13 @@ ArcLengthDerivativeMode arc_length_derivative_mode_from_wire(std::uint8_t value)
 
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
-constexpr std::uint32_t WIRE_VERSION = 7u;
+constexpr std::uint32_t WIRE_VERSION = 8u;
 
 constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 88 bytes
 constexpr std::size_t kGpStateBytes = (6 + 6 + 1 + 1 + 6 + 6 + 6 + 1 + 1 + 1) * 8 + 4;  // 35 f64 + 4 u8 = 284 bytes
 constexpr std::size_t kSafetyHeaderBytes = 1 + 7 + 3 * 8 + 4 * 4;  // 48 bytes
 constexpr std::size_t kSafetyTrialBytes = 3 * 8 + 4 + 2 + 3 + 7;   // 40 bytes
-constexpr std::size_t kSafetyCurvePointBytes = 12 * 4 + 13 * 8;   // 152 bytes
+constexpr std::size_t kSafetyCurvePointBytes = 12 * 4 + 13 * 8 + 8 + 5 * 8;   // 200 bytes
 constexpr std::uint32_t LOCAL_MC_INPUT_MAGIC  = 0x504C434Du;  // 'MCLP'
 constexpr std::uint32_t LOCAL_MC_OUTPUT_MAGIC = 0x4F4C434Du;  // 'MCLO'
 constexpr std::uint32_t LOCAL_MC_VERSION = 1u;
@@ -631,6 +631,15 @@ int madepRunDeformationAnalysis(
 	    q = write_f64(q, point.maxDeltaPlasticStrain);
 	    q = write_f64(q, point.totalDeltaPlasticStrain);
 	    q = write_f64(q, point.mechanismScore);
+	    q = write_u8(q, point.actualContinuationMode);
+	    q = write_u8(q, point.hasArcLengthDetails);
+	    q = write_u16(q, point.arcLengthFailureCode);
+	    q = write_i32(q, point.arcLengthLinearSolveCount);
+	    q = write_f64(q, point.arcLengthDeltaLambda);
+	    q = write_f64(q, point.arcLengthDeltaS);
+	    q = write_f64(q, point.arcLengthAlpha);
+	    q = write_f64(q, point.arcLengthConstraintResidual);
+	    q = write_f64(q, point.arcLengthCorrectionDenominator);
 	  }
 
   *outPtrPtr = out;

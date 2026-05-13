@@ -862,6 +862,10 @@ SafetyCurvePointV7 (152 bytes each)
   f64 mechanismScore  // NaN means not evaluated on this point.
 ```
 
+Arc-length extends this record in `WIRE_VERSION = 8`; version-7 readers do not
+carry `arcLengthDetails`. The version-8 decoder must preserve version-7
+behavior by decoding these points with `arcLengthDetails = null`.
+
 Saved-project migration defaults:
 
 | Missing option | Version-6-era saved project | New project after switch-over |

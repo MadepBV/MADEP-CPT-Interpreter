@@ -317,6 +317,15 @@ struct SafetyCurvePoint {
   double maxDeltaPlasticStrain{ 0.0 };
   double totalDeltaPlasticStrain{ 0.0 };
   double mechanismScore{ 0.0 };  // NaN means "not evaluated on this point".
+  std::uint8_t actualContinuationMode{ 1 };  // 0=load, 1=strength, 2=arc-length.
+  std::uint8_t hasArcLengthDetails{ 0 };
+  std::uint16_t arcLengthFailureCode{ 0 };
+  std::int32_t arcLengthLinearSolveCount{ 0 };
+  double arcLengthDeltaLambda{ 0.0 };
+  double arcLengthDeltaS{ 0.0 };
+  double arcLengthAlpha{ 1.0 };
+  double arcLengthConstraintResidual{ 0.0 };
+  double arcLengthCorrectionDenominator{ 0.0 };
 };
 
 // One safety c-φ trial target record.
