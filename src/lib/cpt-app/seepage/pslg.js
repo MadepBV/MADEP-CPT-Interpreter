@@ -3,13 +3,15 @@
 
 import { buildSectionPslg, polygonSegments, polylineSegments } from '../mesh/section-pslg.js';
 import { buildOuterBoundary } from './boundary.js';
+import { normalizeDrains } from './drains.js';
 
 const GEOM_EPS = 1e-6;
 const SNAP_DECIMALS = 6;
 const SEGMENT_PRIORITY = {
   region: 1,
   phreatic: 2,
-  outer: 3
+  outer: 3,
+  drain: 4
 };
 
 function clamp(value, min, max) {
@@ -47,11 +49,51 @@ function seepageBoundaryConditionMapFor(model) {
 }
 
 function seepageBoundaryTargetLength(segment, baseLength) {
+  if (segment.kind === 'drain') return Math.max(baseLength * 0.45, 0.03);
   if (segment.kind === 'phreatic') return Math.max(baseLength * 0.6, 0.05);
   if (segment.kind === 'outer' && segment.bcType === 'seepage-face') return Math.max(baseLength * 0.45, 0.03);
   if (segment.kind === 'outer' && segment.bcType === 'head') return Math.max(baseLength * 0.55, 0.04);
   if (segment.kind === 'outer') return Math.max(baseLength * 0.8, 0.05);
   return baseLength;
+}
+
+function drainTargetLengthFor(drain, baseLength) {
+  const vertices = drain?.vertices || [];
+  let length = 0;
+  for (let i = 0; i < vertices.length - 1; i += 1) {
+    length += dist(vertices[i], vertices[i + 1]);
+  }
+  if (drain?.closed && vertices.length > 2) length += dist(vertices[vertices.length - 1], vertices[0]);
+  const segmentCount = Math.max(vertices.length - (drain?.closed ? 0 : 1), 1);
+  return Math.max(Math.min(baseLength * 0.45, length / Math.max(segmentCount * 3, 1)), 0.03);
+}
+
+function drainConstraintSegments(drain, drainIndex, allocateMarker, baseLength) {
+  const vertices = drain?.vertices || [];
+  const drainId = drain?.id || `drain-${drainIndex + 1}`;
+  const pairs = [];
+  for (let i = 0; i < vertices.length - 1; i += 1) {
+    pairs.push({ vertices: [vertices[i], vertices[i + 1]], segmentIndex: i });
+  }
+  if (drain?.closed && vertices.length > 2) {
+    pairs.push({ vertices: [vertices[vertices.length - 1], vertices[0]], segmentIndex: vertices.length - 1 });
+  }
+  return pairs.flatMap((pair) =>
+    polylineSegments(pair.vertices, {
+      kind: 'drain',
+      priority: SEGMENT_PRIORITY.drain,
+      segmentTargetLength: drainTargetLengthFor(drain, baseLength),
+      drainId,
+      drainIndex,
+      drainSegmentIndex: pair.segmentIndex,
+      markerId: allocateMarker({
+        markerType: 'drain',
+        drainId,
+        drainIndex,
+        drainSegmentIndex: pair.segmentIndex
+      })
+    })
+  );
 }
 
 function splitOuterBoundarySegmentsForHead(edge, bc, allocateMarker, baseLength) {
@@ -164,13 +206,17 @@ export function buildSeepagePslg(model, regions, options) {
           })
         })
       : [];
+  const drainSegments = normalizeDrains(model?.drains || []).flatMap((drain, drainIndex) =>
+    drainConstraintSegments(drain, drainIndex, allocateMarker, baseLength)
+  );
 
   return buildSectionPslg(model, regions, {
     ...options,
     constraintSegments: [
       ...outerBoundarySegments,
       ...regionBoundarySegments,
-      ...phreaticSegments
+      ...phreaticSegments,
+      ...drainSegments
     ],
     markerInfoById
   });

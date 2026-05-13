@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 import { designSoilLayer } from './stage6-engineering.js';
-import { resolveMaterialPermeability } from './seepage/material.js';
+import { normalizeWallMaterial, resolveMaterialPermeability } from './seepage/material.js';
+import { normalizeDrains } from './seepage/drains.js';
 import { sampleSeepagePorePressure } from './seepage/solver.js';
 import {
   buildCptAutoRegions,
@@ -2665,7 +2666,8 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
   );
 
   const walls = (bishopState?.walls || [])
-    .map((wall) => ({
+    .map((wall, index) => ({
+      id: wall?.id || `wall-${index + 1}`,
       x: Number(wall?.x),
       yTop: Number(wall?.yTop),
       yTip: Number(wall?.yTip),
@@ -2673,7 +2675,8 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
       maxShearForce:
         Number.isFinite(Number(wall?.maxShearForce)) && Number(wall.maxShearForce) > 0
           ? Number(wall.maxShearForce)
-          : null
+          : null,
+      material: normalizeWallMaterial(wall?.material, index, wall?.id || `wall-${index + 1}`)
     }))
     .filter((wall) => {
       return (
@@ -2686,6 +2689,7 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
       );
     })
     .sort((a, b) => a.x - b.x || b.yTop - a.yTop);
+  const drains = normalizeDrains(bishopState?.drains || []);
 
   const model = {
     terrain,
@@ -2704,6 +2708,7 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
     boundaryYs,
     surfaceLoad,
     walls,
+    drains,
     seepage: bishopState?.seepage || null,
     deformation: bishopState?.deformation || null
   };

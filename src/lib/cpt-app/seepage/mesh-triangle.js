@@ -1,150 +1,70 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 
-import { materialAt, pointInPolygonHalfOpen } from '../soil-regions.js';
 import { buildSectionMesh } from '../mesh/section-mesh.js';
+import { normalizeDrains } from './drains.js';
 import { buildSeepagePslg } from './pslg.js';
 import { triangulatePslg } from './triangle-runtime.js';
 
-const EPS = 1e-9;
 const GEOM_EPS = 1e-6;
 
-function average(values) {
-  if (!values?.length) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
 function dist(a, b) {
-  return Math.hypot((b?.x || 0) - (a?.x || 0), (b?.y || 0) - (a?.y || 0));
+  return Math.hypot((Number(b?.x) || 0) - (Number(a?.x) || 0), (Number(b?.y) || 0) - (Number(a?.y) || 0));
 }
 
-function segmentOrientation(a, b, c) {
-  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-}
-
-function triangleArea(a, b, c) {
-  return 0.5 * Math.abs(segmentOrientation(a, b, c));
-}
-
-function centroidOfTriangle(a, b, c) {
-  return {
-    x: (a.x + b.x + c.x) / 3,
-    y: (a.y + b.y + c.y) / 3
-  };
-}
-
-function regionIndexAt(regions, x, y) {
-  for (let i = (regions || []).length - 1; i >= 0; i -= 1) {
-    if (pointInPolygonHalfOpen(regions[i]?.polygon || [], x, y)) return i;
+function closestArcLengthOnDrain(drain, point) {
+  const vertices = drain?.vertices || [];
+  if (vertices.length < 2 || !point) return 0;
+  let best = null;
+  let prefix = 0;
+  const segmentLimit = drain?.closed && vertices.length > 2 ? vertices.length : vertices.length - 1;
+  for (let i = 0; i < segmentLimit; i += 1) {
+    const a = vertices[i];
+    const b = vertices[(i + 1) % vertices.length];
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const len2 = abx * abx + aby * aby;
+    const len = Math.sqrt(len2);
+    if (!(len > GEOM_EPS)) continue;
+    const t = Math.min(Math.max(((point.x - a.x) * abx + (point.y - a.y) * aby) / len2, 0), 1);
+    const projected = { x: a.x + abx * t, y: a.y + aby * t };
+    const distance = dist(point, projected);
+    const arcLength = prefix + len * t;
+    if (!best || distance < best.distance) best = { distance, arcLength };
+    prefix += len;
   }
-  return -1;
+  return best?.arcLength || 0;
 }
 
-function resolveMaterialAssignment(regions, centroid) {
-  const directIndex = regionIndexAt(regions, centroid.x, centroid.y);
-  if (directIndex >= 0) {
-    return {
-      regionIndex: directIndex,
-      material: regions[directIndex]?.material || materialAt(regions, centroid.x, centroid.y)
-    };
-  }
+function buildDrainConstraintMaps(mesh, model) {
+  const drains = normalizeDrains(model?.drains || []);
+  const drainById = new Map(drains.map((drain, index) => [drain.id || `drain-${index + 1}`, drain]));
+  const drainNodeIdsByDrain = new Map();
+  const drainEdgesByDrain = new Map();
+  const drainNodeArcLengthByNode = new Map();
 
-  const offsets = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2];
-  for (let i = 0; i < offsets.length; i += 1) {
-    const delta = offsets[i];
-    const probeIndex = regionIndexAt(regions, centroid.x, centroid.y - delta);
-    if (probeIndex >= 0) {
-      return {
-        regionIndex: probeIndex,
-        material: regions[probeIndex]?.material || materialAt(regions, centroid.x, centroid.y - delta)
-      };
-    }
-  }
-
-  for (let i = 0; i < offsets.length; i += 1) {
-    const delta = offsets[i];
-    const probeIndex = regionIndexAt(regions, centroid.x, centroid.y + delta);
-    if (probeIndex >= 0) {
-      return {
-        regionIndex: probeIndex,
-        material: regions[probeIndex]?.material || materialAt(regions, centroid.x, centroid.y + delta)
-      };
-    }
-  }
-
-  return null;
-}
-
-function bboxForPolygon(points) {
-  return {
-    xMin: Math.min(...points.map((point) => point.x)),
-    xMax: Math.max(...points.map((point) => point.x)),
-    yMin: Math.min(...points.map((point) => point.y)),
-    yMax: Math.max(...points.map((point) => point.y))
-  };
-}
-
-function buildCellSampleBins(cells, domainPolygon, targetArea) {
-  if (!cells?.length || !domainPolygon?.length) {
-    return {
-      grid: {
-        xMin: 0,
-        yMin: 0,
-        cellSize: Math.max(Math.sqrt(Number(targetArea) || 0.5), 0.1)
-      },
-      bins: {}
-    };
-  }
-
-  const xMin = Math.min(...domainPolygon.map((point) => point.x));
-  const yMin = Math.min(...domainPolygon.map((point) => point.y));
-  const cellSize = Math.max(Math.sqrt(Number(targetArea) || 0.5), 0.1);
-  const bins = {};
-
-  cells.forEach((cell, index) => {
-    const ix0 = Math.floor((cell.bbox.xMin - xMin) / cellSize);
-    const ix1 = Math.floor((cell.bbox.xMax - xMin) / cellSize);
-    const iy0 = Math.floor((cell.bbox.yMin - yMin) / cellSize);
-    const iy1 = Math.floor((cell.bbox.yMax - yMin) / cellSize);
-    for (let ix = ix0; ix <= ix1; ix += 1) {
-      for (let iy = iy0; iy <= iy1; iy += 1) {
-        const key = `${ix}:${iy}`;
-        if (!bins[key]) bins[key] = [];
-        bins[key].push(index);
-      }
-    }
-  });
-
-  return {
-    grid: { xMin, yMin, cellSize },
-    bins
-  };
-}
-
-function buildConstraintEdges(nodes, triangleOutput, markerInfoById) {
-  const out = [];
-  const edges = triangleOutput?.edgelist || [];
-  const markers = triangleOutput?.edgemarkerlist || [];
-  for (let i = 0; i < markers.length; i += 1) {
-    const markerId = Number(markers[i]) || 0;
-    if (!(markerId > 0)) continue;
-    const metadata = markerInfoById.get(markerId);
-    if (!metadata) continue;
-    const n1 = Number(edges[2 * i]);
-    const n2 = Number(edges[2 * i + 1]);
-    if (!Number.isInteger(n1) || !Number.isInteger(n2) || n1 === n2) continue;
-    const a = nodes[n1];
-    const b = nodes[n2];
-    if (!a || !b || !(dist(a, b) > GEOM_EPS)) continue;
-    out.push({
-      n1,
-      n2,
-      a,
-      b,
-      ...metadata
+  (mesh?.constraintEdges || [])
+    .filter((edge) => edge.markerType === 'drain')
+    .forEach((edge) => {
+      const drainId = edge.drainId || `drain-${(edge.drainIndex || 0) + 1}`;
+      if (!drainNodeIdsByDrain.has(drainId)) drainNodeIdsByDrain.set(drainId, new Set());
+      if (!drainEdgesByDrain.has(drainId)) drainEdgesByDrain.set(drainId, []);
+      drainEdgesByDrain.get(drainId).push(edge);
+      const drain = drainById.get(drainId);
+      (edge.nodeIds || [edge.n1, edge.n2]).forEach((nodeId) => {
+        if (!Number.isInteger(nodeId)) return;
+        drainNodeIdsByDrain.get(drainId).add(nodeId);
+        if (drain && !drainNodeArcLengthByNode.has(nodeId)) {
+          drainNodeArcLengthByNode.set(nodeId, closestArcLengthOnDrain(drain, mesh.nodes?.[nodeId]));
+        }
+      });
     });
-  }
-  return out;
+
+  return {
+    drainNodeIdsByDrain,
+    drainNodeArcLengthByNode,
+    drainEdgesByDrain
+  };
 }
 
 function isRecoverableTriangleFailure(error) {
@@ -262,10 +182,12 @@ export async function buildTriangleMesh(model, regions, options, onProgress = ()
       mesh.constraintEdges
         .filter((edge) => edge.markerType === 'phreatic')
         .flatMap((edge) => [edge.n1, edge.n2])
-    )
+      )
   ];
+  const drainMaps = buildDrainConstraintMaps(mesh, model);
   return {
     ...mesh,
-    phreaticNodeIds
+    phreaticNodeIds,
+    ...drainMaps
   };
 }

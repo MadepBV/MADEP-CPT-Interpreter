@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 
+import { normalizeWallMaterial } from './material.js';
+import { normalizeDrains } from './drains.js';
+
 const EPS = 1e-9;
 
 function roundCoord(value) {
@@ -29,6 +32,26 @@ function midpointFor(a, b) {
   return {
     x: +((Number(a?.x) + Number(b?.x)) * 0.5).toFixed(6),
     y: +((Number(a?.y) + Number(b?.y)) * 0.5).toFixed(6)
+  };
+}
+
+function hashDrainHead(head) {
+  if (head?.kind === 'per-vertex') {
+    return {
+      kind: 'per-vertex',
+      values: (head.values || []).map((value) => roundCoord(value))
+    };
+  }
+  if (head?.kind === 'invert-plus') {
+    return {
+      kind: 'invert-plus',
+      invertY: roundCoord(head.invertY),
+      headAbove: roundCoord(head.headAbove)
+    };
+  }
+  return {
+    kind: 'constant',
+    value: roundCoord(head?.value)
   };
 }
 
@@ -190,12 +213,25 @@ export function seepageGeometryHash(model, options = {}) {
       coarseness: roundCoord(Number(region?.coarseness) > 0 ? Number(region.coarseness) : 1),
       polygon: (region?.polygon || []).map((pt) => [roundCoord(pt.x), roundCoord(pt.y)])
     })),
-    walls: (model?.walls || []).map((wall) => [
-      roundCoord(wall?.x),
-      roundCoord(wall?.yTop),
-      roundCoord(wall?.yTip),
-      wall?.passiveSide || 'right'
-    ]),
+    walls: (model?.walls || []).map((wall, index) => {
+      const material = normalizeWallMaterial(wall?.material, index, wall?.id);
+      return [
+        roundCoord(wall?.x),
+        roundCoord(wall?.yTop),
+        roundCoord(wall?.yTip),
+        wall?.passiveSide || 'right',
+        Number.isFinite(Number(material.kAcross)) ? Number(material.kAcross) : null,
+        Number.isFinite(Number(material.kAlong)) ? Number(material.kAlong) : null,
+        material.kSource || 'legacy-impermeable'
+      ];
+    }),
+    drains: normalizeDrains(model?.drains || []).map((drain) => ({
+      id: drain.id || '',
+      vertices: (drain.vertices || []).map((pt) => [roundCoord(pt.x), roundCoord(pt.y)]),
+      closed: drain.closed === true,
+      head: hashDrainHead(drain.head),
+      gating: drain.gating || 'when-saturated'
+    })),
     freeSurface,
     usePhreaticAsSeed,
     meshTargetArea: roundCoord(options?.meshTargetArea),

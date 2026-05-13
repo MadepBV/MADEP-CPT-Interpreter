@@ -1205,6 +1205,8 @@
             {@const seepageResult = seepage.result || null}
             {@const seepageBcs = seepage.boundaryConditions || []}
             {@const seepageMaterials = seepage.materials || []}
+            {@const seepageDrains = seepage.drains || []}
+            {@const seepageWalls = seepage.walls || []}
             {@const seepageView = seepage.view || null}
             <div class="report-card report-annex report-annex--seepage">
               <h3>Seepage / groundwater flow</h3>
@@ -1213,6 +1215,7 @@
                 <div class="report-stat"><span>Free-surface mode</span><strong>{seepageFreeSurfaceLabel(seepageConfig.freeSurface)}</strong></div>
                 <div class="report-stat"><span>Head range</span><strong>{seepageResult ? `${fmt(seepageResult.headMin, 2)} to ${fmt(seepageResult.headMax, 2)} m` : '—'}</strong></div>
                 <div class="report-stat"><span>Through-flow</span><strong>{seepageResult ? `${compactNumber(seepageResult.throughFlow, 3)} m³/s/m` : '—'}</strong></div>
+                <div class="report-stat"><span>Drain inflow</span><strong>{seepageResult ? `${compactNumber(seepageResult.solver?.boundaryFlux?.drainInflow, 3)} m³/s/m` : '—'}</strong></div>
                 <div class="report-stat"><span>Flow-rate error</span><strong>{seepageResult?.flowError != null ? `${compactNumber(100 * seepageResult.flowError, 3)} %` : '—'}</strong></div>
                 <div class="report-stat"><span>Runtime</span><strong>{secondsLabelFromMs(seepageResult?.timing?.totalMs)}</strong></div>
                 <div class="report-stat"><span>Max exit gradient</span><strong>{seepageResult ? fmt(seepageResult.maxExitGradient, 3) : '—'}</strong></div>
@@ -1233,6 +1236,7 @@
                       <tr><td>Region mode</td><td>{seepageGeometry.regionMode === 'custom' ? 'Custom polygons' : 'CPT-derived polygons'}</td></tr>
                       <tr><td>Regions</td><td>{seepageGeometry.regionCount ?? '—'}</td></tr>
                       <tr><td>Retaining walls</td><td>{seepageGeometry.wallCount ?? '—'}</td></tr>
+                      <tr><td>Drains</td><td>{seepageGeometry.drainCount ?? '—'}</td></tr>
                       <tr><td>Boundary edges</td><td>{seepageGeometry.boundaryEdgeCount ?? '—'}</td></tr>
                       <tr><td>Explicit BCs</td><td>{seepageSummary.explicitBcCount ?? '—'}</td></tr>
                       <tr><td>Active / orphaned BCs</td><td>{seepageSummary.activeBcCount ?? '—'} / {seepageSummary.orphanedBcCount ?? '—'}</td></tr>
@@ -1241,12 +1245,16 @@
                       <tr><td>Mesh triangles</td><td>{seepageMesh?.elements ?? '—'}</td></tr>
                       <tr><td>Rendered triangles</td><td>{seepageMesh?.cells ?? '—'}</td></tr>
                       <tr><td>Boundary faces</td><td>{seepageMesh?.boundaryFaces ?? '—'}</td></tr>
+                      <tr><td>Drain edges</td><td>{seepageMesh?.drainEdges ?? '—'}</td></tr>
                       <tr><td>Mesh build time</td><td>{secondsLabelFromMs(seepageMesh?.generatedMs)}</td></tr>
                       <tr><td>Total runtime</td><td>{secondsLabelFromMs(seepageResult?.timing?.totalMs)}</td></tr>
                       <tr><td>Residual norm</td><td>{seepageResult?.solver?.residualNorm != null ? compactNumber(seepageResult.solver.residualNorm, 3) : '—'}</td></tr>
                       <tr><td>Termination</td><td>{seepageTerminationLabel(seepageResult?.solver?.terminationReason)}</td></tr>
                       <tr><td>Converged</td><td>{seepageResult?.solver?.converged != null ? (seepageResult.solver.converged ? 'Yes' : 'No') : '—'}</td></tr>
                       <tr><td>Inflow / outflow</td><td>{seepageResult ? `${compactNumber(seepageResult.inflow, 3)} / ${compactNumber(seepageResult.outflow, 3)} m³/s/m` : '—'}</td></tr>
+                      <tr><td>Drain inflow / outflow</td><td>{seepageResult ? `${compactNumber(seepageResult.solver?.boundaryFlux?.drainInflow, 3)} / ${compactNumber(seepageResult.solver?.boundaryFlux?.drainOutflow, 3)} m³/s/m` : '—'}</td></tr>
+                      <tr><td>Drain active nodes</td><td>{seepageResult?.solver?.activeSetSummary?.drains ? `${seepageResult.solver.activeSetSummary.drains.activeNodes ?? 0} / ${seepageResult.solver.activeSetSummary.drains.totalNodes ?? 0}` : '—'}</td></tr>
+                      <tr><td>Drain edge/reaction check</td><td>{seepageResult?.solver?.activeSetSummary?.drains?.perEdgeReactionDelta != null ? compactNumber(seepageResult.solver.activeSetSummary.drains.perEdgeReactionDelta, 3) : '—'}</td></tr>
                       <tr><td>Flow-rate error</td><td>{seepageResult?.flowError != null ? `${compactNumber(100 * seepageResult.flowError, 3)} %` : '—'}</td></tr>
                       <tr><td>Dry cells</td><td>{seepageResult?.dryCellCount ?? '—'}</td></tr>
                       <tr><td>Equipotential levels</td><td>{seepageResult?.equipotentialLevelCount ?? '—'}</td></tr>
@@ -1321,6 +1329,51 @@
                         <tr>
                           <td colspan="4" style="text-align:center">No seepage permeability set was frozen into this report.</td>
                         </tr>
+                      {/if}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="report-card report-card--nested">
+                  <h4>Drains</h4>
+                  <table class="tbl report-table">
+                    <thead>
+                      <tr><th>Drain</th><th>Gating</th><th>Head (m)</th><th>Inflow</th><th>Active nodes</th></tr>
+                    </thead>
+                    <tbody>
+                      {#if seepageDrains.length}
+                        {#each seepageDrains as drain}
+                          <tr>
+                            <td>{drain.label}</td>
+                            <td>{drain.gatingLabel || drain.gating}</td>
+                            <td>{drain.head?.value != null ? fmt(drain.head.value, 2) : '—'}</td>
+                            <td>{drain.result ? `${compactNumber(drain.result.totalInflow, 3)} m³/s/m` : '—'}</td>
+                            <td>{drain.result ? `${drain.result.activeNodes ?? 0} / ${drain.result.totalNodes ?? 0}` : '—'}</td>
+                          </tr>
+                        {/each}
+                      {:else}
+                        <tr><td colspan="5" style="text-align:center">No drains were frozen into this report.</td></tr>
+                      {/if}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="report-card report-card--nested">
+                  <h4>Wall Conductivity</h4>
+                  <table class="tbl report-table">
+                    <thead>
+                      <tr><th>Wall</th><th>k_across</th><th>k_along</th><th>Source</th></tr>
+                    </thead>
+                    <tbody>
+                      {#if seepageWalls.length}
+                        {#each seepageWalls as wall}
+                          <tr>
+                            <td>{wall.label}</td>
+                            <td>{wall.material?.kAcross != null ? compactNumber(wall.material.kAcross, 3) : '—'}</td>
+                            <td>{wall.material?.kAlong != null ? compactNumber(wall.material.kAlong, 3) : '—'}</td>
+                            <td>{wall.material?.kSourceLabel || wall.material?.kSource || '—'}</td>
+                          </tr>
+                        {/each}
+                      {:else}
+                        <tr><td colspan="4" style="text-align:center">No retaining wall conductivity was frozen into this report.</td></tr>
                       {/if}
                     </tbody>
                   </table>

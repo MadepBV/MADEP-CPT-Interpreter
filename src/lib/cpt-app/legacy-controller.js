@@ -23,7 +23,19 @@ import {
   pickOuterBoundaryEdge as pickSeepageBoundaryEdge,
   seepageGeometryHash
 } from './seepage/boundary';
-import { resolveMaterialPermeability, seepageSourceLabel } from './seepage/material';
+import {
+  normalizeWallMaterial,
+  resolveMaterialPermeability,
+  seepageSourceLabel,
+  wallMaterialSourceLabel
+} from './seepage/material';
+import {
+  drainHeadValueAt,
+  drainTotalLength,
+  normalizeDrain,
+  normalizeDrains,
+  validateDrains
+} from './seepage/drains';
 import { contourSegmentsForTriangles, sampleSeepageFlowState, sampleSeepageHead, sampleSeepagePorePressure } from './seepage/solver';
 import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-regions';
 import { sampleDeformationState } from './deformation/solver.js';
@@ -4156,6 +4168,8 @@ function stage6Defaults(){
       dz:0.10
     },
     bishop:{
+      schemaVersion:2,
+      history:[],
       workspace:'stability',
       tool:'terrain',
       useFemPorePressure:false,
@@ -4184,6 +4198,8 @@ function stage6Defaults(){
       terrain:[],
       phreatic:[],
       walls:[],
+      drains:[],
+      selectedDrainId:'',
       draft:[],
       draftKind:'',
       activeCptX:null,
@@ -4265,6 +4281,10 @@ function stage6Defaults(){
           runId:0
         },
         rejectReason:'',
+        drainValidation:{
+          errors:[],
+          warnings:[]
+        },
         geometryHash:'',
         options:{
           freeSurface:'iterate',
@@ -4272,7 +4292,11 @@ function stage6Defaults(){
           flowErrorTolerance:0.01,
           maxRuntimeMs:10000,
           meshTargetArea:null,
-          meshTargetAreaAuto:true
+          meshTargetAreaAuto:true,
+          drains:{
+            gatingTolerances:{},
+            reportPerSegmentInflow:true
+          }
         },
         display:{
           showBoundaryConditions:true,
@@ -4282,6 +4306,7 @@ function stage6Defaults(){
           showContourLines:true,
           showContourLegend:true,
           showPhreatic:true,
+          showDrains:true,
           showHead:false,
           showEquipotentials:false,
           showFlowVectors:false,
@@ -4528,6 +4553,8 @@ function ensureStage6State(){
   }
   ensurePileState(maxDepth);
   const bishop = S.stage6.bishop;
+  bishop.schemaVersion = Math.max(Math.round(+bishop.schemaVersion || 0), 2);
+  if(!Array.isArray(bishop.history)) bishop.history = [];
   const bishopMinDepth = Math.max(stage6MaxDepth(), 15);
   if(!['stability','seepage','deformation'].includes(bishop.workspace)) bishop.workspace = 'stability';
   bishop.useFemPorePressure = !!bishop.useFemPorePressure;
@@ -4611,6 +4638,8 @@ function ensureStage6State(){
   if(!Array.isArray(bishop.terrain)) bishop.terrain = [];
   if(!Array.isArray(bishop.phreatic)) bishop.phreatic = [];
   if(!Array.isArray(bishop.walls)) bishop.walls = [];
+  if(!Array.isArray(bishop.drains)) bishop.drains = [];
+  bishop.selectedDrainId = bishop.selectedDrainId ? String(bishop.selectedDrainId) : '';
   if(!Array.isArray(bishop.draft)) bishop.draft = [];
   if(!Array.isArray(bishop.materials)) bishop.materials = [];
   if(!bishop.seepage || typeof bishop.seepage !== 'object') bishop.seepage = stage6Defaults().bishop.seepage;
@@ -4623,12 +4652,22 @@ function ensureStage6State(){
   bishop.seepage.progress.message = bishop.seepage.progress.message ? String(bishop.seepage.progress.message) : '';
   bishop.seepage.progress.runId = Math.max(0, Math.round(+bishop.seepage.progress.runId || 0));
   bishop.seepage.rejectReason = bishop.seepage.rejectReason ? String(bishop.seepage.rejectReason) : '';
+  if(!bishop.seepage.drainValidation || typeof bishop.seepage.drainValidation !== 'object') bishop.seepage.drainValidation = {errors:[], warnings:[]};
+  if(!Array.isArray(bishop.seepage.drainValidation.errors)) bishop.seepage.drainValidation.errors = [];
+  if(!Array.isArray(bishop.seepage.drainValidation.warnings)) bishop.seepage.drainValidation.warnings = [];
   bishop.seepage.geometryHash = bishop.seepage.geometryHash ? String(bishop.seepage.geometryHash) : '';
   if(!bishop.seepage.options || typeof bishop.seepage.options !== 'object') bishop.seepage.options = stage6Defaults().bishop.seepage.options;
   if(!['fixed','iterate'].includes(bishop.seepage.options.freeSurface)) bishop.seepage.options.freeSurface = 'iterate';
   bishop.seepage.options.usePhreaticAsSeed = bishop.seepage.options.usePhreaticAsSeed !== false;
   bishop.seepage.options.flowErrorTolerance = Math.max(+bishop.seepage.options.flowErrorTolerance || 0.01, 0.000001);
   bishop.seepage.options.maxRuntimeMs = Math.max(+bishop.seepage.options.maxRuntimeMs || 10000, 1);
+  if(!bishop.seepage.options.drains || typeof bishop.seepage.options.drains !== 'object'){
+    bishop.seepage.options.drains = {gatingTolerances:{}, reportPerSegmentInflow:true};
+  }
+  if(!bishop.seepage.options.drains.gatingTolerances || typeof bishop.seepage.options.drains.gatingTolerances !== 'object'){
+    bishop.seepage.options.drains.gatingTolerances = {};
+  }
+  bishop.seepage.options.drains.reportPerSegmentInflow = bishop.seepage.options.drains.reportPerSegmentInflow !== false;
   const rawSeepageMeshTargetArea = Number(bishop.seepage.options.meshTargetArea);
   if(bishop.seepage.options.meshTargetAreaAuto == null){
     bishop.seepage.options.meshTargetAreaAuto = !(
@@ -4649,6 +4688,7 @@ function ensureStage6State(){
   bishop.seepage.display.showContourLines = bishop.seepage.display.showContourLines !== false;
   bishop.seepage.display.showContourLegend = bishop.seepage.display.showContourLegend !== false;
   bishop.seepage.display.showPhreatic = bishop.seepage.display.showPhreatic !== false;
+  bishop.seepage.display.showDrains = bishop.seepage.display.showDrains !== false;
   bishop.seepage.display.showHead = !!bishop.seepage.display.showHead;
   bishop.seepage.display.showEquipotentials = !!bishop.seepage.display.showEquipotentials;
   bishop.seepage.display.showFlowVectors = !!bishop.seepage.display.showFlowVectors;
@@ -4851,6 +4891,13 @@ function stage6DetailsOpen(key){
   return S.stage6?.ui?.details?.[key] ? ' open' : '';
 }
 
+function stage6SetDetailsOpen(key, open = true){
+  ensureStage6State();
+  if(!S.stage6.ui || typeof S.stage6.ui !== 'object') S.stage6.ui = {details:{}};
+  if(!S.stage6.ui.details || typeof S.stage6.ui.details !== 'object') S.stage6.ui.details = {};
+  S.stage6.ui.details[key] = !!open;
+}
+
 function setStage6Field(field, value){
   ensureStage6State();
   stage6RememberDetailsState();
@@ -4947,22 +4994,83 @@ function stage6BishopDefaultPassiveSide(){
   return 'right';
 }
 
+function stage6BishopWallId(){
+  return `wall_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
+}
+
+function stage6BishopDefaultWallMaterial(index = 0, wallId = ''){
+  return normalizeWallMaterial(
+    {
+      id:`wall-material-${wallId || index + 1}`,
+      label:'Legacy impermeable',
+      kSource:'preset'
+    },
+    index,
+    wallId || `${index + 1}`,
+    {sourceFallback:'preset'}
+  );
+}
+
+function stage6BishopWallMaterialPreset(preset, index = 0, wallId = ''){
+  const presets = {
+    sheetPile:{label:'Sheet pile', kAcross:1e-10, kAlong:1e-8},
+    slurry:{label:'Slurry wall', kAcross:1e-9, kAlong:1e-9},
+    diaphragm:{label:'Diaphragm wall', kAcross:1e-9, kAlong:1e-9},
+    soilMix:{label:'Soil-mix wall', kAcross:1e-7, kAlong:1e-7},
+    relief:{label:'Relief wall', kAcross:1e-6, kAlong:1e-5},
+    legacy:{label:'Legacy impermeable', kAcross:1e-10, kAlong:1e-10}
+  };
+  const presetDef = presets[preset] || presets.legacy;
+  return normalizeWallMaterial(
+    {
+      id:`wall-material-${wallId || index + 1}`,
+      ...presetDef,
+      kSource:'preset'
+    },
+    index,
+    wallId || `${index + 1}`,
+    {sourceFallback:'preset'}
+  );
+}
+
+function stage6BishopWallMaterialPresetKey(material){
+  if(material?.kSource === 'legacy-impermeable') return 'legacy';
+  if(material?.kSource === 'user') return 'custom';
+  const kAcross = Number(material?.kAcross);
+  const kAlong = Number(material?.kAlong);
+  const close = (value, target)=>Number.isFinite(value) && Math.abs(value - target) <= Math.max(Math.abs(target) * 1e-9, 1e-16);
+  if(close(kAcross, 1e-10) && close(kAlong, 1e-8)) return 'sheetPile';
+  if(close(kAcross, 1e-9) && close(kAlong, 1e-9)) return String(material?.label || '').toLowerCase().includes('diaphragm') ? 'diaphragm' : 'slurry';
+  if(close(kAcross, 1e-7) && close(kAlong, 1e-7)) return 'soilMix';
+  if(close(kAcross, 1e-6) && close(kAlong, 1e-5)) return 'relief';
+  if(close(kAcross, 1e-10) && close(kAlong, 1e-10)) return 'legacy';
+  return 'custom';
+}
+
 function stage6BishopNormalizeWalls(walls, terrain){
   const terrainLine = terrain?.length ? {vertices:terrain} : null;
   const minX = terrain?.length ? terrain[0].x : -Infinity;
   const maxX = terrain?.length ? terrain[terrain.length-1].x : Infinity;
   return (walls || [])
-    .map((wall)=>({
-      x:Number(wall?.x),
-      yTop:Number.isFinite(+wall?.yTop)
-        ? +wall.yTop
-        : terrainLine
-          ? bishopTerrainY(terrainLine, Math.min(Math.max(+wall?.x || minX, minX), maxX))
-          : NaN,
-      yTip:Number.isFinite(+wall?.yTip) ? +wall.yTip : NaN,
-      passiveSide:wall?.passiveSide === 'left' ? 'left' : 'right',
-      maxShearForce:Number.isFinite(+wall?.maxShearForce) && +wall.maxShearForce > 0 ? +wall.maxShearForce : null
-    }))
+    .map((wall, index)=>{
+      const id = wall?.id || `wall-${index + 1}`;
+      const hadMaterial = !!(wall?.material && typeof wall.material === 'object');
+      return {
+        id,
+        x:Number(wall?.x),
+        yTop:Number.isFinite(+wall?.yTop)
+          ? +wall.yTop
+          : terrainLine
+            ? bishopTerrainY(terrainLine, Math.min(Math.max(+wall?.x || minX, minX), maxX))
+            : NaN,
+        yTip:Number.isFinite(+wall?.yTip) ? +wall.yTip : NaN,
+        passiveSide:wall?.passiveSide === 'left' ? 'left' : 'right',
+        maxShearForce:Number.isFinite(+wall?.maxShearForce) && +wall.maxShearForce > 0 ? +wall.maxShearForce : null,
+        material:normalizeWallMaterial(wall?.material, index, id, {
+          sourceFallback:hadMaterial ? 'user' : 'legacy-impermeable'
+        })
+      };
+    })
     .filter((wall)=>Number.isFinite(wall.x) && Number.isFinite(wall.yTop) && Number.isFinite(wall.yTip))
     .map((wall)=>{
       wall.x = Math.min(Math.max(wall.x, minX), maxX);
@@ -4973,6 +5081,73 @@ function stage6BishopNormalizeWalls(walls, terrain){
       return wall;
     })
     .sort((a,b)=>a.x-b.x || b.yTop-a.yTop);
+}
+
+function stage6BishopDrainId(){
+  return `drain_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
+}
+
+function stage6BishopNormalizeDrains(drains){
+  return normalizeDrains(drains || [])
+    .filter((drain)=>drain.vertices.length >= 2)
+    .map((drain, index)=>({
+      ...drain,
+      id:drain.id || `drain-${index + 1}`,
+      label:drain.label || `Drain ${index + 1}`
+    }));
+}
+
+function stage6BishopDefaultDrainHead(vertices){
+  const first = vertices?.[0] || null;
+  return {
+    kind:'constant',
+    value:Number.isFinite(+first?.y) ? +first.y : 0
+  };
+}
+
+function stage6BishopCreateDrainFromVertices(vertices){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  const drainId = stage6BishopDrainId();
+  const candidate = normalizeDrain({
+    id:drainId,
+    label:`Drain ${(bishop.drains || []).length + 1}`,
+    vertices,
+    closed:false,
+    head:stage6BishopDefaultDrainHead(vertices),
+    gating:'when-saturated'
+  }, (bishop.drains || []).length);
+  const model = {
+    ...(S.stage6Cache?.bishopModel || stage6BishopCurrentModel() || {}),
+    drains:[...(bishop.drains || []), candidate]
+  };
+  const validation = validateDrains(model);
+  if(validation.errors.length){
+    bishop.progress.message = validation.errors[0].message;
+    bishop.seepage.drainValidation = validation;
+    return false;
+  }
+  bishop.drains = stage6BishopNormalizeDrains([...(bishop.drains || []), candidate]);
+  bishop.selectedDrainId = drainId;
+  bishop.seepage.drainValidation = validation;
+  bishop.workspace = 'seepage';
+  stage6SetDetailsOpen('bishop-seepage-drains', true);
+  stage6BishopInvalidateSeepage('Drain added. Set the drain head, then rerun seepage.', true, true);
+  return true;
+}
+
+function stage6BishopDrainValidationSummary(validation){
+  const errorCount = validation?.errors?.length || 0;
+  const warningCount = validation?.warnings?.length || 0;
+  if(errorCount) return `${errorCount} drain validation ${errorCount === 1 ? 'error' : 'errors'}`;
+  if(warningCount) return `${warningCount} drain validation ${warningCount === 1 ? 'warning' : 'warnings'}`;
+  return 'ok';
+}
+
+function stage6BishopDrainGatingLabel(value){
+  if(value === 'always') return 'Always';
+  if(value === 'head-cap') return 'Head cap';
+  return 'When saturated';
 }
 
 function stage6BishopRegionId(){
@@ -5752,6 +5927,7 @@ function stage6BishopSyncSeepageState(model){
   const seepage = bishop.seepage;
   const boundary = stage6BishopCurrentSeepageBoundary(model);
   seepage.bcs = migrateSeepageBcs(seepage.bcs, boundary);
+  seepage.drainValidation = model ? validateDrains(model) : {errors:[], warnings:[]};
   const geometryHash = model ? seepageGeometryHash(model, seepage.options) : '';
   if(seepage.geometryHash && geometryHash && seepage.geometryHash !== geometryHash){
     const clearMesh = seepage.options.freeSurface === 'fixed' || !model?.phreatic;
@@ -5910,7 +6086,11 @@ function stage6BishopSyncSoilModel(){
       bishop[key] = stage6BishopSortZone(zone);
     });
     bishop.walls = stage6BishopNormalizeWalls(bishop.walls, sorted);
+    bishop.drains = stage6BishopNormalizeDrains(bishop.drains);
     bishop.customRegions = stage6BishopNormalizeCustomRegions(bishop.customRegions, sorted, bishop.materials);
+  }
+  if(!(bishop.drains || []).some((drain)=>drain.id === bishop.selectedDrainId)){
+    bishop.selectedDrainId = bishop.drains?.[0]?.id || '';
   }
   const validMaterialIds = new Set((bishop.materials || []).map((material)=>material.id));
   if(!validMaterialIds.has(bishop.regionDraftMaterialId)){
@@ -6176,7 +6356,7 @@ function stage6BishopSetWorkspace(workspace){
   S.stage6.bishop.workspace = next;
   if(next === 'seepage' && S.stage6.bishop.tool === 'terrain'){
     S.stage6.bishop.tool = 'seepageBc';
-  } else if(next !== 'seepage' && S.stage6.bishop.tool === 'seepageBc'){
+  } else if(next !== 'seepage' && (S.stage6.bishop.tool === 'seepageBc' || S.stage6.bishop.tool === 'drain')){
     S.stage6.bishop.tool = 'edit';
   }
   renderStage6();
@@ -6196,6 +6376,10 @@ function stage6BishopSetTool(tool){
     S.stage6.bishop.draft = [];
     S.stage6.bishop.draftKind = '';
   }
+  if(tool === 'drain'){
+    S.stage6.bishop.workspace = 'seepage';
+    stage6SetDetailsOpen('bishop-seepage-drains', true);
+  }
   renderStage6();
 }
 
@@ -6211,6 +6395,8 @@ function stage6BishopApplyImportedTerrain(vertices, label){
   bishop.terrain = stage6BishopSortedPolyline(vertices);
   bishop.phreatic = [];
   bishop.walls = [];
+  bishop.drains = [];
+  bishop.selectedDrainId = '';
   bishop.draft = [];
   bishop.draftKind = '';
   bishop.entryZone = null;
@@ -6265,6 +6451,8 @@ function stage6BishopFinishDraft(){
   if(bishop.draftKind === 'terrain' && bishop.draft.length >= 2){
     bishop.terrain = stage6BishopSortedPolyline(bishop.draft);
     bishop.walls = [];
+    bishop.drains = [];
+    bishop.selectedDrainId = '';
     bishop.customRegions = [];
     bishop.useCustomRegions = false;
     bishop.selectedRegionId = null;
@@ -6275,6 +6463,11 @@ function stage6BishopFinishDraft(){
   } else if(bishop.draftKind === 'phreatic' && bishop.draft.length >= 2){
     bishop.phreatic = stage6BishopSortedPolyline(bishop.draft);
     stage6BishopInvalidate('Phreatic line updated; rerun Bishop search.');
+  } else if(bishop.draftKind === 'drain' && bishop.draft.length >= 2){
+    if(!stage6BishopCreateDrainFromVertices(bishop.draft)){
+      renderStage6();
+      return;
+    }
   } else if(bishop.draftKind === 'region' && bishop.draft.length >= 3){
     const polygon = normalizeRegionPolygon(bishop.draft);
     if(!stage6BishopPolygonIsValid(polygon)){
@@ -6349,6 +6542,8 @@ function stage6BishopClear(kind){
     bishop.terrain = [];
     bishop.phreatic = [];
     bishop.walls = [];
+    bishop.drains = [];
+    bishop.selectedDrainId = '';
     bishop.customRegions = [];
     bishop.useCustomRegions = false;
     bishop.selectedRegionId = null;
@@ -6362,6 +6557,9 @@ function stage6BishopClear(kind){
     bishop.phreatic = [];
   } else if(kind === 'walls'){
     bishop.walls = [];
+  } else if(kind === 'drains'){
+    bishop.drains = [];
+    bishop.selectedDrainId = '';
   } else if(kind === 'entry'){
     bishop.entryZone = null;
   } else if(kind === 'exit'){
@@ -6454,11 +6652,74 @@ function stage6BishopSetWallField(index, field, value){
   renderStage6();
 }
 
+function stage6BishopSetWallMaterialField(index, field, value){
+  ensureStage6State();
+  stage6BishopSyncSoilModel();
+  const wall = S.stage6.bishop.walls?.[index];
+  if(!wall) return;
+  wall.material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'user'});
+  if(field === 'preset'){
+    wall.material = stage6BishopWallMaterialPreset(value, index, wall.id);
+  } else if(field === 'label'){
+    wall.material.label = String(value || '').trim() || 'Wall material';
+    wall.material.kSource = 'user';
+  } else if(field === 'kAcross' || field === 'kAlong'){
+    const nextValue = value === '' || value == null ? null : +value;
+    if(!(nextValue > 0)) return;
+    wall.material[field] = nextValue;
+    wall.material.kSource = 'user';
+  }
+  S.stage6.bishop.walls = stage6BishopNormalizeWalls(S.stage6.bishop.walls, S.stage6.bishop.terrain);
+  stage6BishopInvalidateSeepage('Wall conductivity changed. Showing the previous result until you rerun.', true, true);
+  renderStage6();
+}
+
 function stage6BishopDeleteWall(index){
   ensureStage6State();
   stage6BishopSyncSoilModel();
   S.stage6.bishop.walls = (S.stage6.bishop.walls || []).filter((_, wallIndex)=>wallIndex !== index);
   stage6BishopInvalidate('Retaining wall removed; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopSelectDrain(drainId){
+  ensureStage6State();
+  S.stage6.bishop.selectedDrainId = drainId || '';
+  renderStage6();
+}
+
+function stage6BishopSetDrainField(index, field, value){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  stage6BishopSyncSoilModel();
+  const drain = S.stage6.bishop.drains?.[index];
+  if(!drain) return;
+  if(field === 'label'){
+    drain.label = String(value || '').trim() || `Drain ${index + 1}`;
+  } else if(field === 'head'){
+    const head = value === '' || value == null ? null : +value;
+    if(!Number.isFinite(head)) return;
+    drain.head = {kind:'constant', value:head};
+  } else if(field === 'gating'){
+    drain.gating = value === 'always' || value === 'head-cap' ? value : 'when-saturated';
+  }
+  S.stage6.bishop.drains = stage6BishopNormalizeDrains(S.stage6.bishop.drains);
+  const model = stage6BishopCurrentModel();
+  S.stage6.bishop.seepage.drainValidation = validateDrains(model);
+  stage6BishopInvalidateSeepage('Drain settings changed. Showing the previous result until you rerun.', true, true);
+  renderStage6();
+}
+
+function stage6BishopDeleteDrain(index){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  stage6BishopSyncSoilModel();
+  const removed = S.stage6.bishop.drains?.[index];
+  S.stage6.bishop.drains = (S.stage6.bishop.drains || []).filter((_, drainIndex)=>drainIndex !== index);
+  if(removed?.id === S.stage6.bishop.selectedDrainId){
+    S.stage6.bishop.selectedDrainId = S.stage6.bishop.drains?.[0]?.id || '';
+  }
+  stage6BishopInvalidateSeepage('Drain removed. Showing the previous result until you rerun.', true, true);
   renderStage6();
 }
 
@@ -6873,6 +7134,14 @@ function stage6BishopRunSeepage(){
   }
   if(bishop.seepage.options?.freeSurface === 'fixed' && (!bishop.phreatic || bishop.phreatic.length < 2)){
     bishop.seepage.rejectReason = 'Draw a phreatic line or switch seepage to iterative free-surface mode.';
+    bishop.seepage.status = 'failed';
+    renderStage6();
+    return;
+  }
+  const drainValidation = validateDrains(model);
+  bishop.seepage.drainValidation = drainValidation;
+  if(drainValidation.errors.length){
+    bishop.seepage.rejectReason = drainValidation.errors[0].message;
     bishop.seepage.status = 'failed';
     renderStage6();
     return;
@@ -7441,6 +7710,12 @@ function stage6BishopModeMeta(){
     return {
       label:'Boundary-condition mode',
       hint:'Click an outer-boundary edge to assign a seepage boundary condition. Only the terrain, model base, and the two side boundaries can carry seepage BCs.'
+    };
+  }
+  if(bishop.tool === 'drain'){
+    return {
+      label:'Drain mode',
+      hint:'Click the drain start point, then click the end point. The new drain is selected so you can set its head.'
     };
   }
   return {
@@ -8348,7 +8623,8 @@ function stage6BishopSnapToleranceWorld(){
 function stage6BishopCurrentDragKey(){
   const drag = stage6BishopCanvasState.pointerDrag;
   if(!drag) return '';
-  return `${drag.kind}:${drag.regionId || ''}:${Number.isFinite(drag.index) ? drag.index : ''}`;
+  const index = drag.kind === 'drainVertex' ? drag.vertexIndex : drag.index;
+  return `${drag.kind}:${drag.regionId || ''}:${Number.isFinite(index) ? index : ''}`;
 }
 
 function stage6BishopSnapPointKey(kind, index, regionId){
@@ -8393,6 +8669,9 @@ function stage6BishopCollectSnapPoints(){
   (bishop.walls || []).forEach((wall, index)=>{
     pushPoint('wallTop', {x:wall.x, y:wall.yTop}, index);
     pushPoint('wallTip', {x:wall.x, y:wall.yTip}, index);
+  });
+  (bishop.drains || []).forEach((drain)=>{
+    (drain.vertices || []).forEach((pt, index)=>pushPoint('drainVertex', pt, index, drain.id));
   });
   (bishop.customRegions || []).forEach((region)=>{
     (region.polygon || []).forEach((pt, index)=>pushPoint('regionVertex', pt, index, region.id));
@@ -8456,6 +8735,12 @@ function stage6BishopCanvasWorldBounds(model){
       }
       if(Number.isFinite(wall?.yTop)) ys.push(wall.yTop);
       if(Number.isFinite(wall?.yTip)) ys.push(wall.yTip);
+    });
+    (bishop.drains || []).forEach((drain)=>{
+      (drain.vertices || []).forEach((point)=>{
+        if(Number.isFinite(point?.x)) xs.push(point.x);
+        if(Number.isFinite(point?.y)) ys.push(point.y);
+      });
     });
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
@@ -8524,6 +8809,11 @@ function stage6BishopNearestHandle(canvas, clientX, clientY){
       handles.push({kind:'wallTip', index, pt:{x:wall.x, y:wall.yTip}});
     }
   });
+  (bishop.drains || []).forEach((drain, drainIndex)=>{
+    (drain.vertices || []).forEach((pt, vertexIndex)=>{
+      handles.push({kind:'drainVertex', index:drainIndex, vertexIndex, regionId:drain.id, pt});
+    });
+  });
   if((bishop.customRegions || []).length){
     const selectedRegion = stage6BishopSelectedCustomRegion();
     (selectedRegion?.polygon || []).forEach((pt, index)=>{
@@ -8563,6 +8853,25 @@ function stage6BishopCommitDrawPoint(canvas, world){
     next.push(snapped);
     bishop.draft = next;
     bishop.draftKind = tool;
+    renderStage6();
+    return;
+  }
+  if(tool === 'drain'){
+    if(bishop.terrain.length < 2) return;
+    const snapped = stage6BishopSnapWorldPoint(world, 'free');
+    const next = [...bishop.draft];
+    if(next.length && stage6BishopDist(snapped, next[next.length - 1]) <= 1e-6) return;
+    if(bishop.draftKind !== 'drain' || !next.length){
+      bishop.draft = [snapped];
+      bishop.draftKind = 'drain';
+      bishop.progress.message = 'Drain start set. Click the end point to create the drain.';
+      renderStage6();
+      return;
+    }
+    if(stage6BishopCreateDrainFromVertices([next[0], snapped])){
+      bishop.draft = [];
+      bishop.draftKind = '';
+    }
     renderStage6();
     return;
   }
@@ -8673,14 +8982,17 @@ function stage6BishopCommitDrawPoint(canvas, world){
     } else {
       const top = bishop.draft[0];
       const tip = stage6BishopSnapWorldPoint(world, 'free');
+      const wallId = stage6BishopWallId();
       bishop.walls = [
         ...(bishop.walls || []),
         {
+          id:wallId,
           x:top.x,
           yTop:top.y,
           yTip:Math.min(tip.y, top.y - 0.05),
           passiveSide:stage6BishopDefaultPassiveSide(),
-          maxShearForce:null
+          maxShearForce:null,
+          material:stage6BishopDefaultWallMaterial((bishop.walls || []).length, wallId)
         }
       ];
       bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
@@ -8695,8 +9007,9 @@ function stage6BishopCommitDrawPoint(canvas, world){
 function stage6BishopCompleteCurrentActionAt(world){
   ensureStage6State();
   const bishop = S.stage6.bishop;
-  if(bishop.draftKind === 'terrain' || bishop.draftKind === 'phreatic' || bishop.draftKind === 'region' || bishop.draftKind === 'regionHole'){
+  if(bishop.draftKind === 'terrain' || bishop.draftKind === 'phreatic' || bishop.draftKind === 'drain' || bishop.draftKind === 'region' || bishop.draftKind === 'regionHole'){
     if((bishop.draft || []).length >= 2){
+      if(bishop.draftKind === 'drain' && bishop.draft.length < 2) return false;
       if((bishop.draftKind === 'region' || bishop.draftKind === 'regionHole') && bishop.draft.length < 3) return false;
       stage6BishopFinishDraft();
       return true;
@@ -8735,14 +9048,17 @@ function stage6BishopCompleteCurrentActionAt(world){
   if(bishop.draftKind === 'wall' && (bishop.draft || []).length === 1){
     const top = bishop.draft[0];
     const tip = stage6BishopSnapWorldPoint(world, 'free');
+    const wallId = stage6BishopWallId();
     bishop.walls = [
       ...(bishop.walls || []),
       {
+        id:wallId,
         x:top.x,
         yTop:top.y,
         yTip:Math.min(tip.y, top.y - 0.05),
         passiveSide:stage6BishopDefaultPassiveSide(),
-        maxShearForce:null
+        maxShearForce:null,
+        material:stage6BishopDefaultWallMaterial((bishop.walls || []).length, wallId)
       }
     ];
     bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
@@ -8785,6 +9101,7 @@ function stage6BishopPointerDown(event){
       stage6BishopCanvasState.pointerDrag = {
         kind:handle.kind,
         index:handle.index,
+        vertexIndex:handle.vertexIndex,
         regionId:handle.regionId,
         pointerId:event.pointerId
       };
@@ -8869,6 +9186,12 @@ function stage6BishopPointerMove(event){
       wall.yTip = Math.min(pt.y, wall.yTop - 0.05);
     }
     bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
+  } else if(drag.kind === 'drainVertex'){
+    const drain = bishop.drains?.[drag.index];
+    if(!drain || !Array.isArray(drain.vertices) || !drain.vertices[drag.vertexIndex]) return;
+    const pt = stage6BishopSnapWorldPoint(world, 'free');
+    drain.vertices[drag.vertexIndex] = {x:+pt.x.toFixed(6), y:+pt.y.toFixed(6)};
+    bishop.drains = stage6BishopNormalizeDrains(bishop.drains);
   } else if(drag.kind === 'regionVertex'){
     const region = (bishop.customRegions || []).find((item)=>item.id === drag.regionId);
     if(!region) return;
@@ -9543,13 +9866,33 @@ function stage6BishopDrawCanvas(){
   };
 
   if(bishop.phreatic?.length >= 2) drawPolyline(bishop.phreatic, '#2f7fda', 2, [8, 5]);
-  if(bishop.draft?.length) drawPolyline(bishop.draft, bishop.draftKind === 'phreatic' ? '#2f7fda' : '#2d3a4a', 2, [6, 4]);
+  if(bishop.seepage?.display?.showDrains !== false){
+    (bishop.drains || []).forEach((drain)=>{
+      const selected = drain.id && drain.id === bishop.selectedDrainId;
+      drawPolyline(drain.vertices || [], selected ? '#0b7285' : '#128a99', selected ? 3.5 : 2.5, []);
+    });
+  }
+  if(bishop.draft?.length){
+    const draftStroke = bishop.draftKind === 'phreatic'
+      ? '#2f7fda'
+      : bishop.draftKind === 'drain'
+        ? '#128a99'
+        : '#2d3a4a';
+    drawPolyline(bishop.draft, draftStroke, 2, [6, 4]);
+  }
   if(stage6BishopCanvasState.hoverWorld){
     if((bishop.tool === 'terrain' || bishop.tool === 'phreatic') && bishop.draft?.length){
       const last = bishop.draft[bishop.draft.length-1];
       const next = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
       if(next.x > last.x + 1e-6){
         drawPolyline([last, next], bishop.tool === 'phreatic' ? '#2f7fda' : '#2d3a4a', 1.5, [6, 4]);
+      }
+    }
+    if(bishop.tool === 'drain' && bishop.draftKind === 'drain' && bishop.draft?.length){
+      const last = bishop.draft[bishop.draft.length - 1];
+      const next = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
+      if(stage6BishopDist(last, next) > 1e-6){
+        drawPolyline([last, next], '#128a99', 1.5, [6, 4]);
       }
     }
     if((bishop.tool === 'entry' || bishop.tool === 'exit' || bishop.tool === 'load') && bishop.draftKind === bishop.tool && bishop.draft?.length === 1 && bishop.terrain.length >= 2){
@@ -9784,6 +10127,7 @@ function stage6BishopDrawCanvas(){
         {x:wall.x, y:wall.yTop},
         {x:wall.x, y:wall.yTip}
       ]),
+      ...(bishop.drains || []).flatMap((drain)=>drain.vertices || []),
       ...((bishop.customRegions?.length ? stage6BishopSelectedCustomRegion()?.polygon : []) || [])
     ];
     handleSets.forEach((pt)=>{
@@ -12214,22 +12558,40 @@ function renderStage6BishopApp(){
       <td><input type="number" step="1" min="0" value="${Number(mat.psiEffDeg ?? mat.psi ?? 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'psi', this.value)"></td>
     </tr>
   `).join('');
-  const wallRows = (bishop.walls || []).map((wall, index)=>`
-    <tr>
-      <td>${index + 1}</td>
-      <td><input type="number" step="0.05" value="${wall.x.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'x', this.value)"></td>
-      <td><input type="number" step="0.05" value="${wall.yTop.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'yTop', this.value)"></td>
-      <td><input type="number" step="0.05" value="${wall.yTip.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'yTip', this.value)"></td>
-      <td>
-        <select onchange="stage6BishopSetWallField(${index}, 'passiveSide', this.value)">
-          <option value="left"${wall.passiveSide==='left'?' selected':''}>Left</option>
-          <option value="right"${wall.passiveSide==='right'?' selected':''}>Right</option>
-        </select>
-      </td>
-      <td>${(wall.yTop - wall.yTip).toFixed(2)} m</td>
-      <td><button class="btn sm" onclick="stage6BishopDeleteWall(${index})">Delete</button></td>
-    </tr>
-  `).join('');
+  const wallRows = (bishop.walls || []).map((wall, index)=>{
+    const material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'legacy-impermeable'});
+    const preset = stage6BishopWallMaterialPresetKey(material);
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td><input type="number" step="0.05" value="${wall.x.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'x', this.value)"></td>
+        <td><input type="number" step="0.05" value="${wall.yTop.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'yTop', this.value)"></td>
+        <td><input type="number" step="0.05" value="${wall.yTip.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'yTip', this.value)"></td>
+        <td>
+          <select onchange="stage6BishopSetWallField(${index}, 'passiveSide', this.value)">
+            <option value="left"${wall.passiveSide==='left'?' selected':''}>Left</option>
+            <option value="right"${wall.passiveSide==='right'?' selected':''}>Right</option>
+          </select>
+        </td>
+        <td>
+          <select onchange="stage6BishopSetWallMaterialField(${index}, 'preset', this.value)">
+            <option value="sheetPile"${preset==='sheetPile'?' selected':''}>Sheet pile</option>
+            <option value="slurry"${preset==='slurry'?' selected':''}>Slurry wall</option>
+            <option value="diaphragm"${preset==='diaphragm'?' selected':''}>Diaphragm</option>
+            <option value="soilMix"${preset==='soilMix'?' selected':''}>Soil-mix</option>
+            <option value="relief"${preset==='relief'?' selected':''}>Relief</option>
+            <option value="legacy"${preset==='legacy'?' selected':''}>Legacy</option>
+            <option value="custom"${preset==='custom'?' selected':''} disabled>Custom</option>
+          </select>
+        </td>
+        <td><input type="number" step="1e-10" min="1e-20" value="${Number(material.kAcross).toExponential(2)}" onchange="stage6BishopSetWallMaterialField(${index}, 'kAcross', this.value)"></td>
+        <td><input type="number" step="1e-10" min="1e-20" value="${Number(material.kAlong).toExponential(2)}" onchange="stage6BishopSetWallMaterialField(${index}, 'kAlong', this.value)"></td>
+        <td><span class="st6-bishop-source-pill st6-bishop-source-pill--${stage6EscAttr(material.kSource || 'preset')}">${stage6EscAttr(wallMaterialSourceLabel(material.kSource))}</span></td>
+        <td>${(wall.yTop - wall.yTip).toFixed(2)} m</td>
+        <td><button class="btn sm" onclick="stage6BishopDeleteWall(${index})">Delete</button></td>
+      </tr>
+    `;
+  }).join('');
   const permeabilityRows = (bishop.materials || []).map((mat, index)=>`
     <tr>
       <td>${stage6EscAttr(mat.label)}</td>
@@ -12251,6 +12613,50 @@ function renderStage6BishopApp(){
       </tr>
     `;
   }).join('');
+  const drainValidation = seepage.drainValidation || {errors:[], warnings:[]};
+  const drainRows = (bishop.drains || []).map((drain, index)=>{
+    const headValue = drainHeadValueAt(drain, 0);
+    const length = drainTotalLength(drain);
+    return `
+      <tr class="${drain.id === bishop.selectedDrainId ? 'sel' : ''}">
+        <td><input type="text" value="${stage6EscAttr(drain.label || `Drain ${index + 1}`)}" onchange="stage6BishopSetDrainField(${index}, 'label', this.value)"></td>
+        <td>${(drain.vertices || []).length}</td>
+        <td><input type="number" step="0.05" value="${Number(headValue || 0).toFixed(2)}" onchange="stage6BishopSetDrainField(${index}, 'head', this.value)"></td>
+        <td>
+          <select onchange="stage6BishopSetDrainField(${index}, 'gating', this.value)">
+            <option value="always"${drain.gating==='always'?' selected':''}>Always</option>
+            <option value="when-saturated"${drain.gating==='when-saturated'?' selected':''}>When saturated</option>
+            <option value="head-cap"${drain.gating==='head-cap'?' selected':''}>Head cap</option>
+          </select>
+        </td>
+        <td>${Number(length || 0).toFixed(2)} m</td>
+        <td><button class="btn sm" onclick="stage6BishopSelectDrain('${stage6EscAttr(drain.id)}')">Select</button></td>
+        <td><button class="btn sm" onclick="stage6BishopDeleteDrain(${index})">Delete</button></td>
+      </tr>
+    `;
+  }).join('');
+  const drainResultRows = (seepage.result?.drains || []).map((drain)=>{
+    const nodeCount = drain.nodes?.length || 0;
+    const activeCount = (drain.nodes || []).filter((node)=>node?.isActive).length;
+    const inflow = Number(drain.totalInflow || 0);
+    const reactionInflow = (drain.nodes || []).reduce((sum, node)=>sum + Math.max(-(Number(node?.reaction) || 0), 0), 0);
+    return `
+      <tr>
+        <td>${stage6EscAttr(drain.label || drain.drainId || 'Drain')}</td>
+        <td>${stage6EscAttr(stage6BishopDrainGatingLabel(drain.gating))}</td>
+        <td>${inflow.toExponential(2)}</td>
+        <td>${reactionInflow.toExponential(2)}</td>
+        <td>${activeCount} / ${nodeCount}</td>
+      </tr>
+    `;
+  }).join('');
+  const seepageDrainInflow = Number(seepage.result?.solver?.boundaryFlux?.drainInflow || 0);
+  const seepageDrainOutflow = Number(seepage.result?.solver?.boundaryFlux?.drainOutflow || 0);
+  const seepageDrainNodeSummary = seepage.result?.solver?.activeSetSummary?.drains || null;
+  const drainValidationHtml = [
+    ...(drainValidation.errors || []).map((issue)=>({level:'warn', text:issue.message})),
+    ...(drainValidation.warnings || []).map((issue)=>({level:'info', text:issue.message}))
+  ];
   const regionLegendItems = stage6BishopRegionLegendItems({regions:stage6BishopDisplayRegions(model)});
   const workspaceGeometrySectionHtml = workspace === 'stability' ? `
               <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-analysis"${stage6DetailsOpen('bishop-geo-analysis')}>
@@ -12496,6 +12902,34 @@ function renderStage6BishopApp(){
                 ` : ''}
               </div>
             </details>
+            <details class="st6-adv" data-st6details="bishop-seepage-drains"${stage6DetailsOpen('bishop-seepage-drains')}>
+              <summary>Drains</summary>
+              <div class="st6-adv-body">
+                <div class="st6-help">Draw an interior drain as a line in the shared canvas. After the second click, set the constant drain head in the selected row below. Per-vertex and invert-plus head modes remain disabled for this v1 plumbing phase.</div>
+                <div class="st6-bishop-tools">
+                  <button class="btn sm ${bishop.tool==='drain'?'active':''}" onclick="stage6BishopSetTool('drain')" ${model ? '' : 'disabled'}>Draw drain line</button>
+                  <button class="btn sm" onclick="stage6BishopFinishDraft()" ${(bishop.draftKind==='drain' && bishop.draft.length >= 2) ? '' : 'disabled'}>Finish drain</button>
+                  <button class="btn sm" onclick="stage6BishopClear('drains')" ${(bishop.drains || []).length ? '' : 'disabled'}>Clear drains</button>
+                </div>
+                <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+                  Drains: <strong>${(bishop.drains || []).length}</strong><br>
+                  Validation: <strong>${stage6EscAttr(stage6BishopDrainValidationSummary(drainValidation))}</strong>
+                </div>
+                ${drainValidationHtml.length ? `
+                  <div style="display:grid;gap:6px">
+                    ${drainValidationHtml.map((issue)=>`
+                      <div class="info" style="background:${issue.level === 'warn' ? 'var(--wnl)' : 'var(--bg2)'};border-color:${issue.level === 'warn' ? 'var(--wn)' : 'var(--bd2)'};margin:0">${stage6EscAttr(issue.text)}</div>
+                    `).join('')}
+                  </div>
+                ` : ''}
+                <div style="overflow:auto">
+                  <table class="tbl st6-bishop-materials">
+                    <thead><tr><th>Label</th><th>Vertices</th><th>Head h</th><th>Gating</th><th>Length</th><th></th><th></th></tr></thead>
+                    <tbody>${drainRows || '<tr><td colspan="7" style="text-align:center;color:var(--tx2)">No drains yet. Use Draw drain line, then click a start and end point on the canvas.</td></tr>'}</tbody>
+                  </table>
+                </div>
+              </div>
+            </details>
             <details class="st6-adv" data-st6details="bishop-seepage-options"${stage6DetailsOpen('bishop-seepage-options')}>
               <summary>Mesh & solve</summary>
               <div class="st6-adv-body">
@@ -12531,6 +12965,8 @@ function renderStage6BishopApp(){
                   Rendered triangles: <strong>${seepage.mesh?.cells?.length || 0}</strong><br>
                   Head range: <strong>${seepage.result ? `${seepage.result.headMin.toFixed(2)} to ${seepage.result.headMax.toFixed(2)} m` : '—'}</strong><br>
                   Through-flow: <strong>${seepage.result ? `${(seepage.result.throughFlow || 0).toExponential(2)} m³/s/m` : '—'}</strong><br>
+                  Drain inflow: <strong>${seepage.result ? `${seepageDrainInflow.toExponential(2)} m³/s/m` : '—'}</strong><br>
+                  Drain outflow: <strong>${seepage.result ? `${seepageDrainOutflow.toExponential(2)} m³/s/m` : '—'}</strong><br>
                   Flow-rate error target: <strong>${seepageUsesIterativeFreeSurface ? `${(100 * Math.max(Number(seepage.options?.flowErrorTolerance) || 0.01, 0.000001)).toFixed(3)} %` : 'n/a'}</strong><br>
                   Runtime cap: <strong>${seepageUsesIterativeFreeSurface ? stage6SecondsLabelFromMs(Math.max(Number(seepage.options?.maxRuntimeMs) || 10000, 1)) : 'n/a'}</strong><br>
                   Total runtime: <strong>${stage6SecondsLabelFromMs(seepage.result?.timing?.totalMs)}</strong><br>
@@ -12895,6 +13331,10 @@ function renderStage6BishopApp(){
                           Show phreatic line
                         </label>
                         <label class="st6-bishop-check">
+                          <input type="checkbox" ${bishop.seepage?.display?.showDrains !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showDrains', this.checked)">
+                          Show drains
+                        </label>
+                        <label class="st6-bishop-check">
                           <input type="checkbox" ${bishop.seepage?.display?.showFlowVectors ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showFlowVectors', this.checked)">
                           Show flow lines
                         </label>
@@ -13089,6 +13529,8 @@ function renderStage6BishopApp(){
                   <tr><td>Triangles</td><td>${seepage.mesh?.elements?.length || 0}</td></tr>
                   <tr><td>Head range</td><td>${seepage.result ? `${seepage.result.headMin.toFixed(2)} to ${seepage.result.headMax.toFixed(2)} m` : '—'}</td></tr>
                   <tr><td>Through-flow</td><td>${seepage.result ? `${(seepage.result.throughFlow || 0).toExponential(2)} m³/s/m` : '—'}</td></tr>
+                  <tr><td>Drain inflow</td><td>${seepage.result ? `${seepageDrainInflow.toExponential(2)} m³/s/m` : '—'}</td></tr>
+                  <tr><td>Drain outflow</td><td>${seepage.result ? `${seepageDrainOutflow.toExponential(2)} m³/s/m` : '—'}</td></tr>
                   <tr><td>Flow-rate error</td><td>${stage6SeepageFlowErrorLabel(seepage.result)}</td></tr>
                   <tr><td>Termination</td><td>${stage6EscAttr(stage6BishopSeepageTerminationLabel(seepage.result?.solver?.terminationReason))}</td></tr>
                   <tr><td>Max exit gradient</td><td>${seepage.result ? (seepage.result.maxExitGradient || 0).toFixed(3) : '—'}</td></tr>
@@ -13108,7 +13550,16 @@ function renderStage6BishopApp(){
                   <tr><td>Seepage face</td><td>${seepageActiveBcs.filter((bc)=>bc.type === 'seepage-face').length}</td></tr>
                   <tr><td>No-flow</td><td>${seepageActiveBcs.filter((bc)=>bc.type === 'no-flow').length}</td></tr>
                   <tr><td>Orphaned BCs</td><td>${seepageOrphanedBcs.length}</td></tr>
+                  <tr><td>Drain nodes active</td><td>${seepageDrainNodeSummary ? `${seepageDrainNodeSummary.activeNodes || 0} / ${seepageDrainNodeSummary.totalNodes || 0}` : '—'}</td></tr>
+                  <tr><td>Drain edge check</td><td>${Number.isFinite(Number(seepageDrainNodeSummary?.perEdgeReactionDelta)) ? Number(seepageDrainNodeSummary.perEdgeReactionDelta).toExponential(2) : '—'}</td></tr>
                 </table>
+                <div class="mc2-sec">Drain discharge</div>
+                <div style="max-height:160px;overflow:auto;margin-bottom:12px">
+                  <table class="tbl st6-bishop-results">
+                    <thead><tr><th>Drain</th><th>Gating</th><th>Inflow</th><th>Reaction</th><th>Active nodes</th></tr></thead>
+                    <tbody>${drainResultRows || '<tr><td colspan="5" style="text-align:center;color:var(--tx2)">No solved drain discharge.</td></tr>'}</tbody>
+                  </table>
+                </div>
                 <div class="mc2-sec">Assigned BCs</div>
                 <div style="max-height:240px;overflow:auto">
                   <table class="tbl st6-bishop-results">
@@ -13291,6 +13742,7 @@ function renderStage6BishopApp(){
                       <div class="st6-bishop-tools">
                         <button class="btn sm ${bishop.tool==='cpt'?'active':''}" onclick="stage6BishopSetTool('cpt')">Place CPT</button>
                         <button class="btn sm ${bishop.tool==='phreatic'?'active':''}" onclick="stage6BishopSetTool('phreatic')">Phreatic line</button>
+                        <button class="btn sm ${bishop.tool==='drain'?'active':''}" onclick="stage6BishopSetTool('drain')">Drain</button>
                         <button class="btn sm ${bishop.tool==='wall'?'active':''}" onclick="stage6BishopSetTool('wall')">Retaining wall</button>
                         <button class="btn sm ${bishop.tool==='entry'?'active':''}" onclick="stage6BishopSetTool('entry')">Entry zone</button>
                         <button class="btn sm ${bishop.tool==='exit'?'active':''}" onclick="stage6BishopSetTool('exit')">Exit zone</button>
@@ -13321,6 +13773,7 @@ function renderStage6BishopApp(){
                     <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
                     <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
                     <button class="btn sm" onclick="stage6BishopClear('walls')">Clear walls</button>
+                    <button class="btn sm" onclick="stage6BishopClear('drains')">Clear drains</button>
                     <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
                     <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
                     <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
@@ -13334,11 +13787,11 @@ function renderStage6BishopApp(){
             <details class="st6-adv" data-st6details="bishop-walls"${stage6DetailsOpen('bishop-walls')}>
               <summary>Retaining walls</summary>
               <div class="st6-adv-body">
-                <div class="st6-help">Walls are treated as infinitely stiff vertical elements. When a slip circle intersects a wall, the solver adds the wall's passive resistance as a stabilising moment in Bishop and as a horizontal push in Spencer. If a circle passes below the wall tip, the wall has no effect on that surface.</div>
+                <div class="st6-help">Walls are treated as infinitely stiff vertical elements for stability. In seepage they are thin vertical regions with user-set across-wall and along-wall conductivity; dry wall elements get the same dry-factor reduction as soil.</div>
                 <div style="overflow:auto">
                   <table class="tbl st6-bishop-materials">
-                    <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Length</th><th></th></tr></thead>
-                    <tbody>${wallRows || '<tr><td colspan="7" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
+                    <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Seepage preset</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
+                    <tbody>${wallRows || '<tr><td colspan="11" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
                   </table>
                 </div>
               </div>
@@ -14322,6 +14775,7 @@ function stage7SeepagePayload(){
         maxRuntimeMs:Math.max(+seepage.options?.maxRuntimeMs || 10000, 1),
         meshTargetArea:stage6BishopResolvedSeepageMeshTargetArea(bishop),
         meshTargetAreaAuto:seepage.options?.meshTargetAreaAuto !== false,
+        drains:safeClone(seepage.options?.drains || {gatingTolerances:{}, reportPerSegmentInflow:true}),
         useFemPorePressure:!!bishop.useFemPorePressure
       }),
       summary:{
@@ -14333,7 +14787,10 @@ function stage7SeepagePayload(){
         orphanedBcCount:orphanedBcs.length,
         prescribedHeadCount,
         seepageFaceCount,
-        noFlowCount
+        noFlowCount,
+        drainCount:bishop.drains?.length || 0,
+        activeDrainNodeCount:seepage.result?.solver?.activeSetSummary?.drains?.activeNodes || 0,
+        totalDrainNodeCount:seepage.result?.solver?.activeSetSummary?.drains?.totalNodes || 0
       },
       geometry:safeClone({
         regionMode:model?.regionMode || (bishop.useCustomRegions ? 'custom' : 'auto'),
@@ -14342,8 +14799,50 @@ function stage7SeepagePayload(){
         customRegionCount:model?.customRegions?.length || (bishop.customRegions?.length || 0),
         terrainVertexCount:bishop.terrain?.length || 0,
         phreaticVertexCount:bishop.phreatic?.length || 0,
+        drainCount:bishop.drains?.length || 0,
         wallCount:bishop.walls?.length || 0,
         boundaryEdgeCount:boundary.length
+      }),
+      walls:(bishop.walls || []).map((wall, index)=>{
+        const material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'legacy-impermeable'});
+        return safeClone({
+          id:wall.id || `wall-${index + 1}`,
+          label:`Wall ${index + 1}`,
+          x:Number.isFinite(+wall.x) ? +wall.x : null,
+          yTop:Number.isFinite(+wall.yTop) ? +wall.yTop : null,
+          yTip:Number.isFinite(+wall.yTip) ? +wall.yTip : null,
+          passiveSide:wall.passiveSide === 'left' ? 'left' : 'right',
+          material:{
+            id:material.id,
+            label:material.label,
+            kAcross:material.kAcross,
+            kAlong:material.kAlong,
+            kSource:material.kSource,
+            kSourceLabel:wallMaterialSourceLabel(material.kSource)
+          }
+        });
+      }),
+      drains:(bishop.drains || []).map((drain, index)=>{
+        const drainId = drain.id || `drain-${index + 1}`;
+        const resultDrain = (seepage.result?.drains || []).find((item)=>item?.drainId === drainId) || null;
+        const activeNodes = resultDrain?.nodes?.filter((node)=>node?.isActive).length || 0;
+        return safeClone({
+          id:drainId,
+          label:drain.label || `Drain ${index + 1}`,
+          vertices:drain.vertices || [],
+          vertexCount:drain.vertices?.length || 0,
+          closed:!!drain.closed,
+          length:drainTotalLength(drain),
+          head:safeClone(drain.head || {kind:'constant', value:0}),
+          gating:drain.gating || 'when-saturated',
+          gatingLabel:stage6BishopDrainGatingLabel(drain.gating),
+          result:resultDrain ? {
+            totalInflow:resultDrain.totalInflow,
+            activeNodes,
+            totalNodes:resultDrain.nodes?.length || 0,
+            perSegmentInflow:resultDrain.perSegmentInflow || []
+          } : null
+        });
       }),
       materials:(bishop.materials || []).map((mat)=>safeClone({
         id:mat.id || '',
@@ -14374,6 +14873,7 @@ function stage7SeepagePayload(){
         elements:seepage.mesh.elements?.length || 0,
         cells:seepage.mesh.cells?.length || 0,
         boundaryFaces:seepage.mesh.boundaryFaces?.length || 0,
+        drainEdges:[...(seepage.mesh.drainEdgesByDrain?.values?.() || [])].reduce((sum, edges)=>sum + (edges?.length || 0), 0),
         generatedMs:Number.isFinite(+seepage.mesh.generatedMs) ? +seepage.mesh.generatedMs : null
       }) : null,
       result:seepage.result ? safeClone({
@@ -14387,6 +14887,7 @@ function stage7SeepagePayload(){
         dryCellCount:seepage.result.dryCellCount,
         equipotentialLevelCount:seepage.result.equipotentialSegments?.length || 0,
         phreaticSegmentCount:seepage.result.phreaticSegments?.length || 0,
+        drains:safeClone(seepage.result.drains || []),
         solver:safeClone(seepage.result.solver || null),
         timing:safeClone(seepage.result.timing || null)
       }) : null
@@ -15009,7 +15510,11 @@ const legacyApi={
   stage6BishopSetMaterialPermeability,
   stage6BishopResetMaterialPermeability,
   stage6BishopSetWallField,
+  stage6BishopSetWallMaterialField,
   stage6BishopDeleteWall,
+  stage6BishopSelectDrain,
+  stage6BishopSetDrainField,
+  stage6BishopDeleteDrain,
   stage6BishopSelectSeepageBoundary,
   stage6BishopSetSeepageBcType,
   stage6BishopSetSeepageBcHead,

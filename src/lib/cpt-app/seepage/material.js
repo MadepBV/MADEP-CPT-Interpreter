@@ -1,8 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 
+export const WALL_DEFAULT_K = 1e-10;
+export const WALL_DEFAULT_GAMMA = 20;
+export const WALL_DEFAULT_GAMMA_SAT = 20;
+
+const WALL_MATERIAL_SOURCES = new Set(['user', 'preset', 'legacy-impermeable']);
+
 function soilText(layer) {
   return `${String(layer?.type || '')} ${String(layer?.subtype || '')}`.toLowerCase();
+}
+
+function positiveNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
 function estimateDefaultKh(layer) {
@@ -78,4 +89,30 @@ export function seepageSourceLabel(value) {
   if (value === 'user') return 'user';
   if (value === 'cpt') return 'CPT';
   return 'SBTn default';
+}
+
+export function wallMaterialSourceLabel(value) {
+  if (value === 'legacy-impermeable') return 'legacy impermeable';
+  if (value === 'preset') return 'preset';
+  if (value === 'user') return 'user';
+  return 'preset';
+}
+
+export function normalizeWallMaterial(material, index = 0, wallId = '', options = {}) {
+  const hasMaterial = material && typeof material === 'object';
+  const sourceFallback = options.sourceFallback || (hasMaterial ? 'user' : 'legacy-impermeable');
+  const source = WALL_MATERIAL_SOURCES.has(material?.kSource) ? material.kSource : sourceFallback;
+  const suffix = wallId || `${index + 1}`;
+  const defaultLabel = source === 'legacy-impermeable' ? 'Legacy impermeable' : 'Wall material';
+  const kAcross = positiveNumber(material?.kAcross ?? material?.kx) ?? WALL_DEFAULT_K;
+  const kAlong = positiveNumber(material?.kAlong ?? material?.ky) ?? WALL_DEFAULT_K;
+  return {
+    id: material?.id || (source === 'legacy-impermeable' ? `wall-legacy-${suffix}` : `wall-material-${suffix}`),
+    label: material?.label || defaultLabel,
+    kAcross,
+    kAlong,
+    gamma: positiveNumber(material?.gamma) ?? WALL_DEFAULT_GAMMA,
+    gammaSat: positiveNumber(material?.gammaSat) ?? WALL_DEFAULT_GAMMA_SAT,
+    kSource: source
+  };
 }
