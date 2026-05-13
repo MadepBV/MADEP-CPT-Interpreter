@@ -625,7 +625,8 @@ inline AssembleOutput assemble_global(
     bool wantTangent,
     CsrMatrix& K,
     std::vector<double>& internalForceFree,
-    std::vector<double>& residualFree) {
+    std::vector<double>& residualFree,
+    bool useElasticGlobalizationTangent = false) {
   const std::int32_t nfree = K.nrows;
   internalForceFree.assign(static_cast<std::size_t>(nfree), 0.0);
   if (wantTangent) K.clear_values();
@@ -704,7 +705,11 @@ inline AssembleOutput assemble_global(
       stress2D[g][0] = resp.stress[V_XX] - referenceStress[V_XX];
       stress2D[g][1] = resp.stress[V_YY] - referenceStress[V_YY];
       stress2D[g][2] = resp.stress[V_XY] - referenceStress[V_XY];
-      D2D[g] = linalg::tangent2D_from_6x6(resp.tangent);
+      const Mat6& tangentForStiffness =
+          (useElasticGlobalizationTangent && kind == ConstitutiveKind::McPlastic)
+              ? C
+              : resp.tangent;
+      D2D[g] = linalg::tangent2D_from_6x6(tangentForStiffness);
     }
 
     if (elementActive) out.plasticActiveCount += 1;
@@ -841,6 +846,10 @@ inline PhaseResult run_nonlinear_phase(
   // unsymmetric → GMRES dispatch when at least one GP yields.
   const bool mayNeedUnsymmetricSolver =
       ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize;
+  const bool canUseRobustElasticFallback =
+      opts.robustNonlinearMode != 0 &&
+      ctx.kind == ConstitutiveKind::McPlastic &&
+      (ctx.phaseKind == PhaseKind::ServiceLoad || ctx.phaseKind == PhaseKind::SafetyCphi);
 
   const double phaseMinLoadStep = opts.minLoadStep;
   const std::int32_t phaseMaxLoadSteps = opts.maxLoadSteps;
@@ -1103,16 +1112,183 @@ inline PhaseResult run_nonlinear_phase(
 	            stepConverged = true;
 	            break;
 	          }
-	          U = uBackup;
-	          trialMp = committedMp;
-	          break;
-	        }
-	        U = bestU;
-	        trialMp = bestTrialMp;
-	        lastAcceptedScale = bestScale;
-	        lineSearchStepScale = bestScale;
-	        for (std::int32_t i = 0; i < nfree; ++i) {
-	          lastCorrection[i] = bestScale * deltaUFree[i];
+          bool robustFallbackAccepted = false;
+          bool robustFallbackConverged = false;
+          if (canUseRobustElasticFallback && (a.plasticActiveCount > 0 || a.tensionCount > 0)) {
+            // Robust-mode rescue only: keep the exact plastic stress update,
+            // but replace the global tangent with the elastic tangent to get
+            // a safer direction through a stalled active-set transition.
+            U = uBackup;
+            trialMp = assembledTrialMp;
+            AssembleOutput fallbackA = assemble_global(
+                elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+                freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+                targetLambda, ctx.kind, ctx.symmetrize,
+                ctx.incrementalStress,
+                /*wantTangent=*/true,
+                K, internalForceFree, residualFree,
+                /*useElasticGlobalizationTangent=*/true);
+            res.maxEta = std::max(res.maxEta, fallbackA.maxEta);
+            stepPeakActiveCount = std::max(stepPeakActiveCount, fallbackA.plasticActiveCount);
+
+            std::vector<double> fallbackDeltaUFree(static_cast<std::size_t>(nfree), 0.0);
+            sparse::build_block_jacobi(K, freeDofs, diag_inv);
+            cg::LinearSolveResult fallbackLr = cg::solve_cg(
+                K, diag_inv, freeDofs,
+                residualFree.data(), fallbackDeltaUFree.data(),
+                opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
+            res.cgIterations += fallbackLr.iterations;
+
+            double fallbackLinearRhsNorm = 0.0;
+            for (double v : residualFree) fallbackLinearRhsNorm += v * v;
+            fallbackLinearRhsNorm = std::sqrt(fallbackLinearRhsNorm);
+            const double fallbackRelativeResidualForForcing = fallbackA.rhsNorm > 1e-30
+                ? fallbackA.residualNorm / fallbackA.rhsNorm
+                : fallbackA.residualNorm;
+            const double fallbackInexactNewtonForcing =
+                std::max(0.05,
+                         std::min(0.4,
+                                  std::sqrt(std::max(fallbackRelativeResidualForForcing, 0.0))));
+            const double fallbackAcceptableLinearizedResidual =
+                std::max({opts.cgAbsTol,
+                          0.25 * std::max(opts.residualAbsTol, 1e-3),
+                          fallbackInexactNewtonForcing * fallbackLinearRhsNorm});
+
+            if (fallbackLr.converged ||
+                fallbackLr.residualNorm <= fallbackAcceptableLinearizedResidual) {
+              const double fallbackCurrentResidualNorm = fallbackA.residualNorm;
+              const double fallbackCurrentMerit = evaluate_residual_merit(fallbackCurrentResidualNorm);
+              const double fallbackLinearizedResidualNorm = std::max(fallbackLr.residualNorm, 0.0);
+              const double fallbackDd = approximate_newton_merit_dd(
+                  fallbackCurrentResidualNorm, fallbackLinearizedResidualNorm);
+              const double fallbackArmijoC1 = std::max(kLineSearchArmijoC1, 1e-3);
+              constexpr double kFallbackMinResidualRatio = 0.90;
+
+              double fallbackStepScale = 1.0;
+              double fallbackBestScale = 1.0;
+              double fallbackBestMerit = std::numeric_limits<double>::infinity();
+              double fallbackBestResidual = std::numeric_limits<double>::infinity();
+              double fallbackBestRhsNorm = fallbackA.rhsNorm;
+              std::int32_t fallbackBestChangedCount = fallbackA.changedCount;
+              std::vector<double> fallbackBestU = U;
+              std::vector<MaterialPoint> fallbackBestTrialMp = trialMp;
+              bool fallbackBestAccepted = false;
+
+              for (int bt = 0; bt < kLineSearchMaxBacktracks; ++bt) {
+                U = uBackup;
+                trialMp = committedMp;
+                for (std::int32_t i = 0; i < nfree; ++i) {
+                  U[freeDofs[i]] += fallbackStepScale * fallbackDeltaUFree[i];
+                }
+                AssembleOutput fallbackProbe = assemble_global(
+                    elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+                    freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+                    targetLambda, ctx.kind, ctx.symmetrize,
+                    ctx.incrementalStress,
+                    /*wantTangent=*/false,
+                    K, internalForceFree, residualFree);
+                const double candidateResidualNorm = fallbackProbe.residualNorm;
+                const double candidateMerit = evaluate_residual_merit(candidateResidualNorm);
+                stepPeakActiveCount = std::max(stepPeakActiveCount, fallbackProbe.plasticActiveCount);
+                const double armijoTarget =
+                    fallbackCurrentMerit + fallbackArmijoC1 * fallbackStepScale * std::min(fallbackDd, 0.0);
+                const bool residualImprovementAccepted =
+                    candidateResidualNorm <= kFallbackMinResidualRatio * std::max(fallbackCurrentResidualNorm, 0.0) ||
+                    fallbackStepScale <= kLineSearchMinStepScale + 1e-12;
+                const bool candidateAccepted =
+                    candidateMerit <= std::max(armijoTarget, 0.0) && residualImprovementAccepted;
+                const double improveTol = std::max(1e-16, 1e-12 * std::max(fallbackBestMerit, 1.0));
+                const double tieTol = std::max(
+                    1e-16, 1e-12 * std::max({candidateMerit, fallbackBestMerit, 1.0}));
+                if (candidateMerit < fallbackBestMerit - improveTol ||
+                    (std::abs(candidateMerit - fallbackBestMerit) <= tieTol &&
+                     candidateResidualNorm < fallbackBestResidual)) {
+                  fallbackBestMerit = candidateMerit;
+                  fallbackBestResidual = candidateResidualNorm;
+                  fallbackBestRhsNorm = fallbackProbe.rhsNorm;
+                  fallbackBestChangedCount = fallbackProbe.changedCount;
+                  fallbackBestScale = fallbackStepScale;
+                  fallbackBestU = U;
+                  fallbackBestTrialMp = trialMp;
+                  fallbackBestAccepted = candidateAccepted;
+                }
+                if (candidateAccepted) break;
+                if (fallbackStepScale <= kLineSearchMinStepScale + 1e-12) break;
+                fallbackStepScale = std::max(
+                    fallbackStepScale * kLineSearchReductionFactor,
+                    kLineSearchMinStepScale);
+              }
+
+              double fallbackCorrectionNorm = 0.0;
+              for (std::int32_t i = 0; i < nfree; ++i) {
+                const double v = fallbackBestScale * fallbackDeltaUFree[i];
+                fallbackCorrectionNorm += v * v;
+              }
+              fallbackCorrectionNorm = std::sqrt(fallbackCorrectionNorm);
+              double fallbackSolutionNorm = 0.0;
+              for (std::int32_t i = 0; i < nfree; ++i) {
+                const double v = fallbackBestU[freeDofs[i]];
+                fallbackSolutionNorm += v * v;
+              }
+              fallbackSolutionNorm = std::sqrt(fallbackSolutionNorm);
+              const double fallbackResidualTarget = std::max(
+                  opts.residualAbsTol, opts.residualRelTol * std::max(fallbackBestRhsNorm, 0.0));
+              const double fallbackDisplacementTarget = std::max(
+                  opts.displacementAbsTol, opts.displacementRelTol * std::max(fallbackSolutionNorm, 0.0));
+              const bool fallbackStalledCandidateAcceptable =
+                  fallbackBestResidual <= fallbackResidualTarget &&
+                  (!requiresDisplacementTolerance || fallbackCorrectionNorm <= fallbackDisplacementTarget);
+              const double fallbackVsConsistentTol =
+                  std::max(1e-16, 1e-12 * std::max(bestMerit, 1.0));
+              const bool fallbackImprovesConsistentBest =
+                  !std::isfinite(bestMerit) ||
+                  fallbackBestMerit < bestMerit - fallbackVsConsistentTol;
+              const bool fallbackMateriallyReducesResidual =
+                  !std::isfinite(bestResidual) ||
+                  fallbackBestResidual <= 0.75 * std::max(bestResidual, 0.0);
+
+              if ((fallbackBestAccepted &&
+                   fallbackImprovesConsistentBest &&
+                   fallbackMateriallyReducesResidual) ||
+                  (fallbackStalledCandidateAcceptable &&
+                   (!requiresStableActiveSet || fallbackBestChangedCount == 0))) {
+                U = fallbackBestU;
+                trialMp = fallbackBestTrialMp;
+                lastAcceptedScale = fallbackBestScale;
+                lineSearchStepScale = fallbackBestScale;
+                stepLineSearchAccepted = fallbackBestAccepted;
+                stepLineSearchAcceptedScale = fallbackBestAccepted ? fallbackBestScale : 0.0;
+                stepSuggestedCutbackFactor = fallbackBestScale;
+                for (std::int32_t i = 0; i < nfree; ++i) {
+                  lastCorrection[i] = fallbackBestScale * fallbackDeltaUFree[i];
+                  iterationLinearGuess[i] = fallbackDeltaUFree[i];
+                }
+                hasIterationLinearGuess = shouldWarmStartLinearSolve;
+                robustFallbackAccepted =
+                    fallbackBestAccepted &&
+                    fallbackImprovesConsistentBest &&
+                    fallbackMateriallyReducesResidual;
+                robustFallbackConverged = !robustFallbackAccepted;
+              }
+            }
+          }
+          if (robustFallbackConverged) {
+            stepConverged = true;
+            break;
+          }
+          if (!robustFallbackAccepted) {
+            U = uBackup;
+            trialMp = committedMp;
+            break;
+          }
+	        } else {
+	          U = bestU;
+	          trialMp = bestTrialMp;
+	          lastAcceptedScale = bestScale;
+	          lineSearchStepScale = bestScale;
+	          for (std::int32_t i = 0; i < nfree; ++i) {
+	            lastCorrection[i] = bestScale * deltaUFree[i];
+	          }
 	        }
 	      } else {
 	        for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += deltaUFree[i];

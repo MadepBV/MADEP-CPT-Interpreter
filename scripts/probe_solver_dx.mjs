@@ -24,7 +24,7 @@ async function loadWasmModule() {
   return factory({ wasmBinary });
 }
 
-function buildModel() {
+function buildModel(surfacePressure = 80) {
   return {
     terrain: { vertices: [{ x: 0, y: 10 }, { x: 20, y: 10 }] },
     phreatic: { vertices: [{ x: 0, y: 8.5 }, { x: 20, y: 8.5 }] },
@@ -43,25 +43,32 @@ function buildModel() {
           gamma: 20, gammaSat: 21, K0nc: 1 - Math.sin(36 * Math.PI / 180), sigmaTAllow: 0 } }
     ],
     analysisLeftX: 0, analysisRightX: 20, analysisBottomY: 0, analysisTopY: 10,
-    walls: [], surfaceLoad: { xStart: 8, xEnd: 12, q: 80 }, seepage: null
+    walls: [], surfaceLoad: { xStart: 8, xEnd: 12, q: surfacePressure }, seepage: null
   };
 }
 
 async function main() {
   __setDeformationWasmModuleForTests(await loadWasmModule());
   const { analyzeDeformationModel } = await import('../src/lib/cpt-app/deformation/solver.js');
+  const wasmRobustNonlinearMode = process.env.WASM_ROBUST === '1';
+  const surfacePressure = Number.isFinite(Number(process.env.PROBE_Q))
+    ? Number(process.env.PROBE_Q)
+    : 80;
   const input = {
-    model: buildModel(),
+    model: buildModel(surfacePressure),
     options: {
       analysisType: 'deformation', meshElementType: 't3', meshTargetArea: 0.5,
       loadMode: 'pressure', constitutiveModel: 'mc-plastic', outOfPlaneLength: 10,
       useSeepagePorePressures: false, initialStressMode: 'plastic-geostatic',
       residualRelTol: 1e-4, residualAbsTol: 1e-3, nonlinearMaxIterations: 32,
       initialLoadStep: 0.25, minLoadStep: 1 / 2048, maxLoadSteps: 256,
-      useUnsymmetricPlasticSolver: false, useWasmCpuPipeline: true, useNewGpuPipeline: false
+      useUnsymmetricPlasticSolver: false, useWasmCpuPipeline: true, useNewGpuPipeline: false,
+      wasmRobustNonlinearMode
     }
   };
   const r = await analyzeDeformationModel(input);
+  console.log('surfacePressure:', surfacePressure);
+  console.log('wasmRobustNonlinearMode:', wasmRobustNonlinearMode);
   console.log('CONVERGED:', r?.solver?.converged);
   console.log('loadFactorCommitted:', r?.solver?.loadFactorCommitted);
   console.log('accepted/rejected steps:', r?.solver?.acceptedLoadSteps, '/', r?.solver?.rejectedLoadSteps);
