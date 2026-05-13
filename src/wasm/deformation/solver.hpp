@@ -1012,6 +1012,10 @@ inline bool arc_length_predictor_direction_allowed(
   return predictor.converged && (descentAllowed || predictor.deltaLambda > 0.0);
 }
 
+inline int arc_length_line_search_max_backtracks(const SolverOptions& opts) {
+  return std::max(opts.arcLengthLineSearchMaxBacktracks, 1);
+}
+
 inline ArcLengthPredictor make_load_control_arc_length_predictor(
     const CsrMatrix& K,
     const std::vector<std::int32_t>& freeDofs,
@@ -1658,7 +1662,8 @@ inline PhaseResult run_safety_arc_length_phase(
         AssembleOutput bestAssembly;
 
         double eta = 1.0;
-        constexpr int kArcLengthLineSearchMaxBacktracks = 6;
+        const int kArcLengthLineSearchMaxBacktracks =
+            arc_length_line_search_max_backtracks(opts);
         for (int bt = 0; bt < kArcLengthLineSearchMaxBacktracks; ++bt) {
           lineSearchCandidateDeltaU.assign(stepDeltaUFree.begin(), stepDeltaUFree.end());
           for (std::int32_t i = 0; i < nfree; ++i) {
