@@ -131,14 +131,68 @@ Finalization must classify the safety result into one of these states:
 | --- | --- | --- |
 | `bracketed-failure` | Stable lower bound and failed upper bound are within tolerance. | lower bound |
 | `mechanism-developed` | A stable lower bound has developed a coherent mechanism and the safety curve has stabilized. | lower bound |
-| `no-failure-found` | The search reached `SigmaMsfMax` without an upper failure. | `> lower bound` |
+| `no-failure-found` | The search reached `SigmaMsfMax` without an upper failure. | lower bound, marked open-ended |
 | `numerical-nonconvergence` | Solver stopped, but mechanism evidence is insufficient. | lower bound with warning, not physical failure |
 | `insufficient-mechanism` | Plasticity exists but is scattered or not kinematically meaningful. | lower bound with warning |
 | `needs-more-steps` | Trial budget, bracket tolerance, or step floor stopped the search before classification. | lower bound with warning |
 
+Numeric result contract:
+
+- `factorOfSafety` is always a number.
+- `factorOfSafetyLower` is always the conservative lower-bound number.
+- `factorOfSafetyUpper` is a number only when a finite upper bound exists.
+- `factorOfSafetyIsOpenEnded` is `true` when the UI/report must display the
+  value as `FoS > factorOfSafetyLower`.
+- For `no-failure-found`:
+
+```text
+factorOfSafety              = factorOfSafetyLower
+factorOfSafetyUpper         = null
+factorOfSafetyIsOpenEnded   = true
+```
+
+No consumer may infer open-ended safety from a formatted string. It must use the
+boolean field.
+
 Do not call soil-body failure solely because Newton failed. Non-convergence is
 evidence only when it occurs near a stable bracket or together with a coherent,
 growing mechanism.
+
+## Canonical Status Contract
+
+The current code has several status layers: fixed-width WASM wire codes, decoded
+labels, result-builder labels, mechanism-summary labels, and legacy UI text. The
+production feature must make these mappings explicit before implementation.
+
+Reserve `WIRE_VERSION = 7` for the safety-curve and production-finalization
+contract. `WIRE_VERSION = 6` remains the current legacy contract.
+
+Proposed `WIRE_VERSION = 7` mapping:
+
+| Wire u8 | Wire label | Finalization status | Mechanism status | Legacy/UI compatibility label |
+| --- | --- | --- | --- | --- |
+| 0 | `not-run` | `not-run` | `none` | `not-applicable` |
+| 1 | `bracketed` | `bracketed-failure` | `coherent` or `candidate` | `bracketed` |
+| 2 | `mechanism` | `mechanism-developed` | `coherent` | `mechanism-developed` |
+| 3 | `no-failure-found` | `no-failure-found` | `none` or `scattered` | `no-failure-found` |
+| 4 | `numerical-limit` | `numerical-nonconvergence` | `scattered` or `candidate` | `numerical-nonconvergence` |
+| 5 | `insufficient-mechanism` | `insufficient-mechanism` | `scattered` | `insufficient-mechanism` |
+| 6 | `needs-more-steps` | `needs-more-steps` | `candidate` or `scattered` | `needs-more-steps` |
+
+Rules:
+
+- Result builders expose `finalization.status`, not the raw wire label, to the
+  UI.
+- Mechanism status describes only spatial mechanism quality. It must never be
+  used as the safety finalization status.
+- Existing `WIRE_VERSION = 6` code `2` decodes as wire label `mechanism` and is
+  converted by the result builder to `mechanism-developed`.
+- Do not branch UI text directly on raw wire codes.
+- Before shipping this feature, audit every exact safety-status comparison in:
+  - `src/lib/cpt-app/legacy-controller.js`
+  - `src/lib/cpt-app/routes/+page.svelte`, if it exists in the active app
+  - `src/lib/cpt-app/deformation/wasm/build-result.js`
+  - any report/export builder that reads `safetyStatus`
 
 ## Safety Curve
 
@@ -310,7 +364,8 @@ mechanismScore
 
 Connectivity:
 
-- Build element adjacency from shared mesh edges.
+- Build element adjacency from shared mesh edges. This must match the existing
+  seepage convention that builds neighbors through the mesh edge map.
 - Mark an element active when any Gauss point exceeds the mechanism threshold.
 - Compute connected components over active elements.
 - The largest component must represent a meaningful fraction of plastic activity.
@@ -338,6 +393,19 @@ mechanismScore >= 0.65
 
 This threshold is not a universal truth. It must be calibrated on validation
 models and kept configurable in solver options.
+
+Performance rule:
+
+- Store cheap per-point mechanism proxies in the safety curve:
+  `activePlasticElementCount`, `maxDeltaPlasticStrain`, and
+  `totalDeltaPlasticStrain`.
+- Run full connected-component mechanism scoring only at:
+  - finalization candidates,
+  - plateau-window boundaries,
+  - selected display states,
+  - explicit diagnostic requests.
+- If a curve point did not run full scoring, store `mechanismScore = null` and
+  do not fabricate a score from cheap proxies.
 
 ## Result Data Contract
 
@@ -371,9 +439,23 @@ type SafetyCurvePoint = {
   uHorizontalMax: number;
   dominantNode: number;
   dominantDof: number;
+  activePlasticElementCount: number;
   maxDeltaPlasticStrain: number;
   totalDeltaPlasticStrain: number;
-  mechanismScore: number;
+  mechanismScore: number | null;
+  arcLengthDetails: ArcLengthStepDetails | null;
+};
+
+type ArcLengthStepDetails = {
+  actualContinuationMode: 'arc-length';
+  deltaLambda: number;
+  deltaS: number;
+  alpha: number;
+  constraintResidual: number;
+  linearSolveCount: number;
+  linearIterationsTotal: number;
+  correctionDenominator: number;
+  failureCode: number;
 };
 
 type SafetyMechanismSummary = {
@@ -392,6 +474,7 @@ type SafetyMechanismSummary = {
 
 type SafetyFinalization = {
   status:
+    | 'not-run'
     | 'bracketed-failure'
     | 'mechanism-developed'
     | 'no-failure-found'
@@ -401,6 +484,7 @@ type SafetyFinalization = {
   factorOfSafety: number;
   factorOfSafetyLower: number;
   factorOfSafetyUpper: number | null;
+  factorOfSafetyIsOpenEnded: boolean;
   bracketWidth: number | null;
   strengthRetained: number;
   displayedSigmaMsf: number;
@@ -412,8 +496,18 @@ type SafetyFinalization = {
 };
 ```
 
-WASM binary wire format must be versioned when these fields are added. The JS
-decoder must reject incompatible versions clearly.
+`SafetyCurvePoint` is the canonical accepted-step history record. Arc-length
+must add `arcLengthDetails` inside the same point rather than emitting a second
+parallel step-history array for the same accepted safety state.
+
+WASM binary wire format rules:
+
+- Reserve `WIRE_VERSION = 7` for this safety-curve and finalization contract.
+- Existing decoders must reject incompatible versions clearly.
+- Fixed-width WASM records must not contain strings.
+- Failure codes inside fixed-width records must be numeric enums, for example
+  `u16 failureCode`, with JS-side label mapping.
+- Saved-project option migration must be explicit and tested.
 
 ## UI Requirements
 
@@ -421,6 +515,7 @@ Safety result panel:
 
 - Report `FoS = lower bound`.
 - Show upper bound when available.
+- Show `FoS > lower bound` only when `factorOfSafetyIsOpenEnded === true`.
 - Show bracket width.
 - Show status using the finalization states above.
 - Show `strength retained = 1 / SigmaMsf`.
@@ -465,6 +560,8 @@ Tasks:
 - Include active-set and solver metrics in each point.
 - Extend the WASM output writer and JS decoder with a versioned safety-history
   section.
+- Bump the WASM deformation wire contract to `WIRE_VERSION = 7`.
+- Encode per-record failure/status details as numeric enums, not strings.
 
 Validation:
 
@@ -472,6 +569,8 @@ Validation:
   changes.
 - Safety curve endpoint must match `safetyDisplayedSigmaMsf`.
 - Displacement metrics must match direct JS recomputation from the result arrays.
+- Version-6 outputs still decode through the current path; version mismatch
+  errors are explicit and cannot silently degrade.
 
 ### Phase 2: Add UI Safety Curve
 
@@ -495,10 +594,12 @@ Goal: distinguish coherent failure mechanisms from scattered plasticity.
 
 Tasks:
 
-- Build element adjacency once per mesh.
+- Build element adjacency once per mesh using the same edge-shared convention as
+  the seepage solver.
 - Compute active safety elements from incremental plastic strain threshold.
-- Compute connected components.
-- Compute mechanism score.
+- Compute cheap per-point mechanism proxies for every curve point.
+- Compute full connected components only at finalization candidates,
+  plateau-window boundaries, and selected display states.
 - Store mechanism summary in the safety result.
 - Display mechanism summary in the UI.
 
@@ -532,12 +633,19 @@ safetyFinalizationMode:
   - search budget exhaustion.
 - Report conservative lower-bound FoS in all physical failure states.
 - Report non-convergence separately when mechanism evidence is insufficient.
+- Wire raw statuses through the canonical mapping table.
+- Audit all exact safety-status comparisons in the UI, result builder, and
+  report/export code.
+- Use `factorOfSafetyIsOpenEnded` for open-ended display text; never encode
+  `FoS > ...` inside the numeric factor field.
 
 Validation:
 
 - Golden cases with known bracket behavior keep the same lower-bound FoS.
 - Plateau cases finalize without needing excessive failed probes.
 - Non-convergent but scattered cases do not get reported as physical failure.
+- A `bracketed-failure` result cannot fall through to "stable up to" UI text.
+- `no-failure-found` displays as open-ended while preserving numeric FoS fields.
 
 ### Phase 5: Switch Over
 
@@ -567,6 +675,9 @@ The feature is complete only when:
 - Numerical non-convergence is not mislabeled as soil body failure.
 - The displayed mechanism is based on safety incremental plastic strain.
 - Mechanism scoring is spatially coherent, not just a max-value check.
+- Full mechanism scoring is not run for every accepted curve point.
+- `factorOfSafetyIsOpenEnded` controls all `FoS > ...` display text.
+- Status mappings are tested from WASM wire code through UI/report labels.
 - Existing safety examples still solve.
 - Regression fixtures cover bracketed, plateau, no-failure, scattered-plasticity,
   and numerical-limit cases.
@@ -585,6 +696,10 @@ Required tests:
 - Mesh refinement pair: FoS and mechanism should be stable within tolerance.
 - JS/WASM parity fixture: strength reduction formula and lower-bound FoS match
   within tolerance for cases where both paths converge.
+- Wire-status mapping fixture: every wire `u8` status maps to the intended
+  finalization status, mechanism status, and UI text.
+- Open-ended FoS fixture: `no-failure-found` keeps numeric FoS but displays
+  `FoS > lower`.
 - Saved-project migration: old projects run with production defaults.
 
 ## Engineering Risks

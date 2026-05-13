@@ -71,11 +71,21 @@ Do not use it as a silent replacement for every analysis. It should be selected
 by solver strategy:
 
 ```ts
-continuationMode:
+requestedContinuationMode:
   | 'load-control'
   | 'strength-control'
   | 'arc-length'
   | 'auto'
+```
+
+`auto` is a request, not an executed step mode. Result records must store the
+actual mode used for each accepted or rejected step:
+
+```ts
+type ActualContinuationMode =
+  | 'load-control'
+  | 'strength-control'
+  | 'arc-length';
 ```
 
 Recommended production behavior:
@@ -118,11 +128,17 @@ SigmaMsf(lambda) = SigmaMsf_start
                  + lambda * (SigmaMsf_target - SigmaMsf_start)
 ```
 
-or, for full arc-length safety search:
+For full arc-length safety search, the continuation variable may represent the
+absolute `SigmaMsf`, but the admissible domain is still:
 
 ```text
-SigmaMsf(lambda) = lambda
+SigmaMsf(lambda) >= 1
 ```
+
+Any trial that would evaluate reduced strength below `SigmaMsf = 1` is invalid
+and must be cut back or projected to the admissible boundary before material
+assembly. The shared strength-reduction primitives must remain the single source
+of truth.
 
 The arc-length constraint is:
 
@@ -300,8 +316,10 @@ alpha = targetDisplacementPerSigmaMsf
 Estimate from the last stable strength-control steps:
 
 ```text
+epsSigma = max(1e-6 * max(SigmaMsf, 1), 1e-6)
+
 alpha =
-  median(||W * delta_u|| / max(abs(deltaSigmaMsf), eps))
+  median(||W * delta_u|| / max(abs(deltaSigmaMsf), epsSigma))
 ```
 
 Clamp:
@@ -480,37 +498,44 @@ failed trial state.
 
 ## Data Contract
 
-Add result fields:
+Arc-length must not introduce a second per-step history for safety states. The
+production safety feature owns the canonical `SafetyCurvePoint` record. When a
+safety step is solved with arc-length, attach arc-length-specific details to
+that same curve point.
+
+Reserve `WIRE_VERSION = 8` for arc-length additions after the safety-curve
+contract in `WIRE_VERSION = 7`.
+
+Shared mode types:
 
 ```ts
-type ContinuationMode = 'load-control' | 'strength-control' | 'arc-length';
+type RequestedContinuationMode =
+  | 'load-control'
+  | 'strength-control'
+  | 'arc-length'
+  | 'auto';
 
-type ArcLengthStepRecord = {
-  stepIndex: number;
-  continuationMode: ContinuationMode;
-  accepted: boolean;
-  lambda: number;
-  sigmaMsf: number | null;
+type ActualContinuationMode =
+  | 'load-control'
+  | 'strength-control'
+  | 'arc-length';
+
+type ArcLengthStepDetails = {
+  actualContinuationMode: 'arc-length';
   deltaLambda: number;
   deltaS: number;
   alpha: number;
-  residualNorm: number;
   constraintResidual: number;
-  nonlinearIterations: number;
   linearSolveCount: number;
   linearIterationsTotal: number;
-  lineSearchAcceptedScale: number;
-  activeCount: number;
-  uMaxAbs: number;
-  uNorm: number;
-  maxDeltaPlasticStrain: number;
-  mechanismScore: number;
-  failureCode: string;
+  correctionDenominator: number;
+  failureCode: number;
 };
 ```
 
-Safety curve records should reference these arc-length step records when the
-safety solve uses arc-length.
+Non-safety arc-length phases may emit a compact phase history, but the record
+must still use numeric failure/status enums. Fixed-width WASM records must not
+contain strings. JS-side decoders map numeric failure codes to labels.
 
 ## Implementation Plan
 
@@ -533,6 +558,8 @@ Validation:
 
 - Existing WASM tests and reference cases match previous output.
 - Current safety lower/upper brackets are unchanged.
+- No wire-format change is allowed in this phase unless the decoder is updated
+  in the same commit and versioned explicitly.
 
 ### Phase 2: Add Arc-Length State And Predictor
 
@@ -546,12 +573,14 @@ Tasks:
 - Implement predictor direction for load control.
 - Implement path sign selection.
 - Implement radius adaptation shell.
+- Store requested mode and actual mode separately.
 
 Validation:
 
 - Linear-elastic load-control model follows the same path as prescribed load
   control.
 - Rejected steps restore state exactly.
+- A result record never stores `auto` as the actual continuation mode.
 
 ### Phase 3: Implement Corrector With Two Linear Solves
 
@@ -580,14 +609,25 @@ Tasks:
 - Implement finite-difference `R_lam` for safety.
 - Ensure probe material states are isolated and never committed.
 - Use central difference when possible.
-- Fall back to one-sided difference near `SigmaMsf = 1`.
+- Use a forward-only difference at `SigmaMsf = 1`:
+
+```text
+R_lam ~= (R(SigmaMsf + h) - R(SigmaMsf)) / h
+```
+
+- Use one-sided difference whenever a central probe would evaluate
+  `SigmaMsf < 1`.
 - Scale finite-difference step with `SigmaMsf`.
 
 Recommended finite-difference step:
 
 ```text
-h = max(1e-6 * max(SigmaMsf, 1), 1e-7)
+h = max(1e-5 * max(SigmaMsf, 1), 1e-7)
 ```
+
+Expose this as a debug/development knob. Plastic return mapping is not a smooth
+function at active-set changes, so derivative validation must sweep `h` around
+the default instead of assuming one value is universally optimal.
 
 Validation:
 
@@ -602,16 +642,24 @@ Goal: make arc-length useful for final FoS decisions.
 
 Tasks:
 
-- Emit arc-length accepted points into the safety curve.
+- Emit arc-length accepted points into `SafetyCurvePoint`.
+- Store arc-length-only data in `SafetyCurvePoint.arcLengthDetails`.
+- Do not emit a parallel arc-length history for the same safety states.
 - Track peak stable `SigmaMsf`.
 - Detect plateau and post-peak behavior.
 - Feed mechanism scoring and finalization.
+- Bump the WASM deformation wire contract to `WIRE_VERSION = 8` only when the
+  arc-length details are added to the wire payload.
 
 Validation:
 
 - `u` versus `SigmaMsf` curve shows peak/plateau behavior.
 - Reported FoS remains conservative.
 - Post-peak diagnostic path does not overwrite the reported FoS.
+- `WIRE_VERSION = 7` safety-curve results still decode without arc-length
+  details.
+- `WIRE_VERSION = 8` arc-length details decode through numeric failure/status
+  enums, not strings.
 
 ### Phase 6: Analytic Strength Derivative
 
@@ -654,8 +702,11 @@ Validation:
 Add options with conservative defaults:
 
 ```ts
-arcLengthEnabled: boolean;
-arcLengthMode: 'off' | 'manual' | 'auto';
+requestedContinuationMode:
+  | 'load-control'
+  | 'strength-control'
+  | 'arc-length'
+  | 'auto';
 arcLengthInitialRadius: number;
 arcLengthMinRadius: number;
 arcLengthMaxRadius: number;
@@ -671,11 +722,19 @@ arcLengthDerivativeMode: 'finite-difference' | 'analytic' | 'analytic-verified';
 arcLengthAllowPostPeakSafetyPath: boolean;
 ```
 
+Rules:
+
+- `requestedContinuationMode = 'auto'` lets the solver choose the actual mode.
+- Result records store only `ActualContinuationMode`, never `auto`.
+- `requestedContinuationMode = 'arc-length'` means arc-length is required.
+- `requestedContinuationMode = 'load-control'` or `'strength-control'` means
+  arc-length is disabled for that phase unless a higher-level development flag
+  explicitly overrides it.
+
 Initial production defaults:
 
 ```ts
-arcLengthEnabled = false
-arcLengthMode = 'auto'
+requestedContinuationMode = 'auto'
 arcLengthDerivativeMode = 'finite-difference'
 arcLengthAllowPostPeakSafetyPath = true
 ```
@@ -702,9 +761,13 @@ Required checks:
 
 - committed state restoration after rejected arc-length steps,
 - no material-state mutation from finite-difference probes,
+- forward-only safety derivative at `SigmaMsf = 1`,
 - unsymmetric tangent path still uses GMRES,
+- `WIRE_VERSION = 8` decoder rejects incompatible records cleanly,
 - residual and constraint convergence both satisfied,
 - safety curve points are monotonic in step index,
+- safety curve points carry `arcLengthDetails` instead of duplicate records,
+- actual continuation mode never equals `auto`,
 - reported FoS remains lower-bound conservative,
 - post-peak path is not reported as a lower FoS.
 
@@ -722,6 +785,8 @@ Arc-length is production-ready only when:
 - Failed/rejected steps restore displacement and material state exactly.
 - Finite-difference `R_lam` is validated and isolated.
 - Analytic `R_lam`, if enabled by default, is verified against finite difference.
+- `WIRE_VERSION = 8` is the first wire version that carries arc-length details.
+- Saved-project options migrate without changing disabled arc-length behavior.
 - Reports distinguish physical mechanism, no-failure-found, and numerical limit.
 
 ## Rollout
