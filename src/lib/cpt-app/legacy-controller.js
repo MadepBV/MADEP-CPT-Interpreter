@@ -4898,6 +4898,125 @@ function stage6SetDetailsOpen(key, open = true){
   S.stage6.ui.details[key] = !!open;
 }
 
+function stage6BishopUiState(){
+  ensureStage6State();
+  if(!S.stage6.ui || typeof S.stage6.ui !== 'object') S.stage6.ui = {details:{}};
+  if(!S.stage6.ui.details || typeof S.stage6.ui.details !== 'object') S.stage6.ui.details = {};
+  return S.stage6.ui;
+}
+
+function stage6BishopToggleSettingsPanel(force){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const ui = stage6BishopUiState();
+  const isCollapsed = ui.bishopSettingsCollapsed !== false;
+  ui.bishopSettingsCollapsed = typeof force === 'boolean' ? !force : !isCollapsed;
+  renderStage6();
+}
+
+function stage6BishopToggleSettingsWidth(force){
+  ensureStage6State();
+  const ui = stage6BishopUiState();
+  ui.bishopSettingsWide = typeof force === 'boolean' ? !!force : !ui.bishopSettingsWide;
+  ui.bishopSettingsCollapsed = false;
+  renderStage6();
+}
+
+function stage6BishopToggleToolRail(force){
+  ensureStage6State();
+  const ui = stage6BishopUiState();
+  ui.bishopToolRailExpanded = typeof force === 'boolean' ? !!force : !ui.bishopToolRailExpanded;
+  ui.bishopCanvasToolsHidden = false;
+  renderStage6();
+}
+
+function stage6BishopToggleCanvasTools(force){
+  ensureStage6State();
+  const ui = stage6BishopUiState();
+  ui.bishopCanvasToolsHidden = typeof force === 'boolean' ? !force : !ui.bishopCanvasToolsHidden;
+  renderStage6();
+}
+
+function stage6BishopSetCanvasPanel(panel){
+  ensureStage6State();
+  const ui = stage6BishopUiState();
+  const next = panel ? String(panel) : '';
+  ui.bishopActiveCanvasPanel = ui.bishopActiveCanvasPanel === next ? '' : next;
+  if(ui.bishopActiveCanvasPanel) ui.bishopActiveCanvasSheet = '';
+  ui.bishopCanvasToolsHidden = false;
+  renderStage6();
+}
+
+function stage6BishopSheetDetails(sheet){
+  const bySheet = {
+    structures:['bishop-walls', 'bishop-seepage-drains'],
+    boundary:['bishop-geo-seepage-boundary', 'bishop-seepage-bcs'],
+    regions:['bishop-geo-regions'],
+    view:['bishop-geo-view'],
+    materials:['bishop-materials', 'bishop-seepage-perm', 'bishop-deformation-materials'],
+    workspace:[
+      'bishop-geo-analysis',
+      'bishop-search',
+      'bishop-spencer',
+      'bishop-seepage-options',
+      'bishop-seepage-integration',
+      'bishop-geo-deformation',
+      'bishop-deformation-solve',
+      'bishop-deformation-solver-settings'
+    ],
+    reset:['bishop-geo-clear'],
+    probe:[]
+  };
+  return bySheet[sheet] || [];
+}
+
+function stage6BishopSetCanvasSheet(sheet){
+  ensureStage6State();
+  const ui = stage6BishopUiState();
+  const next = sheet ? String(sheet) : '';
+  ui.bishopActiveCanvasSheet = ui.bishopActiveCanvasSheet === next ? '' : next;
+  if(ui.bishopActiveCanvasSheet){
+    ui.bishopActiveCanvasPanel = '';
+    ui.bishopSettingsCollapsed = true;
+    stage6BishopSheetDetails(ui.bishopActiveCanvasSheet).forEach((key)=>stage6SetDetailsOpen(key, true));
+  }
+  ui.bishopCanvasToolsHidden = false;
+  renderStage6();
+}
+
+function stage6BishopOpenSettingsDetail(key){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const ui = stage6BishopUiState();
+  const detailToSheet = {
+    'bishop-walls':'structures',
+    'bishop-seepage-drains':'structures',
+    'bishop-geo-seepage-boundary':'boundary',
+    'bishop-seepage-bcs':'boundary',
+    'bishop-geo-regions':'regions',
+    'bishop-geo-view':'view',
+    'bishop-materials':'materials',
+    'bishop-seepage-perm':'materials',
+    'bishop-deformation-materials':'materials',
+    'bishop-geo-analysis':'workspace',
+    'bishop-search':'workspace',
+    'bishop-spencer':'workspace',
+    'bishop-seepage-options':'workspace',
+    'bishop-seepage-integration':'workspace',
+    'bishop-geo-deformation':'workspace',
+    'bishop-deformation-solve':'workspace',
+    'bishop-deformation-solver-settings':'workspace',
+    'bishop-geo-clear':'reset'
+  };
+  const sheet = detailToSheet[key] || 'workspace';
+  ui.bishopSettingsCollapsed = true;
+  ui.bishopActiveCanvasPanel = '';
+  ui.bishopActiveCanvasSheet = sheet;
+  ui.bishopCanvasToolsHidden = false;
+  stage6SetDetailsOpen(key, true);
+  renderStage6();
+}
+
 function setStage6Field(field, value){
   ensureStage6State();
   stage6RememberDetailsState();
@@ -7722,6 +7841,465 @@ function stage6BishopModeMeta(){
     label:'Edit / pan mode',
     hint:'Drag terrain or phreatic vertices, retaining-wall ends, the CPT marker, zone ends, or selected custom soil-polygon vertices. Click a custom polygon first to select it. Drag empty space to pan and use the mouse wheel to zoom.'
   };
+}
+
+function stage6BishopToolIcon(name){
+  const icons = {
+    close:'<path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>',
+    play:'<path d="M6 4l14 8-14 8V4Z"></path>',
+    stop:'<rect x="6" y="6" width="12" height="12" rx="2"></rect>',
+    collapse:'<path d="M15 6 9 12l6 6"></path>',
+    expand:'<path d="M9 6l6 6-6 6"></path>',
+    settings:'<path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h16"></path><circle cx="8" cy="6" r="1.8"></circle><circle cx="15" cy="12" r="1.8"></circle><circle cx="11" cy="18" r="1.8"></circle>',
+    panel:'<rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M9 5v14"></path>',
+    eyeOff:'<path d="M3 3l18 18"></path><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"></path><path d="M9.5 5.2A10.5 10.5 0 0 1 12 5c5 0 8.5 4.4 9.5 7a12.8 12.8 0 0 1-2.2 3.4"></path><path d="M6.2 6.8A12.8 12.8 0 0 0 2.5 12c1 2.6 4.5 7 9.5 7 1.4 0 2.7-.3 3.8-.9"></path>',
+    materials:'<rect x="5" y="4" width="14" height="16" rx="2"></rect><path d="M5 9h14"></path><path d="M5 14h14"></path><path d="M9 4v16"></path><circle cx="7" cy="6.5" r=".8"></circle><circle cx="7" cy="11.5" r=".8"></circle><circle cx="7" cy="16.5" r=".8"></circle>',
+    chart:'<path d="M4 19V5"></path><path d="M4 19h16"></path><path d="m7 15 3-4 3 2 4-7"></path>',
+    reset:'<path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 14h10l1-14"></path><path d="M9 7V4h6v3"></path>',
+    pointer:'<path d="M5 3l7 16 2-6 6-2L5 3Z"></path>',
+    measure:'<path d="M4 17 17 4l3 3L7 20l-3-3Z"></path><path d="m8 13 2 2"></path><path d="m11 10 2 2"></path><path d="m14 7 2 2"></path>',
+    fit:'<path d="M8 3H3v5"></path><path d="M16 3h5v5"></path><path d="M8 21H3v-5"></path><path d="M16 21h5v-5"></path><path d="M3 3l6 6"></path><path d="m15 9 6-6"></path><path d="m3 21 6-6"></path><path d="m15 15 6 6"></path>',
+    terrain:'<path d="M3 17c3-6 5-8 8-5s5 1 10-6"></path><path d="M3 21h18"></path>',
+    import:'<path d="M12 3v10"></path><path d="m8 9 4 4 4-4"></path><path d="M5 17v2h14v-2"></path>',
+    cpt:'<path d="M12 3v18"></path><path d="M8 7h8"></path><path d="M9 21h6"></path><circle cx="12" cy="11" r="2"></circle>',
+    phreatic:'<path d="M3 14c2-3 4-3 6 0s4 3 6 0 4-3 6 0"></path><path d="M3 19c2-3 4-3 6 0s4 3 6 0 4-3 6 0"></path>',
+    wall:'<path d="M12 3v18"></path><path d="M8 6h8"></path><path d="M8 10h8"></path><path d="M8 14h8"></path><path d="M8 18h8"></path>',
+    drain:'<path d="M4 14h16"></path><path d="M6 10h12"></path><path d="M8 6h8"></path><path d="M7 18c1.8 2 8.2 2 10 0"></path>',
+    load:'<path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path>',
+    entry:'<path d="M4 12h15"></path><path d="m10 6-6 6 6 6"></path>',
+    exit:'<path d="M5 12h15"></path><path d="m14 6 6 6-6 6"></path>',
+    boundary:'<rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M4 12h16"></path><circle cx="8" cy="12" r="1.6"></circle><circle cx="16" cy="12" r="1.6"></circle>',
+    polygon:'<path d="M12 3 20 9l-3 10H7L4 9l8-6Z"></path>',
+    meshUndeformed:'<path d="M4 6h16v12H4Z"></path><path d="M4 12h16"></path><path d="M10 6v12"></path><path d="M16 6v12"></path>',
+    meshDeformed:'<path d="M4 18 9 8l6 3 5-7"></path><path d="M4 18h16"></path><path d="M9 8l1 10"></path><path d="M15 11l-5 7"></path>',
+    arrows:'<path d="M5 17 17 5"></path><path d="M12 5h5v5"></path><path d="M19 7v12H7"></path><path d="m7 19 4-4"></path>',
+    contourFill:'<path d="M4 18c3-8 6-12 10-10s4 6 6 10"></path><path d="M4 18h16"></path><path d="M8 16h8"></path><path d="M10 13h4"></path>',
+    contourLines:'<path d="M4 8c4-3 8-3 12 0s4 3 4 0"></path><path d="M4 13c4-3 8-3 12 0s4 3 4 0"></path><path d="M4 18c4-3 8-3 12 0s4 3 4 0"></path>',
+    plastic:'<circle cx="8" cy="8" r="2"></circle><circle cx="16" cy="9" r="2"></circle><circle cx="12" cy="16" r="2"></circle><path d="M10 9.5 14 15"></path><path d="M10 8.2 14 8.8"></path>',
+    exitGradient:'<path d="M12 3 22 20H2L12 3Z"></path><path d="M12 9v5"></path><path d="M12 17h.01"></path>',
+    label:'<path d="M4 6h10l6 6-6 6H4Z"></path><circle cx="8" cy="12" r="1.5"></circle>',
+    copy:'<rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M5 15V5h10"></path>',
+    cut:'<circle cx="6" cy="7" r="2"></circle><circle cx="6" cy="17" r="2"></circle><path d="M8 8.5 19 19"></path><path d="M8 15.5 19 5"></path>',
+    split:'<path d="M4 6h6a4 4 0 0 1 4 4v8"></path><path d="M4 18h6a4 4 0 0 0 4-4V6"></path><path d="M18 6h2"></path><path d="M18 18h2"></path>',
+    finish:'<path d="M20 6 9 17l-5-5"></path>',
+    undo:'<path d="M9 7 4 12l5 5"></path><path d="M5 12h10a5 5 0 0 1 0 10h-2"></path>',
+    clear:'<path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 14h10l1-14"></path><path d="M9 7V4h6v3"></path>',
+    layers:'<path d="m12 3 9 5-9 5-9-5 9-5Z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 16 9 5 9-5"></path>'
+  };
+  return `<svg class="st6-canvas-tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${icons[name] || icons.pointer}</svg>`;
+}
+
+function stage6BishopCanvasToolButton(options){
+  const label = options?.label || 'Tool';
+  const className = [
+    'st6-canvas-tool-btn',
+    options?.active ? 'active' : '',
+    options?.tone ? `tone-${options.tone}` : ''
+  ].filter(Boolean).join(' ');
+  const disabled = options?.disabled ? ' disabled' : '';
+  const onclick = options?.disabled ? '' : ` onclick="${options.onclick || ''}"`;
+  return `
+    <button type="button" class="${className}"${onclick}${disabled} title="${stage6EscAttr(label)}" aria-label="${stage6EscAttr(label)}" data-tip="${stage6EscAttr(label)}">
+      ${stage6BishopToolIcon(options?.icon || 'pointer')}
+      <span>${stage6EscAttr(label)}</span>
+    </button>
+  `;
+}
+
+function stage6BishopCanvasToolRailHtml(context){
+  const ui = stage6BishopUiState();
+  const bishop = context?.bishop || S.stage6.bishop;
+  const workspace = context?.workspace || 'stability';
+  const model = context?.model || null;
+  const selectedCustomRegion = context?.selectedCustomRegion || null;
+  const selectedSeepageEdge = context?.selectedSeepageEdge || null;
+  const selectedSeepageBc = context?.selectedSeepageBc || null;
+  const selectedDrainIndex = (bishop.drains || []).findIndex((drain)=>drain.id === bishop.selectedDrainId);
+  const selectedDrain = selectedDrainIndex >= 0 ? bishop.drains[selectedDrainIndex] : null;
+  const isHidden = ui.bishopCanvasToolsHidden === true;
+  const activePanel = ui.bishopActiveCanvasPanel === 'view' ? '' : (ui.bishopActiveCanvasPanel || '');
+  const activeSheet = ui.bishopActiveCanvasSheet || '';
+  if(isHidden){
+    return `
+      <button type="button" class="st6-canvas-tools-restore" onclick="stage6BishopToggleCanvasTools(true)" title="Show canvas tools" aria-label="Show canvas tools">
+        ${stage6BishopToolIcon('settings')}
+      </button>
+    `;
+  }
+  const toolButton = (id, label, icon, disabled = false)=>stage6BishopCanvasToolButton({
+    label,
+    icon,
+    active:bishop.tool === id,
+    disabled,
+    onclick:`stage6BishopSetTool('${id}')`
+  });
+  const actionButton = (label, icon, onclick, disabled = false, tone = '')=>stage6BishopCanvasToolButton({
+    label,
+    icon,
+    disabled,
+    onclick,
+    tone
+  });
+  const panelButton = (id, label, icon)=>stage6BishopCanvasToolButton({
+    label,
+    icon,
+    active:activePanel === id && !activeSheet,
+    onclick:`stage6BishopSetCanvasPanel('${id}')`
+  });
+  const sheetButton = (id, label, icon)=>stage6BishopCanvasToolButton({
+    label,
+    icon,
+    active:activeSheet === id,
+    onclick:`stage6BishopSetCanvasSheet('${id}')`
+  });
+  const hasDraft = !!bishop.draft?.length;
+  const finishDraftEnabled = (
+    (bishop.draftKind === 'terrain' || bishop.draftKind === 'phreatic') && bishop.draft.length >= 2
+  ) || (
+    bishop.draftKind === 'drain' && bishop.draft.length >= 2
+  ) || (
+    (bishop.draftKind === 'region' || bishop.draftKind === 'regionHole') && bishop.draft.length >= 3
+  );
+  const loadQ = Number(context?.loadQ || 0);
+  const seepage = bishop.seepage || {};
+  const seepageMeshTargetArea = Number(context?.seepageMeshTargetArea || 0);
+  const seepageUsesIterativeFreeSurface = seepage.options?.freeSurface === 'iterate';
+  const viewSeepageContourOptions = stage6BishopSeepageContourOptions();
+  const viewSeepageContourMode = bishop.seepage?.display?.contourMode || 'head';
+  const viewDeformationAnalysisType = bishop.deformation?.options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
+  const viewDeformationContourOptions = stage6BishopDeformationContourOptions(viewDeformationAnalysisType);
+  const viewDeformationContourMode = bishop.deformation?.display?.contourMode || 'uTotal';
+  const draftRegionMaterialId = bishop.regionDraftMaterialId || bishop.materials?.[0]?.id || '';
+  const selectedRegionMaterialId = selectedCustomRegion?.materialId || draftRegionMaterialId;
+  const draftMaterialOptions = (bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${draftRegionMaterialId===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('');
+  const selectedMaterialOptions = (bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${selectedRegionMaterialId===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('');
+  const panelTitle = {
+    draw:'Draw',
+    structures:'Structures',
+    boundary:'Boundary conditions',
+    regions:'Regions',
+    view:'View',
+    solve:'Solve',
+    reset:'Reset'
+  }[activePanel] || '';
+  const sheetTitle = {
+    structures:'Structure Settings',
+    boundary:'Boundary Conditions',
+    regions:'Region Settings',
+    view:'View Settings',
+    materials:'Materials',
+    workspace:workspace === 'seepage' ? 'Seepage Settings' : workspace === 'deformation' ? 'Deformation Settings' : 'Stability Settings',
+    reset:'Reset Geometry',
+    probe:workspace === 'stability' ? 'Results' : 'Probe'
+  }[activeSheet] || '';
+  const draftActions = hasDraft ? `
+    <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+      ${actionButton('Finish draft', 'finish', 'stage6BishopFinishDraft()', !finishDraftEnabled)}
+      ${actionButton('Undo point', 'undo', 'stage6BishopPopDraftPoint()')}
+      ${actionButton('Clear draft', 'clear', "stage6BishopClear('draft')", false, 'danger')}
+    </div>
+  ` : '';
+  const drawPanel = `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Section drawing</div>
+      <div class="st6-canvas-card-grid">
+        ${toolButton('terrain', 'Terrain', 'terrain')}
+        ${actionButton('Import DXF', 'import', 'stage6BishopTriggerDxfImport()')}
+        ${toolButton('cpt', 'Place CPT', 'cpt')}
+        ${toolButton('phreatic', 'Phreatic line', 'phreatic')}
+        ${toolButton('measure', 'Measure', 'measure')}
+        ${toolButton('edit', 'Edit / pan', 'pointer')}
+      </div>
+      ${draftActions}
+    </div>
+  `;
+  const structuresPanel = `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Structure tools</div>
+      <div class="st6-canvas-card-grid">
+        ${toolButton('wall', 'Retaining wall', 'wall')}
+        ${toolButton('drain', 'Drain line', 'drain', !model)}
+        ${toolButton('load', 'Load zone', 'load')}
+        ${toolButton('entry', 'Entry zone', 'entry')}
+        ${toolButton('exit', 'Exit zone', 'exit')}
+      </div>
+    </div>
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Quick settings</div>
+      <label>Surface load q (kPa)
+        <input type="number" step="1" min="0" value="${loadQ.toFixed(1)}" onchange="stage6BishopSetField('surfaceLoad.q', this.value)">
+      </label>
+      ${selectedDrain ? `
+        <label>Selected drain head h (m)
+          <input type="number" step="0.05" value="${Number(drainHeadValueAt(selectedDrain, 0) || 0).toFixed(2)}" onchange="stage6BishopSetDrainField(${selectedDrainIndex}, 'head', this.value)">
+        </label>
+        <label>Drain gating
+          <select onchange="stage6BishopSetDrainField(${selectedDrainIndex}, 'gating', this.value)">
+            <option value="always"${selectedDrain.gating==='always'?' selected':''}>Always</option>
+            <option value="when-saturated"${selectedDrain.gating==='when-saturated'?' selected':''}>When saturated</option>
+            <option value="head-cap"${selectedDrain.gating==='head-cap'?' selected':''}>Head cap</option>
+          </select>
+        </label>
+      ` : '<div class="st6-canvas-card-note">Select or draw a drain to edit head and gating here.</div>'}
+      <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+        ${actionButton('Manage structures', 'wall', "stage6BishopSetCanvasSheet('structures')")}
+        ${actionButton('Reset tools', 'reset', "stage6BishopSetCanvasSheet('reset')")}
+      </div>
+    </div>
+  `;
+  const boundaryPanel = `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Boundary assignment</div>
+      <div class="st6-canvas-card-grid">
+        ${toolButton('seepageBc', 'Assign BC', 'boundary', !model || workspace !== 'seepage')}
+        ${toolButton('edit', 'Edit / pan', 'pointer')}
+      </div>
+      ${workspace !== 'seepage' ? '<div class="st6-canvas-card-note">Boundary conditions are available in the Seepage workspace.</div>' : ''}
+    </div>
+    ${workspace === 'seepage' ? `
+      <div class="st6-canvas-card-section">
+        <div class="st6-canvas-card-kicker">Selected edge</div>
+        ${selectedSeepageEdge ? `
+          <div class="st6-canvas-card-note">${stage6EscAttr(stage6BishopSeepageEdgeLabel(selectedSeepageEdge))} · ${selectedSeepageEdge.length.toFixed(2)} m</div>
+          <label>Boundary type
+            <select onchange="stage6BishopSetSeepageBcType(this.value)">
+              <option value="no-flow"${(selectedSeepageBc?.type || 'no-flow')==='no-flow'?' selected':''}>No-flow</option>
+              <option value="head"${selectedSeepageBc?.type==='head'?' selected':''}>Prescribed head</option>
+              <option value="seepage-face"${selectedSeepageBc?.type==='seepage-face'?' selected':''}>Seepage face</option>
+            </select>
+          </label>
+          ${(selectedSeepageBc?.type || 'no-flow') === 'head' ? `
+            <label>Head h (m elevation)
+              <input type="number" step="0.05" value="${Number(selectedSeepageBc?.head ?? selectedSeepageEdge.mid.y).toFixed(2)}" onchange="stage6BishopSetSeepageBcHead(this.value)">
+            </label>
+          ` : ''}
+          <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+            ${actionButton('Remove BC', 'clear', `stage6BishopDeleteSeepageBc('${stage6EscAttr(selectedSeepageEdge.edgeKey)}')`, false, 'danger')}
+            ${actionButton('BC table', 'boundary', "stage6BishopSetCanvasSheet('boundary')")}
+          </div>
+        ` : '<div class="st6-canvas-card-note">Click Assign BC, then choose an outer boundary edge.</div>'}
+      </div>
+    ` : ''}
+  `;
+  const regionsPanel = `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Region tools</div>
+      <div class="st6-canvas-card-grid">
+        ${actionButton('Copy CPT regions', 'copy', 'stage6BishopCopyCurrentRegionsToCustom()', !model)}
+        ${toolButton('region', 'Draw polygon', 'polygon', !model)}
+        ${toolButton('regionHole', 'Cut hole', 'cut', !selectedCustomRegion)}
+        ${toolButton('regionSplit', 'Split polygon', 'split', !selectedCustomRegion)}
+      </div>
+    </div>
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Region settings</div>
+      <label>Material for new polygons
+        <select onchange="stage6BishopSetField('regionDraftMaterialId', this.value)">${draftMaterialOptions}</select>
+      </label>
+      ${selectedCustomRegion ? `
+        <label>Selected material
+          <select onchange="stage6BishopSetSelectedRegionMaterial(this.value)">${selectedMaterialOptions}</select>
+        </label>
+        <label>Selected coarseness
+          <input type="number" min="0.01" step="0.1" value="${stage6BishopNormalizeRegionCoarseness(selectedCustomRegion.coarseness)}" onchange="stage6BishopSetSelectedRegionCoarseness(this.value)">
+        </label>
+        <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+          ${actionButton('Delete selected', 'clear', 'stage6BishopDeleteSelectedRegion()', false, 'danger')}
+        </div>
+      ` : '<div class="st6-canvas-card-note">Select a custom polygon to edit its material and mesh coarseness.</div>'}
+    </div>
+  `;
+  const viewDisplayQuantityPanel = workspace === 'seepage' ? `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Display quantity</div>
+      <label>Canvas contours
+        <select onchange="stage6BishopSetField('seepage.display.contourMode', this.value)">
+          ${viewSeepageContourOptions.map((option)=>`<option value="${stage6EscAttr(option.id)}"${viewSeepageContourMode===option.id?' selected':''}>${stage6EscAttr(option.label)}</option>`).join('')}
+        </select>
+      </label>
+    </div>
+  ` : workspace === 'deformation' ? `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Display quantity</div>
+      <label>Canvas contours
+        <select onchange="stage6BishopSetField('deformation.display.contourMode', this.value)">
+          ${viewDeformationContourOptions.map((option)=>`<option value="${stage6EscAttr(option.id)}"${viewDeformationContourMode===option.id?' selected':''}>${stage6EscAttr(option.label)}</option>`).join('')}
+        </select>
+      </label>
+    </div>
+  ` : '';
+  const viewPanel = `
+    ${viewDisplayQuantityPanel}
+    <details class="st6-canvas-card-section st6-canvas-mini-details" data-st6details="bishop-view-quick-snap"${stage6DetailsOpen('bishop-view-quick-snap')}>
+      <summary>Snap</summary>
+      <div class="st6-canvas-mini-details-body">
+        <label class="st6-canvas-check"><input type="checkbox" ${bishop.gridSnap?'checked':''} onchange="stage6BishopSetField('gridSnap', this.checked)"> Snap to grid</label>
+        <label class="st6-canvas-check"><input type="checkbox" ${bishop.pointSnap?'checked':''} onchange="stage6BishopSetField('pointSnap', this.checked)"> Snap to points</label>
+        <label>Grid size (m)
+          <input type="number" step="0.05" min="0.05" value="${bishop.snapSize.toFixed(2)}" onchange="stage6BishopSetField('snapSize', this.value)">
+        </label>
+      </div>
+    </details>
+    <details class="st6-canvas-card-section st6-canvas-mini-details" data-st6details="bishop-view-quick-layers"${stage6DetailsOpen('bishop-view-quick-layers')}>
+      <summary>Canvas layers</summary>
+      <div class="st6-canvas-mini-details-body">
+        <label class="st6-canvas-check"><input type="checkbox" ${bishop.display?.showRegions !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegions', this.checked)"> Soil polygons</label>
+        <label class="st6-canvas-check"><input type="checkbox" ${bishop.display?.showRegionLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLabels', this.checked)"> Polygon labels</label>
+        <label class="st6-canvas-check"><input type="checkbox" ${bishop.display?.showRegionLegend !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLegend', this.checked)"> Polygon legend</label>
+        ${workspace === 'seepage' ? `
+          <label class="st6-canvas-check"><input type="checkbox" ${bishop.seepage?.display?.showBoundaryConditions !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showBoundaryConditions', this.checked)"> Boundary conditions</label>
+          <label class="st6-canvas-check"><input type="checkbox" ${bishop.seepage?.display?.showDrains !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showDrains', this.checked)"> Drains</label>
+          <label class="st6-canvas-check"><input type="checkbox" ${bishop.seepage?.display?.showFlowVectors ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showFlowVectors', this.checked)"> Flow lines</label>
+          <label class="st6-canvas-check"><input type="checkbox" ${bishop.seepage?.display?.showExitGradient ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showExitGradient', this.checked)"> Exit gradient</label>
+        ` : ''}
+      </div>
+    </details>
+    <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+      ${actionButton('Detailed view', 'layers', "stage6BishopOpenSettingsDetail('bishop-geo-view')")}
+      ${actionButton('Fit view', 'fit', 'fitStage6BishopViewport()')}
+    </div>
+  `;
+  const solvePanel = `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">${workspace === 'seepage' ? 'Seepage solve' : workspace === 'deformation' ? 'Deformation solve' : 'Stability solve'}</div>
+      <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+        ${actionButton(context?.toolbarRunLabel || 'Run', 'play', context?.toolbarRunAction || 'stage6BishopRunSearch()', !context?.toolbarRunReady)}
+        ${actionButton('Stop', 'stop', context?.toolbarStopAction || 'stage6BishopStopSearch();renderStage6()', !context?.toolbarRunning)}
+        ${actionButton(context?.toolbarClearLabel || 'Clear result', 'clear', context?.toolbarClearAction || "stage6BishopClear('results')", !context?.toolbarHasResult)}
+      </div>
+      <div class="st6-canvas-card-note">${stage6EscAttr(context?.toolbarProgressText || '')}</div>
+    </div>
+    ${workspace === 'seepage' ? `
+      <div class="st6-canvas-card-section">
+        <div class="st6-canvas-card-kicker">Core settings</div>
+        <label>Free-surface mode
+          <select onchange="stage6BishopSetField('seepage.options.freeSurface', this.value)">
+            <option value="iterate"${seepage.options?.freeSurface==='iterate'?' selected':''}>Iterative free surface</option>
+            <option value="fixed"${seepage.options?.freeSurface==='fixed'?' selected':''}>Fixed phreatic line</option>
+          </select>
+        </label>
+        <label class="st6-canvas-check"><input type="checkbox" ${seepage.options?.meshTargetAreaAuto !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.options.meshTargetAreaAuto', this.checked)"> Auto mesh size</label>
+        <label>Target area (m²)
+          <input type="number" step="0.01" min="0.01" value="${Number(seepageMeshTargetArea || 0).toFixed(2)}" onchange="stage6BishopSetField('seepage.options.meshTargetArea', this.value)">
+        </label>
+        <label>Flow error target (%)
+          <input type="number" step="0.01" min="0.0001" value="${(100 * Math.max(Number(seepage.options?.flowErrorTolerance) || 0.01, 0.000001)).toFixed(3)}" onchange="stage6BishopSetField('seepage.options.flowErrorTolerance', this.value)" ${seepageUsesIterativeFreeSurface ? '' : 'disabled'}>
+        </label>
+        <label>Runtime cap (s)
+          <input type="number" step="0.1" min="0.1" value="${(Math.max(Number(seepage.options?.maxRuntimeMs) || 10000, 1) / 1000).toFixed(2)}" onchange="stage6BishopSetField('seepage.options.maxRuntimeMs', this.value)" ${seepageUsesIterativeFreeSurface ? '' : 'disabled'}>
+        </label>
+        <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+          ${actionButton('Materials', 'materials', "stage6BishopSetCanvasSheet('materials')")}
+          ${actionButton('Advanced solve', 'settings', "stage6BishopSetCanvasSheet('workspace')")}
+        </div>
+      </div>
+    ` : workspace === 'stability' ? `
+      <div class="st6-canvas-card-section">
+        <div class="st6-canvas-card-kicker">Core settings</div>
+        <label>Strength set
+          <select onchange="stage6BishopSetField('strengthSet', this.value)">
+            <option value="characteristic"${bishop.strengthSet==='characteristic'?' selected':''}>Characteristic</option>
+            <option value="da1_1"${bishop.strengthSet==='da1_1'?' selected':''}>DA1/1 (M1)</option>
+            <option value="da1_2"${bishop.strengthSet==='da1_2'?' selected':''}>DA1/2 (M2)</option>
+          </select>
+        </label>
+        <label>Method
+          <select onchange="stage6BishopSetField('methodMode', this.value)">
+            <option value="bishop_spencer"${bishop.methodMode==='bishop_spencer'?' selected':''}>Bishop + Spencer</option>
+            <option value="bishop_only"${bishop.methodMode==='bishop_only'?' selected':''}>Bishop only</option>
+          </select>
+        </label>
+        <label>Surface load q (kPa)
+          <input type="number" step="1" min="0" value="${loadQ.toFixed(1)}" onchange="stage6BishopSetField('surfaceLoad.q', this.value)">
+        </label>
+        <label>Analysis depth (m)
+          <input type="number" step="0.5" min="${Math.max(stage6MaxDepth(), 15).toFixed(2)}" value="${bishop.analysisDepth.toFixed(2)}" onchange="stage6BishopSetField('analysisDepth', this.value)">
+        </label>
+        <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+          ${actionButton('Search settings', 'settings', "stage6BishopSetCanvasSheet('workspace')")}
+          ${actionButton('Materials', 'materials', "stage6BishopSetCanvasSheet('materials')")}
+        </div>
+      </div>
+    ` : `
+      <div class="st6-canvas-card-section">
+        <div class="st6-canvas-card-kicker">Core settings</div>
+        <label>Analysis mode
+          <select onchange="stage6BishopSetField('deformation.options.analysisType', this.value)">
+            <option value="deformation"${bishop.deformation?.options?.analysisType!=='safety-cphi'?' selected':''}>Deformation</option>
+            <option value="safety-cphi"${bishop.deformation?.options?.analysisType==='safety-cphi'?' selected':''}>C-phi safety</option>
+          </select>
+        </label>
+        <label>Surface load q (kPa)
+          <input type="number" step="1" min="0" value="${loadQ.toFixed(1)}" onchange="stage6BishopSetField('surfaceLoad.q', this.value)">
+        </label>
+        <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+          ${actionButton('Mechanical inputs', 'settings', "stage6BishopSetCanvasSheet('workspace')")}
+          ${actionButton('Materials', 'materials', "stage6BishopSetCanvasSheet('materials')")}
+        </div>
+      </div>
+    `}
+  `;
+  const resetPanel = `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Clear drawn items</div>
+      <div class="st6-canvas-card-grid">
+        ${actionButton('Clear draft', 'clear', "stage6BishopClear('draft')", false, 'danger')}
+        ${actionButton('Clear load', 'load', "stage6BishopClear('load')", false, 'danger')}
+        ${actionButton('Clear drains', 'drain', "stage6BishopClear('drains')", false, 'danger')}
+        ${actionButton('More reset', 'reset', "stage6BishopSetCanvasSheet('reset')", false, 'danger')}
+      </div>
+    </div>
+  `;
+  const panelBody = {
+    draw:drawPanel,
+    structures:structuresPanel,
+    boundary:boundaryPanel,
+    regions:regionsPanel,
+    view:viewPanel,
+    solve:solvePanel,
+    reset:resetPanel
+  }[activePanel] || '';
+  const sheetBody = context?.canvasSheets?.[activeSheet] || '';
+  return `
+    <div class="st6-canvas-shell" aria-label="Canvas tools and settings">
+      <div class="st6-canvas-dock" aria-label="Tool groups">
+        <div class="st6-canvas-dock-group" aria-label="Model tools">
+          ${panelButton('draw', 'Draw', 'terrain')}
+          ${panelButton('structures', 'Structures', 'wall')}
+          ${panelButton('boundary', 'Boundary conditions', 'boundary')}
+          ${panelButton('regions', 'Regions', 'polygon')}
+        </div>
+        <div class="st6-canvas-dock-group" aria-label="Analysis tools">
+          ${panelButton('solve', 'Solve', 'play')}
+          ${sheetButton('workspace', 'Settings', 'settings')}
+          ${sheetButton('materials', 'Materials', 'materials')}
+          ${sheetButton('probe', workspace === 'stability' ? 'Results' : 'Probe', 'chart')}
+        </div>
+        <div class="st6-canvas-dock-group" aria-label="Utility tools">
+          ${panelButton('reset', 'Reset', 'reset')}
+          ${stage6BishopCanvasToolButton({label:'Hide canvas UI', icon:'eyeOff', onclick:'stage6BishopToggleCanvasTools(false)'})}
+        </div>
+      </div>
+      ${panelBody ? `
+        <div class="st6-canvas-card" role="dialog" aria-label="${stage6EscAttr(panelTitle)}">
+          <div class="st6-canvas-card-head">
+            <strong>${stage6EscAttr(panelTitle)}</strong>
+            <button type="button" class="st6-canvas-card-close" onclick="stage6BishopSetCanvasPanel('')" aria-label="Close ${stage6EscAttr(panelTitle)}">${stage6BishopToolIcon('close')}</button>
+          </div>
+          <div class="st6-canvas-card-body">${panelBody}</div>
+        </div>
+      ` : ''}
+      ${sheetBody ? `
+        <div class="st6-canvas-sheet" role="dialog" aria-label="${stage6EscAttr(sheetTitle)}">
+          <div class="st6-canvas-card-head">
+            <strong>${stage6EscAttr(sheetTitle)}</strong>
+            <button type="button" class="st6-canvas-card-close" onclick="stage6BishopSetCanvasSheet('')" aria-label="Close ${stage6EscAttr(sheetTitle)}">${stage6BishopToolIcon('close')}</button>
+          </div>
+          <div class="st6-canvas-sheet-body">${sheetBody}</div>
+        </div>
+      ` : ''}
+    </div>
+  `;
 }
 
 function stage6BishopDist(a, b){
@@ -12224,6 +12802,7 @@ function renderStage6BeamApp(analysis){
 
 function renderStage6BishopApp(){
   const bishop = S.stage6.bishop;
+  const bishopUi = stage6BishopUiState();
   const model = stage6BishopCurrentModel();
   const modeMeta = stage6BishopModeMeta();
   const selected = stage6BishopSelectedResult();
@@ -12256,6 +12835,8 @@ function renderStage6BishopApp(){
       ? 'Pick the second point to complete the measurement.'
       : 'none';
   const workspace = bishop.workspace === 'seepage' ? 'seepage' : bishop.workspace === 'deformation' ? 'deformation' : 'stability';
+  const settingsCollapsed = true;
+  const settingsWide = bishopUi.bishopSettingsWide === true;
   const seepage = bishop.seepage || {};
   const deformation = bishop.deformation || {};
   const seepageBoundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
@@ -12994,7 +13575,17 @@ function renderStage6BishopApp(){
               <div class="st6-adv-body">
                 <div class="st6-help">The deformation screen reuses the active CPT-derived layer column across the whole section. The default Mohr-Coulomb plastic route uses an exact active-set return with face, edge, apex, and tension cut-off handling. The reduced-stiffness screen and linear elastic route remain available for sensitivity checks.</div>
                 <div style="overflow:auto">
-                  <table class="tbl st6-bishop-materials">
+                  <table class="tbl st6-bishop-materials st6-bishop-materials--deformation">
+                    <colgroup>
+                      <col class="st6-mat-col-layer">
+                      <col class="st6-mat-col-emc">
+                      <col class="st6-mat-col-small">
+                      <col class="st6-mat-col-small">
+                      <col class="st6-mat-col-small">
+                      <col class="st6-mat-col-small">
+                      <col class="st6-mat-col-small">
+                      <col class="st6-mat-col-small">
+                    </colgroup>
                     <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th><th>psi</th></tr></thead>
                     <tbody>${deformationMaterialRows}</tbody>
                   </table>
@@ -13442,6 +14033,406 @@ function renderStage6BishopApp(){
   const activeContourLegendHtml = workspace === 'seepage'
     ? seepageContourLegendHtml
     : deformationContourLegendHtml;
+  const viewMenuIconButton = ({label, icon, active, disabled, onclick})=>`
+    <button
+      type="button"
+      class="st6-bishop-view-menu-action${active ? ' active' : ''}"
+      ${disabled ? 'disabled' : `onclick="${onclick}"`}
+      title="${stage6EscAttr(label)}"
+      aria-label="${stage6EscAttr(label)}"
+    >${stage6BishopToolIcon(icon)}</button>
+  `;
+  const deformationShowContours = bishop.deformation?.display?.showContours !== false;
+  const deformationShowContourLines = bishop.deformation?.display?.showContourLines !== false;
+  const deformationShowContourLegend = bishop.deformation?.display?.showContourLegend !== false;
+  const deformationShowDeformedMesh = bishop.deformation?.display?.showDeformedMesh !== false;
+  const deformationShowUndeformedMesh = !!bishop.deformation?.display?.showUndeformedMesh;
+  const deformationShowPlasticPoints = bishop.deformation?.display?.showPlasticPoints !== false;
+  const deformationShowDirectionVectors = !!bishop.deformation?.display?.showDisplacementVectors;
+  const seepageShowContours = bishop.seepage?.display?.showContours !== false;
+  const seepageShowContourLines = bishop.seepage?.display?.showContourLines !== false;
+  const seepageShowContourLegend = bishop.seepage?.display?.showContourLegend !== false;
+  const seepageShowBoundaryConditions = bishop.seepage?.display?.showBoundaryConditions !== false;
+  const seepageShowBoundaryLabels = bishop.seepage?.display?.showBoundaryLabels !== false;
+  const seepageShowPhreatic = bishop.seepage?.display?.showPhreatic !== false;
+  const seepageShowDrains = bishop.seepage?.display?.showDrains !== false;
+  const seepageShowFlowVectors = !!bishop.seepage?.display?.showFlowVectors;
+  const seepageShowExitGradient = !!bishop.seepage?.display?.showExitGradient;
+  const viewMenuContourControlHtml = workspace === 'seepage' ? `
+    <label class="st6-bishop-view-menu-field">Contour mode
+      <select onchange="stage6BishopSetField('seepage.display.contourMode', this.value)">
+        ${seepageContourOptions.map((option)=>`<option value="${stage6EscAttr(option.id)}"${seepageContourMode===option.id?' selected':''}>${stage6EscAttr(option.label)}</option>`).join('')}
+      </select>
+    </label>
+  ` : workspace === 'deformation' ? `
+    <label class="st6-bishop-view-menu-field">Contour mode
+      <select onchange="stage6BishopSetField('deformation.display.contourMode', this.value)">
+        ${deformationContourOptions.map((option)=>`<option value="${stage6EscAttr(option.id)}"${deformationContourMode===option.id?' selected':''}>${stage6EscAttr(option.label)}</option>`).join('')}
+      </select>
+    </label>
+  ` : '';
+  const viewMenuWorkspaceOverlayHtml = workspace === 'seepage' ? `
+    <div class="st6-bishop-view-menu-icon-grid">
+      ${viewMenuIconButton({
+        label:'Contour fill',
+        icon:'contourFill',
+        active:seepageShowContours,
+        onclick:`stage6BishopSetField('seepage.display.showContours', ${seepageShowContours ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Contour lines',
+        icon:'contourLines',
+        active:seepageShowContourLines,
+        onclick:`stage6BishopSetField('seepage.display.showContourLines', ${seepageShowContourLines ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Contour legend',
+        icon:'layers',
+        active:seepageShowContourLegend,
+        onclick:`stage6BishopSetField('seepage.display.showContourLegend', ${seepageShowContourLegend ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Boundary conditions',
+        icon:'boundary',
+        active:seepageShowBoundaryConditions,
+        onclick:`stage6BishopSetField('seepage.display.showBoundaryConditions', ${seepageShowBoundaryConditions ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Boundary labels',
+        icon:'label',
+        active:seepageShowBoundaryLabels,
+        onclick:`stage6BishopSetField('seepage.display.showBoundaryLabels', ${seepageShowBoundaryLabels ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Phreatic line',
+        icon:'phreatic',
+        active:seepageShowPhreatic,
+        onclick:`stage6BishopSetField('seepage.display.showPhreatic', ${seepageShowPhreatic ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Drains',
+        icon:'drain',
+        active:seepageShowDrains,
+        onclick:`stage6BishopSetField('seepage.display.showDrains', ${seepageShowDrains ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Flow lines',
+        icon:'arrows',
+        active:seepageShowFlowVectors,
+        onclick:`stage6BishopSetField('seepage.display.showFlowVectors', ${seepageShowFlowVectors ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Exit gradient',
+        icon:'exitGradient',
+        active:seepageShowExitGradient,
+        onclick:`stage6BishopSetField('seepage.display.showExitGradient', ${seepageShowExitGradient ? 'false' : 'true'})`
+      })}
+    </div>
+  ` : workspace === 'deformation' ? `
+    <div class="st6-bishop-view-menu-icon-grid">
+      ${viewMenuIconButton({
+        label:'Contour fill',
+        icon:'contourFill',
+        active:deformationShowContours,
+        onclick:`stage6BishopSetField('deformation.display.showContours', ${deformationShowContours ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Contour lines',
+        icon:'contourLines',
+        active:deformationShowContourLines,
+        onclick:`stage6BishopSetField('deformation.display.showContourLines', ${deformationShowContourLines ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Contour legend',
+        icon:'layers',
+        active:deformationShowContourLegend,
+        onclick:`stage6BishopSetField('deformation.display.showContourLegend', ${deformationShowContourLegend ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Deformed mesh',
+        icon:'meshDeformed',
+        active:deformationShowDeformedMesh,
+        onclick:`stage6BishopSetField('deformation.display.showDeformedMesh', ${deformationShowDeformedMesh ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Undeformed mesh',
+        icon:'meshUndeformed',
+        active:deformationShowUndeformedMesh,
+        onclick:`stage6BishopSetField('deformation.display.showUndeformedMesh', ${deformationShowUndeformedMesh ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Plastic points',
+        icon:'plastic',
+        active:deformationShowPlasticPoints,
+        onclick:`stage6BishopSetField('deformation.display.showPlasticPoints', ${deformationShowPlasticPoints ? 'false' : 'true'})`
+      })}
+      ${viewMenuIconButton({
+        label:'Direction vectors',
+        icon:'arrows',
+        active:deformationShowDirectionVectors,
+        disabled:!deformationDisplacementVectorAvailable,
+        onclick:`stage6BishopSetField('deformation.display.showDisplacementVectors', ${deformationShowDirectionVectors ? 'false' : 'true'})`
+      })}
+    </div>
+    <label class="st6-bishop-view-menu-field">Shape scale
+      <input type="number" step="0.1" min="0.05" value="${Number(bishop.deformation?.options?.displacementScale || 1).toFixed(2)}" onchange="stage6BishopSetField('deformation.options.displacementScale', this.value)">
+    </label>
+  ` : '';
+  const canvasViewMenuHtml = `
+    <details class="st6-bishop-view-menu" data-st6details="bishop-canvas-view-menu"${stage6DetailsOpen('bishop-canvas-view-menu')}>
+      <summary title="View" aria-label="View">
+        <span class="st6-bishop-view-menu-icon">${stage6BishopToolIcon('layers')}</span>
+        <span class="st6-bishop-region-legend-title st6-bishop-view-menu-title">View</span>
+        ${regionLegendItems.length ? `<span class="st6-bishop-region-legend-count">${regionLegendItems.length}</span>` : ''}
+      </summary>
+      <div class="st6-bishop-view-menu-body">
+        <div class="st6-bishop-view-menu-actions">
+          <button type="button" class="st6-bishop-view-menu-action" onclick="fitStage6BishopViewport()" title="Fit view" aria-label="Fit view">${stage6BishopToolIcon('fit')}</button>
+          <button type="button" class="st6-bishop-view-menu-action" onclick="stage6BishopOpenSettingsDetail('bishop-geo-view')" title="View details" aria-label="View details">${stage6BishopToolIcon('panel')}</button>
+        </div>
+        ${viewMenuContourControlHtml}
+        <div class="st6-bishop-view-menu-section">
+          <div class="st6-bishop-view-menu-label">Snap</div>
+          <label class="st6-bishop-check"><input type="checkbox" ${bishop.gridSnap?'checked':''} onchange="stage6BishopSetField('gridSnap', this.checked)"> Grid</label>
+          <label class="st6-bishop-check"><input type="checkbox" ${bishop.pointSnap?'checked':''} onchange="stage6BishopSetField('pointSnap', this.checked)"> Points</label>
+          <label class="st6-bishop-view-menu-field">Grid size
+            <input type="number" step="0.05" min="0.05" value="${bishop.snapSize.toFixed(2)}" onchange="stage6BishopSetField('snapSize', this.value)">
+          </label>
+        </div>
+        <div class="st6-bishop-view-menu-section">
+          <div class="st6-bishop-view-menu-label">Polygons</div>
+          <label class="st6-bishop-check"><input type="checkbox" ${bishop.display?.showRegions !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegions', this.checked)"> Fill</label>
+          <label class="st6-bishop-check"><input type="checkbox" ${bishop.display?.showRegionLabels !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLabels', this.checked)"> Labels</label>
+          <label class="st6-bishop-check"><input type="checkbox" ${bishop.display?.showRegionLegend !== false ? 'checked' : ''} onchange="stage6BishopSetField('display.showRegionLegend', this.checked)"> List</label>
+          ${bishop.display?.showRegionLegend !== false && regionLegendItems.length ? `
+            <div class="st6-bishop-region-legend-body st6-bishop-view-menu-region-list">
+              ${regionLegendItems.map((item)=>`
+                <div class="st6-bishop-region-chip">
+                  <span class="st6-bishop-region-swatch" style="background:${stage6EscAttr(item.color)}"></span>
+                  <span class="st6-bishop-region-text">${stage6EscAttr(item.label)}${item.count > 1 ? ` <em>(${item.count})</em>` : ''}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+        ${viewMenuWorkspaceOverlayHtml ? `
+          <div class="st6-bishop-view-menu-section">
+            <div class="st6-bishop-view-menu-label">${workspace === 'seepage' ? 'Seepage' : 'Deformation'}</div>
+            ${viewMenuWorkspaceOverlayHtml}
+          </div>
+        ` : ''}
+      </div>
+    </details>
+  `;
+  const structuresSheetHtml = `
+    <div class="st6-canvas-sheet-grid">
+      <div class="st6-canvas-card-section">
+        <div class="st6-canvas-card-kicker">Retaining walls</div>
+        <div class="st6-help">Edit geometry, passive side, and seepage conductivity for every wall without opening the old settings column.</div>
+        <div class="st6-canvas-table-wrap">
+          <table class="tbl st6-bishop-materials">
+            <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Seepage preset</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
+            <tbody>${wallRows || '<tr><td colspan="11" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="st6-canvas-card-section">
+        <div class="st6-canvas-card-kicker">Drains</div>
+        <div class="st6-bishop-tools">
+          <button class="btn sm ${bishop.tool==='drain'?'active':''}" onclick="stage6BishopSetTool('drain')" ${model ? '' : 'disabled'}>Draw drain line</button>
+          <button class="btn sm" onclick="stage6BishopFinishDraft()" ${(bishop.draftKind==='drain' && bishop.draft.length >= 2) ? '' : 'disabled'}>Finish drain</button>
+          <button class="btn sm" onclick="stage6BishopClear('drains')" ${(bishop.drains || []).length ? '' : 'disabled'}>Clear drains</button>
+        </div>
+        <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+          Drains: <strong>${(bishop.drains || []).length}</strong><br>
+          Validation: <strong>${stage6EscAttr(stage6BishopDrainValidationSummary(drainValidation))}</strong>
+        </div>
+        ${drainValidationHtml.length ? `
+          <div style="display:grid;gap:6px">
+            ${drainValidationHtml.map((issue)=>`
+              <div class="info" style="background:${issue.level === 'warn' ? 'var(--wnl)' : 'var(--bg2)'};border-color:${issue.level === 'warn' ? 'var(--wn)' : 'var(--bd2)'};margin:0">${stage6EscAttr(issue.text)}</div>
+            `).join('')}
+          </div>
+        ` : ''}
+        <div class="st6-canvas-table-wrap">
+          <table class="tbl st6-bishop-materials">
+            <thead><tr><th>Label</th><th>Vertices</th><th>Head h</th><th>Gating</th><th>Length</th><th></th><th></th></tr></thead>
+            <tbody>${drainRows || '<tr><td colspan="7" style="text-align:center;color:var(--tx2)">No drains yet. Use Draw drain line, then click a start and end point on the canvas.</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  const boundarySheetHtml = workspace === 'seepage' ? `
+    <div class="st6-canvas-sheet-grid">
+      ${workspaceGeometrySectionHtml}
+      <div class="st6-canvas-card-section">
+        <div class="st6-canvas-card-kicker">Assigned boundary conditions</div>
+        <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+          Outer boundary edges: <strong>${seepageBoundary.length}</strong><br>
+          Active BCs: <strong>${seepageActiveBcs.length}</strong><br>
+          Prescribed head edges: <strong>${seepageHeadCount}</strong><br>
+          Orphaned BCs: <strong>${seepageOrphanedBcs.length}</strong><br>
+          Status: <strong>${stage6EscAttr(seepageSetupMessage)}</strong>
+        </div>
+        <div class="st6-canvas-table-wrap">
+          <table class="tbl st6-bishop-materials">
+            <thead><tr><th>Edge</th><th>Type</th><th>Head</th><th>Status</th><th></th></tr></thead>
+            <tbody>${seepageBcRows || '<tr><td colspan="5" style="text-align:center;color:var(--tx2)">No explicit boundary conditions yet.</td></tr>'}</tbody>
+          </table>
+        </div>
+        ${seepageOrphanedBcs.length ? `<div class="st6-help">Some BC anchors no longer match the rebuilt geometry and are marked orphaned. Reassign those edges on the canvas before solving seepage.</div>` : ''}
+      </div>
+    </div>
+  ` : `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Boundary conditions</div>
+      <div class="st6-canvas-card-note">Seepage boundary conditions are available in the Seepage workspace.</div>
+    </div>
+  `;
+  const regionsSheetHtml = `
+    <div class="st6-canvas-sheet-grid">
+      <div class="st6-canvas-card-section">
+        <div class="st6-canvas-card-kicker">Soil polygons</div>
+        <div class="st6-bishop-tools">
+          <button class="btn sm" onclick="stage6BishopCopyCurrentRegionsToCustom()" ${model ? '' : 'disabled'}>Copy current polygons</button>
+          <button class="btn sm ${bishop.tool==='region'?'active':''}" onclick="stage6BishopSetTool('region')" ${model ? '' : 'disabled'}>Draw polygon</button>
+          <button class="btn sm ${bishop.tool==='regionHole'?'active':''}" onclick="stage6BishopSetTool('regionHole')" ${selectedCustomRegion ? '' : 'disabled'}>Cut hole</button>
+          <button class="btn sm ${bishop.tool==='regionSplit'?'active':''}" onclick="stage6BishopSetTool('regionSplit')" ${selectedCustomRegion ? '' : 'disabled'}>Split selected</button>
+          <button class="btn sm" onclick="stage6BishopFinishDraft()" ${((bishop.draftKind==='region' || bishop.draftKind==='regionHole') && bishop.draft.length >= 3) ? '' : 'disabled'}>${bishop.draftKind==='regionHole' ? 'Finish hole' : 'Finish polygon'}</button>
+          <button class="btn sm" onclick="stage6BishopDeleteSelectedRegion()" ${selectedCustomRegion ? '' : 'disabled'}>Delete selected</button>
+        </div>
+        <label class="st6-bishop-check">
+          <input type="checkbox" ${customModeActive ? 'checked' : ''} onchange="stage6BishopSetUseCustomRegions(this.checked)" ${customRegionCount ? '' : 'disabled'}>
+          Use custom polygons in the solver
+        </label>
+        ${showingCustomRegionPreview ? `<div class="st6-help">Custom polygons are visible for editing, but the solver is still using the CPT-derived polygon set until you enable the checkbox above.</div>` : ''}
+        <label style="font-size:11px;color:var(--tx2)">Material for new polygons
+          <select onchange="stage6BishopSetField('regionDraftMaterialId', this.value)">
+            ${(bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${(bishop.regionDraftMaterialId || bishop.materials?.[0]?.id)===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('')}
+          </select>
+        </label>
+      </div>
+      <div class="st6-canvas-card-section">
+        <div class="st6-canvas-card-kicker">Selected polygon</div>
+        ${selectedCustomRegion ? `
+          <label style="font-size:11px;color:var(--tx2)">Selected polygon material
+            <select onchange="stage6BishopSetSelectedRegionMaterial(this.value)">
+              ${(bishop.materials || []).map((mat)=>`<option value="${stage6EscAttr(mat.id)}"${selectedCustomRegion.materialId===mat.id?' selected':''}>${stage6EscAttr(mat.label)}</option>`).join('')}
+            </select>
+          </label>
+          <label style="font-size:11px;color:var(--tx2)">Selected polygon coarseness
+            <input type="number" min="0.01" step="0.1" value="${stage6BishopNormalizeRegionCoarseness(selectedCustomRegion.coarseness)}" onchange="stage6BishopSetSelectedRegionCoarseness(this.value)">
+          </label>
+          <div class="st6-help">Effective local seepage target area: <strong>${(stage6BishopNormalizeRegionCoarseness(selectedCustomRegion.coarseness) * seepageMeshTargetArea).toFixed(3)} m²</strong>.</div>
+          <div class="st6-help">Selected polygon: <strong>${stage6EscAttr(selectedCustomRegion.id)}</strong> · vertices <strong>${selectedCustomRegion.polygon.length}</strong> · source <strong>${selectedCustomRegion.source === 'cpt-copy' ? 'copied from CPT' : selectedCustomRegion.source === 'hole' ? 'hole cut' : selectedCustomRegion.source === 'edited' ? 'edited fragment' : 'custom drawn'}</strong></div>
+        ` : `<div class="st6-canvas-card-note">${customRegionCount ? 'No custom polygon is selected. Click one in Edit / pan mode to edit it.' : 'No custom polygons yet. Copy the current solver polygons or draw a new polygon to start editing.'}</div>`}
+      </div>
+    </div>
+  `;
+  const materialsSheetHtml = workspace === 'seepage' ? `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Permeability</div>
+      <div class="st6-help">Each Bishop material carries seepage permeability. Editing either value marks that material as a user override.</div>
+      <div class="st6-canvas-table-wrap">
+        <table class="tbl st6-bishop-materials">
+          <thead><tr><th>Material</th><th>k_x (m/s)</th><th>k_y (m/s)</th><th>Source</th><th></th></tr></thead>
+          <tbody>${permeabilityRows}</tbody>
+        </table>
+      </div>
+    </div>
+  ` : workspace === 'deformation' ? `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Deformation materials</div>
+      <div class="st6-canvas-table-wrap">
+        <table class="tbl st6-bishop-materials st6-bishop-materials--deformation">
+          <colgroup>
+            <col class="st6-mat-col-layer">
+            <col class="st6-mat-col-emc">
+            <col class="st6-mat-col-small">
+            <col class="st6-mat-col-small">
+            <col class="st6-mat-col-small">
+            <col class="st6-mat-col-small">
+            <col class="st6-mat-col-small">
+            <col class="st6-mat-col-small">
+          </colgroup>
+          <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th><th>psi</th></tr></thead>
+          <tbody>${deformationMaterialRows}</tbody>
+        </table>
+      </div>
+    </div>
+  ` : `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Stability materials</div>
+      <div class="st6-help">The current imported material set is <strong>${stage6BishopStrengthSetLabel(bishop.strengthSet)}</strong>.</div>
+      <div class="st6-canvas-table-wrap">
+        <table class="tbl st6-bishop-materials">
+          <thead><tr><th>Layer</th><th>c'</th><th>phi'</th><th>gamma</th><th>gamma_sat</th></tr></thead>
+          <tbody>${materialRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  const workspaceSheetHtml = `
+    <div class="st6-canvas-sheet-grid">
+      ${workspaceInfoHtml}
+      ${workspaceGeometrySectionHtml}
+      ${workspaceSettingsHtml}
+    </div>
+  `;
+  const resetSheetHtml = `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Reset geometry and overlays</div>
+      <div class="st6-help">These actions clear drawn data from the shared Stage 6 section. They do not delete interpreted CPT layers.</div>
+      <div class="st6-bishop-mini-actions">
+        <button class="btn sm" onclick="stage6BishopClear('terrain')">Clear terrain</button>
+        <button class="btn sm" onclick="stage6BishopClear('phreatic')">Clear phreatic</button>
+        <button class="btn sm" onclick="stage6BishopClear('walls')">Clear walls</button>
+        <button class="btn sm" onclick="stage6BishopClear('drains')">Clear drains</button>
+        <button class="btn sm" onclick="stage6BishopClear('entry')">Clear entry</button>
+        <button class="btn sm" onclick="stage6BishopClear('exit')">Clear exit</button>
+        <button class="btn sm" onclick="stage6BishopClear('load')">Clear load</button>
+        <button class="btn sm" onclick="stage6BishopClear('measure')" ${measurementPoints.length ? '' : 'disabled'}>Clear measure</button>
+        <button class="btn sm" onclick="stage6BishopClear('customRegions')">Clear custom polygons</button>
+      </div>
+    </div>
+  `;
+  const probeSheetHtml = lineProbeHtml || `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Workspace summary</div>
+      ${workspaceInfoHtml}
+    </div>
+  `;
+  const canvasSheets = {
+    structures:structuresSheetHtml,
+    boundary:boundarySheetHtml,
+    regions:regionsSheetHtml,
+    view:viewSectionHtml,
+    materials:materialsSheetHtml,
+    workspace:workspaceSheetHtml,
+    reset:resetSheetHtml,
+    probe:probeSheetHtml
+  };
+  const canvasToolRailHtml = stage6BishopCanvasToolRailHtml({
+    bishop,
+    workspace,
+    model,
+    selectedCustomRegion,
+    selectedSeepageEdge,
+    selectedSeepageBc,
+    loadQ,
+    seepageMeshTargetArea,
+    toolbarRunLabel,
+    toolbarRunAction,
+    toolbarRunReady,
+    toolbarStopAction,
+    toolbarRunning,
+    toolbarClearLabel,
+    toolbarClearAction,
+    toolbarHasResult,
+    toolbarProgressText,
+    canvasSheets
+  });
   const workspaceResultsHtml = workspace === 'stability' ? `
           <div class="st6-bishop-results-panel">
             <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Results</div>
@@ -13579,7 +14570,6 @@ function renderStage6BishopApp(){
                 </div>
               </div>
             </div>
-            ${lineProbeHtml}
           </div>
   ` : `
           <div class="st6-bishop-results-panel">
@@ -13641,7 +14631,6 @@ function renderStage6BishopApp(){
 	            </div>
 	            ${deformationIsSafety ? stage6BishopSafetyCurveHtml(deformation.result?.solver) : ''}
 	            ${deformationIsSafety ? stage6BishopSafetyMechanismHtml(deformationSafetyMechanism) : ''}
-	            ${lineProbeHtml}
 	          </div>
 	  `;
   return `
@@ -13658,9 +14647,18 @@ function renderStage6BishopApp(){
         <button class="btn sm ${workspace==='deformation'?'active':''}" onclick="stage6BishopSetWorkspace('deformation')">Deformation</button>
       </div>
       <div class="st6-bishop-workspace-note">${stage6EscAttr(workspaceSwitchNote)}</div>
-      <div class="st6-bishop-layout">
-        <div class="st6-bishop-side">
-          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Geometry</div>
+      <div class="st6-bishop-layout${settingsCollapsed ? ' st6-bishop-layout--settings-collapsed' : ''}${settingsWide ? ' st6-bishop-layout--settings-wide' : ''}">
+        <div class="st6-bishop-side st6-bishop-settings-panel">
+          <div class="st6-bishop-settings-head">
+            <div>
+              <span>Settings</span>
+              <strong>${workspace === 'seepage' ? 'Seepage' : workspace === 'deformation' ? 'Deformation' : 'Stability'}</strong>
+            </div>
+            <div class="st6-bishop-settings-actions">
+              <button class="btn sm" onclick="stage6BishopToggleSettingsWidth()">${settingsWide ? 'Narrow' : 'Wide'}</button>
+              <button class="btn sm" onclick="stage6BishopToggleSettingsPanel(false)">Hide</button>
+            </div>
+          </div>
           <div class="ctrl-row st6-bishop-controls">
             <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally add infinitely stiff retaining walls and a uniform surcharge zone, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
             <div class="st6-bishop-tool-groups">
@@ -13831,9 +14829,9 @@ function renderStage6BishopApp(){
                 <div class="st6-bishop-status-hint">${stage6EscAttr(workspaceReadyHint)}</div>
               </div>
             </div>
-            ${viewSectionHtml}
             <div class="st6-bishop-progress-track"><div id="stage6BishopProgressBar" class="st6-bishop-progress-bar" style="width:${Math.max(0, Math.min(100, toolbarProgressPercent))}%"></div></div>
             <div class="st6-bishop-canvas-stage">
+              ${canvasToolRailHtml}
               <canvas id="stage6BishopCanvas" class="st6-bishop-canvas" role="img" aria-label="Seep/Slope section and slip circles"></canvas>
               ${toolbarHasResult ? `
                 <button
@@ -13854,53 +14852,30 @@ function renderStage6BishopApp(){
                   ${bishop.capturedView?.[workspace] ? '<span class="st6-canvas-capture__check" aria-hidden="true">✓</span>' : ''}
                 </button>
               ` : ''}
-              ${bishop.display?.showRegionLegend !== false && regionLegendItems.length ? `
-                <details class="st6-bishop-region-legend" data-st6details="bishop-region-legend"${stage6DetailsOpen('bishop-region-legend')}>
-                  <summary>
-                    <span class="st6-bishop-region-legend-title">Soil polygons${showingCustomRegionPreview ? ' (custom preview)' : ''}</span>
-                    <span class="st6-bishop-region-legend-count">${regionLegendItems.length}</span>
-                  </summary>
-                  <div class="st6-bishop-region-legend-body">
-                    ${regionLegendItems.map((item)=>`
-                      <div class="st6-bishop-region-chip">
-                        <span class="st6-bishop-region-swatch" style="background:${stage6EscAttr(item.color)}"></span>
-                        <span class="st6-bishop-region-text">${stage6EscAttr(item.label)}${item.count > 1 ? ` <em>(${item.count})</em>` : ''}</span>
-                      </div>
-                    `).join('')}
-                  </div>
-                </details>
-              ` : ''}
+              ${canvasViewMenuHtml}
               ${activeContourLegendHtml}
-              <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
-            </div>
-            <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
-            <div class="st6-help" style="margin-top:10px">${workspaceCanvasHelp}</div>
-          </div>
-          ${workspaceResultsHtml}
-        </div>
-      </div>
-	      ${stage6NoteHtml(workspace === 'deformation'
-	        ? [
-	            {level:'warn', text:'This deformation workspace is a drained small-strain plane-strain tool on T3 or T6 triangles. T6 improves stress-gradient resolution but is slower; mesh sensitivity still needs engineering review.'},
-	            {level:'info', text:'The Mohr-Coulomb plastic route stores plastic strain and performs an exact elastoplastic return in principal stress space. Tension-governed accepted states are reported separately from ηMC-driven shear utilisation.'},
-	            {level:'info', text:'The soil model is still derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section, and retaining walls are not yet active mechanical elements in the deformation solve.'},
-		            {level:'info', text:'Initial stress is selected by workflow: Auto uses K0 recovery and a self-weight equilibrium correction by default. C-phi safety and service loading both require a converged self-weight state.'},
-	            {level:'info', text:'MC utilization remains an exact diagnostic on the current effective stress state. Plastic zones should be interpreted from the active yield surface and accumulated plastic strain, while inadmissible initial stresses are reported separately from plastic history.'}
-	          ]
-        : workspace === 'seepage'
-          ? [
-              {level:'warn', text:'This Stage 6 seepage workflow is experimental. It solves steady-state 2D seepage on a constrained triangular FEM mesh built from the shared section geometry.'},
-              {level:'info', text:'The soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this workflow.'},
-              {level:'info', text:'Use prescribed-head, seepage-face, and no-flow conditions only on the terrain, side, and base boundaries. Interior polygon edges are material interfaces, not seepage boundaries.'},
+	              <div id="stage6BishopTip" class="section-tip st6-bishop-tip"></div>
+	            </div>
+	            <div id="stage6BishopCoord" class="st6-bishop-coord"></div>
+	            <div class="st6-help" style="margin-top:10px">${workspaceCanvasHelp}</div>
+	          </div>
+	          ${workspaceResultsHtml}
+	        </div>
+	      </div>
+		      ${workspace === 'deformation' ? '' : stage6NoteHtml(workspace === 'seepage'
+	          ? [
+	              {level:'warn', text:'This Stage 6 seepage workflow is experimental. It solves steady-state 2D seepage on a constrained triangular FEM mesh built from the shared section geometry.'},
+	              {level:'info', text:'The soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this workflow.'},
+	              {level:'info', text:'Use prescribed-head, seepage-face, and no-flow conditions only on the terrain, side, and base boundaries. Interior polygon edges are material interfaces, not seepage boundaries.'},
               {level:'info', text:'The seepage result can be reused by the deformation screen and, when enabled, by the Bishop/Spencer pore-pressure hook without redrawing the section.'}
             ]
           : [
               {level:'warn', text:'This Stage 6 slope check is experimental. It searches circular slip surfaces only and currently uses self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and optional phreatic pore pressure along the base.'},
               {level:'info', text:'The soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this workflow.'},
-              {level:'info', text:'Spencer runs as a verification pass on the best Bishop circles. Each shortlisted circle is solved by intersecting the Spencer moment and force branches. If Spencer does not converge for a shortlisted circle, the app keeps the Bishop result and flags that fallback in the results panel.'},
-              {level:'info', text:'When a circle intersects a retaining wall, Bishop reduces the driving moment with the wall resistance and Spencer injects the same wall force into the horizontal force chain. Circles that pass below the wall tip remain unchanged and may still govern.'}
-            ]
-      )}
+	              {level:'info', text:'Spencer runs as a verification pass on the best Bishop circles. Each shortlisted circle is solved by intersecting the Spencer moment and force branches. If Spencer does not converge for a shortlisted circle, the app keeps the Bishop result and flags that fallback in the results panel.'},
+	              {level:'info', text:'When a circle intersects a retaining wall, Bishop reduces the driving moment with the wall resistance and Spencer injects the same wall force into the horizontal force chain. Circles that pass below the wall tip remain unchanged and may still govern.'}
+	            ]
+	      )}
     </div>
   `;
 }
@@ -15497,6 +16472,13 @@ const legacyApi={
   stage6BishopSetWorkspace,
   stage6BishopSetField,
   stage6BishopSetTool,
+  stage6BishopToggleSettingsPanel,
+  stage6BishopToggleSettingsWidth,
+  stage6BishopToggleToolRail,
+  stage6BishopToggleCanvasTools,
+  stage6BishopSetCanvasPanel,
+  stage6BishopSetCanvasSheet,
+  stage6BishopOpenSettingsDetail,
   stage6BishopTriggerDxfImport,
   stage6BishopImportDxf,
   stage6BishopCopyCurrentRegionsToCustom,
