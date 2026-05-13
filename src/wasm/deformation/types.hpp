@@ -284,6 +284,8 @@ struct SolverOptions {
   double arcLengthConstraintTolerance{ 1e-8 };
   double arcLengthAlphaMin{ 1e-8 };
   double arcLengthAlphaMax{ 1e8 };
+  double arcLengthFiniteDifferenceStepScale{ 1e-5 };
+  double arcLengthFiniteDifferenceMinStep{ 1e-7 };
   std::uint8_t arcLengthAllowPostPeakSafetyPath{ 1 };
 };
 

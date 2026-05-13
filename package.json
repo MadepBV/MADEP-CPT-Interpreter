@@ -27,6 +27,7 @@
 		"verify:safety-finalization": "node scripts/verify_safety_finalization.mjs",
 		"verify:arc-length-phase-2": "node scripts/verify_arc_length_phase_2.mjs",
 		"verify:arc-length-phase-3": "node scripts/verify_arc_length_phase_3.mjs",
+		"verify:arc-length-phase-4": "node scripts/verify_arc_length_phase_4.mjs",
 		"build:wasm:deformation": "bash src/wasm/deformation/build.sh",
 		"verify:wasm": "node scripts/verify_wasm_deformation_smoke.mjs && node scripts/verify_wasm_deformation_t6.mjs && node scripts/verify_wasm_deformation_plastic.mjs && node scripts/verify_wasm_mc_unit.mjs && node scripts/verify_wasm_mc_local_parity.mjs"
 	},

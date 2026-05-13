@@ -691,6 +691,26 @@ Validation:
 
 Goal: make arc-length work for `SigmaMsf` strength reduction.
 
+Binding resolution for the Phase-4 implementation:
+
+- The finite-difference oracle computes `R_lam = dR/dSigmaMsf` in absolute
+  `SigmaMsf`, and also returns `-R_lam` as the continuation RHS for the
+  existing two-solve corrector.
+- The oracle uses local copies for probe material states and local residual
+  buffers. Returning from the oracle must leave committed material points,
+  trial material points, displacement, tangent values, and warm-start data as
+  they were at entry.
+- The default step is controlled by internal solver options
+  `arcLengthFiniteDifferenceStepScale = 1e-5` and
+  `arcLengthFiniteDifferenceMinStep = 1e-7`. The `WIRE_VERSION = 7` input
+  contract keeps those defaults; exposing them through the public wire/options
+  surface is deferred to the `WIRE_VERSION = 8` arc-length integration phase.
+- A numeric failure code is returned for diagnostics:
+  `0=ok`, `1=invalid-context`, `2=invalid-step-or-sigma`,
+  `3=non-finite-probe-residual`.
+- This phase still does not switch production safety solves onto arc-length.
+  It introduces the derivative oracle that Phase 5 consumes.
+
 Tasks:
 
 - Implement finite-difference `R_lam` for safety.

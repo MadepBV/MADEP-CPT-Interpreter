@@ -870,6 +870,18 @@ struct ArcLengthCorrector {
   bool converged{ false };
 };
 
+struct SafetyResidualDerivativeFd {
+  std::vector<double> rLambdaFree;
+  std::vector<double> continuationRhsFree;
+  double sigmaMsf{ 1.0 };
+  double lowerSigmaMsf{ 1.0 };
+  double upperSigmaMsf{ 1.0 };
+  double h{ 0.0 };
+  bool usedCentralDifference{ false };
+  std::uint16_t failureCode{ 0 };
+  bool converged{ false };
+};
+
 inline ActualContinuationMode default_actual_continuation_mode(PhaseKind phaseKind) {
   return phaseKind == PhaseKind::SafetyCphi
       ? ActualContinuationMode::StrengthControl
@@ -904,6 +916,13 @@ inline double arc_length_weighted_norm2(const std::vector<double>& v, double dis
     out += wx * wx;
   }
   return out;
+}
+
+inline double arc_length_sigma_msf_fd_step(double sigmaMsf, const SolverOptions& opts) {
+  const double sigma = std::max(sigmaMsf, 1.0);
+  const double stepScale = std::max(opts.arcLengthFiniteDifferenceStepScale, 0.0);
+  const double minStep = std::max(opts.arcLengthFiniteDifferenceMinStep, 0.0);
+  return std::max(stepScale * std::max(sigma, 1.0), minStep);
 }
 
 inline double arc_length_path_dot(
@@ -1052,6 +1071,106 @@ inline ArcLengthCorrector compute_arc_length_corrector(
   }
   out.converged = std::isfinite(out.deltaLambda);
   out.failureCode = out.converged ? 0u : 4u;
+  return out;
+}
+
+inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_fd(
+    PhaseContext& ctx,
+    const std::vector<double>& U,
+    double loadFactor,
+    double sigmaMsf,
+    const SolverOptions& opts) {
+  SafetyResidualDerivativeFd out;
+  const std::int32_t nfree = ctx.K ? ctx.K->nrows : 0;
+  out.rLambdaFree.assign(static_cast<std::size_t>(std::max(nfree, 0)), 0.0);
+  out.continuationRhsFree.assign(static_cast<std::size_t>(std::max(nfree, 0)), 0.0);
+  out.sigmaMsf = std::max(sigmaMsf, 1.0);
+  out.h = arc_length_sigma_msf_fd_step(out.sigmaMsf, opts);
+  if (ctx.phaseKind != PhaseKind::SafetyCphi || !ctx.safetyStrengthBaseRegions ||
+      !ctx.elements || !ctx.committed || !ctx.trial || !ctx.freeIndexByDof ||
+      !ctx.K || nfree < 0 || static_cast<std::int32_t>(U.size()) < ctx.ndof) {
+    out.failureCode = 1u;
+    return out;
+  }
+  if (!(out.h > 0.0) || !std::isfinite(out.h)) {
+    out.failureCode = 2u;
+    return out;
+  }
+
+  const double candidateLower = out.sigmaMsf - out.h;
+  out.usedCentralDifference = candidateLower >= 1.0;
+  out.lowerSigmaMsf = out.usedCentralDifference ? candidateLower : out.sigmaMsf;
+  out.upperSigmaMsf = out.sigmaMsf + out.h;
+  if (out.lowerSigmaMsf < 1.0 || !(out.upperSigmaMsf > out.lowerSigmaMsf)) {
+    out.failureCode = 2u;
+    return out;
+  }
+
+  const std::vector<MaterialPoint> trialBackup = *ctx.trial;
+  const std::vector<MaterialPoint> committedBackup = *ctx.committed;
+  std::vector<double> lowerResidual(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> upperResidual(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> internalScratch(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> residualScratch(static_cast<std::size_t>(nfree), 0.0);
+
+  auto assemble_at_sigma = [&](double sigma, std::vector<double>& residualOut) -> bool {
+    std::vector<RegionParams> probeRegions = *ctx.safetyStrengthBaseRegions;
+    for (auto& r : probeRegions) r = reduce_strength(r, sigma);
+    std::vector<Mat6> probeC = build_region_elastic(probeRegions);
+    std::vector<MaterialPoint> trialProbe = trialBackup;
+    AssembleOutput probe = assemble_global(
+        *ctx.elements,
+        committedBackup,
+        trialProbe,
+        probeRegions,
+        probeC,
+        *ctx.freeIndexByDof,
+        U.data(),
+        ctx.U_base ? ctx.U_base->data() : nullptr,
+        ctx.baseRhsFree ? ctx.baseRhsFree->data() : nullptr,
+        ctx.rampedRhsFree ? ctx.rampedRhsFree->data() : nullptr,
+        loadFactor,
+        ctx.kind,
+        ctx.symmetrize,
+        ctx.incrementalStress,
+        /*wantTangent=*/false,
+        *ctx.K,
+        internalScratch,
+        residualScratch);
+    if (!std::isfinite(probe.residualNorm) || residualScratch.size() != residualOut.size()) return false;
+    residualOut = residualScratch;
+    for (double v : residualOut) {
+      if (!std::isfinite(v)) return false;
+    }
+    return true;
+  };
+
+  const bool lowerOk = assemble_at_sigma(out.lowerSigmaMsf, lowerResidual);
+  const bool upperOk = assemble_at_sigma(out.upperSigmaMsf, upperResidual);
+  *ctx.trial = trialBackup;
+  *ctx.committed = committedBackup;
+  if (!lowerOk || !upperOk) {
+    out.failureCode = 3u;
+    return out;
+  }
+
+  const double denom = out.upperSigmaMsf - out.lowerSigmaMsf;
+  if (!(denom > 0.0) || !std::isfinite(denom)) {
+    out.failureCode = 2u;
+    return out;
+  }
+  for (std::int32_t i = 0; i < nfree; ++i) {
+    const double dR = (upperResidual[static_cast<std::size_t>(i)] -
+                      lowerResidual[static_cast<std::size_t>(i)]) / denom;
+    if (!std::isfinite(dR)) {
+      out.failureCode = 3u;
+      return out;
+    }
+    out.rLambdaFree[static_cast<std::size_t>(i)] = dR;
+    out.continuationRhsFree[static_cast<std::size_t>(i)] = -dR;
+  }
+  out.converged = true;
+  out.failureCode = 0u;
   return out;
 }
 
