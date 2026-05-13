@@ -288,6 +288,11 @@ struct SolverOptions {
   double arcLengthTargetIterations{ 6.0 };
   std::int32_t arcLengthMaxRetries{ 6 };
   std::int32_t arcLengthLineSearchMaxBacktracks{ 6 };
+  double arcLengthDisplacementScale{ 1.0 };
+  double arcLengthInitialRadiusScale{ 1.0 };
+  double arcLengthMinRadiusScale{ 1.0 };
+  double arcLengthMaxRadiusScale{ 1.0 };
+  double arcLengthConstraintToleranceScale{ 1.0 };
   double arcLengthConstraintTolerance{ 1e-8 };
   double arcLengthAlphaMin{ 1e-8 };
   double arcLengthAlphaMax{ 1e8 };

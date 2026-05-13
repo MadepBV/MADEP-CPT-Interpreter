@@ -793,7 +793,68 @@ struct PhaseContext {
   const std::vector<MaterialPoint>* safetyComparison{ nullptr };
   std::vector<SafetyCurvePoint>* safetyCurve{ nullptr };
   std::int32_t safetyTrialIndex{ -1 };
+  double modelBoundingBoxDiagonal{ 1.0 };
 };
+
+inline double model_bounding_box_diagonal(const std::vector<ElementCache>& elements) {
+  if (elements.empty()) return 1.0;
+  double minX = std::numeric_limits<double>::infinity();
+  double minY = std::numeric_limits<double>::infinity();
+  double maxX = -std::numeric_limits<double>::infinity();
+  double maxY = -std::numeric_limits<double>::infinity();
+  bool any = false;
+  for (const ElementCache& el : elements) {
+    const int nnode = el.kind == ElementKind::T6 ? 6 : 3;
+    for (int i = 0; i < nnode; ++i) {
+      const Node& node = el.nodes[static_cast<std::size_t>(i)];
+      if (!std::isfinite(node.x) || !std::isfinite(node.y)) continue;
+      minX = std::min(minX, node.x);
+      minY = std::min(minY, node.y);
+      maxX = std::max(maxX, node.x);
+      maxY = std::max(maxY, node.y);
+      any = true;
+    }
+  }
+  if (!any) return 1.0;
+  return std::max(std::hypot(maxX - minX, maxY - minY), 1.0);
+}
+
+struct ArcLengthRuntimeOptions {
+  SolverOptions opts;
+  double displacementScale{ 1.0 };
+};
+
+inline double positive_arc_length_multiplier(double value) {
+  return std::isfinite(value) && value > 0.0 ? value : 1.0;
+}
+
+inline ArcLengthRuntimeOptions prepare_arc_length_runtime_options(
+    const PhaseContext& ctx,
+    const SolverOptions& opts) {
+  ArcLengthRuntimeOptions out;
+  out.opts = opts;
+  const bool autoScale =
+      !std::isfinite(opts.arcLengthDisplacementScale) ||
+      opts.arcLengthDisplacementScale <= 0.0;
+  if (!autoScale) {
+    out.displacementScale = opts.arcLengthDisplacementScale;
+    return out;
+  }
+
+  const double modelLength = std::max(ctx.modelBoundingBoxDiagonal, 1.0);
+  out.displacementScale = 1.0 / modelLength;
+  const double radiusScale = out.displacementScale;
+  const double toleranceScale = radiusScale * radiusScale;
+  out.opts.arcLengthInitialRadius *=
+      radiusScale * positive_arc_length_multiplier(opts.arcLengthInitialRadiusScale);
+  out.opts.arcLengthMinRadius *=
+      radiusScale * positive_arc_length_multiplier(opts.arcLengthMinRadiusScale);
+  out.opts.arcLengthMaxRadius *=
+      radiusScale * positive_arc_length_multiplier(opts.arcLengthMaxRadiusScale);
+  out.opts.arcLengthConstraintTolerance *=
+      toleranceScale * positive_arc_length_multiplier(opts.arcLengthConstraintToleranceScale);
+  return out;
+}
 
 struct PhaseStepMaterials {
   const std::vector<RegionParams>* regions{ nullptr };
@@ -1046,6 +1107,7 @@ inline ArcLengthPredictor make_load_control_arc_length_predictor(
     std::vector<double>& diagInv,
     const SolverOptions& opts,
     ArcLengthState& state,
+    double displacementScale = 1.0,
     bool useUnsymmetricSolver = false) {
   ArcLengthPredictor predictor;
   predictor.deltaUFree.assign(static_cast<std::size_t>(K.nrows), 0.0);
@@ -1055,7 +1117,7 @@ inline ArcLengthPredictor make_load_control_arc_length_predictor(
   predictor.converged = lr.converged;
 
   const double alpha = std::clamp(state.alpha, opts.arcLengthAlphaMin, opts.arcLengthAlphaMax);
-  const double norm2 = arc_length_weighted_norm2(predictor.deltaUFree);
+  const double norm2 = arc_length_weighted_norm2(predictor.deltaUFree, displacementScale);
   const double denom = std::sqrt(std::max(norm2 + alpha * alpha, 0.0));
   if (!(denom > 0.0) || !std::isfinite(denom)) {
     predictor.converged = false;
@@ -1064,8 +1126,9 @@ inline ArcLengthPredictor make_load_control_arc_length_predictor(
   predictor.scale = state.deltaS / denom;
   predictor.deltaLambda = predictor.scale;
   for (double& v : predictor.deltaUFree) v *= predictor.scale;
-  predictor.weightedNorm = std::sqrt(arc_length_weighted_norm2(predictor.deltaUFree));
-  choose_arc_length_predictor_sign(state, predictor, alpha);
+  predictor.weightedNorm = std::sqrt(
+      arc_length_weighted_norm2(predictor.deltaUFree, displacementScale));
+  choose_arc_length_predictor_sign(state, predictor, alpha, displacementScale);
   return predictor;
 }
 
@@ -1103,6 +1166,7 @@ inline ArcLengthCorrector compute_arc_length_corrector(
     ArcLengthState& state,
     std::vector<double>& diagInv,
     const SolverOptions& opts,
+    double displacementScale = 1.0,
     bool useUnsymmetricSolver = false) {
   ArcLengthCorrector out;
   out.deltaUFree.assign(static_cast<std::size_t>(K.nrows), 0.0);
@@ -1128,11 +1192,11 @@ inline ArcLengthCorrector compute_arc_length_corrector(
 
   const double alpha = std::clamp(state.alpha, opts.arcLengthAlphaMin, opts.arcLengthAlphaMax);
   out.constraintResidual = arc_length_constraint_residual(
-      stepDeltaUFree, stepDeltaLambda, state.deltaS, alpha);
+      stepDeltaUFree, stepDeltaLambda, state.deltaS, alpha, displacementScale);
   const double guDuResidual = arc_length_constraint_directional_derivative_u(
-      stepDeltaUFree, duResidual);
+      stepDeltaUFree, duResidual, displacementScale);
   const double guDuContinuation = arc_length_constraint_directional_derivative_u(
-      stepDeltaUFree, duContinuation);
+      stepDeltaUFree, duContinuation, displacementScale);
   const double gLambda = 2.0 * alpha * alpha * stepDeltaLambda;
   out.denominator = guDuContinuation + gLambda;
   const double denominatorTol = std::max(1e-14, 1e-12 * std::max(std::abs(gLambda), 1.0));
@@ -1474,8 +1538,12 @@ inline PhaseResult run_safety_arc_length_phase(
   double peakSigma = sigma;
   bool overall = true;
 
+  ArcLengthRuntimeOptions arcRuntime = prepare_arc_length_runtime_options(ctx, opts);
+  const SolverOptions& arcOpts = arcRuntime.opts;
+  const double displacementScale = arcRuntime.displacementScale;
+
   ArcLengthState arcState;
-  initialise_arc_length_state(arcState, opts, nfree, safety_sigma_to_phase_lambda(ctx, sigma), sigma);
+  initialise_arc_length_state(arcState, arcOpts, nfree, safety_sigma_to_phase_lambda(ctx, sigma), sigma);
   ArcLengthFdScratch fdScratch;
   PhaseStepMaterials startMaterials;
   PhaseStepMaterials candidateMaterials;
@@ -1518,11 +1586,11 @@ inline PhaseResult run_safety_arc_length_phase(
     res.displayMp = trialMp;
   };
 
-  for (std::int32_t step = 0; step < opts.maxLoadSteps; ++step) {
+  for (std::int32_t step = 0; step < arcOpts.maxLoadSteps; ++step) {
     if (sigma >= sigmaTarget - 1e-12) break;
 
     bool stepConverged = false;
-    for (std::int32_t retry = 0; retry < std::max(opts.arcLengthMaxRetries, 1); ++retry) {
+    for (std::int32_t retry = 0; retry < std::max(arcOpts.arcLengthMaxRetries, 1); ++retry) {
       const double stepStartSigma = sigma;
       const std::vector<double> stepStartU = U;
       const std::vector<MaterialPoint> stepStartCommitted = committedMp;
@@ -1549,7 +1617,7 @@ inline PhaseResult run_safety_arc_length_phase(
       const bool useUnsymmetricSolver = mayNeedUnsymmetricSolver && startHasPlastic;
 
       SafetyResidualDerivativeFd derivative = compute_safety_sigma_msf_residual_derivative(
-          ctx, U, stepStartLambda, stepStartSigma, fdScratch, opts);
+          ctx, U, stepStartLambda, stepStartSigma, fdScratch, arcOpts);
       if (!derivative.converged) {
         committedMp = stepStartCommitted;
         trialMp = stepStartTrial;
@@ -1558,9 +1626,10 @@ inline PhaseResult run_safety_arc_length_phase(
       }
 
       ArcLengthPredictor predictor = make_load_control_arc_length_predictor(
-          K, freeDofs, derivative.continuationRhsFree, diagInv, opts, arcState, useUnsymmetricSolver);
+          K, freeDofs, derivative.continuationRhsFree, diagInv, arcOpts, arcState,
+          displacementScale, useUnsymmetricSolver);
       res.cgIterations += predictor.linearIterations;
-      if (!arc_length_predictor_direction_allowed(predictor, arcState, opts)) {
+      if (!arc_length_predictor_direction_allowed(predictor, arcState, arcOpts)) {
         committedMp = stepStartCommitted;
         trialMp = stepStartTrial;
         U = stepStartU;
@@ -1586,7 +1655,7 @@ inline PhaseResult run_safety_arc_length_phase(
       double stepDeltaSigma = predictor.deltaLambda;
       ArcLengthState stepState = arcState;
       stepState.deltaS = std::sqrt(std::max(
-          arc_length_weighted_norm2(stepDeltaUFree) +
+          arc_length_weighted_norm2(stepDeltaUFree, displacementScale) +
           stepState.alpha * stepState.alpha * stepDeltaSigma * stepDeltaSigma,
           0.0));
       if (!(stepState.deltaS > 0.0) || !std::isfinite(stepState.deltaS)) {
@@ -1610,7 +1679,7 @@ inline PhaseResult run_safety_arc_length_phase(
       AssembleOutput lastAssembly;
       bool hasLastAssembly = false;
 
-      for (std::int32_t newtonIter = 1; newtonIter <= opts.nonlinearMaxIter; ++newtonIter) {
+      for (std::int32_t newtonIter = 1; newtonIter <= arcOpts.nonlinearMaxIter; ++newtonIter) {
         const double candidateSigma = stepStartSigma + stepDeltaSigma;
         if (!(candidateSigma >= 1.0) || candidateSigma > sigmaTarget + 1e-10) {
           invalidStep = true;
@@ -1640,17 +1709,17 @@ inline PhaseResult run_safety_arc_length_phase(
         remember_display_state(candidateSigma, a);
 
         lastConstraintResidual = arc_length_constraint_residual(
-            stepDeltaUFree, stepDeltaSigma, stepState.deltaS, stepState.alpha);
+            stepDeltaUFree, stepDeltaSigma, stepState.deltaS, stepState.alpha, displacementScale);
         if (!hasStepMeritBeta) {
           stepMeritBeta = arc_length_quadratic_merit_beta(
               a.residualNorm, lastConstraintResidual);
           hasStepMeritBeta = true;
         }
         const double residualTarget = std::max(
-            opts.residualAbsTol, opts.residualRelTol * std::max(a.rhsNorm, 0.0));
+            arcOpts.residualAbsTol, arcOpts.residualRelTol * std::max(a.rhsNorm, 0.0));
         const double constraintTarget = std::max(
-            opts.arcLengthConstraintTolerance,
-            opts.arcLengthConstraintTolerance * std::max(stepState.deltaS * stepState.deltaS, 1.0));
+            arcOpts.arcLengthConstraintTolerance,
+            arcOpts.arcLengthConstraintTolerance * std::max(stepState.deltaS * stepState.deltaS, 1.0));
         if (newtonIter > 1 &&
             a.residualNorm <= residualTarget &&
             std::abs(lastConstraintResidual) <= constraintTarget) {
@@ -1662,7 +1731,7 @@ inline PhaseResult run_safety_arc_length_phase(
         const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
         SafetyResidualDerivativeFd correctionDerivative =
             compute_safety_sigma_msf_residual_derivative(
-                ctx, U, candidateLambda, candidateSigma, fdScratch, opts);
+                ctx, U, candidateLambda, candidateSigma, fdScratch, arcOpts);
         if (!correctionDerivative.converged) {
           lastFailureCode = correctionDerivative.failureCode;
           invalidStep = true;
@@ -1670,7 +1739,8 @@ inline PhaseResult run_safety_arc_length_phase(
         }
         ArcLengthCorrector corrector = compute_arc_length_corrector(
             K, freeDofs, residualFree, correctionDerivative.continuationRhsFree,
-            stepDeltaUFree, stepDeltaSigma, stepState, diagInv, opts, tangentAsymmetric);
+            stepDeltaUFree, stepDeltaSigma, stepState, diagInv, arcOpts,
+            displacementScale, tangentAsymmetric);
         res.cgIterations += corrector.linearIterations;
         stepLinearIterations += corrector.linearIterations;
         lastCorrectionDenominator = corrector.denominator;
@@ -1681,7 +1751,7 @@ inline PhaseResult run_safety_arc_length_phase(
         }
 
         const double currentMerit = arc_length_line_search_merit(
-            a.residualNorm, lastConstraintResidual, stepState.deltaS, stepMeritBeta, opts);
+            a.residualNorm, lastConstraintResidual, stepState.deltaS, stepMeritBeta, arcOpts);
         double bestMerit = std::numeric_limits<double>::infinity();
         double bestScale = 0.0;
         lineSearchBestDeltaU.assign(stepDeltaUFree.begin(), stepDeltaUFree.end());
@@ -1692,7 +1762,7 @@ inline PhaseResult run_safety_arc_length_phase(
 
         double eta = 1.0;
         const int kArcLengthLineSearchMaxBacktracks =
-            arc_length_line_search_max_backtracks(opts);
+            arc_length_line_search_max_backtracks(arcOpts);
         for (int bt = 0; bt < kArcLengthLineSearchMaxBacktracks; ++bt) {
           lineSearchCandidateDeltaU.assign(stepDeltaUFree.begin(), stepDeltaUFree.end());
           for (std::int32_t i = 0; i < nfree; ++i) {
@@ -1714,9 +1784,10 @@ inline PhaseResult run_safety_arc_length_phase(
                 /*wantTangent=*/false,
                 K, internalForceFree, residualFree);
             const double constraint = arc_length_constraint_residual(
-                lineSearchCandidateDeltaU, candidateDeltaSigma, stepState.deltaS, stepState.alpha);
+                lineSearchCandidateDeltaU, candidateDeltaSigma, stepState.deltaS,
+                stepState.alpha, displacementScale);
             const double merit = arc_length_line_search_merit(
-                probe.residualNorm, constraint, stepState.deltaS, stepMeritBeta, opts);
+                probe.residualNorm, constraint, stepState.deltaS, stepMeritBeta, arcOpts);
             if (std::isfinite(merit) && merit < bestMerit) {
               bestMerit = merit;
               bestScale = eta;
@@ -1727,7 +1798,7 @@ inline PhaseResult run_safety_arc_length_phase(
               lineSearchBestTrial.assign(trialMp.begin(), trialMp.end());
               bestAssembly = probe;
             }
-            if (merit <= currentMerit || eta <= opts.plasticLineSearchMinScale + 1e-12) break;
+            if (merit <= currentMerit || eta <= arcOpts.plasticLineSearchMinScale + 1e-12) break;
           }
           eta *= 0.5;
         }
@@ -1821,17 +1892,17 @@ inline PhaseResult run_safety_arc_length_phase(
         arcState.sigmaMsf = acceptedSigma;
         arcState.acceptedStepCount += 1;
         const double iterFactor = std::pow(
-            std::max(opts.arcLengthTargetIterations, 1.0) /
+            std::max(arcOpts.arcLengthTargetIterations, 1.0) /
                 std::max(static_cast<double>(newtonIterUsed), 1.0),
             0.5);
         const double factor = std::clamp(
             iterFactor,
-            std::max(opts.arcLengthShrinkFactor, 1e-3),
-            std::max(opts.arcLengthGrowthFactor, 1.0));
+            std::max(arcOpts.arcLengthShrinkFactor, 1e-3),
+            std::max(arcOpts.arcLengthGrowthFactor, 1.0));
         arcState.deltaS = std::clamp(
             arcState.deltaS * factor,
-            std::max(opts.arcLengthMinRadius, 1e-12),
-            std::max(opts.arcLengthMaxRadius, opts.arcLengthMinRadius));
+            std::max(arcOpts.arcLengthMinRadius, 1e-12),
+            std::max(arcOpts.arcLengthMaxRadius, arcOpts.arcLengthMinRadius));
         break;
       }
 
@@ -1841,10 +1912,10 @@ inline PhaseResult run_safety_arc_length_phase(
       trialMp = stepStartTrial;
       U = stepStartU;
       const double shrink = invalidStep
-          ? std::clamp(opts.arcLengthFailureShrinkFactor, 1e-3, 1.0)
-          : std::clamp(opts.arcLengthShrinkFactor, 1e-3, 1.0);
+          ? std::clamp(arcOpts.arcLengthFailureShrinkFactor, 1e-3, 1.0)
+          : std::clamp(arcOpts.arcLengthShrinkFactor, 1e-3, 1.0);
       arcState.deltaS *= shrink;
-      if (arcState.deltaS < std::max(opts.arcLengthMinRadius, 1e-12)) {
+      if (arcState.deltaS < std::max(arcOpts.arcLengthMinRadius, 1e-12)) {
         overall = false;
         break;
       }
@@ -2667,6 +2738,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   ctx.ndof = ndof;
   ctx.kind = in.opts.constitutive;
   ctx.symmetrize = in.opts.symmetrizeTangent != 0;
+  ctx.modelBoundingBoxDiagonal = model_bounding_box_diagonal(*in.elements);
 
   // ---------------------------------------------------------------------------
   // Phase A — geostatic equilibration under gravity body force.
