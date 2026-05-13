@@ -14,6 +14,7 @@
 #pragma once
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -127,6 +128,58 @@ struct ScaledCsr {
   std::vector<double> row_scale;  // rhs_scaled = row_scale ∘ rhs
 };
 
+inline std::uint64_t hash_csr_values(const CsrMatrix& A) {
+  std::uint64_t h = 1469598103934665603ull;
+  auto mix = [&](std::uint64_t v) {
+    h ^= v;
+    h *= 1099511628211ull;
+  };
+  mix(static_cast<std::uint64_t>(std::max(A.nrows, 0)));
+  mix(static_cast<std::uint64_t>(A.values.size()));
+  for (double value : A.values) mix(std::bit_cast<std::uint64_t>(value));
+  return h;
+}
+
+inline void update_scaled_rhs(ScaledCsr& scaled, const double* rhs) {
+  const std::int32_t n = scaled.matrix.nrows;
+  scaled.rhs.assign(static_cast<std::size_t>(std::max(n, 0)), 0.0);
+  for (std::int32_t r = 0; r < n; ++r) scaled.rhs[r] = scaled.row_scale[r] * rhs[r];
+}
+
+struct GmresScalingCache {
+  ScaledCsr scaled;
+  std::vector<double> diag_inv;
+  std::vector<std::int32_t> freeDofsSignature;
+  std::uint64_t valuesHash{ 0 };
+  std::int32_t rebuildCount{ 0 };
+  bool valid{ false };
+
+  inline bool valid_for(
+      const CsrMatrix& A,
+      const std::vector<std::int32_t>& freeDofs) const {
+    return valid &&
+        scaled.matrix.nrows == A.nrows &&
+        scaled.matrix.rowPtr == A.rowPtr &&
+        scaled.matrix.colIdx == A.colIdx &&
+        freeDofsSignature == freeDofs &&
+        valuesHash == hash_csr_values(A);
+  }
+
+  inline void mark_valid_for(
+      const CsrMatrix& A,
+      const std::vector<std::int32_t>& freeDofs) {
+    valuesHash = hash_csr_values(A);
+    freeDofsSignature = freeDofs;
+    valid = true;
+  }
+
+  inline void invalidate() {
+    valid = false;
+    valuesHash = 0;
+    freeDofsSignature.clear();
+  }
+};
+
 inline ScaledCsr build_scaled_csr(
     const CsrMatrix& A,
     const double* rhs,
@@ -172,10 +225,9 @@ inline ScaledCsr build_scaled_csr(
       out.matrix.values[k] = rf * A.values[k] * col_scale[A.colIdx[k]];
     }
   }
-  out.rhs.assign(static_cast<std::size_t>(n), 0.0);
-  for (std::int32_t r = 0; r < n; ++r) out.rhs[r] = row_scale[r] * rhs[r];
   out.col_scale = std::move(col_scale);
   out.row_scale = std::move(row_scale);
+  update_scaled_rhs(out, rhs);
   return out;
 }
 
@@ -212,14 +264,24 @@ inline LinearSolveResult solve_gmres_scaled(
     std::int32_t maxIter,
     double relTol,
     double absTol,
-    std::int32_t restart = 40) {
+    std::int32_t restart = 40,
+    GmresScalingCache* cache = nullptr) {
   const std::int32_t n = A.nrows;
   LinearSolveResult out;
   if (n == 0) { out.converged = true; return out; }
 
-  ScaledCsr scaled = build_scaled_csr(A, rhs);
-  std::vector<double> diag_inv;
-  sparse::build_block_jacobi(scaled.matrix, freeDofs, diag_inv);
+  GmresScalingCache localCache;
+  GmresScalingCache& activeCache = cache ? *cache : localCache;
+  if (!activeCache.valid_for(A, freeDofs)) {
+    activeCache.scaled = build_scaled_csr(A, rhs);
+    sparse::build_block_jacobi(activeCache.scaled.matrix, freeDofs, activeCache.diag_inv);
+    activeCache.mark_valid_for(A, freeDofs);
+    activeCache.rebuildCount += 1;
+  } else {
+    update_scaled_rhs(activeCache.scaled, rhs);
+  }
+  ScaledCsr& scaled = activeCache.scaled;
+  std::vector<double>& diag_inv = activeCache.diag_inv;
   const double rawRhsNorm = sparse::norm2(scaled.rhs.data(), n);
 
   // Scaled initial guess: x_scaled = x / col_scale (so x = col_scale * x_scaled).

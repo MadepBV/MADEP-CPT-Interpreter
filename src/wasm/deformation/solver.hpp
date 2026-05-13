@@ -911,11 +911,14 @@ inline cg::LinearSolveResult solve_phase_linear_system(
     std::vector<double>& diagInv,
     const SolverOptions& opts,
     bool useUnsymmetricSolver,
-    bool reuseDiagInv = false) {
+    bool reuseDiagInv = false,
+    cg::GmresScalingCache* gmresCache = nullptr) {
   if (useUnsymmetricSolver) {
     return cg::solve_gmres_scaled(K, freeDofs,
                                   residualFree.data(), correctionFree.data(),
-                                  opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
+                                  opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol,
+                                  /*restart=*/40,
+                                  gmresCache);
   }
   if (!reuseDiagInv) {
     sparse::build_block_jacobi(K, freeDofs, diagInv);
@@ -1170,10 +1173,14 @@ inline ArcLengthCorrector compute_arc_length_corrector(
     bool useUnsymmetricSolver = false) {
   ArcLengthCorrector out;
   out.deltaUFree.assign(static_cast<std::size_t>(K.nrows), 0.0);
+  cg::GmresScalingCache gmresCache;
+  cg::GmresScalingCache* gmresCachePtr = useUnsymmetricSolver ? &gmresCache : nullptr;
 
   std::vector<double> duResidual(static_cast<std::size_t>(K.nrows), 0.0);
   cg::LinearSolveResult residualSolve = solve_phase_linear_system(
-      K, freeDofs, residualFree, duResidual, diagInv, opts, useUnsymmetricSolver);
+      K, freeDofs, residualFree, duResidual, diagInv, opts, useUnsymmetricSolver,
+      /*reuseDiagInv=*/false,
+      gmresCachePtr);
   out.linearIterations += residualSolve.iterations;
   if (!residualSolve.converged) {
     out.failureCode = 1u;
@@ -1183,7 +1190,8 @@ inline ArcLengthCorrector compute_arc_length_corrector(
   std::vector<double> duContinuation(static_cast<std::size_t>(K.nrows), 0.0);
   cg::LinearSolveResult continuationSolve = solve_phase_linear_system(
       K, freeDofs, continuationRhsFree, duContinuation, diagInv, opts, useUnsymmetricSolver,
-      !useUnsymmetricSolver);
+      !useUnsymmetricSolver,
+      gmresCachePtr);
   out.linearIterations += continuationSolve.iterations;
   if (!continuationSolve.converged) {
     out.failureCode = 2u;
