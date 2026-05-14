@@ -1560,10 +1560,16 @@ inline PhaseResult run_safety_arc_length_phase(
   std::vector<double> lineSearchBestDeltaU;
   std::vector<double> lineSearchBestU;
   std::vector<MaterialPoint> lineSearchBestTrial;
+  std::vector<double> stepStartUScratch;
+  std::vector<MaterialPoint> stepStartCommittedScratch;
+  std::vector<MaterialPoint> stepStartTrialScratch;
   lineSearchCandidateDeltaU.reserve(static_cast<std::size_t>(std::max(nfree, 0)));
   lineSearchBestDeltaU.reserve(static_cast<std::size_t>(std::max(nfree, 0)));
   lineSearchBestU.reserve(U.size());
   lineSearchBestTrial.reserve(trialMp.size());
+  stepStartUScratch.reserve(U.size());
+  stepStartCommittedScratch.reserve(committedMp.size());
+  stepStartTrialScratch.reserve(trialMp.size());
 
   auto apply_step_delta = [&](const std::vector<double>& startU,
                               const std::vector<double>& deltaFree) {
@@ -1600,9 +1606,9 @@ inline PhaseResult run_safety_arc_length_phase(
     bool stepConverged = false;
     for (std::int32_t retry = 0; retry < std::max(arcOpts.arcLengthMaxRetries, 1); ++retry) {
       const double stepStartSigma = sigma;
-      const std::vector<double> stepStartU = U;
-      const std::vector<MaterialPoint> stepStartCommitted = committedMp;
-      const std::vector<MaterialPoint> stepStartTrial = trialMp;
+      stepStartUScratch.assign(U.begin(), U.end());
+      stepStartCommittedScratch.assign(committedMp.begin(), committedMp.end());
+      stepStartTrialScratch.assign(trialMp.begin(), trialMp.end());
       const double stepStartLambda = safety_sigma_to_phase_lambda(ctx, stepStartSigma);
 
       prepare_safety_sigma_msf_materials(ctx, regions, regionC, stepStartSigma, startMaterials);
@@ -1627,9 +1633,9 @@ inline PhaseResult run_safety_arc_length_phase(
       SafetyResidualDerivativeFd derivative = compute_safety_sigma_msf_residual_derivative(
           ctx, U, stepStartLambda, stepStartSigma, fdScratch, arcOpts);
       if (!derivative.converged) {
-        committedMp = stepStartCommitted;
-        trialMp = stepStartTrial;
-        U = stepStartU;
+        committedMp = stepStartCommittedScratch;
+        trialMp = stepStartTrialScratch;
+        U = stepStartUScratch;
         break;
       }
 
@@ -1638,9 +1644,9 @@ inline PhaseResult run_safety_arc_length_phase(
           displacementScale, useUnsymmetricSolver);
       res.cgIterations += predictor.linearIterations;
       if (!arc_length_predictor_direction_allowed(predictor, arcState, arcOpts)) {
-        committedMp = stepStartCommitted;
-        trialMp = stepStartTrial;
-        U = stepStartU;
+        committedMp = stepStartCommittedScratch;
+        trialMp = stepStartTrialScratch;
+        U = stepStartUScratch;
         break;
       }
 
@@ -1649,9 +1655,9 @@ inline PhaseResult run_safety_arc_length_phase(
         predictorScale = (sigmaTarget - stepStartSigma) / predictor.deltaLambda;
       }
       if (!(predictorScale > 0.0) || !std::isfinite(predictorScale)) {
-        committedMp = stepStartCommitted;
-        trialMp = stepStartTrial;
-        U = stepStartU;
+        committedMp = stepStartCommittedScratch;
+        trialMp = stepStartTrialScratch;
+        U = stepStartUScratch;
         break;
       }
       if (predictorScale < 1.0) {
@@ -1667,13 +1673,13 @@ inline PhaseResult run_safety_arc_length_phase(
           stepState.alpha * stepState.alpha * stepDeltaSigma * stepDeltaSigma,
           0.0));
       if (!(stepState.deltaS > 0.0) || !std::isfinite(stepState.deltaS)) {
-        committedMp = stepStartCommitted;
-        trialMp = stepStartTrial;
-        U = stepStartU;
+        committedMp = stepStartCommittedScratch;
+        trialMp = stepStartTrialScratch;
+        U = stepStartUScratch;
         break;
       }
 
-      apply_step_delta(stepStartU, stepDeltaUFree);
+      apply_step_delta(stepStartUScratch, stepDeltaUFree);
       double lastAcceptedScale = 1.0;
       double stepInitialResidualNorm = std::numeric_limits<double>::quiet_NaN();
       double lastConstraintResidual = std::numeric_limits<double>::quiet_NaN();
@@ -1780,7 +1786,7 @@ inline PhaseResult run_safety_arc_length_phase(
           const double candidateDeltaSigma = stepDeltaSigma + eta * corrector.deltaLambda;
           const double probeSigma = stepStartSigma + candidateDeltaSigma;
           if (probeSigma >= 1.0 && probeSigma <= sigmaTarget + 1e-10) {
-            apply_step_delta(stepStartU, lineSearchCandidateDeltaU);
+            apply_step_delta(stepStartUScratch, lineSearchCandidateDeltaU);
             trialMp = committedMp;
             const double probeLambda = safety_sigma_to_phase_lambda(ctx, probeSigma);
             prepare_safety_sigma_msf_materials(ctx, regions, regionC, probeSigma, probeMaterials);
@@ -1892,9 +1898,9 @@ inline PhaseResult run_safety_arc_length_phase(
 
       ++res.rejected;
       arcState.rejectedStepCount += 1;
-      committedMp = stepStartCommitted;
-      trialMp = stepStartTrial;
-      U = stepStartU;
+      committedMp = stepStartCommittedScratch;
+      trialMp = stepStartTrialScratch;
+      U = stepStartUScratch;
       const double shrink = invalidStep
           ? std::clamp(arcOpts.arcLengthFailureShrinkFactor, 1e-3, 1.0)
           : std::clamp(arcOpts.arcLengthShrinkFactor, 1e-3, 1.0);
