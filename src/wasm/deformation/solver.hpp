@@ -1770,7 +1770,7 @@ inline PhaseResult run_safety_arc_length_phase(
         double bestDeltaSigma = stepDeltaSigma;
         lineSearchBestU.assign(U.begin(), U.end());
         lineSearchBestTrial.assign(trialMp.begin(), trialMp.end());
-        AssembleOutput bestAssembly;
+        double bestAssemblyMaxEta = 0.0;
 
         double eta = 1.0;
         const int kArcLengthLineSearchMaxBacktracks =
@@ -1808,7 +1808,7 @@ inline PhaseResult run_safety_arc_length_phase(
               bestDeltaSigma = candidateDeltaSigma;
               lineSearchBestU.assign(U.begin(), U.end());
               lineSearchBestTrial.assign(trialMp.begin(), trialMp.end());
-              bestAssembly = probe;
+              bestAssemblyMaxEta = probe.maxEta;
             }
             if (merit <= currentMerit || eta <= arcOpts.plasticLineSearchMinScale + 1e-12) break;
           }
@@ -1823,7 +1823,7 @@ inline PhaseResult run_safety_arc_length_phase(
         std::swap(U, lineSearchBestU);
         std::swap(trialMp, lineSearchBestTrial);
         lastAcceptedScale = bestScale;
-        res.maxEta = std::max(res.maxEta, bestAssembly.maxEta);
+        res.maxEta = std::max(res.maxEta, bestAssemblyMaxEta);
       }
 
       if (stepConverged) {
