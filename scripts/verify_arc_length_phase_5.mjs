@@ -189,14 +189,33 @@ async function main() {
     ...commonInput,
     options: { ...baseOptions, requestedContinuationMode: 'arc-length' }
   }));
+  const arcTuned = runAnalysis(mod, encodeInputBuffer({
+    ...commonInput,
+    options: {
+      ...baseOptions,
+      requestedContinuationMode: 'arc-length',
+      arcLengthLineSearchMaxBacktracks: 4,
+      arcLengthMeritMode: 'quadratic',
+      arcLengthDisplacementScale: 0,
+      arcLengthInitialRadiusScale: 1,
+      arcLengthMinRadiusScale: 1,
+      arcLengthMaxRadiusScale: 1,
+      arcLengthConstraintToleranceScale: 1
+    }
+  }));
 
   assert.equal(strength.version, 8);
   assert.equal(arc.version, 8);
+  assert.equal(arcTuned.version, 8);
   assert.ok(strength.decoded.safety.curve.length > 0, 'strength-control safety curve should exist');
   assert.ok(arc.decoded.safety.curve.length > 0, 'arc-length safety curve should exist');
+  assert.ok(arcTuned.decoded.safety.curve.length > 0, 'tuned arc-length safety curve should exist');
   assert.equal(strength.decoded.safety.curve.some((p) => p.arcLengthDetails !== null), false);
   assert.equal(arc.decoded.safety.curve.every((p) => p.arcLengthDetails !== null), true);
+  assert.equal(arcTuned.decoded.safety.curve.every((p) => p.arcLengthDetails !== null), true);
   assert.ok(Math.abs(strength.decoded.safety.factorOfSafetyLower - arc.decoded.safety.factorOfSafetyLower) <= 0.02);
+  assert.ok(Number.isFinite(arcTuned.decoded.safety.factorOfSafetyLower));
+  assert.ok(arcTuned.decoded.safety.factorOfSafetyLower >= 1.0);
   for (const point of arc.decoded.safety.curve) {
     assert.equal(point.arcLengthDetails.actualContinuationMode, 'arc-length');
     assert.ok(Number.isFinite(point.arcLengthDetails.deltaLambda));
@@ -207,6 +226,14 @@ async function main() {
     assert.ok(Number.isInteger(point.arcLengthDetails.failureCode));
     assert.ok(point.sigmaMsf >= 1);
   }
+  const defaultFirstDeltaS = arc.decoded.safety.curve[0]?.arcLengthDetails?.deltaS;
+  const tunedFirstDeltaS = arcTuned.decoded.safety.curve[0]?.arcLengthDetails?.deltaS;
+  assert.ok(Number.isFinite(defaultFirstDeltaS));
+  assert.ok(Number.isFinite(tunedFirstDeltaS));
+  assert.ok(
+    tunedFirstDeltaS < defaultFirstDeltaS,
+    'auto displacement scale should reduce the first accepted arc-length radius on this >1m model'
+  );
 
   console.log('Arc-length Phase 5 v8 safety-curve checks passed.');
 }

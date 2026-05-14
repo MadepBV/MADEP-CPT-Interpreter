@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import {
   arcLengthDerivativeModeCode,
+  arcLengthMeritModeCode,
   encodeInputBuffer,
   requestedContinuationModeCode
 } from '../src/lib/cpt-app/deformation/wasm/wire-format.js';
@@ -19,6 +20,10 @@ assert.equal(arcLengthDerivativeModeCode('analytic'), 1);
 assert.equal(arcLengthDerivativeModeCode('analytic-verified'), 2);
 assert.equal(arcLengthDerivativeModeCode(undefined), 0);
 
+assert.equal(arcLengthMeritModeCode('one-norm-scaled'), 0);
+assert.equal(arcLengthMeritModeCode('quadratic'), 1);
+assert.equal(arcLengthMeritModeCode(undefined), 0);
+
 const buffer = encodeInputBuffer({
   mesh: {
     elementType: 't3',
@@ -31,7 +36,14 @@ const buffer = encodeInputBuffer({
     constitutiveModel: 'linear-elastic',
     analysisType: 'deformation',
     requestedContinuationMode: 'arc-length',
-    arcLengthDerivativeMode: 'analytic-verified'
+    arcLengthDerivativeMode: 'analytic-verified',
+    arcLengthMeritMode: 'quadratic',
+    arcLengthLineSearchMaxBacktracks: 4,
+    arcLengthDisplacementScale: 0,
+    arcLengthInitialRadiusScale: 2,
+    arcLengthMinRadiusScale: 3,
+    arcLengthMaxRadiusScale: 4,
+    arcLengthConstraintToleranceScale: 5
   },
   regions: [{ Emc: 1000, nu: 0.3 }],
   gravityRhsFull: new Float64Array(2),
@@ -46,5 +58,15 @@ const buffer = encodeInputBuffer({
 const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 assert.equal(view.getUint8(46), 2);
 assert.equal(view.getUint8(47), 2);
+assert.equal(view.getUint8(48), 1);
+assert.equal(view.getUint8(49), 0);
+assert.equal(view.getUint8(50), 0);
+assert.equal(view.getUint8(51), 0);
+assert.equal(view.getUint32(76, true), 4);
+assert.equal(view.getFloat64(264, true), 0);
+assert.equal(view.getFloat64(272, true), 2);
+assert.equal(view.getFloat64(280, true), 3);
+assert.equal(view.getFloat64(288, true), 4);
+assert.equal(view.getFloat64(296, true), 5);
 
 console.log('Arc-length Phase 2 option wire checks passed.');

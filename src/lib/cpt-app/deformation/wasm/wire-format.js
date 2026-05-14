@@ -71,6 +71,12 @@ export function arcLengthDerivativeModeCode(value) {
   return 0;
 }
 
+export function arcLengthMeritModeCode(value) {
+  const mode = String(value || '').toLowerCase();
+  if (mode === 'quadratic') return 1;
+  return 0;
+}
+
 function clampAngleRad(deg) {
   const d = Math.max(Math.min(Number(deg) || 0, 89.5), 0);
   return (d * Math.PI) / 180;
@@ -80,14 +86,16 @@ function computeInputSize({ numNodes, numElements, numRegions, numConstraints, n
   // Header:
   //   10 u32 (magic, version, elementKind, constitutive, analysisMode,
   //           numNodes, numElements, numRegions, numConstraints, numGpTotal) = 40
-  //   8 u8 flags/modes                                                        = 8
-  //   6 u32 (nonlinearMaxIter, maxLoadSteps, cgMaxIter, safetyMaxSearchTrials,
+  //   12 u8 flags/modes/pad                                                   = 12
+  //   7 u32 (nonlinearMaxIter, maxLoadSteps, cgMaxIter, safetyMaxSearchTrials,
   //           plasticLineSearchMaxBacktracks,
-  //           initialGravityPlasticLineSearchMaxBacktracks)                    = 24
-  //   23 f64 (10 standard tolerances + 4 plastic continuation controls +
-  //           4 line-search controls + 5 safety params)                       = 184
-  // Total header = 40 + 8 + 24 + 184 = 256 bytes
-  const headerBytes = 40 + 8 + 24 + 23 * 8;
+  //           initialGravityPlasticLineSearchMaxBacktracks,
+  //           arcLengthLineSearchMaxBacktracks)                                = 28
+  //   28 f64 (10 standard tolerances + 4 plastic continuation controls +
+  //           4 line-search controls + 5 safety params +
+  //           5 arc-length scaling controls)                                  = 224
+  // Total header = 40 + 12 + 28 + 224 = 304 bytes
+  const headerBytes = 40 + 12 + 28 + 28 * 8;
   const nodesBytes = numNodes * 2 * 8;
   const elementsBytes = numElements * (4 + 4 + 6 * 4);
   const regionsBytes = numRegions * (10 * 8 + 4);  // 84 bytes per region
@@ -167,12 +175,17 @@ export function encodeInputBuffer({
   writeU8(options.robustNonlinearMode === true ? 1 : 0);
   writeU8(requestedContinuationModeCode(options.requestedContinuationMode));
   writeU8(arcLengthDerivativeModeCode(options.arcLengthDerivativeMode));
+  writeU8(arcLengthMeritModeCode(options.arcLengthMeritMode));
+  writeU8(0);
+  writeU8(0);
+  writeU8(0);
   writeU32(Math.max(Math.round(options.nonlinearMaxIter || 32), 1));
   writeU32(Math.max(Math.round(options.maxLoadSteps || 256), 1));
   writeU32(Math.max(Math.round(options.cgMaxIter || 25000), 1));
   writeU32(Math.max(Math.round(options.safetyMaxSearchTrials || 32), 1));
   writeU32(Math.max(Math.round(options.plasticLineSearchMaxBacktracks || 4), 1));
   writeU32(Math.max(Math.round(options.initialGravityPlasticLineSearchMaxBacktracks || 5), 1));
+  writeU32(Math.max(Math.round(options.arcLengthLineSearchMaxBacktracks ?? 6), 1));
   writeF64(options.initialLoadStep ?? 0.25);
   writeF64(options.minLoadStep ?? (1 / 2048));
   writeF64(options.loadStepGrowthFactor ?? 1.25);
@@ -196,6 +209,11 @@ export function encodeInputBuffer({
   writeF64(options.safetyCutbackFactor ?? 0.5);
   writeF64(options.safetySigmaMax ?? 3.0);
   writeF64(options.safetyBracketTolerance ?? 0.01);
+  writeF64(options.arcLengthDisplacementScale ?? 1.0);
+  writeF64(options.arcLengthInitialRadiusScale ?? 1.0);
+  writeF64(options.arcLengthMinRadiusScale ?? 1.0);
+  writeF64(options.arcLengthMaxRadiusScale ?? 1.0);
+  writeF64(options.arcLengthConstraintToleranceScale ?? 1.0);
 
   // Nodes.
   for (let i = 0; i < numNodes; i += 1) {

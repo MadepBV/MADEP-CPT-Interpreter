@@ -906,6 +906,13 @@ arcLengthConstraintTolerance: number;
 arcLengthAlphaMin: number;
 arcLengthAlphaMax: number;
 arcLengthDerivativeMode: 'finite-difference' | 'analytic' | 'analytic-verified';
+arcLengthMeritMode: 'one-norm-scaled' | 'quadratic';
+arcLengthLineSearchMaxBacktracks: number;
+arcLengthDisplacementScale: number;
+arcLengthInitialRadiusScale: number;
+arcLengthMinRadiusScale: number;
+arcLengthMaxRadiusScale: number;
+arcLengthConstraintToleranceScale: number;
 arcLengthAllowPostPeakSafetyPath: boolean;
 ```
 
@@ -922,6 +929,18 @@ Rules:
   with `safetyFinalizationMode = 'legacy-bracket'`; the solver still emits the
   safety curve, while the finalizer chooses the legacy bracket result from trial
   targets.
+- The version-8 JS→WASM input wire carries the production arc-length runtime
+  options as fixed-width numeric fields. Defaults must preserve the pre-option
+  behavior: `arcLengthMeritMode = 'one-norm-scaled'`,
+  `arcLengthLineSearchMaxBacktracks = 6`, and
+  `arcLengthDisplacementScale = 1.0`.
+- `arcLengthDisplacementScale <= 0` means auto-scale from the model bounding-box
+  diagonal, with radius controls scaled by `W` and constraint tolerance scaled by
+  `W^2`. The four `arcLength*RadiusScale` and
+  `arcLengthConstraintToleranceScale` fields are positive multipliers applied
+  only to that auto-scaled runtime option set.
+- The JS encoder and C++ reader must update together. A version-8 input record
+  is not valid unless the C1/C2/C3 fields are present in the fixed header.
 
 Initial production defaults:
 

@@ -23,12 +23,15 @@
 //     u8   robustNonlinearMode
 //     u8   requestedContinuationMode (0=load, 1=strength, 2=arc-length, 3=auto)
 //     u8   arcLengthDerivativeMode   (0=FD, 1=analytic, 2=analytic-verified)
+//     u8   arcLengthMeritMode        (0=one-norm-scaled, 1=quadratic)
+//     u8[3] reserved
 //     u32  nonlinearMaxIter
 //     u32  maxLoadSteps
 //     u32  cgMaxIter
 //     u32  safetyMaxSearchTrials
 //     u32  plasticLineSearchMaxBacktracks
 //     u32  initialGravityPlasticLineSearchMaxBacktracks
+//     u32  arcLengthLineSearchMaxBacktracks
 //     f64  initialLoadStep, minLoadStep, growth, cutback,
 //          plasticGrowth, plasticCutback, initialGravityPlasticGrowth,
 //          initialGravityPlasticCutback,
@@ -37,7 +40,10 @@
 //          plasticLineSearchReduction, plasticLineSearchMinScale,
 //          initialGravityPlasticLineSearchMinScale, plasticLineSearchArmijo,
 //          safetyInitialIncrement, safetyGrowthFactor, safetyCutbackFactor,
-//          safetySigmaMax, safetyBracketTolerance
+//          safetySigmaMax, safetyBracketTolerance,
+//          arcLengthDisplacementScale, arcLengthInitialRadiusScale,
+//          arcLengthMinRadiusScale, arcLengthMaxRadiusScale,
+//          arcLengthConstraintToleranceScale
 //   Nodes:       numNodes × (f64 x, f64 y)
 //   Elements:    numElements × (i32 regionIndex, i32 elementKind, i32 nodeIds[6])
 //   Regions:     numRegions × RegionParams (10 f64 + 4 u8 = 84 bytes)
@@ -137,10 +143,16 @@ ArcLengthDerivativeMode arc_length_derivative_mode_from_wire(std::uint8_t value)
   return ArcLengthDerivativeMode::FiniteDifference;
 }
 
+ArcLengthMeritMode arc_length_merit_mode_from_wire(std::uint8_t value) {
+  if (value == 1u) return ArcLengthMeritMode::Quadratic;
+  return ArcLengthMeritMode::OneNormScaled;
+}
+
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
 constexpr std::uint32_t WIRE_VERSION = 8u;
 
+constexpr std::size_t kInputHeaderBytes = 40 + 12 + 7 * 4 + 28 * 8;  // 304 bytes
 constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 88 bytes
 constexpr std::size_t kGpStateBytes = (6 + 6 + 1 + 1 + 6 + 6 + 6 + 1 + 1 + 1) * 8 + 4;  // 35 f64 + 4 u8 = 284 bytes
 constexpr std::size_t kSafetyHeaderBytes = 1 + 7 + 3 * 8 + 4 * 4;  // 48 bytes
@@ -221,7 +233,7 @@ int madepRunDeformationAnalysis(
   const auto startTime = clock::now();
 
   g_last_error.clear();
-  if (!inputPtr || inputLen < 96 || !outPtrPtr || !outLenPtr) {
+  if (!inputPtr || inputLen < kInputHeaderBytes || !outPtrPtr || !outLenPtr) {
     g_last_error = "invalid arguments to madepRunDeformationAnalysis";
     return 0;
   }
@@ -229,9 +241,11 @@ int madepRunDeformationAnalysis(
   std::uint32_t magic, version, elementKindU, constitutiveU, analysisModeU;
   std::uint32_t numNodes, numElements, numRegions, numConstraints, numGpTotalU;
   std::uint8_t hasSurfaceLoad, useTensionCutoff, symmetrize, bbar, useK0Init;
-  std::uint8_t robustNonlinearMode, pad1, pad2;
+  std::uint8_t robustNonlinearMode, requestedContinuationModeU, arcLengthDerivativeModeU;
+  std::uint8_t arcLengthMeritModeU, pad0, pad1, pad2;
   std::uint32_t nonlinearMaxIter, maxLoadSteps, cgMaxIter, safetyMaxSearchTrials;
   std::uint32_t plasticLineSearchMaxBacktracks, initialGravityPlasticLineSearchMaxBacktracks;
+  std::uint32_t arcLengthLineSearchMaxBacktracks;
   double initialLoadStep, minLoadStep, growth, cutback;
   double plasticGrowth, plasticCutback, initialGravityPlasticGrowth, initialGravityPlasticCutback;
   double resRel, resAbs, dispRel, dispAbs;
@@ -239,6 +253,8 @@ int madepRunDeformationAnalysis(
   double plasticLineSearchReduction, plasticLineSearchMinScale;
   double initialGravityPlasticLineSearchMinScale, plasticLineSearchArmijo;
   double safetyInitialIncrement, safetyGrowthFactor, safetyCutbackFactor, safetySigmaMax, safetyBracketTolerance;
+  double arcLengthDisplacementScale, arcLengthInitialRadiusScale, arcLengthMinRadiusScale;
+  double arcLengthMaxRadiusScale, arcLengthConstraintToleranceScale;
 
   p = read_u32(p, magic);
   p = read_u32(p, version);
@@ -259,13 +275,23 @@ int madepRunDeformationAnalysis(
   p = read_u8(p, symmetrize);
   p = read_u8(p, bbar);
   p = read_u8(p, useK0Init);
-  p = read_u8(p, robustNonlinearMode); p = read_u8(p, pad1); p = read_u8(p, pad2);
+  p = read_u8(p, robustNonlinearMode);
+  p = read_u8(p, requestedContinuationModeU);
+  p = read_u8(p, arcLengthDerivativeModeU);
+  p = read_u8(p, arcLengthMeritModeU);
+  p = read_u8(p, pad0);
+  p = read_u8(p, pad1);
+  p = read_u8(p, pad2);
+  (void)pad0;
+  (void)pad1;
+  (void)pad2;
   p = read_u32(p, nonlinearMaxIter);
   p = read_u32(p, maxLoadSteps);
   p = read_u32(p, cgMaxIter);
   p = read_u32(p, safetyMaxSearchTrials);
   p = read_u32(p, plasticLineSearchMaxBacktracks);
   p = read_u32(p, initialGravityPlasticLineSearchMaxBacktracks);
+  p = read_u32(p, arcLengthLineSearchMaxBacktracks);
   p = read_f64(p, initialLoadStep);
   p = read_f64(p, minLoadStep);
   p = read_f64(p, growth);
@@ -289,6 +315,11 @@ int madepRunDeformationAnalysis(
   p = read_f64(p, safetyCutbackFactor);
   p = read_f64(p, safetySigmaMax);
   p = read_f64(p, safetyBracketTolerance);
+  p = read_f64(p, arcLengthDisplacementScale);
+  p = read_f64(p, arcLengthInitialRadiusScale);
+  p = read_f64(p, arcLengthMinRadiusScale);
+  p = read_f64(p, arcLengthMaxRadiusScale);
+  p = read_f64(p, arcLengthConstraintToleranceScale);
 
   const ElementKind elementKind = (elementKindU == 6) ? ElementKind::T6 : ElementKind::T3;
   const int nodesPerEl = (elementKind == ElementKind::T6) ? 6 : 3;
@@ -456,8 +487,9 @@ int madepRunDeformationAnalysis(
   opts.symmetrizeTangent = symmetrize;
   opts.bbarForT6 = bbar;
   opts.robustNonlinearMode = robustNonlinearMode;
-  opts.requestedContinuationMode = requested_continuation_mode_from_wire(pad1);
-  opts.arcLengthDerivativeMode = arc_length_derivative_mode_from_wire(pad2);
+  opts.requestedContinuationMode = requested_continuation_mode_from_wire(requestedContinuationModeU);
+  opts.arcLengthDerivativeMode = arc_length_derivative_mode_from_wire(arcLengthDerivativeModeU);
+  opts.arcLengthMeritMode = arc_length_merit_mode_from_wire(arcLengthMeritModeU);
   opts.nonlinearMaxIter = static_cast<std::int32_t>(nonlinearMaxIter);
   opts.maxLoadSteps = static_cast<std::int32_t>(maxLoadSteps);
   opts.initialLoadStep = initialLoadStep;
@@ -482,12 +514,19 @@ int madepRunDeformationAnalysis(
   opts.plasticLineSearchMaxBacktracks = static_cast<std::int32_t>(plasticLineSearchMaxBacktracks);
   opts.initialGravityPlasticLineSearchMaxBacktracks =
       static_cast<std::int32_t>(initialGravityPlasticLineSearchMaxBacktracks);
+  opts.arcLengthLineSearchMaxBacktracks =
+      static_cast<std::int32_t>(arcLengthLineSearchMaxBacktracks);
   opts.safetyInitialIncrement = safetyInitialIncrement;
   opts.safetyGrowthFactor = safetyGrowthFactor;
   opts.safetyCutbackFactor = safetyCutbackFactor;
   opts.safetySigmaMax = safetySigmaMax;
   opts.safetyBracketTolerance = safetyBracketTolerance;
   opts.safetyMaxSearchTrials = static_cast<std::int32_t>(safetyMaxSearchTrials);
+  opts.arcLengthDisplacementScale = arcLengthDisplacementScale;
+  opts.arcLengthInitialRadiusScale = arcLengthInitialRadiusScale;
+  opts.arcLengthMinRadiusScale = arcLengthMinRadiusScale;
+  opts.arcLengthMaxRadiusScale = arcLengthMaxRadiusScale;
+  opts.arcLengthConstraintToleranceScale = arcLengthConstraintToleranceScale;
 
   solver::DriverInput drv;
   drv.elements = &elements;
