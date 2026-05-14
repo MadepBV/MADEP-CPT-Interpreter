@@ -110,29 +110,6 @@ export function initialEffectiveStress6AtPoint(model, point, options, warnings) 
   ];
 }
 
-export function buildFlatK0InitialEffectiveStressField(mesh, model, options = {}, warnings = []) {
-  if (modelHasSteepSlopeOrWalls(model)) {
-    pushUniqueWarning(
-      warnings,
-      'Initial stress uses flat-ground K0 initialization with zero initial shear stress; results near steep slopes, embankments, or retaining walls may be unconservative.'
-    );
-  }
-  return mesh.elementData.map((elementData, elementIndex) => {
-    const cell = mesh.cells[mesh.elementCell[elementIndex]];
-    return initialEffectiveStress6AtPoint(
-      model,
-      {
-        x: elementData?.centroid?.x ?? cell?.centroid?.x ?? 0,
-        y: elementData?.centroid?.y ?? cell?.centroid?.y ?? 0,
-        regionIndex: cell?.regionIndex ?? -1,
-        material: cell?.material || null
-      },
-      options,
-      warnings
-    );
-  });
-}
-
 export function buildFlatK0InitialEffectiveStressFieldAtPoints(points, model, options = {}, warnings = []) {
   if (modelHasSteepSlopeOrWalls(model)) {
     pushUniqueWarning(
@@ -143,23 +120,11 @@ export function buildFlatK0InitialEffectiveStressFieldAtPoints(points, model, op
   return (points || []).map((point) => initialEffectiveStress6AtPoint(model, point, options, warnings));
 }
 
-export function buildInitialEffectiveStressField(mesh, model, options = {}, warnings = []) {
-  return buildFlatK0InitialEffectiveStressField(mesh, model, options, warnings);
-}
-
 export function negateNormalAndShear(stress) {
   return {
     sxx: -(Number(stress?.sxx) || 0),
     syy: -(Number(stress?.syy) || 0),
     txy: -(Number(stress?.txy) || 0)
-  };
-}
-
-export function addStress(left, right) {
-  return {
-    sxx: (Number(left?.sxx) || 0) + (Number(right?.sxx) || 0),
-    syy: (Number(left?.syy) || 0) + (Number(right?.syy) || 0),
-    txy: (Number(left?.txy) || 0) + (Number(right?.txy) || 0)
   };
 }
 

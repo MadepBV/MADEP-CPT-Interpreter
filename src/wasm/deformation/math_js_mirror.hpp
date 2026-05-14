@@ -117,14 +117,6 @@ inline Vec6 add_pore_pressure_to_normal_components(const Vec6& s, double u) {
   return out;
 }
 
-// JS:102 descendingNumeric — used as a sort comparator.
-inline bool descending_numeric_cmp(double left, double right) {
-  // JS Array.prototype.sort callback returns (right - left); negative
-  // keeps order, positive swaps. For std::sort we return whether
-  // `left` should come before `right` — i.e., true if left > right.
-  return left > right;
-}
-
 // JS:106 zeroMatrix3
 inline Mat3 zero_matrix3() { return Mat3{}; }
 
