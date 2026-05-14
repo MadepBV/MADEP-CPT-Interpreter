@@ -1500,7 +1500,97 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>10.6 Material plugin registry</h3>
+					<h3>10.6 Arc-length continuation in the safety phase</h3>
+					<p>
+						Prescribed-strength continuation (the default <code>strength-control</code> mode)
+						parameterises the c-φ safety solve by the imposed <strong>Σ<sub>Msf</sub></strong>
+						and Newton-iterates for displacement at each prescribed reduction level. The
+						prescribed control variable becomes a poor path parameter near a limit point: the
+						load step shrinks below <strong>minLoadStep · 4</strong>, line search stalls, the
+						plastic active set oscillates near a fixed Σ<sub>Msf</sub>, and the safety curve
+						flattens before a coherent mechanism develops. At that point the solver can switch
+						to a Crisfield–Riks spherical arc-length continuation in which displacement and
+						continuation parameter are unknowns of the same Newton solve.
+					</p>
+					<div class="equations">
+						<div class="formula">R(u, λ) = 0</div>
+						<div class="formula">g(Δu, Δλ) = ‖W·Δu‖² + α²·Δλ² − Δs² = 0</div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>R(u, λ)</dt>
+								<dd>global residual at displacement <em>u</em> and continuation parameter <em>λ</em>; the safety mapping is <strong>Σ<sub>Msf</sub>(λ) = Σ<sub>start</sub> + λ·(Σ<sub>target</sub> − Σ<sub>start</sub>)</strong></dd>
+							</div>
+							<div class="symbols__row">
+								<dt>g(Δu, Δλ)</dt>
+								<dd>spherical arc-length constraint between the predictor base state and the current Newton iterate [m²]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>W</dt>
+								<dd>displacement scaling, optionally <strong>1/L<sub>model</sub></strong> from the mesh bounding-box diagonal</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>α</dt>
+								<dd>continuation-vs-displacement weighting [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>Δs</dt>
+								<dd>arc-length radius [m], adapted from achieved Newton iteration count</dd>
+							</div>
+						</dl>
+					</div>
+					<p>
+						The corrector is the standard two-solve form (Crisfield 1981): at each Newton
+						iteration the same tangent stiffness <strong>K</strong> is solved against
+						<strong>−R</strong> and <strong>−∂R/∂λ</strong>, then the linearised constraint
+						gives a scalar continuation correction and the displacement correction follows.
+					</p>
+					<div class="equations">
+						<div class="formula">K · δu<sub>R</sub> = −R,&nbsp;&nbsp; K · δu<sub>λ</sub> = −∂R/∂λ</div>
+						<div class="formula">dλ = (−g − g<sub>u</sub>·δu<sub>R</sub>) / (g<sub>u</sub>·δu<sub>λ</sub> + g<sub>λ</sub>),&nbsp;&nbsp; du = δu<sub>R</sub> + dλ·δu<sub>λ</sub></div>
+					</div>
+					<p>
+						For c-φ safety <strong>∂R/∂λ</strong> is computed by finite difference on
+						<strong>Σ<sub>Msf</sub></strong> against the same committed material state — central
+						difference when both probes lie in the admissible domain
+						<strong>Σ<sub>Msf</sub> ≥ 1</strong>, forward-only at <strong>Σ<sub>Msf</sub> = 1</strong>
+						to respect the strength-reduction floor. Probe assemblies skip tangent construction
+						(<code>wantTangent=false</code>) and never commit material state. The predictor
+						sign is selected by dot-product against the previous accepted path increment, with
+						positive Δλ forced on the first step within a phase; under the
+						<code>arcLengthAllowPostPeakSafetyPath</code> option the predictor may descend
+						(Σ<sub>Msf</sub> decreasing with growing displacement) from the second step onward
+						for diagnostic purposes.
+					</p>
+					<p>
+						The arc-length radius adapts after each accepted step from the achieved Newton
+						iteration count relative to <code>arcLengthTargetIterations</code>, with separate
+						shrink factors on rejection (controlled cutback) and on failure (faster cutback).
+						Rejected steps restore committed displacement, material-point state, warm-start
+						iterates, and active-set diagnostics exactly. Reported factor of safety remains the
+						highest stable lower-bound Σ<sub>Msf</sub> regardless of post-peak descent; post-peak
+						curve points are recorded for diagnostic display only and never replace the peak
+						value.
+					</p>
+					<div class="doc-callout">
+						<strong>Mode selection.</strong> Three values of
+						<code>requestedContinuationMode</code> are exposed:
+						<code>strength-control</code> (the prescribed-Σ default),
+						<code>arc-length</code> (forced arc-length on the safety phase), and
+						<code>auto</code> (start in strength control, fall back to arc-length when the
+						strength-control diagnostics indicate a limit-point approach). The actual mode used
+						is recorded per accepted continuation step in the safety-curve payload.
+					</div>
+					<p>
+						Implemented on the WASM CPU path only at present. The GPU v2 pipeline retains
+						prescribed strength control; arc-length on GPU is deferred.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>10.7 Material plugin registry</h3>
 					<p>
 						The deformation solver is constitutive-model-agnostic. Every constitutive route
 						(linear elastic, Stage 1 reduced-stiffness, Stage 2 exact Mohr-Coulomb) is
@@ -1522,7 +1612,7 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>10.7 GPU pipelines</h3>
+					<h3>10.8 GPU pipelines</h3>
 					<p>
 						Two WebGPU pipelines are shipped alongside the CPU solver, both opt-in and selected
 						through the analysis options.
@@ -1747,7 +1837,8 @@
 					<h3>14.2 Natural next steps</h3>
 					<ul class="notes">
 						<li>Alternative constitutive families, in particular Hardening Soil class formulations for serviceability realism.</li>
-						<li>Unsymmetric global Newton (GMRES / BiCGStab) as the default path once benchmarked further on the present exact tangent set; the path is already used inside the CPU and GPU v2 solvers when active non-associated plasticity is detected.</li>
+						<li>Arc-length continuation in the safety phase is available on the WASM CPU path (see §10.6) and is the default fallback when prescribed strength control approaches a limit point. The GPU v2 pipeline retains prescribed strength control only; arc-length on GPU is the next natural extension.</li>
+						<li>Unsymmetric global Newton (GMRES with row/column equilibration) is the default linear solver whenever active non-associated plasticity is detected. The arc-length corrector reuses the same tangent across its two right-hand sides, with a scaling cache that skips redundant equilibration setup on the second solve.</li>
 						<li>Hydro-mechanical and consolidation extensions beyond the present drained load-step assumption.</li>
 						<li>T6 element coverage in the GPU v2 pipeline (currently T3-resident for the matrix-free Kx kernel).</li>
 					</ul>
@@ -1767,6 +1858,11 @@
 					<li><strong>Potts, D. M., and Zdravković, L.</strong> <em>Finite Element Analysis in Geotechnical Engineering: Theory</em>. Thomas Telford, 1999. Geotechnical interpretation reference for nonlinear soil analysis.</li>
 					<li><strong>Itasca Consulting Group.</strong> <em>FLAC3D Theory and Background: Mohr-Coulomb Model</em>. Reference source for principal-stress formulation, non-associated flow, and tension cut-off semantics.</li>
 					<li><strong>PLAXIS.</strong> <em>PLAXIS 2D Material Models Manual</em>, 2025.1. Reference source for staged deformation interpretation and drained small-strain Mohr-Coulomb benchmarking practice.</li>
+					<li><strong>Riks, E.</strong> "An Incremental Approach to the Solution of Snapping and Buckling Problems." <em>International Journal of Solids and Structures</em>, 15(7), 529–551, 1979. DOI: 10.1016/0020-7683(79)90081-7. Original arc-length continuation method.</li>
+					<li><strong>Crisfield, M. A.</strong> "A Fast Incremental/Iterative Solution Procedure That Handles 'Snap-Through'." <em>Computers &amp; Structures</em>, 13(1–3), 55–62, 1981. DOI: 10.1016/0045-7949(81)90108-5. Spherical arc-length corrector used in §10.6.</li>
+					<li><strong>Crisfield, M. A.</strong> "An Arc-Length Method Including Line Searches and Accelerations." <em>International Journal for Numerical Methods in Engineering</em>, 19(9), 1269–1289, 1983. DOI: 10.1002/nme.1620190902. Basis for the combined-merit line search coupled with the arc-length corrector.</li>
+					<li><strong>Tschuchnigg, F., Schweiger, H. F., and Sloan, S. W.</strong> "Slope Stability Analysis by Means of Finite Element Limit Analysis and Finite Element Strength Reduction Techniques. Part I: Numerical Studies Considering Non-Associated Plasticity." <em>Computers and Geotechnics</em>, 70, 169–177, 2015. DOI: 10.1016/j.compgeo.2015.06.018. Closest engineering parallel for the c-φ strength reduction with continuation methods near the limit point.</li>
+					<li><strong>Smith, I. M., Griffiths, D. V., and Margetts, L.</strong> <em>Programming the Finite Element Method</em>. 5th ed., Wiley, 2014. ISBN 978-1-119-97334-8. Pedagogical reference for continuation methods and slope-stability strength reduction.</li>
 					<li><strong>Internal implementation notes.</strong> The app-specific theory basis is consolidated in the MADEP deformation notes <em>MC_pl</em>, <em>stage 2.2-f_MC_pl</em>, <em>stage 2.3-f_MC_pl</em>, and <em>stage 2.4-f_MC_pl</em>, with the website specification anchor at <a href="/docs/full">/docs/full</a>.</li>
 				</ul>
 				<p>

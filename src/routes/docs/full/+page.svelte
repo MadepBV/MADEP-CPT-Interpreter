@@ -1390,11 +1390,12 @@
 					],
 					equations: ['q = -k∇h', 'u = γ<sub>w</sub>(h - y)'],
 					bullets: [
-						'Only <strong>outer-boundary</strong> edges can currently carry seepage boundary conditions: terrain, base, left side, and right side.',
-						'Interior region boundaries are meshing constraints only; they are not yet seepage BCs.',
+						'Outer-boundary edges carry Dirichlet, Neumann, and seepage-face conditions: terrain, base, and the lateral sides.',
+						'Interior drain polylines carry head-prescribed Dirichlet with three gating modes (<code>always</code>, <code>when-saturated</code>, <code>head-cap</code>). The <code>head-cap</code> mode is a one-way head cap solved as a primal–dual active-set semismooth Newton loop on the LCP <strong>h ≤ H<sub>d</sub>, R ≤ 0, (h − H<sub>d</sub>)·R = 0</strong>, run jointly with the outer seepage-face active set.',
+						'Other interior region boundaries remain meshing constraints only; they are not seepage BCs.',
 						'The current module is steady-state only: no transient storage, no consolidation time response, and no Richards-type unsaturated flow law.',
-						'Retaining walls are presently approximated as thin low-permeability regions rather than true zero-thickness duplicate-node cutoffs.',
-						'Internal drains and line sinks are not yet part of the public seepage solver.'
+						'Retaining walls are thin low-permeability regions with per-wall anisotropic conductivity (k<sub>⊥</sub>, k<sub>∥</sub>) in the wall-local frame. The current route supports axis-aligned vertical walls; general-orientation walls and true zero-thickness duplicate-node cutoffs are deferred.',
+						'Flow-prescribed line sinks (<strong>q = −Q&nbsp;δ(x − x<sub>w</sub>)</strong>) and finite-resistance Cauchy drains (<strong>q = β(h − H<sub>d</sub>)</strong>) are not yet exposed.'
 					]
 				},
 				{
@@ -1496,9 +1497,25 @@
 						'Polygon coarseness remains a local mesh-refinement factor only.',
 						'The line-probe graph can be copied to the clipboard as distance/value data for external checking.'
 					]
+				},
+				{
+					id: 'deformation-stage6-arc-length',
+					title: '13.4 Arc-length continuation for c-φ safety',
+					paragraphs: [
+						'Prescribed-strength continuation parameterises the c-φ safety solve by the imposed <strong>Σ<sub>Msf</sub></strong> and Newton-iterates for displacement. The prescribed control variable becomes ill-conditioned near a limit point: repeated load-step cutbacks below <strong>minLoadStep · 4</strong>, line-search stalls, an oscillating plastic active set at a fixed Σ<sub>Msf</sub>, and a flattening safety curve before a coherent mechanism develops. The WASM CPU path can then switch to a Crisfield–Riks spherical arc-length continuation in which displacement and continuation parameter are unknowns of the same Newton solve.',
+						'The corrector is the standard two-solve form (Crisfield 1981): the same tangent stiffness <strong>K</strong> is solved against <strong>−R</strong> and against <strong>−∂R/∂λ</strong>; the linearised constraint <strong>‖W·Δu‖² + α²·Δλ² − Δs² = 0</strong> gives a scalar continuation correction and the displacement correction follows as <strong>du = δu<sub>R</sub> + dλ · δu<sub>λ</sub></strong>. For c-φ safety <strong>∂R/∂λ</strong> is computed by finite difference on Σ<sub>Msf</sub> against the same committed material state, central where both probes lie in the admissible domain Σ<sub>Msf</sub> ≥ 1 and forward-only at Σ<sub>Msf</sub> = 1 to respect the strength-reduction floor. Probe assemblies skip tangent construction and never commit material state.'
+					],
+					equations: ['R(u, λ) = 0', 'g(Δu, Δλ) = ‖W·Δu‖² + α²·Δλ² − Δs² = 0', 'dλ = (−g − g<sub>u</sub>·δu<sub>R</sub>) / (g<sub>u</sub>·δu<sub>λ</sub> + g<sub>λ</sub>)'],
+					bullets: [
+						'<code>requestedContinuationMode</code> exposes <code>strength-control</code> (prescribed Σ default), <code>arc-length</code> (forced), and <code>auto</code> (start in strength control, fall back to arc-length on limit-point diagnostics).',
+						'The predictor sign is selected by dot-product against the previous accepted path increment; positive Δλ is forced on the first step within a phase. Under <code>arcLengthAllowPostPeakSafetyPath</code> the predictor may descend (Σ<sub>Msf</sub> decreasing with growing displacement) from the second accepted step onward, for diagnostic display only.',
+						'Reported factor of safety remains the highest stable lower-bound Σ<sub>Msf</sub> regardless of post-peak descent; post-peak curve points never replace the peak value in the reported FoS.',
+						'Rejected steps restore committed displacement, material-point state, warm-start iterates, and active-set diagnostics exactly.',
+						'Implemented on the WASM CPU path only; the GPU v2 pipeline retains prescribed strength control.'
+					]
 				}
 			],
-			references: ['Clausen, Damkilde & Andersen (2007)', 'de Souza Neto, Perić & Owen (2008)', 'Simo & Taylor (1985)', 'PLAXIS 2D Material Models Manual (2025.1)', 'Potts & Zdravković (1999)']
+			references: ['Clausen, Damkilde & Andersen (2007)', 'de Souza Neto, Perić & Owen (2008)', 'Simo & Taylor (1985)', 'PLAXIS 2D Material Models Manual (2025.1)', 'Potts & Zdravković (1999)', 'Riks (1979)', 'Crisfield (1981)', 'Tschuchnigg, Schweiger & Sloan (2015)']
 		}
 	];
 

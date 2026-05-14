@@ -232,7 +232,7 @@
 					</p>
 					<ul class="notes">
 						<li>Custom polygons can locally replace the default laterally extended CPT layering.</li>
-						<li>Retaining walls are represented hydraulically through permeability contrast, not as structural seepage elements.</li>
+						<li>Retaining walls are represented hydraulically through permeability contrast, not as structural seepage elements. Per-wall material now carries anisotropic conductivity in the wall-local frame (k<sub>⊥</sub> across, k<sub>∥</sub> along); see §4.5.</li>
 						<li>The seepage mesh is geometry-consistent with the shared Stage 6 section workflow.</li>
 					</ul>
 				</section>
@@ -372,11 +372,114 @@
 				<section class="doc-subsection">
 					<h3>4.4 Interior drains</h3>
 					<p>
-						Internal drain behavior is documented as a planned extension rather than being
-						quietly approximated. That choice is deliberate. The current public route only
-						applies hydraulic conditions on the section boundary, which keeps the present solver
-						model transparent.
+						A drain is a one-dimensional submanifold <strong>Γ<sub>d</sub> ⊂ Ω</strong> on which
+						the head field is controlled by a user-specified target. The polyline is enforced as a
+						constrained edge in the Triangle PSLG (marker <code>markerType: 'drain'</code>) so the
+						mesh conforms to the drain trace; nodes on Γ<sub>d</sub> are then candidate Dirichlet
+						sites for the seepage solver.
 					</p>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>Γ<sub>d</sub></dt>
+								<dd>drain trace, a polyline embedded in the analysis domain</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>H<sub>d</sub></dt>
+								<dd>prescribed drain head [m]; constant per drain in the current release</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>ψ<sub>i</sub> = h<sub>i</sub> − y<sub>i</sub></dt>
+								<dd>pressure head at drain node <em>i</em> [m]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>R<sub>i</sub></dt>
+								<dd>Galerkin reaction at constrained drain node <em>i</em>; sign convention
+									<strong>R<sub>i</sub> &lt; 0</strong> = water leaving the domain (drain
+									collecting)</dd>
+							</div>
+						</dl>
+					</div>
+					<p>Three gating modes are exposed:</p>
+					<ul class="notes">
+						<li><strong><code>always</code></strong> — Γ<sub>d</sub> enforces <strong>h = H<sub>d</sub></strong> at every accepted Newton iterate, independent of pressure state. Appropriate when the drain is permanently below the water table and extraction direction is known a priori.</li>
+						<li><strong><code>when-saturated</code></strong> — Dirichlet on Γ<sub>d</sub> is gated by a hysteretic pressure-and-flux active set, in direct analogy with the outer-boundary seepage-face logic. A node activates when <strong>ψ<sub>i</sub> ≥ ψ<sub>activate</sub></strong> and the predicted reaction does not indicate injection; it deactivates when ψ<sub>i</sub> falls below −ψ<sub>keep</sub> or the reaction crosses the injection threshold. Mirrors a relief drain above the water table.</li>
+						<li><strong><code>head-cap</code></strong> — one-way head capping. Operationally a linear complementarity problem on Γ<sub>d</sub>:</li>
+					</ul>
+					<div class="equations">
+						<div class="formula">h<sub>i</sub> − H<sub>d</sub> ≤ 0,&nbsp;&nbsp; R<sub>i</sub> ≤ 0,&nbsp;&nbsp; (h<sub>i</sub> − H<sub>d</sub>)·R<sub>i</sub> = 0&nbsp;&nbsp;&nbsp;∀ i ∈ Γ<sub>d</sub></div>
+					</div>
+					<p>
+						These are the Karush–Kuhn–Tucker conditions of an obstacle problem: the head is capped
+						at <strong>H<sub>d</sub></strong>, the drain may only extract, and complementarity
+						forces each node into either slack (<strong>h<sub>i</sub> &lt; H<sub>d</sub></strong>,
+						<strong>R<sub>i</sub> = 0</strong>) or active-at-cap
+						(<strong>h<sub>i</sub> = H<sub>d</sub></strong>, <strong>R<sub>i</sub> &lt; 0</strong>).
+						The system is solved by a primal–dual active-set semismooth Newton loop run jointly
+						with the outer-boundary seepage-face active set; the joint iteration terminates when
+						the combined mask signature is stable or has entered a two-cycle, with an iteration
+						cap as a final safeguard.
+					</p>
+					<div class="doc-callout">
+						<strong>Discharge.</strong> Per-drain inflow is reported as a two-element-sided Darcy
+						flux integral across each drain mesh edge, summed over Γ<sub>d</sub>. The reaction
+						sum <strong>Q<sub>R</sub> = −Σ R<sub>i</sub></strong> over active nodes is computed in
+						parallel as a self-test and must agree with the per-edge integral to FEM
+						mass-balance accuracy. Reported values are <strong>m²/s</strong> per metre of
+						out-of-plane length, consistent with the plane-strain convention.
+					</div>
+					<p>
+						Drain ↔ wall geometry handles weep-hole configurations explicitly: drain segments may
+						share boundary edges with a wall polygon, in which case the drain Dirichlet wins at
+						the shared nodes and the wall material continues to govern element assembly off Γ<sub>d</sub>.
+						Drains buried inside or bisecting a wall polygon are rejected at validation.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>4.5 Per-wall hydraulic conductivity</h3>
+					<p>
+						Each retaining wall carries its own material with anisotropic conductivity in the
+						wall-local (across, along) frame:
+					</p>
+					<div class="equations">
+						<div class="formula">K<sub>wall</sub><sup>local</sup> = diag(k<sub>⊥</sub>, k<sub>∥</sub>) ≡ diag(k<sub>across</sub>, k<sub>along</sub>)</div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>k<sub>⊥</sub></dt>
+								<dd>across-wall conductivity [m/s]; controls leakage normal to the wall plane</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>k<sub>∥</sub></dt>
+								<dd>along-wall conductivity [m/s]; controls leakage along the wall axis (sheet-pile joints, slurry-wall vertical pathways)</dd>
+							</div>
+						</dl>
+					</div>
+					<p>
+						For the axis-aligned vertical walls supported in the current public route, the
+						global-frame tensor is <strong>K<sub>wall</sub><sup>global</sup> = diag(k<sub>⊥</sub>, k<sub>∥</sub>)</strong>
+						and the element conductivity matrix is unchanged in form. General-orientation walls
+						require the full 2×2 tensor in the element matrix and are deferred.
+					</p>
+					<p>Five engineering presets are exposed:</p>
+					<ul class="notes">
+						<li><strong>Sheet pile</strong> — k<sub>⊥</sub> ≈ 10<sup>−10</sup> m/s, k<sub>∥</sub> ≈ 10<sup>−8</sup> m/s. Joint leakage along the sheet interlocks is a small but non-negligible vertical pathway.</li>
+						<li><strong>Slurry / diaphragm wall</strong> — isotropic 10<sup>−9</sup> m/s.</li>
+						<li><strong>Soil-mix wall</strong> — isotropic 10<sup>−7</sup> m/s.</li>
+						<li><strong>Relief wall</strong> — 10<sup>−6</sup> to 10<sup>−5</sup> m/s. Deliberate leakage by design.</li>
+						<li><strong>Legacy impermeable</strong> — k<sub>⊥</sub> = k<sub>∥</sub> = 10<sup>−10</sup> m/s. Back-fill default for saved projects predating per-wall material; result identical to the legacy hard-coded cut-off within FEM tolerance.</li>
+					</ul>
+					<div class="doc-callout doc-callout--warn">
+						<strong>Numerical floor.</strong> The element-matrix conductivity floor is
+						<strong>10<sup>−20</sup> m/s</strong>, set to keep the assembled system non-singular.
+						In practice a wall conductivity below <strong>10<sup>−10</sup> × k<sub>soil,min</sub></strong>
+						is asymptotically indistinguishable from a hard cut-off and degrades CG convergence
+						without changing the head field; the UI flags this as the practical floor.
+					</div>
 				</section>
 			</section>
 
@@ -570,8 +673,8 @@
 					<li>The public seepage route is steady-state only.</li>
 					<li>Unsaturated flow, suction, and Richards-equation behavior are not exposed.</li>
 					<li>No hydro-mechanical coupling is exposed in the public workflow.</li>
-					<li>Permeability anisotropy is axis-aligned in the current implementation.</li>
-					<li>Interior drains are planned explicitly rather than silently embedded in the current boundary model.</li>
+					<li>Permeability anisotropy in soil regions is axis-aligned in the current implementation. Wall material now exposes an anisotropic (k<sub>⊥</sub>, k<sub>∥</sub>) tensor in the wall-local frame; general-orientation walls requiring a full 2×2 global tensor are deferred.</li>
+					<li>Head-prescribed interior drains with three gating modes (<code>always</code>, <code>when-saturated</code>, <code>head-cap</code>) are supported through a Dirichlet active-set on the conforming PSLG. Flow-prescribed line sinks (<strong>q = −Q&nbsp;δ(x − x<sub>w</sub>)</strong>), finite-resistance Cauchy drains (<strong>q = β(h − H<sub>d</sub>)</strong>), and drain-water-level coupling to an outlet elevation are not yet exposed.</li>
 					<li>The route is intended for engineering screening and coupled interpretation, not as a replacement for a dedicated regional hydrogeological model.</li>
 				</ul>
 			</section>
@@ -582,6 +685,9 @@
 				<ul class="reference-list">
 					<li><strong>Darcy, H. (1856)</strong> — foundational law for saturated flow through porous media.</li>
 					<li><strong>EN 1997-1</strong> — Eurocode 7 hydraulic-heave and piping context for geotechnical interpretation.</li>
+					<li><strong>Bear, J.</strong> <em>Hydraulics of Groundwater</em>. McGraw-Hill, 1979. ISBN 0-07-004170-9. Reference for anisotropic Darcy flow and the wall-local conductivity tensor framing in §4.5.</li>
+					<li><strong>Bathe, K.-J., and Khoshgoftaar, M. R.</strong> "Finite Element Free Surface Seepage Analysis Without Mesh Iteration." <em>International Journal for Numerical and Analytical Methods in Geomechanics</em>, 3(1), 13–22, 1979. DOI: 10.1002/nag.1610030103. Reference for the fixed-mesh wet/dry residual-flow approach used in <code>iterate</code> mode and shared by the drain active-set update.</li>
+					<li><strong>Hintermüller, M., Ito, K., and Kunisch, K.</strong> "The Primal-Dual Active Set Strategy as a Semismooth Newton Method." <em>SIAM Journal on Optimization</em>, 13(3), 865–888, 2002. DOI: 10.1137/S1052623401383558. Mathematical basis for the <code>head-cap</code> LCP solver and its joint coupling with the outer seepage-face active set in §4.4.</li>
 					<li><strong>Standard finite-element seepage formulations</strong> — the present route follows the classical T3 Darcy/Laplace formulation documented in the project seepage specification.</li>
 					<li><strong>GeoStudio / SEEP/W style free-surface practice</strong> — relevant as background for the practical active-set and reduced-dry-zone style interpretation used in engineering seepage workflows.</li>
 				</ul>

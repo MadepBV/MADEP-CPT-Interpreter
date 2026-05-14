@@ -855,7 +855,7 @@
 				<ul class="notes">
 					<li>The shared seepage and deformation meshes use three-node constant-strain triangles.</li>
 					<li>The deformation route caps high ν values for plane-strain stability and warns about T3 locking and coarse-mesh over-stiffness.</li>
-					<li>The seepage route is steady-state only and keeps interior drains outside the current public boundary-condition set.</li>
+					<li>The seepage route is steady-state only. Interior drains are exposed as head-prescribed polyline constraints with three gating modes (<code>always</code>, <code>when-saturated</code>, <code>head-cap</code>); the head-cap mode is solved as a primal–dual active-set semismooth Newton loop on the LCP <strong>h ≤ H<sub>d</sub>, R ≤ 0, (h − H<sub>d</sub>)·R = 0</strong>. Flow-prescribed line sinks and finite-resistance drains are not yet exposed.</li>
 					<li>The deformation route can expose a partial near-failure state rather than discarding the best available non-converged plastic result.</li>
 					<li>The current Stage 2 constitutive route is an exact Mohr-Coulomb active-set return in principal stress space, including tension-cutoff branches.</li>
 				</ul>
