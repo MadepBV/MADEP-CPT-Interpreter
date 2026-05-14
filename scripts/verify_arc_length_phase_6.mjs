@@ -87,17 +87,18 @@ int main() {
   std::vector<double> U(6, 0.0);
   U[2] = -0.01;
   U[5] = -0.01;
-  std::vector<double> zeroRhs(6, 0.0);
-
-  SolverOptions opts;
-  opts.arcLengthDerivativeMode = ArcLengthDerivativeMode::AnalyticVerified;
-  PhaseContext elasticCtx = make_context(
-      elements, committed, trial, regions, regionC, freeDofs, freeIndexByDof,
-      K, U, zeroRhs, ConstitutiveKind::LinearElastic);
-  SafetyResidualDerivativeFd analytic = compute_safety_sigma_msf_residual_derivative(
-      elasticCtx, U, 1.0, 1.25, opts);
-  SafetyResidualDerivativeFd fd = compute_safety_sigma_msf_residual_derivative_fd(
-      elasticCtx, U, 1.0, 1.25, opts);
+	  std::vector<double> zeroRhs(6, 0.0);
+	
+	  SolverOptions opts;
+	  opts.arcLengthDerivativeMode = ArcLengthDerivativeMode::AnalyticVerified;
+	  ArcLengthFdScratch scratch;
+	  PhaseContext elasticCtx = make_context(
+	      elements, committed, trial, regions, regionC, freeDofs, freeIndexByDof,
+	      K, U, zeroRhs, ConstitutiveKind::LinearElastic);
+	  SafetyResidualDerivativeFd analytic = compute_safety_sigma_msf_residual_derivative(
+	      elasticCtx, U, 1.0, 1.25, scratch, opts);
+	  SafetyResidualDerivativeFd fd = compute_safety_sigma_msf_residual_derivative_fd(
+	      elasticCtx, U, 1.0, 1.25, scratch, opts);
   assert(analytic.converged);
   assert(fd.converged);
   for (std::size_t i = 0; i < analytic.rLambdaFree.size(); ++i) {
@@ -110,12 +111,12 @@ int main() {
       K, U, zeroRhs, ConstitutiveKind::McPlastic);
   SafetyResidualDerivativeFd unsupported =
       compute_safety_sigma_msf_residual_derivative_analytic(plasticCtx, 1.25);
-  assert(!unsupported.converged);
-  assert(unsupported.failureCode == 4u);
-  SafetyResidualDerivativeFd plasticSelected =
-      compute_safety_sigma_msf_residual_derivative(plasticCtx, U, 1.0, 1.25, opts);
-  SafetyResidualDerivativeFd plasticFd =
-      compute_safety_sigma_msf_residual_derivative_fd(plasticCtx, U, 1.0, 1.25, opts);
+	  assert(!unsupported.converged);
+	  assert(unsupported.failureCode == 4u);
+	  SafetyResidualDerivativeFd plasticSelected =
+	      compute_safety_sigma_msf_residual_derivative(plasticCtx, U, 1.0, 1.25, scratch, opts);
+	  SafetyResidualDerivativeFd plasticFd =
+	      compute_safety_sigma_msf_residual_derivative_fd(plasticCtx, U, 1.0, 1.25, scratch, opts);
   assert(plasticSelected.converged == plasticFd.converged);
   assert(plasticSelected.failureCode == plasticFd.failureCode);
 
