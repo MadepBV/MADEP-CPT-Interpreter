@@ -1381,11 +1381,12 @@ input[type=range]{accent-color:var(--ac)}
   transition:width .12s ease, border-radius .12s ease;
 }
 .st6-bishop-view-menu[open]{
-  display:grid;
-  grid-template-rows:auto minmax(0, 1fr);
-  max-height:min(520px, calc(100% - 24px));
+  display:flex;
+  flex-direction:column;
+  max-height:min(520px, calc(100% - 24px), calc(100vh - var(--app-toolbar-h) - 56px));
 }
 .st6-bishop-view-menu summary{
+  flex:0 0 auto;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -1437,11 +1438,16 @@ input[type=range]{accent-color:var(--ac)}
   color:var(--tx);
 }
 .st6-bishop-view-menu-body{
+  flex:1 1 auto;
   display:grid;
   gap:8px;
   min-height:0;
+  max-height:min(466px, calc(100vh - var(--app-toolbar-h) - 112px));
+  overflow-x:hidden;
   overflow-y:auto;
   overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-y;
   padding:8px 10px 10px;
   border-top:1px solid var(--bd);
   scrollbar-width:thin;
