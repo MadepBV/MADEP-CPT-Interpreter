@@ -982,7 +982,6 @@ struct ArcLengthFdScratch {
   std::vector<RegionParams> regions;
   std::vector<Mat6> regionC;
   std::vector<double> internalForce;
-  std::vector<double> residual;
   std::vector<double> lowerResidual;
   std::vector<double> upperResidual;
 };
@@ -1270,7 +1269,7 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
     build_region_elastic_into(scratch.regions, scratch.regionC);
     scratch.trial.assign(trialBackup.begin(), trialBackup.end());
     scratch.internalForce.assign(freeCount, 0.0);
-    scratch.residual.assign(freeCount, 0.0);
+    residualOut.assign(freeCount, 0.0);
     AssembleOutput probe = assemble_global(
         *ctx.elements,
         committedRef,
@@ -1289,9 +1288,8 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
         /*wantTangent=*/false,
         *ctx.K,
         scratch.internalForce,
-        scratch.residual);
-    if (!std::isfinite(probe.residualNorm) || scratch.residual.size() != residualOut.size()) return false;
-    residualOut.assign(scratch.residual.begin(), scratch.residual.end());
+        residualOut);
+    if (!std::isfinite(probe.residualNorm)) return false;
     for (double v : residualOut) {
       if (!std::isfinite(v)) return false;
     }
