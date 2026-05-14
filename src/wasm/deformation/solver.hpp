@@ -1663,7 +1663,7 @@ inline PhaseResult run_safety_arc_length_phase(
         for (double& v : predictor.deltaUFree) v *= predictorScale;
       }
 
-      std::vector<double> stepDeltaUFree = predictor.deltaUFree;
+      std::vector<double> stepDeltaUFree = std::move(predictor.deltaUFree);
       double stepDeltaSigma = predictor.deltaLambda;
       ArcLengthState stepState = arcState;
       stepState.deltaS = std::sqrt(std::max(
