@@ -24,6 +24,7 @@
 #include <limits>
 
 #include "linalg.hpp"
+#include "material_mc.hpp"          // for madep::material::rankine_tension_return (B.6)
 #include "material_mc_exact.hpp"
 #include "math_js_mirror.hpp"
 #include "types.hpp"
@@ -1014,10 +1015,315 @@ inline HsUpdateResult return_corner(
 }
 
 // ---------------------------------------------------------------------------
+// B.6 — Tension cutoff return (Rankine projection with HS sign wrapper).
+//
+// The Rankine projector in material_mc.hpp (`rankine_tension_return`) works
+// in TENSION-POSITIVE principals; HS works in COMPRESSION-POSITIVE. The B.6
+// wrapper is "negate, call, negate":
+//
+//   s1_t = -principalT.s3   (most tensile ≡ least compressive in HS)
+//   s2_t = -principalT.s2
+//   s3_t = -principalT.s1
+//   rankine_tension_return(σ_T, K_ur, G_ur, s1_t, s2_t, s3_t, rs1, rs2, rs3, branch);
+//   σ_1_compr_new = -rs3;  σ_2_compr_new = -rs2;  σ_3_compr_new = -rs1;
+//
+// After projection we re-evaluate f^s and f^c at the projected state:
+//   - both ≤ 0 ⇒ tension-only path is done; reconstruct stress via projectors.
+//   - f^s > 0 alone ⇒ run `return_cone_only` with the projected state as a
+//                     new trial.
+//   - f^c > 0 alone ⇒ run `return_cap_only` similarly.
+//   - both > 0     ⇒ triple-apex case. Sequential project-and-check (spec
+//                     §3.5): tension → cone → cap, re-check at each step.
+//                     If after 5 sequential iterations both surfaces are
+//                     still violated, return failureCode = 104.
+//
+// Sign-convention safety: the function NEVER touches principalT.P1/P2/P3 —
+// the projectors come from the trial decomposition; we only swap the
+// SCALAR principal magnitudes. This preserves the principal-frame
+// orientation through the projection.
+//
+// Note on plastic-strain accounting for the tension-only branch: the
+// Rankine projection itself does not feed γ^p (no cone hardening) and does
+// not feed p_p (no cap hardening); it produces an "instantaneous" plastic
+// correction whose Voigt-6 increment we reconstruct from the principal-
+// frame stress decrement via the elastic compliance.
+// ---------------------------------------------------------------------------
+inline HsUpdateResult return_tension(
+    const mce::PrincipalState& principalT,
+    const MaterialPoint::HsState& stateC,
+    double c_eff, double phi_eff, double psi_eff, double sin_phi_cv,
+    double sigma_T,
+    double M_cap, double H_cap, double p_t,
+    double E_i, double E_ur, double q_a,
+    const Mat6& D_e, const RegionParams& region) {
+  HsUpdateResult out{};
+  out.stateUpdated = stateC;
+
+  // Elastic moduli for the Rankine projector — must match D_e built by
+  // `linalg::elastic_matrix_E_nu`. From that helper:
+  //   D_e[3][3] = G_ur (shear modulus)
+  //   D_e[0][1] = λ_ur = K_ur − 2 G_ur / 3
+  //   K_ur = λ_ur + 2 G_ur / 3
+  const double G_ur = std::max(D_e[3][3], 1.0);
+  const double lambda_ur = D_e[0][1];
+  const double K_ur = std::max(lambda_ur + (2.0 / 3.0) * G_ur, 1.0);
+
+  // B.6 sign wrapper: HS compression-positive → tension-positive.
+  const double s1_tens_tr = -principalT.s3;
+  const double s2_tens_tr = -principalT.s2;
+  const double s3_tens_tr = -principalT.s1;
+  double rs1 = 0.0, rs2 = 0.0, rs3 = 0.0;
+  int branch = 0;
+  madep::material::rankine_tension_return(
+      sigma_T, K_ur, G_ur,
+      s1_tens_tr, s2_tens_tr, s3_tens_tr,
+      rs1, rs2, rs3,
+      branch);
+
+  // Back to HS compression-positive.
+  double s1_proj = -rs3;
+  double s2_proj = -rs2;
+  double s3_proj = -rs1;
+
+  // Re-evaluate cone and cap yields at the projected state. Use the SAME
+  // hyperbolic-curve constants (E_i, q_a, E_ur) the dispatcher chose at the
+  // trial state — the spec §3.5 re-check is at the projected state but with
+  // the trial-frozen constitutive constants (the tension projection isn't
+  // a constitutive iteration, so the constants don't refresh).
+  auto recheck = [&](double s1, double s2, double s3, double gamma_p, double p_p,
+                     double& f_s_out, double& f_c_out) {
+    const double q_now = s1 - s3;
+    f_s_out = cone_yield_value(q_now, q_a, E_i, E_ur, gamma_p);
+    f_c_out = cap_yield_value(s1, s2, s3, p_p, M_cap, p_t, phi_eff);
+  };
+
+  // Tolerances mirror the dispatcher's choice.
+  const double F_TOL_S = 1e-10 * std::max(std::abs(q_a), 1.0);
+  const double pp_pt_scale = std::max(stateC.p_p + p_t, 1.0);
+  const double F_TOL_C = 1e-10 * pp_pt_scale * pp_pt_scale;
+
+  // Helper to build a "synthetic" trial PrincipalState that reuses the
+  // trial-state projectors but overwrites the principal magnitudes. This is
+  // what makes the cone/cap correctors operate on the post-tension state
+  // without re-decomposing (which would lose the trial-frame projectors).
+  auto synth_principal = [&](double s1, double s2, double s3) -> mce::PrincipalState {
+    mce::PrincipalState pr = principalT;
+    pr.s1 = s1;
+    pr.s2 = s2;
+    pr.s3 = s3;
+    return pr;
+  };
+
+  // Helper to (re-)build the Voigt-6 plastic-strain increment from the
+  // ELASTIC stress decrement (tension projection only — does not contribute
+  // to γ^p or p_p). The elastic stress decrement is Δσ_elastic = σ_t - σ_proj
+  // in compression-positive principals; the corresponding plastic strain in
+  // tension-positive Voigt comes from C : Δσ where C = D_e^{-1} acting on
+  // each principal axis. Closed-form for isotropic elasticity in principal
+  // frame: Δε_i^p = (Δσ_i + Δσ_{j≠i} ν_ur·(-1) ...). Easier path: build the
+  // strain increment in principal frame by inverting the elastic operator
+  // (the same one rankine_tension_return inverts), then lift to Voigt-6 via
+  // the existing plastic_increment_voigt helper.
+  auto tension_only_plastic = [&](double s1, double s2, double s3) -> Vec6 {
+    // Δσ in compression-positive principals (positive = stress decreased).
+    const double dS1 = principalT.s1 - s1;
+    const double dS2 = principalT.s2 - s2;
+    const double dS3 = principalT.s3 - s3;
+    // Δε_p_i = C : Δσ_i where C = (D_e)^{-1} in principal frame.
+    //   D_e_principal = [M L L; L M L; L L M] with M = λ+2G, L = λ.
+    //   inverse: same form with M' = (M+L)/((M-L)(M+2L)), L' = -L/((M-L)(M+2L))
+    // The compliance matrix entries are scalars depending only on (E_ur, nu_ur).
+    const double E_eff = std::max(E_ur, 1.0);
+    const double nu_eff = std::clamp(region.hs.nu_ur, -0.99, 0.49);
+    const double dEps1 = (dS1 - nu_eff * (dS2 + dS3)) / E_eff;
+    const double dEps2 = (dS2 - nu_eff * (dS1 + dS3)) / E_eff;
+    const double dEps3 = (dS3 - nu_eff * (dS1 + dS2)) / E_eff;
+    return plastic_increment_voigt(principalT, dEps1, dEps2, dEps3);
+  };
+
+  double f_s_post = 0.0;
+  double f_c_post = 0.0;
+  recheck(s1_proj, s2_proj, s3_proj,
+          stateC.gamma_p, stateC.p_p, f_s_post, f_c_post);
+
+  // Running state for the sequential project-and-check pathway. Cases B
+  // and C may make partial progress (γ^p or p_p increased) without fully
+  // resolving both surfaces; their updates are folded into `st_cur` so
+  // Case D's triple-apex loop starts from the most-corrected state.
+  double s1_cur = s1_proj;
+  double s2_cur = s2_proj;
+  double s3_cur = s3_proj;
+  MaterialPoint::HsState st_cur = stateC;
+
+  // Case A — tension only. Both HS surfaces are admissible at the
+  // projected state.
+  if (f_s_post <= F_TOL_S && f_c_post <= F_TOL_C) {
+    out.stressUpdated = reconstruct_stress_voigt_from_principals(
+        principalT, s1_proj, s2_proj, s3_proj);
+    out.plasticIncrement = tension_only_plastic(s1_proj, s2_proj, s3_proj);
+    out.tangent = D_e;
+    out.stateUpdated.gamma_p = stateC.gamma_p;
+    out.stateUpdated.eps_v_p = stateC.eps_v_p;
+    out.stateUpdated.p_p = stateC.p_p;
+    out.stateUpdated.lastActiveSet = 4;   // tension-only
+    out.activeSurface = 4;
+    out.failureCode = 0;
+    return out;
+  }
+
+  // Case B — tension + cone (cap admissible). Run cone-only on the
+  // synthetic post-tension trial state.
+  if (f_s_post > F_TOL_S && f_c_post <= F_TOL_C) {
+    const mce::PrincipalState pr_post = synth_principal(s1_proj, s2_proj, s3_proj);
+    HsUpdateResult cone_after = return_cone_only(
+        pr_post, stateC,
+        c_eff, phi_eff, psi_eff, sin_phi_cv,
+        E_i, E_ur, q_a, D_e, region);
+    if (cone_after.failureCode == 0) {
+      // Re-check cap at the cone-corrected state — should still be admissible.
+      const auto pr_check = mce::principal_stress_projectors_3d_compression_positive(
+          cone_after.stressUpdated, make_mp_for_eig(region, c_eff, phi_eff));
+      const double f_c_after = cap_yield_value(
+          pr_check.s1, pr_check.s2, pr_check.s3,
+          cone_after.stateUpdated.p_p, M_cap, p_t, phi_eff);
+      if (f_c_after <= F_TOL_C) {
+        // Mark tension+cone via lastActiveSet sentinel (5 = tension+cone).
+        cone_after.stateUpdated.lastActiveSet = 5;
+        cone_after.activeSurface = 5;
+        return cone_after;
+      }
+      // Cap got pushed positive by cone correction; carry the cone-updated
+      // state forward into the triple-apex loop.
+      s1_cur = pr_check.s1;
+      s2_cur = pr_check.s2;
+      s3_cur = pr_check.s3;
+      st_cur = cone_after.stateUpdated;
+    }
+    // else fall through to triple-apex loop using the post-tension state.
+  }
+
+  // Case C — tension + cap (cone admissible). Run cap-only on the
+  // synthetic post-tension trial state.
+  if (f_s_post <= F_TOL_S && f_c_post > F_TOL_C) {
+    const mce::PrincipalState pr_post = synth_principal(s1_proj, s2_proj, s3_proj);
+    HsUpdateResult cap_after = return_cap_only(
+        pr_post, stateC,
+        c_eff, phi_eff, M_cap, p_t, H_cap, D_e, region);
+    if (cap_after.failureCode == 0) {
+      // Re-check cone at the cap-corrected state.
+      const auto pr_check = mce::principal_stress_projectors_3d_compression_positive(
+          cap_after.stressUpdated, make_mp_for_eig(region, c_eff, phi_eff));
+      const double q_after = pr_check.s1 - pr_check.s3;
+      const double f_s_after = cone_yield_value(
+          q_after, q_a, E_i, E_ur, cap_after.stateUpdated.gamma_p);
+      if (f_s_after <= F_TOL_S) {
+        cap_after.stateUpdated.lastActiveSet = 6;   // tension+cap
+        cap_after.activeSurface = 6;
+        return cap_after;
+      }
+      // Cone got pushed positive by cap correction; carry the cap-updated
+      // state into the triple-apex loop.
+      s1_cur = pr_check.s1;
+      s2_cur = pr_check.s2;
+      s3_cur = pr_check.s3;
+      st_cur = cap_after.stateUpdated;
+    }
+  }
+
+  // Case D — triple-apex (tension + cone + cap simultaneously violated, or
+  // a corner case where Case B/C left one surface still violated).
+  // Sequential project-and-check per spec §3.5. We alternate cone-correction
+  // and cap-correction with re-projection onto tension after each. Up to 5
+  // outer iterations; non-convergence ⇒ failureCode 104.
+  std::uint8_t triple_active = 7;   // tension+cone+cap sentinel
+
+  for (int outer = 0; outer < 5; ++outer) {
+    // Re-evaluate at current state.
+    double fs_now = 0.0, fc_now = 0.0;
+    recheck(s1_cur, s2_cur, s3_cur, st_cur.gamma_p, st_cur.p_p, fs_now, fc_now);
+    if (fs_now <= F_TOL_S && fc_now <= F_TOL_C) {
+      // Converged — both HS surfaces admissible. Build result.
+      out.stressUpdated = reconstruct_stress_voigt_from_principals(
+          principalT, s1_cur, s2_cur, s3_cur);
+      // For triple-apex we cannot cleanly attribute the increment to a
+      // single elastic decompression (the surfaces all participate). Use
+      // the same elastic-compliance estimate as the tension-only path —
+      // it is exact for the elastic part and the cone/cap contributions
+      // are recorded through γ^p and p_p anyway.
+      out.plasticIncrement = tension_only_plastic(s1_cur, s2_cur, s3_cur);
+      out.tangent = D_e;
+      out.stateUpdated = st_cur;
+      out.stateUpdated.lastActiveSet = triple_active;
+      out.activeSurface = triple_active;
+      out.failureCode = 0;
+      return out;
+    }
+
+    // Project away the active surface (alternate cone / cap by which is
+    // more violated; start with whichever is most positive).
+    const bool cone_first = (fs_now > fc_now / std::max(pp_pt_scale, 1.0));
+    if (cone_first && fs_now > F_TOL_S) {
+      const mce::PrincipalState pr_post = synth_principal(s1_cur, s2_cur, s3_cur);
+      HsUpdateResult cone_step = return_cone_only(
+          pr_post, st_cur,
+          c_eff, phi_eff, psi_eff, sin_phi_cv,
+          E_i, E_ur, q_a, D_e, region);
+      if (cone_step.failureCode != 0) break;
+      const auto pr_after = mce::principal_stress_projectors_3d_compression_positive(
+          cone_step.stressUpdated, make_mp_for_eig(region, c_eff, phi_eff));
+      s1_cur = pr_after.s1;
+      s2_cur = pr_after.s2;
+      s3_cur = pr_after.s3;
+      st_cur = cone_step.stateUpdated;
+    } else if (fc_now > F_TOL_C) {
+      const mce::PrincipalState pr_post = synth_principal(s1_cur, s2_cur, s3_cur);
+      HsUpdateResult cap_step = return_cap_only(
+          pr_post, st_cur,
+          c_eff, phi_eff, M_cap, p_t, H_cap, D_e, region);
+      if (cap_step.failureCode != 0) break;
+      const auto pr_after = mce::principal_stress_projectors_3d_compression_positive(
+          cap_step.stressUpdated, make_mp_for_eig(region, c_eff, phi_eff));
+      s1_cur = pr_after.s1;
+      s2_cur = pr_after.s2;
+      s3_cur = pr_after.s3;
+      st_cur = cap_step.stateUpdated;
+    }
+
+    // Re-project onto tension surface (the cone/cap correction may have
+    // re-violated tension). Sign-wrapper round-trip again.
+    {
+      double s1_t = -s3_cur, s2_t = -s2_cur, s3_t = -s1_cur;
+      double rs1_i = 0.0, rs2_i = 0.0, rs3_i = 0.0;
+      int br = 0;
+      madep::material::rankine_tension_return(
+          sigma_T, K_ur, G_ur, s1_t, s2_t, s3_t, rs1_i, rs2_i, rs3_i, br);
+      s1_cur = -rs3_i;
+      s2_cur = -rs2_i;
+      s3_cur = -rs1_i;
+    }
+  }
+
+  // Sequential loop did not converge to a state where both HS surfaces
+  // are admissible. Triple-apex non-convergence — return failureCode 104
+  // per spec §3.5 and let the outer FE Newton cut back the load step.
+  out.stressUpdated = reconstruct_stress_voigt_from_principals(
+      principalT, s1_cur, s2_cur, s3_cur);
+  out.tangent = D_e;
+  out.stateUpdated = st_cur;
+  out.stateUpdated.lastActiveSet = triple_active;
+  out.activeSurface = triple_active;
+  out.failureCode = 104;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // B.1 — Top-level dispatcher: elastic → tension → cone-only → cap-only
 //      → corner. Phase 3 dispatches the corner case to `return_corner`
 //      with sequential project-and-check as the final fallback if corner
-//      Newton diverges (spec §3.3 edge cases).
+//      Newton diverges (spec §3.3 edge cases). Phase 4 inserts tension
+//      cutoff detection at the top of the dispatch chain (spec §3.5):
+//      tension takes precedence over cone/cap, and the projected state is
+//      re-checked against cone/cap before returning.
 // ---------------------------------------------------------------------------
 inline HsUpdateResult update(
     const Vec6& strainTrialVoigt,
@@ -1036,8 +1342,8 @@ inline HsUpdateResult update(
   const double psi_eff = std::min(
       std::atan(std::max(std::tan(region.psi) / smsf, 0.0)),
       phi_eff);
-  const double sigT = region.sigmaTAllow / smsf;
-  (void)sigT;
+  const double sigma_T = region.sigmaTAllow / smsf;
+  const bool tension_cutoff_enabled = (region.useTensionCutoff != 0u);
 
   // (2) Region-derived constants.
   const double M_cap = std::max(region.hs.M_cap, 1e-6);
@@ -1127,6 +1433,23 @@ inline HsUpdateResult update(
     (void)expectActiveSurface;
     return f_s_after <= otherTol;
   };
+
+  // Phase 4 tension cutoff (spec §3.5, F20). Detect a tension violation at
+  // the trial state BEFORE any cone/cap dispatch — the tension surface
+  // takes precedence over the HS surfaces. In compression-positive HS
+  // principals, "most tensile principal exceeds tension allowable" is
+  //   s3_compr < -sigma_T  (equivalently s1_tens > sigma_T in B.6 frame).
+  // Skipped when the region disables tension cutoff or sigma_T < 0
+  // (negative ⇒ disabled sentinel; HS spec only uses sigma_T ≥ 0).
+  if (tension_cutoff_enabled && sigma_T >= 0.0 &&
+      principalT.s3 < -sigma_T - 1e-12) {
+    HsUpdateResult tension_res = return_tension(
+        principalT, stateCommitted,
+        c_eff, phi_eff, psi_eff, sin_phi_cv,
+        sigma_T, M_cap, H_cap, p_t,
+        E_i, E_ur, q_a, D_e, region);
+    return tension_res;
+  }
 
   if (f_s <= F_TOL_S && f_c <= F_TOL_C) {
     // Pure elastic.
