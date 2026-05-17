@@ -433,8 +433,21 @@ inline GpResponse evaluate_gp_response_ex(
     out.tangent = hsRes.tangent;
     out.stress = hsRes.stressUpdated;
     out.plasticInc = hsRes.plasticIncrement;
-    out.plasticActive = (hsRes.activeSurface != 0) ? 1u : 0u;
-    out.tensionActive = 0u;
+    // Phase 5 audit fix: properly partition the activeSurface enum into
+    // plasticActive (cone/cap/corner) and tensionActive (tension-only or
+    // mixed with cone/cap/corner). The expanded enum (5/6/7) means
+    // tension AND a yield surface are both active; both flags raise.
+    // Note: update_plane_strain collapses 5/6/7 -> 4 before returning,
+    // so the as == 5/6/7 branches below are defensive (future-proof if
+    // the collapse is ever removed).
+    const std::uint8_t as = hsRes.activeSurface;
+    const bool isElastic = (as == 0);
+    const bool isPureTension = (as == 4);
+    const bool isPureYield = (as == 1 || as == 2 || as == 3);
+    const bool isMixed = (as == 5 || as == 6 || as == 7);
+    (void)isElastic;
+    out.plasticActive = (isPureYield || isMixed) ? 1u : 0u;
+    out.tensionActive = (isPureTension || isMixed) ? 1u : 0u;
     // Reuse the MC equivalent-plastic-strain formula on the same strain
     // increment so the existing `accumulatedPlasticStrain` field stays
     // meaningful for HS as well.

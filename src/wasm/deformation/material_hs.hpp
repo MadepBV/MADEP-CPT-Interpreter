@@ -1678,16 +1678,24 @@ inline HsUpdateResult update_plane_strain(
   // as a defensive guard: it confirms the residual is below tolerance and
   // returns immediately if so, otherwise applies the B.7 fix.
   constexpr int kMaxOuter = 5;
-  constexpr double kEpsZzTol = 1e-12;
+  constexpr double kEpsZzTol = 1e-10;   // B.7 spec target
+
+  // Collapse expanded enum to spec's documented set {0,1,2,3,4} so
+  // Phase 6's 5-color palette has a defined color for every state.
+  // Tension is the controlling failure when present.
+  auto collapse_active_set = [](std::uint8_t as) -> std::uint8_t {
+    if (as >= 4) return 4;
+    return as;
+  };
 
   Vec6 strainTrialAdjusted = strainTrialVoigt;
-  double sigma_zz_correction = 0.0;
+  double eps_zz_correction = 0.0;
   HsUpdateResult last{};
   for (int outer = 0; outer < kMaxOuter; ++outer) {
     // Apply correction to the trial strain in z (engineering strain).
     // Note: the inner update reads dEps = strainTrialAdj - strainCommitted,
     // so shifting strainTrialAdj[V_ZZ] shifts dEps_zz by the same amount.
-    strainTrialAdjusted[V_ZZ] = strainTrialVoigt[V_ZZ] + sigma_zz_correction;
+    strainTrialAdjusted[V_ZZ] = strainTrialVoigt[V_ZZ] + eps_zz_correction;
 
     HsUpdateResult res = update(
         strainTrialAdjusted, strainCommittedVoigt, stressCommittedVoigt,
@@ -1703,9 +1711,9 @@ inline HsUpdateResult update_plane_strain(
     }
 
     // Residual: the achieved Δε_zz_total. We have
-    //   Δε^e_zz + Δε^p_zz = Δε_input_zz = sigma_zz_correction
+    //   Δε^e_zz + Δε^p_zz = Δε_input_zz = eps_zz_correction
     // The plane-strain requirement is Δε_total_zz = 0; therefore we want
-    // sigma_zz_correction = 0 in the limit, i.e., the input shift drives
+    // eps_zz_correction = 0 in the limit, i.e., the input shift drives
     // the iteration on the correction itself.
     //
     // Equivalent check: did the constitutive update keep σ_zz on the
@@ -1731,23 +1739,20 @@ inline HsUpdateResult update_plane_strain(
     //   dε^e_zz = (1/E_ur) * [dσ_zz - ν_ur * (dσ_xx + dσ_yy)]
     // (Engineering shear off-diagonals do not contribute to normal strain
     //  components.)
-    const double E_ur_effective = std::max(res.tangent[V_ZZ][V_ZZ] - res.tangent[V_ZZ][V_XX] * 0.0, 1.0);
+    //
     // res.tangent in HS is D_e (Phase 5 §B.9); recover E_ur, nu_ur from
-    // its entries: D_e[3][3] = G, D_e[0][1] = λ. K = λ + 2G/3, E_ur =
-    // 9K G / (3K+G), nu_ur = (3K-2G)/(2(3K+G)). For the residual we only
-    // need 1/E_ur and ν_ur, both reconstructible from D_e[0][0]=λ+2G and
-    // D_e[0][1]=λ.
-    const double D00 = res.tangent[V_XX][V_XX];   // λ + 2G
-    const double D01 = res.tangent[V_XX][V_YY];   // λ
-    const double G_recon = std::max(0.5 * (D00 - D01), 1.0);
-    const double lambda_recon = D01;
-    const double K_recon = lambda_recon + (2.0 / 3.0) * G_recon;
+    // its entries: D_e[0][0] = λ + 2G, D_e[0][1] = λ. K = λ + 2G/3,
+    // E_ur = 9K G / (3K+G), nu_ur = (3K-2G) / (2(3K+G)). Only E_ur and
+    // ν_ur are needed for the residual; G_recon and K_recon are kept
+    // as intermediates because each feeds the next reconstruction step.
+    const double G_recon = std::max(
+        0.5 * (res.tangent[V_XX][V_XX] - res.tangent[V_XX][V_YY]), 1.0);
+    const double K_recon = res.tangent[V_XX][V_YY] + (2.0 / 3.0) * G_recon;
     const double E_ur_recon = std::max(9.0 * K_recon * G_recon
                                         / std::max(3.0 * K_recon + G_recon, 1.0),
                                        1.0);
     const double nu_ur_recon = (3.0 * K_recon - 2.0 * G_recon)
                               / std::max(2.0 * (3.0 * K_recon + G_recon), 1.0);
-    (void)E_ur_effective;
 
     const double dsig_xx = res.stressUpdated[V_XX] - stressCommittedVoigt[V_XX];
     const double dsig_yy = res.stressUpdated[V_YY] - stressCommittedVoigt[V_YY];
@@ -1760,22 +1765,29 @@ inline HsUpdateResult update_plane_strain(
     const double residual = dEps_zz_total - 0.0;
 
     if (std::abs(residual) < kEpsZzTol) {
-      // Converged. Return with the iteration count recorded.
+      // Converged. Collapse expanded enum to spec's {0..4} so Phase 6's
+      // palette covers every state, then return with iteration count.
+      res.activeSurface = collapse_active_set(res.activeSurface);
+      res.stateUpdated.lastActiveSet = collapse_active_set(res.stateUpdated.lastActiveSet);
       return res;
     }
 
-    // Newton step: d(Δε_zz_total) / d(sigma_zz_correction) is ~ +1 in the
-    // pure elastic case (shifting input dε_zz by δ shifts achieved
-    // dε_zz_total by ~δ via the elastic decomposition). For the plastic
-    // case the slope changes only modestly; we use damped fixed-point with
-    // a unit slope. This matches B.7's "elastic-tangent slope" approx.
-    sigma_zz_correction -= residual;
+    // Unit-slope fixed-point step: shifting input dε_zz by δ shifts the
+    // achieved dε_zz_total by ~δ in the elastic-dominant case, with
+    // small modifications in the plastic case. This is the strain-
+    // unknown formulation of B.7's σ_zz Newton (equivalent to the
+    // spec's stress-unknown by Δσ = E_ur Δε).
+    eps_zz_correction -= residual;
   }
 
   // σ_zz outer Newton did not converge in MAX_OUTER iterations. Surface
   // failure code 105 to the outer FE Newton.
   last.failureCode = 105;
   last.sigmaZzIterations = static_cast<std::uint8_t>(kMaxOuter);
+  // Collapse expanded enum even on failure so the Phase 6 palette still
+  // covers the reported state. Tension is the controlling mode if mixed.
+  last.activeSurface = collapse_active_set(last.activeSurface);
+  last.stateUpdated.lastActiveSet = collapse_active_set(last.stateUpdated.lastActiveSet);
   return last;
 }
 
