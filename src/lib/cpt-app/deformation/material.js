@@ -65,6 +65,14 @@ export function prepareMechanicalMaterial(material, warnings = []) {
   const rawApexStressGapTolerance = finiteOrNull(material?.apexStressGapTolerance);
   const rawComplementarityTolerance = finiteOrNull(material?.activeSetComplementarityTolerance);
   const rawEigenSubspaceTolerance = finiteOrNull(material?.eigenSubspaceTolerance);
+  const hsSource = material?.hs && typeof material.hs === 'object' ? material.hs : {};
+  const hsValue = (name, fallback = 0) => {
+    const numeric = Number(hsSource[name] ?? material?.[name]);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  };
+  const hsE50Ref = Math.max(hsValue('E50_ref', Emc), 1);
+  const hsEoedRef = Math.max(hsValue('Eoed_ref', hsE50Ref), 1);
+  const hsEurRef = Math.max(hsValue('Eur_ref', Math.max(3 * hsE50Ref, hsE50Ref)), 1);
 
   return {
     ...material,
@@ -80,6 +88,20 @@ export function prepareMechanicalMaterial(material, warnings = []) {
     sigmaTAllow: Math.max(Number(material?.sigmaTAllow) || 0, 0),
     sigmaY: Math.max(Number(material?.sigmaY) || 0, 0),
     rShear: Math.min(Math.max(Number(material?.rShear) || 0.25, 1e-3), 1),
+    hs: {
+      E50_ref: hsE50Ref,
+      Eoed_ref: hsEoedRef,
+      Eur_ref: hsEurRef,
+      m: Math.min(Math.max(hsValue('m', 0.5), 0), 1),
+      nu_ur: Math.min(Math.max(hsValue('nu_ur', 0.2), NU_MIN), NU_MAX),
+      p_ref: Math.max(hsValue('p_ref', 100), 1e-6),
+      Rf: Math.min(Math.max(hsValue('Rf', 0.9), 1e-6), 0.999999),
+      K0_nc: Math.max(hsValue('K0_nc', Number.isFinite(Number(material?.K0nc)) ? Number(material.K0nc) : 0), 0),
+      e_init: hsValue('e_init', -1),
+      e_max: hsValue('e_max', -1),
+      OCR: Math.max(hsValue('OCR', 1), 1e-6),
+      reserved: hsValue('reserved', 0)
+    },
     yieldTolerance: rawYieldTolerance !== null ? Math.max(rawYieldTolerance, 0) : null,
     yieldToleranceScale: rawYieldToleranceScale !== null ? Math.max(rawYieldToleranceScale, 0) : 1e-8,
     yieldTolerancePref: rawYieldTolerancePref !== null ? Math.max(rawYieldTolerancePref, 1e-6) : 100,

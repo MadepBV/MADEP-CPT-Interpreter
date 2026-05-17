@@ -23,11 +23,13 @@ enum class ElementKind : std::uint8_t {
 };
 
 // Constitutive model: linear elastic (no plasticity), MC with reduced
-// stiffness (Stage 1), or full elastoplastic MC return mapping (Stage 2).
+// stiffness (Stage 1), full elastoplastic MC return mapping (Stage 2),
+// or Hardening Soil (WASM-only; implemented incrementally).
 enum class ConstitutiveKind : std::uint8_t {
   LinearElastic = 0,
   McReducedStiffness = 1,
-  McPlastic = 2
+  McPlastic = 2,
+  HardeningSoil = 3
 };
 
 // Analysis mode — picked by the user via the UI / options bundle.
@@ -91,6 +93,27 @@ struct RegionParams {
   std::uint8_t symmetrize{ 0 };        // 1 = symmetrize Ep tangent → CG ok
   std::uint8_t pad0{ 0 };
   std::uint8_t pad1{ 0 };
+
+  // Hardening Soil parameters. These are only read when the global
+  // constitutive model is HardeningSoil; non-HS runs keep the fields at
+  // their defaults so existing vector copies remain branch-free.
+  struct HsParams {
+    double E50_ref{ 0.0 };
+    double Eoed_ref{ 0.0 };
+    double Eur_ref{ 0.0 };
+    double m{ 0.5 };
+    double nu_ur{ 0.2 };
+    double p_ref{ 100.0 };
+    double Rf{ 0.9 };
+    double K0_nc{ 0.0 };
+    double e_init{ -1.0 };
+    double e_max{ -1.0 };
+    double OCR{ 1.0 };
+    double reserved{ 0.0 };
+    double M_cap{ 0.0 };
+    double sin_phi_cv{ 0.0 };
+    double H_cap{ 0.0 };
+  } hs;
 };
 
 // Convert a c-φ-style strength reduction factor (ΣMsf) into a reduced
@@ -211,6 +234,13 @@ struct MaterialPoint {
   std::array<std::array<double, 3>, 3> repP1{};
   std::array<std::array<double, 3>, 3> repP2{};
   std::array<std::array<double, 3>, 3> repP3{};
+
+  struct HsState {
+    double gamma_p{ 0.0 };
+    double p_p{ 0.0 };
+    double eps_v_p{ 0.0 };
+    std::uint8_t lastActiveSet{ 0 };
+  } hs;
 };
 
 // Element-level cached data (precomputed once at startup).

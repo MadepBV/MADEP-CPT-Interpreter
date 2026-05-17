@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// WASM entry point — wire format v8.
+// WASM entry point — wire format v10.
 //
 // INPUT (uint8_t* in, std::size_t len):
 //   Header (offsets in bytes from the start):
 //     u32  magic              = 'TDCM' (0x4D434454)
-//     u32  version            = 8
+//     u32  version            = 10
 //     u32  elementKind        (3 or 6)
-//     u32  constitutive       (0 = LE, 1 = MC-RS, 2 = MC-P)
+//     u32  constitutive       (0 = LE, 1 = MC-RS, 2 = MC-P, 3 = HS)
 //     u32  analysisMode       (0 = service-only, 1 = geostatic+service,
 //                              2 = geostatic+service+safety)
 //     u32  numNodes
@@ -46,7 +46,7 @@
 //          arcLengthConstraintToleranceScale
 //   Nodes:       numNodes × (f64 x, f64 y)
 //   Elements:    numElements × (i32 regionIndex, i32 elementKind, i32 nodeIds[6])
-//   Regions:     numRegions × RegionParams (10 f64 + 4 u8 = 84 bytes)
+//   Regions:     numRegions × RegionParams (10 f64 + 4 u8 + 12 f64 = 180 bytes)
 //   Constraints: numConstraints × i32 dofIndex
 //   Gravity RHS: 2 * numNodes f64   (full DOF order; -gamma*area lumped already)
 //   Load RHS:    2 * numNodes f64   (surface traction; zero when no load)
@@ -56,11 +56,12 @@
 //
 // OUTPUT layout (uint8_t*, std::size_t):
 //   u32  magic                 = 'TDKM' (0x4D444B54)
-//   u32  version               = 8
+//   u32  version               = 10
 //   u32  numNodes
 //   u32  numElements
 //   u32  numGpTotal
-//   RunSummary  (10 i32, 5 f64, 4 u8, 4 u8 pad — 96 bytes)
+//   RunSummary  (10 i32, 5 f64, 4 u8, 4 u8 pad — 88 bytes;
+//                fourth u8 is hasHsPayload)
 //   Service displacements:   numNodes × (f64 ux, f64 uy)
 //   Geostatic displacements: numNodes × (f64 ux, f64 uy)
 //   gpStates:                numGpTotal × (
@@ -77,7 +78,13 @@
 //     u8 plasticActive,
 //     u8 tensionActive,
 //     u8 plasticEverActive,
-//     u8 _pad
+//     u8 _pad,
+//     optional HS block when hasHsPayload = 1:
+//       f64 gamma_p,
+//       f64 p_p,
+//       f64 eps_v_p,
+//       u8 lastActiveSet,
+//       u8[7] _pad
 //   )
 //   SafetyResult:
 //     u8 status, 7 u8 pad,
@@ -150,11 +157,12 @@ ArcLengthMeritMode arc_length_merit_mode_from_wire(std::uint8_t value) {
 
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
-constexpr std::uint32_t WIRE_VERSION = 8u;
+constexpr std::uint32_t WIRE_VERSION = 10u;
 
 constexpr std::size_t kInputHeaderBytes = 40 + 12 + 7 * 4 + 28 * 8;  // 304 bytes
 constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 88 bytes
 constexpr std::size_t kGpStateBytes = (6 + 6 + 1 + 1 + 6 + 6 + 6 + 1 + 1 + 1) * 8 + 4;  // 35 f64 + 4 u8 = 284 bytes
+constexpr std::size_t kHsGpStateBytes = 3 * 8 + 8;  // 3 f64 + 1 u8 + 7 u8 pad = 32 bytes
 constexpr std::size_t kSafetyHeaderBytes = 1 + 7 + 3 * 8 + 4 * 4;  // 48 bytes
 constexpr std::size_t kSafetyTrialBytes = 3 * 8 + 4 + 2 + 3 + 7;   // 40 bytes
 constexpr std::size_t kSafetyCurvePointBytes = 12 * 4 + 13 * 8 + 8 + 5 * 8;   // 200 bytes
@@ -324,6 +332,7 @@ int madepRunDeformationAnalysis(
   const ElementKind elementKind = (elementKindU == 6) ? ElementKind::T6 : ElementKind::T3;
   const int nodesPerEl = (elementKind == ElementKind::T6) ? 6 : 3;
   const ConstitutiveKind constitutive =
+      (constitutiveU == 3) ? ConstitutiveKind::HardeningSoil :
       (constitutiveU == 2) ? ConstitutiveKind::McPlastic :
       (constitutiveU == 1) ? ConstitutiveKind::McReducedStiffness :
                              ConstitutiveKind::LinearElastic;
@@ -377,6 +386,18 @@ int madepRunDeformationAnalysis(
     p = read_u8(p, r.symmetrize);
     p = read_u8(p, r.pad0);
     p = read_u8(p, r.pad1);
+    p = read_f64(p, r.hs.E50_ref);
+    p = read_f64(p, r.hs.Eoed_ref);
+    p = read_f64(p, r.hs.Eur_ref);
+    p = read_f64(p, r.hs.m);
+    p = read_f64(p, r.hs.nu_ur);
+    p = read_f64(p, r.hs.p_ref);
+    p = read_f64(p, r.hs.Rf);
+    p = read_f64(p, r.hs.K0_nc);
+    p = read_f64(p, r.hs.e_init);
+    p = read_f64(p, r.hs.e_max);
+    p = read_f64(p, r.hs.OCR);
+    p = read_f64(p, r.hs.reserved);
   }
 
   // Constraints.
@@ -407,6 +428,11 @@ int madepRunDeformationAnalysis(
 
   if (static_cast<std::size_t>(p - inputPtr) > inputLen) {
     g_last_error = "WASM input buffer truncated";
+    return 0;
+  }
+
+  if (constitutive == ConstitutiveKind::HardeningSoil) {
+    g_last_error = "Hardening Soil WASM material update is not implemented yet.";
     return 0;
   }
 
@@ -547,6 +573,7 @@ int madepRunDeformationAnalysis(
 
   const auto endTime = clock::now();
   result.summary.elapsed_ms = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+  const bool hasHsPayload = constitutive == ConstitutiveKind::HardeningSoil;
 
   // ---- pack output ------------------------------------------------------
   const std::size_t outLen =
@@ -554,7 +581,7 @@ int madepRunDeformationAnalysis(
       kSummaryBytes +                          // summary
       static_cast<std::size_t>(numNodes) * 16 + // service displacements
 	      static_cast<std::size_t>(numNodes) * 16 + // geostatic displacements
-	      static_cast<std::size_t>(numGpTotal) * kGpStateBytes +
+	      static_cast<std::size_t>(numGpTotal) * (kGpStateBytes + (hasHsPayload ? kHsGpStateBytes : 0)) +
 	      kSafetyHeaderBytes +
 	      static_cast<std::size_t>(result.safety.trials.size()) * kSafetyTrialBytes +
 	      static_cast<std::size_t>(result.safety.curve.size()) * kSafetyCurvePointBytes;
@@ -587,7 +614,8 @@ int madepRunDeformationAnalysis(
   q = write_u8(q, result.summary.geostaticConverged);
   q = write_u8(q, result.summary.serviceConverged);
   q = write_u8(q, result.summary.safetyRan);
-  q = write_u8(q, 0); q = write_u8(q, 0); q = write_u8(q, 0); q = write_u8(q, 0); q = write_u8(q, 0);
+  q = write_u8(q, hasHsPayload ? 1u : 0u);
+  q = write_u8(q, 0); q = write_u8(q, 0); q = write_u8(q, 0); q = write_u8(q, 0);
 
   // Service displacements.
   for (std::uint32_t n = 0; n < numNodes; ++n) {
@@ -621,6 +649,13 @@ int madepRunDeformationAnalysis(
     q = write_u8(q, mp.tensionCutoffActive);
     q = write_u8(q, mp.plasticEverActive);
     q = write_u8(q, 0);
+    if (hasHsPayload) {
+      q = write_f64(q, mp.hs.gamma_p);
+      q = write_f64(q, mp.hs.p_p);
+      q = write_f64(q, mp.hs.eps_v_p);
+      q = write_u8(q, mp.hs.lastActiveSet);
+      for (int i = 0; i < 7; ++i) q = write_u8(q, 0);
+    }
   }
 
   // Safety.

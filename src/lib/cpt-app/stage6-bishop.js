@@ -2562,6 +2562,26 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
       rShear: Number.isFinite(prior.rShear) && prior.rShear > 0 ? prior.rShear : Number(layer.rShear) || 0.25,
       psi: Number.isFinite(prior.psi) ? prior.psi : Number(layer.psi) || 0,
       sigmaTAllow: Number.isFinite(prior.sigmaTAllow) ? prior.sigmaTAllow : 0,
+      hs: {
+        E50_ref: Number.isFinite(Number(prior.hs?.E50_ref)) && Number(prior.hs.E50_ref) > 0
+          ? Number(prior.hs.E50_ref)
+          : Number(layer.E50_ref) || Number(layer.Emc) || Number(layer.E50_i) || 1000,
+        Eoed_ref: Number.isFinite(Number(prior.hs?.Eoed_ref)) && Number(prior.hs.Eoed_ref) > 0
+          ? Number(prior.hs.Eoed_ref)
+          : Number(layer.Eoed_ref) || Number(layer.E50_ref) || Number(layer.Emc) || 1000,
+        Eur_ref: Number.isFinite(Number(prior.hs?.Eur_ref)) && Number(prior.hs.Eur_ref) > 0
+          ? Number(prior.hs.Eur_ref)
+          : Number(layer.Eur_ref) || 3 * (Number(layer.E50_ref) || Number(layer.Emc) || 1000),
+        m: Number.isFinite(Number(prior.hs?.m)) ? Number(prior.hs.m) : Number(layer.m) || 0.5,
+        nu_ur: Number.isFinite(Number(prior.hs?.nu_ur)) ? Number(prior.hs.nu_ur) : Number(layer.nu_ur) || 0.2,
+        p_ref: Number.isFinite(Number(prior.hs?.p_ref)) && Number(prior.hs.p_ref) > 0 ? Number(prior.hs.p_ref) : 100,
+        Rf: Number.isFinite(Number(prior.hs?.Rf)) ? Number(prior.hs.Rf) : 0.9,
+        K0_nc: Number.isFinite(Number(prior.hs?.K0_nc)) ? Number(prior.hs.K0_nc) : Number(layer.K0nc) || 0,
+        e_init: Number.isFinite(Number(prior.hs?.e_init)) ? Number(prior.hs.e_init) : -1,
+        e_max: Number.isFinite(Number(prior.hs?.e_max)) ? Number(prior.hs.e_max) : -1,
+        OCR: Number.isFinite(Number(prior.hs?.OCR)) && Number(prior.hs.OCR) > 0 ? Number(prior.hs.OCR) : 1,
+        reserved: 0
+      },
       kx: permeability.kx,
       ky: permeability.ky,
       kSource: permeability.kSource,

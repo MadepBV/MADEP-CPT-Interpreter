@@ -3,11 +3,11 @@
 //
 // Wire-format encoder/decoder shared between the JS bridge and the C++
 // WASM module. Both sides MUST agree on this layout exactly; the C++
-// reader lives in deformation_wasm.cpp. Wire version 8.
+// reader lives in deformation_wasm.cpp. Wire version 10.
 
 const INPUT_MAGIC = 0x4D434454; // 'TDCM'
 const OUTPUT_MAGIC = 0x4D444B54; // 'TDKM'
-const WIRE_VERSION = 8;
+const WIRE_VERSION = 10;
 const LEGACY_OUTPUT_WIRE_VERSION = 6;
 const SAFETY_HISTORY_OUTPUT_WIRE_VERSION = 7;
 
@@ -34,7 +34,8 @@ const SAFETY_FINALIZATION_STATUS_BY_WIRE = Object.freeze([
 export const CONSTITUTIVE_KIND = Object.freeze({
   LinearElastic: 0,
   McReducedStiffness: 1,
-  McPlastic: 2
+  McPlastic: 2,
+  HardeningSoil: 3
 });
 
 export const ANALYSIS_MODE = Object.freeze({
@@ -47,6 +48,7 @@ export function constitutiveKindFor(name) {
   const lower = String(name || '').toLowerCase();
   if (lower === 'linear-elastic') return CONSTITUTIVE_KIND.LinearElastic;
   if (lower === 'mc-plastic') return CONSTITUTIVE_KIND.McPlastic;
+  if (lower === 'hardening-soil') return CONSTITUTIVE_KIND.HardeningSoil;
   return CONSTITUTIVE_KIND.McReducedStiffness;
 }
 
@@ -98,7 +100,7 @@ function computeInputSize({ numNodes, numElements, numRegions, numConstraints, n
   const headerBytes = 40 + 12 + 28 + 28 * 8;
   const nodesBytes = numNodes * 2 * 8;
   const elementsBytes = numElements * (4 + 4 + 6 * 4);
-  const regionsBytes = numRegions * (10 * 8 + 4);  // 84 bytes per region
+  const regionsBytes = numRegions * (10 * 8 + 4 + 12 * 8);  // 180 bytes per region
   const constraintsBytes = numConstraints * 4;
   const gravityBytes = numNodes * 2 * 8;
   const loadBytes = numNodes * 2 * 8;
@@ -107,6 +109,47 @@ function computeInputSize({ numNodes, numElements, numRegions, numConstraints, n
   const porePressureBytes = numGpTotal * 8;
   return headerBytes + nodesBytes + elementsBytes + regionsBytes + constraintsBytes
        + gravityBytes + loadBytes + predictorBytes + initialSigmaBytes + porePressureBytes;
+}
+
+function hsParam(region, name, fallback = 0) {
+  const hs = region?.hs && typeof region.hs === 'object' ? region.hs : {};
+  const value = hs[name] ?? region?.[name];
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function writeHsParams(writeF64, region, isHs) {
+  if (!isHs) {
+    for (let i = 0; i < 12; i += 1) writeF64(0);
+    return;
+  }
+  const e50 = Math.max(hsParam(region, 'E50_ref', region?.Emc || 0), 0);
+  const eoed = Math.max(hsParam(region, 'Eoed_ref', e50), 0);
+  const eur = Math.max(hsParam(region, 'Eur_ref', Math.max(3 * e50, e50)), 0);
+  writeF64(e50);
+  writeF64(eoed);
+  writeF64(eur);
+  writeF64(Math.min(Math.max(hsParam(region, 'm', 0.5), 0), 1));
+  writeF64(Math.min(Math.max(hsParam(region, 'nu_ur', 0.2), -0.99), 0.49));
+  writeF64(Math.max(hsParam(region, 'p_ref', 100), 1e-6));
+  writeF64(Math.min(Math.max(hsParam(region, 'Rf', 0.9), 1e-6), 0.999999));
+  writeF64(Math.max(hsParam(region, 'K0_nc', region?.K0nc || 0), 0));
+  writeF64(hsParam(region, 'e_init', -1));
+  writeF64(hsParam(region, 'e_max', -1));
+  writeF64(Math.max(hsParam(region, 'OCR', 1), 1e-6));
+  writeF64(hsParam(region, 'reserved', 0));
+}
+
+function readHsState(readF64, readU8, isHs) {
+  if (!isHs) return null;
+  const hs = {
+    gammaP: readF64(),
+    pP: readF64(),
+    epsVP: readF64(),
+    lastActiveSet: readU8()
+  };
+  for (let i = 0; i < 7; i += 1) readU8();
+  return hs;
 }
 
 /**
@@ -235,6 +278,7 @@ export function encodeInputBuffer({
   }
 
   // Regions.
+  const isHsModel = constitutiveU === CONSTITUTIVE_KIND.HardeningSoil;
   for (let i = 0; i < numRegions; i += 1) {
     const r = regions[i] || {};
     writeF64(Math.max(Number(r.Emc) || 1, 1));
@@ -251,6 +295,7 @@ export function encodeInputBuffer({
     writeU8(r.symmetrizeEpTangent === true ? 1 : 0);
     writeU8(0);
     writeU8(0);
+    writeHsParams(writeF64, r, isHsModel);
   }
 
   // Constraints.
@@ -318,7 +363,8 @@ export function decodeOutputBuffer(bytes) {
     serviceConverged: readU8() === 1,
     safetyRan: readU8() === 1
   };
-  for (let i = 0; i < 5; i += 1) readU8();
+  const hasHsPayload = version >= 10 ? readU8() === 1 : (readU8(), false);
+  for (let i = 0; i < 4; i += 1) readU8();
 
   const serviceDisp = new Float64Array(numNodes * 2);
   for (let i = 0; i < numNodes; i += 1) {
@@ -364,6 +410,7 @@ export function decodeOutputBuffer(bytes) {
       plasticEverActive: readU8() === 1
     };
     readU8();
+    state.hs = readHsState(readF64, readU8, hasHsPayload);
     gpStates[gp] = state;
   }
 
@@ -555,6 +602,7 @@ export function decodeOutputBuffer(bytes) {
     numElements,
     numGpTotal,
     summary,
+    hasHsPayload,
     serviceDisplacements: serviceDisp,
     geostaticDisplacements: geostaticDisp,
     displacements: serviceDisp,  // alias for backward-compat

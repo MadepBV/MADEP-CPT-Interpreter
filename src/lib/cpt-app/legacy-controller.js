@@ -4704,7 +4704,7 @@ function ensureStage6State(){
   bishop.seepage.selectedBcId = bishop.seepage.selectedBcId ? String(bishop.seepage.selectedBcId) : '';
   if(!bishop.deformation || typeof bishop.deformation !== 'object') bishop.deformation = stage6Defaults().bishop.deformation;
   stage6Merge(bishop.deformation, stage6Defaults().bishop.deformation);
-  if(!['linear-elastic','mc-reduced-stiffness','mc-plastic'].includes(bishop.deformation.options.constitutiveModel)){
+  if(!['linear-elastic','mc-reduced-stiffness','mc-plastic','hardening-soil'].includes(bishop.deformation.options.constitutiveModel)){
     bishop.deformation.options.constitutiveModel = stage6Defaults().bishop.deformation.options.constitutiveModel;
   }
   // The browser UI no longer exposes the old predictor-only initial mode.
@@ -6181,9 +6181,25 @@ function stage6BishopSyncSoilModel(){
     if(hadSignature) stage6BishopInvalidate(strengthSetChanged ? 'Material strength set changed; Bishop results were cleared.' : 'Active CPT layers changed; Bishop results were cleared.');
   }
   bishop.materials.forEach((material, index)=>{
-    if(Number.isFinite(Number(material?.rShear))) return;
     const layer = layers[index];
-    material.rShear = Number.isFinite(Number(layer?.rShear)) ? Number(layer.rShear) : 0.25;
+    if(!Number.isFinite(Number(material?.rShear))){
+      material.rShear = Number.isFinite(Number(layer?.rShear)) ? Number(layer.rShear) : 0.25;
+    }
+    if(!material.hs || typeof material.hs !== 'object') material.hs = {};
+    const hs = material.hs;
+    const fallbackE50 = Number(layer?.E50_ref) || Number(material.Emc) || 1000;
+    if(!(Number(hs.E50_ref) > 0)) hs.E50_ref = fallbackE50;
+    if(!(Number(hs.Eoed_ref) > 0)) hs.Eoed_ref = Number(layer?.Eoed_ref) || fallbackE50;
+    if(!(Number(hs.Eur_ref) > 0)) hs.Eur_ref = Number(layer?.Eur_ref) || 3 * fallbackE50;
+    hs.m = Math.min(Math.max(Number.isFinite(Number(hs.m)) ? Number(hs.m) : Number(layer?.m) || 0.5, 0), 1);
+    hs.nu_ur = Math.min(Math.max(Number.isFinite(Number(hs.nu_ur)) ? Number(hs.nu_ur) : Number(layer?.nu_ur) || 0.2, -0.99), 0.49);
+    hs.p_ref = Math.max(Number(hs.p_ref) || 100, 1e-6);
+    hs.Rf = Math.min(Math.max(Number.isFinite(Number(hs.Rf)) ? Number(hs.Rf) : 0.9, 1e-6), 0.999999);
+    hs.K0_nc = Math.max(Number.isFinite(Number(hs.K0_nc)) ? Number(hs.K0_nc) : Number(layer?.K0nc) || 0, 0);
+    hs.e_init = Number.isFinite(Number(hs.e_init)) ? Number(hs.e_init) : -1;
+    hs.e_max = Number.isFinite(Number(hs.e_max)) ? Number(hs.e_max) : -1;
+    hs.OCR = Math.max(Number(hs.OCR) || 1, 1e-6);
+    hs.reserved = 0;
   });
   if(!Array.isArray(bishop.customRegions)) bishop.customRegions = [];
   bishop.useCustomRegions = !!bishop.useCustomRegions;
@@ -6724,6 +6740,17 @@ function stage6BishopSetMaterialField(index, field, value){
   if(!material) return;
   material[field] = field === 'label' ? value : +value;
   stage6BishopInvalidate('Material properties updated; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopSetMaterialHsField(index, field, value){
+  ensureStage6State();
+  stage6BishopSyncSoilModel();
+  const material = S.stage6.bishop.materials?.[index];
+  if(!material) return;
+  if(!material.hs || typeof material.hs !== 'object') material.hs = {};
+  material.hs[field] = value === '' || value == null ? null : +value;
+  stage6BishopInvalidate('Hardening Soil material properties updated; rerun deformation analysis.');
   renderStage6();
 }
 
@@ -12983,6 +13010,8 @@ function renderStage6BishopApp(){
     ? 'Reduced-stiffness Mohr-Coulomb screen'
     : (deformation.result?.solver?.constitutiveModel === 'mc-plastic-material-point' || deformation.result?.solver?.constitutiveModel === 'gpu-resident-mc-plastic')
       ? (deformation.result?.solver?.analysisType === 'safety-cphi' ? 'Mohr-Coulomb plastic + c-phi reduction safety' : 'Mohr-Coulomb plastic plane strain')
+      : deformation.result?.solver?.constitutiveModel === 'hardening-soil-material-point'
+      ? 'Hardening Soil plane strain'
       : deformation.result?.solver?.constitutiveModel === 'linear-elastic-material-point'
       ? 'Linear elastic plane strain'
       : '—';
@@ -13127,6 +13156,7 @@ function renderStage6BishopApp(){
       <td><input type="number" step="0.1" min="0" value="${Number(mat.gammaSat || 0).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'gammaSat', this.value)"></td>
     </tr>
   `).join('');
+  const deformationUsesHardeningSoil = bishop.deformation?.options?.constitutiveModel === 'hardening-soil';
   const deformationMaterialRows = (bishop.materials || []).map((mat, index)=>`
     <tr>
       <td><input type="text" value="${stage6EscAttr(mat.label)}" onchange="stage6BishopSetMaterialField(${index}, 'label', this.value)"></td>
@@ -13139,6 +13169,40 @@ function renderStage6BishopApp(){
       <td><input type="number" step="1" min="0" value="${Number(mat.psiEffDeg ?? mat.psi ?? 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'psi', this.value)"></td>
     </tr>
   `).join('');
+  const hsMaterialRows = (bishop.materials || []).map((mat, index)=>{
+    const hs = mat.hs || {};
+    return `
+      <tr>
+        <td>${stage6EscAttr(mat.label)}</td>
+        <td><input type="number" step="100" min="1" value="${Number(hs.E50_ref || mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'E50_ref', this.value)"></td>
+        <td><input type="number" step="100" min="1" value="${Number(hs.Eoed_ref || hs.E50_ref || mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Eoed_ref', this.value)"></td>
+        <td><input type="number" step="100" min="1" value="${Number(hs.Eur_ref || 3 * (hs.E50_ref || mat.Emc || 0)).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Eur_ref', this.value)"></td>
+        <td><input type="number" step="0.05" min="0" max="1" value="${Number(hs.m ?? 0.5).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'm', this.value)"></td>
+        <td><input type="number" step="0.01" min="-0.99" max="0.49" value="${Number(hs.nu_ur ?? 0.2).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'nu_ur', this.value)"></td>
+        <td><input type="number" step="0.01" min="0.01" max="0.999" value="${Number(hs.Rf ?? 0.9).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Rf', this.value)"></td>
+        <td><input type="number" step="0.1" min="0.1" value="${Number(hs.OCR ?? 1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'OCR', this.value)"></td>
+      </tr>
+    `;
+  }).join('');
+  const hsMaterialWarnings = (bishop.materials || []).flatMap((mat)=>{
+    const hs = mat.hs || {};
+    const warnings = [];
+    if(Number(hs.Eur_ref) < Number(hs.E50_ref)) warnings.push(`${mat.label}: Eur_ref should be >= E50_ref.`);
+    if(Number(hs.m) < 0 || Number(hs.m) > 1) warnings.push(`${mat.label}: m should stay between 0 and 1.`);
+    if(Number(hs.Rf) <= 0 || Number(hs.Rf) >= 1) warnings.push(`${mat.label}: Rf should stay between 0 and 1.`);
+    if(Number(hs.K0_nc) <= 0 || Number(hs.K0_nc) >= 1) warnings.push(`${mat.label}: K0_nc should usually stay between 0 and 1; use 0 only as the solver sentinel.`);
+    return warnings;
+  });
+  const hsMaterialTableHtml = deformationUsesHardeningSoil ? `
+    <div class="st6-help">Hardening Soil is wired through the WASM material payload in this phase. The solver intentionally returns a not-implemented error until the constitutive update phases land.</div>
+    ${hsMaterialWarnings.length ? `<div class="warn">${hsMaterialWarnings.map(stage6EscAttr).join('<br>')}</div>` : ''}
+    <div style="overflow:auto">
+      <table class="tbl st6-bishop-materials st6-bishop-materials--deformation">
+        <thead><tr><th>Layer</th><th>E50_ref</th><th>Eoed_ref</th><th>Eur_ref</th><th>m</th><th>nu_ur</th><th>Rf</th><th>OCR</th></tr></thead>
+        <tbody>${hsMaterialRows}</tbody>
+      </table>
+    </div>
+  ` : '';
   const wallRows = (bishop.walls || []).map((wall, index)=>{
     const material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'legacy-impermeable'});
     const preset = stage6BishopWallMaterialPresetKey(material);
@@ -13316,6 +13380,7 @@ function renderStage6BishopApp(){
                   </label>
                   <label style="font-size:11px;color:var(--tx2)">Constitutive model
                     <select onchange="stage6BishopSetField('deformation.options.constitutiveModel', this.value)">
+                      <option value="hardening-soil"${bishop.deformation?.options?.constitutiveModel==='hardening-soil'?' selected':''}>Hardening Soil</option>
                       <option value="mc-plastic"${bishop.deformation?.options?.constitutiveModel==='mc-plastic'?' selected':''}>Mohr-Coulomb plastic</option>
                       <option value="mc-reduced-stiffness"${bishop.deformation?.options?.constitutiveModel==='mc-reduced-stiffness'?' selected':''}>Reduced-stiffness screen</option>
                       <option value="linear-elastic"${bishop.deformation?.options?.constitutiveModel==='linear-elastic'?' selected':''}>Linear elastic</option>
@@ -13590,6 +13655,7 @@ function renderStage6BishopApp(){
                     <tbody>${deformationMaterialRows}</tbody>
                   </table>
                 </div>
+                ${hsMaterialTableHtml}
               </div>
             </details>
             <details class="st6-adv" data-st6details="bishop-deformation-solve"${stage6DetailsOpen('bishop-deformation-solve')}>
@@ -14360,6 +14426,7 @@ function renderStage6BishopApp(){
           <tbody>${deformationMaterialRows}</tbody>
         </table>
       </div>
+      ${hsMaterialTableHtml}
     </div>
   ` : `
     <div class="st6-canvas-card-section">
@@ -16489,6 +16556,7 @@ const legacyApi={
   stage6BishopPopDraftPoint,
   stage6BishopClear,
   stage6BishopSetMaterialField,
+  stage6BishopSetMaterialHsField,
   stage6BishopSetMaterialPermeability,
   stage6BishopResetMaterialPermeability,
   stage6BishopSetWallField,

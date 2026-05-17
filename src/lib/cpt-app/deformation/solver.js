@@ -2159,6 +2159,7 @@ function resolveConstitutiveModelName(options) {
   // to mc-reduced-stiffness (Stage 1) for backwards compatibility with
   // pre-plugin run records that did not always set the option.
   const requested = String(options?.constitutiveModel || '').toLowerCase();
+  if (requested === 'hardening-soil') return 'hardening-soil';
   if (hasMaterialPlugin(requested)) return requested;
   if (requested === 'linear-elastic') return 'linear-elastic';
   if (requested === 'mc-plastic') return 'mc-plastic';
@@ -2171,7 +2172,8 @@ function createMaterialModelForOptions(materialParameters, options, warnings) {
   // discovered via `registerMaterialPlugin(name, factory)` from the
   // plugin's own module (see material-plugin.js for the contract).
   const name = resolveConstitutiveModelName(options);
-  return materialPluginFor(name, materialParameters, warnings);
+  const pluginName = name === 'hardening-soil' ? 'mc-reduced-stiffness' : name;
+  return materialPluginFor(pluginName, materialParameters, warnings);
 }
 
 function prepareRegionConstitutiveModels(mesh, options, warnings) {
@@ -6423,6 +6425,13 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   };
   // GPU acceleration plumbing has been removed; CPU f64 is the only path
   // until the new resident double-single pipeline is built (Phases 1-12).
+  if (options.constitutiveModel === 'hardening-soil' && options.useWasmCpuPipeline !== true) {
+    throw new Error(
+      'Hardening Soil is a WASM-only constitutive model. ' +
+      'Select the WASM CPU backend (default) or switch to a plugin ' +
+      'with a JS reference implementation.'
+    );
+  }
   const load = normalizeLoad(model, options, warnings, analysisType === 'deformation' ? 'required' : 'optional');
   addDomainExtentWarnings(model, load, warnings);
   const hasSurfaceLoad = !!load;

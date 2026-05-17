@@ -123,7 +123,7 @@ function minimalV7Output() {
 }
 
 async function main() {
-  assert.equal(WASM_WIRE_VERSION, 8);
+  assert.equal(WASM_WIRE_VERSION, 10);
   const legacyDecoded = decodeOutputBuffer(minimalV7Output());
   assert.deepEqual(legacyDecoded.safety.curve, []);
   assert.deepEqual(legacyDecoded.safety.trialTargets, []);
@@ -204,9 +204,9 @@ async function main() {
     }
   }));
 
-  assert.equal(strength.version, 8);
-  assert.equal(arc.version, 8);
-  assert.equal(arcTuned.version, 8);
+  assert.equal(strength.version, 10);
+  assert.equal(arc.version, 10);
+  assert.equal(arcTuned.version, 10);
   assert.ok(strength.decoded.safety.curve.length > 0, 'strength-control safety curve should exist');
   assert.ok(arc.decoded.safety.curve.length > 0, 'arc-length safety curve should exist');
   assert.ok(arcTuned.decoded.safety.curve.length > 0, 'tuned arc-length safety curve should exist');
@@ -235,7 +235,7 @@ async function main() {
     'auto displacement scale should reduce the first accepted arc-length radius on this >1m model'
   );
 
-  console.log('Arc-length Phase 5 v8 safety-curve checks passed.');
+  console.log('Arc-length Phase 5 safety-curve checks passed.');
 }
 
 main().catch((err) => {

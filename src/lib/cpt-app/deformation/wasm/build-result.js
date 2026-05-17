@@ -162,6 +162,12 @@ export function buildWasmDeformationResult({
       if (!wasm) continue;
       const weight = ips.length > 0 ? (1.0 / ips.length) : 1;
       const accumulatedPlasticStrain = Number(wasm.accumulatedPlasticStrain) || 0;
+      const hsState = wasm.hs ? {
+        gammaP: Number(wasm.hs.gammaP) || 0,
+        pP: Number(wasm.hs.pP) || 0,
+        epsVP: Number(wasm.hs.epsVP) || 0,
+        lastActiveSet: Number(wasm.hs.lastActiveSet) || 0
+      } : null;
       const geostaticAccumulatedPlasticStrain = Number(wasm.geostaticAccumulatedPlasticStrain) || 0;
       const comparisonAccumulatedPlasticStrain = Number.isFinite(Number(wasm.comparisonAccumulatedPlasticStrain))
         ? Number(wasm.comparisonAccumulatedPlasticStrain)
@@ -233,13 +239,15 @@ export function buildWasmDeformationResult({
           etaMcFinal: wasm.eta,
           tensionCutoffActive: wasm.tensionActive,
           currentlyMcActive: wasm.plasticActive,
+          hs: hsState,
           serviceEquivalentPlasticIncrement,
           safetyEquivalentPlasticIncrement
         },
         materialState: {
           accumulatedPlasticStrain,
           currentlyMcActive: wasm.plasticActive,
-          hasEverExceededMc: wasm.plasticEverActive
+          hasEverExceededMc: wasm.plasticEverActive,
+          hs: hsState
         }
       });
     }
