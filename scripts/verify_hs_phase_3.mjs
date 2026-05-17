@@ -15,14 +15,18 @@
 //      cone-yield-zero value at σ_v = 50 (the geostatically-consistent
 //      value) so both yield surfaces are simultaneously active. Verify
 //      corner regime engages (activeSurface == 3) and K0 stays close to
-//      K0_nc = 0.5. Tolerance 6e-2 absolute: this is the realistic ceiling
-//      given the cap-only C.1 calibration of M_cap (Phase 2 limitation,
-//      not a Phase 3 bug). A corner-aware C.1 (Phase 5+) would tighten to
-//      the spec's 1e-3 target.
+//      K0_nc = 0.5. Tolerance 3e-3 absolute (corner-aware C.1+C.2
+//      calibration): K0 = K0_nc holds to <1e-3 AT p_ref; the residual
+//      drift along the path 50 → 200 kPa is intrinsic to stress-
+//      dependent stiffness coupled with constant H_cap (PLAXIS' p_p-
+//      dependent H_cap, spec § 2.6, would tighten this further — Phase
+//      5+).
 //   2. Dense-sand K0 path — φ' = 40°, ψ = 10°, ramp 50 → 500 kPa over 600
-//      sub-steps. Same γ^p seeding. K0 tolerance 1e-1; E_oed within 15%
-//      of E_oed_ref. Looser bounds for dense sand because cone activity
-//      is stronger.
+//      sub-steps. Same γ^p seeding. K0 tolerance 3e-2; E_oed within 1%
+//      of E_oed_ref. The dense-sand 50 → 500 path covers 10× σ_v range
+//      so stress-dependent-stiffness drift dominates the K0-vs-σ_v
+//      profile; with constant H_cap the K0_nc condition is satisfied
+//      tightly only near p_ref. E_oed is exact (~0.1%) by C.2 design.
 //   3. Corner-degeneracy — start at NC state, apply pure deviatoric strain
 //      with zero volumetric component. Corner Newton must detect Δλ_c → 0
 //      and fall back to cone-only; verify activeSurface == 1.
@@ -462,17 +466,16 @@ async function k0GranularD4(mod) {
   // is exactly this number — it's the cone hardening accumulated during
   // the K0-controlled consolidation history.
   //
-  // Tolerance note. The C.1 (M_cap) calibration in Phase 2 simulates a
-  // cap-only K0 path (γ^p = 0.5, cone inactive). When the corner is
-  // genuinely engaged with low γ^p, the cap-only M_cap doesn't exactly
-  // reproduce K0_nc — the K0 ratio drifts by a few percent because both
-  // surfaces share the lateral-stress correction. Phase 3's contract is
-  // to validate that the corner Newton converges and produces a
-  // self-consistent solution (both yields satisfied); the exact K0_nc
-  // condition is a Phase 5+ calibration refinement (corner-aware C.1).
-  // We assert K0 stays within ±0.06 of K0_nc — a much tighter bound than
-  // the 0.15+ deviation that the un-corrected (predictor-only) dispatch
-  // would produce.
+  // Tolerance note. Phase 3 fixup (commit after ee79d9f) introduces a
+  // corner-aware joint C.1/C.2 calibration that satisfies BOTH the K0_nc
+  // condition AND the E_oed_ref condition along the corner-active K0_nc
+  // path AT p_ref. K0 at p_ref is now within 3e-5 of K0_nc for granular
+  // and within 2e-3 for dense sand (down from ~3e-2 and ~7e-2 in the
+  // initial Phase 3 commit). The K0 max along the FULL path 50 → 200 is
+  // larger (~2.5e-3) due to intrinsic drift from stress-dependent
+  // stiffness with constant H_cap; spec § 2.6 notes PLAXIS uses a p_p-
+  // dependent H_cap (Brinkgreve 2007 closed form) which would suppress
+  // this drift further. That's a Phase 5+ refinement.
   const phiRad = (region.phiDeg * Math.PI) / 180;
   const K0_target = 1 - Math.sin(phiRad);
   const gamma_p_seed = coneZeroGammaP(region, 50, K0_target);
@@ -515,15 +518,14 @@ async function k0GranularD4(mod) {
   console.log(`  Corner regime engaged: ${cornerEngaged} (activeSurfaces seen: ${[...run.activeSurfacesSeen].sort().join(', ')})`);
   assert.ok(cornerEngaged,
     'D.4 K0 path: corner regime (activeSurface == 3) must engage at least once during loading');
-  // K0 tolerance budget. The cap-only C.1 calibration over-estimates the
-  // share of lateral-stress correction owed to the cap alone, so when the
-  // cone also drives correction the recovered K0 is slightly higher than
-  // K0_nc. Empirical ceiling: 0.06 absolute on the ratio. The yield-
-  // residual self-consistency (both f^s and f^c ≤ 0 at converged state)
-  // is the hard correctness check; K0_nc itself becomes exact only when
-  // a corner-aware calibration replaces C.1 (Phase 5+).
-  assert.ok(maxRatioErr < 6e-2,
-    `D.4 K0 ratio error ${maxRatioErr} exceeds 6e-2`);
+  // K0 tolerance budget. With corner-aware C.1+C.2, K0 = K0_nc at p_ref
+  // to <3e-5. The 3e-3 ceiling absorbs the intrinsic drift along the
+  // 50 → 200 kPa path from stress-dependent E_50/E_ur/q_a (the cone
+  // hyperbolic curve shifts as σ_3 rises) coupled with the constant
+  // H_cap (the cap-hardening rate doesn't track σ_3 the way PLAXIS'
+  // p_p-dependent H_cap does — spec § 2.6).
+  assert.ok(maxRatioErr < 3e-3,
+    `D.4 K0 ratio error ${maxRatioErr} exceeds 3e-3`);
   return { maxRatioErr, worstSigma };
 }
 
@@ -537,9 +539,13 @@ async function k0DenseSand(mod) {
   console.log('  Driving dense-sand K0 path: σ_v 50 → 500 kPa, φ=40° ψ=10°');
   const region = denseSandPreset();
   // Seed γ^p at the geostatic K0 cone-zero value. Dense sand has higher
-  // cone activity along the K0 path; the looser K0 tolerance (5e-3) absorbs
-  // the drift from the cap-only C.1 calibration not perfectly satisfying
-  // K0_nc under corner activity.
+  // cone activity along the K0 path. The 3e-2 K0 tolerance absorbs the
+  // intrinsic drift over a 10× σ_v range (50→500); K0 = K0_nc holds to
+  // ~2e-3 AT p_ref (corner-aware C.1+C.2 result), but drifts down to
+  // K0 ≈ 0.33 at σ_v = 500 kPa because the model's hyperbolic-cone-curve
+  // power-law stress-dependence isn't matched by the constant-H_cap
+  // assumption. PLAXIS' p_p-dependent H_cap formulation (spec § 2.6
+  // Brinkgreve 2007 form) would suppress this drift — Phase 5+.
   const phiRad = (region.phiDeg * Math.PI) / 180;
   const K0_target = 1 - Math.sin(phiRad);
   const gamma_p_seed = coneZeroGammaP(region, 50, K0_target);
@@ -574,12 +580,13 @@ async function k0DenseSand(mod) {
     );
   }
   console.log(`  Dense-sand K0 max ratio error = ${maxRatioErr.toExponential(3)} at σ_v=${worstSigma.toFixed(1)} kPa`);
-  // Same calibration limitation as D.4: cap-only C.1 over-estimates the
-  // cap's share of lateral correction. Dense sand has higher cone
-  // activity ⇒ more drift. Empirical ceiling: 0.1 absolute on the ratio
-  // (vs. the 0.5+ deviation a tangent-Newton with wrong sign would give).
-  assert.ok(maxRatioErr < 1e-1,
-    `Dense-sand K0 ratio error ${maxRatioErr} exceeds 1e-1`);
+  // K0 tolerance budget. Corner-aware C.1+C.2 calibration gives K0 ≈
+  // K0_nc at p_ref to <3e-3 (better at p_ref itself, ~2e-3). The 3e-2
+  // ceiling absorbs the drift along the 50 → 500 kPa path (10× σ_v
+  // range) where constant H_cap can't track the stress-dependent cone
+  // hyperbolic curve.
+  assert.ok(maxRatioErr < 3e-2,
+    `Dense-sand K0 ratio error ${maxRatioErr} exceeds 3e-2`);
 
   // E_oed at σ_v = p_ref. Find a pair of points bracketing σ_v = 100.
   let pBefore = run.points[0];
@@ -602,11 +609,10 @@ async function k0DenseSand(mod) {
     const ratio = E_oed / E_oed_ref;
     E_oed_match_pct = (ratio - 1) * 100;
     console.log(`  E_oed at σ_v=${pAfter.sigma_v.toFixed(1)}: ${E_oed.toFixed(0)} (E_oed_ref=${E_oed_ref}), match ${E_oed_match_pct.toFixed(2)}%`);
-    // C.2 (H_cap) calibration was done under cap-only assumption — the
-    // corner regime softens the tangent stiffness because the cone share
-    // of plastic work doesn't drive σ_yy. Empirical ceiling: ±15% match.
-    assert.ok(Math.abs(E_oed_match_pct) < 15.0,
-      `E_oed at p_ref should match E_oed_ref within 15% (got ${E_oed_match_pct.toFixed(2)}%)`);
+    // C.2 (H_cap) corner-aware calibration: oedometric tangent at p_ref
+    // matches E_oed_ref to within 1%. This is the spec § 2.7 target.
+    assert.ok(Math.abs(E_oed_match_pct) < 1.0,
+      `E_oed at p_ref should match E_oed_ref within 1% (got ${E_oed_match_pct.toFixed(2)}%)`);
   } else {
     console.log('  WARN: could not bracket σ_v = p_ref for E_oed check');
   }
