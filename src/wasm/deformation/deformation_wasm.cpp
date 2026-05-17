@@ -106,6 +106,7 @@
 #include "cg.hpp"
 #include "element.hpp"
 #include "linalg.hpp"
+#include "material_hs.hpp"
 #include "material_mc.hpp"
 #include "material_mc_exact.hpp"
 #include "math_js_mirror.hpp"
@@ -169,6 +170,9 @@ constexpr std::size_t kSafetyCurvePointBytes = 12 * 4 + 13 * 8 + 8 + 5 * 8;   //
 constexpr std::uint32_t LOCAL_MC_INPUT_MAGIC  = 0x504C434Du;  // 'MCLP'
 constexpr std::uint32_t LOCAL_MC_OUTPUT_MAGIC = 0x4F4C434Du;  // 'MCLO'
 constexpr std::uint32_t LOCAL_MC_VERSION = 1u;
+constexpr std::uint32_t LOCAL_HS_INPUT_MAGIC  = 0x50534831u;  // '1HSP'
+constexpr std::uint32_t LOCAL_HS_OUTPUT_MAGIC = 0x4F534831u;  // '1HSO'
+constexpr std::uint32_t LOCAL_HS_VERSION = 1u;
 
 const std::uint8_t* read_vec6(const std::uint8_t* p, Vec6& v) {
   for (double& x : v) p = read_f64(p, x);
@@ -432,8 +436,12 @@ int madepRunDeformationAnalysis(
   }
 
   if (constitutive == ConstitutiveKind::HardeningSoil) {
-    g_last_error = "Hardening Soil WASM material update is not implemented yet.";
-    return 0;
+    // Compute region-derived HS constants (M_cap, H_cap, sin_phi_cv)
+    // once per region at material setup. The hot path consumes them via
+    // `region.hs.M_cap` etc.
+    for (auto& region : regions) {
+      material::hs::compute_hs_reference_constants(region, 1.0);
+    }
   }
 
   // Build element caches.
@@ -819,6 +827,193 @@ int madepRunMcPlasticMaterialPoint(
   q = write_u8(q, extra.localFallbackUsed);
   q = write_u8(q, extra.stateChanged);
   q = write_projectors(q, extra);
+  *outPtrPtr = out;
+  *outLenPtr = static_cast<std::uint32_t>(outLen);
+  return 1;
+}
+
+// ---------------------------------------------------------------------------
+// madepRunHsMaterialPoint
+//
+// Single Gauss-point Hardening Soil constitutive update. Used by the
+// Phase 2 verification harness (`scripts/verify_hs_phase_2.mjs`) to drive
+// closed-form triaxial / oedometric / unload-reload single-element fixtures
+// directly against material::hs::update.
+//
+// Wire format (little-endian throughout):
+//   Input:
+//     u32  magic   = LOCAL_HS_INPUT_MAGIC  ('1HSP')
+//     u32  version = 1
+//     RegionParams payload (the same 96 bytes used by the FE wire for the
+//     non-HS prefix, followed by 12 HS f64 fields):
+//       f64  Emc, nu, cEff, phiDeg, psiDeg, K0nc, gamma, gammaSat,
+//            sigmaTAllow, rShear
+//       u8   useTensionCutoff, symmetrize, pad, pad
+//       f64  E50_ref, Eoed_ref, Eur_ref, m, nu_ur, p_ref,
+//            Rf, K0_nc, e_init, e_max, OCR, reserved
+//     u8   computeReferenceConstants (1 = call compute_hs_reference_constants
+//                                       before update, 0 = trust caller-supplied
+//                                       M_cap, H_cap, sin_phi_cv below)
+//     u8[3] pad
+//     f64  M_cap_in, H_cap_in, sin_phi_cv_in (used only when
+//                                              computeReferenceConstants = 0)
+//     f64  sigmaMsf
+//     Vec6 stressCommittedVoigt
+//     Vec6 strainCommittedVoigt
+//     Vec6 strainTrialVoigt
+//     f64  gamma_p_committed
+//     f64  p_p_committed
+//     f64  eps_v_p_committed
+//     u8   lastActiveSet_committed
+//     u8[7] pad
+//   Output:
+//     u32  magic   = LOCAL_HS_OUTPUT_MAGIC ('1HSO')
+//     u32  version = 1
+//     u16  failureCode
+//     u8   activeSurface
+//     u8   pad
+//     Vec6 stressUpdatedVoigt
+//     Vec6 plasticIncrementVoigt
+//     Mat6 tangent
+//     f64  M_cap_out, H_cap_out, sin_phi_cv_out  (the derived constants
+//                                                  the solver actually used)
+//     f64  gamma_p_updated
+//     f64  p_p_updated
+//     f64  eps_v_p_updated
+//     u8   lastActiveSet_updated
+//     u8[7] pad
+// ---------------------------------------------------------------------------
+MADEP_EXPORT
+int madepRunHsMaterialPoint(
+    const std::uint8_t* inputPtr,
+    std::uint32_t inputLen,
+    std::uint8_t** outPtrPtr,
+    std::uint32_t* outLenPtr) {
+  if (!inputPtr || !outPtrPtr || !outLenPtr) {
+    g_last_error = "invalid arguments to madepRunHsMaterialPoint";
+    return 0;
+  }
+  const std::uint8_t* p = inputPtr;
+  const std::uint8_t* end = inputPtr + inputLen;
+
+  if (static_cast<std::size_t>(end - p) < 8) {
+    g_last_error = "HS material-point input too short";
+    return 0;
+  }
+  std::uint32_t magic = 0, version = 0;
+  p = read_u32(p, magic);
+  p = read_u32(p, version);
+  if (magic != LOCAL_HS_INPUT_MAGIC || version != LOCAL_HS_VERSION) {
+    g_last_error = "bad HS material-point input header";
+    return 0;
+  }
+
+  RegionParams rp{};
+  double phiDeg = 0.0, psiDeg = 0.0;
+  p = read_f64(p, rp.Emc);
+  p = read_f64(p, rp.nu);
+  p = read_f64(p, rp.cEff);
+  p = read_f64(p, phiDeg);
+  p = read_f64(p, psiDeg);
+  p = read_f64(p, rp.K0nc);
+  p = read_f64(p, rp.gamma);
+  p = read_f64(p, rp.gammaSat);
+  p = read_f64(p, rp.sigmaTAllow);
+  p = read_f64(p, rp.rShear);
+  p = read_u8(p, rp.useTensionCutoff);
+  p = read_u8(p, rp.symmetrize);
+  p = read_u8(p, rp.pad0);
+  p = read_u8(p, rp.pad1);
+  rp.phi = phiDeg * M_PI / 180.0;
+  rp.psi = psiDeg * M_PI / 180.0;
+  // HS block.
+  p = read_f64(p, rp.hs.E50_ref);
+  p = read_f64(p, rp.hs.Eoed_ref);
+  p = read_f64(p, rp.hs.Eur_ref);
+  p = read_f64(p, rp.hs.m);
+  p = read_f64(p, rp.hs.nu_ur);
+  p = read_f64(p, rp.hs.p_ref);
+  p = read_f64(p, rp.hs.Rf);
+  p = read_f64(p, rp.hs.K0_nc);
+  p = read_f64(p, rp.hs.e_init);
+  p = read_f64(p, rp.hs.e_max);
+  p = read_f64(p, rp.hs.OCR);
+  p = read_f64(p, rp.hs.reserved);
+
+  std::uint8_t computeRef = 0;
+  std::uint8_t pad = 0;
+  p = read_u8(p, computeRef);
+  p = read_u8(p, pad); p = read_u8(p, pad); p = read_u8(p, pad);
+  double M_cap_in = 0.0, H_cap_in = 0.0, sin_phi_cv_in = 0.0;
+  p = read_f64(p, M_cap_in);
+  p = read_f64(p, H_cap_in);
+  p = read_f64(p, sin_phi_cv_in);
+
+  double sigmaMsf = 1.0;
+  p = read_f64(p, sigmaMsf);
+
+  Vec6 stressCommittedVoigt{};
+  Vec6 strainCommittedVoigt{};
+  Vec6 strainTrialVoigt{};
+  p = read_vec6(p, stressCommittedVoigt);
+  p = read_vec6(p, strainCommittedVoigt);
+  p = read_vec6(p, strainTrialVoigt);
+
+  MaterialPoint::HsState stateCommitted{};
+  p = read_f64(p, stateCommitted.gamma_p);
+  p = read_f64(p, stateCommitted.p_p);
+  p = read_f64(p, stateCommitted.eps_v_p);
+  p = read_u8(p, stateCommitted.lastActiveSet);
+  for (int i = 0; i < 7; ++i) p = read_u8(p, pad);
+
+  if (p > end) {
+    g_last_error = "HS material-point input truncated";
+    return 0;
+  }
+
+  if (computeRef != 0u) {
+    material::hs::compute_hs_reference_constants(rp, sigmaMsf);
+  } else {
+    rp.hs.M_cap = M_cap_in;
+    rp.hs.H_cap = H_cap_in;
+    rp.hs.sin_phi_cv = sin_phi_cv_in;
+  }
+
+  const material::hs::HsUpdateResult res = material::hs::update(
+      strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
+      stateCommitted, rp, sigmaMsf);
+
+  constexpr std::size_t outLen =
+      2 * 4 +              // magic + version
+      2 + 1 + 1 +          // failureCode (u16), activeSurface (u8), pad
+      6 * 8 +              // stressUpdated
+      6 * 8 +              // plasticIncrement
+      36 * 8 +             // tangent
+      3 * 8 +              // M_cap, H_cap, sin_phi_cv (derived constants used)
+      3 * 8 + 1 + 7;       // gamma_p, p_p, eps_v_p, lastActiveSet, pad
+  std::uint8_t* out = new (std::nothrow) std::uint8_t[outLen];
+  if (!out) {
+    g_last_error = "HS material-point output allocation failed";
+    return 0;
+  }
+  std::uint8_t* q = out;
+  q = write_u32(q, LOCAL_HS_OUTPUT_MAGIC);
+  q = write_u32(q, LOCAL_HS_VERSION);
+  q = write_u16(q, res.failureCode);
+  q = write_u8(q, res.activeSurface);
+  q = write_u8(q, 0);
+  q = write_vec6(q, res.stressUpdated);
+  q = write_vec6(q, res.plasticIncrement);
+  q = write_mat6(q, res.tangent);
+  q = write_f64(q, rp.hs.M_cap);
+  q = write_f64(q, rp.hs.H_cap);
+  q = write_f64(q, rp.hs.sin_phi_cv);
+  q = write_f64(q, res.stateUpdated.gamma_p);
+  q = write_f64(q, res.stateUpdated.p_p);
+  q = write_f64(q, res.stateUpdated.eps_v_p);
+  q = write_u8(q, res.stateUpdated.lastActiveSet);
+  for (int i = 0; i < 7; ++i) q = write_u8(q, 0);
+
   *outPtrPtr = out;
   *outLenPtr = static_cast<std::uint32_t>(outLen);
   return 1;

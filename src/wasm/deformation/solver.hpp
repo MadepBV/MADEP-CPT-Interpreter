@@ -31,6 +31,7 @@
 
 #include "cg.hpp"
 #include "element.hpp"
+#include "material_hs.hpp"
 #include "material_mc.hpp"
 #include "material_mc_exact.hpp"
 #include "sparse.hpp"
@@ -368,6 +369,10 @@ struct GpResponseExtra {
   std::array<std::array<double, 3>, 3> repP1{};
   std::array<std::array<double, 3>, 3> repP2{};
   std::array<std::array<double, 3>, 3> repP3{};
+  // Hardening Soil per-GP state output. Populated when the constitutive
+  // kind is HardeningSoil; left at the committed defaults otherwise.
+  MaterialPoint::HsState hsState{};
+  std::uint16_t hsFailureCode{ 0 };
 };
 
 // Evaluate the constitutive response at a single Gauss point. Treats
@@ -394,6 +399,43 @@ inline GpResponse evaluate_gp_response_ex(
     extra.multiplicityKind = static_cast<std::uint8_t>(mc_exact::MultiplicityKind::DISTINCT);
     extra.localReturnMode = 0;
     extra.stateChanged = 0;
+    return out;
+  }
+
+  if (kind == ConstitutiveKind::HardeningSoil) {
+    // Phase 2 single-surface dispatch. The HS update receives the trial
+    // strain (committed + dStrain), the committed stress + HS state, and
+    // returns updated stress, plastic-strain increment, tangent, and HS
+    // state. Region constants (M_cap, H_cap, sin_phi_cv) must have been
+    // pre-computed by the caller via
+    // material::hs::compute_hs_reference_constants(region, sigmaMsf).
+    const material::hs::HsUpdateResult hsRes = material::hs::update(
+        strainTotal, committed.totalStrain, committed.effectiveStress,
+        committed.hs, rp, 1.0);
+    if (hsRes.failureCode == 999) {
+      // Phase 3 corner case — surface a clear marker; outer Newton
+      // should cut back the load step.
+      extra.hsFailureCode = 999;
+    } else if (hsRes.failureCode != 0) {
+      extra.hsFailureCode = hsRes.failureCode;
+    }
+    out.tangent = hsRes.tangent;
+    out.stress = hsRes.stressUpdated;
+    out.plasticInc = hsRes.plasticIncrement;
+    out.plasticActive = (hsRes.activeSurface != 0) ? 1u : 0u;
+    out.tensionActive = 0u;
+    // Reuse the MC equivalent-plastic-strain formula on the same strain
+    // increment so the existing `accumulatedPlasticStrain` field stays
+    // meaningful for HS as well.
+    out.equivPlasticInc =
+        madep::js_mirror::equivalent_plastic_strain_increment(hsRes.plasticIncrement);
+    out.eta = 0.0;
+    extra.exactBranchKind = static_cast<std::uint8_t>(mc_exact::BranchKind::ELASTIC);
+    extra.multiplicityKind = static_cast<std::uint8_t>(mc_exact::MultiplicityKind::DISTINCT);
+    extra.localReturnMode = (hsRes.activeSurface != 0) ? 1u : 0u;
+    extra.stateChanged =
+        (committed.hs.lastActiveSet != hsRes.stateUpdated.lastActiveSet) ? 1u : 0u;
+    extra.hsState = hsRes.stateUpdated;
     return out;
   }
 
@@ -708,6 +750,9 @@ inline AssembleOutput assemble_global(
       trialMp.currentlyMcActive = resp.plasticActive;
       trialMp.localReturnMode = extra.localReturnMode;
       trialMp.localFallbackUsed = extra.localFallbackUsed;
+      if (kind == ConstitutiveKind::HardeningSoil) {
+        trialMp.hs = extra.hsState;
+      }
 
       if (resp.plasticActive) {
         elementActive = true;

@@ -27,6 +27,7 @@
 		"verify:safety-mechanism": "node scripts/verify_safety_mechanism_summary.mjs",
 		"verify:safety-finalization": "node scripts/verify_safety_finalization.mjs",
 		"verify:hs-phase-1": "node scripts/verify_hs_phase_1.mjs",
+		"verify:hs-phase-2": "node scripts/verify_hs_phase_2.mjs",
 		"verify:arc-length-phase-2": "node scripts/verify_arc_length_phase_2.mjs",
 		"verify:arc-length-phase-3": "node scripts/verify_arc_length_phase_3.mjs",
 		"verify:arc-length-phase-4": "node scripts/verify_arc_length_phase_4.mjs",
