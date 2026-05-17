@@ -132,6 +132,13 @@ export function buildWasmDeformationResult({
   let activeMcElementCount = 0;
   let tensionCutoffElementCount = 0;
   let peakEta = 0;
+  let anyGpHasHs = false;
+
+  // Priority lookup for the dominant HS active-surface state across a
+  // single element's Gauss points. Indexing matches `lastActiveSet`:
+  //   0 = elastic, 1 = cone, 2 = cap, 3 = corner, 4 = tension.
+  // Corner > cap > cone > tension > elastic (per spec §10 Phase 6).
+  const HS_ACTIVE_SET_PRIORITY = [0, 2, 3, 4, 1];
 
   for (let elementIndex = 0; elementIndex < numElements; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
@@ -153,6 +160,15 @@ export function buildWasmDeformationResult({
     let maxAccumulatedPlastic = 0;
     let maxServiceEquivalentPlasticIncrement = 0;
     let maxSafetyEquivalentPlasticIncrement = 0;
+    // HS per-element aggregates. Initialised every iteration so a mixed
+    // model (HS + MC regions) keeps non-HS elements free of an `hs`
+    // material-state object.
+    let anyHsInElement = false;
+    let maxHsGammaP = 0;
+    let maxHsPP = 0;
+    let maxHsEpsVPContractive = 0;
+    let minHsEpsVPDilative = 0;
+    let dominantActiveSet = 0;
     const gaussPoints = [];
 
     const ips = elementCache?.integrationPoints || [];
@@ -168,6 +184,26 @@ export function buildWasmDeformationResult({
         epsVP: Number(wasm.hs.epsVP) || 0,
         lastActiveSet: Number(wasm.hs.lastActiveSet) || 0
       } : null;
+      if (hsState) {
+        anyHsInElement = true;
+        anyGpHasHs = true;
+        if (hsState.gammaP > maxHsGammaP) maxHsGammaP = hsState.gammaP;
+        if (hsState.pP > maxHsPP) maxHsPP = hsState.pP;
+        // ε_v^p uses the codebase compression-positive convention, so
+        // contractive states are positive and dilative states negative.
+        // Track both so the diverging contour palette can render the
+        // dilative magnitude separately from any compaction lobe.
+        if (hsState.epsVP > maxHsEpsVPContractive) maxHsEpsVPContractive = hsState.epsVP;
+        if (hsState.epsVP < minHsEpsVPDilative) minHsEpsVPDilative = hsState.epsVP;
+        const setIndex = (hsState.lastActiveSet >= 0 && hsState.lastActiveSet < HS_ACTIVE_SET_PRIORITY.length)
+          ? hsState.lastActiveSet
+          : 0;
+        const priorityCurrent = HS_ACTIVE_SET_PRIORITY[setIndex] ?? 0;
+        const priorityDominant = HS_ACTIVE_SET_PRIORITY[dominantActiveSet] ?? 0;
+        if (priorityCurrent > priorityDominant) {
+          dominantActiveSet = setIndex;
+        }
+      }
       const geostaticAccumulatedPlasticStrain = Number(wasm.geostaticAccumulatedPlasticStrain) || 0;
       const comparisonAccumulatedPlasticStrain = Number.isFinite(Number(wasm.comparisonAccumulatedPlasticStrain))
         ? Number(wasm.comparisonAccumulatedPlasticStrain)
@@ -312,7 +348,14 @@ export function buildWasmDeformationResult({
         currentlyMcActive: elementPlasticActive,
         hasEverExceededMc: elementPlasticEver,
         activeYieldSurface: elementTensionActive ? 'TENSION' : (elementPlasticActive ? 'MC_FACE' : 'NONE'),
-        exactBranchKind: elementTensionActive ? 'TENSION_FACE_T3' : (elementPlasticActive ? 'MC_FACE_F13' : 'ELASTIC')
+        exactBranchKind: elementTensionActive ? 'TENSION_FACE_T3' : (elementPlasticActive ? 'MC_FACE_F13' : 'ELASTIC'),
+        hs: anyHsInElement ? {
+          gammaPMax: maxHsGammaP,
+          pPMax: maxHsPP,
+          epsVPContractive: maxHsEpsVPContractive,
+          epsVPDilative: minHsEpsVPDilative,
+          dominantActiveSet
+        } : null
       },
       materialDiagnostics: {
         constitutiveModel: options.constitutiveModel === 'linear-elastic'
@@ -471,6 +514,7 @@ export function buildWasmDeformationResult({
     terrainSettlementProfile,
     elementResults,
     summaries,
+    hasHardeningSoil: anyGpHasHs === true,
     solver: {
       method: `wasm-cpu-${options.constitutiveModel}-plane-strain-${elementType}${isSafety ? '-safety-cphi' : ''}`,
       analysisType: analysisType || 'deformation',

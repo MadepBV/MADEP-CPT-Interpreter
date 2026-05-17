@@ -4569,7 +4569,7 @@ function ensureStage6State(){
   if(!['head','porePressure','gradient','flow','qx','qy','normalFlow'].includes(bishop.lineProbe.seepageQuantity)){
     bishop.lineProbe.seepageQuantity = 'head';
   }
-  if(!stage6BishopDeformationQuantityIds(bishop.deformation?.options?.analysisType).includes(bishop.lineProbe.deformationQuantity)){
+  if(!stage6BishopDeformationQuantityIds(bishop.deformation?.options?.analysisType, bishop.deformation?.result?.hasHardeningSoil === true).includes(bishop.lineProbe.deformationQuantity)){
     bishop.lineProbe.deformationQuantity = 'uTotal';
   }
   bishop.lineProbe.copyMessage = typeof bishop.lineProbe.copyMessage === 'string' ? bishop.lineProbe.copyMessage : '';
@@ -4859,7 +4859,7 @@ function ensureStage6State(){
   if(!bishop.deformation.display || typeof bishop.deformation.display !== 'object') bishop.deformation.display = stage6Defaults().bishop.deformation.display;
   if(bishop.deformation.display.contourMode === 'syy') bishop.deformation.display.contourMode = 'deltaSigmaYy';
   if(bishop.deformation.display.contourMode === 'mc') bishop.deformation.display.contourMode = 'mcEta';
-  if(!stage6BishopDeformationQuantityIds(bishop.deformation?.options?.analysisType).includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'uTotal';
+  if(!stage6BishopDeformationQuantityIds(bishop.deformation?.options?.analysisType, bishop.deformation?.result?.hasHardeningSoil === true).includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'uTotal';
   bishop.deformation.display.showContours = bishop.deformation.display.showContours !== false;
   bishop.deformation.display.showContourLines = bishop.deformation.display.showContourLines !== false;
   bishop.deformation.display.showContourLegend = bishop.deformation.display.showContourLegend !== false;
@@ -5614,7 +5614,7 @@ function stage6BishopNormalizedDeformationAnalysisType(analysisType = null){
     : 'deformation';
 }
 
-function stage6BishopDeformationQuantityIds(analysisType = null){
+function stage6BishopDeformationQuantityIds(analysisType = null, hasHs = false){
   const normalizedAnalysisType = stage6BishopNormalizedDeformationAnalysisType(analysisType);
   const ids = [
     'uTotal',
@@ -5640,6 +5640,12 @@ function stage6BishopDeformationQuantityIds(analysisType = null){
   if(normalizedAnalysisType === 'safety-cphi'){
     ids.splice(8, 0, 'safetyEquivalentPlasticIncrement');
   }
+  if(hasHs === true){
+    ids.push('hsGammaP');
+    ids.push('hsPP');
+    ids.push('hsEpsVPDilative');
+    ids.push('hsLastActiveSet');
+  }
   return ids;
 }
 
@@ -5664,12 +5670,16 @@ function stage6BishopDeformationContourMeta(mode, analysisType = 'deformation'){
   if(mode === 'sigmaXxTotalInit') return {label:'σₓₓ,init', axisTitle:'σₓₓ,init (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
   if(mode === 'sigmaXxTotal') return {label:'σₓₓ,fin', axisTitle:'σₓₓ,fin (kPa)', unit:'kPa', scale:1, digits:2, signed:false};
   if(mode === 'tauXy') return {label:'τₓᵧ,fin', axisTitle:'τₓᵧ,fin (kPa)', unit:'kPa', scale:1, digits:2, signed:true};
+  if(mode === 'hsGammaP') return {label:'γᵖ (HS)', axisTitle:'γᵖ (HS) (%)', unit:'%', scale:100, digits:3, signed:false};
+  if(mode === 'hsPP') return {label:'pₚ (HS)', axisTitle:'pₚ (HS) (kPa)', unit:'kPa', scale:1, digits:1, signed:false};
+  if(mode === 'hsEpsVPDilative') return {label:'εᵥᵖ (HS, dilative)', axisTitle:'εᵥᵖ (HS, dilative) (%)', unit:'%', scale:100, digits:3, signed:true};
+  if(mode === 'hsLastActiveSet') return {label:'HS active surface', axisTitle:'HS active surface', unit:'', scale:1, digits:0, signed:false, categorical:true};
   return {label:'η_MC', axisTitle:'η_MC (-)', unit:'', scale:1, digits:3, signed:false};
 }
 
-function stage6BishopDeformationContourOptions(analysisType = 'deformation'){
+function stage6BishopDeformationContourOptions(analysisType = 'deformation', hasHs = false){
   const normalizedAnalysisType = stage6BishopNormalizedDeformationAnalysisType(analysisType);
-  return stage6BishopDeformationQuantityIds(normalizedAnalysisType).map((id)=>({
+  return stage6BishopDeformationQuantityIds(normalizedAnalysisType, hasHs === true).map((id)=>({
     id,
     label:stage6BishopDeformationContourMeta(id, normalizedAnalysisType).label
   }));
@@ -5827,6 +5837,12 @@ function stage6BishopDeformationElementContourValue(result, elementIndex, mode){
   if(mode === 'sigmaXxTotalInit') return stage6BishopDeformationFiniteScalar(item?.initialTotalStress?.sxx, 0);
   if(mode === 'sigmaXxTotal') return stage6BishopDeformationFiniteScalar(item?.totalStress?.sxx, 0);
   if(mode === 'tauXy') return stage6BishopDeformationFiniteScalar(item?.effectiveStress?.txy, 0);
+  if(mode === 'hsGammaP') return stage6BishopDeformationFiniteScalar(item?.materialState?.hs?.gammaPMax, 0);
+  if(mode === 'hsPP') return stage6BishopDeformationFiniteScalar(item?.materialState?.hs?.pPMax, 0);
+  // ε_v^p is signed (compression-positive); flip the sign so dilative
+  // magnitudes render as positive lobes in the diverging palette.
+  if(mode === 'hsEpsVPDilative') return -stage6BishopDeformationFiniteScalar(item?.materialState?.hs?.epsVPDilative, 0);
+  if(mode === 'hsLastActiveSet') return stage6BishopDeformationFiniteScalar(item?.materialState?.hs?.dominantActiveSet, 0);
   return stage6BishopDeformationElementEtaMc(item);
 }
 
@@ -7994,7 +8010,8 @@ function stage6BishopCanvasToolRailHtml(context){
   const viewSeepageContourOptions = stage6BishopSeepageContourOptions();
   const viewSeepageContourMode = bishop.seepage?.display?.contourMode || 'head';
   const viewDeformationAnalysisType = bishop.deformation?.options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
-  const viewDeformationContourOptions = stage6BishopDeformationContourOptions(viewDeformationAnalysisType);
+  const viewDeformationHasHs = bishop.deformation?.result?.hasHardeningSoil === true;
+  const viewDeformationContourOptions = stage6BishopDeformationContourOptions(viewDeformationAnalysisType, viewDeformationHasHs);
   const viewDeformationContourMode = bishop.deformation?.display?.contourMode || 'uTotal';
   const draftRegionMaterialId = bishop.regionDraftMaterialId || bishop.materials?.[0]?.id || '';
   const selectedRegionMaterialId = selectedCustomRegion?.materialId || draftRegionMaterialId;
@@ -8452,7 +8469,7 @@ function stage6BishopMeasurementLabel(metrics){
   return `L=${metrics.length.toFixed(2)} m · dx=${metrics.dx.toFixed(2)} m · dy=${metrics.dy.toFixed(2)} m`;
 }
 
-function stage6BishopLineProbeOptions(workspace, analysisType = null){
+function stage6BishopLineProbeOptions(workspace, analysisType = null, hasHs = false){
   const chartBlue = readCssToken('--chart-blue', '#4F8584');
   const chartGreen = readCssToken('--chart-green', '#3D6B6A');
   const chartOrange = readCssToken('--chart-orange', '#8A620D');
@@ -8491,9 +8508,13 @@ function stage6BishopLineProbeOptions(workspace, analysisType = null){
       sigmaXxTotalInit:chartBlue,
       sigmaXxTotal:chartBlue,
       tauXy:chartPurple,
-      mcEta:chartRed
+      mcEta:chartRed,
+      hsGammaP:chartGreen,
+      hsPP:chartOrange,
+      hsEpsVPDilative:chartPurple,
+      hsLastActiveSet:chartRed
     };
-    return stage6BishopDeformationContourOptions(normalizedAnalysisType).map(({id, label})=>{
+    return stage6BishopDeformationContourOptions(normalizedAnalysisType, hasHs === true).map(({id, label})=>{
       const meta = stage6BishopDeformationContourMeta(id, normalizedAnalysisType);
       return {
         id,
@@ -8508,8 +8529,8 @@ function stage6BishopLineProbeOptions(workspace, analysisType = null){
   return [];
 }
 
-function stage6BishopLineProbeMeta(workspace, quantity, analysisType = null){
-  const options = stage6BishopLineProbeOptions(workspace, analysisType);
+function stage6BishopLineProbeMeta(workspace, quantity, analysisType = null, hasHs = false){
+  const options = stage6BishopLineProbeOptions(workspace, analysisType, hasHs === true);
   return options.find((item)=>item.id === quantity) || options[0] || null;
 }
 
@@ -8643,7 +8664,8 @@ function stage6BishopBuildLineProbe(workspace, measurementMetrics){
   const analysisType = workspace === 'deformation'
     ? stage6BishopNormalizedDeformationAnalysisType()
     : null;
-  const meta = stage6BishopLineProbeMeta(workspace, quantity, analysisType);
+  const hasHs = workspace === 'deformation' && bishop?.deformation?.result?.hasHardeningSoil === true;
+  const meta = stage6BishopLineProbeMeta(workspace, quantity, analysisType, hasHs);
   if(workspace !== 'seepage' && workspace !== 'deformation'){
     return {
       workspace,
@@ -13065,7 +13087,8 @@ function renderStage6BishopApp(){
       : (deformation.rejectReason || deformationSetupMessage);
   const lineProbeOptions = stage6BishopLineProbeOptions(
     workspace,
-    workspace === 'deformation' ? deformationAnalysisType : null
+    workspace === 'deformation' ? deformationAnalysisType : null,
+    workspace === 'deformation' && deformation?.result?.hasHardeningSoil === true
   );
   const lineProbe = stage6BishopBuildLineProbe(workspace, measurementMetrics);
   S.stage6Cache.bishopLineProbe = lineProbe;
@@ -13904,7 +13927,8 @@ function renderStage6BishopApp(){
     ? stage6BishopSeepageContourLegendTicks(seepageContourMode, seepageContourDerived.stats)
     : [];
   const deformationContourMode = bishop.deformation?.display?.contourMode || 'uTotal';
-  const deformationContourOptions = stage6BishopDeformationContourOptions(deformationAnalysisType);
+  const deformationContourHasHs = bishop.deformation?.result?.hasHardeningSoil === true;
+  const deformationContourOptions = stage6BishopDeformationContourOptions(deformationAnalysisType, deformationContourHasHs);
   const deformationDisplacementVectorReady = stage6BishopDeformationVectorMode(deformationContourMode);
   const deformationDisplacementVectorAvailable = deformationDisplacementVectorReady && bishop.deformation?.display?.showContourLines !== false;
   const deformationContourDerived = workspace === 'deformation' && deformation.mesh && deformation.result
