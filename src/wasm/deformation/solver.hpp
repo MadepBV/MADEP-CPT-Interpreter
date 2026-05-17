@@ -373,6 +373,10 @@ struct GpResponseExtra {
   // kind is HardeningSoil; left at the committed defaults otherwise.
   MaterialPoint::HsState hsState{};
   std::uint16_t hsFailureCode{ 0 };
+  // Phase 5: number of outer σ_zz Newton iterations consumed by the
+  // plane-strain wrapper around the HS return mapping (B.7). Set by HS
+  // dispatch; left at 0 for other constitutive kinds.
+  std::uint8_t hsSigmaZzIterations{ 0 };
 };
 
 // Evaluate the constitutive response at a single Gauss point. Treats
@@ -403,13 +407,19 @@ inline GpResponse evaluate_gp_response_ex(
   }
 
   if (kind == ConstitutiveKind::HardeningSoil) {
-    // Phase 2 single-surface dispatch. The HS update receives the trial
+    // Phase 5 plane-strain dispatch. The HS update receives the trial
     // strain (committed + dStrain), the committed stress + HS state, and
     // returns updated stress, plastic-strain increment, tangent, and HS
     // state. Region constants (M_cap, H_cap, sin_phi_cv) must have been
     // pre-computed by the caller via
     // material::hs::compute_hs_reference_constants(region, sigmaMsf).
-    const material::hs::HsUpdateResult hsRes = material::hs::update(
+    //
+    // `update_plane_strain` wraps the inner `update` with the B.7 outer
+    // Newton on σ_zz, enforcing the plane-strain Δε_zz = 0 constraint on
+    // the constitutive response. The MC dispatch is naturally plane-strain
+    // consistent through its 6-Voigt return; HS's principal-frame return
+    // requires the explicit wrapper per the spec §3.7.
+    const material::hs::HsUpdateResult hsRes = material::hs::update_plane_strain(
         strainTotal, committed.totalStrain, committed.effectiveStress,
         committed.hs, rp, 1.0);
     if (hsRes.failureCode == 999) {
@@ -419,6 +429,7 @@ inline GpResponse evaluate_gp_response_ex(
     } else if (hsRes.failureCode != 0) {
       extra.hsFailureCode = hsRes.failureCode;
     }
+    extra.hsSigmaZzIterations = hsRes.sigmaZzIterations;
     out.tangent = hsRes.tangent;
     out.stress = hsRes.stressUpdated;
     out.plasticInc = hsRes.plasticIncrement;
@@ -652,6 +663,25 @@ struct AssembleOutput {
   std::int32_t tensionCount{ 0 };
   std::int32_t changedCount{ 0 };
   double maxEta{ 0.0 };
+  // Phase 5: HS-specific diagnostics. `hsFailureCode` is the highest
+  // failure code reported by any HS GP this assembly; nonzero values
+  // (101=cone, 102=cap, 103=corner, 104=triple-apex, 105=σ_zz) signal a
+  // local-return non-convergence that must trigger an outer FE step
+  // cutback. σ_zz iteration counts let verifiers audit B.7 convergence.
+  std::uint16_t hsFailureCode{ 0 };
+  std::int32_t hsActiveCount{ 0 };          // GPs with HS cone/cap/corner active
+  std::int32_t hsConeOnlyCount{ 0 };        // surface == 1
+  std::int32_t hsCapOnlyCount{ 0 };         // surface == 2
+  std::int32_t hsCornerCount{ 0 };          // surface == 3
+  std::int32_t hsTensionMixCount{ 0 };      // surface == 4/5/6/7
+  std::int32_t hsSigmaZzIterSum{ 0 };       // sum across active HS GPs
+  std::int32_t hsSigmaZzMaxIter{ 0 };       // peak across active HS GPs
+  std::int32_t hsCapIterSum{ 0 };           // σ_zz iter sum on cap-only GPs
+  std::int32_t hsCapIterCount{ 0 };
+  std::int32_t hsConeIterSum{ 0 };
+  std::int32_t hsConeIterCount{ 0 };
+  std::int32_t hsCornerIterSum{ 0 };
+  std::int32_t hsCornerIterCount{ 0 };
 };
 
 // Re-build internal force, residual, and (optionally) tangent K from
@@ -752,6 +782,35 @@ inline AssembleOutput assemble_global(
       trialMp.localFallbackUsed = extra.localFallbackUsed;
       if (kind == ConstitutiveKind::HardeningSoil) {
         trialMp.hs = extra.hsState;
+        // Phase 5 diagnostics: aggregate per-GP HS failure / iteration
+        // counts so the outer Newton can spot non-convergence (failureCode
+        // 1xx) and the verifier can audit B.7 σ_zz iteration rates.
+        if (extra.hsFailureCode != 0 && extra.hsFailureCode > out.hsFailureCode) {
+          out.hsFailureCode = extra.hsFailureCode;
+        }
+        const std::uint8_t surf = extra.hsState.lastActiveSet;
+        if (surf != 0) {
+          ++out.hsActiveCount;
+          if (surf == 1) {
+            ++out.hsConeOnlyCount;
+            out.hsConeIterSum += extra.hsSigmaZzIterations;
+            ++out.hsConeIterCount;
+          } else if (surf == 2) {
+            ++out.hsCapOnlyCount;
+            out.hsCapIterSum += extra.hsSigmaZzIterations;
+            ++out.hsCapIterCount;
+          } else if (surf == 3) {
+            ++out.hsCornerCount;
+            out.hsCornerIterSum += extra.hsSigmaZzIterations;
+            ++out.hsCornerIterCount;
+          } else {
+            ++out.hsTensionMixCount;
+          }
+          out.hsSigmaZzIterSum += extra.hsSigmaZzIterations;
+          if (extra.hsSigmaZzIterations > out.hsSigmaZzMaxIter) {
+            out.hsSigmaZzMaxIter = extra.hsSigmaZzIterations;
+          }
+        }
       }
 
       if (resp.plasticActive) {
@@ -773,7 +832,9 @@ inline AssembleOutput assemble_global(
       stress2D[g][1] = resp.stress[V_YY] - referenceStress[V_YY];
       stress2D[g][2] = resp.stress[V_XY] - referenceStress[V_XY];
       const Mat6& tangentForStiffness =
-          (useElasticGlobalizationTangent && kind == ConstitutiveKind::McPlastic)
+          (useElasticGlobalizationTangent &&
+           (kind == ConstitutiveKind::McPlastic ||
+            kind == ConstitutiveKind::HardeningSoil))
               ? C
               : resp.tangent;
       D2D[g] = linalg::tangent2D_from_6x6(tangentForStiffness);
@@ -2025,20 +2086,29 @@ inline PhaseResult run_nonlinear_phase(
 
   // Plugin capability: mc-plastic does NOT require stable active-set
   // at convergence (the exact return map enforces admissibility per
-  // GP). McReducedStiffness does require stable active-set.
+  // GP). McReducedStiffness does require stable active-set. HS uses the
+  // exact per-GP return mapping too — admissibility is certified per
+  // GP, no global active-set lock is needed.
   const bool requiresStableActiveSet =
       ctx.kind == ConstitutiveKind::McReducedStiffness;
   // Displacement-norm tolerance dropped for exact return mapping
-  // (mc-plastic) per JS line 3743.
+  // (mc-plastic, HS) per JS line 3743 — the per-GP admissibility
+  // certificate already constrains the displacement field once
+  // residual ≈ 0.
   const bool requiresDisplacementTolerance =
-      ctx.kind != ConstitutiveKind::McPlastic;
+      ctx.kind != ConstitutiveKind::McPlastic &&
+      ctx.kind != ConstitutiveKind::HardeningSoil;
   // mayNeedUnsymmetricSolver: tracks whether the tangent might be
-  // unsymmetric → GMRES dispatch when at least one GP yields.
+  // unsymmetric → GMRES dispatch when at least one GP yields. HS
+  // returns the elastic tangent (B.9) which is symmetric, so HS does
+  // NOT need GMRES even with symmetrize == false. Keep the flag
+  // gated on the asymmetric MC tangent only.
   const bool mayNeedUnsymmetricSolver =
       ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize;
   const bool canUseRobustElasticFallback =
       opts.robustNonlinearMode != 0 &&
-      ctx.kind == ConstitutiveKind::McPlastic &&
+      (ctx.kind == ConstitutiveKind::McPlastic ||
+       ctx.kind == ConstitutiveKind::HardeningSoil) &&
       (ctx.phaseKind == PhaseKind::ServiceLoad || ctx.phaseKind == PhaseKind::SafetyCphi);
 
   const double phaseMinLoadStep = opts.minLoadStep;
@@ -2091,7 +2161,14 @@ inline PhaseResult run_nonlinear_phase(
     return -r * dd;
   };
   std::vector<double> warmStartFreeCorrection;
-  const bool shouldWarmStartLinearSolve = ctx.kind == ConstitutiveKind::McPlastic;
+  // Both mc-plastic and HS run an exact return-mapping with line search and
+  // benefit from a warm-started linear solve (the active-set is stable
+  // between iterations for both plugins). Warm start is OFF for linear-
+  // elastic (no need) and mc-reduced-stiffness (its tangent toggle makes
+  // the warm start a poor predictor).
+  const bool shouldWarmStartLinearSolve =
+      ctx.kind == ConstitutiveKind::McPlastic ||
+      ctx.kind == ConstitutiveKind::HardeningSoil;
   for (std::int32_t step = 0; step < phaseMaxLoadSteps; ++step) {
     if (loadFactor >= 1.0 - 1e-12) break;
 	    const double remaining = 1.0 - loadFactor;
@@ -2164,7 +2241,8 @@ inline PhaseResult run_nonlinear_phase(
       const bool toleranceConverged = residualConverged &&
                                       (!requiresDisplacementTolerance || displacementConverged);
       const bool plasticQuasiConverged =
-          ctx.kind == ConstitutiveKind::McPlastic &&
+          (ctx.kind == ConstitutiveKind::McPlastic ||
+           ctx.kind == ConstitutiveKind::HardeningSoil) &&
           ctx.phaseKind == PhaseKind::InitialGravity &&
           a.changedCount == 0 &&
           a.residualNorm <= 1.1 * residualTarget;
@@ -2174,8 +2252,24 @@ inline PhaseResult run_nonlinear_phase(
       // is false. For mc-reduced-stiffness it's true. Also requires iteration > 1
       // (first iteration's tangent comes from the elastic predictor; a stable
       // active set must survive at least one true Newton step).
+      //
+      // Phase 5 HS: if HS local-return reports a hard failure (corner +
+      // triple-apex + σ_zz Newton non-convergence and all single-surface
+      // fallbacks failed), the dispatcher returns the elastic predictor
+      // with failureCode 103/104/105. In that case the assembled state
+      // is not constitutive-admissible; refuse to converge so the outer
+      // load-step cutback can engage. We discriminate "hard" failure
+      // (105 == σ_zz) from "soft" — the dispatcher's least-bad
+      // single-surface fallback (Phase 5 patch) maps cleanly back to
+      // failureCode = 0 with the active surface set to 1 or 2, so this
+      // gate fires only when ALL paths failed.
+      const bool hsHardFailure =
+          ctx.kind == ConstitutiveKind::HardeningSoil &&
+          (a.hsFailureCode == 103 || a.hsFailureCode == 104 ||
+           a.hsFailureCode == 105);
       if (newtonIter > 1 && (toleranceConverged || plasticQuasiConverged) &&
-          (!requiresStableActiveSet || a.changedCount == 0)) {
+          (!requiresStableActiveSet || a.changedCount == 0) &&
+          !hsHardFailure) {
         stepConverged = true;
         break;
       }
@@ -2216,7 +2310,9 @@ inline PhaseResult run_nonlinear_phase(
       hasIterationLinearGuess = shouldWarmStartLinearSolve;
       for (std::int32_t i = 0; i < nfree; ++i) lastCorrection[i] = deltaUFree[i];
 
-      const bool requiresPlasticLineSearch = ctx.kind == ConstitutiveKind::McPlastic;
+      const bool requiresPlasticLineSearch =
+          ctx.kind == ConstitutiveKind::McPlastic ||
+          ctx.kind == ConstitutiveKind::HardeningSoil;
       double lineSearchStepScale = 1.0;
       if (requiresPlasticLineSearch) {
         // JS performArmijoLineSearch (line 3556): merit-function-based
@@ -2300,7 +2396,8 @@ inline PhaseResult run_nonlinear_phase(
 	            bestResidual <= bestResidualTarget &&
 	            (!requiresDisplacementTolerance || correctionNorm <= bestDisplacementTarget);
 	        const bool currentQuasiConverged =
-	            ctx.kind == ConstitutiveKind::McPlastic &&
+	            (ctx.kind == ConstitutiveKind::McPlastic ||
+	             ctx.kind == ConstitutiveKind::HardeningSoil) &&
 	            ctx.phaseKind == PhaseKind::InitialGravity &&
 	            a.changedCount == 0 &&
 	            newtonIter >= 2 &&
@@ -2552,19 +2649,22 @@ inline PhaseResult run_nonlinear_phase(
       }
       // JS adaptive continuation — grow / shrink based on iteration
       // count and accepted line-search scale.
+      const bool isExactReturnMappingKind =
+          ctx.kind == ConstitutiveKind::McPlastic ||
+          ctx.kind == ConstitutiveKind::HardeningSoil;
       const bool benignPlasticStep =
-          ctx.kind == ConstitutiveKind::McPlastic &&
+          isExactReturnMappingKind &&
           stepPeakActiveCount > 0 &&
           newtonIterUsed > 0 &&
           newtonIterUsed * 2 <= kContinuationTargetIterations &&
           (!stepLineSearchEvaluated ||
            (stepLineSearchAccepted && stepLineSearchAcceptedScale >= 0.999));
       const double effectiveGrowthFactor =
-          ctx.kind == ConstitutiveKind::McPlastic && stepPeakActiveCount > 0 && !benignPlasticStep
+          isExactReturnMappingKind && stepPeakActiveCount > 0 && !benignPlasticStep
               ? std::min(opts.loadStepGrowthFactor, plasticGrowthFactor)
               : opts.loadStepGrowthFactor;
       const double effectiveCutbackFactor =
-          ctx.kind == ConstitutiveKind::McPlastic && stepPeakActiveCount > 0 && !benignPlasticStep
+          isExactReturnMappingKind && stepPeakActiveCount > 0 && !benignPlasticStep
               ? std::min(opts.loadStepCutbackFactor, plasticCutbackFactor)
               : opts.loadStepCutbackFactor;
       auto compute_step_factor = [&](int iterCount, double acceptedLineSearchScale) {
@@ -2588,7 +2688,9 @@ inline PhaseResult run_nonlinear_phase(
         warmStartFreeCorrection = iterationLinearGuess;
       }
       const double effectiveCutbackFactor =
-          ctx.kind == ConstitutiveKind::McPlastic && stepPeakActiveCount > 0
+          (ctx.kind == ConstitutiveKind::McPlastic ||
+           ctx.kind == ConstitutiveKind::HardeningSoil) &&
+          stepPeakActiveCount > 0
               ? std::min(opts.loadStepCutbackFactor, plasticCutbackFactor)
               : opts.loadStepCutbackFactor;
       double suggestedCutbackFactor = effectiveCutbackFactor;
@@ -2671,6 +2773,96 @@ inline void initialise_material_points(
       }
     }
 
+    // Phase 5 HS seeding (spec §6.5, §6.6, F21).
+    // The K0 stress seed `sigma` (compression-negative Voigt → compression-
+    // positive principal s_1) supplies the geostatic state. We seed
+    //   p_p^{(0)} = OCR · σ_1^{(0)}                              (F21)
+    // and γ_p = ε_v_p = 0. If OCR == 1 the cap sits exactly on the K0
+    // state; if OCR > 1 the cap is "ahead of" the state, leaving the
+    // material elastic for small loads (the OC test in verify_hs_phase_5).
+    //
+    // Predictor projection (§6.5): if the K0 predictor stress lies
+    // outside HS yield surfaces (typically true with OCR == 1 and
+    // mobilised friction below sin φ), project onto the cap via a
+    // 1D return mapping on cap-only flow. This puts the committed
+    // state on the cap manifold before the plastic geostatic Newton
+    // begins so the outer iterations only chase displacement
+    // equilibrium, not yield admissibility.
+    MaterialPoint::HsState hsSeed{};
+    if (kind == ConstitutiveKind::HardeningSoil) {
+      const std::int32_t r =
+          m.regionIndex >= 0 && static_cast<std::size_t>(m.regionIndex) < regions.size()
+          ? m.regionIndex : 0;
+      const RegionParams& rp = regions[r];
+      // Pull principal stress at the K0 seed (compression-positive s1 = most compressive).
+      const mc_exact::MaterialParameters mp_eig =
+          material::hs::make_mp_for_eig(rp, std::max(rp.cEff, 0.0),
+                                        std::max(rp.phi, 0.0));
+      const auto principalSeed =
+          mc_exact::principal_stress_projectors_3d_compression_positive(sigma, mp_eig);
+      const double ocr = std::max(rp.hs.OCR, 1e-6);
+      // F21: p_p^{(0)} = OCR · σ_1^{(0)} in compression-positive units.
+      // σ_1 may be tiny near the surface; floor at p_ref · 1e-3 so the
+      // cap is well-defined (cap_yield_value uses (p_p + p_t) in the
+      // denominator).
+      const double sigma1_seed = std::max(principalSeed.s1, 0.0);
+      const double p_p_seed = std::max(ocr * sigma1_seed, 1.0e-3 * rp.hs.p_ref);
+      hsSeed.p_p = p_p_seed;
+      hsSeed.eps_v_p = 0.0;
+      hsSeed.lastActiveSet = 0;
+      hsSeed.gamma_p = 0.0;
+
+      // §6.6 / F21 seed γ_p for OC layers (OCR > 1). The current K0
+      // stress state represents an unload/reload position; the
+      // historical maximum K0 state sat at σ_1 = OCR · σ_1_current.
+      // Seeding γ_p at the cone-zero value for the HISTORICAL state
+      // (σ_1 · OCR) puts the current state strictly INSIDE the cone
+      // yield surface, so small unload/reload increments stay elastic
+      // until the load drives σ_1 past σ_1_history. This matches the
+      // OC test expectation: below preconsolidation the response is
+      // elastic; cap re-engagement happens when the load reaches the
+      // historical max. NC keeps γ_p = 0 to preserve the Phase 3
+      // corner-aware K0_nc calibration that D.6 / D.4 rely on.
+      if (ocr > 1.0 + 1e-9) {
+        const double phi_eff = std::max(rp.phi, 0.0);
+        const double c_eff = std::max(rp.cEff, 0.0);
+        double K0_for_seed = rp.hs.K0_nc;
+        if (K0_for_seed <= 0.0) {
+          K0_for_seed = std::max(1.0 - std::sin(phi_eff), 0.0);
+        }
+        const double sigma1_history = ocr * sigma1_seed;
+        hsSeed.gamma_p = std::max(material::hs::cone_zero_gamma_p_for_K0(
+            sigma1_history, K0_for_seed, c_eff, phi_eff, rp.hs), 0.0);
+      }
+
+      // §6.5 predictor projection. Project onto cap if cap violated
+      // (OCR < 1 with very low confinement, edge case). With OCR ≥ 1
+      // the seed is already inside the cap.
+      const double phi_eff_cap = std::max(rp.phi, 0.0);
+      const double c_eff_cap = std::max(rp.cEff, 0.0);
+      const double p_t_seed = material::hs::tensile_shift_p_t(c_eff_cap, phi_eff_cap);
+      const double M_cap_seed = std::max(rp.hs.M_cap, 1e-6);
+      const double f_c_seed = material::hs::cap_yield_value(
+          principalSeed.s1, principalSeed.s2, principalSeed.s3,
+          hsSeed.p_p, M_cap_seed, p_t_seed, phi_eff_cap);
+      if (f_c_seed > 1e-6 * std::max(hsSeed.p_p, 1.0)) {
+        const double E_ur_seed = material::hs::power_law_stiffness(
+            rp.hs.Eur_ref, principalSeed.s3, c_eff_cap, phi_eff_cap,
+            rp.hs.p_ref, rp.hs.m);
+        const Mat6 D_e_seed = material::hs::elastic_tangent_voigt(E_ur_seed, rp.hs.nu_ur);
+        const material::hs::HsUpdateResult projection =
+            material::hs::return_cap_only(
+                principalSeed, hsSeed,
+                c_eff_cap, phi_eff_cap,
+                M_cap_seed, p_t_seed,
+                std::max(rp.hs.H_cap, 1.0), D_e_seed, rp);
+        if (projection.failureCode == 0 && projection.activeSurface != 0) {
+          committedSigma = projection.stressUpdated;
+          hsSeed = projection.stateUpdated;
+        }
+      }
+    }
+
     for (int k = 0; k < 6; ++k) {
       m.effectiveStress[k] = committedSigma[k];
       m.totalStrain[k] = 0.0;
@@ -2701,6 +2893,9 @@ inline void initialise_material_points(
     m.hasRepresentativeProjectors = 0;
     m.localReturnMode = 0;
     m.localFallbackUsed = 0;
+    if (kind == ConstitutiveKind::HardeningSoil) {
+      m.hs = hsSeed;
+    }
   }
 }
 
@@ -2779,6 +2974,24 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   std::vector<Mat6> regionC = build_region_elastic(*in.regions);
   ctx.regionC = &regionC;
   out.summary.geostaticConverged = 0;
+  // §5.6 capability table: `mc-plastic` supports a plastic geostatic
+  // equilibration phase. HS also nominally supports it, but the HS
+  // dispatcher's principal-frame return is ill-conditioned at very low
+  // confinement (the typical state during a gravity ramp from σ = 0).
+  //
+  // For Phase 5 we treat HS like the linear-elastic / mc-reduced
+  // stiffness path: snapshot the K0 seed (set by
+  // `initialise_material_points`) as the geostatic baseline directly,
+  // without running a plastic Newton. The K0 seed is already in
+  // approximate equilibrium with gravity (the user/encoder constructs
+  // it from the depth-stress relation), and the §6.5 predictor
+  // projection has already pushed inadmissible seeds onto the cap.
+  //
+  // The service phase then ramps the surface load incrementally from
+  // this baseline. The path with `incrementalStress = true` measures
+  // F_int relative to the seed, so the Newton can drive the load
+  // increment with a well-conditioned residual even when the seed
+  // itself was non-trivial.
   const bool runPlasticGeostatic =
       in.opts.analysisMode != AnalysisMode::ServiceOnly &&
       in.opts.constitutive == ConstitutiveKind::McPlastic;
