@@ -729,9 +729,295 @@ inline HsUpdateResult return_cap_only(
 }
 
 // ---------------------------------------------------------------------------
+// B.5 — Corner return mapping (cone + cap simultaneously active).
+//
+// 2×2 Newton on (Δλ_s, Δλ_c) driving f^s = 0 AND f^c = 0. Initial guess
+// from the single-surface multipliers (warm start). Regime is detected ONCE
+// at trial state and HELD for the whole inner Newton — both ∂g^s and ∂g^c
+// use the same regime so the corner solution preserves the same hexagonal
+// symmetry as the single-surface returns.
+//
+// Stress correction:
+//   σ_k = σ_trial - Δλ_s · (D_e · ∂g^s/∂σ) - Δλ_c · (D_e · ∂g^c/∂σ)
+// Hardening:
+//   γ^p_k  = γ^p_committed + Δλ_s
+//   p_p_k  = p_p_committed + 2·H_cap·(p'_k+p_t)·Δλ_c
+//
+// Jacobian entries (spec §10 Phase 3, signs corrected):
+//   J[0][0] = -∂f^s/∂σ · D_e · ∂g^s/∂σ - 1
+//   J[0][1] = -∂f^s/∂σ · D_e · ∂g^c/∂σ
+//   J[1][0] = -∂f^c/∂σ · D_e · ∂g^s/∂σ
+//   J[1][1] = -∂f^c/∂σ · D_e · ∂g^c/∂σ - 4·H_cap·(p_p+p_t)·(p'+p_t)
+//
+// All four entries are negative for genuinely-active corner states ⇒
+// det(J) > 0 and the 2×2 system is well-posed.
+//
+// Degeneracy: if Δλ_s or Δλ_c becomes non-positive, the corner is in fact
+// single-surface — caller falls back to the appropriate cone-only or
+// cap-only return.
+//
+// Consistent-constitutive σ_3 refinement (matching B.3 cone-only): E_i,
+// q_a, E_ur are re-evaluated at the corrected σ_3 each iteration so the
+// hyperbolic constants stay consistent with the corrected state.
+// ---------------------------------------------------------------------------
+inline HsUpdateResult return_corner(
+    const mce::PrincipalState& principalT,
+    const MaterialPoint::HsState& stateC,
+    double c_eff, double phi_eff, double psi_eff, double sin_phi_cv,
+    double E_i_trial, double E_ur_trial, double q_a_trial,
+    double M_cap, double p_t, double H_cap,
+    double dlambda_s_init, double dlambda_c_init,
+    const Mat6& D_e, const RegionParams& region,
+    double& dlambda_s_out, double& dlambda_c_out) {
+  HsUpdateResult out{};
+  out.stateUpdated = stateC;
+
+  // Elastic moduli in principal frame.
+  const double G_s = std::max(D_e[3][3], 1.0);
+  const double lam = D_e[0][0] - 2.0 * G_s;
+  const double two_mu = 2.0 * G_s;
+
+  // HS parameters for σ_3-refinement of hyperbolic constants.
+  const double Rf = std::clamp(region.hs.Rf, 1e-3, 0.999);
+  const double m_exp = std::clamp(region.hs.m, 0.0, 1.0);
+  const double p_ref = std::max(region.hs.p_ref, 1.0);
+  const double cosPhi = std::cos(phi_eff);
+  const double sinPhi = std::sin(phi_eff);
+  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi, 0.5);
+  auto power_ratio = [&](double s3_arg) {
+    const double num = std::max(c_eff * cosPhi + s3_arg * sinPhi, 0.5);
+    return std::pow(num / denom_pow, m_exp);
+  };
+  auto recompute_consts = [&](double s3, double& E_i_o, double& q_a_o, double& E_ur_o) {
+    const double pr = power_ratio(s3);
+    const double E_50_local = region.hs.E50_ref * pr;
+    E_ur_o = region.hs.Eur_ref * pr;
+    double sphi_f = sinPhi;
+    if (sphi_f < 1e-6) sphi_f = 1e-6;
+    const double q_f_local = (c_eff * cot_safe(phi_eff) + s3) * 2.0 * sphi_f
+                           / std::max(1.0 - sphi_f, 1e-9);
+    q_a_o = std::max(q_f_local / Rf, 1.0);
+    E_i_o = 2.0 * E_50_local / (2.0 - Rf);
+  };
+
+  // Hyperbolic constants — updated every iteration.
+  double E_i = E_i_trial;
+  double E_ur = E_ur_trial;
+  double q_a = q_a_trial;
+
+  // Regime: classified ONCE at trial and held throughout.
+  const ConeFlowRegime regime = classify_cone_regime(principalT);
+
+  const double eps_v_p_max = dilatancy_cutoff_threshold(
+      region.hs.e_init, region.hs.e_max);
+
+  // Working unknowns. The warm start values from the single-surface
+  // solutions tend to overshoot heavily because they each absorb the
+  // ENTIRE yield violation from one surface (the other surface
+  // contributes nothing). At the corner both surfaces share the
+  // correction, so we damp the warm start by half. This empirically
+  // keeps the first iteration inside the Newton basin of attraction.
+  double dl_s = std::max(0.5 * dlambda_s_init, 0.0);
+  double dl_c = std::max(0.5 * dlambda_c_init, 0.0);
+
+  // Working principal-frame state.
+  double s1_new = principalT.s1;
+  double s2_new = principalT.s2;
+  double s3_new = principalT.s3;
+  double gamma_p_new = stateC.gamma_p;
+  double p_p_new = stateC.p_p;
+  double eps_v_p_new = stateC.eps_v_p;
+  double dgs1 = 0.0, dgs2 = 0.0, dgs3 = 0.0;
+  double dgc1 = 0.0, dgc2 = 0.0, dgc3 = 0.0;
+  double sin_psi_mob = 0.0;
+
+  // Tolerances scaled by the respective yield-function magnitudes.
+  const double f_tol_s = 1e-8 * std::max(std::abs(q_a), 1.0);
+  const double pp_pt_scale = std::max(stateC.p_p + p_t, 1.0);
+  const double f_tol_c = 1e-8 * pp_pt_scale * pp_pt_scale;
+
+  bool converged = false;
+  // After the loop we use these flags to drop to single-surface.
+  bool degenerate_drop_s = false;
+  bool degenerate_drop_c = false;
+
+  for (int it = 0; it < 30; ++it) {
+    // Mobilised friction / dilatancy at current corrected state.
+    const double sphi_mob = mobilised_sin_phi(s1_new, s3_new, c_eff, phi_eff);
+    sin_psi_mob = mobilised_sin_psi(
+        sphi_mob, sin_phi_cv, psi_eff,
+        stateC.eps_v_p + dl_s * (-sin_psi_mob),
+        eps_v_p_max);
+
+    // Cone flow gradient (∂g^s/∂σ) — regime-aware.
+    cone_flow_gradient(regime, sin_psi_mob, dgs1, dgs2, dgs3);
+
+    // Cap flow gradient = cap yield gradient (associated). Regime-aware.
+    double cap_df_dpp = 0.0;
+    cap_yield_gradient(regime, s1_new, s2_new, s3_new,
+                       p_p_new, M_cap, p_t, phi_eff,
+                       dgc1, dgc2, dgc3, cap_df_dpp);
+
+    // D_e · ∂g^s and D_e · ∂g^c in principal frame.
+    const double trace_dgs = dgs1 + dgs2 + dgs3;
+    const double trace_dgc = dgc1 + dgc2 + dgc3;
+    const double De_dgs1 = lam * trace_dgs + two_mu * dgs1;
+    const double De_dgs2 = lam * trace_dgs + two_mu * dgs2;
+    const double De_dgs3 = lam * trace_dgs + two_mu * dgs3;
+    const double De_dgc1 = lam * trace_dgc + two_mu * dgc1;
+    const double De_dgc2 = lam * trace_dgc + two_mu * dgc2;
+    const double De_dgc3 = lam * trace_dgc + two_mu * dgc3;
+
+    // Stress correction.
+    s1_new = principalT.s1 - dl_s * De_dgs1 - dl_c * De_dgc1;
+    s2_new = principalT.s2 - dl_s * De_dgs2 - dl_c * De_dgc2;
+    s3_new = principalT.s3 - dl_s * De_dgs3 - dl_c * De_dgc3;
+
+    // Ordering check — corner Newton with regime-aware Koiter flow should
+    // preserve the trial ordering. A swap is a hard failure.
+    if (!(s1_new >= s2_new - 1e-7 * std::max(std::abs(s1_new), 1.0) &&
+          s2_new >= s3_new - 1e-7 * std::max(std::abs(s1_new), 1.0))) {
+      out.failureCode = 103;
+      return out;
+    }
+
+    // Hardening.
+    gamma_p_new = stateC.gamma_p + dl_s;
+    const double p_prime_now = (s1_new + s2_new + s3_new) / 3.0;
+    const double dpp_per_lc = 2.0 * H_cap * (p_prime_now + p_t);
+    p_p_new = stateC.p_p + dl_c * dpp_per_lc;
+    if (p_p_new < stateC.p_p) p_p_new = stateC.p_p;   // cap monotone
+
+    eps_v_p_new = stateC.eps_v_p
+                + dl_s * (-sin_psi_mob)
+                + dl_c * cap_volumetric_per_lambda(p_prime_now, p_t);
+
+    // Refresh hyperbolic constants at corrected σ_3.
+    recompute_consts(s3_new, E_i, q_a, E_ur);
+
+    // Residuals.
+    const double q_new = s1_new - s3_new;
+    const double f_s_now = cone_yield_value(q_new, q_a, E_i, E_ur, gamma_p_new);
+    const double f_c_now = cap_yield_value(
+        s1_new, s2_new, s3_new, p_p_new, M_cap, p_t, phi_eff);
+
+    if (std::abs(f_s_now) < f_tol_s && std::abs(f_c_now) < f_tol_c) {
+      converged = true;
+      break;
+    }
+
+    // ∂f^s/∂σ in principal frame — scalar df/dq factor times regime mask.
+    const double q_clamped = std::min(q_new, 0.999 * q_a);
+    double denom_qa = 1.0 - q_clamped / q_a;
+    if (denom_qa < 1e-3) denom_qa = 1e-3;
+    const double df_dq_factor = (2.0 / E_i) / (denom_qa * denom_qa) - 2.0 / E_ur;
+    double dfs1, dfs2, dfs3;
+    cone_yield_gradient(regime, df_dq_factor, dfs1, dfs2, dfs3);
+
+    // ∂f^c/∂σ in principal frame — cap yield gradient at current state.
+    double dfc1, dfc2, dfc3, dfc_dpp_unused = 0.0;
+    cap_yield_gradient(regime, s1_new, s2_new, s3_new,
+                       p_p_new, M_cap, p_t, phi_eff,
+                       dfc1, dfc2, dfc3, dfc_dpp_unused);
+
+    // Closed-form 2×2 Jacobian. All four entries negative for active
+    // corner states; det(J) > 0.
+    const double quad_ss = dfs1 * De_dgs1 + dfs2 * De_dgs2 + dfs3 * De_dgs3;
+    const double quad_sc = dfs1 * De_dgc1 + dfs2 * De_dgc2 + dfs3 * De_dgc3;
+    const double quad_cs = dfc1 * De_dgs1 + dfc2 * De_dgs2 + dfc3 * De_dgs3;
+    const double quad_cc = dfc1 * De_dgc1 + dfc2 * De_dgc2 + dfc3 * De_dgc3;
+
+    const double J00 = -quad_ss - 1.0;
+    const double J01 = -quad_sc;
+    const double J10 = -quad_cs;
+    const double J11 = -quad_cc - 4.0 * H_cap * (p_p_new + p_t) * (p_prime_now + p_t);
+
+    const double det = J00 * J11 - J01 * J10;
+    if (std::abs(det) < 1e-18) {
+      // Singular Jacobian — corner Newton can't proceed. Caller will fall
+      // back to sequential project-and-check.
+      out.failureCode = 103;
+      return out;
+    }
+
+    // Newton step (solving J · Δx = r): Δx = J^{-1} · r, then x -= Δx.
+    const double rs = f_s_now;
+    const double rc = f_c_now;
+    double dls_step = ( J11 * rs - J01 * rc) / det;
+    double dlc_step = (-J10 * rs + J00 * rc) / det;
+
+    // Step clamping. Without it, the first iteration's Newton update can
+    // overshoot the basin of attraction (especially when the trial state
+    // is far from the corner manifold). The "natural" Δλ scales are
+    // q_a/(2μ) for the cone and (p_p+p_t)/H_cap for the cap; cap a step
+    // at twice these scales to allow rapid convergence but prevent
+    // catastrophic overshoot.
+    const double max_step_s = std::max(q_a / std::max(two_mu, 1.0), 1e-6);
+    const double max_step_c = std::max((p_p_new + p_t) / std::max(H_cap, 1.0), 1e-6);
+    if (dls_step >  max_step_s) dls_step =  max_step_s;
+    if (dls_step < -max_step_s) dls_step = -max_step_s;
+    if (dlc_step >  max_step_c) dlc_step =  max_step_c;
+    if (dlc_step < -max_step_c) dlc_step = -max_step_c;
+
+    dl_s -= dls_step;
+    dl_c -= dlc_step;
+
+    // Clamp non-negative. If either has gone negative, mark degeneracy
+    // and abort the corner solve (caller will run single-surface).
+    if (dl_s < 0.0) {
+      dl_s = 0.0;
+      degenerate_drop_s = true;
+    }
+    if (dl_c < 0.0) {
+      dl_c = 0.0;
+      degenerate_drop_c = true;
+    }
+
+    // Hard degeneracy: one multiplier collapsed AND can't recover.
+    if (degenerate_drop_s && dl_s < 1e-12) break;
+    if (degenerate_drop_c && dl_c < 1e-12) break;
+  }
+
+  // Degeneracy detection: a multiplier that ended below 1e-12 means that
+  // surface is, in the limit, inactive — caller should re-run as single-
+  // surface to capture the limit consistently.
+  dlambda_s_out = dl_s;
+  dlambda_c_out = dl_c;
+  if (!converged) {
+    out.failureCode = 103;
+    return out;
+  }
+  if (dl_s < 1e-12) {
+    out.failureCode = 200;   // sentinel: collapse to cap-only
+    return out;
+  }
+  if (dl_c < 1e-12) {
+    out.failureCode = 201;   // sentinel: collapse to cone-only
+    return out;
+  }
+
+  // Assemble result.
+  out.stressUpdated = reconstruct_stress_voigt_from_principals(
+      principalT, s1_new, s2_new, s3_new);
+  const double dep1 = dl_s * dgs1 + dl_c * dgc1;
+  const double dep2 = dl_s * dgs2 + dl_c * dgc2;
+  const double dep3 = dl_s * dgs3 + dl_c * dgc3;
+  out.plasticIncrement = plastic_increment_voigt(principalT, dep1, dep2, dep3);
+  out.tangent = D_e;
+  out.stateUpdated.gamma_p = gamma_p_new;
+  out.stateUpdated.eps_v_p = eps_v_p_new;
+  out.stateUpdated.p_p = p_p_new;
+  out.stateUpdated.lastActiveSet = 3;
+  out.activeSurface = 3;
+  out.failureCode = 0;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // B.1 — Top-level dispatcher: elastic → tension → cone-only → cap-only
-//      → corner. Phase 2 only supports elastic, cone-only, cap-only.
-//      The corner case returns failureCode 999.
+//      → corner. Phase 3 dispatches the corner case to `return_corner`
+//      with sequential project-and-check as the final fallback if corner
+//      Newton diverges (spec §3.3 edge cases).
 // ---------------------------------------------------------------------------
 inline HsUpdateResult update(
     const Vec6& strainTrialVoigt,
@@ -865,30 +1151,87 @@ inline HsUpdateResult update(
     return out;
   }
 
-  // Both surfaces active at trial. Phase 2 fallback: sequential project-
-  // and-check. Try cap-only first (cap is associated and usually dominates
-  // K0 / oedometric loading); if the cone yield at the returned state is
-  // still satisfied (≤ F_TOL_S), accept. Otherwise try cone-only and
-  // check the cap. If neither single-surface return alone satisfies the
-  // other surface, signal a true corner case via failureCode 999 (Phase 3).
-  HsUpdateResult cap_first = return_cap_only(
-      principalT, stateCommitted,
-      c_eff, phi_eff, M_cap, p_t, H_cap, D_e, region);
-  if (check_other_surface_after(cap_first, 2, F_TOL_S, /*checkCap=*/false)) {
-    return cap_first;
-  }
-  HsUpdateResult cone_first = return_cone_only(
+  // Both surfaces active at trial. Phase 3: invoke the 2×2 corner Newton.
+  // Warm-start initial guesses come from independent single-surface
+  // solutions — this matches B.5 and is robust against degenerate corner
+  // states. We extract the single-surface Δλ values by re-solving locally
+  // (the existing return_*_only functions don't expose them, so we infer
+  // them from the returned plastic state).
+  //
+  // Warm-start strategy:
+  //   - cone-only result ⇒ Δλ_s_init = (γ^p_new - γ^p_old)
+  //   - cap-only result  ⇒ Δλ_c_init = (p_p_new - p_p_old) / [2 H_cap (p'+p_t)]
+  // Both are clamped non-negative.
+  HsUpdateResult cone_alone = return_cone_only(
       principalT, stateCommitted,
       c_eff, phi_eff, psi_eff, sin_phi_cv,
       E_i, E_ur, q_a, D_e, region);
-  if (check_other_surface_after(cone_first, 1, F_TOL_C, /*checkCap=*/true)) {
-    return cone_first;
+  HsUpdateResult cap_alone = return_cap_only(
+      principalT, stateCommitted,
+      c_eff, phi_eff, M_cap, p_t, H_cap, D_e, region);
+
+  double dl_s_init = 0.0;
+  if (cone_alone.failureCode == 0) {
+    dl_s_init = std::max(cone_alone.stateUpdated.gamma_p - stateCommitted.gamma_p, 0.0);
+  }
+  double dl_c_init = 0.0;
+  if (cap_alone.failureCode == 0) {
+    // Reconstruct Δλ_c from p_p_new − p_p_old: linearise around the
+    // committed p' (the cap-only Newton uses the corrected p' but for a
+    // warm-start guess the trial p' is more than accurate enough).
+    const double p_prime_t = (principalT.s1 + principalT.s2 + principalT.s3) / 3.0;
+    const double dpp_per_lc = std::max(2.0 * H_cap * (p_prime_t + p_t), 1.0);
+    dl_c_init = std::max((cap_alone.stateUpdated.p_p - stateCommitted.p_p) / dpp_per_lc, 0.0);
   }
 
-  // True corner case — Phase 3 territory.
+  double dl_s_out = 0.0;
+  double dl_c_out = 0.0;
+  HsUpdateResult corner_res = return_corner(
+      principalT, stateCommitted,
+      c_eff, phi_eff, psi_eff, sin_phi_cv,
+      E_i, E_ur, q_a, M_cap, p_t, H_cap,
+      dl_s_init, dl_c_init,
+      D_e, region, dl_s_out, dl_c_out);
+  (void)dl_s_out;
+  (void)dl_c_out;
+
+  // Corner converged cleanly with both multipliers strictly positive.
+  if (corner_res.failureCode == 0) {
+    return corner_res;
+  }
+
+  // Degeneracy: one multiplier collapsed to zero ⇒ that surface is
+  // inactive at the limit. Fall back to the other single-surface result.
+  if (corner_res.failureCode == 200) {
+    // Cone collapsed ⇒ cap-only is the limit. The cap_alone result was
+    // computed above; verify it satisfies the cone yield (otherwise
+    // there's a true edge case below).
+    if (check_other_surface_after(cap_alone, 2, F_TOL_S, /*checkCap=*/false)) {
+      return cap_alone;
+    }
+  }
+  if (corner_res.failureCode == 201) {
+    if (check_other_surface_after(cone_alone, 1, F_TOL_C, /*checkCap=*/true)) {
+      return cone_alone;
+    }
+  }
+
+  // Final fallback — sequential project-and-check (spec §3.3 edge case
+  // handling). Try cap-only first (cap is associated and usually dominates
+  // K0 / oedometric loading); accept if cone yield at the returned state
+  // is still satisfied. Otherwise try cone-only and check the cap.
+  if (check_other_surface_after(cap_alone, 2, F_TOL_S, /*checkCap=*/false)) {
+    return cap_alone;
+  }
+  if (check_other_surface_after(cone_alone, 1, F_TOL_C, /*checkCap=*/true)) {
+    return cone_alone;
+  }
+
+  // Corner Newton diverged AND sequential fallback did not satisfy both
+  // surfaces. Outer FE Newton will cut back the load step.
   out.stressUpdated = sigT_voigt;
   out.tangent = D_e;
-  out.failureCode = 999;
+  out.failureCode = 103;
   out.activeSurface = 3;
   return out;
 }
