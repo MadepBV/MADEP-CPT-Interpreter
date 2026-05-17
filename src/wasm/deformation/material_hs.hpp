@@ -637,6 +637,11 @@ inline HsUpdateResult return_cap_only(
       principalT.s1, principalT.s2, principalT.s3,
       stateC.p_p, M_cap, p_t, phi_eff);
   if (f_trial < 0.0) {
+    // Defensive elastic-trial branch: dispatcher only invokes this function
+    // when f_c > F_TOL_C at trial, so this path is normally unreached. It
+    // CAN fire after a tension projection (Phase 4) brings the state inside
+    // the cap; returning activeSurface = 0 with failureCode = 0 is the
+    // correct signal that no plastic correction is needed.
     // Already admissible — return elastic.
     out.stressUpdated = reconstruct_stress_voigt_from_principals(
         principalT, principalT.s1, principalT.s2, principalT.s3);

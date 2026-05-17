@@ -2265,8 +2265,9 @@ inline PhaseResult run_nonlinear_phase(
       // gate fires only when ALL paths failed.
       const bool hsHardFailure =
           ctx.kind == ConstitutiveKind::HardeningSoil &&
-          (a.hsFailureCode == 103 || a.hsFailureCode == 104 ||
-           a.hsFailureCode == 105);
+          (a.hsFailureCode == 101 || a.hsFailureCode == 102 ||
+           a.hsFailureCode == 103 || a.hsFailureCode == 104 ||
+           a.hsFailureCode == 105 || a.hsFailureCode == 999);
       if (newtonIter > 1 && (toleranceConverged || plasticQuasiConverged) &&
           (!requiresStableActiveSet || a.changedCount == 0) &&
           !hsHardFailure) {
