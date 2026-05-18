@@ -40,6 +40,14 @@ import { contourSegmentsForTriangles, sampleSeepageFlowState, sampleSeepageHead,
 import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-regions';
 import { sampleDeformationState } from './deformation/solver.js';
 import {
+  HS_PRESETS,
+  HS_PRESET_IDS,
+  applyHsPreset as hsApplyPresetToMaterial,
+  isMaterialMatchingPreset as hsIsMaterialMatchingPreset,
+  jakyK0nc as hsJakyK0nc,
+  rowePhiCvDeg as hsRowePhiCvDeg
+} from './deformation/hs-presets.js';
+import {
   buildBeamDeflectionChartConfig,
   buildBeamMomentChartConfig,
   buildBearingChartConfig,
@@ -6770,6 +6778,36 @@ function stage6BishopSetMaterialHsField(index, field, value){
   renderStage6();
 }
 
+function stage6BishopApplyHsPreset(index, presetId){
+  ensureStage6State();
+  stage6BishopSyncSoilModel();
+  const material = S.stage6.bishop.materials?.[index];
+  if(!material) return;
+  const id = String(presetId || '');
+  if(!id){
+    // Clear the preset tag without altering values; user is back to "custom".
+    material.hsPresetId = '';
+    material.hsPresetFingerprint = '';
+    stage6BishopInvalidate('Hardening Soil preset cleared.');
+    renderStage6();
+    return;
+  }
+  if(!HS_PRESETS[id]) return;
+  hsApplyPresetToMaterial(material, id);
+  stage6BishopInvalidate(`Hardening Soil preset "${HS_PRESETS[id].label}" applied; rerun deformation analysis.`);
+  renderStage6();
+}
+
+function stage6BishopResetHsPreset(index){
+  ensureStage6State();
+  stage6BishopSyncSoilModel();
+  const material = S.stage6.bishop.materials?.[index];
+  if(!material || !material.hsPresetId || !HS_PRESETS[material.hsPresetId]) return;
+  hsApplyPresetToMaterial(material, material.hsPresetId);
+  stage6BishopInvalidate(`Hardening Soil preset "${HS_PRESETS[material.hsPresetId].label}" reset; rerun deformation analysis.`);
+  renderStage6();
+}
+
 function stage6BishopSetMaterialPermeability(index, field, value){
   ensureStage6State();
   stage6BishopSyncSoilModel();
@@ -13192,6 +13230,31 @@ function renderStage6BishopApp(){
       <td><input type="number" step="1" min="0" value="${Number(mat.psiEffDeg ?? mat.psi ?? 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'psi', this.value)"></td>
     </tr>
   `).join('');
+  const hsPresetOptionsHtml = HS_PRESET_IDS.map((id)=>`<option value="${stage6EscAttr(id)}">${stage6EscAttr(HS_PRESETS[id].label)}</option>`).join('');
+  const hsPresetSelectorRows = (bishop.materials || []).map((mat, index)=>{
+    const presetId = String(mat.hsPresetId || '');
+    const isPreset = hsIsMaterialMatchingPreset(mat);
+    const indicator = presetId
+      ? (isPreset
+        ? `<span class="st6-hs-preset-tag st6-hs-preset-tag--preset">preset: ${stage6EscAttr(HS_PRESETS[presetId]?.label || presetId)}</span>`
+        : `<span class="st6-hs-preset-tag st6-hs-preset-tag--custom">custom (edited from ${stage6EscAttr(HS_PRESETS[presetId]?.label || presetId)})</span>`)
+      : `<span class="st6-hs-preset-tag st6-hs-preset-tag--custom">custom</span>`;
+    return `
+      <tr>
+        <td>${stage6EscAttr(mat.label)}</td>
+        <td>
+          <select onchange="stage6BishopApplyHsPreset(${index}, this.value)">
+            <option value="">— select preset —</option>
+            ${hsPresetOptionsHtml.replace(`value="${stage6EscAttr(presetId)}"`, `value="${stage6EscAttr(presetId)}" selected`)}
+          </select>
+        </td>
+        <td>${indicator}</td>
+        <td>
+          <button class="btn sm" onclick="stage6BishopResetHsPreset(${index})"${presetId ? '' : ' disabled'}>Reset to preset</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
   const hsMaterialRows = (bishop.materials || []).map((mat, index)=>{
     const hs = mat.hs || {};
     return `
@@ -13201,30 +13264,90 @@ function renderStage6BishopApp(){
         <td><input type="number" step="100" min="1" value="${Number(hs.Eoed_ref || hs.E50_ref || mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Eoed_ref', this.value)"></td>
         <td><input type="number" step="100" min="1" value="${Number(hs.Eur_ref || 3 * (hs.E50_ref || mat.Emc || 0)).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Eur_ref', this.value)"></td>
         <td><input type="number" step="0.05" min="0" max="1" value="${Number(hs.m ?? 0.5).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'm', this.value)"></td>
-        <td><input type="number" step="0.01" min="-0.99" max="0.49" value="${Number(hs.nu_ur ?? 0.2).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'nu_ur', this.value)"></td>
+        <td><input type="number" step="0.01" min="0.01" max="0.499" value="${Number(hs.nu_ur ?? 0.2).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'nu_ur', this.value)"></td>
         <td><input type="number" step="0.01" min="0.01" max="0.999" value="${Number(hs.Rf ?? 0.9).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Rf', this.value)"></td>
         <td><input type="number" step="0.1" min="0.1" value="${Number(hs.OCR ?? 1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'OCR', this.value)"></td>
+      </tr>
+    `;
+  }).join('');
+  const hsAdvancedRows = (bishop.materials || []).map((mat, index)=>{
+    const hs = mat.hs || {};
+    return `
+      <tr>
+        <td>${stage6EscAttr(mat.label)}</td>
+        <td><input type="number" step="5" min="1" value="${Number(hs.p_ref ?? 100).toFixed(1)}" onchange="stage6BishopSetMaterialHsField(${index}, 'p_ref', this.value)"></td>
+        <td><input type="number" step="0.01" min="0" max="0.99" value="${Number(hs.K0_nc ?? 0).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'K0_nc', this.value)" title="0 = compute via Jaky"></td>
+        <td><input type="number" step="0.01" value="${Number(hs.e_init ?? -1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'e_init', this.value)" title="-1 = disabled"></td>
+        <td><input type="number" step="0.01" value="${Number(hs.e_max ?? -1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'e_max', this.value)" title="-1 = disabled"></td>
+      </tr>
+    `;
+  }).join('');
+  const hsDerivedRows = (bishop.materials || []).map((mat)=>{
+    const hs = mat.hs || {};
+    const phi = Number(mat.phiEffDeg ?? 0);
+    const psi = Number(mat.psiEffDeg ?? mat.psi ?? 0);
+    const phiCv = hsRowePhiCvDeg(phi, psi);
+    const k0ncInput = Number(hs.K0_nc ?? 0);
+    const k0ncEff = k0ncInput > 0 ? k0ncInput : hsJakyK0nc(phi);
+    return `
+      <tr>
+        <td>${stage6EscAttr(mat.label)}</td>
+        <td>${Number.isFinite(phiCv) ? phiCv.toFixed(2) + '°' : '—'}</td>
+        <td>${Number.isFinite(k0ncEff) ? k0ncEff.toFixed(3) : '—'}${k0ncInput > 0 ? '' : ' <span class="st6-help" style="font-size:0.85em">(Jaky)</span>'}</td>
       </tr>
     `;
   }).join('');
   const hsMaterialWarnings = (bishop.materials || []).flatMap((mat)=>{
     const hs = mat.hs || {};
     const warnings = [];
-    if(Number(hs.Eur_ref) < Number(hs.E50_ref)) warnings.push(`${mat.label}: Eur_ref should be >= E50_ref.`);
-    if(Number(hs.m) < 0 || Number(hs.m) > 1) warnings.push(`${mat.label}: m should stay between 0 and 1.`);
-    if(Number(hs.Rf) <= 0 || Number(hs.Rf) >= 1) warnings.push(`${mat.label}: Rf should stay between 0 and 1.`);
-    if(Number(hs.K0_nc) <= 0 || Number(hs.K0_nc) >= 1) warnings.push(`${mat.label}: K0_nc should usually stay between 0 and 1; use 0 only as the solver sentinel.`);
+    const E50 = Number(hs.E50_ref);
+    const Eur = Number(hs.Eur_ref);
+    const m = Number(hs.m);
+    const nuUr = Number(hs.nu_ur);
+    const Rf = Number(hs.Rf);
+    const K0nc = Number(hs.K0_nc);
+    const OCR = Number(hs.OCR);
+    if(Number.isFinite(E50) && Number.isFinite(Eur) && Eur < E50) warnings.push(`${mat.label}: Eur_ref (${Eur}) should be >= E50_ref (${E50}).`);
+    if(Number.isFinite(m) && (m < 0 || m > 1)) warnings.push(`${mat.label}: m (${m}) should stay between 0 and 1.`);
+    if(Number.isFinite(Rf) && (Rf < 0 || Rf >= 1)) warnings.push(`${mat.label}: Rf (${Rf}) should stay in [0, 1).`);
+    if(Number.isFinite(nuUr) && (nuUr <= 0 || nuUr >= 0.5)) warnings.push(`${mat.label}: ν_ur (${nuUr}) should stay strictly between 0 and 0.5.`);
+    if(Number.isFinite(OCR) && OCR < 1) warnings.push(`${mat.label}: OCR (${OCR}) should typically be >= 1; values below 1 are non-physical for in-situ soils.`);
+    if(Number.isFinite(K0nc) && (K0nc < 0 || K0nc >= 1)) warnings.push(`${mat.label}: K0_nc (${K0nc}) should stay between 0 and 1; use 0 only as the Jaky sentinel.`);
     return warnings;
   });
   const hsMaterialTableHtml = deformationUsesHardeningSoil ? `
-    <div class="st6-help">Hardening Soil is wired through the WASM material payload in this phase. The solver intentionally returns a not-implemented error until the constitutive update phases land.</div>
+    <div class="st6-help">Hardening Soil: select a PLAXIS-style preset to populate all fields, then refine via the table below. The "Advanced" expander exposes p_ref, K0_nc and void-ratio cutoffs; the derived block shows φ_cv and the K0_nc actually used by the solver.</div>
+    <div style="overflow:auto">
+      <table class="tbl st6-bishop-materials st6-bishop-materials--hs-presets">
+        <thead><tr><th>Layer</th><th>Preset</th><th>Status</th><th></th></tr></thead>
+        <tbody>${hsPresetSelectorRows}</tbody>
+      </table>
+    </div>
     ${hsMaterialWarnings.length ? `<div class="warn">${hsMaterialWarnings.map(stage6EscAttr).join('<br>')}</div>` : ''}
     <div style="overflow:auto">
       <table class="tbl st6-bishop-materials st6-bishop-materials--deformation">
-        <thead><tr><th>Layer</th><th>E50_ref</th><th>Eoed_ref</th><th>Eur_ref</th><th>m</th><th>nu_ur</th><th>Rf</th><th>OCR</th></tr></thead>
+        <thead><tr><th>Layer</th><th>E50_ref</th><th>Eoed_ref</th><th>Eur_ref</th><th>m</th><th>ν_ur</th><th>Rf</th><th>OCR</th></tr></thead>
         <tbody>${hsMaterialRows}</tbody>
       </table>
     </div>
+    <details class="st6-hs-advanced">
+      <summary>Advanced parameters (p_ref, K0_nc, void-ratio cutoffs)</summary>
+      <div style="overflow:auto">
+        <table class="tbl st6-bishop-materials st6-bishop-materials--hs-advanced">
+          <thead><tr><th>Layer</th><th>p_ref (kPa)</th><th>K0_nc (0=Jaky)</th><th>e_init (-1=off)</th><th>e_max (-1=off)</th></tr></thead>
+          <tbody>${hsAdvancedRows}</tbody>
+        </table>
+      </div>
+    </details>
+    <details class="st6-hs-derived" open>
+      <summary>Derived values (read-only, computed at material setup)</summary>
+      <div style="overflow:auto">
+        <table class="tbl st6-bishop-materials st6-bishop-materials--hs-derived">
+          <thead><tr><th>Layer</th><th>φ_cv (inverse Rowe)</th><th>K0_nc (effective)</th></tr></thead>
+          <tbody>${hsDerivedRows}</tbody>
+        </table>
+      </div>
+    </details>
   ` : '';
   const wallRows = (bishop.walls || []).map((wall, index)=>{
     const material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'legacy-impermeable'});
@@ -16581,6 +16704,8 @@ const legacyApi={
   stage6BishopClear,
   stage6BishopSetMaterialField,
   stage6BishopSetMaterialHsField,
+  stage6BishopApplyHsPreset,
+  stage6BishopResetHsPreset,
   stage6BishopSetMaterialPermeability,
   stage6BishopResetMaterialPermeability,
   stage6BishopSetWallField,
