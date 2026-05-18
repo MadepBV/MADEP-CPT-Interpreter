@@ -419,6 +419,16 @@ inline GpResponse evaluate_gp_response_ex(
     // the constitutive response. The MC dispatch is naturally plane-strain
     // consistent through its 6-Voigt return; HS's principal-frame return
     // requires the explicit wrapper per the spec §3.7.
+    //
+    // Phase 7 (c-φ safety): the σ_Msf reduction is applied UPSTREAM by
+    // the solver (`reduce_strength` in prepare_*_materials), which mutates
+    // region.cEff, region.phi, region.psi, region.sigmaTAllow to their
+    // reduced values, and `recompute_hs_constants_for_reduced_regions`
+    // re-calibrates M_cap/H_cap/sin_phi_cv on those reduced fields. By
+    // the time `update_plane_strain` is called, the region's strength
+    // and derived constants ALREADY reflect σ_Msf, so we pass 1.0 here
+    // to avoid double-reduction. Geostatic and service phases never
+    // reduce, so 1.0 is also correct there.
     const material::hs::HsUpdateResult hsRes = material::hs::update_plane_strain(
         strainTotal, committed.totalStrain, committed.effectiveStress,
         committed.hs, rp, 1.0);
@@ -982,6 +992,29 @@ struct PhaseStepMaterials {
   std::vector<Mat6> ownedRegionC;
 };
 
+// C.3 cache-invalidation hook (HS Phase 7). Whenever the safety trial
+// changes σ_Msf, the cached HS region constants (M_cap, H_cap,
+// sin_phi_cv) are stale: they were calibrated against the BASE strength
+// parameters, and the safety reduction changes φ_eff and c_eff. We have
+// already applied `reduce_strength` to `regions`, so the strength fields
+// (cEff, phi, psi, sigmaTAllow) are at their σ_Msf-reduced values.
+// `compute_hs_reference_constants` reads those reduced fields and runs
+// the C.1/C.2 calibrations on them; passing `sigmaMsf=1.0` here avoids
+// double-reduction (the helper otherwise divides cEff/tan(phi)/... by
+// its own σ_Msf argument internally).
+//
+// The constitutive kind is global per analysis (carried on SolverOptions
+// / PhaseContext), not per region; gate on `kind` so non-HS runs pay
+// nothing.
+inline void recompute_hs_constants_for_reduced_regions(
+    std::vector<RegionParams>& regions,
+    ConstitutiveKind kind) {
+  if (kind != ConstitutiveKind::HardeningSoil) return;
+  for (auto& r : regions) {
+    material::hs::compute_hs_reference_constants(r, 1.0);
+  }
+}
+
 inline void prepare_phase_step_materials(
     const PhaseContext& ctx,
     const std::vector<RegionParams>& phaseRegions,
@@ -998,6 +1031,7 @@ inline void prepare_phase_step_materials(
       (ctx.safetySigmaMsfTarget - ctx.safetySigmaMsfStart) * targetLambda;
   out.ownedRegions = *ctx.safetyStrengthBaseRegions;
   for (auto& r : out.ownedRegions) r = reduce_strength(r, sigmaMsf);
+  recompute_hs_constants_for_reduced_regions(out.ownedRegions, ctx.kind);
   build_region_elastic_into(out.ownedRegions, out.ownedRegionC);
   out.regions = &out.ownedRegions;
   out.regionC = &out.ownedRegionC;
@@ -1017,6 +1051,7 @@ inline void prepare_safety_sigma_msf_materials(
 
   out.ownedRegions = *ctx.safetyStrengthBaseRegions;
   for (auto& r : out.ownedRegions) r = reduce_strength(r, std::max(sigmaMsf, 1.0));
+  recompute_hs_constants_for_reduced_regions(out.ownedRegions, ctx.kind);
   build_region_elastic_into(out.ownedRegions, out.ownedRegionC);
   out.regions = &out.ownedRegions;
   out.regionC = &out.ownedRegionC;
@@ -1385,6 +1420,13 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
     scratch.regions.assign(
         ctx.safetyStrengthBaseRegions->begin(), ctx.safetyStrengthBaseRegions->end());
     for (auto& r : scratch.regions) r = reduce_strength(r, sigma);
+    // C.3 hook: HS region constants (M_cap, H_cap, sin_phi_cv) depend on
+    // φ_eff and c_eff. The FD R_λ probes assemble at σ_Msf ± h, so the
+    // constants must be re-calibrated for each probe before assembly.
+    // Pass sigmaMsf=1.0 because reduce_strength has already reduced the
+    // strength parameters; compute_hs_reference_constants would otherwise
+    // double-reduce them (see prepare_safety_sigma_msf_materials).
+    recompute_hs_constants_for_reduced_regions(scratch.regions, ctx.kind);
     build_region_elastic_into(scratch.regions, scratch.regionC);
     scratch.trial.assign(trialBackup.begin(), trialBackup.end());
     scratch.internalForce.assign(freeCount, 0.0);

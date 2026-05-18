@@ -32,6 +32,7 @@
 		"verify:hs-phase-4": "node scripts/verify_hs_phase_4.mjs",
 		"verify:hs-phase-5": "node scripts/verify_hs_phase_5.mjs",
 		"verify:hs-phase-6": "node scripts/verify_hs_phase_6.mjs",
+		"verify:hs-phase-7": "node scripts/verify_hs_phase_7.mjs",
 		"verify:arc-length-phase-2": "node scripts/verify_arc_length_phase_2.mjs",
 		"verify:arc-length-phase-3": "node scripts/verify_arc_length_phase_3.mjs",
 		"verify:arc-length-phase-4": "node scripts/verify_arc_length_phase_4.mjs",
