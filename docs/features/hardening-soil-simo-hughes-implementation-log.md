@@ -79,3 +79,68 @@ Validation status:
   8 accepted load steps, 1 rejected load step, final active count `11`,
   last linear solver kind `1` (GMRES), sticky `hsPlasticUsedGmres = true`,
   max settlement `0.6576873963033499 mm`.
+
+## SH-0 - Residual-Sensitivity Oracle
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` section 2
+- `hardening-soil-simo-hughes-upgrade.md` section 4
+- `hardening-soil-simo-hughes-upgrade.md` section 7, Phase SH-0
+
+Implementation plan:
+
+- Add `src/wasm/deformation/material_hs_tangent.hpp` for Voigt-dual metric
+  helpers and dense `Xi` helpers.
+- Add `scripts/scratch/hs_sh_phase_0.cpp` as a harness-only residual oracle;
+  it is compiled by a verifier and is not included in the WASM module.
+- Add `scripts/verify_hs_simo_hughes_phase_0.mjs` to compile and run the
+  harness.
+- Validate elastic, cone, cap, and corner cases against direct strain finite
+  differences of `update_plane_strain` on the in-plane 3 by 3 block.
+
+Review notes:
+
+- The metric helpers encode the engineering-strain/stress duality explicitly:
+  stress-covector contraction weights tensor shear slots by 2, flow tensors are
+  converted to engineering strain vectors by doubling shear slots, and
+  `D_e^T a` is computed with the same stress-side metric.
+- The dense `Xi` implementation inverts `D_e^{-1} + sum(lambda_a dm_a/dsigma)`
+  directly. This is intentionally not optimized with Woodbury/rank updates in
+  SH-0; later phases may optimize only after dense parity is established.
+- The first cone oracle attempt failed although the local yield residual was
+  small. The disagreement was traced to the live cone return accepting yield
+  convergence before the stress-flow fixed point was equally converged. The
+  return map now gates cone convergence on both yield residual and a
+  scale-aware fixed-point stress change. This is a mathematical convergence
+  criterion, not a tangent fallback.
+- The residual equations freeze the active set used by the converged return.
+  For cone/corner checks, the oracle projects the unknown stress onto the
+  trial-stress eigenprojectors because the implemented return map locks the
+  principal-frame directions to the trial stress during the local solve.
+- Re-running SH-P0 after the cone fixed-point gate exposed a hard halt in the
+  live T6/B-bar app path: nonlinear HS geostatic re-equilibration was creating
+  artificial geostatic plasticity before service loading. The accepted fix is
+  to keep HS on the stress-only K0 baseline and reserve nonlinear plastic
+  geostatic correction for MC. This preserves the incremental-stress service
+  formulation and prevents the B-bar T6 operator from re-equilibrating a
+  depth-wise K0 seed.
+
+Validation status:
+
+- PASS on `node scripts/verify_hs_t6_flat_strip.mjs` after rebuilding the
+  deformation WASM. Gate output: 121 nodes, 50 T6 elements, 150 Gauss points,
+  load sum `-10`, geostatic converged, service converged, final load factor
+  `1`, residual `0.0017345637481164051`, 54 Newton iterations, 3,554 linear
+  iterations, 9 accepted load steps, 2 rejected load steps, final active count
+  `11`, last linear solver kind `1` (GMRES), sticky
+  `hsPlasticUsedGmres = true`, max settlement `0.6549828822673904 mm`.
+- Final pre-commit rerun after making the SH-0 harness self-contained:
+  residual `0.0032542607147844614`, 28 Newton iterations, 1,665 linear
+  iterations, 7 accepted load steps, 0 rejected load steps, final active count
+  `11`, last linear solver kind `1`, `hsPlasticUsedGmres = true`,
+  max settlement `0.6080248757199712 mm`.
+- PASS on `node scripts/verify_hs_simo_hughes_phase_0.mjs`.
+- SH-0 oracle relative errors:
+  elastic `3.850655e-12`, cone `1.150391e-08`, cap `1.057031e-07`,
+  corner `1.521867e-06`.

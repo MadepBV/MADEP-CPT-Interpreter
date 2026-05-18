@@ -645,6 +645,10 @@ inline HsUpdateResult return_cone_only(
   double prev_dlambda = dlambda;
 
   for (int it = 0; it < 50; ++it) {
+    const double s1_iter_start = s1_new;
+    const double s2_iter_start = s2_new;
+    const double s3_iter_start = s3_new;
+
     // Mobilised friction at current corrected state.
     const double sin_phi_mob = mobilised_sin_phi(s1_new, s3_new, c_eff, phi_eff);
     sin_psi_mob = mobilised_sin_psi(
@@ -681,8 +685,16 @@ inline HsUpdateResult return_cone_only(
     // Yield residual.
     const double q_new = s1_new - s3_new;
     const double f_new = cone_yield_value(q_new, q_a, E_i, E_ur, gamma_p_new);
+    const double stress_scale = std::max({
+        std::abs(s1_new), std::abs(s2_new), std::abs(s3_new), 1.0});
+    const double fixed_point_delta = std::max({
+        std::abs(s1_new - s1_iter_start),
+        std::abs(s2_new - s2_iter_start),
+        std::abs(s3_new - s3_iter_start)});
+    const bool stress_fixed =
+        fixed_point_delta <= 1e-10 * stress_scale;
 
-    if (std::abs(f_new) < f_tolerance) {
+    if (std::abs(f_new) < f_tolerance && stress_fixed) {
       converged = true;
       break;
     }
@@ -728,7 +740,7 @@ inline HsUpdateResult return_cone_only(
     prev_f = f_new;
     prev_dlambda = dlambda;
     dlambda = trial_dlambda;
-    if (std::abs(delta_lambda) < 1e-12) {
+    if (std::abs(delta_lambda) < 1e-12 && stress_fixed) {
       // Re-evaluate one more time at the converged dlambda before exit.
       const double sin_phi_mob_final = mobilised_sin_phi(s1_new, s3_new, c_eff, phi_eff);
       sin_psi_mob = mobilised_sin_psi(
