@@ -111,9 +111,20 @@ function computeInputSize({ numNodes, numElements, numRegions, numConstraints, n
        + gravityBytes + loadBytes + predictorBytes + initialSigmaBytes + porePressureBytes;
 }
 
+// Read an HS parameter from a region. The HS stiffness fields
+// (E50_ref / Eoed_ref / Eur_ref / m / ν_ur / K0_nc) live on the MATERIAL'S
+// TOP LEVEL because they are inherited from the upstream layer /
+// classification model (CUR 2003-7 / SB260-21-6.4.10 / Schanz, Vermeer &
+// Bonnier (1999)) and exposed read-only in the HS panel.  The HS-only
+// fields (R_f, OCR, p_ref, e_init, e_max) live inside `region.hs`.
+//
+// Lookup order: material top-level wins, with `region.hs[name]` as a
+// fallback. The fallback keeps backward compatibility with older fixtures
+// and verifiers that still set the legacy `region.hs.E50_ref` shape — the
+// wire layout (12 f64, name-keyed by index on the C++ side) is unchanged.
 function hsParam(region, name, fallback = 0) {
   const hs = region?.hs && typeof region.hs === 'object' ? region.hs : {};
-  const value = hs[name] ?? region?.[name];
+  const value = region?.[name] ?? hs[name];
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
 }
@@ -133,7 +144,15 @@ function writeHsParams(writeF64, region, isHs) {
   writeF64(Math.min(Math.max(hsParam(region, 'nu_ur', 0.2), -0.99), 0.49));
   writeF64(Math.max(hsParam(region, 'p_ref', 100), 1e-6));
   writeF64(Math.min(Math.max(hsParam(region, 'Rf', 0.9), 1e-6), 0.999999));
-  writeF64(Math.max(hsParam(region, 'K0_nc', region?.K0nc || 0), 0));
+  // K0_nc lives on the material as `K0nc` (Jaky-derived from φ' upstream).
+  // The HS sub-block may carry an explicit `K0_nc` override that wins; if
+  // neither is positive we emit 0 so the C++ side falls back to Jaky.
+  const k0ncMaterial = Number(region?.K0nc);
+  const k0ncHs = Number(region?.hs?.K0_nc);
+  const k0ncResolved = Number.isFinite(k0ncHs) && k0ncHs > 0
+    ? k0ncHs
+    : (Number.isFinite(k0ncMaterial) ? k0ncMaterial : 0);
+  writeF64(Math.max(k0ncResolved, 0));
   writeF64(hsParam(region, 'e_init', -1));
   writeF64(hsParam(region, 'e_max', -1));
   writeF64(Math.max(hsParam(region, 'OCR', 1), 1e-6));

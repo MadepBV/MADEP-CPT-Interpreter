@@ -2546,6 +2546,18 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
       : { ...layer };
     const canReuseStrengthValues = prior.sourceStrengthSet === strengthSet;
     const permeability = resolveMaterialPermeability(layer, prior);
+    // The HS stiffness parameters (E50_ref, Eoed_ref, Eur_ref, m, ν_ur) and
+    // the K0_nc / ψ values come from the upstream layer-classification logic
+    // (`hsParams` in legacy-controller, per CUR 2003-7 / SB260-21-6.4.10 /
+    // Schanz, Vermeer & Bonnier (1999)).  They live on the material as
+    // top-level fields — NOT inside `material.hs` — so the HS panel can
+    // display them as read-only inherited values and the wire encoder can
+    // route them directly to the WASM HS block by name.
+    //
+    // The `material.hs` sub-block is reserved for the genuinely HS-specific
+    // parameters that have NO upstream analogue: R_f (failure ratio), OCR
+    // (over-consolidation), p_ref (reference pressure), e_init / e_max
+    // (dilatancy cutoff).
     return {
       id,
       label: prior.label || `Layer ${index + 1} - ${fallbackLabel}`,
@@ -2562,21 +2574,19 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
       rShear: Number.isFinite(prior.rShear) && prior.rShear > 0 ? prior.rShear : Number(layer.rShear) || 0.25,
       psi: Number.isFinite(prior.psi) ? prior.psi : Number(layer.psi) || 0,
       sigmaTAllow: Number.isFinite(prior.sigmaTAllow) ? prior.sigmaTAllow : 0,
+      // HS stiffness fields inherited from the layer / material classification.
+      // These are always re-derived from the layer model on every sync — the
+      // engineer edits them upstream (via the Stage 5 alpha/m editor), not
+      // inside the HS panel.
+      E50_ref: Number(layer.E50_ref) || Number(layer.Emc) || Number(layer.E50_i) || 1000,
+      Eoed_ref: Number(layer.Eoed_ref) || Number(layer.E50_ref) || Number(layer.Emc) || 1000,
+      Eur_ref: Number(layer.Eur_ref) || 3 * (Number(layer.E50_ref) || Number(layer.Emc) || 1000),
+      m: Number.isFinite(Number(layer.m)) ? Number(layer.m) : 0.5,
+      nu_ur: Number.isFinite(Number(layer.nu_ur)) ? Number(layer.nu_ur) : 0.2,
+      // HS-only sub-block: parameters with no upstream analogue.
       hs: {
-        E50_ref: Number.isFinite(Number(prior.hs?.E50_ref)) && Number(prior.hs.E50_ref) > 0
-          ? Number(prior.hs.E50_ref)
-          : Number(layer.E50_ref) || Number(layer.Emc) || Number(layer.E50_i) || 1000,
-        Eoed_ref: Number.isFinite(Number(prior.hs?.Eoed_ref)) && Number(prior.hs.Eoed_ref) > 0
-          ? Number(prior.hs.Eoed_ref)
-          : Number(layer.Eoed_ref) || Number(layer.E50_ref) || Number(layer.Emc) || 1000,
-        Eur_ref: Number.isFinite(Number(prior.hs?.Eur_ref)) && Number(prior.hs.Eur_ref) > 0
-          ? Number(prior.hs.Eur_ref)
-          : Number(layer.Eur_ref) || 3 * (Number(layer.E50_ref) || Number(layer.Emc) || 1000),
-        m: Number.isFinite(Number(prior.hs?.m)) ? Number(prior.hs.m) : Number(layer.m) || 0.5,
-        nu_ur: Number.isFinite(Number(prior.hs?.nu_ur)) ? Number(prior.hs.nu_ur) : Number(layer.nu_ur) || 0.2,
         p_ref: Number.isFinite(Number(prior.hs?.p_ref)) && Number(prior.hs.p_ref) > 0 ? Number(prior.hs.p_ref) : 100,
         Rf: Number.isFinite(Number(prior.hs?.Rf)) ? Number(prior.hs.Rf) : 0.9,
-        K0_nc: Number.isFinite(Number(prior.hs?.K0_nc)) ? Number(prior.hs.K0_nc) : Number(layer.K0nc) || 0,
         e_init: Number.isFinite(Number(prior.hs?.e_init)) ? Number(prior.hs.e_init) : -1,
         e_max: Number.isFinite(Number(prior.hs?.e_max)) ? Number(prior.hs.e_max) : -1,
         OCR: Number.isFinite(Number(prior.hs?.OCR)) && Number(prior.hs.OCR) > 0 ? Number(prior.hs.OCR) : 1,
@@ -2616,65 +2626,6 @@ export function bishopHsRowePhiCvDeg(phiEffDeg, psiEffDeg) {
   const sphiCv = (sphi - spsi) / denom;
   const clamped = Math.max(-0.999, Math.min(0.999, sphiCv));
   return Math.asin(clamped) * 180 / Math.PI;
-}
-
-/**
- * Classify a material as 'granular', 'cohesive', or 'mixed' from its
- * CPT-derived sourceType. Mirrors `familyClass` in legacy-controller but
- * operates on a Bishop material (which only carries sourceType, not the
- * full layer record). Returns 'mixed' when the classification is ambiguous
- * or absent — in that case HS defaults use mid-range exponents.
- */
-function classifyMaterialSoilFamily(material) {
-  const t = String(material?.sourceType || '').toLowerCase();
-  if (!t) return 'mixed';
-  if (t.includes('sand') && t.includes('clay')) return 'mixed'; // "Sandy clay"
-  if (t.includes('clay') || t.includes('peat') || t.includes('organic')) return 'cohesive';
-  if (t.includes('sand') || t.includes('gravel')) return 'granular';
-  return 'mixed';
-}
-
-/**
- * Derive sensible default HS-specific parameters from an existing Bishop
- * material. The strength fields (c', φ', ψ', γ, γ_sat) are NOT touched —
- * HS shares those with MC and the user already maintains them via the
- * deformation-material editor row above the HS panel.
- *
- * Defaults follow the PLAXIS HS recommendations:
- *   - E50_ref  ← material.Emc (reuse the deformation modulus the user
- *                already calibrated for MC).
- *   - Eoed_ref ← E50_ref       (PLAXIS default: oedometric stiffness ≈ secant).
- *   - Eur_ref  ← 3 · E50_ref   (PLAXIS reload-modulus rule of thumb).
- *   - m        ← 0.5 (granular), 1.0 (cohesive), 0.75 (mixed). PLAXIS
- *                literature gives m ≈ 0.5 for sands and m ≈ 1 for clays.
- *   - ν_ur     ← 0.2           (PLAXIS HS canonical default).
- *   - R_f      ← 0.9           (Duncan-Chang failure ratio).
- *   - p_ref    ← 100 kPa.
- *   - K0_nc    ← 0 (Jaky sentinel; the wire format computes 1 − sin φ').
- *   - e_init, e_max ← −1 (dilatancy cutoff disabled).
- *   - OCR      ← 1.0 (normally-consolidated; the spec-mandated default).
- *
- * Returns a fresh `hs` sub-block ready to be assigned onto material.hs.
- * Callers preserve any user-edited values they want to keep.
- */
-export function bishopDeriveHsDefaultsForMaterial(material) {
-  const family = classifyMaterialSoilFamily(material);
-  const E50 = Math.max(Number(material?.Emc) || 0, 1);
-  const m = family === 'granular' ? 0.5 : family === 'cohesive' ? 1.0 : 0.75;
-  return {
-    E50_ref: E50,
-    Eoed_ref: E50,
-    Eur_ref: 3 * E50,
-    m,
-    nu_ur: 0.2,
-    p_ref: 100,
-    Rf: 0.9,
-    K0_nc: 0,
-    e_init: -1,
-    e_max: -1,
-    OCR: 1.0,
-    reserved: 0
-  };
 }
 
 export function bishopLayerSignature(layers) {

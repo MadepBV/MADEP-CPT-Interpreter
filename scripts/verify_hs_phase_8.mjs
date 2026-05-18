@@ -1,31 +1,37 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// HS Phase 8 verification — HS material-derivation helpers + 3 benchmark fixtures.
+// HS Phase 8 verification — HS panel inheritance contract + 3 benchmark fixtures.
 //
 // Phase 8 originally shipped a `hs-presets.js` UI library with four PLAXIS-
-// style sand/clay presets. v0.5.3 removed that library: the HS panel now
-// inherits c'/φ'/ψ'/γ from the existing deformation-material editor and
-// only exposes HS-specific stiffness fields, with an "Auto-fill from
-// material" button that derives sensible defaults via
-// `bishopDeriveHsDefaultsForMaterial`.
+// style sand/clay presets, then v0.5.3 (commit ba5f841) replaced it with
+// `bishopDeriveHsDefaultsForMaterial` ("Auto-fill from material" button).
+//
+// "HS UX fix v2" (this revision) collapses that further: the HS stiffness
+// block (E50_ref, Eoed_ref, Eur_ref, m, ν_ur, K0_nc, ψ) is computed
+// UPSTREAM in `hsParams` per CUR 2003-7 / SB260-21-6.4.10 / Schanz, Vermeer
+// & Bonnier (1999) and inherited by the bishop material at top level. The
+// HS panel renders that block as read-only; only the genuinely HS-specific
+// parameters with no upstream analogue — R_f, OCR, p_ref, e_init, e_max —
+// remain editable. `bishopDeriveHsDefaultsForMaterial` was removed; its
+// role is now played by `importBishopMaterialsFromLayers`.
 //
 // Phase 8 ships:
-//   1. `bishopDeriveHsDefaultsForMaterial` (in stage6-bishop.js): derives
-//      HS defaults from an existing material's Emc and soil-type
-//      classification. E50_ref = Emc, Eur_ref = 3·E50, m = 0.5/1.0/0.75
-//      for granular/cohesive/mixed, OCR = 1 (NC).
-//   2. Stage 6 HS panel extension: HS-specific stiffness table + advanced
-//      expander + derived-values display (handled in `legacy-controller.js`).
+//   1. The HS panel inheritance contract (this verifier's Test 0):
+//      `importBishopMaterialsFromLayers` mirrors the layer-level stiffness
+//      fields onto the material's top level, and the `material.hs`
+//      sub-block is reduced to {R_f, OCR, p_ref, e_init, e_max, reserved}.
+//   2. Stage 6 HS panel: inherited-fields read-only display + editable
+//      HS-only block (handled in `legacy-controller.js`).
 //   3. Three benchmark JSON fixtures:
 //        - `hs_drained_footing.json`   (drained strip footing, loose sand)
 //        - `hs_softclay_embankment.json` (uniform embankment loading)
 //        - `hs_oc_excavation.json`    (uniform unload on OC clay)
 //
 // This verifier:
-//   - Validates `bishopDeriveHsDefaultsForMaterial` against the spec defaults
-//     (E50 from Emc, m soil-family dependent, OCR = 1) and exercises the
-//     Jaky / Rowe helpers.
+//   - Validates the HS inheritance contract (top-level material fields
+//     populated from the layer; HS sub-block only HS-only fields) and
+//     exercises the Jaky / Rowe helpers.
 //   - Builds the WASM input for each benchmark fixture, runs the analysis,
 //     and verifies:
 //        a) the analysis runs to completion without throwing,
@@ -48,9 +54,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
-  bishopDeriveHsDefaultsForMaterial,
   bishopHsJakyK0nc,
-  bishopHsRowePhiCvDeg
+  bishopHsRowePhiCvDeg,
+  importBishopMaterialsFromLayers
 } from '../src/lib/cpt-app/stage6-bishop.js';
 import {
   encodeInputBuffer,
@@ -382,40 +388,74 @@ function presetToWasmRegion(bundleId, overrides = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Test 0 — HS material-derivation helpers and Jaky/Rowe sanity
+// Test 0 — HS panel inheritance contract + Jaky/Rowe helpers
 // ---------------------------------------------------------------------------
 
 function testHsDerivationHelpers() {
-  console.log('\n[0/4] HS material-derivation helpers');
+  console.log('\n[0/4] HS panel inheritance contract');
 
-  // bishopDeriveHsDefaultsForMaterial must use Emc as E50_ref and pick a
-  // soil-family-dependent stress-dependency exponent m.
-  const sand = bishopDeriveHsDefaultsForMaterial({ Emc: 15000, sourceType: 'Sand' });
-  assert.equal(sand.E50_ref, 15000, 'sand: E50_ref must equal Emc');
-  assert.equal(sand.Eur_ref, 45000, 'sand: Eur_ref must default to 3 · E50_ref');
-  assert.equal(sand.m, 0.5, 'sand: m must default to 0.5');
-  assert.equal(sand.OCR, 1.0, 'sand: OCR must default to 1.0 (NC)');
-  assert.equal(sand.nu_ur, 0.2, 'sand: ν_ur must default to 0.2');
-  assert.equal(sand.K0_nc, 0, 'sand: K0_nc must default to 0 (Jaky sentinel)');
+  // The HS panel inherits the stiffness block (E50_ref / Eoed_ref / Eur_ref
+  // / m / ν_ur / K0_nc / ψ) from the upstream layer model (CUR 2003-7).
+  // `importBishopMaterialsFromLayers` copies those values onto the material
+  // TOP LEVEL — NOT into material.hs.  The hs sub-block only carries the
+  // genuinely HS-specific fields with no upstream analogue (R_f, OCR,
+  // p_ref, e_init, e_max).
+  const layers = [
+    {
+      type: 'Sand', subtype: 'medium', c: 0, phi: 30, g: 18, gs: 20,
+      Emc: 15000, nu: 0.3, E50_ref: 15000, Eoed_ref: 15000, Eur_ref: 45000,
+      m: 0.5, nu_ur: 0.2, K0nc: 0.5, psi: 0
+    },
+    {
+      type: 'Soft clay', subtype: 'NC', c: 5, phi: 22, g: 16, gs: 18,
+      Emc: 3000, nu: 0.3, E50_ref: 3750, Eoed_ref: 3000, Eur_ref: 11250,
+      m: 1.0, nu_ur: 0.2, K0nc: 0.626, psi: 0
+    }
+  ];
 
-  const clay = bishopDeriveHsDefaultsForMaterial({ Emc: 3000, sourceType: 'Soft clay' });
-  assert.equal(clay.m, 1.0, 'clay: m must default to 1.0');
-  assert.equal(clay.OCR, 1.0, 'clay: OCR must default to 1.0');
+  const materials = importBishopMaterialsFromLayers(layers, [], 'characteristic');
+  assert.equal(materials.length, 2, 'one material per layer');
 
-  const mixed = bishopDeriveHsDefaultsForMaterial({ Emc: 10000, sourceType: 'Sandy clay' });
-  assert.equal(mixed.m, 0.75, 'mixed: m must default to 0.75');
+  const [sand, clay] = materials;
+  // Stiffness fields must live on the material top level.
+  assert.equal(sand.E50_ref, 15000, 'sand: E50_ref inherited at top level');
+  assert.equal(sand.Eoed_ref, 15000, 'sand: Eoed_ref inherited at top level');
+  assert.equal(sand.Eur_ref, 45000, 'sand: Eur_ref inherited at top level');
+  assert.equal(sand.m, 0.5, 'sand: m inherited at top level');
+  assert.equal(sand.nu_ur, 0.2, 'sand: ν_ur inherited at top level');
+  assert.equal(sand.K0nc, 0.5, 'sand: K0nc inherited at top level');
+  assert.equal(clay.m, 1.0, 'clay: m inherited at top level');
+  assert.equal(clay.Eoed_ref, 3000, 'clay: Eoed_ref inherited at top level');
 
-  const unknown = bishopDeriveHsDefaultsForMaterial({ Emc: 5000 });
-  assert.equal(unknown.m, 0.75, 'unknown classification: m must default to 0.75 (mid-range)');
-  assert.equal(unknown.OCR, 1.0, 'unknown classification: OCR must default to 1.0');
+  // HS sub-block must hold ONLY the HS-only parameters.
+  const allowedHsKeys = new Set(['p_ref', 'Rf', 'OCR', 'e_init', 'e_max', 'reserved']);
+  for (const material of materials) {
+    const hs = material.hs || {};
+    for (const key of Object.keys(hs)) {
+      assert.ok(allowedHsKeys.has(key), `${material.label}: material.hs has unexpected key '${key}'; HS sub-block must only carry R_f, OCR, p_ref, e_init, e_max.`);
+    }
+    // HS-only defaults (no upstream analogue).
+    assert.equal(hs.Rf, 0.9, `${material.label}: R_f defaults to 0.9`);
+    assert.equal(hs.OCR, 1.0, `${material.label}: OCR defaults to 1.0 (NC)`);
+    assert.equal(hs.p_ref, 100, `${material.label}: p_ref defaults to 100 kPa`);
+    assert.equal(hs.e_init, -1, `${material.label}: e_init defaults to -1 (disabled)`);
+    assert.equal(hs.e_max, -1, `${material.label}: e_max defaults to -1 (disabled)`);
+    // None of the stiffness fields may leak into hs.
+    assert.equal(hs.E50_ref, undefined, `${material.label}: hs.E50_ref must not be materialised`);
+    assert.equal(hs.Eoed_ref, undefined, `${material.label}: hs.Eoed_ref must not be materialised`);
+    assert.equal(hs.Eur_ref, undefined, `${material.label}: hs.Eur_ref must not be materialised`);
+    assert.equal(hs.m, undefined, `${material.label}: hs.m must not be materialised`);
+    assert.equal(hs.nu_ur, undefined, `${material.label}: hs.nu_ur must not be materialised`);
+    assert.equal(hs.K0_nc, undefined, `${material.label}: hs.K0_nc must not be materialised`);
+  }
 
-  // Jaky and Rowe sanity.
+  // Jaky and Rowe sanity (unchanged — pure helpers still exported).
   const k = bishopHsJakyK0nc(30);
   assert.ok(k > 0.4 && k < 0.6, `bishopHsJakyK0nc(30) ≈ 0.5 (got ${k})`);
   const phiCv = bishopHsRowePhiCvDeg(40, 10);
   assert.ok(phiCv > 25 && phiCv < 40, `bishopHsRowePhiCvDeg(40, 10) in (25, 40) (got ${phiCv})`);
 
-  console.log(`  Derivation helpers verified; Jaky/Rowe sanity OK`);
+  console.log(`  HS inheritance contract verified; Jaky/Rowe helpers OK`);
   console.log('  PASS');
 }
 

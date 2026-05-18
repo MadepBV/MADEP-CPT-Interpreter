@@ -66,8 +66,14 @@ export function prepareMechanicalMaterial(material, warnings = []) {
   const rawComplementarityTolerance = finiteOrNull(material?.activeSetComplementarityTolerance);
   const rawEigenSubspaceTolerance = finiteOrNull(material?.eigenSubspaceTolerance);
   const hsSource = material?.hs && typeof material.hs === 'object' ? material.hs : {};
+  // HS stiffness fields (E50_ref / Eoed_ref / Eur_ref / m / ν_ur / K0_nc)
+  // live on the material top-level — inherited from the upstream layer
+  // classification (CUR 2003-7).  The HS sub-block holds only the
+  // HS-specific R_f / OCR / p_ref / e_init / e_max.  Material top-level
+  // wins; we keep the hs.* fallback so older fixtures and verifiers that
+  // populate the legacy hs.E50_ref shape still resolve correctly.
   const hsValue = (name, fallback = 0) => {
-    const numeric = Number(hsSource[name] ?? material?.[name]);
+    const numeric = Number(material?.[name] ?? hsSource[name]);
     return Number.isFinite(numeric) ? numeric : fallback;
   };
   const hsE50Ref = Math.max(hsValue('E50_ref', Emc), 1);

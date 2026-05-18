@@ -10,7 +10,6 @@ import {
   stage6Constants
 } from './stage6-engineering';
 import {
-  bishopDeriveHsDefaultsForMaterial,
   bishopHsJakyK0nc,
   bishopHsRowePhiCvDeg,
   bishopLayerSignature,
@@ -6204,21 +6203,42 @@ function stage6BishopSyncSoilModel(){
     if(!Number.isFinite(Number(material?.rShear))){
       material.rShear = Number.isFinite(Number(layer?.rShear)) ? Number(layer.rShear) : 0.25;
     }
+    // The HS stiffness fields (E50_ref / Eoed_ref / Eur_ref / m / ν_ur) and
+    // the cohesion/friction-derived K0_nc + ψ are computed upstream in
+    // `hsParams` per CUR 2003-7 / SB260-21-6.4.10 (cohesion-corrected
+    // formula + binary stress-exponent default, with Stage 5 m-fit
+    // overrides).  Mirror them onto the bishop material on every sync so
+    // toggling alphaMethod / stiffMethod / m_ovr upstream is reflected
+    // without requiring a full layer-signature rebuild.
+    const fallbackE50 = Number(material.Emc) || 1000;
+    material.E50_ref = Number(layer?.E50_ref) || fallbackE50;
+    material.Eoed_ref = Number(layer?.Eoed_ref) || material.E50_ref;
+    material.Eur_ref = Number(layer?.Eur_ref) || 3 * material.E50_ref;
+    material.m = Math.min(Math.max(Number.isFinite(Number(layer?.m)) ? Number(layer.m) : 0.5, 0), 1);
+    material.nu_ur = Math.min(Math.max(Number.isFinite(Number(layer?.nu_ur)) ? Number(layer.nu_ur) : 0.2, -0.99), 0.49);
+    if(Number.isFinite(Number(layer?.K0nc))) material.K0nc = Number(layer.K0nc);
+    if(Number.isFinite(Number(layer?.psi))) material.psi = Number(layer.psi);
+    // HS-only sub-block: parameters with no upstream analogue. Only these
+    // are editable from the HS panel; the inherited block above is
+    // read-only (engineer edits them via the Stage 5 layer / material
+    // editor).
     if(!material.hs || typeof material.hs !== 'object') material.hs = {};
     const hs = material.hs;
-    const fallbackE50 = Number(layer?.E50_ref) || Number(material.Emc) || 1000;
-    if(!(Number(hs.E50_ref) > 0)) hs.E50_ref = fallbackE50;
-    if(!(Number(hs.Eoed_ref) > 0)) hs.Eoed_ref = Number(layer?.Eoed_ref) || fallbackE50;
-    if(!(Number(hs.Eur_ref) > 0)) hs.Eur_ref = Number(layer?.Eur_ref) || 3 * fallbackE50;
-    hs.m = Math.min(Math.max(Number.isFinite(Number(hs.m)) ? Number(hs.m) : Number(layer?.m) || 0.5, 0), 1);
-    hs.nu_ur = Math.min(Math.max(Number.isFinite(Number(hs.nu_ur)) ? Number(hs.nu_ur) : Number(layer?.nu_ur) || 0.2, -0.99), 0.49);
     hs.p_ref = Math.max(Number(hs.p_ref) || 100, 1e-6);
     hs.Rf = Math.min(Math.max(Number.isFinite(Number(hs.Rf)) ? Number(hs.Rf) : 0.9, 1e-6), 0.999999);
-    hs.K0_nc = Math.max(Number.isFinite(Number(hs.K0_nc)) ? Number(hs.K0_nc) : Number(layer?.K0nc) || 0, 0);
     hs.e_init = Number.isFinite(Number(hs.e_init)) ? Number(hs.e_init) : -1;
     hs.e_max = Number.isFinite(Number(hs.e_max)) ? Number(hs.e_max) : -1;
     hs.OCR = Math.max(Number(hs.OCR) || 1, 1e-6);
     hs.reserved = 0;
+    // Strip legacy stiffness fields that may linger on an existing
+    // material.hs from older project files — they now live at the
+    // material's top level.
+    if('E50_ref' in hs) delete hs.E50_ref;
+    if('Eoed_ref' in hs) delete hs.Eoed_ref;
+    if('Eur_ref' in hs) delete hs.Eur_ref;
+    if('m' in hs) delete hs.m;
+    if('nu_ur' in hs) delete hs.nu_ur;
+    if('K0_nc' in hs) delete hs.K0_nc;
   });
   if(!Array.isArray(bishop.customRegions)) bishop.customRegions = [];
   bishop.useCustomRegions = !!bishop.useCustomRegions;
@@ -6762,28 +6782,22 @@ function stage6BishopSetMaterialField(index, field, value){
   renderStage6();
 }
 
+// Editable HS-only field names. The stiffness block (E50_ref / Eoed_ref /
+// Eur_ref / m / ν_ur / K0_nc) is inherited from the upstream layer model
+// (see `hsParams` and `stage6WorkingLayers`) and is NOT user-editable from
+// the HS panel — engineers edit those by editing the parent layer or
+// material parameters in Stage 5.
+const STAGE6_BISHOP_EDITABLE_HS_FIELDS = new Set(['p_ref', 'Rf', 'OCR', 'e_init', 'e_max']);
+
 function stage6BishopSetMaterialHsField(index, field, value){
   ensureStage6State();
   stage6BishopSyncSoilModel();
   const material = S.stage6.bishop.materials?.[index];
   if(!material) return;
+  if(!STAGE6_BISHOP_EDITABLE_HS_FIELDS.has(field)) return;
   if(!material.hs || typeof material.hs !== 'object') material.hs = {};
   material.hs[field] = value === '' || value == null ? null : +value;
   stage6BishopInvalidate('Hardening Soil material properties updated; rerun deformation analysis.');
-  renderStage6();
-}
-
-function stage6BishopAutoFillHsMaterial(index){
-  // Derive a sensible HS-specific block from the material's already-edited
-  // strength/elastic fields (Emc, sourceType). Does NOT touch c'/φ'/ψ'/γ —
-  // those stay shared with MC. The user can refine the resulting fields in
-  // the HS table afterwards.
-  ensureStage6State();
-  stage6BishopSyncSoilModel();
-  const material = S.stage6.bishop.materials?.[index];
-  if(!material) return;
-  material.hs = bishopDeriveHsDefaultsForMaterial(material);
-  stage6BishopInvalidate('Hardening Soil parameters auto-filled from material; rerun deformation analysis.');
   renderStage6();
 }
 
@@ -13209,92 +13223,107 @@ function renderStage6BishopApp(){
       <td><input type="number" step="1" min="0" value="${Number(mat.psiEffDeg ?? mat.psi ?? 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'psi', this.value)"></td>
     </tr>
   `).join('');
-  const hsMaterialRows = (bishop.materials || []).map((mat, index)=>{
-    const hs = mat.hs || {};
+  // ── Hardening Soil panel ────────────────────────────────────────────
+  // The HS stiffness parameters (E50_ref / Eoed_ref / Eur_ref / m / ν_ur)
+  // and the cohesion / friction-derived K0_nc + ψ are computed UPSTREAM in
+  // `hsParams` per CUR 2003-7 / SB260-21-6.4.10 / Schanz, Vermeer &
+  // Bonnier (1999).  The HS panel therefore renders them as read-only
+  // inherited rows; engineers edit them via the Stage 5 layer / material
+  // editor (alphaMethod, stiffMethod, m_ovr, nu_ovr, ...).
+  //
+  // Only the genuinely HS-specific parameters — those with NO upstream
+  // analogue — remain editable in this panel:
+  //   - R_f   (failure ratio, default 0.9)
+  //   - OCR   (over-consolidation, default 1 NC)
+  //   - p_ref (reference pressure, default 100 kPa)
+  //   - e_init, e_max (dilatancy cutoff, default -1 = disabled)
+  const hsInheritedRows = (bishop.materials || []).map((mat)=>{
+    const phi = Number(mat.phiEffDeg ?? 0);
+    const k0ncInherited = Number(mat.K0nc);
+    const k0ncDisplay = Number.isFinite(k0ncInherited) && k0ncInherited > 0
+      ? k0ncInherited
+      : bishopHsJakyK0nc(phi);
+    const k0ncBadge = Number.isFinite(k0ncInherited) && k0ncInherited > 0
+      ? ''
+      : ' <span class="st6-help" style="font-size:0.85em">(Jaky)</span>';
+    const psi = Number(mat.psi ?? 0);
     return `
       <tr>
-        <td>
-          ${stage6EscAttr(mat.label)}<br>
-          <button class="btn sm" onclick="stage6BishopAutoFillHsMaterial(${index})" title="Re-derive HS-specific defaults from this material's Emc and soil type">Auto-fill from material</button>
-        </td>
-        <td><input type="number" step="100" min="1" value="${Number(hs.E50_ref || mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'E50_ref', this.value)"></td>
-        <td><input type="number" step="100" min="1" value="${Number(hs.Eoed_ref || hs.E50_ref || mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Eoed_ref', this.value)"></td>
-        <td><input type="number" step="100" min="1" value="${Number(hs.Eur_ref || 3 * (hs.E50_ref || mat.Emc || 0)).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Eur_ref', this.value)"></td>
-        <td><input type="number" step="0.05" min="0" max="1" value="${Number(hs.m ?? 0.5).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'm', this.value)"></td>
-        <td><input type="number" step="0.01" min="0.01" max="0.499" value="${Number(hs.nu_ur ?? 0.2).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'nu_ur', this.value)"></td>
-        <td><input type="number" step="0.01" min="0.01" max="0.999" value="${Number(hs.Rf ?? 0.9).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Rf', this.value)"></td>
-        <td><input type="number" step="0.1" min="1" value="${Number(hs.OCR ?? 1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'OCR', this.value)" title="Over-consolidation ratio (1 = normally consolidated)"></td>
+        <td>${stage6EscAttr(mat.label)}</td>
+        <td>${Number(mat.E50_ref || mat.Emc || 0).toLocaleString()}</td>
+        <td>${Number(mat.Eoed_ref || mat.E50_ref || mat.Emc || 0).toLocaleString()}</td>
+        <td>${Number(mat.Eur_ref || 3 * (mat.E50_ref || mat.Emc || 0)).toLocaleString()}</td>
+        <td>${Number(mat.m ?? 0.5).toFixed(2)}</td>
+        <td>${Number(mat.nu_ur ?? 0.2).toFixed(2)}</td>
+        <td>${k0ncDisplay.toFixed(3)}${k0ncBadge}</td>
+        <td>${Number.isFinite(psi) ? psi.toFixed(1) + '°' : '—'}</td>
       </tr>
     `;
   }).join('');
-  const hsAdvancedRows = (bishop.materials || []).map((mat, index)=>{
+  const hsEditableRows = (bishop.materials || []).map((mat, index)=>{
     const hs = mat.hs || {};
     return `
       <tr>
         <td>${stage6EscAttr(mat.label)}</td>
+        <td><input type="number" step="0.01" min="0.01" max="0.999" value="${Number(hs.Rf ?? 0.9).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Rf', this.value)"></td>
+        <td><input type="number" step="0.1" min="1" value="${Number(hs.OCR ?? 1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'OCR', this.value)" title="Over-consolidation ratio (1 = normally consolidated)"></td>
         <td><input type="number" step="5" min="1" value="${Number(hs.p_ref ?? 100).toFixed(1)}" onchange="stage6BishopSetMaterialHsField(${index}, 'p_ref', this.value)"></td>
-        <td><input type="number" step="0.01" min="0" max="0.99" value="${Number(hs.K0_nc ?? 0).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'K0_nc', this.value)" title="0 = compute via Jaky"></td>
         <td><input type="number" step="0.01" value="${Number(hs.e_init ?? -1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'e_init', this.value)" title="-1 = disabled"></td>
         <td><input type="number" step="0.01" value="${Number(hs.e_max ?? -1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'e_max', this.value)" title="-1 = disabled"></td>
       </tr>
     `;
   }).join('');
   const hsDerivedRows = (bishop.materials || []).map((mat)=>{
-    const hs = mat.hs || {};
     const phi = Number(mat.phiEffDeg ?? 0);
     const psi = Number(mat.psiEffDeg ?? mat.psi ?? 0);
     const phiCv = bishopHsRowePhiCvDeg(phi, psi);
-    const k0ncInput = Number(hs.K0_nc ?? 0);
-    const k0ncEff = k0ncInput > 0 ? k0ncInput : bishopHsJakyK0nc(phi);
     return `
       <tr>
         <td>${stage6EscAttr(mat.label)}</td>
         <td>${Number.isFinite(phiCv) ? phiCv.toFixed(2) + '°' : '—'}</td>
-        <td>${Number.isFinite(k0ncEff) ? k0ncEff.toFixed(3) : '—'}${k0ncInput > 0 ? '' : ' <span class="st6-help" style="font-size:0.85em">(Jaky)</span>'}</td>
       </tr>
     `;
   }).join('');
   const hsMaterialWarnings = (bishop.materials || []).flatMap((mat)=>{
     const hs = mat.hs || {};
     const warnings = [];
-    const E50 = Number(hs.E50_ref);
-    const Eur = Number(hs.Eur_ref);
-    const m = Number(hs.m);
-    const nuUr = Number(hs.nu_ur);
+    const E50 = Number(mat.E50_ref);
+    const Eur = Number(mat.Eur_ref);
+    const m = Number(mat.m);
+    const nuUr = Number(mat.nu_ur);
     const Rf = Number(hs.Rf);
-    const K0nc = Number(hs.K0_nc);
+    const K0nc = Number(mat.K0nc);
     const OCR = Number(hs.OCR);
-    if(Number.isFinite(E50) && Number.isFinite(Eur) && Eur < E50) warnings.push(`${mat.label}: Eur_ref (${Eur}) should be >= E50_ref (${E50}).`);
-    if(Number.isFinite(m) && (m < 0 || m > 1)) warnings.push(`${mat.label}: m (${m}) should stay between 0 and 1.`);
+    if(Number.isFinite(E50) && Number.isFinite(Eur) && Eur < E50) warnings.push(`${mat.label}: Eur_ref (${Eur}) should be >= E50_ref (${E50}); upstream layer / stiffness method may need review.`);
+    if(Number.isFinite(m) && (m < 0 || m > 1)) warnings.push(`${mat.label}: m (${m}) should stay between 0 and 1; upstream layer m override may need review.`);
     if(Number.isFinite(Rf) && (Rf < 0 || Rf >= 1)) warnings.push(`${mat.label}: Rf (${Rf}) should stay in [0, 1).`);
     if(Number.isFinite(nuUr) && (nuUr <= 0 || nuUr >= 0.5)) warnings.push(`${mat.label}: ν_ur (${nuUr}) should stay strictly between 0 and 0.5.`);
     if(Number.isFinite(OCR) && OCR < 1) warnings.push(`${mat.label}: OCR (${OCR}) should typically be >= 1; values below 1 are non-physical for in-situ soils.`);
-    if(Number.isFinite(K0nc) && (K0nc < 0 || K0nc >= 1)) warnings.push(`${mat.label}: K0_nc (${K0nc}) should stay between 0 and 1; use 0 only as the Jaky sentinel.`);
+    if(Number.isFinite(K0nc) && (K0nc < 0 || K0nc >= 1)) warnings.push(`${mat.label}: K0_nc (${K0nc}) should stay between 0 and 1; check upstream φ' value.`);
     return warnings;
   });
   const hsMaterialTableHtml = deformationUsesHardeningSoil ? `
-    <div class="st6-help">Hardening Soil: the strength fields (c', φ', ψ', γ, γ_sat) are inherited from the deformation-material editor above. Edit only the HS-specific stiffness fields below; press "Auto-fill from material" to re-derive sensible defaults from the material's Emc and soil type. OCR defaults to 1 (normally consolidated). The "Advanced" expander exposes p_ref, K0_nc and void-ratio cutoffs; the derived block shows φ_cv and the K0_nc actually used by the solver.</div>
+    <div class="st6-help">Hardening Soil parameters. The strength (c', φ', ψ', γ, γ_sat) and stiffness (E50_ref, Eoed_ref, Eur_ref, m, ν_ur, K0_nc) blocks are inherited from the layer / material classification per CUR 2003-7 (binary stress exponent m, cohesion-corrected reference stiffness, Jaky K0_nc) and the deformation-material editor above. To change them, edit the parent layer or material in Stage 5. Only the HS-specific knobs — R_f, OCR, p_ref, e_init, e_max — are editable here.</div>
     ${hsMaterialWarnings.length ? `<div class="warn">${hsMaterialWarnings.map(stage6EscAttr).join('<br>')}</div>` : ''}
+    <div class="st6-help" style="margin-top:6px"><strong>Inherited from layer / material (read-only)</strong></div>
     <div style="overflow:auto">
-      <table class="tbl st6-bishop-materials st6-bishop-materials--deformation">
-        <thead><tr><th>Layer</th><th>E50_ref</th><th>Eoed_ref</th><th>Eur_ref</th><th>m</th><th>ν_ur</th><th>Rf</th><th>OCR</th></tr></thead>
-        <tbody>${hsMaterialRows}</tbody>
+      <table class="tbl st6-bishop-materials st6-bishop-materials--hs-inherited">
+        <thead><tr><th>Layer</th><th>E50_ref (kPa)</th><th>Eoed_ref (kPa)</th><th>Eur_ref (kPa)</th><th>m</th><th>ν_ur</th><th>K0_nc</th><th>ψ</th></tr></thead>
+        <tbody>${hsInheritedRows}</tbody>
       </table>
     </div>
-    <details class="st6-hs-advanced">
-      <summary>Advanced parameters (p_ref, K0_nc, void-ratio cutoffs)</summary>
-      <div style="overflow:auto">
-        <table class="tbl st6-bishop-materials st6-bishop-materials--hs-advanced">
-          <thead><tr><th>Layer</th><th>p_ref (kPa)</th><th>K0_nc (0=Jaky)</th><th>e_init (-1=off)</th><th>e_max (-1=off)</th></tr></thead>
-          <tbody>${hsAdvancedRows}</tbody>
-        </table>
-      </div>
-    </details>
-    <details class="st6-hs-derived" open>
-      <summary>Derived values (read-only, computed at material setup)</summary>
+    <div class="st6-help" style="margin-top:6px"><strong>HS-specific (editable)</strong></div>
+    <div style="overflow:auto">
+      <table class="tbl st6-bishop-materials st6-bishop-materials--hs-editable">
+        <thead><tr><th>Layer</th><th>R_f</th><th>OCR</th><th>p_ref (kPa)</th><th>e_init (-1=off)</th><th>e_max (-1=off)</th></tr></thead>
+        <tbody>${hsEditableRows}</tbody>
+      </table>
+    </div>
+    <details class="st6-hs-derived">
+      <summary>Derived values (read-only, computed inside the constitutive update)</summary>
       <div style="overflow:auto">
         <table class="tbl st6-bishop-materials st6-bishop-materials--hs-derived">
-          <thead><tr><th>Layer</th><th>φ_cv (inverse Rowe)</th><th>K0_nc (effective)</th></tr></thead>
+          <thead><tr><th>Layer</th><th>φ_cv (inverse Rowe)</th></tr></thead>
           <tbody>${hsDerivedRows}</tbody>
         </table>
       </div>
@@ -16655,7 +16684,6 @@ const legacyApi={
   stage6BishopClear,
   stage6BishopSetMaterialField,
   stage6BishopSetMaterialHsField,
-  stage6BishopAutoFillHsMaterial,
   stage6BishopSetMaterialPermeability,
   stage6BishopResetMaterialPermeability,
   stage6BishopSetWallField,
