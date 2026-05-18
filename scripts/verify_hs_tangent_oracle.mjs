@@ -45,6 +45,17 @@
 //     convergence.  Phase 7's GMRES dispatch consumes the unsymmetric
 //     analytic / FD tangents on plastic HS steps.
 //
+// Phase 10 documentation contract (docs/features/hardening-soil-fix.md
+// §Phase 10 + theory-fix §10): the 0.35 cone/corner tolerance is the
+// production envelope — it reflects the continuum-vs-Simo-Hughes
+// algorithmic tangent gap and the chosen Phase 6 implementation.
+// Tightening it requires the full consistent algorithmic tangent
+// (Simo-Hughes Box 4.3 with σ_3-derivative terms on E_50 / E_ur / q_a),
+// which is flagged as future work in the spec.  Future implementers
+// should NOT loosen the tolerance further; if the analytic tangent
+// grows beyond 0.35 the FD oracle fallback in
+// `material_hs::fd_algorithmic_tangent` should be the answer.
+//
 // Pure tension (active set 4) and mixed-tension states (5/6/7) are not in
 // scope for this oracle: tension keeps D_e (Phase 6D defers analytic
 // Rankine), and mixed-tension USES the FD oracle in production — so an

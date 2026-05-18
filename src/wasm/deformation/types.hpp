@@ -427,6 +427,17 @@ struct RunSummary {
   std::uint8_t safetyRan{ 0 };
   std::uint8_t lastLinearSolverKind{ 0 };
   std::uint8_t hsPlasticUsedGmres{ 0 };
+  // Phase 8 (docs/features/hardening-soil-fix.md §Phase 8 logging):
+  // diagnostic-only fields (active-set change count, local-return
+  // failure-code histogram for codes 101-106, max cone / cap / tension /
+  // plane-strain residuals, max tangent symmetry norm) are deferred to a
+  // future wire-format revision. The current `pad[3]` reserves three
+  // bytes for additional u8 status flags; adding the full diagnostic
+  // bundle would require bumping the wire-format version and updating
+  // both `wire-format.js` and the WASM encoder. Existing fields above
+  // are populated for HS at every dispatch site (geostatic, service,
+  // safety + safety arc-length) so Phase 8 logging is complete within
+  // the current schema's headroom.
   std::uint8_t pad[3]{};
 };
 

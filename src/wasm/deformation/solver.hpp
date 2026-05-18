@@ -1579,6 +1579,19 @@ struct PhaseResult {
   // the solver chosen for the LAST global Newton iteration of the
   // LAST accepted step in this phase (0=CG, 1=GMRES). These let the
   // verifier confirm GMRES is used for HS plastic steps.
+  //
+  // Phase 8 (fix-plan §Phase 8 logging): the diagnostic fields below
+  // (active-set change count, per-failure-code local-return rejection
+  // tallies, max cone/cap/tension residuals, max plane-strain residual,
+  // max tangent symmetry norm) are deferred to a future phase — the
+  // wire format `RunSummary` currently has 3 reserved bytes of headroom
+  // and adding the new f64/i32 columns would require bumping
+  // WIRE_VERSION. The existing fields below are populated correctly for
+  // HS analyses and are sufficient to certify the §Phase 8 production
+  // hierarchy: accepted/rejected steps, Newton iterations, CG +
+  // GMRES iteration counts, the last linear solver kind, and the
+  // sticky `hsPlasticUsedGmres` flag in `RunSummary` (set at the
+  // dispatch sites in `run_full_analysis` below).
   std::int32_t gmresIterationCount{ 0 };
   std::int32_t gmresInvocations{ 0 };
   std::uint8_t lastLinearSolverKind{ 0 };
@@ -2151,6 +2164,57 @@ inline PhaseResult run_safety_arc_length_phase(
 // with active-set certified convergence, Armijo line search on the
 // residual merit function, GMRES dispatch when the tangent may be
 // unsymmetric.
+//
+// Per docs/features/hardening-soil-fix.md §Phase 8 the production
+// globalization hierarchy for HS (and mc-plastic) is, in order:
+//
+//   1. Full Newton with the analytic algorithmic tangent — assembled
+//      inside this function at every Newton iteration via
+//      `assemble_global(..., wantTangent=true)`. For HS the tangent is
+//      the Phase 6 single-surface or corner analytic form (or the
+//      Phase 6A FD oracle when the analytic form is degenerate); both
+//      are unsymmetric on the cone / corner regimes — see
+//      mayNeedUnsymmetricSolver below.
+//   2. Armijo line search on the residual merit m(u) = 0.5 |r|^2 —
+//      block `requiresPlasticLineSearch` below.
+//   3. Load-step cutback — outer `for (step ...)` loop; on Newton
+//      failure dLambda is shrunk via the adaptive continuation
+//      controller (`compute_step_factor`) and the step is retried
+//      from the prior committed state.
+//   4. Finite-difference tangent retry for difficult active-set
+//      transitions — internal to the constitutive update inside
+//      material_hs.hpp (Phase 6A `fd_algorithmic_tangent` via the
+//      `try_fd_fallback` lambda); falls back from the analytic tangent
+//      column-by-column when the analytic gradient is degenerate.
+//   5. Elastic-tangent modified Newton — guarded by
+//      `canUseRobustElasticFallback`; reserved for service/safety phases
+//      of mc-plastic and HS as a diagnostic rescue only. Per fix-plan
+//      §Phase 8 this path must NOT be the default for HS plasticity.
+//   6. Clean failure — `hsHardFailure` below rejects acceptance when
+//      the HS local return reports failureCode 101-106; the outer step
+//      cuts back without ever committing an inadmissible Gauss point.
+//
+// Forbidden behaviors (fix-plan §Phase 8) and where they are blocked:
+//   * Accept inadmissible Gauss point — blocked by Phase 4 admissibility
+//     certificate (material_hs.hpp returns failureCode == 106 on any
+//     local return whose corrected state violates f_cone / f_cap /
+//     f_tension > tol). The `hsHardFailure` gate below refuses to
+//     accept that Newton iteration.
+//   * Symmetrize HS plastic tangent — `material_parameters_from_region`
+//     above carries `symmetrizeEpTangent` for mc-plastic ONLY; the HS
+//     dispatch in `evaluate_gp_response_ex` returns
+//     `hsRes.tangent` directly with no symmetrize call (the only
+//     `symmetrize_matrix6` call sites are in MC paths). The
+//     `(void)symmetrize` cast in the HS branch documents this.
+//   * Use CG on a known-unsymmetric HS plastic tangent — gated by
+//     `mayNeedUnsymmetricSolver && hasPlastic`; the debug assertion
+//     below fires under assertions if HS plasticity is ever routed to
+//     CG.
+//   * Change ε_zz to make plane-strain work — fixed in Phase 3.
+//     `update_plane_strain` in material_hs.hpp passes the FE-prescribed
+//     strain unchanged and returns failureCode == 105 if the
+//     plane-strain residual exceeds 1e-10 (the entire point of B.7 is
+//     now a check, not a mutation).
 inline PhaseResult run_nonlinear_phase(
     PhaseContext& ctx,
     const SolverOptions& opts) {

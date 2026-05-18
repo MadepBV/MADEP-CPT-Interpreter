@@ -250,6 +250,90 @@ function zeroVec6() { return [0, 0, 0, 0, 0, 0]; }
 function copyVec6(v) { return v.slice(); }
 
 // ---------------------------------------------------------------------------
+// Phase 4 admissibility certificate — JS-side evaluation. Mirrors
+// `material_hs::evaluate_admissibility_cert` (the C++ side enforces this
+// internally and surfaces failureCode == 106 on violation; we mirror it
+// here so the JS verifier can assert it independently on every accepted
+// Gauss point per docs/features/hardening-soil-fix.md §Phase 9 #1).
+//
+// The certificate computes the three yield-surface values at the
+// corrected stress / state and checks each against a scaled tolerance.
+//   f_cone   = q̃ - (2 sinφ / (1-sinφ)) · (p' + p_t) · 1, regularised
+//              by the hyperbolic γ^p curve (we use the simpler check
+//              f^s ≤ 0 ⇒ q ≤ q_f).
+//   f_cap    = q̃²/M_cap² + (p'+p_t)² - (p_p+p_t)²
+//   f_tension = σ_3 + σ_T  (compression-positive σ_3; violation when negative)
+//
+// "scaled tolerance" matches the C++-side tolerance scaling (a multiple
+// of max stress magnitude with a hard floor) so the certificate is
+// dimensionally consistent across the loading path.
+// ---------------------------------------------------------------------------
+function principalsFromCompressivePositiveDiag(sxx, syy, szz) {
+  // For a diagonal compression-positive stress tensor (no shear), the
+  // principals are just the sorted diagonal. The K0 path here keeps the
+  // diagonal-only structure so this is sufficient. Sort descending
+  // (s1 ≥ s2 ≥ s3 in compression-positive).
+  const arr = [sxx, syy, szz].sort((a, b) => b - a);
+  return { s1: arr[0], s2: arr[1], s3: arr[2] };
+}
+
+function admissibilityCert({ stressVoigt, gammaP, pP, region, M_cap, sin_phi_cv }) {
+  // stressVoigt is codebase Voigt (tension-positive). Convert to
+  // compression-positive principals for the cone / cap / tension checks
+  // (the K0 path has no shear, so the diagonals are the principals).
+  const sxx_c = -stressVoigt[V_XX];
+  const syy_c = -stressVoigt[V_YY];
+  const szz_c = -stressVoigt[V_ZZ];
+  const { s1, s3 } = principalsFromCompressivePositiveDiag(sxx_c, syy_c, szz_c);
+  const phiRad = (region.phiDeg * Math.PI) / 180;
+  const sphi = Math.sin(phiRad);
+  const cphi = Math.cos(phiRad);
+  const c = Math.max(region.cEff, 0);
+  const p_t = c * (cphi / Math.max(sphi, 1e-12));
+  // Cone: f^s = q - q_f, where q_f is the MC failure deviator at σ_3.
+  // q in compression-positive principals = s1 - s3. The cone yield in
+  // HS is regularised by the γ^p hyperbolic curve; the underlying
+  // admissibility condition (failure envelope) is q ≤ q_f.
+  const q = Math.max(s1 - s3, 0);
+  const q_f = (c * (cphi / Math.max(sphi, 1e-12)) + s3) * (2 * sphi) / Math.max(1 - sphi, 1e-9);
+  const f_cone = q - q_f;
+  // Cap: q̃²/M² + (p'+p_t)² ≤ (p_p+p_t)².
+  const delta_w = (3 + sphi) / (3 - sphi);
+  // q̃ depends on the principal ordering; for the K0 diagonal state with
+  // σ_yy as the major compressive component, q̃ = σ_yy + (δ_w - 1)·σ_h
+  //   - δ_w·σ_h is the spec form. Use the safe diagonal form via the
+  // sorted principals: q̃ = s1 + (δ_w - 1)·s2 - δ_w·s3 (Phase 3 spec).
+  const { s1: q1, s2: q2, s3: q3 } = principalsFromCompressivePositiveDiag(sxx_c, syy_c, szz_c);
+  const q_tilde = q1 + (delta_w - 1) * q2 - delta_w * q3;
+  const p_prime = (sxx_c + syy_c + szz_c) / 3;
+  const f_cap = (q_tilde * q_tilde) / Math.max(M_cap * M_cap, 1e-12)
+              + (p_prime + p_t) * (p_prime + p_t)
+              - (pP + p_t) * (pP + p_t);
+  // Tension: σ_3 < -σ_T ⇒ violation. We use the convention f_tension > 0
+  // means violated (consistent with f_cone / f_cap).
+  const sigma_T = Math.max(region.sigmaTAllow || 0, 0);
+  const f_tension = -s3 - sigma_T;  // s3 in compression-positive; tension violation when s3 < -σ_T
+
+  const maxAbsStress = Math.max(
+    Math.abs(stressVoigt[V_XX]), Math.abs(stressVoigt[V_YY]),
+    Math.abs(stressVoigt[V_ZZ]), Math.abs(stressVoigt[V_XY]),
+    Math.abs(stressVoigt[V_YZ]), Math.abs(stressVoigt[V_XZ]));
+  // Scaled tolerance: matches the C++-side regime (relative to stress
+  // magnitude with a hard floor and a generous slack on the corner
+  // regime — the principal-frame return rounds q_tilde at the sub-kPa
+  // level).
+  const tol = Math.max(1e-3 * Math.max(maxAbsStress, 1), 1e-6);
+  return {
+    f_cone, f_cap, f_tension,
+    cone_ok: f_cone <= tol,
+    cap_ok: f_cap <= tol * Math.max(pP + p_t, 1),
+    tension_ok: f_tension <= tol,
+    tol,
+    s1, s3, q, q_f, p_prime, q_tilde
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Helper: build the NC seed state. Returns the K0-consistent stress and the
 // p_p value that puts the cap exactly on its yield surface.
 // ---------------------------------------------------------------------------
@@ -317,6 +401,14 @@ function coneZeroGammaP(region, sigma_v, K0) {
 // ---------------------------------------------------------------------------
 async function k0Run(mod, region, sigma_v_start, sigma_v_end, n_steps, opts = {}) {
   const initialGammaP = opts.initialGammaP ?? 0;
+  // Phase 9 #1 — admissibility-certificate assertion harness. Every
+  // accepted Gauss point's corrected stress is fed through the JS-side
+  // certificate; on violation, the test fails. Tracks the worst-case
+  // values for the run summary.
+  const certWorst = {
+    f_cone: -Infinity, f_cap: -Infinity, f_tension: -Infinity,
+    sigma_v_at_worst: 0
+  };
 
   // Warmup to compute reference constants.
   const probe = await runHsMaterialPoint(mod, encodeHsInput({
@@ -434,6 +526,41 @@ async function k0Run(mod, region, sigma_v_start, sigma_v_end, n_steps, opts = {}
     };
     sigma_v_current = sigma_v_target;
     activeSurfacesSeen.add(result.activeSurface);
+
+    // Phase 9 #1 — admissibility certificate. Per
+    // docs/features/hardening-soil-fix.md §Phase 9 (Local Return
+    // Certificate Test): every accepted GP must satisfy
+    //   f_cone   ≤ tol
+    //   f_cap    ≤ tol
+    //   f_tension ≤ tol
+    // The certificate uses scaled tolerances (multiples of max stress
+    // magnitude). The C++ side enforces this internally and surfaces
+    // failureCode == 106 on violation; this assertion is the
+    // independent JS-side audit per the fix plan.
+    const cert = admissibilityCert({
+      stressVoigt: stress,
+      gammaP: state.gamma_p,
+      pP: state.p_p,
+      region,
+      M_cap,
+      sin_phi_cv
+    });
+    if (cert.f_cone > certWorst.f_cone) {
+      certWorst.f_cone = cert.f_cone;
+      certWorst.sigma_v_at_worst = -stress[V_YY];
+    }
+    if (cert.f_cap > certWorst.f_cap) certWorst.f_cap = cert.f_cap;
+    if (cert.f_tension > certWorst.f_tension) certWorst.f_tension = cert.f_tension;
+    assert.ok(cert.cone_ok,
+      `Admissibility cert: f_cone = ${cert.f_cone.toExponential(3)} > tol ${cert.tol.toExponential(3)} ` +
+      `at σ_v=${(-stress[V_YY]).toFixed(2)}; activeSurface=${result.activeSurface}, q=${cert.q.toFixed(2)}, q_f=${cert.q_f.toFixed(2)}`);
+    assert.ok(cert.cap_ok,
+      `Admissibility cert: f_cap = ${cert.f_cap.toExponential(3)} > tol at σ_v=${(-stress[V_YY]).toFixed(2)}; ` +
+      `q̃=${cert.q_tilde.toFixed(2)}, p'=${cert.p_prime.toFixed(2)}, p_p=${state.p_p.toFixed(2)}`);
+    assert.ok(cert.tension_ok,
+      `Admissibility cert: f_tension = ${cert.f_tension.toExponential(3)} > tol at σ_v=${(-stress[V_YY]).toFixed(2)}; ` +
+      `σ_3_compressive=${cert.s3.toFixed(2)}, σ_T=${(region.sigmaTAllow || 0).toFixed(2)}`);
+
     points.push({
       sigma_v: -stress[V_YY],
       sigma_h: -stress[V_XX],
@@ -447,7 +574,7 @@ async function k0Run(mod, region, sigma_v_start, sigma_v_end, n_steps, opts = {}
     });
   }
 
-  return { points, M_cap, H_cap, sin_phi_cv, activeSurfacesSeen };
+  return { points, M_cap, H_cap, sin_phi_cv, activeSurfacesSeen, certWorst };
 }
 
 // ---------------------------------------------------------------------------
@@ -511,6 +638,13 @@ async function k0GranularD4(mod) {
     );
   }
   console.log(`  D.4 max |K0 - K0_target| = ${maxRatioErr.toExponential(3)} at σ_v=${worstSigma.toFixed(1)} kPa`);
+  console.log(
+    `  Admissibility cert worst (over ${run.points.length} accepted GPs): ` +
+    `f_cone=${run.certWorst.f_cone.toExponential(2)} ` +
+    `f_cap=${run.certWorst.f_cap.toExponential(2)} ` +
+    `f_tension=${run.certWorst.f_tension.toExponential(2)} ` +
+    `at σ_v=${run.certWorst.sigma_v_at_worst.toFixed(1)} kPa`
+  );
   // Verify corner regime engaged at some point (activeSurface == 3 OR
   // lastActiveSet that was previously 3) — the corner Newton is the
   // physically correct dispatch for the NC K0 path.
@@ -580,6 +714,13 @@ async function k0DenseSand(mod) {
     );
   }
   console.log(`  Dense-sand K0 max ratio error = ${maxRatioErr.toExponential(3)} at σ_v=${worstSigma.toFixed(1)} kPa`);
+  console.log(
+    `  Admissibility cert worst (over ${run.points.length} accepted GPs): ` +
+    `f_cone=${run.certWorst.f_cone.toExponential(2)} ` +
+    `f_cap=${run.certWorst.f_cap.toExponential(2)} ` +
+    `f_tension=${run.certWorst.f_tension.toExponential(2)} ` +
+    `at σ_v=${run.certWorst.sigma_v_at_worst.toFixed(1)} kPa`
+  );
   // K0 tolerance budget. Corner-aware C.1+C.2 calibration gives K0 ≈
   // K0_nc at p_ref to <3e-3 (better at p_ref itself, ~2e-3). The 3e-2
   // ceiling absorbs the drift along the 50 → 500 kPa path (10× σ_v

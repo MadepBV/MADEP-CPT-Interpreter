@@ -257,6 +257,25 @@ solver. The relevant entry points are:
    plastic geostatic phase, c-φ safety reduction). The flags are
    informational from JS's point of view but are the same contract.
 
+### Production solver-dispatch contract for HS
+
+Per the [hardening-soil-fix.md](../features/hardening-soil-fix.md) Phase
+6/7/8 work and the binding contract in
+[hardening-soil-model.md §3.6.1](../features/hardening-soil-model.md):
+
+- `algorithmicTangentMayBeUnsymmetric = true` is enforced in the WASM
+  dispatch.  HS plastic Newton iterations dispatch to GMRES; CG is
+  reserved for the elastic HS branch and for symmetric mc-plastic.
+- Routing a known-unsymmetric HS plastic tangent to CG is a debug-
+  assert violation in `solver.hpp` (assertions fire in the nonlinear-
+  phase Newton loop and the safety arc-length path).
+- No tangent symmetrization is applied to HS — the
+  `symmetrizeEpTangent` flag in `RegionParams` is wired for mc-plastic
+  only and dropped on the HS dispatch path.
+- Elastic-tangent modified Newton (`useElasticGlobalizationTangent` in
+  the assembler) is retained as a diagnostic robust-mode rescue for
+  mc-plastic and HS in service / safety phases, never as the default.
+
 ### Practical consequences for plugin authors
 
 If a future constitutive model is light enough to warrant a JS reference

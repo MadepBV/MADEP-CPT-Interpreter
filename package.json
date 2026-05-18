@@ -37,6 +37,7 @@
 		"verify:hs-tangent-oracle": "node scripts/verify_hs_tangent_oracle.mjs",
 		"verify:hs-app-safety-path": "node scripts/verify_hs_app_safety_path.mjs",
 		"verify:hs-solver-dispatch": "node scripts/verify_hs_solver_dispatch.mjs",
+		"verify:hs-acceptance": "node scripts/verify_hs_acceptance.mjs",
 		"verify:arc-length-phase-2": "node scripts/verify_arc_length_phase_2.mjs",
 		"verify:arc-length-phase-3": "node scripts/verify_arc_length_phase_3.mjs",
 		"verify:arc-length-phase-4": "node scripts/verify_arc_length_phase_4.mjs",
