@@ -2547,12 +2547,14 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
     const canReuseStrengthValues = prior.sourceStrengthSet === strengthSet;
     const permeability = resolveMaterialPermeability(layer, prior);
     // The HS stiffness parameters (E50_ref, Eoed_ref, Eur_ref, m, ν_ur) and
-    // the K0_nc / ψ values come from the upstream layer-classification logic
-    // (`hsParams` in legacy-controller, per CUR 2003-7 / SB260-21-6.4.10 /
-    // Schanz, Vermeer & Bonnier (1999)).  They live on the material as
-    // top-level fields — NOT inside `material.hs` — so the HS panel can
-    // display them as read-only inherited values and the wire encoder can
-    // route them directly to the WASM HS block by name.
+    // the K0_nc / ψ values are SEEDED from the upstream layer-classification
+    // logic (`hsParams` in legacy-controller, per CUR 2003-7 /
+    // SB260-21-6.4.10 / Schanz, Vermeer & Bonnier (1999)). They live on the
+    // material as top-level fields — NOT inside `material.hs` — so the wire
+    // encoder can route them directly to the WASM HS block by name and so
+    // the HS panel can override them per material (mirroring MC). Prior
+    // top-level overrides are preserved here on re-sync, matching the MC
+    // convention used for `Emc`, `nu`, `K0nc`, etc.
     //
     // The `material.hs` sub-block is reserved for the genuinely HS-specific
     // parameters that have NO upstream analogue: R_f (failure ratio), OCR
@@ -2574,15 +2576,24 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
       rShear: Number.isFinite(prior.rShear) && prior.rShear > 0 ? prior.rShear : Number(layer.rShear) || 0.25,
       psi: Number.isFinite(prior.psi) ? prior.psi : Number(layer.psi) || 0,
       sigmaTAllow: Number.isFinite(prior.sigmaTAllow) ? prior.sigmaTAllow : 0,
-      // HS stiffness fields inherited from the layer / material classification.
-      // These are always re-derived from the layer model on every sync — the
-      // engineer edits them upstream (via the Stage 5 alpha/m editor), not
-      // inside the HS panel.
-      E50_ref: Number(layer.E50_ref) || Number(layer.Emc) || Number(layer.E50_i) || 1000,
-      Eoed_ref: Number(layer.Eoed_ref) || Number(layer.E50_ref) || Number(layer.Emc) || 1000,
-      Eur_ref: Number(layer.Eur_ref) || 3 * (Number(layer.E50_ref) || Number(layer.Emc) || 1000),
-      m: Number.isFinite(Number(layer.m)) ? Number(layer.m) : 0.5,
-      nu_ur: Number.isFinite(Number(layer.nu_ur)) ? Number(layer.nu_ur) : 0.2,
+      // HS stiffness fields seeded from the layer / material classification
+      // but preserved across re-imports if the engineer has overridden them
+      // in the Stage 6 HS panel (same convention as `Emc` / `nu` / `K0nc`).
+      E50_ref: Number.isFinite(prior.E50_ref) && prior.E50_ref > 0
+        ? prior.E50_ref
+        : Number(layer.E50_ref) || Number(layer.Emc) || Number(layer.E50_i) || 1000,
+      Eoed_ref: Number.isFinite(prior.Eoed_ref) && prior.Eoed_ref > 0
+        ? prior.Eoed_ref
+        : Number(layer.Eoed_ref) || Number(layer.E50_ref) || Number(layer.Emc) || 1000,
+      Eur_ref: Number.isFinite(prior.Eur_ref) && prior.Eur_ref > 0
+        ? prior.Eur_ref
+        : Number(layer.Eur_ref) || 3 * (Number(layer.E50_ref) || Number(layer.Emc) || 1000),
+      m: Number.isFinite(prior.m)
+        ? prior.m
+        : (Number.isFinite(Number(layer.m)) ? Number(layer.m) : 0.5),
+      nu_ur: Number.isFinite(prior.nu_ur)
+        ? prior.nu_ur
+        : (Number.isFinite(Number(layer.nu_ur)) ? Number(layer.nu_ur) : 0.2),
       // HS-only sub-block: parameters with no upstream analogue.
       hs: {
         p_ref: Number.isFinite(Number(prior.hs?.p_ref)) && Number(prior.hs.p_ref) > 0 ? Number(prior.hs.p_ref) : 100,

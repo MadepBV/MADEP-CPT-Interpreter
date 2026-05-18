@@ -6782,11 +6782,12 @@ function stage6BishopSetMaterialField(index, field, value){
   renderStage6();
 }
 
-// Editable HS-only field names. The stiffness block (E50_ref / Eoed_ref /
-// Eur_ref / m / ν_ur / K0_nc) is inherited from the upstream layer model
-// (see `hsParams` and `stage6WorkingLayers`) and is NOT user-editable from
-// the HS panel — engineers edit those by editing the parent layer or
-// material parameters in Stage 5.
+// Whitelist of HS-only fields routed through `stage6BishopSetMaterialHsField`
+// — i.e. parameters that live under `material.hs.*` because they have NO
+// upstream layer-model analogue (R_f, OCR, p_ref, e_init, e_max). The
+// stiffness block (E50_ref / Eoed_ref / Eur_ref / m / ν_ur / K0_nc / ψ)
+// is overridden via `stage6BishopSetMaterialField` (top-level fields) for
+// parity with the MC panel.
 const STAGE6_BISHOP_EDITABLE_HS_FIELDS = new Set(['p_ref', 'Rf', 'OCR', 'e_init', 'e_max']);
 
 function stage6BishopSetMaterialHsField(index, field, value){
@@ -13225,38 +13226,40 @@ function renderStage6BishopApp(){
   `).join('');
   // ── Hardening Soil panel ────────────────────────────────────────────
   // The HS stiffness parameters (E50_ref / Eoed_ref / Eur_ref / m / ν_ur)
-  // and the cohesion / friction-derived K0_nc + ψ are computed UPSTREAM in
+  // and the cohesion / friction-derived K0_nc + ψ are seeded UPSTREAM in
   // `hsParams` per CUR 2003-7 / SB260-21-6.4.10 / Schanz, Vermeer &
-  // Bonnier (1999).  The HS panel therefore renders them as read-only
-  // inherited rows; engineers edit them via the Stage 5 layer / material
-  // editor (alphaMethod, stiffMethod, m_ovr, nu_ovr, ...).
+  // Bonnier (1999) via `importBishopMaterialsFromLayers`.  Those values
+  // become the Stage 6 defaults, but — mirroring the MC panel convention
+  // — the engineer may override each row per material here. Edits are
+  // wired through `stage6BishopSetMaterialField`, the same handler MC
+  // uses; `importBishopMaterialsFromLayers` preserves prior top-level
+  // overrides on re-sync.
   //
-  // Only the genuinely HS-specific parameters — those with NO upstream
-  // analogue — remain editable in this panel:
+  // The genuinely HS-specific parameters — those with NO upstream
+  // analogue — live in the editable `hs` sub-table below:
   //   - R_f   (failure ratio, default 0.9)
   //   - OCR   (over-consolidation, default 1 NC)
   //   - p_ref (reference pressure, default 100 kPa)
   //   - e_init, e_max (dilatancy cutoff, default -1 = disabled)
-  const hsInheritedRows = (bishop.materials || []).map((mat)=>{
+  const hsInheritedRows = (bishop.materials || []).map((mat, index)=>{
     const phi = Number(mat.phiEffDeg ?? 0);
     const k0ncInherited = Number(mat.K0nc);
-    const k0ncDisplay = Number.isFinite(k0ncInherited) && k0ncInherited > 0
-      ? k0ncInherited
-      : bishopHsJakyK0nc(phi);
-    const k0ncBadge = Number.isFinite(k0ncInherited) && k0ncInherited > 0
+    const k0ncHasValue = Number.isFinite(k0ncInherited) && k0ncInherited > 0;
+    const k0ncDisplayValue = k0ncHasValue ? k0ncInherited : bishopHsJakyK0nc(phi);
+    const k0ncBadge = k0ncHasValue
       ? ''
       : ' <span class="st6-help" style="font-size:0.85em">(Jaky)</span>';
     const psi = Number(mat.psi ?? 0);
     return `
       <tr>
         <td>${stage6EscAttr(mat.label)}</td>
-        <td>${Number(mat.E50_ref || mat.Emc || 0).toLocaleString()}</td>
-        <td>${Number(mat.Eoed_ref || mat.E50_ref || mat.Emc || 0).toLocaleString()}</td>
-        <td>${Number(mat.Eur_ref || 3 * (mat.E50_ref || mat.Emc || 0)).toLocaleString()}</td>
-        <td>${Number(mat.m ?? 0.5).toFixed(2)}</td>
-        <td>${Number(mat.nu_ur ?? 0.2).toFixed(2)}</td>
-        <td>${k0ncDisplay.toFixed(3)}${k0ncBadge}</td>
-        <td>${Number.isFinite(psi) ? psi.toFixed(1) + '°' : '—'}</td>
+        <td><input type="number" step="100" min="0" value="${Number(mat.E50_ref || mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialField(${index}, 'E50_ref', this.value)"></td>
+        <td><input type="number" step="100" min="0" value="${Number(mat.Eoed_ref || mat.E50_ref || mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialField(${index}, 'Eoed_ref', this.value)"></td>
+        <td><input type="number" step="100" min="0" value="${Number(mat.Eur_ref || 3 * (mat.E50_ref || mat.Emc || 0)).toFixed(0)}" onchange="stage6BishopSetMaterialField(${index}, 'Eur_ref', this.value)"></td>
+        <td><input type="number" step="0.05" min="0" max="1" value="${Number(mat.m ?? 0.5).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'm', this.value)"></td>
+        <td><input type="number" step="0.01" min="0.01" max="0.49" value="${Number(mat.nu_ur ?? 0.2).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'nu_ur', this.value)"></td>
+        <td><input type="number" step="0.01" min="0" value="${Number(k0ncDisplayValue).toFixed(3)}" onchange="stage6BishopSetMaterialField(${index}, 'K0nc', this.value)">${k0ncBadge}</td>
+        <td><input type="number" step="1" min="0" value="${Number.isFinite(psi) ? psi.toFixed(1) : '0.0'}" onchange="stage6BishopSetMaterialField(${index}, 'psi', this.value)"></td>
       </tr>
     `;
   }).join('');
