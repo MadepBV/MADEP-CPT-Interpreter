@@ -6435,8 +6435,17 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   const load = normalizeLoad(model, options, warnings, analysisType === 'deformation' ? 'required' : 'optional');
   addDomainExtentWarnings(model, load, warnings);
   const hasSurfaceLoad = !!load;
-  if (analysisType === 'safety-cphi' && options.constitutiveModel !== 'mc-plastic') {
-    throw new Error('C-phi reduction safety analysis is only available with the Stage 2 elastoplastic constitutive model.');
+  const isHs = options.constitutiveModel === 'hardening-soil';
+  const isMcPlastic = options.constitutiveModel === 'mc-plastic';
+
+  if (analysisType === 'safety-cphi' && !isMcPlastic && !isHs) {
+    throw new Error(
+      'C-phi reduction safety analysis requires Mohr-Coulomb plastic or Hardening Soil.'
+    );
+  }
+
+  if (analysisType === 'safety-cphi' && isHs && options.useWasmCpuPipeline !== true) {
+    throw new Error('Hardening Soil c-phi safety is WASM-only.');
   }
 
   if (await runCheckpoint(runControl, true)) {

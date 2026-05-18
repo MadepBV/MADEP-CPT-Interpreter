@@ -6482,14 +6482,32 @@ function stage6BishopSetField(path, value){
     S.stage6.bishop.deformation.options.gpuPipelineVersion = 'v1';
   }
   if(path === 'deformation.options.analysisType' && nextValue === 'safety-cphi'){
-    S.stage6.bishop.deformation.options.constitutiveModel = 'mc-plastic';
+    const currentConstitutiveModel = S.stage6.bishop.deformation?.options?.constitutiveModel;
+    if(currentConstitutiveModel !== 'mc-plastic' && currentConstitutiveModel !== 'hardening-soil'){
+      S.stage6.bishop.deformation.options.constitutiveModel = 'mc-plastic';
+    }
+    // Hardening Soil c-phi safety is WASM-only; force the WASM backend on.
+    if(S.stage6.bishop.deformation?.options?.constitutiveModel === 'hardening-soil'){
+      S.stage6.bishop.deformation.options.solverBackend = 'wasm-cpu';
+      S.stage6.bishop.deformation.options.useWasmCpuPipeline = true;
+      S.stage6.bishop.deformation.options.useNewGpuPipeline = false;
+    }
   }
   if(path === 'deformation.options.constitutiveModel' && nextValue !== 'mc-plastic'){
     if(String(S.stage6.bishop.deformation?.options?.geostaticInitializationMethod || '').toLowerCase() === 'gravity-ramp'){
       S.stage6.bishop.deformation.options.geostaticInitializationMethod = 'auto';
     }
-    if(S.stage6.bishop.deformation?.options?.analysisType === 'safety-cphi'){
+    // Safety analysis is allowed for Mohr-Coulomb plastic and Hardening Soil;
+    // any other constitutive model forces the analysis back to plain deformation.
+    if(nextValue !== 'hardening-soil' && S.stage6.bishop.deformation?.options?.analysisType === 'safety-cphi'){
       S.stage6.bishop.deformation.options.analysisType = 'deformation';
+    }
+    // If we just selected Hardening Soil for a safety run, the WASM CPU
+    // backend is mandatory (HS c-phi safety is WASM-only).
+    if(nextValue === 'hardening-soil' && S.stage6.bishop.deformation?.options?.analysisType === 'safety-cphi'){
+      S.stage6.bishop.deformation.options.solverBackend = 'wasm-cpu';
+      S.stage6.bishop.deformation.options.useWasmCpuPipeline = true;
+      S.stage6.bishop.deformation.options.useNewGpuPipeline = false;
     }
   }
   if(path.startsWith('lineProbe.') && path !== 'lineProbe.copyMessage' && path !== 'lineProbe.copyTone'){
@@ -13065,7 +13083,7 @@ function renderStage6BishopApp(){
     : (deformation.result?.solver?.constitutiveModel === 'mc-plastic-material-point' || deformation.result?.solver?.constitutiveModel === 'gpu-resident-mc-plastic')
       ? (deformation.result?.solver?.analysisType === 'safety-cphi' ? 'Mohr-Coulomb plastic + c-phi reduction safety' : 'Mohr-Coulomb plastic plane strain')
       : deformation.result?.solver?.constitutiveModel === 'hardening-soil-material-point'
-      ? 'Hardening Soil plane strain'
+      ? (deformation.result?.solver?.analysisType === 'safety-cphi' ? 'Hardening Soil + c-phi reduction safety' : 'Hardening Soil plane strain')
       : deformation.result?.solver?.constitutiveModel === 'linear-elastic-material-point'
       ? 'Linear elastic plane strain'
       : '—';
@@ -13493,7 +13511,7 @@ function renderStage6BishopApp(){
                 <summary>Mechanical inputs</summary>
                 <div class="st6-adv-body">
                   <div class="st6-help">${deformationIsSafety
-                    ? 'The safety route starts from a converged Mohr-Coulomb plastic equilibrium state and then runs a c-phi reduction phase with fixed actions. External loading is optional: without an active surcharge interval, the analysis reduces strength under self-weight only.'
+                    ? 'The safety route starts from a converged plastic equilibrium state (Mohr-Coulomb plastic or Hardening Soil) and then runs a c-phi reduction phase with fixed actions. External loading is optional: without an active surcharge interval, the analysis reduces strength under self-weight only. Hardening Soil safety runs are WASM-only.'
                     : 'This first deformation tool is a long-term drained screening solve on the shared triangular mesh. Draw the load interval on the terrain, choose whether you want to drive the model by applied pressure or total slab load, then size the out-of-plane length to approximate strip behaviour.'}</div>
                   <label style="font-size:11px;color:var(--tx2)">Analysis mode
                     <select onchange="stage6BishopSetField('deformation.options.analysisType', this.value)">
@@ -13987,7 +14005,7 @@ function renderStage6BishopApp(){
     : workspace === 'seepage'
       ? 'The seepage workspace reuses the same Bishop section. Use <strong>Assign BC</strong> and click the terrain, model base, or side boundaries to assign prescribed head, no-flow, or seepage-face conditions, then click <strong>Run seepage</strong>. The same terrain, polygons, walls, snap settings, and viewport stay active while you switch between stability and seepage. Contour fill, contour lines, and the legend now follow the selected seepage field, while flow lines, the phreatic line, and exit-gradient highlights remain optional overlays. When a measurement line exists, the results panel can also probe heads, gradients, and discharge along it.'
 	      : (deformationIsSafety
-	        ? 'The deformation workspace also supports a c-phi reduction safety route. It first requires a converged Mohr-Coulomb plastic equilibrium state, then keeps the actions fixed while reducing strength through the multiplier ΣMsf. Self-weight-only safety runs are allowed when no surcharge is active. Contours and the shared line probe can inspect the additional safety displacement field and incremental safety plasticity band.'
+	        ? 'The deformation workspace also supports a c-phi reduction safety route. It first requires a converged plastic equilibrium state (Mohr-Coulomb plastic or Hardening Soil), then keeps the actions fixed while reducing strength through the multiplier ΣMsf. Self-weight-only safety runs are allowed when no surcharge is active. Hardening Soil safety runs are WASM-only. Contours and the shared line probe can inspect the additional safety displacement field and incremental safety plasticity band.'
 	        : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the drained plane-strain screen. The default Mohr-Coulomb plastic route builds a K0 seed and requires self-weight equilibrium before service loading. Contour fill, contour lines, the optional legend, and the shared measurement line all follow the selected deformation field.');
   const lineProbeSelectionPath = workspace === 'seepage' ? 'lineProbe.seepageQuantity' : 'lineProbe.deformationQuantity';
   const lineProbeCopyToneColor = bishop.lineProbe?.copyTone === 'ok' ? 'var(--ok-text)' : bishop.lineProbe?.copyTone === 'warn' ? 'var(--wn)' : 'var(--tx2)';
