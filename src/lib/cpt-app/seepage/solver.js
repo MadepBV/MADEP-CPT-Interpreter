@@ -2375,20 +2375,39 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
       const waterY = samplePolylineY(model.phreatic, centroid.x);
       return Number.isFinite(waterY) ? centroid.y > waterY + 1e-5 : false;
     });
-    const dirichletValues = buildDirichletValues(mesh, model, options, mesh.boundaryFaces.map(() => true));
     onProgress({
       stage: 'solving',
       percent: 55,
       message: 'Solving seepage head field on the triangulated mesh...'
     });
-    const headField = await solveHeadField(mesh, dryFlags, dirichletValues, null, runControl);
-    if (headField.interrupted && headField.iterations <= 0) {
-      throw buildInterruptedError();
+    // Drains carry Signorini-type one-way complementarity (h ≤ h_d, q ≥ 0)
+    // that requires an active-set loop to satisfy. Even in fixed-phreatic
+    // mode we must iterate the drain (and seepage-face) active set, otherwise
+    // 'when-saturated' / 'head-cap' drain nodes are initially treated as
+    // inactive by buildDirichletValues (which receives activeDrainNodes=null)
+    // and the drain has zero effect on the solved head field. Note that
+    // buildDirichletValues continues to Dirichlet-pin phreatic nodes in
+    // fixed mode, so the phreatic line itself remains rigid.
+    const boundarySolve = await solveSeepageBoundaryActiveSet(
+      mesh,
+      model,
+      options,
+      dryFlags,
+      mesh.boundaryFaces.map((face) => face.type === 'seepage-face'),
+      null,
+      tolerances,
+      runControl,
+      null
+    );
+    if (boundarySolve.interrupted && boundarySolve.linearIterations <= 0) {
+      throw boundarySolve.stopReason === 'time-limit' ? buildTimeLimitError() : buildInterruptedError();
     }
+    const interruptionReason =
+      boundarySolve.stopReason === 'time-limit' ? 'time-limit' : 'interrupted';
     return postProcess(
       mesh,
       model,
-      headField.heads,
+      boundarySolve.heads,
       dryFlags,
         {
           totalMs: performance.now() - solveStartedAt,
@@ -2396,17 +2415,23 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           solveMs: performance.now() - solveStartedAt,
           postMs: 0,
           outerIterations: 1,
-          linearIterations: headField.iterations,
-          residualNorm: headField.residualNorm,
-          converged: !headField.interrupted,
-          terminationReason: headField.interrupted ? 'interrupted' : 'fixed-boundary',
+          linearIterations: boundarySolve.linearIterations,
+          residualNorm: boundarySolve.residualNorm,
+          converged: !boundarySolve.interrupted,
+          terminationReason: boundarySolve.interrupted ? interruptionReason : 'fixed-boundary',
           flowError: null,
           flowErrorTolerance: null,
           maxRuntimeMs: null,
-          reactions: headField.reactions
+          activeSetIterations: boundarySolve.activeSetIterations,
+          activeSetStable: boundarySolve.activeSetStable,
+          cycleDetected: !!boundarySolve.cycleDetected,
+          cycleDiagnostics: boundarySolve.cycleDiagnostics || null,
+          boundaryFluxSummary: boundarySolve.boundaryFluxSummary,
+          reactions: boundarySolve.reactions
         },
         options,
-        mesh.boundaryFaces.map((face) => face.type === 'seepage-face')
+        boundarySolve.activeSeepageFaces || mesh.boundaryFaces.map((face) => face.type === 'seepage-face'),
+        boundarySolve.activeDrainNodes
       );
   }
 
