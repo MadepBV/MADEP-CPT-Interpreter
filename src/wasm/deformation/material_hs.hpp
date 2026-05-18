@@ -71,7 +71,8 @@ using madep::js_mirror::VOIGT_XZ;
 enum class HsTangentMode : std::uint8_t {
   Elastic = 0,
   Analytic = 1,
-  FiniteDifference = 2
+  FiniteDifference = 2,
+  ConsistentAlgorithmic = 3
 };
 
 // ---------------------------------------------------------------------------
@@ -84,6 +85,8 @@ struct HsUpdateResult {
   MaterialPoint::HsState stateUpdated{}; // updated HS state
   std::uint8_t activeSurface{ 0 };       // 0=elastic, 1=cone, 2=cap, 3=corner
   std::uint16_t failureCode{ 0 };
+  double activeDlambdaS{ 0.0 };
+  double activeDlambdaC{ 0.0 };
   // Plane-strain σ_zz outer-iteration count (Phase 5 / B.7). Populated by
   // `update_plane_strain` only; the inner `update` leaves it at 0 (it does a
   // single return mapping without σ_zz enforcement). Reported up via
@@ -842,6 +845,7 @@ inline HsUpdateResult return_cone_only(
   out.stateUpdated.p_p = stateC.p_p;
   out.stateUpdated.lastActiveSet = 1;
   out.activeSurface = 1;
+  out.activeDlambdaS = dlambda;
   out.failureCode = 0;
 
   // Phase 4 (fix plan): admissibility certificate. Cone-only return is
@@ -993,6 +997,7 @@ inline HsUpdateResult return_cap_only(
   out.stateUpdated.p_p = p_p_new;
   out.stateUpdated.lastActiveSet = 2;
   out.activeSurface = 2;
+  out.activeDlambdaC = dlambda;
   out.failureCode = 0;
 
   // Phase 4 (fix plan): admissibility certificate. Cap-only return is
@@ -1415,6 +1420,8 @@ inline HsUpdateResult return_corner(
   out.stateUpdated.p_p = p_p_new;
   out.stateUpdated.lastActiveSet = 3;
   out.activeSurface = 3;
+  out.activeDlambdaS = dl_s;
+  out.activeDlambdaC = dl_c;
   out.failureCode = 0;
 
   // Phase 4 (fix plan): admissibility certificate. Corner Newton just

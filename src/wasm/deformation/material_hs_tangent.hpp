@@ -384,6 +384,344 @@ inline HsAlgorithmicTangentContext build_sh_context(
   return ctx;
 }
 
+inline double mat3_inner(const Mat3& A, const Mat3& B) {
+  double acc = 0.0;
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) acc += A[r][c] * B[r][c];
+  }
+  return acc;
+}
+
+inline Mat3 mat3_zero() {
+  return Mat3{{{0.0, 0.0, 0.0},
+               {0.0, 0.0, 0.0},
+               {0.0, 0.0, 0.0}}};
+}
+
+inline void mat3_add_scaled(Mat3& A, const Mat3& B, double scale) {
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) A[r][c] += scale * B[r][c];
+  }
+}
+
+inline Mat3 mat3_mul(const Mat3& A, const Mat3& B) {
+  Mat3 C = mat3_zero();
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      for (int k = 0; k < 3; ++k) C[i][j] += A[i][k] * B[k][j];
+    }
+  }
+  return C;
+}
+
+inline Mat6 mat6_identity() {
+  Mat6 I{};
+  for (int i = 0; i < 6; ++i) I[i][i] = 1.0;
+  return I;
+}
+
+inline Mat6 mat6_mul(const Mat6& A, const Mat6& B) {
+  Mat6 C{};
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) {
+      double acc = 0.0;
+      for (int k = 0; k < 6; ++k) acc += A[i][k] * B[k][j];
+      C[i][j] = acc;
+    }
+  }
+  return C;
+}
+
+inline Mat3 stress_basis_tensor(int col) {
+  Mat3 E = mat3_zero();
+  switch (col) {
+    case V_XX: E[0][0] = 1.0; break;
+    case V_YY: E[1][1] = 1.0; break;
+    case V_ZZ: E[2][2] = 1.0; break;
+    case V_XY: E[0][1] = E[1][0] = 1.0; break;
+    case V_YZ: E[1][2] = E[2][1] = 1.0; break;
+    case V_XZ: E[0][2] = E[2][0] = 1.0; break;
+    default: break;
+  }
+  return E;
+}
+
+inline Vec6 tensor_to_voigt_no_sign(const Mat3& A) {
+  return Vec6{A[0][0], A[1][1], A[2][2], A[0][1], A[1][2], A[0][2]};
+}
+
+inline void cone_flow_dpsi_outer_product(
+    ConeFlowRegime regime,
+    double* u_p,
+    double* v_p,
+    double dpsi_ds1,
+    double dpsi_ds3,
+    bool cutoff_active) {
+  if (cutoff_active) {
+    for (int i = 0; i < 3; ++i) {
+      u_p[i] = 0.0;
+      v_p[i] = 0.0;
+    }
+    return;
+  }
+
+  switch (regime) {
+    case ConeFlowRegime::Face13:
+      u_p[0] = -0.5;
+      u_p[1] = 0.0;
+      u_p[2] = -0.5;
+      break;
+    case ConeFlowRegime::CompressionEdge:
+      u_p[0] = -0.5;
+      u_p[1] = -0.25;
+      u_p[2] = -0.25;
+      break;
+    case ConeFlowRegime::ExtensionEdge:
+      u_p[0] = -0.25;
+      u_p[1] = -0.25;
+      u_p[2] = -0.5;
+      break;
+  }
+  v_p[0] = dpsi_ds1;
+  v_p[1] = 0.0;
+  v_p[2] = dpsi_ds3;
+}
+
+inline void cone_yield_gradient_with_implicit(
+    ConeFlowRegime regime,
+    double E_i,
+    double E_ur,
+    double q_a,
+    double q,
+    double df_dsigma3_implicit,
+    double& n1,
+    double& n2,
+    double& n3) {
+  const double q_clamped = std::min(q, 0.999 * q_a);
+  const double denom_qa = std::max(1.0 - q_clamped / q_a, 1e-3);
+  const double df_dq = (2.0 / E_i) / (denom_qa * denom_qa)
+                     - 2.0 / E_ur;
+  cone_yield_gradient(regime, df_dq, n1, n2, n3);
+  n3 += df_dsigma3_implicit;
+}
+
+inline Mat6 spectral_flow_derivative_dense(
+    const mce::PrincipalState& principal,
+    const double flow_p[3],
+    const double dflow_ds[3][3],
+    bool includePrincipalValueTerms,
+    bool includeProjectorTerms,
+    bool& ok) {
+  Mat6 out{};
+  ok = true;
+  const Mat3 P[3] = {principal.P1, principal.P2, principal.P3};
+  const double s[3] = {principal.s1, principal.s2, principal.s3};
+  const double scale = std::max({std::abs(s[0]), std::abs(s[1]), std::abs(s[2]), 1.0});
+
+  for (int col = 0; col < 6; ++col) {
+    const Mat3 E = stress_basis_tensor(col);
+    Mat3 dM = mat3_zero();
+
+    if (includePrincipalValueTerms) {
+      for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+          mat3_add_scaled(dM, P[i], dflow_ds[i][j] * mat3_inner(P[j], E));
+        }
+      }
+    }
+
+    if (includeProjectorTerms) {
+      for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+          if (i == j) continue;
+          const double denom = s[i] - s[j];
+          if (std::abs(denom) <= 1e-10 * scale) {
+            ok = false;
+            continue;
+          }
+          const double coeff = (flow_p[i] - flow_p[j]) / denom;
+          mat3_add_scaled(dM, mat3_mul(mat3_mul(P[i], E), P[j]), coeff);
+        }
+      }
+    }
+
+    const Vec6 flow_tensor = tensor_to_voigt_no_sign(dM);
+    const Vec6 flow_eng = strain_vector_from_flow_tensor(flow_tensor);
+    for (int row = 0; row < 6; ++row) out[row][col] = flow_eng[row];
+  }
+
+  return out;
+}
+
+inline Mat6 spectral_flow_derivative_dense(
+    const mce::PrincipalState& principal,
+    const double flow_p[3],
+    const double dflow_ds[3][3],
+    bool& ok) {
+  return spectral_flow_derivative_dense(
+      principal, flow_p, dflow_ds,
+      /*includePrincipalValueTerms=*/true,
+      /*includeProjectorTerms=*/true,
+      ok);
+}
+
+inline Mat6 compute_cone_dmdsigma_dense(
+    const mce::PrincipalState& principal,
+    const HsAlgorithmicTangentContext& ctx,
+    bool& ok) {
+  double m1 = 0.0, m2 = 0.0, m3 = 0.0;
+  cone_flow_gradient(ctx.regime, ctx.sin_psi_mob, m1, m2, m3);
+  const double flow_p[3] = {m1, m2, m3};
+
+  double u[3]{};
+  double v[3]{};
+  cone_flow_dpsi_outer_product(
+      ctx.regime, u, v,
+      ctx.dpsi_dsigma_1, ctx.dpsi_dsigma_3,
+      ctx.dilatancy_cutoff_active || ctx.pre_critical_cutoff_active);
+  double dflow_ds[3][3]{};
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) dflow_ds[i][j] = u[i] * v[j];
+  }
+  return spectral_flow_derivative_dense(principal, flow_p, dflow_ds, ok);
+}
+
+inline Mat6 compute_cone_dmdsigma_principal_dense(
+    const mce::PrincipalState& principal,
+    const HsAlgorithmicTangentContext& ctx,
+    bool& ok) {
+  double m1 = 0.0, m2 = 0.0, m3 = 0.0;
+  cone_flow_gradient(ctx.regime, ctx.sin_psi_mob, m1, m2, m3);
+  const double flow_p[3] = {m1, m2, m3};
+
+  double u[3]{};
+  double v[3]{};
+  cone_flow_dpsi_outer_product(
+      ctx.regime, u, v,
+      ctx.dpsi_dsigma_1, ctx.dpsi_dsigma_3,
+      ctx.dilatancy_cutoff_active || ctx.pre_critical_cutoff_active);
+  double dflow_ds[3][3]{};
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) dflow_ds[i][j] = u[i] * v[j];
+  }
+  return spectral_flow_derivative_dense(
+      principal, flow_p, dflow_ds,
+      /*includePrincipalValueTerms=*/true,
+      /*includeProjectorTerms=*/false,
+      ok);
+}
+
+inline Mat6 compute_cone_dmdtrial_projector_dense(
+    const mce::PrincipalState& principal,
+    const HsAlgorithmicTangentContext& ctx,
+    bool& ok) {
+  double m1 = 0.0, m2 = 0.0, m3 = 0.0;
+  cone_flow_gradient(ctx.regime, ctx.sin_psi_mob, m1, m2, m3);
+  const double flow_p[3] = {m1, m2, m3};
+  double dflow_ds[3][3]{};
+  return spectral_flow_derivative_dense(
+      principal, flow_p, dflow_ds,
+      /*includePrincipalValueTerms=*/false,
+      /*includeProjectorTerms=*/true,
+      ok);
+}
+
+inline double frobenius_norm6(const Mat6& A) {
+  double acc = 0.0;
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) acc += A[i][j] * A[i][j];
+  }
+  return std::sqrt(acc);
+}
+
+inline Mat6 compute_xi_dense(const Mat6& D_e,
+                             const Mat6& dmdsigma,
+                             double dlambda,
+                             bool& ok);
+
+inline Mat6 compute_simo_hughes_cone_tangent(
+    const mce::PrincipalState& principalC,
+    const HsAlgorithmicTangentContext& ctx,
+    const Mat6& D_e,
+    bool& ok) {
+  ok = true;
+  if (std::abs(ctx.dlambda_s) < 1e-10 * std::max(frobenius_norm6(D_e), 1.0)) {
+    return D_e;
+  }
+
+  // The implemented HS return map direction-locks the cone flow to the trial
+  // eigenbasis. Its exact residual linearisation therefore splits the flow
+  // sensitivity in two pieces:
+  //
+  //   M_sigma = principal-value sensitivity at fixed trial projectors
+  //   M_trial = eigenprojector rotation sensitivity of the trial basis
+  //
+  // The Simo-Hughes modified stiffness uses M_sigma in Xi. M_trial belongs on
+  // the strain-side residual sensitivity because sigma_trial = sigma_n + D_e dε.
+  bool dmdsigma_ok = false;
+  const Mat6 dmdsigma = compute_cone_dmdsigma_principal_dense(
+      principalC, ctx, dmdsigma_ok);
+  if (!dmdsigma_ok) {
+    ok = false;
+    return D_e;
+  }
+
+  bool xi_ok = false;
+  const Mat6 Xi = compute_xi_dense(D_e, dmdsigma, ctx.dlambda_s, xi_ok);
+  if (!xi_ok) {
+    ok = false;
+    return D_e;
+  }
+
+  bool dmdtrial_ok = false;
+  const Mat6 dmdtrial = compute_cone_dmdtrial_projector_dense(
+      principalC, ctx, dmdtrial_ok);
+  if (!dmdtrial_ok) {
+    ok = false;
+    return D_e;
+  }
+  Mat6 B = mat6_identity();
+  const Mat6 dmdtrial_De = mat6_mul(dmdtrial, D_e);
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) {
+      B[i][j] -= ctx.dlambda_s * dmdtrial_De[i][j];
+    }
+  }
+  const Mat6 XiB = mat6_mul(Xi, B);
+
+  double n1 = 0.0, n2 = 0.0, n3 = 0.0;
+  cone_yield_gradient_with_implicit(
+      ctx.regime, ctx.E_i, ctx.E_ur, ctx.q_a, ctx.s1 - ctx.s3,
+      ctx.df_dsigma3_implicit, n1, n2, n3);
+  const Vec6 n_t = lift_principal_gradient_to_tensor_voigt(
+      principalC, n1, n2, n3);
+
+  double m1 = 0.0, m2 = 0.0, m3 = 0.0;
+  cone_flow_gradient(ctx.regime, ctx.sin_psi_mob, m1, m2, m3);
+  const Vec6 m_t = lift_principal_gradient_to_tensor_voigt(
+      principalC, m1, m2, m3);
+  const Vec6 m_eng = tensor_voigt_to_engineering(m_t);
+
+  const Vec6 Xi_m = lng::mul6x6(Xi, m_eng);
+  const Vec6 XiBT_n = transpose_tangent_times_stress_covector(XiB, n_t);
+  const double A = stress_covector_dot_stress_vector(n_t, Xi_m) + 1.0;
+  ok = std::isfinite(A) && std::abs(A) > 1e-12;
+  if (!ok) return D_e;
+
+  Mat6 D_ep = XiB;
+  const double invA = 1.0 / A;
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) {
+      D_ep[i][j] -= Xi_m[i] * XiBT_n[j] * invA;
+    }
+  }
+
+  for (int i = 0; i < 6 && ok; ++i) {
+    for (int j = 0; j < 6 && ok; ++j) ok = std::isfinite(D_ep[i][j]);
+  }
+  return ok ? D_ep : D_e;
+}
+
 inline Mat6 identity6() {
   Mat6 I{};
   for (int i = 0; i < 6; ++i) I[i][i] = 1.0;

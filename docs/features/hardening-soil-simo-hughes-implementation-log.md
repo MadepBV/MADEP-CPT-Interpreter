@@ -198,3 +198,66 @@ Validation status:
   `df/dsigma3 implicit 1.011311e-14`,
   `d sinpsi/dsigma1 4.008079e-14`,
   `d sinpsi/dsigma3 1.711166e-13`.
+
+## SH-2 - Cone Simo-Hughes Tangent
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` section 2.3
+- `hardening-soil-simo-hughes-upgrade.md` section 4.3.1
+- `hardening-soil-simo-hughes-upgrade.md` section 5
+- `hardening-soil-simo-hughes-upgrade.md` section 7, Phase SH-2
+
+Implementation plan:
+
+- Extend `material_hs.hpp` so return-map results expose the active cone and
+  cap plastic multipliers. This is tangent context only; it does not change
+  the old continuum/FD-off path.
+- Add dense cone Simo-Hughes helpers in `material_hs_tangent.hpp`: spectral
+  flow derivative, dense `Xi`, cone yield vector with sigma-3 implicit term,
+  and the `Delta lambda` conditioning guard.
+- Add `scripts/scratch/hs_sh_phase_2.cpp` and
+  `scripts/verify_hs_simo_hughes_phase_2.mjs`.
+- Validate the closed-form cone tangent against both a local
+  residual-sensitivity oracle and direct finite differences of the implemented
+  return map on a non-coaxial `gamma_xy` probe.
+
+Hard-halt diagnosis:
+
+- The first dense implementation put the full spectral derivative of the flow
+  direction into `Xi`. It compiled, but the non-coaxial shear column missed the
+  direct FD oracle by `1.734308e-03` relative. The normal block matched; the
+  error was concentrated in `D_xy,xy`.
+- The residual equation explains the mismatch. The production HS cone return
+  map is direction-locked to the trial-stress eigenbasis: the corrected stress
+  unknown changes the principal values at fixed projectors, while a strain
+  perturbation also rotates the trial projectors through
+  `sigma_trial = sigma_n + D_e delta_epsilon`.
+- The academically consistent fix is a split residual linearisation:
+  `M_sigma` is the principal-value `partial m / partial sigma` at fixed trial
+  projectors and enters `Xi = (D_e^-1 + Delta lambda M_sigma)^-1`.
+  `M_trial` is the eigenprojector-rotation sensitivity of the trial basis and
+  enters the strain-side operator `B = I - Delta lambda M_trial D_e`.
+  The final tangent is `Xi B - Xi m (n^T Xi B)/(n^T Xi m + 1)`.
+- This is not a shortcut or a rebaseline. It is the exact implicit-function
+  tangent of the return map the code actually executes. This log records the
+  spec amendment needed for §2.3 and §4.3.1 so future phases do not put the
+  projector sensitivity in the wrong block.
+
+Review notes:
+
+- `compute_simo_hughes_cone_tangent(...)` does not symmetrize the tangent.
+- The `Delta lambda` guard returns `D_e` only for
+  `|Delta lambda| < 1e-10 ||D_e||_F`, matching the allowed conditioning
+  fallback.
+- The Voigt row uses the stress-covector metric helper; shear weights are not
+  hidden in an ordinary Euclidean dot product.
+- Dense `Xi` remains the only SH-2 implementation. No Sherman-Morrison
+  optimization was added before dense parity.
+
+Validation status:
+
+- PASS on `node scripts/verify_hs_simo_hughes_phase_2.mjs`.
+- Gate output: `residualRelErr_3x3=1.609817e-08`,
+  `directFdRelErr_3x3=1.789000e-09`,
+  `dlambda=1.149563e-04`.
