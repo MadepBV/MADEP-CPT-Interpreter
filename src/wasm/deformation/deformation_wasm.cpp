@@ -401,7 +401,7 @@ int madepRunDeformationAnalysis(
     p = read_f64(p, r.hs.e_init);
     p = read_f64(p, r.hs.e_max);
     p = read_f64(p, r.hs.OCR);
-    p = read_f64(p, r.hs.reserved);
+    p = read_f64(p, r.hs.nearSurfaceMinConfiningStress);
   }
 
   // Constraints.
@@ -856,7 +856,7 @@ int madepRunMcPlasticMaterialPoint(
 //            sigmaTAllow, rShear
 //       u8   useTensionCutoff, symmetrize, pad, pad
 //       f64  E50_ref, Eoed_ref, Eur_ref, m, nu_ur, p_ref,
-//            Rf, K0_nc, e_init, e_max, OCR, reserved
+//            Rf, K0_nc, e_init, e_max, OCR, nearSurfaceMinConfiningStress
 //     u8   computeReferenceConstants (1 = call compute_hs_reference_constants
 //                                       before update, 0 = trust caller-supplied
 //                                       M_cap, H_cap, sin_phi_cv below)
@@ -944,7 +944,7 @@ int madepRunHsMaterialPoint(
   p = read_f64(p, rp.hs.e_init);
   p = read_f64(p, rp.hs.e_max);
   p = read_f64(p, rp.hs.OCR);
-  p = read_f64(p, rp.hs.reserved);
+  p = read_f64(p, rp.hs.nearSurfaceMinConfiningStress);
 
   std::uint8_t computeRef = 0;
   std::uint8_t pad = 0;

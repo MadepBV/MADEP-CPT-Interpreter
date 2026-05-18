@@ -109,7 +109,11 @@ struct RegionParams {
     double e_init{ -1.0 };
     double e_max{ -1.0 };
     double OCR{ 1.0 };
-    double reserved{ 0.0 };
+    // Optional engineer-controlled minimum compression-positive confining
+    // stress for near-surface HS points. Zero disables modelling
+    // regularization; the constitutive update still keeps tiny numerical
+    // denominator guards internally.
+    double nearSurfaceMinConfiningStress{ 0.0 };
     double M_cap{ 0.0 };
     double sin_phi_cv{ 0.0 };
     double H_cap{ 0.0 };

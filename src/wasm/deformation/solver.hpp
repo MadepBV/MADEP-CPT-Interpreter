@@ -2157,6 +2157,396 @@ inline PhaseResult run_safety_arc_length_phase(
   return res;
 }
 
+inline PhaseResult run_load_arc_length_phase(
+    PhaseContext& ctx,
+    const SolverOptions& opts,
+    double startLoadFactor) {
+  auto& elements = *ctx.elements;
+  auto& committedMp = *ctx.committed;
+  auto& trialMp = *ctx.trial;
+  auto& regions = *ctx.regions;
+  auto& regionC = *ctx.regionC;
+  auto& freeDofs = *ctx.freeDofs;
+  auto& freeIndexByDof = *ctx.freeIndexByDof;
+  auto& K = *ctx.K;
+  auto& U = *ctx.U_global;
+  const double* U_base = ctx.U_base ? ctx.U_base->data() : nullptr;
+  const double* baseRhs = ctx.baseRhsFree ? ctx.baseRhsFree->data() : nullptr;
+  const double* rampedRhs = ctx.rampedRhsFree ? ctx.rampedRhsFree->data() : nullptr;
+  const std::int32_t nfree = K.nrows;
+
+  PhaseResult res;
+  if (!ctx.rampedRhsFree || ctx.phaseKind != PhaseKind::ServiceLoad ||
+      ctx.kind != ConstitutiveKind::HardeningSoil) {
+    res.converged = false;
+    res.loadFactor = std::clamp(startLoadFactor, 0.0, 1.0);
+    return res;
+  }
+
+  std::vector<double> continuationRhsFree(static_cast<std::size_t>(nfree), 0.0);
+  for (std::int32_t i = 0; i < nfree; ++i) {
+    continuationRhsFree[static_cast<std::size_t>(i)] =
+        (*ctx.rampedRhsFree)[static_cast<std::size_t>(i)];
+  }
+
+  std::vector<double> internalForceFree(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> residualFree(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> diagInv;
+  const bool mayNeedUnsymmetricSolver = true;
+  double loadFactor = std::clamp(startLoadFactor, 0.0, 1.0);
+  bool overall = true;
+
+  ArcLengthRuntimeOptions arcRuntime = prepare_arc_length_runtime_options(ctx, opts);
+  SolverOptions arcOpts = arcRuntime.opts;
+  if (arcOpts.arcLengthInitialRadius < 2e-2) {
+    arcOpts.arcLengthInitialRadius = std::min(2e-2, arcOpts.arcLengthMaxRadius);
+  }
+  const double displacementScale = arcRuntime.displacementScale;
+
+  ArcLengthState arcState;
+  initialise_arc_length_state(arcState, arcOpts, nfree, loadFactor, 1.0);
+  PhaseStepMaterials candidateMaterials;
+  PhaseStepMaterials probeMaterials;
+  std::vector<double> lineSearchCandidateDeltaU;
+  std::vector<double> lineSearchBestDeltaU;
+  std::vector<double> lineSearchBestU;
+  std::vector<MaterialPoint> lineSearchBestTrial;
+  std::vector<double> stepStartUScratch;
+  std::vector<MaterialPoint> stepStartCommittedScratch;
+  std::vector<MaterialPoint> stepStartTrialScratch;
+  lineSearchCandidateDeltaU.reserve(static_cast<std::size_t>(std::max(nfree, 0)));
+  lineSearchBestDeltaU.reserve(static_cast<std::size_t>(std::max(nfree, 0)));
+  lineSearchBestU.reserve(U.size());
+  lineSearchBestTrial.reserve(trialMp.size());
+  stepStartUScratch.reserve(U.size());
+  stepStartCommittedScratch.reserve(committedMp.size());
+  stepStartTrialScratch.reserve(trialMp.size());
+
+  auto apply_step_delta = [&](const std::vector<double>& startU,
+                              const std::vector<double>& deltaFree) {
+    U = startU;
+    for (std::int32_t i = 0; i < nfree; ++i) {
+      U[static_cast<std::size_t>(freeDofs[static_cast<std::size_t>(i)])] +=
+          deltaFree[static_cast<std::size_t>(i)];
+    }
+  };
+
+  for (std::int32_t step = 0; step < arcOpts.maxLoadSteps; ++step) {
+    if (loadFactor >= 1.0 - 1e-12) break;
+
+    bool stepConverged = false;
+    for (std::int32_t retry = 0; retry < std::max(arcOpts.arcLengthMaxRetries, 1); ++retry) {
+      const double stepStartLambda = loadFactor;
+      stepStartUScratch.assign(U.begin(), U.end());
+      stepStartCommittedScratch.assign(committedMp.begin(), committedMp.end());
+      stepStartTrialScratch.assign(trialMp.begin(), trialMp.end());
+
+      trialMp = committedMp;
+      AssembleOutput startAssembly = assemble_global(
+          elements, committedMp, trialMp, regions, regionC,
+          freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+          stepStartLambda, ctx.kind, ctx.symmetrize,
+          ctx.incrementalStress,
+          /*wantTangent=*/true,
+          K, internalForceFree, residualFree);
+      res.maxEta = std::max(res.maxEta, startAssembly.maxEta);
+      res.activeCount = startAssembly.plasticActiveCount;
+      res.activeFaceCount = startAssembly.activeFaceCount;
+      res.activeEdgeCount = startAssembly.activeEdgeCount;
+      res.activeApexCount = startAssembly.activeApexCount;
+      res.tensionCount = startAssembly.tensionCount;
+      res.residualNorm = startAssembly.residualNorm;
+      const bool startHasPlastic = startAssembly.plasticActiveCount > 0 || startAssembly.tensionCount > 0;
+      const bool useUnsymmetricSolver = mayNeedUnsymmetricSolver && startHasPlastic;
+
+      ArcLengthPredictor predictor = make_load_control_arc_length_predictor(
+          K, freeDofs, continuationRhsFree, diagInv, arcOpts, arcState,
+          displacementScale, useUnsymmetricSolver);
+      res.cgIterations += predictor.linearIterations;
+      if (useUnsymmetricSolver) {
+        res.gmresIterationCount += predictor.linearIterations;
+        res.gmresInvocations += 1;
+      }
+      res.lastLinearSolverKind = useUnsymmetricSolver ? std::uint8_t{1} : std::uint8_t{0};
+      if (!predictor.converged && startHasPlastic) {
+        trialMp = committedMp;
+        AssembleOutput elasticPredictorAssembly = assemble_global(
+            elements, committedMp, trialMp, regions, regionC,
+            freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+            stepStartLambda, ctx.kind, ctx.symmetrize,
+            ctx.incrementalStress,
+            /*wantTangent=*/true,
+            K, internalForceFree, residualFree,
+            /*useElasticGlobalizationTangent=*/true);
+        res.maxEta = std::max(res.maxEta, elasticPredictorAssembly.maxEta);
+        predictor = make_load_control_arc_length_predictor(
+            K, freeDofs, continuationRhsFree, diagInv, arcOpts, arcState,
+            displacementScale, /*useUnsymmetricSolver=*/false);
+        res.cgIterations += predictor.linearIterations;
+        res.lastLinearSolverKind = 0;
+      }
+      if (!predictor.converged || !(predictor.deltaLambda > 0.0)) {
+        committedMp = stepStartCommittedScratch;
+        trialMp = stepStartTrialScratch;
+        U = stepStartUScratch;
+        break;
+      }
+
+      double predictorScale = 1.0;
+      if (stepStartLambda + predictor.deltaLambda > 1.0) {
+        predictorScale = (1.0 - stepStartLambda) / predictor.deltaLambda;
+      }
+      if (!(predictorScale > 0.0) || !std::isfinite(predictorScale)) {
+        committedMp = stepStartCommittedScratch;
+        trialMp = stepStartTrialScratch;
+        U = stepStartUScratch;
+        break;
+      }
+      if (predictorScale < 1.0) {
+        predictor.deltaLambda *= predictorScale;
+        for (double& v : predictor.deltaUFree) v *= predictorScale;
+      }
+
+      std::vector<double> stepDeltaUFree = std::move(predictor.deltaUFree);
+      double stepDeltaLambda = predictor.deltaLambda;
+      ArcLengthState stepState = arcState;
+      stepState.deltaS = std::sqrt(std::max(
+          arc_length_weighted_norm2(stepDeltaUFree, displacementScale) +
+          stepState.alpha * stepState.alpha * stepDeltaLambda * stepDeltaLambda,
+          0.0));
+      if (!(stepState.deltaS > 0.0) || !std::isfinite(stepState.deltaS)) {
+        committedMp = stepStartCommittedScratch;
+        trialMp = stepStartTrialScratch;
+        U = stepStartUScratch;
+        break;
+      }
+
+      apply_step_delta(stepStartUScratch, stepDeltaUFree);
+      double lastAcceptedScale = 1.0;
+      double stepInitialResidualNorm = std::numeric_limits<double>::quiet_NaN();
+      double lastConstraintResidual = std::numeric_limits<double>::quiet_NaN();
+      double lastCorrectionDenominator = std::numeric_limits<double>::quiet_NaN();
+      double stepMeritBeta = 1.0;
+      bool hasStepMeritBeta = false;
+      std::int32_t stepLinearIterations = predictor.linearIterations;
+      std::int32_t newtonIterUsed = 0;
+      bool invalidStep = false;
+      AssembleOutput lastAssembly;
+      bool hasLastAssembly = false;
+
+      for (std::int32_t newtonIter = 1; newtonIter <= arcOpts.nonlinearMaxIter; ++newtonIter) {
+        const double candidateLambda = stepStartLambda + stepDeltaLambda;
+        if (!(candidateLambda >= stepStartLambda - 1e-12) || candidateLambda > 1.0 + 1e-10) {
+          invalidStep = true;
+          break;
+        }
+        prepare_phase_step_materials(ctx, regions, regionC, candidateLambda, candidateMaterials);
+        trialMp = committedMp;
+        AssembleOutput a = assemble_global(
+            elements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
+            freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+            candidateLambda, ctx.kind, ctx.symmetrize,
+            ctx.incrementalStress,
+            /*wantTangent=*/true,
+            K, internalForceFree, residualFree);
+        lastAssembly = a;
+        hasLastAssembly = true;
+        ++res.newtonIterations;
+        newtonIterUsed = newtonIter;
+        res.maxEta = std::max(res.maxEta, a.maxEta);
+        res.activeCount = a.plasticActiveCount;
+        res.activeFaceCount = a.activeFaceCount;
+        res.activeEdgeCount = a.activeEdgeCount;
+        res.activeApexCount = a.activeApexCount;
+        res.tensionCount = a.tensionCount;
+        res.residualNorm = a.residualNorm;
+        if (!std::isfinite(stepInitialResidualNorm)) stepInitialResidualNorm = a.residualNorm;
+
+        const bool hsHardFailure =
+            a.hsFailureCode == 101 || a.hsFailureCode == 102 ||
+            a.hsFailureCode == 103 || a.hsFailureCode == 104 ||
+            a.hsFailureCode == 105 || a.hsFailureCode == 106 ||
+            a.hsFailureCode == 999;
+        if (hsHardFailure) {
+          invalidStep = true;
+          break;
+        }
+
+        lastConstraintResidual = arc_length_constraint_residual(
+            stepDeltaUFree, stepDeltaLambda, stepState.deltaS,
+            stepState.alpha, displacementScale);
+        if (!hasStepMeritBeta) {
+          stepMeritBeta = arc_length_quadratic_merit_beta(
+              a.residualNorm, lastConstraintResidual);
+          hasStepMeritBeta = true;
+        }
+        const double residualTarget = std::max(
+            arcOpts.residualAbsTol, arcOpts.residualRelTol * std::max(a.rhsNorm, 0.0));
+        const double constraintTarget = std::max(
+            arcOpts.arcLengthConstraintTolerance,
+            arcOpts.arcLengthConstraintTolerance * std::max(stepState.deltaS * stepState.deltaS, 1.0));
+        if (newtonIter > 1 &&
+            a.residualNorm <= residualTarget &&
+            std::abs(lastConstraintResidual) <= constraintTarget) {
+          stepConverged = true;
+          break;
+        }
+
+        const bool hasPlastic = a.plasticActiveCount > 0 || a.tensionCount > 0;
+        const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
+#ifndef NDEBUG
+        if (ctx.kind == ConstitutiveKind::HardeningSoil && hasPlastic && !tangentAsymmetric) {
+          assert(false && "HS plastic service arc-length step routed to CG; expected GMRES");
+        }
+#endif
+        ArcLengthCorrector corrector = compute_arc_length_corrector(
+            K, freeDofs, residualFree, continuationRhsFree,
+            stepDeltaUFree, stepDeltaLambda, stepState, diagInv, arcOpts,
+            displacementScale, tangentAsymmetric);
+        res.cgIterations += corrector.linearIterations;
+        stepLinearIterations += corrector.linearIterations;
+        if (tangentAsymmetric) {
+          res.gmresIterationCount += corrector.linearIterations;
+          res.gmresInvocations += 1;
+        }
+        res.lastLinearSolverKind = tangentAsymmetric ? std::uint8_t{1} : std::uint8_t{0};
+        lastCorrectionDenominator = corrector.denominator;
+        if (!corrector.converged) {
+          invalidStep = true;
+          break;
+        }
+
+        const double currentMerit = arc_length_line_search_merit(
+            a.residualNorm, lastConstraintResidual, stepState.deltaS, stepMeritBeta, arcOpts);
+        double bestMerit = std::numeric_limits<double>::infinity();
+        double bestScale = 0.0;
+        lineSearchBestDeltaU.assign(stepDeltaUFree.begin(), stepDeltaUFree.end());
+        double bestDeltaLambda = stepDeltaLambda;
+        lineSearchBestU.assign(U.begin(), U.end());
+        lineSearchBestTrial.assign(trialMp.begin(), trialMp.end());
+        double bestAssemblyMaxEta = 0.0;
+
+        double eta = 1.0;
+        const int maxBacktracks = arc_length_line_search_max_backtracks(arcOpts);
+        for (int bt = 0; bt < maxBacktracks; ++bt) {
+          lineSearchCandidateDeltaU.assign(stepDeltaUFree.begin(), stepDeltaUFree.end());
+          for (std::int32_t i = 0; i < nfree; ++i) {
+            lineSearchCandidateDeltaU[static_cast<std::size_t>(i)] +=
+                eta * corrector.deltaUFree[static_cast<std::size_t>(i)];
+          }
+          const double candidateDeltaLambda = stepDeltaLambda + eta * corrector.deltaLambda;
+          const double probeLambda = stepStartLambda + candidateDeltaLambda;
+          if (probeLambda >= stepStartLambda - 1e-12 && probeLambda <= 1.0 + 1e-10) {
+            apply_step_delta(stepStartUScratch, lineSearchCandidateDeltaU);
+            trialMp = committedMp;
+            prepare_phase_step_materials(ctx, regions, regionC, probeLambda, probeMaterials);
+            AssembleOutput probe = assemble_global(
+                elements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
+                freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+                probeLambda, ctx.kind, ctx.symmetrize,
+                ctx.incrementalStress,
+                /*wantTangent=*/false,
+                K, internalForceFree, residualFree);
+            const bool probeHardFailure =
+                probe.hsFailureCode == 101 || probe.hsFailureCode == 102 ||
+                probe.hsFailureCode == 103 || probe.hsFailureCode == 104 ||
+                probe.hsFailureCode == 105 || probe.hsFailureCode == 106 ||
+                probe.hsFailureCode == 999;
+            if (!probeHardFailure) {
+              const double constraint = arc_length_constraint_residual(
+                  lineSearchCandidateDeltaU, candidateDeltaLambda, stepState.deltaS,
+                  stepState.alpha, displacementScale);
+              const double merit = arc_length_line_search_merit(
+                  probe.residualNorm, constraint, stepState.deltaS, stepMeritBeta, arcOpts);
+              if (std::isfinite(merit) && merit < bestMerit) {
+                bestMerit = merit;
+                bestScale = eta;
+                lineSearchBestDeltaU.assign(
+                    lineSearchCandidateDeltaU.begin(), lineSearchCandidateDeltaU.end());
+                bestDeltaLambda = candidateDeltaLambda;
+                lineSearchBestU.assign(U.begin(), U.end());
+                lineSearchBestTrial.assign(trialMp.begin(), trialMp.end());
+                bestAssemblyMaxEta = probe.maxEta;
+              }
+              if (merit <= currentMerit || eta <= arcOpts.plasticLineSearchMinScale + 1e-12) break;
+            }
+          }
+          eta *= 0.5;
+        }
+        if (!(bestScale > 0.0) || !std::isfinite(bestMerit)) {
+          invalidStep = true;
+          break;
+        }
+        std::swap(stepDeltaUFree, lineSearchBestDeltaU);
+        stepDeltaLambda = bestDeltaLambda;
+        std::swap(U, lineSearchBestU);
+        std::swap(trialMp, lineSearchBestTrial);
+        lastAcceptedScale = bestScale;
+        (void)lastAcceptedScale;
+        res.maxEta = std::max(res.maxEta, bestAssemblyMaxEta);
+      }
+
+      if (stepConverged) {
+        loadFactor = stepStartLambda + stepDeltaLambda;
+        ++res.accepted;
+        committedMp = trialMp;
+        if (!hasLastAssembly) {
+          overall = false;
+          break;
+        }
+        res.activeCount = lastAssembly.plasticActiveCount;
+        res.activeFaceCount = lastAssembly.activeFaceCount;
+        res.activeEdgeCount = lastAssembly.activeEdgeCount;
+        res.activeApexCount = lastAssembly.activeApexCount;
+        res.tensionCount = lastAssembly.tensionCount;
+        res.residualNorm = lastAssembly.residualNorm;
+        arcState.previousDeltaU = std::move(stepDeltaUFree);
+        arcState.previousDeltaLambda = stepDeltaLambda;
+        arcState.lambda = loadFactor;
+        arcState.acceptedStepCount += 1;
+        const double iterFactor = std::pow(
+            std::max(arcOpts.arcLengthTargetIterations, 1.0) /
+                std::max(static_cast<double>(newtonIterUsed), 1.0),
+            0.5);
+        const double factor = std::clamp(
+            iterFactor,
+            std::max(arcOpts.arcLengthShrinkFactor, 1e-3),
+            std::max(arcOpts.arcLengthGrowthFactor, 1.0));
+        arcState.deltaS = std::clamp(
+            arcState.deltaS * factor,
+            std::max(arcOpts.arcLengthMinRadius, 1e-12),
+            std::max(arcOpts.arcLengthMaxRadius, arcOpts.arcLengthMinRadius));
+        (void)stepInitialResidualNorm;
+        (void)lastCorrectionDenominator;
+        break;
+      }
+
+      ++res.rejected;
+      arcState.rejectedStepCount += 1;
+      committedMp = stepStartCommittedScratch;
+      trialMp = stepStartTrialScratch;
+      U = stepStartUScratch;
+      const double shrink = invalidStep
+          ? std::clamp(arcOpts.arcLengthFailureShrinkFactor, 1e-3, 1.0)
+          : std::clamp(arcOpts.arcLengthShrinkFactor, 1e-3, 1.0);
+      arcState.deltaS *= shrink;
+      if (arcState.deltaS < std::max(arcOpts.arcLengthMinRadius, 1e-12)) {
+        overall = false;
+        break;
+      }
+    }
+
+    if (!stepConverged) {
+      overall = false;
+      break;
+    }
+  }
+
+  res.loadFactor = loadFactor;
+  res.converged = overall && loadFactor >= 1.0 - 1e-6;
+  return res;
+}
+
 // Run a single nonlinear Newton-Raphson phase with adaptive load
 // stepping from λ = 0 → 1. 1:1 mirror of JS solveNonlinearPhase
 // (src/lib/cpt-app/deformation/solver.js:3700) for the algorithmic
@@ -2168,24 +2558,22 @@ inline PhaseResult run_safety_arc_length_phase(
 // Per docs/features/hardening-soil-fix.md §Phase 8 the production
 // globalization hierarchy for HS (and mc-plastic) is, in order:
 //
-//   1. Full Newton with the analytic algorithmic tangent — assembled
-//      inside this function at every Newton iteration via
-//      `assemble_global(..., wantTangent=true)`. For HS the tangent is
-//      the Phase 6 single-surface or corner analytic form (or the
-//      Phase 6A FD oracle when the analytic form is degenerate); both
-//      are unsymmetric on the cone / corner regimes — see
-//      mayNeedUnsymmetricSolver below.
+//   1. Full Newton with the assembled algorithmic tangent. For HS plastic
+//      cone/cap/corner states this is currently the Phase 6A finite-
+//      difference tangent of the implemented return map; the continuum-form
+//      analytic tangent remains diagnostic until the full consistent
+//      Simo-Hughes operator lands. Plastic HS tangents may be unsymmetric —
+//      see mayNeedUnsymmetricSolver below.
 //   2. Armijo line search on the residual merit m(u) = 0.5 |r|^2 —
 //      block `requiresPlasticLineSearch` below.
 //   3. Load-step cutback — outer `for (step ...)` loop; on Newton
 //      failure dLambda is shrunk via the adaptive continuation
 //      controller (`compute_step_factor`) and the step is retried
 //      from the prior committed state.
-//   4. Finite-difference tangent retry for difficult active-set
-//      transitions — internal to the constitutive update inside
-//      material_hs.hpp (Phase 6A `fd_algorithmic_tangent` via the
-//      `try_fd_fallback` lambda); falls back from the analytic tangent
-//      column-by-column when the analytic gradient is degenerate.
+//   4. Finite-difference tangent fallback — internal to the constitutive
+//      update inside material_hs.hpp; if an FD column cannot be certified,
+//      the local tangent falls back to D_e and the global line search/cutback
+//      still guards admissibility.
 //   5. Elastic-tangent modified Newton — guarded by
 //      `canUseRobustElasticFallback`; reserved for service/safety phases
 //      of mc-plastic and HS as a diagnostic rescue only. Per fix-plan
@@ -2294,11 +2682,25 @@ inline PhaseResult run_nonlinear_phase(
   const bool mayNeedUnsymmetricSolver =
       (ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize) ||
       ctx.kind == ConstitutiveKind::HardeningSoil;
-  const bool canUseRobustElasticFallback =
-      opts.robustNonlinearMode != 0 &&
-      (ctx.kind == ConstitutiveKind::McPlastic ||
-       ctx.kind == ConstitutiveKind::HardeningSoil) &&
+  // Globalization fallback. MC keeps this behind the user-facing robust
+  // option because its exact tangent is cheap and mature. HS is different
+  // until the full Simo-Hughes tangent lands: the production tangent is the
+  // finite-difference derivative of the local return map, which is accurate
+  // but can lose descent at cone/cap active-set transitions. After the
+  // primary FD/GMRES direction stalls, allow an HS-only modified-Newton
+  // rescue with the true elastic tangent. This does NOT symmetrize a plastic
+  // tangent; assemble_global explicitly substitutes D_e for the fallback
+  // matrix, so solving that fallback direction with CG is mathematically
+  // valid. The exact HS stress update and admissibility certificate still
+  // run on every probe and convergence check.
+  const bool hsElasticGlobalizationFallback =
+      ctx.kind == ConstitutiveKind::HardeningSoil &&
       (ctx.phaseKind == PhaseKind::ServiceLoad || ctx.phaseKind == PhaseKind::SafetyCphi);
+  const bool canUseRobustElasticFallback =
+      ((opts.robustNonlinearMode != 0 &&
+        ctx.kind == ConstitutiveKind::McPlastic &&
+        (ctx.phaseKind == PhaseKind::ServiceLoad || ctx.phaseKind == PhaseKind::SafetyCphi)) ||
+       hsElasticGlobalizationFallback);
 
   const double phaseMinLoadStep = opts.minLoadStep;
   const std::int32_t phaseMaxLoadSteps = opts.maxLoadSteps;
@@ -2452,18 +2854,24 @@ inline PhaseResult run_nonlinear_phase(
       // single-surface fallback (Phase 5 patch) maps cleanly back to
       // failureCode = 0 with the active surface set to 1 or 2, so this
       // gate fires only when ALL paths failed.
-      const bool hsHardFailure =
+	      const bool hsHardFailure =
+	          ctx.kind == ConstitutiveKind::HardeningSoil &&
+	          (a.hsFailureCode == 101 || a.hsFailureCode == 102 ||
+	           a.hsFailureCode == 103 || a.hsFailureCode == 104 ||
+	           a.hsFailureCode == 105 || a.hsFailureCode == 106 ||
+	           a.hsFailureCode == 999);
+      const bool hsFirstAssemblyConverged =
           ctx.kind == ConstitutiveKind::HardeningSoil &&
-          (a.hsFailureCode == 101 || a.hsFailureCode == 102 ||
-           a.hsFailureCode == 103 || a.hsFailureCode == 104 ||
-           a.hsFailureCode == 105 || a.hsFailureCode == 106 ||
-           a.hsFailureCode == 999);
-      if (newtonIter > 1 && (toleranceConverged || plasticQuasiConverged) &&
+          newtonIter == 1 &&
+          toleranceConverged &&
+          !hsHardFailure;
+      if ((newtonIter > 1 || hsFirstAssemblyConverged) &&
+          (toleranceConverged || plasticQuasiConverged) &&
           (!requiresStableActiveSet || a.changedCount == 0) &&
           !hsHardFailure) {
         stepConverged = true;
-        break;
-      }
+	        break;
+	      }
 
       // Linear solve dispatch.
       if (shouldWarmStartLinearSolve && hasIterationLinearGuess) {
@@ -2485,31 +2893,31 @@ inline PhaseResult run_nonlinear_phase(
         assert(false && "HS plastic step routed to CG; expected GMRES");
       }
 #endif
-      cg::LinearSolveResult lr = solve_phase_linear_system(
-          K, freeDofs, residualFree, deltaUFree, diag_inv, opts, tangentAsymmetric);
-      res.cgIterations += lr.iterations;
-      stepLinearIterations += lr.iterations;
-      if (tangentAsymmetric) {
-        res.gmresIterationCount += lr.iterations;
-        res.gmresInvocations += 1;
-      }
-      res.lastLinearSolverKind = tangentAsymmetric ? std::uint8_t{1} : std::uint8_t{0};
-      double linearRhsNorm = 0.0;
-      for (double v : residualFree) linearRhsNorm += v * v;
-      linearRhsNorm = std::sqrt(linearRhsNorm);
-      const double relativeResidualForForcing = a.rhsNorm > 1e-30
-          ? a.residualNorm / a.rhsNorm
-          : a.residualNorm;
-      const double inexactNewtonForcing = ctx.kind == ConstitutiveKind::LinearElastic
-          ? 1e-8
-          : std::max(isInitialGravityPhase ? 0.1 : 0.05,
-                     std::min(isInitialGravityPhase ? 0.6 : 0.4,
-                              std::sqrt(std::max(relativeResidualForForcing, 0.0))));
-      const double acceptableLinearizedResidual = ctx.kind == ConstitutiveKind::LinearElastic
-          ? std::max(opts.cgAbsTol, inexactNewtonForcing * linearRhsNorm)
-          : std::max({opts.cgAbsTol,
-                      0.25 * std::max(opts.residualAbsTol, 1e-3),
-                      inexactNewtonForcing * linearRhsNorm});
+	      cg::LinearSolveResult lr = solve_phase_linear_system(
+	          K, freeDofs, residualFree, deltaUFree, diag_inv, opts, tangentAsymmetric);
+	      res.cgIterations += lr.iterations;
+	      stepLinearIterations += lr.iterations;
+	      if (tangentAsymmetric) {
+	        res.gmresIterationCount += lr.iterations;
+	        res.gmresInvocations += 1;
+	      }
+	      res.lastLinearSolverKind = tangentAsymmetric ? std::uint8_t{1} : std::uint8_t{0};
+	      double linearRhsNorm = 0.0;
+	      for (double v : residualFree) linearRhsNorm += v * v;
+	      linearRhsNorm = std::sqrt(linearRhsNorm);
+	      const double relativeResidualForForcing = a.rhsNorm > 1e-30
+	          ? a.residualNorm / a.rhsNorm
+	          : a.residualNorm;
+	      const double inexactNewtonForcing = ctx.kind == ConstitutiveKind::LinearElastic
+	          ? 1e-8
+	          : std::max(isInitialGravityPhase ? 0.1 : 0.05,
+	                     std::min(isInitialGravityPhase ? 0.6 : 0.4,
+	                              std::sqrt(std::max(relativeResidualForForcing, 0.0))));
+	      const double acceptableLinearizedResidual = ctx.kind == ConstitutiveKind::LinearElastic
+	          ? std::max(opts.cgAbsTol, inexactNewtonForcing * linearRhsNorm)
+	          : std::max({opts.cgAbsTol,
+	                      0.25 * std::max(opts.residualAbsTol, 1e-3),
+	                      inexactNewtonForcing * linearRhsNorm});
       if (!lr.converged && lr.residualNorm > acceptableLinearizedResidual) {
         break;
       }
@@ -2541,22 +2949,28 @@ inline PhaseResult run_nonlinear_phase(
         std::vector<double> bestU = U;
         std::vector<MaterialPoint> bestTrialMp = trialMp;
         bool bestAccepted = false;
-        for (int bt = 0; bt < kLineSearchMaxBacktracks; ++bt) {
-          // Apply scaled correction.
-          U = uBackup;
-          trialMp = committedMp;
-          for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += stepScale * deltaUFree[i];
+	        for (int bt = 0; bt < kLineSearchMaxBacktracks; ++bt) {
+	          // Apply scaled correction.
+	          U = uBackup;
+	          trialMp = committedMp;
+	          for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += stepScale * deltaUFree[i];
           AssembleOutput probe = assemble_global(elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                                                  freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                                                  targetLambda, ctx.kind, ctx.symmetrize,
-                                                 ctx.incrementalStress,
-                                                 /*wantTangent=*/false,
+	                                                 ctx.incrementalStress,
+	                                                 /*wantTangent=*/false,
                                                  K, internalForceFree, residualFree);
           const double candidateResidualNorm = probe.residualNorm;
           const double candidateMerit = evaluate_residual_merit(candidateResidualNorm);
           stepPeakActiveCount = std::max(stepPeakActiveCount, probe.plasticActiveCount);
           const double armijoTarget = currentMerit + kLineSearchArmijoC1 * stepScale * std::min(dd, 0.0);
-          const bool candidateAccepted = candidateMerit <= std::max(armijoTarget, 0.0);
+          const bool hsResidualDescentAccepted =
+              ctx.kind == ConstitutiveKind::HardeningSoil &&
+              probe.hsFailureCode == 0 &&
+              candidateResidualNorm < currentResidualNorm;
+          const bool candidateAccepted =
+              candidateMerit <= std::max(armijoTarget, 0.0) ||
+              hsResidualDescentAccepted;
           const double improveTol = std::max(1e-16, 1e-12 * std::max(bestMerit, 1.0));
           const double tieTol = std::max(1e-16, 1e-12 * std::max({candidateMerit, bestMerit, 1.0}));
           if (candidateMerit < bestMerit - improveTol ||
@@ -2755,17 +3169,17 @@ inline PhaseResult run_nonlinear_phase(
                   opts.residualAbsTol, opts.residualRelTol * std::max(fallbackBestRhsNorm, 0.0));
               const double fallbackDisplacementTarget = std::max(
                   opts.displacementAbsTol, opts.displacementRelTol * std::max(fallbackSolutionNorm, 0.0));
-              const bool fallbackStalledCandidateAcceptable =
+	              const bool fallbackStalledCandidateAcceptable =
                   fallbackBestResidual <= fallbackResidualTarget &&
                   (!requiresDisplacementTolerance || fallbackCorrectionNorm <= fallbackDisplacementTarget);
               const double fallbackVsConsistentTol =
                   std::max(1e-16, 1e-12 * std::max(bestMerit, 1.0));
               const bool fallbackImprovesConsistentBest =
                   !std::isfinite(bestMerit) ||
-                  fallbackBestMerit < bestMerit - fallbackVsConsistentTol;
+                  fallbackBestMerit < bestMerit - fallbackVsConsistentTol ||
+                  fallbackBestResidual < bestResidual;
               const bool fallbackMateriallyReducesResidual =
-                  !std::isfinite(bestResidual) ||
-                  fallbackBestResidual <= 0.75 * std::max(bestResidual, 0.0);
+                  fallbackBestResidual < fallbackCurrentResidualNorm;
 
               if ((fallbackBestAccepted &&
                    fallbackImprovesConsistentBest &&
@@ -2800,7 +3214,7 @@ inline PhaseResult run_nonlinear_phase(
             U = uBackup;
             trialMp = committedMp;
             break;
-          }
+	          }
 	        } else {
 	          U = bestU;
 	          trialMp = bestTrialMp;
@@ -2879,17 +3293,13 @@ inline PhaseResult run_nonlinear_phase(
           isExactReturnMappingKind && stepPeakActiveCount > 0 && !benignPlasticStep
               ? std::min(opts.loadStepCutbackFactor, plasticCutbackFactor)
               : opts.loadStepCutbackFactor;
-      // HS uses an elastic-tangent modified Newton (per Phase 5/6 § B.9),
-      // so the FE residual converges *linearly* with rate ~0.6 rather
-      // than quadratically. In practice the per-step iteration count
-      // settles at ~6.5 vs the universal target of 6, which would push
-      // the growth factor below 1 and shrink the load step indefinitely
-      // on multi-element problems. Use a slightly looser target (8) for
-      // HS so the controller can grow the step when iter count is in
-      // the 6-8 band — matching the elastic-tangent convergence rate.
-      // This is a load-step *controller* tuning, not a tolerance: it
-      // doesn't relax any admissibility, residual, or Newton-convergence
-      // criterion.
+      // HS still has a more expensive local return map than MC and may use
+      // finite-difference plastic tangents until the full consistent
+      // Simo-Hughes tangent lands. Keep a slightly looser iteration target
+      // for load-step growth so the controller does not shrink indefinitely
+      // on otherwise healthy HS plastic steps. This is controller tuning, not
+      // a tolerance relaxation: admissibility, residual and Newton convergence
+      // criteria are unchanged.
       const double targetIters = (ctx.kind == ConstitutiveKind::HardeningSoil)
           ? 8.0
           : kContinuationTargetIterations;
@@ -3027,92 +3437,55 @@ inline void initialise_material_points(
       const auto principalSeed =
           mc_exact::principal_stress_projectors_3d_compression_positive(sigma, mp_eig);
       const double ocr = std::max(rp.hs.OCR, 1e-6);
-      // F21: p_p^{(0)} = OCR · σ_1^{(0)} in compression-positive units.
-      // σ_1 may be tiny near the surface; floor at p_ref · 1e-3 so the
-      // cap is well-defined (cap_yield_value uses (p_p + p_t) in the
-      // denominator).
+      const double phi_eff_cap = std::max(rp.phi, 0.0);
+      const double c_eff_cap = std::max(rp.cEff, 0.0);
+      const double p_t_seed = material::hs::tensile_shift_p_t(c_eff_cap, phi_eff_cap);
+      const double M_cap_seed = std::max(rp.hs.M_cap, 1e-6);
+      // Cap history seed (hardening-soil-model.md §4.4 / F21):
+      //
+      //   p_p^(0) = OCR * sigma_1'^(0)
+      //
+      // where sigma_1' is the major compression-positive principal stress in
+      // the supplied K0 seed. Do not convert OCR into an inferred cap radius
+      // here. M_cap is calibrated so this stress-history convention reproduces
+      // the requested K0_nc/oedometer path; replacing it with a minimum-radius
+      // cap projection makes normally consolidated K0 states artificially close
+      // to cap/corner activation and stalls flat strip-load service cases.
       const double sigma1_seed = std::max(principalSeed.s1, 0.0);
-      const double p_p_seed = std::max(ocr * sigma1_seed, 1.0e-3 * rp.hs.p_ref);
+      const double p_p_seed = std::max(
+          ocr * sigma1_seed,
+          material::hs::numerical_pressure_floor(rp.hs));
       hsSeed.p_p = p_p_seed;
       hsSeed.eps_v_p = 0.0;
       hsSeed.lastActiveSet = 0;
       hsSeed.gamma_p = 0.0;
 
       // §6.6 / F21 — geostatic γ_p seed. The K0-consolidated state is the
-      // historical maximum cone-engaged state: σ_1 = σ_1_history sat on
-      // the cone yield surface (f^s = 0) during the consolidation history
-      // that produced today's stress state. We seed γ_p with the
-      // closed-form `cone_zero_gamma_p_for_K0` value evaluated at
-      // σ_1_history — mirroring the `simulate_K0_at_pref` calibration
-      // that derives M_cap / H_cap (which also seeds γ_p at cone-zero).
+      // historical maximum cone-engaged state. Seed γ_p from the ACTUAL
+      // principal pair carried by the K0 predictor, scaled by the user OCR:
       //
-      // Without this seed, the K0 NC baseline has f^s > 0 at γ_p = 0:
-      //   f^s ≈ 2q/E_i / (1 - q/q_a) - 2q/E_ur > 0 for K0 < 1.
-      // The first FE Newton iteration with zero strain increment then
-      // sees cone-active at every GP and the cone-only return mapping
-      // produces a phantom stress correction proportional to the K0
-      // magnitude. When the surface load is small relative to the K0
-      // baseline (e.g., 5 kPa load on a 20 m deep soil where σ_v reaches
-      // ~360 kPa), the phantom correction dominates the residual and the
-      // Newton fails to converge — `u_max = 0` everywhere.
+      //   σ_1,history = OCR · σ_1,current
+      //   σ_3,history = OCR · σ_3,current
       //
-      // The OCR floor below (applied to NC, pass-through for OC) places
-      // the committed state strictly INSIDE the cone yield surface so
-      // small service loads stay in the elastic E_ur unload/reload
-      // regime until the deviator builds enough to re-engage cone
-      // hardening. See the inline comment at `ocr_floor` for the
-      // rationale and the user-reported failure mode it resolves.
+      // This preserves the material history implied by the supplied initial
+      // stress field. Reconstructing σ_3 as K0_input·σ_1 can silently seed the
+      // wrong cone hardening when the caller supplies a non-Jaky K0 field,
+      // seepage-modified effective stress, or any future staged-construction
+      // geostatic state. No hidden OCR floor is applied here.
       {
         const double phi_eff = std::max(rp.phi, 0.0);
         const double c_eff = std::max(rp.cEff, 0.0);
-        double K0_for_seed = rp.hs.K0_nc;
-        if (K0_for_seed <= 0.0) {
-          K0_for_seed = std::max(1.0 - std::sin(phi_eff), 0.0);
-        }
-        // σ_1_history equals σ_1_current for NC (OCR = 1) and OCR · σ_1
-        // for OC. cone_zero_gamma_p_for_K0 receives σ_v with the K0
-        // stress state implied at that σ_v; for compression-positive
-        // principals σ_1 = σ_v, σ_3 = K0·σ_v.
-        //
-        // Numerical conditioning floor (`ocr_floor = max(ocr, 2.0)`):
-        // for NC (OCR = 1) the closed-form cone-zero γ_p puts every K0
-        // Gauss point exactly on the cone yield surface (f^s = 0). With
-        // the dispatch tolerance F_TOL_S = 1e-10·q_a, any deviator
-        // perturbation from a service load activates the cone at every
-        // GP simultaneously — including the far-field, well outside the
-        // loaded region. The resulting "all-GPs cone-active" state has
-        // a soft unsymmetric algorithmic tangent that prevents the FE
-        // Newton from making meaningful progress for surface loads
-        // small relative to the K0 stress magnitude (the user-reported
-        // 5 kPa load on a 20 m deep soil column: u_max = 0 instead of
-        // the expected ~0.5 mm elastic response).
-        //
-        // The OCR=2 floor seeds γ_p as if the historical maximum K0
-        // state was σ_1 = 2·σ_1_current, mirroring what PLAXIS's K0
-        // procedure produces in practice when discretised gravity
-        // loading "over-shoots" the strict cone-zero by a finite
-        // margin. This keeps the K0 NC baseline strictly inside the
-        // cone yield surface: small service loads stay in the E_ur
-        // unload/reload regime until the deviator builds enough to
-        // re-engage cone hardening — which matches the PLAXIS NC
-        // benchmark we calibrate `M_cap` against and recovers the
-        // expected elastic-theory displacement field on the user's
-        // case. User-set OCR ≥ 2 passes through unchanged.
-        const double ocr_floor = std::max(ocr, 2.0);
-        const double sigma1_history = ocr_floor * sigma1_seed;
-        if (sigma1_history > 1e-12 && K0_for_seed > 0.0) {
-          hsSeed.gamma_p = std::max(material::hs::cone_zero_gamma_p_for_K0(
-              sigma1_history, K0_for_seed, c_eff, phi_eff, rp.hs), 0.0);
+        const double sigma1_history = ocr * sigma1_seed;
+        const double sigma3_history = ocr * std::max(principalSeed.s3, 0.0);
+        if (sigma1_history > 1e-12) {
+          hsSeed.gamma_p = std::max(material::hs::cone_zero_gamma_p_for_principal_pair(
+              sigma1_history, sigma3_history, c_eff, phi_eff, rp.hs), 0.0);
         }
       }
 
       // §6.5 predictor projection. Project onto cap if cap violated
       // (OCR < 1 with very low confinement, edge case). With OCR ≥ 1
       // the seed is already inside the cap.
-      const double phi_eff_cap = std::max(rp.phi, 0.0);
-      const double c_eff_cap = std::max(rp.cEff, 0.0);
-      const double p_t_seed = material::hs::tensile_shift_p_t(c_eff_cap, phi_eff_cap);
-      const double M_cap_seed = std::max(rp.hs.M_cap, 1e-6);
       const double f_c_seed = material::hs::cap_yield_value(
           principalSeed.s1, principalSeed.s2, principalSeed.s3,
           hsSeed.p_p, M_cap_seed, p_t_seed, phi_eff_cap);
@@ -3245,24 +3618,12 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   std::vector<Mat6> regionC = build_region_elastic(*in.regions);
   ctx.regionC = &regionC;
   out.summary.geostaticConverged = 0;
-  // §5.6 capability table: `mc-plastic` supports a plastic geostatic
-  // equilibration phase. HS also nominally supports it, but the HS
-  // dispatcher's principal-frame return is ill-conditioned at very low
-  // confinement (the typical state during a gravity ramp from σ = 0).
-  //
-  // For Phase 5 we treat HS like the linear-elastic / mc-reduced
-  // stiffness path: snapshot the K0 seed (set by
-  // `initialise_material_points`) as the geostatic baseline directly,
-  // without running a plastic Newton. The K0 seed is already in
-  // approximate equilibrium with gravity (the user/encoder constructs
-  // it from the depth-stress relation), and the §6.5 predictor
-  // projection has already pushed inadmissible seeds onto the cap.
-  //
-  // The service phase then ramps the surface load incrementally from
-  // this baseline. The path with `incrementalStress = true` measures
-  // F_int relative to the seed, so the Newton can drive the load
-  // increment with a well-conditioned residual even when the seed
-  // itself was non-trivial.
+  // §5.6 capability table: MC plasticity supports a nonlinear geostatic
+  // equilibration phase. HS uses the K0 predictor as a stress-only baseline
+  // and solves the service increment in incremental-stress form. This avoids
+  // re-equilibrating a B-bar projected T6 operator against a depth-wise K0
+  // stress seed; that combination creates artificial geostatic plasticity
+  // before any service load is applied.
   const bool runPlasticGeostatic =
       in.opts.analysisMode != AnalysisMode::ServiceOnly &&
       in.opts.constitutive == ConstitutiveKind::McPlastic;
@@ -3367,6 +3728,23 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       ctx.incrementalStress = true;
     }
     PhaseResult service = run_nonlinear_phase(ctx, in.opts);
+    if (!service.converged &&
+        in.opts.constitutive == ConstitutiveKind::HardeningSoil &&
+        service.loadFactor > 0.0 &&
+        service.loadFactor < 1.0 - 1e-6) {
+      PhaseResult arcService = run_load_arc_length_phase(ctx, in.opts, service.loadFactor);
+      PhaseResult combined = service;
+      accumulate_phase_cost(combined, arcService);
+      combined.activeCount = arcService.activeCount;
+      combined.activeFaceCount = arcService.activeFaceCount;
+      combined.activeEdgeCount = arcService.activeEdgeCount;
+      combined.activeApexCount = arcService.activeApexCount;
+      combined.tensionCount = arcService.tensionCount;
+      combined.residualNorm = arcService.residualNorm;
+      combined.loadFactor = arcService.loadFactor;
+      combined.converged = arcService.converged;
+      service = combined;
+    }
     out.summary.serviceAccepted = service.accepted;
     out.summary.serviceRejected = service.rejected;
     out.summary.loadStepsAccepted += service.accepted;

@@ -69,7 +69,7 @@ export function prepareMechanicalMaterial(material, warnings = []) {
   // HS stiffness fields (E50_ref / Eoed_ref / Eur_ref / m / ν_ur / K0_nc)
   // live on the material top-level — inherited from the upstream layer
   // classification (CUR 2003-7).  The HS sub-block holds only the
-  // HS-specific R_f / OCR / p_ref / e_init / e_max.  Material top-level
+  // HS-specific R_f / OCR / p_ref / e_init / e_max / σ3,min. Material top-level
   // wins; we keep the hs.* fallback so older fixtures and verifiers that
   // populate the legacy hs.E50_ref shape still resolve correctly.
   const hsValue = (name, fallback = 0) => {
@@ -106,7 +106,12 @@ export function prepareMechanicalMaterial(material, warnings = []) {
       e_init: hsValue('e_init', -1),
       e_max: hsValue('e_max', -1),
       OCR: Math.max(hsValue('OCR', 1), 1e-6),
-      reserved: hsValue('reserved', 0)
+      nearSurfaceMinConfiningStress: Math.max(hsValue(
+        'nearSurfaceMinConfiningStress',
+        Number.isFinite(Number(material?.nearSurfaceMinConfiningStress))
+          ? Number(material.nearSurfaceMinConfiningStress)
+          : hsValue('reserved', 0)
+      ), 0)
     },
     yieldTolerance: rawYieldTolerance !== null ? Math.max(rawYieldTolerance, 0) : null,
     yieldToleranceScale: rawYieldToleranceScale !== null ? Math.max(rawYieldToleranceScale, 0) : 1e-8,
@@ -122,10 +127,12 @@ export function prepareMechanicalMaterial(material, warnings = []) {
     // Off by default: applying a hydrostatic preload is materially
     // equivalent to apparent cohesion and is therefore an engineer-
     // controlled knob, not a silent default.
-    nearSurfaceMinConfiningStress: Number.isFinite(Number(material?.nearSurfaceMinConfiningStress))
-      && Number(material.nearSurfaceMinConfiningStress) >= 0
-      ? Number(material.nearSurfaceMinConfiningStress)
-      : 0,
+    nearSurfaceMinConfiningStress: Math.max(
+      Number.isFinite(Number(material?.nearSurfaceMinConfiningStress))
+        ? Number(material.nearSurfaceMinConfiningStress)
+        : hsValue('nearSurfaceMinConfiningStress', hsValue('reserved', 0)),
+      0
+    ),
     representativeBasisPolicy: typeof material?.representativeBasisPolicy === 'string' && material.representativeBasisPolicy
       ? material.representativeBasisPolicy
       : 'committed-trial-canonical',

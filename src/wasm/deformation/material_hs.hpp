@@ -52,21 +52,21 @@ using madep::js_mirror::VOIGT_XZ;
 // ---------------------------------------------------------------------------
 // Phase 6 (fix plan): tangent mode tagging.
 //
-// `Elastic`           - D_e returned (diagnostic / safety fallback). Used in
-//                       pure-elastic regimes (lastActiveSet = 0) and when the
-//                       analytic tangent degenerates (denom < 1e-12) AND the
-//                       FD oracle also fails.
-// `Analytic`          - Consistent algorithmic tangent built from the closed-
-//                       form rank-1 / rank-2 update. Default for cone, cap
-//                       and corner regimes (lastActiveSet = 1, 2, 3).
-//                       Unsymmetric when n != m (cone non-associated; corner).
+// `Elastic`           - D_e returned. Used in pure-elastic regimes
+//                       (lastActiveSet = 0), pure Rankine tension, and as the
+//                       last fallback if the FD oracle cannot certify a
+//                       plastic tangent column.
+// `Analytic`          - Continuum-style closed-form algorithmic tangent
+//                       built from the rank-1 / rank-2 update. Kept as a
+//                       diagnostic / future fallback while the full
+//                       Simo-Hughes tangent is deferred.
 // `FiniteDifference`  - Tangent built by central / one-sided differencing of
 //                       the implemented return mapping (Phase 6A oracle).
-//                       Used for mixed tension states (lastActiveSet = 4-7,
-//                       per Phase 6D) and as a safety net when the analytic
-//                       computation fails.
+//                       Production path for every HS plastic state while the
+//                       full Simo-Hughes tangent is deferred. Unsymmetric
+//                       tangents must go through GMRES in the global solve.
 //
-// Phase 7 GMRES dispatch reads this to decide CG vs GMRES.
+// Phase 7 GMRES dispatch reads this to audit CG vs GMRES routing.
 // ---------------------------------------------------------------------------
 enum class HsTangentMode : std::uint8_t {
   Elastic = 0,
@@ -118,6 +118,50 @@ inline double cot_safe(double angle) {
   return c / std::max(std::abs(s), 1e-12);
 }
 
+inline double near_surface_min_confining_stress(
+    const RegionParams::HsParams& hs) {
+  return std::max(hs.nearSurfaceMinConfiningStress, 0.0);
+}
+
+inline double numerical_pressure_floor(const RegionParams::HsParams& hs) {
+  return std::max(1.0e-12 * std::max(hs.p_ref, 1.0), 1.0e-12);
+}
+
+inline double effective_confining_stress(
+    double sigma_relevant,
+    const RegionParams::HsParams& hs) {
+  return std::max(sigma_relevant, near_surface_min_confining_stress(hs));
+}
+
+inline double effective_confining_stress_derivative(
+    double sigma_relevant,
+    const RegionParams::HsParams& hs) {
+  return sigma_relevant > near_surface_min_confining_stress(hs) ? 1.0 : 0.0;
+}
+
+inline double hs_stress_power_term(double c_eff, double phi_eff,
+                                   double sigma_relevant,
+                                   const RegionParams::HsParams& hs) {
+  const double cosPhi = std::cos(phi_eff);
+  const double sinPhi = std::sin(phi_eff);
+  const double sigma_eff = effective_confining_stress(sigma_relevant, hs);
+  return std::max(c_eff * cosPhi + sigma_eff * sinPhi,
+                  numerical_pressure_floor(hs));
+}
+
+inline double hs_q_a_from_sigma3(double sigma3,
+                                 double c_eff,
+                                 double phi_eff,
+                                 double Rf,
+                                 const RegionParams::HsParams& hs) {
+  double sinPhi = std::sin(phi_eff);
+  if (sinPhi < 1e-6) sinPhi = 1e-6;
+  const double sigma3_eff = effective_confining_stress(sigma3, hs);
+  const double q_f = (c_eff * cot_safe(phi_eff) + sigma3_eff) * 2.0 * sinPhi
+                   / std::max(1.0 - sinPhi, 1e-9);
+  return std::max(q_f / std::max(Rf, 1e-6), numerical_pressure_floor(hs));
+}
+
 // Tensile shift p_t = c * cot(phi) (F3). Apex of the MC cone in
 // compression-positive p' space.
 inline double tensile_shift_p_t(double c_eff, double phi_eff) {
@@ -133,10 +177,12 @@ inline double power_law_stiffness(double E_ref, double sigma_relevant,
   const double sinPhi = std::sin(phi_eff);
   double numerator = c_eff * cosPhi + sigma_relevant * sinPhi;
   double denominator = c_eff * cosPhi + p_ref * sinPhi;
-  // Numerical floor (F1): the bracketed term must stay positive. 0.5 kPa
-  // is the same residual-pressure tolerance the spec recommends in §3.4.
-  if (numerator < 0.5) numerator = 0.5;
-  if (denominator < 0.5) denominator = 0.5;
+  const double eps = std::max(1.0e-12 * std::max(p_ref, 1.0), 1.0e-12);
+  // Pure numerical floor: this only keeps the F1 power-law denominator and
+  // numerator positive. Any modelling regularization near the ground surface
+  // must enter through HsParams::nearSurfaceMinConfiningStress.
+  if (numerator < eps) numerator = eps;
+  if (denominator < eps) denominator = eps;
   const double ratio = numerator / denominator;
   const double exponent = std::clamp(m, 0.0, 1.0);
   return E_ref * std::pow(ratio, exponent);
@@ -278,6 +324,18 @@ inline void cone_yield_gradient(ConeFlowRegime regime, double df_dq,
       df_d1 =  0.5 * df_dq; df_d2 =  0.5 * df_dq;  df_d3 = -df_dq;
       return;
   }
+}
+
+inline bool hs_active_set_has_cone(std::uint8_t activeSet) {
+  return activeSet == 1 || activeSet == 3 || activeSet == 5 || activeSet == 7;
+}
+
+inline bool hs_active_set_has_cap(std::uint8_t activeSet) {
+  return activeSet == 2 || activeSet == 3 || activeSet == 6 || activeSet == 7;
+}
+
+inline bool hs_active_set_has_tension(std::uint8_t activeSet) {
+  return activeSet == 4 || activeSet == 5 || activeSet == 6 || activeSet == 7;
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +543,7 @@ inline mce::MaterialParameters make_mp_for_eig(const RegionParams& region,
   mp.eigToleranceAbsolute = 0.0;
   mp.eigToleranceRelative = 1e-9;
   mp.useTensionCutoff = region.useTensionCutoff != 0u;
+  mp.nearSurfaceMinConfiningStress = near_surface_min_confining_stress(region.hs);
   return mp;
 }
 
@@ -551,7 +610,9 @@ inline HsUpdateResult return_cone_only(
     const MaterialPoint::HsState& stateC,
     double c_eff, double phi_eff, double psi_eff, double sin_phi_cv,
     double E_i_trial, double E_ur_trial, double q_a_trial,
-    const Mat6& D_e, const RegionParams& region) {
+    const Mat6& D_e, const RegionParams& region,
+    bool forceRegime = false,
+    ConeFlowRegime forcedRegime = ConeFlowRegime::Face13) {
   HsUpdateResult out{};
   out.stateUpdated = stateC;
 
@@ -571,19 +632,17 @@ inline HsUpdateResult return_cone_only(
   const double p_ref = std::max(region.hs.p_ref, 1.0);
   const double cosPhi = std::cos(phi_eff);
   const double sinPhi = std::sin(phi_eff);
-  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi, 0.5);
+  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi,
+                                    numerical_pressure_floor(region.hs));
   auto power_ratio = [&](double sigma3_arg) {
-    const double num = std::max(c_eff * cosPhi + sigma3_arg * sinPhi, 0.5);
+    const double num = hs_stress_power_term(c_eff, phi_eff, sigma3_arg, region.hs);
     return std::pow(num / denom_pow, m_exp);
   };
   auto recompute_consts = [&](double s3, double& E_i_out, double& q_a_out, double& E_ur_out) {
     const double pr = power_ratio(s3);
     const double E_50_local = region.hs.E50_ref * pr;
     E_ur_out = region.hs.Eur_ref * pr;
-    double sinPhi_f = sinPhi;
-    if (sinPhi_f < 1e-6) sinPhi_f = 1e-6;
-    const double q_f_local = (c_eff * cot_safe(phi_eff) + s3) * 2.0 * sinPhi_f / std::max(1.0 - sinPhi_f, 1e-9);
-    q_a_out = std::max(q_f_local / Rf, 1.0);
+    q_a_out = hs_q_a_from_sigma3(s3, c_eff, phi_eff, Rf, region.hs);
     E_i_out = 2.0 * E_50_local / (2.0 - Rf);
   };
 
@@ -593,7 +652,9 @@ inline HsUpdateResult return_cone_only(
   double q_a = q_a_trial;
 
   // F9 — regime fixed at trial.
-  const ConeFlowRegime regime = classify_cone_regime(principalT);
+  const ConeFlowRegime regime = forceRegime
+      ? forcedRegime
+      : classify_cone_regime(principalT);
 
   const double eps_v_p_max = dilatancy_cutoff_threshold(
       region.hs.e_init, region.hs.e_max);
@@ -637,7 +698,8 @@ inline HsUpdateResult return_cone_only(
   // unit dlambda, ignoring the trace_dg term that cancels in (σ_1 - σ_3).
   // For all three regimes |dq_per_lambda| ≤ 2μ · 1.0 (worst case Face13
   // with sin_psi = -1, but realistic cap ~ 1.5μ for sin_psi ~ 0).
-  const double max_safe_dlambda_step = (std::max(q_a, 1.0)) / std::max(two_mu, 1.0);
+  const double max_safe_dlambda_step =
+      std::max(q_a, numerical_pressure_floor(region.hs)) / std::max(two_mu, 1.0);
 
   const double f_tolerance = 1e-8 * std::max(std::abs(q_a), 1.0);
   bool converged = false;
@@ -939,19 +1001,16 @@ inline HsUpdateResult return_cap_only(
   {
     const double Rf = std::clamp(region.hs.Rf, 1e-3, 0.999);
     const double m_exp = std::clamp(region.hs.m, 0.0, 1.0);
-    const double p_ref = std::max(region.hs.p_ref, 1.0);
     const double cosPhi = std::cos(phi_eff);
     const double sinPhi = std::sin(phi_eff);
-    const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi, 0.5);
-    const double num = std::max(c_eff * cosPhi + s3_new * sinPhi, 0.5);
+    const double p_ref = std::max(region.hs.p_ref, 1.0);
+    const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi,
+                                      numerical_pressure_floor(region.hs));
+    const double num = hs_stress_power_term(c_eff, phi_eff, s3_new, region.hs);
     const double pratio = std::pow(num / denom_pow, m_exp);
     const double E_50_local = region.hs.E50_ref * pratio;
     const double E_ur_local = region.hs.Eur_ref * pratio;
-    double sinPhi_f = sinPhi;
-    if (sinPhi_f < 1e-6) sinPhi_f = 1e-6;
-    const double q_f_local = (c_eff * cot_safe(phi_eff) + s3_new) * 2.0 * sinPhi_f
-                            / std::max(1.0 - sinPhi_f, 1e-9);
-    const double q_a_local = std::max(q_f_local / Rf, 1.0);
+    const double q_a_local = hs_q_a_from_sigma3(s3_new, c_eff, phi_eff, Rf, region.hs);
     const double E_i_local = 2.0 * E_50_local / (2.0 - Rf);
     const HsReturnCertificate cert = certify_hs_return(
         s1_new, s2_new, s3_new,
@@ -1007,7 +1066,9 @@ inline HsUpdateResult return_corner(
     double M_cap, double p_t, double H_cap,
     double dlambda_s_init, double dlambda_c_init,
     const Mat6& D_e, const RegionParams& region,
-    double& dlambda_s_out, double& dlambda_c_out) {
+    double& dlambda_s_out, double& dlambda_c_out,
+    bool forceRegime = false,
+    ConeFlowRegime forcedRegime = ConeFlowRegime::Face13) {
   HsUpdateResult out{};
   out.stateUpdated = stateC;
 
@@ -1022,20 +1083,17 @@ inline HsUpdateResult return_corner(
   const double p_ref = std::max(region.hs.p_ref, 1.0);
   const double cosPhi = std::cos(phi_eff);
   const double sinPhi = std::sin(phi_eff);
-  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi, 0.5);
+  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi,
+                                    numerical_pressure_floor(region.hs));
   auto power_ratio = [&](double s3_arg) {
-    const double num = std::max(c_eff * cosPhi + s3_arg * sinPhi, 0.5);
+    const double num = hs_stress_power_term(c_eff, phi_eff, s3_arg, region.hs);
     return std::pow(num / denom_pow, m_exp);
   };
   auto recompute_consts = [&](double s3, double& E_i_o, double& q_a_o, double& E_ur_o) {
     const double pr = power_ratio(s3);
     const double E_50_local = region.hs.E50_ref * pr;
     E_ur_o = region.hs.Eur_ref * pr;
-    double sphi_f = sinPhi;
-    if (sphi_f < 1e-6) sphi_f = 1e-6;
-    const double q_f_local = (c_eff * cot_safe(phi_eff) + s3) * 2.0 * sphi_f
-                           / std::max(1.0 - sphi_f, 1e-9);
-    q_a_o = std::max(q_f_local / Rf, 1.0);
+    q_a_o = hs_q_a_from_sigma3(s3, c_eff, phi_eff, Rf, region.hs);
     E_i_o = 2.0 * E_50_local / (2.0 - Rf);
   };
 
@@ -1045,7 +1103,9 @@ inline HsUpdateResult return_corner(
   double q_a = q_a_trial;
 
   // Regime: classified ONCE at trial and held throughout.
-  const ConeFlowRegime regime = classify_cone_regime(principalT);
+  const ConeFlowRegime regime = forceRegime
+      ? forcedRegime
+      : classify_cone_regime(principalT);
 
   const double eps_v_p_max = dilatancy_cutoff_threshold(
       region.hs.e_init, region.hs.e_max);
@@ -1082,6 +1142,12 @@ inline HsUpdateResult return_corner(
 
   // Phase 4 (fix plan): step damping. Track previous residual norm so we
   // can halve the step when the full Newton step would increase residual.
+  //
+  // Production correction: damping must evaluate the CANDIDATE multipliers,
+  // not just the residual at the current iterate. A step that keeps
+  // Δλ_s/Δλ_c non-negative can still move away from the cone-cap corner when
+  // the active-set warm start is too aggressive. Accept only a finite
+  // candidate that does not increase the normalized two-surface residual.
   auto residual_norm = [&](double rs, double rc) {
     const double ns = rs / std::max(f_tol_s, 1e-30);
     const double nc = rc / std::max(f_tol_c, 1e-30);
@@ -1208,26 +1274,83 @@ inline HsUpdateResult return_corner(
     // Phase 4 (fix plan): step damping. Halve the step (up to 8 times)
     // if either multiplier would go strictly negative — non-negativity
     // is required by the Karush-Kuhn-Tucker conditions for active corner
-    // states. Also halve if the residual norm increases.
+    // states. Also halve if the candidate two-surface residual increases.
     const double current_resid = residual_norm(rs, rc);
+    auto evaluate_candidate_residual = [&](double dl_s_try,
+                                           double dl_c_try,
+                                           double& candidate_resid) -> bool {
+      if (dl_s_try < 0.0 || dl_c_try < 0.0) return false;
+      const double s1_try = principalT.s1 - dl_s_try * De_dgs1 - dl_c_try * De_dgc1;
+      const double s2_try = principalT.s2 - dl_s_try * De_dgs2 - dl_c_try * De_dgc2;
+      const double s3_try = principalT.s3 - dl_s_try * De_dgs3 - dl_c_try * De_dgc3;
+      if (!(s1_try >= s2_try - 1e-7 * std::max(std::abs(s1_try), 1.0) &&
+            s2_try >= s3_try - 1e-7 * std::max(std::abs(s1_try), 1.0))) {
+        return false;
+      }
+      const double gamma_try = stateC.gamma_p + dl_s_try;
+      const double p_prime_try = (s1_try + s2_try + s3_try) / 3.0;
+      double p_p_try = stateC.p_p + dl_c_try * 2.0 * H_cap * (p_prime_try + p_t);
+      if (p_p_try < stateC.p_p) p_p_try = stateC.p_p;
+
+      double E_i_try = E_i;
+      double q_a_try = q_a;
+      double E_ur_try = E_ur;
+      recompute_consts(s3_try, E_i_try, q_a_try, E_ur_try);
+      if (!(std::isfinite(E_i_try) && std::isfinite(q_a_try) &&
+            std::isfinite(E_ur_try) && q_a_try > 0.0)) {
+        return false;
+      }
+      const double q_try = s1_try - s3_try;
+      const double f_s_try = cone_yield_value(q_try, q_a_try, E_i_try, E_ur_try, gamma_try);
+      const double f_c_try = cap_yield_value(
+          s1_try, s2_try, s3_try, p_p_try, M_cap, p_t, phi_eff);
+      candidate_resid = residual_norm(f_s_try, f_c_try);
+      return std::isfinite(candidate_resid);
+    };
+
     double damped_dls = dls_step;
     double damped_dlc = dlc_step;
+    double best_dls = damped_dls;
+    double best_dlc = damped_dlc;
+    double best_candidate_resid = std::numeric_limits<double>::infinity();
+    bool accepted_candidate = false;
     int halvings = 0;
     while (halvings < 8) {
       const double dl_s_try = dl_s - damped_dls;
       const double dl_c_try = dl_c - damped_dlc;
-      // Non-negativity check.
-      const bool s_neg = dl_s_try < 0.0;
-      const bool c_neg = dl_c_try < 0.0;
-      // Residual increase check (only after 1st iter).
-      bool resid_increases = false;
-      if (it > 0 && current_resid > prev_residual_norm * 1.001) {
-        resid_increases = true;
+      double candidate_resid = std::numeric_limits<double>::infinity();
+      if (evaluate_candidate_residual(dl_s_try, dl_c_try, candidate_resid)) {
+        if (candidate_resid < best_candidate_resid) {
+          best_candidate_resid = candidate_resid;
+          best_dls = damped_dls;
+          best_dlc = damped_dlc;
+        }
+        const double acceptable_resid = current_resid * (1.0 + 1e-8);
+        const bool improves_current = candidate_resid <= acceptable_resid;
+        const bool recovers_previous =
+            it == 0 || candidate_resid <= prev_residual_norm * 1.001;
+        if (improves_current && recovers_previous) {
+          accepted_candidate = true;
+          break;
+        }
       }
-      if (!s_neg && !c_neg && !resid_increases) break;
       damped_dls *= 0.5;
       damped_dlc *= 0.5;
       ++halvings;
+    }
+    if (!accepted_candidate) {
+      if (best_candidate_resid < current_resid) {
+        damped_dls = best_dls;
+        damped_dlc = best_dlc;
+      } else {
+        // The Newton direction is not a descent direction for the active
+        // corner residual. Surface this as a corner-map failure so the
+        // dispatcher can retry the degenerate single-surface/sequential
+        // paths or the global step can cut back. Do not commit a
+        // non-improving corner update.
+        out.failureCode = 103;
+        return out;
+      }
     }
     prev_residual_norm = current_resid;
 
@@ -1685,7 +1808,7 @@ inline HsUpdateResult update(
 
   // (5) Stress-dependent stiffness at committed sigma_3.
   const double E_ur = power_law_stiffness(
-      region.hs.Eur_ref, sigma3_c, c_eff, phi_eff,
+      region.hs.Eur_ref, effective_confining_stress(sigma3_c, region.hs), c_eff, phi_eff,
       region.hs.p_ref, region.hs.m);
 
   // (6) Elastic 6×6 Voigt tangent.
@@ -1701,15 +1824,10 @@ inline HsUpdateResult update(
 
   // (9) Stiffness at trial sigma_3 for hyperbolic curve constants.
   const double E_50 = power_law_stiffness(
-      region.hs.E50_ref, principalT.s3, c_eff, phi_eff,
+      region.hs.E50_ref, effective_confining_stress(principalT.s3, region.hs), c_eff, phi_eff,
       region.hs.p_ref, region.hs.m);
-  const double sphi = std::sin(phi_eff);
-  const double cotPhi = cot_safe(phi_eff);
-  double q_f_denom = 1.0 - sphi;
-  if (q_f_denom < 1e-9) q_f_denom = 1e-9;
-  const double q_f = (c_eff * cotPhi + principalT.s3) * 2.0 * sphi / q_f_denom;
   const double Rf = std::clamp(region.hs.Rf, 1e-3, 0.999);
-  const double q_a = std::max(q_f / Rf, 1e-6);
+  const double q_a = hs_q_a_from_sigma3(principalT.s3, c_eff, phi_eff, Rf, region.hs);
   const double E_i = 2.0 * E_50 / (2.0 - Rf);
 
   // (10) Yield evaluations at trial.
@@ -1719,8 +1837,12 @@ inline HsUpdateResult update(
       principalT.s1, principalT.s2, principalT.s3,
       stateCommitted.p_p, M_cap, p_t, phi_eff);
 
-  const double F_TOL_S = 1e-10 * std::max(std::abs(q_a), 1.0);
-  const double F_TOL_C = 1e-10 * std::max(stateCommitted.p_p + p_t, 1.0)
+  // Dispatch tolerance must not be tighter than the return-map residual
+  // tolerance. The single-surface/corner Newtons certify f_s with 1e-8*q_a
+  // and f_c with 1e-8*(p_p+p_t)^2; using 1e-10 here marks already-certified
+  // K0 NC states plastic again on roundoff-sized service perturbations.
+  const double F_TOL_S = 1e-8 * std::max(std::abs(q_a), 1.0);
+  const double F_TOL_C = 1e-8 * std::max(stateCommitted.p_p + p_t, 1.0)
                               * std::max(stateCommitted.p_p + p_t, 1.0);
 
   // (11) Dispatch.
@@ -1734,15 +1856,12 @@ inline HsUpdateResult update(
   // vs. current-σ_3 mismatch doesn't reject inner-certified states.
   auto refresh_q_constants = [&](double s3, double& E_i_out, double& q_a_out, double& E_ur_out) {
     const double E_50_loc = power_law_stiffness(
-        region.hs.E50_ref, s3, c_eff, phi_eff,
+        region.hs.E50_ref, effective_confining_stress(s3, region.hs), c_eff, phi_eff,
         region.hs.p_ref, region.hs.m);
     E_ur_out = power_law_stiffness(
-        region.hs.Eur_ref, s3, c_eff, phi_eff,
+        region.hs.Eur_ref, effective_confining_stress(s3, region.hs), c_eff, phi_eff,
         region.hs.p_ref, region.hs.m);
-    double q_f_denom_loc = 1.0 - sphi;
-    if (q_f_denom_loc < 1e-9) q_f_denom_loc = 1e-9;
-    const double q_f_loc = (c_eff * cotPhi + s3) * 2.0 * sphi / q_f_denom_loc;
-    q_a_out = std::max(q_f_loc / Rf, 1e-6);
+    q_a_out = hs_q_a_from_sigma3(s3, c_eff, phi_eff, Rf, region.hs);
     E_i_out = 2.0 * E_50_loc / (2.0 - Rf);
   };
   auto cone_yield_after_return = [&](double s1, double s3, double gamma_p) {
@@ -1776,6 +1895,77 @@ inline HsUpdateResult update(
     return f_s_after <= otherTol;
   };
 
+  const std::array<ConeFlowRegime, 3> coneRegimes = {
+      ConeFlowRegime::Face13,
+      ConeFlowRegime::CompressionEdge,
+      ConeFlowRegime::ExtensionEdge
+  };
+  auto return_cone_with_active_set_search = [&]() -> HsUpdateResult {
+    HsUpdateResult primary = return_cone_only(
+        principalT, stateCommitted,
+        c_eff, phi_eff, psi_eff, sin_phi_cv,
+        E_i, E_ur, q_a, D_e, region);
+    if (primary.failureCode == 0) return primary;
+
+    // Cone-only flow is non-smooth on the Mohr-Coulomb edges. The trial
+    // eigensolver can classify a point as a face while the admissible return
+    // lies on an edge (or the opposite) after the plastic correction. Search
+    // all three cone sectors and accept only a certified return. This mirrors
+    // active-set plasticity: regime choice is an unknown, not a hidden
+    // regularization.
+    const ConeFlowRegime primaryRegime = classify_cone_regime(principalT);
+    for (ConeFlowRegime regimeCandidate : coneRegimes) {
+      if (regimeCandidate == primaryRegime) continue;
+      HsUpdateResult candidate = return_cone_only(
+          principalT, stateCommitted,
+          c_eff, phi_eff, psi_eff, sin_phi_cv,
+          E_i, E_ur, q_a, D_e, region,
+          /*forceRegime=*/true,
+          regimeCandidate);
+      if (candidate.failureCode == 0) return candidate;
+    }
+    return primary;
+  };
+  auto return_corner_with_active_set_search = [&](double dl_s_init,
+                                                  double dl_c_init,
+                                                  double& dl_s_out,
+                                                  double& dl_c_out) -> HsUpdateResult {
+    HsUpdateResult primary = return_corner(
+        principalT, stateCommitted,
+        c_eff, phi_eff, psi_eff, sin_phi_cv,
+        E_i, E_ur, q_a, M_cap, p_t, H_cap,
+        dl_s_init, dl_c_init,
+        D_e, region, dl_s_out, dl_c_out);
+    if (primary.failureCode == 0 ||
+        primary.failureCode == 200 ||
+        primary.failureCode == 201) {
+      return primary;
+    }
+
+    const ConeFlowRegime primaryRegime = classify_cone_regime(principalT);
+    for (ConeFlowRegime regimeCandidate : coneRegimes) {
+      if (regimeCandidate == primaryRegime) continue;
+      double dl_s_candidate = 0.0;
+      double dl_c_candidate = 0.0;
+      HsUpdateResult candidate = return_corner(
+          principalT, stateCommitted,
+          c_eff, phi_eff, psi_eff, sin_phi_cv,
+          E_i, E_ur, q_a, M_cap, p_t, H_cap,
+          dl_s_init, dl_c_init,
+          D_e, region, dl_s_candidate, dl_c_candidate,
+          /*forceRegime=*/true,
+          regimeCandidate);
+      if (candidate.failureCode == 0 ||
+          candidate.failureCode == 200 ||
+          candidate.failureCode == 201) {
+        dl_s_out = dl_s_candidate;
+        dl_c_out = dl_c_candidate;
+        return candidate;
+      }
+    }
+    return primary;
+  };
+
   // Phase 4 tension cutoff (spec §3.5, F20). Detect a tension violation at
   // the trial state BEFORE any cone/cap dispatch — the tension surface
   // takes precedence over the HS surfaces. In compression-positive HS
@@ -1793,7 +1983,16 @@ inline HsUpdateResult update(
     return tension_res;
   }
 
-  if (f_s <= F_TOL_S && f_c <= F_TOL_C) {
+  const bool retainedCone =
+      hs_active_set_has_cone(stateCommitted.lastActiveSet) &&
+      f_s >= -F_TOL_S;
+  const bool retainedCap =
+      hs_active_set_has_cap(stateCommitted.lastActiveSet) &&
+      f_c >= -F_TOL_C;
+  const bool coneReturnRequested = f_s > F_TOL_S || retainedCone;
+  const bool capReturnRequested = f_c > F_TOL_C || retainedCap;
+
+  if (!coneReturnRequested && !capReturnRequested) {
     // Pure elastic.
     out.stressUpdated = sigT_voigt;
     out.plasticIncrement = Vec6{};
@@ -1804,10 +2003,8 @@ inline HsUpdateResult update(
     out.failureCode = 0;
     return out;
   }
-  if (f_s > F_TOL_S && f_c <= F_TOL_C) {
-    out = return_cone_only(principalT, stateCommitted,
-                           c_eff, phi_eff, psi_eff, sin_phi_cv,
-                           E_i, E_ur, q_a, D_e, region);
+  if (coneReturnRequested && !capReturnRequested) {
+    out = return_cone_with_active_set_search();
     // Recovery fix (Phase 2-5 post-mortem, Hypothesis C1): cone-only return
     // can leave the cap yield slightly violated when the trial state was on
     // (or close to) the cap surface but inside the cone trial-tolerance
@@ -1819,8 +2016,14 @@ inline HsUpdateResult update(
     // was effectively corner-active even though trial f^c ≤ F_TOL_C.
     // Re-dispatch as corner; the warm start is the trial state itself
     // (Δλ_s, Δλ_c) = (0, 0).
-    if (out.failureCode != 106) return out;
-  } else if (f_s <= F_TOL_S && f_c > F_TOL_C) {
+    if (out.failureCode == 0) return out;
+    // A cone-only ordering swap / non-convergence is not by itself a global
+    // material failure. Near footing edges the trial state can leave the
+    // assumed cone regime while the admissible local projection is a
+    // cone-cap corner or the cap-only limit. Keep the failure local and
+    // continue to the corner/sequential fallback below. Only if those
+    // certified alternatives fail do we surface failureCode 106.
+  } else if (!coneReturnRequested && capReturnRequested) {
     out = return_cap_only(principalT, stateCommitted,
                           c_eff, phi_eff, M_cap, p_t, H_cap, D_e, region);
     // Recovery fix (Phase 2-5 post-mortem, Hypothesis C1): cap-only can
@@ -1828,7 +2031,10 @@ inline HsUpdateResult update(
     // committed state sits exactly on f^s = 0. Re-dispatch as corner when
     // the cap-only result fails admissibility (code 106). Same rationale
     // as the cone-only branch above.
-    if (out.failureCode != 106) return out;
+    if (out.failureCode == 0) return out;
+    // Same rule for cap-only: a failed one-surface Newton is a local active-set
+    // selection issue first. Retry as corner / sequential before exposing a
+    // hard failure to the outer FE load-step controller.
   }
 
   // Both surfaces active at trial (or single-surface return left the
@@ -1844,10 +2050,7 @@ inline HsUpdateResult update(
   //   - cone-only result ⇒ Δλ_s_init = (γ^p_new - γ^p_old)
   //   - cap-only result  ⇒ Δλ_c_init = (p_p_new - p_p_old) / [2 H_cap (p'+p_t)]
   // Both are clamped non-negative.
-  HsUpdateResult cone_alone = return_cone_only(
-      principalT, stateCommitted,
-      c_eff, phi_eff, psi_eff, sin_phi_cv,
-      E_i, E_ur, q_a, D_e, region);
+  HsUpdateResult cone_alone = return_cone_with_active_set_search();
   HsUpdateResult cap_alone = return_cap_only(
       principalT, stateCommitted,
       c_eff, phi_eff, M_cap, p_t, H_cap, D_e, region);
@@ -1882,12 +2085,8 @@ inline HsUpdateResult update(
 
   double dl_s_out = 0.0;
   double dl_c_out = 0.0;
-  HsUpdateResult corner_res = return_corner(
-      principalT, stateCommitted,
-      c_eff, phi_eff, psi_eff, sin_phi_cv,
-      E_i, E_ur, q_a, M_cap, p_t, H_cap,
-      dl_s_init, dl_c_init,
-      D_e, region, dl_s_out, dl_c_out);
+  HsUpdateResult corner_res = return_corner_with_active_set_search(
+      dl_s_init, dl_c_init, dl_s_out, dl_c_out);
   (void)dl_s_out;
   (void)dl_c_out;
 
@@ -1932,7 +2131,9 @@ inline HsUpdateResult update(
   // can cut back the load step.
   auto residual_other_surface = [&](const HsUpdateResult& r,
                                     bool checkCap) -> double {
-    if (r.failureCode != 0) return std::numeric_limits<double>::infinity();
+    if (!(r.failureCode == 0 || r.failureCode == 106)) {
+      return std::numeric_limits<double>::infinity();
+    }
     const auto pr = mce::principal_stress_projectors_3d_compression_positive(
         r.stressUpdated, mp_eig);
     if (checkCap) {
@@ -1943,7 +2144,7 @@ inline HsUpdateResult update(
         pr.s1, pr.s3, r.stateUpdated.gamma_p));
   };
   auto fallback_admissible = [&](const HsUpdateResult& r) -> bool {
-    if (r.failureCode != 0) return false;
+    if (!(r.failureCode == 0 || r.failureCode == 106)) return false;
     const auto pr = mce::principal_stress_projectors_3d_compression_positive(
         r.stressUpdated, mp_eig);
     // Use σ_3-refreshed hyperbolic constants — matches the inner returns'
@@ -2006,6 +2207,132 @@ inline HsUpdateResult update(
   out.failureCode = 106;
   out.activeSurface = 3;
   return out;
+}
+
+inline bool recover_elastic_E_nu_from_tangent(
+    const Mat6& D_e,
+    double& E_out,
+    double& nu_out) {
+  const double G = 0.5 * (D_e[V_XX][V_XX] - D_e[V_XX][V_YY]);
+  const double K = D_e[V_XX][V_YY] + (2.0 / 3.0) * G;
+  const double denom = 3.0 * K + G;
+  if (!(std::isfinite(G) && std::isfinite(K) && std::isfinite(denom)) ||
+      G <= 0.0 || denom <= 0.0) {
+    return false;
+  }
+  E_out = 9.0 * K * G / denom;
+  nu_out = (3.0 * K - 2.0 * G) / (2.0 * denom);
+  return std::isfinite(E_out) && E_out > 0.0 &&
+         std::isfinite(nu_out) && nu_out > -1.0 && nu_out < 0.5;
+}
+
+inline double plane_strain_recovery_residual_zz(
+    const Vec6& strainTrialVoigt,
+    const Vec6& strainCommittedVoigt,
+    const Vec6& stressUpdatedVoigt,
+    const Vec6& stressCommittedVoigt,
+    const Vec6& plasticIncrementVoigt,
+    const Mat6& D_e,
+    bool& ok) {
+  double E = 0.0;
+  double nu = 0.0;
+  if (!recover_elastic_E_nu_from_tangent(D_e, E, nu)) {
+    ok = false;
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const double dsig_xx = stressUpdatedVoigt[V_XX] - stressCommittedVoigt[V_XX];
+  const double dsig_yy = stressUpdatedVoigt[V_YY] - stressCommittedVoigt[V_YY];
+  const double dsig_zz = stressUpdatedVoigt[V_ZZ] - stressCommittedVoigt[V_ZZ];
+  const double dEps_e_zz = (dsig_zz - nu * (dsig_xx + dsig_yy)) / E;
+  const double dEps_p_zz = plasticIncrementVoigt[V_ZZ];
+  const double dEps_input_zz = strainTrialVoigt[V_ZZ] - strainCommittedVoigt[V_ZZ];
+  const double residual = (dEps_e_zz + dEps_p_zz) - dEps_input_zz;
+  ok = std::isfinite(residual);
+  return residual;
+}
+
+// Integrate the same HS return map with local strain substepping. This is a
+// numerical integration fallback only: it does not change strength, stiffness,
+// yield surfaces, flow rules, or hardening laws. Each substep starts from the
+// previous substep's committed stress/state and is certified by `update()`.
+inline HsUpdateResult update_substepped_no_tangent(
+    const Vec6& strainTrialVoigt,
+    const Vec6& strainCommittedVoigt,
+    const Vec6& stressCommittedVoigt,
+    const MaterialPoint::HsState& stateCommitted,
+    const RegionParams& region,
+    double sigmaMsf) {
+  constexpr double kEpsZzTol = 1e-10;
+  const Vec6 totalDelta = lng::sub(strainTrialVoigt, strainCommittedVoigt);
+  HsUpdateResult directFailure{};
+  directFailure.stateUpdated = stateCommitted;
+  directFailure.stressUpdated = stressCommittedVoigt;
+  directFailure.tangent = elastic_tangent_voigt(
+      std::max(region.hs.Eur_ref, 1.0), region.hs.nu_ur);
+  directFailure.failureCode = 106;
+
+  // Substepping is a fallback for local active-set transitions, not the hot
+  // elastic/plastic path. Footing-edge GPs in normally consolidated HS can
+  // cross cone/cap regimes inside a single global Newton correction; 32
+  // substeps is not always enough to keep the local map inside the basin.
+  // Extend geometrically while keeping the direct path unchanged.
+  constexpr int kSubstepCounts[8] = {2, 4, 8, 16, 32, 64, 128, 256};
+  for (int nSub : kSubstepCounts) {
+    Vec6 strainC = strainCommittedVoigt;
+    Vec6 stressC = stressCommittedVoigt;
+    MaterialPoint::HsState stateC = stateCommitted;
+    Vec6 plasticAccum{};
+    HsUpdateResult last{};
+    std::uint8_t lastNonElasticSurface = 0;
+    bool ok = true;
+
+    for (int s = 1; s <= nSub; ++s) {
+      Vec6 strainT = strainCommittedVoigt;
+      const double fraction = static_cast<double>(s) / static_cast<double>(nSub);
+      for (int k = 0; k < 6; ++k) {
+        strainT[k] += fraction * totalDelta[k];
+      }
+      last = update(strainT, strainC, stressC, stateC, region, sigmaMsf);
+      if (last.failureCode != 0) {
+        ok = false;
+        directFailure.failureCode = last.failureCode;
+        break;
+      }
+      bool residualOk = false;
+      const double residualZz = plane_strain_recovery_residual_zz(
+          strainT, strainC, last.stressUpdated, stressC,
+          last.plasticIncrement, last.tangent, residualOk);
+      if (!residualOk || std::abs(residualZz) > kEpsZzTol) {
+        ok = false;
+        directFailure.failureCode = 105;
+        break;
+      }
+      for (int k = 0; k < 6; ++k) {
+        plasticAccum[k] += last.plasticIncrement[k];
+      }
+      if (last.activeSurface != 0) {
+        lastNonElasticSurface = last.activeSurface;
+      }
+      strainC = strainT;
+      stressC = last.stressUpdated;
+      stateC = last.stateUpdated;
+    }
+
+    if (!ok) continue;
+    HsUpdateResult out = last;
+    out.stressUpdated = stressC;
+    out.plasticIncrement = plasticAccum;
+    out.stateUpdated = stateC;
+    if (lastNonElasticSurface != 0) {
+      out.activeSurface = lastNonElasticSurface;
+      out.stateUpdated.lastActiveSet = lastNonElasticSurface;
+    }
+    out.failureCode = 0;
+    out.sigmaZzIterations = 1;
+    return out;
+  }
+
+  return directFailure;
 }
 
 // ---------------------------------------------------------------------------
@@ -2231,16 +2558,13 @@ inline Mat6 cone_analytic_tangent_at_state(
   const double p_ref = std::max(region.hs.p_ref, 1.0);
   const double cosPhi = std::cos(phi_eff);
   const double sinPhi = std::sin(phi_eff);
-  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi, 0.5);
-  const double num = std::max(c_eff * cosPhi + s3 * sinPhi, 0.5);
+  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi,
+                                    numerical_pressure_floor(region.hs));
+  const double num = hs_stress_power_term(c_eff, phi_eff, s3, region.hs);
   const double pratio = std::pow(num / denom_pow, m_exp);
   const double E_50_loc = region.hs.E50_ref * pratio;
   const double E_ur_loc = region.hs.Eur_ref * pratio;
-  double sinPhi_f = sinPhi;
-  if (sinPhi_f < 1e-6) sinPhi_f = 1e-6;
-  const double q_f_loc = (c_eff * cot_safe(phi_eff) + s3) * 2.0 * sinPhi_f
-                       / std::max(1.0 - sinPhi_f, 1e-9);
-  const double q_a_loc = std::max(q_f_loc / Rf, 1e-6);
+  const double q_a_loc = hs_q_a_from_sigma3(s3, c_eff, phi_eff, Rf, region.hs);
   const double E_i_loc = 2.0 * E_50_loc / (2.0 - Rf);
 
   const double q_now = s1 - s3;
@@ -2253,13 +2577,16 @@ inline Mat6 cone_analytic_tangent_at_state(
   // σ_3 chain-rule contributions (Phase 6 fix-plan §6B + theory-fix §7).
   // dratio/dσ_3 = m · (num/den)^{m-1} · sinφ/den
   //             = m · ratio · sinφ / num    (folding sinφ/den · 1/ratio)
-  const double dratio_ds3 = (num > 0.5 && pratio > 0.0)
-      ? m_exp * pratio * sinPhi / num
+  const double dsigma_eff_ds3 = effective_confining_stress_derivative(s3, region.hs);
+  const double dratio_ds3 = (num > numerical_pressure_floor(region.hs) && pratio > 0.0)
+      ? m_exp * pratio * sinPhi * dsigma_eff_ds3 / num
       : 0.0;
   const double dE50_ds3 = region.hs.E50_ref * dratio_ds3;
   const double dEur_ds3 = region.hs.Eur_ref * dratio_ds3;
   const double dEi_ds3 = 2.0 * dE50_ds3 / (2.0 - Rf);
-  const double dq_f_ds3 = 2.0 * sinPhi_f / std::max(1.0 - sinPhi_f, 1e-9);
+  double sinPhi_f = sinPhi;
+  if (sinPhi_f < 1e-6) sinPhi_f = 1e-6;
+  const double dq_f_ds3 = dsigma_eff_ds3 * 2.0 * sinPhi_f / std::max(1.0 - sinPhi_f, 1e-9);
   const double dq_a_ds3 = dq_f_ds3 / Rf;
   // ∂f^s/∂E_i = -2q/(E_i² (1-q/q_a))
   const double df_dEi = -2.0 * q_clamped / (E_i_loc * E_i_loc * denom_qa);
@@ -2303,9 +2630,9 @@ inline Mat6 cone_analytic_tangent_at_state(
   // the residual gap is the continuum-vs-Simo-Hughes-consistent
   // tangent difference and is tracked by the oracle verifier as a
   // non-fatal report.
-  (void)df_dsigma3_implicit;
   double n_p1, n_p2, n_p3;
   cone_yield_gradient(regime, df_dq_factor, n_p1, n_p2, n_p3);
+  n_p3 += df_dsigma3_implicit;
   double m_p1, m_p2, m_p3;
   cone_flow_gradient(regime, sin_psi_mob, m_p1, m_p2, m_p3);
 
@@ -2360,16 +2687,13 @@ inline Mat6 corner_analytic_tangent_at_state(
   const double p_ref = std::max(region.hs.p_ref, 1.0);
   const double cosPhi = std::cos(phi_eff);
   const double sinPhi = std::sin(phi_eff);
-  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi, 0.5);
-  const double num = std::max(c_eff * cosPhi + s3 * sinPhi, 0.5);
+  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi,
+                                    numerical_pressure_floor(region.hs));
+  const double num = hs_stress_power_term(c_eff, phi_eff, s3, region.hs);
   const double pratio = std::pow(num / denom_pow, m_exp);
   const double E_50_loc = region.hs.E50_ref * pratio;
   const double E_ur_loc = region.hs.Eur_ref * pratio;
-  double sinPhi_f = sinPhi;
-  if (sinPhi_f < 1e-6) sinPhi_f = 1e-6;
-  const double q_f_loc = (c_eff * cot_safe(phi_eff) + s3) * 2.0 * sinPhi_f
-                       / std::max(1.0 - sinPhi_f, 1e-9);
-  const double q_a_loc = std::max(q_f_loc / Rf, 1e-6);
+  const double q_a_loc = hs_q_a_from_sigma3(s3, c_eff, phi_eff, Rf, region.hs);
   const double E_i_loc = 2.0 * E_50_loc / (2.0 - Rf);
 
   const double q_now = s1 - s3;
@@ -2380,13 +2704,16 @@ inline Mat6 corner_analytic_tangent_at_state(
                             - 2.0 / E_ur_loc;
 
   // Cone σ_3 chain-rule contributions (see cone_analytic_tangent_at_state).
-  const double dratio_ds3 = (num > 0.5 && pratio > 0.0)
-      ? m_exp * pratio * sinPhi / num
+  const double dsigma_eff_ds3 = effective_confining_stress_derivative(s3, region.hs);
+  const double dratio_ds3 = (num > numerical_pressure_floor(region.hs) && pratio > 0.0)
+      ? m_exp * pratio * sinPhi * dsigma_eff_ds3 / num
       : 0.0;
   const double dE50_ds3 = region.hs.E50_ref * dratio_ds3;
   const double dEur_ds3 = region.hs.Eur_ref * dratio_ds3;
   const double dEi_ds3 = 2.0 * dE50_ds3 / (2.0 - Rf);
-  const double dq_f_ds3 = 2.0 * sinPhi_f / std::max(1.0 - sinPhi_f, 1e-9);
+  double sinPhi_f = sinPhi;
+  if (sinPhi_f < 1e-6) sinPhi_f = 1e-6;
+  const double dq_f_ds3 = dsigma_eff_ds3 * 2.0 * sinPhi_f / std::max(1.0 - sinPhi_f, 1e-9);
   const double dq_a_ds3 = dq_f_ds3 / Rf;
   const double df_dEi = -2.0 * q_clamped / (E_i_loc * E_i_loc * denom_qa);
   const double df_dEur = 2.0 * q_clamped / (E_ur_loc * E_ur_loc);
@@ -2403,9 +2730,9 @@ inline Mat6 corner_analytic_tangent_at_state(
                                                psi_eff, eps_v_p_new,
                                                eps_v_p_max);
 
-  (void)df_dsigma3_implicit;     // see comment in cone_analytic_tangent_at_state
   double n_s1, n_s2, n_s3;
   cone_yield_gradient(regime, df_dq_factor, n_s1, n_s2, n_s3);
+  n_s3 += df_dsigma3_implicit;
   double m_s1, m_s2, m_s3;
   cone_flow_gradient(regime, sin_psi_mob, m_s1, m_s2, m_s3);
 
@@ -2460,11 +2787,17 @@ inline Mat6 fd_algorithmic_tangent(
     const RegionParams& region,
     double sigmaMsf,
     const Mat6& D_e,
-    bool& ok) {
+    bool& ok,
+    bool useSubsteppedMap = false) {
   Mat6 D_alg = D_e;     // out-of-plane columns filled from D_e (plane-strain pass-through)
   ok = true;
 
   auto run_probe = [&](const Vec6& strain_probe) -> HsUpdateResult {
+    if (useSubsteppedMap) {
+      return update_substepped_no_tangent(
+          strain_probe, strainCommittedVoigt, stressCommittedVoigt,
+          stateCommitted, region, sigmaMsf);
+    }
     return update(strain_probe, strainCommittedVoigt, stressCommittedVoigt,
                   stateCommitted, region, sigmaMsf);
   };
@@ -2473,6 +2806,7 @@ inline Mat6 fd_algorithmic_tangent(
   // active-set transitions.
   HsUpdateResult resT = run_probe(strainTrialVoigt);
   const bool refOk = (resT.failureCode == 0);
+  const std::uint8_t refActiveSet = resT.stateUpdated.lastActiveSet;
 
   // Step size: relative-scaled with absolute floor.
   const double strainMag = std::max({std::fabs(strainCommittedVoigt[V_XX]),
@@ -2493,23 +2827,49 @@ inline Mat6 fd_algorithmic_tangent(
     minus[dof] -= h;
     HsUpdateResult resP = run_probe(plus);
     HsUpdateResult resM = run_probe(minus);
-    if (resP.failureCode == 0 && resM.failureCode == 0) {
-      // Central difference (preferred when both sides converge).
+    const bool plusOk = resP.failureCode == 0;
+    const bool minusOk = resM.failureCode == 0;
+    const bool plusSameBranch = refOk && plusOk &&
+                                resP.stateUpdated.lastActiveSet == refActiveSet;
+    const bool minusSameBranch = refOk && minusOk &&
+                                 resM.stateUpdated.lastActiveSet == refActiveSet;
+    if (plusSameBranch && minusSameBranch) {
+      // Central difference is valid only when both perturbations stay on
+      // the same active-set branch as the reference return. At OCR=1 cone
+      // boundaries, one side often unloads elastically while the other
+      // keeps loading plastically; averaging those two branches gives the
+      // wrong semismooth Newton tangent and stalls flat strip-load cases.
       const double invDen = 1.0 / (2.0 * h);
       for (int i = 0; i < 6; ++i) {
         D_alg[i][dof] = (resP.stressUpdated[i] - resM.stressUpdated[i]) * invDen;
       }
       continue;
     }
-    // One-sided fallback near active-set discontinuity.
-    if (refOk && resP.failureCode == 0) {
+    // One-sided fallback near active-set discontinuity. Prefer the side
+    // that preserves the reference active set, so the tangent linearises
+    // the branch actually selected by the return map.
+    if (plusSameBranch) {
       const double invH = 1.0 / h;
       for (int i = 0; i < 6; ++i) {
         D_alg[i][dof] = (resP.stressUpdated[i] - resT.stressUpdated[i]) * invH;
       }
       continue;
     }
-    if (refOk && resM.failureCode == 0) {
+    if (minusSameBranch) {
+      const double invH = 1.0 / h;
+      for (int i = 0; i < 6; ++i) {
+        D_alg[i][dof] = (resT.stressUpdated[i] - resM.stressUpdated[i]) * invH;
+      }
+      continue;
+    }
+    if (refOk && plusOk && !minusOk) {
+      const double invH = 1.0 / h;
+      for (int i = 0; i < 6; ++i) {
+        D_alg[i][dof] = (resP.stressUpdated[i] - resT.stressUpdated[i]) * invH;
+      }
+      continue;
+    }
+    if (refOk && minusOk && !plusOk) {
       const double invH = 1.0 / h;
       for (int i = 0; i < 6; ++i) {
         D_alg[i][dof] = (resT.stressUpdated[i] - resM.stressUpdated[i]) * invH;
@@ -2534,50 +2894,15 @@ inline Mat6 fd_algorithmic_tangent(
 }
 
 // ---------------------------------------------------------------------------
-// B.7 — Plane-strain σ_zz outer iteration wrapper.
+// B.7 — Plane-strain ε_zz certification wrapper.
 //
-// The 6-Voigt strain increment received from the global FE solve satisfies
-// Δε_zz = 0 by construction (plane-strain assembly). The inner `update`
-// function does the return mapping in principal frame and reconstructs a
-// 6-Voigt stress. With isotropic D_e and trial-state principal projectors,
-// the inner update's stress correction is consistent with Δε_zz = 0 to
-// machine precision (see §3.7 derivation below). However, the spec calls
-// for an explicit outer Newton on a σ_zz correction so that
-//   (a) operator-split error from σ-dependent hyperbolic constants is
-//       absorbed,
-//   (b) any drift introduced by edge-regime mixing during the inner Newton
-//       is corrected, and
-//   (c) the contract documented in §3.7 is satisfied — outer Newton
-//       returns failureCode = 105 if convergence fails, triggering load-step
-//       cutback.
-//
-// Implementation per spec pseudocode (B.7):
-//   correction = 0
-//   for outer in 0..MAX_OUTER:
-//     strainTrialAdjusted = strainTrialVoigt with Δε_zz += correction
-//     result = update(strainTrialAdjusted, ...)
-//     // The resulting dε_zz_total from the constitutive update is exactly
-//     // strainTrialAdjusted[V_ZZ] - strainCommittedVoigt[V_ZZ], which is
-//     // correction + 0 = correction. We want the resulting "physical"
-//     // Δε_zz to be zero — i.e., the elastic strain plus plastic strain to
-//     // sum to zero in z. Equivalently, the σ_zz returned must satisfy
-//     // the plane-strain σ_zz constraint at zero ε_zz.
-//     residual_eps_zz = computed_dε_zz_from_constitutive (= correction)
-//     if |residual| < TOL: break
-//     // Newton step. The derivative d(eps_zz)/d(correction) is ~ 1 in
-//     // pure elastic, smaller in plastic. The spec recommends using
-//     // E_eff = E_ur / ((1+ν)(1-2ν)) (plane-strain effective modulus) as
-//     // the Newton denominator, but for the standard elastic+small-plastic
-//     // case the slope is dominated by 1. Use unity (Newton converges in 1
-//     // step in the elastic case; line-search-damped fallback in plastic).
-//     correction -= residual_eps_zz
-//
-// On failure: failureCode = 105.
-//
-// NOTE: the natural Δε_zz consistency in the inner update means this wrap-
-// per is essentially a no-op in cone-Face13 plane-strain compression (σ_zz
-// is σ_2 and dε_zz^p = 0). For cap and corner the iteration physically
-// adjusts σ_zz; the count is reported via stateUpdated as a Phase-5 audit.
+// The FE solve prescribes Δε_zz = 0. The HS return map must therefore return a
+// reaction σ_zz whose recovered elastic strain plus plastic strain reproduces
+// the fixed input strain. This wrapper never mutates ε_zz. It calls the inner
+// return map, optionally retries with strain substepping, and rejects the local
+// update with failureCode = 105 if the recovered ε_zz residual exceeds the
+// B.7 tolerance. A future stress-based σ_zz Newton can be added here, but the
+// unknown must be a stress correction; changing the FE strain is forbidden.
 // ---------------------------------------------------------------------------
 inline HsUpdateResult update_plane_strain(
     const Vec6& strainTrialVoigt,
@@ -2618,42 +2943,40 @@ inline HsUpdateResult update_plane_strain(
   // check residual" path is the primary mode.)
   constexpr double kEpsZzTol = 1e-10;   // B.7 spec target
 
+  bool usedSubstepping = false;
   HsUpdateResult res = update(
       strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
       stateCommitted, region, sigmaMsf);
-  res.sigmaZzIterations = 1;
 
   if (res.failureCode != 0) {
-    // Inner failure surfaces unchanged — outer FE Newton will cut back.
-    return res;
+    HsUpdateResult stepped = update_substepped_no_tangent(
+        strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
+        stateCommitted, region, sigmaMsf);
+    if (stepped.failureCode != 0) {
+      // Substepping is the more robust local integration attempt; surface its
+      // failure code (including plane-strain residual code 105) so the outer
+      // FE Newton cuts back for the actual remaining local defect.
+      return stepped;
+    }
+    res = stepped;
+    usedSubstepping = true;
   }
+  res.sigmaZzIterations = 1;
 
-  // Recover E_ur, ν_ur from res.tangent (which is D_e for HS). With
-  //   D_e[0][0] = λ + 2G,  D_e[0][1] = λ,
-  //   K = λ + 2G/3, E = 9KG/(3K+G), ν = (3K-2G)/(2(3K+G)).
-  const double G_recon = std::max(
-      0.5 * (res.tangent[V_XX][V_XX] - res.tangent[V_XX][V_YY]), 1.0);
-  const double K_recon = res.tangent[V_XX][V_YY] + (2.0 / 3.0) * G_recon;
-  const double E_ur_recon = std::max(9.0 * K_recon * G_recon
-                                      / std::max(3.0 * K_recon + G_recon, 1.0),
-                                     1.0);
-  const double nu_ur_recon = (3.0 * K_recon - 2.0 * G_recon)
-                            / std::max(2.0 * (3.0 * K_recon + G_recon), 1.0);
-
-  // Compute Δσ.
-  const double dsig_xx = res.stressUpdated[V_XX] - stressCommittedVoigt[V_XX];
-  const double dsig_yy = res.stressUpdated[V_YY] - stressCommittedVoigt[V_YY];
-  const double dsig_zz = res.stressUpdated[V_ZZ] - stressCommittedVoigt[V_ZZ];
-  // Δε_elastic_zz from isotropic compliance (engineering shears do not
-  // contribute to a normal-strain component).
-  const double dEps_e_zz = (dsig_zz - nu_ur_recon * (dsig_xx + dsig_yy)) / E_ur_recon;
-  const double dEps_p_zz = res.plasticIncrement[V_ZZ];
-  const double dEps_input_zz = strainTrialVoigt[V_ZZ] - strainCommittedVoigt[V_ZZ];
-  // Strain-recovery residual in z. For a correct return mapping with
+  // Strain-recovery residual in z. For a correct direct return mapping with
   // Δε_zz_input = 0 (plane strain), this should be |residual_zz| ≤ 1e-10.
-  const double residual_zz = (dEps_e_zz + dEps_p_zz) - dEps_input_zz;
+  // Substepped paths are checked per substep inside update_substepped_no_tangent,
+  // using each substep's own elastic tangent. A single end-state compliance
+  // check is not valid when stress-dependent stiffness varied over substeps.
+  bool residualOk = true;
+  const double residual_zz = usedSubstepping
+      ? 0.0
+      : plane_strain_recovery_residual_zz(
+            strainTrialVoigt, strainCommittedVoigt,
+            res.stressUpdated, stressCommittedVoigt,
+            res.plasticIncrement, res.tangent, residualOk);
 
-  if (std::abs(residual_zz) > kEpsZzTol) {
+  if (!usedSubstepping && (!residualOk || std::abs(residual_zz) > kEpsZzTol)) {
     // Plane-strain identity violated. Surface failureCode 105 so the
     // outer FE Newton cuts back. DO NOT mutate ε_zz to repair.
     res.failureCode = 105;
@@ -2661,45 +2984,38 @@ inline HsUpdateResult update_plane_strain(
   }
 
   // -------------------------------------------------------------------------
-  // Phase 6 (fix plan): dispatch the algorithmic tangent.
+  // Phase 6 production tangent dispatch.
   //
-  //   lastActiveSet 0           : Elastic    → D_e
-  //   lastActiveSet 1 (cone)    : Analytic   → single-surface (n != m, unsymmetric)
-  //   lastActiveSet 2 (cap)     : Analytic   → single-surface (n = m, symmetric)
-  //   lastActiveSet 3 (corner)  : Analytic   → 2×2 closed-form (unsymmetric)
-  //   lastActiveSet 4 (tension) : Elastic    → D_e (Phase 6D defers analytic
-  //                                            mixed Rankine to a future phase)
-  //   lastActiveSet 5/6/7 (mixed tension)
-  //                              : FiniteDifference → oracle
+  //   lastActiveSet 0           : Elastic          → D_e
+  //   lastActiveSet 1/2/3       : FiniteDifference → discrete return-map tangent
+  //   lastActiveSet 4           : Elastic          → D_e for pure Rankine
+  //   lastActiveSet 5/6/7       : FiniteDifference → mixed tension/HS tangent
   //
-  // Safety net: any analytic computation that degenerates (|A| < 1e-12, NaN
-  // or Inf in result) falls back to FD; FD failure falls back to D_e. The
-  // tangentMode field on the result records which path produced the tangent
-  // so Phase 7's GMRES dispatch can route plastic steps to a nonsymmetric
-  // Krylov solver.
+  // The closed-form analytic cone/cap/corner tangents remain available as
+  // diagnostics, but they are continuum-style approximations. For global
+  // Newton convergence, the production tangent must match the committed
+  // algorithm, even if it costs extra local material evaluations. Plastic HS
+  // iterations are routed to GMRES upstream.
   // -------------------------------------------------------------------------
   const std::uint8_t raw_active = res.stateUpdated.lastActiveSet;
   const Mat6 D_e_local = res.tangent;   // inner returns always set tangent = D_e
   res.tangentMode = HsTangentMode::Elastic;
 
-  // Re-derive the principal state at the converged stress (compression-
-  // positive). For isotropic D_e the converged eigenframe equals the trial
-  // eigenframe to numerical precision; this re-decomposition keeps the
-  // sigma_3-refreshed hyperbolic constants self-consistent and gives us
-  // the projectors for the lift step.
-  const double smsf_local = std::max(sigmaMsf, 1.0);
-  const double c_eff_local = std::max(region.cEff / smsf_local, 0.0);
-  const double phi_eff_local = std::atan(std::max(std::tan(region.phi) / smsf_local, 0.0));
-  const double psi_eff_local = std::min(
-      std::atan(std::max(std::tan(region.psi) / smsf_local, 0.0)),
-      phi_eff_local);
-  const double sin_phi_cv_local = critical_state_sin_phi_cv(phi_eff_local, psi_eff_local);
-  const double M_cap_local = std::max(region.hs.M_cap, 1e-6);
-  const double H_cap_local = std::max(region.hs.H_cap, 1.0);
-  const double p_t_local = tensile_shift_p_t(c_eff_local, phi_eff_local);
-  const mce::MaterialParameters mp_eig_local = make_mp_for_eig(region, c_eff_local, phi_eff_local);
-  const auto principalC = mce::principal_stress_projectors_3d_compression_positive(
-      res.stressUpdated, mp_eig_local);
+  if (usedSubstepping) {
+    bool fdOk = false;
+    Mat6 D_fd = fd_algorithmic_tangent(
+        strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
+        stateCommitted, region, sigmaMsf, D_e_local, fdOk,
+        /*useSubsteppedMap=*/true);
+    if (fdOk) {
+      res.tangent = D_fd;
+      res.tangentMode = HsTangentMode::FiniteDifference;
+    } else {
+      res.tangent = D_e_local;
+      res.tangentMode = HsTangentMode::Elastic;
+    }
+    return res;
+  }
 
   auto try_fd_fallback = [&]() {
     bool fdOk = false;
@@ -2721,52 +3037,13 @@ inline HsUpdateResult update_plane_strain(
       res.tangent = D_e_local;
       res.tangentMode = HsTangentMode::Elastic;
       break;
-    case 1: {
-      bool ok = false;
-      Mat6 D_ep = cone_analytic_tangent_at_state(
-          principalC, principalC.s1, principalC.s2, principalC.s3,
-          res.stateUpdated.gamma_p, res.stateUpdated.eps_v_p,
-          c_eff_local, phi_eff_local, psi_eff_local, sin_phi_cv_local,
-          region, D_e_local, ok);
-      if (ok) {
-        res.tangent = D_ep;
-        res.tangentMode = HsTangentMode::Analytic;
-      } else {
-        try_fd_fallback();
-      }
+    case 1:
+    case 3:
+      try_fd_fallback();
       break;
-    }
-    case 2: {
-      bool ok = false;
-      Mat6 D_ep = cap_analytic_tangent_at_state(
-          principalC, principalC.s1, principalC.s2, principalC.s3,
-          res.stateUpdated.p_p,
-          M_cap_local, p_t_local, H_cap_local,
-          phi_eff_local, D_e_local, ok);
-      if (ok) {
-        res.tangent = D_ep;
-        res.tangentMode = HsTangentMode::Analytic;
-      } else {
-        try_fd_fallback();
-      }
+    case 2:
+      try_fd_fallback();
       break;
-    }
-    case 3: {
-      bool ok = false;
-      Mat6 D_ep = corner_analytic_tangent_at_state(
-          principalC, principalC.s1, principalC.s2, principalC.s3,
-          res.stateUpdated.gamma_p, res.stateUpdated.p_p, res.stateUpdated.eps_v_p,
-          c_eff_local, phi_eff_local, psi_eff_local, sin_phi_cv_local,
-          M_cap_local, p_t_local, H_cap_local,
-          region, D_e_local, ok);
-      if (ok) {
-        res.tangent = D_ep;
-        res.tangentMode = HsTangentMode::Analytic;
-      } else {
-        try_fd_fallback();
-      }
-      break;
-    }
     case 4:
       // Pure tension (Rankine). Phase 6D defers the analytic mixed Rankine
       // tangent; keep D_e here. (For purely tensile elastic decompression
@@ -2943,40 +3220,86 @@ inline double calibrate_H_cap(double M_cap, double phi_eff,
 }
 
 // ---------------------------------------------------------------------------
-// Internal helper: γ^p that puts the cone exactly on its yield surface at
-// a K0 NC state (σ_v, σ_3 = K0·σ_v). Closed-form inversion of f^s = 0:
-//   γ^p = (2/E_i)·q/(1-q/q_a) - 2q/E_ur
-// E_i, E_ur, q_a are evaluated at σ_3 (consistent-constitutive). Mirrors
-// the verifier's `coneZeroGammaP`: this is the geostatic γ^p accumulated
-// during K0_nc consolidation up to σ_v. Used by C.1 to seed the calibration
-// path at the correct geostatic state — see comment in simulate_K0_at_pref
-// for why this matters for corner-engaged K0 NC paths.
+// Internal helpers for admissible K0 / history seeding.
 // ---------------------------------------------------------------------------
-inline double cone_zero_gamma_p_for_K0(double sigma_v, double K0,
-                                       double c_eff, double phi_eff,
-                                       const RegionParams::HsParams& hs) {
+
+struct HsConeConstants {
+  double E_i{ 1.0 };
+  double E_ur{ 1.0 };
+  double q_a{ 1.0 };
+};
+
+inline HsConeConstants cone_constants_for_sigma3(
+    double sigma3,
+    double c_eff,
+    double phi_eff,
+    const RegionParams::HsParams& hs) {
   const double sphi = std::sin(phi_eff);
   const double cphi = std::cos(phi_eff);
-  const double sigma_3 = K0 * sigma_v;
   const double p_ref = std::max(hs.p_ref, 1.0);
   const double m_exp = std::clamp(hs.m, 0.0, 1.0);
   const double Rf = std::clamp(hs.Rf, 1e-3, 0.999);
-  const double num = std::max(c_eff * cphi + sigma_3 * sphi, 0.5);
-  const double den = std::max(c_eff * cphi + p_ref * sphi, 0.5);
+  const double num = hs_stress_power_term(c_eff, phi_eff, sigma3, hs);
+  const double den = std::max(c_eff * cphi + p_ref * sphi,
+                              numerical_pressure_floor(hs));
   const double ratio = std::pow(num / den, m_exp);
   const double E_50 = hs.E50_ref * ratio;
-  const double E_ur = hs.Eur_ref * ratio;
-  const double E_i = 2.0 * E_50 / (2.0 - Rf);
-  double sphi_f = sphi;
-  if (sphi_f < 1e-6) sphi_f = 1e-6;
-  const double q_f = (c_eff * cot_safe(phi_eff) + sigma_3) * 2.0 * sphi_f
-                   / std::max(1.0 - sphi_f, 1e-9);
-  const double q_a = std::max(q_f / Rf, 1.0);
-  const double q = sigma_v - sigma_3;
-  const double q_clamp = std::min(q, 0.999 * q_a);
-  double denom = 1.0 - q_clamp / q_a;
+  HsConeConstants out;
+  out.E_ur = std::max(hs.Eur_ref * ratio, 1.0);
+  out.E_i = std::max(2.0 * E_50 / (2.0 - Rf), 1.0);
+  out.q_a = hs_q_a_from_sigma3(sigma3, c_eff, phi_eff, Rf, hs);
+  return out;
+}
+
+// γ^p that puts the cone exactly on its yield surface for the supplied
+// compression-positive principal pair (σ1, σ3). This is the closed-form
+// inversion of f^s = 0:
+//   γ^p = (2/E_i)·q/(1-q/q_a) - 2q/E_ur
+// with E_i, E_ur, q_a evaluated at σ3. It is intentionally not an OCR or
+// cohesion fudge: callers choose the physical current/history stress pair.
+inline double cone_zero_gamma_p_for_principal_pair(
+    double sigma1,
+    double sigma3,
+    double c_eff,
+    double phi_eff,
+    const RegionParams::HsParams& hs) {
+  const double q = std::max(sigma1 - sigma3, 0.0);
+  if (!(q > 0.0)) return 0.0;
+  const HsConeConstants c = cone_constants_for_sigma3(
+      sigma3, c_eff, phi_eff, hs);
+  const double q_clamp = std::min(q, 0.999 * c.q_a);
+  double denom = 1.0 - q_clamp / c.q_a;
   if (denom < 1e-3) denom = 1e-3;
-  return (2.0 / E_i) * q_clamp / denom - 2.0 * q / E_ur;
+  return (2.0 / c.E_i) * q_clamp / denom - 2.0 * q / c.E_ur;
+}
+
+// γ^p for a K0 NC state (σ_v, σ_3 = K0·σ_v). Kept for the K0 calibration
+// routines; production seeding uses the principal-pair helper directly so it
+// respects the actual K0 predictor stress rather than a reconstructed K0.
+inline double cone_zero_gamma_p_for_K0(double sigma_v, double K0,
+                                       double c_eff, double phi_eff,
+                                       const RegionParams::HsParams& hs) {
+  return cone_zero_gamma_p_for_principal_pair(
+      sigma_v, K0 * sigma_v, c_eff, phi_eff, hs);
+}
+
+// Minimum p_p that makes the cap admissible at the supplied principal state:
+// f_c <= 0 ⇔ p_p >= sqrt(q_tilde²/M² + (p' + p_t)²) - p_t.
+inline double cap_required_p_p(
+    double sigma1,
+    double sigma2,
+    double sigma3,
+    double M_cap,
+    double p_t,
+    double phi_eff) {
+  const double sphi = std::sin(phi_eff);
+  const double delta = (3.0 + sphi) / std::max(3.0 - sphi, 1e-9);
+  const double q_tilde = sigma1 + (delta - 1.0) * sigma2 - delta * sigma3;
+  const double p_prime = (sigma1 + sigma2 + sigma3) / 3.0;
+  const double M = std::max(M_cap, 1e-6);
+  const double rhs = (q_tilde * q_tilde) / (M * M)
+                   + (p_prime + p_t) * (p_prime + p_t);
+  return std::max(std::sqrt(std::max(rhs, 0.0)) - p_t, 0.0);
 }
 
 // ---------------------------------------------------------------------------

@@ -156,7 +156,8 @@ function writeHsParams(writeF64, region, isHs) {
   writeF64(hsParam(region, 'e_init', -1));
   writeF64(hsParam(region, 'e_max', -1));
   writeF64(Math.max(hsParam(region, 'OCR', 1), 1e-6));
-  writeF64(hsParam(region, 'reserved', 0));
+  const minConfinement = hsParam(region, 'nearSurfaceMinConfiningStress', hsParam(region, 'reserved', 0));
+  writeF64(Number.isFinite(Number(minConfinement)) ? Math.max(Number(minConfinement), 0) : 0);
 }
 
 function readHsState(readF64, readU8, isHs) {
