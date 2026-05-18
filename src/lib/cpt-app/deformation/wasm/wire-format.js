@@ -361,7 +361,8 @@ export function decodeOutputBuffer(bytes) {
   const numElements = readU32();
   const numGpTotal = readU32();
 
-  // Summary: 10 i32 + 5 f64 + 4 u8 + 4 u8 pad.
+  // Summary: 10 i32 + 5 f64 + 4 u8 (converged flags + hasHsPayload) +
+  // 2 u8 (Phase 7 dispatch telemetry) + 2 u8 reserved pad.
   const summary = {
     loadStepsAccepted: readI32(),
     loadStepsRejected: readI32(),
@@ -383,7 +384,15 @@ export function decodeOutputBuffer(bytes) {
     safetyRan: readU8() === 1
   };
   const hasHsPayload = version >= 10 ? readU8() === 1 : (readU8(), false);
-  for (let i = 0; i < 4; i += 1) readU8();
+  // Phase 7 (hardening-soil-fix.md §Phase 7): linear-solver dispatch
+  // telemetry. `lastLinearSolverKind` is 0=CG, 1=GMRES for the last
+  // global Newton iteration of the last completed phase.
+  // `hsPlasticUsedGmres` is a sticky flag: 1 iff any HS plastic
+  // Newton iteration in the run dispatched to GMRES.
+  summary.lastLinearSolverKind = readU8();
+  summary.hsPlasticUsedGmres = readU8() === 1;
+  // 2 trailing reserved pad bytes.
+  for (let i = 0; i < 2; i += 1) readU8();
 
   const serviceDisp = new Float64Array(numNodes * 2);
   for (let i = 0; i < numNodes; i += 1) {

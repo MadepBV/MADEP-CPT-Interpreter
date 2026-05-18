@@ -397,6 +397,15 @@ struct SafetyResult {
 };
 
 // Summary stats returned with the result.
+//
+// Phase 7 (hardening-soil-fix.md §Phase 7): two of the trailing pad
+// bytes are now repurposed to expose the linear-solver dispatch
+// decision. `lastLinearSolverKind` records the solver used for the
+// LAST global Newton iteration of the last completed phase (0=CG,
+// 1=GMRES). `hsPlasticUsedGmres` is a derived sticky flag: 1 iff any
+// HS plastic Newton iteration in the run dispatched to GMRES. Both
+// fields default to 0 for non-HS / elastic-only analyses; the wire
+// size is unchanged.
 struct RunSummary {
   std::int32_t loadStepsAccepted{ 0 };
   std::int32_t loadStepsRejected{ 0 };
@@ -416,7 +425,9 @@ struct RunSummary {
   std::uint8_t geostaticConverged{ 0 };
   std::uint8_t serviceConverged{ 0 };
   std::uint8_t safetyRan{ 0 };
-  std::uint8_t pad[5]{};
+  std::uint8_t lastLinearSolverKind{ 0 };
+  std::uint8_t hsPlasticUsedGmres{ 0 };
+  std::uint8_t pad[3]{};
 };
 
 }  // namespace madep

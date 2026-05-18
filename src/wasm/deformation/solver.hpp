@@ -1572,6 +1572,16 @@ struct PhaseResult {
   bool hasDisplayState{ false };
   std::vector<double> displayU;
   std::vector<MaterialPoint> displayMp;
+  // Phase 7: dispatch telemetry. `gmresIterationCount` totals Krylov
+  // iterations consumed by GMRES across all linear solves in this
+  // phase; the rest is CG. `gmresInvocations` counts how many Newton
+  // iterations dispatched to GMRES at all. `lastLinearSolverKind` is
+  // the solver chosen for the LAST global Newton iteration of the
+  // LAST accepted step in this phase (0=CG, 1=GMRES). These let the
+  // verifier confirm GMRES is used for HS plastic steps.
+  std::int32_t gmresIterationCount{ 0 };
+  std::int32_t gmresInvocations{ 0 };
+  std::uint8_t lastLinearSolverKind{ 0 };
 };
 
 inline void accumulate_phase_cost(PhaseResult& total, const PhaseResult& extra) {
@@ -1580,6 +1590,10 @@ inline void accumulate_phase_cost(PhaseResult& total, const PhaseResult& extra) 
   total.newtonIterations += extra.newtonIterations;
   total.cgIterations += extra.cgIterations;
   total.maxEta = std::max(total.maxEta, extra.maxEta);
+  total.gmresIterationCount += extra.gmresIterationCount;
+  total.gmresInvocations += extra.gmresInvocations;
+  // The most-recent phase wins for the "last solver used" signal.
+  total.lastLinearSolverKind = extra.lastLinearSolverKind;
 }
 
 inline void apply_phase_cost_counts(PhaseResult& result, const PhaseResult& cost) {
@@ -1588,6 +1602,9 @@ inline void apply_phase_cost_counts(PhaseResult& result, const PhaseResult& cost
   result.newtonIterations = cost.newtonIterations;
   result.cgIterations = cost.cgIterations;
   result.maxEta = std::max(result.maxEta, cost.maxEta);
+  result.gmresIterationCount = cost.gmresIterationCount;
+  result.gmresInvocations = cost.gmresInvocations;
+  result.lastLinearSolverKind = cost.lastLinearSolverKind;
 }
 
 inline bool should_attempt_safety_arc_length_auto(
@@ -1720,8 +1737,14 @@ inline PhaseResult run_safety_arc_length_phase(
   std::vector<double> internalForceFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> residualFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> diagInv;
+  // Per docs/features/hardening-soil-fix.md §Phase 7: HS's Phase 6
+  // algorithmic tangent is unsymmetric for non-associated cone and
+  // corner regimes. Safety-phase arc length must also dispatch HS
+  // plastic Newton iterations to GMRES; CG is reserved for the
+  // elastic + pure MC (symmetrized) paths.
   const bool mayNeedUnsymmetricSolver =
-      ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize;
+      (ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize) ||
+      ctx.kind == ConstitutiveKind::HardeningSoil;
   const double sigmaTarget = std::max(ctx.safetySigmaMsfTarget, 1.0);
   double sigma = std::max(ctx.safetySigmaMsfStart, 1.0);
   double peakSigma = sigma;
@@ -1824,6 +1847,11 @@ inline PhaseResult run_safety_arc_length_phase(
           K, freeDofs, derivative.continuationRhsFree, diagInv, arcOpts, arcState,
           displacementScale, useUnsymmetricSolver);
       res.cgIterations += predictor.linearIterations;
+      if (useUnsymmetricSolver) {
+        res.gmresIterationCount += predictor.linearIterations;
+        res.gmresInvocations += 1;
+      }
+      res.lastLinearSolverKind = useUnsymmetricSolver ? std::uint8_t{1} : std::uint8_t{0};
       if (!arc_length_predictor_direction_allowed(predictor, arcState, arcOpts)) {
         committedMp = stepStartCommittedScratch;
         trialMp = stepStartTrialScratch;
@@ -1924,6 +1952,14 @@ inline PhaseResult run_safety_arc_length_phase(
 
         const bool hasPlastic = a.plasticActiveCount > 0 || a.tensionCount > 0;
         const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
+        // Phase 7 debug assertion: HS plastic safety arc-length Newton
+        // iterations MUST dispatch to GMRES — the Phase 6 tangent is
+        // unsymmetric for non-associated cone / corner regimes.
+#ifndef NDEBUG
+        if (ctx.kind == ConstitutiveKind::HardeningSoil && hasPlastic && !tangentAsymmetric) {
+          assert(false && "HS plastic safety arc-length step routed to CG; expected GMRES");
+        }
+#endif
         SafetyResidualDerivativeFd correctionDerivative =
             compute_safety_sigma_msf_residual_derivative(
                 ctx, U, candidateLambda, candidateSigma, fdScratch, arcOpts);
@@ -1938,6 +1974,11 @@ inline PhaseResult run_safety_arc_length_phase(
             displacementScale, tangentAsymmetric);
         res.cgIterations += corrector.linearIterations;
         stepLinearIterations += corrector.linearIterations;
+        if (tangentAsymmetric) {
+          res.gmresIterationCount += corrector.linearIterations;
+          res.gmresInvocations += 1;
+        }
+        res.lastLinearSolverKind = tangentAsymmetric ? std::uint8_t{1} : std::uint8_t{0};
         lastCorrectionDenominator = corrector.denominator;
         lastFailureCode = corrector.failureCode;
         if (!corrector.converged) {
@@ -2176,12 +2217,19 @@ inline PhaseResult run_nonlinear_phase(
       ctx.kind != ConstitutiveKind::McPlastic &&
       ctx.kind != ConstitutiveKind::HardeningSoil;
   // mayNeedUnsymmetricSolver: tracks whether the tangent might be
-  // unsymmetric → GMRES dispatch when at least one GP yields. HS
-  // returns the elastic tangent (B.9) which is symmetric, so HS does
-  // NOT need GMRES even with symmetrize == false. Keep the flag
-  // gated on the asymmetric MC tangent only.
+  // unsymmetric → GMRES dispatch when at least one GP yields. Per
+  // docs/features/hardening-soil-fix.md §Phase 7 and
+  // docs/features/hardening-soil-theory-fix.md §4: HS now returns the
+  // Phase 6 algorithmic tangent (single-surface, corner, or FD
+  // oracle), which is unsymmetric for the non-associated flow rule
+  // (n != m on the cone) and for the corner regime. Forcing this
+  // tangent into CG (which requires SPD) is unsafe — route plastic HS
+  // steps through GMRES instead. The actual dispatch below gates on
+  // the per-Newton-iteration `hasPlastic` predicate so HS elastic
+  // iterations may still use CG.
   const bool mayNeedUnsymmetricSolver =
-      ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize;
+      (ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize) ||
+      ctx.kind == ConstitutiveKind::HardeningSoil;
   const bool canUseRobustElasticFallback =
       opts.robustNonlinearMode != 0 &&
       (ctx.kind == ConstitutiveKind::McPlastic ||
@@ -2362,10 +2410,26 @@ inline PhaseResult run_nonlinear_phase(
       const bool hasPlastic = (a.plasticActiveCount > 0) || (a.tensionCount > 0);
       const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
       if (tangentAsymmetric) stepUsedUnsymmetricSolver = true;
+      // Phase 7 debug assertion (hardening-soil-fix.md §Phase 7): HS
+      // plastic Newton iterations MUST dispatch to GMRES. CG requires
+      // SPD; the Phase 6 algorithmic tangent is unsymmetric for
+      // non-associated cone and corner regimes. In a release build
+      // this would silently corrupt the linear solve; under
+      // assertions we fail loudly.
+#ifndef NDEBUG
+      if (ctx.kind == ConstitutiveKind::HardeningSoil && hasPlastic && !tangentAsymmetric) {
+        assert(false && "HS plastic step routed to CG; expected GMRES");
+      }
+#endif
       cg::LinearSolveResult lr = solve_phase_linear_system(
           K, freeDofs, residualFree, deltaUFree, diag_inv, opts, tangentAsymmetric);
       res.cgIterations += lr.iterations;
       stepLinearIterations += lr.iterations;
+      if (tangentAsymmetric) {
+        res.gmresIterationCount += lr.iterations;
+        res.gmresInvocations += 1;
+      }
+      res.lastLinearSolverKind = tangentAsymmetric ? std::uint8_t{1} : std::uint8_t{0};
       double linearRhsNorm = 0.0;
       for (double v : residualFree) linearRhsNorm += v * v;
       linearRhsNorm = std::sqrt(linearRhsNorm);
@@ -2520,11 +2584,16 @@ inline PhaseResult run_nonlinear_phase(
             stepPeakActiveCount = std::max(stepPeakActiveCount, fallbackA.plasticActiveCount);
 
             std::vector<double> fallbackDeltaUFree(static_cast<std::size_t>(nfree), 0.0);
+            // Robust-mode rescue uses the elastic globalization tangent
+            // (D_e, symmetric), so CG is correct here even for HS — the
+            // dispatcher overrides resp.tangent with C in assemble_global
+            // when useElasticGlobalizationTangent=true above.
             cg::LinearSolveResult fallbackLr = solve_phase_linear_system(
                 K, freeDofs, residualFree, fallbackDeltaUFree, diag_inv, opts,
                 /*useUnsymmetricSolver=*/false);
             res.cgIterations += fallbackLr.iterations;
             stepLinearIterations += fallbackLr.iterations;
+            res.lastLinearSolverKind = 0;
 
             double fallbackLinearRhsNorm = 0.0;
             for (double v : residualFree) fallbackLinearRhsNorm += v * v;
@@ -3129,6 +3198,12 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     out.summary.cgIterations += geostatic.cgIterations;
     out.summary.geostaticLoadFactor = geostatic.loadFactor;
     out.summary.geostaticConverged = geostatic.converged ? 1 : 0;
+    // Phase 7 telemetry: latch the most-recent solver kind and the
+    // sticky HS-plastic-used-GMRES flag.
+    out.summary.lastLinearSolverKind = geostatic.lastLinearSolverKind;
+    if (in.opts.constitutive == ConstitutiveKind::HardeningSoil && geostatic.gmresInvocations > 0) {
+      out.summary.hsPlasticUsedGmres = 1;
+    }
     out.summary.maxEta = std::max(out.summary.maxEta, geostatic.maxEta);
     out.summary.finalActiveCount = geostatic.activeCount;
     out.summary.finalTensionCount = geostatic.tensionCount;
@@ -3195,6 +3270,11 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     out.summary.finalActiveCount = service.activeCount;
     out.summary.finalTensionCount = service.tensionCount;
     out.summary.serviceConverged = service.converged ? 1 : 0;
+    // Phase 7 telemetry — latch service phase's solver kind.
+    out.summary.lastLinearSolverKind = service.lastLinearSolverKind;
+    if (in.opts.constitutive == ConstitutiveKind::HardeningSoil && service.gmresInvocations > 0) {
+      out.summary.hsPlasticUsedGmres = 1;
+    }
     if (!service.converged) return out;
   } else {
     // No service load: take the geostatic state as the final result.
@@ -3319,6 +3399,11 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     out.summary.newtonIterations += sr.newtonIterations;
     out.summary.cgIterations += sr.cgIterations;
     out.summary.maxEta = std::max(out.summary.maxEta, sr.maxEta);
+    // Phase 7 telemetry — latch safety trial's solver kind / HS GMRES.
+    out.summary.lastLinearSolverKind = sr.lastLinearSolverKind;
+    if (in.opts.constitutive == ConstitutiveKind::HardeningSoil && sr.gmresInvocations > 0) {
+      out.summary.hsPlasticUsedGmres = 1;
+    }
     out.safety.trialCount += 1;
     out.safety.totalNewtonIterations += sr.newtonIterations;
     SafetyTrial st;

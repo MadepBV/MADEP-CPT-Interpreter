@@ -623,7 +623,13 @@ int madepRunDeformationAnalysis(
   q = write_u8(q, result.summary.serviceConverged);
   q = write_u8(q, result.summary.safetyRan);
   q = write_u8(q, hasHsPayload ? 1u : 0u);
-  q = write_u8(q, 0); q = write_u8(q, 0); q = write_u8(q, 0); q = write_u8(q, 0);
+  // Phase 7 telemetry (hardening-soil-fix.md §Phase 7): expose the
+  // last linear-solver kind (0=CG, 1=GMRES) and a sticky HS-plastic
+  // flag so verifiers can confirm GMRES dispatch on HS plastic steps.
+  // The remaining 2 bytes stay zero pad for future use.
+  q = write_u8(q, result.summary.lastLinearSolverKind);
+  q = write_u8(q, result.summary.hsPlasticUsedGmres);
+  q = write_u8(q, 0); q = write_u8(q, 0);
 
   // Service displacements.
   for (std::uint32_t n = 0; n < numNodes; ++n) {
