@@ -254,6 +254,7 @@ struct HsAlgorithmicTangentContext {
   double p_t{0.0};
   double H_cap{0.0};
   double p_prime{0.0};
+  double phi_eff{0.0};
   bool dilatancy_cutoff_active{false};
   bool pre_critical_cutoff_active{false};
   ConeFlowRegime regime{ConeFlowRegime::Face13};
@@ -328,6 +329,7 @@ inline HsAlgorithmicTangentContext build_sh_context(
   ctx.p_t = p_t;
   ctx.H_cap = H_cap;
   ctx.p_prime = (s1 + s2 + s3) / 3.0;
+  ctx.phi_eff = phi_eff;
   ctx.sin_phi_cv = sin_phi_cv;
   ctx.regime = classify_cone_regime(principalC);
 
@@ -626,6 +628,61 @@ inline Mat6 compute_cone_dmdtrial_projector_dense(
       ok);
 }
 
+inline void cap_flow_gradient_from_context(
+    const HsAlgorithmicTangentContext& ctx,
+    double& m1,
+    double& m2,
+    double& m3) {
+  const double q_tilde = ctx.dqtilde_ds1 * ctx.s1
+                       + ctx.dqtilde_ds2 * ctx.s2
+                       + ctx.dqtilde_ds3 * ctx.s3;
+  const double two_qt_over_M2 =
+      2.0 * q_tilde / std::max(ctx.M_cap * ctx.M_cap, 1e-12);
+  const double p_term = (2.0 / 3.0) * (ctx.p_prime + ctx.p_t);
+  m1 = two_qt_over_M2 * ctx.dqtilde_ds1 + p_term;
+  m2 = two_qt_over_M2 * ctx.dqtilde_ds2 + p_term;
+  m3 = two_qt_over_M2 * ctx.dqtilde_ds3 + p_term;
+}
+
+inline Mat6 compute_cap_dmdsigma_principal_dense(
+    const mce::PrincipalState& principal,
+    const HsAlgorithmicTangentContext& ctx,
+    bool& ok) {
+  double m1 = 0.0, m2 = 0.0, m3 = 0.0;
+  cap_flow_gradient_from_context(ctx, m1, m2, m3);
+  const double flow_p[3] = {m1, m2, m3};
+  const double dq[3] = {ctx.dqtilde_ds1, ctx.dqtilde_ds2, ctx.dqtilde_ds3};
+  const double scale_q = 2.0 / std::max(ctx.M_cap * ctx.M_cap, 1e-12);
+
+  double dflow_ds[3][3]{};
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      dflow_ds[i][j] = scale_q * dq[i] * dq[j] + 2.0 / 9.0;
+    }
+  }
+
+  return spectral_flow_derivative_dense(
+      principal, flow_p, dflow_ds,
+      /*includePrincipalValueTerms=*/true,
+      /*includeProjectorTerms=*/false,
+      ok);
+}
+
+inline Mat6 compute_cap_dmdtrial_projector_dense(
+    const mce::PrincipalState& principal,
+    const HsAlgorithmicTangentContext& ctx,
+    bool& ok) {
+  double m1 = 0.0, m2 = 0.0, m3 = 0.0;
+  cap_flow_gradient_from_context(ctx, m1, m2, m3);
+  const double flow_p[3] = {m1, m2, m3};
+  double dflow_ds[3][3]{};
+  return spectral_flow_derivative_dense(
+      principal, flow_p, dflow_ds,
+      /*includePrincipalValueTerms=*/false,
+      /*includeProjectorTerms=*/true,
+      ok);
+}
+
 inline double frobenius_norm6(const Mat6& A) {
   double acc = 0.0;
   for (int i = 0; i < 6; ++i) {
@@ -705,6 +762,85 @@ inline Mat6 compute_simo_hughes_cone_tangent(
   const Vec6 Xi_m = lng::mul6x6(Xi, m_eng);
   const Vec6 XiBT_n = transpose_tangent_times_stress_covector(XiB, n_t);
   const double A = stress_covector_dot_stress_vector(n_t, Xi_m) + 1.0;
+  ok = std::isfinite(A) && std::abs(A) > 1e-12;
+  if (!ok) return D_e;
+
+  Mat6 D_ep = XiB;
+  const double invA = 1.0 / A;
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) {
+      D_ep[i][j] -= Xi_m[i] * XiBT_n[j] * invA;
+    }
+  }
+
+  for (int i = 0; i < 6 && ok; ++i) {
+    for (int j = 0; j < 6 && ok; ++j) ok = std::isfinite(D_ep[i][j]);
+  }
+  return ok ? D_ep : D_e;
+}
+
+inline Mat6 compute_simo_hughes_cap_tangent(
+    const mce::PrincipalState& principalC,
+    const HsAlgorithmicTangentContext& ctx,
+    const Mat6& D_e,
+    bool& ok) {
+  ok = true;
+  if (std::abs(ctx.dlambda_c) < 1e-10 * std::max(frobenius_norm6(D_e), 1.0)) {
+    return D_e;
+  }
+
+  bool dmdsigma_ok = false;
+  const Mat6 dmdsigma = compute_cap_dmdsigma_principal_dense(
+      principalC, ctx, dmdsigma_ok);
+  if (!dmdsigma_ok) {
+    ok = false;
+    return D_e;
+  }
+
+  bool xi_ok = false;
+  const Mat6 Xi = compute_xi_dense(D_e, dmdsigma, ctx.dlambda_c, xi_ok);
+  if (!xi_ok) {
+    ok = false;
+    return D_e;
+  }
+
+  bool dmdtrial_ok = false;
+  const Mat6 dmdtrial = compute_cap_dmdtrial_projector_dense(
+      principalC, ctx, dmdtrial_ok);
+  if (!dmdtrial_ok) {
+    ok = false;
+    return D_e;
+  }
+  Mat6 B = mat6_identity();
+  const Mat6 dmdtrial_De = mat6_mul(dmdtrial, D_e);
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) {
+      B[i][j] -= ctx.dlambda_c * dmdtrial_De[i][j];
+    }
+  }
+  const Mat6 XiB = mat6_mul(Xi, B);
+
+  double m1 = 0.0, m2 = 0.0, m3 = 0.0;
+  cap_flow_gradient_from_context(ctx, m1, m2, m3);
+  const Vec6 m_t = lift_principal_gradient_to_tensor_voigt(
+      principalC, m1, m2, m3);
+  const Vec6 m_eng = tensor_voigt_to_engineering(m_t);
+
+  const double normalCorrection =
+      (4.0 / 3.0) * ctx.dlambda_c * ctx.H_cap * (ctx.p_p + ctx.p_t);
+  const Vec6 n_eff_t = lift_principal_gradient_to_tensor_voigt(
+      principalC,
+      m1 - normalCorrection,
+      m2 - normalCorrection,
+      m3 - normalCorrection);
+
+  const Vec6 Xi_m = lng::mul6x6(Xi, m_eng);
+  const Vec6 XiBT_n = transpose_tangent_times_stress_covector(XiB, n_eff_t);
+  const double H_cap_eff = 4.0 * std::max(ctx.H_cap, 0.0)
+                         * (ctx.p_p + ctx.p_t)
+                         * (ctx.p_prime + ctx.p_t);
+  const double A = stress_covector_dot_stress_vector(n_eff_t, Xi_m)
+                 + H_cap_eff;
   ok = std::isfinite(A) && std::abs(A) > 1e-12;
   if (!ok) return D_e;
 

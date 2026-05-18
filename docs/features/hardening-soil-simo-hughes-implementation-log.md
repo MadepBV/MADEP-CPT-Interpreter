@@ -261,3 +261,54 @@ Validation status:
 - Gate output: `residualRelErr_3x3=1.609817e-08`,
   `directFdRelErr_3x3=1.789000e-09`,
   `dlambda=1.149563e-04`.
+
+## SH-3 - Cap Simo-Hughes Tangent
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` section 2.4
+- `hardening-soil-simo-hughes-upgrade.md` section 4.3.2
+- `hardening-soil-simo-hughes-upgrade.md` section 7, Phase SH-3
+
+Implementation plan:
+
+- Add cap flow-gradient and cap Hessian helpers to
+  `material_hs_tangent.hpp`.
+- Keep the dense `Xi` implementation as the only SH-3 path; no Woodbury
+  rank-2 optimization until dense parity is stable.
+- Use the same direction-locked residual split as SH-2:
+  fixed-projector cap Hessian in `Xi`, trial-projector rotation in
+  `B = I - Delta lambda M_trial D_e`.
+- Add `scripts/scratch/hs_sh_phase_3.cpp` and
+  `scripts/verify_hs_simo_hughes_phase_3.mjs`.
+
+Hard-halt diagnosis:
+
+- The first cap verifier case failed by construction: `Delta lambda_c` was
+  `3.062049e-07`, below the mandatory
+  `1e-10 ||D_e||_F` conditioning guard, so the Simo-Hughes helper correctly
+  returned `D_e`. The relative error was therefore a verifier-state error,
+  not a cap tangent sign error.
+- Increasing only the strain increment kept the cap multiplier below the
+  guard and eventually made the direct FD active-set probe non-smooth. The
+  accepted verifier state instead uses a softer harness material and
+  `H_cap = 1` so the same cap-only active set has a smooth multiplier above
+  the guard. This is a local tangent verification fixture, not a calibration
+  recommendation.
+
+Review notes:
+
+- The cap `n_eff` correction subtracts
+  `(4/3) Delta lambda_c H_cap (p_p + p_t)` from each principal component
+  before lifting to Voigt, avoiding the documented extra `1/3` mistake.
+- The cap Hessian at fixed projectors is
+  `(2/M_cap^2) grad(q_tilde) outer grad(q_tilde) + 2/9 1 outer 1`.
+- The trial-projector spectral term remains outside `Xi` for the same
+  residual-linearisation reason established in SH-2.
+
+Validation status:
+
+- PASS on `node scripts/verify_hs_simo_hughes_phase_3.mjs`.
+- Gate output: `residualRelErr_3x3=1.073878e-08`,
+  `directFdRelErr_3x3=1.326512e-06`,
+  `dlambda=5.569892e-07`.
