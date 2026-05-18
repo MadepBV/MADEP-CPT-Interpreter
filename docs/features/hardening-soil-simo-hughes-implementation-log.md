@@ -144,3 +144,57 @@ Validation status:
 - SH-0 oracle relative errors:
   elastic `3.850655e-12`, cone `1.150391e-08`, cap `1.057031e-07`,
   corner `1.521867e-06`.
+
+## SH-1 - Sigma-3 Derivative Helpers
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` section 2.3.1
+- `hardening-soil-simo-hughes-upgrade.md` section 4
+- `hardening-soil-simo-hughes-upgrade.md` section 7, Phase SH-1
+- `hardening-soil-simo-hughes-upgrade.md` section 12.1
+
+Implementation plan:
+
+- Extend `material_hs_tangent.hpp` with scalar derivatives for the HS
+  power-law stiffnesses, asymptotic deviator, cone implicit yield partial,
+  and Rowe dilatancy chain rule.
+- Add `HsAlgorithmicTangentContext` and `build_sh_context(...)` so later
+  SH-2/3/4 tangent builders consume one audited bundle of converged-state
+  scalars.
+- Add a harness-only verifier for analytic-vs-finite-difference checks.
+- Before SH-1 could be committed, a clean-worktree WASM rebuild exposed a
+  hard halt: SH-P0 reached full load but stayed all-elastic
+  (`finalActiveCount = 0`, `hsPlasticUsedGmres = false`). That meant the
+  phase chain was relying on dirty prerequisite HS source/artifact state.
+  Corrective commit `d8350ed` makes the SH-P0 baseline self-contained by
+  landing the live HS production baseline before these SH-1 helpers.
+
+Review notes:
+
+- The stiffness derivatives call `effective_confining_stress(...)`,
+  `effective_confining_stress_derivative(...)`, and
+  `numerical_pressure_floor(...)`. The near-surface floor case is explicitly
+  checked and returns zero derivative.
+- The cone implicit derivative is split into the three §12.1 partials
+  `df/dE_i`, `df/dE_ur`, and `df/dq_a` before combining, preserving the
+  mixed signs and the `q <= 0.999 q_a` clamp.
+- The Rowe helpers follow the production `mobilised_sin_phi` /
+  `mobilised_sin_psi` formulas. The context builder treats the pre-critical
+  region, the Rowe psi cap, and the void-ratio dilatancy cutoff as
+  zero-derivative regions.
+- The clean-build hard-halt diagnosis was mathematically specific: the old
+  K0 history seed used a hidden `OCR >= 2` floor, over-hardening the SH-P0
+  strip so the service load never engaged HS plasticity. The landed baseline
+  seeds cone history from the actual principal K0 pair and leaves HS on the
+  stress-only K0 baseline for service increments.
+
+Validation status:
+
+- PASS on `node scripts/verify_hs_simo_hughes_phase_1.mjs`.
+- Representative relative errors: `dE50/dsigma3 1.279631e-11`,
+  `dEur/dsigma3 1.876824e-11`, `dEi/dsigma3 4.913464e-12`,
+  `dqf/dsigma3 4.774958e-12`, `dqa/dsigma3 4.774972e-12`,
+  `df/dsigma3 implicit 1.011311e-14`,
+  `d sinpsi/dsigma1 4.008079e-14`,
+  `d sinpsi/dsigma3 1.711166e-13`.
