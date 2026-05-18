@@ -135,10 +135,18 @@ export function buildWasmDeformationResult({
   let anyGpHasHs = false;
 
   // Priority lookup for the dominant HS active-surface state across a
-  // single element's Gauss points. Indexing matches `lastActiveSet`:
-  //   0 = elastic, 1 = cone, 2 = cap, 3 = corner, 4 = tension.
-  // Corner > cap > cone > tension > elastic (per spec §10 Phase 6).
-  const HS_ACTIVE_SET_PRIORITY = [0, 2, 3, 4, 1];
+  // single element's Gauss points. Indexing matches `lastActiveSet` and
+  // covers the full raw enum {0..7} introduced by Phase 2 of the
+  // hardening-soil fix plan:
+  //   0 = elastic
+  //   1 = cone, 2 = cap, 3 = corner (cone+cap)
+  //   4 = tension
+  //   5 = tension+cone, 6 = tension+cap, 7 = tension+cone+cap
+  // Priority order: tension-mixed (5/6/7) takes precedence on the
+  // canvas because the tension cutoff is the critical safety surface;
+  // tension-only (4) > corner (3) > cap (2) > cone (1) > elastic (0).
+  // Raw values 5/6/7 map to priority 4 (tension takes precedence).
+  const HS_ACTIVE_SET_PRIORITY = [0, 2, 3, 4, 1, 4, 4, 4];
 
   for (let elementIndex = 0; elementIndex < numElements; elementIndex += 1) {
     const elementCache = elementCaches[elementIndex];
@@ -354,7 +362,12 @@ export function buildWasmDeformationResult({
           pPMax: maxHsPP,
           epsVPContractive: maxHsEpsVPContractive,
           epsVPDilative: minHsEpsVPDilative,
-          dominantActiveSet
+          // Collapse raw mixed-tension states (5/6/7) to plain tension (4)
+          // for the UI palette, which is keyed on the documented {0..4}
+          // enum. The raw value is preserved through the wire format at
+          // the Gauss-point level (gaussPoints[].materialState.hs.lastActiveSet)
+          // for diagnostics; only the UI aggregate collapses.
+          dominantActiveSet: dominantActiveSet >= 4 ? 4 : dominantActiveSet
         } : null
       },
       materialDiagnostics: {

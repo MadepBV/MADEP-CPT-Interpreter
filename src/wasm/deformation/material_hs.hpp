@@ -252,11 +252,20 @@ inline double cap_yield_value(double sigma1, double sigma2, double sigma3,
        - (p_p + p_t) * (p_p + p_t);
 }
 
-// F11 — Cap yield gradient (associated flow), regime-aware.
-// Outputs the gradient of f^c with respect to (sigma1, sigma2, sigma3) and
-// w.r.t. the cap hardening variable p_p.
-inline void cap_yield_gradient(ConeFlowRegime regime,
-                               double sigma1, double sigma2, double sigma3,
+// F11 — Cap yield gradient (associated flow). Direct derivative of the
+// cap yield function with NO cone-regime adjustment: the cap is an
+// associated surface with its own flow direction independent of the
+// cone's edge/face state (fix-plan §Phase 5).
+//
+//   δ = (3 + sin φ) / (3 - sin φ)
+//   q_tilde = σ_1 + (δ - 1) σ_2 - δ σ_3
+//   p' = (σ_1 + σ_2 + σ_3) / 3
+//
+//   ∂f^c/∂σ_1 = 2 q_tilde / M² · 1         + 2/3 · (p' + p_t)
+//   ∂f^c/∂σ_2 = 2 q_tilde / M² · (δ - 1)   + 2/3 · (p' + p_t)
+//   ∂f^c/∂σ_3 = 2 q_tilde / M² · (-δ)      + 2/3 · (p' + p_t)
+//   ∂f^c/∂p_p = -2 (p_p + p_t)
+inline void cap_yield_gradient(double sigma1, double sigma2, double sigma3,
                                double p_p, double M_cap, double p_t,
                                double phi_eff,
                                double& df_d1, double& df_d2, double& df_d3,
@@ -266,33 +275,14 @@ inline void cap_yield_gradient(ConeFlowRegime regime,
   const double dm1 = delta - 1.0;
   const double neg_d = -delta;
 
-  double dq_d1, dq_d2, dq_d3;
-  switch (regime) {
-    case ConeFlowRegime::Face13:
-      dq_d1 = 1.0;
-      dq_d2 = dm1;
-      dq_d3 = neg_d;
-      break;
-    case ConeFlowRegime::CompressionEdge:
-      dq_d1 = 1.0;
-      dq_d2 = 0.5 * (dm1 + neg_d);
-      dq_d3 = 0.5 * (neg_d + dm1);
-      break;
-    case ConeFlowRegime::ExtensionEdge:
-      dq_d1 = 0.5 * (1.0 + dm1);
-      dq_d2 = 0.5 * (dm1 + 1.0);
-      dq_d3 = neg_d;
-      break;
-  }
-
   const double q_tilde = sigma1 + dm1 * sigma2 + neg_d * sigma3;
   const double p_prime = (sigma1 + sigma2 + sigma3) / 3.0;
   const double two_qt_over_M2 = 2.0 * q_tilde / (M_cap * M_cap);
   const double pt_term = (2.0 / 3.0) * (p_prime + p_t);
 
-  df_d1 = two_qt_over_M2 * dq_d1 + pt_term;
-  df_d2 = two_qt_over_M2 * dq_d2 + pt_term;
-  df_d3 = two_qt_over_M2 * dq_d3 + pt_term;
+  df_d1 = two_qt_over_M2 * 1.0   + pt_term;
+  df_d2 = two_qt_over_M2 * dm1   + pt_term;
+  df_d3 = two_qt_over_M2 * neg_d + pt_term;
   df_dpp = -2.0 * (p_p + p_t);
 }
 
@@ -304,6 +294,66 @@ inline double cap_volumetric_per_lambda(double p_prime, double p_t) {
 // F13 — Cap hardening rate dp_p / dlambda_c.
 inline double cap_hardening_rate(double H_cap, double p_prime, double p_t) {
   return H_cap * cap_volumetric_per_lambda(p_prime, p_t);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 (fix plan): admissibility certificate.
+//
+// Every return-mapping path (cone-only, cap-only, corner, tension) must
+// produce a state inside the elastic domain of all three yield surfaces.
+// The certificate evaluates f^s, f^c, f_tension and checks each against
+// a scaled tolerance. If admissible, the inner return may report
+// failureCode == 0; otherwise it must surface failureCode = 106 so the
+// outer FE Newton cuts back the load step.
+//
+// Sign conventions:
+//   - σ_principal is compression-positive (σ_1 >= σ_2 >= σ_3).
+//   - tensile violation: σ_3 < -σ_T  ⇒  f_tension = σ_3 + σ_T < 0 admissible.
+//     We negate so f_tension > 0 indicates tensile yield violation.
+//     fTension = -σ_3 - σ_T  (positive when in tension violation).
+//   - cone f^s > 0 ⇒ inadmissible (cone surface violated).
+//   - cap f^c > 0 ⇒ inadmissible (cap surface violated).
+// ---------------------------------------------------------------------------
+struct HsReturnCertificate {
+  double fCone{ 0.0 };
+  double fCap{ 0.0 };
+  double fTension{ 0.0 };
+  double tolCone{ 0.0 };
+  double tolCap{ 0.0 };
+  double tolTension{ 0.0 };
+  bool admissible{ false };
+};
+
+inline HsReturnCertificate certify_hs_return(
+    double sigma1, double sigma2, double sigma3,
+    double gamma_p_new, double p_p_new,
+    double q_a, double E_i, double E_ur,
+    double M_cap, double p_t,
+    double sigma_T, double phi_eff,
+    bool tensionEnabled) {
+  HsReturnCertificate cert{};
+  const double q = sigma1 - sigma3;
+  cert.fCone = cone_yield_value(q, q_a, E_i, E_ur, gamma_p_new);
+  cert.fCap = cap_yield_value(sigma1, sigma2, sigma3, p_p_new, M_cap,
+                              p_t, phi_eff);
+  // Tension test: σ_3 (least compressive) below -σ_T means tensile yield.
+  // Use f_tension > 0 when violated, matching the f^s/f^c convention.
+  cert.fTension = tensionEnabled ? (-sigma3 - sigma_T) : -1.0;
+
+  // Tolerances scaled by the magnitudes carried in each yield function.
+  cert.tolCone = 1e-6 * std::max(std::abs(q_a), 1.0);
+  const double pp_scale = std::max(p_p_new + p_t, 1.0);
+  cert.tolCap  = 1e-6 * pp_scale * pp_scale;
+  cert.tolTension = 1e-6 * std::max(std::abs(sigma_T), 1.0);
+
+  cert.admissible =
+      std::isfinite(cert.fCone) &&
+      std::isfinite(cert.fCap) &&
+      std::isfinite(cert.fTension) &&
+      cert.fCone <= cert.tolCone &&
+      cert.fCap <= cert.tolCap &&
+      cert.fTension <= cert.tolTension;
+  return cert;
 }
 
 // ---------------------------------------------------------------------------
@@ -604,6 +654,24 @@ inline HsUpdateResult return_cone_only(
   out.stateUpdated.lastActiveSet = 1;
   out.activeSurface = 1;
   out.failureCode = 0;
+
+  // Phase 4 (fix plan): admissibility certificate. Cone-only return is
+  // admissible if the corrected state lies inside the cap surface. Tension
+  // is dispatched separately and is not checked here.
+  {
+    const double M_cap_cert = std::max(region.hs.M_cap, 1e-6);
+    const double p_t_cert = tensile_shift_p_t(c_eff, phi_eff);
+    const HsReturnCertificate cert = certify_hs_return(
+        s1_new, s2_new, s3_new,
+        gamma_p_new, stateC.p_p,
+        q_a, E_i, E_ur,
+        M_cap_cert, p_t_cert,
+        /*sigma_T=*/0.0, phi_eff, /*tensionEnabled=*/false);
+    if (!cert.admissible) {
+      out.failureCode = 106;
+      return out;
+    }
+  }
   return out;
 }
 
@@ -629,8 +697,9 @@ inline HsUpdateResult return_cap_only(
   const double lam = D_e[0][0] - 2.0 * G_s;
   const double two_mu = 2.0 * G_s;
 
-  // F9 — regime classifier shared between cone and cap.
-  const ConeFlowRegime regime = classify_cone_regime(principalT);
+  // Phase 5 (fix plan): the cap is its own associated surface — its flow
+  // direction does not depend on cone regime. No regime classifier needed
+  // for the cap-only return.
 
   // Trial cap residual (helps with initial guess sign).
   double f_trial = cap_yield_value(
@@ -669,7 +738,7 @@ inline HsUpdateResult return_cap_only(
   for (int it = 0; it < 60; ++it) {
     // Cap flow (associated) at current corrected state and current p_p.
     double dummy_dpp = 0.0;
-    cap_yield_gradient(regime, s1_new, s2_new, s3_new,
+    cap_yield_gradient(s1_new, s2_new, s3_new,
                        p_p_new, M_cap, p_t, phi_eff,
                        dg1, dg2, dg3, dummy_dpp);
 
@@ -736,6 +805,38 @@ inline HsUpdateResult return_cap_only(
   out.stateUpdated.lastActiveSet = 2;
   out.activeSurface = 2;
   out.failureCode = 0;
+
+  // Phase 4 (fix plan): admissibility certificate. Cap-only return is
+  // admissible if the corrected state satisfies the cone yield. Hyperbolic
+  // constants recomputed at the corrected σ_3 for a consistent check.
+  {
+    const double Rf = std::clamp(region.hs.Rf, 1e-3, 0.999);
+    const double m_exp = std::clamp(region.hs.m, 0.0, 1.0);
+    const double p_ref = std::max(region.hs.p_ref, 1.0);
+    const double cosPhi = std::cos(phi_eff);
+    const double sinPhi = std::sin(phi_eff);
+    const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi, 0.5);
+    const double num = std::max(c_eff * cosPhi + s3_new * sinPhi, 0.5);
+    const double pratio = std::pow(num / denom_pow, m_exp);
+    const double E_50_local = region.hs.E50_ref * pratio;
+    const double E_ur_local = region.hs.Eur_ref * pratio;
+    double sinPhi_f = sinPhi;
+    if (sinPhi_f < 1e-6) sinPhi_f = 1e-6;
+    const double q_f_local = (c_eff * cot_safe(phi_eff) + s3_new) * 2.0 * sinPhi_f
+                            / std::max(1.0 - sinPhi_f, 1e-9);
+    const double q_a_local = std::max(q_f_local / Rf, 1.0);
+    const double E_i_local = 2.0 * E_50_local / (2.0 - Rf);
+    const HsReturnCertificate cert = certify_hs_return(
+        s1_new, s2_new, s3_new,
+        stateC.gamma_p, p_p_new,
+        q_a_local, E_i_local, E_ur_local,
+        M_cap, p_t,
+        /*sigma_T=*/0.0, phi_eff, /*tensionEnabled=*/false);
+    if (!cert.admissible) {
+      out.failureCode = 106;
+      return out;
+    }
+  }
   return out;
 }
 
@@ -852,6 +953,15 @@ inline HsUpdateResult return_corner(
   bool degenerate_drop_s = false;
   bool degenerate_drop_c = false;
 
+  // Phase 4 (fix plan): step damping. Track previous residual norm so we
+  // can halve the step when the full Newton step would increase residual.
+  auto residual_norm = [&](double rs, double rc) {
+    const double ns = rs / std::max(f_tol_s, 1e-30);
+    const double nc = rc / std::max(f_tol_c, 1e-30);
+    return std::sqrt(ns * ns + nc * nc);
+  };
+  double prev_residual_norm = std::numeric_limits<double>::infinity();
+
   for (int it = 0; it < 30; ++it) {
     // Mobilised friction / dilatancy at current corrected state.
     const double sphi_mob = mobilised_sin_phi(s1_new, s3_new, c_eff, phi_eff);
@@ -863,9 +973,11 @@ inline HsUpdateResult return_corner(
     // Cone flow gradient (∂g^s/∂σ) — regime-aware.
     cone_flow_gradient(regime, sin_psi_mob, dgs1, dgs2, dgs3);
 
-    // Cap flow gradient = cap yield gradient (associated). Regime-aware.
+    // Cap flow gradient = cap yield gradient (associated). Phase 5 fix:
+    // the cap gradient is decoupled from cone regime — only the cone uses
+    // regime-aware Koiter flow.
     double cap_df_dpp = 0.0;
-    cap_yield_gradient(regime, s1_new, s2_new, s3_new,
+    cap_yield_gradient(s1_new, s2_new, s3_new,
                        p_p_new, M_cap, p_t, phi_eff,
                        dgc1, dgc2, dgc3, cap_df_dpp);
 
@@ -926,8 +1038,9 @@ inline HsUpdateResult return_corner(
     cone_yield_gradient(regime, df_dq_factor, dfs1, dfs2, dfs3);
 
     // ∂f^c/∂σ in principal frame — cap yield gradient at current state.
+    // Phase 5: cap is associated and regime-independent.
     double dfc1, dfc2, dfc3, dfc_dpp_unused = 0.0;
-    cap_yield_gradient(regime, s1_new, s2_new, s3_new,
+    cap_yield_gradient(s1_new, s2_new, s3_new,
                        p_p_new, M_cap, p_t, phi_eff,
                        dfc1, dfc2, dfc3, dfc_dpp_unused);
 
@@ -957,12 +1070,7 @@ inline HsUpdateResult return_corner(
     double dls_step = ( J11 * rs - J01 * rc) / det;
     double dlc_step = (-J10 * rs + J00 * rc) / det;
 
-    // Step clamping. Without it, the first iteration's Newton update can
-    // overshoot the basin of attraction (especially when the trial state
-    // is far from the corner manifold). The "natural" Δλ scales are
-    // q_a/(2μ) for the cone and (p_p+p_t)/H_cap for the cap; cap a step
-    // at twice these scales to allow rapid convergence but prevent
-    // catastrophic overshoot.
+    // Step clamping (basin-of-attraction safeguard).
     const double max_step_s = std::max(q_a / std::max(two_mu, 1.0), 1e-6);
     const double max_step_c = std::max((p_p_new + p_t) / std::max(H_cap, 1.0), 1e-6);
     if (dls_step >  max_step_s) dls_step =  max_step_s;
@@ -970,18 +1078,55 @@ inline HsUpdateResult return_corner(
     if (dlc_step >  max_step_c) dlc_step =  max_step_c;
     if (dlc_step < -max_step_c) dlc_step = -max_step_c;
 
-    dl_s -= dls_step;
-    dl_c -= dlc_step;
+    // Phase 4 (fix plan): step damping. Halve the step (up to 8 times)
+    // if either multiplier would go strictly negative — non-negativity
+    // is required by the Karush-Kuhn-Tucker conditions for active corner
+    // states. Also halve if the residual norm increases.
+    const double current_resid = residual_norm(rs, rc);
+    double damped_dls = dls_step;
+    double damped_dlc = dlc_step;
+    int halvings = 0;
+    while (halvings < 8) {
+      const double dl_s_try = dl_s - damped_dls;
+      const double dl_c_try = dl_c - damped_dlc;
+      // Non-negativity check.
+      const bool s_neg = dl_s_try < 0.0;
+      const bool c_neg = dl_c_try < 0.0;
+      // Residual increase check (only after 1st iter).
+      bool resid_increases = false;
+      if (it > 0 && current_resid > prev_residual_norm * 1.001) {
+        resid_increases = true;
+      }
+      if (!s_neg && !c_neg && !resid_increases) break;
+      damped_dls *= 0.5;
+      damped_dlc *= 0.5;
+      ++halvings;
+    }
+    prev_residual_norm = current_resid;
 
-    // Clamp non-negative. If either has gone negative, mark degeneracy
-    // and abort the corner solve (caller will run single-surface).
+    dl_s -= damped_dls;
+    dl_c -= damped_dlc;
+
+    // Phase 4 (fix plan): enforce strictly non-negative multipliers. Even
+    // after damping, FP precision may produce a tiny negative; clamp to
+    // zero and mark degenerate ONLY if the value is essentially zero (not
+    // just slightly negative from a Newton step that should have produced
+    // a small positive).
     if (dl_s < 0.0) {
-      dl_s = 0.0;
-      degenerate_drop_s = true;
+      if (dl_s > -1e-14) {
+        dl_s = 0.0;
+      } else {
+        dl_s = 0.0;
+        degenerate_drop_s = true;
+      }
     }
     if (dl_c < 0.0) {
-      dl_c = 0.0;
-      degenerate_drop_c = true;
+      if (dl_c > -1e-14) {
+        dl_c = 0.0;
+      } else {
+        dl_c = 0.0;
+        degenerate_drop_c = true;
+      }
     }
 
     // Hard degeneracy: one multiplier collapsed AND can't recover.
@@ -1021,6 +1166,22 @@ inline HsUpdateResult return_corner(
   out.stateUpdated.lastActiveSet = 3;
   out.activeSurface = 3;
   out.failureCode = 0;
+
+  // Phase 4 (fix plan): admissibility certificate. Corner Newton just
+  // converged with f^s and f^c both at tolerance; certify it to defend
+  // against numerical drift outside the elastic domain.
+  {
+    const HsReturnCertificate cert = certify_hs_return(
+        s1_new, s2_new, s3_new,
+        gamma_p_new, p_p_new,
+        q_a, E_i, E_ur,
+        M_cap, p_t,
+        /*sigma_T=*/0.0, phi_eff, /*tensionEnabled=*/false);
+    if (!cert.admissible) {
+      out.failureCode = 106;
+      return out;
+    }
+  }
   return out;
 }
 
@@ -1156,6 +1317,17 @@ inline HsUpdateResult return_tension(
   recheck(s1_proj, s2_proj, s3_proj,
           stateC.gamma_p, stateC.p_p, f_s_post, f_c_post);
 
+  // Phase 4 (fix plan): admissibility certificate for tension paths. The
+  // cone/cap surfaces are certified by the inner return mappings; here we
+  // additionally verify that the tension surface is admissible at the
+  // corrected state (σ_3 >= -σ_T within tolerance). Returns true if the
+  // tension cutoff is satisfied.
+  auto certify_tension = [&](double s3) -> bool {
+    const double f_tension = -s3 - sigma_T;
+    const double tol = 1e-6 * std::max(std::abs(sigma_T), 1.0);
+    return std::isfinite(f_tension) && f_tension <= tol;
+  };
+
   // Running state for the sequential project-and-check pathway. Cases B
   // and C may make partial progress (γ^p or p_p increased) without fully
   // resolving both surfaces; their updates are folded into `st_cur` so
@@ -1178,6 +1350,9 @@ inline HsUpdateResult return_tension(
     out.stateUpdated.lastActiveSet = 4;   // tension-only
     out.activeSurface = 4;
     out.failureCode = 0;
+    if (!certify_tension(s3_proj)) {
+      out.failureCode = 106;
+    }
     return out;
   }
 
@@ -1200,6 +1375,9 @@ inline HsUpdateResult return_tension(
         // Mark tension+cone via lastActiveSet sentinel (5 = tension+cone).
         cone_after.stateUpdated.lastActiveSet = 5;
         cone_after.activeSurface = 5;
+        if (!certify_tension(pr_check.s3)) {
+          cone_after.failureCode = 106;
+        }
         return cone_after;
       }
       // Cap got pushed positive by cone correction; carry the cone-updated
@@ -1229,6 +1407,9 @@ inline HsUpdateResult return_tension(
       if (f_s_after <= F_TOL_S) {
         cap_after.stateUpdated.lastActiveSet = 6;   // tension+cap
         cap_after.activeSurface = 6;
+        if (!certify_tension(pr_check.s3)) {
+          cap_after.failureCode = 106;
+        }
         return cap_after;
       }
       // Cone got pushed positive by cap correction; carry the cap-updated
@@ -1266,6 +1447,9 @@ inline HsUpdateResult return_tension(
       out.stateUpdated.lastActiveSet = triple_active;
       out.activeSurface = triple_active;
       out.failureCode = 0;
+      if (!certify_tension(s3_cur)) {
+        out.failureCode = 106;
+      }
       return out;
     }
 
@@ -1560,25 +1744,13 @@ inline HsUpdateResult update(
     return cone_alone;
   }
 
-  // Last-resort fallback for ill-conditioned corner states (typically
-  // very low confinement σ_3 → 0, where the cone hyperbolic constants
-  // degenerate). The strict sequential check above requires the
-  // non-active surface to be admissible at the projected state;
-  // when both single-surface returns leave the other surface slightly
-  // violated, the outer FE Newton needs SOME admissible stress to make
-  // progress — returning the elastic predictor with failureCode 103
-  // forces a load-step cutback that never makes progress at low
-  // confinement.
-  //
-  // The least-bad option: accept the single-surface return whose
-  // residual on the other surface is smallest. The next FE Newton
-  // iteration with this corrected state as committed will re-evaluate
-  // and either (a) find a valid corner (single-surface fixed point now
-  // satisfies both yields after the stress shift), or (b) converge to
-  // the residual=0 limit via the natural multi-iteration mechanism.
-  // This pattern is the "approximate consistent return" used in PLAXIS
-  // when the closed-form corner Newton fails — accept the most-
-  // converged single-surface and let global Newton do the rest.
+  // Phase 4 (fix plan): the previous "least-bad fallback" overrode
+  // failureCode = 0 even when neither single-surface return was
+  // admissible. Production rule: failureCode = 0 only if the return is
+  // admissible. We certify both fallback candidates against BOTH yields
+  // (cone and cap); accept only if a certificate is admissible. If
+  // neither is admissible, surface failureCode 106 so the outer FE Newton
+  // can cut back the load step.
   auto residual_other_surface = [&](const HsUpdateResult& r,
                                     bool checkCap) -> double {
     if (r.failureCode != 0) return std::numeric_limits<double>::infinity();
@@ -1591,30 +1763,62 @@ inline HsUpdateResult update(
     return std::max(0.0, cone_yield_after_return(
         pr.s1, pr.s3, r.stateUpdated.gamma_p));
   };
+  auto fallback_admissible = [&](const HsUpdateResult& r) -> bool {
+    if (r.failureCode != 0) return false;
+    const auto pr = mce::principal_stress_projectors_3d_compression_positive(
+        r.stressUpdated, mp_eig);
+    const HsReturnCertificate cert = certify_hs_return(
+        pr.s1, pr.s2, pr.s3,
+        r.stateUpdated.gamma_p, r.stateUpdated.p_p,
+        q_a, E_i, E_ur,
+        M_cap, p_t,
+        /*sigma_T=*/0.0, phi_eff, /*tensionEnabled=*/false);
+    return cert.admissible;
+  };
+
   const double cap_residual_cone = residual_other_surface(cap_alone, /*checkCap=*/false);
   const double cone_residual_cap = residual_other_surface(cone_alone, /*checkCap=*/true);
-  if (std::isfinite(cap_residual_cone) || std::isfinite(cone_residual_cap)) {
+  const bool cap_alone_admissible = fallback_admissible(cap_alone);
+  const bool cone_alone_admissible = fallback_admissible(cone_alone);
+
+  // Prefer the admissible fallback. If both are admissible, prefer the
+  // smaller residual on the other surface (better-converged).
+  if (cap_alone_admissible && cone_alone_admissible) {
     if (cap_residual_cone <= cone_residual_cap) {
-      // Cap-only return has smaller cone-residual.
-      HsUpdateResult fallback = cap_alone;
-      fallback.failureCode = 0;
-      fallback.activeSurface = 2;
-      fallback.stateUpdated.lastActiveSet = 2;
-      return fallback;
+      HsUpdateResult fb = cap_alone;
+      fb.failureCode = 0;
+      fb.activeSurface = 2;
+      fb.stateUpdated.lastActiveSet = 2;
+      return fb;
     }
-    HsUpdateResult fallback = cone_alone;
-    fallback.failureCode = 0;
-    fallback.activeSurface = 1;
-    fallback.stateUpdated.lastActiveSet = 1;
-    return fallback;
+    HsUpdateResult fb = cone_alone;
+    fb.failureCode = 0;
+    fb.activeSurface = 1;
+    fb.stateUpdated.lastActiveSet = 1;
+    return fb;
+  }
+  if (cap_alone_admissible) {
+    HsUpdateResult fb = cap_alone;
+    fb.failureCode = 0;
+    fb.activeSurface = 2;
+    fb.stateUpdated.lastActiveSet = 2;
+    return fb;
+  }
+  if (cone_alone_admissible) {
+    HsUpdateResult fb = cone_alone;
+    fb.failureCode = 0;
+    fb.activeSurface = 1;
+    fb.stateUpdated.lastActiveSet = 1;
+    return fb;
   }
 
-  // Corner Newton diverged AND sequential fallback did not satisfy both
-  // surfaces AND both single-surface Newtons failed. Outer FE Newton
-  // will cut back the load step.
+  // No admissible fallback. The corner Newton, sequential project-and-
+  // check, and both single-surface returns all failed to find an
+  // admissible state. Surface failureCode 106 so the outer FE Newton
+  // cuts back the load step.
   out.stressUpdated = sigT_voigt;
   out.tangent = D_e;
-  out.failureCode = 103;
+  out.failureCode = 106;
   out.activeSurface = 3;
   return out;
 }
@@ -1672,123 +1876,80 @@ inline HsUpdateResult update_plane_strain(
     const MaterialPoint::HsState& stateCommitted,
     const RegionParams& region,
     double sigmaMsf) {
-  // Inner update is "consistent" by construction with the FE-prescribed
-  // Δε_zz = 0 (the principal-frame correction with isotropic D_e respects
-  // the strain-stress split in the 6-Voigt frame). The outer Newton acts
-  // as a defensive guard: it confirms the residual is below tolerance and
-  // returns immediately if so, otherwise applies the B.7 fix.
-  constexpr int kMaxOuter = 5;
+  // Phase 3 (fix plan): plane-strain σ_zz is a REACTION stress, not a
+  // strain to be adjusted. The FE solver prescribes Δε_zz = 0 (plane-
+  // strain kinematics). The constitutive update must consume that exact
+  // strain increment and produce σ_zz as the reaction; it must NOT mutate
+  // ε_zz to "achieve" σ_zz consistency.
+  //
+  // The previous wrapper mutated `strainTrialAdjusted[V_ZZ]` and looped
+  // until the residual closed — which is a bug per fix-plan §Phase 3:
+  // it changes the kinematic input the FE solver committed.
+  //
+  // Production rule: call the inner `update` with the FIXED FE strain
+  // and check that the constitutive response satisfies the plane-strain
+  // identity:
+  //
+  //   Δε_input = strainTrial - strainCommitted
+  //   Δε_elastic_recovered = D_e^{-1} · (σ_new - σ_old)
+  //   Δε_plastic = res.plasticIncrement
+  //   residual = (Δε_elastic + Δε_plastic) - Δε_input
+  //
+  // For an admissible return mapping with elastic isotropic D_e and the
+  // principal-frame correction used here, residual ≡ 0 to machine
+  // precision in all components — including ε_zz. We enforce that as a
+  // hard check; |residual_zz| > 1e-10 ⇒ return failureCode = 105 so the
+  // outer FE Newton cuts back. We DO NOT attempt to repair by changing
+  // ε_zz; that's the bug.
+  //
+  // If a σ_zz Newton fallback were needed, the unknown would be δσ_zz
+  // and we would solve on STRESS, not strain. The strain input stays
+  // fixed. (Not implemented in this initial pass — the "pass through and
+  // check residual" path is the primary mode.)
   constexpr double kEpsZzTol = 1e-10;   // B.7 spec target
 
-  // Collapse expanded enum to spec's documented set {0,1,2,3,4} so
-  // Phase 6's 5-color palette has a defined color for every state.
-  // Tension is the controlling failure when present.
-  auto collapse_active_set = [](std::uint8_t as) -> std::uint8_t {
-    if (as >= 4) return 4;
-    return as;
-  };
+  HsUpdateResult res = update(
+      strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
+      stateCommitted, region, sigmaMsf);
+  res.sigmaZzIterations = 1;
 
-  Vec6 strainTrialAdjusted = strainTrialVoigt;
-  double eps_zz_correction = 0.0;
-  HsUpdateResult last{};
-  for (int outer = 0; outer < kMaxOuter; ++outer) {
-    // Apply correction to the trial strain in z (engineering strain).
-    // Note: the inner update reads dEps = strainTrialAdj - strainCommitted,
-    // so shifting strainTrialAdj[V_ZZ] shifts dEps_zz by the same amount.
-    strainTrialAdjusted[V_ZZ] = strainTrialVoigt[V_ZZ] + eps_zz_correction;
-
-    HsUpdateResult res = update(
-        strainTrialAdjusted, strainCommittedVoigt, stressCommittedVoigt,
-        stateCommitted, region, sigmaMsf);
-    res.sigmaZzIterations = static_cast<std::uint8_t>(outer + 1);
-    last = res;
-
-    if (res.failureCode != 0) {
-      // Inner failure (cone/cap/corner/triple-apex non-convergence). Let
-      // the outer FE Newton cut back the load step — surface the inner
-      // failureCode unchanged.
-      return res;
-    }
-
-    // Residual: the achieved Δε_zz_total. We have
-    //   Δε^e_zz + Δε^p_zz = Δε_input_zz = eps_zz_correction
-    // The plane-strain requirement is Δε_total_zz = 0; therefore we want
-    // eps_zz_correction = 0 in the limit, i.e., the input shift drives
-    // the iteration on the correction itself.
-    //
-    // Equivalent check: did the constitutive update keep σ_zz on the
-    // plane-strain manifold? We compute the residual directly as the
-    // applied correction (which is the gap between the actually achieved
-    // Δε_zz_total and the target 0).
-    //
-    // Plastic-flow case (cap, corner, cone-σ_zz=σ_1or3): dε^p_zz ≠ 0, so
-    // the inner update on the unshifted strain produces dσ_zz that is NOT
-    // consistent with dε_zz = 0 in the elastic-decomposition sense. The
-    // residual we form here is the explicit consistency check used by
-    // the B.7 Newton.
-    //
-    // For the wrap to be correct, we must measure how far the inner
-    // update's σ_zz output drifted from the plane-strain manifold. Use
-    // the actual elastic-strain split:
-    //   dσ_voigt = res.stressUpdated - stressCommittedVoigt
-    //   dε^e_zz = (D_e^{-1} · dσ)_zz   (formal inverse on the elastic D_e)
-    //   dε^p_zz = res.plasticIncrement[V_ZZ]
-    //   residual = dε^e_zz + dε^p_zz - 0
-    //
-    // Closed form for dε^e_zz with isotropic D_e (E_ur, nu_ur):
-    //   dε^e_zz = (1/E_ur) * [dσ_zz - ν_ur * (dσ_xx + dσ_yy)]
-    // (Engineering shear off-diagonals do not contribute to normal strain
-    //  components.)
-    //
-    // res.tangent in HS is D_e (Phase 5 §B.9); recover E_ur, nu_ur from
-    // its entries: D_e[0][0] = λ + 2G, D_e[0][1] = λ. K = λ + 2G/3,
-    // E_ur = 9K G / (3K+G), nu_ur = (3K-2G) / (2(3K+G)). Only E_ur and
-    // ν_ur are needed for the residual; G_recon and K_recon are kept
-    // as intermediates because each feeds the next reconstruction step.
-    const double G_recon = std::max(
-        0.5 * (res.tangent[V_XX][V_XX] - res.tangent[V_XX][V_YY]), 1.0);
-    const double K_recon = res.tangent[V_XX][V_YY] + (2.0 / 3.0) * G_recon;
-    const double E_ur_recon = std::max(9.0 * K_recon * G_recon
-                                        / std::max(3.0 * K_recon + G_recon, 1.0),
-                                       1.0);
-    const double nu_ur_recon = (3.0 * K_recon - 2.0 * G_recon)
-                              / std::max(2.0 * (3.0 * K_recon + G_recon), 1.0);
-
-    const double dsig_xx = res.stressUpdated[V_XX] - stressCommittedVoigt[V_XX];
-    const double dsig_yy = res.stressUpdated[V_YY] - stressCommittedVoigt[V_YY];
-    const double dsig_zz = res.stressUpdated[V_ZZ] - stressCommittedVoigt[V_ZZ];
-    const double dEps_e_zz = (dsig_zz - nu_ur_recon * (dsig_xx + dsig_yy)) / E_ur_recon;
-    const double dEps_p_zz = res.plasticIncrement[V_ZZ];
-    // Achieved total Δε_zz with the current correction.
-    const double dEps_zz_total = dEps_e_zz + dEps_p_zz;
-    // Plane-strain requirement: Δε_zz_total = 0.
-    const double residual = dEps_zz_total - 0.0;
-
-    if (std::abs(residual) < kEpsZzTol) {
-      // Converged. Collapse expanded enum to spec's {0..4} so Phase 6's
-      // palette covers every state, then return with iteration count.
-      res.activeSurface = collapse_active_set(res.activeSurface);
-      res.stateUpdated.lastActiveSet = collapse_active_set(res.stateUpdated.lastActiveSet);
-      return res;
-    }
-
-    // Unit-slope fixed-point step: shifting input dε_zz by δ shifts the
-    // achieved dε_zz_total by ~δ in the elastic-dominant case, with
-    // small modifications in the plastic case. This is the strain-
-    // unknown formulation of B.7's σ_zz Newton (equivalent to the
-    // spec's stress-unknown by Δσ = E_ur Δε).
-    eps_zz_correction -= residual;
+  if (res.failureCode != 0) {
+    // Inner failure surfaces unchanged — outer FE Newton will cut back.
+    return res;
   }
 
-  // σ_zz outer Newton did not converge in MAX_OUTER iterations. Surface
-  // failure code 105 to the outer FE Newton.
-  last.failureCode = 105;
-  last.sigmaZzIterations = static_cast<std::uint8_t>(kMaxOuter);
-  // Collapse expanded enum even on failure so the Phase 6 palette still
-  // covers the reported state. Tension is the controlling mode if mixed.
-  last.activeSurface = collapse_active_set(last.activeSurface);
-  last.stateUpdated.lastActiveSet = collapse_active_set(last.stateUpdated.lastActiveSet);
-  return last;
+  // Recover E_ur, ν_ur from res.tangent (which is D_e for HS). With
+  //   D_e[0][0] = λ + 2G,  D_e[0][1] = λ,
+  //   K = λ + 2G/3, E = 9KG/(3K+G), ν = (3K-2G)/(2(3K+G)).
+  const double G_recon = std::max(
+      0.5 * (res.tangent[V_XX][V_XX] - res.tangent[V_XX][V_YY]), 1.0);
+  const double K_recon = res.tangent[V_XX][V_YY] + (2.0 / 3.0) * G_recon;
+  const double E_ur_recon = std::max(9.0 * K_recon * G_recon
+                                      / std::max(3.0 * K_recon + G_recon, 1.0),
+                                     1.0);
+  const double nu_ur_recon = (3.0 * K_recon - 2.0 * G_recon)
+                            / std::max(2.0 * (3.0 * K_recon + G_recon), 1.0);
+
+  // Compute Δσ.
+  const double dsig_xx = res.stressUpdated[V_XX] - stressCommittedVoigt[V_XX];
+  const double dsig_yy = res.stressUpdated[V_YY] - stressCommittedVoigt[V_YY];
+  const double dsig_zz = res.stressUpdated[V_ZZ] - stressCommittedVoigt[V_ZZ];
+  // Δε_elastic_zz from isotropic compliance (engineering shears do not
+  // contribute to a normal-strain component).
+  const double dEps_e_zz = (dsig_zz - nu_ur_recon * (dsig_xx + dsig_yy)) / E_ur_recon;
+  const double dEps_p_zz = res.plasticIncrement[V_ZZ];
+  const double dEps_input_zz = strainTrialVoigt[V_ZZ] - strainCommittedVoigt[V_ZZ];
+  // Strain-recovery residual in z. For a correct return mapping with
+  // Δε_zz_input = 0 (plane strain), this should be |residual_zz| ≤ 1e-10.
+  const double residual_zz = (dEps_e_zz + dEps_p_zz) - dEps_input_zz;
+
+  if (std::abs(residual_zz) > kEpsZzTol) {
+    // Plane-strain identity violated. Surface failureCode 105 so the
+    // outer FE Newton cuts back. DO NOT mutate ε_zz to repair.
+    res.failureCode = 105;
+    return res;
+  }
+  return res;
 }
 
 // ---------------------------------------------------------------------------
@@ -1837,18 +1998,50 @@ inline double calibrate_M_cap(double phi_eff, double K0_nc_target,
   // pass `H_cap_for_path == hs.Eoed_ref`.
   const double H_path = std::max(H_cap_for_path, 1.0);
 
-  for (int iter = 0; iter < 20; ++iter) {
+  // Outer Newton. We use a two-sided finite-difference for dK0/dM (more
+  // robust than one-sided when the simulation occasionally fails near M).
+  // If both sides fail, we shrink the perturbation; if all sides fail, we
+  // bail with the current best M.
+  double bestM = M;
+  double bestResidualAbs = std::numeric_limits<double>::infinity();
+  for (int iter = 0; iter < 40; ++iter) {
     const double K0_resulting = simulate_K0_at_pref(
         M, H_path, phi_eff, hs, region, c_eff);
-    if (!std::isfinite(K0_resulting)) break;
+    if (!std::isfinite(K0_resulting)) {
+      // Current M failed; back off toward bestM (or fall back to M_init).
+      M = (bestResidualAbs < std::numeric_limits<double>::infinity())
+              ? 0.5 * (M + bestM)
+              : M_init;
+      continue;
+    }
     const double residual = K0_resulting - K0_nc_target;
+    if (std::abs(residual) < bestResidualAbs) {
+      bestResidualAbs = std::abs(residual);
+      bestM = M;
+    }
     if (std::abs(residual) < 1e-5) return M;
-    const double dM = std::max(0.005 * std::abs(M), 1e-4);
-    const double K0_perturbed = simulate_K0_at_pref(
-        M + dM, H_path, phi_eff, hs, region, c_eff);
-    if (!std::isfinite(K0_perturbed)) break;
-    const double dK0_dM = (K0_perturbed - K0_resulting) / dM;
-    if (std::abs(dK0_dM) < 1e-12) break;
+    // Two-sided finite difference. Shrink perturbation up to 4× if one
+    // side fails.
+    double dM = std::max(0.005 * std::abs(M), 1e-4);
+    double dK0_dM = std::numeric_limits<double>::quiet_NaN();
+    for (int shrink = 0; shrink < 4; ++shrink) {
+      const double K0_plus  = simulate_K0_at_pref(M + dM, H_path, phi_eff, hs, region, c_eff);
+      const double K0_minus = simulate_K0_at_pref(M - dM, H_path, phi_eff, hs, region, c_eff);
+      if (std::isfinite(K0_plus) && std::isfinite(K0_minus)) {
+        dK0_dM = (K0_plus - K0_minus) / (2.0 * dM);
+        break;
+      }
+      if (std::isfinite(K0_plus)) {
+        dK0_dM = (K0_plus - K0_resulting) / dM;
+        break;
+      }
+      if (std::isfinite(K0_minus)) {
+        dK0_dM = (K0_resulting - K0_minus) / dM;
+        break;
+      }
+      dM *= 0.5;
+    }
+    if (!std::isfinite(dK0_dM) || std::abs(dK0_dM) < 1e-12) break;
     double step = residual / dK0_dM;
     if (!std::isfinite(step)) break;
     if (step > 0.5 * M) step = 0.5 * M;
@@ -1858,6 +2051,15 @@ inline double calibrate_M_cap(double phi_eff, double K0_nc_target,
     if (M > 20.0) M = 20.0;
   }
   if (!std::isfinite(M) || M <= 0.0) M = M_init;
+  // Return the best-fit M from any iteration if the converged final M is
+  // worse than what we found mid-way.
+  if (std::isfinite(bestM) && bestResidualAbs < std::numeric_limits<double>::infinity()) {
+    const double K0_at_M = simulate_K0_at_pref(M, H_path, phi_eff, hs, region, c_eff);
+    const double residual_at_M = std::isfinite(K0_at_M)
+                                    ? std::abs(K0_at_M - K0_nc_target)
+                                    : std::numeric_limits<double>::infinity();
+    if (bestResidualAbs < residual_at_M) M = bestM;
+  }
   return M;
 }
 

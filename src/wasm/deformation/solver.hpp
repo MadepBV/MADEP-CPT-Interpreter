@@ -443,21 +443,21 @@ inline GpResponse evaluate_gp_response_ex(
     out.tangent = hsRes.tangent;
     out.stress = hsRes.stressUpdated;
     out.plasticInc = hsRes.plasticIncrement;
-    // Phase 5 audit fix: properly partition the activeSurface enum into
-    // plasticActive (cone/cap/corner) and tensionActive (tension-only or
-    // mixed with cone/cap/corner). The expanded enum (5/6/7) means
-    // tension AND a yield surface are both active; both flags raise.
-    // Note: update_plane_strain collapses 5/6/7 -> 4 before returning,
-    // so the as == 5/6/7 branches below are defensive (future-proof if
-    // the collapse is ever removed).
-    const std::uint8_t as = hsRes.activeSurface;
-    const bool isElastic = (as == 0);
-    const bool isPureTension = (as == 4);
-    const bool isPureYield = (as == 1 || as == 2 || as == 3);
-    const bool isMixed = (as == 5 || as == 6 || as == 7);
-    (void)isElastic;
-    out.plasticActive = (isPureYield || isMixed) ? 1u : 0u;
-    out.tensionActive = (isPureTension || isMixed) ? 1u : 0u;
+    // Phase 2 (fix plan): compute plastic/tension flags from the RAW
+    // active set {0..7}; never collapse before the solver has accounted
+    // for both. Internal active-set contract:
+    //   0 elastic
+    //   1 cone, 2 cap, 3 cone+cap (corner)
+    //   4 tension
+    //   5 tension+cone, 6 tension+cap, 7 tension+cone+cap
+    // update_plane_strain preserves the raw value; this dispatch derives
+    // flags from it directly.
+    const std::uint8_t raw = hsRes.activeSurface;
+    const bool plasticActive = raw == 1 || raw == 2 || raw == 3 ||
+                               raw == 5 || raw == 6 || raw == 7;
+    const bool tensionActive = raw == 4 || raw == 5 || raw == 6 || raw == 7;
+    out.plasticActive = plasticActive ? 1u : 0u;
+    out.tensionActive = tensionActive ? 1u : 0u;
     // Reuse the MC equivalent-plastic-strain formula on the same strain
     // increment so the existing `accumulatedPlasticStrain` field stays
     // meaningful for HS as well.
@@ -2344,7 +2344,8 @@ inline PhaseResult run_nonlinear_phase(
           ctx.kind == ConstitutiveKind::HardeningSoil &&
           (a.hsFailureCode == 101 || a.hsFailureCode == 102 ||
            a.hsFailureCode == 103 || a.hsFailureCode == 104 ||
-           a.hsFailureCode == 105 || a.hsFailureCode == 999);
+           a.hsFailureCode == 105 || a.hsFailureCode == 106 ||
+           a.hsFailureCode == 999);
       if (newtonIter > 1 && (toleranceConverged || plasticQuasiConverged) &&
           (!requiresStableActiveSet || a.changedCount == 0) &&
           !hsHardFailure) {
