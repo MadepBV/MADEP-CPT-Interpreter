@@ -942,8 +942,18 @@ int madepRunHsMaterialPoint(
 
   std::uint8_t computeRef = 0;
   std::uint8_t pad = 0;
+  // Phase 6 (fix plan): the verifier oracle needs to exercise the
+  // plane-strain wrapper directly so the tangent dispatch runs. We
+  // repurpose the second pad byte after `computeRef` as `usePlaneStrain`:
+  //   0 = legacy path, call hs::update (no tangent dispatch, used by
+  //       Phase 2/3/4 verifiers that probe non-plane-strain states like
+  //       triaxial ε_zz != 0).
+  //   1 = call hs::update_plane_strain (production solver path, runs the
+  //       Phase 6 tangent dispatch and the B.7 σ_zz consistency check).
+  std::uint8_t usePlaneStrainWrapper = 0;
   p = read_u8(p, computeRef);
-  p = read_u8(p, pad); p = read_u8(p, pad); p = read_u8(p, pad);
+  p = read_u8(p, usePlaneStrainWrapper);
+  p = read_u8(p, pad); p = read_u8(p, pad);
   double M_cap_in = 0.0, H_cap_in = 0.0, sin_phi_cv_in = 0.0;
   p = read_f64(p, M_cap_in);
   p = read_f64(p, H_cap_in);
@@ -979,9 +989,13 @@ int madepRunHsMaterialPoint(
     rp.hs.sin_phi_cv = sin_phi_cv_in;
   }
 
-  const material::hs::HsUpdateResult res = material::hs::update(
-      strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
-      stateCommitted, rp, sigmaMsf);
+  const material::hs::HsUpdateResult res = (usePlaneStrainWrapper != 0u)
+      ? material::hs::update_plane_strain(
+            strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
+            stateCommitted, rp, sigmaMsf)
+      : material::hs::update(
+            strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
+            stateCommitted, rp, sigmaMsf);
 
   constexpr std::size_t outLen =
       2 * 4 +              // magic + version
@@ -1012,7 +1026,11 @@ int madepRunHsMaterialPoint(
   q = write_f64(q, res.stateUpdated.p_p);
   q = write_f64(q, res.stateUpdated.eps_v_p);
   q = write_u8(q, res.stateUpdated.lastActiveSet);
-  for (int i = 0; i < 7; ++i) q = write_u8(q, 0);
+  // Phase 6 (fix plan): expose `tangentMode` in the first trailing pad
+  // byte. Old decoders that skip the 7-byte pad are unaffected; the
+  // tangent-oracle verifier reads it explicitly. Layout size unchanged.
+  q = write_u8(q, static_cast<std::uint8_t>(res.tangentMode));
+  for (int i = 0; i < 6; ++i) q = write_u8(q, 0);
 
   *outPtrPtr = out;
   *outLenPtr = static_cast<std::uint32_t>(outLen);

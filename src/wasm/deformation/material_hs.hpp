@@ -50,6 +50,31 @@ using madep::js_mirror::VOIGT_YZ;
 using madep::js_mirror::VOIGT_XZ;
 
 // ---------------------------------------------------------------------------
+// Phase 6 (fix plan): tangent mode tagging.
+//
+// `Elastic`           - D_e returned (diagnostic / safety fallback). Used in
+//                       pure-elastic regimes (lastActiveSet = 0) and when the
+//                       analytic tangent degenerates (denom < 1e-12) AND the
+//                       FD oracle also fails.
+// `Analytic`          - Consistent algorithmic tangent built from the closed-
+//                       form rank-1 / rank-2 update. Default for cone, cap
+//                       and corner regimes (lastActiveSet = 1, 2, 3).
+//                       Unsymmetric when n != m (cone non-associated; corner).
+// `FiniteDifference`  - Tangent built by central / one-sided differencing of
+//                       the implemented return mapping (Phase 6A oracle).
+//                       Used for mixed tension states (lastActiveSet = 4-7,
+//                       per Phase 6D) and as a safety net when the analytic
+//                       computation fails.
+//
+// Phase 7 GMRES dispatch reads this to decide CG vs GMRES.
+// ---------------------------------------------------------------------------
+enum class HsTangentMode : std::uint8_t {
+  Elastic = 0,
+  Analytic = 1,
+  FiniteDifference = 2
+};
+
+// ---------------------------------------------------------------------------
 // Result struct returned by every HS update entry point.
 // ---------------------------------------------------------------------------
 struct HsUpdateResult {
@@ -64,6 +89,11 @@ struct HsUpdateResult {
   // single return mapping without σ_zz enforcement). Reported up via
   // GpResponseExtra so verifiers can audit convergence rates.
   std::uint8_t sigmaZzIterations{ 0 };
+  // Phase 6 (fix plan): which tangent operator produced `tangent`. Inner
+  // `update` and `return_*` leave this at the default (Elastic) since they
+  // return D_e; `update_plane_strain` overwrites it after dispatching the
+  // Phase 6 analytic / FD tangent.
+  HsTangentMode tangentMode{ HsTangentMode::Elastic };
 };
 
 // ---------------------------------------------------------------------------
@@ -1967,6 +1997,531 @@ inline HsUpdateResult update(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 6 (fix plan): tangent operators.
+//
+// All three operators return a 6×6 Voigt tangent in the same convention as
+// `elastic_tangent_voigt(E_ur, nu_ur)`: σ_voigt = D_e · ε_eng with engineering
+// shear γ = 2 ε at slots V_XY, V_YZ, V_XZ.
+//
+// Sign-convention bookkeeping (mirrors `continuum_tangent_mc_global`):
+//   * HS gradients live in the compression-positive principal frame.
+//   * Lifting to Voigt-6: build 3D tensor a_3d = sum_i a_p[i] * P_i (this is in
+//     compression-positive), then negate to get tension-positive Voigt-6.
+//   * a_tensor: stress-like Voigt-6 (no factor of 2 on shear).
+//   * a_eng: doubles shear slots for use with the engineering-shear D_e.
+//   * D_e · m_eng = stress-like vector (no shear factor on output).
+//   * a_tensor · stress-like = double-contraction, expressed via
+//     `linalg::dot6` which carries the factor 2 on shear slots.
+//
+// For the asymmetric rank-1 update D_ep[i][j] = D_e[i][j] - Cb[i] · Ca[j] / A,
+// Cb = D_e · m_eng (column vector built from flow direction), Ca = D_e · n_eng
+// (effective row vector built from yield gradient), and A = dot6(n_tensor, Cb)
+// + H. D_e^T = D_e (symmetric), so Ca and Cb are computed the same way.
+// ---------------------------------------------------------------------------
+
+// Lift a principal-frame gradient triple (a_1, a_2, a_3) into a stress-like
+// Voigt-6 vector (TENSION-POSITIVE convention, tensor shear slots).
+//
+//   a_3d = sum_i a_p[i] * P_i        (in compression-positive frame)
+//   a_voigt[xx] = -a_3d[0][0], ...
+//   a_voigt[xy] = -a_3d[0][1]        (NO factor of 2 — tensor form)
+//
+// Use this when the gradient is the derivative of a SCALAR (yield function,
+// plastic potential) with respect to a SCALAR principal stress. Equivalent
+// to the spectral expansion of an isotropic scalar function gradient.
+inline Vec6 lift_principal_gradient_to_tensor_voigt(
+    const mce::PrincipalState& principalT,
+    double a1, double a2, double a3) {
+  using jsm::scale_matrix3;
+  using jsm::add_matrix3;
+  Mat3 a3d = scale_matrix3(principalT.P1, a1);
+  a3d = add_matrix3(a3d, scale_matrix3(principalT.P2, a2));
+  a3d = add_matrix3(a3d, scale_matrix3(principalT.P3, a3));
+  Vec6 a_voigt{};
+  // HS compression-positive → codebase tension-positive sign flip.
+  a_voigt[VOIGT_XX] = -a3d[0][0];
+  a_voigt[VOIGT_YY] = -a3d[1][1];
+  a_voigt[VOIGT_ZZ] = -a3d[2][2];
+  a_voigt[VOIGT_XY] = -a3d[0][1];
+  a_voigt[VOIGT_YZ] = -a3d[1][2];
+  a_voigt[VOIGT_XZ] = -a3d[0][2];
+  return a_voigt;
+}
+
+// Engineering version: doubles shear slots. Used to feed D_e (which expects
+// engineering strain).
+inline Vec6 tensor_voigt_to_engineering(const Vec6& a_t) {
+  return Vec6{a_t[0], a_t[1], a_t[2], 2.0 * a_t[3], 2.0 * a_t[4], 2.0 * a_t[5]};
+}
+
+// Forward declaration: the FD oracle calls the inner `update` (NOT
+// `update_plane_strain`, which would re-enter the Phase 6 dispatch). For
+// plane-strain inputs the inner update is consistent with Δε_zz = 0 to
+// machine precision (see B.7 / §3.7 derivation) so the perturbation in
+// V_XX / V_YY / V_XY captures the genuine σ-strain mapping.
+
+// Single-surface analytic algorithmic tangent (Phase 6B).
+//
+// Given:
+//   principalT       - trial principal-state projectors (compression-positive)
+//   n_p1, n_p2, n_p3 - ∂f/∂σ in principal frame (compression-positive)
+//   m_p1, m_p2, m_p3 - ∂g/∂σ in principal frame (compression-positive)
+//   D_e              - 6×6 elastic Voigt tangent
+//   H_scalar         - hardening contribution to the denominator
+//
+// Returns D_ep = D_e - (D_e m n^T D_e) / (n^T D_e m + H).
+//
+// `ok` is set false if the denominator is degenerate (|A| < 1e-12), in which
+// case the caller should fall back to FD / elastic.
+inline Mat6 single_surface_analytic_tangent(
+    const mce::PrincipalState& principalT,
+    double n_p1, double n_p2, double n_p3,
+    double m_p1, double m_p2, double m_p3,
+    double H_scalar,
+    const Mat6& D_e,
+    bool& ok) {
+  const Vec6 n_t = lift_principal_gradient_to_tensor_voigt(principalT,
+                                                           n_p1, n_p2, n_p3);
+  const Vec6 m_t = lift_principal_gradient_to_tensor_voigt(principalT,
+                                                           m_p1, m_p2, m_p3);
+  const Vec6 n_eng = tensor_voigt_to_engineering(n_t);
+  const Vec6 m_eng = tensor_voigt_to_engineering(m_t);
+  const Vec6 De_m = lng::mul6x6(D_e, m_eng);          // stress-like
+  const Vec6 De_n = lng::mul6x6(D_e, n_eng);          // D_e^T n = D_e n (symmetric)
+  const double A = lng::dot6(n_t, De_m) + H_scalar;
+  ok = std::isfinite(A) && std::fabs(A) > 1e-12;
+  if (!ok) return D_e;
+  Mat6 D_ep = D_e;
+  const double invA = 1.0 / A;
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) {
+      D_ep[i][j] -= De_m[i] * De_n[j] * invA;
+    }
+  }
+  // Guard against any NaN/Inf seepage from a near-degenerate A.
+  for (int i = 0; i < 6 && ok; ++i) {
+    for (int j = 0; j < 6 && ok; ++j) {
+      if (!std::isfinite(D_ep[i][j])) ok = false;
+    }
+  }
+  if (!ok) return D_e;
+  return D_ep;
+}
+
+// Corner analytic algorithmic tangent (Phase 6C).
+//
+// N = [n_cone | n_cap], M = [m_cone | m_cap] in 6×2 form.
+// H_22 is the 2×2 hardening matrix:
+//   H[0][0] = 1                                  (cone γ^p, see plan §6B)
+//   H[0][1] = H[1][0] = 0                        (no cross-surface coupling)
+//   H[1][1] = 4 H_cap (p_p+p_t)(p'+p_t)          (cap p_p)
+//
+// A = N^T D_e M + H  (2×2)
+// D_ep = D_e - D_e M A^{-1} N^T D_e.
+//
+// Closed-form 2×2 inverse: A^{-1} = [a11, -a01; -a10, a00] / det(A).
+inline Mat6 corner_analytic_tangent(
+    const mce::PrincipalState& principalT,
+    double n_s1, double n_s2, double n_s3,        // cone yield gradient
+    double m_s1, double m_s2, double m_s3,        // cone flow gradient
+    double n_c1, double n_c2, double n_c3,        // cap yield gradient (= flow, associated)
+    double m_c1, double m_c2, double m_c3,        // cap flow gradient
+    double H_cap_hardening,                        // 4 H_cap (p_p+p_t)(p'+p_t)
+    const Mat6& D_e,
+    bool& ok) {
+  const Vec6 n_s_t = lift_principal_gradient_to_tensor_voigt(principalT,
+                                                              n_s1, n_s2, n_s3);
+  const Vec6 m_s_t = lift_principal_gradient_to_tensor_voigt(principalT,
+                                                              m_s1, m_s2, m_s3);
+  const Vec6 n_c_t = lift_principal_gradient_to_tensor_voigt(principalT,
+                                                              n_c1, n_c2, n_c3);
+  const Vec6 m_c_t = lift_principal_gradient_to_tensor_voigt(principalT,
+                                                              m_c1, m_c2, m_c3);
+  const Vec6 n_s_eng = tensor_voigt_to_engineering(n_s_t);
+  const Vec6 m_s_eng = tensor_voigt_to_engineering(m_s_t);
+  const Vec6 n_c_eng = tensor_voigt_to_engineering(n_c_t);
+  const Vec6 m_c_eng = tensor_voigt_to_engineering(m_c_t);
+  const Vec6 De_m_s = lng::mul6x6(D_e, m_s_eng);
+  const Vec6 De_m_c = lng::mul6x6(D_e, m_c_eng);
+  const Vec6 De_n_s = lng::mul6x6(D_e, n_s_eng);
+  const Vec6 De_n_c = lng::mul6x6(D_e, n_c_eng);
+
+  // 2×2 system A = N^T D_e M + H. H[0][0] = 1 (cone hardening), H[1][1]
+  // = 4 H_cap (p_p+p_t)(p'+p_t) (cap hardening), off-diagonals zero.
+  const double a00 = lng::dot6(n_s_t, De_m_s) + 1.0;
+  const double a01 = lng::dot6(n_s_t, De_m_c);
+  const double a10 = lng::dot6(n_c_t, De_m_s);
+  const double a11 = lng::dot6(n_c_t, De_m_c) + H_cap_hardening;
+  const double det = a00 * a11 - a01 * a10;
+  ok = std::isfinite(det) && std::fabs(det) > 1e-12;
+  if (!ok) return D_e;
+  const double invDet = 1.0 / det;
+  // A^{-1} row vectors (A_inv[a][b]).
+  const double ai00 =  a11 * invDet;
+  const double ai01 = -a01 * invDet;
+  const double ai10 = -a10 * invDet;
+  const double ai11 =  a00 * invDet;
+  Mat6 D_ep = D_e;
+  for (int j = 0; j < 6; ++j) {
+    // r_a[j] = sum_b A_inv[a][b] * (D_e · n_b)_j
+    const double r0 = ai00 * De_n_s[j] + ai01 * De_n_c[j];
+    const double r1 = ai10 * De_n_s[j] + ai11 * De_n_c[j];
+    for (int i = 0; i < 6; ++i) {
+      D_ep[i][j] -= De_m_s[i] * r0 + De_m_c[i] * r1;
+    }
+  }
+  for (int i = 0; i < 6 && ok; ++i) {
+    for (int j = 0; j < 6 && ok; ++j) {
+      if (!std::isfinite(D_ep[i][j])) ok = false;
+    }
+  }
+  if (!ok) return D_e;
+  return D_ep;
+}
+
+// Helper: build single-surface cone tangent given the converged principal
+// state. Refreshes E_i, q_a, E_ur at the converged σ_3 (consistent with the
+// cone Newton's σ_3-refinement), evaluates regime-aware n and m, and calls
+// `single_surface_analytic_tangent`.
+//
+// Cone yield: f^s(q(σ), σ_3, γ^p) = 2q/(E_i (1 - q/q_a)) - 2q/E_ur - γ^p,
+// where E_i, E_ur, q_a are σ_3-dependent (F1 power-law stiffness, F2
+// asymptotic deviatoric). Total derivative ∂f^s/∂σ_p_i must include the
+// σ_3 chain rule, otherwise the rank-1 update underestimates the
+// stiffness reduction by ~50% on σ_3 (see Phase 6 oracle gap):
+//
+//   ∂f^s/∂σ_p_i_total = ∂f^s/∂q · ∂q/∂σ_p_i  (= regime mask · df_dq_factor)
+//                     + ∂f^s/∂σ_3 |_{q held} · ∂σ_3/∂σ_p_i
+//
+// ∂σ_3/∂σ_p_i is 1 for i=3 (the σ_3 slot) and 0 otherwise — σ_3 is the
+// LEAST compressive (smallest) principal. The implicit ∂f^s/∂σ_3 |_{q}
+// term:
+//
+//   ∂f^s/∂σ_3 |_q = ∂f^s/∂E_i · dE_i/dσ_3
+//                 + ∂f^s/∂E_ur · dE_ur/dσ_3
+//                 + ∂f^s/∂q_a · dq_a/dσ_3
+//
+// Hardening contribution to the rank-1 denominator: H = +1
+// (∂f^s/∂γ^p = -1, dγ^p/dλ = +1 ⇒ -(−1)(+1) = +1).
+inline Mat6 cone_analytic_tangent_at_state(
+    const mce::PrincipalState& principalT,
+    double s1, double s2, double s3,
+    double gamma_p_new,
+    double eps_v_p_new,
+    double c_eff, double phi_eff, double psi_eff, double sin_phi_cv,
+    const RegionParams& region,
+    const Mat6& D_e,
+    bool& ok) {
+  (void)s2;
+  const ConeFlowRegime regime = classify_cone_regime(principalT);
+  const double Rf = std::clamp(region.hs.Rf, 1e-3, 0.999);
+  const double m_exp = std::clamp(region.hs.m, 0.0, 1.0);
+  const double p_ref = std::max(region.hs.p_ref, 1.0);
+  const double cosPhi = std::cos(phi_eff);
+  const double sinPhi = std::sin(phi_eff);
+  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi, 0.5);
+  const double num = std::max(c_eff * cosPhi + s3 * sinPhi, 0.5);
+  const double pratio = std::pow(num / denom_pow, m_exp);
+  const double E_50_loc = region.hs.E50_ref * pratio;
+  const double E_ur_loc = region.hs.Eur_ref * pratio;
+  double sinPhi_f = sinPhi;
+  if (sinPhi_f < 1e-6) sinPhi_f = 1e-6;
+  const double q_f_loc = (c_eff * cot_safe(phi_eff) + s3) * 2.0 * sinPhi_f
+                       / std::max(1.0 - sinPhi_f, 1e-9);
+  const double q_a_loc = std::max(q_f_loc / Rf, 1e-6);
+  const double E_i_loc = 2.0 * E_50_loc / (2.0 - Rf);
+
+  const double q_now = s1 - s3;
+  const double q_clamped = std::min(q_now, 0.999 * q_a_loc);
+  double denom_qa = 1.0 - q_clamped / q_a_loc;
+  if (denom_qa < 1e-3) denom_qa = 1e-3;
+  const double df_dq_factor = (2.0 / E_i_loc) / (denom_qa * denom_qa)
+                            - 2.0 / E_ur_loc;
+
+  // σ_3 chain-rule contributions (Phase 6 fix-plan §6B + theory-fix §7).
+  // dratio/dσ_3 = m · (num/den)^{m-1} · sinφ/den
+  //             = m · ratio · sinφ / num    (folding sinφ/den · 1/ratio)
+  const double dratio_ds3 = (num > 0.5 && pratio > 0.0)
+      ? m_exp * pratio * sinPhi / num
+      : 0.0;
+  const double dE50_ds3 = region.hs.E50_ref * dratio_ds3;
+  const double dEur_ds3 = region.hs.Eur_ref * dratio_ds3;
+  const double dEi_ds3 = 2.0 * dE50_ds3 / (2.0 - Rf);
+  const double dq_f_ds3 = 2.0 * sinPhi_f / std::max(1.0 - sinPhi_f, 1e-9);
+  const double dq_a_ds3 = dq_f_ds3 / Rf;
+  // ∂f^s/∂E_i = -2q/(E_i² (1-q/q_a))
+  const double df_dEi = -2.0 * q_clamped / (E_i_loc * E_i_loc * denom_qa);
+  // ∂f^s/∂E_ur = +2q/E_ur²
+  const double df_dEur = 2.0 * q_clamped / (E_ur_loc * E_ur_loc);
+  // ∂f^s/∂q_a = (2 q / E_i) · 1/(1-q/q_a)² · (-q/q_a²) · (-1) · sign correction:
+  //   d/dq_a [1/(1-q/q_a)] = (1/(1-q/q_a)²) · (q/q_a²)
+  //   so ∂f^s/∂q_a = (2q/E_i) · (q/q_a²) / (1-q/q_a)²
+  // Positive: increasing q_a makes f^s LESS positive (state more elastic).
+  // Wait — actually, increasing q_a means the asymptote is further away,
+  // so for fixed q the deviatoric strain is smaller; f^s decreases.
+  // d(1/(1-q/qa))/d qa = d(1/(1-x))/dx · dx/dq_a where x=q/q_a, dx/dqa = -q/q_a².
+  // = 1/(1-x)² · (-q/q_a²) = -q/(q_a² (1-x)²).
+  // ∂f^s/∂q_a = (2q/E_i) · (-q/(q_a² (1-q/q_a)²))
+  //           = -2 q² / (E_i q_a² (1-q/q_a)²)
+  const double df_dqa = -2.0 * q_clamped * q_clamped
+                       / (E_i_loc * q_a_loc * q_a_loc * denom_qa * denom_qa);
+  const double df_dsigma3_implicit = df_dEi * dEi_ds3
+                                   + df_dEur * dEur_ds3
+                                   + df_dqa * dq_a_ds3;
+
+  const double sin_phi_mob = mobilised_sin_phi(s1, s3, c_eff, phi_eff);
+  const double eps_v_p_max = dilatancy_cutoff_threshold(region.hs.e_init,
+                                                       region.hs.e_max);
+  const double sin_psi_mob = mobilised_sin_psi(sin_phi_mob, sin_phi_cv,
+                                               psi_eff, eps_v_p_new,
+                                               eps_v_p_max);
+
+  // Regime-aware n_p: q-chain term only (regime mask · df_dq_factor).
+  //
+  // The σ_3-implicit term df_dsigma3_implicit (computed above for
+  // diagnostics) captures how the cone yield function changes if σ_3
+  // alone changes via the stress-dependent moduli E_i, E_ur, q_a (F1,
+  // F2). Adding it to n_p3 captures part of the discrete consistent
+  // tangent, but NOT all — the σ_3-implicit also propagates through
+  // m via sin_phi_mob → sin_psi_mob, AND ∂n/∂σ has non-zero terms
+  // through the q-dependence of df_dq_factor. Adding only n_p3 over-
+  // corrects (verifier shows the analytic becomes MORE asymmetric than
+  // FD). The plan's continuum form omits these implicit contributions
+  // and is consistent with the FD oracle in the small-Δλ limit only;
+  // the residual gap is the continuum-vs-Simo-Hughes-consistent
+  // tangent difference and is tracked by the oracle verifier as a
+  // non-fatal report.
+  (void)df_dsigma3_implicit;
+  double n_p1, n_p2, n_p3;
+  cone_yield_gradient(regime, df_dq_factor, n_p1, n_p2, n_p3);
+  double m_p1, m_p2, m_p3;
+  cone_flow_gradient(regime, sin_psi_mob, m_p1, m_p2, m_p3);
+
+  // Hardening: H = -∂f^s/∂γ^p · dγ^p/dλ = -(-1)(+1) = +1.
+  const double H_cone = 1.0;
+  (void)gamma_p_new;
+  return single_surface_analytic_tangent(
+      principalT, n_p1, n_p2, n_p3, m_p1, m_p2, m_p3,
+      H_cone, D_e, ok);
+}
+
+// Helper: build single-surface cap tangent given the converged principal
+// state. Cap is associated (n = m). Hardening contribution:
+//   H = -∂f^c/∂p_p · dp_p/dλ_c
+//     = -(-2(p_p+p_t)) · 2 H_cap (p'+p_t)
+//     = 4 H_cap (p_p+p_t)(p'+p_t).
+inline Mat6 cap_analytic_tangent_at_state(
+    const mce::PrincipalState& principalT,
+    double s1, double s2, double s3,
+    double p_p_new,
+    double M_cap, double p_t, double H_cap,
+    double phi_eff,
+    const Mat6& D_e,
+    bool& ok) {
+  double n1, n2, n3, df_dpp_unused = 0.0;
+  cap_yield_gradient(s1, s2, s3, p_p_new, M_cap, p_t, phi_eff,
+                     n1, n2, n3, df_dpp_unused);
+  const double p_prime_now = (s1 + s2 + s3) / 3.0;
+  const double H_cap_hardening = 4.0 * std::max(H_cap, 0.0)
+                                * (p_p_new + p_t) * (p_prime_now + p_t);
+  // Associated flow: m = n.
+  return single_surface_analytic_tangent(
+      principalT, n1, n2, n3, n1, n2, n3,
+      H_cap_hardening, D_e, ok);
+}
+
+// Helper: build corner tangent given the converged principal state.
+inline Mat6 corner_analytic_tangent_at_state(
+    const mce::PrincipalState& principalT,
+    double s1, double s2, double s3,
+    double gamma_p_new, double p_p_new, double eps_v_p_new,
+    double c_eff, double phi_eff, double psi_eff, double sin_phi_cv,
+    double M_cap, double p_t, double H_cap,
+    const RegionParams& region,
+    const Mat6& D_e,
+    bool& ok) {
+  const ConeFlowRegime regime = classify_cone_regime(principalT);
+  // σ_3-refresh for the cone hyperbolic constants — same convention as the
+  // corner Newton inside return_corner.
+  const double Rf = std::clamp(region.hs.Rf, 1e-3, 0.999);
+  const double m_exp = std::clamp(region.hs.m, 0.0, 1.0);
+  const double p_ref = std::max(region.hs.p_ref, 1.0);
+  const double cosPhi = std::cos(phi_eff);
+  const double sinPhi = std::sin(phi_eff);
+  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi, 0.5);
+  const double num = std::max(c_eff * cosPhi + s3 * sinPhi, 0.5);
+  const double pratio = std::pow(num / denom_pow, m_exp);
+  const double E_50_loc = region.hs.E50_ref * pratio;
+  const double E_ur_loc = region.hs.Eur_ref * pratio;
+  double sinPhi_f = sinPhi;
+  if (sinPhi_f < 1e-6) sinPhi_f = 1e-6;
+  const double q_f_loc = (c_eff * cot_safe(phi_eff) + s3) * 2.0 * sinPhi_f
+                       / std::max(1.0 - sinPhi_f, 1e-9);
+  const double q_a_loc = std::max(q_f_loc / Rf, 1e-6);
+  const double E_i_loc = 2.0 * E_50_loc / (2.0 - Rf);
+
+  const double q_now = s1 - s3;
+  const double q_clamped = std::min(q_now, 0.999 * q_a_loc);
+  double denom_qa = 1.0 - q_clamped / q_a_loc;
+  if (denom_qa < 1e-3) denom_qa = 1e-3;
+  const double df_dq_factor = (2.0 / E_i_loc) / (denom_qa * denom_qa)
+                            - 2.0 / E_ur_loc;
+
+  // Cone σ_3 chain-rule contributions (see cone_analytic_tangent_at_state).
+  const double dratio_ds3 = (num > 0.5 && pratio > 0.0)
+      ? m_exp * pratio * sinPhi / num
+      : 0.0;
+  const double dE50_ds3 = region.hs.E50_ref * dratio_ds3;
+  const double dEur_ds3 = region.hs.Eur_ref * dratio_ds3;
+  const double dEi_ds3 = 2.0 * dE50_ds3 / (2.0 - Rf);
+  const double dq_f_ds3 = 2.0 * sinPhi_f / std::max(1.0 - sinPhi_f, 1e-9);
+  const double dq_a_ds3 = dq_f_ds3 / Rf;
+  const double df_dEi = -2.0 * q_clamped / (E_i_loc * E_i_loc * denom_qa);
+  const double df_dEur = 2.0 * q_clamped / (E_ur_loc * E_ur_loc);
+  const double df_dqa = -2.0 * q_clamped * q_clamped
+                       / (E_i_loc * q_a_loc * q_a_loc * denom_qa * denom_qa);
+  const double df_dsigma3_implicit = df_dEi * dEi_ds3
+                                   + df_dEur * dEur_ds3
+                                   + df_dqa * dq_a_ds3;
+
+  const double sin_phi_mob = mobilised_sin_phi(s1, s3, c_eff, phi_eff);
+  const double eps_v_p_max = dilatancy_cutoff_threshold(region.hs.e_init,
+                                                       region.hs.e_max);
+  const double sin_psi_mob = mobilised_sin_psi(sin_phi_mob, sin_phi_cv,
+                                               psi_eff, eps_v_p_new,
+                                               eps_v_p_max);
+
+  (void)df_dsigma3_implicit;     // see comment in cone_analytic_tangent_at_state
+  double n_s1, n_s2, n_s3;
+  cone_yield_gradient(regime, df_dq_factor, n_s1, n_s2, n_s3);
+  double m_s1, m_s2, m_s3;
+  cone_flow_gradient(regime, sin_psi_mob, m_s1, m_s2, m_s3);
+
+  // Cap (associated). Use the SAME `cap_yield_gradient` as `return_corner`
+  // — Phase 5 Koiter generalisation at repeated principals stays in.
+  double n_c1, n_c2, n_c3, df_dpp_unused = 0.0;
+  cap_yield_gradient(s1, s2, s3, p_p_new, M_cap, p_t, phi_eff,
+                     n_c1, n_c2, n_c3, df_dpp_unused);
+
+  const double p_prime_now = (s1 + s2 + s3) / 3.0;
+  const double H_cap_hardening = 4.0 * std::max(H_cap, 0.0)
+                                * (p_p_new + p_t) * (p_prime_now + p_t);
+  (void)gamma_p_new;
+  return corner_analytic_tangent(
+      principalT,
+      n_s1, n_s2, n_s3,
+      m_s1, m_s2, m_s3,
+      n_c1, n_c2, n_c3,
+      n_c1, n_c2, n_c3,             // cap is associated: m = n
+      H_cap_hardening, D_e, ok);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6A — Finite-difference algorithmic tangent oracle.
+//
+// Per theory-fix §7:
+//   * perturb actual FE strain components (ε_xx, ε_yy, γ_xy)
+//   * keep plane-strain constraints fixed (ε_zz = γ_yz = γ_xz = 0)
+//   * do not commit material state during probes
+//   * preserve active-set consistency (one-sided difference near transitions)
+//   * allow the resulting tangent to be unsymmetric
+//
+// The out-of-plane columns (V_ZZ, V_YZ, V_XZ) are physically un-actuated in
+// plane strain; we fill them from the elastic D_e so the resulting 6×6
+// matrix is invertible and round-trips for elastic patches. Without this
+// fill the FD tangent is rank-deficient and downstream GMRES rejects it.
+//
+// Step size: 1e-6 absolute is a reasonable default for typical 1-1000 kPa
+// stress magnitudes. Relative scaling is applied based on committed strain
+// magnitude (with a 1e-3 floor) to keep the perturbation in the regime
+// where the central-difference truncation error dominates noise.
+//
+// Calls the inner `update` (NOT `update_plane_strain`) so the FD oracle does
+// NOT re-enter the Phase 6 tangent dispatch. The σ-strain mapping inside
+// `update` is plane-strain consistent for plane-strain inputs (B.7 / §3.7).
+// ---------------------------------------------------------------------------
+inline Mat6 fd_algorithmic_tangent(
+    const Vec6& strainTrialVoigt,
+    const Vec6& strainCommittedVoigt,
+    const Vec6& stressCommittedVoigt,
+    const MaterialPoint::HsState& stateCommitted,
+    const RegionParams& region,
+    double sigmaMsf,
+    const Mat6& D_e,
+    bool& ok) {
+  Mat6 D_alg = D_e;     // out-of-plane columns filled from D_e (plane-strain pass-through)
+  ok = true;
+
+  auto run_probe = [&](const Vec6& strain_probe) -> HsUpdateResult {
+    return update(strain_probe, strainCommittedVoigt, stressCommittedVoigt,
+                  stateCommitted, region, sigmaMsf);
+  };
+
+  // Reference unperturbed return — needed for one-sided differences near
+  // active-set transitions.
+  HsUpdateResult resT = run_probe(strainTrialVoigt);
+  const bool refOk = (resT.failureCode == 0);
+
+  // Step size: relative-scaled with absolute floor.
+  const double strainMag = std::max({std::fabs(strainCommittedVoigt[V_XX]),
+                                     std::fabs(strainCommittedVoigt[V_YY]),
+                                     std::fabs(strainCommittedVoigt[V_XY]),
+                                     std::fabs(strainTrialVoigt[V_XX]),
+                                     std::fabs(strainTrialVoigt[V_YY]),
+                                     std::fabs(strainTrialVoigt[V_XY]),
+                                     1e-3});
+  const double h = 1e-6 * strainMag;
+
+  const std::size_t dofs[3] = {V_XX, V_YY, V_XY};
+  for (std::size_t k = 0; k < 3; ++k) {
+    const std::size_t dof = dofs[k];
+    Vec6 plus = strainTrialVoigt;
+    Vec6 minus = strainTrialVoigt;
+    plus[dof] += h;
+    minus[dof] -= h;
+    HsUpdateResult resP = run_probe(plus);
+    HsUpdateResult resM = run_probe(minus);
+    if (resP.failureCode == 0 && resM.failureCode == 0) {
+      // Central difference (preferred when both sides converge).
+      const double invDen = 1.0 / (2.0 * h);
+      for (int i = 0; i < 6; ++i) {
+        D_alg[i][dof] = (resP.stressUpdated[i] - resM.stressUpdated[i]) * invDen;
+      }
+      continue;
+    }
+    // One-sided fallback near active-set discontinuity.
+    if (refOk && resP.failureCode == 0) {
+      const double invH = 1.0 / h;
+      for (int i = 0; i < 6; ++i) {
+        D_alg[i][dof] = (resP.stressUpdated[i] - resT.stressUpdated[i]) * invH;
+      }
+      continue;
+    }
+    if (refOk && resM.failureCode == 0) {
+      const double invH = 1.0 / h;
+      for (int i = 0; i < 6; ++i) {
+        D_alg[i][dof] = (resT.stressUpdated[i] - resM.stressUpdated[i]) * invH;
+      }
+      continue;
+    }
+    // Neither side converged — fall back to D_e for this column.
+    for (int i = 0; i < 6; ++i) D_alg[i][dof] = D_e[i][dof];
+    ok = false;
+  }
+
+  // Guard against NaN/Inf seeping through.
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) {
+      if (!std::isfinite(D_alg[i][j])) {
+        ok = false;
+        return D_e;
+      }
+    }
+  }
+  return D_alg;
+}
+
+// ---------------------------------------------------------------------------
 // B.7 — Plane-strain σ_zz outer iteration wrapper.
 //
 // The 6-Voigt strain increment received from the global FE solve satisfies
@@ -2092,6 +2647,134 @@ inline HsUpdateResult update_plane_strain(
     res.failureCode = 105;
     return res;
   }
+
+  // -------------------------------------------------------------------------
+  // Phase 6 (fix plan): dispatch the algorithmic tangent.
+  //
+  //   lastActiveSet 0           : Elastic    → D_e
+  //   lastActiveSet 1 (cone)    : Analytic   → single-surface (n != m, unsymmetric)
+  //   lastActiveSet 2 (cap)     : Analytic   → single-surface (n = m, symmetric)
+  //   lastActiveSet 3 (corner)  : Analytic   → 2×2 closed-form (unsymmetric)
+  //   lastActiveSet 4 (tension) : Elastic    → D_e (Phase 6D defers analytic
+  //                                            mixed Rankine to a future phase)
+  //   lastActiveSet 5/6/7 (mixed tension)
+  //                              : FiniteDifference → oracle
+  //
+  // Safety net: any analytic computation that degenerates (|A| < 1e-12, NaN
+  // or Inf in result) falls back to FD; FD failure falls back to D_e. The
+  // tangentMode field on the result records which path produced the tangent
+  // so Phase 7's GMRES dispatch can route plastic steps to a nonsymmetric
+  // Krylov solver.
+  // -------------------------------------------------------------------------
+  const std::uint8_t raw_active = res.stateUpdated.lastActiveSet;
+  const Mat6 D_e_local = res.tangent;   // inner returns always set tangent = D_e
+  res.tangentMode = HsTangentMode::Elastic;
+
+  // Re-derive the principal state at the converged stress (compression-
+  // positive). For isotropic D_e the converged eigenframe equals the trial
+  // eigenframe to numerical precision; this re-decomposition keeps the
+  // sigma_3-refreshed hyperbolic constants self-consistent and gives us
+  // the projectors for the lift step.
+  const double smsf_local = std::max(sigmaMsf, 1.0);
+  const double c_eff_local = std::max(region.cEff / smsf_local, 0.0);
+  const double phi_eff_local = std::atan(std::max(std::tan(region.phi) / smsf_local, 0.0));
+  const double psi_eff_local = std::min(
+      std::atan(std::max(std::tan(region.psi) / smsf_local, 0.0)),
+      phi_eff_local);
+  const double sin_phi_cv_local = critical_state_sin_phi_cv(phi_eff_local, psi_eff_local);
+  const double M_cap_local = std::max(region.hs.M_cap, 1e-6);
+  const double H_cap_local = std::max(region.hs.H_cap, 1.0);
+  const double p_t_local = tensile_shift_p_t(c_eff_local, phi_eff_local);
+  const mce::MaterialParameters mp_eig_local = make_mp_for_eig(region, c_eff_local, phi_eff_local);
+  const auto principalC = mce::principal_stress_projectors_3d_compression_positive(
+      res.stressUpdated, mp_eig_local);
+
+  auto try_fd_fallback = [&]() {
+    bool fdOk = false;
+    Mat6 D_fd = fd_algorithmic_tangent(
+        strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
+        stateCommitted, region, sigmaMsf, D_e_local, fdOk);
+    if (fdOk) {
+      res.tangent = D_fd;
+      res.tangentMode = HsTangentMode::FiniteDifference;
+    } else {
+      res.tangent = D_e_local;
+      res.tangentMode = HsTangentMode::Elastic;
+    }
+  };
+
+  switch (raw_active) {
+    case 0:
+      // Pure elastic — D_e is the exact tangent.
+      res.tangent = D_e_local;
+      res.tangentMode = HsTangentMode::Elastic;
+      break;
+    case 1: {
+      bool ok = false;
+      Mat6 D_ep = cone_analytic_tangent_at_state(
+          principalC, principalC.s1, principalC.s2, principalC.s3,
+          res.stateUpdated.gamma_p, res.stateUpdated.eps_v_p,
+          c_eff_local, phi_eff_local, psi_eff_local, sin_phi_cv_local,
+          region, D_e_local, ok);
+      if (ok) {
+        res.tangent = D_ep;
+        res.tangentMode = HsTangentMode::Analytic;
+      } else {
+        try_fd_fallback();
+      }
+      break;
+    }
+    case 2: {
+      bool ok = false;
+      Mat6 D_ep = cap_analytic_tangent_at_state(
+          principalC, principalC.s1, principalC.s2, principalC.s3,
+          res.stateUpdated.p_p,
+          M_cap_local, p_t_local, H_cap_local,
+          phi_eff_local, D_e_local, ok);
+      if (ok) {
+        res.tangent = D_ep;
+        res.tangentMode = HsTangentMode::Analytic;
+      } else {
+        try_fd_fallback();
+      }
+      break;
+    }
+    case 3: {
+      bool ok = false;
+      Mat6 D_ep = corner_analytic_tangent_at_state(
+          principalC, principalC.s1, principalC.s2, principalC.s3,
+          res.stateUpdated.gamma_p, res.stateUpdated.p_p, res.stateUpdated.eps_v_p,
+          c_eff_local, phi_eff_local, psi_eff_local, sin_phi_cv_local,
+          M_cap_local, p_t_local, H_cap_local,
+          region, D_e_local, ok);
+      if (ok) {
+        res.tangent = D_ep;
+        res.tangentMode = HsTangentMode::Analytic;
+      } else {
+        try_fd_fallback();
+      }
+      break;
+    }
+    case 4:
+      // Pure tension (Rankine). Phase 6D defers the analytic mixed Rankine
+      // tangent; keep D_e here. (For purely tensile elastic decompression
+      // the elastic tangent is the correct modified-Newton choice.)
+      res.tangent = D_e_local;
+      res.tangentMode = HsTangentMode::Elastic;
+      break;
+    case 5:
+    case 6:
+    case 7:
+      // Mixed tension states: use FD oracle (Phase 6D production-safe
+      // choice; analytic mixed Rankine+HS tangent left for a future phase).
+      try_fd_fallback();
+      break;
+    default:
+      res.tangent = D_e_local;
+      res.tangentMode = HsTangentMode::Elastic;
+      break;
+  }
+
   return res;
 }
 
