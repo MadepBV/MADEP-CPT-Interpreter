@@ -195,6 +195,90 @@ module load time.
 
 ---
 
+## 6A. Hardening Soil — WASM-only plugin exception
+
+The Hardening Soil (HS) plugin (Schanz, Vermeer & Bonnier 1999) is the first
+plugin in this codebase that ships **without a JavaScript reference
+implementation**. See
+[`docs/features/hardening-soil-model.md`](../features/hardening-soil-model.md)
+for the full feature specification.
+
+The contract above describes the JS plugin registry. HS deliberately does
+not participate in that registry:
+
+```js
+// material-plugin.js (unchanged for HS):
+registerMaterialPlugin('linear-elastic', ...);
+registerMaterialPlugin('mc-reduced-stiffness', ...);
+registerMaterialPlugin('mc-plastic', ...);
+// NO registerMaterialPlugin('hardening-soil', ...) — by design.
+```
+
+Instead, HS is dispatched entirely on the C++ side inside the WASM
+solver. The relevant entry points are:
+
+- `src/wasm/deformation/material_hs.hpp` — the HS constitutive update
+  (cone return, cap return, corner Newton, tension cutoff hierarchy,
+  plane-strain σ<sub>zz</sub> inner Newton). Analogous in role to
+  `material_mc_exact.hpp`.
+- `src/wasm/deformation/solver.hpp` — `evaluate_gp_response_ex` dispatches
+  to `material_hs::update(...)` when `RegionParams::constitutive ==
+  ConstitutiveKind::HardeningSoil`. Same Gauss-point evaluation interface
+  as the other plugins; the dispatch is a `switch` on the constitutive
+  kind tag, not a registry lookup.
+- The JS reference path (`src/lib/cpt-app/deformation/solver.js`) rejects
+  any HS analysis at run-start with an explicit error message pointing
+  the user at the WASM backend (which is the default; this only matters
+  if the JS reference backend has been selected explicitly).
+- The GPU pipeline (`gpu-v2-newton.js`) also rejects HS through the
+  existing "GPU does not support this constitutive model" path.
+
+### Why no JS plugin
+
+1. **HS is algebraically heavier than MC.** Two yield surfaces, three
+   reference stiffnesses, a power-law in confinement, a hyperbolic
+   primary-loading curve, and a separate cap hardening law. A faithful
+   JavaScript port would roughly double the maintenance surface for no
+   production benefit, because the WASM CPU path is the production
+   solver.
+2. **The verification oracle for HS is analytical, not registry-based.**
+   The existing `verify_wasm_mc_local_parity.mjs` pattern uses the JS
+   plugin as a bit-level oracle for the WASM port. For HS the oracle
+   becomes closed-form single-element solutions (drained triaxial CD at
+   multiple confining pressures, oedometric NC and unload-reload paths,
+   K<sub>0,nc</sub> path) plus a small number of PLAXIS-equivalent
+   multi-element benchmarks.
+3. **The plugin-registry contract is still respected in spirit on the
+   WASM side.** The capability flags HS satisfies (see the HS spec §5.6)
+   are documented as if HS were a registered plugin, even though no JS
+   instance is ever created. The WASM dispatch in `solver.hpp` enforces
+   the same per-flag solver-behaviour rules (GMRES dispatch for
+   non-associated flow, plastic line search, predictor projection,
+   plastic geostatic phase, c-φ safety reduction). The flags are
+   informational from JS's point of view but are the same contract.
+
+### Practical consequences for plugin authors
+
+If a future constitutive model is light enough to warrant a JS reference
+implementation (Cam-Clay, MCC, Drucker-Prager), follow the original §1–§5
+contract above; register a factory with `registerMaterialPlugin` and the
+solver picks it up.
+
+If a future model is heavy and JS would be a maintenance liability (HS,
+HSsmall, generalised plasticity with internal-variable evolution), use
+the HS pattern instead: extend `ConstitutiveKind`, add a new
+`material_<name>.hpp` with the constitutive update, dispatch from
+`evaluate_gp_response_ex` in `solver.hpp`, extend the wire format with
+the new region payload and per-GP state fields, and reject the model
+explicitly in the JS reference path with a clear error.
+
+The plugin registry remains the right pattern for any model where a JS
+implementation is realistic. The WASM-only pattern is the documented
+exception for algebraically heavy plugins that would otherwise force a
+costly JavaScript port with no production benefit.
+
+---
+
 ## 7. Verification gates
 
 Any new plugin must, at minimum, pass these gates from

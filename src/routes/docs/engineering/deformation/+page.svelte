@@ -52,6 +52,7 @@
 			<a href="#mc">Mohr-Coulomb theory</a>
 			<a href="#plasticity">Plasticity theory</a>
 			<a href="#routes">Shipped constitutive routes</a>
+			<a href="#hardening-soil">Hardening Soil model</a>
 			<a href="#solver">Solver architecture</a>
 			<a href="#outputs">Outputs and interpretation</a>
 			<a href="#corrections">Corrections and transparency</a>
@@ -1390,6 +1391,328 @@
 				</section>
 			</section>
 
+			<section id="hardening-soil" class="doc-card">
+				<p class="section-label">Hardening Soil model</p>
+				<h2>9A. Hardening Soil: stress-dependent stiffness with two yield surfaces</h2>
+
+				<section class="doc-subsection">
+					<h3>9A.1 Engineering positioning and intended use</h3>
+					<p>
+						The <strong>Hardening Soil (HS)</strong> model (Schanz, Vermeer, and Bonnier 1999)
+						is the alternative drained constitutive route shipped alongside the linear and
+						Mohr-Coulomb routes. It is positioned for problems where the constant Young modulus
+						of Mohr-Coulomb is the dominant error source for displacement predictions: drained
+						settlement of footings on real granular and lightly overconsolidated soils,
+						excavation response in stiffness-stratified profiles, and any case where the
+						<strong>primary-loading and unloading-reloading branches need to be distinguished</strong>.
+					</p>
+					<ul class="notes">
+						<li>Use the <strong>linear elastic</strong> route for regression baselines and for
+							elastic-comparison plots.</li>
+						<li>Use <strong>Stage 2 Mohr-Coulomb elastoplasticity</strong> for limit-state
+							screening, c-φ safety, and slope-stability-style analyses where the failure
+							envelope dominates the engineering output.</li>
+						<li>Use <strong>Hardening Soil</strong> when serviceability displacements matter
+							and the stiffness-versus-stress behaviour of the soil is the controlling
+							feature of the analysis.</li>
+					</ul>
+					<div class="doc-callout">
+						<strong>Runtime contract.</strong> Hardening Soil is implemented in the WASM CPU
+						solver only. The JavaScript reference path rejects HS analyses at run-start with
+						an explicit error. There is no GPU pipeline support; HS analyses run on the WASM
+						CPU backend that is the default for the application.
+					</div>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>9A.2 Stress-dependent power-law stiffness</h3>
+					<p>
+						HS replaces the constant E<sub>mc</sub> of Mohr-Coulomb with three reference
+						stiffnesses, each calibrated at a reference pressure p<sub>ref</sub> (typically
+						100 kPa), and each scaled by a power law in confinement:
+					</p>
+					<div class="equations">
+						<div class="formula">E<sub>50</sub> = E<sub>50</sub><sup>ref</sup> · [(c′ cos φ′ + σ′<sub>3</sub> sin φ′) / (c′ cos φ′ + p<sub>ref</sub> sin φ′)]<sup>m</sup></div>
+						<div class="formula">E<sub>ur</sub> = E<sub>ur</sub><sup>ref</sup> · [(c′ cos φ′ + σ′<sub>3</sub> sin φ′) / (c′ cos φ′ + p<sub>ref</sub> sin φ′)]<sup>m</sup></div>
+						<div class="formula">E<sub>oed</sub> = E<sub>oed</sub><sup>ref</sup> · [(c′ cos φ′ + σ′<sub>1</sub> sin φ′) / (c′ cos φ′ + p<sub>ref</sub> sin φ′)]<sup>m</sup></div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>E<sub>50</sub><sup>ref</sup></dt>
+								<dd>secant Young modulus at 50% of the failure deviator, at the reference confining pressure [kPa]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>E<sub>oed</sub><sup>ref</sup></dt>
+								<dd>tangent oedometric modulus at the reference vertical stress [kPa]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>E<sub>ur</sub><sup>ref</sup></dt>
+								<dd>unload-reload Young modulus at the reference confining pressure, typically 3–6× E<sub>50</sub><sup>ref</sup> [kPa]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>m</dt>
+								<dd>stress-dependence exponent [-]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>p<sub>ref</sub></dt>
+								<dd>reference pressure [kPa]</dd>
+							</div>
+						</dl>
+					</div>
+					<p>
+						Typical exponent values: m ≈ 0.5 for cohesionless sands (Hardin and Drnevich
+						1972 scaling), m ≈ 1.0 for soft normally-consolidated clays, and m ≈ 0.7–0.9 for
+						stiff clays and silts. E<sub>50</sub> and E<sub>ur</sub> scale with the minor
+						principal effective stress σ′<sub>3</sub> (the triaxial confining pressure), while
+						E<sub>oed</sub> scales with the major effective stress σ′<sub>1</sub> consistent
+						with the one-dimensional oedometric loading direction.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>9A.3 Hyperbolic primary-loading curve</h3>
+					<p>
+						HS reproduces the Duncan and Chang (1970) hyperbolic stress-strain relation in
+						drained triaxial primary loading. For a deviator q below the Mohr-Coulomb
+						failure deviator q<sub>f</sub>, the axial strain follows:
+					</p>
+					<div class="equations">
+						<div class="formula">ε<sub>1</sub> = (1 / E<sub>i</sub>) · q / (1 − q / q<sub>a</sub>) &nbsp;&nbsp; for q &lt; q<sub>f</sub></div>
+						<div class="formula">q<sub>f</sub> = (c′ cot φ′ + σ′<sub>3</sub>) · 2 sin φ′ / (1 − sin φ′)</div>
+						<div class="formula">q<sub>a</sub> = q<sub>f</sub> / R<sub>f</sub>, &nbsp;&nbsp; E<sub>i</sub> = 2 E<sub>50</sub> / (2 − R<sub>f</sub>)</div>
+					</div>
+					<div class="symbols">
+						<div class="symbols__title">Notation</div>
+						<dl class="symbols__list">
+							<div class="symbols__row">
+								<dt>R<sub>f</sub></dt>
+								<dd>failure ratio, user input, typically 0.9 [-]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>q<sub>f</sub></dt>
+								<dd>deviator at Mohr-Coulomb failure [kPa]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>q<sub>a</sub></dt>
+								<dd>asymptotic deviator of the hyperbolic curve, larger than q<sub>f</sub> by 1/R<sub>f</sub> [kPa]</dd>
+							</div>
+							<div class="symbols__row">
+								<dt>E<sub>i</sub></dt>
+								<dd>initial Young modulus calibrated so that the secant at q = q<sub>f</sub>/2 equals E<sub>50</sub> [kPa]</dd>
+							</div>
+						</dl>
+					</div>
+					<p>
+						The hyperbolic curve replaces the linear pre-yield response of Mohr-Coulomb with
+						a continuously stiffening-then-softening secant stiffness as q approaches the
+						Mohr-Coulomb envelope. The transition from elastic to plastic occurs at
+						q = q<sub>f</sub> as in Mohr-Coulomb, but the path to it is governed by the
+						accumulated plastic shear strain γ<sup>p</sup> through the cone hardening law
+						of §9A.4.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>9A.4 Two yield surfaces: shear cone and volumetric cap</h3>
+					<p>
+						HS uses two yield surfaces in principal effective stress space:
+					</p>
+					<ul class="notes">
+						<li>
+							A <strong>shear yield surface</strong> (the cone), parameterised by the
+							plastic shear strain γ<sup>p</sup>. The cone is Mohr-Coulomb-aligned: it
+							depends on the major and minor principal effective stresses, mobilises with
+							γ<sup>p</sup> from a soft initial state, and saturates as the stress path
+							approaches the Mohr-Coulomb failure envelope. Non-associated flow on the cone
+							is governed by Rowe's (1962) stress-dilatancy through a mobilised dilation
+							angle ψ<sub>m</sub>.
+						</li>
+						<li>
+							A <strong>volumetric cap yield surface</strong>, parameterised by the
+							preconsolidation pressure p<sub>p</sub>. The cap is an ellipse in the
+							meridional plane (p′, q̃) and grows monotonically with cap-mode plastic
+							volumetric strain. Associated flow on the cap means the plastic potential
+							equals the yield function.
+						</li>
+					</ul>
+					<p>
+						The two surfaces engage together along a K<sub>0,nc</sub> normal-consolidation
+						path: the cap controls the volumetric (oedometric) stiffness while the cone
+						controls the deviatoric mobilisation, and the calibration in §9A.6 pins both
+						the cap shape parameter M and the cap-hardening modulus H<sub>cap</sub> from
+						the user inputs E<sub>oed</sub><sup>ref</sup>, K<sub>0,nc</sub>, φ′, and
+						ν<sub>ur</sub>. Tension cutoff is enforced in the same hierarchy as the exact
+						Mohr-Coulomb route: the tension surface dominates the HS surfaces and the
+						return follows the existing project-and-check pattern.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>9A.5 K<sub>0,nc</sub> consolidation and cap-cone interaction</h3>
+					<p>
+						Under one-dimensional normally consolidated loading (ε<sub>h</sub> = 0,
+						σ<sub>v</sub> ramped), both yield surfaces are active. The cap activation forces
+						the volumetric stiffness to match E<sub>oed</sub><sup>ref</sup> at p<sub>ref</sub>;
+						the cone activation, with mobilised dilatancy from Rowe, sets the lateral stress
+						ratio σ<sub>h</sub>/σ<sub>v</sub> to the user-supplied K<sub>0,nc</sub>. When
+						K<sub>0,nc</sub> is supplied as zero, the Jaky (1944) default
+						K<sub>0,nc</sub> = 1 − sin φ′ is used.
+					</p>
+					<p>
+						The unload-reload Young modulus E<sub>ur</sub> is treated as the elastic
+						stiffness inside both yield surfaces. The unload-reload Poisson ratio ν<sub>ur</sub>
+						is the elastic Poisson value (typically 0.2) used for the isotropic elastic
+						tangent on which the return mapping is built.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>9A.6 Parameter cookbook for typical soils</h3>
+					<p>
+						The parameter ranges below are reference values from Brinkgreve (2007), the
+						standard PLAXIS HS calibration reference. They are starting points for
+						preliminary analysis. Site-specific calibration against oedometer, triaxial, or
+						field stiffness data should always supersede generic values.
+					</p>
+					<div class="doc-table-scroll">
+						<table class="doc-table">
+							<thead>
+								<tr>
+									<th>Soil class</th>
+									<th>E<sub>50</sub><sup>ref</sup> [MPa]</th>
+									<th>E<sub>oed</sub><sup>ref</sup> [MPa]</th>
+									<th>E<sub>ur</sub><sup>ref</sup> [MPa]</th>
+									<th>m [-]</th>
+									<th>φ′ [°]</th>
+									<th>ψ [°]</th>
+									<th>c′ [kPa]</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td>Loose sand</td>
+									<td>15–20</td>
+									<td>15–20</td>
+									<td>45–60</td>
+									<td>0.55</td>
+									<td>30–32</td>
+									<td>0–2</td>
+									<td>0</td>
+								</tr>
+								<tr>
+									<td>Medium-dense sand</td>
+									<td>25–40</td>
+									<td>25–40</td>
+									<td>75–120</td>
+									<td>0.50</td>
+									<td>32–35</td>
+									<td>2–5</td>
+									<td>0</td>
+								</tr>
+								<tr>
+									<td>Dense sand</td>
+									<td>40–60</td>
+									<td>40–60</td>
+									<td>120–180</td>
+									<td>0.45</td>
+									<td>35–40</td>
+									<td>5–10</td>
+									<td>0</td>
+								</tr>
+								<tr>
+									<td>Soft normally-consolidated clay</td>
+									<td>3–6</td>
+									<td>1.5–3</td>
+									<td>10–20</td>
+									<td>1.0</td>
+									<td>20–24</td>
+									<td>0</td>
+									<td>1–5</td>
+								</tr>
+								<tr>
+									<td>Stiff overconsolidated clay</td>
+									<td>10–25</td>
+									<td>5–15</td>
+									<td>30–80</td>
+									<td>0.7–0.9</td>
+									<td>22–28</td>
+									<td>0</td>
+									<td>10–30</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+					<p class="doc-table-note">
+						Common supporting defaults: ν<sub>ur</sub> ≈ 0.2, R<sub>f</sub> = 0.9,
+						p<sub>ref</sub> = 100 kPa. K<sub>0,nc</sub> defaults to 1 − sin φ′ when not
+						entered explicitly. OCR = 1 places the initial cap exactly on the in-situ
+						vertical effective stress; OCR &gt; 1 shifts the cap outward and the cap remains
+						inactive until subsequent loading reaches the preconsolidation level.
+					</p>
+				</section>
+
+				<section class="doc-subsection">
+					<h3>9A.7 Implementation status and current limits</h3>
+					<p>
+						The HS plugin is production-ready for uniform-load benchmark cases within the
+						convergence envelope characterised in the implementation rollout. The current
+						implementation has documented limits relative to the published reference
+						formulation:
+					</p>
+					<ul class="notes">
+						<li>
+							<strong>WASM-only.</strong> The HS update is implemented in C++ and dispatched
+							inside the WASM solver. The JavaScript reference path rejects HS analyses at
+							run-start. The GPU pipeline does not support HS.
+						</li>
+						<li>
+							<strong>Elastic-tangent globalisation.</strong> The shipped tangent assembly
+							uses the elastic (E<sub>ur</sub>-based) tangent for the global Newton solve
+							rather than the consistent algorithmic tangent. Local admissibility per Gauss
+							point is certified by the return mapping; the elastic globalisation costs a
+							slower Newton convergence rate compared with a fully consistent tangent, but
+							is robust and avoids the bookkeeping cost of differentiating the
+							stress-dependent stiffness.
+						</li>
+						<li>
+							<strong>Constant cap-hardening modulus.</strong> H<sub>cap</sub> is calibrated
+							once per region at material setup from the K<sub>0,nc</sub> consistency
+							condition and held constant during the analysis. PLAXIS uses a p<sub>p</sub>-
+							dependent H<sub>cap</sub> that softens the cap as p<sub>p</sub> grows; this
+							refinement is tracked as a follow-up improvement (see §2.6 of the feature
+							specification for the closed-form Brinkgreve relation).
+						</li>
+						<li>
+							<strong>Narrow convergence envelope at extreme parameters.</strong>
+							Combinations of low confinement, low cohesion, and high friction angle can
+							drive σ′<sub>3</sub> close to zero, where the power-law denominator hits the
+							numerical floor (0.5 kPa) and the cone hardening law becomes ill-conditioned.
+							The tension cutoff usually engages before the floor matters, but for very
+							soft surface layers the solver may need finer load-step settings.
+						</li>
+						<li>
+							<strong>c-φ safety with HS</strong> is supported: c′, tan φ′, tan ψ, and the
+							tension allowable are reduced by Σ<sub>Msf</sub> at every active HS Gauss
+							point; reference stiffnesses E<sub>50</sub><sup>ref</sup>,
+							E<sub>oed</sub><sup>ref</sup>, E<sub>ur</sub><sup>ref</sup> and the exponent
+							m are not scaled, matching PLAXIS convention. The HS region constants
+							M<sub>cap</sub>, H<sub>cap</sub>, and sin φ<sub>cv</sub> are re-calibrated at
+							every safety trial when φ′ changes via Σ<sub>Msf</sub>.
+						</li>
+					</ul>
+					<div class="doc-callout">
+						<strong>Reading the HS active-surface output.</strong> The result envelope reports
+						a per-Gauss-point active-surface flag with five categories: elastic, cone, cap,
+						corner (cone + cap), and tension. Plastic shear strain γ<sup>p</sup>,
+						preconsolidation pressure p<sub>p</sub>, and total plastic volumetric strain
+						ε<sub>v</sub><sup>p</sup> are exposed alongside the existing displacement, stress,
+						and Mohr-Coulomb utilisation overlays.
+					</div>
+				</section>
+			</section>
+
 			<section id="solver" class="doc-card">
 				<p class="section-label">Solver architecture</p>
 				<h2>10. Material-point state, residual solve, cutback, and partial near-failure states</h2>
@@ -1836,7 +2159,8 @@
 				<section class="doc-subsection">
 					<h3>14.2 Natural next steps</h3>
 					<ul class="notes">
-						<li>Alternative constitutive families, in particular Hardening Soil class formulations for serviceability realism.</li>
+						<li>Consistent algorithmic tangent and p<sub>p</sub>-dependent cap-hardening modulus for the Hardening Soil plugin (currently elastic-tangent globalisation with a constant H<sub>cap</sub>); see §9A.7.</li>
+						<li>HSsmall (small-strain stiffness) extension to the Hardening Soil family for cyclic and small-amplitude problems where the very-small-strain stiffness governs the response (Benz 2007).</li>
 						<li>Arc-length continuation in the safety phase is available on the WASM CPU path (see §10.6) and is the default fallback when prescribed strength control approaches a limit point. The GPU v2 pipeline retains prescribed strength control only; arc-length on GPU is the next natural extension.</li>
 						<li>Unsymmetric global Newton (GMRES with row/column equilibration) is the default linear solver whenever active non-associated plasticity is detected. The arc-length corrector reuses the same tangent across its two right-hand sides, with a scaling cache that skips redundant equilibration setup on the second solve.</li>
 						<li>Hydro-mechanical and consolidation extensions beyond the present drained load-step assumption.</li>
@@ -1863,6 +2187,14 @@
 					<li><strong>Crisfield, M. A.</strong> "An Arc-Length Method Including Line Searches and Accelerations." <em>International Journal for Numerical Methods in Engineering</em>, 19(9), 1269–1289, 1983. DOI: 10.1002/nme.1620190902. Basis for the combined-merit line search coupled with the arc-length corrector.</li>
 					<li><strong>Tschuchnigg, F., Schweiger, H. F., and Sloan, S. W.</strong> "Slope Stability Analysis by Means of Finite Element Limit Analysis and Finite Element Strength Reduction Techniques. Part I: Numerical Studies Considering Non-Associated Plasticity." <em>Computers and Geotechnics</em>, 70, 169–177, 2015. DOI: 10.1016/j.compgeo.2015.06.018. Closest engineering parallel for the c-φ strength reduction with continuation methods near the limit point.</li>
 					<li><strong>Smith, I. M., Griffiths, D. V., and Margetts, L.</strong> <em>Programming the Finite Element Method</em>. 5th ed., Wiley, 2014. ISBN 978-1-119-97334-8. Pedagogical reference for continuation methods and slope-stability strength reduction.</li>
+					<li><strong>Schanz, T., Vermeer, P. A., and Bonnier, P. G.</strong> "The Hardening Soil Model: Formulation and Verification." In R. B. J. Brinkgreve (ed.), <em>Beyond 2000 in Computational Geotechnics — 10 Years of PLAXIS International</em>, Balkema, Rotterdam, 1999, pp. 281–296. Primary reference for the Hardening Soil model formulation, the cone and cap yield surfaces, and the hyperbolic primary-loading calibration.</li>
+					<li><strong>Brinkgreve, R. B. J.</strong> "Selection of Soil Models and Parameters for Geotechnical Engineering Application." In <em>Soil Constitutive Models: Evaluation, Selection, and Calibration</em>, ASCE Geotechnical Special Publication No. 128, 2007, pp. 69–98. DOI: 10.1061/40771(169)4. Reference parameter ranges and the closed-form K<sub>0,nc</sub> calibration of the cap shape parameter M and the cap-hardening modulus H<sub>cap</sub>.</li>
+					<li><strong>Duncan, J. M., and Chang, C.-Y.</strong> "Nonlinear Analysis of Stress and Strain in Soils." <em>Journal of the Soil Mechanics and Foundations Division</em>, ASCE, 96(SM5), 1629–1653, 1970. Origin of the hyperbolic stress-strain law underlying the HS primary-loading curve.</li>
+					<li><strong>Rowe, P. W.</strong> "The Stress-Dilatancy Relation for Static Equilibrium of an Assembly of Particles in Contact." <em>Proceedings of the Royal Society of London A</em>, 269(1339), 500–527, 1962. DOI: 10.1098/rspa.1962.0193. Stress-dilatancy basis for the mobilised dilation angle ψ<sub>m</sub> used in HS non-associated cone flow.</li>
+					<li><strong>Vermeer, P. A., and de Borst, R.</strong> "Non-Associated Plasticity for Soils, Concrete and Rock." <em>HERON</em>, 29(3), 1984. Treatment of non-associated flow rules in soil plasticity and the Mohr-Coulomb-type plastic potential used for the HS cone.</li>
+					<li><strong>Hardin, B. O., and Drnevich, V. P.</strong> "Shear Modulus and Damping in Soils: Design Equations and Curves." <em>Journal of the Soil Mechanics and Foundations Division</em>, ASCE, 98(SM7), 667–692, 1972. Basis for the m ≈ 0.5 power-law stress dependence in granular soils.</li>
+					<li><strong>Jaky, J.</strong> "The Coefficient of Earth Pressure at Rest." <em>Journal of the Society of Hungarian Architects and Engineers</em>, 22, 355–358, 1944. Origin of the K<sub>0,nc</sub> = 1 − sin φ′ default for HS at-rest consolidation.</li>
+					<li><strong>Benz, T.</strong> <em>Small-Strain Stiffness of Soils and Its Numerical Consequences</em>. PhD dissertation, University of Stuttgart, Mitteilung 55 des Instituts für Geotechnik, 2007. Reference for the HSsmall extension to Hardening Soil (deferred to a follow-up phase).</li>
 					<li><strong>Internal implementation notes.</strong> The app-specific theory basis is consolidated in the MADEP deformation notes <em>MC_pl</em>, <em>stage 2.2-f_MC_pl</em>, <em>stage 2.3-f_MC_pl</em>, and <em>stage 2.4-f_MC_pl</em>, with the website specification anchor at <a href="/docs/full">/docs/full</a>.</li>
 				</ul>
 				<p>

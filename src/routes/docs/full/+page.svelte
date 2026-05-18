@@ -152,7 +152,14 @@
 		{
 			title: 'Constitutive Models and Hydraulic Conductivity',
 			items: [
-				{ label: 'Schanz, Vermeer & Bonnier (1999)', detail: 'The Hardening Soil model: formulation and stress-dependent stiffness basis.' },
+				{ label: 'Schanz, Vermeer & Bonnier (1999)', detail: 'The Hardening Soil model: formulation and stress-dependent stiffness basis. In Brinkgreve (ed.), Beyond 2000 in Computational Geotechnics — 10 Years of PLAXIS International, Balkema, pp. 281–296.' },
+				{ label: 'Brinkgreve (2007)', detail: 'Selection of Soil Models and Parameters for Geotechnical Engineering Application. ASCE Geotechnical Special Publication No. 128, pp. 69–98, DOI 10.1061/40771(169)4. Closed-form K<sub>0,nc</sub> calibration of the Hardening Soil cap parameter M and cap-hardening modulus H<sub>cap</sub>, and reference parameter ranges by soil class.' },
+				{ label: 'Duncan & Chang (1970)', detail: 'Nonlinear Analysis of Stress and Strain in Soils. Journal of the Soil Mechanics and Foundations Division, ASCE, 96(SM5), 1629–1653. Origin of the hyperbolic stress-strain law underlying the HS primary-loading curve.' },
+				{ label: 'Rowe (1962)', detail: 'The Stress-Dilatancy Relation for Static Equilibrium of an Assembly of Particles in Contact. Proceedings of the Royal Society of London A, 269(1339), 500–527, DOI 10.1098/rspa.1962.0193. Stress-dilatancy basis for the mobilised dilation angle in the HS cone non-associated flow.' },
+				{ label: 'Vermeer & de Borst (1984)', detail: 'Non-Associated Plasticity for Soils, Concrete and Rock. HERON 29(3). Mohr-Coulomb plastic potential with mobilised dilatancy used for the HS cone.' },
+				{ label: 'Hardin & Drnevich (1972)', detail: 'Shear Modulus and Damping in Soils: Design Equations and Curves. Journal of the Soil Mechanics and Foundations Division, ASCE, 98(SM7), 667–692. Basis for the m ≈ 0.5 power-law stiffness scaling in granular soils.' },
+				{ label: 'Jaky (1944)', detail: 'The Coefficient of Earth Pressure at Rest. Journal of the Society of Hungarian Architects and Engineers, 22, 355–358. Origin of the K<sub>0,nc</sub> = 1 − sin φ′ default for HS at-rest consolidation.' },
+				{ label: 'Benz (2007)', detail: 'Small-Strain Stiffness of Soils and Its Numerical Consequences. PhD dissertation, University of Stuttgart, Mitteilung 55 des Instituts für Geotechnik. Reference for the HSsmall extension to Hardening Soil (deferred follow-up).' },
 				{ label: 'OVAM / I-RA-11461 (2002)', detail: 'Indicative hydraulic conductivity ranges by Belgian texture class.' },
 				{ label: 'De Smedt / VUB (2005)', detail: 'Indicative hydraulic conductivity ranges by USDA texture class.' }
 			]
@@ -1516,6 +1523,210 @@
 				}
 			],
 			references: ['Clausen, Damkilde & Andersen (2007)', 'de Souza Neto, Perić & Owen (2008)', 'Simo & Taylor (1985)', 'PLAXIS 2D Material Models Manual (2025.1)', 'Potts & Zdravković (1999)', 'Riks (1979)', 'Crisfield (1981)', 'Tschuchnigg, Schweiger & Sloan (2015)']
+		},
+		{
+			id: 'hardening-soil',
+			title: '13A. Hardening Soil Constitutive Model',
+			intro:
+				'The Hardening Soil (HS) model of Schanz, Vermeer and Bonnier (1999) is the alternative drained constitutive route shipped alongside the linear-elastic and Mohr-Coulomb plugins for Stage 6 deformation analysis. It replaces the constant Young modulus of Mohr-Coulomb with three reference stiffnesses scaled by a power law in confinement, reproduces the Duncan–Chang hyperbolic primary-loading curve, and uses two yield surfaces — a Mohr-Coulomb-aligned shear cone and an associated volumetric cap — to separate primary loading from unload-reload behaviour. The implementation is WASM-only with no JavaScript reference path and no GPU support in this phase.',
+			subsections: [
+				{
+					id: 'hardening-soil-positioning',
+					title: '13A.1 Positioning, intended use, and runtime contract',
+					paragraphs: [
+						'HS targets the three limitations of Mohr-Coulomb that dominate serviceability deformation prediction on real soils: the constant Young modulus, the linear pre-yield response missing the hyperbolic primary curve, and the absence of a primary-loading versus unload-reload distinction. It resolves all three through stress-dependent stiffness, a Duncan–Chang hyperbolic primary curve, and a separate (typically stiffer) unload-reload Young modulus E<sub>ur</sub>.',
+						'The plugin is implemented entirely in the WASM CPU solver in <code>material_hs.hpp</code>. The JavaScript reference solver explicitly rejects HS analyses at run-start because HS does not register a JS plugin in the <code>material-plugin.js</code> registry. The GPU v2 pipeline does not support HS in this phase; HS analyses run on the WASM CPU backend that is the default for the application.',
+						'C-φ safety reduction with HS is supported: c′, tan φ′, tan ψ, and σ<sub>T</sub> are divided by Σ<sub>Msf</sub> at every active HS Gauss point, while the reference stiffnesses E<sub>50</sub><sup>ref</sup>, E<sub>oed</sub><sup>ref</sup>, E<sub>ur</sub><sup>ref</sup> and the exponent m are not scaled, matching PLAXIS safety convention. The HS region constants M<sub>cap</sub>, H<sub>cap</sub> and sin φ<sub>cv</sub> are re-calibrated at every safety trial when φ′ changes via Σ<sub>Msf</sub>. Arc-length continuation in the safety phase honours HS through the generic finite-difference Σ<sub>Msf</sub> residual derivative.'
+					],
+					bullets: [
+						'Use <strong>linear elasticity</strong> for regression baselines.',
+						'Use <strong>Stage 2 Mohr-Coulomb elastoplasticity</strong> for limit-state and safety-driven analyses where the Mohr-Coulomb envelope dominates.',
+						'Use <strong>Hardening Soil</strong> when serviceability displacements matter and stiffness-versus-stress behaviour controls the engineering output.',
+						'<strong>WASM-only.</strong> The JavaScript reference path rejects HS; the GPU v2 pipeline rejects HS.',
+						'<strong>HSsmall</strong> (small-strain stiffness extension, Benz 2007), 3D and axisymmetric paths, anisotropic stiffness, and unsaturated effects are all out of scope in this phase.'
+					]
+				},
+				{
+					id: 'hardening-soil-stiffness',
+					title: '13A.2 Stress-dependent reference stiffnesses',
+					paragraphs: [
+						'Three user-supplied reference stiffnesses pin the elastic and plastic moduli at a reference pressure p<sub>ref</sub> (typically 100 kPa). The actual moduli at a Gauss point depend on the current effective stress state through the power law of Schanz et al. (1999), with the minor principal stress σ′<sub>3</sub> governing the triaxial-style stiffnesses and the major principal stress σ′<sub>1</sub> governing the oedometric stiffness.',
+						'Typical values of the exponent m are m ≈ 0.5 for cohesionless sands consistent with the Hardin and Drnevich (1972) low-amplitude shear-modulus scaling, m ≈ 1.0 for soft normally-consolidated clays, and m ≈ 0.7–0.9 for stiff clays and silts. The unload-reload Poisson ratio ν<sub>ur</sub> is a constant (typically 0.2) that defines the elastic bulk and shear moduli from E<sub>ur</sub> via the standard isotropic-elastic relations.',
+						'The denominator c′ cos φ′ + σ′ sin φ′ inside the power-law bracket has a numerical floor of 0.5 kPa to prevent the moduli from collapsing when σ′<sub>3</sub> approaches zero. The tension cutoff usually engages before this floor matters, but the floor is the hot-path safeguard.'
+					],
+					equations: [
+						'E<sub>50</sub> = E<sub>50</sub><sup>ref</sup> · [(c′ cos φ′ + σ′<sub>3</sub> sin φ′) / (c′ cos φ′ + p<sub>ref</sub> sin φ′)]<sup>m</sup>',
+						'E<sub>ur</sub> = E<sub>ur</sub><sup>ref</sup> · [(c′ cos φ′ + σ′<sub>3</sub> sin φ′) / (c′ cos φ′ + p<sub>ref</sub> sin φ′)]<sup>m</sup>',
+						'E<sub>oed</sub> = E<sub>oed</sub><sup>ref</sup> · [(c′ cos φ′ + σ′<sub>1</sub> sin φ′) / (c′ cos φ′ + p<sub>ref</sub> sin φ′)]<sup>m</sup>',
+						'K<sub>ur</sub> = E<sub>ur</sub> / [3(1 − 2 ν<sub>ur</sub>)], &nbsp;&nbsp; G<sub>ur</sub> = E<sub>ur</sub> / [2(1 + ν<sub>ur</sub>)]'
+					],
+					symbols: [
+						{ term: 'E<sub>50</sub><sup>ref</sup>', meaning: 'reference secant Young modulus at 50% of the failure deviator, kPa' },
+						{ term: 'E<sub>oed</sub><sup>ref</sup>', meaning: 'reference tangent oedometric modulus at the reference vertical stress, kPa' },
+						{ term: 'E<sub>ur</sub><sup>ref</sup>', meaning: 'reference unload-reload Young modulus, typically 3–6× E<sub>50</sub><sup>ref</sup>, kPa' },
+						{ term: 'm', meaning: 'power-law stress-dependence exponent, dimensionless' },
+						{ term: 'p<sub>ref</sub>', meaning: 'reference pressure, kPa' },
+						{ term: 'ν<sub>ur</sub>', meaning: 'unload-reload Poisson ratio (elastic), dimensionless' }
+					]
+				},
+				{
+					id: 'hardening-soil-hyperbolic',
+					title: '13A.3 Duncan–Chang hyperbolic primary-loading curve',
+					paragraphs: [
+						'On primary deviatoric loading at constant confinement, HS reproduces the Duncan and Chang (1970) hyperbolic stress-strain relation. The axial strain in a drained triaxial test follows a hyperbola asymptotic at q = q<sub>a</sub>, with q<sub>a</sub> larger than the Mohr-Coulomb failure deviator q<sub>f</sub> by the inverse of the failure ratio R<sub>f</sub> (typically 0.9).',
+						'The initial Young modulus E<sub>i</sub> is calibrated so that the secant at q = q<sub>f</sub>/2 equals E<sub>50</sub>, giving the closed-form E<sub>i</sub> = 2 E<sub>50</sub> / (2 − R<sub>f</sub>). Below the failure deviator the response is the hyperbolic curve; at q = q<sub>f</sub> the Mohr-Coulomb cone takes over as a hard limit and further loading mobilises plastic shear strain γ<sup>p</sup> on the cone.'
+					],
+					equations: [
+						'ε<sub>1</sub> = (1 / E<sub>i</sub>) · q / (1 − q / q<sub>a</sub>) &nbsp;&nbsp; for q &lt; q<sub>f</sub>',
+						'q<sub>f</sub> = (c′ cot φ′ + σ′<sub>3</sub>) · 2 sin φ′ / (1 − sin φ′)',
+						'q<sub>a</sub> = q<sub>f</sub> / R<sub>f</sub>, &nbsp;&nbsp; E<sub>i</sub> = 2 E<sub>50</sub> / (2 − R<sub>f</sub>)'
+					],
+					symbols: [
+						{ term: 'R<sub>f</sub>', meaning: 'failure ratio, user input, typically 0.9, dimensionless' },
+						{ term: 'q<sub>f</sub>', meaning: 'deviatoric stress at Mohr-Coulomb failure, kPa' },
+						{ term: 'q<sub>a</sub>', meaning: 'asymptotic deviator of the hyperbolic curve, kPa' },
+						{ term: 'E<sub>i</sub>', meaning: 'initial Young modulus, kPa' }
+					]
+				},
+				{
+					id: 'hardening-soil-cone',
+					title: '13A.4 Shear (cone) yield surface and mobilised friction',
+					paragraphs: [
+						'The cone yield function expresses the hyperbolic stress-strain relation as a yield condition with the plastic shear strain γ<sup>p</sup> as hardening parameter. After principal decomposition with σ′<sub>1</sub> ≥ σ′<sub>2</sub> ≥ σ′<sub>3</sub> and q = σ′<sub>1</sub> − σ′<sub>3</sub>, the cone reads (Schanz et al. 1999, eq. 5):',
+						'σ′<sub>2</sub> does not appear in f<sup>s</sup>: the cone is a Mohr-Coulomb-aligned surface that depends only on the major and minor principal stresses. The hardening variable γ<sup>p</sup> integrates directly from the plastic multiplier of the cone via dγ<sup>p</sup>/dλ<sub>s</sub> = 1, which keeps the algebra clean.',
+						'The mobilised friction angle is the Mohr-Coulomb mobilisation function evaluated at the current stress state. The critical-state friction angle φ<sub>cv</sub> is computed once per region at material setup from the inverse Rowe (1962) relation using the user inputs φ′ and ψ. Rowe stress-dilatancy then gives the mobilised dilation angle ψ<sub>m</sub> for the cone flow, with two cutoffs: ψ<sub>m</sub> = 0 below the critical-state friction angle (no dilation in the contractive regime), and ψ<sub>m</sub> = 0 when the void ratio reaches its maximum value (no further dilation beyond e<sub>max</sub>).',
+						'Plastic flow on the cone is non-associated and uses the Mohr-Coulomb-type plastic potential of Vermeer and de Borst (1984) with the mobilised dilatancy angle. This produces an asymmetric algorithmic tangent that is solved by the existing GMRES dispatch in the deformation solver — no new linear-algebra machinery is needed.'
+					],
+					equations: [
+						'f<sup>s</sup> = (2 / E<sub>i</sub>) · q / (1 − q / q<sub>a</sub>) − 2 q / E<sub>ur</sub> − γ<sup>p</sup> ≤ 0',
+						'sin φ<sub>m</sub> = (σ′<sub>1</sub> − σ′<sub>3</sub>) / (σ′<sub>1</sub> + σ′<sub>3</sub> + 2 c′ cot φ′)',
+						'sin φ<sub>cv</sub> = (sin φ′ − sin ψ) / (1 − sin φ′ sin ψ)',
+						'sin ψ<sub>m</sub> = (sin φ<sub>m</sub> − sin φ<sub>cv</sub>) / (1 − sin φ<sub>m</sub> sin φ<sub>cv</sub>)',
+						'g<sup>s</sup> = ½ (σ′<sub>1</sub> − σ′<sub>3</sub>) − ½ (σ′<sub>1</sub> + σ′<sub>3</sub>) sin ψ<sub>m</sub>'
+					],
+					symbols: [
+						{ term: 'γ<sup>p</sup>', meaning: 'plastic shear strain (cone hardening variable), dimensionless' },
+						{ term: 'φ<sub>m</sub>', meaning: 'mobilised friction angle, rad' },
+						{ term: 'φ<sub>cv</sub>', meaning: 'critical-state (constant-volume) friction angle, rad' },
+						{ term: 'ψ<sub>m</sub>', meaning: 'mobilised dilation angle from Rowe stress-dilatancy, rad' },
+						{ term: 'g<sup>s</sup>', meaning: 'cone plastic potential function, kPa' }
+					]
+				},
+				{
+					id: 'hardening-soil-cap',
+					title: '13A.5 Volumetric cap yield surface and K<sub>0,nc</sub> calibration',
+					paragraphs: [
+						'The cap is an ellipse in the meridional plane (p′, q̃) parameterised by the preconsolidation pressure p<sub>p</sub>. The tensile shift p<sub>t</sub> = c′ cot φ′ translates the origin of the ellipse to the apex of the Mohr-Coulomb cone in compression-positive p′ space. The generalised deviatoric measure q̃ aligns the cap intersection with the Mohr-Coulomb cone in three-dimensional principal-stress space; for triaxial compression with σ′<sub>2</sub> = σ′<sub>3</sub>, q̃ reduces to the standard deviator q.',
+						'Flow on the cap is associated, so the plastic potential equals the yield function and the cap-mode plastic strain increment is normal to the cap surface. Cap hardening is volumetric and monotonically non-decreasing: the preconsolidation pressure p<sub>p</sub> only grows during cap loading, and unloading inside the cap is purely elastic at the unload-reload stiffness.',
+						'The cap shape parameter M and the cap-hardening modulus H<sub>cap</sub> are pinned by a two-condition calibration along a K<sub>0,nc</sub> normal-consolidation loading path: the lateral stress ratio σ<sub>3</sub>′/σ<sub>1</sub>′ must equal the user input K<sub>0,nc</sub> throughout, and the oedometric tangent stiffness at σ<sub>1</sub>′ = p<sub>ref</sub> must equal E<sub>oed</sub><sup>ref</sup>. The implementation solves this two-condition system iteratively at region setup (5–10 single-element evaluations per region), so the hot path never re-computes M or H<sub>cap</sub>. The Jaky (1944) default K<sub>0,nc</sub> = 1 − sin φ′ is used when the user supplies zero for K<sub>0,nc</sub>.',
+						'The Brinkgreve (2007) Appendix-A closed form for H<sub>cap</sub> as a function of p<sub>p</sub> is documented in the feature specification; the current implementation evaluates H<sub>cap</sub> once per region at setup and holds it constant during the analysis. The p<sub>p</sub>-dependent refinement is a tracked follow-up improvement.'
+					],
+					equations: [
+						'f<sup>c</sup> = q̃² / M² + (p′ + p<sub>t</sub>)² − (p<sub>p</sub> + p<sub>t</sub>)² ≤ 0',
+						'p′ = (σ′<sub>1</sub> + σ′<sub>2</sub> + σ′<sub>3</sub>) / 3, &nbsp;&nbsp; p<sub>t</sub> = c′ cot φ′',
+						'q̃ = σ′<sub>1</sub> + (δ − 1) σ′<sub>2</sub> − δ σ′<sub>3</sub>, &nbsp;&nbsp; δ = (3 + sin φ′) / (3 − sin φ′)',
+						'dp<sub>p</sub> = H<sub>cap</sub> · dε<sub>v</sub><sup>p,cap</sup>'
+					],
+					symbols: [
+						{ term: 'p<sub>p</sub>', meaning: 'preconsolidation pressure (cap hardening state variable), kPa' },
+						{ term: 'p<sub>t</sub>', meaning: 'tensile shift c′ cot φ′, kPa' },
+						{ term: 'M', meaning: 'cap shape parameter calibrated from K<sub>0,nc</sub>, dimensionless' },
+						{ term: 'q̃', meaning: 'generalised deviatoric stress for the cap, aligned with the Mohr-Coulomb cone in 3D, kPa' },
+						{ term: 'H<sub>cap</sub>', meaning: 'cap-hardening modulus from the K<sub>0,nc</sub> oedometric calibration, kPa' },
+						{ term: 'K<sub>0,nc</sub>', meaning: 'at-rest stress ratio for normal consolidation, dimensionless' }
+					]
+				},
+				{
+					id: 'hardening-soil-tension',
+					title: '13A.6 Tension cutoff and yield-surface activity regimes',
+					paragraphs: [
+						'Tension cutoff in HS uses the same surface and the same project-and-check pattern as the exact Mohr-Coulomb route: the tension surface dominates the HS surfaces, and a violation of the tension condition at the elastic trial is projected onto the tension surface before the HS cone or cap correctors run. Tension-controlled states are reported through the active-surface flag with the value 4.',
+						'Per Gauss point at the end of a load step, the active surface set is one of five categories: elastic (both HS surfaces inactive and tension admissible), cone-only (cone corrected to f<sup>s</sup> = 0, cap admissible), cap-only (cap corrected to f<sup>c</sup> = 0, cone admissible), corner (both HS surfaces corrected simultaneously), or tension (tension surface dominant). The corner case is solved by a 2 × 2 Newton in (Δλ<sub>s</sub>, Δλ<sub>c</sub>) with a closed-form Jacobian; degenerate corner cases fall back to the single-surface returns of the cone-only or cap-only branches.',
+						'The implementation hierarchies and failure codes are documented in the feature specification: cone non-convergence returns failure code 101, cap non-convergence 102, corner non-convergence 103, tension-plus-cone-plus-cap apex non-convergence 104, and plane-strain σ<sub>zz</sub> inner Newton non-convergence 105. Any of these triggers a load-step cutback through the existing outer-Newton machinery in <code>run_nonlinear_phase</code>.'
+					],
+					bullets: [
+						'<strong>Elastic.</strong> f<sup>s</sup> ≤ 0, f<sup>c</sup> ≤ 0, tension admissible. Elastic trial is committed.',
+						'<strong>Cone-only.</strong> f<sup>s</sup> = 0 (corrected). 1-equation Newton in Δλ<sub>s</sub>, non-associated flow.',
+						'<strong>Cap-only.</strong> f<sup>c</sup> = 0 (corrected). 1-equation Newton in Δλ<sub>c</sub>, associated flow.',
+						'<strong>Corner (cone + cap).</strong> 2 × 2 Newton in (Δλ<sub>s</sub>, Δλ<sub>c</sub>) with closed-form Jacobian.',
+						'<strong>Tension.</strong> Tension surface dominates; HS surfaces re-evaluated at the projected state and corrected if still positive.'
+					]
+				},
+				{
+					id: 'hardening-soil-numerics',
+					title: '13A.7 Return mapping, plane-strain handling, and globalisation',
+					paragraphs: [
+						'The shipped return mapping is in 6-Voigt with the out-of-plane normal stress σ<sub>zz</sub> as an internal degree of freedom that enforces ε<sub>zz</sub> = 0 through 1–2 inner Newton iterations per Gauss point per outer Newton step. The plastic potential gradient and the yield-function gradient are evaluated in principal effective stress space and rotated back to the working frame for the stress-update increment.',
+						'Convergence tolerances follow the feature specification: the cone return uses |f<sup>s</sup>| &lt; 10<sup>−8</sup> · |q<sub>a</sub>| and |Δ Δλ<sub>s</sub>| &lt; 10<sup>−12</sup> with a maximum of 30 inner iterations; the cap return uses |f<sup>c</sup>| &lt; 10<sup>−8</sup> · (p<sub>p</sub> + p<sub>t</sub>)² with the same iteration cap.',
+						'The current implementation uses the <strong>elastic (E<sub>ur</sub>-based) tangent</strong> for the global Newton solve rather than the fully consistent algorithmic tangent. The local return mapping certifies per-Gauss-point admissibility, so global convergence in the displacement norm is still well-defined; the elastic-tangent globalisation simply needs more Newton iterations than a consistent tangent would. The consistent tangent (including the σ′<sub>3</sub>-dependence of the stress-dependent stiffness and the cap-hardening sensitivity) is tracked as a follow-up improvement.',
+						'Predictor projection at seed time. When the K<sub>0</sub> predictor stress state lies outside the HS cap surface (typical for overconsolidated layers with OCR &gt; 1), the predictor is projected onto the cap before the geostatic phase starts. The projection algorithm is the same 1-equation Newton as the cap-only return, identical in structure to the existing predictor projection for the exact Mohr-Coulomb plugin.'
+					],
+					equations: [
+						'σ′<sup>trial</sup> = σ′<sup>(n)</sup> + D<sub>e</sub>(E<sub>ur</sub>, ν<sub>ur</sub>) · Δε',
+						'σ′<sup>(n+1)</sup> = σ′<sup>trial</sup> − D<sub>e</sub> · [Δλ<sub>s</sub> ∂g<sup>s</sup>/∂σ′ + Δλ<sub>c</sub> ∂g<sup>c</sup>/∂σ′]',
+						'f<sup>s</sup>(σ′<sup>(n+1)</sup>, γ<sup>p,(n)</sup> + Δλ<sub>s</sub>) = 0, &nbsp;&nbsp; f<sup>c</sup>(σ′<sup>(n+1)</sup>, p<sub>p</sub><sup>(n)</sup> + 2 H<sub>cap</sub> (p′ + p<sub>t</sub>) Δλ<sub>c</sub>) = 0'
+					]
+				},
+				{
+					id: 'hardening-soil-state',
+					title: '13A.8 Material-point state and result envelope',
+					paragraphs: [
+						'In addition to the common deformation state (effective stress, plastic strain Voigt-6, accumulated equivalent plastic strain), HS stores three new fields per Gauss point: the plastic shear strain γ<sup>p</sup> (cone hardening), the preconsolidation pressure p<sub>p</sub> (cap hardening), and the total plastic volumetric strain ε<sub>v</sub><sup>p</sup> as the signed sum of cone-mode and cap-mode contributions. A 1-byte categorical flag <code>lastActiveSet</code> records the last active surface combination (0 = elastic, 1 = cone, 2 = cap, 3 = corner, 4 = tension).',
+						'The wire format extends both input and output to carry the new fields. On input, each region payload carries 12 HS-specific f64 values (E<sub>50</sub><sup>ref</sup>, E<sub>oed</sub><sup>ref</sup>, E<sub>ur</sub><sup>ref</sup>, m, ν<sub>ur</sub>, p<sub>ref</sub>, R<sub>f</sub>, K<sub>0,nc</sub>, e<sub>init</sub>, e<sub>max</sub>, OCR, and one alignment slot). On output, each Gauss point carries the existing 284-byte state plus 32 bytes for the HS-specific fields when any region in the model is HS. A model-wide flag <code>hasHsPayload</code> in the result header makes the presence of the HS payload explicit for the JavaScript decoder.',
+						'Result overlays. The accumulated equivalent plastic strain and η<sub>MC</sub> contour modes work unchanged for HS Gauss points; the η<sub>MC</sub> output for HS uses sin φ<sub>m</sub> / sin φ′ as the cone mobilisation ratio. New HS-specific contour modes show γ<sup>p</sup>, p<sub>p</sub>, ε<sub>v</sub><sup>p</sup>, and the categorical active-surface flag.'
+					],
+					bullets: [
+						'<strong>State.</strong> γ<sup>p</sup>, p<sub>p</sub>, ε<sub>v</sub><sup>p</sup>, lastActiveSet stored per Gauss point.',
+						'<strong>Active-surface flag.</strong> 0 = elastic, 1 = cone, 2 = cap, 3 = corner, 4 = tension.',
+						'<strong>Region constants.</strong> M<sub>cap</sub>, H<sub>cap</sub>, sin φ<sub>cv</sub> calibrated once per region at material setup.',
+						'<strong>Initial state.</strong> p<sub>p</sub><sup>(0)</sup> = OCR · σ<sub>1</sub>′<sup>(0)</sup>; OCR = 1 places the cap exactly on the in-situ vertical effective stress (normally consolidated), OCR &gt; 1 shifts the cap outward.',
+						'<strong>Geostatic seeding.</strong> For OCR &gt; 1, the cap is "ahead of" the current state and stays inactive until subsequent loading reaches the preconsolidation level.'
+					]
+				},
+				{
+					id: 'hardening-soil-parameters',
+					title: '13A.9 Parameter cookbook for typical soils',
+					paragraphs: [
+						'The parameter ranges below follow the standard PLAXIS HS calibration reference of Brinkgreve (2007). They are starting points for preliminary analysis. Site-specific calibration against oedometer, triaxial, or field stiffness data should always supersede generic values. Supporting defaults: ν<sub>ur</sub> ≈ 0.2, R<sub>f</sub> = 0.9, p<sub>ref</sub> = 100 kPa, K<sub>0,nc</sub> defaults to 1 − sin φ′ (Jaky 1944) when not entered explicitly, and OCR = 1 for normally consolidated layers.'
+					],
+					table: {
+						caption: 'Reference Hardening Soil parameter ranges for typical soil classes (Brinkgreve 2007). Tabulated values are starting points only.',
+						columns: [
+							{ key: 'soil', label: 'Soil class' },
+							{ key: 'E50ref', label: 'E<sub>50</sub><sup>ref</sup> [MPa]' },
+							{ key: 'Eoedref', label: 'E<sub>oed</sub><sup>ref</sup> [MPa]' },
+							{ key: 'Eurref', label: 'E<sub>ur</sub><sup>ref</sup> [MPa]' },
+							{ key: 'm', label: 'm [-]' },
+							{ key: 'phi', label: 'φ′ [°]' },
+							{ key: 'psi', label: 'ψ [°]' },
+							{ key: 'c', label: 'c′ [kPa]' }
+						],
+						rows: [
+							{ soil: 'Loose sand', E50ref: '15–20', Eoedref: '15–20', Eurref: '45–60', m: '0.55', phi: '30–32', psi: '0–2', c: '0' },
+							{ soil: 'Medium-dense sand', E50ref: '25–40', Eoedref: '25–40', Eurref: '75–120', m: '0.50', phi: '32–35', psi: '2–5', c: '0' },
+							{ soil: 'Dense sand', E50ref: '40–60', Eoedref: '40–60', Eurref: '120–180', m: '0.45', phi: '35–40', psi: '5–10', c: '0' },
+							{ soil: 'Soft normally-consolidated clay', E50ref: '3–6', Eoedref: '1.5–3', Eurref: '10–20', m: '1.0', phi: '20–24', psi: '0', c: '1–5' },
+							{ soil: 'Stiff overconsolidated clay', E50ref: '10–25', Eoedref: '5–15', Eurref: '30–80', m: '0.7–0.9', phi: '22–28', psi: '0', c: '10–30' }
+						],
+						note: 'E<sub>ur</sub><sup>ref</sup>/E<sub>50</sub><sup>ref</sup> ≈ 3 for sands and ≈ 4 for soft clays is the practical default in the absence of unload-reload triaxial data. For oedometer-derived stiffness in clays, E<sub>oed</sub><sup>ref</sup> &lt; E<sub>50</sub><sup>ref</sup> is normal because the oedometric path is one-dimensional with no lateral relief.'
+					}
+				},
+				{
+					id: 'hardening-soil-limits',
+					title: '13A.10 Current implementation limits and follow-up',
+					paragraphs: [
+						'The HS plugin is production-ready for uniform-load benchmark cases within the convergence envelope characterised in the implementation rollout. The documented limits relative to the published reference formulation are:'
+					],
+					bullets: [
+						'<strong>WASM-only deployment.</strong> No JavaScript reference path and no GPU support. JS path rejects HS at run-start with a clear error.',
+						'<strong>Elastic-tangent globalisation.</strong> The global Newton tangent is the E<sub>ur</sub>-based elastic tangent rather than the fully consistent algorithmic tangent. Local admissibility per Gauss point is certified; Newton convergence is slower than with a consistent tangent.',
+						'<strong>Constant cap-hardening modulus.</strong> H<sub>cap</sub> is calibrated once per region from the K<sub>0,nc</sub> consistency and held constant during the analysis. PLAXIS uses a p<sub>p</sub>-dependent H<sub>cap</sub> via the Brinkgreve (2007) Appendix-A closed form; this refinement is tracked as a follow-up.',
+						'<strong>Narrow convergence envelope at extreme parameters.</strong> Very low confinement combined with low cohesion and high friction angle can drive σ′<sub>3</sub> close to zero, where the power-law denominator hits the 0.5 kPa floor. The tension cutoff usually engages before this matters, but very soft surface layers may need finer load-step settings.',
+						'<strong>HSsmall</strong> (small-strain stiffness extension, Benz 2007), 3D and axisymmetric paths, anisotropic stiffness, and unsaturated effects are all deferred and tracked as separate feature work.'
+					]
+				}
+			],
+			references: ['Schanz, Vermeer & Bonnier (1999)', 'Brinkgreve (2007)', 'Duncan & Chang (1970)', 'Rowe (1962)', 'Vermeer & de Borst (1984)', 'Hardin & Drnevich (1972)', 'Jaky (1944)', 'PLAXIS 2D Material Models Manual (2025.1)', 'de Souza Neto, Perić & Owen (2008)', 'Benz (2007)']
 		}
 	];
 
