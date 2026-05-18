@@ -2746,10 +2746,24 @@ inline PhaseResult run_nonlinear_phase(
           isExactReturnMappingKind && stepPeakActiveCount > 0 && !benignPlasticStep
               ? std::min(opts.loadStepCutbackFactor, plasticCutbackFactor)
               : opts.loadStepCutbackFactor;
+      // HS uses an elastic-tangent modified Newton (per Phase 5/6 § B.9),
+      // so the FE residual converges *linearly* with rate ~0.6 rather
+      // than quadratically. In practice the per-step iteration count
+      // settles at ~6.5 vs the universal target of 6, which would push
+      // the growth factor below 1 and shrink the load step indefinitely
+      // on multi-element problems. Use a slightly looser target (8) for
+      // HS so the controller can grow the step when iter count is in
+      // the 6-8 band — matching the elastic-tangent convergence rate.
+      // This is a load-step *controller* tuning, not a tolerance: it
+      // doesn't relax any admissibility, residual, or Newton-convergence
+      // criterion.
+      const double targetIters = (ctx.kind == ConstitutiveKind::HardeningSoil)
+          ? 8.0
+          : kContinuationTargetIterations;
       auto compute_step_factor = [&](int iterCount, double acceptedLineSearchScale) {
         const double effIter = std::max(static_cast<double>(iterCount), 1.0);
         const double effScale = std::max(std::min(acceptedLineSearchScale, 1.0), 1e-6);
-        const double raw = std::pow(kContinuationTargetIterations / effIter, kContinuationIterationExponent) *
+        const double raw = std::pow(targetIters / effIter, kContinuationIterationExponent) *
                            std::pow(effScale / kContinuationTargetLineSearchScale, kContinuationLineSearchExponent);
         if (!std::isfinite(raw) || raw <= 0.0) return effectiveCutbackFactor;
         return std::clamp(raw, effectiveCutbackFactor, effectiveGrowthFactor);

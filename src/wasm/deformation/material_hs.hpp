@@ -186,7 +186,20 @@ inline double cone_yield_value(double q, double q_a, double E_i,
 // F9 — Cone-flow regime classification, ONCE at trial state.
 // ---------------------------------------------------------------------------
 inline ConeFlowRegime classify_cone_regime(const mce::PrincipalState& pr) {
-  const double tol = std::max(pr.eigTolerance, 1e-9);
+  // Tolerance for principal-stress *equality* must absorb the
+  // eigendecomposition's numerical noise on axisymmetric inputs. At
+  // σ ~ 30-100 kPa the eigensolver returns repeated eigenvalues with a
+  // residual split on the order of 1e-6 (relative to the dominant
+  // principal magnitude). Using only `pr.eigTolerance` (which is
+  // 1e-9·stress_scale ~ 1e-7 for these states) misclassifies these
+  // states as "interior face" with an asymmetric flow direction; the
+  // first cone-Newton iteration then produces a σ_2 < σ_3 ordering
+  // swap (failureCode 101). A 1e-6 relative-magnitude tolerance gives
+  // the regime classifier enough slack to absorb that noise while
+  // still distinguishing genuine off-edge interior states.
+  const double mag = std::max({ std::abs(pr.s1), std::abs(pr.s2),
+                                std::abs(pr.s3), 1.0 });
+  const double tol = std::max({ pr.eigTolerance, 1e-9, 1e-6 * mag });
   const double d23 = std::abs(pr.s2 - pr.s3);
   const double d12 = std::abs(pr.s1 - pr.s2);
   const bool edge23 = d23 <= tol;
@@ -253,18 +266,43 @@ inline double cap_yield_value(double sigma1, double sigma2, double sigma3,
 }
 
 // F11 — Cap yield gradient (associated flow). Direct derivative of the
-// cap yield function with NO cone-regime adjustment: the cap is an
-// associated surface with its own flow direction independent of the
-// cone's edge/face state (fix-plan §Phase 5).
+// cap yield function (fix-plan §Phase 5) with Koiter generalisation at
+// principal-stress edges (σ_1 ≈ σ_2 or σ_2 ≈ σ_3).
 //
 //   δ = (3 + sin φ) / (3 - sin φ)
 //   q_tilde = σ_1 + (δ - 1) σ_2 - δ σ_3
 //   p' = (σ_1 + σ_2 + σ_3) / 3
 //
+// Interior point (no principal-stress coincidence):
 //   ∂f^c/∂σ_1 = 2 q_tilde / M² · 1         + 2/3 · (p' + p_t)
 //   ∂f^c/∂σ_2 = 2 q_tilde / M² · (δ - 1)   + 2/3 · (p' + p_t)
 //   ∂f^c/∂σ_3 = 2 q_tilde / M² · (-δ)      + 2/3 · (p' + p_t)
 //   ∂f^c/∂p_p = -2 (p_p + p_t)
+//
+// The q_tilde expression assigns asymmetric coefficients (δ-1) vs (-δ)
+// to σ_2 and σ_3. This is the canonical Lode-direction-adapted q for the
+// HS cone-compatible cap (Schanz/Vermeer): unique at smooth points where
+// σ_1 > σ_2 > σ_3, but multi-valued at principal-stress coincidences.
+// At those edges the (σ_2 ↔ σ_3) relabelling is admissible — both labels
+// describe the same physical state — and the unique sub-gradient direction
+// is the Koiter average of the per-relabel gradients. Without this
+// averaging the gradient breaks the principal-stress permutation
+// invariance that the underlying material law DOES respect, and the
+// corner Newton's stress update at axisymmetric K0_NC states (σ_2 = σ_3)
+// produces a σ_2 < σ_3 swap on the first iteration — a hard fail. The
+// Koiter average sub-gradient at σ_2 = σ_3:
+//   ½[(δ-1, -δ) + (-δ, δ-1)] = (-½, -½)
+// and at σ_1 = σ_2:
+//   ½[(1, δ-1) + (δ-1, 1)] = (½(δ+0), ½(δ+0)) — but the σ_1 coefficient
+//   on the "σ_1=relabelled-as-σ_2" branch is (δ-1), so the σ_1 row of
+//   the average is ½(1 + (δ-1)) = ½δ. Same for σ_2.
+//
+// Phase 5 of the fix plan correctly demanded removing the *cone-regime*
+// coupling from the cap gradient. This implementation still drops the
+// cone coupling — the detection branches use *principal-stress equality*
+// (computed locally from σ_1, σ_2, σ_3) and depend only on the cap's
+// own multi-valuedness at those edges. The cap law remains associated;
+// the cone law contributes nothing here.
 inline void cap_yield_gradient(double sigma1, double sigma2, double sigma3,
                                double p_p, double M_cap, double p_t,
                                double phi_eff,
@@ -275,14 +313,61 @@ inline void cap_yield_gradient(double sigma1, double sigma2, double sigma3,
   const double dm1 = delta - 1.0;
   const double neg_d = -delta;
 
+  // Per-relabel σ_2 / σ_3 coefficients on q_tilde — single relabelling
+  // of the asymmetric q_tilde expression flips the (δ-1, -δ) pair.
+  // dq_d1 is always 1 for an interior point (σ_1 strictly largest); only
+  // mixes with the σ_2 coefficient when σ_1 = σ_2 within tolerance.
+  double dq_d1 = 1.0;
+  double dq_d2 = dm1;
+  double dq_d3 = neg_d;
+
+  // Principal-stress edge detection. Tolerance scales with the largest
+  // principal magnitude; we use 1e-6·mag — the same tolerance applied
+  // to cone-regime classification (see `classify_cone_regime`). The
+  // eigendecomposition splits axisymmetric inputs by ~1e-6·mag in
+  // practice, so a tighter test misclassifies "near-edge" inputs as
+  // interior and triggers σ_2 < σ_3 swaps in the corner Newton's first
+  // iteration.
+  const double mag = std::max({ std::abs(sigma1), std::abs(sigma2),
+                                std::abs(sigma3), 1.0 });
+  const double edge_tol = 1e-6 * mag;
+  const bool edge_23 = std::abs(sigma2 - sigma3) <= edge_tol;
+  const bool edge_12 = std::abs(sigma1 - sigma2) <= edge_tol;
+
+  if (edge_23 && edge_12) {
+    // Hydrostatic / triple-coincidence: all three principals equal. The
+    // q_tilde gradient is in the convex hull of all six permutations of
+    // (1, δ-1, -δ), which averages to ((1 + dm1 + neg_d)/3) per slot.
+    const double avg = (1.0 + dm1 + neg_d) / 3.0;
+    dq_d1 = avg;
+    dq_d2 = avg;
+    dq_d3 = avg;
+  } else if (edge_23) {
+    // σ_2 = σ_3 (compression-edge of MC): the two relabellings give
+    //   (1, δ-1, -δ) and (1, -δ, δ-1).
+    // Average → (1, -½, -½).
+    dq_d1 = 1.0;
+    const double avg23 = 0.5 * (dm1 + neg_d);
+    dq_d2 = avg23;
+    dq_d3 = avg23;
+  } else if (edge_12) {
+    // σ_1 = σ_2 (extension-edge of MC): the two relabellings give
+    //   (1, δ-1, -δ) and (δ-1, 1, -δ).
+    // Average → (½(δ-1+1), ½(δ-1+1), -δ) = (½δ, ½δ, -δ).
+    const double avg12 = 0.5 * (1.0 + dm1);
+    dq_d1 = avg12;
+    dq_d2 = avg12;
+    dq_d3 = neg_d;
+  }
+
   const double q_tilde = sigma1 + dm1 * sigma2 + neg_d * sigma3;
   const double p_prime = (sigma1 + sigma2 + sigma3) / 3.0;
   const double two_qt_over_M2 = 2.0 * q_tilde / (M_cap * M_cap);
   const double pt_term = (2.0 / 3.0) * (p_prime + p_t);
 
-  df_d1 = two_qt_over_M2 * 1.0   + pt_term;
-  df_d2 = two_qt_over_M2 * dm1   + pt_term;
-  df_d3 = two_qt_over_M2 * neg_d + pt_term;
+  df_d1 = two_qt_over_M2 * dq_d1 + pt_term;
+  df_d2 = two_qt_over_M2 * dq_d2 + pt_term;
+  df_d3 = two_qt_over_M2 * dq_d3 + pt_term;
   df_dpp = -2.0 * (p_p + p_t);
 }
 
@@ -1597,10 +1682,31 @@ inline HsUpdateResult update(
                               * std::max(stateCommitted.p_p + p_t, 1.0);
 
   // (11) Dispatch.
-  // Helper to evaluate cone f^s at corrected (s1, s3) with the same E_i,
-  // q_a, E_ur, p_t evaluated at trial σ_3 (consistent with the dispatcher).
+  // Helper to evaluate cone f^s at corrected (s1, s3) using hyperbolic
+  // constants REFRESHED at the corrected σ_3. This is the "consistent-
+  // constitutive" evaluation: the cone yield function `f^s(q, σ_3)` is a
+  // local property of the current state, not of the trial state. The
+  // inner return mappings (cone_only, cap_only, corner) all refresh E_i,
+  // q_a, E_ur at the current σ_3 inside their Newton; the dispatcher's
+  // admissibility check must use the SAME convention so the trial-frozen
+  // vs. current-σ_3 mismatch doesn't reject inner-certified states.
+  auto refresh_q_constants = [&](double s3, double& E_i_out, double& q_a_out, double& E_ur_out) {
+    const double E_50_loc = power_law_stiffness(
+        region.hs.E50_ref, s3, c_eff, phi_eff,
+        region.hs.p_ref, region.hs.m);
+    E_ur_out = power_law_stiffness(
+        region.hs.Eur_ref, s3, c_eff, phi_eff,
+        region.hs.p_ref, region.hs.m);
+    double q_f_denom_loc = 1.0 - sphi;
+    if (q_f_denom_loc < 1e-9) q_f_denom_loc = 1e-9;
+    const double q_f_loc = (c_eff * cotPhi + s3) * 2.0 * sphi / q_f_denom_loc;
+    q_a_out = std::max(q_f_loc / Rf, 1e-6);
+    E_i_out = 2.0 * E_50_loc / (2.0 - Rf);
+  };
   auto cone_yield_after_return = [&](double s1, double s3, double gamma_p) {
-    return cone_yield_value(s1 - s3, q_a, E_i, E_ur, gamma_p);
+    double E_i_loc = E_i, q_a_loc = q_a, E_ur_loc = E_ur;
+    refresh_q_constants(s3, E_i_loc, q_a_loc, E_ur_loc);
+    return cone_yield_value(s1 - s3, q_a_loc, E_i_loc, E_ur_loc, gamma_p);
   };
   auto cap_yield_after_return = [&](double s1, double s2, double s3, double p_p) {
     return cap_yield_value(s1, s2, s3, p_p, M_cap, p_t, phi_eff);
@@ -1660,15 +1766,32 @@ inline HsUpdateResult update(
     out = return_cone_only(principalT, stateCommitted,
                            c_eff, phi_eff, psi_eff, sin_phi_cv,
                            E_i, E_ur, q_a, D_e, region);
-    return out;
-  }
-  if (f_s <= F_TOL_S && f_c > F_TOL_C) {
+    // Recovery fix (Phase 2-5 post-mortem, Hypothesis C1): cone-only return
+    // can leave the cap yield slightly violated when the trial state was on
+    // (or close to) the cap surface but inside the cone trial-tolerance
+    // band. The certificate (1e-6·scale) is tighter than the dispatch
+    // tolerance (1e-10·scale) by design, so the inner Newton's
+    // single-surface projection may pass its own convergence target yet
+    // still need a corner correction to satisfy BOTH surfaces. When
+    // cone-only certifies admissibility-failed (code 106), the trial state
+    // was effectively corner-active even though trial f^c ≤ F_TOL_C.
+    // Re-dispatch as corner; the warm start is the trial state itself
+    // (Δλ_s, Δλ_c) = (0, 0).
+    if (out.failureCode != 106) return out;
+  } else if (f_s <= F_TOL_S && f_c > F_TOL_C) {
     out = return_cap_only(principalT, stateCommitted,
                           c_eff, phi_eff, M_cap, p_t, H_cap, D_e, region);
-    return out;
+    // Recovery fix (Phase 2-5 post-mortem, Hypothesis C1): cap-only can
+    // push the cone yield positive on K0 NC / oedometric paths where the
+    // committed state sits exactly on f^s = 0. Re-dispatch as corner when
+    // the cap-only result fails admissibility (code 106). Same rationale
+    // as the cone-only branch above.
+    if (out.failureCode != 106) return out;
   }
 
-  // Both surfaces active at trial. Phase 3: invoke the 2×2 corner Newton.
+  // Both surfaces active at trial (or single-surface return left the
+  // OTHER yield outside the admissibility certificate). Phase 3: invoke
+  // the 2×2 corner Newton.
   // Warm-start initial guesses come from independent single-surface
   // solutions — this matches B.5 and is robust against degenerate corner
   // states. We extract the single-surface Δλ values by re-solving locally
@@ -1687,12 +1810,26 @@ inline HsUpdateResult update(
       principalT, stateCommitted,
       c_eff, phi_eff, M_cap, p_t, H_cap, D_e, region);
 
+  // Warm-start the corner Newton from the single-surface plastic updates.
+  // Accept code 0 (clean) and code 106 (Newton converged but other surface
+  // violated cert) — in both cases the single-surface Newton found a
+  // self-consistent (gamma_p, p_p) update that is the correct projection
+  // *onto its own surface*. The corner Newton then has a hot start that
+  // already captures most of the plastic correction; iteration mostly
+  // refines the cross-surface coupling. Without this, when both
+  // single-surface returns fail the cert (which is the dominant case for
+  // strongly violated trial states, e.g. footing edge GPs), the corner
+  // Newton starts cold from (0, 0) and stalls — see recovery fix Phase
+  // 2-5 post-mortem (Hypothesis A+B combined).
+  auto single_surface_warmstart_ok = [](const HsUpdateResult& r) {
+    return r.failureCode == 0 || r.failureCode == 106;
+  };
   double dl_s_init = 0.0;
-  if (cone_alone.failureCode == 0) {
+  if (single_surface_warmstart_ok(cone_alone)) {
     dl_s_init = std::max(cone_alone.stateUpdated.gamma_p - stateCommitted.gamma_p, 0.0);
   }
   double dl_c_init = 0.0;
-  if (cap_alone.failureCode == 0) {
+  if (single_surface_warmstart_ok(cap_alone)) {
     // Reconstruct Δλ_c from p_p_new − p_p_old: linearise around the
     // committed p' (the cap-only Newton uses the corrected p' but for a
     // warm-start guess the trial p' is more than accurate enough).
@@ -1767,10 +1904,16 @@ inline HsUpdateResult update(
     if (r.failureCode != 0) return false;
     const auto pr = mce::principal_stress_projectors_3d_compression_positive(
         r.stressUpdated, mp_eig);
+    // Use σ_3-refreshed hyperbolic constants — matches the inner returns'
+    // certify convention so a trial-frozen vs current-σ_3 mismatch doesn't
+    // flip an internally-admissible state to inadmissible (see comment on
+    // `cone_yield_after_return`).
+    double E_i_loc = E_i, q_a_loc = q_a, E_ur_loc = E_ur;
+    refresh_q_constants(pr.s3, E_i_loc, q_a_loc, E_ur_loc);
     const HsReturnCertificate cert = certify_hs_return(
         pr.s1, pr.s2, pr.s3,
         r.stateUpdated.gamma_p, r.stateUpdated.p_p,
-        q_a, E_i, E_ur,
+        q_a_loc, E_i_loc, E_ur_loc,
         M_cap, p_t,
         /*sigma_T=*/0.0, phi_eff, /*tensionEnabled=*/false);
     return cert.admissible;
@@ -2353,11 +2496,28 @@ inline double simulate_oedometric_tangent_at_pref(
   // engaged. (Earlier code used -1e-4, which was in the cap-only band
   // and made C.2 calibrate against a stiffer secant than the corner-
   // active path actually uses.)
-  const double d_eps_yy = -1e-5;
+  // Recovery fix: admissibility-aware cutback. The HS dispatcher can
+  // return failureCode 106 (admissibility violation) when the trial step
+  // is in a regime that requires corner-active projection — halve the
+  // probe step and retry up to 8 times before giving up. Without this,
+  // C.2 was returning NaN whenever the initial probe stepped into a
+  // borderline regime.
+  double d_eps_yy = -1e-5;
   Vec6 strain_trial = strain;
-  strain_trial[VOIGT_YY] = d_eps_yy;
-  HsUpdateResult res = update(strain_trial, strain, sigma, state, r, 1.0);
-  if (res.failureCode != 0) return std::numeric_limits<double>::quiet_NaN();
+  HsUpdateResult res{};
+  bool probe_ok = false;
+  for (int cutback = 0; cutback < 8; ++cutback) {
+    strain_trial = strain;
+    strain_trial[VOIGT_YY] = d_eps_yy;
+    res = update(strain_trial, strain, sigma, state, r, 1.0);
+    if (res.failureCode == 0) {
+      probe_ok = true;
+      break;
+    }
+    d_eps_yy *= 0.5;
+    if (std::abs(d_eps_yy) < 1e-12) break;
+  }
+  if (!probe_ok) return std::numeric_limits<double>::quiet_NaN();
   const double d_sigma_yy = res.stressUpdated[VOIGT_YY] - sigma[VOIGT_YY];
   if (std::abs(d_eps_yy) < 1e-15) return 0.0;
   // In tension-positive Voigt, both d_eps_yy and d_sigma_yy are negative
