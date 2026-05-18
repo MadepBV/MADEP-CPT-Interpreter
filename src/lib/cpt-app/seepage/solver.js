@@ -783,6 +783,28 @@ function initialActiveDrainNodes(mesh, model, prior = null) {
   return entries.map(() => true);
 }
 
+/**
+ * Update the active-set mask for drain nodes per Signorini-type
+ * complementarity (h ≤ h_d, q_drain ≥ 0, (h_d − h)·q_drain = 0).
+ *
+ * Reaction sign convention:
+ * - reaction > 0: net flux entering the DOMAIN through the drain node
+ *   (i.e., the drain is acting as a SOURCE — water flowing into the
+ *   soil). This violates the one-way rule and forces deactivation.
+ * - reaction ≤ 0: net flux LEAVING the domain through the drain node
+ *   (i.e., the drain is draining water out — physically valid).
+ *   Drain stays active.
+ *
+ * Pressure-head convention:
+ * - pressureHead = head - node_elevation. Positive means saturated soil
+ *   at the drain. Negative means the drain is above the local water
+ *   table — drain has no water to remove, deactivate.
+ *
+ * Note: gating === 'always' keeps the drain Dirichlet-fixed regardless
+ * of reaction sign. That bypasses the one-way rule by design; when the
+ * reaction shows net injection, the flux summary records this as a
+ * forcedInjection event so the result layer can surface a warning.
+ */
 function activeDrainNodesFromSolve(
   mesh,
   model,
@@ -796,19 +818,28 @@ function activeDrainNodesFromSolve(
   const gateTolerances = drainGatingTolerances(options, tolerances);
   const priorMask = initialActiveDrainNodes(mesh, model, prior);
   return entries.map((entry) => {
+    // gating='always': drain stays Dirichlet-fixed even if the reaction sign
+    // implies injection. The forced-injection warning is emitted from the
+    // flux summary, not here, so as not to disturb the active-set fixed
+    // point (which would never settle if 'always' could deactivate).
     if (entry.gating === 'always') return true;
     const node = mesh?.nodes?.[entry.nodeId];
     const head = Number(heads?.[entry.nodeId]);
     if (!node || !Number.isFinite(head)) return !!priorMask[entry.entryIndex];
     const priorActive = !!priorMask[entry.entryIndex];
+    // reaction > 0 means the Dirichlet drain is pushing water into the
+    // domain (injection) — physically forbidden, force deactivation.
     const reaction = priorActive && reactions ? Number(reactions[entry.nodeId]) : NaN;
     const fluxTol = drainNodeFluxTolerance(mesh, entry.nodeId, options, tolerances);
 
     if (entry.gating === 'head-cap') {
+      // Head-cap: activates when head would exceed h_d, deactivates when
+      // the reaction indicates the cap is now pushing water in.
       if (priorActive) return !(Number.isFinite(reaction) && reaction > fluxTol);
       return head > entry.head + gateTolerances.headActivateTol;
     }
 
+    // when-saturated: also requires positive pressure-head at the node.
     const pressureHead = head - node.y;
     if (priorActive) {
       return pressureHead >= -gateTolerances.headKeepTol && (!Number.isFinite(reaction) || reaction <= fluxTol);
@@ -938,7 +969,13 @@ async function solveSeepageBoundaryActiveSet(
   let totalLinearIterations = 0;
   let residualNorm = 0;
   let activeSetIterations = 0;
-  let priorSignature = null;
+  // Sliding window of the most recent signatures (oldest first). A repeat
+  // anywhere in the window indicates the active set is cycling between
+  // configurations rather than approaching a fixed point — catches
+  // A→B→C→A patterns that 1-step memory would miss.
+  const seenSignatures = [];
+  const CYCLE_WINDOW_SIZE = 4;
+  let cycleDiagnostics = null;
 
   while (true) {
     if (await runCheckpoint(runControl, true)) {
@@ -1013,7 +1050,14 @@ async function solveSeepageBoundaryActiveSet(
       masksMatch(nextActiveSeepageFaces, activeSeepageFaces) &&
       masksMatch(nextActiveDrainNodes, activeDrainNodes);
     const nextSignature = jointActiveSetSignature(nextActiveSeepageFaces, nextActiveDrainNodes);
-    const cycling = priorSignature != null && nextSignature === priorSignature;
+    const cycleHitIndex = seenSignatures.indexOf(nextSignature);
+    const cycling = cycleHitIndex >= 0;
+    if (cycling) {
+      cycleDiagnostics = {
+        cycleLength: seenSignatures.length - cycleHitIndex,
+        windowSize: CYCLE_WINDOW_SIZE
+      };
+    }
     const boundaryFluxSummary = summarizeBoundaryFluxes(mesh, model, gradients, activeSeepageFaces, solve.reactions);
 
     if (solve.interrupted) {
@@ -1048,13 +1092,16 @@ async function solveSeepageBoundaryActiveSet(
         interrupted: false,
         stopReason: null,
         activeSetStable: stable,
+        cycleDetected: cycling,
+        cycleDiagnostics,
         gradients,
         boundaryFluxSummary,
         reactions: solve.reactions
       };
     }
 
-    priorSignature = jointActiveSetSignature(activeSeepageFaces, activeDrainNodes);
+    seenSignatures.push(jointActiveSetSignature(activeSeepageFaces, activeDrainNodes));
+    if (seenSignatures.length > CYCLE_WINDOW_SIZE) seenSignatures.shift();
     activeSeepageFaces = nextActiveSeepageFaces;
     activeDrainNodes = nextActiveDrainNodes;
   }
@@ -1595,6 +1642,8 @@ function drainResultSkeleton(drain, drainIndex) {
     gating: drain?.gating || 'when-saturated',
     totalInflow: 0,
     perSegmentInflow: new Array(segmentCount).fill(0),
+    forcedInjectionCount: 0,
+    forcedInjectionFlux: 0,
     nodes: [],
     _edgeFluxes: [],
     _rawEdgeInflow: 0,
@@ -1604,7 +1653,37 @@ function drainResultSkeleton(drain, drainIndex) {
   };
 }
 
-function summarizeDrainFluxes(mesh, model, gradients, activeDrainNodes = null, reactions = null, heads = null) {
+/**
+ * Per-drain and per-segment flux summary.
+ *
+ * Reliability:
+ * - Per-drain TOTAL inflow / outflow: reliable (matches Dirichlet
+ *   reaction sum within scaling).
+ * - Per-segment inflow distribution: APPROXIMATE. P1 elements give
+ *   piecewise-constant gradients, and the reconciliation step scales
+ *   raw edge fluxes to match the per-drain Dirichlet reaction total.
+ *   The spatial distribution along the drain polyline is therefore a
+ *   redistribution, not the FE-consistent answer. For applications
+ *   requiring precise per-segment flux (e.g., differential drain
+ *   loading studies), P2 elements would be needed.
+ *
+ * Also detects gating='always' drains acting as injection sources
+ * (reaction > fluxTol at active nodes) and records them in
+ * activeSetSummary.forcedInjection* so the result layer can surface a
+ * warning. 'always' drains intentionally bypass the one-way Signorini
+ * rule (see docs/seep/drain.md §3); the warning is the user-visible
+ * contract that flags any physically invalid injection that follows.
+ */
+function summarizeDrainFluxes(
+  mesh,
+  model,
+  gradients,
+  activeDrainNodes = null,
+  reactions = null,
+  heads = null,
+  options = null,
+  tolerances = null
+) {
   const drains = normalizeDrains(model?.drains || []);
   const entries = drainEntriesForMesh(mesh, model);
   const activeNodeIds = activeDrainNodeIdSet(mesh, model, activeDrainNodes);
@@ -1654,6 +1733,10 @@ function summarizeDrainFluxes(mesh, model, gradients, activeDrainNodes = null, r
       else result._rawEdgeOutflow += -qEdge;
     });
 
+  const effectiveTolerances = tolerances || seepageIterationTolerances(mesh);
+  let totalForcedInjectionCount = 0;
+  let totalForcedInjectionFlux = 0;
+
   entries.forEach((entry) => {
     const result = resultsByDrainId.get(entry.drainId);
     if (!result) return;
@@ -1663,6 +1746,19 @@ function summarizeDrainFluxes(mesh, model, gradients, activeDrainNodes = null, r
     if (isActive) {
       if (reaction < 0) result._reactionInflow += -reaction;
       else result._reactionOutflow += reaction;
+      // Flag 'always' drains acting as a source (reaction > fluxTol).
+      // For 'head-cap' / 'when-saturated' the active-set logic deactivates
+      // these nodes on the next iteration, so a steady injection only
+      // occurs when 'always' forces them to remain Dirichlet.
+      if (entry.gating === 'always' && reaction > 0) {
+        const fluxTol = drainNodeFluxTolerance(mesh, entry.nodeId, options, effectiveTolerances);
+        if (reaction > fluxTol) {
+          result.forcedInjectionCount += 1;
+          result.forcedInjectionFlux += reaction;
+          totalForcedInjectionCount += 1;
+          totalForcedInjectionFlux += reaction;
+        }
+      }
     }
     result.nodes.push({
       nodeId: entry.nodeId,
@@ -1719,7 +1815,12 @@ function summarizeDrainFluxes(mesh, model, gradients, activeDrainNodes = null, r
       totalNodes: entries.length,
       activeNodes: entries.filter((entry) => drainEntryIsActive(entry, activeDrainNodes)).length,
       perEdgeReactionDelta,
-      skippedEdgeCount
+      skippedEdgeCount,
+      // Number of 'always'-gated drain nodes whose reaction shows the
+      // drain is injecting water into the soil (forbidden by Signorini
+      // complementarity). Non-zero values are surfaced as warnings.
+      forcedInjectionCount: totalForcedInjectionCount,
+      forcedInjectionFlux: totalForcedInjectionFlux
     }
   };
 }
@@ -2080,7 +2181,9 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
     gradients,
     activeDrainNodes,
     solveMeta.reactions,
-    heads
+    heads,
+    options,
+    tolerances
   );
   const flowError = options.freeSurface === 'iterate' && Number.isFinite(solveMeta.flowError) ? solveMeta.flowError : null;
   const converged = solveMeta.converged !== false;
@@ -2138,6 +2241,53 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
     boundaryFluxSummary.totalOutflow + drainFluxSummary.drainOutflow
   );
 
+  const warnings = [];
+
+  // FIX 1: surface 'always' drains that are injecting (violating
+  // q_drain ≥ 0). The active-set logic deliberately leaves these
+  // Dirichlet-fixed regardless of reaction sign, but the user needs
+  // to know the result is physically inconsistent with the spec.
+  (drainFluxSummary.drains || []).forEach((drainResult) => {
+    if (!(Number(drainResult?.forcedInjectionCount) > 0)) return;
+    const flux = Number(drainResult.forcedInjectionFlux) || 0;
+    warnings.push({
+      code: 'drain-forced-injection',
+      drainId: drainResult.drainId,
+      message:
+        `Drain '${drainResult.label}' has gating='always' and is injecting ` +
+        `${flux.toExponential(2)} m^3/s into the domain. This violates the ` +
+        `one-way drain physics (q_drain >= 0) — switch to 'when-saturated' ` +
+        `or 'head-cap' for physically correct behaviour.`
+    });
+  });
+
+  // FIX 3: surface mass-balance failure when the active-set didn't
+  // fully converge and the normalised flow-error exceeds the tolerance.
+  // Otherwise the user would see a "result" with a quietly wrong mass
+  // balance.
+  if (options.freeSurface === 'iterate') {
+    const reportedFlowError = Number.isFinite(flowError) ? flowError : null;
+    const flowErrorTolerance = Math.max(
+      Number(options.flowErrorTolerance) || DEFAULT_FLOW_ERROR_TOL,
+      1e-6
+    );
+    if (
+      reportedFlowError != null &&
+      reportedFlowError > flowErrorTolerance &&
+      reportedFlowError > DEFAULT_FLOW_ERROR_TOL
+    ) {
+      warnings.push({
+        code: 'seepage-mass-balance',
+        message:
+          `Mass balance error is ${(reportedFlowError * 100).toFixed(2)}%, ` +
+          `exceeding the ${(DEFAULT_FLOW_ERROR_TOL * 100).toFixed(2)}% tolerance. ` +
+          `Active-set may not have converged ` +
+          `(${solveMeta.activeSetIterations || 0}/${MAX_ACTIVE_SET_ITER} iterations). ` +
+          `Consider checking for cycling drains or refining the mesh.`
+      });
+    }
+  }
+
   return {
     heads,
     triangleHeads,
@@ -2167,6 +2317,7 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
     dryCellCount,
     disconnectedWetComponentCount: Number(solveMeta.disconnectedWetComponentCount) || 0,
     disconnectedWetElementCount: Number(solveMeta.disconnectedWetElementCount) || 0,
+    warnings,
     timing: solveMeta,
     solver: {
       meshType: mesh?.kind || 'triangulated-strip-fem',
@@ -2194,7 +2345,9 @@ function postProcess(mesh, model, heads, dryFlags, solveMeta, options, activeSee
       activeSetSummary: {
         drains: {
           ...drainFluxSummary.activeSetSummary,
-          iterationsToStable: solveMeta.activeSetIterations || 0
+          iterationsToStable: solveMeta.activeSetIterations || 0,
+          cycleDetected: !!solveMeta.cycleDetected,
+          cycleDiagnostics: solveMeta.cycleDiagnostics || null
         }
       }
     }
@@ -2301,6 +2454,10 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
             flowError: lastSolvedState.flowError,
             flowErrorTolerance,
             maxRuntimeMs,
+            activeSetIterations: lastSolvedState.activeSetIterations,
+            activeSetStable: lastSolvedState.activeSetStable,
+            cycleDetected: !!lastSolvedState.cycleDetected,
+            cycleDiagnostics: lastSolvedState.cycleDiagnostics || null,
             boundaryFluxSummary: lastSolvedState.boundaryFluxSummary,
             reactions: lastSolvedState.reactions
           },
@@ -2331,6 +2488,10 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           flowError: lastSolvedState.flowError,
           flowErrorTolerance,
           maxRuntimeMs,
+          activeSetIterations: lastSolvedState.activeSetIterations,
+          activeSetStable: lastSolvedState.activeSetStable,
+          cycleDetected: !!lastSolvedState.cycleDetected,
+          cycleDiagnostics: lastSolvedState.cycleDiagnostics || null,
           boundaryFluxSummary: lastSolvedState.boundaryFluxSummary,
           reactions: lastSolvedState.reactions
         },
@@ -2375,7 +2536,9 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
       gradients,
       solvedActiveDrainNodes,
       boundarySolve.reactions,
-      heads
+      heads,
+      options,
+      tolerances
     );
     const flowError = normalizedFlowBalanceError(boundaryFluxSummary, drainFluxSummary);
     const flowErrorConverged = Number.isFinite(flowError) && flowError <= flowErrorTolerance;
@@ -2427,6 +2590,8 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
       elapsedMs,
       activeSetIterations: boundarySolve.activeSetIterations,
       activeSetStable: boundarySolve.activeSetStable,
+      cycleDetected: !!boundarySolve.cycleDetected,
+      cycleDiagnostics: boundarySolve.cycleDiagnostics || null,
       disconnectedWetComponentCount: connectivity.disconnectedComponentCount,
       disconnectedWetElementCount: connectivity.disconnectedElementCount,
       connectivityFallbackApplied,
@@ -2455,6 +2620,8 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           maxRuntimeMs,
           activeSetIterations: boundarySolve.activeSetIterations,
           activeSetStable: boundarySolve.activeSetStable,
+          cycleDetected: !!boundarySolve.cycleDetected,
+          cycleDiagnostics: boundarySolve.cycleDiagnostics || null,
           disconnectedWetComponentCount: connectivity.disconnectedComponentCount,
           disconnectedWetElementCount: connectivity.disconnectedElementCount,
           connectivityFallbackApplied,
@@ -2487,6 +2654,8 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           maxRuntimeMs,
           activeSetIterations: boundarySolve.activeSetIterations,
           activeSetStable: boundarySolve.activeSetStable,
+          cycleDetected: !!boundarySolve.cycleDetected,
+          cycleDiagnostics: boundarySolve.cycleDiagnostics || null,
           disconnectedWetComponentCount: connectivity.disconnectedComponentCount,
           disconnectedWetElementCount: connectivity.disconnectedElementCount,
           connectivityFallbackApplied,
@@ -2519,6 +2688,8 @@ async function solveSeepage(mesh, model, options, onProgress = () => {}, runCont
           maxRuntimeMs,
           activeSetIterations: boundarySolve.activeSetIterations,
           activeSetStable: boundarySolve.activeSetStable,
+          cycleDetected: !!boundarySolve.cycleDetected,
+          cycleDiagnostics: boundarySolve.cycleDiagnostics || null,
           disconnectedWetComponentCount: connectivity.disconnectedComponentCount,
           disconnectedWetElementCount: connectivity.disconnectedElementCount,
           connectivityFallbackApplied,

@@ -5,6 +5,12 @@
 **Status**: Implementation plan  
 **Positioning**: This is an internal seepage feature, not an outer-boundary BC. The drain acts as a **maximum allowed head** along a user-drawn line.
 
+**Solver type**: Steady-state. Drains in this model compute the final
+equilibrium head field with the drain as a one-way Dirichlet boundary,
+not a transient drain-down over time. If `Q_drain_out = 0` for your
+configuration, this typically means there is no external recharge or
+inflow to sustain steady drainage — see [§17 Mass balance](#17-mass-balance) below.
+
 ---
 
 ## 1. Goal
@@ -700,3 +706,71 @@ So the right plan is:
 4. report total drain discharge
 
 That should deliver a strong `v1` without overcomplicating the seepage workspace.
+
+---
+
+## 17. Mass balance
+
+The solver computes a **steady-state** head field. The mass-balance
+identity that the drain discharge must satisfy is therefore:
+
+```text
+Σ Q_in (boundary) + Σ Q_in (drains)
+  = Σ Q_out (boundary) + Σ Q_out (drains)
+```
+
+where `Q_in` is flow entering the domain and `Q_out` is flow leaving it.
+For one-way drains, `Q_in (drain) = 0` by construction — drains only
+collect water.
+
+This leads to common-sense outcomes that sometimes look like bugs but
+are not:
+
+### Closed domain + drain + no recharge → `Q_drain_out = 0`
+
+When the only boundaries around the domain are no-flow (or all the
+prescribed-head boundaries are at the same head as the drain) and there
+is no infiltration source, the steady-state solution is simply the
+water table sitting **at the drain elevation everywhere**, with zero
+flow. There is no water source to feed the drain, so the drain extracts
+nothing.
+
+This is correct steady-state physics, not a missing transient. A
+real-world drained-down basin would empty over time, but the steady
+field reached at infinity is exactly the empty-flow case the solver
+returns.
+
+### Open domain + drain + upstream/top inflow → `Q_drain = Q_inflow`
+
+With at least one prescribed-head boundary above the drain head and a
+flow path to the drain, steady state has water flowing into the domain
+through that boundary and out through the drain. The drain's total
+discharge equals the inflow at the prescribed-head boundary (within the
+solver's flow-balance tolerance, default 1%).
+
+### Recharge case (future)
+
+If the model later supports areal recharge `q_r` (e.g. infiltration
+through the top), then at steady state `Q_drain = ∫ q_r dA + Σ Q_in
+(prescribed head)`. The drain absorbs everything that comes in.
+
+### Diagnostics
+
+The result object reports the normalised flow-balance error in
+`result.solver.flowError` (with tolerance in
+`result.solver.flowErrorTolerance`). When the active set fails to
+converge within `MAX_ACTIVE_SET_ITER`, the solver attaches a
+user-visible warning in `result.warnings` so the dashboard can flag
+unreliable outputs rather than silently presenting a non-mass-balanced
+solution.
+
+### Gating modes and the one-way rule
+
+- `when-saturated` and `head-cap` enforce the Signorini complementarity
+  in §3 by deactivating drain nodes whose Dirichlet reaction is
+  positive (i.e. would inject water).
+- `always` keeps the drain Dirichlet-fixed regardless of reaction
+  sign. This is sometimes useful for benchmarking against a fully
+  prescribed-head line, but it can violate `q_drain ≥ 0`. When this
+  happens, the solver emits a `drain-forced-injection` warning in
+  `result.warnings` describing the magnitude of the violation.

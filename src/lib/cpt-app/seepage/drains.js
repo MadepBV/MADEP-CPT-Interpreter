@@ -437,6 +437,31 @@ export function validateDrains(model = {}) {
     }
   });
 
+  drains.forEach((drain) => {
+    if (!drain.vertices?.length) return;
+    const yValues = drain.vertices.map((vertex) => Number(vertex?.y)).filter(Number.isFinite);
+    if (!yValues.length) return;
+    const minVertexY = Math.min(...yValues);
+    const prefix = arcLengthPrefix(drain.vertices, drain.closed);
+    const headValues = drain.vertices.map((_, index) =>
+      drainHeadValueAt(drain, prefix[index] || 0));
+    const finiteHeads = headValues.filter(Number.isFinite);
+    if (!finiteHeads.length) return;
+    const minHead = Math.min(...finiteHeads);
+    if (minHead < minVertexY - 0.01) {
+      pushIssue(warnings, {
+        code: 'drain-head-below-elevation',
+        drainId: drain.id,
+        drainLabel: drain.label,
+        message:
+          `${drain.label} has prescribed head (${minHead.toFixed(2)} m) ` +
+          `below its own elevation (${minVertexY.toFixed(2)} m). The drain ` +
+          `cannot be active in saturated soil; it will only act if the soil ` +
+          `is unsaturated above the drain (no water to remove).`
+      });
+    }
+  });
+
   (model?.walls || []).forEach((wall, index) => {
     const material = normalizeWallMaterial(wall?.material, index, wall?.id);
     if (!(Number(material.kAcross) < 1e-15)) return;
