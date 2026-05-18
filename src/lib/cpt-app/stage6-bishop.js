@@ -2590,6 +2590,93 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
   });
 }
 
+/**
+ * Compute K0_nc via Jaky's formula (1 − sin φ'). Clamped at 0.05 to keep the
+ * derived value physically meaningful even for very small φ. φ in degrees.
+ */
+export function bishopHsJakyK0nc(phiEffDeg) {
+  const phi = (Number(phiEffDeg) || 0) * Math.PI / 180;
+  return Math.max(0.05, 1 - Math.sin(phi));
+}
+
+/**
+ * Critical-state friction angle φ_cv via the inverse Rowe relation:
+ *   sin φ_cv = (sin φ − sin ψ) / (1 − sin φ · sin ψ).
+ * Returns φ_cv in degrees. Pure read-only helper for the HS panel's
+ * "derived values" display; the actual constitutive update derives φ_cv
+ * inside material_hs.hpp.
+ */
+export function bishopHsRowePhiCvDeg(phiEffDeg, psiEffDeg) {
+  const phi = (Number(phiEffDeg) || 0) * Math.PI / 180;
+  const psi = (Number(psiEffDeg) || 0) * Math.PI / 180;
+  const sphi = Math.sin(phi);
+  const spsi = Math.sin(psi);
+  const denom = 1 - sphi * spsi;
+  if (Math.abs(denom) < 1e-12) return Number(phiEffDeg) || 0;
+  const sphiCv = (sphi - spsi) / denom;
+  const clamped = Math.max(-0.999, Math.min(0.999, sphiCv));
+  return Math.asin(clamped) * 180 / Math.PI;
+}
+
+/**
+ * Classify a material as 'granular', 'cohesive', or 'mixed' from its
+ * CPT-derived sourceType. Mirrors `familyClass` in legacy-controller but
+ * operates on a Bishop material (which only carries sourceType, not the
+ * full layer record). Returns 'mixed' when the classification is ambiguous
+ * or absent — in that case HS defaults use mid-range exponents.
+ */
+function classifyMaterialSoilFamily(material) {
+  const t = String(material?.sourceType || '').toLowerCase();
+  if (!t) return 'mixed';
+  if (t.includes('sand') && t.includes('clay')) return 'mixed'; // "Sandy clay"
+  if (t.includes('clay') || t.includes('peat') || t.includes('organic')) return 'cohesive';
+  if (t.includes('sand') || t.includes('gravel')) return 'granular';
+  return 'mixed';
+}
+
+/**
+ * Derive sensible default HS-specific parameters from an existing Bishop
+ * material. The strength fields (c', φ', ψ', γ, γ_sat) are NOT touched —
+ * HS shares those with MC and the user already maintains them via the
+ * deformation-material editor row above the HS panel.
+ *
+ * Defaults follow the PLAXIS HS recommendations:
+ *   - E50_ref  ← material.Emc (reuse the deformation modulus the user
+ *                already calibrated for MC).
+ *   - Eoed_ref ← E50_ref       (PLAXIS default: oedometric stiffness ≈ secant).
+ *   - Eur_ref  ← 3 · E50_ref   (PLAXIS reload-modulus rule of thumb).
+ *   - m        ← 0.5 (granular), 1.0 (cohesive), 0.75 (mixed). PLAXIS
+ *                literature gives m ≈ 0.5 for sands and m ≈ 1 for clays.
+ *   - ν_ur     ← 0.2           (PLAXIS HS canonical default).
+ *   - R_f      ← 0.9           (Duncan-Chang failure ratio).
+ *   - p_ref    ← 100 kPa.
+ *   - K0_nc    ← 0 (Jaky sentinel; the wire format computes 1 − sin φ').
+ *   - e_init, e_max ← −1 (dilatancy cutoff disabled).
+ *   - OCR      ← 1.0 (normally-consolidated; the spec-mandated default).
+ *
+ * Returns a fresh `hs` sub-block ready to be assigned onto material.hs.
+ * Callers preserve any user-edited values they want to keep.
+ */
+export function bishopDeriveHsDefaultsForMaterial(material) {
+  const family = classifyMaterialSoilFamily(material);
+  const E50 = Math.max(Number(material?.Emc) || 0, 1);
+  const m = family === 'granular' ? 0.5 : family === 'cohesive' ? 1.0 : 0.75;
+  return {
+    E50_ref: E50,
+    Eoed_ref: E50,
+    Eur_ref: 3 * E50,
+    m,
+    nu_ur: 0.2,
+    p_ref: 100,
+    Rf: 0.9,
+    K0_nc: 0,
+    e_init: -1,
+    e_max: -1,
+    OCR: 1.0,
+    reserved: 0
+  };
+}
+
 export function bishopLayerSignature(layers) {
   return JSON.stringify(
     (layers || []).map((layer) => [

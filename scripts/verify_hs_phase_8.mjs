@@ -1,23 +1,31 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// HS Phase 8 verification — material presets + 3 benchmark fixtures.
+// HS Phase 8 verification — HS material-derivation helpers + 3 benchmark fixtures.
+//
+// Phase 8 originally shipped a `hs-presets.js` UI library with four PLAXIS-
+// style sand/clay presets. v0.5.3 removed that library: the HS panel now
+// inherits c'/φ'/ψ'/γ from the existing deformation-material editor and
+// only exposes HS-specific stiffness fields, with an "Auto-fill from
+// material" button that derives sensible defaults via
+// `bishopDeriveHsDefaultsForMaterial`.
 //
 // Phase 8 ships:
-//   1. `hs-presets.js`: 4 PLAXIS-style HS material presets (loose/dense
-//      sand, soft/stiff clay).
-//   2. Stage 6 HS panel extension: preset dropdown + advanced expander +
-//      derived-values display (handled in `legacy-controller.js`).
+//   1. `bishopDeriveHsDefaultsForMaterial` (in stage6-bishop.js): derives
+//      HS defaults from an existing material's Emc and soil-type
+//      classification. E50_ref = Emc, Eur_ref = 3·E50, m = 0.5/1.0/0.75
+//      for granular/cohesive/mixed, OCR = 1 (NC).
+//   2. Stage 6 HS panel extension: HS-specific stiffness table + advanced
+//      expander + derived-values display (handled in `legacy-controller.js`).
 //   3. Three benchmark JSON fixtures:
-//        - `hs_drained_footing.json`   (drained strip footing, dense sand)
-//        - `hs_softclay_embankment.json` (3 m embankment on 5 m soft clay)
-//        - `hs_oc_excavation.json`    (5 m excavation in OC clay)
+//        - `hs_drained_footing.json`   (drained strip footing, loose sand)
+//        - `hs_softclay_embankment.json` (uniform embankment loading)
+//        - `hs_oc_excavation.json`    (uniform unload on OC clay)
 //
 // This verifier:
-//   - Validates the presets export shape (4 IDs, all carry full HS field
-//     bundle, presets pin all spec-mandated values).
-//   - Confirms `applyHsPreset` overwrites material fields cleanly and that
-//     `isMaterialMatchingPreset` flips to false after a single edit.
+//   - Validates `bishopDeriveHsDefaultsForMaterial` against the spec defaults
+//     (E50 from Emc, m soil-family dependent, OCR = 1) and exercises the
+//     Jaky / Rowe helpers.
 //   - Builds the WASM input for each benchmark fixture, runs the analysis,
 //     and verifies:
 //        a) the analysis runs to completion without throwing,
@@ -40,17 +48,65 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
-  HS_PRESETS,
-  HS_PRESET_IDS,
-  applyHsPreset,
-  isMaterialMatchingPreset,
-  jakyK0nc,
-  rowePhiCvDeg
-} from '../src/lib/cpt-app/deformation/hs-presets.js';
+  bishopDeriveHsDefaultsForMaterial,
+  bishopHsJakyK0nc,
+  bishopHsRowePhiCvDeg
+} from '../src/lib/cpt-app/stage6-bishop.js';
 import {
   encodeInputBuffer,
   decodeOutputBuffer
 } from '../src/lib/cpt-app/deformation/wasm/wire-format.js';
+
+// Spec-locked HS parameter bundles for the three benchmark fixtures.
+// Phase 8 (commit e3b01e5) introduced a `hs-presets.js` UI library with four
+// canonical sand/clay bundles; that library was removed once the UI panel
+// started inheriting strength fields from the existing material editor (see
+// "HS UX fix: inherit material" in v0.5.3). The four bundles below live here
+// strictly as test data — they reproduce the PLAXIS "Hardening Soil Model"
+// validation calibrations used by the benchmark fixtures and let the
+// verifier stay independent of any preset dropdown.
+const HS_TEST_BUNDLES = Object.freeze({
+  loose_sand: Object.freeze({
+    label: 'Loose sand',
+    Emc: 15000, nu: 0.3, cEff: 0, phiEffDeg: 30, psiEffDeg: 0,
+    gamma: 17, gammaSat: 19,
+    hs: Object.freeze({
+      E50_ref: 15000, Eoed_ref: 15000, Eur_ref: 60000,
+      m: 0.5, nu_ur: 0.2, p_ref: 100, Rf: 0.9,
+      K0_nc: 0, e_init: -1, e_max: -1, OCR: 1.0
+    })
+  }),
+  dense_sand: Object.freeze({
+    label: 'Dense sand',
+    Emc: 50000, nu: 0.3, cEff: 0, phiEffDeg: 40, psiEffDeg: 10,
+    gamma: 19, gammaSat: 21,
+    hs: Object.freeze({
+      E50_ref: 50000, Eoed_ref: 50000, Eur_ref: 150000,
+      m: 0.5, nu_ur: 0.2, p_ref: 100, Rf: 0.9,
+      K0_nc: 0, e_init: -1, e_max: -1, OCR: 1.0
+    })
+  }),
+  soft_clay_nc: Object.freeze({
+    label: 'Soft clay (NC)',
+    Emc: 3000, nu: 0.3, cEff: 5, phiEffDeg: 22, psiEffDeg: 0,
+    gamma: 16, gammaSat: 18,
+    hs: Object.freeze({
+      E50_ref: 3000, Eoed_ref: 3000, Eur_ref: 30000,
+      m: 1.0, nu_ur: 0.2, p_ref: 100, Rf: 0.9,
+      K0_nc: 0, e_init: -1, e_max: -1, OCR: 1.0
+    })
+  }),
+  stiff_clay_oc: Object.freeze({
+    label: 'Stiff clay (OC)',
+    Emc: 15000, nu: 0.3, cEff: 20, phiEffDeg: 25, psiEffDeg: 0,
+    gamma: 18, gammaSat: 20,
+    hs: Object.freeze({
+      E50_ref: 15000, Eoed_ref: 15000, Eur_ref: 75000,
+      m: 1.0, nu_ur: 0.2, p_ref: 100, Rf: 0.9,
+      K0_nc: 0, e_init: -1, e_max: -1, OCR: 2.0
+    })
+  })
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -283,42 +339,42 @@ function makeUniformK0Seed(numGpTotal, sigmaV, K0) {
 }
 
 // ---------------------------------------------------------------------------
-// Convert a preset (from hs-presets.js) into a WASM region object. The wire
-// format wants flat fields plus a `hs` sub-block. We map exactly the bundle
-// that `applyHsPreset` produces.
+// Convert a test bundle into a WASM region object. The wire format wants
+// flat strength fields plus a `hs` sub-block. The K0_nc field defaults to
+// the Jaky-derived value when the bundle leaves it at the 0 sentinel.
 // ---------------------------------------------------------------------------
 
-function presetToWasmRegion(presetId, overrides = {}) {
-  const preset = HS_PRESETS[presetId];
-  if (!preset) throw new Error(`Unknown preset ${presetId}`);
-  const fields = preset.fields;
+function presetToWasmRegion(bundleId, overrides = {}) {
+  const bundle = HS_TEST_BUNDLES[bundleId];
+  if (!bundle) throw new Error(`Unknown HS test bundle ${bundleId}`);
   return {
-    Emc: fields.Emc,
-    nu: fields.nu,
-    cEff: fields.cEff,
-    phiEffDeg: fields.phiEffDeg,
-    psiEffDeg: fields.psiEffDeg,
-    K0nc: fields.K0nc,
-    gamma: fields.gamma,
-    gammaSat: fields.gammaSat,
-    sigmaTAllow: fields.sigmaTAllow,
-    rShear: fields.rShear,
-    useTensionCutoff: fields.useTensionCutoff,
+    Emc: bundle.Emc,
+    nu: bundle.nu,
+    cEff: bundle.cEff,
+    phiEffDeg: bundle.phiEffDeg,
+    psiEffDeg: bundle.psiEffDeg,
+    K0nc: 0,
+    gamma: bundle.gamma,
+    gammaSat: bundle.gammaSat,
+    sigmaTAllow: 0,
+    rShear: 0.25,
+    useTensionCutoff: false,
     symmetrizeEpTangent: false,
     hs: {
-      E50_ref: fields.hs.E50_ref,
-      Eoed_ref: fields.hs.Eoed_ref,
-      Eur_ref: fields.hs.Eur_ref,
-      m: fields.hs.m,
-      nu_ur: fields.hs.nu_ur,
-      p_ref: fields.hs.p_ref,
-      Rf: fields.hs.Rf,
-      // The fixture-derived K0_nc default may be 0 (Jaky sentinel) or
-      // explicit per the fixture; we resolve it here for the WASM call.
-      K0_nc: fields.hs.K0_nc > 0 ? fields.hs.K0_nc : jakyK0nc(fields.phiEffDeg),
-      e_init: fields.hs.e_init,
-      e_max: fields.hs.e_max,
-      OCR: fields.hs.OCR,
+      E50_ref: bundle.hs.E50_ref,
+      Eoed_ref: bundle.hs.Eoed_ref,
+      Eur_ref: bundle.hs.Eur_ref,
+      m: bundle.hs.m,
+      nu_ur: bundle.hs.nu_ur,
+      p_ref: bundle.hs.p_ref,
+      Rf: bundle.hs.Rf,
+      // 0 = Jaky sentinel; the wire format resolves to 1 − sin φ inside the
+      // solver, but for direct test invocations we materialise the value
+      // here so the WASM region observes a non-sentinel K0_nc.
+      K0_nc: bundle.hs.K0_nc > 0 ? bundle.hs.K0_nc : bishopHsJakyK0nc(bundle.phiEffDeg),
+      e_init: bundle.hs.e_init,
+      e_max: bundle.hs.e_max,
+      OCR: bundle.hs.OCR,
       reserved: 0
     },
     ...overrides
@@ -326,62 +382,40 @@ function presetToWasmRegion(presetId, overrides = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Test 0 — Presets module shape
+// Test 0 — HS material-derivation helpers and Jaky/Rowe sanity
 // ---------------------------------------------------------------------------
 
-function testPresetsModule() {
-  console.log('\n[0/4] Presets module shape');
-  assert.equal(HS_PRESET_IDS.length, 4, 'expect 4 preset IDs');
-  for (const id of HS_PRESET_IDS) {
-    const preset = HS_PRESETS[id];
-    assert.ok(preset, `HS_PRESETS[${id}] must exist`);
-    assert.equal(preset.id, id, `preset.id must match key (${id})`);
-    assert.ok(typeof preset.label === 'string' && preset.label.length, `preset.label must be a non-empty string (${id})`);
-    const fields = preset.fields;
-    assert.ok(fields && typeof fields === 'object', `preset.fields must be an object (${id})`);
-    // HS sub-block must carry the spec-mandated columns.
-    for (const key of ['E50_ref', 'Eoed_ref', 'Eur_ref', 'm', 'nu_ur', 'p_ref',
-                       'Rf', 'K0_nc', 'e_init', 'e_max', 'OCR']) {
-      assert.ok(Number.isFinite(fields.hs[key]),
-        `${id}.hs.${key} must be a finite number (got ${fields.hs[key]})`);
-    }
-    // Strength fields.
-    for (const key of ['Emc', 'nu', 'cEff', 'phiEffDeg', 'psiEffDeg', 'gamma', 'gammaSat']) {
-      assert.ok(Number.isFinite(fields[key]),
-        `${id}.${key} must be finite (got ${fields[key]})`);
-    }
-  }
-  // Check spec-mandated row values for each preset.
-  assert.equal(HS_PRESETS.loose_sand.fields.hs.E50_ref, 15000);
-  assert.equal(HS_PRESETS.loose_sand.fields.hs.Eur_ref, 60000);
-  assert.equal(HS_PRESETS.loose_sand.fields.hs.m, 0.5);
-  assert.equal(HS_PRESETS.loose_sand.fields.phiEffDeg, 30);
-  assert.equal(HS_PRESETS.dense_sand.fields.hs.E50_ref, 50000);
-  assert.equal(HS_PRESETS.dense_sand.fields.hs.Eur_ref, 150000);
-  assert.equal(HS_PRESETS.dense_sand.fields.phiEffDeg, 40);
-  assert.equal(HS_PRESETS.dense_sand.fields.psiEffDeg, 10);
-  assert.equal(HS_PRESETS.soft_clay_nc.fields.hs.E50_ref, 3000);
-  assert.equal(HS_PRESETS.soft_clay_nc.fields.hs.Eur_ref, 30000);
-  assert.equal(HS_PRESETS.soft_clay_nc.fields.hs.m, 1.0);
-  assert.equal(HS_PRESETS.soft_clay_nc.fields.cEff, 5);
-  assert.equal(HS_PRESETS.stiff_clay_oc.fields.hs.OCR, 2.0);
-  assert.equal(HS_PRESETS.stiff_clay_oc.fields.cEff, 20);
+function testHsDerivationHelpers() {
+  console.log('\n[0/4] HS material-derivation helpers');
 
-  // applyHsPreset → isMaterialMatchingPreset round-trip.
-  const mat = { label: 'test', hs: {} };
-  applyHsPreset(mat, 'loose_sand');
-  assert.equal(mat.hsPresetId, 'loose_sand', 'applyHsPreset must tag presetId');
-  assert.equal(isMaterialMatchingPreset(mat), true, 'fresh preset apply must match');
-  // After a single edit, isMaterialMatchingPreset must flip to false.
-  mat.cEff = 5;
-  assert.equal(isMaterialMatchingPreset(mat), false, 'edit must flip to "custom"');
+  // bishopDeriveHsDefaultsForMaterial must use Emc as E50_ref and pick a
+  // soil-family-dependent stress-dependency exponent m.
+  const sand = bishopDeriveHsDefaultsForMaterial({ Emc: 15000, sourceType: 'Sand' });
+  assert.equal(sand.E50_ref, 15000, 'sand: E50_ref must equal Emc');
+  assert.equal(sand.Eur_ref, 45000, 'sand: Eur_ref must default to 3 · E50_ref');
+  assert.equal(sand.m, 0.5, 'sand: m must default to 0.5');
+  assert.equal(sand.OCR, 1.0, 'sand: OCR must default to 1.0 (NC)');
+  assert.equal(sand.nu_ur, 0.2, 'sand: ν_ur must default to 0.2');
+  assert.equal(sand.K0_nc, 0, 'sand: K0_nc must default to 0 (Jaky sentinel)');
+
+  const clay = bishopDeriveHsDefaultsForMaterial({ Emc: 3000, sourceType: 'Soft clay' });
+  assert.equal(clay.m, 1.0, 'clay: m must default to 1.0');
+  assert.equal(clay.OCR, 1.0, 'clay: OCR must default to 1.0');
+
+  const mixed = bishopDeriveHsDefaultsForMaterial({ Emc: 10000, sourceType: 'Sandy clay' });
+  assert.equal(mixed.m, 0.75, 'mixed: m must default to 0.75');
+
+  const unknown = bishopDeriveHsDefaultsForMaterial({ Emc: 5000 });
+  assert.equal(unknown.m, 0.75, 'unknown classification: m must default to 0.75 (mid-range)');
+  assert.equal(unknown.OCR, 1.0, 'unknown classification: OCR must default to 1.0');
 
   // Jaky and Rowe sanity.
-  const k = jakyK0nc(30);
-  assert.ok(k > 0.4 && k < 0.6, `jakyK0nc(30) ≈ 0.5 (got ${k})`);
-  const phiCv = rowePhiCvDeg(40, 10);
-  assert.ok(phiCv > 25 && phiCv < 40, `rowePhiCvDeg(40, 10) in (25, 40) (got ${phiCv})`);
-  console.log(`  4 presets verified; applyHsPreset/isMaterialMatchingPreset round-trip OK; Jaky/Rowe sanity OK`);
+  const k = bishopHsJakyK0nc(30);
+  assert.ok(k > 0.4 && k < 0.6, `bishopHsJakyK0nc(30) ≈ 0.5 (got ${k})`);
+  const phiCv = bishopHsRowePhiCvDeg(40, 10);
+  assert.ok(phiCv > 25 && phiCv < 40, `bishopHsRowePhiCvDeg(40, 10) in (25, 40) (got ${phiCv})`);
+
+  console.log(`  Derivation helpers verified; Jaky/Rowe sanity OK`);
   console.log('  PASS');
 }
 
@@ -795,7 +829,7 @@ async function testMonotonicityFromFooting(mod) {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  testPresetsModule();
+  testHsDerivationHelpers();
   const mod = await loadWasm();
   await testDrainedFooting(mod);
   await testSoftClayEmbankment(mod);

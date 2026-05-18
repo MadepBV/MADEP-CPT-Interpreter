@@ -463,7 +463,29 @@ inline GpResponse evaluate_gp_response_ex(
     // meaningful for HS as well.
     out.equivPlasticInc =
         madep::js_mirror::equivalent_plastic_strain_increment(hsRes.plasticIncrement);
-    out.eta = 0.0;
+    // HS mobilisation ratio (spec §5.5.2): η_MC = sin(φ_mob) / sin(φ_eff) ∈ [0, 1].
+    // The existing `mcEta` contour mode reads `eta` and aggregates it on the
+    // canvas (build-result.js lines 248-251, contour mode 'mcEta'). HS must
+    // populate it from the principal decomposition of the corrected stress
+    // so that an HS analysis renders mobilisation just like MC does — the
+    // alternative (eta = 0) shows a flat-zero contour on the canvas, which
+    // matched the user-reported "all 0" symptom for HS runs.
+    {
+      const mc_exact::MaterialParameters mp_eta = material::hs::make_mp_for_eig(
+          rp, std::max(rp.cEff, 0.0), std::max(rp.phi, 0.0));
+      const auto pr_for_eta = mc_exact::principal_stress_projectors_3d_compression_positive(
+          hsRes.stressUpdated, mp_eta);
+      const double s_phi = std::sin(std::max(rp.phi, 0.0));
+      if (s_phi > 1e-9) {
+        const double s_mob = material::hs::mobilised_sin_phi(
+            pr_for_eta.s1, pr_for_eta.s3,
+            std::max(rp.cEff, 0.0),
+            std::max(rp.phi, 0.0));
+        out.eta = std::clamp(s_mob / s_phi, 0.0, 1.0);
+      } else {
+        out.eta = 0.0;
+      }
+    }
     extra.exactBranchKind = static_cast<std::uint8_t>(mc_exact::BranchKind::ELASTIC);
     extra.multiplicityKind = static_cast<std::uint8_t>(mc_exact::MultiplicityKind::DISTINCT);
     extra.localReturnMode = (hsRes.activeSurface != 0) ? 1u : 0u;

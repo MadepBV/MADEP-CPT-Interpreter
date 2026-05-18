@@ -10,6 +10,9 @@ import {
   stage6Constants
 } from './stage6-engineering';
 import {
+  bishopDeriveHsDefaultsForMaterial,
+  bishopHsJakyK0nc,
+  bishopHsRowePhiCvDeg,
   bishopLayerSignature,
   buildBishopModelFromStageLayers,
   importBishopMaterialsFromLayers,
@@ -39,14 +42,6 @@ import {
 import { contourSegmentsForTriangles, sampleSeepageFlowState, sampleSeepageHead, sampleSeepagePorePressure } from './seepage/solver';
 import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-regions';
 import { sampleDeformationState } from './deformation/solver.js';
-import {
-  HS_PRESETS,
-  HS_PRESET_IDS,
-  applyHsPreset as hsApplyPresetToMaterial,
-  isMaterialMatchingPreset as hsIsMaterialMatchingPreset,
-  jakyK0nc as hsJakyK0nc,
-  rowePhiCvDeg as hsRowePhiCvDeg
-} from './deformation/hs-presets.js';
 import {
   buildBeamDeflectionChartConfig,
   buildBeamMomentChartConfig,
@@ -6778,33 +6773,17 @@ function stage6BishopSetMaterialHsField(index, field, value){
   renderStage6();
 }
 
-function stage6BishopApplyHsPreset(index, presetId){
+function stage6BishopAutoFillHsMaterial(index){
+  // Derive a sensible HS-specific block from the material's already-edited
+  // strength/elastic fields (Emc, sourceType). Does NOT touch c'/φ'/ψ'/γ —
+  // those stay shared with MC. The user can refine the resulting fields in
+  // the HS table afterwards.
   ensureStage6State();
   stage6BishopSyncSoilModel();
   const material = S.stage6.bishop.materials?.[index];
   if(!material) return;
-  const id = String(presetId || '');
-  if(!id){
-    // Clear the preset tag without altering values; user is back to "custom".
-    material.hsPresetId = '';
-    material.hsPresetFingerprint = '';
-    stage6BishopInvalidate('Hardening Soil preset cleared.');
-    renderStage6();
-    return;
-  }
-  if(!HS_PRESETS[id]) return;
-  hsApplyPresetToMaterial(material, id);
-  stage6BishopInvalidate(`Hardening Soil preset "${HS_PRESETS[id].label}" applied; rerun deformation analysis.`);
-  renderStage6();
-}
-
-function stage6BishopResetHsPreset(index){
-  ensureStage6State();
-  stage6BishopSyncSoilModel();
-  const material = S.stage6.bishop.materials?.[index];
-  if(!material || !material.hsPresetId || !HS_PRESETS[material.hsPresetId]) return;
-  hsApplyPresetToMaterial(material, material.hsPresetId);
-  stage6BishopInvalidate(`Hardening Soil preset "${HS_PRESETS[material.hsPresetId].label}" reset; rerun deformation analysis.`);
+  material.hs = bishopDeriveHsDefaultsForMaterial(material);
+  stage6BishopInvalidate('Hardening Soil parameters auto-filled from material; rerun deformation analysis.');
   renderStage6();
 }
 
@@ -13230,43 +13209,21 @@ function renderStage6BishopApp(){
       <td><input type="number" step="1" min="0" value="${Number(mat.psiEffDeg ?? mat.psi ?? 0).toFixed(1)}" onchange="stage6BishopSetMaterialField(${index}, 'psi', this.value)"></td>
     </tr>
   `).join('');
-  const hsPresetOptionsHtml = HS_PRESET_IDS.map((id)=>`<option value="${stage6EscAttr(id)}">${stage6EscAttr(HS_PRESETS[id].label)}</option>`).join('');
-  const hsPresetSelectorRows = (bishop.materials || []).map((mat, index)=>{
-    const presetId = String(mat.hsPresetId || '');
-    const isPreset = hsIsMaterialMatchingPreset(mat);
-    const indicator = presetId
-      ? (isPreset
-        ? `<span class="st6-hs-preset-tag st6-hs-preset-tag--preset">preset: ${stage6EscAttr(HS_PRESETS[presetId]?.label || presetId)}</span>`
-        : `<span class="st6-hs-preset-tag st6-hs-preset-tag--custom">custom (edited from ${stage6EscAttr(HS_PRESETS[presetId]?.label || presetId)})</span>`)
-      : `<span class="st6-hs-preset-tag st6-hs-preset-tag--custom">custom</span>`;
-    return `
-      <tr>
-        <td>${stage6EscAttr(mat.label)}</td>
-        <td>
-          <select onchange="stage6BishopApplyHsPreset(${index}, this.value)">
-            <option value="">— select preset —</option>
-            ${hsPresetOptionsHtml.replace(`value="${stage6EscAttr(presetId)}"`, `value="${stage6EscAttr(presetId)}" selected`)}
-          </select>
-        </td>
-        <td>${indicator}</td>
-        <td>
-          <button class="btn sm" onclick="stage6BishopResetHsPreset(${index})"${presetId ? '' : ' disabled'}>Reset to preset</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
   const hsMaterialRows = (bishop.materials || []).map((mat, index)=>{
     const hs = mat.hs || {};
     return `
       <tr>
-        <td>${stage6EscAttr(mat.label)}</td>
+        <td>
+          ${stage6EscAttr(mat.label)}<br>
+          <button class="btn sm" onclick="stage6BishopAutoFillHsMaterial(${index})" title="Re-derive HS-specific defaults from this material's Emc and soil type">Auto-fill from material</button>
+        </td>
         <td><input type="number" step="100" min="1" value="${Number(hs.E50_ref || mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'E50_ref', this.value)"></td>
         <td><input type="number" step="100" min="1" value="${Number(hs.Eoed_ref || hs.E50_ref || mat.Emc || 0).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Eoed_ref', this.value)"></td>
         <td><input type="number" step="100" min="1" value="${Number(hs.Eur_ref || 3 * (hs.E50_ref || mat.Emc || 0)).toFixed(0)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Eur_ref', this.value)"></td>
         <td><input type="number" step="0.05" min="0" max="1" value="${Number(hs.m ?? 0.5).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'm', this.value)"></td>
         <td><input type="number" step="0.01" min="0.01" max="0.499" value="${Number(hs.nu_ur ?? 0.2).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'nu_ur', this.value)"></td>
         <td><input type="number" step="0.01" min="0.01" max="0.999" value="${Number(hs.Rf ?? 0.9).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'Rf', this.value)"></td>
-        <td><input type="number" step="0.1" min="0.1" value="${Number(hs.OCR ?? 1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'OCR', this.value)"></td>
+        <td><input type="number" step="0.1" min="1" value="${Number(hs.OCR ?? 1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'OCR', this.value)" title="Over-consolidation ratio (1 = normally consolidated)"></td>
       </tr>
     `;
   }).join('');
@@ -13286,9 +13243,9 @@ function renderStage6BishopApp(){
     const hs = mat.hs || {};
     const phi = Number(mat.phiEffDeg ?? 0);
     const psi = Number(mat.psiEffDeg ?? mat.psi ?? 0);
-    const phiCv = hsRowePhiCvDeg(phi, psi);
+    const phiCv = bishopHsRowePhiCvDeg(phi, psi);
     const k0ncInput = Number(hs.K0_nc ?? 0);
-    const k0ncEff = k0ncInput > 0 ? k0ncInput : hsJakyK0nc(phi);
+    const k0ncEff = k0ncInput > 0 ? k0ncInput : bishopHsJakyK0nc(phi);
     return `
       <tr>
         <td>${stage6EscAttr(mat.label)}</td>
@@ -13316,13 +13273,7 @@ function renderStage6BishopApp(){
     return warnings;
   });
   const hsMaterialTableHtml = deformationUsesHardeningSoil ? `
-    <div class="st6-help">Hardening Soil: select a PLAXIS-style preset to populate all fields, then refine via the table below. The "Advanced" expander exposes p_ref, K0_nc and void-ratio cutoffs; the derived block shows φ_cv and the K0_nc actually used by the solver.</div>
-    <div style="overflow:auto">
-      <table class="tbl st6-bishop-materials st6-bishop-materials--hs-presets">
-        <thead><tr><th>Layer</th><th>Preset</th><th>Status</th><th></th></tr></thead>
-        <tbody>${hsPresetSelectorRows}</tbody>
-      </table>
-    </div>
+    <div class="st6-help">Hardening Soil: the strength fields (c', φ', ψ', γ, γ_sat) are inherited from the deformation-material editor above. Edit only the HS-specific stiffness fields below; press "Auto-fill from material" to re-derive sensible defaults from the material's Emc and soil type. OCR defaults to 1 (normally consolidated). The "Advanced" expander exposes p_ref, K0_nc and void-ratio cutoffs; the derived block shows φ_cv and the K0_nc actually used by the solver.</div>
     ${hsMaterialWarnings.length ? `<div class="warn">${hsMaterialWarnings.map(stage6EscAttr).join('<br>')}</div>` : ''}
     <div style="overflow:auto">
       <table class="tbl st6-bishop-materials st6-bishop-materials--deformation">
@@ -16704,8 +16655,7 @@ const legacyApi={
   stage6BishopClear,
   stage6BishopSetMaterialField,
   stage6BishopSetMaterialHsField,
-  stage6BishopApplyHsPreset,
-  stage6BishopResetHsPreset,
+  stage6BishopAutoFillHsMaterial,
   stage6BishopSetMaterialPermeability,
   stage6BishopResetMaterialPermeability,
   stage6BishopSetWallField,
