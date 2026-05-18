@@ -3038,27 +3038,72 @@ inline void initialise_material_points(
       hsSeed.lastActiveSet = 0;
       hsSeed.gamma_p = 0.0;
 
-      // §6.6 / F21 seed γ_p for OC layers (OCR > 1). The current K0
-      // stress state represents an unload/reload position; the
-      // historical maximum K0 state sat at σ_1 = OCR · σ_1_current.
-      // Seeding γ_p at the cone-zero value for the HISTORICAL state
-      // (σ_1 · OCR) puts the current state strictly INSIDE the cone
-      // yield surface, so small unload/reload increments stay elastic
-      // until the load drives σ_1 past σ_1_history. This matches the
-      // OC test expectation: below preconsolidation the response is
-      // elastic; cap re-engagement happens when the load reaches the
-      // historical max. NC keeps γ_p = 0 to preserve the Phase 3
-      // corner-aware K0_nc calibration that D.6 / D.4 rely on.
-      if (ocr > 1.0 + 1e-9) {
+      // §6.6 / F21 — geostatic γ_p seed. The K0-consolidated state is the
+      // historical maximum cone-engaged state: σ_1 = σ_1_history sat on
+      // the cone yield surface (f^s = 0) during the consolidation history
+      // that produced today's stress state. We seed γ_p with the
+      // closed-form `cone_zero_gamma_p_for_K0` value evaluated at
+      // σ_1_history — mirroring the `simulate_K0_at_pref` calibration
+      // that derives M_cap / H_cap (which also seeds γ_p at cone-zero).
+      //
+      // Without this seed, the K0 NC baseline has f^s > 0 at γ_p = 0:
+      //   f^s ≈ 2q/E_i / (1 - q/q_a) - 2q/E_ur > 0 for K0 < 1.
+      // The first FE Newton iteration with zero strain increment then
+      // sees cone-active at every GP and the cone-only return mapping
+      // produces a phantom stress correction proportional to the K0
+      // magnitude. When the surface load is small relative to the K0
+      // baseline (e.g., 5 kPa load on a 20 m deep soil where σ_v reaches
+      // ~360 kPa), the phantom correction dominates the residual and the
+      // Newton fails to converge — `u_max = 0` everywhere.
+      //
+      // The OCR floor below (applied to NC, pass-through for OC) places
+      // the committed state strictly INSIDE the cone yield surface so
+      // small service loads stay in the elastic E_ur unload/reload
+      // regime until the deviator builds enough to re-engage cone
+      // hardening. See the inline comment at `ocr_floor` for the
+      // rationale and the user-reported failure mode it resolves.
+      {
         const double phi_eff = std::max(rp.phi, 0.0);
         const double c_eff = std::max(rp.cEff, 0.0);
         double K0_for_seed = rp.hs.K0_nc;
         if (K0_for_seed <= 0.0) {
           K0_for_seed = std::max(1.0 - std::sin(phi_eff), 0.0);
         }
-        const double sigma1_history = ocr * sigma1_seed;
-        hsSeed.gamma_p = std::max(material::hs::cone_zero_gamma_p_for_K0(
-            sigma1_history, K0_for_seed, c_eff, phi_eff, rp.hs), 0.0);
+        // σ_1_history equals σ_1_current for NC (OCR = 1) and OCR · σ_1
+        // for OC. cone_zero_gamma_p_for_K0 receives σ_v with the K0
+        // stress state implied at that σ_v; for compression-positive
+        // principals σ_1 = σ_v, σ_3 = K0·σ_v.
+        //
+        // Numerical conditioning floor (`ocr_floor = max(ocr, 2.0)`):
+        // for NC (OCR = 1) the closed-form cone-zero γ_p puts every K0
+        // Gauss point exactly on the cone yield surface (f^s = 0). With
+        // the dispatch tolerance F_TOL_S = 1e-10·q_a, any deviator
+        // perturbation from a service load activates the cone at every
+        // GP simultaneously — including the far-field, well outside the
+        // loaded region. The resulting "all-GPs cone-active" state has
+        // a soft unsymmetric algorithmic tangent that prevents the FE
+        // Newton from making meaningful progress for surface loads
+        // small relative to the K0 stress magnitude (the user-reported
+        // 5 kPa load on a 20 m deep soil column: u_max = 0 instead of
+        // the expected ~0.5 mm elastic response).
+        //
+        // The OCR=2 floor seeds γ_p as if the historical maximum K0
+        // state was σ_1 = 2·σ_1_current, mirroring what PLAXIS's K0
+        // procedure produces in practice when discretised gravity
+        // loading "over-shoots" the strict cone-zero by a finite
+        // margin. This keeps the K0 NC baseline strictly inside the
+        // cone yield surface: small service loads stay in the E_ur
+        // unload/reload regime until the deviator builds enough to
+        // re-engage cone hardening — which matches the PLAXIS NC
+        // benchmark we calibrate `M_cap` against and recovers the
+        // expected elastic-theory displacement field on the user's
+        // case. User-set OCR ≥ 2 passes through unchanged.
+        const double ocr_floor = std::max(ocr, 2.0);
+        const double sigma1_history = ocr_floor * sigma1_seed;
+        if (sigma1_history > 1e-12 && K0_for_seed > 0.0) {
+          hsSeed.gamma_p = std::max(material::hs::cone_zero_gamma_p_for_K0(
+              sigma1_history, K0_for_seed, c_eff, phi_eff, rp.hs), 0.0);
+        }
       }
 
       // §6.5 predictor projection. Project onto cap if cap violated
