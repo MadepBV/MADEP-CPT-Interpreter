@@ -696,6 +696,13 @@ inline Mat6 compute_xi_dense(const Mat6& D_e,
                              double dlambda,
                              bool& ok);
 
+inline Mat6 compute_xi_dense_two_surface(const Mat6& D_e,
+                                         const Mat6& dms_dsigma,
+                                         double dlambda_s,
+                                         const Mat6& dmc_dsigma,
+                                         double dlambda_c,
+                                         bool& ok);
+
 inline Mat6 compute_simo_hughes_cone_tangent(
     const mce::PrincipalState& principalC,
     const HsAlgorithmicTangentContext& ctx,
@@ -849,6 +856,133 @@ inline Mat6 compute_simo_hughes_cap_tangent(
   for (int i = 0; i < 6; ++i) {
     for (int j = 0; j < 6; ++j) {
       D_ep[i][j] -= Xi_m[i] * XiBT_n[j] * invA;
+    }
+  }
+
+  for (int i = 0; i < 6 && ok; ++i) {
+    for (int j = 0; j < 6 && ok; ++j) ok = std::isfinite(D_ep[i][j]);
+  }
+  return ok ? D_ep : D_e;
+}
+
+inline Mat6 compute_simo_hughes_corner_tangent(
+    const mce::PrincipalState& principalC,
+    const HsAlgorithmicTangentContext& ctx,
+    const Mat6& D_e,
+    bool& ok) {
+  ok = true;
+  const double dl_norm = std::abs(ctx.dlambda_s) + std::abs(ctx.dlambda_c);
+  if (dl_norm < 1e-10 * std::max(frobenius_norm6(D_e), 1.0)) {
+    return D_e;
+  }
+
+  bool dms_ok = false;
+  const Mat6 dmsigma_s = compute_cone_dmdsigma_principal_dense(
+      principalC, ctx, dms_ok);
+  if (!dms_ok) {
+    ok = false;
+    return D_e;
+  }
+  bool dmc_ok = false;
+  const Mat6 dmsigma_c = compute_cap_dmdsigma_principal_dense(
+      principalC, ctx, dmc_ok);
+  if (!dmc_ok) {
+    ok = false;
+    return D_e;
+  }
+
+  bool xi_ok = false;
+  const Mat6 Xi = compute_xi_dense_two_surface(
+      D_e, dmsigma_s, ctx.dlambda_s,
+      dmsigma_c, ctx.dlambda_c,
+      xi_ok);
+  if (!xi_ok) {
+    ok = false;
+    return D_e;
+  }
+
+  bool dtrial_s_ok = false;
+  const Mat6 dtrial_s = compute_cone_dmdtrial_projector_dense(
+      principalC, ctx, dtrial_s_ok);
+  if (!dtrial_s_ok) {
+    ok = false;
+    return D_e;
+  }
+  bool dtrial_c_ok = false;
+  const Mat6 dtrial_c = compute_cap_dmdtrial_projector_dense(
+      principalC, ctx, dtrial_c_ok);
+  if (!dtrial_c_ok) {
+    ok = false;
+    return D_e;
+  }
+  Mat6 dtrial{};
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) {
+      dtrial[i][j] = ctx.dlambda_s * dtrial_s[i][j]
+                   + ctx.dlambda_c * dtrial_c[i][j];
+    }
+  }
+  Mat6 B = mat6_identity();
+  const Mat6 dtrial_De = mat6_mul(dtrial, D_e);
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) B[i][j] -= dtrial_De[i][j];
+  }
+  const Mat6 XiB = mat6_mul(Xi, B);
+
+  double n_s1 = 0.0, n_s2 = 0.0, n_s3 = 0.0;
+  cone_yield_gradient_with_implicit(
+      ctx.regime, ctx.E_i, ctx.E_ur, ctx.q_a, ctx.s1 - ctx.s3,
+      ctx.df_dsigma3_implicit, n_s1, n_s2, n_s3);
+  const Vec6 n_s_t = lift_principal_gradient_to_tensor_voigt(
+      principalC, n_s1, n_s2, n_s3);
+
+  double m_s1 = 0.0, m_s2 = 0.0, m_s3 = 0.0;
+  cone_flow_gradient(ctx.regime, ctx.sin_psi_mob, m_s1, m_s2, m_s3);
+  const Vec6 m_s_t = lift_principal_gradient_to_tensor_voigt(
+      principalC, m_s1, m_s2, m_s3);
+  const Vec6 m_s_eng = tensor_voigt_to_engineering(m_s_t);
+
+  double m_c1 = 0.0, m_c2 = 0.0, m_c3 = 0.0;
+  cap_flow_gradient_from_context(ctx, m_c1, m_c2, m_c3);
+  const Vec6 m_c_t = lift_principal_gradient_to_tensor_voigt(
+      principalC, m_c1, m_c2, m_c3);
+  const Vec6 m_c_eng = tensor_voigt_to_engineering(m_c_t);
+
+  const double normalCorrection =
+      (4.0 / 3.0) * ctx.dlambda_c * ctx.H_cap * (ctx.p_p + ctx.p_t);
+  const Vec6 n_c_eff_t = lift_principal_gradient_to_tensor_voigt(
+      principalC,
+      m_c1 - normalCorrection,
+      m_c2 - normalCorrection,
+      m_c3 - normalCorrection);
+
+  const Vec6 Xi_m_s = lng::mul6x6(Xi, m_s_eng);
+  const Vec6 Xi_m_c = lng::mul6x6(Xi, m_c_eng);
+  const Vec6 XiBT_n_s = transpose_tangent_times_stress_covector(XiB, n_s_t);
+  const Vec6 XiBT_n_c = transpose_tangent_times_stress_covector(XiB, n_c_eff_t);
+
+  const double a00 = stress_covector_dot_stress_vector(n_s_t, Xi_m_s) + 1.0;
+  const double a01 = stress_covector_dot_stress_vector(n_s_t, Xi_m_c);
+  const double a10 = stress_covector_dot_stress_vector(n_c_eff_t, Xi_m_s);
+  const double a11 = stress_covector_dot_stress_vector(n_c_eff_t, Xi_m_c)
+                   + 4.0 * std::max(ctx.H_cap, 0.0)
+                         * (ctx.p_p + ctx.p_t) * (ctx.p_prime + ctx.p_t);
+  const double det = a00 * a11 - a01 * a10;
+  ok = std::isfinite(det) && std::abs(det) > 1e-12;
+  if (!ok) return D_e;
+
+  const double inv_det = 1.0 / det;
+  const double ai00 =  a11 * inv_det;
+  const double ai01 = -a01 * inv_det;
+  const double ai10 = -a10 * inv_det;
+  const double ai11 =  a00 * inv_det;
+
+  Mat6 D_ep = XiB;
+  for (int j = 0; j < 6; ++j) {
+    const double r0 = ai00 * XiBT_n_s[j] + ai01 * XiBT_n_c[j];
+    const double r1 = ai10 * XiBT_n_s[j] + ai11 * XiBT_n_c[j];
+    for (int i = 0; i < 6; ++i) {
+      D_ep[i][j] -= Xi_m_s[i] * r0 + Xi_m_c[i] * r1;
     }
   }
 

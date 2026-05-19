@@ -312,3 +312,71 @@ Validation status:
 - Gate output: `residualRelErr_3x3=1.073878e-08`,
   `directFdRelErr_3x3=1.326512e-06`,
   `dlambda=5.569892e-07`.
+
+## SH-4 - Corner Simo-Hughes Tangent
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` section 2.5
+- `hardening-soil-simo-hughes-upgrade.md` section 4.3.3
+- `hardening-soil-simo-hughes-upgrade.md` section 7, Phase SH-4
+- `hardening-soil-simo-hughes-upgrade.md` section 12.2 and 12.4
+
+Implementation plan:
+
+- Add dense two-surface `Xi` support to `material_hs_tangent.hpp`.
+- Implement `compute_simo_hughes_corner_tangent(...)` with the SH-2/SH-3
+  direction-locked residual split: cone and cap fixed-projector sensitivities
+  enter `Xi`, while trial-projector rotation enters the strain-side
+  `B = I - (Delta lambda_s M_trial_s + Delta lambda_c M_trial_c) D_e`.
+- Build the 2x2 corner consistency matrix with
+  `A[1][0] = n_c,eff^T Xi m_s` only. No direct off-diagonal hardening term is
+  added.
+- Add `scripts/scratch/hs_sh_phase_4.cpp` and
+  `scripts/verify_hs_simo_hughes_phase_4.mjs`.
+- Validate dilatant, near-critical, and non-dilatant corner states against
+  both the residual-sensitivity oracle and direct finite differences.
+
+Hard-halt diagnosis:
+
+- The first corner verifier failed because `Delta lambda_s + Delta lambda_c`
+  was below the mandatory `1e-10 ||D_e||_F` conditioning guard. The returned
+  matrix was exactly the elastic stiffness, so this was a verifier-state
+  failure, not a sign error.
+- Increasing the strain increment produced a larger multiplier but exposed a
+  lag in `return_corner`: the yield residuals converged while the full fixed-
+  point stress residual was still too large for the local oracle. That state is
+  not acceptable for tangent validation because it linearises a tolerance
+  artifact rather than the residual equations.
+- The accepted verifier uses a softer local material (`E50 = Eoed = 3000`,
+  `Eur = 9000`, `H_cap = 1`) plus a mild initial-hardening perturbation
+  (`gamma_p = 0.8 gamma_yield`, `p_p = 0.98 p_p,yield`). This keeps the
+  implemented return map corner-active, clears the guard, and leaves the
+  fixed-point residual smooth enough for the residual oracle.
+
+Review notes:
+
+- The cap stress-coupling enters only through `n_c,eff`; the old direct
+  `H_eff[1][0]` candidate is not present.
+- The cross-coupling verifier records the cap-specific contribution. It is
+  positive on the deliberately dilatant case and cancels to numerical zero
+  when `sin psi_mob = 0`.
+- The near-critical Rowe-transition case stays close to
+  `sin phi_mob = sin phi_cv` while retaining FD parity.
+- Dense `Xi` remains the only SH-4 implementation. No rank-3 Woodbury path was
+  added.
+
+Validation status:
+
+- PASS on `node scripts/verify_hs_simo_hughes_phase_4.mjs`.
+- Gate outputs:
+  - Dilatant: `residualRelErr_3x3=2.289844e-08`,
+    `directFdRelErr_3x3=2.105171e-05`,
+    `dlambdaS=5.497463e-04`, `dlambdaC=8.492471e-07`,
+    `sinPsiMob=1.270177e-01`, `capSpecificCross=1.004054e-01`.
+  - Near-critical: `residualRelErr_3x3=2.449968e-08`,
+    `directFdRelErr_3x3=5.630037e-06`,
+    `sinPhiMob=3.104977e-01`, `sinPhiCv=3.099058e-01`.
+  - Non-dilatant: `residualRelErr_3x3=2.966750e-09`,
+    `directFdRelErr_3x3=1.265520e-05`,
+    `sinPsiMob=0.000000e+00`, `capSpecificCross=-5.820766e-11`.
