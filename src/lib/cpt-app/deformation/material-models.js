@@ -822,10 +822,40 @@ function rotatePrincipalTensorToCompression(principal, basis) {
   );
 }
 
+function principalRepresentationDerivativeForBranch(branchKind) {
+  if (isLowerRepeatedBranchKind(branchKind)) {
+    return [
+      [1, 0, 0],
+      [0, 0.5, 0.5],
+      [0, 0.5, 0.5]
+    ];
+  }
+  if (isUpperRepeatedBranchKind(branchKind)) {
+    return [
+      [0.5, 0.5, 0],
+      [0.5, 0.5, 0],
+      [0, 0, 1]
+    ];
+  }
+  if (branchKind === BRANCH_APEX_FORMAL || branchKind === BRANCH_TENSION_APEX_T123) {
+    return [
+      [1 / 3, 1 / 3, 1 / 3],
+      [1 / 3, 1 / 3, 1 / 3],
+      [1 / 3, 1 / 3, 1 / 3]
+    ];
+  }
+  return [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+  ];
+}
+
 function computeExactElastoplasticTangent(
   D_e,
   activeSurfaces,
   couplingMatrix,
+  branchKind = BRANCH_ELASTIC,
   materialParameters = null,
   trialPrincipalValues = null,
   returnedPrincipalValues = null,
@@ -880,6 +910,17 @@ function computeExactElastoplasticTangent(
       }
     }
   }
+  const representationDerivative = principalRepresentationDerivativeForBranch(branchKind);
+  const representedBdiag = zeroMatrix3();
+  for (let i = 0; i < 3; i += 1) {
+    for (let j = 0; j < 3; j += 1) {
+      for (let k = 0; k < 3; k += 1) {
+        representedBdiag[i][j] +=
+          (Number(representationDerivative?.[i]?.[k]) || 0) *
+          (Number(Bdiag?.[k]?.[j]) || 0);
+      }
+    }
+  }
 
   const shearFactor = Array.from({ length: 3 }, () => [0, 0, 0]);
   for (let i = 0; i < 3; i += 1) {
@@ -918,7 +959,7 @@ function computeExactElastoplasticTangent(
     }
     for (let i = 0; i < 3; i += 1) {
       for (let j = 0; j < 3; j += 1) {
-        returnedRatePrincipal[i][i] += Bdiag[i][j] * trialRatePrincipal[j][j];
+        returnedRatePrincipal[i][i] += representedBdiag[i][j] * trialRatePrincipal[j][j];
       }
     }
     const colStress = compressionPositiveTensor3ToStress6(
@@ -1670,6 +1711,7 @@ function solveExactMcCandidateBranch(
     elasticTangent6x6,
     activeRepresentativeSurfaces,
     principalSolve.couplingMatrix,
+    branchKind,
     materialParameters,
     trialPrincipalValues,
     representedPrincipalValues,

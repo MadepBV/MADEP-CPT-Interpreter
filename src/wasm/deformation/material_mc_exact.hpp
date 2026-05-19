@@ -994,10 +994,40 @@ inline Mat3 rotate_principal_tensor_to_compression(const Mat3& principal,
   return out;
 }
 
+inline Mat3 principal_representation_derivative_for_branch(BranchKind branchKind) {
+  Mat3 R{{
+    {1.0, 0.0, 0.0},
+    {0.0, 1.0, 0.0},
+    {0.0, 0.0, 1.0}
+  }};
+  if (is_lower_repeated_branch_kind(branchKind)) {
+    R = Mat3{{
+      {1.0, 0.0, 0.0},
+      {0.0, 0.5, 0.5},
+      {0.0, 0.5, 0.5}
+    }};
+  } else if (is_upper_repeated_branch_kind(branchKind)) {
+    R = Mat3{{
+      {0.5, 0.5, 0.0},
+      {0.5, 0.5, 0.0},
+      {0.0, 0.0, 1.0}
+    }};
+  } else if (branchKind == BranchKind::APEX_FORMAL ||
+             branchKind == BranchKind::TENSION_APEX_T123) {
+    R = Mat3{{
+      {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0},
+      {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0},
+      {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0}
+    }};
+  }
+  return R;
+}
+
 inline ExactTangentResult compute_exact_elastoplastic_tangent(
     const Mat6& Ce6,
     const std::vector<Surface>& activeSurfaces,
     const std::vector<std::vector<double>>& couplingMatrix,
+    BranchKind branchKind,
     const MaterialParameters& mp,
     const Vec3& trialPrincipalValues,
     const Vec3& returnedPrincipalValues,
@@ -1031,6 +1061,16 @@ inline ExactTangentResult compute_exact_elastoplastic_tangent(
         for (int j = 0; j < 3; ++j) {
           Bdiag[i][j] -= DmColumns[q][i] * scale * activeSurfaces[p].nPrincipal[j];
         }
+      }
+    }
+  }
+  double representedBdiag[3][3]{};
+  const Mat3 representationDerivative =
+      principal_representation_derivative_for_branch(branchKind);
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      for (int k = 0; k < 3; ++k) {
+        representedBdiag[i][j] += representationDerivative[i][k] * Bdiag[k][j];
       }
     }
   }
@@ -1079,7 +1119,7 @@ inline ExactTangentResult compute_exact_elastoplastic_tangent(
     }
     for (int i = 0; i < 3; ++i) {
       for (int j = 0; j < 3; ++j) {
-        returnedRatePrincipal[i][i] += Bdiag[i][j] * trialRatePrincipal[j][j];
+        returnedRatePrincipal[i][i] += representedBdiag[i][j] * trialRatePrincipal[j][j];
       }
     }
     const Mat3 returnedRateComp =
@@ -1371,6 +1411,7 @@ inline CandidateBranchResult solve_exact_mc_candidate_branch(
       elasticTangent6x6,
       activeRepresentativeSurfaces,
       principalSolve.couplingMatrix,
+      branchKind,
       mp,
       trialPrincipalValues,
       representedPrincipalValues,

@@ -488,6 +488,44 @@ Validation status:
 - PASS: `npm run check`.
 - PASS: `npm run build`.
 
+## MC-SH-2 - mc_exact tangent invariant lock
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` section C.4 MC-SH-2 row.
+
+Implementation progress:
+
+- Added `scripts/verify_mc_exact_tangent_invariant.mjs`, which compiles the
+  C++ scratch harness `scripts/scratch/mc_exact_tangent_invariant.cpp`
+  against `material_mc_exact.hpp` and runs branch-frozen central differences.
+- The harness sweeps all ten exact active sets:
+  `face_f13`, `edge_s23`, `edge_s12`, `apex_formal`, `tension_face_t3`,
+  `tension_edge_t23`, `tension_edge_f13_t3`, `tension_corner_s23_t3`,
+  `tension_corner_s12_t3`, and `tension_apex_t123`.
+- Fixture selection rejects repeated trial eigenvalue spectra and requires all
+  six plane-strain FD probes to remain on the same frozen branch.  This avoids
+  testing at non-differentiable spectral points while still exercising the real
+  active-set solver and exact tangent.
+
+Theory correction made during the verifier:
+
+- Repeated-output branches require differentiating the representation map
+  applied after the principal active-system solve.  For lower repeated states
+  the derivative is `diag_row -> [row1, 0.5(row2 + row3), 0.5(row2 + row3)]`;
+  upper repeated states and apex states use the analogous averaging projector.
+- Without this projector derivative, `tension_edge_t23` failed the FD oracle by
+  `3.53e-1` relative even on a distinct trial spectrum.  With the projector
+  derivative, all repeated shear/tension branches match the branch-frozen FD
+  oracle.
+
+Validation status:
+
+- PASS: `node scripts/verify_mc_exact_tangent_invariant.mjs`.
+  Worst relative in-plane FD error was `7.11e-7` on
+  `tension_corner_s12_t3`; all other branches were at or near roundoff.
+- PASS: `node scripts/verify_mc_unchanged_when_off.mjs`.
+
 Finding:
 
 - The reported basis-rotation symptom was a missing eigenvector derivative,
