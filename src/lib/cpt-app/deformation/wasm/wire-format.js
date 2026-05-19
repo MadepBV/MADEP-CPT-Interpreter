@@ -51,6 +51,11 @@ export const HS_TANGENT_MODE_NAMES = Object.freeze({
   3: 'simo-hughes'
 });
 
+export const MC_TANGENT_MODE_NAMES = Object.freeze({
+  0: 'elastic',
+  1: 'continuum'
+});
+
 export function constitutiveKindFor(name) {
   const lower = String(name || '').toLowerCase();
   if (lower === 'linear-elastic') return CONSTITUTIVE_KIND.LinearElastic;
@@ -136,9 +141,22 @@ function hsParam(region, name, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function writeHsParams(writeF64, region, isHs) {
+function sharedConsistentTangentParam(region, fallback = 0) {
+  const mc = region?.mc && typeof region.mc === 'object' ? region.mc : {};
+  // MC defaults must never inherit the HS-side default flip. The shared C++
+  // slot is reused, but MC turns on only through an explicit MC/top-level flag.
+  const value = region?.useConsistentTangent ?? mc.useConsistentTangent;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  return value === true ? 1 : fallback;
+}
+
+function writeHsParams(writeF64, region, isHs, isMcPlastic = false) {
   if (!isHs) {
-    for (let i = 0; i < 13; i += 1) writeF64(0);
+    for (let i = 0; i < 12; i += 1) writeF64(0);
+    // MC-SH-1 reuses the final HS slot as the shared per-region
+    // consistent-tangent selector. Non-MC/non-HS models keep zero.
+    writeF64(isMcPlastic && sharedConsistentTangentParam(region, 0) >= 0.5 ? 1 : 0);
     return;
   }
   const e50 = Math.max(hsParam(region, 'E50_ref', region?.Emc || 0), 0);
@@ -310,6 +328,7 @@ export function encodeInputBuffer({
 
   // Regions.
   const isHsModel = constitutiveU === CONSTITUTIVE_KIND.HardeningSoil;
+  const isMcPlasticModel = constitutiveU === CONSTITUTIVE_KIND.McPlastic;
   for (let i = 0; i < numRegions; i += 1) {
     const r = regions[i] || {};
     writeF64(Math.max(Number(r.Emc) || 1, 1));
@@ -326,7 +345,7 @@ export function encodeInputBuffer({
     writeU8(r.symmetrizeEpTangent === true ? 1 : 0);
     writeU8(0);
     writeU8(0);
-    writeHsParams(writeF64, r, isHsModel);
+    writeHsParams(writeF64, r, isHsModel, isMcPlasticModel);
   }
 
   // Constraints.
@@ -449,7 +468,9 @@ export function decodeOutputBuffer(bytes) {
       tensionActive: readU8() === 1,
       plasticEverActive: readU8() === 1
     };
-    readU8();
+    const mcTangentModeCode = readU8();
+    state.mcTangentModeCode = mcTangentModeCode;
+    state.mcTangentMode = MC_TANGENT_MODE_NAMES[mcTangentModeCode] || 'unknown';
     state.hs = readHsState(readF64, readU8, hasHsPayload);
     gpStates[gp] = state;
   }

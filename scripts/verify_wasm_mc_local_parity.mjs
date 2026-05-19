@@ -65,7 +65,8 @@ const material = Object.freeze({
   psiEffDeg: 5,
   sigmaTAllow: 0,
   useTensionCutoff: true,
-  symmetrizeEpTangent: false
+  symmetrizeEpTangent: false,
+  useConsistentTangent: true
 });
 
 async function loadWasm() {
@@ -145,7 +146,7 @@ function encodeLocalInput({ strainTrial6, committedState, previousTrialState = n
   writer.u8(material.useTensionCutoff !== false ? 1 : 0);
   writer.u8(material.symmetrizeEpTangent === true ? 1 : 0);
   writer.u8(previousTrialState ? 1 : 0);
-  writer.u8(0);
+  writer.u8(material.useConsistentTangent === true ? 1 : 0);
   writeState(writer, committedState);
   if (previousTrialState) writeState(writer, previousTrialState);
   writer.f64s(strainTrial6);

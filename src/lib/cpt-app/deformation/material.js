@@ -140,6 +140,11 @@ export function prepareMechanicalMaterial(material, warnings = []) {
     // unsymmetric. Preserve that by default unless the user explicitly asks
     // for a symmetrized approximation.
     symmetrizeEpTangent: material?.symmetrizeEpTangent === true,
+    // Shared HS/MC Simo-Hughes-equivalent tangent selector. MC defaults
+    // OFF; the maintainer can flip this one JS-side field after validation.
+    useConsistentTangent:
+      material?.useConsistentTangent === true ||
+      Number(material?.useConsistentTangent ?? material?.mc?.useConsistentTangent) >= 0.5,
     useTensionCutoff: material?.useTensionCutoff !== false,
     useCompressionYield: material?.useCompressionYield === true
   };

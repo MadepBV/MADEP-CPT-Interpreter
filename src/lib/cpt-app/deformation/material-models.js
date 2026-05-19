@@ -773,7 +773,64 @@ function activeYieldSurfaceLabelFromActiveSet(activeSurfaces = []) {
   return YIELD_SURFACE_NONE;
 }
 
-function computeExactElastoplasticTangent(D_e, activeSurfaces, couplingMatrix, materialParameters = null) {
+function principalProjectorBasisMatrix(projectors) {
+  const e1 = rankOneProjectorToDirection(projectors?.P1, [1, 0, 0]);
+  let e2 = rankOneProjectorToDirection(projectors?.P2, [0, 1, 0]);
+  let e3 = crossVector3(e1, e2);
+  if (!(vectorNorm3(e3) > 1e-10)) {
+    e3 = rankOneProjectorToDirection(projectors?.P3, [0, 0, 1]);
+  } else {
+    e3 = normalizeVector3(e3, [0, 0, 1]);
+  }
+  e2 = normalizeVector3(crossVector3(e3, e1), e2);
+  return [
+    [e1[0], e2[0], e3[0]],
+    [e1[1], e2[1], e3[1]],
+    [e1[2], e2[2], e3[2]]
+  ];
+}
+
+function rotateCompressionTensorToPrincipal(tensor, basis) {
+  return Array.from({ length: 3 }, (_row, i) =>
+    Array.from({ length: 3 }, (_col, j) => {
+      let value = 0;
+      for (let a = 0; a < 3; a += 1) {
+        for (let b = 0; b < 3; b += 1) {
+          value += (Number(basis?.[a]?.[i]) || 0) *
+            (Number(tensor?.[a]?.[b]) || 0) *
+            (Number(basis?.[b]?.[j]) || 0);
+        }
+      }
+      return value;
+    })
+  );
+}
+
+function rotatePrincipalTensorToCompression(principal, basis) {
+  return Array.from({ length: 3 }, (_row, a) =>
+    Array.from({ length: 3 }, (_col, b) => {
+      let value = 0;
+      for (let i = 0; i < 3; i += 1) {
+        for (let j = 0; j < 3; j += 1) {
+          value += (Number(basis?.[a]?.[i]) || 0) *
+            (Number(principal?.[i]?.[j]) || 0) *
+            (Number(basis?.[b]?.[j]) || 0);
+        }
+      }
+      return value;
+    })
+  );
+}
+
+function computeExactElastoplasticTangent(
+  D_e,
+  activeSurfaces,
+  couplingMatrix,
+  materialParameters = null,
+  trialPrincipalValues = null,
+  returnedPrincipalValues = null,
+  trialProjectors = null
+) {
   if (!Array.isArray(activeSurfaces) || activeSurfaces.length === 0) return cloneMatrix6(D_e);
   // Coupling-matrix entries `H_pq = ∇F_p · D_e · ∇G_q` carry stress
   // units (typically of order Young's modulus, i.e. ~22 000 kPa for
@@ -793,22 +850,82 @@ function computeExactElastoplasticTangent(D_e, activeSurfaces, couplingMatrix, m
   const pivotTolerance = relativePivotTolerance(couplingMatrix);
   const inverseCoupling = invertDenseMatrix(couplingMatrix, pivotTolerance);
   if (!inverseCoupling) return null;
-  const correction = zeroMatrix6();
-  const DmColumns = activeSurfaces.map((surface) => multiplyMatrix6x6Vector6(D_e, surface.m6));
-  const DnColumns = activeSurfaces.map((surface) => multiplyMatrix6x6Vector6(D_e, surface.n6));
-  for (let rowIndex = 0; rowIndex < activeSurfaces.length; rowIndex += 1) {
-    for (let colIndex = 0; colIndex < activeSurfaces.length; colIndex += 1) {
-      const scale = Number(inverseCoupling?.[rowIndex]?.[colIndex]) || 0;
+
+  if (!Array.isArray(trialPrincipalValues) ||
+      !Array.isArray(returnedPrincipalValues) ||
+      !trialProjectors) {
+    return cloneMatrix6(D_e);
+  }
+
+  const D_n = principalElasticMatrix3x3(materialParameters);
+  const Bdiag = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+  ];
+  const DmColumns = activeSurfaces.map((surface) =>
+    multiplyMatrix3x3Vector3(D_n, surface.mPrincipal)
+  );
+  for (let q = 0; q < activeSurfaces.length; q += 1) {
+    for (let p = 0; p < activeSurfaces.length; p += 1) {
+      const scale = Number(inverseCoupling?.[q]?.[p]) || 0;
       if (!Number.isFinite(scale) || Math.abs(scale) <= 0) continue;
-      const outer = outerProduct6(DmColumns[rowIndex], DnColumns[colIndex], scale);
-      for (let i = 0; i < 6; i += 1) {
-        for (let j = 0; j < 6; j += 1) {
-          correction[i][j] += Number(outer?.[i]?.[j]) || 0;
+      for (let i = 0; i < 3; i += 1) {
+        for (let j = 0; j < 3; j += 1) {
+          Bdiag[i][j] -=
+            (Number(DmColumns?.[q]?.[i]) || 0) *
+            scale *
+            (Number(activeSurfaces?.[p]?.nPrincipal?.[j]) || 0);
         }
       }
     }
   }
-  const tangent = subtractMatrix6(D_e, correction);
+
+  const shearFactor = Array.from({ length: 3 }, () => [0, 0, 0]);
+  for (let i = 0; i < 3; i += 1) {
+    for (let j = i + 1; j < 3; j += 1) {
+      const denom = (Number(trialPrincipalValues?.[i]) || 0) - (Number(trialPrincipalValues?.[j]) || 0);
+      const scale = Math.max(
+        Math.abs(Number(trialPrincipalValues?.[i]) || 0),
+        Math.abs(Number(trialPrincipalValues?.[j]) || 0),
+        Math.abs(Number(returnedPrincipalValues?.[i]) || 0),
+        Math.abs(Number(returnedPrincipalValues?.[j]) || 0),
+        1
+      );
+      if (Math.abs(denom) <= 1e-10 * scale) return cloneMatrix6(D_e);
+      const factor = ((Number(returnedPrincipalValues?.[i]) || 0) -
+        (Number(returnedPrincipalValues?.[j]) || 0)) / denom;
+      shearFactor[i][j] = factor;
+      shearFactor[j][i] = factor;
+    }
+  }
+
+  const basis = principalProjectorBasisMatrix(trialProjectors);
+  const tangent = zeroMatrix6();
+  for (let col = 0; col < 6; col += 1) {
+    const strainBasis = [0, 0, 0, 0, 0, 0];
+    strainBasis[col] = 1;
+    const trialStressRate = multiplyMatrix6x6Vector6(D_e, strainBasis);
+    const trialRatePrincipal = rotateCompressionTensorToPrincipal(
+      compressionPositiveStressTensor3From6(trialStressRate),
+      basis
+    );
+    const returnedRatePrincipal = zeroMatrix3();
+    for (let i = 0; i < 3; i += 1) {
+      for (let j = 0; j < 3; j += 1) {
+        if (i !== j) returnedRatePrincipal[i][j] = shearFactor[i][j] * trialRatePrincipal[i][j];
+      }
+    }
+    for (let i = 0; i < 3; i += 1) {
+      for (let j = 0; j < 3; j += 1) {
+        returnedRatePrincipal[i][i] += Bdiag[i][j] * trialRatePrincipal[j][j];
+      }
+    }
+    const colStress = compressionPositiveTensor3ToStress6(
+      rotatePrincipalTensorToCompression(returnedRatePrincipal, basis)
+    );
+    for (let row = 0; row < 6; row += 1) tangent[row][col] = Number(colStress?.[row]) || 0;
+  }
   return materialParameters?.symmetrizeEpTangent === true ? symmetrizeMatrix6(tangent) : tangent;
 }
 
@@ -1552,8 +1669,15 @@ function solveExactMcCandidateBranch(
   const algorithmicTangent6x6 = computeExactElastoplasticTangent(
     elasticTangent6x6,
     activeRepresentativeSurfaces,
-    tangentCouplingMatrix,
-    materialParameters
+    principalSolve.couplingMatrix,
+    materialParameters,
+    trialPrincipalValues,
+    representedPrincipalValues,
+    {
+      P1: trialPrincipal.P1,
+      P2: trialPrincipal.P2,
+      P3: trialPrincipal.P3
+    }
   );
   if (!algorithmicTangent6x6) {
     return {

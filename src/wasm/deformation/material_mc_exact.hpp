@@ -933,22 +933,75 @@ inline ActiveSystemResult solve_exact_mc_active_system_principal(
 }
 
 // ---------------------------------------------------------------------------
-// JS:776 computeExactElastoplasticTangent — multi-surface consistent
-// algorithmic tangent built from the per-branch active surfaces and
-// the global-frame coupling matrix.
-//
-//   C^ep = C^e - Σ_{p,q} H^{-1}_{p,q} (C^e m_q) ⊗ (n_p C^e),  with
-//   H_{p,q} = n_p · C^e · m_q.
+// JS:776 computeExactElastoplasticTangent — branch-frozen spectral
+// derivative of the exact active-set return. The returned tensor is
+// f(σ_trial) = Q_trial diag(s_return(s_trial)) Q_trial^T. The diagonal
+// principal block is I - D_n M H^{-1} N^T, with H_{p,q} = n_p · D_n · m_q;
+// the off-diagonal block is the divided-difference eigenvector derivative.
 // ---------------------------------------------------------------------------
 struct ExactTangentResult {
   bool valid{ false };
+  bool elasticFallback{ false };
   Mat6 tangent6x6{};
 };
+
+inline Mat3 principal_projector_basis_matrix(const PrincipalProjectors& proj) {
+  const Vec3 e1 = jsm::rank_one_projector_to_direction(proj.P1, Vec3{1.0, 0.0, 0.0});
+  Vec3 e2 = jsm::rank_one_projector_to_direction(proj.P2, Vec3{0.0, 1.0, 0.0});
+  Vec3 e3 = jsm::cross_vector3(e1, e2);
+  if (!(jsm::vector_norm3(e3) > 1e-10)) {
+    e3 = jsm::rank_one_projector_to_direction(proj.P3, Vec3{0.0, 0.0, 1.0});
+  } else {
+    e3 = jsm::normalize_vector3(e3, Vec3{0.0, 0.0, 1.0});
+  }
+  // Rebuild e2 from e3 x e1 so the basis is orthonormal even when projector
+  // column extraction carried small roundoff.
+  e2 = jsm::normalize_vector3(jsm::cross_vector3(e3, e1), e2);
+  return Mat3{{
+    {e1[0], e2[0], e3[0]},
+    {e1[1], e2[1], e3[1]},
+    {e1[2], e2[2], e3[2]}
+  }};
+}
+
+inline Mat3 rotate_compression_tensor_to_principal(const Mat3& tensor,
+                                                   const Mat3& basis) {
+  Mat3 out{};
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      double v = 0.0;
+      for (int a = 0; a < 3; ++a) {
+        for (int b = 0; b < 3; ++b) v += basis[a][i] * tensor[a][b] * basis[b][j];
+      }
+      out[i][j] = v;
+    }
+  }
+  return out;
+}
+
+inline Mat3 rotate_principal_tensor_to_compression(const Mat3& principal,
+                                                   const Mat3& basis) {
+  Mat3 out{};
+  for (int a = 0; a < 3; ++a) {
+    for (int b = 0; b < 3; ++b) {
+      double v = 0.0;
+      for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) v += basis[a][i] * principal[i][j] * basis[b][j];
+      }
+      out[a][b] = v;
+    }
+  }
+  return out;
+}
+
 inline ExactTangentResult compute_exact_elastoplastic_tangent(
     const Mat6& Ce6,
     const std::vector<Surface>& activeSurfaces,
     const std::vector<std::vector<double>>& couplingMatrix,
-    const MaterialParameters& mp) {
+    const MaterialParameters& mp,
+    const Vec3& trialPrincipalValues,
+    const Vec3& returnedPrincipalValues,
+    const PrincipalProjectors& trialProjectors) {
   ExactTangentResult out;
   if (activeSurfaces.empty()) {
     out.valid = true;
@@ -961,25 +1014,79 @@ inline ExactTangentResult compute_exact_elastoplastic_tangent(
     out.valid = false;
     return out;
   }
-  Mat6 correction = jsm::zero_matrix6();
   const std::size_t na = activeSurfaces.size();
-  std::vector<Vec6> DmColumns(na);
-  std::vector<Vec6> DnColumns(na);
-  for (std::size_t i = 0; i < na; ++i) {
-    DmColumns[i] = jsm::multiply_matrix6x6_vector6(Ce6, activeSurfaces[i].m6);
-    DnColumns[i] = jsm::multiply_matrix6x6_vector6(Ce6, activeSurfaces[i].n6);
+  const Mat3 Dn = principal_elastic_matrix_3x3(mp);
+
+  double Bdiag[3][3]{};
+  for (int i = 0; i < 3; ++i) Bdiag[i][i] = 1.0;
+  std::vector<Vec3> DmColumns(na);
+  for (std::size_t q = 0; q < na; ++q) {
+    DmColumns[q] = jsm::multiply_matrix3x3_vector3(Dn, activeSurfaces[q].mPrincipal);
   }
-  for (std::size_t i = 0; i < na; ++i) {
-    for (std::size_t j = 0; j < na; ++j) {
-      const double scale = inverseCoupling[i][j];
+  for (std::size_t q = 0; q < na; ++q) {
+    for (std::size_t p = 0; p < na; ++p) {
+      const double scale = inverseCoupling[q][p];
       if (!std::isfinite(scale) || scale == 0.0) continue;
-      // JS: outerProduct6(DmColumns[i], DnColumns[j], scale)
-      const Mat6 outer = jsm::outer_product6(DmColumns[i], DnColumns[j], scale);
-      for (int r = 0; r < 6; ++r)
-        for (int c = 0; c < 6; ++c) correction[r][c] += outer[r][c];
+      for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+          Bdiag[i][j] -= DmColumns[q][i] * scale * activeSurfaces[p].nPrincipal[j];
+        }
+      }
     }
   }
-  Mat6 tangent = jsm::subtract_matrix6(Ce6, correction);
+
+  double shearFactor[3][3]{};
+  bool spectralOk = true;
+  for (int i = 0; i < 3; ++i) {
+    for (int j = i + 1; j < 3; ++j) {
+      const double denom = trialPrincipalValues[i] - trialPrincipalValues[j];
+      const double scale = std::max({
+          std::abs(trialPrincipalValues[i]),
+          std::abs(trialPrincipalValues[j]),
+          std::abs(returnedPrincipalValues[i]),
+          std::abs(returnedPrincipalValues[j]),
+          1.0});
+      if (std::abs(denom) <= 1e-10 * scale) {
+        spectralOk = false;
+        continue;
+      }
+      const double factor = (returnedPrincipalValues[i] - returnedPrincipalValues[j]) / denom;
+      shearFactor[i][j] = factor;
+      shearFactor[j][i] = factor;
+    }
+  }
+  if (!spectralOk) {
+    out.valid = true;
+    out.elasticFallback = true;
+    out.tangent6x6 = Ce6;
+    return out;
+  }
+
+  const Mat3 basis = principal_projector_basis_matrix(trialProjectors);
+  Mat6 tangent{};
+  for (int col = 0; col < 6; ++col) {
+    Vec6 strainBasis{};
+    strainBasis[col] = 1.0;
+    const Vec6 trialStressRateTens = jsm::multiply_matrix6x6_vector6(Ce6, strainBasis);
+    const Mat3 trialRateComp = jsm::compression_positive_stress_tensor3_from6(trialStressRateTens);
+    const Mat3 trialRatePrincipal =
+        rotate_compression_tensor_to_principal(trialRateComp, basis);
+    Mat3 returnedRatePrincipal{};
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        if (i != j) returnedRatePrincipal[i][j] = shearFactor[i][j] * trialRatePrincipal[i][j];
+      }
+    }
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        returnedRatePrincipal[i][i] += Bdiag[i][j] * trialRatePrincipal[j][j];
+      }
+    }
+    const Mat3 returnedRateComp =
+        rotate_principal_tensor_to_compression(returnedRatePrincipal, basis);
+    const Vec6 colStressTens = jsm::compression_positive_tensor3_to_stress6(returnedRateComp);
+    for (int row = 0; row < 6; ++row) tangent[row][col] = colStressTens[row];
+  }
   if (mp.symmetrizeEpTangent) tangent = jsm::symmetrize_matrix6(tangent);
   out.tangent6x6 = tangent;
   out.valid = true;
@@ -1261,7 +1368,13 @@ inline CandidateBranchResult solve_exact_mc_candidate_branch(
   }
 
   ExactTangentResult tangentResult = compute_exact_elastoplastic_tangent(
-      elasticTangent6x6, activeRepresentativeSurfaces, tangentCoupling, mp);
+      elasticTangent6x6,
+      activeRepresentativeSurfaces,
+      principalSolve.couplingMatrix,
+      mp,
+      trialPrincipalValues,
+      representedPrincipalValues,
+      PrincipalProjectors{trialPrincipal.P1, trialPrincipal.P2, trialPrincipal.P3});
   if (!tangentResult.valid) {
     res.converged = false;
     res.tangentQuality = TangentQuality::SINGULAR;

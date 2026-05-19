@@ -677,7 +677,9 @@ int madepRunDeformationAnalysis(
     q = write_u8(q, mp.plasticActive);
     q = write_u8(q, mp.tensionCutoffActive);
     q = write_u8(q, mp.plasticEverActive);
-    q = write_u8(q, 0);
+    // MC-SH-1: reuse the existing GP pad byte for MC tangent mode
+    // (0=elastic/modified Newton, 1=exact continuum). Older decoders skip it.
+    q = write_u8(q, mp.mcTangentMode);
     if (hasHsPayload) {
       q = write_f64(q, mp.hs.gamma_p);
       q = write_f64(q, mp.hs.p_p);
@@ -795,8 +797,9 @@ int madepRunMcPlasticMaterialPoint(
   p = read_u8(p, rp.useTensionCutoff);
   p = read_u8(p, rp.symmetrize);
   p = read_u8(p, previousPresent);
-  std::uint8_t pad = 0;
-  p = read_u8(p, pad);
+  std::uint8_t useConsistentTangent = 0;
+  p = read_u8(p, useConsistentTangent);
+  rp.hs.useConsistentTangent = useConsistentTangent != 0u ? 1.0 : 0.0;
 
   MaterialPoint committed;
   p = read_material_point_state(p, committed);

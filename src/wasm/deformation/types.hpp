@@ -236,6 +236,9 @@ struct MaterialPoint {
   std::uint8_t hasRepresentativeProjectors{ 0 };
   std::uint8_t currentlyMcActive{ 0 };
   std::uint8_t localFallbackUsed{ 0 };
+  // MC-SH tangent mode: 0 = elastic/modified Newton, 1 = exact continuum
+  // tangent. Runtime-only; exposed through an existing GP output pad byte.
+  std::uint8_t mcTangentMode{ 0 };
   std::array<std::array<double, 3>, 3> repP1{};
   std::array<std::array<double, 3>, 3> repP2{};
   std::array<std::array<double, 3>, 3> repP3{};

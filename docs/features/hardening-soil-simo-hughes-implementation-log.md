@@ -461,3 +461,90 @@ Post-fix validation:
   D.3 median/p99/max = `2/3/3`;
   D.6 median/p99/max = `3/6/6`;
   D.7 median/p99/max = `1/5/6`.
+
+## MC-SH-0 - Smooth Engineering MC Tangent
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` sections C.1, C.2, C.4
+  MC-SH-0, and C.5 `material_mc.hpp:482-488`.
+
+Implementation progress:
+
+- Added a local FD diagnostic for `continuum_tangent_mc_global`.
+- Fixed the smooth engineering MC tangent by differentiating the full
+  spectral return map, not only the principal stress values.  The diagonal
+  block is the returned-principal-stress sensitivity, while the off-diagonal
+  block uses the spectral divided difference
+  `(s_i^ret - s_j^ret) / (s_i^trial - s_j^trial)`.
+
+Validation status:
+
+- PASS: `node scripts/verify_mc_simo_hughes_phase_0.mjs`.
+- PASS: `npm run build:wasm:deformation`.
+- PASS: `node scripts/verify_wasm_mc_unit.mjs`.
+- PASS: `node scripts/verify_wasm_mc_local_parity.mjs`.
+- PASS: `node scripts/verify_wasm_deformation_smoke.mjs`.
+- PASS: `npm run check`.
+- PASS: `npm run build`.
+
+Finding:
+
+- The reported basis-rotation symptom was a missing eigenvector derivative,
+  not a wrong Voigt shear convention.  The local tangent must differentiate
+  both the returned principal values and the eigenbasis induced by the trial
+  stress tensor.
+
+## MC-SH-1 - Live Exact-Path Selector / GMRES Dispatch
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` sections C.5
+  `material_mc.hpp:491`, `solver.hpp:1082-1107/1352`, and C.8.
+
+Implementation progress:
+
+- Found a doc/code mismatch: the live finite-element MC path is
+  `solver.hpp::evaluate_gp_response_ex` using `material_mc_exact.hpp`, not
+  the older engineering `material_mc.hpp::run_mc_return_mapping` path.
+- Added the MC `useConsistentTangent` selector on that live path.  OFF returns
+  the elastic modified-Newton tangent `C`; ON returns the exact continuum
+  tangent and marks Gauss-point telemetry as `mcTangentMode = continuum`.
+- Reused the existing HS v11 `useConsistentTangent` wire slot for MC region
+  materials.  MC defaults remain OFF; no WIRE_VERSION bump was needed.
+- Routed non-associated MC analysis plasticity to GMRES only when the selector
+  is ON.  MC safety remains excluded from the asymmetric dispatch; existing HS
+  GMRES safety behavior is intentionally preserved because the HS fix/theory
+  docs require it.
+- Extended the HS continuation secant predictor to MC consistent-tangent
+  analysis steps.  This changes only the initial Newton iterate for the same
+  target load factor and keeps the residual equations, return map, and accepted
+  load path unchanged.
+
+Spec amendment / theory note:
+
+- The MC-SH-1 FD oracle refuted the earlier Appendix C statement that
+  `compute_exact_elastoplastic_tangent` needed no math change.  The live
+  exact-active-set path had the same spectral derivative gap as MC-SH-0:
+  principal sensitivities alone are insufficient when the trial eigenvectors
+  rotate.  The corrected tangent differentiates the branch-frozen spectral
+  tensor function:
+  diagonal entries use `I - D_n M H^{-1} N^T`; off-diagonal entries use the
+  returned/trial divided differences.  Near repeated trial eigenvalues remain
+  nonsmooth and use the documented elastic fallback.
+
+Validation status:
+
+- PASS: `npm run build:wasm:deformation`.
+- PASS: `node scripts/verify_mc_simo_hughes_phase_1.mjs`.
+  Relative in-plane FD errors: triaxial `4.71e-12`, oedometric `8.70e-12`,
+  rotated footing `1.39e-11`.
+- PASS: `node scripts/verify_mc_simo_hughes_newton_count.mjs`.
+  Service-load MC fixture reached full load with active plasticity, GMRES
+  dispatch, and max accepted-step Newton count `3`.
+- PASS: `node scripts/verify_mc_unchanged_when_off.mjs`.
+- PASS: `node scripts/verify_wasm_mc_local_parity.mjs`.
+- PASS: `node scripts/verify_wasm_mc_unit.mjs`.
+- PASS: `node scripts/verify_wasm_deformation_smoke.mjs`.
+- PASS: `npm run check`.
+- PASS: `npm run build`.

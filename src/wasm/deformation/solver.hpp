@@ -366,6 +366,7 @@ struct GpResponseExtra {
   std::uint8_t hasRepresentativeProjectors{ 0 };
   std::uint8_t localReturnMode{ 0 };
   std::uint8_t localFallbackUsed{ 0 };
+  std::uint8_t mcTangentMode{ 0 };
   std::array<std::array<double, 3>, 3> repP1{};
   std::array<std::array<double, 3>, 3> repP2{};
   std::array<std::array<double, 3>, 3> repP3{};
@@ -501,6 +502,7 @@ inline GpResponse evaluate_gp_response_ex(
 
   (void)symmetrize;
   const bool materialSymmetrize = rp.symmetrize != 0u;
+  const bool mcUseConsistentTangent = rp.hs.useConsistentTangent >= 0.5;
   const mc_exact::MaterialParameters mp = material_parameters_from_region(rp, materialSymmetrize);
 
   if (kind == ConstitutiveKind::McReducedStiffness) {
@@ -627,7 +629,7 @@ inline GpResponse evaluate_gp_response_ex(
   if (usedSmoothFallback) {
     out.stress = smooth.stress6;
     out.plasticInc = smooth.plasticStrainIncrement6;
-    out.tangent = smooth.algorithmicTangent6x6;
+    out.tangent = mcUseConsistentTangent ? smooth.algorithmicTangent6x6 : C;
     out.equivPlasticInc = madep::js_mirror::equivalent_plastic_strain_increment(out.plasticInc);
     out.eta = mc_eta_from_stress(out.stress, mp);
     out.plasticActive = 1u;
@@ -644,6 +646,7 @@ inline GpResponse evaluate_gp_response_ex(
     extra.repP3 = committed.repP3;
     extra.localReturnMode = 2u;
     extra.localFallbackUsed = 1u;
+    extra.mcTangentMode = mcUseConsistentTangent ? 1u : 0u;
     extra.stateChanged = (committed.exactBranchKind != extra.exactBranchKind) ? 1u : 0u;
     return out;
   }
@@ -671,7 +674,7 @@ inline GpResponse evaluate_gp_response_ex(
 
   out.stress = local.stress6_tens;
   out.plasticInc = local.plasticStrainIncrement6;
-  out.tangent = local.algorithmicTangent6x6;
+  out.tangent = mcUseConsistentTangent ? local.algorithmicTangent6x6 : C;
   out.plasticActive = finalIsPlasticActive ? 1u : 0u;
   out.tensionActive = mc_exact::is_tension_branch_kind(local.acceptedBranchKind) ? 1u : 0u;
   out.equivPlasticInc = madep::js_mirror::equivalent_plastic_strain_increment(local.plasticStrainIncrement6);
@@ -684,6 +687,7 @@ inline GpResponse evaluate_gp_response_ex(
   extra.repP3 = local.representativeProjectors.P3;
   extra.localReturnMode = 1u;
   extra.localFallbackUsed = 0u;
+  extra.mcTangentMode = mcUseConsistentTangent ? 1u : 0u;
   extra.stateChanged = (committed.exactBranchKind != extra.exactBranchKind) ? 1u : 0u;
   return out;
 }
@@ -829,6 +833,7 @@ inline AssembleOutput assemble_global(
       trialMp.currentlyMcActive = resp.plasticActive;
       trialMp.localReturnMode = extra.localReturnMode;
       trialMp.localFallbackUsed = extra.localFallbackUsed;
+      trialMp.mcTangentMode = extra.mcTangentMode;
       if (kind == ConstitutiveKind::HardeningSoil) {
         trialMp.hs = extra.hsState;
         // Phase 5 diagnostics: aggregate per-GP HS failure / iteration
@@ -1661,6 +1666,30 @@ inline bool hardening_soil_consistent_tangent_enabled(const std::vector<RegionPa
   });
 }
 
+inline bool mohr_coulomb_consistent_tangent_enabled(const std::vector<RegionParams>* regions) {
+  if (!regions) return false;
+  return std::any_of(regions->begin(), regions->end(), [](const RegionParams& region) {
+    return region.hs.useConsistentTangent >= 0.5;
+  });
+}
+
+inline bool mohr_coulomb_has_non_associated_flow(const std::vector<RegionParams>* regions) {
+  if (!regions) return false;
+  return std::any_of(regions->begin(), regions->end(), [](const RegionParams& region) {
+    return std::abs(region.phi - region.psi) > 1e-12;
+  });
+}
+
+inline bool phase_may_need_unsymmetric_solver(const PhaseContext& ctx) {
+  const bool mcAnalysisConsistent =
+      ctx.kind == ConstitutiveKind::McPlastic &&
+      ctx.phaseKind != PhaseKind::SafetyCphi &&
+      !ctx.symmetrize &&
+      mohr_coulomb_consistent_tangent_enabled(ctx.regions) &&
+      mohr_coulomb_has_non_associated_flow(ctx.regions);
+  return mcAnalysisConsistent || ctx.kind == ConstitutiveKind::HardeningSoil;
+}
+
 inline SafetyCurvePoint make_safety_curve_point(
     const PhaseContext& ctx,
     const AssembleOutput& assembly,
@@ -1767,14 +1796,10 @@ inline PhaseResult run_safety_arc_length_phase(
   std::vector<double> internalForceFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> residualFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> diagInv;
-  // Per docs/features/hardening-soil-fix.md §Phase 7: HS's Phase 6
-  // algorithmic tangent is unsymmetric for non-associated cone and
-  // corner regimes. Safety-phase arc length must also dispatch HS
-  // plastic Newton iterations to GMRES; CG is reserved for the
-  // elastic + pure MC (symmetrized) paths.
-  const bool mayNeedUnsymmetricSolver =
-      (ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize) ||
-      ctx.kind == ConstitutiveKind::HardeningSoil;
+  // MC-SH-1: MC analysis dispatches to GMRES only when the explicit
+  // consistent-tangent flag is enabled, the flow is non-associated, and
+  // this is not a safety phase. HS keeps its existing GMRES dispatch.
+  const bool mayNeedUnsymmetricSolver = phase_may_need_unsymmetric_solver(ctx);
   const double sigmaTarget = std::max(ctx.safetySigmaMsfTarget, 1.0);
   double sigma = std::max(ctx.safetySigmaMsfStart, 1.0);
   double peakSigma = sigma;
@@ -2686,19 +2711,10 @@ inline PhaseResult run_nonlinear_phase(
       ctx.kind != ConstitutiveKind::McPlastic &&
       ctx.kind != ConstitutiveKind::HardeningSoil;
   // mayNeedUnsymmetricSolver: tracks whether the tangent might be
-  // unsymmetric → GMRES dispatch when at least one GP yields. Per
-  // docs/features/hardening-soil-fix.md §Phase 7 and
-  // docs/features/hardening-soil-theory-fix.md §4: HS now returns the
-  // Phase 6 algorithmic tangent (single-surface, corner, or FD
-  // oracle), which is unsymmetric for the non-associated flow rule
-  // (n != m on the cone) and for the corner regime. Forcing this
-  // tangent into CG (which requires SPD) is unsafe — route plastic HS
-  // steps through GMRES instead. The actual dispatch below gates on
-  // the per-Newton-iteration `hasPlastic` predicate so HS elastic
-  // iterations may still use CG.
-  const bool mayNeedUnsymmetricSolver =
-      (ctx.kind == ConstitutiveKind::McPlastic && !ctx.symmetrize) ||
-      ctx.kind == ConstitutiveKind::HardeningSoil;
+  // unsymmetric -> GMRES dispatch when at least one GP yields. MC is gated
+  // by the explicit consistent-tangent flag and excludes safety phases per
+  // Appendix C; HS keeps the existing Simo-Hughes dispatch contract.
+  const bool mayNeedUnsymmetricSolver = phase_may_need_unsymmetric_solver(ctx);
   // Globalization fallback. MC keeps this behind the user-facing robust
   // option because its exact tangent is cheap and mature. HS is different
   // until the full Simo-Hughes tangent lands: the production tangent is the
@@ -2791,12 +2807,15 @@ inline PhaseResult run_nonlinear_phase(
     prepare_phase_step_materials(ctx, regions, regionC, targetLambda, stepMaterials);
     const std::vector<RegionParams>* regionsForStep = stepMaterials.regions;
     const std::vector<Mat6>* regionCForStep = stepMaterials.regionC;
-    const bool stepHsConsistentTangent =
-        ctx.kind == ConstitutiveKind::HardeningSoil &&
-        hardening_soil_consistent_tangent_enabled(regionsForStep);
+    const bool stepUsesConsistentTangent =
+        (ctx.kind == ConstitutiveKind::HardeningSoil &&
+         hardening_soil_consistent_tangent_enabled(regionsForStep)) ||
+        (ctx.kind == ConstitutiveKind::McPlastic &&
+         ctx.phaseKind != PhaseKind::SafetyCphi &&
+         mohr_coulomb_consistent_tangent_enabled(regionsForStep));
     const std::vector<double> stepStartU = U;
     bool stepUsedSecantPredictor = false;
-    if (stepHsConsistentTangent &&
+    if (stepUsesConsistentTangent &&
         previousAcceptedStepFreeDelta.size() == static_cast<std::size_t>(nfree) &&
         previousAcceptedStepSize > 0.0 &&
         previousAcceptedStepNewtonIterations > 0) {
@@ -3315,7 +3334,7 @@ inline PhaseResult run_nonlinear_phase(
       ++res.accepted;
       res.acceptedStepIterations.push_back(newtonIterUsed);
       committedMp = trialMp;
-      if (stepHsConsistentTangent) {
+      if (stepUsesConsistentTangent) {
         secondPreviousAcceptedStepFreeDelta = previousAcceptedStepFreeDelta;
         secondPreviousAcceptedStepSize = previousAcceptedStepSize;
         previousAcceptedStepFreeDelta.assign(static_cast<std::size_t>(nfree), 0.0);
@@ -3368,7 +3387,7 @@ inline PhaseResult run_nonlinear_phase(
       // JS adaptive continuation — grow / shrink based on iteration
       // count and accepted line-search scale.
       const int continuationIterUsed =
-          stepHsConsistentTangent && stepUsedSecantPredictor && stepPeakActiveCount > 0
+          stepUsesConsistentTangent && stepUsedSecantPredictor && stepPeakActiveCount > 0
               ? std::max(newtonIterUsed, 4)
               : newtonIterUsed;
       const bool isExactReturnMappingKind =
