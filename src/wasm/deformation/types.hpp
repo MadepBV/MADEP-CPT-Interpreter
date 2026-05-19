@@ -114,6 +114,7 @@ struct RegionParams {
     // regularization; the constitutive update still keeps tiny numerical
     // denominator guards internally.
     double nearSurfaceMinConfiningStress{ 0.0 };
+    double useConsistentTangent{ 0.0 };
     double M_cap{ 0.0 };
     double sin_phi_cv{ 0.0 };
     double H_cap{ 0.0 };
@@ -244,6 +245,7 @@ struct MaterialPoint {
     double p_p{ 0.0 };
     double eps_v_p{ 0.0 };
     std::uint8_t lastActiveSet{ 0 };
+    std::uint8_t tangentMode{ 0 };
   } hs;
 };
 

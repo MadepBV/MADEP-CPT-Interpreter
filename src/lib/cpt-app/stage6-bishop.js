@@ -2539,6 +2539,7 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
   return (layers || []).map((layer, index) => {
     const id = `layer_${index}`;
     const fallbackLabel = `${layer.subtype || layer.type || 'Layer'}${layer.type && layer.subtype ? ` (${layer.type})` : ''}`;
+    const hasPrior = prev.has(id);
     const prior = prev.get(id) || {};
     const designed =
       strengthSet === 'da1_2' ? designSoilLayer(layer, 'M2')
@@ -2546,6 +2547,10 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
       : { ...layer };
     const canReuseStrengthValues = prior.sourceStrengthSet === strengthSet;
     const permeability = resolveMaterialPermeability(layer, prior);
+    const hadPriorUseConsistentTangent = Object.prototype.hasOwnProperty.call(prior.hs || {}, 'useConsistentTangent');
+    const useConsistentTangent = hadPriorUseConsistentTangent
+      ? Number(prior.hs.useConsistentTangent) >= 0.5 || prior.hs.useConsistentTangent === true
+      : !hasPrior;
     // The HS stiffness parameters (E50_ref, Eoed_ref, Eur_ref, m, ν_ur) and
     // the K0_nc / ψ values are SEEDED from the upstream layer-classification
     // logic (`hsParams` in legacy-controller, per CUR 2003-7 /
@@ -2601,7 +2606,13 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
         e_init: Number.isFinite(Number(prior.hs?.e_init)) ? Number(prior.hs.e_init) : -1,
         e_max: Number.isFinite(Number(prior.hs?.e_max)) ? Number(prior.hs.e_max) : -1,
         OCR: Number.isFinite(Number(prior.hs?.OCR)) && Number(prior.hs.OCR) > 0 ? Number(prior.hs.OCR) : 1,
-        reserved: 0
+        nearSurfaceMinConfiningStress: Math.max(
+          Number.isFinite(Number(prior.hs?.nearSurfaceMinConfiningStress))
+            ? Number(prior.hs.nearSurfaceMinConfiningStress)
+            : (Number.isFinite(Number(prior.hs?.reserved)) ? Number(prior.hs.reserved) : 0),
+          0
+        ),
+        useConsistentTangent
       },
       kx: permeability.kx,
       ky: permeability.ky,

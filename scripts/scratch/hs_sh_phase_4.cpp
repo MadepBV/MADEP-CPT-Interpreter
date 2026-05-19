@@ -45,9 +45,11 @@ void require(bool ok, const std::string& msg) {
   if (!ok) throw std::runtime_error(msg);
 }
 
-RegionParams default_region(double psi_deg) {
+RegionParams default_region(double psi_deg,
+                            double stiffness = 3000.0,
+                            double h_cap_override = 1.0) {
   RegionParams r{};
-  r.Emc = 3000.0;
+  r.Emc = stiffness;
   r.nu = 0.3;
   r.cEff = 0.1;
   r.phi = 30.0 * kPi / 180.0;
@@ -58,9 +60,9 @@ RegionParams default_region(double psi_deg) {
   r.rShear = 0.25;
   r.useTensionCutoff = 0;
   r.symmetrize = 0;
-  r.hs.E50_ref = 3000.0;
-  r.hs.Eoed_ref = 3000.0;
-  r.hs.Eur_ref = 9000.0;
+  r.hs.E50_ref = stiffness;
+  r.hs.Eoed_ref = stiffness;
+  r.hs.Eur_ref = 3.0 * stiffness;
   r.hs.m = 0.5;
   r.hs.nu_ur = 0.2;
   r.hs.p_ref = 100.0;
@@ -70,7 +72,7 @@ RegionParams default_region(double psi_deg) {
   r.hs.e_max = -1.0;
   r.hs.OCR = 1.0;
   hs::compute_hs_reference_constants(r, 1.0);
-  r.hs.H_cap = 1.0;
+  if (h_cap_override >= 0.0) r.hs.H_cap = h_cap_override;
   return r;
 }
 
@@ -312,8 +314,11 @@ Mat6 residual_oracle_corner_tangent(
   return D_oracle;
 }
 
-CornerMetrics run_corner_case(double psi_deg) {
-  RegionParams r = default_region(psi_deg);
+CornerMetrics run_corner_case(double psi_deg,
+                              double stiffness = 3000.0,
+                              double h_cap_override = 1.0,
+                              const char* label = "") {
+  RegionParams r = default_region(psi_deg, stiffness, h_cap_override);
   const double sigma_v = 100.0;
   const double K0 = 0.5;
   const double sigma_h_xx = K0 * sigma_v;
@@ -363,7 +368,7 @@ CornerMetrics run_corner_case(double psi_deg) {
   }
   require(res.activeDlambdaS > 0.0, "corner return did not expose dlambda_s");
   require(res.activeDlambdaC > 0.0, "corner return did not expose dlambda_c");
-  std::cout << "  psiDeg=" << psi_deg
+  std::cout << "  " << label << "psiDeg=" << psi_deg
             << " active=" << static_cast<int>(res.stateUpdated.lastActiveSet)
             << " tangentMode=" << static_cast<int>(res.tangentMode)
             << " dlambdaS=" << res.activeDlambdaS
@@ -434,6 +439,16 @@ CornerMetrics run_corner_case(double psi_deg) {
       principalT, ctx, D_e, ok);
   require(ok, "corner Simo-Hughes tangent returned not-ok");
 
+  RegionParams r_runtime = r;
+  r_runtime.hs.useConsistentTangent = 1.0;
+  const hs::HsUpdateResult res_runtime = hs::update_plane_strain(
+      strain_trial, strain_committed, stress_committed, state, r_runtime, 1.0);
+  require(res_runtime.failureCode == 0, "runtime SH corner update failed");
+  require(res_runtime.tangentMode == hs::HsTangentMode::ConsistentAlgorithmic,
+          "runtime SH corner did not select Simo-Hughes tangent mode");
+  const double relRuntime = relerr_inplane(res_runtime.tangent, D_sh);
+  require(relRuntime < 1e-10, "runtime SH corner dispatch differs from direct Simo-Hughes tangent");
+
   const double relResidual = relerr_inplane(D_sh, D_residual);
   const double relDirect = relerr_inplane(D_sh, D_fd);
   std::cout << "HS SH-4 corner tangent residualRelErr_3x3="
@@ -483,6 +498,15 @@ int main() {
                  "dilatant cap-specific cross coupling sign is wrong");
     sh4::require(std::abs(nonDilatant.capSpecificCrossCoupling) < 1e-8,
                  "non-dilatant cap-specific cross coupling did not cancel");
+    if (std::getenv("MADEP_HS_SH4_HIGH_HCAP") != nullptr) {
+      const sh4::CornerMetrics productionH =
+          sh4::run_corner_case(0.0, 30000.0, -1.0, "production-Hcap ");
+      std::cout << "HS SH-4 production-Hcap diagnostic relResidual="
+                << std::scientific << productionH.relResidual
+                << " relDirect=" << productionH.relDirect
+                << " dlambdaS=" << productionH.dlambdaS
+                << " dlambdaC=" << productionH.dlambdaC << "\n";
+    }
     std::cout << "HS SH-4 cross coupling capSpecific(dilatant)="
               << std::scientific << dilatant.capSpecificCrossCoupling
               << " capSpecific(nonDilatant)="

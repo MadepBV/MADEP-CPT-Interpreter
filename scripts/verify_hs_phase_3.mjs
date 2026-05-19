@@ -82,7 +82,7 @@ function granularPreset() {
       e_init: -1,
       e_max: -1,
       OCR: 1.0,
-      reserved: 0
+      nearSurfaceMinConfiningStress: 0
     }
   };
 }
@@ -114,7 +114,7 @@ function denseSandPreset() {
       e_init: -1,
       e_max: -1,
       OCR: 1.0,
-      reserved: 0
+      nearSurfaceMinConfiningStress: 0
     }
   };
 }
@@ -132,7 +132,7 @@ function encodeHsInput({
   const bytes = new Uint8Array(
     2 * 4
     + 10 * 8 + 4
-    + 12 * 8
+    + 13 * 8
     + 1 + 3
     + 3 * 8
     + 8
@@ -159,7 +159,8 @@ function encodeHsInput({
   f64(hs.E50_ref); f64(hs.Eoed_ref); f64(hs.Eur_ref);
   f64(hs.m); f64(hs.nu_ur); f64(hs.p_ref);
   f64(hs.Rf); f64(hs.K0_nc); f64(hs.e_init); f64(hs.e_max);
-  f64(hs.OCR); f64(hs.reserved || 0);
+  f64(hs.OCR); f64(hs.nearSurfaceMinConfiningStress ?? hs.reserved ?? 0);
+  f64(hs.useConsistentTangent ?? 0);
 
   u8(computeReferenceConstants); u8(0); u8(0); u8(0);
   f64(M_cap); f64(H_cap); f64(sin_phi_cv);

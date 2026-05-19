@@ -123,7 +123,7 @@ function minimalV7Output() {
 }
 
 async function main() {
-  assert.equal(WASM_WIRE_VERSION, 10);
+  assert.equal(WASM_WIRE_VERSION, 11);
   const legacyDecoded = decodeOutputBuffer(minimalV7Output());
   assert.deepEqual(legacyDecoded.safety.curve, []);
   assert.deepEqual(legacyDecoded.safety.trialTargets, []);

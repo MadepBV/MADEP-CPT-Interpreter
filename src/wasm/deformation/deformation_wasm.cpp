@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// WASM entry point — wire format v10.
+// WASM entry point — wire format v11.
 //
 // INPUT (uint8_t* in, std::size_t len):
 //   Header (offsets in bytes from the start):
 //     u32  magic              = 'TDCM' (0x4D434454)
-//     u32  version            = 10
+//     u32  version            = 11
 //     u32  elementKind        (3 or 6)
 //     u32  constitutive       (0 = LE, 1 = MC-RS, 2 = MC-P, 3 = HS)
 //     u32  analysisMode       (0 = service-only, 1 = geostatic+service,
@@ -46,7 +46,7 @@
 //          arcLengthConstraintToleranceScale
 //   Nodes:       numNodes × (f64 x, f64 y)
 //   Elements:    numElements × (i32 regionIndex, i32 elementKind, i32 nodeIds[6])
-//   Regions:     numRegions × RegionParams (10 f64 + 4 u8 + 12 f64 = 180 bytes)
+//   Regions:     numRegions × RegionParams (10 f64 + 4 u8 + 13 f64 = 188 bytes)
 //   Constraints: numConstraints × i32 dofIndex
 //   Gravity RHS: 2 * numNodes f64   (full DOF order; -gamma*area lumped already)
 //   Load RHS:    2 * numNodes f64   (surface traction; zero when no load)
@@ -56,7 +56,7 @@
 //
 // OUTPUT layout (uint8_t*, std::size_t):
 //   u32  magic                 = 'TDKM' (0x4D444B54)
-//   u32  version               = 10
+//   u32  version               = 11
 //   u32  numNodes
 //   u32  numElements
 //   u32  numGpTotal
@@ -84,7 +84,8 @@
 //       f64 p_p,
 //       f64 eps_v_p,
 //       u8 lastActiveSet,
-//       u8[7] _pad
+//       u8 tangentMode,
+//       u8[6] _pad
 //   )
 //   SafetyResult:
 //     u8 status, 7 u8 pad,
@@ -126,6 +127,17 @@ namespace madep {
 namespace {
 
 std::string g_last_error;
+std::string g_last_newton_step_iterations_json = "[]";
+
+void update_last_newton_step_iterations_json(const std::vector<std::int32_t>& values) {
+  std::string json = "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) json += ",";
+    json += std::to_string(values[i]);
+  }
+  json += "]";
+  g_last_newton_step_iterations_json = json;
+}
 
 const std::uint8_t* read_u32(const std::uint8_t* p, std::uint32_t& v) { std::memcpy(&v, p, 4); return p + 4; }
 const std::uint8_t* read_i32(const std::uint8_t* p, std::int32_t& v) { std::memcpy(&v, p, 4); return p + 4; }
@@ -158,7 +170,7 @@ ArcLengthMeritMode arc_length_merit_mode_from_wire(std::uint8_t value) {
 
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
-constexpr std::uint32_t WIRE_VERSION = 10u;
+constexpr std::uint32_t WIRE_VERSION = 11u;
 
 constexpr std::size_t kInputHeaderBytes = 40 + 12 + 7 * 4 + 28 * 8;  // 304 bytes
 constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 88 bytes
@@ -245,6 +257,7 @@ int madepRunDeformationAnalysis(
   const auto startTime = clock::now();
 
   g_last_error.clear();
+  g_last_newton_step_iterations_json = "[]";
   if (!inputPtr || inputLen < kInputHeaderBytes || !outPtrPtr || !outLenPtr) {
     g_last_error = "invalid arguments to madepRunDeformationAnalysis";
     return 0;
@@ -402,6 +415,7 @@ int madepRunDeformationAnalysis(
     p = read_f64(p, r.hs.e_max);
     p = read_f64(p, r.hs.OCR);
     p = read_f64(p, r.hs.nearSurfaceMinConfiningStress);
+    p = read_f64(p, r.hs.useConsistentTangent);
   }
 
   // Constraints.
@@ -581,6 +595,7 @@ int madepRunDeformationAnalysis(
 
   const auto endTime = clock::now();
   result.summary.elapsed_ms = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+  update_last_newton_step_iterations_json(result.acceptedStepIterations);
   const bool hasHsPayload = constitutive == ConstitutiveKind::HardeningSoil;
 
   // ---- pack output ------------------------------------------------------
@@ -668,7 +683,8 @@ int madepRunDeformationAnalysis(
       q = write_f64(q, mp.hs.p_p);
       q = write_f64(q, mp.hs.eps_v_p);
       q = write_u8(q, mp.hs.lastActiveSet);
-      for (int i = 0; i < 7; ++i) q = write_u8(q, 0);
+      q = write_u8(q, mp.hs.tangentMode);
+      for (int i = 0; i < 6; ++i) q = write_u8(q, 0);
     }
   }
 
@@ -851,12 +867,13 @@ int madepRunMcPlasticMaterialPoint(
 //     u32  magic   = LOCAL_HS_INPUT_MAGIC  ('1HSP')
 //     u32  version = 1
 //     RegionParams payload (the same 96 bytes used by the FE wire for the
-//     non-HS prefix, followed by 12 HS f64 fields):
+//     non-HS prefix, followed by 13 HS f64 fields):
 //       f64  Emc, nu, cEff, phiDeg, psiDeg, K0nc, gamma, gammaSat,
 //            sigmaTAllow, rShear
 //       u8   useTensionCutoff, symmetrize, pad, pad
 //       f64  E50_ref, Eoed_ref, Eur_ref, m, nu_ur, p_ref,
-//            Rf, K0_nc, e_init, e_max, OCR, nearSurfaceMinConfiningStress
+//            Rf, K0_nc, e_init, e_max, OCR, nearSurfaceMinConfiningStress,
+//            useConsistentTangent
 //     u8   computeReferenceConstants (1 = call compute_hs_reference_constants
 //                                       before update, 0 = trust caller-supplied
 //                                       M_cap, H_cap, sin_phi_cv below)
@@ -945,6 +962,7 @@ int madepRunHsMaterialPoint(
   p = read_f64(p, rp.hs.e_max);
   p = read_f64(p, rp.hs.OCR);
   p = read_f64(p, rp.hs.nearSurfaceMinConfiningStress);
+  p = read_f64(p, rp.hs.useConsistentTangent);
 
   std::uint8_t computeRef = 0;
   std::uint8_t pad = 0;
@@ -1046,6 +1064,11 @@ int madepRunHsMaterialPoint(
 MADEP_EXPORT
 const char* madepGetLastErrorMessage() {
   return g_last_error.c_str();
+}
+
+MADEP_EXPORT
+const char* madepGetLastNewtonStepIterationsJson() {
+  return g_last_newton_step_iterations_json.c_str();
 }
 
 MADEP_EXPORT

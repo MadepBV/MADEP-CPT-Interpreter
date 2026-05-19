@@ -429,9 +429,12 @@ inline GpResponse evaluate_gp_response_ex(
     // and derived constants ALREADY reflect σ_Msf, so we pass 1.0 here
     // to avoid double-reduction. Geostatic and service phases never
     // reduce, so 1.0 is also correct there.
+    const std::uint8_t hsActiveSetHint = previousTrial
+        ? previousTrial->hs.lastActiveSet
+        : committed.hs.lastActiveSet;
     const material::hs::HsUpdateResult hsRes = material::hs::update_plane_strain(
         strainTotal, committed.totalStrain, committed.effectiveStress,
-        committed.hs, rp, 1.0);
+        committed.hs, rp, 1.0, hsActiveSetHint);
     if (hsRes.failureCode == 999) {
       // Phase 3 corner case — surface a clear marker; outer Newton
       // should cut back the load step.
@@ -492,6 +495,7 @@ inline GpResponse evaluate_gp_response_ex(
     extra.stateChanged =
         (committed.hs.lastActiveSet != hsRes.stateUpdated.lastActiveSet) ? 1u : 0u;
     extra.hsState = hsRes.stateUpdated;
+    extra.hsState.tangentMode = static_cast<std::uint8_t>(hsRes.tangentMode);
     return out;
   }
 
@@ -1595,6 +1599,7 @@ struct PhaseResult {
   std::int32_t gmresIterationCount{ 0 };
   std::int32_t gmresInvocations{ 0 };
   std::uint8_t lastLinearSolverKind{ 0 };
+  std::vector<std::int32_t> acceptedStepIterations;
 };
 
 inline void accumulate_phase_cost(PhaseResult& total, const PhaseResult& extra) {
@@ -1605,6 +1610,10 @@ inline void accumulate_phase_cost(PhaseResult& total, const PhaseResult& extra) 
   total.maxEta = std::max(total.maxEta, extra.maxEta);
   total.gmresIterationCount += extra.gmresIterationCount;
   total.gmresInvocations += extra.gmresInvocations;
+  total.acceptedStepIterations.insert(
+      total.acceptedStepIterations.end(),
+      extra.acceptedStepIterations.begin(),
+      extra.acceptedStepIterations.end());
   // The most-recent phase wins for the "last solver used" signal.
   total.lastLinearSolverKind = extra.lastLinearSolverKind;
 }
@@ -1618,6 +1627,7 @@ inline void apply_phase_cost_counts(PhaseResult& result, const PhaseResult& cost
   result.gmresIterationCount = cost.gmresIterationCount;
   result.gmresInvocations = cost.gmresInvocations;
   result.lastLinearSolverKind = cost.lastLinearSolverKind;
+  result.acceptedStepIterations = cost.acceptedStepIterations;
 }
 
 inline bool should_attempt_safety_arc_length_auto(
@@ -1642,6 +1652,13 @@ inline bool should_attempt_safety_arc_length_auto(
   const double interval = sigmaTarget - sigmaLow;
   const double tol = std::max(safetyBracketTolerance, 1e-12);
   return interval > tol;
+}
+
+inline bool hardening_soil_consistent_tangent_enabled(const std::vector<RegionParams>* regions) {
+  if (!regions) return false;
+  return std::any_of(regions->begin(), regions->end(), [](const RegionParams& region) {
+    return region.hs.useConsistentTangent >= 0.5;
+  });
 }
 
 inline SafetyCurvePoint make_safety_curve_point(
@@ -2752,6 +2769,11 @@ inline PhaseResult run_nonlinear_phase(
     return -r * dd;
   };
   std::vector<double> warmStartFreeCorrection;
+  std::vector<double> previousAcceptedStepFreeDelta;
+  std::vector<double> secondPreviousAcceptedStepFreeDelta;
+  double previousAcceptedStepSize = 0.0;
+  double secondPreviousAcceptedStepSize = 0.0;
+  int previousAcceptedStepNewtonIterations = 0;
   // Both mc-plastic and HS run an exact return-mapping with line search and
   // benefit from a warm-started linear solve (the active-set is stable
   // between iterations for both plugins). Warm start is OFF for linear-
@@ -2762,15 +2784,68 @@ inline PhaseResult run_nonlinear_phase(
       ctx.kind == ConstitutiveKind::HardeningSoil;
   for (std::int32_t step = 0; step < phaseMaxLoadSteps; ++step) {
     if (loadFactor >= 1.0 - 1e-12) break;
-	    const double remaining = 1.0 - loadFactor;
-	    const double actualStep = std::min(dLambda, remaining);
-	    const double targetLambda = loadFactor + actualStep;
-	    PhaseStepMaterials stepMaterials;
-	    prepare_phase_step_materials(ctx, regions, regionC, targetLambda, stepMaterials);
-	    const std::vector<RegionParams>* regionsForStep = stepMaterials.regions;
-	    const std::vector<Mat6>* regionCForStep = stepMaterials.regionC;
-	    const std::vector<double> stepStartU = U;
-	    trialMp = committedMp;
+    const double remaining = 1.0 - loadFactor;
+    const double actualStep = std::min(dLambda, remaining);
+    const double targetLambda = loadFactor + actualStep;
+    PhaseStepMaterials stepMaterials;
+    prepare_phase_step_materials(ctx, regions, regionC, targetLambda, stepMaterials);
+    const std::vector<RegionParams>* regionsForStep = stepMaterials.regions;
+    const std::vector<Mat6>* regionCForStep = stepMaterials.regionC;
+    const bool stepHsConsistentTangent =
+        ctx.kind == ConstitutiveKind::HardeningSoil &&
+        hardening_soil_consistent_tangent_enabled(regionsForStep);
+    const std::vector<double> stepStartU = U;
+    bool stepUsedSecantPredictor = false;
+    if (stepHsConsistentTangent &&
+        previousAcceptedStepFreeDelta.size() == static_cast<std::size_t>(nfree) &&
+        previousAcceptedStepSize > 0.0 &&
+        previousAcceptedStepNewtonIterations > 0) {
+      // Secant predictor for the global continuation unknowns. It changes only
+      // the Newton initial guess for the same target λ; the residual equations,
+      // return map and accepted load path are still governed by the existing
+      // continuation controller below.
+      const double predictorScale = std::clamp(
+          actualStep / std::max(previousAcceptedStepSize, phaseMinLoadStep),
+          0.0,
+          1.25);
+      std::vector<double> predictor(static_cast<std::size_t>(nfree), 0.0);
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        predictor[i] = predictorScale * previousAcceptedStepFreeDelta[i];
+      }
+      if (secondPreviousAcceptedStepFreeDelta.size() == static_cast<std::size_t>(nfree) &&
+          secondPreviousAcceptedStepSize > 0.0) {
+        // Capped second-order continuation predictor:
+        //   Δu_pred = h v_n + h^2 (v_n - v_{n-1}) / (h_n + h_{n-1})
+        // where v_k = Δu_k / h_k. The curvature cap prevents a noisy branch
+        // transition from dominating the robust first-order secant term.
+        const double curvatureFactor =
+            (actualStep * actualStep) /
+            std::max(previousAcceptedStepSize + secondPreviousAcceptedStepSize, phaseMinLoadStep);
+        std::vector<double> curvature(static_cast<std::size_t>(nfree), 0.0);
+        double predictorNorm2 = 0.0;
+        double curvatureNorm2 = 0.0;
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          const double vPrev = previousAcceptedStepFreeDelta[i] /
+              std::max(previousAcceptedStepSize, phaseMinLoadStep);
+          const double vPrevPrev = secondPreviousAcceptedStepFreeDelta[i] /
+              std::max(secondPreviousAcceptedStepSize, phaseMinLoadStep);
+          curvature[i] = curvatureFactor * (vPrev - vPrevPrev);
+          predictorNorm2 += predictor[i] * predictor[i];
+          curvatureNorm2 += curvature[i] * curvature[i];
+        }
+        const double predictorNorm = std::sqrt(predictorNorm2);
+        const double curvatureNorm = std::sqrt(curvatureNorm2);
+        const double curvatureScale = (predictorNorm > 0.0 && curvatureNorm > 0.0)
+            ? std::min(1.0, 0.5 * predictorNorm / curvatureNorm)
+            : 1.0;
+        for (std::int32_t i = 0; i < nfree; ++i) predictor[i] += curvatureScale * curvature[i];
+      }
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        U[freeDofs[i]] += predictor[i];
+      }
+      stepUsedSecantPredictor = true;
+    }
+    trialMp = committedMp;
 
     bool stepConverged = false;
     double lastAcceptedScale = 1.0;
@@ -3238,7 +3313,24 @@ inline PhaseResult run_nonlinear_phase(
     if (stepConverged) {
       loadFactor = targetLambda;
       ++res.accepted;
+      res.acceptedStepIterations.push_back(newtonIterUsed);
       committedMp = trialMp;
+      if (stepHsConsistentTangent) {
+        secondPreviousAcceptedStepFreeDelta = previousAcceptedStepFreeDelta;
+        secondPreviousAcceptedStepSize = previousAcceptedStepSize;
+        previousAcceptedStepFreeDelta.assign(static_cast<std::size_t>(nfree), 0.0);
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          previousAcceptedStepFreeDelta[i] = U[freeDofs[i]] - stepStartU[freeDofs[i]];
+        }
+        previousAcceptedStepSize = actualStep;
+        previousAcceptedStepNewtonIterations = newtonIterUsed;
+      } else {
+        previousAcceptedStepFreeDelta.clear();
+        secondPreviousAcceptedStepFreeDelta.clear();
+        previousAcceptedStepSize = 0.0;
+        secondPreviousAcceptedStepSize = 0.0;
+        previousAcceptedStepNewtonIterations = 0;
+      }
       if (ctx.safetyCurve) {
         std::vector<MaterialPoint> acceptedTrialMp = committedMp;
         AssembleOutput acceptedAssembly = assemble_global(
@@ -3275,14 +3367,18 @@ inline PhaseResult run_nonlinear_phase(
       }
       // JS adaptive continuation — grow / shrink based on iteration
       // count and accepted line-search scale.
+      const int continuationIterUsed =
+          stepHsConsistentTangent && stepUsedSecantPredictor && stepPeakActiveCount > 0
+              ? std::max(newtonIterUsed, 4)
+              : newtonIterUsed;
       const bool isExactReturnMappingKind =
           ctx.kind == ConstitutiveKind::McPlastic ||
           ctx.kind == ConstitutiveKind::HardeningSoil;
       const bool benignPlasticStep =
           isExactReturnMappingKind &&
           stepPeakActiveCount > 0 &&
-          newtonIterUsed > 0 &&
-          newtonIterUsed * 2 <= kContinuationTargetIterations &&
+          continuationIterUsed > 0 &&
+          continuationIterUsed * 2 <= kContinuationTargetIterations &&
           (!stepLineSearchEvaluated ||
            (stepLineSearchAccepted && stepLineSearchAcceptedScale >= 0.999));
       const double effectiveGrowthFactor =
@@ -3293,25 +3389,22 @@ inline PhaseResult run_nonlinear_phase(
           isExactReturnMappingKind && stepPeakActiveCount > 0 && !benignPlasticStep
               ? std::min(opts.loadStepCutbackFactor, plasticCutbackFactor)
               : opts.loadStepCutbackFactor;
-      // HS still has a more expensive local return map than MC and may use
-      // finite-difference plastic tangents until the full consistent
-      // Simo-Hughes tangent lands. Keep a slightly looser iteration target
-      // for load-step growth so the controller does not shrink indefinitely
-      // on otherwise healthy HS plastic steps. This is controller tuning, not
-      // a tolerance relaxation: admissibility, residual and Newton convergence
-      // criteria are unchanged.
+      // Continuation is deliberately independent of the tangent selector.
+      // Simo-Hughes improves the Newton direction, but changing the HS load-step
+      // target would alter the path-dependent plastic integration history and
+      // break the D.6 tangent-only equivalence contract.
       const double targetIters = (ctx.kind == ConstitutiveKind::HardeningSoil)
           ? 8.0
           : kContinuationTargetIterations;
       auto compute_step_factor = [&](int iterCount, double acceptedLineSearchScale) {
         const double effIter = std::max(static_cast<double>(iterCount), 1.0);
         const double effScale = std::max(std::min(acceptedLineSearchScale, 1.0), 1e-6);
-        const double raw = std::pow(targetIters / effIter, kContinuationIterationExponent) *
-                           std::pow(effScale / kContinuationTargetLineSearchScale, kContinuationLineSearchExponent);
+        double raw = std::pow(targetIters / effIter, kContinuationIterationExponent) *
+                     std::pow(effScale / kContinuationTargetLineSearchScale, kContinuationLineSearchExponent);
         if (!std::isfinite(raw) || raw <= 0.0) return effectiveCutbackFactor;
         return std::clamp(raw, effectiveCutbackFactor, effectiveGrowthFactor);
       };
-      const double factor = compute_step_factor(newtonIterUsed, lastAcceptedScale);
+      const double factor = compute_step_factor(continuationIterUsed, lastAcceptedScale);
       dLambda = std::min(dLambda * factor, 1.0 - loadFactor);
       if (dLambda < phaseMinLoadStep && loadFactor < 1.0 - 1e-12) {
         dLambda = phaseMinLoadStep;
@@ -3577,7 +3670,15 @@ struct DriverOutput {
   RunSummary summary;
   SafetyResult safety;
   std::vector<double> displayComparisonAccumulatedPlasticStrain;
+  std::vector<std::int32_t> acceptedStepIterations;
 };
+
+inline void append_phase_step_iterations(DriverOutput& out, const PhaseResult& phase) {
+  out.acceptedStepIterations.insert(
+      out.acceptedStepIterations.end(),
+      phase.acceptedStepIterations.begin(),
+      phase.acceptedStepIterations.end());
+}
 
 inline DriverOutput run_full_analysis(DriverInput& in) {
   DriverOutput out;
@@ -3674,6 +3775,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     if (in.opts.constitutive == ConstitutiveKind::HardeningSoil && geostatic.gmresInvocations > 0) {
       out.summary.hsPlasticUsedGmres = 1;
     }
+    append_phase_step_iterations(out, geostatic);
     out.summary.maxEta = std::max(out.summary.maxEta, geostatic.maxEta);
     out.summary.finalActiveCount = geostatic.activeCount;
     out.summary.finalTensionCount = geostatic.tensionCount;
@@ -3762,6 +3864,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     if (in.opts.constitutive == ConstitutiveKind::HardeningSoil && service.gmresInvocations > 0) {
       out.summary.hsPlasticUsedGmres = 1;
     }
+    append_phase_step_iterations(out, service);
     if (!service.converged) return out;
   } else {
     // No service load: take the geostatic state as the final result.
@@ -3891,6 +3994,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     if (in.opts.constitutive == ConstitutiveKind::HardeningSoil && sr.gmresInvocations > 0) {
       out.summary.hsPlasticUsedGmres = 1;
     }
+    append_phase_step_iterations(out, sr);
     out.safety.trialCount += 1;
     out.safety.totalNewtonIterations += sr.newtonIterations;
     SafetyTrial st;

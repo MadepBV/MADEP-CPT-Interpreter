@@ -20,7 +20,7 @@
 //   1. The HS panel inheritance contract (this verifier's Test 0):
 //      `importBishopMaterialsFromLayers` mirrors the layer-level stiffness
 //      fields onto the material's top level, and the `material.hs`
-//      sub-block is reduced to {R_f, OCR, p_ref, e_init, e_max, reserved}.
+//      sub-block is reduced to {R_f, OCR, p_ref, e_init, e_max, σ3,min}.
 //   2. Stage 6 HS panel: inherited-fields read-only display + editable
 //      HS-only block (handled in `legacy-controller.js`).
 //   3. Three benchmark JSON fixtures:
@@ -381,7 +381,7 @@ function presetToWasmRegion(bundleId, overrides = {}) {
       e_init: bundle.hs.e_init,
       e_max: bundle.hs.e_max,
       OCR: bundle.hs.OCR,
-      reserved: 0
+      nearSurfaceMinConfiningStress: 0
     },
     ...overrides
   };
@@ -428,11 +428,11 @@ function testHsDerivationHelpers() {
   assert.equal(clay.Eoed_ref, 3000, 'clay: Eoed_ref inherited at top level');
 
   // HS sub-block must hold ONLY the HS-only parameters.
-  const allowedHsKeys = new Set(['p_ref', 'Rf', 'OCR', 'e_init', 'e_max', 'reserved']);
+  const allowedHsKeys = new Set(['p_ref', 'Rf', 'OCR', 'e_init', 'e_max', 'nearSurfaceMinConfiningStress']);
   for (const material of materials) {
     const hs = material.hs || {};
     for (const key of Object.keys(hs)) {
-      assert.ok(allowedHsKeys.has(key), `${material.label}: material.hs has unexpected key '${key}'; HS sub-block must only carry R_f, OCR, p_ref, e_init, e_max.`);
+      assert.ok(allowedHsKeys.has(key), `${material.label}: material.hs has unexpected key '${key}'; HS sub-block must only carry R_f, OCR, p_ref, e_init, e_max, and σ3,min.`);
     }
     // HS-only defaults (no upstream analogue).
     assert.equal(hs.Rf, 0.9, `${material.label}: R_f defaults to 0.9`);
@@ -440,6 +440,7 @@ function testHsDerivationHelpers() {
     assert.equal(hs.p_ref, 100, `${material.label}: p_ref defaults to 100 kPa`);
     assert.equal(hs.e_init, -1, `${material.label}: e_init defaults to -1 (disabled)`);
     assert.equal(hs.e_max, -1, `${material.label}: e_max defaults to -1 (disabled)`);
+    assert.equal(hs.nearSurfaceMinConfiningStress, 0, `${material.label}: σ3,min defaults to 0 kPa (off)`);
     // None of the stiffness fields may leak into hs.
     assert.equal(hs.E50_ref, undefined, `${material.label}: hs.E50_ref must not be materialised`);
     assert.equal(hs.Eoed_ref, undefined, `${material.label}: hs.Eoed_ref must not be materialised`);

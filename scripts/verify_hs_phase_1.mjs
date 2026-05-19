@@ -52,7 +52,8 @@ function buildHsInput() {
       e_init: 0.62,
       e_max: 0.82,
       OCR: 1.3,
-      reserved: 0
+      nearSurfaceMinConfiningStress: 2.5,
+      useConsistentTangent: 1
     }
   }];
   const ndof = 2 * mesh.nodes.length;
@@ -80,7 +81,7 @@ function buildHsInput() {
 
 function assertHsRegionWire(bytes, hs) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  assert.equal(view.getUint32(4, true), 10, 'input version');
+  assert.equal(view.getUint32(4, true), 11, 'input version');
   assert.equal(view.getUint32(12, true), CONSTITUTIVE_KIND.HardeningSoil, 'constitutive kind');
   const headerBytes = 304;
   const nodesBytes = 3 * 2 * 8;
@@ -88,7 +89,8 @@ function assertHsRegionWire(bytes, hs) {
   const hsOffset = headerBytes + nodesBytes + elementsBytes + 10 * 8 + 4;
   const expected = [
     hs.E50_ref, hs.Eoed_ref, hs.Eur_ref, hs.m, hs.nu_ur, hs.p_ref,
-    hs.Rf, hs.K0_nc, hs.e_init, hs.e_max, hs.OCR, hs.reserved
+    hs.Rf, hs.K0_nc, hs.e_init, hs.e_max, hs.OCR, hs.nearSurfaceMinConfiningStress,
+    hs.useConsistentTangent
   ];
   expected.forEach((value, index) => {
     assert.equal(view.getFloat64(hsOffset + index * 8, true), value, `HS f64[${index}]`);
@@ -105,7 +107,7 @@ function minimalHsOutput() {
   const f64 = (v) => { view.setFloat64(o, Number(v) || 0, true); o += 8; };
 
   u32(WASM_OUTPUT_MAGIC);
-  u32(10);
+  u32(11);
   u32(0); u32(0); u32(1);
   for (let i = 0; i < 10; i += 1) i32(0);
   for (let i = 0; i < 5; i += 1) f64(0);
@@ -117,7 +119,8 @@ function minimalHsOutput() {
   f64(145.0);
   f64(-0.003);
   u8(3);
-  for (let i = 0; i < 7; i += 1) u8(0);
+  u8(2);
+  for (let i = 0; i < 6; i += 1) u8(0);
   u8(0); for (let i = 0; i < 7; i += 1) u8(0);
   f64(1); f64(1); f64(1);
   i32(0); i32(0); i32(0); i32(0);
@@ -163,7 +166,7 @@ async function assertWasmAcceptsHs(inputBytes) {
 }
 
 async function main() {
-  assert.equal(WASM_WIRE_VERSION, 10);
+  assert.equal(WASM_WIRE_VERSION, 11);
   assert.equal(CONSTITUTIVE_KIND.HardeningSoil, 3);
 
   const { bytes, hs } = buildHsInput();
@@ -175,7 +178,9 @@ async function main() {
     gammaP: 0.0125,
     pP: 145.0,
     epsVP: -0.003,
-    lastActiveSet: 3
+    lastActiveSet: 3,
+    tangentModeCode: 2,
+    tangentMode: 'finite-difference'
   });
 
   await assertWasmAcceptsHs(bytes);

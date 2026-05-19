@@ -380,3 +380,84 @@ Validation status:
   - Non-dilatant: `residualRelErr_3x3=2.966750e-09`,
     `directFdRelErr_3x3=1.265520e-05`,
     `sinPsiMob=0.000000e+00`, `capSpecificCross=-5.820766e-11`.
+
+## SH-5 - Runtime Wire-Up / D.6 Hard Halt
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` sections 5.2, 5.3, 6, and
+  section 7 Phase SH-5.
+- `hardening-soil-model.md` section 3.6.1 remains pending until the
+  acceptance blocker below is resolved.
+
+Implementation progress:
+
+- Added the v11 `HsParams::useConsistentTangent` wire slot after
+  `nearSurfaceMinConfiningStress` on the C++ and JS sides.
+- Added a runtime tangent-mode byte in the existing HS Gauss-point pad and a
+  non-wire debug export for accepted-step Newton iterations.
+- Wired the Stage 6 material UI with a per-material Simo-Hughes checkbox and
+  the legacy-project migration policy: missing pre-SH values default off and
+  surface a one-shot prompt; new imported materials default on.
+- Added `scripts/verify_hs_simo_hughes_tangent.mjs` and
+  `scripts/verify_hs_simo_hughes_d6.mjs`.
+
+Validation status:
+
+- PASS: `npm run build:wasm:deformation`.
+- PASS: `node scripts/verify_hs_phase_1.mjs`.
+- PASS: `node scripts/verify_hs_simo_hughes_tangent.mjs`.
+  This gate uses the SH-2/SH-3/SH-4 C++ residual/FD harnesses as the canonical
+  formula parity checks and the WASM material-point oracle to verify the live
+  v11 runtime selector. The JS corner FD probe is kept diagnostic only because
+  the phase-4 C++ residual oracle is the stronger branch-frozen check.
+- PASS for D.6 solution equivalence:
+  `node scripts/verify_hs_simo_hughes_d6.mjs`.
+  Both continuum and Simo-Hughes reached full load and matched displacement and
+  active-set results within the verifier tolerance.
+
+Hard halt:
+
+- D.6 Newton telemetry violates the SH-5 iteration-count acceptance target.
+  Continuum path: 33 Newton iterations over 7 accepted steps,
+  step iterations `[3, 4, 5, 4, 7, 6, 4]`.
+  Simo-Hughes path: 63 Newton iterations over 9 accepted steps,
+  step iterations `[3, 4, 5, 10, 10, 9, 8, 8, 6]`.
+- This is not a solution-equivalence issue; it is a convergence-rate issue in
+  the production high-`H_cap` D.6 corner regime. The earlier SH-4 oracle uses a
+  softened local `H_cap = 1` fixture to clear the small-multiplier guard and
+  validate the algebra. D.6 exercises the production cap-hardening scale.
+
+Resolution:
+
+- Added a high-`H_cap` corner oracle diagnostic to the SH-4 harness.  The
+  production-hardening corner case passed both direct FD and residual-oracle
+  checks:
+  `directFdRelErr_3x3=6.511712e-07`,
+  `residualRelErr_3x3=1.020078e-08`,
+  `dlambdaS=8.234369e-05`, `dlambdaC=2.736143e-07`.
+- The remaining D.6 failure was therefore global continuation, not local
+  Simo-Hughes algebra.  Attempts to tighten the HS load-step target or reject
+  high-iteration accepted steps reduced the iteration spike but changed the
+  path-dependent D.6 settlement beyond the equivalence tolerance, so those
+  fixes were rejected.
+- Final fix: keep the legacy HS continuation target unchanged and add a capped
+  second-order displacement predictor for Simo-Hughes continuation steps.  The
+  predictor changes only the initial Newton iterate for the same target load
+  factor.  A separate conservative controller-iteration signal prevents the
+  adaptive step-size logic from treating a good predictor as evidence that the
+  constitutive branch is smoother than it is.
+
+Post-fix validation:
+
+- PASS: `node scripts/verify_hs_simo_hughes_d6.mjs`.
+  Continuum: 33 Newton iterations, 7 accepted steps,
+  step iterations `[3, 4, 5, 4, 7, 6, 4]`,
+  settlement `-1.832120891156969e-2`.
+  Simo-Hughes: 25 Newton iterations, 7 accepted steps,
+  step iterations `[3, 2, 3, 4, 6, 3, 4]`,
+  settlement `-1.8325073665822682e-2`.
+- PASS: `node scripts/verify_hs_newton_count.mjs`.
+  D.3 median/p99/max = `2/3/3`;
+  D.6 median/p99/max = `3/6/6`;
+  D.7 median/p99/max = `1/5/6`.

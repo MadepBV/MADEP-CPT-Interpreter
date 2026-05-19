@@ -222,44 +222,6 @@ inline double compute_dsin_psi_dsigma3_cone(
        * compute_dsin_phi_mob_dsigma3(s1, s3, c_eff, phi_eff);
 }
 
-struct HsAlgorithmicTangentContext {
-  double s1{0.0};
-  double s2{0.0};
-  double s3{0.0};
-  double gamma_p{0.0};
-  double p_p{0.0};
-  double eps_v_p{0.0};
-  double E_50{0.0};
-  double E_ur{0.0};
-  double E_i{0.0};
-  double q_a{0.0};
-  double q_f{0.0};
-  double dE_50_ds3{0.0};
-  double dE_ur_ds3{0.0};
-  double dE_i_ds3{0.0};
-  double dq_a_ds3{0.0};
-  double dq_f_ds3{0.0};
-  double df_dsigma3_implicit{0.0};
-  double sin_phi_mob{0.0};
-  double sin_psi_mob{0.0};
-  double sin_phi_cv{0.0};
-  double dpsi_dsigma_1{0.0};
-  double dpsi_dsigma_3{0.0};
-  double dlambda_s{0.0};
-  double dlambda_c{0.0};
-  double dqtilde_ds1{0.0};
-  double dqtilde_ds2{0.0};
-  double dqtilde_ds3{0.0};
-  double M_cap{0.0};
-  double p_t{0.0};
-  double H_cap{0.0};
-  double p_prime{0.0};
-  double phi_eff{0.0};
-  bool dilatancy_cutoff_active{false};
-  bool pre_critical_cutoff_active{false};
-  ConeFlowRegime regime{ConeFlowRegime::Face13};
-};
-
 inline void compute_cap_qtilde_gradient(double s1,
                                         double s2,
                                         double s3,

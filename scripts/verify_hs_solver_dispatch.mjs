@@ -244,7 +244,7 @@ function granularHsPreset({
       e_init: -1,
       e_max: -1,
       OCR,
-      reserved: 0
+      nearSurfaceMinConfiningStress: 0
     }
   };
 }

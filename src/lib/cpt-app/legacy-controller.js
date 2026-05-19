@@ -4170,7 +4170,7 @@ function stage6Defaults(){
       dz:0.10
     },
     bishop:{
-      schemaVersion:2,
+      schemaVersion:3,
       history:[],
       workspace:'stability',
       tool:'terrain',
@@ -4383,7 +4383,9 @@ function stage6Defaults(){
           safetySigmaMsfBracketTolerance:0.01,
           safetyMaxSearchTrials:32,
           safetyFinalizationMode:'production-msf',
-          useUnsymmetricPlasticSolver:true
+          useUnsymmetricPlasticSolver:true,
+          hsConsistentTangentPromptPending:false,
+          hsConsistentTangentMigrationResolved:false
         },
         display:{
           contourMode:'uTotal',
@@ -4555,7 +4557,9 @@ function ensureStage6State(){
   }
   ensurePileState(maxDepth);
   const bishop = S.stage6.bishop;
-  bishop.schemaVersion = Math.max(Math.round(+bishop.schemaVersion || 0), 2);
+  const bishopSchemaVersionBeforeSync = Math.round(+bishop.schemaVersion || 0);
+  const hsConsistentTangentLegacySchema = bishopSchemaVersionBeforeSync < 3;
+  bishop.schemaVersion = Math.max(bishopSchemaVersionBeforeSync, 3);
   if(!Array.isArray(bishop.history)) bishop.history = [];
   const bishopMinDepth = Math.max(stage6MaxDepth(), 15);
   if(!['stability','seepage','deformation'].includes(bishop.workspace)) bishop.workspace = 'stability';
@@ -4722,6 +4726,9 @@ function ensureStage6State(){
   bishop.deformation.rejectReason = bishop.deformation.rejectReason ? String(bishop.deformation.rejectReason) : '';
   if(!Array.isArray(bishop.deformation.warnings)) bishop.deformation.warnings = [];
   if(!bishop.deformation.options || typeof bishop.deformation.options !== 'object') bishop.deformation.options = stage6Defaults().bishop.deformation.options;
+  if(hsConsistentTangentLegacySchema && bishop.deformation.options.hsConsistentTangentMigrationResolved !== true){
+    bishop.deformation.options.hsConsistentTangentPromptPending = true;
+  }
   if(!['deformation','safety-cphi'].includes(bishop.deformation.options.analysisType)){
     bishop.deformation.options.analysisType = stage6Defaults().bishop.deformation.options.analysisType;
   }
@@ -6229,7 +6236,23 @@ function stage6BishopSyncSoilModel(){
     hs.e_init = Number.isFinite(Number(hs.e_init)) ? Number(hs.e_init) : -1;
     hs.e_max = Number.isFinite(Number(hs.e_max)) ? Number(hs.e_max) : -1;
     hs.OCR = Math.max(Number(hs.OCR) || 1, 1e-6);
-    hs.reserved = 0;
+    const legacyHsReserved = Number(hs.reserved);
+    hs.nearSurfaceMinConfiningStress = Math.max(
+      Number.isFinite(Number(hs.nearSurfaceMinConfiningStress))
+        ? Number(hs.nearSurfaceMinConfiningStress)
+        : (Number.isFinite(legacyHsReserved) ? legacyHsReserved : 0),
+      0
+    );
+    const hasStoredHsConsistentTangent = Object.prototype.hasOwnProperty.call(hs, 'useConsistentTangent');
+    if(hasStoredHsConsistentTangent){
+      hs.useConsistentTangent = hs.useConsistentTangent === true || Number(hs.useConsistentTangent) >= 0.5;
+    } else {
+      const migratedLegacyOff = bishop.deformation?.options?.hsConsistentTangentPromptPending === true
+        && bishop.deformation?.options?.hsConsistentTangentMigrationResolved !== true;
+      hs.useConsistentTangent = migratedLegacyOff ? false : true;
+      if(migratedLegacyOff) bishop.deformation.options.hsConsistentTangentPromptPending = true;
+    }
+    if('reserved' in hs) delete hs.reserved;
     // Strip legacy stiffness fields that may linger on an existing
     // material.hs from older project files — they now live at the
     // material's top level.
@@ -6802,11 +6825,12 @@ function stage6BishopSetMaterialField(index, field, value){
 
 // Whitelist of HS-only fields routed through `stage6BishopSetMaterialHsField`
 // — i.e. parameters that live under `material.hs.*` because they have NO
-// upstream layer-model analogue (R_f, OCR, p_ref, e_init, e_max). The
+// upstream layer-model analogue (R_f, OCR, p_ref, e_init, e_max, optional
+// near-surface confinement floor, Simo-Hughes tangent selector). The
 // stiffness block (E50_ref / Eoed_ref / Eur_ref / m / ν_ur / K0_nc / ψ)
 // is overridden via `stage6BishopSetMaterialField` (top-level fields) for
 // parity with the MC panel.
-const STAGE6_BISHOP_EDITABLE_HS_FIELDS = new Set(['p_ref', 'Rf', 'OCR', 'e_init', 'e_max']);
+const STAGE6_BISHOP_EDITABLE_HS_FIELDS = new Set(['p_ref', 'Rf', 'OCR', 'e_init', 'e_max', 'nearSurfaceMinConfiningStress', 'useConsistentTangent']);
 
 function stage6BishopSetMaterialHsField(index, field, value){
   ensureStage6State();
@@ -6815,8 +6839,32 @@ function stage6BishopSetMaterialHsField(index, field, value){
   if(!material) return;
   if(!STAGE6_BISHOP_EDITABLE_HS_FIELDS.has(field)) return;
   if(!material.hs || typeof material.hs !== 'object') material.hs = {};
-  material.hs[field] = value === '' || value == null ? null : +value;
+  if(field === 'useConsistentTangent'){
+    material.hs[field] = value === true || value === 'true' || value === 1 || value === '1';
+    if(S.stage6.bishop.deformation?.options){
+      S.stage6.bishop.deformation.options.hsConsistentTangentPromptPending = false;
+      S.stage6.bishop.deformation.options.hsConsistentTangentMigrationResolved = true;
+    }
+  } else {
+    material.hs[field] = value === '' || value == null ? null : +value;
+  }
   stage6BishopInvalidate('Hardening Soil material properties updated; rerun deformation analysis.');
+  renderStage6();
+}
+
+function stage6BishopResolveHsConsistentTangentMigration(enable){
+  ensureStage6State();
+  stage6BishopSyncSoilModel();
+  const next = enable === true || enable === 'true' || enable === 1 || enable === '1';
+  (S.stage6.bishop.materials || []).forEach((material)=>{
+    if(!material.hs || typeof material.hs !== 'object') material.hs = {};
+    material.hs.useConsistentTangent = next;
+  });
+  if(S.stage6.bishop.deformation?.options){
+    S.stage6.bishop.deformation.options.hsConsistentTangentPromptPending = false;
+    S.stage6.bishop.deformation.options.hsConsistentTangentMigrationResolved = true;
+  }
+  stage6BishopInvalidate('Hardening Soil tangent mode updated; rerun deformation analysis.');
   renderStage6();
 }
 
@@ -13259,6 +13307,7 @@ function renderStage6BishopApp(){
   //   - OCR   (over-consolidation, default 1 NC)
   //   - p_ref (reference pressure, default 100 kPa)
   //   - e_init, e_max (dilatancy cutoff, default -1 = disabled)
+  //   - σ3,min (explicit near-surface confinement floor, default 0 = off)
   const hsInheritedRows = (bishop.materials || []).map((mat, index)=>{
     const phi = Number(mat.phiEffDeg ?? 0);
     const k0ncInherited = Number(mat.K0nc);
@@ -13291,6 +13340,8 @@ function renderStage6BishopApp(){
         <td><input type="number" step="5" min="1" value="${Number(hs.p_ref ?? 100).toFixed(1)}" onchange="stage6BishopSetMaterialHsField(${index}, 'p_ref', this.value)"></td>
         <td><input type="number" step="0.01" value="${Number(hs.e_init ?? -1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'e_init', this.value)" title="-1 = disabled"></td>
         <td><input type="number" step="0.01" value="${Number(hs.e_max ?? -1).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'e_max', this.value)" title="-1 = disabled"></td>
+        <td><input type="number" step="0.1" min="0" value="${Number(hs.nearSurfaceMinConfiningStress ?? 0).toFixed(2)}" onchange="stage6BishopSetMaterialHsField(${index}, 'nearSurfaceMinConfiningStress', this.value)" title="Explicit minimum compression-positive σ3' for near-surface HS stiffness/strength. 0 = off."></td>
+        <td style="text-align:center"><input type="checkbox" ${hs.useConsistentTangent !== false ? 'checked' : ''} onchange="stage6BishopSetMaterialHsField(${index}, 'useConsistentTangent', this.checked ? 1 : 0)" title="Use the Simo-Hughes consistent algorithmic tangent for HS plastic loading."></td>
       </tr>
     `;
   }).join('');
@@ -13323,8 +13374,18 @@ function renderStage6BishopApp(){
     if(Number.isFinite(K0nc) && (K0nc < 0 || K0nc >= 1)) warnings.push(`${mat.label}: K0_nc (${K0nc}) should stay between 0 and 1; check upstream φ' value.`);
     return warnings;
   });
+  const hsConsistentTangentPromptHtml = deformationUsesHardeningSoil && bishop.deformation?.options?.hsConsistentTangentPromptPending === true ? `
+    <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
+      This project was created before the Simo-Hughes Hardening Soil tangent selector. Existing materials stayed on the previous continuum tangent. Enable Simo-Hughes for faster plastic-regime convergence, or keep the previous tangent for exact reopening continuity.
+      <div class="st6-bishop-mini-actions" style="margin-top:6px">
+        <button class="btn sm" onclick="stage6BishopResolveHsConsistentTangentMigration(1)">Enable Simo-Hughes</button>
+        <button class="btn sm" onclick="stage6BishopResolveHsConsistentTangentMigration(0)">Keep previous tangent</button>
+      </div>
+    </div>
+  ` : '';
   const hsMaterialTableHtml = deformationUsesHardeningSoil ? `
-    <div class="st6-help">Hardening Soil parameters. The strength (c', φ', ψ', γ, γ_sat) and stiffness (E50_ref, Eoed_ref, Eur_ref, m, ν_ur, K0_nc) blocks are inherited from the layer / material classification per CUR 2003-7 (binary stress exponent m, cohesion-corrected reference stiffness, Jaky K0_nc) and the deformation-material editor above. To change them, edit the parent layer or material in Stage 5. Only the HS-specific knobs — R_f, OCR, p_ref, e_init, e_max — are editable here.</div>
+    ${hsConsistentTangentPromptHtml}
+    <div class="st6-help">Hardening Soil parameters. The strength (c', φ', ψ', γ, γ_sat) and stiffness (E50_ref, Eoed_ref, Eur_ref, m, ν_ur, K0_nc) blocks are inherited from the layer / material classification per CUR 2003-7 (binary stress exponent m, cohesion-corrected reference stiffness, Jaky K0_nc) and the deformation-material editor above. To change them, edit the parent layer or material in Stage 5. Only the HS-specific knobs — R_f, OCR, p_ref, e_init, e_max, the explicit near-surface σ3' floor, and the Simo-Hughes tangent selector — are editable here.</div>
     ${hsMaterialWarnings.length ? `<div class="warn">${hsMaterialWarnings.map(stage6EscAttr).join('<br>')}</div>` : ''}
     <div class="st6-help" style="margin-top:6px"><strong>Inherited from layer / material (read-only)</strong></div>
     <div style="overflow:auto">
@@ -13336,7 +13397,7 @@ function renderStage6BishopApp(){
     <div class="st6-help" style="margin-top:6px"><strong>HS-specific (editable)</strong></div>
     <div style="overflow:auto">
       <table class="tbl st6-bishop-materials st6-bishop-materials--hs-editable">
-        <thead><tr><th>Layer</th><th>R_f</th><th>OCR</th><th>p_ref (kPa)</th><th>e_init (-1=off)</th><th>e_max (-1=off)</th></tr></thead>
+        <thead><tr><th>Layer</th><th>R_f</th><th>OCR</th><th>p_ref (kPa)</th><th>e_init (-1=off)</th><th>e_max (-1=off)</th><th>σ3,min (kPa)</th><th>SH tangent</th></tr></thead>
         <tbody>${hsEditableRows}</tbody>
       </table>
     </div>
@@ -16705,6 +16766,7 @@ const legacyApi={
   stage6BishopClear,
   stage6BishopSetMaterialField,
   stage6BishopSetMaterialHsField,
+  stage6BishopResolveHsConsistentTangentMigration,
   stage6BishopSetMaterialPermeability,
   stage6BishopResetMaterialPermeability,
   stage6BishopSetWallField,

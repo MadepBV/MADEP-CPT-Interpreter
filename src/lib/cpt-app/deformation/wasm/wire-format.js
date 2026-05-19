@@ -3,11 +3,11 @@
 //
 // Wire-format encoder/decoder shared between the JS bridge and the C++
 // WASM module. Both sides MUST agree on this layout exactly; the C++
-// reader lives in deformation_wasm.cpp. Wire version 10.
+// reader lives in deformation_wasm.cpp. Wire version 11.
 
 const INPUT_MAGIC = 0x4D434454; // 'TDCM'
 const OUTPUT_MAGIC = 0x4D444B54; // 'TDKM'
-const WIRE_VERSION = 10;
+const WIRE_VERSION = 11;
 const LEGACY_OUTPUT_WIRE_VERSION = 6;
 const SAFETY_HISTORY_OUTPUT_WIRE_VERSION = 7;
 
@@ -42,6 +42,13 @@ export const ANALYSIS_MODE = Object.freeze({
   ServiceOnly: 0,
   GeostaticPlusService: 1,
   GeostaticServiceSafety: 2
+});
+
+export const HS_TANGENT_MODE_NAMES = Object.freeze({
+  0: 'elastic',
+  1: 'continuum',
+  2: 'finite-difference',
+  3: 'simo-hughes'
 });
 
 export function constitutiveKindFor(name) {
@@ -100,7 +107,7 @@ function computeInputSize({ numNodes, numElements, numRegions, numConstraints, n
   const headerBytes = 40 + 12 + 28 + 28 * 8;
   const nodesBytes = numNodes * 2 * 8;
   const elementsBytes = numElements * (4 + 4 + 6 * 4);
-  const regionsBytes = numRegions * (10 * 8 + 4 + 12 * 8);  // 180 bytes per region
+  const regionsBytes = numRegions * (10 * 8 + 4 + 13 * 8);  // 188 bytes per region
   const constraintsBytes = numConstraints * 4;
   const gravityBytes = numNodes * 2 * 8;
   const loadBytes = numNodes * 2 * 8;
@@ -121,7 +128,7 @@ function computeInputSize({ numNodes, numElements, numRegions, numConstraints, n
 // Lookup order: material top-level wins, with `region.hs[name]` as a
 // fallback. The fallback keeps backward compatibility with older fixtures
 // and verifiers that still set the legacy `region.hs.E50_ref` shape — the
-// wire layout (12 f64, name-keyed by index on the C++ side) is unchanged.
+// wire layout (13 f64, name-keyed by index on the C++ side) is unchanged.
 function hsParam(region, name, fallback = 0) {
   const hs = region?.hs && typeof region.hs === 'object' ? region.hs : {};
   const value = region?.[name] ?? hs[name];
@@ -131,7 +138,7 @@ function hsParam(region, name, fallback = 0) {
 
 function writeHsParams(writeF64, region, isHs) {
   if (!isHs) {
-    for (let i = 0; i < 12; i += 1) writeF64(0);
+    for (let i = 0; i < 13; i += 1) writeF64(0);
     return;
   }
   const e50 = Math.max(hsParam(region, 'E50_ref', region?.Emc || 0), 0);
@@ -158,6 +165,7 @@ function writeHsParams(writeF64, region, isHs) {
   writeF64(Math.max(hsParam(region, 'OCR', 1), 1e-6));
   const minConfinement = hsParam(region, 'nearSurfaceMinConfiningStress', hsParam(region, 'reserved', 0));
   writeF64(Number.isFinite(Number(minConfinement)) ? Math.max(Number(minConfinement), 0) : 0);
+  writeF64(hsParam(region, 'useConsistentTangent', 0) >= 0.5 ? 1 : 0);
 }
 
 function readHsState(readF64, readU8, isHs) {
@@ -168,7 +176,10 @@ function readHsState(readF64, readU8, isHs) {
     epsVP: readF64(),
     lastActiveSet: readU8()
   };
-  for (let i = 0; i < 7; i += 1) readU8();
+  const modeCode = readU8();
+  hs.tangentModeCode = modeCode;
+  hs.tangentMode = HS_TANGENT_MODE_NAMES[modeCode] || 'unknown';
+  for (let i = 0; i < 6; i += 1) readU8();
   return hs;
 }
 

@@ -57,14 +57,15 @@ using madep::js_mirror::VOIGT_XZ;
 //                       last fallback if the FD oracle cannot certify a
 //                       plastic tangent column.
 // `Analytic`          - Continuum-style closed-form algorithmic tangent
-//                       built from the rank-1 / rank-2 update. Kept as a
-//                       diagnostic / future fallback while the full
-//                       Simo-Hughes tangent is deferred.
+//                       built from the rank-1 / rank-2 update. Production
+//                       path for cone/corner while Simo-Hughes is deferred;
+//                       checked against the FD oracle envelope.
 // `FiniteDifference`  - Tangent built by central / one-sided differencing of
 //                       the implemented return mapping (Phase 6A oracle).
-//                       Production path for every HS plastic state while the
-//                       full Simo-Hughes tangent is deferred. Unsymmetric
-//                       tangents must go through GMRES in the global solve.
+//                       Production path for cap-only and mixed tension states,
+//                       and fallback when an analytic denominator degenerates.
+//                       Unsymmetric tangents must go through GMRES in the
+//                       global solve.
 //
 // Phase 7 GMRES dispatch reads this to audit CG vs GMRES routing.
 // ---------------------------------------------------------------------------
@@ -108,6 +109,85 @@ enum class ConeFlowRegime : std::uint8_t {
   CompressionEdge = 1,
   ExtensionEdge = 2
 };
+
+namespace tangent {
+
+struct HsAlgorithmicTangentContext {
+  double s1{0.0};
+  double s2{0.0};
+  double s3{0.0};
+  double gamma_p{0.0};
+  double p_p{0.0};
+  double eps_v_p{0.0};
+  double E_50{0.0};
+  double E_ur{0.0};
+  double E_i{0.0};
+  double q_a{0.0};
+  double q_f{0.0};
+  double dE_50_ds3{0.0};
+  double dE_ur_ds3{0.0};
+  double dE_i_ds3{0.0};
+  double dq_a_ds3{0.0};
+  double dq_f_ds3{0.0};
+  double df_dsigma3_implicit{0.0};
+  double sin_phi_mob{0.0};
+  double sin_psi_mob{0.0};
+  double sin_phi_cv{0.0};
+  double dpsi_dsigma_1{0.0};
+  double dpsi_dsigma_3{0.0};
+  double dlambda_s{0.0};
+  double dlambda_c{0.0};
+  double dqtilde_ds1{0.0};
+  double dqtilde_ds2{0.0};
+  double dqtilde_ds3{0.0};
+  double M_cap{0.0};
+  double p_t{0.0};
+  double H_cap{0.0};
+  double p_prime{0.0};
+  double phi_eff{0.0};
+  bool dilatancy_cutoff_active{false};
+  bool pre_critical_cutoff_active{false};
+  ConeFlowRegime regime{ConeFlowRegime::Face13};
+};
+
+HsAlgorithmicTangentContext build_sh_context(
+    const mce::PrincipalState& principalC,
+    double s1,
+    double s2,
+    double s3,
+    double gamma_p_new,
+    double p_p_new,
+    double eps_v_p_new,
+    double dlambda_s,
+    double dlambda_c,
+    double c_eff,
+    double phi_eff,
+    double psi_eff,
+    double sin_phi_cv,
+    double M_cap,
+    double p_t,
+    double H_cap,
+    const RegionParams& region);
+
+Mat6 compute_simo_hughes_cone_tangent(
+    const mce::PrincipalState& principalC,
+    const HsAlgorithmicTangentContext& ctx,
+    const Mat6& D_e,
+    bool& ok);
+
+Mat6 compute_simo_hughes_cap_tangent(
+    const mce::PrincipalState& principalC,
+    const HsAlgorithmicTangentContext& ctx,
+    const Mat6& D_e,
+    bool& ok);
+
+Mat6 compute_simo_hughes_corner_tangent(
+    const mce::PrincipalState& principalC,
+    const HsAlgorithmicTangentContext& ctx,
+    const Mat6& D_e,
+    bool& ok);
+
+}  // namespace tangent
 
 // ---------------------------------------------------------------------------
 // Math helpers.
@@ -570,6 +650,16 @@ inline Vec6 reconstruct_stress_voigt_from_principals(
   sigma_voigt[VOIGT_YZ] = -sigma3d[1][2];
   sigma_voigt[VOIGT_XZ] = -sigma3d[0][2];
   return sigma_voigt;
+}
+
+inline double compression_component_in_projector(const Vec6& stress_tension,
+                                                 const Mat3& P) {
+  return -P[0][0] * stress_tension[VOIGT_XX]
+       - P[1][1] * stress_tension[VOIGT_YY]
+       - P[2][2] * stress_tension[VOIGT_ZZ]
+       - 2.0 * (P[0][1] * stress_tension[VOIGT_XY]
+              + P[1][2] * stress_tension[VOIGT_YZ]
+              + P[0][2] * stress_tension[VOIGT_XZ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1782,7 +1872,8 @@ inline HsUpdateResult update(
     const Vec6& stressCommittedVoigt,
     const MaterialPoint::HsState& stateCommitted,
     const RegionParams& region,
-    double sigmaMsf) {
+    double sigmaMsf,
+    std::uint8_t activeSetHint = 0) {
   HsUpdateResult out{};
   out.stateUpdated = stateCommitted;
 
@@ -1990,11 +2081,19 @@ inline HsUpdateResult update(
     return tension_res;
   }
 
+  // Active-set warm start. The hint is allowed to come from the previous
+  // trial state inside the same global Newton step. It is ONLY a branch
+  // selection hint: hardening variables still come from `stateCommitted`,
+  // and every selected return must still pass the same admissibility
+  // certificate. This mirrors exact-plastic active-set warm starting without
+  // committing trial history.
+  const std::uint8_t retainedActiveSet =
+      activeSetHint != 0u ? activeSetHint : stateCommitted.lastActiveSet;
   const bool retainedCone =
-      hs_active_set_has_cone(stateCommitted.lastActiveSet) &&
+      hs_active_set_has_cone(retainedActiveSet) &&
       f_s >= -F_TOL_S;
   const bool retainedCap =
-      hs_active_set_has_cap(stateCommitted.lastActiveSet) &&
+      hs_active_set_has_cap(retainedActiveSet) &&
       f_c >= -F_TOL_C;
   const bool coneReturnRequested = f_s > F_TOL_S || retainedCone;
   const bool capReturnRequested = f_c > F_TOL_C || retainedCap;
@@ -2268,7 +2367,8 @@ inline HsUpdateResult update_substepped_no_tangent(
     const Vec6& stressCommittedVoigt,
     const MaterialPoint::HsState& stateCommitted,
     const RegionParams& region,
-    double sigmaMsf) {
+    double sigmaMsf,
+    std::uint8_t activeSetHint = 0) {
   constexpr double kEpsZzTol = 1e-10;
   const Vec6 totalDelta = lng::sub(strainTrialVoigt, strainCommittedVoigt);
   HsUpdateResult directFailure{};
@@ -2299,7 +2399,8 @@ inline HsUpdateResult update_substepped_no_tangent(
       for (int k = 0; k < 6; ++k) {
         strainT[k] += fraction * totalDelta[k];
       }
-      last = update(strainT, strainC, stressC, stateC, region, sigmaMsf);
+      const std::uint8_t substepHint = (s == 1) ? activeSetHint : stateC.lastActiveSet;
+      last = update(strainT, strainC, stressC, stateC, region, sigmaMsf, substepHint);
       if (last.failureCode != 0) {
         ok = false;
         directFailure.failureCode = last.failureCode;
@@ -2795,7 +2896,8 @@ inline Mat6 fd_algorithmic_tangent(
     double sigmaMsf,
     const Mat6& D_e,
     bool& ok,
-    bool useSubsteppedMap = false) {
+    bool useSubsteppedMap = false,
+    std::uint8_t activeSetHint = 0) {
   Mat6 D_alg = D_e;     // out-of-plane columns filled from D_e (plane-strain pass-through)
   ok = true;
 
@@ -2803,10 +2905,10 @@ inline Mat6 fd_algorithmic_tangent(
     if (useSubsteppedMap) {
       return update_substepped_no_tangent(
           strain_probe, strainCommittedVoigt, stressCommittedVoigt,
-          stateCommitted, region, sigmaMsf);
+          stateCommitted, region, sigmaMsf, activeSetHint);
     }
     return update(strain_probe, strainCommittedVoigt, stressCommittedVoigt,
-                  stateCommitted, region, sigmaMsf);
+                  stateCommitted, region, sigmaMsf, activeSetHint);
   };
 
   // Reference unperturbed return — needed for one-sided differences near
@@ -2917,7 +3019,8 @@ inline HsUpdateResult update_plane_strain(
     const Vec6& stressCommittedVoigt,
     const MaterialPoint::HsState& stateCommitted,
     const RegionParams& region,
-    double sigmaMsf) {
+    double sigmaMsf,
+    std::uint8_t activeSetHint = 0) {
   // Phase 3 (fix plan): plane-strain σ_zz is a REACTION stress, not a
   // strain to be adjusted. The FE solver prescribes Δε_zz = 0 (plane-
   // strain kinematics). The constitutive update must consume that exact
@@ -2953,12 +3056,12 @@ inline HsUpdateResult update_plane_strain(
   bool usedSubstepping = false;
   HsUpdateResult res = update(
       strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
-      stateCommitted, region, sigmaMsf);
+      stateCommitted, region, sigmaMsf, activeSetHint);
 
   if (res.failureCode != 0) {
     HsUpdateResult stepped = update_substepped_no_tangent(
         strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
-        stateCommitted, region, sigmaMsf);
+        stateCommitted, region, sigmaMsf, activeSetHint);
     if (stepped.failureCode != 0) {
       // Substepping is the more robust local integration attempt; surface its
       // failure code (including plane-strain residual code 105) so the outer
@@ -3013,7 +3116,7 @@ inline HsUpdateResult update_plane_strain(
     Mat6 D_fd = fd_algorithmic_tangent(
         strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
         stateCommitted, region, sigmaMsf, D_e_local, fdOk,
-        /*useSubsteppedMap=*/true);
+        /*useSubsteppedMap=*/true, activeSetHint);
     if (fdOk) {
       res.tangent = D_fd;
       res.tangentMode = HsTangentMode::FiniteDifference;
@@ -3028,7 +3131,8 @@ inline HsUpdateResult update_plane_strain(
     bool fdOk = false;
     Mat6 D_fd = fd_algorithmic_tangent(
         strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
-        stateCommitted, region, sigmaMsf, D_e_local, fdOk);
+        stateCommitted, region, sigmaMsf, D_e_local, fdOk,
+        /*useSubsteppedMap=*/false, activeSetHint);
     if (fdOk) {
       res.tangent = D_fd;
       res.tangentMode = HsTangentMode::FiniteDifference;
@@ -3036,6 +3140,106 @@ inline HsUpdateResult update_plane_strain(
       res.tangent = D_e_local;
       res.tangentMode = HsTangentMode::Elastic;
     }
+  };
+  auto try_algorithmic_then_fd = [&]() {
+    const double smsf = std::max(sigmaMsf, 1.0);
+    const double c_eff = std::max(region.cEff / smsf, 0.0);
+    const double phi_eff = std::atan(std::max(std::tan(region.phi) / smsf, 0.0));
+    const double psi_eff = std::min(
+        std::atan(std::max(std::tan(region.psi) / smsf, 0.0)),
+        phi_eff);
+    const double sin_phi_cv = critical_state_sin_phi_cv(phi_eff, psi_eff);
+    const double M_cap = std::max(region.hs.M_cap, 1e-6);
+    const double H_cap = std::max(region.hs.H_cap, 1.0);
+    const double p_t = tensile_shift_p_t(c_eff, phi_eff);
+    const mce::MaterialParameters mp_eig = make_mp_for_eig(region, c_eff, phi_eff);
+    const bool use_simo_hughes = region.hs.useConsistentTangent >= 0.5;
+    bool tangentOk = false;
+    Mat6 D_alg = D_e_local;
+
+    if (use_simo_hughes) {
+      const Vec6 sigma_trial = lng::add(
+          stressCommittedVoigt,
+          lng::mul6x6(D_e_local, lng::sub(strainTrialVoigt, strainCommittedVoigt)));
+      const auto principalT = mce::principal_stress_projectors_3d_compression_positive(
+          sigma_trial, mp_eig);
+      const double s1 = compression_component_in_projector(res.stressUpdated, principalT.P1);
+      const double s2 = compression_component_in_projector(res.stressUpdated, principalT.P2);
+      const double s3 = compression_component_in_projector(res.stressUpdated, principalT.P3);
+      const auto ctx = tangent::build_sh_context(
+          principalT,
+          s1, s2, s3,
+          res.stateUpdated.gamma_p,
+          res.stateUpdated.p_p,
+          res.stateUpdated.eps_v_p,
+          res.activeDlambdaS,
+          res.activeDlambdaC,
+          c_eff, phi_eff, psi_eff, sin_phi_cv,
+          M_cap, p_t, H_cap, region);
+      switch (raw_active) {
+        case 1:
+          D_alg = tangent::compute_simo_hughes_cone_tangent(
+              principalT, ctx, D_e_local, tangentOk);
+          break;
+        case 2:
+          D_alg = tangent::compute_simo_hughes_cap_tangent(
+              principalT, ctx, D_e_local, tangentOk);
+          break;
+        case 3:
+          D_alg = tangent::compute_simo_hughes_corner_tangent(
+              principalT, ctx, D_e_local, tangentOk);
+          break;
+        default:
+          tangentOk = false;
+          break;
+      }
+      if (tangentOk) {
+        res.tangent = D_alg;
+        res.tangentMode = HsTangentMode::ConsistentAlgorithmic;
+        return;
+      }
+      try_fd_fallback();
+      return;
+    }
+
+    const auto pr = mce::principal_stress_projectors_3d_compression_positive(
+        res.stressUpdated, mp_eig);
+    switch (raw_active) {
+      case 1:
+        D_alg = cone_analytic_tangent_at_state(
+            pr, pr.s1, pr.s2, pr.s3,
+            res.stateUpdated.gamma_p,
+            res.stateUpdated.eps_v_p,
+            c_eff, phi_eff, psi_eff, sin_phi_cv,
+            region, D_e_local, tangentOk);
+        break;
+      case 2:
+        D_alg = cap_analytic_tangent_at_state(
+            pr, pr.s1, pr.s2, pr.s3,
+            res.stateUpdated.p_p,
+            M_cap, p_t, H_cap, phi_eff,
+            D_e_local, tangentOk);
+        break;
+      case 3:
+        D_alg = corner_analytic_tangent_at_state(
+            pr, pr.s1, pr.s2, pr.s3,
+            res.stateUpdated.gamma_p,
+            res.stateUpdated.p_p,
+            res.stateUpdated.eps_v_p,
+            c_eff, phi_eff, psi_eff, sin_phi_cv,
+            M_cap, p_t, H_cap,
+            region, D_e_local, tangentOk);
+        break;
+      default:
+        tangentOk = false;
+        break;
+    }
+    if (tangentOk) {
+      res.tangent = D_alg;
+      res.tangentMode = HsTangentMode::Analytic;
+      return;
+    }
+    try_fd_fallback();
   };
 
   switch (raw_active) {
@@ -3046,10 +3250,14 @@ inline HsUpdateResult update_plane_strain(
       break;
     case 1:
     case 3:
-      try_fd_fallback();
+      try_algorithmic_then_fd();
       break;
     case 2:
-      try_fd_fallback();
+      if (region.hs.useConsistentTangent >= 0.5) {
+        try_algorithmic_then_fd();
+      } else {
+        try_fd_fallback();
+      }
       break;
     case 4:
       // Pure tension (Rankine). Phase 6D defers the analytic mixed Rankine
@@ -3627,3 +3835,5 @@ inline void compute_hs_reference_constants(RegionParams& region, double sigmaMsf
 }
 
 }  // namespace madep::material::hs
+
+#include "material_hs_tangent.hpp"
