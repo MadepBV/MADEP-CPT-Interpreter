@@ -320,7 +320,8 @@ inline SmoothReturnResult return_map_smooth_mc_plastic(
     Vec6 acceptedStress{};
     Vec6 acceptedPlasticInc{};
     double acceptedF = 0.0;
-    for (double stepScale : {1.0, 0.5, 0.25, 0.125, 0.0625}) {
+    double stepScale = 1.0;
+    for (int damping = 0; damping < 12; ++damping, stepScale *= 0.5) {
       const double effectiveDeltaLambda = deltaLambda * stepScale;
       if (!(effectiveDeltaLambda > 0.0)) continue;
       const Vec6 candidateStress = linalg::sub(
@@ -334,7 +335,9 @@ inline SmoothReturnResult return_map_smooth_mc_plastic(
         bestF = fCandidate;
         bestPlasticInc = linalg::scale(m, effectiveDeltaLambda);
       }
-      if (std::abs(fCandidate) <= tolerance || std::abs(fCandidate) < std::abs(fCurrent) * 0.9) {
+      const double armijoTarget =
+          (1.0 - 1e-4 * stepScale) * std::abs(fCurrent);
+      if (std::abs(fCandidate) <= tolerance || std::abs(fCandidate) <= armijoTarget) {
         accepted = true;
         acceptedStress = candidateStress;
         acceptedPlasticInc = linalg::scale(m, effectiveDeltaLambda);

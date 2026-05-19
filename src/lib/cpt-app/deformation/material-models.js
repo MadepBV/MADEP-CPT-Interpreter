@@ -1512,9 +1512,14 @@ function solveExactMcCandidateBranch(
   );
   const representativeSurfaceMap = representativeSurfaceBundle.surfaceMap;
   const activeRepresentativeSurfaces = activeSurfaceIds.map((id) => representativeSurfaceMap[id]).filter(Boolean);
-  const plasticStrainIncrement6 = activeRepresentativeSurfaces.reduce(
-    (sum, surface, index) => addVector6(sum, scaleVector6(surface.m6, Number(principalSolve.plasticMultipliers?.[index]) || 0)),
-    zeroVector6()
+  const plasticStrainIncrement6 = plasticIncrementFromStressCorrection(
+    stressTrial6,
+    stressReturn6,
+    materialParameters
+  );
+  const recoveryResidual6 = subtractVector6(
+    plasticIncrementFromStressCorrection(stressTrial6, stressReturn6, materialParameters),
+    plasticStrainIncrement6
   );
   const tangentCouplingMatrix = activeRepresentativeSurfaces.map((surfaceI) =>
     activeRepresentativeSurfaces.map((surfaceJ) => dotVector6(surfaceI.n6, multiplyMatrix6x6Vector6(elasticTangent6x6, surfaceJ.m6)))
@@ -1543,6 +1548,13 @@ function solveExactMcCandidateBranch(
     ? Math.max(0, Math.min(1, (Number(principalSolve.plasticMultipliers?.[0]) || 0) / edgeTotalMultiplier))
     : 0;
   const branchAcceptanceResidual = Math.max(activeResidual, inactivePositiveResidual, maxPositiveResidual);
+  const multipliersNonnegative = (principalSolve.plasticMultipliers || [])
+    .every((multiplier) => (Number(multiplier) || 0) >= -complementarityTolerance);
+  const admissibilityCertified =
+    activeResidual <= toleranceState.localTolerance &&
+    inactivePositiveResidual <= toleranceState.localTolerance &&
+    maxPositiveResidual <= toleranceState.localTolerance &&
+    multipliersNonnegative;
 
   if (activeResidual > toleranceState.localTolerance || inactivePositiveResidual > toleranceState.localTolerance) {
     return {
@@ -1756,6 +1768,9 @@ function solveExactMcCandidateBranch(
     tangentConditionNumber,
     tangentQuality: classifyTangentQuality(tangentConditionNumber),
     branchAcceptanceResidual,
+    admissibilityCertified,
+    recoveryResidualNorm: vectorNorm6(recoveryResidual6),
+    planeStrainRecoveryResidualZz: recoveryResidual6[2],
     apexAdmissibilityReason: branchKind === BRANCH_APEX_FORMAL ? 'formal-apex-accepted' : '',
     localResidualsBySurface: { ...exactValues }
   };
@@ -2176,6 +2191,24 @@ function localReturnTolerance(materialParameters, mcTrial) {
   return Math.max(Number(materialParameters?.localTolerance) || 1e-8, resolveYieldTolerance(materialParameters, mcTrial));
 }
 
+function elasticStrainFromStressIncrement(stressIncrement6, materialParameters = {}) {
+  const E = Math.max(Number(materialParameters?.Emc) || 1, 1);
+  const nu = Math.min(Math.max(Number(materialParameters?.nu) || 0.3, -0.99), 0.49);
+  const G = E / (2 * (1 + nu));
+  return [
+    (stressIncrement6[0] - nu * stressIncrement6[1] - nu * stressIncrement6[2]) / E,
+    (-nu * stressIncrement6[0] + stressIncrement6[1] - nu * stressIncrement6[2]) / E,
+    (-nu * stressIncrement6[0] - nu * stressIncrement6[1] + stressIncrement6[2]) / E,
+    stressIncrement6[3] / G,
+    stressIncrement6[4] / G,
+    stressIncrement6[5] / G
+  ];
+}
+
+function plasticIncrementFromStressCorrection(stressTrial6, stressReturn6, materialParameters = {}) {
+  return elasticStrainFromStressIncrement(subtractVector6(stressTrial6, stressReturn6), materialParameters);
+}
+
 function returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, materialParameters, mcTrial) {
   let stress6 = cloneVector6(stressTrial6);
   let deltaPlasticStrain6 = zeroVector6();
@@ -2229,7 +2262,7 @@ function returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, materialParam
 
     let accepted = null;
     let best = null;
-    for (const stepScale of [1, 0.5, 0.25, 0.125, 0.0625]) {
+    for (let damping = 0, stepScale = 1; damping < 12; damping += 1, stepScale *= 0.5) {
       const effectiveDeltaLambda = deltaLambda * stepScale;
       if (!(effectiveDeltaLambda > 0)) continue;
       const candidateStress6 = subtractVector6(stress6, scaleVector6(flowStressDirection6, effectiveDeltaLambda));
@@ -2243,7 +2276,8 @@ function returnMapSmoothMCPlastic(stressTrial6, elasticTangent6x6, materialParam
         plasticStrainIncrement6: scaleVector6(potentialGradient6, effectiveDeltaLambda)
       };
       if (!best || Math.abs(fCandidate) < Math.abs(best.f)) best = candidate;
-      if (Math.abs(fCandidate) <= tolerance || Math.abs(fCandidate) < Math.abs(fCurrent) * 0.9) {
+      const armijoTarget = (1 - 1e-4 * stepScale) * Math.abs(fCurrent);
+      if (Math.abs(fCandidate) <= tolerance || Math.abs(fCandidate) <= armijoTarget) {
         accepted = candidate;
         break;
       }
@@ -3136,6 +3170,9 @@ export function createMCPlasticMaterial(materialParameters, warnings = []) {
           edgeMixWeight: Number(local.edgeMixWeight) || 0,
           plasticMultipliers: Array.isArray(local?.plasticMultipliers) ? [...local.plasticMultipliers] : [],
           branchAcceptanceResidual: Number(local?.branchAcceptanceResidual) || 0,
+          admissibilityCertified: local?.admissibilityCertified === true,
+          recoveryResidualNorm: Number(local?.recoveryResidualNorm) || 0,
+          planeStrainRecoveryResidualZz: Number(local?.planeStrainRecoveryResidualZz) || 0,
           tangentConditionNumber: Number(local?.tangentConditionNumber) || Number.POSITIVE_INFINITY,
           tangentQuality: local?.tangentQuality || 'unknown',
           apexAdmissibilityReason: local?.apexAdmissibilityReason || '',

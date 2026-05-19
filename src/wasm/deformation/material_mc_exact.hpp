@@ -1171,7 +1171,33 @@ struct CandidateBranchResult {
   double tangentConditionNumber{ 1.0 };
   TangentQuality tangentQuality{ TangentQuality::GOOD };
   double branchAcceptanceResidual{ 0.0 };
+  std::uint8_t admissibilityCertified{ 0 };
+  double recoveryResidualNorm{ 0.0 };
+  double planeStrainResidualZz{ 0.0 };
 };
+
+inline Vec6 elastic_strain_from_stress_increment(const Vec6& dSigma,
+                                                 const MaterialParameters& mp) {
+  const double E = std::max(mp.Emc, 1.0);
+  const double nu = std::clamp(mp.nu, -0.99, 0.49);
+  const double invE = 1.0 / E;
+  const double G = E / (2.0 * (1.0 + nu));
+  Vec6 strain{};
+  strain[V_XX] = invE * (dSigma[V_XX] - nu * dSigma[V_YY] - nu * dSigma[V_ZZ]);
+  strain[V_YY] = invE * (-nu * dSigma[V_XX] + dSigma[V_YY] - nu * dSigma[V_ZZ]);
+  strain[V_ZZ] = invE * (-nu * dSigma[V_XX] - nu * dSigma[V_YY] + dSigma[V_ZZ]);
+  strain[V_XY] = dSigma[V_XY] / G;
+  strain[V_YZ] = dSigma[V_YZ] / G;
+  strain[V_XZ] = dSigma[V_XZ] / G;
+  return strain;
+}
+
+inline Vec6 plastic_increment_from_stress_correction(const Vec6& stressTrial6,
+                                                     const Vec6& stressReturned6,
+                                                     const MaterialParameters& mp) {
+  return elastic_strain_from_stress_increment(
+      jsm::subtract_vector6(stressTrial6, stressReturned6), mp);
+}
 
 // Optional `committedState` is supplied by the caller (it provides the
 // representativeProjectors used by `buildRepeatedSubspaceProjectors`).
@@ -1261,20 +1287,25 @@ inline CandidateBranchResult solve_exact_mc_candidate_branch(
       representedPrincipalValues, stressTensorProjectors);
   res.stress6_tens = jsm::compression_positive_tensor3_to_stress6(stressTensor);
 
-  // Plastic strain increment (engineering Voigt-6, tension-positive)
-  // built from the representative surfaces' m6 (each is the global-
-  // frame engineering-Voigt-6 gradient for one of the active surfaces).
-  Vec6 plasticStrainIncrement6 = jsm::zero_vector6();
+  // Plastic strain increment (engineering Voigt-6, tension-positive).
+  // For repeated-output branches the final stress includes a representation
+  // average inside the repeated eigenspace, so the only plane-strain-safe
+  // increment is the elastic restitution C^{-1}(sigma_trial - sigma_return).
   std::vector<Surface> activeRepresentativeSurfaces;
   activeRepresentativeSurfaces.reserve(res.activeSurfaceIds.size());
   for (std::size_t i = 0; i < res.activeSurfaceIds.size(); ++i) {
     const Surface* surf = representativeSurfaceBundle.find(res.activeSurfaceIds[i]);
     if (!surf) continue;
     activeRepresentativeSurfaces.push_back(*surf);
-    plasticStrainIncrement6 = jsm::add_vector6(
-        plasticStrainIncrement6,
-        jsm::scale_vector6(surf->m6, principalSolve.plasticMultipliers[i]));
   }
+  const Vec6 plasticStrainIncrement6 =
+      plastic_increment_from_stress_correction(stressTrial6_tens, res.stress6_tens, mp);
+  const Vec6 recoveryResidual =
+      jsm::subtract_vector6(
+          plastic_increment_from_stress_correction(stressTrial6_tens, res.stress6_tens, mp),
+          plasticStrainIncrement6);
+  res.recoveryResidualNorm = jsm::vector_norm6(recoveryResidual);
+  res.planeStrainResidualZz = recoveryResidual[V_ZZ];
 
   // Tangent coupling matrix (global Voigt-6 form for the multi-surface
   // tangent). H_{ij} = n_i · C^e · m_j with `dot` being plain Euclidean
@@ -1335,6 +1366,18 @@ inline CandidateBranchResult solve_exact_mc_candidate_branch(
       ? std::clamp(principalSolve.plasticMultipliers.front() / res.edgeTotalMultiplier, 0.0, 1.0)
       : 0.0;
   res.branchAcceptanceResidual = std::max({activeResidual, inactivePositiveResidual, maxPositiveResidual});
+  bool multipliersNonnegative = true;
+  for (double multiplier : principalSolve.plasticMultipliers) {
+    if (multiplier < -complementarityTolerance) {
+      multipliersNonnegative = false;
+      break;
+    }
+  }
+  res.admissibilityCertified =
+      (activeResidual <= toleranceState.localTolerance &&
+       inactivePositiveResidual <= toleranceState.localTolerance &&
+       maxPositiveResidual <= toleranceState.localTolerance &&
+       multipliersNonnegative) ? 1u : 0u;
 
   if (activeResidual > toleranceState.localTolerance ||
       inactivePositiveResidual > toleranceState.localTolerance) {
@@ -1471,6 +1514,9 @@ struct ActiveSetReturnResult {
   double tangentConditionNumber{ 1.0 };
   TangentQuality tangentQuality{ TangentQuality::GOOD };
   double branchAcceptanceResidual{ 0.0 };
+  std::uint8_t admissibilityCertified{ 0 };
+  double recoveryResidualNorm{ 0.0 };
+  double planeStrainResidualZz{ 0.0 };
 };
 
 inline ActiveSetReturnResult solve_exact_mc_active_set_return(
@@ -1535,6 +1581,9 @@ inline ActiveSetReturnResult solve_exact_mc_active_set_return(
         result.tangentConditionNumber = retained.tangentConditionNumber;
         result.tangentQuality = retained.tangentQuality;
         result.branchAcceptanceResidual = retained.branchAcceptanceResidual;
+        result.admissibilityCertified = retained.admissibilityCertified;
+        result.recoveryResidualNorm = retained.recoveryResidualNorm;
+        result.planeStrainResidualZz = retained.planeStrainResidualZz;
         return result;
       }
     }
@@ -1729,6 +1778,9 @@ inline ActiveSetReturnResult solve_exact_mc_active_set_return(
       result.tangentConditionNumber = c.tangentConditionNumber;
       result.tangentQuality = c.tangentQuality;
       result.branchAcceptanceResidual = c.branchAcceptanceResidual;
+      result.admissibilityCertified = c.admissibilityCertified;
+      result.recoveryResidualNorm = c.recoveryResidualNorm;
+      result.planeStrainResidualZz = c.planeStrainResidualZz;
       return result;
     }
     if (c.routePending) {

@@ -526,6 +526,48 @@ Validation status:
   `tension_corner_s12_t3`; all other branches were at or near roundoff.
 - PASS: `node scripts/verify_mc_unchanged_when_off.mjs`.
 
+## MC-SH-3 - damping, admissibility, and plane-strain recovery
+
+Required pre-read:
+
+- `hardening-soil-simo-hughes-upgrade.md` section C.4 MC-SH-3 row.
+- `hardening-soil-theory-fix.md` section 3.
+
+Implementation progress:
+
+- Hardened the smooth MC fallback Newton line search in JS and WASM from a
+  short fixed damping list to a 12-step Armijo-style halving loop.  This keeps
+  the existing best-candidate fallback but gives near-surface plastic states a
+  mathematically standard residual-decrease criterion.
+- Added exact-return admissibility telemetry in `material_mc_exact.hpp`:
+  accepted branches now report certified surface closure, non-negative
+  multipliers, and plane-strain recovery residual diagnostics.
+- Corrected exact-return plastic increments to use elastic restitution from
+  the actual returned stress, `C^{-1}(sigma_trial - sigma_return)`.  This is
+  essential for repeated-output tension edge/corner branches, where the stress
+  tensor is averaged in the repeated eigenspace after the active-system solve.
+  The old multiplier-only increment did not include that representation
+  correction.
+- Mirrored the restitution increment and diagnostics in the JS material model
+  so the CPU and WASM paths keep the same constitutive contract.
+- Added `scripts/verify_mc_simo_hughes_damped_newton.mjs` with a C++ harness
+  (`scripts/scratch/mc_sh_phase_3.cpp`) that exercises the exact active-set
+  certificate and the smooth fallback Newton on a shallow near-surface
+  yielded state (`c = 0.1 kPa`, `phi = 35 deg`, minor principal compression
+  about `1 kPa`).
+
+Validation status:
+
+- PASS: `node scripts/verify_mc_simo_hughes_damped_newton.mjs`.
+- PASS: `node scripts/verify_mc_unchanged_when_off.mjs`.
+- PASS: `node scripts/verify_mc_exact_tangent_invariant.mjs`.
+- PASS: `node scripts/verify_mc_simo_hughes_phase_1.mjs`.
+- PASS: `npm run build:wasm:deformation`.
+- PASS: `node scripts/verify_wasm_deformation_smoke.mjs`.
+- PASS: `node scripts/verify_wasm_mc_local_parity.mjs`.
+- PASS: `npm run check`.
+- PASS: `npm run build`.
+
 Finding:
 
 - The reported basis-rotation symptom was a missing eigenvector derivative,
