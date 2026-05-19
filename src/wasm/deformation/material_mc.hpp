@@ -18,8 +18,10 @@
 //   3. apex / corner (both violated simultaneously) → project to the
 //      apex point σ1 = σ2 = σ3 = σ_apex.
 //
-// The result includes the consistent algorithmic tangent in 6×6 Voigt
-// form so global Newton converges quadratically.
+// The local result carries an algorithmic tangent in 6×6 Voigt form. The
+// shipping `run_mc_return_mapping` path still returns the elastic tangent
+// unless its consistent-tangent selector is explicitly enabled by a later
+// phase; the spectral helper below is the FD-verified smooth-face tangent.
 //
 // Capabilities relative to the CPU JS path:
 //   - same engineering physics (admissible final stress within the MC + T3
@@ -46,7 +48,7 @@ namespace madep::material {
 struct ReturnMappingResult {
   Vec6 stress{};           // final effective stress (tension positive)
   Vec6 plasticStrainInc{}; // Δε^p
-  Mat6 tangent{};          // consistent algorithmic tangent C^ep (6×6)
+  Mat6 tangent{};          // algorithmic tangent C^ep (6×6)
   double equivalent_plastic_strain_inc{ 0.0 };
   double yield_residual{ 0.0 };
   double eta{ 0.0 };       // f/(2 c cos φ + (σ_max + σ_min) sin φ) — heuristic, used for display
@@ -235,70 +237,125 @@ inline Vec6 spectral_tensor_to_voigt(const Vec3& aP, const Mat3x3& V) {
   return Vec6{T[0][0], T[1][1], T[2][2], T[0][1], T[1][2], T[0][2]};
 }
 
-// Consistent elastoplastic tangent for MC, built in the GLOBAL frame.
+inline Mat3x3 rotate_stress_voigt_to_principal(const Vec6& stress,
+                                               const Mat3x3& V) {
+  const Mat3x3 T = linalg::stress_tensor_from_voigt(stress);
+  Mat3x3 out{};
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      double v = 0.0;
+      for (int a = 0; a < 3; ++a) {
+        for (int b = 0; b < 3; ++b) v += V[a][i] * T[a][b] * V[b][j];
+      }
+      out[i][j] = v;
+    }
+  }
+  return out;
+}
+
+inline Vec6 rotate_principal_stress_to_voigt(const Mat3x3& principal,
+                                             const Mat3x3& V) {
+  Mat3x3 T{};
+  for (int a = 0; a < 3; ++a) {
+    for (int b = 0; b < 3; ++b) {
+      double v = 0.0;
+      for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) v += V[a][i] * principal[i][j] * V[b][j];
+      }
+      T[a][b] = v;
+    }
+  }
+  return linalg::voigt_from_stress_tensor(T);
+}
+
+// Consistent elastoplastic tangent for the differentiable smooth-face branch
+// of the implemented MC return map, built in the global frame. The return is
+// a spectral tensor function:
 //
-// Principal-space gradients (tension positive, σ1 ≥ σ2 ≥ σ3):
-//   ∂f/∂σ = a_p = (1 + sin φ, 0, -(1 - sin φ))
-//   ∂g/∂σ = b_p = (1 + sin ψ, 0, -(1 - sin ψ))
+//   sigma_new = V(sigma_tr) diag(s_new(w_tr)) V(sigma_tr)^T
 //
-// Build the symmetric tensors a_g = V diag(a_p) Vᵀ, b_g = V diag(b_p) Vᵀ
-// from the trial-stress eigenvectors V. Then in tensor form:
-//   C^ep = C - (C : b_g)(a_g : C) / (a_g : C : b_g)
-// where : denotes the double contraction over symmetric 2nd-order tensors.
-//
-// Voigt / engineering-shear bookkeeping (the place the earlier "simple"
-// version got wrong):
-//
-//   * Strain-like vectors store γ_xy at the shear slot (engineering
-//     convention). C in Voigt is built so σ = C · γ.
-//   * Stress-like vectors store σ_xy at the shear slot (no factor).
-//   * a_g and b_g, as written, are 2nd-order tensors whose components
-//     we read into Voigt-6 without any factor (= tensor convention).
-//
-// To compute C : b in Voigt we must hand C the engineering version of b
-// (double the shear components). The result is stress-like (no factor on
-// shear). The same for a:
-//
-//   Cb = C · b_eng              (output is stress-like Voigt)
-//   Ca = C · a_eng              (output is stress-like Voigt)
-//   A  = a : C : b
-//      = sum_diag a_t[I] Cb[I] + 2 sum_shear a_t[I] Cb[I]
-//      = linalg::dot6(a_tensor, Cb)
-//
-// Rank-1 update in stress / strain-eng convention is then a clean outer
-// product: C^ep[I][J] = C[I][J] - Cb[I] · Ca[J] / A.
-//
-// For non-associated flow (φ ≠ ψ) C^ep is asymmetric. Either symmetrise
-// it (CG-compatible, mild precision loss) or hand the asymmetric form to
-// a GMRES solver downstream.
+// so its derivative needs both the principal-value consistency correction and
+// the eigenvector derivative. The previous rank-one tensor formula captured
+// coaxial normal perturbations but missed the off-diagonal spectral terms,
+// which is the MC-SH-0 tangent bug. At repeated eigenvalues the selected
+// single-face spectral derivative is not unique; return the elastic fallback
+// there and let exact active-set machinery handle edge/apex branches.
 inline Mat6 continuum_tangent_mc_global(
     double phi, double psi,
-    const Mat6& C, const Mat3x3& V,
+    const Mat6& C,
+    const Mat3x3& V,
+    const Vec3& trialPrincipal,
+    const Vec3& returnedPrincipal,
     bool symmetrize) {
   const double sinPhi = std::sin(phi);
   const double sinPsi = std::sin(psi);
   const Vec3 aP{1.0 + sinPhi, 0.0, -(1.0 - sinPhi)};
   const Vec3 bP{1.0 + sinPsi, 0.0, -(1.0 - sinPsi)};
-  const Vec6 a_t = spectral_tensor_to_voigt(aP, V);
-  const Vec6 b_t = spectral_tensor_to_voigt(bP, V);
 
-  // Engineering versions: double the shear components for use with the
-  // engineering-strain C matrix.
-  const Vec6 a_eng{a_t[0], a_t[1], a_t[2], 2.0 * a_t[3], 2.0 * a_t[4], 2.0 * a_t[5]};
-  const Vec6 b_eng{b_t[0], b_t[1], b_t[2], 2.0 * b_t[3], 2.0 * b_t[4], 2.0 * b_t[5]};
+  const double M = C[0][0];
+  const double L = C[0][1];
+  const double G = C[3][3];
+  const double Dp[3][3] = {
+    {M, L, L},
+    {L, M, L},
+    {L, L, M}
+  };
+  Vec3 Dm{};
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) Dm[i] += Dp[i][j] * bP[j];
+  }
+  double A = 0.0;
+  for (int i = 0; i < 3; ++i) A += aP[i] * Dm[i];
+  if (!(std::fabs(A) > 1e-30) || !(G > 0.0)) return C;
 
-  const Vec6 Cb = linalg::mul6x6(C, b_eng);  // stress-like (no factor on shear)
-  const Vec6 Ca = linalg::mul6x6(C, a_eng);  // stress-like
-  const double A = linalg::dot6(a_t, Cb);    // dot6 has the factor 2 on shear
-
-  if (!(std::fabs(A) > 1e-30)) return C;
-
-  Mat6 Cep = C;
-  for (int i = 0; i < 6; ++i) {
-    for (int j = 0; j < 6; ++j) {
-      Cep[i][j] -= Cb[i] * Ca[j] / A;
+  double Bdiag[3][3]{};
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      Bdiag[i][j] = (i == j ? 1.0 : 0.0) - Dm[i] * aP[j] / A;
     }
   }
+
+  auto spectral_shear_factor = [&](int i, int j, bool& ok) {
+    const double denom = trialPrincipal[i] - trialPrincipal[j];
+    const double scale = std::max({std::fabs(trialPrincipal[i]),
+                                   std::fabs(trialPrincipal[j]), 1.0});
+    if (std::fabs(denom) <= 1e-10 * scale) {
+      ok = false;
+      return 0.0;
+    }
+    return (returnedPrincipal[i] - returnedPrincipal[j]) / denom;
+  };
+
+  bool spectralOk = true;
+  double shearFactor[3][3]{};
+  for (int i = 0; i < 3; ++i) {
+    for (int j = i + 1; j < 3; ++j) {
+      const double factor = spectral_shear_factor(i, j, spectralOk);
+      shearFactor[i][j] = factor;
+      shearFactor[j][i] = factor;
+    }
+  }
+  if (!spectralOk) return C;
+
+  Mat6 Cep{};
+  for (int col = 0; col < 6; ++col) {
+    Vec6 strainBasis{};
+    strainBasis[col] = 1.0;
+    const Vec6 trialStressRate = linalg::mul6x6(C, strainBasis);
+    const Mat3x3 dTrialP = rotate_stress_voigt_to_principal(trialStressRate, V);
+    Mat3x3 dReturnedP{};
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        if (i != j) dReturnedP[i][j] = shearFactor[i][j] * dTrialP[i][j];
+      }
+    }
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) dReturnedP[i][i] += Bdiag[i][j] * dTrialP[j][j];
+    }
+    const Vec6 colStress = rotate_principal_stress_to_voigt(dReturnedP, V);
+    for (int row = 0; row < 6; ++row) Cep[row][col] = colStress[row];
+  }
+
   if (symmetrize) {
     for (int i = 0; i < 6; ++i) {
       for (int j = i + 1; j < 6; ++j) {
@@ -311,11 +368,11 @@ inline Mat6 continuum_tangent_mc_global(
   return Cep;
 }
 
-// Build the consistent algorithmic tangent in the *element global*
-// frame, using the eigenvector basis V of the trial stress to rotate the
-// per-principal-axis return.
+// Build the engineering MC update in the *element global* frame, using the
+// eigenvector basis V of the trial stress to rotate the per-principal-axis
+// return.
 //
-// For engineering scope we use this scheme:
+// The local stress update follows this scheme:
 //   - Compute trial Voigt-6 stress σ_tr = σ_n + C : Δε.
 //   - Eigen-decompose σ_tr → principal stresses (s1_tr ≥ s2_tr ≥ s3_tr)
 //     and eigenvectors V (columns are principal directions).
@@ -323,12 +380,10 @@ inline Mat6 continuum_tangent_mc_global(
 //   - Apply tension cut-off if required.
 //   - Reassemble σ' = V * diag(s1, s2, s3) * V^T.
 //   - Plastic strain increment: Δε^p = D^{-1} (σ_tr - σ').
-//   - Algorithmic tangent: continuum elastic C minus the symmetric
-//     consistency correction built from the active-flow Voigt-6
-//     direction vector (rotated to the global frame via V).
-//
-// Symmetrization is the default; the consistent (asymmetric) tangent is
-// available behind `symmetrize == false`.
+//   - Algorithmic tangent: the current shipping path returns the elastic
+//     tangent (modified Newton). MC-SH-0 fixes the smooth-face spectral
+//     consistent tangent helper, but MC-SH-1 owns the runtime selector and
+//     GMRES dispatch needed before this path can use it in analysis.
 inline ReturnMappingResult run_mc_return_mapping(
     const RegionParams& mp,
     const Mat6& C,
@@ -338,6 +393,7 @@ inline ReturnMappingResult run_mc_return_mapping(
     bool useTensionCutoff,
     double sigmaT) {
   ReturnMappingResult out;
+  (void)sigmaT;
   // 1) Elastic predictor.
   const Vec6 dSigmaTrial = linalg::mul6x6(C, dStrain);
   const Vec6 sigmaTrial = linalg::add(sigmaN, dSigmaTrial);
@@ -474,18 +530,10 @@ inline ReturnMappingResult run_mc_return_mapping(
   out.equivalent_plastic_strain_inc = std::sqrt((2.0 / 3.0) * std::max(devNormSq, 0.0));
 
   // 8) Algorithmic tangent. Elastic tangent at yielding GPs (modified
-  // Newton) — converges linearly in plastic but the converged state is
-  // provably identical to the consistent-tangent fixed point. Verified
-  // against the CPU JS path to 0.02 % on max settlement (parity script
-  // scripts/verify_wasm_cpu_parity.mjs).
-  //
-  // The consistent (asymmetric) tangent + scaled GMRES path is wired
-  // through `continuum_tangent_mc_global` + `cg::solve_gmres_scaled`
-  // but currently produces wrong converged states — likely a sign /
-  // basis-rotation bug in the tangent or the left-preconditioned
-  // Arnoldi update. Until that's pinned down, modified Newton is the
-  // shipping default. Toggle with the (currently unused) `symmetrize`
-  // flag once the consistent path is debugged.
+  // Newton) — converges linearly in plastic but preserves the pre-MC-SH
+  // behaviour exactly. MC-SH-0 fixed the smooth-face consistent tangent
+  // helper by adding the missing spectral/eigenvector derivative; MC-SH-1
+  // owns the explicit runtime selector before any analysis path may use it.
   const bool yielding = mc_yielding || tension_active;
   (void)yielding; (void)V; (void)symmetrize;
   out.tangent = C;
