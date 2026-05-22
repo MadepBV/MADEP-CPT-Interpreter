@@ -4572,7 +4572,7 @@ function ensureStage6State(){
     .map((pt)=>({x:+pt.x, y:+pt.y}));
   if(!bishop.lineProbe || typeof bishop.lineProbe !== 'object') bishop.lineProbe = stage6Defaults().bishop.lineProbe;
   bishop.lineProbe.sampleCount = Math.min(Math.max(Math.round(+bishop.lineProbe.sampleCount || 81), 21), 201);
-  if(!['head','porePressure','gradient','flow','qx','qy','normalFlow'].includes(bishop.lineProbe.seepageQuantity)){
+  if(!['head','porePressure','gradient','hydraulicFs','flow','qx','qy','normalFlow'].includes(bishop.lineProbe.seepageQuantity)){
     bishop.lineProbe.seepageQuantity = 'head';
   }
   if(!stage6BishopDeformationQuantityIds(bishop.deformation?.options?.analysisType, bishop.deformation?.result?.hasHardeningSoil === true).includes(bishop.lineProbe.deformationQuantity)){
@@ -4689,7 +4689,7 @@ function ensureStage6State(){
   if(!bishop.seepage.display || typeof bishop.seepage.display !== 'object') bishop.seepage.display = stage6Defaults().bishop.seepage.display;
   bishop.seepage.display.showBoundaryConditions = bishop.seepage.display.showBoundaryConditions !== false;
   bishop.seepage.display.showBoundaryLabels = bishop.seepage.display.showBoundaryLabels !== false;
-  if(!['head','porePressure','gradient','flow','qx','qy'].includes(bishop.seepage.display.contourMode)) bishop.seepage.display.contourMode = 'head';
+  if(!['head','porePressure','gradient','hydraulicFs','flow','qx','qy'].includes(bishop.seepage.display.contourMode)) bishop.seepage.display.contourMode = 'head';
   bishop.seepage.display.showContours = bishop.seepage.display.showContours !== false;
   bishop.seepage.display.showContourLines = bishop.seepage.display.showContourLines !== false;
   bishop.seepage.display.showContourLegend = bishop.seepage.display.showContourLegend !== false;
@@ -4898,6 +4898,67 @@ function stage6RememberDetailsState(){
 function stage6DetailsOpen(key){
   ensureStage6State();
   return S.stage6?.ui?.details?.[key] ? ' open' : '';
+}
+
+const STAGE6_SCROLL_PERSIST_SELECTORS = [
+  '[data-st6scroll-key]',
+  '.st6-canvas-card-body',
+  '.st6-canvas-sheet-body',
+  '.st6-bishop-view-menu-body',
+  '.st6-canvas-table-wrap',
+  'details[data-st6details] [style*="overflow"]'
+];
+
+function stage6ScrollTargetBaseKey(el){
+  const explicit = el?.getAttribute?.('data-st6scroll-key');
+  if(explicit) return `explicit:${explicit}`;
+  const detailsKey = el?.closest?.('details[data-st6details]')?.dataset?.st6details || '';
+  const dialogLabel = el?.closest?.('[role="dialog"][aria-label]')?.getAttribute?.('aria-label') || '';
+  const classKey = Array.from(el?.classList || []).sort().join('.');
+  const tag = String(el?.tagName || 'node').toLowerCase();
+  return `${tag}|${classKey}|${detailsKey}|${dialogLabel}`;
+}
+
+function stage6ScrollTargets(root){
+  if(!root?.querySelectorAll) return [];
+  const seen = new Set();
+  const rawTargets = [];
+  STAGE6_SCROLL_PERSIST_SELECTORS.forEach((selector)=>{
+    root.querySelectorAll(selector).forEach((el)=>{
+      if(seen.has(el)) return;
+      seen.add(el);
+      if(typeof el.scrollTop !== 'number' || typeof el.scrollLeft !== 'number') return;
+      rawTargets.push(el);
+    });
+  });
+  const counts = new Map();
+  return rawTargets.map((el)=>{
+    const baseKey = stage6ScrollTargetBaseKey(el);
+    const index = counts.get(baseKey) || 0;
+    counts.set(baseKey, index + 1);
+    return {el, key:`${baseKey}#${index}`};
+  });
+}
+
+function stage6CaptureScrollState(root){
+  return stage6ScrollTargets(root)
+    .map(({el, key})=>({key, top:el.scrollTop || 0, left:el.scrollLeft || 0}))
+    .filter((entry)=>entry.top || entry.left);
+}
+
+function stage6RestoreScrollState(root, scrollState){
+  if(!scrollState?.length) return;
+  const byKey = new Map(scrollState.map((entry)=>[entry.key, entry]));
+  const restore = ()=>{
+    stage6ScrollTargets(root).forEach(({el, key})=>{
+      const entry = byKey.get(key);
+      if(!entry) return;
+      el.scrollTop = entry.top;
+      el.scrollLeft = entry.left;
+    });
+  };
+  restore();
+  requestAnimationFrame(restore);
 }
 
 function stage6SetDetailsOpen(key, open = true){
@@ -5439,6 +5500,7 @@ function stage6BishopSeepageContourMeta(mode){
   if(mode === 'head') return {label:'h', axisTitle:'Head h (m)', unit:'m', scale:1, digits:2, signed:false};
   if(mode === 'porePressure') return {label:'u', axisTitle:'Pore pressure u (kPa)', unit:'kPa', scale:1, digits:2, signed:true};
   if(mode === 'gradient') return {label:'|∇h|', axisTitle:'Hydraulic gradient |∇h| (-)', unit:'', scale:1, digits:3, signed:false};
+  if(mode === 'hydraulicFs') return {label:'FSᵢ', axisTitle:'Hydraulic safety factor FSᵢ = iᶜʳⁱᵗ / |∇h| (-)', unit:'', scale:1, digits:2, signed:false, centeredAtOne:true};
   if(mode === 'flow') return {label:'|q|', axisTitle:'Specific discharge |q| (m/s)', unit:'m/s', scale:1, digits:3, signed:false};
   if(mode === 'qx') return {label:'qₓ', axisTitle:'Specific discharge qₓ (m/s)', unit:'m/s', scale:1, digits:3, signed:true};
   return {label:'qᵧ', axisTitle:'Specific discharge qᵧ (m/s)', unit:'m/s', scale:1, digits:3, signed:true};
@@ -5449,6 +5511,7 @@ function stage6BishopSeepageContourOptions(){
     'head',
     'porePressure',
     'gradient',
+    'hydraulicFs',
     'flow',
     'qx',
     'qy'
@@ -5456,6 +5519,30 @@ function stage6BishopSeepageContourOptions(){
     id,
     label:stage6BishopSeepageContourMeta(id).label
   }));
+}
+
+const ST6_SEEPAGE_HYDRAULIC_FS_CAP = 10;
+const ST6_SEEPAGE_HYDRAULIC_FS_PALETTE = [
+  {t:0.00, rgb:[202, 32, 36]},
+  {t:0.24, rgb:[243, 150, 36]},
+  {t:0.50, rgb:[45, 170, 91]},
+  {t:0.74, rgb:[50, 184, 205]},
+  {t:1.00, rgb:[33, 93, 188]}
+];
+
+function stage6BishopSeepageCriticalGradient(material){
+  const gammaW = Math.max(Number(stage6Constants().gammaW) || 9.81, 1e-9);
+  const gammaDry = Number.isFinite(Number(material?.gamma)) ? Number(material.gamma) : 18;
+  const gammaSat = Number.isFinite(Number(material?.gammaSat)) ? Number(material.gammaSat) : gammaDry + 2;
+  return Math.max((gammaSat - gammaW) / gammaW, 0);
+}
+
+function stage6BishopSeepageHydraulicFs(gradientMagnitude, material){
+  const gradient = Math.max(Math.abs(Number(gradientMagnitude) || 0), 0);
+  const criticalGradient = stage6BishopSeepageCriticalGradient(material);
+  if(!(criticalGradient > 0)) return 0;
+  if(!(gradient > 1e-9)) return ST6_SEEPAGE_HYDRAULIC_FS_CAP;
+  return Math.min(criticalGradient / gradient, ST6_SEEPAGE_HYDRAULIC_FS_CAP);
 }
 
 function stage6BishopSeepageElementContourValue(result, mesh, elementIndex, mode){
@@ -5467,6 +5554,10 @@ function stage6BishopSeepageElementContourValue(result, mesh, elementIndex, mode
   }
   const gradient = result?.elementGradients?.[elementIndex] || {};
   if(mode === 'gradient') return Number(gradient.gradientMagnitude || 0);
+  if(mode === 'hydraulicFs'){
+    const cell = mesh?.cells?.[mesh?.elementCell?.[elementIndex]];
+    return stage6BishopSeepageHydraulicFs(gradient.gradientMagnitude, cell?.material);
+  }
   if(mode === 'flow') return Number(gradient.qMagnitude || 0);
   if(mode === 'qx') return Number(gradient.qx || 0);
   return Number(gradient.qy || 0);
@@ -5481,6 +5572,10 @@ function stage6BishopSeepageContourValue(result, mesh, cellIndex, mode){
   }
   const gradient = result?.cellGradients?.[cellIndex] || {};
   if(mode === 'gradient') return Number(gradient.gradientMagnitude || 0);
+  if(mode === 'hydraulicFs'){
+    const cell = mesh?.cells?.[cellIndex];
+    return stage6BishopSeepageHydraulicFs(gradient.gradientMagnitude, cell?.material);
+  }
   if(mode === 'flow') return Number(gradient.qMagnitude || 0);
   if(mode === 'qx') return Number(gradient.qx || 0);
   return Number(gradient.qy || 0);
@@ -5495,6 +5590,12 @@ function stage6BishopSeepageContourStats(result, mesh, mode){
   if(!values.length) return {min:0, max:1};
   const min = Math.min(...values);
   const max = Math.max(...values);
+  if(mode === 'hydraulicFs'){
+    return {
+      min:Math.min(min, 1),
+      max:Math.max(max, 1.5)
+    };
+  }
   if(stage6BishopSeepageContourModeIsSigned(mode)){
     const abs = Math.max(Math.abs(min), Math.abs(max), 1e-9);
     return {min:-abs, max:abs};
@@ -5531,6 +5632,14 @@ function stage6BishopSeepageContourNodalValues(result, mesh, mode){
 }
 
 function stage6BishopSeepageContourRgb(value, min, max, mode){
+  if(mode === 'hydraulicFs'){
+    const finiteValue = Number.isFinite(value) ? Math.max(value, 0) : 0;
+    const hi = Math.max(Number.isFinite(max) ? max : 1.5, 1.5);
+    const t = finiteValue <= 1
+      ? 0.5 * Math.max(0, Math.min(finiteValue, 1))
+      : 0.5 + 0.5 * Math.max(0, Math.min((finiteValue - 1) / Math.max(hi - 1, 1e-9), 1));
+    return stage6BishopInterpolatePalette(ST6_SEEPAGE_HYDRAULIC_FS_PALETTE, t);
+  }
   const lo = Number.isFinite(min) ? min : 0;
   const hi = Number.isFinite(max) && max > lo ? max : lo + 1;
   if(stage6BishopSeepageContourModeIsSigned(mode)){
@@ -5557,6 +5666,9 @@ function stage6BishopSeepageContourLineColor(value, min, max, mode, alpha = 0.94
 }
 
 function stage6BishopSeepageContourLegendGradient(mode){
+  if(mode === 'hydraulicFs'){
+    return `linear-gradient(to top, ${ST6_SEEPAGE_HYDRAULIC_FS_PALETTE.map((stop)=>`rgb(${stop.rgb[0]}, ${stop.rgb[1]}, ${stop.rgb[2]}) ${Math.round(stop.t * 100)}%`).join(', ')})`;
+  }
   const stops = stage6BishopSeepageContourModeIsSigned(mode)
     ? ST6_DEFORMATION_SIGNED_PALETTE
     : ST6_DEFORMATION_SEQ_PALETTE;
@@ -5564,6 +5676,10 @@ function stage6BishopSeepageContourLegendGradient(mode){
 }
 
 function stage6BishopSeepageContourLegendTicks(mode, stats){
+  if(mode === 'hydraulicFs'){
+    const max = Math.max(Number.isFinite(stats?.max) ? stats.max : 1.5, 1.5);
+    return [max, 1 + 0.5 * (max - 1), 1, 0.5, 0];
+  }
   if(stage6BishopSeepageContourModeIsSigned(mode)){
     const span = Math.max(Math.abs(stats?.min || 0), Math.abs(stats?.max || 0), 1e-9);
     return [span, 0.5 * span, 0, -0.5 * span, -span];
@@ -5592,6 +5708,10 @@ function stage6BishopSeepageContourLevels(mode, stats, count = 11){
   }
   if(stage6BishopSeepageContourModeIsSigned(mode) && min < 0 && max > 0){
     out.push(0);
+    out.sort((a, b)=>a - b);
+  }
+  if(mode === 'hydraulicFs' && min < 1 && max > 1 && !out.some((level)=>Math.abs(level - 1) < 1e-9)){
+    out.push(1);
     out.sort((a, b)=>a - b);
   }
   return out;
@@ -8428,7 +8548,7 @@ function stage6BishopCanvasToolRailHtml(context){
             <strong>${stage6EscAttr(panelTitle)}</strong>
             <button type="button" class="st6-canvas-card-close" onclick="stage6BishopSetCanvasPanel('')" aria-label="Close ${stage6EscAttr(panelTitle)}">${stage6BishopToolIcon('close')}</button>
           </div>
-          <div class="st6-canvas-card-body">${panelBody}</div>
+          <div class="st6-canvas-card-body" data-st6scroll-key="bishop-canvas-card-${stage6EscAttr(activePanel)}">${panelBody}</div>
         </div>
       ` : ''}
       ${sheetBody ? `
@@ -8437,7 +8557,7 @@ function stage6BishopCanvasToolRailHtml(context){
             <strong>${stage6EscAttr(sheetTitle)}</strong>
             <button type="button" class="st6-canvas-card-close" onclick="stage6BishopSetCanvasSheet('')" aria-label="Close ${stage6EscAttr(sheetTitle)}">${stage6BishopToolIcon('close')}</button>
           </div>
-          <div class="st6-canvas-sheet-body">${sheetBody}</div>
+          <div class="st6-canvas-sheet-body" data-st6scroll-key="bishop-canvas-sheet-${stage6EscAttr(activeSheet)}">${sheetBody}</div>
         </div>
       ` : ''}
     </div>
@@ -8578,6 +8698,7 @@ function stage6BishopLineProbeOptions(workspace, analysisType = null, hasHs = fa
       {id:'head', label:'h', axisTitle:'Head h (m)', unit:'m', color:chartBlue, digits:3},
       {id:'porePressure', label:'u', axisTitle:'Pore pressure u (kPa)', unit:'kPa', color:chartBlue, digits:3},
       {id:'gradient', label:'|∇h|', axisTitle:'Hydraulic gradient |∇h| (-)', unit:'', color:chartGreen, digits:3},
+      {id:'hydraulicFs', label:'FSᵢ', axisTitle:'Hydraulic safety factor FSᵢ = iᶜʳⁱᵗ / |∇h| (-)', unit:'', color:chartGreen, digits:2},
       {id:'flow', label:'|q|', axisTitle:'Specific discharge |q| (m/s)', unit:'m/s', color:readCssToken('--wn', '#BA7517'), digits:3},
       {id:'qx', label:'qₓ', axisTitle:'Specific discharge qₓ (m/s)', unit:'m/s', color:chartOrange, digits:3},
       {id:'qy', label:'qᵧ', axisTitle:'Specific discharge qᵧ (m/s)', unit:'m/s', color:chartPurple, digits:3},
@@ -8819,6 +8940,12 @@ function stage6BishopBuildLineProbe(workspace, measurementMetrics){
         if(flowState){
           if(quantity === 'gradient'){
             value = Math.hypot(flowState.dhdx || 0, flowState.dhdy || 0);
+          } else if(quantity === 'hydraulicFs'){
+            const cell = bishop.seepage.mesh?.cells?.[flowState.cellIndex];
+            value = stage6BishopSeepageHydraulicFs(
+              Math.hypot(flowState.dhdx || 0, flowState.dhdy || 0),
+              cell?.material
+            );
           } else if(quantity === 'flow'){
             value = Math.hypot(flowState.qx || 0, flowState.qy || 0);
           } else if(quantity === 'qx'){
@@ -10164,7 +10291,9 @@ function stage6BishopDrawCanvas(){
         if(polygon.length < 3) return;
         const screen = polygon.map((point)=>stage6BishopWorldToScreen(point));
         const wetFraction = Math.max(0, Math.min(seepageResult.cellWetFraction?.[index] ?? (seepageResult.cellDryMask?.[index] ? 0 : 1), 1));
-        const alpha = contourMode === 'head' ? (0.08 + 0.44 * wetFraction) : 0.52;
+        const alpha = contourMode === 'head' || contourMode === 'hydraulicFs'
+          ? (0.08 + 0.44 * wetFraction)
+          : 0.52;
         const value = stage6BishopSeepageContourValue(seepageResult, seepageMesh, index, contourMode);
         ctx.fillStyle = stage6BishopSeepageContourColor(value, contourStats.min, contourStats.max, contourMode, alpha);
         ctx.beginPath();
@@ -14460,7 +14589,7 @@ function renderStage6BishopApp(){
         <span class="st6-bishop-region-legend-title st6-bishop-view-menu-title">View</span>
         ${regionLegendItems.length ? `<span class="st6-bishop-region-legend-count">${regionLegendItems.length}</span>` : ''}
       </summary>
-      <div class="st6-bishop-view-menu-body">
+      <div class="st6-bishop-view-menu-body" data-st6scroll-key="bishop-canvas-view-menu-body">
         <div class="st6-bishop-view-menu-actions">
           <button type="button" class="st6-bishop-view-menu-action" onclick="fitStage6BishopViewport()" title="Fit view" aria-label="Fit view">${stage6BishopToolIcon('fit')}</button>
           <button type="button" class="st6-bishop-view-menu-action" onclick="stage6BishopOpenSettingsDetail('bishop-geo-view')" title="View details" aria-label="View details">${stage6BishopToolIcon('panel')}</button>
@@ -15158,9 +15287,10 @@ function renderStage6BishopApp(){
 
 function renderStage6(){
   ensureStage6State();
-  stage6RememberDetailsState();
   const el = document.getElementById('stage6Area');
   if(!el) return;
+  const scrollState = stage6CaptureScrollState(el);
+  stage6RememberDetailsState();
   if(!S.layers.length){
     el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Run the CPT through Stages 2–5 first so Stage 6 can reuse the interpreted layer model.</div>';
     return;
@@ -15193,6 +15323,7 @@ function renderStage6(){
     body = renderStage6BeamApp(analysis);
   }
   el.innerHTML = `${stage6CardsHtml(app)}${stage6SharedBanner()}${body}`;
+  stage6RestoreScrollState(el, scrollState);
   requestAnimationFrame(()=>{
     if(app === 'bearing') buildStage6BearingChart();
     if(app === 'pile'){
@@ -15206,6 +15337,7 @@ function renderStage6(){
       initStage6BishopCanvas();
       buildStage6BishopLineProbeChart();
     }
+    stage6RestoreScrollState(el, scrollState);
   });
 }
 
