@@ -151,6 +151,18 @@ function sharedConsistentTangentParam(region, fallback = 0) {
   return value === true ? 1 : fallback;
 }
 
+function hsConsistentTangentParam(region, fallback = 0) {
+  const hs = region?.hs && typeof region.hs === 'object' ? region.hs : {};
+  // HS owns its selector in region.hs.useConsistentTangent. The top-level
+  // shared selector is only a compatibility fallback; otherwise MC's default
+  // OFF shadow can suppress the HS UI setting after material preparation.
+  const hasHsValue = Object.prototype.hasOwnProperty.call(hs, 'useConsistentTangent');
+  const value = hasHsValue ? hs.useConsistentTangent : region?.useConsistentTangent;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  return value === true ? 1 : fallback;
+}
+
 function writeHsParams(writeF64, region, isHs, isMcPlastic = false) {
   if (!isHs) {
     for (let i = 0; i < 12; i += 1) writeF64(0);
@@ -183,7 +195,7 @@ function writeHsParams(writeF64, region, isHs, isMcPlastic = false) {
   writeF64(Math.max(hsParam(region, 'OCR', 1), 1e-6));
   const minConfinement = hsParam(region, 'nearSurfaceMinConfiningStress', hsParam(region, 'reserved', 0));
   writeF64(Number.isFinite(Number(minConfinement)) ? Math.max(Number(minConfinement), 0) : 0);
-  writeF64(hsParam(region, 'useConsistentTangent', 0) >= 0.5 ? 1 : 0);
+  writeF64(hsConsistentTangentParam(region, 0) >= 0.5 ? 1 : 0);
 }
 
 function readHsState(readF64, readU8, isHs) {
@@ -272,17 +284,17 @@ export function encodeInputBuffer({
   writeU8(0);
   writeU8(0);
   writeU32(Math.max(Math.round(options.nonlinearMaxIter || 32), 1));
-  writeU32(Math.max(Math.round(options.maxLoadSteps || 256), 1));
+  writeU32(Math.max(Math.round(options.maxLoadSteps || 384), 1));
   writeU32(Math.max(Math.round(options.cgMaxIter || 25000), 1));
   writeU32(Math.max(Math.round(options.safetyMaxSearchTrials || 32), 1));
-  writeU32(Math.max(Math.round(options.plasticLineSearchMaxBacktracks || 4), 1));
+  writeU32(Math.max(Math.round(options.plasticLineSearchMaxBacktracks || 6), 1));
   writeU32(Math.max(Math.round(options.initialGravityPlasticLineSearchMaxBacktracks || 5), 1));
   writeU32(Math.max(Math.round(options.arcLengthLineSearchMaxBacktracks ?? 6), 1));
   writeF64(options.initialLoadStep ?? 0.25);
-  writeF64(options.minLoadStep ?? (1 / 2048));
+  writeF64(options.minLoadStep ?? (1 / 4096));
   writeF64(options.loadStepGrowthFactor ?? 1.25);
   writeF64(options.loadStepCutbackFactor ?? 0.5);
-  writeF64(options.plasticLoadStepGrowthFactor ?? 1.05);
+  writeF64(options.plasticLoadStepGrowthFactor ?? 1.08);
   writeF64(options.plasticLoadStepCutbackFactor ?? 0.4);
   writeF64(options.initialGravityPlasticLoadStepGrowthFactor ?? 1.12);
   writeF64(options.initialGravityPlasticLoadStepCutbackFactor ?? 0.5);
@@ -422,8 +434,9 @@ export function decodeOutputBuffer(bytes) {
   // Newton iteration in the run dispatched to GMRES.
   summary.lastLinearSolverKind = readU8();
   summary.hsPlasticUsedGmres = readU8() === 1;
-  // 2 trailing reserved pad bytes.
-  for (let i = 0; i < 2; i += 1) readU8();
+  const hsFailureCodeLo = readU8();
+  const hsFailureCodeHi = readU8();
+  summary.lastHsFailureCode = hsFailureCodeLo | (hsFailureCodeHi << 8);
 
   const serviceDisp = new Float64Array(numNodes * 2);
   for (let i = 0; i < numNodes; i += 1) {

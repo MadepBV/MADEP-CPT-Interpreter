@@ -641,10 +641,12 @@ int madepRunDeformationAnalysis(
   // Phase 7 telemetry (hardening-soil-fix.md §Phase 7): expose the
   // last linear-solver kind (0=CG, 1=GMRES) and a sticky HS-plastic
   // flag so verifiers can confirm GMRES dispatch on HS plastic steps.
-  // The remaining 2 bytes stay zero pad for future use.
+  // The remaining 2 bytes carry the latest HS local-return failure code
+  // (u16 little-endian). Older decoders treated them as reserved padding.
   q = write_u8(q, result.summary.lastLinearSolverKind);
   q = write_u8(q, result.summary.hsPlasticUsedGmres);
-  q = write_u8(q, 0); q = write_u8(q, 0);
+  q = write_u8(q, result.summary.pad[0]);
+  q = write_u8(q, result.summary.pad[1]);
 
   // Service displacements.
   for (std::uint32_t n = 0; n < numNodes; ++n) {

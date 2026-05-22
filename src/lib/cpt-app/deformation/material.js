@@ -24,6 +24,12 @@ function clampMcAngle(angleDeg) {
   return Math.max(Math.min(Number(angleDeg) || 0, MC_ANGLE_MAX_DEG), 0);
 }
 
+function selectorEnabled(value) {
+  if (value === true) return true;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0.5;
+}
+
 export function elasticLameParameters(EInput, nuInput, warnings = [], label = 'Material') {
   const E = Math.max(Number(EInput) || 0, 1);
   const nuRaw = Number.isFinite(Number(nuInput)) ? Number(nuInput) : 0.3;
@@ -66,6 +72,11 @@ export function prepareMechanicalMaterial(material, warnings = []) {
   const rawComplementarityTolerance = finiteOrNull(material?.activeSetComplementarityTolerance);
   const rawEigenSubspaceTolerance = finiteOrNull(material?.eigenSubspaceTolerance);
   const hsSource = material?.hs && typeof material.hs === 'object' ? material.hs : {};
+  const hasHsConsistentTangent = Object.prototype.hasOwnProperty.call(hsSource, 'useConsistentTangent');
+  const hsConsistentTangent = selectorEnabled(
+    hasHsConsistentTangent ? hsSource.useConsistentTangent : material?.useConsistentTangent
+  );
+  const sharedConsistentTangent = selectorEnabled(material?.useConsistentTangent ?? material?.mc?.useConsistentTangent);
   // HS stiffness fields (E50_ref / Eoed_ref / Eur_ref / m / ν_ur / K0_nc)
   // live on the material top-level — inherited from the upstream layer
   // classification (CUR 2003-7).  The HS sub-block holds only the
@@ -111,7 +122,8 @@ export function prepareMechanicalMaterial(material, warnings = []) {
         Number.isFinite(Number(material?.nearSurfaceMinConfiningStress))
           ? Number(material.nearSurfaceMinConfiningStress)
           : hsValue('reserved', 0)
-      ), 0)
+      ), 0),
+      useConsistentTangent: hsConsistentTangent
     },
     yieldTolerance: rawYieldTolerance !== null ? Math.max(rawYieldTolerance, 0) : null,
     yieldToleranceScale: rawYieldToleranceScale !== null ? Math.max(rawYieldToleranceScale, 0) : 1e-8,
@@ -142,9 +154,7 @@ export function prepareMechanicalMaterial(material, warnings = []) {
     symmetrizeEpTangent: material?.symmetrizeEpTangent === true,
     // Shared HS/MC Simo-Hughes-equivalent tangent selector. MC defaults
     // OFF; the maintainer can flip this one JS-side field after validation.
-    useConsistentTangent:
-      material?.useConsistentTangent === true ||
-      Number(material?.useConsistentTangent ?? material?.mc?.useConsistentTangent) >= 0.5,
+    useConsistentTangent: sharedConsistentTangent,
     useTensionCutoff: material?.useTensionCutoff !== false,
     useCompressionYield: material?.useCompressionYield === true
   };

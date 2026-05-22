@@ -1607,6 +1607,7 @@ struct PhaseResult {
   std::int32_t gmresIterationCount{ 0 };
   std::int32_t gmresInvocations{ 0 };
   std::uint8_t lastLinearSolverKind{ 0 };
+  std::uint16_t lastHsFailureCode{ 0 };
   std::vector<std::int32_t> acceptedStepIterations;
 };
 
@@ -1618,6 +1619,7 @@ inline void accumulate_phase_cost(PhaseResult& total, const PhaseResult& extra) 
   total.maxEta = std::max(total.maxEta, extra.maxEta);
   total.gmresIterationCount += extra.gmresIterationCount;
   total.gmresInvocations += extra.gmresInvocations;
+  if (extra.lastHsFailureCode != 0) total.lastHsFailureCode = extra.lastHsFailureCode;
   total.acceptedStepIterations.insert(
       total.acceptedStepIterations.end(),
       extra.acceptedStepIterations.begin(),
@@ -1634,6 +1636,7 @@ inline void apply_phase_cost_counts(PhaseResult& result, const PhaseResult& cost
   result.maxEta = std::max(result.maxEta, cost.maxEta);
   result.gmresIterationCount = cost.gmresIterationCount;
   result.gmresInvocations = cost.gmresInvocations;
+  result.lastHsFailureCode = cost.lastHsFailureCode;
   result.lastLinearSolverKind = cost.lastLinearSolverKind;
   result.acceptedStepIterations = cost.acceptedStepIterations;
 }
@@ -1676,21 +1679,63 @@ inline bool mohr_coulomb_consistent_tangent_enabled(const std::vector<RegionPara
   });
 }
 
-inline bool mohr_coulomb_has_non_associated_flow(const std::vector<RegionParams>* regions) {
-  if (!regions) return false;
+inline bool mohr_coulomb_consistent_tangent_requires_unsymmetric_solver(
+    bool symmetrize,
+    const std::vector<RegionParams>* regions) {
+  if (symmetrize || !regions) return false;
   return std::any_of(regions->begin(), regions->end(), [](const RegionParams& region) {
-    return std::abs(region.phi - region.psi) > 1e-12;
+    return region.hs.useConsistentTangent >= 0.5 &&
+        std::abs(region.phi - region.psi) > 1e-12;
   });
 }
 
+inline bool phase_may_need_unsymmetric_solver_for_regions(
+    ConstitutiveKind kind,
+    bool symmetrize,
+    const std::vector<RegionParams>* regions) {
+  if (kind == ConstitutiveKind::HardeningSoil) return true;
+  if (kind == ConstitutiveKind::McPlastic) {
+    return mohr_coulomb_consistent_tangent_requires_unsymmetric_solver(symmetrize, regions);
+  }
+  return false;
+}
+
 inline bool phase_may_need_unsymmetric_solver(const PhaseContext& ctx) {
-  const bool mcAnalysisConsistent =
-      ctx.kind == ConstitutiveKind::McPlastic &&
-      ctx.phaseKind != PhaseKind::SafetyCphi &&
-      !ctx.symmetrize &&
-      mohr_coulomb_consistent_tangent_enabled(ctx.regions) &&
-      mohr_coulomb_has_non_associated_flow(ctx.regions);
-  return mcAnalysisConsistent || ctx.kind == ConstitutiveKind::HardeningSoil;
+  return phase_may_need_unsymmetric_solver_for_regions(
+      ctx.kind, ctx.symmetrize, ctx.regions);
+}
+
+inline bool mc_plastic_active_tangent_must_use_gmres(
+    const PhaseContext& ctx,
+    const std::vector<RegionParams>* regions,
+    bool hasPlastic) {
+  return ctx.kind == ConstitutiveKind::McPlastic &&
+      hasPlastic &&
+      mohr_coulomb_consistent_tangent_requires_unsymmetric_solver(ctx.symmetrize, regions);
+}
+
+inline double nonlinear_absolute_residual_target(
+    const SolverOptions& opts,
+    std::int32_t nfree) {
+  const double absTol = std::max(opts.residualAbsTol, 0.0);
+  // The UI default `1e-3` is a nodal force floor.  The assembled residual is
+  // a raw global L2 norm, so the equivalent vector target scales with the
+  // square root of the number of free equations.  Explicit larger verifier
+  // tolerances keep their historical raw-norm meaning.
+  if (absTol <= 1.0000001e-3) {
+    const double dofScale = std::sqrt(static_cast<double>(std::max<std::int32_t>(nfree, 1)));
+    return absTol * dofScale;
+  }
+  return absTol;
+}
+
+inline double nonlinear_residual_target(
+    const SolverOptions& opts,
+    double rhsNorm,
+    std::int32_t nfree) {
+  return std::max(
+      nonlinear_absolute_residual_target(opts, nfree),
+      opts.residualRelTol * std::max(rhsNorm, 0.0));
 }
 
 inline SafetyCurvePoint make_safety_curve_point(
@@ -1799,10 +1844,9 @@ inline PhaseResult run_safety_arc_length_phase(
   std::vector<double> internalForceFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> residualFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> diagInv;
-  // MC-SH-1: MC analysis dispatches to GMRES only when the explicit
-  // consistent-tangent flag is enabled, the flow is non-associated, and
-  // this is not a safety phase. HS keeps its existing GMRES dispatch.
-  const bool mayNeedUnsymmetricSolver = phase_may_need_unsymmetric_solver(ctx);
+  // Safety c-phi rebuilds reduced material tables as SigmaMsf changes. The
+  // unsymmetric-solver predicate is therefore evaluated on those active tables,
+  // not only on the phase's base regions.
   const double sigmaTarget = std::max(ctx.safetySigmaMsfTarget, 1.0);
   double sigma = std::max(ctx.safetySigmaMsfStart, 1.0);
   double peakSigma = sigma;
@@ -1890,7 +1934,11 @@ inline PhaseResult run_safety_arc_length_phase(
       res.tensionCount = startAssembly.tensionCount;
       res.residualNorm = startAssembly.residualNorm;
       const bool startHasPlastic = startAssembly.plasticActiveCount > 0 || startAssembly.tensionCount > 0;
-      const bool useUnsymmetricSolver = mayNeedUnsymmetricSolver && startHasPlastic;
+      const bool startMayNeedUnsymmetricSolver =
+          phase_may_need_unsymmetric_solver_for_regions(
+              ctx.kind, ctx.symmetrize, startMaterials.regions);
+      const bool useUnsymmetricSolver =
+          startMayNeedUnsymmetricSolver && startHasPlastic;
 
       SafetyResidualDerivativeFd derivative = compute_safety_sigma_msf_residual_derivative(
           ctx, U, stepStartLambda, stepStartSigma, fdScratch, arcOpts);
@@ -1996,8 +2044,7 @@ inline PhaseResult run_safety_arc_length_phase(
               a.residualNorm, lastConstraintResidual);
           hasStepMeritBeta = true;
         }
-        const double residualTarget = std::max(
-            arcOpts.residualAbsTol, arcOpts.residualRelTol * std::max(a.rhsNorm, 0.0));
+        const double residualTarget = nonlinear_residual_target(arcOpts, a.rhsNorm, nfree);
         const double constraintTarget = std::max(
             arcOpts.arcLengthConstraintTolerance,
             arcOpts.arcLengthConstraintTolerance * std::max(stepState.deltaS * stepState.deltaS, 1.0));
@@ -2009,13 +2056,21 @@ inline PhaseResult run_safety_arc_length_phase(
         }
 
         const bool hasPlastic = a.plasticActiveCount > 0 || a.tensionCount > 0;
-        const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
-        // Phase 7 debug assertion: HS plastic safety arc-length Newton
-        // iterations MUST dispatch to GMRES — the Phase 6 tangent is
-        // unsymmetric for non-associated cone / corner regimes.
+        const bool candidateMayNeedUnsymmetricSolver =
+            phase_may_need_unsymmetric_solver_for_regions(
+                ctx.kind, ctx.symmetrize, candidateMaterials.regions);
+        const bool tangentAsymmetric =
+            candidateMayNeedUnsymmetricSolver && hasPlastic;
+        // Exact plastic tangents that are known to be unsymmetric must never be
+        // routed to CG. CG requires SPD; non-associated MC-SH and HS plastic
+        // tangents use GMRES.
 #ifndef NDEBUG
         if (ctx.kind == ConstitutiveKind::HardeningSoil && hasPlastic && !tangentAsymmetric) {
           assert(false && "HS plastic safety arc-length step routed to CG; expected GMRES");
+        }
+        if (mc_plastic_active_tangent_must_use_gmres(ctx, candidateMaterials.regions, hasPlastic) &&
+            !tangentAsymmetric) {
+          assert(false && "MC consistent non-associated plastic safety arc-length step routed to CG; expected GMRES");
         }
 #endif
         SafetyResidualDerivativeFd correctionDerivative =
@@ -2243,10 +2298,17 @@ inline PhaseResult run_load_arc_length_phase(
 
   ArcLengthRuntimeOptions arcRuntime = prepare_arc_length_runtime_options(ctx, opts);
   SolverOptions arcOpts = arcRuntime.opts;
+  // Service-load arc length uses a dimensionless load factor λ. The
+  // displacement part of the constraint is domain-scaled, but λ is not a
+  // length-like coordinate; keeping the radius capped by the model-length
+  // scaling forces large domains into thousands of tiny load increments.
+  arcOpts.arcLengthMinRadius = std::min(arcOpts.arcLengthMinRadius, 1e-6);
+  arcOpts.arcLengthMaxRadius = std::max(arcOpts.arcLengthMaxRadius, 5e-2);
   if (arcOpts.arcLengthInitialRadius < 2e-2) {
     arcOpts.arcLengthInitialRadius = std::min(2e-2, arcOpts.arcLengthMaxRadius);
   }
   const double displacementScale = arcRuntime.displacementScale;
+  constexpr double kLoadCompletionTol = 1e-6;
 
   ArcLengthState arcState;
   initialise_arc_length_state(arcState, arcOpts, nfree, loadFactor, 1.0);
@@ -2277,7 +2339,7 @@ inline PhaseResult run_load_arc_length_phase(
   };
 
   for (std::int32_t step = 0; step < arcOpts.maxLoadSteps; ++step) {
-    if (loadFactor >= 1.0 - 1e-12) break;
+    if (loadFactor >= 1.0 - kLoadCompletionTol) break;
 
     bool stepConverged = false;
     for (std::int32_t retry = 0; retry < std::max(arcOpts.arcLengthMaxRetries, 1); ++retry) {
@@ -2302,7 +2364,8 @@ inline PhaseResult run_load_arc_length_phase(
       res.tensionCount = startAssembly.tensionCount;
       res.residualNorm = startAssembly.residualNorm;
       const bool startHasPlastic = startAssembly.plasticActiveCount > 0 || startAssembly.tensionCount > 0;
-      const bool useUnsymmetricSolver = mayNeedUnsymmetricSolver && startHasPlastic;
+      const bool useUnsymmetricSolver =
+          mayNeedUnsymmetricSolver && startHasPlastic;
 
       ArcLengthPredictor predictor = make_load_control_arc_length_predictor(
           K, freeDofs, continuationRhsFree, diagInv, arcOpts, arcState,
@@ -2313,7 +2376,9 @@ inline PhaseResult run_load_arc_length_phase(
         res.gmresInvocations += 1;
       }
       res.lastLinearSolverKind = useUnsymmetricSolver ? std::uint8_t{1} : std::uint8_t{0};
-      if (!predictor.converged && startHasPlastic) {
+      if (!predictor.converged &&
+          startHasPlastic &&
+          ctx.kind != ConstitutiveKind::HardeningSoil) {
         trialMp = committedMp;
         AssembleOutput elasticPredictorAssembly = assemble_global(
             elements, committedMp, trialMp, regions, regionC,
@@ -2386,7 +2451,6 @@ inline PhaseResult run_load_arc_length_phase(
           break;
         }
         prepare_phase_step_materials(ctx, regions, regionC, candidateLambda, candidateMaterials);
-        trialMp = committedMp;
         AssembleOutput a = assemble_global(
             elements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
@@ -2413,6 +2477,7 @@ inline PhaseResult run_load_arc_length_phase(
             a.hsFailureCode == 105 || a.hsFailureCode == 106 ||
             a.hsFailureCode == 999;
         if (hsHardFailure) {
+          res.lastHsFailureCode = a.hsFailureCode;
           invalidStep = true;
           break;
         }
@@ -2425,8 +2490,7 @@ inline PhaseResult run_load_arc_length_phase(
               a.residualNorm, lastConstraintResidual);
           hasStepMeritBeta = true;
         }
-        const double residualTarget = std::max(
-            arcOpts.residualAbsTol, arcOpts.residualRelTol * std::max(a.rhsNorm, 0.0));
+        const double residualTarget = nonlinear_residual_target(arcOpts, a.rhsNorm, nfree);
         const double constraintTarget = std::max(
             arcOpts.arcLengthConstraintTolerance,
             arcOpts.arcLengthConstraintTolerance * std::max(stepState.deltaS * stepState.deltaS, 1.0));
@@ -2438,7 +2502,8 @@ inline PhaseResult run_load_arc_length_phase(
         }
 
         const bool hasPlastic = a.plasticActiveCount > 0 || a.tensionCount > 0;
-        const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
+        const bool tangentAsymmetric =
+            mayNeedUnsymmetricSolver && hasPlastic;
 #ifndef NDEBUG
         if (ctx.kind == ConstitutiveKind::HardeningSoil && hasPlastic && !tangentAsymmetric) {
           assert(false && "HS plastic service arc-length step routed to CG; expected GMRES");
@@ -2588,7 +2653,8 @@ inline PhaseResult run_load_arc_length_phase(
   }
 
   res.loadFactor = loadFactor;
-  res.converged = overall && loadFactor >= 1.0 - 1e-6;
+  (void)overall;
+  res.converged = std::isfinite(loadFactor) && loadFactor >= 1.0 - kLoadCompletionTol;
   return res;
 }
 
@@ -2639,10 +2705,10 @@ inline PhaseResult run_load_arc_length_phase(
 //     `hsRes.tangent` directly with no symmetrize call (the only
 //     `symmetrize_matrix6` call sites are in MC paths). The
 //     `(void)symmetrize` cast in the HS branch documents this.
-//   * Use CG on a known-unsymmetric HS plastic tangent — gated by
-//     `mayNeedUnsymmetricSolver && hasPlastic`; the debug assertion
-//     below fires under assertions if HS plasticity is ever routed to
-//     CG.
+//   * Use CG on a known-unsymmetric plastic tangent — gated by the
+//     per-step unsymmetric-solver predicate and `hasPlastic`; debug
+//     assertions below fire under assertions if HS or non-associated
+//     MC-SH plasticity is ever routed to CG.
 //   * Change ε_zz to make plane-strain work — fixed in Phase 3.
 //     `update_plane_strain` in material_hs.hpp passes the FE-prescribed
 //     strain unchanged and returns failureCode == 105 if the
@@ -2713,25 +2779,14 @@ inline PhaseResult run_nonlinear_phase(
   const bool requiresDisplacementTolerance =
       ctx.kind != ConstitutiveKind::McPlastic &&
       ctx.kind != ConstitutiveKind::HardeningSoil;
-  // mayNeedUnsymmetricSolver: tracks whether the tangent might be
-  // unsymmetric -> GMRES dispatch when at least one GP yields. MC is gated
-  // by the explicit consistent-tangent flag and excludes safety phases per
-  // Appendix C; HS keeps the existing Simo-Hughes dispatch contract.
-  const bool mayNeedUnsymmetricSolver = phase_may_need_unsymmetric_solver(ctx);
-  // Globalization fallback. MC keeps this behind the user-facing robust
-  // option because its exact tangent is cheap and mature. HS is different
-  // until the full Simo-Hughes tangent lands: the production tangent is the
-  // finite-difference derivative of the local return map, which is accurate
-  // but can lose descent at cone/cap active-set transitions. After the
-  // primary FD/GMRES direction stalls, allow an HS-only modified-Newton
-  // rescue with the true elastic tangent. This does NOT symmetrize a plastic
-  // tangent; assemble_global explicitly substitutes D_e for the fallback
-  // matrix, so solving that fallback direction with CG is mathematically
-  // valid. The exact HS stress update and admissibility certificate still
-  // run on every probe and convergence check.
-  const bool hsElasticGlobalizationFallback =
-      ctx.kind == ConstitutiveKind::HardeningSoil &&
-      (ctx.phaseKind == PhaseKind::ServiceLoad || ctx.phaseKind == PhaseKind::SafetyCphi);
+  // Unsymmetric-solver dispatch is evaluated against the active per-step
+  // material table below. Safety strength reduction rebuilds reduced MC
+  // materials every step, and the consistent-tangent selector is deliberately
+  // carried through that reduction.
+  // Globalization fallback remains MC-only. HS tangents are unsymmetric and
+  // are solved with GMRES; do not hide a local-return/tangent defect behind an
+  // elastic modified-Newton rescue.
+  const bool hsElasticGlobalizationFallback = false;
   const bool canUseRobustElasticFallback =
       ((opts.robustNonlinearMode != 0 &&
         ctx.kind == ConstitutiveKind::McPlastic &&
@@ -2743,6 +2798,7 @@ inline PhaseResult run_nonlinear_phase(
   double loadFactor = 0.0;
   double dLambda = std::min(std::max(opts.initialLoadStep, phaseMinLoadStep), 1.0);
   if (ctx.kind == ConstitutiveKind::LinearElastic) dLambda = 1.0;
+  constexpr double kLoadCompletionTol = 1e-6;
   ContinuationControllerState continuationState;
   continuationState.requestedMode = opts.requestedContinuationMode;
   continuationState.actualMode = default_actual_continuation_mode(ctx.phaseKind);
@@ -2802,7 +2858,7 @@ inline PhaseResult run_nonlinear_phase(
       ctx.kind == ConstitutiveKind::McPlastic ||
       ctx.kind == ConstitutiveKind::HardeningSoil;
   for (std::int32_t step = 0; step < phaseMaxLoadSteps; ++step) {
-    if (loadFactor >= 1.0 - 1e-12) break;
+    if (loadFactor >= 1.0 - kLoadCompletionTol) break;
     const double remaining = 1.0 - loadFactor;
     const double actualStep = std::min(dLambda, remaining);
     const double targetLambda = loadFactor + actualStep;
@@ -2810,11 +2866,13 @@ inline PhaseResult run_nonlinear_phase(
     prepare_phase_step_materials(ctx, regions, regionC, targetLambda, stepMaterials);
     const std::vector<RegionParams>* regionsForStep = stepMaterials.regions;
     const std::vector<Mat6>* regionCForStep = stepMaterials.regionC;
+    const bool stepMayNeedUnsymmetricSolver =
+        phase_may_need_unsymmetric_solver_for_regions(
+            ctx.kind, ctx.symmetrize, regionsForStep);
     const bool stepUsesConsistentTangent =
         (ctx.kind == ConstitutiveKind::HardeningSoil &&
          hardening_soil_consistent_tangent_enabled(regionsForStep)) ||
         (ctx.kind == ConstitutiveKind::McPlastic &&
-         ctx.phaseKind != PhaseKind::SafetyCphi &&
          mohr_coulomb_consistent_tangent_enabled(regionsForStep));
     const std::vector<double> stepStartU = U;
     bool stepUsedSecantPredictor = false;
@@ -2910,9 +2968,7 @@ inline PhaseResult run_nonlinear_phase(
       res.residualNorm = a.residualNorm;
       stepPeakActiveCount = std::max(stepPeakActiveCount, a.plasticActiveCount);
 
-      // JS nonlinearToleranceState: residualTarget = max(absTol, relTol * rhsNorm).
-      const double residualTarget = std::max(opts.residualAbsTol,
-                                             opts.residualRelTol * std::max(a.rhsNorm, 0.0));
+      const double residualTarget = nonlinear_residual_target(opts, a.rhsNorm, nfree);
       double solutionNorm = 0.0;
       for (std::int32_t i = 0; i < nfree; ++i) {
         const double v = U[freeDofs[i]];
@@ -2969,6 +3025,10 @@ inline PhaseResult run_nonlinear_phase(
         stepConverged = true;
 	        break;
 	      }
+      if (hsHardFailure) {
+        res.lastHsFailureCode = a.hsFailureCode;
+        break;
+      }
 
       // Linear solve dispatch.
       if (shouldWarmStartLinearSolve && hasIterationLinearGuess) {
@@ -2977,17 +3037,19 @@ inline PhaseResult run_nonlinear_phase(
         std::fill(deltaUFree.begin(), deltaUFree.end(), 0.0);
       }
       const bool hasPlastic = (a.plasticActiveCount > 0) || (a.tensionCount > 0);
-      const bool tangentAsymmetric = mayNeedUnsymmetricSolver && hasPlastic;
+      const bool tangentAsymmetric =
+          stepMayNeedUnsymmetricSolver && hasPlastic;
       if (tangentAsymmetric) stepUsedUnsymmetricSolver = true;
-      // Phase 7 debug assertion (hardening-soil-fix.md §Phase 7): HS
-      // plastic Newton iterations MUST dispatch to GMRES. CG requires
-      // SPD; the Phase 6 algorithmic tangent is unsymmetric for
-      // non-associated cone and corner regimes. In a release build
-      // this would silently corrupt the linear solve; under
-      // assertions we fail loudly.
+      // Exact plastic tangents that are known to be unsymmetric must never be
+      // routed to CG. CG requires SPD; non-associated MC-SH and HS plastic
+      // tangents use GMRES.
 #ifndef NDEBUG
       if (ctx.kind == ConstitutiveKind::HardeningSoil && hasPlastic && !tangentAsymmetric) {
         assert(false && "HS plastic step routed to CG; expected GMRES");
+      }
+      if (mc_plastic_active_tangent_must_use_gmres(ctx, regionsForStep, hasPlastic) &&
+          !tangentAsymmetric) {
+        assert(false && "MC consistent non-associated plastic step routed to CG; expected GMRES");
       }
 #endif
 	      cg::LinearSolveResult lr = solve_phase_linear_system(
@@ -3013,9 +3075,12 @@ inline PhaseResult run_nonlinear_phase(
 	      const double acceptableLinearizedResidual = ctx.kind == ConstitutiveKind::LinearElastic
 	          ? std::max(opts.cgAbsTol, inexactNewtonForcing * linearRhsNorm)
 	          : std::max({opts.cgAbsTol,
-	                      0.25 * std::max(opts.residualAbsTol, 1e-3),
+	                      0.25 * std::max(nonlinear_absolute_residual_target(opts, nfree), 1e-3),
 	                      inexactNewtonForcing * linearRhsNorm});
       if (!lr.converged && lr.residualNorm > acceptableLinearizedResidual) {
+        if (ctx.kind == ConstitutiveKind::HardeningSoil && a.hsFailureCode != 0) {
+          res.lastHsFailureCode = a.hsFailureCode;
+        }
         break;
       }
       iterationLinearGuess = deltaUFree;
@@ -3106,8 +3171,7 @@ inline PhaseResult run_nonlinear_phase(
 	          bestSolutionNorm += v * v;
 	        }
 	        bestSolutionNorm = std::sqrt(bestSolutionNorm);
-	        const double bestResidualTarget = std::max(
-	            opts.residualAbsTol, opts.residualRelTol * std::max(bestRhsNorm, 0.0));
+	        const double bestResidualTarget = nonlinear_residual_target(opts, bestRhsNorm, nfree);
 	        const double bestDisplacementTarget = std::max(
 	            opts.displacementAbsTol, opts.displacementRelTol * std::max(bestSolutionNorm, 0.0));
 	        const bool stalledCandidateAcceptable =
@@ -3182,7 +3246,7 @@ inline PhaseResult run_nonlinear_phase(
                                   std::sqrt(std::max(fallbackRelativeResidualForForcing, 0.0))));
             const double fallbackAcceptableLinearizedResidual =
                 std::max({opts.cgAbsTol,
-                          0.25 * std::max(opts.residualAbsTol, 1e-3),
+                          0.25 * std::max(nonlinear_absolute_residual_target(opts, nfree), 1e-3),
                           fallbackInexactNewtonForcing * fallbackLinearRhsNorm});
 
             if (fallbackLr.converged ||
@@ -3262,8 +3326,8 @@ inline PhaseResult run_nonlinear_phase(
                 fallbackSolutionNorm += v * v;
               }
               fallbackSolutionNorm = std::sqrt(fallbackSolutionNorm);
-              const double fallbackResidualTarget = std::max(
-                  opts.residualAbsTol, opts.residualRelTol * std::max(fallbackBestRhsNorm, 0.0));
+              const double fallbackResidualTarget =
+                  nonlinear_residual_target(opts, fallbackBestRhsNorm, nfree);
               const double fallbackDisplacementTarget = std::max(
                   opts.displacementAbsTol, opts.displacementRelTol * std::max(fallbackSolutionNorm, 0.0));
 	              const bool fallbackStalledCandidateAcceptable =
@@ -3460,7 +3524,8 @@ inline PhaseResult run_nonlinear_phase(
   }
 
   res.loadFactor = loadFactor;
-  res.converged = overall && (loadFactor >= 1.0 - 1e-6);
+  (void)overall;
+  res.converged = std::isfinite(loadFactor) && loadFactor >= 1.0 - kLoadCompletionTol;
   return res;
 }
 
@@ -3556,19 +3621,16 @@ inline void initialise_material_points(
       const double c_eff_cap = std::max(rp.cEff, 0.0);
       const double p_t_seed = material::hs::tensile_shift_p_t(c_eff_cap, phi_eff_cap);
       const double M_cap_seed = std::max(rp.hs.M_cap, 1e-6);
-      // Cap history seed (hardening-soil-model.md §4.4 / F21):
-      //
-      //   p_p^(0) = OCR * sigma_1'^(0)
-      //
-      // where sigma_1' is the major compression-positive principal stress in
-      // the supplied K0 seed. Do not convert OCR into an inferred cap radius
-      // here. M_cap is calibrated so this stress-history convention reproduces
-      // the requested K0_nc/oedometer path; replacing it with a minimum-radius
-      // cap projection makes normally consolidated K0 states artificially close
-      // to cap/corner activation and stalls flat strip-load service cases.
+      // Cap history seed: the NC K0 state lies on f_c = 0, so p_p is the
+      // cap radius required by this principal stress state. OCR scales that
+      // radius. Using OCR * sigma_1 is only valid for special M/K0 pairs and
+      // can put cohesionless OCR=1 seeds outside the calibrated cap.
       const double sigma1_seed = std::max(principalSeed.s1, 0.0);
+      const double p_p_nc_seed = material::hs::cap_required_p_p(
+          principalSeed.s1, principalSeed.s2, principalSeed.s3,
+          M_cap_seed, p_t_seed, phi_eff_cap);
       const double p_p_seed = std::max(
-          ocr * sigma1_seed,
+          ocr * p_p_nc_seed,
           material::hs::numerical_pressure_floor(rp.hs));
       hsSeed.p_p = p_p_seed;
       hsSeed.eps_v_p = 0.0;
@@ -3732,7 +3794,10 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   ctx.U_base = nullptr;
   ctx.ndof = ndof;
   ctx.kind = in.opts.constitutive;
-  ctx.symmetrize = in.opts.symmetrizeTangent != 0;
+  ctx.symmetrize =
+      in.opts.constitutive == ConstitutiveKind::HardeningSoil
+          ? false
+          : (in.opts.symmetrizeTangent != 0);
   ctx.modelBoundingBoxDiagonal = model_bounding_box_diagonal(*in.elements);
 
   // ---------------------------------------------------------------------------
@@ -3883,6 +3948,8 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     out.summary.serviceConverged = service.converged ? 1 : 0;
     // Phase 7 telemetry — latch service phase's solver kind.
     out.summary.lastLinearSolverKind = service.lastLinearSolverKind;
+    out.summary.pad[0] = static_cast<std::uint8_t>(service.lastHsFailureCode & 0xffu);
+    out.summary.pad[1] = static_cast<std::uint8_t>((service.lastHsFailureCode >> 8) & 0xffu);
     if (in.opts.constitutive == ConstitutiveKind::HardeningSoil && service.gmresInvocations > 0) {
       out.summary.hsPlasticUsedGmres = 1;
     }

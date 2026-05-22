@@ -103,10 +103,10 @@ const NONLINEAR_DISPLACEMENT_REL_TOL = 1e-5;
 const NONLINEAR_DISPLACEMENT_ABS_TOL = 1e-8;
 const NONLINEAR_MAX_ITER = 32;
 const NONLINEAR_INITIAL_LOAD_STEP = 0.25;
-const NONLINEAR_MIN_LOAD_STEP = 1 / 2048;
+const NONLINEAR_MIN_LOAD_STEP = 1 / 4096;
 const NONLINEAR_GROWTH_FACTOR = 1.25;
 const NONLINEAR_CUTBACK_FACTOR = 0.5;
-const NONLINEAR_MAX_LOAD_STEPS = 256;
+const NONLINEAR_MAX_LOAD_STEPS = 384;
 const NONLINEAR_CONTINUATION_TARGET_ITERATIONS = 6;
 const NONLINEAR_CONTINUATION_TARGET_LINE_SEARCH_SCALE = 0.9;
 const NONLINEAR_CONTINUATION_ITERATION_EXPONENT = 0.5;
@@ -2018,54 +2018,100 @@ function overlapRange(a0, a1, b0, b1) {
   return hi > lo + GEOM_EPS ? { lo, hi } : null;
 }
 
-function normalizeLoad(model, options, warnings, mode = 'required') {
-  const surfaceLoad = model?.surfaceLoad || null;
-  const loadMode = options?.loadMode === 'total' ? 'total' : 'pressure';
-  const hasPositiveTotalLoad = loadMode === 'total' && (Math.max(Number(options?.totalLoad) || 0, 0) > 0);
-  const hasPositivePressure = loadMode === 'pressure' && (Math.max(Number(surfaceLoad?.q) || 0, 0) > 0);
+function rawSurfaceLoadsFromModel(model) {
+  if (Array.isArray(model?.surfaceLoads) && model.surfaceLoads.length) return model.surfaceLoads;
+  return model?.surfaceLoad ? [model.surfaceLoad] : [];
+}
+
+function normalizeLoads(model, options, warnings, mode = 'required') {
+  const raw = rawSurfaceLoadsFromModel(model);
   const requiresLoad = mode === 'required';
-  const validInterval = surfaceLoad?.xEnd > surfaceLoad?.xStart + GEOM_EPS;
-  if (!validInterval) {
-    if (!requiresLoad && !hasPositiveTotalLoad && !hasPositivePressure) return null;
-    throw new Error(
-      requiresLoad
-        ? 'Draw a load interval on the terrain before running deformation.'
-        : 'Draw a load interval on the terrain before applying an external surface load in the safety analysis.'
-    );
-  }
-  const width = surfaceLoad.xEnd - surfaceLoad.xStart;
+  const defaultLoadMode = options?.loadMode === 'total' ? 'total' : 'pressure';
   const outOfPlaneLength = Math.max(Number(options?.outOfPlaneLength) || 10, 0.1);
-  let q = Math.max(Number(surfaceLoad?.q) || 0, 0);
-  let totalLoad = null;
-  if (loadMode === 'total') {
-    totalLoad = Math.max(Number(options?.totalLoad) || 0, 0);
-    if (requiresLoad && !(totalLoad > 0)) {
-      throw new Error('Enter a positive total load before running deformation in total-load mode.');
+  const terrain = model?.terrain?.vertices || [];
+  const terrainMinX = terrain.length >= 2 ? Math.min(terrain[0].x, terrain[terrain.length - 1].x) : -Infinity;
+  const terrainMaxX = terrain.length >= 2 ? Math.max(terrain[0].x, terrain[terrain.length - 1].x) : Infinity;
+  const loads = [];
+
+  raw.forEach((surfaceLoad, index) => {
+    if (!surfaceLoad || surfaceLoad.active === false) return;
+    const label = surfaceLoad.label || surfaceLoad.id || `load ${index + 1}`;
+    const xA = Number(surfaceLoad.xStart);
+    const xB = Number(surfaceLoad.xEnd);
+    const loadMode = surfaceLoad.loadMode === 'total' || surfaceLoad.loadMode === 'pressure'
+      ? surfaceLoad.loadMode
+      : defaultLoadMode;
+    const hasLegacySingleLoad = raw.length === 1 && !Array.isArray(model?.surfaceLoads);
+    const requestedTotalLoad = Math.max(
+      Number(surfaceLoad.totalLoad) || (hasLegacySingleLoad ? Number(options?.totalLoad) || 0 : 0),
+      0
+    );
+    const requestedPressure = Math.max(Number(surfaceLoad.q) || 0, 0);
+    const hasRequestedMagnitude = loadMode === 'total' ? requestedTotalLoad > 0 : requestedPressure > 0;
+    if (!hasRequestedMagnitude) return;
+    if (!(Number.isFinite(xA) && Number.isFinite(xB) && Math.abs(xB - xA) > GEOM_EPS)) {
+      if (requiresLoad) {
+        throw new Error(`Surface load "${label}" needs a valid terrain interval before running deformation.`);
+      }
+      warnings.push(`Surface load "${label}" was ignored because its interval is not valid.`);
+      return;
     }
-    if (!requiresLoad && !(totalLoad > 0)) return null;
-    q = totalLoad / Math.max(width * outOfPlaneLength, 1e-6);
+    const xStart = Math.min(xA, xB);
+    const xEnd = Math.max(xA, xB);
+    if (xStart < terrainMinX - GEOM_EPS || xEnd > terrainMaxX + GEOM_EPS) {
+      throw new Error(`Surface load "${label}" lies outside the terrain extent. Move it inside the section before solving.`);
+    }
+    const width = xEnd - xStart;
+    let totalLoad = null;
+    let q = requestedPressure;
+    if (loadMode === 'total') {
+      totalLoad = requestedTotalLoad;
+      q = totalLoad / Math.max(width * outOfPlaneLength, 1e-6);
+    } else {
+      totalLoad = q * width * outOfPlaneLength;
+    }
+    if (!(q > 0)) return;
+    if (outOfPlaneLength / width < 4 - 1e-9) {
+      warnings.push(
+        `Surface load "${label}": out-of-plane length is less than 4 times the loaded width, so the plane-strain deformation result should be treated as a 2D screening approximation.`
+      );
+    }
+    loads.push({
+      id: surfaceLoad.id || `load-${index + 1}`,
+      label,
+      xStart,
+      xEnd,
+      width,
+      q,
+      loadMode,
+      totalLoad,
+      outOfPlaneLength
+    });
+  });
+
+  if (requiresLoad && loads.length === 0) {
+    throw new Error('No active surface load with a positive magnitude is available. Draw a load interval and enable it before running deformation.');
   }
-  if (requiresLoad && !(q > 0)) {
-    throw new Error(loadMode === 'pressure'
-      ? 'Enter a positive surface load q before running deformation.'
-      : 'The derived pressure from total load is zero or negative.');
+
+  for (let i = 0; i < loads.length; i += 1) {
+    for (let j = i + 1; j < loads.length; j += 1) {
+      const a = loads[i];
+      const b = loads[j];
+      const overlap = Math.min(a.xEnd, b.xEnd) - Math.max(a.xStart, b.xStart);
+      if (overlap > GEOM_EPS) {
+        warnings.push(
+          `Surface loads "${a.label}" and "${b.label}" overlap on ${Math.max(a.xStart, b.xStart).toFixed(2)}-${Math.min(a.xEnd, b.xEnd).toFixed(2)} m; pressures add over that interval.`
+        );
+      }
+    }
   }
-  if (!requiresLoad && !(q > 0)) return null;
-  if (loadMode === 'pressure' && Number(options?.totalLoad) > 0) {
-    totalLoad = q * width * outOfPlaneLength;
-  }
-  if (outOfPlaneLength / width < 4 - 1e-9) {
-    warnings.push('Out-of-plane length is less than 4 times the loaded width, so the plane-strain deformation result should be treated as a 2D screening approximation.');
-  }
-  return {
-    xStart: surfaceLoad.xStart,
-    xEnd: surfaceLoad.xEnd,
-    width,
-    q,
-    loadMode,
-    totalLoad,
-    outOfPlaneLength
-  };
+
+  return loads;
+}
+
+function normalizeLoad(model, options, warnings, mode = 'required') {
+  const loads = normalizeLoads(model, options, warnings, mode);
+  return loads[0] || null;
 }
 
 function addDomainExtentWarnings(model, load, warnings) {
@@ -2080,6 +2126,17 @@ function addDomainExtentWarnings(model, load, warnings) {
       `The current domain is smaller than the recommended 5*B buffer (${target.toFixed(2)} m) on one or more sides, so settlements and MC utilization near the boundaries may be optimistic.`
     );
   }
+}
+
+function addDomainExtentWarningsForLoads(model, loads, warnings) {
+  if (!loads?.length) return;
+  const xStart = Math.min(...loads.map((load) => load.xStart));
+  const xEnd = Math.max(...loads.map((load) => load.xEnd));
+  addDomainExtentWarnings(model, {
+    xStart,
+    xEnd,
+    width: xEnd - xStart
+  }, warnings);
 }
 
 function buildConstraintSets(mesh) {
@@ -3015,6 +3072,43 @@ async function buildGeostaticInitialization(
   }
 
   const Ugeo = expandSolutionVector(ndof, freeDofs, fixedValues, geostaticCg.solution);
+  // Hardening Soil does not run the downstream plastic geostatic Newton
+  // that MC uses to absorb a stress-state correction. The HS service phase
+  // starts from a stress-only geostatic reference, so feed it the layer-aware
+  // analytical K0 overburden field instead of the elastic-recovery field with
+  // a lateral K0 override. Keep the elastic gravity displacement as the
+  // support-compatible predictor for output stitching and audit metadata.
+  if (options?.constitutiveModel === 'hardening-soil') {
+    onProgress({
+      stage: 'solving',
+      percent: 69,
+      message: 'Building a gravity-balanced K0 stress field for the Hardening Soil pipeline...'
+    });
+    return {
+      initialField: buildFlatK0InitialEffectiveStressFieldForIntegrationPoints(
+        mesh,
+        elementCaches,
+        model,
+        options,
+        warnings
+      ),
+      mode: 'hs-analytical-k0',
+      seedMode: 'analytical-k0',
+      workflow: {
+        ...workflow,
+        method: 'hs-analytical-k0',
+        seedMode: 'analytical-k0',
+        runPlasticCorrection: false,
+        stressOnlyReference: false
+      },
+      seedDiagnostics: null,
+      iterations: geostaticCg.iterations,
+      residualNorm: geostaticCg.residualNorm,
+      linearSolveHistory: [{ ...summarizeLinearSolveResult(geostaticCg), phaseKind: 'geostatic-predictor' }],
+      solution: Ugeo
+    };
+  }
+
   const recoveredInitial = recoverInitialFieldFromGeostaticSolution(
     mesh,
     elementCaches,
@@ -3778,7 +3872,7 @@ async function solveNonlinearPhase(
       isInitialGravityPhase
         ? (options?.initialGravityPlasticLoadStepGrowthFactor ?? options?.plasticLoadStepGrowthFactor)
         : options?.plasticLoadStepGrowthFactor
-    ) || (isInitialGravityPhase ? 1.12 : 1.05),
+    ) || (isInitialGravityPhase ? 1.12 : 1.08),
     1
   );
   const plasticCutbackFactor = Math.min(
@@ -4611,7 +4705,7 @@ async function solveNonlinearPhase(
       // Once a service step converges in well under the target Newton count
       // *and* the line search accepts at full scale, the step is in a
       // quasi-steady plastic regime: the algorithmic tangent is locally
-      // accurate, and capping growth at 1.05/step strands the solve well
+      // accurate, and capping growth at 1.08/step can strand the solve well
       // before the target load (the adaptive formula would otherwise
       // compute ~sqrt(target/iter) ≈ 1.7×). Detect this benign regime
       // and fall back to the elastic growth limit; the adaptive formula
@@ -6309,7 +6403,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     displacementAbsTol: Math.max(Number(input?.options?.displacementAbsTol) || NONLINEAR_DISPLACEMENT_ABS_TOL, 1e-12),
     loadStepGrowthFactor: Math.max(Number(input?.options?.loadStepGrowthFactor) || NONLINEAR_GROWTH_FACTOR, 1),
     loadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.loadStepCutbackFactor) || NONLINEAR_CUTBACK_FACTOR, 0.1), 0.9),
-    plasticLoadStepGrowthFactor: Math.max(Number(input?.options?.plasticLoadStepGrowthFactor) || 1.05, 1),
+    plasticLoadStepGrowthFactor: Math.max(Number(input?.options?.plasticLoadStepGrowthFactor) || 1.08, 1),
     plasticLoadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.plasticLoadStepCutbackFactor) || 0.4, 0.1), 0.9),
     initialGravityPlasticLoadStepGrowthFactor: Math.max(Number(input?.options?.initialGravityPlasticLoadStepGrowthFactor) || 1.12, 1),
     initialGravityPlasticLoadStepCutbackFactor: Math.min(Math.max(Number(input?.options?.initialGravityPlasticLoadStepCutbackFactor) || 0.5, 0.1), 0.9),
@@ -6338,7 +6432,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       1
     ),
     plasticLineSearchReductionFactor: Math.min(Math.max(Number(input?.options?.plasticLineSearchReductionFactor) || 0.5, 0.1), 0.95),
-    plasticLineSearchMaxBacktracks: Math.max(Math.round(Number(input?.options?.plasticLineSearchMaxBacktracks) || 4), 1),
+    plasticLineSearchMaxBacktracks: Math.max(Math.round(Number(input?.options?.plasticLineSearchMaxBacktracks) || 6), 1),
     plasticLineSearchMinScale: Math.min(Math.max(Number(input?.options?.plasticLineSearchMinScale) || (1 / 64), 1e-4), 1),
     plasticLineSearchSufficientDecreaseFactor: Math.max(Number(input?.options?.plasticLineSearchSufficientDecreaseFactor) || 1e-3, 0),
     plasticLineSearchArmijoCoefficient: Math.max(Number(input?.options?.plasticLineSearchArmijoCoefficient) || 1e-4, 0),
@@ -6432,9 +6526,10 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       'with a JS reference implementation.'
     );
   }
-  const load = normalizeLoad(model, options, warnings, analysisType === 'deformation' ? 'required' : 'optional');
-  addDomainExtentWarnings(model, load, warnings);
-  const hasSurfaceLoad = !!load;
+  const loads = normalizeLoads(model, options, warnings, analysisType === 'deformation' ? 'required' : 'optional');
+  const load = loads[0] || null;
+  addDomainExtentWarningsForLoads(model, loads, warnings);
+  const hasSurfaceLoad = loads.length > 0;
   const isHs = options.constitutiveModel === 'hardening-soil';
   const isMcPlastic = options.constitutiveModel === 'mc-plastic';
 
@@ -6457,7 +6552,8 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     model.regions,
     {
       ...options,
-      load
+      load,
+      loads
     },
     (progress) => onProgress(progress)
   );
@@ -6528,11 +6624,13 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       : 'Applying the support constraints for the self-weight analysis...'
   });
 
-  loadedTerrainEdges(mesh, load).forEach((edge) => {
-    const dofs = mesh.elementType === 't6'
-      ? [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1, 2 * edge.nMid, 2 * edge.nMid + 1]
-      : [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1];
-    addVectorBlock(loadRhs, dofs, elementKernelFor(mesh.elementType).edgeTraction(edge, 0, -load.q));
+  loads.forEach((surfaceLoad) => {
+    loadedTerrainEdges(mesh, surfaceLoad).forEach((edge) => {
+      const dofs = mesh.elementType === 't6'
+        ? [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1, 2 * edge.nMid, 2 * edge.nMid + 1]
+        : [2 * edge.n1, 2 * edge.n1 + 1, 2 * edge.n2, 2 * edge.n2 + 1];
+      addVectorBlock(loadRhs, dofs, elementKernelFor(mesh.elementType).edgeTraction(edge, 0, -surfaceLoad.q));
+    });
   });
 
   const compressedRows = compressMatrixRows(rows, freeDofs, freeIndexByDof);
@@ -6589,6 +6687,7 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
       ndof,
       initialField: geostatic.initialField,
       predictorSolution: geostatic.solution,
+      geostatic,
       porePressureByIntegrationPoint,
       options,
       load,

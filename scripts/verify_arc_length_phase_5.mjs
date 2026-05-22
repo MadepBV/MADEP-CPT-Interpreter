@@ -204,9 +204,9 @@ async function main() {
     }
   }));
 
-  assert.equal(strength.version, 10);
-  assert.equal(arc.version, 10);
-  assert.equal(arcTuned.version, 10);
+  assert.equal(strength.version, WASM_WIRE_VERSION);
+  assert.equal(arc.version, WASM_WIRE_VERSION);
+  assert.equal(arcTuned.version, WASM_WIRE_VERSION);
   assert.ok(strength.decoded.safety.curve.length > 0, 'strength-control safety curve should exist');
   assert.ok(arc.decoded.safety.curve.length > 0, 'arc-length safety curve should exist');
   assert.ok(arcTuned.decoded.safety.curve.length > 0, 'tuned arc-length safety curve should exist');

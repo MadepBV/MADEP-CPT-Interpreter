@@ -88,6 +88,10 @@ const stage6BishopCanvasState = {
   pointerDrag:null,
   hoverWorld:null
 };
+// Hardening Soil remains in the lower-level solver code while it is being
+// validated, but the production UI must not expose it until the model is
+// convergence- and benchmark-ready.
+const STAGE6_ENABLE_HARDENING_SOIL_UI = false;
 
 /* ════════════════════════════════
    PROJECT STATE — multi-CPT architecture
@@ -3505,32 +3509,34 @@ function renderModel(){
             ${l.type==='Soft clay'||l.type==='Clay'?`<tr><td>c_u (kPa)</td><td>${l.cu}</td></tr>`:''}
           </table>
         </div>
-        <div>
-          <div class="mc2-sec">Hardening Soil &mdash; p_ref = 100 kPa</div>
-          <table class="pt">
-            <tr>
-              <td style="color:var(--tx3);font-size:10px">&alpha;E (${S.alphaMethod==='B'?'SB260':'Sanglerat'})</td>
-              <td style="text-align:right">
-                <input class="ed${l.ovr.aE?' ovr':''}" type="number" step="0.5" min="0.5" max="30"
-                  value="${h.aE}" style="width:54px"
-                  data-i="${i}" onchange="editAlpha(this)">
-              </td>
-            </tr>
-            <tr><td>E_oed,i (kPa)</td><td style="color:var(--tx2)">${h.Eoed_i.toLocaleString()}</td></tr>
-            <tr class="key"><td>E_oed,ref (kPa)</td><td>${h.Eoed_ref.toLocaleString()}</td></tr>
-            <tr class="key"><td>E_50,ref (kPa) <span style="font-size:9px;color:var(--tx3)">${S.stiffMethod==='B'?'=E_oed':'CUR 2003-7'}</span></td><td>${h.E50_ref.toLocaleString()}</td></tr>
-            <tr class="key"><td>E_ur,ref (kPa)</td><td>${h.Eur_ref.toLocaleString()}</td></tr>
-            <tr class="key">
-              <td>m <input class="ed${l.ovr.m?' ovr':''}" type="number" step="0.05" min="0.3" max="1.2"
-                value="${h.m.toFixed(2)}" style="width:48px;margin-left:4px"
-                data-i="${i}" onchange="editM(this)"></td>
-              <td>${h.m.toFixed(2)}</td>
-            </tr>
-            <tr><td>K0_nc</td><td>${h.K0nc}</td></tr>
-            <tr><td>&nu;_ur</td><td>${h.nu_ur}</td></tr>
-            <tr><td>R_f</td><td>0.90</td></tr>
-          </table>
-        </div>
+        ${STAGE6_ENABLE_HARDENING_SOIL_UI ? `
+          <div>
+            <div class="mc2-sec">Hardening Soil &mdash; p_ref = 100 kPa</div>
+            <table class="pt">
+              <tr>
+                <td style="color:var(--tx3);font-size:10px">&alpha;E (${S.alphaMethod==='B'?'SB260':'Sanglerat'})</td>
+                <td style="text-align:right">
+                  <input class="ed${l.ovr.aE?' ovr':''}" type="number" step="0.5" min="0.5" max="30"
+                    value="${h.aE}" style="width:54px"
+                    data-i="${i}" onchange="editAlpha(this)">
+                </td>
+              </tr>
+              <tr><td>E_oed,i (kPa)</td><td style="color:var(--tx2)">${h.Eoed_i.toLocaleString()}</td></tr>
+              <tr class="key"><td>E_oed,ref (kPa)</td><td>${h.Eoed_ref.toLocaleString()}</td></tr>
+              <tr class="key"><td>E_50,ref (kPa) <span style="font-size:9px;color:var(--tx3)">${S.stiffMethod==='B'?'=E_oed':'CUR 2003-7'}</span></td><td>${h.E50_ref.toLocaleString()}</td></tr>
+              <tr class="key"><td>E_ur,ref (kPa)</td><td>${h.Eur_ref.toLocaleString()}</td></tr>
+              <tr class="key">
+                <td>m <input class="ed${l.ovr.m?' ovr':''}" type="number" step="0.05" min="0.3" max="1.2"
+                  value="${h.m.toFixed(2)}" style="width:48px;margin-left:4px"
+                  data-i="${i}" onchange="editM(this)"></td>
+                <td>${h.m.toFixed(2)}</td>
+              </tr>
+              <tr><td>K0_nc</td><td>${h.K0nc}</td></tr>
+              <tr><td>&nu;_ur</td><td>${h.nu_ur}</td></tr>
+              <tr><td>R_f</td><td>0.90</td></tr>
+            </table>
+          </div>
+        ` : ''}
         <div>
           <div class="mc2-sec">Hydraulic conductivity</div>
           <table class="pt">
@@ -4207,11 +4213,13 @@ function stage6Defaults(){
       activeCptX:null,
       entryZone:null,
       exitZone:null,
-      surfaceLoad:{
-        xStart:null,
-        xEnd:null,
-        q:0
-      },
+	      surfaceLoad:{
+	        xStart:null,
+	        xEnd:null,
+	        q:0
+	      },
+	      surfaceLoads:[],
+	      selectedSurfaceLoadId:null,
       viewport:{
         scale:24,
         offsetX:80,
@@ -4346,16 +4354,17 @@ function stage6Defaults(){
           displacementScale:1,
           nonlinearMaxIterations:32,
           initialLoadStep:0.25,
-          minLoadStep:1/2048,
-          maxLoadSteps:256,
-          residualRelTol:1e-3,
-          residualAbsTol:1e-2,
+          minLoadStep:1/4096,
+          maxLoadSteps:384,
+          residualRelTol:1e-4,
+          residualAbsTol:1e-3,
           displacementRelTol:1e-4,
           displacementAbsTol:1e-6,
           loadStepGrowthFactor:1.25,
           loadStepCutbackFactor:0.5,
-          plasticLoadStepGrowthFactor:1.05,
+          plasticLoadStepGrowthFactor:1.08,
           plasticLoadStepCutbackFactor:0.4,
+          plasticLineSearchMaxBacktracks:6,
           geostaticInitializationMethod:'auto',
           geostaticStressOnlyResidualTolerance:0.05,
           useStagedGeostaticInit:true,
@@ -4384,6 +4393,7 @@ function stage6Defaults(){
           safetyMaxSearchTrials:32,
           safetyFinalizationMode:'production-msf',
           useUnsymmetricPlasticSolver:true,
+          useMcConsistentTangent:true,
           hsConsistentTangentPromptPending:false,
           hsConsistentTangentMigrationResolved:false
         },
@@ -4575,7 +4585,10 @@ function ensureStage6State(){
   if(!['head','porePressure','gradient','hydraulicFs','flow','qx','qy','normalFlow'].includes(bishop.lineProbe.seepageQuantity)){
     bishop.lineProbe.seepageQuantity = 'head';
   }
-  if(!stage6BishopDeformationQuantityIds(bishop.deformation?.options?.analysisType, bishop.deformation?.result?.hasHardeningSoil === true).includes(bishop.lineProbe.deformationQuantity)){
+  if(!stage6BishopDeformationQuantityIds(
+    bishop.deformation?.options?.analysisType,
+    STAGE6_ENABLE_HARDENING_SOIL_UI && bishop.deformation?.result?.hasHardeningSoil === true
+  ).includes(bishop.lineProbe.deformationQuantity)){
     bishop.lineProbe.deformationQuantity = 'uTotal';
   }
   bishop.lineProbe.copyMessage = typeof bishop.lineProbe.copyMessage === 'string' ? bishop.lineProbe.copyMessage : '';
@@ -4710,8 +4723,14 @@ function ensureStage6State(){
   bishop.seepage.selectedBcId = bishop.seepage.selectedBcId ? String(bishop.seepage.selectedBcId) : '';
   if(!bishop.deformation || typeof bishop.deformation !== 'object') bishop.deformation = stage6Defaults().bishop.deformation;
   stage6Merge(bishop.deformation, stage6Defaults().bishop.deformation);
-  if(!['linear-elastic','mc-reduced-stiffness','mc-plastic','hardening-soil'].includes(bishop.deformation.options.constitutiveModel)){
+  const visibleConstitutiveModels = STAGE6_ENABLE_HARDENING_SOIL_UI
+    ? ['linear-elastic','mc-reduced-stiffness','mc-plastic','hardening-soil']
+    : ['linear-elastic','mc-reduced-stiffness','mc-plastic'];
+  if(!visibleConstitutiveModels.includes(bishop.deformation.options.constitutiveModel)){
     bishop.deformation.options.constitutiveModel = stage6Defaults().bishop.deformation.options.constitutiveModel;
+    if(!visibleConstitutiveModels.includes(bishop.deformation.options.constitutiveModel)){
+      bishop.deformation.options.constitutiveModel = 'mc-plastic';
+    }
   }
   // The browser UI no longer exposes the old predictor-only initial mode.
   // Keep that mode available to lower-level scripts through the solver API,
@@ -4744,21 +4763,37 @@ function ensureStage6State(){
   bishop.deformation.options.outOfPlaneLength = Math.max(+bishop.deformation.options.outOfPlaneLength || 10, 0.1);
   bishop.deformation.options.useSeepagePorePressures = !!bishop.deformation.options.useSeepagePorePressures;
   bishop.deformation.options.displacementScale = Math.max(+bishop.deformation.options.displacementScale || 1, 0.05);
+  {
+    const migrateOldDefault = (key, oldValue, newValue) => {
+      const current = Number(bishop.deformation.options[key]);
+      const tol = Math.max(1e-15, Math.abs(oldValue) * 1e-12);
+      if (Number.isFinite(current) && Math.abs(current - oldValue) <= tol) {
+        bishop.deformation.options[key] = newValue;
+      }
+    };
+    migrateOldDefault('residualRelTol', 1e-3, 1e-4);
+    migrateOldDefault('residualAbsTol', 1e-2, 1e-3);
+    migrateOldDefault('minLoadStep', 1 / 2048, 1 / 4096);
+    migrateOldDefault('maxLoadSteps', 256, 384);
+    migrateOldDefault('plasticLoadStepGrowthFactor', 1.05, 1.08);
+    migrateOldDefault('plasticLineSearchMaxBacktracks', 4, 6);
+  }
   bishop.deformation.options.nonlinearMaxIterations = Math.max(Math.round(+bishop.deformation.options.nonlinearMaxIterations || 32), 1);
   bishop.deformation.options.initialLoadStep = Math.min(Math.max(+bishop.deformation.options.initialLoadStep || 0.25, 0.0001), 1);
-  bishop.deformation.options.minLoadStep = Math.max(+bishop.deformation.options.minLoadStep || (1/2048), 0.000001);
+  bishop.deformation.options.minLoadStep = Math.max(+bishop.deformation.options.minLoadStep || (1/4096), 0.000001);
   if(bishop.deformation.options.initialLoadStep < bishop.deformation.options.minLoadStep){
     bishop.deformation.options.initialLoadStep = bishop.deformation.options.minLoadStep;
   }
-  bishop.deformation.options.maxLoadSteps = Math.max(Math.round(+bishop.deformation.options.maxLoadSteps || 256), 1);
-  bishop.deformation.options.residualRelTol = Math.max(+bishop.deformation.options.residualRelTol || 1e-3, 1e-8);
-  bishop.deformation.options.residualAbsTol = Math.max(+bishop.deformation.options.residualAbsTol || 1e-2, 1e-9);
+  bishop.deformation.options.maxLoadSteps = Math.max(Math.round(+bishop.deformation.options.maxLoadSteps || 384), 1);
+  bishop.deformation.options.residualRelTol = Math.max(+bishop.deformation.options.residualRelTol || 1e-4, 1e-8);
+  bishop.deformation.options.residualAbsTol = Math.max(+bishop.deformation.options.residualAbsTol || 1e-3, 1e-9);
   bishop.deformation.options.displacementRelTol = Math.max(+bishop.deformation.options.displacementRelTol || 1e-4, 1e-8);
   bishop.deformation.options.displacementAbsTol = Math.max(+bishop.deformation.options.displacementAbsTol || 1e-6, 1e-12);
   bishop.deformation.options.loadStepGrowthFactor = Math.max(+bishop.deformation.options.loadStepGrowthFactor || 1.25, 1);
   bishop.deformation.options.loadStepCutbackFactor = Math.min(Math.max(+bishop.deformation.options.loadStepCutbackFactor || 0.5, 0.1), 0.9);
-  bishop.deformation.options.plasticLoadStepGrowthFactor = Math.max(+bishop.deformation.options.plasticLoadStepGrowthFactor || 1.05, 1);
+  bishop.deformation.options.plasticLoadStepGrowthFactor = Math.max(+bishop.deformation.options.plasticLoadStepGrowthFactor || 1.08, 1);
   bishop.deformation.options.plasticLoadStepCutbackFactor = Math.min(Math.max(+bishop.deformation.options.plasticLoadStepCutbackFactor || 0.4, 0.1), 0.9);
+  bishop.deformation.options.plasticLineSearchMaxBacktracks = Math.max(Math.round(+bishop.deformation.options.plasticLineSearchMaxBacktracks || 6), 1);
   {
     // The deformation pipeline now exposes exactly two initial-stress
     // workflows: 'auto' (elastic gravity-step CG + K0 recovery, identical
@@ -4824,6 +4859,7 @@ function ensureStage6State(){
       ? 'legacy-bracket'
       : (hadSafetyFinalizationMode ? 'production-msf' : 'legacy-bracket');
   bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver !== false;
+  bishop.deformation.options.useMcConsistentTangent = bishop.deformation.options.useMcConsistentTangent !== false;
   bishop.deformation.options.wasmRobustNonlinearMode = false;
   // Strip legacy GPU-related option carriers from saved sessions. The current
   // production deformation UI exposes the CPU f64 route only.
@@ -4868,7 +4904,10 @@ function ensureStage6State(){
   if(!bishop.deformation.display || typeof bishop.deformation.display !== 'object') bishop.deformation.display = stage6Defaults().bishop.deformation.display;
   if(bishop.deformation.display.contourMode === 'syy') bishop.deformation.display.contourMode = 'deltaSigmaYy';
   if(bishop.deformation.display.contourMode === 'mc') bishop.deformation.display.contourMode = 'mcEta';
-  if(!stage6BishopDeformationQuantityIds(bishop.deformation?.options?.analysisType, bishop.deformation?.result?.hasHardeningSoil === true).includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'uTotal';
+  if(!stage6BishopDeformationQuantityIds(
+    bishop.deformation?.options?.analysisType,
+    STAGE6_ENABLE_HARDENING_SOIL_UI && bishop.deformation?.result?.hasHardeningSoil === true
+  ).includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'uTotal';
   bishop.deformation.display.showContours = bishop.deformation.display.showContours !== false;
   bishop.deformation.display.showContourLines = bishop.deformation.display.showContourLines !== false;
   bishop.deformation.display.showContourLegend = bishop.deformation.display.showContourLegend !== false;
@@ -4880,6 +4919,7 @@ function ensureStage6State(){
   bishop.deformation.stale = !!bishop.deformation.stale;
   if(!bishop.surfaceLoad || typeof bishop.surfaceLoad !== 'object') bishop.surfaceLoad = {xStart:null, xEnd:null, q:0};
   bishop.surfaceLoad.q = Math.max(+bishop.surfaceLoad.q || 0, 0);
+  stage6BishopMigrateSurfaceLoadsShape(bishop);
   if(!bishop.viewport || typeof bishop.viewport !== 'object') bishop.viewport = {scale:24, offsetX:80, offsetY:360, fitted:false};
   if(!['characteristic','da1_1','da1_2'].includes(bishop.strengthSet)) bishop.strengthSet = 'characteristic';
 }
@@ -5148,6 +5188,241 @@ function stage6BishopValidZone(zone){
     && Number.isFinite(zone.xStart)
     && Number.isFinite(zone.xEnd)
     && Math.abs(zone.xEnd - zone.xStart) > 1e-6;
+}
+
+function stage6BishopAllocateSurfaceLoadId(bishop){
+  const taken = new Set((bishop.surfaceLoads || []).map((load)=>String(load?.id || '')).filter(Boolean));
+  let index = 1;
+  while(taken.has(`load-${index}`)) index += 1;
+  return `load-${index}`;
+}
+
+function stage6BishopNormalizeSurfaceLoad(load, index, bishop){
+  const out = load && typeof load === 'object' ? {...load} : {};
+  out.id = String(out.id || `load-${index + 1}`);
+  out.label = String(out.label || `Load ${index + 1}`).slice(0, 64);
+  out.q = Math.max(Number(out.q) || 0, 0);
+  out.totalLoad = Math.max(Number(out.totalLoad) || 0, 0);
+  out.loadMode = out.loadMode === 'total' ? 'total' : out.loadMode === 'pressure'
+    ? 'pressure'
+    : bishop?.deformation?.options?.loadMode === 'total'
+      ? 'total'
+      : 'pressure';
+  out.active = out.active !== false;
+  if(Number.isFinite(Number(out.xStart))) out.xStart = Number(out.xStart);
+  else out.xStart = null;
+  if(Number.isFinite(Number(out.xEnd))) out.xEnd = Number(out.xEnd);
+  else out.xEnd = null;
+  const sorted = stage6BishopSortZone(out);
+  return sorted || out;
+}
+
+function stage6BishopSyncLegacySurfaceLoadMirror(bishop = S.stage6?.bishop){
+  if(!bishop) return;
+  const first = (bishop.surfaceLoads || []).find((load)=>load?.active !== false)
+    || (bishop.surfaceLoads || [])[0]
+    || null;
+  bishop.surfaceLoad = first
+    ? {xStart:first.xStart, xEnd:first.xEnd, q:Math.max(Number(first.q) || 0, 0)}
+    : {
+      xStart:null,
+      xEnd:null,
+      q:Math.max(Number(bishop.surfaceLoad?.q) || 0, 0)
+    };
+}
+
+function stage6BishopLegacySurfaceLoadSeed(bishop, legacy){
+  if(!legacy || !Number.isFinite(Number(legacy.xStart)) || !Number.isFinite(Number(legacy.xEnd))) return null;
+  const migratedLegacy = stage6BishopNormalizeSurfaceLoad({
+    id:stage6BishopAllocateSurfaceLoadId(bishop),
+    label:'Load 1',
+    xStart:Number(legacy.xStart),
+    xEnd:Number(legacy.xEnd),
+    q:Math.max(Number(legacy.q) || 0, 0),
+    totalLoad:Math.max(Number(bishop.deformation?.options?.totalLoad) || 0, 0),
+    loadMode:bishop.deformation?.options?.loadMode === 'total' ? 'total' : 'pressure',
+    active:true
+  }, 0, bishop);
+  return stage6BishopValidZone(migratedLegacy) ? migratedLegacy : null;
+}
+
+function stage6BishopMigrateSurfaceLoadsShape(bishop){
+  if(!bishop) return;
+  const legacy = bishop.surfaceLoad && typeof bishop.surfaceLoad === 'object' ? bishop.surfaceLoad : null;
+  const hadLoads = Array.isArray(bishop.surfaceLoads);
+  if(!hadLoads) bishop.surfaceLoads = [];
+  if(!bishop.surfaceLoads.length){
+    const seed = stage6BishopLegacySurfaceLoadSeed(bishop, legacy);
+    if(seed) bishop.surfaceLoads.push(seed);
+  }
+  const used = new Set();
+  bishop.surfaceLoads = (bishop.surfaceLoads || []).map((load, index)=>{
+    const normalized = stage6BishopNormalizeSurfaceLoad(load, index, bishop);
+    let id = normalized.id || `load-${index + 1}`;
+    if(used.has(id)){
+      id = stage6BishopAllocateSurfaceLoadId({...bishop, surfaceLoads:[...used].map((item)=>({id:item}))});
+    }
+    used.add(id);
+    normalized.id = id;
+    return normalized;
+  }).filter((load)=>stage6BishopValidZone(load));
+  if(!bishop.surfaceLoads.length){
+    const seed = stage6BishopLegacySurfaceLoadSeed(bishop, legacy);
+    if(seed) bishop.surfaceLoads.push(seed);
+  }
+  bishop.surfaceLoads.forEach((load, index)=>{
+    if(/^Load\s+\d+$/i.test(String(load.label || ''))) load.label = `Load ${index + 1}`;
+  });
+  if(bishop.selectedSurfaceLoadId && !(bishop.surfaceLoads || []).some((load)=>load.id === bishop.selectedSurfaceLoadId)){
+    bishop.selectedSurfaceLoadId = null;
+  }
+  stage6BishopSyncLegacySurfaceLoadMirror(bishop);
+}
+
+function stage6BishopSelectedSurfaceLoad(){
+  const bishop = S.stage6?.bishop;
+  if(!bishop) return null;
+  return (bishop.surfaceLoads || []).find((load)=>load.id === bishop.selectedSurfaceLoadId) || null;
+}
+
+function stage6BishopPrimarySurfaceLoad(create = false){
+  const bishop = S.stage6?.bishop;
+  if(!bishop) return null;
+  stage6BishopMigrateSurfaceLoadsShape(bishop);
+  let load = stage6BishopSelectedSurfaceLoad()
+    || (bishop.surfaceLoads || []).find((item)=>item.active !== false)
+    || (bishop.surfaceLoads || [])[0]
+    || null;
+  if(!load && create){
+    load = {
+      id:stage6BishopAllocateSurfaceLoadId(bishop),
+      label:`Load ${(bishop.surfaceLoads || []).length + 1}`,
+      xStart:null,
+      xEnd:null,
+      q:Math.max(Number(bishop.surfaceLoad?.q) || 5, 0),
+      totalLoad:0,
+      loadMode:'pressure',
+      active:true
+    };
+    bishop.surfaceLoads = [...(bishop.surfaceLoads || []), load];
+    bishop.selectedSurfaceLoadId = load.id;
+    stage6BishopSyncLegacySurfaceLoadMirror(bishop);
+  }
+  return load;
+}
+
+function stage6BishopEffectiveSurfaceLoadQ(load, workspace = S.stage6?.bishop?.workspace || 'stability'){
+  if(!load) return 0;
+  const bishop = S.stage6?.bishop;
+  const loadMode = load.loadMode === 'total'
+    ? 'total'
+    : load.loadMode === 'pressure'
+      ? 'pressure'
+      : workspace === 'deformation' && bishop?.deformation?.options?.loadMode === 'total'
+        ? 'total'
+        : 'pressure';
+  const width = Math.abs((Number(load.xEnd) || 0) - (Number(load.xStart) || 0));
+  if(loadMode === 'total'){
+    const outOfPlaneLength = Math.max(Number(bishop?.deformation?.options?.outOfPlaneLength) || 10, 0.1);
+    const loadCount = Array.isArray(bishop?.surfaceLoads) ? bishop.surfaceLoads.length : 0;
+    const legacyTotalLoad = loadCount <= 1 ? Number(bishop?.deformation?.options?.totalLoad) || 0 : 0;
+    const totalLoad = Math.max(Number(load.totalLoad) || legacyTotalLoad || 0, 0);
+    return width > 1e-9 ? totalLoad / Math.max(width * outOfPlaneLength, 1e-6) : 0;
+  }
+  return Math.max(Number(load.q) || 0, 0);
+}
+
+function stage6BishopSurfaceLoadSummary(load, workspace = S.stage6?.bishop?.workspace || 'stability'){
+  if(!stage6BishopValidZone(load)) return 'not set';
+  const q = stage6BishopEffectiveSurfaceLoadQ(load, workspace);
+  const modeLabel = load.loadMode === 'total' ? `total ${Math.max(Number(load.totalLoad) || 0, 0).toFixed(1)} kN` : `${q.toFixed(1)} kPa`;
+  return `${load.xStart.toFixed(2)}-${load.xEnd.toFixed(2)} m @ ${modeLabel}${load.active === false ? ' (inactive)' : q > 0 ? '' : ' (zero)'}`;
+}
+
+function stage6BishopActiveSurfaceLoads(workspace = S.stage6?.bishop?.workspace || 'stability'){
+  const bishop = S.stage6?.bishop;
+  if(!bishop) return [];
+  stage6BishopMigrateSurfaceLoadsShape(bishop);
+  return (bishop.surfaceLoads || []).filter((load)=>load.active !== false && stage6BishopValidZone(load) && stage6BishopEffectiveSurfaceLoadQ(load, workspace) > 0);
+}
+
+function stage6BishopSetSurfaceLoadField(loadId, field, value){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  stage6BishopMigrateSurfaceLoadsShape(bishop);
+  const load = (bishop.surfaceLoads || []).find((item)=>item.id === loadId);
+  if(!load) return;
+  if(field === 'active'){
+    load.active = !!value;
+  } else if(field === 'label'){
+    load.label = String(value || '').slice(0, 64);
+  } else if(field === 'loadMode'){
+    load.loadMode = value === 'total' ? 'total' : 'pressure';
+  } else if(field === 'q'){
+    load.q = Math.max(Number(value) || 0, 0);
+  } else if(field === 'totalLoad'){
+    load.totalLoad = Math.max(Number(value) || 0, 0);
+  } else if(field === 'xStart' || field === 'xEnd'){
+    const x = Number(value);
+    if(!Number.isFinite(x)) return;
+    const minX = bishop.terrain?.[0]?.x ?? -Infinity;
+    const maxX = bishop.terrain?.[bishop.terrain.length - 1]?.x ?? Infinity;
+    load[field] = Math.min(Math.max(x, minX), maxX);
+    Object.assign(load, stage6BishopSortZone(load) || load);
+  } else {
+    return;
+  }
+  bishop.selectedSurfaceLoadId = load.id;
+  stage6BishopSyncLegacySurfaceLoadMirror(bishop);
+  stage6BishopInvalidate('Surface load changed; rerun the active analysis.');
+  renderStage6();
+}
+
+function stage6BishopSelectSurfaceLoad(loadId){
+  ensureStage6State();
+  stage6BishopMigrateSurfaceLoadsShape(S.stage6.bishop);
+  S.stage6.bishop.selectedSurfaceLoadId = loadId || null;
+  if(loadId) S.stage6.bishop.tool = 'edit';
+  renderStage6();
+}
+
+function stage6BishopDeleteSurfaceLoad(loadId){
+  ensureStage6State();
+  stage6RememberDetailsState();
+  const bishop = S.stage6.bishop;
+  const before = (bishop.surfaceLoads || []).length;
+  bishop.surfaceLoads = (bishop.surfaceLoads || []).filter((load)=>load.id !== loadId);
+  if(bishop.selectedSurfaceLoadId === loadId) bishop.selectedSurfaceLoadId = null;
+  if(bishop.surfaceLoads.length !== before){
+    stage6BishopSyncLegacySurfaceLoadMirror(bishop);
+    stage6BishopInvalidate('Surface load deleted; rerun the active analysis.');
+  }
+  renderStage6();
+}
+
+function stage6BishopCreateSurfaceLoadFromZone(zone){
+  const bishop = S.stage6.bishop;
+  stage6BishopMigrateSurfaceLoadsShape(bishop);
+  if(!stage6BishopValidZone(zone)) return null;
+  const source = stage6BishopPrimarySurfaceLoad(false);
+  const id = stage6BishopAllocateSurfaceLoadId(bishop);
+  const load = {
+    id,
+    label:`Load ${(bishop.surfaceLoads || []).length + 1}`,
+    xStart:zone.xStart,
+    xEnd:zone.xEnd,
+    q:Math.max(Number(source?.q ?? bishop.surfaceLoad?.q) || 5, 0),
+    totalLoad:Math.max(Number(source?.totalLoad) || 0, 0),
+    loadMode:source?.loadMode === 'total' ? 'total' : 'pressure',
+    active:true
+  };
+  bishop.surfaceLoads = [...(bishop.surfaceLoads || []), load];
+  bishop.selectedSurfaceLoadId = id;
+  bishop.tool = 'edit';
+  stage6BishopSyncLegacySurfaceLoadMirror(bishop);
+  stage6BishopInvalidate('Surface load added; rerun the active analysis.');
+  return load;
 }
 
 function stage6BishopZoneKey(kind){
@@ -6315,6 +6590,7 @@ function stage6BishopInvalidate(message){
 function stage6BishopSyncSoilModel(){
   ensureStage6State();
   const bishop = S.stage6.bishop;
+  stage6BishopMigrateSurfaceLoadsShape(bishop);
   const layers = stage6WorkingLayers();
   const signature = bishopLayerSignature(layers);
   const hadSignature = !!bishop.sourceLayerSignature;
@@ -6367,10 +6643,13 @@ function stage6BishopSyncSoilModel(){
     if(hasStoredHsConsistentTangent){
       hs.useConsistentTangent = hs.useConsistentTangent === true || Number(hs.useConsistentTangent) >= 0.5;
     } else {
-      const migratedLegacyOff = bishop.deformation?.options?.hsConsistentTangentPromptPending === true
-        && bishop.deformation?.options?.hsConsistentTangentMigrationResolved !== true;
-      hs.useConsistentTangent = migratedLegacyOff ? false : true;
-      if(migratedLegacyOff) bishop.deformation.options.hsConsistentTangentPromptPending = true;
+      // Existing projects saved before the HS selector existed must not
+      // silently flip into the Simo-Hughes path. New projects are handled in
+      // importBishopMaterialsFromLayers(), which writes the field explicitly.
+      hs.useConsistentTangent = false;
+      if(bishop.deformation?.options && bishop.deformation.options.hsConsistentTangentMigrationResolved !== true){
+        bishop.deformation.options.hsConsistentTangentPromptPending = true;
+      }
     }
     if('reserved' in hs) delete hs.reserved;
     // Strip legacy stiffness fields that may linger on an existing
@@ -6395,13 +6674,23 @@ function stage6BishopSyncSoilModel(){
     } else {
       bishop.activeCptX = Math.min(Math.max(+bishop.activeCptX, minX), maxX);
     }
-    ['entryZone','exitZone','surfaceLoad'].forEach((key)=>{
+    ['entryZone','exitZone'].forEach((key)=>{
       const zone = stage6BishopSortZone(bishop[key]);
       if(!zone) return;
       zone.xStart = Math.min(Math.max(zone.xStart, minX), maxX);
       zone.xEnd = Math.min(Math.max(zone.xEnd, minX), maxX);
       bishop[key] = stage6BishopSortZone(zone);
     });
+    bishop.surfaceLoads = (bishop.surfaceLoads || []).map((load, index)=>{
+      const normalized = stage6BishopNormalizeSurfaceLoad(load, index, bishop);
+      if(stage6BishopValidZone(normalized)){
+        normalized.xStart = Math.min(Math.max(normalized.xStart, minX), maxX);
+        normalized.xEnd = Math.min(Math.max(normalized.xEnd, minX), maxX);
+        return stage6BishopSortZone(normalized) || normalized;
+      }
+      return normalized;
+    }).filter((load)=>stage6BishopValidZone(load));
+    stage6BishopSyncLegacySurfaceLoadMirror(bishop);
     bishop.walls = stage6BishopNormalizeWalls(bishop.walls, sorted);
     bishop.drains = stage6BishopNormalizeDrains(bishop.drains);
     bishop.customRegions = stage6BishopNormalizeCustomRegions(bishop.customRegions, sorted, bishop.materials);
@@ -6575,6 +6864,29 @@ function stage6BishopSplitSelectedRegion(){
 function stage6BishopSetField(path, value){
   ensureStage6State();
   stage6RememberDetailsState();
+  if(typeof path === 'string' && path.startsWith('surfaceLoad.')){
+    const field = path.slice('surfaceLoad.'.length);
+    const target = stage6BishopPrimarySurfaceLoad(false);
+    if(target){
+      if(field === 'q' && target.loadMode === 'total' && stage6BishopValidZone(target)){
+        const width = Math.max(target.xEnd - target.xStart, 0);
+        const outOfPlaneLength = Math.max(Number(S.stage6.bishop.deformation?.options?.outOfPlaneLength) || 10, 0.1);
+        stage6BishopSetSurfaceLoadField(target.id, 'totalLoad', (Math.max(Number(value) || 0, 0) * width * outOfPlaneLength));
+      } else {
+        stage6BishopSetSurfaceLoadField(target.id, field, value);
+      }
+      return;
+    }
+    if(!S.stage6.bishop.surfaceLoad || typeof S.stage6.bishop.surfaceLoad !== 'object'){
+      S.stage6.bishop.surfaceLoad = {xStart:null, xEnd:null, q:0};
+    }
+    if(field === 'q') S.stage6.bishop.surfaceLoad.q = Math.max(Number(value) || 0, 0);
+    else if(field === 'xStart' || field === 'xEnd') S.stage6.bishop.surfaceLoad[field] = Number.isFinite(Number(value)) ? Number(value) : null;
+    stage6BishopSyncLegacySurfaceLoadMirror(S.stage6.bishop);
+    stage6BishopInvalidate('Surface load changed; rerun the active analysis.');
+    renderStage6();
+    return;
+  }
   const defaults = stage6Defaults().bishop;
   const currentDefault = stage6Get(defaults, path);
   let nextValue = value;
@@ -6612,7 +6924,21 @@ function stage6BishopSetField(path, value){
   } else if(path === 'deformation.options.meshTargetAreaAuto' && !(Number(S.stage6.bishop.deformation.options.meshTargetArea) > 0)){
     S.stage6.bishop.deformation.options.meshTargetArea = stage6BishopAutoDeformationMeshTargetArea(S.stage6.bishop);
   }
-  stage6Set(S.stage6.bishop, path, nextValue);
+	  stage6Set(S.stage6.bishop, path, nextValue);
+  if(path === 'deformation.options.constitutiveModel' && nextValue === 'hardening-soil' && !STAGE6_ENABLE_HARDENING_SOIL_UI){
+    S.stage6.bishop.deformation.options.constitutiveModel = 'mc-plastic';
+  }
+  if(path === 'deformation.options.loadMode'){
+    const load = stage6BishopPrimarySurfaceLoad(false);
+    if(load){
+      load.loadMode = nextValue === 'total' ? 'total' : 'pressure';
+      stage6BishopSyncLegacySurfaceLoadMirror(S.stage6.bishop);
+    }
+  }
+  if(path === 'deformation.options.totalLoad'){
+    const load = stage6BishopPrimarySurfaceLoad(false);
+    if(load) load.totalLoad = Math.max(Number(nextValue) || 0, 0);
+  }
   if(path === 'deformation.options.solverBackend'){
     // Sync the legacy fields so the worker payload + solver dispatch
     // keep working off the same source of truth without waiting for the
@@ -6626,28 +6952,28 @@ function stage6BishopSetField(path, value){
   }
   if(path === 'deformation.options.analysisType' && nextValue === 'safety-cphi'){
     const currentConstitutiveModel = S.stage6.bishop.deformation?.options?.constitutiveModel;
-    if(currentConstitutiveModel !== 'mc-plastic' && currentConstitutiveModel !== 'hardening-soil'){
+    if(currentConstitutiveModel !== 'mc-plastic' && !(STAGE6_ENABLE_HARDENING_SOIL_UI && currentConstitutiveModel === 'hardening-soil')){
       S.stage6.bishop.deformation.options.constitutiveModel = 'mc-plastic';
     }
-    // Hardening Soil c-phi safety is WASM-only; force the WASM backend on.
-    if(S.stage6.bishop.deformation?.options?.constitutiveModel === 'hardening-soil'){
+    if(STAGE6_ENABLE_HARDENING_SOIL_UI && S.stage6.bishop.deformation?.options?.constitutiveModel === 'hardening-soil'){
       S.stage6.bishop.deformation.options.solverBackend = 'wasm-cpu';
       S.stage6.bishop.deformation.options.useWasmCpuPipeline = true;
       S.stage6.bishop.deformation.options.useNewGpuPipeline = false;
     }
   }
-  if(path === 'deformation.options.constitutiveModel' && nextValue !== 'mc-plastic'){
+  if(path === 'deformation.options.constitutiveModel' && S.stage6.bishop.deformation?.options?.constitutiveModel !== 'mc-plastic'){
     if(String(S.stage6.bishop.deformation?.options?.geostaticInitializationMethod || '').toLowerCase() === 'gravity-ramp'){
       S.stage6.bishop.deformation.options.geostaticInitializationMethod = 'auto';
     }
-    // Safety analysis is allowed for Mohr-Coulomb plastic and Hardening Soil;
+    // Safety analysis is allowed for the visible production plastic model;
     // any other constitutive model forces the analysis back to plain deformation.
-    if(nextValue !== 'hardening-soil' && S.stage6.bishop.deformation?.options?.analysisType === 'safety-cphi'){
+    if(
+      !(STAGE6_ENABLE_HARDENING_SOIL_UI && S.stage6.bishop.deformation?.options?.constitutiveModel === 'hardening-soil') &&
+      S.stage6.bishop.deformation?.options?.analysisType === 'safety-cphi'
+    ){
       S.stage6.bishop.deformation.options.analysisType = 'deformation';
     }
-    // If we just selected Hardening Soil for a safety run, the WASM CPU
-    // backend is mandatory (HS c-phi safety is WASM-only).
-    if(nextValue === 'hardening-soil' && S.stage6.bishop.deformation?.options?.analysisType === 'safety-cphi'){
+    if(STAGE6_ENABLE_HARDENING_SOIL_UI && nextValue === 'hardening-soil' && S.stage6.bishop.deformation?.options?.analysisType === 'safety-cphi'){
       S.stage6.bishop.deformation.options.solverBackend = 'wasm-cpu';
       S.stage6.bishop.deformation.options.useWasmCpuPipeline = true;
       S.stage6.bishop.deformation.options.useNewGpuPipeline = false;
@@ -6707,6 +7033,9 @@ function stage6BishopSetTool(tool){
   }
   const prevTool = S.stage6.bishop.tool;
   S.stage6.bishop.tool = tool;
+  if(tool === 'load'){
+    S.stage6.bishop.selectedSurfaceLoadId = null;
+  }
   if(tool !== prevTool && S.stage6.bishop.draftKind && S.stage6.bishop.draftKind !== tool){
     S.stage6.bishop.draft = [];
     S.stage6.bishop.draftKind = '';
@@ -6734,9 +7063,11 @@ function stage6BishopApplyImportedTerrain(vertices, label){
   bishop.selectedDrainId = '';
   bishop.draft = [];
   bishop.draftKind = '';
-  bishop.entryZone = null;
-  bishop.exitZone = null;
-  bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
+	  bishop.entryZone = null;
+	  bishop.exitZone = null;
+	  bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
+	  bishop.surfaceLoads = [];
+	  bishop.selectedSurfaceLoadId = null;
   bishop.activeCptX = null;
   bishop.customRegions = [];
   bishop.useCustomRegions = false;
@@ -6883,9 +7214,11 @@ function stage6BishopClear(kind){
     bishop.useCustomRegions = false;
     bishop.selectedRegionId = null;
     bishop.measurement = {points:[]};
-    bishop.entryZone = null;
-    bishop.exitZone = null;
-    bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
+	    bishop.entryZone = null;
+	    bishop.exitZone = null;
+	    bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
+	    bishop.surfaceLoads = [];
+	    bishop.selectedSurfaceLoadId = null;
     bishop.activeCptX = null;
     bishop.viewport.fitted = false;
   } else if(kind === 'phreatic'){
@@ -6899,8 +7232,10 @@ function stage6BishopClear(kind){
     bishop.entryZone = null;
   } else if(kind === 'exit'){
     bishop.exitZone = null;
-  } else if(kind === 'load'){
-    bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
+	  } else if(kind === 'load'){
+	    bishop.surfaceLoad = {...bishop.surfaceLoad, xStart:null, xEnd:null};
+	    bishop.surfaceLoads = [];
+	    bishop.selectedSurfaceLoadId = null;
   } else if(kind === 'draft'){
     bishop.draft = [];
     bishop.draftKind = '';
@@ -7573,37 +7908,16 @@ function stage6BishopRunDeformation(){
     renderStage6();
     return;
   }
-  const loadZone = stage6BishopSortZone(bishop.surfaceLoad);
   const analysisType = bishop.deformation?.options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
   const loadMode = bishop.deformation?.options?.loadMode === 'total' ? 'total' : 'pressure';
-  const loadZoneValid = stage6BishopValidZone(loadZone);
-  const hasPositivePressure = Math.max(+bishop.surfaceLoad?.q || 0, 0) > 0;
-  const hasPositiveTotalLoad = Number(bishop.deformation?.options?.totalLoad) > 0;
-  const hasSurfaceLoadRequest = loadMode === 'total' ? hasPositiveTotalLoad : hasPositivePressure;
+  const activeLoads = stage6BishopActiveSurfaceLoads('deformation');
   if(analysisType === 'deformation'){
-    if(!loadZoneValid){
-      bishop.deformation.rejectReason = 'Draw a load interval on the terrain before running deformation.';
+    if(!activeLoads.length){
+      bishop.deformation.rejectReason = 'Draw or enable at least one positive surface load before running deformation.';
       bishop.deformation.status = 'failed';
       renderStage6();
       return;
     }
-    if(loadMode === 'pressure' && !hasPositivePressure){
-      bishop.deformation.rejectReason = 'Enter a positive surface load q before running deformation.';
-      bishop.deformation.status = 'failed';
-      renderStage6();
-      return;
-    }
-    if(loadMode === 'total' && !hasPositiveTotalLoad){
-      bishop.deformation.rejectReason = 'Enter a positive total load before running deformation.';
-      bishop.deformation.status = 'failed';
-      renderStage6();
-      return;
-    }
-  } else if(hasSurfaceLoadRequest && !loadZoneValid){
-    bishop.deformation.rejectReason = 'Draw a load interval on the terrain before applying an external surface load in the c-phi reduction safety analysis.';
-    bishop.deformation.status = 'failed';
-    renderStage6();
-    return;
   }
   stage6BishopStopSearch(true);
   stage6BishopStopSeepage(true);
@@ -7980,7 +8294,7 @@ function stage6BishopRunningMessage(){
 }
 
 function stage6BishopReadyMessage(runReady){
-  if(!runReady) return 'Draw terrain, place the active CPT, and define entry and exit zones. Retaining walls, the load zone, and the phreatic line are optional.';
+  if(!runReady) return 'Draw terrain, place the active CPT, and define entry and exit zones. Retaining walls, load zones, and the phreatic line are optional.';
   return S.stage6?.bishop?.methodMode === 'bishop_spencer'
     ? 'Ready to run Bishop + Spencer check.'
     : 'Ready to run Bishop search.';
@@ -8071,7 +8385,7 @@ function stage6BishopModeMeta(){
   if(bishop.tool === 'load'){
     return {
       label:'Load zone mode',
-      hint:'Click the start and end of the uniform surcharge zone on the terrain. Set q below in kPa.'
+      hint:'Click the start and end of a uniform surcharge strip on the terrain. Set q below in kPa.'
     };
   }
   if(bishop.tool === 'wall'){
@@ -8222,13 +8536,79 @@ function stage6BishopCanvasToolRailHtml(context){
     (bishop.draftKind === 'region' || bishop.draftKind === 'regionHole') && bishop.draft.length >= 3
   );
   const loadQ = Number(context?.loadQ || 0);
+  const surfaceLoads = bishop.surfaceLoads || [];
+  const selectedSurfaceLoad = (surfaceLoads || []).find((load)=>load.id === bishop.selectedSurfaceLoadId) || null;
+  const primarySurfaceLoad = selectedSurfaceLoad
+    || surfaceLoads.find((load)=>load.active !== false)
+    || surfaceLoads[0]
+    || null;
+  const selectedLoadWidth = stage6BishopValidZone(selectedSurfaceLoad)
+    ? Math.max(selectedSurfaceLoad.xEnd - selectedSurfaceLoad.xStart, 0)
+    : 0;
+  const surfaceLoadRows = surfaceLoads.map((load, index)=>{
+    const selected = load.id === bishop.selectedSurfaceLoadId;
+    const q = stage6BishopEffectiveSurfaceLoadQ(load, workspace);
+    const loadIdArg = stage6EscJsString(load.id);
+    return `
+      <div class="st6-canvas-card-row" style="gap:6px;align-items:center">
+        <button type="button" class="st6-canvas-tool ${selected ? 'active' : ''}" style="flex:1;justify-content:flex-start" onclick="stage6BishopSelectSurfaceLoad(${loadIdArg})" title="${stage6EscAttr(stage6BishopSurfaceLoadSummary(load, workspace))}">
+          ${stage6BishopToolIcon('load')}
+          <span>${stage6EscAttr(load.label || `Load ${index + 1}`)}</span>
+        </button>
+        <button type="button" class="st6-canvas-tool ${load.active !== false ? 'active' : ''}" style="width:36px;flex:0 0 36px" onclick="stage6BishopSetSurfaceLoadField(${loadIdArg}, 'active', ${load.active === false ? 'true' : 'false'})" title="${load.active === false ? 'Enable load' : 'Disable load'}" aria-label="${load.active === false ? 'Enable load' : 'Disable load'}">
+          ${stage6BishopToolIcon(load.active === false ? 'eyeOff' : 'play')}
+        </button>
+        <span style="font-size:11px;color:var(--tx2);min-width:54px;text-align:right">${q.toFixed(1)} kPa</span>
+      </div>
+    `;
+  }).join('');
+  const selectedLoadIdArg = selectedSurfaceLoad ? stage6EscJsString(selectedSurfaceLoad.id) : '""';
+  const selectedSurfaceLoadEditor = selectedSurfaceLoad ? `
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">Selected load</div>
+      <label class="st6-canvas-check">
+        <input type="checkbox" ${selectedSurfaceLoad.active === false ? '' : 'checked'} onchange="stage6BishopSetSurfaceLoadField(${selectedLoadIdArg}, 'active', this.checked)">
+        Active in current model
+      </label>
+      <label>Label
+        <input type="text" value="${stage6EscAttr(selectedSurfaceLoad.label || selectedSurfaceLoad.id)}" onchange="stage6BishopSetSurfaceLoadField(${selectedLoadIdArg}, 'label', this.value)">
+      </label>
+      <label>Load input
+        <select onchange="stage6BishopSetSurfaceLoadField(${selectedLoadIdArg}, 'loadMode', this.value)">
+          <option value="pressure"${selectedSurfaceLoad.loadMode !== 'total' ? ' selected' : ''}>Pressure q (kPa)</option>
+          <option value="total"${selectedSurfaceLoad.loadMode === 'total' ? ' selected' : ''}>Total load (kN)</option>
+        </select>
+      </label>
+      ${selectedSurfaceLoad.loadMode === 'total' ? `
+        <label>Total load (kN)
+          <input type="number" step="1" min="0" value="${Number(selectedSurfaceLoad.totalLoad || 0).toFixed(1)}" onchange="stage6BishopSetSurfaceLoadField(${selectedLoadIdArg}, 'totalLoad', this.value)">
+        </label>
+      ` : `
+        <label>Pressure q (kPa)
+          <input type="number" step="1" min="0" value="${Number(selectedSurfaceLoad.q || 0).toFixed(1)}" onchange="stage6BishopSetSurfaceLoadField(${selectedLoadIdArg}, 'q', this.value)">
+        </label>
+      `}
+      <div class="st6-canvas-card-grid">
+        <label>x start (m)
+          <input type="number" step="0.1" value="${Number(selectedSurfaceLoad.xStart ?? 0).toFixed(2)}" onchange="stage6BishopSetSurfaceLoadField(${selectedLoadIdArg}, 'xStart', this.value)">
+        </label>
+        <label>x end (m)
+          <input type="number" step="0.1" value="${Number(selectedSurfaceLoad.xEnd ?? 0).toFixed(2)}" onchange="stage6BishopSetSurfaceLoadField(${selectedLoadIdArg}, 'xEnd', this.value)">
+        </label>
+      </div>
+      <div class="st6-canvas-card-note">Width ${selectedLoadWidth.toFixed(2)} m · effective q ${stage6BishopEffectiveSurfaceLoadQ(selectedSurfaceLoad, workspace).toFixed(2)} kPa</div>
+      <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+        ${actionButton('Delete load', 'reset', `stage6BishopDeleteSurfaceLoad(${selectedLoadIdArg})`, false, 'danger')}
+      </div>
+    </div>
+  ` : '';
   const seepage = bishop.seepage || {};
   const seepageMeshTargetArea = Number(context?.seepageMeshTargetArea || 0);
   const seepageUsesIterativeFreeSurface = seepage.options?.freeSurface === 'iterate';
   const viewSeepageContourOptions = stage6BishopSeepageContourOptions();
   const viewSeepageContourMode = bishop.seepage?.display?.contourMode || 'head';
   const viewDeformationAnalysisType = bishop.deformation?.options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
-  const viewDeformationHasHs = bishop.deformation?.result?.hasHardeningSoil === true;
+  const viewDeformationHasHs = STAGE6_ENABLE_HARDENING_SOIL_UI && bishop.deformation?.result?.hasHardeningSoil === true;
   const viewDeformationContourOptions = stage6BishopDeformationContourOptions(viewDeformationAnalysisType, viewDeformationHasHs);
   const viewDeformationContourMode = bishop.deformation?.display?.contourMode || 'uTotal';
   const draftRegionMaterialId = bishop.regionDraftMaterialId || bishop.materials?.[0]?.id || '';
@@ -8275,9 +8655,9 @@ function stage6BishopCanvasToolRailHtml(context){
       ${draftActions}
     </div>
   `;
-  const structuresPanel = `
-    <div class="st6-canvas-card-section">
-      <div class="st6-canvas-card-kicker">Structure tools</div>
+	  const structuresPanel = `
+	    <div class="st6-canvas-card-section">
+	      <div class="st6-canvas-card-kicker">Structure tools</div>
       <div class="st6-canvas-card-grid">
         ${toolButton('wall', 'Retaining wall', 'wall')}
         ${toolButton('drain', 'Drain line', 'drain', !model)}
@@ -8286,12 +8666,13 @@ function stage6BishopCanvasToolRailHtml(context){
         ${toolButton('exit', 'Exit zone', 'exit')}
       </div>
     </div>
-    <div class="st6-canvas-card-section">
-      <div class="st6-canvas-card-kicker">Quick settings</div>
-      <label>Surface load q (kPa)
-        <input type="number" step="1" min="0" value="${loadQ.toFixed(1)}" onchange="stage6BishopSetField('surfaceLoad.q', this.value)">
-      </label>
-      ${selectedDrain ? `
+	    <div class="st6-canvas-card-section">
+	      <div class="st6-canvas-card-kicker">Quick settings</div>
+	      <label>${primarySurfaceLoad ? `Quick q for ${stage6EscAttr(primarySurfaceLoad.label || primarySurfaceLoad.id)}` : 'Default surface load q'} (kPa)
+	        <input type="number" step="1" min="0" value="${loadQ.toFixed(1)}" onchange="stage6BishopSetField('surfaceLoad.q', this.value)">
+	      </label>
+	      <div class="st6-canvas-card-note">Use Load zone to draw another strip. Click a strip in Edit / pan to select and edit it.</div>
+	      ${selectedDrain ? `
         <label>Selected drain head h (m)
           <input type="number" step="0.05" value="${Number(drainHeadValueAt(selectedDrain, 0) || 0).toFixed(2)}" onchange="stage6BishopSetDrainField(${selectedDrainIndex}, 'head', this.value)">
         </label>
@@ -8303,12 +8684,17 @@ function stage6BishopCanvasToolRailHtml(context){
           </select>
         </label>
       ` : '<div class="st6-canvas-card-note">Select or draw a drain to edit head and gating here.</div>'}
-      <div class="st6-canvas-card-row st6-canvas-card-row--actions">
-        ${actionButton('Manage structures', 'wall', "stage6BishopSetCanvasSheet('structures')")}
-        ${actionButton('Reset tools', 'reset', "stage6BishopSetCanvasSheet('reset')")}
-      </div>
-    </div>
-  `;
+	      <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+	        ${actionButton('Manage structures', 'wall', "stage6BishopSetCanvasSheet('structures')")}
+	        ${actionButton('Reset tools', 'reset', "stage6BishopSetCanvasSheet('reset')")}
+	      </div>
+	    </div>
+	    <div class="st6-canvas-card-section">
+	      <div class="st6-canvas-card-kicker">Surface loads</div>
+	      ${surfaceLoadRows || '<div class="st6-canvas-card-note">No loads yet. Select Load zone, then click two terrain points.</div>'}
+	    </div>
+	    ${selectedSurfaceLoadEditor}
+	  `;
   const boundaryPanel = `
     <div class="st6-canvas-card-section">
       <div class="st6-canvas-card-kicker">Boundary assignment</div>
@@ -8542,16 +8928,16 @@ function stage6BishopCanvasToolRailHtml(context){
           ${stage6BishopCanvasToolButton({label:'Hide canvas UI', icon:'eyeOff', onclick:'stage6BishopToggleCanvasTools(false)'})}
         </div>
       </div>
-      ${panelBody ? `
-        <div class="st6-canvas-card" role="dialog" aria-label="${stage6EscAttr(panelTitle)}">
+	      ${panelBody ? `
+	        <div class="st6-canvas-card" role="dialog" aria-label="${stage6EscAttr(panelTitle)}">
           <div class="st6-canvas-card-head">
             <strong>${stage6EscAttr(panelTitle)}</strong>
             <button type="button" class="st6-canvas-card-close" onclick="stage6BishopSetCanvasPanel('')" aria-label="Close ${stage6EscAttr(panelTitle)}">${stage6BishopToolIcon('close')}</button>
           </div>
           <div class="st6-canvas-card-body" data-st6scroll-key="bishop-canvas-card-${stage6EscAttr(activePanel)}">${panelBody}</div>
-        </div>
-      ` : ''}
-      ${sheetBody ? `
+	        </div>
+	      ` : ''}
+	      ${sheetBody ? `
         <div class="st6-canvas-sheet" role="dialog" aria-label="${stage6EscAttr(sheetTitle)}">
           <div class="st6-canvas-card-head">
             <strong>${stage6EscAttr(sheetTitle)}</strong>
@@ -8883,7 +9269,7 @@ function stage6BishopBuildLineProbe(workspace, measurementMetrics){
   const analysisType = workspace === 'deformation'
     ? stage6BishopNormalizedDeformationAnalysisType()
     : null;
-  const hasHs = workspace === 'deformation' && bishop?.deformation?.result?.hasHardeningSoil === true;
+  const hasHs = workspace === 'deformation' && STAGE6_ENABLE_HARDENING_SOIL_UI && bishop?.deformation?.result?.hasHardeningSoil === true;
   const meta = stage6BishopLineProbeMeta(workspace, quantity, analysisType, hasHs);
   if(workspace !== 'seepage' && workspace !== 'deformation'){
     return {
@@ -9434,8 +9820,20 @@ function stage6BishopUpdateHoverDom(canvas, clientX, clientY){
     stage6BishopDrawCanvas();
     return;
   }
-  const region = stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world);
-  if(region){
+  const load = stage6BishopPickSurfaceLoadAtWorld(world);
+  const region = !load ? stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world) : null;
+  if(load){
+    const wrap = canvas.parentElement;
+    const wrapRect = wrap.getBoundingClientRect();
+    tip.innerHTML = `
+      <div style="font-weight:700;margin-bottom:4px">${stage6EscAttr(load.label || load.id || 'Surface load')}</div>
+      <div>${stage6EscAttr(stage6BishopSurfaceLoadSummary(load, S.stage6.bishop.workspace))}</div>
+      <div style="color:var(--tx2);margin-top:4px">Click to edit · drag endpoints when selected</div>
+    `;
+    tip.style.display = 'block';
+    tip.style.left = `${Math.min(Math.max(clientX - wrapRect.left + 16, 12), Math.max(wrapRect.width - 292, 12))}px`;
+    tip.style.top = `${Math.min(Math.max(clientY - wrapRect.top + 16, 12), Math.max(wrapRect.height - 180, 12))}px`;
+  } else if(region){
     const wrap = canvas.parentElement;
     const wrapRect = wrap.getBoundingClientRect();
     tip.innerHTML = stage6BishopTooltipHtml(region);
@@ -9476,7 +9874,7 @@ function stage6BishopCurrentDragKey(){
   const drag = stage6BishopCanvasState.pointerDrag;
   if(!drag) return '';
   const index = drag.kind === 'drainVertex' ? drag.vertexIndex : drag.index;
-  return `${drag.kind}:${drag.regionId || ''}:${Number.isFinite(index) ? index : ''}`;
+  return `${drag.kind}:${drag.regionId || drag.loadId || ''}:${Number.isFinite(index) ? index : ''}`;
 }
 
 function stage6BishopSnapPointKey(kind, index, regionId){
@@ -9514,9 +9912,11 @@ function stage6BishopCollectSnapPoints(){
     pushPoint('exitStart', {x:bishop.exitZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xStart)});
     pushPoint('exitEnd', {x:bishop.exitZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xEnd)});
   }
-  if(stage6BishopValidZone(bishop.surfaceLoad) && bishop.terrain.length >= 2){
-    pushPoint('loadStart', {x:bishop.surfaceLoad.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.surfaceLoad.xStart)});
-    pushPoint('loadEnd', {x:bishop.surfaceLoad.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.surfaceLoad.xEnd)});
+  const selectedLoadForSnap = stage6BishopSelectedSurfaceLoad()
+    || ((bishop.surfaceLoads || []).length === 1 ? bishop.surfaceLoads[0] : null);
+  if(stage6BishopValidZone(selectedLoadForSnap) && bishop.terrain.length >= 2){
+    pushPoint('loadStart', {x:selectedLoadForSnap.xStart, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForSnap.xStart)}, null, selectedLoadForSnap.id);
+    pushPoint('loadEnd', {x:selectedLoadForSnap.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForSnap.xEnd)}, null, selectedLoadForSnap.id);
   }
   (bishop.walls || []).forEach((wall, index)=>{
     pushPoint('wallTop', {x:wall.x, y:wall.yTop}, index);
@@ -9649,9 +10049,11 @@ function stage6BishopNearestHandle(canvas, clientX, clientY){
     handles.push({kind:'exitStart', pt:{x:bishop.exitZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xStart)}});
     handles.push({kind:'exitEnd', pt:{x:bishop.exitZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xEnd)}});
   }
-  if(stage6BishopValidZone(bishop.surfaceLoad)){
-    handles.push({kind:'loadStart', pt:{x:bishop.surfaceLoad.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.surfaceLoad.xStart)}});
-    handles.push({kind:'loadEnd', pt:{x:bishop.surfaceLoad.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.surfaceLoad.xEnd)}});
+  const selectedLoadForHandles = stage6BishopSelectedSurfaceLoad()
+    || ((bishop.surfaceLoads || []).length === 1 ? bishop.surfaceLoads[0] : null);
+  if(stage6BishopValidZone(selectedLoadForHandles)){
+    handles.push({kind:'loadStart', loadId:selectedLoadForHandles.id, pt:{x:selectedLoadForHandles.xStart, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForHandles.xStart)}});
+    handles.push({kind:'loadEnd', loadId:selectedLoadForHandles.id, pt:{x:selectedLoadForHandles.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForHandles.xEnd)}});
   }
   (bishop.walls || []).forEach((wall, index)=>{
     if(Number.isFinite(wall?.x) && Number.isFinite(wall?.yTop)){
@@ -9680,6 +10082,27 @@ function stage6BishopNearestHandle(canvas, clientX, clientY){
     }
   });
   return best;
+}
+
+function stage6BishopPickSurfaceLoadAtWorld(world){
+  const bishop = S.stage6.bishop;
+  if(!world || !bishop?.terrain?.length) return null;
+  const tolerance = stage6BishopSnapToleranceWorld();
+  const terrain = {vertices:bishop.terrain};
+  const loads = [...(bishop.surfaceLoads || [])].reverse();
+  for(const load of loads){
+    if(!stage6BishopValidZone(load)) continue;
+    const xStart = Math.min(load.xStart, load.xEnd);
+    const xEnd = Math.max(load.xStart, load.xEnd);
+    if(world.x < xStart - tolerance || world.x > xEnd + tolerance) continue;
+    const xProbe = Math.min(Math.max(world.x, xStart), xEnd);
+    const ySurface = bishopTerrainY(terrain, xProbe);
+    const height = Math.max(0.8, 22 / Math.max(bishop.viewport.scale || 24, 1));
+    if(world.y >= ySurface - tolerance && world.y <= ySurface + height + tolerance){
+      return load;
+    }
+  }
+  return null;
 }
 
 function stage6BishopCommitDrawPoint(canvas, world){
@@ -9796,8 +10219,8 @@ function stage6BishopCommitDrawPoint(canvas, world){
     renderStage6();
     return;
   }
-  if(tool === 'entry' || tool === 'exit' || tool === 'load'){
-    if(bishop.terrain.length < 2) return;
+	  if(tool === 'entry' || tool === 'exit' || tool === 'load'){
+	    if(bishop.terrain.length < 2) return;
     const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
     const terrain = {vertices:bishop.terrain};
     const minX = bishop.terrain[0].x;
@@ -9806,21 +10229,25 @@ function stage6BishopCommitDrawPoint(canvas, world){
     if(bishop.draftKind !== tool || bishop.draft.length >= 2){
       bishop.draft = [{x:clampedX, y:bishopTerrainY(terrain, clampedX)}];
       bishop.draftKind = tool;
-    } else {
-      const first = bishop.draft[0];
-      const zoneKey = stage6BishopZoneKey(tool);
-      const zone = stage6BishopSortZone({
-        ...(bishop[zoneKey] || {}),
-        xStart:first.x,
-        xEnd:clampedX
-      });
-      if(zoneKey) bishop[zoneKey] = zone;
-      bishop.draft = [];
-      bishop.draftKind = '';
-      stage6BishopInvalidate(`${stage6BishopZoneLabel(tool)} updated; rerun Bishop search.`);
-    }
-    renderStage6();
-    return;
+	    } else {
+	      const first = bishop.draft[0];
+	      const zoneKey = stage6BishopZoneKey(tool);
+	      const zone = stage6BishopSortZone({
+	        ...(bishop[zoneKey] || {}),
+	        xStart:first.x,
+	        xEnd:clampedX
+	      });
+	      if(tool === 'load'){
+	        stage6BishopCreateSurfaceLoadFromZone(zone);
+	      } else if(zoneKey) {
+	        bishop[zoneKey] = zone;
+	        stage6BishopInvalidate(`${stage6BishopZoneLabel(tool)} updated; rerun Bishop search.`);
+	      }
+	      bishop.draft = [];
+	      bishop.draftKind = '';
+	    }
+	    renderStage6();
+	    return;
   }
   if(tool === 'wall'){
     if(bishop.terrain.length < 2) return;
@@ -9888,14 +10315,18 @@ function stage6BishopCompleteCurrentActionAt(world){
       xStart:first.x,
       xEnd:clampedX
     });
-    if(stage6BishopValidZone(zone)){
-      if(zoneKey) bishop[zoneKey] = zone;
-      bishop.draft = [];
-      bishop.draftKind = '';
-      stage6BishopInvalidate(`${stage6BishopZoneLabel(kind)} updated; rerun Bishop search.`);
-      renderStage6();
-      return true;
-    }
+	    if(stage6BishopValidZone(zone)){
+	      if(kind === 'load'){
+	        stage6BishopCreateSurfaceLoadFromZone(zone);
+	      } else if(zoneKey) {
+	        bishop[zoneKey] = zone;
+	        stage6BishopInvalidate(`${stage6BishopZoneLabel(kind)} updated; rerun Bishop search.`);
+	      }
+	      bishop.draft = [];
+	      bishop.draftKind = '';
+	      renderStage6();
+	      return true;
+	    }
   }
   if(bishop.draftKind === 'wall' && (bishop.draft || []).length === 1){
     const top = bishop.draft[0];
@@ -9950,19 +10381,27 @@ function stage6BishopPointerDown(event){
     const handle = stage6BishopNearestHandle(canvas, event.clientX, event.clientY);
     if(handle){
       stage6BishopInvalidate();
-      stage6BishopCanvasState.pointerDrag = {
-        kind:handle.kind,
-        index:handle.index,
-        vertexIndex:handle.vertexIndex,
-        regionId:handle.regionId,
-        pointerId:event.pointerId
-      };
+	      stage6BishopCanvasState.pointerDrag = {
+	        kind:handle.kind,
+	        index:handle.index,
+	        vertexIndex:handle.vertexIndex,
+	        regionId:handle.regionId,
+	        loadId:handle.loadId,
+	        pointerId:event.pointerId
+	      };
       canvas.setPointerCapture(event.pointerId);
       return;
     }
-    const model = S.stage6Cache.bishopModel || stage6BishopCurrentModel();
-    const world = stage6BishopScreenToWorld(canvas, event.clientX, event.clientY);
-    const region = (bishop.customRegions || []).length
+	    const model = S.stage6Cache.bishopModel || stage6BishopCurrentModel();
+	    const world = stage6BishopScreenToWorld(canvas, event.clientX, event.clientY);
+	    const load = stage6BishopPickSurfaceLoadAtWorld(world);
+	    if(load){
+	      bishop.selectedSurfaceLoadId = load.id;
+	      bishop.selectedRegionId = null;
+	      renderStage6();
+	      return;
+	    }
+	    const region = (bishop.customRegions || []).length
       ? stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world)
       : null;
     if(region){
@@ -10017,13 +10456,23 @@ function stage6BishopPointerMove(event){
     const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
     bishop.activeCptX = Math.min(Math.max(x, bishop.terrain[0].x), bishop.terrain[bishop.terrain.length-1].x);
   } else if(drag.kind.startsWith('entry') || drag.kind.startsWith('exit') || drag.kind.startsWith('load')){
-    const zoneKey = drag.kind.startsWith('entry') ? 'entryZone' : drag.kind.startsWith('exit') ? 'exitZone' : 'surfaceLoad';
     const edge = drag.kind.endsWith('Start') ? 'xStart' : 'xEnd';
     const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
     const minX = bishop.terrain[0].x;
     const maxX = bishop.terrain[bishop.terrain.length-1].x;
-    bishop[zoneKey][edge] = Math.min(Math.max(x, minX), maxX);
-    bishop[zoneKey] = stage6BishopSortZone(bishop[zoneKey]);
+    if(drag.kind.startsWith('load')){
+      const load = (bishop.surfaceLoads || []).find((item)=>item.id === drag.loadId)
+        || stage6BishopSelectedSurfaceLoad();
+      if(!load) return;
+      load[edge] = Math.min(Math.max(x, minX), maxX);
+      Object.assign(load, stage6BishopSortZone(load) || load);
+      bishop.selectedSurfaceLoadId = load.id;
+      stage6BishopSyncLegacySurfaceLoadMirror(bishop);
+    } else {
+      const zoneKey = drag.kind.startsWith('entry') ? 'entryZone' : 'exitZone';
+      bishop[zoneKey][edge] = Math.min(Math.max(x, minX), maxX);
+      bishop[zoneKey] = stage6BishopSortZone(bishop[zoneKey]);
+    }
   } else if(drag.kind === 'wallTop' || drag.kind === 'wallTip'){
     const wall = bishop.walls?.[drag.index];
     if(!wall) return;
@@ -10598,7 +11047,7 @@ function stage6BishopDrawCanvas(){
     }
   }
 
-  const drawLoadZoneMarkers = (zone, q, color)=>{
+  const drawLoadZoneMarkers = (zone, q, color, options = {})=>{
     if(!stage6BishopValidZone(zone) || bishop.terrain.length < 2) return;
     const terrain = {vertices:bishop.terrain};
     const midX = 0.5 * (zone.xStart + zone.xEnd);
@@ -10606,11 +11055,38 @@ function stage6BishopDrawCanvas(){
     const mid = stage6BishopWorldToScreen({x:midX, y:midY});
     ctx.save();
     ctx.fillStyle = color;
-    ctx.font = '12px system-ui, sans-serif';
+    ctx.globalAlpha = options.active === false ? 0.62 : 1;
+    ctx.font = `${options.active === false ? 'italic ' : ''}12px system-ui, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(`q=${q.toFixed(1)} kPa`, mid.x, mid.y - 12);
+    const label = options.label ? `${options.label}: ` : '';
+    const text = options.active === false
+      ? `${label}inactive`
+      : `${options.selected ? 'Selected · ' : ''}${label}q=${q.toFixed(1)} kPa`;
+    if(options.selected){
+      const metrics = ctx.measureText(text);
+      const padX = 7;
+      const badgeX = mid.x - metrics.width / 2 - padX;
+      const badgeY = mid.y - 28;
+      const badgeW = metrics.width + 2 * padX;
+      const badgeH = 18;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.88)';
+      ctx.strokeStyle = 'rgba(31,111,235,0.55)';
+      ctx.lineWidth = 1;
+      if(typeof ctx.roundRect === 'function'){
+        ctx.beginPath();
+        ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+        ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+      }
+      ctx.restore();
+    }
+    ctx.fillText(text, mid.x, mid.y - 12);
     ctx.restore();
-    if(!(q > 0)) return;
+    if(!(q > 0) || options.active === false) return;
     const span = Math.abs(zone.xEnd - zone.xStart);
     const arrowCount = Math.max(2, Math.min(5, Math.round(span / 2) + 1));
     Array.from({length:arrowCount}, (_, index)=>(
@@ -10622,7 +11098,8 @@ function stage6BishopDrawCanvas(){
       ctx.save();
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
-      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = options.active === false ? 0.35 : 1;
+      ctx.lineWidth = options.selected ? 2 : 1.5;
       ctx.beginPath();
       ctx.moveTo(top.x, top.y);
       ctx.lineTo(tip.x, tip.y);
@@ -10841,22 +11318,42 @@ function stage6BishopDrawCanvas(){
     ];
     drawPolyline(pts, color, widthPx || 5, dash);
   };
-  const loadZone = stage6BishopSortZone(bishop.surfaceLoad);
-  const baseLoadQ = Math.max(+bishop.surfaceLoad?.q || 0, 0);
-  const deformationLoadMode = bishop.deformation?.options?.loadMode === 'total' ? 'total' : 'pressure';
-  const deformationOutOfPlaneLength = Math.max(Number(bishop.deformation?.options?.outOfPlaneLength) || 10, 0.1);
-  const deformationWidth = stage6BishopValidZone(loadZone) ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
-  const deformationTotalLoad = Math.max(Number(bishop.deformation?.options?.totalLoad) || 0, 0);
-  const deformationCanvasQ = deformationLoadMode === 'total' && deformationTotalLoad > 0 && deformationWidth > 0
-    ? deformationTotalLoad / Math.max(deformationWidth * deformationOutOfPlaneLength, 1e-6)
-    : baseLoadQ;
-  const displayedLoadQ = workspace === 'deformation' ? deformationCanvasQ : baseLoadQ;
   zoneStroke(bishop.entryZone, stage6BishopZoneColor('entry'));
   zoneStroke(bishop.exitZone, stage6BishopZoneColor('exit'));
-  zoneStroke(loadZone, stage6BishopZoneColor('load'), 4, displayedLoadQ > 0 ? [] : [5, 4]);
-  if(workspace !== 'deformation' || bishop.deformation?.display?.showLoadVectors !== false){
-    drawLoadZoneMarkers(loadZone, displayedLoadQ, stage6BishopZoneColor('load'));
-  }
+  (bishop.surfaceLoads || []).forEach((load, index)=>{
+    const zone = stage6BishopSortZone(load);
+    if(!stage6BishopValidZone(zone)) return;
+    const q = stage6BishopEffectiveSurfaceLoadQ(load, workspace);
+    const selectedLoad = load.id === bishop.selectedSurfaceLoadId;
+    const active = load.active !== false && q > 0;
+    const color = selectedLoad ? '#1f6feb' : stage6BishopZoneColor('load');
+    if(selectedLoad){
+      zoneStroke(zone, 'rgba(31, 111, 235, 0.22)', 12, []);
+    }
+    zoneStroke(zone, color, selectedLoad ? 6 : 4, active ? [] : [5, 4]);
+    if(workspace !== 'deformation' || bishop.deformation?.display?.showLoadVectors !== false){
+      drawLoadZoneMarkers(zone, q, color, {
+        label: load.label || `Load ${index + 1}`,
+        active,
+        selected: selectedLoad
+      });
+    }
+    if(selectedLoad){
+      [zone.xStart, zone.xEnd].forEach((x)=>{
+        const y = bishopTerrainY({vertices:bishop.terrain}, x);
+        const screen = stage6BishopWorldToScreen({x, y});
+        ctx.save();
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+  });
   (bishop.walls || []).forEach((wall)=>drawWall(wall));
   if((bishop.measurement?.points || []).length >= 2){
     drawMeasurementOverlay(bishop.measurement.points);
@@ -11196,6 +11693,10 @@ function stage6EscAttr(value){
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function stage6EscJsString(value){
+  return stage6EscAttr(JSON.stringify(String(value ?? '')));
 }
 
 function stage6Tooltip(text){
@@ -13085,13 +13586,23 @@ function renderStage6BishopApp(){
   const results = bishop.results?.allResults || [];
   const summary = bishop.results?.summary;
   const wallSummary = bishop.results?.wallSummary || null;
-  const loadZone = stage6BishopSortZone(bishop.surfaceLoad);
+  stage6BishopMigrateSurfaceLoadsShape(bishop);
+  const surfaceLoads = bishop.surfaceLoads || [];
+  const selectedSurfaceLoad = stage6BishopSelectedSurfaceLoad();
+  const primarySurfaceLoad = selectedSurfaceLoad
+    || surfaceLoads.find((load)=>load.active !== false)
+    || surfaceLoads[0]
+    || null;
+  const workspace = bishop.workspace === 'seepage' ? 'seepage' : bishop.workspace === 'deformation' ? 'deformation' : 'stability';
+  const activeSurfaceLoads = stage6BishopActiveSurfaceLoads(workspace);
+  const loadZone = stage6BishopSortZone(primarySurfaceLoad || bishop.surfaceLoad);
   const loadZoneActive = stage6BishopValidZone(loadZone);
-  const loadQ = Math.max(+bishop.surfaceLoad?.q || 0, 0);
+  const loadQ = stage6BishopEffectiveSurfaceLoadQ(primarySurfaceLoad || bishop.surfaceLoad, workspace);
+  const totalActiveLoadKnPerM = activeSurfaceLoads.reduce((sum, load)=>sum + stage6BishopEffectiveSurfaceLoadQ(load, workspace) * Math.max(load.xEnd - load.xStart, 0), 0);
   const wallCount = (bishop.walls || []).length;
   const hasWalls = wallCount > 0;
-  const loadSummary = loadZoneActive
-    ? `${loadZone.xStart.toFixed(2)}-${loadZone.xEnd.toFixed(2)} m @ ${loadQ.toFixed(1)} kPa${loadQ > 0 ? '' : ' (inactive)'}`
+  const loadSummary = surfaceLoads.length
+    ? `${activeSurfaceLoads.length}/${surfaceLoads.length} active · ${totalActiveLoadKnPerM.toFixed(1)} kN/m total`
     : 'not set';
   const runReady = !!model && !!bishop.entryZone && !!bishop.exitZone;
   const showSpencerSliceCols = !!selected?.spencerConverged;
@@ -13110,7 +13621,6 @@ function renderStage6BishopApp(){
     : measurementPoints.length === 1
       ? 'Pick the second point to complete the measurement.'
       : 'none';
-  const workspace = bishop.workspace === 'seepage' ? 'seepage' : bishop.workspace === 'deformation' ? 'deformation' : 'stability';
   const settingsCollapsed = true;
   const settingsWide = bishopUi.bishopSettingsWide === true;
   const seepage = bishop.seepage || {};
@@ -13155,15 +13665,15 @@ function renderStage6BishopApp(){
     : 'T3 constant-strain triangles';
   const deformationNonlinearMaxIterations = Math.max(Math.round(Number(deformation.options?.nonlinearMaxIterations) || 32), 1);
   const deformationInitialLoadStep = Math.min(Math.max(Number(deformation.options?.initialLoadStep) || 0.25, 0.0001), 1);
-  const deformationMinLoadStep = Math.max(Number(deformation.options?.minLoadStep) || (1/2048), 0.000001);
-  const deformationMaxLoadSteps = Math.max(Math.round(Number(deformation.options?.maxLoadSteps) || 256), 1);
+  const deformationMinLoadStep = Math.max(Number(deformation.options?.minLoadStep) || (1/4096), 0.000001);
+  const deformationMaxLoadSteps = Math.max(Math.round(Number(deformation.options?.maxLoadSteps) || 384), 1);
   const deformationResidualRelTol = Math.max(Number(deformation.options?.residualRelTol) || 1e-4, 1e-8);
   const deformationResidualAbsTol = Math.max(Number(deformation.options?.residualAbsTol) || 1e-3, 1e-9);
   const deformationDisplacementRelTol = Math.max(Number(deformation.options?.displacementRelTol) || 1e-5, 1e-8);
   const deformationDisplacementAbsTol = Math.max(Number(deformation.options?.displacementAbsTol) || 1e-8, 1e-12);
   const deformationLoadStepGrowthFactor = Math.max(Number(deformation.options?.loadStepGrowthFactor) || 1.25, 1);
   const deformationLoadStepCutbackFactor = Math.min(Math.max(Number(deformation.options?.loadStepCutbackFactor) || 0.5, 0.1), 0.9);
-  const deformationPlasticLoadStepGrowthFactor = Math.max(Number(deformation.options?.plasticLoadStepGrowthFactor) || 1.05, 1);
+  const deformationPlasticLoadStepGrowthFactor = Math.max(Number(deformation.options?.plasticLoadStepGrowthFactor) || 1.08, 1);
   const deformationPlasticLoadStepCutbackFactor = Math.min(Math.max(Number(deformation.options?.plasticLoadStepCutbackFactor) || 0.4, 0.1), 0.9);
   const deformationGeostaticInitializationMethod = ['auto', 'gravity-ramp'].includes(String(deformation.options?.geostaticInitializationMethod || '').toLowerCase())
     ? String(deformation.options.geostaticInitializationMethod).toLowerCase()
@@ -13182,19 +13692,23 @@ function renderStage6BishopApp(){
     if (deformationUseWasmCpuPipeline) return 'wasm-cpu';
     return 'wasm-cpu';
   })();
-  const deformationWidth = loadZoneActive ? Math.max(loadZone.xEnd - loadZone.xStart, 0) : 0;
   const deformationOutOfPlaneLength = Math.max(Number(deformation.options?.outOfPlaneLength) || 10, 0.1);
-  const deformationTotalLoad = Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null;
-  const deformationDerivedQ = loadZoneActive && deformationLoadMode === 'total' && deformationTotalLoad
-    ? deformationTotalLoad / Math.max(deformationWidth * deformationOutOfPlaneLength, 1e-6)
+  const deformationActiveLoads = stage6BishopActiveSurfaceLoads('deformation');
+  const deformationWidth = deformationActiveLoads.reduce((sum, load)=>sum + Math.max(load.xEnd - load.xStart, 0), 0);
+  const deformationTotalLoadValue = deformationActiveLoads.reduce((sum, load)=>{
+    const width = Math.max(load.xEnd - load.xStart, 0);
+    const q = stage6BishopEffectiveSurfaceLoadQ(load, 'deformation');
+    return sum + q * width * deformationOutOfPlaneLength;
+  }, 0);
+  const deformationTotalLoad = deformationTotalLoadValue > 0 ? deformationTotalLoadValue : (Number(deformation.options?.totalLoad) > 0 ? Number(deformation.options.totalLoad) : null);
+  const deformationDerivedQ = deformationWidth > 0
+    ? deformationActiveLoads.reduce((sum, load)=>sum + stage6BishopEffectiveSurfaceLoadQ(load, 'deformation') * Math.max(load.xEnd - load.xStart, 0), 0) / Math.max(deformationWidth, 1e-6)
     : loadQ;
-  const deformationHasSurfaceLoadRequest = deformationLoadMode === 'total'
-    ? !!deformationTotalLoad
-    : deformationDerivedQ > 0;
+  const deformationHasSurfaceLoadRequest = deformationActiveLoads.length > 0;
   const deformationRunReady = !!model && (
     deformationIsSafety
-      ? (!deformationHasSurfaceLoadRequest || loadZoneActive)
-      : (loadZoneActive && deformationHasSurfaceLoadRequest)
+      ? true
+      : deformationHasSurfaceLoadRequest
   );
   const deformationHasResult = !!deformation.mesh && !!deformation.result;
   const deformationStatusLabel = deformationHasResult && deformation.stale ? 'success (stale)' : (deformation.status || 'idle');
@@ -13259,7 +13773,7 @@ function renderStage6BishopApp(){
     ? 'Reduced-stiffness Mohr-Coulomb screen'
     : (deformation.result?.solver?.constitutiveModel === 'mc-plastic-material-point' || deformation.result?.solver?.constitutiveModel === 'gpu-resident-mc-plastic')
       ? (deformation.result?.solver?.analysisType === 'safety-cphi' ? 'Mohr-Coulomb plastic + c-phi reduction safety' : 'Mohr-Coulomb plastic plane strain')
-      : deformation.result?.solver?.constitutiveModel === 'hardening-soil-material-point'
+      : STAGE6_ENABLE_HARDENING_SOIL_UI && deformation.result?.solver?.constitutiveModel === 'hardening-soil-material-point'
       ? (deformation.result?.solver?.analysisType === 'safety-cphi' ? 'Hardening Soil + c-phi reduction safety' : 'Hardening Soil plane strain')
       : deformation.result?.solver?.constitutiveModel === 'linear-elastic-material-point'
       ? 'Linear elastic plane strain'
@@ -13290,21 +13804,17 @@ function renderStage6BishopApp(){
         </tr>
       `).join('')
     : '';
-  const deformationSetupMessage = !model
-    ? 'Draw terrain and place the active CPT before running deformation.'
-    : deformationIsSafety
-      ? (
-          deformationHasSurfaceLoadRequest && !loadZoneActive
-            ? 'Draw a load interval on the terrain before applying an external load in the c-phi reduction safety analysis.'
-            : deformationHasSurfaceLoadRequest
-              ? 'Self-weight and external load are ready for c-phi reduction safety analysis.'
-              : 'Self-weight-only c-phi reduction safety analysis is ready.'
-        )
-      : !loadZoneActive
-        ? 'Draw a load interval on the terrain to define the loaded strip.'
-        : deformationLoadMode === 'total'
-          ? (deformationTotalLoad ? 'Load interval and total load are ready for deformation.' : 'Enter a positive total load before running deformation.')
-          : (deformationDerivedQ > 0 ? 'Load interval and pressure are ready for deformation.' : 'Enter a positive surface load q before running deformation.');
+	  const deformationSetupMessage = !model
+	    ? 'Draw terrain and place the active CPT before running deformation.'
+	    : deformationIsSafety
+	      ? (
+	          deformationHasSurfaceLoadRequest
+	              ? `Self-weight and ${deformationActiveLoads.length} active surface load${deformationActiveLoads.length === 1 ? '' : 's'} are ready for c-phi reduction safety analysis.`
+	              : 'Self-weight-only c-phi reduction safety analysis is ready.'
+	        )
+	      : !deformationActiveLoads.length
+	        ? 'Draw or enable at least one positive surface load before running deformation.'
+	        : `${deformationActiveLoads.length} active surface load${deformationActiveLoads.length === 1 ? '' : 's'} ready for deformation.`;
   const deformationStatusMessage = deformation.progress?.running
     ? (deformation.progress.message || 'Running deformation...')
     : deformationHasResult && deformation.stale
@@ -13315,7 +13825,7 @@ function renderStage6BishopApp(){
   const lineProbeOptions = stage6BishopLineProbeOptions(
     workspace,
     workspace === 'deformation' ? deformationAnalysisType : null,
-    workspace === 'deformation' && deformation?.result?.hasHardeningSoil === true
+    workspace === 'deformation' && STAGE6_ENABLE_HARDENING_SOIL_UI && deformation?.result?.hasHardeningSoil === true
   );
   const lineProbe = stage6BishopBuildLineProbe(workspace, measurementMetrics);
   S.stage6Cache.bishopLineProbe = lineProbe;
@@ -13406,7 +13916,9 @@ function renderStage6BishopApp(){
       <td><input type="number" step="0.1" min="0" value="${Number(mat.gammaSat || 0).toFixed(2)}" onchange="stage6BishopSetMaterialField(${index}, 'gammaSat', this.value)"></td>
     </tr>
   `).join('');
-  const deformationUsesHardeningSoil = bishop.deformation?.options?.constitutiveModel === 'hardening-soil';
+  const deformationUsesHardeningSoil = STAGE6_ENABLE_HARDENING_SOIL_UI && bishop.deformation?.options?.constitutiveModel === 'hardening-soil';
+  const deformationUsesMcPlastic = bishop.deformation?.options?.constitutiveModel === 'mc-plastic';
+  const deformationUsesMcConsistentTangent = bishop.deformation?.options?.useMcConsistentTangent !== false;
   const deformationMaterialRows = (bishop.materials || []).map((mat, index)=>`
     <tr>
       <td><input type="text" value="${stage6EscAttr(mat.label)}" onchange="stage6BishopSetMaterialField(${index}, 'label', this.value)"></td>
@@ -13657,7 +14169,7 @@ function renderStage6BishopApp(){
                       <option value="bishop_only"${bishop.methodMode==='bishop_only'?' selected':''}>Bishop only</option>
                     </select>
                   </label>
-                  <label style="font-size:11px;color:var(--tx2)">Surface load q (kPa)${stage6Tooltip('Uniform vertical surcharge intensity acting over the drawn load zone. In the 2D Bishop section this becomes q times the overlap width of each slice.')}
+                  <label style="font-size:11px;color:var(--tx2)">Surface load q (kPa)${stage6Tooltip('Uniform vertical surcharge intensity for the selected load zone. In the 2D Bishop section all active loads contribute q times their overlap width in each slice.')}
                     <input type="number" step="1" min="0" value="${loadQ.toFixed(1)}" onchange="stage6BishopSetField('surfaceLoad.q', this.value)">
                   </label>
                   <label style="font-size:11px;color:var(--tx2)">Analysis depth below terrain (m)${stage6Tooltip('The Bishop section extends to this depth below the local ground level at the active CPT. The default is the CPT depth or 15 m, whichever is greater. If you go deeper, the deepest CPT layer is extrapolated downward.')}
@@ -13701,7 +14213,7 @@ function renderStage6BishopApp(){
                 <summary>Mechanical inputs</summary>
                 <div class="st6-adv-body">
                   <div class="st6-help">${deformationIsSafety
-                    ? 'The safety route starts from a converged plastic equilibrium state (Mohr-Coulomb plastic or Hardening Soil) and then runs a c-phi reduction phase with fixed actions. External loading is optional: without an active surcharge interval, the analysis reduces strength under self-weight only. Hardening Soil safety runs are WASM-only.'
+                    ? 'The safety route starts from a converged Mohr-Coulomb plastic equilibrium state and then runs a c-phi reduction phase with fixed actions. External loading is optional: without active surcharge strips, the analysis reduces strength under self-weight only.'
                     : 'This first deformation tool is a long-term drained screening solve on the shared triangular mesh. Draw the load interval on the terrain, choose whether you want to drive the model by applied pressure or total slab load, then size the out-of-plane length to approximate strip behaviour.'}</div>
                   <label style="font-size:11px;color:var(--tx2)">Analysis mode
                     <select onchange="stage6BishopSetField('deformation.options.analysisType', this.value)">
@@ -13717,12 +14229,16 @@ function renderStage6BishopApp(){
                   </label>
                   <label style="font-size:11px;color:var(--tx2)">Constitutive model
                     <select onchange="stage6BishopSetField('deformation.options.constitutiveModel', this.value)">
-                      <option value="hardening-soil"${bishop.deformation?.options?.constitutiveModel==='hardening-soil'?' selected':''}>Hardening Soil</option>
                       <option value="mc-plastic"${bishop.deformation?.options?.constitutiveModel==='mc-plastic'?' selected':''}>Mohr-Coulomb plastic</option>
                       <option value="mc-reduced-stiffness"${bishop.deformation?.options?.constitutiveModel==='mc-reduced-stiffness'?' selected':''}>Reduced-stiffness screen</option>
                       <option value="linear-elastic"${bishop.deformation?.options?.constitutiveModel==='linear-elastic'?' selected':''}>Linear elastic</option>
                     </select>
                   </label>
+                  ${deformationUsesMcPlastic ? `
+                  <label style="font-size:11px;color:var(--tx2)" title="WASM CPU only. Uses the Mohr-Coulomb consistent algorithmic tangent in plastic returns; turn off to compare with the previous elastic-tangent global Newton path.">
+                    <input type="checkbox" ${deformationUsesMcConsistentTangent ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useMcConsistentTangent', this.checked)">
+                    MC Simo-Hughes tangent
+                  </label>` : ''}
 	                  <label style="font-size:11px;color:var(--tx2)">Initial equilibrium workflow
 	                    <select onchange="stage6BishopSetField('deformation.options.geostaticInitializationMethod', this.value)">
 	                      <option value="auto"${deformationGeostaticInitializationMethod==='auto'?' selected':''}>Auto K0 + self-weight equilibrium</option>
@@ -13745,10 +14261,11 @@ function renderStage6BishopApp(){
                   </label>
                   <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                     Analysis mode: <strong>${deformationIsSafety ? 'C-phi reduction safety' : 'Deformation'}</strong><br>
-                    Load interval: <strong>${loadZoneActive ? `${loadZone.xStart.toFixed(2)}-${loadZone.xEnd.toFixed(2)} m` : 'not set'}</strong><br>
-                    Loaded width B: <strong>${deformationWidth > 0 ? `${deformationWidth.toFixed(2)} m` : '—'}</strong><br>
-                    Applied pressure q: <strong>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</strong><br>
+	                    Surface loads: <strong>${stage6EscAttr(loadSummary)}</strong><br>
+	                    Total loaded width: <strong>${deformationWidth > 0 ? `${deformationWidth.toFixed(2)} m` : '—'}</strong><br>
+	                    Average active pressure q: <strong>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</strong><br>
                     Total load: <strong>${deformationTotalLoad != null ? `${deformationTotalLoad.toFixed(1)} kN` : '—'}</strong><br>
+                    ${deformationUsesMcPlastic ? `MC tangent: <strong>${deformationUsesMcConsistentTangent ? 'Simo-Hughes consistent' : 'elastic fallback'}</strong><br>` : ''}
                     Setup: <strong>${stage6EscAttr(deformationSetupMessage)}</strong>
                   </div>
                 </div>
@@ -13992,7 +14509,7 @@ function renderStage6BishopApp(){
                     <tbody>${deformationMaterialRows}</tbody>
                   </table>
                 </div>
-                ${hsMaterialTableHtml}
+                ${STAGE6_ENABLE_HARDENING_SOIL_UI ? hsMaterialTableHtml : ''}
               </div>
             </details>
             <details class="st6-adv" data-st6details="bishop-deformation-solve"${stage6DetailsOpen('bishop-deformation-solve')}>
@@ -14016,7 +14533,7 @@ function renderStage6BishopApp(){
                   Use seepage pore pressures when a seepage result exists
                 </label>
                 <div class="st6-help">${deformationIsSafety
-                  ? `The safety mesh still follows the shared section geometry, with local refinement under the drawn surcharge interval when one is active. The automatic target area scales from the current section and is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. The safety phase starts from a converged self-weight equilibrium state before the strength-reduction multiplier ΣMsf is advanced.`
+                  ? `The safety mesh still follows the shared section geometry, with local refinement under active surcharge strips. The automatic target area scales from the current section and is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. The safety phase starts from a converged self-weight equilibrium state before the strength-reduction multiplier ΣMsf is advanced.`
 		                  : `The deformation mesh is intentionally refined beneath the loaded interval and both load edges. T3 is the fast constant-strain path; T6 uses six-node quadratic triangles and three integration points per element to resolve bending and stress gradients with lower mesh sensitivity. The automatic target area is about <strong>${deformationAutoMeshTargetArea.toFixed(3)} m²</strong> here. The default workflow recovers a K0 stress field and requires self-weight equilibrium before service loading.`}</div>
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
                   Status: <strong>${stage6EscAttr(deformationStatusMessage)}</strong><br>
@@ -14178,9 +14695,9 @@ function renderStage6BishopApp(){
             <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
               Shared geometry polygons: <strong>${model?.regions?.length || 0}</strong><br>
               Active CPT x: <strong>${Number.isFinite(bishop.activeCptX)?bishop.activeCptX.toFixed(2)+' m':'not placed'}</strong><br>
-              Load interval: <strong>${loadZoneActive ? `${loadZone.xStart.toFixed(2)}-${loadZone.xEnd.toFixed(2)} m` : 'not set'}</strong><br>
-              Load mode: <strong>${deformationLoadMode === 'total' ? 'total load' : 'pressure q'}</strong><br>
-              Applied pressure q: <strong>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</strong><br>
+	              Surface loads: <strong>${stage6EscAttr(loadSummary)}</strong><br>
+	              Load mode: <strong>${deformationLoadMode === 'total' ? 'total load' : 'pressure q'}</strong><br>
+	              Average active pressure q: <strong>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</strong><br>
               Element type: <strong>${stage6EscAttr(deformationMeshElementLabel)}</strong><br>
               Out-of-plane length: <strong>${deformationOutOfPlaneLength.toFixed(2)} m</strong><br>
               Seepage pore pressures: <strong>${deformation.options?.useSeepagePorePressures ? 'enabled when available' : 'off'}</strong><br>
@@ -14191,11 +14708,11 @@ function renderStage6BishopApp(){
             </div>
   `;
   const workspaceCanvasHelp = workspace === 'stability'
-    ? 'Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and a load zone, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.'
+    ? 'Canvas order: draw terrain left-to-right or import a DXF terrain line, click <strong>Finish line</strong> to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and one or more load zones, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.'
     : workspace === 'seepage'
       ? 'The seepage workspace reuses the same Bishop section. Use <strong>Assign BC</strong> and click the terrain, model base, or side boundaries to assign prescribed head, no-flow, or seepage-face conditions, then click <strong>Run seepage</strong>. The same terrain, polygons, walls, snap settings, and viewport stay active while you switch between stability and seepage. Contour fill, contour lines, and the legend now follow the selected seepage field, while flow lines, the phreatic line, and exit-gradient highlights remain optional overlays. When a measurement line exists, the results panel can also probe heads, gradients, and discharge along it.'
 	      : (deformationIsSafety
-	        ? 'The deformation workspace also supports a c-phi reduction safety route. It first requires a converged plastic equilibrium state (Mohr-Coulomb plastic or Hardening Soil), then keeps the actions fixed while reducing strength through the multiplier ΣMsf. Self-weight-only safety runs are allowed when no surcharge is active. Hardening Soil safety runs are WASM-only. Contours and the shared line probe can inspect the additional safety displacement field and incremental safety plasticity band.'
+	        ? 'The deformation workspace also supports a c-phi reduction safety route. It first requires a converged Mohr-Coulomb plastic equilibrium state, then keeps the actions fixed while reducing strength through the multiplier ΣMsf. Self-weight-only safety runs are allowed when no surcharge is active. Contours and the shared line probe can inspect the additional safety displacement field and incremental safety plasticity band.'
 	        : 'The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the drained plane-strain screen. The default Mohr-Coulomb plastic route builds a K0 seed and requires self-weight equilibrium before service loading. Contour fill, contour lines, the optional legend, and the shared measurement line all follow the selected deformation field.');
   const lineProbeSelectionPath = workspace === 'seepage' ? 'lineProbe.seepageQuantity' : 'lineProbe.deformationQuantity';
   const lineProbeCopyToneColor = bishop.lineProbe?.copyTone === 'ok' ? 'var(--ok-text)' : bishop.lineProbe?.copyTone === 'warn' ? 'var(--wn)' : 'var(--tx2)';
@@ -14241,7 +14758,7 @@ function renderStage6BishopApp(){
     ? stage6BishopSeepageContourLegendTicks(seepageContourMode, seepageContourDerived.stats)
     : [];
   const deformationContourMode = bishop.deformation?.display?.contourMode || 'uTotal';
-  const deformationContourHasHs = bishop.deformation?.result?.hasHardeningSoil === true;
+  const deformationContourHasHs = STAGE6_ENABLE_HARDENING_SOIL_UI && bishop.deformation?.result?.hasHardeningSoil === true;
   const deformationContourOptions = stage6BishopDeformationContourOptions(deformationAnalysisType, deformationContourHasHs);
   const deformationDisplacementVectorReady = stage6BishopDeformationVectorMode(deformationContourMode);
   const deformationDisplacementVectorAvailable = deformationDisplacementVectorReady && bishop.deformation?.display?.showContourLines !== false;
@@ -14764,7 +15281,7 @@ function renderStage6BishopApp(){
           <tbody>${deformationMaterialRows}</tbody>
         </table>
       </div>
-      ${hsMaterialTableHtml}
+      ${STAGE6_ENABLE_HARDENING_SOIL_UI ? hsMaterialTableHtml : ''}
     </div>
   ` : `
     <div class="st6-canvas-card-section">
@@ -14984,8 +15501,9 @@ function renderStage6BishopApp(){
                 <table class="pt" style="margin-bottom:12px">
                   <tr><td>Status</td><td>${stage6EscAttr(deformationStatusLabel)}</td></tr>
                   <tr><td>Load mode</td><td>${deformationLoadMode === 'total' ? 'total load' : 'pressure q'}</td></tr>
-                  <tr><td>Applied q</td><td>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</td></tr>
-                  <tr><td>Total load</td><td>${deformationTotalLoad != null ? `${deformationTotalLoad.toFixed(1)} kN` : '—'}</td></tr>
+	                  <tr><td>Active loads</td><td>${deformationActiveLoads.length}</td></tr>
+	                  <tr><td>Average q</td><td>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</td></tr>
+	                  <tr><td>Total load</td><td>${deformationTotalLoad != null ? `${deformationTotalLoad.toFixed(1)} kN` : '—'}</td></tr>
                   <tr><td>Out-of-plane length</td><td>${deformationOutOfPlaneLength.toFixed(2)} m</td></tr>
 	                  <tr><td>Nodes</td><td>${deformation.mesh?.nodes?.length || 0}</td></tr>
 	                  <tr><td>Triangles</td><td>${deformation.mesh?.elements?.length || 0}</td></tr>
@@ -15044,7 +15562,7 @@ function renderStage6BishopApp(){
 	        <span style="font-size:13px;font-weight:600">${workspace === 'deformation' ? 'Section deformation screening' : 'Seep/Slope + Spencer equilibrium check'}</span>
 	        <span style="font-size:11px;color:var(--tx2)">${workspace === 'deformation'
 	          ? 'Shared Stage 6 geometry with a drained plane-strain mesh, required self-weight equilibrium, and selectable elastic or Mohr-Coulomb material behaviour.'
-	          : 'Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and an optional full Spencer verification pass on the shortlisted circles.'}</span>
+		          : 'Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, multiple optional surcharge strips, and an optional full Spencer verification pass on the shortlisted circles.'}</span>
       </div>
       <div class="st6-bishop-workspace-switch">
         <button class="btn sm ${workspace==='stability'?'active':''}" onclick="stage6BishopSetWorkspace('stability')">Stability</button>
@@ -15065,7 +15583,7 @@ function renderStage6BishopApp(){
             </div>
           </div>
           <div class="ctrl-row st6-bishop-controls">
-            <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally add infinitely stiff retaining walls and a uniform surcharge zone, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
+	            <div class="st6-help">Draw a monotonic terrain, or import a DXF containing exactly one open polyline. Imported terrain is shifted so its leftmost vertex becomes <strong>(0, 0)</strong>. Then place or review the active CPT, optionally add infinitely stiff retaining walls and one or more uniform surcharge strips, and define the entry and exit daylight zones. The active CPT layer model is extended horizontally across the section for the Bishop search.</div>
             <div class="st6-bishop-tool-groups">
               <details class="st6-adv st6-bishop-geo-section" data-st6details="bishop-geo-terrain"${stage6DetailsOpen('bishop-geo-terrain')}>
                 <summary>Terrain</summary>
@@ -15275,7 +15793,7 @@ function renderStage6BishopApp(){
               {level:'info', text:'The seepage result can be reused by the deformation screen and, when enabled, by the Bishop/Spencer pore-pressure hook without redrawing the section.'}
             ]
           : [
-              {level:'warn', text:'This Stage 6 slope check is experimental. It searches circular slip surfaces only and currently uses self-weight, optional infinitely stiff retaining walls, one optional uniform surcharge zone, and optional phreatic pore pressure along the base.'},
+	              {level:'warn', text:'This Stage 6 slope check is experimental. It searches circular slip surfaces only and currently uses self-weight, optional infinitely stiff retaining walls, multiple optional uniform surcharge strips, and optional phreatic pore pressure along the base.'},
               {level:'info', text:'The soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this workflow.'},
 	              {level:'info', text:'Spencer runs as a verification pass on the best Bishop circles. Each shortlisted circle is solved by intersecting the Spencer moment and force branches. If Spencer does not converge for a shortlisted circle, the app keeps the Bishop result and flags that fallback in the results panel.'},
 	              {level:'info', text:'When a circle intersects a retaining wall, Bishop reduces the driving moment with the wall resistance and Spencer injects the same wall force into the horizontal force chain. Circles that pass below the wall tip remain unchanged and may still govern.'}
@@ -16056,12 +16574,13 @@ function stage7BishopPayload(){
       snapSize:bishop.snapSize,
       gridSnap:bishop.gridSnap,
       pointSnap:bishop.pointSnap,
-      activeCptX:bishop.activeCptX,
-      walls:bishop.walls,
-      entryZone:bishop.entryZone,
-      exitZone:bishop.exitZone,
-      surfaceLoad:bishop.surfaceLoad,
-      search:bishop.search,
+	      activeCptX:bishop.activeCptX,
+	      walls:bishop.walls,
+	      entryZone:bishop.entryZone,
+	      exitZone:bishop.exitZone,
+	      surfaceLoad:bishop.surfaceLoad,
+	      surfaceLoads:bishop.surfaceLoads,
+	      search:bishop.search,
       solver:bishop.solver,
       spencer:bishop.spencer
     }),
@@ -16879,8 +17398,11 @@ const legacyApi={
   setStage6App,
   stage6BishopSetWorkspace,
   stage6BishopSetField,
-  stage6BishopSetTool,
-  stage6BishopToggleSettingsPanel,
+	  stage6BishopSetTool,
+	  stage6BishopSelectSurfaceLoad,
+	  stage6BishopSetSurfaceLoadField,
+	  stage6BishopDeleteSurfaceLoad,
+	  stage6BishopToggleSettingsPanel,
   stage6BishopToggleSettingsWidth,
   stage6BishopToggleToolRail,
   stage6BishopToggleCanvasTools,

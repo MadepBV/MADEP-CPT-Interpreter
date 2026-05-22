@@ -94,6 +94,7 @@ export function buildWasmDeformationResult({
   startedAt,
   predictorSolution,
   initialField,
+  geostatic,
   porePressureByIntegrationPoint,
   analysisType
 }) {
@@ -190,7 +191,9 @@ export function buildWasmDeformationResult({
         gammaP: Number(wasm.hs.gammaP) || 0,
         pP: Number(wasm.hs.pP) || 0,
         epsVP: Number(wasm.hs.epsVP) || 0,
-        lastActiveSet: Number(wasm.hs.lastActiveSet) || 0
+        lastActiveSet: Number(wasm.hs.lastActiveSet) || 0,
+        tangentModeCode: Number(wasm.hs.tangentModeCode) || 0,
+        tangentMode: wasm.hs.tangentMode || 'elastic'
       } : null;
       if (hsState) {
         anyHsInElement = true;
@@ -424,12 +427,25 @@ export function buildWasmDeformationResult({
     safetySettlementIncrement: 0,
     activeMcElementCount,
     tensionCutoffElementCount,
+    maxMcEta: peakEta,
     peakMcEta: peakEta,
+    hasInfiniteMcEta: false,
     elementCount: numElements,
     nodeCount: numNodes
   };
 
   const summary = wasmResult.summary;
+  if (
+    Array.isArray(warnings) &&
+    options.constitutiveModel === 'hardening-soil' &&
+    hasSurfaceLoad &&
+    !(summary?.serviceConverged === true) &&
+    Number(summary?.finalLoadFactor) < 1 - 1e-6
+  ) {
+    const lambda = Number(summary?.finalLoadFactor) || 0;
+    const message = `Hardening Soil WASM service phase reached only ${lambda.toFixed(3)} of the requested surface load; displayed displacements are the committed partial-load state, not the full-load response.`;
+    if (!warnings.includes(message)) warnings.push(message);
+  }
   const safety = wasmResult.safety || {};
   const isSafety = analysisType === 'safety-cphi';
   const safetyTrials = Array.isArray(safety.trials) ? safety.trials : [];
@@ -515,7 +531,15 @@ export function buildWasmDeformationResult({
         trialTargets: []
       };
   const usesUnsymmetricPlasticKrylov =
-    options.constitutiveModel === 'mc-plastic' && options.symmetrizeEpTangent !== true;
+    summary?.hsPlasticUsedGmres === true ||
+    summary?.lastLinearSolverKind === 1 ||
+    (options.constitutiveModel === 'mc-plastic' && options.symmetrizeEpTangent !== true);
+  const krylovCountsByPath = usesUnsymmetricPlasticKrylov
+    ? { gmres: summary.cgIterations }
+    : { 'cg-bj': summary.cgIterations };
+  const krylovCountsBySolver = usesUnsymmetricPlasticKrylov
+    ? { gmres: summary.cgIterations }
+    : { cg: summary.cgIterations };
 
   return {
     mesh,
@@ -536,7 +560,18 @@ export function buildWasmDeformationResult({
       constitutiveModel: `${options.constitutiveModel}-material-point`,
       materialPointCount: wasmResult.numGpTotal,
       backend: 'wasm-cpu',
-      initialStressMode: 'k0-nil-step',
+      initialStressMode: geostatic?.seedMode || geostatic?.mode || 'k0-nil-step',
+      geostaticInitializationMethod: geostatic?.workflow?.method || geostatic?.mode || 'wasm-k0',
+      geostaticInitializationRequestedMethod: geostatic?.workflow?.requestedMethod || options?.geostaticInitializationMethod || '',
+      geostaticInitializationReason: geostatic?.workflow?.reason || '',
+      geostaticInitializationRequiresPlasticCorrection: geostatic?.workflow?.runPlasticCorrection === true,
+      geostaticInitializationStressOnlyReference: geostatic?.workflow?.stressOnlyReference === true,
+      geostaticInitializationRequiresEquilibratedStart: geostatic?.workflow?.requiresEquilibratedStart === true,
+      initialPredictorMode: geostatic?.mode || 'wasm-k0',
+      initialPredictorSeedMode: geostatic?.seedMode || geostatic?.mode || 'wasm-k0',
+      initialPredictorSeedDiagnostics: geostatic?.seedDiagnostics || null,
+      geostaticIterations: Number.isFinite(Number(geostatic?.iterations)) ? Number(geostatic.iterations) : 0,
+      geostaticResidualNorm: Number.isFinite(Number(geostatic?.residualNorm)) ? Number(geostatic.residualNorm) : 0,
       converged: summary.geostaticConverged && (summary.serviceConverged || !hasSurfaceLoad) && (!isSafety || safety.status === 1 || safety.status === 3),
       convergenceState: (summary.geostaticConverged && summary.serviceConverged) ? 'converged' : 'partial',
       acceptedLoadSteps: summary.serviceAccepted,
@@ -558,6 +593,9 @@ export function buildWasmDeformationResult({
       freeDofs: 0,
       linearIterations: summary.cgIterations,
       nonlinearIterations: summary.newtonIterations,
+      lastLinearSolverKind: summary.lastLinearSolverKind,
+      hsPlasticUsedGmres: summary.hsPlasticUsedGmres === true,
+      lastHsFailureCode: Number(summary.lastHsFailureCode) || 0,
       failureCode: (summary.geostaticConverged && summary.serviceConverged) ? '' : 'wasm-not-converged',
       failureOutcomeClass: (summary.geostaticConverged && summary.serviceConverged) ? 'success' : 'partial',
       failureReason: (summary.geostaticConverged && summary.serviceConverged) ? '' : 'Nonlinear iterations or load steps exhausted in WASM solver.',
@@ -593,8 +631,8 @@ export function buildWasmDeformationResult({
         precisionMode: 'f64',
         elementType,
         krylovPath: usesUnsymmetricPlasticKrylov ? 'gmres' : 'cg-bj',
-        krylovCountsByPath: { 'cg-bj': summary.cgIterations },
-        krylovCountsBySolver: { cg: summary.cgIterations },
+        krylovCountsByPath,
+        krylovCountsBySolver,
         krylovFallbackReasons: {},
         worstTrueResidualMismatch: 0
       }

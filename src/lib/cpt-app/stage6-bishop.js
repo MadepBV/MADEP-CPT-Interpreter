@@ -485,6 +485,22 @@ function surfaceLoadContribution(surfaceLoad, xL, xR) {
   };
 }
 
+function totalSurfaceLoadContribution(surfaceLoads, xL, xR) {
+  let width = 0;
+  let force = 0;
+  (surfaceLoads || []).forEach((surfaceLoad) => {
+    if (!surfaceLoad || surfaceLoad.active === false) return;
+    const contribution = surfaceLoadContribution(surfaceLoad, xL, xR);
+    width += contribution.width;
+    force += contribution.force;
+  });
+  return { width, force };
+}
+
+export function debugSurfaceLoadContributionForTest(surfaceLoads, xL, xR) {
+  return totalSurfaceLoadContribution(surfaceLoads, xL, xR);
+}
+
 function sliceVerticalLoad(slice) {
   return Number.isFinite(slice?.V) ? slice.V : slice?.W || 0;
 }
@@ -809,11 +825,12 @@ function computeSliceBreaks(circle, entry, exit, model, searchConfig) {
     });
   }
 
-  if (model.surfaceLoad) {
-    [model.surfaceLoad.xStart, model.surfaceLoad.xEnd].forEach((x) => {
+  (model.surfaceLoads || (model.surfaceLoad ? [model.surfaceLoad] : [])).forEach((surfaceLoad) => {
+    if (!surfaceLoad || surfaceLoad.active === false) return;
+    [surfaceLoad.xStart, surfaceLoad.xEnd].forEach((x) => {
       if (x > xStart + GEOM_EPS && x < xEnd - GEOM_EPS) cuts.push(x);
     });
-  }
+  });
 
   (model.walls || []).forEach((wall) => {
     if (wall.x > xStart + GEOM_EPS && wall.x < xEnd - GEOM_EPS) {
@@ -867,7 +884,11 @@ function buildSlicesForCircle(circle, entry, exit, model, searchConfig, soilSour
 
     if (totalWeight <= 0) continue;
 
-    const surcharge = surfaceLoadContribution(model.surfaceLoad, xL, xR);
+    const surcharge = totalSurfaceLoadContribution(
+      model.surfaceLoads || (model.surfaceLoad ? [model.surfaceLoad] : []),
+      xL,
+      xR
+    );
     const totalVertical = totalWeight + surcharge.force;
 
     const uBase = averagePorePressureOnBase(model, circle, xL, xR);
@@ -2723,20 +2744,43 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
         }
       : null;
 
-  const rawSurfaceLoad = bishopState?.surfaceLoad || null;
-  const surfaceLoadQ = Math.max(Number(rawSurfaceLoad?.q) || 0, 0);
-  let surfaceLoad = null;
-  if (surfaceLoadQ > 0 && Number.isFinite(rawSurfaceLoad?.xStart) && Number.isFinite(rawSurfaceLoad?.xEnd)) {
-    const xStart = clampXToTerrain(terrain, Math.min(rawSurfaceLoad.xStart, rawSurfaceLoad.xEnd));
-    const xEnd = clampXToTerrain(terrain, Math.max(rawSurfaceLoad.xStart, rawSurfaceLoad.xEnd));
-    if (xEnd > xStart + GEOM_EPS) {
-      surfaceLoad = {
+  const rawSurfaceLoads = Array.isArray(bishopState?.surfaceLoads) && bishopState.surfaceLoads.length
+    ? bishopState.surfaceLoads
+    : (bishopState?.surfaceLoad ? [bishopState.surfaceLoad] : []);
+  const outOfPlaneLength = Math.max(Number(bishopState?.deformation?.options?.outOfPlaneLength) || 10, 0.1);
+  const globalLoadMode = bishopState?.deformation?.options?.loadMode === 'total' ? 'total' : 'pressure';
+  const globalTotalLoad = Math.max(Number(bishopState?.deformation?.options?.totalLoad) || 0, 0);
+  const surfaceLoads = rawSurfaceLoads
+    .map((rawSurfaceLoad, index) => {
+      if (!rawSurfaceLoad) return null;
+      if (!Number.isFinite(rawSurfaceLoad?.xStart) || !Number.isFinite(rawSurfaceLoad?.xEnd)) return null;
+      const xStart = clampXToTerrain(terrain, Math.min(rawSurfaceLoad.xStart, rawSurfaceLoad.xEnd));
+      const xEnd = clampXToTerrain(terrain, Math.max(rawSurfaceLoad.xStart, rawSurfaceLoad.xEnd));
+      if (!(xEnd > xStart + GEOM_EPS)) return null;
+      const width = xEnd - xStart;
+      const loadMode = rawSurfaceLoad.loadMode === 'total' || rawSurfaceLoad.loadMode === 'pressure'
+        ? rawSurfaceLoad.loadMode
+        : globalLoadMode;
+      const totalLoad = Math.max(
+        Number(rawSurfaceLoad.totalLoad) || (rawSurfaceLoads.length === 1 ? globalTotalLoad : 0),
+        0
+      );
+      const q = loadMode === 'total'
+        ? totalLoad / Math.max(width * outOfPlaneLength, 1e-6)
+        : Math.max(Number(rawSurfaceLoad.q) || 0, 0);
+      return {
+        id: rawSurfaceLoad.id || `load-${index + 1}`,
+        label: rawSurfaceLoad.label || `Load ${index + 1}`,
         xStart,
         xEnd,
-        q: surfaceLoadQ
+        q,
+        loadMode,
+        totalLoad: loadMode === 'total' ? totalLoad : q * width * outOfPlaneLength,
+        active: rawSurfaceLoad.active !== false
       };
-    }
-  }
+    })
+    .filter(Boolean);
+  const surfaceLoad = surfaceLoads.find((load) => load.active !== false && load.q > 0) || surfaceLoads[0] || null;
 
   const boundaryYs = uniqueSorted(
     layers
@@ -2787,6 +2831,7 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
     regionBoundaryPolylines: useCustomRegions ? buildRegionBoundaryPolylines(customRegions) : [],
     boundaryYs,
     surfaceLoad,
+    surfaceLoads,
     walls,
     drains,
     seepage: bishopState?.seepage || null,

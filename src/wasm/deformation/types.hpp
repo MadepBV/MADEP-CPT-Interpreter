@@ -289,12 +289,12 @@ struct SolverOptions {
   ArcLengthDerivativeMode arcLengthDerivativeMode{ ArcLengthDerivativeMode::FiniteDifference };
   ArcLengthMeritMode arcLengthMeritMode{ ArcLengthMeritMode::OneNormScaled };
   std::int32_t nonlinearMaxIter{ 32 };
-  std::int32_t maxLoadSteps{ 256 };
+  std::int32_t maxLoadSteps{ 384 };
   double initialLoadStep{ 0.25 };
-  double minLoadStep{ 1.0 / 2048.0 };
+  double minLoadStep{ 1.0 / 4096.0 };
   double loadStepGrowthFactor{ 1.25 };
   double loadStepCutbackFactor{ 0.5 };
-  double plasticLoadStepGrowthFactor{ 1.05 };
+  double plasticLoadStepGrowthFactor{ 1.08 };
   double plasticLoadStepCutbackFactor{ 0.4 };
   double initialGravityPlasticLoadStepGrowthFactor{ 1.12 };
   double initialGravityPlasticLoadStepCutbackFactor{ 0.5 };
@@ -309,7 +309,7 @@ struct SolverOptions {
   double plasticLineSearchMinScale{ 1.0 / 64.0 };
   double initialGravityPlasticLineSearchMinScale{ 1.0 / 32.0 };
   double plasticLineSearchArmijoCoefficient{ 1e-4 };
-  std::int32_t plasticLineSearchMaxBacktracks{ 4 };
+  std::int32_t plasticLineSearchMaxBacktracks{ 6 };
   std::int32_t initialGravityPlasticLineSearchMaxBacktracks{ 5 };
   // c-φ safety parameters
   double safetyInitialIncrement{ 0.1 };

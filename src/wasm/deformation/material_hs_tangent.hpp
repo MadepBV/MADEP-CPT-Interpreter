@@ -500,6 +500,10 @@ inline Mat6 spectral_flow_derivative_dense(
           if (i == j) continue;
           const double denom = s[i] - s[j];
           if (std::abs(denom) <= 1e-10 * scale) {
+            const double flowScale = std::max({std::abs(flow_p[i]), std::abs(flow_p[j]), 1.0});
+            if (std::abs(flow_p[i] - flow_p[j]) <= 1e-10 * flowScale) {
+              continue;
+            }
             ok = false;
             continue;
           }
@@ -653,6 +657,31 @@ inline double frobenius_norm6(const Mat6& A) {
   return std::sqrt(acc);
 }
 
+inline bool negligible_plastic_multiplier(double dlambda, const Mat6& D_e) {
+  return std::isfinite(dlambda) && dlambda >= 0.0
+      && dlambda * frobenius_norm6(D_e) < 1.0e-10;
+}
+
+inline Mat6 scaled_mat6(const Mat6& A, double scale) {
+  Mat6 out{};
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) out[i][j] = scale * A[i][j];
+  }
+  return out;
+}
+
+inline Mat6 apply_locked_projector_strain_correction(
+    const Mat6& Xi,
+    const Mat6& D_e,
+    const Mat6& dmdtrial_scaled) {
+  Mat6 B = mat6_identity();
+  const Mat6 dmdtrial_De = mat6_mul(dmdtrial_scaled, D_e);
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) B[i][j] -= dmdtrial_De[i][j];
+  }
+  return mat6_mul(Xi, B);
+}
+
 inline Mat6 compute_xi_dense(const Mat6& D_e,
                              const Mat6& dmdsigma,
                              double dlambda,
@@ -671,10 +700,11 @@ inline Mat6 compute_simo_hughes_cone_tangent(
     const Mat6& D_e,
     bool& ok) {
   ok = true;
-  if (std::abs(ctx.dlambda_s) < 1e-10 * std::max(frobenius_norm6(D_e), 1.0)) {
+  if (!std::isfinite(ctx.dlambda_s) || ctx.dlambda_s < 0.0 ||
+      negligible_plastic_multiplier(ctx.dlambda_s, D_e)) {
+    ok = false;
     return D_e;
   }
-
   // The implemented HS return map direction-locks the cone flow to the trial
   // eigenbasis. Its exact residual linearisation therefore splits the flow
   // sensitivity in two pieces:
@@ -706,14 +736,8 @@ inline Mat6 compute_simo_hughes_cone_tangent(
     ok = false;
     return D_e;
   }
-  Mat6 B = mat6_identity();
-  const Mat6 dmdtrial_De = mat6_mul(dmdtrial, D_e);
-  for (int i = 0; i < 6; ++i) {
-    for (int j = 0; j < 6; ++j) {
-      B[i][j] -= ctx.dlambda_s * dmdtrial_De[i][j];
-    }
-  }
-  const Mat6 XiB = mat6_mul(Xi, B);
+  const Mat6 XiB = apply_locked_projector_strain_correction(
+      Xi, D_e, scaled_mat6(dmdtrial, ctx.dlambda_s));
 
   double n1 = 0.0, n2 = 0.0, n3 = 0.0;
   cone_yield_gradient_with_implicit(
@@ -754,7 +778,9 @@ inline Mat6 compute_simo_hughes_cap_tangent(
     const Mat6& D_e,
     bool& ok) {
   ok = true;
-  if (std::abs(ctx.dlambda_c) < 1e-10 * std::max(frobenius_norm6(D_e), 1.0)) {
+  if (!std::isfinite(ctx.dlambda_c) || ctx.dlambda_c < 0.0 ||
+      negligible_plastic_multiplier(ctx.dlambda_c, D_e)) {
+    ok = false;
     return D_e;
   }
 
@@ -780,14 +806,8 @@ inline Mat6 compute_simo_hughes_cap_tangent(
     ok = false;
     return D_e;
   }
-  Mat6 B = mat6_identity();
-  const Mat6 dmdtrial_De = mat6_mul(dmdtrial, D_e);
-  for (int i = 0; i < 6; ++i) {
-    for (int j = 0; j < 6; ++j) {
-      B[i][j] -= ctx.dlambda_c * dmdtrial_De[i][j];
-    }
-  }
-  const Mat6 XiB = mat6_mul(Xi, B);
+  const Mat6 XiB = apply_locked_projector_strain_correction(
+      Xi, D_e, scaled_mat6(dmdtrial, ctx.dlambda_c));
 
   double m1 = 0.0, m2 = 0.0, m3 = 0.0;
   cap_flow_gradient_from_context(ctx, m1, m2, m3);
@@ -833,8 +853,11 @@ inline Mat6 compute_simo_hughes_corner_tangent(
     const Mat6& D_e,
     bool& ok) {
   ok = true;
-  const double dl_norm = std::abs(ctx.dlambda_s) + std::abs(ctx.dlambda_c);
-  if (dl_norm < 1e-10 * std::max(frobenius_norm6(D_e), 1.0)) {
+  const double dlambda_max = std::max(std::abs(ctx.dlambda_s), std::abs(ctx.dlambda_c));
+  if (!std::isfinite(ctx.dlambda_s) || !std::isfinite(ctx.dlambda_c) ||
+      ctx.dlambda_s < 0.0 || ctx.dlambda_c < 0.0 ||
+      negligible_plastic_multiplier(dlambda_max, D_e)) {
+    ok = false;
     return D_e;
   }
 
@@ -877,19 +900,15 @@ inline Mat6 compute_simo_hughes_corner_tangent(
     ok = false;
     return D_e;
   }
-  Mat6 dtrial{};
+  Mat6 dtrial_scaled{};
   for (int i = 0; i < 6; ++i) {
     for (int j = 0; j < 6; ++j) {
-      dtrial[i][j] = ctx.dlambda_s * dtrial_s[i][j]
-                   + ctx.dlambda_c * dtrial_c[i][j];
+      dtrial_scaled[i][j] = ctx.dlambda_s * dtrial_s[i][j]
+                          + ctx.dlambda_c * dtrial_c[i][j];
     }
   }
-  Mat6 B = mat6_identity();
-  const Mat6 dtrial_De = mat6_mul(dtrial, D_e);
-  for (int i = 0; i < 6; ++i) {
-    for (int j = 0; j < 6; ++j) B[i][j] -= dtrial_De[i][j];
-  }
-  const Mat6 XiB = mat6_mul(Xi, B);
+  const Mat6 XiB = apply_locked_projector_strain_correction(
+      Xi, D_e, dtrial_scaled);
 
   double n_s1 = 0.0, n_s2 = 0.0, n_s3 = 0.0;
   cone_yield_gradient_with_implicit(
@@ -963,6 +982,13 @@ inline Mat6 identity6() {
 inline Mat6 invert_dense6(Mat6 A, bool& ok) {
   Mat6 inv = identity6();
   ok = true;
+  double matrixScale = 0.0;
+  for (int r = 0; r < 6; ++r) {
+    for (int c = 0; c < 6; ++c) {
+      matrixScale = std::max(matrixScale, std::abs(A[r][c]));
+    }
+  }
+  const double pivotTol = std::max(1e-18, 1e-9 * matrixScale);
 
   for (int k = 0; k < 6; ++k) {
     int piv = k;
@@ -974,7 +1000,7 @@ inline Mat6 invert_dense6(Mat6 A, bool& ok) {
         piv = i;
       }
     }
-    if (!(std::isfinite(best) && best > 1e-18)) {
+    if (!(std::isfinite(best) && best > pivotTol)) {
       ok = false;
       return Mat6{};
     }

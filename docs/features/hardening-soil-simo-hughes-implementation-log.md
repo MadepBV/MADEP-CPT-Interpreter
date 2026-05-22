@@ -4,6 +4,142 @@ This log records phase-by-phase implementation decisions, verifier results, and
 stop-condition diagnoses for `hardening-soil-simo-hughes-upgrade.md`. It is a
 backtracking aid, not a replacement for the canonical spec.
 
+## 2026-05-19 - HS UI convergence follow-up
+
+Trigger:
+
+- A UI run with a 20 m by 20 m flat domain, 5 kPa strip load over the central
+  2 m, mesh target area 1.3 m2, and Hardening Soil stopped at a small partial
+  load instead of reaching full service load.
+
+Findings:
+
+- The HS Simo-Hughes selector was dropped in the live UI path. Stage 6 stores
+  the flag as `material.hs.useConsistentTangent`, but
+  `prepareMechanicalMaterial()` only propagated the shared top-level / MC
+  selector. The prepared top-level `useConsistentTangent: false` then shadowed
+  the HS sub-block in the wire writer.
+- MC must not inherit the HS selector. The fix keeps MC default OFF by reading
+  only the explicit top-level / `material.mc.useConsistentTangent` selector for
+  MC, while the HS wire slot now reads `region.hs.useConsistentTangent` first.
+- The exact app-level hard case is also a true normally consolidated cap-path
+  difficulty. With `c' = 0`, `phi' = 30 deg`, `psi = 0`, and `OCR = 1`, the
+  T3 version of the 20 m by 20 m case has hundreds of active HS integration
+  points and routes through GMRES. `OCR = 2` remains a much easier full-load
+  case, so the failure was isolated to the NC cap/cone path, not to meshing or
+  UI plumbing alone.
+- A near-final continuation edge case was observed at `OCR = 1.05`: committed
+  load factor reached about `0.999999997`, but the phase was marked failed
+  after attempting one final micro-step. The source now treats committed load
+  within `1e-6` of full load as complete, matching the existing tolerance.
+- A blanket residual-norm scaling was tested and rejected because D.6 caught a
+  path-changing false acceptance. The final residual fix is narrower: the UI
+  default `residualAbsTol = 1e-3` is interpreted as a per-free-equation force
+  floor because the C++ solver stores a raw global L2 residual. Explicit
+  larger verifier tolerances, such as D.6's `1e-2`, keep their historical raw
+  L2 meaning.
+- The SH small-`Delta lambda` guard must be narrow enough not to hide valid
+  cap/corner tangents from the phase oracles. The final guard uses the product
+  form `Delta lambda * ||D_e||_F < 1e-10`; this only marks genuinely
+  near-elastic plastic updates as not-ok so the existing FD/elastic fallback
+  chain can take over.
+
+Implementation progress:
+
+- Added HS-specific selector normalization in
+  `src/lib/cpt-app/deformation/material.js`.
+- Added HS-first selector lookup in
+  `src/lib/cpt-app/deformation/wasm/wire-format.js`.
+- Added `scripts/verify_hs_ui_tangent_plumbing.mjs` and
+  `npm run verify:hs-ui-tangent-plumbing`.
+- Updated `src/wasm/deformation/solver.hpp` so the K0 seed preserves cone/cap
+  active-set membership in `hsSeed.lastActiveSet`; an exactly NC cap state is
+  therefore not treated as elastic on the first service increment.
+- Updated load-control and service arc-length completion checks to stop at the
+  established `1e-6` load-factor tolerance.
+- Added default per-equation residual-floor normalization in
+  `src/wasm/deformation/solver.hpp` while preserving explicit larger raw-norm
+  tolerances.
+- Replaced the earlier broad production-only small-multiplier shortcut with
+  the product-form helper guard in `material_hs_tangent.hpp`, keeping the
+  closed-form tangent helpers directly oracle-testable.
+- Rebuilt `static/wasm/deformation/deformation.wasm` and `.js`.
+
+Final UI reproduction:
+
+- Exact UI-shaped case: 20 m by 20 m, central 2 m strip, `q = 5 kPa`,
+  `meshTargetArea = 1.3 m2`, T3, `c' = 0`, `phi' = 30 deg`, `psi = 0`,
+  `OCR = 1`, `nearSurfaceMinConfiningStress = 1 kPa`,
+  `hs.useConsistentTangent = true`.
+- Result after the locked-projector audit: full service load, `lambda = 1.0`,
+  residual `8.02e-3` raw global L2, 428 accepted and 22 rejected steps,
+  1957 nonlinear iterations, and 1369889 GMRES iterations. Coordinate
+  convention matters for this app-shaped probe: terrain at `y = 0`, bottom at
+  `y = -20` matches the drawing workspace and converges; the inverted
+  `y = 20` to `0` version is not the same gravity/depth setup.
+
+Validation status in this environment:
+
+- PASS: `node scripts/verify_hs_ui_tangent_plumbing.mjs`.
+- PASS: `node scripts/verify_hs_simo_hughes_phase_2.mjs`.
+- PASS: `node scripts/verify_hs_simo_hughes_phase_3.mjs`.
+- PASS: `node scripts/verify_hs_simo_hughes_phase_4.mjs`.
+- PASS: `node scripts/verify_hs_simo_hughes_d6.mjs`.
+- PASS: `node scripts/verify_hs_newton_count.mjs`.
+- PASS: `MADEP_HS_ONLY_FLAT_REGRESSION=1 node scripts/verify_hs_phase_5.mjs`.
+- PASS: `node scripts/verify_mc_unchanged_when_off.mjs`.
+- PASS: `npm run build:wasm:deformation` after sourcing
+  `/config/tools/emsdk/emsdk_env.sh`.
+- PASS: `npm run check`.
+- PASS: `npm run build`.
+
+## 2026-05-20 - HS Exact OCR=1 App Regression Investigation
+
+Regression fixture added:
+
+- `scripts/verify_hs_app_analytical_k0_seed.mjs` is now the first-class
+  app-pipeline case for the user-reported geometry: 20 m x 20 m domain,
+  2 m strip load, 5 kPa service pressure, T3 mesh target area 1.3 m2,
+  cohesionless HS sand, OCR = 1, K0 = 0.5.
+
+Confirmed fixes:
+
+- The JS app path now routes HS initial stress through the analytical
+  layer-aware K0 builder instead of elastic stress recovery plus lateral K0
+  overwrite.  MC is unchanged.
+- HS material-point seeding now computes the normally-consolidated cap radius
+  with `cap_required_p_p(...)`; it no longer assumes `p_p = OCR * sigma_1`.
+- The K0 seed no longer writes `lastActiveSet = 3`; the seed may sit on the
+  cone/cap surfaces, but it is not a plastic loading event.
+- The SH tangent context now uses the converged-stress eigenbasis, not the
+  trial-stress eigenbasis.
+- The cap and corner SH tangents no longer apply the cone-style `XiB`
+  correction; those branches update directly from `Xi` per the SH equations.
+
+Negative results:
+
+- The exact OCR=1 app fixture still does not converge at the normal UI load
+  stepping.  Latest bounded run after cleanup failed at approximately
+  10.7 percent load with `lastHsFailureCode = 106`.
+- Diagnostic tracing showed repeated small cone/cap corner states where
+  cone-only fails by principal-ordering (`101`), cap-only returns but leaves a
+  small cone violation, and the old corner Newton returns `103`.
+- A prototype coupled 5-unknown corner residual solve
+  `[sigma1, sigma2, sigma3, dlambda_s, dlambda_c]` with FD Jacobian and
+  Levenberg damping was tested but did not find certified KKT states on the
+  failing app increments.  It is left out of the active path.
+- Extending the local substepping ladder to 1024 was too slow for the UI case
+  and still did not converge full service load.  The ladder was restored to
+  the bounded 256-substep maximum.
+
+Conclusion:
+
+- The adviser diagnosis is directionally correct: this is no longer just a
+  geostatic seed bug or a tangent-basis bug.  The remaining blocker is the HS
+  local active-set return at the cone/cap corner for exact NC cohesionless
+  states.  The production fix must be a certified coupled KKT return, not a
+  hidden strength regularization or global load-step workaround.
+
 ## SH-P0 - T6 Flat Strip Prerequisite
 
 Required pre-read:
@@ -487,6 +623,62 @@ Validation status:
 - PASS: `node scripts/verify_wasm_deformation_smoke.mjs`.
 - PASS: `npm run check`.
 - PASS: `npm run build`.
+
+## HS Cap/Corner Locked-Projector Tangent Audit - 2026-05-19
+
+Trigger:
+
+- The proposed clean-up removed the cap/corner strain-side `B` correction
+  from `compute_simo_hughes_cap_tangent` and
+  `compute_simo_hughes_corner_tangent`, following the invariant continuum
+  reading of sections 4.3.2 and 4.3.3.
+
+Audit result:
+
+- The phase verifiers are not dead scaffolding: SH-3 and SH-4 compile the
+  production header and also compare the runtime dispatch tangent with the
+  direct production function.
+- Removing `B` failed immediately:
+  - SH-3 cap: residual/FD relative error `3.32e-4`.
+  - SH-4 corner: residual/FD relative error `4.53e-2`.
+- Replacing trial principal values by corrected values did not fix the gap.
+  Cap remained outside tolerance without `B`, and corner still missed the
+  shear-column projector contribution.
+
+Conclusion:
+
+- For the current HS return map, cap and corner are direction-locked to the
+  trial eigenbasis exactly like the cone.  The corrected stress is reconstructed
+  with `principalT.P1/P2/P3`, and the plastic strain increment uses the same
+  projectors.  Therefore the discrete algorithmic tangent must differentiate
+  the trial-basis rotation induced by `sigma_trial = sigma_n + D_e dε`.
+- The no-`B` form is the tangent of a different invariant residual
+  `m = m(σ_corrected)`, not of the shipped P1 return map.  Using it in the
+  live solver is not a consistent Newton tangent for the code users run.
+
+Implementation progress:
+
+- Kept the trial-locked strain-side correction, but refactored it into
+  `apply_locked_projector_strain_correction(...)` so cone/cap/corner share the
+  same explicit contract instead of cloning ad hoc `B = I - Δλ dmdtrial D_e`
+  assembly.
+- Kept the dense `Ξ` path for cone, cap, and corner; no rank optimization was
+  introduced.
+- Changed the small-multiplier guard to the product form
+  `Δλ * ||D_e||_F < 1e-10`, returning `ok = false` so production falls back
+  through the existing FD/elastic chain only for genuinely near-elastic
+  plastic updates.
+- Removed the broader production-only high-`H_cap` small-multiplier shortcut
+  that hid the analytic path on some corner cases.
+- Fixed HS migration semantics: missing `hs.useConsistentTangent` now defaults
+  OFF and marks the one-shot prompt; new materials still write the field
+  explicitly through `importBishopMaterialsFromLayers`.
+
+Validation status:
+
+- PASS: `node scripts/verify_hs_simo_hughes_phase_2.mjs`.
+- PASS: `node scripts/verify_hs_simo_hughes_phase_3.mjs`.
+- PASS: `node scripts/verify_hs_simo_hughes_phase_4.mjs`.
 
 ## MC-SH-2 - mc_exact tangent invariant lock
 

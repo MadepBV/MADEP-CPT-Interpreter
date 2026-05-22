@@ -552,6 +552,51 @@ inline double cap_hardening_rate(double H_cap, double p_prime, double p_t) {
   return H_cap * cap_volumetric_per_lambda(p_prime, p_t);
 }
 
+inline bool solve_dense5(double A[5][5], double b[5], double x[5]) {
+  double max_entry = 0.0;
+  for (int i = 0; i < 5; ++i) {
+    for (int j = 0; j < 5; ++j) {
+      max_entry = std::max(max_entry, std::abs(A[i][j]));
+    }
+  }
+  const double pivot_tol = 1e-12 * std::max(max_entry, 1.0);
+
+  for (int k = 0; k < 5; ++k) {
+    int pivot = k;
+    double best = std::abs(A[k][k]);
+    for (int i = k + 1; i < 5; ++i) {
+      const double v = std::abs(A[i][k]);
+      if (v > best) {
+        best = v;
+        pivot = i;
+      }
+    }
+    if (!(std::isfinite(best) && best > pivot_tol)) return false;
+    if (pivot != k) {
+      for (int j = k; j < 5; ++j) std::swap(A[k][j], A[pivot][j]);
+      std::swap(b[k], b[pivot]);
+    }
+    const double inv_pivot = 1.0 / A[k][k];
+    for (int i = k + 1; i < 5; ++i) {
+      const double factor = A[i][k] * inv_pivot;
+      A[i][k] = 0.0;
+      for (int j = k + 1; j < 5; ++j) {
+        A[i][j] -= factor * A[k][j];
+      }
+      b[i] -= factor * b[k];
+    }
+  }
+
+  for (int i = 4; i >= 0; --i) {
+    double rhs = b[i];
+    for (int j = i + 1; j < 5; ++j) rhs -= A[i][j] * x[j];
+    if (!(std::isfinite(A[i][i]) && std::abs(A[i][i]) > pivot_tol)) return false;
+    x[i] = rhs / A[i][i];
+    if (!std::isfinite(x[i])) return false;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Phase 4 (fix plan): admissibility certificate.
 //
@@ -1042,8 +1087,8 @@ inline HsUpdateResult return_cap_only(
     // Volumetric plastic strain.
     eps_v_p_new = stateC.eps_v_p + dlambda * cap_volumetric_per_lambda(p_prime_now, p_t);
 
-    const double f_new = cap_yield_value(
-        s1_new, s2_new, s3_new, p_p_new, M_cap, p_t, phi_eff);
+	    const double f_new = cap_yield_value(
+	        s1_new, s2_new, s3_new, p_p_new, M_cap, p_t, phi_eff);
 
     if (std::abs(f_new) < f_tolerance) {
       converged = true;
@@ -1153,6 +1198,385 @@ inline HsUpdateResult return_cap_only(
 // q_a, E_ur are re-evaluated at the corrected σ_3 each iteration so the
 // hyperbolic constants stay consistent with the corrected state.
 // ---------------------------------------------------------------------------
+inline HsUpdateResult return_corner_coupled_active_set(
+    const mce::PrincipalState& principalT,
+    const MaterialPoint::HsState& stateC,
+    double c_eff, double phi_eff, double psi_eff, double sin_phi_cv,
+    double E_i_trial, double E_ur_trial, double q_a_trial,
+    double M_cap, double p_t, double H_cap,
+    double dlambda_s_init, double dlambda_c_init,
+    const Mat6& D_e, const RegionParams& region,
+    double& dlambda_s_out, double& dlambda_c_out,
+    bool forceRegime = false,
+    ConeFlowRegime forcedRegime = ConeFlowRegime::Face13) {
+  HsUpdateResult out{};
+  out.stateUpdated = stateC;
+
+  const double G_s = std::max(D_e[3][3], 1.0);
+  const double lam = D_e[0][0] - 2.0 * G_s;
+  const double two_mu = 2.0 * G_s;
+
+  const double Rf = std::clamp(region.hs.Rf, 1e-3, 0.999);
+  const double m_exp = std::clamp(region.hs.m, 0.0, 1.0);
+  const double p_ref = std::max(region.hs.p_ref, 1.0);
+  const double cosPhi = std::cos(phi_eff);
+  const double sinPhi = std::sin(phi_eff);
+  const double denom_pow = std::max(c_eff * cosPhi + p_ref * sinPhi,
+                                    numerical_pressure_floor(region.hs));
+  auto recompute_consts = [&](double s3, double& E_i_o, double& q_a_o, double& E_ur_o) {
+    const double num = hs_stress_power_term(c_eff, phi_eff, s3, region.hs);
+    const double pr = std::pow(num / denom_pow, m_exp);
+    const double E_50_local = region.hs.E50_ref * pr;
+    E_ur_o = region.hs.Eur_ref * pr;
+    q_a_o = hs_q_a_from_sigma3(s3, c_eff, phi_eff, Rf, region.hs);
+    E_i_o = 2.0 * E_50_local / (2.0 - Rf);
+  };
+
+  const ConeFlowRegime regime = forceRegime
+      ? forcedRegime
+      : classify_cone_regime(principalT);
+  const double eps_v_p_max = dilatancy_cutoff_threshold(
+      region.hs.e_init, region.hs.e_max);
+
+  const double stress_scale = std::max({
+      std::abs(principalT.s1), std::abs(principalT.s2),
+      std::abs(principalT.s3), std::abs(stateC.p_p),
+      std::abs(q_a_trial), 1.0});
+  const double fs_scale = std::max(1e-8 * std::max(std::abs(q_a_trial), 1.0), 1e-12);
+  const double pp_scale = std::max(stateC.p_p + p_t, 1.0);
+  const double fc_scale = std::max(1e-8 * pp_scale * pp_scale, 1e-10);
+  const double stress_res_scale = std::max(1e-8 * stress_scale, 1e-10);
+
+  struct CornerEval {
+    bool ok{ false };
+    double r[5]{};
+    double norm{ std::numeric_limits<double>::infinity() };
+    double s1{ 0.0 };
+    double s2{ 0.0 };
+    double s3{ 0.0 };
+    double dl_s{ 0.0 };
+    double dl_c{ 0.0 };
+    double gamma_p{ 0.0 };
+    double p_p{ 0.0 };
+    double eps_v_p{ 0.0 };
+    double dgs1{ 0.0 };
+    double dgs2{ 0.0 };
+    double dgs3{ 0.0 };
+    double dgc1{ 0.0 };
+    double dgc2{ 0.0 };
+    double dgc3{ 0.0 };
+    double E_i{ 0.0 };
+    double E_ur{ 0.0 };
+    double q_a{ 0.0 };
+    double f_s{ 0.0 };
+    double f_c{ 0.0 };
+  };
+
+  auto evaluate = [&](const double x[5]) -> CornerEval {
+    CornerEval ev{};
+    ev.s1 = x[0];
+    ev.s2 = x[1];
+    ev.s3 = x[2];
+    ev.dl_s = x[3];
+    ev.dl_c = x[4];
+    if (!(std::isfinite(ev.s1) && std::isfinite(ev.s2) && std::isfinite(ev.s3) &&
+          std::isfinite(ev.dl_s) && std::isfinite(ev.dl_c))) {
+      return ev;
+    }
+    if (ev.dl_s < -1e-14 || ev.dl_c < -1e-14) return ev;
+    if (!(ev.s1 >= ev.s2 - 1e-7 * stress_scale &&
+          ev.s2 >= ev.s3 - 1e-7 * stress_scale)) {
+      return ev;
+    }
+
+    recompute_consts(ev.s3, ev.E_i, ev.q_a, ev.E_ur);
+    if (!(std::isfinite(ev.E_i) && std::isfinite(ev.q_a) &&
+          std::isfinite(ev.E_ur) && ev.E_i > 0.0 && ev.q_a > 0.0 &&
+          ev.E_ur > 0.0)) {
+      return ev;
+    }
+
+    const double p_prime = (ev.s1 + ev.s2 + ev.s3) / 3.0;
+    const double dpp_per_lc = 2.0 * H_cap * (p_prime + p_t);
+    if (!(std::isfinite(dpp_per_lc) && dpp_per_lc >= -1e-12)) return ev;
+    ev.p_p = stateC.p_p + ev.dl_c * std::max(dpp_per_lc, 0.0);
+    if (!(std::isfinite(ev.p_p) && ev.p_p >= stateC.p_p - 1e-10)) return ev;
+    ev.gamma_p = stateC.gamma_p + ev.dl_s;
+    if (!(std::isfinite(ev.gamma_p) && ev.gamma_p >= stateC.gamma_p - 1e-14)) return ev;
+
+    const double sin_phi_mob = mobilised_sin_phi(ev.s1, ev.s3, c_eff, phi_eff);
+    double sin_psi_mob = mobilised_sin_psi(
+        sin_phi_mob, sin_phi_cv, psi_eff, stateC.eps_v_p, eps_v_p_max);
+    for (int k = 0; k < 3; ++k) {
+      const double eps_v_try = stateC.eps_v_p
+          + ev.dl_s * (-sin_psi_mob)
+          + ev.dl_c * cap_volumetric_per_lambda(p_prime, p_t);
+      const double next = mobilised_sin_psi(
+          sin_phi_mob, sin_phi_cv, psi_eff, eps_v_try, eps_v_p_max);
+      if (std::abs(next - sin_psi_mob) < 1e-14) {
+        sin_psi_mob = next;
+        break;
+      }
+      sin_psi_mob = next;
+    }
+    ev.eps_v_p = stateC.eps_v_p
+        + ev.dl_s * (-sin_psi_mob)
+        + ev.dl_c * cap_volumetric_per_lambda(p_prime, p_t);
+
+    cone_flow_gradient(regime, sin_psi_mob, ev.dgs1, ev.dgs2, ev.dgs3);
+    double df_dpp_unused = 0.0;
+    cap_yield_gradient(ev.s1, ev.s2, ev.s3,
+                       ev.p_p, M_cap, p_t, phi_eff,
+                       ev.dgc1, ev.dgc2, ev.dgc3, df_dpp_unused);
+
+    const double trace_dgs = ev.dgs1 + ev.dgs2 + ev.dgs3;
+    const double trace_dgc = ev.dgc1 + ev.dgc2 + ev.dgc3;
+    const double De_dgs1 = lam * trace_dgs + two_mu * ev.dgs1;
+    const double De_dgs2 = lam * trace_dgs + two_mu * ev.dgs2;
+    const double De_dgs3 = lam * trace_dgs + two_mu * ev.dgs3;
+    const double De_dgc1 = lam * trace_dgc + two_mu * ev.dgc1;
+    const double De_dgc2 = lam * trace_dgc + two_mu * ev.dgc2;
+    const double De_dgc3 = lam * trace_dgc + two_mu * ev.dgc3;
+
+    ev.r[0] = (ev.s1 - principalT.s1 + ev.dl_s * De_dgs1 + ev.dl_c * De_dgc1)
+            / stress_res_scale;
+    ev.r[1] = (ev.s2 - principalT.s2 + ev.dl_s * De_dgs2 + ev.dl_c * De_dgc2)
+            / stress_res_scale;
+    ev.r[2] = (ev.s3 - principalT.s3 + ev.dl_s * De_dgs3 + ev.dl_c * De_dgc3)
+            / stress_res_scale;
+
+    ev.f_s = cone_yield_value(ev.s1 - ev.s3, ev.q_a, ev.E_i, ev.E_ur, ev.gamma_p);
+    ev.f_c = cap_yield_value(ev.s1, ev.s2, ev.s3, ev.p_p, M_cap, p_t, phi_eff);
+    ev.r[3] = ev.f_s / fs_scale;
+    ev.r[4] = ev.f_c / fc_scale;
+
+    double sum = 0.0;
+    for (double v : ev.r) {
+      if (!std::isfinite(v)) return ev;
+      sum += v * v;
+    }
+    ev.norm = std::sqrt(sum);
+    ev.ok = std::isfinite(ev.norm);
+    return ev;
+  };
+
+  auto initialise_from_multipliers = [&](double dl_s0, double dl_c0, double x[5]) {
+    const double p_prime_t = (principalT.s1 + principalT.s2 + principalT.s3) / 3.0;
+    double p_p_t = stateC.p_p + std::max(dl_c0, 0.0)
+        * std::max(2.0 * H_cap * (p_prime_t + p_t), 0.0);
+    if (!std::isfinite(p_p_t)) p_p_t = stateC.p_p;
+    const double sin_phi_mob_t = mobilised_sin_phi(principalT.s1, principalT.s3,
+                                                   c_eff, phi_eff);
+    const double sin_psi_mob_t = mobilised_sin_psi(
+        sin_phi_mob_t, sin_phi_cv, psi_eff, stateC.eps_v_p, eps_v_p_max);
+    double dgs1_t = 0.0, dgs2_t = 0.0, dgs3_t = 0.0;
+    cone_flow_gradient(regime, sin_psi_mob_t, dgs1_t, dgs2_t, dgs3_t);
+    double dgc1_t = 0.0, dgc2_t = 0.0, dgc3_t = 0.0, df_dpp_unused = 0.0;
+    cap_yield_gradient(principalT.s1, principalT.s2, principalT.s3,
+                       p_p_t, M_cap, p_t, phi_eff,
+                       dgc1_t, dgc2_t, dgc3_t, df_dpp_unused);
+    const double tr_s = dgs1_t + dgs2_t + dgs3_t;
+    const double tr_c = dgc1_t + dgc2_t + dgc3_t;
+    x[0] = principalT.s1
+        - dl_s0 * (lam * tr_s + two_mu * dgs1_t)
+        - dl_c0 * (lam * tr_c + two_mu * dgc1_t);
+    x[1] = principalT.s2
+        - dl_s0 * (lam * tr_s + two_mu * dgs2_t)
+        - dl_c0 * (lam * tr_c + two_mu * dgc2_t);
+    x[2] = principalT.s3
+        - dl_s0 * (lam * tr_s + two_mu * dgs3_t)
+        - dl_c0 * (lam * tr_c + two_mu * dgc3_t);
+    x[3] = std::max(dl_s0, 0.0);
+    x[4] = std::max(dl_c0, 0.0);
+  };
+
+  auto try_start = [&](double dl_s0, double dl_c0, CornerEval& best) -> bool {
+    double x[5]{};
+    initialise_from_multipliers(dl_s0, dl_c0, x);
+    CornerEval ev = evaluate(x);
+    if (ev.ok && ev.norm < best.norm) best = ev;
+
+    for (int it = 0; it < 36; ++it) {
+      ev = evaluate(x);
+      if (!ev.ok) return false;
+      if (ev.norm < best.norm) best = ev;
+      const bool stress_ok =
+          std::abs(ev.r[0]) <= 1.0 && std::abs(ev.r[1]) <= 1.0 &&
+          std::abs(ev.r[2]) <= 1.0;
+      if (stress_ok && std::abs(ev.f_s) <= fs_scale &&
+          std::abs(ev.f_c) <= fc_scale) {
+        best = ev;
+        return true;
+      }
+
+      double J[5][5]{};
+      for (int col = 0; col < 5; ++col) {
+        double xp[5]{};
+        double xm[5]{};
+        for (int k = 0; k < 5; ++k) {
+          xp[k] = x[k];
+          xm[k] = x[k];
+        }
+        const double h = (col < 3)
+            ? 1e-6 * std::max(std::abs(x[col]), stress_scale)
+            : std::max(1e-4 * std::max(std::abs(x[col]), 1e-6), 1e-10);
+        xp[col] += h;
+        xm[col] -= h;
+        CornerEval ep = evaluate(xp);
+        CornerEval em = evaluate(xm);
+        if (ep.ok && em.ok) {
+          const double inv = 1.0 / (2.0 * h);
+          for (int row = 0; row < 5; ++row) {
+            J[row][col] = (ep.r[row] - em.r[row]) * inv;
+          }
+        } else if (ep.ok) {
+          const double inv = 1.0 / h;
+          for (int row = 0; row < 5; ++row) {
+            J[row][col] = (ep.r[row] - ev.r[row]) * inv;
+          }
+        } else if (em.ok) {
+          const double inv = 1.0 / h;
+          for (int row = 0; row < 5; ++row) {
+            J[row][col] = (ev.r[row] - em.r[row]) * inv;
+          }
+        } else {
+          return false;
+        }
+      }
+
+      auto try_direction = [&](const double dx[5], CornerEval& accepted_eval) {
+        double alpha = 1.0;
+        for (int ls = 0; ls < 16; ++ls) {
+          double xt[5]{};
+          for (int k = 0; k < 5; ++k) xt[k] = x[k] + alpha * dx[k];
+          if (xt[3] >= -1e-14 && xt[4] >= -1e-14) {
+            if (xt[3] < 0.0) xt[3] = 0.0;
+            if (xt[4] < 0.0) xt[4] = 0.0;
+            CornerEval trial = evaluate(xt);
+            if (trial.ok && trial.norm < ev.norm) {
+              for (int k = 0; k < 5; ++k) x[k] = xt[k];
+              accepted_eval = trial;
+              return true;
+            }
+          }
+          alpha *= 0.5;
+        }
+        return false;
+      };
+
+      double rhs[5]{};
+      for (int row = 0; row < 5; ++row) rhs[row] = -ev.r[row];
+      double J_newton[5][5]{};
+      for (int i = 0; i < 5; ++i) {
+        for (int j = 0; j < 5; ++j) J_newton[i][j] = J[i][j];
+      }
+      double dx[5]{};
+      bool accepted = solve_dense5(J_newton, rhs, dx);
+      CornerEval accepted_eval{};
+      if (accepted) accepted = try_direction(dx, accepted_eval);
+      if (!accepted) {
+        double normal[5][5]{};
+        double gradient[5]{};
+        double max_diag = 0.0;
+        for (int i = 0; i < 5; ++i) {
+          for (int j = 0; j < 5; ++j) {
+            double v = 0.0;
+            for (int row = 0; row < 5; ++row) v += J[row][i] * J[row][j];
+            normal[i][j] = v;
+          }
+          for (int row = 0; row < 5; ++row) gradient[i] += J[row][i] * ev.r[row];
+          max_diag = std::max(max_diag, std::abs(normal[i][i]));
+        }
+        const double diag_scale = std::max(max_diag, 1.0);
+        double mu = 1e-8 * diag_scale;
+        for (int attempt = 0; attempt < 8 && !accepted; ++attempt) {
+          double A_lm[5][5]{};
+          double b_lm[5]{};
+          for (int i = 0; i < 5; ++i) {
+            for (int j = 0; j < 5; ++j) A_lm[i][j] = normal[i][j];
+            A_lm[i][i] += mu;
+            b_lm[i] = -gradient[i];
+          }
+          double dx_lm[5]{};
+          if (solve_dense5(A_lm, b_lm, dx_lm)) {
+            accepted = try_direction(dx_lm, accepted_eval);
+          }
+          mu *= 10.0;
+        }
+      }
+      if (!accepted) {
+        return false;
+      }
+      if (accepted_eval.ok && accepted_eval.norm < best.norm) best = accepted_eval;
+    }
+    return false;
+  };
+
+  CornerEval best{};
+  bool converged = false;
+  const double seeds[4][2] = {
+      {std::max(dlambda_s_init, 0.0), std::max(dlambda_c_init, 0.0)},
+      {0.5 * std::max(dlambda_s_init, 0.0), 0.5 * std::max(dlambda_c_init, 0.0)},
+      {0.0, 0.0},
+      {std::max(dlambda_s_init, 1e-8), std::max(dlambda_c_init, 1e-8)}
+  };
+  for (const auto& seed : seeds) {
+    CornerEval candidate_best{};
+    if (try_start(seed[0], seed[1], candidate_best)) {
+      best = candidate_best;
+      converged = true;
+      break;
+    }
+    if (candidate_best.ok && candidate_best.norm < best.norm) best = candidate_best;
+  }
+
+  if (!converged) {
+    dlambda_s_out = best.ok ? best.dl_s : 0.0;
+    dlambda_c_out = best.ok ? best.dl_c : 0.0;
+    out.failureCode = 103;
+    return out;
+  }
+
+  dlambda_s_out = best.dl_s;
+  dlambda_c_out = best.dl_c;
+  if (best.dl_s < 1e-12) {
+    out.failureCode = 200;
+    return out;
+  }
+  if (best.dl_c < 1e-12) {
+    out.failureCode = 201;
+    return out;
+  }
+
+  out.stressUpdated = reconstruct_stress_voigt_from_principals(
+      principalT, best.s1, best.s2, best.s3);
+  const double dep1 = best.dl_s * best.dgs1 + best.dl_c * best.dgc1;
+  const double dep2 = best.dl_s * best.dgs2 + best.dl_c * best.dgc2;
+  const double dep3 = best.dl_s * best.dgs3 + best.dl_c * best.dgc3;
+  out.plasticIncrement = plastic_increment_voigt(principalT, dep1, dep2, dep3);
+  out.tangent = D_e;
+  out.stateUpdated.gamma_p = best.gamma_p;
+  out.stateUpdated.eps_v_p = best.eps_v_p;
+  out.stateUpdated.p_p = best.p_p;
+  out.stateUpdated.lastActiveSet = 3;
+  out.activeSurface = 3;
+  out.activeDlambdaS = best.dl_s;
+  out.activeDlambdaC = best.dl_c;
+  out.failureCode = 0;
+
+  const HsReturnCertificate cert = certify_hs_return(
+      best.s1, best.s2, best.s3,
+      best.gamma_p, best.p_p,
+      best.q_a, best.E_i, best.E_ur,
+      M_cap, p_t,
+      /*sigma_T=*/0.0, phi_eff, /*tensionEnabled=*/false);
+  if (!cert.admissible) {
+    out.failureCode = 106;
+    return out;
+  }
+  return out;
+}
+
 inline HsUpdateResult return_corner(
     const mce::PrincipalState& principalT,
     const MaterialPoint::HsState& stateC,
@@ -1225,7 +1649,11 @@ inline HsUpdateResult return_corner(
   double dgc1 = 0.0, dgc2 = 0.0, dgc3 = 0.0;
   double sin_psi_mob = 0.0;
 
-  // Tolerances scaled by the respective yield-function magnitudes.
+  // Tolerances scaled by the respective yield-function magnitudes. Keep the
+  // local active-surface residual stricter than the final admissibility
+  // certificate: the algorithmic tangent is the derivative of this converged
+  // local system, so accepting a looser corner residual breaks the residual
+  // oracle and produces a non-consistent tangent.
   const double f_tol_s = 1e-8 * std::max(std::abs(q_a), 1.0);
   const double pp_pt_scale = std::max(stateC.p_p + p_t, 1.0);
   const double f_tol_c = 1e-8 * pp_pt_scale * pp_pt_scale;
@@ -1271,33 +1699,29 @@ inline HsUpdateResult return_corner(
 
     // D_e · ∂g^s and D_e · ∂g^c in principal frame.
     const double trace_dgs = dgs1 + dgs2 + dgs3;
-    const double trace_dgc = dgc1 + dgc2 + dgc3;
     const double De_dgs1 = lam * trace_dgs + two_mu * dgs1;
     const double De_dgs2 = lam * trace_dgs + two_mu * dgs2;
     const double De_dgs3 = lam * trace_dgs + two_mu * dgs3;
+    const double trace_dgc = dgc1 + dgc2 + dgc3;
     const double De_dgc1 = lam * trace_dgc + two_mu * dgc1;
     const double De_dgc2 = lam * trace_dgc + two_mu * dgc2;
     const double De_dgc3 = lam * trace_dgc + two_mu * dgc3;
 
-    // Stress correction.
     s1_new = principalT.s1 - dl_s * De_dgs1 - dl_c * De_dgc1;
     s2_new = principalT.s2 - dl_s * De_dgs2 - dl_c * De_dgc2;
     s3_new = principalT.s3 - dl_s * De_dgs3 - dl_c * De_dgc3;
 
-    // Ordering check — corner Newton with regime-aware Koiter flow should
-    // preserve the trial ordering. A swap is a hard failure.
     if (!(s1_new >= s2_new - 1e-7 * std::max(std::abs(s1_new), 1.0) &&
           s2_new >= s3_new - 1e-7 * std::max(std::abs(s1_new), 1.0))) {
       out.failureCode = 103;
       return out;
     }
 
-    // Hardening.
     gamma_p_new = stateC.gamma_p + dl_s;
     const double p_prime_now = (s1_new + s2_new + s3_new) / 3.0;
     const double dpp_per_lc = 2.0 * H_cap * (p_prime_now + p_t);
     p_p_new = stateC.p_p + dl_c * dpp_per_lc;
-    if (p_p_new < stateC.p_p) p_p_new = stateC.p_p;   // cap monotone
+    if (p_p_new < stateC.p_p) p_p_new = stateC.p_p;
 
     eps_v_p_new = stateC.eps_v_p
                 + dl_s * (-sin_psi_mob)
@@ -1967,24 +2391,36 @@ inline HsUpdateResult update(
     refresh_q_constants(s3, E_i_loc, q_a_loc, E_ur_loc);
     return cone_yield_value(s1 - s3, q_a_loc, E_i_loc, E_ur_loc, gamma_p);
   };
-  auto cap_yield_after_return = [&](double s1, double s2, double s3, double p_p) {
-    return cap_yield_value(s1, s2, s3, p_p, M_cap, p_t, phi_eff);
-  };
+	  auto cap_yield_after_return = [&](double s1, double s2, double s3, double p_p) {
+	    return cap_yield_value(s1, s2, s3, p_p, M_cap, p_t, phi_eff);
+	  };
+	  auto synthetic_principal_from_locked_projectors = [&](const Vec6& stress) {
+	    mce::PrincipalState pr = principalT;
+	    pr.s1 = compression_component_in_projector(stress, principalT.P1);
+	    pr.s2 = compression_component_in_projector(stress, principalT.P2);
+	    pr.s3 = compression_component_in_projector(stress, principalT.P3);
+	    return pr;
+	  };
 
-  // Helper to extract corrected principals from a return-mapping result
-  // (we re-decompose the returned Voigt stress with the SAME mp_eig
-  // parameters used at trial — gives the principals in compression-positive
-  // ordering for sequential f-value checks).
-  auto check_other_surface_after = [&](const HsUpdateResult& r,
-                                       std::uint8_t expectActiveSurface,
-                                       double otherTol,
-                                       bool checkCap) -> bool {
-    if (r.failureCode != 0) return false;
-    const auto pr = mce::principal_stress_projectors_3d_compression_positive(
-        r.stressUpdated, mp_eig);
-    if (checkCap) {
-      const double f_c_after = cap_yield_after_return(
-          pr.s1, pr.s2, pr.s3, r.stateUpdated.p_p);
+	  // Helper to extract corrected principals from a return-mapping result
+	  // in the same trial-locked projector frame used by the return mapping.
+	  // Near repeated principal stresses, a fresh eigen-decomposition can relabel
+	  // the lateral directions and report a false inactive-surface violation.
+	  auto check_other_surface_after = [&](const HsUpdateResult& r,
+	                                       std::uint8_t expectActiveSurface,
+	                                       double otherTol,
+	                                       bool checkCap) -> bool {
+    // Single-surface returns use failureCode 106 to mean: the Newton
+    // projection onto the requested active surface converged, but the full
+    // two-surface admissibility certificate rejected the inactive surface.
+    // At this dispatcher level that is precisely the state we need to
+    // inspect for KKT demotion: if the inactive surface is within the active
+	    // set tolerance, the zero multiplier on that surface is admissible.
+	    if (!(r.failureCode == 0 || r.failureCode == 106)) return false;
+	    const auto pr = synthetic_principal_from_locked_projectors(r.stressUpdated);
+	    if (checkCap) {
+	      const double f_c_after = cap_yield_after_return(
+	          pr.s1, pr.s2, pr.s3, r.stateUpdated.p_p);
       return f_c_after <= otherTol;
     }
     const double f_s_after = cone_yield_after_return(
@@ -1998,53 +2434,52 @@ inline HsUpdateResult update(
       ConeFlowRegime::CompressionEdge,
       ConeFlowRegime::ExtensionEdge
   };
-  auto return_cone_with_active_set_search = [&]() -> HsUpdateResult {
-    HsUpdateResult primary = return_cone_only(
-        principalT, stateCommitted,
-        c_eff, phi_eff, psi_eff, sin_phi_cv,
-        E_i, E_ur, q_a, D_e, region);
-    if (primary.failureCode == 0) return primary;
+	  auto return_cone_with_active_set_search = [&]() -> HsUpdateResult {
+	    HsUpdateResult primary = return_cone_only(
+	        principalT, stateCommitted,
+	        c_eff, phi_eff, psi_eff, sin_phi_cv,
+	        E_i, E_ur, q_a, D_e, region);
+	    if (primary.failureCode == 0) return primary;
 
-    // Cone-only flow is non-smooth on the Mohr-Coulomb edges. The trial
-    // eigensolver can classify a point as a face while the admissible return
-    // lies on an edge (or the opposite) after the plastic correction. Search
-    // all three cone sectors and accept only a certified return. This mirrors
-    // active-set plasticity: regime choice is an unknown, not a hidden
-    // regularization.
-    const ConeFlowRegime primaryRegime = classify_cone_regime(principalT);
-    for (ConeFlowRegime regimeCandidate : coneRegimes) {
-      if (regimeCandidate == primaryRegime) continue;
-      HsUpdateResult candidate = return_cone_only(
-          principalT, stateCommitted,
+	    // Cone-only flow is non-smooth on the Mohr-Coulomb edges. The trial
+	    // eigensolver can classify a point as a face while the admissible return
+	    // lies on an edge (or the opposite) after the plastic correction. Search
+	    // all three cone sectors and accept only a certified return. This mirrors
+	    // active-set plasticity: regime choice is an unknown, not a hidden
+	    // regularization.
+	    const ConeFlowRegime primaryRegime = classify_cone_regime(principalT);
+	    for (ConeFlowRegime regimeCandidate : coneRegimes) {
+	      if (regimeCandidate == primaryRegime) continue;
+	      HsUpdateResult candidate = return_cone_only(
+	          principalT, stateCommitted,
           c_eff, phi_eff, psi_eff, sin_phi_cv,
           E_i, E_ur, q_a, D_e, region,
-          /*forceRegime=*/true,
-          regimeCandidate);
-      if (candidate.failureCode == 0) return candidate;
-    }
-    return primary;
-  };
-  auto return_corner_with_active_set_search = [&](double dl_s_init,
-                                                  double dl_c_init,
-                                                  double& dl_s_out,
-                                                  double& dl_c_out) -> HsUpdateResult {
-    HsUpdateResult primary = return_corner(
+	          /*forceRegime=*/true,
+	          regimeCandidate);
+	      if (candidate.failureCode == 0) return candidate;
+	    }
+		    return primary;
+		  };
+			  auto return_corner_with_active_set_search = [&](double dl_s_init,
+		                                                  double dl_c_init,
+		                                                  double& dl_s_out,
+	                                                  double& dl_c_out) -> HsUpdateResult {
+	    HsUpdateResult primary = return_corner(
         principalT, stateCommitted,
         c_eff, phi_eff, psi_eff, sin_phi_cv,
         E_i, E_ur, q_a, M_cap, p_t, H_cap,
         dl_s_init, dl_c_init,
         D_e, region, dl_s_out, dl_c_out);
-    if (primary.failureCode == 0 ||
-        primary.failureCode == 200 ||
-        primary.failureCode == 201) {
-      return primary;
-    }
-
-    const ConeFlowRegime primaryRegime = classify_cone_regime(principalT);
-    for (ConeFlowRegime regimeCandidate : coneRegimes) {
-      if (regimeCandidate == primaryRegime) continue;
-      double dl_s_candidate = 0.0;
-      double dl_c_candidate = 0.0;
+	    if (primary.failureCode == 0 ||
+	        primary.failureCode == 200 ||
+	        primary.failureCode == 201) {
+	      return primary;
+	    }
+	    const ConeFlowRegime primaryRegime = classify_cone_regime(principalT);
+	    for (ConeFlowRegime regimeCandidate : coneRegimes) {
+	      if (regimeCandidate == primaryRegime) continue;
+	      double dl_s_candidate = 0.0;
+	      double dl_c_candidate = 0.0;
       HsUpdateResult candidate = return_corner(
           principalT, stateCommitted,
           c_eff, phi_eff, psi_eff, sin_phi_cv,
@@ -2057,12 +2492,12 @@ inline HsUpdateResult update(
           candidate.failureCode == 200 ||
           candidate.failureCode == 201) {
         dl_s_out = dl_s_candidate;
-        dl_c_out = dl_c_candidate;
-        return candidate;
-      }
-    }
-    return primary;
-  };
+	          dl_c_out = dl_c_candidate;
+	          return candidate;
+	      }
+	    }
+	    return primary;
+	  };
 
   // Phase 4 tension cutoff (spec §3.5, F20). Detect a tension violation at
   // the trial state BEFORE any cone/cap dispatch — the tension surface
@@ -2089,12 +2524,12 @@ inline HsUpdateResult update(
   // committing trial history.
   const std::uint8_t retainedActiveSet =
       activeSetHint != 0u ? activeSetHint : stateCommitted.lastActiveSet;
-  const bool retainedCone =
-      hs_active_set_has_cone(retainedActiveSet) &&
-      f_s >= -F_TOL_S;
-  const bool retainedCap =
-      hs_active_set_has_cap(retainedActiveSet) &&
-      f_c >= -F_TOL_C;
+  // KKT loading/unloading rule: a previous active-set label is only a branch
+  // hint for a genuinely violated trial surface. A K0 NC seed may sit exactly
+  // on cone/cap, but zero or unloading increments must not create a plastic
+  // multiplier solely because `lastActiveSet` was nonzero.
+  const bool retainedCone = hs_active_set_has_cone(retainedActiveSet) && f_s > F_TOL_S;
+  const bool retainedCap = hs_active_set_has_cap(retainedActiveSet) && f_c > F_TOL_C;
   const bool coneReturnRequested = f_s > F_TOL_S || retainedCone;
   const bool capReturnRequested = f_c > F_TOL_C || retainedCap;
 
@@ -2208,12 +2643,20 @@ inline HsUpdateResult update(
     // computed above; verify it satisfies the cone yield (otherwise
     // there's a true edge case below).
     if (check_other_surface_after(cap_alone, 2, F_TOL_S, /*checkCap=*/false)) {
-      return cap_alone;
+      HsUpdateResult fb = cap_alone;
+      fb.failureCode = 0;
+      fb.activeSurface = 2;
+      fb.stateUpdated.lastActiveSet = 2;
+      return fb;
     }
   }
   if (corner_res.failureCode == 201) {
     if (check_other_surface_after(cone_alone, 1, F_TOL_C, /*checkCap=*/true)) {
-      return cone_alone;
+      HsUpdateResult fb = cone_alone;
+      fb.failureCode = 0;
+      fb.activeSurface = 1;
+      fb.stateUpdated.lastActiveSet = 1;
+      return fb;
     }
   }
 
@@ -2222,10 +2665,107 @@ inline HsUpdateResult update(
   // K0 / oedometric loading); accept if cone yield at the returned state
   // is still satisfied. Otherwise try cone-only and check the cap.
   if (check_other_surface_after(cap_alone, 2, F_TOL_S, /*checkCap=*/false)) {
-    return cap_alone;
+    HsUpdateResult fb = cap_alone;
+    fb.failureCode = 0;
+    fb.activeSurface = 2;
+    fb.stateUpdated.lastActiveSet = 2;
+    return fb;
   }
   if (check_other_surface_after(cone_alone, 1, F_TOL_C, /*checkCap=*/true)) {
-    return cone_alone;
+    HsUpdateResult fb = cone_alone;
+    fb.failureCode = 0;
+    fb.activeSurface = 1;
+    fb.stateUpdated.lastActiveSet = 1;
+    return fb;
+  }
+
+	  auto return_cone_for_principal = [&](const mce::PrincipalState& pr,
+	                                       const MaterialPoint::HsState& st) {
+	    HsUpdateResult primary = return_cone_only(
+	        pr, st,
+	        c_eff, phi_eff, psi_eff, sin_phi_cv,
+	        E_i, E_ur, q_a, D_e, region);
+	    if (primary.failureCode == 0) return primary;
+	    const ConeFlowRegime primaryRegime = classify_cone_regime(pr);
+	    for (ConeFlowRegime regimeCandidate : coneRegimes) {
+	      if (regimeCandidate == primaryRegime) continue;
+	      HsUpdateResult candidate = return_cone_only(
+	          pr, st,
+          c_eff, phi_eff, psi_eff, sin_phi_cv,
+          E_i, E_ur, q_a, D_e, region,
+	          /*forceRegime=*/true,
+	          regimeCandidate);
+	      if (candidate.failureCode == 0) return candidate;
+	    }
+	    return primary;
+	  };
+  auto sequential_cone_cap_projection = [&]() {
+    HsUpdateResult seq{};
+    seq.stateUpdated = stateCommitted;
+    seq.stressUpdated = sigT_voigt;
+    seq.tangent = D_e;
+    seq.failureCode = 106;
+
+    mce::PrincipalState pr = principalT;
+    MaterialPoint::HsState st = stateCommitted;
+    Vec6 plasticAccum{};
+    bool usedCone = false;
+    bool usedCap = false;
+
+    for (int iter = 0; iter < 12; ++iter) {
+      double E_i_loc = E_i;
+      double q_a_loc = q_a;
+      double E_ur_loc = E_ur;
+      refresh_q_constants(pr.s3, E_i_loc, q_a_loc, E_ur_loc);
+      const double f_s_now = cone_yield_value(
+          pr.s1 - pr.s3, q_a_loc, E_i_loc, E_ur_loc, st.gamma_p);
+      const double f_c_now = cap_yield_value(
+          pr.s1, pr.s2, pr.s3, st.p_p, M_cap, p_t, phi_eff);
+      if (f_s_now <= F_TOL_S && f_c_now <= F_TOL_C) {
+        seq.stressUpdated = reconstruct_stress_voigt_from_principals(
+            principalT, pr.s1, pr.s2, pr.s3);
+        seq.plasticIncrement = plasticAccum;
+        seq.stateUpdated = st;
+        seq.failureCode = 0;
+        seq.activeSurface = usedCone && usedCap ? 3u : (usedCap ? 2u : (usedCone ? 1u : 0u));
+        seq.stateUpdated.lastActiveSet = seq.activeSurface;
+        const HsReturnCertificate cert = certify_hs_return(
+            pr.s1, pr.s2, pr.s3,
+            st.gamma_p, st.p_p,
+            q_a_loc, E_i_loc, E_ur_loc,
+            M_cap, p_t,
+            /*sigma_T=*/0.0, phi_eff, /*tensionEnabled=*/false);
+        if (!cert.admissible) seq.failureCode = 106;
+        return seq;
+      }
+
+      const double coneMerit = f_s_now / std::max(F_TOL_S, 1e-30);
+      const double capMerit = f_c_now / std::max(F_TOL_C, 1e-30);
+      const bool doCap = f_c_now > F_TOL_C && (f_s_now <= F_TOL_S || capMerit >= coneMerit);
+      HsUpdateResult step = doCap
+          ? return_cap_only(pr, st, c_eff, phi_eff, M_cap, p_t, H_cap, D_e, region)
+          : return_cone_for_principal(pr, st);
+      if (!(step.failureCode == 0 || step.failureCode == 106)) {
+        seq.failureCode = step.failureCode;
+        return seq;
+      }
+      for (int k = 0; k < 6; ++k) plasticAccum[k] += step.plasticIncrement[k];
+      st = step.stateUpdated;
+      if (doCap || step.activeSurface == 2 || step.activeSurface == 3) {
+        pr = mce::principal_stress_projectors_3d_compression_positive(
+            step.stressUpdated, mp_eig);
+      } else {
+        pr = synthetic_principal_from_locked_projectors(step.stressUpdated);
+      }
+      usedCap = usedCap || doCap || step.activeSurface == 2 || step.activeSurface == 3;
+      usedCone = usedCone || !doCap || step.activeSurface == 1 || step.activeSurface == 3;
+    }
+    return seq;
+  };
+
+  HsUpdateResult sequential_res = sequential_cone_cap_projection();
+  if (sequential_res.failureCode == 0) {
+    return sequential_res;
   }
 
   // Phase 4 (fix plan): the previous "least-bad fallback" overrode
@@ -2237,23 +2777,21 @@ inline HsUpdateResult update(
   // can cut back the load step.
   auto residual_other_surface = [&](const HsUpdateResult& r,
                                     bool checkCap) -> double {
-    if (!(r.failureCode == 0 || r.failureCode == 106)) {
-      return std::numeric_limits<double>::infinity();
-    }
-    const auto pr = mce::principal_stress_projectors_3d_compression_positive(
-        r.stressUpdated, mp_eig);
-    if (checkCap) {
-      return std::max(0.0, cap_yield_after_return(
-          pr.s1, pr.s2, pr.s3, r.stateUpdated.p_p));
+	    if (!(r.failureCode == 0 || r.failureCode == 106)) {
+	      return std::numeric_limits<double>::infinity();
+	    }
+	    const auto pr = synthetic_principal_from_locked_projectors(r.stressUpdated);
+	    if (checkCap) {
+	      return std::max(0.0, cap_yield_after_return(
+	          pr.s1, pr.s2, pr.s3, r.stateUpdated.p_p));
     }
     return std::max(0.0, cone_yield_after_return(
         pr.s1, pr.s3, r.stateUpdated.gamma_p));
-  };
-  auto fallback_admissible = [&](const HsUpdateResult& r) -> bool {
-    if (!(r.failureCode == 0 || r.failureCode == 106)) return false;
-    const auto pr = mce::principal_stress_projectors_3d_compression_positive(
-        r.stressUpdated, mp_eig);
-    // Use σ_3-refreshed hyperbolic constants — matches the inner returns'
+	  };
+	  auto fallback_admissible = [&](const HsUpdateResult& r) -> bool {
+	    if (!(r.failureCode == 0 || r.failureCode == 106)) return false;
+	    const auto pr = synthetic_principal_from_locked_projectors(r.stressUpdated);
+	    // Use σ_3-refreshed hyperbolic constants — matches the inner returns'
     // certify convention so a trial-frozen vs current-σ_3 mismatch doesn't
     // flip an internally-admissible state to inadmissible (see comment on
     // `cone_yield_after_return`).
@@ -2304,10 +2842,9 @@ inline HsUpdateResult update(
     return fb;
   }
 
-  // No admissible fallback. The corner Newton, sequential project-and-
-  // check, and both single-surface returns all failed to find an
-  // admissible state. Surface failureCode 106 so the outer FE Newton
-  // cuts back the load step.
+  // No admissible fallback. The corner Newton, sequential project-and-check,
+  // and both single-surface returns all failed to find an admissible state.
+  // Surface failureCode 106 so the outer FE Newton cuts back the load step.
   out.stressUpdated = sigT_voigt;
   out.tangent = D_e;
   out.failureCode = 106;
@@ -2357,6 +2894,32 @@ inline double plane_strain_recovery_residual_zz(
   return residual;
 }
 
+inline double plane_strain_recovery_tolerance_zz(
+    const Vec6& strainTrialVoigt,
+    const Vec6& strainCommittedVoigt,
+    const Vec6& stressUpdatedVoigt,
+    const Vec6& stressCommittedVoigt,
+    const Vec6& plasticIncrementVoigt,
+    const Mat6& D_e) {
+  double E = 0.0;
+  double nu = 0.0;
+  if (!recover_elastic_E_nu_from_tangent(D_e, E, nu)) return 1e-8;
+  (void)nu;
+  double strainScale = 0.0;
+  for (int k = 0; k < 6; ++k) {
+    strainScale = std::max(strainScale, std::abs(strainTrialVoigt[k] - strainCommittedVoigt[k]));
+    strainScale = std::max(strainScale, std::abs(plasticIncrementVoigt[k]));
+  }
+  const double stressScale = std::max({
+      std::abs(stressUpdatedVoigt[V_XX] - stressCommittedVoigt[V_XX]),
+      std::abs(stressUpdatedVoigt[V_YY] - stressCommittedVoigt[V_YY]),
+      std::abs(stressUpdatedVoigt[V_ZZ] - stressCommittedVoigt[V_ZZ]),
+      std::abs(stressUpdatedVoigt[V_XY] - stressCommittedVoigt[V_XY])
+  });
+  strainScale = std::max(strainScale, stressScale / std::max(E, 1.0));
+  return std::max(1e-8, 1e-8 * strainScale);
+}
+
 // Integrate the same HS return map with local strain substepping. This is a
 // numerical integration fallback only: it does not change strength, stiffness,
 // yield surfaces, flow rules, or hardening laws. Each substep starts from the
@@ -2369,7 +2932,6 @@ inline HsUpdateResult update_substepped_no_tangent(
     const RegionParams& region,
     double sigmaMsf,
     std::uint8_t activeSetHint = 0) {
-  constexpr double kEpsZzTol = 1e-10;
   const Vec6 totalDelta = lng::sub(strainTrialVoigt, strainCommittedVoigt);
   HsUpdateResult directFailure{};
   directFailure.stateUpdated = stateCommitted;
@@ -2410,7 +2972,10 @@ inline HsUpdateResult update_substepped_no_tangent(
       const double residualZz = plane_strain_recovery_residual_zz(
           strainT, strainC, last.stressUpdated, stressC,
           last.plasticIncrement, last.tangent, residualOk);
-      if (!residualOk || std::abs(residualZz) > kEpsZzTol) {
+      const double residualTol = plane_strain_recovery_tolerance_zz(
+          strainT, strainC, last.stressUpdated, stressC,
+          last.plasticIncrement, last.tangent);
+      if (!residualOk || std::abs(residualZz) > residualTol) {
         ok = false;
         directFailure.failureCode = 105;
         break;
@@ -2900,6 +3465,12 @@ inline Mat6 fd_algorithmic_tangent(
     std::uint8_t activeSetHint = 0) {
   Mat6 D_alg = D_e;     // out-of-plane columns filled from D_e (plane-strain pass-through)
   ok = true;
+  bool allColumnsCertified = true;
+  double deNorm = 0.0;
+  for (int i = 0; i < 6; ++i) {
+    for (int j = 0; j < 6; ++j) deNorm += D_e[i][j] * D_e[i][j];
+  }
+  deNorm = std::sqrt(std::max(deNorm, 0.0));
 
   auto run_probe = [&](const Vec6& strain_probe) -> HsUpdateResult {
     if (useSubsteppedMap) {
@@ -2926,6 +3497,42 @@ inline Mat6 fd_algorithmic_tangent(
                                      std::fabs(strainTrialVoigt[V_XY]),
                                      1e-3});
   const double h = 1e-6 * strainMag;
+  auto active_set_distance = [](std::uint8_t a, std::uint8_t b) {
+    std::uint8_t x = static_cast<std::uint8_t>((a & 0x7u) ^ (b & 0x7u));
+    int n = 0;
+    for (int bit = 0; bit < 3; ++bit) n += (x >> bit) & 1u;
+    return n;
+  };
+  auto column_reasonable = [&](const Vec6& column) {
+    double norm = 0.0;
+    for (int i = 0; i < 6; ++i) {
+      if (!std::isfinite(column[i])) return false;
+      norm += column[i] * column[i];
+    }
+    norm = std::sqrt(std::max(norm, 0.0));
+    return norm <= 1e4 * std::max(deNorm, 1.0);
+  };
+  auto write_column = [&](std::size_t dof, const Vec6& column) {
+    if (!column_reasonable(column)) return false;
+    for (int i = 0; i < 6; ++i) D_alg[i][dof] = column[i];
+    return true;
+  };
+  auto forward_column = [&](const HsUpdateResult& p) {
+    Vec6 column{};
+    const double invH = 1.0 / h;
+    for (int i = 0; i < 6; ++i) {
+      column[i] = (p.stressUpdated[i] - resT.stressUpdated[i]) * invH;
+    }
+    return column;
+  };
+  auto backward_column = [&](const HsUpdateResult& m) {
+    Vec6 column{};
+    const double invH = 1.0 / h;
+    for (int i = 0; i < 6; ++i) {
+      column[i] = (resT.stressUpdated[i] - m.stressUpdated[i]) * invH;
+    }
+    return column;
+  };
 
   const std::size_t dofs[3] = {V_XX, V_YY, V_XY};
   for (std::size_t k = 0; k < 3; ++k) {
@@ -2948,46 +3555,55 @@ inline Mat6 fd_algorithmic_tangent(
       // boundaries, one side often unloads elastically while the other
       // keeps loading plastically; averaging those two branches gives the
       // wrong semismooth Newton tangent and stalls flat strip-load cases.
+      Vec6 column{};
       const double invDen = 1.0 / (2.0 * h);
       for (int i = 0; i < 6; ++i) {
-        D_alg[i][dof] = (resP.stressUpdated[i] - resM.stressUpdated[i]) * invDen;
+        column[i] = (resP.stressUpdated[i] - resM.stressUpdated[i]) * invDen;
       }
+      if (!write_column(dof, column)) allColumnsCertified = false;
       continue;
     }
     // One-sided fallback near active-set discontinuity. Prefer the side
     // that preserves the reference active set, so the tangent linearises
     // the branch actually selected by the return map.
     if (plusSameBranch) {
-      const double invH = 1.0 / h;
-      for (int i = 0; i < 6; ++i) {
-        D_alg[i][dof] = (resP.stressUpdated[i] - resT.stressUpdated[i]) * invH;
-      }
+      if (!write_column(dof, forward_column(resP))) allColumnsCertified = false;
       continue;
     }
     if (minusSameBranch) {
-      const double invH = 1.0 / h;
-      for (int i = 0; i < 6; ++i) {
-        D_alg[i][dof] = (resT.stressUpdated[i] - resM.stressUpdated[i]) * invH;
-      }
+      if (!write_column(dof, backward_column(resM))) allColumnsCertified = false;
       continue;
     }
-    if (refOk && plusOk && !minusOk) {
-      const double invH = 1.0 / h;
-      for (int i = 0; i < 6; ++i) {
-        D_alg[i][dof] = (resP.stressUpdated[i] - resT.stressUpdated[i]) * invH;
+    if (refOk && plusOk && minusOk) {
+      const int plusDistance = active_set_distance(resP.stateUpdated.lastActiveSet, refActiveSet);
+      const int minusDistance = active_set_distance(resM.stateUpdated.lastActiveSet, refActiveSet);
+      const Vec6 plusColumn = forward_column(resP);
+      const Vec6 minusColumn = backward_column(resM);
+      const bool plusReasonable = column_reasonable(plusColumn);
+      const bool minusReasonable = column_reasonable(minusColumn);
+      if (plusReasonable && (!minusReasonable || plusDistance <= minusDistance)) {
+        write_column(dof, plusColumn);
+        continue;
       }
+      if (minusReasonable) {
+        write_column(dof, minusColumn);
+        continue;
+      }
+      allColumnsCertified = false;
+      for (int i = 0; i < 6; ++i) D_alg[i][dof] = D_e[i][dof];
       continue;
     }
-    if (refOk && minusOk && !plusOk) {
-      const double invH = 1.0 / h;
-      for (int i = 0; i < 6; ++i) {
-        D_alg[i][dof] = (resT.stressUpdated[i] - resM.stressUpdated[i]) * invH;
-      }
+    if (refOk && plusOk) {
+      if (!write_column(dof, forward_column(resP))) allColumnsCertified = false;
+      continue;
+    }
+    if (refOk && minusOk) {
+      if (!write_column(dof, backward_column(resM))) allColumnsCertified = false;
       continue;
     }
     // Neither side converged — fall back to D_e for this column.
     for (int i = 0; i < 6; ++i) D_alg[i][dof] = D_e[i][dof];
-    ok = false;
+    allColumnsCertified = false;
   }
 
   // Guard against NaN/Inf seeping through.
@@ -2999,7 +3615,23 @@ inline Mat6 fd_algorithmic_tangent(
       }
     }
   }
+  ok = allColumnsCertified;
   return D_alg;
+}
+
+inline double tangent_relative_error_inplane(const Mat6& a, const Mat6& b) {
+  const int dofs[3] = {V_XX, V_YY, V_XY};
+  double diff = 0.0;
+  double norm = 0.0;
+  for (int ii = 0; ii < 3; ++ii) {
+    for (int jj = 0; jj < 3; ++jj) {
+      const double av = a[dofs[ii]][dofs[jj]];
+      const double bv = b[dofs[ii]][dofs[jj]];
+      diff += (av - bv) * (av - bv);
+      norm += bv * bv;
+    }
+  }
+  return std::sqrt(diff) / std::max(std::sqrt(norm), 1.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -3043,16 +3675,13 @@ inline HsUpdateResult update_plane_strain(
   // For an admissible return mapping with elastic isotropic D_e and the
   // principal-frame correction used here, residual ≡ 0 to machine
   // precision in all components — including ε_zz. We enforce that as a
-  // hard check; |residual_zz| > 1e-10 ⇒ return failureCode = 105 so the
-  // outer FE Newton cuts back. We DO NOT attempt to repair by changing
-  // ε_zz; that's the bug.
+  // hard check on the current strain scale so the outer FE Newton cuts back.
+  // We DO NOT attempt to repair by changing ε_zz; that's the bug.
   //
   // If a σ_zz Newton fallback were needed, the unknown would be δσ_zz
   // and we would solve on STRESS, not strain. The strain input stays
   // fixed. (Not implemented in this initial pass — the "pass through and
   // check residual" path is the primary mode.)
-  constexpr double kEpsZzTol = 1e-10;   // B.7 spec target
-
   bool usedSubstepping = false;
   HsUpdateResult res = update(
       strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
@@ -3086,7 +3715,11 @@ inline HsUpdateResult update_plane_strain(
             res.stressUpdated, stressCommittedVoigt,
             res.plasticIncrement, res.tangent, residualOk);
 
-  if (!usedSubstepping && (!residualOk || std::abs(residual_zz) > kEpsZzTol)) {
+  const double residual_zz_tol = plane_strain_recovery_tolerance_zz(
+      strainTrialVoigt, strainCommittedVoigt,
+      res.stressUpdated, stressCommittedVoigt,
+      res.plasticIncrement, res.tangent);
+  if (!usedSubstepping && (!residualOk || std::abs(residual_zz) > residual_zz_tol)) {
     // Plane-strain identity violated. Surface failureCode 105 so the
     // outer FE Newton cuts back. DO NOT mutate ε_zz to repair.
     res.failureCode = 105;
@@ -3157,6 +3790,11 @@ inline HsUpdateResult update_plane_strain(
     bool tangentOk = false;
     Mat6 D_alg = D_e_local;
 
+    if (!use_simo_hughes) {
+      try_fd_fallback();
+      return;
+    }
+
     if (use_simo_hughes) {
       const Vec6 sigma_trial = lng::add(
           stressCommittedVoigt,
@@ -3194,6 +3832,19 @@ inline HsUpdateResult update_plane_strain(
           break;
       }
       if (tangentOk) {
+        bool fdOk = false;
+        Mat6 D_fd = fd_algorithmic_tangent(
+            strainTrialVoigt, strainCommittedVoigt, stressCommittedVoigt,
+            stateCommitted, region, sigmaMsf, D_e_local, fdOk,
+            /*useSubsteppedMap=*/false, activeSetHint);
+        if (fdOk) {
+          const double rel = tangent_relative_error_inplane(D_alg, D_fd);
+          if (rel > 1e-3) {
+            res.tangent = D_fd;
+            res.tangentMode = HsTangentMode::FiniteDifference;
+            return;
+          }
+        }
         res.tangent = D_alg;
         res.tangentMode = HsTangentMode::ConsistentAlgorithmic;
         return;

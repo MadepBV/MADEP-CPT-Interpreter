@@ -124,22 +124,57 @@ function buildLoadRefinementMeta(model, load, targetArea) {
   };
 }
 
-function buildOuterSegments(model, load, options, allocateMarker) {
+function normalizeMeshSurfaceLoads(model, options) {
+  const modelLoads = Array.isArray(model?.surfaceLoads)
+    && model.surfaceLoads.length
+    ? model.surfaceLoads
+    : (model?.surfaceLoad ? [model.surfaceLoad] : []);
+  const optionLoads = [
+    ...(Array.isArray(options?.loads) ? options.loads : []),
+    ...(options?.load ? [options.load] : [])
+  ];
+  const raw = [
+    ...modelLoads,
+    ...(modelLoads.length ? [] : optionLoads)
+  ];
+  const seen = new Set();
+  return raw
+    .filter((load) => load && Number.isFinite(Number(load.xStart)) && Number.isFinite(Number(load.xEnd)))
+    .map((load) => ({
+      ...load,
+      xStart: Math.min(Number(load.xStart), Number(load.xEnd)),
+      xEnd: Math.max(Number(load.xStart), Number(load.xEnd))
+    }))
+    .filter((load) => {
+      if (!(load.xEnd > load.xStart + GEOM_EPS)) return false;
+      const key = load.id || `${load.xStart.toFixed(6)}:${load.xEnd.toFixed(6)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function buildOuterSegments(model, loads, options, allocateMarker) {
   const baseLength = Math.sqrt(Math.max(Number(options?.segmentTargetArea ?? options?.meshTargetArea) || 0.5, 0.01));
-  const refinement = buildLoadRefinementMeta(model, load, options?.meshTargetArea);
+  const refinements = (loads || [])
+    .map((load) => ({ load, refinement: buildLoadRefinementMeta(model, load, options?.meshTargetArea) }))
+    .filter((item) => item.refinement);
+  const splitXs = uniqueSorted(refinements.flatMap((item) => item.refinement.splitXs || []), 1e-5);
   return buildOuterBoundary(model).flatMap((edge) => {
-    const pieces = splitTerrainEdgeAtXs(edge, refinement?.splitXs || []);
+    const pieces = splitTerrainEdgeAtXs(edge, splitXs);
     return pieces.map((piece) => {
       const xMid = 0.5 * (piece.a.x + piece.b.x);
       let segmentTargetLength = edge.source === 'terrain' ? Math.max(baseLength * 0.8, 0.05) : baseLength;
-      if (refinement && piece.source === 'terrain') {
-        const topOverlap = overlapRange(piece.a.x, piece.b.x, load.xStart, load.xEnd);
-        const leftOverlap = overlapRange(piece.a.x, piece.b.x, load.xStart - refinement.edgeHalfWidth, load.xStart + refinement.edgeHalfWidth);
-        const rightOverlap = overlapRange(piece.a.x, piece.b.x, load.xEnd - refinement.edgeHalfWidth, load.xEnd + refinement.edgeHalfWidth);
-        if (topOverlap) segmentTargetLength = Math.min(segmentTargetLength, refinement.refinedSpacing);
-        if (leftOverlap || rightOverlap || Math.abs(xMid - load.xStart) <= refinement.edgeHalfWidth || Math.abs(xMid - load.xEnd) <= refinement.edgeHalfWidth) {
-          segmentTargetLength = Math.min(segmentTargetLength, refinement.edgeSpacing);
-        }
+      if (piece.source === 'terrain') {
+        refinements.forEach(({ load, refinement }) => {
+          const topOverlap = overlapRange(piece.a.x, piece.b.x, load.xStart, load.xEnd);
+          const leftOverlap = overlapRange(piece.a.x, piece.b.x, load.xStart - refinement.edgeHalfWidth, load.xStart + refinement.edgeHalfWidth);
+          const rightOverlap = overlapRange(piece.a.x, piece.b.x, load.xEnd - refinement.edgeHalfWidth, load.xEnd + refinement.edgeHalfWidth);
+          if (topOverlap) segmentTargetLength = Math.min(segmentTargetLength, refinement.refinedSpacing);
+          if (leftOverlap || rightOverlap || Math.abs(xMid - load.xStart) <= refinement.edgeHalfWidth || Math.abs(xMid - load.xEnd) <= refinement.edgeHalfWidth) {
+            segmentTargetLength = Math.min(segmentTargetLength, refinement.edgeSpacing);
+          }
+        });
       }
       return {
         ...piece,
@@ -183,6 +218,17 @@ function buildLoadRefinementPoints(model, load, options) {
   points.forEach((point) => {
     const key = `${point.x.toFixed(6)},${point.y.toFixed(6)}`;
     deduped.set(key, point);
+  });
+  return [...deduped.values()];
+}
+
+function buildLoadRefinementPointsForLoads(model, loads, options) {
+  const deduped = new Map();
+  (loads || []).forEach((load) => {
+    buildLoadRefinementPoints(model, load, options).forEach((point) => {
+      const key = `${point.x.toFixed(6)},${point.y.toFixed(6)}`;
+      deduped.set(key, point);
+    });
   });
   return [...deduped.values()];
 }
@@ -250,14 +296,15 @@ function buildMechanicalPslg(model, regions, options) {
     markerInfoById.set(markerId, { ...info, markerId });
     return markerId;
   };
+  const loads = normalizeMeshSurfaceLoads(model, options);
   const constraintSegments = [
-    ...buildOuterSegments(model, options.load, options, allocateMarker),
+    ...buildOuterSegments(model, loads, options, allocateMarker),
     ...buildRegionBoundarySegments(regions, options, allocateMarker)
   ];
   return buildSectionPslg(model, regions, {
     ...options,
     constraintSegments,
-    extraPoints: buildLoadRefinementPoints(model, options.load, options),
+    extraPoints: buildLoadRefinementPointsForLoads(model, loads, options),
     markerInfoById
   });
 }

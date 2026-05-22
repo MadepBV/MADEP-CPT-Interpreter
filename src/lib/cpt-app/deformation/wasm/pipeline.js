@@ -55,6 +55,7 @@ export async function runWasmDeformationPipeline(ctx) {
     loadRhs,
     initialField,
     predictorSolution,
+    geostatic,
     porePressureByIntegrationPoint,
     options,
     load,
@@ -68,9 +69,22 @@ export async function runWasmDeformationPipeline(ctx) {
   const numRegions = Math.max(...mesh.cells.map((c) => Number(c.regionIndex) || 0), -1) + 1;
   const regionsArray = new Array(numRegions);
   const firstConstitutive = regionConstitutiveByRegion.values().next().value || null;
+  const useMcConsistentTangent =
+    String(options?.constitutiveModel || '').toLowerCase() === 'mc-plastic' &&
+    options?.useMcConsistentTangent !== false;
   for (let r = 0; r < numRegions; r += 1) {
     const constitutive = regionConstitutiveByRegion.get(r) || firstConstitutive;
-    regionsArray[r] = constitutive?.materialParameters || {};
+    const materialParameters = constitutive?.materialParameters || {};
+    regionsArray[r] = useMcConsistentTangent
+      ? {
+          ...materialParameters,
+          useConsistentTangent: true,
+          mc: {
+            ...(materialParameters.mc || {}),
+            useConsistentTangent: true
+          }
+        }
+      : materialParameters;
   }
 
   const fixedDofs = Array.from(fixedValues.keys()).sort((a, b) => a - b);
@@ -136,6 +150,7 @@ export async function runWasmDeformationPipeline(ctx) {
     startedAt,
     predictorSolution,
     initialField,
+    geostatic,
     porePressureByIntegrationPoint,
     analysisType
   });
