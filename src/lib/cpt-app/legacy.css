@@ -1387,7 +1387,7 @@ input[type=range]{accent-color:var(--ac)}
   position:absolute;
   --st6-view-menu-gap:12px;
   --st6-view-menu-head-h:43px;
-  --st6-view-menu-max-h:min(520px, calc(100% - (2 * var(--st6-view-menu-gap))), calc(100dvh - var(--app-toolbar-h) - 56px));
+  --st6-view-menu-max-h:min(520px, calc(100dvh - var(--app-toolbar-h) - 56px));
   top:var(--st6-view-menu-gap);
   right:var(--st6-view-menu-gap);
   z-index:3;
@@ -1840,19 +1840,18 @@ input[type=range]{accent-color:var(--ac)}
   }
   .st6-bishop-view-menu{
     --st6-view-menu-gap:10px;
-    --st6-view-menu-max-h:calc(100% - (2 * var(--st6-view-menu-gap)));
+    --st6-view-menu-max-h:min(440px, calc(62vh - (2 * var(--st6-view-menu-gap))), calc(100dvh - var(--app-toolbar-h) - 96px));
   }
   .st6-bishop-view-menu[open]{
     top:var(--st6-view-menu-gap);
     right:var(--st6-view-menu-gap);
-    bottom:var(--st6-view-menu-gap);
     z-index:8;
-    height:auto;
-    max-height:none;
+    height:var(--st6-view-menu-max-h);
+    max-height:var(--st6-view-menu-max-h);
   }
   .st6-bishop-view-menu-body{
     max-height:none;
-    flex:1 1 auto;
+    flex:1 1 0;
     min-height:0;
     padding-bottom:max(16px, env(safe-area-inset-bottom, 0px));
   }
