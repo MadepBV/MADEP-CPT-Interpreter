@@ -161,6 +161,69 @@ function compareWallProbes(messages, debugWallPassiveSegmentsForTest, legacyMode
   });
 }
 
+function verifyWallBypassClassification(messages, analyzeBishopSearch, buildBishopModelFromStageLayers) {
+  const layers = [{ top: 0, bot: 12, type: 'Sand', subtype: 'Sand', c: 3, phi: 30, g: 18, gs: 20 }];
+  const baseState = {
+    terrain: [{ x: 0, y: 4 }, { x: 8, y: 4 }, { x: 20, y: 0 }],
+    phreatic: [],
+    activeCptX: 4,
+    analysisDepth: 12,
+    strengthSet: 'characteristic',
+    surfaceLoads: []
+  };
+  const baseSearch = {
+    entryZone: { xStart: 1, xEnd: 4 },
+    exitZone: { xStart: 14, xEnd: 19 },
+    methodMode: 'bishop_only',
+    searchConfig: {
+      nEntry: 4,
+      nExit: 5,
+      nCenter: 8,
+      centerOffsetMin: 0.7,
+      centerOffsetMax: 3.0,
+      minChordLength: 2,
+      minSlipThickness: 0.5,
+      maxExitAngleDeg: 65,
+      validationSamples: 24,
+      geomTol: 0.001,
+      minSliceWidth: 0.05,
+      targetSlices: 28,
+      keepBest: 8
+    },
+    solverConfig: { initialFS: 1, tolerance: 1e-4, maxIterations: 60, minMAlpha: 1e-6 }
+  };
+  const cases = [
+    {
+      name: 'vertical shallow wall',
+      wall: { id: 'w1', x: 9, yTop: 4, yTip: 3.2, passiveSide: 'right' }
+    },
+    {
+      name: 'inclined shallow wall',
+      wall: {
+        id: 'w1',
+        head: { x: 9, y: 4 },
+        tip: { x: 10, y: 3.2 },
+        x: 9,
+        yTop: 4,
+        yTip: 3.2,
+        passiveSide: 'right'
+      }
+    }
+  ];
+
+  cases.forEach(({ name, wall }) => {
+    const model = buildBishopModelFromStageLayers(layers, { ...baseState, walls: [wall] });
+    const result = analyzeBishopSearch({ ...baseSearch, model });
+    const belowCount = (result.allResults || []).filter((item) => item.passesBelowWall).length;
+    if (belowCount <= 0) {
+      fail(messages, `${name}: expected at least one below-wall classification`);
+    }
+    if (!result.wallSummary?.criticalBelowWall) {
+      fail(messages, `${name}: expected wallSummary.criticalBelowWall to be populated`);
+    }
+  });
+}
+
 async function main() {
   const server = await createServer({
     configFile: false,
@@ -215,6 +278,8 @@ async function main() {
         fixture.name || file
       );
     }
+
+    verifyWallBypassClassification(messages, analyzeBishopSearch, buildBishopModelFromStageLayers);
 
     if (messages.length) {
       console.error('Phase A parity verification failed:\n');

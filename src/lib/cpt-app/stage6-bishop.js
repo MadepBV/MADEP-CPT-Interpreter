@@ -683,6 +683,40 @@ export function debugWallPassiveSegmentsForTest(model, wall, yIntersect, soilSou
   return wallPassiveSegments(model, wall, yIntersect, soilSource);
 }
 
+function activeCircleWallAxisIntersections(circle, axis, entry, exit) {
+  if (!circle || !axis) return [];
+  const cx = Number(circle.center?.x);
+  const cy = Number(circle.center?.y);
+  const radius = Number(circle.radius);
+  if (![cx, cy, radius].every(Number.isFinite) || !(radius > 0)) return [];
+  const fx = axis.head.x - cx;
+  const fy = axis.head.y - cy;
+  const b = 2 * (fx * axis.t.x + fy * axis.t.y);
+  const c = fx * fx + fy * fy - radius * radius;
+  const disc = b * b - 4 * c;
+  if (disc < -GEOM_EPS) return [];
+  const roots = disc <= GEOM_EPS
+    ? [-b / 2]
+    : [(-b - Math.sqrt(Math.max(disc, 0))) / 2, (-b + Math.sqrt(Math.max(disc, 0))) / 2];
+  const xMin = Math.min(entry.x, exit.x) + GEOM_EPS;
+  const xMax = Math.max(entry.x, exit.x) - GEOM_EPS;
+  return roots
+    .filter((s, index, arr) => Number.isFinite(s) && arr.findIndex((other) => Math.abs(other - s) <= GEOM_EPS) === index)
+    .map((s) => ({
+      s,
+      point: {
+        x: axis.head.x + axis.t.x * s,
+        y: axis.head.y + axis.t.y * s
+      }
+    }))
+    .filter((hit) => hit.point.x > xMin && hit.point.x < xMax)
+    .filter((hit) => {
+      const activeY = circleYActive(circle, hit.point.x);
+      return Number.isFinite(activeY) && Math.abs(activeY - hit.point.y) <= Math.max(1e-4, circle.radius * 1e-7);
+    })
+    .sort((a, b) => a.s - b.s);
+}
+
 function computeWallIntersections(circle, model, entry, exit, soilSource = 'regions') {
   const walls = model?.walls || [];
   const interactions = {
@@ -706,6 +740,15 @@ function computeWallIntersections(circle, model, entry, exit, soilSource = 'regi
       })
       .sort((a, b) => a.s - b.s);
     if (!hits.length) {
+      const bypassHits = activeCircleWallAxisIntersections(circle, axis, entry, exit);
+      if (bypassHits.some((hit) => hit.s > axis.length + GEOM_EPS)) {
+        interactions.passedBelow += 1;
+        return;
+      }
+      if (bypassHits.some((hit) => hit.s < -GEOM_EPS)) {
+        interactions.passedAbove += 1;
+        return;
+      }
       const minWallX = Math.min(axis.head.x, axis.tip.x);
       const maxWallX = Math.max(axis.head.x, axis.tip.x);
       if (maxWallX <= entry.x + GEOM_EPS || minWallX >= exit.x - GEOM_EPS) interactions.outOfMass += 1;
