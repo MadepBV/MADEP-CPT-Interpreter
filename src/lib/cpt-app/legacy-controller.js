@@ -7650,12 +7650,22 @@ function stage6BishopWallQuantitySeries(wallResult, quantity){
 
 function stage6BishopWallQuantityStats(wallResult, quantity){
   const data = stage6BishopWallQuantitySeries(wallResult, quantity);
-  const finite = (data?.values || []).filter(Number.isFinite);
-  if(!finite.length) return null;
-  const min = Math.min(...finite);
-  const max = Math.max(...finite);
+  const pairs = (data?.values || []).map((value, index)=>({
+    value:Number(value),
+    s:Number(data?.sValues?.[index]),
+    index
+  })).filter((pair)=>Number.isFinite(pair.value));
+  if(!pairs.length) return null;
+  let minPair = pairs[0];
+  let maxPair = pairs[0];
+  pairs.forEach((pair)=>{
+    if(pair.value < minPair.value) minPair = pair;
+    if(pair.value > maxPair.value) maxPair = pair;
+  });
+  const min = minPair.value;
+  const max = maxPair.value;
   const maxAbs = Math.max(Math.abs(min), Math.abs(max));
-  return {...data, min, max, maxAbs};
+  return {...data, min, max, maxAbs, minPair, maxPair};
 }
 
 function stage6BishopWallQuantityFormat(value, meta){
@@ -7671,6 +7681,17 @@ function stage6BishopCssColorWithAlpha(color, alpha){
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function stage6BishopContrastingTextColor(color){
+  const match = /^#?([0-9a-f]{6})$/i.exec(String(color || '').trim());
+  if(!match) return '#fff';
+  const hex = match[1];
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.58 ? '#17202a' : '#fff';
 }
 
 function stage6BishopWallNodeValuesForOverlay(wallResult, quantity){
@@ -8924,19 +8945,21 @@ function stage6BishopRenderWallChart(canvas, sValues, values, options = {}){
   if(!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssWidth, cssHeight);
-  const padL = 38;
-  const padR = 10;
-  const padT = 10;
-  const padB = 18;
+  const padL = 42;
+  const padR = 52;
+  const padT = 14;
+  const padB = 20;
   const plotW = Math.max(cssWidth - padL - padR, 1);
   const plotH = Math.max(cssHeight - padT - padB, 1);
-  const finitePairs = values.map((value, index)=>({s:Number(sValues[index]), value:Number(value)}))
+  const finitePairs = values.map((value, index)=>({s:Number(sValues[index]), value:Number(value), index}))
     .filter((pair)=>Number.isFinite(pair.s) && Number.isFinite(pair.value));
   if(!finitePairs.length) return;
   const sMin = Math.min(...finitePairs.map((pair)=>pair.s));
   const sMax = Math.max(...finitePairs.map((pair)=>pair.s), sMin + 1e-6);
   const minValue = Math.min(...finitePairs.map((pair)=>pair.value));
   const maxValue = Math.max(...finitePairs.map((pair)=>pair.value));
+  const minPair = finitePairs.reduce((best, pair)=>pair.value < best.value ? pair : best, finitePairs[0]);
+  const maxPair = finitePairs.reduce((best, pair)=>pair.value > best.value ? pair : best, finitePairs[0]);
   const maxAbs = Math.max(Math.abs(minValue), Math.abs(maxValue), 1e-12);
   const px = (value)=>padL + 0.5 * plotW + 0.48 * plotW * (value / maxAbs);
   const py = (s)=>padT + plotH * ((s - sMin) / Math.max(sMax - sMin, 1e-9));
@@ -8963,6 +8986,49 @@ function stage6BishopRenderWallChart(canvas, sValues, values, options = {}){
     else ctx.lineTo(x, y);
   });
   ctx.stroke();
+  const drawExtremum = (pair, label, fillColor, preferAbove = true)=>{
+    if(!pair) return;
+    const x = px(pair.value);
+    const y = py(pair.s);
+    const valueText = `${label} ${stage6BishopWallQuantityFormat(pair.value, {unit:options.unit || '', digits:3})}`;
+    const stationText = `s=${stage6CompactNumber(pair.s, 3)} m`;
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = fillColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = '10px system-ui, sans-serif';
+    const labelW = Math.max(ctx.measureText(valueText).width, ctx.measureText(stationText).width) + 10;
+    const labelH = 25;
+    let lx = x + (pair.value >= 0 ? 8 : -labelW - 8);
+    let ly = y + (preferAbove ? -labelH - 6 : 6);
+    lx = Math.max(2, Math.min(cssWidth - labelW - 2, lx));
+    ly = Math.max(2, Math.min(cssHeight - labelH - 2, ly));
+    ctx.fillStyle = stage6BishopCssColorWithAlpha(fillColor, 0.88);
+    ctx.strokeStyle = stage6BishopCssColorWithAlpha(fillColor, 0.96);
+    ctx.lineWidth = 1;
+    if(typeof ctx.roundRect === 'function'){
+      ctx.beginPath();
+      ctx.roundRect(lx, ly, labelW, labelH, 5);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillRect(lx, ly, labelW, labelH);
+      ctx.strokeRect(lx, ly, labelW, labelH);
+    }
+    ctx.fillStyle = stage6BishopContrastingTextColor(fillColor);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(valueText, lx + 5, ly + 3);
+    ctx.fillText(stationText, lx + 5, ly + 14);
+    ctx.restore();
+  };
+  const extremaSamePoint = minPair.index === maxPair.index || Math.abs(minPair.s - maxPair.s) < 1e-9 && Math.abs(minPair.value - maxPair.value) < 1e-12;
+  drawExtremum(minPair, 'min', stroke, true);
+  if(!extremaSamePoint) drawExtremum(maxPair, 'max', stroke, false);
   ctx.fillStyle = text;
   ctx.font = '10px system-ui, sans-serif';
   ctx.textBaseline = 'alphabetic';
@@ -11825,6 +11891,64 @@ function stage6BishopDrawCanvas(){
         else ctx.lineTo(pt.x, pt.y);
       });
       ctx.stroke();
+      const extrema = overlayData.nodeValues.map((value, index)=>({
+        value:Number(value) || 0,
+        index,
+        point:diagram[index]
+      })).filter((item)=>item.point);
+      if(extrema.length){
+        let minItem = extrema[0];
+        let maxItem = extrema[0];
+        extrema.forEach((item)=>{
+          if(item.value < minItem.value) minItem = item;
+          if(item.value > maxItem.value) maxItem = item;
+        });
+        const drawOverlayExtremum = (item, label, offsetSign)=>{
+          const point = item?.point;
+          if(!point) return;
+          const meta = overlayData?.meta || {};
+          const labelText = `${label} ${stage6BishopWallQuantityFormat(item.value, meta)}`;
+          const station = stations[item.index];
+          const stationText = `s=${stage6CompactNumber(Number(station?.s) || 0, 3)} m`;
+          ctx.save();
+          ctx.font = '10px system-ui, sans-serif';
+          const labelW = Math.max(ctx.measureText(labelText).width, ctx.measureText(stationText).width) + 12;
+          const labelH = 26;
+          let lx = point.x + 10;
+          let ly = point.y + offsetSign * 18 - labelH / 2;
+          lx = Math.max(6, Math.min(width - labelW - 6, lx));
+          ly = Math.max(6, Math.min(height - labelH - 6, ly));
+          ctx.fillStyle = '#fff';
+          ctx.strokeStyle = meta.color || '#7e50a8';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, 3.6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = stage6BishopCssColorWithAlpha(meta.color || '#7e50a8', 0.88);
+          ctx.strokeStyle = stage6BishopCssColorWithAlpha(meta.color || '#7e50a8', 0.96);
+          ctx.lineWidth = 1;
+          if(typeof ctx.roundRect === 'function'){
+            ctx.beginPath();
+            ctx.roundRect(lx, ly, labelW, labelH, 5);
+            ctx.fill();
+            ctx.stroke();
+          } else {
+            ctx.fillRect(lx, ly, labelW, labelH);
+            ctx.strokeRect(lx, ly, labelW, labelH);
+          }
+          ctx.fillStyle = stage6BishopContrastingTextColor(meta.color || '#7e50a8');
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(labelText, lx + 6, ly + 4);
+          ctx.fillText(stationText, lx + 6, ly + 15);
+          ctx.restore();
+        };
+        drawOverlayExtremum(minItem, 'min', -1);
+        const sameExtremum = minItem.index === maxItem.index ||
+          (Math.abs(minItem.value - maxItem.value) < 1e-12 && Math.abs(minItem.index - maxItem.index) === 0);
+        if(!sameExtremum) drawOverlayExtremum(maxItem, 'max', 1);
+      }
     }
     ctx.restore();
   };
@@ -15513,7 +15637,7 @@ function renderStage6BishopApp(){
   const structureAnalysisHtml = `
     <div class="st6-bishop-side" style="margin-top:14px">
       <div class="mc2-sec">Structure response</div>
-      <div class="st6-help" style="margin-bottom:10px">The graphs use station <strong>s</strong> from the wall head downward on the vertical axis. The horizontal axis is the selected response value; positive V, M, and w act toward the wall passive side.</div>
+      <div class="st6-help" style="margin-bottom:10px">The graphs use station <strong>s</strong> from the wall head to the tip on the vertical axis. The horizontal axis is the signed response value; positive V, M, and w act toward the wall passive side. For a right-passive wall, negative w plots to the left.</div>
       ${(bishop.walls || []).length ? `
         <label style="font-size:11px;color:var(--tx2);margin-bottom:10px;display:block">Wall
           <select onchange="stage6BishopOpenAnalysisTab('structure', this.value)">
@@ -15725,7 +15849,7 @@ function renderStage6BishopApp(){
                         <label style="font-size:11px;color:var(--tx2)">Deformed-shape scale factor
                           <input type="number" step="0.1" min="0.05" value="${Number(bishop.deformation?.options?.displacementScale || 1).toFixed(2)}" onchange="stage6BishopSetField('deformation.options.displacementScale', this.value)">
                         </label>
-                        <div class="st6-help">Displacement vectors are shown sparsely on the current contour lines for <strong>Settlement</strong>, <strong>|u|,fin</strong>, <strong>uₓ,fin</strong>, and <strong>uᵧ,fin</strong>. They stay off for stress and MC contour modes.</div>
+                        <div class="st6-help">Wall diagrams are signed: positive w, V, and M plot toward the selected passive side; for a right-passive wall, negative w is left. Displacement vectors are shown sparsely on the current contour lines for <strong>Settlement</strong>, <strong>|u|,fin</strong>, <strong>uₓ,fin</strong>, and <strong>uᵧ,fin</strong>. They stay off for stress and MC contour modes.</div>
                       </div>
                     ` : ''}
                   </div>
