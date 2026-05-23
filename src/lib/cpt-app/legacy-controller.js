@@ -73,6 +73,13 @@ import { classifyNen6740Reading } from './nen6740';
 import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report-svg';
 import { cleanupStage7Payloads, saveStage7Payload } from './report-storage';
 import { SOIL_CLASS_NAMES, SOIL_FILL_COLORS } from './soil-styles';
+import {
+  pointSegmentDistance as wallPointSegmentDistance,
+  wallAxis,
+  wallEndpoints,
+  wallLength,
+  wallNormalForSide
+} from './wall-geometry.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -5544,15 +5551,43 @@ function stage6BishopNormalizeWalls(walls, terrain){
       const hadMaterial = !!(wall?.material && typeof wall.material === 'object');
       const hasMechanicalActiveField = Object.prototype.hasOwnProperty.call(wall || {}, 'mechanicalActive');
       const mechanicalActive = hasMechanicalActiveField ? wall?.mechanicalActive === true : false;
-      return {
-        id,
-        x:Number(wall?.x),
-        yTop:Number.isFinite(+wall?.yTop)
+      const legacyX = Number.isFinite(+wall?.x) ? +wall.x : minX;
+      const xFallback = Math.min(Math.max(legacyX, minX), maxX);
+      const endpoints = wallEndpoints(wall);
+      const headRaw = endpoints?.head || {
+        x:xFallback,
+        y:Number.isFinite(+wall?.yTop)
           ? +wall.yTop
           : terrainLine
-            ? bishopTerrainY(terrainLine, Math.min(Math.max(+wall?.x || minX, minX), maxX))
-            : NaN,
-        yTip:Number.isFinite(+wall?.yTip) ? +wall.yTip : NaN,
+            ? bishopTerrainY(terrainLine, xFallback)
+            : NaN
+      };
+      const tipRaw = endpoints?.tip || {
+        x:xFallback,
+        y:Number.isFinite(+wall?.yTip) ? +wall.yTip : NaN
+      };
+      const head = {
+        x:Math.min(Math.max(Number(headRaw.x), minX), maxX),
+        y:Number(headRaw.y)
+      };
+      let tip = {
+        x:Math.min(Math.max(Number(tipRaw.x), minX), maxX),
+        y:Number(tipRaw.y)
+      };
+      if(Number.isFinite(head.x) && Number.isFinite(head.y) && Number.isFinite(tip.x) && Number.isFinite(tip.y)){
+        const len = Math.hypot(tip.x - head.x, tip.y - head.y);
+        if(len < 0.05){
+          tip = {x:head.x, y:head.y - 0.05};
+        }
+      }
+      return {
+        id,
+        head,
+        tip,
+        // Legacy aliases kept during migration for old UI/report code.
+        x:head.x,
+        yTop:head.y,
+        yTip:tip.y,
         passiveSide:wall?.passiveSide === 'left' ? 'left' : 'right',
         mechanicalActive,
         mechanicalActivationPromptPending:!hasMechanicalActiveField && !!wall,
@@ -5564,16 +5599,16 @@ function stage6BishopNormalizeWalls(walls, terrain){
         })
       };
     })
-    .filter((wall)=>Number.isFinite(wall.x) && Number.isFinite(wall.yTop) && Number.isFinite(wall.yTip))
+    .filter((wall)=>wallAxis(wall, 1e-9))
     .map((wall)=>{
-      wall.x = Math.min(Math.max(wall.x, minX), maxX);
-      if(wall.yTip >= wall.yTop - 0.05) wall.yTip = +(wall.yTop - 0.05).toFixed(3);
-      wall.x = +wall.x.toFixed(3);
-      wall.yTop = +wall.yTop.toFixed(3);
-      wall.yTip = +wall.yTip.toFixed(3);
+      wall.head = {x:+wall.head.x.toFixed(3), y:+wall.head.y.toFixed(3)};
+      wall.tip = {x:+wall.tip.x.toFixed(3), y:+wall.tip.y.toFixed(3)};
+      wall.x = wall.head.x;
+      wall.yTop = wall.head.y;
+      wall.yTip = wall.tip.y;
       return wall;
     })
-    .sort((a,b)=>a.x-b.x || b.yTop-a.yTop);
+    .sort((a,b)=>a.head.x-b.head.x || b.head.y-a.head.y || a.tip.x-b.tip.x);
 }
 
 function stage6BishopDrainId(){
@@ -7400,13 +7435,29 @@ function stage6BishopSetWallField(index, field, value){
   } else if(field === 'mechanicalActive'){
     wall.mechanicalActive = value === true || value === 'true' || value === 1 || value === '1';
     wall.mechanicalActivationPromptPending = false;
+  } else if(field === 'head.x' || field === 'head.y' || field === 'tip.x' || field === 'tip.y'){
+    const [endKey, coordKey] = field.split('.');
+    if(!wall[endKey] || typeof wall[endKey] !== 'object') wall[endKey] = {};
+    wall[endKey][coordKey] = value === '' || value == null ? null : +value;
+  } else if(field === 'x'){
+    const nextX = value === '' || value == null ? null : +value;
+    const axis = wallAxis(wall);
+    if(Number.isFinite(nextX)){
+      const dx = axis ? axis.tip.x - axis.head.x : 0;
+      wall.head = {...(wall.head || {x:wall.x, y:wall.yTop}), x:nextX};
+      wall.tip = {...(wall.tip || {x:wall.x, y:wall.yTip}), x:nextX + dx};
+    }
+  } else if(field === 'yTop'){
+    wall.head = {...(wall.head || {x:wall.x, y:wall.yTop}), y:value === '' || value == null ? null : +value};
+  } else if(field === 'yTip'){
+    wall.tip = {...(wall.tip || {x:wall.x, y:wall.yTip}), y:value === '' || value == null ? null : +value};
   } else {
     wall[field] = value === '' || value == null ? null : +value;
   }
   S.stage6.bishop.walls = stage6BishopNormalizeWalls(S.stage6.bishop.walls, S.stage6.bishop.terrain);
   if(field === 'mechanicalActive'){
     stage6BishopInvalidateDeformation('Wall mechanical activation changed; rerun deformation analysis.');
-  } else if(field === 'x' || field === 'yTop' || field === 'yTip') {
+  } else if(field === 'x' || field === 'yTop' || field === 'yTip' || field.startsWith('head.') || field.startsWith('tip.')) {
     stage6BishopInvalidateWallGeometry('Retaining wall geometry updated; rerun Bishop search.');
   } else {
     stage6BishopInvalidate('Retaining wall geometry updated; rerun Bishop search.');
@@ -8244,6 +8295,8 @@ function stage6BishopRunDeformation(){
   bishop.deformation.warnings = [];
   bishop.deformation.lastWallInputs = (model.walls || []).map((wall)=>({
     id:wall.id,
+    head:wall.head ? {...wall.head} : null,
+    tip:wall.tip ? {...wall.tip} : null,
     x:wall.x,
     yTop:wall.yTop,
     yTip:wall.yTip,
@@ -8708,7 +8761,7 @@ function stage6BishopModeMeta(){
   if(bishop.tool === 'wall'){
     return {
       label:'Retaining wall mode',
-      hint:'Click the wall top, then click the wall tip. Walls stay vertical and act as infinitely stiff stabilising elements in Bishop and Spencer.'
+      hint:'Click the wall head, then click the wall tip. The wall can be vertical or inclined and stays shared by stability, seepage, and deformation.'
     };
   }
   if(bishop.tool === 'measure'){
@@ -8828,7 +8881,7 @@ function stage6BishopWallInfoPanelHtml(){
       <div class="st6-canvas-card-kicker">Selected retaining wall</div>
       <div class="st6-canvas-card-note">
         Wall ${wallIndex + 1} · ${stage6EscAttr(wall.material?.label || wall.id)}
-        <br>Length ${(wall.yTop - wall.yTip).toFixed(2)} m · passive ${stage6EscAttr(wall.passiveSide)}
+        <br>Length ${wallLength(wall).toFixed(2)} m · passive ${stage6EscAttr(wall.passiveSide)}
         <br>${stage6EscAttr(stage6BishopWallMechanicalLabel(wall))}
       </div>
       <div class="st6-canvas-card-row st6-canvas-card-row--actions">
@@ -10430,8 +10483,10 @@ function stage6BishopCollectSnapPoints(){
     pushPoint('loadEnd', {x:selectedLoadForSnap.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForSnap.xEnd)}, null, selectedLoadForSnap.id);
   }
   (bishop.walls || []).forEach((wall, index)=>{
-    pushPoint('wallTop', {x:wall.x, y:wall.yTop}, index);
-    pushPoint('wallTip', {x:wall.x, y:wall.yTip}, index);
+    const endpoints = wallEndpoints(wall);
+    if(!endpoints) return;
+    pushPoint('wallTop', endpoints.head, index);
+    pushPoint('wallTip', endpoints.tip, index);
   });
   (bishop.drains || []).forEach((drain)=>{
     (drain.vertices || []).forEach((pt, index)=>pushPoint('drainVertex', pt, index, drain.id));
@@ -10493,11 +10548,10 @@ function stage6BishopCanvasWorldBounds(model){
     const xs = terrain.map(pt=>pt.x);
     const ys = terrain.map(pt=>pt.y);
     (bishop.walls || []).forEach((wall)=>{
-      if(Number.isFinite(wall?.x)){
-        xs.push(wall.x);
-      }
-      if(Number.isFinite(wall?.yTop)) ys.push(wall.yTop);
-      if(Number.isFinite(wall?.yTip)) ys.push(wall.yTip);
+      const endpoints = wallEndpoints(wall);
+      if(!endpoints) return;
+      xs.push(endpoints.head.x, endpoints.tip.x);
+      ys.push(endpoints.head.y, endpoints.tip.y);
     });
     (bishop.drains || []).forEach((drain)=>{
       (drain.vertices || []).forEach((point)=>{
@@ -10567,12 +10621,10 @@ function stage6BishopNearestHandle(canvas, clientX, clientY){
     handles.push({kind:'loadEnd', loadId:selectedLoadForHandles.id, pt:{x:selectedLoadForHandles.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForHandles.xEnd)}});
   }
   (bishop.walls || []).forEach((wall, index)=>{
-    if(Number.isFinite(wall?.x) && Number.isFinite(wall?.yTop)){
-      handles.push({kind:'wallTop', index, pt:{x:wall.x, y:wall.yTop}});
-    }
-    if(Number.isFinite(wall?.x) && Number.isFinite(wall?.yTip)){
-      handles.push({kind:'wallTip', index, pt:{x:wall.x, y:wall.yTip}});
-    }
+    const endpoints = wallEndpoints(wall);
+    if(!endpoints) return;
+    handles.push({kind:'wallTop', index, pt:endpoints.head});
+    handles.push({kind:'wallTip', index, pt:endpoints.tip});
   });
   (bishop.drains || []).forEach((drain, drainIndex)=>{
     (drain.vertices || []).forEach((pt, vertexIndex)=>{
@@ -10622,11 +10674,9 @@ function stage6BishopPickWallAtWorld(world){
   const tolerance = stage6BishopSnapToleranceWorld();
   let best = null;
   (bishop.walls || []).forEach((wall)=>{
-    if(!Number.isFinite(wall?.x) || !Number.isFinite(wall?.yTop) || !Number.isFinite(wall?.yTip)) return;
-    const yMin = Math.min(wall.yTop, wall.yTip);
-    const yMax = Math.max(wall.yTop, wall.yTip);
-    if(world.y < yMin - tolerance || world.y > yMax + tolerance) return;
-    const distance = Math.abs(world.x - wall.x);
+    const endpoints = wallEndpoints(wall);
+    if(!endpoints) return;
+    const distance = wallPointSegmentDistance(world, endpoints.head, endpoints.tip);
     if(distance <= tolerance && (!best || distance < best.distance)){
       best = {wall, distance};
     }
@@ -10795,9 +10845,11 @@ function stage6BishopCommitDrawPoint(canvas, world){
         ...(bishop.walls || []),
         {
           id:wallId,
+          head:{x:top.x, y:top.y},
+          tip:{x:tip.x, y:tip.y},
           x:top.x,
           yTop:top.y,
-          yTip:Math.min(tip.y, top.y - 0.05),
+          yTip:tip.y,
           passiveSide:stage6BishopDefaultPassiveSide(),
           mechanicalActive:true,
           anchors:[],
@@ -10868,9 +10920,11 @@ function stage6BishopCompleteCurrentActionAt(world){
       ...(bishop.walls || []),
       {
         id:wallId,
+        head:{x:top.x, y:top.y},
+        tip:{x:tip.x, y:tip.y},
         x:top.x,
         yTop:top.y,
-        yTip:Math.min(tip.y, top.y - 0.05),
+        yTip:tip.y,
         passiveSide:stage6BishopDefaultPassiveSide(),
         mechanicalActive:true,
         anchors:[],
@@ -11032,12 +11086,14 @@ function stage6BishopPointerMove(event){
     const pt = stage6BishopSnapWorldPoint(world, 'free');
     const minX = bishop.terrain.length >= 2 ? bishop.terrain[0].x : -Infinity;
     const maxX = bishop.terrain.length >= 2 ? bishop.terrain[bishop.terrain.length-1].x : Infinity;
-    wall.x = Math.min(Math.max(pt.x, minX), maxX);
+    const nextPoint = {
+      x:Math.min(Math.max(pt.x, minX), maxX),
+      y:pt.y
+    };
     if(drag.kind === 'wallTop'){
-      wall.yTop = pt.y;
-      if(wall.yTip >= wall.yTop - 0.05) wall.yTip = wall.yTop - 0.05;
+      wall.head = nextPoint;
     } else {
-      wall.yTip = Math.min(pt.y, wall.yTop - 0.05);
+      wall.tip = nextPoint;
     }
     bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
   } else if(drag.kind === 'drainVertex'){
@@ -11671,11 +11727,18 @@ function stage6BishopDrawCanvas(){
   };
 
   const drawWall = (wall, options = {})=>{
-    if(!Number.isFinite(wall?.x) || !Number.isFinite(wall?.yTop) || !Number.isFinite(wall?.yTip)) return;
-    const top = stage6BishopWorldToScreen({x:wall.x, y:wall.yTop});
-    const tip = stage6BishopWorldToScreen({x:wall.x, y:wall.yTip});
-    const mid = stage6BishopWorldToScreen({x:wall.x, y:0.5 * (wall.yTop + wall.yTip)});
-    const dir = wall.passiveSide === 'left' ? -1 : 1;
+    const axis = wallAxis(wall);
+    if(!axis) return;
+    const top = stage6BishopWorldToScreen(axis.head);
+    const tip = stage6BishopWorldToScreen(axis.tip);
+    const mid = stage6BishopWorldToScreen({
+      x:0.5 * (axis.head.x + axis.tip.x),
+      y:0.5 * (axis.head.y + axis.tip.y)
+    });
+    const passiveNormal = wallNormalForSide(axis, wall.passiveSide);
+    const screenNormal = passiveNormal
+      ? {x:passiveNormal.x, y:-passiveNormal.y}
+      : {x:wall.passiveSide === 'left' ? -1 : 1, y:0};
     ctx.save();
     ctx.strokeStyle = options.stroke || '#6a5841';
     ctx.lineWidth = options.width || 4;
@@ -11687,9 +11750,15 @@ function stage6BishopDrawCanvas(){
     ctx.setLineDash([]);
     ctx.fillStyle = options.stroke || '#6a5841';
     ctx.beginPath();
-    ctx.moveTo(mid.x + dir * 10, mid.y);
-    ctx.lineTo(mid.x + dir * 2, mid.y - 5);
-    ctx.lineTo(mid.x + dir * 2, mid.y + 5);
+    const arrowTip = {x:mid.x + screenNormal.x * 12, y:mid.y + screenNormal.y * 12};
+    const arrowBase = {x:mid.x + screenNormal.x * 3, y:mid.y + screenNormal.y * 3};
+    const tangentScreen = {x:tip.x - top.x, y:tip.y - top.y};
+    const tangentLen = Math.max(Math.hypot(tangentScreen.x, tangentScreen.y), 1);
+    const tx = tangentScreen.x / tangentLen;
+    const ty = tangentScreen.y / tangentLen;
+    ctx.moveTo(arrowTip.x, arrowTip.y);
+    ctx.lineTo(arrowBase.x + tx * 5, arrowBase.y + ty * 5);
+    ctx.lineTo(arrowBase.x - tx * 5, arrowBase.y - ty * 5);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -11702,7 +11771,7 @@ function stage6BishopDrawCanvas(){
     const passiveSign = wallResult.passiveSign < 0 ? -1 : 1;
     const deformed = stations.map((station)=>stage6BishopWorldToScreen({
       x:(Number(station.x) || 0) + displacementScale * (Number(station.ux) || 0),
-      y:Number(station.y) || 0
+      y:(Number(station.y) || 0) + displacementScale * (Number(station.uy) || 0)
     }));
     const base = stations.map((station)=>stage6BishopWorldToScreen({
       x:Number(station.x) || 0,
@@ -11731,9 +11800,15 @@ function stage6BishopDrawCanvas(){
       ctx.lineWidth = 1.4;
       const diagram = stations.map((station, index)=>{
         const value = Number(overlayData.nodeValues[index]) || 0;
+        const prev = stations[Math.max(index - 1, 0)] || station;
+        const next = stations[Math.min(index + 1, stations.length - 1)] || station;
+        const dx = (Number(next.x) || 0) - (Number(prev.x) || 0);
+        const dy = (Number(next.y) || 0) - (Number(prev.y) || 0);
+        const len = Math.max(Math.hypot(dx, dy), 1e-9);
+        const normal = {x:-(dy / len) * passiveSign, y:(dx / len) * passiveSign};
         return {
-          x:base[index].x + passiveSign * 32 * (value / overlayMaxAbs),
-          y:base[index].y
+          x:base[index].x + normal.x * 32 * (value / overlayMaxAbs),
+          y:base[index].y - normal.y * 32 * (value / overlayMaxAbs)
         };
       });
       ctx.beginPath();
@@ -11911,9 +11986,11 @@ function stage6BishopDrawCanvas(){
       const top = bishop.draft[0];
       const tip = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
       drawWall({
+        head:{x:top.x, y:top.y},
+        tip:{x:tip.x, y:tip.y},
         x:top.x,
         yTop:top.y,
-        yTip:Math.min(tip.y, top.y - 0.05),
+        yTip:tip.y,
         passiveSide:stage6BishopDefaultPassiveSide()
       }, {stroke:'#6a5841', width:3, dash:[6,4]});
     }
@@ -12005,24 +12082,33 @@ function stage6BishopDrawCanvas(){
       });
       (selected.wallForces || []).forEach((wallForce)=>{
         const application = stage6BishopWorldToScreen({x:wallForce.x, y:wallForce.y_application});
-        const dir = wallForce.wall?.passiveSide === 'left' ? -1 : 1;
+        const passiveNormal = wallForce.passiveNormal || wallNormalForSide(wallForce.wall, wallForce.wall?.passiveSide);
+        const screenNormal = passiveNormal
+          ? {x:passiveNormal.x, y:-passiveNormal.y}
+          : {x:wallForce.wall?.passiveSide === 'left' ? -1 : 1, y:0};
+        const labelAlign = screenNormal.x >= 0 ? 'left' : 'right';
+        const tip = {
+          x:application.x + screenNormal.x * 22,
+          y:application.y + screenNormal.y * 22
+        };
+        const tangent = {x:-screenNormal.y, y:screenNormal.x};
         ctx.save();
         ctx.strokeStyle = '#b3477a';
         ctx.fillStyle = '#b3477a';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(application.x, application.y);
-        ctx.lineTo(application.x + dir * 20, application.y);
+        ctx.lineTo(tip.x, tip.y);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(application.x + dir * 20, application.y);
-        ctx.lineTo(application.x + dir * 12, application.y - 5);
-        ctx.lineTo(application.x + dir * 12, application.y + 5);
+        ctx.moveTo(tip.x, tip.y);
+        ctx.lineTo(tip.x - screenNormal.x * 8 + tangent.x * 5, tip.y - screenNormal.y * 8 + tangent.y * 5);
+        ctx.lineTo(tip.x - screenNormal.x * 8 - tangent.x * 5, tip.y - screenNormal.y * 8 - tangent.y * 5);
         ctx.closePath();
         ctx.fill();
         ctx.font = '11px system-ui, sans-serif';
-        ctx.textAlign = dir > 0 ? 'left' : 'right';
-        ctx.fillText(`${wallForce.R_wall.toFixed(0)} kN/m`, application.x + dir * 24, application.y - 6);
+        ctx.textAlign = labelAlign;
+        ctx.fillText(`${wallForce.R_wall.toFixed(0)} kN/m`, tip.x + screenNormal.x * 4, tip.y + screenNormal.y * 4 - 6);
         ctx.restore();
       });
     }
@@ -12092,10 +12178,10 @@ function stage6BishopDrawCanvas(){
     const handleSets = [
       ...(bishop.terrain || []),
       ...(bishop.phreatic || []),
-      ...(bishop.walls || []).flatMap((wall)=>[
-        {x:wall.x, y:wall.yTop},
-        {x:wall.x, y:wall.yTip}
-      ]),
+      ...(bishop.walls || []).flatMap((wall)=>{
+        const endpoints = wallEndpoints(wall);
+        return endpoints ? [endpoints.head, endpoints.tip] : [];
+      }),
       ...(bishop.drains || []).flatMap((drain)=>drain.vertices || []),
       ...((bishop.customRegions?.length ? stage6BishopSelectedCustomRegion()?.polygon : []) || [])
     ];
@@ -14687,6 +14773,10 @@ function renderStage6BishopApp(){
     </details>
   ` : '';
   const wallRows = (bishop.walls || []).map((wall, index)=>{
+    const endpoints = wallEndpoints(wall) || {
+      head:{x:Number(wall.x) || 0, y:Number(wall.yTop) || 0},
+      tip:{x:Number(wall.x) || 0, y:Number(wall.yTip) || 0}
+    };
     const material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'legacy-impermeable'});
     const preset = stage6BishopWallMaterialPresetKey(material);
     const mechanical = material.mechanical || defaultWallMechanicalMaterial('user');
@@ -14695,9 +14785,10 @@ function renderStage6BishopApp(){
     return `
       <tr class="${wall.id === bishop.selectedWallId ? 'sel' : ''}">
         <td>${index + 1}</td>
-        <td><input type="number" step="0.05" value="${wall.x.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'x', this.value)"></td>
-        <td><input type="number" step="0.05" value="${wall.yTop.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'yTop', this.value)"></td>
-        <td><input type="number" step="0.05" value="${wall.yTip.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'yTip', this.value)"></td>
+        <td><input type="number" step="0.05" value="${endpoints.head.x.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'head.x', this.value)"></td>
+        <td><input type="number" step="0.05" value="${endpoints.head.y.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'head.y', this.value)"></td>
+        <td><input type="number" step="0.05" value="${endpoints.tip.x.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'tip.x', this.value)"></td>
+        <td><input type="number" step="0.05" value="${endpoints.tip.y.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'tip.y', this.value)"></td>
         <td>
           <select onchange="stage6BishopSetWallField(${index}, 'passiveSide', this.value)">
             <option value="left"${wall.passiveSide==='left'?' selected':''}>Left</option>
@@ -14731,7 +14822,7 @@ function renderStage6BishopApp(){
         <td><input type="number" step="1e-10" min="1e-20" value="${Number(material.kAcross).toExponential(2)}" onchange="stage6BishopSetWallMaterialField(${index}, 'kAcross', this.value)"></td>
         <td><input type="number" step="1e-10" min="1e-20" value="${Number(material.kAlong).toExponential(2)}" onchange="stage6BishopSetWallMaterialField(${index}, 'kAlong', this.value)"></td>
         <td><span class="st6-bishop-source-pill st6-bishop-source-pill--${stage6EscAttr(material.kSource || 'preset')}">${stage6EscAttr(wallMaterialSourceLabel(material.kSource))}</span></td>
-        <td>${(wall.yTop - wall.yTip).toFixed(2)} m</td>
+        <td>${wallLength(wall).toFixed(2)} m</td>
         <td><button class="btn sm" onclick="stage6BishopSelectWall(${wallIdArg})">Select</button> <button class="btn sm" onclick="stage6BishopDeleteWall(${index})">Delete</button></td>
       </tr>
     `;
@@ -15895,8 +15986,8 @@ function renderStage6BishopApp(){
         <div class="st6-help">Edit geometry, passive side, and seepage conductivity for every wall without opening the old settings column.</div>
         <div class="st6-canvas-table-wrap">
           <table class="tbl st6-bishop-materials">
-            <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
-            <tbody>${wallRows || '<tr><td colspan="17" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
+            <thead><tr><th>#</th><th>Head x</th><th>Head y</th><th>Tip x</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
+            <tbody>${wallRows || '<tr><td colspan="18" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click head then tip.</td></tr>'}</tbody>
           </table>
         </div>
       </div>
@@ -16461,11 +16552,11 @@ function renderStage6BishopApp(){
             <details class="st6-adv" data-st6details="bishop-walls"${stage6DetailsOpen('bishop-walls')}>
               <summary>Retaining walls</summary>
               <div class="st6-adv-body">
-                <div class="st6-help">Walls are treated as infinitely stiff vertical elements for stability. In seepage they are thin vertical regions with user-set across-wall and along-wall conductivity; dry wall elements get the same dry-factor reduction as soil.</div>
+                <div class="st6-help">Walls are treated as infinitely stiff line elements for stability. In seepage they are thin oriented regions with user-set across-wall and along-wall conductivity; dry wall elements get the same dry-factor reduction as soil.</div>
                 <div style="overflow:auto">
                   <table class="tbl st6-bishop-materials">
-                    <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
-                    <tbody>${wallRows || '<tr><td colspan="17" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
+                    <thead><tr><th>#</th><th>Head x</th><th>Head y</th><th>Tip x</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
+                    <tbody>${wallRows || '<tr><td colspan="18" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click head then tip.</td></tr>'}</tbody>
                   </table>
                 </div>
               </div>
@@ -17461,9 +17552,12 @@ function stage7SeepagePayload(){
       }),
       walls:(bishop.walls || []).map((wall, index)=>{
         const material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'legacy-impermeable'});
+        const endpoints = wallEndpoints(wall);
         return safeClone({
           id:wall.id || `wall-${index + 1}`,
           label:`Wall ${index + 1}`,
+          head:endpoints ? endpoints.head : null,
+          tip:endpoints ? endpoints.tip : null,
           x:Number.isFinite(+wall.x) ? +wall.x : null,
           yTop:Number.isFinite(+wall.yTop) ? +wall.yTop : null,
           yTip:Number.isFinite(+wall.yTip) ? +wall.yTip : null,

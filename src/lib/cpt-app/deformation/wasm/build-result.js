@@ -84,6 +84,25 @@ function subtractDisplacementFields(total, baseline) {
   return out;
 }
 
+function wallFrameFromStations(stations, passiveSign = 1) {
+  const first = stations?.[0];
+  const last = stations?.[stations.length - 1];
+  const dx = (Number(last?.x) || 0) - (Number(first?.x) || 0);
+  const dy = (Number(last?.y) || 0) - (Number(first?.y) || 0);
+  const length = Math.hypot(dx, dy);
+  if (!(length > GEOM_EPS)) {
+    const sign = passiveSign < 0 ? -1 : 1;
+    return { t:{x:0, y:-1}, nPassive:{x:sign, y:0} };
+  }
+  const t = { x: dx / length, y: dy / length };
+  const nRight = { x: -t.y, y: t.x };
+  const sign = passiveSign < 0 ? -1 : 1;
+  return {
+    t,
+    nPassive:{ x:nRight.x * sign, y:nRight.y * sign }
+  };
+}
+
 function buildWallResultsFromWasm(wasmWallResults, predictorSolution) {
   return (wasmWallResults || []).map((wall) => ({
     wallIndex: wall.wallIndex,
@@ -100,6 +119,15 @@ function buildWallResultsFromWasm(wasmWallResults, predictorSolution) {
     })
   })).map((wall) => {
     const stations = wall.stations || [];
+    const frame = wallFrameFromStations(stations, wall.passiveSign);
+    stations.forEach((station) => {
+      const ux = Number(station.ux) || 0;
+      const uy = Number(station.uy) || 0;
+      const theta = Number(station.theta) || 0;
+      station.uAxial = ux * frame.t.x + uy * frame.t.y;
+      station.wPassive = ux * frame.nPassive.x + uy * frame.nPassive.y;
+      station.thetaPassive = (wall.passiveSign < 0 ? -1 : 1) * theta;
+    });
     const s_node = stations.map((station) => Number(station.s) || 0);
     const w_passive = stations.map((station) => Number(station.wPassive) || 0);
     const theta_passive = stations.map((station) => Number(station.thetaPassive) || 0);

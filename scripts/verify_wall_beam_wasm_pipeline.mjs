@@ -48,7 +48,22 @@ function stageLayers() {
   }];
 }
 
-function bishopUiState(withWall = true) {
+function bishopUiState(withWall = true, diagonal = false) {
+  const wall = diagonal
+    ? {
+        id: 'wall-1',
+        head: { x: 3.2, y: 0 },
+        tip: { x: 4.4, y: -6.5 },
+        x: 3.2,
+        yTop: 0,
+        yTip: -6.5
+      }
+    : {
+        id: 'wall-1',
+        x: 3.6,
+        yTop: 0,
+        yTip: -6.5
+      };
   return {
     terrain: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
     activeCptX: 5,
@@ -57,10 +72,7 @@ function bishopUiState(withWall = true) {
     useCustomRegions: false,
     customRegions: [],
     walls: withWall ? [{
-      id: 'wall-1',
-      x: 3.6,
-      yTop: 0,
-      yTip: -6.5,
+      ...wall,
       passiveSide: 'right',
       mechanicalActive: true,
       material: {
@@ -82,6 +94,20 @@ function bishopUiState(withWall = true) {
     surfaceLoads: [{ id: 'load-1', xStart: 4.2, xEnd: 5.4, q: 20, active: true }],
     deformation: { options: { outOfPlaneLength: 10, loadMode: 'pressure' } },
     seepage: null
+  };
+}
+
+function wallFrame(stations) {
+  const first = stations[0];
+  const last = stations[stations.length - 1];
+  const dx = last.x - first.x;
+  const dy = last.y - first.y;
+  const length = Math.hypot(dx, dy);
+  assert.ok(length > 1e-9, 'wall result stations should have finite length');
+  const t = { x: dx / length, y: dy / length };
+  return {
+    length,
+    nRight: { x: -t.y, y: t.x }
   };
 }
 
@@ -157,7 +183,26 @@ async function main() {
       ndofTotal: result.mesh.ndofTotal,
       wallRotationDofs: Object.keys(result.mesh.wallRotationDofByNode || {}).length
     }, null, 2));
-    console.log('PASS: wall beam WASM pipeline fixture converged and exposed wall forces.');
+
+    const diagonalModel = buildBishopModelFromStageLayers(stageLayers(), bishopUiState(true, true));
+    const diagonalResult = await analyzeDeformationModel({ model: diagonalModel, options: options() });
+    assert.equal(diagonalResult?.solver?.converged, true, 'inclined wall-beam app case must converge');
+    assert.equal(diagonalResult?.mesh?.mechanicalWalls?.length, 1, 'inclined mechanical wall must be present in mesh');
+    const diagonalStations = diagonalResult.wallResults?.[0]?.stations || [];
+    assert.ok(diagonalStations.length >= 4, 'inclined wall should recover a multi-station node chain');
+    const xSpan = Math.max(...diagonalStations.map((s) => s.x)) - Math.min(...diagonalStations.map((s) => s.x));
+    assert.ok(xSpan > 0.5, `inclined wall station x span should be non-zero (got ${xSpan})`);
+    const frame = wallFrame(diagonalStations);
+    const lastS = diagonalStations[diagonalStations.length - 1].s;
+    assert.ok(Math.abs(lastS - frame.length) <= 1e-4, 'inclined wall station coordinate should follow wall length');
+    diagonalStations.forEach((station) => {
+      const expectedW = (Number(station.ux) || 0) * frame.nRight.x + (Number(station.uy) || 0) * frame.nRight.y;
+      assert.ok(
+        Math.abs((Number(station.wPassive) || 0) - expectedW) <= 1e-12,
+        'inclined wall passive deflection should be projected along the local passive normal'
+      );
+    });
+    console.log('PASS: wall beam WASM pipeline fixtures converged for vertical and inclined walls.');
   } finally {
     __resetDeformationWasmModuleForTests();
   }

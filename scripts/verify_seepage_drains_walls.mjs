@@ -156,6 +156,34 @@ async function checkWallConductivity() {
   const legacyHash = seepageGeometryHash(legacyModel, options);
   assert(legacyHash !== seepageGeometryHash(baseModel({ walls: [userWall] }), options), 'kSource should invalidate seepage hash');
   assert(legacyHash !== seepageGeometryHash(baseModel({ walls: [leakyWall] }), options), 'kAcross should invalidate seepage hash');
+
+  const diagonalWall = {
+    ...explicitLegacyWall,
+    head: { x: 4, y: 2 },
+    tip: { x: 6, y: 0 },
+    x: 4,
+    yTop: 2,
+    yTip: 0,
+    material: {
+      ...explicitLegacyWall.material,
+      id: 'wall-diagonal-material',
+      kAcross: 1e-12,
+      kAlong: 1e-5,
+      kSource: 'user'
+    }
+  };
+  const diagonal = await analyzeSeepageModel({ model: baseModel({ walls: [diagonalWall], meshTargetArea: 0.05 }) });
+  const wallElementData = diagonal.mesh.elementData.filter((data, elementIndex) => {
+    const cell = diagonal.mesh.cells[diagonal.mesh.elementCell[elementIndex]];
+    return cell?.material?.id === 'wall-diagonal-material';
+  });
+  assert(wallElementData.length > 0, 'diagonal wall should create assigned seepage elements');
+  const maxKxy = Math.max(...wallElementData.map((data) => Math.abs(Number(data.kxy) || 0)));
+  assert(maxKxy > 1e-7, `diagonal wall conductivity tensor should include non-zero Kxy (got ${maxKxy})`);
+  assert(
+    legacyHash !== seepageGeometryHash(baseModel({ walls: [diagonalWall] }), options),
+    'wall endpoint geometry should invalidate seepage hash'
+  );
 }
 
 async function checkAlwaysDrain() {

@@ -7,6 +7,14 @@ import { buildOuterBoundary } from '../seepage/boundary.js';
 import { resolveWallMechanicalSection } from '../seepage/material.js';
 import { triangulatePslg } from '../seepage/triangle-runtime.js';
 import { terrainY } from '../stage6-bishop.js';
+import {
+  pointSegmentDistance,
+  segmentIntersectionPoint,
+  wallAxis,
+  wallEndpoints,
+  wallPointAtStation,
+  wallStationOfPoint
+} from '../wall-geometry.js';
 
 const GEOM_EPS = 1e-6;
 const SEGMENT_PRIORITY = {
@@ -252,43 +260,21 @@ function buildRegionBoundarySegments(regions, options, allocateMarker) {
   );
 }
 
-function verticalSegmentIntersectionY(x, yTop, yTip, a, b) {
-  const ax = Number(a?.x);
-  const ay = Number(a?.y);
-  const bx = Number(b?.x);
-  const by = Number(b?.y);
-  if (![ax, ay, bx, by].every(Number.isFinite)) return null;
-  if (Math.abs(bx - ax) <= GEOM_EPS) {
-    if (Math.abs(x - ax) > GEOM_EPS) return null;
-    const lo = Math.max(Math.min(ay, by), yTip);
-    const hi = Math.min(Math.max(ay, by), yTop);
-    if (!(hi >= lo - GEOM_EPS)) return null;
-    return [lo, hi];
-  }
-  const t = (x - ax) / (bx - ax);
-  if (t < -GEOM_EPS || t > 1 + GEOM_EPS) return null;
-  const y = ay + t * (by - ay);
-  if (y < yTip - GEOM_EPS || y > yTop + GEOM_EPS) return null;
-  return y;
-}
-
-function collectWallRegionIntersections(wall, regions) {
-  const ys = [wall.yTop, wall.yTip];
+function collectWallRegionStations(wall, regions) {
+  const axis = wallAxis(wall);
+  if (!axis) return [];
+  const stations = [0, axis.length];
   (regions || []).forEach((region) => {
     const polygon = Array.isArray(region?.polygon) ? region.polygon : [];
     for (let i = 0; i < polygon.length; i += 1) {
       const a = polygon[i];
       const b = polygon[(i + 1) % polygon.length];
-      const hit = verticalSegmentIntersectionY(wall.x, wall.yTop, wall.yTip, a, b);
-      if (Array.isArray(hit)) {
-        ys.push(hit[0], hit[1]);
-      } else if (Number.isFinite(hit)) {
-        ys.push(hit);
-      }
+      const hit = segmentIntersectionPoint(axis.head, axis.tip, a, b, GEOM_EPS);
+      if (hit && Number.isFinite(hit.t)) stations.push(clamp(hit.t, 0, 1) * axis.length);
     }
   });
-  return uniqueSorted(ys, 1e-5)
-    .filter((y) => y <= wall.yTop + GEOM_EPS && y >= wall.yTip - GEOM_EPS);
+  return uniqueSorted(stations, 1e-5)
+    .filter((s) => s >= -GEOM_EPS && s <= axis.length + GEOM_EPS);
 }
 
 function activeMechanicalWalls(model, regions, options = {}) {
@@ -301,40 +287,55 @@ function activeMechanicalWalls(model, regions, options = {}) {
   );
   return (model?.walls || [])
     .map((wall, wallIndex) => ({ wall, wallIndex }))
-    .filter(({ wall }) => wall?.mechanicalActive === true)
+    // Spec principle #11: walls participate in deformation automatically.
+    // Treat missing/undefined `mechanicalActive` as ON; only explicit `false` opts out.
+    .filter(({ wall }) => wall?.mechanicalActive !== false)
     .map(({ wall, wallIndex }) => {
-      const x = Number(wall?.x);
-      const yTop = Number(wall?.yTop);
-      const yTip = Number(wall?.yTip);
       const label = wall?.id || `wall-${wallIndex + 1}`;
-      if (!Number.isFinite(x) || !Number.isFinite(yTop) || !Number.isFinite(yTip)) {
+      const endpoints = wallEndpoints(wall);
+      const axis = wallAxis(wall, GEOM_EPS);
+      if (!endpoints || !axis) {
         throw new Error(`Mechanical wall ${label} has invalid geometry.`);
       }
-      if (x < xMin - GEOM_EPS || x > xMax + GEOM_EPS) {
+      if (
+        endpoints.head.x < xMin - GEOM_EPS ||
+        endpoints.head.x > xMax + GEOM_EPS ||
+        endpoints.tip.x < xMin - GEOM_EPS ||
+        endpoints.tip.x > xMax + GEOM_EPS
+      ) {
         throw new Error(`Mechanical wall ${label} lies outside the deformation section.`);
       }
-      if (!(yTop > yTip + 0.05)) {
-        throw new Error(`Mechanical wall ${label} must have a tip at least 0.05 m below its top.`);
+      if (!(axis.length > 0.05)) {
+        throw new Error(`Mechanical wall ${label} must be at least 0.05 m long.`);
       }
       const section = resolveWallMechanicalSection(wall?.material?.mechanical);
       if (!section) throw new Error(`Mechanical wall ${label} has invalid section properties.`);
-      const intersectionYs = collectWallRegionIntersections({ x, yTop, yTip }, regions);
-      const nUniform = Math.max(1, Math.ceil((yTop - yTip) / targetLength));
-      const uniformYs = Array.from({ length: nUniform + 1 }, (_, i) => yTop - (i / nUniform) * (yTop - yTip));
-      const stationYs = uniqueSorted([...intersectionYs, ...uniformYs], 1e-5)
-        .filter((y) => y <= yTop + GEOM_EPS && y >= yTip - GEOM_EPS)
-        .sort((a, b) => b - a);
-      const stations = stationYs.map((y) => ({
-        x: +x.toFixed(6),
-        y: +y.toFixed(6),
-        s: +(yTop - y).toFixed(6)
-      }));
+      const intersectionStations = collectWallRegionStations(wall, regions);
+      const nUniform = Math.max(1, Math.ceil(axis.length / targetLength));
+      const uniformStations = Array.from({ length: nUniform + 1 }, (_, i) => (i / nUniform) * axis.length);
+      const stationValues = uniqueSorted([...intersectionStations, ...uniformStations], 1e-5)
+        .filter((s) => s >= -GEOM_EPS && s <= axis.length + GEOM_EPS)
+        .sort((a, b) => a - b);
+      const stations = stationValues.map((s) => {
+        const point = wallPointAtStation(axis, s);
+        return {
+          x: +point.x.toFixed(6),
+          y: +point.y.toFixed(6),
+          s: +s.toFixed(6)
+        };
+      });
       return {
         id: wall?.id || `wall-${wallIndex + 1}`,
         wallIndex,
-        x,
-        yTop,
-        yTip,
+        head:endpoints.head,
+        tip:endpoints.tip,
+        x:endpoints.head.x,
+        yTop:endpoints.head.y,
+        yTip:endpoints.tip.y,
+        length:axis.length,
+        t:axis.t,
+        nRight:axis.nRight,
+        nLeft:axis.nLeft,
         passiveSide: wall?.passiveSide === 'left' ? 'left' : 'right',
         section,
         stations
@@ -458,9 +459,10 @@ function attachMechanicalWallsToMesh(mesh, pslg) {
     const addNode = (nodeId) => {
       const node = mesh.nodes[nodeId];
       if (!node) return;
-      const s = wall.yTop - node.y;
-      if (Math.abs(node.x - wall.x) > 2e-5) return;
-      if (s < -GEOM_EPS || s > (wall.yTop - wall.yTip) + GEOM_EPS) return;
+      const point = { x: node.x, y: node.y };
+      const s = wallStationOfPoint(wall, point);
+      if (pointSegmentDistance(point, wall.head, wall.tip) > 2e-5) return;
+      if (s < -GEOM_EPS || s > wall.length + GEOM_EPS) return;
       const key = s.toFixed(6);
       if (!nodeByStation.has(key)) nodeByStation.set(key, { nodeId, s, x: node.x, y: node.y });
     };

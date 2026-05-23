@@ -6,6 +6,7 @@ import { materialAt, pointInPolygonHalfOpen, polygonArea } from '../soil-regions
 import { buildTriangleMesh } from './mesh-triangle.js';
 import { normalizeWallMaterial } from './material.js';
 import { drainHeadValueAt, normalizeDrains } from './drains.js';
+import { wallAxis, wallOrientedRectangle } from '../wall-geometry.js';
 
 const EPS = 1e-9;
 const GEOM_EPS = 1e-6;
@@ -131,6 +132,25 @@ function conductivityFloor(value, floor = MIN_CONDUCTIVITY) {
 function effectiveElementConductivity(value, dry = false) {
   const base = conductivityFloor(value);
   return dry ? Math.max(base * DRY_FACTOR, MIN_CONDUCTIVITY * DRY_FACTOR) : base;
+}
+
+function conductivityTensorFromMaterial(material, dry = false) {
+  const kx = effectiveElementConductivity(material?.kx, dry);
+  const ky = effectiveElementConductivity(material?.ky, dry);
+  const kxyRaw = Number(material?.kxy);
+  const kxy = Number.isFinite(kxyRaw) ? kxyRaw * (dry ? DRY_FACTOR : 1) : 0;
+  return { kx, ky, kxy };
+}
+
+function normalConductivity(data, normal) {
+  const nx = Number(normal?.x) || 0;
+  const ny = Number(normal?.y) || 0;
+  return Math.max(
+    (Number(data?.kx) || 0) * nx * nx +
+      2 * (Number(data?.kxy) || 0) * nx * ny +
+      (Number(data?.ky) || 0) * ny * ny,
+    MIN_CONDUCTIVITY
+  );
 }
 
 function lerp(a, b, t) {
@@ -289,28 +309,27 @@ function findBin(coords, value) {
 
 function wallRegionFor(wall, index) {
   const wallMaterial = normalizeWallMaterial(wall?.material, index, wall?.id);
-  const half = WALL_THICKNESS * 0.5;
-  const x0 = Number(wall?.x) - half;
-  const x1 = Number(wall?.x) + half;
-  const yTop = Number(wall?.yTop);
-  const yTip = Number(wall?.yTip);
+  const axis = wallAxis(wall);
+  const polygon = wallOrientedRectangle(wall, WALL_THICKNESS);
+  if (!axis || polygon.length < 3) return null;
+  const kAcross = conductivityFloor(wallMaterial.kAcross);
+  const kAlong = conductivityFloor(wallMaterial.kAlong);
+  const kx = kAlong * axis.t.x * axis.t.x + kAcross * axis.nRight.x * axis.nRight.x;
+  const ky = kAlong * axis.t.y * axis.t.y + kAcross * axis.nRight.y * axis.nRight.y;
+  const kxy = kAlong * axis.t.x * axis.t.y + kAcross * axis.nRight.x * axis.nRight.y;
   return {
     id: `wall-auto-${index + 1}`,
     source: 'wall-auto',
-    polygon: cleanPolygon([
-      { x: x0, y: yTip },
-      { x: x1, y: yTip },
-      { x: x1, y: yTop },
-      { x: x0, y: yTop }
-    ]),
+    polygon: cleanPolygon(polygon),
     material: {
       id: wallMaterial.id || `wall-auto-material-${index + 1}`,
       label: wallMaterial.label || `Wall ${index + 1}`,
       color: '#5E6472',
-      kx: conductivityFloor(wallMaterial.kAcross),
-      ky: conductivityFloor(wallMaterial.kAlong),
-      kAcross: conductivityFloor(wallMaterial.kAcross),
-      kAlong: conductivityFloor(wallMaterial.kAlong),
+      kx: Math.max(kx, MIN_CONDUCTIVITY),
+      ky: Math.max(ky, MIN_CONDUCTIVITY),
+      kxy,
+      kAcross,
+      kAlong,
       gamma: wallMaterial.gamma,
       gammaSat: wallMaterial.gammaSat,
       kSource: wallMaterial.kSource
@@ -325,7 +344,7 @@ function activeRegionsFor(model) {
       polygon: cleanPolygon(region?.polygon || [])
     }))
     .filter((region) => polygonArea(region.polygon) > 1e-6 && region?.material);
-  const walls = (model?.walls || []).map((wall, index) => wallRegionFor(wall, index));
+  const walls = (model?.walls || []).map((wall, index) => wallRegionFor(wall, index)).filter(Boolean);
   return [...base, ...walls];
 }
 
@@ -336,7 +355,7 @@ function centroidOfTriangle(a, b, c) {
   };
 }
 
-function elementMatrix(nodes, element, kx, ky) {
+function elementMatrix(nodes, element, kx, ky, kxy = 0) {
   const p1 = nodes[element[0]];
   const p2 = nodes[element[1]];
   const p3 = nodes[element[2]];
@@ -359,7 +378,11 @@ function elementMatrix(nodes, element, kx, ky) {
   ];
   for (let i = 0; i < 3; i += 1) {
     for (let j = 0; j < 3; j += 1) {
-      ke[i][j] = area * (kx * dNdx[i] * dNdx[j] + ky * dNdy[i] * dNdy[j]);
+      ke[i][j] = area * (
+        kx * dNdx[i] * dNdx[j] +
+        kxy * (dNdx[i] * dNdy[j] + dNdy[i] * dNdx[j]) +
+        ky * dNdy[i] * dNdy[j]
+      );
     }
   }
   return {
@@ -421,8 +444,10 @@ function maxConductivityValue(conductivities) {
     const item = conductivities[i];
     const kx = Number(item?.kx);
     const ky = Number(item?.ky);
+    const kxy = Math.abs(Number(item?.kxy) || 0);
     if (Number.isFinite(kx) && kx > maxValue) maxValue = kx;
     if (Number.isFinite(ky) && ky > maxValue) maxValue = ky;
+    if (Number.isFinite(kxy) && kxy > maxValue) maxValue = kxy;
   }
   return maxValue;
 }
@@ -772,7 +797,7 @@ function drainNodeFluxTolerance(mesh, nodeId, options, tolerances) {
   (elementsByNode(mesh)[nodeId] || []).forEach((elementIndex) => {
     const data = mesh?.elementData?.[elementIndex];
     if (!data) return;
-    kLocal = Math.max(kLocal, Number(data.kx) || 0, Number(data.ky) || 0);
+    kLocal = Math.max(kLocal, Number(data.kx) || 0, Number(data.ky) || 0, Math.abs(Number(data.kxy) || 0));
   });
   return Math.max(kLocal * gateTolerances.headActivateTol / Math.max(tolerances.charLength, 0.05), 1e-12);
 }
@@ -1112,16 +1137,14 @@ async function solveHeadField(mesh, dryFlags, dirichletValues, initial = null, r
   const conductivities = mesh.elementData.map((elementData, elementIndex) => {
     const cell = mesh.cells[mesh.elementCell[elementIndex]];
     const dry = !!dryFlags[elementIndex];
-    const kx = effectiveElementConductivity(cell.material?.kx, dry);
-    const ky = effectiveElementConductivity(cell.material?.ky, dry);
-    return { kx, ky };
+    return conductivityTensorFromMaterial(cell.material, dry);
   });
   const conductivityScale = maxConductivityValue(conductivities);
 
   mesh.elementData.forEach((elementData, elementIndex) => {
     const element = mesh.elements[elementIndex];
-    const { kx, ky } = conductivities[elementIndex];
-    const matrix = elementMatrix(mesh.nodes, element, kx / conductivityScale, ky / conductivityScale);
+    const { kx, ky, kxy } = conductivities[elementIndex];
+    const matrix = elementMatrix(mesh.nodes, element, kx / conductivityScale, ky / conductivityScale, kxy / conductivityScale);
     if (!matrix) return;
     for (let i = 0; i < 3; i += 1) {
       const row = rows[element[i]];
@@ -1133,8 +1156,10 @@ async function solveHeadField(mesh, dryFlags, dirichletValues, initial = null, r
       ...elementData,
       kx,
       ky,
+      kxy,
       solverKx: kx / conductivityScale,
       solverKy: ky / conductivityScale,
+      solverKxy: kxy / conductivityScale,
       area: matrix.area,
       dNdx: matrix.dNdx,
       dNdy: matrix.dNdy,
@@ -1190,13 +1215,11 @@ function computeElementGradients(mesh, heads) {
     let data = mesh.elementData[elementIndex];
     if (!data?.dNdx || !data?.dNdy) {
       const cell = mesh.cells[mesh.elementCell[elementIndex]];
-      const kx = Number.isFinite(Number(data?.kx))
-        ? Number(data.kx)
-        : conductivityFloor(cell?.material?.kx);
-      const ky = Number.isFinite(Number(data?.ky))
-        ? Number(data.ky)
-        : conductivityFloor(cell?.material?.ky);
-      const matrix = elementMatrix(mesh.nodes, element, kx, ky);
+      const tensor = conductivityTensorFromMaterial(cell?.material, false);
+      const kx = Number.isFinite(Number(data?.kx)) ? Number(data.kx) : tensor.kx;
+      const ky = Number.isFinite(Number(data?.ky)) ? Number(data.ky) : tensor.ky;
+      const kxy = Number.isFinite(Number(data?.kxy)) ? Number(data.kxy) : tensor.kxy;
+      const matrix = elementMatrix(mesh.nodes, element, kx, ky, kxy);
       if (!matrix) {
         return {
           dhdx: 0,
@@ -1207,14 +1230,14 @@ function computeElementGradients(mesh, heads) {
           qMagnitude: 0
         };
       }
-      data = { ...data, ...matrix, kx, ky };
+      data = { ...data, ...matrix, kx, ky, kxy };
       mesh.elementData[elementIndex] = data;
     }
     const hLocal = element.map((nodeId) => heads[nodeId]);
     const dhdx = data.dNdx[0] * hLocal[0] + data.dNdx[1] * hLocal[1] + data.dNdx[2] * hLocal[2];
     const dhdy = data.dNdy[0] * hLocal[0] + data.dNdy[1] * hLocal[1] + data.dNdy[2] * hLocal[2];
-    const qx = -data.kx * dhdx;
-    const qy = -data.ky * dhdy;
+    const qx = -(data.kx * dhdx + (Number(data.kxy) || 0) * dhdy);
+    const qy = -((Number(data.kxy) || 0) * dhdx + data.ky * dhdy);
     return {
       dhdx,
       dhdy,
@@ -1495,10 +1518,7 @@ function activeSeepageFacesFromFlux(
     if (!grad) return false;
     const facePressure = facePressureHeadMetrics(face, mesh, heads);
     const elementData = mesh.elementData[face.elementIndex];
-    const kNormal = Math.max(
-      elementData.kx * face.normal.x * face.normal.x + elementData.ky * face.normal.y * face.normal.y,
-      MIN_CONDUCTIVITY
-    );
+    const kNormal = normalConductivity(elementData, face.normal);
     const fluxTol = Math.max(kNormal * tolerances.headActivateTol / Math.max(face.length, tolerances.charLength, 0.05), 1e-12);
     const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
     const priorActive = !!prior?.[faceIndex];
@@ -1517,10 +1537,7 @@ function boundaryFaceFluxMetrics(face, mesh, gradients) {
   if (!grad) return null;
   const elementData = mesh?.elementData?.[face.elementIndex];
   if (!elementData) return null;
-  const kNormal = Math.max(
-    elementData.kx * face.normal.x * face.normal.x + elementData.ky * face.normal.y * face.normal.y,
-    MIN_CONDUCTIVITY
-  );
+  const kNormal = normalConductivity(elementData, face.normal);
   const fluxNormal = grad.qx * face.normal.x + grad.qy * face.normal.y;
   return {
     grad,

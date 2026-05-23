@@ -3,6 +3,7 @@
 
 import { normalizeWallMaterial } from './material.js';
 import { normalizeDrains } from './drains.js';
+import { wallEndpoints } from '../wall-geometry.js';
 
 const EPS = 1e-9;
 
@@ -215,10 +216,12 @@ export function seepageGeometryHash(model, options = {}) {
     })),
     walls: (model?.walls || []).map((wall, index) => {
       const material = normalizeWallMaterial(wall?.material, index, wall?.id);
+      const endpoints = wallEndpoints(wall);
       return [
-        roundCoord(wall?.x),
-        roundCoord(wall?.yTop),
-        roundCoord(wall?.yTip),
+        roundCoord(endpoints?.head?.x ?? wall?.x),
+        roundCoord(endpoints?.head?.y ?? wall?.yTop),
+        roundCoord(endpoints?.tip?.x ?? wall?.x),
+        roundCoord(endpoints?.tip?.y ?? wall?.yTip),
         wall?.passiveSide || 'right',
         Number.isFinite(Number(material.kAcross)) ? Number(material.kAcross) : null,
         Number.isFinite(Number(material.kAlong)) ? Number(material.kAlong) : null,

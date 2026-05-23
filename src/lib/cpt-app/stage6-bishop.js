@@ -13,6 +13,13 @@ import {
   probeVerticalRegionStack,
   regionStripOverlap
 } from './soil-regions.js';
+import {
+  circleWallSegmentIntersections,
+  wallAxis,
+  wallEndpoints,
+  wallNormalForSide,
+  wallStationOfPoint
+} from './wall-geometry.js';
 
 const EPS = 1e-9;
 const GEOM_EPS = 1e-6;
@@ -577,17 +584,46 @@ function normalizePassiveSide(side) {
   return side === 'left' ? 'left' : 'right';
 }
 
-function wallPassiveProbeX(model, wall) {
-  const terrainVerts = model?.terrain?.vertices || [];
-  if (!terrainVerts.length) return Number(wall?.x) || 0;
-  const span = Math.max(terrainVerts[terrainVerts.length - 1].x - terrainVerts[0].x, 1);
-  const offset = Math.max(span * 1e-4, 0.01);
-  const dir = normalizePassiveSide(wall?.passiveSide) === 'left' ? -1 : 1;
-  return clampXToTerrain(model.terrain, (Number(wall?.x) || 0) + dir * offset);
+function wallPointForPassiveProbe(wall, fallbackY = null) {
+  const axis = wallAxis(wall);
+  if (axis) {
+    if (Number.isFinite(Number(fallbackY)) && Math.abs(axis.tip.y - axis.head.y) > GEOM_EPS) {
+      const u = clamp((Number(fallbackY) - axis.head.y) / (axis.tip.y - axis.head.y), 0, 1);
+      return {
+        x: axis.head.x + u * (axis.tip.x - axis.head.x),
+        y: axis.head.y + u * (axis.tip.y - axis.head.y)
+      };
+    }
+    return axis.head;
+  }
+  return {
+    x: Number(wall?.x) || 0,
+    y: Number.isFinite(Number(fallbackY)) ? Number(fallbackY) : Number(wall?.yTop) || 0
+  };
 }
 
-function wallPassiveSegmentsLegacy(model, wall, yIntersect) {
-  const xProbe = wallPassiveProbeX(model, wall);
+function wallPassiveProbePoint(model, wall, referencePoint = null) {
+  const terrainVerts = model?.terrain?.vertices || [];
+  const base = referencePoint || wallPointForPassiveProbe(wall);
+  if (!terrainVerts.length) return base;
+  const span = Math.max(terrainVerts[terrainVerts.length - 1].x - terrainVerts[0].x, 1);
+  const offset = Math.max(span * 1e-4, 0.01);
+  const normal = wallNormalForSide(wall, normalizePassiveSide(wall?.passiveSide));
+  const probe = normal
+    ? { x: base.x + normal.x * offset, y: base.y + normal.y * offset }
+    : { x: base.x + (normalizePassiveSide(wall?.passiveSide) === 'left' ? -offset : offset), y: base.y };
+  return {
+    x: clampXToTerrain(model.terrain, probe.x),
+    y: probe.y
+  };
+}
+
+function wallPassiveProbeX(model, wall, referencePoint = null) {
+  return wallPassiveProbePoint(model, wall, referencePoint).x;
+}
+
+function wallPassiveSegmentsLegacy(model, wall, yIntersect, referencePoint = null) {
+  const xProbe = wallPassiveProbeX(model, wall, referencePoint || wallPointForPassiveProbe(wall, yIntersect));
   const terrainSurfaceY = terrainY(model.terrain, xProbe);
   const waterY = model.phreatic ? terrainY(model.phreatic, xProbe) : null;
   const yBottom = Math.min(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
@@ -627,14 +663,14 @@ function wallPassiveSegmentsLegacy(model, wall, yIntersect) {
   };
 }
 
-function wallPassiveSegments(model, wall, yIntersect, soilSource = 'regions') {
-  const xProbe = wallPassiveProbeX(model, wall);
+function wallPassiveSegments(model, wall, yIntersect, soilSource = 'regions', referencePoint = null) {
+  const xProbe = wallPassiveProbeX(model, wall, referencePoint || wallPointForPassiveProbe(wall, yIntersect));
   const terrainSurfaceY = terrainY(model.terrain, xProbe);
   const waterY = model.phreatic ? terrainY(model.phreatic, xProbe) : null;
   const yBottom = Math.min(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
   const yTop = Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
   if (soilSource === 'legacy-bands' && Array.isArray(model?.legacyBands)) {
-    return wallPassiveSegmentsLegacy(model, wall, yIntersect);
+    return wallPassiveSegmentsLegacy(model, wall, yIntersect, referencePoint);
   }
   return {
     xProbe,
@@ -657,72 +693,90 @@ function computeWallIntersections(circle, model, entry, exit, soilSource = 'regi
   };
 
   walls.forEach((wall) => {
-    const wallX = Number(wall?.x);
-    if (!Number.isFinite(wallX) || wallX <= entry.x + GEOM_EPS || wallX >= exit.x - GEOM_EPS) {
+    const axis = wallAxis(wall);
+    if (!axis) {
       interactions.outOfMass += 1;
       return;
     }
-    if (Math.abs(wallX - circle.center.x) >= circle.radius - GEOM_EPS) return;
-    const yIntersect = circleYActive(circle, wallX);
-    if (!Number.isFinite(yIntersect)) return;
-    if (yIntersect <= Number(wall?.yTip) + GEOM_EPS) {
-      interactions.passedBelow += 1;
-      return;
-    }
-    if (yIntersect >= Number(wall?.yTop) - GEOM_EPS) {
-      interactions.passedAbove += 1;
+    const hits = circleWallSegmentIntersections(circle, wall, GEOM_EPS)
+      .filter((hit) => hit?.point && hit.point.x > entry.x + GEOM_EPS && hit.point.x < exit.x - GEOM_EPS)
+      .filter((hit) => {
+        const activeY = circleYActive(circle, hit.point.x);
+        return Number.isFinite(activeY) && Math.abs(activeY - hit.point.y) <= Math.max(1e-4, circle.radius * 1e-7);
+      })
+      .sort((a, b) => a.s - b.s);
+    if (!hits.length) {
+      const minWallX = Math.min(axis.head.x, axis.tip.x);
+      const maxWallX = Math.max(axis.head.x, axis.tip.x);
+      if (maxWallX <= entry.x + GEOM_EPS || minWallX >= exit.x - GEOM_EPS) interactions.outOfMass += 1;
       return;
     }
 
-    const passive = wallPassiveSegments(model, wall, yIntersect, soilSource);
-    let R_passive = 0;
-    let yMoment = 0;
-    passive.segments.forEach((segment) => {
-      const phi = ((Number(segment.material?.phiEffDeg) || 0) * Math.PI) / 180;
-      const Kp = sqr(Math.tan(Math.PI / 4 + phi / 2));
-      const cohesion = Number(segment.material?.cEff) || 0;
-      const z1 = passive.terrainSurfaceY - segment.yTop;
-      const z2 = passive.terrainSurfaceY - segment.yBottom;
-      if (!Number.isFinite(z1) || !Number.isFinite(z2) || z2 <= z1 + GEOM_EPS) return;
-      const a = Kp * (Number(segment.gamma) || 0);
-      const b = 2 * cohesion * Math.sqrt(Math.max(Kp, 0));
-      const force = 0.5 * a * (z2 * z2 - z1 * z1) + b * (z2 - z1);
-      if (!(force > GEOM_EPS)) return;
-      const firstMoment =
-        passive.terrainSurfaceY * force -
-        (a / 3) * (z2 * z2 * z2 - z1 * z1 * z1) -
-        0.5 * b * (z2 * z2 - z1 * z1);
-      R_passive += force;
-      yMoment += firstMoment;
-    });
+    hits.forEach((hit) => {
+      const yIntersect = hit.point.y;
+      const station = Number.isFinite(hit.s) ? hit.s : wallStationOfPoint(axis, hit.point);
+      if (station >= axis.length - GEOM_EPS) {
+        interactions.passedBelow += 1;
+        return;
+      }
+      if (station <= GEOM_EPS) {
+        interactions.passedAbove += 1;
+        return;
+      }
 
-    if (!(R_passive > GEOM_EPS)) return;
-    const maxShear =
-      Number.isFinite(Number(wall?.maxShearForce)) && Number(wall.maxShearForce) > 0
-        ? Number(wall.maxShearForce)
-        : null;
-    const R_wall = maxShear != null ? Math.min(R_passive, maxShear) : R_passive;
-    if (!(R_wall > GEOM_EPS)) return;
-    const y_application =
-      R_passive > GEOM_EPS && Number.isFinite(yMoment / R_passive)
-        ? yMoment / R_passive
-        : Number(wall?.yTip) + (yIntersect - Number(wall?.yTip)) / 3;
-    const momentArm = circle.center.y - y_application;
-    const M_wall = R_wall * momentArm;
-    interactions.intersections.push({
-      wall: {
-        ...wall,
-        passiveSide: normalizePassiveSide(wall?.passiveSide)
-      },
-      x: wallX,
-      y_intersect: yIntersect,
-      d_embedded: yIntersect - Number(wall?.yTip),
-      R_passive,
-      R_wall,
-      y_application,
-      momentArm,
-      M_wall,
-      momentTerm: M_wall / Math.max(circle.radius, EPS)
+      const passive = wallPassiveSegments(model, wall, yIntersect, soilSource, hit.point);
+      let R_passive = 0;
+      let yMoment = 0;
+      passive.segments.forEach((segment) => {
+        const phi = ((Number(segment.material?.phiEffDeg) || 0) * Math.PI) / 180;
+        const Kp = sqr(Math.tan(Math.PI / 4 + phi / 2));
+        const cohesion = Number(segment.material?.cEff) || 0;
+        const z1 = passive.terrainSurfaceY - segment.yTop;
+        const z2 = passive.terrainSurfaceY - segment.yBottom;
+        if (!Number.isFinite(z1) || !Number.isFinite(z2) || z2 <= z1 + GEOM_EPS) return;
+        const a = Kp * (Number(segment.gamma) || 0);
+        const b = 2 * cohesion * Math.sqrt(Math.max(Kp, 0));
+        const force = 0.5 * a * (z2 * z2 - z1 * z1) + b * (z2 - z1);
+        if (!(force > GEOM_EPS)) return;
+        const firstMoment =
+          passive.terrainSurfaceY * force -
+          (a / 3) * (z2 * z2 * z2 - z1 * z1 * z1) -
+          0.5 * b * (z2 * z2 - z1 * z1);
+        R_passive += force;
+        yMoment += firstMoment;
+      });
+
+      if (!(R_passive > GEOM_EPS)) return;
+      const maxShear =
+        Number.isFinite(Number(wall?.maxShearForce)) && Number(wall.maxShearForce) > 0
+          ? Number(wall.maxShearForce)
+          : null;
+      const R_wall = maxShear != null ? Math.min(R_passive, maxShear) : R_passive;
+      if (!(R_wall > GEOM_EPS)) return;
+      const y_application =
+        R_passive > GEOM_EPS && Number.isFinite(yMoment / R_passive)
+          ? yMoment / R_passive
+          : Number(axis.tip.y) + (yIntersect - Number(axis.tip.y)) / 3;
+      const momentArm = circle.center.y - y_application;
+      const M_wall = R_wall * momentArm;
+      const passiveNormal = wallNormalForSide(axis, normalizePassiveSide(wall?.passiveSide));
+      interactions.intersections.push({
+        wall: {
+          ...wall,
+          passiveSide: normalizePassiveSide(wall?.passiveSide)
+        },
+        x: hit.point.x,
+        y_intersect: yIntersect,
+        s_intersect: station,
+        d_embedded: axis.length - station,
+        R_passive,
+        R_wall,
+        y_application,
+        momentArm,
+        M_wall,
+        passiveNormal,
+        momentTerm: M_wall / Math.max(circle.radius, EPS)
+      });
     });
   });
 
@@ -744,7 +798,8 @@ function applyWallInteractionsToSlices(slices, wallIntersections) {
         x: item.x,
         y_intersect: item.y_intersect,
         R_wall: item.R_wall,
-        y_application: item.y_application
+        y_application: item.y_application,
+        passiveNormal: item.passiveNormal
       }))
     };
   });
@@ -833,10 +888,14 @@ function computeSliceBreaks(circle, entry, exit, model, searchConfig) {
   });
 
   (model.walls || []).forEach((wall) => {
-    if (wall.x > xStart + GEOM_EPS && wall.x < xEnd - GEOM_EPS) {
-      cuts.push(wall.x);
-      protectedCuts.push(wall.x);
-    }
+    circleWallSegmentIntersections(circle, wall, GEOM_EPS).forEach((hit) => {
+      const x = hit?.point?.x;
+      if (!(x > xStart + GEOM_EPS && x < xEnd - GEOM_EPS)) return;
+      const activeY = circleYActive(circle, x);
+      if (!Number.isFinite(activeY) || Math.abs(activeY - hit.point.y) > Math.max(1e-4, circle.radius * 1e-7)) return;
+      cuts.push(x);
+      protectedCuts.push(x);
+    });
   });
 
   return mergeShortIntervals(cuts, minSliceWidth, protectedCuts);
@@ -920,8 +979,8 @@ function buildSlicesForCircle(circle, entry, exit, model, searchConfig, soilSour
       uBase,
       baseMaterial,
       layerAreas,
-      wallOnLeft: (model.walls || []).find((wall) => Math.abs(wall.x - xL) <= 1e-6) || null,
-      wallOnRight: (model.walls || []).find((wall) => Math.abs(wall.x - xR) <= 1e-6) || null,
+      wallOnLeft: null,
+      wallOnRight: null,
       wallForceLeft: 0,
       wallMomentTermLeft: 0,
       wallInteractionsLeft: []
@@ -2790,31 +2849,44 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
   );
 
   const walls = (bishopState?.walls || [])
-    .map((wall, index) => ({
-      id: wall?.id || `wall-${index + 1}`,
-      x: Number(wall?.x),
-      yTop: Number(wall?.yTop),
-      yTip: Number(wall?.yTip),
-      passiveSide: normalizePassiveSide(wall?.passiveSide),
-      mechanicalActive: wall?.mechanicalActive === true,
-      anchors: Array.isArray(wall?.anchors) ? wall.anchors : [],
-      maxShearForce:
-        Number.isFinite(Number(wall?.maxShearForce)) && Number(wall.maxShearForce) > 0
-          ? Number(wall.maxShearForce)
-          : null,
-      material: normalizeWallMaterial(wall?.material, index, wall?.id || `wall-${index + 1}`)
-    }))
+    .map((wall, index) => {
+      const endpoints = wallEndpoints(wall);
+      const head = endpoints?.head || {
+        x: Number(wall?.x),
+        y: Number(wall?.yTop)
+      };
+      const tip = endpoints?.tip || {
+        x: Number(wall?.x),
+        y: Number(wall?.yTip)
+      };
+      return {
+        id: wall?.id || `wall-${index + 1}`,
+        head,
+        tip,
+        x: head.x,
+        yTop: head.y,
+        yTip: tip.y,
+        passiveSide: normalizePassiveSide(wall?.passiveSide),
+        mechanicalActive: wall?.mechanicalActive === true,
+        anchors: Array.isArray(wall?.anchors) ? wall.anchors : [],
+        maxShearForce:
+          Number.isFinite(Number(wall?.maxShearForce)) && Number(wall.maxShearForce) > 0
+            ? Number(wall.maxShearForce)
+            : null,
+        material: normalizeWallMaterial(wall?.material, index, wall?.id || `wall-${index + 1}`)
+      };
+    })
     .filter((wall) => {
+      const axis = wallAxis(wall, GEOM_EPS);
       return (
-        Number.isFinite(wall.x) &&
-        Number.isFinite(wall.yTop) &&
-        Number.isFinite(wall.yTip) &&
-        wall.yTip < wall.yTop - GEOM_EPS &&
-        wall.x >= terrain.vertices[0].x - GEOM_EPS &&
-        wall.x <= terrain.vertices[terrain.vertices.length - 1].x + GEOM_EPS
+        axis &&
+        axis.head.x >= terrain.vertices[0].x - GEOM_EPS &&
+        axis.head.x <= terrain.vertices[terrain.vertices.length - 1].x + GEOM_EPS &&
+        axis.tip.x >= terrain.vertices[0].x - GEOM_EPS &&
+        axis.tip.x <= terrain.vertices[terrain.vertices.length - 1].x + GEOM_EPS
       );
     })
-    .sort((a, b) => a.x - b.x || b.yTop - a.yTop);
+    .sort((a, b) => a.head.x - b.head.x || b.head.y - a.head.y || a.tip.x - b.tip.x);
   const drains = normalizeDrains(bishopState?.drains || []);
 
   const model = {

@@ -4,6 +4,7 @@
 import { domainPolygonFor } from '../mesh/section-pslg.js';
 import { pointInPolygonHalfOpen } from '../soil-regions.js';
 import { normalizeWallMaterial } from './material.js';
+import { wallOrientedRectangle } from '../wall-geometry.js';
 
 const GEOM_EPS = 1e-6;
 const HEAD_MERGE_TOL = 1e-5;
@@ -142,19 +143,7 @@ function samplePolylineY(vertices, x) {
 }
 
 function wallPolygonFor(wall) {
-  const x = Number(wall?.x);
-  const yTop = Number(wall?.yTop);
-  const yTip = Number(wall?.yTip);
-  if (!Number.isFinite(x) || !Number.isFinite(yTop) || !Number.isFinite(yTip)) return [];
-  const half = WALL_THICKNESS * 0.5;
-  const top = Math.max(yTop, yTip);
-  const bottom = Math.min(yTop, yTip);
-  return [
-    { x: x - half, y: bottom },
-    { x: x + half, y: bottom },
-    { x: x + half, y: top },
-    { x: x - half, y: top }
-  ];
+  return wallOrientedRectangle(wall, WALL_THICKNESS);
 }
 
 function pointStrictlyInsidePolygon(point, polygon, margin = GEOM_EPS) {
