@@ -1276,13 +1276,47 @@ input[type=range]{accent-color:var(--ac)}
   display:grid;
   gap:4px;
 }
+.st6-wall-chart-grid{
+  display:grid;
+  gap:10px;
+}
 .st6-wall-chart-row canvas{
   width:100%;
-  height:112px;
+  height:126px;
   display:block;
   border:1px solid var(--st6-glass-divider);
   border-radius:7px;
   background:color-mix(in srgb, var(--bg2) 36%, transparent);
+}
+.st6-analysis-tabs{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:6px;
+  padding:4px;
+  border:1px solid var(--st6-glass-divider);
+  border-radius:9px;
+  background:color-mix(in srgb, var(--panel) 28%, transparent);
+}
+.st6-analysis-tab{
+  min-height:34px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:var(--tx2);
+  box-shadow:none;
+  cursor:pointer;
+  font-size:12px;
+  font-weight:700;
+}
+.st6-analysis-tab:hover,
+.st6-analysis-tab:focus-visible{
+  color:var(--tx);
+  background:var(--st6-glass-control-wash);
+}
+.st6-analysis-tab.active{
+  color:var(--ac);
+  background:var(--st6-glass-control-active);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--ac) 18%, transparent);
 }
 .st6-canvas-tools-restore{
   position:absolute;
