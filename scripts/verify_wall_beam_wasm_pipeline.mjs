@@ -263,6 +263,10 @@ async function main() {
       'cg-bj',
       'default MC wall solve telemetry must not report the experimental GMRES path'
     );
+    assert.ok(
+      Number(serviceLoadWithWall?.solver?.linearIterations) < 25000,
+      `wall-aware preconditioner should keep the small MC wall service case below 25000 CG iterations (got ${serviceLoadWithWall?.solver?.linearIterations})`
+    );
     const serviceWallStations = serviceLoadWithWall.wallResults?.[0]?.stations || [];
     const serviceMaxForce = Math.max(0, ...serviceWallStations.map((s) =>
       Math.max(Math.abs(Number(s.N) || 0), Math.abs(Number(s.VPassive) || 0), Math.abs(Number(s.MPassive) || 0))

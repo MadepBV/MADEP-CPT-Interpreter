@@ -22,6 +22,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -746,6 +747,105 @@ enum class BeamAssemblyMode : std::uint8_t {
   InactiveStabilizeRotations = 1
 };
 
+inline std::vector<std::array<std::int32_t, 3>> build_wall_preconditioner_triplets(
+    const std::vector<BeamElementCache>* beamElements,
+    const std::vector<std::int32_t>& freeIndexByDof,
+    BeamAssemblyMode beamMode) {
+  std::vector<std::array<std::int32_t, 3>> triplets;
+  if (!beamElements || beamMode != BeamAssemblyMode::Active) return triplets;
+  triplets.reserve(beamElements->size() * 2);
+  auto add_node = [&](const BeamElementCache& beamEl, int offset) {
+    const std::int32_t uxDof = beamEl.dofs[static_cast<std::size_t>(offset + 0)];
+    const std::int32_t uyDof = beamEl.dofs[static_cast<std::size_t>(offset + 1)];
+    const std::int32_t thDof = beamEl.dofs[static_cast<std::size_t>(offset + 2)];
+    if (uxDof < 0 || uyDof < 0 || thDof < 0 ||
+        uxDof >= static_cast<std::int32_t>(freeIndexByDof.size()) ||
+        uyDof >= static_cast<std::int32_t>(freeIndexByDof.size()) ||
+        thDof >= static_cast<std::int32_t>(freeIndexByDof.size())) {
+      return;
+    }
+    const std::int32_t ux = freeIndexByDof[static_cast<std::size_t>(uxDof)];
+    const std::int32_t uy = freeIndexByDof[static_cast<std::size_t>(uyDof)];
+    const std::int32_t th = freeIndexByDof[static_cast<std::size_t>(thDof)];
+    if (ux < 0 || uy < 0 || th < 0) return;
+    triplets.push_back({ux, uy, th});
+  };
+  for (const auto& beamEl : *beamElements) {
+    add_node(beamEl, 0);
+    add_node(beamEl, 3);
+  }
+  std::sort(triplets.begin(), triplets.end());
+  triplets.erase(std::unique(triplets.begin(), triplets.end()), triplets.end());
+  return triplets;
+}
+
+inline std::vector<std::vector<std::int32_t>> build_wall_preconditioner_blocks(
+    const std::vector<BeamElementCache>* beamElements,
+    const std::vector<std::int32_t>& freeIndexByDof,
+    BeamAssemblyMode beamMode) {
+  struct NodeBlock {
+    std::int32_t wallIndex{ -1 };
+    std::int32_t station{ -1 };
+    std::array<std::int32_t, 3> free{{-1, -1, -1}};
+  };
+  std::vector<NodeBlock> nodes;
+  if (!beamElements || beamMode != BeamAssemblyMode::Active) return {};
+  nodes.reserve(beamElements->size() * 2);
+  auto free_index = [&](std::int32_t dof) {
+    if (dof < 0 || dof >= static_cast<std::int32_t>(freeIndexByDof.size())) return std::int32_t{-1};
+    return freeIndexByDof[static_cast<std::size_t>(dof)];
+  };
+  auto add_node = [&](const BeamElementCache& beamEl, std::int32_t station, int offset) {
+    NodeBlock node;
+    node.wallIndex = beamEl.wallIndex;
+    node.station = station;
+    node.free[0] = free_index(beamEl.dofs[static_cast<std::size_t>(offset + 0)]);
+    node.free[1] = free_index(beamEl.dofs[static_cast<std::size_t>(offset + 1)]);
+    node.free[2] = free_index(beamEl.dofs[static_cast<std::size_t>(offset + 2)]);
+    if (node.free[0] >= 0 || node.free[1] >= 0 || node.free[2] >= 0) nodes.push_back(node);
+  };
+  for (const auto& beamEl : *beamElements) {
+    add_node(beamEl, beamEl.stationA, 0);
+    add_node(beamEl, beamEl.stationB, 3);
+  }
+  std::sort(nodes.begin(), nodes.end(), [](const NodeBlock& a, const NodeBlock& b) {
+    if (a.wallIndex != b.wallIndex) return a.wallIndex < b.wallIndex;
+    return a.station < b.station;
+  });
+
+  std::vector<NodeBlock> uniqueNodes;
+  for (const auto& node : nodes) {
+    if (!uniqueNodes.empty() &&
+        uniqueNodes.back().wallIndex == node.wallIndex &&
+        uniqueNodes.back().station == node.station) {
+      for (int k = 0; k < 3; ++k) {
+        if (uniqueNodes.back().free[k] < 0) uniqueNodes.back().free[k] = node.free[k];
+      }
+    } else {
+      uniqueNodes.push_back(node);
+    }
+  }
+
+  std::vector<std::vector<std::int32_t>> blocks;
+  std::int32_t currentWall = std::numeric_limits<std::int32_t>::min();
+  std::vector<std::int32_t> current;
+  auto flush = [&]() {
+    if (current.size() >= 3) blocks.push_back(current);
+    current.clear();
+  };
+  for (const auto& node : uniqueNodes) {
+    if (node.wallIndex != currentWall) {
+      flush();
+      currentWall = node.wallIndex;
+    }
+    for (int k = 0; k < 3; ++k) {
+      if (node.free[k] >= 0) current.push_back(node.free[k]);
+    }
+  }
+  flush();
+  return blocks;
+}
+
 inline void stabilize_beam_rotation_dofs(
     CsrMatrix& K,
     const std::vector<BeamElementCache>& beamElements,
@@ -1156,7 +1256,9 @@ inline cg::LinearSolveResult solve_phase_linear_system(
     bool reuseDiagInv = false,
     cg::GmresScalingCache* gmresCache = nullptr,
     double relTolOverride = std::numeric_limits<double>::quiet_NaN(),
-    double absTolOverride = std::numeric_limits<double>::quiet_NaN()) {
+    double absTolOverride = std::numeric_limits<double>::quiet_NaN(),
+    const std::vector<std::array<std::int32_t, 3>>* wallPreconditionerTriplets = nullptr,
+    const std::vector<std::vector<std::int32_t>>* wallPreconditionerBlocks = nullptr) {
   const double relTol = (std::isfinite(relTolOverride) && relTolOverride >= 0.0)
       ? relTolOverride
       : opts.cgRelTol;
@@ -1171,7 +1273,7 @@ inline cg::LinearSolveResult solve_phase_linear_system(
                                   gmresCache);
   }
   if (!reuseDiagInv) {
-    sparse::build_block_jacobi(K, freeDofs, diagInv);
+    sparse::build_block_jacobi(K, freeDofs, diagInv, wallPreconditionerTriplets, wallPreconditionerBlocks);
   }
   return cg::solve_cg(K, diagInv, freeDofs,
                       residualFree.data(), correctionFree.data(),
@@ -2820,6 +2922,14 @@ inline PhaseResult run_nonlinear_phase(
   const double* rampedRhs = ctx.rampedRhsFree ? ctx.rampedRhsFree->data() : nullptr;
 
   const std::int32_t nfree = K.nrows;
+  const std::vector<std::array<std::int32_t, 3>> wallPreconditionerTriplets =
+      build_wall_preconditioner_triplets(ctx.beamElements, freeIndexByDof, beamMode);
+  const auto* wallPreconditioner =
+      wallPreconditionerTriplets.empty() ? nullptr : &wallPreconditionerTriplets;
+  const std::vector<std::vector<std::int32_t>> wallPreconditionerBlocks =
+      build_wall_preconditioner_blocks(ctx.beamElements, freeIndexByDof, beamMode);
+  const auto* wallLinePreconditioner =
+      wallPreconditionerBlocks.empty() ? nullptr : &wallPreconditionerBlocks;
   std::vector<double> internalForceFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> residualFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> deltaUFree(static_cast<std::size_t>(nfree), 0.0);
@@ -3149,7 +3259,7 @@ inline PhaseResult run_nonlinear_phase(
 	      cg::LinearSolveResult lr = solve_phase_linear_system(
 	          K, freeDofs, residualFree, deltaUFree, diag_inv, opts, tangentAsymmetric,
 	          /*reuseDiagInv=*/false, /*gmresCache=*/nullptr,
-	          linearSolveRelTol, linearSolveAbsTol);
+	          linearSolveRelTol, linearSolveAbsTol, wallPreconditioner, wallLinePreconditioner);
 	      res.cgIterations += lr.iterations;
 	      stepLinearIterations += lr.iterations;
 	      if (tangentAsymmetric) {
@@ -3339,7 +3449,8 @@ inline PhaseResult run_nonlinear_phase(
                 K, freeDofs, residualFree, fallbackDeltaUFree, diag_inv, opts,
                 /*useUnsymmetricSolver=*/false,
                 /*reuseDiagInv=*/false, /*gmresCache=*/nullptr,
-                fallbackLinearSolveRelTol, fallbackLinearSolveAbsTol);
+                fallbackLinearSolveRelTol, fallbackLinearSolveAbsTol,
+                wallPreconditioner, wallLinePreconditioner);
             res.cgIterations += fallbackLr.iterations;
             stepLinearIterations += fallbackLr.iterations;
             res.lastLinearSolverKind = 0;
