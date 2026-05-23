@@ -303,10 +303,9 @@ export function encodeInputBuffer({
   writeU32(ndofTotal);
   writeU8(options.hasSurfaceLoad ? 1 : 0);
   writeU8(options.useTensionCutoff !== false ? 1 : 0);
-  // Symmetrize flag: matches the JS contract where `symmetrizeEpTangent`
-  // defaults to false (unsymmetric consistent tangent + scaled GMRES).
-  // Set `options.symmetrizeTangent: true` to force symmetric tangent +
-  // CG (legacy modified-Newton diagnostics path).
+  // Symmetrize flag for materials that explicitly opt into an asymmetric
+  // consistent tangent. MC keeps the production modified-Newton path unless
+  // `useMcConsistentTangent` is set by the caller.
   writeU8(options.symmetrizeTangent === true ? 1 : 0);
   writeU8(elementKind === 6 && options.useBBar !== false ? 1 : 0);
   writeU8(options.useK0Init !== false ? 1 : 0);

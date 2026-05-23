@@ -48,7 +48,7 @@ function stageLayers() {
   }];
 }
 
-function bishopUiState(withWall = true, diagonal = false) {
+function bishopUiState(withWall = true, diagonal = false, q = 20) {
   const wall = diagonal
     ? {
         id: 'wall-1',
@@ -91,7 +91,7 @@ function bishopUiState(withWall = true, diagonal = false) {
       },
       anchors: []
     }] : [],
-    surfaceLoads: [{ id: 'load-1', xStart: 4.2, xEnd: 5.4, q: 20, active: true }],
+    surfaceLoads: [{ id: 'load-1', xStart: 4.2, xEnd: 5.4, q, active: true }],
     deformation: { options: { outOfPlaneLength: 10, loadMode: 'pressure' } },
     seepage: null
   };
@@ -111,7 +111,7 @@ function wallFrame(stations) {
   };
 }
 
-function options() {
+function options(overrides = {}) {
   return {
     analysisType: 'deformation',
     meshElementType: 't3',
@@ -130,7 +130,8 @@ function options() {
     minLoadStep: 1e-4,
     maxLoadSteps: 32,
     useWasmCpuPipeline: true,
-    useNewGpuPipeline: false
+    useNewGpuPipeline: false,
+    ...overrides
   };
 }
 
@@ -202,6 +203,75 @@ async function main() {
         'inclined wall passive deflection should be projected along the local passive normal'
       );
     });
+
+    const tinyLoadOptions = options({
+      constitutiveModel: 'mc-plastic',
+      initialStressMode: 'plastic-geostatic',
+      initialLoadStep: 0.25,
+      minLoadStep: 1e-4,
+      maxLoadSteps: 80,
+      nonlinearMaxIterations: 30
+    });
+    const tinyLoadWithoutWall = await analyzeDeformationModel({
+      model: buildBishopModelFromStageLayers(stageLayers(), bishopUiState(false, false, 1e-9)),
+      options: tinyLoadOptions
+    });
+    assert.equal(
+      tinyLoadWithoutWall?.solver?.converged,
+      true,
+      'MC plastic-geostatic tiny-load baseline without wall must converge'
+    );
+    const tinyLoadWithWall = await analyzeDeformationModel({
+      model: buildBishopModelFromStageLayers(stageLayers(), bishopUiState(true, false, 1e-9)),
+      options: tinyLoadOptions
+    });
+    assert.equal(
+      tinyLoadWithWall?.solver?.converged,
+      true,
+      'MC plastic-geostatic tiny-load wall case must converge after wall installation handoff'
+    );
+    const tinyWallStations = tinyLoadWithWall.wallResults?.[0]?.stations || [];
+    const tinyMaxForce = Math.max(0, ...tinyWallStations.map((s) =>
+      Math.max(Math.abs(Number(s.N) || 0), Math.abs(Number(s.VPassive) || 0), Math.abs(Number(s.MPassive) || 0))
+    ));
+    const tinyMaxDeflection = Math.max(0, ...tinyWallStations.map((s) => Math.abs(Number(s.wPassive) || 0)));
+    assert.ok(
+      tinyMaxForce < 1e-5,
+      `wall must not carry locked-in K0 force for a tiny service load (max ${tinyMaxForce})`
+    );
+    assert.ok(
+      tinyMaxDeflection < 1e-8,
+      `wall service deflection must be near zero for a tiny service load (max ${tinyMaxDeflection})`
+    );
+
+    const serviceLoadWithWall = await analyzeDeformationModel({
+      model: buildBishopModelFromStageLayers(stageLayers(), bishopUiState(true, false, 1)),
+      options: tinyLoadOptions
+    });
+    assert.equal(
+      serviceLoadWithWall?.solver?.converged,
+      true,
+      'MC plastic-geostatic wall case must converge for a small real service load'
+    );
+    assert.equal(
+      serviceLoadWithWall?.solver?.lastLinearSolverKind,
+      0,
+      'default MC wall solve must remain on the production symmetric CG path'
+    );
+    assert.equal(
+      serviceLoadWithWall?.solver?.linearAlgebraBackend?.krylovPath,
+      'cg-bj',
+      'default MC wall solve telemetry must not report the experimental GMRES path'
+    );
+    const serviceWallStations = serviceLoadWithWall.wallResults?.[0]?.stations || [];
+    const serviceMaxForce = Math.max(0, ...serviceWallStations.map((s) =>
+      Math.max(Math.abs(Number(s.N) || 0), Math.abs(Number(s.VPassive) || 0), Math.abs(Number(s.MPassive) || 0))
+    ));
+    assert.ok(
+      Number.isFinite(serviceMaxForce) && serviceMaxForce > 1e-5,
+      'wall must develop service-load force after the geostatic handoff'
+    );
+
     console.log('PASS: wall beam WASM pipeline fixtures converged for vertical and inclined walls.');
   } finally {
     __resetDeformationWasmModuleForTests();

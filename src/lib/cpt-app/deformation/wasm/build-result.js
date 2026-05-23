@@ -103,7 +103,7 @@ function wallFrameFromStations(stations, passiveSign = 1) {
   };
 }
 
-function buildWallResultsFromWasm(wasmWallResults, predictorSolution) {
+function buildWallResultsFromWasm(wasmWallResults, predictorSolution, geostaticSolution) {
   return (wasmWallResults || []).map((wall) => ({
     wallIndex: wall.wallIndex,
     passiveSide: wall.passiveSide,
@@ -111,10 +111,14 @@ function buildWallResultsFromWasm(wasmWallResults, predictorSolution) {
     stations: (wall.stations || []).map((station) => {
       const predictorUx = Number(predictorSolution?.[2 * station.nodeId]) || 0;
       const predictorUy = Number(predictorSolution?.[2 * station.nodeId + 1]) || 0;
+      const geostaticUx = Number(geostaticSolution?.[2 * station.nodeId]) || 0;
+      const geostaticUy = Number(geostaticSolution?.[2 * station.nodeId + 1]) || 0;
       return {
         ...station,
-        totalUx: (Number(station.ux) || 0) + predictorUx,
-        totalUy: (Number(station.uy) || 0) + predictorUy
+        initialUx: predictorUx + geostaticUx,
+        initialUy: predictorUy + geostaticUy,
+        totalUx: (Number(station.ux) || 0) + predictorUx + geostaticUx,
+        totalUy: (Number(station.uy) || 0) + predictorUy + geostaticUy
       };
     })
   })).map((wall) => {
@@ -196,7 +200,11 @@ export function buildWasmDeformationResult({
   const nodalDisplacements = displayUsesServiceIncrement
     ? serviceIncrementNodalDisplacements
     : totalNodalDisplacements;
-  const wallResults = buildWallResultsFromWasm(wasmResult.wallResults, predictorSolution);
+  const wallResults = buildWallResultsFromWasm(
+    wasmResult.wallResults,
+    predictorSolution,
+    wasmResult.geostaticDisplacements
+  );
 
   // Per-element results. We use the wasmResult per-Gauss-point data
   // directly (already correct in tension-positive Voigt-6); for display
@@ -605,8 +613,7 @@ export function buildWasmDeformationResult({
       };
   const usesUnsymmetricPlasticKrylov =
     summary?.hsPlasticUsedGmres === true ||
-    summary?.lastLinearSolverKind === 1 ||
-    (options.constitutiveModel === 'mc-plastic' && options.symmetrizeEpTangent !== true);
+    summary?.lastLinearSolverKind === 1;
   const krylovCountsByPath = usesUnsymmetricPlasticKrylov
     ? { gmres: summary.cgIterations }
     : { 'cg-bj': summary.cgIterations };

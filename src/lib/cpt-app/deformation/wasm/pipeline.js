@@ -45,6 +45,21 @@ function countIntegrationPoints(elementCaches) {
   return n;
 }
 
+function withMcConsistentTangentMode(materialParameters, enabled) {
+  const base = materialParameters && typeof materialParameters === 'object' ? materialParameters : {};
+  return {
+    ...base,
+    // MC consistent tangent remains an explicit opt-in. Some normalized
+    // region payloads also carry a shared HS-era useConsistentTangent flag;
+    // force both locations so the wire encoder cannot silently re-enable MC.
+    useConsistentTangent: enabled === true,
+    mc: {
+      ...(base.mc && typeof base.mc === 'object' ? base.mc : {}),
+      useConsistentTangent: enabled === true
+    }
+  };
+}
+
 export async function runWasmDeformationPipeline(ctx) {
   const {
     mesh,
@@ -69,21 +84,15 @@ export async function runWasmDeformationPipeline(ctx) {
   const numRegions = Math.max(...mesh.cells.map((c) => Number(c.regionIndex) || 0), -1) + 1;
   const regionsArray = new Array(numRegions);
   const firstConstitutive = regionConstitutiveByRegion.values().next().value || null;
+  const isMcPlastic = String(options?.constitutiveModel || '').toLowerCase() === 'mc-plastic';
   const useMcConsistentTangent =
-    String(options?.constitutiveModel || '').toLowerCase() === 'mc-plastic' &&
-    options?.useMcConsistentTangent !== false;
+    isMcPlastic &&
+    options?.useMcConsistentTangent === true;
   for (let r = 0; r < numRegions; r += 1) {
     const constitutive = regionConstitutiveByRegion.get(r) || firstConstitutive;
     const materialParameters = constitutive?.materialParameters || {};
-    regionsArray[r] = useMcConsistentTangent
-      ? {
-          ...materialParameters,
-          useConsistentTangent: true,
-          mc: {
-            ...(materialParameters.mc || {}),
-            useConsistentTangent: true
-          }
-        }
+    regionsArray[r] = isMcPlastic
+      ? withMcConsistentTangentMode(materialParameters, useMcConsistentTangent)
       : materialParameters;
   }
 

@@ -457,12 +457,25 @@ int madepRunDeformationAnalysis(
     p = read_f64(p, wall.EI);
     p = read_f64(p, wall.GA);
     p = read_f64(p, wall.kappa);
-    if (!(stationCount >= 2) ||
-        !(std::isfinite(wall.EA) && wall.EA > 0.0) ||
-        !(std::isfinite(wall.EI) && wall.EI > 0.0) ||
-        !(std::isfinite(wall.GA) && wall.GA > 0.0) ||
-        !(std::isfinite(wall.kappa) && wall.kappa > 0.0)) {
-      g_last_error = "invalid mechanical wall section in WASM input";
+    // Concrete-preset fallback (spec §3.2 / Principle #11): when the wire
+    // carries missing or non-positive section properties, substitute the
+    // diaphragm-wall defaults (E = 30 GPa, ν = 0.20, t = 0.6 m, κ = 5/6)
+    // computed in C++ so the engineering default lives in the WASM kernel
+    // rather than being silently injected JS-side. Defense-in-depth: the
+    // JS-side `resolveWallMechanicalSection` normally fills these in before
+    // encoding; this branch only triggers on corrupt or legacy projects
+    // that bypass the normalizer.
+    {
+      constexpr double kE = 3.0e7;   // 30 GPa
+      constexpr double kNu = 0.20;
+      constexpr double kT = 0.6;     // m
+      if (!(std::isfinite(wall.EA) && wall.EA > 0.0)) wall.EA = kE * kT;
+      if (!(std::isfinite(wall.EI) && wall.EI > 0.0)) wall.EI = kE * kT * kT * kT / 12.0;
+      if (!(std::isfinite(wall.GA) && wall.GA > 0.0)) wall.GA = kE * kT / (2.0 * (1.0 + kNu));
+      if (!(std::isfinite(wall.kappa) && wall.kappa > 0.0)) wall.kappa = 5.0 / 6.0;
+    }
+    if (!(stationCount >= 2)) {
+      g_last_error = "mechanical wall must have at least two stations";
       return 0;
     }
     wall.stations.resize(stationCount);
@@ -512,10 +525,17 @@ int madepRunDeformationAnalysis(
   // Gravity + Load RHS (full DOF).
   std::vector<double> gravityRhsFull(ndof, 0.0);
   std::vector<double> loadRhsFull(ndof, 0.0);
-  std::vector<double> predictorUFull(ndof, 0.0);
   for (std::uint32_t i = 0; i < ndof; ++i) p = read_f64(p, gravityRhsFull[i]);
   for (std::uint32_t i = 0; i < ndof; ++i) p = read_f64(p, loadRhsFull[i]);
-  for (std::uint32_t i = 0; i < ndof; ++i) p = read_f64(p, predictorUFull[i]);
+  // Predictor displacement block: JS-side writes the elastic K0 predictor here
+  // (see wire-format.js:425). The solver does not consume it — strain and
+  // beam internal force run with U_base = nullptr — so the bytes are skipped.
+  // Kept in the wire layout to preserve WIRE_VERSION = 12 compatibility; the
+  // JS-side decoder reconstructs total displacements from the result block
+  // independently of this field. Do not re-introduce a `drv.predictorUFull`
+  // pointer until the solver actually evaluates strain at predictor +
+  // correction.
+  p += static_cast<std::ptrdiff_t>(ndof) * static_cast<std::ptrdiff_t>(sizeof(double));
 
   // Initial sigma (per GP, Voigt-6) — only consumed when useK0Init.
   const std::size_t numGpTotal = static_cast<std::size_t>(numGpTotalU);
@@ -706,7 +726,6 @@ int madepRunDeformationAnalysis(
   drv.ndof = static_cast<std::int32_t>(ndof);
   drv.gravityRhsFree = &gravityRhsFree;
   drv.loadRhsFree = &loadRhsFree;
-  drv.predictorUFull = &predictorUFull;
   drv.U_global = &U_global;
   drv.U_geostatic = &U_geostatic;
   drv.opts = opts;
@@ -784,6 +803,11 @@ int madepRunDeformationAnalysis(
     q = write_f64(q, U_geostatic[2 * n + 1]);
   }
 
+  const double* wallReferenceU =
+      result.beamReferenceU.size() == static_cast<std::size_t>(ndof)
+          ? result.beamReferenceU.data()
+          : nullptr;
+
   q = write_u32(q, static_cast<std::uint32_t>(walls.size()));
   for (const auto& wall : walls) {
     q = write_i32(q, wall.wallIndex);
@@ -806,7 +830,7 @@ int madepRunDeformationAnalysis(
     for (const auto& beamEl : beamElements) {
       if (beamEl.wallIndex != wall.wallIndex) continue;
       double localForces[6]{};
-      beam::local_end_forces(beamEl, U_global.data(), nullptr, localForces);
+      beam::local_end_forces(beamEl, U_global.data(), nullptr, localForces, wallReferenceU);
       // Convert nodal resisting forces to a single section-force
       // convention along increasing station s. At an interior wall node,
       // the B-end force of the element above and the A-end force of the
@@ -820,10 +844,13 @@ int madepRunDeformationAnalysis(
     for (std::size_t i = 0; i < wall.stations.size(); ++i) {
       const auto& station = wall.stations[i];
       const Node& node = nodes[static_cast<std::size_t>(station.nodeId)];
-      const double ux = U_global[static_cast<std::size_t>(2 * station.nodeId + 0)];
-      const double uy = U_global[static_cast<std::size_t>(2 * station.nodeId + 1)];
+      const std::size_t uxDof = static_cast<std::size_t>(2 * station.nodeId + 0);
+      const std::size_t uyDof = static_cast<std::size_t>(2 * station.nodeId + 1);
+      const double ux = U_global[uxDof] - (wallReferenceU ? wallReferenceU[uxDof] : 0.0);
+      const double uy = U_global[uyDof] - (wallReferenceU ? wallReferenceU[uyDof] : 0.0);
       const double theta = station.rotationDof >= 0
-          ? U_global[static_cast<std::size_t>(station.rotationDof)]
+          ? U_global[static_cast<std::size_t>(station.rotationDof)] -
+              (wallReferenceU ? wallReferenceU[static_cast<std::size_t>(station.rotationDof)] : 0.0)
           : 0.0;
       const double count = stationForceCounts[i] > 0 ? static_cast<double>(stationForceCounts[i]) : 1.0;
       const double N = stationForces[i][0] / count;

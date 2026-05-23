@@ -741,6 +741,36 @@ struct AssembleOutput {
   std::int32_t hsCornerIterCount{ 0 };
 };
 
+enum class BeamAssemblyMode : std::uint8_t {
+  Active = 0,
+  InactiveStabilizeRotations = 1
+};
+
+inline void stabilize_beam_rotation_dofs(
+    CsrMatrix& K,
+    const std::vector<BeamElementCache>& beamElements,
+    const std::vector<std::int32_t>& freeIndexByDof) {
+  for (const auto& beamEl : beamElements) {
+    for (int rotSlot : {2, 5}) {
+      const std::int32_t gDof = beamEl.dofs[static_cast<std::size_t>(rotSlot)];
+      if (gDof < 0 ||
+          gDof >= static_cast<std::int32_t>(freeIndexByDof.size())) {
+        continue;
+      }
+      const std::int32_t fIdx = freeIndexByDof[static_cast<std::size_t>(gDof)];
+      if (fIdx < 0) continue;
+      const std::int32_t lo = K.rowPtr[static_cast<std::size_t>(fIdx)];
+      const std::int32_t hi = K.rowPtr[static_cast<std::size_t>(fIdx + 1)];
+      for (std::int32_t kk = lo; kk < hi; ++kk) {
+        if (K.colIdx[static_cast<std::size_t>(kk)] == fIdx) {
+          K.values[static_cast<std::size_t>(kk)] = 1.0;
+          break;
+        }
+      }
+    }
+  }
+}
+
 // Re-build internal force, residual, and (optionally) tangent K from
 // the trial displacement U, using `committed` as the constitutive
 // baseline. Trial responses are written into `trial`.
@@ -768,7 +798,9 @@ inline AssembleOutput assemble_global(
     CsrMatrix& K,
     std::vector<double>& internalForceFree,
     std::vector<double>& residualFree,
-    bool useElasticGlobalizationTangent = false) {
+    bool useElasticGlobalizationTangent = false,
+    BeamAssemblyMode beamMode = BeamAssemblyMode::Active,
+    const double* beamReferenceU = nullptr) {
   const std::int32_t nfree = K.nrows;
   internalForceFree.assign(static_cast<std::size_t>(nfree), 0.0);
   if (wantTangent) K.clear_values();
@@ -915,15 +947,19 @@ inline AssembleOutput assemble_global(
   }
 
   if (beamElements) {
-    double Kb[36]{};
-    double Fb[6]{};
-    for (const auto& beamEl : *beamElements) {
-      if (wantTangent) {
-        beam::element_stiffness(beamEl, Kb);
-        sparse::scatter_dense_matrix(K, beamEl.dofs.data(), 6, freeIndexByDof, Kb);
+    if (beamMode == BeamAssemblyMode::InactiveStabilizeRotations) {
+      if (wantTangent) stabilize_beam_rotation_dofs(K, *beamElements, freeIndexByDof);
+    } else {
+      double Kb[36]{};
+      double Fb[6]{};
+      for (const auto& beamEl : *beamElements) {
+        if (wantTangent) {
+          beam::element_stiffness(beamEl, Kb);
+          sparse::scatter_dense_matrix(K, beamEl.dofs.data(), 6, freeIndexByDof, Kb);
+        }
+        beam::element_internal_force(beamEl, U_global, U_base, Fb, beamReferenceU);
+        sparse::scatter_dense_rhs(internalForceFree.data(), beamEl.dofs.data(), 6, freeIndexByDof, Fb);
       }
-      beam::element_internal_force(beamEl, U_global, U_base, Fb);
-      sparse::scatter_dense_rhs(internalForceFree.data(), beamEl.dofs.data(), 6, freeIndexByDof, Fb);
     }
   }
 
@@ -957,6 +993,8 @@ struct PhaseContext {
   CsrMatrix* K{ nullptr };
   std::vector<double>* U_global{ nullptr };
   const std::vector<double>* U_base{ nullptr };
+  const std::vector<double>* beamReferenceU{ nullptr };
+  BeamAssemblyMode beamMode{ BeamAssemblyMode::Active };
   // External-force decomposition: target(λ) = baseRhsFree + λ * rampedRhsFree.
   const std::vector<double>* baseRhsFree{ nullptr };
   const std::vector<double>* rampedRhsFree{ nullptr };
@@ -1116,11 +1154,19 @@ inline cg::LinearSolveResult solve_phase_linear_system(
     const SolverOptions& opts,
     bool useUnsymmetricSolver,
     bool reuseDiagInv = false,
-    cg::GmresScalingCache* gmresCache = nullptr) {
+    cg::GmresScalingCache* gmresCache = nullptr,
+    double relTolOverride = std::numeric_limits<double>::quiet_NaN(),
+    double absTolOverride = std::numeric_limits<double>::quiet_NaN()) {
+  const double relTol = (std::isfinite(relTolOverride) && relTolOverride >= 0.0)
+      ? relTolOverride
+      : opts.cgRelTol;
+  const double absTol = (std::isfinite(absTolOverride) && absTolOverride >= 0.0)
+      ? absTolOverride
+      : opts.cgAbsTol;
   if (useUnsymmetricSolver) {
     return cg::solve_gmres_scaled(K, freeDofs,
                                   residualFree.data(), correctionFree.data(),
-                                  opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol,
+                                  opts.cgMaxIter, relTol, absTol,
                                   /*restart=*/40,
                                   gmresCache);
   }
@@ -1129,7 +1175,7 @@ inline cg::LinearSolveResult solve_phase_linear_system(
   }
   return cg::solve_cg(K, diagInv, freeDofs,
                       residualFree.data(), correctionFree.data(),
-                      opts.cgMaxIter, opts.cgRelTol, opts.cgAbsTol);
+                      opts.cgMaxIter, relTol, absTol);
 }
 
 struct ArcLengthState {
@@ -1500,7 +1546,10 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
         /*wantTangent=*/false,
         *ctx.K,
         scratch.internalForce,
-        residualOut);
+        residualOut,
+        /*useElasticGlobalizationTangent=*/false,
+        ctx.beamMode,
+        ctx.beamReferenceU ? ctx.beamReferenceU->data() : nullptr);
     if (!std::isfinite(probe.residualNorm)) return false;
     for (double v : residualOut) {
       if (!std::isfinite(v)) return false;
@@ -1848,6 +1897,8 @@ inline PhaseResult run_safety_arc_length_phase(
   auto& K = *ctx.K;
   auto& U = *ctx.U_global;
   const double* U_base = ctx.U_base ? ctx.U_base->data() : nullptr;
+  const double* beamReferenceU = ctx.beamReferenceU ? ctx.beamReferenceU->data() : nullptr;
+  const BeamAssemblyMode beamMode = ctx.beamMode;
   const double* baseRhs = ctx.baseRhsFree ? ctx.baseRhsFree->data() : nullptr;
   const double* rampedRhs = ctx.rampedRhsFree ? ctx.rampedRhsFree->data() : nullptr;
   const std::int32_t nfree = K.nrows;
@@ -1942,7 +1993,9 @@ inline PhaseResult run_safety_arc_length_phase(
           stepStartLambda, ctx.kind, ctx.symmetrize,
           ctx.incrementalStress,
           /*wantTangent=*/true,
-          K, internalForceFree, residualFree);
+          K, internalForceFree, residualFree,
+          /*useElasticGlobalizationTangent=*/false,
+          beamMode, beamReferenceU);
       res.maxEta = std::max(res.maxEta, startAssembly.maxEta);
       res.activeCount = startAssembly.plasticActiveCount;
       res.activeFaceCount = startAssembly.activeFaceCount;
@@ -2039,7 +2092,9 @@ inline PhaseResult run_safety_arc_length_phase(
             candidateLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
             /*wantTangent=*/true,
-            K, internalForceFree, residualFree);
+            K, internalForceFree, residualFree,
+            /*useElasticGlobalizationTangent=*/false,
+            beamMode, beamReferenceU);
         lastAssembly = a;
         hasLastAssembly = true;
         ++res.newtonIterations;
@@ -2148,7 +2203,9 @@ inline PhaseResult run_safety_arc_length_phase(
                 probeLambda, ctx.kind, ctx.symmetrize,
                 ctx.incrementalStress,
                 /*wantTangent=*/false,
-                K, internalForceFree, residualFree);
+                K, internalForceFree, residualFree,
+                /*useElasticGlobalizationTangent=*/false,
+                beamMode, beamReferenceU);
             const double constraint = arc_length_constraint_residual(
                 lineSearchCandidateDeltaU, candidateDeltaSigma, stepState.deltaS,
                 stepState.alpha, displacementScale);
@@ -2288,6 +2345,8 @@ inline PhaseResult run_load_arc_length_phase(
   auto& K = *ctx.K;
   auto& U = *ctx.U_global;
   const double* U_base = ctx.U_base ? ctx.U_base->data() : nullptr;
+  const double* beamReferenceU = ctx.beamReferenceU ? ctx.beamReferenceU->data() : nullptr;
+  const BeamAssemblyMode beamMode = ctx.beamMode;
   const double* baseRhs = ctx.baseRhsFree ? ctx.baseRhsFree->data() : nullptr;
   const double* rampedRhs = ctx.rampedRhsFree ? ctx.rampedRhsFree->data() : nullptr;
   const std::int32_t nfree = K.nrows;
@@ -2372,7 +2431,9 @@ inline PhaseResult run_load_arc_length_phase(
           stepStartLambda, ctx.kind, ctx.symmetrize,
           ctx.incrementalStress,
           /*wantTangent=*/true,
-          K, internalForceFree, residualFree);
+          K, internalForceFree, residualFree,
+          /*useElasticGlobalizationTangent=*/false,
+          beamMode, beamReferenceU);
       res.maxEta = std::max(res.maxEta, startAssembly.maxEta);
       res.activeCount = startAssembly.plasticActiveCount;
       res.activeFaceCount = startAssembly.activeFaceCount;
@@ -2404,7 +2465,8 @@ inline PhaseResult run_load_arc_length_phase(
             ctx.incrementalStress,
             /*wantTangent=*/true,
             K, internalForceFree, residualFree,
-            /*useElasticGlobalizationTangent=*/true);
+            /*useElasticGlobalizationTangent=*/true,
+            beamMode, beamReferenceU);
         res.maxEta = std::max(res.maxEta, elasticPredictorAssembly.maxEta);
         predictor = make_load_control_arc_length_predictor(
             K, freeDofs, continuationRhsFree, diagInv, arcOpts, arcState,
@@ -2474,7 +2536,9 @@ inline PhaseResult run_load_arc_length_phase(
             candidateLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
             /*wantTangent=*/true,
-            K, internalForceFree, residualFree);
+            K, internalForceFree, residualFree,
+            /*useElasticGlobalizationTangent=*/false,
+            beamMode, beamReferenceU);
         lastAssembly = a;
         hasLastAssembly = true;
         ++res.newtonIterations;
@@ -2573,7 +2637,9 @@ inline PhaseResult run_load_arc_length_phase(
                 probeLambda, ctx.kind, ctx.symmetrize,
                 ctx.incrementalStress,
                 /*wantTangent=*/false,
-                K, internalForceFree, residualFree);
+                K, internalForceFree, residualFree,
+                /*useElasticGlobalizationTangent=*/false,
+                beamMode, beamReferenceU);
             const bool probeHardFailure =
                 probe.hsFailureCode == 101 || probe.hsFailureCode == 102 ||
                 probe.hsFailureCode == 103 || probe.hsFailureCode == 104 ||
@@ -2748,6 +2814,8 @@ inline PhaseResult run_nonlinear_phase(
   auto& K = *ctx.K;
   auto& U = *ctx.U_global;
   const double* U_base = ctx.U_base ? ctx.U_base->data() : nullptr;
+  const double* beamReferenceU = ctx.beamReferenceU ? ctx.beamReferenceU->data() : nullptr;
+  const BeamAssemblyMode beamMode = ctx.beamMode;
   const double* baseRhs = ctx.baseRhsFree ? ctx.baseRhsFree->data() : nullptr;
   const double* rampedRhs = ctx.rampedRhsFree ? ctx.rampedRhsFree->data() : nullptr;
 
@@ -2968,7 +3036,9 @@ inline PhaseResult run_nonlinear_phase(
                                          targetLambda, ctx.kind, ctx.symmetrize,
                                          ctx.incrementalStress,
                                          /*wantTangent=*/true,
-                                         K, internalForceFree, residualFree);
+                                         K, internalForceFree, residualFree,
+                                         /*useElasticGlobalizationTangent=*/false,
+                                         beamMode, beamReferenceU);
       const std::vector<MaterialPoint> assembledTrialMp = trialMp;
       remember_display_state(targetLambda, a);
       ++res.newtonIterations;
@@ -3069,8 +3139,17 @@ inline PhaseResult run_nonlinear_phase(
         assert(false && "MC consistent non-associated plastic step routed to CG; expected GMRES");
       }
 #endif
+      const double linearSolveAbsTol = std::max(
+          1e-14,
+          std::min(opts.cgAbsTol, 0.25 * residualTarget));
+      const double linearSolveRelTol = std::max(
+          0.0,
+          std::min(opts.cgRelTol,
+                   linearSolveAbsTol / std::max(a.residualNorm, 1e-30)));
 	      cg::LinearSolveResult lr = solve_phase_linear_system(
-	          K, freeDofs, residualFree, deltaUFree, diag_inv, opts, tangentAsymmetric);
+	          K, freeDofs, residualFree, deltaUFree, diag_inv, opts, tangentAsymmetric,
+	          /*reuseDiagInv=*/false, /*gmresCache=*/nullptr,
+	          linearSolveRelTol, linearSolveAbsTol);
 	      res.cgIterations += lr.iterations;
 	      stepLinearIterations += lr.iterations;
 	      if (tangentAsymmetric) {
@@ -3090,9 +3169,9 @@ inline PhaseResult run_nonlinear_phase(
 	                     std::min(isInitialGravityPhase ? 0.6 : 0.4,
 	                              std::sqrt(std::max(relativeResidualForForcing, 0.0))));
 	      const double acceptableLinearizedResidual = ctx.kind == ConstitutiveKind::LinearElastic
-	          ? std::max(opts.cgAbsTol, inexactNewtonForcing * linearRhsNorm)
-	          : std::max({opts.cgAbsTol,
-	                      0.25 * std::max(nonlinear_absolute_residual_target(opts, nfree), 1e-3),
+	          ? linearSolveAbsTol
+	          : std::max({linearSolveAbsTol,
+	                      0.25 * nonlinear_absolute_residual_target(opts, nfree),
 	                      inexactNewtonForcing * linearRhsNorm});
       if (!lr.converged && lr.residualNorm > acceptableLinearizedResidual) {
         if (ctx.kind == ConstitutiveKind::HardeningSoil && a.hsFailureCode != 0) {
@@ -3138,7 +3217,9 @@ inline PhaseResult run_nonlinear_phase(
                                                  targetLambda, ctx.kind, ctx.symmetrize,
 	                                                 ctx.incrementalStress,
 	                                                 /*wantTangent=*/false,
-                                                 K, internalForceFree, residualFree);
+                                                 K, internalForceFree, residualFree,
+                                                 /*useElasticGlobalizationTangent=*/false,
+                                                 beamMode, beamReferenceU);
           const double candidateResidualNorm = probe.residualNorm;
           const double candidateMerit = evaluate_residual_merit(candidateResidualNorm);
           stepPeakActiveCount = std::max(stepPeakActiveCount, probe.plasticActiveCount);
@@ -3235,7 +3316,8 @@ inline PhaseResult run_nonlinear_phase(
                 ctx.incrementalStress,
                 /*wantTangent=*/true,
                 K, internalForceFree, residualFree,
-                /*useElasticGlobalizationTangent=*/true);
+                /*useElasticGlobalizationTangent=*/true,
+                beamMode, beamReferenceU);
             res.maxEta = std::max(res.maxEta, fallbackA.maxEta);
             stepPeakActiveCount = std::max(stepPeakActiveCount, fallbackA.plasticActiveCount);
 
@@ -3244,9 +3326,20 @@ inline PhaseResult run_nonlinear_phase(
             // (D_e, symmetric), so CG is correct here even for HS — the
             // dispatcher overrides resp.tangent with C in assemble_global
             // when useElasticGlobalizationTangent=true above.
+            const double fallbackLinearResidualTarget =
+                nonlinear_residual_target(opts, fallbackA.rhsNorm, nfree);
+            const double fallbackLinearSolveAbsTol = std::max(
+                1e-14,
+                std::min(opts.cgAbsTol, 0.25 * fallbackLinearResidualTarget));
+            const double fallbackLinearSolveRelTol = std::max(
+                0.0,
+                std::min(opts.cgRelTol,
+                         fallbackLinearSolveAbsTol / std::max(fallbackA.residualNorm, 1e-30)));
             cg::LinearSolveResult fallbackLr = solve_phase_linear_system(
                 K, freeDofs, residualFree, fallbackDeltaUFree, diag_inv, opts,
-                /*useUnsymmetricSolver=*/false);
+                /*useUnsymmetricSolver=*/false,
+                /*reuseDiagInv=*/false, /*gmresCache=*/nullptr,
+                fallbackLinearSolveRelTol, fallbackLinearSolveAbsTol);
             res.cgIterations += fallbackLr.iterations;
             stepLinearIterations += fallbackLr.iterations;
             res.lastLinearSolverKind = 0;
@@ -3262,8 +3355,8 @@ inline PhaseResult run_nonlinear_phase(
                          std::min(0.4,
                                   std::sqrt(std::max(fallbackRelativeResidualForForcing, 0.0))));
             const double fallbackAcceptableLinearizedResidual =
-                std::max({opts.cgAbsTol,
-                          0.25 * std::max(nonlinear_absolute_residual_target(opts, nfree), 1e-3),
+                std::max({fallbackLinearSolveAbsTol,
+                          0.25 * nonlinear_absolute_residual_target(opts, nfree),
                           fallbackInexactNewtonForcing * fallbackLinearRhsNorm});
 
             if (fallbackLr.converged ||
@@ -3298,7 +3391,9 @@ inline PhaseResult run_nonlinear_phase(
                     targetLambda, ctx.kind, ctx.symmetrize,
                     ctx.incrementalStress,
                     /*wantTangent=*/false,
-                    K, internalForceFree, residualFree);
+                    K, internalForceFree, residualFree,
+                    /*useElasticGlobalizationTangent=*/false,
+                    beamMode, beamReferenceU);
                 const double candidateResidualNorm = fallbackProbe.residualNorm;
                 const double candidateMerit = evaluate_residual_merit(candidateResidualNorm);
                 stepPeakActiveCount = std::max(stepPeakActiveCount, fallbackProbe.plasticActiveCount);
@@ -3442,7 +3537,9 @@ inline PhaseResult run_nonlinear_phase(
             targetLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
             /*wantTangent=*/false,
-            K, internalForceFree, residualFree);
+            K, internalForceFree, residualFree,
+            /*useElasticGlobalizationTangent=*/false,
+            beamMode, beamReferenceU);
         res.maxEta = std::max(res.maxEta, acceptedAssembly.maxEta);
         res.activeCount = acceptedAssembly.plasticActiveCount;
         res.activeFaceCount = acceptedAssembly.activeFaceCount;
@@ -3762,7 +3859,6 @@ struct DriverInput {
   std::int32_t ndof{ 0 };
   const std::vector<double>* gravityRhsFree{ nullptr };
   const std::vector<double>* loadRhsFree{ nullptr };  // surface traction
-  const std::vector<double>* predictorUFull{ nullptr };
   std::vector<double>* U_global{ nullptr };           // service displacement
   std::vector<double>* U_geostatic{ nullptr };        // baseline at end of geostatic
   SolverOptions opts{};
@@ -3771,6 +3867,7 @@ struct DriverInput {
 struct DriverOutput {
   RunSummary summary;
   SafetyResult safety;
+  std::vector<double> beamReferenceU;
   std::vector<double> displayComparisonAccumulatedPlasticStrain;
   std::vector<std::int32_t> acceptedStepIterations;
 };
@@ -3786,6 +3883,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   DriverOutput out;
   const std::int32_t nfree = in.K->nrows;
   const std::int32_t ndof = in.ndof;
+  std::vector<double> beamReferenceU(static_cast<std::size_t>(std::max(ndof, 0)), 0.0);
 
   // Always-needed combined RHS (gravity + load) at full lambda; used to
   // initialise the safety phase load target.
@@ -3811,6 +3909,8 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   // predictor displacement is stitched back into output fields later for
   // display, not replayed into constitutive strain.
   ctx.U_base = nullptr;
+  ctx.beamReferenceU = &beamReferenceU;
+  ctx.beamMode = BeamAssemblyMode::Active;
   ctx.ndof = ndof;
   ctx.kind = in.opts.constitutive;
   ctx.symmetrize =
@@ -3838,6 +3938,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   if (runPlasticGeostatic) {
     ctx.phaseKind = PhaseKind::InitialGravity;
     ctx.incrementalStress = false;
+    ctx.beamMode = BeamAssemblyMode::InactiveStabilizeRotations;
     // Mirror JS initializePlasticPredictorReferenceState: the K0 predictor is
     // a stress seed, not a displacement preload. Assemble and commit that
     // stress-only state, then continue from its internal-force field to the
@@ -3853,7 +3954,10 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
         in.opts.constitutive, in.opts.symmetrizeTangent != 0,
         /*incrementalStress=*/false,
         /*wantTangent=*/false,
-        *in.K, predictorInternal, predictorResidual);
+        *in.K, predictorInternal, predictorResidual,
+        /*useElasticGlobalizationTangent=*/false,
+        BeamAssemblyMode::InactiveStabilizeRotations,
+        nullptr);
     (void)predictorAssembly;
     *in.materialPoints = trialMp;
     trialMp = *in.materialPoints;
@@ -3891,10 +3995,12 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       out.summary.finalActiveCount = geostatic.activeCount;
       out.summary.finalTensionCount = geostatic.tensionCount;
       out.summary.finalLoadFactor = geostatic.loadFactor;
+      out.beamReferenceU = *in.U_global;
       return out;
     }
     // Snapshot U_geostatic and the geostatic state baseline.
     if (in.U_geostatic) *in.U_geostatic = *in.U_global;
+    beamReferenceU = *in.U_global;
     snapshot_geostatic_baseline(*in.materialPoints);
   } else {
     // The JS path only runs a nonlinear plastic geostatic correction for
@@ -3905,6 +4011,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       std::fill(in.U_geostatic->begin(), in.U_geostatic->end(), 0.0);
     }
     out.summary.geostaticConverged = 1;
+    std::fill(beamReferenceU.begin(), beamReferenceU.end(), 0.0);
     snapshot_geostatic_baseline(*in.materialPoints);
   }
 
@@ -3926,6 +4033,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
 
   if (hasService || in.opts.analysisMode == AnalysisMode::ServiceOnly) {
     ctx.phaseKind = PhaseKind::ServiceLoad;
+    ctx.beamMode = BeamAssemblyMode::Active;
     if (in.opts.analysisMode == AnalysisMode::ServiceOnly) {
       ctx.baseRhsFree = nullptr;
       ctx.rampedRhsFree = &combinedRhs;
@@ -3973,7 +4081,10 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       out.summary.hsPlasticUsedGmres = 1;
     }
     append_phase_step_iterations(out, service);
-    if (!service.converged) return out;
+    if (!service.converged) {
+      out.beamReferenceU = beamReferenceU;
+      return out;
+    }
   } else {
     // No service load: take the geostatic state as the final result.
     out.summary.serviceConverged = 1;
@@ -3984,6 +4095,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   // Phase C — c-φ safety bracketing.
   // ---------------------------------------------------------------------------
   if (in.opts.analysisMode != AnalysisMode::GeostaticServiceSafety) {
+    out.beamReferenceU = beamReferenceU;
     return out;
   }
   out.summary.safetyRan = 1;
@@ -4180,6 +4292,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     out.safety.status = 2;  // mechanism
   }
 
+  out.beamReferenceU = beamReferenceU;
   return out;
 }
 

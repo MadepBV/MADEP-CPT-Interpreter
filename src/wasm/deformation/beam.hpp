@@ -124,14 +124,16 @@ inline void element_internal_force(
     const BeamElementCache& el,
     const double* U_global,
     const double* U_base,
-    double* out6) {
+    double* out6,
+    const double* U_reference = nullptr) {
   for (int i = 0; i < 6; ++i) out6[i] = 0.0;
   double Ke[36]{};
   element_stiffness(el, Ke);
   double ue[6]{};
   for (int i = 0; i < 6; ++i) {
     const std::int32_t dof = el.dofs[static_cast<std::size_t>(i)];
-    ue[i] = U_global[dof] + (U_base ? U_base[dof] : 0.0);
+    ue[i] = U_global[dof] + (U_base ? U_base[dof] : 0.0) -
+        (U_reference ? U_reference[dof] : 0.0);
   }
   for (int i = 0; i < 6; ++i) {
     double s = 0.0;
@@ -144,7 +146,8 @@ inline void local_end_forces(
     const BeamElementCache& el,
     const double* U_global,
     const double* U_base,
-    double* out6) {
+    double* out6,
+    const double* U_reference = nullptr) {
   for (int i = 0; i < 6; ++i) out6[i] = 0.0;
   if (!valid_beam_element(el)) return;
   std::array<double, 36> kLocal{};
@@ -155,7 +158,8 @@ inline void local_end_forces(
   double ul[6]{};
   for (int i = 0; i < 6; ++i) {
     const std::int32_t dof = el.dofs[static_cast<std::size_t>(i)];
-    ug[i] = U_global[dof] + (U_base ? U_base[dof] : 0.0);
+    ug[i] = U_global[dof] + (U_base ? U_base[dof] : 0.0) -
+        (U_reference ? U_reference[dof] : 0.0);
   }
   for (int i = 0; i < 6; ++i) {
     for (int j = 0; j < 6; ++j) ul[i] += T[i * 6 + j] * ug[j];
