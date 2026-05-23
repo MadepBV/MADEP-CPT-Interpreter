@@ -2796,6 +2796,8 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
       yTop: Number(wall?.yTop),
       yTip: Number(wall?.yTip),
       passiveSide: normalizePassiveSide(wall?.passiveSide),
+      mechanicalActive: wall?.mechanicalActive === true,
+      anchors: Array.isArray(wall?.anchors) ? wall.anchors : [],
       maxShearForce:
         Number.isFinite(Number(wall?.maxShearForce)) && Number(wall.maxShearForce) > 0
           ? Number(wall.maxShearForce)

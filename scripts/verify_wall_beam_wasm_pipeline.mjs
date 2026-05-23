@@ -14,6 +14,7 @@ import {
   __resetDeformationWasmModuleForTests,
   __setDeformationWasmModuleForTests
 } from '../src/lib/cpt-app/deformation/wasm/wasm-loader.js';
+import { buildBishopModelFromStageLayers } from '../src/lib/cpt-app/stage6-bishop.js';
 
 if (typeof globalThis.performance === 'undefined') {
   globalThis.performance = { now: () => Number(process.hrtime.bigint() / 1000000n) };
@@ -27,38 +28,34 @@ async function loadWasmModule() {
   return factory({ wasmBinary });
 }
 
-function soilMaterial() {
-  return {
-    id: 'sand',
-    label: 'Linear sand',
+function stageLayers() {
+  return [{
+    top: 0,
+    bot: 8,
+    type: 'Sand',
+    subtype: 'linear test sand',
+    c: 0,
+    phi: 32,
+    psi: 0,
+    g: 18,
+    gs: 18,
     Emc: 25000,
     nu: 0.3,
-    cEff: 0,
-    phiEffDeg: 32,
-    psiEffDeg: 0,
-    gamma: 18,
-    gammaSat: 18,
     K0nc: 0.47,
     rShear: 0.25,
-    sigmaTAllow: 0,
-    useTensionCutoff: true
-  };
+    kh: 1e-7,
+    kv: 1e-7
+  }];
 }
 
-function model(withWall = true) {
+function bishopUiState(withWall = true) {
   return {
-    terrain: { vertices: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
-    phreatic: null,
-    regions: [{
-      id: 'domain',
-      label: 'Domain',
-      polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: -8 }, { x: 0, y: -8 }],
-      material: soilMaterial()
-    }],
-    analysisLeftX: 0,
-    analysisRightX: 10,
-    analysisBottomY: -8,
-    analysisTopY: 0,
+    terrain: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
+    activeCptX: 5,
+    analysisDepth: 8,
+    strengthSet: 'characteristic',
+    useCustomRegions: false,
+    customRegions: [],
     walls: withWall ? [{
       id: 'wall-1',
       x: 3.6,
@@ -82,7 +79,8 @@ function model(withWall = true) {
       },
       anchors: []
     }] : [],
-    surfaceLoad: { xStart: 4.2, xEnd: 5.4, q: 20 },
+    surfaceLoads: [{ id: 'load-1', xStart: 4.2, xEnd: 5.4, q: 20, active: true }],
+    deformation: { options: { outOfPlaneLength: 10, loadMode: 'pressure' } },
     seepage: null
   };
 }
@@ -114,7 +112,17 @@ async function main() {
   __setDeformationWasmModuleForTests(await loadWasmModule());
   try {
     const { analyzeDeformationModel } = await import('../src/lib/cpt-app/deformation/solver.js');
-    const result = await analyzeDeformationModel({ model: model(true), options: options() });
+    const appModel = buildBishopModelFromStageLayers(stageLayers(), bishopUiState(true));
+    assert.equal(
+      appModel?.walls?.[0]?.mechanicalActive,
+      true,
+      'Stage 6 Bishop model builder must preserve mechanicalActive from the drawn wall'
+    );
+    assert.ok(
+      appModel?.walls?.[0]?.material?.mechanical,
+      'Stage 6 Bishop model builder must preserve wall mechanical section data'
+    );
+    const result = await analyzeDeformationModel({ model: appModel, options: options() });
     assert.equal(result?.solver?.converged, true, 'wall-beam app case must converge');
     assert.equal(result?.mesh?.mechanicalWalls?.length, 1, 'mechanical wall must be present in mesh');
     assert.ok(result.mesh.mechanicalWalls[0].nodes.length >= 4, 'wall must be recovered as a multi-station node chain');
