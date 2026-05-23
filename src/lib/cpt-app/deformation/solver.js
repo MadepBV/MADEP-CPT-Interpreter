@@ -2223,6 +2223,10 @@ function resolveConstitutiveModelName(options) {
   return 'mc-reduced-stiffness';
 }
 
+function hasActiveMechanicalWalls(model) {
+  return (model?.walls || []).some((wall) => wall?.mechanicalActive === true);
+}
+
 function createMaterialModelForOptions(materialParameters, options, warnings) {
   // Single source of truth: the plugin registry. The solver does not
   // import the concrete factories any more; new constitutive models are
@@ -6532,6 +6536,11 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
   const hasSurfaceLoad = loads.length > 0;
   const isHs = options.constitutiveModel === 'hardening-soil';
   const isMcPlastic = options.constitutiveModel === 'mc-plastic';
+  const wallBeamActive = hasActiveMechanicalWalls(model);
+  if (wallBeamActive) {
+    options.useWasmCpuPipeline = true;
+    options.useNewGpuPipeline = false;
+  }
 
   if (analysisType === 'safety-cphi' && !isMcPlastic && !isHs) {
     throw new Error(

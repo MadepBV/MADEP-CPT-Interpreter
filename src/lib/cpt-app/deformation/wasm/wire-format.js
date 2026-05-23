@@ -3,11 +3,13 @@
 //
 // Wire-format encoder/decoder shared between the JS bridge and the C++
 // WASM module. Both sides MUST agree on this layout exactly; the C++
-// reader lives in deformation_wasm.cpp. Wire version 11.
+// reader lives in deformation_wasm.cpp. Wire version 12.
 
 const INPUT_MAGIC = 0x4D434454; // 'TDCM'
 const OUTPUT_MAGIC = 0x4D444B54; // 'TDKM'
-const WIRE_VERSION = 11;
+const WIRE_VERSION = 12;
+const WALL_BEAM_OUTPUT_WIRE_VERSION = 12;
+const SHARED_TANGENT_OUTPUT_WIRE_VERSION = 11;
 const LEGACY_OUTPUT_WIRE_VERSION = 6;
 const SAFETY_HISTORY_OUTPUT_WIRE_VERSION = 7;
 
@@ -96,10 +98,28 @@ function clampAngleRad(deg) {
   return (d * Math.PI) / 180;
 }
 
-function computeInputSize({ numNodes, numElements, numRegions, numConstraints, numGpTotal }) {
+function activeMechanicalWallsFromMesh(mesh) {
+  return (mesh?.mechanicalWalls || []).filter((wall) =>
+    Array.isArray(wall?.nodes) &&
+    wall.nodes.length >= 2 &&
+    wall?.section &&
+    Number.isFinite(Number(wall.section.EA)) &&
+    Number.isFinite(Number(wall.section.EI)) &&
+    Number.isFinite(Number(wall.section.GA))
+  );
+}
+
+function computeMechanicalWallBytes(mechanicalWalls) {
+  return (mechanicalWalls || []).reduce((sum, wall) => (
+    sum + 48 + 16 * (wall?.nodes?.length || 0)
+  ), 0);
+}
+
+function computeInputSize({ numNodes, numElements, numRegions, numConstraints, numGpTotal, ndofTotal, mechanicalWalls }) {
   // Header:
-  //   10 u32 (magic, version, elementKind, constitutive, analysisMode,
-  //           numNodes, numElements, numRegions, numConstraints, numGpTotal) = 40
+  //   12 u32 (magic, version, elementKind, constitutive, analysisMode,
+  //           numNodes, numElements, numRegions, numConstraints, numGpTotal,
+  //           numMechanicalWalls, ndofTotal)                                = 48
   //   12 u8 flags/modes/pad                                                   = 12
   //   7 u32 (nonlinearMaxIter, maxLoadSteps, cgMaxIter, safetyMaxSearchTrials,
   //           plasticLineSearchMaxBacktracks,
@@ -108,18 +128,20 @@ function computeInputSize({ numNodes, numElements, numRegions, numConstraints, n
   //   28 f64 (10 standard tolerances + 4 plastic continuation controls +
   //           4 line-search controls + 5 safety params +
   //           5 arc-length scaling controls)                                  = 224
-  // Total header = 40 + 12 + 28 + 224 = 304 bytes
-  const headerBytes = 40 + 12 + 28 + 28 * 8;
+  // Total header = 48 + 12 + 28 + 224 = 312 bytes
+  const headerBytes = 48 + 12 + 28 + 28 * 8;
   const nodesBytes = numNodes * 2 * 8;
   const elementsBytes = numElements * (4 + 4 + 6 * 4);
   const regionsBytes = numRegions * (10 * 8 + 4 + 13 * 8);  // 188 bytes per region
+  const wallBytes = computeMechanicalWallBytes(mechanicalWalls);
   const constraintsBytes = numConstraints * 4;
-  const gravityBytes = numNodes * 2 * 8;
-  const loadBytes = numNodes * 2 * 8;
-  const predictorBytes = numNodes * 2 * 8;
+  const fullDofCount = Math.max(Number(ndofTotal) || 0, numNodes * 2);
+  const gravityBytes = fullDofCount * 8;
+  const loadBytes = fullDofCount * 8;
+  const predictorBytes = fullDofCount * 8;
   const initialSigmaBytes = numGpTotal * 6 * 8;
   const porePressureBytes = numGpTotal * 8;
-  return headerBytes + nodesBytes + elementsBytes + regionsBytes + constraintsBytes
+  return headerBytes + nodesBytes + elementsBytes + regionsBytes + wallBytes + constraintsBytes
        + gravityBytes + loadBytes + predictorBytes + initialSigmaBytes + porePressureBytes;
 }
 
@@ -240,6 +262,8 @@ export function encodeInputBuffer({
   const numElements = mesh.elements.length;
   const numRegions = regions.length;
   const numConstraints = fixedDofs.length;
+  const mechanicalWalls = activeMechanicalWallsFromMesh(mesh);
+  const ndofTotal = Math.max(Number(mesh?.ndofTotal) || 0, 2 * numNodes);
   const elementKind = mesh.elementType === 't6' ? 6 : 3;
   const constitutiveU = constitutiveKindFor(options.constitutiveModel);
   const analysisModeU = analysisModeFor(
@@ -247,7 +271,15 @@ export function encodeInputBuffer({
     options.useK0Init === false ? false : options.useGeostaticInit !== false
   );
 
-  const size = computeInputSize({ numNodes, numElements, numRegions, numConstraints, numGpTotal });
+  const size = computeInputSize({
+    numNodes,
+    numElements,
+    numRegions,
+    numConstraints,
+    numGpTotal,
+    ndofTotal,
+    mechanicalWalls
+  });
   const buffer = new ArrayBuffer(size);
   const view = new DataView(buffer);
   let offset = 0;
@@ -267,6 +299,8 @@ export function encodeInputBuffer({
   writeU32(numRegions);
   writeU32(numConstraints);
   writeU32(numGpTotal);
+  writeU32(mechanicalWalls.length);
+  writeU32(ndofTotal);
   writeU8(options.hasSurfaceLoad ? 1 : 0);
   writeU8(options.useTensionCutoff !== false ? 1 : 0);
   // Symmetrize flag: matches the JS contract where `symmetrizeEpTangent`
@@ -360,16 +394,37 @@ export function encodeInputBuffer({
     writeHsParams(writeF64, r, isHsModel, isMcPlasticModel);
   }
 
+  // Active mechanical walls. Translational DOFs keep the legacy 2*node
+  // numbering; one rotation DOF per wall node is appended after the soil
+  // displacement block.
+  for (let i = 0; i < mechanicalWalls.length; i += 1) {
+    const wall = mechanicalWalls[i];
+    const section = wall.section || {};
+    writeI32(Number.isInteger(wall.wallIndex) ? wall.wallIndex : i);
+    writeI32(wall.passiveSide === 'left' ? -1 : 1);
+    writeU32(wall.nodes.length);
+    writeU32(0);
+    writeF64(Math.max(Number(section.EA) || 0, 0));
+    writeF64(Math.max(Number(section.EI) || 0, 0));
+    writeF64(Math.max(Number(section.GA) || 0, 0));
+    writeF64(Math.min(Math.max(Number(section.kappa) || 1, 1e-6), 1));
+    for (const station of wall.nodes) {
+      writeI32(Number(station.nodeId) | 0);
+      writeI32(0);
+      writeF64(Number(station.s) || 0);
+    }
+  }
+
   // Constraints.
   for (let i = 0; i < numConstraints; i += 1) writeI32(fixedDofs[i] | 0);
 
   // Gravity RHS (full DOF).
-  for (let i = 0; i < 2 * numNodes; i += 1) writeF64(gravityRhsFull?.[i] || 0);
+  for (let i = 0; i < ndofTotal; i += 1) writeF64(gravityRhsFull?.[i] || 0);
   // Surface load RHS (full DOF).
-  for (let i = 0; i < 2 * numNodes; i += 1) writeF64(loadRhsFull?.[i] || 0);
+  for (let i = 0; i < ndofTotal; i += 1) writeF64(loadRhsFull?.[i] || 0);
   // Elastic K0 predictor displacement (full DOF). WASM solves correction
   // displacements, but constitutive strain is evaluated at predictor + correction.
-  for (let i = 0; i < 2 * numNodes; i += 1) writeF64(predictorSolutionFull?.[i] || 0);
+  for (let i = 0; i < ndofTotal; i += 1) writeF64(predictorSolutionFull?.[i] || 0);
   // Initial sigma (per GP, Voigt-6).
   for (let i = 0; i < 6 * numGpTotal; i += 1) writeF64(initialSigmaByGp?.[i] || 0);
   // Pore pressure (per GP).
@@ -395,6 +450,7 @@ export function decodeOutputBuffer(bytes) {
   if (
     magic !== OUTPUT_MAGIC ||
     (version !== WIRE_VERSION &&
+      version !== SHARED_TANGENT_OUTPUT_WIRE_VERSION &&
       version !== SAFETY_HISTORY_OUTPUT_WIRE_VERSION &&
       version !== LEGACY_OUTPUT_WIRE_VERSION)
   ) {
@@ -447,6 +503,43 @@ export function decodeOutputBuffer(bytes) {
   for (let i = 0; i < numNodes; i += 1) {
     geostaticDisp[2 * i + 0] = readF64();
     geostaticDisp[2 * i + 1] = readF64();
+  }
+
+  const wallResults = [];
+  if (version >= WALL_BEAM_OUTPUT_WIRE_VERSION) {
+    const wallCount = readU32();
+    for (let w = 0; w < wallCount; w += 1) {
+      const wallIndex = readI32();
+      const passiveSign = readI32();
+      const stationCount = readU32();
+      readU32();
+      const stations = new Array(stationCount);
+      for (let i = 0; i < stationCount; i += 1) {
+        const nodeId = readI32();
+        readI32();
+        stations[i] = {
+          nodeId,
+          s: readF64(),
+          x: readF64(),
+          y: readF64(),
+          ux: readF64(),
+          uy: readF64(),
+          theta: readF64(),
+          uAxial: readF64(),
+          wPassive: readF64(),
+          thetaPassive: readF64(),
+          N: readF64(),
+          VPassive: readF64(),
+          MPassive: readF64()
+        };
+      }
+      wallResults.push({
+        wallIndex,
+        passiveSide: passiveSign < 0 ? 'left' : 'right',
+        passiveSign,
+        stations
+      });
+    }
   }
 
   const gpStates = new Array(numGpTotal);
@@ -679,6 +772,7 @@ export function decodeOutputBuffer(bytes) {
     hasHsPayload,
     serviceDisplacements: serviceDisp,
     geostaticDisplacements: geostaticDisp,
+    wallResults,
     displacements: serviceDisp,  // alias for backward-compat
     gpStates,
     safety: {

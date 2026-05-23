@@ -274,6 +274,40 @@ struct ElementCache {
   std::array<Node, 6> nodes{};
 };
 
+struct WallStation {
+  std::int32_t nodeId{ -1 };
+  std::int32_t rotationDof{ -1 };
+  double s{ 0.0 };
+};
+
+struct WallBeam {
+  std::int32_t wallIndex{ -1 };
+  std::int32_t passiveSign{ 1 };
+  double EA{ 0.0 };
+  double EI{ 0.0 };
+  double GA{ 0.0 };
+  double kappa{ 1.0 };
+  std::vector<WallStation> stations{};
+};
+
+struct BeamElementCache {
+  std::int32_t wallIndex{ -1 };
+  std::int32_t stationA{ -1 };
+  std::int32_t stationB{ -1 };
+  std::int32_t nodeA{ -1 };
+  std::int32_t nodeB{ -1 };
+  std::array<std::int32_t, 6> dofs{};
+  double xA{ 0.0 };
+  double yA{ 0.0 };
+  double xB{ 0.0 };
+  double yB{ 0.0 };
+  double length{ 0.0 };
+  double EA{ 0.0 };
+  double EI{ 0.0 };
+  double GA{ 0.0 };
+  double kappa{ 1.0 };
+};
+
 // Run-time options forwarded from JS.
 struct SolverOptions {
   ConstitutiveKind constitutive{ ConstitutiveKind::McPlastic };

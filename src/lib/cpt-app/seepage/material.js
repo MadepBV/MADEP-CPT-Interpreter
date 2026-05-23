@@ -4,8 +4,58 @@
 export const WALL_DEFAULT_K = 1e-10;
 export const WALL_DEFAULT_GAMMA = 20;
 export const WALL_DEFAULT_GAMMA_SAT = 20;
+export const WALL_DEFAULT_MECHANICAL_E = 3.0e7;
+export const WALL_DEFAULT_MECHANICAL_NU = 0.2;
+export const WALL_DEFAULT_MECHANICAL_THICKNESS = 0.6;
+export const WALL_DEFAULT_MECHANICAL_KAPPA = 5 / 6;
 
 const WALL_MATERIAL_SOURCES = new Set(['user', 'preset', 'legacy-impermeable']);
+const WALL_MECHANICAL_SOURCES = new Set(['concrete-fallback', 'preset', 'user']);
+
+export const WALL_MECHANICAL_PRESETS = Object.freeze({
+  concreteDiaphragm: Object.freeze({
+    id: 'concrete-diaphragm',
+    label: 'Concrete diaphragm',
+    mechanical: Object.freeze({
+      model: 'rectangular',
+      E: WALL_DEFAULT_MECHANICAL_E,
+      nu: WALL_DEFAULT_MECHANICAL_NU,
+      thickness: WALL_DEFAULT_MECHANICAL_THICKNESS,
+      kappa: WALL_DEFAULT_MECHANICAL_KAPPA,
+      source: 'preset'
+    }),
+    seepage: Object.freeze({
+      kAcross: 1e-12,
+      kAlong: 1e-12,
+      gamma: 24,
+      gammaSat: 24
+    })
+  }),
+  // ArcelorMittal AZ 26, per metre of wall: A = 197.8 cm2/m,
+  // Iy = 55510 cm4/m, Wel,y = 2600 cm3/m. Section stiffnesses below
+  // use E = 210 GPa, nu = 0.30; nominal thickness is display-only.
+  steelSheetPileAz26: Object.freeze({
+    id: 'steel-sheet-pile-AZ-26',
+    label: 'Steel sheet pile AZ 26',
+    mechanical: Object.freeze({
+      model: 'section-properties',
+      EA: 2.1e8 * 197.8e-4,
+      EI: 2.1e8 * 55510e-8,
+      GA: (2.1e8 / (2 * (1 + 0.3))) * 197.8e-4,
+      kappa: 1,
+      displayE: 2.1e8,
+      displayNu: 0.3,
+      displayThickness: 0.025,
+      source: 'preset'
+    }),
+    seepage: Object.freeze({
+      kAcross: 1e-12,
+      kAlong: 1e-12,
+      gamma: 78,
+      gammaSat: 78
+    })
+  })
+});
 
 function soilText(layer) {
   return `${String(layer?.type || '')} ${String(layer?.subtype || '')}`.toLowerCase();
@@ -14,6 +64,107 @@ function soilText(layer) {
 function positiveNumber(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function nonNegativeNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function clampKappa(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 && numeric <= 1
+    ? numeric
+    : WALL_DEFAULT_MECHANICAL_KAPPA;
+}
+
+function cloneMechanicalPreset(preset) {
+  return preset?.mechanical ? { ...preset.mechanical } : null;
+}
+
+export function defaultWallMechanicalMaterial(source = 'concrete-fallback') {
+  return {
+    model: 'rectangular',
+    E: WALL_DEFAULT_MECHANICAL_E,
+    nu: WALL_DEFAULT_MECHANICAL_NU,
+    thickness: WALL_DEFAULT_MECHANICAL_THICKNESS,
+    kappa: WALL_DEFAULT_MECHANICAL_KAPPA,
+    source: WALL_MECHANICAL_SOURCES.has(source) ? source : 'concrete-fallback'
+  };
+}
+
+export function normalizeWallMechanicalMaterial(mechanical, fallback = null) {
+  const input = mechanical && typeof mechanical === 'object' ? mechanical : fallback;
+  if (!input || typeof input !== 'object') return defaultWallMechanicalMaterial();
+  const source = WALL_MECHANICAL_SOURCES.has(input.source) ? input.source : 'user';
+  const model = input.model === 'section-properties' ? 'section-properties' : 'rectangular';
+  if (model === 'section-properties') {
+    const EA = positiveNumber(input.EA);
+    const EI = positiveNumber(input.EI);
+    const GA = positiveNumber(input.GA);
+    if (EA && EI && GA) {
+      const out = {
+        model,
+        EA,
+        EI,
+        GA,
+        kappa: clampKappa(input.kappa ?? 1),
+        source
+      };
+      const displayE = positiveNumber(input.displayE ?? input.E);
+      const displayNu = nonNegativeNumber(input.displayNu ?? input.nu);
+      const displayThickness = positiveNumber(input.displayThickness ?? input.thickness);
+      if (displayE) out.displayE = displayE;
+      if (displayNu !== null && displayNu < 0.5) out.displayNu = displayNu;
+      if (displayThickness) out.displayThickness = displayThickness;
+      return out;
+    }
+  }
+  const E = positiveNumber(input.E ?? input.Emc) ?? WALL_DEFAULT_MECHANICAL_E;
+  const nuCandidate = Number(input.nu);
+  const nu = Number.isFinite(nuCandidate) && nuCandidate >= 0 && nuCandidate < 0.5
+    ? nuCandidate
+    : WALL_DEFAULT_MECHANICAL_NU;
+  return {
+    model: 'rectangular',
+    E,
+    nu,
+    thickness: positiveNumber(input.thickness) ?? WALL_DEFAULT_MECHANICAL_THICKNESS,
+    kappa: clampKappa(input.kappa),
+    source
+  };
+}
+
+export function resolveWallMechanicalSection(mechanical) {
+  const m = normalizeWallMechanicalMaterial(mechanical);
+  if (m.model === 'section-properties') {
+    return {
+      model: m.model,
+      E: m.displayE || 0,
+      nu: m.displayNu ?? 0,
+      thickness: m.displayThickness || 0,
+      EA: m.EA,
+      EI: m.EI,
+      GA: m.GA,
+      kappa: clampKappa(m.kappa ?? 1)
+    };
+  }
+  return {
+    model: m.model,
+    E: m.E,
+    nu: m.nu,
+    thickness: m.thickness,
+    EA: m.E * m.thickness,
+    EI: m.E * Math.pow(m.thickness, 3) / 12,
+    GA: m.E * m.thickness / (2 * (1 + m.nu)),
+    kappa: clampKappa(m.kappa)
+  };
+}
+
+export function wallMechanicalPresetById(id) {
+  if (id === 'steel-sheet-pile-AZ-26' || id === 'sheetPile') return WALL_MECHANICAL_PRESETS.steelSheetPileAz26;
+  if (id === 'concrete-diaphragm' || id === 'diaphragm') return WALL_MECHANICAL_PRESETS.concreteDiaphragm;
+  return null;
 }
 
 function estimateDefaultKh(layer) {
@@ -106,6 +257,7 @@ export function normalizeWallMaterial(material, index = 0, wallId = '', options 
   const defaultLabel = source === 'legacy-impermeable' ? 'Legacy impermeable' : 'Wall material';
   const kAcross = positiveNumber(material?.kAcross ?? material?.kx) ?? WALL_DEFAULT_K;
   const kAlong = positiveNumber(material?.kAlong ?? material?.ky) ?? WALL_DEFAULT_K;
+  const mechanicalFallback = cloneMechanicalPreset(wallMechanicalPresetById(options.mechanicalPreset));
   return {
     id: material?.id || (source === 'legacy-impermeable' ? `wall-legacy-${suffix}` : `wall-material-${suffix}`),
     label: material?.label || defaultLabel,
@@ -113,6 +265,7 @@ export function normalizeWallMaterial(material, index = 0, wallId = '', options 
     kAlong,
     gamma: positiveNumber(material?.gamma) ?? WALL_DEFAULT_GAMMA,
     gammaSat: positiveNumber(material?.gammaSat) ?? WALL_DEFAULT_GAMMA_SAT,
-    kSource: source
+    kSource: source,
+    mechanical: normalizeWallMechanicalMaterial(material?.mechanical, mechanicalFallback)
   };
 }

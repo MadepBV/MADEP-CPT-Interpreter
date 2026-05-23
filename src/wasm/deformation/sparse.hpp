@@ -21,23 +21,29 @@ namespace madep::sparse {
 // position in the free DOF list, or -1 if the DOF is fixed.
 inline void build_pattern(
     const std::vector<ElementCache>& elements,
+    const std::vector<BeamElementCache>* beamElements,
     const std::vector<std::int32_t>& freeIndexByDof,
     std::int32_t nfree,
     CsrMatrix& A) {
   std::vector<std::vector<std::int32_t>> colsPerRow(nfree);
-  for (const auto& el : elements) {
-    const int ndofs = el.numDofs;
+  auto add_dofs = [&](const std::int32_t* dofs, int ndofs) {
     for (int i = 0; i < ndofs; ++i) {
-      const std::int32_t gi = el.dofs[i];
+      const std::int32_t gi = dofs[i];
       const std::int32_t fi = freeIndexByDof[gi];
       if (fi < 0) continue;
       for (int j = 0; j < ndofs; ++j) {
-        const std::int32_t gj = el.dofs[j];
+        const std::int32_t gj = dofs[j];
         const std::int32_t fj = freeIndexByDof[gj];
         if (fj < 0) continue;
         colsPerRow[fi].push_back(fj);
       }
     }
+  };
+  for (const auto& el : elements) {
+    add_dofs(el.dofs.data(), el.numDofs);
+  }
+  if (beamElements) {
+    for (const auto& el : *beamElements) add_dofs(el.dofs.data(), 6);
   }
   A.nrows = nfree;
   A.rowPtr.assign(static_cast<std::size_t>(nfree) + 1, 0);
@@ -54,6 +60,14 @@ inline void build_pattern(
     const auto& cols = colsPerRow[r];
     std::copy(cols.begin(), cols.end(), A.colIdx.begin() + A.rowPtr[r]);
   }
+}
+
+inline void build_pattern(
+    const std::vector<ElementCache>& elements,
+    const std::vector<std::int32_t>& freeIndexByDof,
+    std::int32_t nfree,
+    CsrMatrix& A) {
+  build_pattern(elements, nullptr, freeIndexByDof, nfree, A);
 }
 
 // Find the index in row r where colIdx == c. Returns -1 if missing.
@@ -102,6 +116,34 @@ inline void scatter_element_matrix(
   }
 }
 
+inline void scatter_dense_matrix(
+    CsrMatrix& A,
+    const std::int32_t* dofs,
+    int ndofs,
+    const std::vector<std::int32_t>& freeIndexByDof,
+    const double* Ke) {
+  for (int i = 0; i < ndofs; ++i) {
+    const std::int32_t gi = dofs[i];
+    const std::int32_t fi = freeIndexByDof[gi];
+    if (fi < 0) continue;
+    const std::int32_t lo = A.rowPtr[fi];
+    const std::int32_t hi = A.rowPtr[fi + 1];
+    for (int j = 0; j < ndofs; ++j) {
+      const std::int32_t gj = dofs[j];
+      const std::int32_t fj = freeIndexByDof[gj];
+      if (fj < 0) continue;
+      std::int32_t a = lo;
+      std::int32_t b = hi;
+      while (a < b) {
+        std::int32_t m = (a + b) >> 1;
+        if (A.colIdx[m] < fj) a = m + 1;
+        else b = m;
+      }
+      A.values[a] += Ke[i * ndofs + j];
+    }
+  }
+}
+
 // Scatter a dense element RHS into the free RHS.
 inline void scatter_element_rhs(
     double* rhs,
@@ -110,6 +152,19 @@ inline void scatter_element_rhs(
     const double* fe) {
   for (int i = 0; i < el.numDofs; ++i) {
     const std::int32_t fi = freeIndexByDof[el.dofs[i]];
+    if (fi < 0) continue;
+    rhs[fi] += fe[i];
+  }
+}
+
+inline void scatter_dense_rhs(
+    double* rhs,
+    const std::int32_t* dofs,
+    int ndofs,
+    const std::vector<std::int32_t>& freeIndexByDof,
+    const double* fe) {
+  for (int i = 0; i < ndofs; ++i) {
+    const std::int32_t fi = freeIndexByDof[dofs[i]];
     if (fi < 0) continue;
     rhs[fi] += fe[i];
   }

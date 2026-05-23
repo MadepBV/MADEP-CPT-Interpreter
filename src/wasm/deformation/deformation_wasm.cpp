@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// WASM entry point — wire format v11.
+// WASM entry point — wire format v12.
 //
 // INPUT (uint8_t* in, std::size_t len):
 //   Header (offsets in bytes from the start):
 //     u32  magic              = 'TDCM' (0x4D434454)
-//     u32  version            = 11
+//     u32  version            = 12
 //     u32  elementKind        (3 or 6)
 //     u32  constitutive       (0 = LE, 1 = MC-RS, 2 = MC-P, 3 = HS)
 //     u32  analysisMode       (0 = service-only, 1 = geostatic+service,
@@ -15,6 +15,8 @@
 //     u32  numRegions
 //     u32  numConstraints
 //     u32  numGpTotal
+//     u32  numMechanicalWalls
+//     u32  ndofTotal
 //     u8   hasSurfaceLoad
 //     u8   useTensionCutoff
 //     u8   symmetrize
@@ -47,16 +49,20 @@
 //   Nodes:       numNodes × (f64 x, f64 y)
 //   Elements:    numElements × (i32 regionIndex, i32 elementKind, i32 nodeIds[6])
 //   Regions:     numRegions × RegionParams (10 f64 + 4 u8 + 13 f64 = 188 bytes)
+//   Mechanical walls:
+//     wall × (i32 wallIndex, i32 passiveSign, u32 stationCount, u32 reserved,
+//             f64 EA, f64 EI, f64 GA, f64 kappa,
+//             station × (i32 nodeId, i32 reserved, f64 s))
 //   Constraints: numConstraints × i32 dofIndex
-//   Gravity RHS: 2 * numNodes f64   (full DOF order; -gamma*area lumped already)
-//   Load RHS:    2 * numNodes f64   (surface traction; zero when no load)
-//   Predictor U: 2 * numNodes f64   (elastic K0 predictor displacement)
+//   Gravity RHS: ndofTotal f64      (full DOF order; -gamma*area lumped already)
+//   Load RHS:    ndofTotal f64      (surface traction; zero when no load)
+//   Predictor U: ndofTotal f64      (elastic K0 predictor displacement)
 //   InitialSigma: numGpTotal × 6 f64  (per-GP K0 effective stress, tension positive)
 //   PorePressure: numGpTotal × f64    (per-GP initial pore pressure)
 //
 // OUTPUT layout (uint8_t*, std::size_t):
 //   u32  magic                 = 'TDKM' (0x4D444B54)
-//   u32  version               = 11
+//   u32  version               = 12
 //   u32  numNodes
 //   u32  numElements
 //   u32  numGpTotal
@@ -64,6 +70,12 @@
 //                fourth u8 is hasHsPayload)
 //   Service displacements:   numNodes × (f64 ux, f64 uy)
 //   Geostatic displacements: numNodes × (f64 ux, f64 uy)
+//   Mechanical wall results:
+//     u32 wallCount
+//     wall × (i32 wallIndex, i32 passiveSign, u32 stationCount, u32 reserved,
+//             station × (i32 nodeId, i32 reserved,
+//                        f64 s, x, y, ux, uy, theta, uAxial,
+//                        wPassive, thetaPassive, N, VPassive, MPassive))
 //   gpStates:                numGpTotal × (
 //     6 f64 effectiveStress (Voigt-6),
 //     6 f64 plasticStrain,
@@ -96,14 +108,19 @@
 //
 // All multi-byte fields are little-endian.
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
+#include <limits>
 #include <new>
 #include <string>
 #include <vector>
 
+#include "beam.hpp"
 #include "cg.hpp"
 #include "element.hpp"
 #include "linalg.hpp"
@@ -170,9 +187,9 @@ ArcLengthMeritMode arc_length_merit_mode_from_wire(std::uint8_t value) {
 
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
-constexpr std::uint32_t WIRE_VERSION = 11u;
+constexpr std::uint32_t WIRE_VERSION = 12u;
 
-constexpr std::size_t kInputHeaderBytes = 40 + 12 + 7 * 4 + 28 * 8;  // 304 bytes
+constexpr std::size_t kInputHeaderBytes = 48 + 12 + 7 * 4 + 28 * 8;  // 312 bytes
 constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 88 bytes
 constexpr std::size_t kGpStateBytes = (6 + 6 + 1 + 1 + 6 + 6 + 6 + 1 + 1 + 1) * 8 + 4;  // 35 f64 + 4 u8 = 284 bytes
 constexpr std::size_t kHsGpStateBytes = 3 * 8 + 8;  // 3 f64 + 1 u8 + 7 u8 pad = 32 bytes
@@ -265,6 +282,7 @@ int madepRunDeformationAnalysis(
   const std::uint8_t* p = inputPtr;
   std::uint32_t magic, version, elementKindU, constitutiveU, analysisModeU;
   std::uint32_t numNodes, numElements, numRegions, numConstraints, numGpTotalU;
+  std::uint32_t numMechanicalWalls, ndofTotalU;
   std::uint8_t hasSurfaceLoad, useTensionCutoff, symmetrize, bbar, useK0Init;
   std::uint8_t robustNonlinearMode, requestedContinuationModeU, arcLengthDerivativeModeU;
   std::uint8_t arcLengthMeritModeU, pad0, pad1, pad2;
@@ -295,6 +313,8 @@ int madepRunDeformationAnalysis(
   p = read_u32(p, numRegions);
   p = read_u32(p, numConstraints);
   p = read_u32(p, numGpTotalU);
+  p = read_u32(p, numMechanicalWalls);
+  p = read_u32(p, ndofTotalU);
   p = read_u8(p, hasSurfaceLoad);
   p = read_u8(p, useTensionCutoff);
   p = read_u8(p, symmetrize);
@@ -418,16 +438,78 @@ int madepRunDeformationAnalysis(
     p = read_f64(p, r.hs.useConsistentTangent);
   }
 
+  const std::uint32_t soilDofCount = 2 * numNodes;
+  const std::uint32_t ndof = std::max(ndofTotalU, soilDofCount);
+  std::vector<std::int32_t> wallRotationDofByNode(numNodes, -1);
+  std::vector<WallBeam> walls(numMechanicalWalls);
+  std::uint32_t nextRotationDof = soilDofCount;
+  for (std::uint32_t i = 0; i < numMechanicalWalls; ++i) {
+    auto& wall = walls[i];
+    std::uint32_t stationCount = 0;
+    std::uint32_t reserved = 0;
+    p = read_i32(p, wall.wallIndex);
+    p = read_i32(p, wall.passiveSign);
+    wall.passiveSign = wall.passiveSign < 0 ? -1 : 1;
+    p = read_u32(p, stationCount);
+    p = read_u32(p, reserved);
+    (void)reserved;
+    p = read_f64(p, wall.EA);
+    p = read_f64(p, wall.EI);
+    p = read_f64(p, wall.GA);
+    p = read_f64(p, wall.kappa);
+    if (!(stationCount >= 2) ||
+        !(std::isfinite(wall.EA) && wall.EA > 0.0) ||
+        !(std::isfinite(wall.EI) && wall.EI > 0.0) ||
+        !(std::isfinite(wall.GA) && wall.GA > 0.0) ||
+        !(std::isfinite(wall.kappa) && wall.kappa > 0.0)) {
+      g_last_error = "invalid mechanical wall section in WASM input";
+      return 0;
+    }
+    wall.stations.resize(stationCount);
+    double previousS = -std::numeric_limits<double>::infinity();
+    for (std::uint32_t s = 0; s < stationCount; ++s) {
+      std::int32_t nodeId = -1;
+      std::int32_t stationReserved = 0;
+      double stationS = 0.0;
+      p = read_i32(p, nodeId);
+      p = read_i32(p, stationReserved);
+      p = read_f64(p, stationS);
+      (void)stationReserved;
+      if (nodeId < 0 || static_cast<std::uint32_t>(nodeId) >= numNodes ||
+          !std::isfinite(stationS) || stationS < previousS - 1e-8) {
+        g_last_error = "invalid mechanical wall station in WASM input";
+        return 0;
+      }
+      previousS = stationS;
+      if (wallRotationDofByNode[static_cast<std::size_t>(nodeId)] < 0) {
+        if (nextRotationDof >= ndof) {
+          g_last_error = "mechanical wall rotation DOF exceeds ndofTotal";
+          return 0;
+        }
+        wallRotationDofByNode[static_cast<std::size_t>(nodeId)] =
+            static_cast<std::int32_t>(nextRotationDof++);
+      }
+      wall.stations[static_cast<std::size_t>(s)] = WallStation{
+        nodeId,
+        wallRotationDofByNode[static_cast<std::size_t>(nodeId)],
+        stationS
+      };
+    }
+  }
+  if (nextRotationDof != ndof) {
+    g_last_error = "mechanical wall DOF count does not match ndofTotal";
+    return 0;
+  }
+
   // Constraints.
-  std::vector<std::uint8_t> isFixed(2 * numNodes, 0u);
+  std::vector<std::uint8_t> isFixed(ndof, 0u);
   for (std::uint32_t i = 0; i < numConstraints; ++i) {
     std::int32_t dof;
     p = read_i32(p, dof);
-    if (dof >= 0 && static_cast<std::uint32_t>(dof) < 2 * numNodes) isFixed[dof] = 1u;
+    if (dof >= 0 && static_cast<std::uint32_t>(dof) < ndof) isFixed[dof] = 1u;
   }
 
   // Gravity + Load RHS (full DOF).
-  const std::uint32_t ndof = 2 * numNodes;
   std::vector<double> gravityRhsFull(ndof, 0.0);
   std::vector<double> loadRhsFull(ndof, 0.0);
   std::vector<double> predictorUFull(ndof, 0.0);
@@ -468,6 +550,43 @@ int madepRunDeformationAnalysis(
           nodes[el.nodeIds[3]], nodes[el.nodeIds[4]], nodes[el.nodeIds[5]],
           bbar != 0,
           el);
+    }
+  }
+
+  std::vector<BeamElementCache> beamElements;
+  for (const auto& wall : walls) {
+    for (std::size_t i = 0; i + 1 < wall.stations.size(); ++i) {
+      const WallStation& a = wall.stations[i];
+      const WallStation& b = wall.stations[i + 1];
+      const Node& na = nodes[static_cast<std::size_t>(a.nodeId)];
+      const Node& nb = nodes[static_cast<std::size_t>(b.nodeId)];
+      const double L = std::hypot(nb.x - na.x, nb.y - na.y);
+      if (!(L > 1e-8)) {
+        g_last_error = "mechanical wall contains a zero-length beam element";
+        return 0;
+      }
+      BeamElementCache el;
+      el.wallIndex = wall.wallIndex;
+      el.stationA = static_cast<std::int32_t>(i);
+      el.stationB = static_cast<std::int32_t>(i + 1);
+      el.nodeA = a.nodeId;
+      el.nodeB = b.nodeId;
+      el.dofs[0] = 2 * a.nodeId + 0;
+      el.dofs[1] = 2 * a.nodeId + 1;
+      el.dofs[2] = a.rotationDof;
+      el.dofs[3] = 2 * b.nodeId + 0;
+      el.dofs[4] = 2 * b.nodeId + 1;
+      el.dofs[5] = b.rotationDof;
+      el.xA = na.x;
+      el.yA = na.y;
+      el.xB = nb.x;
+      el.yB = nb.y;
+      el.length = L;
+      el.EA = wall.EA;
+      el.EI = wall.EI;
+      el.GA = wall.GA;
+      el.kappa = wall.kappa;
+      beamElements.push_back(el);
     }
   }
 
@@ -521,7 +640,7 @@ int madepRunDeformationAnalysis(
 
   // Build CSR pattern.
   CsrMatrix K;
-  sparse::build_pattern(elements, freeIndexByDof, nfree, K);
+  sparse::build_pattern(elements, &beamElements, freeIndexByDof, nfree, K);
 
   std::vector<double> U_global(ndof, 0.0);
   std::vector<double> U_geostatic(ndof, 0.0);
@@ -578,6 +697,7 @@ int madepRunDeformationAnalysis(
 
   solver::DriverInput drv;
   drv.elements = &elements;
+  drv.beamElements = &beamElements;
   drv.materialPoints = &materialPoints;
   drv.regions = &regions;
   drv.freeDofs = &freeDofs;
@@ -597,6 +717,10 @@ int madepRunDeformationAnalysis(
   result.summary.elapsed_ms = std::chrono::duration<double, std::milli>(endTime - startTime).count();
   update_last_newton_step_iterations_json(result.acceptedStepIterations);
   const bool hasHsPayload = constitutive == ConstitutiveKind::HardeningSoil;
+  std::size_t wallPayloadBytes = 4;
+  for (const auto& wall : walls) {
+    wallPayloadBytes += 16 + wall.stations.size() * (8 + 12 * 8);
+  }
 
   // ---- pack output ------------------------------------------------------
   const std::size_t outLen =
@@ -604,6 +728,7 @@ int madepRunDeformationAnalysis(
       kSummaryBytes +                          // summary
       static_cast<std::size_t>(numNodes) * 16 + // service displacements
 	      static_cast<std::size_t>(numNodes) * 16 + // geostatic displacements
+	      wallPayloadBytes +
 	      static_cast<std::size_t>(numGpTotal) * (kGpStateBytes + (hasHsPayload ? kHsGpStateBytes : 0)) +
 	      kSafetyHeaderBytes +
 	      static_cast<std::size_t>(result.safety.trials.size()) * kSafetyTrialBytes +
@@ -657,6 +782,68 @@ int madepRunDeformationAnalysis(
   for (std::uint32_t n = 0; n < numNodes; ++n) {
     q = write_f64(q, U_geostatic[2 * n + 0]);
     q = write_f64(q, U_geostatic[2 * n + 1]);
+  }
+
+  q = write_u32(q, static_cast<std::uint32_t>(walls.size()));
+  for (const auto& wall : walls) {
+    q = write_i32(q, wall.wallIndex);
+    q = write_i32(q, wall.passiveSign);
+    q = write_u32(q, static_cast<std::uint32_t>(wall.stations.size()));
+    q = write_u32(q, 0);
+
+    std::vector<std::array<double, 3>> stationForces(
+        wall.stations.size(),
+        std::array<double, 3>{0.0, 0.0, 0.0});
+    std::vector<int> stationForceCounts(wall.stations.size(), 0);
+    auto accumulate_station_force = [&](std::int32_t stationIndex, double sign, const double* f) {
+      if (stationIndex < 0 || static_cast<std::size_t>(stationIndex) >= stationForces.size()) return;
+      auto& force = stationForces[static_cast<std::size_t>(stationIndex)];
+      force[0] += sign * f[0];
+      force[1] += sign * f[1];
+      force[2] += sign * f[2];
+      stationForceCounts[static_cast<std::size_t>(stationIndex)] += 1;
+    };
+    for (const auto& beamEl : beamElements) {
+      if (beamEl.wallIndex != wall.wallIndex) continue;
+      double localForces[6]{};
+      beam::local_end_forces(beamEl, U_global.data(), nullptr, localForces);
+      // Convert nodal resisting forces to a single section-force
+      // convention along increasing station s. At an interior wall node,
+      // the B-end force of the element above and the A-end force of the
+      // element below are equal-and-opposite nodal actions. Negating the
+      // A-end before averaging prevents the physical section diagram from
+      // cancelling itself at every recovered mesh station.
+      accumulate_station_force(beamEl.stationA, -1.0, &localForces[0]);
+      accumulate_station_force(beamEl.stationB,  1.0, &localForces[3]);
+    }
+
+    for (std::size_t i = 0; i < wall.stations.size(); ++i) {
+      const auto& station = wall.stations[i];
+      const Node& node = nodes[static_cast<std::size_t>(station.nodeId)];
+      const double ux = U_global[static_cast<std::size_t>(2 * station.nodeId + 0)];
+      const double uy = U_global[static_cast<std::size_t>(2 * station.nodeId + 1)];
+      const double theta = station.rotationDof >= 0
+          ? U_global[static_cast<std::size_t>(station.rotationDof)]
+          : 0.0;
+      const double count = stationForceCounts[i] > 0 ? static_cast<double>(stationForceCounts[i]) : 1.0;
+      const double N = stationForces[i][0] / count;
+      const double V = stationForces[i][1] / count;
+      const double M = stationForces[i][2] / count;
+      q = write_i32(q, station.nodeId);
+      q = write_i32(q, 0);
+      q = write_f64(q, station.s);
+      q = write_f64(q, node.x);
+      q = write_f64(q, node.y);
+      q = write_f64(q, ux);
+      q = write_f64(q, uy);
+      q = write_f64(q, theta);
+      q = write_f64(q, -uy);
+      q = write_f64(q, wall.passiveSign * ux);
+      q = write_f64(q, wall.passiveSign * theta);
+      q = write_f64(q, N);
+      q = write_f64(q, wall.passiveSign * V);
+      q = write_f64(q, wall.passiveSign * M);
+    }
   }
 
   // Gauss-point states.

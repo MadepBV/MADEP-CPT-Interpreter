@@ -29,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+#include "beam.hpp"
 #include "cg.hpp"
 #include "element.hpp"
 #include "material_hs.hpp"
@@ -749,6 +750,7 @@ struct AssembleOutput {
 // pointer twice (with loadFactor = 0 / 1) or nullptr for the unused side.
 inline AssembleOutput assemble_global(
     std::vector<ElementCache>& elements,
+    const std::vector<BeamElementCache>* beamElements,
     const std::vector<MaterialPoint>& committed,
     std::vector<MaterialPoint>& trial,
     const std::vector<RegionParams>& regions,
@@ -912,6 +914,19 @@ inline AssembleOutput assemble_global(
     sparse::scatter_element_rhs(internalForceFree.data(), el, freeIndexByDof, Fe.data());
   }
 
+  if (beamElements) {
+    double Kb[36]{};
+    double Fb[6]{};
+    for (const auto& beamEl : *beamElements) {
+      if (wantTangent) {
+        beam::element_stiffness(beamEl, Kb);
+        sparse::scatter_dense_matrix(K, beamEl.dofs.data(), 6, freeIndexByDof, Kb);
+      }
+      beam::element_internal_force(beamEl, U_global, U_base, Fb);
+      sparse::scatter_dense_rhs(internalForceFree.data(), beamEl.dofs.data(), 6, freeIndexByDof, Fb);
+    }
+  }
+
   // Residual = (base + λ * ramped) - F_int.
   residualFree.assign(static_cast<std::size_t>(nfree), 0.0);
   double r2 = 0.0, b2 = 0.0;
@@ -932,6 +947,7 @@ inline AssembleOutput assemble_global(
 // Phase context shared between the geostatic, service, and safety calls.
 struct PhaseContext {
   std::vector<ElementCache>* elements{ nullptr };
+  const std::vector<BeamElementCache>* beamElements{ nullptr };
   std::vector<MaterialPoint>* committed{ nullptr };
   std::vector<MaterialPoint>* trial{ nullptr };
   const std::vector<RegionParams>* regions{ nullptr };
@@ -1467,6 +1483,7 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
     residualOut.assign(freeCount, 0.0);
     AssembleOutput probe = assemble_global(
         *ctx.elements,
+        ctx.beamElements,
         committedRef,
         scratch.trial,
         scratch.regions,
@@ -1920,7 +1937,7 @@ inline PhaseResult run_safety_arc_length_phase(
       prepare_safety_sigma_msf_materials(ctx, regions, regionC, stepStartSigma, startMaterials);
       trialMp = committedMp;
       AssembleOutput startAssembly = assemble_global(
-          elements, committedMp, trialMp, *startMaterials.regions, *startMaterials.regionC,
+          elements, ctx.beamElements, committedMp, trialMp, *startMaterials.regions, *startMaterials.regionC,
           freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
           stepStartLambda, ctx.kind, ctx.symmetrize,
           ctx.incrementalStress,
@@ -2017,7 +2034,7 @@ inline PhaseResult run_safety_arc_length_phase(
         const double candidateLambda = safety_sigma_to_phase_lambda(ctx, candidateSigma);
         prepare_safety_sigma_msf_materials(ctx, regions, regionC, candidateSigma, candidateMaterials);
         AssembleOutput a = assemble_global(
-            elements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
+            elements, ctx.beamElements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             candidateLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
@@ -2126,7 +2143,7 @@ inline PhaseResult run_safety_arc_length_phase(
             const double probeLambda = safety_sigma_to_phase_lambda(ctx, probeSigma);
             prepare_safety_sigma_msf_materials(ctx, regions, regionC, probeSigma, probeMaterials);
             AssembleOutput probe = assemble_global(
-                elements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
+                elements, ctx.beamElements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
                 freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                 probeLambda, ctx.kind, ctx.symmetrize,
                 ctx.incrementalStress,
@@ -2350,7 +2367,7 @@ inline PhaseResult run_load_arc_length_phase(
 
       trialMp = committedMp;
       AssembleOutput startAssembly = assemble_global(
-          elements, committedMp, trialMp, regions, regionC,
+          elements, ctx.beamElements, committedMp, trialMp, regions, regionC,
           freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
           stepStartLambda, ctx.kind, ctx.symmetrize,
           ctx.incrementalStress,
@@ -2381,7 +2398,7 @@ inline PhaseResult run_load_arc_length_phase(
           ctx.kind != ConstitutiveKind::HardeningSoil) {
         trialMp = committedMp;
         AssembleOutput elasticPredictorAssembly = assemble_global(
-            elements, committedMp, trialMp, regions, regionC,
+            elements, ctx.beamElements, committedMp, trialMp, regions, regionC,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             stepStartLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
@@ -2452,7 +2469,7 @@ inline PhaseResult run_load_arc_length_phase(
         }
         prepare_phase_step_materials(ctx, regions, regionC, candidateLambda, candidateMaterials);
         AssembleOutput a = assemble_global(
-            elements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
+            elements, ctx.beamElements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             candidateLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
@@ -2551,7 +2568,7 @@ inline PhaseResult run_load_arc_length_phase(
             trialMp = committedMp;
             prepare_phase_step_materials(ctx, regions, regionC, probeLambda, probeMaterials);
             AssembleOutput probe = assemble_global(
-                elements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
+                elements, ctx.beamElements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
                 freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                 probeLambda, ctx.kind, ctx.symmetrize,
                 ctx.incrementalStress,
@@ -2946,7 +2963,7 @@ inline PhaseResult run_nonlinear_phase(
     if (hasIterationLinearGuess) iterationLinearGuess = warmStartFreeCorrection;
 
     for (std::int32_t newtonIter = 1; newtonIter <= opts.nonlinearMaxIter; ++newtonIter) {
-      AssembleOutput a = assemble_global(elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+      AssembleOutput a = assemble_global(elements, ctx.beamElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                                          freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                                          targetLambda, ctx.kind, ctx.symmetrize,
                                          ctx.incrementalStress,
@@ -3116,7 +3133,7 @@ inline PhaseResult run_nonlinear_phase(
 	          U = uBackup;
 	          trialMp = committedMp;
 	          for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += stepScale * deltaUFree[i];
-          AssembleOutput probe = assemble_global(elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+          AssembleOutput probe = assemble_global(elements, ctx.beamElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                                                  freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                                                  targetLambda, ctx.kind, ctx.symmetrize,
 	                                                 ctx.incrementalStress,
@@ -3212,7 +3229,7 @@ inline PhaseResult run_nonlinear_phase(
             U = uBackup;
             trialMp = assembledTrialMp;
             AssembleOutput fallbackA = assemble_global(
-                elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+                elements, ctx.beamElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                 freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                 targetLambda, ctx.kind, ctx.symmetrize,
                 ctx.incrementalStress,
@@ -3276,7 +3293,7 @@ inline PhaseResult run_nonlinear_phase(
                   U[freeDofs[i]] += fallbackStepScale * fallbackDeltaUFree[i];
                 }
                 AssembleOutput fallbackProbe = assemble_global(
-                    elements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+                    elements, ctx.beamElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                     freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                     targetLambda, ctx.kind, ctx.symmetrize,
                     ctx.incrementalStress,
@@ -3420,7 +3437,7 @@ inline PhaseResult run_nonlinear_phase(
       if (ctx.safetyCurve) {
         std::vector<MaterialPoint> acceptedTrialMp = committedMp;
         AssembleOutput acceptedAssembly = assemble_global(
-            elements, committedMp, acceptedTrialMp, *regionsForStep, *regionCForStep,
+            elements, ctx.beamElements, committedMp, acceptedTrialMp, *regionsForStep, *regionCForStep,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             targetLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
@@ -3736,6 +3753,7 @@ inline void snapshot_geostatic_baseline(std::vector<MaterialPoint>& mp) {
 // configured.
 struct DriverInput {
   std::vector<ElementCache>* elements{ nullptr };
+  const std::vector<BeamElementCache>* beamElements{ nullptr };
   std::vector<MaterialPoint>* materialPoints{ nullptr };
   const std::vector<RegionParams>* regions{ nullptr };
   const std::vector<std::int32_t>* freeDofs{ nullptr };
@@ -3780,6 +3798,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
 
   PhaseContext ctx;
   ctx.elements = in.elements;
+  ctx.beamElements = in.beamElements;
   ctx.committed = in.materialPoints;
   ctx.trial = &trialMp;
   ctx.regions = in.regions;
@@ -3827,7 +3846,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     std::vector<double> predictorResidual(static_cast<std::size_t>(nfree), 0.0);
     trialMp = *in.materialPoints;
     AssembleOutput predictorAssembly = assemble_global(
-        *in.elements, *in.materialPoints, trialMp, *in.regions, regionC,
+        *in.elements, in.beamElements, *in.materialPoints, trialMp, *in.regions, regionC,
         *in.freeIndexByDof, in.U_global->data(),
         nullptr,
         nullptr, nullptr, 0.0,

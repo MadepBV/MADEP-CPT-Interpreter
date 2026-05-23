@@ -2,14 +2,16 @@
 // @ts-nocheck
 
 import { buildSectionMesh } from '../mesh/section-mesh.js';
-import { buildSectionPslg, polygonSegments } from '../mesh/section-pslg.js';
+import { buildSectionPslg, polygonSegments, polylineSegments } from '../mesh/section-pslg.js';
 import { buildOuterBoundary } from '../seepage/boundary.js';
+import { resolveWallMechanicalSection } from '../seepage/material.js';
 import { triangulatePslg } from '../seepage/triangle-runtime.js';
 import { terrainY } from '../stage6-bishop.js';
 
 const GEOM_EPS = 1e-6;
 const SEGMENT_PRIORITY = {
   region: 1,
+  mechanicalWall: 2,
   outer: 3
 };
 
@@ -250,6 +252,122 @@ function buildRegionBoundarySegments(regions, options, allocateMarker) {
   );
 }
 
+function verticalSegmentIntersectionY(x, yTop, yTip, a, b) {
+  const ax = Number(a?.x);
+  const ay = Number(a?.y);
+  const bx = Number(b?.x);
+  const by = Number(b?.y);
+  if (![ax, ay, bx, by].every(Number.isFinite)) return null;
+  if (Math.abs(bx - ax) <= GEOM_EPS) {
+    if (Math.abs(x - ax) > GEOM_EPS) return null;
+    const lo = Math.max(Math.min(ay, by), yTip);
+    const hi = Math.min(Math.max(ay, by), yTop);
+    if (!(hi >= lo - GEOM_EPS)) return null;
+    return [lo, hi];
+  }
+  const t = (x - ax) / (bx - ax);
+  if (t < -GEOM_EPS || t > 1 + GEOM_EPS) return null;
+  const y = ay + t * (by - ay);
+  if (y < yTip - GEOM_EPS || y > yTop + GEOM_EPS) return null;
+  return y;
+}
+
+function collectWallRegionIntersections(wall, regions) {
+  const ys = [wall.yTop, wall.yTip];
+  (regions || []).forEach((region) => {
+    const polygon = Array.isArray(region?.polygon) ? region.polygon : [];
+    for (let i = 0; i < polygon.length; i += 1) {
+      const a = polygon[i];
+      const b = polygon[(i + 1) % polygon.length];
+      const hit = verticalSegmentIntersectionY(wall.x, wall.yTop, wall.yTip, a, b);
+      if (Array.isArray(hit)) {
+        ys.push(hit[0], hit[1]);
+      } else if (Number.isFinite(hit)) {
+        ys.push(hit);
+      }
+    }
+  });
+  return uniqueSorted(ys, 1e-5)
+    .filter((y) => y <= wall.yTop + GEOM_EPS && y >= wall.yTip - GEOM_EPS);
+}
+
+function activeMechanicalWalls(model, regions, options = {}) {
+  const terrain = model?.terrain?.vertices || [];
+  const xMin = terrain.length ? Math.min(terrain[0].x, terrain[terrain.length - 1].x) : -Infinity;
+  const xMax = terrain.length ? Math.max(terrain[0].x, terrain[terrain.length - 1].x) : Infinity;
+  const targetLength = Math.max(
+    Math.sqrt(Math.max(Number(options?.meshTargetArea) || 0.5, 0.01)) * 0.6,
+    0.15
+  );
+  return (model?.walls || [])
+    .map((wall, wallIndex) => ({ wall, wallIndex }))
+    .filter(({ wall }) => wall?.mechanicalActive === true)
+    .map(({ wall, wallIndex }) => {
+      const x = Number(wall?.x);
+      const yTop = Number(wall?.yTop);
+      const yTip = Number(wall?.yTip);
+      const label = wall?.id || `wall-${wallIndex + 1}`;
+      if (!Number.isFinite(x) || !Number.isFinite(yTop) || !Number.isFinite(yTip)) {
+        throw new Error(`Mechanical wall ${label} has invalid geometry.`);
+      }
+      if (x < xMin - GEOM_EPS || x > xMax + GEOM_EPS) {
+        throw new Error(`Mechanical wall ${label} lies outside the deformation section.`);
+      }
+      if (!(yTop > yTip + 0.05)) {
+        throw new Error(`Mechanical wall ${label} must have a tip at least 0.05 m below its top.`);
+      }
+      const section = resolveWallMechanicalSection(wall?.material?.mechanical);
+      if (!section) throw new Error(`Mechanical wall ${label} has invalid section properties.`);
+      const intersectionYs = collectWallRegionIntersections({ x, yTop, yTip }, regions);
+      const nUniform = Math.max(1, Math.ceil((yTop - yTip) / targetLength));
+      const uniformYs = Array.from({ length: nUniform + 1 }, (_, i) => yTop - (i / nUniform) * (yTop - yTip));
+      const stationYs = uniqueSorted([...intersectionYs, ...uniformYs], 1e-5)
+        .filter((y) => y <= yTop + GEOM_EPS && y >= yTip - GEOM_EPS)
+        .sort((a, b) => b - a);
+      const stations = stationYs.map((y) => ({
+        x: +x.toFixed(6),
+        y: +y.toFixed(6),
+        s: +(yTop - y).toFixed(6)
+      }));
+      return {
+        id: wall?.id || `wall-${wallIndex + 1}`,
+        wallIndex,
+        x,
+        yTop,
+        yTip,
+        passiveSide: wall?.passiveSide === 'left' ? 'left' : 'right',
+        section,
+        stations
+      };
+    })
+    .filter((wall) => wall && wall.stations.length >= 2);
+}
+
+function buildMechanicalWallSegments(model, regions, options, allocateMarker) {
+  const walls = activeMechanicalWalls(model, regions, options);
+  const segments = [];
+  walls.forEach((wall, mechanicalWallIndex) => {
+    segments.push(...polylineSegments(wall.stations, {
+      kind: 'mechanical-wall',
+      priority: SEGMENT_PRIORITY.mechanicalWall,
+      wallIndex: wall.wallIndex,
+      mechanicalWallIndex,
+      wallId: wall.id,
+      segmentTargetLength: Math.max(
+        Math.sqrt(Math.max(Number(options?.segmentTargetArea ?? options?.meshTargetArea) || 0.5, 0.01)) * 0.6,
+        0.1
+      ),
+      markerId: allocateMarker({
+        markerType: 'mechanical-wall',
+        wallIndex: wall.wallIndex,
+        mechanicalWallIndex,
+        wallId: wall.id
+      })
+    }));
+  });
+  return { walls, segments };
+}
+
 function isRecoverableTriangleFailure(error) {
   const message = String(error?.message || error || '').toLowerCase();
   return (
@@ -297,16 +415,82 @@ function buildMechanicalPslg(model, regions, options) {
     return markerId;
   };
   const loads = normalizeMeshSurfaceLoads(model, options);
+  const wallPslg = buildMechanicalWallSegments(model, regions, options, allocateMarker);
   const constraintSegments = [
     ...buildOuterSegments(model, loads, options, allocateMarker),
-    ...buildRegionBoundarySegments(regions, options, allocateMarker)
+    ...buildRegionBoundarySegments(regions, options, allocateMarker),
+    ...wallPslg.segments
   ];
-  return buildSectionPslg(model, regions, {
+  const pslg = buildSectionPslg(model, regions, {
     ...options,
     constraintSegments,
     extraPoints: buildLoadRefinementPointsForLoads(model, loads, options),
     markerInfoById
   });
+  pslg.mechanicalWalls = wallPslg.walls;
+  return pslg;
+}
+
+function attachMechanicalWallsToMesh(mesh, pslg) {
+  const inputWalls = pslg?.mechanicalWalls || [];
+  if (!inputWalls.length) {
+    mesh.mechanicalWalls = [];
+    mesh.ndofTotal = 2 * (mesh.nodes?.length || 0);
+    return;
+  }
+  const edgesByWall = new Map();
+  (mesh.constraintEdges || []).forEach((edge) => {
+    if (edge?.markerType !== 'mechanical-wall') return;
+    const key = Number(edge.mechanicalWallIndex);
+    if (!Number.isInteger(key)) return;
+    if (!edgesByWall.has(key)) edgesByWall.set(key, []);
+    edgesByWall.get(key).push(edge);
+  });
+
+  const ownerByNode = new Map();
+  const wallRotationDofByNode = new Map();
+  const mechanicalWalls = inputWalls.map((wall, mechanicalWallIndex) => {
+    const edges = edgesByWall.get(mechanicalWallIndex) || [];
+    if (!edges.length) {
+      throw new Error(`Mechanical wall ${wall.id || wall.wallIndex + 1} was not recovered as constrained mesh edges.`);
+    }
+    const nodeByStation = new Map();
+    const addNode = (nodeId) => {
+      const node = mesh.nodes[nodeId];
+      if (!node) return;
+      const s = wall.yTop - node.y;
+      if (Math.abs(node.x - wall.x) > 2e-5) return;
+      if (s < -GEOM_EPS || s > (wall.yTop - wall.yTip) + GEOM_EPS) return;
+      const key = s.toFixed(6);
+      if (!nodeByStation.has(key)) nodeByStation.set(key, { nodeId, s, x: node.x, y: node.y });
+    };
+    edges.forEach((edge) => {
+      (edge.nodeIds || [edge.n1, edge.n2]).forEach(addNode);
+    });
+    const nodes = [...nodeByStation.values()].sort((a, b) => a.s - b.s);
+    if (nodes.length < 2) {
+      throw new Error(`Mechanical wall ${wall.id || wall.wallIndex + 1} has fewer than two recovered mesh nodes.`);
+    }
+    nodes.forEach((station) => {
+      const ownedBy = ownerByNode.get(station.nodeId);
+      if (Number.isInteger(ownedBy) && ownedBy !== mechanicalWallIndex) {
+        throw new Error('Mechanical walls may not share a mesh node in Phase 1. Split or offset overlapping walls before deformation analysis.');
+      }
+      ownerByNode.set(station.nodeId, mechanicalWallIndex);
+      if (!wallRotationDofByNode.has(station.nodeId)) {
+        wallRotationDofByNode.set(station.nodeId, 2 * mesh.nodes.length + wallRotationDofByNode.size);
+      }
+    });
+    return {
+      ...wall,
+      nodes,
+      nodeIds: nodes.map((node) => node.nodeId)
+    };
+  });
+
+  mesh.mechanicalWalls = mechanicalWalls;
+  mesh.wallRotationDofByNode = Object.fromEntries([...wallRotationDofByNode.entries()].map(([nodeId, dof]) => [String(nodeId), dof]));
+  mesh.ndofTotal = 2 * mesh.nodes.length + wallRotationDofByNode.size;
 }
 
 async function triangulateMechanicalPslg(model, regions, options, onProgress = () => {}) {
@@ -384,6 +568,7 @@ export async function buildDeformationMesh(model, regions, options, onProgress =
     purpose: 'deformation',
     elementType
   });
+  attachMechanicalWallsToMesh(mesh, pslg);
   // Mesh sanity guard. The PSLG segment-collinearity bug previously caused
   // Triangle to insert orders of magnitude too many Steiner points on
   // sloping terrain at certain mesh target areas. Even after the

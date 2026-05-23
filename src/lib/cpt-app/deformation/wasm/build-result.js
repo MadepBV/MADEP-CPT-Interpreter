@@ -84,6 +84,50 @@ function subtractDisplacementFields(total, baseline) {
   return out;
 }
 
+function buildWallResultsFromWasm(wasmWallResults, predictorSolution) {
+  return (wasmWallResults || []).map((wall) => ({
+    wallIndex: wall.wallIndex,
+    passiveSide: wall.passiveSide,
+    passiveSign: wall.passiveSign,
+    stations: (wall.stations || []).map((station) => {
+      const predictorUx = Number(predictorSolution?.[2 * station.nodeId]) || 0;
+      const predictorUy = Number(predictorSolution?.[2 * station.nodeId + 1]) || 0;
+      return {
+        ...station,
+        totalUx: (Number(station.ux) || 0) + predictorUx,
+        totalUy: (Number(station.uy) || 0) + predictorUy
+      };
+    })
+  })).map((wall) => {
+    const stations = wall.stations || [];
+    const s_node = stations.map((station) => Number(station.s) || 0);
+    const w_passive = stations.map((station) => Number(station.wPassive) || 0);
+    const theta_passive = stations.map((station) => Number(station.thetaPassive) || 0);
+    const s_midpoint = [];
+    const N = [];
+    const V_passive = [];
+    const M_passive = [];
+    for (let i = 0; i + 1 < stations.length; i += 1) {
+      const a = stations[i];
+      const b = stations[i + 1];
+      s_midpoint.push(0.5 * ((Number(a.s) || 0) + (Number(b.s) || 0)));
+      N.push(0.5 * ((Number(a.N) || 0) + (Number(b.N) || 0)));
+      V_passive.push(0.5 * ((Number(a.VPassive) || 0) + (Number(b.VPassive) || 0)));
+      M_passive.push(0.5 * ((Number(a.MPassive) || 0) + (Number(b.MPassive) || 0)));
+    }
+    return {
+      ...wall,
+      s_midpoint,
+      N,
+      V_passive,
+      M_passive,
+      s_node,
+      w_passive,
+      theta_passive
+    };
+  });
+}
+
 export function buildWasmDeformationResult({
   mesh,
   load,
@@ -124,6 +168,7 @@ export function buildWasmDeformationResult({
   const nodalDisplacements = displayUsesServiceIncrement
     ? serviceIncrementNodalDisplacements
     : totalNodalDisplacements;
+  const wallResults = buildWallResultsFromWasm(wasmResult.wallResults, predictorSolution);
 
   // Per-element results. We use the wasmResult per-Gauss-point data
   // directly (already correct in tension-positive Voigt-6); for display
@@ -550,6 +595,8 @@ export function buildWasmDeformationResult({
     initialNodalDisplacements,
     terrainSettlementProfile,
     elementResults,
+    wallResults,
+    retainingWallResults: wallResults,
     summaries,
     hasHardeningSoil: anyGpHasHs === true,
     solver: {
