@@ -55,7 +55,8 @@
 		"verify:arc-length-phase-12": "node scripts/verify_arc_length_phase_12.mjs",
 		"verify:arc-length": "node scripts/verify_arc_length_phase_2.mjs && node scripts/verify_arc_length_phase_3.mjs && node scripts/verify_arc_length_phase_4.mjs && node scripts/verify_arc_length_phase_5.mjs && node scripts/verify_arc_length_phase_6.mjs && node scripts/verify_arc_length_phase_7.mjs && node scripts/verify_arc_length_phase_8.mjs && node scripts/verify_arc_length_phase_9.mjs && node scripts/verify_arc_length_phase_10.mjs && node scripts/verify_arc_length_phase_11.mjs && node scripts/verify_arc_length_phase_12.mjs",
 		"build:wasm:deformation": "bash src/wasm/deformation/build.sh",
-		"verify:wasm": "node scripts/verify_wasm_deformation_smoke.mjs && node scripts/verify_wasm_deformation_t6.mjs && node scripts/verify_wasm_deformation_plastic.mjs && node scripts/verify_wasm_mc_unit.mjs && node scripts/verify_wasm_mc_local_parity.mjs"
+		"verify:wasm": "node scripts/verify_wasm_deformation_smoke.mjs && node scripts/verify_wasm_deformation_t6.mjs && node scripts/verify_wasm_deformation_plastic.mjs && node scripts/verify_wasm_mc_unit.mjs && node scripts/verify_wasm_mc_local_parity.mjs",
+		"verify:wall-beam": "node scripts/verify_wall_beam_kernel.mjs && node scripts/verify_wall_beam_wasm_pipeline.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.1",

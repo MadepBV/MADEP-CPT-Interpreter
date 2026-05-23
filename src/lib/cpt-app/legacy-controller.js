@@ -26,9 +26,12 @@ import {
   seepageGeometryHash
 } from './seepage/boundary';
 import {
+  defaultWallMechanicalMaterial,
   normalizeWallMaterial,
   resolveMaterialPermeability,
+  resolveWallMechanicalSection,
   seepageSourceLabel,
+  wallMechanicalPresetById,
   wallMaterialSourceLabel
 } from './seepage/material';
 import {
@@ -4206,6 +4209,7 @@ function stage6Defaults(){
       terrain:[],
       phreatic:[],
       walls:[],
+      selectedWallId:null,
       drains:[],
       selectedDrainId:'',
       draft:[],
@@ -4406,7 +4410,8 @@ function stage6Defaults(){
           showDeformedMesh:false,
           showUndeformedMesh:false,
           showLoadVectors:true,
-          showPlasticPoints:true
+          showPlasticPoints:true,
+          showWallMomentOverlay:false
         }
       },
       results:null,
@@ -4916,6 +4921,7 @@ function ensureStage6State(){
   bishop.deformation.display.showUndeformedMesh = !!bishop.deformation.display.showUndeformedMesh;
   bishop.deformation.display.showLoadVectors = bishop.deformation.display.showLoadVectors !== false;
   bishop.deformation.display.showPlasticPoints = bishop.deformation.display.showPlasticPoints !== false;
+  bishop.deformation.display.showWallMomentOverlay = bishop.deformation.display.showWallMomentOverlay === true;
   bishop.deformation.stale = !!bishop.deformation.stale;
   if(!bishop.surfaceLoad || typeof bishop.surfaceLoad !== 'object') bishop.surfaceLoad = {xStart:null, xEnd:null, q:0};
   bishop.surfaceLoad.q = Math.max(+bishop.surfaceLoad.q || 0, 0);
@@ -5466,18 +5472,25 @@ function stage6BishopDefaultWallMaterial(index = 0, wallId = ''){
   return normalizeWallMaterial(
     {
       id:`wall-material-${wallId || index + 1}`,
-      label:'Legacy impermeable',
-      kSource:'preset'
+      label:'Concrete diaphragm',
+      kAcross:1e-12,
+      kAlong:1e-12,
+      gamma:24,
+      gammaSat:24,
+      kSource:'preset',
+      mechanical:defaultWallMechanicalMaterial('preset')
     },
     index,
     wallId || `${index + 1}`,
-    {sourceFallback:'preset'}
+    {sourceFallback:'preset', mechanicalPreset:'concrete-diaphragm'}
   );
 }
 
 function stage6BishopWallMaterialPreset(preset, index = 0, wallId = ''){
   const presets = {
     sheetPile:{label:'Sheet pile', kAcross:1e-10, kAlong:1e-8},
+    'steel-sheet-pile-AZ-26':{label:'Steel sheet pile AZ 26', kAcross:1e-12, kAlong:1e-12, gamma:78, gammaSat:78},
+    'concrete-diaphragm':{label:'Concrete diaphragm', kAcross:1e-12, kAlong:1e-12, gamma:24, gammaSat:24},
     slurry:{label:'Slurry wall', kAcross:1e-9, kAlong:1e-9},
     diaphragm:{label:'Diaphragm wall', kAcross:1e-9, kAlong:1e-9},
     soilMix:{label:'Soil-mix wall', kAcross:1e-7, kAlong:1e-7},
@@ -5485,21 +5498,26 @@ function stage6BishopWallMaterialPreset(preset, index = 0, wallId = ''){
     legacy:{label:'Legacy impermeable', kAcross:1e-10, kAlong:1e-10}
   };
   const presetDef = presets[preset] || presets.legacy;
+  const mechanicalPreset = wallMechanicalPresetById(preset);
   return normalizeWallMaterial(
     {
       id:`wall-material-${wallId || index + 1}`,
       ...presetDef,
-      kSource:'preset'
+      kSource:'preset',
+      mechanical:mechanicalPreset?.mechanical
     },
     index,
     wallId || `${index + 1}`,
-    {sourceFallback:'preset'}
+    {sourceFallback:'preset', mechanicalPreset:preset}
   );
 }
 
 function stage6BishopWallMaterialPresetKey(material){
   if(material?.kSource === 'legacy-impermeable') return 'legacy';
   if(material?.kSource === 'user') return 'custom';
+  const mechanical = material?.mechanical || {};
+  if(mechanical.model === 'section-properties') return 'steel-sheet-pile-AZ-26';
+  if(mechanical.model === 'rectangular' && Math.abs((Number(mechanical.E) || 0) - 3e7) <= 3e4 && Math.abs((Number(mechanical.thickness) || 0) - 0.6) <= 1e-6) return 'concrete-diaphragm';
   const kAcross = Number(material?.kAcross);
   const kAlong = Number(material?.kAlong);
   const close = (value, target)=>Number.isFinite(value) && Math.abs(value - target) <= Math.max(Math.abs(target) * 1e-9, 1e-16);
@@ -5519,6 +5537,8 @@ function stage6BishopNormalizeWalls(walls, terrain){
     .map((wall, index)=>{
       const id = wall?.id || `wall-${index + 1}`;
       const hadMaterial = !!(wall?.material && typeof wall.material === 'object');
+      const hasMechanicalActiveField = Object.prototype.hasOwnProperty.call(wall || {}, 'mechanicalActive');
+      const mechanicalActive = hasMechanicalActiveField ? wall?.mechanicalActive === true : false;
       return {
         id,
         x:Number(wall?.x),
@@ -5529,9 +5549,13 @@ function stage6BishopNormalizeWalls(walls, terrain){
             : NaN,
         yTip:Number.isFinite(+wall?.yTip) ? +wall.yTip : NaN,
         passiveSide:wall?.passiveSide === 'left' ? 'left' : 'right',
+        mechanicalActive,
+        mechanicalActivationPromptPending:!hasMechanicalActiveField && !!wall,
+        anchors:Array.isArray(wall?.anchors) ? wall.anchors : [],
         maxShearForce:Number.isFinite(+wall?.maxShearForce) && +wall.maxShearForce > 0 ? +wall.maxShearForce : null,
         material:normalizeWallMaterial(wall?.material, index, id, {
-          sourceFallback:hadMaterial ? 'user' : 'legacy-impermeable'
+          sourceFallback:hadMaterial ? 'user' : 'legacy-impermeable',
+          mechanicalPreset:mechanicalActive ? 'concrete-diaphragm' : null
         })
       };
     })
@@ -6587,6 +6611,11 @@ function stage6BishopInvalidate(message){
   if(message) bishop.progress.message = message;
 }
 
+function stage6BishopInvalidateWallGeometry(message){
+  stage6BishopInvalidate(message || 'Retaining wall geometry changed; rerun Bishop search.');
+  stage6BishopInvalidateSeepage('Wall geometry changed; rerun seepage.', false, false);
+}
+
 function stage6BishopSyncSoilModel(){
   ensureStage6State();
   const bishop = S.stage6.bishop;
@@ -6694,6 +6723,10 @@ function stage6BishopSyncSoilModel(){
     bishop.walls = stage6BishopNormalizeWalls(bishop.walls, sorted);
     bishop.drains = stage6BishopNormalizeDrains(bishop.drains);
     bishop.customRegions = stage6BishopNormalizeCustomRegions(bishop.customRegions, sorted, bishop.materials);
+  }
+  bishop.selectedWallId = bishop.selectedWallId ? String(bishop.selectedWallId) : null;
+  if(bishop.selectedWallId && !(bishop.walls || []).some((wall)=>wall.id === bishop.selectedWallId)){
+    bishop.selectedWallId = null;
   }
   if(!(bishop.drains || []).some((drain)=>drain.id === bishop.selectedDrainId)){
     bishop.selectedDrainId = bishop.drains?.[0]?.id || '';
@@ -7359,11 +7392,20 @@ function stage6BishopSetWallField(index, field, value){
     wall.passiveSide = value === 'left' ? 'left' : 'right';
   } else if(field === 'maxShearForce'){
     wall.maxShearForce = value === '' || value == null ? null : Math.max(+value || 0, 0);
+  } else if(field === 'mechanicalActive'){
+    wall.mechanicalActive = value === true || value === 'true' || value === 1 || value === '1';
+    wall.mechanicalActivationPromptPending = false;
   } else {
     wall[field] = value === '' || value == null ? null : +value;
   }
   S.stage6.bishop.walls = stage6BishopNormalizeWalls(S.stage6.bishop.walls, S.stage6.bishop.terrain);
-  stage6BishopInvalidate('Retaining wall geometry updated; rerun Bishop search.');
+  if(field === 'mechanicalActive'){
+    stage6BishopInvalidateDeformation('Wall mechanical activation changed; rerun deformation analysis.');
+  } else if(field === 'x' || field === 'yTop' || field === 'yTip') {
+    stage6BishopInvalidateWallGeometry('Retaining wall geometry updated; rerun Bishop search.');
+  } else {
+    stage6BishopInvalidate('Retaining wall geometry updated; rerun Bishop search.');
+  }
   renderStage6();
 }
 
@@ -7375,6 +7417,33 @@ function stage6BishopSetWallMaterialField(index, field, value){
   wall.material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'user'});
   if(field === 'preset'){
     wall.material = stage6BishopWallMaterialPreset(value, index, wall.id);
+  } else if(field === 'mechanical.model'){
+    const nextModel = value === 'section-properties' ? 'section-properties' : 'rectangular';
+    if(nextModel === 'section-properties'){
+      wall.material.mechanical = {
+        model:'section-properties',
+        EA:resolveWallMechanicalSection(wall.material.mechanical).EA,
+        EI:resolveWallMechanicalSection(wall.material.mechanical).EI,
+        GA:resolveWallMechanicalSection(wall.material.mechanical).GA,
+        kappa:1,
+        source:'user'
+      };
+    } else {
+      wall.material.mechanical = defaultWallMechanicalMaterial('user');
+    }
+  } else if(field.startsWith('mechanical.')){
+    const key = field.slice('mechanical.'.length);
+    const mechanical = {...(wall.material.mechanical || defaultWallMechanicalMaterial('user'))};
+    const nextValue = value === '' || value == null ? null : +value;
+    if(key === 'E' || key === 'thickness' || key === 'EA' || key === 'EI' || key === 'GA' || key === 'kappa'){
+      if(!(nextValue > 0)) return;
+      mechanical[key] = nextValue;
+    } else if(key === 'nu'){
+      if(!(Number.isFinite(nextValue) && nextValue >= 0 && nextValue < 0.5)) return;
+      mechanical.nu = nextValue;
+    }
+    mechanical.source = 'user';
+    wall.material.mechanical = mechanical;
   } else if(field === 'label'){
     wall.material.label = String(value || '').trim() || 'Wall material';
     wall.material.kSource = 'user';
@@ -7385,21 +7454,153 @@ function stage6BishopSetWallMaterialField(index, field, value){
     wall.material.kSource = 'user';
   }
   S.stage6.bishop.walls = stage6BishopNormalizeWalls(S.stage6.bishop.walls, S.stage6.bishop.terrain);
-  stage6BishopInvalidateSeepage('Wall conductivity changed. Showing the previous result until you rerun.', true, true);
+  if(field === 'kAcross' || field === 'kAlong' || field === 'preset'){
+    stage6BishopInvalidateSeepage('Wall conductivity changed. Showing the previous result until you rerun.', true, true);
+  }
+  if(field.startsWith('mechanical.') || field === 'preset'){
+    stage6BishopInvalidateDeformation('Wall mechanical material changed; rerun deformation analysis.', true, true);
+  }
   renderStage6();
 }
 
 function stage6BishopDeleteWall(index){
   ensureStage6State();
   stage6BishopSyncSoilModel();
+  const removed = S.stage6.bishop.walls?.[index] || null;
   S.stage6.bishop.walls = (S.stage6.bishop.walls || []).filter((_, wallIndex)=>wallIndex !== index);
-  stage6BishopInvalidate('Retaining wall removed; rerun Bishop search.');
+  if(removed?.id === S.stage6.bishop.selectedWallId){
+    S.stage6.bishop.selectedWallId = null;
+  }
+  stage6BishopInvalidateWallGeometry('Retaining wall removed; rerun Bishop search.');
+  renderStage6();
+}
+
+function stage6BishopSelectWall(wallId){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  const wall = (bishop.walls || []).find((item)=>item.id === wallId);
+  bishop.selectedWallId = wall ? wall.id : null;
+  if(wall){
+    bishop.selectedSurfaceLoadId = null;
+    bishop.selectedDrainId = '';
+    bishop.selectedRegionId = null;
+    const ui = stage6BishopUiState();
+    ui.bishopActiveCanvasPanel = 'structures';
+    ui.bishopActiveCanvasSheet = '';
+    ui.bishopCanvasToolsHidden = false;
+  }
+  renderStage6();
+}
+
+function stage6BishopToggleWallMomentOverlay(){
+  ensureStage6State();
+  const display = S.stage6.bishop.deformation.display || (S.stage6.bishop.deformation.display = {});
+  display.showWallMomentOverlay = display.showWallMomentOverlay !== true;
+  renderStage6();
+}
+
+function stage6BishopResolveWallMechanicalActivation(activate){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  let changed = false;
+  (bishop.walls || []).forEach((wall)=>{
+    if(wall.mechanicalActivationPromptPending !== true) return;
+    wall.mechanicalActivationPromptPending = false;
+    if(activate === true && wall.mechanicalActive !== true){
+      wall.mechanicalActive = true;
+      changed = true;
+    }
+  });
+  bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
+  if(changed){
+    stage6BishopInvalidateDeformation('Legacy retaining walls activated mechanically; rerun deformation analysis.');
+  }
+  renderStage6();
+}
+
+function stage6BishopWallResultSeries(wallResult){
+  const stations = wallResult?.stations || [];
+  const sNode = Array.isArray(wallResult?.s_node) && wallResult.s_node.length
+    ? wallResult.s_node.map((v)=>Number(v) || 0)
+    : stations.map((station)=>Number(station.s) || 0);
+  const wPassive = Array.isArray(wallResult?.w_passive) && wallResult.w_passive.length
+    ? wallResult.w_passive.map((v)=>Number(v) || 0)
+    : stations.map((station)=>Number(station.wPassive) || 0);
+  const thetaPassive = Array.isArray(wallResult?.theta_passive) && wallResult.theta_passive.length
+    ? wallResult.theta_passive.map((v)=>Number(v) || 0)
+    : stations.map((station)=>Number(station.thetaPassive) || 0);
+  const sMidpoint = Array.isArray(wallResult?.s_midpoint) && wallResult.s_midpoint.length
+    ? wallResult.s_midpoint.map((v)=>Number(v) || 0)
+    : stations.slice(0, -1).map((station, index)=>0.5 * ((Number(station.s) || 0) + (Number(stations[index + 1]?.s) || 0)));
+  const pairAverage = (key)=>stations.slice(0, -1).map((station, index)=>
+    0.5 * ((Number(station?.[key]) || 0) + (Number(stations[index + 1]?.[key]) || 0))
+  );
+  return {
+    sNode,
+    sMidpoint,
+    N:Array.isArray(wallResult?.N) && wallResult.N.length ? wallResult.N.map((v)=>Number(v) || 0) : pairAverage('N'),
+    VPassive:Array.isArray(wallResult?.V_passive) && wallResult.V_passive.length ? wallResult.V_passive.map((v)=>Number(v) || 0) : pairAverage('VPassive'),
+    MPassive:Array.isArray(wallResult?.M_passive) && wallResult.M_passive.length ? wallResult.M_passive.map((v)=>Number(v) || 0) : pairAverage('MPassive'),
+    wPassive,
+    thetaPassive
+  };
+}
+
+function stage6BishopSelectedWallResult(){
+  const bishop = S.stage6?.bishop;
+  const wallId = bishop?.selectedWallId;
+  if(!wallId) return null;
+  const currentIndex = (bishop.walls || []).findIndex((wall)=>wall.id === wallId);
+  const lastInputs = bishop.deformation?.lastWallInputs || [];
+  const lastIndex = lastInputs.findIndex((wall)=>wall.id === wallId);
+  const resultIndex = lastIndex >= 0 ? lastIndex : currentIndex;
+  if(resultIndex < 0) return null;
+  return (bishop.deformation?.result?.wallResults || bishop.deformation?.result?.retainingWallResults || [])
+    .find((wallResult)=>Number(wallResult.wallIndex) === resultIndex) || null;
+}
+
+async function stage6BishopCopyWallData(wallId){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  if(wallId) bishop.selectedWallId = wallId;
+  const wall = (bishop.walls || []).find((item)=>item.id === bishop.selectedWallId);
+  const wallResult = stage6BishopSelectedWallResult();
+  if(!wall || !wallResult){
+    bishop.deformation.wallCopyMessage = 'Run deformation for the selected mechanical wall first.';
+    renderStage6();
+    return;
+  }
+  const series = stage6BishopWallResultSeries(wallResult);
+  const rows = ['s_m\tN_kN_per_m\tV_passive_kN_per_m\tM_passive_kNm_per_m\tw_passive_m\ttheta_passive_rad'];
+  const maxRows = Math.max(series.sNode.length, series.sMidpoint.length);
+  for(let i=0;i<maxRows;i+=1){
+    rows.push([
+      series.sMidpoint[i] ?? series.sNode[i] ?? '',
+      series.N[i] ?? '',
+      series.VPassive[i] ?? '',
+      series.MPassive[i] ?? '',
+      series.wPassive[i] ?? '',
+      series.thetaPassive[i] ?? ''
+    ].join('\t'));
+  }
+  const text = rows.join('\n');
+  try{
+    if(typeof navigator !== 'undefined' && navigator.clipboard?.writeText){
+      await navigator.clipboard.writeText(text);
+      bishop.deformation.wallCopyMessage = 'Wall response copied as TSV.';
+    } else {
+      bishop.deformation.wallCopyMessage = text;
+    }
+  } catch(err){
+    bishop.deformation.wallCopyMessage = text;
+  }
   renderStage6();
 }
 
 function stage6BishopSelectDrain(drainId){
   ensureStage6State();
   S.stage6.bishop.selectedDrainId = drainId || '';
+  if(drainId) S.stage6.bishop.selectedWallId = null;
   renderStage6();
 }
 
@@ -7933,6 +8134,14 @@ function stage6BishopRunDeformation(){
   bishop.deformation.status = 'meshing';
   bishop.deformation.rejectReason = '';
   bishop.deformation.warnings = [];
+  bishop.deformation.lastWallInputs = (model.walls || []).map((wall)=>({
+    id:wall.id,
+    x:wall.x,
+    yTop:wall.yTop,
+    yTip:wall.yTip,
+    passiveSide:wall.passiveSide,
+    mechanicalActive:wall.mechanicalActive === true
+  }));
   bishop.deformation.progress = {
     running:true,
     percent:0,
@@ -8459,7 +8668,8 @@ function stage6BishopToolIcon(name){
     finish:'<path d="M20 6 9 17l-5-5"></path>',
     undo:'<path d="M9 7 4 12l5 5"></path><path d="M5 12h10a5 5 0 0 1 0 10h-2"></path>',
     clear:'<path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 14h10l1-14"></path><path d="M9 7V4h6v3"></path>',
-    layers:'<path d="m12 3 9 5-9 5-9-5 9-5Z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 16 9 5 9-5"></path>'
+    layers:'<path d="m12 3 9 5-9 5-9-5 9-5Z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 16 9 5 9-5"></path>',
+    copy:'<rect x="9" y="9" width="10" height="10" rx="2"></rect><rect x="5" y="5" width="10" height="10" rx="2"></rect>'
   };
   return `<svg class="st6-canvas-tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${icons[name] || icons.pointer}</svg>`;
 }
@@ -8481,6 +8691,147 @@ function stage6BishopCanvasToolButton(options){
   `;
 }
 
+function stage6BishopWallMechanicalLabel(wall){
+  const section = resolveWallMechanicalSection(wall?.material?.mechanical);
+  if(!section) return 'mechanical section not set';
+  if(section.model === 'section-properties'){
+    return `EA ${stage6CompactNumber(section.EA, 3)} kN/m · EI ${stage6CompactNumber(section.EI, 3)} kN·m²/m`;
+  }
+  return `E ${stage6CompactNumber(section.E, 3)} kPa · t ${stage6CompactNumber(section.thickness, 3)} m`;
+}
+
+function stage6BishopWallInfoPanelHtml(){
+  const bishop = S.stage6?.bishop;
+  const wall = (bishop?.walls || []).find((item)=>item.id === bishop.selectedWallId);
+  if(!wall) return '';
+  const wallIndex = (bishop.walls || []).findIndex((item)=>item.id === wall.id);
+  const wallResult = stage6BishopSelectedWallResult();
+  const series = wallResult ? stage6BishopWallResultSeries(wallResult) : null;
+  const maxAbs = (values)=>Math.max(0, ...(values || []).map((value)=>Math.abs(Number(value) || 0)));
+  const maxM = series ? maxAbs(series.MPassive) : 0;
+  const maxV = series ? maxAbs(series.VPassive) : 0;
+  const maxN = series ? maxAbs(series.N) : 0;
+  const maxW = series ? maxAbs(series.wPassive) : 0;
+  const maxTheta = series ? maxAbs(series.thetaPassive) : 0;
+  const idxMaxM = series?.MPassive?.findIndex((value)=>Math.abs(Number(value) || 0) === maxM) ?? -1;
+  const copiedMessage = bishop.deformation?.wallCopyMessage || '';
+  const wallIdArg = stage6EscJsString(wall.id);
+  const chart = (id, label)=>`
+    <div class="st6-wall-chart-row">
+      <canvas id="${id}" width="260" height="112" aria-label="${stage6EscAttr(label)}"></canvas>
+      <div class="st6-canvas-card-note">${stage6EscAttr(label)}</div>
+    </div>
+  `;
+  return `
+    <div class="st6-canvas-card-section st6-canvas-card--wall-info">
+      <div class="st6-canvas-card-kicker">Selected retaining wall</div>
+      <div class="st6-canvas-card-note">
+        Wall ${wallIndex + 1} · ${stage6EscAttr(wall.material?.label || wall.id)}
+        <br>Length ${(wall.yTop - wall.yTip).toFixed(2)} m · passive ${stage6EscAttr(wall.passiveSide)}
+        <br>${stage6EscAttr(stage6BishopWallMechanicalLabel(wall))}
+      </div>
+      <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+        <button type="button" class="st6-canvas-tool ${wall.mechanicalActive === true ? 'active' : ''}" onclick="stage6BishopSetWallField(${wallIndex}, 'mechanicalActive', ${wall.mechanicalActive === true ? 'false' : 'true'})">
+          ${stage6BishopToolIcon('wall')}<span>${wall.mechanicalActive === true ? 'Mechanical active' : 'Activate mechanical'}</span>
+        </button>
+        <button type="button" class="st6-canvas-tool ${bishop.deformation?.display?.showWallMomentOverlay === true ? 'active' : ''}" onclick="stage6BishopToggleWallMomentOverlay()">
+          ${stage6BishopToolIcon('chart')}<span>${bishop.deformation?.display?.showWallMomentOverlay === true ? 'Hide M overlay' : 'Show M overlay'}</span>
+        </button>
+      </div>
+      ${series ? `
+        <div class="st6-canvas-card-note">
+          Max |N| ${stage6CompactNumber(maxN, 3)} kN/m ·
+          Max |V| ${stage6CompactNumber(maxV, 3)} kN/m ·
+          Max |M| ${stage6CompactNumber(maxM, 3)} kN·m/m${idxMaxM >= 0 ? ` at s ${stage6CompactNumber(series.sMidpoint[idxMaxM] || 0, 3)} m` : ''}
+          <br>Max |w| ${(1000 * maxW).toFixed(2)} mm · Max |θ| ${(1000 * maxTheta).toFixed(3)} mrad
+        </div>
+        ${chart('stage6WallChartMoment', 'M passive-positive (kN·m/m)')}
+        ${chart('stage6WallChartShear', 'V passive-positive (kN/m)')}
+        ${chart('stage6WallChartAxial', 'N tension-positive (kN/m)')}
+        ${chart('stage6WallChartDeflection', 'w passive-positive (mm)')}
+        ${chart('stage6WallChartRotation', 'θ passive-positive (mrad)')}
+        <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+          <button type="button" class="st6-canvas-tool" onclick="stage6BishopCopyWallData(${wallIdArg})">${stage6BishopToolIcon('copy')}<span>Copy wall data</span></button>
+        </div>
+        ${copiedMessage ? `<div class="st6-canvas-card-note">${stage6EscAttr(copiedMessage.length > 160 ? 'Wall response prepared as TSV.' : copiedMessage)}</div>` : ''}
+      ` : `
+        <div class="st6-canvas-card-note">Run deformation with this wall mechanically active to inspect N, V, M, w, and θ.</div>
+      `}
+    </div>
+  `;
+}
+
+function stage6BishopRenderWallChart(canvas, sValues, values, options = {}){
+  if(!canvas || !sValues?.length || !values?.length) return;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const cssWidth = Math.max(rect.width || Number(canvas.getAttribute('width')) || 260, 160);
+  const cssHeight = Math.max(rect.height || Number(canvas.getAttribute('height')) || 112, 80);
+  if(canvas.width !== Math.round(cssWidth * dpr) || canvas.height !== Math.round(cssHeight * dpr)){
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  if(!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+  const padL = 38;
+  const padR = 10;
+  const padT = 10;
+  const padB = 18;
+  const plotW = Math.max(cssWidth - padL - padR, 1);
+  const plotH = Math.max(cssHeight - padT - padB, 1);
+  const finitePairs = values.map((value, index)=>({s:Number(sValues[index]), value:Number(value)}))
+    .filter((pair)=>Number.isFinite(pair.s) && Number.isFinite(pair.value));
+  if(!finitePairs.length) return;
+  const sMin = Math.min(...finitePairs.map((pair)=>pair.s));
+  const sMax = Math.max(...finitePairs.map((pair)=>pair.s), sMin + 1e-6);
+  const maxAbs = Math.max(...finitePairs.map((pair)=>Math.abs(pair.value)), 1e-12);
+  const px = (value)=>padL + 0.5 * plotW + 0.48 * plotW * (value / maxAbs);
+  const py = (s)=>padT + plotH * ((s - sMin) / Math.max(sMax - sMin, 1e-9));
+  const axis = readCssToken('--bd', 'rgba(90,100,120,0.35)');
+  const stroke = options.stroke || readCssToken('--chart-blue', '#2f6f9f');
+  const text = readCssToken('--tx2', '#586271');
+  ctx.save();
+  ctx.strokeStyle = axis;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(px(0), padT);
+  ctx.lineTo(px(0), padT + plotH);
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, padT + plotH);
+  ctx.lineTo(padL + plotW, padT + plotH);
+  ctx.stroke();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  finitePairs.forEach((pair, index)=>{
+    const x = px(pair.value);
+    const y = py(pair.s);
+    if(index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.fillStyle = text;
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`max ${stage6CompactNumber(maxAbs, 3)}${options.unit || ''}`, padL, cssHeight - 5);
+  ctx.textAlign = 'right';
+  ctx.fillText(`s ${stage6CompactNumber(sMax, 3)} m`, cssWidth - padR, cssHeight - 5);
+  ctx.restore();
+}
+
+function buildStage6BishopWallCharts(){
+  const wallResult = stage6BishopSelectedWallResult();
+  if(!wallResult) return;
+  const series = stage6BishopWallResultSeries(wallResult);
+  stage6BishopRenderWallChart(document.getElementById('stage6WallChartMoment'), series.sMidpoint, series.MPassive, {stroke:'#7e50a8', unit:' kN·m/m'});
+  stage6BishopRenderWallChart(document.getElementById('stage6WallChartShear'), series.sMidpoint, series.VPassive, {stroke:'#1f6feb', unit:' kN/m'});
+  stage6BishopRenderWallChart(document.getElementById('stage6WallChartAxial'), series.sMidpoint, series.N, {stroke:'#3d6b6a', unit:' kN/m'});
+  stage6BishopRenderWallChart(document.getElementById('stage6WallChartDeflection'), series.sNode, series.wPassive.map((v)=>1000 * v), {stroke:'#b3477a', unit:' mm'});
+  stage6BishopRenderWallChart(document.getElementById('stage6WallChartRotation'), series.sNode, series.thetaPassive.map((v)=>1000 * v), {stroke:'#9b6b32', unit:' mrad'});
+}
+
 function stage6BishopCanvasToolRailHtml(context){
   const ui = stage6BishopUiState();
   const bishop = context?.bishop || S.stage6.bishop;
@@ -8491,6 +8842,7 @@ function stage6BishopCanvasToolRailHtml(context){
   const selectedSeepageBc = context?.selectedSeepageBc || null;
   const selectedDrainIndex = (bishop.drains || []).findIndex((drain)=>drain.id === bishop.selectedDrainId);
   const selectedDrain = selectedDrainIndex >= 0 ? bishop.drains[selectedDrainIndex] : null;
+  const pendingWallActivationCount = (bishop.walls || []).filter((wall)=>wall.mechanicalActivationPromptPending === true).length;
   const isHidden = ui.bishopCanvasToolsHidden === true;
   const activePanel = ui.bishopActiveCanvasPanel === 'view' ? '' : (ui.bishopActiveCanvasPanel || '');
   const activeSheet = ui.bishopActiveCanvasSheet || '';
@@ -8666,6 +9018,17 @@ function stage6BishopCanvasToolRailHtml(context){
         ${toolButton('exit', 'Exit zone', 'exit')}
       </div>
     </div>
+      ${pendingWallActivationCount ? `
+        <div class="st6-canvas-card-section">
+          <div class="st6-canvas-card-kicker">Legacy wall activation</div>
+          <div class="st6-canvas-card-note">${pendingWallActivationCount} existing retaining wall${pendingWallActivationCount === 1 ? '' : 's'} opened from older project data. They stay inactive in deformation until you opt in.</div>
+          <div class="st6-canvas-card-row st6-canvas-card-row--actions">
+            <button type="button" class="st6-canvas-tool" onclick="stage6BishopResolveWallMechanicalActivation(true)">${stage6BishopToolIcon('wall')}<span>Activate</span></button>
+            <button type="button" class="st6-canvas-tool" onclick="stage6BishopResolveWallMechanicalActivation(false)">${stage6BishopToolIcon('close')}<span>Keep inactive</span></button>
+          </div>
+        </div>
+      ` : ''}
+	    ${stage6BishopWallInfoPanelHtml()}
 	    <div class="st6-canvas-card-section">
 	      <div class="st6-canvas-card-kicker">Quick settings</div>
 	      <label>${primarySurfaceLoad ? `Quick q for ${stage6EscAttr(primarySurfaceLoad.label || primarySurfaceLoad.id)}` : 'Default surface load q'} (kPa)
@@ -8799,6 +9162,9 @@ function stage6BishopCanvasToolRailHtml(context){
           <label class="st6-canvas-check"><input type="checkbox" ${bishop.seepage?.display?.showDrains !== false ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showDrains', this.checked)"> Drains</label>
           <label class="st6-canvas-check"><input type="checkbox" ${bishop.seepage?.display?.showFlowVectors ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showFlowVectors', this.checked)"> Flow lines</label>
           <label class="st6-canvas-check"><input type="checkbox" ${bishop.seepage?.display?.showExitGradient ? 'checked' : ''} onchange="stage6BishopSetField('seepage.display.showExitGradient', this.checked)"> Exit gradient</label>
+        ` : ''}
+        ${workspace === 'deformation' ? `
+          <label class="st6-canvas-check"><input type="checkbox" ${bishop.deformation?.display?.showWallMomentOverlay === true ? 'checked' : ''} onchange="stage6BishopSetField('deformation.display.showWallMomentOverlay', this.checked)"> Wall moment overlay</label>
         ` : ''}
       </div>
     </details>
@@ -10105,6 +10471,24 @@ function stage6BishopPickSurfaceLoadAtWorld(world){
   return null;
 }
 
+function stage6BishopPickWallAtWorld(world){
+  const bishop = S.stage6.bishop;
+  if(!world) return null;
+  const tolerance = stage6BishopSnapToleranceWorld();
+  let best = null;
+  (bishop.walls || []).forEach((wall)=>{
+    if(!Number.isFinite(wall?.x) || !Number.isFinite(wall?.yTop) || !Number.isFinite(wall?.yTip)) return;
+    const yMin = Math.min(wall.yTop, wall.yTip);
+    const yMax = Math.max(wall.yTop, wall.yTip);
+    if(world.y < yMin - tolerance || world.y > yMax + tolerance) return;
+    const distance = Math.abs(world.x - wall.x);
+    if(distance <= tolerance && (!best || distance < best.distance)){
+      best = {wall, distance};
+    }
+  });
+  return best?.wall || null;
+}
+
 function stage6BishopCommitDrawPoint(canvas, world){
   ensureStage6State();
   const bishop = S.stage6.bishop;
@@ -10270,14 +10654,17 @@ function stage6BishopCommitDrawPoint(canvas, world){
           yTop:top.y,
           yTip:Math.min(tip.y, top.y - 0.05),
           passiveSide:stage6BishopDefaultPassiveSide(),
+          mechanicalActive:true,
+          anchors:[],
           maxShearForce:null,
           material:stage6BishopDefaultWallMaterial((bishop.walls || []).length, wallId)
         }
       ];
       bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
+      bishop.selectedWallId = wallId;
       bishop.draft = [];
       bishop.draftKind = '';
-      stage6BishopInvalidate('Retaining wall added; rerun Bishop search.');
+      stage6BishopInvalidateWallGeometry('Retaining wall added; rerun Bishop search.');
     }
     renderStage6();
   }
@@ -10340,14 +10727,17 @@ function stage6BishopCompleteCurrentActionAt(world){
         yTop:top.y,
         yTip:Math.min(tip.y, top.y - 0.05),
         passiveSide:stage6BishopDefaultPassiveSide(),
+        mechanicalActive:true,
+        anchors:[],
         maxShearForce:null,
         material:stage6BishopDefaultWallMaterial((bishop.walls || []).length, wallId)
       }
     ];
     bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
+    bishop.selectedWallId = wallId;
     bishop.draft = [];
     bishop.draftKind = '';
-    stage6BishopInvalidate('Retaining wall added; rerun Bishop search.');
+    stage6BishopInvalidateWallGeometry('Retaining wall added; rerun Bishop search.');
     renderStage6();
     return true;
   }
@@ -10380,6 +10770,9 @@ function stage6BishopPointerDown(event){
   if(bishop.tool === 'edit'){
     const handle = stage6BishopNearestHandle(canvas, event.clientX, event.clientY);
     if(handle){
+      if(handle.kind === 'wallTop' || handle.kind === 'wallTip'){
+        bishop.selectedWallId = bishop.walls?.[handle.index]?.id || null;
+      }
       stage6BishopInvalidate();
 	      stage6BishopCanvasState.pointerDrag = {
 	        kind:handle.kind,
@@ -10398,14 +10791,29 @@ function stage6BishopPointerDown(event){
 	    if(load){
 	      bishop.selectedSurfaceLoadId = load.id;
 	      bishop.selectedRegionId = null;
+	      bishop.selectedWallId = null;
 	      renderStage6();
 	      return;
 	    }
+    const wall = stage6BishopPickWallAtWorld(world);
+    if(wall){
+      bishop.selectedWallId = wall.id;
+      bishop.selectedSurfaceLoadId = null;
+      bishop.selectedRegionId = null;
+      bishop.selectedDrainId = '';
+      const ui = stage6BishopUiState();
+      ui.bishopActiveCanvasPanel = 'structures';
+      ui.bishopActiveCanvasSheet = '';
+      ui.bishopCanvasToolsHidden = false;
+      renderStage6();
+      return;
+    }
 	    const region = (bishop.customRegions || []).length
       ? stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world)
       : null;
     if(region){
       bishop.selectedRegionId = region.id;
+      bishop.selectedWallId = null;
       renderStage6();
       return;
     }
@@ -10517,6 +10925,9 @@ function stage6BishopPointerUp(event){
   }
   if(drag.kind === 'terrain' && (S.stage6.bishop.customRegions || []).length){
     stage6BishopClearCustomRegions('Terrain updated; custom soil polygons were cleared and Bishop results were reset.');
+  }
+  if(drag.kind === 'wallTop' || drag.kind === 'wallTip'){
+    stage6BishopInvalidateSeepage('Wall geometry changed; rerun seepage.', false, false);
   }
   renderStage6();
 }
@@ -11139,6 +11550,63 @@ function stage6BishopDrawCanvas(){
     ctx.restore();
   };
 
+  const drawWallResponse = (wallResult)=>{
+    const stations = wallResult?.stations || [];
+    if(stations.length < 2) return;
+    const displacementScale = Math.max(Number(bishop.deformation?.options?.displacementScale) || 1, 0.05);
+    const passiveSign = wallResult.passiveSign < 0 ? -1 : 1;
+    const deformed = stations.map((station)=>stage6BishopWorldToScreen({
+      x:(Number(station.x) || 0) + displacementScale * (Number(station.ux) || 0),
+      y:Number(station.y) || 0
+    }));
+    const base = stations.map((station)=>stage6BishopWorldToScreen({
+      x:Number(station.x) || 0,
+      y:Number(station.y) || 0
+    }));
+    const maxMoment = Math.max(...stations.map((station)=>Math.abs(Number(station.MPassive) || 0)), 0);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(18, 127, 155, 0.95)';
+    ctx.lineWidth = 2.2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    deformed.forEach((pt, index)=>{
+      if(index === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.stroke();
+    if(maxMoment > 0){
+      if(bishop.deformation?.display?.showWallMomentOverlay !== true){
+        ctx.restore();
+        return;
+      }
+      ctx.strokeStyle = 'rgba(126, 80, 168, 0.8)';
+      ctx.fillStyle = 'rgba(126, 80, 168, 0.12)';
+      ctx.lineWidth = 1.4;
+      const diagram = stations.map((station, index)=>{
+        const m = Number(station.MPassive) || 0;
+        return {
+          x:base[index].x + passiveSign * 32 * (m / maxMoment),
+          y:base[index].y
+        };
+      });
+      ctx.beginPath();
+      base.forEach((pt, index)=>{
+        if(index === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      });
+      for(let i=diagram.length - 1; i >= 0; i -= 1) ctx.lineTo(diagram[i].x, diagram[i].y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      diagram.forEach((pt, index)=>{
+        if(index === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+
   const drawMeasurementOverlay = (points, options = {})=>{
     const metrics = stage6BishopMeasurementMetrics(points);
     if(!metrics) return;
@@ -11354,7 +11822,10 @@ function stage6BishopDrawCanvas(){
       });
     }
   });
-  (bishop.walls || []).forEach((wall)=>drawWall(wall));
+  (bishop.walls || []).forEach((wall)=>drawWall(wall, wall.id === bishop.selectedWallId ? {stroke:'#127f9b', width:5} : {}));
+  if(workspace === 'deformation'){
+    (bishop.deformation?.result?.wallResults || bishop.deformation?.result?.retainingWallResults || []).forEach(drawWallResponse);
+  }
   if((bishop.measurement?.points || []).length >= 2){
     drawMeasurementOverlay(bishop.measurement.points);
   }
@@ -13804,6 +14275,22 @@ function renderStage6BishopApp(){
         </tr>
       `).join('')
     : '';
+  const deformationWallRows = deformationHasResult
+    ? (deformation.result?.wallResults || deformation.result?.retainingWallResults || []).flatMap((wall)=>(
+        wall.stations || []).map((station, stationIndex)=>`
+          <tr>
+            <td>${Number(wall.wallIndex) + 1}</td>
+            <td>${stationIndex + 1}</td>
+            <td>${Number(station.s || 0).toFixed(2)}</td>
+            <td>${(1000 * (Number(station.wPassive) || 0)).toFixed(2)}</td>
+            <td>${(1000 * (Number(station.thetaPassive) || 0)).toFixed(3)}</td>
+            <td>${Number(station.N || 0).toFixed(2)}</td>
+            <td>${Number(station.VPassive || 0).toFixed(2)}</td>
+            <td>${Number(station.MPassive || 0).toFixed(2)}</td>
+          </tr>
+        `)
+      ).join('')
+    : '';
 	  const deformationSetupMessage = !model
 	    ? 'Draw terrain and place the active CPT before running deformation.'
 	    : deformationIsSafety
@@ -14055,8 +14542,11 @@ function renderStage6BishopApp(){
   const wallRows = (bishop.walls || []).map((wall, index)=>{
     const material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'legacy-impermeable'});
     const preset = stage6BishopWallMaterialPresetKey(material);
+    const mechanical = material.mechanical || defaultWallMechanicalMaterial('user');
+    const sectionMode = mechanical.model === 'section-properties';
+    const wallIdArg = stage6EscJsString(wall.id);
     return `
-      <tr>
+      <tr class="${wall.id === bishop.selectedWallId ? 'sel' : ''}">
         <td>${index + 1}</td>
         <td><input type="number" step="0.05" value="${wall.x.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'x', this.value)"></td>
         <td><input type="number" step="0.05" value="${wall.yTop.toFixed(2)}" onchange="stage6BishopSetWallField(${index}, 'yTop', this.value)"></td>
@@ -14067,8 +14557,11 @@ function renderStage6BishopApp(){
             <option value="right"${wall.passiveSide==='right'?' selected':''}>Right</option>
           </select>
         </td>
+        <td><label class="st6-bishop-check"><input type="checkbox" ${wall.mechanicalActive === true ? 'checked' : ''} onchange="stage6BishopSetWallField(${index}, 'mechanicalActive', this.checked)"> Active</label></td>
         <td>
           <select onchange="stage6BishopSetWallMaterialField(${index}, 'preset', this.value)">
+            <option value="concrete-diaphragm"${preset==='concrete-diaphragm'?' selected':''}>Concrete diaphragm</option>
+            <option value="steel-sheet-pile-AZ-26"${preset==='steel-sheet-pile-AZ-26'?' selected':''}>Steel sheet pile AZ 26</option>
             <option value="sheetPile"${preset==='sheetPile'?' selected':''}>Sheet pile</option>
             <option value="slurry"${preset==='slurry'?' selected':''}>Slurry wall</option>
             <option value="diaphragm"${preset==='diaphragm'?' selected':''}>Diaphragm</option>
@@ -14078,11 +14571,21 @@ function renderStage6BishopApp(){
             <option value="custom"${preset==='custom'?' selected':''} disabled>Custom</option>
           </select>
         </td>
+        <td>
+          <select onchange="stage6BishopSetWallMaterialField(${index}, 'mechanical.model', this.value)">
+            <option value="rectangular"${!sectionMode?' selected':''}>Rectangular</option>
+            <option value="section-properties"${sectionMode?' selected':''}>Section props</option>
+          </select>
+        </td>
+        <td><input type="number" step="${sectionMode ? '1000' : '100000'}" min="0" value="${Number(sectionMode ? mechanical.EA : mechanical.E).toPrecision(6)}" onchange="stage6BishopSetWallMaterialField(${index}, '${sectionMode ? 'mechanical.EA' : 'mechanical.E'}', this.value)"></td>
+        <td><input type="number" step="${sectionMode ? '100' : '0.05'}" min="0" value="${Number(sectionMode ? mechanical.EI : mechanical.thickness).toPrecision(6)}" onchange="stage6BishopSetWallMaterialField(${index}, '${sectionMode ? 'mechanical.EI' : 'mechanical.thickness'}', this.value)"></td>
+        <td><input type="number" step="${sectionMode ? '1000' : '0.01'}" min="0" value="${Number(sectionMode ? mechanical.GA : mechanical.nu).toPrecision(6)}" onchange="stage6BishopSetWallMaterialField(${index}, '${sectionMode ? 'mechanical.GA' : 'mechanical.nu'}', this.value)"></td>
+        <td><input type="number" step="0.01" min="0.01" max="1" value="${Number(mechanical.kappa || 1).toFixed(3)}" onchange="stage6BishopSetWallMaterialField(${index}, 'mechanical.kappa', this.value)"></td>
         <td><input type="number" step="1e-10" min="1e-20" value="${Number(material.kAcross).toExponential(2)}" onchange="stage6BishopSetWallMaterialField(${index}, 'kAcross', this.value)"></td>
         <td><input type="number" step="1e-10" min="1e-20" value="${Number(material.kAlong).toExponential(2)}" onchange="stage6BishopSetWallMaterialField(${index}, 'kAlong', this.value)"></td>
         <td><span class="st6-bishop-source-pill st6-bishop-source-pill--${stage6EscAttr(material.kSource || 'preset')}">${stage6EscAttr(wallMaterialSourceLabel(material.kSource))}</span></td>
         <td>${(wall.yTop - wall.yTip).toFixed(2)} m</td>
-        <td><button class="btn sm" onclick="stage6BishopDeleteWall(${index})">Delete</button></td>
+        <td><button class="btn sm" onclick="stage6BishopSelectWall(${wallIdArg})">Select</button> <button class="btn sm" onclick="stage6BishopDeleteWall(${index})">Delete</button></td>
       </tr>
     `;
   }).join('');
@@ -14549,6 +15052,7 @@ function renderStage6BishopApp(){
                   ${deformationIsSafety ? `Displayed retained strength: <strong>${deformationSafetyStrengthRetained != null ? `${(100 * deformationSafetyStrengthRetained).toFixed(2)} %` : '—'}</strong><br>` : ''}
                   Element type: <strong>${stage6EscAttr(deformationMeshElementLabel)}</strong><br>
                   Nodes: <strong>${deformation.mesh?.nodes?.length || 0}</strong><br>
+                  Mechanical walls: <strong>${deformation.mesh?.mechanicalWalls?.length || 0}</strong><br>
                   Mid-edge nodes: <strong>${deformation.mesh?.meshStats?.midEdgeNodes || 0}</strong><br>
                   Triangles: <strong>${deformation.mesh?.elements?.length || 0}</strong><br>
                   Integration points: <strong>${deformation.result?.solver?.integrationPointCount || 0}</strong><br>
@@ -15152,8 +15656,8 @@ function renderStage6BishopApp(){
         <div class="st6-help">Edit geometry, passive side, and seepage conductivity for every wall without opening the old settings column.</div>
         <div class="st6-canvas-table-wrap">
           <table class="tbl st6-bishop-materials">
-            <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Seepage preset</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
-            <tbody>${wallRows || '<tr><td colspan="11" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
+            <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
+            <tbody>${wallRows || '<tr><td colspan="17" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
           </table>
         </div>
       </div>
@@ -15505,8 +16009,9 @@ function renderStage6BishopApp(){
 	                  <tr><td>Average q</td><td>${deformationAppliedQ > 0 ? `${deformationAppliedQ.toFixed(2)} kPa` : '—'}</td></tr>
 	                  <tr><td>Total load</td><td>${deformationTotalLoad != null ? `${deformationTotalLoad.toFixed(1)} kN` : '—'}</td></tr>
                   <tr><td>Out-of-plane length</td><td>${deformationOutOfPlaneLength.toFixed(2)} m</td></tr>
-	                  <tr><td>Nodes</td><td>${deformation.mesh?.nodes?.length || 0}</td></tr>
-	                  <tr><td>Triangles</td><td>${deformation.mesh?.elements?.length || 0}</td></tr>
+		                  <tr><td>Nodes</td><td>${deformation.mesh?.nodes?.length || 0}</td></tr>
+		                  <tr><td>Mechanical walls</td><td>${deformation.mesh?.mechanicalWalls?.length || 0}</td></tr>
+		                  <tr><td>Triangles</td><td>${deformation.mesh?.elements?.length || 0}</td></tr>
 	                  <tr><td>Solver</td><td>${stage6EscAttr(deformationSolverLabel)}</td></tr>
 	                  <tr><td>Initial stress</td><td>${stage6EscAttr(deformationInitialStressMode)}</td></tr>
 	                  <tr><td>Free DOFs</td><td>${deformation.result?.solver?.freeDofs || 0}</td></tr>
@@ -15540,18 +16045,27 @@ function renderStage6BishopApp(){
                 <div class="info" style="background:var(--bg2);border-color:var(--bd2);margin-bottom:0">
                   ${stage6EscAttr(deformationStatusMessage)}
                   ${deformationWarnings.length ? `<br><br>${deformationWarnings.map((warning)=>stage6EscAttr(warning)).join('<br>')}` : ''}
-                </div>
-              </div>
+			              </div>
+			            </div>
               <div class="st6-bishop-side">
                 <div class="mc2-sec">Terrain settlement profile</div>
                 <div style="max-height:300px;overflow:auto">
                   <table class="tbl st6-bishop-results">
                     <thead><tr><th>#</th><th>x</th><th>y</th><th>settlement (mm)</th><th>u_x (mm)</th></tr></thead>
                     <tbody>${deformationProfileRows || '<tr><td colspan="5" style="text-align:center;color:var(--tx2)">Run the deformation screen to inspect the terrain settlement profile.</td></tr>'}</tbody>
+		                  </table>
+		                </div>
+		              </div>
+	              <div class="st6-bishop-side">
+	                <div class="mc2-sec">Retaining wall response</div>
+	                <div style="max-height:300px;overflow:auto">
+	                  <table class="tbl st6-bishop-results">
+	                    <thead><tr><th>Wall</th><th>Station</th><th>s (m)</th><th>w pass. (mm)</th><th>θ pass. (mrad)</th><th>N (kN/m)</th><th>V pass. (kN/m)</th><th>M pass. (kNm/m)</th></tr></thead>
+	                    <tbody>${deformationWallRows || '<tr><td colspan="8" style="text-align:center;color:var(--tx2)">Run deformation with mechanical wall activation enabled to inspect wall forces.</td></tr>'}</tbody>
 	                  </table>
 	                </div>
 	              </div>
-	            </div>
+		            </div>
 	            ${deformationIsSafety ? stage6BishopSafetyCurveHtml(deformation.result?.solver) : ''}
 	            ${deformationIsSafety ? stage6BishopSafetyMechanismHtml(deformationSafetyMechanism) : ''}
 	          </div>
@@ -15711,8 +16225,8 @@ function renderStage6BishopApp(){
                 <div class="st6-help">Walls are treated as infinitely stiff vertical elements for stability. In seepage they are thin vertical regions with user-set across-wall and along-wall conductivity; dry wall elements get the same dry-factor reduction as soil.</div>
                 <div style="overflow:auto">
                   <table class="tbl st6-bishop-materials">
-                    <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Seepage preset</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
-                    <tbody>${wallRows || '<tr><td colspan="11" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
+                    <thead><tr><th>#</th><th>x</th><th>Top y</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
+                    <tbody>${wallRows || '<tr><td colspan="17" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click top then tip.</td></tr>'}</tbody>
                   </table>
                 </div>
               </div>
@@ -15854,6 +16368,7 @@ function renderStage6(){
     if(app === 'bishop'){
       initStage6BishopCanvas();
       buildStage6BishopLineProbeChart();
+      buildStage6BishopWallCharts();
     }
     stage6RestoreScrollState(el, scrollState);
   });
@@ -17426,6 +17941,10 @@ const legacyApi={
   stage6BishopSetWallField,
   stage6BishopSetWallMaterialField,
   stage6BishopDeleteWall,
+  stage6BishopSelectWall,
+  stage6BishopToggleWallMomentOverlay,
+  stage6BishopResolveWallMechanicalActivation,
+  stage6BishopCopyWallData,
   stage6BishopSelectDrain,
   stage6BishopSetDrainField,
   stage6BishopDeleteDrain,
