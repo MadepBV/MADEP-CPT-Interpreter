@@ -111,6 +111,13 @@ export const docsGroups: DocsGroup[] = [
 				path: '/docs/engineering/reinforcement',
 				summary:
 					'Strip-based EC2 reinforcement screening from design moment, material factors, and cover assumptions.'
+			},
+			{
+				title: 'Retaining walls',
+				path: '/docs/engineering/retaining-wall',
+				summary:
+					'Belgian Eurocode 7 (NBN EN 1997-1 ANB, DA1) verification of gravity, RC cantilever, and embedded sheet-pile walls: earth-pressure model, GEO/EQU/SLS checks, structural design forces, and the C++/WASM solver.',
+				tag: 'Stage 6'
 			}
 		]
 	},

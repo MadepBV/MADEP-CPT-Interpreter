@@ -176,9 +176,13 @@ function dedupeConsecutiveVertices(vertices) {
   }, []);
 }
 
-function isStrictlyIncreasingInX(vertices) {
+// Non-decreasing (not strictly increasing) so a DXF with a vertical face — two stacked vertices
+// sharing x with different y — imports. dedupeConsecutiveVertices already drops exact duplicates,
+// so a Δy>EPS stacked pair survives; a left-to-right profile reversed is non-increasing, so the
+// forward/reversed disambiguation still works.
+function isNonDecreasingInX(vertices) {
   for (let i = 1; i < vertices.length; i += 1) {
-    if (!(vertices[i].x > vertices[i - 1].x + EPS)) return false;
+    if (!(vertices[i].x >= vertices[i - 1].x - EPS)) return false;
   }
   return true;
 }
@@ -188,11 +192,11 @@ function orientTerrainVertices(vertices) {
   if (deduped.length < 2) {
     throw new DxfTerrainImportError('The DXF polyline must contain at least two distinct vertices.');
   }
-  if (isStrictlyIncreasingInX(deduped)) return deduped;
+  if (isNonDecreasingInX(deduped)) return deduped;
   const reversed = [...deduped].reverse();
-  if (isStrictlyIncreasingInX(reversed)) return reversed;
+  if (isNonDecreasingInX(reversed)) return reversed;
   throw new DxfTerrainImportError(
-    'The DXF terrain must be an open left-to-right polyline with strictly increasing x-coordinates.'
+    'The DXF terrain must be an open left-to-right polyline with non-decreasing x-coordinates.'
   );
 }
 

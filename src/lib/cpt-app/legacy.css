@@ -478,6 +478,16 @@ button{border:0;background:none;cursor:pointer}
 #layerColSvg{width:100%;display:block}
 
 .mcards{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-top:0.9rem}
+/* Stage 6 application switcher — dense icon chips */
+.app-switch{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.app-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 13px;border:1px solid var(--bd);border-radius:999px;background:var(--panel-solid);color:var(--tx2);cursor:pointer;font-size:12.5px;font-weight:500;white-space:nowrap;transition:border-color var(--transition-fast),color var(--transition-fast),background var(--transition-fast)}
+.app-chip:hover{border-color:var(--ac);color:var(--tx)}
+.app-chip.sel{border-color:var(--ac);background:var(--acl);color:var(--acd);box-shadow:inset 0 0 0 1px var(--ac)}
+.app-chip-ico{display:inline-flex;width:18px;height:18px;flex:0 0 18px;color:var(--tx3)}
+.app-chip-ico svg{width:18px;height:18px;display:block}
+.app-chip:hover .app-chip-ico,.app-chip.sel .app-chip-ico{color:var(--ac)}
+.app-chip-lbl{line-height:1}
+@media (max-width:680px){.app-chip-lbl{display:none}.app-chip{padding:8px}.app-chip-ico{color:var(--tx2)}}
 .mc{
   border:1px solid var(--bd);border-radius:var(--radius-md);padding:clamp(0.85rem,1.6vw,1.1rem);
   cursor:pointer;transition:border-color var(--motion-base) var(--ease-smooth),box-shadow var(--motion-base) var(--ease-smooth),transform var(--motion-base) var(--ease-luxury);

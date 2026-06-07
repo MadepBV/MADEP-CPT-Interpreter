@@ -80,6 +80,7 @@ import {
   wallLength,
   wallNormalForSide
 } from './wall-geometry.js';
+import { installRetainingApp } from './retaining/retaining-ui.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -102,6 +103,14 @@ const stage6BishopCanvasState = {
 // validated, but the production UI must not expose it until the model is
 // convergence- and benchmark-ready.
 const STAGE6_ENABLE_HARDENING_SOIL_UI = false;
+
+// Stage 6 "Retaining walls" application — self-contained module wired in via a
+// small context (live state accessor + render trigger + CPT layer accessor).
+const retainingApp = installRetainingApp({
+  getState: () => S,
+  requestRender: () => renderStage6(),
+  workingLayers: () => stage6WorkingLayers()
+});
 
 /* ════════════════════════════════
    PROJECT STATE — multi-CPT architecture
@@ -4053,6 +4062,7 @@ function stage6Defaults(){
   return{
     app:'bearing',
     ui:{details:{}},
+    retwall:retainingApp.defaults(),
     bearing:{
       foundationType:'strip',
       B:1.50,
@@ -4551,6 +4561,7 @@ function stage6BishopResolvedDeformationMeshTargetArea(bishop){
 function ensureStage6State(){
   if(!S.stage6) S.stage6 = stage6Defaults();
   stage6Merge(S.stage6, stage6Defaults());
+  retainingApp.ensure(S.stage6);
   if(!S.stage6Cache) S.stage6Cache = {};
   const maxDepth = Math.max(stage6MaxDepth(), 0.5);
   S.stage6.bearing.B = Math.max(+S.stage6.bearing.B || stage6Defaults().bearing.B, 0.1);
@@ -7607,24 +7618,30 @@ function stage6BishopWallResultSeries(wallResult){
   const sMidpoint = Array.isArray(wallResult?.s_midpoint) && wallResult.s_midpoint.length
     ? wallResult.s_midpoint.map((v)=>Number(v) || 0)
     : stations.slice(0, -1).map((station, index)=>0.5 * ((Number(station.s) || 0) + (Number(stations[index + 1]?.s) || 0)));
-  const pairAverage = (key)=>stations.slice(0, -1).map((station, index)=>
-    0.5 * ((Number(station?.[key]) || 0) + (Number(stations[index + 1]?.[key]) || 0))
-  );
+  // Node-level internal forces (single element→node average from the wasm). Used for
+  // plotting and extrema so the moment renders as its true linear-within-element field
+  // and the peak |M| label is honest. The midpoint arrays (wallResult.M_passive etc.)
+  // are a redundant second average — they are retained on wallResult for the
+  // wasm-pipeline verifier but deliberately NOT used for display here.
+  const nodeForce = (key, fallbackArray)=>{
+    if(stations.length) return stations.map((station)=>Number(station?.[key]) || 0);
+    return Array.isArray(fallbackArray) ? fallbackArray.map((v)=>Number(v) || 0) : [];
+  };
   return {
     sNode,
     sMidpoint,
-    N:Array.isArray(wallResult?.N) && wallResult.N.length ? wallResult.N.map((v)=>Number(v) || 0) : pairAverage('N'),
-    VPassive:Array.isArray(wallResult?.V_passive) && wallResult.V_passive.length ? wallResult.V_passive.map((v)=>Number(v) || 0) : pairAverage('VPassive'),
-    MPassive:Array.isArray(wallResult?.M_passive) && wallResult.M_passive.length ? wallResult.M_passive.map((v)=>Number(v) || 0) : pairAverage('MPassive'),
+    N:nodeForce('N', wallResult?.N),
+    VPassive:nodeForce('VPassive', wallResult?.V_passive),
+    MPassive:nodeForce('MPassive', wallResult?.M_passive),
     wPassive,
     thetaPassive
   };
 }
 
 const STAGE6_WALL_RESPONSE_QUANTITIES = [
-  {id:'M', label:'Moment M', shortLabel:'M', key:'MPassive', stationKey:'sMidpoint', unit:'kN·m/m', axisTitle:'M passive-positive (kN·m/m)', color:'#7e50a8', digits:3},
-  {id:'V', label:'Shear V', shortLabel:'V', key:'VPassive', stationKey:'sMidpoint', unit:'kN/m', axisTitle:'V passive-positive (kN/m)', color:'#1f6feb', digits:3},
-  {id:'N', label:'Axial N', shortLabel:'N', key:'N', stationKey:'sMidpoint', unit:'kN/m', axisTitle:'N tension-positive (kN/m)', color:'#3d6b6a', digits:3},
+  {id:'M', label:'Moment M', shortLabel:'M', key:'MPassive', stationKey:'sNode', unit:'kN·m/m', axisTitle:'M passive-positive (kN·m/m)', color:'#7e50a8', digits:3},
+  {id:'V', label:'Shear V', shortLabel:'V', key:'VPassive', stationKey:'sNode', unit:'kN/m', axisTitle:'V passive-positive (kN/m)', color:'#1f6feb', digits:3},
+  {id:'N', label:'Axial N', shortLabel:'N', key:'N', stationKey:'sNode', unit:'kN/m', axisTitle:'N tension-positive (kN/m)', color:'#3d6b6a', digits:3},
   {id:'w', label:'Deflection w', shortLabel:'w', key:'wPassive', stationKey:'sNode', scale:1000, unit:'mm', axisTitle:'w passive-positive (mm)', color:'#b3477a', digits:3},
   {id:'theta', label:'Rotation theta', shortLabel:'theta', key:'thetaPassive', stationKey:'sNode', scale:1000, unit:'mrad', axisTitle:'theta passive-positive (mrad)', color:'#9b6b32', digits:3}
 ];
@@ -7755,7 +7772,7 @@ async function stage6BishopCopyWallData(wallId){
   const maxRows = Math.max(series.sNode.length, series.sMidpoint.length);
   for(let i=0;i<maxRows;i+=1){
     rows.push([
-      series.sMidpoint[i] ?? series.sNode[i] ?? '',
+      series.sNode[i] ?? series.sMidpoint[i] ?? '',
       series.N[i] ?? '',
       series.VPassive[i] ?? '',
       series.MPassive[i] ?? '',
@@ -8917,7 +8934,7 @@ function stage6BishopWallInfoPanelHtml(){
         <div class="st6-canvas-card-note">
           Max |N| ${stage6CompactNumber(maxN, 3)} kN/m ·
           Max |V| ${stage6CompactNumber(maxV, 3)} kN/m ·
-          Max |M| ${stage6CompactNumber(maxM, 3)} kN·m/m${idxMaxM >= 0 ? ` at s ${stage6CompactNumber(series.sMidpoint[idxMaxM] || 0, 3)} m` : ''}
+          Max |M| ${stage6CompactNumber(maxM, 3)} kN·m/m${idxMaxM >= 0 ? ` at s ${stage6CompactNumber(series.sNode[idxMaxM] || 0, 3)} m` : ''}
           <br>Max |w| ${(1000 * maxW).toFixed(2)} mm · Max |θ| ${(1000 * maxTheta).toFixed(3)} mrad
         </div>
         <div class="st6-canvas-card-row st6-canvas-card-row--actions">
@@ -10769,7 +10786,9 @@ function stage6BishopCommitDrawPoint(canvas, world){
   if(tool === 'terrain' || tool === 'phreatic'){
     const snapped = stage6BishopSnapWorldPoint(world, 'free');
     const next = [...bishop.draft];
-    if(next.length && snapped.x <= next[next.length-1].x + 1e-6) return;
+    // Permit a vertical drop (same x, different y); reject only a backwards move or a duplicate point.
+    const prevPt = next[next.length-1];
+    if(prevPt && (snapped.x < prevPt.x - 1e-6 || Math.hypot(snapped.x-prevPt.x, snapped.y-prevPt.y) <= 1e-6)) return;
     next.push(snapped);
     bishop.draft = next;
     bishop.draftKind = tool;
@@ -11115,15 +11134,21 @@ function stage6BishopPointerMove(event){
     const pt = stage6BishopSnapWorldPoint(world, 'free');
     const prev = bishop.terrain[drag.index-1];
     const next = bishop.terrain[drag.index+1];
-    if(prev) pt.x = Math.max(pt.x, prev.x + 0.05);
-    if(next) pt.x = Math.min(pt.x, next.x - 0.05);
+    // Monotone NON-decreasing x (allow a vertical face Δx=0, Δy≠0 — e.g. a step flush to a wall);
+    // 'free' snapping pulls x onto a wall head/tip so the drop lands exactly on the wall.
+    if(prev) pt.x = Math.max(pt.x, prev.x);
+    if(next) pt.x = Math.min(pt.x, next.x);
+    if((prev && Math.hypot(pt.x-prev.x, pt.y-prev.y) <= 1e-6) ||
+       (next && Math.hypot(pt.x-next.x, pt.y-next.y) <= 1e-6)) return;  // reject a zero-length edge
     bishop.terrain[drag.index] = pt;
   } else if(drag.kind === 'phreatic'){
     const pt = stage6BishopSnapWorldPoint(world, 'free');
     const prev = bishop.phreatic[drag.index-1];
     const next = bishop.phreatic[drag.index+1];
-    if(prev) pt.x = Math.max(pt.x, prev.x + 0.05);
-    if(next) pt.x = Math.min(pt.x, next.x - 0.05);
+    if(prev) pt.x = Math.max(pt.x, prev.x);   // allow a vertical phreatic step to match the face
+    if(next) pt.x = Math.min(pt.x, next.x);
+    if((prev && Math.hypot(pt.x-prev.x, pt.y-prev.y) <= 1e-6) ||
+       (next && Math.hypot(pt.x-next.x, pt.y-next.y) <= 1e-6)) return;
     bishop.phreatic[drag.index] = pt;
   } else if(drag.kind === 'cpt'){
     const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
@@ -13192,27 +13217,38 @@ function stage6SharedBanner(){
   `;
 }
 
+function stage6AppIcon(id){
+  // 18×18 line-art glyphs (stroke = currentColor), one per Stage 6 application.
+  const I = (b)=>`<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b}</svg>`;
+  switch(id){
+    case 'bearing':   return I('<path d="M2 12h14"/><rect x="6.5" y="3" width="5" height="6"/><path d="M3 12l1.5 3M15 12l-1.5 3M9 12v3"/>');
+    case 'pile':      return I('<path d="M2 5h14"/><rect x="7.5" y="5" width="3" height="11"/><path d="M2 5v2M16 5v2"/>');
+    case 'settlement':return I('<path d="M2 4h14"/><path d="M5 7v5M9 7v6M13 7v4"/><path d="M3.5 10.5L5 12l1.5-1.5M7.5 11.5L9 13l1.5-1.5M11.5 9.5L13 11l1.5-1.5"/>');
+    case 'dewatering':return I('<path d="M9 2c2.5 3 4 5 4 7a4 4 0 0 1-8 0c0-2 1.5-4 4-7z"/><path d="M2 15h14"/>');
+    case 'beam':      return I('<path d="M2 7h14"/><path d="M4 7l-1.5 3h3zM14 7l-1.5 3h3z"/><path d="M5 7v-2M9 7V5M13 7V5"/>');
+    case 'retwall':   return I('<path d="M3 15h12"/><path d="M5 15V4h2v9h6"/><path d="M9 11h5M9 8h5M9 5h5" stroke-width="0.9"/>');
+    case 'bishop':    return I('<path d="M2 15h14"/><path d="M3 15C3 8 8 4 15 4"/><path d="M4 13a9 9 0 0 1 9-7" stroke-dasharray="2 1.6"/>');
+    default:          return I('<rect x="3" y="3" width="12" height="12" rx="2"/>');
+  }
+}
+
 function stage6CardsHtml(app){
   const cards = [
-    {id:'bearing', title:'Bearing capacity', desc:'Drained and undrained shallow-foundation resistance vs founding depth.'},
-    {id:'pile', title:'Pile capacity', desc:'Axial pile resistance and settlement from CPT (DM20 / De Beer).'},
-    {id:'settlement', title:'Settlement', desc:'SLS settlement from CPT-derived E_oed with Boussinesq or 2:1 stress spread.'},
-    {id:'dewatering', title:'Dewatering', desc:'Analytical drawdown screening plus induced stress change and settlement at the CPT.'},
-    {id:'beam', title:'Beam / slab on Winkler', desc:'1D strip-on-elastic-foundation screening with EC2 reinforcement output.'}
+    {id:'bearing', short:'Bearing', title:'Bearing capacity', desc:'Drained and undrained shallow-foundation resistance vs founding depth.'},
+    {id:'pile', short:'Piles', title:'Pile capacity', desc:'Axial pile resistance and settlement from CPT (DM20 / De Beer).'},
+    {id:'settlement', short:'Settlement', title:'Settlement', desc:'SLS settlement from CPT-derived E_oed with Boussinesq or 2:1 stress spread.'},
+    {id:'dewatering', short:'Dewatering', title:'Dewatering', desc:'Drawdown screening plus induced stress change and settlement at the CPT.'},
+    {id:'beam', short:'Beam/slab', title:'Beam / slab on Winkler', desc:'1D strip-on-elastic-foundation screening with EC2 reinforcement output.'},
+    {id:retainingApp.cardMeta.id, short:'Retaining walls', title:retainingApp.cardMeta.title, desc:retainingApp.cardMeta.desc}
   ];
   if(stage6BishopEnabled()){
-    cards.push({id:'bishop', title:'Seep/Slope', desc:'Experimental slope-stability workspace using the current active CPT soil model.'});
+    cards.push({id:'bishop', short:'Seep/Slope', title:'Seep / Slope', desc:'Slope-stability, seepage and deformation workspace on the active CPT soil model.'});
   }
-  // When the card count exceeds 5 the row gets cramped — wrap with auto-fit
-  // so cards reflow onto a second row.
-  const colTemplate = cards.length > 5
-    ? 'repeat(auto-fit, minmax(220px, 1fr))'
-    : `repeat(${cards.length}, minmax(0, 1fr))`;
   return `
-    <div class="mcards" style="grid-template-columns:${colTemplate};margin-bottom:14px">
-      ${cards.map(c=>`<div class="mc ${c.id===app?'sel':''}" onclick="setStage6App('${c.id}')">
-        <h3>${c.title}</h3><p>${c.desc}</p>
-      </div>`).join('')}
+    <div class="app-switch" role="tablist" aria-label="Stage 6 applications">
+      ${cards.map(c=>`<button type="button" role="tab" aria-selected="${c.id===app}" class="app-chip ${c.id===app?'sel':''}" onclick="setStage6App('${c.id}')" title="${c.title} — ${c.desc}">
+        <span class="app-chip-ico">${stage6AppIcon(c.id)}</span><span class="app-chip-lbl">${c.short}</span>
+      </button>`).join('')}
     </div>
   `;
 }
@@ -16803,6 +16839,8 @@ function renderStage6(){
     body = renderStage6DewateringApp(analysis);
   } else if(app === 'bishop'){
     body = renderStage6BishopApp();
+  } else if(app === 'retwall'){
+    body = retainingApp.renderBody();
   } else {
     const analysis = analyzeBeamAndReinforcement(layers, S.wt, S.stage6.beam);
     S.stage6Cache.beam = analysis;
@@ -16824,6 +16862,7 @@ function renderStage6(){
       buildStage6BishopLineProbeChart();
       buildStage6BishopWallCharts();
     }
+    if(app === 'retwall') retainingApp.postRender();
     stage6RestoreScrollState(el, scrollState);
   });
 }
@@ -18444,6 +18483,7 @@ const legacyApi={
 export function initLegacyController(){
   if(__legacyControllerInitialized) return ()=>{};
   Object.assign(window, legacyApi);
+  Object.assign(window, retainingApp.handlers);
   bindDropzone();
   if(stage6BishopHashActive()) S.stage6.app = 'bishop';
   renderBanner();

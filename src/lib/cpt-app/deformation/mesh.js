@@ -17,10 +17,18 @@ import {
 } from '../wall-geometry.js';
 
 const GEOM_EPS = 1e-6;
+// Dedup priority for collinear/coincident PSLG segments (higher wins, keeping its marker).
+// A retaining wall is frequently collinear with the TERRAIN free surface — the exposed face of
+// an embedded sheet pile is the vertical step in the ground line. That free surface carries no
+// essential displacement BC, so the WALL must win there (priority 3 > terrain 2) or its
+// mechanical-wall marker is destroyed and the retained soil never ties to the wall. The model
+// BASE (fixed) and SIDES (roller) carry essential BCs, so they outrank the wall (priority 4):
+// a wall coincident with them is a real modelling error and still fails loud.
 const SEGMENT_PRIORITY = {
   region: 1,
-  mechanicalWall: 2,
-  outer: 3
+  outerFree: 2,        // terrain / free surface — a coincident wall takes it over
+  mechanicalWall: 3,   // wins over region + free surface so the wall is always recovered
+  outerFixed: 4        // base / sides — essential displacement BCs keep priority over a wall
 };
 
 function dist(a, b) {
@@ -189,7 +197,8 @@ function buildOuterSegments(model, loads, options, allocateMarker) {
       return {
         ...piece,
         kind: 'outer',
-        priority: SEGMENT_PRIORITY.outer,
+        // free-surface terrain yields to a coincident wall; base/sides keep their essential BCs
+        priority: piece.source === 'terrain' ? SEGMENT_PRIORITY.outerFree : SEGMENT_PRIORITY.outerFixed,
         segmentTargetLength,
         markerId: allocateMarker(deformationOuterMarker(piece))
       };
@@ -305,6 +314,13 @@ function activeMechanicalWalls(model, regions, options = {}) {
       ) {
         throw new Error(`Mechanical wall ${label} lies outside the deformation section.`);
       }
+      // The toe must stay inside the meshed soil: a toe below the section base would orphan the
+      // bottom beam node (no soil to tie it to). Fail loud and actionably instead of producing a
+      // truncated/untied wall deep in the mesh pipeline.
+      const baseY = Number(model?.analysisBottomY);
+      if (Number.isFinite(baseY) && endpoints.tip.y < baseY - GEOM_EPS) {
+        throw new Error(`Mechanical wall ${label} toe (y=${endpoints.tip.y.toFixed(2)} m) is below the section base (y=${baseY.toFixed(2)} m). Raise the toe or increase the analysis depth so the wall stays inside the meshed soil.`);
+      }
       if (!(axis.length > 0.05)) {
         throw new Error(`Mechanical wall ${label} must be at least 0.05 m long.`);
       }
@@ -406,7 +422,47 @@ function triangleSwitchesForAttempt(attempt, hasRegionAreaConstraints, elementTy
   return out;
 }
 
+// A retaining wall with a STEPPED ground line (retained high on one side, excavated low on the
+// other) needs BOTH terrain sides to meet the wall exactly at its vertical line. If the ground
+// step lands even slightly off the wall, a tall narrow sliver triangle forms beside the wall and
+// the deformation solve will not converge. For each active wall, snap the CLOSEST terrain vertex
+// on each side (within TERRAIN_WALL_SNAP) onto the wall's head x, so the ground step coincides
+// with the wall. The collinear edge is then recovered as the wall (see SEGMENT_PRIORITY) and the
+// soil meshes cleanly on both sides. Only a local copy used for meshing is modified.
+const TERRAIN_WALL_SNAP = 0.6;
+function snapTerrainToWalls(model) {
+  const terrain = model?.terrain?.vertices || [];
+  if (terrain.length < 2) return model;
+  const wallXs = (model?.walls || [])
+    .filter((wall) => wall?.mechanicalActive !== false)
+    .map((wall) => { const ends = wallEndpoints(wall); return ends ? Number(ends.head.x) : NaN; })
+    .filter((x) => Number.isFinite(x));
+  if (!wallXs.length) return model;
+  const overrideX = new Array(terrain.length).fill(null);
+  wallXs.forEach((xw) => {
+    let leftIdx = -1, leftD = TERRAIN_WALL_SNAP;
+    let rightIdx = -1, rightD = TERRAIN_WALL_SNAP;
+    terrain.forEach((v, i) => {
+      const d = Math.abs(Number(v.x) - xw);
+      if (!(d > GEOM_EPS && d <= TERRAIN_WALL_SNAP)) return;  // already on the wall, or too far
+      if (Number(v.x) <= xw && d < leftD) { leftD = d; leftIdx = i; }
+      if (Number(v.x) >= xw && d < rightD) { rightD = d; rightIdx = i; }
+    });
+    if (leftIdx >= 0) overrideX[leftIdx] = xw;
+    if (rightIdx >= 0) overrideX[rightIdx] = xw;
+  });
+  let moved = false;
+  const vertices = terrain.map((v, i) => {
+    if (overrideX[i] == null) return v;
+    moved = true;
+    return { ...v, x: +Number(overrideX[i]).toFixed(6) };
+  });
+  if (!moved) return model;
+  return { ...model, terrain: { ...model.terrain, vertices } };
+}
+
 function buildMechanicalPslg(model, regions, options) {
+  const snappedModel = snapTerrainToWalls(model);
   let nextMarkerId = 1;
   const markerInfoById = new Map();
   const allocateMarker = (info) => {
@@ -415,17 +471,17 @@ function buildMechanicalPslg(model, regions, options) {
     markerInfoById.set(markerId, { ...info, markerId });
     return markerId;
   };
-  const loads = normalizeMeshSurfaceLoads(model, options);
-  const wallPslg = buildMechanicalWallSegments(model, regions, options, allocateMarker);
+  const loads = normalizeMeshSurfaceLoads(snappedModel, options);
+  const wallPslg = buildMechanicalWallSegments(snappedModel, regions, options, allocateMarker);
   const constraintSegments = [
-    ...buildOuterSegments(model, loads, options, allocateMarker),
+    ...buildOuterSegments(snappedModel, loads, options, allocateMarker),
     ...buildRegionBoundarySegments(regions, options, allocateMarker),
     ...wallPslg.segments
   ];
-  const pslg = buildSectionPslg(model, regions, {
+  const pslg = buildSectionPslg(snappedModel, regions, {
     ...options,
     constraintSegments,
-    extraPoints: buildLoadRefinementPointsForLoads(model, loads, options),
+    extraPoints: buildLoadRefinementPointsForLoads(snappedModel, loads, options),
     markerInfoById
   });
   pslg.mechanicalWalls = wallPslg.walls;

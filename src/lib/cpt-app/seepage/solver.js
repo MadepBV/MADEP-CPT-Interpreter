@@ -273,7 +273,10 @@ function samplePolylineY(polyline, x) {
   }
   const a = verts[lo];
   const b = verts[lo + 1];
-  const t = Math.abs(b.x - a.x) < EPS ? 0 : (x - a.x) / (b.x - a.x);
+  // Vertical face: single-valued height query returns the TOP of the step.
+  if (Math.abs(b.x - a.x) < EPS) return Math.max(a.y, b.y);
+  if (Math.abs(x - a.x) < EPS && lo > 0 && Math.abs(verts[lo - 1].x - a.x) < EPS) return Math.max(a.y, verts[lo - 1].y);
+  const t = (x - a.x) / (b.x - a.x);
   return a.y + (b.y - a.y) * t;
 }
 
