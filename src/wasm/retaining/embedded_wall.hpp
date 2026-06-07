@@ -332,8 +332,12 @@ inline EmbeddedResult analyzeEmbedded(const EmbeddedInput& inRaw) {
   // Governing required embedment (worst of C1/C2 — normally C2) and the design toe level.
   R.requiredD = std::max(e1.dReqDesign, e2.dReqDesign);
   bool c2Gov = e2.dReqDesign >= e1.dReqDesign;
-  double dDesign = std::max(R.requiredD, g.embedment);  // analyse at >= design embedment
-  double toeEl = g.excavationEl - dDesign;
+  // The bending diagram and M_max live on the ACTUAL pile (the provided embedment) — a moment
+  // diagram can never be longer than the structure it acts on. Embedment adequacy is reported
+  // SEPARATELY by the embedment check (d_provided vs d_required); an under-embedded pile simply
+  // shows a moment that has not yet closed at its toe.
+  double dProvided = std::max(g.embedment, 0.10);
+  double toeEl = g.excavationEl - dProvided;
 
   // Embedment / rotational-stability check at the user's provided embedment (worst ODF).
   double odf = std::min(e1.odfProvided, e2.odfProvided);
@@ -364,7 +368,13 @@ inline EmbeddedResult analyzeEmbedded(const EmbeddedInput& inRaw) {
   {
     double dProv = std::max(g.embedment, 0.0);
     double toeProv = g.excavationEl - dProv;
-    double dh = in.waterRetainedEl - in.waterFrontEl;            // differential head (m)
+    // Differential head driving upward seepage in front of the wall: from the retained water
+    // table down to the front EXIT level. A dry / over-excavated front (no standing water — the
+    // waterFrontEl sentinel sits ~1000 m below) exits at the EXCAVATION level, not at the
+    // sentinel; otherwise Δh ≈ 1000 m and the check explodes. No retained water ⇒ Δh = 0.
+    bool hasRetWater = in.waterRetainedEl > -100.0;
+    double frontExitEl = std::max(in.waterFrontEl, g.excavationEl);
+    double dh = hasRetWater ? std::max(in.waterRetainedEl - frontExitEl, 0.0) : 0.0;  // (m)
     Combination hyd = makeHYD();
     Stratum ft = in.front.empty() ? Stratum{toeProv, 18, 20, deg2rad(30), 0, 0, true}
                                   : in.front[stratumAt(in.front, toeProv + 0.01)];

@@ -41,7 +41,7 @@ export function installRetainingApp(ctx) {
       wallType: 'cantilever',
       cantilever: { toe: 0.9, heel: 2.1, stemThkTop: 0.3, stemThkBot: 0.45, stemHeight: 4.5, baseThk: 0.55, keyDepth: 0, keyThk: 0.3, betaDeg: 0, frontSoilDepth: 1.0 },
       gravity: { toe: 0.4, heel: 0.4, stemThkTop: 0.6, stemThkBot: 1.7, stemHeight: 3.5, baseThk: 0.5, backBatterDeg: 6, betaDeg: 0, frontSoilDepth: 1.0 },
-      embedded: { retainedHeight: 5.0, embedment: 4.0, anchorDepth: 1.5, anchorAngle: 20, freeLen: 6.0, fixedLen: 5.0, anchorDia: 0.15, anchorSpacing: 2.0, anchorTfk: 150, anchorGammaA: 1.1 },
+      embedded: { retainedHeight: 5.0, embedment: 6.0, anchorDepth: 1.5, anchorAngle: 20, freeLen: 6.0, fixedLen: 5.0, anchorDia: 0.15, anchorSpacing: 2.0, anchorTfk: 150, anchorGammaA: 1.1 },
       backfill: { gammaMoist: 18, gammaSat: 20, phi: 32, c: 0, cu: 0, drained: true, label: 'Granular backfill' },
       insitu: { gammaMoist: 19, gammaSat: 21, phi: 30, c: 5, cu: 0, drained: true, label: 'Foundation / in-situ', source: 'default', mode: 'cpt' },
       water: { mode: 'none', retainedDepth: 2.5, frontDepth: 0.0 },
@@ -305,16 +305,11 @@ export function installRetainingApp(ctx) {
       : Math.min(0.1 * H, 0.5);
     const overdig = (rw.water.mode !== 'both') ? Math.max(baseDa, 0.30) : baseDa;
     const excY = -overdig;                 // design (over-dug) excavation level
-    // The SOLID wall is drawn at the user's PROVIDED embedment d, so the slider and the toe
-    // handle always move it 1:1. The engine analyses at the design depth max(d, d_required);
-    // when the trial d is short of the requirement we draw a DASHED extension down to the
-    // required toe and run the bending diagram to there, so the moment still closes to ~0.
-    const reqD = result ? num(result.structural && result.structural.requiredD, 0) : 0;
-    const dReqV = (reqD > 0.05 && reqD < 38) ? reqD : 0;
-    const dDesign = Math.max(d, dReqV);          // engine analysis / diagram depth
-    const underEmbedded = dReqV > d + 0.02;       // trial embedment shorter than required
-    const toeY = excY - d;                         // SOLID wall toe (user's provided d)
-    const diagToeY = excY - dDesign;               // diagram / required-extension toe
+    // The wall AND its bending diagram live ONLY on the actual pile (the user's provided embedment
+    // d) — a moment diagram can never be longer than the structure it acts on. The required
+    // embedment is reported by the embedment check in the results panel, not drawn as a phantom
+    // wall/diagram extension. The toe handle and slider move the pile 1:1.
+    const toeY = excY - d;                         // pile toe = user's provided embedment d
     const topY = H, tw = Math.max(H * 0.022, 0.09);
     // anchor tendon geometry — computed first so the viewport can include the grout body
     const angle = deg2rad(num(e.anchorAngle, 20));
@@ -325,7 +320,7 @@ export function installRetainingApp(ctx) {
     const wallRight = H * 1.05;            // soil band + H-dimension just right of the wall
     const minX = -(H * 1.0);
     const maxX = anchored ? Math.max(wallRight + 0.6, tipX + 1.4) : wallRight + 0.6;
-    const minY = (anchored ? Math.min(diagToeY, tipY) : diagToeY) - 1.0;
+    const minY = (anchored ? Math.min(toeY, tipY) : toeY) - 1.0;
     const maxY = H + (rw.surcharge > 0 ? 1.2 : 0.6);
     const scene = { bounds: { minX, maxX, minY, maxY }, soilLayers: [], regions: [], walls: [], water: [], loads: [], diagrams: [], dims: [], handles: [] };
     // retained-side CPT bands (x>0) from H down; front-side (x<0) from the over-dug level down
@@ -336,18 +331,15 @@ export function installRetainingApp(ctx) {
     }
     // passive wedge in front of the toe — from the design excavation level down to the toe
     scene.regions.push({ pts: [{ x: -tw / 2, y: excY }, { x: -tw / 2, y: toeY }, { x: -Math.max(d * 0.9, 0.6), y: toeY }], fill: 'rgba(46,111,85,0.16)', stroke: COLORS.passive, width: 1 });
-    // wall (steel) — solid to the provided embedment; dashed extension to the required toe
+    // wall (steel) — the actual pile, top to the provided-embedment toe
     scene.walls.push({ pts: [{ x: -tw / 2, y: topY }, { x: tw / 2, y: topY }, { x: tw / 2, y: toeY }, { x: -tw / 2, y: toeY }], fill: COLORS.steel, stroke: COLORS.steelStroke, width: 1.6 });
-    if (underEmbedded) {
-      scene.regions.push({ pts: [{ x: -tw / 2, y: toeY }, { x: tw / 2, y: toeY }, { x: tw / 2, y: diagToeY }, { x: -tw / 2, y: diagToeY }], stroke: COLORS.steelStroke, width: 1.2, dash: [4, 3] });
-    }
     if (rw.water.mode !== 'none') { const wy = H - num(rw.water.retainedDepth, 2.5); if (wy > minY && wy < H) scene.water.push({ x0: tw / 2, x1: maxX, el: wy }); }
     if (rw.surcharge > 0) scene.loads.push({ x0: tw / 2, x1: wallRight, el: H, h: 0.5, label: `q = ${fmt(rw.surcharge, 0)} kPa` });
-    // bending-moment diagram off the wall — CLIPPED to the wall extent so it follows the wall
-    // (the engine analyses at the design embedment, which can exceed the drawn/provided toe).
+    // bending-moment diagram off the wall — confined to the actual pile (the engine integrates
+    // the moment over the provided embedment, so the diagram and the pile share the same toe).
     const bm = diagramSeries(result, 'M_C1') || (result?.diagrams || []).find((dd) => dd.id.startsWith('M_'));
     if (bm && bm.z.length > 2) {
-      const maxDepth = H - diagToeY;  // engine analyses to the design (>= required) toe
+      const maxDepth = H - toeY;  // the actual pile toe (provided embedment)
       const dp = bm.z.map((z, i) => ({ depth: z, val: bm.v[i] })).filter((p) => p.depth <= maxDepth + 1e-6);
       if (dp.length >= 2) {
         const mmax = Math.max(1e-6, ...dp.map((p) => Math.abs(p.val)));
@@ -361,7 +353,6 @@ export function installRetainingApp(ctx) {
     }
     scene.dims.push({ x1: wallRight, y1: 0, x2: wallRight, y2: H, text: `H = ${fmt(H, 1)} m`, color: '#6d6962' });
     scene.dims.push({ x1: -tw / 2 - 0.3, y1: excY, x2: -tw / 2 - 0.3, y2: toeY, text: `d = ${fmt(d, 1)} m`, color: COLORS.passive });
-    if (underEmbedded) scene.dims.push({ x1: -tw / 2 - 0.3, y1: toeY, x2: -tw / 2 - 0.3, y2: diagToeY, text: `req. ${fmt(dDesign, 1)} m`, color: '#b43c32' });
     if (overdig > 0.01) scene.dims.push({ x1: minX + 0.9, y1: 0, x2: minX + 0.9, y2: excY, text: `over-dig ${fmt(overdig, 2)} m`, color: '#b43c32' });
     const cptX = num(rw.cptX, wallRight * 0.6);
     scene.handles.push({ id: 'cpt', x: cptX, y: H - 0.4, axis: 'x', cursor: 'ew-resize', label: 'CPT position' });
