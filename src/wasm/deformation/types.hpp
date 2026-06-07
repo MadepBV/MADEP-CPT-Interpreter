@@ -68,6 +68,20 @@ enum class ArcLengthMeritMode : std::uint8_t {
   Quadratic = 1
 };
 
+// Workstream B: globalization mode for the Mohr-Coulomb plastic Newton.
+//   Default:            current behaviour — Tier-1 modified Newton +
+//                       Armijo + adaptive cutback. The Tier-2 rescue is
+//                       inert, so the path is byte-identical to HEAD.
+//   LmConsistentRescue: enable the Tier-2 Levenberg-Marquardt / trust-region
+//                       damped consistent-tangent rescue. It engages ONLY
+//                       when Tier-1 has exhausted its cutbacks and the phase
+//                       would otherwise abort; converging cases never enter
+//                       it, so their telemetry is unchanged.
+enum class McGlobalizationMode : std::uint8_t {
+  Default = 0,
+  LmConsistentRescue = 1
+};
+
 // Boundary condition flags per node DOF. The CPU solver locks Ux on the
 // side boundaries and Uy on the base; we pass an explicit list of fixed
 // DOF indices so the WASM module is agnostic to how the BCs were derived.
@@ -319,6 +333,13 @@ struct SolverOptions {
   std::uint8_t enableLoadStepping{ 1 };
   std::uint8_t bbarForT6{ 1 };
   std::uint8_t robustNonlinearMode{ 0 };
+  // Workstream A: wall rigid-body two-level coarse correction. Preconditioning
+  // only — never changes the converged solution. Decoded from a reserved wire
+  // header byte.
+  std::uint8_t useWallCoarseCorrection{ 0 };
+  // Workstream B: Tier-2 LM-damped consistent-tangent rescue gate. Decoded
+  // from a reserved wire header byte. Default keeps the rescue inert.
+  McGlobalizationMode mcGlobalizationMode{ McGlobalizationMode::Default };
   RequestedContinuationMode requestedContinuationMode{ RequestedContinuationMode::Auto };
   ArcLengthDerivativeMode arcLengthDerivativeMode{ ArcLengthDerivativeMode::FiniteDifference };
   ArcLengthMeritMode arcLengthMeritMode{ ArcLengthMeritMode::OneNormScaled };
@@ -372,6 +393,37 @@ struct SolverOptions {
   double arcLengthFiniteDifferenceStepScale{ 1e-5 };
   double arcLengthFiniteDifferenceMinStep{ 1e-7 };
   std::uint8_t arcLengthAllowPostPeakSafetyPath{ 1 };
+
+  // Workstream B — Levenberg-Marquardt / trust-region parameters for the
+  // Tier-2 consistent-tangent rescue. These are fixed numerical tuning
+  // constants (analogous to the existing hard-coded NONLINEAR_* constants in
+  // run_nonlinear_phase) and are mirrored verbatim in solver.js. They are NOT
+  // wire-transmitted — only the McGlobalizationMode gate is — so enabling
+  // Tier-2 does not require a wire-version bump.
+  double lmMu0{ 1e-1 };            // initial damping factor on Tier-2 entry
+  double lmGrowth{ 4.0 };          // μ growth on a rejected trial (ρ < accept)
+  double lmShrink{ 0.25 };         // μ shrink on a very good trial (ρ > shrink)
+  std::int32_t lmMaxTrials{ 6 };   // μ-grow trials before the steepest-descent fallback
+  double lmCReg{ 1e-2 };           // residual-proportional μ floor coefficient
+  double lmAcceptRatio{ 0.20 };    // trust-region ρ accept threshold
+  double lmShrinkRatio{ 0.75 };    // trust-region ρ shrink threshold
+  // S = SPD diagonal of the elastically-assembled tangent, floored so it is
+  // bounded away from 0 where the perfectly-plastic diagonal collapses:
+  // S_ii = max(diag(K_alg)_ii, β·S_elastic_ii). β = 1 makes S ≈ the elastic
+  // diagonal everywhere (diag(K_alg)_ii ≤ S_elastic_ii at plastic rows), which
+  // is what regularizes the indefinite non-associated tangent for the Krylov
+  // solve.
+  double lmSFloorBeta{ 1.0 };
+  double lmMuMax{ 1e8 };           // μ cap before declaring the trial loop failed
+  double lmMuSnapToZero{ 1e-9 };   // μ below this collapses to exactly 0 (pure Newton)
+  double lmNewtonZoneResidualFactor{ 1e2 };  // residual ≤ factor·target → drop the μ floor to 0
+  std::int32_t lmMaxNewtonItersPerStep{ 200 };  // Newton-iterate cap inside a Tier-2 step
+  std::int32_t lmMaxLoadSteps{ 1024 };          // load-step cap for the Tier-2 continuation
+  double lmInitialLoadStep{ 0.02 };             // Tier-2 continuation initial Δλ (small; grows)
+  // GMRES restart for Tier-2 solves. Larger than the production restart (40) so
+  // the indefinite consistent tangent does not stagnate restarted GMRES; this
+  // lets a lightly/undamped step converge near the solution so μ → 0.
+  std::int32_t lmGmresRestart{ 200 };
 };
 
 // One accepted c-φ safety continuation point. This is a dense history record,
@@ -470,6 +522,22 @@ struct RunSummary {
   std::uint8_t safetyRan{ 0 };
   std::uint8_t lastLinearSolverKind{ 0 };
   std::uint8_t hsPlasticUsedGmres{ 0 };
+  // Workstream B Tier-2 telemetry. RUNTIME-ONLY — these are not part of the
+  // wire-encoded summary (the encoder in deformation_wasm.cpp writes a fixed
+  // field list); they are surfaced for verification via a dedicated diagnostic
+  // export. `tier2Activations` counts Tier-2 rescue engagements; `tier2Steps`
+  // counts accepted Tier-2 load steps; `tier2FinalMu` is the damping used on
+  // the last accepted Tier-2 step (Gate #2 expects 0 at convergence);
+  // `tier2MaxMu` is the peak μ ever used; `tier2FinalMuZero` is 1 iff the last
+  // accepted Tier-2 step used μ == 0.
+  std::int32_t tier2Activations{ 0 };
+  std::int32_t tier2Steps{ 0 };
+  double tier2FinalMu{ 0.0 };
+  double tier2MaxMu{ 0.0 };
+  double tier2LoadFactor{ 0.0 };
+  double tier2LastResidual{ 0.0 };
+  std::uint8_t tier2FinalMuZero{ 1 };
+  std::uint8_t tier2Converged{ 0 };
   // Phase 8 (docs/features/hardening-soil-fix.md §Phase 8 logging):
   // diagnostic-only fields (active-set change count, local-return
   // failure-code histogram for codes 101-106, max cone / cap / tension /

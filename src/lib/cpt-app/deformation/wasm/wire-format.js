@@ -313,8 +313,13 @@ export function encodeInputBuffer({
   writeU8(requestedContinuationModeCode(options.requestedContinuationMode));
   writeU8(arcLengthDerivativeModeCode(options.arcLengthDerivativeMode));
   writeU8(arcLengthMeritModeCode(options.arcLengthMeritMode));
-  writeU8(0);
-  writeU8(0);
+  // Reserved header byte 0 repurposed for the wall rigid-body two-level coarse
+  // correction (workstream A). Preconditioning only; never changes the result.
+  writeU8(options.useWallCoarseCorrection ? 1 : 0);
+  // Reserved header byte 1 repurposed for the Tier-2 LM-damped consistent-
+  // tangent rescue gate (workstream B). 0 = default (rescue inert), 1 = enable.
+  // Off by default keeps the byte-identical production path.
+  writeU8(options.mcGlobalizationMode === 'lm-consistent-rescue' || options.mcGlobalizationMode === 1 ? 1 : 0);
   writeU8(0);
   writeU32(Math.max(Math.round(options.nonlinearMaxIter || 32), 1));
   writeU32(Math.max(Math.round(options.maxLoadSteps || 384), 1));

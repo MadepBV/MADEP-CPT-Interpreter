@@ -113,10 +113,21 @@ struct GpResponse {
   Vec6 stress{};
   Vec6 plasticInc{};
   Mat6 tangent{};
+  // Workstream B: the EXACT consistent (algorithmic) tangent for this GP,
+  // always populated regardless of the production tangent selector. For an
+  // elastic GP this equals C; for an active plastic GP it is the closed-form
+  // spectral consistent tangent (Simo-Taylor 1985 / Clausen-Damkilde-Andersen
+  // 2007). The Tier-2 rescue assembles K from this, leaving `stress` (the
+  // residual) untouched.
+  Mat6 consistentTangent{};
   double eta{ 0.0 };
   double equivPlasticInc{ 0.0 };
   std::uint8_t plasticActive{ 0 };
   std::uint8_t tensionActive{ 0 };
+  // 1 iff this GP is plastically active AND its consistent-tangent condition
+  // is POOR or worse (classify_tangent_quality). Used as a Tier-1 stall
+  // diagnostic (trigger (c)); never changes the production path.
+  std::uint8_t tangentQualityPoor{ 0 };
 };
 
 // Build the exact-return material-parameter bag from the wire-region
@@ -403,6 +414,7 @@ inline GpResponse evaluate_gp_response_ex(
 
   if (kind == ConstitutiveKind::LinearElastic) {
     out.tangent = C;
+    out.consistentTangent = C;
     const Vec6 dSigma = linalg::mul6x6(C, dStrain);
     out.stress = linalg::add(committed.effectiveStress, dSigma);
     extra.exactBranchKind = static_cast<std::uint8_t>(mc_exact::BranchKind::ELASTIC);
@@ -450,6 +462,7 @@ inline GpResponse evaluate_gp_response_ex(
     }
     extra.hsSigmaZzIterations = hsRes.sigmaZzIterations;
     out.tangent = hsRes.tangent;
+    out.consistentTangent = hsRes.tangent;
     out.stress = hsRes.stressUpdated;
     out.plasticInc = hsRes.plasticIncrement;
     // Phase 2 (fix plan): compute plastic/tension flags from the RAW
@@ -528,6 +541,7 @@ inline GpResponse evaluate_gp_response_ex(
     const bool currentlyActive = retainedActive || maxShearViolation > yieldTol;
     Mat6 reduced = build_region_reduced_elastic(std::vector<RegionParams>{rp})[0];
     out.tangent = currentlyActive ? reduced : C;
+    out.consistentTangent = out.tangent;
     out.stress = currentlyActive
         ? linalg::add(committed.effectiveStress, linalg::mul6x6(reduced, dStrain))
         : elasticTrial;
@@ -594,6 +608,7 @@ inline GpResponse evaluate_gp_response_ex(
     out.stress = stressTrial;
     out.plasticInc = Vec6{};
     out.tangent = C;
+    out.consistentTangent = C;
     out.plasticActive = 0u;
     out.tensionActive = 0u;
     out.eta = mc_eta_from_stress(stressTrial, mp);
@@ -635,6 +650,7 @@ inline GpResponse evaluate_gp_response_ex(
     out.stress = smooth.stress6;
     out.plasticInc = smooth.plasticStrainIncrement6;
     out.tangent = mcUseConsistentTangent ? smooth.algorithmicTangent6x6 : C;
+    out.consistentTangent = smooth.algorithmicTangent6x6;
     out.equivPlasticInc = madep::js_mirror::equivalent_plastic_strain_increment(out.plasticInc);
     out.eta = mc_eta_from_stress(out.stress, mp);
     out.plasticActive = 1u;
@@ -660,6 +676,7 @@ inline GpResponse evaluate_gp_response_ex(
     out.stress = stressTrial;
     out.plasticInc = Vec6{};
     out.tangent = C;
+    out.consistentTangent = C;
     out.plasticActive = 0u;
     out.tensionActive = 0u;
     out.eta = mc_eta_from_stress(stressTrial, mp);
@@ -680,6 +697,10 @@ inline GpResponse evaluate_gp_response_ex(
   out.stress = local.stress6_tens;
   out.plasticInc = local.plasticStrainIncrement6;
   out.tangent = mcUseConsistentTangent ? local.algorithmicTangent6x6 : C;
+  out.consistentTangent = local.algorithmicTangent6x6;
+  out.tangentQualityPoor =
+      (finalIsPlasticActive &&
+       local.tangentQuality <= mc_exact::TangentQuality::POOR) ? 1u : 0u;
   out.plasticActive = finalIsPlasticActive ? 1u : 0u;
   out.tensionActive = mc_exact::is_tension_branch_kind(local.acceptedBranchKind) ? 1u : 0u;
   out.equivPlasticInc = madep::js_mirror::equivalent_plastic_strain_increment(local.plasticStrainIncrement6);
@@ -721,6 +742,9 @@ struct AssembleOutput {
   std::int32_t tensionCount{ 0 };
   std::int32_t changedCount{ 0 };
   double maxEta{ 0.0 };
+  // Workstream B: 1 iff any active plastic GP reported a POOR-or-worse
+  // consistent-tangent condition (Tier-1 stall diagnostic, trigger (c)).
+  std::uint8_t worstTangentPoor{ 0 };
   // Phase 5: HS-specific diagnostics. `hsFailureCode` is the highest
   // failure code reported by any HS GP this assembly; nonzero values
   // (101=cone, 102=cap, 103=corner, 104=triple-apex, 105=σ_zz) signal a
@@ -846,6 +870,149 @@ inline std::vector<std::vector<std::int32_t>> build_wall_preconditioner_blocks(
   return blocks;
 }
 
+// Build the wall rigid-body coarse space Z (workstream A1).
+//
+// Per active straight wall with centroid (xc,yc), up to 3 deterministic
+// columns sampled on the wall DOFs and their 1-ring soil-node neighbours:
+//   (a) t_x: ux = 1 on {wall ∪ adjacent soil nodes};
+//   (b) t_y: uy = 1 on the same set;
+//   (c) r  : ux = -(y-yc), uy = (x-xc), theta_z = 1 on the wall nodes
+//            (consistent in-plane rigid rotation).
+// Columns with no free entries are dropped. The wall nodes are taken from the
+// same beam DOF data the preconditioner blocks use, so the space is
+// deterministic. Rank-deficient columns are tolerated by the guarded SPD
+// factorisation of Kc downstream.
+inline sparse::WallCoarseSpace build_wall_coarse_space(
+    const std::vector<ElementCache>& elements,
+    const std::vector<BeamElementCache>* beamElements,
+    const std::vector<std::int32_t>& freeIndexByDof,
+    BeamAssemblyMode beamMode,
+    std::int32_t nfree) {
+  sparse::WallCoarseSpace Z;
+  Z.n = nfree;
+  if (!beamElements || beamElements->empty() || beamMode != BeamAssemblyMode::Active) {
+    return Z;
+  }
+  auto free_index = [&](std::int32_t dof) -> std::int32_t {
+    if (dof < 0 || dof >= static_cast<std::int32_t>(freeIndexByDof.size())) return -1;
+    return freeIndexByDof[static_cast<std::size_t>(dof)];
+  };
+
+  struct WNode {
+    std::int32_t wallIndex{ -1 };
+    std::int32_t nodeId{ -1 };
+    double x{ 0.0 };
+    double y{ 0.0 };
+    std::int32_t uxDof{ -1 };
+    std::int32_t uyDof{ -1 };
+    std::int32_t thDof{ -1 };
+  };
+  std::vector<WNode> wallNodes;
+  wallNodes.reserve(beamElements->size() * 2);
+  for (const auto& be : *beamElements) {
+    wallNodes.push_back({be.wallIndex, be.nodeA, be.xA, be.yA,
+                         be.dofs[0], be.dofs[1], be.dofs[2]});
+    wallNodes.push_back({be.wallIndex, be.nodeB, be.xB, be.yB,
+                         be.dofs[3], be.dofs[4], be.dofs[5]});
+  }
+  std::sort(wallNodes.begin(), wallNodes.end(), [](const WNode& a, const WNode& b) {
+    if (a.wallIndex != b.wallIndex) return a.wallIndex < b.wallIndex;
+    return a.nodeId < b.nodeId;
+  });
+  wallNodes.erase(std::unique(wallNodes.begin(), wallNodes.end(),
+      [](const WNode& a, const WNode& b) {
+        return a.wallIndex == b.wallIndex && a.nodeId == b.nodeId;
+      }), wallNodes.end());
+  if (wallNodes.empty()) return Z;
+
+  // nodeId -> wallIndex lookup for wall nodes (sorted by nodeId for bsearch).
+  std::vector<std::pair<std::int32_t, std::int32_t>> nodeToWall;
+  nodeToWall.reserve(wallNodes.size());
+  for (const auto& wn : wallNodes) nodeToWall.push_back({wn.nodeId, wn.wallIndex});
+  std::sort(nodeToWall.begin(), nodeToWall.end());
+  auto wall_of_node = [&](std::int32_t nodeId) -> std::int32_t {
+    auto it = std::lower_bound(nodeToWall.begin(), nodeToWall.end(),
+                               std::make_pair(nodeId, std::numeric_limits<std::int32_t>::min()));
+    if (it != nodeToWall.end() && it->first == nodeId) return it->second;
+    return -1;
+  };
+
+  // Distinct walls (sorted).
+  std::vector<std::int32_t> walls;
+  for (const auto& wn : wallNodes) {
+    if (walls.empty() || walls.back() != wn.wallIndex) walls.push_back(wn.wallIndex);
+  }
+  auto wall_slot = [&](std::int32_t wallIndex) -> int {
+    auto it = std::lower_bound(walls.begin(), walls.end(), wallIndex);
+    if (it != walls.end() && *it == wallIndex) return static_cast<int>(it - walls.begin());
+    return -1;
+  };
+
+  // 1-ring soil neighbour node ids per wall (any soil-element node sharing an
+  // element with one of that wall's nodes; the wall nodes themselves are
+  // included and deduplicated below).
+  std::vector<std::vector<std::int32_t>> neighbourNodes(walls.size());
+  for (const auto& el : elements) {
+    bool touches = false;
+    for (int i = 0; i < el.numNodes; ++i) {
+      if (wall_of_node(el.nodeIds[static_cast<std::size_t>(i)]) >= 0) { touches = true; break; }
+    }
+    if (!touches) continue;
+    // Collect the distinct walls this element touches, then add all its nodes.
+    for (int i = 0; i < el.numNodes; ++i) {
+      const std::int32_t w = wall_of_node(el.nodeIds[static_cast<std::size_t>(i)]);
+      if (w < 0) continue;
+      const int slot = wall_slot(w);
+      if (slot < 0) continue;
+      for (int j = 0; j < el.numNodes; ++j) {
+        neighbourNodes[static_cast<std::size_t>(slot)].push_back(
+            el.nodeIds[static_cast<std::size_t>(j)]);
+      }
+    }
+  }
+  for (auto& list : neighbourNodes) {
+    std::sort(list.begin(), list.end());
+    list.erase(std::unique(list.begin(), list.end()), list.end());
+  }
+
+  // Build the columns wall by wall.
+  for (std::size_t s = 0; s < walls.size(); ++s) {
+    const std::int32_t wallIndex = walls[s];
+    // Wall nodes of this wall (contiguous in the sorted list).
+    double xc = 0.0, yc = 0.0;
+    int count = 0;
+    for (const auto& wn : wallNodes) {
+      if (wn.wallIndex != wallIndex) continue;
+      xc += wn.x; yc += wn.y; ++count;
+    }
+    if (count <= 0) continue;
+    xc /= count; yc /= count;
+
+    sparse::CoarseColumn tx, ty, rot;
+    // Translation columns over wall nodes ∪ 1-ring soil neighbours.
+    for (std::int32_t nodeId : neighbourNodes[s]) {
+      const std::int32_t fx = free_index(2 * nodeId + 0);
+      const std::int32_t fy = free_index(2 * nodeId + 1);
+      if (fx >= 0) { tx.rows.push_back(fx); tx.vals.push_back(1.0); }
+      if (fy >= 0) { ty.rows.push_back(fy); ty.vals.push_back(1.0); }
+    }
+    // Rotation column over wall nodes only.
+    for (const auto& wn : wallNodes) {
+      if (wn.wallIndex != wallIndex) continue;
+      const std::int32_t fx = free_index(wn.uxDof);
+      const std::int32_t fy = free_index(wn.uyDof);
+      const std::int32_t ft = free_index(wn.thDof);
+      if (fx >= 0) { rot.rows.push_back(fx); rot.vals.push_back(-(wn.y - yc)); }
+      if (fy >= 0) { rot.rows.push_back(fy); rot.vals.push_back(wn.x - xc); }
+      if (ft >= 0) { rot.rows.push_back(ft); rot.vals.push_back(1.0); }
+    }
+    if (!tx.rows.empty()) Z.columns.push_back(std::move(tx));
+    if (!ty.rows.empty()) Z.columns.push_back(std::move(ty));
+    if (!rot.rows.empty()) Z.columns.push_back(std::move(rot));
+  }
+  return Z;
+}
+
 inline void stabilize_beam_rotation_dofs(
     CsrMatrix& K,
     const std::vector<BeamElementCache>& beamElements,
@@ -900,7 +1067,8 @@ inline AssembleOutput assemble_global(
     std::vector<double>& residualFree,
     bool useElasticGlobalizationTangent = false,
     BeamAssemblyMode beamMode = BeamAssemblyMode::Active,
-    const double* beamReferenceU = nullptr) {
+    const double* beamReferenceU = nullptr,
+    bool useConsistentGlobalizationTangent = false) {
   const std::int32_t nfree = K.nrows;
   internalForceFree.assign(static_cast<std::size_t>(nfree), 0.0);
   if (wantTangent) K.clear_values();
@@ -1015,6 +1183,7 @@ inline AssembleOutput assemble_global(
       if (resp.tensionActive) elementTension = true;
       if (previousTrialActive != (resp.plasticActive != 0)) elementChanged = true;
       if (resp.eta > out.maxEta) out.maxEta = resp.eta;
+      if (resp.tangentQualityPoor) out.worstTangentPoor = 1u;
 
       const Vec6& referenceStress = incrementalStress
           ? committedMp.referenceStress
@@ -1022,12 +1191,22 @@ inline AssembleOutput assemble_global(
       stress2D[g][0] = resp.stress[V_XX] - referenceStress[V_XX];
       stress2D[g][1] = resp.stress[V_YY] - referenceStress[V_YY];
       stress2D[g][2] = resp.stress[V_XY] - referenceStress[V_XY];
+      // Tangent selection priorities:
+      //  - elastic globalization (robust-mode rescue): use C.
+      //  - Tier-2 consistent globalization (workstream B): use the EXACT
+      //    consistent tangent. MC-only — HS already ships the consistent
+      //    tangent as its production `resp.tangent`. The residual/stress are
+      //    unchanged; only the Jacobian differs.
+      //  - otherwise: the production tangent (modified Newton C for MC).
       const Mat6& tangentForStiffness =
           (useElasticGlobalizationTangent &&
            (kind == ConstitutiveKind::McPlastic ||
             kind == ConstitutiveKind::HardeningSoil))
               ? C
-              : resp.tangent;
+              : (useConsistentGlobalizationTangent &&
+                 kind == ConstitutiveKind::McPlastic)
+                  ? resp.consistentTangent
+                  : resp.tangent;
       D2D[g] = linalg::tangent2D_from_6x6(tangentForStiffness);
     }
 
@@ -1258,26 +1437,37 @@ inline cg::LinearSolveResult solve_phase_linear_system(
     double relTolOverride = std::numeric_limits<double>::quiet_NaN(),
     double absTolOverride = std::numeric_limits<double>::quiet_NaN(),
     const std::vector<std::array<std::int32_t, 3>>* wallPreconditionerTriplets = nullptr,
-    const std::vector<std::vector<std::int32_t>>* wallPreconditionerBlocks = nullptr) {
+    const std::vector<std::vector<std::int32_t>>* wallPreconditionerBlocks = nullptr,
+    const sparse::WallCoarseSpace* wallCoarseSpace = nullptr,
+    std::int32_t gmresRestart = 40) {
   const double relTol = (std::isfinite(relTolOverride) && relTolOverride >= 0.0)
       ? relTolOverride
       : opts.cgRelTol;
   const double absTol = (std::isfinite(absTolOverride) && absTolOverride >= 0.0)
       ? absTolOverride
       : opts.cgAbsTol;
+  // Workstream A: the wall rigid-body coarse correction is gated behind
+  // `useWallCoarseCorrection`. It is preconditioning/deflation only and never
+  // changes the converged solution (the raw-residual stopping test is
+  // unchanged); it only crushes the Krylov-iteration count caused by the
+  // steel-wall / soft-soil stiffness contrast.
+  const sparse::WallCoarseSpace* coarse =
+      (opts.useWallCoarseCorrection != 0 && wallCoarseSpace && !wallCoarseSpace->empty())
+          ? wallCoarseSpace
+          : nullptr;
   if (useUnsymmetricSolver) {
     return cg::solve_gmres_scaled(K, freeDofs,
                                   residualFree.data(), correctionFree.data(),
                                   opts.cgMaxIter, relTol, absTol,
-                                  /*restart=*/40,
-                                  gmresCache);
+                                  /*restart=*/std::max(gmresRestart, 1),
+                                  gmresCache, coarse);
   }
   if (!reuseDiagInv) {
     sparse::build_block_jacobi(K, freeDofs, diagInv, wallPreconditionerTriplets, wallPreconditionerBlocks);
   }
   return cg::solve_cg(K, diagInv, freeDofs,
                       residualFree.data(), correctionFree.data(),
-                      opts.cgMaxIter, relTol, absTol);
+                      opts.cgMaxIter, relTol, absTol, coarse);
 }
 
 struct ArcLengthState {
@@ -1777,6 +1967,15 @@ struct PhaseResult {
   std::uint8_t lastLinearSolverKind{ 0 };
   std::uint16_t lastHsFailureCode{ 0 };
   std::vector<std::int32_t> acceptedStepIterations;
+  // Workstream B Tier-2 telemetry (runtime-only).
+  std::int32_t tier2Activations{ 0 };
+  std::int32_t tier2Steps{ 0 };
+  double tier2FinalMu{ 0.0 };
+  double tier2MaxMu{ 0.0 };
+  double tier2LoadFactor{ 0.0 };
+  double tier2LastResidual{ 0.0 };
+  bool tier2Engaged{ false };
+  bool tier2FinalMuZero{ true };
 };
 
 inline void accumulate_phase_cost(PhaseResult& total, const PhaseResult& extra) {
@@ -1794,6 +1993,14 @@ inline void accumulate_phase_cost(PhaseResult& total, const PhaseResult& extra) 
       extra.acceptedStepIterations.end());
   // The most-recent phase wins for the "last solver used" signal.
   total.lastLinearSolverKind = extra.lastLinearSolverKind;
+  total.tier2Activations += extra.tier2Activations;
+  total.tier2Steps += extra.tier2Steps;
+  total.tier2MaxMu = std::max(total.tier2MaxMu, extra.tier2MaxMu);
+  if (extra.tier2Engaged) {
+    total.tier2Engaged = true;
+    total.tier2FinalMu = extra.tier2FinalMu;
+    total.tier2FinalMuZero = extra.tier2FinalMuZero;
+  }
 }
 
 inline void apply_phase_cost_counts(PhaseResult& result, const PhaseResult& cost) {
@@ -1807,6 +2014,22 @@ inline void apply_phase_cost_counts(PhaseResult& result, const PhaseResult& cost
   result.lastHsFailureCode = cost.lastHsFailureCode;
   result.lastLinearSolverKind = cost.lastLinearSolverKind;
   result.acceptedStepIterations = cost.acceptedStepIterations;
+}
+
+// Workstream B: fold a phase's Tier-2 telemetry into the run summary. The
+// last-engaged phase wins for the final-μ signal; activation/step counts and
+// the peak μ accumulate.
+inline void merge_tier2_summary(RunSummary& summary, const PhaseResult& phase) {
+  summary.tier2Activations += phase.tier2Activations;
+  summary.tier2Steps += phase.tier2Steps;
+  summary.tier2MaxMu = std::max(summary.tier2MaxMu, phase.tier2MaxMu);
+  if (phase.tier2Engaged) {
+    summary.tier2Converged = phase.converged ? 1u : 0u;
+    summary.tier2FinalMu = phase.tier2FinalMu;
+    summary.tier2FinalMuZero = phase.tier2FinalMuZero ? 1u : 0u;
+    summary.tier2LoadFactor = phase.tier2LoadFactor;
+    summary.tier2LastResidual = phase.tier2LastResidual;
+  }
 }
 
 inline bool should_attempt_safety_arc_length_auto(
@@ -1854,6 +2077,21 @@ inline bool mohr_coulomb_consistent_tangent_requires_unsymmetric_solver(
   return std::any_of(regions->begin(), regions->end(), [](const RegionParams& region) {
     return region.hs.useConsistentTangent >= 0.5 &&
         std::abs(region.phi - region.psi) > 1e-12;
+  });
+}
+
+// Workstream B: the Tier-2 rescue assembles the EXACT consistent tangent
+// regardless of the production `useConsistentTangent` selector, so its
+// symmetry must be decided directly from the flow rule. The MC consistent
+// tangent is unsymmetric whenever the flow is non-associated (φ ≠ ψ) and the
+// caller has not opted into symmetrization. Unsymmetric ⇒ GMRES; symmetric
+// ⇒ CG.
+inline bool tier2_consistent_tangent_unsymmetric(
+    bool symmetrize,
+    const std::vector<RegionParams>* regions) {
+  if (symmetrize || !regions) return false;
+  return std::any_of(regions->begin(), regions->end(), [](const RegionParams& region) {
+    return std::abs(region.phi - region.psi) > 1e-12;
   });
 }
 
@@ -2930,6 +3168,10 @@ inline PhaseResult run_nonlinear_phase(
       build_wall_preconditioner_blocks(ctx.beamElements, freeIndexByDof, beamMode);
   const auto* wallLinePreconditioner =
       wallPreconditionerBlocks.empty() ? nullptr : &wallPreconditionerBlocks;
+  // Workstream A: wall rigid-body coarse space for the two-level correction.
+  const sparse::WallCoarseSpace wallCoarseSpace =
+      build_wall_coarse_space(elements, ctx.beamElements, freeIndexByDof, beamMode, nfree);
+  const auto* wallCoarse = wallCoarseSpace.empty() ? nullptr : &wallCoarseSpace;
   std::vector<double> internalForceFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> residualFree(static_cast<std::size_t>(nfree), 0.0);
   std::vector<double> deltaUFree(static_cast<std::size_t>(nfree), 0.0);
@@ -3006,7 +3248,18 @@ inline PhaseResult run_nonlinear_phase(
 
   PhaseResult res;
   bool overall = true;
-  const bool keepDisplayState = ctx.phaseKind == PhaseKind::SafetyCphi;
+  // Workstream C1: record the best near-failure display state for the
+  // ServiceLoad phase as well as SafetyCphi. On a non-converged service solve
+  // the live `U_global` is rolled back to the last committed equilibrium (the
+  // geostatic beam-reference state when the very first service step stalls),
+  // which makes every wall station read ux=uy=θ=0 and the wall diagrams
+  // flat-zero. Remembering the highest-fraction assembled iterate lets the
+  // driver hand it off so the partial wall response is shown honestly. The
+  // InitialGravity phase is deliberately excluded (C2): gravity is the
+  // baseline, not a user-dialed load fraction, so its failure stays on the
+  // committed state.
+  const bool keepDisplayState = ctx.phaseKind == PhaseKind::SafetyCphi ||
+                                ctx.phaseKind == PhaseKind::ServiceLoad;
 
   auto remember_display_state = [&](double candidateLoadFactor, const AssembleOutput& assembly) {
     if (!keepDisplayState) return;
@@ -3038,6 +3291,412 @@ inline PhaseResult run_nonlinear_phase(
     const double dd = std::max(r - rl, 0.0);
     return -r * dd;
   };
+
+  // ==========================================================================
+  // Workstream B — Tier-2 LM-damped consistent-tangent rescue.
+  //
+  // Engaged ONLY when Tier-1 (modified Newton + Armijo + adaptive cutback) has
+  // exhausted its cutbacks and the phase is about to abort. It re-solves the
+  // remaining load with the EXACT consistent tangent (Simo-Taylor 1985), under
+  // Levenberg-Marquardt / trust-region damping that guarantees a descent step
+  // at a near-singular plastic tangent and reduces to pure Newton near the
+  // solution (Nocedal & Wright Ch.10-11). The residual equations and the
+  // per-GP exact return map are UNCHANGED — only the Jacobian is replaced and
+  // an SPD μ·S shift is added; convergence is declared on the UNDAMPED residual
+  // r(u), so the accepted state is the true equilibrium.
+  // ==========================================================================
+  // Scope strictly to the MC plastic InitialGravity / ServiceLoad phases. The
+  // SafetyCphi phase is deliberately EXCLUDED so the rescue can never perturb
+  // the c-φ strength-reduction bracketing / arc-length path (dossier (B) scope),
+  // even when the mode is enabled.
+  const bool tier2Enabled =
+      opts.mcGlobalizationMode == McGlobalizationMode::LmConsistentRescue &&
+      ctx.kind == ConstitutiveKind::McPlastic &&
+      (ctx.phaseKind == PhaseKind::InitialGravity ||
+       ctx.phaseKind == PhaseKind::ServiceLoad);
+
+  // CSR diagonal position cache (sparsity is constant across the phase).
+  std::vector<std::int32_t> tier2DiagPos;
+  auto tier2_build_diag_positions = [&]() {
+    if (tier2DiagPos.size() == static_cast<std::size_t>(nfree)) return;
+    tier2DiagPos.assign(static_cast<std::size_t>(nfree), -1);
+    for (std::int32_t i = 0; i < nfree; ++i) {
+      tier2DiagPos[static_cast<std::size_t>(i)] = sparse::find_col(K, i, i);
+    }
+  };
+
+  struct Tier2StepResult {
+    bool converged{ false };
+    double muUsed{ 0.0 };
+    bool muZero{ true };
+    std::int32_t newtonIters{ 0 };
+    double lastResidual{ 0.0 };
+  };
+
+  // One LM-damped consistent-tangent Newton solve for a single load target.
+  // `sElastic` is the (state-independent) elastic-tangent diagonal used to
+  // floor the SPD scaling matrix S. `muCarry` carries the damping between
+  // load steps. U / trialMp are advanced in place on success.
+  auto tier2_solve_step = [&](
+      double targetLambda,
+      const std::vector<RegionParams>& stepRegions,
+      const std::vector<Mat6>& stepRegionC,
+      bool unsymmetric,
+      const std::vector<double>& sElastic,
+      double r0normRef,
+      double& muCarry) -> Tier2StepResult {
+    Tier2StepResult sr;
+    tier2_build_diag_positions();
+    trialMp = committedMp;
+    double mu = muCarry;
+    double lastAcceptedMu = 0.0;
+    std::vector<double> du(static_cast<std::size_t>(nfree), 0.0);
+    std::vector<double> Kdu(static_cast<std::size_t>(nfree), 0.0);
+    std::vector<double> rVec(static_cast<std::size_t>(nfree), 0.0);
+    std::vector<double> sDiag(static_cast<std::size_t>(nfree), 0.0);
+    const int maxIters = std::max(opts.lmMaxNewtonItersPerStep, 1);
+    const int maxTrials = std::max(opts.lmMaxTrials, 1);
+    for (int it = 1; it <= maxIters; ++it) {
+      // K_alg + residual at U (exact consistent tangent; residual unchanged).
+      AssembleOutput a = assemble_global(
+          elements, ctx.beamElements, committedMp, trialMp, stepRegions, stepRegionC,
+          freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+          targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+          /*wantTangent=*/true, K, internalForceFree, residualFree,
+          /*useElasticGlobalizationTangent=*/false, beamMode, beamReferenceU,
+          /*useConsistentGlobalizationTangent=*/true);
+      ++sr.newtonIters;
+      ++res.newtonIterations;
+      res.maxEta = std::max(res.maxEta, a.maxEta);
+      const double rnorm = a.residualNorm;
+      sr.lastResidual = rnorm;
+      const double residualTarget = nonlinear_residual_target(opts, a.rhsNorm, nfree);
+      if (rnorm <= residualTarget) {
+        sr.converged = true;
+        sr.muUsed = lastAcceptedMu;
+        sr.muZero = (lastAcceptedMu == 0.0);
+        res.activeCount = a.plasticActiveCount;
+        res.activeFaceCount = a.activeFaceCount;
+        res.activeEdgeCount = a.activeEdgeCount;
+        res.activeApexCount = a.activeApexCount;
+        res.tensionCount = a.tensionCount;
+        res.residualNorm = rnorm;
+        break;
+      }
+      rVec.assign(residualFree.begin(), residualFree.end());
+      // SPD scaling: S_i = max(diag(K_alg)_i, β·S_elastic_i) > 0 — bounded away
+      // from 0 even where the perfectly-plastic diagonal collapses.
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        const std::int32_t dp = tier2DiagPos[static_cast<std::size_t>(i)];
+        const double dAlg = dp >= 0 ? K.values[static_cast<std::size_t>(dp)] : 0.0;
+        double s = std::max(dAlg, opts.lmSFloorBeta * sElastic[static_cast<std::size_t>(i)]);
+        if (!(s > 0.0)) s = opts.lmSFloorBeta * std::max(sElastic[static_cast<std::size_t>(i)], 1e-30);
+        sDiag[static_cast<std::size_t>(i)] = s;
+      }
+      // Inside the Newton zone (residual near the target) the consistent-tangent
+      // direction is descent for ½‖r‖², so we drop the μ floor to 0 and let the
+      // LM shrink schedule collapse μ toward 0. We do NOT force μ=0 here: at a
+      // near-limit / perfectly-plastic state the undamped step is too aggressive
+      // and a little damping is what keeps the final step convergent. The
+      // converged state's damping-independence is proven separately by the
+      // undamped confirmation in tier2_run_continuation (Gate #2). Outside the
+      // zone μ never drops below the residual-proportional floor c_reg·‖r‖/‖r₀‖.
+      const bool newtonZone = rnorm <= opts.lmNewtonZoneResidualFactor * residualTarget;
+      const double muFloor = newtonZone
+          ? 0.0
+          : opts.lmCReg * rnorm / std::max(r0normRef, 1e-30);
+      double muTry = std::max(mu, muFloor);
+      const double linAbsTol = std::max(1e-14, std::min(opts.cgAbsTol, 0.25 * residualTarget));
+      const double linRelTol = std::max(
+          0.0, std::min(opts.cgRelTol, linAbsTol / std::max(rnorm, 1e-30)));
+      bool accepted = false;
+      for (int trial = 0; trial < maxTrials; ++trial) {
+        // Damped operator in place: (K_alg + μ·S).
+        if (muTry > 0.0) {
+          for (std::int32_t i = 0; i < nfree; ++i) {
+            const std::int32_t dp = tier2DiagPos[static_cast<std::size_t>(i)];
+            if (dp >= 0) K.values[static_cast<std::size_t>(dp)] += muTry * sDiag[static_cast<std::size_t>(i)];
+          }
+        }
+        std::fill(du.begin(), du.end(), 0.0);
+        cg::LinearSolveResult lr = solve_phase_linear_system(
+            K, freeDofs, residualFree, du, diag_inv, opts, unsymmetric,
+            /*reuseDiagInv=*/false, /*gmresCache=*/nullptr,
+            linRelTol, linAbsTol, wallPreconditioner, wallLinePreconditioner, wallCoarse,
+            /*gmresRestart=*/std::max(opts.lmGmresRestart, 1));
+        // Restore K → K_alg.
+        if (muTry > 0.0) {
+          for (std::int32_t i = 0; i < nfree; ++i) {
+            const std::int32_t dp = tier2DiagPos[static_cast<std::size_t>(i)];
+            if (dp >= 0) K.values[static_cast<std::size_t>(dp)] -= muTry * sDiag[static_cast<std::size_t>(i)];
+          }
+        }
+        res.cgIterations += lr.iterations;
+        if (unsymmetric) { res.gmresIterationCount += lr.iterations; ++res.gmresInvocations; }
+        res.lastLinearSolverKind = unsymmetric ? std::uint8_t{1} : std::uint8_t{0};
+        // Linear-model term for the trust-region ratio: K_alg·du.
+        sparse::mat_vec(K, du.data(), Kdu.data());
+        // Armijo line search on du (merit = ½‖r‖²) — kept on top of the LM step.
+        const std::vector<double> uBackup = U;
+        const double currentMerit = evaluate_residual_merit(rnorm);
+        const double dd = approximate_newton_merit_dd(rnorm, std::max(lr.residualNorm, 0.0));
+        double stepScale = 1.0;
+        double bestScale = 0.0;
+        double bestResidual = std::numeric_limits<double>::infinity();
+        std::vector<double> bestU = U;
+        std::vector<MaterialPoint> bestTrialMp = trialMp;
+        bool armijoAccepted = false;
+        for (int bt = 0; bt < kLineSearchMaxBacktracks; ++bt) {
+          U = uBackup;
+          trialMp = committedMp;
+          for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += stepScale * du[i];
+          AssembleOutput probe = assemble_global(
+              elements, ctx.beamElements, committedMp, trialMp, stepRegions, stepRegionC,
+              freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+              targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+              /*wantTangent=*/false, K, internalForceFree, residualFree,
+              /*useElasticGlobalizationTangent=*/false, beamMode, beamReferenceU,
+              /*useConsistentGlobalizationTangent=*/false);
+          const double candResidual = probe.residualNorm;
+          const double candMerit = evaluate_residual_merit(candResidual);
+          const double armijoTarget = currentMerit + kLineSearchArmijoC1 * stepScale * std::min(dd, 0.0);
+          if (candResidual < bestResidual) {
+            bestResidual = candResidual;
+            bestScale = stepScale;
+            bestU = U;
+            bestTrialMp = trialMp;
+          }
+          if (candMerit <= std::max(armijoTarget, 0.0)) { armijoAccepted = true; break; }
+          if (stepScale <= kLineSearchMinStepScale + 1e-12) break;
+          stepScale = std::max(stepScale * kLineSearchReductionFactor, kLineSearchMinStepScale);
+        }
+        // Trust-region ratio ρ = actual / predicted reduction (scaled step).
+        const double actualReduction = 0.5 * (rnorm * rnorm - bestResidual * bestResidual);
+        double modelNorm2 = 0.0;
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          const double m = rVec[static_cast<std::size_t>(i)] - bestScale * Kdu[static_cast<std::size_t>(i)];
+          modelNorm2 += m * m;
+        }
+        const double predictedReduction = 0.5 * (rnorm * rnorm - modelNorm2);
+        const double rho = (predictedReduction > 1e-300)
+            ? actualReduction / predictedReduction
+            : (actualReduction > 0.0 ? 1.0 : -1.0);
+        // Accept ANY monotone residual reduction (globally convergent descent on
+        // ½‖r‖²); the trust-region ratio ρ only TUNES μ, it never vetoes a
+        // residual-reducing step (vetoing one and growing μ caused the damped-
+        // Newton direction to collapse to a non-descent ~0 step and stall).
+        const bool madeProgress = bestScale > 0.0 && bestResidual < rnorm;
+        if (madeProgress) {
+          U = bestU;
+          trialMp = bestTrialMp;
+          accepted = true;
+          lastAcceptedMu = muTry;
+          res.tier2MaxMu = std::max(res.tier2MaxMu, muTry);
+          // μ schedule for the next Newton iterate: shrink on a very good step
+          // (ρ high, Armijo satisfied), hold on a fair step, grow on a weak step
+          // (progress but the linear model over-predicted). Never below the
+          // residual-proportional floor (→ 0 in the Newton zone), then snap to 0.
+          double muNext;
+          if (armijoAccepted && rho > opts.lmShrinkRatio) muNext = muTry * opts.lmShrink;
+          else if (armijoAccepted || rho >= opts.lmAcceptRatio) muNext = muTry;
+          else muNext = std::max(muTry, opts.lmMu0) * opts.lmGrowth;
+          const double postFloor =
+              (bestResidual <= opts.lmNewtonZoneResidualFactor * residualTarget)
+                  ? 0.0
+                  : opts.lmCReg * bestResidual / std::max(r0normRef, 1e-30);
+          muNext = std::max(muNext, postFloor);
+          muNext = std::min(muNext, opts.lmMuMax);
+          if (muNext < opts.lmMuSnapToZero) muNext = 0.0;
+          mu = muNext;
+          break;
+        }
+        // No reduction at this μ: grow μ (smaller, safer step) and retry.
+        muTry *= opts.lmGrowth;
+        if (muTry < opts.lmMu0) muTry = opts.lmMu0;
+        if (muTry > opts.lmMuMax) break;
+      }
+      if (!accepted) {
+        // Preconditioned steepest-descent fallback. d = S⁻¹·(K_algᵀ r) is a
+        // guaranteed descent direction for m = ½‖r‖² (∇m·d = −gᵀS⁻¹g < 0). It is
+        // engaged only when the damped-Newton direction reduced the residual at
+        // NO μ — i.e. the genuinely indefinite-tangent case the residual-system
+        // LM step cannot cover. Scaled at the Cauchy point and line-searched.
+        std::vector<double> grad(static_cast<std::size_t>(nfree), 0.0);
+        std::vector<double> dsd(static_cast<std::size_t>(nfree), 0.0);
+        std::fill(grad.begin(), grad.end(), 0.0);
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          const std::int32_t lo = K.rowPtr[static_cast<std::size_t>(i)];
+          const std::int32_t hi = K.rowPtr[static_cast<std::size_t>(i + 1)];
+          const double ri = rVec[static_cast<std::size_t>(i)];
+          for (std::int32_t k = lo; k < hi; ++k) {
+            grad[static_cast<std::size_t>(K.colIdx[static_cast<std::size_t>(k)])] +=
+                K.values[static_cast<std::size_t>(k)] * ri;  // grad = K_algᵀ r
+          }
+        }
+        double gTd = 0.0;
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          dsd[static_cast<std::size_t>(i)] =
+              grad[static_cast<std::size_t>(i)] / std::max(sDiag[static_cast<std::size_t>(i)], 1e-30);
+          gTd += grad[static_cast<std::size_t>(i)] * dsd[static_cast<std::size_t>(i)];
+        }
+        if (gTd > 0.0) {
+          // Cauchy step s* = gᵀd / ‖K_alg d‖² minimises the quadratic model.
+          sparse::mat_vec(K, dsd.data(), Kdu.data());
+          double Kd2 = 0.0;
+          for (std::int32_t i = 0; i < nfree; ++i) Kd2 += Kdu[static_cast<std::size_t>(i)] * Kdu[static_cast<std::size_t>(i)];
+          double stepScale = Kd2 > 1e-300 ? gTd / Kd2 : 1.0;
+          const std::vector<double> uBackup2 = U;
+          const double currentMerit = evaluate_residual_merit(rnorm);
+          double bestResidual = std::numeric_limits<double>::infinity();
+          double bestScale = 0.0;
+          std::vector<double> bestU = U;
+          std::vector<MaterialPoint> bestTrialMp = trialMp;
+          for (int bt = 0; bt < kLineSearchMaxBacktracks + 8; ++bt) {
+            U = uBackup2;
+            trialMp = committedMp;
+            for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += stepScale * dsd[static_cast<std::size_t>(i)];
+            AssembleOutput probe = assemble_global(
+                elements, ctx.beamElements, committedMp, trialMp, stepRegions, stepRegionC,
+                freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+                targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+                /*wantTangent=*/false, K, internalForceFree, residualFree,
+                /*useElasticGlobalizationTangent=*/false, beamMode, beamReferenceU,
+                /*useConsistentGlobalizationTangent=*/false);
+            const double candResidual = probe.residualNorm;
+            if (candResidual < bestResidual) {
+              bestResidual = candResidual; bestScale = stepScale;
+              bestU = U; bestTrialMp = trialMp;
+            }
+            const double candMerit = evaluate_residual_merit(candResidual);
+            const double armijoTarget = currentMerit - kLineSearchArmijoC1 * stepScale * gTd;
+            if (candMerit <= std::max(armijoTarget, 0.0)) break;
+            stepScale *= kLineSearchReductionFactor;
+            if (stepScale < 1e-18) break;
+          }
+          if (bestScale > 0.0 && bestResidual < rnorm) {
+            U = bestU; trialMp = bestTrialMp;
+            accepted = true;
+            lastAcceptedMu = mu;
+            res.tier2MaxMu = std::max(res.tier2MaxMu, mu);
+            // Reset μ to a moderate value after a steepest-descent rescue.
+            mu = std::clamp(mu, opts.lmMu0, opts.lmMu0 * 10.0);
+          } else {
+            U = uBackup2; trialMp = committedMp;
+          }
+        }
+      }
+      if (!accepted) { sr.converged = false; return sr; }
+    }
+    if (sr.converged) muCarry = mu;
+    return sr;
+  };
+
+  // LM-damped continuation: drive the load factor from `startLoadFactor` to 1.
+  auto tier2_run_continuation = [&](double startLoadFactor) -> bool {
+    res.tier2Activations += 1;
+    res.tier2Engaged = true;
+    // Elastic-tangent diagonal floor for S — state/λ independent, so assembled
+    // once. `useElasticGlobalizationTangent=true` forces the elastic Jacobian
+    // while still running the (cheap, discarded) exact return map.
+    tier2_build_diag_positions();
+    std::vector<double> sElastic(static_cast<std::size_t>(nfree), 1.0);
+    {
+      std::vector<MaterialPoint> scratchTrial = committedMp;
+      AssembleOutput ea = assemble_global(
+          elements, ctx.beamElements, committedMp, scratchTrial, regions, regionC,
+          freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+          /*loadFactor=*/startLoadFactor, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+          /*wantTangent=*/true, K, internalForceFree, residualFree,
+          /*useElasticGlobalizationTangent=*/true, beamMode, beamReferenceU,
+          /*useConsistentGlobalizationTangent=*/false);
+      (void)ea;
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        const std::int32_t dp = tier2DiagPos[static_cast<std::size_t>(i)];
+        const double d = dp >= 0 ? K.values[static_cast<std::size_t>(dp)] : 0.0;
+        sElastic[static_cast<std::size_t>(i)] = std::max(std::abs(d), 1e-30);
+      }
+    }
+    double t2LoadFactor = startLoadFactor;
+    // Start the continuation with a SMALL load increment (the stall is at a
+    // near-limit, ill-conditioned state) and let it grow adaptively on success.
+    double t2dLambda = std::min(std::max(opts.lmInitialLoadStep, phaseMinLoadStep),
+                                std::max(1.0 - t2LoadFactor, phaseMinLoadStep));
+    double muCarry = opts.lmMu0;
+    double r0normRef = 1.0;
+    bool haveR0 = false;
+    const std::int32_t budget = std::max(opts.lmMaxLoadSteps, 1);
+    for (std::int32_t s = 0; s < budget; ++s) {
+      if (t2LoadFactor >= 1.0 - kLoadCompletionTol) break;
+      const double actualStep = std::min(t2dLambda, 1.0 - t2LoadFactor);
+      const double targetLambda = t2LoadFactor + actualStep;
+      PhaseStepMaterials sm;
+      prepare_phase_step_materials(ctx, regions, regionC, targetLambda, sm);
+      const bool stepUnsym = tier2_consistent_tangent_unsymmetric(ctx.symmetrize, sm.regions);
+      const std::vector<double> uBefore = U;
+      if (!haveR0) {
+        AssembleOutput a0 = assemble_global(
+            elements, ctx.beamElements, committedMp, trialMp, *sm.regions, *sm.regionC,
+            freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+            targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+            /*wantTangent=*/false, K, internalForceFree, residualFree,
+            /*useElasticGlobalizationTangent=*/false, beamMode, beamReferenceU,
+            /*useConsistentGlobalizationTangent=*/false);
+        r0normRef = std::max(a0.residualNorm, 1e-30);
+        haveR0 = true;
+      }
+      Tier2StepResult sr = tier2_solve_step(
+          targetLambda, *sm.regions, *sm.regionC, stepUnsym, sElastic, r0normRef, muCarry);
+      res.tier2LastResidual = sr.lastResidual;
+      if (sr.converged) {
+        t2LoadFactor = targetLambda;
+        committedMp = trialMp;
+        ++res.accepted;
+        ++res.tier2Steps;
+        res.acceptedStepIterations.push_back(sr.newtonIters);
+        res.tier2FinalMu = sr.muUsed;
+        res.tier2FinalMuZero = sr.muZero;
+        res.loadFactor = t2LoadFactor;
+        res.tier2LoadFactor = t2LoadFactor;
+        t2dLambda = std::min(t2dLambda * std::max(opts.loadStepGrowthFactor, 1.0),
+                             std::max(1.0 - t2LoadFactor, phaseMinLoadStep));
+        if (t2dLambda < phaseMinLoadStep) t2dLambda = phaseMinLoadStep;
+      } else {
+        U = uBefore;
+        trialMp = committedMp;
+        ++res.rejected;
+        muCarry = std::min(std::max(muCarry, opts.lmMu0), opts.lmMuMax);
+        t2dLambda *= std::clamp(opts.plasticLoadStepCutbackFactor, 0.1, 0.9);
+        if (t2dLambda < phaseMinLoadStep) break;
+      }
+    }
+    const bool converged = t2LoadFactor >= 1.0 - kLoadCompletionTol;
+    res.tier2LoadFactor = t2LoadFactor;
+    if (converged) {
+      loadFactor = t2LoadFactor;
+      // Undamped confirmation (Gate #2): the damping μ only ever enters the
+      // Jacobian / search direction, never the residual or the stress update,
+      // and convergence is declared on the UNDAMPED residual. Re-assemble the
+      // EXACT consistent tangent + residual at the converged state with NO
+      // damping; if the undamped residual is still within tolerance the
+      // converged solution is a fixed point of pure consistent Newton — i.e. the
+      // unmodified equilibrium, with μ_final = 0.
+      AssembleOutput conf = assemble_global(
+          elements, ctx.beamElements, committedMp, trialMp, regions, regionC,
+          freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+          /*loadFactor=*/1.0, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+          /*wantTangent=*/false, K, internalForceFree, residualFree,
+          /*useElasticGlobalizationTangent=*/false, beamMode, beamReferenceU,
+          /*useConsistentGlobalizationTangent=*/false);
+      const double confTarget = nonlinear_residual_target(opts, conf.rhsNorm, nfree);
+      res.tier2LastResidual = conf.residualNorm;
+      if (conf.residualNorm <= confTarget) {
+        res.tier2FinalMu = 0.0;
+        res.tier2FinalMuZero = true;
+      }
+    }
+    return converged;
+  };
+
   std::vector<double> warmStartFreeCorrection;
   std::vector<double> previousAcceptedStepFreeDelta;
   std::vector<double> secondPreviousAcceptedStepFreeDelta;
@@ -3259,7 +3918,8 @@ inline PhaseResult run_nonlinear_phase(
 	      cg::LinearSolveResult lr = solve_phase_linear_system(
 	          K, freeDofs, residualFree, deltaUFree, diag_inv, opts, tangentAsymmetric,
 	          /*reuseDiagInv=*/false, /*gmresCache=*/nullptr,
-	          linearSolveRelTol, linearSolveAbsTol, wallPreconditioner, wallLinePreconditioner);
+	          linearSolveRelTol, linearSolveAbsTol, wallPreconditioner, wallLinePreconditioner,
+	          wallCoarse);
 	      res.cgIterations += lr.iterations;
 	      stepLinearIterations += lr.iterations;
 	      if (tangentAsymmetric) {
@@ -3450,7 +4110,7 @@ inline PhaseResult run_nonlinear_phase(
                 /*useUnsymmetricSolver=*/false,
                 /*reuseDiagInv=*/false, /*gmresCache=*/nullptr,
                 fallbackLinearSolveRelTol, fallbackLinearSolveAbsTol,
-                wallPreconditioner, wallLinePreconditioner);
+                wallPreconditioner, wallLinePreconditioner, wallCoarse);
             res.cgIterations += fallbackLr.iterations;
             stepLinearIterations += fallbackLr.iterations;
             res.lastLinearSolverKind = 0;
@@ -3746,6 +4406,16 @@ inline PhaseResult run_nonlinear_phase(
         break;
       }
     }
+  }
+
+  // Tier-2 LM-damped consistent-tangent rescue (workstream B). Engaged ONLY
+  // when Tier-1 (modified Newton + Armijo + adaptive cutback / load stepping)
+  // failed to reach λ = 1 — i.e. it exhausted its cutbacks (dLambda < min) OR
+  // its load-step budget. A converging case never reaches here, so the default
+  // path is byte-identical and the worst case is no slower than today. On
+  // success the continuation carries the phase to λ = 1 and sets `loadFactor`.
+  if (tier2Enabled && loadFactor < 1.0 - kLoadCompletionTol) {
+    tier2_run_continuation(loadFactor);
   }
 
   res.loadFactor = loadFactor;
@@ -4097,6 +4767,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       out.summary.hsPlasticUsedGmres = 1;
     }
     append_phase_step_iterations(out, geostatic);
+    merge_tier2_summary(out.summary, geostatic);
     out.summary.maxEta = std::max(out.summary.maxEta, geostatic.maxEta);
     out.summary.finalActiveCount = geostatic.activeCount;
     out.summary.finalTensionCount = geostatic.tensionCount;
@@ -4192,7 +4863,35 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       out.summary.hsPlasticUsedGmres = 1;
     }
     append_phase_step_iterations(out, service);
+    merge_tier2_summary(out.summary, service);
     if (!service.converged) {
+      // Workstream C1: mirror the SafetyCphi near-failure display-state handoff
+      // (see the SafetyCphi block further below). The service load-step loop
+      // rolled `U_global` back to the last committed equilibrium; when the
+      // first service step stalls that is the geostatic beam-reference state,
+      // so the wall response extracted relative to `beamReferenceU` is
+      // identically zero. Instead show the best near-failure iterate the
+      // service phase actually assembled, at its truthful achieved load
+      // fraction. displayU/displayMp are a matched assembled iterate, so the
+      // wire GP stresses stay consistent with the wall displacements (same as
+      // safety — no re-assembly).
+      //
+      // Guard on a strictly higher achieved fraction so the HS service
+      // arc-length rescue (above), which advances `U_global` and
+      // `finalLoadFactor` past the service stall but does not record display
+      // state, is never regressed back to a lower-fraction iterate. For the
+      // mc-plastic flat-zero case `finalLoadFactor` is the rolled-back
+      // committed fraction (0 when the first step stalls), so the display
+      // iterate's higher fraction triggers the handoff. Fires only inside
+      // `!service.converged`, so converged results are byte-identical.
+      if (service.hasDisplayState &&
+          service.displayLoadFactor > out.summary.finalLoadFactor + 1e-12) {
+        *in.U_global = service.displayU;
+        *in.materialPoints = service.displayMp;
+        out.summary.finalLoadFactor = service.displayLoadFactor;
+        out.summary.finalActiveCount = service.displayActiveCount;
+        out.summary.finalTensionCount = service.displayTensionCount;
+      }
       out.beamReferenceU = beamReferenceU;
       return out;
     }

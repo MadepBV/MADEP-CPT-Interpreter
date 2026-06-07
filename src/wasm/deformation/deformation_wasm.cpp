@@ -145,6 +145,27 @@ namespace {
 
 std::string g_last_error;
 std::string g_last_newton_step_iterations_json = "[]";
+// Workstream B: Tier-2 LM-rescue diagnostics for the most recent run. Surfaced
+// out-of-band (not in the wire-encoded summary) so the gates can audit
+// activation count and the converged μ without a wire-format change.
+std::string g_last_tier2_diagnostics_json =
+    "{\"activations\":0,\"steps\":0,\"engaged\":false,\"converged\":false,"
+    "\"finalMu\":0,\"finalMuZero\":true,\"maxMu\":0}";
+
+void update_last_tier2_diagnostics_json(const RunSummary& s) {
+  std::string json = "{";
+  json += "\"activations\":" + std::to_string(s.tier2Activations);
+  json += ",\"steps\":" + std::to_string(s.tier2Steps);
+  json += ",\"engaged\":" + std::string(s.tier2Activations > 0 ? "true" : "false");
+  json += ",\"converged\":" + std::string(s.tier2Converged ? "true" : "false");
+  json += ",\"finalMu\":" + std::to_string(s.tier2FinalMu);
+  json += ",\"finalMuZero\":" + std::string(s.tier2FinalMuZero ? "true" : "false");
+  json += ",\"maxMu\":" + std::to_string(s.tier2MaxMu);
+  json += ",\"loadFactor\":" + std::to_string(s.tier2LoadFactor);
+  json += ",\"lastResidual\":" + std::to_string(s.tier2LastResidual);
+  json += "}";
+  g_last_tier2_diagnostics_json = json;
+}
 
 void update_last_newton_step_iterations_json(const std::vector<std::int32_t>& values) {
   std::string json = "[";
@@ -275,6 +296,9 @@ int madepRunDeformationAnalysis(
 
   g_last_error.clear();
   g_last_newton_step_iterations_json = "[]";
+  g_last_tier2_diagnostics_json =
+      "{\"activations\":0,\"steps\":0,\"engaged\":false,\"converged\":false,"
+      "\"finalMu\":0,\"finalMuZero\":true,\"maxMu\":0}";
   if (!inputPtr || inputLen < kInputHeaderBytes || !outPtrPtr || !outLenPtr) {
     g_last_error = "invalid arguments to madepRunDeformationAnalysis";
     return 0;
@@ -324,11 +348,11 @@ int madepRunDeformationAnalysis(
   p = read_u8(p, requestedContinuationModeU);
   p = read_u8(p, arcLengthDerivativeModeU);
   p = read_u8(p, arcLengthMeritModeU);
-  p = read_u8(p, pad0);
-  p = read_u8(p, pad1);
+  p = read_u8(p, pad0);  // useWallCoarseCorrection (workstream A)
+  p = read_u8(p, pad1);  // mcGlobalizationMode (workstream B)
   p = read_u8(p, pad2);
-  (void)pad0;
-  (void)pad1;
+  const std::uint8_t useWallCoarseCorrection = pad0;
+  const std::uint8_t mcGlobalizationModeU = pad1;
   (void)pad2;
   p = read_u32(p, nonlinearMaxIter);
   p = read_u32(p, maxLoadSteps);
@@ -674,6 +698,10 @@ int madepRunDeformationAnalysis(
   opts.symmetrizeTangent = symmetrize;
   opts.bbarForT6 = bbar;
   opts.robustNonlinearMode = robustNonlinearMode;
+  opts.useWallCoarseCorrection = useWallCoarseCorrection;
+  opts.mcGlobalizationMode = (mcGlobalizationModeU == 1)
+      ? McGlobalizationMode::LmConsistentRescue
+      : McGlobalizationMode::Default;
   opts.requestedContinuationMode = requested_continuation_mode_from_wire(requestedContinuationModeU);
   opts.arcLengthDerivativeMode = arc_length_derivative_mode_from_wire(arcLengthDerivativeModeU);
   opts.arcLengthMeritMode = arc_length_merit_mode_from_wire(arcLengthMeritModeU);
@@ -735,6 +763,7 @@ int madepRunDeformationAnalysis(
   const auto endTime = clock::now();
   result.summary.elapsed_ms = std::chrono::duration<double, std::milli>(endTime - startTime).count();
   update_last_newton_step_iterations_json(result.acceptedStepIterations);
+  update_last_tier2_diagnostics_json(result.summary);
   const bool hasHsPayload = constitutive == ConstitutiveKind::HardeningSoil;
   std::size_t wallPayloadBytes = 4;
   for (const auto& wall : walls) {
@@ -1288,6 +1317,11 @@ const char* madepGetLastErrorMessage() {
 MADEP_EXPORT
 const char* madepGetLastNewtonStepIterationsJson() {
   return g_last_newton_step_iterations_json.c_str();
+}
+
+MADEP_EXPORT
+const char* madepGetLastTier2DiagnosticsJson() {
+  return g_last_tier2_diagnostics_json.c_str();
 }
 
 MADEP_EXPORT

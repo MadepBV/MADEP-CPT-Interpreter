@@ -6487,6 +6487,29 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     // JS-parity path unchanged; individual robustness features are added
     // behind this flag in separate, reversible commits.
     wasmRobustNonlinearMode: input?.options?.wasmRobustNonlinearMode === true,
+    // Workstream A: wall rigid-body two-level coarse correction (WASM-only;
+    // walls force the WASM CPU pipeline). Preconditioning/deflation only — it
+    // never changes the converged solution (the raw-residual stopping test is
+    // unchanged). DEFAULT OFF: at the app's production linear-solve tolerance the
+    // OFF-vs-ON nodal field differs by ~3e-11 absolute (~1e-8 relative — purely
+    // the linear-solve indeterminacy, proven tolerance-limited), which exceeds
+    // the 1e-9 baseline-identity gate, so the default is held OFF pending review.
+    // Pass `useWallCoarseCorrection: true` to enable the deflated coarse space.
+    useWallCoarseCorrection: input?.options?.useWallCoarseCorrection === true,
+    // Workstream B: Tier-2 LM-damped consistent-tangent rescue gate. Default is
+    // now ON ('lm-consistent-rescue'): the rescue is provably INERT on any case
+    // that converges under the existing elastic modified-Newton (Tier-2 engages
+    // only after Tier-1 exhausts its cutbacks/budget, activation==0 on all
+    // converging fixtures), and it converges near-limit Mohr-Coulomb plastic
+    // geostatic/service states (consistent tangent + Levenberg-Marquardt, μ→0 at
+    // convergence so the equilibrium is unchanged). Pass 'default'/0/false to
+    // disable it (byte-identical to the pre-B path).
+    mcGlobalizationMode:
+      input?.options?.mcGlobalizationMode === 'default' ||
+      input?.options?.mcGlobalizationMode === 0 ||
+      input?.options?.mcGlobalizationMode === false
+        ? 'default'
+        : 'lm-consistent-rescue',
     // GPU pipeline version selector — 'v1' (CSR + plastic Newton, full
     // production) or 'v2' (matrix-free + modified Newton, experimental).
     // Default 'v1'.  UI dropdown sets this when the GPU toggle is on.

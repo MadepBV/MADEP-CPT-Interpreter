@@ -138,7 +138,11 @@ export async function runWasmDeformationPipeline(ctx) {
       // into via `useBBarFormulationT6: true`. Without the flag the
       // standard B matrix is used at every Gauss point.
       useBBar: options.useBBarFormulationT6 === true,
-      robustNonlinearMode: options.wasmRobustNonlinearMode === true
+      robustNonlinearMode: options.wasmRobustNonlinearMode === true,
+      useWallCoarseCorrection: options.useWallCoarseCorrection !== false,
+      // Workstream B: Tier-2 LM-damped consistent-tangent rescue gate. Pass
+      // through verbatim; default (undefined / 'default') leaves it inert.
+      mcGlobalizationMode: options.mcGlobalizationMode
     },
     onProgress
   });

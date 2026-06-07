@@ -66,7 +66,10 @@ async function main() {
       residualRelTol: 1e-4, residualAbsTol: 1e-3, nonlinearMaxIterations: 32,
       initialLoadStep: 0.25, minLoadStep: 1 / 2048, maxLoadSteps,
       useUnsymmetricPlasticSolver: false, useWasmCpuPipeline: true, useNewGpuPipeline: false,
-      wasmRobustNonlinearMode
+      wasmRobustNonlinearMode,
+      // Workstream B: optional Tier-2 LM-rescue (gated by env; default unset
+      // leaves the existing verify_wasm_robust_nonlinear probe untouched).
+      ...(process.env.PROBE_TIER2 === '1' ? { mcGlobalizationMode: 'lm-consistent-rescue' } : {})
     }
   };
   const r = await analyzeDeformationModel(input);
@@ -83,6 +86,7 @@ async function main() {
   console.log('residual:', r?.solver?.residualNorm);
   console.log('geostatic conv:', r?.solver?.initialPhaseConvergenceState);
   console.log('service conv:', r?.solver?.servicePhaseConvergenceState);
+  console.log('tier2:', JSON.stringify(r?.solver?.tier2));
   __resetDeformationWasmModuleForTests();
 }
 

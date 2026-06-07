@@ -516,15 +516,24 @@ export function buildWasmDeformationResult({
   };
 
   const summary = wasmResult.summary;
+  // Workstream C3(a): warn on a non-converged service solve. Generalized from
+  // Hardening-Soil-only to also cover mc-plastic, because the WASM service
+  // phase now hands off the best near-failure iterate (workstream C1) so the
+  // displayed wall response is the partial state at the achieved load fraction
+  // rather than flat zeros. Additive only — pushes a warning string and never
+  // alters converged/convergenceState or any numeric field.
   if (
     Array.isArray(warnings) &&
-    options.constitutiveModel === 'hardening-soil' &&
+    (options.constitutiveModel === 'hardening-soil' ||
+      options.constitutiveModel === 'mc-plastic') &&
     hasSurfaceLoad &&
     !(summary?.serviceConverged === true) &&
     Number(summary?.finalLoadFactor) < 1 - 1e-6
   ) {
     const lambda = Number(summary?.finalLoadFactor) || 0;
-    const message = `Hardening Soil WASM service phase reached only ${lambda.toFixed(3)} of the requested surface load; displayed displacements are the committed partial-load state, not the full-load response.`;
+    const modelLabel =
+      options.constitutiveModel === 'hardening-soil' ? 'Hardening Soil' : 'Mohr-Coulomb';
+    const message = `${modelLabel} WASM service phase reached only ${(lambda * 100).toFixed(1)}% (λ=${lambda.toFixed(3)}) of the requested surface load; the displayed displacements and wall response are the partial-load state at this fraction, not the full-load response.`;
     if (!warnings.includes(message)) warnings.push(message);
   }
   const safety = wasmResult.safety || {};
@@ -678,6 +687,8 @@ export function buildWasmDeformationResult({
       lastLinearSolverKind: summary.lastLinearSolverKind,
       hsPlasticUsedGmres: summary.hsPlasticUsedGmres === true,
       lastHsFailureCode: Number(summary.lastHsFailureCode) || 0,
+      // Workstream B: Tier-2 LM-rescue diagnostics (out-of-band JSON from WASM).
+      tier2: wasmResult.tier2 || null,
       failureCode: (summary.geostaticConverged && summary.serviceConverged) ? '' : 'wasm-not-converged',
       failureOutcomeClass: (summary.geostaticConverged && summary.serviceConverged) ? 'success' : 'partial',
       failureReason: (summary.geostaticConverged && summary.serviceConverged) ? '' : 'Nonlinear iterations or load steps exhausted in WASM solver.',

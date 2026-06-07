@@ -531,4 +531,193 @@ inline void apply_block_jacobi(
   }
 }
 
+// =============================================================================
+// Two-level / deflated coarse correction (workstream A).
+//
+// Carries the retaining-wall rigid-body modes as an exact additive coarse
+// space layered on top of the block-Jacobi smoother:
+//
+//   M2L^{-1} = M_BJ^{-1} + Z * Kc^{-1} * Z^T,   Kc = Z^T A Z.
+//
+// This is preconditioning/deflation ONLY — it changes the Krylov path, never
+// the fixed point x = A^{-1} b. The stopping test in the solvers is unchanged
+// (raw residual), so the accepted solution is identical to within tolerance
+// regardless of whether the coarse correction is active.
+// =============================================================================
+
+// One sparse coarse column: free-DOF rows with their coefficients.
+struct CoarseColumn {
+  std::vector<std::int32_t> rows;
+  std::vector<double> vals;
+};
+
+// The wall rigid-body coarse space Z (n × k). Built deterministically from
+// the sorted beam DOF sets; columns with no entries are dropped at build.
+struct WallCoarseSpace {
+  std::int32_t n{ 0 };
+  std::vector<CoarseColumn> columns;
+  inline bool empty() const { return columns.empty(); }
+  inline int k() const { return static_cast<int>(columns.size()); }
+};
+
+// The assembled coarse operator: the (possibly scaled) effective columns Zc
+// together with the dense inverse of Kc = Zc^T A Zc.
+struct TwoLevelCoarseOp {
+  int k{ 0 };
+  std::vector<CoarseColumn> Zcols;   // effective columns used by the apply
+  std::vector<double> KcInv;         // k×k row-major symmetric inverse
+  bool active{ false };
+  mutable std::vector<double> scratchC;  // length k, reused per apply
+  mutable std::vector<double> scratchD;  // length k, reused per apply
+};
+
+// Form Kc = Zc^T A Zc and dense-factor it with a guarded SPD Cholesky.
+//
+//   * `colScaleInv` (optional, length n): when non-null the effective columns
+//     are Zc = diag(colScaleInv) * Z. The GMRES path passes 1/col_scale so the
+//     coarse space lives in the column-scaled variable; CG passes nullptr.
+//   * `symmetrize`: replace Kc by its symmetric part ½(Kc+Kcᵀ) before the
+//     Cholesky. Mandatory for the unsymmetric (GMRES) operator; harmless for
+//     the symmetric CG operator.
+//
+// On a Cholesky failure (yielded soil makes Kc indefinite) a tiny diagonal
+// shift is applied to Kc ONLY — never to A — and on persistent failure the
+// op is left inactive so the caller falls back to plain block-Jacobi.
+inline bool build_two_level_coarse_op(
+    const CsrMatrix& A,
+    const WallCoarseSpace& Z,
+    const double* colScaleInv,
+    bool symmetrize,
+    TwoLevelCoarseOp& op) {
+  op.active = false;
+  op.k = 0;
+  op.Zcols.clear();
+  op.KcInv.clear();
+  const int n = A.nrows;
+  if (Z.k() <= 0 || n <= 0) return false;
+
+  // Effective columns (optionally column-scaled), dropping empty columns.
+  std::vector<CoarseColumn> cols;
+  cols.reserve(static_cast<std::size_t>(Z.k()));
+  for (const auto& src : Z.columns) {
+    CoarseColumn c;
+    c.rows.reserve(src.rows.size());
+    c.vals.reserve(src.rows.size());
+    for (std::size_t e = 0; e < src.rows.size(); ++e) {
+      const std::int32_t row = src.rows[e];
+      if (row < 0 || row >= n) continue;
+      double v = src.vals[e];
+      if (colScaleInv) v *= colScaleInv[row];
+      if (v != 0.0) { c.rows.push_back(row); c.vals.push_back(v); }
+    }
+    if (!c.rows.empty()) {
+      // Normalise each effective column to unit 2-norm. The coarse correction
+      // Z·Kc⁻¹·Zᵀ is exactly invariant under per-column scaling of Z, so this
+      // does not change the symmetric (CG) operator at all; it only rebalances
+      // the SYMMETRISED Kc on the unsymmetric (GMRES, column-equilibrated)
+      // operator, where the 1/col_scale factor would otherwise leave the stiff
+      // wall DOFs dominating the symmetrisation.
+      double nrm = 0.0;
+      for (double v : c.vals) nrm += v * v;
+      nrm = std::sqrt(nrm);
+      if (nrm > 0.0) {
+        const double inv = 1.0 / nrm;
+        for (double& v : c.vals) v *= inv;
+      }
+      cols.push_back(std::move(c));
+    }
+  }
+  const int k = static_cast<int>(cols.size());
+  if (k <= 0) return false;
+
+  std::vector<double> zfull(static_cast<std::size_t>(n), 0.0);
+  std::vector<double> az(static_cast<std::size_t>(n), 0.0);
+  std::vector<double> Kc(static_cast<std::size_t>(k) * k, 0.0);
+  for (int j = 0; j < k; ++j) {
+    std::fill(zfull.begin(), zfull.end(), 0.0);
+    for (std::size_t e = 0; e < cols[j].rows.size(); ++e) {
+      zfull[static_cast<std::size_t>(cols[j].rows[e])] = cols[j].vals[e];
+    }
+    mat_vec(A, zfull.data(), az.data());
+    for (int i = 0; i < k; ++i) {
+      double s = 0.0;
+      const auto& ci = cols[i];
+      for (std::size_t e = 0; e < ci.rows.size(); ++e) {
+        s += ci.vals[e] * az[static_cast<std::size_t>(ci.rows[e])];
+      }
+      Kc[static_cast<std::size_t>(i) * k + j] = s;
+    }
+  }
+
+  if (symmetrize) {
+    for (int i = 0; i < k; ++i) {
+      for (int j = i + 1; j < k; ++j) {
+        const double s = 0.5 * (Kc[static_cast<std::size_t>(i) * k + j] +
+                                Kc[static_cast<std::size_t>(j) * k + i]);
+        Kc[static_cast<std::size_t>(i) * k + j] = s;
+        Kc[static_cast<std::size_t>(j) * k + i] = s;
+      }
+    }
+  }
+
+  std::vector<double> KcInv;
+  bool ok = invert_spd_dense_cholesky(Kc, k, KcInv);
+  if (!ok) {
+    double maxDiag = 0.0;
+    for (int i = 0; i < k; ++i) {
+      maxDiag = std::max(maxDiag, std::abs(Kc[static_cast<std::size_t>(i) * k + i]));
+    }
+    if (maxDiag > 0.0) {
+      for (double mult : {1e-12, 1e-10, 1e-8, 1e-6, 1e-4}) {
+        std::vector<double> shifted = Kc;
+        const double shift = mult * maxDiag;
+        for (int i = 0; i < k; ++i) shifted[static_cast<std::size_t>(i) * k + i] += shift;
+        if (invert_spd_dense_cholesky(shifted, k, KcInv)) { ok = true; break; }
+      }
+    }
+    if (!ok) return false;
+  }
+
+  op.k = k;
+  op.Zcols = std::move(cols);
+  op.KcInv = std::move(KcInv);
+  op.scratchC.assign(static_cast<std::size_t>(k), 0.0);
+  op.scratchD.assign(static_cast<std::size_t>(k), 0.0);
+  op.active = true;
+  return true;
+}
+
+// z += Z * (Kc^{-1} * (Z^T r)). Additive on top of the block-Jacobi smooth.
+inline void apply_coarse_correction(
+    const TwoLevelCoarseOp& op,
+    const double* r,
+    double* z) {
+  if (!op.active || op.k <= 0) return;
+  const int k = op.k;
+  std::vector<double>& c = op.scratchC;
+  std::vector<double>& d = op.scratchD;
+  for (int j = 0; j < k; ++j) {
+    double s = 0.0;
+    const auto& col = op.Zcols[static_cast<std::size_t>(j)];
+    for (std::size_t e = 0; e < col.rows.size(); ++e) {
+      s += col.vals[e] * r[static_cast<std::size_t>(col.rows[e])];
+    }
+    c[static_cast<std::size_t>(j)] = s;
+  }
+  for (int i = 0; i < k; ++i) {
+    double s = 0.0;
+    const double* krow = &op.KcInv[static_cast<std::size_t>(i) * k];
+    for (int j = 0; j < k; ++j) s += krow[j] * c[static_cast<std::size_t>(j)];
+    d[static_cast<std::size_t>(i)] = s;
+  }
+  for (int j = 0; j < k; ++j) {
+    const double dj = d[static_cast<std::size_t>(j)];
+    if (dj == 0.0) continue;
+    const auto& col = op.Zcols[static_cast<std::size_t>(j)];
+    for (std::size_t e = 0; e < col.rows.size(); ++e) {
+      z[static_cast<std::size_t>(col.rows[e])] += col.vals[e] * dj;
+    }
+  }
+}
+
 }  // namespace madep::sparse

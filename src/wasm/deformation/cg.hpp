@@ -44,12 +44,28 @@ inline LinearSolveResult solve_cg(
     double* x,
     std::int32_t maxIter,
     double relTol,
-    double absTol) {
+    double absTol,
+    const sparse::WallCoarseSpace* coarse = nullptr) {
   const std::int32_t n = A.nrows;
   std::vector<double> r(static_cast<std::size_t>(n), 0.0);
   std::vector<double> z(static_cast<std::size_t>(n), 0.0);
   std::vector<double> p(static_cast<std::size_t>(n), 0.0);
   std::vector<double> Ap(static_cast<std::size_t>(n), 0.0);
+
+  // Optional additive two-level coarse correction (wall rigid-body modes).
+  // Built once per solve from A (symmetric, so no symmetrize needed); applied
+  // every iteration on top of the block-Jacobi smooth. If it cannot be
+  // SPD-factored (Kc indefinite at yield) it stays inactive and the solve
+  // falls back to plain block-Jacobi PCG.
+  sparse::TwoLevelCoarseOp coarseOp;
+  if (coarse && !coarse->empty()) {
+    sparse::build_two_level_coarse_op(A, *coarse, /*colScaleInv=*/nullptr,
+                                      /*symmetrize=*/true, coarseOp);
+  }
+  auto apply_precond = [&](const double* in, double* out) {
+    sparse::apply_block_jacobi(diag_inv, freeDofs, in, out, n);
+    sparse::apply_coarse_correction(coarseOp, in, out);
+  };
 
   sparse::mat_vec(A, x, r.data());
   for (std::int32_t i = 0; i < n; ++i) r[i] = rhs[i] - r[i];
@@ -57,7 +73,7 @@ inline LinearSolveResult solve_cg(
   const double bnorm = sparse::norm2(rhs, n);
   const double tol = std::max(absTol, relTol * bnorm);
 
-  sparse::apply_block_jacobi(diag_inv, freeDofs, r.data(), z.data(), n);
+  apply_precond(r.data(), z.data());
   for (std::int32_t i = 0; i < n; ++i) p[i] = z[i];
   double rz = sparse::dot(r.data(), z.data(), n);
   double rnorm = sparse::norm2(r.data(), n);
@@ -91,7 +107,7 @@ inline LinearSolveResult solve_cg(
       out.converged = true;
       return out;
     }
-    sparse::apply_block_jacobi(diag_inv, freeDofs, r.data(), z.data(), n);
+    apply_precond(r.data(), z.data());
     const double rz_new = sparse::dot(r.data(), z.data(), n);
     const double beta = rz_new / rz;
     rz = rz_new;
@@ -101,7 +117,7 @@ inline LinearSolveResult solve_cg(
       sparse::mat_vec(A, x, r.data());
       for (std::int32_t i = 0; i < n; ++i) r[i] = rhs[i] - r[i];
       rnorm = sparse::norm2(r.data(), n);
-      sparse::apply_block_jacobi(diag_inv, freeDofs, r.data(), z.data(), n);
+      apply_precond(r.data(), z.data());
       rz = sparse::dot(r.data(), z.data(), n);
       for (std::int32_t i = 0; i < n; ++i) p[i] = z[i];
     }
@@ -265,7 +281,8 @@ inline LinearSolveResult solve_gmres_scaled(
     double relTol,
     double absTol,
     std::int32_t restart = 40,
-    GmresScalingCache* cache = nullptr) {
+    GmresScalingCache* cache = nullptr,
+    const sparse::WallCoarseSpace* coarse = nullptr) {
   const std::int32_t n = A.nrows;
   LinearSolveResult out;
   if (n == 0) { out.converged = true; return out; }
@@ -283,6 +300,29 @@ inline LinearSolveResult solve_gmres_scaled(
   ScaledCsr& scaled = activeCache.scaled;
   std::vector<double>& diag_inv = activeCache.diag_inv;
   const double rawRhsNorm = sparse::norm2(scaled.rhs.data(), n);
+
+  // Optional additive two-level coarse correction for the (left-preconditioned)
+  // scaled operator R·A·C. The wall rigid-body modes live in the un-scaled
+  // displacement variable; in the column-scaled variable x_s = x/col_scale they
+  // map to diag(1/col_scale)·Z, so we pass colScaleInv = 1/col_scale. The scaled
+  // operator is unsymmetric, so the coarse operator Kc is symmetrized before the
+  // SPD factorisation (we never Cholesky an unsymmetric Kc). The raw-residual
+  // stopping test below is unchanged, so the accepted x is unaffected.
+  sparse::TwoLevelCoarseOp coarseOp;
+  std::vector<double> colScaleInv;
+  if (coarse && !coarse->empty()) {
+    colScaleInv.assign(static_cast<std::size_t>(n), 0.0);
+    for (std::int32_t i = 0; i < n; ++i) {
+      colScaleInv[static_cast<std::size_t>(i)] =
+          1.0 / std::max(scaled.col_scale[static_cast<std::size_t>(i)], 1e-30);
+    }
+    sparse::build_two_level_coarse_op(scaled.matrix, *coarse, colScaleInv.data(),
+                                      /*symmetrize=*/true, coarseOp);
+  }
+  auto apply_precond = [&](const double* in, double* outv) {
+    sparse::apply_block_jacobi(diag_inv, freeDofs, in, outv, n);
+    sparse::apply_coarse_correction(coarseOp, in, outv);
+  };
 
   // Scaled initial guess: x_scaled = x / col_scale (so x = col_scale * x_scaled).
   std::vector<double> xs(static_cast<std::size_t>(n), 0.0);
@@ -316,7 +356,7 @@ inline LinearSolveResult solve_gmres_scaled(
     out.residualNorm = raw_rnorm;
     return out;
   }
-  sparse::apply_block_jacobi(diag_inv, freeDofs, r_raw.data(), r_pre.data(), n);
+  apply_precond(r_raw.data(), r_pre.data());
   const double rhsNorm = sparse::norm2(r_pre.data(), n);
   const double preTol = std::max(absTol, relTol * std::max(rhsNorm, 1e-30));
 
@@ -357,7 +397,7 @@ inline LinearSolveResult solve_gmres_scaled(
 
       // w = A * v_k  (in scaled system),  then apply left preconditioner.
       sparse::mat_vec(scaled.matrix, V[k].data(), w.data());
-      sparse::apply_block_jacobi(diag_inv, freeDofs, w.data(), wpre.data(), n);
+      apply_precond(w.data(), wpre.data());
       // MGS orthogonalisation against V[0..k].
       for (std::int32_t i = 0; i <= k; ++i) {
         const double proj = sparse::dot(wpre.data(), V[i].data(), n);
@@ -421,7 +461,7 @@ inline LinearSolveResult solve_gmres_scaled(
           out.residualNorm = raw_rnorm;
           return out;
         }
-        sparse::apply_block_jacobi(diag_inv, freeDofs, r_raw.data(), r_pre.data(), n);
+        apply_precond(r_raw.data(), r_pre.data());
         break_for_convergence = true;
         break;
       }
@@ -443,7 +483,7 @@ inline LinearSolveResult solve_gmres_scaled(
       }
       for (std::int32_t j = 0; j < n; ++j) xs[j] += dxs[j];
       raw_rnorm = recompute_raw_residual();
-      sparse::apply_block_jacobi(diag_inv, freeDofs, r_raw.data(), r_pre.data(), n);
+      apply_precond(r_raw.data(), r_pre.data());
       if (raw_rnorm <= rawTol) {
         write_unscaled_solution();
         out.converged = true;

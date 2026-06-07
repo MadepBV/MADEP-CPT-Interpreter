@@ -8899,6 +8899,23 @@ function stage6BishopWallMechanicalLabel(wall){
   return `E ${stage6CompactNumber(section.E, 3)} kPa · t ${stage6CompactNumber(section.thickness, 3)} m`;
 }
 
+// Workstream C3(b): additive "Partial — solved to NN% load" badge for a
+// non-converged service solve. Reads the same solver fields the deformation
+// banner uses (convergenceState + displayedLoadFactor). Scoped to a service-
+// load partial: the geostatic phase converged but the service phase stalled
+// before full load. A geostatic-only failure installs no wall (so there is no
+// wall response to show), and a fully-converged safety run reports
+// convergenceState 'converged', so both are excluded. Additive only — returns
+// a string and never reads or mutates any numeric/convergence field.
+function stage6BishopPartialLoadBadgeHtml(solver){
+  if(!solver || solver.convergenceState !== 'partial') return '';
+  if(solver.servicePhaseStarted !== true) return '';
+  if(solver.initialPhaseConvergenceState && solver.initialPhaseConvergenceState !== 'converged') return '';
+  const lambda = Math.max(0, Math.min(1, Number(solver.displayedLoadFactor) || 0));
+  const pct = (100 * lambda).toFixed(1);
+  return `<span style="display:inline-block;margin-top:4px;padding:1px 8px;border-radius:9px;font-size:10px;font-weight:600;background:rgba(245,158,11,0.16);color:var(--wn);border:1px solid rgba(245,158,11,0.4);white-space:nowrap">Partial — solved to ${pct}% load</span>`;
+}
+
 function stage6BishopWallInfoPanelHtml(){
   const bishop = S.stage6?.bishop;
   const wall = (bishop?.walls || []).find((item)=>item.id === bishop.selectedWallId);
@@ -8931,6 +8948,7 @@ function stage6BishopWallInfoPanelHtml(){
         </button>
       </div>
       ${series ? `
+        ${stage6BishopPartialLoadBadgeHtml(bishop.deformation?.result?.solver)}
         <div class="st6-canvas-card-note">
           Max |N| ${stage6CompactNumber(maxN, 3)} kN/m ·
           Max |V| ${stage6CompactNumber(maxV, 3)} kN/m ·
@@ -15662,6 +15680,10 @@ function renderStage6BishopApp(){
   const analysisWallIndex = analysisWall ? (bishop.walls || []).findIndex((wall)=>wall.id === analysisWall.id) : -1;
   const analysisWallResult = analysisWall ? stage6BishopWallResultForId(analysisWall.id) : null;
   const analysisWallSeries = analysisWallResult ? stage6BishopWallResultSeries(analysisWallResult) : null;
+  // Workstream C3(b): partial-load badge for the Structure tab (empty on converged).
+  const analysisWallPartialBadge = analysisWallResult
+    ? stage6BishopPartialLoadBadgeHtml(deformation.result?.solver)
+    : '';
   const analysisWallOptionHtml = (bishop.walls || []).map((wall, index)=>`
     <option value="${stage6EscAttr(wall.id)}"${wall.id===analysisWallId?' selected':''}>Wall ${index + 1}${wall.mechanicalActive === true ? '' : ' (inactive)'}</option>
   `).join('');
@@ -15693,6 +15715,7 @@ function renderStage6BishopApp(){
           Mechanical: <strong>${analysisWall.mechanicalActive === true ? 'active' : 'inactive'}</strong><br>
           Section: <strong>${stage6EscAttr(stage6BishopWallMechanicalLabel(analysisWall))}</strong><br>
           Result stations: <strong>${analysisWallResult?.stations?.length || 0}</strong>
+          ${analysisWallPartialBadge ? `<br>${analysisWallPartialBadge}` : ''}
         </div>
         ${analysisWallResult && analysisWallSeries ? `
           <div class="st6-bishop-mini-actions" style="margin-bottom:10px">
