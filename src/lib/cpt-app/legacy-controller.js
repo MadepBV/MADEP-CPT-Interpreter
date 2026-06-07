@@ -11297,6 +11297,12 @@ function stage6BishopDrawCanvas(){
   const canvasHaloColor = rootStyle.getPropertyValue('--canvas-text-halo').trim() || 'rgba(255,255,255,0.92)';
 
   const bishop = S.stage6.bishop;
+  // E2E hook (harmless, read/drive only): set a terrain polyline and read the world→screen map.
+  if (typeof window !== 'undefined') window.__bishopTest = {
+    setTerrain: (t) => { bishop.terrain = stage6BishopSortedPolyline(t); bishop.viewport.fitted = false; renderStage6(); },
+    worldToScreen: stage6BishopWorldToScreen,
+    terrain: bishop.terrain
+  };
   const workspace = bishop.workspace === 'seepage' ? 'seepage' : bishop.workspace === 'deformation' ? 'deformation' : 'stability';
   const deformationAnalysisType = stage6BishopNormalizedDeformationAnalysisType();
   stage6BishopSyncSoilModel();

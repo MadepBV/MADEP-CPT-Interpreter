@@ -141,6 +141,38 @@ function bandLowerYAt(x, terrain, botY) {
   return Math.min(samplePolylineY(terrain, x), botY);
 }
 
+// Trace a band boundary by walking the terrain polyline across [xStart, xEnd] and clipping each
+// vertex at `level` (min) — unless `noClip`, where the boundary IS the terrain. Crucially this
+// preserves a VERTICAL FACE (two stacked terrain vertices at the same x): a per-column single-valued
+// sample would collapse that step into a diagonal (the soil band would not adhere to a vertical
+// wall). The terrain is monotone non-decreasing in x, so each non-vertical segment contributes its
+// clipped [xStart,xEnd] portion and each vertical segment contributes both stacked endpoints.
+function clippedTerrainBoundary(terrain, xStart, xEnd, level, noClip) {
+  const verts = terrain?.vertices || [];
+  const clipY = (y) => (noClip ? y : Math.min(y, level));
+  const pts = [];
+  const push = (x, y) => {
+    const yy = clipY(y);
+    const last = pts[pts.length - 1];
+    if (!last || Math.abs(last.x - x) > 1e-9 || Math.abs(last.y - yy) > 1e-9) pts.push({ x, y: yy });
+  };
+  for (let i = 0; i < verts.length - 1; i += 1) {
+    const a = verts[i];
+    const b = verts[i + 1];
+    if (Math.abs(b.x - a.x) < 1e-12) {                       // vertical face at a.x
+      if (a.x >= xStart - 1e-9 && a.x <= xEnd + 1e-9) { push(a.x, a.y); push(a.x, b.y); }
+      continue;
+    }
+    if (b.x < xStart - 1e-9 || a.x > xEnd + 1e-9) continue;  // segment outside the range
+    const yAt = (x) => a.y + (b.y - a.y) * ((x - a.x) / (b.x - a.x));
+    const xa = Math.max(a.x, xStart);
+    const xb = Math.min(b.x, xEnd);
+    push(xa, yAt(xa));
+    push(xb, yAt(xb));
+  }
+  return pts;
+}
+
 export function buildBandPolygons(terrain, topY, botY, topFollowsTerrain) {
   const verts = terrain?.vertices || [];
   if (verts.length < 2) return [];
@@ -162,10 +194,13 @@ export function buildBandPolygons(terrain, topY, botY, topFollowsTerrain) {
       current = [];
       return;
     }
-    const upper = current.map((x) => ({ x, y: bandUpperYAt(x, terrain, topY, topFollowsTerrain) }));
-    const lower = [...current]
-      .reverse()
-      .map((x) => ({ x, y: bandLowerYAt(x, terrain, botY) }));
+    // Trace both boundaries along the terrain so a vertical step appears as a vertical band edge
+    // (not a diagonal). Upper = terrain clipped at topY (or the terrain itself for the surface
+    // band); lower = terrain clipped at botY, reversed to close the ring.
+    const x0 = current[0];
+    const x1 = current[current.length - 1];
+    const upper = clippedTerrainBoundary(terrain, x0, x1, topY, topFollowsTerrain);
+    const lower = clippedTerrainBoundary(terrain, x0, x1, botY, false).reverse();
     const polygon = cleanPolygon([...upper, ...lower]);
     if (polygonArea(polygon) > 1e-4) polygons.push(polygon);
     current = [];
