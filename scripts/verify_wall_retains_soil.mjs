@@ -125,10 +125,49 @@ async function run(jump, label) {
   return result;
 }
 
+// Multi-layer, DEEP vertical step (the step crosses CPT layer boundaries — the case that used to
+// render a diagonal). Confirms the SOLVER interprets the geometry: the soil-band regions carry a
+// vertical face, and the mesh recovers a true vertical node column at the wall (soil bounded
+// vertically, not by a diagonal material interface).
+async function runMultiLayerVerticalFace() {
+  const { analyzeDeformationModel } = await import('../src/lib/cpt-app/deformation/solver.js');
+  const layers = [
+    { top: 0, bot: 1.5, type: 'Sand', subtype: 'top sand', c: 1, phi: 32, psi: 2, g: 18, gs: 20, Emc: 30000, nu: 0.3, K0nc: 0.47, rShear: 0.25, kh: 1e-6, kv: 1e-6 },
+    { top: 1.5, bot: 3.5, type: 'Clay', subtype: 'mid clay', c: 8, phi: 24, psi: 0, g: 17, gs: 19, Emc: 12000, nu: 0.33, K0nc: 0.59, rShear: 0.2, kh: 1e-9, kv: 1e-9 },
+    { top: 3.5, bot: 14, type: 'Sand', subtype: 'deep sand', c: 2, phi: 34, psi: 4, g: 19, gs: 21, Emc: 40000, nu: 0.3, K0nc: 0.44, rShear: 0.3, kh: 1e-6, kv: 1e-6 }
+  ];
+  const xw = 5;
+  const ui = {
+    terrain: [{ x: 0, y: 0 }, { x: xw, y: 0 }, { x: xw, y: -3 }, { x: 12, y: -3 }],  // 3 m vertical drop crossing layers 1 and 2
+    activeCptX: 2.5, analysisDepth: 12, strengthSet: 'characteristic', useCustomRegions: false, customRegions: [],
+    walls: [{ id: 'w1', x: xw, yTop: 0, yTip: -7, passiveSide: 'right', mechanicalActive: true,
+      material: { label: 'Sheet pile', kAcross: 1e-12, kAlong: 1e-12, kSource: 'preset', mechanical: { model: 'rectangular', E: 2.1e8, nu: 0.3, thickness: 0.4, kappa: 5 / 6, source: 'user' } }, anchors: [] }],
+    surfaceLoads: [{ id: 'l1', xStart: 1, xEnd: 4, q: 15, active: true }],
+    deformation: { options: { outOfPlaneLength: 10, loadMode: 'pressure' } }, seepage: null
+  };
+  const model = buildBishopModelFromStageLayers(layers, ui);
+  // every soil-band region must carry a VERTICAL face at the wall (≥2 distinct y at x=xw)
+  const regionsVertical = model.regions.every((r) => {
+    const ys = [...new Set((r.polygon || []).filter((p) => Math.abs(p.x - xw) < 0.02).map((p) => +p.y.toFixed(3)))];
+    return ys.length >= 2;
+  });
+  const result = await analyzeDeformationModel({ model, options: options() });
+  const minAng = result?.mesh ? minTriangleAngleDeg(result.mesh) : 0;
+  // mesh must recover a vertical node COLUMN at the wall spanning the step (y in [-3, 0])
+  const onWall = (result?.mesh?.nodes || []).filter((n) => Math.abs(n.x - xw) < 1e-3 && n.y > -3.05 && n.y < 0.05);
+  console.log(`\n-- multi-layer DEEP vertical face (3 m step crossing layers) --  converged=${result?.solver?.converged} minAngle=${minAng.toFixed(2)}° wallColumnNodes=${onWall.length}`);
+  check('multi-layer: each soil-band region keeps a vertical face at the wall', regionsVertical);
+  check('multi-layer: solve converges', result?.solver?.converged === true);
+  check('multi-layer: no sliver at the vertical step (min angle > 12°)', minAng > 12, `minAngle=${minAng.toFixed(2)}°`);
+  check('multi-layer: mesh recovers a vertical node column down the wall (soil bounded vertically)', onWall.length >= 8, `column nodes=${onWall.length}`);
+  return result;
+}
+
 async function main() {
   __setDeformationWasmModuleForTests(await loadWasmModule());
   await run(0.3, 'vertical wall, stepped terrain with jump');
   await run(0.0, 'vertical wall, stepped terrain aligned');
+  await runMultiLayerVerticalFace();
   console.log(`\n${fails ? 'FAILURES' : 'ALL OK'}: ${fails} failure(s)`);
   process.exit(fails ? 1 : 0);
 }
