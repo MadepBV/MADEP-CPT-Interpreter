@@ -141,34 +141,49 @@ function bandLowerYAt(x, terrain, botY) {
   return Math.min(samplePolylineY(terrain, x), botY);
 }
 
-// Trace a band boundary by walking the terrain polyline across [xStart, xEnd] and clipping each
-// vertex at `level` (min) — unless `noClip`, where the boundary IS the terrain. Crucially this
-// preserves a VERTICAL FACE (two stacked terrain vertices at the same x): a per-column single-valued
-// sample would collapse that step into a diagonal (the soil band would not adhere to a vertical
-// wall). The terrain is monotone non-decreasing in x, so each non-vertical segment contributes its
-// clipped [xStart,xEnd] portion and each vertical segment contributes both stacked endpoints.
-function clippedTerrainBoundary(terrain, xStart, xEnd, level, noClip) {
+// Trace the TOP boundary of a soil band = clamp(terrain(x), loLevel, hiLevel) across [xStart,xEnd].
+// A layer band is the horizontal slab [botY, topY] clipped by the terrain from above, so its top is
+// clamp(terrain, botY, topY) and its bottom is the flat botY line. Clamping (not just `min`) is the
+// key: where the terrain dips BELOW botY (a steep slope or the lower part of a vertical face) the top
+// is pinned to botY, so the boundary never crosses below the band's own floor — which is what used to
+// produce a gap (a clipped chord cutting a wedge off the band) or a self-overlapping sliver at a
+// vertical face. The trace inserts a vertex wherever the terrain crosses loLevel or hiLevel (the clamp
+// kinks there) and reproduces a vertical face as a vertical edge clamped into the slab. Terrain x is
+// monotone non-decreasing; hiLevel may be +Infinity (surface band: top is the terrain itself).
+function clampedTerrainBoundary(terrain, xStart, xEnd, loLevel, hiLevel) {
   const verts = terrain?.vertices || [];
-  const clipY = (y) => (noClip ? y : Math.min(y, level));
+  const clampY = (y) => Math.max(loLevel, Math.min(y, hiLevel));
   const pts = [];
   const push = (x, y) => {
-    const yy = clipY(y);
     const last = pts[pts.length - 1];
-    if (!last || Math.abs(last.x - x) > 1e-9 || Math.abs(last.y - yy) > 1e-9) pts.push({ x, y: yy });
+    if (!last || Math.abs(last.x - x) > 1e-9 || Math.abs(last.y - y) > 1e-9) pts.push({ x, y });
   };
   for (let i = 0; i < verts.length - 1; i += 1) {
     const a = verts[i];
     const b = verts[i + 1];
     if (Math.abs(b.x - a.x) < 1e-12) {                       // vertical face at a.x
-      if (a.x >= xStart - 1e-9 && a.x <= xEnd + 1e-9) { push(a.x, a.y); push(a.x, b.y); }
+      if (a.x >= xStart - 1e-9 && a.x <= xEnd + 1e-9) { push(a.x, clampY(a.y)); push(a.x, clampY(b.y)); }
       continue;
     }
     if (b.x < xStart - 1e-9 || a.x > xEnd + 1e-9) continue;  // segment outside the range
     const yAt = (x) => a.y + (b.y - a.y) * ((x - a.x) / (b.x - a.x));
     const xa = Math.max(a.x, xStart);
     const xb = Math.min(b.x, xEnd);
-    push(xa, yAt(xa));
-    push(xb, yAt(xb));
+    const ya = yAt(xa);
+    const yb = yAt(xb);
+    push(xa, clampY(ya));
+    // Insert the clamp kinks: a strict interior crossing of either clamp level needs its own vertex,
+    // ordered along a→b, else a straight endpoint clip would leave a gap or overlap.
+    const crossings = [];
+    for (const lvl of [loLevel, hiLevel]) {
+      if (Number.isFinite(lvl) && (ya - lvl) * (yb - lvl) < 0) {
+        const xc = xa + (xb - xa) * ((lvl - ya) / (yb - ya));
+        if (xc > xa + 1e-9 && xc < xb - 1e-9) crossings.push({ x: xc, y: lvl });
+      }
+    }
+    crossings.sort((p, q) => p.x - q.x);
+    for (const c of crossings) push(c.x, c.y);
+    push(xb, clampY(yb));
   }
   return pts;
 }
@@ -194,13 +209,16 @@ export function buildBandPolygons(terrain, topY, botY, topFollowsTerrain) {
       current = [];
       return;
     }
-    // Trace both boundaries along the terrain so a vertical step appears as a vertical band edge
-    // (not a diagonal). Upper = terrain clipped at topY (or the terrain itself for the surface
-    // band); lower = terrain clipped at botY, reversed to close the ring.
+    // The band is the slab [botY, topY] clipped by the terrain from above: the TOP follows
+    // clamp(terrain, botY, topY) (topY = +Infinity for the surface band, whose top IS the terrain)
+    // and the BOTTOM is the flat botY line. A flat floor plus a top clamped to the slab can never
+    // cross, so adjacent layers tile cleanly — no gaps, no overlapping slivers — even across a
+    // vertical face or where the terrain dips below a layer boundary.
     const x0 = current[0];
     const x1 = current[current.length - 1];
-    const upper = clippedTerrainBoundary(terrain, x0, x1, topY, topFollowsTerrain);
-    const lower = clippedTerrainBoundary(terrain, x0, x1, botY, false).reverse();
+    const hiLevel = topFollowsTerrain ? Infinity : topY;
+    const upper = clampedTerrainBoundary(terrain, x0, x1, botY, hiLevel);
+    const lower = [{ x: x1, y: botY }, { x: x0, y: botY }];
     const polygon = cleanPolygon([...upper, ...lower]);
     if (polygonArea(polygon) > 1e-4) polygons.push(polygon);
     current = [];

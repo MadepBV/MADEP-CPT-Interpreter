@@ -15,6 +15,7 @@ import {
   __setDeformationWasmModuleForTests
 } from '../src/lib/cpt-app/deformation/wasm/wasm-loader.js';
 import { buildBishopModelFromStageLayers } from '../src/lib/cpt-app/stage6-bishop.js';
+import { pointInPolygonHalfOpen } from '../src/lib/cpt-app/soil-regions.js';
 
 if (typeof globalThis.performance === 'undefined') {
   globalThis.performance = { now: () => Number(process.hrtime.bigint() / 1000000n) };
@@ -146,17 +147,28 @@ async function runMultiLayerVerticalFace() {
     deformation: { options: { outOfPlaneLength: 10, loadMode: 'pressure' } }, seepage: null
   };
   const model = buildBishopModelFromStageLayers(layers, ui);
-  // every soil-band region must carry a VERTICAL face at the wall (≥2 distinct y at x=xw)
-  const regionsVertical = model.regions.every((r) => {
-    const ys = [...new Set((r.polygon || []).filter((p) => Math.abs(p.x - xw) < 0.02).map((p) => +p.y.toFixed(3)))];
-    return ys.length >= 2;
-  });
+  // The soil-band regions must TILE the retained soil column at the wall with NO gap and NO overlap
+  // (the canvas fill bug: a clipped chord cutting a wedge out of a band), and the vertical face must
+  // be respected — the excavated side above the step bottom is soil-free (soil bounded vertically at
+  // the wall, not by a diagonal). Sample a column just retained-side of the wall and one excavated
+  // point within the step.
+  const regs = model.regions;
+  const countAt = (x, y) => regs.reduce((c, r) => c + (pointInPolygonHalfOpen(r.polygon, x, y) ? 1 : 0), 0);
+  let regGaps = 0, regOverlaps = 0;
+  for (let k = 1; k < 60; k += 1) {
+    const y = -0.1 - (11.6 * k) / 60;               // retained column: just below ground down to ~bottom
+    const c = countAt(xw - 0.05, y);
+    if (c === 0) regGaps += 1; else if (c > 1) regOverlaps += 1;
+  }
+  const retainedTiles = regGaps === 0 && regOverlaps === 0;
+  const excavatedClear = countAt(xw + 0.05, -1.5) === 0;  // above the −3 step bottom on the cut side
   const result = await analyzeDeformationModel({ model, options: options() });
   const minAng = result?.mesh ? minTriangleAngleDeg(result.mesh) : 0;
   // mesh must recover a vertical node COLUMN at the wall spanning the step (y in [-3, 0])
   const onWall = (result?.mesh?.nodes || []).filter((n) => Math.abs(n.x - xw) < 1e-3 && n.y > -3.05 && n.y < 0.05);
   console.log(`\n-- multi-layer DEEP vertical face (3 m step crossing layers) --  converged=${result?.solver?.converged} minAngle=${minAng.toFixed(2)}° wallColumnNodes=${onWall.length}`);
-  check('multi-layer: each soil-band region keeps a vertical face at the wall', regionsVertical);
+  check('multi-layer: retained soil column tiles with no gaps/overlaps at the wall', retainedTiles, `gaps=${regGaps} overlaps=${regOverlaps}`);
+  check('multi-layer: vertical face respected (excavated side soil-free above step bottom)', excavatedClear);
   check('multi-layer: solve converges', result?.solver?.converged === true);
   check('multi-layer: no sliver at the vertical step (min angle > 12°)', minAng > 12, `minAngle=${minAng.toFixed(2)}°`);
   check('multi-layer: mesh recovers a vertical node column down the wall (soil bounded vertically)', onWall.length >= 8, `column nodes=${onWall.length}`);
