@@ -137,10 +137,6 @@ function bandUpperYAt(x, terrain, topY, topFollowsTerrain) {
   return topFollowsTerrain ? terrainVal : Math.min(terrainVal, topY);
 }
 
-function bandLowerYAt(x, terrain, botY) {
-  return Math.min(samplePolylineY(terrain, x), botY);
-}
-
 // Trace the TOP boundary of a soil band = clamp(terrain(x), loLevel, hiLevel) across [xStart,xEnd].
 // A layer band is the horizontal slab [botY, topY] clipped by the terrain from above, so its top is
 // clamp(terrain, botY, topY) and its bottom is the flat botY line. Clamping (not just `min`) is the
@@ -162,7 +158,15 @@ function clampedTerrainBoundary(terrain, xStart, xEnd, loLevel, hiLevel) {
     const a = verts[i];
     const b = verts[i + 1];
     if (Math.abs(b.x - a.x) < 1e-12) {                       // vertical face at a.x
-      if (a.x >= xStart - 1e-9 && a.x <= xEnd + 1e-9) { push(a.x, clampY(a.y)); push(a.x, clampY(b.y)); }
+      if (a.x >= xStart - 1e-9 && a.x <= xEnd + 1e-9) {
+        // An INTERIOR face is a real step in the band top — trace both stacked points. A face at the
+        // run's extreme x is the band's own left/right edge; emit only the terrain value connected to
+        // the run interior (the face's exit at xStart, its entry at xEnd) and let the closing edge
+        // span the rest, else the closing edge would double back over the traced face (self-overlap).
+        if (Math.abs(a.x - xStart) < 1e-9) push(a.x, clampY(b.y));
+        else if (Math.abs(a.x - xEnd) < 1e-9) push(a.x, clampY(a.y));
+        else { push(a.x, clampY(a.y)); push(a.x, clampY(b.y)); }
+      }
       continue;
     }
     if (b.x < xStart - 1e-9 || a.x > xEnd + 1e-9) continue;  // segment outside the range
@@ -224,15 +228,18 @@ export function buildBandPolygons(terrain, topY, botY, topFollowsTerrain) {
     current = [];
   }
 
+  // The band height (top clamped into the slab, minus the flat botY floor) pinches to zero where the
+  // terrain touches botY — e.g. a valley bottom tangent to a layer boundary. The run is split there so
+  // the band is emitted as two polygons each tapering to the pinch point, never one self-touching
+  // (figure-eight) polygon. Empty columns (terrain below botY) also break the run.
+  const bandHeightAt = (x) => Math.max(0, bandUpperYAt(x, terrain, topY, topFollowsTerrain) - botY);
   for (let i = 0; i < xs.length - 1; i += 1) {
     const xA = xs[i];
     const xB = xs[i + 1];
-    const xMid = 0.5 * (xA + xB);
-    const upperMid = bandUpperYAt(xMid, terrain, topY, topFollowsTerrain);
-    const lowerMid = bandLowerYAt(xMid, terrain, botY);
-    if (upperMid > lowerMid + GEOM_EPS) {
+    if (bandHeightAt(0.5 * (xA + xB)) > GEOM_EPS) {
       if (!current.length) current.push(xA);
       current.push(xB);
+      if (bandHeightAt(xB) <= GEOM_EPS) flushCurrent();   // tangent pinch closes the run here
     } else if (current.length) {
       flushCurrent();
     }
@@ -245,10 +252,18 @@ export function buildCptAutoRegions(terrain, layers, cptX, analysisBottomY, mate
   const yGround = samplePolylineY(terrain, cptX);
   const regions = [];
   (layers || []).forEach((layer, index) => {
-    const topY = yGround - (Number(layer?.top) || 0);
-    const botY =
-      index === layers.length - 1 ? analysisBottomY : yGround - (Number(layer?.bot) || 0);
     const topFollowsTerrain = index === 0;
+    // Layer boundaries are CPT depths below the ground at the probe; clamp them into the analysis
+    // domain so no region ever extends below analysisBottomY (which would push soil past the mesh
+    // bottom and break area conservation). A layer whose whole slab sits below the domain is dropped.
+    const topY = topFollowsTerrain
+      ? yGround - (Number(layer?.top) || 0)
+      : Math.max(yGround - (Number(layer?.top) || 0), analysisBottomY);
+    const botY = Math.max(
+      index === layers.length - 1 ? analysisBottomY : yGround - (Number(layer?.bot) || 0),
+      analysisBottomY
+    );
+    if (!topFollowsTerrain && topY <= botY + GEOM_EPS) return;   // slab fully below the domain
     const polygons = buildBandPolygons(terrain, topY, botY, topFollowsTerrain);
     polygons.forEach((polygon, polyIndex) => {
       regions.push({

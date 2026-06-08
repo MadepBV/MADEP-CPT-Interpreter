@@ -59,6 +59,7 @@
 		"verify:wasm": "node scripts/verify_wasm_deformation_smoke.mjs && node scripts/verify_wasm_deformation_t6.mjs && node scripts/verify_wasm_deformation_plastic.mjs && node scripts/verify_wasm_mc_unit.mjs && node scripts/verify_wasm_mc_local_parity.mjs",
 		"verify:wall-beam": "node scripts/verify_wall_beam_kernel.mjs && node scripts/verify_wall_beam_wasm_pipeline.mjs",
 		"verify:wall-retains-soil": "node scripts/verify_wall_retains_soil.mjs",
+		"verify:soil-region-tiling": "node scripts/verify_soil_region_tiling.mjs",
 		"verify:retaining": "node scripts/verify_retaining_wasm.mjs && node scripts/verify_retaining_ui.mjs && node scripts/verify_retaining_behavior.mjs"
 	},
 	"devDependencies": {
