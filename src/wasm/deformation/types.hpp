@@ -337,6 +337,13 @@ struct SolverOptions {
   // only — never changes the converged solution. Decoded from a reserved wire
   // header byte.
   std::uint8_t useWallCoarseCorrection{ 0 };
+  // Staged construction (model C — excavation by stress relaxation). Decoded
+  // from a reserved wire header byte; default 0 keeps the legacy single-phase
+  // wall-free geostatic path byte-identical. When 1 AND a mechanical wall is
+  // present AND the model is MC-plastic, the in-situ K0 state is held supported
+  // (the wall is wished-in-place at zero load) and the cut-face support is then
+  // relaxed in a wall-active Excavation phase, so the wall carries the cut.
+  std::uint8_t stagedExcavationActive{ 0 };
   // Workstream B: Tier-2 LM-damped consistent-tangent rescue gate. Decoded
   // from a reserved wire header byte. Default keeps the rescue inert.
   McGlobalizationMode mcGlobalizationMode{ McGlobalizationMode::Default };

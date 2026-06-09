@@ -320,7 +320,12 @@ export function encodeInputBuffer({
   // tangent rescue gate (workstream B). 0 = default (rescue inert), 1 = enable.
   // Off by default keeps the byte-identical production path.
   writeU8(options.mcGlobalizationMode === 'lm-consistent-rescue' || options.mcGlobalizationMode === 1 ? 1 : 0);
-  writeU8(0);
+  // Reserved header byte 2 repurposed for staged construction (model C —
+  // excavation by stress relaxation). Gated on a mechanical wall actually being
+  // present so the byte is only set for the case the staging applies to; the
+  // kernel additionally requires the MC-plastic geostatic path. Off by default
+  // keeps the byte-identical legacy single-phase wall-free geostatic.
+  writeU8(options.useStagedExcavation === true && mechanicalWalls.length > 0 ? 1 : 0);
   writeU32(Math.max(Math.round(options.nonlinearMaxIter || 32), 1));
   writeU32(Math.max(Math.round(options.maxLoadSteps || 384), 1));
   writeU32(Math.max(Math.round(options.cgMaxIter || 25000), 1));

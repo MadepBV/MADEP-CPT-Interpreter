@@ -6496,6 +6496,14 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     // the 1e-9 baseline-identity gate, so the default is held OFF pending review.
     // Pass `useWallCoarseCorrection: true` to enable the deflated coarse space.
     useWallCoarseCorrection: input?.options?.useWallCoarseCorrection === true,
+    // Staged construction (model C — excavation by stress relaxation). WASM-only
+    // (walls force the WASM CPU pipeline). DEFAULT OFF keeps the legacy
+    // single-phase wall-free geostatic byte-identical. When true AND a mechanical
+    // wall is present AND the model is MC-plastic, the in-situ K0 state is held
+    // supported (wall wished-in-place at zero load) and the cut-face support is
+    // relaxed in a wall-active excavation phase so the wall carries the cut —
+    // the fix for an unsupported cohesionless cut stalling the geostatic phase.
+    useStagedExcavation: input?.options?.useStagedExcavation === true,
     // Workstream B: Tier-2 LM-damped consistent-tangent rescue gate. Default is
     // now ON ('lm-consistent-rescue'): the rescue is provably INERT on any case
     // that converges under the existing elastic modified-Newton (Tier-2 engages

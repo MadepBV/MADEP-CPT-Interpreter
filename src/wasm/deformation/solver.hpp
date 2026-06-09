@@ -44,7 +44,13 @@ namespace madep::solver {
 enum class PhaseKind : std::uint8_t {
   InitialGravity = 0,
   ServiceLoad = 1,
-  SafetyCphi = 2
+  SafetyCphi = 2,
+  // Staged construction (model C): relax the cut-face support that held the
+  // in-situ K0 state, with the wall structurally active so it carries the cut.
+  // Gravity-like load-stepping (treated as initial-gravity for robustness) but
+  // keeps a near-failure display iterate like ServiceLoad so a partial wall
+  // diagram is shown honestly if an under-embedded wall reaches a real limit.
+  Excavation = 3
 };
 
 // Compute strain at a single Gauss point given the global displacement
@@ -3184,7 +3190,13 @@ inline PhaseResult run_nonlinear_phase(
   constexpr double kContinuationTargetLineSearchScale = 0.9;
   constexpr double kContinuationIterationExponent = 0.5;
   constexpr double kContinuationLineSearchExponent = 0.25;
-  const bool isInitialGravityPhase = ctx.phaseKind == PhaseKind::InitialGravity;
+  // The Excavation phase (staged construction) is a gravity-like body-load
+  // relaxation, so it inherits the initial-gravity load-step robustness
+  // (growth/cutback, line-search floor, quasi-convergence) rather than the
+  // service-load schedule.
+  const bool isInitialGravityPhase =
+      ctx.phaseKind == PhaseKind::InitialGravity ||
+      ctx.phaseKind == PhaseKind::Excavation;
   const double plasticGrowthFactor = isInitialGravityPhase
       ? std::max(opts.initialGravityPlasticLoadStepGrowthFactor, 1.0)
       : std::max(opts.plasticLoadStepGrowthFactor, 1.0);
@@ -3257,9 +3269,13 @@ inline PhaseResult run_nonlinear_phase(
   // driver hand it off so the partial wall response is shown honestly. The
   // InitialGravity phase is deliberately excluded (C2): gravity is the
   // baseline, not a user-dialed load fraction, so its failure stays on the
-  // committed state.
+  // committed state. The Excavation phase IS included: it is a staged step with
+  // the wall active, so a partial wall diagram at its achieved excavation
+  // fraction is the honest thing to show if an under-embedded wall stalls at a
+  // genuine kick-out limit.
   const bool keepDisplayState = ctx.phaseKind == PhaseKind::SafetyCphi ||
-                                ctx.phaseKind == PhaseKind::ServiceLoad;
+                                ctx.phaseKind == PhaseKind::ServiceLoad ||
+                                ctx.phaseKind == PhaseKind::Excavation;
 
   auto remember_display_state = [&](double candidateLoadFactor, const AssembleOutput& assembly) {
     if (!keepDisplayState) return;
@@ -3313,7 +3329,8 @@ inline PhaseResult run_nonlinear_phase(
       opts.mcGlobalizationMode == McGlobalizationMode::LmConsistentRescue &&
       ctx.kind == ConstitutiveKind::McPlastic &&
       (ctx.phaseKind == PhaseKind::InitialGravity ||
-       ctx.phaseKind == PhaseKind::ServiceLoad);
+       ctx.phaseKind == PhaseKind::ServiceLoad ||
+       ctx.phaseKind == PhaseKind::Excavation);
 
   // CSR diagonal position cache (sparsity is constant across the phase).
   std::vector<std::int32_t> tier2DiagPos;
@@ -3843,7 +3860,7 @@ inline PhaseResult run_nonlinear_phase(
       const bool plasticQuasiConverged =
           (ctx.kind == ConstitutiveKind::McPlastic ||
            ctx.kind == ConstitutiveKind::HardeningSoil) &&
-          ctx.phaseKind == PhaseKind::InitialGravity &&
+          isInitialGravityPhase &&
           a.changedCount == 0 &&
           a.residualNorm <= 1.1 * residualTarget;
 
@@ -4048,7 +4065,7 @@ inline PhaseResult run_nonlinear_phase(
 	        const bool currentQuasiConverged =
 	            (ctx.kind == ConstitutiveKind::McPlastic ||
 	             ctx.kind == ConstitutiveKind::HardeningSoil) &&
-	            ctx.phaseKind == PhaseKind::InitialGravity &&
+	            isInitialGravityPhase &&
 	            a.changedCount == 0 &&
 	            newtonIter >= 2 &&
 	            a.residualNorm <= 1.1 * residualTarget;
@@ -4751,39 +4768,125 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     }
     ctx.baseRhsFree = &predictorInternal;
     ctx.rampedRhsFree = &geostaticRamp;
-    PhaseResult geostatic = run_nonlinear_phase(ctx, in.opts);
-    out.summary.geostaticAccepted = geostatic.accepted;
-    out.summary.geostaticRejected = geostatic.rejected;
-    out.summary.loadStepsAccepted += geostatic.accepted;
-    out.summary.loadStepsRejected += geostatic.rejected;
-    out.summary.newtonIterations += geostatic.newtonIterations;
-    out.summary.cgIterations += geostatic.cgIterations;
-    out.summary.geostaticLoadFactor = geostatic.loadFactor;
-    out.summary.geostaticConverged = geostatic.converged ? 1 : 0;
-    // Phase 7 telemetry: latch the most-recent solver kind and the
-    // sticky HS-plastic-used-GMRES flag.
-    out.summary.lastLinearSolverKind = geostatic.lastLinearSolverKind;
-    if (in.opts.constitutive == ConstitutiveKind::HardeningSoil && geostatic.gmresInvocations > 0) {
-      out.summary.hsPlasticUsedGmres = 1;
-    }
-    append_phase_step_iterations(out, geostatic);
-    merge_tier2_summary(out.summary, geostatic);
-    out.summary.maxEta = std::max(out.summary.maxEta, geostatic.maxEta);
-    out.summary.finalActiveCount = geostatic.activeCount;
-    out.summary.finalTensionCount = geostatic.tensionCount;
-    if (!geostatic.converged) {
-      out.summary.residualNorm = geostatic.residualNorm;
+
+    // Staged construction (model C — excavation by stress relaxation). The
+    // committed K0 stress σ₀ at U = 0 IS the supported in-situ state:
+    //   predictorInternal = F_int(σ₀) = gravityRhsFree + R_support,
+    // where R_support = predictorInternal − gravityRhsFree (= −geostaticRamp).
+    // On a flat-top vertical-cut geometry R_support is EXACTLY the consistent
+    // nodal reaction of the in-situ traction σ₀·n on the cut face — the K0
+    // "unbalanced force" left because the cut face is the sole non-horizontal
+    // free boundary carrying a non-zero σ₀ traction (the horizontal surfaces see
+    // σ'_v = 0, the base/sides are constrained). On sloping or strongly layered
+    // retained ground the K0 seed is not discretely divergence-free (the seed
+    // shear is clipped to the MC envelope), so R_support is PREDOMINANTLY the
+    // cut-face support plus a small discrete-equilibrium residue — which relaxes
+    // away harmlessly with the support, since the λ_exc = 1 target is exactly
+    // gravity regardless (Potts & Zdravković, FEA in Geotechnical Engineering:
+    // Theory, §excavation-by-relaxation). The legacy single-phase
+    // geostatic ramps this support OFF wall-free (predictorInternal → gravity),
+    // which has no equilibrium for an unsupported cohesionless cut. Staged
+    // instead: (A) holds the supported in-situ state — the predictor commit IS
+    // that state (σ₀ balances gravity + support at U = 0 by construction, so no
+    // wall-free gravity solve is run), wishing the wall in place at zero load
+    // (beamReferenceU = U ≈ 0); then (B) relaxes the support to zero (ramps
+    // predictorInternal → gravity, the SAME target as the legacy phase) in a new
+    // Excavation phase with the wall structurally ACTIVE, so the wall carries
+    // the cut. The wall sees only the excavation increment, never the
+    // establishment of the at-rest field (already in σ₀) — i.e. it is model C,
+    // not the at-rest-double-counting model B.
+    const bool stagedExcavation =
+        in.opts.stagedExcavationActive != 0 &&
+        in.beamElements != nullptr && !in.beamElements->empty();
+
+    if (stagedExcavation) {
+      // (A) Supported in-situ state: established by the predictor commit above.
+      // U_global is still 0 here, so the wished-in-place wall starts unstressed.
+      beamReferenceU = *in.U_global;
+
+      // (B) Excavation: relax the cut-face support with the wall active. Same
+      // affine target predictorInternal → gravity as the legacy geostatic ramp,
+      // but beamMode = Active so the wall resists the unloading.
+      ctx.phaseKind = PhaseKind::Excavation;
+      ctx.beamMode = BeamAssemblyMode::Active;
+      ctx.incrementalStress = false;
+      PhaseResult excavation = run_nonlinear_phase(ctx, in.opts);
+      // Report the excavation fraction as the initial-phase progress: the
+      // wall-free geostatic establishment is trivially complete, so the
+      // excavation is the meaningful staged step that can stall at a genuine
+      // wall limit.
+      out.summary.geostaticAccepted = excavation.accepted;
+      out.summary.geostaticRejected = excavation.rejected;
+      out.summary.loadStepsAccepted += excavation.accepted;
+      out.summary.loadStepsRejected += excavation.rejected;
+      out.summary.newtonIterations += excavation.newtonIterations;
+      out.summary.cgIterations += excavation.cgIterations;
+      out.summary.geostaticLoadFactor = excavation.loadFactor;
+      out.summary.geostaticConverged = excavation.converged ? 1 : 0;
+      out.summary.lastLinearSolverKind = excavation.lastLinearSolverKind;
+      append_phase_step_iterations(out, excavation);
+      merge_tier2_summary(out.summary, excavation);
+      out.summary.maxEta = std::max(out.summary.maxEta, excavation.maxEta);
+      out.summary.finalActiveCount = excavation.activeCount;
+      out.summary.finalTensionCount = excavation.tensionCount;
+      if (!excavation.converged) {
+        // Genuine excavation limit (e.g. an under-embedded wall kicking out):
+        // show the honest near-failure iterate at its achieved excavation
+        // fraction, with the wall active so the partial diagram is meaningful
+        // (mirrors the ServiceLoad handoff below).
+        out.summary.residualNorm = excavation.residualNorm;
+        out.summary.finalLoadFactor = excavation.loadFactor;
+        if (excavation.hasDisplayState &&
+            excavation.displayLoadFactor > out.summary.finalLoadFactor + 1e-12) {
+          *in.U_global = excavation.displayU;
+          *in.materialPoints = excavation.displayMp;
+          out.summary.finalLoadFactor = excavation.displayLoadFactor;
+          out.summary.finalActiveCount = excavation.displayActiveCount;
+          out.summary.finalTensionCount = excavation.displayTensionCount;
+        }
+        out.beamReferenceU = beamReferenceU;
+        return out;
+      }
+      // Excavation converged: the end-of-excavation state (in-situ + open cut,
+      // wall installed) is the baseline the service increment builds on.
+      if (in.U_geostatic) *in.U_geostatic = *in.U_global;
+      snapshot_geostatic_baseline(*in.materialPoints);
+    } else {
+      // Legacy single-phase wall-free geostatic equilibration (unchanged).
+      PhaseResult geostatic = run_nonlinear_phase(ctx, in.opts);
+      out.summary.geostaticAccepted = geostatic.accepted;
+      out.summary.geostaticRejected = geostatic.rejected;
+      out.summary.loadStepsAccepted += geostatic.accepted;
+      out.summary.loadStepsRejected += geostatic.rejected;
+      out.summary.newtonIterations += geostatic.newtonIterations;
+      out.summary.cgIterations += geostatic.cgIterations;
+      out.summary.geostaticLoadFactor = geostatic.loadFactor;
+      out.summary.geostaticConverged = geostatic.converged ? 1 : 0;
+      // Phase 7 telemetry: latch the most-recent solver kind and the
+      // sticky HS-plastic-used-GMRES flag.
+      out.summary.lastLinearSolverKind = geostatic.lastLinearSolverKind;
+      if (in.opts.constitutive == ConstitutiveKind::HardeningSoil && geostatic.gmresInvocations > 0) {
+        out.summary.hsPlasticUsedGmres = 1;
+      }
+      append_phase_step_iterations(out, geostatic);
+      merge_tier2_summary(out.summary, geostatic);
       out.summary.maxEta = std::max(out.summary.maxEta, geostatic.maxEta);
       out.summary.finalActiveCount = geostatic.activeCount;
       out.summary.finalTensionCount = geostatic.tensionCount;
-      out.summary.finalLoadFactor = geostatic.loadFactor;
-      out.beamReferenceU = *in.U_global;
-      return out;
+      if (!geostatic.converged) {
+        out.summary.residualNorm = geostatic.residualNorm;
+        out.summary.maxEta = std::max(out.summary.maxEta, geostatic.maxEta);
+        out.summary.finalActiveCount = geostatic.activeCount;
+        out.summary.finalTensionCount = geostatic.tensionCount;
+        out.summary.finalLoadFactor = geostatic.loadFactor;
+        out.beamReferenceU = *in.U_global;
+        return out;
+      }
+      // Snapshot U_geostatic and the geostatic state baseline.
+      if (in.U_geostatic) *in.U_geostatic = *in.U_global;
+      beamReferenceU = *in.U_global;
+      snapshot_geostatic_baseline(*in.materialPoints);
     }
-    // Snapshot U_geostatic and the geostatic state baseline.
-    if (in.U_geostatic) *in.U_geostatic = *in.U_global;
-    beamReferenceU = *in.U_global;
-    snapshot_geostatic_baseline(*in.materialPoints);
   } else {
     // The JS path only runs a nonlinear plastic geostatic correction for
     // plugins that support it. Linear-elastic and reduced-stiffness analyses

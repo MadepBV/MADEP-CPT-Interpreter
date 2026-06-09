@@ -353,7 +353,11 @@ int madepRunDeformationAnalysis(
   p = read_u8(p, pad2);
   const std::uint8_t useWallCoarseCorrection = pad0;
   const std::uint8_t mcGlobalizationModeU = pad1;
-  (void)pad2;
+  // Reserved header byte 2 repurposed for staged construction (model C —
+  // excavation by stress relaxation). 0 = legacy single-phase wall-free
+  // geostatic (byte-identical default), 1 = enable the supported-in-situ +
+  // wall-active excavation split (only engages when a wall is present + MC).
+  const std::uint8_t stagedExcavationActive = pad2;
   p = read_u32(p, nonlinearMaxIter);
   p = read_u32(p, maxLoadSteps);
   p = read_u32(p, cgMaxIter);
@@ -699,6 +703,7 @@ int madepRunDeformationAnalysis(
   opts.bbarForT6 = bbar;
   opts.robustNonlinearMode = robustNonlinearMode;
   opts.useWallCoarseCorrection = useWallCoarseCorrection;
+  opts.stagedExcavationActive = stagedExcavationActive;
   opts.mcGlobalizationMode = (mcGlobalizationModeU == 1)
       ? McGlobalizationMode::LmConsistentRescue
       : McGlobalizationMode::Default;
