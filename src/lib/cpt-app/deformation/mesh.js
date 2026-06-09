@@ -5,6 +5,7 @@ import { buildSectionMesh } from '../mesh/section-mesh.js';
 import { buildSectionPslg, polygonSegments, polylineSegments } from '../mesh/section-pslg.js';
 import { buildOuterBoundary } from '../seepage/boundary.js';
 import { resolveWallMechanicalSection } from '../seepage/material.js';
+import { pointInPolygonHalfOpen } from '../soil-regions.js';
 import { triangulatePslg } from '../seepage/triangle-runtime.js';
 import { terrainY } from '../stage6-bishop.js';
 import {
@@ -488,10 +489,132 @@ function buildMechanicalPslg(model, regions, options) {
   return pslg;
 }
 
-function attachMechanicalWallsToMesh(mesh, pslg) {
+// Zero-tension Coulomb soil-wall interface (Phase 2): per-station spring
+// parameters from the ADJACENT soil, following the Plaxis virtual-thickness
+// convention (Material Models Manual; Brinkgreve):
+//   G_i = R_inter² · G_soil,  ν_i = 0.45 (fixed)  ⇒  E_oed,i = 11·G_i,
+//   k_s = G_i / t_v,  k_n = E_oed,i / t_v = 11·k_s,  t_v = 0.1·(wall-line spacing),
+//   c_i = R_inter·c′,  tan φ_i = R_inter·tan φ′.
+// The wall-line station spacing IS the adjacent element edge length (wall edges
+// are constrained mesh edges), so it is the correct virtual-thickness scale.
+const WALL_INTERFACE_DEFAULT_R_INTER = 0.667;  // = retaining module deltaActiveRatio
+const WALL_INTERFACE_NU_I = 0.45;
+const WALL_INTERFACE_VIRTUAL_THICKNESS_FACTOR = 0.1;
+
+function wallInterfaceMaterialAtStation(regions, station, normal, tangent, warnings) {
+  // Probe a point just inside the soil on the retained side of the station
+  // (shifted along the retained normal and slightly down-wall so the crest
+  // station lands inside the top region rather than on the terrain boundary).
+  const probes = [1e-3, 1e-2, 0.1];
+  for (const delta of probes) {
+    const px = station.x + normal.nx * delta + tangent.sx * delta;
+    const py = station.y + normal.ny * delta + tangent.sy * delta;
+    for (const region of regions || []) {
+      const polygon = region?.polygon || [];
+      if (polygon.length >= 3 && pointInPolygonHalfOpen(polygon, px, py)) {
+        return region.material || null;
+      }
+    }
+  }
+  if (warnings) {
+    warnings.push(`Soil-wall interface: no soil region found adjacent to wall station (s=${station.s.toFixed(2)} m); interface stiffness falls back to the first region's material.`);
+  }
+  return regions?.[0]?.material || null;
+}
+
+// Duplicate the wall-line nodes into wall-side copies and build one zero-
+// thickness interface node-pair per station: the SOIL keeps its original nodes
+// (the soil mesh topology is untouched), the Timoshenko beam re-points to the
+// wall-side duplicates, and the interface pairs carry the Coulomb + tension
+// cut-off law between them. Single-sided by design (documented limitation:
+// below the excavation level the two soil sides still share nodes, so
+// differential soil-soil slip across the wall plane is not modelled; the
+// soil↔wall gap/slip — the crest tension-band release — is).
+function buildWallInterfacePairs(mesh, mechanicalWalls, model, regions) {
+  const warnings = Array.isArray(mesh.warnings) ? mesh.warnings : (mesh.warnings = []);
+  const pairs = [];
+  mechanicalWalls.forEach((wall, mechanicalWallIndex) => {
+    const stations = wall.nodes;
+    const length = Math.max(Number(wall.length) || 0, GEOM_EPS);
+    const sx = (wall.tip.x - wall.head.x) / length;
+    const sy = (wall.tip.y - wall.head.y) / length;
+    // Base normal n̂0 = (−sy, sx); orient it toward the RETAINED side (the side
+    // with the higher terrain), so a positive normal jump u_n = n̂·(u_soil−u_wall)
+    // is the retained soil OPENING away from the wall (⇒ tension trial ⇒ gap).
+    const terrain = model?.terrain || null;
+    const probeOffset = Math.max(0.05, 0.01 * length);
+    const xw = wall.head.x;
+    const yLeft = terrain ? terrainY(terrain, xw - probeOffset) : 0;
+    const yRight = terrain ? terrainY(terrain, xw + probeOffset) : 0;
+    const baseNx = -sy, baseNy = sx;
+    // Retained = higher ground. Pick the sign of n̂ whose x-component points there.
+    const retainedDirX = yLeft >= yRight ? -1 : 1;
+    const sign = (baseNx * retainedDirX >= 0) ? 1 : -1;
+    const nx = sign * baseNx, ny = sign * baseNy;
+
+    // Tributary (lumped Newton-Cotes) length per station and the mean spacing
+    // for the virtual thickness. Tributary lengths are positive by construction
+    // (trapezoidal lumping), avoiding the negative quadratic-lumping weights
+    // flagged by Schellekens & de Borst (1993).
+    const spacings = [];
+    for (let i = 0; i + 1 < stations.length; i += 1) spacings.push(stations[i + 1].s - stations[i].s);
+    const meanSpacing = spacings.length ? spacings.reduce((a, b) => a + b, 0) / spacings.length : length;
+    const tV = Math.max(WALL_INTERFACE_VIRTUAL_THICKNESS_FACTOR * meanSpacing, 1e-4);
+
+    stations.forEach((station, i) => {
+      const sPrev = i > 0 ? stations[i - 1].s : station.s;
+      const sNext = i + 1 < stations.length ? stations[i + 1].s : station.s;
+      const ell = 0.5 * (sNext - sPrev);  // trapezoidal tributary (ends get half a gap)
+      const material = wallInterfaceMaterialAtStation(
+        regions, station, { nx, ny }, { sx, sy }, warnings
+      );
+      const E = Math.max(Number(material?.Emc) || 0, 1.0);
+      const nu = Math.min(Math.max(Number(material?.nu) || 0.3, 0.0), 0.49);
+      const cEff = Math.max(Number(material?.cEff) || 0, 0);
+      const phiDeg = Math.max(Number(material?.phiEffDeg) || 0, 0);
+      const rInter = Math.min(Math.max(Number(wall.interfaceRInter) || WALL_INTERFACE_DEFAULT_R_INTER, 0.01), 1.0);
+      const gSoil = E / (2 * (1 + nu));
+      const gI = rInter * rInter * gSoil;
+      const eOedI = 2 * gI * (1 - WALL_INTERFACE_NU_I) / (1 - 2 * WALL_INTERFACE_NU_I);  // = 11·G_i
+      const kS = gI / tV;
+      const kN = eOedI / tV;
+
+      // Wall-side duplicate node at the same coordinates; the beam re-points to
+      // it (station.nodeId), the soil keeps station.soilNodeId.
+      const wallNodeId = mesh.nodes.length;
+      mesh.nodes.push({ x: station.x, y: station.y });
+      station.soilNodeId = station.nodeId;
+      station.nodeId = wallNodeId;
+
+      pairs.push({
+        wallIndex: mechanicalWallIndex,
+        soilNodeId: station.soilNodeId,
+        wallNodeId,
+        s: station.s,
+        x: station.x,
+        y: station.y,
+        ell: Math.max(ell, GEOM_EPS),
+        kN,
+        kS,
+        cI: rInter * cEff,
+        tanPhiI: rInter * Math.tan((phiDeg * Math.PI) / 180),
+        rInter,
+        nx,
+        ny,
+        sx,
+        sy
+      });
+    });
+    wall.nodeIds = stations.map((node) => node.nodeId);
+  });
+  return pairs;
+}
+
+function attachMechanicalWallsToMesh(mesh, pslg, model = null, regions = null, options = null) {
   const inputWalls = pslg?.mechanicalWalls || [];
   if (!inputWalls.length) {
     mesh.mechanicalWalls = [];
+    mesh.interfacePairs = [];
     mesh.ndofTotal = 2 * (mesh.nodes?.length || 0);
     return;
   }
@@ -505,7 +628,6 @@ function attachMechanicalWallsToMesh(mesh, pslg) {
   });
 
   const ownerByNode = new Map();
-  const wallRotationDofByNode = new Map();
   const mechanicalWalls = inputWalls.map((wall, mechanicalWallIndex) => {
     const edges = edgesByWall.get(mechanicalWallIndex) || [];
     if (!edges.length) {
@@ -535,15 +657,33 @@ function attachMechanicalWallsToMesh(mesh, pslg) {
         throw new Error('Mechanical walls may not share a mesh node in Phase 1. Split or offset overlapping walls before deformation analysis.');
       }
       ownerByNode.set(station.nodeId, mechanicalWallIndex);
-      if (!wallRotationDofByNode.has(station.nodeId)) {
-        wallRotationDofByNode.set(station.nodeId, 2 * mesh.nodes.length + wallRotationDofByNode.size);
-      }
     });
     return {
       ...wall,
       nodes,
       nodeIds: nodes.map((node) => node.nodeId)
     };
+  });
+
+  // Phase 2 (opt-in): split the wall-line nodes into soil-side originals +
+  // wall-side duplicates joined by zero-thickness Coulomb interface pairs.
+  // Appending duplicates BEFORE the rotation-DOF pass keeps every rotation DOF
+  // above the (final) translational block, exactly like the legacy layout.
+  const useWallInterface = options?.useWallInterface === true;
+  mesh.interfacePairs = useWallInterface
+    ? buildWallInterfacePairs(mesh, mechanicalWalls, model, regions)
+    : [];
+
+  // Rotation DOFs: assigned after any node duplication so the base offset
+  // 2·numNodes uses the FINAL node count. With the interface OFF this walks the
+  // same wall/station order as the legacy inline assignment — identical result.
+  const wallRotationDofByNode = new Map();
+  mechanicalWalls.forEach((wall) => {
+    wall.nodes.forEach((station) => {
+      if (!wallRotationDofByNode.has(station.nodeId)) {
+        wallRotationDofByNode.set(station.nodeId, 2 * mesh.nodes.length + wallRotationDofByNode.size);
+      }
+    });
   });
 
   mesh.mechanicalWalls = mechanicalWalls;
@@ -626,7 +766,7 @@ export async function buildDeformationMesh(model, regions, options, onProgress =
     purpose: 'deformation',
     elementType
   });
-  attachMechanicalWallsToMesh(mesh, pslg);
+  attachMechanicalWallsToMesh(mesh, pslg, model, regions, options);
   // Mesh sanity guard. The PSLG segment-collinearity bug previously caused
   // Triangle to insert orders of magnitude too many Steiner points on
   // sloping terrain at certain mesh target areas. Even after the
