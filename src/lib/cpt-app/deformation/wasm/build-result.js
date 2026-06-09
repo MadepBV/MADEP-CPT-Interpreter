@@ -646,6 +646,11 @@ export function buildWasmDeformationResult({
     solver: {
       method: `wasm-cpu-${options.constitutiveModel}-plane-strain-${elementType}${isSafety ? '-safety-cphi' : ''}`,
       analysisType: analysisType || 'deformation',
+      // Phase 2: soil-wall interface model actually used by this run, surfaced
+      // so the result/assumptions block reports it honestly (theory-lock
+      // mandate): single-sided Coulomb interface (gap + slip) vs bonded wall.
+      wallInterfaceActive: (mesh?.interfacePairs?.length || 0) > 0,
+      wallInterfaceStations: mesh?.interfacePairs?.length || 0,
       elementType,
       integrationPointsPerElement: elementType === 't6' ? 3 : 1,
       constitutiveModel: `${options.constitutiveModel}-material-point`,

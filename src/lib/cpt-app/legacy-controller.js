@@ -4396,6 +4396,12 @@ function stage6Defaults(){
           // the physically-correct model and only engages for MC + a wall (inert
           // otherwise). Toggle off for the legacy wall-free geostatic.
           useStagedExcavation:true,
+          // Phase 2: zero-thickness Coulomb soil-wall interface (gap + slip),
+          // the staged path's companion. ON by default — it is the mechanism
+          // that releases the crest tension band (deep cohesionless cuts reach
+          // 100% load) and it only engages for MC + wall + staged construction.
+          // Single-sided in this phase (documented in the result assumptions).
+          useWallInterface:true,
           allowStressOnlyGeostaticReference:false,
           stressOnlyGeostaticMaxEta:1.0,
           geostaticCorrectionStages:1,
@@ -7449,6 +7455,9 @@ function stage6BishopSetWallField(index, field, value){
     wall.passiveSide = value === 'left' ? 'left' : 'right';
   } else if(field === 'maxShearForce'){
     wall.maxShearForce = value === '' || value == null ? null : Math.max(+value || 0, 0);
+  } else if(field === 'interfaceRInter'){
+    const r = value === '' || value == null ? null : +value;
+    wall.interfaceRInter = Number.isFinite(r) && r > 0 ? Math.min(Math.max(r, 0.01), 1) : null;
   } else if(field === 'mechanicalActive'){
     wall.mechanicalActive = value === true || value === 'true' || value === 1 || value === '1';
     wall.mechanicalActivationPromptPending = false;
@@ -8388,6 +8397,9 @@ function stage6BishopRunDeformation(){
         // retaining wall; inert for non-wall / non-MC). Toggle off for the
         // legacy wall-free geostatic.
         useStagedExcavation:bishop.deformation?.options?.useStagedExcavation !== false,
+        // Phase 2 soil-wall interface: default ON (engages only for MC + wall +
+        // staged; the solver downgrades safety-cphi runs to the bonded wall).
+        useWallInterface:bishop.deformation?.options?.useWallInterface !== false,
         allowStressOnlyGeostaticReference:bishop.deformation?.options?.allowStressOnlyGeostaticReference === true,
         stressOnlyGeostaticMaxEta:bishop.deformation?.options?.stressOnlyGeostaticMaxEta,
         geostaticCorrectionStages:bishop.deformation?.options?.geostaticCorrectionStages,
@@ -14990,6 +15002,7 @@ function renderStage6BishopApp(){
           </select>
         </td>
         <td><label class="st6-bishop-check"><input type="checkbox" ${wall.mechanicalActive === true ? 'checked' : ''} onchange="stage6BishopSetWallField(${index}, 'mechanicalActive', this.checked)"> Active</label></td>
+        <td><input type="number" step="0.01" min="0.01" max="1" style="width:58px" title="Soil-wall interface strength ratio R_inter (c_i = R*c', tan phi_i = R*tan phi'; stiffness scales with R^2 per the Plaxis convention). Blank = 0.667, the retaining module's delta/phi' active convention." value="${Number(wall.interfaceRInter) > 0 ? Number(wall.interfaceRInter).toFixed(2) : ''}" placeholder="0.667" onchange="stage6BishopSetWallField(${index}, 'interfaceRInter', this.value)"></td>
         <td>
           <select onchange="stage6BishopSetWallMaterialField(${index}, 'preset', this.value)">
             <option value="concrete-diaphragm"${preset==='concrete-diaphragm'?' selected':''}>Concrete diaphragm</option>
@@ -15178,6 +15191,11 @@ function renderStage6BishopApp(){
                   <label style="font-size:11px;color:var(--tx2)" title="Staged construction (model C): for a retaining wall, the in-situ K0 state is held supported and the cut-face support is relaxed in a wall-active excavation phase so the wall carries the cut — the physically-correct sequence (the legacy wall-free geostatic cannot stand an unsupported cut and stalls). Only engages with a mechanical wall present; inert otherwise.">
                     <input type="checkbox" ${bishop.deformation?.options?.useStagedExcavation !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useStagedExcavation', this.checked)">
                     Staged construction (wall excavation)
+                  </label>` : ''}
+                  ${deformationUsesMcPlastic ? `
+                  <label style="font-size:11px;color:var(--tx2)" title="Zero-thickness Coulomb soil-wall interface: the retained soil can gap (zero tension) and slip (tau_max = R_inter*c' + R_inter*tan(phi')*sigma_n') against the wall instead of being rigidly bonded — releases the crest tension band so deep cohesionless cuts reach 100% load, and bounds wall friction by the interface strength (R_inter = 0.667 by default, per-wall overridable). Single-sided in this phase: below the excavation level the two soil sides still share mesh nodes (no differential soil-soil slip across the wall plane). Requires staged construction + a mechanical wall; inert otherwise. Safety (c-phi) runs use the bonded wall until interface strength joins the sigma_Msf reduction.">
+                    <input type="checkbox" ${bishop.deformation?.options?.useWallInterface !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useWallInterface', this.checked)">
+                    Soil–wall interface (gap + slip)
                   </label>` : ''}
 	                  <label style="font-size:11px;color:var(--tx2)">Initial equilibrium workflow
 	                    <select onchange="stage6BishopSetField('deformation.options.geostaticInitializationMethod', this.value)">
@@ -15729,7 +15747,13 @@ function renderStage6BishopApp(){
           Wall: <strong>${analysisWallIndex + 1}</strong><br>
           Mechanical: <strong>${analysisWall.mechanicalActive === true ? 'active' : 'inactive'}</strong><br>
           Section: <strong>${stage6EscAttr(stage6BishopWallMechanicalLabel(analysisWall))}</strong><br>
-          Result stations: <strong>${analysisWallResult?.stations?.length || 0}</strong>
+          Result stations: <strong>${analysisWallResult?.stations?.length || 0}</strong><br>
+          Soil–wall contact: <strong>${bishop.deformation?.result?.solver?.wallInterfaceActive
+            ? 'single-sided Coulomb interface (gap + slip)'
+            : 'bonded (no slip / no gap)'}</strong>
+          ${bishop.deformation?.result?.solver?.wallInterfaceActive
+            ? `<br><span style="font-size:11px;color:var(--tx2)">R_inter = ${Number(analysisWall?.interfaceRInter) > 0 ? Number(analysisWall.interfaceRInter).toFixed(2) : '0.667'}; below the excavation level the two soil sides share mesh nodes (no differential soil–soil slip across the wall plane — single-sided model).</span>`
+            : ''}
           ${analysisWallPartialBadge ? `<br>${analysisWallPartialBadge}` : ''}
         </div>
         ${analysisWallResult && analysisWallSeries ? `
@@ -16190,8 +16214,8 @@ function renderStage6BishopApp(){
         <div class="st6-help">Edit geometry, passive side, and seepage conductivity for every wall without opening the old settings column.</div>
         <div class="st6-canvas-table-wrap">
           <table class="tbl st6-bishop-materials">
-            <thead><tr><th>#</th><th>Head x</th><th>Head y</th><th>Tip x</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
-            <tbody>${wallRows || '<tr><td colspan="18" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click head then tip.</td></tr>'}</tbody>
+            <thead><tr><th>#</th><th>Head x</th><th>Head y</th><th>Tip x</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>R_inter</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
+            <tbody>${wallRows || '<tr><td colspan="19" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click head then tip.</td></tr>'}</tbody>
           </table>
         </div>
       </div>
@@ -16759,8 +16783,8 @@ function renderStage6BishopApp(){
                 <div class="st6-help">Walls are treated as infinitely stiff line elements for stability. In seepage they are thin oriented regions with user-set across-wall and along-wall conductivity; dry wall elements get the same dry-factor reduction as soil.</div>
                 <div style="overflow:auto">
                   <table class="tbl st6-bishop-materials">
-                    <thead><tr><th>#</th><th>Head x</th><th>Head y</th><th>Tip x</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
-                    <tbody>${wallRows || '<tr><td colspan="18" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click head then tip.</td></tr>'}</tbody>
+                    <thead><tr><th>#</th><th>Head x</th><th>Head y</th><th>Tip x</th><th>Tip y</th><th>Passive side</th><th>Mechanical</th><th>R_inter</th><th>Preset</th><th>Model</th><th>E / EA</th><th>t / EI</th><th>ν / GA</th><th>κ</th><th>k across</th><th>k along</th><th>Source</th><th>Length</th><th></th></tr></thead>
+                    <tbody>${wallRows || '<tr><td colspan="19" style="text-align:center;color:var(--tx2)">No retaining walls yet. Use the Retaining wall tool and click head then tip.</td></tr>'}</tbody>
                   </table>
                 </div>
               </div>

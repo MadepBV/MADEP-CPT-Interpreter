@@ -355,7 +355,11 @@ function activeMechanicalWalls(model, regions, options = {}) {
         nLeft:axis.nLeft,
         passiveSide: wall?.passiveSide === 'left' ? 'left' : 'right',
         section,
-        stations
+        stations,
+        // Per-wall soil-wall interface strength ratio override (R_inter ≤ 1).
+        // Default (undefined) resolves to 0.667 = the retaining module's
+        // deltaActiveRatio convention in buildWallInterfacePairs.
+        interfaceRInter: Number(wall?.interfaceRInter) > 0 ? Math.min(Number(wall.interfaceRInter), 1) : undefined
       };
     })
     .filter((wall) => wall && wall.stations.length >= 2);
