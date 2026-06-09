@@ -528,6 +528,7 @@ int madepRunDeformationAnalysis(
       std::int32_t soilNodeId = -1;
       double stationS = 0.0;
       double ifEll = 0.0, ifKn = 0.0, ifKs = 0.0, ifCi = 0.0, ifTanPhi = 0.0;
+      std::uint32_t ifBilateral = 0, ifPad = 0;
       p = read_i32(p, nodeId);
       p = read_i32(p, soilNodeId);  // v13: soil-side node (== nodeId when interface off)
       p = read_f64(p, stationS);
@@ -537,6 +538,9 @@ int madepRunDeformationAnalysis(
       p = read_f64(p, ifKs);
       p = read_f64(p, ifCi);
       p = read_f64(p, ifTanPhi);
+      p = read_u32(p, ifBilateral);  // embedded two-face station (no gap law)
+      p = read_u32(p, ifPad);
+      (void)ifPad;
       if (nodeId < 0 || static_cast<std::uint32_t>(nodeId) >= numNodes ||
           !std::isfinite(stationS) || stationS < previousS - 1e-8) {
         g_last_error = "invalid mechanical wall station in WASM input";
@@ -591,12 +595,26 @@ int madepRunDeformationAnalysis(
         ic.params.c_i = ifCi;
         ic.params.tanPhi_i = ifTanPhi;
         ic.params.tanPsi_i = 0.0;  // non-dilatant soil-wall contact (documented)
+        ic.params.bilateral = ifBilateral != 0u;
         interfaceElements.push_back(ic);
       }
     }
   }
   if (nextRotationDof != ndof) {
     g_last_error = "mechanical wall DOF count does not match ndofTotal";
+    return 0;
+  }
+  if (!interfaceElements.empty() && analysisMode == AnalysisMode::GeostaticServiceSafety) {
+    // Phase-2 scope boundary, enforced fail-loud: the c-phi safety reduction
+    // scales the SOIL strength but the interface c_i/tan(phi_i) arrive as wire
+    // constants — running safety with an unreduced interface would overstate
+    // the wall friction and the factor of safety. The JS layer downgrades
+    // safety runs to the bonded wall with a visible warning; reaching this
+    // guard means that gate was bypassed. Interface strength reduction in the
+    // safety phase is the named Phase-3 work item.
+    g_last_error = "safety-cphi with the soil-wall interface is not supported yet "
+                   "(interface strength is not sigma_Msf-reduced); run deformation, "
+                   "or disable the wall interface for the safety analysis";
     return 0;
   }
 
@@ -768,28 +786,26 @@ int madepRunDeformationAnalysis(
       initialSigma.data(), porePressureByGp.data(),
       useK0Init != 0, constitutiveEarly);
 
-  // Interface pseudo-GP seed: project the adjacent-soil K0 stress tensor
-  // (delivered verbatim in the initialSigma tail) onto the interface frame so
-  // each pair starts CLOSED & STUCK at the in-situ traction:
-  //   t_n0 = n̂ᵀ σ₀ n̂,   t_t0 = t̂ᵀ σ₀ n̂   (tension-positive; K0 ⇒ t_n0 < 0).
-  // This overwrites whatever the soil-oriented seed initialisation did to the
-  // tail slots — these are traction states, not soil points, and must carry
-  // the UNCLIPPED projection. A (non-physical) tensile seed is clamped to the
-  // open-neutral state rather than silently carried.
+  // Interface pseudo-GP seed: ZERO traction at zero jump. In the staged
+  // single-sided topology the soil keeps its own continuity and the CUT-FACE
+  // SUPPORT (predictorInternal − gravity) carries the in-situ confinement, so
+  // the unloaded wished-in-place beam can only equilibrate ZERO spring force —
+  // seeding the springs with the K0 traction σ₀·n would both unbalance the
+  // excavation start (residual = −F_interface(seed) ≠ 0 at λ_exc = 0) and
+  // double-count the confinement (support + spring). As the support relaxes,
+  // the retained soil leans onto the wall, the spring compression t_n grows
+  // toward the active pressure, and the Coulomb capacity τ_max = c_i − t_n·tanφ_i
+  // grows with it — the strength mobilisation is equilibrium-consistent by
+  // construction. (Plaxis's in-situ interface-traction seeding applies to its
+  // double-sided topology where the interface REPLACES the soil continuity;
+  // ours does not.) The strict gap inequality in interface_return keeps this
+  // marginal-contact start CLOSED/STICK on the full elastic spring.
   for (const auto& ic : interfaceElements) {
     const std::size_t gp = static_cast<std::size_t>(ic.gpIndex);
-    const double* s6 = &initialSigma[6 * gp];
-    const double sxx = s6[V_XX], syy = s6[V_YY], sxy = s6[V_XY];
-    double tn0 = ic.nx * ic.nx * sxx + ic.ny * ic.ny * syy + 2.0 * ic.nx * ic.ny * sxy;
-    double tt0 = ic.sx * ic.nx * sxx + ic.sy * ic.ny * syy + (ic.sx * ic.ny + ic.sy * ic.nx) * sxy;
-    if (tn0 >= 0.0) { tn0 = 0.0; tt0 = 0.0; }
     MaterialPoint mp{};
     mp.regionIndex = materialPoints[gp].regionIndex;
-    mp.effectiveStress[0] = tt0;   // committed shear traction
-    mp.effectiveStress[1] = tn0;   // committed normal traction
-    mp.effectiveStress[2] = 0.0;   // committed tangential jump (U = 0 at seed)
-    mp.effectiveStress[3] = 0.0;   // committed normal jump
-    mp.referenceStress = mp.effectiveStress;
+    // effectiveStress slots: [0]=t_t, [1]=t_n, [2]=u_t committed, [3]=u_n committed.
+    mp.referenceStress = mp.effectiveStress;        // all-zero
     mp.geostaticEffectiveStress = mp.effectiveStress;
     materialPoints[gp] = mp;
   }

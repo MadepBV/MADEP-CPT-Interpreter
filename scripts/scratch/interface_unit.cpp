@@ -81,14 +81,35 @@ int main() {
     check("slip(-): t_t = -tauMax", close(rn.t_t, -tauMax), rn.t_t, -tauMax);
   }
 
-  // ---- GAP: opening jump drives the trial into tension ⇒ release both tractions. ----
+  // ---- TENSION CUT-OFF (gap): multi-surface return — t_n → 0, shear capped by
+  // the Coulomb cone AT the cut-off (|t_t| ≤ c_i). Continuous at the boundary. ----
   {
-    double u_t = 1e-4, u_n = 1e-3;  // tn = -10 + 1e5*1e-3 = 90 >= 0
+    double u_t = 1e-4, u_n = 1e-3;  // tn^tr = -10 + 1e5*1e-3 = 90 > 0; tt^tr = 10 > c_i
     InterfaceResponse r = interface_return(p, u_t, u_n, utc, unc, ttc, tnc);
     check("gap: branch", r.branch == Branch::Gap);
-    check("gap: t_t released to 0", r.t_t == 0.0, r.t_t, 0.0);
-    check("gap: t_n released to 0", r.t_n == 0.0, r.t_n, 0.0);
-    check("gap: D ~ 0 (eps floor)", r.D[0][0] < 1e-3 * p.k_s && r.D[1][1] < 1e-3 * p.k_n);
+    check("gap: t_n returned to cut-off (0)", r.t_n == 0.0, r.t_n, 0.0);
+    check("gap: shear capped at c_i", close(r.t_t, p.c_i), r.t_t, p.c_i);
+    check("gap: normal stiffness ~ 0 (eps floor)", r.D[1][1] < 1e-3 * p.k_n);
+    // below the cone: shear stays elastic
+    InterfaceResponse rl = interface_return(p, 1e-8, u_n, utc, unc, ttc, tnc);
+    check("gap: small shear elastic (|tt|<c_i)", close(rl.t_t, 1e-3) && rl.D[0][0] == p.k_s, rl.t_t, 1e-3);
+    // CONTINUITY across the closed↔open boundary: at tn→0⁻ closed slip gives
+    // ±c_i; at tn→0⁺ the cut-off cap is ±c_i. Probe both sides of u_n = 1e-4.
+    double unb = 1e-4;  // tn^tr = -10 + 10 = 0 exactly → closed (strict >)
+    InterfaceResponse rc = interface_return(p, 1e-3, unb - 1e-12, utc, unc, ttc, tnc);
+    InterfaceResponse ro = interface_return(p, 1e-3, unb + 1e-12, utc, unc, ttc, tnc);
+    check("gap: shear continuous across boundary", std::fabs(rc.t_t - ro.t_t) < 1e-4, rc.t_t, ro.t_t);
+    check("gap: normal continuous across boundary", std::fabs(rc.t_n - ro.t_n) < 1e-4, rc.t_n, ro.t_n);
+  }
+
+  // ---- ZERO-TRACTION START: the staged equilibrium seed (t=0, jump=0) must be
+  // CLOSED/STICK (strict gap inequality), so the wished-in-place wall starts
+  // coupled on the full elastic spring rather than the eps floor. ----
+  {
+    InterfaceResponse r = interface_return(p, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    check("zero-start: branch is STICK (not gap)", r.branch == Branch::Stick);
+    check("zero-start: full elastic stiffness", r.D[0][0] == p.k_s && r.D[1][1] == p.k_n);
+    check("zero-start: tractions zero", r.t_t == 0.0 && r.t_n == 0.0);
   }
 
   // ---- RE-CLOSURE: commit a gap state, then a closing jump re-establishes contact. ----
@@ -98,6 +119,28 @@ int main() {
     InterfaceResponse r = interface_return(p, u_t, u_n, /*u_t_c=*/0.0, /*u_n_c=*/1e-3, /*t_t_c=*/0.0, /*t_n_c=*/0.0);
     check("reclose: branch closed (stick)", r.branch == Branch::Stick);
     check("reclose: t_n compressive", close(r.t_n, -100.0), r.t_n, -100.0);
+  }
+
+  // ---- BILATERAL (embedded, two-face): no gap; cap from the ENGAGED face. ----
+  {
+    InterfaceParams b = p;
+    b.bilateral = true;
+    // "Tension" trial (wall pressing the passive face): must stay CLOSED,
+    // carry the normal force bidirectionally, and cap shear by c_i+tanφ|t_n|.
+    double u_t = 1e-7, u_n = 1e-3;  // tn = -10 + 100 = +90 (passive face engaged)
+    InterfaceResponse r = interface_return(b, u_t, u_n, utc, unc, ttc, tnc);
+    check("bilateral: NO gap at t_n>0", r.branch != Branch::Gap);
+    check("bilateral: normal carried bidirectionally", close(r.t_n, 90.0), r.t_n, 90.0);
+    // slip on the passive face: large shear
+    double tauMaxP = b.c_i + 90.0 * b.tanPhi_i;  // 5 + 45 = 50
+    InterfaceResponse rs = interface_return(b, 1e-2, u_n, utc, unc, ttc, tnc);
+    check("bilateral: slip capped by engaged-face friction", close(rs.t_t, tauMaxP), rs.t_t, tauMaxP);
+    fd_tangent_check("bilateral-slip(+tn)", b, 1e-2, u_n, utc, unc, ttc, tnc);
+    // retained face engaged (tn<0): must match the unilateral cap exactly
+    InterfaceResponse rr = interface_return(b, 1e-3, -1e-5, utc, unc, ttc, tnc);
+    InterfaceResponse ru = interface_return(p, 1e-3, -1e-5, utc, unc, ttc, tnc);
+    check("bilateral(t_n<0) == unilateral slip traction", close(rr.t_t, ru.t_t) && close(rr.t_n, ru.t_n));
+    fd_tangent_check("bilateral-slip(-tn)", b, 1e-3, -1e-5, utc, unc, ttc, tnc);
   }
 
   // ---- Coulomb cap monotonicity: deeper confinement ⇒ larger τ_max. ----

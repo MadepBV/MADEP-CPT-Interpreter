@@ -100,43 +100,14 @@ export async function runWasmDeformationPipeline(ctx) {
   // Zero-thickness soil-wall interface (Phase 2): each interface node-pair owns
   // one pseudo material-point slot appended after the continuum Gauss points
   // (the committed traction/jump state rides the solver's existing state
-  // lifecycle). The tail of initialSigmaByGp carries the K0 stress tensor of
-  // the NEAREST retained-side continuum Gauss point, which the kernel projects
-  // onto the interface frame as the closed/stuck in-situ seed traction.
+  // lifecycle). The tail of initialSigmaByGp stays ZERO: in the staged
+  // single-sided topology the cut-face support — not the interface spring —
+  // carries the in-situ confinement, so the equilibrium-consistent seed is
+  // zero traction at zero jump (the kernel documents the full argument).
   const interfacePairs = Array.isArray(mesh?.interfacePairs) ? mesh.interfacePairs : [];
   const numContinuumGp = countIntegrationPoints(elementCaches);
   const numGpTotal = numContinuumGp + interfacePairs.length;
   const initialSigmaByGp = flattenInitialField(initialField, numGpTotal);
-  if (interfacePairs.length) {
-    // Gather continuum GP coordinates in global (materialPointIndex) order.
-    const gpXY = new Float64Array(2 * numContinuumGp);
-    for (const cache of elementCaches) {
-      for (const gp of cache.integrationPoints || []) {
-        const gi = Number(gp.globalIndex);
-        if (Number.isInteger(gi) && gi >= 0 && gi < numContinuumGp) {
-          gpXY[2 * gi + 0] = Number(gp.x ?? cache.centroid?.x) || 0;
-          gpXY[2 * gi + 1] = Number(gp.y ?? cache.centroid?.y) || 0;
-        }
-      }
-    }
-    interfacePairs.forEach((pair, k) => {
-      // Probe just inside the retained side of the station.
-      const probeX = pair.x + pair.nx * Math.max(0.5 * pair.ell, 1e-3);
-      const probeY = pair.y + pair.ny * Math.max(0.5 * pair.ell, 1e-3);
-      let best = -1;
-      let bestD = Infinity;
-      for (let g = 0; g < numContinuumGp; g += 1) {
-        const dx = gpXY[2 * g] - probeX;
-        const dy = gpXY[2 * g + 1] - probeY;
-        const d = dx * dx + dy * dy;
-        if (d < bestD) { bestD = d; best = g; }
-      }
-      const dst = 6 * (numContinuumGp + k);
-      if (best >= 0) {
-        for (let c = 0; c < 6; c += 1) initialSigmaByGp[dst + c] = initialSigmaByGp[6 * best + c];
-      }
-    });
-  }
   const porePressureByGp = porePressureByIntegrationPoint instanceof Float64Array
     ? porePressureByIntegrationPoint
     : Float64Array.from(porePressureByIntegrationPoint || new Float64Array(numGpTotal));

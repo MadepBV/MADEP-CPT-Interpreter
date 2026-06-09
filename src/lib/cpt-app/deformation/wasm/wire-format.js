@@ -114,9 +114,10 @@ function activeMechanicalWallsFromMesh(mesh) {
 
 function computeMechanicalWallBytes(mechanicalWalls) {
   // v13: wall header 48 + 32 (interface frame, 4 f64) = 80 bytes; station
-  // record 16 + 40 (interface spring, 5 f64) = 56 bytes.
+  // record 16 + 40 (interface spring, 5 f64) + 8 (u32 bilateral flag + pad)
+  // = 64 bytes.
   return (mechanicalWalls || []).reduce((sum, wall) => (
-    sum + 80 + 56 * (wall?.nodes?.length || 0)
+    sum + 80 + 64 * (wall?.nodes?.length || 0)
   ), 0);
 }
 
@@ -446,6 +447,9 @@ export function encodeInputBuffer({
       writeF64(pair ? Number(pair.kS) || 0 : 0);
       writeF64(pair ? Number(pair.cI) || 0 : 0);
       writeF64(pair ? Number(pair.tanPhiI) || 0 : 0);
+      // Bilateral (embedded, soil on both faces) vs unilateral (crest, gap law).
+      writeU32(pair && pair.bilateral === true ? 1 : 0);
+      writeU32(0);
     }
   }
 

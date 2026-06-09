@@ -748,6 +748,12 @@ struct AssembleOutput {
   std::int32_t activeApexCount{ 0 };
   std::int32_t tensionCount{ 0 };
   std::int32_t changedCount{ 0 };
+  // Zero-thickness soil-wall interface (Phase 2): station counts by branch.
+  // Slip makes the assembled tangent NON-symmetric (the Coulomb cap couples
+  // ∂t_t/∂u_n with no transpose partner), so slip > 0 must route the linear
+  // solve to GMRES exactly like non-associated continuum plasticity.
+  std::int32_t interfaceSlipCount{ 0 };
+  std::int32_t interfaceGapCount{ 0 };
   double maxEta{ 0.0 };
   // Workstream B: 1 iff any active plastic GP reported a POOR-or-worse
   // consistent-tangent condition (Tier-1 stall diagnostic, trigger (c)).
@@ -1055,6 +1061,11 @@ inline void stabilize_beam_rotation_dofs(
 inline AssembleOutput assemble_global(
     std::vector<ElementCache>& elements,
     const std::vector<BeamElementCache>* beamElements,
+    // Zero-thickness soil-wall interface node-pairs (Phase 2); nullptr/empty →
+    // bonded legacy wall. NO default on purpose: the compiler forces every
+    // assembly site to state its interface argument, so no site can silently
+    // assemble an F_int that disagrees with the others.
+    const std::vector<madep::interface::InterfaceElementCache>* interfaceElements,
     const std::vector<MaterialPoint>& committed,
     std::vector<MaterialPoint>& trial,
     const std::vector<RegionParams>& regions,
@@ -1249,6 +1260,76 @@ inline AssembleOutput assemble_global(
     }
   }
 
+  // ---- Zero-thickness soil-wall interface (Phase 2) ---------------------------
+  // Active together with the wall (wished-in-place coupling): each node-pair
+  // runs the Coulomb + tension cut-off return map on the local jump
+  // [[u]] = R·(u_soil − u_wall), scatters F_e = ℓ·Bᵀ·t and K_e = ℓ·Bᵀ·D_ep·B
+  // (nodal Newton-Cotes, B = [R | −R]), and stores its trial state in the tail
+  // pseudo material point so commit/rollback ride the existing lifecycle.
+  if (interfaceElements && !interfaceElements->empty()) {
+    if (beamMode == BeamAssemblyMode::Active) {
+      for (const auto& ic : *interfaceElements) {
+        const std::size_t gpIdx = static_cast<std::size_t>(ic.gpIndex);
+        const MaterialPoint& cmp = committed[gpIdx];
+        MaterialPoint& tmp = trial[gpIdx];
+        const double dux = U_global[ic.dofs[0]] - U_global[ic.dofs[2]];
+        const double duy = U_global[ic.dofs[1]] - U_global[ic.dofs[3]];
+        const double u_t = ic.sx * dux + ic.sy * duy;
+        const double u_n = ic.nx * dux + ic.ny * duy;
+        const madep::interface::InterfaceResponse resp = madep::interface::interface_return(
+            ic.params, u_t, u_n,
+            cmp.effectiveStress[2], cmp.effectiveStress[3],
+            cmp.effectiveStress[0], cmp.effectiveStress[1]);
+        tmp = cmp;
+        tmp.effectiveStress[0] = resp.t_t;
+        tmp.effectiveStress[1] = resp.t_n;
+        tmp.effectiveStress[2] = u_t;
+        tmp.effectiveStress[3] = u_n;
+        tmp.plasticActive = resp.branch == madep::interface::Branch::Slip ? 1u : 0u;
+        tmp.tensionCutoffActive = resp.branch == madep::interface::Branch::Gap ? 1u : 0u;
+        if (tmp.plasticActive) out.interfaceSlipCount += 1;
+        if (tmp.tensionCutoffActive) out.interfaceGapCount += 1;
+        // Incremental-stress phases measure the interface force relative to the
+        // snapshotted reference traction, exactly like the continuum stress.
+        const double tt = resp.t_t - (incrementalStress ? cmp.referenceStress[0] : 0.0);
+        const double tn = resp.t_n - (incrementalStress ? cmp.referenceStress[1] : 0.0);
+        const double B[2][4] = {
+          { ic.sx, ic.sy, -ic.sx, -ic.sy },
+          { ic.nx, ic.ny, -ic.nx, -ic.ny }
+        };
+        double Fi[4];
+        for (int a = 0; a < 4; ++a) Fi[a] = ic.ell * (B[0][a] * tt + B[1][a] * tn);
+        sparse::scatter_dense_rhs(internalForceFree.data(), ic.dofs, 4, freeIndexByDof, Fi);
+        if (wantTangent) {
+          double Ki[16];
+          for (int a = 0; a < 4; ++a) {
+            for (int b = 0; b < 4; ++b) {
+              double v = 0.0;
+              for (int r = 0; r < 2; ++r) {
+                for (int c = 0; c < 2; ++c) v += B[r][a] * resp.D[r][c] * B[c][b];
+              }
+              Ki[4 * a + b] = ic.ell * v;
+            }
+          }
+          sparse::scatter_dense_matrix(K, ic.dofs, 4, freeIndexByDof, Ki);
+        }
+      }
+    } else if (wantTangent) {
+      // Interface present but the wall is structurally inactive. No solve runs
+      // in this state on the staged path (the supported in-situ state is the
+      // predictor COMMIT, not a solve); defense-in-depth for any other caller:
+      // pin the wall-side duplicate translations so K cannot go singular.
+      for (const auto& ic : *interfaceElements) {
+        for (int d = 2; d < 4; ++d) {
+          const std::int32_t fi = freeIndexByDof[ic.dofs[d]];
+          if (fi < 0) continue;
+          const std::int32_t pos = sparse::find_col(K, fi, fi);
+          if (pos >= 0) K.values[static_cast<std::size_t>(pos)] = 1.0;
+        }
+      }
+    }
+  }
+
   // Residual = (base + λ * ramped) - F_int.
   residualFree.assign(static_cast<std::size_t>(nfree), 0.0);
   double r2 = 0.0, b2 = 0.0;
@@ -1270,6 +1351,9 @@ inline AssembleOutput assemble_global(
 struct PhaseContext {
   std::vector<ElementCache>* elements{ nullptr };
   const std::vector<BeamElementCache>* beamElements{ nullptr };
+  // Zero-thickness soil-wall interface node-pairs (Phase 2); assembled
+  // whenever beamMode == Active (wished-in-place with the wall).
+  const std::vector<madep::interface::InterfaceElementCache>* interfaceElements{ nullptr };
   std::vector<MaterialPoint>* committed{ nullptr };
   std::vector<MaterialPoint>* trial{ nullptr };
   const std::vector<RegionParams>* regions{ nullptr };
@@ -1829,6 +1913,7 @@ inline SafetyResidualDerivativeFd compute_safety_sigma_msf_residual_derivative_f
     AssembleOutput probe = assemble_global(
         *ctx.elements,
         ctx.beamElements,
+        ctx.interfaceElements,
         committedRef,
         scratch.trial,
         scratch.regions,
@@ -2335,7 +2420,7 @@ inline PhaseResult run_safety_arc_length_phase(
       prepare_safety_sigma_msf_materials(ctx, regions, regionC, stepStartSigma, startMaterials);
       trialMp = committedMp;
       AssembleOutput startAssembly = assemble_global(
-          elements, ctx.beamElements, committedMp, trialMp, *startMaterials.regions, *startMaterials.regionC,
+          elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *startMaterials.regions, *startMaterials.regionC,
           freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
           stepStartLambda, ctx.kind, ctx.symmetrize,
           ctx.incrementalStress,
@@ -2354,8 +2439,12 @@ inline PhaseResult run_safety_arc_length_phase(
       const bool startMayNeedUnsymmetricSolver =
           phase_may_need_unsymmetric_solver_for_regions(
               ctx.kind, ctx.symmetrize, startMaterials.regions);
+      // Interface slip assembles a non-symmetric Coulomb-cap coupling
+      // regardless of the region phi/psi predicate — CG would be silently
+      // wrong, so slip forces GMRES.
       const bool useUnsymmetricSolver =
-          startMayNeedUnsymmetricSolver && startHasPlastic;
+          (startMayNeedUnsymmetricSolver && startHasPlastic) ||
+          startAssembly.interfaceSlipCount > 0;
 
       SafetyResidualDerivativeFd derivative = compute_safety_sigma_msf_residual_derivative(
           ctx, U, stepStartLambda, stepStartSigma, fdScratch, arcOpts);
@@ -2434,7 +2523,7 @@ inline PhaseResult run_safety_arc_length_phase(
         const double candidateLambda = safety_sigma_to_phase_lambda(ctx, candidateSigma);
         prepare_safety_sigma_msf_materials(ctx, regions, regionC, candidateSigma, candidateMaterials);
         AssembleOutput a = assemble_global(
-            elements, ctx.beamElements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
+            elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             candidateLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
@@ -2479,7 +2568,8 @@ inline PhaseResult run_safety_arc_length_phase(
             phase_may_need_unsymmetric_solver_for_regions(
                 ctx.kind, ctx.symmetrize, candidateMaterials.regions);
         const bool tangentAsymmetric =
-            candidateMayNeedUnsymmetricSolver && hasPlastic;
+            (candidateMayNeedUnsymmetricSolver && hasPlastic) ||
+            a.interfaceSlipCount > 0;
         // Exact plastic tangents that are known to be unsymmetric must never be
         // routed to CG. CG requires SPD; non-associated MC-SH and HS plastic
         // tangents use GMRES.
@@ -2545,7 +2635,7 @@ inline PhaseResult run_safety_arc_length_phase(
             const double probeLambda = safety_sigma_to_phase_lambda(ctx, probeSigma);
             prepare_safety_sigma_msf_materials(ctx, regions, regionC, probeSigma, probeMaterials);
             AssembleOutput probe = assemble_global(
-                elements, ctx.beamElements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
+                elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
                 freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                 probeLambda, ctx.kind, ctx.symmetrize,
                 ctx.incrementalStress,
@@ -2773,7 +2863,7 @@ inline PhaseResult run_load_arc_length_phase(
 
       trialMp = committedMp;
       AssembleOutput startAssembly = assemble_global(
-          elements, ctx.beamElements, committedMp, trialMp, regions, regionC,
+          elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, regions, regionC,
           freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
           stepStartLambda, ctx.kind, ctx.symmetrize,
           ctx.incrementalStress,
@@ -2790,7 +2880,8 @@ inline PhaseResult run_load_arc_length_phase(
       res.residualNorm = startAssembly.residualNorm;
       const bool startHasPlastic = startAssembly.plasticActiveCount > 0 || startAssembly.tensionCount > 0;
       const bool useUnsymmetricSolver =
-          mayNeedUnsymmetricSolver && startHasPlastic;
+          (mayNeedUnsymmetricSolver && startHasPlastic) ||
+          startAssembly.interfaceSlipCount > 0;
 
       ArcLengthPredictor predictor = make_load_control_arc_length_predictor(
           K, freeDofs, continuationRhsFree, diagInv, arcOpts, arcState,
@@ -2806,7 +2897,7 @@ inline PhaseResult run_load_arc_length_phase(
           ctx.kind != ConstitutiveKind::HardeningSoil) {
         trialMp = committedMp;
         AssembleOutput elasticPredictorAssembly = assemble_global(
-            elements, ctx.beamElements, committedMp, trialMp, regions, regionC,
+            elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, regions, regionC,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             stepStartLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
@@ -2878,7 +2969,7 @@ inline PhaseResult run_load_arc_length_phase(
         }
         prepare_phase_step_materials(ctx, regions, regionC, candidateLambda, candidateMaterials);
         AssembleOutput a = assemble_global(
-            elements, ctx.beamElements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
+            elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *candidateMaterials.regions, *candidateMaterials.regionC,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             candidateLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
@@ -2931,7 +3022,8 @@ inline PhaseResult run_load_arc_length_phase(
 
         const bool hasPlastic = a.plasticActiveCount > 0 || a.tensionCount > 0;
         const bool tangentAsymmetric =
-            mayNeedUnsymmetricSolver && hasPlastic;
+            (mayNeedUnsymmetricSolver && hasPlastic) ||
+            a.interfaceSlipCount > 0;
 #ifndef NDEBUG
         if (ctx.kind == ConstitutiveKind::HardeningSoil && hasPlastic && !tangentAsymmetric) {
           assert(false && "HS plastic service arc-length step routed to CG; expected GMRES");
@@ -2979,7 +3071,7 @@ inline PhaseResult run_load_arc_length_phase(
             trialMp = committedMp;
             prepare_phase_step_materials(ctx, regions, regionC, probeLambda, probeMaterials);
             AssembleOutput probe = assemble_global(
-                elements, ctx.beamElements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
+                elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *probeMaterials.regions, *probeMaterials.regionC,
                 freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                 probeLambda, ctx.kind, ctx.symmetrize,
                 ctx.incrementalStress,
@@ -3377,7 +3469,7 @@ inline PhaseResult run_nonlinear_phase(
     for (int it = 1; it <= maxIters; ++it) {
       // K_alg + residual at U (exact consistent tangent; residual unchanged).
       AssembleOutput a = assemble_global(
-          elements, ctx.beamElements, committedMp, trialMp, stepRegions, stepRegionC,
+          elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, stepRegions, stepRegionC,
           freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
           targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
           /*wantTangent=*/true, K, internalForceFree, residualFree,
@@ -3469,7 +3561,7 @@ inline PhaseResult run_nonlinear_phase(
           trialMp = committedMp;
           for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += stepScale * du[i];
           AssembleOutput probe = assemble_global(
-              elements, ctx.beamElements, committedMp, trialMp, stepRegions, stepRegionC,
+              elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, stepRegions, stepRegionC,
               freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
               targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
               /*wantTangent=*/false, K, internalForceFree, residualFree,
@@ -3574,7 +3666,7 @@ inline PhaseResult run_nonlinear_phase(
             trialMp = committedMp;
             for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += stepScale * dsd[static_cast<std::size_t>(i)];
             AssembleOutput probe = assemble_global(
-                elements, ctx.beamElements, committedMp, trialMp, stepRegions, stepRegionC,
+                elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, stepRegions, stepRegionC,
                 freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                 targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
                 /*wantTangent=*/false, K, internalForceFree, residualFree,
@@ -3621,7 +3713,7 @@ inline PhaseResult run_nonlinear_phase(
     {
       std::vector<MaterialPoint> scratchTrial = committedMp;
       AssembleOutput ea = assemble_global(
-          elements, ctx.beamElements, committedMp, scratchTrial, regions, regionC,
+          elements, ctx.beamElements, ctx.interfaceElements, committedMp, scratchTrial, regions, regionC,
           freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
           /*loadFactor=*/startLoadFactor, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
           /*wantTangent=*/true, K, internalForceFree, residualFree,
@@ -3649,11 +3741,12 @@ inline PhaseResult run_nonlinear_phase(
       const double targetLambda = t2LoadFactor + actualStep;
       PhaseStepMaterials sm;
       prepare_phase_step_materials(ctx, regions, regionC, targetLambda, sm);
-      const bool stepUnsym = tier2_consistent_tangent_unsymmetric(ctx.symmetrize, sm.regions);
+      const bool stepUnsym = tier2_consistent_tangent_unsymmetric(ctx.symmetrize, sm.regions) ||
+          (ctx.interfaceElements != nullptr && !ctx.interfaceElements->empty());
       const std::vector<double> uBefore = U;
       if (!haveR0) {
         AssembleOutput a0 = assemble_global(
-            elements, ctx.beamElements, committedMp, trialMp, *sm.regions, *sm.regionC,
+            elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *sm.regions, *sm.regionC,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
             /*wantTangent=*/false, K, internalForceFree, residualFree,
@@ -3699,7 +3792,7 @@ inline PhaseResult run_nonlinear_phase(
       // converged solution is a fixed point of pure consistent Newton — i.e. the
       // unmodified equilibrium, with μ_final = 0.
       AssembleOutput conf = assemble_global(
-          elements, ctx.beamElements, committedMp, trialMp, regions, regionC,
+          elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, regions, regionC,
           freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
           /*loadFactor=*/1.0, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
           /*wantTangent=*/false, K, internalForceFree, residualFree,
@@ -3818,7 +3911,7 @@ inline PhaseResult run_nonlinear_phase(
     if (hasIterationLinearGuess) iterationLinearGuess = warmStartFreeCorrection;
 
     for (std::int32_t newtonIter = 1; newtonIter <= opts.nonlinearMaxIter; ++newtonIter) {
-      AssembleOutput a = assemble_global(elements, ctx.beamElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+      AssembleOutput a = assemble_global(elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                                          freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                                          targetLambda, ctx.kind, ctx.symmetrize,
                                          ctx.incrementalStress,
@@ -3912,7 +4005,8 @@ inline PhaseResult run_nonlinear_phase(
       }
       const bool hasPlastic = (a.plasticActiveCount > 0) || (a.tensionCount > 0);
       const bool tangentAsymmetric =
-          stepMayNeedUnsymmetricSolver && hasPlastic;
+          (stepMayNeedUnsymmetricSolver && hasPlastic) ||
+          a.interfaceSlipCount > 0;
       if (tangentAsymmetric) stepUsedUnsymmetricSolver = true;
       // Exact plastic tangents that are known to be unsymmetric must never be
       // routed to CG. CG requires SPD; non-associated MC-SH and HS plastic
@@ -4000,7 +4094,7 @@ inline PhaseResult run_nonlinear_phase(
 	          U = uBackup;
 	          trialMp = committedMp;
 	          for (std::int32_t i = 0; i < nfree; ++i) U[freeDofs[i]] += stepScale * deltaUFree[i];
-          AssembleOutput probe = assemble_global(elements, ctx.beamElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+          AssembleOutput probe = assemble_global(elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                                                  freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                                                  targetLambda, ctx.kind, ctx.symmetrize,
 	                                                 ctx.incrementalStress,
@@ -4098,7 +4192,7 @@ inline PhaseResult run_nonlinear_phase(
             U = uBackup;
             trialMp = assembledTrialMp;
             AssembleOutput fallbackA = assemble_global(
-                elements, ctx.beamElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+                elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                 freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                 targetLambda, ctx.kind, ctx.symmetrize,
                 ctx.incrementalStress,
@@ -4175,7 +4269,7 @@ inline PhaseResult run_nonlinear_phase(
                   U[freeDofs[i]] += fallbackStepScale * fallbackDeltaUFree[i];
                 }
                 AssembleOutput fallbackProbe = assemble_global(
-                    elements, ctx.beamElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
+                    elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                     freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                     targetLambda, ctx.kind, ctx.symmetrize,
                     ctx.incrementalStress,
@@ -4321,7 +4415,7 @@ inline PhaseResult run_nonlinear_phase(
       if (ctx.safetyCurve) {
         std::vector<MaterialPoint> acceptedTrialMp = committedMp;
         AssembleOutput acceptedAssembly = assemble_global(
-            elements, ctx.beamElements, committedMp, acceptedTrialMp, *regionsForStep, *regionCForStep,
+            elements, ctx.beamElements, ctx.interfaceElements, committedMp, acceptedTrialMp, *regionsForStep, *regionCForStep,
             freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
             targetLambda, ctx.kind, ctx.symmetrize,
             ctx.incrementalStress,
@@ -4700,6 +4794,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   PhaseContext ctx;
   ctx.elements = in.elements;
   ctx.beamElements = in.beamElements;
+  ctx.interfaceElements = in.interfaceElements;
   ctx.committed = in.materialPoints;
   ctx.trial = &trialMp;
   ctx.regions = in.regions;
@@ -4750,7 +4845,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
     std::vector<double> predictorResidual(static_cast<std::size_t>(nfree), 0.0);
     trialMp = *in.materialPoints;
     AssembleOutput predictorAssembly = assemble_global(
-        *in.elements, in.beamElements, *in.materialPoints, trialMp, *in.regions, regionC,
+        *in.elements, in.beamElements, in.interfaceElements, *in.materialPoints, trialMp, *in.regions, regionC,
         *in.freeIndexByDof, in.U_global->data(),
         nullptr,
         nullptr, nullptr, 0.0,

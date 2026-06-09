@@ -20,7 +20,7 @@ const check = (n, c, d='') => { console.log(`${c?'OK  ':'FAIL'}  ${n}${d?'  ['+d
 
 const model = buildBishopModelFromStageLayers(stageLayers(), ui());
 const off = await buildDeformationMesh(model, model.regions, { ...opts }, ()=>{});
-const on  = await buildDeformationMesh(model, model.regions, { ...opts, useWallInterface: true }, ()=>{});
+const on  = await buildDeformationMesh(model, model.regions, { ...opts, useWallInterface: true, useStagedExcavation: true }, ()=>{});
 
 const offWall = off.mechanicalWalls[0], onWall = on.mechanicalWalls[0];
 const nSt = onWall.nodes.length;

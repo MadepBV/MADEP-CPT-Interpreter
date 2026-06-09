@@ -6504,6 +6504,14 @@ async function _analyzeDeformationModelImpl(input, onProgress = () => {}, runCon
     // relaxed in a wall-active excavation phase so the wall carries the cut —
     // the fix for an unsupported cohesionless cut stalling the geostatic phase.
     useStagedExcavation: input?.options?.useStagedExcavation === true,
+    // Phase 2: zero-thickness Coulomb soil-wall interface (gap + slip), the
+    // companion of staged construction. WASM-only; engages only with a wall +
+    // MC-plastic + staged construction (mesh.js gate). DEFAULT OFF until the
+    // deep-cut verification gate lands. Safety (c-phi) runs are downgraded to
+    // the bonded wall because the interface strength is not sigma_Msf-reduced
+    // yet (Phase 3); the kernel fail-louds if that gate is ever bypassed.
+    useWallInterface: input?.options?.useWallInterface === true &&
+      String(input?.options?.analysisType || '') !== 'safety-cphi',
     // Workstream B: Tier-2 LM-damped consistent-tangent rescue gate. Default is
     // now ON ('lm-consistent-rescue'): the rescue is provably INERT on any case
     // that converges under the existing elastic modified-Newton (Tier-2 engages

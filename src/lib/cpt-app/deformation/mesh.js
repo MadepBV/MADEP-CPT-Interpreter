@@ -551,6 +551,12 @@ function buildWallInterfacePairs(mesh, mechanicalWalls, model, regions) {
     const retainedDirX = yLeft >= yRight ? -1 : 1;
     const sign = (baseNx * retainedDirX >= 0) ? 1 : -1;
     const nx = sign * baseNx, ny = sign * baseNy;
+    // Passive-side ground level at the wall: stations BELOW it have soil on
+    // BOTH faces (embedded depth) and use the BILATERAL law (no gap — a single
+    // node-pair spring serves both contacts, and two-face separation is
+    // impossible); stations above it are single-sided (retained face only) and
+    // keep the unilateral gap law that releases the crest tension band.
+    const yPassive = retainedDirX < 0 ? yRight : yLeft;
 
     // Tributary (lumped Newton-Cotes) length per station and the mean spacing
     // for the virtual thickness. Tributary lengths are positive by construction
@@ -602,7 +608,8 @@ function buildWallInterfacePairs(mesh, mechanicalWalls, model, regions) {
         nx,
         ny,
         sx,
-        sy
+        sy,
+        bilateral: station.y < yPassive - GEOM_EPS
       });
     });
     wall.nodeIds = stations.map((node) => node.nodeId);
@@ -669,9 +676,13 @@ function attachMechanicalWallsToMesh(mesh, pslg, model = null, regions = null, o
   // wall-side duplicates joined by zero-thickness Coulomb interface pairs.
   // Appending duplicates BEFORE the rotation-DOF pass keeps every rotation DOF
   // above the (final) translational block, exactly like the legacy layout.
-  // Gate: explicit opt-in AND MC-plastic (the interface law pairs with the MC
-  // continuum; HS / elastic runs keep the bonded legacy wall).
+  // Gate: explicit opt-in AND MC-plastic AND staged construction. The interface
+  // is the staged path's companion (it activates with the wished-in-place wall
+  // in the Excavation phase); without staging the legacy wall-free geostatic
+  // would leave the wall-side duplicates without stiffness. HS / elastic runs
+  // keep the bonded legacy wall.
   const useWallInterface = options?.useWallInterface === true &&
+    options?.useStagedExcavation === true &&
     String(options?.constitutiveModel || '').toLowerCase() === 'mc-plastic';
   mesh.interfacePairs = useWallInterface
     ? buildWallInterfacePairs(mesh, mechanicalWalls, model, regions)

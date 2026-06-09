@@ -44,6 +44,15 @@ struct InterfaceParams {
   double tanPhi_i{ 0.0 };   // interface friction = R_inter·tan φ'
   double tanPsi_i{ 0.0 };   // interface dilatancy (0 ⇒ non-dilatant; recommended)
   double epsFloor{ 1e-8 };  // gap-branch stiffness floor (rigid-body-mode guard)
+  // BILATERAL stations (soil on BOTH faces — the embedded depth below the
+  // excavation level in the single-sided topology): a single node-pair spring
+  // serves both contacts, so simultaneous two-face separation is impossible
+  // and the unilateral gap law would mis-read "wall presses the passive face"
+  // (t_n > 0 in the retained-ward convention) as an opening. Bilateral keeps
+  // the normal spring bidirectional (NO gap branch) and takes the Coulomb
+  // capacity from whichever face is engaged: τ_max = c_i + tanφ_i·|t_n|.
+  // Unilateral (crest, retained-side-only) stations keep the gap law.
+  bool bilateral{ false };
 };
 
 enum class Branch : std::uint8_t { Stick = 0, Slip = 1, Gap = 2 };
@@ -95,17 +104,61 @@ inline InterfaceResponse interface_return(
   const double tn = t_n_c + k_n * (u_n - u_n_c);
   const double tol = 1e-12 * (p.c_i + std::fabs(k_n * u_n) + std::fabs(k_s * u_t) + 1.0);
 
-  if (tn >= 0.0) {
-    // GAP: the node-pair has separated — an open contact carries no normal or
-    // shear traction (DIANA: t_n → 0 immediately on gap; a separated interface
-    // transmits no shear). This is the release that lets the retained crest soil
-    // pull away from the wall instead of being dragged into MC-unsustainable
-    // tension (the glued-band barrier capping staged construction).
+  if (p.bilateral) {
+    // Embedded (two-face) station: normal spring is bidirectional, Coulomb cap
+    // from the engaged face: τ_max = c_i + tanφ_i·|t_n|.
+    const double tauMaxB = p.c_i + std::fabs(tn) * p.tanPhi_i;
+    const double fB = std::fabs(tt) - tauMaxB;
+    if (fB <= tol) {
+      r.branch = Branch::Stick;
+      r.t_t = tt;
+      r.t_n = tn;
+      r.D[0][0] = k_s; r.D[0][1] = 0.0;
+      r.D[1][0] = 0.0; r.D[1][1] = k_n;
+      return r;
+    }
+    // SLIP on the engaged face. t_n stays elastic (ψ_i = 0); the cap derivative
+    // follows the engaged face: ∂τ_max/∂t_n = tanφ_i·sign(t_n), so
+    // ∂t_t/∂u_n = s·tanφ_i·sign(t_n)·k_n — at t_n < 0 (retained face) this is
+    // −s·tanφ_i·k_n, identical to the unilateral slip tangent (continuous).
+    const double sB = (tt >= 0.0) ? 1.0 : -1.0;
+    const double sn = (tn >= 0.0) ? 1.0 : -1.0;
+    r.branch = Branch::Slip;
+    r.t_n = tn;
+    r.t_t = sB * tauMaxB;
+    r.D[0][0] = 0.0; r.D[0][1] = sB * sn * p.tanPhi_i * k_n;
+    r.D[1][0] = 0.0; r.D[1][1] = k_n;
+    return r;
+  }
+
+  if (tn > 0.0) {
+    // TENSION CUT-OFF (gap): multi-surface return, NOT a brittle kill. The
+    // cut-off is a yield surface (Plaxis MM §interfaces; the brittle DIANA
+    // variant zeroes both tractions discontinuously, which makes the global
+    // residual non-continuous at the gap boundary and stalls Newton/LM on a
+    // residual plateau — observed empirically before this fix):
+    //   t_n returns to the cut-off (t_n = 0, plastic opening), and the shear
+    //   is capped by the Coulomb cone AT the cut-off: |t_t| ≤ τ_max(0) = c_i.
+    // Both tractions are CONTINUOUS across the closed↔open boundary (closed
+    // slip gives ±(c_i − 0·tanφ_i) = ±c_i there), and an open interface still
+    // carries at most the negligible c_i = R_inter·c′ shear (exactly zero for
+    // a cohesionless soil) — the crest tension band is released either way.
+    // STRICT inequality: the equilibrium-consistent staged start (t = 0 at
+    // zero jump — the cut-face support, not the spring, carries the in-situ
+    // confinement) must be CLOSED/STICK on the full elastic spring.
     r.branch = Branch::Gap;
-    r.t_t = 0.0;
     r.t_n = 0.0;
-    r.D[0][0] = p.epsFloor * k_s; r.D[0][1] = 0.0;
-    r.D[1][0] = 0.0;              r.D[1][1] = p.epsFloor * k_n;
+    const double cap = p.c_i;
+    if (std::fabs(tt) <= cap) {
+      r.t_t = tt;               // shear spring elastic below the t_n=0 cone
+      r.D[0][0] = k_s;
+    } else {
+      r.t_t = (tt >= 0.0) ? cap : -cap;
+      r.D[0][0] = 0.0;          // sliding on the cut-off cone
+    }
+    r.D[0][1] = 0.0;
+    r.D[1][0] = 0.0;
+    r.D[1][1] = p.epsFloor * k_n;  // opening direction: no normal stiffness (ε floor)
     return r;
   }
 
