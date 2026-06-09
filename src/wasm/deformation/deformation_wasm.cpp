@@ -123,6 +123,7 @@
 #include "beam.hpp"
 #include "cg.hpp"
 #include "element.hpp"
+#include "interface.hpp"
 #include "linalg.hpp"
 #include "material_hs.hpp"
 #include "material_mc.hpp"
@@ -208,7 +209,11 @@ ArcLengthMeritMode arc_length_merit_mode_from_wire(std::uint8_t value) {
 
 constexpr std::uint32_t INPUT_MAGIC  = 0x4D434454u;  // 'TDCM'
 constexpr std::uint32_t OUTPUT_MAGIC = 0x4D444B54u;  // 'TDKM'
-constexpr std::uint32_t WIRE_VERSION = 12u;
+// v13: mechanical-wall block extended for the zero-thickness soil-wall
+// interface (Phase 2) — per-wall interfaceEnabled flag + local frame, and
+// per-station soil-side node + lumped Coulomb spring parameters. Zeros when
+// the interface is off; the layout is fixed-size either way.
+constexpr std::uint32_t WIRE_VERSION = 13u;
 
 constexpr std::size_t kInputHeaderBytes = 48 + 12 + 7 * 4 + 28 * 8;  // 312 bytes
 constexpr std::size_t kSummaryBytes = 10 * 4 + 5 * 8 + 4 + 4;  // 88 bytes
@@ -470,21 +475,31 @@ int madepRunDeformationAnalysis(
   const std::uint32_t ndof = std::max(ndofTotalU, soilDofCount);
   std::vector<std::int32_t> wallRotationDofByNode(numNodes, -1);
   std::vector<WallBeam> walls(numMechanicalWalls);
+  // Zero-thickness soil-wall interface pairs (Phase 2). Collected during the
+  // wall decode; gpIndex (the pseudo material-point slot) is assigned after the
+  // continuum Gauss-point count is known.
+  std::vector<madep::interface::InterfaceElementCache> interfaceElements;
   std::uint32_t nextRotationDof = soilDofCount;
   for (std::uint32_t i = 0; i < numMechanicalWalls; ++i) {
     auto& wall = walls[i];
     std::uint32_t stationCount = 0;
-    std::uint32_t reserved = 0;
+    std::uint32_t interfaceEnabled = 0;
+    double ifNx = 0.0, ifNy = 0.0, ifSx = 0.0, ifSy = 0.0;
     p = read_i32(p, wall.wallIndex);
     p = read_i32(p, wall.passiveSign);
     wall.passiveSign = wall.passiveSign < 0 ? -1 : 1;
     p = read_u32(p, stationCount);
-    p = read_u32(p, reserved);
-    (void)reserved;
+    p = read_u32(p, interfaceEnabled);
     p = read_f64(p, wall.EA);
     p = read_f64(p, wall.EI);
     p = read_f64(p, wall.GA);
     p = read_f64(p, wall.kappa);
+    // v13: per-wall interface local frame — tangent (sx,sy) top→tip and the
+    // unit normal (nx,ny) oriented toward the RETAINED side (zeros when off).
+    p = read_f64(p, ifNx);
+    p = read_f64(p, ifNy);
+    p = read_f64(p, ifSx);
+    p = read_f64(p, ifSy);
     // Concrete-preset fallback (spec §3.2 / Principle #11): when the wire
     // carries missing or non-positive section properties, substitute the
     // diaphragm-wall defaults (E = 30 GPa, ν = 0.20, t = 0.6 m, κ = 5/6)
@@ -510,12 +525,18 @@ int madepRunDeformationAnalysis(
     double previousS = -std::numeric_limits<double>::infinity();
     for (std::uint32_t s = 0; s < stationCount; ++s) {
       std::int32_t nodeId = -1;
-      std::int32_t stationReserved = 0;
+      std::int32_t soilNodeId = -1;
       double stationS = 0.0;
+      double ifEll = 0.0, ifKn = 0.0, ifKs = 0.0, ifCi = 0.0, ifTanPhi = 0.0;
       p = read_i32(p, nodeId);
-      p = read_i32(p, stationReserved);
+      p = read_i32(p, soilNodeId);  // v13: soil-side node (== nodeId when interface off)
       p = read_f64(p, stationS);
-      (void)stationReserved;
+      // v13: per-station lumped Coulomb interface spring (zeros when off).
+      p = read_f64(p, ifEll);
+      p = read_f64(p, ifKn);
+      p = read_f64(p, ifKs);
+      p = read_f64(p, ifCi);
+      p = read_f64(p, ifTanPhi);
       if (nodeId < 0 || static_cast<std::uint32_t>(nodeId) >= numNodes ||
           !std::isfinite(stationS) || stationS < previousS - 1e-8) {
         g_last_error = "invalid mechanical wall station in WASM input";
@@ -535,6 +556,43 @@ int madepRunDeformationAnalysis(
         wallRotationDofByNode[static_cast<std::size_t>(nodeId)],
         stationS
       };
+      if (interfaceEnabled != 0u) {
+        // Engineering-grade fail-loud validation: the pair must reference a
+        // DISTINCT, in-range soil node, a positive tributary length, and
+        // positive spring stiffnesses.
+        if (soilNodeId < 0 || static_cast<std::uint32_t>(soilNodeId) >= numNodes ||
+            soilNodeId == nodeId ||
+            !(std::isfinite(ifEll) && ifEll > 0.0) ||
+            !(std::isfinite(ifKn) && ifKn > 0.0) ||
+            !(std::isfinite(ifKs) && ifKs > 0.0) ||
+            !(std::isfinite(ifCi) && ifCi >= 0.0) ||
+            !(std::isfinite(ifTanPhi) && ifTanPhi >= 0.0)) {
+          g_last_error = "invalid soil-wall interface station in WASM input";
+          return 0;
+        }
+        const double frameNorm = std::hypot(ifNx, ifNy);
+        const double tangNorm = std::hypot(ifSx, ifSy);
+        if (!(frameNorm > 0.99 && frameNorm < 1.01 && tangNorm > 0.99 && tangNorm < 1.01)) {
+          g_last_error = "soil-wall interface frame is not unit-normalized";
+          return 0;
+        }
+        madep::interface::InterfaceElementCache ic;
+        ic.soilNode = soilNodeId;
+        ic.wallNode = nodeId;
+        ic.dofs[0] = 2 * soilNodeId + 0;
+        ic.dofs[1] = 2 * soilNodeId + 1;
+        ic.dofs[2] = 2 * nodeId + 0;
+        ic.dofs[3] = 2 * nodeId + 1;
+        ic.gpIndex = -1;  // assigned after the continuum GP count is known
+        ic.sx = ifSx; ic.sy = ifSy; ic.nx = ifNx; ic.ny = ifNy;
+        ic.ell = ifEll;
+        ic.params.k_n = ifKn;
+        ic.params.k_s = ifKs;
+        ic.params.c_i = ifCi;
+        ic.params.tanPhi_i = ifTanPhi;
+        ic.params.tanPsi_i = 0.0;  // non-dilatant soil-wall contact (documented)
+        interfaceElements.push_back(ic);
+      }
     }
   }
   if (nextRotationDof != ndof) {
@@ -638,9 +696,18 @@ int madepRunDeformationAnalysis(
     }
   }
 
-  // Tag orphans.
+  // Tag orphans. Wall stations count as references: with the soil-wall
+  // interface the beam attaches to wall-side DUPLICATE nodes that no continuum
+  // element touches — they are load-bearing (beam + interface), not orphans.
   std::vector<std::uint8_t> referenced(numNodes, 0u);
   for (const auto& el : elements) for (int k = 0; k < el.numNodes; ++k) referenced[el.nodeIds[k]] = 1u;
+  for (const auto& wall : walls) {
+    for (const auto& st : wall.stations) {
+      if (st.nodeId >= 0 && static_cast<std::uint32_t>(st.nodeId) < numNodes) {
+        referenced[static_cast<std::size_t>(st.nodeId)] = 1u;
+      }
+    }
+  }
   for (std::uint32_t i = 0; i < numNodes; ++i) {
     if (!referenced[i]) { isFixed[2 * i + 0] = 1u; isFixed[2 * i + 1] = 1u; }
   }
@@ -676,6 +743,21 @@ int madepRunDeformationAnalysis(
         ++idx;
       }
     }
+    // Interface pseudo material points occupy the tail slots after the
+    // continuum Gauss points. Fail loud on any count mismatch: the wire MUST
+    // carry exactly continuum + interface entries so the committed-state
+    // lifecycle (trial/commit/rollback/display/safety copies of the whole
+    // vector) covers the interface states with no index drift.
+    if (!interfaceElements.empty()) {
+      const std::size_t elementGpTotal = static_cast<std::size_t>(idx);
+      if (numGpTotal != elementGpTotal + interfaceElements.size()) {
+        g_last_error = "WASM input GP count does not equal continuum + interface stations";
+        return 0;
+      }
+      for (std::size_t k = 0; k < interfaceElements.size(); ++k) {
+        interfaceElements[k].gpIndex = static_cast<std::int32_t>(elementGpTotal + k);
+      }
+    }
   }
 
   // Build elastic C per region; needed for the seed-time MC projection.
@@ -686,9 +768,41 @@ int madepRunDeformationAnalysis(
       initialSigma.data(), porePressureByGp.data(),
       useK0Init != 0, constitutiveEarly);
 
-  // Build CSR pattern.
+  // Interface pseudo-GP seed: project the adjacent-soil K0 stress tensor
+  // (delivered verbatim in the initialSigma tail) onto the interface frame so
+  // each pair starts CLOSED & STUCK at the in-situ traction:
+  //   t_n0 = n̂ᵀ σ₀ n̂,   t_t0 = t̂ᵀ σ₀ n̂   (tension-positive; K0 ⇒ t_n0 < 0).
+  // This overwrites whatever the soil-oriented seed initialisation did to the
+  // tail slots — these are traction states, not soil points, and must carry
+  // the UNCLIPPED projection. A (non-physical) tensile seed is clamped to the
+  // open-neutral state rather than silently carried.
+  for (const auto& ic : interfaceElements) {
+    const std::size_t gp = static_cast<std::size_t>(ic.gpIndex);
+    const double* s6 = &initialSigma[6 * gp];
+    const double sxx = s6[V_XX], syy = s6[V_YY], sxy = s6[V_XY];
+    double tn0 = ic.nx * ic.nx * sxx + ic.ny * ic.ny * syy + 2.0 * ic.nx * ic.ny * sxy;
+    double tt0 = ic.sx * ic.nx * sxx + ic.sy * ic.ny * syy + (ic.sx * ic.ny + ic.sy * ic.nx) * sxy;
+    if (tn0 >= 0.0) { tn0 = 0.0; tt0 = 0.0; }
+    MaterialPoint mp{};
+    mp.regionIndex = materialPoints[gp].regionIndex;
+    mp.effectiveStress[0] = tt0;   // committed shear traction
+    mp.effectiveStress[1] = tn0;   // committed normal traction
+    mp.effectiveStress[2] = 0.0;   // committed tangential jump (U = 0 at seed)
+    mp.effectiveStress[3] = 0.0;   // committed normal jump
+    mp.referenceStress = mp.effectiveStress;
+    mp.geostaticEffectiveStress = mp.effectiveStress;
+    materialPoints[gp] = mp;
+  }
+
+  // Build CSR pattern (interface node-pairs add their 4×4 coupling blocks).
   CsrMatrix K;
-  sparse::build_pattern(elements, &beamElements, freeIndexByDof, nfree, K);
+  std::vector<std::array<std::int32_t, 4>> interfaceDofQuads;
+  interfaceDofQuads.reserve(interfaceElements.size());
+  for (const auto& ic : interfaceElements) {
+    interfaceDofQuads.push_back({ ic.dofs[0], ic.dofs[1], ic.dofs[2], ic.dofs[3] });
+  }
+  sparse::build_pattern(elements, &beamElements, freeIndexByDof, nfree, K,
+                        interfaceDofQuads.empty() ? nullptr : &interfaceDofQuads);
 
   std::vector<double> U_global(ndof, 0.0);
   std::vector<double> U_geostatic(ndof, 0.0);
@@ -751,6 +865,7 @@ int madepRunDeformationAnalysis(
   solver::DriverInput drv;
   drv.elements = &elements;
   drv.beamElements = &beamElements;
+  drv.interfaceElements = &interfaceElements;
   drv.materialPoints = &materialPoints;
   drv.regions = &regions;
   drv.freeDofs = &freeDofs;

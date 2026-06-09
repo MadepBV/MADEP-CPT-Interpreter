@@ -7,7 +7,10 @@
 
 const INPUT_MAGIC = 0x4D434454; // 'TDCM'
 const OUTPUT_MAGIC = 0x4D444B54; // 'TDKM'
-const WIRE_VERSION = 12;
+// v13: mechanical-wall block extended for the zero-thickness soil-wall
+// interface (Phase 2) — per-wall interfaceEnabled + local frame, per-station
+// soil-side node + lumped Coulomb spring parameters (zeros when off).
+const WIRE_VERSION = 13;
 const WALL_BEAM_OUTPUT_WIRE_VERSION = 12;
 const SHARED_TANGENT_OUTPUT_WIRE_VERSION = 11;
 const LEGACY_OUTPUT_WIRE_VERSION = 6;
@@ -110,8 +113,10 @@ function activeMechanicalWallsFromMesh(mesh) {
 }
 
 function computeMechanicalWallBytes(mechanicalWalls) {
+  // v13: wall header 48 + 32 (interface frame, 4 f64) = 80 bytes; station
+  // record 16 + 40 (interface spring, 5 f64) = 56 bytes.
   return (mechanicalWalls || []).reduce((sum, wall) => (
-    sum + 48 + 16 * (wall?.nodes?.length || 0)
+    sum + 80 + 56 * (wall?.nodes?.length || 0)
   ), 0);
 }
 
@@ -405,22 +410,42 @@ export function encodeInputBuffer({
 
   // Active mechanical walls. Translational DOFs keep the legacy 2*node
   // numbering; one rotation DOF per wall node is appended after the soil
-  // displacement block.
+  // displacement block. v13: each wall carries its zero-thickness interface
+  // block — per-wall enabled flag + local frame, per-station soil-side node +
+  // lumped Coulomb spring (all zeros when the interface is off, so the buffer
+  // for a bonded wall encodes the same physics as v12).
+  const interfacePairByWallNode = new Map();
+  for (const pair of (mesh?.interfacePairs || [])) {
+    interfacePairByWallNode.set(pair.wallNodeId, pair);
+  }
   for (let i = 0; i < mechanicalWalls.length; i += 1) {
     const wall = mechanicalWalls[i];
     const section = wall.section || {};
+    const firstPair = interfacePairByWallNode.get(wall.nodes[0]?.nodeId) || null;
+    const interfaceOn = wall.nodes.every((st) => interfacePairByWallNode.has(st.nodeId));
     writeI32(Number.isInteger(wall.wallIndex) ? wall.wallIndex : i);
     writeI32(wall.passiveSide === 'left' ? -1 : 1);
     writeU32(wall.nodes.length);
-    writeU32(0);
+    writeU32(interfaceOn ? 1 : 0);
     writeF64(Math.max(Number(section.EA) || 0, 0));
     writeF64(Math.max(Number(section.EI) || 0, 0));
     writeF64(Math.max(Number(section.GA) || 0, 0));
     writeF64(Math.min(Math.max(Number(section.kappa) || 1, 1e-6), 1));
+    // Interface local frame (unit n̂ retained-ward, unit t̂ top→tip).
+    writeF64(interfaceOn ? Number(firstPair?.nx) || 0 : 0);
+    writeF64(interfaceOn ? Number(firstPair?.ny) || 0 : 0);
+    writeF64(interfaceOn ? Number(firstPair?.sx) || 0 : 0);
+    writeF64(interfaceOn ? Number(firstPair?.sy) || 0 : 0);
     for (const station of wall.nodes) {
+      const pair = interfaceOn ? interfacePairByWallNode.get(station.nodeId) : null;
       writeI32(Number(station.nodeId) | 0);
-      writeI32(0);
+      writeI32(pair ? (Number(pair.soilNodeId) | 0) : (Number(station.nodeId) | 0));
       writeF64(Number(station.s) || 0);
+      writeF64(pair ? Number(pair.ell) || 0 : 0);
+      writeF64(pair ? Number(pair.kN) || 0 : 0);
+      writeF64(pair ? Number(pair.kS) || 0 : 0);
+      writeF64(pair ? Number(pair.cI) || 0 : 0);
+      writeF64(pair ? Number(pair.tanPhiI) || 0 : 0);
     }
   }
 

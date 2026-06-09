@@ -669,7 +669,10 @@ function attachMechanicalWallsToMesh(mesh, pslg, model = null, regions = null, o
   // wall-side duplicates joined by zero-thickness Coulomb interface pairs.
   // Appending duplicates BEFORE the rotation-DOF pass keeps every rotation DOF
   // above the (final) translational block, exactly like the legacy layout.
-  const useWallInterface = options?.useWallInterface === true;
+  // Gate: explicit opt-in AND MC-plastic (the interface law pairs with the MC
+  // continuum; HS / elastic runs keep the bonded legacy wall).
+  const useWallInterface = options?.useWallInterface === true &&
+    String(options?.constitutiveModel || '').toLowerCase() === 'mc-plastic';
   mesh.interfacePairs = useWallInterface
     ? buildWallInterfacePairs(mesh, mechanicalWalls, model, regions)
     : [];

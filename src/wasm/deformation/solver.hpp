@@ -33,6 +33,7 @@
 #include "beam.hpp"
 #include "cg.hpp"
 #include "element.hpp"
+#include "interface.hpp"
 #include "material_hs.hpp"
 #include "material_mc.hpp"
 #include "material_mc_exact.hpp"
@@ -4649,6 +4650,10 @@ inline void snapshot_geostatic_baseline(std::vector<MaterialPoint>& mp) {
 struct DriverInput {
   std::vector<ElementCache>* elements{ nullptr };
   const std::vector<BeamElementCache>* beamElements{ nullptr };
+  // Zero-thickness soil-wall interface node-pairs (Phase 2). nullptr/empty →
+  // bonded legacy wall. The committed interface states live in the tail
+  // pseudo-GP slots of `materialPoints` (cache.gpIndex).
+  const std::vector<madep::interface::InterfaceElementCache>* interfaceElements{ nullptr };
   std::vector<MaterialPoint>* materialPoints{ nullptr };
   const std::vector<RegionParams>* regions{ nullptr };
   const std::vector<std::int32_t>* freeDofs{ nullptr };

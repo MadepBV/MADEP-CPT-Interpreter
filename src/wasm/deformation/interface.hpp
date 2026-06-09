@@ -48,6 +48,29 @@ struct InterfaceParams {
 
 enum class Branch : std::uint8_t { Stick = 0, Slip = 1, Gap = 2 };
 
+// One zero-thickness interface node-pair (per wall station). The element is a
+// 4-translational-DOF point link between the soil-side node and its wall-side
+// duplicate, integrated with the nodal (Newton-Cotes) tributary length `ell`
+// (Schellekens & de Borst 1993 — nodal lumping decouples the node sets, so no
+// Gauss traction oscillation along the closed interface). The committed
+// constitutive state lives in a dedicated pseudo material-point slot `gpIndex`
+// appended after the continuum Gauss points, so it rides the existing
+// trial/commit/rollback, display, and safety state lifecycle for free:
+//   effectiveStress[0] = t_t  (shear traction)
+//   effectiveStress[1] = t_n  (normal traction, tension-positive)
+//   effectiveStress[2] = u_t  (committed tangential jump)
+//   effectiveStress[3] = u_n  (committed normal jump)
+struct InterfaceElementCache {
+  std::int32_t soilNode{ -1 };
+  std::int32_t wallNode{ -1 };
+  std::int32_t dofs[4]{ -1, -1, -1, -1 };  // [soil ux, soil uy, wall ux, wall uy]
+  std::int32_t gpIndex{ -1 };              // pseudo-GP slot carrying the committed state
+  double sx{ 0.0 }, sy{ 0.0 };             // wall tangent (top → tip), unit
+  double nx{ 0.0 }, ny{ 0.0 };             // unit normal, oriented toward the RETAINED side
+  double ell{ 0.0 };                       // tributary length (nodal Newton-Cotes weight)
+  InterfaceParams params{};
+};
+
 struct InterfaceResponse {
   double t_t{ 0.0 };     // returned shear traction
   double t_n{ 0.0 };     // returned normal traction (tension-positive)

@@ -33,7 +33,11 @@ inline void build_pattern(
     const std::vector<BeamElementCache>* beamElements,
     const std::vector<std::int32_t>& freeIndexByDof,
     std::int32_t nfree,
-    CsrMatrix& A) {
+    CsrMatrix& A,
+    // Optional extra coupled-DOF quads (zero-thickness soil-wall interface
+    // node-pairs: [soil ux, soil uy, wall ux, wall uy]). Each quad inserts its
+    // full 4×4 coupling block into the pattern. nullptr/empty → unchanged.
+    const std::vector<std::array<std::int32_t, 4>>* extraDofQuads = nullptr) {
   std::vector<std::vector<std::int32_t>> colsPerRow(nfree);
   auto add_dofs = [&](const std::int32_t* dofs, int ndofs) {
     for (int i = 0; i < ndofs; ++i) {
@@ -53,6 +57,9 @@ inline void build_pattern(
   }
   if (beamElements) {
     for (const auto& el : *beamElements) add_dofs(el.dofs.data(), 6);
+  }
+  if (extraDofQuads) {
+    for (const auto& quad : *extraDofQuads) add_dofs(quad.data(), 4);
   }
   A.nrows = nfree;
   A.rowPtr.assign(static_cast<std::size_t>(nfree) + 1, 0);
