@@ -4390,6 +4390,12 @@ function stage6Defaults(){
           geostaticInitializationMethod:'auto',
           geostaticStressOnlyResidualTolerance:0.05,
           useStagedGeostaticInit:true,
+          // Staged construction (model C): for a retaining wall, hold the in-situ
+          // K0 state supported, then relax the cut-face support in a wall-active
+          // excavation phase so the wall carries the cut. ON by default — it is
+          // the physically-correct model and only engages for MC + a wall (inert
+          // otherwise). Toggle off for the legacy wall-free geostatic.
+          useStagedExcavation:true,
           allowStressOnlyGeostaticReference:false,
           stressOnlyGeostaticMaxEta:1.0,
           geostaticCorrectionStages:1,
@@ -8378,6 +8384,10 @@ function stage6BishopRunDeformation(){
         geostaticInitializationMethod:bishop.deformation?.options?.geostaticInitializationMethod,
         geostaticStressOnlyResidualTolerance:bishop.deformation?.options?.geostaticStressOnlyResidualTolerance,
         useStagedGeostaticInit:true,
+        // Staged construction (model C): default ON (physically-correct for a
+        // retaining wall; inert for non-wall / non-MC). Toggle off for the
+        // legacy wall-free geostatic.
+        useStagedExcavation:bishop.deformation?.options?.useStagedExcavation !== false,
         allowStressOnlyGeostaticReference:bishop.deformation?.options?.allowStressOnlyGeostaticReference === true,
         stressOnlyGeostaticMaxEta:bishop.deformation?.options?.stressOnlyGeostaticMaxEta,
         geostaticCorrectionStages:bishop.deformation?.options?.geostaticCorrectionStages,
@@ -15163,6 +15173,11 @@ function renderStage6BishopApp(){
                   <label style="font-size:11px;color:var(--tx2)" title="WASM CPU only. Uses the Mohr-Coulomb consistent algorithmic tangent in plastic returns; turn off to compare with the previous elastic-tangent global Newton path.">
                     <input type="checkbox" ${deformationUsesMcConsistentTangent ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useMcConsistentTangent', this.checked)">
                     MC Simo-Hughes tangent
+                  </label>` : ''}
+                  ${deformationUsesMcPlastic ? `
+                  <label style="font-size:11px;color:var(--tx2)" title="Staged construction (model C): for a retaining wall, the in-situ K0 state is held supported and the cut-face support is relaxed in a wall-active excavation phase so the wall carries the cut — the physically-correct sequence (the legacy wall-free geostatic cannot stand an unsupported cut and stalls). Only engages with a mechanical wall present; inert otherwise.">
+                    <input type="checkbox" ${bishop.deformation?.options?.useStagedExcavation !== false ? 'checked' : ''} onchange="stage6BishopSetField('deformation.options.useStagedExcavation', this.checked)">
+                    Staged construction (wall excavation)
                   </label>` : ''}
 	                  <label style="font-size:11px;color:var(--tx2)">Initial equilibrium workflow
 	                    <select onchange="stage6BishopSetField('deformation.options.geostaticInitializationMethod', this.value)">
