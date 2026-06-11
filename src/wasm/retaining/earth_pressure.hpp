@@ -309,25 +309,49 @@ inline SideThrust integrateSide(const SideInput& in) {
   out.surchN = surchF;
   out.surchZbar = (surchF > 1e-9) ? surchM / surchF : 0.5 * H;
   if (out.waterN > 1e-9) out.waterZbar /= out.waterN;
+  // Full-height tension zone (2cu >= gamma*H undrained, or the drained
+  // z0 = 2c'/(gamma*sqrt(Ka)) > H): no positive active ordinate exists, so the
+  // crossover above never fired and z0 stayed 0 — which would silently zero
+  // the crack-water action exactly when the crack is DEEPEST and let every
+  // verification pass with zero destabilising action (discontinuous collapse
+  // from ~0.5*gamma_w*H^2 to 0 as cu crosses gamma*H/2). EN 1997-1 9.6(5)P
+  // requires the water-filled crack to be considered; the classical treatment
+  // (Padfield & Mair CIRIA 104; Craig) caps the crack depth at the retained
+  // height, so the crack extends to the region bottom.
+  if (in.isActive && !sawPositive) z0 = H;
   out.crackDepth = (z0 > 0.0) ? z0 : 0.0;
 
-  // Active tension crack filled with water (§2.5) — hydrostatic over the DRY part of z0.
-  // The "crack ponds rainwater" assumption only adds water above the ambient water table;
-  // below it the phreatic thrust (waterN) already covers the same zone, so capping the
-  // crack-water column to min(z0, depth-to-water) removes the double count. For an
-  // undrained crack the pore pressure was discarded with the zeroed tension ordinate, so
-  // the full z0 column is retained there (no overlap to remove).
+  // Active tension crack filled with water (§2.5) — hydrostatic gamma_w*z in a
+  // top-filled crack. Where the crack lies BELOW the ambient water table the
+  // phreatic thrust (waterN) already books gamma_w*(z - dw), so the crack term
+  // is the EXCESS of crack hydrostatic over phreatic: the dry triangle over
+  // [0, dw] plus the constant rectangle gamma_w*dw over [dw, z0]. (Truncating
+  // at dw — the old cap — dropped that rectangle and left a hydrostatically
+  // impossible gamma_w*dw pressure jump inside a connected water column.)
+  // For an undrained crack the pore pressure was discarded with the zeroed
+  // total-stress tension ordinate, so the full z0 column is retained.
   if (in.isActive && in.assumeCrackWater && out.crackDepth > 0.01) {
     double z0d = out.crackDepth;
     const Stratum& crackStr = strata[stratumAt(strata, in.regionTopEl - 0.5 * z0d)];
-    double zc = z0d;
     if (crackStr.drained) {
       double dw = in.regionTopEl - in.waterEl;     // depth from region top down to water table
       if (dw < 0.0) dw = 0.0;
-      zc = std::min(z0d, dw);
+      if (dw >= z0d) {
+        // Water table at/below the crack tip: full hydrostatic triangle.
+        out.crackN = 0.5 * GAMMA_W * z0d * z0d;
+        out.crackZbar = (2.0 / 3.0) * z0d;
+      } else {
+        const double tri = 0.5 * GAMMA_W * dw * dw;          // dry part [0, dw]
+        const double rect = GAMMA_W * dw * (z0d - dw);       // excess over phreatic [dw, z0]
+        out.crackN = tri + rect;
+        out.crackZbar = (out.crackN > 1e-12)
+            ? (tri * (2.0 / 3.0) * dw + rect * 0.5 * (dw + z0d)) / out.crackN
+            : (2.0 / 3.0) * dw;
+      }
+    } else {
+      out.crackN = 0.5 * GAMMA_W * z0d * z0d;
+      out.crackZbar = (2.0 / 3.0) * z0d;
     }
-    out.crackN = 0.5 * GAMMA_W * zc * zc;           // triangular hydrostatic in the dry crack
-    out.crackZbar = (2.0 / 3.0) * zc;               // resultant at 2/3 of the wet-crack depth
   }
   return out;
 }

@@ -112,9 +112,22 @@ inline NetPressure netPressureAt(const EmbeddedInput& in, const std::vector<Stra
     double pa = Ka * sref - Kac * cohes;       // permanent active earth (effective for drained)
     if (pa < 0) {
       pa = 0;
-      // tension crack — optionally fills with water (dry crack, above the water table)
-      if (s.assumeCrackWater && st.drained && el > in.waterRetainedEl) {
-        np.uBack += GAMMA_W * (g.retainedSurfaceEl - el);
+      // Tension crack — optionally fills with water to the retained surface
+      // (EN 1997-1 9.6(5)P). Above the water table: full crack hydrostatic
+      // gamma_w*(surface - el). Below it (drained): the phreatic term added
+      // further down already carries gamma_w*(WT - el), so the crack adds the
+      // constant EXCESS gamma_w*(surface - WT) of a top-filled column over
+      // the phreatic line (truncating instead leaves a hydrostatically
+      // impossible pressure jump inside a connected water column). Undrained
+      // strata fold pore pressure into the (zeroed) total-stress ordinate, so
+      // the crack column must supply the FULL hydrostatic head — the old
+      // st.drained gate left undrained tension zones with no water at all.
+      if (s.assumeCrackWater) {
+        if (!st.drained || el > in.waterRetainedEl) {
+          np.uBack += GAMMA_W * (g.retainedSurfaceEl - el);
+        } else {
+          np.uBack += GAMMA_W * std::max(g.retainedSurfaceEl - in.waterRetainedEl, 0.0);
+        }
       }
     }
     np.pEarth = pa;

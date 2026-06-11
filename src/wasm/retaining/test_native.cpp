@@ -79,6 +79,63 @@ int main() {
   // z0 = 2c/(gamma*sqrt(Ka)) = 2*10/(18*sqrt(1/3)) = 1.9245 m
   check("tension crack depth z0", t.crackDepth, 2 * 10 / (18 * std::sqrt(1.0 / 3.0)), 2e-2);
 
+  std::printf("\n== FULL-HEIGHT tension zone (EN 1997-1 9.6(5)P) ==\n");
+  {
+    // Undrained stiff clay, 2cu >= gamma*H: the whole retained height is in
+    // tension. The water-filled crack must deliver 0.5*gw*H^2, not zero.
+    Stratum uc; uc.topEl = 3; uc.gammaMoist = 18; uc.gammaSat = 18; uc.phi = 0;
+    uc.c = 0; uc.cu = 60; uc.drained = false;
+    std::vector<Stratum> ucol = {uc};
+    SideInput ui; ui.strata = &ucol; ui.surfaceEl = 3; ui.regionTopEl = 3; ui.regionBotEl = 0;
+    ui.waterEl = 3; ui.surcharge = 0; ui.method = EpMethod::Rankine; ui.delta = 0; ui.theta = 0;
+    ui.beta = 0; ui.isActive = true; ui.assumeCrackWater = true; ui.nSteps = 2000;
+    SideThrust tu = integrateSide(ui);
+    check("undrained full-tension crack depth = H", tu.crackDepth, 3.0, 1e-3);
+    check("undrained full-tension crack water 1/2 gw H^2", tu.crackN, 0.5 * 9.81 * 9.0, 1e-3);
+    check("undrained full-tension soil ordinates zero", tu.soilN, 0.0, 1e-6);
+    // Continuity across the 2cu = gamma*H threshold: a 0.02 kPa cu change must
+    // not collapse the total destabilising action (old code: 44.1 -> 0).
+    ucol[0].cu = 26.99; SideThrust tlo = integrateSide(ui);
+    ucol[0].cu = 27.01; SideThrust thi = integrateSide(ui);
+    double totLo = tlo.soilN + tlo.waterN + tlo.crackN;
+    double totHi = thi.soilN + thi.waterN + thi.crackN;
+    check("total action continuous across 2cu=gamma*H", totHi, totLo, 2e-2);
+    // Drained with large c': z0_theory = 2c'/(gamma*sqrt(Ka)) = 4.96 m > H=3.
+    Stratum dc; dc.topEl = 3; dc.gammaMoist = 19; dc.gammaSat = 21; dc.phi = deg2rad(25);
+    dc.c = 30; dc.cu = 0; dc.drained = true;
+    std::vector<Stratum> dcol = {dc};
+    SideInput di = ui; di.strata = &dcol; di.waterEl = -100;
+    SideThrust td = integrateSide(di);
+    check("drained full-tension crack depth = H", td.crackDepth, 3.0, 1e-3);
+    check("drained full-tension crack water 1/2 gw H^2", td.crackN, 0.5 * 9.81 * 9.0, 1e-3);
+  }
+
+  std::printf("\n== crack water crossing the water table (excess-over-phreatic) ==\n");
+  {
+    // c'=10, phi=25, gamma=gammaSat=19, H=4, WT 1 m below the top. The crack
+    // (z0 = 2.349 m) crosses the WT: crack water = dry triangle 0.5*gw*dw^2
+    // + the constant excess rectangle gw*dw*(z0-dw) below it. The old cap at
+    // dw dropped the rectangle (13.23 of 18.13 kN/m).
+    Stratum mc; mc.topEl = 4; mc.gammaMoist = 19; mc.gammaSat = 19; mc.phi = deg2rad(25);
+    mc.c = 10; mc.cu = 0; mc.drained = true;
+    std::vector<Stratum> mcol = {mc};
+    SideInput mi; mi.strata = &mcol; mi.surfaceEl = 4; mi.regionTopEl = 4; mi.regionBotEl = 0;
+    mi.waterEl = 3; mi.surcharge = 0; mi.method = EpMethod::Rankine; mi.delta = 0; mi.theta = 0;
+    mi.beta = 0; mi.isActive = true; mi.assumeCrackWater = true; mi.nSteps = 4000;
+    SideThrust tm = integrateSide(mi);
+    const double Ka25 = (1 - std::sin(deg2rad(25))) / (1 + std::sin(deg2rad(25)));
+    const double svCrack = 2 * 10 / std::sqrt(Ka25);            // sigma'_v at crossover (kPa)
+    const double z0 = 1.0 + (svCrack - 19.0) / (19.0 - 9.81);   // 2.349 m
+    check("crack depth crossing WT", tm.crackDepth, z0, 5e-3);
+    const double dw = 1.0;
+    const double tri = 0.5 * 9.81 * dw * dw;
+    const double rect = 9.81 * dw * (z0 - dw);
+    check("crack water = triangle + excess rectangle", tm.crackN, tri + rect, 5e-3);
+    check("crack water centroid (composite)", tm.crackZbar,
+          (tri * (2.0 / 3.0) * dw + rect * 0.5 * (dw + z0)) / (tri + rect), 5e-3);
+    check("phreatic thrust unchanged 1/2 gw 3^2", tm.waterN, 0.5 * 9.81 * 9.0, 1e-2);
+  }
+
   std::printf("\n== MULTI-LAYER subdivision (2-layer active, Rankine) ==\n");
   // L1: 6..3 m, gamma=18, phi=30 (Ka1=1/3); L2: 3..0 m, gamma=20, phi=34 (Ka2).
   // sigma'_v at the 3 m interface = 18*3 = 54 kPa (continuous); Ka jumps 1/3 -> 0.2827.
@@ -157,6 +214,27 @@ int main() {
   checkTrue("anchored anchor force positive", ar.anchorForce > 0 && std::isfinite(ar.anchorForce));
   checkTrue("anchored M_max positive", ar.Mmax > 0);
   checkTrue("anchored needs less embedment than cantilever", ar.requiredD < er.requiredD);
+
+  std::printf("\n== embedded undrained crack water (full-tension clay) ==\n");
+  {
+    // Uniform stiff clay cu=60, 3 m cut: 2cu > gamma*H over the retained
+    // height, so the active ordinate is in tension everywhere. With the crack
+    // water assumption ON the wall must still see the hydrostatic crack column
+    // (old code: zero driving water for undrained strata -> requiredD collapses).
+    EmbeddedInput ci;
+    ci.geom = {3.0, 0.0, 3.0, false, 0.0};
+    ci.retained = {{3.0, 18, 18, 0, 0, 60, false}};
+    ci.front = {{0.0, 18, 18, 0, 0, 60, false}};
+    ci.waterRetainedEl = -100; ci.waterFrontEl = -100; ci.surcharge = 0;
+    ci.s = {EpMethod::Rankine, 0.0, 0.667, true, 0.0, 0.0, 2, 0, 1500};
+    EmbeddedInput cOff = ci; cOff.s.assumeCrackWater = false;
+    auto backOn  = designProfile(ci.retained, M1());
+    auto frontOn = designProfile(ci.front, M1());
+    EmbStat stOn  = integrateEmbedded(ci,   backOn, frontOn, -3.0, -3.0, 0, 1.0, 1.0);
+    EmbStat stOff = integrateEmbedded(cOff, backOn, frontOn, -3.0, -3.0, 0, 1.0, 1.0);
+    checkTrue("undrained crack ON drives the wall (Hdrive > 0)", stOn.Hdrive > 1.0);
+    checkTrue("crack ON drives harder than OFF", stOn.Hdrive > stOff.Hdrive + 1.0);
+  }
 
   std::printf("\n%s (%d failure%s)\n", failures ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED",
               failures, failures == 1 ? "" : "s");
