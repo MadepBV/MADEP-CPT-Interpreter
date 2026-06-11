@@ -4833,6 +4833,14 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       in.opts.analysisMode != AnalysisMode::ServiceOnly &&
       in.opts.constitutive == ConstitutiveKind::McPlastic;
 
+  // Set when the staged excavation phase ran and converged. The incremental
+  // service phase must then difference the BEAM force from the same
+  // end-of-excavation baseline as the soil/interface (assembly-only beam
+  // reference = U_exc); the display reference stays 0 so the wall diagrams
+  // keep the excavation moment.
+  bool stagedServiceIncremental = false;
+  std::vector<double> stagedServiceBeamRefU;
+
   if (runPlasticGeostatic) {
     ctx.phaseKind = PhaseKind::InitialGravity;
     ctx.incrementalStress = false;
@@ -4951,6 +4959,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       // wall installed) is the baseline the service increment builds on.
       if (in.U_geostatic) *in.U_geostatic = *in.U_global;
       snapshot_geostatic_baseline(*in.materialPoints);
+      stagedServiceIncremental = true;
     } else {
       // Legacy single-phase wall-free geostatic equilibration (unchanged).
       PhaseResult geostatic = run_nonlinear_phase(ctx, in.opts);
@@ -5028,6 +5037,20 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       ctx.rampedRhsFree = in.loadRhsFree;
       ctx.incrementalStress = true;
     }
+    if (stagedServiceIncremental) {
+      // Staged path: the incremental service residual subtracts the
+      // end-of-excavation referenceStress from the soil/interface internal
+      // force, so the beam must be differenced from the SAME baseline. The
+      // display reference (out.beamReferenceU) stays 0 — wall diagrams keep
+      // the excavation moment; this reference is assembly-only. Without it
+      // the λ=0 residual is −F_beam(U_exc) and the wall sheds its entire
+      // excavation-phase force into the soil during service loading
+      // (single-baseline equilibrium; Bathe FEP §6.1, Potts & Zdravković
+      // Ch. 9). Chained with the excavation equilibrium this yields the
+      // correct absolute equation at λ: gravity + λ·load = F_total_abs(U).
+      stagedServiceBeamRefU = *in.U_global;  // U at end of excavation
+      ctx.beamReferenceU = &stagedServiceBeamRefU;
+    }
     PhaseResult service = run_nonlinear_phase(ctx, in.opts);
     if (!service.converged &&
         in.opts.constitutive == ConstitutiveKind::HardeningSoil &&
@@ -5098,6 +5121,10 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       out.beamReferenceU = beamReferenceU;
       return out;
     }
+    // Restore the wished-in-place beam reference: the safety phase solves in
+    // absolute form, so the beam force must be absolute again (staged:
+    // reference 0; legacy: U_geo — both live in `beamReferenceU`).
+    ctx.beamReferenceU = &beamReferenceU;
   } else {
     // No service load: take the geostatic state as the final result.
     out.summary.serviceConverged = 1;

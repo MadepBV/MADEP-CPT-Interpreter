@@ -2173,6 +2173,24 @@ function findOrphanedNodeIds(mesh) {
       if (Number.isInteger(nodeId)) referenced.add(nodeId);
     }
   }
+  // Wall-line nodes are load-bearing even when no continuum element touches
+  // them: with the soil-wall interface the beam attaches to wall-side
+  // DUPLICATE nodes whose only stiffness comes from the beam + interface
+  // springs. Pinning them here would silently rigidify the wall (zero wall
+  // displacements and zero section forces in every interface run). Mirrors
+  // the C++ orphan tagger in deformation_wasm.cpp.
+  (mesh?.mechanicalWalls || []).forEach((wall) => {
+    (wall?.nodes || []).forEach((station) => {
+      const nodeId = Number(station?.nodeId);
+      if (Number.isInteger(nodeId)) referenced.add(nodeId);
+    });
+  });
+  (mesh?.interfacePairs || []).forEach((pair) => {
+    const wallNodeId = Number(pair?.wallNodeId);
+    const soilNodeId = Number(pair?.soilNodeId);
+    if (Number.isInteger(wallNodeId)) referenced.add(wallNodeId);
+    if (Number.isInteger(soilNodeId)) referenced.add(soilNodeId);
+  });
   const orphans = new Set();
   const totalNodes = mesh?.nodes?.length || 0;
   for (let nodeId = 0; nodeId < totalNodes; nodeId += 1) {
