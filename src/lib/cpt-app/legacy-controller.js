@@ -12937,7 +12937,26 @@ function bearingAtDepth(z, cfg, layers){
   const cK = Math.max(l.c || 0, 0);
   const cuK = Math.max(l.cu || 0, 0);
   const useEc7 = stage6UsesEc7Factors(cfg);
-  const gammaEff = z <= S.wt ? l.g : Math.max((l.gs || l.g) - stage6Constants().gammaW, 1.0);
+  // Three-case water-table rule for the N_gamma-term unit weight (Das PoFE
+  // "Effect of Water Table" Case I/II/III; Meyerhof): buoyant gamma' when the
+  // WT is at/above the base; moist gamma when it lies deeper than the failure
+  // wedge (~B' below the base); linear interpolation in between. A binary
+  // switch at the base level would credit full moist gamma to a wedge that is
+  // almost entirely submerged (unconservative for 0 < d_w < B').
+  const gammaWConst = stage6Constants().gammaW;
+  const gammaMoistL = l.g;
+  const gammaBuoyL = Math.max((l.gs || l.g) - gammaWConst, 1.0);
+  const dWater = S.wt - z;  // depth of the water table below the founding level
+  let gammaEff;
+  let wtCase;
+  if(!(dWater > 0)){
+    gammaEff = gammaBuoyL; wtCase = 'WT at/above base: buoyant γ′';
+  } else if(dWater >= geo.BEff){
+    gammaEff = gammaMoistL; wtCase = 'WT deeper than wedge (≥ B′): moist γ';
+  } else {
+    gammaEff = gammaBuoyL + (dWater / Math.max(geo.BEff, 1e-6)) * (gammaMoistL - gammaBuoyL);
+    wtCase = 'WT within wedge: interpolated γ';
+  }
   const qDrain = Math.max(stress.sigmaEff, 0);
   const qUndrain = Math.max(stress.sigmaV, 0);
   const factor = stage6FactorValue(cfg);
@@ -13037,6 +13056,7 @@ function bearingAtDepth(z, cfg, layers){
     qDrain:+qDrain.toFixed(1),
     qUndrain:+qUndrain.toFixed(1),
     gammaEff:+gammaEff.toFixed(2),
+    wtCase,
     phiK:+phiK.toFixed(1),
     phiD:+drainedCalc.phiD.toFixed(1),
     cK:+cK.toFixed(1),

@@ -478,7 +478,27 @@ inline void evalGravityGeo(const GravityInput& in, const Combination& cb, Gravit
     // FRONT level alone wrongly used moist weight for a water-retaining wall (dry front, high
     // back water), over-stating the N_gamma term ~2x. Use the higher of the two tables.
     double wtAtFound = std::max(in.waterRetainedEl, in.waterFrontEl);
-    double gammaPrime = (wtAtFound > -0.001) ? (fnd.gammaSat - GAMMA_W) : fnd.gammaMoist;
+    // Three-case rule (Das PoFE "Effect of Water Table" Case II; Meyerhof):
+    // buoyant when the WT is at/above founding, moist only when it lies
+    // deeper than the wedge depth (~B'), linear interpolation in between. A
+    // binary switch at founding level credited full moist gamma to a wedge
+    // that is almost entirely submerged (≈ +48% on the N_gamma term for a
+    // WT 0.5 m below a 2 m footing — unconservative).
+    double gammaPrime;
+    if (wtAtFound > -0.001) {
+      gammaPrime = fnd.gammaSat - GAMMA_W;
+    } else {
+      const double dW = -wtAtFound;            // WT depth below founding level
+      const double gBuoy = fnd.gammaSat - GAMMA_W;
+      if (dW >= Bp) {
+        gammaPrime = fnd.gammaMoist;
+      } else {
+        gammaPrime = gBuoy + (dW / std::max(Bp, 1e-6)) * (fnd.gammaMoist - gBuoy);
+        const double lo = std::min(gBuoy, fnd.gammaMoist);
+        const double hi = std::max(gBuoy, fnd.gammaMoist);
+        gammaPrime = std::clamp(gammaPrime, lo, hi);
+      }
+    }
     // overburden at founding level on the resistance side, integrated over the LAYERED front
     // soil with EFFECTIVE (buoyant) unit weight below the water table (§3 Check 2). The
     // unplanned over-dig Δa removes the top band, consistent with the passive cut.
