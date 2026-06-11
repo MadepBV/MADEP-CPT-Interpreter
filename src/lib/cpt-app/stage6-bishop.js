@@ -1113,12 +1113,21 @@ function buildDiagnostics(slices, F, iterations, wallIntersections = []) {
     const phi = (slice.baseMaterial.phiEffDeg * Math.PI) / 180;
     const tanPhi = Math.tan(phi);
     const V = sliceVerticalLoad(slice);
-    const mAlpha = Math.cos(slice.alphaRad) + (Math.sin(slice.alphaRad) * tanPhi) / F;
+    const cosA = Math.cos(slice.alphaRad);
+    // Base-length form of the Bishop back-calculated N and T (Fredlund &
+    // Krahn 1977; Duncan & Wright): the cohesion and pore terms act on the
+    // TRUE base length l = b/cos(alpha), not the horizontal width b. (The FS
+    // solver itself uses the equivalent width form and is unaffected; using b
+    // here understated the c'/u terms by cos(alpha) — N up to ~10% high and
+    // T ~10% low at steep base angles — and broke the converged identity
+    // sum(T) = sum(V sin(alpha)).)
+    const l = Number(slice.baseLength) || slice.dx / Math.max(cosA, 1e-6);
+    const mAlpha = cosA + (Math.sin(slice.alphaRad) * tanPhi) / F;
     const N =
       (V -
-        ((c * slice.dx - slice.uBase * slice.dx * tanPhi) * Math.sin(slice.alphaRad)) / F) /
+        ((c * l - slice.uBase * l * tanPhi) * Math.sin(slice.alphaRad)) / F) /
       mAlpha;
-    const T = (c * slice.dx + (N - slice.uBase * slice.dx) * tanPhi) / F;
+    const T = (c * l + (N - slice.uBase * l) * tanPhi) / F;
     sliceNormals.push(N);
     sliceMobilizedShears.push(T);
     sliceMAlpha.push(mAlpha);

@@ -471,7 +471,7 @@ export function installRetainingApp(ctx) {
       ${inputRow('Horizontal spacing', 'embedded.anchorSpacing', e.anchorSpacing, { unit: 'm', step: 0.25 })}
       ${inputRow('Grout/soil bond τ', 'embedded.anchorTfk', e.anchorTfk, { unit: 'kPa', step: 10 })}
       ${inputRow('Anchor resistance γ_a', 'embedded.anchorGammaA', e.anchorGammaA, { step: 0.05 })}
-      <div class="st6-help" style="margin-top:5px">Pull-out R<sub>a,k</sub> = π·Ø·L<sub>fixed</sub>·τ (EN 1537, a preliminary bond estimate to be proven by acceptance testing). T<sub>d</sub> per anchor = T·s/cos(angle) ≤ R<sub>a,d</sub> = R<sub>a,k</sub>/γ<sub>a</sub>. Default γ<sub>a</sub> ≈ 1.1 (Buildwise); the EN 1997 R4 factor is ~1.5–1.6 — raise it for a conservative design. The inclined anchor also adds V = T·tan(angle) downward to the wall. Drag the anchor tip in the view to set the inclination.</div>`;
+      <div class="st6-help" style="margin-top:5px">Pull-out R<sub>a,k</sub> = π·Ø·L<sub>fixed</sub>·τ (EN 1537, a preliminary bond estimate to be proven by acceptance testing). T<sub>d</sub> per anchor = T·s/cos(angle) ≤ R<sub>a,d</sub> = R<sub>a,k</sub>/γ<sub>a</sub>. γ<sub>a</sub> = 1.1 is the EN 1997-1 Table A.12 anchorage factor (temporary and permanent); the ~1.5–1.6 range is the pile R4 set and does not apply to anchors. The real caveat is the untested calculated bond — apply a model factor or reduce τ until EN 1537 acceptance testing confirms it. The inclined anchor also adds V = T·tan(angle) downward to the wall. Drag the anchor tip in the view to set the inclination.</div>`;
   }
 
   function soilInputs(label, key, m) {
@@ -516,12 +516,14 @@ export function installRetainingApp(ctx) {
             <option value="both"${wm === 'both' ? ' selected' : ''}>Both sides</option>
           </select></label>
         ${wm !== 'none' ? inputRow('Water depth (retained)', 'water.retainedDepth', rw.water.retainedDepth, { unit: 'm' }) : ''}
+        ${wm === 'retained' ? `<div class="st6-help">"Behind wall only" treats the front soil as moist with zero pore pressure — valid only for a cut-off or fully dewatered pit. With a real front water table use "Both sides". Pore pressures are hydrostatic per face (no seepage credit/debit; EN 1997-1 9.3.1.6 — see the engine note in the results).</div>` : ''}
         ${wm === 'both' ? inputRow('Water depth (front)', 'water.frontDepth', rw.water.frontDepth, { unit: 'm' }) : ''}
         ${inputRow('Surcharge q', 'surcharge', rw.surcharge, { unit: 'kPa', step: 1 })}`)}
       ${det('ec7', 'Eurocode 7 settings', `
         <div class="st6-help">The earth-pressure method is selected automatically from the geometry — Rankine on the vertical virtual plane (cantilever / sheet pile) or Coulomb on the real inclined back face (mass-gravity), and the EN 1997-1 Annex C closed form for all passive resistance. There is no less-rigorous option to pick.</div>
         ${inputRow('δ/φ′ active (Coulomb back face)', 'settings.deltaActiveRatio', s.deltaActiveRatio, { step: 0.05 })}
         ${inputRow('δ_b/φ′ base sliding', 'settings.deltaBaseRatio', s.deltaBaseRatio, { step: 0.05 })}
+        <div class="st6-help">The ratio applies to the foundation stratum's design φ′ (peak). EN 1997-1 6.5.3(10) recommends the critical-state angle: δ_b = φ′_cv (cast-in-situ) or ⅔·φ′_cv (precast) — for dense/dilatant soils enter a reduced ratio ≈ tanφ′_cv/tanφ′ (peak 38° vs cv 32° otherwise overstates sliding resistance ~25%).</div>
         ${inputRow('δ_p/φ′ passive face', 'settings.passiveDeltaRatio', num(s.passiveDeltaRatio, 0.667), { step: 0.05 })}
         ${family(rw) === 'gravity' ? `<label class="st6-rw-check"><input type="checkbox" ${s.passiveToe !== false ? 'checked' : ''} onchange="retwallSet('settings.passiveToe', this.checked)"> Include passive resistance at the toe</label>
         ${s.passiveToe !== false ? `<div class="st6-help">Passive toe resistance uses the EN 1997-1 Annex C coefficient at M-factored strength with R1 = 1.0 — no lumped mobilisation factor. The unplanned over-dig Δa = min(0.10·H, 0.5 m) removes the top band automatically. Full passive needs large wall movement; verify it separately under SLS, or disable it here for a conservative design.</div>` : ''}` : ''}
@@ -532,7 +534,7 @@ export function installRetainingApp(ctx) {
           </select></label>
         ${s.bearingMethod !== 'debeer'
           ? `<label class="st6-rw-check"><input type="checkbox" ${s.bearingDepthFactors !== false ? 'checked' : ''} onchange="retwallSet('settings.bearingDepthFactors', this.checked)"> Bearing depth factors (Brinch-Hansen)</label>
-        <div class="st6-help">Depth factors d_q, d_c credit the soil shear above the buried toe (EN Annex D omits them; off = the conservative Annex-D default). The applied values appear in the bearing-check details. Bearing is governed by the inclined, eccentric toe load on a shallow footing.</div>`
+        <div class="st6-help">Depth factors d_q, d_c credit the soil shear above the buried toe — a Brinch-Hansen/Vesić refinement applied BY DEFAULT (EN Annex D itself omits them; untick for the strict, more conservative Annex-D form). The applied values appear in the bearing-check details. Bearing is governed by the inclined, eccentric toe load on a shallow footing.</div>`
           : `<div class="st6-help">De Beer / EN 1997-2 direct method: the net bearing is derived from the CPT cone resistance q_c near founding (needs a CPT profile; falls back to Annex D if no q_c is available).</div>`}` : ''}
         <label class="st6-rw-field"><span>Consequence class</span>
           <select onchange="retwallSet('settings.consequenceClass', this.value)">

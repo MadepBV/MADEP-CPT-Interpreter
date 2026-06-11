@@ -267,15 +267,15 @@
 	];
 
 	const bearingQuantities = [
-		{ symbol: 'q_ult,d', meaning: 'Ultimate drained bearing resistance.', unit: 'kPa', note: 'Brinch Hansen / EC7 Annex D summed over the c\'·N_c, q\'·N_q, and 0.5·γ\'·B\'·N_γ terms with shape, depth, and inclination factors.' },
-		{ symbol: 'q_ult,u', meaning: 'Ultimate undrained bearing resistance.', unit: 'kPa', note: 'Prandtl 1921 result q_ult = q + (π+2) c_u with shape / depth / inclination factors.' },
+		{ symbol: 'q_ult,d', meaning: 'Ultimate drained bearing resistance.', unit: 'kPa', note: 'Brinch Hansen / EC7 Annex D summed over the c\'·N_c, q\'·N_q, and 0.5·γ\'·B\'·N_γ terms with shape and depth factors (no inclination factors — vertical load assumed).' },
+		{ symbol: 'q_ult,u', meaning: 'Ultimate undrained bearing resistance.', unit: 'kPa', note: 'Prandtl 1921 result q_ult = q + (π+2) c_u with shape / depth factors (no inclination factors — vertical load assumed).' },
 		{ symbol: 'B\', L\'', meaning: 'Effective footing dimensions after eccentricity reduction.', unit: 'm', note: 'B\' = B − 2 e_B, L\' = L − 2 e_L (Meyerhof 1953).' },
 		{ symbol: 'N_c, N_q, N_gamma', meaning: 'Bearing-capacity factors.', unit: '[-]', note: 'EC7 Annex D rough base; N_gamma = 2(N_q − 1) tan φ\'.' },
 		{ symbol: 's_c, s_q, s_gamma, s_cu', meaning: 'Shape factors evaluated on the effective dimensions.', unit: '[-]', note: 'Brinch Hansen, with conservative-mode toggle that fixes them at 1.0.' },
 		{ symbol: 'd_c, d_q, d_gamma, d_cu', meaning: 'Depth factors.', unit: '[-]', note: 'Function of D_f / B\' and the bearing-capacity factors.' },
-		{ symbol: 'i_c, i_q, i_gamma, i_cu', meaning: 'Inclination factors for horizontal load on the base.', unit: '[-]', note: 'Brinch Hansen form with directional exponent m.' },
+		{ symbol: 'i_c, i_q, i_gamma, i_cu', meaning: 'Inclination factors for horizontal load on the base.', unit: '[-]', note: 'Reference background only — not computed by the bearing route (no horizontal-load input; vertical load assumed).' },
 		{ symbol: 'gamma\'_B', meaning: 'Effective unit weight in the N_gamma term.', unit: 'kN/m^3', note: 'Three-case water-table averaging across the failure wedge depth.' },
-		{ symbol: 'gamma_Rd', meaning: 'Belgian ANB resistance-side factor.', unit: '[-]', note: '1.40 for drained shallow-foundation bearing; applied to q_ult to obtain q_d.' }
+		{ symbol: 'gamma_Rd', meaning: 'Optional analytical-model factor.', unit: '[-]', note: 'Default 1.00. Belgian DA1 uses resistance set R1 (γ_R;v = 1.00, EN 1997-1 Table A.5); the 1.40 value belongs to the R2 set of DA2, which Belgium does not apply.' }
 	];
 
 	const pileQuantities = [

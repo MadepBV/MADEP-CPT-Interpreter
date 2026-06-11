@@ -293,8 +293,10 @@
 					</div>
 					<p>
 						The current public route applies this as a vertical traction on the terrain interval.
-						It does not yet introduce a rigid structural slab, contact law, interface element, or
-						a structural plate stiffness in the deformation solve itself.
+						The loaded slab itself is not modelled as a structural plate with a contact law —
+						the traction is the only representation of the loaded structure. (Retaining walls
+						are different: with staged construction active, a mechanical wall IS a structural
+						Timoshenko element with a Coulomb soil–wall interface — see §10.5.)
 					</p>
 				</section>
 
@@ -1803,17 +1805,28 @@
 				</section>
 
 				<section class="doc-subsection">
-					<h3>10.5 Three-phase staging: gravity → service → c-phi safety</h3>
+					<h3>10.5 Phase staging: gravity → (excavation) → service → c-phi safety</h3>
 					<p>
-						The shipped solver runs as a three-phase staged analysis. Each phase reuses the
-						previous phase's committed material-point state and plastic history; only the
-						driving load and the convergence target change.
+						The shipped solver runs as a staged analysis. Each phase reuses the previous
+						phase's committed material-point state and plastic history; only the driving load
+						and the convergence target change. Wall-free models run three phases; for a
+						Mohr-Coulomb model with an active mechanical wall, <strong>staged construction
+						(default ON)</strong> inserts a fourth <em>excavation</em> phase.
 					</p>
 					<ul class="notes">
-						<li><strong>initial-gravity</strong> — geostatic predictor and plastic self-weight equilibration (§6).</li>
-						<li><strong>service-load</strong> — drained service-load increment over the equilibrated initial state (§6.5, §6.7).</li>
-						<li><strong>safety-cphi</strong> — c-phi (φ′ / c′) strength reduction safety analysis. Strength is reduced by a per-phase factor; the solver follows the load-factor branch until equilibrium is no longer attainable. Reports a safety load factor with the meaning <em>safety-strength-reduction</em>, plus the safety-phase plastic increment and settlement.</li>
+						<li><strong>initial-gravity</strong> — geostatic predictor and plastic self-weight equilibration (§6). With staged construction the committed K0 predictor state IS the supported in-situ state — no wall-free gravity solve runs on the cut geometry (§6.3's wall-free stall mode is superseded by the excavation phase below).</li>
+						<li><strong>excavation</strong> (staged wall models only) — excavation by stress relaxation (model C; Potts &amp; Zdravković Ch. 3): the consistent cut-face support reaction is relaxed to zero with the wall structurally ACTIVE and wished-in-place at zero load, so the wall progressively takes over the cut. The soil–wall interface (gap + slip) participates here and in all later phases. A stall in this phase is reported honestly as a partial near-failure state at the achieved excavation fraction.</li>
+						<li><strong>service-load</strong> — drained service-load increment over the end-of-excavation (or geostatic) state. In staged mode the wall force is differenced from the same end-of-excavation baseline as the soil, so the wall retains its excavation-phase forces (single-baseline equilibrium); the displayed wall diagrams include the excavation moment.</li>
+						<li><strong>safety-cphi</strong> — c-phi (φ′ / c′) strength reduction safety analysis. Strength is reduced by a per-phase factor; the solver follows the load-factor branch until equilibrium is no longer attainable. Reports a safety load factor with the meaning <em>safety-strength-reduction</em>, plus the safety-phase plastic increment and settlement. With the interface present, safety runs revert to the bonded wall (interface strength is not yet ΣMsf-reduced).</li>
 					</ul>
+					<div class="doc-callout">
+						<strong>Known-open (flexible-wall convergence).</strong> With the wall genuinely
+						flexible, the staged + interface path can stall on a numerical plateau before the
+						full load is reached on near-cohesionless deep-cut sections; the app then reports a
+						partial near-failure state at the achieved fraction rather than a false converged
+						result. Resolving this plateau is an active solver workstream; the limit-equilibrium
+						routes (Bishop / retaining) are unaffected.
+					</div>
 					<div class="doc-callout">
 						<strong>Engineering reading.</strong> The c-phi safety driver is an integrated
 						strength-reduction FEM analysis on the same Stage 2 elastoplastic constitutive
@@ -1925,12 +1938,14 @@
 						line-search, and predictor projection through the advertised flags.
 					</p>
 					<p>
-						Three plugins ship at present:
+						Four constitutive routes ship at present (three as JS plugins, plus Hardening Soil
+						dispatched directly in the WASM kernel outside the plugin contract — see §9A):
 					</p>
 					<ul class="notes">
 						<li><code>linear-elastic</code> — the baseline regression and comparison route.</li>
 						<li><code>mc-reduced-stiffness</code> — Stage 1 pseudo-plastic reduced-shear path.</li>
 						<li><code>mc-plastic</code> — Stage 2 exact Mohr-Coulomb elastoplasticity with tension cut-off.</li>
+						<li><code>hardening-soil</code> — WASM-dispatched HS route (§9A.1 runtime contract), not a JS plugin.</li>
 					</ul>
 				</section>
 
@@ -2151,7 +2166,7 @@
 						<li>T3 / T6 triangle formulations on the shared mesh; T6 with B-bar handles the near-incompressible case.</li>
 						<li>Drained effective-stress loading step only; no coupled excess pore-pressure generation.</li>
 						<li>No constitutive softening, fracture energy regularization, or strain localization control.</li>
-						<li>No contact, interface, or structural-element coupling in the deformation solve.</li>
+						<li>Structural coupling exists for retaining walls only: a 2-node Timoshenko wall element with a single-sided zero-thickness Coulomb soil–wall interface (gap above / bidirectional below the excavation level; PLAXIS R_inter convention, default 0.667, per-wall override; ψ_i = 0). Below the excavation level the two soil sides share nodes, so soil-on-soil slip ACROSS the wall plane is not modelled. Safety (c-φ) runs revert to the bonded wall because interface strength does not yet join the ΣMsf reduction. No other contact or structural elements participate in the solve.</li>
 						<li>GPU v1 covers the linear-elastic route. GPU v2 covers the full elastoplastic pipeline including geostatic, service-load and c-phi safety phases with per-GP exact Mohr-Coulomb return mapping.</li>
 					</ul>
 				</section>

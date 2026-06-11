@@ -116,12 +116,14 @@
 					failure mechanism. Prandtl–Reissner cannot express it in closed form because adding
 					self-weight destroys the kinematic separability that makes the spiral solution tractable.
 					Several empirical closed forms are in circulation (Meyerhof, Vesić, Brinch Hansen); the
-					app uses the Meyerhof-style expression below and flags the choice in the output.
+					app implements the EN 1997-1:2004 Annex D (eq. D.2) rough-base form, valid for a base
+					roughness δ ≥ φ′/2, and labels it “EC7 Annex D rough base” in the output. The Meyerhof
+					and Vesić expressions are shown only as literature context — they are not computed.
 				</p>
 				<div class="equations">
-					<div class="formula">N<sub>γ</sub>,Meyerhof = (N<sub>q</sub> − 1) tan(1.4 φ′)</div>
-					<div class="formula">N<sub>γ</sub>,Vesić   = 2(N<sub>q</sub> + 1) tan φ′         (alternative, reported as comparator)</div>
-					<div class="formula">N<sub>γ</sub>,EC7-Annex-D (rough base) = 2(N<sub>q</sub> − 1) tan φ′</div>
+					<div class="formula">N<sub>γ</sub>,EC7-Annex-D (rough base) = 2(N<sub>q</sub> − 1) tan φ′   (implemented)</div>
+					<div class="formula">N<sub>γ</sub>,Meyerhof = (N<sub>q</sub> − 1) tan(1.4 φ′)   (literature context)</div>
+					<div class="formula">N<sub>γ</sub>,Vesić   = 2(N<sub>q</sub> + 1) tan φ′         (literature context)</div>
 				</div>
 				<ul class="notes">
 					<li>For φ′ → 0, N<sub>q</sub> → 1 and N<sub>γ</sub> → 0; N<sub>c</sub> takes the limit by L'Hôpital and approaches the undrained Prandtl value 5.14.</li>
@@ -135,9 +137,10 @@
 				<p>
 					For saturated clays loaded faster than pore-pressure dissipation, the strength is taken
 					as an undrained shear strength c<sub>u</sub>. The same slip-line mechanism with φ′ = 0
-					collapses to Prandtl's original 1921 result: a kinematically admissible punching
-					mechanism with spiral angle 2π and radius 2 r<sub>0</sub>, yielding the classical
-					N<sub>c,u</sub> = π + 2 ≈ 5.14.
+					collapses to Prandtl's original 1921 result: two 45° rigid wedges joined by a 90°
+					(π/2) circular fan of constant radius r<sub>0</sub> (the spiral
+					r(θ) = r<sub>0</sub> exp(θ tan φ′) degenerates to a circular arc at φ′ = 0), yielding
+					the classical N<sub>c,u</sub> = π + 2 ≈ 5.14.
 				</p>
 				<div class="equations">
 					<div class="formula">q<sub>ult,u</sub> = q + (π + 2) c<sub>u</sub> s<sub>cu</sub> d<sub>cu</sub> i<sub>cu</sub></div>
@@ -205,7 +208,7 @@
 					<div class="formula">r = B′/L′    with B′ ≤ L′</div>
 				</div>
 				<ul class="notes">
-					<li>The app requires |e<sub>B</sub>| &lt; B/6 and |e<sub>L</sub>| &lt; L/6 to avoid tensile reactions under the footing corner; larger eccentricity is flagged.</li>
+					<li>Input eccentricities are clamped at B/2 − 0.025 m (the load must stay inside the footing); the middle-third condition |e| &lt; B/6 (no tensile corner reactions) is <em>not</em> enforced by the app and must be checked by the engineer. When |e| exceeds B/3 the result panel shows the EN 1997-1 §6.5.4 special-precautions warning.</li>
 					<li>Shape, depth, and inclination factors are evaluated with B′ and L′, not with the nominal plan.</li>
 				</ul>
 			</section>
@@ -220,7 +223,7 @@
 					<div class="formula">s<sub>cu</sub> = 1 + 0.2 r</div>
 					<div class="formula">η = D<sub>f</sub> / B′,    k = η   for η ≤ 1,    k = atan(η)   for η &gt; 1</div>
 					<div class="formula">d<sub>q</sub> = 1 + 2 tan φ′ (1 − sin φ′)² k</div>
-					<div class="formula">d<sub>c</sub> = d<sub>q</sub> − (1 − d<sub>q</sub>)/(N<sub>q</sub> tan φ′)    for φ′ &gt; 0</div>
+					<div class="formula">d<sub>c</sub> = d<sub>q</sub> − (1 − d<sub>q</sub>)/(N<sub>c</sub> tan φ′)    for φ′ &gt; 0</div>
 					<div class="formula">d<sub>γ</sub> = 1.0</div>
 					<div class="formula">d<sub>cu</sub> = 1 + 0.4 k</div>
 				</div>
@@ -255,8 +258,12 @@
 				<p>
 					Horizontal load on the footing base reduces the bearing capacity of each term. The
 					Brinch Hansen form expresses the reduction in closed-form in terms of the horizontal /
-					vertical load ratio and a geometric exponent. The app uses it only when the engineer
-					enters a non-zero horizontal action on the footing.
+					vertical load ratio and a geometric exponent. <strong>Not implemented in the current
+					route:</strong> the bearing screening has no horizontal-load input and computes no
+					inclination factors (i<sub>q</sub> = i<sub>c</sub> = i<sub>γ</sub> = 1, vertical load
+					assumed). The theory below is reference background for footings that do carry a
+					horizontal action — those must be verified outside this tool, together with the
+					base-sliding check.
 				</p>
 				<div class="equations">
 					<div class="formula">i<sub>q</sub> = (1 − H/(V + A′ c′ cot φ′))<sup>m</sup></div>
@@ -295,15 +302,17 @@
 				<h2>8. Three-case water-table averaging for the N<sub>γ</sub> term</h2>
 				<p>
 					The N<sub>γ</sub> term contains the soil unit weight inside the failure wedge, which
-					extends about one B below the footing. When the water table intersects that wedge, the
-					appropriate "effective" γ is a spatial average of dry and submerged unit weights over the
-					wedge depth. The app resolves this with three canonical cases depending on where the
-					water table sits relative to the footing and the wedge bottom.
+					extends about one effective width B′ below the footing. When the water table intersects
+					that wedge, the appropriate "effective" γ is a spatial average of dry and submerged
+					unit weights over the wedge depth (Das, <em>Principles of Foundation Engineering</em>,
+					"Effect of Water Table"; Meyerhof). The app resolves this with three canonical cases
+					depending on where the water table sits relative to the footing and the wedge bottom,
+					and reports the active case alongside γ′<sub>B</sub> in the output.
 				</p>
 				<div class="equations">
 					<div class="formula">z<sub>w</sub>  ≤ D<sub>f</sub>          (WT above footing):         γ′<sub>B</sub> = γ<sub>sat</sub> − γ<sub>w</sub></div>
-					<div class="formula">D<sub>f</sub>  &lt; z<sub>w</sub> ≤ D<sub>f</sub> + B  (WT within wedge):   γ′<sub>B</sub> = γ (z<sub>w</sub> − D<sub>f</sub>)/B + (γ<sub>sat</sub> − γ<sub>w</sub>)(D<sub>f</sub> + B − z<sub>w</sub>)/B</div>
-					<div class="formula">z<sub>w</sub> &gt; D<sub>f</sub> + B    (WT deep):                    γ′<sub>B</sub> = γ</div>
+					<div class="formula">D<sub>f</sub>  &lt; z<sub>w</sub> ≤ D<sub>f</sub> + B′  (WT within wedge):   γ′<sub>B</sub> = γ (z<sub>w</sub> − D<sub>f</sub>)/B′ + (γ<sub>sat</sub> − γ<sub>w</sub>)(D<sub>f</sub> + B′ − z<sub>w</sub>)/B′</div>
+					<div class="formula">z<sub>w</sub> &gt; D<sub>f</sub> + B′    (WT deep):                    γ′<sub>B</sub> = γ</div>
 				</div>
 				<div class="symbols">
 					<div class="symbols__title">Notation</div>
@@ -324,7 +333,7 @@
 				</div>
 				<ul class="notes">
 					<li>The surcharge q′ in the N<sub>q</sub> term uses the effective vertical stress at the foundation base, consistent with the standard EC7 convention.</li>
-					<li>Transient drawdown during excavation (if modelled in the dewatering route) raises the effective surcharge and can increase q<sub>ult,d</sub>. The app exposes a coupled run for that sensitivity.</li>
+					<li>Transient drawdown during excavation raises the effective surcharge and can increase q<sub>ult,d</sub>. There is no coupled dewatering–bearing run in the app: when drawdown matters, re-run the bearing screening with the lowered water table set manually.</li>
 				</ul>
 			</section>
 
@@ -344,9 +353,9 @@
 					<div class="formula">q<sub>d</sub> = q<sub>ult</sub>(φ′<sub>d</sub>, c′<sub>d</sub>, c<sub>u,d</sub>) / γ<sub>Rd</sub></div>
 				</div>
 				<ul class="notes">
-					<li>The Belgian ANB γ<sub>Rd</sub> uses 1.40 for drained bearing on shallow footings; see NBN EN 1997-1 ANB Table A.NB.5.</li>
-					<li>DA1/1 and DA1/2 envelopes are reported separately; the governing one is the minimum.</li>
-					<li>Action-side partial factors (γ<sub>G</sub>, γ<sub>Q</sub>) are not applied here — they belong in the structural load combination producing q<sub>gross</sub>.</li>
+					<li>Under Belgian DA1 (NBN EN 1997-1 ANB) spread-foundation bearing uses resistance set R1, i.e. γ<sub>R;v</sub> = 1.00 in both combinations (EN 1997-1 Table A.5). The 1.40 value sometimes quoted belongs to the R2 set used in DA2, which Belgium does not apply. γ<sub>Rd</sub> in this tool is an optional <em>model</em> factor for analytical-model bias — default 1.0, and normally left there.</li>
+					<li>DA1/1 and DA1/2 resistance envelopes are reported separately; the displayed "governing" value is the minimum design <em>resistance</em> — a conservative envelope, not a per-combination utilisation comparison.</li>
+					<li>Action-side partial factors (γ<sub>G</sub>, γ<sub>Q</sub>) are not applied here — the entered bearing stress must already be the factored design value E<sub>d</sub> from the governing load combination (normally 1.35 G<sub>k</sub> + 1.5 Q<sub>k</sub> for DA1/1, 1.0 G<sub>k</sub> + 1.3 Q<sub>k</sub> for DA1/2).</li>
 				</ul>
 			</section>
 
@@ -372,11 +381,11 @@
 				<h2>11. Deliverables and boundaries of validity</h2>
 				<ul class="notes">
 					<li>Depth-wise drained and undrained resistance envelopes; DA1/1 and DA1/2 design envelopes.</li>
-					<li>Effective-dimension summary, shape / depth / inclination factor breakdown.</li>
+					<li>Effective-dimension summary, shape / depth factor breakdown (inclination factors are not computed — vertical load assumed, see §7).</li>
 					<li>N<sub>γ</sub> term's water-table case (above footing / in wedge / below wedge).</li>
-					<li>Ground slope, base tilt, dynamic or seismic inclination, uplift, and sliding are not in the current route.</li>
+					<li>Ground slope, base tilt, horizontal load and inclination, dynamic or seismic action, uplift, and sliding are not in the current route.</li>
 					<li>Piled or combined-pile-raft foundations are outside the shallow-foundation screen.</li>
-					<li>For two-layer soils where a stiff stratum is within 2B of the footing base, the slip-line solution can over-estimate capacity; the app flags the configuration for the engineer to reconsider.</li>
+					<li>Layered configurations are <em>not</em> detected: the slip-line form sees only the layer active at the founding depth. For two-layer soils (e.g. a stiff stratum or a weak seam within ~2B of the base) the engineer must check the layered mechanism separately — the app does not flag it.</li>
 					<li>The deeper audit trail remains in <a href="/docs/full">the full technical specification</a>.</li>
 				</ul>
 			</section>

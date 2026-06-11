@@ -3,7 +3,8 @@
 //
 // Wire-format encoder/decoder shared between the JS bridge and the C++
 // WASM module. Both sides MUST agree on this layout exactly; the C++
-// reader lives in deformation_wasm.cpp. Wire version 12.
+// reader lives in deformation_wasm.cpp. Wire version 13 (v12 + staged-excavation
+// header byte 2, wall frame block (+32 B), 64-byte interface station records).
 
 const INPUT_MAGIC = 0x4D434454; // 'TDCM'
 const OUTPUT_MAGIC = 0x4D444B54; // 'TDKM'

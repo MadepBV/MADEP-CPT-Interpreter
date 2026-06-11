@@ -1018,7 +1018,7 @@
 							'For circular footings screened through this rectangular interface, use B = L and keep e<sub>B</sub> = e<sub>L</sub> = 0 so r = 1.',
 							'For φ′ = 0, the drained block collapses to the undrained Prandtl expression q<sub>ult,u</sub> = q + 5.14c<sub>u</sub>s<sub>cu</sub>d<sub>cu</sub>; the drained expression is therefore not evaluated in that limit.',
 							'The bearing-depth envelope is sampled from the selected starting depth upward to the model bottom using a depth increment clamped between 0.10 m and 0.25 m.',
-							'This remains a shallow-foundation screening model: full inclined/eccentric-load verification, sliding, ground-slope effects, base tilt, and the full three-case groundwater averaging rule for the N<sub>γ</sub> term are still outside the current app.'
+							'This remains a shallow-foundation screening model: full inclined/eccentric-load verification, sliding, ground-slope effects and base tilt are still outside the current app. The three-case groundwater averaging rule for the N<sub>γ</sub> term (Das/Meyerhof) IS implemented: buoyant γ′ for a water table at/above the base, moist γ below the wedge depth (~B′), linear interpolation in between.'
 					]
 				},
 				{

@@ -157,7 +157,7 @@ static char* runGravity(const JsonValue& req, bool isGravity) {
   s.passiveDeltaRatio = 0.667;   // delta_p = 2/3·φ'_d on the passive face (EN 1993-5)
   s.assumeCrackWater = true;
   s.bearingMethod = 0;           // 0 = EN 1997-1 Annex D (c-phi); 1 = De Beer CPT-direct
-  s.bearingDepthFactors = true;  // include Brinch-Hansen/Vesic depth factors (opt-in refinement)
+  s.bearingDepthFactors = true;  // Brinch-Hansen/Vesic depth factors: default-ON, user-disablable
   s.consequenceClass = 2;
   s.riskScheme = 0;
   s.nSteps = 1200;
@@ -224,7 +224,8 @@ static char* runEmbedded(const JsonValue& req, bool anchored) {
   g.anchorSpacing = gj->getNum("anchorSpacing", 2.0);
   g.anchorTfk = gj->getNum("anchorTfk", 150.0);
   g.anchorGammaA = gj->getNum("anchorGammaA", 1.1);
-  // (anchorGammaA configurable; default Buildwise ~1.1 — see the check note re EN R4 1.5-1.6)
+  // (anchorGammaA configurable; default 1.1 = EN 1997-1 Table A.12 anchorage factor,
+  //  temporary and permanent. The pile R4 set ~1.5-1.6 does NOT apply to anchors.)
 
   in.retained = parseStrata(req.getArr("retained"));
   if (in.retained.empty()) in.retained = parseStrata(req.getArr("insitu"));

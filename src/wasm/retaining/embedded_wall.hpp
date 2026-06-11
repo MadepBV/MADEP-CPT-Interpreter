@@ -507,6 +507,16 @@ inline EmbeddedResult analyzeEmbedded(const EmbeddedInput& inRaw) {
   R.notes.push_back("DA1: strength factored at source; C2 normally governs embedment, C1 the structural forces.");
   R.notes.push_back(std::string("Embedment governed by ") + (c2Gov ? "C2" : "C1") + "; design forces enveloped over both combinations.");
   R.notes.push_back("Passive resistance is de-rated by the M2 strength factor; a separate SLS movement check is required.");
+  // EN 1997-1 9.3.1.6(1)P names seepage as changing both earth pressures; the
+  // engine's pore pressures are hydrostatic per face with no seepage
+  // credit/debit, so flag the limitation whenever a differential head exists.
+  if (in.waterRetainedEl > in.waterFrontEl + 0.01) {
+    R.notes.push_back("Differential water head: pore pressures are taken hydrostatic on each face "
+                      "with no seepage modelling (EN 1997-1 9.3.1.6). Seepage around the toe reduces "
+                      "the front passive resistance (order +5% required embedment in homogeneous "
+                      "permeable ground) — use a flow net / FE seepage where the head difference is "
+                      "significant. The HYD heave check below remains conservative.");
+  }
   return R;
 }
 

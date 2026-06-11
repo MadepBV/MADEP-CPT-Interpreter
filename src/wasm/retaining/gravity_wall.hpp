@@ -45,7 +45,7 @@ struct GravitySettings {
   double passiveDeltaRatio;// k = delta_p/phi'_d on the passive face (default 2/3, EN 1993-5)
   bool assumeCrackWater;   // fill tension crack with water
   int bearingMethod;       // 0 = EN 1997-1 Annex D (c-phi); 1 = De Beer CPT-direct
-  bool bearingDepthFactors;// Annex D: include Brinch-Hansen/Vesic depth factors (opt-in refinement)
+  bool bearingDepthFactors;// Brinch-Hansen/Vesic depth factors (default-ON; strict Annex D omits them)
   int consequenceClass;    // 1..3
   int riskScheme;          // 0 = EN/ANB default
   int nSteps;
@@ -193,7 +193,8 @@ struct BearingDetail {
 // Brinch-Hansen / Vesic depth factors (D.2-1 / Vesic 1973). d_gamma = 1; only the surcharge (q)
 // and cohesion (c) terms gain a depth bonus from the soil shear above founding. k = D/B' for
 // D/B' <= 1, else arctan(D/B') in radians. EN 1997-1 Annex D is INFORMATIVE and omits these, so
-// they are an opt-in, physically-justified refinement for a buried toe (never the safe default).
+// they are a physically-justified refinement for a buried toe, applied BY DEFAULT and
+// user-disablable (strict Annex D omits them and is the more conservative choice).
 inline void hansenDepthFactors(double phi, double Nc, double Dembed, double Bp, bool enable,
                                double& dq, double& dc, double& dg, double& kOut) {
   dq = 1.0; dc = 1.0; dg = 1.0; kOut = 0.0;
@@ -569,7 +570,7 @@ inline void evalGravityGeo(const GravityInput& in, const Combination& cb, Gravit
         cr.extra.push_back({"D_embed", det.Dembed, "m"});
         cr.extra.push_back({"d_q", det.dq, ""});
         if (fnd.drained) cr.extra.push_back({"d_c", det.dc, ""});
-        cr.note = "Includes the opt-in Brinch-Hansen/Vesic depth factors for the embedded toe "
+        cr.note = "Includes the default-on Brinch-Hansen/Vesic depth factors for the embedded toe "
                   "(d_q, d_c above); EN 1997-1 Annex D itself omits depth factors (conservative). "
                   "The inclined, eccentric load on a shallow footing is what governs bearing.";
       }

@@ -95,24 +95,22 @@
 				</p>
 				<div class="doc-callout">
 					<strong>Present scope.</strong> The present Stage 6 module is limited to circular slip
-					surfaces, self-weight loading, one optional uniform vertical surcharge zone, and
+					surfaces, self-weight loading, uniform vertical surcharge zones, and
 					optional pore pressure from the drawn hydrostatic phreatic line or, when the seepage
-					workspace has been solved and enabled, sampled FEM seepage pore pressure. Spencer is
-					implemented for shortlisted circular surfaces only. Seismic loading, reinforcement,
-					non-circular surfaces, and Morgenstern&ndash;Price do not form part of the present
-					implementation.
+					workspace has been solved and enabled, sampled FEM seepage pore pressure. Spencer is implemented for shortlisted circular surfaces only. Stabilising retaining walls drawn with the structures tool ARE part of the analysis: each wall intersected by a trial circle contributes a Rankine passive dowel resistance over its embedded length below the slip surface (see the wall subsection in the solver chapter). Seismic loading, soil nails/geogrids, non-circular surfaces, and Morgenstern&ndash;Price do not form part of the present implementation.
 				</div>
 				<div class="doc-callout">
-					<strong>Present load model.</strong> The load feature comprises one optional
-					<strong>uniform vertical surcharge zone</strong> drawn on the terrain with the same
-					two-click workflow as the entry and exit zones. It is interpreted as a strip surcharge
-					over a finite horizontal interval, and not as a concentrated point load or an inclined
-					load.
+					<strong>Present load model.</strong> The load feature supports <strong>multiple
+					independent uniform vertical surcharge zones</strong> drawn on the terrain with the
+					same two-click workflow as the entry and exit zones; each is a strip surcharge over a
+					finite horizontal interval (per-slice contributions are summed), and a total-load mode
+					converts a force via the shared out-of-plane length. Concentrated point loads and
+					inclined loads are not modelled.
 				</div>
 				<div class="equations">
 					<div class="formula">
-						2D cross-section, unit width, circular slip surfaces, self-weight plus one optional
-						uniform surcharge zone, with Bishop search and optional Spencer recheck
+						2D cross-section, unit width, circular slip surfaces, self-weight plus uniform
+						surcharge zones and optional stabilising walls, with Bishop search and optional Spencer recheck
 					</div>
 				</div>
 				<div class="symbols">
@@ -320,6 +318,23 @@
 						<strong>DA1/1 (M1)</strong>, and <strong>DA1/2 (M2)</strong>. For the design-value
 						sets, the module reuses the same soil-parameter reduction logic as the remainder of
 						Stage 6 before assigning Bishop base materials.
+					</p>
+					<p>
+						<strong>What the reported factor of safety means per mode.</strong> In
+						<strong>DA1/2 (M2)</strong> the analysis runs on design strengths
+						(tan φ′/1.25, c′/1.25, c<sub>u</sub>/1.4), so the reported F is the EC7
+						<em>over-design factor</em> Λ of Design Approach 1 Combination 2: the GEO
+						verification requirement is F ≥ 1.0 (overall stability, γ<sub>R;e</sub> = 1.0 per
+						EN 1997-1 Table A.14; Belgian NBN EN 1997-1 ANB applies DA1 to slopes with
+						Combination 2 normally governing). In <strong>Characteristic</strong> mode F is the
+						conventional factor of safety on unfactored strengths — useful for comparison with
+						classical charts, but without a normative EC7 acceptance threshold.
+						<strong>DA1/1 (M1)</strong> imports unity material factors, so its F is numerically
+						the characteristic F: it is <em>not</em> a complete DA1 Combination 1 verification —
+						the A1 action factors (γ<sub>G</sub> = 1.35, γ<sub>Q</sub> = 1.5) are not applied by
+						the module, and surface loads are taken at the entered value in every mode (enter
+						design values where that matters; EN 1997-1 2.4.7.3.4.2(3) permits omitting the
+						non-governing combination for slopes).
 					</p>
 					<div class="doc-table-wrap">
 						<p class="doc-table-caption">Bishop material source modes used in the present implementation.</p>
@@ -699,22 +714,20 @@
 						</div>
 					</div>
 					<p>
-						If that Fellenius value is non-finite or non-positive, the Bishop iteration falls
-						back to the configured initial factor of safety; the raw Fellenius value is still
-						retained as a QA diagnostic. After convergence, the application back-calculates the
+						If that Fellenius value is degenerate, the seed falls back to a unit value or the configured initial factor of safety depending on the case (a non-finite or non-positive driving sum yields a unit seed; a finite non-positive seed engages the configured initial F); the raw Fellenius value is retained as a QA diagnostic where finite. After convergence, the application back-calculates the
 						Bishop slice <strong>total normal force</strong> and mobilised shear for reporting by
 						the same width-based algebra:
 					</p>
 					<div class="equations">
 						<div class="formula">
 							N<sub>i</sub> =
-							[V<sub>i</sub> − ((c′<sub>i</sub>b<sub>i</sub> − u<sub>i</sub>b<sub>i</sub>tanφ′<sub>i</sub>)sinα<sub>i</sub>) / F]
+							[V<sub>i</sub> − ((c′<sub>i</sub>l<sub>i</sub> − u<sub>i</sub>l<sub>i</sub>tanφ′<sub>i</sub>)sinα<sub>i</sub>) / F]
 							/
 							m<sub>α,i</sub>(F)
 						</div>
 						<div class="formula">
 							T<sub>i</sub> =
-							[c′<sub>i</sub>b<sub>i</sub> + (N<sub>i</sub> − u<sub>i</sub>b<sub>i</sub>)tanφ′<sub>i</sub>] / F
+							[c′<sub>i</sub>l<sub>i</sub> + (N<sub>i</sub> − u<sub>i</sub>l<sub>i</sub>)tanφ′<sub>i</sub>] / F,&nbsp;&nbsp;&nbsp;l<sub>i</sub> = b<sub>i</sub>/cos α<sub>i</sub>
 						</div>
 					</div>
 					<div class="symbols">
@@ -1017,6 +1030,33 @@
 6. If Spencer converges, rerank the shortlist by Spencer F.
 7. If Spencer fails, keep the Bishop result and flag the fallback.</code></pre>
 				</details>
+
+				<section class="doc-subsection">
+					<h3>6.6 Stabilising wall interaction</h3>
+					<p>
+						Each retaining wall drawn with the structures tool that is crossed by a trial circle
+						contributes a passive "dowel" resistance over its embedded length below the slip
+						intersection. The resistance is the Rankine passive pressure integrated in
+						<em>effective stress</em>: the vertical effective overburden σ′<sub>v</sub>(z) is
+						accumulated through the actual layer column at the wall (moist γ above the phreatic
+						line, γ<sub>sat</sub> below, minus pore pressure u — from the FEM seepage field when
+						enabled, else hydrostatic), and each soil segment contributes
+						K<sub>p</sub>·σ′<sub>v</sub> + 2c′√K<sub>p</sub> with
+						K<sub>p</sub> = tan²(45° + φ′/2). The water thrust itself is omitted: in this
+						one-sided dowel idealisation water acts on both wall faces and cancels.
+					</p>
+					<div class="equations">
+						<div class="formula">R<sub>wall</sub> = min( Σ<sub>segments</sub> ∫ [K<sub>p,i</sub>·σ′<sub>v</sub>(z) + 2c′<sub>i</sub>√K<sub>p,i</sub>] dz ,  V<sub>max</sub> )</div>
+						<div class="formula">Bishop:  F = ΣS<sub>i</sub> / (ΣV<sub>i</sub> sinα<sub>i</sub> − M<sub>wall</sub>/R)</div>
+						<div class="formula">Spencer: R<sub>wall</sub> enters the force chain as an external horizontal force opposing the slide</div>
+					</div>
+					<ul class="notes">
+						<li>V<sub>max</sub> is the wall's structural shear cap (engine field <code>maxShearForce</code>; default uncapped — there is presently no rendered input for it).</li>
+						<li>The application point is the centroid of the passive pressure block; the moment term reduces the driving sum about the circle centre.</li>
+						<li>Circles whose driving sum is fully balanced by the wall resistance are classified "stable by wall alone" and excluded from the FS ranking rather than reported with an artificial factor.</li>
+						<li>Circles passing entirely below the wall tip or above its head are classified and counted separately (through-wall / below-wall critical results are reported alongside the global critical).</li>
+					</ul>
+				</section>
 			</section>
 
 			<section id="implementation" class="doc-card">
@@ -1042,7 +1082,7 @@
 								<tr><td>Method mode</td><td>Bishop only or Bishop + Spencer check</td></tr>
 								<tr><td>Search mode</td><td>Entry-exit search</td></tr>
 								<tr><td>Entry / exit samples</td><td>10 / 10 by default</td></tr>
-								<tr><td>Centers per chord</td><td>15 by default</td></tr>
+								<tr><td>Centers per chord</td><td>15 offsets per side of the chord bisector (30 trial centres per chord) by default</td></tr>
 								<tr><td>Target slices</td><td>30</td></tr>
 								<tr><td>Max iterations</td><td>50</td></tr>
 								<tr><td>Tolerance</td><td>1e−4</td></tr>

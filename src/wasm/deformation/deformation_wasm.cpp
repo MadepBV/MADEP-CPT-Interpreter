@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// WASM entry point — wire format v12.
+// WASM entry point — wire format v13 (v12 + staged-excavation header byte 2,
+// wall frame block, 64-byte soil-wall interface station records).
 //
 // INPUT (uint8_t* in, std::size_t len):
 //   Header (offsets in bytes from the start):

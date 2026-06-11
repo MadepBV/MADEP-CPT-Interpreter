@@ -12904,6 +12904,23 @@ function stage6BearingNotes(sel, cfg){
     level:'warn',
     text:'Bearing capacity is shown as a shallow-foundation screening curve using the interpreted layer active at each founding depth. Layered failure mechanisms and full eccentric-load verification are not modeled here.'
   }];
+  // EN 1997-1 §6.5.4: special precautions are required where the load
+  // eccentricity exceeds 1/3 of the footing dimension. The app clamps e at
+  // B/2 − 0.025 m but does not otherwise restrict it, so surface the
+  // normative warning instead of silently accepting an extreme offset.
+  const eB = Number(sel.eB) || 0;
+  const eL = Number(sel.eL) || 0;
+  if(eB > (Number(sel.BRaw) || sel.B) / 3 || eL > (Number(sel.LRaw) || sel.L) / 3){
+    notes.push({
+      level:'warn',
+      text:'Load eccentricity exceeds 1/3 of the footing width (EN 1997-1 §6.5.4): special precautions are required — careful review of the design actions and the bearing model is mandatory. The middle-third condition (|e| < B/6, no tensile corner reactions) is also violated.'
+    });
+  } else if(eB > (Number(sel.BRaw) || sel.B) / 6 || eL > (Number(sel.LRaw) || sel.L) / 6){
+    notes.push({
+      level:'info',
+      text:'Load eccentricity exceeds B/6 (middle third): part of the base loses compressive contact; the effective-width model remains valid but check serviceability and edge pressures.'
+    });
+  }
   notes.push({
     level:'info',
     text:`The current bearing check uses ${sel.ngammaFormulaLabel} for Nγ and ${sel.shapeModeLabel} for shape factors. ${stage6BearingShapeModeDetailText(sel.shapeMode)} It includes Df/B′ depth factors, but it still assumes level ground, horizontal base, and no horizontal load.`
@@ -16443,7 +16460,11 @@ function renderStage6BishopApp(){
             <div class="st6-bishop-results-top">
               <div class="st6-bishop-side">
                 <table class="pt" style="margin-bottom:12px">
-                  <tr><td>Critical F</td><td>${summary && results[0] ? results[0].FS.toFixed(3) : '—'}</td></tr>
+                  <tr><td>${bishop.strengthSet === 'da1_2'
+                    ? 'Critical Λ (EC7 DA1/2 over-design factor, require ≥ 1.0)'
+                    : bishop.strengthSet === 'da1_1'
+                      ? 'Critical F (M1 strengths — enter design loads; not a full DA1/1 verification)'
+                      : 'Critical F (characteristic strengths)'}</td><td>${summary && results[0] ? results[0].FS.toFixed(3) : '—'}</td></tr>
                   <tr><td>Mode</td><td>${stage6BishopMethodModeLabel(bishop.methodMode)}</td></tr>
                   <tr><td>Circle centre</td><td>${summary ? `(${summary.center.x.toFixed(2)}, ${summary.center.y.toFixed(2)})` : '—'}</td></tr>
                   <tr><td>Radius</td><td>${summary ? `${summary.radius.toFixed(2)} m` : '—'}</td></tr>

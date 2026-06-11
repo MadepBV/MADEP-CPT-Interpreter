@@ -600,10 +600,12 @@ Checks   (g_G = g_G,unfav·K_FI,  g_Q = g_Q,unfav·K_FI,  g_Gf = g_G,fav):
 				</ul>
 
 				<p><strong>Embedded walls — net pressure, embedment, heave, anchor force.</strong></p>
-					<p>Unplanned over-excavation (EN 1997-1 §9.3.2.2): the engine lowers the front level by Δa before any pressures are built.</p>
+					<p>Unplanned over-excavation (EN 1997-1 §9.3.2.2): the engine lowers the front level by Δa before any pressures are built. Cantilever walls use 10% of the retained height; anchored walls 10% of the height below the lowest support (both capped at 0.5 m). With a dry front (no standing water in the pit) the Belgian dry-excavation floor of 0.30 m applies on top of the percentage rule.</p>
 					<div class="equations">
 					<div class="formula">excavation<sub>el</sub> ← excavation<sub>el</sub> − max(Δa, 0)</div>
-					<div class="formula">Δa = min(0.10·H<sub>ret</sub>, 0.5 m)</div>
+					<div class="formula">Δa = min(0.10·H<sub>ret</sub>, 0.5 m)      (cantilever)</div>
+					<div class="formula">Δa = min(0.10·(H<sub>ret</sub> − h<sub>anchor</sub>), 0.5 m)      (anchored / propped)</div>
+					<div class="formula">Δa ← max(Δa, 0.30 m)      (dry front only)</div>
 					</div>
 					<p>Net horizontal pressure per cell — back active over the full retained height, front passive only below the (over-dug) excavation level; permanent earth and water by γ<sub>G</sub>, variable surcharge by γ<sub>Q</sub>.</p>
 					<div class="equations">
@@ -620,12 +622,12 @@ Checks   (g_G = g_G,unfav·K_FI,  g_Q = g_Q,unfav·K_FI,  g_Gf = g_G,fav):
 					<div class="formula">ODF = |M<sub>resist</sub>| / |M<sub>drive</sub>| ≥ 1</div>
 					<div class="formula">d<sub>req</sub>: solve ODF(d) = 1 by bisection on d ∈ [0.10, 40] m</div>
 					</div>
-					<p>Design embedment — Blum 20% addition for a cantilever, none when propped; governed by the worst of the two DA1 combinations and analysed at no less than the provided depth.</p>
+					<p>Design embedment — Blum 20% addition for a cantilever, none when propped; governed by the worst of the two DA1 combinations. The moment/shear diagrams and M<sub>max</sub> are computed on the <em>provided</em> pile (a diagram cannot be longer than the structure it acts on); embedment adequacy is reported separately as the d<sub>provided</sub> ≥ d<sub>required</sub> check, with the moment-equilibrium ODF at the provided depth alongside.</p>
 					<div class="equations">
 					<div class="formula">d<sub>design</sub> = 1.2·d<sub>req</sub>      (cantilever, Blum)</div>
 					<div class="formula">d<sub>design</sub> = d<sub>req</sub>      (propped / anchored)</div>
 					<div class="formula">d<sub>required</sub> = max(d<sub>design,C1</sub>, d<sub>design,C2</sub>)</div>
-					<div class="formula">analysis depth = max(d<sub>required</sub>, d<sub>provided</sub>)</div>
+					<div class="formula">analysis depth = d<sub>provided</sub> (≥ 0.10 m);   adequacy: d<sub>provided</sub> ≥ d<sub>required</sub></div>
 					</div>
 					<p>Hydraulic heave / piping (HYD, EN 1997-1 §10.3) at the toe — destabilising excess pore pressure versus stabilising buoyant effective stress, the full differential head dissipated over the embedment.</p>
 					<div class="equations">
@@ -683,13 +685,13 @@ Anchor/prop force (free-earth horizontal equilibrium at the FES depth):  T = H_d
 					<div class="formula">w(x) = γ<sub>G</sub>·(γ<sub>moist</sub>·h<sub>above</sub> + γ<sub>sat</sub>·h<sub>below</sub>) + γ<sub>G</sub>·γ<sub>conc</sub>·t<sub>base</sub> + γ<sub>Q</sub>·q</div>
 					<div class="formula">M<sub>heel</sub> = ∫<sub>heel</sub> [ w(x) − q(x) ]·(x − x<sub>b</sub>) dx</div>
 					</div>
-					<p>Embedded wall — factored bending moment by double integration of the net pressure down the wall; the structural maximum is at the first zero-shear (Blum) crossing. The cohesion c′ enters through p<sub>a</sub> and p<sub>resist</sub>.</p>
+					<p>Embedded wall — factored bending moment by double integration of the net pressure down the wall; the structural maximum is the governing (largest-|M|) zero-shear crossing per Blum — each V = 0 crossing is a local moment extremum, and for anchored walls the first crossing is not necessarily the largest. The cohesion c′ enters through p<sub>a</sub> and p<sub>resist</sub>.</p>
 					<div class="equations">
 					<div class="formula">p<sub>a</sub> = K<sub>a</sub>·σ′<sub>v</sub> − 2√K<sub>a</sub>·c′,   p<sub>resist</sub> = K<sub>p</sub>·σ′<sub>v</sub> + K<sub>pc</sub>·c′   (Annex C)</div>
 					<div class="formula">net = γ<sub>G</sub>·(p<sub>a</sub> + u<sub>back</sub>) − γ<sub>G</sub>·(p<sub>resist</sub> + u<sub>front</sub>) + γ<sub>Q</sub>·p<sub>surch</sub></div>
 					<div class="formula">V(z) ← V + net·dz   (V ← V − T at the anchor level)</div>
 					<div class="formula">M(z) ← M + V·dz</div>
-					<div class="formula">M<sub>max</sub> = |M| at the first V = 0 crossing (Blum),   else max |M|</div>
+					<div class="formula">M<sub>max</sub> = largest |M| among the V = 0 crossings (Blum),   else max |M|</div>
 					</div>
 					<p>Ground-anchor pull-out (EN 1537) — calculated grout-body bond resistance, checked per anchor at the design axial force. T = anchor force per metre run, α = inclination from horizontal, s = horizontal spacing, Ø = grout-body diameter, L<sub>fixed</sub> = fixed (bond) length, τ = characteristic bond stress.</p>
 					<div class="equations">
@@ -746,10 +748,10 @@ Wall vertical equilibrium (screening; base resistance neglected):
 					<li>DA1 Combination-2 variable-action factor defaults to 1.30; the Buildwise risk-class scheme (γ<sub>Q</sub> 1.10/1.20) is an optional, project-confirmed overlay only.</li>
 					<li>R1 = 1.0 applies to the wall body. <strong>Ground anchors</strong> are verified here for <strong>pull-out</strong> only (R<sub>a,k</sub> = π·Ø·L<sub>fixed</sub>·τ, R<sub>a,d</sub> = R<sub>a,k</sub>/γ<sub>a</sub>): <strong>γ<sub>a</sub> = 1.1 is the EN 1997-1 Table A.12 anchor factor (temporary and permanent) and is EN-conforming</strong> — the ~1.5–1.6 range is the pile R4 set and does not apply to anchors. The real caveat is that the calculated π·Ø·L·τ bond is untested and must be proven by EN 1537 acceptance testing (apply a model factor / reduce τ until then). The tendon/steel design and the free-length adequacy remain the engineer's responsibility. The inclined anchor's downward component V = ΣT·tan(angle) is carried into a screening wall vertical-equilibrium check (embedded shaft friction only, base neglected) that must be confirmed against the real section. Axially-loaded piles are out of scope.</li>
 					<li><strong>Passive resistance at the toe</strong> is computed from the EN 1997-1 Annex C closed form at M-factored strength / R1 = 1.0 — <strong>no lumped mobilisation factor</strong>. The unplanned over-dig Δa = min(0.10·H, 0.5 m) removes the top band (scour/future excavation), the front soil and overburden subdivide per CPT layer, and the value is the rigorous log-spiral coefficient for all δ (planar Coulomb passive was removed). Full passive needs large movement — verify SLS displacement separately, or disable the toe passive for a fully conservative design.</li>
-					<li>Annex D bearing uses no depth factors. The cantilever uses the virtual-plane Rankine idealisation; for a <strong>short heel</strong> (heel below H<sub>v</sub>/tan(45°+φ′<sub>d</sub>/2)) the active wedge is interrupted by the stem, so the engine flags it at runtime and recommends a Coulomb-on-stem cross-check.</li>
+					<li>Brinch-Hansen/Vesić depth factors are applied to the Annex D bearing check <strong>by default</strong> (Annex D itself omits them; untick “Bearing depth factors” for the strict, more conservative Annex-D form). The cantilever uses the virtual-plane Rankine idealisation; for a <strong>short heel</strong> (heel below H<sub>v</sub>/tan(45°+φ′<sub>d</sub>/2)) the active wedge is interrupted by the stem, so the engine flags it at runtime and recommends a Coulomb-on-stem cross-check.</li>
 					<li><strong>Deliberate conservative simplifications</strong> (all err safe): the base uplift uses a linear head toe→heel (no flow net); the resisting front-water thrust and the shear-key passive block are neglected; the passive vertical drag R<sub>p,v</sub> = R<sub>p,h</sub>·tan δ<sub>p</sub> is reported but not credited to vertical equilibrium; and the unplanned over-dig removes the top band of front soil so the passive starts at zero effective stress at the design dig level.</li>
 					<li>Embedded-wall embedment uses the simplified free-earth / Blum method (conservative); SLS wall displacement and passive mobilisation are not computed.</li>
-					<li>No Belgian-codified minimum backfill surcharge exists; a prudent default surcharge is applied and is fully editable.</li>
+					<li>No Belgian-codified minimum backfill surcharge exists. Gravity/cantilever walls use a prudent default surcharge that is fully editable; <strong>embedded walls additionally enforce a 10 kPa minimum variable surcharge floor</strong> (UK/CIRIA practice) — entering a lower value is honoured for gravity walls but floored at 10 kPa for embedded walls.</li>
 					<li>The in-situ / foundation profile is modelled as the full layered CPT stratigraphy — σ′<sub>v</sub> continuous, K and cohesion per layer — on both embedded faces and for the gravity/cantilever foundation, passive toe and overburden. The retained fill behind a gravity/cantilever wall is a single engineered backfill material (placed fill is uniform by design); a layered retained profile for walls retaining natural ground is a planned extension.</li>
 						<li>Hydraulic limit states are verified: <strong>HYD</strong> heave/piping for embedded walls (conservative exit gradient — confirm with a flow net for stratified ground) and <strong>UPL</strong> flotation for gravity walls. SLS is limited to the bearing-resultant middle-third / eccentricity; settlement, tilt and embedded-wall deflection (SSI/FE) are not yet automated and remain the engineer's responsibility.</li>
 					<li>The partial factors and equations were verified against the EN/ANB recommended values and multiple independent sources; for a stamped design every National-Annex value must still be confirmed against the controlled standards (NBN EN 1997-1 ANB, NBN EN 1992-1-1 ANB:2010, Buildwise).</li>

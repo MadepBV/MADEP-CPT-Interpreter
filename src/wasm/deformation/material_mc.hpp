@@ -4,10 +4,10 @@
 // in principal stress space (tension positive).
 //
 // Yield surface:
-//   f(σ) = (σ_max - σ_min) - (σ_max + σ_min) * sin(φ) - 2 c cos(φ)
+//   f(σ) = (σ_max - σ_min) + (σ_max + σ_min) * sin(φ) - 2 c cos(φ)   (tension positive)
 //
 // Non-associated plastic potential (φ → ψ):
-//   g(σ) = (σ_max - σ_min) - (σ_max + σ_min) * sin(ψ)
+//   g(σ) = (σ_max - σ_min) + (σ_max + σ_min) * sin(ψ)
 //
 // Return mapping: classical Owen-Hinton / Borja procedure. Compute trial
 // stress, rotate to principal axes, evaluate yield, project back onto the
