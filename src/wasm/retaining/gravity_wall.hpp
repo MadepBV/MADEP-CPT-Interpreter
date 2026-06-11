@@ -132,6 +132,22 @@ struct GravityThrust {
   SideThrust raw;
 };
 
+
+// Lever arm (x from the toe tip) of the active thrust's VERTICAL component.
+// RC cantilever: Rankine virtual plane through the heel rear, x = B (exact).
+// Mass-gravity (Coulomb on the battered back face): the resultant acts ON
+// the face (Das PoFE p.391; FHWA), so its vertical component bears at the
+// face intersection at the resultant height — using x = B there overstates
+// the stabilising moment (~9% for the battered default preset),
+// unconservative for EQU/bearing/SLS/structural. Below the base top the
+// bearing line is the base-slab rear (x = B).
+inline double vsoilLeverX(const GravityGeom& g, double ySoil) {
+  if (!g.isGravity) return g.B();
+  if (!(ySoil > g.baseThk)) return g.B();
+  double frac = clampd((ySoil - g.baseThk) / std::max(g.stemHeight, 1e-9), 0.0, 1.0);
+  return g.toe + g.stemThkBot - (g.stemThkBot - g.stemThkTop) * frac;
+}
+
 inline GravityThrust gravityActive(const GravityInput& in, const MaterialFactors& m) {
   const GravityGeom& g = in.geom;
   // backfill design strength
@@ -432,7 +448,7 @@ inline void evalGravityGeo(const GravityInput& in, const Combination& cb, Gravit
     double phiB = designPhi(fnd.phi, cb.m.gPhi) * in.s.deltaBaseRatio;
     double tanDeltaB = std::tan(phiB);
     // eccentricity for B'
-    double Mstb = gGf * (sumWx + t.Vsoil * B) - gG * up.U * up.x;
+    double Mstb = gGf * (sumWx + t.Vsoil * vsoilLeverX(in.geom, t.ySoil)) - gG * up.U * up.x;
     double Mdst = gG * (t.Hsoil * t.ySoil + t.Hwater * t.yWater + t.Hcrack * t.yCrack)
                 + gQ * (t.Hsurch * t.ySurch);
     double xR = (Vres > 1e-9) ? (Mstb - Mdst) / Vres : 0.5 * B;
@@ -469,7 +485,7 @@ inline void evalGravityGeo(const GravityInput& in, const Combination& cb, Gravit
     double gG = cb.a.gG_unfav * kFI, gQ = cb.a.gQ_unfav * kFI;
     double Vd = gG * (sumW + t.Vsoil - up.U);
     double Hd = gG * t.Hsoil + gQ * t.Hsurch + gG * (t.Hwater + t.Hcrack);
-    double Mstb = gG * (sumWx + t.Vsoil * B - up.U * up.x);
+    double Mstb = gG * (sumWx + t.Vsoil * vsoilLeverX(in.geom, t.ySoil) - up.U * up.x);
     double Mdst = gG * (t.Hsoil * t.ySoil + t.Hwater * t.yWater + t.Hcrack * t.yCrack)
                 + gQ * (t.Hsurch * t.ySurch);
     double xR = (Vd > 1e-9) ? (Mstb - Mdst) / Vd : 0.5 * B;
@@ -612,7 +628,7 @@ inline void evalGravityEQU(const GravityInput& in, const Combination& cb, Gravit
   BaseUplift up = gravityBaseUplift(in);  // uplift is destabilising for overturning
   double Mdst = cb.gG_dst * (t.Hsoil * t.ySoil + t.Hwater * t.yWater + t.Hcrack * t.yCrack + up.U * up.x)
               + cb.gQ_dst * (t.Hsurch * t.ySurch);
-  double Mstb = cb.gG_stb * (sumWx + t.Vsoil * B);
+  double Mstb = cb.gG_stb * (sumWx + t.Vsoil * vsoilLeverX(in.geom, t.ySoil));
   CheckResult cr;
   cr.id = "overturning"; cr.label = "Overturning about toe (EQU)";
   cr.combo = cb.id; cr.comboLabel = cb.label; cr.verb = "M_dst <= M_stb"; cr.unit = "kNm/m";
@@ -633,7 +649,7 @@ inline void evalGravitySLS(const GravityInput& in, GravityResult& R) {
   for (auto& w : W) { sumW += w.W; sumWx += w.W * w.x; }
   BaseUplift up = gravityBaseUplift(in);
   double V = sumW + t.Vsoil - up.U;
-  double Mstb = sumWx + t.Vsoil * B - up.U * up.x;
+  double Mstb = sumWx + t.Vsoil * vsoilLeverX(in.geom, t.ySoil) - up.U * up.x;
   double Mdst = t.Hsoil * t.ySoil + t.Hwater * t.yWater + t.Hcrack * t.yCrack + t.Hsurch * t.ySurch;
   double xR = (V > 1e-9) ? (Mstb - Mdst) / V : 0.5 * B;
   double e = std::fabs(0.5 * B - xR);
@@ -717,7 +733,7 @@ inline void evalGravityStructural(const GravityInput& in, const Combination& cb,
   GravityThrust t = gravityActive(in, cb.m);
   double sumW = 0, sumWx = 0; for (auto& w : W) { sumW += w.W; sumWx += w.W * w.x; }
   double Vd = gG * (sumW + t.Vsoil);
-  double Mstb = gG * (sumWx + t.Vsoil * B);
+  double Mstb = gG * (sumWx + t.Vsoil * vsoilLeverX(in.geom, t.ySoil));
   double Mdst = gG * (t.Hsoil * t.ySoil + t.Hwater * t.yWater + t.Hcrack * t.yCrack) + gQ * (t.Hsurch * t.ySurch);
   double xR = (Vd > 1e-9) ? (Mstb - Mdst) / Vd : 0.5 * B;
   double e = 0.5 * B - xR;  // signed: +e toward toe

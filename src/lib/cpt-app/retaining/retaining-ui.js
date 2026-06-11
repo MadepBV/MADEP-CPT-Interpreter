@@ -40,7 +40,7 @@ export function installRetainingApp(ctx) {
     return {
       wallType: 'cantilever',
       cantilever: { toe: 0.9, heel: 2.1, stemThkTop: 0.3, stemThkBot: 0.45, stemHeight: 4.5, baseThk: 0.55, keyDepth: 0, keyThk: 0.3, betaDeg: 0, frontSoilDepth: 1.0 },
-      gravity: { toe: 0.4, heel: 0.4, stemThkTop: 0.6, stemThkBot: 1.7, stemHeight: 3.5, baseThk: 0.5, backBatterDeg: 6, betaDeg: 0, frontSoilDepth: 1.0 },
+      gravity: { toe: 0.4, heel: 0.4, stemThkTop: 0.6, stemThkBot: 1.7, stemHeight: 2.5, baseThk: 0.5, backBatterDeg: 6, betaDeg: 0, frontSoilDepth: 1.0 },
       embedded: { retainedHeight: 5.0, embedment: 6.0, anchorDepth: 1.5, anchorAngle: 20, freeLen: 6.0, fixedLen: 5.0, anchorDia: 0.15, anchorSpacing: 2.0, anchorTfk: 150, anchorGammaA: 1.1 },
       backfill: { gammaMoist: 18, gammaSat: 20, phi: 32, c: 0, cu: 0, drained: true, label: 'Granular backfill' },
       insitu: { gammaMoist: 19, gammaSat: 21, phi: 30, c: 5, cu: 0, drained: true, label: 'Foundation / in-situ', source: 'default', mode: 'cpt' },
