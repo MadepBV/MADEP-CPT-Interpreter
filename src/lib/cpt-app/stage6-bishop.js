@@ -625,12 +625,14 @@ function wallPassiveProbeX(model, wall, referencePoint = null) {
   return wallPassiveProbePoint(model, wall, referencePoint).x;
 }
 
-function wallPassiveSegmentsLegacy(model, wall, yIntersect, referencePoint = null) {
+function wallPassiveSegmentsLegacy(model, wall, yIntersect, referencePoint = null, fullColumn = false) {
   const xProbe = wallPassiveProbeX(model, wall, referencePoint || wallPointForPassiveProbe(wall, yIntersect));
   const terrainSurfaceY = terrainY(model.terrain, xProbe);
   const waterY = model.phreatic ? terrainY(model.phreatic, xProbe) : null;
   const yBottom = Math.min(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
-  const yTop = Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
+  const yTop = fullColumn
+    ? Math.max(terrainSurfaceY, Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0))
+    : Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
   const segments = [];
 
   (model.legacyBands || []).forEach((band) => {
@@ -666,14 +668,19 @@ function wallPassiveSegmentsLegacy(model, wall, yIntersect, referencePoint = nul
   };
 }
 
-function wallPassiveSegments(model, wall, yIntersect, soilSource = 'regions', referencePoint = null) {
+function wallPassiveSegments(model, wall, yIntersect, soilSource = 'regions', referencePoint = null, fullColumn = false) {
   const xProbe = wallPassiveProbeX(model, wall, referencePoint || wallPointForPassiveProbe(wall, yIntersect));
   const terrainSurfaceY = terrainY(model.terrain, xProbe);
   const waterY = model.phreatic ? terrainY(model.phreatic, xProbe) : null;
   const yBottom = Math.min(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
-  const yTop = Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
+  // fullColumn: include the overburden above the dowel zone (terrain surface
+  // down to the dowel bottom) so the caller can accumulate sigma'_v through
+  // the actual layer stack instead of extrapolating a segment-local gamma.
+  const yTop = fullColumn
+    ? Math.max(terrainSurfaceY, Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0))
+    : Math.max(Number(wall?.yTip) || 0, Number(yIntersect) || 0);
   if (soilSource === 'legacy-bands' && Array.isArray(model?.legacyBands)) {
-    return wallPassiveSegmentsLegacy(model, wall, yIntersect, referencePoint);
+    return wallPassiveSegmentsLegacy(model, wall, yIntersect, referencePoint, fullColumn);
   }
   return {
     xProbe,
@@ -770,24 +777,56 @@ function computeWallIntersections(circle, model, entry, exit, soilSource = 'regi
         return;
       }
 
-      const passive = wallPassiveSegments(model, wall, yIntersect, soilSource, hit.point);
+      // Rankine passive dowel resistance over the embedded length below the
+      // slip intersection, in EFFECTIVE stress (EN 1997-1 Annex C eq. C.2
+      // form: Kp multiplies the effective overburden, never the pore-water
+      // column). sigma'_v is accumulated through the ACTUAL layer stack at
+      // the probe (moist gamma above the phreatic line, gamma_sat below,
+      // minus u), instead of extrapolating each segment's own gamma over the
+      // whole depth. u comes from the same source as the slice analysis (FEM
+      // seepage field when active, else hydrostatic from the phreatic line).
+      // The +u water-thrust term is deliberately omitted: in this one-sided
+      // dowel idealization the water pressure acts on both wall faces and
+      // cancels; only the frictional/cohesive soil resistance survives.
+      const passive = wallPassiveSegments(model, wall, yIntersect, soilSource, hit.point, true);
+      const useFemU = !!model?.useFemPorePressure && model?.seepage?.mesh && model?.seepage?.result;
+      const waterYProbe = model.phreatic ? terrainY(model.phreatic, passive.xProbe) : null;
+      const poreAt = (y) => {
+        if (useFemU) {
+          const sampled = sampleSeepagePorePressure(model.seepage.mesh, model.seepage.result, passive.xProbe, y, GAMMA_W);
+          if (Number.isFinite(sampled)) return Math.max(sampled, 0);
+        }
+        return Number.isFinite(waterYProbe) ? Math.max((waterYProbe - y) * GAMMA_W, 0) : 0;
+      };
       let R_passive = 0;
       let yMoment = 0;
-      passive.segments.forEach((segment) => {
+      let sigmaV = 0;  // total vertical stress accumulated from the terrain surface
+      const ordered = [...passive.segments].sort((s1, s2) => (s2.yTop ?? 0) - (s1.yTop ?? 0));
+      ordered.forEach((segment) => {
+        const yHigh = Number(segment.yTop);
+        const yLow = Number(segment.yBottom);
+        if (!Number.isFinite(yHigh) || !Number.isFinite(yLow) || yHigh <= yLow + GEOM_EPS) return;
+        const gamma = Number(segment.gamma) || 0;
+        const sigmaTop = sigmaV;          // total sigma_v at the segment top
+        sigmaV += gamma * (yHigh - yLow); // total sigma_v at the segment bottom
+        // Only the dowel zone below the slip intersection resists; a segment
+        // straddling yIntersect contributes its clipped lower part.
+        const yH2 = Math.min(yHigh, yIntersect);
+        if (yH2 <= yLow + GEOM_EPS) return;
         const phi = ((Number(segment.material?.phiEffDeg) || 0) * Math.PI) / 180;
         const Kp = sqr(Math.tan(Math.PI / 4 + phi / 2));
         const cohesion = Number(segment.material?.cEff) || 0;
-        const z1 = passive.terrainSurfaceY - segment.yTop;
-        const z2 = passive.terrainSurfaceY - segment.yBottom;
-        if (!Number.isFinite(z1) || !Number.isFinite(z2) || z2 <= z1 + GEOM_EPS) return;
-        const a = Kp * (Number(segment.gamma) || 0);
         const b = 2 * cohesion * Math.sqrt(Math.max(Kp, 0));
-        const force = 0.5 * a * (z2 * z2 - z1 * z1) + b * (z2 - z1);
+        const sigmaAtH2 = sigmaTop + gamma * (yHigh - yH2);
+        const sigmaEffTop = Math.max(sigmaAtH2 - poreAt(yH2), 0);
+        const sigmaEffBot = Math.max(sigmaV - poreAt(yLow), 0);
+        const pTop = Kp * sigmaEffTop + b;
+        const pBot = Kp * sigmaEffBot + b;
+        const t = yH2 - yLow;
+        const force = 0.5 * (pTop + pBot) * t;
         if (!(force > GEOM_EPS)) return;
-        const firstMoment =
-          passive.terrainSurfaceY * force -
-          (a / 3) * (z2 * z2 * z2 - z1 * z1 * z1) -
-          0.5 * b * (z2 * z2 - z1 * z1);
+        // First moment of the linear pressure block about y = 0.
+        const firstMoment = (t / 6) * (pTop * (2 * yH2 + yLow) + pBot * (yH2 + 2 * yLow));
         R_passive += force;
         yMoment += firstMoment;
       });
