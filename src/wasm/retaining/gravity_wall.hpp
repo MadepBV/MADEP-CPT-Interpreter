@@ -438,8 +438,11 @@ inline void evalGravityGeo(const GravityInput& in, const Combination& cb, Gravit
     double xR = (Vres > 1e-9) ? (Mstb - Mdst) / Vres : 0.5 * B;
     double e = std::fabs(0.5 * B - xR);
     double Bp = std::max(B - 2.0 * e, 0.05 * B);
-    double caTerm = in.s.baseAdhesion * Bp;
-    double Rd = (Vres * tanDeltaB + caTerm) / cb.r.gSliding;
+    // EN 1997-1 6.5.3(8)P eqs 6.3a/6.3b: drained base sliding is FRICTION-ONLY,
+    // and 6.5.3(10): "Any effective cohesion c' should be neglected." The legacy
+    // baseAdhesion setting is therefore ignored here (it was reachable only via
+    // the JSON API; the UI never sent it and the engine default was 0).
+    double Rd = (Vres * tanDeltaB) / cb.r.gSliding;
     if (!fnd.drained) {
       double Rcu = designCu(fnd.cu, cb.m.gCu) * Bp / cb.r.gSliding;
       Rd = std::min(Rcu, 0.4 * Vres);  // undrained interface cap

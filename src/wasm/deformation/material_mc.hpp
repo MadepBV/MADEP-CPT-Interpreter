@@ -174,7 +174,7 @@ inline void mc_return_principal(
 //
 //   two-surface (σ1, σ2 > σ_T):
 //     {σ1, σ2} = σ_T
-//     σ3 = σ3_tr - (σ1_tr + σ2_tr - 2σ_T) * (K - 2G/3) / (K + 4G/3)
+//     σ3 = σ3_tr - (σ1_tr + σ2_tr - 2σ_T) * (K - 2G/3) / (2K + 2G/3)   (= ν factor)
 //
 //   three-surface (apex, σ1, σ2, σ3 ≥ σ_T):
 //     σ1 = σ2 = σ3 = σ_T.
@@ -199,7 +199,11 @@ inline void rankine_tension_return(
   if (s2_tr > sigmaT) {
     s1 = sigmaT;
     s2 = sigmaT;
-    s3 = s3_tr - (s1_tr + s2_tr - 2.0 * sigmaT) * (L / M);
+    // Two-multiplier Koiter return on {f1, f2}: solving the 2x2 system gives
+    // the sigma3 correction factor L/(M+L) = nu, NOT L/M (which over-applies it
+    // by (M+L)/M, ~43% at nu=0.3, and pushes the plastic strain outside the
+    // normal cone).
+    s3 = s3_tr - (s1_tr + s2_tr - 2.0 * sigmaT) * (L / (M + L));
     branch = 2;
     return;
   }
