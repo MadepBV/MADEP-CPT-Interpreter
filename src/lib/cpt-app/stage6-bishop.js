@@ -1289,7 +1289,14 @@ function evaluateSpencerState(slices, lambda, FTrial, solverConfig) {
 
   for (let i = 0; i < slices.length; i += 1) {
     const slice = slices[i];
-    ELeft += Number(slice?.wallForceLeft) || 0;
+    // Wall passive resistance on this slice: an external horizontal force
+    // OPPOSING the slide. It enters the horizontal recursion (a0, below) with
+    // resisting sign and must NOT be folded into the interslice thrust ELeft —
+    // adding it there fed the λ-coupled vertical terms a spurious X = λ·R_wall
+    // and flipped the wall to DRIVING in force equilibrium (a stabilising
+    // wall lowered F_f, so F_m and F_f could not intersect on wall-crossing
+    // circles; Spencer 1967 closure with external load per Fredlund & Krahn).
+    const wallF = Number(slice?.wallForceLeft) || 0;
     const sinA = Math.sin(slice.alphaRad);
     const cosA = Math.cos(slice.alphaRad);
     const tanA = sinA / Math.max(cosA, 1e-9);
@@ -1300,10 +1307,12 @@ function evaluateSpencerState(slices, lambda, FTrial, solverConfig) {
     const baseLength = Number(slice.baseLength) || width / Math.max(cosA, 1e-6);
     const vertical = sliceVerticalLoad(slice);
     const mAlpha = cosA + (sinA * tanPhi) / FTrial;
-    if (!Number.isFinite(mAlpha) || Math.abs(mAlpha) <= (solverConfig.minMAlpha || 1e-6)) {
+    // Sign-aware (mirrors the Bishop guard): a negative m_alpha is an
+    // inadmissible state, not merely a near-zero denominator.
+    if (!Number.isFinite(mAlpha) || mAlpha <= (solverConfig.minMAlpha || 1e-6)) {
       return {
         valid: false,
-        reason: 'spencer m_alpha <= 0',
+        reason: 'spencer m_alpha below minimum',
         F: FTrial,
         lambda,
         forceResidual: NaN,
@@ -1319,12 +1328,12 @@ function evaluateSpencerState(slices, lambda, FTrial, solverConfig) {
     }
 
     const a1 = sinA - (tanPhi * cosA) / FTrial;
-    const a0 = ELeft + porePressure * width * tanA - (cohesion * width) / FTrial;
+    const a0 = ELeft - wallF + porePressure * width * tanA - (cohesion * width) / FTrial;
     const denomN = mAlpha + lambda * a1;
-    if (!Number.isFinite(denomN) || Math.abs(denomN) <= (solverConfig.minMAlpha || 1e-6)) {
+    if (!Number.isFinite(denomN) || denomN <= (solverConfig.minMAlpha || 1e-6)) {
       return {
         valid: false,
-        reason: 'spencer denominator <= 0',
+        reason: 'spencer N-denominator below minimum',
         F: FTrial,
         lambda,
         forceResidual: NaN,
