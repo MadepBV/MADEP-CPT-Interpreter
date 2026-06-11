@@ -560,7 +560,15 @@ export function installRetainingApp(ctx) {
     const worst = checks.reduce((m, c) => Math.max(m, c.util || 0), 0);
     const overall = r.overallPass;
     const rows = checks.map((c) => {
+      // Embedment check: the engine fills Ed/Rd with DEPTHS (d_required incl.
+      // the Blum 1.2 margin, d_provided), so Rd/Ed is a depth ratio — NOT the
+      // over-design factor. The true ODF = M_resist/M_drive at the provided
+      // embedment ships as the 'ODF_at_provided' extra; show that under the
+      // ODF label (6–36% apart in realistic cantilevers, can straddle 1.0).
       const odf = c.id === 'embedment';
+      const odfProvided = odf
+        ? (c.extra || []).find((kv) => kv?.key === 'ODF_at_provided')?.value
+        : null;
       const u = c.util || 0;
       const badge = c.pass ? '<span class="st6-rw-badge ok">PASS</span>' : '<span class="st6-rw-badge bad">FAIL</span>';
       // Transparent but uncluttered: a compact 3-value summary, expandable to the full
@@ -574,7 +582,11 @@ export function installRetainingApp(ctx) {
         : `<div class="st6-rw-checkextra">${compact}</div>`);
       return `<tr>
         <td><div class="st6-rw-checkname">${esc(c.label)}</div><div class="st6-rw-checksub">${esc(c.comboLabel || c.combo)} · ${esc(c.verb)}</div>${extra}</td>
-        <td class="st6-rw-utilcell">${utilBar(u, c.pass)}<div class="st6-rw-utilnum">${odf ? 'ODF ' + fmt(c.Rd / Math.max(c.Ed, 1e-9), 2) : fmt(u, 2)}</div></td>
+        <td class="st6-rw-utilcell">${utilBar(u, c.pass)}<div class="st6-rw-utilnum">${odf
+          ? (Number.isFinite(odfProvided)
+              ? 'ODF ' + fmt(odfProvided, 2)
+              : 'd<sub>prov</sub>/d<sub>req</sub> ' + fmt(c.Rd / Math.max(c.Ed, 1e-9), 2))
+          : fmt(u, 2)}</div></td>
         <td>${badge}</td>
       </tr>`;
     }).join('');
@@ -594,7 +606,7 @@ export function installRetainingApp(ctx) {
         <table class="st6-rw-structtbl"><tbody>
           <tr><td>Max bending</td><td colspan="2">M<sub>Ed,max</sub> ${fmt(st.Mmax, 1)} kNm/m</td><td>${esc(st.combo || '')}</td></tr>
           ${rw.wallType === 'anchored' ? `<tr><td>Anchor force</td><td colspan="2">T<sub>d</sub> ${fmt(st.anchorForce, 1)} kN/m</td><td></td></tr>` : ''}
-          <tr><td>Required embedment</td><td colspan="2">d<sub>req</sub> ${fmt(st.requiredD, 2)} m</td><td>C2</td></tr>
+          <tr><td>Required embedment</td><td colspan="2">d<sub>req</sub> ${fmt(st.requiredD, 2)} m</td><td>${esc(st.requiredDCombo || '')}</td></tr>
         </tbody></table></div>`;
     }
     return `

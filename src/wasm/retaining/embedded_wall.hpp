@@ -238,6 +238,7 @@ struct EmbeddedResult {
   double requiredD = 0;
   std::string strCombo;
   std::string anchorCombo;
+  std::string requiredDCombo;  // combination governing d_required (worst of C1/C2)
 };
 
 // Factored bending-moment diagram by double integration of the net pressure, with the
@@ -345,6 +346,7 @@ inline EmbeddedResult analyzeEmbedded(const EmbeddedInput& inRaw) {
   // Governing required embedment (worst of C1/C2 — normally C2) and the design toe level.
   R.requiredD = std::max(e1.dReqDesign, e2.dReqDesign);
   bool c2Gov = e2.dReqDesign >= e1.dReqDesign;
+  R.requiredDCombo = c2Gov ? "C2" : "C1";
   // The bending diagram and M_max live on the ACTUAL pile (the provided embedment) — a moment
   // diagram can never be longer than the structure it acts on. Embedment adequacy is reported
   // SEPARATELY by the embedment check (d_provided vs d_required); an under-embedded pile simply
