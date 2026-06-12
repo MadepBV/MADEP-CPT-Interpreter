@@ -313,7 +313,8 @@
     if (!report) return;
 
     const mmToPx = 96 / 25.4;
-    const printablePageHeight = (297 - 20) * mmToPx;
+    // A4 height minus @page margins (14 + 16 mm) and the repeating running header row (~10 mm).
+    const printablePageHeight = (297 - 40) * mmToPx;
     const minBodyBelowHeading = 28 * mmToPx;
     const reportTop = report.getBoundingClientRect().top + window.scrollY;
     const sections = Array.from(report.querySelectorAll('.report-section')) as HTMLElement[];
@@ -614,6 +615,30 @@
       <button class="btn pri" type="button" onclick={() => window.print()}>Print / Save as PDF</button>
     </div>
 
+    <table class="report-sheet">
+      <thead class="report-running-head">
+        <tr>
+          <td>
+            <div class="report-running-head__inner">
+              <span>{payload.project.name} — {payload.cpt.displayId}</span>
+              <span>Stage 7 report</span>
+            </div>
+          </td>
+        </tr>
+      </thead>
+      <tfoot class="report-running-foot">
+        <tr>
+          <td>
+            <div class="report-running-foot__inner">
+              <span>CPT Interpreter {payload.appVersion}</span>
+              <span>{fmtDateTime(payload.generatedAt)}</span>
+            </div>
+          </td>
+        </tr>
+      </tfoot>
+      <tbody>
+        <tr>
+          <td>
     <article class:report--concise-print={!includePrintAppendices} class="report">
       <section class="report-cover">
         <div class="report-cover__topline">
@@ -627,6 +652,7 @@
         </p>
         <div class="report-cover__meta">
           <div><span>Project</span><strong>{payload.project.name}</strong></div>
+          <div><span>Phase</span><strong>{payload.project.phase || '—'}</strong></div>
           <div><span>CPT</span><strong>{payload.cpt.displayId}</strong></div>
           <div><span>Generated</span><strong>{fmtDateTime(payload.generatedAt)}</strong></div>
           <div><span>App version</span><strong>{payload.appVersion}</strong></div>
@@ -745,7 +771,7 @@
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>EC7 soil</th>
+                  <th class="txt">EC7 soil</th>
                   <th>avg qc (MPa)</th>
                   <th>avg fs (kPa)</th>
                 </tr>
@@ -807,8 +833,8 @@
                   <th>Top (m TAW)</th>
                   <th>Bot (m TAW)</th>
                   <th>Thk. (m)</th>
-                  <th>Type</th>
-                  <th>Subtype</th>
+                  <th class="txt">Type</th>
+                  <th class="txt">Subtype</th>
                   <th>avg qc<span class="report-table__unit">(MPa)</span></th>
                   <th>avg fs<span class="report-table__unit">(kPa)</span></th>
                   <th>avg Rf (%)</th>
@@ -828,8 +854,8 @@
                     <td>{layer.topTaw != null ? fmt(layer.topTaw, 2) : '—'}</td>
                     <td>{layer.botTaw != null ? fmt(layer.botTaw, 2) : '—'}</td>
                     <td>{fmt(layer.thickness, 2)}</td>
-                    <td><span class="report-chip" style={soilChipStyle(layer.type)}>{layer.type}</span></td>
-                    <td>{layer.subtype || '—'}</td>
+                    <td class="txt"><span class="report-chip" style={soilChipStyle(layer.type)}>{layer.type}</span></td>
+                    <td class="txt">{layer.subtype || '—'}</td>
                     <td>{fmt(layer.avgQc, 3)}</td>
                     <td>{layer.avgFsKPa != null ? fmt(layer.avgFsKPa, 1) : '—'}</td>
                     <td>{layer.avgRf != null ? fmt(layer.avgRf, 2) : '—'}</td>
@@ -878,8 +904,8 @@
                 <th>k<sub>v</sub> (m/s)</th>
                 <th>k<sub>h</sub>/k<sub>v</sub> (-)</th>
                 <th>&psi;<sub>unsat</sub> (m)</th>
-                <th>Infiltration</th>
-                <th>Overrides</th>
+                <th class="txt">Infiltration</th>
+                <th class="txt">Overrides</th>
               </tr>
             </thead>
             <tbody>
@@ -898,8 +924,8 @@
                   <td>{compactNumber(layer.hydraulic.kv)}</td>
                   <td>{fmt(layer.hydraulic.khkv, 1)}</td>
                   <td>{fmt(layer.hydraulic.psiUnsat, 2)}</td>
-                  <td>{layer.hydraulic.infiltrationClass}</td>
-                  <td>
+                  <td class="txt">{layer.hydraulic.infiltrationClass}</td>
+                  <td class="txt">
                     {#if Object.values(layer.overrides || {}).some(Boolean)}
                       {Object.entries(layer.overrides)
                         .filter(([, active]) => active)
@@ -1065,10 +1091,17 @@
           {#if hasStage6('bishop')}
             {@const bishop = payload.stage6.bishop || {}}
             {@const bishopView = bishop.view || null}
+            {@const bishopCriticalFs = Number(bishop.topResults?.[0]?.FS)}
+            {@const bishopVerdict =
+              bishop.config.strengthSet === 'da1_2' && Number.isFinite(bishopCriticalFs)
+                ? bishopCriticalFs >= 1.0
+                  ? 'pass'
+                  : 'fail'
+                : null}
             <div class="report-card report-annex report-annex--bishop">
               <h3>Bishop / Spencer slope check</h3>
               <div class="report-grid report-grid--4">
-                <div class="report-stat"><span>{bishop.config.strengthSet === 'da1_2' ? 'Critical Λ (EC7 DA1/2 ODF, require ≥ 1.0)' : bishop.config.strengthSet === 'da1_1' ? 'Critical F (M1 strengths)' : 'Critical F (characteristic)'}</span><strong>{bishop.topResults?.[0] ? fmt(bishop.topResults[0].FS, 3) : '—'}</strong></div>
+                <div class={`report-stat${bishopVerdict ? ` report-stat--${bishopVerdict}` : ''}`}><span>{bishop.config.strengthSet === 'da1_2' ? 'Critical Λ (EC7 DA1/2 ODF, require ≥ 1.0)' : bishop.config.strengthSet === 'da1_1' ? 'Critical F (M1 strengths)' : 'Critical F (characteristic)'}</span><strong>{bishop.topResults?.[0] ? fmt(bishop.topResults[0].FS, 3) : '—'}</strong></div>
                 <div class="report-stat"><span>Mode</span><strong>{bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer' : 'Bishop only'}</strong></div>
                 <div class="report-stat"><span>Selected result</span><strong>{bishop.selectedIndex + 1}</strong></div>
                 <div class="report-stat"><span>Spencer converged</span><strong>{bishop.methodMode === 'bishop_spencer' ? `${bishop.spencerConverged}/${bishop.spencerRechecked}` : 'off'}</strong></div>
@@ -1124,15 +1157,15 @@
                 <h4>Best circles</h4>
                 <table class="tbl report-table">
                   <thead>
-                    <tr><th>#</th><th>FS (-)</th><th>Method</th><th>Wall</th><th>R_wall (kN/m)</th><th>Bishop F (-)</th><th>λ (-)</th><th>M res.</th><th>F res.</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
+                    <tr><th>#</th><th>FS (-)</th><th class="txt">Method</th><th class="txt">Wall</th><th>R_wall (kN/m)</th><th>Bishop F (-)</th><th>λ (-)</th><th>M res.</th><th>F res.</th><th>Iterations (-)</th><th>Radius (m)</th></tr>
                   </thead>
                   <tbody>
                     {#each bishop.topResults as result}
                       <tr>
                         <td>{result.rank}</td>
                         <td>{fmt(result.FS, 3)}</td>
-                        <td>{result.methodLabel}</td>
-                        <td>{result.intersectsWall ? `${result.wallIntersectionCount} engaged` : result.passesBelowWall ? 'below wall' : 'none'}</td>
+                        <td class="txt">{result.methodLabel}</td>
+                        <td class="txt">{result.intersectsWall ? `${result.wallIntersectionCount} engaged` : result.passesBelowWall ? 'below wall' : 'none'}</td>
                         <td>{result.wallForceTotal != null ? fmt(result.wallForceTotal, 1) : '—'}</td>
                         <td>{result.F_bishop != null ? fmt(result.F_bishop, 3) : '—'}</td>
                         <td>{result.lambda != null ? fmt(result.lambda, 3) : '—'}</td>
@@ -1151,7 +1184,7 @@
                     <h4>Retaining Walls</h4>
                     <table class="tbl report-table">
                       <thead>
-                        <tr><th>#</th><th>x (m)</th><th>Top y (m)</th><th>Tip y (m)</th><th>Length (m)</th><th>Passive side</th></tr>
+                        <tr><th>#</th><th>x (m)</th><th>Top y (m)</th><th>Tip y (m)</th><th>Length (m)</th><th class="txt">Passive side</th></tr>
                       </thead>
                       <tbody>
                         {#each bishop.config.walls as wall, index}
@@ -1161,7 +1194,7 @@
                             <td>{fmt(wall.yTop, 2)}</td>
                             <td>{fmt(wall.yTip, 2)}</td>
                             <td>{fmt(wall.yTop - wall.yTip, 2)}</td>
-                            <td>{wall.passiveSide === 'left' ? 'Left' : 'Right'}</td>
+                            <td class="txt">{wall.passiveSide === 'left' ? 'Left' : 'Right'}</td>
                           </tr>
                         {/each}
                       </tbody>
@@ -1172,7 +1205,7 @@
                     {#if bishop.selected?.wallForces?.length}
                       <table class="tbl report-table">
                         <thead>
-                          <tr><th>#</th><th>x (m)</th><th>y intersect (m)</th><th>R_wall (kN/m)</th><th>y app (m)</th><th>Passive side</th></tr>
+                          <tr><th>#</th><th>x (m)</th><th>y intersect (m)</th><th>R_wall (kN/m)</th><th>y app (m)</th><th class="txt">Passive side</th></tr>
                         </thead>
                         <tbody>
                           {#each bishop.selected.wallForces as force, index}
@@ -1182,7 +1215,7 @@
                               <td>{fmt(force.y_intersect, 2)}</td>
                               <td>{fmt(force.R_wall, 1)}</td>
                               <td>{fmt(force.y_application, 2)}</td>
-                              <td>{force.wall?.passiveSide === 'left' ? 'Left' : 'Right'}</td>
+                              <td class="txt">{force.wall?.passiveSide === 'left' ? 'Left' : 'Right'}</td>
                             </tr>
                           {/each}
                         </tbody>
@@ -1290,17 +1323,17 @@
                   <h4>Boundary Conditions</h4>
                   <table class="tbl report-table">
                     <thead>
-                      <tr><th>Edge</th><th>Type</th><th>Head (m)</th><th>Length (m)</th><th>Status</th></tr>
+                      <tr><th class="txt">Edge</th><th class="txt">Type</th><th>Head (m)</th><th>Length (m)</th><th class="txt">Status</th></tr>
                     </thead>
                     <tbody>
                       {#if seepageBcs.length}
                         {#each seepageBcs as bc}
                           <tr>
-                            <td>{bc.edgeLabel}</td>
-                            <td>{bc.typeLabel}</td>
+                            <td class="txt">{bc.edgeLabel}</td>
+                            <td class="txt">{bc.typeLabel}</td>
                             <td>{bc.head != null ? fmt(bc.head, 2) : '—'}</td>
                             <td>{bc.length != null ? fmt(bc.length, 2) : '—'}</td>
-                            <td>{bc.status}</td>
+                            <td class="txt">{bc.status}</td>
                           </tr>
                         {/each}
                       {:else}
@@ -1313,16 +1346,16 @@
                   <h4>Permeability Set</h4>
                   <table class="tbl report-table">
                     <thead>
-                      <tr><th>Material</th><th>k_x (m/s)</th><th>k_y (m/s)</th><th>Source</th></tr>
+                      <tr><th class="txt">Material</th><th>k_x (m/s)</th><th>k_y (m/s)</th><th class="txt">Source</th></tr>
                     </thead>
                     <tbody>
                       {#if seepageMaterials.length}
                         {#each seepageMaterials as material}
                           <tr>
-                            <td>{material.label}</td>
+                            <td class="txt">{material.label}</td>
                             <td>{material.kx != null ? compactNumber(material.kx, 3) : '—'}</td>
                             <td>{material.ky != null ? compactNumber(material.ky, 3) : '—'}</td>
-                            <td>{material.kSourceLabel}</td>
+                            <td class="txt">{material.kSourceLabel}</td>
                           </tr>
                         {/each}
                       {:else}
@@ -1337,14 +1370,14 @@
                   <h4>Drains</h4>
                   <table class="tbl report-table">
                     <thead>
-                      <tr><th>Drain</th><th>Gating</th><th>Head (m)</th><th>Inflow</th><th>Active nodes</th></tr>
+                      <tr><th class="txt">Drain</th><th class="txt">Gating</th><th>Head (m)</th><th>Inflow</th><th>Active nodes</th></tr>
                     </thead>
                     <tbody>
                       {#if seepageDrains.length}
                         {#each seepageDrains as drain}
                           <tr>
-                            <td>{drain.label}</td>
-                            <td>{drain.gatingLabel || drain.gating}</td>
+                            <td class="txt">{drain.label}</td>
+                            <td class="txt">{drain.gatingLabel || drain.gating}</td>
                             <td>{drain.head?.value != null ? fmt(drain.head.value, 2) : '—'}</td>
                             <td>{drain.result ? `${compactNumber(drain.result.totalInflow, 3)} m³/s/m` : '—'}</td>
                             <td>{drain.result ? `${drain.result.activeNodes ?? 0} / ${drain.result.totalNodes ?? 0}` : '—'}</td>
@@ -1360,16 +1393,16 @@
                   <h4>Wall Conductivity</h4>
                   <table class="tbl report-table">
                     <thead>
-                      <tr><th>Wall</th><th>k_across</th><th>k_along</th><th>Source</th></tr>
+                      <tr><th class="txt">Wall</th><th>k_across</th><th>k_along</th><th class="txt">Source</th></tr>
                     </thead>
                     <tbody>
                       {#if seepageWalls.length}
                         {#each seepageWalls as wall}
                           <tr>
-                            <td>{wall.label}</td>
+                            <td class="txt">{wall.label}</td>
                             <td>{wall.material?.kAcross != null ? compactNumber(wall.material.kAcross, 3) : '—'}</td>
                             <td>{wall.material?.kAlong != null ? compactNumber(wall.material.kAlong, 3) : '—'}</td>
-                            <td>{wall.material?.kSourceLabel || wall.material?.kSource || '—'}</td>
+                            <td class="txt">{wall.material?.kSourceLabel || wall.material?.kSource || '—'}</td>
                           </tr>
                         {/each}
                       {:else}
@@ -1448,7 +1481,7 @@
                   <h4>Per-layer shaft resistance</h4>
                   <table class="tbl report-table">
                     <thead>
-                      <tr><th>i</th><th>Top (m)</th><th>Bot (m)</th><th>Cat.</th><th>q<sub>c,m</sub> (MPa)</th><th>η*<sub>p</sub></th><th>q<sub>s</sub> (kPa)</th><th>α<sub>s</sub></th><th>h (m)</th><th>Status</th><th>R<sub>s</sub> (kN)</th></tr>
+                      <tr><th>i</th><th>Top (m)</th><th>Bot (m)</th><th class="txt">Cat.</th><th>q<sub>c,m</sub> (MPa)</th><th>η*<sub>p</sub></th><th>q<sub>s</sub> (kPa)</th><th>α<sub>s</sub></th><th>h (m)</th><th class="txt">Status</th><th>R<sub>s</sub> (kN)</th></tr>
                     </thead>
                     <tbody>
                       {#each pilePerLayer as row}
@@ -1456,13 +1489,13 @@
                           <td>{row.layerIndex + 1}</td>
                           <td>{fmt(row.top, 2)}</td>
                           <td>{fmt(row.bot, 2)}</td>
-                          <td>{row.category}</td>
+                          <td class="txt">{row.category}</td>
                           <td>{fmt(row.qcMean, 2)}</td>
                           <td>{row.etaP != null ? row.etaP.toFixed(4) : 'cap'}</td>
                           <td>{fmtInt(row.qs)}</td>
                           <td>{fmt(row.alphaS, 2)}</td>
                           <td>{fmt(row.h, 2)}</td>
-                          <td>{row.excluded ? 'excluded' : row.aboveNeutral ? 'above N.P.' : 'contributing'}</td>
+                          <td class="txt">{row.excluded ? 'excluded' : row.aboveNeutral ? 'above N.P.' : 'contributing'}</td>
                           <td>{fmtInt(row.RsLayer)}</td>
                         </tr>
                       {/each}
@@ -1600,8 +1633,8 @@
                 <th>qc (MPa)</th>
                 <th>fs (kPa)</th>
                 <th>Rf (%)</th>
-                <th>Type</th>
-                <th>Subtype</th>
+                <th class="txt">Type</th>
+                <th class="txt">Subtype</th>
                 <th>{methodMetricLabel()}</th>
               </tr>
             </thead>
@@ -1613,8 +1646,8 @@
                   <td>{fmt(row.qc, 3)}</td>
                   <td>{row.fsKPa != null ? fmt(row.fsKPa, 2) : '—'}</td>
                   <td>{row.rf != null ? fmt(row.rf, 2) : '—'}</td>
-                  <td>{row.type}</td>
-                  <td>{row.subtype || '—'}</td>
+                  <td class="txt">{row.type}</td>
+                  <td class="txt">{row.subtype || '—'}</td>
                   <td>{methodMetricValue(row)}</td>
                 </tr>
               {/each}
@@ -1623,27 +1656,56 @@
         </div>
       </section>
     </article>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 {/if}
 
 <style>
+  /* ============================================================
+     Stage 7 report — document design system
+     Near-monochrome ink on paper, one brand accent (#3D6B6A),
+     semantic color reserved for pass/fail verdicts.
+     The report is a fixed light "sheet" in both color schemes so
+     the on-screen document matches the printed document.
+     ============================================================ */
+
   :global(body) {
     margin: 0;
     background: var(--color-bg);
   }
 
   .report-shell {
+    --rpt-ink: #1c1c1e;
+    --rpt-ink-2: #54545b;
+    --rpt-ink-3: #82828a;
+    --rpt-paper: #ffffff;
+    --rpt-paper-2: #fbfaf7;
+    --rpt-hairline: rgba(28, 28, 30, 0.12);
+    --rpt-hairline-soft: rgba(28, 28, 30, 0.07);
+    --rpt-hairline-strong: rgba(28, 28, 30, 0.28);
+    --rpt-rule: #1c1c1e;
+    --rpt-accent: #3d6b6a;
+    --rpt-pass: #23633f;
+    --rpt-fail: #a33425;
+    --rpt-warn: #8a620d;
+
     max-width: var(--container-max);
     margin: 0 auto;
-    padding: 24px var(--section-px) 56px;
+    padding: 24px var(--section-px) 64px;
   }
+
+  /* ---------- toolbar (app chrome, never printed) ---------- */
 
   .report-toolbar {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 10px;
-    margin-bottom: 16px;
+    max-width: 1140px;
+    margin: 0 auto 18px;
   }
 
   .report-toolbar__toggle {
@@ -1667,28 +1729,52 @@
     margin: 0;
   }
 
-  .report {
-    display: grid;
-    gap: 22px;
+  /* ---------- the sheet ---------- */
+
+  .report-sheet {
+    width: 100%;
+    max-width: 1140px;
+    margin: 0 auto;
+    border-collapse: collapse;
+    table-layout: fixed;
+    background: var(--rpt-paper);
+    border: 1px solid var(--rpt-hairline);
+    box-shadow: 0 1px 2px rgba(18, 18, 20, 0.05), 0 12px 32px rgba(18, 18, 20, 0.06);
   }
 
-  .report-cover,
-  .report-section,
-  .report-error {
-    background: var(--app-panel);
-    border: 1px solid var(--bd);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-sm);
-    padding: 28px;
+  .report-sheet > tbody > tr > td {
+    padding: clamp(28px, 4vw, 56px) clamp(22px, 4.5vw, 60px);
+    vertical-align: top;
   }
+
+  /* Running header/footer rows exist for print pagination only. */
+  .report-running-head,
+  .report-running-foot {
+    display: none;
+  }
+
+  .report {
+    display: block;
+    color: var(--rpt-ink);
+    font-size: 13px;
+    line-height: 1.5;
+    counter-reset: rpt-section;
+  }
+
+  .report-section {
+    border-top: 1px solid var(--rpt-hairline);
+    padding: 34px 0;
+  }
+
+  .report-section:last-child {
+    padding-bottom: 0;
+  }
+
+  /* ---------- masthead ---------- */
 
   .report-cover {
-    min-height: 260px;
-    display: grid;
-    align-content: start;
-    gap: 14px;
-    background: var(--app-panel-dark);
-    color: var(--color-text-on-dark);
+    display: block;
+    padding: 0 0 30px;
   }
 
   .report-cover__topline {
@@ -1696,48 +1782,128 @@
     justify-content: space-between;
     align-items: baseline;
     gap: 12px;
-  }
-
-  .report-cover__brand,
-  .report-cover__eyebrow,
-  .report-section__head p,
-  .report-muted {
-    color: var(--tx2);
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--rpt-rule);
   }
 
   .report-cover__brand,
   .report-cover__eyebrow {
-    color: var(--color-text-on-dark-muted);
-  }
-
-  .report-cover__brand,
-  .report-cover__eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0;
     font-family: var(--font-mono);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--rpt-ink-2);
+  }
+
+  .report-cover__brand::before {
+    content: '';
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    margin-right: 9px;
+    background: var(--rpt-accent);
+    transform: translateY(0.5px);
   }
 
   .report-cover__eyebrow {
     text-align: right;
-  }
-
-  .report-cover h1,
-  .report-section h2 {
-    margin: 0;
-    font-family: var(--font-heading);
-    letter-spacing: 0;
+    color: var(--rpt-ink-3);
   }
 
   .report-cover h1 {
-    font-size: clamp(2rem, 5vw, 3.6rem);
+    margin: 26px 0 10px;
+    font-family: var(--font-heading);
+    font-size: clamp(28px, 3.6vw, 40px);
+    font-weight: 650;
+    letter-spacing: -0.015em;
+    line-height: 1.08;
+    color: var(--rpt-ink);
+  }
+
+  .report-cover p {
+    margin: 0;
+    max-width: 66ch;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--rpt-ink-2);
+  }
+
+  .report-cover__meta {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin-top: 28px;
+    border-top: 1px solid var(--rpt-hairline-strong);
+  }
+
+  .report-cover__meta div {
+    min-width: 0;
+    padding: 10px 16px 0 0;
+    border-left: 1px solid var(--rpt-hairline);
+    padding-left: 16px;
+  }
+
+  .report-cover__meta div:first-child {
+    border-left: none;
+    padding-left: 0;
+  }
+
+  .report-cover__meta span {
+    display: block;
+    margin-bottom: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--rpt-ink-3);
+  }
+
+  .report-cover__meta strong {
+    display: block;
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--rpt-ink);
+    overflow-wrap: anywhere;
+  }
+
+  /* ---------- section heads ---------- */
+
+  .report-section:not(.report-section--appendix) {
+    counter-increment: rpt-section;
   }
 
   .report-section__head {
     display: grid;
-    gap: 4px;
-    margin-bottom: 16px;
+    gap: 5px;
+    margin-bottom: 20px;
+  }
+
+  .report-section h2 {
+    margin: 0;
+    font-family: var(--font-heading);
+    font-size: 13.5px;
+    font-weight: 650;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--rpt-ink);
+  }
+
+  .report-section:not(.report-section--appendix) h2::before {
+    content: counter(rpt-section, decimal-leading-zero);
+    margin-right: 14px;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--rpt-accent);
+  }
+
+  .report-section__head p {
+    margin: 0;
+    max-width: 78ch;
+    font-size: 12.5px;
+    color: var(--rpt-ink-2);
   }
 
   .report-section__block {
@@ -1745,13 +1911,17 @@
     align-content: start;
   }
 
-  .report-section__head p {
-    margin: 0;
-  }
+  /* ---------- grids and cards ---------- */
 
   .report-grid {
     display: grid;
-    gap: 14px;
+    gap: 16px;
+  }
+
+  .report-grid + .report-grid,
+  .report-grid + .report-card,
+  .report-card + .report-grid {
+    margin-top: 16px;
   }
 
   .report-grid--2 {
@@ -1767,268 +1937,187 @@
   }
 
   .report-card {
-    background: var(--app-panel);
-    border: 1px solid var(--bd);
-    border-radius: var(--radius-md);
-    padding: 16px;
     min-width: 0;
+    background: var(--rpt-paper);
+    border: 1px solid var(--rpt-hairline);
+    border-radius: 0;
+    padding: 18px 20px;
   }
 
   .report-card--nested {
-    padding: 14px;
+    padding: 14px 16px;
   }
 
   .report-card h3,
   .report-card h4 {
     margin: 0 0 12px;
-    font-size: 13px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rpt-hairline);
     font-family: var(--font-heading);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--rpt-ink-2);
   }
 
-  .report-cover__meta {
-    display: grid;
-    gap: 10px;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
+  /* ---------- key figures ---------- */
 
-  .report-cover__meta div,
   .report-stat {
-    background: var(--panel-soft);
-    border: 1px solid var(--bd);
-    border-radius: var(--radius-sm);
-    padding: 10px 12px;
+    min-width: 0;
+    padding: 9px 0 0;
+    border-top: 2px solid var(--rpt-rule);
+    background: transparent;
   }
 
-  .report-cover__meta div {
-    border-color: rgba(237, 233, 225, 0.12);
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .report-cover__meta span,
   .report-stat span {
     display: block;
-    font-family: var(--font-mono);
-    font-size: 0.66rem;
-    color: var(--tx2);
-    text-transform: uppercase;
-    letter-spacing: 0;
     margin-bottom: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    line-height: 1.45;
+    color: var(--rpt-ink-3);
   }
 
-  .report-cover__meta span {
-    color: var(--color-text-on-dark-muted);
-  }
-
-  .report-cover__meta strong {
-    color: var(--color-text-on-dark);
-  }
-
-  .report-cover__meta strong,
   .report-stat strong {
-    font-size: 16px;
+    display: block;
+    font-family: var(--font-heading);
+    font-size: 18px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    color: var(--rpt-ink);
+    overflow-wrap: anywhere;
+  }
+
+  /* Verdict stats: semantic color plus a non-color cue (rule weight /
+     underline) so pass and fail remain distinct in grayscale print. */
+  .report-stat--pass {
+    border-top-color: var(--rpt-pass);
+  }
+
+  .report-stat--pass strong {
+    color: var(--rpt-pass);
+  }
+
+  .report-stat--fail {
+    border-top-color: var(--rpt-fail);
+  }
+
+  .report-stat--fail strong {
+    color: var(--rpt-fail);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+
+  /* ---------- key/value tables ---------- */
+
+  .report-pt {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+
+  .report-pt td {
+    padding: 4.5px 0;
+    border-bottom: 1px solid var(--rpt-hairline-soft);
+    vertical-align: top;
+  }
+
+  .report-pt tr:last-child td {
+    border-bottom: none;
+  }
+
+  .report-pt td:first-child {
+    padding-right: 14px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--rpt-ink-2);
+    white-space: nowrap;
   }
 
   .report-pt td:last-child {
     text-align: right;
     font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--rpt-ink);
   }
 
   .report-pt--tight td {
-    padding: 2px 0;
+    padding: 3px 0;
   }
 
-  .report-profile {
-    position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
-    align-items: start;
-    gap: 16px;
-    overflow: hidden;
-  }
-
-  .report-profile__visual {
-    min-width: 0;
-    display: flex;
-    justify-content: center;
-    position: relative;
-  }
-
-  .report-profile svg {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-    max-height: 520px;
-  }
-
-  .report-profile__legend {
-    min-width: 0;
-  }
-
-  .report-profile__legend h3 {
-    margin-bottom: 8px;
-  }
-
-  .report-profile__table {
-    font-size: 11px;
-    table-layout: auto;
-    min-width: 100%;
-  }
-
-  .report-profile__col-index {
-    width: 3.6ch;
-  }
-
-  .report-profile__col-name {
-    width: 45%;
-  }
-
-  .report-profile__col-qc,
-  .report-profile__col-fs {
-    width: 24%;
-  }
-
-  .report-profile__type {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .report-profile__name {
-    white-space: normal;
-    overflow-wrap: normal;
-    word-break: normal;
-    hyphens: auto;
-  }
-
-  .report-profile__swatch {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: var(--radius-sm);
-    border: 1px solid rgba(24, 24, 26, 0.18);
-    flex: 0 0 auto;
-  }
-
-  .report-profile__legend-row--hover td {
-    background: color-mix(in srgb, var(--acl) 28%, transparent);
-  }
-
-  .report-profile__tooltip {
-    min-width: 220px;
-    max-width: 280px;
-  }
-
-  .report-canvas {
-    position: relative;
-    height: 260px;
-    border: 1px solid var(--bd2);
-    border-radius: var(--radius-md);
-    background:
-      linear-gradient(rgba(24, 24, 26, 0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(24, 24, 26, 0.05) 1px, transparent 1px),
-      #fbf9f5;
-    background-size: 2rem 2rem;
-  }
-
-  .report-canvas canvas {
-    display: block;
-    width: 100% !important;
-    height: 100% !important;
-  }
-
-  :global(.report-print-chart) {
-    display: none;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  }
-
-  .report-canvas--single {
-    margin-top: 14px;
-  }
-
-  .report-canvas--tuning {
-    height: 240px;
-  }
-
-  .report-canvas--annex {
-    height: 220px;
-  }
-
-  .report-canvas--annex-bearing {
-    height: 240px;
-  }
-
-  .report-canvas--annex-time {
-    height: 200px;
-  }
-
-  .report-card--figure {
-    margin-top: 16px;
-  }
-
-  .report-annex__split {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-    gap: 16px;
-    align-items: start;
-    margin-top: 16px;
-  }
-
-  .report-annex__split--single {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .report-annex__main,
-  .report-annex__aside {
-    min-width: 0;
-    display: grid;
-    gap: 14px;
-    align-content: start;
-  }
-
-  .report-annex__aside .report-card--figure {
-    margin-top: 0;
-  }
-
-  .report-figure {
-    margin: 0;
-  }
-
-  .report-figure__image {
-    display: block;
-    width: 100%;
-    height: auto;
-    border: 1px solid rgba(24, 24, 26, 0.12);
-    border-radius: var(--radius-md);
-    background: #fbf9f5;
-  }
-
-  .report-chip {
-    display: inline-flex;
-    align-items: center;
-    padding: 3px 8px;
-    border-radius: var(--radius-sm);
-    font-family: var(--font-mono);
-    font-size: 0.66rem;
-    font-weight: 700;
-    margin-right: 8px;
-  }
+  /* ---------- data tables ---------- */
 
   .report-table {
+    width: 100%;
+    border-collapse: collapse;
     table-layout: fixed;
-  }
-
-  .report-table th,
-  .report-table td {
-    vertical-align: top;
-    overflow-wrap: anywhere;
+    margin-top: 0;
+    background: transparent;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
   }
 
   .report-table th {
+    padding: 6px 7px;
+    background: transparent;
+    border-bottom: 1px solid var(--rpt-hairline-strong);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-align: right;
     white-space: normal;
     line-height: 1.35;
+    color: var(--rpt-ink-2);
+    vertical-align: bottom;
+  }
+
+  .report-table td {
+    padding: 5px 7px;
+    border-bottom: 1px solid var(--rpt-hairline-soft);
+    text-align: right;
+    vertical-align: top;
+    /* Numeric cells must never break inside a number. */
+    overflow-wrap: normal;
+    word-break: normal;
+    color: var(--rpt-ink);
+  }
+
+  .report-table td.txt {
+    overflow-wrap: anywhere;
+  }
+
+  .report-table th:first-child,
+  .report-table td:first-child {
+    padding-left: 0;
+  }
+
+  .report-table th:last-child,
+  .report-table td:last-child {
+    padding-right: 0;
+  }
+
+  .report-table th.txt,
+  .report-table td.txt {
+    text-align: left;
+  }
+
+  .report-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* A static document does not need hover zebra. */
+  .report-table tbody tr:hover td {
+    background: transparent;
   }
 
   .report-table sub {
@@ -2041,10 +2130,17 @@
     white-space: nowrap;
     font-size: 0.92em;
     font-weight: 500;
+    color: var(--rpt-ink-3);
   }
 
   .report-table--model-params th {
-    line-height: 1.22;
+    line-height: 1.25;
+  }
+
+  /* The model-parameter table has no colgroup; reserve readable width
+     for its two text columns (Infiltration, Overrides). */
+  .report-table--model-params th.txt {
+    width: 9.5%;
   }
 
   .report-table__col-index {
@@ -2083,6 +2179,258 @@
     width: 3.6%;
   }
 
+  /* ---------- soil chips and notes ---------- */
+
+  .report-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 2px;
+    border: 1px solid rgba(24, 24, 26, 0.14);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    font-weight: 600;
+    margin-right: 8px;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .report-muted {
+    color: var(--rpt-ink-3);
+  }
+
+  .report-note {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.55;
+    color: var(--rpt-ink-2);
+  }
+
+  .report-notes-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 6px;
+  }
+
+  .report-notes-list .report-note {
+    padding-left: 10px;
+    border-left: 2px solid var(--rpt-hairline-strong);
+  }
+
+  .report-notes-list .report-note--warn {
+    border-left-color: var(--rpt-warn);
+  }
+
+  .info {
+    margin: 0 0 12px;
+    padding: 10px 14px;
+    background: var(--rpt-paper-2);
+    border: 1px solid var(--rpt-hairline);
+    border-left: 3px solid var(--rpt-warn);
+    border-radius: 0;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--rpt-ink);
+  }
+
+  .report-section__head + .info,
+  .report-grid .info {
+    margin-bottom: 0;
+  }
+
+  /* ---------- profile ---------- */
+
+  .report-profile {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    align-items: start;
+    gap: 20px;
+    overflow: hidden;
+  }
+
+  .report-profile__visual {
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+    position: relative;
+  }
+
+  .report-profile svg {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: 540px;
+  }
+
+  .report-profile__legend {
+    min-width: 0;
+  }
+
+  .report-profile__legend h3 {
+    margin-bottom: 8px;
+  }
+
+  .report-profile__table {
+    font-size: 11px;
+    table-layout: auto;
+    min-width: 100%;
+  }
+
+  .report-profile__col-index {
+    width: 3.6ch;
+  }
+
+  .report-profile__col-name {
+    width: 45%;
+  }
+
+  .report-profile__col-qc,
+  .report-profile__col-fs {
+    width: 24%;
+  }
+
+  .report-profile__type {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-align: left;
+  }
+
+  .report-profile__name {
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: auto;
+  }
+
+  .report-profile__swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(24, 24, 26, 0.18);
+    flex: 0 0 auto;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .report-profile__legend-row--hover td {
+    background: rgba(61, 107, 106, 0.1) !important;
+  }
+
+  .report-profile__tooltip {
+    min-width: 220px;
+    max-width: 280px;
+  }
+
+  /* ---------- figures and charts ---------- */
+
+  .report-canvas {
+    position: relative;
+    height: 260px;
+    border: 1px solid var(--rpt-hairline);
+    border-radius: 0;
+    background: var(--rpt-paper);
+  }
+
+  .report-canvas canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  :global(.report-print-chart) {
+    display: none;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .report-canvas--single {
+    margin-top: 16px;
+  }
+
+  .report-canvas--tuning {
+    height: 240px;
+  }
+
+  .report-canvas--annex {
+    height: 220px;
+  }
+
+  .report-canvas--annex-bearing {
+    height: 240px;
+  }
+
+  .report-canvas--annex-time {
+    height: 200px;
+  }
+
+  .report-card--figure {
+    margin-top: 16px;
+  }
+
+  .report-figure {
+    margin: 0;
+  }
+
+  .report-figure__image {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rpt-hairline);
+    border-radius: 0;
+    background: var(--rpt-paper-2);
+  }
+
+  .report-figure .report-note {
+    margin-top: 6px;
+  }
+
+  /* ---------- annexes ---------- */
+
+  .report-annex {
+    display: grid;
+    gap: 16px;
+  }
+
+  .report-annex + .report-annex {
+    margin-top: 16px;
+  }
+
+  .report-annex__summary,
+  .report-annex__charts {
+    align-items: start;
+  }
+
+  .report-annex__split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 16px;
+    align-items: start;
+    margin-top: 0;
+  }
+
+  .report-annex__split--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .report-annex__main,
+  .report-annex__aside {
+    min-width: 0;
+    display: grid;
+    gap: 14px;
+    align-content: start;
+  }
+
+  .report-annex__aside .report-card--figure {
+    margin-top: 0;
+  }
+
   .report-tuning__head {
     display: flex;
     justify-content: space-between;
@@ -2091,19 +2439,27 @@
     margin-bottom: 12px;
   }
 
-  .report-annex {
-    display: grid;
-    gap: 14px;
+  .report-tuning__head strong {
+    font-family: var(--font-heading);
+    font-weight: 600;
   }
 
-  .report-annex__summary,
-  .report-annex__charts {
-    align-items: start;
-  }
+  /* ---------- error state ---------- */
 
   .report-error {
-    margin-top: 12vh;
+    max-width: 560px;
+    margin: 12vh auto 0;
+    padding: 32px;
+    background: var(--rpt-paper);
+    border: 1px solid var(--rpt-hairline);
     text-align: center;
+    color: var(--rpt-ink);
+  }
+
+  .report-error h1 {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    margin: 0 0 10px;
   }
 
   .report-error__actions {
@@ -2114,15 +2470,26 @@
     margin-top: 16px;
   }
 
+  /* ---------- responsive ---------- */
+
   @media (max-width: 980px) {
     .report-toolbar {
       flex-wrap: wrap;
       justify-content: flex-start;
     }
 
-    .report-grid--4,
+    .report-grid--4 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .report-cover__meta {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+      row-gap: 14px;
+    }
+
+    .report-cover__meta div:nth-child(odd) {
+      border-left: none;
+      padding-left: 0;
     }
 
     .report-profile {
@@ -2136,17 +2503,32 @@
     }
   }
 
+  /* ============================================================
+     Print: A4 engineering document.
+     Margin boxes carry the page counter where the browser
+     supports them; the repeating table head/foot rows carry the
+     project identification on every page everywhere else.
+     ============================================================ */
+
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 14mm 13mm 16mm;
+
+    @bottom-right {
+      content: counter(page) ' / ' counter(pages);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 6.5pt;
+      color: #555;
+    }
   }
 
   @media print {
+    :global(html),
     :global(body) {
       background: #fff;
       color: #111;
-      font-size: 8px;
-      line-height: 1.32;
+      font-size: 8pt;
+      line-height: 1.42;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -2171,45 +2553,116 @@
       padding: 0;
     }
 
+    .report-sheet {
+      max-width: none;
+      border: none;
+      box-shadow: none;
+      background: #fff;
+    }
+
+    .report-sheet > tbody > tr > td {
+      padding: 0;
+    }
+
+    /* Running identification on every printed page. */
+    .report-running-head {
+      display: table-header-group;
+    }
+
+    .report-running-foot {
+      display: table-footer-group;
+    }
+
+    .report-running-head td {
+      padding: 0 0 4mm;
+    }
+
+    .report-running-foot td {
+      padding: 3mm 0 0;
+    }
+
+    .report-running-head__inner,
+    .report-running-foot__inner {
+      display: flex;
+      justify-content: space-between;
+      gap: 8mm;
+      font-family: var(--font-mono);
+      font-size: 6pt;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #666;
+    }
+
+    .report-running-head__inner {
+      border-bottom: 0.5pt solid #999;
+      padding-bottom: 1.6mm;
+    }
+
+    .report-running-foot__inner {
+      border-top: 0.5pt solid #999;
+      padding-top: 1.6mm;
+    }
+
     .report {
-      display: block;
-      gap: 0;
+      font-size: 8pt;
     }
 
-    .report-cover h1 {
-      font-size: 14.4pt;
-    }
+    /* ----- masthead ----- */
 
-    .report-section h2 {
-      font-size: 8.4pt;
-    }
-
-    .report-cover__meta strong,
-    .report-stat strong {
-      font-size: 7.6pt;
-    }
-
-    .report-cover__brand,
-    .report-cover__eyebrow,
-    .report-cover__meta span,
-    .report-stat span,
-    .tbl th {
-      font-size: 4.8pt;
+    .report-cover {
+      padding-bottom: 7mm;
     }
 
     .report-cover__topline {
-      gap: 8px;
+      padding-bottom: 2.2mm;
+      border-bottom: 1.2pt solid #111;
     }
 
-    .report-card h3,
-    .report-card h4 {
-      font-size: 6.2pt;
-      margin-bottom: 6px;
+    .report-cover__brand,
+    .report-cover__eyebrow {
+      font-size: 6.5pt;
+    }
+
+    .report-cover h1 {
+      margin: 6mm 0 2.5mm;
+      font-size: 21pt;
+    }
+
+    .report-cover p {
+      font-size: 8.5pt;
+    }
+
+    .report-cover__meta {
+      margin-top: 6mm;
+    }
+
+    .report-cover__meta div {
+      padding-top: 2mm;
+      padding-right: 3mm;
+    }
+
+    .report-cover__meta span {
+      font-size: 5.8pt;
+    }
+
+    .report-cover__meta strong {
+      font-size: 8.5pt;
+    }
+
+    /* ----- sections ----- */
+
+    .report-section {
+      padding: 5mm 0;
+      border-top: 0.5pt solid #c4c2bd;
+    }
+
+    .report-section h2 {
+      font-size: 10pt;
     }
 
     .report-section__head {
-      gap: 2px;
-      margin-bottom: 3px;
+      gap: 1mm;
+      margin-bottom: 3.5mm;
       break-inside: avoid;
       page-break-inside: avoid;
       break-after: avoid;
@@ -2223,185 +2676,138 @@
       page-break-before: avoid;
     }
 
-    .report-section__head p,
-    .report-muted,
-    .info {
-      font-size: 5.5pt;
+    .report-section__head p {
+      font-size: 7pt;
     }
 
-    .report-pt,
-    .tbl {
-      font-size: 5.3pt;
-    }
-
-    .report-grid,
-    .report-annex,
-    .report-cover__meta,
-    .report-toolbar {
-      gap: 6px;
-    }
-
-    .report-cover,
-    .report-section {
-      box-shadow: none;
-      border: none;
-      border-radius: 0;
-      background: #fff;
-      padding: 4mm 4mm;
-      break-before: auto;
-      page-break-before: auto;
-    }
-
-    /* The on-screen cover is a dark navy panel with cream text. In print
-       the background is flipped to white above, so the cover text and
-       metadata-card colours must be re-flipped to dark for readability. */
-    .report-cover,
-    .report-cover h1 {
-      color: #111;
-    }
-
-    .report-cover__brand,
-    .report-cover__eyebrow,
-    .report-section__head p,
     .report-muted {
-      color: #444;
+      font-size: 7pt;
     }
 
-    .report-cover__meta div {
-      background: #fff;
-      border: 0.35px solid rgba(24, 24, 26, 0.18);
+    .report-note {
+      font-size: 6.5pt;
     }
 
-    .report-cover__meta span {
-      color: #555;
+    .info {
+      font-size: 7pt;
+      padding: 1.8mm 2.5mm;
+      margin-bottom: 2.5mm;
     }
 
-    .report-cover__meta strong {
-      color: #111;
+    /* ----- grids and cards ----- */
+
+    .report-grid {
+      gap: 2.5mm;
     }
 
-    .report-section {
-      padding-top: 2.8mm;
-      padding-bottom: 3.6mm;
-    }
-
-    .report-section--cpt-profile {
-      padding-top: 2mm;
-      padding-bottom: 2.5mm;
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-
-    .report-section--layer-model {
-      break-before: page;
-      page-break-before: always;
-      padding-top: 4mm;
-    }
-
-    .report-section__block--keep {
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-
-    .report-section--stage6 {
-      padding-top: 2mm;
-    }
-
-    :global(.report-section--print-break-before) {
-      break-before: page !important;
-      page-break-before: always !important;
-    }
-
-    .report-cover {
-      min-height: auto;
-    }
-
-    .report-card,
-    .report-cover__meta div,
-    .report-stat {
-      box-shadow: none;
-      background: #fff;
-      border: 0.35px solid rgba(24, 24, 26, 0.08);
-      border-radius: 0;
-      padding: 7px 8px;
-    }
-
-    .report-section--cpt-profile .report-card {
-      padding: 4px 5px;
-    }
-
-    .report-profile {
-      grid-template-columns: minmax(0, 1fr) 64mm;
-      gap: 6px;
-    }
-
-    .report-section--cpt-profile .report-section__head {
-      margin-bottom: 1px;
-    }
-
-    .report-section--cpt-profile .report-section__head p {
-      font-size: 5pt;
-    }
-
-    .report-profile__legend h3 {
-      margin-bottom: 4px;
-      font-size: 5.6pt;
-    }
-
-    .report-profile__table {
-      font-size: 4.6pt;
-      table-layout: auto;
-    }
-
-    .report-profile__swatch {
-      width: 7px;
-      height: 7px;
-      border-width: 0.35px;
-    }
-
-    .report-section--stage6 .report-section__head {
-      margin-bottom: 2px;
-    }
-
-    .report-section--stage6 .report-card {
-      padding: 6px 7px;
-    }
-
-    .report-section--stage6 .report-annex {
-      gap: 6px;
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-
-    .report-section--stage6 .report-annex + .report-annex {
-      break-before: auto;
-      page-break-before: auto;
-      margin-top: 0;
-    }
-
-    .report-section--stage6 .report-annex__summary,
-    .report-section--stage6 .report-annex__charts {
+    /* The narrow print viewport triggers the small-screen media query;
+       restore the two-column layout on paper. Tuning cards stay full
+       width so their chart pairs remain readable. */
+    .report-grid--2 {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 6px;
-      break-inside: auto;
-      page-break-inside: auto;
     }
 
-    .report-section--stage6 .report-annex__split {
-      grid-template-columns: minmax(0, 1fr) 68mm;
-      gap: 6px;
-      margin-top: 6px;
-    }
-
-    .report-section--stage6 .report-annex__split--single {
+    .report-grid--2:has(> .report-tuning) {
       grid-template-columns: minmax(0, 1fr);
     }
 
-    .report-section--stage6 .report-annex__stats {
-      gap: 6px;
-      margin-bottom: 1px;
-      break-inside: auto;
-      page-break-inside: auto;
+    .report-cover__meta {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .report-cover__meta div,
+    .report-cover__meta div:nth-child(odd) {
+      border-left: 0.5pt solid #ccc9c3;
+      padding-left: 3mm;
+    }
+
+    .report-cover__meta div:first-child {
+      border-left: none;
+      padding-left: 0;
+    }
+
+    .report-grid + .report-grid,
+    .report-grid + .report-card,
+    .report-card + .report-grid,
+    .report-annex + .report-annex,
+    .report-card--figure,
+    .report-canvas--single {
+      margin-top: 2.5mm;
+    }
+
+    .report-card {
+      border: 0.5pt solid #ccc9c3;
+      padding: 2.4mm 2.8mm;
+    }
+
+    .report-card h3,
+    .report-card h4 {
+      font-size: 6.8pt;
+      margin-bottom: 1.6mm;
+      padding-bottom: 1.1mm;
+      border-bottom: 0.5pt solid #dad7d1;
+    }
+
+    .report-stat {
+      border-top-width: 1pt;
+      padding-top: 1.4mm;
+    }
+
+    .report-stat span {
+      font-size: 5.8pt;
+      margin-bottom: 0.8mm;
+    }
+
+    .report-stat strong {
+      font-size: 9.5pt;
+    }
+
+    /* ----- tables ----- */
+
+    .report-pt {
+      font-size: 7pt;
+    }
+
+    .report-pt td {
+      padding: 0.7mm 0;
+    }
+
+    .report-pt td:first-child {
+      font-size: 6pt;
+    }
+
+    .report-table {
+      font-size: 7pt;
+    }
+
+    .report-table th {
+      font-size: 6pt;
+      padding: 1mm 1.2mm;
+      line-height: 1.2;
+      border-bottom: 0.75pt solid #777;
+    }
+
+    .report-table td {
+      padding: 0.9mm 1.2mm;
+      border-bottom: 0.5pt solid #e0ddd8;
+    }
+
+    .report-table--layers,
+    .report-table--model-params {
+      font-size: 6.2pt;
+    }
+
+    .report-table--layers th,
+    .report-table--model-params th {
+      font-size: 5.6pt;
+    }
+
+    .report-table--model-params th {
+      line-height: 1.25;
+    }
+
+    .report-section--appendix .report-table {
+      font-size: 6.5pt;
     }
 
     .tbl thead {
@@ -2419,32 +2825,75 @@
       page-break-inside: avoid;
     }
 
-    .tbl th,
-    .tbl td {
-      border-color: rgba(24, 24, 26, 0.1);
-      padding: 1.5px 2.5px;
+    /* Keep key-figure rows and ordinary cards whole; very tall blocks
+       (appendix tables, full annexes) fall back to normal flow. */
+    .report-grid--3,
+    .report-grid--4,
+    .report-card {
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
-    .pt td {
-      padding: 0;
+    .report-section--appendix .report-card {
+      break-inside: auto;
+      page-break-inside: auto;
     }
 
-    .report-table th {
-      line-height: 1.15;
-    }
-
-    .report-table--model-params th {
-      line-height: 1.24;
+    .report-card h3,
+    .report-card h4 {
+      break-after: avoid;
+      page-break-after: avoid;
     }
 
     .report-chip {
-      padding: 0.5px 3px;
-      font-size: 4.5pt;
-      margin-right: 3px;
+      padding: 0.2mm 1mm;
+      font-size: 5.5pt;
+      margin-right: 1mm;
+      border-width: 0.5pt;
     }
+
+    /* ----- profile ----- */
+
+    .report-section--cpt-profile {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .report-section--profile {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .report-profile {
+      grid-template-columns: minmax(0, 1fr) 64mm;
+      gap: 3mm;
+    }
+
+    .report-profile svg {
+      max-height: 110mm;
+    }
+
+    .report-profile__legend h3 {
+      margin-bottom: 1mm;
+      font-size: 6.5pt;
+    }
+
+    .report-profile__table {
+      font-size: 6pt;
+      table-layout: auto;
+    }
+
+    .report-profile__swatch {
+      width: 2mm;
+      height: 2mm;
+      border-width: 0.5pt;
+    }
+
+    /* ----- charts and figures ----- */
 
     .report-canvas {
       height: 60mm;
+      border: 0.5pt solid #ccc9c3;
     }
 
     .report-canvas canvas {
@@ -2471,12 +2920,8 @@
       height: 34mm;
     }
 
-    .report-section--stage6 .report-canvas--single {
-      margin-top: 6px;
-    }
-
-    .report-section--stage6 .report-annex__aside .report-card--figure {
-      margin-top: 0;
+    .report-figure__image {
+      border: 0.5pt solid #ccc9c3;
     }
 
     .report-section--stage6 .report-figure__image {
@@ -2484,23 +2929,57 @@
       object-fit: contain;
     }
 
-    .report-profile svg {
-      max-height: 82mm;
+    /* ----- page-break management ----- */
+
+    .report-section--layer-model {
+      break-before: page;
+      page-break-before: always;
     }
 
-    .report-section--profile,
-    .report-section--cpt-profile {
+    .report-section__block--keep {
       break-inside: avoid;
       page-break-inside: avoid;
     }
 
-    .report-section--stage6 .report-canvas,
-    .report-section--stage6 .report-stat,
-    .report-section--stage6 .report-card--nested,
-    .report-section--stage6 table {
+    :global(.report-section--print-break-before) {
+      break-before: page !important;
+      page-break-before: always !important;
+    }
+
+    .report-section--stage6 .report-annex {
+      gap: 2.5mm;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .report-section--stage6 .report-annex__summary,
+    .report-section--stage6 .report-annex__charts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 2.5mm;
       break-inside: auto;
       page-break-inside: auto;
     }
 
+    .report-section--stage6 .report-annex__split {
+      grid-template-columns: minmax(0, 1fr) 68mm;
+      gap: 2.5mm;
+    }
+
+    .report-section--stage6 .report-annex__split--single {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .report-section--stage6 .report-annex__stats {
+      gap: 2.5mm;
+      break-inside: auto;
+      page-break-inside: auto;
+    }
+
+    .report-section--stage6 .report-canvas,
+    .report-section--stage6 .report-stat,
+    .report-section--stage6 table {
+      break-inside: auto;
+      page-break-inside: auto;
+    }
   }
 </style>
