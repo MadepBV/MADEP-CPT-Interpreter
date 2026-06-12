@@ -1537,6 +1537,41 @@ struct PhaseContext {
   double modelBoundingBoxDiagonal{ 1.0 };
 };
 
+// Task #56: Bergan current-stiffness parameter of a state increment —
+// CSP = Σ w·Δε:Δσ / Σ w·Δε:D_e:Δε over continuum Gauss points (1 = elastic
+// response, → 0 at failure). Voigt engineering-shear strain against single-
+// entry shear stress sums γτ, the correct tensor double contraction.
+inline double compute_increment_csp(
+    const std::vector<ElementCache>& elements,
+    const std::vector<Mat6>& regionC,
+    const std::vector<MaterialPoint>& from,
+    const std::vector<MaterialPoint>& to) {
+  double cspNum = 0.0, cspDen = 0.0;
+  for (const auto& el : elements) {
+    const Mat6& Ce = regionC[static_cast<std::size_t>(el.regionIndex)];
+    for (int g = 0; g < el.numGp; ++g) {
+      const std::int32_t mpIdx = el.mpIdx[g];
+      const MaterialPoint& c0 = from[static_cast<std::size_t>(mpIdx)];
+      const MaterialPoint& t1 = to[static_cast<std::size_t>(mpIdx)];
+      const double w = el.gp[g].weight_det_j;
+      const Vec6 dEps = linalg::sub(t1.totalStrain, c0.totalStrain);
+      const Vec6 dSig = linalg::sub(t1.effectiveStress, c0.effectiveStress);
+      double dd = 0.0;
+      for (int k = 0; k < 6; ++k) {
+        dd += dEps[static_cast<std::size_t>(k)] * dSig[static_cast<std::size_t>(k)];
+      }
+      const Vec6 CdEps = linalg::mul6x6(Ce, dEps);
+      double de = 0.0;
+      for (int k = 0; k < 6; ++k) {
+        de += dEps[static_cast<std::size_t>(k)] * CdEps[static_cast<std::size_t>(k)];
+      }
+      cspNum += w * dd;
+      cspDen += w * de;
+    }
+  }
+  return cspDen > 1e-300 ? cspNum / cspDen : 1.0;
+}
+
 // Task #56 I-0: PLAXIS L1-of-magnitudes norm — Σ over nodes of ‖(F_x,F_y)‖₂
 // plus Σ|M| over rotation DOFs. `vecFree` is indexed by free index; freeDofs
 // is sorted ascending, so a node's (ux, uy) free entries are adjacent when
@@ -3661,12 +3696,631 @@ inline void run_fixed_point_probe(
   *ctx.trial = trialBackup;
 }
 
+// ============================================================================
+// Task #56 Stage C-1 (I-1 + I-2 + interim collapse discriminator) — the
+// PLAXIS-fidelity initial-stiffness phase driver for staged (wall) MC phases.
+//
+// Scheme (van Langen 1991 / PLAXIS Scientific Manual 2.4, validated by the
+// Stage-B fixed-point experiment, which marched both stalled repros to λ = 1
+// on exactly this operator):
+//   * K_e assembled ONCE per phase: soil D_e at every GP, interface FULL
+//     elastic diag(k_s, k_n) at every station (gap included — the epsFloor
+//     secant would break the "stiffness never increases" contraction premise
+//     on gap re-closure; review item 4), wall Timoshenko stiffness.
+//   * Per iteration: r = f_ext(λ) − f_int(σ_c(U)) with f_int from the
+//     UNCHANGED exact MC + interface return maps; solve K_e·δu = r by CG with
+//     the persistent wall block preconditioner (built once, reused) and the
+//     wall coarse correction forced ON; U += ω·δu. GMRES is never dispatched
+//     and the Tier-2/LM and quasi-convergence machinery of the Newton path
+//     does not exist here (review items 4/8 — bypassed structurally, keyed on
+//     phaseKind/globalScheme, never on isInitialGravityPhase).
+//   * ω = overRelaxation (1.2), auto-clamped to 1.0 whenever ANY non-
+//     associated plastic point or interface slip/gap station is active —
+//     the conservative reading of van Langen's warning that over-relaxation
+//     can destroy non-associated convergence.
+//   * Acceptance per step (I-2, this mode ONLY): the PLAXIS compound
+//     criterion — global error = Σ‖r_node‖ / (λ·Σ‖ramped_node‖ +
+//     CSP·Σ‖inactive_node‖) ≤ toleratedError (0.01) AND the local-error
+//     quotas (inaccurate soil ≤ 3 + N_plastic/10; interface likewise) — OR
+//     the stricter legacy research target (residualRelTol/AbsTol), whichever
+//     is met first. At least one corrector solve is required (it > 1).
+//   * Step control: PLAXIS 6/15 desired-iteration band (×2 growth, ×0.5 next
+//     step), 60-iteration cap per step, rejection cuts ×0.5 and retries from
+//     the committed state; secant predictor seeds each step (ungated here).
+//   * Verdict on failure at the step floor (review item 5, interim
+//     discriminator): CSP < collapseCspThreshold (0.015) ⇒ soil-body
+//     COLLAPSE; otherwise numerical non-convergence. The c=1 adversarial
+//     control (CSP ≈ 0.011 at its stall) must classify as collapse.
+//   * Honesty labels: after reaching λ = 1 the final state is polished
+//     toward the legacy research tolerance with extra fixed-point
+//     iterations; the telemetry records WHICH criterion the final state
+//     satisfies (finalStatePlaxisConverged / finalStateResearchConverged)
+//     so verification gates can claim λ=1 honestly.
+// ============================================================================
+inline PhaseResult run_initial_stiffness_phase(
+    PhaseContext& ctx,
+    const SolverOptions& opts) {
+  auto& elements = *ctx.elements;
+  auto& committedMp = *ctx.committed;
+  auto& trialMp = *ctx.trial;
+  auto& regions = *ctx.regions;
+  auto& regionC = *ctx.regionC;
+  auto& freeDofs = *ctx.freeDofs;
+  auto& freeIndexByDof = *ctx.freeIndexByDof;
+  auto& K = *ctx.K;
+  auto& U = *ctx.U_global;
+  const double* U_base = ctx.U_base ? ctx.U_base->data() : nullptr;
+  const double* beamReferenceU = ctx.beamReferenceU ? ctx.beamReferenceU->data() : nullptr;
+  const BeamAssemblyMode beamMode = ctx.beamMode;
+  const double* baseRhs = ctx.baseRhsFree ? ctx.baseRhsFree->data() : nullptr;
+  const double* rampedRhs = ctx.rampedRhsFree ? ctx.rampedRhsFree->data() : nullptr;
+  const std::int32_t nfree = K.nrows;
+
+  PhaseResult res;
+  PhaseConvergenceTelemetry& tel = res.telemetry;
+  tel.valid = 1u;
+  tel.usedInitialStiffness = 1u;
+  tel.phaseKind = static_cast<std::uint8_t>(ctx.phaseKind);
+  tel.activeFullNodeMagSum = rampedRhs
+      ? node_force_magnitude_sum(rampedRhs, freeDofs, ctx.translationalDofCount)
+      : 0.0;
+  tel.inactiveNodeMagSum = ctx.committedExternalRhsFree
+      ? node_force_magnitude_sum(
+            ctx.committedExternalRhsFree->data(), freeDofs, ctx.translationalDofCount)
+      : (baseRhs ? node_force_magnitude_sum(baseRhs, freeDofs, ctx.translationalDofCount)
+                 : 0.0);
+  constexpr std::size_t kTelHistoryCap = 96;
+  auto tel_push_capped = [](std::vector<double>& v, double x) {
+    if (v.size() >= kTelHistoryCap) v.erase(v.begin());
+    v.push_back(x);
+  };
+
+  const bool keepDisplayState = ctx.phaseKind == PhaseKind::ServiceLoad ||
+                                ctx.phaseKind == PhaseKind::Excavation;
+  auto remember_display_state = [&](double candidateLoadFactor, const AssembleOutput& assembly) {
+    if (!keepDisplayState) return;
+    const bool prefer =
+        !res.hasDisplayState ||
+        candidateLoadFactor > res.displayLoadFactor + 1e-10 ||
+        (std::abs(candidateLoadFactor - res.displayLoadFactor) <= 1e-10 &&
+         assembly.residualNorm < res.displayResidualNorm - 1e-12);
+    if (!prefer) return;
+    res.hasDisplayState = true;
+    res.displayLoadFactor = candidateLoadFactor;
+    res.displayResidualNorm = assembly.residualNorm;
+    res.displayActiveCount = assembly.plasticActiveCount;
+    res.displayActiveFaceCount = assembly.activeFaceCount;
+    res.displayActiveEdgeCount = assembly.activeEdgeCount;
+    res.displayActiveApexCount = assembly.activeApexCount;
+    res.displayTensionCount = assembly.tensionCount;
+    res.displayU = U;
+    res.displayMp = trialMp;
+  };
+
+  // Persistent wall preconditioner + coarse correction (forced ON in-mode).
+  const std::vector<std::array<std::int32_t, 3>> wallTriplets =
+      build_wall_preconditioner_triplets(ctx.beamElements, freeIndexByDof, beamMode);
+  const auto* wallTripletsPtr = wallTriplets.empty() ? nullptr : &wallTriplets;
+  const std::vector<std::vector<std::int32_t>> wallBlocks =
+      build_wall_preconditioner_blocks(ctx.beamElements, freeIndexByDof, beamMode);
+  const auto* wallBlocksPtr = wallBlocks.empty() ? nullptr : &wallBlocks;
+  const sparse::WallCoarseSpace wallCoarseSpace =
+      build_wall_coarse_space(elements, ctx.beamElements, freeIndexByDof, beamMode, nfree);
+  const auto* wallCoarse = wallCoarseSpace.empty() ? nullptr : &wallCoarseSpace;
+  SolverOptions solveOpts = opts;
+  solveOpts.useWallCoarseCorrection = 1;
+
+  std::vector<double> internalForceFree(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> residualFree(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> deltaU(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> diagInv;
+  std::vector<double> telPrevResidual;
+  std::vector<double> telPrevInternal;
+  std::vector<double> telPrevUFree;
+  bool telHavePrev = false;
+  std::uint64_t telFp1 = 0, telFp2 = 0;
+  bool telHaveFp1 = false, telHaveFp2 = false;
+
+  // K_e: once per phase, from the committed phase-start state.
+  trialMp = committedMp;
+  {
+    AssembleOutput ka = assemble_global(
+        elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp,
+        regions, regionC, freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+        /*loadFactor=*/0.0, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+        /*wantTangent=*/true, K, internalForceFree, residualFree,
+        /*useElasticGlobalizationTangent=*/true, beamMode, beamReferenceU,
+        /*useConsistentGlobalizationTangent=*/false,
+        /*telemetry=*/nullptr,
+        /*interfaceElasticTangent=*/true);
+    (void)ka;
+    sparse::build_block_jacobi(K, freeDofs, diagInv, wallTripletsPtr, wallBlocksPtr);
+  }
+  trialMp = committedMp;
+
+  const double tol = std::max(opts.plaxisToleratedError, 1e-6);
+  const int maxIterPerStep = std::max(opts.initialStiffnessMaxIter, 4);
+  const double phaseMinLoadStep = opts.minLoadStep;
+  const double maxFraction = std::clamp(opts.maxLoadFraction, 0.01, 1.0);
+  double loadFactor = 0.0;
+  double dLambda = std::clamp(opts.initialLoadStep, phaseMinLoadStep, maxFraction);
+  constexpr double kLoadCompletionTol = 1e-6;
+  std::vector<double> prevAcceptedDelta;
+  double prevAcceptedStep = 0.0;
+  double cspCurrent = 1.0;
+
+  // ---------------------------------------------------------------------------
+  // I-4: Anderson(m=3) acceleration of the constant-matrix fixed-point map —
+  // the Krylov-subspace accelerator family PLAXIS documents for its modified-
+  // NR ("subspace accelerator", Scott & Fenves 2010 lineage; Walker & Ni 2011
+  // give the equivalence). Pure correction on a contracting iteration:
+  // history is restarted at step boundaries, on in-place target halvings, and
+  // whenever the residual grows (monotone safeguard), and the small least-
+  // squares solve is Tikhonov-guarded with a hard ‖γ‖∞ cap — so the
+  // accelerator can only shorten a contracting iteration; it cannot fabricate
+  // equilibrium where the plain iteration diverges (c=1 control protection:
+  // acceptance still requires actual sub-tolerance residuals).
+  // ---------------------------------------------------------------------------
+  // Depth 6 = the top of PLAXIS's recommended subspace range (3-6). The deep
+  // cut's open crest gap band carries ~13 marginal modes (eigenvalue of
+  // I − K_e⁻¹K_secant ≈ 1 at fully released stations); a deeper history
+  // accelerates that slow subspace collectively.
+  constexpr int kAndersonDepth = 6;
+  constexpr double kAndersonGammaCap = 50.0;
+  std::vector<std::vector<double>> andersonDu;
+  std::vector<std::vector<double>> andersonDf;
+  std::vector<double> andersonPrevU;
+  std::vector<double> andersonPrevF;
+  bool andersonHavePrev = false;
+  auto anderson_reset = [&]() {
+    andersonDu.clear();
+    andersonDf.clear();
+    andersonHavePrev = false;
+  };
+
+  // One fixed-point pass at the given λ target. `targetLambda` is mutable:
+  // the PLAXIS shrink-and-continue rule halves the remaining increment IN
+  // PLACE (legal because the operator is the constant K_e — only the load
+  // target rescales; accumulated iterations are kept). Returns
+  // {accepted, iters}; records which criterion accepted into the outparams.
+  auto run_step_iterations = [&](double& targetLambda, double stepBaseLambda,
+                                 int maxIters, bool allowInPlaceHalving,
+                                 bool& plaxisAccepted, bool& researchAccepted,
+                                 bool requireResearch) -> std::pair<bool, int> {
+    telHavePrev = false;
+    telHaveFp1 = false;
+    telHaveFp2 = false;
+    plaxisAccepted = false;
+    researchAccepted = false;
+    anderson_reset();
+    double prevIterResidual = std::numeric_limits<double>::infinity();
+    // Contraction-aware budget (task #56, justified by the deep-cut probe):
+    // the open-gap interface band carries marginal modes whose contraction
+    // rate (α ≈ 0.999) is an OPERATOR property — independent of the step
+    // size — so halving the step cannot speed them up; only patience or the
+    // accelerator can. While the iteration is PROVABLY contracting (residual
+    // decreased in ≥8 of the last 10 iterations and α_m below 0.9995) the
+    // per-step cap is extended (up to 10×) and in-place halving is skipped.
+    // The c=1 genuine-collapse control CANNOT earn the extension: its
+    // iteration oscillates with a growing envelope, failing the monotone
+    // window, so it still dies at the floor and classifies as collapse.
+    const int extendedCap = 10 * maxIters;
+    int currentCap = maxIters;
+    int windowDecreases = 0;
+    std::array<std::uint8_t, 10> decreaseRing{};
+    int ringPos = 0;
+    double lastAlphaM = 1.0;
+    auto steady_contraction = [&]() {
+      return windowDecreases >= 8 && lastAlphaM > 0.0 && lastAlphaM < 0.9995;
+    };
+    int it = 0;
+    for (it = 1; it <= currentCap; ++it) {
+      // PLAXIS shrink-and-continue: past every desiredMax-iteration window
+      // without convergence, halve the REMAINING increment in place and keep
+      // iterating from the current state — except while steadily contracting
+      // (halving cannot help the structural slow modes).
+      if (allowInPlaceHalving && it > 1 &&
+          (it - 1) % (std::max(opts.desiredMaxIter, 1) + 1) == 0 &&
+          !steady_contraction() &&
+          targetLambda - stepBaseLambda > 2.0 * phaseMinLoadStep) {
+        targetLambda = stepBaseLambda + 0.5 * (targetLambda - stepBaseLambda);
+        anderson_reset();
+        prevIterResidual = std::numeric_limits<double>::infinity();
+      }
+      // Budget extension while provably contracting.
+      if (it == currentCap && currentCap < extendedCap && steady_contraction()) {
+        currentCap = std::min(currentCap + maxIters, extendedCap);
+      }
+      AssembleTelemetry sink;
+      sink.toleratedError = tol;
+      AssembleOutput a = assemble_global(
+          elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp,
+          regions, regionC, freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+          targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+          /*wantTangent=*/false, K, internalForceFree, residualFree,
+          /*useElasticGlobalizationTangent=*/false, beamMode, beamReferenceU,
+          /*useConsistentGlobalizationTangent=*/false,
+          &sink);
+      ++res.newtonIterations;
+      res.maxEta = std::max(res.maxEta, a.maxEta);
+      res.activeCount = a.plasticActiveCount;
+      res.activeFaceCount = a.activeFaceCount;
+      res.activeEdgeCount = a.activeEdgeCount;
+      res.activeApexCount = a.activeApexCount;
+      res.tensionCount = a.tensionCount;
+      res.residualNorm = a.residualNorm;
+      remember_display_state(targetLambda, a);
+
+      // Current-increment CSP (committed step-start → current trial).
+      cspCurrent = compute_increment_csp(elements, regionC, committedMp, trialMp);
+
+      const double residualTarget = nonlinear_residual_target(opts, a.rhsNorm, nfree);
+      const double residMagSum = node_force_magnitude_sum(
+          residualFree.data(), freeDofs, ctx.translationalDofCount);
+      const double denom = targetLambda * tel.activeFullNodeMagSum +
+          std::max(cspCurrent, 0.0) * tel.inactiveNodeMagSum;
+      const double plaxisGlobalError =
+          denom > 1e-30 ? residMagSum / denom : residMagSum;
+      const bool quotasOk =
+          sink.soilInaccurateCount <=
+              3 + sink.soilPlasticPointCount / 10 &&
+          sink.interfaceInaccurateCount <=
+              3 + sink.interfacePlasticPointCount / 10;
+      const bool plaxisConverged = plaxisGlobalError <= tol && quotasOk;
+      const bool researchConverged = a.residualNorm <= residualTarget;
+
+      // ---- telemetry (same observables as the Newton loop) ----
+      {
+        tel.newtonIterations += 1;
+        tel.lambdaTarget = targetLambda;
+        tel.residualNorm = a.residualNorm;
+        tel.residualTarget = residualTarget;
+        const double absArm = nonlinear_absolute_residual_target(opts, nfree);
+        const bool absBinds = absArm >= opts.residualRelTol * std::max(a.rhsNorm, 0.0);
+        tel.lastBindingArmAbs = absBinds ? 1u : 0u;
+        if (absBinds) tel.absArmBindCount += 1; else tel.relArmBindCount += 1;
+        tel.residualNodeMagSum = residMagSum;
+        tel.plaxisGlobalError = plaxisGlobalError;
+        tel.soilPlasticPointCount = sink.soilPlasticPointCount;
+        tel.soilInaccurateCount = sink.soilInaccurateCount;
+        tel.maxSoilLocalError = sink.maxSoilLocalError;
+        tel.interfacePlasticPointCount = sink.interfacePlasticPointCount;
+        tel.interfaceInaccurateCount = sink.interfaceInaccurateCount;
+        tel.maxInterfaceLocalError = sink.maxInterfaceLocalError;
+        tel.interfaceStickCount = sink.interfaceStickCount;
+        tel.interfaceSlipCount = a.interfaceSlipCount;
+        tel.interfaceGapCount = a.interfaceGapCount;
+        tel.elasticPassthroughCount += a.elasticPassthroughCount;
+        tel.lastIterElasticPassthrough = a.elasticPassthroughCount;
+        const std::uint64_t fp = sink.branchFingerprint;
+        if (telHaveFp1 && fp != telFp1) tel.branchChangeEvents += 1;
+        if (telHaveFp2 && fp == telFp2 && fp != telFp1) tel.branchPeriod2Cycles += 1;
+        telFp2 = telFp1; telHaveFp2 = telHaveFp1;
+        telFp1 = fp; telHaveFp1 = true;
+        tel.lastBranchFingerprint = fp;
+        if (telHavePrev && telPrevResidual.size() == static_cast<std::size_t>(nfree)) {
+          double rDot = 0.0, rPrev2 = 0.0;
+          for (std::int32_t i = 0; i < nfree; ++i) {
+            rDot += telPrevResidual[static_cast<std::size_t>(i)] *
+                    residualFree[static_cast<std::size_t>(i)];
+            rPrev2 += telPrevResidual[static_cast<std::size_t>(i)] *
+                      telPrevResidual[static_cast<std::size_t>(i)];
+          }
+          const double alpha = rPrev2 > 1e-300 ? rDot / rPrev2 : 0.0;
+          tel.alphaM = alpha;
+          tel_push_capped(tel.alphaMHistory, alpha);
+          double df2 = 0.0, fma2 = 0.0, da2 = 0.0, ama2 = 0.0;
+          for (std::int32_t i = 0; i < nfree; ++i) {
+            const double fNow = internalForceFree[static_cast<std::size_t>(i)];
+            const double fPrev = telPrevInternal[static_cast<std::size_t>(i)];
+            const double df = fNow - fPrev;
+            const double fa = fNow - alpha * fPrev;
+            df2 += df * df;
+            fma2 += fa * fa;
+            const double uNow = U[freeDofs[i]];
+            const double uPrev = telPrevUFree[static_cast<std::size_t>(i)];
+            const double du = uNow - uPrev;
+            const double ua = uNow - alpha * uPrev;
+            da2 += du * du;
+            ama2 += ua * ua;
+          }
+          tel.epsF = fma2 > 1e-300 ? std::abs(alpha) * std::sqrt(df2 / fma2) : 0.0;
+          tel.epsA = ama2 > 1e-300 ? std::abs(alpha) * std::sqrt(da2 / ama2) : 0.0;
+        }
+        telPrevResidual.assign(residualFree.begin(), residualFree.end());
+        telPrevInternal.assign(internalForceFree.begin(), internalForceFree.end());
+        telPrevUFree.resize(static_cast<std::size_t>(nfree));
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          telPrevUFree[static_cast<std::size_t>(i)] = U[freeDofs[i]];
+        }
+        telHavePrev = true;
+        tel_push_capped(tel.residualHistory, a.residualNorm);
+        tel_push_capped(tel.plaxisErrorHistory, plaxisGlobalError);
+      }
+      // ---- end telemetry ----
+
+      if (it > 1) {
+        const bool accept = requireResearch
+            ? researchConverged
+            : (plaxisConverged || researchConverged);
+        if (accept) {
+          plaxisAccepted = plaxisConverged;
+          researchAccepted = researchConverged;
+          return {true, it};
+        }
+      }
+
+      std::fill(deltaU.begin(), deltaU.end(), 0.0);
+      cg::LinearSolveResult lr = solve_phase_linear_system(
+          K, freeDofs, residualFree, deltaU, diagInv, solveOpts,
+          /*useUnsymmetricSolver=*/false,
+          /*reuseDiagInv=*/true, /*gmresCache=*/nullptr,
+          std::numeric_limits<double>::quiet_NaN(),
+          std::numeric_limits<double>::quiet_NaN(),
+          wallTripletsPtr, wallBlocksPtr, wallCoarse);
+      res.cgIterations += lr.iterations;
+      res.lastLinearSolverKind = 0;
+      // Over-relaxation: clamped to 1.0 whenever non-associated plasticity or
+      // interface slip/gap is active (van Langen non-associated warning).
+      const bool anyNonAssocActive =
+          a.plasticActiveCount > 0 || a.tensionCount > 0 ||
+          a.interfaceSlipCount > 0 || a.interfaceGapCount > 0;
+      const double omega = anyNonAssocActive
+          ? 1.0
+          : std::clamp(opts.overRelaxation, 1.0, 1.9);
+      // f_k = ω·K_e⁻¹·r_k — the fixed-point step from u_k.
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        deltaU[static_cast<std::size_t>(i)] *= omega;
+      }
+      // Monotone safeguard: a growing residual invalidates the secant
+      // history (and protects the genuine-collapse oscillation case).
+      const bool residualDecreased = a.residualNorm <= prevIterResidual * (1.0 + 1e-12);
+      if (!residualDecreased) anderson_reset();
+      prevIterResidual = a.residualNorm;
+      // Rolling contraction window for the adaptive budget.
+      windowDecreases -= decreaseRing[static_cast<std::size_t>(ringPos)];
+      decreaseRing[static_cast<std::size_t>(ringPos)] = residualDecreased ? 1u : 0u;
+      windowDecreases += decreaseRing[static_cast<std::size_t>(ringPos)];
+      ringPos = (ringPos + 1) % 10;
+      lastAlphaM = tel.alphaM;
+      // Anderson(m) bookkeeping: difference columns from successive iterates.
+      std::vector<double> uNow(static_cast<std::size_t>(nfree), 0.0);
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        uNow[static_cast<std::size_t>(i)] = U[freeDofs[static_cast<std::size_t>(i)]];
+      }
+      if (andersonHavePrev) {
+        std::vector<double> du(static_cast<std::size_t>(nfree), 0.0);
+        std::vector<double> df(static_cast<std::size_t>(nfree), 0.0);
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          du[static_cast<std::size_t>(i)] =
+              uNow[static_cast<std::size_t>(i)] - andersonPrevU[static_cast<std::size_t>(i)];
+          df[static_cast<std::size_t>(i)] =
+              deltaU[static_cast<std::size_t>(i)] - andersonPrevF[static_cast<std::size_t>(i)];
+        }
+        andersonDu.push_back(std::move(du));
+        andersonDf.push_back(std::move(df));
+        if (andersonDu.size() > static_cast<std::size_t>(kAndersonDepth)) {
+          andersonDu.erase(andersonDu.begin());
+          andersonDf.erase(andersonDf.begin());
+        }
+      }
+      // γ = argmin ‖f_k − Δf·γ‖₂ via Tikhonov-guarded normal equations.
+      const int m = static_cast<int>(andersonDf.size());
+      std::array<double, 6> gamma{};
+      bool useAccel = m > 0;
+      if (useAccel) {
+        double G[6][6] = {{0.0}};
+        double b[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        for (int r = 0; r < m; ++r) {
+          for (std::int32_t i = 0; i < nfree; ++i) {
+            b[r] += andersonDf[static_cast<std::size_t>(r)][static_cast<std::size_t>(i)] *
+                    deltaU[static_cast<std::size_t>(i)];
+          }
+          for (int c = r; c < m; ++c) {
+            double s = 0.0;
+            for (std::int32_t i = 0; i < nfree; ++i) {
+              s += andersonDf[static_cast<std::size_t>(r)][static_cast<std::size_t>(i)] *
+                   andersonDf[static_cast<std::size_t>(c)][static_cast<std::size_t>(i)];
+            }
+            G[r][c] = s;
+            G[c][r] = s;
+          }
+        }
+        double maxDiag = 0.0;
+        for (int r = 0; r < m; ++r) maxDiag = std::max(maxDiag, G[r][r]);
+        const double ridge = std::max(1e-12 * maxDiag, 1e-300);
+        for (int r = 0; r < m; ++r) G[r][r] += ridge;
+        // Gaussian elimination with partial pivoting on the m×m system.
+        int piv[6] = {0, 1, 2, 3, 4, 5};
+        for (int col = 0; col < m && useAccel; ++col) {
+          int best = col;
+          for (int r = col + 1; r < m; ++r) {
+            if (std::abs(G[piv[r]][col]) > std::abs(G[piv[best]][col])) best = r;
+          }
+          std::swap(piv[col], piv[best]);
+          const double d = G[piv[col]][col];
+          if (!(std::abs(d) > 1e-300)) { useAccel = false; break; }
+          for (int r = col + 1; r < m; ++r) {
+            const double f = G[piv[r]][col] / d;
+            for (int c = col; c < m; ++c) G[piv[r]][c] -= f * G[piv[col]][c];
+            b[piv[r]] -= f * b[piv[col]];
+          }
+        }
+        if (useAccel) {
+          for (int row = m - 1; row >= 0; --row) {
+            double s = b[piv[row]];
+            for (int c = row + 1; c < m; ++c) s -= G[piv[row]][c] * gamma[static_cast<std::size_t>(c)];
+            gamma[static_cast<std::size_t>(row)] = s / G[piv[row]][row];
+          }
+          for (int r = 0; r < m; ++r) {
+            if (!std::isfinite(gamma[static_cast<std::size_t>(r)]) ||
+                std::abs(gamma[static_cast<std::size_t>(r)]) > kAndersonGammaCap) {
+              useAccel = false;
+              break;
+            }
+          }
+        }
+      }
+      // u_{k+1} = u_k + f_k − Σ γ_j (Δu_j + Δf_j); plain step when unguarded.
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        double upd = deltaU[static_cast<std::size_t>(i)];
+        if (useAccel) {
+          for (int r = 0; r < m; ++r) {
+            upd -= gamma[static_cast<std::size_t>(r)] *
+                (andersonDu[static_cast<std::size_t>(r)][static_cast<std::size_t>(i)] +
+                 andersonDf[static_cast<std::size_t>(r)][static_cast<std::size_t>(i)]);
+          }
+        }
+        U[freeDofs[static_cast<std::size_t>(i)]] += upd;
+      }
+      andersonPrevU = std::move(uNow);
+      andersonPrevF.assign(deltaU.begin(), deltaU.end());
+      andersonHavePrev = true;
+    }
+    return {false, maxIters};
+  };
+
+  bool overallConverged = false;
+  for (std::int32_t step = 0; step < opts.maxLoadSteps; ++step) {
+    if (loadFactor >= 1.0 - kLoadCompletionTol) { overallConverged = true; break; }
+    const double actualStep = std::min(dLambda, 1.0 - loadFactor);
+    double targetLambda = loadFactor + actualStep;  // mutable: in-place halving
+    const std::vector<double> stepStartU = U;
+
+    // Secant / extrapolation predictor (ungated in this mode — plan I-1.5).
+    if (prevAcceptedDelta.size() == static_cast<std::size_t>(nfree) &&
+        prevAcceptedStep > 0.0) {
+      const double scale = std::clamp(
+          actualStep / std::max(prevAcceptedStep, phaseMinLoadStep), 0.0, 1.25);
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        U[freeDofs[static_cast<std::size_t>(i)]] +=
+            scale * prevAcceptedDelta[static_cast<std::size_t>(i)];
+      }
+    }
+    trialMp = committedMp;
+
+    bool plaxisAccepted = false, researchAccepted = false;
+    const auto [stepConverged, itersUsed] = run_step_iterations(
+        targetLambda, loadFactor, maxIterPerStep, /*allowInPlaceHalving=*/true,
+        plaxisAccepted, researchAccepted,
+        /*requireResearch=*/false);
+
+    if (stepConverged) {
+      // Commit-path CSP from the step-start snapshot (committedMp is still
+      // the step-start state here).
+      const double csp = compute_increment_csp(elements, regionC, committedMp, trialMp);
+      tel.csp = csp;
+      if (csp < tel.cspMin) tel.cspMin = csp;
+      const double effectiveStep = targetLambda - loadFactor;  // post-halving
+      loadFactor = targetLambda;
+      ++res.accepted;
+      res.acceptedStepIterations.push_back(itersUsed);
+      committedMp = trialMp;
+      tel.finalStatePlaxisConverged = plaxisAccepted ? 1u : 0u;
+      tel.finalStateResearchConverged = researchAccepted ? 1u : 0u;
+      prevAcceptedDelta.resize(static_cast<std::size_t>(nfree));
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        prevAcceptedDelta[static_cast<std::size_t>(i)] =
+            U[freeDofs[static_cast<std::size_t>(i)]] -
+            stepStartU[freeDofs[static_cast<std::size_t>(i)]];
+      }
+      prevAcceptedStep = std::max(effectiveStep, phaseMinLoadStep);
+      // PLAXIS 6/15 iteration band: the next step starts at the size that
+      // actually worked (in-place halving already shrank it); ×2 growth
+      // below the desired minimum.
+      dLambda = itersUsed < std::max(opts.desiredMinIter, 1)
+          ? std::min(effectiveStep * 2.0, maxFraction)
+          : std::max(effectiveStep, phaseMinLoadStep);
+      dLambda = std::min(dLambda, std::max(1.0 - loadFactor, phaseMinLoadStep));
+    } else {
+      ++res.rejected;
+      // CSP of the increment that FAILED — the PLAXIS collapse rule tests the
+      // current step, not the last accepted one.
+      tel.cspAtFailure = cspCurrent;
+      U = stepStartU;
+      trialMp = committedMp;
+      prevAcceptedDelta.clear();
+      prevAcceptedStep = 0.0;
+      const double proposed = (targetLambda - loadFactor) * 0.5;  // post-halving size
+      if (proposed < phaseMinLoadStep - 1e-15) {
+        // Step floor reached: classify (review item 5 interim discriminator)
+        // on the failing increment's CSP.
+        tel.verdict = cspCurrent < std::max(opts.collapseCspThreshold, 0.0)
+            ? 1u   // soil-body collapse (CSP at failure scale)
+            : 2u;  // numerical non-convergence (stiffness still finite)
+        break;
+      }
+      dLambda = std::max(proposed, phaseMinLoadStep);
+    }
+  }
+  if (loadFactor >= 1.0 - kLoadCompletionTol) overallConverged = true;
+
+  // Final-state honesty polish: if λ = 1 was accepted on the PLAXIS criterion
+  // only, spend extra fixed-point iterations pushing the final state to the
+  // legacy research tolerance so downstream consumers (and the deep-cut gate)
+  // can label the state honestly. The polished state is committed only when
+  // the research target is actually met.
+  if (overallConverged && tel.finalStateResearchConverged == 0u) {
+    const std::vector<double> uBackup = U;
+    const std::vector<MaterialPoint> trialBackup = trialMp;
+    trialMp = committedMp;
+    bool pAcc = false, rAcc = false;
+    double polishTarget = 1.0;
+    const auto [polished, polishIters] = run_step_iterations(
+        polishTarget, 1.0, 4 * maxIterPerStep, /*allowInPlaceHalving=*/false,
+        pAcc, rAcc, /*requireResearch=*/true);
+    (void)polishIters;
+    if (polished && rAcc) {
+      committedMp = trialMp;
+      tel.finalStateResearchConverged = 1u;
+      tel.finalStatePlaxisConverged = 1u;
+    } else {
+      U = uBackup;
+      trialMp = trialBackup;
+    }
+  }
+
+  res.loadFactor = loadFactor;
+  res.converged = std::isfinite(loadFactor) && loadFactor >= 1.0 - kLoadCompletionTol;
+  tel.lambdaCommitted = loadFactor;
+  tel.converged = res.converged ? 1u : 0u;
+  tel.acceptedSteps = res.accepted;
+  tel.rejectedSteps = res.rejected;
+  if (!res.converged && tel.verdict == 0u) {
+    // Budget exhaustion without reaching the floor: same discriminator on the
+    // last computed increment CSP.
+    tel.verdict = std::min(cspCurrent, tel.csp) <
+            std::max(opts.collapseCspThreshold, 0.0)
+        ? 1u
+        : 2u;
+  }
+  return res;
+}
+
 inline PhaseResult run_nonlinear_phase(
     PhaseContext& ctx,
     const SolverOptions& opts) {
   if (ctx.phaseKind == PhaseKind::SafetyCphi &&
       opts.requestedContinuationMode == RequestedContinuationMode::ArcLength) {
     return run_safety_arc_length_phase(ctx, opts);
+  }
+  // Task #56 Stage C-1: the initial-stiffness scheme for staged (wall) MC
+  // phases — keyed on globalScheme + phaseKind (NEVER isInitialGravityPhase;
+  // review item 8). InitialGravity traverses it ONLY under the forced debug
+  // mode (3) so the c=1 adversarial control can be pushed through the new
+  // machinery by the verification gate.
+  if (opts.globalScheme == GlobalScheme::InitialStiffness &&
+      ctx.kind == ConstitutiveKind::McPlastic &&
+      (ctx.phaseKind == PhaseKind::Excavation ||
+       ctx.phaseKind == PhaseKind::ServiceLoad ||
+       (opts.debugSolverMode == 3 && ctx.phaseKind == PhaseKind::InitialGravity))) {
+    PhaseResult isRes = run_initial_stiffness_phase(ctx, opts);
+    // Stage-B probe stays available against the new mode's stalls too
+    // (debug-gated, observation only, state copies).
+    if (opts.debugSolverMode == 1 && !isRes.converged) {
+      run_fixed_point_probe(ctx, opts, isRes, isRes.telemetry.lambdaTarget);
+    }
+    return isRes;
   }
   auto& elements = *ctx.elements;
   auto& committedMp = *ctx.committed;
@@ -4945,37 +5599,12 @@ inline PhaseResult run_nonlinear_phase(
       loadFactor = targetLambda;
       ++res.accepted;
       res.acceptedStepIterations.push_back(newtonIterUsed);
-      // Task #56 I-0: CSP of the accepted step (Bergan current stiffness
-      // parameter, Σ w·Δε:Δσ / Σ w·Δε:D_e:Δε over continuum GPs). Computed on
-      // the commit path while `committedMp` is STILL the step-start snapshot
-      // (review item 7) — pure observation, no solver decision reads it.
+      // Task #56 I-0: CSP of the accepted step. Computed on the commit path
+      // while `committedMp` is STILL the step-start snapshot (review item 7)
+      // — pure observation, no solver decision reads it.
       {
-        double cspNum = 0.0, cspDen = 0.0;
-        for (const auto& el : elements) {
-          const Mat6& Ce = (*regionCForStep)[static_cast<std::size_t>(el.regionIndex)];
-          for (int g = 0; g < el.numGp; ++g) {
-            const std::int32_t mpIdx = el.mpIdx[g];
-            const MaterialPoint& c0 = committedMp[static_cast<std::size_t>(mpIdx)];
-            const MaterialPoint& t1 = trialMp[static_cast<std::size_t>(mpIdx)];
-            const double w = el.gp[g].weight_det_j;
-            const Vec6 dEps = linalg::sub(t1.totalStrain, c0.totalStrain);
-            const Vec6 dSig = linalg::sub(t1.effectiveStress, c0.effectiveStress);
-            // Voigt engineering-shear strain against single-entry shear
-            // stress sums γτ — the correct tensor double contraction Δε:Δσ.
-            double dd = 0.0;
-            for (int k = 0; k < 6; ++k) {
-              dd += dEps[static_cast<std::size_t>(k)] * dSig[static_cast<std::size_t>(k)];
-            }
-            const Vec6 CdEps = linalg::mul6x6(Ce, dEps);
-            double de = 0.0;
-            for (int k = 0; k < 6; ++k) {
-              de += dEps[static_cast<std::size_t>(k)] * CdEps[static_cast<std::size_t>(k)];
-            }
-            cspNum += w * dd;
-            cspDen += w * de;
-          }
-        }
-        const double csp = cspDen > 1e-300 ? cspNum / cspDen : 1.0;
+        const double csp = compute_increment_csp(
+            elements, *regionCForStep, committedMp, trialMp);
         tel.csp = csp;
         if (csp < tel.cspMin) tel.cspMin = csp;
       }

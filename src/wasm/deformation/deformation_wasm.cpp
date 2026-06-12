@@ -214,6 +214,15 @@ void update_last_convergence_diagnostics_json(
     json += ",\"newtonIterations\":" + std::to_string(t.newtonIterations);
     json += ",\"acceptedSteps\":" + std::to_string(t.acceptedSteps);
     json += ",\"rejectedSteps\":" + std::to_string(t.rejectedSteps);
+    json += ",\"usedInitialStiffness\":" +
+        std::string(t.usedInitialStiffness ? "true" : "false");
+    json += ",\"verdict\":\"";
+    json += t.verdict == 1u ? "collapse" : (t.verdict == 2u ? "numerical" : "none");
+    json += "\"";
+    json += ",\"finalStatePlaxisConverged\":" +
+        std::string(t.finalStatePlaxisConverged ? "true" : "false");
+    json += ",\"finalStateResearchConverged\":" +
+        std::string(t.finalStateResearchConverged ? "true" : "false");
     json += ",\"residualNorm\":" + json_number(t.residualNorm);
     json += ",\"residualTarget\":" + json_number(t.residualTarget);
     json += ",\"bindingArm\":\"";
@@ -227,6 +236,7 @@ void update_last_convergence_diagnostics_json(
     json += ",\"plaxisGlobalError\":" + json_number(t.plaxisGlobalError);
     json += ",\"csp\":" + json_number(t.csp);
     json += ",\"cspMin\":" + json_number(t.cspMin);
+    json += ",\"cspAtFailure\":" + json_number(t.cspAtFailure);
     json += ",\"soilPlasticPointCount\":" + std::to_string(t.soilPlasticPointCount);
     json += ",\"soilInaccurateCount\":" + std::to_string(t.soilInaccurateCount);
     json += ",\"soilQuota\":" +
@@ -1052,6 +1062,17 @@ int madepRunDeformationAnalysis(
   // associated so slip no longer forces GMRES (the tangent is symmetric).
   opts.debugSolverMode = g_debug_solver_mode;
   opts.interfaceAssociatedLaw = g_debug_solver_mode == 2 ? 1u : 0u;
+  // Task #56 Stage C-1: the initial-stiffness global scheme is the DEFAULT
+  // for staged (wall) MC runs — exactly the configuration whose stall the
+  // Stage-B experiment proved spurious (the fixed-point operator marched both
+  // repros to λ=1). Non-staged runs keep ConsistentNewton (JS-parity: staged
+  // runs are WASM-only). Debug mode 3 forces the scheme for ALL MC phases so
+  // the c=1 adversarial control can traverse the new machinery in gates.
+  opts.globalScheme =
+      ((stagedExcavationActive != 0 && constitutive == ConstitutiveKind::McPlastic) ||
+       g_debug_solver_mode == 3)
+          ? GlobalScheme::InitialStiffness
+          : GlobalScheme::ConsistentNewton;
 
   solver::DriverInput drv;
   drv.elements = &elements;

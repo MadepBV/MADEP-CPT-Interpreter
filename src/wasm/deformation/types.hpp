@@ -82,6 +82,24 @@ enum class McGlobalizationMode : std::uint8_t {
   LmConsistentRescue = 1
 };
 
+// Task #56 Stage C-1 (I-1) — global iteration scheme for staged (wall) MC
+// phases.
+//   ConsistentNewton: current production behaviour (modified Newton on the
+//     per-iteration tangent with Armijo line search, GMRES when unsymmetric).
+//   InitialStiffness: the PLAXIS production scheme — constant elastic K_e
+//     (soil D_e + interface FULL elastic diag(k_s,k_n) + wall beam) assembled
+//     once per phase, all plasticity on the RHS through the unchanged exact
+//     return maps, CG-only with the wall preconditioner + coarse correction,
+//     PLAXIS compound acceptance (global error vs Active+CSP·Inactive with
+//     the L1-of-magnitudes norm, plus the 3+N_plastic/10 local quotas).
+// Derived in the wire decoder (stagedExcavationActive && MC-plastic, or the
+// forced debug mode) — NOT wire-transmitted; staged runs are WASM-only so
+// JS parity is structural.
+enum class GlobalScheme : std::uint8_t {
+  ConsistentNewton = 0,
+  InitialStiffness = 1
+};
+
 // Boundary condition flags per node DOF. The CPU solver locks Ux on the
 // side boundaries and Uy on the base; we pass an explicit list of fixed
 // DOF indices so the WASM module is agnostic to how the BCs were derived.
@@ -454,6 +472,34 @@ struct SolverOptions {
   // slip tangent is symmetric, so interface slip must NOT route the linear
   // solve to GMRES. Only ever set by the Davis debug mode.
   std::uint8_t interfaceAssociatedLaw{ 0 };
+
+  // -------------------------------------------------------------------------
+  // Task #56 Stage C-1 (I-1/I-2) — initial-stiffness mode controls. Runtime-
+  // only (derived in the decoder / set by verify configs), never wire bytes.
+  // -------------------------------------------------------------------------
+  GlobalScheme globalScheme{ GlobalScheme::ConsistentNewton };
+  // PLAXIS Tolerated error for the I-2 compound acceptance (global error and
+  // the per-point local-error quota threshold). PLAXIS default 0.01.
+  double plaxisToleratedError{ 0.01 };
+  // Iteration cap per load step in the initial-stiffness mode (PLAXIS
+  // "Maximum iterations" default 60).
+  std::int32_t initialStiffnessMaxIter{ 60 };
+  // Over-relaxation ω (PLAXIS default 1.2). Auto-clamped to 1.0 whenever a
+  // non-associated plastic point / slipping or gapping interface station is
+  // active — van Langen: over-relaxation "may even destroy the convergence"
+  // for non-associated plasticity.
+  double overRelaxation{ 1.2 };
+  // PLAXIS desired-minimum / desired-maximum iteration band for the in-mode
+  // step controller (×2 growth below the band, ×0.5 next-step cut above it).
+  std::int32_t desiredMinIter{ 6 };
+  std::int32_t desiredMaxIter{ 15 };
+  // Max load fraction per step in this mode (PLAXIS default 0.5).
+  double maxLoadFraction{ 0.5 };
+  // Interim collapse discriminator (plan review item 5): when the step size
+  // hits the floor AND the last accepted step's CSP is below this threshold,
+  // the failure is classified as soil-body COLLAPSE; otherwise as numerical
+  // non-convergence.
+  double collapseCspThreshold{ 0.015 };
 };
 
 // ============================================================================
@@ -496,6 +542,10 @@ struct PhaseConvergenceTelemetry {
   double plaxisGlobalError{ 0.0 };      // numerator / (λ·activeFull + CSP·inactive)
   double csp{ 1.0 };                    // last ACCEPTED step CSP (Δε·Δσ / Δε·D_e·Δε)
   double cspMin{ 1.0 };                 // min over accepted steps of the phase
+  // CSP of the increment that was being attempted when the phase failed (the
+  // PLAXIS collapse rule tests the CURRENT step's CSP, not the last accepted
+  // one). 1.0 when the phase converged.
+  double cspAtFailure{ 1.0 };
   // PLAXIS local-error audit (last assembled iteration).
   std::int32_t soilPlasticPointCount{ 0 };
   std::int32_t soilInaccurateCount{ 0 };
@@ -521,6 +571,16 @@ struct PhaseConvergenceTelemetry {
   std::int32_t newtonIterations{ 0 };
   std::int32_t acceptedSteps{ 0 };
   std::int32_t rejectedSteps{ 0 };
+  // Task #56 Stage C-1: 1 when the phase ran the initial-stiffness scheme.
+  std::uint8_t usedInitialStiffness{ 0 };
+  // Failure classification for a non-converged phase (0 = none/converged,
+  // 1 = soil-body collapse: step floor + CSP < collapseCspThreshold,
+  // 2 = numerical non-convergence: step floor with CSP above the threshold).
+  std::uint8_t verdict{ 0 };
+  // Honesty labels for the final accepted state of a CONVERGED phase:
+  // which acceptance criterion the λ=1 state actually satisfies.
+  std::uint8_t finalStatePlaxisConverged{ 0 };
+  std::uint8_t finalStateResearchConverged{ 0 };
   // Bounded history tails (most recent last; capped in the solver).
   std::vector<double> alphaMHistory;
   std::vector<double> residualHistory;

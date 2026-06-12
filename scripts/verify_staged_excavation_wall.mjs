@@ -151,6 +151,13 @@ async function main() {
   __setDeformationWasmModuleForTests(await loadWasmModule());
 
   // ---- Gate #2: staged FULLY solves a cut the legacy path stalls on. --------
+  // Task #56 re-baseline: with the initial-stiffness scheme (PLAXIS-style
+  // constant elastic K_e + Anderson acceleration + compound acceptance) the
+  // staged phases now CONVERGE to λ=1, both glued and with the interface.
+  // The Stage-B experiment proved the old stalls were machinery artifacts
+  // (the fixed-point operator marched the stalled states to λ=1 at the full
+  // research tolerance), so λ=1 is asserted here — no KNOWN-OPEN remains for
+  // this fixture.
   console.log('== Moderate cut (1.5 m): legacy stalls, staged converges ==');
   const m15off = await runWall(1.5, -8, { useStagedExcavation: false });
   const m15on  = await runWall(1.5, -8, { useStagedExcavation: true });
@@ -160,28 +167,28 @@ async function main() {
     m15off.s.initialPhaseConvergenceState !== 'converged' && lam(m15off.s) < 0.95,
     `geo=${m15off.s.initialPhaseConvergenceState} λ=${lam(m15off.s).toFixed(4)}`);
   const m15u = maxAbsU(m15on.result);
-  // Stage-1 deliverable: the EXCAVATION phase converges with the wall carrying
-  // the cut (the legacy wall-free geostatic never does). The glued-wall
-  // (no-interface) SERVICE increment may genuinely stall at the crest tension
-  // band — that is the documented Phase-2 motivation, not a staging defect.
-  // Full service convergence is asserted on the shipped default config
-  // (staged + interface) in #2b below.
   check('#2 staged (1.5 m cut): excavation converges (wall carries the cut)',
     m15on.s.initialPhaseConvergenceState === 'converged', fmt(m15on.s));
+  check('#2 staged (1.5 m cut): service converges to λ=1 (task #56 C-1)',
+    m15on.s.servicePhaseConvergenceState === 'converged' && lam(m15on.s) >= 1 - 1e-6,
+    fmt(m15on.s));
   check('#2 staged converged with bounded SLS deformation (0 < maxU < 50 mm)', m15u > 0 && m15u < 0.05,
     `maxU=${(m15u * 1000).toFixed(2)}mm`);
   check('#2 staged result carries the wall (stations present)', wallStationCount(m15on.result) > 0,
     `stations=${wallStationCount(m15on.result)}`);
   const m15i = await runWall(1.5, -8, { useStagedExcavation: true, useWallInterface: true });
   console.log(`  ON+IF: ${fmt(m15i.s)}  maxU=${(maxAbsU(m15i.result) * 1000).toFixed(2)}mm`);
-  // KNOWN-OPEN (flexible-wall convergence): with the wall-side orphan pinning
-  // removed (the wall used to be silently RIGID in every interface run) the
-  // staged+interface path currently stalls on a numerical plateau (residual
-  // ~4e-2, peak eta = 1.0000002, GMRES thrashing) instead of reaching λ=1.
-  // A 0.2 kPa surcharge stalling a freshly-converged excavation is not a
-  // genuine limit — this is the next solver workstream. Until it lands the
-  // λ=1 claim is NOT asserted; the line below keeps the actual state visible.
-  console.log(`  KNOWN-OPEN  staged+interface λ=1 pending flexible-wall solver work — currently ${fmt(m15i.s)}`);
+  check('#2b staged+interface (1.5 m cut): geo AND service converge to λ=1 (task #56 C-1)',
+    m15i.s.initialPhaseConvergenceState === 'converged' &&
+    m15i.s.servicePhaseConvergenceState === 'converged' && lam(m15i.s) >= 1 - 1e-6,
+    fmt(m15i.s));
+  const m15iConv = m15i.s.convergence || null;
+  const m15iPhases = m15iConv?.phases || [];
+  check('#2b staged+interface used the initial-stiffness scheme with honest final-state labels',
+    m15iPhases.length >= 2 &&
+    m15iPhases.every((p) => p.usedInitialStiffness === true) &&
+    m15iPhases.every((p) => p.finalStateResearchConverged === true || p.finalStatePlaxisConverged === true),
+    JSON.stringify(m15iPhases.map((p) => ({ phase: p.phase, research: p.finalStateResearchConverged, plaxis: p.finalStatePlaxisConverged }))));
 
   // ---- Gate #5 (C2 regression): service must not bleed the wall's
   // excavation-phase forces. The incremental service residual differences the
@@ -189,8 +196,8 @@ async function main() {
   // the committed state — and the wall moment diagram — must be continuous
   // in q (single-baseline equilibrium). Pre-fix, the beam force was absolute
   // while the soil was incremental and max|M| collapsed ~8× the moment any
-  // service load was applied. The comparison is made at matching committed
-  // load fractions so it stays valid while the λ=1 workstream is open.
+  // service load was applied. Both runs now converge to λ=1 (task #56 C-1),
+  // so the comparison is at the full-load state.
   console.log('\n== Service continuity as q → 0 (wall must keep excavation forces) ==');
   const cTiny = await runWall(1.5, -8, { useStagedExcavation: true, useWallInterface: true }, 1e-6);
   const cRef  = m15i;
@@ -206,8 +213,13 @@ async function main() {
   check('#5 wall carries a non-trivial moment (rigid-wall pinning regression)', mTiny > 0.5,
     `max|M|=${mTiny.toFixed(3)} kNm/m`);
 
-  // ---- Gate #3: staged substantially improves the deep cohesionless cut. ----
-  console.log('\n== Deep cut (3 m cohesionless): staged improves over the legacy stall ==');
+  // ---- Gate #3: staged fully solves the deep cohesionless cut. --------------
+  // Task #56 re-baseline: the staged (glued-wall) 3 m cut historically capped
+  // at λ≈0.557; under the initial-stiffness scheme it converges to λ=1 with
+  // PLAXIS+research-converged final states. The legacy wall-free stall stays
+  // asserted — it is the genuine unsupported-cut limit (the adversarial
+  // control of the task #56 experiment, CSP < 0.015 at its floor).
+  console.log('\n== Deep cut (3 m cohesionless): staged converges, legacy stalls ==');
   const m3off = await runWall(3, -8, { useStagedExcavation: false });
   const m3on  = await runWall(3, -8, { useStagedExcavation: true });
   console.log(`  OFF: ${fmt(m3off.s)}  maxU=${(maxAbsU(m3off.result) * 1000).toFixed(2)}mm`);
@@ -215,9 +227,10 @@ async function main() {
   check('#1 legacy (3 m cut) stalls at the unsupported-cut limit (0.2 < λ < 0.6)',
     m3off.s.initialPhaseConvergenceState !== 'converged' && lam(m3off.s) > 0.2 && lam(m3off.s) < 0.6,
     `λ=${lam(m3off.s).toFixed(4)}`);
-  check('#3 staged carries more of the deep cut than legacy (Δλ ≥ 0.08)',
-    lam(m3on.s) >= lam(m3off.s) + 0.08,
-    `legacy=${lam(m3off.s).toFixed(4)} staged=${lam(m3on.s).toFixed(4)}`);
+  check('#3 staged (3 m cut, glued wall): geo AND service converge to λ=1 (task #56 C-1)',
+    m3on.s.initialPhaseConvergenceState === 'converged' &&
+    m3on.s.servicePhaseConvergenceState === 'converged' && lam(m3on.s) >= 1 - 1e-6,
+    fmt(m3on.s));
 
   // ---- Gate #4: staging inert without a wall (byte-identity). ---------------
   console.log('\n== Non-wall byte-identity (staging must be inert) ==');

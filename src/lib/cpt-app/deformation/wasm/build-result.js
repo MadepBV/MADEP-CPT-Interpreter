@@ -536,6 +536,26 @@ export function buildWasmDeformationResult({
     const message = `${modelLabel} WASM service phase reached only ${(lambda * 100).toFixed(1)}% (λ=${lambda.toFixed(3)}) of the requested surface load; the displayed displacements and wall response are the partial-load state at this fraction, not the full-load response.`;
     if (!warnings.includes(message)) warnings.push(message);
   }
+  // Task #56 Stage C-1: honest failure classification for staged phases. The
+  // initial-stiffness driver discriminates a genuine soil-body collapse
+  // (current-stiffness parameter below the PLAXIS 0.015 threshold at the
+  // minimum step size) from numerical non-convergence. Additive only — a
+  // warning string; never alters converged flags or numeric fields.
+  if (Array.isArray(warnings) && wasmResult.convergence) {
+    const failedPhase = (wasmResult.convergence.phases || []).find(
+      (p) => p && p.converged === false && (p.verdict === 'collapse' || p.verdict === 'numerical')
+    );
+    if (failedPhase) {
+      const lam = Number(failedPhase.lambdaCommitted) || 0;
+      const csp = Number.isFinite(Number(failedPhase.cspAtFailure))
+        ? Number(failedPhase.cspAtFailure)
+        : Number(failedPhase.csp);
+      const message = failedPhase.verdict === 'collapse'
+        ? `The ${failedPhase.phase} phase stopped at λ=${lam.toFixed(3)} and is classified as SOIL-BODY COLLAPSE (current stiffness parameter ${csp.toExponential(2)} < 0.015 at the minimum step size): the remaining load increment has no static equilibrium. This is a physical limit of the modelled system, not a solver failure.`
+        : `The ${failedPhase.phase} phase stopped at λ=${lam.toFixed(3)} and is classified as NUMERICAL NON-CONVERGENCE (current stiffness parameter ${csp.toExponential(2)} is above the 0.015 collapse threshold): the soil is not at a stiffness collapse and the stall is a solver limitation. Treat the displayed state as a partial-load result.`;
+      if (!warnings.includes(message)) warnings.push(message);
+    }
+  }
   const safety = wasmResult.safety || {};
   const isSafety = analysisType === 'safety-cphi';
   const safetyTrials = Array.isArray(safety.trials) ? safety.trials : [];
