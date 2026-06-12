@@ -44,6 +44,7 @@ import {
 import { contourSegmentsForTriangles, sampleSeepageFlowState, sampleSeepageHead, sampleSeepagePorePressure } from './seepage/solver';
 import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-regions';
 import { sampleDeformationState } from './deformation/solver.js';
+import { wallResultIsStale } from './deformation/wall-result-staleness.js';
 import {
   buildBeamDeflectionChartConfig,
   buildBeamMomentChartConfig,
@@ -6657,6 +6658,11 @@ function stage6BishopInvalidateDeformation(message, keepMesh, preserveSolvedStat
   deformation.warnings = [];
   if(['success','meshing','solving','post'].includes(deformation.status)) deformation.status = 'idle';
   deformation.rejectReason = message || '';
+  // Status honesty: the deformation status bar renders `deformation.progress.message`
+  // (e.g. "Deformation screen ready…"). Clearing `result` without updating that string
+  // leaves the bar advertising a screen that no longer exists. Overwrite it with the
+  // invalidation reason so the bar truthfully reflects that the run was discarded.
+  deformation.progress.message = message || 'Deformation result cleared; rerun deformation analysis.';
 }
 
 function stage6BishopInvalidate(message){
@@ -6676,6 +6682,9 @@ function stage6BishopInvalidate(message){
     bishop.deformation.progress.percent = 0;
     if(['success','meshing','solving','post'].includes(bishop.deformation.status)) bishop.deformation.status = 'idle';
     bishop.deformation.rejectReason = '';
+    // Status honesty: keep the deformation status bar from advertising a stale
+    // "Deformation screen ready…" after its result has been discarded here.
+    bishop.deformation.progress.message = message || 'Deformation result cleared; rerun deformation analysis.';
   }
   if(message) bishop.progress.message = message;
 }
@@ -7746,6 +7755,15 @@ function stage6BishopWallNodeValuesForOverlay(wallResult, quantity){
     else nodeValues.push(0.5 * ((data.values[i - 1] || 0) + (data.values[i] || 0)));
   }
   return {...data, nodeValues};
+}
+
+// Defense-in-depth staleness guard for the deformation wall overlay.
+// Delegates to the pure `wallResultIsStale` predicate (shared with the
+// verify:wall-station-span CI gate) so the renderer can skip a wall overlay
+// whose run-time geometry no longer matches the current wall, i.e. a diagram
+// drawn at old coordinates after a since-applied wall edit.
+function stage6BishopWallResultIsStale(wallResult, bishop){
+  return wallResultIsStale(wallResult, bishop);
 }
 
 function stage6BishopWallResultForId(wallId){
@@ -11103,13 +11121,17 @@ function stage6BishopPointerDown(event){
       if(handle.kind === 'wallTop' || handle.kind === 'wallTip'){
         bishop.selectedWallId = bishop.walls?.[handle.index]?.id || null;
       }
-      stage6BishopInvalidate();
+      // Invalidation is owned by the gated pointer-up path (stage6BishopPointerUp),
+      // keyed on `drag.moved` and the handle kind. Grabbing a handle no longer
+      // destroys solved results up-front, so a click-without-drag (selection only)
+      // preserves Bishop / seepage / deformation results.
 	      stage6BishopCanvasState.pointerDrag = {
 	        kind:handle.kind,
 	        index:handle.index,
 	        vertexIndex:handle.vertexIndex,
 	        regionId:handle.regionId,
 	        loadId:handle.loadId,
+	        moved:false,
 	        pointerId:event.pointerId
 	      };
       canvas.setPointerCapture(event.pointerId);
@@ -11175,6 +11197,11 @@ function stage6BishopPointerMove(event){
     stage6BishopDrawCanvas();
     return;
   }
+  // Mark that this handle drag actually produced pointer motion. pointer-up uses
+  // `drag.moved` to gate result invalidation so a click-without-drag on a handle
+  // (selection only, no geometry change) does not needlessly destroy solved
+  // Bishop / seepage / deformation results.
+  drag.moved = true;
   const world = stage6BishopScreenToWorld(canvas, event.clientX, event.clientY);
   if(drag.kind === 'terrain'){
     const pt = stage6BishopSnapWorldPoint(world, 'free');
@@ -11261,11 +11288,68 @@ function stage6BishopPointerUp(event){
   if(event.currentTarget.releasePointerCapture){
     try{ event.currentTarget.releasePointerCapture(event.pointerId); }catch(e){}
   }
-  if(drag.kind === 'terrain' && (S.stage6.bishop.customRegions || []).length){
-    stage6BishopClearCustomRegions('Terrain updated; custom soil polygons were cleared and Bishop results were reset.');
-  }
-  if(drag.kind === 'wallTop' || drag.kind === 'wallTip'){
-    stage6BishopInvalidateSeepage('Wall geometry changed; rerun seepage.', false, false);
+  // Per-kind result invalidation, gated on actual drag motion (`drag.moved`).
+  // A handle grab no longer clears results up-front, so a click-without-drag
+  // (selection only) leaves Bishop / seepage / deformation results intact.
+  // Each branch uses the narrowest invalidator that covers what the edit
+  // physically changed, avoiding double-invalidating the same analysis:
+  //   stage6BishopInvalidate            → Bishop + deformation
+  //   stage6BishopInvalidateSeepage     → seepage
+  //   stage6BishopInvalidateDeformation → deformation
+  //   stage6BishopInvalidateWallGeometry→ Bishop + deformation + seepage (everything)
+  if(drag.moved){
+    const kind = drag.kind;
+    if(kind === 'wallTop' || kind === 'wallTip'){
+      // Wall endpoint moved: geometry feeds Bishop slip search, seepage domain,
+      // and the deformation mesh/beam. Invalidate all three. This already calls
+      // stage6BishopInvalidateSeepage internally, so the old bare seepage call
+      // here was redundant and is dropped.
+      stage6BishopInvalidateWallGeometry('Retaining wall geometry updated; rerun analyses.');
+    } else if(kind === 'terrain'){
+      // Terrain shape changes Bishop, the seepage domain, and the deformation mesh.
+      // Clearing custom regions (when present) already invalidates Bishop + deformation;
+      // otherwise invalidate Bishop + deformation directly. Either way, seepage too.
+      if((S.stage6.bishop.customRegions || []).length){
+        stage6BishopClearCustomRegions('Terrain updated; custom soil polygons were cleared and analyses were reset.');
+      } else {
+        stage6BishopInvalidate('Terrain geometry updated; rerun analyses.');
+      }
+      stage6BishopInvalidateSeepage('Terrain geometry updated; rerun seepage.', false, false);
+    } else if(kind === 'cpt'){
+      // Moving the active-CPT marker remaps the soil layering everywhere:
+      // Bishop, seepage and deformation all depend on it.
+      stage6BishopInvalidate('Active CPT location updated; rerun analyses.');
+      stage6BishopInvalidateSeepage('Active CPT location updated; rerun seepage.', false, false);
+    } else if(kind === 'regionVertex'){
+      // A custom soil-polygon vertex moved: Bishop, seepage and deformation.
+      stage6BishopInvalidate('Soil polygon geometry updated; rerun analyses.');
+      stage6BishopInvalidateSeepage('Soil polygon geometry updated; rerun seepage.', false, false);
+    } else if(kind === 'phreatic'){
+      // The phreatic polyline feeds the Bishop slice pore pressures DIRECTLY
+      // (averagePorePressureOnBase samples model.phreatic when FEM pore
+      // pressure is off), as well as the seepage field and the deformation
+      // solve. Invalidate all three.
+      stage6BishopInvalidate('Phreatic line updated; rerun analyses.');
+      stage6BishopInvalidateSeepage('Phreatic line updated; rerun seepage.', false, false);
+    } else if(kind === 'drainVertex'){
+      // Drains act only through the seepage solve (Bishop consumes that field
+      // solely via the FEM-pore-pressure option, which carries its own
+      // staleness flag) and through the pore pressures the deformation solve
+      // uses. Invalidate seepage + deformation.
+      stage6BishopInvalidateSeepage('Drain geometry updated; rerun seepage.', false, false);
+      stage6BishopInvalidateDeformation('Drain geometry updated; rerun deformation analysis.');
+    } else if(kind === 'loadStart' || kind === 'loadEnd'){
+      // Surface-load extent changes the Bishop driving moment and the deformation
+      // loading, but not the seepage domain. Bishop + deformation.
+      stage6BishopInvalidate('Surface load geometry updated; rerun analyses.');
+    } else if(kind.startsWith('entry') || kind.startsWith('exit')){
+      // Entry/exit zones only retune the Bishop slip-circle search window
+      // (no seepage/deformation coupling). Keep the prior "Bishop only" behavior;
+      // stage6BishopInvalidate is the narrowest available invalidator that
+      // clears the Bishop results (it also drops any stale deformation, which is
+      // harmless here since the window does not feed the deformation solve).
+      stage6BishopInvalidate('Bishop search window updated; rerun Bishop search.');
+    }
   }
   renderStage6();
 }
@@ -12249,7 +12333,13 @@ function stage6BishopDrawCanvas(){
   });
   (bishop.walls || []).forEach((wall)=>drawWall(wall, wall.id === bishop.selectedWallId ? {stroke:'#127f9b', width:5} : {}));
   if(workspace === 'deformation'){
-    (bishop.deformation?.result?.wallResults || bishop.deformation?.result?.retainingWallResults || []).forEach(drawWallResponse);
+    // Defense-in-depth: skip any wall overlay whose run-time geometry no longer
+    // matches the current wall, so a stale result can never silently masquerade
+    // (a diagram drawn at old coordinates) even if a future edit path forgets to
+    // invalidate the deformation result.
+    (bishop.deformation?.result?.wallResults || bishop.deformation?.result?.retainingWallResults || [])
+      .filter((wallResult)=>!stage6BishopWallResultIsStale(wallResult, bishop))
+      .forEach(drawWallResponse);
   }
   if((bishop.measurement?.points || []).length >= 2){
     drawMeasurementOverlay(bishop.measurement.points);

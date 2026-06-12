@@ -61,6 +61,7 @@
 		"verify:wall-retains-soil": "node scripts/verify_wall_retains_soil.mjs",
 		"verify:staged-excavation-wall": "node scripts/verify_staged_excavation_wall.mjs",
 		"verify:wall-interface-mesh": "node scripts/verify_wall_interface_mesh.mjs",
+		"verify:wall-station-span": "node scripts/verify_wall_station_span.mjs",
 		"verify:wall-interface-deepcut": "node scripts/verify_wall_interface_deepcut.mjs",
 		"verify:soil-region-tiling": "node scripts/verify_soil_region_tiling.mjs",
 		"verify:retaining": "node scripts/verify_retaining_wasm.mjs && node scripts/verify_retaining_ui.mjs && node scripts/verify_retaining_behavior.mjs"
