@@ -694,6 +694,8 @@ export function buildWasmDeformationResult({
       lastHsFailureCode: Number(summary.lastHsFailureCode) || 0,
       // Workstream B: Tier-2 LM-rescue diagnostics (out-of-band JSON from WASM).
       tier2: wasmResult.tier2 || null,
+      // Task #56 I-0: per-phase convergence diagnostics (out-of-band JSON).
+      convergence: wasmResult.convergence || null,
       failureCode: (summary.geostaticConverged && summary.serviceConverged) ? '' : 'wasm-not-converged',
       failureOutcomeClass: (summary.geostaticConverged && summary.serviceConverged) ? 'success' : 'partial',
       failureReason: (summary.geostaticConverged && summary.serviceConverged) ? '' : 'Nonlinear iterations or load steps exhausted in WASM solver.',

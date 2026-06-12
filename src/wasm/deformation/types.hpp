@@ -431,6 +431,131 @@ struct SolverOptions {
   // the indefinite consistent tangent does not stagnate restarted GMRES; this
   // lets a lightly/undamped step converge near the solution so μ → 0.
   std::int32_t lmGmresRestart{ 200 };
+
+  // ---------------------------------------------------------------------------
+  // Task #56 Stage-B de-risk experiment switches. RUNTIME-ONLY — set via the
+  // madepSetDebugSolverMode export before a run, NEVER wire-transmitted. The
+  // default (0) is byte-identical to current behaviour; both modes are
+  // diagnostic instruments, not production paths.
+  //   debugSolverMode == 1: after a staged/service phase fails, run the CLEAN
+  //     fixed-point probe (constant K_e = soil D_e + interface ELASTIC
+  //     diag(k_s,k_n) at every station + wall beam; ω = 1.0; CG with the wall
+  //     preconditioner + coarse correction) from the stalled display state and
+  //     log ‖r‖ / α_m / ε_f per iteration into the diagnostics JSON. The probe
+  //     runs on state copies and never alters the returned result.
+  //   debugSolverMode == 2: Davis associated bracket — the wire decoder
+  //     transforms soil (c*, tanφ* = β·{c, tanφ}, ψ* = φ*,
+  //     β = cosψcosφ/(1−sinψsinφ)) AND interface (c_i*, tanφ_i*, ψ_i* = φ_i*)
+  //     parameters, and `interfaceAssociatedLaw` is set so the (now symmetric)
+  //     associated slip tangent no longer forces GMRES.
+  // ---------------------------------------------------------------------------
+  std::int32_t debugSolverMode{ 0 };
+  // 1 = the interface Coulomb law runs with tanψ_i = tanφ_i (associated): the
+  // slip tangent is symmetric, so interface slip must NOT route the linear
+  // solve to GMRES. Only ever set by the Davis debug mode.
+  std::uint8_t interfaceAssociatedLaw{ 0 };
+};
+
+// ============================================================================
+// Task #56 I-0 — per-phase convergence telemetry. RUNTIME-ONLY: exported via
+// the out-of-band diagnostic JSON route (madepGetLastConvergenceDiagnosticsJson,
+// same precedent as the Tier-2 diagnostics) — NEVER part of the wire-encoded
+// RunSummary. Pure observation: populating these fields must not change any
+// solver decision.
+//
+// Conventions (locked by the adversarial plan review):
+//  * "node force magnitude sum" = Σ over nodes of ‖(F_x,F_y)‖₂ plus Σ|M_θ|
+//    over wall rotation DOFs — the PLAXIS L1-of-magnitudes norm, NEVER the
+//    norm of the vector sum.
+//  * PLAXIS global error = residualNodeMagSum /
+//      (activeAppliedNodeMagSum + CSP·inactiveNodeMagSum), with
+//    Active = λ_target·(phase ramped load delta) and Inactive = the committed
+//    pre-phase external load vector.
+//  * Local error per soil point uses σ_eq = σ_c^(i−1) + D_e·Δε^(i) (the
+//    PREVIOUS-iterate constitutive stress plus the elastic increment of THIS
+//    iterate), never the full-step elastic trial; T_max =
+//    max(0.5(σ'₁−σ'₃), c·cosφ, kTmaxFloor).
+//  * Interface local error denominator = max(τ_max, c_i, 1 kPa).
+//  * alphaM is the van Langen eq 3.16 Rayleigh quotient of successive
+//    residual VECTORS at the same load target; epsF/epsA are the out-of-
+//    solution force/displacement errors of eqs 3.25/3.27.
+// ============================================================================
+struct PhaseConvergenceTelemetry {
+  std::uint8_t valid{ 0 };
+  std::uint8_t phaseKind{ 0 };          // solver::PhaseKind cast
+  std::uint8_t converged{ 0 };
+  std::uint8_t lastBindingArmAbs{ 0 };  // 1 = absolute residual floor bound last
+  double lambdaCommitted{ 0.0 };
+  double lambdaTarget{ 0.0 };           // target λ of the last assembled iteration
+  // Last-iteration snapshot (top-of-iteration assembly).
+  double residualNorm{ 0.0 };           // raw L2 (existing convention)
+  double residualTarget{ 0.0 };
+  double residualNodeMagSum{ 0.0 };     // L1-of-magnitudes numerator
+  double activeFullNodeMagSum{ 0.0 };   // Σ‖ramped_node‖ (full phase delta)
+  double inactiveNodeMagSum{ 0.0 };     // Σ‖committed external_node‖
+  double plaxisGlobalError{ 0.0 };      // numerator / (λ·activeFull + CSP·inactive)
+  double csp{ 1.0 };                    // last ACCEPTED step CSP (Δε·Δσ / Δε·D_e·Δε)
+  double cspMin{ 1.0 };                 // min over accepted steps of the phase
+  // PLAXIS local-error audit (last assembled iteration).
+  std::int32_t soilPlasticPointCount{ 0 };
+  std::int32_t soilInaccurateCount{ 0 };
+  std::int32_t interfacePlasticPointCount{ 0 };
+  std::int32_t interfaceInaccurateCount{ 0 };
+  double maxSoilLocalError{ 0.0 };
+  double maxInterfaceLocalError{ 0.0 };
+  std::int32_t interfaceStickCount{ 0 };
+  std::int32_t interfaceSlipCount{ 0 };
+  std::int32_t interfaceGapCount{ 0 };
+  // Residual-discontinuity injectors.
+  std::int32_t elasticPassthroughCount{ 0 };   // phase total (I-7a trigger audit)
+  std::int32_t lastIterElasticPassthrough{ 0 };
+  std::int32_t branchChangeEvents{ 0 };        // fingerprint changed vs previous iteration
+  std::int32_t branchPeriod2Cycles{ 0 };       // fp_k == fp_{k-2} != fp_{k-1}
+  std::uint64_t lastBranchFingerprint{ 0 };
+  // Contraction / out-of-solution estimates (van Langen).
+  double alphaM{ 0.0 };
+  double epsF{ 0.0 };
+  double epsA{ 0.0 };
+  std::int32_t absArmBindCount{ 0 };
+  std::int32_t relArmBindCount{ 0 };
+  std::int32_t newtonIterations{ 0 };
+  std::int32_t acceptedSteps{ 0 };
+  std::int32_t rejectedSteps{ 0 };
+  // Bounded history tails (most recent last; capped in the solver).
+  std::vector<double> alphaMHistory;
+  std::vector<double> residualHistory;
+  std::vector<double> plaxisErrorHistory;
+};
+
+// Task #56 Stage-B — clean fixed-point probe record (debugSolverMode == 1).
+// RUNTIME-ONLY, exported via the diagnostics JSON. The probe iterates
+// U += K_e⁻¹·r with the CONSTANT elastic operator (soil D_e + interface full
+// elastic diag(k_s,k_n) + wall beam), ω = 1.0, CG + wall preconditioner +
+// coarse correction, from the stalled display state — the de-confounded H1
+// test from the adversarial plan review (§4 correction).
+struct FixedPointProbeTelemetry {
+  std::uint8_t valid{ 0 };
+  std::uint8_t phaseKind{ 0 };
+  std::uint8_t converged{ 0 };
+  std::uint8_t startedFromDisplayState{ 0 };
+  double lambdaProbe{ 0.0 };
+  std::int32_t iterations{ 0 };
+  double residual0{ 0.0 };
+  double residualFinal{ 0.0 };
+  double residualTarget{ 0.0 };
+  double alphaMFinal{ 0.0 };
+  double epsFFinal{ 0.0 };
+  double plaxisGlobalErrorFinal{ 0.0 };
+  std::int32_t cgIterationsTotal{ 0 };
+  std::vector<double> residualHistory;
+  std::vector<double> alphaMHistory;
+  std::vector<double> epsFHistory;
+  // λ-march after contraction at the stalled target (existence probe; commits
+  // on a PRIVATE copy of the committed state — never the run's state).
+  std::vector<double> marchLambdas;
+  std::vector<std::int32_t> marchIterations;
+  double marchLambdaMax{ 0.0 };
+  std::uint8_t marchReachedOne{ 0 };
 };
 
 // One accepted c-φ safety continuation point. This is a dense history record,

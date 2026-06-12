@@ -390,6 +390,11 @@ struct GpResponseExtra {
   std::uint8_t localReturnMode{ 0 };
   std::uint8_t localFallbackUsed{ 0 };
   std::uint8_t mcTangentMode{ 0 };
+  // Task #56 I-0: 1 iff this evaluation took the failed-local-return ELASTIC
+  // PASSTHROUGH branch (exact return failed, smooth fallback unavailable, the
+  // raw elastic trial was returned with plasticActive=0). A verified residual-
+  // discontinuity injector — counted per assembly, telemetry only.
+  std::uint8_t elasticPassthrough{ 0 };
   std::array<std::array<double, 3>, 3> repP1{};
   std::array<std::array<double, 3>, 3> repP2{};
   std::array<std::array<double, 3>, 3> repP3{};
@@ -692,6 +697,7 @@ inline GpResponse evaluate_gp_response_ex(
     extra.multiplicityKind = static_cast<std::uint8_t>(mc_exact::MultiplicityKind::DISTINCT);
     extra.localReturnMode = 0;
     extra.stateChanged = 1u;
+    extra.elasticPassthrough = 1u;  // task #56 I-0: discontinuity-injector audit
     return out;
   }
 
@@ -739,6 +745,49 @@ inline GpResponse evaluate_gp_response(
   return evaluate_gp_response_ex(kind, C, rp, nullptr, committed, strainTotal, symmetrize, extra);
 }
 
+// ============================================================================
+// Task #56 I-0 — optional per-assembly telemetry sink (pure observation).
+// Passed ONLY at the top-of-iteration assemblies of the nonlinear loops; all
+// other call sites keep the default nullptr and pay nothing. Populating the
+// sink never changes any solver decision.
+// ============================================================================
+struct AssembleTelemetry {
+  // Input: PLAXIS tolerated error used for the per-point "inaccurate" audit.
+  double toleratedError{ 0.01 };
+  // Outputs — soil (continuum) local-error audit. σ_eq is the PREVIOUS-
+  // ITERATE constitutive stress + D_e·Δε of this iterate (van Langen), never
+  // the full-step elastic trial. T_max = max(0.5(σ'₁−σ'₃), c·cosφ, floor).
+  std::int32_t soilPlasticPointCount{ 0 };
+  std::int32_t soilInaccurateCount{ 0 };
+  double maxSoilLocalError{ 0.0 };
+  // Outputs — interface local-error audit; denominator floor max(τ_max, c_i, 1 kPa).
+  std::int32_t interfacePlasticPointCount{ 0 };
+  std::int32_t interfaceInaccurateCount{ 0 };
+  double maxInterfaceLocalError{ 0.0 };
+  std::int32_t interfaceStickCount{ 0 };
+  // Branch-set fingerprint (FNV-1a over per-GP exactBranchKind in assembly
+  // order, then per-station interface branch + slip sign). Detects period-2
+  // active-set cycling that a.changedCount (elastic↔plastic flips only)
+  // cannot see.
+  std::uint64_t branchFingerprint{ 1469598103934665603ull };
+};
+
+inline void telemetry_fingerprint_mix(std::uint64_t& h, std::uint8_t v) {
+  h ^= static_cast<std::uint64_t>(v);
+  h *= 1099511628211ull;
+}
+
+// Principal stress range of a plane-strain Voigt-6 stress (σ_yz = σ_xz = 0):
+// the z axis is principal, the in-plane pair comes from the 2×2 block.
+inline void telemetry_principal_range_plane_strain(
+    const Vec6& s, double& smax, double& smin) {
+  const double mean = 0.5 * (s[V_XX] + s[V_YY]);
+  const double half = 0.5 * (s[V_XX] - s[V_YY]);
+  const double r = std::hypot(half, s[V_XY]);
+  smax = std::max({mean + r, mean - r, s[V_ZZ]});
+  smin = std::min({mean + r, mean - r, s[V_ZZ]});
+}
+
 struct AssembleOutput {
   double residualNorm{ 0.0 };
   double rhsNorm{ 0.0 };
@@ -748,6 +797,9 @@ struct AssembleOutput {
   std::int32_t activeApexCount{ 0 };
   std::int32_t tensionCount{ 0 };
   std::int32_t changedCount{ 0 };
+  // Task #56 I-0: entries into the failed-local-return elastic-passthrough
+  // branch this assembly (telemetry; always counted — one integer add per GP).
+  std::int32_t elasticPassthroughCount{ 0 };
   // Zero-thickness soil-wall interface (Phase 2): station counts by branch.
   // Slip makes the assembled tangent NON-symmetric (the Coulomb cap couples
   // ∂t_t/∂u_n with no transpose partner), so slip > 0 must route the linear
@@ -1086,7 +1138,17 @@ inline AssembleOutput assemble_global(
     bool useElasticGlobalizationTangent = false,
     BeamAssemblyMode beamMode = BeamAssemblyMode::Active,
     const double* beamReferenceU = nullptr,
-    bool useConsistentGlobalizationTangent = false) {
+    bool useConsistentGlobalizationTangent = false,
+    // Task #56: optional telemetry sink (I-0; pure observation, default off)
+    // and the interface ELASTIC-tangent selector (Stage-B probe / I-1
+    // prerequisite, review item 4): when set, the stiffness scatter uses the
+    // FULL elastic diag(k_s, k_n) at EVERY station (slip AND gap — no
+    // epsFloor secant, which would break the "stiffness never increases"
+    // contraction premise on gap re-closure) while the internal-force
+    // tractions stay the exact return-mapped values. Default false is
+    // byte-identical to current behaviour.
+    AssembleTelemetry* telemetry = nullptr,
+    bool interfaceElasticTangent = false) {
   const std::int32_t nfree = K.nrows;
   internalForceFree.assign(static_cast<std::size_t>(nfree), 0.0);
   if (wantTangent) K.clear_values();
@@ -1190,6 +1252,38 @@ inline AssembleOutput assemble_global(
         }
       }
 
+      out.elasticPassthroughCount += extra.elasticPassthrough;
+
+      // Task #56 I-0 telemetry: PLAXIS-style per-point local error +
+      // branch-set fingerprint. σ_eq = σ_c^(i−1) + D_e·Δε^(i) with
+      // σ_c^(i−1)/ε^(i−1) from the previous trial state (== committed on the
+      // first iteration of a step), σ_c the freshly return-mapped stress.
+      if (telemetry) {
+        telemetry_fingerprint_mix(telemetry->branchFingerprint, extra.exactBranchKind);
+        const Vec6 dStrainIter = linalg::sub(strainTotal, previousTrialMp.totalStrain);
+        const Vec6 sigmaEq = linalg::add(
+            previousTrialMp.effectiveStress, linalg::mul6x6(C, dStrainIter));
+        double diff2 = 0.0;
+        for (int k = 0; k < 6; ++k) {
+          const double d = sigmaEq[static_cast<std::size_t>(k)] -
+                           resp.stress[static_cast<std::size_t>(k)];
+          diff2 += d * d;
+        }
+        double smax = 0.0, smin = 0.0;
+        telemetry_principal_range_plane_strain(resp.stress, smax, smin);
+        constexpr double kTmaxFloor = 1.0;  // kPa — division guard only
+        const double tMax = std::max({0.5 * (smax - smin),
+                                      rp.cEff * std::cos(rp.phi),
+                                      kTmaxFloor});
+        const double localError = std::sqrt(diff2) / tMax;
+        const bool pointPlastic = resp.plasticActive != 0u || resp.tensionActive != 0u;
+        if (pointPlastic) {
+          telemetry->soilPlasticPointCount += 1;
+          if (localError > telemetry->toleratedError) telemetry->soilInaccurateCount += 1;
+        }
+        if (localError > telemetry->maxSoilLocalError) telemetry->maxSoilLocalError = localError;
+      }
+
       if (resp.plasticActive) {
         elementActive = true;
         const auto activeSurface = mc_exact::active_yield_surface_from_branch_kind(
@@ -1272,6 +1366,12 @@ inline AssembleOutput assemble_global(
         const std::size_t gpIdx = static_cast<std::size_t>(ic.gpIndex);
         const MaterialPoint& cmp = committed[gpIdx];
         MaterialPoint& tmp = trial[gpIdx];
+        // Task #56 I-0: previous-iterate interface state (traction + jump)
+        // for the PLAXIS equilibrium-stress audit. Captured before overwrite.
+        const double prevTt = tmp.effectiveStress[0];
+        const double prevTn = tmp.effectiveStress[1];
+        const double prevUt = tmp.effectiveStress[2];
+        const double prevUn = tmp.effectiveStress[3];
         const double dux = U_global[ic.dofs[0]] - U_global[ic.dofs[2]];
         const double duy = U_global[ic.dofs[1]] - U_global[ic.dofs[3]];
         const double u_t = ic.sx * dux + ic.sy * duy;
@@ -1289,6 +1389,39 @@ inline AssembleOutput assemble_global(
         tmp.tensionCutoffActive = resp.branch == madep::interface::Branch::Gap ? 1u : 0u;
         if (tmp.plasticActive) out.interfaceSlipCount += 1;
         if (tmp.tensionCutoffActive) out.interfaceGapCount += 1;
+        if (telemetry) {
+          // Fingerprint: branch + slip shear sign per station.
+          telemetry_fingerprint_mix(telemetry->branchFingerprint,
+                                    static_cast<std::uint8_t>(resp.branch));
+          telemetry_fingerprint_mix(telemetry->branchFingerprint,
+                                    resp.branch == madep::interface::Branch::Slip
+                                        ? (resp.t_t >= 0.0 ? 1u : 2u)
+                                        : 0u);
+          if (resp.branch == madep::interface::Branch::Stick) {
+            telemetry->interfaceStickCount += 1;
+          }
+          // PLAXIS interface local error: elastic update from the previous
+          // iterate vs the return-mapped tractions, denominator floored by
+          // max(τ_max, c_i, 1 kPa) for c_i ≈ 0 stations.
+          const double tauE = prevTt + ic.params.k_s * (u_t - prevUt);
+          const double sigNE = prevTn + ic.params.k_n * (u_n - prevUn);
+          const double tauMaxC = ic.params.bilateral
+              ? ic.params.c_i + std::fabs(resp.t_n) * ic.params.tanPhi_i
+              : std::max(ic.params.c_i - resp.t_n * ic.params.tanPhi_i, 0.0);
+          const double denom = std::max({tauMaxC, ic.params.c_i, 1.0});
+          const double localError =
+              std::hypot(tauE - resp.t_t, sigNE - resp.t_n) / denom;
+          const bool stationPlastic = resp.branch != madep::interface::Branch::Stick;
+          if (stationPlastic) {
+            telemetry->interfacePlasticPointCount += 1;
+            if (localError > telemetry->toleratedError) {
+              telemetry->interfaceInaccurateCount += 1;
+            }
+          }
+          if (localError > telemetry->maxInterfaceLocalError) {
+            telemetry->maxInterfaceLocalError = localError;
+          }
+        }
         // Incremental-stress phases measure the interface force relative to the
         // snapshotted reference traction, exactly like the continuum stress.
         const double tt = resp.t_t - (incrementalStress ? cmp.referenceStress[0] : 0.0);
@@ -1301,12 +1434,27 @@ inline AssembleOutput assemble_global(
         for (int a = 0; a < 4; ++a) Fi[a] = ic.ell * (B[0][a] * tt + B[1][a] * tn);
         sparse::scatter_dense_rhs(internalForceFree.data(), ic.dofs, 4, freeIndexByDof, Fi);
         if (wantTangent) {
+          // Task #56 (Stage-B probe / I-1 prerequisite): the interface
+          // ELASTIC-tangent selector. The default path scatters the exact
+          // consistent tangent resp.D (slip: non-symmetric rank-deficient;
+          // gap: epsFloor secant). With interfaceElasticTangent the matrix
+          // gets the FULL elastic diag(k_s, k_n) at every station regardless
+          // of branch — the PLAXIS rule (plasticity lives on the RHS only) —
+          // while F_int above keeps the exact return-mapped tractions.
+          double Dmat[2][2];
+          if (interfaceElasticTangent) {
+            Dmat[0][0] = ic.params.k_s; Dmat[0][1] = 0.0;
+            Dmat[1][0] = 0.0;           Dmat[1][1] = ic.params.k_n;
+          } else {
+            Dmat[0][0] = resp.D[0][0]; Dmat[0][1] = resp.D[0][1];
+            Dmat[1][0] = resp.D[1][0]; Dmat[1][1] = resp.D[1][1];
+          }
           double Ki[16];
           for (int a = 0; a < 4; ++a) {
             for (int b = 0; b < 4; ++b) {
               double v = 0.0;
               for (int r = 0; r < 2; ++r) {
-                for (int c = 0; c < 2; ++c) v += B[r][a] * resp.D[r][c] * B[c][b];
+                for (int c = 0; c < 2; ++c) v += B[r][a] * Dmat[r][c] * B[c][b];
               }
               Ki[4 * a + b] = ic.ell * v;
             }
@@ -1373,6 +1521,12 @@ struct PhaseContext {
   PhaseKind phaseKind{ PhaseKind::ServiceLoad };
   bool symmetrize{ true };
   bool incrementalStress{ false };
+  // Task #56 I-0 (telemetry only): the committed PRE-PHASE external load
+  // vector ("Inactive loads" of the PLAXIS global-error denominator) and the
+  // count of translational DOFs (rotation DOFs start at this index) for the
+  // per-node force-magnitude sums. Never read by any solver decision.
+  const std::vector<double>* committedExternalRhsFree{ nullptr };
+  std::int32_t translationalDofCount{ 0 };
   const std::vector<RegionParams>* safetyStrengthBaseRegions{ nullptr };
   double safetySigmaMsfStart{ 1.0 };
   double safetySigmaMsfTarget{ 1.0 };
@@ -1382,6 +1536,35 @@ struct PhaseContext {
   std::int32_t safetyTrialIndex{ -1 };
   double modelBoundingBoxDiagonal{ 1.0 };
 };
+
+// Task #56 I-0: PLAXIS L1-of-magnitudes norm — Σ over nodes of ‖(F_x,F_y)‖₂
+// plus Σ|M| over rotation DOFs. `vecFree` is indexed by free index; freeDofs
+// is sorted ascending, so a node's (ux, uy) free entries are adjacent when
+// both are free. NEVER the norm of the vector sum (review item: I-2 norm spec).
+inline double node_force_magnitude_sum(
+    const double* vecFree,
+    const std::vector<std::int32_t>& freeDofs,
+    std::int32_t translationalDofCount) {
+  double sum = 0.0;
+  const std::size_t n = freeDofs.size();
+  std::size_t i = 0;
+  while (i < n) {
+    const std::int32_t dof = freeDofs[i];
+    if (translationalDofCount > 0 && dof >= translationalDofCount) {
+      sum += std::abs(vecFree[i]);
+      ++i;
+      continue;
+    }
+    if ((dof & 1) == 0 && i + 1 < n && freeDofs[i + 1] == dof + 1) {
+      sum += std::hypot(vecFree[i], vecFree[i + 1]);
+      i += 2;
+      continue;
+    }
+    sum += std::abs(vecFree[i]);
+    ++i;
+  }
+  return sum;
+}
 
 inline double model_bounding_box_diagonal(const std::vector<ElementCache>& elements) {
   if (elements.empty()) return 1.0;
@@ -2059,6 +2242,11 @@ struct PhaseResult {
   std::uint8_t lastLinearSolverKind{ 0 };
   std::uint16_t lastHsFailureCode{ 0 };
   std::vector<std::int32_t> acceptedStepIterations;
+  // Task #56 I-0: per-phase convergence telemetry (runtime-only; exported via
+  // the out-of-band diagnostics JSON, never the wire summary).
+  PhaseConvergenceTelemetry telemetry;
+  // Task #56 Stage-B: clean fixed-point probe record (debugSolverMode == 1).
+  FixedPointProbeTelemetry probe;
   // Workstream B Tier-2 telemetry (runtime-only).
   std::int32_t tier2Activations{ 0 };
   std::int32_t tier2Steps{ 0 };
@@ -2185,6 +2373,15 @@ inline bool tier2_consistent_tangent_unsymmetric(
   return std::any_of(regions->begin(), regions->end(), [](const RegionParams& region) {
     return std::abs(region.phi - region.psi) > 1e-12;
   });
+}
+
+// Task #56 Stage-B: the production Coulomb slip tangent is NON-symmetric
+// (ψ_i = 0 drops the [t_n,u_t] partner of the [t_t,u_n] coupling), so any
+// slipping station must route the linear solve to GMRES. Under the Davis
+// associated bracket (debug mode 2) ψ_i = φ_i makes the slip tangent
+// symmetric and CG stays correct — the flag is only ever set by that mode.
+inline bool interface_slip_forces_unsymmetric(const SolverOptions& opts) {
+  return opts.interfaceAssociatedLaw == 0;
 }
 
 inline bool phase_may_need_unsymmetric_solver_for_regions(
@@ -2444,7 +2641,7 @@ inline PhaseResult run_safety_arc_length_phase(
       // wrong, so slip forces GMRES.
       const bool useUnsymmetricSolver =
           (startMayNeedUnsymmetricSolver && startHasPlastic) ||
-          startAssembly.interfaceSlipCount > 0;
+          (startAssembly.interfaceSlipCount > 0 && interface_slip_forces_unsymmetric(opts));
 
       SafetyResidualDerivativeFd derivative = compute_safety_sigma_msf_residual_derivative(
           ctx, U, stepStartLambda, stepStartSigma, fdScratch, arcOpts);
@@ -2569,7 +2766,7 @@ inline PhaseResult run_safety_arc_length_phase(
                 ctx.kind, ctx.symmetrize, candidateMaterials.regions);
         const bool tangentAsymmetric =
             (candidateMayNeedUnsymmetricSolver && hasPlastic) ||
-            a.interfaceSlipCount > 0;
+            (a.interfaceSlipCount > 0 && interface_slip_forces_unsymmetric(opts));
         // Exact plastic tangents that are known to be unsymmetric must never be
         // routed to CG. CG requires SPD; non-associated MC-SH and HS plastic
         // tangents use GMRES.
@@ -2881,7 +3078,7 @@ inline PhaseResult run_load_arc_length_phase(
       const bool startHasPlastic = startAssembly.plasticActiveCount > 0 || startAssembly.tensionCount > 0;
       const bool useUnsymmetricSolver =
           (mayNeedUnsymmetricSolver && startHasPlastic) ||
-          startAssembly.interfaceSlipCount > 0;
+          (startAssembly.interfaceSlipCount > 0 && interface_slip_forces_unsymmetric(opts));
 
       ArcLengthPredictor predictor = make_load_control_arc_length_predictor(
           K, freeDofs, continuationRhsFree, diagInv, arcOpts, arcState,
@@ -3023,7 +3220,7 @@ inline PhaseResult run_load_arc_length_phase(
         const bool hasPlastic = a.plasticActiveCount > 0 || a.tensionCount > 0;
         const bool tangentAsymmetric =
             (mayNeedUnsymmetricSolver && hasPlastic) ||
-            a.interfaceSlipCount > 0;
+            (a.interfaceSlipCount > 0 && interface_slip_forces_unsymmetric(opts));
 #ifndef NDEBUG
         if (ctx.kind == ConstitutiveKind::HardeningSoil && hasPlastic && !tangentAsymmetric) {
           assert(false && "HS plastic service arc-length step routed to CG; expected GMRES");
@@ -3236,6 +3433,234 @@ inline PhaseResult run_load_arc_length_phase(
 //     strain unchanged and returns failureCode == 105 if the
 //     plane-strain residual exceeds 1e-10 (the entire point of B.7 is
 //     now a check, not a mutation).
+// ============================================================================
+// Task #56 Stage-B — clean fixed-point probe (debugSolverMode == 1 ONLY).
+//
+// The corrected §4 de-risk experiment from the adversarial plan review: the
+// plan's original harness (useElasticGlobalizationTangent through the robust-
+// fallback branch) was CONFOUNDED — the interface block always scattered the
+// non-symmetric slip tangent resp.D, so the test operator was not SPD and CG
+// on it was silently wrong. This probe is a CLEAN loop:
+//
+//   operator  K_e = soil D_e + interface FULL elastic diag(k_s,k_n) at every
+//             station + wall Timoshenko stiffness, assembled ONCE;
+//   iterate   U += ω·K_e⁻¹·r(U), ω = 1.0, r from the UNCHANGED exact MC +
+//             interface return maps;
+//   solver    CG with the wall block preconditioner + coarse correction ON,
+//             never GMRES;
+//   start     the stalled DISPLAY state (best assembled iterate) when the
+//             phase kept one, else the rolled-back committed state at the
+//             last attempted load target;
+//   budget    200 iterations, logging ‖r‖ / α_m / ε_f per iteration.
+//
+// Decision table (review item 3): contraction with α_m bounded < 1 confirms
+// H1 (the iteration operator was the blocker); a stall here with the Davis
+// arm converging implicates residual discontinuity/chatter (→ I-7a/I-8c); a
+// stall in BOTH arms says genuine limit. After contraction at the stalled
+// target the probe marches λ → 1 on a PRIVATE copy of the committed state as
+// an existence check. The probe runs on state copies and restores U/trial —
+// the returned analysis result is byte-identical to a probe-free run.
+// ============================================================================
+inline void run_fixed_point_probe(
+    PhaseContext& ctx,
+    const SolverOptions& opts,
+    PhaseResult& res,
+    double lastAttemptedLambda) {
+  auto& elements = *ctx.elements;
+  auto& freeDofs = *ctx.freeDofs;
+  auto& freeIndexByDof = *ctx.freeIndexByDof;
+  auto& K = *ctx.K;
+  const double* U_base = ctx.U_base ? ctx.U_base->data() : nullptr;
+  const double* beamReferenceU = ctx.beamReferenceU ? ctx.beamReferenceU->data() : nullptr;
+  const BeamAssemblyMode beamMode = ctx.beamMode;
+  const double* baseRhs = ctx.baseRhsFree ? ctx.baseRhsFree->data() : nullptr;
+  const double* rampedRhs = ctx.rampedRhsFree ? ctx.rampedRhsFree->data() : nullptr;
+  const std::int32_t nfree = K.nrows;
+  FixedPointProbeTelemetry& probe = res.probe;
+
+  // Backups — the probe must not alter the returned analysis state.
+  const std::vector<double> uBackup = *ctx.U_global;
+  const std::vector<MaterialPoint> trialBackup = *ctx.trial;
+
+  // PRIVATE committed copy: λ-march commits happen here, never on the run's
+  // committed state.
+  std::vector<MaterialPoint> probeCommitted = *ctx.committed;
+  std::vector<MaterialPoint>& probeTrial = *ctx.trial;
+  std::vector<double>& U = *ctx.U_global;
+
+  double lambda = lastAttemptedLambda;
+  if (res.hasDisplayState) {
+    U = res.displayU;
+    probeTrial = res.displayMp;
+    lambda = res.displayLoadFactor;
+    probe.startedFromDisplayState = 1u;
+  }
+  if (!(std::isfinite(lambda) && lambda > 0.0)) lambda = lastAttemptedLambda;
+  probe.valid = 1u;
+  probe.phaseKind = static_cast<std::uint8_t>(ctx.phaseKind);
+  probe.lambdaProbe = lambda;
+
+  const std::vector<std::array<std::int32_t, 3>> wallTriplets =
+      build_wall_preconditioner_triplets(ctx.beamElements, freeIndexByDof, beamMode);
+  const auto* wallTripletsPtr = wallTriplets.empty() ? nullptr : &wallTriplets;
+  const std::vector<std::vector<std::int32_t>> wallBlocks =
+      build_wall_preconditioner_blocks(ctx.beamElements, freeIndexByDof, beamMode);
+  const auto* wallBlocksPtr = wallBlocks.empty() ? nullptr : &wallBlocks;
+  const sparse::WallCoarseSpace wallCoarseSpace =
+      build_wall_coarse_space(elements, ctx.beamElements, freeIndexByDof, beamMode, nfree);
+  const auto* wallCoarse = wallCoarseSpace.empty() ? nullptr : &wallCoarseSpace;
+  SolverOptions probeOpts = opts;
+  probeOpts.useWallCoarseCorrection = 1;  // per the experiment spec
+
+  std::vector<double> internalForceFree(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> residualFree(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> deltaU(static_cast<std::size_t>(nfree), 0.0);
+  std::vector<double> prevResidual;
+  std::vector<double> prevInternal;
+  std::vector<double> diagInv;
+
+  // Constant elastic operator: assembled ONCE (soil D_e via the elastic-
+  // globalization selector, interface FULL diag(k_s,k_n) via the new
+  // selector, beam stiffness). The exact return maps still run, so the
+  // residual at the start state is also produced here.
+  AssembleOutput a0 = assemble_global(
+      elements, ctx.beamElements, ctx.interfaceElements, probeCommitted, probeTrial,
+      *ctx.regions, *ctx.regionC, freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+      lambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+      /*wantTangent=*/true, K, internalForceFree, residualFree,
+      /*useElasticGlobalizationTangent=*/true, beamMode, beamReferenceU,
+      /*useConsistentGlobalizationTangent=*/false,
+      /*telemetry=*/nullptr,
+      /*interfaceElasticTangent=*/true);
+  probe.residual0 = a0.residualNorm;
+  sparse::build_block_jacobi(K, freeDofs, diagInv, wallTripletsPtr, wallBlocksPtr);
+
+  const int kProbeMaxIters = 200;
+  auto run_probe_iterations = [&](double targetLambda, int maxIters,
+                                  bool logHistory) -> std::pair<bool, int> {
+    prevResidual.clear();
+    prevInternal.clear();
+    // Convergence requires TWO CONSECUTIVE sub-target residuals. A genuinely
+    // contracting iteration always delivers consecutive sub-target iterates;
+    // a non-contracting period-2 oscillation whose swing happens to dip below
+    // the loose absolute-arm target once cannot (observed on the c=1
+    // genuine-collapse control: α_m oscillating in (−1, −0.7), residual
+    // envelope GROWING, one lucky dip — the control must never read as
+    // converged, per the task #56 adversarial-control hard rule).
+    int consecutiveBelowTarget = 0;
+    int it = 0;
+    for (it = 1; it <= maxIters; ++it) {
+      AssembleOutput a = assemble_global(
+          elements, ctx.beamElements, ctx.interfaceElements, probeCommitted, probeTrial,
+          *ctx.regions, *ctx.regionC, freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
+          targetLambda, ctx.kind, ctx.symmetrize, ctx.incrementalStress,
+          /*wantTangent=*/false, K, internalForceFree, residualFree,
+          /*useElasticGlobalizationTangent=*/false, beamMode, beamReferenceU);
+      const double rTarget = nonlinear_residual_target(opts, a.rhsNorm, nfree);
+      probe.residualTarget = rTarget;
+      probe.residualFinal = a.residualNorm;
+      double alpha = 0.0;
+      double epsF = 0.0;
+      if (prevResidual.size() == static_cast<std::size_t>(nfree)) {
+        double rDot = 0.0, rPrev2 = 0.0;
+        double df2 = 0.0, fma2 = 0.0;
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          rDot += prevResidual[static_cast<std::size_t>(i)] *
+                  residualFree[static_cast<std::size_t>(i)];
+          rPrev2 += prevResidual[static_cast<std::size_t>(i)] *
+                    prevResidual[static_cast<std::size_t>(i)];
+        }
+        alpha = rPrev2 > 1e-300 ? rDot / rPrev2 : 0.0;
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          const double fNow = internalForceFree[static_cast<std::size_t>(i)];
+          const double fPrev = prevInternal[static_cast<std::size_t>(i)];
+          const double df = fNow - fPrev;
+          const double fa = fNow - alpha * fPrev;
+          df2 += df * df;
+          fma2 += fa * fa;
+        }
+        epsF = fma2 > 1e-300 ? std::abs(alpha) * std::sqrt(df2 / fma2) : 0.0;
+        probe.alphaMFinal = alpha;
+        probe.epsFFinal = epsF;
+      }
+      if (logHistory) {
+        probe.residualHistory.push_back(a.residualNorm);
+        probe.alphaMHistory.push_back(alpha);
+        probe.epsFHistory.push_back(epsF);
+      }
+      if (a.residualNorm <= rTarget) {
+        consecutiveBelowTarget += 1;
+        if (consecutiveBelowTarget >= 2) return {true, it};
+      } else {
+        consecutiveBelowTarget = 0;
+      }
+      prevResidual.assign(residualFree.begin(), residualFree.end());
+      prevInternal.assign(internalForceFree.begin(), internalForceFree.end());
+      std::fill(deltaU.begin(), deltaU.end(), 0.0);
+      cg::LinearSolveResult lr = solve_phase_linear_system(
+          K, freeDofs, residualFree, deltaU, diagInv, probeOpts,
+          /*useUnsymmetricSolver=*/false,
+          /*reuseDiagInv=*/true, /*gmresCache=*/nullptr,
+          std::numeric_limits<double>::quiet_NaN(),
+          std::numeric_limits<double>::quiet_NaN(),
+          wallTripletsPtr, wallBlocksPtr, wallCoarse);
+      probe.cgIterationsTotal += lr.iterations;
+      if (!lr.converged && !(lr.residualNorm < a.residualNorm)) {
+        // CG failed outright on the SPD elastic operator — abort honestly.
+        return {false, it};
+      }
+      for (std::int32_t i = 0; i < nfree; ++i) {
+        U[freeDofs[static_cast<std::size_t>(i)]] += deltaU[static_cast<std::size_t>(i)];
+      }
+    }
+    return {false, maxIters};
+  };
+
+  const auto [convergedAtStall, itersAtStall] = run_probe_iterations(
+      lambda, kProbeMaxIters, /*logHistory=*/true);
+  probe.converged = convergedAtStall ? 1u : 0u;
+  probe.iterations = itersAtStall;
+  {
+    const double residMagSum = node_force_magnitude_sum(
+        residualFree.data(), freeDofs, ctx.translationalDofCount);
+    const double denom = lambda * res.telemetry.activeFullNodeMagSum +
+        std::max(res.telemetry.csp, 0.0) * res.telemetry.inactiveNodeMagSum;
+    probe.plaxisGlobalErrorFinal = denom > 1e-30 ? residMagSum / denom : residMagSum;
+  }
+
+  // Snapshot the stall-probe verdict before the march can overwrite the
+  // rolling per-iteration fields.
+  const double stallResidualFinal = probe.residualFinal;
+  const double stallAlphaM = probe.alphaMFinal;
+  const double stallEpsF = probe.epsFFinal;
+
+  // Existence march: only when the stalled target contracted. Commit on the
+  // PRIVATE copy and march λ → 1 in 0.05 steps (fixed-point throughout).
+  if (convergedAtStall) {
+    probeCommitted = probeTrial;
+    probe.marchLambdaMax = lambda;
+    double marchLambda = lambda;
+    for (int step = 0; step < 40 && marchLambda < 1.0 - 1e-9; ++step) {
+      marchLambda = std::min(marchLambda + 0.05, 1.0);
+      const auto [ok, iters] = run_probe_iterations(
+          marchLambda, kProbeMaxIters, /*logHistory=*/false);
+      if (!ok) break;
+      probeCommitted = probeTrial;
+      probe.marchLambdas.push_back(marchLambda);
+      probe.marchIterations.push_back(iters);
+      probe.marchLambdaMax = marchLambda;
+    }
+    probe.marchReachedOne = probe.marchLambdaMax >= 1.0 - 1e-9 ? 1u : 0u;
+  }
+  probe.residualFinal = stallResidualFinal;
+  probe.alphaMFinal = stallAlphaM;
+  probe.epsFFinal = stallEpsF;
+
+  // Restore the run state — the probe is observation only.
+  *ctx.U_global = uBackup;
+  *ctx.trial = trialBackup;
+}
+
 inline PhaseResult run_nonlinear_phase(
     PhaseContext& ctx,
     const SolverOptions& opts) {
@@ -3742,7 +4167,8 @@ inline PhaseResult run_nonlinear_phase(
       PhaseStepMaterials sm;
       prepare_phase_step_materials(ctx, regions, regionC, targetLambda, sm);
       const bool stepUnsym = tier2_consistent_tangent_unsymmetric(ctx.symmetrize, sm.regions) ||
-          (ctx.interfaceElements != nullptr && !ctx.interfaceElements->empty());
+          (ctx.interfaceElements != nullptr && !ctx.interfaceElements->empty() &&
+           interface_slip_forces_unsymmetric(opts));
       const std::vector<double> uBefore = U;
       if (!haveR0) {
         AssembleOutput a0 = assemble_global(
@@ -3808,6 +4234,37 @@ inline PhaseResult run_nonlinear_phase(
     return converged;
   };
 
+  // ===========================================================================
+  // Task #56 I-0 — phase telemetry context (pure observation; no solver
+  // decision reads any of this). Per-iteration snapshots are taken at the
+  // top-of-iteration assembly of the Tier-1 Newton loop; CSP is accumulated on
+  // the commit path from the step-start snapshot.
+  // ===========================================================================
+  PhaseConvergenceTelemetry& tel = res.telemetry;
+  tel.valid = 1u;
+  tel.phaseKind = static_cast<std::uint8_t>(ctx.phaseKind);
+  tel.activeFullNodeMagSum = rampedRhs
+      ? node_force_magnitude_sum(rampedRhs, freeDofs, ctx.translationalDofCount)
+      : 0.0;
+  tel.inactiveNodeMagSum = ctx.committedExternalRhsFree
+      ? node_force_magnitude_sum(
+            ctx.committedExternalRhsFree->data(), freeDofs, ctx.translationalDofCount)
+      : (baseRhs ? node_force_magnitude_sum(baseRhs, freeDofs, ctx.translationalDofCount)
+                 : 0.0);
+  std::vector<double> telPrevResidual;
+  std::vector<double> telPrevInternal;
+  std::vector<double> telPrevUFree;
+  bool telHavePrev = false;
+  std::uint64_t telFp1 = 0;
+  std::uint64_t telFp2 = 0;
+  bool telHaveFp1 = false;
+  bool telHaveFp2 = false;
+  constexpr std::size_t kTelHistoryCap = 96;
+  auto tel_push_capped = [](std::vector<double>& v, double x) {
+    if (v.size() >= kTelHistoryCap) v.erase(v.begin());
+    v.push_back(x);
+  };
+
   std::vector<double> warmStartFreeCorrection;
   std::vector<double> previousAcceptedStepFreeDelta;
   std::vector<double> secondPreviousAcceptedStepFreeDelta;
@@ -3822,11 +4279,13 @@ inline PhaseResult run_nonlinear_phase(
   const bool shouldWarmStartLinearSolve =
       ctx.kind == ConstitutiveKind::McPlastic ||
       ctx.kind == ConstitutiveKind::HardeningSoil;
+  double lastAttemptedLambda = 0.0;  // task #56 Stage-B probe anchor
   for (std::int32_t step = 0; step < phaseMaxLoadSteps; ++step) {
     if (loadFactor >= 1.0 - kLoadCompletionTol) break;
     const double remaining = 1.0 - loadFactor;
     const double actualStep = std::min(dLambda, remaining);
     const double targetLambda = loadFactor + actualStep;
+    lastAttemptedLambda = targetLambda;
     PhaseStepMaterials stepMaterials;
     prepare_phase_step_materials(ctx, regions, regionC, targetLambda, stepMaterials);
     const std::vector<RegionParams>* regionsForStep = stepMaterials.regions;
@@ -3892,6 +4351,13 @@ inline PhaseResult run_nonlinear_phase(
     }
     trialMp = committedMp;
 
+    // Task #56 I-0: contraction-rate and branch-cycle bookkeeping is only
+    // meaningful between successive iterations at the SAME load target —
+    // reset at every step (re)start.
+    telHavePrev = false;
+    telHaveFp1 = false;
+    telHaveFp2 = false;
+
     bool stepConverged = false;
     double lastAcceptedScale = 1.0;
     int newtonIterUsed = 0;
@@ -3911,6 +4377,7 @@ inline PhaseResult run_nonlinear_phase(
     if (hasIterationLinearGuess) iterationLinearGuess = warmStartFreeCorrection;
 
     for (std::int32_t newtonIter = 1; newtonIter <= opts.nonlinearMaxIter; ++newtonIter) {
+      AssembleTelemetry telSink;  // task #56 I-0 (pure observation)
       AssembleOutput a = assemble_global(elements, ctx.beamElements, ctx.interfaceElements, committedMp, trialMp, *regionsForStep, *regionCForStep,
                                          freeIndexByDof, U.data(), U_base, baseRhs, rampedRhs,
                                          targetLambda, ctx.kind, ctx.symmetrize,
@@ -3918,7 +4385,9 @@ inline PhaseResult run_nonlinear_phase(
                                          /*wantTangent=*/true,
                                          K, internalForceFree, residualFree,
                                          /*useElasticGlobalizationTangent=*/false,
-                                         beamMode, beamReferenceU);
+                                         beamMode, beamReferenceU,
+                                         /*useConsistentGlobalizationTangent=*/false,
+                                         &telSink);
       const std::vector<MaterialPoint> assembledTrialMp = trialMp;
       remember_display_state(targetLambda, a);
       ++res.newtonIterations;
@@ -3936,6 +4405,87 @@ inline PhaseResult run_nonlinear_phase(
       stepPeakActiveCount = std::max(stepPeakActiveCount, a.plasticActiveCount);
 
       const double residualTarget = nonlinear_residual_target(opts, a.rhsNorm, nfree);
+
+      // ---- Task #56 I-0 telemetry (pure observation) -----------------------
+      {
+        tel.newtonIterations += 1;
+        tel.lambdaTarget = targetLambda;
+        tel.residualNorm = a.residualNorm;
+        tel.residualTarget = residualTarget;
+        const double absArm = nonlinear_absolute_residual_target(opts, nfree);
+        const bool absBinds = absArm >= opts.residualRelTol * std::max(a.rhsNorm, 0.0);
+        tel.lastBindingArmAbs = absBinds ? 1u : 0u;
+        if (absBinds) tel.absArmBindCount += 1; else tel.relArmBindCount += 1;
+        tel.residualNodeMagSum = node_force_magnitude_sum(
+            residualFree.data(), freeDofs, ctx.translationalDofCount);
+        const double telDenom = targetLambda * tel.activeFullNodeMagSum +
+            std::max(tel.csp, 0.0) * tel.inactiveNodeMagSum;
+        tel.plaxisGlobalError = telDenom > 1e-30
+            ? tel.residualNodeMagSum / telDenom
+            : tel.residualNodeMagSum;
+        tel.soilPlasticPointCount = telSink.soilPlasticPointCount;
+        tel.soilInaccurateCount = telSink.soilInaccurateCount;
+        tel.maxSoilLocalError = telSink.maxSoilLocalError;
+        tel.interfacePlasticPointCount = telSink.interfacePlasticPointCount;
+        tel.interfaceInaccurateCount = telSink.interfaceInaccurateCount;
+        tel.maxInterfaceLocalError = telSink.maxInterfaceLocalError;
+        tel.interfaceStickCount = telSink.interfaceStickCount;
+        tel.interfaceSlipCount = a.interfaceSlipCount;
+        tel.interfaceGapCount = a.interfaceGapCount;
+        tel.elasticPassthroughCount += a.elasticPassthroughCount;
+        tel.lastIterElasticPassthrough = a.elasticPassthroughCount;
+        const std::uint64_t fp = telSink.branchFingerprint;
+        if (telHaveFp1 && fp != telFp1) tel.branchChangeEvents += 1;
+        if (telHaveFp2 && fp == telFp2 && fp != telFp1) tel.branchPeriod2Cycles += 1;
+        telFp2 = telFp1;
+        telHaveFp2 = telHaveFp1;
+        telFp1 = fp;
+        telHaveFp1 = true;
+        tel.lastBranchFingerprint = fp;
+        if (telHavePrev &&
+            telPrevResidual.size() == static_cast<std::size_t>(nfree)) {
+          // van Langen eq 3.16 Rayleigh quotient + eqs 3.25/3.27 out-of-
+          // solution errors against the previous top-of-iteration state.
+          double rDot = 0.0, rPrev2 = 0.0;
+          for (std::int32_t i = 0; i < nfree; ++i) {
+            rDot += telPrevResidual[static_cast<std::size_t>(i)] *
+                    residualFree[static_cast<std::size_t>(i)];
+            rPrev2 += telPrevResidual[static_cast<std::size_t>(i)] *
+                      telPrevResidual[static_cast<std::size_t>(i)];
+          }
+          const double alpha = rPrev2 > 1e-300 ? rDot / rPrev2 : 0.0;
+          tel.alphaM = alpha;
+          tel_push_capped(tel.alphaMHistory, alpha);
+          double df2 = 0.0, fma2 = 0.0, da2 = 0.0, ama2 = 0.0;
+          for (std::int32_t i = 0; i < nfree; ++i) {
+            const double fNow = internalForceFree[static_cast<std::size_t>(i)];
+            const double fPrev = telPrevInternal[static_cast<std::size_t>(i)];
+            const double df = fNow - fPrev;
+            const double fa = fNow - alpha * fPrev;
+            df2 += df * df;
+            fma2 += fa * fa;
+            const double uNow = U[freeDofs[i]];
+            const double uPrev = telPrevUFree[static_cast<std::size_t>(i)];
+            const double du = uNow - uPrev;
+            const double ua = uNow - alpha * uPrev;
+            da2 += du * du;
+            ama2 += ua * ua;
+          }
+          tel.epsF = fma2 > 1e-300 ? std::abs(alpha) * std::sqrt(df2 / fma2) : 0.0;
+          tel.epsA = ama2 > 1e-300 ? std::abs(alpha) * std::sqrt(da2 / ama2) : 0.0;
+        }
+        telPrevResidual.assign(residualFree.begin(), residualFree.end());
+        telPrevInternal.assign(internalForceFree.begin(), internalForceFree.end());
+        telPrevUFree.resize(static_cast<std::size_t>(nfree));
+        for (std::int32_t i = 0; i < nfree; ++i) {
+          telPrevUFree[static_cast<std::size_t>(i)] = U[freeDofs[i]];
+        }
+        telHavePrev = true;
+        tel_push_capped(tel.residualHistory, a.residualNorm);
+        tel_push_capped(tel.plaxisErrorHistory, tel.plaxisGlobalError);
+      }
+      // ---- end telemetry ----------------------------------------------------
+
       double solutionNorm = 0.0;
       for (std::int32_t i = 0; i < nfree; ++i) {
         const double v = U[freeDofs[i]];
@@ -4006,7 +4556,7 @@ inline PhaseResult run_nonlinear_phase(
       const bool hasPlastic = (a.plasticActiveCount > 0) || (a.tensionCount > 0);
       const bool tangentAsymmetric =
           (stepMayNeedUnsymmetricSolver && hasPlastic) ||
-          a.interfaceSlipCount > 0;
+          (a.interfaceSlipCount > 0 && interface_slip_forces_unsymmetric(opts));
       if (tangentAsymmetric) stepUsedUnsymmetricSolver = true;
       // Exact plastic tangents that are known to be unsymmetric must never be
       // routed to CG. CG requires SPD; non-associated MC-SH and HS plastic
@@ -4395,6 +4945,40 @@ inline PhaseResult run_nonlinear_phase(
       loadFactor = targetLambda;
       ++res.accepted;
       res.acceptedStepIterations.push_back(newtonIterUsed);
+      // Task #56 I-0: CSP of the accepted step (Bergan current stiffness
+      // parameter, Σ w·Δε:Δσ / Σ w·Δε:D_e:Δε over continuum GPs). Computed on
+      // the commit path while `committedMp` is STILL the step-start snapshot
+      // (review item 7) — pure observation, no solver decision reads it.
+      {
+        double cspNum = 0.0, cspDen = 0.0;
+        for (const auto& el : elements) {
+          const Mat6& Ce = (*regionCForStep)[static_cast<std::size_t>(el.regionIndex)];
+          for (int g = 0; g < el.numGp; ++g) {
+            const std::int32_t mpIdx = el.mpIdx[g];
+            const MaterialPoint& c0 = committedMp[static_cast<std::size_t>(mpIdx)];
+            const MaterialPoint& t1 = trialMp[static_cast<std::size_t>(mpIdx)];
+            const double w = el.gp[g].weight_det_j;
+            const Vec6 dEps = linalg::sub(t1.totalStrain, c0.totalStrain);
+            const Vec6 dSig = linalg::sub(t1.effectiveStress, c0.effectiveStress);
+            // Voigt engineering-shear strain against single-entry shear
+            // stress sums γτ — the correct tensor double contraction Δε:Δσ.
+            double dd = 0.0;
+            for (int k = 0; k < 6; ++k) {
+              dd += dEps[static_cast<std::size_t>(k)] * dSig[static_cast<std::size_t>(k)];
+            }
+            const Vec6 CdEps = linalg::mul6x6(Ce, dEps);
+            double de = 0.0;
+            for (int k = 0; k < 6; ++k) {
+              de += dEps[static_cast<std::size_t>(k)] * CdEps[static_cast<std::size_t>(k)];
+            }
+            cspNum += w * dd;
+            cspDen += w * de;
+          }
+        }
+        const double csp = cspDen > 1e-300 ? cspNum / cspDen : 1.0;
+        tel.csp = csp;
+        if (csp < tel.cspMin) tel.cspMin = csp;
+      }
       committedMp = trialMp;
       if (stepUsesConsistentTangent) {
         secondPreviousAcceptedStepFreeDelta = previousAcceptedStepFreeDelta;
@@ -4526,13 +5110,31 @@ inline PhaseResult run_nonlinear_phase(
   // its load-step budget. A converging case never reaches here, so the default
   // path is byte-identical and the worst case is no slower than today. On
   // success the continuation carries the phase to λ = 1 and sets `loadFactor`.
-  if (tier2Enabled && loadFactor < 1.0 - kLoadCompletionTol) {
+  // Task #56 Stage-B: under the fixed-point probe debug mode the Tier-2 LM
+  // rescue is skipped so the probe observes the CLEAN Tier-1 stall (mode-
+  // scoped; the default path is untouched).
+  if (tier2Enabled && opts.debugSolverMode != 1 &&
+      loadFactor < 1.0 - kLoadCompletionTol) {
     tier2_run_continuation(loadFactor);
   }
 
   res.loadFactor = loadFactor;
   (void)overall;
   res.converged = std::isfinite(loadFactor) && loadFactor >= 1.0 - kLoadCompletionTol;
+  res.telemetry.lambdaCommitted = loadFactor;
+  res.telemetry.converged = res.converged ? 1u : 0u;
+  res.telemetry.acceptedSteps = res.accepted;
+  res.telemetry.rejectedSteps = res.rejected;
+
+  // Task #56 Stage-B (debugSolverMode == 1): the de-confounded fixed-point
+  // probe at the stalled state. Observation only — runs on state copies.
+  if (opts.debugSolverMode == 1 && !res.converged &&
+      ctx.kind == ConstitutiveKind::McPlastic &&
+      (ctx.phaseKind == PhaseKind::Excavation ||
+       ctx.phaseKind == PhaseKind::ServiceLoad ||
+       ctx.phaseKind == PhaseKind::InitialGravity)) {
+    run_fixed_point_probe(ctx, opts, res, lastAttemptedLambda);
+  }
   return res;
 }
 
@@ -4758,6 +5360,9 @@ struct DriverInput {
   const std::vector<double>* loadRhsFree{ nullptr };  // surface traction
   std::vector<double>* U_global{ nullptr };           // service displacement
   std::vector<double>* U_geostatic{ nullptr };        // baseline at end of geostatic
+  // Task #56 I-0 (telemetry only): rotation DOFs start at this index
+  // (= 2·numNodes). 0 disables the per-node pairing (falls back to |·| sums).
+  std::int32_t translationalDofCount{ 0 };
   SolverOptions opts{};
 };
 
@@ -4767,6 +5372,13 @@ struct DriverOutput {
   std::vector<double> beamReferenceU;
   std::vector<double> displayComparisonAccumulatedPlasticStrain;
   std::vector<std::int32_t> acceptedStepIterations;
+  // Task #56 I-0: per-phase convergence telemetry, in run order (gravity/
+  // excavation, then service). Runtime-only; serialized to the out-of-band
+  // diagnostics JSON by the WASM entry point.
+  std::vector<PhaseConvergenceTelemetry> phaseTelemetry;
+  // Task #56 Stage-B: fixed-point probe record of the failed phase (at most
+  // one phase fails per run — the run ends there).
+  FixedPointProbeTelemetry probe;
 };
 
 inline void append_phase_step_iterations(DriverOutput& out, const PhaseResult& phase) {
@@ -4810,6 +5422,7 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   ctx.beamReferenceU = &beamReferenceU;
   ctx.beamMode = BeamAssemblyMode::Active;
   ctx.ndof = ndof;
+  ctx.translationalDofCount = in.translationalDofCount;  // task #56 I-0
   ctx.kind = in.opts.constitutive;
   ctx.symmetrize =
       in.opts.constitutive == ConstitutiveKind::HardeningSoil
@@ -4918,7 +5531,13 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       ctx.phaseKind = PhaseKind::Excavation;
       ctx.beamMode = BeamAssemblyMode::Active;
       ctx.incrementalStress = false;
+      // Task #56 I-0: PLAXIS-denominator decomposition for the excavation
+      // phase — Active = ramped support-removal delta, Inactive = the
+      // committed supported in-situ load vector (= predictorInternal).
+      ctx.committedExternalRhsFree = &predictorInternal;
       PhaseResult excavation = run_nonlinear_phase(ctx, in.opts);
+      out.phaseTelemetry.push_back(excavation.telemetry);
+      if (excavation.probe.valid) out.probe = excavation.probe;
       // Report the excavation fraction as the initial-phase progress: the
       // wall-free geostatic establishment is trivially complete, so the
       // excavation is the meaningful staged step that can stall at a genuine
@@ -4962,7 +5581,10 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       stagedServiceIncremental = true;
     } else {
       // Legacy single-phase wall-free geostatic equilibration (unchanged).
+      ctx.committedExternalRhsFree = &predictorInternal;  // task #56 I-0
       PhaseResult geostatic = run_nonlinear_phase(ctx, in.opts);
+      out.phaseTelemetry.push_back(geostatic.telemetry);
+      if (geostatic.probe.valid) out.probe = geostatic.probe;
       out.summary.geostaticAccepted = geostatic.accepted;
       out.summary.geostaticRejected = geostatic.rejected;
       out.summary.loadStepsAccepted += geostatic.accepted;
@@ -5021,6 +5643,11 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
   // entire (gravity + load) into the ramped portion, which gives the
   // historical "gravity-ramp from σ = 0" behaviour.
 
+  // Task #56 I-0: from here on the committed pre-phase external load is the
+  // gravity-scale vector (service / safety). Also clears the excavation-block
+  // pointer (predictorInternal is block-local; never leave it dangling).
+  ctx.committedExternalRhsFree = in.gravityRhsFree;
+
   bool hasService = (*in.loadRhsFree).size() > 0 && std::any_of(
       in.loadRhsFree->begin(), in.loadRhsFree->end(),
       [](double v) { return v != 0.0; });
@@ -5052,6 +5679,8 @@ inline DriverOutput run_full_analysis(DriverInput& in) {
       ctx.beamReferenceU = &stagedServiceBeamRefU;
     }
     PhaseResult service = run_nonlinear_phase(ctx, in.opts);
+    out.phaseTelemetry.push_back(service.telemetry);
+    if (service.probe.valid) out.probe = service.probe;
     if (!service.converged &&
         in.opts.constitutive == ConstitutiveKind::HardeningSoil &&
         service.loadFactor > 0.0 &&

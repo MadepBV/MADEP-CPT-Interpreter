@@ -122,5 +122,16 @@ export async function runDeformationOnWasm({
     } catch (_) { /* diagnostics are best-effort */ }
   }
 
+  // Task #56 I-0: per-phase convergence diagnostics (PLAXIS global/local error
+  // audit, CSP, contraction rate, passthrough/branch-cycle counters). Same
+  // out-of-band JSON route as the Tier-2 block — no wire-format change.
+  if (typeof mod._madepGetLastConvergenceDiagnosticsJson === 'function') {
+    try {
+      const ptr = mod._madepGetLastConvergenceDiagnosticsJson();
+      const json = readCStringFromHeap(mod, ptr);
+      if (json) decoded.convergence = JSON.parse(json);
+    } catch (_) { /* diagnostics are best-effort */ }
+  }
+
   return decoded;
 }

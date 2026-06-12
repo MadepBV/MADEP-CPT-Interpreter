@@ -41,7 +41,7 @@ em++ \
   -s FILESYSTEM=0 \
   -s STACK_SIZE=4194304 \
   -s EXPORTED_RUNTIME_METHODS='["HEAPU8","HEAPU32","HEAPF64","HEAPF32"]' \
-  -s EXPORTED_FUNCTIONS='["_malloc","_free","_madepRunDeformationAnalysis","_madepRunMcPlasticMaterialPoint","_madepRunHsMaterialPoint","_madepGetLastErrorMessage","_madepGetLastNewtonStepIterationsJson","_madepGetLastTier2DiagnosticsJson","_madepFreeBuffer"]' \
+  -s EXPORTED_FUNCTIONS='["_malloc","_free","_madepRunDeformationAnalysis","_madepRunMcPlasticMaterialPoint","_madepRunHsMaterialPoint","_madepGetLastErrorMessage","_madepGetLastNewtonStepIterationsJson","_madepGetLastTier2DiagnosticsJson","_madepGetLastConvergenceDiagnosticsJson","_madepSetDebugSolverMode","_madepFreeBuffer"]' \
   -I "$SRC_DIR" \
   "$SRC_DIR/deformation_wasm.cpp" \
   -o "$OUT_DIR/deformation.js"

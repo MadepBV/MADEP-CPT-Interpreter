@@ -117,17 +117,36 @@ inline InterfaceResponse interface_return(
       r.D[1][0] = 0.0; r.D[1][1] = k_n;
       return r;
     }
-    // SLIP on the engaged face. t_n stays elastic (ψ_i = 0); the cap derivative
-    // follows the engaged face: ∂τ_max/∂t_n = tanφ_i·sign(t_n), so
-    // ∂t_t/∂u_n = s·tanφ_i·sign(t_n)·k_n — at t_n < 0 (retained face) this is
-    // −s·tanφ_i·k_n, identical to the unilateral slip tangent (continuous).
+    // SLIP on the engaged face. With ψ_i = 0 (production default) t_n stays
+    // elastic; the cap derivative follows the engaged face:
+    // ∂τ_max/∂t_n = tanφ_i·sign(t_n), so ∂t_t/∂u_n = s·tanφ_i·sign(t_n)·k_n —
+    // at t_n < 0 (retained face) this is −s·tanφ_i·k_n, identical to the
+    // unilateral slip tangent (continuous). The exact `== 0.0` branch keeps
+    // the production path byte-identical.
+    //
+    // General ψ_i ≥ 0 (task #56 Davis associated bracket, ψ_i* = φ_i*):
+    // f = |t_t| − c_i − sn·t_n·tanφ_i, g = |t_t| − sn·t_n·tanψ_i with
+    // sn = sign(t_n^tr); Δλ = f_tr/(k_s + k_n·tanφ_i·tanψ_i);
+    // t = t^tr − Δλ·D_e·m, m = (s, −sn·tanψ_i). Consistent tangent
+    // D = D_e − (D_e·m)(∂f_tr/∂u)ᵀ/den is SYMMETRIC iff ψ_i = φ_i.
     const double sB = (tt >= 0.0) ? 1.0 : -1.0;
     const double sn = (tn >= 0.0) ? 1.0 : -1.0;
     r.branch = Branch::Slip;
-    r.t_n = tn;
-    r.t_t = sB * tauMaxB;
-    r.D[0][0] = 0.0; r.D[0][1] = sB * sn * p.tanPhi_i * k_n;
-    r.D[1][0] = 0.0; r.D[1][1] = k_n;
+    if (p.tanPsi_i == 0.0) {
+      r.t_n = tn;
+      r.t_t = sB * tauMaxB;
+      r.D[0][0] = 0.0; r.D[0][1] = sB * sn * p.tanPhi_i * k_n;
+      r.D[1][0] = 0.0; r.D[1][1] = k_n;
+      return r;
+    }
+    const double denB = k_s + k_n * p.tanPhi_i * p.tanPsi_i;
+    const double dLamB = fB / denB;
+    r.t_t = tt - dLamB * k_s * sB;
+    r.t_n = tn + dLamB * k_n * sn * p.tanPsi_i;
+    r.D[0][0] = k_s * k_n * p.tanPhi_i * p.tanPsi_i / denB;
+    r.D[0][1] = sB * sn * k_s * k_n * p.tanPhi_i / denB;
+    r.D[1][0] = sB * sn * k_s * k_n * p.tanPsi_i / denB;
+    r.D[1][1] = k_n * k_s / denB;
     return r;
   }
 
@@ -185,12 +204,29 @@ inline InterfaceResponse interface_return(
   // ⇒ D_ep = [[0, −s·tanφ_i·k_n],[0, k_n]] — singular in the slip direction and
   // NON-symmetric (the [t_t,u_n] coupling has no [t_n,u_t] partner); routes the
   // global solve to GMRES unless symmetrised, mirroring non-associated MC.
+  // The exact `== 0.0` branch keeps the production path byte-identical.
+  //
+  // General ψ_i ≥ 0 (task #56 Davis associated bracket, ψ_i* = φ_i*):
+  // f = |t_t| + t_n·tanφ_i − c_i, g = |t_t| + t_n·tanψ_i (dilatant slip);
+  // Δλ = f_tr/(k_s + k_n·tanφ_i·tanψ_i); t = t^tr − Δλ·D_e·m, m = (s, tanψ_i).
+  // D = D_e − (D_e·m)(s·k_s, tanφ_i·k_n)/den — SYMMETRIC iff ψ_i = φ_i.
   const double s = (tt >= 0.0) ? 1.0 : -1.0;
   r.branch = Branch::Slip;
-  r.t_n = tn;
-  r.t_t = s * tauMax;
-  r.D[0][0] = 0.0; r.D[0][1] = -s * p.tanPhi_i * k_n;
-  r.D[1][0] = 0.0; r.D[1][1] = k_n;
+  if (p.tanPsi_i == 0.0) {
+    r.t_n = tn;
+    r.t_t = s * tauMax;
+    r.D[0][0] = 0.0; r.D[0][1] = -s * p.tanPhi_i * k_n;
+    r.D[1][0] = 0.0; r.D[1][1] = k_n;
+    return r;
+  }
+  const double den = k_s + k_n * p.tanPhi_i * p.tanPsi_i;
+  const double dLam = f / den;
+  r.t_t = tt - dLam * k_s * s;
+  r.t_n = tn - dLam * k_n * p.tanPsi_i;
+  r.D[0][0] = k_s * k_n * p.tanPhi_i * p.tanPsi_i / den;
+  r.D[0][1] = -s * k_s * k_n * p.tanPhi_i / den;
+  r.D[1][0] = -s * k_s * k_n * p.tanPsi_i / den;
+  r.D[1][1] = k_n * k_s / den;
   return r;
 }
 

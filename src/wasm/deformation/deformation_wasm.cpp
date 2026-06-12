@@ -114,6 +114,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <cmath>
 #include <limits>
@@ -153,6 +154,147 @@ std::string g_last_newton_step_iterations_json = "[]";
 std::string g_last_tier2_diagnostics_json =
     "{\"activations\":0,\"steps\":0,\"engaged\":false,\"converged\":false,"
     "\"finalMu\":0,\"finalMuZero\":true,\"maxMu\":0}";
+// Task #56 I-0: per-phase convergence diagnostics for the most recent run.
+// Out-of-band JSON (the Tier-2 precedent) — never part of the wire summary.
+std::string g_last_convergence_diagnostics_json = "{\"phases\":[]}";
+// Task #56 Stage-B: debug solver mode (0 = off; 1 = clean fixed-point probe;
+// 2 = Davis associated bracket). Set via madepSetDebugSolverMode BEFORE a run;
+// never wire-transmitted; default keeps the production path byte-identical.
+std::int32_t g_debug_solver_mode = 0;
+
+std::string json_number(double v) {
+  if (!std::isfinite(v)) return "null";
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%.9g", v);
+  return std::string(buf);
+}
+
+void append_double_array_json(std::string& json, const char* key,
+                              const std::vector<double>& values) {
+  json += "\"";
+  json += key;
+  json += "\":[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) json += ",";
+    json += json_number(values[i]);
+  }
+  json += "]";
+}
+
+void append_int_array_json(std::string& json, const char* key,
+                           const std::vector<std::int32_t>& values) {
+  json += "\"";
+  json += key;
+  json += "\":[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) json += ",";
+    json += std::to_string(values[i]);
+  }
+  json += "]";
+}
+
+void update_last_convergence_diagnostics_json(
+    const std::vector<PhaseConvergenceTelemetry>& phases,
+    const FixedPointProbeTelemetry& probe) {
+  static const char* kPhaseNames[] = {
+      "initial-gravity", "service-load", "safety-cphi", "excavation"};
+  std::string json = "{\"phases\":[";
+  bool first = true;
+  for (const auto& t : phases) {
+    if (!t.valid) continue;
+    if (!first) json += ",";
+    first = false;
+    json += "{";
+    json += "\"phase\":\"";
+    json += (t.phaseKind < 4) ? kPhaseNames[t.phaseKind] : "unknown";
+    json += "\"";
+    json += ",\"converged\":" + std::string(t.converged ? "true" : "false");
+    json += ",\"lambdaCommitted\":" + json_number(t.lambdaCommitted);
+    json += ",\"lambdaTarget\":" + json_number(t.lambdaTarget);
+    json += ",\"newtonIterations\":" + std::to_string(t.newtonIterations);
+    json += ",\"acceptedSteps\":" + std::to_string(t.acceptedSteps);
+    json += ",\"rejectedSteps\":" + std::to_string(t.rejectedSteps);
+    json += ",\"residualNorm\":" + json_number(t.residualNorm);
+    json += ",\"residualTarget\":" + json_number(t.residualTarget);
+    json += ",\"bindingArm\":\"";
+    json += (t.lastBindingArmAbs ? "absolute" : "relative");
+    json += "\"";
+    json += ",\"absArmBindCount\":" + std::to_string(t.absArmBindCount);
+    json += ",\"relArmBindCount\":" + std::to_string(t.relArmBindCount);
+    json += ",\"residualNodeMagSum\":" + json_number(t.residualNodeMagSum);
+    json += ",\"activeFullNodeMagSum\":" + json_number(t.activeFullNodeMagSum);
+    json += ",\"inactiveNodeMagSum\":" + json_number(t.inactiveNodeMagSum);
+    json += ",\"plaxisGlobalError\":" + json_number(t.plaxisGlobalError);
+    json += ",\"csp\":" + json_number(t.csp);
+    json += ",\"cspMin\":" + json_number(t.cspMin);
+    json += ",\"soilPlasticPointCount\":" + std::to_string(t.soilPlasticPointCount);
+    json += ",\"soilInaccurateCount\":" + std::to_string(t.soilInaccurateCount);
+    json += ",\"soilQuota\":" +
+        json_number(3.0 + static_cast<double>(t.soilPlasticPointCount) / 10.0);
+    json += ",\"maxSoilLocalError\":" + json_number(t.maxSoilLocalError);
+    json += ",\"interfacePlasticPointCount\":" + std::to_string(t.interfacePlasticPointCount);
+    json += ",\"interfaceInaccurateCount\":" + std::to_string(t.interfaceInaccurateCount);
+    json += ",\"interfaceQuota\":" +
+        json_number(3.0 + static_cast<double>(t.interfacePlasticPointCount) / 10.0);
+    json += ",\"maxInterfaceLocalError\":" + json_number(t.maxInterfaceLocalError);
+    json += ",\"interfaceStickCount\":" + std::to_string(t.interfaceStickCount);
+    json += ",\"interfaceSlipCount\":" + std::to_string(t.interfaceSlipCount);
+    json += ",\"interfaceGapCount\":" + std::to_string(t.interfaceGapCount);
+    json += ",\"elasticPassthroughCount\":" + std::to_string(t.elasticPassthroughCount);
+    json += ",\"lastIterElasticPassthrough\":" + std::to_string(t.lastIterElasticPassthrough);
+    json += ",\"branchChangeEvents\":" + std::to_string(t.branchChangeEvents);
+    json += ",\"branchPeriod2Cycles\":" + std::to_string(t.branchPeriod2Cycles);
+    json += ",\"branchFingerprint\":\"" + std::to_string(t.lastBranchFingerprint) + "\"";
+    json += ",\"alphaM\":" + json_number(t.alphaM);
+    json += ",\"epsF\":" + json_number(t.epsF);
+    json += ",\"epsA\":" + json_number(t.epsA);
+    json += ",";
+    append_double_array_json(json, "alphaMHistory", t.alphaMHistory);
+    json += ",";
+    append_double_array_json(json, "residualHistory", t.residualHistory);
+    json += ",";
+    append_double_array_json(json, "plaxisErrorHistory", t.plaxisErrorHistory);
+    json += "}";
+  }
+  json += "]";
+  json += ",\"debugSolverMode\":" + std::to_string(g_debug_solver_mode);
+  if (probe.valid) {
+    static const char* kPhaseNames2[] = {
+        "initial-gravity", "service-load", "safety-cphi", "excavation"};
+    json += ",\"fixedPointProbe\":{";
+    json += "\"phase\":\"";
+    json += (probe.phaseKind < 4) ? kPhaseNames2[probe.phaseKind] : "unknown";
+    json += "\"";
+    json += ",\"converged\":" + std::string(probe.converged ? "true" : "false");
+    json += ",\"startedFromDisplayState\":" +
+        std::string(probe.startedFromDisplayState ? "true" : "false");
+    json += ",\"lambdaProbe\":" + json_number(probe.lambdaProbe);
+    json += ",\"iterations\":" + std::to_string(probe.iterations);
+    json += ",\"residual0\":" + json_number(probe.residual0);
+    json += ",\"residualFinal\":" + json_number(probe.residualFinal);
+    json += ",\"residualTarget\":" + json_number(probe.residualTarget);
+    json += ",\"alphaMFinal\":" + json_number(probe.alphaMFinal);
+    json += ",\"epsFFinal\":" + json_number(probe.epsFFinal);
+    json += ",\"plaxisGlobalErrorFinal\":" + json_number(probe.plaxisGlobalErrorFinal);
+    json += ",\"cgIterationsTotal\":" + std::to_string(probe.cgIterationsTotal);
+    json += ",\"marchLambdaMax\":" + json_number(probe.marchLambdaMax);
+    json += ",\"marchReachedOne\":" +
+        std::string(probe.marchReachedOne ? "true" : "false");
+    json += ",";
+    append_double_array_json(json, "residualHistory", probe.residualHistory);
+    json += ",";
+    append_double_array_json(json, "alphaMHistory", probe.alphaMHistory);
+    json += ",";
+    append_double_array_json(json, "epsFHistory", probe.epsFHistory);
+    json += ",";
+    append_double_array_json(json, "marchLambdas", probe.marchLambdas);
+    json += ",";
+    append_int_array_json(json, "marchIterations", probe.marchIterations);
+    json += "}";
+  }
+  json += "}";
+  g_last_convergence_diagnostics_json = json;
+}
 
 void update_last_tier2_diagnostics_json(const RunSummary& s) {
   std::string json = "{";
@@ -305,6 +447,7 @@ int madepRunDeformationAnalysis(
   g_last_tier2_diagnostics_json =
       "{\"activations\":0,\"steps\":0,\"engaged\":false,\"converged\":false,"
       "\"finalMu\":0,\"finalMuZero\":true,\"maxMu\":0}";
+  g_last_convergence_diagnostics_json = "{\"phases\":[]}";
   if (!inputPtr || inputLen < kInputHeaderBytes || !outPtrPtr || !outLenPtr) {
     g_last_error = "invalid arguments to madepRunDeformationAnalysis";
     return 0;
@@ -619,6 +762,32 @@ int madepRunDeformationAnalysis(
     return 0;
   }
 
+  // ---------------------------------------------------------------------------
+  // Task #56 Stage-B (debug mode 2): Davis associated parameter bracket.
+  // Replace the non-associated MC strengths with the Davis-reduced ASSOCIATED
+  // surrogate c* = β·c, tanφ* = β·tanφ, ψ* = φ*, β = cosψ·cosφ/(1−sinψ·sinφ)
+  // — applied to SOIL AND INTERFACE (review item 3: both laws must transform).
+  // The associated slip/flow tangents are symmetric, so the run stays on CG
+  // (interfaceAssociatedLaw gates the slip→GMRES predicate). Diagnostic
+  // bracket only — never active without the explicit debug-mode arm.
+  // ---------------------------------------------------------------------------
+  if (g_debug_solver_mode == 2) {
+    for (auto& r : regions) {
+      const double beta = std::cos(r.psi) * std::cos(r.phi) /
+          std::max(1.0 - std::sin(r.psi) * std::sin(r.phi), 1e-12);
+      r.cEff = beta * r.cEff;
+      r.phi = std::atan(beta * std::tan(r.phi));
+      r.psi = r.phi;
+    }
+    for (auto& ic : interfaceElements) {
+      const double phiI = std::atan(ic.params.tanPhi_i);
+      const double betaI = std::cos(phiI);  // ψ_i = 0 in the production law
+      ic.params.c_i *= betaI;
+      ic.params.tanPhi_i *= betaI;
+      ic.params.tanPsi_i = ic.params.tanPhi_i;  // associated: ψ_i* = φ_i*
+    }
+  }
+
   // Constraints.
   std::vector<std::uint8_t> isFixed(ndof, 0u);
   for (std::uint32_t i = 0; i < numConstraints; ++i) {
@@ -878,6 +1047,11 @@ int madepRunDeformationAnalysis(
   opts.arcLengthMinRadiusScale = arcLengthMinRadiusScale;
   opts.arcLengthMaxRadiusScale = arcLengthMaxRadiusScale;
   opts.arcLengthConstraintToleranceScale = arcLengthConstraintToleranceScale;
+  // Task #56 Stage-B: debug solver mode (runtime-only, armed per run via the
+  // madepSetDebugSolverMode export). Mode 2 marks the interface law as
+  // associated so slip no longer forces GMRES (the tangent is symmetric).
+  opts.debugSolverMode = g_debug_solver_mode;
+  opts.interfaceAssociatedLaw = g_debug_solver_mode == 2 ? 1u : 0u;
 
   solver::DriverInput drv;
   drv.elements = &elements;
@@ -893,6 +1067,7 @@ int madepRunDeformationAnalysis(
   drv.loadRhsFree = &loadRhsFree;
   drv.U_global = &U_global;
   drv.U_geostatic = &U_geostatic;
+  drv.translationalDofCount = static_cast<std::int32_t>(soilDofCount);
   drv.opts = opts;
 
   solver::DriverOutput result = solver::run_full_analysis(drv);
@@ -901,6 +1076,7 @@ int madepRunDeformationAnalysis(
   result.summary.elapsed_ms = std::chrono::duration<double, std::milli>(endTime - startTime).count();
   update_last_newton_step_iterations_json(result.acceptedStepIterations);
   update_last_tier2_diagnostics_json(result.summary);
+  update_last_convergence_diagnostics_json(result.phaseTelemetry, result.probe);
   const bool hasHsPayload = constitutive == ConstitutiveKind::HardeningSoil;
   std::size_t wallPayloadBytes = 4;
   for (const auto& wall : walls) {
@@ -1459,6 +1635,22 @@ const char* madepGetLastNewtonStepIterationsJson() {
 MADEP_EXPORT
 const char* madepGetLastTier2DiagnosticsJson() {
   return g_last_tier2_diagnostics_json.c_str();
+}
+
+// Task #56 I-0: per-phase convergence diagnostics for the most recent run
+// (PLAXIS global/local error audit, CSP, contraction rate, passthrough and
+// branch-cycle counters). Out-of-band JSON — no wire-format change.
+MADEP_EXPORT
+const char* madepGetLastConvergenceDiagnosticsJson() {
+  return g_last_convergence_diagnostics_json.c_str();
+}
+
+// Task #56 Stage-B: arm a debug solver mode for the NEXT analysis run.
+// 0 = off (default, byte-identical), 1 = clean fixed-point probe after a
+// stalled staged/service phase, 2 = Davis associated parameter bracket.
+MADEP_EXPORT
+void madepSetDebugSolverMode(int mode) {
+  g_debug_solver_mode = mode;
 }
 
 MADEP_EXPORT
