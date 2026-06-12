@@ -9000,6 +9000,7 @@ function stage6BishopWallInfoPanelHtml(){
           Max |V| ${stage6CompactNumber(maxV, 3)} kN/m ·
           Max |M| ${stage6CompactNumber(maxM, 3)} kN·m/m${idxMaxM >= 0 ? ` at s ${stage6CompactNumber(series.sNode[idxMaxM] || 0, 3)} m` : ''}
           <br>Max |w| ${(1000 * maxW).toFixed(2)} mm · Max |θ| ${(1000 * maxTheta).toFixed(3)} mrad
+          <br><span style="color:var(--tx2)">Canvas overlays are normalized to a fixed amplitude at the diagram maximum — small (but nonzero) values plot close to the wall line; station dots mark every data point, and exact values are in Analysis → Structure / Copy data.</span>
         </div>
         <div class="st6-canvas-card-row st6-canvas-card-row--actions">
           <button type="button" class="st6-canvas-tool" onclick="stage6BishopOpenAnalysisTab('structure', ${wallIdArg})">${stage6BishopToolIcon('chart')}<span>Open Analysis</span></button>
@@ -12052,6 +12053,20 @@ function stage6BishopDrawCanvas(){
         else ctx.lineTo(pt.x, pt.y);
       });
       ctx.stroke();
+      // Per-station tick marks: the diagram amplitude is normalized to 32 px at
+      // |max|, so a smoothly growing quantity (e.g. the ~cubic moment build-up
+      // over the retained height) can hug the wall line within the wall-stroke
+      // width and read as "no data". Small dots keep every station visibly
+      // present without changing the normalization. (Verified twice: the
+      // "missing" upper-band data was correct and statics-consistent.)
+      ctx.save();
+      ctx.fillStyle = overlayData?.meta?.color || 'rgba(126, 80, 168, 0.8)';
+      diagram.forEach((pt)=>{
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
       const extrema = overlayData.nodeValues.map((value, index)=>({
         value:Number(value) || 0,
         index,
