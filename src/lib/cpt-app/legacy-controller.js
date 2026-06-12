@@ -5616,6 +5616,12 @@ function stage6BishopNormalizeWalls(walls, terrain){
         mechanicalActivationPromptPending:!hasMechanicalActiveField && !!wall,
         anchors:Array.isArray(wall?.anchors) ? wall.anchors : [],
         maxShearForce:Number.isFinite(+wall?.maxShearForce) && +wall.maxShearForce > 0 ? +wall.maxShearForce : null,
+        // Soil-wall interface R_inter (deformation module): must survive every
+        // normalize pass or the wall-table input is silently discarded and the
+        // interface always solves with the 0.667 preset.
+        interfaceRInter:Number.isFinite(+wall?.interfaceRInter) && +wall.interfaceRInter > 0
+          ? Math.min(Math.max(+wall.interfaceRInter, 0.01), 1.0)
+          : null,
         material:normalizeWallMaterial(wall?.material, index, id, {
           sourceFallback:hadMaterial ? 'user' : 'legacy-impermeable',
           mechanicalPreset:mechanicalActive ? 'concrete-diaphragm' : null
@@ -18293,7 +18299,7 @@ function buildStage7Payload(){
     version:4,
     stage:'stage7',
     generatedAt:new Date().toISOString(),
-    appVersion:'0.3.3',
+    appVersion: (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.5.x'),
     project:{
       name:PROJECT.name,
       phase:PROJECT.phase

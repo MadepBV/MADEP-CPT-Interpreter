@@ -2718,12 +2718,26 @@ export function analyzeBishopSearch(input, emitProgress) {
 }
 
 export function importBishopMaterialsFromLayers(layers, existing = [], strengthSet = 'characteristic') {
-  const prev = new Map((existing || []).map((item) => [item.id, item]));
+  // Stage-6 manual material overrides are preserved across re-imports ONLY
+  // for a layer that is recognisably the SAME layer (type/subtype/extent
+  // identity) — never by array position. Positional reuse silently kept
+  // stale c'/phi'/gamma after upstream Stage 2-5 edits, and transplanted one
+  // soil's overrides (and label) onto a DIFFERENT soil whenever a layer was
+  // inserted, removed or re-classified, while the UI claimed the set was
+  // freshly imported from the active CPT. A changed layer now refreshes
+  // wholesale from the upstream interpretation.
+  const layerKey = (layer) =>
+    `${layer?.type || ''}|${layer?.subtype || ''}|${Number(layer?.top ?? NaN)}|${Number(layer?.bot ?? NaN)}`;
+  const prevByKey = new Map();
+  (existing || []).forEach((item) => {
+    if (item?.sourceLayerKey) prevByKey.set(item.sourceLayerKey, item);
+  });
   return (layers || []).map((layer, index) => {
     const id = `layer_${index}`;
+    const key = layerKey(layer);
     const fallbackLabel = `${layer.subtype || layer.type || 'Layer'}${layer.type && layer.subtype ? ` (${layer.type})` : ''}`;
-    const hasPrior = prev.has(id);
-    const prior = prev.get(id) || {};
+    const hasPrior = prevByKey.has(key);
+    const prior = prevByKey.get(key) || {};
     const designed =
       strengthSet === 'da1_2' ? designSoilLayer(layer, 'M2')
       : strengthSet === 'da1_1' ? designSoilLayer(layer, 'M1')
@@ -2750,6 +2764,7 @@ export function importBishopMaterialsFromLayers(layers, existing = [], strengthS
     // (dilatancy cutoff).
     return {
       id,
+      sourceLayerKey: key,
       label: prior.label || `Layer ${index + 1} - ${fallbackLabel}`,
       sourceType: layer.type,
       sourceSubtype: layer.subtype || '',
@@ -2975,6 +2990,13 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
         maxShearForce:
           Number.isFinite(Number(wall?.maxShearForce)) && Number(wall.maxShearForce) > 0
             ? Number(wall.maxShearForce)
+            : null,
+        // Per-wall soil-wall interface ratio for the deformation module
+        // (mesh.js reads wall.interfaceRInter; without this the wall-table
+        // input never reached the solver).
+        interfaceRInter:
+          Number.isFinite(Number(wall?.interfaceRInter)) && Number(wall.interfaceRInter) > 0
+            ? Math.min(Math.max(Number(wall.interfaceRInter), 0.01), 1.0)
             : null,
         material: normalizeWallMaterial(wall?.material, index, wall?.id || `wall-${index + 1}`)
       };

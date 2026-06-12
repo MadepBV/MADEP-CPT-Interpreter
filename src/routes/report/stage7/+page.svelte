@@ -1068,7 +1068,7 @@
             <div class="report-card report-annex report-annex--bishop">
               <h3>Bishop / Spencer slope check</h3>
               <div class="report-grid report-grid--4">
-                <div class="report-stat"><span>Critical F</span><strong>{bishop.topResults?.[0] ? fmt(bishop.topResults[0].FS, 3) : '—'}</strong></div>
+                <div class="report-stat"><span>{bishop.config.strengthSet === 'da1_2' ? 'Critical Λ (EC7 DA1/2 ODF, require ≥ 1.0)' : bishop.config.strengthSet === 'da1_1' ? 'Critical F (M1 strengths)' : 'Critical F (characteristic)'}</span><strong>{bishop.topResults?.[0] ? fmt(bishop.topResults[0].FS, 3) : '—'}</strong></div>
                 <div class="report-stat"><span>Mode</span><strong>{bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer' : 'Bishop only'}</strong></div>
                 <div class="report-stat"><span>Selected result</span><strong>{bishop.selectedIndex + 1}</strong></div>
                 <div class="report-stat"><span>Spencer converged</span><strong>{bishop.methodMode === 'bishop_spencer' ? `${bishop.spencerConverged}/${bishop.spencerRechecked}` : 'off'}</strong></div>
@@ -1083,7 +1083,7 @@
                 <div class="report-annex__main">
                   <table class="pt report-pt">
                     <tbody>
-                      <tr><td>Strength set</td><td>{bishop.config.strengthSet}</td></tr>
+                      <tr><td>Strength set</td><td>{bishop.config.strengthSet === 'da1_2' ? 'DA1/2 (M2 design strengths — reported F is the EC7 over-design factor Λ, require ≥ 1.0)' : bishop.config.strengthSet === 'da1_1' ? 'DA1/1 (M1 strengths — action factors not applied; enter design loads)' : 'Characteristic (unfactored strengths)'}</td></tr>
                       <tr><td>Method mode</td><td>{bishop.methodMode === 'bishop_spencer' ? 'Bishop + Spencer check' : 'Bishop only'}</td></tr>
                       <tr><td>Analysis depth (m)</td><td>{fmt(bishop.config.analysisDepth, 2)} m</td></tr>
                       <tr><td>Retaining walls</td><td>{bishop.config.walls?.length ?? 0}</td></tr>
