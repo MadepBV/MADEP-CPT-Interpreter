@@ -343,7 +343,13 @@ export function installRetainingApp(ctx) {
       const dp = bm.z.map((z, i) => ({ depth: z, val: bm.v[i] })).filter((p) => p.depth <= maxDepth + 1e-6);
       if (dp.length >= 2) {
         const mmax = Math.max(1e-6, ...dp.map((p) => Math.abs(p.val)));
-        scene.diagrams.push({ points: dp, topEl: H, baseX: tw / 2, dir: 1, scale: (H * 0.42) / mmax, color: COLORS.bm, fill: 'rgba(126,80,168,0.16)', unit: 'kNm/m', peakLabel: 'M', digits: 0 });
+        // Badge shows the ENGINE's enveloped M_Ed,max (+ governing combo), not a
+        // value recomputed from the subsampled plot (which drifted ~0.3% and
+        // carried a sign the structural panel does not show).
+        const stM = Number(result?.structural?.Mmax);
+        const combo = result?.structural?.combo || '';
+        scene.diagrams.push({ points: dp, topEl: H, baseX: tw / 2, dir: 1, scale: (H * 0.42) / mmax, color: COLORS.bm, fill: 'rgba(126,80,168,0.16)', unit: 'kNm/m', peakLabel: 'M', digits: 0,
+          peakText: Number.isFinite(stM) ? `M_Ed,max ${stM.toFixed(0)} kNm/m${combo ? ' (' + combo + ')' : ''}` : null });
       }
     }
     if (anchored) {
@@ -607,7 +613,7 @@ export function installRetainingApp(ctx) {
         <div class="st6-rw-struct-title">Design forces</div>
         <table class="st6-rw-structtbl"><tbody>
           <tr><td>Max bending</td><td colspan="2">M<sub>Ed,max</sub> ${fmt(st.Mmax, 1)} kNm/m</td><td>${esc(st.combo || '')}</td></tr>
-          ${rw.wallType === 'anchored' ? `<tr><td>Anchor force</td><td colspan="2">T<sub>d</sub> ${fmt(st.anchorForce, 1)} kN/m</td><td></td></tr>` : ''}
+          ${rw.wallType === 'anchored' ? `<tr><td>Anchor force</td><td colspan="2">T<sub>d</sub> ${fmt(st.anchorForce, 1)} kN/m</td><td>${esc(st.anchorCombo || '')}</td></tr>` : ''}
           <tr><td>Required embedment</td><td colspan="2">d<sub>req</sub> ${fmt(st.requiredD, 2)} m</td><td>${esc(st.requiredDCombo || '')}</td></tr>
         </tbody></table></div>`;
     }
@@ -694,6 +700,14 @@ export function installRetainingApp(ctx) {
       if (typeof value === 'boolean') v = value;
       else if (path === 'water.mode' || path === 'insitu.mode' || path === 'settings.bearingMethod') v = value;  // string enums
       else { const n = Number(value); v = Number.isFinite(n) ? n : value; }
+      // Anchor depth must lie within the retained height: an anchor typed
+      // at/above the wall top (or absurdly deep) silently corrupted the moment
+      // reference and dropped the anchor reaction from the bending diagram
+      // (the engine now also clamps, belt-and-braces).
+      if (path === 'embedded.anchorDepth' && Number.isFinite(v)) {
+        const Hret = Number(rw.embedded?.retainedHeight) || 5;
+        v = Math.min(Math.max(v, 0.2), Math.max(Hret - 0.2, 0.2));
+      }
       setPath(rw, path, v);
       // water mode / method changes the input set -> full re-render; numeric -> rerun + redraw
       if (path === 'water.mode' || path === 'insitu.mode') { ctx.requestRender(); return; }

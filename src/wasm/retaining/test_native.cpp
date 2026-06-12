@@ -215,6 +215,52 @@ int main() {
   checkTrue("anchored M_max positive", ar.Mmax > 0);
   checkTrue("anchored needs less embedment than cantilever", ar.requiredD < er.requiredD);
 
+  std::printf("\n== deep-anchor moment diagram: span lobe survives the tail clamp ==\n");
+  {
+    // H=8 m, anchor 5 m below top, d=6 m, sand phi'=30. The governing peak is
+    // the anchor hogging (~230 kNm/m); the genuine span-sagging lobe below it
+    // (~-27 kNm/m) and the closure must remain in the plotted series. The old
+    // clamp (first M-zero below the governing peak) zeroed them away.
+    EmbeddedInput di;
+    di.geom = {8.0, 0.0, 6.0, true, 3.0};  // anchorEl = 8 - 5
+    di.retained = {{8.0, 18, 20, deg2rad(30), 0, 0, true}};
+    di.front = {{0.0, 18, 20, deg2rad(30), 0, 0, true}};
+    di.waterRetainedEl = -1000; di.waterFrontEl = -1000; di.surcharge = 0;
+    di.s = {EpMethod::Rankine, 0.0, 0.667, false, 0.0, 0.0, 2, 0, 1500};
+    EmbeddedResult dr = analyzeEmbedded(di);
+    const Series* sM = nullptr;
+    for (auto& d : dr.diagrams) if (d.id.rfind("M_", 0) == 0) { sM = &d; break; }
+    checkTrue("deep-anchor M series shipped", sM != nullptr);
+    if (sM) {
+      double mMin = 0, mEnd = sM->v.empty() ? 1e9 : sM->v.back();
+      for (double v : sM->v) mMin = std::min(mMin, v);
+      std::printf("  Mmax=%.1f (%s)  span lobe min=%.1f  M(end)=%.2f\n",
+                  dr.Mmax, dr.strCombo.c_str(), mMin, mEnd);
+      checkTrue("governing anchor-hogging Mmax plausible (150..320)", dr.Mmax > 150 && dr.Mmax < 320);
+      checkTrue("span-sagging lobe preserved (min M <= -10)", mMin <= -10.0);
+      checkTrue("divergent tail clamped (|M(end)| < 1)", std::fabs(mEnd) < 1.0);
+    }
+  }
+
+  std::printf("\n== out-of-range anchor level is clamped (T no longer dropped) ==\n");
+  {
+    EmbeddedInput base;
+    base.geom = {6.0, 0.0, 2.5, true, 5.8};  // anchor 0.2 m below top (control)
+    base.retained = {{6.0, 18, 20, deg2rad(30), 0, 0, true}};
+    base.front = {{0.0, 18, 20, deg2rad(30), 0, 0, true}};
+    base.waterRetainedEl = -1000; base.waterFrontEl = -1000; base.surcharge = 0;
+    base.s = {EpMethod::Rankine, 0.0, 0.667, false, 0.0, 0.0, 2, 0, 1500};
+    EmbeddedInput bad = base;
+    bad.geom.anchorEl = 7.0;  // ABOVE the wall top: previously T was silently dropped
+    EmbeddedResult rc = analyzeEmbedded(base);
+    EmbeddedResult rb = analyzeEmbedded(bad);
+    bool noted = false;
+    for (auto& n : rb.notes) if (n.find("clamped") != std::string::npos) noted = true;
+    std::printf("  Mmax control=%.1f  clamped=%.1f\n", rc.Mmax, rb.Mmax);
+    checkTrue("clamped anchor produces a note", noted);
+    check("clamped Mmax ~ control Mmax", rb.Mmax, rc.Mmax, 0.10);
+  }
+
   std::printf("\n== embedded undrained crack water (full-tension clay) ==\n");
   {
     // Uniform stiff clay cu=60, 3 m cut: 2cu > gamma*H over the retained

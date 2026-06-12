@@ -285,6 +285,7 @@ static char* runEmbedded(const JsonValue& req, bool anchored) {
   w.num("requiredD", R.requiredD);
   w.str("combo", R.strCombo);
   w.str("requiredDCombo", R.requiredDCombo);
+  w.str("anchorCombo", R.anchorCombo);
   w.endObject();
   w.num("maxUtil", maxUtil);
   w.boolean("overallPass", overall);

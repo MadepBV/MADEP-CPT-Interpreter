@@ -264,7 +264,7 @@ export function createRetainingCanvas(canvas, hooks) {
       const s = screen(pts[pj].x, pts[pj].y);
       ctx.fillStyle = d.color || '#7e50a8'; ctx.font = '10px JetBrains Mono, monospace';
       ctx.textAlign = dir > 0 ? 'left' : 'right'; ctx.textBaseline = 'middle';
-      ctx.fillText(`${d.peakLabel} ${pk.toFixed(d.digits ?? 1)} ${d.unit || ''}`, s.x + dir * 5, s.y);
+      ctx.fillText(d.peakText || `${d.peakLabel} ${pk.toFixed(d.digits ?? 1)} ${d.unit || ''}`, s.x + dir * 5, s.y);
     }
   }
 

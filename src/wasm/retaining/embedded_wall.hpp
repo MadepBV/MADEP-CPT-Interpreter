@@ -243,15 +243,23 @@ struct EmbeddedResult {
 
 // Factored bending-moment diagram by double integration of the net pressure, with the
 // anchor reaction T (already factored) subtracted at the anchor station. Updates Mmax.
+// dClose = depth (below the retained surface) of this combination's free-earth
+// equilibrium closure: beyond it the simplified full-passive integration has no
+// modelled toe reaction and diverges unphysically, so the M_max scan, the
+// zero-shear search and the plotted-tail clamp are all restricted to it.
 inline void bendingDiagram(const EmbeddedInput& in, const std::vector<Stratum>& backD,
                            const std::vector<Stratum>& frontD, double toeEl, double q,
                            double gG, double gQ, bool anchored, double anchorEl, double T,
-                           EmbeddedResult& R, const char* combo) {
+                           double dClose, EmbeddedResult& R, const char* combo) {
   const EmbeddedGeom& g = in.geom;
   double top = g.retainedSurfaceEl;
   int N = std::max(in.s.nSteps, 300);
   double dz = (top - toeEl) / N;
   if (dz <= 0) return;
+  // Tolerant closure bound: a little beyond the analytic closure depth so the
+  // genuine closure zero itself is always inside the window. Under-embedded
+  // walls (toe above closure) are unaffected: the whole pile lies inside.
+  const double dCloseTol = dClose + std::max(0.05, 2.0 * dz);
   // First pass: accumulate shear V and moment M; the structural maximum is at a
   // zero-shear point (Blum). For an unpropped cantilever the simplified free-earth method
   // has no toe reaction, so below the first zero-shear point the moment is unphysical —
@@ -262,15 +270,25 @@ inline void bendingDiagram(const EmbeddedInput& in, const std::vector<Stratum>& 
   std::vector<double> zArr, mArr, vArr;
   int plotEvery = std::max(N / 160, 1);
   int k = 0;
+  // Anchor reaction bracket: el steps from `top` downward, so an anchor at or
+  // above the wall top (reachable through the typed UI input before it was
+  // clamped) was never bracketed and T was silently DROPPED from the diagram
+  // (~4x Mmax error in the proven case). React at the first station instead.
+  double anchorElEff = anchorEl;
+  if (anchored && anchorElEff >= top - dz) anchorElEff = top - dz;
   for (double el = top; el > toeEl - 1e-9; el -= dz, ++k) {
     NetPressure np = netPressureAt(in, backD, frontD, el, q, in.s);
     double net = gG * (np.pEarth + np.uBack) - gG * (np.pResist + np.uFront) + gQ * np.pSurch;
-    if (anchored && el <= anchorEl && (el + dz) > anchorEl) V -= T;  // anchor reaction
+    if (anchored && el <= anchorElEff && (el + dz) > anchorElEff) V -= T;  // anchor reaction
     V += net * dz;
     M += V * dz;
     double depth = top - el;
-    if (std::fabs(M) > mAbsMax) mAbsMax = std::fabs(M);
-    if (!firstStep && ((Vprev > 0 && V <= 0) || (Vprev < 0 && V >= 0)) && depth > 0.1) {
+    // M_max scan and zero-shear search are restricted to the model-valid depth
+    // (<= closure): the divergent tail must never register a spurious crossing
+    // or inflate the fallback maximum in layered/water profiles.
+    if (depth <= dCloseTol && std::fabs(M) > mAbsMax) mAbsMax = std::fabs(M);
+    if (!firstStep && ((Vprev > 0 && V <= 0) || (Vprev < 0 && V >= 0)) &&
+        depth > 0.1 && depth <= dCloseTol) {
       if (std::fabs(M) > Mzero) { Mzero = std::fabs(M); depthMax = depth; }
       sawCross = true;
     }
@@ -278,19 +296,24 @@ inline void bendingDiagram(const EmbeddedInput& in, const std::vector<Stratum>& 
     if ((k % plotEvery) == 0) { zArr.push_back(depth); mArr.push_back(M); vArr.push_back(V); }
   }
   double Mmax = sawCross ? Mzero : mAbsMax;
-  // Contraflexure: the first plotted station BELOW the GOVERNING peak (depthMax, found over
-  // the whole pass — not a transient earlier crossing such as the small moment at an anchor)
-  // where the moment returns through zero. That is the free-earth equilibrium depth at which
-  // M -> 0 by the moment balance that sized the wall; below it the simplified full-passive
-  // integration keeps mobilising passive with no modelled toe reaction, so the moment diverges
-  // unphysically. We plot the real diagram over the WHOLE pile and clamp the post-contraflexure
-  // tail to zero, so it reads as the textbook shape rising to M_max and returning to ~0 at the
-  // free toe — for both the cantilever and the (over-embedded) anchored wall.
+  (void)depthMax;
+  // Clamp boundary for the plotted tail: the LAST moment zero-crossing within
+  // the model-valid depth (<= closure). That is the free-earth closure zero —
+  // beyond it the simplified full-passive integration keeps mobilising passive
+  // with no modelled toe reaction and the moment diverges unphysically. The old
+  // rule ("first zero below the governing peak") cut INSIDE the real diagram
+  // whenever the governing peak was not the deepest lobe — e.g. a deep-anchor
+  // wall whose anchor hogging governs: the genuine span-sagging and toe lobes
+  // (proven -27.4 kNm/m plotted as zero) were clamped away. Using the last
+  // in-validity zero keeps every real lobe and removes only the divergent tail;
+  // an under-embedded wall has no in-validity closure zero and plots open
+  // (documented "diagram not yet closed at the toe").
   double zContra = top - toeEl; bool foundContra = false;
   for (size_t i = 1; i < zArr.size(); ++i) {
-    if (zArr[i] <= depthMax + 1e-9) continue;
+    if (zArr[i] > dCloseTol + 1e-9) break;
+    if (zArr[i] <= 0.1) continue;
     if ((mArr[i-1] > 0 && mArr[i] <= 0) || (mArr[i-1] < 0 && mArr[i] >= 0)) {
-      zContra = zArr[i]; foundContra = true; break;
+      zContra = zArr[i]; foundContra = true;  // keep scanning: LAST crossing wins
     }
   }
 
@@ -336,6 +359,23 @@ inline EmbeddedResult analyzeEmbedded(const EmbeddedInput& inRaw) {
   // (toe = excavationEl − Δa − d). A raw API caller therefore cannot lose the allowance.
   EmbeddedInput in = inRaw;
   in.geom.excavationEl -= std::max(in.s.overdig, 0.0);
+  // Anchor-level guard: the typed UI input arrives as a raw number, and an
+  // anchor placed at/above the wall top (or below the toe) silently corrupted
+  // every consumer that uses anchorEl as the moment reference (required
+  // embedment, ODF) and was never bracketed by the bending-diagram loop, so
+  // the anchor reaction T was DROPPED from the diagram (~4x Mmax error in the
+  // proven case). Clamp into the pile and say so.
+  if (in.geom.anchored) {
+    const double hiEl = in.geom.retainedSurfaceEl - 0.1;
+    const double loEl = std::min(in.geom.excavationEl - std::max(in.geom.embedment, 0.0) + 0.2,
+                                 hiEl - 0.1);
+    const double clampedEl = std::min(std::max(in.geom.anchorEl, loEl), hiEl);
+    if (clampedEl != in.geom.anchorEl) {
+      in.geom.anchorEl = clampedEl;
+      R.notes.push_back("Anchor level was outside the wall and has been clamped into the pile; "
+                        "review the anchor depth input (it must lie between the wall top and the toe).");
+    }
+  }
   Combination c1 = makeC1(in.s.riskScheme, in.s.consequenceClass);
   Combination c2 = makeC2(in.s.riskScheme, in.s.consequenceClass);
   ComboEmbResult e1 = evalEmbeddedCombo(in, c1);
@@ -426,8 +466,13 @@ inline EmbeddedResult analyzeEmbedded(const EmbeddedInput& inRaw) {
       if (T < 0) T = 0;
       if (T > R.anchorForce) { R.anchorForce = T; R.anchorCombo = (ec == &e1) ? "C1" : "C2"; }
     }
+    // This combo's free-earth closure depth below the retained surface. The
+    // cantilever's dReqDesign carries the Blum 1.2 addition, but the moment
+    // diagram closes at the FES equilibrium depth (pre-Blum), so un-factor it.
+    double dReqFES = anchored ? ec->dReqDesign : ec->dReqDesign / 1.2;
+    double dClose = (g.retainedSurfaceEl - g.excavationEl) + dReqFES;
     bendingDiagram(in, ec->backD, ec->frontD, toeEl, ec->q, ec->gG, ec->gQ, anchored, g.anchorEl, T,
-                   R, (ec == &e1) ? "C1" : "C2");
+                   dClose, R, (ec == &e1) ? "C1" : "C2");
   }
 
   R.summary.push_back({"M_max", R.Mmax, "kNm/m"});
