@@ -899,7 +899,10 @@
                 <th>E<sub>ur,ref</sub> (kPa)</th>
                 <th>m (-)</th>
                 <th>K<sub>0,nc</sub> (-)</th>
+                <th>&nu; (-)</th>
                 <th>&nu;<sub>ur</sub> (-)</th>
+                <th>&beta; (-)</th>
+                <th>E<sub>def</sub> (kPa)</th>
                 <th>k<sub>h</sub> (m/s)</th>
                 <th>k<sub>v</sub> (m/s)</th>
                 <th>k<sub>h</sub>/k<sub>v</sub> (-)</th>
@@ -919,7 +922,10 @@
                   <td>{fmtInt(layer.hs.eurRef)}</td>
                   <td>{fmt(layer.hs.m, 3)}</td>
                   <td>{fmt(layer.hs.k0nc, 3)}</td>
+                  <td>{fmt(layer.hs.nu, 2)}</td>
                   <td>{fmt(layer.hs.nuUr, 2)}</td>
+                  <td>{fmt(layer.hs.beta, 3)}</td>
+                  <td>{fmtInt(layer.hs.eDef)}</td>
                   <td>{compactNumber(layer.hydraulic.kh)}</td>
                   <td>{compactNumber(layer.hydraulic.kv)}</td>
                   <td>{fmt(layer.hydraulic.khkv, 1)}</td>

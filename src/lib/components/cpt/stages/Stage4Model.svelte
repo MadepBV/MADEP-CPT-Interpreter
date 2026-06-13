@@ -9,7 +9,7 @@
 			<div class="sec-title">Model parameters</div>
 			<div class="sec-sub">
 				Mohr-Coulomb and Hardening Soil (p_ref = 100 kPa). Eoed,i = αE × qc (Sanglerat /
-				SB260). Review m and Eoed,ref per layer.
+				SB260). E_def = β·Eoed,i for the Soilin subsoil input. Review m, Eoed,ref, and ν per layer.
 			</div>
 		</div>
 		<div style="display:flex;gap:8px;flex-wrap:wrap">

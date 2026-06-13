@@ -42,7 +42,7 @@ export const docsGroups: DocsGroup[] = [
 				title: 'Stage 4 — Model parameters',
 				path: '/docs/workflow#stage4',
 				summary:
-					'Effective stress, alpha methods, stiffness derivation, conductivity defaults, and export-ready parameters.'
+					'Effective stress, alpha methods, stiffness derivation, Poisson ratio and E_def for SCIA Engineer, conductivity defaults, and export-ready parameters.'
 			},
 			{
 				title: 'Stage 5 — m-fitting',
@@ -201,7 +201,7 @@ export const docsGroups: DocsGroup[] = [
 				title: 'Parameter derivation',
 				path: '/docs/workflow#stage4',
 				summary:
-					'Alpha methods, stiffness derivation, K0,nc defaults, conductivity rules, and PLAXIS material export.'
+					'Alpha methods, stiffness derivation, K0,nc and Poisson defaults, E_def/β for SCIA Engineer, conductivity rules, and PLAXIS material export.'
 			},
 			{
 				title: 'Sources and references',

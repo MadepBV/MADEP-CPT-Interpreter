@@ -97,6 +97,47 @@ export const alphaMethodRows: Record<string, string>[] = [
 	{ method: 'B — SB260', family: 'Granular (zandgronden)', soil: 'zand, ... / grind, ... / grind (kh), ...', qc: 'q<sub>c</sub> &gt; 50', rule: 'SB260 NC zandgronden', expression: 'E<sub>s</sub> = 120, so α = 120 / q<sub>c</sub>' }
 ];
 
+export const nuDefaultRows: Record<string, string>[] = [
+	{ family: 'Veen', subtype: 'veen, weinig vast', nu: '0.15', beta: '0.947', basis: 'Measured drained ν′ of fibrous peat 0.10–0.15 (O’Kelly 2017 compilation: Zwanenburg 2005; Rowe et al. 1984; Rowe & Mylleville 1996).' },
+	{ family: 'Veen', subtype: 'veen, matig vast', nu: '0.20', beta: '0.900', basis: 'Between the measured fibrous-peat band and the K<sub>0</sub>-implied ceiling ν′ = K<sub>0</sub>/(1+K<sub>0</sub>) ≈ 0.21–0.26 at K<sub>0,nc</sub> = 0.26–0.36 (O’Kelly 2017).' },
+	{ family: 'Veen', subtype: 'veen, vast', nu: '0.25', beta: '0.833', basis: 'K<sub>0</sub>-implied upper bound for amorfous/humified peat (O’Kelly 2017); firmer peat behaves more organic-clay-like (Den Haan & Kruse 2007).' },
+	{ family: 'Klei', subtype: 'klei, weinig vast', nu: '0.40', beta: '0.467', basis: 'ČSN 73 1001 F5–F6 (ML/CL) ν = 0.40, β = 0.47 — the standard’s own long-term pairing for soft fine soil; table cap.' },
+	{ family: 'Klei', subtype: 'klei, matig vast', nu: '0.38', beta: '0.534', basis: 'Interpolation between ČSN F5–F6 (0.40, soft end) and F1–F4 (0.35, firm end).' },
+	{ family: 'Klei', subtype: 'klei, vrij vast', nu: '0.36', beta: '0.595', basis: 'Same ČSN interpolation, one step above the firm-end anchor.' },
+	{ family: 'Klei', subtype: 'klei, vast', nu: '0.35', beta: '0.623', basis: 'ČSN 73 1001 F1–F4 ν = 0.35 (β = 0.62); stiff-clay lab lines are lower (NYSDOT 0.15–0.25) but the ČSN pairing is retained for Soilin consistency.' },
+	{ family: 'Klei zandhoudend', subtype: 'klei (zh), weinig vast', nu: '0.35', beta: '0.623', basis: 'ČSN 73 1001 F3 (MS) / F4 (CS) ν = 0.35 — the standard’s sandy/silty clay class.' },
+	{ family: 'Klei zandhoudend', subtype: 'klei (zh), matig vast', nu: '0.34', beta: '0.650', basis: 'Interpolation below the ČSN F3/F4 anchor toward the sandy-clay literature band 0.2–0.3 (Bowles Table 2-7).' },
+	{ family: 'Klei zandhoudend', subtype: 'klei (zh), vrij vast', nu: '0.33', beta: '0.675', basis: 'Same interpolation; equals the Sandy clay family fallback.' },
+	{ family: 'Klei zandhoudend', subtype: 'klei (zh), vast', nu: '0.32', beta: '0.699', basis: 'Firm end approaching the Bowles sandy-clay upper bound 0.30 and the Buildwise (2022) drained band 0.2–0.3.' },
+	{ family: 'Leem', subtype: 'leem, weinig vast', nu: '0.35', beta: '0.623', basis: 'Top of the silt band 0.30–0.35 (AASHTO Table 10.6.2.2.3b-1; Bowles Table 2-7). Deliberate departure from ČSN F5 = 0.40 — Belgian leem is a low-plasticity loess silt.' },
+	{ family: 'Leem', subtype: 'leem, matig vast', nu: '0.33', beta: '0.675', basis: 'Mid silt band (AASHTO / Bowles 0.30–0.35).' },
+	{ family: 'Leem', subtype: 'leem, vrij vast', nu: '0.32', beta: '0.699', basis: 'Silt band, one step above the firm-end anchor.' },
+	{ family: 'Leem', subtype: 'leem, vast', nu: '0.30', beta: '0.743', basis: 'Bottom of the silt band; equals the prEN 1997-2 draft drained default ν′ = 0.3.' },
+	{ family: 'Zandhoudende leem', subtype: 'leem (zh), weinig vast', nu: '0.33', beta: '0.675', basis: 'Leem ladder lowered one step for the sand admixture; within AASHTO silt 0.30–0.35.' },
+	{ family: 'Zandhoudende leem', subtype: 'leem (zh), matig vast', nu: '0.32', beta: '0.699', basis: 'Within the silt/fine-sand bracket (AASHTO silt 0.30–0.35; fine sand 0.25).' },
+	{ family: 'Zandhoudende leem', subtype: 'leem (zh), vrij vast', nu: '0.31', beta: '0.721', basis: 'One step above the ČSN S4 (SM) anchor 0.30.' },
+	{ family: 'Zandhoudende leem', subtype: 'leem (zh), vast', nu: '0.30', beta: '0.743', basis: 'ČSN 73 1001 S4 (SM) ν = 0.30; prEN 1997-2 draft drained default 0.3.' },
+	{ family: 'Zand', subtype: 'zand, los', nu: '0.28', beta: '0.782', basis: 'ČSN 73 1001 S1–S2 (SW/SP) ν = 0.28 (β = 0.78); mid-upper AASHTO loose sand 0.20–0.36.' },
+	{ family: 'Zand', subtype: 'zand, matig', nu: '0.30', beta: '0.743', basis: 'ČSN S3–S4 ν = 0.30; EN 1997-2:2007 Annex K.2(3) coarse soil 0.3; prEN 1997-2 draft default 0.3.' },
+	{ family: 'Zand', subtype: 'zand, dicht', nu: '0.33', beta: '0.675', basis: 'Kulhawy & Mayne ν<sub>d</sub> = 0.1 + 0.3(φ′ − 25°)/20° gives ≈ 0.33 at φ′ = 40°; AASHTO dense sand 0.30–0.40.' },
+	{ family: 'Zand', subtype: 'zand, zeer dicht', nu: '0.35', beta: '0.623', basis: 'Kulhawy & Mayne ≈ 0.36 at φ′ ≈ 42°; matches the ČSN sand-family ceiling (S5 = 0.35).' },
+	{ family: 'Leemhoudend zand', subtype: 'zand (lh), los', nu: '0.30', beta: '0.743', basis: 'ČSN S3 (S-F) / S4 (SM) ν = 0.30 — silt/loam fines raise ν′ above clean sand 0.28.' },
+	{ family: 'Leemhoudend zand', subtype: 'zand (lh), matig', nu: '0.32', beta: '0.699', basis: 'Interpolation between ČSN S3–S4 (0.30) and S5 (SC, 0.35).' },
+	{ family: 'Leemhoudend zand', subtype: 'zand (lh), dicht', nu: '0.34', beta: '0.650', basis: 'Approaching the ČSN S5 ceiling 0.35; AASHTO dense sand 0.30–0.40.' },
+	{ family: 'Leemhoudend zand', subtype: 'zand (lh), z.dicht', nu: '0.35', beta: '0.623', basis: 'ČSN S5 (SC) ν = 0.35 (β = 0.62), the ČSN ceiling for any sand class.' },
+	{ family: 'Grind', subtype: 'grind, matig', nu: '0.28', beta: '0.782', basis: 'Between ČSN G3 (G-F) 0.25 and G4 (GM) 0.30 — Belgian grind is normally sandy, not clean GW/GP (which would be 0.20).' },
+	{ family: 'Grind', subtype: 'grind, dicht', nu: '0.30', beta: '0.743', basis: 'ČSN G4–G5 ν = 0.30; low end of AASHTO dense gravel 0.30–0.40.' },
+	{ family: 'Grind klei-/leemhoudend', subtype: 'grind (kh), matig', nu: '0.30', beta: '0.743', basis: 'ČSN 73 1001 G5 (GC, clayey gravel) ν = 0.30 (β = 0.74) — clay fines raise ν′ one step above clean grind.' },
+	{ family: 'Grind klei-/leemhoudend', subtype: 'grind (kh), dicht', nu: '0.32', beta: '0.699', basis: 'ČSN G5 plus one density step; low half of AASHTO dense gravel 0.30–0.40.' },
+	{ family: 'Familie-fallback (CPT type)', subtype: 'Peat / organic', nu: '0.20', beta: '0.900', basis: 'Mid of the rebuilt veen ladder (measured drained basis, O’Kelly 2017).' },
+	{ family: 'Familie-fallback (CPT type)', subtype: 'Soft clay', nu: '0.40', beta: '0.467', basis: 'ČSN F5–F6 ν = 0.40 — native value of the SCIA/ČSN pairing for soft NC fine soil; table cap.' },
+	{ family: 'Familie-fallback (CPT type)', subtype: 'Clay', nu: '0.38', beta: '0.534', basis: 'Midpoint of the revised klei subtype ladder (0.35–0.40).' },
+	{ family: 'Familie-fallback (CPT type)', subtype: 'Sandy clay', nu: '0.33', beta: '0.675', basis: 'Midpoint of the leem ladder (0.30–0.35): in this app the CPT type Sandy clay carries the leem subtypes.' },
+	{ family: 'Familie-fallback (CPT type)', subtype: 'Silty sand', nu: '0.30', beta: '0.743', basis: 'ČSN S4 (SM) ν = 0.30; EN 1997-2:2007 Annex K.2(3) coarse soil 0.3.' },
+	{ family: 'Familie-fallback (CPT type)', subtype: 'Sand', nu: '0.30', beta: '0.743', basis: 'ČSN S3–S4 ν = 0.30; prEN 1997-2 draft drained default 0.3.' },
+	{ family: 'Familie-fallback (CPT type)', subtype: 'Gravel', nu: '0.28', beta: '0.782', basis: 'Below Sand by design: clean coarse soils have the lowest ν′ (ČSN G1–G2 = 0.20 &lt; S1–S2 = 0.28); ν′ tracks fines content, not grain size.' }
+];
+
 export const workflowReferenceGroups: ReferenceGroup[] = [
 	{
 		title: 'Eurocodes and Belgian National Annexes',
@@ -170,6 +211,23 @@ export const workflowReferenceGroups: ReferenceGroup[] = [
 			{ label: 'Vesić (1961b)', detail: 'Beams on elastic subgrade and Winkler’s hypothesis.' },
 			{ label: 'Pasternak (1954)', detail: 'On a New Method of Analysis of an Elastic Foundation by Means of Two Foundation Constants.' },
 			{ label: 'Kerr (1964)', detail: 'Elastic and viscoelastic foundation models.' }
+		]
+	},
+	{
+		title: 'SCIA Engineer, E_def, and drained Poisson-ratio sources',
+		items: [
+			{ label: 'ČSN 73 1001:1987', detail: 'Zakládání staveb. Základová půda pod plošnými základy (Foundation of structures — Subsoil under shallow foundations), Praha; effective 1.10.1988, withdrawn 1.4.2010, replaced by ČSN EN 1997-1. Origin of the E<sub>def</sub>/β convention and of the directive normative ν–β–E<sub>def</sub> characteristics per soil class (bibliographic data via secondary records).' },
+			{ label: 'SCIA Engineer 25.0 Online Help (Soilin)', detail: '“Defining a new geologic profile” and “Subsoil in the 3D model”: E<sub>oed</sub> = E<sub>def</sub>/β with β = 1 − 2ν²/(1−ν); reproduces the ČSN 73 1001 ν/β tables. help.scia.net, accessed 12 June 2026.' },
+			{ label: 'SCIA Topic Training — Foundations (2024)', detail: 'SCIA Engineer 25.0 Topic Training, Ch. 5 Soilin: per-layer E<sub>def</sub> entry in MN/m² and the guidance that smaller E<sub>def</sub> values are on the safe side for the computed settlement.' },
+			{ label: 'GEO5 Online Help — Oedometric Modulus', detail: 'Fine spol. s r.o., Theory — Settlement Analysis: independent implementation of the identical E<sub>def</sub>/β relation for the ČSN 73 1001 settlement method.' },
+			{ label: 'EN 1997-2:2007', detail: 'Eurocode 7 — Geotechnical design — Part 2: Ground investigation and testing. Annex K.2(3) (informative, plate-load settlement module context): ν = 0.5 for fine soil undrained, 0.3 for coarse soil — the standard’s only Poisson-ratio guidance.' },
+			{ label: 'prEN 1997-2 (2021 draft)', detail: 'Second-generation Eurocode 7 Part 2, CEN/TC 250/SC 7 document N1506, clause 9.1.2.2: ν′ = 0.3 drained and ν<sub>u</sub> = 0.5 undrained in the absence of direct measurement.' },
+			{ label: 'Buildwise (2022)', detail: 'Richtlijnen voor de toepassing van de Eurocode 7 in België volgens NBN EN 1997-1 ANB — beschoeiingen, §4.2.5: gedraineerd ν = 0.2 à 0.3; ongedraineerd ν = 0.5 (zand, leem en klei).' },
+			{ label: 'Kulhawy & Mayne (1990)', detail: 'Manual on Estimating Soil Properties for Foundation Design, EPRI EL-6800, Electric Power Research Institute: drained ν<sub>d</sub> = 0.1 + 0.3(φ′ − 25°)/20° for granular soils (after Trautmann & Kulhawy 1987).' },
+			{ label: 'O’Kelly (2017)', detail: 'Measurement, interpretation and recommended use of laboratory strength properties of fibrous peat. Geotechnical Research (ICE) 4(3), 136–171: measured drained ν′ of peat 0.10–0.15; K<sub>0,nc</sub> of seven peats 0.26–0.36.' },
+			{ label: 'AASHTO LRFD (2020)', detail: 'Bridge Design Specifications, Table 10.6.2.2.3b-1 “Elastic Constants of Various Soils” (after U.S. Dept. of the Navy 1982 and Bowles 1988): silt 0.3–0.35; sand loose 0.20–0.36, medium 0.25–0.40, dense 0.30–0.40; gravel 0.20–0.40.' },
+			{ label: 'Bowles (1996)', detail: 'Foundation Analysis and Design, 5th ed., McGraw-Hill, Table 2-7 typical Poisson values: sandy clay 0.2–0.3; silt 0.3–0.35; sand and gravelly sand 0.3–0.4 (values via secondary reproduction).' },
+			{ label: 'Ameratunga, Sivakugan & Das (2016)', detail: 'Correlations of Soil and Rock Properties in Geotechnical Engineering, Springer, Table 3.17: saturated clays drained 0.2–0.4 and undrained 0.5; dense sand 0.3–0.4; loose sand 0.1–0.3.' }
 		]
 	}
 ];
@@ -841,6 +899,56 @@ export const workflowStageSections: DocSection[] = [
 					'The export intentionally omits RF, nuUR, and K0NC in the current tested PLAXIS workflow so PLAXIS can keep those automatic or read-only values under its own control.',
 					'cu and psi_unsat are not written by the material-command export. Undrained A uses the effective stress strength parameters, and psi_unsat remains available in the app without yet being exported.'
 				]
+			},
+			{
+				id: 'stage4-scia-edef',
+				title: '4.8 Drained Poisson ratio, β, and the deformation modulus E<sub>def</sub> (SCIA Engineer)',
+				paragraphs: [
+					'SCIA Engineer’s subsoil and Soil-In input does not take the oedometric modulus directly. Each layer of the geologic profile is characterised by the deformation modulus E<sub>def</sub>, defined as the ratio of a normal-stress increment to the corresponding linear-strain increment, and SCIA converts E<sub>def</sub> internally to the constrained (oedometric) modulus of the ČSN 73 1001 settlement formulation through the transfer coefficient β (SCIA Engineer 25.0 Online Help, “Defining a new geologic profile”). The identical relation is implemented by GEO5 for the same settlement method, and the convention originates in ČSN 73 1001 (effective 1988–2010, since replaced by ČSN EN 1997-1), whose layered-settlement model Soil-In computes.',
+					'β is not an empirical correlation factor. It is the exact isotropic-elasticity ratio between the Young-type modulus and the constrained modulus: inverting Hooke’s constrained-modulus identity M = E(1 − ν)/[(1 + ν)(1 − 2ν)] gives E = βM with β = (1 + ν)(1 − 2ν)/(1 − ν), which is algebraically identical to the form β = 1 − 2ν²/(1 − ν) printed in the SCIA documentation. Stage 4 therefore reports, per layer, the drained Poisson ratio ν′, the derived coefficient β, and the deformation modulus E<sub>def</sub> = β·E<sub>oed,i</sub>.',
+					'The conversion is applied to the in-situ modulus E<sub>oed,i</sub> at the layer mid-depth stress state — not to the reference quantity E<sub>oed,ref</sub>, which is a Hardening-Soil construct normalised to p<sub>ref</sub> = 100 kPa and would misstate the layer stiffness at its actual stress level. E<sub>def</sub> consequently inherits the selected α method (§4.2): Method A and Method B produce different E<sub>oed,i</sub> and hence different E<sub>def</sub> for the same layer. The app reports E<sub>def</sub> in kPa; the SCIA geologic-profile dialog expects MN/m² (MPa), so the reported value is divided by 1000 on entry.',
+					'The selection of ν′ follows a two-stage proposal cascade, each stage overridable by the engineer. The soil type selected in Stage 3 (NEN/EC7 Tabel 3 subtype) proposes a drained Poisson ratio from the default table below; the engineer may override ν′ per layer in the Stage 4 Mohr-Coulomb panel; and β and E<sub>def</sub> are always derived from the resolved ν′, never edited directly. Selecting a different soil type in the Stage 3 dropdown — including a consistency-only refinement within the same family, since the defaults are graded per subtype — re-proposes ν′ for that layer even when ν′ had previously been overridden: the manual value was chosen for the previous selection and is deliberately invalidated, after which the engineer may override again.',
+					'The default table is anchored to the ČSN 73 1001 directive normative characteristics — the native parameter set of the β/E<sub>def</sub> convention, reproduced in the SCIA help — wherever a Belgian Tabel 3 class has a ČSN analogue (gravels G1–G5: 0.20–0.30; sands S1–S5: 0.28–0.35; fine soils F1–F4: 0.35, F5–F7: 0.40), and is capped at ν′ = 0.40. Two families depart deliberately from ČSN: veen, for which ČSN has no class and for which measured drained values of peat are far lower than mineral fine soils, and leem, which is kept in the international silt band 0.30–0.35 rather than the ČSN fine-soil value 0.40 because Belgian (Hesbaye) leem is a low-plasticity loess silt.'
+				],
+				equations: [
+					'E<sub>oed</sub> = E<sub>def</sub> / β &nbsp;&nbsp; (SCIA / ČSN 73 1001 convention)',
+					'β = 1 − 2ν²/(1 − ν) = (1 + ν)(1 − 2ν)/(1 − ν)',
+					'E<sub>def</sub> = β · E<sub>oed,i</sub>',
+					'<em>Worked example:</em> ν′ = 0.33 → β = 0.675; E<sub>oed,i</sub> = 8 000 kPa → E<sub>def</sub> = 5 400 kPa = 5.4 MN/m²',
+					'β → 0 as ν → 0.5 (incompressible limit); β = 0.467 at the table cap ν′ = 0.40'
+				],
+				symbols: [
+					{ term: 'E<sub>def</sub>', meaning: 'deformation modulus for the SCIA Engineer subsoil input [kPa in app and CSV; MN/m² in the SCIA dialog]' },
+					{ term: 'β', meaning: 'oedometric-to-deformation modulus transfer coefficient [-]' },
+					{ term: 'ν′', meaning: 'drained Poisson ratio of the layer [-]' },
+					{ term: 'E<sub>oed,i</sub>', meaning: 'in-situ constrained (oedometric) modulus at layer mid-depth, §4.2 [kPa]' },
+					{ term: 'M', meaning: 'constrained modulus in the Hooke identity, identical to E<sub>oed</sub> [kPa]' }
+				],
+				bullets: [
+					'E<sub>def</sub> is a drained, long-term settlement parameter, so ν must be the drained ratio ν′. The undrained value ν<sub>u</sub> ≈ 0.5 describes the short-term incompressible state — EN 1997-2:2007 Annex K.2(3) (informative, in the plate-load module context) gives 0.5 for fine soil undrained and 0.3 for coarse soil, and the second-generation draft prEN 1997-2 clause 9.1.2.2 generalises ν′ = 0.3 drained / ν<sub>u</sub> = 0.5 undrained — and at ν = 0.5 the coefficient β vanishes and E<sub>def</sub> loses meaning. The Stage 4 input is therefore clamped to 0.05–0.49, and all table defaults stay at or below 0.40.',
+					'The previous implementation assigned ν = 0.40–0.45 to veen and soft klei. These are near-undrained magnitudes: at ν = 0.45, β = 0.26, which would underestimate E<sub>def</sub> by a factor of roughly two to three against the drained literature. The veen ladder is rebuilt at 0.15/0.20/0.25 from measured drained data (O’Kelly 2017: ν′ = 0.10–0.15 for fibrous peat, with a K<sub>0</sub>-implied ceiling of about 0.21–0.26), and klei is capped at the ČSN soft-fine-soil value 0.40.',
+					'ČSN 73 1001 itself tabulates 0.42 for class F8 (high-plasticity fat clays) — a class the Belgian Tabel 3 does not isolate; in SCIA’s reproduction of that table the printed β of 0.37 also differs from the formula value 0.392. High-plasticity clays should therefore be handled by an explicit per-layer override rather than by a higher table default.',
+					'Grading directions are physically distinct and both sourced: in granular soils ν′ rises with density (Kulhawy &amp; Mayne 1990: ν<sub>d</sub> = 0.1 + 0.3(φ′ − 25°)/20°), while in clays the proposal falls with consistency (soft NC clay has higher K<sub>0</sub> = 1 − sin φ′, hence a higher K<sub>0</sub>-matched ν; stiff OC clay trends toward the PLAXIS unloading range 0.15–0.25, Material Models Manual §3.3.2). The family ordering Gravel (0.28) &lt; Sand (0.30) is correct because ν′ tracks fines and plasticity content rather than grain size: ČSN gives clean gravels 0.20–0.25 below clean sands 0.28.',
+					'Per the SCIA Topic Training, smaller E<sub>def</sub> values “are on the safe side” — for the computed settlement magnitude. This is not universally conservative: the Soil-In C-parameters also redistribute internal forces in the supported plate, so deliberately understating stiffness is not a substitute for a representative value where bending moments or differential settlements govern.',
+					'The same drained ν′ feeds the PLAXIS Mohr-Coulomb material export (§4.7). Note the interplay with drainage typing: PLAXIS requires ν′ &lt; 0.35 for Undrained (A)/(B) materials (Material Models Manual §3.3.2), while cohesive layers are exported as Undrained A — a soft klei layer defaulting to ν′ = 0.40 will therefore be flagged on import, and the engineer should review ν′ or the drainage type in PLAXIS in that case.',
+					'E<sub>def</sub> and β are exported in the CSV layer table (columns nu, beta, Edef_kPa) and carried in the Stage 7 report payload; the resolved ν′ continues to feed the in-app Stage 6 deformation materials as before.'
+				],
+				table: {
+					caption:
+						'Implemented drained Poisson-ratio defaults ν′ per NEN/EC7 Tabel 3 subtype with the derived transfer coefficient β = (1 + ν)(1 − 2ν)/(1 − ν), and the family fallbacks used when no subtype is set.',
+					note:
+						'Values are proposal defaults for the soil-type → ν′ → β → E_def cascade; the engineer overrides ν′ per layer in Stage 4, and any Stage 3 soil-type selection re-proposes the table value. Full citations in the Bibliography.',
+					collapsible: true,
+					summary: 'Show implemented ν′ / β default table',
+					columns: [
+						{ key: 'family', label: 'Tabel 3 family' },
+						{ key: 'subtype', label: 'Subtype / fallback key' },
+						{ key: 'nu', label: 'ν′ [-]' },
+						{ key: 'beta', label: 'β [-]' },
+						{ key: 'basis', label: 'Basis' }
+					],
+					rows: nuDefaultRows
+				}
 			}
 		],
 		references: [
@@ -853,7 +961,18 @@ export const workflowStageSections: DocSection[] = [
 			'Bentley KB0109063',
 			'Bentley KB0109071',
 			'Bentley KB0043470',
-			'Bentley KB0108936'
+			'Bentley KB0108936',
+			'ČSN 73 1001:1987',
+			'SCIA Engineer 25.0 Online Help (Soilin)',
+			'SCIA Topic Training — Foundations (2024)',
+			'GEO5 Online Help — Oedometric Modulus',
+			'EN 1997-2:2007',
+			'prEN 1997-2 (2021 draft)',
+			'Buildwise (2022)',
+			'Kulhawy & Mayne (1990)',
+			'O’Kelly (2017)',
+			'AASHTO LRFD (2020)',
+			'Bowles (1996)'
 		]
 	},
 	{

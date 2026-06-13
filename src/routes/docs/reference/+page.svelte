@@ -134,7 +134,9 @@
 			unit: 'kPa',
 			note: 'At present this is taken as E50,i, not an independent stiffness family.'
 		},
-		{ field: 'nu', meaning: 'Poisson ratio used by the Mohr-Coulomb family.', unit: '[-]', note: 'Layer default or manual override.' },
+		{ field: 'nu', meaning: 'Drained Poisson ratio used by the Mohr-Coulomb family.', unit: '[-]', note: 'Soil-type default, re-proposed on any Stage 3 soil-type selection; manual override per layer in Stage 4 (clearing the input restores the proposal).' },
+		{ field: 'beta', meaning: 'Oedometric-to-deformation modulus coefficient β = (1+ν)(1−2ν)/(1−ν).', unit: '[-]', note: 'Derived from nu; ČSN 73 1001 / SCIA Soilin convention.' },
+		{ field: 'Edef_kPa', meaning: 'Deformation modulus E_def = β·E_oed,i for SCIA Engineer subsoil input.', unit: 'kPa', note: 'Derived from beta and Eoed_i_kPa; not independently editable.' },
 		{ field: 'rShear', meaning: 'Reduced Stage 1 shear factor.', unit: '[-]', note: 'Relevant only to the Stage 1 pseudo-plastic route.' },
 		{ field: 'm', meaning: 'Stress-dependency exponent.', unit: '[-]', note: 'Manual override or default/tuned value.' },
 		{ field: 'K0nc', meaning: 'At-rest earth pressure ratio for normally consolidated conditions.', unit: '[-]', note: 'Used for in-situ confinement interpretation.' },

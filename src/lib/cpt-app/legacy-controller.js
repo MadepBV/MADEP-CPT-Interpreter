@@ -100,10 +100,16 @@ const stage6BishopCanvasState = {
   pointerDrag:null,
   hoverWorld:null
 };
-// Hardening Soil remains in the lower-level solver code while it is being
-// validated, but the production UI must not expose it until the model is
-// convergence- and benchmark-ready.
+// The Hardening Soil *deformation solver* (Stage 6) remains in the lower-level
+// solver code while it is being validated, but the production UI must not
+// expose it until the model is convergence- and benchmark-ready.
 const STAGE6_ENABLE_HARDENING_SOIL_UI = false;
+// The Stage 4 Hardening Soil *parameter display* is decoupled from the solver
+// gate above: E_oed,i / E_oed,ref / E_50,ref / E_ur,ref / m are pure CPT
+// correlations (Sanglerat / SB260 -> CUR 2003-7) already exported to the CSV,
+// PLAXIS commands, and the Stage 7 report, so they are shown in the Stage 4
+// model-parameters card regardless of the deformation-solver readiness.
+const STAGE4_ENABLE_HARDENING_SOIL_PARAMS = true;
 
 // Stage 6 "Retaining walls" application — self-contained module wired in via a
 // small context (live state accessor + render trigger + CPT layer accessor).
@@ -945,14 +951,32 @@ const AE={
   'Sandy clay':8.0,'Silty sand':10.0,'Sand':13.0,'Gravel':15.0
 };
 
-/* Default drained Poisson ratios for the Mohr-Coulomb deformation export.
+/* Default drained Poisson ratios nu' for the Mohr-Coulomb deformation export
+   and for Edef = beta*Eoed,i (beta = (1+nu)(1-2nu)/(1-nu), SCIA / CSN 73 1001).
    Priority: selected EC7 subtype first, then broad CPT soil family fallback.
-   These values replace the previous blanket 0.30/0.35/0.45 rule so dense sands
-   and weak fine soils do not all inherit the same lateral-strain behavior. */
+   Provenance (full derivation + bibliography in /docs/workflow#stage4-scia-edef):
+   - Mineral soils are anchored to the CSN 73 1001 directive normative
+     characteristics (as reproduced in the SCIA Engineer 25.0 help), the native
+     parameter set of the beta/Edef convention: gravels G1-G5 0.20-0.30, sands
+     S1-S5 0.28-0.35, fine soils F1-F4 0.35 / F5-F7 0.40; capped at 0.40
+     (0.42-0.45 are near-undrained magnitudes; nu_u = 0.5 is a short-term
+     state, not a drained parameter — EN 1997-2:2007 Annex K.2(3), prEN 1997-2
+     9.1.2.2, Buildwise 2022 sec 4.2.5).
+   - veen uses measured drained values: nu' = 0.10-0.15 for fibrous peat with
+     a K0-implied ceiling of ~0.21-0.26 (O'Kelly 2017); CSN has no peat class
+     and the previous 0.40-0.45 was an undrained magnitude (beta down to 0.26).
+   - leem keeps the international silt band 0.30-0.35 (AASHTO 10.6.2.2.3b-1,
+     Bowles Table 2-7) — a deliberate departure from CSN F5 = 0.40, since
+     Belgian leem is a low-plasticity loess silt.
+   - Density grading rises in granular soils (Kulhawy & Mayne 1990:
+     nu_d = 0.1 + 0.3(phi'-25)/20); consistency grading falls in clays
+     (K0nc = 1-sin phi' matching, PLAXIS MMM 3.3.2). Family ordering
+     Gravel < Sand reflects fines/plasticity control, per CSN G1-G2 0.20
+     < S1-S2 0.28: nu' tracks fines content, not grain size. */
 const MC_NU_BY_TYPE={
-  'Peat / organic':0.42,
-  'Soft clay':0.45,
-  'Clay':0.40,
+  'Peat / organic':0.20,
+  'Soft clay':0.40,
+  'Clay':0.38,
   'Sandy clay':0.33,
   'Silty sand':0.30,
   'Sand':0.30,
@@ -960,18 +984,18 @@ const MC_NU_BY_TYPE={
 };
 
 const MC_NU_BY_SUBTYPE={
-  'veen, weinig vast':0.40,
-  'veen, matig vast':0.42,
-  'veen, vast':0.45,
+  'veen, weinig vast':0.15,
+  'veen, matig vast':0.20,
+  'veen, vast':0.25,
 
-  'klei, weinig vast':0.42,
-  'klei, matig vast':0.40,
-  'klei, vrij vast':0.38,
+  'klei, weinig vast':0.40,
+  'klei, matig vast':0.38,
+  'klei, vrij vast':0.36,
   'klei, vast':0.35,
-  'klei (zh), weinig vast':0.40,
-  'klei (zh), matig vast':0.38,
-  'klei (zh), vrij vast':0.36,
-  'klei (zh), vast':0.35,
+  'klei (zh), weinig vast':0.35,
+  'klei (zh), matig vast':0.34,
+  'klei (zh), vrij vast':0.33,
+  'klei (zh), vast':0.32,
 
   'leem, weinig vast':0.35,
   'leem, matig vast':0.33,
@@ -3219,6 +3243,14 @@ function changeSubtype(sel){
     if(!l.ovr[f]){ l[f]=entry[f]; }
   });
 
+  // The soil-type pick drives the nu proposal: ANY new dropdown selection —
+  // including a consistency-only refinement within the same family, since the
+  // nu defaults are graded per subtype — invalidates a manual Poisson
+  // override and re-proposes the subtype default (the engineer can override
+  // nu again afterwards in Stage 4).
+  l.ovr.nu=false;
+  delete l.nu_ovr;
+
   renderLayers();
 }
 
@@ -3283,6 +3315,28 @@ function editRShear(el){
   if(!Number.isFinite(numeric)) return;
   S.layers[i].rShear_ovr=Math.max(Math.min(numeric, 1), 0.01);
   S.layers[i].ovr.rShear=true;
+  el.classList.add('ovr');
+  renderModel();
+}
+
+function editNu(el){
+  const i=+el.dataset.i;
+  const raw=String(el.value).trim();
+  if(raw===''){
+    /* A cleared (or browser-invalid) number input reports value="" — treat it
+       as "return to the soil-type proposal", never as 0 (which would clamp to
+       an extreme 0.05 override). */
+    S.layers[i].ovr.nu=false;
+    delete S.layers[i].nu_ovr;
+    renderModel();
+    return;
+  }
+  const numeric=Number(raw);
+  if(!Number.isFinite(numeric)) return;
+  /* nu < 0.5 strictly: beta = (1+nu)(1-2nu)/(1-nu) degenerates to 0 at 0.5.
+     Rounded to 2 decimals so the stored override always equals the display. */
+  S.layers[i].nu_ovr=Math.max(Math.min(Math.round(numeric*100)/100, 0.49), 0.05);
+  S.layers[i].ovr.nu=true;
   el.classList.add('ovr');
   renderModel();
 }
@@ -3472,17 +3526,29 @@ function hsParams(l){
   }
 
   const K0nc=+(1-Math.sin(l.phi*Math.PI/180)).toFixed(3);
-  const nu = l.ovr && l.ovr.nu ? l.nu_ovr : mohrCoulombNuDefault(l.type, l.subtype);
+  const nu = l.ovr && l.ovr.nu
+    ? Math.max(Math.min(Number(l.nu_ovr) || 0.30, 0.49), 0.05)
+    : mohrCoulombNuDefault(l.type, l.subtype);
   const rShear = l.ovr && l.ovr.rShear
     ? Math.max(Math.min(Number(l.rShear_ovr) || 0.25, 1), 0.01)
     : mohrCoulombRShearDefault(l.type, l.subtype);
   const nu_ur=0.20;
+  /* ── SCIA Engineer deformation modulus ──
+     Edef = beta * Eoed,i with beta = (1+nu)(1-2nu)/(1-nu): the isotropic-
+     elasticity link between the constrained (oedometric) modulus and the
+     Young-type deformation modulus that SCIA's subsoil input (Soilin)
+     expects, following the CSN 73 1001 convention (Eoed = Edef / beta).
+     Edef uses the in-situ Eoed,i, not the p_ref-normalised Eoed,ref.
+     Edef is computed from the ROUNDED beta so the reported numbers
+     reproduce exactly when the engineer checks beta x Eoed,i by hand. */
+  const beta=+(((1+nu)*(1-2*nu))/(1-nu)).toFixed(3);
+  const Edef=+(beta*Eoed_i).toFixed(0);
   const psi=Math.max(0,l.phi>30?Math.round(l.phi-30):0);
   /* MC export uses the current-stress loading stiffness E50,i.
      The earlier x1.5 conversion from Eoed,i had no retained source basis. */
   const Emc=E50_i;
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2)+'m TAW':'—';
-  return{Eoed_i,E50_i,Eoed_ref,E50_ref,Eur_ref,m,K0nc,nu,nu_ur,aE:+aE.toFixed(2),
+  return{Eoed_i,E50_i,Eoed_ref,E50_ref,Eur_ref,m,K0nc,nu,nu_ur,beta,Edef,aE:+aE.toFixed(2),
     sigV:+sigV.toFixed(1),u:+u.toFixed(1),sigVeff:+sigVeff.toFixed(1),psi,Emc,rShear,
     topTAW:taw(l.top),botTAW:taw(l.bot)};
 }
@@ -3510,12 +3576,17 @@ function renderModel(){
         ${l.subtype?`<span style="font-size:11px;color:var(--tx2);font-style:italic">${l.subtype}</span>`:''}
         <span style="font-size:11px;color:var(--tx2);margin-left:auto" title="z_mid=${midZ.toFixed(2)}m | &sigma;v0=${h.sigV} kPa | u=${h.u} kPa | &sigma;'v0=${h.sigVeff} kPa">&sigma;v0 ${h.sigV} &minus; u ${h.u} = &sigma;'v0 <strong>${h.sigVeff} kPa</strong> &middot; &alpha;E ${h.aE}</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+      <div style="display:grid;grid-template-columns:${STAGE4_ENABLE_HARDENING_SOIL_PARAMS?'1fr 1fr 1fr 1fr':'1fr 1fr 1fr'};gap:14px">
         <div>
           <div class="mc2-sec">Mohr-Coulomb</div>
           <table class="pt">
             <tr><td>E_ref (kPa)</td><td>${h.Emc.toLocaleString()}</td></tr>
-            <tr><td>&nu;</td><td>${h.nu}</td></tr>
+            <tr class="key">
+              <td>&nu; <input class="ed${l.ovr.nu?' ovr':''}" type="number" step="0.01" min="0.05" max="0.49"
+                value="${h.nu.toFixed(2)}" style="width:52px;margin-left:4px"
+                data-i="${i}" onchange="editNu(this)"></td>
+              <td>${h.nu.toFixed(2)}</td>
+            </tr>
             <tr class="key">
               <td>r_shear <input class="ed${l.ovr.rShear?' ovr':''}" type="number" step="0.01" min="0.01" max="1.00"
                 value="${h.rShear.toFixed(2)}" style="width:52px;margin-left:4px"
@@ -3529,7 +3600,18 @@ function renderModel(){
             ${l.type==='Soft clay'||l.type==='Clay'?`<tr><td>c_u (kPa)</td><td>${l.cu}</td></tr>`:''}
           </table>
         </div>
-        ${STAGE6_ENABLE_HARDENING_SOIL_UI ? `
+        <div>
+          <div class="mc2-sec">Soilin &mdash; deformation modulus</div>
+          <table class="pt">
+            <tr><td>&beta; (-)</td><td>${h.beta.toFixed(3)}</td></tr>
+            <tr class="key"><td>E_def (kPa)</td><td>${h.Edef.toLocaleString()}</td></tr>
+          </table>
+          <div style="font-size:9px;color:var(--tx3);margin-top:6px">
+            E_def = &beta;&middot;E_oed,i &nbsp;&middot;&nbsp; &beta; = (1+&nu;)(1&minus;2&nu;)/(1&minus;&nu;)<br>
+            &#268;SN 73 1001 / Soilin subsoil input &middot; &nu; from Mohr-Coulomb column
+          </div>
+        </div>
+        ${STAGE4_ENABLE_HARDENING_SOIL_PARAMS ? `
           <div>
             <div class="mc2-sec">Hardening Soil &mdash; p_ref = 100 kPa</div>
             <table class="pt">
@@ -17467,7 +17549,7 @@ function buildStage6BishopLineProbeChart(){
 function exportCSV(){
   if(!S.layers.length){alert('No layers to export. Run classification first.');return;}
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'';
-  const hdr='Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,E_mc_kPa,nu,rShear,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse';
+  const hdr='Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,E_mc_kPa,nu,beta,Edef_kPa,rShear,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse';
   const rows=S.layers.map((l,i)=>{
     const h=hsParams(l);
     const k=khParams(l);
@@ -17476,7 +17558,7 @@ function exportCSV(){
       (l.bot-l.top).toFixed(3),l.avgQc,l.avgRf??'',
       l.g,l.gs,l.phi,l.c,l.cu,
       h.aE.toFixed(2),S.alphaMethod,
-      h.Eoed_i,h.Eoed_ref,h.E50_ref,h.Eur_ref,h.Emc,h.nu,h.rShear.toFixed(2),h.m.toFixed(2),h.K0nc,h.nu_ur,S.stiffMethod,
+      h.Eoed_i,h.Eoed_ref,h.E50_ref,h.Eur_ref,h.Emc,h.nu,h.beta,h.Edef,h.rShear.toFixed(2),h.m.toFixed(2),h.K0nc,h.nu_ur,S.stiffMethod,
       k.kh_rep.toExponential(2),k.kv_rep.toExponential(2),k.khkv,k.psi_unsat,
       `"${k.infClass}"`].join(',');
   });
@@ -17582,6 +17664,21 @@ function exportPlaxisCommands(){
     ];
   });
   const txt=commands.join('\r\n');
+
+  /* PLAXIS requires nu' < 0.35 for Undrained (A)/(B) materials (Material
+     Models Manual 3.3.2); cohesive layers export as Undrained A, so soft
+     fine layers at the table default nu' = 0.40 will be flagged on import.
+     Warn (without altering the exported values) so the engineer reviews
+     nu or the drainage type in PLAXIS. */
+  const nuDrainageConflicts=S.layers
+    .map((l,i)=>({i:i+1, dr:plaxisDrainageType(l), nu:hsParams(l).nu, subtype:l.subtype||l.type}))
+    .filter(x=>x.dr!=='Drained' && x.nu>=0.35);
+  if(nuDrainageConflicts.length){
+    alert('PLAXIS note: nu′ >= 0.35 combined with Undrained A will be flagged by PLAXIS (Material Models Manual 3.3.2).\n\n'
+      +nuDrainageConflicts.map(x=>`Layer ${x.i} (${x.subtype}): nu = ${x.nu}`).join('\n')
+      +'\n\nThe export is unchanged; review nu or the drainage type in PLAXIS.');
+  }
+
   const a=document.createElement('a');
   a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);
   a.download=`CPT_${safeMaterialToken(cptId)}_plaxis_materials_commands.txt`;
@@ -17771,6 +17868,8 @@ function stage7WorkingLayerPayload(layer, index){
       k0nc:hs.K0nc,
       nu:hs.nu,
       nuUr:hs.nu_ur,
+      beta:hs.beta,
+      eDef:hs.Edef,
       rShear:hs.rShear,
       psi:hs.psi,
       eMc:hs.Emc,
@@ -18605,6 +18704,7 @@ const legacyApi={
   editAlpha,
   editM,
   editRShear,
+  editNu,
   khParams,
   setAlphaMethod,
   setStiffMethod,
