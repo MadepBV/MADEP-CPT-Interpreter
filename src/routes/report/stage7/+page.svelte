@@ -630,8 +630,8 @@
         <tr>
           <td>
             <div class="report-running-foot__inner">
-              <span>CPT Interpreter {payload.appVersion}</span>
-              <span>{fmtDateTime(payload.generatedAt)}</span>
+              <span>MADEP BV · Nederholbeekstraat 68, 9680 Maarkedal · BTW BE0779808833</span>
+              <span>CPT Interpreter {payload.appVersion} · {fmtDateTime(payload.generatedAt)}</span>
             </div>
           </td>
         </tr>
@@ -641,22 +641,25 @@
           <td>
     <article class:report--concise-print={!includePrintAppendices} class="report">
       <section class="report-cover">
-        <div class="report-cover__topline">
-          <div class="report-cover__brand">CPT Interpreter</div>
-          <div class="report-cover__eyebrow">Stage 7 report</div>
-        </div>
-        <h1>{payload.cpt.displayId}</h1>
-        <p>
+        <header class="report-masthead">
+          <div class="report-masthead__brand">
+            <img class="report-masthead__logo" src="/MADEP_logo.png" alt="MADEP" />
+            <div class="report-masthead__tagline">Geotechnical engineering</div>
+          </div>
+          <dl class="report-masthead__meta">
+            <div><dt>Project</dt><dd>{payload.project.name}</dd></div>
+            <div><dt>Phase</dt><dd>{payload.project.phase || '—'}</dd></div>
+            <div><dt>Date</dt><dd>{fmtDateTime(payload.generatedAt)}</dd></div>
+            <div><dt>App version</dt><dd>{payload.appVersion}</dd></div>
+          </dl>
+        </header>
+        <div class="report-masthead__rule"></div>
+        <p class="report-cover__kicker">CPT interpretation report · Stage 7</p>
+        <h1 class="report-cover__title">{payload.cpt.displayId}</h1>
+        <p class="report-cover__lede">
           Single-CPT engineering report with raw CPT data, interpretation settings, final layering,
           characteristic values, model parameters, accepted tuning, and optional Stage 6 annexes.
         </p>
-        <div class="report-cover__meta">
-          <div><span>Project</span><strong>{payload.project.name}</strong></div>
-          <div><span>Phase</span><strong>{payload.project.phase || '—'}</strong></div>
-          <div><span>CPT</span><strong>{payload.cpt.displayId}</strong></div>
-          <div><span>Generated</span><strong>{fmtDateTime(payload.generatedAt)}</strong></div>
-          <div><span>App version</span><strong>{payload.appVersion}</strong></div>
-        </div>
       </section>
 
       <section class="report-section report-section--profile">
@@ -1661,6 +1664,10 @@
           </table>
         </div>
       </section>
+
+      <footer class="report-foot">
+        MADEP BV · Nederholbeekstraat 68, 9680 Maarkedal · BTW BE0779808833 · info[at]madep.be
+      </footer>
     </article>
           </td>
         </tr>
@@ -1684,19 +1691,24 @@
   }
 
   .report-shell {
-    --rpt-ink: #1c1c1e;
-    --rpt-ink-2: #54545b;
-    --rpt-ink-3: #82828a;
+    /* Ink / accent scale mirrors the MADEP design system shared with the
+       BC-sizer engineering report (design/design-system.md §PDF). */
+    --rpt-ink: #18181a;
+    --rpt-ink-2: #4a4a52;
+    --rpt-ink-3: #65656d;
     --rpt-paper: #ffffff;
-    --rpt-paper-2: #fbfaf7;
-    --rpt-hairline: rgba(28, 28, 30, 0.12);
-    --rpt-hairline-soft: rgba(28, 28, 30, 0.07);
-    --rpt-hairline-strong: rgba(28, 28, 30, 0.28);
-    --rpt-rule: #1c1c1e;
+    --rpt-paper-2: #fbf9f5;
+    --rpt-hairline: rgba(24, 24, 26, 0.12);
+    --rpt-hairline-soft: rgba(24, 24, 26, 0.07);
+    --rpt-hairline-strong: rgba(24, 24, 26, 0.28);
+    --rpt-rule: #18181a;
     --rpt-accent: #3d6b6a;
-    --rpt-pass: #23633f;
-    --rpt-fail: #a33425;
+    --rpt-accent-text: #2e5150;
+    --rpt-accent-soft: rgba(61, 107, 106, 0.1);
+    --rpt-pass: #2e6f55;
+    --rpt-fail: #9b3a32;
     --rpt-warn: #8a620d;
+    --rpt-warn-soft: rgba(138, 98, 13, 0.1);
 
     max-width: var(--container-max);
     margin: 0 auto;
@@ -1745,7 +1757,7 @@
     table-layout: fixed;
     background: var(--rpt-paper);
     border: 1px solid var(--rpt-hairline);
-    box-shadow: 0 1px 2px rgba(18, 18, 20, 0.05), 0 12px 32px rgba(18, 18, 20, 0.06);
+    box-shadow: 0 1px 2px rgba(18, 18, 20, 0.04), 0 18px 48px rgba(18, 18, 20, 0.12);
   }
 
   .report-sheet > tbody > tr > td {
@@ -1768,111 +1780,113 @@
   }
 
   .report-section {
-    border-top: 1px solid var(--rpt-hairline);
-    padding: 34px 0;
+    padding: 30px 0 0;
   }
 
-  .report-section:last-child {
-    padding-bottom: 0;
-  }
-
-  /* ---------- masthead ---------- */
+  /* ---------- masthead ----------
+     MADEP wordmark + tagline left, mono meta block right, a 1.5pt teal
+     brand rule beneath, then the document title — the same masthead
+     grammar as the BC-sizer engineering report. */
 
   .report-cover {
     display: block;
     padding: 0 0 30px;
   }
 
-  .report-cover__topline {
+  .report-masthead {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid var(--rpt-rule);
+    align-items: flex-start;
+    gap: 32px;
   }
 
-  .report-cover__brand,
-  .report-cover__eyebrow {
+  .report-masthead__brand {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .report-masthead__logo {
+    height: 52px;
+    width: auto;
+    object-fit: contain;
+    display: block;
+  }
+
+  .report-masthead__tagline {
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     font-weight: 500;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--rpt-ink-2);
-  }
-
-  .report-cover__brand::before {
-    content: '';
-    display: inline-block;
-    width: 9px;
-    height: 9px;
-    margin-right: 9px;
-    background: var(--rpt-accent);
-    transform: translateY(0.5px);
-  }
-
-  .report-cover__eyebrow {
-    text-align: right;
     color: var(--rpt-ink-3);
   }
 
-  .report-cover h1 {
-    margin: 26px 0 10px;
-    font-family: var(--font-heading);
-    font-size: clamp(28px, 3.6vw, 40px);
-    font-weight: 650;
-    letter-spacing: -0.015em;
-    line-height: 1.08;
-    color: var(--rpt-ink);
-  }
-
-  .report-cover p {
-    margin: 0;
-    max-width: 66ch;
-    font-size: 13.5px;
-    line-height: 1.55;
-    color: var(--rpt-ink-2);
-  }
-
-  .report-cover__meta {
+  .report-masthead__meta {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    margin-top: 28px;
-    border-top: 1px solid var(--rpt-hairline-strong);
+    grid-template-columns: repeat(2, minmax(0, auto));
+    gap: 4px 28px;
+    margin: 0;
+    text-align: right;
   }
 
-  .report-cover__meta div {
+  .report-masthead__meta div {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
-    padding: 10px 16px 0 0;
-    border-left: 1px solid var(--rpt-hairline);
-    padding-left: 16px;
   }
 
-  .report-cover__meta div:first-child {
-    border-left: none;
-    padding-left: 0;
-  }
-
-  .report-cover__meta span {
-    display: block;
-    margin-bottom: 3px;
+  .report-masthead__meta dt {
     font-family: var(--font-mono);
-    font-size: 0.62rem;
+    font-size: 0.6rem;
     font-weight: 500;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--rpt-ink-3);
   }
 
-  .report-cover__meta strong {
-    display: block;
-    font-family: var(--font-heading);
-    font-size: 14px;
-    font-weight: 600;
+  .report-masthead__meta dd {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
     color: var(--rpt-ink);
     overflow-wrap: anywhere;
+  }
+
+  .report-masthead__rule {
+    height: 1.5pt;
+    background: var(--rpt-accent);
+    margin: 16px 0 18px;
+  }
+
+  .report-cover__kicker {
+    margin: 0 0 6px;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--rpt-accent-text);
+  }
+
+  .report-cover__title {
+    margin: 0 0 10px;
+    font-family: var(--font-heading);
+    font-size: clamp(24px, 3vw, 32px);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    color: var(--rpt-ink);
+  }
+
+  .report-cover__lede {
+    margin: 0;
+    max-width: 70ch;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--rpt-ink-2);
   }
 
   /* ---------- section heads ---------- */
@@ -1883,25 +1897,31 @@
 
   .report-section__head {
     display: grid;
-    gap: 5px;
-    margin-bottom: 20px;
+    gap: 4px;
+    margin-bottom: 16px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--rpt-rule);
   }
 
   .report-section h2 {
     margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
     font-family: var(--font-heading);
-    font-size: 13.5px;
+    font-size: 15px;
     font-weight: 650;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    text-transform: none;
     color: var(--rpt-ink);
   }
 
   .report-section:not(.report-section--appendix) h2::before {
     content: counter(rpt-section, decimal-leading-zero);
-    margin-right: 14px;
     font-family: var(--font-mono);
+    font-size: 10px;
     font-weight: 500;
+    letter-spacing: 0.1em;
     color: var(--rpt-accent);
   }
 
@@ -1971,8 +1991,13 @@
 
   .report-stat {
     min-width: 0;
-    padding: 9px 0 0;
+    /* Reset the shared legacy `.report-stat` chrome (legacy.css §panel:
+       border + border-radius + box padding) so these read as BC-style
+       top-ruled key figures, not boxed panels. */
+    border: none;
+    border-radius: 0;
     border-top: 2px solid var(--rpt-rule);
+    padding: 10px 0 0;
     background: transparent;
   }
 
@@ -2231,19 +2256,31 @@
 
   .info {
     margin: 0 0 12px;
-    padding: 10px 14px;
-    background: var(--rpt-paper-2);
-    border: 1px solid var(--rpt-hairline);
-    border-left: 3px solid var(--rpt-warn);
-    border-radius: 0;
+    padding: 9px 12px;
+    background: var(--rpt-warn-soft);
+    border: none;
+    border-left: 2px solid var(--rpt-warn);
+    border-radius: var(--radius-sm);
     font-size: 12.5px;
     line-height: 1.55;
-    color: var(--rpt-ink);
+    color: var(--rpt-ink-2);
   }
 
   .report-section__head + .info,
   .report-grid .info {
     margin-bottom: 0;
+  }
+
+  /* ---------- document footer (company line, à la BC-sizer) ---------- */
+
+  .report-foot {
+    margin-top: 30px;
+    padding-top: 9px;
+    border-top: 1px solid var(--rpt-hairline-strong);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--rpt-ink-3);
   }
 
   /* ---------- profile ---------- */
@@ -2488,14 +2525,14 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .report-cover__meta {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      row-gap: 14px;
+    .report-masthead {
+      flex-direction: column;
+      gap: 18px;
     }
 
-    .report-cover__meta div:nth-child(odd) {
-      border-left: none;
-      padding-left: 0;
+    .report-masthead__meta {
+      justify-content: start;
+      text-align: left;
     }
 
     .report-profile {
@@ -2548,6 +2585,12 @@
 
     .no-print {
       display: none !important;
+    }
+
+    /* The repeating running-foot carries the MADEP company line on every
+       printed page, so the closing document footer is redundant on paper. */
+    .report-foot {
+      display: none;
     }
 
     .report--concise-print .report-section--appendix {
@@ -2616,50 +2659,48 @@
     /* ----- masthead ----- */
 
     .report-cover {
-      padding-bottom: 7mm;
+      padding-bottom: 6mm;
     }
 
-    .report-cover__topline {
-      padding-bottom: 2.2mm;
-      border-bottom: 1.2pt solid #111;
+    .report-masthead__logo {
+      height: 13mm;
     }
 
-    .report-cover__brand,
-    .report-cover__eyebrow {
+    .report-masthead__tagline {
+      font-size: 6pt;
+    }
+
+    .report-masthead__meta dt {
+      font-size: 5.6pt;
+    }
+
+    .report-masthead__meta dd {
+      font-size: 8pt;
+    }
+
+    .report-masthead__rule {
+      height: 1.2pt;
+      margin: 3mm 0;
+    }
+
+    .report-cover__kicker {
+      margin-bottom: 1mm;
       font-size: 6.5pt;
     }
 
-    .report-cover h1 {
-      margin: 6mm 0 2.5mm;
-      font-size: 21pt;
+    .report-cover__title {
+      margin: 0 0 2.5mm;
+      font-size: 19pt;
     }
 
-    .report-cover p {
-      font-size: 8.5pt;
-    }
-
-    .report-cover__meta {
-      margin-top: 6mm;
-    }
-
-    .report-cover__meta div {
-      padding-top: 2mm;
-      padding-right: 3mm;
-    }
-
-    .report-cover__meta span {
-      font-size: 5.8pt;
-    }
-
-    .report-cover__meta strong {
+    .report-cover__lede {
       font-size: 8.5pt;
     }
 
     /* ----- sections ----- */
 
     .report-section {
-      padding: 5mm 0;
-      border-top: 0.5pt solid #c4c2bd;
+      padding: 5mm 0 0;
     }
 
     .report-section h2 {
@@ -2667,8 +2708,10 @@
     }
 
     .report-section__head {
-      gap: 1mm;
-      margin-bottom: 3.5mm;
+      gap: 0.8mm;
+      margin-bottom: 3mm;
+      padding-bottom: 1.5mm;
+      border-bottom: 0.5pt solid #111;
       break-inside: avoid;
       page-break-inside: avoid;
       break-after: avoid;
@@ -2717,19 +2760,17 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
-    .report-cover__meta {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+    /* The narrow print viewport triggers the small-screen media query;
+       restore the side-by-side masthead on paper. */
+    .report-masthead {
+      flex-direction: row;
+      gap: 8mm;
     }
 
-    .report-cover__meta div,
-    .report-cover__meta div:nth-child(odd) {
-      border-left: 0.5pt solid #ccc9c3;
-      padding-left: 3mm;
-    }
-
-    .report-cover__meta div:first-child {
-      border-left: none;
-      padding-left: 0;
+    .report-masthead__meta {
+      justify-content: end;
+      text-align: right;
+      gap: 0.6mm 7mm;
     }
 
     .report-grid + .report-grid,
@@ -2822,7 +2863,7 @@
 
     .tbl tr,
     .pt tr,
-    .report-cover__meta,
+    .report-masthead,
     .report-stat,
     .report-card.report-profile,
     .report-tuning,
