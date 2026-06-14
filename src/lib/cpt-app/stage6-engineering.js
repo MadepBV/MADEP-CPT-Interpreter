@@ -1563,7 +1563,7 @@ export function analyzeBeamAndReinforcement(layers, wtDepth, config = {}) {
   if (config.EsMode !== 'young_drained') {
     notes.push({
       level: 'info',
-      text: 'Default ks derivation uses Es = E_oed and nu = 0 for consistency with the oedometric stiffness route. Switch to drained Young modulus mode if a project-specific conversion is preferred.'
+      text: 'Default ks derivation uses Es = E_oed and ν = 0 for consistency with the oedometric stiffness route. Switch to drained Young modulus mode if a project-specific conversion is preferred.'
     });
   }
   if (gp > 0) {

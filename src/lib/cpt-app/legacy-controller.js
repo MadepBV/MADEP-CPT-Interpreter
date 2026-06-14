@@ -3634,7 +3634,7 @@ function renderModel(){
                 <td>${h.m.toFixed(2)}</td>
               </tr>
               <tr><td>K0_nc</td><td>${h.K0nc}</td></tr>
-              <tr><td>&nu;_ur</td><td>${h.nu_ur}</td></tr>
+              <tr><td>&nu;<sub>ur</sub></td><td>${h.nu_ur}</td></tr>
               <tr><td>R_f</td><td>0.90</td></tr>
             </table>
           </div>
@@ -14530,7 +14530,7 @@ function renderStage6BeamApp(analysis){
             </label>
             <label style="font-size:11px;color:var(--tx2)">Es route${stage6Tooltip('This controls how the CPT-derived stiffness is converted to the soil modulus used in k_s. The default keeps Es = E_oed for consistency with the oedometric CPT workflow.')}
               <select onchange="setStage6Field('beam.EsMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                <option value="oedometric"${cfg.EsMode==='oedometric'?' selected':''}>Es = E_oed, nu = 0</option>
+                <option value="oedometric"${cfg.EsMode==='oedometric'?' selected':''}>Es = E_oed, ν = 0</option>
                 <option value="young_drained"${cfg.EsMode==='young_drained'?' selected':''}>Young drained conversion</option>
               </select>
             </label>
@@ -15693,7 +15693,7 @@ function renderStage6BishopApp(){
                       <col class="st6-mat-col-small">
                       <col class="st6-mat-col-small">
                     </colgroup>
-                    <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th><th>psi</th></tr></thead>
+                    <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>ν</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th><th>psi</th></tr></thead>
                     <tbody>${deformationMaterialRows}</tbody>
                   </table>
                 </div>
@@ -16569,7 +16569,7 @@ function renderStage6BishopApp(){
             <col class="st6-mat-col-small">
             <col class="st6-mat-col-small">
           </colgroup>
-          <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>nu</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th><th>psi</th></tr></thead>
+          <thead><tr><th>Layer</th><th>E_mc (kPa)</th><th>ν</th><th>K0</th><th>r_shear</th><th>c'</th><th>phi'</th><th>psi</th></tr></thead>
           <tbody>${deformationMaterialRows}</tbody>
         </table>
       </div>
