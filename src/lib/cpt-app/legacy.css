@@ -244,11 +244,10 @@ button{border:0;background:none;cursor:pointer}
   box-shadow:0 8px 24px rgba(17,17,16,0.10)
 }
 .app-brand{display:inline-flex;align-items:center;gap:0.55rem;min-width:0;max-width:12rem;color:inherit}
-.app-brand-mark{
-  display:grid;place-items:center;
-  width:1.85rem;height:1.85rem;border:1px solid rgba(237,233,225,0.16);border-radius:var(--radius-sm);
-  background:transparent;color:var(--color-text-on-dark);
-  font-family:var(--font-heading);font-size:0.78rem;font-weight:600
+.app-brand-logo{
+  flex:none;height:1.75rem;width:auto;display:block;
+  /* Logo art is dark navy; tint to the on-dark cream so it reads on the dark toolbar */
+  filter:brightness(0) invert(0.93) sepia(0.10) saturate(160%) brightness(1.02)
 }
 .app-brand__text{min-width:0;display:grid;gap:0.05rem;line-height:1.15}
 .app-brand__text span{

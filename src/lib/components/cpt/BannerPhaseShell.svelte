@@ -5,9 +5,8 @@
 
 <div id="banner" class="app-header">
 	<label class="app-brand" for="projName">
-		<span class="app-brand-mark" aria-hidden="true">MD</span>
+		<img class="app-brand-logo" src="/MADEP_logo.png" alt="MADEP" />
 		<span class="app-brand__text">
-			<span>MADEP</span>
 			<input
 				id="projName"
 				type="text"
