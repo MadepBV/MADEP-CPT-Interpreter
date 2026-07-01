@@ -139,13 +139,13 @@ function readDxf(text) {
       if (inLayerTable && cur && code === '2') { layers.add(value); cur = null; continue; }
     }
     if (section === 'ENTITIES') {
-      if (code === '0' && value === 'POLYLINE') { cur = { layer: null, closed: false, verts: [] }; polylines.push(cur); vtx = null; continue; }
+      // AC1015 closed LWPOLYLINE: layer (8), vertex count (90), closed flag (70),
+      // then interleaved 10/20 vertex coordinate pairs.
+      if (code === '0' && value === 'LWPOLYLINE') { cur = { layer: null, closed: false, verts: [] }; polylines.push(cur); vtx = null; continue; }
       if (cur && code === '8' && cur.layer === null) { cur.layer = value; continue; }
-      if (cur && code === '70' && vtx === null) { cur.closed = (parseInt(value, 10) & 1) === 1; continue; }
-      if (code === '0' && value === 'VERTEX') { vtx = { x: null, y: null }; cur.verts.push(vtx); continue; }
-      if (vtx && code === '10') { vtx.x = Number(value); continue; }
-      if (vtx && code === '20') { vtx.y = Number(value); continue; }
-      if (code === '0' && value === 'SEQEND') { vtx = null; continue; }
+      if (cur && code === '70') { cur.closed = (parseInt(value, 10) & 1) === 1; continue; }
+      if (cur && code === '10') { vtx = { x: Number(value), y: null }; cur.verts.push(vtx); continue; }
+      if (cur && vtx && code === '20') { vtx.y = Number(value); continue; }
     }
   }
   return { header, layers, polylines, hasEof: pairs.some((p) => p.code === '0' && p.value === 'EOF') };
@@ -156,11 +156,12 @@ function readDxf(text) {
   const dxf = exportRegionsToDxf(regions);
   const doc = readDxf(dxf);
 
-  check('DXF is AC1009 (R12)', doc.header.$ACADVER === 'AC1009', doc.header.$ACADVER);
+  check('DXF is AC1015 (R2000)', doc.header.$ACADVER === 'AC1015', doc.header.$ACADVER);
+  check('DXF entities are LWPOLYLINE', /\r?\nLWPOLYLINE\r?\n/.test(dxf), '');
   check('DXF has EOF', doc.hasEof, '');
-  // The LAYER table MUST close with ENDTAB (not ENDTABLE) — the wrong token
-  // corrupts the TABLES section and AutoCAD/PLAXIS then import no geometry.
-  check('LAYER table closes with ENDTAB', /\r?\nENDTAB\r?\n/.test(dxf) && !/\r?\nENDTABLE\r?\n/.test(dxf), '');
+  // Tables MUST close with ENDTAB (not ENDTABLE) — the wrong token corrupts the
+  // TABLES section and AutoCAD/PLAXIS then import no geometry.
+  check('tables close with ENDTAB', /\r?\nENDTAB\r?\n/.test(dxf) && !/\r?\nENDTABLE\r?\n/.test(dxf), '');
   check('DXF polyline count == region count', doc.polylines.length === regions.length, `${doc.polylines.length} vs ${regions.length}`);
   check('every DXF polyline is closed', doc.polylines.every((p) => p.closed), '');
   check('every DXF polyline references a declared layer', doc.polylines.every((p) => doc.layers.has(p.layer)), `layers=${[...doc.layers].join(',')}`);
