@@ -158,6 +158,9 @@ function readDxf(text) {
 
   check('DXF is AC1009 (R12)', doc.header.$ACADVER === 'AC1009', doc.header.$ACADVER);
   check('DXF has EOF', doc.hasEof, '');
+  // The LAYER table MUST close with ENDTAB (not ENDTABLE) — the wrong token
+  // corrupts the TABLES section and AutoCAD/PLAXIS then import no geometry.
+  check('LAYER table closes with ENDTAB', /\r?\nENDTAB\r?\n/.test(dxf) && !/\r?\nENDTABLE\r?\n/.test(dxf), '');
   check('DXF polyline count == region count', doc.polylines.length === regions.length, `${doc.polylines.length} vs ${regions.length}`);
   check('every DXF polyline is closed', doc.polylines.every((p) => p.closed), '');
   check('every DXF polyline references a declared layer', doc.polylines.every((p) => doc.layers.has(p.layer)), `layers=${[...doc.layers].join(',')}`);

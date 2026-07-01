@@ -131,7 +131,7 @@ export function exportRegionsToDxf(regions, options = {}) {
     g(62, layer.color);
     g(6, 'CONTINUOUS');
   });
-  g(0, 'ENDTABLE');
+  g(0, 'ENDTAB');
   g(0, 'ENDSEC');
 
   // ENTITIES -> one closed POLYLINE per region
