@@ -18,6 +18,7 @@ import {
   terrainY as bishopTerrainY
 } from './stage6-bishop';
 import { importTerrainFromDxfText } from './dxf-terrain';
+import { exportRegionsToDxf } from './dxf-regions';
 import {
   buildOuterBoundary as buildSeepageOuterBoundary,
   makeBoundaryCondition as makeSeepageBoundaryCondition,
@@ -4316,6 +4317,7 @@ function stage6Defaults(){
       draft:[],
       draftKind:'',
       activeCptX:null,
+      cptInsertionOffset:0,
       entryZone:null,
       exitZone:null,
 	      surfaceLoad:{
@@ -4720,6 +4722,9 @@ function ensureStage6State(){
       : bishopMinDepth;
   }
   bishop.analysisDepth = Math.max(+bishop.analysisDepth || bishopMinDepth, bishopMinDepth);
+  bishop.cptInsertionOffset = Number.isFinite(+bishop.cptInsertionOffset)
+    ? Math.max(Math.min(+bishop.cptInsertionOffset, 100), -100)
+    : 0;
   bishop.snapSize = Math.max(+bishop.snapSize || 0.5, 0.05);
   bishop.pointSnap = !!bishop.pointSnap;
   if(!bishop.display || typeof bishop.display !== 'object') bishop.display = stage6Defaults().bishop.display;
@@ -6946,6 +6951,32 @@ function stage6BishopCopyCurrentRegionsToCustom(){
   renderStage6();
 }
 
+// Read-only export of the current soil regions as a DXF of closed polygons that
+// PLAXIS 2D imports directly as clusters for material assignment. Mirrors the
+// visible regions (custom polygons when present, else the CPT-derived set).
+function stage6BishopExportRegionsDxf(){
+  ensureStage6State();
+  const bishop = S.stage6.bishop;
+  const model = stage6BishopCurrentModel();
+  const regions = model ? stage6BishopDisplayRegions(model) : [];
+  if(!regions.length){
+    bishop.progress.message = 'Draw terrain and place the active CPT marker (or copy CPT regions) before exporting to DXF.';
+    renderStage6();
+    return;
+  }
+  const testid = S.meta?.testid || S.id || 'section';
+  const dxf = exportRegionsToDxf(regions, {
+    title:`MADEP CPT soil regions (${testid}) - metres - import into PLAXIS 2D at scale 1.0`
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([dxf], {type:'application/dxf'}));
+  a.download = `CPT_${testid}_regions.dxf`;
+  a.click();
+  const count = regions.length;
+  bishop.progress.message = `Exported ${count} soil ${count === 1 ? 'region' : 'regions'} to DXF (metres, closed polygons for PLAXIS 2D).`;
+  renderStage6();
+}
+
 function stage6BishopSetUseCustomRegions(value){
   ensureStage6State();
   stage6RememberDetailsState();
@@ -8996,6 +9027,7 @@ function stage6BishopToolIcon(name){
     undo:'<path d="M9 7 4 12l5 5"></path><path d="M5 12h10a5 5 0 0 1 0 10h-2"></path>',
     clear:'<path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 14h10l1-14"></path><path d="M9 7V4h6v3"></path>',
     layers:'<path d="m12 3 9 5-9 5-9-5 9-5Z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 16 9 5 9-5"></path>',
+    download:'<path d="M12 3v12"></path><path d="m7 12 5 5 5-5"></path><path d="M5 21h14"></path>',
     copy:'<rect x="9" y="9" width="10" height="10" rx="2"></rect><rect x="5" y="5" width="10" height="10" rx="2"></rect>'
   };
   return `<svg class="st6-canvas-tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${icons[name] || icons.pointer}</svg>`;
@@ -9403,6 +9435,15 @@ function stage6BishopCanvasToolRailHtml(context){
       </div>
       ${draftActions}
     </div>
+    <div class="st6-canvas-card-section">
+      <div class="st6-canvas-card-kicker">CPT placement</div>
+      <label>Insertion offset vs terrain (m)
+        <input type="number" step="0.1" value="${(Number(bishop.cptInsertionOffset) || 0).toFixed(2)}" onchange="stage6BishopSetField('cptInsertionOffset', this.value)"${Number.isFinite(bishop.activeCptX) ? '' : ' disabled'}>
+      </label>
+      <div class="st6-canvas-card-note">${Number.isFinite(bishop.activeCptX)
+        ? 'Positive lifts the CPT start above the terrain (shallow readings clip at the ground); negative sinks it below, and the top layer is extrapolated up to the terrain.'
+        : 'Place the CPT to enable a vertical insertion offset.'}</div>
+    </div>
   `;
 	  const structuresPanel = `
 	    <div class="st6-canvas-card-section">
@@ -9494,6 +9535,7 @@ function stage6BishopCanvasToolRailHtml(context){
       <div class="st6-canvas-card-kicker">Region tools</div>
       <div class="st6-canvas-card-grid">
         ${actionButton('Copy CPT regions', 'copy', 'stage6BishopCopyCurrentRegionsToCustom()', !model)}
+        ${actionButton('Export to DXF', 'download', 'stage6BishopExportRegionsDxf()', !model)}
         ${toolButton('region', 'Draw polygon', 'polygon', !model)}
         ${toolButton('regionHole', 'Cut hole', 'cut', !selectedCustomRegion)}
         ${toolButton('regionSplit', 'Split polygon', 'split', !selectedCustomRegion)}
@@ -10695,7 +10737,7 @@ function stage6BishopCollectSnapPoints(){
   if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
     pushPoint('cpt', {
       x:bishop.activeCptX,
-      y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX)
+      y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX) + (Number(bishop.cptInsertionOffset) || 0)
     });
   }
   if(bishop.entryZone && bishop.terrain.length >= 2){
@@ -10834,7 +10876,7 @@ function stage6BishopNearestHandle(canvas, clientX, clientY){
   bishop.terrain.forEach((pt, index)=>handles.push({kind:'terrain', index, pt}));
   bishop.phreatic.forEach((pt, index)=>handles.push({kind:'phreatic', index, pt}));
   if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
-    handles.push({kind:'cpt', pt:{x:bishop.activeCptX, y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX)}});
+    handles.push({kind:'cpt', pt:{x:bishop.activeCptX, y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX) + (Number(bishop.cptInsertionOffset) || 0)}});
   }
   if(bishop.entryZone){
     handles.push({kind:'entryStart', pt:{x:bishop.entryZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.entryZone.xStart)}});
@@ -12549,12 +12591,39 @@ function stage6BishopDrawCanvas(){
   }
 
   if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
-    const pt = {x:bishop.activeCptX, y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX)};
-    const s = stage6BishopWorldToScreen(pt);
+    const offset = Number(bishop.cptInsertionOffset) || 0;
+    const groundPt = {x:bishop.activeCptX, y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX)};
+    const topPt = {x:groundPt.x, y:groundPt.y + offset};
+    const sGround = stage6BishopWorldToScreen(groundPt);
+    const sTop = stage6BishopWorldToScreen(topPt);
     ctx.save();
+    if(Math.abs(offset) > 1e-6){
+      // Connector from the terrain surface to the offset insertion point.
+      ctx.strokeStyle = '#7a2dd2';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(sGround.x, sGround.y);
+      ctx.lineTo(sTop.x, sTop.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(sGround.x - 5, sGround.y);
+      ctx.lineTo(sGround.x + 5, sGround.y);
+      ctx.stroke();
+      const label = `${offset > 0 ? '+' : ''}${offset.toFixed(2)} m`;
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.strokeText(label, sTop.x + 9, 0.5 * (sGround.y + sTop.y));
+      ctx.fillStyle = '#7a2dd2';
+      ctx.fillText(label, sTop.x + 9, 0.5 * (sGround.y + sTop.y));
+    }
     ctx.fillStyle = '#7a2dd2';
     ctx.beginPath();
-    ctx.arc(s.x, s.y, 6, 0, Math.PI*2);
+    ctx.arc(sTop.x, sTop.y, 6, 0, Math.PI*2);
     ctx.fill();
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
@@ -17902,6 +17971,7 @@ function stage7BishopPayload(){
       gridSnap:bishop.gridSnap,
       pointSnap:bishop.pointSnap,
 	      activeCptX:bishop.activeCptX,
+	      cptInsertionOffset:bishop.cptInsertionOffset,
 	      walls:bishop.walls,
 	      entryZone:bishop.entryZone,
 	      exitZone:bishop.exitZone,
@@ -18743,6 +18813,7 @@ const legacyApi={
   stage6BishopTriggerDxfImport,
   stage6BishopImportDxf,
   stage6BishopCopyCurrentRegionsToCustom,
+  stage6BishopExportRegionsDxf,
   stage6BishopSetUseCustomRegions,
   stage6BishopDeleteSelectedRegion,
   stage6BishopSetSelectedRegionMaterial,

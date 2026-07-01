@@ -65,6 +65,7 @@
 		"verify:initial-stiffness": "node scripts/verify_initial_stiffness_mode.mjs",
 		"verify:wall-interface-deepcut": "node scripts/verify_wall_interface_deepcut.mjs",
 		"verify:soil-region-tiling": "node scripts/verify_soil_region_tiling.mjs",
+		"verify:cpt-offset-dxf": "node scripts/verify_cpt_offset_and_dxf.mjs",
 		"verify:retaining": "node scripts/verify_retaining_wasm.mjs && node scripts/verify_retaining_ui.mjs && node scripts/verify_retaining_behavior.mjs"
 	},
 	"devDependencies": {

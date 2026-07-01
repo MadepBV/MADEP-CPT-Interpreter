@@ -248,8 +248,19 @@ export function buildBandPolygons(terrain, topY, botY, topFollowsTerrain) {
   return polygons;
 }
 
-export function buildCptAutoRegions(terrain, layers, cptX, analysisBottomY, materials) {
-  const yGround = samplePolylineY(terrain, cptX);
+// `cptTopY` is the elevation of the CPT insertion point. It defaults to the
+// terrain surface at the probe (the historical behaviour), but the Stage-6
+// vertical-offset control may push it above or below the terrain. Layer depths
+// are measured from this point, so every band elevation is `cptTopY - depth`.
+// The surface band still follows the terrain (its top is clamped to the terrain
+// by `buildBandPolygons`), which makes both offset directions fall out for free:
+//   - insertion BELOW terrain (cptTopY < surface): band 0 back-fills the gap
+//     between the terrain and the shallowest CPT reading with the top material;
+//   - insertion ABOVE terrain (cptTopY > surface): the CPT readings that sit
+//     above the terrain are clipped away, and the layer straddling the surface
+//     becomes the ground layer.
+export function buildCptAutoRegions(terrain, layers, cptX, analysisBottomY, materials, cptTopY) {
+  const yGround = Number.isFinite(cptTopY) ? cptTopY : samplePolylineY(terrain, cptX);
   const regions = [];
   (layers || []).forEach((layer, index) => {
     const topFollowsTerrain = index === 0;

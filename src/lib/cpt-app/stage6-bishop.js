@@ -2879,20 +2879,28 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
   const terrain = { vertices: terrainVertices };
   const cptX = clampXToTerrain(terrain, bishopState.activeCptX);
   const yGround = terrainY(terrain, cptX);
+  // The CPT insertion point can be offset vertically from the terrain surface
+  // (positive = above terrain, negative = below). Layer depths are measured from
+  // this point, so it — not the terrain — is the datum for band elevations.
+  const cptOffset = Number(bishopState?.cptInsertionOffset) || 0;
+  const cptTopY = yGround + cptOffset;
   const deepestBot = Math.max(...layers.map((layer) => Number(layer.bot) || 0), 0);
   const analysisDepth = Math.max(Number(bishopState?.analysisDepth) || Math.max(deepestBot, 15), Math.max(deepestBot, 15));
-  const analysisBottomY = yGround - analysisDepth;
+  // The domain floor is referenced to the terrain, but a downward insertion
+  // offset pushes the deepest CPT reading below it — keep the floor at or below
+  // that reading so the deepest layer is never truncated.
+  const analysisBottomY = Math.min(yGround - analysisDepth, cptTopY - deepestBot);
   const materials = importBishopMaterialsFromLayers(layers, bishopState?.materials || [], bishopState?.strengthSet || 'characteristic');
 
   const legacyBands = layers.map((layer, index) => ({
     id: `band_${index}`,
-    topY: yGround - (Number(layer.top) || 0),
-    botY: index === layers.length - 1 ? analysisBottomY : yGround - (Number(layer.bot) || 0),
+    topY: cptTopY - (Number(layer.top) || 0),
+    botY: index === layers.length - 1 ? analysisBottomY : cptTopY - (Number(layer.bot) || 0),
     topFollowsTerrain: index === 0,
     material: materials[index]
   }));
 
-  const autoRegions = buildCptAutoRegions(terrain, layers, cptX, analysisBottomY, materials);
+  const autoRegions = buildCptAutoRegions(terrain, layers, cptX, analysisBottomY, materials, cptTopY);
   const materialMap = new Map(materials.map((material) => [material.id, material]));
   const customRegions = (bishopState?.customRegions || [])
     .map((region, index) => {
@@ -3019,6 +3027,8 @@ export function buildBishopModelFromStageLayers(layers, bishopState, options = {
     phreatic,
     cptX,
     cptGroundY: yGround,
+    cptTopY,
+    cptInsertionOffset: cptOffset,
     analysisBottomY,
     useFemPorePressure: !!bishopState?.useFemPorePressure,
     materials,
