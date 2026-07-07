@@ -643,7 +643,7 @@
       <section class="report-cover">
         <header class="report-masthead">
           <div class="report-masthead__brand">
-            <img class="report-masthead__logo" src="/MADEP_logo.png" alt="MADEP" />
+            <img class="report-masthead__logo" src="/MADEP_logo.svg" alt="MADEP" />
             <div class="report-masthead__tagline">Geotechnical engineering</div>
           </div>
           <dl class="report-masthead__meta">

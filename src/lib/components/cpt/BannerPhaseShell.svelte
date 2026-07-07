@@ -5,7 +5,7 @@
 
 <div id="banner" class="app-header">
 	<label class="app-brand" for="projName">
-		<img class="app-brand-logo" src="/MADEP_logo.png" alt="MADEP" />
+		<img class="app-brand-logo" src="/MADEP_logo.svg" alt="MADEP" />
 		<span class="app-brand__text">
 			<input
 				id="projName"

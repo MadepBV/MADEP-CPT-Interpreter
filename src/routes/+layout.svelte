@@ -6,6 +6,7 @@
 </script>
 
 <svelte:head>
+	<link rel="icon" type="image/svg+xml" href="/MADEP_icon.svg" />
 	<link rel="icon" type="image/png" href="/favicon.png" />
 	<link rel="shortcut icon" href="/favicon.png" />
 	<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
