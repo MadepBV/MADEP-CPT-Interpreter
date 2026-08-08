@@ -283,7 +283,7 @@ console.log('\n[7] SOILIN payload — fixed order, zero-thickness absents');
   const peatIdx = payload.units.findIndex((u) => u.type === 'Peat / organic');
   const c1 = payload.boreholes.find((b) => b.id === 'C1');
   const c2 = payload.boreholes.find((b) => b.id === 'C2');
-  check('lens thickness 0 where absent', c1.rows[peatIdx].thickness === 0);
+  check('lens gets nominal 0.01 m where absent (SOILIN rejects 0)', c1.rows[peatIdx].absent === true && c1.rows[peatIdx].thickness === 0.01);
   check('lens thickness real where present', Math.abs(c2.rows[peatIdx].thickness - 1.2) < 1e-9);
   check('borehole rows follow unit order', payload.boreholes.every((b) => b.rows.every((r, i) => r.unit === i)));
   const depthC2 = c2.rows.reduce((s, r) => s + r.thickness, 0);

@@ -22,6 +22,7 @@ import { createStratigraphyStore } from './store.js';
 import { createStratigraphyView } from './view.js';
 import { buildUnitsCsv, buildPlaxisUnitCommands, buildSectionDxf } from './exports.js';
 import { buildSoilinReportPayload, saveSoilinPayload } from './soilin-report.js';
+import { buildGeologicProfilesPayload, wrapDb4Container } from './scia-db4.js';
 import { projectOntoSectionLine } from './profiles.js';
 
 function download({ filename, mime, text }) {
@@ -29,6 +30,24 @@ function download({ filename, mime, text }) {
   a.href = `data:${mime};charset=utf-8,` + encodeURIComponent(text);
   a.download = filename;
   a.click();
+}
+
+function downloadBinary(filename, bytes) {
+  const blob = new Blob([bytes], { type: 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(a.href), 0);
+}
+
+/* zlib-deflate via the browser-native CompressionStream ('deflate' = RFC 1950,
+   the format the db4 container expects). */
+async function zlibDeflate(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
 export function installStratigraphyApp(ctx) {
@@ -39,12 +58,27 @@ export function installStratigraphyApp(ctx) {
     store,
     actions: {
       onChanged: () => ctx.requestSectionRender(),
-      export(kind) {
+      async export(kind) {
         const d = store.derived();
         if (!d.units.length) return;
         if (kind === 'csv') download(buildUnitsCsv(d, projectName()));
         else if (kind === 'plaxis') download(buildPlaxisUnitCommands(d, projectName()));
         else if (kind === 'dxf') download(buildSectionDxf(d, projectName()));
+        else if (kind === 'db4') {
+          // SCIA geologic-profile library: one borehole profile per CPT,
+          // every unit in fixed order (absent units at the nominal 0.01 m).
+          const soilin = buildSoilinReportPayload(d, {
+            projectName: projectName(),
+            generatedAt: new Date().toISOString()
+          });
+          const payload = buildGeologicProfilesPayload(soilin);
+          try {
+            const file = wrapDb4Container(payload, await zlibDeflate(payload));
+            downloadBinary('EP_GeologicProfile.db4', file);
+          } catch (err) {
+            alert(`Het db4-bestand kon niet worden aangemaakt: ${err?.message || err}`);
+          }
+        }
       },
       openSoilinReport() {
         const d = store.derived();

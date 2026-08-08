@@ -99,6 +99,7 @@ export function buildProfiles(project) {
       cptIdx,
       id: cpt.id,
       elev: cpt.elev,
+      wt: cpt.wt ?? null,
       dist: dists[i],
       toeTaw: +(cpt.elev - (cpt.data[cpt.data.length - 1]?.z ?? cpt.layers[cpt.layers.length - 1].bot)).toFixed(3),
       layers: cpt.layers.map((l, li) => snapshotLayer(l, li, cpt.elev))

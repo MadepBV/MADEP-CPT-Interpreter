@@ -48,8 +48,14 @@ Plaxis 2D / SCIA SOILIN exports.
 - **SCIA SOILIN report** (`/report/soilin`) — printable report in the
   Stage 7 style: unit parameter legend (E_def, ν, γ_dry, γ_sat, m) and one
   borehole table per CPT listing **all units in fixed stratigraphic order**,
-  locally absent units at 0.00 m thickness — exactly the form SOILIN's
-  geological model expects.
+  locally absent units at a nominal 0.01 m thickness (SOILIN rejects 0) —
+  exactly the form SOILIN's geological model expects.
+- **SCIA DB4** (`scia-db4.js`) — `EP_GeologicProfile.db4` library file that
+  SCIA Engineer imports directly: one geologic profile per CPT with the same
+  fixed unit order and 0.01 m placeholders. Binary ZEP/zlib format
+  reverse-engineered from a SCIA-authored sample; the writer is verified by
+  byte-identical reconstruction of that sample
+  (`npm run verify:scia-db4`).
 
 ## Integration
 

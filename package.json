@@ -18,6 +18,7 @@
 		"verify:stratigraphy": "node scripts/verify_stratigraphy.mjs",
 		"verify:import-review": "node scripts/verify_import_review.mjs",
 		"verify:project-io": "node scripts/verify_project_io.mjs",
+		"verify:scia-db4": "node scripts/verify_scia_db4.mjs",
 		"verify:qc-only": "node scripts/verify_qc_only_handling.mjs",
 		"verify:bishop-phase-a": "node scripts/verify_bishop_phase_a_parity.mjs",
 		"verify:deformation-phase-1": "node scripts/verify_deformation_phase_1.mjs",

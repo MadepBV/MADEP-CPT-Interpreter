@@ -55,9 +55,14 @@ export function buildSoilinReportPayload(derived, meta = {}) {
       id: cpt.id,
       elev: round(cpt.elev, 2),
       dist: round(cpt.dist, 1),
+      waterDepth: cpt.wt ?? null,
+      // SOILIN rejects zero-thickness layers, but the layer order must be
+      // identical in every borehole — locally absent units are entered with
+      // a nominal 0.01 m.
       rows: units.map((u, ui) => ({
         unit: ui,
-        thickness: round(thickness[ui], 2)
+        absent: thickness[ui] === 0,
+        thickness: thickness[ui] === 0 ? 0.01 : round(thickness[ui], 2)
       }))
     };
   });

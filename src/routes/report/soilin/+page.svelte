@@ -106,8 +106,9 @@
                 <p class="report-cover__lede">
                   Grondeenheden afgeleid uit de multi-CPT stratigrafie. Elke boring vermeldt
                   <strong>alle</strong> eenheden in vaste stratigrafische volgorde; waar een eenheid
-                  lokaal ontbreekt (uitwiggend / lens) staat ze met dikte 0,00&nbsp;m — SOILIN
-                  vereist dezelfde laagvolgorde in elke boring.
+                  lokaal ontbreekt (uitwiggend / lens) staat ze met een nominale dikte van
+                  0,01&nbsp;m — SOILIN vereist dezelfde laagvolgorde in elke boring en accepteert
+                  geen dikte 0.
                 </p>
               </section>
 
@@ -158,7 +159,7 @@
               <section class="report-section">
                 <div class="report-section__head">
                   <h2>Boorprofielen — over te nemen in SCIA Engineer</h2>
-                  <p>Eén boring per CPT. Rijen met dikte 0,00 m ook invoeren: de volgorde telt.</p>
+                  <p>Eén boring per CPT. Rijen met dikte 0,01 m ook invoeren: de volgorde telt.</p>
                 </div>
                 <div class="soilin-boreholes">
                   {#each payload.boreholes as borehole}
@@ -187,7 +188,7 @@
                         <tbody>
                           {#each borehole.rows as row, i}
                             {@const unit = payload.units[row.unit]}
-                            <tr class:soilin-row--absent={!row.thickness}>
+                            <tr class:soilin-row--absent={row.absent}>
                               <td class="soilin-table__unit">
                                 <span class="soilin-chip" style={`background:${unit.color}`}></span>
                                 <strong>{unit.letter}</strong>

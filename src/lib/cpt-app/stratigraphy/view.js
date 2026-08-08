@@ -61,6 +61,8 @@ export function createStratigraphyView({ store, actions }) {
       <button class="btn sm" data-act="export-plaxis" ${canExport ? '' : 'disabled'}>PLAXIS materialen</button>
       <button class="btn sm" data-act="export-dxf" ${canExport ? '' : 'disabled'}>DXF doorsnede</button>
       <button class="btn sm" data-act="soilin-report" ${canExport ? '' : 'disabled'}>SOILIN rapport</button>
+      <button class="btn sm" data-act="export-db4" ${canExport ? '' : 'disabled'}
+        title="SCIA Engineer geologisch profiel-bibliotheek (.db4) — één boorprofiel per CPT">SOILIN DB4</button>
     </div>`;
   }
 
@@ -276,6 +278,7 @@ ${l.topTaw.toFixed(2)} → ${l.botTaw.toFixed(2)} m TAW · qc ${fmt(l.avgQc)} MP
     } else if (act === 'export-csv') actions.export('csv');
     else if (act === 'export-plaxis') actions.export('plaxis');
     else if (act === 'export-dxf') actions.export('dxf');
+    else if (act === 'export-db4') actions.export('db4');
     else if (act === 'soilin-report') actions.openSoilinReport();
   }
 
