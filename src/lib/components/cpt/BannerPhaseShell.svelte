@@ -35,7 +35,7 @@
 			>Analysis</button
 		>
 		<button id="phaseB" class="togbtn" onclick={() => call('setPhase', 'correlation')}
-			>Correlatie</button
+			>Stratigrafie</button
 		>
 		<button id="phaseC" class="togbtn" onclick={() => call('setPhase', 'section')}
 			>Doorsnede</button
@@ -46,16 +46,16 @@
 <div id="phaseCorr" class="phase-panel">
 	<div class="sec">
 		<div>
-			<div class="sec-title">Cross-CPT correlatie</div>
+			<div class="sec-title">Stratigrafie</div>
 			<div class="sec-sub">
-				Verbindt lagen over CPTs op basis van absolute hoogte (m TAW), grondsoort en qc.
-				Vereist bevestigde maaiveldshoogte per CPT.
+				Bouwt grondeenheden op uit de laagmodellen van meerdere CPTs: lagen die dezelfde
+				geologische eenheid aanboren worden gecorreleerd (uitwiggende lagen en lenzen
+				inbegrepen), en elke eenheid ontleent haar parameters aan de deelnemende lagen.
+				Vereist bevestigde maaiveldshoogte (m TAW) per CPT.
 			</div>
 		</div>
-		<button class="btn pri sm" onclick={() => call('runCorrelation')}>Auto-correleer</button>
 	</div>
-	<div id="corrWarnings"></div>
-	<div id="corrTable" style="overflow-x:auto;margin-top:12px"></div>
+	<div id="stratPanel" style="margin-top:12px"></div>
 </div>
 
 <div id="phaseSection" class="phase-panel">
@@ -63,8 +63,8 @@
 		<div>
 			<div class="sec-title">Geologische doorsnede</div>
 			<div class="sec-sub">
-				Projectie van gecorreleerde lagen op een verticaal vlak. Absolute hoogte (m TAW) op
-				Y-as, afstand langs de doorsnede op X-as.
+				Stratigrafische eenheden geprojecteerd op de meetlijn, met uitwiggingen en lenzen.
+				Absolute hoogte (m TAW) op Y-as, afstand langs de doorsnede op X-as.
 			</div>
 		</div>
 		<div style="display:flex;align-items:center;gap:10px">
