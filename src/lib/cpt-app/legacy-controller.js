@@ -71,7 +71,17 @@ import {
   ensurePileCanvasState,
   stage6PileSnapZ
 } from './stage6-pile-canvas';
-import { classifyNen6740Reading } from './nen6740';
+import { CAT, eurocodeEntryMatches } from './eurocode-tabel3.js';
+import {
+  DEFAULT_ASSUMED_RF,
+  classifyCUR3,
+  classifyNEN6740,
+  classifyRobertson1990,
+  classifyRobertson2016,
+  classifyTabel3,
+  normalizeAssumedRf,
+  simulatedLayerFsValue
+} from './classification-core.js';
 import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report-svg';
 import { cleanupStage7Payloads, saveStage7Payload } from './report-storage';
 import { SOIL_CLASS_NAMES, SOIL_FILL_COLORS } from './soil-styles';
@@ -83,6 +93,15 @@ import {
   wallNormalForSide
 } from './wall-geometry.js';
 import { installRetainingApp } from './retaining/retaining-ui.js';
+import { installStratigraphyApp } from './stratigraphy/index.js';
+import {
+  buildRowsFromGrid,
+  cptValueToMPa,
+  detectColumns,
+  findDataHeaderRow,
+  parseCptNumber,
+  presentImportReview
+} from './import-review/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -120,6 +139,25 @@ const retainingApp = installRetainingApp({
   workingLayers: () => stage6WorkingLayers()
 });
 
+// Multi-CPT stratigraphy application (Correlatie phase + Doorsnede geometry).
+// Self-contained module (src/lib/cpt-app/stratigraphy/) wired via a small
+// context. layerParamsFor evaluates the Stage 4 parameter derivation in the
+// member layer's own CPT context: hsParams/khParams read the active-CPT
+// reference S, so it is swapped for the duration of the call.
+const stratigraphyApp = installStratigraphyApp({
+  getProject: () => PROJECT,
+  layerParamsFor: (cpt, layer) => {
+    const prevS = S;
+    S = cpt;
+    try {
+      return { hs: hsParams(layer), kh: khParams(layer) };
+    } finally {
+      S = prevS;
+    }
+  },
+  requestSectionRender: () => { if(PROJECT.phase==='section') renderSection(); }
+});
+
 /* ════════════════════════════════
    PROJECT STATE — multi-CPT architecture
    S is always a reference to the active CPT's state object.
@@ -136,6 +174,9 @@ function newCptState(id){
     minThk:0.50,
     smartMerge:true,
     smartMergeSensitivity:1.10,
+    // Friction ratio assumed for readings without measured fs/Rf (legacy
+    // qc-only files). Explicit and user-tunable — see assumedRfValue().
+    assumedRf:DEFAULT_ASSUMED_RF,
     method:'robertson2016',
     alphaMethod:'B',
     stiffMethod:'B',
@@ -154,7 +195,7 @@ const PROJECT={
   cpts:[newCptState('CPT-1')],
   activeCptIdx:0,
   phase:'analysis',     // 'analysis' | 'correlation' | 'section'
-  correlations:[],
+  stratigraphy:null,    // owned by the stratigraphy store (multi-CPT units)
   sectionOrder:[0],
 };
 
@@ -200,7 +241,7 @@ function selectCpt(idx){
   const cptYEl=document.getElementById('cptY');
   if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
   if(cptYEl) cptYEl.value=S.y!=null?S.y:'';
-  updateElevSrc(); updateWTDisplay();
+  updateElevSrc(); updateWTDisplay(); updateAssumedRfControls();
   document.getElementById('btnAlphaA').classList.toggle('active',S.alphaMethod==='A');
   document.getElementById('btnAlphaB').classList.toggle('active',S.alphaMethod==='B');
   document.getElementById('btnStiffA').classList.toggle('active',S.stiffMethod==='A');
@@ -306,7 +347,7 @@ function setPhase(ph){
   document.querySelector('.wrap').style.display   = ph==='analysis'?'block':'none';
   document.getElementById('phaseCorr').style.display    = ph==='correlation'?'block':'none';
   document.getElementById('phaseSection').style.display = ph==='section'?'block':'none';
-  if(ph==='correlation') renderCorrTable();
+  if(ph==='correlation') stratigraphyApp.render();
   if(ph==='section')     renderSection();
 }
 
@@ -358,8 +399,8 @@ function importCptFiles(files){
       try{
         let ok;
         if(isExcelCptFile(f)) ok=await parseExcelCpt(e.target.result,f.name);
-        else if(isCsvCptFile(f)) ok=parseCsvCpt(e.target.result,f.name);
-        else ok=parseGEF(e.target.result,f.name);
+        else if(isCsvCptFile(f)) ok=await parseCsvCpt(e.target.result,f.name);
+        else ok=await parseGEF(e.target.result,f.name);
         if(ok!==false){
           S.id=stripCptFileExtension(f.name);
           renderBanner();
@@ -404,19 +445,10 @@ function setCptCoord(axis, val){
 }
 
 /* ════════════════════════════════
-   PHASE B — CROSS-CPT CORRELATION
+   CROSS-CPT LAYER COMPATIBILITY
+   (used by Stage 3 smart-merge continuity scoring; the multi-CPT
+   correlation itself lives in src/lib/cpt-app/stratigraphy/)
 ════════════════════════════════ */
-function layerTAW(cpt, layer){
-  if(cpt.elev==null) return null;
-  return{top:cpt.elev-layer.top, bot:cpt.elev-layer.bot, mid:cpt.elev-(layer.top+layer.bot)/2};
-}
-
-function cptDist(cptA, cptB){
-  // Returns distance between CPTs. If coordinates unknown, returns 10m as default.
-  if(cptA.x==null||cptA.y==null||cptB.x==null||cptB.y==null) return 10;
-  return Math.sqrt((cptA.x-cptB.x)**2+(cptA.y-cptB.y)**2)||1;
-}
-
 function layerTypeCompatScore(lA, lB){
   /* Multi-level type compatibility for correlation.
      Uses both the COMPAT matrix (grp-based) AND direct type matching.
@@ -458,209 +490,17 @@ function layerTypeCompatScore(lA, lB){
   return 0.0; // genuinely incompatible
 }
 
-function matchScore(cptA, lA, cptB, lB){
-  const tA=layerTAW(cptA,lA), tB=layerTAW(cptB,lB);
-  if(!tA||!tB) return 0;
-  const dist=cptDist(cptA,cptB);
-
-  // Elevation IoU (Intersection over Union)
-  // Both layers have top > bot in TAW (top = higher elevation)
-  const overlapTop=Math.min(tA.top,tB.top);
-  const overlapBot=Math.max(tA.bot,tB.bot);
-  const overlap=Math.max(0,overlapTop-overlapBot);
-  const unionTop=Math.max(tA.top,tB.top);
-  const unionBot=Math.min(tA.bot,tB.bot);
-  const union=Math.max(0.01, unionTop-unionBot);
-  const IoU=overlap/union;
-
-  // Gap penalty — layers that don't overlap but are close
-  const gap=Math.max(0,overlapBot-overlapTop); // positive = gap between layers
-  const tol=Math.max(0.30, 0.30+0.005*dist);  // tolerance grows 0.5cm/m distance
-  const gapScore=IoU>0?1.0:Math.max(0,1-gap/tol);
-
-  // Soil type compatibility (improved)
-  const typeScore=layerTypeCompatScore(lA,lB);
-
-  // qc similarity (log-ratio — more robust for orders of magnitude differences)
-  const qcA=Math.max(0.01,lA.avgQc), qcB=Math.max(0.01,lB.avgQc);
-  const logRatio=Math.abs(Math.log(qcA/qcB));
-  const qcScore=Math.max(0,1-logRatio/1.5); // 1.5 = 1 order of magnitude tolerance
-
-  // Thickness similarity bonus (same geological unit → similar thickness)
-  const thkA=lA.bot-lA.top, thkB=lB.bot-lB.top;
-  const thkRatio=Math.min(thkA,thkB)/Math.max(thkA,thkB,0.01);
-  const thkScore=Math.max(0,thkRatio-0.3)/0.7; // penalise >3× thickness difference
-
-  const score=0.45*IoU + 0.25*gapScore + 0.18*typeScore + 0.07*qcScore + 0.05*thkScore;
-  return +score.toFixed(3);
-}
-
-function runCorrelation(){
-  const cpts=PROJECT.cpts.filter(c=>c.elev!=null&&c.layers.length);
-  if(cpts.length<2){
-    document.getElementById('corrWarnings').innerHTML=
-      '<div class="info">Minimaal 2 CPTs met bevestigde maaiveldshoogte en laagindeling vereist.</div>';
-    return;
-  }
-  document.getElementById('corrWarnings').innerHTML='';
-
-  // Build edges (pairwise best matches, greedy)
-  // Node: {ci: cptIdx in PROJECT.cpts, li: layerIdx}
-  // Use original PROJECT indices
-  const projCpts=PROJECT.cpts;
-
-  // All pairwise candidate pairs
-  const pairs=[];
-  for(let a=0;a<projCpts.length;a++){
-    if(!projCpts[a].elev||!projCpts[a].layers.length) continue;
-    for(let b=a+1;b<projCpts.length;b++){
-      if(!projCpts[b].elev||!projCpts[b].layers.length) continue;
-      for(let la=0;la<projCpts[a].layers.length;la++){
-        for(let lb=0;lb<projCpts[b].layers.length;lb++){
-          const sc=matchScore(projCpts[a],projCpts[a].layers[la],projCpts[b],projCpts[b].layers[lb]);
-          if(sc>=0.25) pairs.push({a,la,b,lb,sc});
-        }
-      }
-    }
-  }
-  pairs.sort((x,y)=>y.sc-x.sc);
-
-  // Greedy assignment
-  const matched=new Set();
-  const edges=[];
-  for(const p of pairs){
-    const kA=p.a+'-'+p.la, kB=p.b+'-'+p.lb;
-    if(!matched.has(kA)&&!matched.has(kB)){
-      matched.add(kA); matched.add(kB);
-      edges.push(p);
-    }
-  }
-
-  // Union-Find to build groups
-  const parent={}; // key -> root key
-  function find(k){return parent[k]===k?k:(parent[k]=find(parent[k]));}
-  function union(k1,k2){parent[find(k1)]=find(k2);}
-
-  // Init
-  for(let ci=0;ci<projCpts.length;ci++){
-    if(!projCpts[ci].layers.length)continue;
-    projCpts[ci].layers.forEach((_,li)=>{ const k=ci+'-'+li; parent[k]=k; });
-  }
-  for(const e of edges){ union(e.a+'-'+e.la, e.b+'-'+e.lb); }
-
-  // Collect groups
-  const groupMap={};
-  for(let ci=0;ci<projCpts.length;ci++){
-    if(!projCpts[ci].layers.length)continue;
-    projCpts[ci].layers.forEach((l,li)=>{
-      const k=ci+'-'+li;
-      if(!parent[k])return;
-      const root=find(k);
-      if(!groupMap[root]) groupMap[root]=[];
-      groupMap[root].push({ci,li,layer:l});
-    });
-  }
-
-  // Sort groups by mean TAW elevation descending (highest first)
-  PROJECT.correlations=Object.values(groupMap).map(members=>{
-    const taws=members.map(m=>layerTAW(projCpts[m.ci],m.layer)).filter(Boolean);
-    const meanMid=taws.length?taws.reduce((s,t)=>s+t.mid,0)/taws.length:0;
-    return{members, meanMid};
-  }).sort((a,b)=>b.meanMid-a.meanMid);
-
-  renderCorrTable();
-  if(PROJECT.phase==='correlation') renderSection();
-}
-
-function renderCorrTable(){
-  const el=document.getElementById('corrTable');
-  const cpts=PROJECT.cpts;
-  const activeCpts=cpts.map((c,i)=>({c,i})).filter(({c})=>c.elev!=null&&c.layers.length);
-
-  if(activeCpts.length<2){
-    el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Laad minimaal 2 CPTs met laagindeling en maaiveldshoogte.</div>';
-    return;
-  }
-  if(!PROJECT.correlations.length){
-    el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Klik op "Auto-correleer" om de correlatie te berekenen.</div>';
-    return;
-  }
-
-  const hdrs=activeCpts.map(({c,i})=>`<th style="min-width:120px">${c.id}</th>`).join('');
-  const rows=PROJECT.correlations.map((grp,gi)=>{
-    const taws=grp.members.map(m=>layerTAW(cpts[m.ci],m.layer)).filter(Boolean);
-    const topTAW=Math.max(...taws.map(t=>t.top)).toFixed(1);
-    const botTAW=Math.min(...taws.map(t=>t.bot)).toFixed(1);
-    const cells=activeCpts.map(({c,i})=>{
-      const member=grp.members.find(m=>m.ci===i);
-      if(!member){
-        // Check if this CPT even covers this elevation range
-        const tawRange=grp.members.map(m=>layerTAW(cpts[m.ci],m.layer)).filter(Boolean);
-        const grpTopTAW=Math.max(...tawRange.map(t=>t.top));
-        const grpBotTAW=Math.min(...tawRange.map(t=>t.bot));
-        const cptToeElev=c.elev-(c.data[c.data.length-1]?.z||0);
-        const notSampled=c.elev!=null&&grpBotTAW<cptToeElev;
-        return`<td style="text-align:center;color:var(--tx3)">
-          <span style="font-size:10px">${notSampled?'— niet bereikt':'─── afwezig'}</span>
-        </td>`;
-      }
-      const l=member.layer;
-      const fill=SCFILL[l.type]||'#D3D1C7';
-      const taw=layerTAW(cpts[i],l);
-      const depthStr=taw?`${taw.top.toFixed(1)}→${taw.bot.toFixed(1)} TAW`:'';
-      return`<td style="vertical-align:top;padding:5px 8px">
-        <span class="sb" style="background:${fill};color:#333;font-size:10px;display:block;margin-bottom:3px">${l.subtype||l.type}</span>
-        <div style="font-size:10px;color:var(--tx2)">${depthStr}</div>
-        <div style="font-size:10px;color:var(--tx3)">qc ${l.avgQc.toFixed(2)} MPa · ${(l.bot-l.top).toFixed(1)}m dik</div>
-      </td>`;
-    }).join('');
-    return`<tr>
-      <td style="font-size:11px;color:var(--tx2);white-space:nowrap">${topTAW} → ${botTAW} m TAW</td>
-      ${cells}
-    </tr>`;
-  }).join('');
-
-  el.innerHTML=`<table class="tbl"><thead><tr><th>Hoogte (m TAW)</th>${hdrs}</tr></thead><tbody>${rows}</tbody></table>`;
-}
 
 /* ════════════════════════════════
    PHASE C — GEOLOGICAL CROSS-SECTION
 ════════════════════════════════ */
 function sectionProjection(){
-  // Project CPTs onto section line using XY if available, else use CPT order
-  const all=PROJECT.cpts.filter(c=>c.elev!=null&&c.layers.length);
-  if(all.length<2) return null;
-
-  const hasCoords=all.every(c=>c.x!=null&&c.y!=null);
-
-  if(!hasCoords){
-    // Fallback: use CPT index order, 50m apart
-    return all.map((c,i)=>({...c, dist:i*50}));
-  }
-
-  const cpts=all;
-
-  const cx=cpts.reduce((s,c)=>s+c.x,0)/cpts.length;
-  const cy=cpts.reduce((s,c)=>s+c.y,0)/cpts.length;
-
-  let sxx=0,sxy=0,syy=0;
-  cpts.forEach(c=>{sxx+=(c.x-cx)**2;sxy+=(c.x-cx)*(c.y-cy);syy+=(c.y-cy)**2;});
-
-  let dx,dy;
-  if(Math.abs(sxy)<1e-6&&sxx>=syy){dx=1;dy=0;}
-  else if(Math.abs(sxy)<1e-6){dx=0;dy=1;}
-  else{
-    // Eigenvector of 2x2 cov matrix
-    const diff=sxx-syy, disc=Math.sqrt(diff*diff+4*sxy*sxy);
-    const lam=(sxx+syy+disc)/2;
-    dx=sxy; dy=lam-sxx;
-    const len=Math.sqrt(dx*dx+dy*dy); dx/=len; dy/=len;
-  }
-
-  return cpts.map(c=>({
-    ...c,
-    dist: (c.x-cx)*dx+(c.y-cy)*dy
-  })).sort((a,b)=>a.dist-b.dist);
+  // Chainage comes from the stratigraphy module so the section, the
+  // correlation panel and the DXF export share one projection. Each entry
+  // keeps its PROJECT index (cptIdx) — the CPT objects are copies.
+  const proj=stratigraphyApp.projection();
+  if(!proj) return null;
+  return proj.map(({cptIdx,dist})=>({...PROJECT.cpts[cptIdx], cptIdx, dist}));
 }
 
 function renderSection(){
@@ -722,69 +562,32 @@ function renderSection(){
     s+=`<text x="${ML-5}" y="${y+3.5}" font-size="9" text-anchor="end" fill="${svgSubtle}" font-family="sans-serif">${e.toFixed(1)}</text>`;
   }
 
-  // ── Build interpolated stratigraphy ──
-  // For each unique soil group from correlations, draw a filled polygon
-  // connecting layer tops and bottoms across all CPTs (with interpolation for gaps).
-  // Groups sorted top to bottom in elevation.
-
-  if(PROJECT.correlations.length){
-    PROJECT.correlations.forEach((grp,gi)=>{
-      // Gather anchor points: {dist, topTAW, botTAW, type}
-      const anchors=[];
-      projCpts.forEach(pc=>{
-        const cptIdx=PROJECT.cpts.indexOf(pc);
-        if(cptIdx<0) return;
-        const member=grp.members.find(m=>m.ci===cptIdx);
-        if(member&&pc.elev!=null){
-          const taw={top:pc.elev-member.layer.top, bot:pc.elev-member.layer.bot};
-          anchors.push({dist:pc.dist, top:taw.top, bot:taw.bot, type:member.layer.type, hasData:true});
-        } else {
-          anchors.push({dist:pc.dist, top:null, bot:null, type:null, hasData:false});
-        }
+  // ── Stratigraphic units ──
+  // Unit polygons come from the stratigraphy module: interpolated between
+  // sampled CPTs, pinched out halfway toward CPTs where a unit is absent
+  // (lenses form separate lobes). Same geometry as the DXF export.
+  const stratGeom=stratigraphyApp.sectionGeometry();
+  if(stratGeom){
+    stratGeom.polygons.forEach(poly=>{
+      const pts=poly.points.map(p=>`${px(p.dist).toFixed(1)},${py(p.taw).toFixed(1)}`).join(' ');
+      s+=`<polygon points="${pts}" fill="${poly.color}" fill-opacity="0.80" stroke="${svgMuted}" stroke-width="0.6"/>`;
+    });
+    // One label per unit, on its widest lobe.
+    stratGeom.units.forEach(unit=>{
+      const lobes=stratGeom.polygons.filter(p=>p.unitId===unit.id);
+      if(!lobes.length) return;
+      const widest=lobes.reduce((a,b)=>{
+        const wA=Math.max(...a.points.map(p=>p.dist))-Math.min(...a.points.map(p=>p.dist));
+        const wB=Math.max(...b.points.map(p=>p.dist))-Math.min(...b.points.map(p=>p.dist));
+        return wB>wA?b:a;
       });
-
-      // Interpolate missing anchors between known ones
-      for(let i=0;i<anchors.length;i++){
-        if(!anchors[i].hasData){
-          // Find nearest known on left and right
-          let li=-1,ri=-1;
-          for(let j=i-1;j>=0;j--){ if(anchors[j].hasData){li=j;break;} }
-          for(let j=i+1;j<anchors.length;j++){ if(anchors[j].hasData){ri=j;break;} }
-          if(li>=0&&ri>=0){
-            const t=(anchors[i].dist-anchors[li].dist)/(anchors[ri].dist-anchors[li].dist);
-            anchors[i].top =anchors[li].top +(anchors[ri].top -anchors[li].top )*t;
-            anchors[i].bot =anchors[li].bot +(anchors[ri].bot -anchors[li].bot )*t;
-            anchors[i].type=anchors[li].type;
-            anchors[i].interpolated=true;
-          } else if(li>=0){
-            // Taper to a point at the right end
-            anchors[i].top=anchors[li].top;
-            anchors[i].bot=anchors[li].bot;
-            anchors[i].type=anchors[li].type;
-            anchors[i].taper='right';
-          } else if(ri>=0){
-            anchors[i].top=anchors[ri].top;
-            anchors[i].bot=anchors[ri].bot;
-            anchors[i].type=anchors[ri].type;
-            anchors[i].taper='left';
-          }
-        }
-      }
-
-      const valid=anchors.filter(a=>a.top!=null);
-      if(valid.length<2) return;
-      const fill=SCFILL[valid[0].type]||'#D3D1C7';
-      const topPts=valid.map(a=>`${px(a.dist).toFixed(1)},${py(a.top).toFixed(1)}`).join(' ');
-      const botPts=[...valid].reverse().map(a=>`${px(a.dist).toFixed(1)},${py(a.bot).toFixed(1)}`).join(' ');
-      s+=`<polygon points="${topPts} ${botPts}" fill="${fill}" fill-opacity="0.80" stroke="${svgMuted}" stroke-width="0.6"/>`;
-
-      // Label in middle of group
-      const midAnchor=valid[Math.floor(valid.length/2)];
-      const labelY=(py(midAnchor.top)+py(midAnchor.bot))/2;
-      const thickness=midAnchor.top-midAnchor.bot;
-      if(thickness*vex*18/elevRange>12){
-        const lbl=midAnchor.type||'';
-        s+=`<text x="${px(midAnchor.dist).toFixed(1)}" y="${(labelY+4).toFixed(1)}" font-size="9" text-anchor="middle" fill="rgba(0,0,0,0.55)" font-family="sans-serif">${lbl.split('/')[0].trim()}</text>`;
+      const dists=widest.points.map(p=>p.dist);
+      const taws=widest.points.map(p=>p.taw);
+      const midDist=(Math.min(...dists)+Math.max(...dists))/2;
+      const midTaw=(Math.min(...taws)+Math.max(...taws))/2;
+      const hPx=Math.abs(py(Math.min(...taws))-py(Math.max(...taws)));
+      if(hPx>13){
+        s+=`<text x="${px(midDist).toFixed(1)}" y="${(py(midTaw)+4).toFixed(1)}" font-size="9" font-weight="600" text-anchor="middle" fill="rgba(0,0,0,0.55)" font-family="sans-serif">${esc(unit.letter)} — ${esc((unit.subtype||unit.type).split('/')[0].trim())}</text>`;
       }
     });
   }
@@ -1183,41 +986,10 @@ document.querySelectorAll('.si').forEach(s=>{
 
 /* ════════════════════════════════
    CPT FILE PARSERS
+   Number parsing, unit conversion and tabular row building live in
+   src/lib/cpt-app/import-review/ (shared with the import-review dialog);
+   here remain the format-specific readers and the header-sheet lookups.
 ════════════════════════════════ */
-function cptValueToMPa(raw, unit, fallbackKind){
-  if(raw==null||isNaN(raw)) return null;
-  const u=String(unit||'').toLowerCase();
-  if(u.includes('mpa')) return raw;
-  if(u.includes('kpa')) return raw/1000;
-  if(u==='pa' || u.endsWith(' pa') || u.startsWith('pa ') || /\bpa\b/.test(u)) return raw/1e6;
-  if(fallbackKind==='qc'){
-    return raw>100?raw/1000:raw;
-  }
-  if(fallbackKind==='fs'){
-    if(Math.abs(raw)>1000) return raw/1e6;
-    if(Math.abs(raw)>10) return raw/1000;
-  }
-  return raw;
-}
-
-function parseCptNumber(value){
-  if(value==null || value==='') return null;
-  if(typeof value==='number') return Number.isFinite(value)?value:null;
-  if(value instanceof Date) return null;
-  let s=String(value).trim();
-  if(!s) return null;
-  s=s.replace(/\s/g,'');
-  if(s.includes(',') && s.includes('.')){
-    s=s.lastIndexOf(',')>s.lastIndexOf('.')
-      ? s.replace(/\./g,'').replace(',','.')
-      : s.replace(/,/g,'');
-  }else{
-    s=s.replace(',','.');
-  }
-  const n=Number(s);
-  return Number.isFinite(n)?n:null;
-}
-
 function pad2(n){
   return String(n).padStart(2,'0');
 }
@@ -1271,40 +1043,6 @@ function findExcelSheetName(workbook, preferredName){
     || workbook.SheetNames.find(name=>normalizeExcelLabel(name).includes(wanted));
 }
 
-function findExcelDataHeaderRow(rows){
-  const max=Math.min(rows.length,40);
-  for(let i=0;i<max;i++){
-    const labels=(rows[i]||[]).map(normalizeExcelLabel);
-    const hasDepth=labels.some(isExcelDepthHeader);
-    const hasQc=labels.some(isExcelQcHeader);
-    if(hasDepth && hasQc) return i;
-  }
-  return -1;
-}
-
-function isExcelDepthHeader(label){
-  return /\bdepth\b/.test(label) || /\bdiepte\b/.test(label) || /penetratie lengte/.test(label);
-}
-
-function isExcelQcHeader(label){
-  return /\bqc\b/.test(label) || /cone resistance/.test(label) || /conus weerstand/.test(label);
-}
-
-function isExcelFsHeader(label){
-  return /\bfs\b/.test(label) || /sleeve friction/.test(label) || /plaatselijke wrijving/.test(label);
-}
-
-function isExcelRfHeader(label){
-  return /\brf\b/.test(label) || /friction ratio/.test(label) || /wrijvingsgetal/.test(label);
-}
-
-function findExcelColumn(headers, predicate){
-  for(let i=0;i<headers.length;i++){
-    if(predicate(normalizeExcelLabel(headers[i]))) return i;
-  }
-  return -1;
-}
-
 function loadXlsxModule(){
   if(!xlsxModulePromise){
     xlsxModulePromise=import('xlsx').then(module=>module.default?.read?module.default:module);
@@ -1331,7 +1069,9 @@ function applyParsedCpt({rows, meta, waterLevel, waterSource, elevation, elevati
   }
   S.meta={...meta,nRows:rows.length,
     depthMin:rows[0].z,depthMax:rows[rows.length-1].z,
-    hasU2:rows.some(r=>r.u2!=null)};
+    hasU2:rows.some(r=>r.u2!=null),
+    hasFs:rows.some(r=>r.fs!=null),
+    hasRf:rows.some(r=>r.rf!=null)};
 
   // Sync controls
   document.getElementById('wtR').value=S.wt;
@@ -1341,7 +1081,7 @@ function applyParsedCpt({rows, meta, waterLevel, waterSource, elevation, elevati
   const cptYEl=document.getElementById('cptY');
   if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
   if(cptYEl) cptYEl.value=S.y!=null?S.y:'';
-  updateElevSrc(); updateWTDisplay();
+  updateElevSrc(); updateWTDisplay(); updateAssumedRfControls();
 
   renderMeta();
   document.getElementById('s1body').style.display='block';
@@ -1369,43 +1109,11 @@ async function parseExcelCpt(buffer,fname){
     ? XLSX.utils.sheet_to_json(workbook.Sheets[headerSheetName],{header:1,raw:true,defval:null,blankrows:false})
     : [];
 
-  const headerIdx=findExcelDataHeaderRow(dataRows);
+  const headerIdx=findDataHeaderRow(dataRows);
   if(headerIdx<0){alert('Could not find depth/qc columns in the Excel data sheet.');return false;}
 
-  const headers=dataRows[headerIdx]||[];
-  const zCol=findExcelColumn(headers,isExcelDepthHeader);
-  const qcCol=findExcelColumn(headers,isExcelQcHeader);
-  const fsCol=findExcelColumn(headers,isExcelFsHeader);
-  const rfCol=findExcelColumn(headers,isExcelRfHeader);
-  if(zCol<0 || qcCol<0){alert('Excel data sheet needs at least depth and qc columns.');return false;}
-
-  const rows=[];
-  const qcUnit=headers[qcCol]||'';
-  const fsUnit=fsCol>=0?(headers[fsCol]||''):'';
-  for(let i=headerIdx+1;i<dataRows.length;i++){
-    const raw=dataRows[i]||[];
-    const z=parseCptNumber(raw[zCol]);
-    const qcRaw=parseCptNumber(raw[qcCol]);
-    const fsRaw=fsCol>=0?parseCptNumber(raw[fsCol]):null;
-    const rfRaw=rfCol>=0?parseCptNumber(raw[rfCol]):null;
-    if(z==null||qcRaw==null||z<0) continue;
-
-    const qc=cptValueToMPa(qcRaw,qcUnit,'qc');
-    const fs=fsRaw!=null?cptValueToMPa(fsRaw,fsUnit,'fs'):null;
-    if(qc==null||qc<0.02) continue;
-
-    let rf=null;
-    if(rfRaw!=null&&rfRaw>=0&&rfRaw<50){
-      rf=Math.min(rfRaw,20);
-    }else if(fs!=null&&qc>0.05){
-      rf=Math.max(0,Math.min(20,(Math.abs(fs)/qc)*100));
-    }
-
-    rows.push({z:+z.toFixed(4),qc:+qc.toFixed(4),
-      fs:fs!=null?+fs.toFixed(6):null,
-      rf:rf!=null?+rf.toFixed(3):null,u2:null});
-  }
-  rows.sort((a,b)=>a.z-b.z);
+  const cols=detectColumns(dataRows[headerIdx]||[]);
+  if(cols.z<0 || cols.qc<0){alert('Excel data sheet needs at least depth and qc columns.');return false;}
 
   const water=excelHeaderNumber(headerRows,['Waterniveau','Water level']);
   const elevation=excelHeaderNumber(headerRows,['Grondniveau','Surface level','Ground level','ZID']);
@@ -1422,8 +1130,28 @@ async function parseExcelCpt(buffer,fname){
   const coneNumber=excelHeaderText(headerRows,['Conus Nummer','Cone Number']);
   const penetrationDepth=excelHeaderNumber(headerRows,['Penetratiediepte','Penetration depth']);
 
+  // Review before apply: the engineer confirms the column mapping and the
+  // derived statistics (and can remap columns) before the data enters the
+  // project. Cancelling aborts this file's import.
+  const review=await presentImportReview({
+    fileName:fname,
+    format:'Excel',
+    grid:dataRows,
+    headerIdx,
+    cols,
+    context:{
+      waterLevel:water!=null?Math.abs(water):null,
+      waterSource:water!=null?'Header Waterniveau':null,
+      elevation,
+      elevationSource:elevation!=null?'Header Grondniveau':null,
+      x, y, testid, project,
+      assumedRf:assumedRfValue().toFixed(1)
+    }
+  });
+  if(!review) return false;
+
   return applyParsedCpt({
-    rows,
+    rows:review.rows,
     waterLevel:water!=null?Math.abs(water):null,
     waterSource:water!=null?'Header Waterniveau':null,
     elevation,
@@ -1492,7 +1220,7 @@ function detectDelimitedTextSeparator(text){
   let best={delimiter:',',score:-Infinity};
   for(const delimiter of delimiters){
     const rows=sample.map(line=>splitDelimitedLine(line, delimiter));
-    const headerIdx=findExcelDataHeaderRow(rows);
+    const headerIdx=findDataHeaderRow(rows);
     const maxCols=Math.max(...rows.map(row=>row.length),0);
     const avgCols=rows.length?rows.reduce((sum,row)=>sum+row.length,0)/rows.length:0;
     const score=(headerIdx>=0?100:0) + maxCols*3 + avgCols;
@@ -1501,49 +1229,34 @@ function detectDelimitedTextSeparator(text){
   return best.delimiter;
 }
 
-function parseCsvCpt(text,fname){
+async function parseCsvCpt(text,fname){
   const delimiter=detectDelimitedTextSeparator(text);
   const tableRows=parseDelimitedText(text, delimiter);
-  const headerIdx=findExcelDataHeaderRow(tableRows);
+  const headerIdx=findDataHeaderRow(tableRows);
   if(headerIdx<0){alert('Could not find depth/qc columns in the CSV file.');return false;}
 
-  const headers=tableRows[headerIdx]||[];
-  const zCol=findExcelColumn(headers,isExcelDepthHeader);
-  const qcCol=findExcelColumn(headers,isExcelQcHeader);
-  const fsCol=findExcelColumn(headers,isExcelFsHeader);
-  const rfCol=findExcelColumn(headers,isExcelRfHeader);
-  if(zCol<0 || qcCol<0){alert('CSV file needs at least depth and qc columns.');return false;}
+  const cols=detectColumns(tableRows[headerIdx]||[]);
+  if(cols.z<0 || cols.qc<0){alert('CSV file needs at least depth and qc columns.');return false;}
 
-  const rows=[];
-  const qcUnit=headers[qcCol]||'';
-  const fsUnit=fsCol>=0?(headers[fsCol]||''):'';
-  for(let i=headerIdx+1;i<tableRows.length;i++){
-    const raw=tableRows[i]||[];
-    const z=parseCptNumber(raw[zCol]);
-    const qcRaw=parseCptNumber(raw[qcCol]);
-    const fsRaw=fsCol>=0?parseCptNumber(raw[fsCol]):null;
-    const rfRaw=rfCol>=0?parseCptNumber(raw[rfCol]):null;
-    if(z==null||qcRaw==null||z<0) continue;
-
-    const qc=cptValueToMPa(qcRaw,qcUnit,'qc');
-    const fs=fsRaw!=null?cptValueToMPa(fsRaw,fsUnit,'fs'):null;
-    if(qc==null||qc<0.02) continue;
-
-    let rf=null;
-    if(rfRaw!=null&&rfRaw>=0&&rfRaw<50){
-      rf=Math.min(rfRaw,20);
-    }else if(fs!=null&&qc>0.05){
-      rf=Math.max(0,Math.min(20,(Math.abs(fs)/qc)*100));
+  const review=await presentImportReview({
+    fileName:fname,
+    format:'CSV',
+    grid:tableRows,
+    headerIdx,
+    cols,
+    context:{
+      waterLevel:null,
+      elevation:null,
+      x:null, y:null,
+      testid:stripCptFileExtension(fname),
+      project:null,
+      assumedRf:assumedRfValue().toFixed(1)
     }
-
-    rows.push({z:+z.toFixed(4),qc:+qc.toFixed(4),
-      fs:fs!=null?+fs.toFixed(6):null,
-      rf:rf!=null?+rf.toFixed(3):null,u2:null});
-  }
-  rows.sort((a,b)=>a.z-b.z);
+  });
+  if(!review) return false;
 
   return applyParsedCpt({
-    rows,
+    rows:review.rows,
     waterLevel:null,
     elevation:null,
     meta:{
@@ -1563,7 +1276,7 @@ function parseCsvCpt(text,fname){
 /* ════════════════════════════════
    GEF PARSER
 ════════════════════════════════ */
-function parseGEF(txt,fname){
+async function parseGEF(txt,fname){
   const lines=txt.split(/\r?\n/);
   const colMap={};  // quantityID → 0-based col index
   const unitMap={}; // quantityID → declared unit string from COLUMNINFO
@@ -1648,6 +1361,39 @@ function parseGEF(txt,fname){
       rf:rf!=null?+rf.toFixed(3):null,u2});
   }
 
+  // Review before apply — GEF columns are declared in the file header
+  // (COLUMNINFO quantity IDs), so the mapping is shown read-only.
+  const GEF_CHANNELS=[
+    {qid:11, alt:1, label:'Diepte'},
+    {qid:2, label:'Conusweerstand qc'},
+    {qid:3, label:'Kleefweerstand fs'},
+    {qid:4, label:'Wrijvingsgetal Rf'},
+    {qid:6, label:'Waterspanning u2'}
+  ];
+  const channels=GEF_CHANNELS
+    .map(ch=>{
+      const qid=colMap[ch.qid]!=null?ch.qid:(ch.alt!=null&&colMap[ch.alt]!=null?ch.alt:null);
+      if(qid==null) return {label:ch.label, source:'niet in bestand', unit:''};
+      return {label:ch.label, source:`kolom ${colMap[qid]+1} (GEF #${qid})`, unit:unitMap[qid]||''};
+    });
+  const review=await presentImportReview({
+    fileName:fname,
+    format:'GEF',
+    rows,
+    channels,
+    context:{
+      waterLevel:wl,
+      waterSource:wl!=null?'MEASUREMENTVAR 14':null,
+      elevation:zid,
+      elevationSource:zid!=null?'ZID':null,
+      x:null, y:null,
+      testid:meta.testid||null,
+      project:meta.project||null,
+      assumedRf:assumedRfValue().toFixed(1)
+    }
+  });
+  if(!review) return false;
+
   return applyParsedCpt({
     rows,
     waterLevel:wl,
@@ -1682,6 +1428,7 @@ function renderMeta(){
     {l:'Depth (m)',v:`${(+m.depthMin).toFixed(2)}–${(+m.depthMax).toFixed(2)}`},
     {l:'Surface (m TAW)',v:m.zid!=null?m.zid.toFixed(2):'—'},
     {l:'Area ratio a',v:m.aRatio.toFixed(3)},
+    {l:'Sleeve fric. fs',v:(m.hasFs??d.some(r=>r.fs!=null))?'Present':'—'},
     {l:'Pore pres. u2',v:m.hasU2?'Present':'—'},
     {l:'max qc (MPa)',v:maxQc},
   ];
@@ -1714,8 +1461,10 @@ function setWT(v,fromInput){
   if(S.chartsReady){
     const d=S.data;
     const maxZ=d[d.length-1].z+0.5;
-    const maxQc=arrMax(d.map(r=>r.qc));
-    const maxFs=arrMax(d.map(r=>r.fs!=null?r.fs*1000:0));
+    const maxQc=Math.max(1,arrMax(d.map(r=>r.qc)));
+    // Same floor as initCharts — without it a qc-only file collapses the fs
+    // chart's WT line to a zero-length segment (line disappears).
+    const maxFs=Math.max(10,arrMax(d.map(r=>r.fs!=null?r.fs*1000:0)));
     updateWTLine(S.charts.qc, v, maxQc*1.15);
     updateWTLine(S.charts.fs, v, maxFs*1.15);
     updateWTLine(S.charts.rf, v, 12);
@@ -1726,6 +1475,32 @@ function updateWTLine(chart,wt,xmax){
   if(!chart)return;
   chart.data.datasets[1].data=[{x:0,y:wt},{x:xmax,y:wt}];
   chart.update('none'); // no animation
+}
+
+/* ── Assumed Rf (qc-only files) ──
+   Shown only when the loaded CPT has readings without measured Rf. The value
+   feeds every classification method through assumedRfValue(). */
+function setAssumedRf(v){
+  const n=Number(v);
+  if(!Number.isFinite(n)||n<=0){
+    // Rejected input: snap the field back to the value actually in use.
+    updateAssumedRfControls();
+    return;
+  }
+  S.assumedRf=normalizeAssumedRf(n);
+  updateAssumedRfControls();
+  updateRawChartEmptyStates();
+  // Re-run the full classification chain so table, layers and previews stay
+  // consistent with the new assumption.
+  if(S.classified.length) runClass();
+}
+
+function updateAssumedRfControls(){
+  const show=S.data.length>0 && S.data.some(r=>r.rf==null);
+  const wrap=document.getElementById('assumedRfCtrl');
+  if(wrap) wrap.style.display=show?'inline-flex':'none';
+  const inp=document.getElementById('assumedRfN');
+  if(inp) inp.value=normalizeAssumedRf(S.assumedRf).toFixed(1);
 }
 
 function cancelClassificationRefresh(){
@@ -1800,6 +1575,25 @@ function setSmartMergeSensitivity(v,fromInput){
 function arrMax(arr){return arr.reduce((m,v)=>Math.max(m,v),-Infinity);}
 function arrSafe(arr){return arr.map(v=>isNaN(v)||v==null?0:v);}
 
+/* Shared data prep for the three Stage 1 raw-profile charts (initCharts and
+   refreshChartData must stay identical). fs/Rf keep null when not measured —
+   null points are dropped by ptData, NOT drawn as a fake zero-line (legacy
+   qc-only files previously rendered fs=0 as a measured-looking profile). */
+function buildRawChartSeries(){
+  const d=S.data;
+  const depths=d.map(r=>r.z);
+  const qcs=arrSafe(d.map(r=>r.qc));
+  const fss=d.map(r=>r.fs!=null?r.fs*1000:null);
+  const rfs=d.map(r=>r.rf??null);
+  return{
+    depths,qcs,fss,rfs,
+    maxZ:arrMax(depths)+0.5,
+    maxQc:Math.max(1,arrMax(qcs))*1.15,
+    maxFs:Math.max(10,arrMax(arrSafe(fss)))*1.15,
+    ptData:vals=>depths.map((z,i)=>({x:vals[i],y:z})).filter(p=>p.x!=null)
+  };
+}
+
 function initCharts(){
   const hasCanvases = document.getElementById('cQc') && document.getElementById('cFs') && document.getElementById('cRf');
   // If charts already exist and the canvases still exist, just update data
@@ -1810,17 +1604,9 @@ function initCharts(){
     setTimeout(()=>initCharts(), 120);
     return;
   }
-  const d=S.data;
-  const depths=d.map(r=>r.z);
-  const maxZ=arrMax(depths)+0.5;
-  const qcs=arrSafe(d.map(r=>r.qc));
-  const fss=arrSafe(d.map(r=>r.fs!=null?r.fs*1000:null));
-  const rfs=arrSafe(d.map(r=>r.rf??null));
-  const maxQc=Math.max(1,arrMax(qcs))*1.15;
-  const maxFs=Math.max(10,arrMax(fss))*1.15;
+  const {qcs,fss,rfs,maxZ,maxQc,maxFs,ptData}=buildRawChartSeries();
   const wt=S.wt;
 
-  function ptData(vals){return depths.map((z,i)=>({x:vals[i],y:z}));}
   function mk(id,vals,color,xmax,label){
     const ctx=document.getElementById(id);
     if(!ctx)return null;
@@ -1838,23 +1624,41 @@ function initCharts(){
   S.charts.fs=mk('cFs',fss,readCssToken('--chart-purple', '#18181A'),maxFs,'fs');
   S.charts.rf=mk('cRf',rfs,readCssToken('--chart-orange', '#8A620D'),12,'Rf');
   S.chartsReady=true;
+  updateRawChartEmptyStates();
 
   // Layer column SVG (placeholder before classification)
   drawLayerColumnSvg('layerColSvg',[],maxZ);
 }
 
+/* Overlay note on the fs / Rf canvases when the source file never measured
+   the quantity, so an empty track cannot be mistaken for a zero profile. */
+function setChartEmptyState(canvasId, message){
+  const canvas=document.getElementById(canvasId);
+  const holder=canvas?.parentElement;
+  if(!holder)return;
+  let note=holder.querySelector('.chart-empty-note');
+  if(message){
+    if(!note){
+      note=document.createElement('div');
+      note.className='chart-empty-note';
+      note.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;color:var(--tx3);pointer-events:none;padding:0 18px';
+      holder.appendChild(note);
+    }
+    note.textContent=message;
+  }else if(note){
+    note.remove();
+  }
+}
+
+function updateRawChartEmptyStates(){
+  setChartEmptyState('cFs', cptHasFs()?null:'fs not recorded in source file');
+  setChartEmptyState('cRf', cptHasRf()?null:`Rf not recorded — classification uses assumed Rf = ${assumedRfValue().toFixed(1)} %`);
+}
+
 function refreshChartData(){
   // Called if a new file is loaded after charts exist
-  const d=S.data;
-  const depths=d.map(r=>r.z);
-  const qcs=arrSafe(d.map(r=>r.qc));
-  const fss=arrSafe(d.map(r=>r.fs!=null?r.fs*1000:null));
-  const rfs=arrSafe(d.map(r=>r.rf??null));
-  const maxZ=arrMax(depths)+0.5;
-  const maxQc=Math.max(1,arrMax(qcs))*1.15;
-  const maxFs=Math.max(10,arrMax(fss))*1.15;
+  const {qcs,fss,rfs,maxZ,maxQc,maxFs,ptData}=buildRawChartSeries();
 
-  function ptData(vals){return depths.map((z,i)=>({x:vals[i],y:z}));}
   function applyData(c,vals,xmax){
     c.data.datasets[0].data=ptData(vals);
     c.data.datasets[1].data=[{x:0,y:S.wt},{x:xmax,y:S.wt}];
@@ -1865,6 +1669,7 @@ function refreshChartData(){
   applyData(S.charts.qc,qcs,maxQc);
   applyData(S.charts.fs,fss,maxFs);
   applyData(S.charts.rf,rfs,12);
+  updateRawChartEmptyStates();
 }
 
 /* ════════════════════════════════
@@ -1900,7 +1705,7 @@ function renderLayerPreviewSvg(svgId){
     wt:S.wt,
     width:W,
     height:H,
-    showRf:true
+    showRf:cptHasRf()
   });
   svg.setAttribute('width','100%');
   bindLayerPreviewTooltip();
@@ -1968,11 +1773,11 @@ function loadDemo(){
   S.elev=69.97; S.elevFromFile=true; S.elevSource='demo';
   S.meta={project:'Demo Project A',testid:'CPT-1 (demo)',location:'Reference site — anonymised',owner:'Anonymous source',
     date:'2025, 7, 7',aRatio:0.79,zid:69.97,fname:'demo-anonymous.GEF',
-    nRows:rows.length,depthMin:0.14,depthMax:21.73,hasU2:false};
+    nRows:rows.length,depthMin:0.14,depthMax:21.73,hasU2:false,hasFs:true,hasRf:true};
   document.getElementById('wtR').value=1.7;
   document.getElementById('wtN').value='1.70';
   document.getElementById('elevN').value='69.97';
-  updateElevSrc(); updateWTDisplay();
+  updateElevSrc(); updateWTDisplay(); updateAssumedRfControls();
   renderMeta();
   document.getElementById('s1body').style.display='block';
   requestAnimationFrame(()=>initCharts());
@@ -1984,7 +1789,7 @@ function loadDemo(){
 function loadSingleGEF(evt){
   const f=evt.target.files[0]; if(!f)return;
   const r=new FileReader();
-  r.onload=e=>parseGEF(e.target.result,f.name);
+  r.onload=e=>{parseGEF(e.target.result,f.name).catch(err=>alert(`Error importing ${f.name}: ${err?.message||err}`));};
   r.readAsText(f);
 }
 function bindDropzone(){
@@ -2104,41 +1909,29 @@ function stressAt(z, gamma_sat, gamma_unsat){
    Sensitive / structured fine-grained soils require judgement outside the
    Ic bands and are not inferred here from Ic alone.
 ════════════════════════════════ */
+/* The classifier math lives in classification-core.js (pure, node-verified by
+   scripts/verify_qc_only_handling.mjs). These wrappers supply the stress state
+   and the app settings. assumedRfValue() is the explicit friction-ratio
+   assumption used for readings without measured fs/Rf. */
+function assumedRfValue(){
+  return normalizeAssumedRf(S.assumedRf);
+}
+
+/* Single source of truth for fs/Rf availability — the meta flags are set at
+   parse time; the S.data fallback covers states created before the flags. */
+function cptHasFs(){
+  return S.meta?.hasFs ?? S.data.some(r=>r.fs!=null);
+}
+function cptHasRf(){
+  return S.meta?.hasRf ?? S.data.some(r=>r.rf!=null);
+}
+
 function classRob(r){
-  const {sigV, sigVeff} = stressAt(r.z, 18, 17);
-  const aRatio = S.meta?.aRatio ?? 0.8;
-  const qtCone = r.u2 != null ? (r.qc + (1 - aRatio) * r.u2) : r.qc; // qt in MPa
-  const dQ = qtCone - sigV/1000;   // qt - σv0 [MPa]
-
-  // Guard: if stress or net resistance is negligible, default to Clay
-  if(dQ < 0.01 || sigVeff < 1)
-    return{type:'Clay', subtype:'', Ic:2.80, Qt:null, g:null,gs:null,phi:null,c:null,cu:null};
-
-  // Qt = (qt - σv0) / σ'v0  — both in MPa
-  const Qt = Math.max(0.1, dQ / (sigVeff / 1000));
-
-  // Fr = fs / (qt - σv0) × 100  [%]
-  // If fs not available, estimate sleeve friction from qt and Rf.
-  const fs_eff = r.fs != null ? r.fs : qtCone * (r.rf ?? 3) / 100;
-  const Fr = Math.max(0.1, Math.min(10, (Math.abs(fs_eff) / dQ) * 100));
-
-  // Ic = √((3.47 - log Qt)² + (log Fr + 1.22)²)
-  const Ic = Math.sqrt((3.47 - Math.log10(Qt))**2 + (Math.log10(Fr) + 1.22)**2);
-
-  // Zone 7 check (gravelly sand / dense sand) — BEFORE Ic zones
-  // Robertson charts place very high Qt with very low Fr in the gravelly/dense range.
-  const isZone7 = (Qt > 200 && Fr < 0.5);
-
-  let type;
-  if(isZone7)    type = 'Gravel';              // Zone 7: gravelly sand/dense sand
-  else if(Ic > 3.60) type = 'Peat / organic';  // Zone 2: organic soils-clay / peat
-  else if(Ic > 2.95) type = 'Clay';            // Zone 3: clay to silty clay
-  else if(Ic > 2.60) type = 'Sandy clay';      // Zone 4: silt mixtures
-  else if(Ic > 2.05) type = 'Silty sand';      // Zone 5: sand mixtures
-  else               type = 'Sand';            // Zone 6: sands
-
-  return{type, subtype:'', Ic:+Ic.toFixed(2), Qt:+Qt.toFixed(1),
-         g:null, gs:null, phi:null, c:null, cu:null};
+  return classifyRobertson1990(r, {
+    ...stressAt(r.z, 18, 17),
+    aRatio: S.meta?.aRatio ?? 0.8,
+    assumedRf: assumedRfValue()
+  });
 }
 
 /* ════════════════════════════════
@@ -2148,48 +1941,11 @@ function classRob(r){
    existing Ic-based app mapping to broad soil families.
 ════════════════════════════════ */
 function classRob2016(r){
-  const {sigV, sigVeff} = stressAt(r.z, 18, 17);
-  const aRatio = S.meta?.aRatio ?? 0.8;
-  const pa = 100;
-  const qtCone = r.u2 != null ? (r.qc + (1 - aRatio) * r.u2) : r.qc; // qt in MPa
-  const qtKPa = qtCone * 1000;
-  const dQKPa = qtKPa - sigV;
-
-  if(dQKPa < 10 || sigVeff < 1)
-    return{type:'Clay', subtype:'', Ic:2.80, Qt:null, g:null,gs:null,phi:null,c:null,cu:null};
-
-  const fsKPa = r.fs != null ? (r.fs * 1000) : (qtKPa * (r.rf ?? 3) / 100);
-  const Fr = Math.max(0.1, Math.min(10, (Math.abs(fsKPa) / dQKPa) * 100));
-
-  let n = 1.0;
-  let Qtn = 0.1;
-  let Ic = 2.8;
-  for(let i=0;i<10;i++){
-    Qtn = Math.max(0.1, (dQKPa / pa) * Math.pow(pa / sigVeff, n));
-    Ic = Math.sqrt((3.47 - Math.log10(Qtn))**2 + (Math.log10(Fr) + 1.22)**2);
-    const nNew = Math.max(0.5, Math.min(1.0, 0.381 * Ic + 0.05 * (sigVeff / pa) - 0.15));
-    if(Math.abs(nNew - n) < 0.001){
-      n = nNew;
-      break;
-    }
-    n = nNew;
-  }
-
-  Qtn = Math.max(0.1, (dQKPa / pa) * Math.pow(pa / sigVeff, n));
-  Ic = Math.sqrt((3.47 - Math.log10(Qtn))**2 + (Math.log10(Fr) + 1.22)**2);
-
-  const isZone7 = (Qtn > 200 && Fr < 0.5);
-
-  let type;
-  if(isZone7)         type = 'Gravel';
-  else if(Ic > 3.60) type = 'Peat / organic';
-  else if(Ic > 2.95) type = 'Clay';
-  else if(Ic > 2.60) type = 'Sandy clay';
-  else if(Ic > 2.05) type = 'Silty sand';
-  else               type = 'Sand';
-
-  return{type, subtype:'', Ic:+Ic.toFixed(2), Qt:+Qtn.toFixed(1),
-         g:null, gs:null, phi:null, c:null, cu:null};
+  return classifyRobertson2016(r, {
+    ...stressAt(r.z, 18, 17),
+    aRatio: S.meta?.aRatio ?? 0.8,
+    assumedRf: assumedRfValue()
+  });
 }
 
 /* ════════════════════════════════
@@ -2222,23 +1978,7 @@ function classRob2016(r){
      4. Peat (complement of the three zones above)
 ════════════════════════════════ */
 function classCUR3(r){
-  const qc = r.qc;
-  const rf = r.rf != null ? r.rf : 3.0;
-
-  if(rf < 1.5 && qc >= 1.5)
-    return{type:'Sand', subtype:'CUR3 sand', Ic:null, Qt:null,
-           g:null,gs:null,phi:null,c:null,cu:null};
-
-  if(rf < 2.5 && qc >= 0.5)
-    return{type:'Sandy clay', subtype:'CUR3 silt', Ic:null, Qt:null,
-           g:null,gs:null,phi:null,c:null,cu:null};
-
-  if(rf <= 5.0 && qc >= 0.2)
-    return{type:'Clay', subtype:'CUR3 clay', Ic:null, Qt:null,
-           g:null,gs:null,phi:null,c:null,cu:null};
-
-  return{type:'Peat / organic', subtype:'', Ic:null, Qt:null,
-         g:null,gs:null,phi:null,c:null,cu:null};
+  return classifyCUR3(r, {assumedRf: assumedRfValue()});
 }
 
 const classCUR = classCUR3;
@@ -2268,16 +2008,8 @@ const classCUR = classCUR3;
      the boundary between the stored areas 5 and 6 into a near tie.
 ════════════════════════════════ */
 function classNEN6740(r){
-  const rf = r.rf != null ? r.rf : 3.0;
   const {sigVeff} = stressAt(r.z, 18, 17);
-  const { area:best, qcNen } = classifyNen6740Reading({ qc:r.qc, rf, sigVeff });
-
-  return{
-    type:best.type,
-    subtype:best.subtype,
-    g:best.g, gs:best.gs, phi:best.phi, c:best.c, cu:best.cu,
-    Ic:null, Qt:+qcNen.toFixed(2)
-  };
+  return classifyNEN6740(r, {sigVeff, assumedRf: assumedRfValue()});
 }
 
 /* ════════════════════════════════
@@ -2296,27 +2028,10 @@ function classNEN6740(r){
      banded Rf ranges (1–2, 2–4, 2–5, 3–6) are inclusive.
 ════════════════════════════════ */
 function classSB260(r){
-  const qc = r.qc;
-  const rf = r.rf != null ? r.rf : null;
-
-  for(const entry of EUROCODE_CLASS_ENTRIES){
-    if(eurocodeEntryMatches(entry, qc, rf)){
-      return{
-        type:entry.type, subtype:entry.subtype,
-        g:entry.g, gs:entry.gs, phi:entry.phi, c:entry.c, cu:entry.cu,
-        Ic:null, Qt:null
-      };
-    }
-  }
-
-  // Table 3 does not cover every possible CPT reading.
-  // Keep a deterministic fallback for out-of-table values.
-  if(qc < 0.4){
-    return{type:'Sandy clay', subtype:'leem, weinig vast',
-      g:17, gs:17, phi:22, c:0, cu:10, Ic:null, Qt:null};
-  }
-  return{type:'Sand', subtype:'zand, los',
-    g:16, gs:18, phi:27, c:0, cu:0, Ic:null, Qt:null};
+  /* Readings without measured Rf are classified with the explicit assumed Rf
+     (previously they skipped Tabel 3 entirely and every qc-only reading fell
+     through to the loose-sand fallback). */
+  return classifyTabel3(r, {assumedRf: assumedRfValue()});
 }
 
 /* ════════════════════════════════
@@ -2339,19 +2054,55 @@ function runClass(){
 
   const cl=S.classified;
   const n=cl.length;
-  const avgOf=(fn,flt)=>{
-    const rows=flt?cl.filter(flt):cl;
-    return rows.length?rows.reduce((s,x)=>s+fn(x),0)/rows.length:0;
-  };
+  const fsRows=cl.filter(r=>r.fs!=null);
+  const rfRows=cl.filter(r=>r.rf!=null);
+  const avg=(rows,fn)=>rows.reduce((s,x)=>s+fn(x),0)/rows.length;
+
+  // Readings classified without measured Rf → the assumed Rf was used.
+  S.rfAssumedCount=n-rfRows.length;
 
   document.getElementById('cmet').innerHTML=[
-    {l:'avg qc (MPa)',  v:avgOf(r=>r.qc).toFixed(2)},
-    {l:'avg fs (kPa)',  v:(avgOf(r=>r.fs||0,r=>r.fs!=null)*1000).toFixed(1)},
-    {l:'avg Rf (%)',    v:avgOf(r=>r.rf||0,r=>r.rf!=null).toFixed(2)},
+    {l:'avg qc (MPa)',  v:avg(cl,r=>r.qc).toFixed(2)},
+    {l:'avg fs (kPa)',  v:fsRows.length?(avg(fsRows,r=>r.fs)*1000).toFixed(1):'—'},
+    {l:'avg Rf (%)',    v:rfRows.length?avg(rfRows,r=>r.rf).toFixed(2):'—'},
     {l:'max depth (m)', v:cl[n-1].z.toFixed(2)},
     {l:'readings',      v:n},
     {l:'method',        v:classificationMethodLabel(S.method)}
   ].map(m=>`<div class="met"><div class="met-l">${m.l}</div><div class="met-v">${m.v}</div></div>`).join('');
+
+  /* fs/Rf coverage note — severity follows the share of affected readings.
+     A fully qc-only file compromises every classification (strong warning);
+     a handful of gaps (typically the final reading of a push) only merits a
+     quiet data note naming the depths, because the profile IS measured. */
+  const assumedNote=document.getElementById('classAssumedRfNote');
+  if(assumedNote){
+    const missing=S.rfAssumedCount;
+    const noneMeasured=fsRows.length===0&&rfRows.length===0;
+    const rfTxt=`R<sub>f</sub> = ${assumedRfValue().toFixed(1)} %`;
+    if(missing===0){
+      assumedNote.innerHTML='';
+    }else if(noneMeasured){
+      assumedNote.innerHTML=`<div class="layerwarn layerwarn-bad">
+          <span class="layerwarn-k">Geen gemeten sleeve friction</span><br>
+          <span class="layerwarn-msg">Het bronbestand bevat geen fs/R<sub>f</sub>. De classificatie gebruikt overal een
+          <strong>aangenomen ${rfTxt}</strong> (instelbaar hierboven). Grondtypes en afgeleide parameters zijn daardoor
+          indicatief — controleer de lagen in Stage 3 tegen boringen of projectkennis.</span>
+        </div>`;
+    }else if(missing/n>=0.05){
+      assumedNote.innerHTML=`<div class="layerwarn layerwarn-adj">
+          <span class="layerwarn-k">Sleeve friction deels gemeten</span><br>
+          <span class="layerwarn-msg">${missing} van ${n} metingen hebben geen fs/R<sub>f</sub> in het bronbestand;
+          voor die metingen geldt een <strong>aangenomen ${rfTxt}</strong> (instelbaar hierboven).
+          Controleer de betreffende lagen in Stage 3.</span>
+        </div>`;
+    }else{
+      const gaps=cl.filter(r=>r.rf==null).map(r=>r.z.toFixed(2));
+      const depthTxt=gaps.length<=3?` (op ${gaps.join(', ')} m)`:'';
+      assumedNote.innerHTML=`<div class="data-note"><strong>${missing} van ${n}</strong> metingen zonder gemeten
+        fs/R<sub>f</sub>${depthTxt} — daarvoor geldt de aangenomen ${rfTxt}. De overige ${n-missing} metingen
+        gebruiken de gemeten waarden.</div>`;
+    }
+  }
 
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
   const metricHead=document.getElementById('cmetricHead');
@@ -2692,6 +2443,12 @@ function detectLayers(){
     const tmpLayer={type:seg.type,subtype,avgQc,avgRf};
     const suggestion=suggestSubtype(tmpLayer);
     const suggestedSubtype=suggestion?suggestion.subtype:subtype;
+    // Without measured Rf, Tabel 3 rows that share a qc band cannot be told
+    // apart — the suggestion falls back to catalogue order (conservative for
+    // the common Flanders profiles, and the engineer reviews/overrides in
+    // Stage 3). Flag the layer so that fallback is visible, not silent.
+    const rfIndeterminate=avgRf==null && !!suggestion &&
+      CAT.filter(r=>compatLevel(seg.type,r.grp)==='ok' && qcRfFit(r,avgQc,null)==='match').length>1;
     // If suggestion differs from classification subtype, apply suggestion params
     // but mark it as a suggestion (not a manual override)
     let sg=g,sgs=gs,sphi=Math.round(phi),sc=Math.round(c),scu=Math.round(cu);
@@ -2700,6 +2457,7 @@ function detectLayers(){
       sphi=suggestion.phi; sc=suggestion.c; scu=suggestion.cu;
     }
     return{id:i,top,bot,type:seg.type,subtype:suggestedSubtype,avgQc,avgFs,avgRf,
+      rfIndeterminate,
       g:sg,gs:sgs,phi:sphi,c:sc,cu:scu,ovr:{}};
   });
 }
@@ -2731,253 +2489,10 @@ function detectLayers(){
 // S.paramMethod: 'sb260' | 'def'
 // Set from the radio buttons rendered in renderLayers()
 
-/* ═══════════════════════════════════════════════════════════════════════
-   NEN / Eurocode 7 Tabel 3 — COMPLETE CATALOGUE
-   "Karakteristieke grondparameters op basis van de resultaten uit
-    een elektrische sondering"
-   
-   Every entry corresponds EXACTLY to one row of Tabel 3.
-   No entries outside the table. No invented entries.
-   
-   Columns verified against table image:
-     grp    = grondsoort family (determines dropdown grouping)
-     label  = displayed name in dropdown
-     type   = CPT soil behaviour type (for COMPAT routing)
-     subtype= exact internal key (matches classSB260 output)
-     g      = γ boven F.O. (kN/m³)
-     gs     = γ onder F.O. (kN/m³)
-     phi    = φ'k (°)
-     c      = c'k (kPa)
-     cu     = cu,k (kPa)
-     qcMin  = lower qc bound (MPa, inclusive)
-     qcMax  = upper qc bound (MPa, exclusive)
-     rfMin  = lower Rf bound (%, inclusive)
-     rfMax  = upper Rf bound (%, inclusive)
-   
-   GRIND: Tabel 3 shows qc ≥ 10 for matig and qc ≥ 20 for dicht.
-   VEEN:  Tabel 3 shows Rf > 6% (hard gate). qc 0.2-0.5 / 0.5-1 / ≥1.
-   ZAND:  Clean: Rf < 1%. With fines (lh/kh): Rf 1-2%.
-   LEEM:  Pure: Rf 2-4%. Zandhoudend: Rf 1-3%.
-   KLEI:  Pure: Rf 3-6%. Zandhoudend: Rf 2-5%.
-   
-   "Siltig zand" is NOT in Tabel 3 and has been removed.
-   Robertson Zone 5 (Silty sand CPT type) maps to leemhoudend zand / 
-   zandhoudende leem entries via COMPAT.
-═══════════════════════════════════════════════════════════════════════ */
-const CAT=[
-  // ──────────────────────────────────────────────────────────────────────
-  // VEEN  Tabel 3: Rf > 6%, qc ranges as shown
-  // γ boven/onder F.O.: 10/10, 12/12, 14/14  φ'=15°  c'=2,5,10  cu=10,20,40
-  // ──────────────────────────────────────────────────────────────────────
-  {grp:'veen', label:'Veen — weinig vast  (qc 0.2–0.5, Rf >6%)',
-   type:'Peat / organic', subtype:'veen, weinig vast',
-   g:10, gs:10, phi:15, c:2,  cu:10,
-   qcMin:0.2, qcMax:0.5, rfMin:6, rfMax:99},
-
-  {grp:'veen', label:'Veen — matig vast  (qc 0.5–1.0, Rf >6%)',
-   type:'Peat / organic', subtype:'veen, matig vast',
-   g:12, gs:12, phi:15, c:5,  cu:20,
-   qcMin:0.5, qcMax:1.0, rfMin:6, rfMax:99},
-
-  {grp:'veen', label:'Veen — vast  (qc ≥1.0, Rf >6%)',
-   type:'Peat / organic', subtype:'veen, vast',
-   g:14, gs:14, phi:15, c:10, cu:40,
-   qcMin:1.0, qcMax:99,  rfMin:6, rfMax:99},
-
-  // ──────────────────────────────────────────────────────────────────────
-  // KLEI (pure)  Tabel 3: Rf 3–6%
-  // γ: 16/16, 17/17, 18/18, 19/19  φ'=20°  c'=2,4,8,15  cu=20,50,100,200
-  // ──────────────────────────────────────────────────────────────────────
-  {grp:'klei', label:'Klei — weinig vast  (qc 0.4–1, Rf 3–6%)',
-   type:'Clay', subtype:'klei, weinig vast',
-   g:16, gs:16, phi:20, c:2,  cu:20,
-   qcMin:0.4, qcMax:1.0, rfMin:3, rfMax:6},
-
-  {grp:'klei', label:'Klei — matig vast  (qc 1–2, Rf 3–6%)',
-   type:'Clay', subtype:'klei, matig vast',
-   g:17, gs:17, phi:20, c:4,  cu:50,
-   qcMin:1.0, qcMax:2.0, rfMin:3, rfMax:6},
-
-  {grp:'klei', label:'Klei — vrij vast  (qc 2–4, Rf 3–6%)',
-   type:'Clay', subtype:'klei, vrij vast',
-   g:18, gs:18, phi:20, c:8,  cu:100,
-   qcMin:2.0, qcMax:4.0, rfMin:3, rfMax:6},
-
-  {grp:'klei', label:'Klei — vast  (qc ≥4, Rf 3–6%)',
-   type:'Clay', subtype:'klei, vast',
-   g:19, gs:19, phi:20, c:15, cu:200,
-   qcMin:4.0, qcMax:99,  rfMin:3, rfMax:6},
-
-  // ──────────────────────────────────────────────────────────────────────
-  // KLEI ZANDHOUDEND  Tabel 3: Rf 2–5%
-  // γ: 16/16, 17/17, 18/18, 19/19  φ'=22°  c'=2,4,8,15  cu=20,50,100,200
-  // ──────────────────────────────────────────────────────────────────────
-  {grp:'klei', label:'Klei zandhoudend — weinig vast  (qc 0.4–1, Rf 2–5%)',
-   type:'Clay', subtype:'klei (zh), weinig vast',
-   g:16, gs:16, phi:22, c:2,  cu:20,
-   qcMin:0.4, qcMax:1.0, rfMin:2, rfMax:5},
-
-  {grp:'klei', label:'Klei zandhoudend — matig vast  (qc 1–2, Rf 2–5%)',
-   type:'Clay', subtype:'klei (zh), matig vast',
-   g:17, gs:17, phi:22, c:4,  cu:50,
-   qcMin:1.0, qcMax:2.0, rfMin:2, rfMax:5},
-
-  {grp:'klei', label:'Klei zandhoudend — vrij vast  (qc 2–4, Rf 2–5%)',
-   type:'Clay', subtype:'klei (zh), vrij vast',
-   g:18, gs:18, phi:22, c:8,  cu:100,
-   qcMin:2.0, qcMax:4.0, rfMin:2, rfMax:5},
-
-  {grp:'klei', label:'Klei zandhoudend — vast  (qc ≥4, Rf 2–5%)',
-   type:'Clay', subtype:'klei (zh), vast',
-   g:19, gs:19, phi:22, c:15, cu:200,
-   qcMin:4.0, qcMax:99,  rfMin:2, rfMax:5},
-
-  // ──────────────────────────────────────────────────────────────────────
-  // LEEM (pure)  Tabel 3: Rf 2–4%
-  // γ: 17/17, 18/18, 19/19, 20/20  φ'=22°  c'=0,2,4,8  cu=10,25,50,100
-  // ──────────────────────────────────────────────────────────────────────
-  {grp:'leem', label:'Leem — weinig vast  (qc 0.4–1, Rf 2–4%)',
-   type:'Sandy clay', subtype:'leem, weinig vast',
-   g:17, gs:17, phi:22, c:0, cu:10,
-   qcMin:0.4, qcMax:1.0, rfMin:2, rfMax:4},
-
-  {grp:'leem', label:'Leem — matig vast  (qc 1–2, Rf 2–4%)',
-   type:'Sandy clay', subtype:'leem, matig vast',
-   g:18, gs:18, phi:22, c:2, cu:25,
-   qcMin:1.0, qcMax:2.0, rfMin:2, rfMax:4},
-
-  {grp:'leem', label:'Leem — vrij vast  (qc 2–4, Rf 2–4%)',
-   type:'Sandy clay', subtype:'leem, vrij vast',
-   g:19, gs:19, phi:22, c:4, cu:50,
-   qcMin:2.0, qcMax:4.0, rfMin:2, rfMax:4},
-
-  {grp:'leem', label:'Leem — vast  (qc ≥4, Rf 2–4%)',
-   type:'Sandy clay', subtype:'leem, vast',
-   g:20, gs:20, phi:22, c:8, cu:100,
-   qcMin:4.0, qcMax:99,  rfMin:2, rfMax:4},
-
-  // ──────────────────────────────────────────────────────────────────────
-  // LEEM ZANDHOUDEND  Tabel 3: Rf 1–3%
-  // (= zandhoudende leem: leem dominant with sand admixture)
-  // γ: 17/17, 18/18, 19/19, 20/20  φ'=25°  c'=0,2,4,8  cu=10,25,50,100
-  // ──────────────────────────────────────────────────────────────────────
-  {grp:'leem', label:'Zandhoudende leem — weinig vast  (qc 0.4–1, Rf 1–3%)',
-   type:'Sandy clay', subtype:'leem (zh), weinig vast',
-   g:17, gs:17, phi:25, c:0, cu:10,
-   qcMin:0.4, qcMax:1.0, rfMin:1, rfMax:3},
-
-  {grp:'leem', label:'Zandhoudende leem — matig vast  (qc 1–2, Rf 1–3%)',
-   type:'Sandy clay', subtype:'leem (zh), matig vast',
-   g:18, gs:18, phi:25, c:2, cu:25,
-   qcMin:1.0, qcMax:2.0, rfMin:1, rfMax:3},
-
-  {grp:'leem', label:'Zandhoudende leem — vrij vast  (qc 2–4, Rf 1–3%)',
-   type:'Sandy clay', subtype:'leem (zh), vrij vast',
-   g:19, gs:19, phi:25, c:4, cu:50,
-   qcMin:2.0, qcMax:4.0, rfMin:1, rfMax:3},
-
-  {grp:'leem', label:'Zandhoudende leem — vast  (qc ≥4, Rf 1–3%)',
-   type:'Sandy clay', subtype:'leem (zh), vast',
-   g:20, gs:20, phi:25, c:8, cu:100,
-   qcMin:4.0, qcMax:99,  rfMin:1, rfMax:3},
-
-  // ──────────────────────────────────────────────────────────────────────
-  // ZAND (clean)  Tabel 3: Rf < 1%
-  // γ boven F.O.: 16,17,18,18  γ onder: 18,19,20,20  φ'=27,30,32,35°
-  // c'=0  cu=—
-  // ──────────────────────────────────────────────────────────────────────
-  {grp:'zand', label:'Zand — los  (qc 2–4, Rf <1%)',
-   type:'Sand', subtype:'zand, los',
-   g:16, gs:18, phi:27, c:0, cu:0,
-   qcMin:2,  qcMax:4,  rfMin:0, rfMax:1},
-
-  {grp:'zand', label:'Zand — matig  (qc 4–10, Rf <1%)',
-   type:'Sand', subtype:'zand, matig',
-   g:17, gs:19, phi:30, c:0, cu:0,
-   qcMin:4,  qcMax:10, rfMin:0, rfMax:1},
-
-  {grp:'zand', label:'Zand — dicht  (qc 10–15, Rf <1%)',
-   type:'Sand', subtype:'zand, dicht',
-   g:18, gs:20, phi:32, c:0, cu:0,
-   qcMin:10, qcMax:15, rfMin:0, rfMax:1},
-
-  {grp:'zand', label:'Zand — zeer dicht  (qc ≥15, Rf <1%)',
-   type:'Sand', subtype:'zand, zeer dicht',
-   g:18, gs:20, phi:35, c:0, cu:0,
-   qcMin:15, qcMax:99, rfMin:0, rfMax:1},
-
-  // ──────────────────────────────────────────────────────────────────────
-  // ZAND leem/kleihoudend  Tabel 3: Rf 1–2%
-  // (= leemhoudend zand: zand dominant with silt/clay admixture)
-  // γ boven F.O.: 16,17,18,19  γ onder: 18,19,20,20  φ'=25,27,30,32°
-  // c'=0  cu=—
-  // ──────────────────────────────────────────────────────────────────────
-  {grp:'zand', label:'Leemhoudend zand — los  (qc 2–4, Rf 1–2%)',
-   type:'Sand', subtype:'zand (lh), los',
-   g:16, gs:18, phi:25, c:0, cu:0,
-   qcMin:2,  qcMax:4,  rfMin:1, rfMax:2},
-
-  {grp:'zand', label:'Leemhoudend zand — matig  (qc 4–10, Rf 1–2%)',
-   type:'Sand', subtype:'zand (lh), matig',
-   g:17, gs:19, phi:27, c:0, cu:0,
-   qcMin:4,  qcMax:10, rfMin:1, rfMax:2},
-
-  {grp:'zand', label:'Leemhoudend zand — dicht  (qc 10–15, Rf 1–2%)',
-   type:'Sand', subtype:'zand (lh), dicht',
-   g:18, gs:20, phi:30, c:0, cu:0,
-   qcMin:10, qcMax:15, rfMin:1, rfMax:2},
-
-  {grp:'zand', label:'Leemhoudend zand — zeer dicht  (qc ≥15, Rf 1–2%)',
-   type:'Sand', subtype:'zand (lh), z.dicht',
-   g:19, gs:20, phi:32, c:0, cu:0,
-   qcMin:15, qcMax:99, rfMin:1, rfMax:2},
-
-  // ──────────────────────────────────────────────────────────────────────
-  // GRIND (clean)  Tabel 3: Rf < 1%, qc ≥ 10
-  // γ: 18/20, 19/21  φ'=35,40°  c'=0  cu=—
-  // ──────────────────────────────────────────────────────────────────────
-  {grp:'grind', label:'Grind — matig  (qc 10–20, Rf <1%)',
-   type:'Gravel', subtype:'grind, matig',
-   g:18, gs:20, phi:35, c:0, cu:0,
-   qcMin:10, qcMax:20, rfMin:0, rfMax:1},
-
-  {grp:'grind', label:'Grind — dicht  (qc ≥20, Rf <1%)',
-   type:'Gravel', subtype:'grind, dicht',
-   g:19, gs:21, phi:40, c:0, cu:0,
-   qcMin:20, qcMax:99, rfMin:0, rfMax:1},
-
-  // ──────────────────────────────────────────────────────────────────────
-  // GRIND leem/kleihoudend  Tabel 3: Rf 1–2%, qc ≥ 10
-  // γ: 19/21, 20/22  φ'=32,37°  c'=0  cu=—
-  // ──────────────────────────────────────────────────────────────────────
-  {grp:'grind', label:'Grind klei-/leemhoudend — matig  (qc 10–20, Rf 1–2%)',
-   type:'Gravel', subtype:'grind (kh), matig',
-   g:19, gs:21, phi:32, c:0, cu:0,
-   qcMin:10, qcMax:20, rfMin:1, rfMax:2},
-
-  {grp:'grind', label:'Grind klei-/leemhoudend — dicht  (qc ≥20, Rf 1–2%)',
-   type:'Gravel', subtype:'grind (kh), dicht',
-   g:20, gs:22, phi:37, c:0, cu:0,
-   qcMin:20, qcMax:99, rfMin:1, rfMax:2},
-];
-
-const EUROCODE_CLASS_ENTRIES=[
-  ...CAT.filter(r=>r.grp==='grind'),
-  ...CAT.filter(r=>r.grp==='zand'),
-  ...CAT.filter(r=>r.grp==='leem'),
-  ...CAT.filter(r=>r.grp==='klei'),
-  ...CAT.filter(r=>r.grp==='veen'),
-];
-
-function eurocodeEntryMatches(entry, qc, rf){
-  if(qc < entry.qcMin || qc >= entry.qcMax) return false;
-  if(rf == null) return false;
-
-  if(entry.grp === 'veen') return rf > 6;
-  if(entry.rfMin === 0 && entry.rfMax === 1) return rf < 1;
-  if(entry.rfMin === 1 && entry.rfMax === 2) return rf >= 1 && rf <= 2;
-  return rf >= entry.rfMin && rf <= entry.rfMax;
-}
+/* NEN / Eurocode 7 Tabel 3 catalogue (CAT), the derived classification
+   entry list and the row matcher now live in eurocode-tabel3.js (imported
+   at the top of this file) so the node verification scripts can exercise
+   the exact table used by the app. */
 
 const CAT_GROUPS={
   veen:'Veen',
@@ -3138,7 +2653,9 @@ function buildSubtypeDropdown(l, i){
   const cptType=l.type;
   const cur=l.subtype||'';
   const qc=l.avgQc;
-  const rf=l.avgRf??3;
+  // null (not an assumed 3): qcRfFit then skips the Rf check, matching the
+  // suggestion engine — otherwise a qc-only CPT shows no ✓ on any sand entry.
+  const rf=l.avgRf??null;
   const bdCol=l.ovr.subtype?'var(--wn)':'var(--bd2)';
 
   // Sort entries: ok → adj → bad
@@ -3211,6 +2728,7 @@ function renderLayers(){
       <td>${thick} m</td>
       <td style="min-width:180px">
         <span class="sb ${SC[l.type]||'s-sand'}" style="font-size:10px">${l.type}</span>
+        ${l.rfIndeterminate&&!l.ovr.subtype?'<span style="font-size:9px;color:var(--wn);border:1px solid var(--wn);border-radius:3px;padding:0 3px;margin-left:4px;vertical-align:middle" title="Geen gemeten Rf — meerdere Tabel 3 rijen passen bij deze qc. Grondsoort volgt de catalogusvolgorde; controleer de keuze.">qc-only</span>':''}
         ${dropdown}
       </td>
       <td>${l.avgQc.toFixed(3)}</td>
@@ -3268,6 +2786,10 @@ function renderCompatWarnings(){
   const warnings=[];
   S.layers.forEach((l,i)=>{
     if(!l.subtype||l.subtype==='(overridden)') return;
+    if(l.rfIndeterminate && !l.ovr.subtype){
+      warnings.push({i,layer:i+1,cptType:l.type,subtype:l.subtype,level:'adj',
+        msg:`Laag ${i+1}: <strong>${l.subtype}</strong> gekozen zonder gemeten R<sub>f</sub> (fs ontbreekt in het bronbestand). Meerdere Tabel 3 rijen passen bij qc ≈ ${l.avgQc.toFixed(1)} MPa; de parameters volgen de eerste passende rij. Controleer of overschrijf de grondsoort indien boringen of projectkennis beschikbaar zijn.`});
+    }
     const entry=CAT.find(r=>r.subtype===l.subtype);
     if(!entry) return;
     const level=compatLevel(l.type, entry.grp);
@@ -3484,7 +3006,9 @@ function hsParams(l){
   if(l.ovr.aE){
     aE=l.aE_ovr;  // engineer override takes absolute priority
   } else if(S.alphaMethod==='B'){
-    aE=alphaEB(l.type, l.avgQc, l.subtype, l.avgRf);
+    // Fall back to the explicit assumed Rf when the CPT has no measured Rf,
+    // so the sand/transition α-family split stays consistent with Stage 2.
+    aE=alphaEB(l.type, l.avgQc, l.subtype, l.avgRf ?? assumedRfValue());
   } else {
     aE=AE[l.type]||10;
   }
@@ -3701,7 +3225,7 @@ function fitLayer(l){
         ? 1.0
         : 0.50;
   const alphaDefault = (l.ovr.aE ? l.aE_ovr
-    : S.alphaMethod==='B' ? alphaEB(l.type, l.avgQc, l.subtype, l.avgRf)
+    : S.alphaMethod==='B' ? alphaEB(l.type, l.avgQc, l.subtype, l.avgRf ?? assumedRfValue())
     : (AE[l.type] || 10));
 
   // Build the point cloud directly from CPT rows in the layer.
@@ -3717,7 +3241,7 @@ function fitLayer(l){
     if(ratio <= 0) continue;
 
     const aE_row = l.ovr.aE ? l.aE_ovr
-      : S.alphaMethod==='B' ? alphaEB(l.type, r.qc, l.subtype, r.rf ?? l.avgRf)
+      : S.alphaMethod==='B' ? alphaEB(l.type, r.qc, l.subtype, r.rf ?? l.avgRf ?? assumedRfValue())
       : (AE[l.type] || 10);
     const Eoed_i_row = aE_row * r.qc * 1000;
     if(Eoed_i_row <= 0) continue;
@@ -17763,10 +17287,18 @@ function findLayerForDepth(z){
   return null;
 }
 
+/* The simulated CPT exists so PLAXIS's own CPT interpretation recreates the
+   app's layer sequence. When a layer has no measured fs/Rf the sleeve friction
+   is synthesised from a representative Rf per soil type (classification-core):
+   writing fs=0 would make PLAXIS read every layer as clean sand and destroy
+   the layering the export is meant to carry. */
 function simulatedLayerFs(layer){
-  if(layer.avgFs!=null && isFinite(layer.avgFs)) return Math.max(0, layer.avgFs);
-  if(layer.avgRf!=null && isFinite(layer.avgRf)) return Math.max(0, layer.avgQc * layer.avgRf / 100);
-  return 0;
+  return simulatedLayerFsValue(layer, assumedRfValue());
+}
+
+function layerFsIsSynthetic(layer){
+  return !(layer.avgFs!=null && isFinite(layer.avgFs)) &&
+         !(layer.avgRf!=null && isFinite(layer.avgRf));
 }
 
 function formatPlaxisCoord(value){
@@ -17799,11 +17331,15 @@ function exportPlaxisCpt(){
     return;
   }
 
+  const syntheticFsCount=S.layers.filter(layerFsIsSynthetic).length;
+  const fsNote=syntheticFsCount
+    ? ` — fs of ${syntheticFsCount} layer(s) simulated from soil-type Rf (no measured fs in source CPT)`
+    : '';
   const lines=[
     `X[m] ${formatPlaxisCoord(S.x)}`,
     `Y[m] ${formatPlaxisCoord(S.y)}`,
     `Z[m] ${formatPlaxisCoord(S.elev)}`,
-    'D[m] Q[MPa] F[MPa] x  # depth, qc, fs, Rf(skipped)',
+    `D[m] Q[MPa] F[MPa] x  # depth, qc, fs, Rf(skipped)${fsNote}`,
     ...rows.map(r=>`${r.z.toFixed(4)} ${r.qc.toFixed(6)} ${r.fs.toFixed(6)} 0`)
   ];
 
@@ -17846,6 +17382,15 @@ function stage7LayerWarnings(){
   const warnings=[];
   S.layers.forEach((layer, index)=>{
     if(!layer.subtype || layer.subtype === '(overridden)') return;
+    if(layer.rfIndeterminate && !layer.ovr.subtype){
+      warnings.push({
+        layer:index + 1,
+        level:'adj',
+        type:layer.type,
+        subtype:layer.subtype,
+        message:`${layer.subtype} was selected without measured Rf (no fs in the source CPT); several Tabel 3 rows share this qc band, so the catalogue-order row was applied. Review against borings or project knowledge.`
+      });
+    }
     const entry=CAT.find(row=>row.subtype===layer.subtype);
     if(!entry) return;
     const level=compatLevel(layer.type, entry.grp);
@@ -18589,7 +18134,11 @@ function buildStage7Payload(){
     metadata:safeClone({
       ...S.meta,
       sourceFile:S.meta?.fname || null,
-      nRows:S.meta?.nRows || S.data.length
+      nRows:S.meta?.nRows || S.data.length,
+      hasFs:cptHasFs(),
+      hasRf:cptHasRf(),
+      assumedRf:assumedRfValue(),
+      rfAssumedCount:S.data.filter(r=>r.rf==null).length
     }),
     replication:{
       method:S.method,
@@ -18640,7 +18189,9 @@ function buildStage7Payload(){
           width:210,
           height:520,
           showRf:false,
-          showFs:true
+          // No fs in the source → no fs track: a permanently-empty column
+          // with a fabricated axis would misread as a measured zero profile.
+          showFs:cptHasFs()
         })
       }
     },
@@ -18711,12 +18262,7 @@ const legacyApi={
   setPhase,
   loadGEF,
   setCptCoord,
-  layerTAW,
-  cptDist,
   layerTypeCompatScore,
-  matchScore,
-  runCorrelation,
-  renderCorrTable,
   sectionProjection,
   renderSection,
   bindSectionTooltip,
@@ -18736,6 +18282,7 @@ const legacyApi={
   setMinThk,
   setSmartMerge,
   setSmartMergeSensitivity,
+  setAssumedRf,
   arrMax,
   arrSafe,
   initCharts,
