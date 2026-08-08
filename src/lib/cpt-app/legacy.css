@@ -386,6 +386,8 @@ button{border:0;background:none;cursor:pointer}
 .btn.pri{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-bg)}
 .btn.pri:hover{background:var(--btn-pri-hover);border-color:var(--btn-pri-hover);box-shadow:var(--shadow-sm)}
 .btn.sm,.btn--compact{min-height:2.1rem;padding:0.5rem 0.65rem;font-size:0.68rem}
+.btn--icon{padding:0.5rem;display:inline-flex;align-items:center;justify-content:center}
+.btn--icon svg{display:block}
 .app-header .btn{border-color:rgba(237,233,225,0.20);color:var(--color-text-on-dark)}
 .app-header .btn:hover{border-color:rgba(237,233,225,0.45);background:rgba(255,255,255,0.04);color:var(--color-text-on-dark)}
 .togbtn{

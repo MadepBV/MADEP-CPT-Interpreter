@@ -102,6 +102,7 @@ import {
   parseCptNumber,
   presentImportReview
 } from './import-review/index.js';
+import { installProjectIO } from './project-io/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -156,6 +157,38 @@ const stratigraphyApp = installStratigraphyApp({
     }
   },
   requestSectionRender: () => { if(PROJECT.phase==='section') renderSection(); }
+});
+
+// Project save/load — full-project snapshot to/from a .madep.json file so an
+// engineer resumes exactly where they left off (CPTs, layer models with
+// manual overrides, settings, Stage 6 state, stratigraphy, phase + stage).
+const projectIO = installProjectIO({
+  getProject: () => PROJECT,
+  newCptState,
+  getActiveStage: () => {
+    const panels=[...document.querySelectorAll('.panel')];
+    const idx=panels.findIndex(p=>p.classList.contains('active'));
+    return idx<0?0:idx;
+  },
+  afterLoad: ({activeCptIdx, activeStage, phase}) => {
+    renderBanner();
+    selectCpt(activeCptIdx);
+    // Rebuild the classification-stage DOM through the same path the user
+    // took, then restore the saved layer model over the auto-detected one —
+    // detectLayers() would otherwise discard manual subtype/parameter edits.
+    const savedLayers=S.layers;
+    if(S.data.length && (activeStage>=1 || savedLayers.length)){
+      runClass();
+      if(savedLayers.length){
+        S.layers=savedLayers;
+        drawLayerColumnSvg('layerColSvg', S.layers, S.data[S.data.length-1].z+0.5);
+        const thkInfo=document.getElementById('minThkInfo');
+        if(thkInfo) thkInfo.textContent='-> '+S.layers.length+' layers';
+      }
+    }
+    goS(activeStage);
+    setPhase(phase);
+  }
 });
 
 /* ════════════════════════════════
@@ -516,7 +549,9 @@ function renderSection(){
   }
 
   // ── Canvas geometry ──
-  const ML=65,MR=30,MT=40,MB=50;
+  // Top margin hosts the legend row + CPT headers; right margin hosts the
+  // rightmost column's depth labels.
+  const ML=65,MR=48,MT=64,MB=50;
   const W=Math.max(700, projCpts.length*260);
 
   // Collect all elevations across all CPTs
@@ -572,7 +607,10 @@ function renderSection(){
       const pts=poly.points.map(p=>`${px(p.dist).toFixed(1)},${py(p.taw).toFixed(1)}`).join(' ');
       s+=`<polygon points="${pts}" fill="${poly.color}" fill-opacity="0.80" stroke="${svgMuted}" stroke-width="0.6"/>`;
     });
-    // One label per unit, on its widest lobe.
+    // One label per unit, on its widest lobe — anchored at the midpoint of
+    // the lobe's widest span BETWEEN anchor points, so labels sit clear of
+    // the CPT columns and their depth annotations. A paint-order halo keeps
+    // them readable on any unit fill.
     stratGeom.units.forEach(unit=>{
       const lobes=stratGeom.polygons.filter(p=>p.unitId===unit.id);
       if(!lobes.length) return;
@@ -581,13 +619,31 @@ function renderSection(){
         const wB=Math.max(...b.points.map(p=>p.dist))-Math.min(...b.points.map(p=>p.dist));
         return wB>wA?b:a;
       });
-      const dists=widest.points.map(p=>p.dist);
-      const taws=widest.points.map(p=>p.taw);
-      const midDist=(Math.min(...dists)+Math.max(...dists))/2;
-      const midTaw=(Math.min(...taws)+Math.max(...taws))/2;
-      const hPx=Math.abs(py(Math.min(...taws))-py(Math.max(...taws)));
+      // Vertical extent of the lobe at each anchor distance.
+      const spanAt=new Map();
+      widest.points.forEach(p=>{
+        const cur=spanAt.get(p.dist)||{top:-Infinity,bot:Infinity};
+        cur.top=Math.max(cur.top,p.taw);
+        cur.bot=Math.min(cur.bot,p.taw);
+        spanAt.set(p.dist,cur);
+      });
+      const anchors=[...spanAt.entries()].map(([dist,v])=>({dist,...v})).sort((a,b)=>a.dist-b.dist);
+      if(anchors.length<2) return;
+      // Widest gap between consecutive anchors — its midpoint is column-free.
+      let seg=0, segW=-1;
+      for(let i=1;i<anchors.length;i++){
+        const w=anchors[i].dist-anchors[i-1].dist;
+        if(w>segW){segW=w;seg=i-1;}
+      }
+      const a1=anchors[seg], a2=anchors[seg+1];
+      const labelDist=(a1.dist+a2.dist)/2;
+      const topMid=(a1.top+a2.top)/2, botMid=(a1.bot+a2.bot)/2;
+      const hPx=Math.abs(py(botMid)-py(topMid));
       if(hPx>13){
-        s+=`<text x="${px(midDist).toFixed(1)}" y="${(py(midTaw)+4).toFixed(1)}" font-size="9" font-weight="600" text-anchor="middle" fill="rgba(0,0,0,0.55)" font-family="sans-serif">${esc(unit.letter)} — ${esc((unit.subtype||unit.type).split('/')[0].trim())}</text>`;
+        const label=`${unit.letter} — ${(unit.subtype||unit.type).split('/')[0].trim()}`;
+        s+=`<text x="${px(labelDist).toFixed(1)}" y="${((py(topMid)+py(botMid))/2+3.5).toFixed(1)}" font-size="9" font-weight="600" text-anchor="middle"
+          fill="rgba(24,24,26,0.72)" stroke="var(--bg)" stroke-width="3" paint-order="stroke" stroke-linejoin="round"
+          font-family="sans-serif">${esc(label)}</text>`;
       }
     });
   }
@@ -637,12 +693,13 @@ function renderSection(){
         data-cu="${l.cu}"
         x="${(xc-colW/2).toFixed(1)}" y="${y1.toFixed(1)}" width="${colW}" height="${h.toFixed(1)}"
         fill="${fill}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`;
-      // Layer boundary tick (left of column)
-      s+=`<line x1="${(xc-colW/2-5).toFixed(1)}" x2="${(xc-colW/2).toFixed(1)}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${svgMuted}" stroke-width="0.6"/>`;
-      // Depth label left
+      // Layer boundary tick (right of column)
+      s+=`<line x1="${(xc+colW/2).toFixed(1)}" x2="${(xc+colW/2+5).toFixed(1)}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${svgMuted}" stroke-width="0.6"/>`;
+      // Depth label right of the column: keeps the leftmost column's labels
+      // off the elevation axis and all labels off the unit-name anchors.
       if(h>12){
         const elmid=(y1+y2)/2;
-        s+=`<text x="${(xc-colW/2-7).toFixed(1)}" y="${(elmid+3).toFixed(1)}" font-size="7.5" text-anchor="end" fill="${svgMuted}" font-family="sans-serif">${(c.elev-l.bot).toFixed(1)}</text>`;
+        s+=`<text x="${(xc+colW/2+7).toFixed(1)}" y="${(elmid+3).toFixed(1)}" font-size="7.5" text-anchor="start" fill="${svgMuted}" paint-order="stroke" stroke="var(--bg)" stroke-width="2.5" stroke-linejoin="round" font-family="sans-serif">${(c.elev-l.bot).toFixed(1)}</text>`;
       }
     });
 
@@ -670,13 +727,14 @@ function renderSection(){
   s+=`<text x="${(ML+W/2).toFixed(1)}" y="${(totalH-6).toFixed(1)}" font-size="10" text-anchor="middle" fill="${svgMuted}" font-family="sans-serif">Afstand langs doorsnede (m) — vex ×${vex}</text>`;
   s+=`<text x="12" y="${(MT+H/2).toFixed(1)}" font-size="10" text-anchor="middle" fill="${svgMuted}" font-family="sans-serif" transform="rotate(-90,12,${(MT+H/2).toFixed(1)})">Hoogte (m TAW)</text>`;
 
-  // ── Legend ──
+  // ── Legend — one horizontal chip row in the top band, clear of the plot ──
   const legendTypes=[...new Set(PROJECT.cpts.flatMap(c=>c.layers.map(l=>l.type)))].slice(0,8);
-  const lx=ML+W-140, ly=MT+10;
-  s+=`<rect x="${lx-4}" y="${ly-4}" width="144" height="${legendTypes.length*17+8}" rx="4" fill="var(--bg)" fill-opacity="0.85" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>`;
-  legendTypes.forEach((t,i)=>{
-    s+=`<rect x="${lx}" y="${ly+i*17}" width="10" height="10" fill="${SCFILL[t]||'#D3D1C7'}" stroke="rgba(0,0,0,0.2)" stroke-width="0.3"/>`;
-    s+=`<text x="${lx+14}" y="${ly+i*17+9}" font-size="8.5" fill="${svgText}" font-family="sans-serif">${t}</text>`;
+  let lx=ML;
+  const ly=14;
+  legendTypes.forEach(t=>{
+    s+=`<rect x="${lx}" y="${ly}" width="10" height="10" rx="2" fill="${SCFILL[t]||'#D3D1C7'}" stroke="rgba(0,0,0,0.2)" stroke-width="0.3"/>`;
+    s+=`<text x="${lx+14}" y="${ly+8.5}" font-size="8.5" fill="${svgMuted}" font-family="sans-serif">${t}</text>`;
+    lx+=14+t.length*4.6+16;
   });
 
   svg.innerHTML=s;
@@ -18262,6 +18320,8 @@ const legacyApi={
   setPhase,
   loadGEF,
   setCptCoord,
+  saveProject: projectIO.saveProject,
+  loadProjectFromFile: projectIO.loadProjectFromFile,
   layerTypeCompatScore,
   sectionProjection,
   renderSection,

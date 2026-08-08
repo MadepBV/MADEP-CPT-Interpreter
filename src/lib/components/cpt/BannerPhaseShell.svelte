@@ -26,6 +26,40 @@
 	<div class="cpt-tabs-wrap">
 		<div id="cptTabs" class="cpt-tabs" aria-label="Imported CPT profiles"></div>
 		<button class="btn btn--compact" onclick={() => call('addCpt')}>Import CPT(s)</button>
+		<button
+			class="btn btn--compact btn--icon"
+			title="Project opslaan (.madep.json)"
+			aria-label="Project opslaan"
+			onclick={() => call('saveProject')}
+		>
+			<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<path d="M8 2v8m0 0l-3-3m3 3l3-3" />
+				<path d="M2.5 11.5v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.5" />
+			</svg>
+		</button>
+		<button
+			class="btn btn--compact btn--icon"
+			title="Project laden — ga verder waar je gebleven was"
+			aria-label="Project laden"
+			onclick={() => document.getElementById('projFileInput')?.click()}
+		>
+			<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<path d="M8 10V2m0 0L5 5m3-3l3 3" />
+				<path d="M2.5 11.5v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.5" />
+			</svg>
+		</button>
+		<input
+			id="projFileInput"
+			type="file"
+			accept=".json,application/json"
+			style="display:none"
+			onchange={(event) => {
+				const target = event.currentTarget as HTMLInputElement;
+				const file = target.files?.[0];
+				target.value = '';
+				if (file) call('loadProjectFromFile', file);
+			}}
+		/>
 	</div>
 
 	<div class="app-divider" aria-hidden="true"></div>
