@@ -193,7 +193,38 @@
 		/>
 		<span style="font-size:12px;color:var(--tx2)">m</span>
 		<span id="minThkInfo" style="font-size:11px;color:var(--tx3)"></span>
+		<div
+			id="assumedRfCtrl"
+			style="display:none;align-items:center;gap:8px;flex-wrap:wrap"
+		>
+			<div class="ctrl-sep"></div>
+			<span class="ctrl-lbl" style="display:inline-flex;align-items:center;gap:4px">
+				Assumed R<sub>f</sub> (%):
+				<button
+					type="button"
+					class="st6-tip"
+					data-tip="This CPT contains readings without measured sleeve friction (fs). All classification methods use this assumed friction ratio for those readings. 3% is a neutral mid-range default — lower it toward 1% for known sandy profiles, raise it toward 4–6% for known clayey profiles."
+					aria-label="This CPT contains readings without measured sleeve friction (fs). All classification methods use this assumed friction ratio for those readings. 3% is a neutral mid-range default — lower it toward 1% for known sandy profiles, raise it toward 4–6% for known clayey profiles."
+				>
+					ⓘ
+				</button>
+			</span>
+			<input
+				class="ctrl-num"
+				type="number"
+				id="assumedRfN"
+				min="0.1"
+				max="10"
+				step="0.1"
+				value="3.0"
+				style="width:70px"
+				onchange={(event) =>
+					call('setAssumedRf', +(event.currentTarget as HTMLInputElement).value)}
+			/>
+		</div>
 	</div>
+
+	<div id="classAssumedRfNote"></div>
 
 	<div class="class-layout" id="classLayout" style="display:none">
 		<div>

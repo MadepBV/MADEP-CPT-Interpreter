@@ -743,7 +743,16 @@
       <section class="report-section report-section--cpt-profile">
         <div class="report-section__head">
           <h2>CPT Profile And Layering</h2>
-          <p>Profile rendered from the original CPT data with qc, fs, the water table, and the frozen final layering.</p>
+          {#if payload.metadata?.hasFs === false}
+            <p>
+              Profile rendered from the original CPT data with qc, the water table, and the frozen
+              final layering. Sleeve friction (fs) was not recorded in the source file; readings
+              without measured R<sub>f</sub> were classified with an assumed
+              R<sub>f</sub> = {(payload.metadata?.assumedRf ?? 3).toFixed(1)} %.
+            </p>
+          {:else}
+            <p>Profile rendered from the original CPT data with qc, fs, the water table, and the frozen final layering.</p>
+          {/if}
         </div>
         <div class="report-card report-profile">
           <div class="report-profile__visual">

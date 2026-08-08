@@ -186,7 +186,7 @@
 		{ field: 'X[m], Y[m], Z[m]', meaning: 'Reference coordinates of the CPT location used in the simulated export.', unit: 'm', note: 'Written as header lines in the text export.' },
 		{ field: 'D[m]', meaning: 'Depth below ground level.', unit: 'm', note: 'One row per original CPT sample depth.' },
 		{ field: 'Q[MPa]', meaning: 'Simulated cone resistance.', unit: 'MPa', note: 'Layer-average qc is written back to each row within the layer.' },
-		{ field: 'F[MPa]', meaning: 'Simulated sleeve friction.', unit: 'MPa', note: 'Uses avgFs if available, otherwise qc x Rf / 100.' },
+		{ field: 'F[MPa]', meaning: 'Simulated sleeve friction.', unit: 'MPa', note: 'Uses avgFs if available, otherwise qc x Rf / 100. When the source CPT has neither fs nor Rf, a representative Rf per soil type is used so the layer sequence survives the PLAXIS CPT interpretation; the header line of the export marks how many layers were simulated this way.' },
 		{ field: 'x', meaning: 'Placeholder final column in the exported text format.', unit: '[-]', note: 'Currently written as 0; the app does not export Rf into this PLAXIS-style CPT text file.' }
 	];
 
