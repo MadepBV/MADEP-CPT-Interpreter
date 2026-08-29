@@ -88,7 +88,9 @@
 		"verify:model-params": "node scripts/verify_model_params.mjs",
 		"verify:classification-layers": "node scripts/verify_classification_layers.mjs",
 		"verify:load": "node scripts/verify_load.mjs",
-		"verify:core": "npm run verify:handlers && npm run verify:core-helpers && npm run verify:model-params && npm run verify:classification-layers && npm run verify:load && npm run verify:nen6740 && npm run verify:stratigraphy && npm run verify:import-review && npm run verify:project-io && npm run verify:scia-db4 && npm run verify:qc-only && npm run verify:retaining && npm run verify:wasm && npm run verify:bishop-phase-a",
+		"verify:export-report": "node scripts/verify_export_report.mjs",
+		"verify:bearing": "node scripts/verify_bearing.mjs",
+		"verify:core": "npm run verify:handlers && npm run verify:core-helpers && npm run verify:model-params && npm run verify:classification-layers && npm run verify:load && npm run verify:export-report && npm run verify:bearing && npm run verify:nen6740 && npm run verify:stratigraphy && npm run verify:import-review && npm run verify:project-io && npm run verify:scia-db4 && npm run verify:qc-only && npm run verify:retaining && npm run verify:wasm && npm run verify:bishop-phase-a",
 		"test:all": "npm run check && npm run verify:core && npm run golden:wasm-check && npm run golden:check && npm run golden:browser && npm run test:e2e"
 	},
 	"devDependencies": {
