@@ -3,11 +3,12 @@
 //   e2e    — behaviour tests, tests/e2e            (npx playwright test --project=e2e)
 //   visual — screenshot baselines, tests/visual    (npx playwright test --project=visual [--update-snapshots])
 import { defineConfig } from '@playwright/test';
+const PORT = process.env.PW_PORT || '5199';   // PW_PORT=5499 npx playwright test … — run next to another dev server
 export default defineConfig({
   timeout: 90_000,
   retries: 0,
-  use: { baseURL: 'http://localhost:5199', viewport: { width: 1500, height: 950 }, screenshot: 'only-on-failure' },
-  webServer: { command: 'npx vite dev --port 5199 --strictPort', url: 'http://localhost:5199/', reuseExistingServer: true, timeout: 60_000 },
+  use: { baseURL: `http://localhost:${PORT}`, viewport: { width: 1500, height: 950 }, screenshot: 'only-on-failure' },
+  webServer: { command: `npx vite dev --port ${PORT} --strictPort`, url: `http://localhost:${PORT}/`, reuseExistingServer: true, timeout: 60_000 },
   reporter: [['list']],
   projects: [
     { name: 'e2e', testDir: 'tests/e2e' },

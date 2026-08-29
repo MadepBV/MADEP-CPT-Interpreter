@@ -36,7 +36,7 @@ for (const v of VARIANTS) {
 
     // ── Stage 4 model cards ─────────────────────────────────────────────────
     await goStage(page, 3);
-    await page.locator('#ma .mc2').first().waitFor();
+    await page.locator('#ma .card').first().waitFor();
     await settle(page, 500);
     await shotPage(page, 'stage4-model', v);
 

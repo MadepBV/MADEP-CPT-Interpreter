@@ -73,7 +73,7 @@ export function renderMetaCard(document, cpt){
     {l:'max qc (MPa)',v:maxQc},
   ];
   document.getElementById('mgrid').innerHTML=items.map(i=>
-    `<div class="mi"><div class="mi-l">${i.l}</div><div class="mi-v">${i.v}</div></div>`).join('');
+    `<div class="stat"><div class="stat__label">${i.l}</div><div class="stat__value">${i.v}</div></div>`).join('');
   document.getElementById('finfo').textContent=`${m.fname||''} — ${m.nRows} readings`;
 }
 

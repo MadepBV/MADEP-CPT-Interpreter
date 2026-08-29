@@ -8,7 +8,9 @@
 // The markup is verbatim; `S.tuning` / `S.layers` / `S.alphaMethod` / `S.wt` → the `cpt`
 // parameter, `SC` → soil-styles.js SOIL_CLASS_NAMES. The DOM write + the deferred
 // `buildTuningCharts` stay in the controller's renderTuning wrapper. Each card carries its
-// chart data as JSON in `data-*` attributes of a `[data-chart-pending]` element for charts.js.
+// chart data as JSON in `data-*` attributes of a hidden `[data-chart-pending]` element (its
+// last child; charts.js finds it by querySelectorAll) for charts.js. Markup uses the component
+// classes of src/lib/styles/components.css (PR 10): .card / .card__head / .tbl--kv / .pill.
 
 import { SOIL_CLASS_NAMES } from '../soil-styles.js';
 import { getTuningPreviewM, tuningSliderBounds, tuningPreviewLineData } from './fit.js';
@@ -23,9 +25,9 @@ export function tuningLayerCardHtml(cpt, t){
   const badge = SOIL_CLASS_NAMES[l.type]||'s-sand';
 
   if(!fit){
-    return`<div class="mc2" style="margin-bottom:10px">
-        <div class="mc2-head">
-          <span class="sb ${badge}">${l.type}</span>
+    return`<div class="card">
+        <div class="card__head" style="margin-bottom:0">
+          <span class="pill ${badge}">${l.type}</span>
           <span style="font-size:13px;font-weight:600">Laag ${t.i+1} — ${l.top.toFixed(2)}–${l.bot.toFixed(2)} m</span>
           <span style="font-size:11px;color:var(--wn);margin-left:auto">Onvoldoende data voor regressie (n &lt; 5 of geen variatie)</span>
         </div>
@@ -56,9 +58,9 @@ export function tuningLayerCardHtml(cpt, t){
   });
   const scatterData = fit.Xs.map((x,k)=>({x,y:fit.Ys[k]}));
 
-  return`<div class="mc2" style="margin-bottom:12px">
-      <div class="mc2-head" style="margin-bottom:12px">
-        <span class="sb ${badge}">${l.type}</span>
+  return`<div class="card">
+      <div class="card__head">
+        <span class="pill ${badge}">${l.type}</span>
         <span style="font-size:13px;font-weight:600">Laag ${t.i+1} — ${l.top.toFixed(2)}–${l.bot.toFixed(2)} m</span>
         <span style="font-size:11px;font-style:italic;color:var(--tx2)">${l.subtype||''}</span>
         <span style="font-size:11px;font-weight:600;color:${qColor};margin-left:auto">${fit.qMsg}</span>
@@ -93,7 +95,7 @@ export function tuningLayerCardHtml(cpt, t){
 
         <!-- RIGHT: numbers + accept/reject -->
         <div>
-          <table class="pt" style="margin-bottom:12px">
+          <table class="tbl tbl--kv" style="margin-bottom:12px">
             <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Type-default</td></tr>
             <tr><td>m</td><td>${m_def.toFixed(2)}</td></tr>
             <tr><td>E_oed,ref</td><td>${Eoed_ref_default.toLocaleString()} kPa</td></tr>
@@ -127,14 +129,13 @@ export function tuningLayerCardHtml(cpt, t){
             ?`<div style="font-size:11px;color:var(--ok-text);font-weight:600;margin-bottom:8px">✓ Huidige override m = ${l.m_ovr.toFixed(3)}</div>`
             :`<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Standaard m actief tot je expliciet accepteert</div>`
           }
-          <button id="fitAcceptBtn${t.i}" class="btn pri sm" onclick="acceptFit(${t.i})" ${fit.quality==='warn'||fit.quality==='invalid'?'style="background:var(--wn);border-color:var(--wn)"':''}>
+          <button id="fitAcceptBtn${t.i}" class="btn btn--primary btn--sm" onclick="acceptFit(${t.i})" ${fit.quality==='warn'||fit.quality==='invalid'?'style="background:var(--wn);border-color:var(--wn)"':''}>
             ${fit.quality==='warn'?'⚠ ':''}Accepteer fit
           </button>
-          ${hasAccepted?`<button class="btn sm" onclick="rejectFit(${t.i})" style="margin-left:6px">Herstel default m</button>`:''}
+          ${hasAccepted?`<button class="btn btn--sm" onclick="rejectFit(${t.i})" style="margin-left:6px">Herstel default m</button>`:''}
         </div>
       </div>
-    </div>
-    <div data-chart-pending="${chartId}"
+      <div hidden data-chart-pending="${chartId}"
          data-chart-depth="${chartId+'d'}"
          data-scatter='${JSON.stringify(scatterData).replace(/'/g,"&#39;")}'
          data-default-line='${JSON.stringify(defaultLineY).replace(/'/g,"&#39;")}'
@@ -149,7 +150,7 @@ export function tuningLayerCardHtml(cpt, t){
          data-m-def="${m_def.toFixed(2)}"
          data-m-fit="${previewM.toFixed(2)}"
          data-invalid-slope="0"
-         data-quality="${fit.quality}">
+         data-quality="${fit.quality}"></div>
     </div>`;
 }
 

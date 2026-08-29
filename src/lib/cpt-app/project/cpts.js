@@ -38,10 +38,10 @@ import { resetStageNav } from './nav.js';
 
 /** The fresh `#chartArea` markup selectCpt writes so the Stage 1 canvases are new elements. */
 export const CHART_AREA_HTML=`
-      <div class="col-card"><div class="ct">layers</div><svg id="layerColSvg" viewBox="0 0 60 400"></svg></div>
-      <div class="cc"><div class="ct">qc (MPa)</div><div style="position:relative;height:380px"><canvas id="cQc" role="img" aria-label="qc vs depth">qc profile</canvas></div></div>
-      <div class="cc"><div class="ct">fs (kPa)</div><div style="position:relative;height:380px"><canvas id="cFs" role="img" aria-label="fs vs depth">fs profile</canvas></div></div>
-      <div class="cc"><div class="ct">Rf (%)</div><div style="position:relative;height:380px"><canvas id="cRf" role="img" aria-label="Rf vs depth">Rf profile</canvas></div></div>`;
+      <div class="viz"><div class="viz__title">layers</div><svg id="layerColSvg" viewBox="0 0 60 400"></svg></div>
+      <div class="viz"><div class="viz__title">qc (MPa)</div><div style="position:relative;height:380px"><canvas id="cQc" role="img" aria-label="qc vs depth">qc profile</canvas></div></div>
+      <div class="viz"><div class="viz__title">fs (kPa)</div><div style="position:relative;height:380px"><canvas id="cFs" role="img" aria-label="fs vs depth">fs profile</canvas></div></div>
+      <div class="viz"><div class="viz__title">Rf (%)</div><div style="position:relative;height:380px"><canvas id="cRf" role="img" aria-label="Rf vs depth">Rf profile</canvas></div></div>`;
 
 /** Sync the Stage 1 / 2 / 4 controls to a CPT's values (selectCpt old 421-449, same order). */
 export function syncCptControls(document, cpt, {syncClassificationMethodCards}){

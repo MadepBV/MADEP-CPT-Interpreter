@@ -1244,25 +1244,25 @@ function renderLayers(){
   const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
   document.getElementById('lb').innerHTML=S.layers.map((l,i)=>{
     const ed=(f,step=0.5)=>
-      `<input class="ed${l.ovr[f]?' ovr':''}" data-i="${i}" data-f="${f}" value="${l[f]}" type="number" step="${step}" onchange="editL(this)">`;
+      `<input class="input input--sm${l.ovr[f]?' ovr':''}" data-i="${i}" data-f="${f}" value="${l[f]}" type="number" step="${step}" onchange="editL(this)">`;
     const thick=(l.bot-l.top).toFixed(2);
     const dropdown=buildSubtypeDropdown(l,i);
     return`<tr>
-      <td style="font-weight:600">${i+1}</td>
-      <td>${l.top.toFixed(2)}</td><td>${l.bot.toFixed(2)}</td>
-      <td style="color:var(--tx2)">${taw(l.top)}</td>
-      <td style="color:var(--tx2)">${taw(l.bot)}</td>
-      <td>${thick} m</td>
+      <td class="key" style="font-weight:600">${i+1}</td>
+      <td class="num">${l.top.toFixed(2)}</td><td class="num">${l.bot.toFixed(2)}</td>
+      <td class="num" style="color:var(--tx2)">${taw(l.top)}</td>
+      <td class="num" style="color:var(--tx2)">${taw(l.bot)}</td>
+      <td class="num">${thick} m</td>
       <td style="min-width:180px">
-        <span class="sb ${SC[l.type]||'s-sand'}" style="font-size:10px">${l.type}</span>
+        <span class="pill ${SC[l.type]||'s-sand'}" style="font-size:10px">${l.type}</span>
         ${l.rfIndeterminate&&!l.ovr.subtype?'<span style="font-size:9px;color:var(--wn);border:1px solid var(--wn);border-radius:3px;padding:0 3px;margin-left:4px;vertical-align:middle" title="Geen gemeten Rf — meerdere Tabel 3 rijen passen bij deze qc. Grondsoort volgt de catalogusvolgorde; controleer de keuze.">qc-only</span>':''}
         ${dropdown}
       </td>
-      <td>${l.avgQc.toFixed(3)}</td>
-      <td>${l.avgFs!=null?(l.avgFs*1000).toFixed(1):'—'}</td>
-      <td>${l.avgRf!=null?l.avgRf.toFixed(2):'—'}</td>
-      <td>${ed('g')}</td><td>${ed('gs')}</td>
-      <td>${ed('phi')}</td><td>${ed('c')}</td><td>${ed('cu',1)}</td>
+      <td class="num">${l.avgQc.toFixed(3)}</td>
+      <td class="num">${l.avgFs!=null?(l.avgFs*1000).toFixed(1):'—'}</td>
+      <td class="num">${l.avgRf!=null?l.avgRf.toFixed(2):'—'}</td>
+      <td class="num">${ed('g')}</td><td class="num">${ed('gs')}</td>
+      <td class="num">${ed('phi')}</td><td class="num">${ed('c')}</td><td class="num">${ed('cu',1)}</td>
     </tr>`;
   }).join('');
 
@@ -1464,26 +1464,26 @@ function renderModel(){
       'Buffer (infiltratie marginaal)': 'var(--chart-orange)'
     }[k.infClass]||'var(--tx2)';
 
-    return`<div class="mc2">
-      <div class="mc2-head">
-        <span class="sb ${SC[l.type]||'s-sand'}">${l.type}</span>
+    return`<div class="card">
+      <div class="card__head">
+        <span class="pill ${SC[l.type]||'s-sand'}">${l.type}</span>
         <span style="font-size:13px;font-weight:600">Layer ${i+1} &mdash; ${l.top.toFixed(2)}&ndash;${l.bot.toFixed(2)} m${tawStr} &nbsp;(${thick} m)</span>
         ${l.subtype?`<span style="font-size:11px;color:var(--tx2);font-style:italic">${l.subtype}</span>`:''}
         <span style="font-size:11px;color:var(--tx2);margin-left:auto" title="z_mid=${midZ.toFixed(2)}m | &sigma;v0=${h.sigV} kPa | u=${h.u} kPa | &sigma;'v0=${h.sigVeff} kPa">&sigma;v0 ${h.sigV} &minus; u ${h.u} = &sigma;'v0 <strong>${h.sigVeff} kPa</strong> &middot; &alpha;E ${h.aE}</span>
       </div>
       <div style="display:grid;grid-template-columns:${STAGE4_ENABLE_HARDENING_SOIL_PARAMS?'1fr 1fr 1fr 1fr':'1fr 1fr 1fr'};gap:14px">
         <div>
-          <div class="mc2-sec">Mohr-Coulomb</div>
-          <table class="pt">
+          <div class="card__eyebrow">Mohr-Coulomb</div>
+          <table class="tbl tbl--kv">
             <tr><td>E_ref (kPa)</td><td>${h.Emc.toLocaleString()}</td></tr>
             <tr class="key">
-              <td>&nu; <input class="ed${l.ovr.nu?' ovr':''}" type="number" step="0.01" min="0.05" max="0.49"
+              <td>&nu; <input class="input input--sm${l.ovr.nu?' ovr':''}" type="number" step="0.01" min="0.05" max="0.49"
                 value="${h.nu.toFixed(2)}" style="width:52px;margin-left:4px"
                 data-i="${i}" onchange="editNu(this)"></td>
               <td>${h.nu.toFixed(2)}</td>
             </tr>
             <tr class="key">
-              <td>r_shear <input class="ed${l.ovr.rShear?' ovr':''}" type="number" step="0.01" min="0.01" max="1.00"
+              <td>r_shear <input class="input input--sm${l.ovr.rShear?' ovr':''}" type="number" step="0.01" min="0.01" max="1.00"
                 value="${h.rShear.toFixed(2)}" style="width:52px;margin-left:4px"
                 data-i="${i}" onchange="editRShear(this)"></td>
               <td>${h.rShear.toFixed(2)}</td>
@@ -1496,8 +1496,8 @@ function renderModel(){
           </table>
         </div>
         <div>
-          <div class="mc2-sec">Soilin &mdash; deformation modulus</div>
-          <table class="pt">
+          <div class="card__eyebrow">Soilin &mdash; deformation modulus</div>
+          <table class="tbl tbl--kv">
             <tr><td>&beta; (-)</td><td>${h.beta.toFixed(3)}</td></tr>
             <tr class="key"><td>E_def (kPa)</td><td>${h.Edef.toLocaleString()}</td></tr>
           </table>
@@ -1508,12 +1508,12 @@ function renderModel(){
         </div>
         ${STAGE4_ENABLE_HARDENING_SOIL_PARAMS ? `
           <div>
-            <div class="mc2-sec">Hardening Soil &mdash; p_ref = 100 kPa</div>
-            <table class="pt">
+            <div class="card__eyebrow">Hardening Soil &mdash; p_ref = 100 kPa</div>
+            <table class="tbl tbl--kv">
               <tr>
                 <td style="color:var(--tx3);font-size:10px">&alpha;E (${S.alphaMethod==='B'?'SB260':'Sanglerat'})</td>
                 <td style="text-align:right">
-                  <input class="ed${l.ovr.aE?' ovr':''}" type="number" step="0.5" min="0.5" max="30"
+                  <input class="input input--sm${l.ovr.aE?' ovr':''}" type="number" step="0.5" min="0.5" max="30"
                     value="${h.aE}" style="width:54px"
                     data-i="${i}" onchange="editAlpha(this)">
                 </td>
@@ -1523,7 +1523,7 @@ function renderModel(){
               <tr class="key"><td>E_50,ref (kPa) <span style="font-size:9px;color:var(--tx3)">${S.stiffMethod==='B'?'=E_oed':'CUR 2003-7'}</span></td><td>${h.E50_ref.toLocaleString()}</td></tr>
               <tr class="key"><td>E_ur,ref (kPa)</td><td>${h.Eur_ref.toLocaleString()}</td></tr>
               <tr class="key">
-                <td>m <input class="ed${l.ovr.m?' ovr':''}" type="number" step="0.05" min="0.3" max="1.2"
+                <td>m <input class="input input--sm${l.ovr.m?' ovr':''}" type="number" step="0.05" min="0.3" max="1.2"
                   value="${h.m.toFixed(2)}" style="width:48px;margin-left:4px"
                   data-i="${i}" onchange="editM(this)"></td>
                 <td>${h.m.toFixed(2)}</td>
@@ -1535,8 +1535,8 @@ function renderModel(){
           </div>
         ` : ''}
         <div>
-          <div class="mc2-sec">Hydraulic conductivity</div>
-          <table class="pt">
+          <div class="card__eyebrow">Hydraulic conductivity</div>
+          <table class="tbl tbl--kv">
             <tr><td>k_h (m/s)</td><td style="font-family:monospace;font-size:11px">${k.kh_rep_fmt}</td></tr>
             <tr><td style="color:var(--tx3);font-size:10px">range</td><td style="font-family:monospace;font-size:10px;color:var(--tx3)">${k.kh_min_fmt} \u2013 ${k.kh_max_fmt}</td></tr>
             <tr><td>k_h/k_v</td><td>${k.khkv}</td></tr>

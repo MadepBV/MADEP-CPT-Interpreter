@@ -2,11 +2,15 @@
    Layer `components` (declared in src/app.css); consumes tokens only.
 
    Phase 2a (PR 7) ships the shell: the dark chrome (§3.3), the stage rail (§3.4), the button family (§3.8)
-   and the segmented control (§3.7/§3.12). Later PRs add panels, fields, tables, pills, verdicts, tabs.
+   and the segmented control (§3.7/§3.12). Phase 2b/2c (PR 10) adds the Stage 1–5 vocabulary: panel anatomy
+   (§3.5), cards + stats, form fields + inputs (§3.7), the empty state / dropzone (§3.15), pills (§3.9),
+   tables (§3.10), verdict banners (§3.11) and chart containers (§3.13). Stage 6 (2d–2f), dialogs (2g) and
+   docs/reports (2h) are still on legacy.css — see the transitional scopes noted at §7 and §11 below.
 
-   Legacy aliases — the string-rendered controller (src/lib/cpt-app/legacy-controller.js) and the stage
-   skeletons still emit `.btn.pri`, `.btn.sm`, `.btn--compact`, `.togbtn`; the selectors below carry the
-   old names next to the new ones so the HTML strings need no edit in this PR (the rename is PR 10/13).
+   Legacy aliases — the Stage 6 strings of the controller (src/lib/cpt-app/legacy-controller.js) still emit
+   `.btn.pri`, `.btn.sm`, `.btn--compact`, `.togbtn`; the selectors below carry the old names next to the
+   new ones so those HTML strings need no edit yet (Stage 1–5 were renamed in PR 10, Stage 6 is PR 13).
+   State classes the controller toggles (`.sel`, `.ovr`, `.active`, `.drag`) are aliased the same way.
    Because this layer sits above `legacy`, these rules win over legacy.css regardless of specificity.
 
    Scope: the button/segmented family is scoped to `:where(.cpt-app)` for now — the docs site
@@ -406,5 +410,370 @@
     .app-header, .stage-rail { background: Canvas; color: CanvasText; border-color: CanvasText; box-shadow: none; }
     .stage.active .stage__num, .stage[aria-current="step"] .stage__num { background: Highlight; color: HighlightText; border-color: Highlight; }
     .stage::after, .stage-rail__progress { background: Highlight; }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     7. Panel anatomy (§3.5) — Stage 1–5
+     The `.panel` frame itself (display:none / .active) is still the legacy rule: Stage 6 shares it and its
+     recipe already equals the spec through the token aliases. Head / body / foot are new classes, so the
+     `.panel > … { margin }` hack of legacy.css shrinks to its Stage 6 leftover.
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .panel__head {
+    display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap;
+    gap: var(--sp-3) var(--gap-loose);
+    min-width: 0; min-height: 3rem;
+    padding: var(--pad-panel);
+    border-bottom: var(--hairline);
+  }
+  :where(.cpt-app) .panel__head > * { min-width: 0; }
+  :where(.cpt-app) .panel__head > :first-child { flex: 1 1 18rem; }
+  :where(.cpt-app) .panel__title {
+    font: var(--fw-semibold) var(--fs-lg) / var(--lh-tight) var(--font-heading);
+    letter-spacing: var(--track-heading); color: var(--color-ink);
+    overflow-wrap: anywhere;
+  }
+  :where(.cpt-app) .panel__sub {
+    max-width: 68ch; margin-top: var(--sp-1);
+    font-size: var(--fs-md); line-height: var(--lh-body); color: var(--color-ink-2);
+    overflow-wrap: anywhere;
+  }
+  :where(.cpt-app) .panel__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+  :where(.cpt-app) .panel__body { min-width: 0; padding: var(--pad-panel); }
+  :where(.cpt-app) .panel__foot {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    gap: var(--sp-3);
+    padding-top: var(--sp-4); border-top: var(--hairline);
+  }
+  :where(.cpt-app) .panel__foot__note { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--color-ink-2); }
+
+  /* Vertical rhythm: one gap between the blocks of a panel body (or any `.stack`). Empty placeholders that the
+     controller fills later (#layerWarnings, #classAssumedRfNote, #ma …) take no room until they have content. */
+  :where(.cpt-app) :is(.panel__body, .stack) > * + * { margin-top: var(--sp-4); }
+  :where(.cpt-app) :is(.panel__body, .stack) > :empty { display: none; }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     8. Cards + stats (§3.5) — Stage 2 method cards, Stage 4/5 layer cards, Stage 1/2 metric tiles
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .card {
+    min-width: 0;
+    padding: var(--pad-card);
+    background: var(--surface-card);
+    border: var(--hairline); border-radius: var(--radius-md);
+    box-shadow: none;                              /* cards are containers, not buttons */
+  }
+  :where(.cpt-app) .card--quiet { background: var(--surface-quiet); }
+  :where(.cpt-app) .card--select {
+    cursor: pointer;
+    transition:
+      border-color var(--motion-base) var(--ease-luxury), background-color var(--motion-base) var(--ease-luxury),
+      box-shadow var(--motion-base) var(--ease-luxury), transform var(--motion-base) var(--ease-luxury);
+  }
+  :where(.cpt-app) .card--select:hover { border-color: var(--color-line-strong); box-shadow: var(--shadow-1); transform: var(--lift-2); }
+  /* the controller toggles `.sel` (syncClassificationMethodCards); `.is-selected` / aria-pressed are the spec names */
+  :where(.cpt-app) .card--select:is(.is-selected, .sel, [aria-pressed="true"]) {
+    background: var(--surface-active); border-color: var(--color-accent-border);
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+  :where(.cpt-app) .card--select:is(.is-selected, .sel, [aria-pressed="true"]):hover { box-shadow: inset 2px 0 0 var(--color-accent), var(--shadow-1); }
+  :where(.cpt-app) .card--select:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+  :where(.cpt-app) .card__head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); min-width: 0; margin-bottom: var(--sp-3); }
+  :where(.cpt-app) .card__title {
+    margin: 0 0 var(--sp-1);
+    font: var(--fw-semibold) var(--fs-md) / var(--lh-snug) var(--font-heading);
+    letter-spacing: var(--track-heading); color: var(--color-ink);
+    overflow-wrap: anywhere;
+  }
+  :where(.cpt-app) .card__text { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--color-ink-2); overflow-wrap: anywhere; }
+  :where(.cpt-app) .card__hint { color: var(--color-accent-text); font-weight: var(--fw-medium); }
+  :where(.cpt-app) .eyebrow,
+  :where(.cpt-app) .card__eyebrow,
+  :where(.cpt-app) .viz__title {
+    font: var(--fw-medium) var(--fs-xs) / 1.3 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-eyebrow);
+    color: var(--color-accent-text);
+  }
+  :where(.cpt-app) .card__eyebrow { margin-bottom: var(--sp-2); padding-bottom: var(--sp-1); border-bottom: var(--hairline); }
+  :where(.cpt-app) .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--sp-3); min-width: 0; }
+
+  :where(.cpt-app) .stats { --stat-min: 11rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--stat-min), 1fr)); gap: var(--sp-2); min-width: 0; }
+  :where(.cpt-app) .stats--dense { --stat-min: 8rem; }
+  :where(.cpt-app) .stat {
+    min-width: 0; padding: var(--sp-3);
+    background: var(--surface-quiet); border: var(--hairline); border-radius: var(--radius-sm);
+  }
+  :where(.cpt-app) .stat__label {
+    margin-bottom: var(--sp-1);
+    font: var(--fw-medium) var(--fs-2xs) / 1.3 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
+  }
+  :where(.cpt-app) .stat__value {
+    font: var(--fw-semibold) var(--fs-xl) / var(--lh-tight) var(--font-heading);
+    font-variant-numeric: tabular-nums; letter-spacing: var(--track-heading); color: var(--color-ink);
+    overflow-wrap: anywhere;
+  }
+  :where(.cpt-app) .stat__unit { margin-left: 0.3em; font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono); color: var(--color-ink-3); }
+  :where(.cpt-app) .stats--meta .stat__value { font-size: var(--fs-base); font-weight: var(--fw-medium); line-height: var(--lh-snug); }   /* file metadata is prose, not a metric */
+
+  /* ════════════════════════════════════════════════════════════════════════
+     9. Form fields + inputs (§3.7)
+     `.fields` is the quiet control bar of a stage (the old `.ctrl-row`): a wrapping row of `.field` groups,
+     each a mono eyebrow over a `.field__row` of controls. Hints and units sit in the row.
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .fields {
+    display: flex; flex-wrap: wrap; align-items: flex-end;
+    gap: var(--sp-3) var(--sp-6);
+    min-width: 0; padding: var(--sp-3) var(--sp-4);
+    background: var(--surface-quiet); border: var(--hairline); border-radius: var(--radius-md);
+  }
+  :where(.cpt-app) .field { display: grid; gap: var(--sp-1); min-width: 0; }
+  :where(.cpt-app) .field__label {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    font: var(--fw-medium) var(--fs-2xs) / 1.3 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
+  }
+  :where(.cpt-app) .field__row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); min-width: 0; }
+  :where(.cpt-app) .field__unit { font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono); color: var(--color-ink-3); }
+  :where(.cpt-app) .field__hint { font: var(--fw-regular) var(--fs-xs) / var(--lh-snug) var(--font-body); color: var(--color-ink-3); }
+  :where(.cpt-app) .field__hint:empty { display: none; }   /* source tags the controller fills (elev-src, wt-taw …) */
+
+  :where(.cpt-app) .input {
+    box-sizing: border-box;
+    height: var(--control-h); padding: var(--pad-control);
+    border: var(--hairline-strong); border-radius: var(--radius-sm);
+    background: var(--surface-raised); color: var(--color-ink);
+    font: var(--fw-regular) var(--fs-md) / 1 var(--font-body);
+    font-variant-numeric: tabular-nums;
+    outline: none; transform: none;                /* no -1px lift on focus: it jitters in 15-column tables */
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  :where(.cpt-app) .input:hover { border-color: var(--color-line-heavy); }
+  :where(.cpt-app) .input:focus,
+  :where(.cpt-app) .input:focus-visible { border-color: var(--color-accent); box-shadow: var(--shadow-focus); outline: none; transform: none; }
+  :where(.cpt-app) .input::placeholder { color: var(--color-ink-4); font-style: normal; }
+  :where(.cpt-app) .input--num { width: 5.5rem; text-align: right; font-family: var(--font-mono); font-size: var(--fs-sm); }
+  :where(.cpt-app) .input--sm { height: var(--control-h-sm); padding: 0 0.4rem; font-size: var(--fs-xs); }
+  /* no spin buttons: Chrome reserves ~15 px for them even when hidden, which clips a 52 px table input */
+  :where(.cpt-app) .input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+  :where(.cpt-app) .input::-webkit-inner-spin-button,
+  :where(.cpt-app) .input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  /* override state — the controller adds `.ovr` (editL / editNu …); `.is-override` is the spec name */
+  :where(.cpt-app) .input:is(.is-override, .ovr) { border-color: var(--color-warn); color: var(--color-warn); font-style: italic; }
+
+  :where(.cpt-app) .range { width: 8rem; margin: 0; accent-color: var(--color-accent); }
+  :where(.cpt-app) .check {
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    min-height: var(--control-h);
+    font-size: var(--fs-sm); color: var(--color-ink-2); cursor: pointer;
+  }
+  :where(.cpt-app) .check > input { flex: none; width: 0.95rem; height: 0.95rem; margin: 0; accent-color: var(--color-accent); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     10. Empty state + dropzone (§3.15)
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .empty {
+    display: grid; justify-items: center; gap: var(--sp-2);
+    padding: var(--sp-10) var(--sp-6);
+    text-align: center;
+  }
+  :where(.cpt-app) .empty__icon {
+    width: 2rem; height: 2rem; margin-bottom: var(--sp-2);
+    color: var(--color-ink-4); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+    transition: color var(--transition-fast);
+  }
+  :where(.cpt-app) .empty__title {
+    max-width: 46rem;
+    font: var(--fw-semibold) var(--fs-lg) / var(--lh-tight) var(--font-heading);
+    letter-spacing: var(--track-heading); color: var(--color-ink);
+    overflow-wrap: anywhere;
+  }
+  :where(.cpt-app) .empty__text { max-width: 56ch; font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--color-ink-2); overflow-wrap: anywhere; }
+  :where(.cpt-app) .empty.dz {
+    cursor: pointer;
+    border: 1px dashed var(--color-line-strong); border-radius: var(--radius-md);
+    background: var(--surface-card);
+    transform: none;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  }
+  :where(.cpt-app) .empty.dz:hover,
+  :where(.cpt-app) .empty.dz:focus-visible,
+  :where(.cpt-app) .empty.dz.drag { border-color: var(--color-accent-border); background: var(--surface-active); transform: none; }
+  :where(.cpt-app) .empty.dz.drag { border-style: solid; }
+  :where(.cpt-app) .empty.dz:hover .empty__icon,
+  :where(.cpt-app) .empty.dz.drag .empty__icon { color: var(--color-accent); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     11. Pills (§3.9) — tones + the soil badge
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .pill {
+    display: inline-flex; align-items: center; gap: 0.35em;
+    height: 1.25rem; padding: 0 0.45rem;
+    border: 1px solid var(--color-line-strong); border-radius: var(--radius-sm);
+    background: var(--surface-quiet); color: var(--color-ink-2);
+    font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono);
+    white-space: nowrap; vertical-align: middle;
+  }
+  :where(.cpt-app) .pill:is(.pill--good, .pill--warn, .pill--bad, .pill--info, .pill--neutral)::before {
+    content: ""; flex: none; width: 6px; height: 6px; border-radius: var(--radius-round); background: currentColor;   /* state is never colour alone */
+  }
+  :where(.cpt-app) .pill--good    { background: var(--color-good-soft);    border-color: var(--color-good-border); color: var(--color-good); }
+  :where(.cpt-app) .pill--warn    { background: var(--color-warn-soft);    border-color: var(--color-warn-border); color: var(--color-warn); }
+  :where(.cpt-app) .pill--bad     { background: var(--color-bad-soft);     border-color: var(--color-bad-border);  color: var(--color-bad); }
+  :where(.cpt-app) .pill--info    { background: var(--color-accent-soft);  border-color: var(--color-accent-border); color: var(--color-accent-text); }
+  :where(.cpt-app) .pill--neutral { background: var(--color-neutral-soft); border-color: var(--color-line-strong); color: var(--color-neutral); }
+  /* Soil badge: pill geometry, the soil fill of --soil-* (soil-styles.js SOIL_CLASS_NAMES → .s-*), a dark ink of the
+     same hue in both themes. Mixed case on purpose — the soil name is data, and innerText goldens read it. */
+  :where(.cpt-app) .pill.s-peat   { --soil: var(--soil-peat); }
+  :where(.cpt-app) .pill.s-sclay  { --soil: var(--soil-sclay); }
+  :where(.cpt-app) .pill.s-clay   { --soil: var(--soil-clay); }
+  :where(.cpt-app) .pill.s-sclayl { --soil: var(--soil-sclayl); }
+  :where(.cpt-app) .pill.s-ssand  { --soil: var(--soil-ssand); }
+  :where(.cpt-app) .pill.s-sand   { --soil: var(--soil-sand); }
+  :where(.cpt-app) .pill.s-gravel { --soil: var(--soil-gravel); }
+  :where(.cpt-app) .pill:is(.s-peat, .s-sclay, .s-clay, .s-sclayl, .s-ssand, .s-sand, .s-gravel) {
+    background: var(--soil);
+    border-color: color-mix(in srgb, var(--soil) 70%, var(--color-bg-dark));
+    color: color-mix(in srgb, var(--soil) 28%, var(--color-bg-dark));
+    font-size: var(--fs-xs); text-transform: none; letter-spacing: 0;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     12. Tables (§3.10)
+     Transitional scope: the recipe applies to a `.tbl` inside a `.tbl-wrap` and to `.tbl--kv` — every Stage 1–5
+     table — but not to the bare `.tbl` of Stage 6 / the Stage 7 report, which keep the legacy rule until 2d/2h
+     wrap them. Widen `.tbl-wrap > .tbl` to `.tbl` in that PR.
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .tbl-wrap {
+    max-height: var(--tbl-wrap-max, none); overflow: auto; min-width: 0;
+    border: var(--hairline); border-radius: var(--radius-md);
+    background: var(--surface-card);
+  }
+  :where(.cpt-app) :is(.tbl-wrap > .tbl, .tbl--kv) {
+    width: 100%; margin: 0;
+    border-collapse: separate; border-spacing: 0;          /* collapsed borders do not travel with sticky headers */
+    background: transparent;
+    font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+  }
+  :where(.cpt-app) .tbl-wrap > .tbl th {
+    position: sticky; top: 0; z-index: var(--z-sticky-cell);
+    padding: var(--sp-2) var(--sp-3);
+    background: var(--color-bg-alt);
+    border-bottom: var(--hairline-strong);
+    text-align: left; white-space: nowrap;
+    font: var(--fw-medium) var(--fs-2xs) / 1.3 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
+  }
+  :where(.cpt-app) .tbl-wrap > .tbl td {
+    padding: var(--sp-2) var(--sp-3);
+    border-bottom: var(--hairline);
+    font-size: var(--fs-sm); line-height: var(--lh-snug); vertical-align: middle;
+  }
+  :where(.cpt-app) .tbl-wrap > .tbl tbody tr:last-child td { border-bottom: 0; }
+  :where(.cpt-app) .tbl-wrap > .tbl tbody tr:hover td { background: var(--surface-hover); }
+  :where(.cpt-app) .tbl-wrap > .tbl th.num,
+  :where(.cpt-app) .tbl-wrap > .tbl td.num { text-align: right; }
+  :where(.cpt-app) .tbl-wrap > .tbl td.num { font-family: var(--font-mono); font-size: var(--fs-xs); white-space: nowrap; }
+  :where(.cpt-app) .tbl-wrap > .tbl td.key { color: var(--color-ink-2); }
+  :where(.cpt-app) .tbl-wrap > .tbl tr:is(.is-selected, .gov) td { background: var(--surface-active); }
+  :where(.cpt-app) .tbl-wrap > .tbl tr:is(.is-selected, .gov) td:first-child { box-shadow: inset 2px 0 0 var(--color-accent); }
+  :where(.cpt-app) .tbl-wrap > .tbl tr.is-fail td { color: var(--color-bad); }
+  :where(.cpt-app) .tbl-wrap > .tbl .input--sm { width: 100%; min-width: 3.5rem; }
+
+  /* key / value (replaces .pt): no rules, mono keys, right-aligned values, `.key` rows in accent */
+  :where(.cpt-app) .tbl--kv td { padding: var(--sp-1) 0; border: 0; vertical-align: top; font-size: var(--fs-sm); line-height: var(--lh-snug); }
+  :where(.cpt-app) .tbl--kv td:first-child {
+    padding-right: var(--sp-3); white-space: nowrap;
+    font: var(--fw-medium) var(--fs-2xs) / 1.6 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
+  }
+  :where(.cpt-app) .tbl--kv td:last-child { text-align: right; font-weight: var(--fw-medium); color: var(--color-ink); }
+  :where(.cpt-app) .tbl--kv tr.key td:last-child { color: var(--color-accent-text); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     13. Verdict banners (§3.11) — notes, warnings, data notes
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .verdict {
+    display: flex; align-items: center; gap: var(--sp-2) var(--sp-3);
+    min-width: 0; padding: var(--sp-3) var(--sp-4);
+    border: 1px solid var(--color-line); border-left-width: 3px; border-radius: var(--radius-sm);
+    background: var(--surface-quiet); color: var(--color-ink);
+    font-size: var(--fs-sm); line-height: var(--lh-body);
+    overflow-wrap: anywhere;
+  }
+  :where(.cpt-app) .verdict > br { display: none; }   /* string-rendered notes still carry a <br> between tag and body */
+  :where(.cpt-app) .verdict__tag {
+    flex: none; align-self: flex-start; padding-top: 0.2em;
+    font: var(--fw-semibold) var(--fs-xs) / 1.3 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono);
+  }
+  :where(.cpt-app) .verdict__body { flex: 1 1 auto; min-width: 0; }
+  :where(.cpt-app) .verdict__meta { flex: none; margin-left: auto; font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono); color: var(--color-ink-3); }
+  :where(.cpt-app) .verdict strong { color: var(--color-ink); font-weight: var(--fw-semibold); }
+  :where(.cpt-app) .verdict--good    { background: var(--color-good-soft);   border-color: var(--color-good-border);   border-left-color: var(--color-good); }
+  :where(.cpt-app) .verdict--warn    { background: var(--color-warn-soft);   border-color: var(--color-warn-border);   border-left-color: var(--color-warn); }
+  :where(.cpt-app) .verdict--bad     { background: var(--color-bad-soft);    border-color: var(--color-bad-border);    border-left-color: var(--color-bad); }
+  :where(.cpt-app) .verdict--info    { background: var(--color-accent-soft); border-color: var(--color-accent-border); border-left-color: var(--color-accent); }
+  :where(.cpt-app) .verdict--neutral { background: var(--color-neutral-soft); border-color: var(--color-line-strong); border-left-color: var(--color-neutral); }
+  :where(.cpt-app) .verdict--good .verdict__tag    { color: var(--color-good); }
+  :where(.cpt-app) .verdict--warn .verdict__tag    { color: var(--color-warn); }
+  :where(.cpt-app) .verdict--bad .verdict__tag     { color: var(--color-bad); }
+  :where(.cpt-app) .verdict--info .verdict__tag    { color: var(--color-accent-text); }
+  :where(.cpt-app) .verdict--neutral .verdict__tag { color: var(--color-neutral); }
+  :where(.cpt-app) .verdict--inline { border-left-width: 1px; color: var(--color-ink-2); }
+  :where(.cpt-app) .verdict--inline strong { color: var(--color-ink); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     14. Charts & canvases (§3.13) — graph-paper container
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .viz {
+    position: relative; min-width: 0;
+    padding: var(--sp-3);
+    border: var(--hairline-strong); border-radius: var(--radius-md);
+    background:
+      linear-gradient(var(--canvas-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px),
+      var(--canvas-paper);
+    background-size: 2rem 2rem;
+    box-shadow: var(--shadow-1);
+    overflow: clip; contain: layout paint;
+  }
+  :where(.cpt-app) .viz__title { margin-bottom: var(--sp-2); }
+  :where(.cpt-app) .viz > svg { display: block; width: 100%; height: auto; }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     15. Responsive Stage 1–5
+     ════════════════════════════════════════════════════════════════════════ */
+  @media (max-width: 900px) {
+    :where(.cpt-app) .panel__head { padding: var(--sp-3) var(--sp-4); }
+    :where(.cpt-app) .panel__body { padding: var(--sp-3) var(--sp-4); }
+  }
+  @media (max-width: 760px) {
+    :where(.cpt-app) .panel__head,
+    :where(.cpt-app) .panel__body { padding: var(--sp-3); }
+    :where(.cpt-app) .fields { padding: var(--sp-3); gap: var(--sp-3); }
+    :where(.cpt-app) .field, :where(.cpt-app) .check { flex: 1 1 100%; }
+    :where(.cpt-app) .range { flex: 1 1 6rem; width: auto; }
+    :where(.cpt-app) .field__row > .input--num { flex: 1 1 5.5rem; width: auto; max-width: 9rem; }
+    :where(.cpt-app) .stats { --stat-min: 8rem; }
+    :where(.cpt-app) .empty { padding: var(--sp-6) var(--sp-4); }
+    :where(.cpt-app) .panel__foot { align-items: stretch; }
+    :where(.cpt-app) .panel__foot > .btn { width: 100%; }
+    :where(.cpt-app) .panel__foot__note { justify-content: center; text-align: center; }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     16. User preferences (§4.3) — Stage 1–5 additions
+     ════════════════════════════════════════════════════════════════════════ */
+  @media (pointer: coarse) {
+    :where(.cpt-app) .input, :where(.cpt-app) .check { min-height: var(--touch-min); }
+    :where(.cpt-app) .card--select:hover { transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :where(.cpt-app) .card--select:hover { transform: none; }
+  }
+  @media (forced-colors: active) {
+    :where(.cpt-app) .pill, :where(.cpt-app) .verdict, :where(.cpt-app) .card, :where(.cpt-app) .stat, :where(.cpt-app) .viz { border-color: CanvasText; }
+    :where(.cpt-app) .card--select:is(.is-selected, .sel, [aria-pressed="true"]) { outline: 2px solid Highlight; }
   }
 }
