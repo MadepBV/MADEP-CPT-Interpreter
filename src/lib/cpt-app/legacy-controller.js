@@ -28,14 +28,11 @@ import {
   resolveMaterialPermeability,
   resolveWallMechanicalSection,
   seepageSourceLabel,
-  wallMechanicalPresetById,
   wallMaterialSourceLabel
 } from './seepage/material';
 import {
   drainHeadValueAt,
   drainTotalLength,
-  normalizeDrain,
-  normalizeDrains,
   validateDrains
 } from './seepage/drains';
 import { contourSegmentsForTriangles, sampleSeepageFlowState, sampleSeepageHead, sampleSeepagePorePressure } from './seepage/solver';
@@ -187,8 +184,7 @@ import {
   detailsOpen as stage6DetailsOpenOf,
   setDetailsOpen as stage6SetDetailsOpenOf,
   setField as stage6SetField,
-  createStage6Shell,
-  bishopState as stage6BishopState
+  createStage6Shell
 } from './stage6/index.js';
 import {
   installBearingApp,
@@ -222,15 +218,71 @@ import { installPileApp } from './pile/index.js';
 import { installSettlementApp } from './settlement/index.js';
 import { installDewateringApp } from './dewatering/index.js';
 import { installBeamApp } from './beam/index.js';
-// The bishop mesh target-area helpers keep their monolith names (25 call sites in the bishop
-// region) until the seepslope package (step 9) takes them over with bishop-state.js.
-const {
-  sortedPolyline: stage6BishopSortedPolyline,
-  autoSeepageMeshTargetArea: stage6BishopAutoSeepageMeshTargetArea,
-  resolvedSeepageMeshTargetArea: stage6BishopResolvedSeepageMeshTargetArea,
-  autoDeformationMeshTargetArea: stage6BishopAutoDeformationMeshTargetArea,
-  resolvedDeformationMeshTargetArea: stage6BishopResolvedDeformationMeshTargetArea
-} = stage6BishopState;
+// Seep / Slope state package (refactor step 9a / PR 18a, src/lib/cpt-app/seepslope/state/): the
+// pure helpers keep their monolith names as import aliases (their signatures never read `S`);
+// the operations that read the active CPT, the Stage 6 UI state or generate entity ids are
+// wrapped by façades in the bishop state regions below (the `seepslope*` aliases).
+import {
+  sortedPolyline as stage6BishopSortedPolyline,
+  autoSeepageMeshTargetArea as stage6BishopAutoSeepageMeshTargetArea,
+  resolvedSeepageMeshTargetArea as stage6BishopResolvedSeepageMeshTargetArea,
+  autoDeformationMeshTargetArea as stage6BishopAutoDeformationMeshTargetArea,
+  resolvedDeformationMeshTargetArea as stage6BishopResolvedDeformationMeshTargetArea,
+  sortZone as stage6BishopSortZone,
+  validZone as stage6BishopValidZone,
+  zoneKey as stage6BishopZoneKey,
+  zoneLabel as stage6BishopZoneLabel,
+  zoneColor as stage6BishopZoneColor,
+  allocateSurfaceLoadId as stage6BishopAllocateSurfaceLoadId,
+  normalizeSurfaceLoad as stage6BishopNormalizeSurfaceLoad,
+  legacySurfaceLoadSeed as stage6BishopLegacySurfaceLoadSeed,
+  migrateSurfaceLoadsShape as stage6BishopMigrateSurfaceLoadsShape,
+  syncLegacySurfaceLoadMirror as seepslopeSyncLegacySurfaceLoadMirror,
+  selectedSurfaceLoad as seepslopeSelectedSurfaceLoad,
+  primarySurfaceLoad as seepslopePrimarySurfaceLoad,
+  effectiveSurfaceLoadQ as seepslopeEffectiveSurfaceLoadQ,
+  surfaceLoadSummary as seepslopeSurfaceLoadSummary,
+  activeSurfaceLoads as seepslopeActiveSurfaceLoads,
+  setSurfaceLoadField as seepslopeSetSurfaceLoadField,
+  selectSurfaceLoad as seepslopeSelectSurfaceLoad,
+  deleteSurfaceLoad as seepslopeDeleteSurfaceLoad,
+  createSurfaceLoadFromZone as seepslopeCreateSurfaceLoadFromZone,
+  passiveSideLabel as stage6BishopPassiveSideLabel,
+  defaultPassiveSide as seepslopeDefaultPassiveSide,
+  wallId as seepslopeWallId,
+  defaultWallMaterial as stage6BishopDefaultWallMaterial,
+  wallMaterialPreset as stage6BishopWallMaterialPreset,
+  wallMaterialPresetKey as stage6BishopWallMaterialPresetKey,
+  normalizeWalls as stage6BishopNormalizeWalls,
+  resultWallLabel as stage6BishopResultWallLabel,
+  setWallField as seepslopeSetWallField,
+  setWallMaterialField as seepslopeSetWallMaterialField,
+  deleteWall as seepslopeDeleteWall,
+  selectWall as seepslopeSelectWall,
+  drainId as seepslopeDrainId,
+  normalizeDrains as stage6BishopNormalizeDrains,
+  defaultDrainHead as stage6BishopDefaultDrainHead,
+  drainValidationSummary as stage6BishopDrainValidationSummary,
+  drainGatingLabel as stage6BishopDrainGatingLabel,
+  createDrainFromVertices as seepslopeCreateDrainFromVertices,
+  selectDrain as seepslopeSelectDrain,
+  setDrainField as seepslopeSetDrainField,
+  deleteDrain as seepslopeDeleteDrain,
+  regionId as seepslopeRegionId,
+  roundRegionCoord as stage6BishopRoundRegionCoord,
+  normalizeRegionCoarseness as stage6BishopNormalizeRegionCoarseness,
+  clampRegionPoint as stage6BishopClampRegionPoint,
+  normalizeCustomRegions as stage6BishopNormalizeCustomRegions,
+  selectedCustomRegion as seepslopeSelectedCustomRegion,
+  setSelectedRegion as seepslopeSetSelectedRegion,
+  copyCurrentRegionsToCustom as seepslopeCopyCurrentRegionsToCustom,
+  setUseCustomRegions as seepslopeSetUseCustomRegions,
+  clearCustomRegions as seepslopeClearCustomRegions,
+  deleteSelectedRegion as seepslopeDeleteSelectedRegion,
+  setSelectedRegionMaterial as seepslopeSetSelectedRegionMaterial,
+  setSelectedRegionCoarseness as seepslopeSetSelectedRegionCoarseness,
+  splitSelectedRegion as seepslopeSplitSelectedRegion
+} from './seepslope/state/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -1635,14 +1687,15 @@ function ensureStage6State(){
   stage6EnsureCpt(S, stage6EnsureCtx());
 }
 
-// Host hooks of the composed ensure(): the registry, the hardening-soil UI gate and the two bishop
-// helpers the migration still calls into this file (stage6/apps/bishop-state.js header).
+// Host hooks of the composed ensure(): the registry, the hardening-soil UI gate and the one
+// bishop helper the seepslope/state migration still calls into this file (the deformation
+// quantity list lives in the deformation-contours region until step 9b/9d; seepslope/state/ensure.js
+// header). The surface-load shape migration is the package's own since PR 18a.
 function stage6EnsureCtx(){
   return {
     registry: stage6Registry,
     hardeningSoilUi: STAGE6_ENABLE_HARDENING_SOIL_UI,
-    deformationQuantityIds: stage6BishopDeformationQuantityIds,
-    migrateSurfaceLoadsShape: stage6BishopMigrateSurfaceLoadsShape
+    deformationQuantityIds: stage6BishopDeformationQuantityIds
   };
 }
 
@@ -1807,561 +1860,96 @@ function stage6BishopHashActive(){
   return typeof window !== 'undefined' && window.location.hash === '#bishop';
 }
 
-function stage6BishopSortZone(zone){
-  if(!zone || !Number.isFinite(zone.xStart) || !Number.isFinite(zone.xEnd)) return null;
-  return {
-    ...zone,
-    xStart:Math.min(zone.xStart, zone.xEnd),
-    xEnd:Math.max(zone.xStart, zone.xEnd)
-  };
-}
-
-function stage6BishopValidZone(zone){
-  return !!zone
-    && Number.isFinite(zone.xStart)
-    && Number.isFinite(zone.xEnd)
-    && Math.abs(zone.xEnd - zone.xStart) > 1e-6;
-}
-
-function stage6BishopAllocateSurfaceLoadId(bishop){
-  const taken = new Set((bishop.surfaceLoads || []).map((load)=>String(load?.id || '')).filter(Boolean));
-  let index = 1;
-  while(taken.has(`load-${index}`)) index += 1;
-  return `load-${index}`;
-}
-
-function stage6BishopNormalizeSurfaceLoad(load, index, bishop){
-  const out = load && typeof load === 'object' ? {...load} : {};
-  out.id = String(out.id || `load-${index + 1}`);
-  out.label = String(out.label || `Load ${index + 1}`).slice(0, 64);
-  out.q = Math.max(Number(out.q) || 0, 0);
-  out.totalLoad = Math.max(Number(out.totalLoad) || 0, 0);
-  out.loadMode = out.loadMode === 'total' ? 'total' : out.loadMode === 'pressure'
-    ? 'pressure'
-    : bishop?.deformation?.options?.loadMode === 'total'
-      ? 'total'
-      : 'pressure';
-  out.active = out.active !== false;
-  if(Number.isFinite(Number(out.xStart))) out.xStart = Number(out.xStart);
-  else out.xStart = null;
-  if(Number.isFinite(Number(out.xEnd))) out.xEnd = Number(out.xEnd);
-  else out.xEnd = null;
-  const sorted = stage6BishopSortZone(out);
-  return sorted || out;
-}
-
+// ── seepslope/state façades (refactor step 9a / PR 18a) ─────────────────────────────────────
+// The surface-load, wall, drain and region state helpers live in src/lib/cpt-app/seepslope/state/
+// (surface-loads.js, walls.js, drains.js, regions.js, domain.js). The pure ones are imported under
+// their monolith names at the top of this file; the functions below keep the names whose monolith
+// signature read the active CPT (`S`) or generated an id, and hand the package the `bishop` block.
 function stage6BishopSyncLegacySurfaceLoadMirror(bishop = S.stage6?.bishop){
-  if(!bishop) return;
-  const first = (bishop.surfaceLoads || []).find((load)=>load?.active !== false)
-    || (bishop.surfaceLoads || [])[0]
-    || null;
-  bishop.surfaceLoad = first
-    ? {xStart:first.xStart, xEnd:first.xEnd, q:Math.max(Number(first.q) || 0, 0)}
-    : {
-      xStart:null,
-      xEnd:null,
-      q:Math.max(Number(bishop.surfaceLoad?.q) || 0, 0)
-    };
-}
-
-function stage6BishopLegacySurfaceLoadSeed(bishop, legacy){
-  if(!legacy || !Number.isFinite(Number(legacy.xStart)) || !Number.isFinite(Number(legacy.xEnd))) return null;
-  const migratedLegacy = stage6BishopNormalizeSurfaceLoad({
-    id:stage6BishopAllocateSurfaceLoadId(bishop),
-    label:'Load 1',
-    xStart:Number(legacy.xStart),
-    xEnd:Number(legacy.xEnd),
-    q:Math.max(Number(legacy.q) || 0, 0),
-    totalLoad:Math.max(Number(bishop.deformation?.options?.totalLoad) || 0, 0),
-    loadMode:bishop.deformation?.options?.loadMode === 'total' ? 'total' : 'pressure',
-    active:true
-  }, 0, bishop);
-  return stage6BishopValidZone(migratedLegacy) ? migratedLegacy : null;
-}
-
-function stage6BishopMigrateSurfaceLoadsShape(bishop){
-  if(!bishop) return;
-  const legacy = bishop.surfaceLoad && typeof bishop.surfaceLoad === 'object' ? bishop.surfaceLoad : null;
-  const hadLoads = Array.isArray(bishop.surfaceLoads);
-  if(!hadLoads) bishop.surfaceLoads = [];
-  if(!bishop.surfaceLoads.length){
-    const seed = stage6BishopLegacySurfaceLoadSeed(bishop, legacy);
-    if(seed) bishop.surfaceLoads.push(seed);
-  }
-  const used = new Set();
-  bishop.surfaceLoads = (bishop.surfaceLoads || []).map((load, index)=>{
-    const normalized = stage6BishopNormalizeSurfaceLoad(load, index, bishop);
-    let id = normalized.id || `load-${index + 1}`;
-    if(used.has(id)){
-      id = stage6BishopAllocateSurfaceLoadId({...bishop, surfaceLoads:[...used].map((item)=>({id:item}))});
-    }
-    used.add(id);
-    normalized.id = id;
-    return normalized;
-  }).filter((load)=>stage6BishopValidZone(load));
-  if(!bishop.surfaceLoads.length){
-    const seed = stage6BishopLegacySurfaceLoadSeed(bishop, legacy);
-    if(seed) bishop.surfaceLoads.push(seed);
-  }
-  bishop.surfaceLoads.forEach((load, index)=>{
-    if(/^Load\s+\d+$/i.test(String(load.label || ''))) load.label = `Load ${index + 1}`;
-  });
-  if(bishop.selectedSurfaceLoadId && !(bishop.surfaceLoads || []).some((load)=>load.id === bishop.selectedSurfaceLoadId)){
-    bishop.selectedSurfaceLoadId = null;
-  }
-  stage6BishopSyncLegacySurfaceLoadMirror(bishop);
+  seepslopeSyncLegacySurfaceLoadMirror(bishop);
 }
 
 function stage6BishopSelectedSurfaceLoad(){
-  const bishop = S.stage6?.bishop;
-  if(!bishop) return null;
-  return (bishop.surfaceLoads || []).find((load)=>load.id === bishop.selectedSurfaceLoadId) || null;
+  return seepslopeSelectedSurfaceLoad(S.stage6?.bishop);
 }
 
 function stage6BishopPrimarySurfaceLoad(create = false){
-  const bishop = S.stage6?.bishop;
-  if(!bishop) return null;
-  stage6BishopMigrateSurfaceLoadsShape(bishop);
-  let load = stage6BishopSelectedSurfaceLoad()
-    || (bishop.surfaceLoads || []).find((item)=>item.active !== false)
-    || (bishop.surfaceLoads || [])[0]
-    || null;
-  if(!load && create){
-    load = {
-      id:stage6BishopAllocateSurfaceLoadId(bishop),
-      label:`Load ${(bishop.surfaceLoads || []).length + 1}`,
-      xStart:null,
-      xEnd:null,
-      q:Math.max(Number(bishop.surfaceLoad?.q) || 5, 0),
-      totalLoad:0,
-      loadMode:'pressure',
-      active:true
-    };
-    bishop.surfaceLoads = [...(bishop.surfaceLoads || []), load];
-    bishop.selectedSurfaceLoadId = load.id;
-    stage6BishopSyncLegacySurfaceLoadMirror(bishop);
-  }
-  return load;
+  return seepslopePrimarySurfaceLoad(S.stage6?.bishop, create);
 }
 
 function stage6BishopEffectiveSurfaceLoadQ(load, workspace = S.stage6?.bishop?.workspace || 'stability'){
-  if(!load) return 0;
-  const bishop = S.stage6?.bishop;
-  const loadMode = load.loadMode === 'total'
-    ? 'total'
-    : load.loadMode === 'pressure'
-      ? 'pressure'
-      : workspace === 'deformation' && bishop?.deformation?.options?.loadMode === 'total'
-        ? 'total'
-        : 'pressure';
-  const width = Math.abs((Number(load.xEnd) || 0) - (Number(load.xStart) || 0));
-  if(loadMode === 'total'){
-    const outOfPlaneLength = Math.max(Number(bishop?.deformation?.options?.outOfPlaneLength) || 10, 0.1);
-    const loadCount = Array.isArray(bishop?.surfaceLoads) ? bishop.surfaceLoads.length : 0;
-    const legacyTotalLoad = loadCount <= 1 ? Number(bishop?.deformation?.options?.totalLoad) || 0 : 0;
-    const totalLoad = Math.max(Number(load.totalLoad) || legacyTotalLoad || 0, 0);
-    return width > 1e-9 ? totalLoad / Math.max(width * outOfPlaneLength, 1e-6) : 0;
-  }
-  return Math.max(Number(load.q) || 0, 0);
+  return seepslopeEffectiveSurfaceLoadQ(S.stage6?.bishop, load, workspace);
 }
 
 function stage6BishopSurfaceLoadSummary(load, workspace = S.stage6?.bishop?.workspace || 'stability'){
-  if(!stage6BishopValidZone(load)) return 'not set';
-  const q = stage6BishopEffectiveSurfaceLoadQ(load, workspace);
-  const modeLabel = load.loadMode === 'total' ? `total ${Math.max(Number(load.totalLoad) || 0, 0).toFixed(1)} kN` : `${q.toFixed(1)} kPa`;
-  return `${load.xStart.toFixed(2)}-${load.xEnd.toFixed(2)} m @ ${modeLabel}${load.active === false ? ' (inactive)' : q > 0 ? '' : ' (zero)'}`;
+  return seepslopeSurfaceLoadSummary(S.stage6?.bishop, load, workspace);
 }
 
 function stage6BishopActiveSurfaceLoads(workspace = S.stage6?.bishop?.workspace || 'stability'){
-  const bishop = S.stage6?.bishop;
-  if(!bishop) return [];
-  stage6BishopMigrateSurfaceLoadsShape(bishop);
-  return (bishop.surfaceLoads || []).filter((load)=>load.active !== false && stage6BishopValidZone(load) && stage6BishopEffectiveSurfaceLoadQ(load, workspace) > 0);
+  return seepslopeActiveSurfaceLoads(S.stage6?.bishop, workspace);
 }
 
 function stage6BishopSetSurfaceLoadField(loadId, field, value){
   ensureStage6State();
   stage6RememberDetailsState();
-  const bishop = S.stage6.bishop;
-  stage6BishopMigrateSurfaceLoadsShape(bishop);
-  const load = (bishop.surfaceLoads || []).find((item)=>item.id === loadId);
+  const load = seepslopeSetSurfaceLoadField(S.stage6.bishop, loadId, field, value);
   if(!load) return;
-  if(field === 'active'){
-    load.active = !!value;
-  } else if(field === 'label'){
-    load.label = String(value || '').slice(0, 64);
-  } else if(field === 'loadMode'){
-    load.loadMode = value === 'total' ? 'total' : 'pressure';
-  } else if(field === 'q'){
-    load.q = Math.max(Number(value) || 0, 0);
-  } else if(field === 'totalLoad'){
-    load.totalLoad = Math.max(Number(value) || 0, 0);
-  } else if(field === 'xStart' || field === 'xEnd'){
-    const x = Number(value);
-    if(!Number.isFinite(x)) return;
-    const minX = bishop.terrain?.[0]?.x ?? -Infinity;
-    const maxX = bishop.terrain?.[bishop.terrain.length - 1]?.x ?? Infinity;
-    load[field] = Math.min(Math.max(x, minX), maxX);
-    Object.assign(load, stage6BishopSortZone(load) || load);
-  } else {
-    return;
-  }
-  bishop.selectedSurfaceLoadId = load.id;
-  stage6BishopSyncLegacySurfaceLoadMirror(bishop);
   stage6BishopInvalidate('Surface load changed; rerun the active analysis.');
   renderStage6();
 }
 
 function stage6BishopSelectSurfaceLoad(loadId){
   ensureStage6State();
-  stage6BishopMigrateSurfaceLoadsShape(S.stage6.bishop);
-  S.stage6.bishop.selectedSurfaceLoadId = loadId || null;
-  if(loadId) S.stage6.bishop.tool = 'edit';
+  seepslopeSelectSurfaceLoad(S.stage6.bishop, loadId);
   renderStage6();
 }
 
 function stage6BishopDeleteSurfaceLoad(loadId){
   ensureStage6State();
   stage6RememberDetailsState();
-  const bishop = S.stage6.bishop;
-  const before = (bishop.surfaceLoads || []).length;
-  bishop.surfaceLoads = (bishop.surfaceLoads || []).filter((load)=>load.id !== loadId);
-  if(bishop.selectedSurfaceLoadId === loadId) bishop.selectedSurfaceLoadId = null;
-  if(bishop.surfaceLoads.length !== before){
-    stage6BishopSyncLegacySurfaceLoadMirror(bishop);
+  if(seepslopeDeleteSurfaceLoad(S.stage6.bishop, loadId)){
     stage6BishopInvalidate('Surface load deleted; rerun the active analysis.');
   }
   renderStage6();
 }
 
 function stage6BishopCreateSurfaceLoadFromZone(zone){
-  const bishop = S.stage6.bishop;
-  stage6BishopMigrateSurfaceLoadsShape(bishop);
-  if(!stage6BishopValidZone(zone)) return null;
-  const source = stage6BishopPrimarySurfaceLoad(false);
-  const id = stage6BishopAllocateSurfaceLoadId(bishop);
-  const load = {
-    id,
-    label:`Load ${(bishop.surfaceLoads || []).length + 1}`,
-    xStart:zone.xStart,
-    xEnd:zone.xEnd,
-    q:Math.max(Number(source?.q ?? bishop.surfaceLoad?.q) || 5, 0),
-    totalLoad:Math.max(Number(source?.totalLoad) || 0, 0),
-    loadMode:source?.loadMode === 'total' ? 'total' : 'pressure',
-    active:true
-  };
-  bishop.surfaceLoads = [...(bishop.surfaceLoads || []), load];
-  bishop.selectedSurfaceLoadId = id;
-  bishop.tool = 'edit';
-  stage6BishopSyncLegacySurfaceLoadMirror(bishop);
-  stage6BishopInvalidate('Surface load added; rerun the active analysis.');
+  const load = seepslopeCreateSurfaceLoadFromZone(S.stage6.bishop, zone);
+  if(load) stage6BishopInvalidate('Surface load added; rerun the active analysis.');
   return load;
 }
 
-function stage6BishopZoneKey(kind){
-  if(kind === 'entry') return 'entryZone';
-  if(kind === 'exit') return 'exitZone';
-  if(kind === 'load') return 'surfaceLoad';
-  return '';
-}
-
-function stage6BishopZoneLabel(kind){
-  if(kind === 'entry') return 'Entry zone';
-  if(kind === 'exit') return 'Exit zone';
-  if(kind === 'load') return 'Load zone';
-  return 'Zone';
-}
-
-function stage6BishopZoneColor(kind){
-  if(kind === 'entry') return '#3aa35f';
-  if(kind === 'exit') return '#d27b2d';
-  if(kind === 'load') return '#b3477a';
-  return '#5c6b7a';
-}
-
-function stage6BishopPassiveSideLabel(side){
-  return side === 'left' ? 'Left' : 'Right';
-}
-
 function stage6BishopDefaultPassiveSide(){
-  const terrain = S.stage6?.bishop?.terrain || [];
-  if(terrain.length >= 2){
-    return terrain[terrain.length-1].y <= terrain[0].y ? 'right' : 'left';
-  }
-  return 'right';
+  return seepslopeDefaultPassiveSide(S.stage6?.bishop?.terrain || []);
 }
 
 function stage6BishopWallId(){
-  return `wall_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
-}
-
-function stage6BishopDefaultWallMaterial(index = 0, wallId = ''){
-  return normalizeWallMaterial(
-    {
-      id:`wall-material-${wallId || index + 1}`,
-      label:'Concrete diaphragm',
-      kAcross:1e-12,
-      kAlong:1e-12,
-      gamma:24,
-      gammaSat:24,
-      kSource:'preset',
-      mechanical:defaultWallMechanicalMaterial('preset')
-    },
-    index,
-    wallId || `${index + 1}`,
-    {sourceFallback:'preset', mechanicalPreset:'concrete-diaphragm'}
-  );
-}
-
-function stage6BishopWallMaterialPreset(preset, index = 0, wallId = ''){
-  const presets = {
-    sheetPile:{label:'Sheet pile', kAcross:1e-10, kAlong:1e-8},
-    'steel-sheet-pile-AZ-26':{label:'Steel sheet pile AZ 26', kAcross:1e-12, kAlong:1e-12, gamma:78, gammaSat:78},
-    'concrete-diaphragm':{label:'Concrete diaphragm', kAcross:1e-12, kAlong:1e-12, gamma:24, gammaSat:24},
-    slurry:{label:'Slurry wall', kAcross:1e-9, kAlong:1e-9},
-    diaphragm:{label:'Diaphragm wall', kAcross:1e-9, kAlong:1e-9},
-    soilMix:{label:'Soil-mix wall', kAcross:1e-7, kAlong:1e-7},
-    relief:{label:'Relief wall', kAcross:1e-6, kAlong:1e-5},
-    legacy:{label:'Legacy impermeable', kAcross:1e-10, kAlong:1e-10}
-  };
-  const presetDef = presets[preset] || presets.legacy;
-  const mechanicalPreset = wallMechanicalPresetById(preset);
-  return normalizeWallMaterial(
-    {
-      id:`wall-material-${wallId || index + 1}`,
-      ...presetDef,
-      kSource:'preset',
-      mechanical:mechanicalPreset?.mechanical
-    },
-    index,
-    wallId || `${index + 1}`,
-    {sourceFallback:'preset', mechanicalPreset:preset}
-  );
-}
-
-function stage6BishopWallMaterialPresetKey(material){
-  if(material?.kSource === 'legacy-impermeable') return 'legacy';
-  if(material?.kSource === 'user') return 'custom';
-  const mechanical = material?.mechanical || {};
-  if(mechanical.model === 'section-properties') return 'steel-sheet-pile-AZ-26';
-  if(mechanical.model === 'rectangular' && Math.abs((Number(mechanical.E) || 0) - 3e7) <= 3e4 && Math.abs((Number(mechanical.thickness) || 0) - 0.6) <= 1e-6) return 'concrete-diaphragm';
-  const kAcross = Number(material?.kAcross);
-  const kAlong = Number(material?.kAlong);
-  const close = (value, target)=>Number.isFinite(value) && Math.abs(value - target) <= Math.max(Math.abs(target) * 1e-9, 1e-16);
-  if(close(kAcross, 1e-10) && close(kAlong, 1e-8)) return 'sheetPile';
-  if(close(kAcross, 1e-9) && close(kAlong, 1e-9)) return String(material?.label || '').toLowerCase().includes('diaphragm') ? 'diaphragm' : 'slurry';
-  if(close(kAcross, 1e-7) && close(kAlong, 1e-7)) return 'soilMix';
-  if(close(kAcross, 1e-6) && close(kAlong, 1e-5)) return 'relief';
-  if(close(kAcross, 1e-10) && close(kAlong, 1e-10)) return 'legacy';
-  return 'custom';
-}
-
-function stage6BishopNormalizeWalls(walls, terrain){
-  const terrainLine = terrain?.length ? {vertices:terrain} : null;
-  const minX = terrain?.length ? terrain[0].x : -Infinity;
-  const maxX = terrain?.length ? terrain[terrain.length-1].x : Infinity;
-  return (walls || [])
-    .map((wall, index)=>{
-      const id = wall?.id || `wall-${index + 1}`;
-      const hadMaterial = !!(wall?.material && typeof wall.material === 'object');
-      const hasMechanicalActiveField = Object.prototype.hasOwnProperty.call(wall || {}, 'mechanicalActive');
-      const mechanicalActive = hasMechanicalActiveField ? wall?.mechanicalActive === true : false;
-      const legacyX = Number.isFinite(+wall?.x) ? +wall.x : minX;
-      const xFallback = Math.min(Math.max(legacyX, minX), maxX);
-      const endpoints = wallEndpoints(wall);
-      const headRaw = endpoints?.head || {
-        x:xFallback,
-        y:Number.isFinite(+wall?.yTop)
-          ? +wall.yTop
-          : terrainLine
-            ? bishopTerrainY(terrainLine, xFallback)
-            : NaN
-      };
-      const tipRaw = endpoints?.tip || {
-        x:xFallback,
-        y:Number.isFinite(+wall?.yTip) ? +wall.yTip : NaN
-      };
-      const head = {
-        x:Math.min(Math.max(Number(headRaw.x), minX), maxX),
-        y:Number(headRaw.y)
-      };
-      let tip = {
-        x:Math.min(Math.max(Number(tipRaw.x), minX), maxX),
-        y:Number(tipRaw.y)
-      };
-      if(Number.isFinite(head.x) && Number.isFinite(head.y) && Number.isFinite(tip.x) && Number.isFinite(tip.y)){
-        const len = Math.hypot(tip.x - head.x, tip.y - head.y);
-        if(len < 0.05){
-          tip = {x:head.x, y:head.y - 0.05};
-        }
-      }
-      return {
-        id,
-        head,
-        tip,
-        // Legacy aliases kept during migration for old UI/report code.
-        x:head.x,
-        yTop:head.y,
-        yTip:tip.y,
-        passiveSide:wall?.passiveSide === 'left' ? 'left' : 'right',
-        mechanicalActive,
-        mechanicalActivationPromptPending:!hasMechanicalActiveField && !!wall,
-        anchors:Array.isArray(wall?.anchors) ? wall.anchors : [],
-        maxShearForce:Number.isFinite(+wall?.maxShearForce) && +wall.maxShearForce > 0 ? +wall.maxShearForce : null,
-        // Soil-wall interface R_inter (deformation module): must survive every
-        // normalize pass or the wall-table input is silently discarded and the
-        // interface always solves with the 0.667 preset.
-        interfaceRInter:Number.isFinite(+wall?.interfaceRInter) && +wall.interfaceRInter > 0
-          ? Math.min(Math.max(+wall.interfaceRInter, 0.01), 1.0)
-          : null,
-        material:normalizeWallMaterial(wall?.material, index, id, {
-          sourceFallback:hadMaterial ? 'user' : 'legacy-impermeable',
-          mechanicalPreset:mechanicalActive ? 'concrete-diaphragm' : null
-        })
-      };
-    })
-    .filter((wall)=>wallAxis(wall, 1e-9))
-    .map((wall)=>{
-      wall.head = {x:+wall.head.x.toFixed(3), y:+wall.head.y.toFixed(3)};
-      wall.tip = {x:+wall.tip.x.toFixed(3), y:+wall.tip.y.toFixed(3)};
-      wall.x = wall.head.x;
-      wall.yTop = wall.head.y;
-      wall.yTip = wall.tip.y;
-      return wall;
-    })
-    .sort((a,b)=>a.head.x-b.head.x || b.head.y-a.head.y || a.tip.x-b.tip.x);
+  return seepslopeWallId();
 }
 
 function stage6BishopDrainId(){
-  return `drain_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
-}
-
-function stage6BishopNormalizeDrains(drains){
-  return normalizeDrains(drains || [])
-    .filter((drain)=>drain.vertices.length >= 2)
-    .map((drain, index)=>({
-      ...drain,
-      id:drain.id || `drain-${index + 1}`,
-      label:drain.label || `Drain ${index + 1}`
-    }));
-}
-
-function stage6BishopDefaultDrainHead(vertices){
-  const first = vertices?.[0] || null;
-  return {
-    kind:'constant',
-    value:Number.isFinite(+first?.y) ? +first.y : 0
-  };
+  return seepslopeDrainId();
 }
 
 function stage6BishopCreateDrainFromVertices(vertices){
   ensureStage6State();
-  const bishop = S.stage6.bishop;
-  const drainId = stage6BishopDrainId();
-  const candidate = normalizeDrain({
-    id:drainId,
-    label:`Drain ${(bishop.drains || []).length + 1}`,
-    vertices,
-    closed:false,
-    head:stage6BishopDefaultDrainHead(vertices),
-    gating:'when-saturated'
-  }, (bishop.drains || []).length);
-  const model = {
-    ...(S.stage6Cache?.bishopModel || stage6BishopCurrentModel() || {}),
-    drains:[...(bishop.drains || []), candidate]
-  };
-  const validation = validateDrains(model);
-  if(validation.errors.length){
-    bishop.progress.message = validation.errors[0].message;
-    bishop.seepage.drainValidation = validation;
-    return false;
-  }
-  bishop.drains = stage6BishopNormalizeDrains([...(bishop.drains || []), candidate]);
-  bishop.selectedDrainId = drainId;
-  bishop.seepage.drainValidation = validation;
-  bishop.workspace = 'seepage';
+  const outcome = seepslopeCreateDrainFromVertices(S.stage6.bishop, vertices, {
+    model: () => S.stage6Cache?.bishopModel || stage6BishopCurrentModel() || {}
+  });
+  if(!outcome.ok) return false;
   stage6SetDetailsOpen('bishop-seepage-drains', true);
   stage6BishopInvalidateSeepage('Drain added. Set the drain head, then rerun seepage.', true, true);
   return true;
 }
 
-function stage6BishopDrainValidationSummary(validation){
-  const errorCount = validation?.errors?.length || 0;
-  const warningCount = validation?.warnings?.length || 0;
-  if(errorCount) return `${errorCount} drain validation ${errorCount === 1 ? 'error' : 'errors'}`;
-  if(warningCount) return `${warningCount} drain validation ${warningCount === 1 ? 'warning' : 'warnings'}`;
-  return 'ok';
-}
-
-function stage6BishopDrainGatingLabel(value){
-  if(value === 'always') return 'Always';
-  if(value === 'head-cap') return 'Head cap';
-  return 'When saturated';
-}
-
 function stage6BishopRegionId(){
-  return `region_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
-}
-
-const STAGE6_REGION_COORD_DECIMALS = 6;
-const STAGE6_REGION_COARSENESS_DECIMALS = 3;
-
-function stage6BishopRoundRegionCoord(value){
-  return +Number(value).toFixed(STAGE6_REGION_COORD_DECIMALS);
-}
-
-function stage6BishopNormalizeRegionCoarseness(value){
-  const numeric = Number(value);
-  if(!Number.isFinite(numeric) || !(numeric > 0)) return 1;
-  return +numeric.toFixed(STAGE6_REGION_COARSENESS_DECIMALS);
-}
-
-function stage6BishopClampRegionPoint(point, minX = -Infinity, maxX = Infinity){
-  return {
-    x:stage6BishopRoundRegionCoord(Math.min(Math.max(Number(point?.x), minX), maxX)),
-    y:stage6BishopRoundRegionCoord(Number(point?.y))
-  };
-}
-
-function stage6BishopNormalizeCustomRegions(regions, terrain, materials){
-  const minX = terrain?.length ? terrain[0].x : -Infinity;
-  const maxX = terrain?.length ? terrain[terrain.length-1].x : Infinity;
-  const materialIds = new Set((materials || []).map((material)=>material.id));
-  const fallbackMaterialId = materials?.[0]?.id || null;
-  return (regions || [])
-    .map((region)=>{
-      const rawPolygon = (region?.polygon || [])
-        .map((pt)=>({
-          x:Number(pt?.x),
-          y:Number(pt?.y)
-        }))
-        .filter((pt)=>Number.isFinite(pt.x) && Number.isFinite(pt.y))
-        .map((pt)=>stage6BishopClampRegionPoint(pt, minX, maxX));
-      const polygon = normalizeRegionPolygon(rawPolygon);
-      const materialId = materialIds.has(region?.materialId) ? region.materialId : fallbackMaterialId;
-      return {
-        id:region?.id || stage6BishopRegionId(),
-        polygon,
-        materialId,
-        coarseness:stage6BishopNormalizeRegionCoarseness(region?.coarseness),
-        source:region?.source === 'cpt-copy' ? 'cpt-copy' : region?.source === 'hole' ? 'hole' : region?.source === 'edited' ? 'edited' : 'custom'
-      };
-    })
-    .filter((region)=>region.materialId && region.polygon.length >= 3 && polygonArea(region.polygon) > 1e-4 && isSimplePolygon(region.polygon));
+  return seepslopeRegionId();
 }
 
 function stage6BishopSelectedCustomRegion(){
-  const bishop = S?.stage6?.bishop;
-  if(!bishop) return null;
-  return (bishop.customRegions || []).find((region)=>region.id === bishop.selectedRegionId) || null;
+  return seepslopeSelectedCustomRegion(S?.stage6?.bishop);
 }
 
-function stage6BishopResultWallLabel(result){
-  if(!result) return '—';
-  if(result.intersectsWall) return `${result.wallIntersectionCount || 0} engaged`;
-  if(result.passesBelowWall) return 'passes below';
-  return 'no wall effect';
-}
 
 function stage6BishopInvalidateSeepage(message, keepMesh, preserveSolvedState){
   ensureStage6State();
@@ -3426,7 +3014,7 @@ function stage6BishopCurrentModel(){
 
 function stage6BishopSetSelectedRegion(regionId){
   ensureStage6State();
-  S.stage6.bishop.selectedRegionId = regionId || null;
+  seepslopeSetSelectedRegion(S.stage6.bishop, regionId);
   renderStage6();
 }
 
@@ -3435,25 +3023,15 @@ function stage6BishopCopyCurrentRegionsToCustom(){
   stage6RememberDetailsState();
   const bishop = S.stage6.bishop;
   const model = stage6BishopCurrentModel();
-  if(!model?.regions?.length){
-    bishop.progress.message = 'Draw terrain and place the active CPT marker before copying solver polygons.';
+  if(!seepslopeCopyCurrentRegionsToCustom(bishop, model)){
     renderStage6();
     return;
   }
-  bishop.customRegions = model.regions.map((region, index)=>({
-    id:stage6BishopRegionId(),
-    polygon:(region.polygon || []).map((pt)=>stage6BishopClampRegionPoint(pt)),
-    materialId:region.material?.id || bishop.materials?.[0]?.id || null,
-    coarseness:stage6BishopNormalizeRegionCoarseness(region?.coarseness),
-    source:index < (model.autoRegions?.length || 0) ? 'cpt-copy' : 'custom'
-  }));
-  bishop.useCustomRegions = bishop.customRegions.length > 0;
-  bishop.selectedRegionId = bishop.customRegions[0]?.id || null;
-  bishop.regionDraftMaterialId = bishop.customRegions[0]?.materialId || bishop.materials?.[0]?.id || null;
   if(bishop.useCustomRegions) stage6BishopCurrentModel();
   stage6BishopInvalidate('Current solver polygons were copied into an editable custom polygon set and automatically enabled in the solver; rerun Bishop search after edits.');
   renderStage6();
 }
+
 
 // Read-only export of the current soil regions as a DXF of closed polygons that
 // PLAXIS 2D imports directly as clusters for material assignment. Mirrors the
@@ -3484,32 +3062,21 @@ function stage6BishopExportRegionsDxf(){
 function stage6BishopSetUseCustomRegions(value){
   ensureStage6State();
   stage6RememberDetailsState();
-  const bishop = S.stage6.bishop;
-  bishop.useCustomRegions = !!value && (bishop.customRegions || []).length > 0;
-  stage6BishopInvalidate(bishop.useCustomRegions ? 'Custom soil polygons enabled; rerun Bishop search.' : 'Reverted to CPT-derived soil polygons; rerun Bishop search.');
+  const useCustomRegions = seepslopeSetUseCustomRegions(S.stage6.bishop, value);
+  stage6BishopInvalidate(useCustomRegions ? 'Custom soil polygons enabled; rerun Bishop search.' : 'Reverted to CPT-derived soil polygons; rerun Bishop search.');
   renderStage6();
 }
 
 function stage6BishopClearCustomRegions(message){
   ensureStage6State();
-  const bishop = S.stage6.bishop;
-  bishop.customRegions = [];
-  bishop.useCustomRegions = false;
-  bishop.selectedRegionId = null;
+  seepslopeClearCustomRegions(S.stage6.bishop);
   stage6BishopInvalidate(message || 'Custom soil polygons were cleared; Bishop reverted to CPT-derived polygons.');
 }
 
 function stage6BishopDeleteSelectedRegion(){
   ensureStage6State();
   stage6RememberDetailsState();
-  const bishop = S.stage6.bishop;
-  const selectedId = bishop.selectedRegionId;
-  if(!selectedId) return;
-  bishop.customRegions = (bishop.customRegions || []).filter((region)=>region.id !== selectedId);
-  bishop.selectedRegionId = bishop.customRegions[0]?.id || null;
-  if(!bishop.customRegions.length){
-    bishop.useCustomRegions = false;
-  }
+  if(!seepslopeDeleteSelectedRegion(S.stage6.bishop)) return;
   stage6BishopInvalidate('Custom soil polygon removed; rerun Bishop search.');
   renderStage6();
 }
@@ -3517,10 +3084,7 @@ function stage6BishopDeleteSelectedRegion(){
 function stage6BishopSetSelectedRegionMaterial(materialId){
   ensureStage6State();
   stage6RememberDetailsState();
-  const bishop = S.stage6.bishop;
-  const region = stage6BishopSelectedCustomRegion();
-  if(!region) return;
-  region.materialId = materialId;
+  if(!seepslopeSetSelectedRegionMaterial(S.stage6.bishop, materialId)) return;
   stage6BishopSyncSoilModel();
   stage6BishopInvalidate('Custom soil polygon material updated; rerun Bishop search.');
   renderStage6();
@@ -3530,9 +3094,7 @@ function stage6BishopSetSelectedRegionCoarseness(value){
   ensureStage6State();
   stage6RememberDetailsState();
   const bishop = S.stage6.bishop;
-  const region = stage6BishopSelectedCustomRegion();
-  if(!region) return;
-  region.coarseness = stage6BishopNormalizeRegionCoarseness(value);
+  if(!seepslopeSetSelectedRegionCoarseness(bishop, value)) return;
   stage6BishopSyncSoilModel();
   if(bishop.useCustomRegions && (bishop.customRegions || []).length){
     stage6BishopInvalidateSeepage('Selected polygon coarseness changed. Showing the previous result until you rerun.', true, true);
@@ -3541,6 +3103,7 @@ function stage6BishopSetSelectedRegionCoarseness(value){
   }
   renderStage6();
 }
+
 
 function stage6BishopCommitPendingSelectedRegionCoarseness(){
   if(typeof document === 'undefined') return;
@@ -3552,42 +3115,13 @@ function stage6BishopCommitPendingSelectedRegionCoarseness(){
 function stage6BishopSplitSelectedRegion(){
   ensureStage6State();
   stage6RememberDetailsState();
-  const bishop = S.stage6.bishop;
-  const region = stage6BishopSelectedCustomRegion();
-  const splitPoints = bishop.draftKind === 'regionSplit' ? (bishop.draft || []) : [];
-  if(!region || splitPoints.length < 2){
-    bishop.progress.message = 'Choose two boundary points on the selected polygon to split it.';
-    renderStage6();
-    return;
-  }
-  const outcome = stage6BishopSplitRegionPolygon(region, splitPoints[0], splitPoints[1]);
-  if(!outcome.ok){
-    bishop.draft = [];
-    bishop.draftKind = 'regionSplit';
-    bishop.progress.message = outcome.message;
-    renderStage6();
-    return;
-  }
-  const replacements = outcome.polygons.map((polygon)=>({
-    id:stage6BishopRegionId(),
-    polygon,
-    materialId:region.materialId || bishop.materials?.[0]?.id || null,
-    coarseness:stage6BishopNormalizeRegionCoarseness(region?.coarseness),
-    source:'edited'
-  }));
-  bishop.customRegions = stage6BishopNormalizeCustomRegions(
-    (bishop.customRegions || []).flatMap((item)=>item.id === region.id ? replacements : [item]),
-    bishop.terrain,
-    bishop.materials
-  );
-  bishop.selectedRegionId = replacements[0]?.id || bishop.selectedRegionId;
-  bishop.useCustomRegions = bishop.customRegions.length > 0;
-  bishop.tool = 'edit';
-  bishop.draft = [];
-  bishop.draftKind = '';
-  stage6BishopInvalidate('Custom soil polygon split into two polygons; rerun Bishop search.');
+  const outcome = seepslopeSplitSelectedRegion(S.stage6.bishop, {
+    splitPolygon: (region, first, second) => stage6BishopSplitRegionPolygon(region, first, second)
+  });
+  if(outcome.ok) stage6BishopInvalidate('Custom soil polygon split into two polygons; rerun Bishop search.');
   renderStage6();
 }
+
 
 function stage6BishopSetField(path, value){
   ensureStage6State();
@@ -4081,41 +3615,11 @@ function stage6BishopResetMaterialPermeability(index){
 function stage6BishopSetWallField(index, field, value){
   ensureStage6State();
   stage6BishopSyncSoilModel();
-  const wall = S.stage6.bishop.walls?.[index];
-  if(!wall) return;
-  if(field === 'passiveSide'){
-    wall.passiveSide = value === 'left' ? 'left' : 'right';
-  } else if(field === 'maxShearForce'){
-    wall.maxShearForce = value === '' || value == null ? null : Math.max(+value || 0, 0);
-  } else if(field === 'interfaceRInter'){
-    const r = value === '' || value == null ? null : +value;
-    wall.interfaceRInter = Number.isFinite(r) && r > 0 ? Math.min(Math.max(r, 0.01), 1) : null;
-  } else if(field === 'mechanicalActive'){
-    wall.mechanicalActive = value === true || value === 'true' || value === 1 || value === '1';
-    wall.mechanicalActivationPromptPending = false;
-  } else if(field === 'head.x' || field === 'head.y' || field === 'tip.x' || field === 'tip.y'){
-    const [endKey, coordKey] = field.split('.');
-    if(!wall[endKey] || typeof wall[endKey] !== 'object') wall[endKey] = {};
-    wall[endKey][coordKey] = value === '' || value == null ? null : +value;
-  } else if(field === 'x'){
-    const nextX = value === '' || value == null ? null : +value;
-    const axis = wallAxis(wall);
-    if(Number.isFinite(nextX)){
-      const dx = axis ? axis.tip.x - axis.head.x : 0;
-      wall.head = {...(wall.head || {x:wall.x, y:wall.yTop}), x:nextX};
-      wall.tip = {...(wall.tip || {x:wall.x, y:wall.yTip}), x:nextX + dx};
-    }
-  } else if(field === 'yTop'){
-    wall.head = {...(wall.head || {x:wall.x, y:wall.yTop}), y:value === '' || value == null ? null : +value};
-  } else if(field === 'yTip'){
-    wall.tip = {...(wall.tip || {x:wall.x, y:wall.yTip}), y:value === '' || value == null ? null : +value};
-  } else {
-    wall[field] = value === '' || value == null ? null : +value;
-  }
-  S.stage6.bishop.walls = stage6BishopNormalizeWalls(S.stage6.bishop.walls, S.stage6.bishop.terrain);
-  if(field === 'mechanicalActive'){
+  const change = seepslopeSetWallField(S.stage6.bishop, index, field, value);
+  if(!change) return;
+  if(change === 'mechanical'){
     stage6BishopInvalidateDeformation('Wall mechanical activation changed; rerun deformation analysis.');
-  } else if(field === 'x' || field === 'yTop' || field === 'yTip' || field.startsWith('head.') || field.startsWith('tip.')) {
+  } else if(change === 'geometry'){
     stage6BishopInvalidateWallGeometry('Retaining wall geometry updated; rerun Bishop search.');
   } else {
     stage6BishopInvalidate('Retaining wall geometry updated; rerun Bishop search.');
@@ -4126,52 +3630,12 @@ function stage6BishopSetWallField(index, field, value){
 function stage6BishopSetWallMaterialField(index, field, value){
   ensureStage6State();
   stage6BishopSyncSoilModel();
-  const wall = S.stage6.bishop.walls?.[index];
-  if(!wall) return;
-  wall.material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'user'});
-  if(field === 'preset'){
-    wall.material = stage6BishopWallMaterialPreset(value, index, wall.id);
-  } else if(field === 'mechanical.model'){
-    const nextModel = value === 'section-properties' ? 'section-properties' : 'rectangular';
-    if(nextModel === 'section-properties'){
-      wall.material.mechanical = {
-        model:'section-properties',
-        EA:resolveWallMechanicalSection(wall.material.mechanical).EA,
-        EI:resolveWallMechanicalSection(wall.material.mechanical).EI,
-        GA:resolveWallMechanicalSection(wall.material.mechanical).GA,
-        kappa:1,
-        source:'user'
-      };
-    } else {
-      wall.material.mechanical = defaultWallMechanicalMaterial('user');
-    }
-  } else if(field.startsWith('mechanical.')){
-    const key = field.slice('mechanical.'.length);
-    const mechanical = {...(wall.material.mechanical || defaultWallMechanicalMaterial('user'))};
-    const nextValue = value === '' || value == null ? null : +value;
-    if(key === 'E' || key === 'thickness' || key === 'EA' || key === 'EI' || key === 'GA' || key === 'kappa'){
-      if(!(nextValue > 0)) return;
-      mechanical[key] = nextValue;
-    } else if(key === 'nu'){
-      if(!(Number.isFinite(nextValue) && nextValue >= 0 && nextValue < 0.5)) return;
-      mechanical.nu = nextValue;
-    }
-    mechanical.source = 'user';
-    wall.material.mechanical = mechanical;
-  } else if(field === 'label'){
-    wall.material.label = String(value || '').trim() || 'Wall material';
-    wall.material.kSource = 'user';
-  } else if(field === 'kAcross' || field === 'kAlong'){
-    const nextValue = value === '' || value == null ? null : +value;
-    if(!(nextValue > 0)) return;
-    wall.material[field] = nextValue;
-    wall.material.kSource = 'user';
-  }
-  S.stage6.bishop.walls = stage6BishopNormalizeWalls(S.stage6.bishop.walls, S.stage6.bishop.terrain);
-  if(field === 'kAcross' || field === 'kAlong' || field === 'preset'){
+  const change = seepslopeSetWallMaterialField(S.stage6.bishop, index, field, value);
+  if(!change) return;
+  if(change.seepage){
     stage6BishopInvalidateSeepage('Wall conductivity changed. Showing the previous result until you rerun.', true, true);
   }
-  if(field.startsWith('mechanical.') || field === 'preset'){
+  if(change.deformation){
     stage6BishopInvalidateDeformation('Wall mechanical material changed; rerun deformation analysis.', true, true);
   }
   renderStage6();
@@ -4180,31 +3644,17 @@ function stage6BishopSetWallMaterialField(index, field, value){
 function stage6BishopDeleteWall(index){
   ensureStage6State();
   stage6BishopSyncSoilModel();
-  const removed = S.stage6.bishop.walls?.[index] || null;
-  S.stage6.bishop.walls = (S.stage6.bishop.walls || []).filter((_, wallIndex)=>wallIndex !== index);
-  if(removed?.id === S.stage6.bishop.selectedWallId){
-    S.stage6.bishop.selectedWallId = null;
-  }
+  seepslopeDeleteWall(S.stage6.bishop, index);
   stage6BishopInvalidateWallGeometry('Retaining wall removed; rerun Bishop search.');
   renderStage6();
 }
 
 function stage6BishopSelectWall(wallId){
   ensureStage6State();
-  const bishop = S.stage6.bishop;
-  const wall = (bishop.walls || []).find((item)=>item.id === wallId);
-  bishop.selectedWallId = wall ? wall.id : null;
-  if(wall){
-    bishop.selectedSurfaceLoadId = null;
-    bishop.selectedDrainId = '';
-    bishop.selectedRegionId = null;
-    const ui = stage6BishopUiState();
-    ui.bishopActiveCanvasPanel = 'structures';
-    ui.bishopActiveCanvasSheet = '';
-    ui.bishopCanvasToolsHidden = false;
-  }
+  seepslopeSelectWall(S.stage6.bishop, wallId, stage6BishopUiState());
   renderStage6();
 }
+
 
 function stage6BishopToggleWallMomentOverlay(){
   ensureStage6State();
@@ -4452,8 +3902,7 @@ async function stage6BishopCopyWallData(wallId){
 
 function stage6BishopSelectDrain(drainId){
   ensureStage6State();
-  S.stage6.bishop.selectedDrainId = drainId || '';
-  if(drainId) S.stage6.bishop.selectedWallId = null;
+  seepslopeSelectDrain(S.stage6.bishop, drainId);
   renderStage6();
 }
 
@@ -4461,18 +3910,7 @@ function stage6BishopSetDrainField(index, field, value){
   ensureStage6State();
   stage6RememberDetailsState();
   stage6BishopSyncSoilModel();
-  const drain = S.stage6.bishop.drains?.[index];
-  if(!drain) return;
-  if(field === 'label'){
-    drain.label = String(value || '').trim() || `Drain ${index + 1}`;
-  } else if(field === 'head'){
-    const head = value === '' || value == null ? null : +value;
-    if(!Number.isFinite(head)) return;
-    drain.head = {kind:'constant', value:head};
-  } else if(field === 'gating'){
-    drain.gating = value === 'always' || value === 'head-cap' ? value : 'when-saturated';
-  }
-  S.stage6.bishop.drains = stage6BishopNormalizeDrains(S.stage6.bishop.drains);
+  if(!seepslopeSetDrainField(S.stage6.bishop, index, field, value)) return;
   const model = stage6BishopCurrentModel();
   S.stage6.bishop.seepage.drainValidation = validateDrains(model);
   stage6BishopInvalidateSeepage('Drain settings changed. Showing the previous result until you rerun.', true, true);
@@ -4483,14 +3921,11 @@ function stage6BishopDeleteDrain(index){
   ensureStage6State();
   stage6RememberDetailsState();
   stage6BishopSyncSoilModel();
-  const removed = S.stage6.bishop.drains?.[index];
-  S.stage6.bishop.drains = (S.stage6.bishop.drains || []).filter((_, drainIndex)=>drainIndex !== index);
-  if(removed?.id === S.stage6.bishop.selectedDrainId){
-    S.stage6.bishop.selectedDrainId = S.stage6.bishop.drains?.[0]?.id || '';
-  }
+  seepslopeDeleteDrain(S.stage6.bishop, index);
   stage6BishopInvalidateSeepage('Drain removed. Showing the previous result until you rerun.', true, true);
   renderStage6();
 }
+
 
 function stage6BishopStopSeepage(silent){
   if(stage6BishopSeepageWorker){
