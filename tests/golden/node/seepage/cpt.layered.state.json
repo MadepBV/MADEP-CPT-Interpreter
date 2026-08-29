@@ -1,0 +1,54 @@
+{
+  "bcs": [
+    {
+      "anchor": {
+        "mid": {
+          "x": 0,
+          "y": -5.333334
+        },
+        "source": "side-left",
+        "tangent": {
+          "dx": 0,
+          "dy": 1
+        }
+      },
+      "edgeKey": "side-left:0",
+      "head": 3,
+      "id": "<id>",
+      "status": "active",
+      "type": "head"
+    },
+    {
+      "anchor": {
+        "mid": {
+          "x": 20,
+          "y": -7.333334
+        },
+        "source": "side-right",
+        "tangent": {
+          "dx": 0,
+          "dy": -1
+        }
+      },
+      "edgeKey": "side-right:0",
+      "head": -0.5,
+      "id": "<id>",
+      "status": "active",
+      "type": "head"
+    }
+  ],
+  "geometryHash": "{\"terrain\":[[0,4],[8,4],[20,0]],\"bottomY\":-14.666667,\"regions\":[{\"id\":\"cpt-0-0\",\"materialId\":\"layer_0\",\"kx\":0.000003,\"ky\":0.000003,\"coarseness\":1,\"polygon\":[[0,2.383333],[12.85,2.383333],[8,4],[0,4]]},{\"id\":\"cpt-1-0\",\"materialId\":\"layer_1\",\"kx\":0.00015,\"ky\":0.00015,\"coarseness\":1,\"polygon\":[[0,1.383333],[15.85,1.383333],[12.85,2.383333],[8,2.383333],[0,2.383333]]},{\"id\":\"cpt-2-0\",\"materialId\":\"layer_2\",\"kx\":0.001,\"ky\":0.001,\"coarseness\":1,\"polygon\":[[0,-0.616667],[20,-0.616667],[20,0],[15.85,1.383333],[8,1.383333],[0,1.383333]]},{\"id\":\"cpt-3-0\",\"materialId\":\"layer_3\",\"kx\":5e-8,\"ky\":1.7e-8,\"coarseness\":1,\"polygon\":[[0,-4.616667],[20,-4.616667],[20,-0.616667],[8,-0.616667],[0,-0.616667]]},{\"id\":\"cpt-4-0\",\"materialId\":\"layer_4\",\"kx\":5e-7,\"ky\":1.7e-7,\"coarseness\":1,\"polygon\":[[0,-7.616667],[20,-7.616667],[20,-4.616667],[8,-4.616667],[0,-4.616667]]},{\"id\":\"cpt-5-0\",\"materialId\":\"layer_5\",\"kx\":0.001,\"ky\":0.001,\"coarseness\":1,\"polygon\":[[0,-11.616667],[20,-11.616667],[20,-7.616667],[8,-7.616667],[0,-7.616667]]},{\"id\":\"cpt-6-0\",\"materialId\":\"layer_6\",\"kx\":5e-8,\"ky\":1.7e-8,\"coarseness\":1,\"polygon\":[[0,-14.666667],[20,-14.666667],[20,-11.616667],[8,-11.616667],[0,-11.616667]]}],\"walls\":[],\"drains\":[],\"freeSurface\":\"iterate\",\"usePhreaticAsSeed\":true,\"meshTargetArea\":1,\"phreatic\":[]}",
+  "options": {
+    "drains": {
+      "gatingTolerances": {},
+      "reportPerSegmentInflow": true
+    },
+    "flowErrorTolerance": 0.01,
+    "freeSurface": "iterate",
+    "maxRuntimeMs": "<masked>",
+    "meshTargetArea": 1,
+    "meshTargetAreaAuto": false,
+    "usePhreaticAsSeed": true
+  },
+  "selectedEdgeKey": "side-right:0"
+}

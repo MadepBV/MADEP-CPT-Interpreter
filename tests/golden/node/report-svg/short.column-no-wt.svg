@@ -1,0 +1,4 @@
+<rect x="0" y="0" width="80" height="300" fill="#D3D1C7" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="40" y="153" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Sand</text><line x1="0" x2="4" y1="0" y2="0" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="3" font-size="6" fill="#9a9a96" font-family="sans-serif">0</text><line x1="0" x2="4" y1="300" y2="300" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="303" font-size="6" fill="#9a9a96" font-family="sans-serif">2</text>

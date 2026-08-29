@@ -1,0 +1,68 @@
+## #cptTabs
+DATA
+layered
+## .panel.active
+Applications
+Use the interpreted CPT profile for first engineering calculations. Stage 6 reuses the active CPT, current layer model, current water table, and accepted Stage 5 tuning.
+REFRESH
+STAGE 7 REPORT
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: layered · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = not accepted
+Seep/Slope + Spencer equilibrium check
+Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, multiple optional surcharge strips, and an optional full Spencer verification pass on the shortlisted circles.
+STABILITY
+SEEPAGE
+DEFORMATION
+Shared canvas and geometry; Bishop/Spencer remain the default workspace.
+RUN BISHOP + SPENCER CHECK
+STOP
+FIT VIEW
+CLEAR RESULTS
+Draw terrain, place the active CPT, and define entry and exit zones. Retaining walls, load zones, and the phreatic line are optional.
+TOOL
+Terrain mode
+METHOD
+Bishop + Spencer check
+LINE
+none
+Draw terrain, place the active CPT, and define entry and exit zones. Retaining walls, load zones, and the phreatic line are optional.
+Canvas order: draw terrain left-to-right or import a DXF terrain line, click Finish line to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and one or more load zones, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.
+RESULTS
+CRITICAL F (CHARACTERISTIC STRENGTHS) —
+MODE Bishop + Spencer check
+CIRCLE CENTRE —
+RADIUS —
+MAX SLIP DEPTH —
+TRIALS —
+RUNTIME —
+SPENCER RECHECKED off
+SPENCER CONVERGED off
+SELECTED RESULT —
+SELECTED METHOD —
+SELECTED BISHOP F —
+SELECTED SPENCER F —
+SELECTED Λ —
+SELECTED Θ —
+SELECTED MOMENT RESIDUAL —
+SELECTED FORCE RESIDUAL —
+SELECTED ITERATIONS —
+Rejections: no search yet
+BEST CIRCLES
+# F METHOD BISHOP F WALL Λ ITER
+No results yet.
+SELECTED SLICES
+I W Q V ALPHA C' PHI' U M_ALPHA NORMAL
+Select or run a result to inspect slice data.
+This Stage 6 slope check is experimental. It searches circular slip surfaces only and currently uses self-weight, optional infinitely stiff retaining walls, multiple optional uniform surcharge strips, and optional phreatic pore pressure along the base.
+The soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this workflow.
+Spencer runs as a verification pass on the best Bishop circles. Each shortlisted circle is solved by intersecting the Spencer moment and force branches. If Spencer does not converge for a shortlisted circle, the app keeps the Bishop result and flags that fallback in the results panel.
+When a circle intersects a retaining wall, Bishop reduces the driving moment with the wall resistance and Spencer injects the same wall force into the horizontal force chain. Circles that pass below the wall tip remain unchanged and may still govern.
+← BACK TO TUNING
+EXPORT CSV
+PRINT STAGE 7

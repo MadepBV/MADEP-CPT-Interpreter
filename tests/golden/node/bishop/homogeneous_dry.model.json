@@ -1,0 +1,167 @@
+{
+  "analysisBottomY": -11,
+  "autoRegions": [
+    {
+      "coarseness": 1,
+      "id": "cpt-0-0",
+      "material": {
+        "E50_ref": 1000,
+        "Emc": 1000,
+        "Eoed_ref": 1000,
+        "Eur_ref": 3000,
+        "K0nc": "NaN",
+        "cEff": 5,
+        "color": "#b68a60",
+        "gamma": 18,
+        "gammaSat": 20,
+        "hs": {
+          "OCR": 1,
+          "Rf": 0.9,
+          "e_init": -1,
+          "e_max": -1,
+          "nearSurfaceMinConfiningStress": 0,
+          "p_ref": 100,
+          "useConsistentTangent": true
+        },
+        "id": "layer_0",
+        "kSource": "sbtn-default",
+        "kx": 0.000003,
+        "ky": 0.000003,
+        "label": "Layer 1 - Fine sand (Sand)",
+        "m": 0.5,
+        "nu": "NaN",
+        "nu_ur": 0.2,
+        "phiEffDeg": 30,
+        "psi": 0,
+        "rShear": 0.25,
+        "sigmaTAllow": 0,
+        "sourceLayerKey": "Sand|Fine sand|0|14",
+        "sourceStrengthSet": "characteristic",
+        "sourceSubtype": "Fine sand",
+        "sourceType": "Sand"
+      },
+      "polygon": [
+        {"x":0,"y":-11},
+        {"x":20,"y":-11},
+        {"x":20,"y":0},
+        {"x":8,"y":4},
+        {"x":0,"y":4}
+      ],
+      "source": "cpt-auto",
+      "topFollowsTerrain": true
+    }
+  ],
+  "boundaryYs": [],
+  "cptGroundY": 4,
+  "cptInsertionOffset": 0,
+  "cptTopY": 4,
+  "cptX": 4,
+  "customRegions": [],
+  "deformation": null,
+  "drains": [],
+  "materials": [
+    {
+      "E50_ref": 1000,
+      "Emc": 1000,
+      "Eoed_ref": 1000,
+      "Eur_ref": 3000,
+      "K0nc": "NaN",
+      "cEff": 5,
+      "color": "#b68a60",
+      "gamma": 18,
+      "gammaSat": 20,
+      "hs": {
+        "OCR": 1,
+        "Rf": 0.9,
+        "e_init": -1,
+        "e_max": -1,
+        "nearSurfaceMinConfiningStress": 0,
+        "p_ref": 100,
+        "useConsistentTangent": true
+      },
+      "id": "layer_0",
+      "kSource": "sbtn-default",
+      "kx": 0.000003,
+      "ky": 0.000003,
+      "label": "Layer 1 - Fine sand (Sand)",
+      "m": 0.5,
+      "nu": "NaN",
+      "nu_ur": 0.2,
+      "phiEffDeg": 30,
+      "psi": 0,
+      "rShear": 0.25,
+      "sigmaTAllow": 0,
+      "sourceLayerKey": "Sand|Fine sand|0|14",
+      "sourceStrengthSet": "characteristic",
+      "sourceSubtype": "Fine sand",
+      "sourceType": "Sand"
+    }
+  ],
+  "phreatic": null,
+  "regionBoundaryPolylines": [],
+  "regionMode": "auto",
+  "regions": [
+    {
+      "coarseness": 1,
+      "id": "cpt-0-0",
+      "material": {
+        "E50_ref": 1000,
+        "Emc": 1000,
+        "Eoed_ref": 1000,
+        "Eur_ref": 3000,
+        "K0nc": "NaN",
+        "cEff": 5,
+        "color": "#b68a60",
+        "gamma": 18,
+        "gammaSat": 20,
+        "hs": {
+          "OCR": 1,
+          "Rf": 0.9,
+          "e_init": -1,
+          "e_max": -1,
+          "nearSurfaceMinConfiningStress": 0,
+          "p_ref": 100,
+          "useConsistentTangent": true
+        },
+        "id": "layer_0",
+        "kSource": "sbtn-default",
+        "kx": 0.000003,
+        "ky": 0.000003,
+        "label": "Layer 1 - Fine sand (Sand)",
+        "m": 0.5,
+        "nu": "NaN",
+        "nu_ur": 0.2,
+        "phiEffDeg": 30,
+        "psi": 0,
+        "rShear": 0.25,
+        "sigmaTAllow": 0,
+        "sourceLayerKey": "Sand|Fine sand|0|14",
+        "sourceStrengthSet": "characteristic",
+        "sourceSubtype": "Fine sand",
+        "sourceType": "Sand"
+      },
+      "polygon": [
+        {"x":0,"y":-11},
+        {"x":20,"y":-11},
+        {"x":20,"y":0},
+        {"x":8,"y":4},
+        {"x":0,"y":4}
+      ],
+      "source": "cpt-auto",
+      "topFollowsTerrain": true
+    }
+  ],
+  "seepage": null,
+  "strengthSet": "characteristic",
+  "surfaceLoad": null,
+  "surfaceLoads": [],
+  "terrain": {
+    "vertices": [
+      {"x":0,"y":4},
+      {"x":8,"y":4},
+      {"x":20,"y":0}
+    ]
+  },
+  "useFemPorePressure": false,
+  "walls": []
+}

@@ -1,0 +1,26 @@
+{
+  "allResults": [],
+  "critical": null,
+  "criticalBelowWall": null,
+  "criticalOverall": null,
+  "criticalThroughWall": null,
+  "methodMode": "bishop_spencer",
+  "rejectionCounts": {
+    "arc above terrain": 248,
+    "cannot identify base material": 23,
+    "extra ground intersections": 1,
+    "stable by wall alone": 227,
+    "too shallow": 1
+  },
+  "spencerConverged": 0,
+  "spencerRechecked": 0,
+  "summary": null,
+  "timing": "<masked>",
+  "wallSummary": {
+    "criticalBelowWall": null,
+    "criticalOverall": null,
+    "criticalThroughWall": null,
+    "wallCount": 1,
+    "wallEffective": null
+  }
+}

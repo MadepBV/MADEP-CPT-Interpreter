@@ -1,0 +1,104 @@
+{
+  "data": {
+    "datasets": [
+      {
+        "backgroundColor": [
+          "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)",
+          "rgba(60,170,90,0.95)"
+        ],
+        "borderColor": [
+          "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)",
+          "rgba(60,170,90,0.95)"
+        ],
+        "data": [
+          {"x":24.75894736842105,"y":0.475},
+          {"x":113.00948571428572,"y":1.45},
+          {"x":113.38400975609756,"y":2.95},
+          {"x":33.74864197530866,"y":5.95},
+          {"x":28.99464285714285,"y":8.975}
+        ],
+        "label": "q_s per layer",
+        "pointHoverRadius": 7,
+        "pointRadius": 6,
+        "showLine": false
+      }
+    ]
+  },
+  "options": {
+    "animation": false,
+    "color": "#4a4a52",
+    "maintainAspectRatio": false,
+    "plugins": {
+      "legend": {
+        "display": false,
+        "labels": {
+          "color": "#4a4a52"
+        }
+      },
+      "tooltip": {
+        "backgroundColor": "rgba(255,255,255,0.96)",
+        "bodyColor": "#18181a",
+        "borderColor": "rgba(24,24,26,0.18)",
+        "borderWidth": 1,
+        "callbacks": {},
+        "titleColor": "#18181a"
+      }
+    },
+    "responsive": true,
+    "scales": {
+      "x": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 124.72241073170733,
+        "min": 0,
+        "position": "top",
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          }
+        },
+        "title": {
+          "color": "#4a4a52",
+          "display": true,
+          "font": {
+            "size": 10
+          },
+          "text": "q_s (kPa)"
+        },
+        "type": "linear"
+      },
+      "y": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 18.25,
+        "min": 0,
+        "reverse": true,
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          }
+        },
+        "title": {
+          "color": "#4a4a52",
+          "display": true,
+          "font": {
+            "size": 10
+          },
+          "text": "Depth (m)"
+        },
+        "type": "linear"
+      }
+    }
+  },
+  "type": "scatter"
+}

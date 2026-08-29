@@ -1,0 +1,38 @@
+[
+  {
+    "E50_ref": 23488,
+    "Emc": 8925,
+    "Eoed_ref": 23488,
+    "Eur_ref": 70464,
+    "K0nc": 0.577,
+    "cEff": 0,
+    "color": "#b68a60",
+    "gamma": 16,
+    "gammaSat": 18,
+    "hs": {
+      "OCR": 1,
+      "Rf": 0.9,
+      "e_init": -1,
+      "e_max": -1,
+      "nearSurfaceMinConfiningStress": 0,
+      "p_ref": 100,
+      "useConsistentTangent": true
+    },
+    "id": "layer_0",
+    "kSource": "cpt",
+    "kx": 0.000003,
+    "ky": 0.000003,
+    "label": "Layer 1 - zand (lh), los (Sand)",
+    "m": 0.5,
+    "nu": 0.3,
+    "nu_ur": 0.2,
+    "phiEffDeg": 25,
+    "psi": 0,
+    "rShear": 0.28,
+    "sigmaTAllow": 0,
+    "sourceLayerKey": "Sand|zand (lh), los|0|2",
+    "sourceStrengthSet": "characteristic",
+    "sourceSubtype": "zand (lh), los",
+    "sourceType": "Sand"
+  }
+]

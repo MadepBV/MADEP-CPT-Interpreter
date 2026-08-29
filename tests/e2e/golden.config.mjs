@@ -7,8 +7,12 @@
 //
 //   GOLDEN_MODE=record|check|update   (default check)  — see scripts/golden/lib/journey.mjs
 //   GOLDEN_VISUAL=off|soft|strict     (default soft)   — PNG compare policy
+//   GOLDEN_PORT=<n>                   (default 5299)   — dev-server port, so two worktrees can
+//                                                        run side by side (bisect-journey); also
+//                                                        `--port=<n>` / `--port <n>` on the CLI
 //
 //   npx playwright test --config tests/e2e/golden.config.mjs
+//   GOLDEN_PORT=5399 npx playwright test --config tests/e2e/golden.config.mjs
 import { defineConfig } from '@playwright/test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +20,13 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 const MODE = process.env.GOLDEN_MODE || 'check';
+const cliPort = (() => {
+  const i = process.argv.findIndex((a) => a === '--port' || a.startsWith('--port='));
+  if (i < 0) return null;
+  return process.argv[i].includes('=') ? process.argv[i].split('=')[1] : process.argv[i + 1];
+})();
+const PORT = Number(process.env.GOLDEN_PORT || cliPort || 5299);
+const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: '.',
@@ -31,7 +42,7 @@ export default defineConfig({
   snapshotPathTemplate: '{snapshotDir}/{arg}{ext}',
   expect: { timeout: 10_000 },
   use: {
-    baseURL: 'http://localhost:5299',
+    baseURL: BASE_URL,
     viewport: { width: 1500, height: 950 },
     deviceScaleFactor: 1,
     colorScheme: 'light',
@@ -44,9 +55,9 @@ export default defineConfig({
     video: 'off'
   },
   webServer: {
-    command: 'npx vite dev --port 5299 --strictPort',
+    command: `npx vite dev --port ${PORT} --strictPort`,
     cwd: ROOT,
-    url: 'http://localhost:5299/',
+    url: `${BASE_URL}/`,
     reuseExistingServer: true,
     timeout: 60_000
   },

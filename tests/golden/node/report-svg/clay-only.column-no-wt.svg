@@ -1,0 +1,9 @@
+<rect x="0" y="0" width="80" height="300" fill="#AFA9EC" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="40" y="153" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Clay</text><line x1="0" x2="4" y1="0" y2="0" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="3" font-size="6" fill="#9a9a96" font-family="sans-serif">0</text><line x1="0" x2="4" y1="50" y2="50" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="53" font-size="6" fill="#9a9a96" font-family="sans-serif">2</text><line x1="0" x2="4" y1="100" y2="100" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="103" font-size="6" fill="#9a9a96" font-family="sans-serif">4</text><line x1="0" x2="4" y1="150" y2="150" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="153" font-size="6" fill="#9a9a96" font-family="sans-serif">6</text><line x1="0" x2="4" y1="200" y2="200" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="203" font-size="6" fill="#9a9a96" font-family="sans-serif">8</text><line x1="0" x2="4" y1="250" y2="250" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="253" font-size="6" fill="#9a9a96" font-family="sans-serif">10</text><line x1="0" x2="4" y1="300" y2="300" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="303" font-size="6" fill="#9a9a96" font-family="sans-serif">12</text>

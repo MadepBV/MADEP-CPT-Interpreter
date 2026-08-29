@@ -1,0 +1,26 @@
+# MADEP stratigrafie — PLAXIS 2D materiaalcommando's per grondeenheid
+# Parameters: dikte-gewogen gemiddelden over de deelnemende CPT-lagen;
+# sterkte volgens karakteristieke keuze "wmean".
+# Eenheid Quartair zand: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid B — leem, weinig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid C — zand, dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid D — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid E — leem, weinig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid F — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid G — klei, weinig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid H — klei, weinig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid I — klei, weinig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid J — leem, vrij vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid K — klei, weinig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid L — leem, vrij vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid M — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid N — klei (zh), vrij vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid O — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid P — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid Q — klei, matig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid R — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid S — klei, weinig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid T — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid U — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid V — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid W — klei, matig vast: geen Stage 4 parameters beschikbaar — overgeslagen.

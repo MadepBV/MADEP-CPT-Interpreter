@@ -2968,6 +2968,7 @@
         "centrifugalForce": null,
         "sheet": {
          "name": "",
+         "massSource": "amplitude",
          "force_kN": null,
          "forceAtRpm": null,
          "rpmMax": null,
@@ -2992,6 +2993,10 @@
          "pressure_bar": null,
          "power_kW": null
         }
+       },
+       "push": {
+        "force_kN": 150,
+        "includeWeight": true
        },
        "hammer": {
         "id": "custom",
@@ -11661,6 +11666,7 @@
         "centrifugalForce": null,
         "sheet": {
          "name": "",
+         "massSource": "amplitude",
          "force_kN": null,
          "forceAtRpm": null,
          "rpmMax": null,
@@ -11685,6 +11691,10 @@
          "pressure_bar": null,
          "power_kW": null
         }
+       },
+       "push": {
+        "force_kN": 150,
+        "includeWeight": true
        },
        "hammer": {
         "id": "custom",
@@ -18991,6 +19001,7 @@
         "centrifugalForce": null,
         "sheet": {
          "name": "",
+         "massSource": "amplitude",
          "force_kN": null,
          "forceAtRpm": null,
          "rpmMax": null,
@@ -19015,6 +19026,10 @@
          "pressure_bar": null,
          "power_kW": null
         }
+       },
+       "push": {
+        "force_kN": 150,
+        "includeWeight": true
        },
        "hammer": {
         "id": "custom",

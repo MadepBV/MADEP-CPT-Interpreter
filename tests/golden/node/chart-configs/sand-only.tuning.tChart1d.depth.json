@@ -1,0 +1,244 @@
+{
+  "data": {
+    "datasets": [
+      {
+        "backgroundColor": "rgba(24,24,26,0.05)",
+        "borderWidth": 0,
+        "data": [
+          {"x":0,"y":1.45},
+          {"x":80000,"y":1.45},
+          {"x":80000,"y":2.65},
+          {"x":0,"y":2.65}
+        ],
+        "fill": true,
+        "label": "layer",
+        "pointRadius": 0,
+        "showLine": false,
+        "type": "line"
+      },
+      {
+        "backgroundColor": "rgba(61,107,106,0.10)",
+        "data": [
+          {"x":38823,"y":1.45},
+          {"x":59192,"y":1.5},
+          {"x":67242,"y":1.55},
+          {"x":75132,"y":1.6},
+          {"x":63993,"y":1.65},
+          {"x":46769,"y":1.7},
+          {"x":41586,"y":1.75},
+          {"x":70228,"y":1.8},
+          {"x":49231,"y":1.85},
+          {"x":41053,"y":1.9},
+          {"x":40248,"y":1.95},
+          {"x":68893,"y":2},
+          {"x":65114,"y":2.05},
+          {"x":41174,"y":2.1},
+          {"x":62263,"y":2.15},
+          {"x":63168,"y":2.2},
+          {"x":68153,"y":2.25},
+          {"x":64306,"y":2.3},
+          {"x":45813,"y":2.35},
+          {"x":75942,"y":2.4},
+          {"x":59780,"y":2.45},
+          {"x":58304,"y":2.5},
+          {"x":33526,"y":2.55},
+          {"x":35648,"y":2.6},
+          {"x":38167,"y":2.65}
+        ],
+        "label": "E_oed,i (CPT)",
+        "pointHoverRadius": 5,
+        "pointRadius": 2.5
+      },
+      {
+        "borderColor": "#18181A",
+        "borderWidth": 1.5,
+        "data": [
+          {"x":47007,"y":1.45},
+          {"x":47810,"y":1.5},
+          {"x":48601,"y":1.55},
+          {"x":49378,"y":1.6},
+          {"x":50144,"y":1.65},
+          {"x":50898,"y":1.7},
+          {"x":51641,"y":1.75},
+          {"x":52374,"y":1.8},
+          {"x":53096,"y":1.85},
+          {"x":53809,"y":1.9},
+          {"x":54512,"y":1.95},
+          {"x":55207,"y":2},
+          {"x":55892,"y":2.05},
+          {"x":56570,"y":2.1},
+          {"x":57239,"y":2.15},
+          {"x":57901,"y":2.2},
+          {"x":58555,"y":2.25},
+          {"x":59203,"y":2.3},
+          {"x":59843,"y":2.35},
+          {"x":60476,"y":2.4},
+          {"x":61103,"y":2.45},
+          {"x":61723,"y":2.5},
+          {"x":62071,"y":2.55},
+          {"x":62418,"y":2.6},
+          {"x":62762,"y":2.65}
+        ],
+        "fill": false,
+        "label": "HS default m=0.50",
+        "pointRadius": 0,
+        "tension": 0.3,
+        "type": "line"
+      },
+      {
+        "borderColor": "#3D6B6A",
+        "borderDash": [],
+        "borderWidth": 2.5,
+        "data": [
+          {"x":45206,"y":1.45},
+          {"x":45979,"y":1.5},
+          {"x":46739,"y":1.55},
+          {"x":47487,"y":1.6},
+          {"x":48223,"y":1.65},
+          {"x":48949,"y":1.7},
+          {"x":49663,"y":1.75},
+          {"x":50368,"y":1.8},
+          {"x":51062,"y":1.85},
+          {"x":51748,"y":1.9},
+          {"x":52424,"y":1.95},
+          {"x":53092,"y":2},
+          {"x":53752,"y":2.05},
+          {"x":54403,"y":2.1},
+          {"x":55047,"y":2.15},
+          {"x":55684,"y":2.2},
+          {"x":56313,"y":2.25},
+          {"x":56935,"y":2.3},
+          {"x":57551,"y":2.35},
+          {"x":58160,"y":2.4},
+          {"x":58762,"y":2.45},
+          {"x":59359,"y":2.5},
+          {"x":59694,"y":2.55},
+          {"x":60027,"y":2.6},
+          {"x":60359,"y":2.65}
+        ],
+        "fill": false,
+        "label": "HS preview m=0.50",
+        "pointRadius": 0,
+        "tension": 0.3,
+        "type": "line"
+      },
+      {
+        "borderColor": "#4F8584",
+        "borderDash": [6,4],
+        "borderWidth": 1.5,
+        "data": [
+          {"x":0,"y":2.5},
+          {"x":80000,"y":2.5}
+        ],
+        "fill": false,
+        "label": "WT",
+        "pointRadius": 0,
+        "type": "line"
+      },
+      {
+        "borderColor": "rgba(24,24,26,0.14)",
+        "borderDash": [3,3],
+        "borderWidth": 1,
+        "data": [
+          {"x":0,"y":1.45},
+          {"x":80000,"y":1.45}
+        ],
+        "fill": false,
+        "label": "top",
+        "pointRadius": 0,
+        "type": "line"
+      },
+      {
+        "borderColor": "rgba(24,24,26,0.14)",
+        "borderDash": [3,3],
+        "borderWidth": 1,
+        "data": [
+          {"x":0,"y":2.65},
+          {"x":80000,"y":2.65}
+        ],
+        "fill": false,
+        "label": "bot",
+        "pointRadius": 0,
+        "type": "line"
+      }
+    ]
+  },
+  "options": {
+    "animation": false,
+    "color": "#4a4a52",
+    "maintainAspectRatio": false,
+    "plugins": {
+      "legend": {
+        "display": false,
+        "labels": {
+          "color": "#4a4a52"
+        }
+      },
+      "tooltip": {
+        "backgroundColor": "rgba(255,255,255,0.96)",
+        "bodyColor": "#18181a",
+        "borderColor": "rgba(24,24,26,0.18)",
+        "borderWidth": 1,
+        "callbacks": {},
+        "titleColor": "#18181a"
+      }
+    },
+    "responsive": true,
+    "scales": {
+      "x": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 80000,
+        "min": 0,
+        "position": "top",
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          },
+          "maxTicksLimit": 5
+        },
+        "title": {
+          "color": "#4a4a52",
+          "display": true,
+          "font": {
+            "size": 10
+          },
+          "text": "E_oed (kPa)"
+        },
+        "type": "linear"
+      },
+      "y": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 3.15,
+        "min": 0.95,
+        "reverse": true,
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          }
+        },
+        "title": {
+          "color": "#4a4a52",
+          "display": true,
+          "font": {
+            "size": 10
+          },
+          "text": "Diepte (m)"
+        },
+        "type": "linear"
+      }
+    }
+  },
+  "type": "scatter"
+}

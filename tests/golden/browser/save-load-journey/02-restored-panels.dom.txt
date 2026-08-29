@@ -1,0 +1,855 @@
+## #lb
+1
+0.000.95
+10.00
+9.05
+0.95 m
+Sand
+— kies grondsoort —· Zand — los (qc 2–4, Rf <1%)· Zand — matig (qc 4–10, Rf <1%)· Zand — dicht (qc 10–15, Rf <1%)· Zand — zeer dicht (qc ≥15, Rf <1%)✓ Leemhoudend zand — los (qc 2–4, Rf 1–2%)· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)· Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)⚠ Leem — matig vast (qc 1–2, Rf 2–4%)⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)⚠ Leem — vast (qc ≥4, Rf 2–4%)⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)⚠ Grind — matig (qc 10–20, Rf <1%)⚠ Grind — dicht (qc ≥20, Rf <1%)⚠ Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)⚠ Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Klei — weinig vast (qc 0.4–1, Rf 3–6%)Klei — matig vast (qc 1–2, Rf 3–6%)Klei — vrij vast (qc 2–4, Rf 3–6%)Klei — vast (qc ≥4, Rf 3–6%)Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+2.228
+42.0
+1.90
+2
+0.953.95
+9.05
+6.05
+3.00 m
+Sand
+— kies grondsoort —· Zand — los (qc 2–4, Rf <1%)· Zand — matig (qc 4–10, Rf <1%)✓ Zand — dicht (qc 10–15, Rf <1%)· Zand — zeer dicht (qc ≥15, Rf <1%)· Leemhoudend zand — los (qc 2–4, Rf 1–2%)· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)~ Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)⚠ Leem — matig vast (qc 1–2, Rf 2–4%)⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)⚠ Leem — vast (qc ≥4, Rf 2–4%)⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)⚠ Grind — matig (qc 10–20, Rf <1%)⚠ Grind — dicht (qc ≥20, Rf <1%)⚠ Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)⚠ Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Klei — weinig vast (qc 0.4–1, Rf 3–6%)Klei — matig vast (qc 1–2, Rf 3–6%)Klei — vrij vast (qc 2–4, Rf 3–6%)Klei — vast (qc ≥4, Rf 3–6%)Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+10.991
+79.8
+0.72
+3
+3.954.95
+6.05
+5.05
+1.00 m
+Clay
+— kies grondsoort —✓ Klei — weinig vast (qc 0.4–1, Rf 3–6%)· Klei — matig vast (qc 1–2, Rf 3–6%)· Klei — vrij vast (qc 2–4, Rf 3–6%)· Klei — vast (qc ≥4, Rf 3–6%)✓ Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)· Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)· Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)⚠ Leem — matig vast (qc 1–2, Rf 2–4%)⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)⚠ Leem — vast (qc ≥4, Rf 2–4%)⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Zand — los (qc 2–4, Rf <1%)Zand — matig (qc 4–10, Rf <1%)Zand — dicht (qc 10–15, Rf <1%)Zand — zeer dicht (qc ≥15, Rf <1%)Leemhoudend zand — los (qc 2–4, Rf 1–2%)Leemhoudend zand — matig (qc 4–10, Rf 1–2%)Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)Grind — matig (qc 10–20, Rf <1%)Grind — dicht (qc ≥20, Rf <1%)Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+0.871
+38.3
+4.39
+4
+4.955.65
+5.05
+4.35
+0.70 m
+Sandy clay
+— kies grondsoort —✓ Klei — weinig vast (qc 0.4–1, Rf 3–6%)· Klei — matig vast (qc 1–2, Rf 3–6%)· Klei — vrij vast (qc 2–4, Rf 3–6%)· Klei — vast (qc ≥4, Rf 3–6%)✓ Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)· Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)· Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)· Leem — weinig vast (qc 0.4–1, Rf 2–4%)· Leem — matig vast (qc 1–2, Rf 2–4%)· Leem — vrij vast (qc 2–4, Rf 2–4%)· Leem — vast (qc ≥4, Rf 2–4%)· Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)· Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)· Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)· Zandhoudende leem — vast (qc ≥4, Rf 1–3%)⚠ Zand — los (qc 2–4, Rf <1%)⚠ Zand — matig (qc 4–10, Rf <1%)⚠ Zand — dicht (qc 10–15, Rf <1%)⚠ Zand — zeer dicht (qc ≥15, Rf <1%)⚠ Leemhoudend zand — los (qc 2–4, Rf 1–2%)⚠ Leemhoudend zand — matig (qc 4–10, Rf 1–2%)⚠ Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)⚠ Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Grind — matig (qc 10–20, Rf <1%)Grind — dicht (qc ≥20, Rf <1%)Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+0.924
+41.3
+4.52
+5
+5.657.95
+4.35
+2.05
+2.30 m
+Clay
+— kies grondsoort —✓ Klei — weinig vast (qc 0.4–1, Rf 3–6%)· Klei — matig vast (qc 1–2, Rf 3–6%)· Klei — vrij vast (qc 2–4, Rf 3–6%)· Klei — vast (qc ≥4, Rf 3–6%)✓ Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)· Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)· Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)⚠ Leem — matig vast (qc 1–2, Rf 2–4%)⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)⚠ Leem — vast (qc ≥4, Rf 2–4%)⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Zand — los (qc 2–4, Rf <1%)Zand — matig (qc 4–10, Rf <1%)Zand — dicht (qc 10–15, Rf <1%)Zand — zeer dicht (qc ≥15, Rf <1%)Leemhoudend zand — los (qc 2–4, Rf 1–2%)Leemhoudend zand — matig (qc 4–10, Rf 1–2%)Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)Grind — matig (qc 10–20, Rf <1%)Grind — dicht (qc ≥20, Rf <1%)Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+0.934
+42.1
+4.53
+6
+7.958.65
+2.05
+1.35
+0.70 m
+Silty sand
+— kies grondsoort —· Leem — weinig vast (qc 0.4–1, Rf 2–4%)· Leem — matig vast (qc 1–2, Rf 2–4%)✓ Leem — vrij vast (qc 2–4, Rf 2–4%)· Leem — vast (qc ≥4, Rf 2–4%)· Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)· Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)✓ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)· Zandhoudende leem — vast (qc ≥4, Rf 1–3%)· Zand — los (qc 2–4, Rf <1%)· Zand — matig (qc 4–10, Rf <1%)· Zand — dicht (qc 10–15, Rf <1%)· Zand — zeer dicht (qc ≥15, Rf <1%)· Leemhoudend zand — los (qc 2–4, Rf 1–2%)· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)· Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Klei — weinig vast (qc 0.4–1, Rf 3–6%)Klei — matig vast (qc 1–2, Rf 3–6%)Klei — vrij vast (qc 2–4, Rf 3–6%)Klei — vast (qc ≥4, Rf 3–6%)Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)Klei zandhoudend — vast (qc ≥4, Rf 2–5%)Grind — matig (qc 10–20, Rf <1%)Grind — dicht (qc ≥20, Rf <1%)Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+2.324
+61.5
+2.67
+7
+8.659.85
+1.35
+0.15
+1.20 m
+Silty sand
+— kies grondsoort —· Leem — weinig vast (qc 0.4–1, Rf 2–4%)· Leem — matig vast (qc 1–2, Rf 2–4%)✓ Leem — vrij vast (qc 2–4, Rf 2–4%)· Leem — vast (qc ≥4, Rf 2–4%)· Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)· Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)✓ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)· Zandhoudende leem — vast (qc ≥4, Rf 1–3%)· Zand — los (qc 2–4, Rf <1%)· Zand — matig (qc 4–10, Rf <1%)· Zand — dicht (qc 10–15, Rf <1%)· Zand — zeer dicht (qc ≥15, Rf <1%)· Leemhoudend zand — los (qc 2–4, Rf 1–2%)· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)· Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Klei — weinig vast (qc 0.4–1, Rf 3–6%)Klei — matig vast (qc 1–2, Rf 3–6%)Klei — vrij vast (qc 2–4, Rf 3–6%)Klei — vast (qc ≥4, Rf 3–6%)Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)Klei zandhoudend — vast (qc ≥4, Rf 2–5%)Grind — matig (qc 10–20, Rf <1%)Grind — dicht (qc ≥20, Rf <1%)Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+2.367
+62.3
+2.63
+8
+9.8510.95
+0.15
+-0.95
+1.10 m
+Sandy clay
+— kies grondsoort —· Klei — weinig vast (qc 0.4–1, Rf 3–6%)· Klei — matig vast (qc 1–2, Rf 3–6%)~ Klei — vrij vast (qc 2–4, Rf 3–6%)· Klei — vast (qc ≥4, Rf 3–6%)· Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)· Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)✓ Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)· Leem — weinig vast (qc 0.4–1, Rf 2–4%)· Leem — matig vast (qc 1–2, Rf 2–4%)✓ Leem — vrij vast (qc 2–4, Rf 2–4%)· Leem — vast (qc ≥4, Rf 2–4%)· Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)· Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)✓ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)· Zandhoudende leem — vast (qc ≥4, Rf 1–3%)⚠ Zand — los (qc 2–4, Rf <1%)⚠ Zand — matig (qc 4–10, Rf <1%)⚠ Zand — dicht (qc 10–15, Rf <1%)⚠ Zand — zeer dicht (qc ≥15, Rf <1%)⚠ Leemhoudend zand — los (qc 2–4, Rf 1–2%)⚠ Leemhoudend zand — matig (qc 4–10, Rf 1–2%)⚠ Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)⚠ Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Grind — matig (qc 10–20, Rf <1%)Grind — dicht (qc ≥20, Rf <1%)Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+2.196
+60.5
+2.74
+9
+10.9514.95
+-0.95
+-4.95
+4.00 m
+Sand
+— kies grondsoort —· Zand — los (qc 2–4, Rf <1%)· Zand — matig (qc 4–10, Rf <1%)· Zand — dicht (qc 10–15, Rf <1%)✓ Zand — zeer dicht (qc ≥15, Rf <1%)· Leemhoudend zand — los (qc 2–4, Rf 1–2%)· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)· Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)⚠ Leem — matig vast (qc 1–2, Rf 2–4%)⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)⚠ Leem — vast (qc ≥4, Rf 2–4%)⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)⚠ Grind — matig (qc 10–20, Rf <1%)⚠ Grind — dicht (qc ≥20, Rf <1%)⚠ Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)⚠ Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Klei — weinig vast (qc 0.4–1, Rf 3–6%)Klei — matig vast (qc 1–2, Rf 3–6%)Klei — vrij vast (qc 2–4, Rf 3–6%)Klei — vast (qc ≥4, Rf 3–6%)Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+16.852
+109.6
+0.65
+10
+14.9518.00
+-4.95
+-8.00
+3.05 m
+Clay
+— kies grondsoort —· Klei — weinig vast (qc 0.4–1, Rf 3–6%)✓ Klei — matig vast (qc 1–2, Rf 3–6%)· Klei — vrij vast (qc 2–4, Rf 3–6%)· Klei — vast (qc ≥4, Rf 3–6%)· Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)✓ Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)· Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)⚠ Leem — matig vast (qc 1–2, Rf 2–4%)⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)⚠ Leem — vast (qc ≥4, Rf 2–4%)⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)Veen — weinig vast (qc 0.2–0.5, Rf >6%)Veen — matig vast (qc 0.5–1.0, Rf >6%)Veen — vast (qc ≥1.0, Rf >6%)Zand — los (qc 2–4, Rf <1%)Zand — matig (qc 4–10, Rf <1%)Zand — dicht (qc 10–15, Rf <1%)Zand — zeer dicht (qc ≥15, Rf <1%)Leemhoudend zand — los (qc 2–4, Rf 1–2%)Leemhoudend zand — matig (qc 4–10, Rf 1–2%)Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)Grind — matig (qc 10–20, Rf <1%)Grind — dicht (qc ≥20, Rf <1%)Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+1.412
+52.7
+3.72
+## #ma
+Sand
+Layer 1 — 0.00–0.95 m (10.00m TAW → 9.05m TAW) (0.95 m)
+zand (lh), los
+σv0 7.6 − u 0 = σ'v0 7.6 kPa · αE 13
+Mohr-Coulomb
+E_ref (kPa)28.964
+ν
+0.30
+r_shear
+0.28
+φ' (°)25
+c' (kPa)0
+ψ (°)0
+γ / γ_sat16 / 18 kN/m³
+Soilin — deformation modulus
+β (-)0.743
+E_def (kPa)21.520
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)28.964
+E_oed,ref (kPa)105.063
+E_50,ref (kPa) =E_oed105.063
+E_ur,ref (kPa)315.189
+m
+0.50
+K0_nc0.577
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)3×10⁻6
+range1.2×10⁻6 – 1.2×10⁻5
+k_h/k_v1
+k_v (m/s)3.0e-6
+ψ_unsat (m)0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+Sand
+Layer 2 — 0.95–3.95 m (9.05m TAW → 6.05m TAW) (3.00 m)
+zand, los
+σv0 40.7 − u 7.4 = σ'v0 33.3 kPa · αE 13
+Mohr-Coulomb
+E_ref (kPa)142.883
+ν
+0.28
+r_shear
+0.30
+φ' (°)27
+c' (kPa)0
+ψ (°)0
+γ / γ_sat16 / 18 kN/m³
+Soilin — deformation modulus
+β (-)0.782
+E_def (kPa)111.735
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)142.883
+E_oed,ref (kPa)247.447
+E_50,ref (kPa) =E_oed247.447
+E_ur,ref (kPa)742.341
+m
+0.50
+K0_nc0.546
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)3×10⁻6
+range1.2×10⁻6 – 1.2×10⁻5
+k_h/k_v1
+k_v (m/s)3.0e-6
+ψ_unsat (m)0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+Clay
+Layer 3 — 3.95–4.95 m (6.05m TAW → 5.05m TAW) (1.00 m)
+klei, weinig vast
+σv0 71.2 − u 27 = σ'v0 44.2 kPa · αE 5
+Mohr-Coulomb
+E_ref (kPa)4.355
+ν
+0.40
+r_shear
+0.12
+φ' (°)20
+c' (kPa)2
+ψ (°)0
+γ / γ_sat16 / 16 kN/m³
+c_u (kPa)20
+Soilin — deformation modulus
+β (-)0.467
+E_def (kPa)2.034
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)4.355
+E_oed,ref (kPa)9.241
+E_50,ref (kPa) =E_oed9.241
+E_ur,ref (kPa)27.723
+m
+1.00
+K0_nc0.658
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)5×10⁻8
+range1×10⁻9 – 1.2×10⁻7
+k_h/k_v3
+k_v (m/s)1.7e-8
+ψ_unsat (m)3
+Infiltratie + buffer
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+Sandy clay
+Layer 4 — 4.95–5.65 m (5.05m TAW → 4.35m TAW) (0.70 m)
+klei, weinig vast
+σv0 84.8 − u 35.3 = σ'v0 49.5 kPa · αE 8
+Mohr-Coulomb
+E_ref (kPa)7.392
+ν
+0.40
+r_shear
+0.12
+φ' (°)20
+c' (kPa)2
+ψ (°)0
+γ / γ_sat16 / 16 kN/m³
+Soilin — deformation modulus
+β (-)0.467
+E_def (kPa)3.452
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)7.392
+E_oed,ref (kPa)14.184
+E_50,ref (kPa) =E_oed14.184
+E_ur,ref (kPa)42.552
+m
+1.00
+K0_nc0.658
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)5×10⁻7
+range1.2×10⁻7 – 1.2×10⁻6
+k_h/k_v3
+k_v (m/s)1.7e-7
+ψ_unsat (m)1
+Infiltratie (effectief)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+Clay
+Layer 5 — 5.65–7.95 m (4.35m TAW → 2.05m TAW) (2.30 m)
+klei, weinig vast
+σv0 108.8 − u 50 = σ'v0 58.8 kPa · αE 5
+Mohr-Coulomb
+E_ref (kPa)4.670
+ν
+0.40
+r_shear
+0.12
+φ' (°)20
+c' (kPa)2
+ψ (°)0
+γ / γ_sat16 / 16 kN/m³
+c_u (kPa)20
+Soilin — deformation modulus
+β (-)0.467
+E_def (kPa)2.181
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)4.670
+E_oed,ref (kPa)7.666
+E_50,ref (kPa) =E_oed7.666
+E_ur,ref (kPa)22.998
+m
+1.00
+K0_nc0.658
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)5×10⁻8
+range1×10⁻9 – 1.2×10⁻7
+k_h/k_v3
+k_v (m/s)1.7e-8
+ψ_unsat (m)3
+Infiltratie + buffer
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+Silty sand
+Layer 6 — 7.95–8.65 m (2.05m TAW → 1.35m TAW) (0.70 m)
+leem, vrij vast
+σv0 157.7 − u 64.8 = σ'v0 93 kPa · αE 10
+Mohr-Coulomb
+E_ref (kPa)23.240
+ν
+0.32
+r_shear
+0.22
+φ' (°)22
+c' (kPa)4
+ψ (°)0
+γ / γ_sat19 / 19 kN/m³
+Soilin — deformation modulus
+β (-)0.699
+E_def (kPa)16.245
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)23.240
+E_oed,ref (kPa)24.023
+E_50,ref (kPa) =E_oed24.023
+E_ur,ref (kPa)72.069
+m
+0.50
+K0_nc0.625
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)3×10⁻6
+range1.2×10⁻6 – 1.2×10⁻5
+k_h/k_v3
+k_v (m/s)1.0e-6
+ψ_unsat (m)0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+Silty sand
+Layer 7 — 8.65–9.85 m (1.35m TAW → 0.15m TAW) (1.20 m)
+leem, vrij vast
+σv0 175.8 − u 74.1 = σ'v0 101.7 kPa · αE 10
+Mohr-Coulomb
+E_ref (kPa)23.670
+ν
+0.32
+r_shear
+0.22
+φ' (°)22
+c' (kPa)4
+ψ (°)0
+γ / γ_sat19 / 19 kN/m³
+Soilin — deformation modulus
+β (-)0.699
+E_def (kPa)16.545
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)23.670
+E_oed,ref (kPa)23.491
+E_50,ref (kPa) =E_oed23.491
+E_ur,ref (kPa)70.473
+m
+0.50
+K0_nc0.625
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)3×10⁻6
+range1.2×10⁻6 – 1.2×10⁻5
+k_h/k_v3
+k_v (m/s)1.0e-6
+ψ_unsat (m)0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+Sandy clay
+Layer 8 — 9.85–10.95 m (0.15m TAW → -0.95m TAW) (1.10 m)
+klei (zh), vrij vast
+σv0 187.2 − u 85.3 = σ'v0 101.9 kPa · αE 8
+Mohr-Coulomb
+E_ref (kPa)17.568
+ν
+0.33
+r_shear
+0.20
+φ' (°)22
+c' (kPa)8
+ψ (°)0
+γ / γ_sat18 / 18 kN/m³
+Soilin — deformation modulus
+β (-)0.675
+E_def (kPa)11.858
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)17.568
+E_oed,ref (kPa)17.300
+E_50,ref (kPa) =E_oed17.300
+E_ur,ref (kPa)51.900
+m
+1.00
+K0_nc0.625
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)5×10⁻7
+range1.2×10⁻7 – 1.2×10⁻6
+k_h/k_v3
+k_v (m/s)1.7e-7
+ψ_unsat (m)1
+Infiltratie (effectief)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+Sand
+Layer 9 — 10.95–14.95 m (-0.95m TAW → -4.95m TAW) (4.00 m)
+zand, zeer dicht
+σv0 255.6 − u 110.4 = σ'v0 145.2 kPa · αE 13
+Mohr-Coulomb
+E_ref (kPa)219.076
+ν
+0.35
+r_shear
+0.35
+φ' (°)35
+c' (kPa)0
+ψ (°)5
+γ / γ_sat18 / 20 kN/m³
+Soilin — deformation modulus
+β (-)0.623
+E_def (kPa)136.484
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)219.076
+E_oed,ref (kPa)181.784
+E_50,ref (kPa) =E_oed181.784
+E_ur,ref (kPa)545.352
+m
+0.50
+K0_nc0.426
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)2×10⁻4
+range1.2×10⁻4 – 2.3×10⁻4
+k_h/k_v1
+k_v (m/s)2.0e-4
+ψ_unsat (m)0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+Clay
+Layer 10 — 14.95–18.00 m (-4.95m TAW → -8.00m TAW) (3.05 m)
+klei, matig vast
+σv0 280.1 − u 144.9 = σ'v0 135.1 kPa · αE 5
+Mohr-Coulomb
+E_ref (kPa)7.060
+ν
+0.38
+r_shear
+0.15
+φ' (°)20
+c' (kPa)4
+ψ (°)0
+γ / γ_sat17 / 17 kN/m³
+c_u (kPa)50
+Soilin — deformation modulus
+β (-)0.534
+E_def (kPa)3.770
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+αE (Sanglerat)
+E_oed,i (kPa)7.060
+E_oed,ref (kPa)5.363
+E_50,ref (kPa) =E_oed5.363
+E_ur,ref (kPa)16.089
+m
+1.00
+K0_nc0.658
+νur0.2
+R_f0.90
+Hydraulic conductivity
+k_h (m/s)5×10⁻8
+range1×10⁻9 – 1.2×10⁻7
+k_h/k_v3
+k_v (m/s)1.7e-8
+ψ_unsat (m)3
+Infiltratie + buffer
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44I/RA/11461/15.066/JSW
+## #tuningArea
+Sand
+Laag 1 — 0.00–0.95 m
+zand (lh), los
+Laag te ondiep (<0.5m)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.50
+Type-default
+m0.50
+E_oed,ref105.063,471 kPa
+αE basisvast per laag (13.00)
+Auto-fit
+m-0.033
+E_oed,ref26.040 kPa
+R²0.019
+n19 punten
+σ' bereik×15.2
+Preview / engineer tweak
+m
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m0.500
+Preview E_oed,ref112.534 kPa
+✓ Huidige override m = 0.500
+⚠ Accepteer fit
+Herstel default m
+Sand
+Laag 2 — 0.95–3.95 m
+zand, los
+Lage R²=0.036 — heterogene laag?
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.16
+Type-default
+m0.50
+E_oed,ref247.446,594 kPa
+αE basisvast per laag (13.00)
+Auto-fit
+m0.156
+E_oed,ref165.173 kPa
+R²0.036
+n61 punten
+σ' bereik×3
+Preview / engineer tweak
+m
+0.01
+0.90
+Preview volgt de auto-fit
+Preview m0.156
+Preview E_oed,ref165.173 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Clay
+Laag 3 — 3.95–4.95 m
+klei, weinig vast
+Spanningsbereik te klein (factor 1.2)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=1.00
+Type-default
+m1.00
+E_oed,ref9.240,83 kPa
+αE basisvast per laag (5.00)
+Auto-fit
+m-6.232
+E_oed,ref44 kPa
+R²0.207
+n21 punten
+σ' bereik×1.15
+Preview / engineer tweak
+m
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m1.000
+Preview E_oed,ref10.196 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Sandy clay
+Laag 4 — 4.95–5.65 m
+klei, weinig vast
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=2.33
+Type-default
+m1.00
+E_oed,ref14.183,949 kPa
+αE basisvast per laag (8.00)
+Auto-fit
+m2.331
+E_oed,ref32.875 kPa
+R²0.072
+n15 punten
+σ' bereik×1.09
+Preview / engineer tweak
+m
+0.01
+2.00
+Preview volgt de auto-fit
+Preview m2.331
+Preview E_oed,ref32.875 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Clay
+Laag 5 — 5.65–7.95 m
+klei, weinig vast
+Spanningsbereik te klein (factor 1.3)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=1.00
+Type-default
+m1.00
+E_oed,ref7.666,217 kPa
+αE basisvast per laag (5.00)
+Auto-fit
+m-0.395
+E_oed,ref3.774 kPa
+R²0.016
+n47 punten
+σ' bereik×1.28
+Preview / engineer tweak
+m
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m1.000
+Preview E_oed,ref7.559 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Silty sand
+Laag 6 — 7.95–8.65 m
+leem, vrij vast
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=6.52
+Type-default
+m0.50
+E_oed,ref24.022,839 kPa
+αE basisvast per laag (10.00)
+Auto-fit
+m6.521
+E_oed,ref32.509 kPa
+R²0.128
+n15 punten
+σ' bereik×1.07
+Preview / engineer tweak
+m
+0.01
+2.00
+Preview volgt de auto-fit
+Preview m6.521
+Preview E_oed,ref32.509 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Silty sand
+Laag 7 — 8.65–9.85 m
+leem, vrij vast
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=1.87
+Type-default
+m0.50
+E_oed,ref23.490,658 kPa
+αE basisvast per laag (10.00)
+Auto-fit
+m1.868
+E_oed,ref22.889 kPa
+R²0.116
+n25 punten
+σ' bereik×1.11
+Preview / engineer tweak
+m
+0.01
+2.00
+Preview volgt de auto-fit
+Preview m1.868
+Preview E_oed,ref22.889 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Sandy clay
+Laag 8 — 9.85–10.95 m
+klei (zh), vrij vast
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=1.00
+Type-default
+m1.00
+E_oed,ref17.300,408 kPa
+αE basisvast per laag (8.00)
+Auto-fit
+m-3.327
+E_oed,ref18.206 kPa
+R²0.102
+n23 punten
+σ' bereik×1.09
+Preview / engineer tweak
+m
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m1.000
+Preview E_oed,ref17.055 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Sand
+Laag 9 — 10.95–14.95 m
+zand, zeer dicht
+Spanningsbereik te klein (factor 1.3)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.38
+Type-default
+m0.50
+E_oed,ref181.783,902 kPa
+αE basisvast per laag (13.00)
+Auto-fit
+m0.384
+E_oed,ref183.089 kPa
+R²0.015
+n81 punten
+σ' bereik×1.33
+Preview / engineer tweak
+m
+0.01
+0.90
+Preview volgt de auto-fit
+Preview m0.384
+Preview E_oed,ref183.089 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Clay
+Laag 10 — 14.95–18.00 m
+klei, matig vast
+Spanningsbereik te klein (factor 1.2)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=1.00
+Type-default
+m1.00
+E_oed,ref5.362,559 kPa
+αE basisvast per laag (5.00)
+Auto-fit
+m-1.659
+E_oed,ref11.407 kPa
+R²0.050
+n62 punten
+σ' bereik×1.18
+Preview / engineer tweak
+m
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m1.000
+Preview E_oed,ref5.505 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+## #stage6Area
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: layered · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = used where accepted
+Seep/Slope + Spencer equilibrium check
+Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, multiple optional surcharge strips, and an optional full Spencer verification pass on the shortlisted circles.
+STABILITY
+SEEPAGE
+DEFORMATION
+Shared canvas and geometry; Bishop/Spencer remain the default workspace.
+RUN BISHOP + SPENCER CHECK
+STOP
+FIT VIEW
+CLEAR RESULTS
+Ready to run Bishop + Spencer check.
+TOOL
+Terrain mode
+METHOD
+Bishop + Spencer check
+LINE
+none
+Ready to run Bishop + Spencer check.
+Canvas order: draw terrain left-to-right or import a DXF terrain line, click Finish line to accept the terrain or phreatic line, place the active CPT on the terrain, optionally add retaining walls and one or more load zones, then draw the entry and exit zones. The coloured polygons are the solver regions from Phase A; hover one to inspect its current material parameters. In custom mode you can also select a polygon, drag its vertices, split it by clicking two boundary points, or cut an interior hole with a different material.
+RESULTS
+CRITICAL F (CHARACTERISTIC STRENGTHS) —
+MODE Bishop + Spencer check
+CIRCLE CENTRE —
+RADIUS —
+MAX SLIP DEPTH —
+TRIALS —
+RUNTIME —
+SPENCER RECHECKED off
+SPENCER CONVERGED off
+SELECTED RESULT —
+SELECTED METHOD —
+SELECTED BISHOP F —
+SELECTED SPENCER F —
+SELECTED Λ —
+SELECTED Θ —
+SELECTED MOMENT RESIDUAL —
+SELECTED FORCE RESIDUAL —
+SELECTED ITERATIONS —
+Rejections: no search yet
+BEST CIRCLES
+# F METHOD BISHOP F WALL Λ ITER
+No results yet.
+SELECTED SLICES
+I W Q V ALPHA C' PHI' U M_ALPHA NORMAL
+Select or run a result to inspect slice data.
+This Stage 6 slope check is experimental. It searches circular slip surfaces only and currently uses self-weight, optional infinitely stiff retaining walls, multiple optional uniform surcharge strips, and optional phreatic pore pressure along the base.
+The soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this workflow.
+Spencer runs as a verification pass on the best Bishop circles. Each shortlisted circle is solved by intersecting the Spencer moment and force branches. If Spencer does not converge for a shortlisted circle, the app keeps the Bishop result and flags that fallback in the results panel.
+When a circle intersects a retaining wall, Bishop reduces the driving moment with the wall resistance and Spencer injects the same wall force into the horizontal force chain. Circles that pass below the wall tip remain unchanged and may still govern.

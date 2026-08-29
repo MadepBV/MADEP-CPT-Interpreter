@@ -1,0 +1,93 @@
+{
+  "edges": [
+    {
+      "a": {
+        "x": 0,
+        "y": 2
+      },
+      "b": {
+        "x": 10,
+        "y": 2
+      },
+      "edgeKey": "terrain:0",
+      "index": 0,
+      "length": 10,
+      "mid": {
+        "x": 5,
+        "y": 2
+      },
+      "source": "terrain",
+      "tangent": {
+        "dx": 1,
+        "dy": 0
+      }
+    },
+    {
+      "a": {
+        "x": 10,
+        "y": 2
+      },
+      "b": {
+        "x": 10,
+        "y": 0
+      },
+      "edgeKey": "side-right:0",
+      "index": 0,
+      "length": 2,
+      "mid": {
+        "x": 10,
+        "y": 1
+      },
+      "source": "side-right",
+      "tangent": {
+        "dx": 0,
+        "dy": -1
+      }
+    },
+    {
+      "a": {
+        "x": 10,
+        "y": 0
+      },
+      "b": {
+        "x": 0,
+        "y": 0
+      },
+      "edgeKey": "base:0",
+      "index": 0,
+      "length": 10,
+      "mid": {
+        "x": 5,
+        "y": 0
+      },
+      "source": "base",
+      "tangent": {
+        "dx": -1,
+        "dy": 0
+      }
+    },
+    {
+      "a": {
+        "x": 0,
+        "y": 0
+      },
+      "b": {
+        "x": 0,
+        "y": 2
+      },
+      "edgeKey": "side-left:0",
+      "index": 0,
+      "length": 2,
+      "mid": {
+        "x": 0,
+        "y": 1
+      },
+      "source": "side-left",
+      "tangent": {
+        "dx": 0,
+        "dy": 1
+      }
+    }
+  ],
+  "geometryHash": "{\"terrain\":[[0,2],[10,2]],\"bottomY\":0,\"regions\":[{\"id\":\"soil\",\"materialId\":\"soil\",\"kx\":0.00001,\"ky\":0.00001,\"coarseness\":1,\"polygon\":[[0,0],[10,0],[10,2],[0,2]]}],\"walls\":[],\"drains\":[{\"id\":\"drain-when-saturated\",\"vertices\":[[2,1],[8,1]],\"closed\":false,\"head\":{\"kind\":\"constant\",\"value\":4},\"gating\":\"when-saturated\"}],\"freeSurface\":\"iterate\",\"usePhreaticAsSeed\":true,\"meshTargetArea\":0.08,\"phreatic\":[[0,2],[10,2]]}"
+}

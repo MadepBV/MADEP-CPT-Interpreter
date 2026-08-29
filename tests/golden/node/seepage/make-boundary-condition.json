@@ -1,0 +1,74 @@
+[
+  {
+    "anchor": {
+      "mid": {
+        "x": 5,
+        "y": 5
+      },
+      "source": "terrain",
+      "tangent": {
+        "dx": 1,
+        "dy": 0
+      }
+    },
+    "edgeKey": "terrain:0",
+    "head": 5,
+    "id": "bc-fixed-id",
+    "status": "active",
+    "type": "head"
+  },
+  {
+    "anchor": {
+      "mid": {
+        "x": 10,
+        "y": 2.5
+      },
+      "source": "side-right",
+      "tangent": {
+        "dx": 0,
+        "dy": -1
+      }
+    },
+    "edgeKey": "side-right:0",
+    "head": 2.5,
+    "id": "bc-fixed-id",
+    "status": "active",
+    "type": "head"
+  },
+  {
+    "anchor": {
+      "mid": {
+        "x": 5,
+        "y": 0
+      },
+      "source": "base",
+      "tangent": {
+        "dx": -1,
+        "dy": 0
+      }
+    },
+    "edgeKey": "base:0",
+    "head": 0,
+    "id": "bc-fixed-id",
+    "status": "active",
+    "type": "head"
+  },
+  {
+    "anchor": {
+      "mid": {
+        "x": 0,
+        "y": 2.5
+      },
+      "source": "side-left",
+      "tangent": {
+        "dx": 0,
+        "dy": 1
+      }
+    },
+    "edgeKey": "side-left:0",
+    "head": 2.5,
+    "id": "bc-fixed-id",
+    "status": "active",
+    "type": "head"
+  }
+]

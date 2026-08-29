@@ -1,0 +1,50 @@
+{
+  "terrain": {
+    "vertices": [
+      {"x":0,"y":1.5},
+      {"x":8,"y":1.5},
+      {"x":24,"y":-6.5},
+      {"x":35,"y":-6.5}
+    ]
+  },
+  "analysisBottomY": -16.5,
+  "phreatic": {
+    "vertices": [
+      {"x":0,"y":-20},
+      {"x":24,"y":-20}
+    ]
+  },
+  "walls": [],
+  "regions": [
+    {
+      "id": "slope-soil",
+      "polygon": [
+        {"x":0,"y":-16.5},
+        {"x":35,"y":-16.5},
+        {"x":35,"y":-6.5},
+        {"x":8,"y":1.5},
+        {"x":0,"y":1.5}
+      ],
+      "material": {
+        "id": "slope-soil",
+        "label": "slope-soil",
+        "Emc": 22000,
+        "nu": 0.3,
+        "K0nc": 0.55,
+        "cEff": 6,
+        "phiEffDeg": 28,
+        "gamma": 18,
+        "gammaSat": 20
+      }
+    }
+  ],
+  "surfaceLoad": {
+    "xStart": 6,
+    "xEnd": 8,
+    "q": 12
+  },
+  "seepage": {
+    "mesh": null,
+    "result": null
+  }
+}

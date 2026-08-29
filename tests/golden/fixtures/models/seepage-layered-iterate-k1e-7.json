@@ -1,0 +1,80 @@
+{
+  "terrain": {
+    "vertices": [
+      {"x":0,"y":5},
+      {"x":20,"y":5}
+    ]
+  },
+  "analysisBottomY": 0,
+  "phreatic": {
+    "vertices": [
+      {"x":0,"y":5},
+      {"x":20,"y":0}
+    ]
+  },
+  "walls": [],
+  "regions": [
+    {
+      "id": "bot",
+      "polygon": [
+        {"x":0,"y":0},
+        {"x":20,"y":0},
+        {"x":20,"y":2},
+        {"x":0,"y":2}
+      ],
+      "material": {
+        "id": "bot",
+        "label": "bot",
+        "kx": 0.00001,
+        "ky": 0.00001,
+        "gamma": 18,
+        "gammaSat": 20
+      }
+    },
+    {
+      "id": "mid",
+      "polygon": [
+        {"x":0,"y":2},
+        {"x":20,"y":2},
+        {"x":20,"y":3},
+        {"x":0,"y":3}
+      ],
+      "material": {
+        "id": "mid",
+        "label": "mid",
+        "kx": 1e-7,
+        "ky": 1e-7,
+        "gamma": 18,
+        "gammaSat": 20
+      }
+    },
+    {
+      "id": "top",
+      "polygon": [
+        {"x":0,"y":3},
+        {"x":20,"y":3},
+        {"x":20,"y":5},
+        {"x":0,"y":5}
+      ],
+      "material": {
+        "id": "top",
+        "label": "top",
+        "kx": 0.00001,
+        "ky": 0.00001,
+        "gamma": 18,
+        "gammaSat": 20
+      }
+    }
+  ],
+  "seepage": {
+    "bcs": [
+      {"edgeKey":"side-left:0","type":"head","head":5,"status":"active"},
+      {"edgeKey":"side-right:0","type":"seepage-face","status":"active"}
+    ],
+    "options": {
+      "freeSurface": "iterate",
+      "meshTargetArea": 0.2,
+      "usePhreaticAsSeed": true
+    }
+  }
+}

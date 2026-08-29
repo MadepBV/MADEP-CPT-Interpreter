@@ -1,0 +1,19 @@
+{
+  "noCptX": null,
+  "noLayers": null,
+  "noTerrain": null,
+  "offsetCpt": {
+    "analysisBottomY": -11.5,
+    "cptGroundY": 4,
+    "cptTopY": 2.5,
+    "regions": [
+      [
+        {"x":0,"y":-11.5},
+        {"x":20,"y":-11.5},
+        {"x":20,"y":0},
+        {"x":8,"y":4},
+        {"x":0,"y":4}
+      ]
+    ]
+  }
+}

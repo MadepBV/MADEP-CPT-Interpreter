@@ -1,0 +1,74 @@
+## #cptTabs
+DATA
+layered
+## .panel.active
+Applications
+Use the interpreted CPT profile for first engineering calculations. Stage 6 reuses the active CPT, current layer model, current water table, and accepted Stage 5 tuning.
+REFRESH
+STAGE 7 REPORT
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: layered · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = not accepted
+Section deformation screening
+Shared Stage 6 geometry with a drained plane-strain mesh, required self-weight equilibrium, and selectable elastic or Mohr-Coulomb material behaviour.
+STABILITY
+SEEPAGE
+DEFORMATION
+Shared canvas and geometry; deformation reuses the section mesh with its own solver settings.
+RUN DEFORMATION
+STOP
+FIT VIEW
+CLEAR DEFORMATION
+Deformation settings changed. Showing the previous result until you rerun.
+TOOL
+Edit / pan mode
+LOAD INTERVAL
+2.00-6.00 m
+LINE
+L=16.49 m · dx=16.00 m · dy=-4.00 m
+1 active surface load ready for deformation.
+The deformation workspace reuses the same section mesh logic and geometry. Draw the load interval on the terrain, set either the pressure or total slab load, then run the drained plane-strain screen. The default Mohr-Coulomb plastic route builds a K0 seed and requires self-weight equilibrium before service loading. Contour fill, contour lines, the optional legend, and the shared measurement line all follow the selected deformation field.
+RESULTS
+STATUS idle
+LOAD MODE pressure q
+ACTIVE LOADS 1
+AVERAGE Q 20.00 kPa
+TOTAL LOAD 800.0 kN
+OUT-OF-PLANE LENGTH 10.00 m
+NODES 0
+MECHANICAL WALLS 0
+TRIANGLES 0
+SOLVER —
+INITIAL STRESS —
+FREE DOFS 0
+GEOSTATIC CG ITERATIONS —
+GEOSTATIC RESIDUAL —
+ACCEPTED LOAD STEPS —
+REJECTED LOAD STEPS —
+NONLINEAR ITERATIONS 0
+LINEAR ITERATIONS 0
+RESIDUAL —
+PEAK ACTIVE MC ELEMENTS —
+MAX SETTLEMENT —
+MAX |U_X| —
+MAX DELTA SIGMA_YY —
+MAX MC ETA —
+ACTIVE MC ELEMENTS —
+MC-EXCEEDED ELEMENTS —
+MAX Ε̄ᵖ,ACC —
+RUNTIME —
+Deformation settings changed. Showing the previous result until you rerun.
+TERRAIN SETTLEMENT PROFILE
+# X Y SETTLEMENT (MM) U_X (MM)
+Run the deformation screen to inspect the terrain settlement profile.
+RETAINING WALL RESPONSE
+WALL STATION S (M) W PASS. (MM) Θ PASS. (MRAD) N (KN/M) V PASS. (KN/M) M PASS. (KNM/M)
+Run deformation with mechanical wall activation enabled to inspect wall forces.
+← BACK TO TUNING
+EXPORT CSV
+PRINT STAGE 7

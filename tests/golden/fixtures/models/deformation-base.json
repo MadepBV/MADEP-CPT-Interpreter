@@ -1,0 +1,47 @@
+{
+  "terrain": {
+    "vertices": [
+      {"x":0,"y":0},
+      {"x":24,"y":0}
+    ]
+  },
+  "analysisBottomY": -12,
+  "phreatic": {
+    "vertices": [
+      {"x":0,"y":-20},
+      {"x":24,"y":-20}
+    ]
+  },
+  "walls": [],
+  "regions": [
+    {
+      "id": "soil",
+      "polygon": [
+        {"x":0,"y":-12},
+        {"x":24,"y":-12},
+        {"x":24,"y":0},
+        {"x":0,"y":0}
+      ],
+      "material": {
+        "id": "soil",
+        "label": "soil",
+        "Emc": 25000,
+        "nu": 0.3,
+        "K0nc": 0.5,
+        "cEff": 1,
+        "phiEffDeg": 25,
+        "gamma": 18,
+        "gammaSat": 20
+      }
+    }
+  ],
+  "surfaceLoad": {
+    "xStart": 11,
+    "xEnd": 13,
+    "q": 40
+  },
+  "seepage": {
+    "mesh": null,
+    "result": null
+  }
+}

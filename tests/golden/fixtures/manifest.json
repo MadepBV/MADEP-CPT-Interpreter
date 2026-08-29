@@ -142,6 +142,41 @@
       "role": "aux",
       "source": "scripts/fixtures/bishop-phase-a/surcharge_spencer.json"
     },
+    "models/deformation-base.json": {
+      "sha256": "dc8065d3944f18a27e453bd521a815ea5124294f01b2cab76df8c073b900ea8d",
+      "bytes": 750,
+      "role": "aux",
+      "source": "scripts/verify_deformation_phase_1.mjs baseModel()",
+      "note": "24 × 12 m flat, strip load 40 kPa at 11–13 m"
+    },
+    "models/deformation-hs-drained-footing.json": {
+      "sha256": "882a720ba93ade49a9ad8020cff6cdb1053ecd98a8762225644fbb9a94de0dc2",
+      "bytes": 1163,
+      "role": "aux",
+      "source": "scripts/fixtures/hs_drained_footing.json geometry/footing × verify_hs_phase_8.mjs loose_sand bundle",
+      "note": "HS drained footing: uniform 200 kPa on 5 × 3 m loose sand"
+    },
+    "models/deformation-hs-oc-excavation.json": {
+      "sha256": "95b9dcd368ac158873540ecd2eba642b8abe76280b3d359d8eb1f7e51cbbf39c",
+      "bytes": 1190,
+      "role": "aux",
+      "source": "scripts/fixtures/hs_oc_excavation.json geometry/loading × verify_hs_phase_8.mjs stiff_clay_oc bundle",
+      "note": "HS OC clay: |−10| kPa uniform on 10 × 8 m (loading sign — see solver-models.mjs)"
+    },
+    "models/deformation-hs-softclay-embankment.json": {
+      "sha256": "79bde7122b2859830f693db29549ee5977ded0d5cdc711a667f16876868ec293",
+      "bytes": 1177,
+      "role": "aux",
+      "source": "scripts/fixtures/hs_softclay_embankment.json geometry/loading × verify_hs_phase_8.mjs loose_sand bundle",
+      "note": "HS embankment: uniform 200 kPa on 10 × 3 m"
+    },
+    "models/deformation-sloped.json": {
+      "sha256": "4e16fd2ec09ee642063335eee4c3b9ae4912268652277b4ba660ec79c3474e1f",
+      "bytes": 856,
+      "role": "aux",
+      "source": "scripts/verify_deformation_phase_1.mjs slopedModel()",
+      "note": "slope 1.5 → −6.5 m, crest load 12 kPa"
+    },
     "models/hs_drained_footing.json": {
       "sha256": "63c1e3f2b3b49b818c096916659765a0904dfa3babd79cef59fd2d36310208aa",
       "bytes": 2288,
@@ -160,6 +195,62 @@
       "role": "aux",
       "source": "scripts/fixtures/hs_softclay_embankment.json"
     },
+    "models/seepage-base-fixed-face.json": {
+      "sha256": "0b0806d4ff53591f617c49844c6fefabeac1d81363ae9455807674a17e43c52c",
+      "bytes": 866,
+      "role": "aux",
+      "source": "scripts/verify_seepage_phase_2.mjs baseFixedModel(\"seepage-face\")",
+      "note": "fixed phreatic, head/seepage-face (exit gradient)"
+    },
+    "models/seepage-base-fixed-head.json": {
+      "sha256": "207abbd98dcb6e6ac83b879d7fdf682b673088c6edabcb700f4bde2fe6db6981",
+      "bytes": 855,
+      "role": "aux",
+      "source": "scripts/verify_seepage_phase_2.mjs baseFixedModel(\"head\")",
+      "note": "fixed phreatic, head/head"
+    },
+    "models/seepage-drain-always.json": {
+      "sha256": "734f65eb86527fc182eaffe4d01ddf4ff50230fe5db80773e717a70366efad0b",
+      "bytes": 1282,
+      "role": "aux",
+      "source": "scripts/verify_seepage_drains_walls.mjs baseModel + drain(\"always\")",
+      "note": "always-active drain"
+    },
+    "models/seepage-drain-when-saturated.json": {
+      "sha256": "16ac20f8fce87ee5fa7f6dca57b2495394c4e2f8ab939dced2070fee0d4b50df",
+      "bytes": 1306,
+      "role": "aux",
+      "source": "scripts/verify_seepage_drains_walls.mjs baseModel + drain(\"when-saturated\")",
+      "note": "gated drain at head 4 below a 10 m head"
+    },
+    "models/seepage-layered-iterate-k1e-5.json": {
+      "sha256": "2a0d47295ac8236b3e6f0755a36d8598e0a6b8f884df68b567d1198401cb043c",
+      "bytes": 1485,
+      "role": "aux",
+      "source": "scripts/verify_seepage_phase_2.mjs layeredIterateModel(1e-5)",
+      "note": "iterative free surface, homogeneous k"
+    },
+    "models/seepage-layered-iterate-k1e-7.json": {
+      "sha256": "a269e1401f1455e4e22dd27847167b24c54107cd09fd415f5895ecc790b4874e",
+      "bytes": 1479,
+      "role": "aux",
+      "source": "scripts/verify_seepage_phase_2.mjs layeredIterateModel(1e-7)",
+      "note": "iterative free surface, low-k middle band"
+    },
+    "models/seepage-wall-leaky.json": {
+      "sha256": "c04a99e81c39b2a6e23f57d43b254ca7258e03dee93d5a117cc9ec6e5435541a",
+      "bytes": 1198,
+      "role": "aux",
+      "source": "scripts/verify_seepage_drains_walls.mjs checkWallConductivity leakyWall (confined fixed-phreatic layout)",
+      "note": "wall with kAcross 1e-7 (user material)"
+    },
+    "models/seepage-wall-legacy.json": {
+      "sha256": "f205df6893adef3eb596f8d6e03d50f4bf459a3fcd71e8e7b11c80e58d7df12c",
+      "bytes": 940,
+      "role": "aux",
+      "source": "scripts/verify_seepage_drains_walls.mjs checkWallConductivity legacyWall (confined fixed-phreatic layout, see solver-models.mjs)",
+      "note": "legacy impermeable wall, 2 m head difference, flow under the tip"
+    },
     "projects/legacy-v0.5.2.madep.json": {
       "sha256": "ccb5aa517cca31ca033769d3997392f454ba4d8ea2ac1649d135b7f535c38d00",
       "bytes": 408361,
@@ -167,22 +258,16 @@
       "note": "multi-3cpt with post-0.5.2 keys removed (retwall.drivability/vibration, deformation.options.useWallInterface, assumedRf, smartMergeSensitivity, stratigraphy.settings.characteristic)"
     },
     "projects/multi-3cpt.madep.json": {
-      "sha256": "b5ffc98a2177eea55c7d2ff8466c19b6711662398a6d90fdc02da09c1c0ebf14",
-      "bytes": 415388,
+      "sha256": "0aab73eee6bc1483ce12838371a59f14c3250bc7b7da27e8b22b194cc1bad25f",
+      "bytes": 415742,
       "role": "project",
       "note": "3 CPTs, correlated stratigraphy with one manual rename, phase correlation"
     },
     "projects/single-layered.madep.json": {
-      "sha256": "83329768e7aa328826b815b166b8f05cd8aee15821832fda9b0a4c9abd1ec8ef",
-      "bytes": 225092,
+      "sha256": "38c7bd35ab25302f77f1ee4e5c670e53d0dd0c1a9d1b1928be3ebd992097ffb6",
+      "bytes": 225210,
       "role": "project",
       "note": "layered.gef through Stages 2–6 via the controller; savedAt fixed"
-    }
-  },
-  "vendor": {
-    "vendor/chart.umd.js": {
-      "url": "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js",
-      "sha256": "74401d738dd3e03ee5dfb3b6841210fe2c4ead8a960c4011ca4ba0b78a9fd8f3"
     }
   }
 }

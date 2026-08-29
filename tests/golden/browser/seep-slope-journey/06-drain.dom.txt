@@ -1,0 +1,71 @@
+## #cptTabs
+DATA
+layered
+## .panel.active
+Applications
+Use the interpreted CPT profile for first engineering calculations. Stage 6 reuses the active CPT, current layer model, current water table, and accepted Stage 5 tuning.
+REFRESH
+STAGE 7 REPORT
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: layered · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = not accepted
+Seep/Slope + Spencer equilibrium check
+Circular slip surfaces only, active CPT only, with self-weight, optional infinitely stiff retaining walls, multiple optional surcharge strips, and an optional full Spencer verification pass on the shortlisted circles.
+STABILITY
+SEEPAGE
+DEFORMATION
+Shared canvas and geometry; seepage settings are additive.
+RUN SEEPAGE
+STOP
+FIT VIEW
+CLEAR SEEPAGE
+Drain settings changed. Showing the previous result until you rerun.
+TOOL
+Drain mode
+SELECTED EDGE
+none
+LINE
+none
+Assign at least one prescribed-head boundary edge to make the seepage model solvable.
+The seepage workspace reuses the same Bishop section. Use Assign BC and click the terrain, model base, or side boundaries to assign prescribed head, no-flow, or seepage-face conditions, then click Run seepage. The same terrain, polygons, walls, snap settings, and viewport stay active while you switch between stability and seepage. Contour fill, contour lines, and the legend now follow the selected seepage field, while flow lines, the phreatic line, and exit-gradient highlights remain optional overlays. When a measurement line exists, the results panel can also probe heads, gradients, and discharge along it.
+RESULTS
+STATUS idle
+NODES 0
+TRIANGLES 0
+HEAD RANGE —
+THROUGH-FLOW —
+DRAIN INFLOW —
+DRAIN OUTFLOW —
+FLOW-RATE ERROR —
+TERMINATION —
+MAX EXIT GRADIENT —
+DRY CELLS 0
+RUNTIME —
+Drain settings changed. Showing the previous result until you rerun.
+BOUNDARY SUMMARY
+OUTER EDGES 5
+EXPLICIT BCS 0
+PRESCRIBED HEAD 0
+SEEPAGE FACE 0
+NO-FLOW 0
+ORPHANED BCS 0
+DRAIN NODES ACTIVE —
+DRAIN EDGE CHECK —
+DRAIN DISCHARGE
+DRAIN GATING INFLOW REACTION ACTIVE NODES
+No solved drain discharge.
+ASSIGNED BCS
+EDGE TYPE HEAD STATUS
+No explicit boundary conditions yet.
+This Stage 6 seepage workflow is experimental. It solves steady-state 2D seepage on a constrained triangular FEM mesh built from the shared section geometry.
+The soil model is derived from the active CPT only. The interpreted layer column is extended horizontally across the drawn section for this workflow.
+Use prescribed-head, seepage-face, and no-flow conditions only on the terrain, side, and base boundaries. Interior polygon edges are material interfaces, not seepage boundaries.
+The seepage result can be reused by the deformation screen and, when enabled, by the Bishop/Spencer pore-pressure hook without redrawing the section.
+← BACK TO TUNING
+EXPORT CSV
+PRINT STAGE 7

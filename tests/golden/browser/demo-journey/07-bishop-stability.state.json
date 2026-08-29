@@ -14129,6 +14129,10 @@
           "interlock": 0,
           "lambda": 6,
           "method": "vibratory",
+          "push": {
+            "force_kN": 150,
+            "includeWeight": true
+          },
           "reserve": 1.25,
           "result": {
             "<unchanged-since>": "09-drivability",
@@ -14171,6 +14175,7 @@
               "flow_lmin": null,
               "forceAtRpm": null,
               "force_kN": null,
+              "massSource": "amplitude",
               "name": "",
               "power_kW": null,
               "pressureMax_bar": null,
@@ -14400,8 +14405,8 @@
     },
     "bishopModel": {
       "<unchanged-since>": "07-bishop-model",
-      "<digest>": "bb4e6648f6977f27ad25bd54",
-      "bytes": 36069
+      "<digest>": "038e8184ef9ef9346f924a55",
+      "bytes": 30379
     },
     "bishopSeepageBoundary": {
       "<unchanged-since>": "07-bishop-model",

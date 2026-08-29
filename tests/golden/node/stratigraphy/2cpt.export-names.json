@@ -1,0 +1,14 @@
+{
+  "csv": {
+    "filename": "Golden_multi-CPT_stratigrafie_eenheden.csv",
+    "mime": "text/csv"
+  },
+  "dxf": {
+    "filename": "Golden_multi-CPT_stratigrafie_doorsnede.dxf",
+    "mime": "application/dxf"
+  },
+  "plaxis": {
+    "filename": "Golden_multi-CPT_stratigrafie_plaxis_materials.txt",
+    "mime": "text/plain"
+  }
+}

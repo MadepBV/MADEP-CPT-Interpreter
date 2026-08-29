@@ -149,6 +149,14 @@ for (const f of readdirSync(join(ROOT, 'scripts/fixtures')).filter((n) => n.ends
   copyFileSync(join(ROOT, 'scripts/fixtures', f), join(FX, 'models', f));
   record(`models/${f}`, { role: 'aux', source: `scripts/fixtures/${f}` });
 }
+// seepage / deformation / HS models lifted from the verify scripts as pure functions of
+// constants (lib/solver-models.mjs) — serialised so the solver suites read committed JSON
+{
+  const { MODELS } = await import('./lib/solver-models.mjs');
+  for (const [name, { model, source, note }] of Object.entries(MODELS)) {
+    write(`models/${name}.json`, stableJson(model), { role: 'aux', source, note });
+  }
+}
 
 /* ── manifest (first pass: CPT fixtures) so the controller context can load them ── */
 writeFileSync(join(FX, 'manifest.json'), stableJson(sortManifest(manifest)));

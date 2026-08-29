@@ -11,14 +11,18 @@
 import { test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Journey, CAPTURE_SCRIPT, CHART_VENDOR, CHART_CDN_GLOB, ANALYTICS_GLOB } from '../../scripts/golden/lib/journey.mjs';
+import { Journey, CAPTURE_SCRIPT, CHART_VENDOR, CHART_CDN_GLOB, ANALYTICS_GLOB, maskText } from '../../scripts/golden/lib/journey.mjs';
 import { MULBERRY32_SOURCE } from '../../scripts/golden/lib/prng.mjs';
-import { GOLDEN } from '../../scripts/golden/lib/store.mjs';
+import { GOLDEN, sha256Hex } from '../../scripts/golden/lib/store.mjs';
+import { normalize } from '../../scripts/golden/lib/normalize.mjs';
+import { compare } from '../../scripts/golden/lib/compare.mjs';
 
 const manifest = JSON.parse(readFileSync(join(GOLDEN, 'fixtures/manifest.json'), 'utf8'));
 const SEED = manifest.seed;                       // 20260829 — same seed as demo-anonymous.gef
 const EPOCH = '2026-01-01T00:00:00Z';
 const FIXTURE_GEF = join(GOLDEN, 'fixtures/cpt/layered.gef');
+const FIXTURE_GEFS = ['layered', 'sand-only', 'clay-only'].map((n) => join(GOLDEN, `fixtures/cpt/${n}.gef`));
+const FIXTURE_LEGACY_PROJECT = join(GOLDEN, 'fixtures/projects/legacy-v0.5.2.madep.json');
 // Chart.js 4.4.1 (vendored copy of the CDN file) + animations off: charts are drawn in
 // their final state on the first frame, so screenshots do not depend on frame timing.
 // Chart configs themselves are untouched (they are locked in the Node tier).
@@ -245,5 +249,318 @@ test('gef-import-journey', async ({ page, context }) => {
   await j.nextFrame();
   await j.step('01-loaded');
   await stages2to7(page, context, j);
+  await j.finish();
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PR 17 journeys: seep-slope (canvas tools → search → seepage → deformation),
+   multi-cpt (three imports → Stratigrafie → Doorsnede), save-load (round trip).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const DEFORMATION_BUDGET_MS = 90_000;
+const REPORT_ANNEX_DIGEST = ['bishop.results', 'bishop.analysis', 'seepage.mesh', 'seepage.result', 'seepage.analysis', 'deformation.mesh', 'deformation.result', 'deformation.analysis'];
+
+/** Import layered.gef through the file input + review dialog, classify, open Stage 6. */
+async function importLayeredAndClassify(page, j) {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.setInputFiles('#fi', FIXTURE_GEF);
+  await page.locator('.import-review-overlay').waitFor();
+  await page.click('.import-review-overlay [data-ir="apply"]');
+  await j.waitState((s) => s.active.data.length > 0 && s.active.chartsReady === true);
+  await page.evaluate(() => { window.goS(1); window.runClass(); });
+  await j.nextFrame();
+}
+
+/**
+ * Drive the Seep/Slope canvas the way the engineer does: a pointer click on
+ * #stage6BishopCanvas at the screen position of a world point (viewport transform of
+ * stage6BishopScreenToWorld; the app snaps to its 0.5 m grid), left = commit a draft
+ * point / pick, right = complete the current action (stage6BishopPointerDown).
+ */
+async function clickWorld(page, x, y, button = 'left') {
+  const pos = await page.evaluate(([wx, wy]) => {
+    const S = window.PROJECT.cpts[window.PROJECT.activeCptIdx];
+    const v = S.stage6.bishop.viewport;
+    return { x: wx * v.scale + v.offsetX, y: v.offsetY - wy * v.scale };
+  }, [x, y]);
+  await page.locator('#stage6BishopCanvas').click({ position: pos, button, force: true });
+  // every commit re-renders the app; the canvas handlers are re-bound in the postRender frame
+  // (initStage6BishopCanvas) — the next click must not arrive before that
+  await page.evaluate(() => window.__golden.nextFrame());
+}
+
+async function bishopTool(page, j, tool) {
+  await page.evaluate((t) => window.stage6BishopSetTool(t), tool);
+  await j.nextFrame();
+}
+
+test('seep-slope-journey', async ({ page, context }) => {
+  const j = new Journey('seep-slope-journey', { page, context });
+  j.observe(page);
+  await importLayeredAndClassify(page, j);
+  await page.evaluate(() => { window.goS(5); window.setStage6App('bishop'); });
+  await j.nextFrame();
+  await j.step('01-bishop-empty');
+
+  // ---- terrain: three clicks with the terrain tool, right-click completes the draft ----
+  await bishopTool(page, j, 'terrain');
+  for (const [x, y] of [[0, 4], [8, 4], [20, 0]]) await clickWorld(page, x, y);
+  await clickWorld(page, 20, 0, 'right');
+  await j.waitState((s) => s.active.stage6.bishop.terrain.length === 3 && s.active.stage6.bishop.draftKind === '');
+  await j.nextFrame();
+  await j.step('02-terrain');
+
+  // ---- entry / exit zones: two clicks each on the terrain (x snapped, y from the terrain) ----
+  await bishopTool(page, j, 'entry');
+  await clickWorld(page, 1, 4); await clickWorld(page, 5, 4);
+  await bishopTool(page, j, 'exit');
+  await clickWorld(page, 13, 4 - 5 / 3); await clickWorld(page, 19, 4 - 11 / 3);
+  await j.waitState((s) => !!s.active.stage6.bishop.entryZone && !!s.active.stage6.bishop.exitZone);
+  await j.nextFrame();
+  await j.step('03-zones', { screenshot: false });
+
+  // ---- phreatic line ----
+  await bishopTool(page, j, 'phreatic');
+  for (const [x, y] of [[0, 3], [8, 2.5], [20, -0.5]]) await clickWorld(page, x, y);
+  await clickWorld(page, 20, -0.5, 'right');
+  await j.waitState((s) => s.active.stage6.bishop.phreatic.length === 3);
+  await j.nextFrame();
+  await j.step('04-phreatic', { screenshot: false });
+
+  // ---- retaining wall: head on the terrain at x = 9, tip at (9, 1); then the wall-table fields ----
+  await bishopTool(page, j, 'wall');
+  await clickWorld(page, 9, 4); await clickWorld(page, 9, 1);
+  await j.waitState((s) => s.active.stage6.bishop.walls.length === 1);
+  await page.evaluate(() => { window.stage6BishopSetWallField(0, 'passiveSide', 'right'); window.stage6BishopSetWallField(0, 'interfaceRInter', 0.67); });
+  await j.nextFrame();
+  await j.step('05-wall');
+
+  // ---- drain (the drain tool switches to the seepage workspace): two clicks, then its head ----
+  await bishopTool(page, j, 'drain');
+  await clickWorld(page, 13, 1); await clickWorld(page, 18, 0);
+  await j.waitState((s) => s.active.stage6.bishop.drains.length === 1);
+  // constant head 0.5 m, always active: the "when saturated" gating iterates the drain's active
+  // set and, on this section, only stops at the 10 s runtime limit — a clock-dependent result
+  await page.evaluate(() => { window.stage6BishopSetDrainField(0, 'head', 0.5); window.stage6BishopSetDrainField(0, 'gating', 'always'); });
+  await j.nextFrame();
+  await j.step('06-drain');
+
+  // ---- Bishop + Spencer search (Worker) ----
+  await page.evaluate(() => { window.stage6BishopSetWorkspace('stability'); window.stage6BishopSetTool('edit'); });
+  await j.nextFrame();
+  await j.step('07-model', { screenshot: false });
+  let t0 = Date.now();
+  await page.evaluate(() => window.stage6BishopRunSearch());
+  await j.waitState((s) => s.active.stage6.bishop.progress.running === false && !!s.active.stage6.bishop.results, { timeout: SEEP_SLOPE_BUDGET_MS });
+  j.notes.push(`bishop search completed in ${Date.now() - t0} ms`);
+  await j.nextFrame();
+  await j.step('08-stability');
+
+  // ---- seepage: side boundaries picked on the canvas with the BC tool, head values through the panel setters ----
+  await page.evaluate(() => window.stage6BishopSetWorkspace('seepage'));
+  await bishopTool(page, j, 'seepageBc');
+  const sides = await page.evaluate(() => {
+    const S = window.PROJECT.cpts[window.PROJECT.activeCptIdx];
+    const b = S.stage6Cache.bishopSeepageBoundary || [];
+    const pick = (src) => { const e = b.find((edge) => edge.source === src); return e ? { key: e.edgeKey, x: e.mid.x, y: e.mid.y } : null; };
+    return { left: pick('side-left'), right: pick('side-right') };
+  });
+  for (const [side, head] of [['left', 3.0], ['right', -0.5]]) {
+    await clickWorld(page, sides[side].x, sides[side].y);
+    await j.waitState((s) => s.active.stage6.bishop.seepage.selectedEdgeKey !== '');
+    await page.evaluate((h) => { window.stage6BishopSetSeepageBcType('head'); window.stage6BishopSetSeepageBcHead(h); }, head);
+  }
+  // 1.0 m² mesh; runtime limit 60 s (the field is entered in seconds) so the free-surface
+  // iteration ends on its flow-error criterion, never on the clock
+  await page.evaluate(() => { window.stage6BishopSetField('seepage.options.meshTargetArea', 1.0); window.stage6BishopSetField('seepage.options.maxRuntimeMs', 60); });
+  await j.nextFrame();
+  await j.step('09-seepage-bcs', { screenshot: false });
+  t0 = Date.now();
+  await page.evaluate(() => window.stage6BishopRunSeepage());
+  await j.waitState((s) => ['success', 'failed', 'error'].includes(s.active.stage6.bishop.seepage.status), { timeout: SEEP_SLOPE_BUDGET_MS });
+  j.notes.push(`seepage completed in ${Date.now() - t0} ms`);
+  // measurement line → line probe (stage6BishopBuildLineProbe samples the seepage result; cache.bishopLineProbe)
+  await page.evaluate(() => { const S = window.PROJECT.cpts[window.PROJECT.activeCptIdx]; S.stage6.bishop.measurement = { points: [{ x: 2, y: 2 }, { x: 18, y: -2 }] }; window.renderStage6(); });
+  await j.nextFrame();
+  await j.step('10-seepage');
+
+  // ---- deformation: surface load with the load tool, q through the setter, coarse mesh, run within a budget ----
+  await page.evaluate(() => window.stage6BishopSetWorkspace('deformation'));
+  await bishopTool(page, j, 'load');
+  await clickWorld(page, 2, 4); await clickWorld(page, 6, 4);
+  await j.waitState((s) => s.active.stage6.bishop.surfaceLoads.length === 1);
+  await page.evaluate(() => {
+    const S = window.PROJECT.cpts[window.PROJECT.activeCptIdx];
+    window.stage6BishopSetSurfaceLoadField(S.stage6.bishop.surfaceLoads[0].id, 'q', 20);
+    window.stage6BishopSetField('deformation.options.meshElementType', 't3');
+    window.stage6BishopSetField('deformation.options.meshTargetArea', 2.0);
+    window.stage6BishopSetTool('edit');
+  });
+  await j.nextFrame();
+  await j.step('11-deformation-setup', { screenshot: false });
+  t0 = Date.now();
+  await page.evaluate(() => window.stage6BishopRunDeformation());
+  try {
+    await j.waitState((s) => ['success', 'failed', 'error'].includes(s.active.stage6.bishop.deformation.status), { timeout: DEFORMATION_BUDGET_MS });
+    j.notes.push(`deformation completed in ${Date.now() - t0} ms`);
+  } catch {
+    await page.evaluate(() => window.stage6BishopStopDeformation(true));
+    j.notes.push(`12-deformation: run did not finish within ${DEFORMATION_BUDGET_MS / 1000} s — stopped, state locked as stopped`);
+    await j.waitState((s) => s.active.stage6.bishop.deformation.progress.running === false, { timeout: 30000 });
+  }
+  await j.nextFrame();
+  await j.step('12-deformation');
+
+  // ---- Stage 7 captures + annexes ----
+  for (const ws of ['stability', 'seepage', 'deformation']) {
+    await page.evaluate((w) => { window.stage6BishopSetWorkspace(w); window.stage7CaptureWorkspaceView(w); }, ws);
+    await j.nextFrame();
+  }
+  const annexes = await page.evaluate(() => { const p = window.buildStage7Payload(); const s = p?.stage6 || {}; return { bishop: s.bishop ?? null, seepage: s.seepage ?? null, deformation: s.deformation ?? null, seepSlope: s.seepSlope ?? null }; });
+  j.json('13-report-annexes', annexes, { digestPaths: REPORT_ANNEX_DIGEST });
+  await j.step('13-final');
+  await j.finish();
+});
+
+test('multi-cpt-journey', async ({ page, context }) => {
+  const j = new Journey('multi-cpt-journey', { page, context });
+  j.observe(page);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  // three GEF files in one picker action: the review dialog is sequential (importCptFiles)
+  await page.setInputFiles('#fi', FIXTURE_GEFS);
+  for (let i = 1; i <= FIXTURE_GEFS.length; i++) {
+    await page.locator('.import-review-overlay').waitFor();
+    if (i === 1) await j.step('00-import-review', { dom: ['.import-review-overlay'], screenshot: false });
+    await page.click('.import-review-overlay [data-ir="apply"]');
+    // (predicates travel as source text — the count is baked in, not closed over)
+    await j.waitState(new Function('s', `return s.project.cpts.filter((c) => c.data.length > 0).length >= ${i};`), { timeout: 30000 });
+  }
+  await j.waitState((s) => s.active.chartsReady === true);
+  await j.nextFrame();
+  await j.step('01-imported');
+  // section line: x = 0 / 30 / 60 m, surface levels 10.0 / 10.4 / 9.7 m TAW (the multi-3cpt project fixture layout)
+  const layout = [[0, 10.0], [30, 10.4], [60, 9.7]];
+  for (let i = 0; i < layout.length; i++) {
+    await page.evaluate(([idx, x, elev]) => { window.selectCpt(idx); window.setCptCoord('x', x); window.setCptCoord('y', 0); window.setElev(elev); window.goS(1); window.runClass(); }, [i, ...layout[i]]);
+    await j.nextFrame();
+    await j.step(`02-cpt${i + 1}-classified`, { screenshot: false });
+  }
+  await page.evaluate(() => window.selectCpt(0));
+  // ---- Stratigrafie phase: auto-correlation on entry ----
+  await page.evaluate(() => window.setPhase('correlation'));
+  await j.waitState((s) => !!s.project.stratigraphy?.result?.units?.length);
+  await j.nextFrame();
+  await j.step('03-correlation', { dom: ['#cptTabs', '#phaseCorr'] });
+  // rename the first unit through its input (change → store.renameUnit → re-render)
+  const rename = page.locator('#stratPanel input[data-rename]').first();
+  await rename.fill('Quartair zand');
+  await rename.press('Tab');
+  await j.waitState((s) => s.project.stratigraphy.result.units.some((u) => u.name === 'Quartair zand'));
+  await j.nextFrame();
+  await j.step('04-renamed', { dom: ['#cptTabs', '#phaseCorr'], screenshot: false });
+  // ---- SOILIN report tab + payload ----
+  const soilin = await openReportTab(context, page, j, () => document.querySelector('#stratPanel [data-act="soilin-report"]').click(), { chart: false });
+  await j.localStorage('05-soilin.payload', 'soilin-report:');
+  await j.stepPage('05-soilin', soilin, { dom: ['.report-shell'] });
+  await soilin.close();
+  // ---- exports: CSV / PLAXIS / DXF as text, db4 as SHA-256 ----
+  for (const act of ['export-csv', 'export-plaxis', 'export-dxf']) {
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click(`#stratPanel [data-act="${act}"]`)]);
+    await j.download(`06-${act}`, dl);
+  }
+  const [db4] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#stratPanel [data-act="export-db4"]')]);
+  const db4Bytes = readFileSync(await db4.path());
+  j.json('06-export-db4', { filename: maskText(db4.suggestedFilename()), bytes: db4Bytes.length, sha256: sha256Hex(db4Bytes), head: [...db4Bytes.subarray(0, 16)] });
+  // ---- Doorsnede ----
+  await page.evaluate(() => window.setPhase('section'));
+  await page.waitForFunction(() => (document.getElementById('sectionSvg')?.innerHTML || '').length > 100);
+  await j.nextFrame();
+  await j.step('07-section', { dom: ['#cptTabs', '#phaseSection'] });
+  j.text('07-section.svg', await page.evaluate(() => document.getElementById('sectionSvg').outerHTML), 'svg');
+  const [svg] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.evaluate(() => window.exportSectionSVG())]);
+  await j.download('08-exportsectionsvg', svg);
+  await page.evaluate(() => window.setPhase('analysis'));
+  await j.nextFrame();
+  j.json('09-dialogs', j.dialogs.slice());
+  await j.step('09-final', { screenshot: false });
+  await j.finish();
+});
+
+/** Roots of the captured state compared after the reload; every difference is locked in 02-restored-vs-saved. */
+const SAVE_LOAD_ROOTS = ['project', 'active', 'stage', 'phase', 'activeCptIdx'];
+const PANELS = ['#lb', '#ma', '#tuningArea', '#stage6Area'];
+
+test('save-load-journey', async ({ page, context }) => {
+  const j = new Journey('save-load-journey', { page, context });
+  j.observe(page);
+  await importLayeredAndClassify(page, j);
+  // a project with work in every stage: subtype edit, alpha A, accepted fit, bearing B, a sheet-pile wall, a Bishop model
+  await page.evaluate(() => window.goS(2));
+  await j.nextFrame();
+  const next = await page.evaluate(() => { const sel = document.querySelector('#lb select[data-i="1"]'); const opt = sel && [...sel.options].find((o) => o.value && o.value !== sel.value && !o.disabled); return opt ? opt.value : null; });
+  if (next) await page.selectOption('#lb select[data-i="1"]', next);
+  await page.evaluate(() => { window.goS(3); window.setAlphaMethod('A'); window.goS(4); window.runTuning(); window.acceptFit(0); window.goS(5); window.setStage6App('bearing'); window.setStage6Field('bearing.B', 2.0); });
+  await j.nextFrame();
+  await page.evaluate(() => { window.setStage6App('retwall'); window.retwallSetType('sheetpile'); });
+  await j.waitState((s) => s.active.stage6.retwall.status === 'done', { timeout: 60000 });
+  await page.evaluate(() => {
+    const S = window.PROJECT.cpts[window.PROJECT.activeCptIdx];
+    const b = S.stage6.bishop;
+    b.terrain = [{ x: 0, y: 4 }, { x: 8, y: 4 }, { x: 20, y: 0 }]; b.entryZone = { xStart: 1, xEnd: 5 }; b.exitZone = { xStart: 13, xEnd: 19 };
+    window.setStage6App('bishop');
+    window.PROJECT.name = 'Golden save-load';
+  });
+  await j.nextFrame();
+  await j.step('01-saved');
+  await j.step('01-saved-panels', { dom: PANELS, state: false, screenshot: false });
+  const saved = await page.evaluate(() => window.__golden.captureState());
+  const savedPanels = await page.evaluate((s) => window.__golden.domText(s), PANELS);
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.evaluate(() => window.saveProject())]);
+  await j.download('01-saveproject', dl, { digestPaths: SAVE_DIGEST });
+  const fileBuffer = readFileSync(await dl.path());
+
+  // ---- a new page: load the download through the banner's file input (BannerPhaseShell #projFileInput) ----
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await j.waitState((s) => !!s.project && s.active.data.length === 0);
+  await page.setInputFiles('#projFileInput', { name: dl.suggestedFilename(), mimeType: 'application/json', buffer: fileBuffer });
+  await j.waitState((s) => s.active.data.length > 0 && s.active.chartsReady === true, { timeout: 60000 });
+  await j.nextFrame();
+  await j.step('02-restored');
+  const restored = await page.evaluate(() => window.__golden.captureState());
+  // the Stage 3/4/5 panels render when their stage is visited (afterLoad lands on the saved stage 6):
+  // walk the stages the way the engineer would before comparing the panel text
+  await page.evaluate(() => { window.goS(2); window.goS(3); window.goS(4); window.goS(5); });
+  await j.nextFrame();
+  await j.step('02-restored-panels', { dom: PANELS, state: false, screenshot: false });
+  const restoredPanels = await page.evaluate((s) => window.__golden.domText(s), PANELS);
+  // state equality after normalisation: every difference is behaviour of the save/load path and is locked
+  // here (stage6.ui — the <details> open/scroll bookkeeping — is render state, not locked: design §1.12)
+  const diffs = [];
+  const withoutUi = (v) => { const n = normalize(v); if (n?.stage6?.ui) n.stage6 = { ...n.stage6, ui: '<render state, not compared>' }; return n; };
+  for (const root of SAVE_LOAD_ROOTS) compare(withoutUi(saved[root]), withoutUi(restored[root]), { rel: 1e-9, abs: 1e-12 }, root, diffs);
+  // per-panel text identity (+ the first differing lines of a panel that is not identical)
+  const panelLines = (text) => { const out = {}; let cur = null; for (const line of maskText(text).split('\n')) { if (line.startsWith('## ')) { cur = line.slice(3).trim(); out[cur] = []; } else if (cur) out[cur].push(line); } return out; };
+  const a = panelLines(savedPanels), b = panelLines(restoredPanels);
+  const panels = Object.fromEntries(PANELS.map((sel) => {
+    const la = a[sel] || [], lb = b[sel] || [];
+    const identical = la.join('\n') === lb.join('\n');
+    const first = identical ? null : (() => { for (let i = 0; i < Math.max(la.length, lb.length); i++) if (la[i] !== lb[i]) return { line: i + 1, saved: la[i] ?? '<eof>', restored: lb[i] ?? '<eof>' }; return null; })();
+    return [sel, { identical, savedLines: la.length, restoredLines: lb.length, firstDifference: first }];
+  }));
+  j.json('02-restored-vs-saved', { stateDiffs: diffs.map((d) => ({ path: d.path, saved: d.expected, restored: d.actual })), panels, dialogs: j.dialogs.slice() });
+
+  // ---- the legacy (v0.5.2-shaped) project: forward-compat merge; loading over work asks for confirmation (auto-accepted) ----
+  await page.setInputFiles('#projFileInput', FIXTURE_LEGACY_PROJECT);
+  await j.waitState((s) => s.project.cpts.length === 3 && s.project.name === 'Golden multi-CPT' && s.active.chartsReady === true, { timeout: 60000 });
+  await j.nextFrame();
+  await j.step('03-legacy-loaded');
+  await j.step('03-legacy-panels', { dom: ['#lb', '#ma', '#stage6Area', '#stratPanel'], state: false, screenshot: false });
+  // invalid files: alerts, project untouched
+  await page.setInputFiles('#projFileInput', { name: 'bad.madep.json', mimeType: 'application/json', buffer: Buffer.from('not json') });
+  await page.waitForFunction(() => window.__golden.live().project.cpts.length === 3);
+  await page.setInputFiles('#projFileInput', { name: 'bad2.madep.json', mimeType: 'application/json', buffer: Buffer.from('{"kind":"other"}') });
+  await j.nextFrame();
+  j.json('04-dialogs', j.dialogs.slice());
+  await j.step('04-final', { screenshot: false });
   await j.finish();
 });
