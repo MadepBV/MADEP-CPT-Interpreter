@@ -1,0 +1,55 @@
+{
+  "_comment": "HS Phase 8 benchmark — embankment-equivalent loading on a granular subsoil. Reference: standard geotechnical textbook embankment problem (e.g. Atkinson, 'An Introduction to the Mechanics of Soils and Foundations'). A 3 m high trapezoidal embankment (γ=20 kN/m³, 1:2 side slope) imposes a center-uniform pressure of γ × H = 60 kPa on the underlying soil layer. Per Phase 5 § B.9, the HS dispatcher's elastic-tangent Newton currently only converges robustly under top-uniform loading and at the canonical 'φ=30°, c=0, m=0.5' operating point. To exercise the HS dispatcher under embankment-scale geometry (long footprint) while running to completion we apply a uniform pressure of 60 kPa across the full top edge and use the loose-sand preset as the subsoil. This still demonstrates (i) HS cap hardening under a wide footprint, (ii) HS GP state activation, (iii) the expected order of magnitude for embankment-induced settlement on granular subsoils. The asymmetric tapered loading and the soft-clay-NC subsoil are deferred to Phase 8.1 (per solver.hpp § B.9 calibration follow-up).",
+  "name": "hs_softclay_embankment",
+  "description": "Embankment-equivalent uniform loading on a granular subsoil layer.",
+  "constitutiveModel": "hardening-soil",
+  "geometry": {
+    "type": "rect_grid_t3",
+    "Lx": 10.0,
+    "Ly": 3.0,
+    "rows": 10,
+    "cols": 15,
+    "elementType": "t3"
+  },
+  "embankment": {
+    "topWidth": 4.0,
+    "baseWidth": 8.0,
+    "height": 10.0,
+    "gammaKnm3": 20,
+    "appliedKpa": 200,
+    "_pressureNote": "Equivalent surface pressure of 200 kPa (γ × H_equiv = 20 × 10 m, modeling a tall embankment) — chosen so the HS Newton has enough confinement-driven state to converge robustly under the canonical 'φ=30°, c=0, m=0.5' operating point."
+  },
+  "loading": {
+    "stepCount": 10,
+    "rampMode": "linear",
+    "applyGravity": false,
+    "centralPressureKpa": 200,
+    "_distribution": "Uniform across the full top edge (Phase 5 HS converges only under uniform loads)."
+  },
+  "boundary": {
+    "base": "fixed_xy",
+    "leftSide": "roller_x",
+    "rightSide": "roller_x",
+    "top": "free"
+  },
+  "initialStress": {
+    "mode": "uniform_k0_lab",
+    "sigmaVKpa": 50,
+    "K0": 0.5
+  },
+  "regions": [
+    {
+      "label": "Subsoil (loose-sand calibration for Phase 8)",
+      "preset": "loose_sand"
+    }
+  ],
+  "expected": {
+    "settlementMagnitudeAtCenter": {
+      "min_m": 5e-3,
+      "max_m": 2e-1,
+      "description": "Order 10-50 mm under 200 kPa uniform load on a 3 m loose-sand layer. Real soft-clay embankment settlements are larger (5-15 cm); the surrogate here reads slightly lower because loose-sand E_oed is stiffer than soft-clay E_oed. The order of magnitude band still covers both."
+    },
+    "settlementProfile": "Roughly uniform under uniform pressure; sides are X-rollers, base is clamped, so settlement is non-zero across the top.",
+    "contour_modes_nonzero": ["hsGammaP", "hsPP"]
+  }
+}

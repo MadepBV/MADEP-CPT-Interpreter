@@ -1,0 +1,18 @@
+{
+  "static/wasm/deformation/deformation.js": {
+    "sha256": "09690740eaeb67ffff14069e058c59225c26722d3087483480e04df4296ba4c3",
+    "bytes": 8587
+  },
+  "static/wasm/deformation/deformation.wasm": {
+    "sha256": "9d9b9a2665ba9581ef88c6d5cb4d82933406b74147c75c3a9af72f5caa57132d",
+    "bytes": 461870
+  },
+  "static/wasm/retaining/retaining.js": {
+    "sha256": "a0e267f8f95680ef5385da62bc6b2774846341e173413c6cd6d1257214fb2045",
+    "bytes": 9315
+  },
+  "static/wasm/retaining/retaining.wasm": {
+    "sha256": "8a7b442e0028024992d5c4c44b4515befcf6830c52410f5c227ad638f58cdef6",
+    "bytes": 268085
+  }
+}

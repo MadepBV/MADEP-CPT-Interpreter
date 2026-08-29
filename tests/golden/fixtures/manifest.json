@@ -1,0 +1,188 @@
+{
+  "seed": 20260829,
+  "generator": "scripts/golden/make-fixtures.mjs",
+  "prng": "mulberry32",
+  "fixtures": {
+    "cpt/clay-only.gef": {
+      "sha256": "4b865703f642ed8095664e9235d741630425d452433003f9d51d2616c812dc2d",
+      "bytes": 7618,
+      "role": "profile",
+      "seed": 3666363609,
+      "note": "qc 0.4–1.5 MPa, Rf 3–6 %, 0–12 m"
+    },
+    "cpt/corrected-depth.gef": {
+      "sha256": "4c3bbe78e57665d206c42eb3fe13a01e0bea04d542b746cf7705af8add0fa496",
+      "bytes": 13731,
+      "role": "import",
+      "seed": 4125896895,
+      "note": "quantity 11 (corrected) and 1 (penetration length = z + 0.05): parser must prefer 11"
+    },
+    "cpt/demo-anonymous.gef": {
+      "sha256": "038b9a70297d986e9b6f39c43d070a3d5ad166465c7a54f090cc77af3609c98e",
+      "bytes": 32553,
+      "role": "profile",
+      "seed": 20260829,
+      "note": "loadDemo() bands with Math.random = mulberry32(seed); 1080 rows"
+    },
+    "cpt/kpa-units.gef": {
+      "sha256": "6986cd8101cb885c4b91ae503a984a1ce2553514636f6bce7c06ba58917c5305",
+      "bytes": 10627,
+      "role": "import",
+      "seed": 2859762271,
+      "note": "layered with qc/fs declared in kPa"
+    },
+    "cpt/layered-comma.csv": {
+      "sha256": "86f1b94c4dac2fea9718d756b107ffc5c72ed2ec68429e765f1fc2001806f36b",
+      "bytes": 10093,
+      "role": "import",
+      "seed": 4125896895,
+      "note": "semicolon-separated, comma decimals, fs in kPa, CRLF"
+    },
+    "cpt/layered.csv": {
+      "sha256": "8e16c6cb9051671d7eec584fb4260c77eaba09113cf53b9b2ac62cb27902b069",
+      "bytes": 8211,
+      "role": "import",
+      "seed": 4125896895,
+      "note": "README format depth,qc,fs (m, MPa, MPa)"
+    },
+    "cpt/layered.gef": {
+      "sha256": "f3f33cdcec78b89e7552b3b13e500135daf2f10dd0098471f73e8a5dd5b29203",
+      "bytes": 13921,
+      "role": "profile",
+      "seed": 4125896895,
+      "note": "6 layers 0–18 m, u2 column (quantity 6)"
+    },
+    "cpt/layered.xlsx": {
+      "sha256": "f16f8af45b4133cebf6444e17bbd31afaa2bb3a218a100434ee654b716a63778",
+      "bytes": 65883,
+      "role": "import",
+      "seed": 4125896895,
+      "note": "Data + Header sheets (xlsx dependency)"
+    },
+    "cpt/qc-only.gef": {
+      "sha256": "072aad12747de6c8c1cf615ba188e2daac00c981aa7cdb36fefbc464c71696d5",
+      "bytes": 5793,
+      "role": "profile",
+      "seed": 678427210,
+      "note": "layered without COLUMNINFO 3/4"
+    },
+    "cpt/sand-only.gef": {
+      "sha256": "19fbd56bc28ec1abaf744169407fa150d70a00066d52f6c0a45d5b1777602b7d",
+      "bytes": 9698,
+      "role": "profile",
+      "seed": 641477364,
+      "note": "qc 8–30 MPa, Rf 0.4–1.2 %, 0–15 m"
+    },
+    "cpt/short.gef": {
+      "sha256": "59c5e93f2a0d138294a53aa4b50a8b53b3f8d8af473215ac5c70828f54bc09b6",
+      "bytes": 3518,
+      "role": "profile",
+      "seed": 3469075709,
+      "note": "2.0 m at 0.02 m; first 6 readings qc < 0.02 skipped"
+    },
+    "cpt/trailing-qc-only.gef": {
+      "sha256": "44760b2bbd156e49757037ac7ee2815dd6980e8732f43fc256a09a0a96f4b8cc",
+      "bytes": 11293,
+      "role": "profile",
+      "seed": 4125896895,
+      "note": "layered; last 3 rows lack fs/Rf"
+    },
+    "cpt/wt-above-surface.state.json": {
+      "sha256": "570d7e3440f838d12b4fb8eaafdeacd6e53408ef1417afc121e2c91c6891ee96",
+      "bytes": 109,
+      "role": "profile",
+      "base": "layered.gef",
+      "inject": {
+        "wt": -0.5,
+        "wtFromFile": false,
+        "wtSource": null
+      },
+      "note": "F11: water table above surface is only reachable by state injection"
+    },
+    "cpt/wt-at-surface.gef": {
+      "sha256": "97614f9e8ecbf4655d11f792603c1e16d57e47baab1ff0e89a0a594091efd39a",
+      "bytes": 13925,
+      "role": "profile",
+      "seed": 2797964902,
+      "note": "layered with MEASUREMENTVAR 14 = 0.0"
+    },
+    "models/bishop-benchmark_spencer.json": {
+      "sha256": "418a1c8469b7738db35b89e3deedbc3e395c6002787df30c255801b160cf9c9d",
+      "bytes": 2320,
+      "role": "aux",
+      "source": "scripts/fixtures/bishop-phase-a/benchmark_spencer.json"
+    },
+    "models/bishop-homogeneous_dry.json": {
+      "sha256": "3eca9cbfb8a5cc773fec07dfcaf1a9d3fd691f5c4fb1fa1220c77161e14fc436",
+      "bytes": 1464,
+      "role": "aux",
+      "source": "scripts/fixtures/bishop-phase-a/homogeneous_dry.json"
+    },
+    "models/bishop-layered_phreatic.json": {
+      "sha256": "3f2871f6fe90a2a06e1d40bfe65871b9020e333c79ccff2e5b22d57d63f63a2a",
+      "bytes": 2061,
+      "role": "aux",
+      "source": "scripts/fixtures/bishop-phase-a/layered_phreatic.json"
+    },
+    "models/bishop-retaining_wall.json": {
+      "sha256": "dcf7492d06f77cb20e69002c815b2eaa2c5622bc17baf29c0a049b2aef22c65a",
+      "bytes": 2270,
+      "role": "aux",
+      "source": "scripts/fixtures/bishop-phase-a/retaining_wall.json"
+    },
+    "models/bishop-steep_exit.json": {
+      "sha256": "745730040a84639593b54ed784dd5f49c782034b9343bd7fda7a3c7c9960b6a6",
+      "bytes": 2106,
+      "role": "aux",
+      "source": "scripts/fixtures/bishop-phase-a/steep_exit.json"
+    },
+    "models/bishop-surcharge_spencer.json": {
+      "sha256": "ad71559d48b93f679885b9bb80798248b966dc7025ff5a352ad6396ee8b78d98",
+      "bytes": 1912,
+      "role": "aux",
+      "source": "scripts/fixtures/bishop-phase-a/surcharge_spencer.json"
+    },
+    "models/hs_drained_footing.json": {
+      "sha256": "63c1e3f2b3b49b818c096916659765a0904dfa3babd79cef59fd2d36310208aa",
+      "bytes": 2288,
+      "role": "aux",
+      "source": "scripts/fixtures/hs_drained_footing.json"
+    },
+    "models/hs_oc_excavation.json": {
+      "sha256": "bbf16c15060b467318ea9836cd1869f545c43ef9fdf97c28bd26babe2b83120e",
+      "bytes": 2805,
+      "role": "aux",
+      "source": "scripts/fixtures/hs_oc_excavation.json"
+    },
+    "models/hs_softclay_embankment.json": {
+      "sha256": "6b7525e3519548d6c2259b8bc4ef8f2f013c9a30ad7053f5935ae4b9a5a4c081",
+      "bytes": 2970,
+      "role": "aux",
+      "source": "scripts/fixtures/hs_softclay_embankment.json"
+    },
+    "projects/legacy-v0.5.2.madep.json": {
+      "sha256": "ccb5aa517cca31ca033769d3997392f454ba4d8ea2ac1649d135b7f535c38d00",
+      "bytes": 408361,
+      "role": "project",
+      "note": "multi-3cpt with post-0.5.2 keys removed (retwall.drivability/vibration, deformation.options.useWallInterface, assumedRf, smartMergeSensitivity, stratigraphy.settings.characteristic)"
+    },
+    "projects/multi-3cpt.madep.json": {
+      "sha256": "b5ffc98a2177eea55c7d2ff8466c19b6711662398a6d90fdc02da09c1c0ebf14",
+      "bytes": 415388,
+      "role": "project",
+      "note": "3 CPTs, correlated stratigraphy with one manual rename, phase correlation"
+    },
+    "projects/single-layered.madep.json": {
+      "sha256": "83329768e7aa328826b815b166b8f05cd8aee15821832fda9b0a4c9abd1ec8ef",
+      "bytes": 225092,
+      "role": "project",
+      "note": "layered.gef through Stages 2–6 via the controller; savedAt fixed"
+    }
+  },
+  "vendor": {
+    "vendor/chart.umd.js": {
+      "url": "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js",
+      "sha256": "74401d738dd3e03ee5dfb3b6841210fe2c4ead8a960c4011ca4ba0b78a9fd8f3"
+    }
+  }
+}

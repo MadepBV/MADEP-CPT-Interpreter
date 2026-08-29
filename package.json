@@ -74,7 +74,14 @@
 		"verify:retaining": "node scripts/verify_retaining_wasm.mjs && node scripts/verify_retaining_ui.mjs && node scripts/verify_retaining_behavior.mjs && node scripts/verify_retaining_soil_profile.mjs && node scripts/verify_retaining_sections_plaxis.mjs && node scripts/verify_retaining_request.mjs",
 		"verify:drivability": "node scripts/verify_srd_profile.mjs && node scripts/verify_drivability_vibratory.mjs && node scripts/verify_drivability_impact.mjs && node scripts/verify_drivability_datasheet.mjs",
 		"verify:vibration": "node scripts/verify_vibration_ppv.mjs && node scripts/verify_vibration_criteria.mjs && node scripts/verify_vibration_calibration.mjs",
-		"test:e2e": "playwright test"
+		"test:e2e": "playwright test",
+		"golden:fixtures": "node scripts/golden/make-fixtures.mjs && node scripts/golden/fetch-vendor.mjs && node scripts/golden/wasm-hash.mjs --write",
+		"golden:record": "node scripts/golden/record.mjs",
+		"golden:check": "node scripts/golden/check.mjs",
+		"golden:update": "node scripts/golden/check.mjs --update",
+		"golden:wasm-check": "node scripts/golden/wasm-hash.mjs",
+		"verify:core": "npm run verify:nen6740 && npm run verify:stratigraphy && npm run verify:import-review && npm run verify:project-io && npm run verify:scia-db4 && npm run verify:qc-only && npm run verify:retaining && npm run verify:wasm && npm run verify:bishop-phase-a",
+		"test:all": "npm run check && npm run verify:core && npm run golden:wasm-check && npm run golden:check && npm run test:e2e"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.62.1",

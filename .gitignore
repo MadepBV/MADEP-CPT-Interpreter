@@ -50,3 +50,6 @@ screenshots/
 worklog/course-originals/
 worklog/course-text/
 worklog/course-images/
+
+# Golden-master harness: normalised actuals written on mismatch (git diff --no-index tests/golden/node tests/golden/.actual/node)
+tests/golden/.actual/

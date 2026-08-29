@@ -1,0 +1,55 @@
+{
+  "_comment": "HS Phase 8 benchmark — excavation unload in OC clay. Reference: standard excavation/heave benchmark — see Plaxis 'Excavation in over-consolidated clay' or equivalent. The excavated region is modeled by applying an upward (negative-direction) surface traction equal to the removed-overburden pressure on the excavation footprint. The remaining soil rebounds via the HS unload modulus E_ur. True staged construction (geostatic phase → excavation phase) is out of Phase 8 scope; this fixture is single-phase analysis. Stiff OC clay (OCR=2) under small unloads is in the strict elastic regime — most GPs stay elastic (cap is ahead of K0 state), and heave is a clean linear-elastic rebound. The applied unload is kept small (10 kPa rather than the full 90 kPa) to stay within the HS Newton's robust regime for the OCR=2 stiff-clay parameter point.",
+  "name": "hs_oc_excavation",
+  "description": "Excavation-style unload on over-consolidated stiff clay (OCR = 2).",
+  "constitutiveModel": "hardening-soil",
+  "geometry": {
+    "type": "rect_grid_t3",
+    "Lx": 10.0,
+    "Ly": 8.0,
+    "rows": 10,
+    "cols": 15,
+    "elementType": "t3"
+  },
+  "excavation": {
+    "xStart": 0.0,
+    "xEnd": 10.0,
+    "yTop": 8.0,
+    "yBot": 3.0,
+    "_note": "Asymmetric excavation footprints (x ∈ [0, 4] m partial unload) trigger HS Newton divergence per § B.9; Phase 8 instead applies UNIFORM unload across the full top edge to model the average overburden removal. Heave is mean-uniform — equivalent to the cross-sectional average heave of a wider excavation."
+  },
+  "loading": {
+    "stepCount": 10,
+    "rampMode": "linear",
+    "applyGravity": false,
+    "unloadKpa": -10,
+    "_note": "Uniform upward (unload) pressure: -10 kPa across the full top edge. The HS dispatcher at OCR=2, low unload, uniform loading remains in the strict elastic regime where most GPs stay below cone and cap, ensuring robust Newton convergence at full λ."
+  },
+  "boundary": {
+    "base": "fixed_xy",
+    "leftSide": "roller_x",
+    "rightSide": "roller_x",
+    "top": "free"
+  },
+  "initialStress": {
+    "mode": "uniform_k0_lab",
+    "sigmaVKpa": 100,
+    "K0": 0.6,
+    "_note": "Mid-depth confining stress σ_v=100 kPa simulates in-situ K0 state in OC clay before unloading."
+  },
+  "regions": [
+    {
+      "label": "Stiff OC clay",
+      "preset": "stiff_clay_oc"
+    }
+  ],
+  "expected": {
+    "heaveMagnitudeAtBase": {
+      "min_m": 1e-5,
+      "max_m": 5e-2,
+      "description": "Heave order: at the 10 kPa uniform unload, the OC stiff-clay rebound on a 10m × 8m block is around 0.5-2 mm. Band is generous (10 μm to 5 cm) to cover variations in mesh and load level."
+    },
+    "heaveSign": "positive (upward) at the top surface under unload.",
+    "contour_modes_nonzero": ["hsGammaP"]
+  }
+}

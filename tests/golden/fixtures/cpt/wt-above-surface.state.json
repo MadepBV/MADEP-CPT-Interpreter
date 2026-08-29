@@ -1,0 +1,8 @@
+{
+  "base": "layered.gef",
+  "inject": {
+    "wt": -0.5,
+    "wtFromFile": false,
+    "wtSource": null
+  }
+}

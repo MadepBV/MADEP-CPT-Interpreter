@@ -1,0 +1,107 @@
+{
+  "name": "steep_exit",
+  "methodMode": "bishop_spencer",
+  "layers": [
+    {
+      "top": 0,
+      "bot": 1.5,
+      "type": "Sand",
+      "subtype": "Sand mixture",
+      "c": 3,
+      "phi": 30,
+      "g": 18,
+      "gs": 20
+    },
+    {
+      "top": 1.5,
+      "bot": 4.5,
+      "type": "Silt",
+      "subtype": "Silt",
+      "c": 9,
+      "phi": 22,
+      "g": 18,
+      "gs": 19
+    },
+    {
+      "top": 4.5,
+      "bot": 9,
+      "type": "Sand",
+      "subtype": "Dense sand",
+      "c": 4,
+      "phi": 34,
+      "g": 18.7,
+      "gs": 20.7
+    },
+    {
+      "top": 9,
+      "bot": 15,
+      "type": "Clay",
+      "subtype": "Clay",
+      "c": 15,
+      "phi": 18,
+      "g": 17.2,
+      "gs": 18.2
+    }
+  ],
+  "bishopState": {
+    "terrain": [
+      { "x": 0, "y": 6 },
+      { "x": 4, "y": 6 },
+      { "x": 10, "y": 4.8 },
+      { "x": 14, "y": 2.3 },
+      { "x": 18, "y": 0.2 }
+    ],
+    "phreatic": [
+      { "x": 0, "y": 4.8 },
+      { "x": 9, "y": 3.8 },
+      { "x": 18, "y": 1.2 }
+    ],
+    "walls": [],
+    "activeCptX": 3,
+    "analysisDepth": 16,
+    "materials": [],
+    "strengthSet": "characteristic",
+    "surfaceLoad": {
+      "xStart": null,
+      "xEnd": null,
+      "q": 0
+    }
+  },
+  "entryZone": { "xStart": 0.8, "xEnd": 3.8 },
+  "exitZone": { "xStart": 12.5, "xEnd": 17.2 },
+  "searchConfig": {
+    "nEntry": 5,
+    "nExit": 5,
+    "nCenter": 10,
+    "centerOffsetMin": 0.55,
+    "centerOffsetMax": 3.2,
+    "minChordLength": 2.4,
+    "minSlipThickness": 0.55,
+    "maxExitAngleDeg": 62,
+    "validationSamples": 28,
+    "geomTol": 0.001,
+    "minSliceWidth": 0.05,
+    "targetSlices": 30,
+    "keepBest": 6
+  },
+  "solverConfig": {
+    "initialFS": 1,
+    "tolerance": 0.0001,
+    "maxIterations": 60,
+    "minMAlpha": 0.000001
+  },
+  "spencerConfig": {
+    "recheckCount": 4,
+    "lambdaLow": -0.6,
+    "lambdaHigh": 0.6,
+    "lambdaTolerance": 0.001,
+    "momentTolerance": 0.001,
+    "forceTolerance": 0.001,
+    "FBracketLow": 0.1,
+    "FBracketHigh": 10,
+    "maxOuterIter": 20,
+    "maxInnerIter": 30,
+    "initialLambda": 0,
+    "fallbackBishop": true
+  }
+}

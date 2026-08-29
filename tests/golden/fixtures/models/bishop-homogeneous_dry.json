@@ -1,0 +1,71 @@
+{
+  "name": "homogeneous_dry",
+  "methodMode": "bishop_spencer",
+  "layers": [
+    {
+      "top": 0,
+      "bot": 14,
+      "type": "Sand",
+      "subtype": "Fine sand",
+      "c": 5,
+      "phi": 30,
+      "g": 18,
+      "gs": 20
+    }
+  ],
+  "bishopState": {
+    "terrain": [
+      { "x": 0, "y": 4 },
+      { "x": 8, "y": 4 },
+      { "x": 20, "y": 0 }
+    ],
+    "phreatic": [],
+    "walls": [],
+    "activeCptX": 4,
+    "analysisDepth": 14,
+    "materials": [],
+    "strengthSet": "characteristic",
+    "surfaceLoad": {
+      "xStart": null,
+      "xEnd": null,
+      "q": 0
+    }
+  },
+  "entryZone": { "xStart": 1, "xEnd": 5 },
+  "exitZone": { "xStart": 13, "xEnd": 19 },
+  "searchConfig": {
+    "nEntry": 5,
+    "nExit": 5,
+    "nCenter": 8,
+    "centerOffsetMin": 0.5,
+    "centerOffsetMax": 2.4,
+    "minChordLength": 2,
+    "minSlipThickness": 0.5,
+    "maxExitAngleDeg": 55,
+    "validationSamples": 24,
+    "geomTol": 0.001,
+    "minSliceWidth": 0.05,
+    "targetSlices": 24,
+    "keepBest": 6
+  },
+  "solverConfig": {
+    "initialFS": 1,
+    "tolerance": 0.0001,
+    "maxIterations": 60,
+    "minMAlpha": 0.000001
+  },
+  "spencerConfig": {
+    "recheckCount": 4,
+    "lambdaLow": -0.6,
+    "lambdaHigh": 0.6,
+    "lambdaTolerance": 0.001,
+    "momentTolerance": 0.001,
+    "forceTolerance": 0.001,
+    "FBracketLow": 0.1,
+    "FBracketHigh": 10,
+    "maxOuterIter": 20,
+    "maxInnerIter": 30,
+    "initialLambda": 0,
+    "fallbackBishop": true
+  }
+}
