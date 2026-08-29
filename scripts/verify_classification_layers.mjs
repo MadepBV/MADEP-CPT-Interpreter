@@ -194,10 +194,10 @@ check('metric tiles, note variants and the row table are the runClass markup', (
   const cpt = cptOf();
   const res = classifyCpt(cpt);
   const tiles = classificationMetricsHtml(res.metrics);
-  assert.equal((tiles.match(/<div class="met">/g) || []).length, 6);
-  assert.ok(tiles.includes('<div class="met-l">avg qc (MPa)</div>'));
+  assert.equal((tiles.match(/<div class="stat">/g) || []).length, 6);   // PR 10 restyle: .met → .stat
+  assert.ok(tiles.includes('<div class="stat__label">avg qc (MPa)</div>'));
   assert.equal(classificationAssumedRfNoteHtml(res.assumedRfNote), '');
-  assert.ok(classificationAssumedRfNoteHtml({ kind: 'none-measured', missing: 2, n: 2, assumedRf: 2.5, gaps: [] }).includes('layerwarn-bad'));
+  assert.ok(classificationAssumedRfNoteHtml({ kind: 'none-measured', missing: 2, n: 2, assumedRf: 2.5, gaps: [] }).includes('verdict--bad'));   // PR 10 restyle: .layerwarn → .verdict
   assert.ok(classificationAssumedRfNoteHtml({ kind: 'none-measured', missing: 2, n: 2, assumedRf: 2.5, gaps: [] }).includes('R<sub>f</sub> = 2.5 %'));
   assert.ok(classificationAssumedRfNoteHtml({ kind: 'partial', missing: 3, n: 20, assumedRf: 3, gaps: [] }).includes('3 van 20 metingen'));
   const gaps = classificationAssumedRfNoteHtml({ kind: 'gaps', missing: 1, n: 40, assumedRf: 3, gaps: ['20.00'] });
