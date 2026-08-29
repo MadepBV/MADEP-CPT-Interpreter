@@ -127,6 +127,43 @@ import {
   khParams as khParamsPure,
   workingLayers as workingLayersPure
 } from './model-params/index.js';
+import {
+  classificationMethodLabel,
+  classificationMetricLabel,
+  classificationMetricValue,
+  assumedRfValue as assumedRfValuePure,
+  cptHasFs as cptHasFsPure,
+  cptHasRf as cptHasRfPure,
+  classRob as classRobPure,
+  classRob2016 as classRob2016Pure,
+  classCUR3 as classCUR3Pure,
+  classNEN6740 as classNEN6740Pure,
+  classSB260 as classSB260Pure,
+  classifyCpt,
+  classificationMetricsHtml,
+  classificationAssumedRfNoteHtml,
+  classificationTableRowsHtml
+} from './classification/index.js';
+import {
+  CAT_GROUPS,
+  compatLevel,
+  subtypeGroup,
+  qcRfFit,
+  suggestSubtype,
+  layerTypeCompatScore,
+  familyClass,
+  qcSimilarity,
+  rfSimilarity,
+  subtypeSimilarity,
+  paramSimilarity,
+  compatSimilarity,
+  continuityScore,
+  isCriticalMarkerLayer,
+  mergeCandidateScore,
+  segmentSummary as segmentSummaryPure,
+  layersCtx,
+  detectLayers as detectLayersPure
+} from './layers/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -504,51 +541,8 @@ function setCptCoord(axis, val){
   // No renderBanner needed — coordinates don't affect banner display
 }
 
-/* ════════════════════════════════
-   CROSS-CPT LAYER COMPATIBILITY
-   (used by Stage 3 smart-merge continuity scoring; the multi-CPT
-   correlation itself lives in src/lib/cpt-app/stratigraphy/)
-════════════════════════════════ */
-function layerTypeCompatScore(lA, lB){
-  /* Multi-level type compatibility for correlation.
-     Uses both the COMPAT matrix (grp-based) AND direct type matching.
-     Mixed/transition layers (Sandy clay = leem/klei border) get adjacency credit
-     on both sides of the boundary. */
-  const compatA=COMPAT[lA.type]||{ok:[],adj:[]};
-  const compatB=COMPAT[lB.type]||{ok:[],adj:[]};
-
-  // Get Eurocode Table 3 group of each layer's subtype
-  const entA=CAT.find(r=>r.subtype===lA.subtype);
-  const entB=CAT.find(r=>r.subtype===lB.subtype);
-  const grpA=entA?entA.grp:'';
-  const grpB=entB?entB.grp:'';
-
-  // Direct type match (both same CPT type)
-  if(lA.type===lB.type) return 1.0;
-
-  // A's subtype group is in B's compat.ok
-  if(grpA&&compatB.ok.includes(grpA)) return 0.9;
-  // B's subtype group is in A's compat.ok
-  if(grpB&&compatA.ok.includes(grpB)) return 0.9;
-
-  // Adjacent type (transition zones)
-  if(grpA&&compatB.adj.includes(grpA)) return 0.5;
-  if(grpB&&compatA.adj.includes(grpB)) return 0.5;
-
-  // CPT types are compatible (even without subtype info)
-  const cpttypes_compat={
-    'Sandy clay': ['Clay','Soft clay','Silty sand'],
-    'Silty sand': ['Sandy clay','Sand'],
-    'Soft clay':  ['Clay','Sandy clay'],
-    'Clay':       ['Soft clay','Sandy clay'],
-    'Sand':       ['Silty sand','Gravel'],
-    'Gravel':     ['Sand'],
-  };
-  if((cpttypes_compat[lA.type]||[]).includes(lB.type)) return 0.4;
-  if((cpttypes_compat[lB.type]||[]).includes(lA.type)) return 0.4;
-
-  return 0.0; // genuinely incompatible
-}
+/* layerTypeCompatScore (cross-CPT layer compatibility, shared by the Stage 3
+   smart merge and the section view) lives in layers/tabel3-compat.js (PR 6). */
 
 
 /* ════════════════════════════════
@@ -1678,30 +1672,6 @@ function bindDropzone(){
 /* ════════════════════════════════
    METHOD SELECT
 ════════════════════════════════ */
-function classificationMethodLabel(method){
-  return {
-    robertson:'Robertson (1990)',
-    robertson2016:'Robertson (2016)',
-    cur3:'CUR 3 layers',
-    nen6740:'NEN 6740',
-    sb260:'NEN Tabel 3 / EC7'
-  }[method] || method || 'Unknown';
-}
-
-function classificationMetricLabel(method){
-  if(method === 'robertson') return 'Ic (-)';
-  if(method === 'robertson2016') return 'Qtn (-)';
-  if(method === 'nen6740') return 'qc,NEN (MPa)';
-  return 'Metric (-)';
-}
-
-function classificationMetricValue(method, row){
-  if(method === 'robertson') return row.Ic != null ? row.Ic : '—';
-  if(method === 'robertson2016') return row.Qt != null ? row.Qt.toFixed(1) : '—';
-  if(method === 'nen6740') return row.Qt != null ? row.Qt.toFixed(2) : '—';
-  return '—';
-}
-
 function syncClassificationMethodCards(method){
   const cards={
     mRob:'robertson',
@@ -1732,162 +1702,41 @@ function stressAt(z, gamma_sat, gamma_unsat){
    CLASSIFICATION
 ════════════════════════════════ */
 
-/* ════════════════════════════════
-   CLASSIFICATION — Robertson (1990) SBT
-   
-   Source: Robertson, P.K. (1990). Soil classification using the CPT.
-   Canadian Geotechnical Journal, 27(1), 151-158.
-   
-   Uses the Soil Behaviour Type (SBT) index Ic and the normalised
-   Robertson chart. Nine zones mapped to practical soil types.
-   
-   STRESS NORMALISATION:
-     Qt = (qc - σv0) / σ'v0        (dimensionless, cone resistance ratio)
-     Fr = fs / (qc - σv0) × 100    (%, normalised friction ratio)
-     Ic = √((3.47 - log Qt)² + (log Fr + 1.22)²)
-   
-   IC ZONE BOUNDARIES (Robertson 1990):
-     Ic > 3.60  → Zone 2: Organic soils — clay / peat
-     Ic > 2.95  → Zone 3: Clays — silty clay to clay
-     Ic > 2.60  → Zone 4: Silt mixtures — clayey silt to silty clay
-     Ic > 2.05  → Zone 5: Sand mixtures — silty sand to sandy silt
-     Ic > 1.31  → Zone 6: Sands — clean sand to silty sand
-     Ic ≤ 1.31  → Zone 7: Gravelly sand to dense sand
-     (Zone 1 "sensitive fine-grained" is not defined by an Ic band alone.)
-   
-   MAPPING to app soil types:
-     Zone 2 → Peat / organic
-     Zone 3 → Clay
-     Zone 4 → Sandy clay
-     Zone 5 → Silty sand
-     Zone 6 → Sand
-     Zone 7 → Gravel
-   Sensitive / structured fine-grained soils require judgement outside the
-   Ic bands and are not inferred here from Ic alone.
-════════════════════════════════ */
-/* The classifier math lives in classification-core.js (pure, node-verified by
-   scripts/verify_qc_only_handling.mjs). These wrappers supply the stress state
-   and the app settings. assumedRfValue() is the explicit friction-ratio
-   assumption used for readings without measured fs/Rf. */
+/* The classifier math lives in classification-core.js; the per-method
+   wrappers (stress state + app settings) and the row dispatch live in
+   classification/classify.js (PR 6). These wrappers feed them the active CPT.
+   assumedRfValue() is the explicit friction-ratio assumption used for readings
+   without measured fs/Rf. */
 function assumedRfValue(){
-  return normalizeAssumedRf(S.assumedRf);
+  return assumedRfValuePure(S);
 }
 
 /* Single source of truth for fs/Rf availability — the meta flags are set at
    parse time; the S.data fallback covers states created before the flags. */
 function cptHasFs(){
-  return S.meta?.hasFs ?? S.data.some(r=>r.fs!=null);
+  return cptHasFsPure(S);
 }
 function cptHasRf(){
-  return S.meta?.hasRf ?? S.data.some(r=>r.rf!=null);
+  return cptHasRfPure(S);
 }
 
 function classRob(r){
-  return classifyRobertson1990(r, {
-    ...stressAt(r.z, 18, 17),
-    aRatio: S.meta?.aRatio ?? 0.8,
-    assumedRf: assumedRfValue()
-  });
+  return classRobPure(S, r);
 }
-
-/* ════════════════════════════════
-   CLASSIFICATION — Robertson (2016) SBT
-
-   Uses the Robertson 2016 iterative Qtn normalisation while keeping the
-   existing Ic-based app mapping to broad soil families.
-════════════════════════════════ */
 function classRob2016(r){
-  return classifyRobertson2016(r, {
-    ...stressAt(r.z, 18, 17),
-    aRatio: S.meta?.aRatio ?? 0.8,
-    assumedRf: assumedRfValue()
-  });
+  return classRob2016Pure(S, r);
 }
-
-/* ════════════════════════════════
-   CLASSIFICATION — CUR 3 layers
-
-   Source: PLAXIS Reference Manual, "CUR 3 layers method" chart.
-
-   This is a broad layering rule, not a detailed parameter catalogue.
-   The published chart contains four fields:
-     - Sand
-     - Silt
-     - Clay
-     - Peat
-
-   The app keeps downstream compatibility with the existing parameter
-   workflow by carrying the intermediate "Silt" field as the app's
-   intermediate type "Sandy clay", with subtype marker "CUR3 silt".
-
-   Implemented chart zones:
-     - Sand: Rf < 1.5% and qc ≥ 1.5 MPa
-     - Silt: Rf < 2.5% and qc ≥ 0.5 MPa
-     - Clay: Rf ≤ 5.0% and qc ≥ 0.2 MPa
-     - Peat: all remaining points
-
-   The chart is implemented as nested zones checked from the most
-   specific region to the broadest:
-     1. Sand
-     2. Silt
-     3. Clay
-     4. Peat (complement of the three zones above)
-════════════════════════════════ */
 function classCUR3(r){
-  return classifyCUR3(r, {assumedRf: assumedRfValue()});
+  return classCUR3Pure(S, r);
 }
 
 const classCUR = classCUR3;
 
-/* ════════════════════════════════
-   CLASSIFICATION — NEN 6740 (stress dependent)
-
-   Source: NEN 6740 chart as reproduced in D-SHEET Piling and related
-   engineering manuals. The source is a 14-area semilog chart rather
-   than a closed algebraic decision tree.
-
-   The app therefore implements a transparent fixed discretisation:
-     1. compute stress-corrected q_c,NEN
-     2. compute chart score = log10(q_c,NEN) - 0.34 * R_f
-     3. choose the nearest of the 14 published material areas
-
-   The 14 area centres are digitised from the published chart and tied
-   to the representative NEN material set commonly used by software
-   implementations of the rule.
-
-   Provenance:
-   - the stress correction exponent 0.67 follows the Deltares D-SHEET
-     Piling manual for the NEN (Stress Dependent) rule;
-   - the RF slope 0.34 is an app-side regression fit through the 14
-     digitised centres, not a published NEN coefficient. It replaced the
-     earlier 0.18 slope after audit validation showed that 0.18 collapsed
-     the boundary between the stored areas 5 and 6 into a near tie.
-════════════════════════════════ */
 function classNEN6740(r){
-  const {sigVeff} = stressAt(r.z, 18, 17);
-  return classifyNEN6740(r, {sigVeff, assumedRf: assumedRfValue()});
+  return classNEN6740Pure(S, r);
 }
-
-/* ════════════════════════════════
-   CLASSIFICATION — Eurocode / NEN Tabel 3
-   "Karakteristieke grondparameters op basis van de resultaten
-   uit een elektrische sondering"
-   
-   The Eurocode table contains overlapping qc/Rf envelopes.
-   For deterministic classification the implementation checks the exact
-   table rows in table order:
-     grind → zand → leem → klei → veen
-   and, within each group, top-to-bottom row order.
-   Range handling follows the table notation exactly:
-     qc lower bound inclusive, upper bound exclusive
-     Rf < 1 and Rf > 6 are strict
-     banded Rf ranges (1–2, 2–4, 2–5, 3–6) are inclusive.
-════════════════════════════════ */
 function classSB260(r){
-  /* Readings without measured Rf are classified with the explicit assumed Rf
-     (previously they skipped Tabel 3 entirely and every qc-only reading fell
-     through to the loose-sand fallback). */
-  return classifyTabel3(r, {assumedRf: assumedRfValue()});
+  return classSB260Pure(S, r);
 }
 
 /* ════════════════════════════════
@@ -1896,83 +1745,21 @@ function classSB260(r){
 function runClass(){
   if(!S.data.length){alert('Laad eerst een GEF bestand.');return;}
 
-  S.useSB260params=(S.method==='sb260');
+  /* Compute (classification/run.js, pure) → assign to the active CPT → render
+     the four Stage 2 regions (classification/panel.js builds the markup). */
+  const result=classifyCpt(S);
+  S.useSB260params=result.useSB260params;
+  S.classified=result.classified;
+  S.rfAssumedCount=result.rfAssumedCount;
 
-  S.classified=S.data.map(r=>{
-    let res;
-    if(S.method==='robertson')     res=classRob(r);
-    else if(S.method==='robertson2016') res=classRob2016(r);
-    else if(S.method==='cur3')     res=classCUR3(r);
-    else if(S.method==='nen6740')  res=classNEN6740(r);
-    else                           res=classSB260(r);
-    return Object.assign({},r,res);
-  });
+  document.getElementById('cmet').innerHTML=classificationMetricsHtml(result.metrics);
 
-  const cl=S.classified;
-  const n=cl.length;
-  const fsRows=cl.filter(r=>r.fs!=null);
-  const rfRows=cl.filter(r=>r.rf!=null);
-  const avg=(rows,fn)=>rows.reduce((s,x)=>s+fn(x),0)/rows.length;
-
-  // Readings classified without measured Rf → the assumed Rf was used.
-  S.rfAssumedCount=n-rfRows.length;
-
-  document.getElementById('cmet').innerHTML=[
-    {l:'avg qc (MPa)',  v:avg(cl,r=>r.qc).toFixed(2)},
-    {l:'avg fs (kPa)',  v:fsRows.length?(avg(fsRows,r=>r.fs)*1000).toFixed(1):'—'},
-    {l:'avg Rf (%)',    v:rfRows.length?avg(rfRows,r=>r.rf).toFixed(2):'—'},
-    {l:'max depth (m)', v:cl[n-1].z.toFixed(2)},
-    {l:'readings',      v:n},
-    {l:'method',        v:classificationMethodLabel(S.method)}
-  ].map(m=>`<div class="met"><div class="met-l">${m.l}</div><div class="met-v">${m.v}</div></div>`).join('');
-
-  /* fs/Rf coverage note — severity follows the share of affected readings.
-     A fully qc-only file compromises every classification (strong warning);
-     a handful of gaps (typically the final reading of a push) only merits a
-     quiet data note naming the depths, because the profile IS measured. */
   const assumedNote=document.getElementById('classAssumedRfNote');
-  if(assumedNote){
-    const missing=S.rfAssumedCount;
-    const noneMeasured=fsRows.length===0&&rfRows.length===0;
-    const rfTxt=`R<sub>f</sub> = ${assumedRfValue().toFixed(1)} %`;
-    if(missing===0){
-      assumedNote.innerHTML='';
-    }else if(noneMeasured){
-      assumedNote.innerHTML=`<div class="layerwarn layerwarn-bad">
-          <span class="layerwarn-k">Geen gemeten sleeve friction</span><br>
-          <span class="layerwarn-msg">Het bronbestand bevat geen fs/R<sub>f</sub>. De classificatie gebruikt overal een
-          <strong>aangenomen ${rfTxt}</strong> (instelbaar hierboven). Grondtypes en afgeleide parameters zijn daardoor
-          indicatief — controleer de lagen in Stage 3 tegen boringen of projectkennis.</span>
-        </div>`;
-    }else if(missing/n>=0.05){
-      assumedNote.innerHTML=`<div class="layerwarn layerwarn-adj">
-          <span class="layerwarn-k">Sleeve friction deels gemeten</span><br>
-          <span class="layerwarn-msg">${missing} van ${n} metingen hebben geen fs/R<sub>f</sub> in het bronbestand;
-          voor die metingen geldt een <strong>aangenomen ${rfTxt}</strong> (instelbaar hierboven).
-          Controleer de betreffende lagen in Stage 3.</span>
-        </div>`;
-    }else{
-      const gaps=cl.filter(r=>r.rf==null).map(r=>r.z.toFixed(2));
-      const depthTxt=gaps.length<=3?` (op ${gaps.join(', ')} m)`:'';
-      assumedNote.innerHTML=`<div class="data-note"><strong>${missing} van ${n}</strong> metingen zonder gemeten
-        fs/R<sub>f</sub>${depthTxt} — daarvoor geldt de aangenomen ${rfTxt}. De overige ${n-missing} metingen
-        gebruiken de gemeten waarden.</div>`;
-    }
-  }
+  if(assumedNote) assumedNote.innerHTML=classificationAssumedRfNoteHtml(result.assumedRfNote);
 
-  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
   const metricHead=document.getElementById('cmetricHead');
-  if(metricHead) metricHead.innerHTML=classificationMetricLabel(S.method);
-  document.getElementById('cbody').innerHTML=cl.map(r=>`<tr>
-    <td>${r.z.toFixed(3)}</td>
-    <td style="color:var(--tx2)">${taw(r.z)}</td>
-    <td>${r.qc.toFixed(3)}</td>
-    <td>${r.fs!=null?(r.fs*1000).toFixed(2):'—'}</td>
-    <td>${r.rf!=null?r.rf.toFixed(2):'—'}</td>
-    <td><span class="sb ${SC[r.type]||'s-sand'}">${r.type}</span></td>
-    <td style="font-size:10px;color:var(--tx2)">${r.subtype||'—'}</td>
-    <td style="color:var(--tx3)">${classificationMetricValue(S.method, r)}</td>
-  </tr>`).join('');
+  if(metricHead) metricHead.innerHTML=result.metricLabel;
+  document.getElementById('cbody').innerHTML=classificationTableRowsHtml(result.classified,{method:S.method,elev:S.elev});
 
   document.getElementById('classLayout').style.display='';
   detectLayers();
@@ -1984,338 +1771,18 @@ function runClass(){
 
 /* ════════════════════════════════
    LAYER DETECTION
+   The detection lives in layers/ (PR 6): segments.js (summaries, similarity
+   scores), merge.js (baseline / smart chains), detect.js (detectLayers →
+   layers[], pure). These wrappers feed the pure functions the active CPT;
+   detectLayers() assigns the result — rendering stays with its callers
+   (goS(2), setParamMethod, refreshClassificationDerivedViews), as before.
 ════════════════════════════════ */
 function segmentSummary(seg, prevSeg){
-  const r=seg.rows.filter(x=>x.qc>0.02);
-  const rows=r.length?r:seg.rows;
-  const top=segmentTop(seg, prevSeg);
-  const bot=+seg.rows[seg.rows.length-1].z.toFixed(3);
-  const avgQc=+(rows.reduce((s,x)=>s+x.qc,0)/rows.length).toFixed(3);
-  const fsR=rows.filter(x=>x.fs!=null);
-  const avgFs=fsR.length?+(fsR.reduce((s,x)=>s+x.fs,0)/fsR.length).toFixed(5):null;
-  const rfR=rows.filter(x=>x.rf!=null);
-  const avgRf=rfR.length?+(rfR.reduce((s,x)=>s+(x.rf??0),0)/rfR.length).toFixed(2):null;
-  const subtypeCounts={};
-  seg.rows.forEach(row=>{const st=row.subtype||'';subtypeCounts[st]=(subtypeCounts[st]||0)+1;});
-  const subtype=Object.keys(subtypeCounts).sort((a,b)=>subtypeCounts[b]-subtypeCounts[a])[0]||'';
-  let g,gs,phi,c,cu;
-  if(S.useSB260params){
-    const vr=seg.rows.filter(x=>x.g!=null);
-    if(vr.length){
-      const avg2=fn=>+(vr.reduce((s,x)=>s+fn(x),0)/vr.length).toFixed(1);
-      g=+avg2(x=>x.g); gs=+avg2(x=>x.gs); phi=+avg2(x=>x.phi); c=+avg2(x=>x.c); cu=+avg2(x=>x.cu);
-    }else{
-      const df=DEF[seg.type]||DEF['Sand']; g=df.g; gs=df.gs; phi=df.phi; c=df.c; cu=df.cu;
-    }
-  }else{
-    const df=DEF[seg.type]||DEF['Sand']; g=df.g; gs=df.gs; phi=df.phi; c=df.c; cu=df.cu;
-  }
-  return{type:seg.type,subtype,avgQc,avgFs,avgRf,g,gs,phi,c,cu,top,bot,thk:+(bot-top).toFixed(3),rows:seg.rows.length};
-}
-
-function segmentTop(seg, prevSeg){
-  if(!seg) return 0;
-  if(seg._top!=null) return +(+seg._top).toFixed(3);
-  if(seg.isFirst) return 0;
-
-  const prevLast=prevSeg?.rows?.[prevSeg.rows.length - 1]?.z;
-  const currFirst=seg.rows?.[0]?.z;
-
-  if(Number.isFinite(prevLast) && Number.isFinite(currFirst) && currFirst > prevLast){
-    return +(0.5 * (prevLast + currFirst)).toFixed(3);
-  }
-
-  if(Number.isFinite(currFirst)){
-    return +(currFirst - 0.02).toFixed(3);
-  }
-
-  return Number.isFinite(prevLast) ? +prevLast.toFixed(3) : 0;
-}
-
-function subtypeGroup(subtype){
-  const ent=CAT.find(r=>r.subtype===subtype);
-  return ent?ent.grp:'';
-}
-
-function familyClass(layer){
-  const grp=subtypeGroup(layer.subtype);
-  if(grp==='veen'||grp==='klei'||grp==='leem') return 'cohesive';
-  if(grp==='zand'||grp==='grind') return 'granular';
-  if(layer.type==='Peat / organic'||layer.type==='Clay'||layer.type==='Soft clay'||layer.type==='Sandy clay') return 'cohesive';
-  return 'granular';
-}
-
-function qcSimilarity(a,b){
-  const qa=Math.max(0.01,a.avgQc), qb=Math.max(0.01,b.avgQc);
-  return Math.max(0,1-Math.abs(Math.log(qa/qb))/Math.log(3));
-}
-
-function rfSimilarity(a,b){
-  if(a.avgRf==null||b.avgRf==null) return 0.5;
-  return Math.max(0,1-Math.abs(a.avgRf-b.avgRf)/3);
-}
-
-function subtypeSimilarity(a,b){
-  if(a.subtype&&a.subtype===b.subtype) return 1;
-  const ga=subtypeGroup(a.subtype), gb=subtypeGroup(b.subtype);
-  if(ga&&gb&&ga===gb) return 0.75;
-  const lvl=compatLevel(a.type,gb||'');
-  return lvl==='ok'?0.55:lvl==='adj'?0.25:0;
-}
-
-function paramSimilarity(a,b){
-  const vals=[
-    Math.max(0,1-Math.abs(a.phi-b.phi)/8),
-    Math.max(0,1-Math.abs(a.g-b.g)/3),
-    Math.max(0,1-Math.abs(a.c-b.c)/15)
-  ];
-  if(a.cu>0||b.cu>0) vals.push(Math.max(0,1-Math.abs(a.cu-b.cu)/75));
-  return vals.reduce((s,v)=>s+v,0)/vals.length;
-}
-
-function compatSimilarity(a,b){
-  const grpB=subtypeGroup(b.subtype);
-  const lvl=compatLevel(a.type,grpB||'');
-  return lvl==='ok'?1:lvl==='adj'?0.5:0;
-}
-
-function continuityScore(neighbor, outer){
-  if(!outer) return 0.5;
-  return 0.35*(layerTypeCompatScore(neighbor,outer)) + 0.35*qcSimilarity(neighbor,outer) + 0.30*rfSimilarity(neighbor,outer);
-}
-
-function isCriticalMarkerLayer(layer, up, down){
-  if(layer.type==='Peat / organic'||layer.type==='Gravel') return true;
-  if(layer.avgRf!=null&&layer.avgRf>6) return true;
-  if(layer.avgQc<0.35||layer.avgQc>=15) return true;
-  if(up&&down){
-    const fam=familyClass(layer), fu=familyClass(up), fd=familyClass(down);
-    if(fam!==fu&&fam!==fd&&fu===fd) return true;
-  }
-  return false;
-}
-
-const SMART_SLIVER_REF = 0.25;
-
-function mergeCandidateScore(layer, neighbor, outer){
-  if(!neighbor) return{ok:false,score:0,why:'no-neighbor'};
-  const logRatio=Math.abs(Math.log(Math.max(0.01,layer.avgQc)/Math.max(0.01,neighbor.avgQc)));
-  const thicknessRef=SMART_SLIVER_REF;
-  const thicknessImportance=Math.max(0,Math.min(1,(layer.thk||0)/thicknessRef));
-  const sliverBonus=0.14*(1-thicknessImportance);
-  const penaltyScale=0.25 + 0.75*thicknessImportance;
-
-  const typeScore=layer.type===neighbor.type?1:layerTypeCompatScore(layer,neighbor);
-  const qcScore=qcSimilarity(layer,neighbor);
-  const rfScore=rfSimilarity(layer,neighbor);
-  const stScore=subtypeSimilarity(layer,neighbor);
-  const pScore=paramSimilarity(layer,neighbor);
-  const compScore=compatSimilarity(layer,neighbor);
-  const corrScore=continuityScore(neighbor,outer);
-  let score=0.24*typeScore + 0.20*qcScore + 0.14*rfScore + 0.14*stScore + 0.12*pScore + 0.08*compScore + 0.08*corrScore + sliverBonus;
-
-  // Penalise sharp transitions, but do not fully block the merge.
-  // The thickness criterion remains hard; similarity only decides direction.
-  if(logRatio>Math.log(2.5)) score-=0.22*penaltyScale;
-  else if(logRatio>Math.log(1.8)) score-=0.10*penaltyScale;
-
-  if(layer.avgRf!=null&&neighbor.avgRf!=null){
-    const rfDiff=Math.abs(layer.avgRf-neighbor.avgRf);
-    if(rfDiff>4) score-=0.16*penaltyScale;
-    else if(rfDiff>2.5) score-=0.08*penaltyScale;
-  }
-
-  if((layer.type==='Peat / organic')!==(neighbor.type==='Peat / organic')) score-=0.18*penaltyScale;
-  if((layer.type==='Gravel')!==(neighbor.type==='Gravel')) score-=0.14*penaltyScale;
-
-  if(isCriticalMarkerLayer(layer,null,null) && layer.type!==neighbor.type) score-=0.10*penaltyScale;
-
-  score=Math.max(0,+score.toFixed(3));
-  return{ok:true,score};
-}
-
-function simpleUpwardMerge(segments){
-  let changed=true;
-  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  while(changed){
-    changed=false;
-    const next=[];
-    for(let i=0;i<merged.length;i++){
-      const seg=merged[i];
-      const rows=seg.rows;
-      const prev=i>0?merged[i-1]:null;
-      const thick=segmentSummary(seg, prev).thk;
-      if(thick<S.minThk&&next.length>0){
-        next[next.length-1].rows.push(...rows);
-        changed=true;
-      }else{
-        next.push({...seg,rows:[...rows]});
-      }
-    }
-    merged=next.map((seg,i)=>({...seg,isFirst:i===0}));
-  }
-  return merged;
-}
-
-function mergeSegmentInDirection(merged, i, dir){
-  const seg=merged[i];
-  if(dir==='up'){
-    merged[i-1].rows.push(...seg.rows);
-    merged.splice(i,1);
-  }else{
-    merged[i+1].rows.unshift(...seg.rows);
-    merged[i+1]._top=segmentTop(seg, i>0?merged[i-1]:null);
-    merged.splice(i,1);
-  }
-  return merged.map((s,idx)=>({...s,isFirst:idx===0}));
-}
-
-function chooseSimilarityMergeDirection(merged, i, margin){
-  const seg=merged[i];
-  const layer=segmentSummary(seg, i>0?merged[i-1]:null);
-  const upSeg=i>0?merged[i-1]:null, downSeg=i<merged.length-1?merged[i+1]:null;
-  const up=upSeg?segmentSummary(upSeg, i>1?merged[i-2]:null):null;
-  const down=downSeg?segmentSummary(downSeg, seg):null;
-  const upOuter=i>1?segmentSummary(merged[i-2], i>2?merged[i-3]:null):null;
-  const downOuter=i<merged.length-2?segmentSummary(merged[i+2], downSeg):null;
-  const upCand=mergeCandidateScore(layer,up,upOuter);
-  const downCand=mergeCandidateScore(layer,down,downOuter);
-  if(!upCand.ok&&!downCand.ok) return null;
-
-  if(upCand.ok&&(!downCand.ok||upCand.score>downCand.score+margin)) return 'up';
-  if(downCand.ok&&(!upCand.ok||downCand.score>upCand.score+margin)) return 'down';
-  if(upCand.ok&&downCand.ok){
-    const upThk=up?.thk||0, downThk=down?.thk||0;
-    return upThk===downThk?'up':(upThk>downThk?'up':'down');
-  }
-  return upCand.ok?'up':'down';
-}
-
-function smartSimilarityReduce(segments, sensitivity){
-  let changed=true;
-  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  const sens=Math.max(0,Math.min(6,sensitivity ?? 1.1));
-  const pairThreshold=0.90 - 0.275*sens;
-  const thicknessRef=SMART_SLIVER_REF;
-  while(changed){
-    changed=false;
-    let bestIdx=-1;
-    let bestScore=-Infinity;
-    for(let i=0;i<merged.length-1;i++){
-      const left=segmentSummary(merged[i], i>0?merged[i-1]:null);
-      const right=segmentSummary(merged[i+1], merged[i]);
-      const leftOuter=i>0?segmentSummary(merged[i-1], i>1?merged[i-2]:null):null;
-      const rightOuter=i<merged.length-2?segmentSummary(merged[i+2], merged[i+1]):null;
-      const lr=mergeCandidateScore(left,right,rightOuter);
-      const rl=mergeCandidateScore(right,left,leftOuter);
-      if(!lr.ok||!rl.ok) continue;
-      const thinBoundaryFactor=1-Math.max(0,Math.min(1,Math.min(left.thk,right.thk)/thicknessRef));
-      const pairScore=+(((lr.score+rl.score)/2 + 0.10*thinBoundaryFactor)).toFixed(3);
-      if(pairScore>bestScore){
-        bestScore=pairScore;
-        bestIdx=i;
-      }
-    }
-
-    if(bestIdx>=0 && bestScore>=pairThreshold){
-      merged[bestIdx].rows.push(...merged[bestIdx+1].rows);
-      merged.splice(bestIdx+1,1);
-      merged=merged.map((s,idx)=>({...s,isFirst:idx===0}));
-      changed=true;
-    }
-  }
-  return merged;
-}
-
-function enforceMinThicknessBySimilarity(segments, sensitivity){
-  let changed=true;
-  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  const sens=Math.max(0,Math.min(6,sensitivity ?? 1.1));
-  const margin=Math.max(0, 0.14 - 0.08*sens);
-  while(changed){
-    changed=false;
-    for(let i=0;i<merged.length;i++){
-      const layer=segmentSummary(merged[i], i>0?merged[i-1]:null);
-      if(layer.thk>=S.minThk) continue;
-      const dir=chooseSimilarityMergeDirection(merged, i, margin);
-      if(!dir) continue;
-      merged=mergeSegmentInDirection(merged, i, dir);
-      changed=true;
-      break;
-    }
-  }
-  return merged;
-}
-
-function smartPostMerge(segments){
-  const sensitivity=Math.max(0,Math.min(6,S.smartMergeSensitivity ?? 1.1));
-  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  // Intended smart chain:
-  //   1. original raw classification-derived layering
-  //   2. similarity-driven boundary reduction
-  //   3. minimum-thickness enforcement as the final hard merge force
-  merged=smartSimilarityReduce(merged, sensitivity);
-  merged=enforceMinThicknessBySimilarity(merged, sensitivity);
-  return merged;
-}
-
-function classificationSegmentKey(row){
-  if(S.method==='sb260') return `${row.type}::${row.subtype||''}`;
-  return row.type;
+  return segmentSummaryPure(seg, prevSeg, layersCtx(S));
 }
 
 function detectLayers(){
-  const d=S.classified;
-  const raw=[];
-  let cur={type:d[0].type, subtype:d[0].subtype||'', key:classificationSegmentKey(d[0]), rows:[d[0]]};
-  for(let i=1;i<d.length;i++){
-    const key=classificationSegmentKey(d[i]);
-    if(key===cur.key) cur.rows.push(d[i]);
-    else{
-      raw.push(cur);
-      cur={type:d[i].type, subtype:d[i].subtype||'', key, rows:[d[i]]};
-    }
-  }
-  raw.push(cur);
-
-  // Important: the original raw layering is always created first from the
-  // unmodified point-by-point classification sequence above.
-  // Then:
-  //   - baseline mode: enforce minimum thickness by upward merge
-  //   - smart mode: reduce by similarity first, enforce minimum thickness last
-  const merged=S.smartMerge ? smartPostMerge(raw) : simpleUpwardMerge(raw);
-
-  const mergedSummaries=merged.map((seg,i)=>segmentSummary({...seg,isFirst:i===0}, i>0?merged[i-1]:null));
-  let prevBot=null;
-  S.layers=merged.map((seg,i)=>{
-    const sum=mergedSummaries[i];
-    const top=prevBot==null?sum.top:+prevBot.toFixed(3);
-    const bot=Math.max(top,+sum.bot.toFixed(3));
-    prevBot=bot;
-    const {avgQc,avgFs,avgRf,subtype}=sum;
-    let {g,gs,phi,c,cu}=sum;
-    // Auto-suggest best Eurocode Table 3 subtype from catalogue based on avgQc + avgRf
-    // Only if subtype not already forced by the classification itself
-    const tmpLayer={type:seg.type,subtype,avgQc,avgRf};
-    const suggestion=suggestSubtype(tmpLayer);
-    const suggestedSubtype=suggestion?suggestion.subtype:subtype;
-    // Without measured Rf, Tabel 3 rows that share a qc band cannot be told
-    // apart — the suggestion falls back to catalogue order (conservative for
-    // the common Flanders profiles, and the engineer reviews/overrides in
-    // Stage 3). Flag the layer so that fallback is visible, not silent.
-    const rfIndeterminate=avgRf==null && !!suggestion &&
-      CAT.filter(r=>compatLevel(seg.type,r.grp)==='ok' && qcRfFit(r,avgQc,null)==='match').length>1;
-    // If suggestion differs from classification subtype, apply suggestion params
-    // but mark it as a suggestion (not a manual override)
-    let sg=g,sgs=gs,sphi=Math.round(phi),sc=Math.round(c),scu=Math.round(cu);
-    if(suggestion&&S.paramMethod==='sb260'){
-      sg=suggestion.g; sgs=suggestion.gs;
-      sphi=suggestion.phi; sc=suggestion.c; scu=suggestion.cu;
-    }
-    return{id:i,top,bot,type:seg.type,subtype:suggestedSubtype,avgQc,avgFs,avgRf,
-      rfIndeterminate,
-      g:sg,gs:sgs,phi:sphi,c:sc,cu:scu,ovr:{}};
-  });
+  S.layers=detectLayersPure(S, layersCtx(S));
 }
 
 /* ════════════════════════════════
@@ -2350,161 +1817,12 @@ function detectLayers(){
    at the top of this file) so the node verification scripts can exercise
    the exact table used by the app. */
 
-const CAT_GROUPS={
-  veen:'Veen',
-  klei:'Klei / Klei zandhoudend',
-  leem:'Leem / Zandhoudende leem',
-  zand:'Zand / Leemhoudend zand',
-  grind:'Grind',
-};
-
-/* Compatibility matrix: CPT type → {compatible grps, adjacent grps}
-   'compatible' = expected match, no warning
-   'adjacent'   = plausible (transition zone), show note in dropdown but allow
-   anything else = incompatible, shown in disabled optgroup with warning */
-/* COMPAT: CPT soil behaviour type → {ok: Tabel 3 groups, adj: adjacent groups}
-   'ok'  = directly expected for this CPT type — shown first in dropdown, ✓/~/· hints
-   'adj' = adjacent/transition — shown with ⚠ prefix, selectable
-   rest  = incompatible — disabled
-   
-   Robertson types → Tabel 3 mapping:
-     Peat/organic (Zone 2)  → veen
-     Soft clay   (Zone 1)   → klei (sensitive clay), leem adj
-     Clay        (Zone 3)   → klei, leem adj
-     Sandy clay  (Zone 4)   → leem AND klei zh (both are silt mixtures in Tabel 3)
-     Silty sand  (Zone 5)   → zandhoudende leem (leem grp) + leemhoudend zand (zand grp)
-                              pure klei is not treated as an adjacent transition here
-     Sand        (Zone 6)   → zand, grind adj
-     Gravel      (Zone 7)   → grind, zand adj
-*/
-const COMPAT={
-  'Peat / organic': {ok:['veen'],             adj:[]},
-  'Soft clay':      {ok:['klei'],             adj:['leem']},
-  'Clay':           {ok:['klei'],             adj:['leem']},
-  'Sandy clay':     {ok:['leem','klei'],      adj:['zand']},
-  'Silty sand':     {ok:['leem','zand'],      adj:[]},
-  'Sand':           {ok:['zand'],             adj:['grind','leem']},
-  'Gravel':         {ok:['grind'],            adj:['zand']},
-};
-
-function compatLevel(cptType, grp){
-  const c=COMPAT[cptType]||{ok:[],adj:[]};
-  if(c.ok.includes(grp))  return 'ok';
-  if(c.adj.includes(grp)) return 'adj';
-  return 'bad';
-}
+/* CAT_GROUPS, the COMPAT matrix, compatLevel, qcRfFit and suggestSubtype live in
+   layers/tabel3-compat.js (PR 6). */
 
 /* Build the subtype dropdown for one layer.
    Groups: compatible entries first (enabled), adjacent (enabled, marked),
    incompatible last (disabled). */
-/* ── qc/Rf fit check ───────────────────────────────────────────────────
-   Returns whether a CAT entry's qc and Rf ranges match the layer's
-   average values. 'match'=within range, 'close'=within 50% margin,
-   'out'=clearly outside. Only applied within compatible groups. */
-function qcRfFit(entry, avgQc, avgRf){
-  /* Strict matching against NEN Tabel 3 qc and Rf ranges.
-     
-     BOUNDARY RULES from Tabel 3:
-     - qc: lower bound inclusive, upper bound exclusive  (e.g. "2 ≤ qc < 4")
-     - Rf: lower bound inclusive, upper bound inclusive  (e.g. "Rf 3–6%")
-     - Exception: Rf < 1% entries (clean zand/grind) → upper bound is EXCLUSIVE
-       because Rf=1.0% belongs to the leem/kleihoudend zone (Rf 1–2%)
-     - Veen requires Rf > 6% (hard gate, no tolerance)
-     
-     Returns: 'match' = both qc and Rf in range for this entry
-              'close' = qc matches, Rf within 0.3pp of boundary
-              'out'   = clearly outside → shown as '·' hint only
-  */
-  const rf = avgRf ?? null;
-
-  // Hard veen gate: must have Rf > 6%
-  if(entry.grp === 'veen' && rf !== null && rf < 5.5) return 'out';
-
-  // qc check (exclusive upper bound per Tabel 3 notation)
-  const qcOk = avgQc >= entry.qcMin && avgQc < entry.qcMax;
-
-  // Rf check — boundary inclusivity depends on entry type
-  let rfOk;
-  if(rf === null){
-    rfOk = true;  // no Rf data: skip Rf check
-  } else if(entry.rfMax === 1 && entry.rfMin === 0){
-    // Clean zand / grind: Tabel 3 "Rf < 1%" → strict exclusive upper
-    rfOk = rf >= 0 && rf < 1.0;
-  } else if(entry.rfMax === 2 && entry.rfMin === 1){
-    // Lh/kh zand / grind: Tabel 3 "Rf 1–2%" → inclusive both ends
-    rfOk = rf >= 1.0 && rf <= 2.0;
-  } else {
-    // All other entries: inclusive both ends
-    rfOk = rf >= entry.rfMin && rf <= entry.rfMax;
-  }
-
-  if(qcOk && rfOk) return 'match';
-
-  // Close: qc in range, Rf within 0.3pp of boundary
-  let rfClose;
-  if(rf === null) rfClose = true;
-  else rfClose = rf >= entry.rfMin - 0.3 && rf <= entry.rfMax + 0.3;
-  if(qcOk && rfClose) return 'close';
-
-  return 'out';
-}
-
-/* ── Auto-suggest best CAT entry for a layer ──────────────────────────
-   Called when layer has no subtype yet (or on param method change).
-   Picks the highest-scoring compatible entry based on qc and Rf. */
-function suggestSubtype(l){
-  /* Suggest the single best CAT entry for this layer's qc and Rf.
-     
-     Priority:
-     1. Compatible group (COMPAT.ok) with qc AND Rf matching → score 10
-     2. Compatible group with qc matching, Rf close (±0.5pp) → score 5
-     3. Compatible group with qc matching, Rf out → score 2
-        BUT: never suggest veen if Rf < 6% (Tabel 3 hard gate)
-        AND: if the best ok-candidate has Rf mismatch, also check adj groups
-     4. Adjacent group with qc+Rf match → score 3 (preferred over ok+Rf mismatch)
-     5. Proximity-based fallback within ok group
-  */
-  const qc  = l.avgQc;
-  const rf  = l.avgRf ?? null;
-
-  // Hard veen exclusion: veen entries require Rf>6%
-  const rfBlocksVeen = rf !== null && rf < 5.0;
-
-  let best = null, bestScore = -99;
-
-  const levels = ['ok', 'adj'];
-  for(const level of levels){
-    const candidates = CAT.filter(r => compatLevel(l.type, r.grp) === level);
-    for(const r of candidates){
-      // Hard exclusion: never suggest veen if Rf clearly not peat-range
-      if(r.grp === 'veen' && rfBlocksVeen) continue;
-
-      const fit = qcRfFit(r, qc, rf);
-      let score = 0;
-      if(level === 'ok'){
-        if(fit === 'match')      score = 10;
-        else if(fit === 'close') score = 5;
-        else {
-          // qc out of range — penalise by distance
-          const qcDist = qc < r.qcMin ? r.qcMin - qc : Math.max(0, qc - r.qcMax);
-          score = 2 - qcDist;
-        }
-      } else {
-        // adj group — only suggest if it fits better than ok candidates
-        if(fit === 'match')      score = 4;   // slightly below ok-match
-        else if(fit === 'close') score = 2;
-        else score = -1;
-      }
-      // Tie-break: prefer entry whose qc midpoint is closest to layer avgQc
-      const qcMid = (r.qcMin + Math.min(r.qcMax, 20)) / 2;
-      score += 0.01 * (1 - Math.abs(qc - qcMid) / Math.max(qcMid, 1));
-
-      if(score > bestScore){ bestScore = score; best = r; }
-    }
-  }
-  return best;
-}
-
 function buildSubtypeDropdown(l, i){
   const cptType=l.type;
   const cur=l.subtype||'';
