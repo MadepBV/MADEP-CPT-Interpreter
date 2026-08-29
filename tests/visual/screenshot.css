@@ -1,0 +1,3 @@
+/* Applied by toHaveScreenshot (stylePath) for the layout baselines: canvas pixels are GPU-dependent, layout is
+   not — so the canvases are hidden (their box stays, overlays on top of them stay visible) instead of masked. */
+canvas { visibility: hidden !important; }
