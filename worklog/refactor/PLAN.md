@@ -41,10 +41,10 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
 | 0 | planning reports | — | 01, 02, 03 | — | ☑ |
-| 1 | `test(golden): harness + baseline at 462fc50` | H | 03 parts 1, 2, 3, 4-partial (retaining, project-io), 8, 9: `scripts/golden/**`, `tests/golden/**` (fixtures, node goldens, tolerances, README, CHANGELOG), `.github/workflows/ci.yml`, npm scripts `golden:*`, `verify:core`, `test:all` | `golden:check` green twice; `verify:*`, build | ◐ agent |
+| 1 | `test(golden): harness + baseline at 462fc50` | H | 03 parts 1, 2, 3, 4-partial (retaining, project-io), 8, 9: `scripts/golden/**`, `tests/golden/**` (fixtures, node goldens, tolerances, README, CHANGELOG), `.github/workflows/ci.yml`, npm scripts `golden:*`, `verify:core`, `test:all` | `golden:check` green twice; `verify:*`, build | ☑ 7a4a7ec + 2f970a3 |
 | 2 | `test(visual): Phase 0 screenshot baselines` + `style(tokens): Phase 1 reskin` | D | 02 §5.2 phases 0–1: `tests/visual/*.spec.mjs` (Playwright `visual` project, seeded demo, canvases masked, print-PDF gate), `src/lib/styles/{tokens,base,glass}.css`, `theme.ts`, `src/app.css` layer order, `legacy.css` demoted to `@layer legacy`, retaining `<style>` wrapped, `scripts/verify_tokens.mjs` | print page-1 0 px; other diffs reviewed + re-baselined; `verify:tokens`, e2e | ◐ agent |
-| 3 | `test(golden): browser journeys (tier C)` | H | 03 §2.3/§4.5: `golden-journey.spec.mjs`, `browser-capture.js`, demo + GEF-import journeys, seeded PRNG init script, Chart.js routed to vendor copy, `golden:browser*` scripts, CI browser job | journeys green twice | ☐ |
-| 4 | `refactor(core): format, dom, css-tokens, chart-host + handler verifier` | R step 1 | 01 §6.2 step 1 (~300 lines) + `scripts/verify_window_handlers.mjs` (every `on*="name("` in HTML strings is published on `legacyApi`) — this also fixes the latent `stage6BishopSetSelectedRegionCoarseness` ReferenceError (separate fix commit) | golden:check, handler verifier | ☐ |
+| 3 | `test(golden): browser journeys (tier C)` | H | 03 §2.3/§4.5: `golden-journey.spec.mjs`, `browser-capture.js`, demo + GEF-import journeys, seeded PRNG init script, Chart.js routed to vendor copy, `golden:browser*` scripts, CI browser job | journeys green twice | ◐ agent |
+| 4 | `refactor(core): format, dom, css-tokens, chart-host + handler verifier` | R step 1 | 01 §6.2 step 1 (~300 lines) + `scripts/verify_window_handlers.mjs` (every `on*="name("` in HTML strings is published on `legacyApi`) — this also fixes the latent `stage6BishopSetSelectedRegionCoarseness` ReferenceError (separate fix commit) | golden:check, handler verifier | ◐ agent |
 | 5 | `refactor(model-params): hsParams/khParams/stressAt with explicit ctx` | R step 2 | ~500 lines; wrappers keep the monolith names; stratigraphy `S`-swap (160-166) deleted | golden `model/*`, `tuning/*`, stratigraphy verifiers bit-identical | ☐ |
 | 6 | `refactor(classification, layers): pure compute, render split out` | R step 3 | ~900 lines; `detectLayers` stops calling `renderLayers`; `runClass` becomes a thin render wrapper | golden `classification/*`, `layers/*` | ☐ |
 | 7 | `style(shell): Phase 2a liquid-glass chrome + stage rail` | D 2a | 02 §5.2 row 2a: `.app-header.glass-chrome`, `.stage-rail.glass-rail` (7 stages), `.btn` family, segmented — the visible "liquid glass" moment | visual re-baseline (shell only), e2e | ☐ |
@@ -104,4 +104,4 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 
 ## 5. Status log
 
-- 2026-08-29 — reports 01/02/03 done; PR 1 (harness) and PR 2 (design phase 0–1) in progress with agents.
+- 2026-08-29 — reports 01/02/03 done; PR 1 merged (7a4a7ec, 2f970a3; 1 619 goldens, 29 s). PR 2 (design 0–1), PR 3 (browser tier) and PR 4 (core extraction) in progress with agents.

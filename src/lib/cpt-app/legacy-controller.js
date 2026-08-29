@@ -103,6 +103,17 @@ import {
   presentImportReview
 } from './import-review/index.js';
 import { installProjectIO } from './project-io/index.js';
+import {
+  escAttr as stage6EscAttr,
+  escJsString as stage6EscJsString,
+  tooltip as stage6Tooltip,
+  noteHtml as stage6NoteHtml,
+  auditTableHtml as stage6AuditTableHtml,
+  loadSummaryHtml as stage6LoadSummaryHtml,
+  compactNumber as stage6CompactNumber
+} from './core/format.js';
+import { readCssToken } from './core/css-tokens.js';
+import { destroyChart as stage6DestroyChart } from './core/chart-host.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -3453,11 +3464,6 @@ function tuningPreviewLineData(fit, previewM){
   });
   const depthLine = fit.depthPts.map((z,i)=>({x:Eoed_ref*Math.exp(previewM*fit.Xs[i]), y:z}));
   return{Eoed_ref, logLine, depthLine};
-}
-
-function readCssToken(name, fallback){
-  if(typeof document === 'undefined') return fallback;
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
 function updateTuningPreviewM(i, rawValue){
@@ -12430,32 +12436,6 @@ function stage6BearingEc7Spec(key){
   };
 }
 
-function stage6NoteHtml(notes){
-  if(!notes || !notes.length) return '';
-  return notes.map(note=>{
-    const color = note.level === 'warn' ? 'var(--wn)' : note.level === 'error' ? 'var(--bad)' : 'var(--ac)';
-    const bg = note.level === 'warn' ? 'var(--wnl)' : note.level === 'error' ? 'var(--bad-soft)' : 'var(--bg2)';
-    return `<div class="info" style="margin-top:8px;background:${bg};border-color:${color}">${note.text}</div>`;
-  }).join('');
-}
-
-function stage6EscAttr(value){
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function stage6EscJsString(value){
-  return stage6EscAttr(JSON.stringify(String(value ?? '')));
-}
-
-function stage6Tooltip(text){
-  const safe = stage6EscAttr(text);
-  return `<span class="st6-tip" tabindex="0" data-tip="${safe}" aria-label="${safe}">ⓘ</span>`;
-}
-
 function stage6UseCategoryOptions(selected){
   const labels = {
     A:'A - residential / domestic',
@@ -12681,38 +12661,6 @@ function stage6ExposureOptions(selected){
 function stage6ExposureHelp(selected){
   const meta = EC2_EXPOSURE_META[selected] || EC2_EXPOSURE_META.XC2;
   return meta.hint;
-}
-
-function stage6AuditTableHtml(rows){
-  return `
-    <table class="tbl st6-audit">
-      <thead><tr>${rows.map(r=>`<th>${r.k}</th>`).join('')}</tr></thead>
-      <tbody><tr>${rows.map(r=>`<td>${r.v}</td>`).join('')}</tr></tbody>
-    </table>
-  `;
-}
-
-function stage6LoadSummaryHtml(title, rows){
-  return `
-    <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
-      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">${title}</div>
-      ${stage6AuditTableHtml(rows)}
-    </div>
-  `;
-}
-
-function stage6CompactNumber(value, digits = 2){
-  const n = Number(value);
-  if(!Number.isFinite(n)) return '—';
-  if(n === 0) return '0';
-  const abs = Math.abs(n);
-  if(abs < 1e-2 || abs >= 1e4){
-    return n.toExponential(Math.max(0, digits - 1)).replace('e', 'E');
-  }
-  if(abs >= 100) return n.toFixed(1).replace(/\.0$/, '');
-  if(abs >= 10) return n.toFixed(2).replace(/\.?0+$/, '');
-  if(abs >= 1) return n.toFixed(3).replace(/\.?0+$/, '');
-  return n.toFixed(4).replace(/\.?0+$/, '');
 }
 
 function stage6BeamDurabilityHtml(reinf){
@@ -16827,12 +16775,6 @@ function renderStage6(){
     if(app === 'retwall') retainingApp.postRender();
     stage6RestoreScrollState(el, scrollState);
   });
-}
-
-function stage6DestroyChart(id){
-  const canvas = document.getElementById(id);
-  if(canvas && canvas._chartRef && canvas._chartRef.destroy) canvas._chartRef.destroy();
-  return canvas;
 }
 
 function buildStage6BearingChart(){

@@ -7,7 +7,11 @@ const config = {
 		runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 	},
 	kit: {
-		adapter: adapter()
+		adapter: adapter(),
+		typescript: {
+			// keep the vendored Chart.js copy used by the golden browser tier out of svelte-check
+			config: (cfg) => { cfg.exclude = [...(cfg.exclude || []), '../tests/golden/vendor/**']; return cfg; }
+		}
 	}
 };
 

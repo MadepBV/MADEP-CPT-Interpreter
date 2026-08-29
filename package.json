@@ -80,7 +80,9 @@
 		"golden:check": "node scripts/golden/check.mjs",
 		"golden:update": "node scripts/golden/check.mjs --update",
 		"golden:wasm-check": "node scripts/golden/wasm-hash.mjs",
-		"verify:core": "npm run verify:nen6740 && npm run verify:stratigraphy && npm run verify:import-review && npm run verify:project-io && npm run verify:scia-db4 && npm run verify:qc-only && npm run verify:retaining && npm run verify:wasm && npm run verify:bishop-phase-a",
+		"verify:core-helpers": "node scripts/verify_core.mjs",
+		"verify:handlers": "node scripts/verify_window_handlers.mjs",
+		"verify:core": "npm run verify:handlers && npm run verify:core-helpers && npm run verify:nen6740 && npm run verify:stratigraphy && npm run verify:import-review && npm run verify:project-io && npm run verify:scia-db4 && npm run verify:qc-only && npm run verify:retaining && npm run verify:wasm && npm run verify:bishop-phase-a",
 		"test:all": "npm run check && npm run verify:core && npm run golden:wasm-check && npm run golden:check && npm run test:e2e"
 	},
 	"devDependencies": {
