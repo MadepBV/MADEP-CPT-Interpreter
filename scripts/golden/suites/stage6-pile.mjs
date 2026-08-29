@@ -3,7 +3,7 @@
 // R_s, R_c, …}, settlement{sHead_mm, curve}, notes} as cached by renderStage6 (:16791),
 // PILE_CONSTANTS, and the per-layer table text, for {default, heavy, edge} configs.
 import { stage6Cases } from './_stage6-common.mjs';
-import { PILE_CONSTANTS } from '../../../src/lib/cpt-app/stage6-pile.js';
+import { PILE_CONSTANTS } from '../../../src/lib/cpt-app/pile/compute.js';
 
 export const name = 'stage6-pile';
 export const tolerance = 'pure';

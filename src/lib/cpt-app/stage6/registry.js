@@ -18,11 +18,12 @@
 //
 // The retaining-walls app is the installed `retaining/` package (installRetainingApp(ctx)), so the
 // registry is a factory: the host passes that instance in. The bearing app is the `bearing/` package
-// (step 7, PR 12a): its state (`defaults` / `ensure`) and card text come from bearing/index.js, the
-// host installs it and hands the render adapter to the shell. The other five apps' state modules are
-// pure and imported here directly; their render code still lives in the monolith until their step-7 PRs.
+// (step 7, PR 12a) and the pile app the `pile/` package (step 7, PR 12b): their state (`defaults` /
+// `ensure`) and card text come from <pkg>/index.js, the host installs them and hands the render
+// adapters to the shell. The other four apps' state modules are pure and imported here directly;
+// their render code still lives in the monolith until their step-7 PRs.
 import * as bearingApp from '../bearing/index.js';
-import * as pileState from './apps/pile-state.js';
+import * as pileApp from '../pile/index.js';
 import * as settlementState from './apps/settlement-state.js';
 import * as dewateringState from './apps/dewatering-state.js';
 import * as beamState from './apps/beam-state.js';
@@ -67,7 +68,7 @@ export function createStage6Registry({ retaining, bishopEnabled = () => true }) 
   bishop.enabled = bishopEnabled;
   return [
     entry('bearing', 'Bearing', bearingApp.cardMeta.title, bearingApp.cardMeta.desc, bearingApp),
-    entry('pile', 'Piles', 'Pile capacity', 'Axial pile resistance and settlement from CPT (DM20 / De Beer).', pileState),
+    entry('pile', 'Piles', pileApp.cardMeta.title, pileApp.cardMeta.desc, pileApp),
     entry('settlement', 'Settlement', 'Settlement', 'SLS settlement from CPT-derived E_oed with Boussinesq or 2:1 stress spread.', settlementState),
     entry('dewatering', 'Dewatering', 'Dewatering', 'Drawdown screening plus induced stress change and settlement at the CPT.', dewateringState),
     entry('beam', 'Beam/slab', 'Beam / slab on Winkler', '1D strip-on-elastic-foundation screening with EC2 reinforcement output.', beamState),
