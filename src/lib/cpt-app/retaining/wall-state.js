@@ -48,10 +48,11 @@ export function defaults() {
       vibrator: {
         source: 'required', id: 'custom', frequency: 35, dynamicMass: 5000, crowd: 0, lineForce: 0, eccentricMoment: null, centrifugalForce: null,
         // supplier data sheet, in the sheet's own vocabulary (vibrator-datasheet.js translates it)
-        sheet: { name: '', force_kN: null, forceAtRpm: null, rpmMax: null, rpmMin: null, rpmOperating: null, eccentricMoment_kgm: null, amplitude_mm: null, amplitudeConvention: 'pp',
+        sheet: { name: '', massSource: 'amplitude', force_kN: null, forceAtRpm: null, rpmMax: null, rpmMin: null, rpmOperating: null, eccentricMoment_kgm: null, amplitude_mm: null, amplitudeConvention: 'pp',
           dynamicMass_kg: null, totalMass_kg: null, flow_lmin: null, flowMax_lmin: null, pressure_bar: null, pressureMax_bar: null, power_kW: null, carrierMin_t: null, carrierMax_t: null },
         carrier: { mass_t: null, flow_lmin: null, pressure_bar: null, power_kW: null }
       },
+      push: { force_kN: 150, includeWeight: true },   // static push-in (excavator crowd through a cap / press-in machine)
       hammer: { id: 'custom', ramMass: 5000, ratedEnergy: 60, efficiency: 0.9, helmetMass: 1500, cushionStiffness: 2.5e6, cushionCor: 0.8, type: 'hydraulic' },
       soil: { shaftQuake: 0.0025, toeQuake: 0.0025, shaftDampingSand: 0.16, shaftDampingClay: 0.65, toeDamping: 0.5 },
       result: null, status: 'idle', error: ''
