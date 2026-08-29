@@ -23,14 +23,14 @@
   $: perPile = !!res?.perPile;
   $: uM = perPile ? 'kNm/profiel' : 'kNm/m';
   $: uF = perPile ? 'kN/profiel' : 'kN/m';
-  $: branches = res?.branches || [];
+  $: branches = Array.isArray(res?.branches) ? res.branches : [];
   $: da12 = branches.find((b: any) => b.id === 'DA1-2') || null;
   $: overdig = Number(res?.overdigUls) || 0;
   $: H = Number(rw?.embedded?.retainedHeight) || 0;
   $: d = Number(rw?.embedded?.embedment) || 0;
   $: strata = payload?.profile?.strata || [];
-  $: checks = res?.checks || [];
-  $: steelRows = st?.steel?.rows?.filter((r: any) => !r.info) || [];
+  $: checks = (Array.isArray(res?.checks) ? res.checks : []).filter(Boolean);
+  $: steelRows = (Array.isArray(st?.steel?.rows) ? st.steel.rows : []).filter((r: any) => r && !r.info);
   $: drv = payload?.drivability || null;
   $: vib = payload?.vibration || null;
   $: schemeLabel = ({ 0: 'NBN EN 1997-1 ANB — generieke DA1-sets', 1: 'Richtlijnen Beschoeiingen (2022) — RK1', 2: 'Richtlijnen Beschoeiingen (2022) — RK2', 3: 'Richtlijnen Beschoeiingen (2022) — RK3' } as Record<number, string>)[Number(rw?.settings?.riskScheme) || 0];
@@ -47,7 +47,8 @@
 
   onMount(() => {
     const key = new URLSearchParams(window.location.search).get('key') || '';
-    payload = loadNotePayload(window.localStorage, key);
+    try { payload = loadNotePayload(window.localStorage, key); }
+    catch (e: any) { loadError = `De opgeslagen rekennota-data kon niet worden gelezen (${e?.message || e}). Genereer de nota opnieuw vanuit de toepassing.`; return; }
     if (!payload) loadError = key ? 'Geen rekennota-data gevonden voor deze sleutel in deze browser. Genereer de nota opnieuw vanuit de toepassing Keerconstructies (Stage 6).' : 'Geen sleutel meegegeven. Genereer de nota vanuit Stage 6 → Retaining walls → Calculation note.';
   });
 </script>

@@ -12,10 +12,12 @@
 		<p class="eyebrow">Application Error</p>
 		<h1>{status}</h1>
 		<p>{error?.message ?? 'An unexpected error occurred.'}</p>
+		{#if (error as any)?.stack}<pre class="stack">{(error as any).stack}</pre>{/if}
 	</div>
 </div>
 
 <style>
+	.stack { text-align: left; font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; background: rgba(0,0,0,0.05); padding: 8px; border-radius: 6px; max-height: 40vh; overflow: auto; }
 	.shell {
 		min-height: 100vh;
 		display: grid;
