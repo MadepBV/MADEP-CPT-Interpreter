@@ -55,7 +55,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | 7 | `style(shell): Phase 2a liquid-glass chrome + stage rail` | D 2a | 02 §5.2 row 2a: `.app-header.glass-chrome`, `.stage-rail.glass-rail` (7 stages), `.btn` family, segmented — the visible "liquid glass" moment | visual re-baseline (shell only), e2e | ◐ agent (main tree) |
 | 8 | `refactor(export, report-payload)` | R step 4 | ~1,100 lines; `stage7Capture*` stays until step 9g | golden `exports/*`, `report/*` | ☑ 0081510 (integration-r) |
 | 9 | `refactor(load): parsers + apply-parsed-cpt` | R step 5 | ~600 lines; parsers return patches; `controls.js` keeps the 15 DOM syncs | golden fixtures (GEF/CSV/XLSX), `verify_import_review` | ☑ 450b6be (integration-r) |
-| 10 | `style(stage1-2)` then `style(stage3-5)` | D 2b, 2c | component classes for the Stage 1–5 templates, done **together with** the render wrappers left by PRs 6/9 (edit the markup once) | visual re-baseline per stage; golden DOM text unchanged | ☐ |
+| 10 | `style(stage1-2)` then `style(stage3-5)` | D 2b, 2c | component classes for the Stage 1–5 templates, done **together with** the render wrappers left by PRs 6/9 (edit the markup once) | visual re-baseline per stage; golden DOM text unchanged | ☑ 8501cc1 (Stage 1–5 in one PR; blur count 2) |
 
 ### Milestone v0.7.0 — Stage 6 shell and the five small apps
 
@@ -63,7 +63,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 |---|---|---|---|---|---|
 | 11 | `refactor(stage6): registry, per-app defaults/ensure, shell render` | R step 6 | ~1,000 lines; `stage6Defaults`/`ensureStage6State`/`renderStage6` kept as façades (78 / 71 callers) | snapshot of `stage6Defaults()` identical; golden stage6-*; e2e | ☑ 78a2e02 (integration-r) |
 | 12 | `refactor(bearing, pile, settlement, dewatering, beam)` | R step 7 | ~2,000 lines, one package per app in the retaining style, one PR per app (5 PRs) | headless render diff vs monolith HTML for the demo CPT; golden | ☑ bearing 30fd5a9, pile 1644f16, settlement 5798592, dewatering 26bed2a, beam d0bc5e7 |
-| 13 | `style(stage6 shell + apps)` | D 2d (shell parts), 2e | `.tabs--icon`, `.acc`, `.cols-3`, `.viz`, De Beer colours → `--viz-*`, nested blurs removed; done in the same PRs as 12 where the app's markup is touched | visual; blur count ≤ 5; frame budget ≥ 50 fps | ☐ |
+| 13 | `style(stage6 shell + apps)` | D 2d (shell parts), 2e | `.tabs--icon`, `.acc`, `.cols-3`, `.viz`, De Beer colours → `--viz-*`, nested blurs removed; done in the same PRs as 12 where the app's markup is touched | visual; blur count ≤ 5; frame budget ≥ 50 fps | ◐ agent (Stage 6 shell + bearing/pile/settlement/dewatering/beam; Bishop canvas left for PR 19) |
 | 14 | `refactor(project, section, tuning)` | R step 8 | ~1,000 lines; `S` reassignment behind `setActive()`; `selectCpt` also terminates the deformation worker (bug fix commit) | `verify_project_io`, golden save-load journey | ☑ b2c3844 + fix 504abef (integration-r) |
 | 15 | `style(retaining): delete retaining-styles.js, use component classes` | D 2f | `.st6-rw-*` → `.card/.acc/.field/.tbl--dense/.verdict--hero/.tabs/.segmented/.pill/.viz`; charts read `vizTheme()` | visual; retaining e2e; rekennota print 0 px | ☐ |
 | 16 | `style(dialogs, feedback)` | D 2g | `<dialog class="glass-sheet">` for import-review, `toast()` replaces the 20 `alert()`s, `.tip` helper | visual; e2e | ☐ |
@@ -116,3 +116,4 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 - 2026-08-29 (night) — integration-r 070ed7e: PR 8, 11, 12a merged; controller 14 417 lines. PR 12b/12c/14 in worktrees, PR 7 on the main tree.
 - 2026-08-29 (night) — integration-r: PR 14 and PR 12b merged; controller 13 301 lines; pile shims removed.
 - 2026-08-29 (late) — PR 12c merged (controller 12 192 lines). Known defect logged: dewatering.aquiferBaseDepth string → TypeError on render (fix as behaviour commit). PR 17 agent running.
+- 2026-08-29 (late) — PR 10 merged; v0.6.0 fully gated (browser journeys, visual 17/17). golden.config.mjs takes GOLDEN_PORT. PR 13 started; PR 17 running.
