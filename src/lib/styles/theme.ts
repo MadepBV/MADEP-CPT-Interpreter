@@ -58,6 +58,41 @@ export function vizTheme() {
 
 export type VizTheme = ReturnType<typeof vizTheme>;
 
+/**
+ * `rgba()` of a resolved token with the alpha replaced — for soft fills / muted series on canvases
+ * (`token()` returns `rgb(r, g, b)` or `rgba(r, g, b, a)`). Any other colour form is returned unchanged.
+ */
+export function withAlpha(color: string, alpha: number): string {
+	const m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(color);
+	if (!m) return color;
+	return `rgba(${m[1]},${m[2]},${m[3]},${alpha})`;
+}
+
+/**
+ * The Stage 6 pile-app series (§3.13): the De Beer chain, the per-layer shaft status and the load /
+ * settlement lines, resolved for the current theme. chart-factories.js still ships the legacy literal
+ * rgba() set; pile/charts.js recolours the datasets with this map before Chart.js reads the config.
+ */
+export function pileVizSeries() {
+	const t = vizTheme();
+	return {
+		qc: t.neutral,                        // cone resistance — the input, neutral
+		qh: t.s2,                             // homogeneous — ink, dashed
+		qd: t.s3,                             // downward — ochre
+		qu: t.s5,                             // upward — slate
+		qp: t.s6,                             // mixed (the result) — moss
+		toe: t.s4,                            // pile toe marker — limit
+		excluded: withAlpha(t.neutral, 0.6),  // shaft rows outside the shaft / peat
+		aboveNeutral: t.s3,                   // downdrag zone — same family as the neutral plane
+		contributing: t.s6,                   // positive friction — accepted
+		curve: t.s1,                          // load–settlement, N(z)
+		curveSoft: withAlpha(t.s1, 0.12),
+		frep: t.s2,                           // representative load — ink, dashed
+		rcd: t.s4,                            // design resistance — limit
+		sAllow: t.s3                          // allowable settlement — warning
+	};
+}
+
 /** Stored choice ('system' when nothing is stored). */
 export function getTheme(): ThemeChoice {
 	if (typeof localStorage === 'undefined') return 'system';
