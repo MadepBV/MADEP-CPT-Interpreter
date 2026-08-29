@@ -72,8 +72,8 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
-| 17 | golden tier A solver suites + seep-slope journey | H parts 5, 7 | bishop / seepage / deformation suites, `seep-slope-journey`, `multi-cpt-journey`, `save-load-journey` | green twice | ◐ agent |
-| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | ☐ |
+| 17 | golden tier A solver suites + seep-slope journey | H parts 5, 7 | bishop / seepage / deformation suites, `seep-slope-journey`, `multi-cpt-journey`, `save-load-journey` | green twice | ☑ 8d80778 (467 solver/config cases; seep-slope, multi-cpt, save-load journeys; total 2 086 Node + 5 journeys) |
+| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | ◐ 18a agent |
 | 19 | `style(seepslope)` | D 2d (rest) | canvas shell `.glass-float`, legends/view menu `.glass-float.acc`, `.is-computing` de-blur | visual; blur count; fps | ☐ |
 
 ### Milestone v0.9.0 — composition root and Svelte ownership
@@ -117,3 +117,4 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 - 2026-08-29 (night) — integration-r: PR 14 and PR 12b merged; controller 13 301 lines; pile shims removed.
 - 2026-08-29 (late) — PR 12c merged (controller 12 192 lines). Known defect logged: dewatering.aquiferBaseDepth string → TypeError on render (fix as behaviour commit). PR 17 agent running.
 - 2026-08-29 (late) — PR 10 merged; v0.6.0 fully gated (browser journeys, visual 17/17). golden.config.mjs takes GOLDEN_PORT. PR 13 started; PR 17 running.
+- 2026-08-29 (late) — PR 17 merged (46e4f3f). PR 18a started; PR 13 running.
