@@ -25,34 +25,54 @@ function getProbe(): HTMLSpanElement | null {
 
 /** Resolves a token (`--viz-1`, `--glass-bg`, …) to an `rgb()` / `rgba()` string usable by canvas + SVG. */
 export function token(name: string): string {
-	const el = getProbe();
-	if (!el) return '';
-	el.style.color = `var(${name})`;
-	return getComputedStyle(el).color;
+	try {
+		const el = getProbe();
+		if (!el) return '';
+		el.style.color = `var(${name})`;
+		const c = getComputedStyle(el)?.color;
+		return typeof c === 'string' ? c : '';
+	} catch {
+		return '';   // no real DOM (Node verifiers, SSR): callers fall back to the literal palette
+	}
 }
+
+/**
+ * Light-theme literals of tokens.css, used when a token cannot be resolved (no DOM: Node verifiers,
+ * golden suites, SSR). Same `rgb()` form the browser returns, so `withAlpha()` works on both.
+ */
+const FALLBACK: Record<string, string> = {
+	'--viz-1': 'rgb(61, 107, 106)', '--viz-2': 'rgb(24, 24, 26)', '--viz-3': 'rgb(138, 98, 13)', '--viz-4': 'rgb(155, 58, 50)',
+	'--viz-5': 'rgb(60, 111, 151)', '--viz-6': 'rgb(111, 143, 100)', '--viz-neutral': 'rgb(109, 105, 98)',
+	'--viz-grid': 'rgba(24, 24, 26, 0.08)', '--viz-grid-strong': 'rgba(24, 24, 26, 0.16)', '--viz-axis': 'rgba(24, 24, 26, 0.55)',
+	'--viz-text': 'rgb(24, 24, 26)', '--viz-text-muted': 'rgb(74, 74, 82)', '--viz-halo': 'rgba(255, 255, 255, 0.92)',
+	'--viz-band': 'rgba(24, 24, 26, 0.05)', '--viz-tooltip-bg': 'rgba(255, 255, 255, 0.96)',
+	'--canvas-paper': 'rgb(251, 249, 245)', '--canvas-grid': 'rgba(24, 24, 26, 0.05)',
+	'--viz-water': 'rgb(60, 111, 151)', '--viz-water-soft': 'rgba(60, 111, 151, 0.1)'
+};
+const tok = (name: string) => token(name) || FALLBACK[name] || '';
 
 /** The data-viz palette, resolved for the current theme (§3.13 series assignment). */
 export function vizTheme() {
 	return {
-		s1: token('--viz-1'),
-		s2: token('--viz-2'),
-		s3: token('--viz-3'),
-		s4: token('--viz-4'),
-		s5: token('--viz-5'),
-		s6: token('--viz-6'),
-		neutral: token('--viz-neutral'),
-		grid: token('--viz-grid'),
-		gridStrong: token('--viz-grid-strong'),
-		axis: token('--viz-axis'),
-		text: token('--viz-text'),
-		textMuted: token('--viz-text-muted'),
-		halo: token('--viz-halo'),
-		band: token('--viz-band'),
-		tooltipBg: token('--viz-tooltip-bg'),
-		paper: token('--canvas-paper'),
-		paperGrid: token('--canvas-grid'),
-		water: token('--viz-water'),
-		waterSoft: token('--viz-water-soft')
+		s1: tok('--viz-1'),
+		s2: tok('--viz-2'),
+		s3: tok('--viz-3'),
+		s4: tok('--viz-4'),
+		s5: tok('--viz-5'),
+		s6: tok('--viz-6'),
+		neutral: tok('--viz-neutral'),
+		grid: tok('--viz-grid'),
+		gridStrong: tok('--viz-grid-strong'),
+		axis: tok('--viz-axis'),
+		text: tok('--viz-text'),
+		textMuted: tok('--viz-text-muted'),
+		halo: tok('--viz-halo'),
+		band: tok('--viz-band'),
+		tooltipBg: tok('--viz-tooltip-bg'),
+		paper: tok('--canvas-paper'),
+		paperGrid: tok('--canvas-grid'),
+		water: tok('--viz-water'),
+		waterSoft: tok('--viz-water-soft')
 	};
 }
 

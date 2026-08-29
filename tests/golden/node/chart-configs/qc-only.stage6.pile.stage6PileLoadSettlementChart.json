@@ -2,8 +2,8 @@
   "data": {
     "datasets": [
       {
-        "backgroundColor": "rgba(40,90,180,0.10)",
-        "borderColor": "rgba(40,90,180,0.95)",
+        "backgroundColor": "rgba(61,107,106,0.12)",
+        "borderColor": "rgb(61, 107, 106)",
         "borderWidth": 2,
         "data": [
           {"x":0,"y":0},
@@ -64,7 +64,7 @@
         "tension": 0
       },
       {
-        "borderColor": "rgba(216,90,48,0.85)",
+        "borderColor": "rgb(24, 24, 26)",
         "borderDash": [4,3],
         "borderWidth": 1.4,
         "data": [
@@ -76,7 +76,7 @@
         "pointRadius": 0
       },
       {
-        "borderColor": "rgba(29,158,117,0.85)",
+        "borderColor": "rgb(155, 58, 50)",
         "borderDash": [6,4],
         "borderWidth": 1.4,
         "data": [
@@ -88,7 +88,7 @@
         "pointRadius": 0
       },
       {
-        "borderColor": "rgba(220,120,40,0.7)",
+        "borderColor": "rgb(138, 98, 13)",
         "borderDash": [3,3],
         "borderWidth": 1.2,
         "data": [

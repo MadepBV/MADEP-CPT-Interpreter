@@ -2,8 +2,8 @@
   "data": {
     "datasets": [
       {
-        "backgroundColor": ["rgba(160,160,160,0.6)"],
-        "borderColor": ["rgba(160,160,160,0.6)"],
+        "backgroundColor": ["rgba(109,105,98,0.6)"],
+        "borderColor": ["rgba(109,105,98,0.6)"],
         "data": [
           {"x":0,"y":5}
         ],

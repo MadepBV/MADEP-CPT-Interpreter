@@ -63,9 +63,9 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 |---|---|---|---|---|---|
 | 11 | `refactor(stage6): registry, per-app defaults/ensure, shell render` | R step 6 | ~1,000 lines; `stage6Defaults`/`ensureStage6State`/`renderStage6` kept as façades (78 / 71 callers) | snapshot of `stage6Defaults()` identical; golden stage6-*; e2e | ☑ 78a2e02 (integration-r) |
 | 12 | `refactor(bearing, pile, settlement, dewatering, beam)` | R step 7 | ~2,000 lines, one package per app in the retaining style, one PR per app (5 PRs) | headless render diff vs monolith HTML for the demo CPT; golden | ☑ bearing 30fd5a9, pile 1644f16, settlement 5798592, dewatering 26bed2a, beam d0bc5e7 |
-| 13 | `style(stage6 shell + apps)` | D 2d (shell parts), 2e | `.tabs--icon`, `.acc`, `.cols-3`, `.viz`, De Beer colours → `--viz-*`, nested blurs removed; done in the same PRs as 12 where the app's markup is touched | visual; blur count ≤ 5; frame budget ≥ 50 fps | ◐ agent (Stage 6 shell + bearing/pile/settlement/dewatering/beam; Bishop canvas left for PR 19) |
+| 13 | `style(stage6 shell + apps)` | D 2d (shell parts), 2e | `.tabs--icon`, `.acc`, `.cols-3`, `.viz`, De Beer colours → `--viz-*`, nested blurs removed; done in the same PRs as 12 where the app's markup is touched | visual; blur count ≤ 5; frame budget ≥ 50 fps | ☑ db27c9c (Stage 6 shell + five apps; blur 14 → 4, 120 fps; Bishop canvas shell left for PR 19) |
 | 14 | `refactor(project, section, tuning)` | R step 8 | ~1,000 lines; `S` reassignment behind `setActive()`; `selectCpt` also terminates the deformation worker (bug fix commit) | `verify_project_io`, golden save-load journey | ☑ b2c3844 + fix 504abef (integration-r) |
-| 15 | `style(retaining): delete retaining-styles.js, use component classes` | D 2f | `.st6-rw-*` → `.card/.acc/.field/.tbl--dense/.verdict--hero/.tabs/.segmented/.pill/.viz`; charts read `vizTheme()` | visual; retaining e2e; rekennota print 0 px | ☐ |
+| 15 | `style(retaining): delete retaining-styles.js, use component classes` | D 2f | `.st6-rw-*` → `.card/.acc/.field/.tbl--dense/.verdict--hero/.tabs/.segmented/.pill/.viz`; charts read `vizTheme()` | visual; retaining e2e; rekennota print 0 px | ◐ agent |
 | 16 | `style(dialogs, feedback)` | D 2g | `<dialog class="glass-sheet">` for import-review, `toast()` replaces the 20 `alert()`s, `.tip` helper | visual; e2e | ☐ |
 
 ### Milestone v0.8.0 — Seep/Slope (56 % of the file)
@@ -73,7 +73,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
 | 17 | golden tier A solver suites + seep-slope journey | H parts 5, 7 | bishop / seepage / deformation suites, `seep-slope-journey`, `multi-cpt-journey`, `save-load-journey` | green twice | ☑ 8d80778 (467 solver/config cases; seep-slope, multi-cpt, save-load journeys; total 2 086 Node + 5 journeys) |
-| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | ◐ 18a agent |
+| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | ◐ 18a ☑ f15b3c2 (state package, 1 110 checks); 18b agent |
 | 19 | `style(seepslope)` | D 2d (rest) | canvas shell `.glass-float`, legends/view menu `.glass-float.acc`, `.is-computing` de-blur | visual; blur count; fps | ☐ |
 
 ### Milestone v0.9.0 — composition root and Svelte ownership
@@ -118,3 +118,4 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 - 2026-08-29 (late) — PR 12c merged (controller 12 192 lines). Known defect logged: dewatering.aquiferBaseDepth string → TypeError on render (fix as behaviour commit). PR 17 agent running.
 - 2026-08-29 (late) — PR 10 merged; v0.6.0 fully gated (browser journeys, visual 17/17). golden.config.mjs takes GOLDEN_PORT. PR 13 started; PR 17 running.
 - 2026-08-29 (late) — PR 17 merged (46e4f3f). PR 18a started; PR 13 running.
+- 2026-08-30 — PR 13 and PR 18a merged; theme.ts falls back to the light palette without a DOM; chart-config goldens updated for the viz palette; classification verifier follows the PR 10 classes. PR 18b and PR 15 started.

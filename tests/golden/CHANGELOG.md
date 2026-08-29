@@ -49,3 +49,8 @@ result changed. Commits 1c2bdab, 2cc597b, 4367bea merged with integration-r in a
 `gef-import-journey` / `demo-journey` state snapshots: the same two new state keys as the Node update above
 (`drivability.push`, `drivability.vibrator.sheet.massSource`) on every step that carries the retaining state.
 No DOM text or numeric change.
+
+## 2026-08-30 — chart-configs after the Stage 6 restyle (PR 13, db27c9c)
+28 pile chart configs: series colours now come from the `--viz-*` tokens through `theme.ts` (teal / ink /
+ochre / brick / slate / moss) instead of the legacy literal rgba values. Data unchanged. `vizTheme()` falls
+back to the light-theme literals when no DOM is present, so the Node goldens carry the real palette.

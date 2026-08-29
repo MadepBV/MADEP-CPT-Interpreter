@@ -2,7 +2,7 @@
   "data": {
     "datasets": [
       {
-        "borderColor": "rgba(120,120,120,0.85)",
+        "borderColor": "rgb(109, 105, 98)",
         "borderDash": [],
         "borderWidth": 1.6,
         "data": [
@@ -73,7 +73,7 @@
         "tension": 0
       },
       {
-        "borderColor": "rgba(70,70,70,0.85)",
+        "borderColor": "rgb(24, 24, 26)",
         "borderDash": [3,3],
         "borderWidth": 1.6,
         "data": [
@@ -144,7 +144,7 @@
         "tension": 0
       },
       {
-        "borderColor": "rgba(216,90,48,0.95)",
+        "borderColor": "rgb(138, 98, 13)",
         "borderDash": [],
         "borderWidth": 1.6,
         "data": [
@@ -215,7 +215,7 @@
         "tension": 0
       },
       {
-        "borderColor": "rgba(40,90,180,0.95)",
+        "borderColor": "rgb(60, 111, 151)",
         "borderDash": [],
         "borderWidth": 1.6,
         "data": [
@@ -286,7 +286,7 @@
         "tension": 0
       },
       {
-        "borderColor": "rgba(29,158,117,1.00)",
+        "borderColor": "rgb(111, 143, 100)",
         "borderDash": [],
         "borderWidth": 1.6,
         "data": [
@@ -357,7 +357,7 @@
         "tension": 0
       },
       {
-        "borderColor": "rgba(220,120,40,0.9)",
+        "borderColor": "rgb(155, 58, 50)",
         "borderDash": [6,4],
         "borderWidth": 1.4,
         "data": [

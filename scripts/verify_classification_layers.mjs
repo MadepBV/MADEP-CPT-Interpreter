@@ -201,12 +201,12 @@ check('metric tiles, note variants and the row table are the runClass markup', (
   assert.ok(classificationAssumedRfNoteHtml({ kind: 'none-measured', missing: 2, n: 2, assumedRf: 2.5, gaps: [] }).includes('R<sub>f</sub> = 2.5 %'));
   assert.ok(classificationAssumedRfNoteHtml({ kind: 'partial', missing: 3, n: 20, assumedRf: 3, gaps: [] }).includes('3 van 20 metingen'));
   const gaps = classificationAssumedRfNoteHtml({ kind: 'gaps', missing: 1, n: 40, assumedRf: 3, gaps: ['20.00'] });
-  assert.ok(gaps.includes('data-note') && gaps.includes('(op 20.00 m)') && gaps.includes('De overige 39 metingen'));
+  assert.ok(gaps.includes('verdict') && gaps.includes('(op 20.00 m)') && gaps.includes('De overige 39 metingen'));
   assert.ok(!classificationAssumedRfNoteHtml({ kind: 'gaps', missing: 4, n: 100, assumedRf: 3, gaps: ['1', '2', '3', '4'] }).includes('(op '));
   const rows = classificationTableRowsHtml(res.classified, { method: 'sb260', elev: 10 });
   assert.equal((rows.match(/<tr>/g) || []).length, 6);
-  assert.ok(rows.includes('<td>0.500</td>') && rows.includes('<td style="color:var(--tx2)">9.50</td>'));
-  assert.ok(classificationTableRowsHtml(res.classified, { method: 'sb260', elev: null }).includes('<td style="color:var(--tx2)">—</td>'));
+  assert.ok(rows.includes('<td class="num">0.500</td>') && rows.includes('<td class="num" style="color:var(--color-ink-2)">9.50</td>'))   // PR 10 restyle;
+  assert.ok(classificationTableRowsHtml(res.classified, { method: 'sb260', elev: null }).includes('<td class="num" style="color:var(--color-ink-2)">—</td>'));
   const ic = classificationTableRowsHtml(classifyCpt(cpt, { method: 'robertson' }).classified, { method: 'robertson', elev: null });
   assert.ok(!ic.includes('<td style="color:var(--tx3)">—</td>'));
 });
