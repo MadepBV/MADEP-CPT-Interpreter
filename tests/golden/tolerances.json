@@ -2,5 +2,5 @@
   "pure": { "rel": 1e-9, "abs": 1e-12 },
   "wasm": { "rel": 1e-6, "abs": 1e-9 },
   "iterative": { "rel": 1e-6, "abs": 1e-9 },
-  "browser": { "rel": 1e-6, "abs": 1e-9 }
+  "browser": { "rel": 1e-6, "abs": 1e-9, "maxDiffPixelRatio": 0.02 }
 }

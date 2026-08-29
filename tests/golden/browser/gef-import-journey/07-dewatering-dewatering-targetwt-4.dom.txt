@@ -1,0 +1,96 @@
+## #cptTabs
+DATA
+layered
+## .panel.active
+Applications
+Use the interpreted CPT profile for first engineering calculations. Stage 6 reuses the active CPT, current layer model, current water table, and accepted Stage 5 tuning.
+REFRESH
+STAGE 7 REPORT
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: layered · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = used where accepted
+Dewatering impact
+Hydrogeological screening plus stress and settlement response at the CPT location.
+INPUTS
+Combination context
+Characteristic drawdown
+Quasi-permanent drawdown context
+Characteristic is the recommended default here: enter the expected drawdown directly and do not factor it as a ULS variable load.
+Target water table at well / excavation (m below ground)
+Geometry
+Single well
+Equivalent well excavation
+Line dewatering trench
+Aquifer type
+Unconfined
+Confined
+Well radius rw (m)
+Distance well-CPT (m)
+Sichardt coefficient C
+Total stress mode
+Conservative sigma_v fixed
+Realistic gamma_sat to gamma
+Conservative keeps the total overburden stress profile unchanged and only lowers pore pressure. Realistic also reduces total stress in the zone that changes from saturated to unsaturated, by switching from γ_sat to γ.
+Aquifer base depth (m, optional)
+Sub-layer dz (m)
+Time horizon for settlement curve (days, optional)
+Estimated phreatic level profile from source to CPT
+Effective stress before / after drawdown
+Total settlement versus distance from source
+SUMMARY
+NEW WT AT CPT 4.00 m
+DRAWDOWN AT CPT 2.30 m
+DISTANCE FROM WELL CENTRE TO CPT 0.00 m
+WELL RADIUS 0.15 m
+R INFLUENCE 11.3 m
+Q ESTIMATE 1.11e-5 m3/s
+AQUIFER BASE 4.20 m
+HYDRAULIC MODEL Transmissivity-based Dupuit screening
+T FAR FIELD 6.76e-6 m²/s
+T AT WELL 1.00e-8 m²/s
+K_EFF,H 2.70e-6 m/s
+CONSERVATIVE SETTLEMENT 26.76 mm
+REALISTIC SETTLEMENT 21.92 mm
+MAX ΔΣV MODE EFFECT 0.0 kPa
+TOTAL SETTLEMENT 26.8 mm
+Dewatering impact is treated as an SLS deformation screening tool. Use the expected drawdown directly; this module does not apply DA1/1 or DA1/2 style load factoring.
+Hydraulics are screened with a transmissivity-based model. The app combines the active layer conductivities into T = Σ(k_h · b) through the pumped interval and uses that profile in the radial or line-flow estimate.
+Important: settlement is driven by the drawdown at the CPT location, not by the target level at the well or excavation itself. If the CPT sits outside the computed screening influence radius, the module will show little or no settlement.
+HYDRAULIC SCREENING INPUTS
+LIMIT STATE COMBINATION HYDRAULIC MODEL GEOMETRY ORIGINAL WT TARGET WT AT WELL WT AT CPT DRAWDOWN AT CPT DISTANCE FROM WELL CENTRE TO CPT WELL RADIUS T FAR FIELD T AT WELL K_EFF,H R
+SLS Characteristic drawdown Transmissivity-based Dupuit screening Single well 1.70 m 4.00 m 4.00 m 2.30 m 0.00 m 0.15 m 6.76e-6 m²/s 1.00e-8 m²/s 2.70e-6 m/s 11.3 m
+FORMULA ROUTE
+R = C · s · sqrt(k)
+h²(r) = h_w² + Q / (pi·k) · ln(r / r_w) (radial, unconfined)
+Delta eps = Delta sigma' / E_oed(sigma_mean)
+Geometry = Single well
+Aquifer type = unconfined
+Distance axis = radial distance from well centre / excavation centroid
+Settlement-distance curve = total settlement predicted at each x-location
+Total stress mode = conservative
+Settlement limit state = SLS only
+Combination route = Characteristic drawdown, no γ factors
+PER LAYER SETTLEMENT CONTRIBUTION
+LAYER TYPE TOP-BOT (M) SETTLEMENT (MM)
+1 Sand 0.00-0.95 0.00
+2 Sand 0.95-3.95 0.15
+3 Clay 3.95-4.95 3.93
+4 Sandy clay 4.95-5.65 1.66
+5 Clay 5.65-7.95 8.95
+6 Silty sand 7.95-8.65 0.71
+7 Silty sand 8.65-9.85 1.19
+8 Sandy clay 9.85-10.95 1.39
+9 Sand 10.95-14.95 0.44
+10 Clay 14.95-18.00 8.35
+Sichardt radius of influence is shown as a screening estimate only. It is not a permit-grade hydrogeological prediction.
+Hydraulic screening uses a transmissivity profile through the pumped interval: T = Σ(k_h · b). For unconfined flow, the radial drawdown is solved from the cumulative transmissivity moment rather than from one lumped k_h value.
+Aquifer base was not provided, so the CPT bottom depth is used as a first-pass aquifer base. Verify this against geology or pumping-test data.
+Total-stress mode does change the result here: conservative = 26.76 mm, realistic = 21.92 mm.
+← BACK TO TUNING
+EXPORT CSV
+PRINT STAGE 7

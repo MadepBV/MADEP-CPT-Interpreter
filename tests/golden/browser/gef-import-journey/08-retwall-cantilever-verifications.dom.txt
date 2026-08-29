@@ -1,0 +1,41 @@
+## #retwallResultBody
+LIMIT STATE (GOVERNING COMBINATION) ED / RD UTIL.
+Bearing resultant in middle third (SLS, e <= B/6)
+Characteristic (SLS) · e <= B/6
+e 0.27 m · q_max 108.92 kPa · q_min 39.57 kPa
+0.27 / 0.57 m
+0.47
+PASS
+Uplift / flotation (UPL)
+UPL uplift/flotation · U_dst <= G_stb
+U_uplift 0.00 kN/m · G_favourable 256.14 kN/m …
+0.00 / 230.53 kN/m
+0.00
+PASS
+Base sliding (GEO)
+DA1 Combination 2 (A2+M2+R1) · H_d <= R_d + R_p,d
+H_drive 112.77 kN/m · V_resist 256.14 kN/m · uplift_U 0.00 kN/m …
+112.77 / 112.02 kN/m
+1.01
+FAIL
+Base bearing resistance (GEO, Annex D)
+DA1 Combination 2 (A2+M2+R1) · V_d <= R_d
+q_Ed 102.51 kPa · q_Rd 45.44 kPa · e 0.48 m …
+256.14 / 113.53 kN/m
+2.26
+FAIL
+Eccentricity (ULS, e <= B/3)
+DA1 Combination 2 (A2+M2+R1) · e <= B/3
+e 0.48 m · B/3 1.15 m
+0.48 / 1.15 m
+0.41
+PASS
+Overturning about toe (EQU)
+EQU static equilibrium · M_dst <= M_stb
+M_dst 235.44 kNm/m · M_stb 477.85 kNm/m …
+235.44 / 477.85 kNm/m
+0.49
+PASS
+Both DA1 combinations evaluated; governing shown per check.
+Short-heel cantilever: heel 2.10 m is below the Rankine wedge-clearance length 3.12 m (psi = 58 deg from the design phi'). The virtual-plane Rankine active thrust is outside its strict validity envelope here; cross-check the active thrust with Coulomb on the real stem back face.
+Method & assumptions: documentation.

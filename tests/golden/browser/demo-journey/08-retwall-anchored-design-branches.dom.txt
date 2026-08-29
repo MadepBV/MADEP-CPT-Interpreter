@@ -1,0 +1,118 @@
+## #retwallResultBody
+DA1-2 governs
+γG 1.00 · γQ 1.10 · γφ 1.25 · γc 1.25
+excavation
+0.30m below nominal
+free-earth d₀
+1.055m
+design d
+1.055m
+ODF at provided
+2.420
+T / TEd
+20.7 / 20.7kN/m
+Mmax / MEd
+5.1 / 5.1kNm/m @ 1.78 m
+Vmax / VEd
+13.9 / 13.9kN/m @ 0.82 m
+z₀ (net = 0)
+0.48m below exc.
+p at surface / exc. / toe
+6.2 / 18.7 / -108.8kPa
+DA1-1
+γG 1.35 / 1.00 pass. · γQ 1.50 · γφ 1.00 · γc 1.00
+excavation
+0.30m below nominal
+free-earth d₀
+0.910m
+design d
+0.910m
+ODF at provided
+2.643
+T / TEd
+23.1 / 23.1kN/m
+Mmax / MEd
+4.9 / 4.9kNm/m @ 1.76 m
+Vmax / VEd
+15.0 / 15.0kN/m @ 0.82 m
+z₀ (net = 0)
+0.40m below exc.
+p at surface / exc. / toe
+7.4 / 21.0 / -139.1kPa
+BGT
+γG 1.00 · γQ 1.10 · γφ 1.00 · γc 1.00 · effects × 1.35
+excavation
+0.00m below nominal
+free-earth d₀
+0.551m
+design d
+0.551m
+ODF at provided
+3.934
+T / TEd
+14.0 / 18.9kN/m
+Mmax / MEd
+2.1 / 2.9kNm/m @ 0.81 m
+Vmax / VEd
+8.0 / 10.9kN/m @ 0.82 m
+z₀ (net = 0)
+0.25m below exc.
+p at surface / exc. / toe
+5.4 / 13.7 / -169.3kPa
+SLS
+γG 1.00 · γQ 1.00 · γφ 1.00 · γc 1.00
+excavation
+0.00m below nominal
+free-earth d₀
+0.543m
+design d
+0.543m
+ODF at provided
+3.986
+T / TEd
+13.3 / 13.3kN/m
+Mmax / MEd
+2.0 / 2.0kNm/m @ 0.81 m
+Vmax / VEd
+7.7 / 7.7kN/m @ 0.82 m
+z₀ (net = 0)
+0.25m below exc.
+p at surface / exc. / toe
+4.9 / 13.4 / -169.8kPa
+DA1-2
+DA1-1
+BGT
+SLS
+design strengths and coefficients of the selected branch
+copy branch table (TSV)
+RETAINED SIDE
+LAYER TOP FRAMEWORK Φ′K → Φ′D C′K → C′D CU,K → CU,D KA KAC = 2√KA ΔP KP (ANNEX C) KPC
+1.60 m drained 20.0 → 16.23° 2.0 → 1.60 20 → 14.3 0.5630 1.5007 10.8° 2.1230 3.8568
+1.02 m drained 27.0 → 22.18° 0.0 → 0.00 0 → 0.0 0.4519 1.3445 14.8° 2.9076 4.6798
+-1.38 m drained 20.0 → 16.23° 4.0 → 3.20 50 → 35.7 0.5630 1.5007 10.8° 2.1230 3.8568
+-3.12 m drained 20.0 → 16.23° 4.0 → 3.20 50 → 35.7 0.5630 1.5007 10.8° 2.1230 3.8568
+-5.38 m drained 27.0 → 22.18° 0.0 → 0.00 0 → 0.0 0.4519 1.3445 14.8° 2.9076 4.6798
+-6.16 m drained 27.0 → 22.18° 0.0 → 0.00 0 → 0.0 0.4519 1.3445 14.8° 2.9076 4.6798
+-7.88 m drained 20.0 → 16.23° 8.0 → 6.40 100 → 71.4 0.5630 1.5007 10.8° 2.1230 3.8568
+-9.38 m drained 22.0 → 17.91° 8.0 → 6.40 100 → 71.4 0.5296 1.4554 11.9° 2.3136 4.0642
+-10.72 m drained 22.0 → 17.91° 15.0 → 12.00 200 → 142.9 0.5296 1.4554 11.9° 2.3136 4.0642
+-13.84 m drained 22.0 → 17.91° 15.0 → 12.00 200 → 142.9 0.5296 1.4554 11.9° 2.3136 4.0642
+-15.20 m drained 22.0 → 17.91° 15.0 → 12.00 200 → 142.9 0.5296 1.4554 11.9° 2.3136 4.0642
+-17.94 m drained 22.0 → 17.91° 8.0 → 6.40 100 → 71.4 0.5296 1.4554 11.9° 2.3136 4.0642
+-18.52 m drained 22.0 → 17.91° 15.0 → 12.00 200 → 142.9 0.5296 1.4554 11.9° 2.3136 4.0642
+EXCAVATION SIDE
+LAYER TOP FRAMEWORK Φ′K → Φ′D C′K → C′D CU,K → CU,D KA KAC = 2√KA ΔP KP (ANNEX C) KPC
+1.60 m drained 20.0 → 16.23° 2.0 → 1.60 20 → 14.3 0.5630 1.5007 10.8° 2.1230 3.8568
+1.02 m drained 27.0 → 22.18° 0.0 → 0.00 0 → 0.0 0.4519 1.3445 14.8° 2.9076 4.6798
+-1.38 m drained 20.0 → 16.23° 4.0 → 3.20 50 → 35.7 0.5630 1.5007 10.8° 2.1230 3.8568
+-3.12 m drained 20.0 → 16.23° 4.0 → 3.20 50 → 35.7 0.5630 1.5007 10.8° 2.1230 3.8568
+-5.38 m drained 27.0 → 22.18° 0.0 → 0.00 0 → 0.0 0.4519 1.3445 14.8° 2.9076 4.6798
+-6.16 m drained 27.0 → 22.18° 0.0 → 0.00 0 → 0.0 0.4519 1.3445 14.8° 2.9076 4.6798
+-7.88 m drained 20.0 → 16.23° 8.0 → 6.40 100 → 71.4 0.5630 1.5007 10.8° 2.1230 3.8568
+-9.38 m drained 22.0 → 17.91° 8.0 → 6.40 100 → 71.4 0.5296 1.4554 11.9° 2.3136 4.0642
+-10.72 m drained 22.0 → 17.91° 15.0 → 12.00 200 → 142.9 0.5296 1.4554 11.9° 2.3136 4.0642
+-13.84 m drained 22.0 → 17.91° 15.0 → 12.00 200 → 142.9 0.5296 1.4554 11.9° 2.3136 4.0642
+-15.20 m drained 22.0 → 17.91° 15.0 → 12.00 200 → 142.9 0.5296 1.4554 11.9° 2.3136 4.0642
+-17.94 m drained 22.0 → 17.91° 8.0 → 6.40 100 → 71.4 0.5296 1.4554 11.9° 2.3136 4.0642
+-18.52 m drained 22.0 → 17.91° 15.0 → 12.00 200 → 142.9 0.5296 1.4554 11.9° 2.3136 4.0642
+DA1/2 (A2 + M2) — embedment, design excavation. Design strengths: tan φ′d = tan φ′k/γφ, c′d = c′k/γc, cu,d = cu,k/γcu; coefficients recomputed from φ′d (never Kp/γ). All forces per metre of wall.

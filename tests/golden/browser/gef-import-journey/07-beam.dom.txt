@@ -1,0 +1,142 @@
+## #cptTabs
+DATA
+layered
+## .panel.active
+Applications
+Use the interpreted CPT profile for first engineering calculations. Stage 6 reuses the active CPT, current layer model, current water table, and accepted Stage 5 tuning.
+REFRESH
+STAGE 7 REPORT
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: layered · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = used where accepted
+Beam / slab on Pasternak
+1D strip model with SLS deflection and ULS reinforcement output from the current CPT stiffness profile.
+INPUTS
+Pick the x direction first. The canvas shows the x-z model view and the y-z section for the values below.
+Analysis directionⓘ
+x = slab strip direction
+x = along wall / beam length
+x = across footing width
+1D bending is solved only along x. For a slab strip, x is the checked slab direction and b is normally 1.00 m.
+Bearing width B for k_s (m)ⓘ
+Strip width b along y (m)ⓘ
+Analysis length L along slab x (m)ⓘ
+Slab thickness h along z (m)ⓘ
+Founding depth Df (m)ⓘ
+Concrete E (kPa)ⓘ
+Foundation modelⓘ
+Winkler
+Pasternak (1D strip)
+Es routeⓘ
+Es = E_oed, ν = 0
+Young drained conversion
+Influence depth for Es averaging (m)ⓘ
+Pasternak coupling factor etaⓘ
+Override G_p (kN/m, optional)ⓘ
+Pasternak adds shear interaction between adjacent springs. Here eta is an engineer scaling factor in G_p = eta · G_s,avg · H_p. Start around 1.0; lower values weaken the coupling, higher values strengthen it. Treat this as experimental screening unless calibrated.
+Load patternⓘ
+Uniform full length
+Uniform patch
+Point load at centre
+Point load at x
+Uniform full length applies the same line load along the whole x direction. For a long uniform strip this is effectively the infinite/uniform case: settlement is meaningful, while longitudinal bending can legitimately be almost zero.
+Allowable deflection ratio L / nⓘ
+LOAD ASSUMPTIONS AND EUROCODE COMBINATION
+EC2 REINFORCEMENT
+Concrete class fck (MPa)ⓘ Steel fyk (MPa)ⓘ Exposure classⓘ
+X0 - No corrosion risk
+XC1 - Dry or permanently wet
+XC2 - Wet, rarely dry
+XC3 - Moderate humidity
+XC4 - Cyclic wet and dry
+XD1 - Chlorides, moderate humidity
+XD2 - Chlorides, wet rarely dry
+XD3 - Chlorides, cyclic wet and dry
+XS1 - Sea-salt air
+XS2 - Permanently submerged in sea water
+XS3 - Tidal / splash / spray
+XF1 - Freeze-thaw, moderate saturation
+XF2 - Freeze-thaw with de-icing agent
+XF3 - Freeze-thaw, high saturation
+XF4 - Freeze-thaw, severe
+XA1 - Slight chemical attack
+XA2 - Moderate chemical attack
+XA3 - Severe chemical attack
+Carbonation exposure for foundations and buried concrete that stay wet for long periods, for example below the water table.
+Design working life (years)ⓘ
+25 years
+50 years
+100 years
+Bar diameter (mm)ⓘ Max aggregate size d_g (mm) Δc_dev (mm) Override c_nom (mm, optional)
+EC2 slab / plate durability class (cover only)
+special QC / precast-like execution
+cast against uneven prepared surface (+5 mm)
+cast against prepared ground / blinding (minimum 40 mm)
+cast against unprepared ground (minimum 75 mm)
+High-strength concrete reduction is checked automatically from the chosen fck and exposure class, following the EC2 Table 4.3N thresholds.
+SLS deflection line w(x)
+ULS bending moment M(x)
+Geometry preview (view only)
+SUMMARY
+ES AVG 133740 kPa
+KS 67041 kN/m³
+G_P 200610 kN/m
+LAMBDA_REF 1.63 m
+BETA·L REF 3.68
+CLASSIFICATION Long beam
+W_MAX,SLS 0.59 mm
+W_ALLOW 12.00 mm
+SLS UTILISATION 0.05
+M_ED,MAX 0.00 kNm/m
+EXPOSURE XC2
+STRUCTURAL CLASS S3
+C_NOM 30 mm
+B_W 1000 mm
+AS,REQ 0 mm²/m
+AS,MIN 473 mm²/m
+AS,GOVERNING 473 mm²/m
+Full-length uniform loading is mainly a settlement case in this 1D model; longitudinal bending can be near zero because soil reaction balances the load almost uniformly.
+k_s is not a fixed soil material constant. It depends on the interpreted CPT stiffness, the loaded width B, the averaging depth, and the strip stiffness. As a rough order of magnitude only: very soft support may be around 5,000-20,000 kN/m³, medium support 20,000-80,000 kN/m³, and stiff/dense support 80,000-200,000+ kN/m³. Use these only as a sanity check, not as target values.
+VESIC / LOAD AUDIT
+ANALYSIS DIRECTION FOUNDATION MODEL SLS ROUTE ULS ROUTE SLS LOAD ULS LOAD ES MODE ES AVG KS G_S,AVG G_P ETA BETA*L
+x = checked slab strip direction Pasternak (two-parameter) SLS qp uniform line load ULS Eq. 6.10 A1 uniform line load 39.50 kN/m 69.75 kN/m Oedometric 133740 kPa 67041 kN/m³ 66870 kPa 200610 kN/m 1.00 3.68
+FORMULA ROUTE
+k_s = 0.65·E_s / [B·(1-nu²)] · (E_s·B^4 / (E_b·I_b))^(1/12)
+G_p = eta·G_s,avg·H_p (or engineer override)
+EI·w'''' - G_p·b·w'' + k_s·b·w = q(x)
+Foundation model = Pasternak (1D strip)
+Structural stiffness I = 0.00357 m4
+ULS design moment = 0.00 kNm/m
+c_nom used = 30 mm
+Effective depth d = 314 mm
+Structural class = S3
+EC2 DURABILITY AUDIT
+EXPOSURE CLASS XC2 - Wet, rarely dry
+STRUCTURAL CLASS S3
+C_MIN,DUR 20 mm
+C_MIN,B 12 mm
+C_MIN 20 mm
+ΔC_DEV 10 mm
+GROUND-CAST EXTRA 0 mm
+GROUND-CAST FLOOR 0 mm
+C_NOM RAW 30 mm
+C_NOM RECOMMENDED 30 mm
+C_NOM USED 30 mm
+Carbonation exposure for foundations and buried concrete that stay wet for long periods, for example below the water table.
+High-strength threshold for this exposure = 35 MPa; auto check = not applied.
+Slab-like geometry reduces structural class by 1.
+Stage 6 Pasternak uses a 1D beam/strip model. True 2D slab-on-grade plate behaviour still needs FE or a dedicated analytical plate solution.
+Model interpretation is 1 m slab strip: x is the checked slab direction, b is normally 1.00 m, and outputs are per meter only when b = 1.00 m.
+beta*L exceeds pi, so this beam is in the long-beam range and the numerical result should align closely with the classical infinite-beam solution.
+Default ks derivation uses Es = E_oed and ν = 0 for consistency with the oedometric stiffness route. Switch to drained Young modulus mode if a project-specific conversion is preferred.
+Pasternak shear coupling is inferred from the CPT stiffness profile as G_p ≈ eta·G_s,avg·H_p. This is a screening approximation, not a calibrated Belgian design value.
+Current Pasternak inputs: G_p = 200610 kN/m, G_s,avg = 66870 kPa, H_p = 3.00 m, eta = 1.00.
+Uniform full-length load on a free Winkler beam can legitimately give nearly constant settlement w ≈ q/k and almost zero bending moment. If you want edge-driven or local bending, use a patch / point load case or a 2D plate model.
+← BACK TO TUNING
+EXPORT CSV
+PRINT STAGE 7

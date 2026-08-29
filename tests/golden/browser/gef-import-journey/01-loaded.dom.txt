@@ -1,0 +1,50 @@
+## #cptTabs
+DATA
+layered
+## .panel.active
+Load CPT — GEF, Excel or CSV file
+Belgian/Dutch GEF, Excel workbooks with Header/Data sheets, or a CSV with depth and qc columns. GEF quantity IDs: 1=depth, 2=qc, 3=fs, 4=Rf, 6=u2.
+Drop one or more .GEF, .XLS, .XLSX or .CSV files here or click to browse
+Select multiple files at once to create multiple CPT tabs. GEF column order comes from COLUMNINFO; Excel and CSV columns are detected from their headers.
+No file? LOAD DEMO — ANONYMOUS PROFILE
+PROJECT
+Golden Project
+TEST ID
+S1
+LOCATION
+Golden site
+OWNER
+MADEP golden
+DATE
+2026, 1, 15
+READINGS
+360
+DEPTH (M)
+0.05–18.00
+SURFACE (M TAW)
+10.00
+AREA RATIO A
+0.800
+SLEEVE FRIC. FS
+Present
+PORE PRES. U2
+Present
+MAX QC (MPA)
+21.90
+SURFACE ELEV. (M TAW):
+(from ZID)
+WATER TABLE (M BELOW SURFACE):
+m
+= 8.30 m TAW
+(MEASUREMENTVAR 14)
+COÖRDINATEN (M):
+X
+Y
+Lokaal stelsel of RD — voor cross-sectie correlatie
+LAYERS
+Run class.
+QC (MPA)
+FS (KPA)
+RF (%)
+layered.gef — 360 readings
+NEXT: CLASSIFICATION →

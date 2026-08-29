@@ -1,0 +1,6 @@
+## #retwallResultBody
+STRUCTURAL DESIGN FORCES (PER M RUN)
+Stem (base) MEd 160.1 kNm VEd 96.3 kN C1
+Toe MEd 51.9 kNm VEd 111.4 kN C1
+Heel MEd 157.7 kNm VEd 129.0 kN C1
+Reinforcement design to EN 1992 remains the engineer's task (see the reinforcement application for a strip screening).

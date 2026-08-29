@@ -1,0 +1,39 @@
+## #retwallResultBody
+LIMIT STATE (GOVERNING BRANCH · REFERENCE) ED / RD UTIL.
+Embedment / rotational stability (soldier pile, Blum)
+DA1/2 (A2 + M2) — embedment, design excavation · d_provided >= d_required · EN 1997-1 §9.7
+ODF_at_provided 1.43 - · d_provided 4.40 m · d_required 4.22 m …
+4.22 / 4.40 m
+ODF 1.43 · d ratio 0.96
+PASS
+Bending, plastic (class 1) — HEA180
+STR · DA1-1 · E_d <= R_d · EN 1993-1-1 §6.2.5
+52.47 / 76.35 kNm
+0.69
+PASS
+Shear — HEA180
+STR · DA1-1 · E_d <= R_d · EN 1993-1-1 §6.2.6
+69.01 / 196.33 kN
+0.35
+PASS
+M–V interaction — HEA180
+STR · DA1-1 · E_d <= R_d · EN 1993-1-1 §6.2.8
+V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.
+69.01 / 98.16 kN
+0.70
+PASS
+Lagging plate 10 mm S235
+STR · DA1-1 · M_Ed <= M_Rd (elastic) · EN 1993-1-1 §6.2.5; Rekennota §7.8
+L 1.00 m · sigma 157.83 N/mm2 · UC_plastic 0.45 - …
+2.63 / 3.92 kNm/m
+0.67
+PASS
+Vertical equilibrium of the pile (self-weight vs shaft resistance)
+GEO · screening · G <= R_s · EN 1997-1 §9.7.5; Rekennota §7.10
+G_pile 2.19 kN · G_lagging 1.49 kN …
+3.69 / 21.38 kN
+0.17
+PASS
+Hand calculation below the excavation: active on the flange width b, passive on b_eff = min(k*b, s) with the plane-strain K_p (EAB / Belgian guideline §5). The PLAXIS T_lat tables use Brinch Hansen with B = b; the two models are never mixed.
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+Method & assumptions: documentation.

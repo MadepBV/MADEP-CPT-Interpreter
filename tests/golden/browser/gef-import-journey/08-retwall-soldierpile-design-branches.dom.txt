@@ -1,0 +1,112 @@
+## #retwallResultBody
+DA1-2 governs
+γG 1.00 · γQ 1.10 · γφ 1.25 · γc 1.25
+excavation
+0.30m below nominal
+free-earth d₀
+3.514m
+design d
+4.216m
+ODF at provided
+1.428
+Mmax / MEd
+47.4 / 47.4kNm @ 3.71 m
+Vmax / VEd
+61.5 / 61.5kN @ 5.42 m
+z₀ (net = 0)
+0.19m below exc.
+p at surface / exc. / toe
+5.3 / 18.7 / -68.8kPa
+lagging pEd
+18.7kPa
+DA1-1 governs
+γG 1.35 / 1.00 pass. · γQ 1.50 · γφ 1.00 · γc 1.00
+excavation
+0.30m below nominal
+free-earth d₀
+3.409m
+design d
+4.091m
+ODF at provided
+1.486
+Mmax / MEd
+52.5 / 52.5kNm @ 3.64 m
+Vmax / VEd
+69.0 / 69.0kN @ 5.32 m
+z₀ (net = 0)
+0.18m below exc.
+p at surface / exc. / toe
+6.1 / 21.0 / -79.0kPa
+lagging pEd
+21.0kPa
+BGT
+γG 1.00 · γQ 1.10 · γφ 1.00 · γc 1.00 · effects × 1.35
+excavation
+0.00m below nominal
+free-earth d₀
+2.451m
+design d
+2.941m
+ODF at provided
+2.787
+Mmax / MEd
+23.3 / 31.5kNm @ 2.89 m
+Vmax / VEd
+44.4 / 59.9kN @ 4.06 m
+z₀ (net = 0)
+0.12m below exc.
+p at surface / exc. / toe
+4.5 / 13.7 / -107.1kPa
+lagging pEd
+18.6kPa
+SLS
+γG 1.00 · γQ 1.00 · γφ 1.00 · γc 1.00
+excavation
+0.00m below nominal
+free-earth d₀
+2.399m
+design d
+2.879m
+ODF at provided
+2.882
+Mmax / MEd
+22.0 / 22.0kNm @ 2.86 m
+Vmax / VEd
+42.7 / 42.7kN @ 4.00 m
+z₀ (net = 0)
+0.11m below exc.
+p at surface / exc. / toe
+4.1 / 13.4 / -107.6kPa
+lagging pEd
+13.4kPa
+DA1-2
+DA1-1
+BGT
+SLS
+design strengths and coefficients of the selected branch
+copy branch table (TSV)
+RETAINED SIDE
+LAYER TOP FRAMEWORK Φ′K → Φ′D C′K → C′D CU,K → CU,D KA KAC = 2√KA ΔP KP (ANNEX C) KPC
+1.60 m drained 25.0 → 25.00° 0.0 → 0.00 0 → 0.0 0.4059 1.2741 0.0° 2.4639 3.1394
+0.65 m drained 27.0 → 27.00° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-2.35 m drained 20.0 → 20.00° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-3.35 m drained 20.0 → 20.00° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-4.05 m drained 20.0 → 20.00° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-6.35 m drained 22.0 → 22.00° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-7.05 m drained 22.0 → 22.00° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-8.25 m drained 22.0 → 22.00° 8.0 → 8.00 100 → 100.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-9.35 m drained 35.0 → 35.00° 0.0 → 0.00 0 → 0.0 0.2710 1.0411 0.0° 3.6902 3.8420
+-13.35 m drained 20.0 → 20.00° 4.0 → 4.00 50 → 50.0 0.4903 1.4004 0.0° 2.0396 2.8563
+EXCAVATION SIDE
+LAYER TOP FRAMEWORK Φ′K → Φ′D C′K → C′D CU,K → CU,D KA KAC = 2√KA ΔP KP (ANNEX C) KPC
+1.60 m drained 25.0 → 25.00° 0.0 → 0.00 0 → 0.0 0.4059 1.2741 0.0° 2.4639 3.1394
+0.65 m drained 27.0 → 27.00° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-2.35 m drained 20.0 → 20.00° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-3.35 m drained 20.0 → 20.00° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-4.05 m drained 20.0 → 20.00° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-6.35 m drained 22.0 → 22.00° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-7.05 m drained 22.0 → 22.00° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-8.25 m drained 22.0 → 22.00° 8.0 → 8.00 100 → 100.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-9.35 m drained 35.0 → 35.00° 0.0 → 0.00 0 → 0.0 0.2710 1.0411 0.0° 3.6902 3.8420
+-13.35 m drained 20.0 → 20.00° 4.0 → 4.00 50 → 50.0 0.4903 1.4004 0.0° 2.0396 2.8563
+DA1/1 (A1 + M1) — γ_G 1.35 on retained-side actions, passive favourable 1.00, design excavation. Design strengths: tan φ′d = tan φ′k/γφ, c′d = c′k/γc, cu,d = cu,k/γcu; coefficients recomputed from φ′d (never Kp/γ). All forces per pile (× spacing above the excavation; b / beff below).

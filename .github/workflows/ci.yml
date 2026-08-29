@@ -65,9 +65,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: pw-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx playwright install --with-deps chromium
-      # Browser-tier goldens (tests/e2e/golden-journey.spec.mjs, npm run golden:browser) are
-      # added by the browser task; until then the existing e2e spec is the gate.
+      # Browser-tier goldens: state + DOM text strict, PNG soft until a Linux baseline is recorded on the runner.
+      - run: npm run golden:browser
+        env:
+          GOLDEN_VISUAL: soft
       - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright
+          path: |
+            test-results
+            tests/golden/.actual
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

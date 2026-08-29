@@ -1,0 +1,325 @@
+## #retwallInputs
+Geometry
+Retained height H
+m
+Embedment d (provided)
+m
+Pile spacing s
+m
+Pile head above ground
+m
+Anchored / propped (one level)
+The embedment is measured below the design excavation (nominal level minus the over-excavation set in the Eurocode panel). The drawing shows both levels.
+Soldier pile & lagging
+HEA180 @ 1.00 m
+Profile
+HEA100 (16.7 kg/m)
+HEA120 (19.9 kg/m)
+HEA140 (24.7 kg/m)
+HEA160 (30.4 kg/m)
+HEA180 (35.5 kg/m)
+HEA200 (42.3 kg/m)
+HEA220 (50.5 kg/m)
+HEA240 (60.3 kg/m)
+HEA260 (68.2 kg/m)
+HEA280 (76.4 kg/m)
+HEA300 (88.3 kg/m)
+HEA320 (97.6 kg/m)
+HEA340 (104.8 kg/m)
+HEA360 (112.1 kg/m)
+HEA400 (124.8 kg/m)
+HEA450 (139.8 kg/m)
+HEA500 (155.1 kg/m)
+HEA550 (166.2 kg/m)
+HEA600 (177.8 kg/m)
+HEA650 (189.7 kg/m)
+HEA700 (204.5 kg/m)
+HEA800 (224.4 kg/m)
+HEA900 (251.6 kg/m)
+HEA1000 (272.3 kg/m)
+HEB100 (20.4 kg/m)
+HEB120 (26.7 kg/m)
+HEB140 (33.7 kg/m)
+HEB160 (42.6 kg/m)
+HEB180 (51.2 kg/m)
+HEB200 (61.3 kg/m)
+HEB220 (71.5 kg/m)
+HEB240 (83.2 kg/m)
+HEB260 (93 kg/m)
+HEB280 (103.1 kg/m)
+HEB300 (117 kg/m)
+HEB320 (126.7 kg/m)
+HEB340 (134.2 kg/m)
+HEB360 (141.8 kg/m)
+HEB400 (155.3 kg/m)
+HEB450 (171.1 kg/m)
+HEB500 (187.3 kg/m)
+HEB550 (199.4 kg/m)
+HEB600 (211.9 kg/m)
+HEB650 (224.8 kg/m)
+HEB700 (240.5 kg/m)
+HEB800 (262.3 kg/m)
+HEB900 (291.5 kg/m)
+HEB1000 (314 kg/m)
+HEM100 (41.8 kg/m)
+HEM120 (52.1 kg/m)
+HEM140 (63.2 kg/m)
+HEM160 (76.2 kg/m)
+HEM180 (88.9 kg/m)
+HEM200 (103.1 kg/m)
+HEM220 (117.3 kg/m)
+HEM240 (156.7 kg/m)
+HEM260 (172.4 kg/m)
+HEM280 (188.5 kg/m)
+HEM300 (237.9 kg/m)
+HEM320 (245 kg/m)
+HEM340 (247.9 kg/m)
+HEM360 (250.3 kg/m)
+HEM400 (255.7 kg/m)
+HEM450 (263.3 kg/m)
+HEM500 (270.3 kg/m)
+HEM550 (278.2 kg/m)
+HEM600 (285.5 kg/m)
+HEM650 (293.4 kg/m)
+HEM700 (300.7 kg/m)
+HEM800 (317.3 kg/m)
+HEM900 (332.5 kg/m)
+HEM1000 (348.7 kg/m)
+IPE80 (6 kg/m)
+IPE100 (8.1 kg/m)
+IPE120 (10.4 kg/m)
+IPE140 (12.9 kg/m)
+IPE160 (15.8 kg/m)
+IPE180 (18.8 kg/m)
+IPE200 (22.4 kg/m)
+IPE220 (26.2 kg/m)
+IPE240 (30.7 kg/m)
+IPE270 (36.1 kg/m)
+IPE300 (42.2 kg/m)
+IPE330 (49.1 kg/m)
+IPE360 (57.1 kg/m)
+IPE400 (66.3 kg/m)
+IPE450 (77.6 kg/m)
+IPE500 (90.7 kg/m)
+IPE550 (105.5 kg/m)
+IPE600 (122.4 kg/m)
+Steel grade
+S235
+S275
+S355
+h × b
+171 × 180mm
+A
+45.25cm²
+Iy
+2510cm⁴
+Wel,y / Wpl,y
+293.6 / 324.9cm³
+Av,z
+14.47cm²
+mass
+35.5kg/m
+class (S235)
+1
+LAGGING (BESCHOT)
+Plate thickness
+m
+Lagging grade
+S235
+S275
+S355
+Span for the plate check
+c/c spacing (conservative)
+clear s − b
+Lagging watertight (apply water pressure above the excavation)
+RESISTANCE MODEL BELOW THE EXCAVATION (HAND CALCULATION)
+Model
+Effective width
+Brinch Hansen
+Effective width factor k (beff = min(k·b, s))
+EAB / Belgian guideline §5: active on the flange width b, passive on beff = min(k·b, s) with the plane-strain Kp. k = 3 is the usual value; the Rekennota uses min(3b, s). The PLAXIS Tlat table always uses Brinch Hansen with B = b — the two models are never mixed.
+PLAXIS EMBEDDED-BEAM AXIAL INPUTS
+Tlat convention
+Andersen–Lodahl
+Equal-level
+K for Tskin
+K₀ = 1 − sin φ′ (pre-augered / lower bound)
+0.8
+1.0 (driven)
+δ/φ′ on the flanges
+Soil–soil shear on the plug faces (2h at φ′)
+αb for Fmax = αb·qc·Ab
+Plugged toe (A
+b
+= b·h)
+Soil profile (retained & excavation side)
+CPT profile
+Soil source
+CPT layer model (10 layers)
+Single material
+CPT ground level vs. reference
+m
+CPT ground level coincides with the reference surface. Enter a shift when the sounding was pushed from a different level than the wall datum.
+CHARACTERISTIC PARAMETERS — OVERRIDE WHERE NEEDED
+LAYER Γ ΓSAT Φ′ C′ CU FRAMEWORK
+Sand
+0.00–0.95 m · qc 2.2
+16.0
+18.0
+25.0
+0.0
+0
+auto (dr)
+drained
+undrained
+Sand
+0.95–3.95 m · qc 11.0
+16.0
+18.0
+27.0
+0.0
+0
+auto (dr)
+drained
+undrained
+Clay
+3.95–4.95 m · qc 0.9
+16.0
+16.0
+20.0
+2.0
+20
+auto (dr)
+drained
+undrained
+Sandy clay
+4.95–5.65 m · qc 0.9
+16.0
+16.0
+20.0
+2.0
+20
+auto (dr)
+drained
+undrained
+Clay
+5.65–7.95 m · qc 0.9
+16.0
+16.0
+20.0
+2.0
+20
+auto (dr)
+drained
+undrained
+Silty sand
+7.95–8.65 m · qc 2.3
+19.0
+19.0
+22.0
+4.0
+50
+auto (dr)
+drained
+undrained
+Silty sand
+8.65–9.85 m · qc 2.4
+19.0
+19.0
+22.0
+4.0
+50
+auto (dr)
+drained
+undrained
+Sandy clay
+9.85–10.95 m · qc 2.2
+18.0
+18.0
+22.0
+8.0
+100
+auto (dr)
+drained
+undrained
+Sand
+10.95–14.95 m · qc 16.9
+18.0
+20.0
+35.0
+0.0
+0
+auto (dr)
+drained
+undrained
+Clay
+14.95–18.00 m · qc 1.4
+17.0
+17.0
+20.0
+4.0
+50
+auto (dr)
+drained
+undrained
+c′ for all layers
+apply
+clear overrides
+Values in grey are the CPT-derived characteristic values (Stage 4). An orange field is an override; it is saved with the project and flagged in the calculation note. A deliberately low c′ (e.g. 0.5 kPa) is the usual conservative choice where the cohesion is uncertain — it raises the active pressure and lowers the passive resistance.
+Water & loads
+dry
+Eurocode 7 — Belgian workflow
+RK2
+Drivability
+vibratory · required
+Vibration impact
+SBR-A
+## #retwallSummary
+VERIFICATIONS PASS
+governing utilisation 0.96
+GOVERNING VALUES
+drequired / dprovided
+4.22 / 4.40m · DA1-2
+ODF at provided depth
+1.43Mres/Mdrive
+over-excavation Δa
+0.30m
+MEd
+52.5kNm/pile · DA1-1
+VEd
+69.0kN/pile · DA1-1
+Steel HEA180
+0.69UC bending · plastic
+Lagging plate
+0.67UC · L = 1.00 m
+LIMIT STATES
+Embedment / rotational stability (soldier pile, Blum)
+0.96
+PASS
+Bending, plastic (class 1)
+0.69
+PASS
+Shear
+0.35
+PASS
+M–V interaction
+0.70
+PASS
+Lagging plate
+0.67
+PASS
+Vertical equilibrium (pile)
+0.17
+PASS
+ENGINE NOTES
+Hand calculation below the excavation: active on the flange width b, passive on b_eff = min(k*b, s) with the plane-strain K_p (EAB / Belgian guideline §5). The PLAXIS T_lat tables use Brinch Hansen with B = b; the two models are never mixed.
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+## #retwallResultTabs
+Verifications
+Design branches
+Diagrams
+Structural
+PLAXIS 2D
+Drivability
+Vibration
+Calculation note

@@ -1,0 +1,44 @@
+## #retwallResultBody
+LIMIT STATE (GOVERNING BRANCH · REFERENCE) ED / RD UTIL.
+Embedment / rotational stability (anchored, free-earth)
+DA1/2 (A2 + M2) — embedment, design excavation · d_provided >= d_required · EN 1997-1 §9.7
+ODF_at_provided 2.26 - · d_provided 4.40 m · d_required 1.06 m …
+1.06 / 4.40 m
+ODF 2.26 · d ratio 0.24
+PASS
+Hydraulic heave / piping (HYD)
+HYD hydraulic heave/piping · u_dst <= sigma'_stb · EN 1997-1 §10.3
+delta_h 0.00 m · embedment 4.40 m · i_exit 0.00 - …
+0.00 / 24.51 kPa
+0.00
+PASS
+Ground-anchor pull-out (EN 1537, per anchor)
+STR envelope (R4 anchor resistance) · T_d <= R_a,d · EN 1537 / EC7 Table A.12
+T_axial 48.88 kN · R_ak 282.74 kN · R_ad 257.04 kN …
+48.88 / 257.04 kN
+0.19
+PASS
+Wall vertical equilibrium (anchor down-drag)
+screening — confirm against the section · V_anchor <= R_v,shaft
+V_anchor 8.36 kN/m · R_v_shaft 50.29 kN/m …
+8.36 / 50.29 kN/m
+0.17
+PASS
+Bending, elastic (class 2) — AZ 26-700
+STR · DA1-2 · E_d <= R_d · EN 1993-5 §5.2.2
+5.12 / 923.00 kNm/m
+0.01
+PASS
+Shear (webs, inclination neglected) — AZ 26-700
+STR · DA1-2 · E_d <= R_d · EN 1993-5 §5.2.2(4)
+15.04 / 1599.61 kN/m
+0.01
+PASS
+M–V interaction — AZ 26-700
+STR · DA1-2 · E_d <= R_d · EN 1993-5 §5.2.2(9)
+V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.
+15.04 / 799.80 kN/m
+0.02
+PASS
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+Method & assumptions: documentation.

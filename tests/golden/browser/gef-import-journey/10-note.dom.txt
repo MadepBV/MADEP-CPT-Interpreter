@@ -1,0 +1,317 @@
+## .report-shell
+CPT APP
+PRINT / SAVE AS PDF
+GEOTECHNICAL ENGINEERING
+PROJECT
+CPT Project
+SONDERING
+S1
+DATUM
+<datetime>
+VERSIE APP
+0.5.3
+GEOTECHNISCHE REKENNOTA · NBN EN 1997-1 + ANB:2022 · RICHTLIJNEN BESCHOEIINGEN (2022)
+Verificatie soldier pile
+Automatisch gegenereerde rekennota uit de MADEP CPT Interpreter op basis van het geïnterpreteerde sondeerprofiel. Alle tussenwaarden zijn opgenomen zodat de berekening met de hand kan worden nagerekend. De met «te bevestigen» aangeduide uitgangspunten dienen tegen het uitvoeringsplan te worden getoetst.
+ALLE TOETSINGEN VOLDOEN
+maatgevende benuttingsgraad 0.958
+1. Referenties
+Normen, richtlijnen en rekenmethoden die in deze nota worden toegepast.
+NBN EN 1997-1:2005 + A1:2014 en NBN EN 1997-1 ANB:2022 — Eurocode 7, geotechnisch ontwerp.
+BGGG/Buildwise (2022). Richtlijnen voor de toepassing van EC7 in België volgens NBN EN 1997-1 ANB — Het grondmechanische ontwerp van ingebedde kerende constructies: beschoeiingen (maart 2022).
+NBN EN 1993-1-1:2005 + ANB:2018; NBN EN 1993-5:2007 + ANB:2011 — staalconstructies, palen en damwanden.
+NBN EN 10365:2017 (H-profielen); ArcelorMittal Sheet Piling, General Catalogue 2024 (damwandprofielen).
+Blum, H. (1931). Einspannungsverhältnisse bei Bohlwerken. — Brinch Hansen, J. (1961). The ultimate resistance of rigid piles against transversal forces, DGI Bulletin 12. — Andersen, F. & Lodahl, M.R. (2023). Modelling of soldier pile walls in Plaxis 2D, NUMGE 2023 (doi 10.53243/NUMGE2023-25).
+Bentley Systems (2024). PLAXIS 2D Reference Manual V24.
+Van Rompaey, Legrand & Holeyman (1995); Holeyman (2002); Holeyman & Whenham (2017) — trilvoorspelling (Hypervib1). Smith, E.A.L. (1960) — golfvergelijking; FHWA GEC-12 (2016) — parameters.
+Hiller & Crabb (2000), TRL Report 429; BS 5228-2:2009+A1:2014; SBR Trillingsrichtlijn A (2017); DIN 4150-3:2016; BS 7385-2:1993.
+2. Uitgangspunten
+Geometrie, grondwater, grondlagen en materialen.
+2.1 Geometrie
+GROOTHEID SYMBOOL WAARDE OPMERKING
+Nominale kerende hoogte H_nom 1.600 m te bevestigen
+Overdiepte (UGT) Δa 0.30 m Richtlijnen Beschoeiingen (2022) §3.3: +0,30 m in den droge; min(0,1·h; 0,5 m) onder water
+Rekenkundige kerende hoogte (UGT) H_d 1.900 m = H_nom + Δa
+Inbedding onder rekenkundig uitgraafniveau D_d 4.400 m voorzien
+Vereiste inbedding D_req 4.216 m DA1-2 · incl. 20 % Blum
+Profiellengte L 6.300 m = H_d + D_d
+Profiel — HEA180 – S235 NBN EN 10365
+Tussenafstand (h.o.h.) s 1.00 m
+Beschot t staalplaat 10 mm – S235 overspanning h.o.h. (conservatief)
+Weerstandsmodel onder uitgraafniveau (handberekening) — werkzame breedte b_eff = min(3.0·b; s) Richtlijnen 2022 §5
+Veranderlijke bovenbelasting q_k 10.0 kPa
+2.2 Grondwater
+Geen waterdruk in rekening gebracht: de grondwaterstand blijft onder het teenpeil gedurende de volledige openstaande periode. Dit uitgangspunt is bindend (uitvoeringsvoorwaarde).
+2.3 Grondlagen en karakteristieke parameters
+The CPT ends 18.0 m below the surface; the deepest layer (Clay) is extended downward beyond the sounding.
+LAAG TOP [M] Γ [KN/M³] Γ_SAT Φ′_K [°] C′_K [KPA] C_U,K [KPA] KADER Q_C [MPA] OVERRIDES
+Sand 1.60 16.0 18.0 25.0 0.0 0 gedraineerd 2.2
+Sand 0.65 16.0 18.0 27.0 0.0 0 gedraineerd 11.0
+Clay -2.35 16.0 16.0 20.0 2.0 20 gedraineerd 0.9
+Sandy clay -3.35 16.0 16.0 20.0 2.0 20 gedraineerd 0.9
+Clay -4.05 16.0 16.0 20.0 2.0 20 gedraineerd 0.9
+Silty sand -6.35 19.0 19.0 22.0 4.0 50 gedraineerd 2.3
+Silty sand -7.05 19.0 19.0 22.0 4.0 50 gedraineerd 2.4
+Sandy clay -8.25 18.0 18.0 22.0 8.0 100 gedraineerd 2.2
+Sand -9.35 18.0 20.0 35.0 0.0 0 gedraineerd 16.9
+Clay -13.35 17.0 17.0 20.0 4.0 50 gedraineerd 1.4
+Karakteristieke waarden afgeleid uit de sondering (Stage 4 van de MADEP CPT Interpreter). Aangepaste waarden ("overrides") zijn bewuste ontwerpkeuzes van de ontwerper — met name een lage c′ is conservatief (hogere actieve druk, lagere passieve weerstand). Peilen in het wandassenstelsel: kerend maaiveld = +1.600 m, nominaal uitgraafniveau = 0.
+2.4 Wandwrijving en gronddrukcoëfficiënten
+Actieve zijde: Rankine op de verticale wand (δ = 0). Passieve zijde: NBN EN 1997-1 Bijlage C (gekromd glijvlak) met δ_p/φ′ = 0.00, toegepast op φ′_d per laag. Belgische bovengrens: berlijnse wand φ′_k/3 (recht) en φ′_k/2 (gekromd) (Richtlijnen 2022, Tabel 4). Trekscheur watergevuld verondersteld (NBN EN 1997-1 §9.6(5)P).
+3. Veiligheidsniveau en partiële factoren
+Richtlijnen Beschoeiingen (2022) — RK2.
+TAK Γ_G Γ_G,PASS. Γ_Q Γ_Φ Γ_C Γ_CU × EFFECTEN UITGRAAFNIVEAU DOEL
+DA1-2 1.00 1.00 1.10 1.25 1.25 1.40 1.00 0.30 m onder nominaal inbedding (GEO)
+DA1-1 1.35 1.00 1.50 1.00 1.00 1.00 1.00 0.30 m onder nominaal snedekrachten (STR)
+BGT 1.00 1.00 1.10 1.00 1.00 1.00 1.35 0.00 m onder nominaal snedekrachten (STR)
+SLS 1.00 1.00 1.00 1.00 1.00 1.00 1.00 0.00 m onder nominaal referentie BGT
+De inbedding wordt getoetst in DA1/2 met het rekenkundig uitgraafniveau (Richtlijnen 2022 §3.3–3.5). De snedekrachten zijn de omhullende van DA1/2, DA1/1 (γ_G = 1,35 op de kerende zijde, 1,00 op de gunstige passieve weerstand) en 1,35 × (BGT + α_ver = 1.10). K_FI wordt niet bovenop de risicoklasse toegepast.
+4. Modellering in PLAXIS 2D
+Plaatelement boven het rekenkundig uitgraafniveau, embedded beam row eronder (Andersen & Lodahl 2023).
+4.1 Plaatelement boven het uitgraafniveau
+PARAMETER WAARDE EENHEID / OPMERKING
+Element type Plate, elastic
+EA₁ = EA₂ 9.503e+5 kN/m
+EI 5271.0 kNm²/m
+d_eq (computed by PLAXIS) 0.2580 m
+w 1.1402 kN/m/m
+ν 0.0000 —
+Interfaces both sides R_inter per layer
+Rayleigh damping 0.0000 % (static)
+Profile properties divided by the spacing s = 1.00 m; lagging stiffness omitted (EI of the plate 17.5 kNm²/m ≪ profile, and no composite action). The lagging self-weight IS included in w (stiffness and weight are independent). ν = 0 for a wall of discrete elements (PLAXIS reference manual).
+4.2 Embedded beam row onder het uitgraafniveau
+PARAMETER WAARDE EENHEID / OPMERKING
+L_spacing 1.0000 m
+Cross section type User-defined
+A 0.0045 m²
+I 0.0000 m⁴
+E 2.100e+8 kN/m²
+γ (net, γ_steel − γ_soil) 62.5000 kN/m³
+D_eq = √(12·I/A) (computed by PLAXIS) 0.2580 m
+ISF_RS = ISF_RN (default) 0.9050 —
+ISF_KF (default) 9.0501 —
+Actual properties of ONE pile — never divided by the spacing (PLAXIS smears the row itself). Net unit weight because the embedded beam row does not remove soil volume. The ISF values must coincide with the PLAXIS defaults; a mismatch means A, I or L_spacing were mistyped. Continuity check at the transition: EI per metre = 5271 kNm²/m for both the plate and the row.
+4.3 Axiale schachtweerstand T_skin (Linear)
+PARAMETER WAARDE OPMERKING
+K 0.6580 K₀ = 1 − sin φ′_k (no installation increase)
+δ 13.3400 ° steel–soil
+O_steel 0.3600 m (both flange faces)
+O_plug 0.3420 m (soil–soil between the flanges)
+T_skin / σ′_v 0.1381 m
+T_skin,start,max 1.0000 kN/m (numerical floor at z′ = 0)
+T_skin,end,max 9.7203 kN/m at z′ = 4.400 m
+β-method with K = K₀ as the lower bound of the allowed installation methods (pre-augering with backfill); a lower T_skin is conservative for the φ-c reduction and the vertical check. Linear profile with the unit weight and φ′ of the stratum at the toe (uniform below the excavation) — for a strongly layered embedment enter a multilinear T_skin from the per-layer values.
+4.4 Voetweerstand F_max
+PARAMETER WAARDE OPMERKING
+A_b 0.031 m² (b·h, plug assumed)
+q_b = α_b·q_c 467.000 kPa (α_b = 0.5)
+F_max 14.374 kN
+F_max unplugged (q_c·A_steel) 4.226 kN
+The least substantiated parameter of the set; a toe force approaching F_max in the results requires a separate pile calculation (NBN EN 1997-1 ANB).
+4.5 Laterale weerstand T_lat volgens Brinch Hansen (Multi-linear, per profiel, B = b = 180 mm)
+AFSTAND [M] Σ′_V,F [KPA] ΔQ [KPA] K_Q K_C GELIJK NIVEAU [KN/M] ANDERSEN–LODAHL [KN/M] S·P_NET [KN/M] T_LAT KARAKT. [KN/M] T_LAT ONTWERP Γ_Φ 1.25 [KN/M]
+0.000 0.00 40.40 0.000 0.000 0.00 0.00 0.00 0.00 0.00
+0.250 4.00 40.40 5.106 16.624 3.68 1.41 0.00 0.00 0.00
+0.500 8.00 40.40 6.064 22.610 8.73 6.46 6.88 6.46 0.35
+0.750 12.00 40.40 6.799 26.474 14.69 12.42 16.03 12.42 7.05
+1.000 16.00 40.40 7.380 29.176 21.25 18.99 25.18 18.99 11.28
+1.250 20.00 40.40 7.851 31.171 28.26 26.00 34.33 26.00 15.74
+1.500 24.00 40.40 8.241 32.704 35.60 33.33 43.48 33.33 20.35
+1.750 28.00 40.40 8.568 33.920 43.18 40.92 52.63 40.92 25.08
+2.000 32.00 40.40 8.848 34.907 50.96 48.70 61.78 48.70 29.90
+2.050 32.80 40.40 8.899 35.082 52.54 50.27 63.61 50.27 30.87
+2.050 32.80 40.40 4.665 20.825 35.04 31.97 44.43 31.97 20.37
+2.250 36.00 40.40 4.738 21.096 38.30 35.23 49.38 35.23 22.59
+2.500 40.00 40.40 4.818 21.383 42.39 39.32 55.58 39.32 25.37
+2.750 44.00 40.40 4.888 21.625 46.50 43.43 61.78 43.43 28.17
+3.000 48.00 40.40 4.948 21.833 50.61 47.55 67.98 47.55 30.97
+3.050 48.80 40.40 4.960 21.871 51.44 48.37 69.21 48.37 31.54
+3.050 48.80 40.40 4.960 21.871 51.44 48.37 69.22 48.37 31.54
+3.250 52.00 40.40 5.002 22.012 54.74 51.68 74.17 51.68 33.79
+3.500 56.00 40.40 5.050 22.169 58.88 55.82 80.37 55.82 36.60
+3.750 60.00 40.40 5.093 22.308 63.03 59.96 86.57 59.96 39.42
+3.750 60.00 40.40 5.093 22.308 63.03 59.96 86.57 59.96 39.42
+3.750 60.00 40.40 5.093 22.308 63.03 59.97 86.57 59.97 39.42
+4.000 64.00 40.40 5.131 22.431 67.19 64.12 92.76 64.12 42.25
+4.250 68.00 40.40 5.166 22.541 71.35 68.28 98.96 68.28 45.08
+4.400 70.40 40.40 5.185 22.601 73.85 70.78 102.68 70.78 46.78
+Conventie ingevoerd in PLAXIS: Andersen–Lodahl (met de bijkomende actieve term −Δq·K_q^A van de hogere kerende zijde), begrensd door de weerstand van de doorgaande wand over de tussenafstand s·p_net. Coëfficiënten per laag: K_q(z/B) en K_c(z/B) volgens Brinch Hansen (1961); ontwerpset herberekend met φ′_d (T_lat,d ≠ T_lat,k/γ_φ). Waarden per profiel — niet delen door de tussenafstand.
+Laag top 1.60 m, φ = 25.000°: K_q^A = 0.3402, K_q⁰ = 3.2869, K_c⁰ = 5.6339, K₀ = 0.5774, d_c^∞ = 1.7734, N_c = 20.7205, K_q^∞ = 9.8932, K_c^∞ = 36.7454, a_q = 0.14395, a_c = 0.30545.
+Laag top 0.65 m, φ = 27.000°: K_q^A = 0.3118, K_q⁰ = 3.8038, K_c⁰ = 6.1147, K₀ = 0.5460, d_c^∞ = 1.8557, N_c = 23.9422, K_q^∞ = 12.3603, K_c^∞ = 44.4287, a_q = 0.12924, a_c = 0.27215.
+Laag top -2.35 m, φ = 20.000°: K_q^A = 0.4218, K_q⁰ = 2.2774, K_c⁰ = 4.6685, K₀ = 0.6580, d_c^∞ = 1.6518, N_c = 14.8347, K_q^∞ = 5.8683, K_c^∞ = 24.5036, a_q = 0.17424, a_c = 0.38560.
+Laag top -3.35 m, φ = 20.000°: K_q^A = 0.4218, K_q⁰ = 2.2774, K_c⁰ = 4.6685, K₀ = 0.6580, d_c^∞ = 1.6518, N_c = 14.8347, K_q^∞ = 5.8683, K_c^∞ = 24.5036, a_q = 0.17424, a_c = 0.38560.
+Laag top -4.05 m, φ = 20.000°: K_q^A = 0.4218, K_q⁰ = 2.2774, K_c⁰ = 4.6685, K₀ = 0.6580, d_c^∞ = 1.6518, N_c = 14.8347, K_q^∞ = 5.8683, K_c^∞ = 24.5036, a_q = 0.17424, a_c = 0.38560.
+Laag top -6.35 m, φ = 22.000°: K_q^A = 0.3872, K_q⁰ = 2.6410, K_c⁰ = 5.0198, K₀ = 0.6254, d_c^∞ = 1.6890, N_c = 16.8829, K_q^∞ = 7.2050, K_c^∞ = 28.5149, a_q = 0.16352, a_c = 0.35425.
+Laag top -7.05 m, φ = 22.000°: K_q^A = 0.3872, K_q⁰ = 2.6410, K_c⁰ = 5.0198, K₀ = 0.6254, d_c^∞ = 1.6890, N_c = 16.8829, K_q^∞ = 7.2050, K_c^∞ = 28.5149, a_q = 0.16352, a_c = 0.35425.
+Laag top -8.25 m, φ = 22.000°: K_q^A = 0.3872, K_q⁰ = 2.6410, K_c⁰ = 5.0198, K₀ = 0.6254, d_c^∞ = 1.6890, N_c = 16.8829, K_q^∞ = 7.2050, K_c^∞ = 28.5149, a_q = 0.16352, a_c = 0.35425.
+Laag top -9.35 m, φ = 35.000°: K_q^A = 0.2177, K_q⁰ = 7.0320, K_c⁰ = 8.9256, K₀ = 0.4264, d_c^∞ = 2.5632, N_c = 46.1236, K_q^∞ = 35.2996, K_c^∞ = 118.2228, a_q = 0.06860, a_c = 0.14487.
+Laag top -13.35 m, φ = 20.000°: K_q^A = 0.4218, K_q⁰ = 2.2774, K_c⁰ = 4.6685, K₀ = 0.6580, d_c^∞ = 1.6518, N_c = 14.8347, K_q^∞ = 5.8683, K_c^∞ = 24.5036, a_q = 0.17424, a_c = 0.38560.
+4.6 Interfaces
+LAAG Φ′_K [°] Δ [°] R_INTER
+— 25.0 0.0 0.010
+— 27.0 0.0 0.010
+— 20.0 0.0 0.010
+— 20.0 0.0 0.010
+— 20.0 0.0 0.010
+— 22.0 0.0 0.010
+— 22.0 0.0 0.010
+— 22.0 0.0 0.010
+— 35.0 0.0 0.010
+— 20.0 0.0 0.010
+Rekenschema (Richtlijnen 2022 §3.5): alle fasen met BGT-factoren en α_ver = 1,1 op veranderlijke belastingen; snedekrachten × 1,35 voor UGT; phi-c reductie op de maatgevende fase met SF ≥ 1,25 (RK2). Resultaten van het PLAXIS-model: «PLAXIS — in te vullen».
+5. Handberekening: grensevenwicht per ontwerptak
+Blum: momentenevenwicht om het theoretisch draaipunt t₀; D_req = 1,2·t₀ (de toeslag van 20 % maakt deel uit van de methode).
+DA1-2 — DA1/2 (A2 + M2) — embedment, design excavation
+LAAG (TOP) KADER Φ′_K → Φ′_D C′_K → C′_D C_U,K → C_U,D K_A K_AC Δ_P K_P K_PC
+1.60 m gedr. 25.0 → 20.458° 0.0 → 0.00 0 → 0.0 0.4820 1.3885 0.0° 2.0746 2.8807
+0.65 m gedr. 27.0 → 22.177° 0.0 → 0.00 0 → 0.0 0.4519 1.3445 0.0° 2.2127 2.9750
+-2.35 m gedr. 20.0 → 16.234° 2.0 → 1.60 20 → 14.3 0.5630 1.5007 0.0° 1.7761 2.6654
+-3.35 m gedr. 20.0 → 16.234° 2.0 → 1.60 20 → 14.3 0.5630 1.5007 0.0° 1.7761 2.6654
+-4.05 m gedr. 20.0 → 16.234° 2.0 → 1.60 20 → 14.3 0.5630 1.5007 0.0° 1.7761 2.6654
+-6.35 m gedr. 22.0 → 17.912° 4.0 → 3.20 50 → 35.7 0.5296 1.4554 0.0° 1.8883 2.7483
+-7.05 m gedr. 22.0 → 17.912° 4.0 → 3.20 50 → 35.7 0.5296 1.4554 0.0° 1.8883 2.7483
+-8.25 m gedr. 22.0 → 17.912° 8.0 → 6.40 100 → 71.4 0.5296 1.4554 0.0° 1.8883 2.7483
+-9.35 m gedr. 35.0 → 29.256° 0.0 → 0.00 0 → 0.0 0.3434 1.1721 0.0° 2.9117 3.4127
+-13.35 m gedr. 20.0 → 16.234° 4.0 → 3.20 50 → 35.7 0.5630 1.5007 0.0° 1.7761 2.6654
+Uitgraafniveau van deze tak 0.30 m onder nominaal Rekendruk maaiveld / uitgraafniveau / netto teen 5.30 / 18.71 / -68.76 kPa
+Vrije-inbeddingsdiepte t₀ (d₀) 3.514 m Ontwerpinbedding 1,2·t₀ 4.216 m
+ODF bij voorziene inbedding 4.400 m 1.428 Nulpunt netto druk onder uitgraafniveau 0.19 m
+M_max op 3.71 m onder maaiveld 47.42 kNm/profiel M_Ed (× 1.00) 47.42 kNm/profiel
+V_max op 5.42 m onder maaiveld 61.54 kN/profiel V_Ed (× 1.00) 61.54 kN/profiel
+Rekendruk op het beschot ter hoogte van het uitgraafniveau 18.71 kPa waarvan grond / bovenbelasting / water 13.74 / 4.97 / 0.00 kPa
+DA1-1 — DA1/1 (A1 + M1) — γ_G 1.35 on retained-side actions, passive favourable 1.00, design excavation
+LAAG (TOP) KADER Φ′_K → Φ′_D C′_K → C′_D C_U,K → C_U,D K_A K_AC Δ_P K_P K_PC
+1.60 m gedr. 25.0 → 25.000° 0.0 → 0.00 0 → 0.0 0.4059 1.2741 0.0° 2.4639 3.1394
+0.65 m gedr. 27.0 → 27.000° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-2.35 m gedr. 20.0 → 20.000° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-3.35 m gedr. 20.0 → 20.000° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-4.05 m gedr. 20.0 → 20.000° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-6.35 m gedr. 22.0 → 22.000° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-7.05 m gedr. 22.0 → 22.000° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-8.25 m gedr. 22.0 → 22.000° 8.0 → 8.00 100 → 100.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-9.35 m gedr. 35.0 → 35.000° 0.0 → 0.00 0 → 0.0 0.2710 1.0411 0.0° 3.6902 3.8420
+-13.35 m gedr. 20.0 → 20.000° 4.0 → 4.00 50 → 50.0 0.4903 1.4004 0.0° 2.0396 2.8563
+Uitgraafniveau van deze tak 0.30 m onder nominaal Rekendruk maaiveld / uitgraafniveau / netto teen 6.09 / 21.04 / -79.01 kPa
+Vrije-inbeddingsdiepte t₀ (d₀) 3.409 m Ontwerpinbedding 1,2·t₀ 4.091 m
+ODF bij voorziene inbedding 4.400 m 1.486 Nulpunt netto druk onder uitgraafniveau 0.18 m
+M_max op 3.64 m onder maaiveld 52.47 kNm/profiel M_Ed (× 1.00) 52.47 kNm/profiel
+V_max op 5.32 m onder maaiveld 69.01 kN/profiel V_Ed (× 1.00) 69.01 kN/profiel
+Rekendruk op het beschot ter hoogte van het uitgraafniveau 21.04 kPa waarvan grond / bovenbelasting / water 15.41 / 5.63 / 0.00 kPa
+BGT — BGT + α_ver — characteristic strength, nominal excavation (× 1.35 for STR)
+LAAG (TOP) KADER Φ′_K → Φ′_D C′_K → C′_D C_U,K → C_U,D K_A K_AC Δ_P K_P K_PC
+1.60 m gedr. 25.0 → 25.000° 0.0 → 0.00 0 → 0.0 0.4059 1.2741 0.0° 2.4639 3.1394
+0.65 m gedr. 27.0 → 27.000° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-2.35 m gedr. 20.0 → 20.000° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-3.35 m gedr. 20.0 → 20.000° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-4.05 m gedr. 20.0 → 20.000° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-6.35 m gedr. 22.0 → 22.000° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-7.05 m gedr. 22.0 → 22.000° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-8.25 m gedr. 22.0 → 22.000° 8.0 → 8.00 100 → 100.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-9.35 m gedr. 35.0 → 35.000° 0.0 → 0.00 0 → 0.0 0.2710 1.0411 0.0° 3.6902 3.8420
+-13.35 m gedr. 20.0 → 20.000° 4.0 → 4.00 50 → 50.0 0.4903 1.4004 0.0° 2.0396 2.8563
+Uitgraafniveau van deze tak 0.00 m onder nominaal Rekendruk maaiveld / uitgraafniveau / netto teen 4.46 / 13.74 / -107.08 kPa
+Vrije-inbeddingsdiepte t₀ (d₀) 2.451 m Ontwerpinbedding 1,2·t₀ 2.941 m
+ODF bij voorziene inbedding 4.700 m 2.787 Nulpunt netto druk onder uitgraafniveau 0.12 m
+M_max op 2.89 m onder maaiveld 23.33 kNm/profiel M_Ed (× 1.35) 31.49 kNm/profiel
+V_max op 4.06 m onder maaiveld 44.38 kN/profiel V_Ed (× 1.35) 59.92 kN/profiel
+Rekendruk op het beschot ter hoogte van het uitgraafniveau 18.55 kPa waarvan grond / bovenbelasting / water 9.61 / 4.13 / 0.00 kPa
+SLS — SLS — characteristic, nominal excavation
+LAAG (TOP) KADER Φ′_K → Φ′_D C′_K → C′_D C_U,K → C_U,D K_A K_AC Δ_P K_P K_PC
+1.60 m gedr. 25.0 → 25.000° 0.0 → 0.00 0 → 0.0 0.4059 1.2741 0.0° 2.4639 3.1394
+0.65 m gedr. 27.0 → 27.000° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-2.35 m gedr. 20.0 → 20.000° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-3.35 m gedr. 20.0 → 20.000° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-4.05 m gedr. 20.0 → 20.000° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-6.35 m gedr. 22.0 → 22.000° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-7.05 m gedr. 22.0 → 22.000° 4.0 → 4.00 50 → 50.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-8.25 m gedr. 22.0 → 22.000° 8.0 → 8.00 100 → 100.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-9.35 m gedr. 35.0 → 35.000° 0.0 → 0.00 0 → 0.0 0.2710 1.0411 0.0° 3.6902 3.8420
+-13.35 m gedr. 20.0 → 20.000° 4.0 → 4.00 50 → 50.0 0.4903 1.4004 0.0° 2.0396 2.8563
+Uitgraafniveau van deze tak 0.00 m onder nominaal Rekendruk maaiveld / uitgraafniveau / netto teen 4.06 / 13.37 / -107.57 kPa
+Vrije-inbeddingsdiepte t₀ (d₀) 2.399 m Ontwerpinbedding 1,2·t₀ 2.879 m
+ODF bij voorziene inbedding 4.700 m 2.882 Nulpunt netto druk onder uitgraafniveau 0.11 m
+M_max op 2.86 m onder maaiveld 21.96 kNm/profiel M_Ed (× 1.00) 21.96 kNm/profiel
+V_max op 4.00 m onder maaiveld 42.67 kN/profiel V_Ed (× 1.00) 42.67 kN/profiel
+Rekendruk op het beschot ter hoogte van het uitgraafniveau 13.37 kPa waarvan grond / bovenbelasting / water 9.61 / 3.76 / 0.00 kPa
+Alle krachten per profiel: boven het uitgraafniveau werkt de gronddruk via het beschot over de tussenafstand s; eronder actief over de flensbreedte b en passief over b_eff = min(k·b; s) met de vlakke-rek K_p. Netto drukken per tak gefactoriseerd: aandrijvend γ_G·(p_a + u) + γ_Q·p_q, weerstand γ_G,pass·(p_p + u).
+6. Toetsingen
+Grenstoestanden GEO, STR en de bijkomende controles.
+TOETSING TOETSINGSKADER REKENWAARDE EFFECT WEERSTAND UC BESLUIT
+Embedment / rotational stability (soldier pile, Blum) DA1/2 (A2 + M2) — embedment, design excavation 4.22 m 4.40 m 0.958 voldoet
+Bending, plastic (class 1) — HEA180 STR · EN 1993-1-1 §6.2.5 52.47 kNm 76.35 kNm 0.687 voldoet
+Shear — HEA180 STR · EN 1993-1-1 §6.2.6 69.01 kN 196.33 kN 0.351 voldoet
+M–V interaction — HEA180 STR · EN 1993-1-1 §6.2.8 69.01 kN 98.16 kN 0.703 voldoet
+Beschot 10 mm STR · DA1-1 2.631 kNm/m 3.917 kNm/m 0.672 voldoet
+Verticaal evenwicht profiel GEO · screening 3.69 kN 21.38 kN 0.172 voldoet
+Doorsnedecontrole HEA180 (S235, f_y = 235 N/mm², γ_M0 = 1,00)
+Doorsnedeklasse 1 (NBN EN 1993-1-1 Tabel 5.2: flens c/t = 7.58 ≤ 9.0, lijf c/t = 20.33 ≤ 72.0). M_pl,Rd = 76.35 kNm, M_el,Rd = 69.00 kNm, V_pl,Rd = 196.3 kN (A_v,z = 14.47 cm²), N_pl,Rd = 1063 kN.
+Beschot: p_Ed = 21.04 kPa (DA1-1), L = 1.000 m → M_Ed = p·L²/8 = 2.631 kNm/m; W_el = t²/6 = 16.67 cm³/m, σ = 157.8 N/mm²; UC elastisch 0.672 / plastisch 0.448; doorbuiging onder p_k ≈ 10.2 mm. Geen aanspraak op gewelfwerking.
+Verticaal evenwicht: G = 2.19 (profiel) + 1.49 (beschot) = 3.69 kN; R_s = ∫T_skin dz = 21.38 kN over 4.400 m; UC = 0.172. Voetweerstand niet benut.
+Heipredictie — trillen (Hypervib1-type krachtenvelop)
+Niet-normatief empirisch model; geen partiële factoren op de installatieweerstand (bovengrens van de weerstand).
+Element: HEA180 (one pile), teenoppervlak 45.3 cm², contactomtrek 0.70 m; doeldiepte 6.30 m onder het werkvlak; statisch referentieprofiel q_s = q_c, τ_s = f_s.
+F_c,min (m_R = 1,0) 106.7 kN op 6.30 m F_c,min (m_R = 1,25) 137.3 kN op 6.30 m
+Frequentie / dynamische massa 35.0 Hz / 5241 kg Excentrisch moment bij F_c,min(1,25) 2.84 kg·m
+Vrije amplitude s₀ / A_pp 0.54 / 1.08 mm Λ / δ_H / W_eff 6 / 0.00 / 51.4 kN
+Z [M] R_S [KN] R_B [KN] R_DRIVE [KN] Α F_C,MIN [KN] F_C,MIN,1.25 [KN]
+0.10 3.1 9.2 12.3 0.00 0.0 0.0
+0.40 11.5 7.8 19.4 0.00 0.0 0.0
+0.70 20.0 11.1 31.1 0.00 0.0 0.0
+1.00 25.7 46.0 71.8 0.40 20.3 33.6
+1.30 35.4 46.1 81.5 0.59 30.1 42.2
+1.60 53.1 29.5 82.6 0.61 31.2 43.6
+1.90 62.8 28.0 90.8 0.77 39.4 53.0
+2.20 68.6 33.9 102.4 0.99 51.0 66.7
+2.50 78.6 28.0 106.6 1.07 55.2 71.3
+2.80 83.4 33.3 116.7 1.27 65.3 83.1
+3.10 92.3 28.5 120.8 1.35 69.4 87.9
+3.40 97.5 26.2 123.7 1.41 72.3 91.3
+3.70 103.3 27.7 131.0 1.55 79.5 100.4
+4.00 117.1 2.2 119.3 1.32 67.9 86.0
+4.30 121.3 3.6 124.9 1.43 73.5 93.4
+4.60 125.6 3.1 128.7 1.50 77.3 98.4
+4.90 129.9 3.2 133.1 1.59 81.7 104.1
+5.20 134.9 3.3 138.1 1.69 86.7 110.8
+5.50 140.0 2.8 142.7 1.78 91.3 116.9
+5.80 145.0 2.8 147.8 1.88 96.4 123.6
+6.10 151.0 4.0 155.0 2.01 103.6 133.2
+6.30 154.5 3.6 158.1 2.08 106.7 137.3
+Reference method q_s = q_c, τ_s = f_s (course §7.2): illustrative screen, not a pile design method. δ_H = 0: optimistic free-acceleration baseline (course §8.1). Calibrate against measured amplitude (course §15.8). Force-envelope root: F_c,min(m_R=1) = 106.7 kN at 6.30 m; F_c,min(1.25) = 137.3 kN at 6.30 m. Non-normative empirical model (course §7.1): confirm by an instrumented trial; check amplitude, clamp, power, wave stress and vibration separately (course §7.10).
+Trillingen bij de belending
+Voorspelling TRL 429 / BS 5228-2 (trillen); toetsing SBR-A. Kaders worden niet gemengd.
+Afstand x = 10.0 m, dominante frequentie 35 Hz. Voorspelde PPV (maatgevend, 5 % exceedance, start-up/run-down): 16.78 mm/s. Grenswaarde SBR-A: 4.69 mm/s → benutting 3.580 (exceeds). SBR-A: categorie 2, V_kar = 11.25 mm/s, γ_s = 1.0, γ_v = 1.6, γ_t = 1.5 → V_top,allow = 4.69 mm/s.
+FASE K_V 60 (50 %) K_V 126 (33 %) K_V 266 (5 %)
+steady 2.39 5.02 10.59
+all 3.01 6.31 13.33
+startup 3.79 7.95 16.78
+Alarmniveaus: verwacht 2.39 mm/s · bovengrens voorspelling 16.78 mm/s · waarschuwing 3.52 mm/s · stop 4.69 mm/s · menselijke hinder (BS 5228-2) 1.00 mm/s.
+F [HZ] V_KAR [MM/S] TOELAATBAAR [MM/S] WAARSCHUWING [MM/S]
+0 5.00 2.08 1.56
+5 5.00 2.08 1.56
+10 5.00 2.08 1.56
+15 6.25 2.60 1.95
+20 7.50 3.12 2.34
+25 8.75 3.65 2.73
+30 10.00 4.17 3.12
+35 11.25 4.69 3.52
+40 12.50 5.21 3.91
+45 13.75 5.73 4.30
+50 15.00 6.25 4.69
+55 15.50 6.46 4.84
+60 16.00 6.67 5.00
+65 16.50 6.87 5.16
+70 17.00 7.08 5.31
+75 17.50 7.29 5.47
+80 18.00 7.50 5.62
+85 18.50 7.71 5.78
+90 19.00 7.92 5.94
+95 19.50 8.12 6.09
+100 20.00 8.33 6.25
+The predicted value is a resultant PPV at the ground surface; the framework limit refers to its own quantity/location (see detail.quantity). Do not mix frameworks.
+Besluit en aandachtspunten
+De soldier pile voldoet aan de beschouwde grenstoestanden onder de hierboven vermelde uitgangspunten; maatgevende benuttingsgraad 0.958.
+Hand calculation below the excavation: active on the flange width b, passive on b_eff = min(k*b, s) with the plane-strain K_p (EAB / Belgian guideline §5). The PLAXIS T_lat tables use Brinch Hansen with B = b; the two models are never mixed.
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+The CPT ends 18.0 m below the surface; the deepest layer (Clay) is extended downward beyond the sounding.
+Niet in deze nota: globale stabiliteit, hydraulische grondbreuk/piping bij een aanzienlijk drukverschil (stroomnet), verankeringsproeven (EN 1537), uitvoeringstoleranties (NBN EN 12063:2024 / NBN EN 12699:2015), corrosie op lange termijn tenzij ingevoerd, en vervormingen (BGT) — die volgen uit het PLAXIS-model.
+Deze nota is gegenereerd met de MADEP CPT Interpreter 0.5.3; de ontwerper blijft verantwoordelijk voor de uitgangspunten, de karakteristieke waarden en de uitvoeringsvoorwaarden.

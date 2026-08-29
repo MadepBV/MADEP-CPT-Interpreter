@@ -1,0 +1,124 @@
+## #cptTabs
+EMPTY
+CPT-1
+## .panel.active
+Applications
+Use the interpreted CPT profile for first engineering calculations. Stage 6 reuses the active CPT, current layer model, current water table, and accepted Stage 5 tuning.
+REFRESH
+STAGE 7 REPORT
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: CPT-1 · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = used where accepted
+Pile capacity (Belgian DM20 / De Beer)
+CPT-based axial pile resistance and SLS settlement for a single pile, with the De Beer scale-effect base resistance and the Belgian load-transfer settlement method.
+INPUTS
+Drag the pile toe and head on the section view to set ztoe and zhead, or type values here. Drag the shaft / base edges to change Ds / Db. Click any soil layer to snap the toe to its top, mid, or bottom.
+Pile type
+Driven / jacked
+Displacement screw (plastic-concrete shaft)
+Screw with lost / temporary casing
+CFA (continuous flight auger)
+Bored
+Cross-section
+Circular
+Square
+Rectangular
+Shaft diameter Ds (m)
+Base diameter Db (m)
+Pile axial cross-section Ap (m², blank = auto)
+Pile head depth zhead (m)
+Pile toe depth ztoe (m)
+ULS design load Fc,d (kN)
+SLS representative load Frep (kN)
+Allowable settlement sallow (mm)
+FACTOR CHAIN (ΓRD / Ξ / ΓB·ΓS)
+ATG / DM20 FACTOR OVERRIDES
+MECHANICAL CONE CORRECTION
+NEGATIVE SKIN FRICTION / DOWNDRAG
+SETTLEMENT PARAMETERS
+Pile + soil section view (drag to edit)
+0.0 m
+2.0 m
+4.0 m
+6.0 m
+8.0 m
+10 m
+12 m
+14 m
+16 m
+18 m
+20 m
+Sand · q_c=6.9 MPa
+Sandy clay · q_c=1.7 MPa
+Sandy clay · q_c=1.8 MPa
+Silty sand · q_c=6.0 MPa
+Sandy clay · q_c=2.5 MPa
+Silty sand · q_c=6.4 MPa
+Sandy clay · q_c=6.1 MPa
+Sandy clay · q_c=5.7 MPa
+Sandy clay · q_c=6.0 MPa
+Sandy clay · q_c=6.1 MPa
+WT 1.70 m
+Ds 400 mm
+L=10.00 m
+zhead 0.00 m
+ztoe 10.00 m
+DE BEER TRANSFORMATION CHAIN
+PER-LAYER SHAFT FRICTION QS
+LOAD–SETTLEMENT CURVE
+AXIAL FORCE N(Z)
+SUMMARY
+PILE LENGTH L 10.00 m
+DB,EQ 0.400 m
+AB 0.1257 m²
+ΧS 1.257 m
+LAYER AT TOE sandy_clay
+QB (DE BEER) 2399 kPa
+ΑB · EB · Β · Λ 1.00 · 1.000 · 1.000 · 1.00
+RB 302 kN
+RS 642 kN
+RC = RB + RS 943 kN
+ΓRD 1.00
+RC,CAL 943 kN
+Ξ3 / Ξ4 / MAX 1.32 / 1.23 / 1.32
+RC,K 715 kN
+ΓB / ΓS 1.00 / 1.00
+RC,D 715 kN
+EFFECTIVE ULS LOAD 500 kN
+ULS UTILISATION 0.700
+SHEAD (SLS) 1.65 mm
+ZB (BASE) 0.99 mm
+SALLOW 10.0 mm
+SLS UTILISATION 0.165
+PASS · ULS
+PASS · SLS
+PER-LAYER SHAFT RESISTANCE
+I TOP (M) BOT (M) CAT. QC,M (MPA) Η*P QS (KPA) ΑS H (M) STATUS RS (KN)
+1 0.00 0.58 sandy_clay 0.21 0.0000 0 1.00 0.58 excluded 0
+2 0.58 2.98 sand 6.81 0.0111 76 1.00 2.40 contributing 228
+3 2.98 4.72 sandy_clay 1.80 0.0125 23 1.00 1.74 contributing 49
+4 4.72 6.98 sandy_clay 1.81 0.0125 23 1.00 2.26 contributing 64
+5 6.98 7.76 sand 5.74 0.0111 64 1.00 0.78 contributing 62
+6 7.76 9.48 loam 6.06 cap 100 1.00 1.72 contributing 216
+7 9.48 10.00 sandy_clay 2.65 0.0125 33 1.00 0.52 contributing 22
+FACTOR CHAIN AUDIT
+RC = RB + RS 943 kN per-CPT calculated
+÷ ΓRD 1.00 DM20 default
+= RC,CAL 943 kN calibrated
+÷ MAX(Ξ3, Ξ4) 1.32 single-CPT governing branch (xi3)
+= RC,K 715 kN characteristic
+RB,K = 32% OF RC,K 228 kN
+RS,K = 68% OF RC,K 486 kN
+RC,D = RB,K/ΓB + RS,K/ΓS 715 kN γb=1.00, γs=1.00
+De Beer profile resampled from 1080 raw points to 108 bins of 0.20 m.
+De Beer Stage 1 (homogeneous values) implemented as q_h = q_c (identity); the diameter scale-effect is applied through the gradient limits in Stages 2 and 3. The full BGGG [4] homogeneous-conversion equations are not in the public source set.
+Layer 1 excluded from shaft friction (layer-mean q_c = 0.21 MPa < 1 MPa).
+q_b at toe is low (2399 kPa < 5 MPa) — verify the toe-level choice.
+← BACK TO TUNING
+EXPORT CSV
+PRINT STAGE 7

@@ -1,0 +1,218 @@
+## #retwallInputs
+Geometry
+Stem height
+m
+Stem thk (top)
+m
+Stem thk (base)
+m
+Base thickness
+m
+Toe length
+m
+Heel length
+m
+Backfill slope β
+°
+Front soil depth
+m
+Back batter
+°
+Backfill (retained fill)
+γ
+kN/m³
+γsat
+kN/m³
+φ′
+°
+c′
+kPa
+cu
+kPa
+Framework
+drained (φ′, c′)
+undrained (cu)
+Foundation / in-situ soil profile
+CPT profile
+Soil source
+CPT layer model (13 layers)
+Single material
+CPT ground level vs. reference
+m
+CPT ground level coincides with the reference surface. Enter a shift when the sounding was pushed from a different level than the wall datum.
+CHARACTERISTIC PARAMETERS — OVERRIDE WHERE NEEDED
+LAYER Γ ΓSAT Φ′ C′ CU FRAMEWORK
+Sandy clay
+0.00–0.58 m · qc 0.2
+16.0
+16.0
+20.0
+2.0
+20
+auto (dr)
+drained
+undrained
+Sand
+0.58–2.98 m · qc 6.9
+16.0
+18.0
+27.0
+0.0
+0
+auto (dr)
+drained
+undrained
+Sandy clay
+2.98–4.72 m · qc 1.7
+17.0
+17.0
+20.0
+4.0
+50
+auto (dr)
+drained
+undrained
+Sandy clay
+4.72–6.98 m · qc 1.8
+17.0
+17.0
+20.0
+4.0
+50
+auto (dr)
+drained
+undrained
+Sand
+6.98–7.76 m · qc 5.8
+17.0
+19.0
+27.0
+0.0
+0
+auto (dr)
+drained
+undrained
+Silty sand
+7.76–9.48 m · qc 6.0
+17.0
+19.0
+27.0
+0.0
+0
+auto (dr)
+drained
+undrained
+Sandy clay
+9.48–10.98 m · qc 2.5
+18.0
+18.0
+20.0
+8.0
+100
+auto (dr)
+drained
+undrained
+Silty sand
+10.98–12.32 m · qc 6.4
+20.0
+20.0
+22.0
+8.0
+100
+auto (dr)
+drained
+undrained
+Sandy clay
+12.32–15.44 m · qc 6.1
+19.0
+19.0
+22.0
+15.0
+200
+auto (dr)
+drained
+undrained
+Sandy clay
+15.44–16.80 m · qc 5.7
+19.0
+19.0
+22.0
+15.0
+200
+auto (dr)
+drained
+undrained
+Sandy clay
+16.80–19.54 m · qc 6.0
+19.0
+19.0
+22.0
+15.0
+200
+auto (dr)
+drained
+undrained
+Silty sand
+19.54–20.12 m · qc 6.4
+20.0
+20.0
+22.0
+8.0
+100
+auto (dr)
+drained
+undrained
+Sandy clay
+20.12–21.72 m · qc 6.1
+19.0
+19.0
+22.0
+15.0
+200
+auto (dr)
+drained
+undrained
+c′ for all layers
+apply
+clear overrides
+Values in grey are the CPT-derived characteristic values (Stage 4). An orange field is an override; it is saved with the project and flagged in the calculation note. A deliberately low c′ (e.g. 0.5 kPa) is the usual conservative choice where the cohesion is uncertain — it raises the active pressure and lowers the passive resistance.
+Water & loads
+dry
+Eurocode 7 settings
+## #retwallSummary
+VERIFICATIONS PASS
+governing utilisation 0.99
+GOVERNING VALUES
+Stem MEd / VEd
+30.3 / 31.2kNm, kN per m · C1
+Toe MEd
+7.7kNm/m · C1
+Heel MEd
+3.4kNm/m · C2
+Base width B
+2.50m
+LIMIT STATES
+Bearing resultant in middle third (SLS, e <= B/6)
+0.39
+PASS
+Uplift / flotation (UPL)
+0.00
+PASS
+Base sliding (GEO)
+0.67
+PASS
+Base bearing resistance (GEO, Annex D)
+0.99
+PASS
+Eccentricity (ULS, e <= B/3)
+0.30
+PASS
+Overturning about toe (EQU)
+0.36
+PASS
+ENGINE NOTES
+Both DA1 combinations evaluated; governing shown per check.
+## #retwallResultTabs
+Verifications
+Structural
+Calculation note

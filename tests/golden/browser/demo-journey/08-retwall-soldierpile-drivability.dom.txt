@@ -1,0 +1,2 @@
+## #retwallResultBody
+Open the “Drivability” panel, describe the machine (data sheet, catalogue or required-only) and press Run drivability. The resistance profile uses the CPT trace of the active sounding with the same datum shift as the design.

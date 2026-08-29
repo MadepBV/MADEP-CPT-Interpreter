@@ -1,0 +1,13 @@
+## #retwallResultBody
+PRINT-READY CALCULATION NOTE
+Generates a complete, navigable note in the structure of a Belgian "rekennota" for a temporary retaining wall: references, assumptions, geometry, CPT-derived characteristic parameters with every override flagged, risk class and partial factors, the hand calculation per design branch (design strengths, coefficients, pressures, embedment, section forces), the Eurocode verifications with utilisation, the EN 1993 steel checks, the full PLAXIS 2D input set (Plate / Embedded Beam Row, Tskin, Fmax, multilinear Tlat table), the drivability estimate and the vibration assessment. Every number can be copied into the project note.
+OPEN CALCULATION NOTE ↗
+opens in a new tab — print or save as PDF from there
+Current result: soldierpile, all engine verifications pass, M_Ed 50.2 kNm/pile.
+WHAT THE NOTE STATES EXPLICITLY
+Partial-factor scheme and every factor per branch (no hidden values).
+Over-excavation rule and the resulting design excavation.
+Soil parameters: CPT-derived characteristic values, overrides (c′!), stratigraphy shift.
+Wall-friction assumptions and the Belgian caps.
+Which resistance model was used below the excavation (effective width vs Brinch Hansen) and that PLAXIS Tlat always uses Brinch Hansen with B = b.
+The non-normative status of the drivability and vibration models.

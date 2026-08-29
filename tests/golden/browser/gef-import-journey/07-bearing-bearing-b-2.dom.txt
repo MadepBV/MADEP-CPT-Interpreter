@@ -1,0 +1,101 @@
+## #cptTabs
+DATA
+layered
+## .panel.active
+Applications
+Use the interpreted CPT profile for first engineering calculations. Stage 6 reuses the active CPT, current layer model, current water table, and accepted Stage 5 tuning.
+REFRESH
+STAGE 7 REPORT
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: layered · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = used where accepted
+Bearing capacity
+ULS-style resistance screening from the interpreted CPT profile.
+INPUTS
+Displayed curves
+Show both curves
+Drained only
+Undrained only
+Foundation type
+Strip
+Footing / pad
+Slab / raft
+Width B (m)
+Length L (m)
+Founding depth Df = 1.00 m
+OPTIONAL VERIFICATION AND SAFETY SETTINGS
+Design bearing capacity vs founding depth - drained - undrained - selected Df
+SELECTED DEPTH
+DF 1.00 m
+LAYER Sand
+SUBTYPE zand, los
+BELGIAN EC7 ENVELOPE drained DA1/2 / undrained DA1/1
+Σ'V 16.0 kPa
+APPLIED STRESS 0.72 · drained / 9.38 · undrained
+DRAINED
+GOVERNING COMBO DA1/2
+Q_ULT 209,5 kPa
+Q_D 209,5 kPa
+UTILISATION 0.72
+UNDRAINED
+GOVERNING COMBO DA1/1
+Q_ULT 16 kPa
+Q_D 16 kPa
+UTILISATION 9.38
+GOVERNING
+MODE Undrained
+Q_D 16 kPa
+BELGIAN EC7 DA1 PARAMETERS USED AT SELECTED DEPTH
+DRAINED COMBO DA1/2 Undrained combo DA1/1 γ_Rd 1.00
+Φ'K 27.0° γ_M,φ 1.25 φ'd 22.2°
+C'K 0.0 kPa γ_M,c' 1.25 c'd 0.0 kPa
+CU,K 0.0 kPa γ_M,cu 1.00 cu,d 0.0 kPa
+Γ' 10.92 kN/m³ Combo mode most onerous R set R1
+B / L 2.00 / 2.00 m eB / eL 0.00 / 0.00 m Shape route Brinch Hansen / Annex D
+B' / L' 2.00 / 2.00 m r 0.000 Nγ EC7 Annex D rough base
+DA1 overview: DA1/1: drained 379 kPa, undrained 16 kPa · DA1/2: drained 210 kPa, undrained 16 kPa
+DRAINED FORMULA AT SELECTED DEPTH
+q_ult,d = c'·N_c·s_c·d_c + q'·N_q·s_q·d_q + 0.5·γ'·B'·N_γ·s_γ·d_γ
+φ'k = 27.0° → φ'd = 22.2°
+c'k = 0.0 kPa → c'd = 0.0 kPa
+N_c = 17.082
+N_q = 7.963
+N_γ = 5.676 (EC7 Annex D rough base)
+q' = σ'v = 16.0 kPa
+γ' = 10.92 kN/m³
+Governing Belgian combo = DA1/2
+Shape factors = Brinch Hansen / Annex D
+B = 2.00 m, L = 2.00 m
+eB = 0.00 m, eL = 0.00 m
+B' = 2.00 m, L' = 2.00 m, r = 0.000
+Df/B' = η = 0.500, k = 0.500
+s_c = 1.00, s_q = 1.00, s_γ = 1.00
+d_c = 1.18, d_q = 1.16, d_γ = 1.00
+γ_Rd = 1.00
+q_d = q_ult,d / γ_Rd = 209,5 kPa
+UNDRAINED FORMULA AT SELECTED DEPTH
+q_ult,u = q + 5.14·c_u·s_cu·d_cu
+q = σv = 16.0 kPa
+cu,k = 0.0 kPa → cu,d = 0.0 kPa
+N_cu = 5.14
+Governing Belgian combo = DA1/1
+Shape factors = Brinch Hansen / Annex D
+B = 2.00 m, L = 2.00 m
+eB = 0.00 m, eL = 0.00 m
+B' = 2.00 m, L' = 2.00 m, r = 0.000
+Df/B' = η = 0.500, k = 0.500
+s_cu = 1.00, d_cu = 1.20
+γ_Rd = 1.00
+q_d = q_ult,u / γ_Rd = 16 kPa
+Bearing capacity is shown as a shallow-foundation screening curve using the interpreted layer active at each founding depth. Layered failure mechanisms and full eccentric-load verification are not modeled here.
+The current bearing check uses EC7 Annex D rough base for Nγ and Brinch Hansen / Annex D for shape factors. In Brinch Hansen / Annex D mode the shape factors follow the effective-dimension ratio r = B′/L′. It includes Df/B′ depth factors, but it still assumes level ground, horizontal base, and no horizontal load.
+Belgian bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.
+gamma_Rd is kept as an optional model factor only. Leave it at 1.0 unless you intentionally want an extra correction for simplified analytical model bias.
+← BACK TO TUNING
+EXPORT CSV
+PRINT STAGE 7

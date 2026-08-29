@@ -1,0 +1,118 @@
+## #retwallResultBody
+DA1-2 governs
+γG 1.00 · γQ 1.10 · γφ 1.25 · γc 1.25
+excavation
+0.30m below nominal
+free-earth d₀
+3.440m
+design d
+4.127m
+ODF at provided
+1.503
+Mmax / MEd
+45.7 / 45.7kNm @ 3.72 m
+Vmax / VEd
+63.7 / 63.7kN @ 5.36 m
+z₀ (net = 0)
+0.19m below exc.
+p at surface / exc. / toe
+6.2 / 18.7 / -79.4kPa
+lagging pEd
+18.7kPa
+DA1-1 governs
+γG 1.35 / 1.00 pass. · γQ 1.50 · γφ 1.00 · γc 1.00
+excavation
+0.30m below nominal
+free-earth d₀
+3.341m
+design d
+4.010m
+ODF at provided
+1.570
+Mmax / MEd
+50.2 / 50.2kNm @ 3.65 m
+Vmax / VEd
+71.3 / 71.3kN @ 5.26 m
+z₀ (net = 0)
+0.18m below exc.
+p at surface / exc. / toe
+7.4 / 21.0 / -93.1kPa
+lagging pEd
+21.0kPa
+BGT
+γG 1.00 · γQ 1.10 · γφ 1.00 · γc 1.00 · effects × 1.35
+excavation
+0.00m below nominal
+free-earth d₀
+2.443m
+design d
+2.931m
+ODF at provided
+2.902
+Mmax / MEd
+21.9 / 29.6kNm @ 2.87 m
+Vmax / VEd
+41.9 / 56.5kN @ 4.06 m
+z₀ (net = 0)
+0.12m below exc.
+p at surface / exc. / toe
+5.4 / 13.7 / -120.7kPa
+lagging pEd
+18.6kPa
+SLS
+γG 1.00 · γQ 1.00 · γφ 1.00 · γc 1.00
+excavation
+0.00m below nominal
+free-earth d₀
+2.381m
+design d
+2.858m
+ODF at provided
+3.011
+Mmax / MEd
+20.5 / 20.5kNm @ 2.83 m
+Vmax / VEd
+39.9 / 39.9kN @ 4.00 m
+z₀ (net = 0)
+0.11m below exc.
+p at surface / exc. / toe
+4.9 / 13.4 / -121.2kPa
+lagging pEd
+13.4kPa
+DA1-2
+DA1-1
+BGT
+SLS
+design strengths and coefficients of the selected branch
+copy branch table (TSV)
+RETAINED SIDE
+LAYER TOP FRAMEWORK Φ′K → Φ′D C′K → C′D CU,K → CU,D KA KAC = 2√KA ΔP KP (ANNEX C) KPC
+1.60 m drained 20.0 → 20.00° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+1.02 m drained 27.0 → 27.00° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-1.38 m drained 20.0 → 20.00° 4.0 → 4.00 50 → 50.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-3.12 m drained 20.0 → 20.00° 4.0 → 4.00 50 → 50.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-5.38 m drained 27.0 → 27.00° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-6.16 m drained 27.0 → 27.00° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-7.88 m drained 20.0 → 20.00° 8.0 → 8.00 100 → 100.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-9.38 m drained 22.0 → 22.00° 8.0 → 8.00 100 → 100.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-10.72 m drained 22.0 → 22.00° 15.0 → 15.00 200 → 200.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-13.84 m drained 22.0 → 22.00° 15.0 → 15.00 200 → 200.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-15.20 m drained 22.0 → 22.00° 15.0 → 15.00 200 → 200.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-17.94 m drained 22.0 → 22.00° 8.0 → 8.00 100 → 100.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-18.52 m drained 22.0 → 22.00° 15.0 → 15.00 200 → 200.0 0.4550 1.3490 0.0° 2.1980 2.9651
+EXCAVATION SIDE
+LAYER TOP FRAMEWORK Φ′K → Φ′D C′K → C′D CU,K → CU,D KA KAC = 2√KA ΔP KP (ANNEX C) KPC
+1.60 m drained 20.0 → 20.00° 2.0 → 2.00 20 → 20.0 0.4903 1.4004 0.0° 2.0396 2.8563
+1.02 m drained 27.0 → 27.00° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-1.38 m drained 20.0 → 20.00° 4.0 → 4.00 50 → 50.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-3.12 m drained 20.0 → 20.00° 4.0 → 4.00 50 → 50.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-5.38 m drained 27.0 → 27.00° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-6.16 m drained 27.0 → 27.00° 0.0 → 0.00 0 → 0.0 0.3755 1.2256 0.0° 2.6629 3.2637
+-7.88 m drained 20.0 → 20.00° 8.0 → 8.00 100 → 100.0 0.4903 1.4004 0.0° 2.0396 2.8563
+-9.38 m drained 22.0 → 22.00° 8.0 → 8.00 100 → 100.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-10.72 m drained 22.0 → 22.00° 15.0 → 15.00 200 → 200.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-13.84 m drained 22.0 → 22.00° 15.0 → 15.00 200 → 200.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-15.20 m drained 22.0 → 22.00° 15.0 → 15.00 200 → 200.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-17.94 m drained 22.0 → 22.00° 8.0 → 8.00 100 → 100.0 0.4550 1.3490 0.0° 2.1980 2.9651
+-18.52 m drained 22.0 → 22.00° 15.0 → 15.00 200 → 200.0 0.4550 1.3490 0.0° 2.1980 2.9651
+DA1/1 (A1 + M1) — γ_G 1.35 on retained-side actions, passive favourable 1.00, design excavation. Design strengths: tan φ′d = tan φ′k/γφ, c′d = c′k/γc, cu,d = cu,k/γcu; coefficients recomputed from φ′d (never Kp/γ). All forces per pile (× spacing above the excavation; b / beff below).

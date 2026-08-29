@@ -1,0 +1,40 @@
+## #retwallResultBody
+LIMIT STATE (GOVERNING COMBINATION) ED / RD UTIL.
+Bearing resultant in middle third (SLS, e <= B/6)
+Characteristic (SLS) · e <= B/6
+e 0.16 m · q_max 81.15 kPa · q_min 35.62 kPa
+0.16 / 0.42 m
+0.39
+PASS
+Uplift / flotation (UPL)
+UPL uplift/flotation · U_dst <= G_stb
+U_uplift 0.00 kN/m · G_favourable 147.39 kN/m …
+0.00 / 132.65 kN/m
+0.00
+PASS
+Base sliding (GEO)
+DA1 Combination 2 (A2+M2+R1) · H_d <= R_d + R_p,d
+H_drive 50.95 kN/m · V_resist 147.39 kN/m · uplift_U 0.00 kN/m …
+50.95 / 73.79 kN/m
+0.69
+PASS
+Base bearing resistance (GEO, Annex D)
+DA1 Combination 2 (A2+M2+R1) · V_d <= R_d
+q_Ed 73.84 kPa · q_Rd 74.55 kPa · e 0.25 m …
+147.39 / 148.81 kN/m
+0.99
+PASS
+Eccentricity (ULS, e <= B/3)
+DA1 Combination 2 (A2+M2+R1) · e <= B/3
+e 0.25 m · B/3 0.83 m
+0.25 / 0.83 m
+0.30
+PASS
+Overturning about toe (EQU)
+EQU static equilibrium · M_dst <= M_stb
+M_dst 66.49 kNm/m · M_stb 185.70 kNm/m …
+66.49 / 185.70 kNm/m
+0.36
+PASS
+Both DA1 combinations evaluated; governing shown per check.
+Method & assumptions: documentation.

@@ -1,0 +1,262 @@
+## #cptTabs
+DATA
+layered
+## .panel.active
+Tuning — m fitting
+Per-layer OLS regression of ln(E_oed,i) vs ln(σ'v0 stress ratio) to fit m and E_oed,ref from CPT data directly. Review each fit before accepting.
+RUN FITTING
+The fitted m replaces the type-default only when the engineer explicitly accepts it per layer. Fit quality is shown as R² — values below 0.5 indicate too much scatter or insufficient depth range; keep the default in that case. Stage 5 is bedoeld als engineer preview. Representatieve m-waarden horen bij voorkeur uit laboproeven te komen. Verwacht in het algemeen een m-waarde tussen 0 en 1; waarden daarbuiten vragen extra engineering judgement.
+Sand
+Laag 1 — 0.00–0.95 m
+zand (lh), los
+Laag te ondiep (<0.5m)
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=0.50 ─ preview m=0.50
+TYPE-DEFAULT
+M 0.50
+E_OED,REF 105.063,471 kPa
+ΑE BASIS vast per laag (13.00)
+AUTO-FIT
+M -0.033
+E_OED,REF 26.040 kPa
+R² 0.019
+N 19 punten
+Σ' BEREIK ×15.2
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+PREVIEW M 0.500
+PREVIEW E_OED,REF 112.534 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+Sand
+Laag 2 — 0.95–3.95 m
+zand, los
+Lage R²=0.036 — heterogene laag?
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=0.50 ─ preview m=0.16
+TYPE-DEFAULT
+M 0.50
+E_OED,REF 247.446,594 kPa
+ΑE BASIS vast per laag (13.00)
+AUTO-FIT
+M 0.156
+E_OED,REF 165.173 kPa
+R² 0.036
+N 61 punten
+Σ' BEREIK ×3
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+0.90
+Preview volgt de auto-fit
+PREVIEW M 0.156
+PREVIEW E_OED,REF 165.173 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+Clay
+Laag 3 — 3.95–4.95 m
+klei, weinig vast
+Spanningsbereik te klein (factor 1.2)
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=1.00 ─ preview m=1.00
+TYPE-DEFAULT
+M 1.00
+E_OED,REF 9.240,83 kPa
+ΑE BASIS vast per laag (5.00)
+AUTO-FIT
+M -6.232
+E_OED,REF 44 kPa
+R² 0.207
+N 21 punten
+Σ' BEREIK ×1.15
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+PREVIEW M 1.000
+PREVIEW E_OED,REF 10.196 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+Sandy clay
+Laag 4 — 4.95–5.65 m
+klei, weinig vast
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=1.00 ─ preview m=2.33
+TYPE-DEFAULT
+M 1.00
+E_OED,REF 14.183,949 kPa
+ΑE BASIS vast per laag (8.00)
+AUTO-FIT
+M 2.331
+E_OED,REF 32.875 kPa
+R² 0.072
+N 15 punten
+Σ' BEREIK ×1.09
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+2.00
+Preview volgt de auto-fit
+PREVIEW M 2.331
+PREVIEW E_OED,REF 32.875 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+Clay
+Laag 5 — 5.65–7.95 m
+klei, weinig vast
+Spanningsbereik te klein (factor 1.3)
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=1.00 ─ preview m=1.00
+TYPE-DEFAULT
+M 1.00
+E_OED,REF 7.666,217 kPa
+ΑE BASIS vast per laag (5.00)
+AUTO-FIT
+M -0.395
+E_OED,REF 3.774 kPa
+R² 0.016
+N 47 punten
+Σ' BEREIK ×1.28
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+PREVIEW M 1.000
+PREVIEW E_OED,REF 7.559 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+Silty sand
+Laag 6 — 7.95–8.65 m
+leem, vrij vast
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=0.50 ─ preview m=6.52
+TYPE-DEFAULT
+M 0.50
+E_OED,REF 24.022,839 kPa
+ΑE BASIS vast per laag (10.00)
+AUTO-FIT
+M 6.521
+E_OED,REF 32.509 kPa
+R² 0.128
+N 15 punten
+Σ' BEREIK ×1.07
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+2.00
+Preview volgt de auto-fit
+PREVIEW M 6.521
+PREVIEW E_OED,REF 32.509 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+Silty sand
+Laag 7 — 8.65–9.85 m
+leem, vrij vast
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=0.50 ─ preview m=1.87
+TYPE-DEFAULT
+M 0.50
+E_OED,REF 23.490,658 kPa
+ΑE BASIS vast per laag (10.00)
+AUTO-FIT
+M 1.868
+E_OED,REF 22.889 kPa
+R² 0.116
+N 25 punten
+Σ' BEREIK ×1.11
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+2.00
+Preview volgt de auto-fit
+PREVIEW M 1.868
+PREVIEW E_OED,REF 22.889 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+Sandy clay
+Laag 8 — 9.85–10.95 m
+klei (zh), vrij vast
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=1.00 ─ preview m=1.00
+TYPE-DEFAULT
+M 1.00
+E_OED,REF 17.300,408 kPa
+ΑE BASIS vast per laag (8.00)
+AUTO-FIT
+M -3.327
+E_OED,REF 18.206 kPa
+R² 0.102
+N 23 punten
+Σ' BEREIK ×1.09
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+PREVIEW M 1.000
+PREVIEW E_OED,REF 17.055 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+Sand
+Laag 9 — 10.95–14.95 m
+zand, zeer dicht
+Spanningsbereik te klein (factor 1.3)
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=0.50 ─ preview m=0.38
+TYPE-DEFAULT
+M 0.50
+E_OED,REF 181.783,902 kPa
+ΑE BASIS vast per laag (13.00)
+AUTO-FIT
+M 0.384
+E_OED,REF 183.089 kPa
+R² 0.015
+N 81 punten
+Σ' BEREIK ×1.33
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+0.90
+Preview volgt de auto-fit
+PREVIEW M 0.384
+PREVIEW E_OED,REF 183.089 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+Clay
+Laag 10 — 14.95–18.00 m
+klei, matig vast
+Spanningsbereik te klein (factor 1.2)
+E_oed vs diepte (kPa) ─ default ─ preview · CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak ─ default m=1.00 ─ preview m=1.00
+TYPE-DEFAULT
+M 1.00
+E_OED,REF 5.362,559 kPa
+ΑE BASIS vast per laag (5.00)
+AUTO-FIT
+M -1.659
+E_OED,REF 11.407 kPa
+R² 0.050
+N 62 punten
+Σ' BEREIK ×1.18
+PREVIEW / ENGINEER TWEAK
+M
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+PREVIEW M 1.000
+PREVIEW E_OED,REF 5.505 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ ACCEPTEER FIT
+← BACK TO PARAMETERS
+Use Stage 6 to turn the interpreted CPT into a first engineering estimate.
+STAGE 7 REPORT
+STAGE 6 — APPLICATIONS →

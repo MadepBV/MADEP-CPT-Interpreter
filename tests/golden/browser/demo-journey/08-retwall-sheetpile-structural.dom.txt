@@ -1,0 +1,32 @@
+## #retwallResultBody
+SECTION RESISTANCE
+Section
+AZ 26-700S355GP · fy 355 N/mm²
+Class (catalogue, this grade)
+2elastic resistance used
+Mc,Rd
+923.0kNm/m · W_el·f_y
+Mpl,Rd / Mel,Rd
+1089.8 / 923.0kNm/m
+Vpl,Rd
+1599.6kN/m · 1.43 webs/m · Av 78.0 cm²/m
+Npl,Rd
+6639kN/m
+γM0
+1.00NBN EN 1993-1-1 ANB
+DESIGN EFFECTS (STR ENVELOPE)
+MEd
+54.43kNm/m · DA1-1
+VEd
+91.09kN/m · DA1-1
+STEEL CHECKS
+VERIFICATION ED RD UC
+Bending, elastic (class 2)
+EN 1993-5 §5.2.2
+54.43 kNm/m 923.00 kNm/m 0.059 PASS
+Shear (webs, inclination neglected)
+EN 1993-5 §5.2.2(4)
+91.09 kN/m 1599.61 kN/m 0.057 PASS
+M–V interaction
+EN 1993-5 §5.2.2(9) · V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.
+91.09 kN/m 799.80 kN/m 0.114 PASS

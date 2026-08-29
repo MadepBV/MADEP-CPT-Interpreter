@@ -1,0 +1,11 @@
+## #retwallResultBody
+DA1-2
+DA1-1
+BGT
+SLS
+branch
+moment
+shear
+net pressure
+drawn on the section
+DA1/1 (A1 + M1) — γ_G 1.35 on retained-side actions, passive favourable 1.00, design excavation. Depth from the retained surface. Pressures are the unfactored ordinates per unit width of the acting face (retained side incl. surcharge; excavation side = passive resistance, per pile below the excavation for the Brinch Hansen model); the net pressure, V and M are factored with this branch's partial factors and multiplied by the acting widths (per pile). The V/M tail beyond the free-earth closure is set to zero (no toe reaction is modelled beyond it).

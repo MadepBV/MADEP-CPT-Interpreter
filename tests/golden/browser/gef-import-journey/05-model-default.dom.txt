@@ -1,0 +1,394 @@
+## #cptTabs
+DATA
+layered
+## .panel.active
+Model parameters
+Mohr-Coulomb and Hardening Soil (p_ref = 100 kPa). Eoed,i = αE × qc (Sanglerat / SB260). E_def = β·Eoed,i for the Soilin subsoil input. Review m, Eoed,ref, and ν per layer.
+EXPORT PLAXIS COMMANDS
+EXPORT CSV
+Α-METHOD:
+A — SANGLERAT
+B — SB260 Q_C
+STIFFNESS:
+A — CUR 2003-7
+B — E₅₀ = E_OED
+K_H/K_V:
+A — OVAM
+B — BEAR (1979)
+Sand
+Layer 1 — 0.00–0.95 m (10.00m TAW → 9.05m TAW) (0.95 m)
+zand (lh), los
+σv0 7.6 − u 0 = σ'v0 7.6 kPa · αE 2
+MOHR-COULOMB
+E_REF (KPA) 4.456
+Ν 0.30
+R_SHEAR 0.28
+Φ' (°) 25
+C' (KPA) 0
+Ψ (°) 0
+Γ / Γ_SAT 16 / 18 kN/m³
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.743
+E_DEF (KPA) 3.311
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 4.456
+E_OED,REF (KPA) 16.164
+E_50,REF (KPA) =E_OED 16.164
+E_UR,REF (KPA) 48.492
+M 0.50
+K0_NC 0.577
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 3×10⁻6
+RANGE 1.2×10⁻6 – 1.2×10⁻5
+K_H/K_V 1
+K_V (M/S) 3.0e-6
+Ψ_UNSAT (M) 0.1
+INFILTRATIE (VOLLEDIG)
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Sand
+Layer 2 — 0.95–3.95 m (9.05m TAW → 6.05m TAW) (3.00 m)
+zand, los
+σv0 40.7 − u 7.4 = σ'v0 33.3 kPa · αE 3.82
+MOHR-COULOMB
+E_REF (KPA) 41.986
+Ν 0.28
+R_SHEAR 0.30
+Φ' (°) 27
+C' (KPA) 0
+Ψ (°) 0
+Γ / Γ_SAT 16 / 18 kN/m³
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.782
+E_DEF (KPA) 32.833
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 41.986
+E_OED,REF (KPA) 72.712
+E_50,REF (KPA) =E_OED 72.712
+E_UR,REF (KPA) 218.136
+M 0.50
+K0_NC 0.546
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 3×10⁻6
+RANGE 1.2×10⁻6 – 1.2×10⁻5
+K_H/K_V 1
+K_V (M/S) 3.0e-6
+Ψ_UNSAT (M) 0.1
+INFILTRATIE (VOLLEDIG)
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Clay
+Layer 3 — 3.95–4.95 m (6.05m TAW → 5.05m TAW) (1.00 m)
+klei, weinig vast
+σv0 71.2 − u 27 = σ'v0 44.2 kPa · αE 3
+MOHR-COULOMB
+E_REF (KPA) 2.613
+Ν 0.40
+R_SHEAR 0.12
+Φ' (°) 20
+C' (KPA) 2
+Ψ (°) 0
+Γ / Γ_SAT 16 / 16 kN/m³
+C_U (KPA) 20
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.467
+E_DEF (KPA) 1.220
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 2.613
+E_OED,REF (KPA) 5.544
+E_50,REF (KPA) =E_OED 5.544
+E_UR,REF (KPA) 16.632
+M 1.00
+K0_NC 0.658
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 5×10⁻8
+RANGE 1×10⁻9 – 1.2×10⁻7
+K_H/K_V 3
+K_V (M/S) 1.7e-8
+Ψ_UNSAT (M) 3
+INFILTRATIE + BUFFER
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Sandy clay
+Layer 4 — 4.95–5.65 m (5.05m TAW → 4.35m TAW) (0.70 m)
+klei, weinig vast
+σv0 84.8 − u 35.3 = σ'v0 49.5 kPa · αE 3
+MOHR-COULOMB
+E_REF (KPA) 2.772
+Ν 0.40
+R_SHEAR 0.12
+Φ' (°) 20
+C' (KPA) 2
+Ψ (°) 0
+Γ / Γ_SAT 16 / 16 kN/m³
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.467
+E_DEF (KPA) 1.295
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 2.772
+E_OED,REF (KPA) 5.319
+E_50,REF (KPA) =E_OED 5.319
+E_UR,REF (KPA) 15.957
+M 1.00
+K0_NC 0.658
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 5×10⁻7
+RANGE 1.2×10⁻7 – 1.2×10⁻6
+K_H/K_V 3
+K_V (M/S) 1.7e-7
+Ψ_UNSAT (M) 1
+INFILTRATIE (EFFECTIEF)
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Clay
+Layer 5 — 5.65–7.95 m (4.35m TAW → 2.05m TAW) (2.30 m)
+klei, weinig vast
+σv0 108.8 − u 50 = σ'v0 58.8 kPa · αE 3
+MOHR-COULOMB
+E_REF (KPA) 2.802
+Ν 0.40
+R_SHEAR 0.12
+Φ' (°) 20
+C' (KPA) 2
+Ψ (°) 0
+Γ / Γ_SAT 16 / 16 kN/m³
+C_U (KPA) 20
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.467
+E_DEF (KPA) 1.309
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 2.802
+E_OED,REF (KPA) 4.600
+E_50,REF (KPA) =E_OED 4.600
+E_UR,REF (KPA) 13.800
+M 1.00
+K0_NC 0.658
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 5×10⁻8
+RANGE 1×10⁻9 – 1.2×10⁻7
+K_H/K_V 3
+K_V (M/S) 1.7e-8
+Ψ_UNSAT (M) 3
+INFILTRATIE + BUFFER
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Silty sand
+Layer 6 — 7.95–8.65 m (2.05m TAW → 1.35m TAW) (0.70 m)
+leem, vrij vast
+σv0 157.7 − u 64.8 = σ'v0 93 kPa · αE 2
+MOHR-COULOMB
+E_REF (KPA) 4.648
+Ν 0.32
+R_SHEAR 0.22
+Φ' (°) 22
+C' (KPA) 4
+Ψ (°) 0
+Γ / Γ_SAT 19 / 19 kN/m³
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.699
+E_DEF (KPA) 3.249
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 4.648
+E_OED,REF (KPA) 4.805
+E_50,REF (KPA) =E_OED 4.805
+E_UR,REF (KPA) 14.415
+M 0.50
+K0_NC 0.625
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 3×10⁻6
+RANGE 1.2×10⁻6 – 1.2×10⁻5
+K_H/K_V 3
+K_V (M/S) 1.0e-6
+Ψ_UNSAT (M) 0.1
+INFILTRATIE (VOLLEDIG)
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Silty sand
+Layer 7 — 8.65–9.85 m (1.35m TAW → 0.15m TAW) (1.20 m)
+leem, vrij vast
+σv0 175.8 − u 74.1 = σ'v0 101.7 kPa · αE 2
+MOHR-COULOMB
+E_REF (KPA) 4.734
+Ν 0.32
+R_SHEAR 0.22
+Φ' (°) 22
+C' (KPA) 4
+Ψ (°) 0
+Γ / Γ_SAT 19 / 19 kN/m³
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.699
+E_DEF (KPA) 3.309
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 4.734
+E_OED,REF (KPA) 4.698
+E_50,REF (KPA) =E_OED 4.698
+E_UR,REF (KPA) 14.094
+M 0.50
+K0_NC 0.625
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 3×10⁻6
+RANGE 1.2×10⁻6 – 1.2×10⁻5
+K_H/K_V 3
+K_V (M/S) 1.0e-6
+Ψ_UNSAT (M) 0.1
+INFILTRATIE (VOLLEDIG)
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Sandy clay
+Layer 8 — 9.85–10.95 m (0.15m TAW → -0.95m TAW) (1.10 m)
+klei (zh), vrij vast
+σv0 187.2 − u 85.3 = σ'v0 101.9 kPa · αE 2
+MOHR-COULOMB
+E_REF (KPA) 4.392
+Ν 0.33
+R_SHEAR 0.20
+Φ' (°) 22
+C' (KPA) 8
+Ψ (°) 0
+Γ / Γ_SAT 18 / 18 kN/m³
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.675
+E_DEF (KPA) 2.965
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 4.392
+E_OED,REF (KPA) 4.325
+E_50,REF (KPA) =E_OED 4.325
+E_UR,REF (KPA) 12.975
+M 1.00
+K0_NC 0.625
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 5×10⁻7
+RANGE 1.2×10⁻7 – 1.2×10⁻6
+K_H/K_V 3
+K_V (M/S) 1.7e-7
+Ψ_UNSAT (M) 1
+INFILTRATIE (EFFECTIEF)
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Sand
+Layer 9 — 10.95–14.95 m (-0.95m TAW → -4.95m TAW) (4.00 m)
+zand, zeer dicht
+σv0 255.6 − u 110.4 = σ'v0 145.2 kPa · αE 3.19
+MOHR-COULOMB
+E_REF (KPA) 53.707
+Ν 0.35
+R_SHEAR 0.35
+Φ' (°) 35
+C' (KPA) 0
+Ψ (°) 5
+Γ / Γ_SAT 18 / 20 kN/m³
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.623
+E_DEF (KPA) 33.459
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 53.707
+E_OED,REF (KPA) 44.565
+E_50,REF (KPA) =E_OED 44.565
+E_UR,REF (KPA) 133.695
+M 0.50
+K0_NC 0.426
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 2×10⁻4
+RANGE 1.2×10⁻4 – 2.3×10⁻4
+K_H/K_V 1
+K_V (M/S) 2.0e-4
+Ψ_UNSAT (M) 0.1
+INFILTRATIE (VOLLEDIG)
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Clay
+Layer 10 — 14.95–18.00 m (-4.95m TAW → -8.00m TAW) (3.05 m)
+klei, matig vast
+σv0 280.1 − u 144.9 = σ'v0 135.1 kPa · αE 3
+MOHR-COULOMB
+E_REF (KPA) 4.236
+Ν 0.38
+R_SHEAR 0.15
+Φ' (°) 20
+C' (KPA) 4
+Ψ (°) 0
+Γ / Γ_SAT 17 / 17 kN/m³
+C_U (KPA) 50
+SOILIN — DEFORMATION MODULUS
+Β (-) 0.534
+E_DEF (KPA) 2.262
+E_def = β·E_oed,i · β = (1+ν)(1−2ν)/(1−ν)
+ČSN 73 1001 / Soilin subsoil input · ν from Mohr-Coulomb column
+HARDENING SOIL — P_REF = 100 KPA
+ΑE (SB260)
+E_OED,I (KPA) 4.236
+E_OED,REF (KPA) 3.218
+E_50,REF (KPA) =E_OED 3.218
+E_UR,REF (KPA) 9.654
+M 1.00
+K0_NC 0.658
+ΝUR 0.2
+R_F 0.90
+HYDRAULIC CONDUCTIVITY
+K_H (M/S) 5×10⁻8
+RANGE 1×10⁻9 – 1.2×10⁻7
+K_H/K_V 3
+K_V (M/S) 1.7e-8
+Ψ_UNSAT (M) 3
+INFILTRATIE + BUFFER
+VMM §5.2 RICHTLIJN
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+← BACK
+Review m-values. Use Tuning (Stage 5) to fit m from CPT data.
+STAGE 7 REPORT
+STAGE 5 — TUNING

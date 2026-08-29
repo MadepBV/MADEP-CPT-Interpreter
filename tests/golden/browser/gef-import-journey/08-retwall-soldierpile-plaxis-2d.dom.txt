@@ -1,0 +1,97 @@
+## #retwallResultBody
+PLATE ABOVE THE DESIGN EXCAVATION (HEA180, S = 1.00 M)
+PARAMETER VALUE UNIT / NOTE
+Element type Plate, elastic
+EA₁ = EA₂ 9.503e+5 kN/m
+EI 5271.0 kNm²/m
+d_eq (computed by PLAXIS) 0.2580 m
+w 1.1402 kN/m/m
+ν 0.0000 —
+Interfaces both sides R_inter per layer
+Rayleigh damping 0.0000 % (static)
+copy plate set (TSV)
+Profile properties divided by the spacing s = 1.00 m; lagging stiffness omitted (EI of the plate 17.5 kNm²/m ≪ profile, and no composite action). The lagging self-weight IS included in w (stiffness and weight are independent). ν = 0 for a wall of discrete elements (PLAXIS reference manual).
+EMBEDDED BEAM ROW BELOW THE DESIGN EXCAVATION
+PARAMETER VALUE UNIT / NOTE
+L_spacing 1.0000 m
+Cross section type User-defined
+A 0.0045 m²
+I 2.510e-5 m⁴
+E 2.100e+8 kN/m²
+γ (net, γ_steel − γ_soil) 62.5000 kN/m³
+D_eq = √(12·I/A) (computed by PLAXIS) 0.2580 m
+ISF_RS = ISF_RN (default) 0.9050 —
+ISF_KF (default) 9.0501 —
+copy EBR set (TSV)
+Actual properties of ONE pile — never divided by the spacing (PLAXIS smears the row itself). Net unit weight because the embedded beam row does not remove soil volume. The ISF values must coincide with the PLAXIS defaults; a mismatch means A, I or L_spacing were mistyped. Continuity check at the transition: EI per metre = 5271 kNm²/m for both the plate and the row.
+AXIAL SKIN RESISTANCE TSKIN (LINEAR)
+PARAMETER VALUE UNIT / NOTE
+K 0.6580 K₀ = 1 − sin φ′_k (no installation increase)
+δ 13.3400 ° steel–soil
+O_steel 0.3600 m (both flange faces)
+O_plug 0.3420 m (soil–soil between the flanges)
+T_skin / σ′_v 0.1381 m
+T_skin,start,max 1.0000 kN/m (numerical floor at z′ = 0)
+T_skin,end,max 9.7203 kN/m at z′ = 4.400 m
+copy T_skin (TSV)
+β-method with K = K₀ as the lower bound of the allowed installation methods (pre-augering with backfill); a lower T_skin is conservative for the φ-c reduction and the vertical check. Linear profile with the unit weight and φ′ of the stratum at the toe (uniform below the excavation) — for a strongly layered embedment enter a multilinear T_skin from the per-layer values.
+BASE RESISTANCE FMAX
+PARAMETER VALUE UNIT / NOTE
+A_b 0.0308 m² (b·h, plug assumed)
+q_b = α_b·q_c 467.0 kPa (α_b = 0.5)
+F_max 14.3743 kN
+F_max unplugged (q_c·A_steel) 4.2264 kN
+copy F_max (TSV)
+The least substantiated parameter of the set; a toe force approaching F_max in the results requires a separate pile calculation (NBN EN 1997-1 ANB).
+LATERAL RESISTANCE TLAT — MULTI-LINEAR, PER PILE, B = B = 180 MM, DISTANCE FROM THE TOP OF THE EBR (DESIGN EXCAVATION 0.30 M BELOW NOMINAL)
+characteristic
+design (γφ 1.25)
+Characteristic (M1) — staged/SLS phases and phi-c reduction
+copy T_lat rows (distance, T_lat)
+DISTANCE (M) Σ′V,F (KPA) ΔQ (KPA) KQ KC EQUAL-LEVEL (KN/M) A–L (KN/M) S·PNET CAP (KN/M) TLAT (ANDERSEN–LODAHL, CAPPED)
+0.000 0.00 40.40 0.000 0.000 0.00 0.00 0.00 0.00
+0.250 4.00 40.40 5.106 16.624 3.68 1.41 0.00 0.00
+0.500 8.00 40.40 6.064 22.610 8.73 6.46 6.88 6.46
+0.750 12.00 40.40 6.799 26.474 14.69 12.42 16.03 12.42
+1.000 16.00 40.40 7.380 29.176 21.25 18.99 25.18 18.99
+1.250 20.00 40.40 7.851 31.171 28.26 26.00 34.33 26.00
+1.500 24.00 40.40 8.241 32.704 35.60 33.33 43.48 33.33
+1.750 28.00 40.40 8.568 33.920 43.18 40.92 52.63 40.92
+2.000 32.00 40.40 8.848 34.907 50.96 48.70 61.78 48.70
+2.050 32.80 40.40 8.899 35.082 52.54 50.27 63.61 50.27
+2.050 32.80 40.40 4.665 20.825 35.04 31.97 44.43 31.97
+2.250 36.00 40.40 4.738 21.096 38.30 35.23 49.38 35.23
+2.500 40.00 40.40 4.818 21.383 42.39 39.32 55.58 39.32
+2.750 44.00 40.40 4.888 21.625 46.50 43.43 61.78 43.43
+3.000 48.00 40.40 4.948 21.833 50.61 47.55 67.98 47.55
+3.050 48.80 40.40 4.960 21.871 51.44 48.37 69.21 48.37
+3.050 48.80 40.40 4.960 21.871 51.44 48.37 69.22 48.37
+3.250 52.00 40.40 5.002 22.012 54.74 51.68 74.17 51.68
+3.500 56.00 40.40 5.050 22.169 58.88 55.82 80.37 55.82
+3.750 60.00 40.40 5.093 22.308 63.03 59.96 86.57 59.96
+3.750 60.00 40.40 5.093 22.308 63.03 59.96 86.57 59.96
+3.750 60.00 40.40 5.093 22.308 63.03 59.97 86.57 59.97
+4.000 64.00 40.40 5.131 22.431 67.19 64.12 92.76 64.12
+4.250 68.00 40.40 5.166 22.541 71.35 68.28 98.96 68.28
+4.400 70.40 40.40 5.185 22.601 73.85 70.78 102.68 70.78
+∫Tlat dz (adopted)
+163.65kN/pile
+∫Tlat·z dz
+470.61kNm/pile
+z̄
+2.876m below the EBR top
+Brinch Hansen (1961) coefficients per layer: equal-level e = σ′v,f·Kq + c·Kc; Andersen–Lodahl subtracts the retained-height active term Δq·KqA (Δq = σ′v,back − σ′v,front incl. surcharges). Values per ONE pile — do not divide by the spacing. The design set recomputes every coefficient at φ′d (Tlat,d ≠ Tlat,k/γφ).
+Brinch Hansen constants of this set
+INTERFACES (RINTER = TAN Δ / TAN Φ′)
+LAYER Φ′K (°) Δ (°) RINTER
+— 25.0 0.0 0.010
+— 27.0 0.0 0.010
+— 20.0 0.0 0.010
+— 20.0 0.0 0.010
+— 20.0 0.0 0.010
+— 22.0 0.0 0.010
+— 22.0 0.0 0.010
+— 22.0 0.0 0.010
+— 35.0 0.0 0.010
+— 20.0 0.0 0.010
+δ as in the hand calculation (soldier-pile passive ratio × φ′). Assign interfaces on both sides; hydraulic resistance on the outside interface only (Bentley KB).

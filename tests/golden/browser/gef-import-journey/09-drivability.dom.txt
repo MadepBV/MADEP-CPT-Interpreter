@@ -1,0 +1,84 @@
+## #retwallSummary
+VERIFICATIONS PASS
+governing utilisation 0.96
+GOVERNING VALUES
+drequired / dprovided
+4.22 / 4.40m · DA1-2
+ODF at provided depth
+1.43Mres/Mdrive
+over-excavation Δa
+0.30m
+MEd
+52.5kNm/pile · DA1-1
+VEd
+69.0kN/pile · DA1-1
+Steel HEA180
+0.69UC bending · plastic
+Lagging plate
+0.67UC · L = 1.00 m
+LIMIT STATES
+Embedment / rotational stability (soldier pile, Blum)
+0.96
+PASS
+Bending, plastic (class 1)
+0.69
+PASS
+Shear
+0.35
+PASS
+M–V interaction
+0.70
+PASS
+Lagging plate
+0.67
+PASS
+Vertical equilibrium (pile)
+0.17
+PASS
+ENGINE NOTES
+Hand calculation below the excavation: active on the flange width b, passive on b_eff = min(k*b, s) with the plane-strain K_p (EAB / Belgian guideline §5). The PLAXIS T_lat tables use Brinch Hansen with B = b; the two models are never mixed.
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+## #retwallResultBody
+MINIMUM VIBRATOR FOR THE TARGET DEPTH 6.30 M
+Fc,min (mR = 1.0)
+106.7kN, governing depth 6.30 m
+Fc,min (mR = 1.25, recommended)
+137.3kN at 6.30 m
+Eccentric moment at f
+2.84kg·m at 35.0 Hz (2100 rpm)
+Attached amplitude s₀ / App
+0.54 / 1.08mm for M_dyn 5241 kg
+Acceleration ratio α
+2.67—
+Static downforce Weff
+51.4kN
+Stress screen (Fc + Weff)/As
+41.7MPa
+Λ / δH
+6 / 0.00
+Specification to a supplier: a head that delivers 137 kN and 2.8 kg·m simultaneously at 2100 rpm with about 5000 kg vibrating mass, plus the static downforce assumed (course §7.9). Amplitude, clamp, power, wave stress and vibration are separate checks (course §7.10).
+Z (M) RS (KN) RB (KN) RDRIVE (KN) Α FC,MIN (KN) FC,MIN,1.25
+0.10 3.1 9.2 12.3 0.00 0.0 0.0
+0.40 11.5 7.8 19.4 0.00 0.0 0.0
+0.70 20.0 11.1 31.1 0.00 0.0 0.0
+1.00 25.7 46.0 71.8 0.40 20.3 33.6
+1.30 35.4 46.1 81.5 0.59 30.1 42.2
+1.60 53.1 29.5 82.6 0.61 31.2 43.6
+1.90 62.8 28.0 90.8 0.77 39.4 53.0
+2.20 68.6 33.9 102.4 0.99 51.0 66.7
+2.50 78.6 28.0 106.6 1.07 55.2 71.3
+2.80 83.4 33.3 116.7 1.27 65.3 83.1
+3.10 92.3 28.5 120.8 1.35 69.4 87.9
+3.40 97.5 26.2 123.7 1.41 72.3 91.3
+3.70 103.3 27.7 131.0 1.55 79.5 100.4
+4.00 117.1 2.2 119.3 1.32 67.9 86.0
+4.30 121.3 3.6 124.9 1.43 73.5 93.4
+4.60 125.6 3.1 128.7 1.50 77.3 98.4
+4.90 129.9 3.2 133.1 1.59 81.7 104.1
+5.20 134.9 3.3 138.1 1.69 86.7 110.8
+5.50 140.0 2.8 142.7 1.78 91.3 116.9
+5.80 145.0 2.8 147.8 1.88 96.4 123.6
+6.10 151.0 4.0 155.0 2.01 103.6 133.2
+6.30 154.5 3.6 158.1 2.08 106.7 137.3
+copy per-depth table (TSV)
+Reference method q_s = q_c, τ_s = f_s (course §7.2): illustrative screen, not a pile design method. δ_H = 0: optimistic free-acceleration baseline (course §8.1). Calibrate against measured amplitude (course §15.8). Force-envelope root: F_c,min(m_R=1) = 106.7 kN at 6.30 m; F_c,min(1.25) = 137.3 kN at 6.30 m. Non-normative empirical model (course §7.1): confirm by an instrumented trial; check amplitude, clamp, power, wave stress and vibration separately (course §7.10).

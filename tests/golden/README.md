@@ -13,6 +13,7 @@ tests/golden/
 │   ├── models/        solver model fixtures copied from scripts/fixtures/ (for the solver suites)
 │   └── manifest.json  file → sha256, role, PRNG seed, generator notes
 ├── node/<suite>/      Node-tier goldens: <case>.json | .txt | .csv | .svg (see suites below)
+├── browser/<journey>/ browser-tier goldens: <step>.state.json | .dom.txt | .png (+ downloads, payloads)
 ├── vendor/            chart.umd.js — Chart.js 4.4.1 from the CDN URL of src/routes/+page.svelte
 ├── wasm.sha256.json   pin of static/wasm/**; golden:check refuses to run against a different engine
 ├── tolerances.json    numeric tolerance classes (pure / wasm / iterative / browser)
@@ -31,6 +32,8 @@ tests/golden/
 | `npm run golden:record` | rewrite everything (baseline only) |
 | `npm run golden:fixtures` | regenerate fixtures (bit-identical), fetch Chart.js, pin WASM hashes |
 | `npm run golden:wasm-check` | verify the WASM pin only |
+| `npm run golden:browser` | browser journeys (Tier C) in check mode: `playwright test --config tests/e2e/golden.config.mjs` (≈ 30 s + dev-server start) |
+| `npm run golden:browser:record` | rewrite every browser golden incl. PNGs (`GOLDEN_MODE=record`); `GOLDEN_MODE=update` rewrites only the failing/new files |
 | `npm run verify:core` | the fast existing verifiers (nen6740, stratigraphy, import-review, project-io, scia-db4, qc-only, retaining, wasm, bishop-phase-a) |
 | `npm run test:all` | svelte-check + verify:core + golden:wasm-check + golden:check + Playwright e2e |
 
@@ -68,6 +71,32 @@ retaining note's copy of the engine result, project snapshots' CPT rows, the rep
 fixtures other than `layered`, the diagram vectors of the RK-variant retaining results). A change
 still flips the golden; the readable diff lives in the suite that owns the data.
 
+## Browser journeys (Tier C, `tests/e2e/golden-journey.spec.mjs`)
+
+The real app in Chromium (Playwright, own config `tests/e2e/golden.config.mjs`: port 5299, one
+worker, no retries, nl-BE / Europe/Brussels, 1500×950). Each journey is a linear list of steps; a step
+locks `state.json` (`window.__golden.captureState()` — `PROJECT` minus `charts`/`chartsReady`, the
+active CPT once under `active`, its `stage6Cache` under `cache`, normalised by the same
+`normalize.mjs`, compared with `tolerances.browser`), `dom.txt` (`innerText` of `#cptTabs` and the
+active `.panel`, or step-specific containers, whitespace-collapsed, time masks applied) and a
+secondary `png` (canvases masked, `maxDiffPixelRatio` from `tolerances.browser`; `GOLDEN_VISUAL=off|soft|strict`,
+default `soft` = reported, never blocking — fonts differ between macOS and the Linux CI renderer).
+
+| Journey | Start | Steps |
+|---|---|---|
+| `demo-journey` | "Load demo" button under a seeded `Math.random` (mulberry32, manifest seed) | 01-loaded → 02-classified(-method) → 03/04 layers (+ subtype `<select>` edit) → 05 model (default, alpha A / stiffness A) → 06 tuning (+ acceptFit 0) → 07 bearing/pile/settlement/dewatering/beam (default + one `setStage6Field`) → 08 retaining walls: 5 types × every result tab → 09 drivability → 10 calculation-note tab + payload → 07-bishop model + stability search → 11 exportCSV / PLAXIS commands / simulated CPT / saveProject downloads (+ alerts) → 12 Stage 7 payload + report tab → 13 final |
+| `gef-import-journey` | `fixtures/cpt/layered.gef` through the real file input and the import-review dialog (00-import-review) | same |
+
+Determinism (all in the spec / `scripts/golden/lib/browser-capture.js`): seeded `Math.random`, a
+`Date` shifted to a fixed epoch (still advancing — Chart.js needs a moving clock), Chart.js served
+from `vendor/` with `Chart.defaults.animation = false`, the analytics script neutralised, and
+state-predicate waits (`retwall.status === 'done'`, `drivability.status !== 'running'`,
+`bishop.progress.running === false && results`) — never `waitForTimeout`. Large parts that are locked
+in full at the step that produced them (`data`, `classified`, `tuning`, `retwall.result`,
+`bishop.results`, every `cache.*` analysis) are stored as `{"<unchanged-since>": step, "<digest>": …}`
+at later steps. Mismatches go to `.actual/browser/<journey>/` and the test fails at `finish()` with
+the readable diff; a golden on disk that the journey no longer produces is `MISSING`.
+
 ## Normalisation and masks (`scripts/golden/lib/normalize.mjs`)
 
 Applied at record and check time, identically:
@@ -80,6 +109,9 @@ Applied at record and check time, identically:
   key except `_maxStage` (stage-nav unlock — behaviour);
 - **masked strings**: `wall_*/drain_*/region_*` and `bc-*` entity ids → `<id>`; `stage7-report:*`,
   `retaining-note:*`, `soilin-report:*` storage keys → `<key>`; PNG data URLs → `<png>`; ISO timestamps → `<iso>`;
+  inside strings, `<n> ms` → `<ms> ms` (the Bishop completion message embeds `timing.totalMs`);
+- browser DOM text additionally masks nl-BE date-times (`1 jan 2026 01:00` → `<datetime>`) and the
+  `_YYYYMMDD-HHMM` stamp of the saved-project file name (`scripts/golden/lib/journey.mjs` `TEXT_MASKS`);
 - text goldens: `\r\n` → `\n`, single trailing newline; HTML is reduced to visible text
   (`scripts/golden/lib/html-text.mjs`) so a restyle that only changes tags/classes is invisible
   while wording, numbers and order stay locked.

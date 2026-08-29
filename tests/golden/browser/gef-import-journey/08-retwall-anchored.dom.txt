@@ -1,0 +1,293 @@
+## #retwallInputs
+Geometry
+Retained height H
+m
+Embedment d (provided)
+m
+The embedment is measured below the design excavation (nominal level minus the over-excavation set in the Eurocode panel). The drawing shows both levels.
+Sheet-pile section
+AZ 26-700
+Section
+AZ 18-800
+AZ 20-800
+AZ 22-800
+AZ 23-800
+AZ 25-800
+AZ 27-800
+AZ 28-750
+AZ 30-750
+AZ 32-750
+AZ 12-770
+AZ 13-770
+AZ 14-770
+AZ 14-770-10/10
+AZ 12-700
+AZ 13-700
+AZ 13-700-10/10
+AZ 14-700
+AZ 17-700
+AZ 18-700
+AZ 19-700
+AZ 20-700
+AZ 24-700
+AZ 26-700
+AZ 28-700
+AZ 36-700N
+AZ 38-700N
+AZ 40-700N
+AZ 42-700N
+AZ 44-700N
+AZ 46-700N
+AZ 48-700
+AZ 50-700
+AZ 52-700
+AZ 18
+AZ 18-10/10
+AZ 26
+AU 14
+AU 16
+AU 18
+AU 20
+AU 23
+AU 25
+PU 12
+PU 12S
+PU 18-1
+PU 18
+PU 18+1
+PU 22-1
+PU 22
+PU 22+1
+PU 28-1
+PU 28
+PU 28+1
+PU 32-1
+PU 32
+PU 32+1
+GU 6N
+GU 7N
+GU 7S
+GU 7HWS
+GU 8N
+GU 8S
+GU 10N
+GU 11N
+GU 12N
+GU 13N
+GU 14N
+GU 15N
+GU 16N
+GU 18N
+GU 20N
+GU 21N
+GU 22N
+GU 23N
+GU 27N
+GU 28N
+GU 30N
+GU 31N
+GU 32N
+GU 33N
+GU 16-400
+GU 18-400
+Steel grade
+S240GP
+S270GP
+S320GP
+S355GP
+S390GP
+S430GP
+S460GP
+A
+187cm²/m
+Iy
+59720cm⁴/m
+Wel / Wpl
+2600 / 3070cm³/m
+mass
+147kg/m²
+h / t / s
+460 / 12.2 / 12.2mm
+class (S355GP)
+2
+Use plastic W
+pl
+(class 1–2 only)
+Corrosion loss
+Catalogue values per metre of wall (ArcelorMittal General Catalogue 2024). fy = 355 N/mm² (S355GP). The class shown is the catalogue class for this grade; plastic resistance needs class ≤ 2.
+Soil profile (retained & excavation side)
+CPT profile
+Soil source
+CPT layer model (10 layers)
+Single material
+CPT ground level vs. reference
+m
+CPT ground level coincides with the reference surface. Enter a shift when the sounding was pushed from a different level than the wall datum.
+CHARACTERISTIC PARAMETERS — OVERRIDE WHERE NEEDED
+LAYER Γ ΓSAT Φ′ C′ CU FRAMEWORK
+Sand
+0.00–0.95 m · qc 2.2
+16.0
+18.0
+25.0
+0.0
+0
+auto (dr)
+drained
+undrained
+Sand
+0.95–3.95 m · qc 11.0
+16.0
+18.0
+27.0
+0.0
+0
+auto (dr)
+drained
+undrained
+Clay
+3.95–4.95 m · qc 0.9
+16.0
+16.0
+20.0
+2.0
+20
+auto (dr)
+drained
+undrained
+Sandy clay
+4.95–5.65 m · qc 0.9
+16.0
+16.0
+20.0
+2.0
+20
+auto (dr)
+drained
+undrained
+Clay
+5.65–7.95 m · qc 0.9
+16.0
+16.0
+20.0
+2.0
+20
+auto (dr)
+drained
+undrained
+Silty sand
+7.95–8.65 m · qc 2.3
+19.0
+19.0
+22.0
+4.0
+50
+auto (dr)
+drained
+undrained
+Silty sand
+8.65–9.85 m · qc 2.4
+19.0
+19.0
+22.0
+4.0
+50
+auto (dr)
+drained
+undrained
+Sandy clay
+9.85–10.95 m · qc 2.2
+18.0
+18.0
+22.0
+8.0
+100
+auto (dr)
+drained
+undrained
+Sand
+10.95–14.95 m · qc 16.9
+18.0
+20.0
+35.0
+0.0
+0
+auto (dr)
+drained
+undrained
+Clay
+14.95–18.00 m · qc 1.4
+17.0
+17.0
+20.0
+4.0
+50
+auto (dr)
+drained
+undrained
+c′ for all layers
+apply
+clear overrides
+Values in grey are the CPT-derived characteristic values (Stage 4). An orange field is an override; it is saved with the project and flagged in the calculation note. A deliberately low c′ (e.g. 0.5 kPa) is the usual conservative choice where the cohesion is uncertain — it raises the active pressure and lowers the passive resistance.
+Water & loads
+dry
+Ground anchor (EN 1537)
+Eurocode 7 — Belgian workflow
+RK2
+Drivability
+vibratory · required
+Vibration impact
+SBR-A
+## #retwallSummary
+VERIFICATIONS PASS
+governing utilisation 0.24
+GOVERNING VALUES
+drequired / dprovided
+1.06 / 4.40m · DA1-2
+ODF at provided depth
+2.26Mres/Mdrive
+over-excavation Δa
+0.30m
+MEd
+5.1kNm/m · DA1-2
+VEd
+15.0kN/m · DA1-1
+TEd (support)
+23.0kN/m · DA1-1
+per anchor (axial)
+48.9kN
+Steel AZ 26-700
+0.01UC bending · elastic
+LIMIT STATES
+Embedment / rotational stability (anchored, free-earth)
+0.24
+PASS
+Hydraulic heave / piping (HYD)
+0.00
+PASS
+Ground-anchor pull-out (EN 1537, per anchor)
+0.19
+PASS
+Wall vertical equilibrium (anchor down-drag)
+0.17
+PASS
+Bending, elastic (class 2)
+0.01
+PASS
+Shear (webs, inclination neglected)
+0.01
+PASS
+M–V interaction
+0.02
+PASS
+ENGINE NOTES
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+## #retwallResultTabs
+Verifications
+Design branches
+Diagrams
+Structural
+PLAXIS 2D
+Drivability
+Vibration
+Calculation note

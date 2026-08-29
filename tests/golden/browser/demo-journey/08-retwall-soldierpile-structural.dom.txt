@@ -1,0 +1,55 @@
+## #retwallResultBody
+SECTION RESISTANCE
+Section
+HEA180S235 · fy 235 N/mm²
+Class (EN 1993-1-1 Table 5.2)
+1flange c/t 7.58 ≤ 9.0 · web 20.33 ≤ 72.0
+Mpl,Rd / Mel,Rd
+76.35 / 69.00kNm
+Vpl,Rd
+196.3kN · Av,z 14.47 cm²
+Npl,Rd
+1063kN
+γM0
+1.00NBN EN 1993-1-1 ANB
+DESIGN EFFECTS (STR ENVELOPE)
+MEd
+50.15kNm · DA1-1
+VEd
+71.34kN · DA1-1
+STEEL CHECKS
+VERIFICATION ED RD UC
+Bending, plastic (class 1)
+EN 1993-1-1 §6.2.5
+50.15 kNm 76.35 kNm 0.657 PASS
+Bending, elastic (control)
+EN 1993-1-1 §6.2.5
+50.15 kNm 69.00 kNm 0.727 info
+Shear
+EN 1993-1-1 §6.2.6
+71.34 kN 196.33 kN 0.363 PASS
+M–V interaction
+EN 1993-1-1 §6.2.8 · V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.
+71.34 kN 98.16 kN 0.727 PASS
+LAGGING PLATE — 10 MM S235, SPAN CENTRE-TO-CENTRE = 1.000 M
+pEd at the design excavation
+21.04kPa · DA1-1
+MEd = p·L²/8
+2.631kNm/m
+Wel = t²/6 · Wpl = t²/4
+16.7 / 25.0cm³/m
+σ = MEd/Wel
+157.8N/mm²
+UC elastic / plastic
+0.672 / 0.448PASS
+Deflection under pk (5pL⁴/384EI)
+10.2mm
+Elastic verification on the c/c span is the conservative basis (Rekennota §7.8); the clear span between the flanges is the physically correct one. No arching between the piles is credited.
+VERTICAL EQUILIBRIUM OF ONE PILE
+G (pile + lagging)
+3.69kN
+Rs = ∫Tskin dz over the embedment
+22.72kN
+UC
+0.162PASS
+Base resistance Fmax not credited. With δ = 0 on the passive face no vertical earth-pressure component acts on the pile.

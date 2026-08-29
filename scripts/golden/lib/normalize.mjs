@@ -20,6 +20,13 @@ export const MASK_STRING_PATTERNS = [
   [/^data:image\/png;base64,.*/s, '<png>'],
   [/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/, '<iso>']
 ];
+// Substring masks for strings that embed a timing (whole-string patterns above replace
+// the value entirely; these keep the wording): stage6BishopCompleteMessage writes
+// `… complete in <totalMs> ms.` into bishop.progress.message (legacy-controller.js),
+// which is saved with the project and shown in the Stage 6 banner.
+export const MASK_SUBSTRING_PATTERNS = [
+  [/\b\d+(?:\.\d+)? ms\b/g, '<ms> ms']
+];
 // Chart.js instances and their ready flag (project-io/snapshot.js:21 strips the same).
 export const DROP_KEYS = new Set(['charts', 'chartsReady']);
 
@@ -29,7 +36,9 @@ export function normalize(v, path = '') {
   if (typeof v === 'bigint') return String(v);
   if (typeof v === 'string') {
     for (const [re, rep] of MASK_STRING_PATTERNS) if (re.test(v)) return rep;
-    return v;
+    let s = v;
+    for (const [re, rep] of MASK_SUBSTRING_PATTERNS) s = s.replace(re, rep);
+    return s;
   }
   if (Array.isArray(v)) return v.map((x, i) => { const n = normalize(x, `${path}[${i}]`); return n === undefined ? null : n; });
   if (ArrayBuffer.isView(v)) return normalize(Array.from(v), path);        // typed arrays → plain arrays
