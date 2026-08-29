@@ -15,6 +15,7 @@ export const MASK_KEYS = new Set([
 export const MASK_KEY_PATTERNS = [/Ms$/, /^_(?!maxStage$)/];
 export const MASK_STRING_PATTERNS = [
   [/^(wall|drain|region)_[0-9a-z]+_[0-9a-z]{5}$/, '<id>'],                    // legacy-controller.js:5182, 5323, 5390
+  [/^wall-material-wall_[0-9a-z]+_[0-9a-z]{5}$/, '<id>'],                     // stage6BishopDefaultWallMaterial: `wall-material-${wallId}`
   [/^bc-[0-9a-z]+-[0-9a-z]{4}$/, '<id>'],                                      // :5524, :6286
   [/^(stage7-report|retaining-note|soilin-report):\d+-[0-9a-z]+$/, '<key>'],  // report-storage.js:51, note-view.js:35, soilin-report.js:101
   [/^data:image\/png;base64,.*/s, '<png>'],
@@ -25,8 +26,16 @@ export const MASK_STRING_PATTERNS = [
 // `… complete in <totalMs> ms.` into bishop.progress.message (legacy-controller.js),
 // which is saved with the project and shown in the Stage 6 banner.
 export const MASK_SUBSTRING_PATTERNS = [
-  [/\b\d+(?:\.\d+)? ms\b/g, '<ms> ms']
+  [/\b\d+(?:\.\d+)? ms\b/g, '<ms> ms'],
+  // stage6BishopSeepageCompleteMessage: "solved in 1.23 s with …" (stage6SecondsLabelFromMs); not a
+  // unit such as the drivability damping "0.5 s/m"
+  [/\b\d+(?:\.\d+)? s\b(?!\/)/g, '<s> s'],
+  // entity ids embedded in a longer string: seepage.geometryHash is a JSON text that carries the
+  // drain ids (seepageGeometryHash); wall material ids are `wall-material-${wallId}`
+  [/\b(?:wall|drain|region)_[0-9a-z]+_[0-9a-z]{5}\b/g, '<id>']
 ];
+// Entity ids that appear as object keys (see normalize(): renamed <id:n>).
+export const ID_KEY_PATTERNS = [/^(wall|drain|region)_[0-9a-z]+_[0-9a-z]{5}$/, /^bc-[0-9a-z]+-[0-9a-z]{4}$/];
 // Chart.js instances and their ready flag (project-io/snapshot.js:21 strips the same).
 export const DROP_KEYS = new Set(['charts', 'chartsReady']);
 
@@ -46,11 +55,16 @@ export function normalize(v, path = '') {
   if (v instanceof Set) return normalize([...v], path);
   if (v && typeof v === 'object') {
     const o = {};
-    for (const k of Object.keys(v).sort()) {
+    // entity ids used as object KEYS (mesh.drainNodeIdsByDrain / drainEdgesByDrain are keyed by
+    // drain id): renamed <id:n> in insertion order so the value still lands under a stable key
+    let idSeq = 0;
+    const keyOf = new Map(Object.keys(v).map((k) => [k, ID_KEY_PATTERNS.some((re) => re.test(k)) ? `<id:${idSeq++}>` : k]));
+    for (const k of [...keyOf.keys()].sort((a, b) => (keyOf.get(a) < keyOf.get(b) ? -1 : keyOf.get(a) > keyOf.get(b) ? 1 : 0))) {
       if (DROP_KEYS.has(k)) continue;
-      if (MASK_KEYS.has(k) || MASK_KEY_PATTERNS.some((re) => re.test(k))) { o[k] = '<masked>'; continue; }
-      const n = normalize(v[k], `${path}.${k}`);
-      if (n !== undefined) o[k] = n;
+      const key = keyOf.get(k);
+      if (MASK_KEYS.has(k) || MASK_KEY_PATTERNS.some((re) => re.test(k))) { o[key] = '<masked>'; continue; }
+      const n = normalize(v[k], `${path}.${key}`);
+      if (n !== undefined) o[key] = n;
     }
     return o;
   }

@@ -1,0 +1,1862 @@
+{
+  "derived": {
+    "excluded": [],
+    "hasResult": true,
+    "polygons": [
+      {
+        "color": "#D3D1C7",
+        "name": "Quartair zand",
+        "points": [
+          {"dist":0,"taw":10},
+          {"dist":30,"taw":10.4},
+          {"dist":30,"taw":9.35},
+          {"dist":0,"taw":9.05}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u1"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "B — zand, zeer dicht",
+        "points": [
+          {"dist":15,"taw":8.4},
+          {"dist":30,"taw":9.35},
+          {"dist":30,"taw":7.45}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u19"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "C — zand, dicht",
+        "points": [
+          {"dist":0,"taw":9.05},
+          {"dist":15,"taw":7.550000000000001},
+          {"dist":0,"taw":6.05}
+        ],
+        "subtype": "zand, dicht",
+        "type": "Sand",
+        "unitId": "u2"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "D — zand, zeer dicht",
+        "points": [
+          {"dist":15,"taw":6.45},
+          {"dist":30,"taw":7.45},
+          {"dist":30,"taw":5.45}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u3"
+      },
+      {
+        "color": "#AFA9EC",
+        "name": "E — klei, weinig vast",
+        "points": [
+          {"dist":0,"taw":6.05},
+          {"dist":15,"taw":5.55},
+          {"dist":0,"taw":5.05}
+        ],
+        "subtype": "klei, weinig vast",
+        "type": "Clay",
+        "unitId": "u4"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "F — zand, zeer dicht",
+        "points": [
+          {"dist":15,"taw":4.775},
+          {"dist":30,"taw":5.45},
+          {"dist":30,"taw":4.1}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u5"
+      },
+      {
+        "color": "#FAC775",
+        "name": "G — klei, weinig vast",
+        "points": [
+          {"dist":0,"taw":5.05},
+          {"dist":15,"taw":4.699999999999999},
+          {"dist":0,"taw":4.35}
+        ],
+        "subtype": "klei, weinig vast",
+        "type": "Sandy clay",
+        "unitId": "u6"
+      },
+      {
+        "color": "#AFA9EC",
+        "name": "H — klei, weinig vast",
+        "points": [
+          {"dist":0,"taw":4.35},
+          {"dist":15,"taw":3.1999999999999997},
+          {"dist":0,"taw":2.05}
+        ],
+        "subtype": "klei, weinig vast",
+        "type": "Clay",
+        "unitId": "u7"
+      },
+      {
+        "color": "#F4C0D1",
+        "name": "I — leem, vrij vast",
+        "points": [
+          {"dist":0,"taw":2.05},
+          {"dist":15,"taw":1.7},
+          {"dist":0,"taw":1.35}
+        ],
+        "subtype": "leem, vrij vast",
+        "type": "Silty sand",
+        "unitId": "u8"
+      },
+      {
+        "color": "#F4C0D1",
+        "name": "J — leem, vrij vast",
+        "points": [
+          {"dist":0,"taw":1.35},
+          {"dist":15,"taw":0.75},
+          {"dist":0,"taw":0.15}
+        ],
+        "subtype": "leem, vrij vast",
+        "type": "Silty sand",
+        "unitId": "u9"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "K — zand, zeer dicht",
+        "points": [
+          {"dist":15,"taw":0.475},
+          {"dist":30,"taw":0.95},
+          {"dist":30,"taw":0}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u10"
+      },
+      {
+        "color": "#FAC775",
+        "name": "L — klei (zh), vrij vast",
+        "points": [
+          {"dist":0,"taw":0.15},
+          {"dist":15,"taw":-0.39999999999999997},
+          {"dist":0,"taw":-0.95}
+        ],
+        "subtype": "klei (zh), vrij vast",
+        "type": "Sandy clay",
+        "unitId": "u11"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "M — zand, zeer dicht",
+        "points": [
+          {"dist":15,"taw":-0.4},
+          {"dist":30,"taw":0},
+          {"dist":30,"taw":-0.8}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u12"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "N — zand, zeer dicht",
+        "points": [
+          {"dist":0,"taw":-0.95},
+          {"dist":30,"taw":4.1},
+          {"dist":30,"taw":0.95},
+          {"dist":0,"taw":-4.95}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u13"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "O — zand, zeer dicht",
+        "points": [
+          {"dist":15,"taw":-1.375},
+          {"dist":30,"taw":-0.8},
+          {"dist":30,"taw":-1.95}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u14"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "P — zand, zeer dicht",
+        "points": [
+          {"dist":15,"taw":-2.525},
+          {"dist":30,"taw":-1.95},
+          {"dist":30,"taw":-3.1}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u15"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "Q — zand, zeer dicht",
+        "points": [
+          {"dist":15,"taw":-3.4000000000000004},
+          {"dist":30,"taw":-3.1},
+          {"dist":30,"taw":-3.7}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u16"
+      },
+      {
+        "color": "#D3D1C7",
+        "name": "R — zand, zeer dicht",
+        "points": [
+          {"dist":15,"taw":-4.15},
+          {"dist":30,"taw":-3.7},
+          {"dist":30,"taw":-4.6}
+        ],
+        "subtype": "zand, zeer dicht",
+        "type": "Sand",
+        "unitId": "u17"
+      },
+      {
+        "color": "#AFA9EC",
+        "name": "S — klei, matig vast",
+        "points": [
+          {"dist":0,"taw":-4.95},
+          {"dist":15,"taw":-6.475},
+          {"dist":0,"taw":-8}
+        ],
+        "subtype": "klei, matig vast",
+        "type": "Clay",
+        "unitId": "u18"
+      }
+    ],
+    "profiles": {
+      "cpts": [
+        {"cptIdx":0,"dist":0,"layerCount":10},
+        {"cptIdx":1,"dist":30,"layerCount":11}
+      ],
+      "fingerprint": "0:10:0:Sand|zand (lh), los|10|9.05,Sand|zand, dicht|9.05|6.05,Clay|klei, weinig vast|6.05|5.05,Sandy clay|klei, weinig vast|5.05|4.35,Clay|klei, weinig vast|4.35|2.05,Silty sand|leem, vrij vast|2.05|1.35,Silty sand|leem, vrij vast|1.35|0.15,Sandy clay|klei (zh), vrij vast|0.15|-0.95,Sand|zand, zeer dicht|-0.95|-4.95,Clay|klei, matig vast|-4.95|-8;1:10.4:30:Sand|zand, zeer dicht|10.4|9.35,Sand|zand, zeer dicht|9.35|7.45,Sand|zand, zeer dicht|7.45|5.45,Sand|zand, zeer dicht|5.45|4.1,Sand|zand, zeer dicht|4.1|0.95,Sand|zand, zeer dicht|0.95|0,Sand|zand, zeer dicht|0|-0.8,Sand|zand, zeer dicht|-0.8|-1.95,Sand|zand, zeer dicht|-1.95|-3.1,Sand|zand, zeer dicht|-3.1|-3.7,Sand|zand, zeer dicht|-3.7|-4.6"
+    },
+    "settings": {
+      "characteristic": "wmean",
+      "minMatch": 0.45
+    },
+    "spacing": 30,
+    "stale": false,
+    "units": [
+      {
+        "agg": {
+          "botTaw": {
+            "max": 9.35,
+            "min": 9.05
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1665,
+            "min": 0.042,
+            "wmean": 0.1074
+          },
+          "g": {
+            "max": 18,
+            "min": 16,
+            "wmean": 17.1
+          },
+          "gs": {
+            "max": 20,
+            "min": 18,
+            "wmean": 19
+          },
+          "phi": {
+            "max": 35,
+            "min": 25,
+            "wmean": 30.3
+          },
+          "qc": {
+            "max": 21.09,
+            "min": 2.23,
+            "wmean": 12.13
+          },
+          "rf": {
+            "max": 1.9,
+            "min": 0.78,
+            "wmean": 1.31
+          },
+          "thk": {
+            "max": 1.05,
+            "min": 0.95,
+            "wmean": 1
+          },
+          "topTaw": {
+            "max": 10.4,
+            "min": 10
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 17.1,
+          "gs": 19,
+          "mode": "wmean",
+          "phi": 30.3
+        },
+        "color": "#D3D1C7",
+        "customName": "Quartair zand",
+        "family": "granular",
+        "id": "u1",
+        "letter": "A",
+        "members": [
+          {"cptIdx":0,"layerIdx":0},
+          {"cptIdx":1,"layerIdx":0}
+        ],
+        "name": "Quartair zand",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 7.45,
+            "min": 7.45
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1275,
+            "min": 0.1275,
+            "wmean": 0.1275
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 18.12,
+            "min": 18.12,
+            "wmean": 18.12
+          },
+          "rf": {
+            "max": 0.7,
+            "min": 0.7,
+            "wmean": 0.7
+          },
+          "thk": {
+            "max": 1.9,
+            "min": 1.9,
+            "wmean": 1.9
+          },
+          "topTaw": {
+            "max": 9.35,
+            "min": 9.35
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u19",
+        "letter": "B",
+        "members": [
+          {"cptIdx":1,"layerIdx":1}
+        ],
+        "name": "B — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 6.05,
+            "min": 6.05
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.0798,
+            "min": 0.0798,
+            "wmean": 0.0798
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 32,
+            "min": 32,
+            "wmean": 32
+          },
+          "qc": {
+            "max": 10.99,
+            "min": 10.99,
+            "wmean": 10.99
+          },
+          "rf": {
+            "max": 0.72,
+            "min": 0.72,
+            "wmean": 0.72
+          },
+          "thk": {
+            "max": 3,
+            "min": 3,
+            "wmean": 3
+          },
+          "topTaw": {
+            "max": 9.05,
+            "min": 9.05
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 32
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u2",
+        "letter": "C",
+        "members": [
+          {"cptIdx":0,"layerIdx":1}
+        ],
+        "name": "C — zand, dicht",
+        "params": null,
+        "subtype": "zand, dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 5.45,
+            "min": 5.45
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1544,
+            "min": 0.1544,
+            "wmean": 0.1544
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 20.09,
+            "min": 20.09,
+            "wmean": 20.09
+          },
+          "rf": {
+            "max": 0.79,
+            "min": 0.79,
+            "wmean": 0.79
+          },
+          "thk": {
+            "max": 2,
+            "min": 2,
+            "wmean": 2
+          },
+          "topTaw": {
+            "max": 7.45,
+            "min": 7.45
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u3",
+        "letter": "D",
+        "members": [
+          {"cptIdx":1,"layerIdx":2}
+        ],
+        "name": "D — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 5.05,
+            "min": 5.05
+          },
+          "c": {
+            "max": 2,
+            "min": 2,
+            "wmean": 2
+          },
+          "cu": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "fs": {
+            "max": 0.0382,
+            "min": 0.0382,
+            "wmean": 0.0382
+          },
+          "g": {
+            "max": 16,
+            "min": 16,
+            "wmean": 16
+          },
+          "gs": {
+            "max": 16,
+            "min": 16,
+            "wmean": 16
+          },
+          "phi": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "qc": {
+            "max": 0.87,
+            "min": 0.87,
+            "wmean": 0.87
+          },
+          "rf": {
+            "max": 4.39,
+            "min": 4.39,
+            "wmean": 4.39
+          },
+          "thk": {
+            "max": 1,
+            "min": 1,
+            "wmean": 1
+          },
+          "topTaw": {
+            "max": 6.05,
+            "min": 6.05
+          }
+        },
+        "characteristic": {
+          "c": 2,
+          "cu": 20,
+          "g": 16,
+          "gs": 16,
+          "mode": "wmean",
+          "phi": 20
+        },
+        "color": "#AFA9EC",
+        "customName": null,
+        "family": "cohesive",
+        "id": "u4",
+        "letter": "E",
+        "members": [
+          {"cptIdx":0,"layerIdx":2}
+        ],
+        "name": "E — klei, weinig vast",
+        "params": null,
+        "subtype": "klei, weinig vast",
+        "type": "Clay"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 4.1,
+            "min": 4.1
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1696,
+            "min": 0.1696,
+            "wmean": 0.1696
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 20.16,
+            "min": 20.16,
+            "wmean": 20.16
+          },
+          "rf": {
+            "max": 0.82,
+            "min": 0.82,
+            "wmean": 0.82
+          },
+          "thk": {
+            "max": 1.35,
+            "min": 1.35,
+            "wmean": 1.35
+          },
+          "topTaw": {
+            "max": 5.45,
+            "min": 5.45
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u5",
+        "letter": "F",
+        "members": [
+          {"cptIdx":1,"layerIdx":3}
+        ],
+        "name": "F — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 4.35,
+            "min": 4.35
+          },
+          "c": {
+            "max": 2,
+            "min": 2,
+            "wmean": 2
+          },
+          "cu": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "fs": {
+            "max": 0.0413,
+            "min": 0.0413,
+            "wmean": 0.0413
+          },
+          "g": {
+            "max": 16,
+            "min": 16,
+            "wmean": 16
+          },
+          "gs": {
+            "max": 16,
+            "min": 16,
+            "wmean": 16
+          },
+          "phi": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "qc": {
+            "max": 0.92,
+            "min": 0.92,
+            "wmean": 0.92
+          },
+          "rf": {
+            "max": 4.52,
+            "min": 4.52,
+            "wmean": 4.52
+          },
+          "thk": {
+            "max": 0.7,
+            "min": 0.7,
+            "wmean": 0.7
+          },
+          "topTaw": {
+            "max": 5.05,
+            "min": 5.05
+          }
+        },
+        "characteristic": {
+          "c": 2,
+          "cu": 20,
+          "g": 16,
+          "gs": 16,
+          "mode": "wmean",
+          "phi": 20
+        },
+        "color": "#FAC775",
+        "customName": null,
+        "family": "cohesive",
+        "id": "u6",
+        "letter": "G",
+        "members": [
+          {"cptIdx":0,"layerIdx":3}
+        ],
+        "name": "G — klei, weinig vast",
+        "params": null,
+        "subtype": "klei, weinig vast",
+        "type": "Sandy clay"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 2.05,
+            "min": 2.05
+          },
+          "c": {
+            "max": 2,
+            "min": 2,
+            "wmean": 2
+          },
+          "cu": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "fs": {
+            "max": 0.0421,
+            "min": 0.0421,
+            "wmean": 0.0421
+          },
+          "g": {
+            "max": 16,
+            "min": 16,
+            "wmean": 16
+          },
+          "gs": {
+            "max": 16,
+            "min": 16,
+            "wmean": 16
+          },
+          "phi": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "qc": {
+            "max": 0.93,
+            "min": 0.93,
+            "wmean": 0.93
+          },
+          "rf": {
+            "max": 4.53,
+            "min": 4.53,
+            "wmean": 4.53
+          },
+          "thk": {
+            "max": 2.3,
+            "min": 2.3,
+            "wmean": 2.3
+          },
+          "topTaw": {
+            "max": 4.35,
+            "min": 4.35
+          }
+        },
+        "characteristic": {
+          "c": 2,
+          "cu": 20,
+          "g": 16,
+          "gs": 16,
+          "mode": "wmean",
+          "phi": 20
+        },
+        "color": "#AFA9EC",
+        "customName": null,
+        "family": "cohesive",
+        "id": "u7",
+        "letter": "H",
+        "members": [
+          {"cptIdx":0,"layerIdx":4}
+        ],
+        "name": "H — klei, weinig vast",
+        "params": null,
+        "subtype": "klei, weinig vast",
+        "type": "Clay"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 1.35,
+            "min": 1.35
+          },
+          "c": {
+            "max": 4,
+            "min": 4,
+            "wmean": 4
+          },
+          "cu": {
+            "max": 50,
+            "min": 50,
+            "wmean": 50
+          },
+          "fs": {
+            "max": 0.0615,
+            "min": 0.0615,
+            "wmean": 0.0615
+          },
+          "g": {
+            "max": 19,
+            "min": 19,
+            "wmean": 19
+          },
+          "gs": {
+            "max": 19,
+            "min": 19,
+            "wmean": 19
+          },
+          "phi": {
+            "max": 22,
+            "min": 22,
+            "wmean": 22
+          },
+          "qc": {
+            "max": 2.32,
+            "min": 2.32,
+            "wmean": 2.32
+          },
+          "rf": {
+            "max": 2.67,
+            "min": 2.67,
+            "wmean": 2.67
+          },
+          "thk": {
+            "max": 0.7,
+            "min": 0.7,
+            "wmean": 0.7
+          },
+          "topTaw": {
+            "max": 2.05,
+            "min": 2.05
+          }
+        },
+        "characteristic": {
+          "c": 4,
+          "cu": 50,
+          "g": 19,
+          "gs": 19,
+          "mode": "wmean",
+          "phi": 22
+        },
+        "color": "#F4C0D1",
+        "customName": null,
+        "family": "cohesive",
+        "id": "u8",
+        "letter": "I",
+        "members": [
+          {"cptIdx":0,"layerIdx":5}
+        ],
+        "name": "I — leem, vrij vast",
+        "params": null,
+        "subtype": "leem, vrij vast",
+        "type": "Silty sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 0.15,
+            "min": 0.15
+          },
+          "c": {
+            "max": 4,
+            "min": 4,
+            "wmean": 4
+          },
+          "cu": {
+            "max": 50,
+            "min": 50,
+            "wmean": 50
+          },
+          "fs": {
+            "max": 0.0623,
+            "min": 0.0623,
+            "wmean": 0.0623
+          },
+          "g": {
+            "max": 19,
+            "min": 19,
+            "wmean": 19
+          },
+          "gs": {
+            "max": 19,
+            "min": 19,
+            "wmean": 19
+          },
+          "phi": {
+            "max": 22,
+            "min": 22,
+            "wmean": 22
+          },
+          "qc": {
+            "max": 2.37,
+            "min": 2.37,
+            "wmean": 2.37
+          },
+          "rf": {
+            "max": 2.63,
+            "min": 2.63,
+            "wmean": 2.63
+          },
+          "thk": {
+            "max": 1.2,
+            "min": 1.2,
+            "wmean": 1.2
+          },
+          "topTaw": {
+            "max": 1.35,
+            "min": 1.35
+          }
+        },
+        "characteristic": {
+          "c": 4,
+          "cu": 50,
+          "g": 19,
+          "gs": 19,
+          "mode": "wmean",
+          "phi": 22
+        },
+        "color": "#F4C0D1",
+        "customName": null,
+        "family": "cohesive",
+        "id": "u9",
+        "letter": "J",
+        "members": [
+          {"cptIdx":0,"layerIdx":6}
+        ],
+        "name": "J — leem, vrij vast",
+        "params": null,
+        "subtype": "leem, vrij vast",
+        "type": "Silty sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 0,
+            "min": 0
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1567,
+            "min": 0.1567,
+            "wmean": 0.1567
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 20.55,
+            "min": 20.55,
+            "wmean": 20.55
+          },
+          "rf": {
+            "max": 0.74,
+            "min": 0.74,
+            "wmean": 0.74
+          },
+          "thk": {
+            "max": 0.95,
+            "min": 0.95,
+            "wmean": 0.95
+          },
+          "topTaw": {
+            "max": 0.95,
+            "min": 0.95
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u10",
+        "letter": "K",
+        "members": [
+          {"cptIdx":1,"layerIdx":5}
+        ],
+        "name": "K — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": -0.95,
+            "min": -0.95
+          },
+          "c": {
+            "max": 8,
+            "min": 8,
+            "wmean": 8
+          },
+          "cu": {
+            "max": 100,
+            "min": 100,
+            "wmean": 100
+          },
+          "fs": {
+            "max": 0.0605,
+            "min": 0.0605,
+            "wmean": 0.0605
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "phi": {
+            "max": 22,
+            "min": 22,
+            "wmean": 22
+          },
+          "qc": {
+            "max": 2.2,
+            "min": 2.2,
+            "wmean": 2.2
+          },
+          "rf": {
+            "max": 2.74,
+            "min": 2.74,
+            "wmean": 2.74
+          },
+          "thk": {
+            "max": 1.1,
+            "min": 1.1,
+            "wmean": 1.1
+          },
+          "topTaw": {
+            "max": 0.15,
+            "min": 0.15
+          }
+        },
+        "characteristic": {
+          "c": 8,
+          "cu": 100,
+          "g": 18,
+          "gs": 18,
+          "mode": "wmean",
+          "phi": 22
+        },
+        "color": "#FAC775",
+        "customName": null,
+        "family": "cohesive",
+        "id": "u11",
+        "letter": "L",
+        "members": [
+          {"cptIdx":0,"layerIdx":7}
+        ],
+        "name": "L — klei (zh), vrij vast",
+        "params": null,
+        "subtype": "klei (zh), vrij vast",
+        "type": "Sandy clay"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": -0.8,
+            "min": -0.8
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1232,
+            "min": 0.1232,
+            "wmean": 0.1232
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 16.84,
+            "min": 16.84,
+            "wmean": 16.84
+          },
+          "rf": {
+            "max": 0.71,
+            "min": 0.71,
+            "wmean": 0.71
+          },
+          "thk": {
+            "max": 0.8,
+            "min": 0.8,
+            "wmean": 0.8
+          },
+          "topTaw": {
+            "max": 0,
+            "min": 0
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u12",
+        "letter": "M",
+        "members": [
+          {"cptIdx":1,"layerIdx":6}
+        ],
+        "name": "M — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": 0.95,
+            "min": -4.95
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1419,
+            "min": 0.1096,
+            "wmean": 0.1238
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 18.87,
+            "min": 16.85,
+            "wmean": 17.74
+          },
+          "rf": {
+            "max": 0.74,
+            "min": 0.65,
+            "wmean": 0.69
+          },
+          "thk": {
+            "max": 4,
+            "min": 3.15,
+            "wmean": 3.63
+          },
+          "topTaw": {
+            "max": 4.1,
+            "min": -0.95
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u13",
+        "letter": "N",
+        "members": [
+          {"cptIdx":0,"layerIdx":8},
+          {"cptIdx":1,"layerIdx":4}
+        ],
+        "name": "N — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": -1.95,
+            "min": -1.95
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1377,
+            "min": 0.1377,
+            "wmean": 0.1377
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 17.18,
+            "min": 17.18,
+            "wmean": 17.18
+          },
+          "rf": {
+            "max": 0.79,
+            "min": 0.79,
+            "wmean": 0.79
+          },
+          "thk": {
+            "max": 1.15,
+            "min": 1.15,
+            "wmean": 1.15
+          },
+          "topTaw": {
+            "max": -0.8,
+            "min": -0.8
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u14",
+        "letter": "O",
+        "members": [
+          {"cptIdx":1,"layerIdx":7}
+        ],
+        "name": "O — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": -3.1,
+            "min": -3.1
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1473,
+            "min": 0.1473,
+            "wmean": 0.1473
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 18.42,
+            "min": 18.42,
+            "wmean": 18.42
+          },
+          "rf": {
+            "max": 0.81,
+            "min": 0.81,
+            "wmean": 0.81
+          },
+          "thk": {
+            "max": 1.15,
+            "min": 1.15,
+            "wmean": 1.15
+          },
+          "topTaw": {
+            "max": -1.95,
+            "min": -1.95
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u15",
+        "letter": "P",
+        "members": [
+          {"cptIdx":1,"layerIdx":8}
+        ],
+        "name": "P — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": -3.7,
+            "min": -3.7
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1243,
+            "min": 0.1243,
+            "wmean": 0.1243
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 17.1,
+            "min": 17.1,
+            "wmean": 17.1
+          },
+          "rf": {
+            "max": 0.72,
+            "min": 0.72,
+            "wmean": 0.72
+          },
+          "thk": {
+            "max": 0.6,
+            "min": 0.6,
+            "wmean": 0.6
+          },
+          "topTaw": {
+            "max": -3.1,
+            "min": -3.1
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u16",
+        "letter": "Q",
+        "members": [
+          {"cptIdx":1,"layerIdx":9}
+        ],
+        "name": "Q — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": -4.6,
+            "min": -4.6
+          },
+          "c": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "cu": {
+            "max": 0,
+            "min": 0,
+            "wmean": 0
+          },
+          "fs": {
+            "max": 0.1478,
+            "min": 0.1478,
+            "wmean": 0.1478
+          },
+          "g": {
+            "max": 18,
+            "min": 18,
+            "wmean": 18
+          },
+          "gs": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "phi": {
+            "max": 35,
+            "min": 35,
+            "wmean": 35
+          },
+          "qc": {
+            "max": 18.99,
+            "min": 18.99,
+            "wmean": 18.99
+          },
+          "rf": {
+            "max": 0.79,
+            "min": 0.79,
+            "wmean": 0.79
+          },
+          "thk": {
+            "max": 0.9,
+            "min": 0.9,
+            "wmean": 0.9
+          },
+          "topTaw": {
+            "max": -3.7,
+            "min": -3.7
+          }
+        },
+        "characteristic": {
+          "c": 0,
+          "cu": 0,
+          "g": 18,
+          "gs": 20,
+          "mode": "wmean",
+          "phi": 35
+        },
+        "color": "#D3D1C7",
+        "customName": null,
+        "family": "granular",
+        "id": "u17",
+        "letter": "R",
+        "members": [
+          {"cptIdx":1,"layerIdx":10}
+        ],
+        "name": "R — zand, zeer dicht",
+        "params": null,
+        "subtype": "zand, zeer dicht",
+        "type": "Sand"
+      },
+      {
+        "agg": {
+          "botTaw": {
+            "max": -8,
+            "min": -8
+          },
+          "c": {
+            "max": 4,
+            "min": 4,
+            "wmean": 4
+          },
+          "cu": {
+            "max": 50,
+            "min": 50,
+            "wmean": 50
+          },
+          "fs": {
+            "max": 0.0527,
+            "min": 0.0527,
+            "wmean": 0.0527
+          },
+          "g": {
+            "max": 17,
+            "min": 17,
+            "wmean": 17
+          },
+          "gs": {
+            "max": 17,
+            "min": 17,
+            "wmean": 17
+          },
+          "phi": {
+            "max": 20,
+            "min": 20,
+            "wmean": 20
+          },
+          "qc": {
+            "max": 1.41,
+            "min": 1.41,
+            "wmean": 1.41
+          },
+          "rf": {
+            "max": 3.72,
+            "min": 3.72,
+            "wmean": 3.72
+          },
+          "thk": {
+            "max": 3.05,
+            "min": 3.05,
+            "wmean": 3.05
+          },
+          "topTaw": {
+            "max": -4.95,
+            "min": -4.95
+          }
+        },
+        "characteristic": {
+          "c": 4,
+          "cu": 50,
+          "g": 17,
+          "gs": 17,
+          "mode": "wmean",
+          "phi": 20
+        },
+        "color": "#AFA9EC",
+        "customName": null,
+        "family": "cohesive",
+        "id": "u18",
+        "letter": "S",
+        "members": [
+          {"cptIdx":0,"layerIdx":9}
+        ],
+        "name": "S — klei, matig vast",
+        "params": null,
+        "subtype": "klei, matig vast",
+        "type": "Clay"
+      }
+    ],
+    "warnings": []
+  },
+  "hasManualEdits": true,
+  "state": {
+    "fingerprint": "0:10:0:Sand|zand (lh), los|10|9.05,Sand|zand, dicht|9.05|6.05,Clay|klei, weinig vast|6.05|5.05,Sandy clay|klei, weinig vast|5.05|4.35,Clay|klei, weinig vast|4.35|2.05,Silty sand|leem, vrij vast|2.05|1.35,Silty sand|leem, vrij vast|1.35|0.15,Sandy clay|klei (zh), vrij vast|0.15|-0.95,Sand|zand, zeer dicht|-0.95|-4.95,Clay|klei, matig vast|-4.95|-8;1:10.4:30:Sand|zand, zeer dicht|10.4|9.35,Sand|zand, zeer dicht|9.35|7.45,Sand|zand, zeer dicht|7.45|5.45,Sand|zand, zeer dicht|5.45|4.1,Sand|zand, zeer dicht|4.1|0.95,Sand|zand, zeer dicht|0.95|0,Sand|zand, zeer dicht|0|-0.8,Sand|zand, zeer dicht|-0.8|-1.95,Sand|zand, zeer dicht|-1.95|-3.1,Sand|zand, zeer dicht|-3.1|-3.7,Sand|zand, zeer dicht|-3.7|-4.6",
+    "manual": true,
+    "nextUnitSeq": 20,
+    "units": [
+      {
+        "id": "u1",
+        "members": [
+          {"cptIdx":0,"layerIdx":0},
+          {"cptIdx":1,"layerIdx":0}
+        ],
+        "name": "Quartair zand"
+      },
+      {
+        "id": "u2",
+        "members": [
+          {"cptIdx":0,"layerIdx":1}
+        ],
+        "name": null
+      },
+      {
+        "id": "u3",
+        "members": [
+          {"cptIdx":1,"layerIdx":2}
+        ],
+        "name": null
+      },
+      {
+        "id": "u4",
+        "members": [
+          {"cptIdx":0,"layerIdx":2}
+        ],
+        "name": null
+      },
+      {
+        "id": "u5",
+        "members": [
+          {"cptIdx":1,"layerIdx":3}
+        ],
+        "name": null
+      },
+      {
+        "id": "u6",
+        "members": [
+          {"cptIdx":0,"layerIdx":3}
+        ],
+        "name": null
+      },
+      {
+        "id": "u7",
+        "members": [
+          {"cptIdx":0,"layerIdx":4}
+        ],
+        "name": null
+      },
+      {
+        "id": "u8",
+        "members": [
+          {"cptIdx":0,"layerIdx":5}
+        ],
+        "name": null
+      },
+      {
+        "id": "u9",
+        "members": [
+          {"cptIdx":0,"layerIdx":6}
+        ],
+        "name": null
+      },
+      {
+        "id": "u10",
+        "members": [
+          {"cptIdx":1,"layerIdx":5}
+        ],
+        "name": null
+      },
+      {
+        "id": "u11",
+        "members": [
+          {"cptIdx":0,"layerIdx":7}
+        ],
+        "name": null
+      },
+      {
+        "id": "u12",
+        "members": [
+          {"cptIdx":1,"layerIdx":6}
+        ],
+        "name": null
+      },
+      {
+        "id": "u13",
+        "members": [
+          {"cptIdx":0,"layerIdx":8},
+          {"cptIdx":1,"layerIdx":4}
+        ],
+        "name": null
+      },
+      {
+        "id": "u14",
+        "members": [
+          {"cptIdx":1,"layerIdx":7}
+        ],
+        "name": null
+      },
+      {
+        "id": "u15",
+        "members": [
+          {"cptIdx":1,"layerIdx":8}
+        ],
+        "name": null
+      },
+      {
+        "id": "u16",
+        "members": [
+          {"cptIdx":1,"layerIdx":9}
+        ],
+        "name": null
+      },
+      {
+        "id": "u17",
+        "members": [
+          {"cptIdx":1,"layerIdx":10}
+        ],
+        "name": null
+      },
+      {
+        "id": "u18",
+        "members": [
+          {"cptIdx":0,"layerIdx":9}
+        ],
+        "name": null
+      },
+      {
+        "id": "u19",
+        "members": [
+          {"cptIdx":1,"layerIdx":1}
+        ],
+        "name": null
+      }
+    ]
+  }
+}

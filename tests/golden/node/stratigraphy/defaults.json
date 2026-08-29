@@ -1,0 +1,19 @@
+{
+  "DEFAULT_SETTINGS": {
+    "characteristic": "wmean",
+    "minMatch": 0.45
+  },
+  "SECTION_TOKENS": [
+    ["text","--tx","#18181a"],
+    ["muted","--tx2","#4a4a52"],
+    ["subtle","--tx3","#888890"],
+    ["blue","--chart-blue","#4F8584"]
+  ],
+  "svgFileName": "Golden multi-CPT_doorsnede.svg",
+  "tokens": {
+    "blue": "",
+    "muted": "",
+    "subtle": "",
+    "text": ""
+  }
+}

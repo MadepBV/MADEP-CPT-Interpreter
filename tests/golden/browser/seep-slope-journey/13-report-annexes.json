@@ -1,0 +1,306 @@
+{
+  "bishop": null,
+  "deformation": {
+    "config": {
+      "allowStressOnlyGeostaticReference": false,
+      "analysisType": "deformation",
+      "constitutiveModel": "mc-plastic",
+      "displacementAbsTol": 0.000001,
+      "displacementRelTol": 0.0001,
+      "displacementScale": 1,
+      "elasticGlobalizationArmijoC1": 0.001,
+      "elasticGlobalizationMinResidualRatio": 0.9,
+      "geostaticCorrectionStages": 1,
+      "geostaticInitializationMethod": "auto",
+      "geostaticMaxRepeatedBand": 3,
+      "geostaticMinLoadStep": 0.0005,
+      "geostaticProgressFailFast": false,
+      "geostaticProgressFailFastLoadFactor": 0.5,
+      "geostaticProgressFailFastPlasticFraction": 0.15,
+      "geostaticProgressFailFastSteps": 6,
+      "geostaticStressOnlyResidualTolerance": 0.05,
+      "gpuPipelineVersion": "v1",
+      "hsConsistentTangentMigrationResolved": false,
+      "hsConsistentTangentPromptPending": false,
+      "initialGravityElasticGlobalizationIterations": 4,
+      "initialGravityTangentSchedule": ["plastic"],
+      "initialLoadStep": 0.25,
+      "initialStressMode": "plastic-geostatic",
+      "loadMode": "pressure",
+      "loadStepCutbackFactor": 0.5,
+      "loadStepGrowthFactor": 1.25,
+      "maxLoadSteps": 384,
+      "meshElementType": "t3",
+      "meshTargetArea": 2,
+      "meshTargetAreaAuto": false,
+      "minLoadStep": 0.000244140625,
+      "nonlinearMaxIterations": 32,
+      "outOfPlaneLength": 10,
+      "plasticLineSearchMaxBacktracks": 6,
+      "plasticLoadStepCutbackFactor": 0.4,
+      "plasticLoadStepGrowthFactor": 1.08,
+      "preconditionerLevel": "jacobi",
+      "residualAbsTol": 0.001,
+      "residualRelTol": 0.0001,
+      "safetyFinalizationMode": "production-msf",
+      "safetyInitialSigmaMsfIncrement": 0.1,
+      "safetyMaxSearchTrials": 32,
+      "safetySigmaMsfBracketTolerance": 0.01,
+      "safetySigmaMsfGrowthFactor": 1.5,
+      "safetySigmaMsfMax": 3,
+      "serviceProgressFailFast": false,
+      "serviceProgressFailFastLoadFactor": 0.2,
+      "serviceProgressFailFastPlasticFraction": 0.35,
+      "serviceProgressFailFastSteps": 16,
+      "solverBackend": "wasm-cpu",
+      "stressOnlyGeostaticMaxEta": 1,
+      "totalLoad": null,
+      "useMcConsistentTangent": true,
+      "useNewGpuPipeline": false,
+      "useSeepagePorePressures": false,
+      "useStagedExcavation": true,
+      "useStagedGeostaticInit": true,
+      "useUnsymmetricPlasticSolver": true,
+      "useWallInterface": true,
+      "useWasmCpuPipeline": true,
+      "wasmRobustNonlinearMode": false
+    },
+    "summary": {
+      "analysisType": "deformation",
+      "constitutiveModel": "mc-plastic",
+      "converged": true,
+      "convergenceState": "converged",
+      "elementCount": null,
+      "elementType": "t3",
+      "initialPhaseConvergenceState": "converged",
+      "iterations": null,
+      "loadFactor": null,
+      "loadFactorMeaning": null,
+      "maxDisplacementMm": null,
+      "maxSettlementMm": null,
+      "nodeCount": 547,
+      "safetyFactorOfSafetyIsOpenEnded": false,
+      "safetyFactorOfSafetyLower": null,
+      "safetyFactorOfSafetyUpper": null,
+      "safetyFinalizationStatus": "not-run",
+      "safetyLoadFactor": null,
+      "safetyStatus": "not-applicable",
+      "servicePhaseConvergenceState": "converged",
+      "timing": "<masked>"
+    },
+    "view": {
+      "app": "bishop",
+      "capturedAt": "<masked>",
+      "display": {
+        "contourMode": "uTotal",
+        "showContourLegend": true,
+        "showContourLines": true,
+        "showContours": true,
+        "showDeformedMesh": false,
+        "showDisplacementVectors": false,
+        "showLoadVectors": true,
+        "showPlasticPoints": true,
+        "showUndeformedMesh": false,
+        "showWallMomentOverlay": false,
+        "wallOverlayQuantity": "M"
+      },
+      "image": {
+        "dataUrl": "<masked>",
+        "height": 150,
+        "mimeType": "image/jpeg",
+        "width": 300
+      },
+      "source": "manual",
+      "viewport": {
+        "fitted": true,
+        "offsetX": 298.81249999999994,
+        "offsetY": 136,
+        "scale": 27.000000000000004
+      },
+      "workspace": "deformation"
+    },
+    "warnings": [
+      "Surface load \"Load 1\": out-of-plane length is less than 4 times the loaded width, so the plane-strain deformation result should be treated as a 2D screening approximation.",
+      "The current domain is smaller than the recommended 5*B buffer (20.00 m) on one or more sides, so settlements and MC utilization near the boundaries may be optimistic.",
+      "Slope-aware K0 seed: recovered elastic gravity shear was clipped to the exact Mohr-Coulomb envelope at 62 integration point(s) and discarded at 0 point(s). The initial plastic self-weight phase will equilibrate only the remaining residual."
+    ]
+  },
+  "seepSlope": null,
+  "seepage": {
+    "boundaryConditions": [
+      {
+        "edgeKey": "side-left:0",
+        "edgeLabel": "Left side",
+        "head": 3,
+        "id": "<id>",
+        "index": 0,
+        "length": 18.666667,
+        "midpoint": {
+          "x": 0,
+          "y": -5.333334
+        },
+        "source": "side-left",
+        "status": "active",
+        "type": "head",
+        "typeLabel": "Prescribed head"
+      },
+      {
+        "edgeKey": "side-right:0",
+        "edgeLabel": "Right side",
+        "head": -0.5,
+        "id": "<id>",
+        "index": 0,
+        "length": 14.666667,
+        "midpoint": {
+          "x": 20,
+          "y": -7.333334
+        },
+        "source": "side-right",
+        "status": "active",
+        "type": "head",
+        "typeLabel": "Prescribed head"
+      }
+    ],
+    "config": {
+      "drains": {
+        "gatingTolerances": {},
+        "reportPerSegmentInflow": true
+      },
+      "flowErrorTolerance": 0.01,
+      "freeSurface": "iterate",
+      "maxRuntimeMs": "<masked>",
+      "meshTargetArea": 1,
+      "meshTargetAreaAuto": false,
+      "useFemPorePressure": false,
+      "usePhreaticAsSeed": true
+    },
+    "drains": [
+      {
+        "closed": false,
+        "gating": "always",
+        "gatingLabel": "Always",
+        "head": {
+          "kind": "constant",
+          "value": 0.5
+        },
+        "id": "<id>",
+        "label": "Drain 1",
+        "length": 5.099019513592785,
+        "result": {
+          "activeNodes": 13,
+          "perSegmentInflow": [0.000013054115040723459],
+          "totalInflow": 0.00006357692283270906,
+          "totalNodes": 13
+        },
+        "vertexCount": 2,
+        "vertices": [
+          {"x":13,"y":1},
+          {"x":18,"y":0}
+        ]
+      }
+    ],
+    "geometry": {
+      "autoRegionCount": 10,
+      "boundaryEdgeCount": 5,
+      "customRegionCount": 0,
+      "drainCount": 1,
+      "phreaticVertexCount": 3,
+      "regionCount": 10,
+      "regionMode": "auto",
+      "terrainVertexCount": 3,
+      "wallCount": 1
+    },
+    "materials": [
+      {"id":"layer_0","kSource":"cpt","kSourceLabel":"CPT","kx":0.000003,"ky":0.000003,"label":"Layer 1 - zand (lh), los (Sand)"},
+      {"id":"layer_1","kSource":"cpt","kSourceLabel":"CPT","kx":0.00015,"ky":0.00015,"label":"Layer 2 - zand, dicht (Sand)"},
+      {"id":"layer_2","kSource":"cpt","kSourceLabel":"CPT","kx":5e-8,"ky":1.7e-8,"label":"Layer 3 - klei, weinig vast (Clay)"},
+      {"id":"layer_3","kSource":"cpt","kSourceLabel":"CPT","kx":5e-7,"ky":1.7e-7,"label":"Layer 4 - klei, weinig vast (Sandy clay)"},
+      {"id":"layer_4","kSource":"cpt","kSourceLabel":"CPT","kx":5e-8,"ky":1.7e-8,"label":"Layer 5 - klei, weinig vast (Clay)"},
+      {"id":"layer_5","kSource":"cpt","kSourceLabel":"CPT","kx":0.000003,"ky":0.000001,"label":"Layer 6 - leem, vrij vast (Silty sand)"},
+      {"id":"layer_6","kSource":"cpt","kSourceLabel":"CPT","kx":0.000003,"ky":0.000001,"label":"Layer 7 - leem, vrij vast (Silty sand)"},
+      {"id":"layer_7","kSource":"cpt","kSourceLabel":"CPT","kx":5e-7,"ky":1.7e-7,"label":"Layer 8 - klei (zh), vrij vast (Sandy clay)"},
+      {"id":"layer_8","kSource":"cpt","kSourceLabel":"CPT","kx":0.0002,"ky":0.0002,"label":"Layer 9 - zand, zeer dicht (Sand)"},
+      {"id":"layer_9","kSource":"cpt","kSourceLabel":"CPT","kx":5e-8,"ky":1.7e-8,"label":"Layer 10 - klei, matig vast (Clay)"}
+    ],
+    "mesh": {
+      "<digest>": "f91107c636633537775e57e3",
+      "bytes": 103
+    },
+    "result": {
+      "<digest>": "401a0fc5b6e1db90f8ea63da",
+      "bytes": 6913
+    },
+    "summary": {
+      "activeBcCount": 2,
+      "activeDrainNodeCount": 13,
+      "drainCount": 1,
+      "explicitBcCount": 2,
+      "noFlowCount": 0,
+      "orphanedBcCount": 0,
+      "prescribedHeadCount": 2,
+      "rejectReason": "",
+      "seepageFaceCount": 0,
+      "solved": true,
+      "status": "success",
+      "totalDrainNodeCount": 13
+    },
+    "view": {
+      "app": "bishop",
+      "capturedAt": "<masked>",
+      "display": {
+        "contourMode": "head",
+        "showBoundaryConditions": true,
+        "showBoundaryLabels": true,
+        "showContourLegend": true,
+        "showContourLines": true,
+        "showContours": true,
+        "showDrains": true,
+        "showEquipotentials": false,
+        "showExitGradient": false,
+        "showFlowVectors": false,
+        "showHead": false,
+        "showPhreatic": true
+      },
+      "image": {
+        "dataUrl": "<masked>",
+        "height": 150,
+        "mimeType": "image/jpeg",
+        "width": 300
+      },
+      "source": "manual",
+      "viewport": {
+        "fitted": true,
+        "offsetX": 298.81249999999994,
+        "offsetY": 136,
+        "scale": 27.000000000000004
+      },
+      "workspace": "seepage"
+    },
+    "walls": [
+      {
+        "head": {
+          "x": 9,
+          "y": 3.667
+        },
+        "id": "<id>",
+        "label": "Wall 1",
+        "material": {
+          "id": "<id>",
+          "kAcross": 1e-12,
+          "kAlong": 1e-12,
+          "kSource": "preset",
+          "kSourceLabel": "preset",
+          "label": "Concrete diaphragm"
+        },
+        "passiveSide": "right",
+        "tip": {
+          "x": 9,
+          "y": 1
+        },
+        "x": 9,
+        "yTip": 1,
+        "yTop": 3.667
+      }
+    ]
+  }
+}

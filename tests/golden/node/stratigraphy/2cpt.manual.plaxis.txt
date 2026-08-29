@@ -1,0 +1,21 @@
+# MADEP stratigrafie — PLAXIS 2D materiaalcommando's per grondeenheid
+# Parameters: dikte-gewogen gemiddelden over de deelnemende CPT-lagen;
+# sterkte volgens karakteristieke keuze "wmean".
+# Eenheid Quartair zand: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid B — zand, dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid C — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid D — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid E — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid F — klei, weinig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid G — klei, weinig vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid H — leem, vrij vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid I — leem, vrij vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid J — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid K — klei (zh), vrij vast: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid L — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid M — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid N — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid O — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid P — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid Q — zand, zeer dicht: geen Stage 4 parameters beschikbaar — overgeslagen.
+# Eenheid R — klei, matig vast: geen Stage 4 parameters beschikbaar — overgeslagen.

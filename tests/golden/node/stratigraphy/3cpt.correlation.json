@@ -1,0 +1,129 @@
+{
+  "links": [
+    {"a":0,"b":1,"ia":0,"ib":0,"score":0.593},
+    {"a":0,"b":1,"ia":1,"ib":1,"score":0.769},
+    {"a":0,"b":1,"ia":8,"ib":4,"score":0.727},
+    {"a":1,"b":2,"ia":2,"ib":1,"score":0.239}
+  ],
+  "units": [
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":0},
+        {"cptIdx":1,"layerIdx":0}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":2,"layerIdx":0}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":1},
+        {"cptIdx":1,"layerIdx":1}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":1,"layerIdx":2},
+        {"cptIdx":2,"layerIdx":1}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":2}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":1,"layerIdx":3}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":3}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":2,"layerIdx":2}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":4}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":5}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":2,"layerIdx":3}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":6}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":1,"layerIdx":5}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":7}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":1,"layerIdx":6}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":8},
+        {"cptIdx":1,"layerIdx":4}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":2,"layerIdx":4}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":1,"layerIdx":7}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":2,"layerIdx":5}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":1,"layerIdx":8}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":1,"layerIdx":9}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":1,"layerIdx":10}
+      ]
+    },
+    {
+      "members": [
+        {"cptIdx":0,"layerIdx":9}
+      ]
+    }
+  ]
+}

@@ -55,6 +55,33 @@ export const DIGEST_IF_UNCHANGED = [
 ];
 
 /**
+ * Parts of the state that are stored as a digest at EVERY step: duplicates of state that is
+ * locked elsewhere in the same file (the Bishop model embeds the seepage / deformation state
+ * objects; `deformation.result.mesh` is `deformation.mesh`), the per-element solver diagnostics
+ * that the Node `deformation` / `seepage` suites lock in full, per-cell mesh geometry derived
+ * from nodes + elements, and the canvas contour derivatives (render state). Any change still
+ * flips the digest; the nodal fields, summaries, solver bookkeeping and mesh connectivity stay
+ * in full.
+ */
+export const DIGEST_ALWAYS = [
+  'active.stage6.bishop.deformation.result.elementResults',
+  'active.stage6.bishop.deformation.result.mesh',
+  'active.stage6.bishop.deformation.mesh.cells',
+  'active.stage6.bishop.deformation.mesh.elementData',
+  'active.stage6.bishop.deformation.mesh.sampleBins',
+  'active.stage6.bishop.seepage.mesh.cells',
+  'active.stage6.bishop.seepage.mesh.elementData',
+  'active.stage6.bishop.seepage.mesh.sampleBins',
+  'active.stage6.bishop.seepage.result.elementGradients',
+  'active.stage6.bishop.seepage.result.cellGradients',
+  'active.stage6.bishop.seepage.result.gradients',
+  'cache.bishopModel.seepage',
+  'cache.bishopModel.deformation',
+  'cache.bishopDeformationContourDerived',
+  'cache.bishopSeepageContourDerived'
+];
+
+/**
  * Text masks applied to DOM text and download names. Everything here is time- or
  * clock-derived; the values themselves are locked in state.json where they are
  * deterministic, or masked there by normalize.mjs.
@@ -66,6 +93,10 @@ export const TEXT_MASKS = [
   [/\b\d{1,2} [a-z]{3,4}\.? \d{4},? \d{2}:\d{2}\b/g, '<datetime>'],
   // "Search + Spencer check complete in 1234 ms." (stage6BishopCompleteMessage)
   [/\b\d+(?:\.\d+)? ms\b/g, '<ms> ms'],
+  // "Seepage solved in 1.23 s with flow-rate error …" (stage6BishopSeepageCompleteMessage, stage6SecondsLabelFromMs)
+  [/\b\d+(?:\.\d+)? s\b(?!\/)/g, '<s> s'],
+  // entity ids that reach the DOM (wall / drain / region ids carry Date.now())
+  [/\b(?:wall|drain|region)_[0-9a-z]+_[0-9a-z]{5}\b/g, '<id>'],
   // saveProject file name: <name>_YYYYMMDD-HHMM.madep.json (project-io/index.js:19)
   [/_\d{8}-\d{4}\.madep\.json/g, '_<stamp>.madep.json']
 ];
@@ -205,7 +236,9 @@ export class Journey {
   _lockJson(file, value, { digestUnchanged = false, digestPaths = [], step = null } = {}) {
     const rel = this.rel(file);
     const actual = normalize(value);
-    for (const p of digestPaths) walkPath(actual, p, (parent, key) => { if (parent[key] != null && typeof parent[key] === 'object') parent[key] = digest(parent[key]); });
+    const digestAt = (p) => walkPath(actual, p, (parent, key) => { if (parent[key] != null && typeof parent[key] === 'object' && !('<digest>' in parent[key])) parent[key] = digest(parent[key]); });
+    for (const p of digestPaths) digestAt(p);
+    if (digestUnchanged) for (const p of DIGEST_ALWAYS) digestAt(p);
     if (digestUnchanged) this._digestUnchanged(actual, step);
     this._record(rel, actual, 'json');
   }

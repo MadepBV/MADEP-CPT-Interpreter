@@ -1,0 +1,89 @@
+{
+  "data": {
+    "datasets": [
+      {
+        "borderColor": "#18181A",
+        "borderWidth": 1.2,
+        "data": [],
+        "fill": false,
+        "label": "fs",
+        "pointRadius": 0,
+        "spanGaps": true,
+        "tension": 0.04
+      },
+      {
+        "borderColor": "#4F8584",
+        "borderDash": [6,4],
+        "borderWidth": 1.5,
+        "data": [
+          {"x":0,"y":1.7},
+          {"x":11.5,"y":1.7}
+        ],
+        "fill": false,
+        "label": "WT",
+        "pointRadius": 0
+      }
+    ]
+  },
+  "options": {
+    "animation": false,
+    "color": "#4a4a52",
+    "maintainAspectRatio": false,
+    "plugins": {
+      "legend": {
+        "display": false,
+        "labels": {
+          "color": "#4a4a52"
+        }
+      },
+      "tooltip": {
+        "backgroundColor": "rgba(255,255,255,0.96)",
+        "bodyColor": "#18181a",
+        "borderColor": "rgba(24,24,26,0.18)",
+        "borderWidth": 1,
+        "titleColor": "#18181a"
+      }
+    },
+    "responsive": true,
+    "scales": {
+      "x": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 11.5,
+        "min": 0,
+        "position": "top",
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          },
+          "maxTicksLimit": 5
+        },
+        "type": "linear"
+      },
+      "y": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 18.5,
+        "min": 0,
+        "reverse": true,
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          }
+        },
+        "type": "linear"
+      }
+    }
+  },
+  "type": "line"
+}

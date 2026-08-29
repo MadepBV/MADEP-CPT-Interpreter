@@ -1,0 +1,112 @@
+[
+  {
+    "a": {
+      "x": 0,
+      "y": 4
+    },
+    "b": {
+      "x": 8,
+      "y": 4
+    },
+    "edgeKey": "terrain:0",
+    "index": 0,
+    "length": 8,
+    "mid": {
+      "x": 4,
+      "y": 4
+    },
+    "source": "terrain",
+    "tangent": {
+      "dx": 1,
+      "dy": 0
+    }
+  },
+  {
+    "a": {
+      "x": 8,
+      "y": 4
+    },
+    "b": {
+      "x": 20,
+      "y": 0
+    },
+    "edgeKey": "terrain:1",
+    "index": 1,
+    "length": 12.649110640673518,
+    "mid": {
+      "x": 14,
+      "y": 2
+    },
+    "source": "terrain",
+    "tangent": {
+      "dx": 0.948683,
+      "dy": -0.316228
+    }
+  },
+  {
+    "a": {
+      "x": 20,
+      "y": 0
+    },
+    "b": {
+      "x": 20,
+      "y": -14.666667
+    },
+    "edgeKey": "side-right:0",
+    "index": 0,
+    "length": 14.666667,
+    "mid": {
+      "x": 20,
+      "y": -7.333334
+    },
+    "source": "side-right",
+    "tangent": {
+      "dx": 0,
+      "dy": -1
+    }
+  },
+  {
+    "a": {
+      "x": 20,
+      "y": -14.666667
+    },
+    "b": {
+      "x": 0,
+      "y": -14.666667
+    },
+    "edgeKey": "base:0",
+    "index": 0,
+    "length": 20,
+    "mid": {
+      "x": 10,
+      "y": -14.666667
+    },
+    "source": "base",
+    "tangent": {
+      "dx": -1,
+      "dy": 0
+    }
+  },
+  {
+    "a": {
+      "x": 0,
+      "y": -14.666667
+    },
+    "b": {
+      "x": 0,
+      "y": 4
+    },
+    "edgeKey": "side-left:0",
+    "index": 0,
+    "length": 18.666667,
+    "mid": {
+      "x": 0,
+      "y": -5.333334
+    },
+    "source": "side-left",
+    "tangent": {
+      "dx": 0,
+      "dy": 1
+    }
+  }
+]

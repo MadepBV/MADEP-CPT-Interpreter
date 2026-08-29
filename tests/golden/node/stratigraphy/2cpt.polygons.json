@@ -1,0 +1,203 @@
+[
+  {
+    "name": "U1",
+    "points": [
+      {"dist":0,"taw":10},
+      {"dist":30,"taw":10.4},
+      {"dist":30,"taw":9.35},
+      {"dist":0,"taw":9.05}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u1"
+  },
+  {
+    "name": "U2",
+    "points": [
+      {"dist":0,"taw":9.05},
+      {"dist":30,"taw":9.35},
+      {"dist":30,"taw":7.45},
+      {"dist":0,"taw":6.05}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u2"
+  },
+  {
+    "name": "U3",
+    "points": [
+      {"dist":15,"taw":6.45},
+      {"dist":30,"taw":7.45},
+      {"dist":30,"taw":5.45}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u3"
+  },
+  {
+    "name": "U4",
+    "points": [
+      {"dist":0,"taw":6.05},
+      {"dist":15,"taw":5.55},
+      {"dist":0,"taw":5.05}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u4"
+  },
+  {
+    "name": "U5",
+    "points": [
+      {"dist":15,"taw":4.775},
+      {"dist":30,"taw":5.45},
+      {"dist":30,"taw":4.1}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u5"
+  },
+  {
+    "name": "U6",
+    "points": [
+      {"dist":0,"taw":5.05},
+      {"dist":15,"taw":4.699999999999999},
+      {"dist":0,"taw":4.35}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u6"
+  },
+  {
+    "name": "U7",
+    "points": [
+      {"dist":0,"taw":4.35},
+      {"dist":15,"taw":3.1999999999999997},
+      {"dist":0,"taw":2.05}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u7"
+  },
+  {
+    "name": "U8",
+    "points": [
+      {"dist":0,"taw":2.05},
+      {"dist":15,"taw":1.7},
+      {"dist":0,"taw":1.35}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u8"
+  },
+  {
+    "name": "U9",
+    "points": [
+      {"dist":0,"taw":1.35},
+      {"dist":15,"taw":0.75},
+      {"dist":0,"taw":0.15}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u9"
+  },
+  {
+    "name": "U10",
+    "points": [
+      {"dist":15,"taw":0.475},
+      {"dist":30,"taw":0.95},
+      {"dist":30,"taw":0}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u10"
+  },
+  {
+    "name": "U11",
+    "points": [
+      {"dist":0,"taw":0.15},
+      {"dist":15,"taw":-0.39999999999999997},
+      {"dist":0,"taw":-0.95}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u11"
+  },
+  {
+    "name": "U12",
+    "points": [
+      {"dist":15,"taw":-0.4},
+      {"dist":30,"taw":0},
+      {"dist":30,"taw":-0.8}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u12"
+  },
+  {
+    "name": "U13",
+    "points": [
+      {"dist":0,"taw":-0.95},
+      {"dist":30,"taw":4.1},
+      {"dist":30,"taw":0.95},
+      {"dist":0,"taw":-4.95}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u13"
+  },
+  {
+    "name": "U14",
+    "points": [
+      {"dist":15,"taw":-1.375},
+      {"dist":30,"taw":-0.8},
+      {"dist":30,"taw":-1.95}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u14"
+  },
+  {
+    "name": "U15",
+    "points": [
+      {"dist":15,"taw":-2.525},
+      {"dist":30,"taw":-1.95},
+      {"dist":30,"taw":-3.1}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u15"
+  },
+  {
+    "name": "U16",
+    "points": [
+      {"dist":15,"taw":-3.4000000000000004},
+      {"dist":30,"taw":-3.1},
+      {"dist":30,"taw":-3.7}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u16"
+  },
+  {
+    "name": "U17",
+    "points": [
+      {"dist":15,"taw":-4.15},
+      {"dist":30,"taw":-3.7},
+      {"dist":30,"taw":-4.6}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u17"
+  },
+  {
+    "name": "U18",
+    "points": [
+      {"dist":0,"taw":-4.95},
+      {"dist":15,"taw":-6.475},
+      {"dist":0,"taw":-8}
+    ],
+    "subtype": "",
+    "type": "x",
+    "unitId": "u18"
+  }
+]

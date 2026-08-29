@@ -1,0 +1,125 @@
+## .report-shell
+CPT APP
+PRINT / SAVE AS PDF
+GEOTECHNICAL ENGINEERING
+PROJECT
+CPT Project
+DATUM
+<datetime>
+EENHEDEN
+23
+BORINGEN
+3
+SCIA ENGINEER · SOILIN SUBSOIL INPUT
+SOILIN invoerparameters
+Grondeenheden afgeleid uit de multi-CPT stratigrafie. Elke boring vermeldt alle eenheden in vaste stratigrafische volgorde; waar een eenheid lokaal ontbreekt (uitwiggend / lens) staat ze met een nominale dikte van 0,01 m — SOILIN vereist dezelfde laagvolgorde in elke boring en accepteert geen dikte 0.
+Grondeenheden — parameterlegenda
+Dikte-gewogen gemiddelden over de deelnemende CPT-lagen; volumegewichten volgens karakteristieke keuze "gewogen gemiddelde".
+EENHEID GRONDSOORT E_DEF [MN/M²] Ν [-] Γ_DRY [KN/M³] Γ_SAT [KN/M³] M [-]
+A zand, zeer dicht 21.9 0.33 17.1 19.0 0.50
+B leem, weinig vast 2.1 0.35 17.0 17.0 0.50
+C zand, dicht 30.9 0.34 18.0 20.0 0.50
+D leem, weinig vast 14.5 0.35 17.3 18.0 0.50
+E klei, weinig vast 1.2 0.40 16.0 16.0 1.00
+F zand, zeer dicht 37.6 0.35 18.0 20.0 0.50
+G klei, weinig vast 1.3 0.40 16.0 16.0 1.00
+H klei, weinig vast 1.3 0.40 16.0 16.0 1.00
+I klei, weinig vast 1.3 0.40 16.0 16.0 1.00
+J leem, vrij vast 3.2 0.32 19.0 19.0 0.50
+K klei, weinig vast 1.3 0.40 16.0 16.0 1.00
+L leem, vrij vast 3.3 0.32 19.0 19.0 0.50
+M zand, zeer dicht 38.1 0.35 18.0 20.0 0.50
+N klei (zh), vrij vast 3.0 0.33 18.0 18.0 1.00
+O zand, zeer dicht 33.4 0.35 18.0 20.0 0.50
+P zand, zeer dicht 34.6 0.35 18.0 20.0 0.50
+Q klei, matig vast 1.7 0.38 17.0 17.0 1.00
+R zand, zeer dicht 33.9 0.35 18.0 20.0 0.50
+S klei, weinig vast 1.3 0.40 16.0 16.0 1.00
+T zand, zeer dicht 35.4 0.35 18.0 20.0 0.50
+U zand, zeer dicht 33.8 0.35 18.0 20.0 0.50
+V zand, zeer dicht 36.1 0.35 18.0 20.0 0.50
+W klei, matig vast 2.3 0.38 17.0 17.0 1.00
+E_def = β·E_oed,i met β = (1+ν)(1−2ν)/(1−ν) (ČSN 73 1001-conventie, zie Stage 4). m is de spanningsexponent uit Stage 4 (CUR 2003-7); controleer of dit overeenkomt met de door uw SOILIN-werkwijze verwachte coëfficiënt m.
+Boorprofielen — over te nemen in SCIA Engineer
+Eén boring per CPT. Rijen met dikte 0,01 m ook invoeren: de volgorde telt.
+layered
+maaiveld 10.00 m TAW · meetlijn 0.0 m
+LAAG DIKTE [M] E_DEF [MN/M²] Ν [-] Γ_DRY [KN/M³] Γ_SAT [KN/M³] M [-]
+A zand, zeer dicht 0.95 21.9 0.33 17.1 19.0 0.50
+B leem, weinig vast 0.01 2.1 0.35 17.0 17.0 0.50
+C zand, dicht 3.00 30.9 0.34 18.0 20.0 0.50
+D leem, weinig vast 0.01 14.5 0.35 17.3 18.0 0.50
+E klei, weinig vast 1.00 1.2 0.40 16.0 16.0 1.00
+F zand, zeer dicht 0.01 37.6 0.35 18.0 20.0 0.50
+G klei, weinig vast 0.70 1.3 0.40 16.0 16.0 1.00
+H klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+I klei, weinig vast 2.30 1.3 0.40 16.0 16.0 1.00
+J leem, vrij vast 0.70 3.2 0.32 19.0 19.0 0.50
+K klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+L leem, vrij vast 1.20 3.3 0.32 19.0 19.0 0.50
+M zand, zeer dicht 0.01 38.1 0.35 18.0 20.0 0.50
+N klei (zh), vrij vast 1.10 3.0 0.33 18.0 18.0 1.00
+O zand, zeer dicht 0.01 33.4 0.35 18.0 20.0 0.50
+P zand, zeer dicht 4.00 34.6 0.35 18.0 20.0 0.50
+Q klei, matig vast 0.01 1.7 0.38 17.0 17.0 1.00
+R zand, zeer dicht 0.01 33.9 0.35 18.0 20.0 0.50
+S klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+T zand, zeer dicht 0.01 35.4 0.35 18.0 20.0 0.50
+U zand, zeer dicht 0.01 33.8 0.35 18.0 20.0 0.50
+V zand, zeer dicht 0.01 36.1 0.35 18.0 20.0 0.50
+W klei, matig vast 3.05 2.3 0.38 17.0 17.0 1.00
+TOTALE DIKTE 18.13
+sand-only
+maaiveld 10.40 m TAW · meetlijn 30.0 m
+LAAG DIKTE [M] E_DEF [MN/M²] Ν [-] Γ_DRY [KN/M³] Γ_SAT [KN/M³] M [-]
+A zand, zeer dicht 1.05 21.9 0.33 17.1 19.0 0.50
+B leem, weinig vast 0.01 2.1 0.35 17.0 17.0 0.50
+C zand, dicht 1.90 30.9 0.34 18.0 20.0 0.50
+D leem, weinig vast 2.00 14.5 0.35 17.3 18.0 0.50
+E klei, weinig vast 0.01 1.2 0.40 16.0 16.0 1.00
+F zand, zeer dicht 1.35 37.6 0.35 18.0 20.0 0.50
+G klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+H klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+I klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+J leem, vrij vast 0.01 3.2 0.32 19.0 19.0 0.50
+K klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+L leem, vrij vast 0.01 3.3 0.32 19.0 19.0 0.50
+M zand, zeer dicht 0.95 38.1 0.35 18.0 20.0 0.50
+N klei (zh), vrij vast 0.01 3.0 0.33 18.0 18.0 1.00
+O zand, zeer dicht 0.80 33.4 0.35 18.0 20.0 0.50
+P zand, zeer dicht 3.15 34.6 0.35 18.0 20.0 0.50
+Q klei, matig vast 0.01 1.7 0.38 17.0 17.0 1.00
+R zand, zeer dicht 1.15 33.9 0.35 18.0 20.0 0.50
+S klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+T zand, zeer dicht 1.15 35.4 0.35 18.0 20.0 0.50
+U zand, zeer dicht 0.60 33.8 0.35 18.0 20.0 0.50
+V zand, zeer dicht 0.90 36.1 0.35 18.0 20.0 0.50
+W klei, matig vast 0.01 2.3 0.38 17.0 17.0 1.00
+TOTALE DIKTE 15.12
+clay-only
+maaiveld 9.70 m TAW · meetlijn 60.0 m
+LAAG DIKTE [M] E_DEF [MN/M²] Ν [-] Γ_DRY [KN/M³] Γ_SAT [KN/M³] M [-]
+A zand, zeer dicht 0.01 21.9 0.33 17.1 19.0 0.50
+B leem, weinig vast 1.05 2.1 0.35 17.0 17.0 0.50
+C zand, dicht 0.01 30.9 0.34 18.0 20.0 0.50
+D leem, weinig vast 3.80 14.5 0.35 17.3 18.0 0.50
+E klei, weinig vast 0.01 1.2 0.40 16.0 16.0 1.00
+F zand, zeer dicht 0.01 37.6 0.35 18.0 20.0 0.50
+G klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+H klei, weinig vast 1.95 1.3 0.40 16.0 16.0 1.00
+I klei, weinig vast 0.01 1.3 0.40 16.0 16.0 1.00
+J leem, vrij vast 0.01 3.2 0.32 19.0 19.0 0.50
+K klei, weinig vast 3.55 1.3 0.40 16.0 16.0 1.00
+L leem, vrij vast 0.01 3.3 0.32 19.0 19.0 0.50
+M zand, zeer dicht 0.01 38.1 0.35 18.0 20.0 0.50
+N klei (zh), vrij vast 0.01 3.0 0.33 18.0 18.0 1.00
+O zand, zeer dicht 0.01 33.4 0.35 18.0 20.0 0.50
+P zand, zeer dicht 0.01 34.6 0.35 18.0 20.0 0.50
+Q klei, matig vast 0.95 1.7 0.38 17.0 17.0 1.00
+R zand, zeer dicht 0.01 33.9 0.35 18.0 20.0 0.50
+S klei, weinig vast 0.70 1.3 0.40 16.0 16.0 1.00
+T zand, zeer dicht 0.01 35.4 0.35 18.0 20.0 0.50
+U zand, zeer dicht 0.01 33.8 0.35 18.0 20.0 0.50
+V zand, zeer dicht 0.01 36.1 0.35 18.0 20.0 0.50
+W klei, matig vast 0.01 2.3 0.38 17.0 17.0 1.00
+TOTALE DIKTE 12.17

@@ -1,0 +1,65 @@
+{
+  "terrain": {
+    "vertices": [
+      {"x":0,"y":2},
+      {"x":10,"y":2}
+    ]
+  },
+  "analysisBottomY": 0,
+  "phreatic": {
+    "vertices": [
+      {"x":0,"y":2},
+      {"x":10,"y":2}
+    ]
+  },
+  "walls": [],
+  "drains": [
+    {
+      "id": "drain-when-saturated",
+      "label": "when-saturated drain",
+      "vertices": [
+        {"x":2,"y":1},
+        {"x":8,"y":1}
+      ],
+      "closed": false,
+      "head": {
+        "kind": "constant",
+        "value": 4
+      },
+      "gating": "when-saturated"
+    }
+  ],
+  "regions": [
+    {
+      "id": "soil",
+      "polygon": [
+        {"x":0,"y":0},
+        {"x":10,"y":0},
+        {"x":10,"y":2},
+        {"x":0,"y":2}
+      ],
+      "material": {
+        "id": "soil",
+        "label": "soil",
+        "kx": 0.00001,
+        "ky": 0.00001,
+        "gamma": 18,
+        "gammaSat": 20
+      }
+    }
+  ],
+  "seepage": {
+    "bcs": [
+      {"edgeKey":"terrain:0","type":"head","head":10,"status":"active"},
+      {"edgeKey":"side-left:0","type":"head","head":10,"status":"active"},
+      {"edgeKey":"side-right:0","type":"head","head":10,"status":"active"}
+    ],
+    "options": {
+      "freeSurface": "iterate",
+      "meshTargetArea": 0.08,
+      "usePhreaticAsSeed": true,
+      "maxRuntimeMs": 5000,
+      "flowErrorTolerance": 0.00001
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "rejectReason": "Web Worker is not available in this browser context.",
+  "status": "failed"
+}

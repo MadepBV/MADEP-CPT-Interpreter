@@ -1,0 +1,46 @@
+{
+  "terrain": {
+    "vertices": [
+      {"x":0,"y":5},
+      {"x":10,"y":5}
+    ]
+  },
+  "analysisBottomY": 0,
+  "phreatic": {
+    "vertices": [
+      {"x":0,"y":5},
+      {"x":10,"y":2}
+    ]
+  },
+  "walls": [],
+  "regions": [
+    {
+      "id": "soil",
+      "polygon": [
+        {"x":0,"y":0},
+        {"x":10,"y":0},
+        {"x":10,"y":5},
+        {"x":0,"y":5}
+      ],
+      "material": {
+        "id": "soil",
+        "label": "soil",
+        "kx": 0.00001,
+        "ky": 0.00001,
+        "gamma": 18,
+        "gammaSat": 20
+      }
+    }
+  ],
+  "seepage": {
+    "bcs": [
+      {"edgeKey":"side-left:0","type":"head","head":5,"status":"active"},
+      {"edgeKey":"side-right:0","type":"head","head":2,"status":"active"}
+    ],
+    "options": {
+      "freeSurface": "fixed",
+      "meshTargetArea": 0.4,
+      "usePhreaticAsSeed": true
+    }
+  }
+}

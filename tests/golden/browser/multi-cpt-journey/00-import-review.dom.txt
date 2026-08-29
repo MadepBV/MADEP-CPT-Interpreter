@@ -1,0 +1,30 @@
+## .import-review-overlay
+Import controleren
+layered.gef · GEF · S1
+✕
+HERKENDE KOLOMMEN
+GROOTHEID BRON EENHEID
+Diepte kolom 1 (GEF #1) m
+Conusweerstand qc kolom 2 (GEF #2) MPa
+Kleefweerstand fs kolom 3 (GEF #3) MPa
+Wrijvingsgetal Rf kolom 4 (GEF #4) %
+Waterspanning u2 kolom 5 (GEF #6) MPa
+METINGEN
+METINGEN
+360
+DIEPTE
+0.05 – 18.00 m
+MET FS
+360
+MET RF
+360
+MET U2
+360
+Alle metingen hebben qc én fs/Rf.
+BESTANDSGEGEVENS
+MAAIVELD 10.00 m TAW (ZID)
+WATERPEIL 1.70 m onder maaiveld (MEASUREMENTVAR 14)
+COÖRDINATEN niet in bestand
+PROJECT Golden Project
+ANNULEER
+IMPORTEER 360 METINGEN

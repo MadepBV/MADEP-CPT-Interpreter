@@ -61,6 +61,18 @@ modules imported directly.
 | `report` | B | `buildStage7Payload()` after the full Stage 2–6 chain (full for `layered`, digests of the row tables/annex analyses elsewhere), `isStage7Payload`, `openStage7Report` side effects |
 | `retaining` | A | 5 wall types × {default, overrides, RK0, RK2} × 2 profiles: `buildRequest` → WASM → `computeEmbeddedStructural` → views (text) → scene → note → drivability (vibratory, impact, Alm & Hamre, data sheet) |
 | `project-io` | A (+B glue) | `buildProjectSnapshot`/`validateProjectSnapshot`/`applyProjectSnapshot` per project fixture, round-trip identity, `loadProjectFromFile → afterLoad` glue |
+| `stratigraphy` | A (+B glue) | `multi-3cpt` (and its first two CPTs): `buildProfiles` → `correlateProfiles` (3 `minMatch` values) → `deriveUnitProperties` (wmean / min) → `buildSectionPolygons` → store `run`/`derived`, rename / split / merge, staleness after a layer edit, settings; SOILIN payload, units CSV, PLAXIS commands, section DXF, db4 payload + container SHA-256 (Node zlib); the Doorsnede markup (`section/render.js buildSectionSvg`, vex 2 / 4 / stale); unit params + PLAXIS export with the controller's Stage 4 `hsParams`/`khParams` |
+| `report-svg` | A | `report/svg.js` `buildLayerColumnSvgMarkup` / `buildLayerPreviewSvgMarkup` (Rf / fs / qc-only modes, empty placeholders) on every profile fixture |
+| `chart-configs` | B (+A) | the Chart.js config objects: Stage 1 raw charts (`S.charts.*.config`), Stage 5 tuning charts (`buildTuningRegression/DepthChartConfig` on the `data-*` attributes of the cards), Stage 6 bearing / pile / settlement / dewatering / beam canvases (`canvas._chartRef.config` after `setStage6App`), line-probe config; functions (tick formatters) dropped by the normaliser |
+| `bishop` | A (+B) | `fixtures/models/bishop-*.json`: `buildBishopModelFromStageLayers` model, `analyzeBishopSearch` on the region source (shortlist scalars in full, slice tables digested; critical circle in full) and on the legacy bands, `importBishopMaterialsFromLayers` × 3 strength sets + re-import identity rules, builder guards; per CPT profile: the app's own model and materials (`setStage6App('bishop')` → `stage6BishopCurrentModel`), a reduced-grid search, the no-Worker run guard. Class `iterative` |
+| `seepage` | A (+B) | `fixtures/models/seepage-*.json` (verify_seepage_phase_2 / drains_walls models): `analyzeSeepageModel` mesh (nodes, elements, boundary faces; per-cell geometry digested), result (heads, element fields as rows, flow lines, equipotentials, drains, `solverStats` = the iteration counts of `result.timing`), point samplers on a grid, outer boundary + geometry hash, guards; the app-built `layered` model with side heads through `stage6BishopSelectSeepageBoundary` / `SetSeepageBcType` / `SetSeepageBcHead`. Class `iterative` |
+| `deformation` | A (WASM) | `fixtures/models/deformation-*.json` (verify_deformation_phase_1 models + HS benchmarks): `analyzeDeformationModel` js-cpu and wasm-cpu × linear-elastic / mc-plastic / hardening-soil × T3 / T6, one c-phi safety run — nodal displacements, terrain settlement profile, summaries, solver bookkeeping (load-step and safety curves as rows), per-element stress rows, `sampleDeformationState` grid, guards. Every case < 10 s; class `iterative` (1e-6, iteration counts exact) |
+
+Solver model fixtures (`fixtures/models/`): `bishop-*.json` and `hs_*.json` are copies of `scripts/fixtures/`;
+`seepage-*.json`, `deformation-*.json` are written by `make-fixtures.mjs` from `scripts/golden/lib/solver-models.mjs`
+(the inline model builders of the verify scripts as pure functions of constants; the two wall models use a
+confined fixed-phreatic layout because the verify script's equal-head layout ends on the 5 s runtime limit,
+which is clock-dependent). `deformation-hs-softclay-embankment` is generated but not run (19–34 s at every mesh).
 
 Profile fixtures (`role: profile` in the manifest) run through every suite; the layered import
 variants (`kpa-units`, `corrected-depth`, CSV, XLSX) only through `import`; `trailing-qc-only` and
@@ -86,6 +98,12 @@ default `soft` = reported, never blocking — fonts differ between macOS and the
 |---|---|---|
 | `demo-journey` | "Load demo" button under a seeded `Math.random` (mulberry32, manifest seed) | 01-loaded → 02-classified(-method) → 03/04 layers (+ subtype `<select>` edit) → 05 model (default, alpha A / stiffness A) → 06 tuning (+ acceptFit 0) → 07 bearing/pile/settlement/dewatering/beam (default + one `setStage6Field`) → 08 retaining walls: 5 types × every result tab → 09 drivability → 10 calculation-note tab + payload → 07-bishop model + stability search → 11 exportCSV / PLAXIS commands / simulated CPT / saveProject downloads (+ alerts) → 12 Stage 7 payload + report tab → 13 final |
 | `gef-import-journey` | `fixtures/cpt/layered.gef` through the real file input and the import-review dialog (00-import-review) | same |
+| `seep-slope-journey` | `layered.gef`, classified, Stage 6 Seep/Slope | canvas tools driven by real pointer clicks on `#stage6BishopCanvas` (world → screen through the viewport, right-click completes): 02 terrain → 03 entry/exit zones → 04 phreatic → 05 wall (+ `stage6BishopSetWallField`) → 06 drain (+ head) → 07 model → 08 Bishop + Spencer search → 09 side heads picked with the BC tool (+ `SetSeepageBcType/Head`, mesh 1.0 m²) → 10 seepage run + measurement-line probe → 11 surface load with the load tool (q 20, T3, mesh 2.0 m²) → 12 deformation run (90 s budget; stopped and locked as stopped if exceeded) → 13 `stage7CaptureWorkspaceView` × 3 + report annexes (`buildStage7Payload().stage6.{bishop,seepage,deformation}`, heavy parts digested) |
+| `multi-cpt-journey` | `layered` + `sand-only` + `clay-only` in one picker action (three sequential review dialogs) | 01 imported → 02 per CPT: `setCptCoord` (0 / 30 / 60 m), `setElev`, `runClass` → 03 Stratigrafie phase (`#phaseCorr`) → 04 unit renamed through its `[data-rename]` input → 05 SOILIN report tab + `soilin-report:*` payload → 06 CSV / PLAXIS / DXF downloads as text, db4 as size + SHA-256 (Chromium `CompressionStream`) → 07 Doorsnede (`#phaseSection` text + `#sectionSvg` markup) → 08 `exportSectionSVG` download → 09 dialogs + final |
+| `save-load-journey` | `layered.gef`, subtype edit, alpha A, accepted fit, bearing B, sheet-pile wall, Bishop model | 01 saved state + panels + `saveProject` download → new page, download loaded through `#projFileInput` → 02 restored state + panels + `02-restored-vs-saved` (structural diff of `project`/`active`/stage/phase after normalisation and panel-text identity — empty diff list = round trip is the identity; any entry is locked behaviour) → 03 `legacy-v0.5.2` project loaded over work (confirm auto-accepted; forward-compat merge) → 04 invalid files (alerts) + final |
+
+`GOLDEN_PORT=<n>` (or `--port <n>` after the Playwright arguments) moves the dev server off the default
+5299 so two worktrees can run their journeys side by side (`bisect-journey`).
 
 Determinism (all in the spec / `scripts/golden/lib/browser-capture.js`): seeded `Math.random`, a
 `Date` shifted to a fixed epoch (still advancing — Chart.js needs a moving clock), Chart.js served
@@ -109,7 +127,13 @@ Applied at record and check time, identically:
   key except `_maxStage` (stage-nav unlock — behaviour);
 - **masked strings**: `wall_*/drain_*/region_*` and `bc-*` entity ids → `<id>`; `stage7-report:*`,
   `retaining-note:*`, `soilin-report:*` storage keys → `<key>`; PNG data URLs → `<png>`; ISO timestamps → `<iso>`;
-  inside strings, `<n> ms` → `<ms> ms` (the Bishop completion message embeds `timing.totalMs`);
+  inside strings, `<n> ms` → `<ms> ms` (the Bishop completion message embeds `timing.totalMs`), `<n> s` → `<s> s`
+  (the seepage completion message; a unit such as `0.5 s/m` is kept) and embedded `wall_*/drain_*/region_*` ids
+  → `<id>` (`seepage.geometryHash`); entity ids used as object **keys** (`mesh.drainNodeIdsByDrain`) → `<id:n>`
+  in insertion order;
+- browser state: `DIGEST_ALWAYS` in `journey.mjs` — the Bishop model's embedded seepage / deformation state,
+  `deformation.result.elementResults` / `.mesh`, per-cell mesh geometry and the contour derivatives are digests at
+  every step (locked in full by the Node `seepage` / `deformation` suites);
 - browser DOM text additionally masks nl-BE date-times (`1 jan 2026 01:00` → `<datetime>`) and the
   `_YYYYMMDD-HHMM` stamp of the saved-project file name (`scripts/golden/lib/journey.mjs` `TEXT_MASKS`);
 - text goldens: `\r\n` → `\n`, single trailing newline; HTML is reduced to visible text

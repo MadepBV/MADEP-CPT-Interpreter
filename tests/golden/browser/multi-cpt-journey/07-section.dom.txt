@@ -1,0 +1,88 @@
+## #cptTabs
+READY
+layered
+x
+READY
+sand-only
+x
+READY
+clay-only
+x
+## #phaseSection
+Geologische doorsnede
+Stratigrafische eenheden geprojecteerd op de meetlijn, met uitwiggingen en lenzen. Absolute hoogte (m TAW) op Y-as, afstand langs de doorsnede op X-as.
+VERTICALE SCHAAL ×
+2
+SVG ↓
+-8.0
+-6.0
+-4.0
+-2.0
+0.0
+2.0
+4.0
+6.0
+8.0
+10.0
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+H — klei, weinig vast
+I — klei, weinig vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+T — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+9.1
+6.0
+5.0
+4.3
+2.0
+1.3
+0.2
+-0.9
+-4.9
+-8.0
+layered
+10.00 m TAW
+0m
+9.3
+7.5
+5.5
+4.1
+1.0
+0.0
+-0.8
+-1.9
+-3.1
+-3.7
+-4.6
+sand-only
+10.40 m TAW
+30m
+8.6
+4.8
+2.9
+-0.7
+-1.6
+-2.3
+clay-only
+9.70 m TAW
+60m
+WT
+Afstand langs doorsnede (m) — vex ×2
+Hoogte (m TAW)
+Sand
+Clay
+Sandy clay
+Silty sand

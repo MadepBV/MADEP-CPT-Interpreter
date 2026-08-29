@@ -1,0 +1,5 @@
+{
+  "fixed-without-phreatic": "Fixed phreatic seepage mode requires a drawn phreatic line.",
+  "no-bottom": "A valid Bishop terrain and analysis depth are required before seepage can run.",
+  "no-terrain": "A valid Bishop terrain and analysis depth are required before seepage can run."
+}

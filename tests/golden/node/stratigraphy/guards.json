@@ -1,0 +1,45 @@
+{
+  "noElevProfiles": [
+    {"id":"sand-only","reason":"geen bevestigde maaiveldhoogte (m TAW)"}
+  ],
+  "noElevProjection": [
+    {"cptIdx":0,"dist":0},
+    {"cptIdx":2,"dist":60}
+  ],
+  "sectionSingle": {
+    "attrs": {
+      "height": "80",
+      "viewBox": "0 0 400 80",
+      "width": "400"
+    },
+    "complete": false,
+    "html": "<text x=\"20\" y=\"40\" font-size=\"13\" fill=\"\">Minimaal 2 CPTs met maaiveldshoogte vereist voor doorsnede.</text>"
+  },
+  "single": {
+    "excluded": [],
+    "hasResult": false,
+    "polygons": [],
+    "profiles": {
+      "cpts": [
+        {"cptIdx":0,"dist":0,"layerCount":10}
+      ],
+      "fingerprint": "0:10:0:Sand|zand (lh), los|10|9.05,Sand|zand, dicht|9.05|6.05,Clay|klei, weinig vast|6.05|5.05,Sandy clay|klei, weinig vast|5.05|4.35,Clay|klei, weinig vast|4.35|2.05,Silty sand|leem, vrij vast|2.05|1.35,Silty sand|leem, vrij vast|1.35|0.15,Sandy clay|klei (zh), vrij vast|0.15|-0.95,Sand|zand, zeer dicht|-0.95|-4.95,Clay|klei, matig vast|-4.95|-8"
+    },
+    "settings": {
+      "characteristic": "wmean",
+      "minMatch": 0.45
+    },
+    "spacing": 25,
+    "stale": false,
+    "units": [],
+    "warnings": []
+  },
+  "singleState": {
+    "result": null,
+    "settings": {
+      "characteristic": "wmean",
+      "minMatch": 0.45
+    },
+    "version": 1
+  }
+}

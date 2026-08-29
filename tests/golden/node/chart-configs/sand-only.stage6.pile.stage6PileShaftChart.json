@@ -1,0 +1,106 @@
+{
+  "data": {
+    "datasets": [
+      {
+        "backgroundColor": [
+          "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)",
+          "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)"
+        ],
+        "borderColor": [
+          "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)",
+          "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)", "rgba(60,170,90,0.95)"
+        ],
+        "data": [
+          {"x":149.6264275862069,"y":0.725},
+          {"x":140.454624,"y":2.05},
+          {"x":142.0540181818182,"y":3.175},
+          {"x":150,"y":4.45},
+          {"x":150,"y":6.225},
+          {"x":143.73024,"y":7.975},
+          {"x":144.33459259259257,"y":9.35}
+        ],
+        "label": "q_s per layer",
+        "pointHoverRadius": 7,
+        "pointRadius": 6,
+        "showLine": false
+      }
+    ]
+  },
+  "options": {
+    "animation": false,
+    "color": "#4a4a52",
+    "maintainAspectRatio": false,
+    "plugins": {
+      "legend": {
+        "display": false,
+        "labels": {
+          "color": "#4a4a52"
+        }
+      },
+      "tooltip": {
+        "backgroundColor": "rgba(255,255,255,0.96)",
+        "bodyColor": "#18181a",
+        "borderColor": "rgba(24,24,26,0.18)",
+        "borderWidth": 1,
+        "callbacks": {},
+        "titleColor": "#18181a"
+      }
+    },
+    "responsive": true,
+    "scales": {
+      "x": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 165,
+        "min": 0,
+        "position": "top",
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          }
+        },
+        "title": {
+          "color": "#4a4a52",
+          "display": true,
+          "font": {
+            "size": 10
+          },
+          "text": "q_s (kPa)"
+        },
+        "type": "linear"
+      },
+      "y": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 15.25,
+        "min": 0,
+        "reverse": true,
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          }
+        },
+        "title": {
+          "color": "#4a4a52",
+          "display": true,
+          "font": {
+            "size": 10
+          },
+          "text": "Depth (m)"
+        },
+        "type": "linear"
+      }
+    }
+  },
+  "type": "scatter"
+}

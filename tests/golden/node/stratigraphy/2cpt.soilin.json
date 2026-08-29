@@ -1,0 +1,86 @@
+{
+  "payload": {
+    "boreholes": [
+      {
+        "dist": 0,
+        "elev": 10,
+        "id": "layered",
+        "rows": [
+          {"absent":false,"thickness":0.95,"unit":0},
+          {"absent":false,"thickness":3,"unit":1},
+          {"absent":true,"thickness":0.01,"unit":2},
+          {"absent":false,"thickness":1,"unit":3},
+          {"absent":true,"thickness":0.01,"unit":4},
+          {"absent":false,"thickness":0.7,"unit":5},
+          {"absent":false,"thickness":2.3,"unit":6},
+          {"absent":false,"thickness":0.7,"unit":7},
+          {"absent":false,"thickness":1.2,"unit":8},
+          {"absent":true,"thickness":0.01,"unit":9},
+          {"absent":false,"thickness":1.1,"unit":10},
+          {"absent":true,"thickness":0.01,"unit":11},
+          {"absent":false,"thickness":4,"unit":12},
+          {"absent":true,"thickness":0.01,"unit":13},
+          {"absent":true,"thickness":0.01,"unit":14},
+          {"absent":true,"thickness":0.01,"unit":15},
+          {"absent":true,"thickness":0.01,"unit":16},
+          {"absent":false,"thickness":3.05,"unit":17}
+        ],
+        "waterDepth": 1.7
+      },
+      {
+        "dist": 30,
+        "elev": 10.4,
+        "id": "sand-only",
+        "rows": [
+          {"absent":false,"thickness":1.05,"unit":0},
+          {"absent":false,"thickness":1.9,"unit":1},
+          {"absent":false,"thickness":2,"unit":2},
+          {"absent":true,"thickness":0.01,"unit":3},
+          {"absent":false,"thickness":1.35,"unit":4},
+          {"absent":true,"thickness":0.01,"unit":5},
+          {"absent":true,"thickness":0.01,"unit":6},
+          {"absent":true,"thickness":0.01,"unit":7},
+          {"absent":true,"thickness":0.01,"unit":8},
+          {"absent":false,"thickness":0.95,"unit":9},
+          {"absent":true,"thickness":0.01,"unit":10},
+          {"absent":false,"thickness":0.8,"unit":11},
+          {"absent":false,"thickness":3.15,"unit":12},
+          {"absent":false,"thickness":1.15,"unit":13},
+          {"absent":false,"thickness":1.15,"unit":14},
+          {"absent":false,"thickness":0.6,"unit":15},
+          {"absent":false,"thickness":0.9,"unit":16},
+          {"absent":true,"thickness":0.01,"unit":17}
+        ],
+        "waterDepth": 2.5
+      }
+    ],
+    "characteristic": "wmean",
+    "generatedAt": "<masked>",
+    "kind": "soilin",
+    "project": {
+      "name": "Golden multi-CPT"
+    },
+    "units": [
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":17.1,"gammaSat":19,"letter":"A","m":null,"name":"A — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"B","m":null,"name":"B — zand, dicht","nu":null,"subtype":"zand, dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"C","m":null,"name":"C — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#AFA9EC","gammaDry":16,"gammaSat":16,"letter":"D","m":null,"name":"D — klei, weinig vast","nu":null,"subtype":"klei, weinig vast","type":"Clay"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"E","m":null,"name":"E — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#FAC775","gammaDry":16,"gammaSat":16,"letter":"F","m":null,"name":"F — klei, weinig vast","nu":null,"subtype":"klei, weinig vast","type":"Sandy clay"},
+      {"EdefMPa":null,"beta":null,"color":"#AFA9EC","gammaDry":16,"gammaSat":16,"letter":"G","m":null,"name":"G — klei, weinig vast","nu":null,"subtype":"klei, weinig vast","type":"Clay"},
+      {"EdefMPa":null,"beta":null,"color":"#F4C0D1","gammaDry":19,"gammaSat":19,"letter":"H","m":null,"name":"H — leem, vrij vast","nu":null,"subtype":"leem, vrij vast","type":"Silty sand"},
+      {"EdefMPa":null,"beta":null,"color":"#F4C0D1","gammaDry":19,"gammaSat":19,"letter":"I","m":null,"name":"I — leem, vrij vast","nu":null,"subtype":"leem, vrij vast","type":"Silty sand"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"J","m":null,"name":"J — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#FAC775","gammaDry":18,"gammaSat":18,"letter":"K","m":null,"name":"K — klei (zh), vrij vast","nu":null,"subtype":"klei (zh), vrij vast","type":"Sandy clay"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"L","m":null,"name":"L — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"M","m":null,"name":"M — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"N","m":null,"name":"N — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"O","m":null,"name":"O — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"P","m":null,"name":"P — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#D3D1C7","gammaDry":18,"gammaSat":20,"letter":"Q","m":null,"name":"Q — zand, zeer dicht","nu":null,"subtype":"zand, zeer dicht","type":"Sand"},
+      {"EdefMPa":null,"beta":null,"color":"#AFA9EC","gammaDry":17,"gammaSat":17,"letter":"R","m":null,"name":"R — klei, matig vast","nu":null,"subtype":"klei, matig vast","type":"Clay"}
+    ],
+    "version": 1
+  },
+  "valid": true
+}

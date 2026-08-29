@@ -1,0 +1,57 @@
+{
+  "bytes": 739,
+  "reparsed": {
+    "profiles": [
+      {
+        "layers": [
+          {"EdefMPa":0,"gammaDry":17.1,"gammaSat":19,"m":0,"name":"A","nu":0,"thickness":0.95},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"B","nu":0,"thickness":3},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"C","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":16,"gammaSat":16,"m":0,"name":"D","nu":0,"thickness":1},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"E","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":16,"gammaSat":16,"m":0,"name":"F","nu":0,"thickness":0.7},
+          {"EdefMPa":0,"gammaDry":16,"gammaSat":16,"m":0,"name":"G","nu":0,"thickness":2.3},
+          {"EdefMPa":0,"gammaDry":19,"gammaSat":19,"m":0,"name":"H","nu":0,"thickness":0.7},
+          {"EdefMPa":0,"gammaDry":19,"gammaSat":19,"m":0,"name":"I","nu":0,"thickness":1.2},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"J","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":18,"m":0,"name":"K","nu":0,"thickness":1.1},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"L","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"M","nu":0,"thickness":4},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"N","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"O","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"P","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"Q","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":17,"gammaSat":17,"m":0,"name":"R","nu":0,"thickness":3.05}
+        ],
+        "name": "layered",
+        "waterDepth": 1.7
+      },
+      {
+        "layers": [
+          {"EdefMPa":0,"gammaDry":17.1,"gammaSat":19,"m":0,"name":"A","nu":0,"thickness":1.05},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"B","nu":0,"thickness":1.9},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"C","nu":0,"thickness":2},
+          {"EdefMPa":0,"gammaDry":16,"gammaSat":16,"m":0,"name":"D","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"E","nu":0,"thickness":1.35},
+          {"EdefMPa":0,"gammaDry":16,"gammaSat":16,"m":0,"name":"F","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":16,"gammaSat":16,"m":0,"name":"G","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":19,"gammaSat":19,"m":0,"name":"H","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":19,"gammaSat":19,"m":0,"name":"I","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"J","nu":0,"thickness":0.95},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":18,"m":0,"name":"K","nu":0,"thickness":0.01},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"L","nu":0,"thickness":0.8},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"M","nu":0,"thickness":3.15},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"N","nu":0,"thickness":1.15},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"O","nu":0,"thickness":1.15},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"P","nu":0,"thickness":0.6},
+          {"EdefMPa":0,"gammaDry":18,"gammaSat":20,"m":0,"name":"Q","nu":0,"thickness":0.9},
+          {"EdefMPa":0,"gammaDry":17,"gammaSat":17,"m":0,"name":"R","nu":0,"thickness":0.01}
+        ],
+        "name": "sand-only",
+        "waterDepth": 2.5
+      }
+    ],
+    "tailOffset": 2926
+  },
+  "sha256": "49c0487111c0f86037bd781e99e0720c11e15787b072e8f4aea8a4571d1183c9"
+}

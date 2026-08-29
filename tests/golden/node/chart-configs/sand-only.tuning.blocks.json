@@ -1,0 +1,11 @@
+[
+  {"chartDepth":"tChart0d","chartPending":"tChart0","invalidSlope":"0","layerBot":"1.450","layerTop":"0.000","mDef":"0.50","mFit":"0.50","quality":"warn","wt":"2.500"},
+  {"chartDepth":"tChart1d","chartPending":"tChart1","invalidSlope":"0","layerBot":"2.650","layerTop":"1.450","mDef":"0.50","mFit":"0.50","quality":"invalid","wt":"2.500"},
+  {"chartDepth":"tChart2d","chartPending":"tChart2","invalidSlope":"0","layerBot":"3.700","layerTop":"2.650","mDef":"0.50","mFit":"0.50","quality":"warn","wt":"2.500"},
+  {"chartDepth":"tChart3d","chartPending":"tChart3","invalidSlope":"0","layerBot":"5.200","layerTop":"3.700","mDef":"0.50","mFit":"0.50","quality":"warn","wt":"2.500"},
+  {"chartDepth":"tChart4d","chartPending":"tChart4","invalidSlope":"0","layerBot":"7.250","layerTop":"5.200","mDef":"0.50","mFit":"0.18","quality":"warn","wt":"2.500"},
+  {"chartDepth":"tChart5d","chartPending":"tChart5","invalidSlope":"0","layerBot":"8.700","layerTop":"7.250","mDef":"0.50","mFit":"1.86","quality":"warn","wt":"2.500"},
+  {"chartDepth":"tChart6d","chartPending":"tChart6","invalidSlope":"0","layerBot":"12.750","layerTop":"8.700","mDef":"0.50","mFit":"0.50","quality":"warn","wt":"2.500"},
+  {"chartDepth":"tChart7d","chartPending":"tChart7","invalidSlope":"0","layerBot":"13.550","layerTop":"12.750","mDef":"0.50","mFit":"0.65","quality":"warn","wt":"2.500"},
+  {"chartDepth":"tChart8d","chartPending":"tChart8","invalidSlope":"0","layerBot":"15.000","layerTop":"13.550","mDef":"0.50","mFit":"0.50","quality":"warn","wt":"2.500"}
+]

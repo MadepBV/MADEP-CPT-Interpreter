@@ -1,0 +1,38 @@
+[
+  {
+    "E50_ref": 5594,
+    "Emc": 2781,
+    "Eoed_ref": 5594,
+    "Eur_ref": 16782,
+    "K0nc": 0.658,
+    "cEff": 2,
+    "color": "#b68a60",
+    "gamma": 16,
+    "gammaSat": 16,
+    "hs": {
+      "OCR": 1,
+      "Rf": 0.9,
+      "e_init": -1,
+      "e_max": -1,
+      "nearSurfaceMinConfiningStress": 0,
+      "p_ref": 100,
+      "useConsistentTangent": true
+    },
+    "id": "layer_0",
+    "kSource": "cpt",
+    "kx": 5e-8,
+    "ky": 1.7e-8,
+    "label": "Layer 1 - klei, weinig vast (Clay)",
+    "m": 1,
+    "nu": 0.4,
+    "nu_ur": 0.2,
+    "phiEffDeg": 20,
+    "psi": 0,
+    "rShear": 0.12,
+    "sigmaTAllow": 0,
+    "sourceLayerKey": "Clay|klei, weinig vast|0|12",
+    "sourceStrengthSet": "characteristic",
+    "sourceSubtype": "klei, weinig vast",
+    "sourceType": "Clay"
+  }
+]

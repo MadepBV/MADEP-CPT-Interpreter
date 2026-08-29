@@ -1,0 +1,62 @@
+{
+  "terrain": {
+    "vertices": [
+      {"x":0,"y":8},
+      {"x":10,"y":8}
+    ]
+  },
+  "phreatic": {
+    "vertices": [
+      {"x":0,"y":-50},
+      {"x":10,"y":-50}
+    ]
+  },
+  "regions": [
+    {
+      "id": "stiff_clay_oc",
+      "label": "stiff_clay_oc (hs_oc_excavation)",
+      "polygon": [
+        {"x":0,"y":8},
+        {"x":10,"y":8},
+        {"x":10,"y":0},
+        {"x":0,"y":0}
+      ],
+      "material": {
+        "id": "stiff_clay_oc",
+        "label": "stiff_clay_oc (hs_oc_excavation)",
+        "Emc": 15000,
+        "nu": 0.3,
+        "cEff": 20,
+        "phiEffDeg": 25,
+        "psiEffDeg": 0,
+        "gamma": 18,
+        "gammaSat": 20,
+        "E50_ref": 15000,
+        "Eoed_ref": 15000,
+        "Eur_ref": 75000,
+        "m": 1,
+        "nu_ur": 0.2,
+        "hs": {
+          "p_ref": 100,
+          "Rf": 0.9,
+          "OCR": 2,
+          "e_init": -1,
+          "e_max": -1
+        },
+        "K0nc": 0.5773817382593005,
+        "sigmaTAllow": 0
+      }
+    }
+  ],
+  "analysisLeftX": 0,
+  "analysisRightX": 10,
+  "analysisBottomY": 0,
+  "analysisTopY": 8,
+  "walls": [],
+  "surfaceLoad": {
+    "xStart": 0,
+    "xEnd": 10,
+    "q": 10
+  },
+  "seepage": null
+}

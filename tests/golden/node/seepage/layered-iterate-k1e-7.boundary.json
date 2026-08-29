@@ -1,0 +1,93 @@
+{
+  "edges": [
+    {
+      "a": {
+        "x": 0,
+        "y": 5
+      },
+      "b": {
+        "x": 20,
+        "y": 5
+      },
+      "edgeKey": "terrain:0",
+      "index": 0,
+      "length": 20,
+      "mid": {
+        "x": 10,
+        "y": 5
+      },
+      "source": "terrain",
+      "tangent": {
+        "dx": 1,
+        "dy": 0
+      }
+    },
+    {
+      "a": {
+        "x": 20,
+        "y": 5
+      },
+      "b": {
+        "x": 20,
+        "y": 0
+      },
+      "edgeKey": "side-right:0",
+      "index": 0,
+      "length": 5,
+      "mid": {
+        "x": 20,
+        "y": 2.5
+      },
+      "source": "side-right",
+      "tangent": {
+        "dx": 0,
+        "dy": -1
+      }
+    },
+    {
+      "a": {
+        "x": 20,
+        "y": 0
+      },
+      "b": {
+        "x": 0,
+        "y": 0
+      },
+      "edgeKey": "base:0",
+      "index": 0,
+      "length": 20,
+      "mid": {
+        "x": 10,
+        "y": 0
+      },
+      "source": "base",
+      "tangent": {
+        "dx": -1,
+        "dy": 0
+      }
+    },
+    {
+      "a": {
+        "x": 0,
+        "y": 0
+      },
+      "b": {
+        "x": 0,
+        "y": 5
+      },
+      "edgeKey": "side-left:0",
+      "index": 0,
+      "length": 5,
+      "mid": {
+        "x": 0,
+        "y": 2.5
+      },
+      "source": "side-left",
+      "tangent": {
+        "dx": 0,
+        "dy": 1
+      }
+    }
+  ],
+  "geometryHash": "{\"terrain\":[[0,5],[20,5]],\"bottomY\":0,\"regions\":[{\"id\":\"bot\",\"materialId\":\"bot\",\"kx\":0.00001,\"ky\":0.00001,\"coarseness\":1,\"polygon\":[[0,0],[20,0],[20,2],[0,2]]},{\"id\":\"mid\",\"materialId\":\"mid\",\"kx\":1e-7,\"ky\":1e-7,\"coarseness\":1,\"polygon\":[[0,2],[20,2],[20,3],[0,3]]},{\"id\":\"top\",\"materialId\":\"top\",\"kx\":0.00001,\"ky\":0.00001,\"coarseness\":1,\"polygon\":[[0,3],[20,3],[20,5],[0,5]]}],\"walls\":[],\"drains\":[],\"freeSurface\":\"iterate\",\"usePhreaticAsSeed\":true,\"meshTargetArea\":0.2,\"phreatic\":[[0,5],[20,0]]}"
+}

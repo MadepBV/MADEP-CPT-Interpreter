@@ -1,0 +1,226 @@
+{
+  "data": {
+    "datasets": [
+      {
+        "backgroundColor": "rgba(24,24,26,0.05)",
+        "borderWidth": 0,
+        "data": [
+          {"x":0,"y":0},
+          {"x":10000,"y":0},
+          {"x":10000,"y":0.95},
+          {"x":0,"y":0.95}
+        ],
+        "fill": true,
+        "label": "layer",
+        "pointRadius": 0,
+        "showLine": false,
+        "type": "line"
+      },
+      {
+        "backgroundColor": "rgba(61,107,106,0.10)",
+        "data": [
+          {"x":3973,"y":0.05},
+          {"x":3052,"y":0.1},
+          {"x":5815,"y":0.15},
+          {"x":3627,"y":0.2},
+          {"x":5687,"y":0.25},
+          {"x":3659,"y":0.3},
+          {"x":3422,"y":0.35},
+          {"x":5204,"y":0.4},
+          {"x":4200,"y":0.45},
+          {"x":3313,"y":0.5},
+          {"x":4380,"y":0.55},
+          {"x":4047,"y":0.6},
+          {"x":3185,"y":0.65},
+          {"x":3685,"y":0.7},
+          {"x":4933,"y":0.75},
+          {"x":5104,"y":0.8},
+          {"x":5641,"y":0.85},
+          {"x":5399,"y":0.9},
+          {"x":4072,"y":0.95}
+        ],
+        "label": "E_oed,i (CPT)",
+        "pointHoverRadius": 5,
+        "pointRadius": 2.5
+      },
+      {
+        "borderColor": "#18181A",
+        "borderWidth": 1.5,
+        "data": [
+          {"x":2516,"y":0.05},
+          {"x":2603,"y":0.1},
+          {"x":2702,"y":0.15},
+          {"x":2800,"y":0.2},
+          {"x":2899,"y":0.25},
+          {"x":2997,"y":0.3},
+          {"x":3096,"y":0.35},
+          {"x":3194,"y":0.4},
+          {"x":3293,"y":0.45},
+          {"x":3391,"y":0.5},
+          {"x":3490,"y":0.55},
+          {"x":3588,"y":0.6},
+          {"x":3687,"y":0.65},
+          {"x":3785,"y":0.7},
+          {"x":3884,"y":0.75},
+          {"x":3982,"y":0.8},
+          {"x":4081,"y":0.85},
+          {"x":4179,"y":0.9},
+          {"x":4278,"y":0.95}
+        ],
+        "fill": false,
+        "label": "HS default m=1.00",
+        "pointRadius": 0,
+        "tension": 0.3,
+        "type": "line"
+      },
+      {
+        "borderColor": "#3D6B6A",
+        "borderDash": [5,4],
+        "borderWidth": 2.5,
+        "data": [
+          {"x":3900,"y":0.05},
+          {"x":3940,"y":0.1},
+          {"x":3984,"y":0.15},
+          {"x":4026,"y":0.2},
+          {"x":4068,"y":0.25},
+          {"x":4109,"y":0.3},
+          {"x":4148,"y":0.35},
+          {"x":4187,"y":0.4},
+          {"x":4225,"y":0.45},
+          {"x":4263,"y":0.5},
+          {"x":4299,"y":0.55},
+          {"x":4335,"y":0.6},
+          {"x":4370,"y":0.65},
+          {"x":4405,"y":0.7},
+          {"x":4439,"y":0.75},
+          {"x":4472,"y":0.8},
+          {"x":4505,"y":0.85},
+          {"x":4537,"y":0.9},
+          {"x":4568,"y":0.95}
+        ],
+        "fill": false,
+        "label": "HS preview m=0.30",
+        "pointRadius": 0,
+        "tension": 0.3,
+        "type": "line"
+      },
+      {
+        "borderColor": "#4F8584",
+        "borderDash": [6,4],
+        "borderWidth": 1.5,
+        "data": [
+          {"x":0,"y":1.7},
+          {"x":10000,"y":1.7}
+        ],
+        "fill": false,
+        "label": "WT",
+        "pointRadius": 0,
+        "type": "line"
+      },
+      {
+        "borderColor": "rgba(24,24,26,0.14)",
+        "borderDash": [3,3],
+        "borderWidth": 1,
+        "data": [
+          {"x":0,"y":0},
+          {"x":10000,"y":0}
+        ],
+        "fill": false,
+        "label": "top",
+        "pointRadius": 0,
+        "type": "line"
+      },
+      {
+        "borderColor": "rgba(24,24,26,0.14)",
+        "borderDash": [3,3],
+        "borderWidth": 1,
+        "data": [
+          {"x":0,"y":0.95},
+          {"x":10000,"y":0.95}
+        ],
+        "fill": false,
+        "label": "bot",
+        "pointRadius": 0,
+        "type": "line"
+      }
+    ]
+  },
+  "options": {
+    "animation": false,
+    "color": "#4a4a52",
+    "maintainAspectRatio": false,
+    "plugins": {
+      "legend": {
+        "display": false,
+        "labels": {
+          "color": "#4a4a52"
+        }
+      },
+      "tooltip": {
+        "backgroundColor": "rgba(255,255,255,0.96)",
+        "bodyColor": "#18181a",
+        "borderColor": "rgba(24,24,26,0.18)",
+        "borderWidth": 1,
+        "callbacks": {},
+        "titleColor": "#18181a"
+      }
+    },
+    "responsive": true,
+    "scales": {
+      "x": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 10000,
+        "min": 0,
+        "position": "top",
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          },
+          "maxTicksLimit": 5
+        },
+        "title": {
+          "color": "#4a4a52",
+          "display": true,
+          "font": {
+            "size": 10
+          },
+          "text": "E_oed (kPa)"
+        },
+        "type": "linear"
+      },
+      "y": {
+        "border": {
+          "color": "rgba(24,24,26,0.14)"
+        },
+        "grid": {
+          "color": "rgba(24,24,26,0.08)"
+        },
+        "max": 1.45,
+        "min": 0,
+        "reverse": true,
+        "ticks": {
+          "color": "#4a4a52",
+          "font": {
+            "size": 10
+          }
+        },
+        "title": {
+          "color": "#4a4a52",
+          "display": true,
+          "font": {
+            "size": 10
+          },
+          "text": "Diepte (m)"
+        },
+        "type": "linear"
+      }
+    }
+  },
+  "type": "scatter"
+}

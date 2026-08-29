@@ -1,0 +1,360 @@
+{
+  "rerun": [
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u1",
+      "members": [
+        {"cptIdx":1,"layerIdx":0}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 16,
+        "gs": 18,
+        "mode": "min",
+        "phi": 25
+      },
+      "id": "u2",
+      "members": [
+        {"cptIdx":0,"layerIdx":0}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 10,
+        "g": 17,
+        "gs": 17,
+        "mode": "min",
+        "phi": 22
+      },
+      "id": "u3",
+      "members": [
+        {"cptIdx":2,"layerIdx":0}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 32
+      },
+      "id": "u4",
+      "members": [
+        {"cptIdx":0,"layerIdx":1},
+        {"cptIdx":1,"layerIdx":1}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 10,
+        "g": 17,
+        "gs": 17,
+        "mode": "min",
+        "phi": 22
+      },
+      "id": "u5",
+      "members": [
+        {"cptIdx":2,"layerIdx":1}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u6",
+      "members": [
+        {"cptIdx":1,"layerIdx":2}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 2,
+        "cu": 20,
+        "g": 16,
+        "gs": 16,
+        "mode": "min",
+        "phi": 20
+      },
+      "id": "u7",
+      "members": [
+        {"cptIdx":0,"layerIdx":2}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u8",
+      "members": [
+        {"cptIdx":1,"layerIdx":3}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 2,
+        "cu": 20,
+        "g": 16,
+        "gs": 16,
+        "mode": "min",
+        "phi": 20
+      },
+      "id": "u9",
+      "members": [
+        {"cptIdx":0,"layerIdx":3}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 2,
+        "cu": 20,
+        "g": 16,
+        "gs": 16,
+        "mode": "min",
+        "phi": 20
+      },
+      "id": "u10",
+      "members": [
+        {"cptIdx":2,"layerIdx":2}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 2,
+        "cu": 20,
+        "g": 16,
+        "gs": 16,
+        "mode": "min",
+        "phi": 20
+      },
+      "id": "u11",
+      "members": [
+        {"cptIdx":0,"layerIdx":4}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 4,
+        "cu": 50,
+        "g": 19,
+        "gs": 19,
+        "mode": "min",
+        "phi": 22
+      },
+      "id": "u12",
+      "members": [
+        {"cptIdx":0,"layerIdx":5}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 2,
+        "cu": 20,
+        "g": 16,
+        "gs": 16,
+        "mode": "min",
+        "phi": 20
+      },
+      "id": "u13",
+      "members": [
+        {"cptIdx":2,"layerIdx":3}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 4,
+        "cu": 50,
+        "g": 19,
+        "gs": 19,
+        "mode": "min",
+        "phi": 22
+      },
+      "id": "u14",
+      "members": [
+        {"cptIdx":0,"layerIdx":6}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u15",
+      "members": [
+        {"cptIdx":1,"layerIdx":5}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 8,
+        "cu": 100,
+        "g": 18,
+        "gs": 18,
+        "mode": "min",
+        "phi": 22
+      },
+      "id": "u16",
+      "members": [
+        {"cptIdx":0,"layerIdx":7}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u17",
+      "members": [
+        {"cptIdx":1,"layerIdx":6}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u18",
+      "members": [
+        {"cptIdx":0,"layerIdx":8},
+        {"cptIdx":1,"layerIdx":4}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 4,
+        "cu": 50,
+        "g": 17,
+        "gs": 17,
+        "mode": "min",
+        "phi": 20
+      },
+      "id": "u19",
+      "members": [
+        {"cptIdx":2,"layerIdx":4}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u20",
+      "members": [
+        {"cptIdx":1,"layerIdx":7}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 2,
+        "cu": 20,
+        "g": 16,
+        "gs": 16,
+        "mode": "min",
+        "phi": 20
+      },
+      "id": "u21",
+      "members": [
+        {"cptIdx":2,"layerIdx":5}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u22",
+      "members": [
+        {"cptIdx":1,"layerIdx":8}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u23",
+      "members": [
+        {"cptIdx":1,"layerIdx":9}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 0,
+        "cu": 0,
+        "g": 18,
+        "gs": 20,
+        "mode": "min",
+        "phi": 35
+      },
+      "id": "u24",
+      "members": [
+        {"cptIdx":1,"layerIdx":10}
+      ]
+    },
+    {
+      "characteristic": {
+        "c": 4,
+        "cu": 50,
+        "g": 17,
+        "gs": 17,
+        "mode": "min",
+        "phi": 20
+      },
+      "id": "u25",
+      "members": [
+        {"cptIdx":0,"layerIdx":9}
+      ]
+    }
+  ],
+  "settings": {
+    "characteristic": "min",
+    "minMatch": 0.8
+  }
+}

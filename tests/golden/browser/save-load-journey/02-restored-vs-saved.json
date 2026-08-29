@@ -1,0 +1,30 @@
+{
+  "dialogs": [],
+  "panels": {
+    "#lb": {
+      "firstDifference": null,
+      "identical": true,
+      "restoredLines": 100,
+      "savedLines": 100
+    },
+    "#ma": {
+      "firstDifference": null,
+      "identical": true,
+      "restoredLines": 393,
+      "savedLines": 393
+    },
+    "#stage6Area": {
+      "firstDifference": null,
+      "identical": true,
+      "restoredLines": 57,
+      "savedLines": 57
+    },
+    "#tuningArea": {
+      "firstDifference": null,
+      "identical": true,
+      "restoredLines": 301,
+      "savedLines": 301
+    }
+  },
+  "stateDiffs": []
+}
