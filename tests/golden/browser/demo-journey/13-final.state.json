@@ -1167,6 +1167,10 @@
           "interlock": 0,
           "lambda": 6,
           "method": "vibratory",
+          "push": {
+            "force_kN": 150,
+            "includeWeight": true
+          },
           "reserve": 1.25,
           "result": {
             "<unchanged-since>": "09-drivability",
@@ -1209,6 +1213,7 @@
               "flow_lmin": null,
               "forceAtRpm": null,
               "force_kN": null,
+              "massSource": "amplitude",
               "name": "",
               "power_kW": null,
               "pressureMax_bar": null,

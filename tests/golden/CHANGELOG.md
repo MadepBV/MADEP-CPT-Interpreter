@@ -19,3 +19,8 @@ new state defaults `drivability.push {force_kN, includeWeight}` and `drivability
 (static push-in method; data-sheet essentials), new `sensitivity` key on vibratory results with a candidate,
 drivability result card title "Achievable depth — …" and carrier-check rows in the DOM text. No numeric
 result changed. Commits 1c2bdab, 2cc597b, 4367bea merged with integration-r in a9b5d7f.
+
+## 2026-08-29 — browser journeys after the drivability features
+`gef-import-journey` / `demo-journey` state snapshots: the same two new state keys as the Node update above
+(`drivability.push`, `drivability.vibrator.sheet.massSource`) on every step that carries the retaining state.
+No DOM text or numeric change.

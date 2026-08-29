@@ -62,7 +62,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
 | 11 | `refactor(stage6): registry, per-app defaults/ensure, shell render` | R step 6 | ~1,000 lines; `stage6Defaults`/`ensureStage6State`/`renderStage6` kept as façades (78 / 71 callers) | snapshot of `stage6Defaults()` identical; golden stage6-*; e2e | ☑ 78a2e02 (integration-r) |
-| 12 | `refactor(bearing, pile, settlement, dewatering, beam)` | R step 7 | ~2,000 lines, one package per app in the retaining style, one PR per app (5 PRs) | headless render diff vs monolith HTML for the demo CPT; golden | ◐ bearing ☑ 30fd5a9, pile ☑ 1644f16; settlement/dewatering/beam agent |
+| 12 | `refactor(bearing, pile, settlement, dewatering, beam)` | R step 7 | ~2,000 lines, one package per app in the retaining style, one PR per app (5 PRs) | headless render diff vs monolith HTML for the demo CPT; golden | ☑ bearing 30fd5a9, pile 1644f16, settlement 5798592, dewatering 26bed2a, beam d0bc5e7 |
 | 13 | `style(stage6 shell + apps)` | D 2d (shell parts), 2e | `.tabs--icon`, `.acc`, `.cols-3`, `.viz`, De Beer colours → `--viz-*`, nested blurs removed; done in the same PRs as 12 where the app's markup is touched | visual; blur count ≤ 5; frame budget ≥ 50 fps | ☐ |
 | 14 | `refactor(project, section, tuning)` | R step 8 | ~1,000 lines; `S` reassignment behind `setActive()`; `selectCpt` also terminates the deformation worker (bug fix commit) | `verify_project_io`, golden save-load journey | ☑ b2c3844 + fix 504abef (integration-r) |
 | 15 | `style(retaining): delete retaining-styles.js, use component classes` | D 2f | `.st6-rw-*` → `.card/.acc/.field/.tbl--dense/.verdict--hero/.tabs/.segmented/.pill/.viz`; charts read `vizTheme()` | visual; retaining e2e; rekennota print 0 px | ☐ |
@@ -72,7 +72,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
-| 17 | golden tier A solver suites + seep-slope journey | H parts 5, 7 | bishop / seepage / deformation suites, `seep-slope-journey`, `multi-cpt-journey`, `save-load-journey` | green twice | ☐ |
+| 17 | golden tier A solver suites + seep-slope journey | H parts 5, 7 | bishop / seepage / deformation suites, `seep-slope-journey`, `multi-cpt-journey`, `save-load-journey` | green twice | ◐ agent |
 | 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | ☐ |
 | 19 | `style(seepslope)` | D 2d (rest) | canvas shell `.glass-float`, legends/view menu `.glass-float.acc`, `.is-computing` de-blur | visual; blur count; fps | ☐ |
 
@@ -106,6 +106,7 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
    originating CPT (fix in PR 14).
 3. `stage6BishopDrawCanvas` mutates state (`stage6BishopSyncSoilModel` on every frame) (fixed by 18b).
 4. Muted text `#888890` fails WCAG AA (fixed by PR 2 tokens).
+5. `dewatering.aquiferBaseDepth`: typing a value stores a string (null default) → `.toFixed` TypeError on every later dewatering render (found by PR 12c; locked as-is in its verifier — fix as a behaviour commit with a golden case).
 
 ## 5. Status log
 
@@ -114,3 +115,4 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 - 2026-08-29 (late) — PR 7 shell restyle committed on v0.6.0 after gates; PR 12c / PR 17 agents lost to the session limit — to relaunch. Drivability push-in + data-sheet simplification + note error reporting landed on both v0.6.0 and v0.5.3.
 - 2026-08-29 (night) — integration-r 070ed7e: PR 8, 11, 12a merged; controller 14 417 lines. PR 12b/12c/14 in worktrees, PR 7 on the main tree.
 - 2026-08-29 (night) — integration-r: PR 14 and PR 12b merged; controller 13 301 lines; pile shims removed.
+- 2026-08-29 (late) — PR 12c merged (controller 12 192 lines). Known defect logged: dewatering.aquiferBaseDepth string → TypeError on render (fix as behaviour commit). PR 17 agent running.
