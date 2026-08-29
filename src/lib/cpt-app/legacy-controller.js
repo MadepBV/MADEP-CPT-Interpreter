@@ -18375,6 +18375,7 @@ const legacyApi={
   stage6BishopSetUseCustomRegions,
   stage6BishopDeleteSelectedRegion,
   stage6BishopSetSelectedRegionMaterial,
+  stage6BishopSetSelectedRegionCoarseness,
   stage6BishopFinishDraft,
   stage6BishopPopDraftPoint,
   stage6BishopClear,
