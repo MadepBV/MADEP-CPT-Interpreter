@@ -19,6 +19,11 @@
 // The markup builder is deterministic from inputs and is safe to test in
 // isolation. The DOM wrapper attaches event delegation on the host SVG
 // element and re-renders the markup on every meaningful state change.
+//
+// Colours (PR 13, 02-design-system.md §3.13 / §5.2 row 2e): every paint is a `--viz-*` / `--soil-*` /
+// `--canvas-*` token read through `var()` in the presentation attributes (with the legacy literal as the
+// fallback), so the section follows the theme toggle without a re-render — the `prefers-color-scheme`
+// override block the old <style> carried is gone. Soil fills come from `--soil-*` via SOIL_CLASS_NAMES.
 
 import {
   worldToScreen,
@@ -31,7 +36,34 @@ import {
   makeViewport
 } from '../stage6-canvas-utils.js';
 
-import { SOIL_FILL_COLORS } from '../soil-styles.js';
+import { SOIL_CLASS_NAMES, SOIL_FILL_COLORS } from '../soil-styles.js';
+
+// Series / structure paints (§3.13 "Pile/retaining canvases"): the token, with the literal the token
+// resolves to in the light theme as the fallback for renderers without custom-property support.
+const INK = {
+  paper: 'var(--canvas-paper, #FBF9F5)',
+  grid: 'var(--canvas-grid, rgba(24,24,26,0.05))',
+  axis: 'var(--viz-axis, rgba(24,24,26,0.55))',
+  text: 'var(--viz-text, #18181A)',
+  textMuted: 'var(--viz-text-muted, #4A4A52)',
+  halo: 'var(--viz-halo, rgba(255,255,255,0.92))',
+  neutral: 'var(--viz-neutral, #6D6962)',
+  ink: 'var(--viz-2, #18181A)',           // pile outline / caps
+  handle: 'var(--viz-1, #3D6B6A)',        // drag handles
+  warn: 'var(--viz-3, #8A620D)',          // neutral plane, downdrag hatch, timber
+  warnSoft: 'var(--viz-3-soft, rgba(138,98,13,0.16))',
+  accepted: 'var(--viz-6, #6F8F64)',      // active shaft band
+  water: 'var(--viz-water, #3C6F97)',
+  tooltipBg: 'var(--viz-tooltip-bg, rgba(255,255,255,0.96))',
+  tooltipItem: 'var(--color-bg-alt, #EDE9E1)'
+};
+
+/** Soil fill of a layer type: the `--soil-*` token of soil-styles.js, the literal map as fallback. */
+function soilFill(type) {
+  const cls = SOIL_CLASS_NAMES[type];
+  const literal = SOIL_FILL_COLORS[type] || '#dcdacf';
+  return cls ? `var(--soil-${cls.slice(2)}, ${literal})` : literal;
+}
 
 const SVG_W = 320;
 const SVG_H = 520;
@@ -145,8 +177,8 @@ export function buildPileSectionMarkup({
   const H = viewBox?.height || SVG_H;
   const empty = !Array.isArray(layers) || !layers.length;
   if (empty) {
-    return `<g><rect x="0" y="0" width="${W}" height="${H}" fill="var(--bg2,#f6f4ef)"/>
-      <text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="11" fill="var(--tx2,#666)">
+    return `<g><rect x="0" y="0" width="${W}" height="${H}" fill="${INK.paper}"/>
+      <text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="11" fill="${INK.textMuted}">
         Run Stages 2–5 to build the soil model
       </text></g>`;
   }
@@ -203,39 +235,30 @@ function defs(zMax) {
   return `<defs>
     <pattern id="pileGrid" width="${gridStep * 36}" height="${gridStep * 36}" patternUnits="userSpaceOnUse">
       <path d="M ${gridStep * 36} 0 L 0 0 0 ${gridStep * 36}" fill="none"
-        stroke="rgba(140, 150, 170, 0.18)" stroke-width="1"/>
+        stroke="${INK.grid}" stroke-width="1"/>
     </pattern>
     <pattern id="pileHatchConcrete" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(40, 50, 65, 0.55)" stroke-width="1.4"/>
+      <line x1="0" y1="0" x2="0" y2="6" stroke="${INK.axis}" stroke-width="1.4"/>
     </pattern>
     <pattern id="pileHatchSteel" width="6" height="6" patternUnits="userSpaceOnUse">
-      <line x1="0" y1="0" x2="6" y2="6" stroke="rgba(30, 40, 55, 0.65)" stroke-width="0.9"/>
-      <line x1="6" y1="0" x2="0" y2="6" stroke="rgba(30, 40, 55, 0.65)" stroke-width="0.9"/>
+      <line x1="0" y1="0" x2="6" y2="6" stroke="${INK.axis}" stroke-width="0.9"/>
+      <line x1="6" y1="0" x2="0" y2="6" stroke="${INK.axis}" stroke-width="0.9"/>
     </pattern>
     <pattern id="pileHatchTimber" width="8" height="6" patternUnits="userSpaceOnUse">
-      <rect width="8" height="6" fill="rgba(180, 120, 60, 0.18)"/>
-      <path d="M0 3 Q2 1 4 3 T8 3" stroke="rgba(120, 80, 30, 0.55)" stroke-width="0.9" fill="none"/>
+      <rect width="8" height="6" fill="${INK.warnSoft}"/>
+      <path d="M0 3 Q2 1 4 3 T8 3" stroke="${INK.warn}" stroke-opacity="0.6" stroke-width="0.9" fill="none"/>
     </pattern>
     <pattern id="pileHatchDowndrag" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
-      <line x1="0" y1="0" x2="0" y2="7" stroke="rgba(180, 90, 30, 0.55)" stroke-width="1.1"/>
+      <line x1="0" y1="0" x2="0" y2="7" stroke="${INK.warn}" stroke-opacity="0.6" stroke-width="1.1"/>
     </pattern>
     <style>
       .pile-soil rect { vector-effect: non-scaling-stroke; }
       .pile-text-haloed {
         paint-order: stroke fill;
-        stroke: rgba(255, 255, 255, 0.92);
+        stroke: ${INK.halo};
         stroke-width: 3;
         stroke-linejoin: round;
         stroke-linecap: round;
-      }
-      @media (prefers-color-scheme: dark) {
-        .pile-text-haloed {
-          stroke: rgba(17, 17, 16, 0.92);
-          fill: #EDE9E1 !important;
-        }
-        .pile-label-water { fill: #6FB0E0 !important; }
-        .pile-label-neutral { fill: #E0A571 !important; }
-        .pile-grid-line { stroke: rgba(237, 233, 225, 0.18) !important; }
       }
     </style>
   </defs>`;
@@ -251,12 +274,12 @@ function drawBackground(viewport, W, H, zMax) {
   for (let z = 0; z <= zMax; z += tickStep) {
     const py = worldToScreen({ x: 0, z }, viewport).y;
     if (py < 0 || py > H) continue;
-    lines.push(`<line x1="${W - PADDING_X + 4}" y1="${py.toFixed(1)}" x2="${W - PADDING_X + 10}" y2="${py.toFixed(1)}" stroke="var(--bd2,#bbb)" stroke-width="0.8"/>`);
-    labels.push(`<text class="pile-text-haloed" x="${W - 2}" y="${(py + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="rgba(33, 49, 66, 0.85)">${z.toFixed(z >= 10 ? 0 : 1)} m</text>`);
+    lines.push(`<line x1="${W - PADDING_X + 4}" y1="${py.toFixed(1)}" x2="${W - PADDING_X + 10}" y2="${py.toFixed(1)}" stroke="${INK.axis}" stroke-width="0.8"/>`);
+    labels.push(`<text class="pile-text-haloed" x="${W - 2}" y="${(py + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="${INK.textMuted}">${z.toFixed(z >= 10 ? 0 : 1)} m</text>`);
   }
-  return `<rect x="0" y="0" width="${W}" height="${H}" fill="var(--bg,#fbfaf6)"/>
+  return `<rect x="0" y="0" width="${W}" height="${H}" fill="${INK.paper}"/>
     ${showGrid ? `<rect x="0" y="0" width="${W - PADDING_X}" height="${H}" fill="url(#pileGrid)"/>` : ''}
-    <line x1="${W - PADDING_X}" y1="${PADDING_TOP}" x2="${W - PADDING_X}" y2="${H - PADDING_BOT}" stroke="var(--bd2,#bbb)" stroke-width="0.8"/>
+    <line x1="${W - PADDING_X}" y1="${PADDING_TOP}" x2="${W - PADDING_X}" y2="${H - PADDING_BOT}" stroke="${INK.axis}" stroke-width="0.8"/>
     ${lines.join('')}
     ${labels.join('')}`;
 }
@@ -274,13 +297,12 @@ function drawSoilColumn(layers, viewport, W, hover) {
     const layer = layers[i];
     const yTop = worldToScreen({ x: 0, z: layer.top }, viewport).y;
     const yBot = worldToScreen({ x: 0, z: layer.bot }, viewport).y;
-    const fill = SOIL_FILL_COLORS[layer.type] || '#dcdacf';
+    const fill = soilFill(layer.type);
     const isHover = hover?.layerIndex === i;
     // Bishop-style hierarchy: low-opacity fill, confident stroke. Borders
     // dominate, soil colour reads as a tint, the geometry stays primary.
     const fillOp = isHover ? 0.45 : 0.32;
-    const strokeOp = isHover ? 1.0 : 0.78;
-    const stroke = `rgba(40, 50, 65, ${strokeOp})`;
+    const stroke = isHover ? INK.text : INK.axis;
     const strokeW = isHover ? 1.6 : 1.2;
     const x0 = 1;
     const x1 = W - PADDING_X;
@@ -293,7 +315,7 @@ function drawSoilColumn(layers, viewport, W, hover) {
     if (h > 18) {
       const labelY = (yTop + Math.min(13, h / 2)).toFixed(1);
       const qcText = Number.isFinite(+layer.avgQc) ? `q_c=${(+layer.avgQc).toFixed(1)} MPa` : '';
-      out.push(`<text class="pile-text-haloed" x="${x1 - 4}" y="${labelY}" text-anchor="end" font-size="9" font-weight="600" fill="#213142" pointer-events="none">${escapeText(layer.type)} · ${qcText}</text>`);
+      out.push(`<text class="pile-text-haloed" x="${x1 - 4}" y="${labelY}" text-anchor="end" font-size="9" font-weight="600" fill="${INK.text}" pointer-events="none">${escapeText(layer.type)} · ${qcText}</text>`);
     }
   }
   return out.join('');
@@ -305,8 +327,8 @@ function drawWaterTable(wt, viewport, W) {
   // Cool navy — universal phreatic-line convention; restrained so it reads as
   // technical signal, not as a competing accent.
   return `<line x1="0" y1="${y.toFixed(1)}" x2="${W - PADDING_X}" y2="${y.toFixed(1)}"
-    stroke="rgba(38, 90, 150, 0.78)" stroke-width="1.2" stroke-dasharray="6 3"/>
-    <text class="pile-text-haloed pile-label-water" x="2" y="${(y - 3).toFixed(1)}" font-size="9" font-weight="600" fill="rgba(38, 90, 150, 0.95)">WT ${(+wt).toFixed(2)} m</text>`;
+    stroke="${INK.water}" stroke-opacity="0.8" stroke-width="1.2" stroke-dasharray="6 3"/>
+    <text class="pile-text-haloed pile-label-water" x="2" y="${(y - 3).toFixed(1)}" font-size="9" font-weight="600" fill="${INK.water}">WT ${(+wt).toFixed(2)} m</text>`;
 }
 
 function drawActiveShaftBand(analysis, viewport, cfg, displayWidth) {
@@ -323,7 +345,7 @@ function drawActiveShaftBand(analysis, viewport, cfg, displayWidth) {
     // low-opacity soil fills without overpowering them.
     out.push(`<rect x="${(xCenter - halfPx).toFixed(1)}" y="${yTop.toFixed(1)}"
       width="${(2 * halfPx).toFixed(1)}" height="${Math.max(0.5, yBot - yTop).toFixed(1)}"
-      fill="rgba(60, 140, 80, 0.16)"/>`);
+      fill="${INK.accepted}" fill-opacity="0.18"/>`);
   }
   return out.join('');
 }
@@ -354,10 +376,9 @@ function drawNeutralPlane(analysis, viewport, W, hover, cfg) {
   // Same amber family as the downdrag hatch — they belong together. Treats
   // the downdrag zone + neutral plane as one paired warning state instead
   // of two competing accents.
-  const stroke = `rgba(180, 90, 30, ${isHover ? 1.0 : 0.88})`;
   return `<line x1="0" y1="${y.toFixed(1)}" x2="${W - PADDING_X}" y2="${y.toFixed(1)}"
-    stroke="${stroke}" stroke-width="${isHover ? 2 : 1.3}" stroke-dasharray="4 3"/>
-    <text class="pile-text-haloed pile-label-neutral" x="${W - PADDING_X - 4}" y="${(y - 3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="600" fill="rgba(180, 90, 30, 0.96)">Neutral plane ${np.toFixed(2)} m</text>`;
+    stroke="${INK.warn}" stroke-opacity="${isHover ? 1.0 : 0.88}" stroke-width="${isHover ? 2 : 1.3}" stroke-dasharray="4 3"/>
+    <text class="pile-text-haloed pile-label-neutral" x="${W - PADDING_X - 4}" y="${(y - 3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="600" fill="${INK.warn}">Neutral plane ${np.toFixed(2)} m</text>`;
 }
 
 function drawPile(cfg, viewport, displayWidth) {
@@ -375,7 +396,7 @@ function drawPile(cfg, viewport, displayWidth) {
   let out = '';
   out += `<rect x="${(xCenter - halfShaftPx).toFixed(1)}" y="${yHead.toFixed(1)}"
     width="${(2 * halfShaftPx).toFixed(1)}" height="${Math.max(0.5, yShaftBottom - yHead).toFixed(1)}"
-    fill="${hatchUrl}" stroke="rgba(20,20,30,0.95)" stroke-width="1.4"/>`;
+    fill="${hatchUrl}" stroke="${INK.ink}" stroke-width="1.4"/>`;
   // Base — trapezoid flaring from shaft to base
   if (isEnlarged) {
     const x1 = xCenter - halfShaftPx;
@@ -385,16 +406,16 @@ function drawPile(cfg, viewport, displayWidth) {
     const yA = yShaftBottom.toFixed(1);
     const yB = yToe.toFixed(1);
     out += `<polygon points="${x1.toFixed(1)},${yA} ${x2.toFixed(1)},${yA} ${x3.toFixed(1)},${yB} ${x4.toFixed(1)},${yB}"
-      fill="${hatchUrl}" stroke="rgba(20,20,30,0.95)" stroke-width="1.4"/>`;
+      fill="${hatchUrl}" stroke="${INK.ink}" stroke-width="1.4"/>`;
   }
   // Pile head cap
   out += `<line x1="${(xCenter - halfShaftPx - 6).toFixed(1)}" y1="${yHead.toFixed(1)}"
     x2="${(xCenter + halfShaftPx + 6).toFixed(1)}" y2="${yHead.toFixed(1)}"
-    stroke="rgba(20,20,30,0.95)" stroke-width="2"/>`;
+    stroke="${INK.ink}" stroke-width="2"/>`;
   // Toe tick
   out += `<line x1="${(xCenter - halfBasePx - 6).toFixed(1)}" y1="${yToe.toFixed(1)}"
     x2="${(xCenter + halfBasePx + 6).toFixed(1)}" y2="${yToe.toFixed(1)}"
-    stroke="rgba(20,20,30,0.95)" stroke-width="2"/>`;
+    stroke="${INK.ink}" stroke-width="2"/>`;
   return out;
 }
 
@@ -441,16 +462,14 @@ function drawHandles(cfg, viewport, displayWidth, analysis, hover) {
     const isHover = hover?.handleId === h.id;
     const isDragging = hover?.drag?.handleId === h.id;
     const active = isHover || isDragging;
-    const baseColor = h.id === 'np' ? 'rgba(220,120,40,' : 'rgba(40,90,180,';
-    const fill = baseColor + (active ? '0.95)' : '0.55)');
-    const stroke = active ? '#fff' : 'rgba(255,255,255,0.55)';
+    const fill = h.id === 'np' ? INK.warn : INK.handle;
     const r = active ? 5.5 : 4;
     const hitR = HANDLE_RADIUS + 4;
     return `
       <circle data-pile-handle="${h.id}" cx="${h.cx.toFixed(1)}" cy="${h.cy.toFixed(1)}" r="${hitR.toFixed(1)}"
         fill="transparent" style="cursor:${h.cursor}; outline:none"/>
       <circle data-pile-handle="${h.id}" cx="${h.cx.toFixed(1)}" cy="${h.cy.toFixed(1)}" r="${r.toFixed(1)}"
-        fill="${fill}" stroke="${stroke}" stroke-width="${active ? 1.75 : 1.25}"
+        fill="${fill}" fill-opacity="${active ? 0.95 : 0.55}" stroke="${INK.paper}" stroke-opacity="${active ? 1 : 0.55}" stroke-width="${active ? 1.75 : 1.25}"
         tabindex="0" role="slider" aria-label="${h.id}"
         style="cursor:${h.cursor}; outline:none; pointer-events:none"/>
     `;
@@ -469,22 +488,22 @@ function drawDimensions(cfg, viewport, displayWidth, W, H) {
   const yDs = (yHead + yToe) / 2 - 6;
   const dsLabel = displayWidth < 0.6 ? `${(displayWidth * 1000).toFixed(0)} mm` : `${displayWidth.toFixed(2)} m`;
   out.push(`<line x1="${(xCenter - halfShaftPx).toFixed(1)}" y1="${yDs.toFixed(1)}" x2="${(xCenter + halfShaftPx).toFixed(1)}" y2="${yDs.toFixed(1)}"
-    stroke="rgba(40,40,40,0.7)" stroke-width="0.8"/>`);
-  out.push(`<text x="${xCenter.toFixed(1)}" y="${(yDs - 2).toFixed(1)}" text-anchor="middle" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142">${svgSub('D','s')} ${dsLabel}</text>`);
+    stroke="${INK.neutral}" stroke-width="0.8"/>`);
+  out.push(`<text x="${xCenter.toFixed(1)}" y="${(yDs - 2).toFixed(1)}" text-anchor="middle" class="pile-text-haloed" font-size="9" font-weight="600" fill="${INK.text}">${svgSub('D','s')} ${dsLabel}</text>`);
   if (cfg.Db > cfg.Ds + 0.05) {
     const yDb = yToe + 14;
     const dbLabel = baseDisplayWidth < 0.6 ? `${(baseDisplayWidth * 1000).toFixed(0)} mm` : `${baseDisplayWidth.toFixed(2)} m`;
     out.push(`<line x1="${(xCenter - halfBasePx).toFixed(1)}" y1="${yDb.toFixed(1)}" x2="${(xCenter + halfBasePx).toFixed(1)}" y2="${yDb.toFixed(1)}"
-      stroke="rgba(40,40,40,0.7)" stroke-width="0.8"/>`);
-    out.push(`<text x="${xCenter.toFixed(1)}" y="${(yDb + 9).toFixed(1)}" text-anchor="middle" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142">${svgSub('D','b')} ${dbLabel}</text>`);
+      stroke="${INK.neutral}" stroke-width="0.8"/>`);
+    out.push(`<text x="${xCenter.toFixed(1)}" y="${(yDb + 9).toFixed(1)}" text-anchor="middle" class="pile-text-haloed" font-size="9" font-weight="600" fill="${INK.text}">${svgSub('D','b')} ${dbLabel}</text>`);
   }
   const xL = Math.max(8, xCenter - halfShaftPx - 18);
   const yMid = (yHead + yToe) / 2;
   out.push(`<line x1="${xL.toFixed(1)}" y1="${yHead.toFixed(1)}" x2="${xL.toFixed(1)}" y2="${yToe.toFixed(1)}"
-    stroke="rgba(40,40,40,0.7)" stroke-width="0.8" marker-start="url(#dimArrow)" marker-end="url(#dimArrow)"/>`);
-  out.push(`<text x="${(xL - 3).toFixed(1)}" y="${yMid.toFixed(1)}" text-anchor="end" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142" transform="rotate(-90 ${(xL - 3).toFixed(1)} ${yMid.toFixed(1)})">L=${(cfg.zToe - cfg.zHead).toFixed(2)} m</text>`);
-  out.push(`<text x="${(xCenter + halfShaftPx + 10).toFixed(1)}" y="${(yHead + 3).toFixed(1)}" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142">${svgSub('z','head')} ${cfg.zHead.toFixed(2)} m</text>`);
-  out.push(`<text x="${(xCenter + halfBasePx + 10).toFixed(1)}" y="${(yToe + 3).toFixed(1)}" class="pile-text-haloed" font-size="9" font-weight="600" fill="#213142">${svgSub('z','toe')} ${cfg.zToe.toFixed(2)} m</text>`);
+    stroke="${INK.neutral}" stroke-width="0.8" marker-start="url(#dimArrow)" marker-end="url(#dimArrow)"/>`);
+  out.push(`<text x="${(xL - 3).toFixed(1)}" y="${yMid.toFixed(1)}" text-anchor="end" class="pile-text-haloed" font-size="9" font-weight="600" fill="${INK.text}" transform="rotate(-90 ${(xL - 3).toFixed(1)} ${yMid.toFixed(1)})">L=${(cfg.zToe - cfg.zHead).toFixed(2)} m</text>`);
+  out.push(`<text x="${(xCenter + halfShaftPx + 10).toFixed(1)}" y="${(yHead + 3).toFixed(1)}" class="pile-text-haloed" font-size="9" font-weight="600" fill="${INK.text}">${svgSub('z','head')} ${cfg.zHead.toFixed(2)} m</text>`);
+  out.push(`<text x="${(xCenter + halfBasePx + 10).toFixed(1)}" y="${(yToe + 3).toFixed(1)}" class="pile-text-haloed" font-size="9" font-weight="600" fill="${INK.text}">${svgSub('z','toe')} ${cfg.zToe.toFixed(2)} m</text>`);
   return out.join('');
 }
 
@@ -514,8 +533,8 @@ function drawDragTooltip(drag, viewport, W, H) {
   const boxH = txtLines.length * lineH + 2 * padY;
   const tspans = txtLines.map((l, i) => `<tspan x="${(x + padX).toFixed(1)}" dy="${i === 0 ? padY + 9 : lineH}">${escapeText(l)}</tspan>`).join('');
   return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}"
-    rx="3" ry="3" fill="rgba(255,255,255,0.96)" stroke="rgba(40,40,40,0.6)"/>
-    <text x="${(x + padX).toFixed(1)}" y="${y.toFixed(1)}" font-size="10" fill="#222">${tspans}</text>`;
+    rx="3" ry="3" fill="${INK.tooltipBg}" stroke="${INK.axis}"/>
+    <text x="${(x + padX).toFixed(1)}" y="${y.toFixed(1)}" font-size="10" fill="${INK.text}">${tspans}</text>`;
 }
 
 function drawLayerPopover(popover, layers, cfg, W) {
@@ -533,12 +552,12 @@ function drawLayerPopover(popover, layers, cfg, W) {
     const cy = y + 18 + i * 22;
     return `<rect data-popover-action="${action}" data-layer-index="${popover.layerIndex}"
       x="${(x + 4).toFixed(1)}" y="${(cy - 12).toFixed(1)}" width="200" height="20" rx="3" ry="3"
-      fill="rgba(245,245,240,0.9)" stroke="rgba(40,40,40,0.4)" style="cursor:pointer"/>
-      <text x="${(x + 10).toFixed(1)}" y="${(cy + 1).toFixed(1)}" font-size="10" fill="#222" pointer-events="none">${escapeText(line)}</text>`;
+      fill="${INK.tooltipItem}" stroke="${INK.axis}" stroke-opacity="0.6" style="cursor:pointer"/>
+      <text x="${(x + 10).toFixed(1)}" y="${(cy + 1).toFixed(1)}" font-size="10" fill="${INK.text}" pointer-events="none">${escapeText(line)}</text>`;
   }).join('');
   return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="208" height="${(18 + lines.length * 22 + 4).toFixed(1)}"
-    rx="4" ry="4" fill="rgba(255,255,255,0.97)" stroke="rgba(40,40,40,0.7)" data-popover-bg="1"/>
-    <text x="${(x + 8).toFixed(1)}" y="${(y + 12).toFixed(1)}" font-size="10" font-weight="700" fill="#222">${escapeText(layer.type)} (${layer.subtype || '—'})</text>
+    rx="4" ry="4" fill="${INK.tooltipBg}" stroke="${INK.axis}" data-popover-bg="1"/>
+    <text x="${(x + 8).toFixed(1)}" y="${(y + 12).toFixed(1)}" font-size="10" font-weight="700" fill="${INK.text}">${escapeText(layer.type)} (${layer.subtype || '—'})</text>
     ${items}`;
 }
 
@@ -573,8 +592,8 @@ function drawLayerTooltip(layerIndex, layers, analysis, viewport, W) {
   const boxH = lines.length * lineH + 2 * padY;
   const tspans = lines.map((l, i) => `<tspan x="${(x + padX).toFixed(1)}" dy="${i === 0 ? padY + 8 : lineH}">${escapeText(l)}</tspan>`).join('');
   return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}"
-    rx="3" ry="3" fill="rgba(255,255,255,0.96)" stroke="rgba(40,40,40,0.55)"/>
-    <text x="${(x + padX).toFixed(1)}" y="${y.toFixed(1)}" font-size="9.5" fill="#222">${tspans}</text>`;
+    rx="3" ry="3" fill="${INK.tooltipBg}" stroke="${INK.axis}"/>
+    <text x="${(x + padX).toFixed(1)}" y="${y.toFixed(1)}" font-size="9.5" fill="${INK.text}">${tspans}</text>`;
 }
 
 // ---------------------------------------------------------------------

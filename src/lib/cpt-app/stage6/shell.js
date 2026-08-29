@@ -4,9 +4,11 @@
 // stage6/shell.js — the Stage 6 shell: app switch, shared banner and the one re-render path of
 // #stage6Area (01-monolith-map.md §2.6 "Shell render", §4.2 row "Stage 6", §6.1 row `stage6/`).
 // Moved out of legacy-controller.js (integration-r): stage6SharedBanner 11564-11570,
-// stage6AppIcon 11572-11585, stage6CardsHtml 11587-11610, renderStage6 15188-15246. The markup
-// is verbatim; the seven-way `if/else` on `S.stage6.app` became a lookup in the registry-keyed
-// `apps` map the host passes in.
+// stage6AppIcon 11572-11585, stage6CardsHtml 11587-11610, renderStage6 15188-15246. The seven-way
+// `if/else` on `S.stage6.app` became a lookup in the registry-keyed `apps` map the host passes in.
+// PR 13 (style, 02-design-system.md §5.2 row 2d) renamed the class attributes only: the app switch is
+// `.tabs.tabs--icon` › `.tab` (`.tab__icon` / `.tab__label`), the shared banner a `.verdict--prose`,
+// the no-layers placeholder an `.empty`; every id, handler and visible string is unchanged.
 //
 // createStage6Shell(ctx) → { render, cardsHtml, sharedBanner, appIcon, resolveApp }
 //   ctx.registry             createStage6Registry(...) — card order, cardMeta, enabled hook
@@ -29,7 +31,7 @@
 import { enabledApps, registryEntry, STAGE6_ICON_FALLBACK } from './registry.js';
 import { captureScrollState, restoreScrollState } from './ui-state.js';
 
-export const STAGE6_NO_LAYERS_HTML = '<div style="color:var(--tx2);font-size:13px;padding:20px 0">Run the CPT through Stages 2–5 first so Stage 6 can reuse the interpreted layer model.</div>';
+export const STAGE6_NO_LAYERS_HTML = '<div class="empty"><div class="empty__text">Run the CPT through Stages 2–5 first so Stage 6 can reuse the interpreted layer model.</div></div>';
 
 /** 18×18 line-art glyph (stroke = currentColor) around a registry icon body. */
 export function stage6IconSvg(body){
@@ -62,7 +64,7 @@ export function createStage6Shell(ctx){
   function sharedBanner(){
     const S = getState();
     return `
-    <div class="info" style="margin-bottom:14px;background:var(--bg2);border-color:var(--bd2);color:var(--tx2)">
+    <div class="verdict verdict--neutral verdict--prose st6-banner">
       Active CPT: <strong>${S.id}</strong> · WT = <strong>${S.wt.toFixed(2)} m</strong> below surface · parameter source = <strong>${S.paramMethod==='sb260'?'EC7 / NEN Table 3':'DEF'}</strong> · Stage 5 tuned m = <strong>${S.layers.some(l=>l.ovr.m)?'used where accepted':'not accepted'}</strong>
     </div>
   `;
@@ -71,9 +73,9 @@ export function createStage6Shell(ctx){
   function cardsHtml(app){
     const cards = enabledApps(registry);
     return `
-    <div class="app-switch" role="tablist" aria-label="Stage 6 applications">
-      ${cards.map(c=>`<button type="button" role="tab" aria-selected="${c.id===app}" class="app-chip ${c.id===app?'sel':''}" onclick="setStage6App('${c.id}')" title="${c.cardMeta.title} — ${c.cardMeta.desc}">
-        <span class="app-chip-ico">${appIcon(c.id)}</span><span class="app-chip-lbl">${c.short}</span>
+    <div class="tabs tabs--icon st6-switch" role="tablist" aria-label="Stage 6 applications">
+      ${cards.map(c=>`<button type="button" role="tab" aria-selected="${c.id===app}" class="tab" onclick="setStage6App('${c.id}')" title="${c.cardMeta.title} — ${c.cardMeta.desc}">
+        <span class="tab__icon">${appIcon(c.id)}</span><span class="tab__label">${c.short}</span>
       </button>`).join('')}
     </div>
   `;

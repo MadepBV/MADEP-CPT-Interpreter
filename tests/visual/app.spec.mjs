@@ -47,7 +47,7 @@ for (const v of VARIANTS) {
 
     // ── Stage 6 applications ────────────────────────────────────────────────
     await goStage(page, 5);
-    await page.locator('#stage6Area .app-chip').first().waitFor();
+    await page.locator('#stage6Area .tabs--icon .tab').first().waitFor();
     for (const app of ['bearing', 'pile', 'settlement', 'dewatering', 'beam']) {
       await page.evaluate((a) => window.setStage6App(a), app);
       await settle(page, 1200);

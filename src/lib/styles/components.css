@@ -4,12 +4,16 @@
    Phase 2a (PR 7) ships the shell: the dark chrome (§3.3), the stage rail (§3.4), the button family (§3.8)
    and the segmented control (§3.7/§3.12). Phase 2b/2c (PR 10) adds the Stage 1–5 vocabulary: panel anatomy
    (§3.5), cards + stats, form fields + inputs (§3.7), the empty state / dropzone (§3.15), pills (§3.9),
-   tables (§3.10), verdict banners (§3.11) and chart containers (§3.13). Stage 6 (2d–2f), dialogs (2g) and
-   docs/reports (2h) are still on legacy.css — see the transitional scopes noted at §7 and §11 below.
+   tables (§3.10), verdict banners (§3.11) and chart containers (§3.13). Phase 2d/2e (PR 13) adds the
+   Stage 6 shell + engineering-app vocabulary (§17–§23): tabs (§3.12), accordions (§3.6), the three-column
+   `.cols-3` grid, stacked fields, chart hosts and series keys. The Bishop canvas shell (2d, later PR), the
+   retaining app (2f), dialogs (2g) and docs/reports (2h) are still on legacy.css — see the transitional
+   scopes noted at §7, §11 and §19 below.
 
-   Legacy aliases — the Stage 6 strings of the controller (src/lib/cpt-app/legacy-controller.js) still emit
-   `.btn.pri`, `.btn.sm`, `.btn--compact`, `.togbtn`; the selectors below carry the old names next to the
-   new ones so those HTML strings need no edit yet (Stage 1–5 were renamed in PR 10, Stage 6 is PR 13).
+   Legacy aliases — the Bishop / retaining strings of the controller (src/lib/cpt-app/legacy-controller.js)
+   still emit `.btn.pri`, `.btn.sm`, `.btn--compact`, `.togbtn`; the selectors below carry the old names next
+   to the new ones so those HTML strings need no edit yet (Stage 1–5 were renamed in PR 10, the Stage 6
+   shell and the five engineering apps in PR 13).
    State classes the controller toggles (`.sel`, `.ovr`, `.active`, `.drag`) are aliased the same way.
    Because this layer sits above `legacy`, these rules win over legacy.css regardless of specificity.
 
@@ -776,4 +780,284 @@
     :where(.cpt-app) .pill, :where(.cpt-app) .verdict, :where(.cpt-app) .card, :where(.cpt-app) .stat, :where(.cpt-app) .viz { border-color: CanvasText; }
     :where(.cpt-app) .card--select:is(.is-selected, .sel, [aria-pressed="true"]) { outline: 2px solid Highlight; }
   }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     17. Tabs (§3.12) — the Stage 6 app switch is `.tabs.tabs--icon`
+     `.tab` is uppercase per spec; the icon variant keeps the app names in mixed case (they are data:
+     the DOM-text goldens read them). Selected = aria-selected (the shell emits it).
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .tabs {
+    display: flex; align-items: flex-end; flex-wrap: wrap;
+    gap: var(--sp-1);
+    min-width: 0;
+    border-bottom: var(--hairline);
+  }
+  :where(.cpt-app) .tab {
+    position: relative;
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    height: var(--control-h); padding: 0 var(--sp-3);
+    margin-bottom: -1px;
+    border: 0; border-bottom: 2px solid transparent;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background: transparent; color: var(--color-ink-2);
+    font: var(--fw-semibold) var(--fs-xs) / 1 var(--font-body);
+    text-transform: uppercase; letter-spacing: var(--track-mono);
+    white-space: nowrap; cursor: pointer;
+    transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+  }
+  :where(.cpt-app) .tab:hover { color: var(--color-ink); background: var(--surface-hover); }
+  :where(.cpt-app) .tab[aria-selected="true"],
+  :where(.cpt-app) .tab.is-selected { color: var(--color-accent-text); border-bottom-color: var(--color-accent); }
+  :where(.cpt-app) .tab:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+  :where(.cpt-app) .tab__icon { display: inline-flex; flex: none; width: 18px; height: 18px; color: var(--color-ink-3); transition: color var(--transition-fast); }
+  :where(.cpt-app) .tab__icon svg { display: block; width: 18px; height: 18px; }
+  :where(.cpt-app) .tab:hover .tab__icon,
+  :where(.cpt-app) .tab[aria-selected="true"] .tab__icon,
+  :where(.cpt-app) .tab.is-selected .tab__icon { color: var(--color-accent); }
+  :where(.cpt-app) .tab__label { min-width: 0; }
+  :where(.cpt-app) .tabs--icon .tab { text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+  @media (max-width: 680px) {                    /* icons only, like the legacy chips */
+    :where(.cpt-app) .tabs--icon .tab__label { display: none; }
+    :where(.cpt-app) .tabs--icon .tab { padding: 0 var(--sp-2); }
+    :where(.cpt-app) .tabs--icon .tab__icon { color: var(--color-ink-2); }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     18. Accordions (§3.6) — details.acc
+     The head keeps the legacy mono-uppercase eyebrow (spec: 600 --fs-sm body) because the browser goldens
+     read its innerText; the chevron is a stroked 14 px mask on the left (replaces the '+' / '−' text marker).
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .acc {
+    min-width: 0; max-width: 100%; box-sizing: border-box;
+    padding: 0;
+    background: var(--surface-card);
+    border: var(--hairline); border-radius: var(--radius-md);
+  }
+  :where(.cpt-app) .acc__head {                  /* block, not flex: a flex head would blockify the <sub>s of
+                                                    "Factor chain (γRd / ξ …)" and split its innerText line */
+    display: block; position: relative;
+    min-height: var(--control-h); padding: var(--sp-2) var(--sp-3) var(--sp-2) calc(var(--sp-3) + 14px + var(--sp-2));
+    list-style: none; cursor: pointer; user-select: none;
+    border-radius: var(--radius-md);
+    color: var(--color-ink-2);
+    font: var(--fw-medium) var(--fs-xs) / 1.3 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono);
+    transition: color var(--transition-fast), background-color var(--transition-fast);
+  }
+  :where(.cpt-app) .acc__head::-webkit-details-marker { display: none; }
+  :where(.cpt-app) .acc__head::before {          /* chevron, currentColor through a mask */
+    content: ""; position: absolute; left: var(--sp-3); top: 50%; margin-top: -7px;
+    width: 14px; height: 14px;
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M5 3l4 4-4 4' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M5 3l4 4-4 4' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+    transition: transform var(--motion-quick) var(--ease-snappy);
+  }
+  :where(.cpt-app) .acc[open] > .acc__head { border-radius: var(--radius-md) var(--radius-md) 0 0; color: var(--color-ink); }
+  :where(.cpt-app) .acc[open] > .acc__head::before { transform: rotate(90deg); }
+  :where(.cpt-app) .acc__head:hover { color: var(--color-ink); background: var(--surface-hover); }
+  :where(.cpt-app) .acc__head:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+  :where(.cpt-app) .acc__badge { float: right; margin-left: var(--sp-2); }
+  :where(.cpt-app) .acc__body {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-3);
+    min-width: 0; padding: var(--sp-3);
+    border-top: var(--hairline);
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     19. Stage 6 layout — the three-column app grid (§5.2 row 2e) and its siblings
+     Replaces the inline `grid-template-columns:260px 1fr 250px` … styles and the
+     `[style*="grid-template-columns…"]` attribute overrides of legacy.css.
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .cols-3 {
+    display: grid; grid-template-columns: var(--col-side) minmax(0, 1fr) var(--col-inspector);
+    gap: var(--sp-4); align-items: start; min-width: 0;
+  }
+  :where(.cpt-app) .cols-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); align-items: start; min-width: 0; }
+  :where(.cpt-app) :is(.cols-3, .cols-2) > * { min-width: 0; }
+  :where(.cpt-app) .viz-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--sp-3); min-width: 0; }
+  :where(.cpt-app) .stack > .card__head { margin-bottom: 0; }   /* the rhythm rule spaces it */
+  :where(.cpt-app) .stack--tight > * + * { margin-top: var(--sp-2); }   /* eyebrow → table → note inside a quiet card */
+  :where(.cpt-app) .stack--tight > .card__eyebrow { margin-bottom: 0; }
+
+  /* Stage 6 app root: `.card.stack` (the `.mc2` prefix is the shell golden's body marker) */
+  :where(.cpt-app) .st6-switch { margin-bottom: var(--sp-4); }
+  :where(.cpt-app) .st6-banner { margin-bottom: var(--sp-4); }
+  :where(.cpt-app) .card__head--stack { flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
+  :where(.cpt-app) .card--note {                 /* dense help note (the old .st6-help) */
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-xs); line-height: var(--lh-body); color: var(--color-ink-2);
+    overflow-wrap: anywhere;
+  }
+  :where(.cpt-app) .card--note strong,
+  :where(.cpt-app) .card__text strong { color: var(--color-ink); font-weight: var(--fw-semibold); }
+  :where(.cpt-app) .formula {                    /* the monospace equation line of a formula card */
+    margin: 0 0 var(--sp-2);
+    font: var(--fw-regular) var(--fs-sm) / 1.55 var(--font-mono);
+    color: var(--color-ink); overflow-wrap: anywhere;
+  }
+  :where(.cpt-app) .fieldset { padding-top: var(--sp-3); border-top: var(--hairline); min-width: 0; }
+
+  /* Transitional: core/format.js still emits `.info` boxes (notes, load audits) inside the Stage 6 apps —
+     they take the quiet-card recipe here; their inline tone colours (background / border-color) stay. */
+  :where(.cpt-app) .st6-app .info {
+    margin: 0; padding: var(--pad-card);
+    background: var(--surface-quiet); color: var(--color-ink);
+    border: var(--hairline); border-radius: var(--radius-md);
+    font-size: var(--fs-sm); line-height: var(--lh-body);
+    overflow-x: auto;                            /* the 13-column load audit scrolls instead of breaking words */
+  }
+  :where(.cpt-app) .st6-app .info > .tbl.st6-audit { table-layout: auto; margin-top: 0; background: transparent; }
+  :where(.cpt-app) .st6-app .st6-audit th,
+  :where(.cpt-app) .st6-app .st6-audit td { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+  :where(.cpt-app) .st6-app .st6-audit td { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+
+  /* §4.1 rule 3 — blur must not intersect an animating canvas: while a search / drag runs, the canvas stage
+     carries `.is-computing` and every glass overlay on it turns solid (0 ms blur cost when the GPU is busiest).
+     The class is the contract for the Bishop canvas shell (stage6-canvas-utils / the search runner toggle it
+     in the Bishop PR); the legacy dock / card / view-menu selectors are listed so the rule bites as soon as
+     the toggle lands. */
+  :where(.cpt-app) .is-computing :is(.glass, .glass-float, .st6-canvas-dock, .st6-canvas-card, .st6-bishop-view-menu, .st6-canvas-capture) {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    background: var(--glass-bg-strong);
+  }
+
+  /* Stage 6 prose banner: a verdict whose body is one inline sentence with <strong>s — block, not flex
+     (flex would blockify the <strong>s and split the innerText line the goldens read). */
+  :where(.cpt-app) .verdict--prose { display: block; }
+  :where(.cpt-app) .verdict--prose strong { font-weight: var(--fw-semibold); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     20. Stage 6 form column — stacked label-over-control fields
+     `.fields--stack` is the quiet input column (grid, one field per row). `.field-stack` is a <label>
+     (or div) whose text sits above a full-width control; it sets no `display` on purpose: in a grid it is
+     a grid item, in a plain block (the beam EC2 fieldset) it stays inline — the browser goldens read the
+     innerText line structure that follows from that.
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .fields--stack {
+    display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch;
+    gap: var(--sp-3); padding: var(--sp-3);
+  }
+  :where(.cpt-app) .field-stack {
+    min-width: 0;
+    font: var(--fw-medium) var(--fs-xs) / 1.35 var(--font-body);
+    color: var(--color-ink-2);
+  }
+  :where(.cpt-app) .field-stack > :is(.input, .range) { display: inline-block; width: 100%; margin-top: var(--sp-1); vertical-align: top; }
+  :where(.cpt-app) .field-stack > .input { font-size: var(--fs-sm); }
+  :where(.cpt-app) .field-stack > .input--num { font-size: var(--fs-sm); }
+  :where(.cpt-app) .field-stack > .input--num::placeholder { text-align: right; }
+  :where(.cpt-app) .fieldset > .field-stack > .input { margin-bottom: var(--sp-3); }
+  :where(.cpt-app) .fieldset > .card--note { margin-bottom: var(--sp-3); }
+  :where(.cpt-app) .check--row { display: flex; }
+  :where(.cpt-app) .check--row + .check--row { margin-top: calc(-1 * var(--sp-2)); }
+  :where(.cpt-app) .fields--stack .check { min-height: 0; padding: var(--sp-1) 0; font-size: var(--fs-xs); }
+  :where(.cpt-app) .fieldset .check { min-height: 0; padding: var(--sp-1) 0; font-size: var(--fs-xs); }
+
+  /* select.input: native chrome off, 12 px chevron from a mask so it follows currentColor in both themes */
+  :where(.cpt-app) select.input {
+    -webkit-appearance: none; appearance: none;
+    padding-right: 1.6rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2365656D' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 0.55rem center; background-size: 12px 12px;
+    text-overflow: ellipsis;
+  }
+  :root[data-theme="dark"] :where(.cpt-app) select.input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%239A948A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) :where(.cpt-app) select.input {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%239A948A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    }
+  }
+  :where(.cpt-app) select.input option { color: var(--color-ink); background: var(--surface-raised); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     21. Stage 6 tables + pills — additions to §11/§12
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .tbl-wrap > .tbl td.ink-good,
+  :where(.cpt-app) .ink-good { color: var(--color-good); }
+  :where(.cpt-app) .ink-bad { color: var(--color-bad); }
+  :where(.cpt-app) .ink-muted { color: var(--color-ink-3); }
+  :where(.cpt-app) .tbl--kv tr.is-ok td { color: var(--color-good); font-weight: var(--fw-semibold); }
+  :where(.cpt-app) .tbl--kv tr.is-fail td { color: var(--color-bad); font-weight: var(--fw-semibold); }
+  /* section rows inside a key/value table ("Selected depth", "Drained" …): left-aligned eyebrow with rules */
+  :where(.cpt-app) .tbl--kv tr.tbl__sec td {
+    padding: var(--sp-3) 0 var(--sp-1);
+    border-bottom: var(--hairline);
+    text-align: left; white-space: normal;
+    font: var(--fw-medium) var(--fs-2xs) / 1.3 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono);
+    color: var(--color-ink-3);
+  }
+  :where(.cpt-app) .tbl--kv tr:first-child.tbl__sec td { padding-top: 0; }
+  :where(.cpt-app) .tbl--kv tr.tbl__sec.series-3 td { color: var(--viz-3); }
+  :where(.cpt-app) .tbl--kv tr.tbl__sec.series-6 td { color: var(--viz-6); }
+  /* multi-pair key/value rows (k v k v k v): `.tbl__k` keys are mono like the first column but keep their
+     case (the goldens read mixed-case middle keys); `.tbl__note` is a trailing comment cell */
+  :where(.cpt-app) .tbl--kv td.tbl__k {
+    padding-right: var(--sp-3); padding-left: var(--sp-3); white-space: nowrap;
+    font: var(--fw-medium) var(--fs-2xs) / 1.6 var(--font-mono);
+    color: var(--color-ink-3);
+  }
+  :where(.cpt-app) .tbl--kv td.tbl__v:not(:last-child) { text-align: left; font-weight: var(--fw-medium); color: var(--color-ink); }
+  :where(.cpt-app) .tbl--kv td.tbl__note { text-align: left; font-weight: var(--fw-regular); font-size: var(--fs-xs); color: var(--color-ink-3); padding-left: var(--sp-3); }
+  :where(.cpt-app) .tbl--kv td.tbl__note:empty { padding: 0; }
+  :where(.cpt-app) .tbl--kv tr.key td.tbl__v { color: var(--color-accent-text); }
+  :where(.cpt-app) .tbl--kv tr.key td.tbl__note { color: var(--color-ink-3); }
+  :where(.cpt-app) .tbl--kv.tbl--sm { font-size: var(--fs-xs); }
+  :where(.cpt-app) .tbl-wrap > .tbl td.tbl__empty { text-align: center; color: var(--color-ink-3); }
+  :where(.cpt-app) .pills { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     22. Stage 6 charts (§3.13) — captions, canvas hosts, series keys
+     `.viz__label` is the mixed-case caption (the bearing / settlement / dewatering / beam captions are
+     sentences the goldens read in that case); `.viz__title` (§14) is the uppercase eyebrow (pile).
+     `--viz-h` sets the canvas host height (replaces the inline `height:420px` + its attribute override).
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .viz__label {
+    margin-bottom: var(--sp-2);
+    font: var(--fw-medium) var(--fs-xs) / 1.35 var(--font-body);
+    color: var(--color-ink-2); overflow-wrap: anywhere;
+  }
+  :where(.cpt-app) .viz__body { position: relative; height: var(--viz-h, 13.75rem); min-width: 0; }
+  :where(.cpt-app) .viz__body > canvas { display: block; }
+  :where(.cpt-app) .viz--section > svg { height: var(--viz-h, 32.5rem); }
+  :where(.cpt-app) .viz__key {                   /* inline series key: 8 px dot + label, mixed case */
+    display: inline-flex; align-items: center; gap: 0.35em;
+    margin-left: var(--sp-2);
+    font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--color-ink-2);
+    white-space: nowrap;
+  }
+  :where(.cpt-app) .viz__key::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: var(--radius-round); background: currentColor; }
+  :where(.cpt-app) .viz__key.series-1::before { background: var(--viz-1); }
+  :where(.cpt-app) .viz__key.series-3::before { background: var(--viz-3); }
+  :where(.cpt-app) .viz__key.series-6::before { background: var(--viz-6); }
+  :where(.cpt-app) .card__eyebrow.series-3 { color: var(--viz-3); }
+  :where(.cpt-app) .card__eyebrow.series-6 { color: var(--viz-6); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     23. Responsive Stage 6
+     ════════════════════════════════════════════════════════════════════════ */
+  @media (max-width: 1100px) {
+    :where(.cpt-app) .cols-3 { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 900px) {
+    :where(.cpt-app) .cols-2 { grid-template-columns: minmax(0, 1fr); }
+    :where(.cpt-app) .viz__body { height: min(var(--viz-h, 13.75rem), 62vh); }
+    :where(.cpt-app) .viz--section > svg { height: min(var(--viz-h, 32.5rem), 62vh); }
+  }
+  @media (max-width: 760px) {
+    :where(.cpt-app) .viz-grid { gap: var(--sp-2); }
+    :where(.cpt-app) .acc__body { padding: var(--sp-2); }
+  }
+  @media (pointer: coarse) {
+    :where(.cpt-app) .tab, :where(.cpt-app) .acc__head { min-height: var(--touch-min); }
+  }
+  @media (forced-colors: active) {
+    :where(.cpt-app) .tab[aria-selected="true"] { border-bottom-color: Highlight; }
+    :where(.cpt-app) .acc, :where(.cpt-app) .tabs { border-color: CanvasText; }
+  }
+
 }
