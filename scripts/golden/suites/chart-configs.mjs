@@ -29,7 +29,7 @@ const unesc = (s) => String(s).replace(/&#39;/g, "'").replace(/&quot;/g, '"').re
 /** The `<div data-chart-pending …>` blocks of #tuningArea → one attribute map per layer card. */
 export function parseTuningChartBlocks(html) {
   const blocks = [];
-  const re = /<div data-chart-pending="([^"]+)"([\s\S]*?)>\s*<\/div>/g;
+  const re = /<div(?:\s+hidden)?\s+data-chart-pending="([^"]+)"([\s\S]*?)>\s*<\/div>/g;   // `hidden` added by the Stage 5 restyle (PR 10)
   let m;
   while ((m = re.exec(html))) {
     const attrs = { chartPending: m[1] };
