@@ -57,7 +57,7 @@ const MOVED_SIBLINGS = [];
 const PROJECT_FIXTURES = ['legacy-v0.5.2', 'multi-3cpt', 'single-layered'];
 const DEMO_FIXTURE = 'demo-anonymous';
 /** The apps whose package exists in the working tree (one commit per app; (c)/(d) run for these). */
-const PACKAGED = ['settlement', 'dewatering'];
+const PACKAGED = ['settlement', 'dewatering', 'beam'];
 
 // The golden suites' configs (scripts/golden/suites/stage6-{settlement,dewatering,beam}.mjs), verbatim.
 const APPS = {

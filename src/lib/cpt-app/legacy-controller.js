@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 import {
-  EC2_EXPOSURE_META,
-  analyzeBeamAndReinforcement,
   designSoilLayer,
   effectiveVerticalStressAtDepth,
   stage6Constants
@@ -45,8 +43,6 @@ import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-reg
 import { sampleDeformationState } from './deformation/solver.js';
 import { wallResultIsStale } from './deformation/wall-result-staleness.js';
 import {
-  buildBeamDeflectionChartConfig,
-  buildBeamMomentChartConfig,
   buildBearingChartConfig,
   buildLineProbeChartConfig,
   buildRawProfileChartConfig,
@@ -90,7 +86,6 @@ import {
   tooltip as stage6Tooltip,
   noteHtml as stage6NoteHtml,
   auditTableHtml as stage6AuditTableHtml,
-  loadSummaryHtml as stage6LoadSummaryHtml,
   compactNumber as stage6CompactNumber
 } from './core/format.js';
 import { readCssToken } from './core/css-tokens.js';
@@ -224,14 +219,9 @@ import {
   updateTuningPreviewM as updateTuningPreviewPure
 } from './tuning/index.js';
 import { installPileApp } from './pile/index.js';
-import {
-  installSettlementApp,
-  useCategoryOptions as settlementUseCategoryOptions,
-  useCategoryHelp as settlementUseCategoryHelp,
-  slsCombinationOptions as settlementSlsCombinationOptions,
-  slsCombinationHelp as settlementSlsCombinationHelp
-} from './settlement/index.js';
+import { installSettlementApp } from './settlement/index.js';
 import { installDewateringApp } from './dewatering/index.js';
+import { installBeamApp } from './beam/index.js';
 // The bishop mesh target-area helpers keep their monolith names (25 call sites in the bishop
 // region) until the seepslope package (step 9) takes them over with bishop-state.js.
 const {
@@ -326,12 +316,19 @@ const dewateringApp = installDewateringApp({
   layerBottom: () => stage6MaxDepth()
 });
 
+// Stage 6 "Beam / slab on Winkler" application — src/lib/cpt-app/beam/ (refactor step 7 / PR 12c):
+// live-state accessor and the <details> memory of the shell. Hoisted function references only.
+const beamApp = installBeamApp({
+  getState: () => S,
+  detailsOpen: (key) => stage6DetailsOpen(key)
+});
+
 // Stage 6 shell — the ordered app registry (app switch cards + per-app state schema) and the
-// shell renderer (ensure → compute → body → post-render), src/lib/cpt-app/stage6/. The bearing,
-// pile, settlement and dewatering bodies come from the installed packages (step 7); the beam and
-// bishop bodies are still this file's render functions until their packages exist. All are handed
-// to the shell as closures keyed by app id (unknown ids fall back to beam, the `else` branch of
-// the old chain). Hoisted function references only — nothing runs here.
+// shell renderer (ensure → compute → body → post-render), src/lib/cpt-app/stage6/. The five
+// analysis apps' bodies come from the installed bearing/, pile/, settlement/, dewatering/ and
+// beam/ packages (step 7); the bishop body is still this file's render function until step 9. All
+// are handed to the shell as closures keyed by app id (unknown ids fall back to beam, the `else`
+// branch of the old chain). Hoisted function references only — nothing runs here.
 const stage6Registry = createStage6Registry({
   retaining: retainingApp,
   bishopEnabled: () => stage6BishopEnabled()
@@ -364,9 +361,9 @@ const stage6Shell = createStage6Shell({
       postRender: () => dewateringApp.postRender()
     },
     beam: {
-      compute: (layers) => analyzeBeamAndReinforcement(layers, S.wt, S.stage6.beam),
-      body: (analysis) => renderStage6BeamApp(analysis),
-      postRender: () => buildStage6BeamCharts()
+      compute: (layers) => beamApp.compute(layers),
+      body: (analysis) => beamApp.renderBody(analysis),
+      postRender: () => beamApp.postRender()
     },
     retwall: {
       body: () => retainingApp.renderBody(),
@@ -9199,181 +9196,6 @@ function bearingProfile(cfg, layers){
 // the old helper name on the legacy window API.
 const stage6ShapeFactors = bearingShapeFactors;
 
-// settlement/options.js façades: the Eurocode load-combination wording renderStage6BeamApp still
-// calls by these names until the beam package (PR 12c, beam commit) takes the beam markup over.
-function stage6UseCategoryOptions(selected){
-  return settlementUseCategoryOptions(selected);
-}
-
-function stage6UseCategoryHelp(selected){
-  return settlementUseCategoryHelp(selected);
-}
-
-function stage6SlsCombinationOptions(selected){
-  return settlementSlsCombinationOptions(selected);
-}
-
-function stage6SlsCombinationHelp(selected, context){
-  return settlementSlsCombinationHelp(selected, context);
-}
-
-function stage6BeamUlsOptions(selected){
-  const labels = {
-    A1:'A1 - Eq. 6.10, ordinary building gravity default',
-    A2:'A2 - alternative action set'
-  };
-  return ['A1','A2'].map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`).join('');
-}
-
-function stage6BeamUlsHelp(selected){
-  if(selected === 'A2'){
-    return 'A2 is an alternative action set. For ordinary Belgian building gravity loading in this beam/slab screening tool, A1 is usually the safer and more standard starting point.';
-  }
-  return 'A1 is the recommended default here for ordinary Belgian building loading when deriving the ULS beam moment for reinforcement.';
-}
-
-function stage6BeamLoadPatternHelp(selected){
-  const text = {
-    uniform_full:'Uniform full length applies the same line load along the whole x direction. For a long uniform strip this is effectively the infinite/uniform case: settlement is meaningful, while longitudinal bending can legitimately be almost zero.',
-    uniform_patch:'Uniform patch applies a line load only between patch start x and patch end x. Use it for a loaded slab bay, machine strip, wall contact width in transverse footing mode, or any local zone that should create bending along x.',
-    point_centre:'Point load at centre is a localised strip/beam check. Use it for a concentrated reaction or local heavy point action applied at midspan.',
-    point_at_x:'Point load at x is the same localised check, but at a chosen position along the strip so you can inspect edge-near or eccentric loading.'
-  };
-  return text[selected] || text.uniform_full;
-}
-
-function stage6BeamModelModeOptions(selected){
-  const labels = {
-    slab_strip:'x = slab strip direction',
-    beam_length:'x = along wall / beam length',
-    footing_transverse:'x = across footing width'
-  };
-  return ['slab_strip','beam_length','footing_transverse']
-    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
-    .join('');
-}
-
-function stage6BeamModelModeLabel(selected){
-  const labels = {
-    slab_strip:'1 m slab strip',
-    beam_length:'Along wall / beam length',
-    footing_transverse:'Across footing width'
-  };
-  return labels[selected] || labels.slab_strip;
-}
-
-function stage6BeamAxisCopy(selected){
-  const mode = ['slab_strip','beam_length','footing_transverse'].includes(selected) ? selected : 'slab_strip';
-  const copy = {
-    slab_strip: {
-      prompt: '1D bending is solved only along x. For a slab strip, x is the checked slab direction and b is normally 1.00 m.',
-      summary: 'x = checked slab strip direction',
-      canvasMode: 'x: slab strip direction, b: unit strip width',
-      LLabel: 'Analysis length L along slab x (m)',
-      LTip: 'L is the in-plan length of the checked slab strip in the x direction.',
-      bLabel: 'Strip width b along y (m)',
-      bTip: 'b is the strip width perpendicular to x. Keep b = 1.00 m when you want kNm/m and mm2/m output.',
-      BLabel: 'Bearing width B for k_s (m)',
-      BTip: 'B is the characteristic contact width used only to derive k_s from the CPT stiffness profile. For slab-strip screening it is the width you want the Vesić support conversion to represent.',
-      hLabel: 'Slab thickness h along z (m)'
-    },
-    beam_length: {
-      prompt: '1D bending is solved only along x. Here x runs along the wall or beam; local patch or point loads create the useful bending case.',
-      summary: 'x = foundation / wall run',
-      canvasMode: 'x: wall/beam run, b: contact width',
-      LLabel: 'Run length L along wall / beam x (m)',
-      LTip: 'L is the length along the wall, strip, or beam run. A full-length uniform load mainly checks settlement; patch or point loads create local bending along this run.',
-      bLabel: 'Contact width b across the run (m)',
-      bTip: 'b is the physical strip/contact width perpendicular to the wall or beam run. It is used in I = b*h^3/12, k_s*b, and the reinforcement width b_w.',
-      BLabel: 'Bearing width B for k_s (m)',
-      BTip: 'B is the real bearing/contact width used in the subgrade-reaction calculation. For a beam along its length this often equals the physical contact width b, but it is entered separately so you can audit the assumption.',
-      hLabel: 'Section height h along z (m)'
-    },
-    footing_transverse: {
-      prompt: '1D bending is solved only along x. Here x runs across the footing width; b is the out-of-plane slice along the wall, often 1.00 m.',
-      summary: 'x = transverse footing width',
-      canvasMode: 'x: across footing width, b: slice along wall',
-      LLabel: 'Footing width L across wall x (m)',
-      LTip: 'L is the footing width across the wall or line load. Use this mode when the ordinary strip-footing bending check is transverse rather than along the wall length.',
-      bLabel: 'Out-of-plane strip width b along wall (m)',
-      bTip: 'b is the model slice width along the wall. Use b = 1.00 m for a conventional per-meter strip-footing check.',
-      BLabel: 'Bearing width B for k_s (m)',
-      BTip: 'B is the support width used in the k_s derivation. In transverse strip-footing mode this normally matches the footing width across the wall.',
-      hLabel: 'Footing height h along z (m)'
-    }
-  };
-  return copy[mode];
-}
-
-function stage6BeamMomentContextHelp(cfg){
-  const pattern = cfg.loadPattern || 'uniform_full';
-  if(pattern === 'uniform_full'){
-    return 'Full-length uniform loading is mainly a settlement case in this 1D model; longitudinal bending can be near zero because soil reaction balances the load almost uniformly.';
-  }
-  return 'Patch and point loads make the strip redistribute load into the soil. Increasing h raises EI, so M_Ed can increase even while deflection drops.';
-}
-
-function stage6BeamOrientationHtml(cfg, analysis){
-  const mode = cfg.modelMode || 'slab_strip';
-  const axis = stage6BeamAxisCopy(mode);
-  return `
-    <label style="font-size:11px;color:var(--tx2)">Analysis direction${stage6Tooltip('The equations are one-dimensional. This choice defines what the x direction means before you enter L, b, B, loads, and patch positions.')}
-      <select onchange="setStage6Field('beam.modelMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-        ${stage6BeamModelModeOptions(mode)}
-      </select>
-    </label>
-    <div class="st6-help">${axis.prompt}</div>
-  `;
-}
-
-function stage6ExposureOptions(selected){
-  return Object.entries(EC2_EXPOSURE_META)
-    .map(([key, meta])=>`<option value="${key}"${selected===key?' selected':''}>${key} - ${meta.label}</option>`)
-    .join('');
-}
-
-function stage6ExposureHelp(selected){
-  const meta = EC2_EXPOSURE_META[selected] || EC2_EXPOSURE_META.XC2;
-  return meta.hint;
-}
-
-function stage6BeamDurabilityHtml(reinf){
-  const d = reinf.durability;
-  const lines = [
-    {k:'Exposure class', v:`${d.exposureClass} - ${d.exposureMeta.label}`},
-    {k:'Structural class', v:`S${d.structuralClass}`},
-    {k:'c_min,dur', v:`${d.cMinDur.toFixed(0)} mm`},
-    {k:'c_min,b', v:`${d.cMinB.toFixed(0)} mm`},
-    {k:'c_min', v:`${d.cMin.toFixed(0)} mm`},
-    {k:'Δc_dev', v:`${d.deltaCdev.toFixed(0)} mm`},
-    {k:'Ground-cast extra', v:`${d.unevenExtra.toFixed(0)} mm`},
-    {k:'Ground-cast floor', v:`${d.floor.toFixed(0)} mm`},
-    {k:'c_nom raw', v:`${d.cNomRaw.toFixed(0)} mm`},
-    {k:'c_nom recommended', v:`${d.recommendedCNom.toFixed(0)} mm`},
-    {k:'c_nom used', v:`${d.cNom.toFixed(0)} mm`}
-  ];
-  const structuralDetail = d.structuralAdjustments.length
-    ? d.structuralAdjustments.join(' ')
-    : 'Default 50-year EC2 structural class S4, with no additional modifiers applied.';
-  const fallbackText = d.fallbackExposure
-    ? `For ${d.exposureClass}, EC2 cover uses the corrosion fallback ${d.tableExposure}. Concrete mix requirements for XF/XA remain an engineer check outside this tool.`
-    : '';
-  return `
-    <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
-      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">EC2 durability audit</div>
-      <table class="pt">
-        ${lines.map(row=>`<tr><td>${row.k}</td><td>${row.v}</td></tr>`).join('')}
-      </table>
-      <div style="margin-top:8px;font-size:11px;color:var(--tx2);line-height:1.55">
-        ${d.exposureMeta.hint}<br>
-        High-strength threshold for this exposure = <strong>${d.highStrengthThreshold.toFixed(0)} MPa</strong>; auto check = <strong>${d.autoHighStrength ? 'applied' : 'not applied'}</strong>.<br>
-        ${structuralDetail}
-        ${fallbackText ? `<br>${fallbackText}` : ''}
-      </div>
-    </div>
-  `;
-}
-
 // bearing/panel.js façades (legacy window API names).
 function stage6BearingSelectedDepthHtml(sel, governing, governingMode){
   return bearingSelectedDepthHtml(sel, governing, governingMode);
@@ -9456,255 +9278,13 @@ function renderStage6DewateringApp(analysis){
   return dewateringApp.renderBody(analysis);
 }
 
+// Beam / slab app — moved into src/lib/cpt-app/beam/ (refactor step 7, PR 12c): panel.js
+// (renderStage6BeamApp + the orientation / durability fragments), chart.js (buildStage6BeamCharts),
+// geometry-preview.js (drawStage6BeamGeometryPreview + the four canvas primitives), options.js (the
+// beam wording builders). Façades over the installed `beamApp`; the shell's `apps.beam` adapter
+// (top of the file) calls the package directly.
 function renderStage6BeamApp(analysis){
-  const cfg = S.stage6.beam;
-  const ks = analysis.ksInfo;
-  const reinf = analysis.reinforcement;
-  const axisCopy = stage6BeamAxisCopy(cfg.modelMode);
-  const momentUnits = reinf.momentUnits || 'kNm/m';
-  const areaUnits = reinf.areaUnits || 'mm²/m';
-  const loadInputKind = analysis.slsLoadMeta.units === 'kN' ? 'point action' : 'line load q(x)';
-  const loadInputPlural = analysis.slsLoadMeta.units === 'kN' ? 'point actions' : 'line loads q(x)';
-  const loadRows = [
-    {k:'Analysis direction', v:axisCopy.summary},
-    {k:'Foundation model', v:ks.foundationModel === 'pasternak' ? 'Pasternak (two-parameter)' : 'Winkler'},
-    {k:'SLS route', v:`${analysis.slsLoadMeta.label}`},
-    {k:'ULS route', v:`${analysis.ulsLoadMeta.label}`},
-    {k:'SLS load', v:`${analysis.slsLoadMeta.value.toFixed(2)} ${analysis.slsLoadMeta.units}`},
-    {k:'ULS load', v:`${analysis.ulsLoadMeta.value.toFixed(2)} ${analysis.ulsLoadMeta.units}`},
-    {k:'Es mode', v:cfg.EsMode === 'young_drained' ? 'Young drained' : 'Oedometric'},
-    {k:'Es avg', v:`${ks.EsAvg.toFixed(0)} kPa`},
-    {k:'ks', v:`${ks.ks.toFixed(0)} kN/m³`},
-    ...(ks.foundationModel === 'pasternak' ? [
-      {k:'G_s,avg', v:`${ks.GsAvg.toFixed(0)} kPa`},
-      {k:'G_p', v:`${ks.gp.toFixed(0)} kN/m`},
-      {k:'eta', v:ks.gpEta.toFixed(2)}
-    ] : []),
-    {k:'beta*L', v:ks.betaL.toFixed(2)}
-  ];
-  return `
-    <div class="mc2">
-      <div class="mc2-head" style="margin-bottom:12px">
-        <span style="font-size:13px;font-weight:600">Beam / slab on ${ks.foundationModel === 'pasternak' ? 'Pasternak' : 'Winkler'}</span>
-        <span style="font-size:11px;color:var(--tx2)">1D strip model with SLS deflection and ULS reinforcement output from the current CPT stiffness profile.</span>
-      </div>
-      <div style="display:grid;grid-template-columns:300px 1fr 280px;gap:14px;align-items:start">
-        <div>
-          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
-          <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
-            <div class="st6-help" style="margin-bottom:2px">Pick the <strong>x direction</strong> first. The canvas shows the x-z model view and the y-z section for the values below.</div>
-            ${stage6BeamOrientationHtml(cfg, analysis)}
-            <label style="font-size:11px;color:var(--tx2)">${axisCopy.BLabel}${stage6Tooltip(axisCopy.BTip)}
-              <input type="number" step="0.1" min="0.1" value="${cfg.B.toFixed(2)}" onchange="setStage6Field('beam.B', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">${axisCopy.bLabel}${stage6Tooltip(axisCopy.bTip)}
-              <input type="number" step="0.1" min="0.1" value="${cfg.b.toFixed(2)}" onchange="setStage6Field('beam.b', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">${axisCopy.LLabel}${stage6Tooltip(axisCopy.LTip)}
-              <input type="number" step="0.1" min="0.5" value="${cfg.L.toFixed(2)}" onchange="setStage6Field('beam.L', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">${axisCopy.hLabel}${stage6Tooltip('h is the vertical concrete section depth. It is used twice: it increases strip stiffness EI for the soil-supported beam solve and increases reinforcement effective depth d for the section check. Because a stiffer strip can bridge a larger MEd on elastic support, As,req can rise over some h ranges even though a fixed-moment section check would usually need less steel.')}
-              <input type="number" step="0.01" min="0.1" value="${cfg.h.toFixed(2)}" onchange="setStage6Field('beam.h', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Founding depth Df (m)${stage6Tooltip('Df shifts the evaluation depth for the soil stiffness averaging. Use the depth of the underside of the slab, strip footing, or beam relative to ground level.')}
-              <input type="number" step="0.1" min="0" value="${cfg.Df.toFixed(2)}" onchange="setStage6Field('beam.Df', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Concrete E (kPa)${stage6Tooltip('Concrete Young modulus used for EI. The default is a reasonable reinforced-concrete screening value. Change it only if you want a project-specific stiffness assumption.')}
-              <input type="number" step="100000" min="1000000" value="${cfg.Ec.toFixed(0)}" onchange="setStage6Field('beam.Ec', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Foundation model${stage6Tooltip('Use Winkler as the standard first screening model. Pasternak adds shear coupling between adjacent soil springs and can give a smoother, more spread response, but in this app it is still an inferred experimental extension.')}
-              <select onchange="setStage6Field('beam.foundationModel', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                <option value="winkler"${cfg.foundationModel==='winkler'?' selected':''}>Winkler</option>
-                <option value="pasternak"${cfg.foundationModel==='pasternak'?' selected':''}>Pasternak (1D strip)</option>
-              </select>
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Es route${stage6Tooltip('This controls how the CPT-derived stiffness is converted to the soil modulus used in k_s. The default keeps Es = E_oed for consistency with the oedometric CPT workflow.')}
-              <select onchange="setStage6Field('beam.EsMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                <option value="oedometric"${cfg.EsMode==='oedometric'?' selected':''}>Es = E_oed, ν = 0</option>
-                <option value="young_drained"${cfg.EsMode==='young_drained'?' selected':''}>Young drained conversion</option>
-              </select>
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Influence depth for Es averaging (m)${stage6Tooltip('Depth range below Df over which the CPT stiffness is averaged to derive Es and k_s. Larger values smooth the soil profile more; smaller values make the support react more to the near-surface layer only.')}
-              <input type="number" step="0.1" min="0.5" value="${cfg.zInfluence.toFixed(2)}" onchange="setStage6Field('beam.zInfluence', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            ${cfg.foundationModel==='pasternak' ? `
-              <label style="font-size:11px;color:var(--tx2)">Pasternak coupling factor eta${stage6Tooltip('eta scales the inferred Pasternak shear layer: G_p = eta · G_s,avg · H_p. Start around 1.0. Lower eta weakens lateral coupling between springs; higher eta strengthens it.')}
-                <input type="number" step="0.1" min="0" value="${cfg.gpEta.toFixed(2)}" onchange="setStage6Field('beam.gpEta', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-              <label style="font-size:11px;color:var(--tx2)">Override G_p (kN/m, optional)${stage6Tooltip('Use this only if you already have an engineering value for the Pasternak shear parameter G_p. Leave it blank to let the app infer G_p from the CPT stiffness profile and eta.')}
-                <input type="number" step="100" min="0" value="${cfg.gpOverride!=null?cfg.gpOverride:''}" onchange="setStage6Field('beam.gpOverride', this.value)" placeholder="leave blank to infer from CPT" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-              <div class="st6-help">Pasternak adds shear interaction between adjacent springs. Here <strong>eta</strong> is an engineer scaling factor in <strong>G_p = eta · G_s,avg · H_p</strong>. Start around <strong>1.0</strong>; lower values weaken the coupling, higher values strengthen it. Treat this as experimental screening unless calibrated.</div>
-            `:''}
-            <label style="font-size:11px;color:var(--tx2)">Load pattern${stage6Tooltip('Choose a load shape that matches how the slab or beam is really loaded. Uniform full length is often a settlement-style case; local bending is usually better captured by a patch load or a point load.')}
-              <select onchange="setStage6Field('beam.loadPattern', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                <option value="uniform_full"${cfg.loadPattern==='uniform_full'?' selected':''}>Uniform full length</option>
-                <option value="uniform_patch"${cfg.loadPattern==='uniform_patch'?' selected':''}>Uniform patch</option>
-                <option value="point_centre"${cfg.loadPattern==='point_centre'?' selected':''}>Point load at centre</option>
-                <option value="point_at_x"${cfg.loadPattern==='point_at_x'?' selected':''}>Point load at x</option>
-              </select>
-            </label>
-            <div class="st6-help">${stage6BeamLoadPatternHelp(cfg.loadPattern)}</div>
-            ${cfg.loadPattern==='uniform_patch' ? `
-              <label style="font-size:11px;color:var(--tx2)">Patch start x (m)${stage6Tooltip('Start position of the loaded zone along the strip. Use this with patch end x to place a wall strip, loaded bay, or other local area load.')}
-                <input type="number" step="0.1" min="0" value="${cfg.xStart.toFixed(2)}" onchange="setStage6Field('beam.xStart', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-              <label style="font-size:11px;color:var(--tx2)">Patch end x (m)${stage6Tooltip('End position of the loaded patch. The bending moment is created only over this loaded interval, so this is often more useful than full-length loading for reinforcement screening.')}
-                <input type="number" step="0.1" min="0" value="${cfg.xEnd.toFixed(2)}" onchange="setStage6Field('beam.xEnd', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-            `:''}
-            ${(cfg.loadPattern==='point_centre' || cfg.loadPattern==='point_at_x') ? `
-              <label style="font-size:11px;color:var(--tx2)">Point load x-position (m)${stage6Tooltip('x-position of the concentrated load along the strip. This is useful for checking an isolated reaction, edge-near machine support, or local heavy point action.')}
-                <input type="number" step="0.1" min="0" value="${cfg.xLoad.toFixed(2)}" onchange="setStage6Field('beam.xLoad', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-            `:''}
-            <label style="font-size:11px;color:var(--tx2)">Allowable deflection ratio L / n${stage6Tooltip('Serviceability comparison only. The app reports w_max and compares it to L/n. This does not affect the ULS reinforcement result.')}
-              <input type="number" step="50" min="100" value="${cfg.allowableDeflectionRatio.toFixed(0)}" onchange="setStage6Field('beam.allowableDeflectionRatio', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <details class="st6-adv" data-st6details="beam-loads"${stage6DetailsOpen('beam-loads')}>
-              <summary>Load assumptions and Eurocode combination</summary>
-              <div class="st6-adv-body">
-                <div class="st6-help">Expand this only if you want to change how the line load is assembled. The category sets the Eurocode ψ-factors for the variable action.</div>
-                <label style="font-size:11px;color:var(--tx2)">SLS combination
-                  <select onchange="setStage6Field('beam.slsCombination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                    ${stage6SlsCombinationOptions(cfg.slsCombination)}
-                  </select>
-                </label>
-                <div class="st6-help">${stage6SlsCombinationHelp(cfg.slsCombination, 'beam')}</div>
-                <label style="font-size:11px;color:var(--tx2)">ULS action set
-                  <select onchange="setStage6Field('beam.ulsCombination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                    ${stage6BeamUlsOptions(cfg.ulsCombination)}
-                  </select>
-                </label>
-                <div class="st6-help">${stage6BeamUlsHelp(cfg.ulsCombination)}</div>
-                <label style="font-size:11px;color:var(--tx2)">Load category for Eurocode ψ-factors
-                  <select onchange="setStage6Field('beam.useCategory', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                    ${stage6UseCategoryOptions(cfg.useCategory)}
-                  </select>
-                </label>
-                <div class="st6-help">${stage6UseCategoryHelp(cfg.useCategory)}</div>
-                <label style="font-size:11px;color:var(--tx2)">Permanent ${loadInputKind} Gk (${analysis.slsLoadMeta.units})
-                  <input type="number" step="1" min="0" value="${cfg.Gk.toFixed(1)}" onchange="setStage6Field('beam.Gk', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Leading variable ${loadInputKind} Qk (${analysis.slsLoadMeta.units})
-                  <input type="number" step="1" min="0" value="${cfg.QLead.toFixed(1)}" onchange="setStage6Field('beam.QLead', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Other variable ${loadInputPlural} together (${analysis.slsLoadMeta.units})
-                  <input type="number" step="1" min="0" value="${cfg.QOther.toFixed(1)}" onchange="setStage6Field('beam.QOther', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                </label>
-              </div>
-            </details>
-            <div style="padding-top:6px;border-top:1px solid var(--bd)">
-              <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">EC2 reinforcement</div>
-              <label style="font-size:11px;color:var(--tx2)">Concrete class fck (MPa)${stage6Tooltip('Characteristic cylinder strength used for the EC2 ULS reinforcement design. The app applies the concrete material factor internally when deriving f_cd.')}
-                <input type="number" step="1" min="12" value="${cfg.fck.toFixed(0)}" onchange="setStage6Field('beam.fck', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-              <label style="font-size:11px;color:var(--tx2)">Steel fyk (MPa)${stage6Tooltip('Characteristic reinforcement yield strength. The app applies the EC2 steel material factor internally and designs with f_yd = f_yk / 1.15.')}
-                <input type="number" step="10" min="200" value="${cfg.fyk.toFixed(0)}" onchange="setStage6Field('beam.fyk', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-              <label style="font-size:11px;color:var(--tx2)">Exposure class${stage6Tooltip('Exposure class drives the EC2 durability cover recommendation c_nom. Pick the environment the member will actually see, then override only if project detailing requires it.')}
-                <select onchange="setStage6Field('beam.exposureClass', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                  ${stage6ExposureOptions(cfg.exposureClass)}
-                </select>
-              </label>
-              <div class="st6-help">${stage6ExposureHelp(cfg.exposureClass)}</div>
-              <label style="font-size:11px;color:var(--tx2)">Design working life (years)${stage6Tooltip('Used in the EC2 durability route for the recommended nominal cover. Longer design life can lead to a higher recommended c_nom.')}
-                <select onchange="setStage6Field('beam.designLifeYears', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                  <option value="25"${cfg.designLifeYears===25?' selected':''}>25 years</option>
-                  <option value="50"${cfg.designLifeYears===50?' selected':''}>50 years</option>
-                  <option value="100"${cfg.designLifeYears===100?' selected':''}>100 years</option>
-                </select>
-              </label>
-              <label style="font-size:11px;color:var(--tx2)">Bar diameter (mm)${stage6Tooltip('Bar diameter used in the cover and effective-depth calculation. It affects d and therefore the resulting As requirement slightly.')}
-                <input type="number" step="2" min="6" value="${cfg.phiBar.toFixed(0)}" onchange="setStage6Field('beam.phiBar', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-              <label style="font-size:11px;color:var(--tx2)">Max aggregate size d_g (mm)
-                <input type="number" step="1" min="8" value="${cfg.dG.toFixed(0)}" onchange="setStage6Field('beam.dG', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-              <label style="font-size:11px;color:var(--tx2)">Δc_dev (mm)
-                <input type="number" step="1" min="0" value="${cfg.deltaCdev.toFixed(0)}" onchange="setStage6Field('beam.deltaCdev', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-              <label style="font-size:11px;color:var(--tx2)">Override c_nom (mm, optional)
-                <input type="number" step="1" min="0" value="${cfg.cNomOverride!=null?cfg.cNomOverride:''}" onchange="setStage6Field('beam.cNomOverride', this.value)" placeholder="leave blank for recommendation" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-              </label>
-              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.isSlabOrPlate?'checked':''} onchange="setStage6Field('beam.isSlabOrPlate', this.checked)">EC2 slab / plate durability class (cover only)</label>
-              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.specialQC?'checked':''} onchange="setStage6Field('beam.specialQC', this.checked)">special QC / precast-like execution</label>
-              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.castAgainstUnevenSurface?'checked':''} onchange="setStage6Field('beam.castAgainstUnevenSurface', this.checked)">cast against uneven prepared surface (+5 mm)</label>
-              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.castAgainstPreparedGround?'checked':''} onchange="setStage6Field('beam.castAgainstPreparedGround', this.checked)">cast against prepared ground / blinding (minimum 40 mm)</label>
-              <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px"><input type="checkbox" ${cfg.castAgainstUnpreparedGround?'checked':''} onchange="setStage6Field('beam.castAgainstUnpreparedGround', this.checked)">cast against unprepared ground (minimum 75 mm)</label>
-              <div class="st6-help">High-strength concrete reduction is checked automatically from the chosen fck and exposure class, following the EC2 Table 4.3N thresholds.</div>
-            </div>
-          </div>
-        </div>
-        <div>
-          <div style="display:grid;grid-template-columns:1fr;gap:12px">
-            <div>
-              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">SLS deflection line w(x)</div>
-              <div style="position:relative;height:190px"><canvas id="stage6BeamDeflectionChart" role="img" aria-label="Beam deflection diagram"></canvas></div>
-            </div>
-            <div>
-              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">ULS bending moment M(x)</div>
-              <div style="position:relative;height:190px"><canvas id="stage6BeamMomentChart" role="img" aria-label="Beam bending moment diagram"></canvas></div>
-            </div>
-            <div>
-              <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Geometry preview (view only)</div>
-              <div style="position:relative;height:220px;border:1px solid var(--bd);border-radius:3px;background:var(--bg2);overflow:hidden">
-                <canvas id="stage6BeamGeometryCanvas" role="img" aria-label="Beam or slab strip geometry preview" style="width:100%;height:100%;display:block"></canvas>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div>
-          <table class="pt" style="margin-bottom:12px">
-            <tr><td colspan="2" style="font-size:10px;font-weight:700;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Summary</td></tr>
-            <tr><td>Es avg</td><td>${ks.EsAvg.toFixed(0)} kPa</td></tr>
-            <tr><td>ks</td><td>${ks.ks.toFixed(0)} kN/m³</td></tr>
-            ${ks.foundationModel === 'pasternak' ? `<tr><td>G_p</td><td>${ks.gp.toFixed(0)} kN/m</td></tr>` : ''}
-            <tr><td>${ks.foundationModel === 'pasternak' ? 'lambda_ref' : 'lambda'}</td><td>${ks.lambda.toFixed(2)} m</td></tr>
-            <tr><td>${ks.foundationModel === 'pasternak' ? 'beta·L ref' : 'beta·L'}</td><td>${ks.betaL.toFixed(2)}</td></tr>
-            <tr><td>Classification</td><td>${ks.classification}</td></tr>
-            <tr><td>w_max,SLS</td><td>${(analysis.sls.maxDeflection.value*1000).toFixed(2)} mm</td></tr>
-            <tr><td>w_allow</td><td>${((cfg.L / cfg.allowableDeflectionRatio)*1000).toFixed(2)} mm</td></tr>
-            <tr><td>SLS utilisation</td><td>${(Math.abs(analysis.sls.maxDeflection.value)/Math.max(cfg.L / cfg.allowableDeflectionRatio, 1e-6)).toFixed(2)}</td></tr>
-            <tr><td>M_Ed,max</td><td>${Math.abs(analysis.uls.maxMoment.value).toFixed(2)} ${momentUnits}</td></tr>
-            <tr><td>Exposure</td><td>${reinf.durability.exposureClass}</td></tr>
-            <tr><td>Structural class</td><td>S${reinf.structuralClass}</td></tr>
-            <tr><td>c_nom</td><td>${reinf.cNom.toFixed(0)} mm</td></tr>
-            <tr><td>b_w</td><td>${reinf.bw.toFixed(0)} mm</td></tr>
-            <tr><td>As,req</td><td>${reinf.AsReq!=null?reinf.AsReq.toFixed(0):'—'} ${areaUnits}</td></tr>
-            <tr><td>As,min</td><td>${reinf.AsMin.toFixed(0)} ${areaUnits}</td></tr>
-            <tr><td>As,governing</td><td>${reinf.As.toFixed(0)} ${areaUnits}</td></tr>
-          </table>
-          <div class="st6-help" style="margin-bottom:10px">${stage6BeamMomentContextHelp(cfg)}</div>
-          <div class="st6-help">k_s is <strong>not</strong> a fixed soil material constant. It depends on the interpreted CPT stiffness, the loaded width <strong>B</strong>, the averaging depth, and the strip stiffness. As a rough order of magnitude only: very soft support may be around <strong>5,000-20,000 kN/m³</strong>, medium support <strong>20,000-80,000 kN/m³</strong>, and stiff/dense support <strong>80,000-200,000+ kN/m³</strong>. Use these only as a sanity check, not as target values.</div>
-        </div>
-      </div>
-      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        ${stage6LoadSummaryHtml('Vesic / load audit', loadRows)}
-        <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
-          <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Formula route</div>
-          <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
-            k_s = 0.65·E_s / [B·(1-nu²)] · (E_s·B^4 / (E_b·I_b))^(1/12)<br>
-            ${ks.foundationModel === 'pasternak'
-              ? `G_p = eta·G_s,avg·H_p &nbsp; (or engineer override)<br>EI·w'''' - G_p·b·w'' + k_s·b·w = q(x)`
-              : `EI·w'''' + k_s·b·w = q(x)`}
-          </div>
-          <div style="font-size:11px;color:var(--tx2);line-height:1.55">
-            Foundation model = <strong>${ks.foundationModel === 'pasternak' ? 'Pasternak (1D strip)' : 'Winkler'}</strong><br>
-            Structural stiffness I = <strong>${ks.I.toFixed(5)} m4</strong><br>
-            ULS design moment = <strong>${Math.abs(analysis.uls.maxMoment.value).toFixed(2)} ${momentUnits}</strong><br>
-            c_nom used = <strong>${reinf.cNom.toFixed(0)} mm</strong><br>
-            Effective depth d = <strong>${reinf.d.toFixed(0)} mm</strong><br>
-            Structural class = <strong>S${reinf.structuralClass}</strong>
-          </div>
-        </div>
-      </div>
-      <div style="margin-top:14px">
-        ${stage6BeamDurabilityHtml(reinf)}
-      </div>
-      ${stage6NoteHtml(analysis.notes)}
-    </div>
-  `;
+  return beamApp.renderBody(analysis);
 }
 
 function renderStage6BishopApp(){
@@ -12116,282 +11696,11 @@ function buildStage6DewateringCharts(){
 }
 
 function buildStage6BeamCharts(){
-  const analysis = S.stage6Cache?.beam;
-  if(!analysis) return;
-  if(typeof Chart !== 'undefined'){
-    const tickFmt = (value)=>stage6CompactNumber(value, 2);
-    const defCanvas = stage6DestroyChart('stage6BeamDeflectionChart');
-    if(defCanvas){
-      defCanvas._chartRef = new Chart(defCanvas, buildBeamDeflectionChartConfig({
-        analysis,
-        tickFormatter:tickFmt
-      }));
-    }
-    const momentCanvas = stage6DestroyChart('stage6BeamMomentChart');
-    if(momentCanvas){
-      momentCanvas._chartRef = new Chart(momentCanvas, buildBeamMomentChartConfig({
-        analysis,
-        tickFormatter:tickFmt
-      }));
-    }
-  }
-  drawStage6BeamGeometryPreview(analysis);
-}
-
-function stage6BeamCanvasText(ctx, text, x, y, opts = {}){
-  const size = opts.size || 11;
-  const weight = opts.weight || 500;
-  ctx.save();
-  ctx.font = `${weight} ${size}px Inter, system-ui, sans-serif`;
-  ctx.fillStyle = opts.color || '#344054';
-  ctx.textAlign = opts.align || 'left';
-  ctx.textBaseline = opts.baseline || 'middle';
-  ctx.fillText(text, x, y);
-  ctx.restore();
-}
-
-function stage6BeamRoundedRect(ctx, x, y, w, h, r){
-  const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.lineTo(x + w - rr, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
-  ctx.lineTo(x + w, y + h - rr);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
-  ctx.lineTo(x + rr, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
-  ctx.lineTo(x, y + rr);
-  ctx.quadraticCurveTo(x, y, x + rr, y);
-  ctx.closePath();
-}
-
-function stage6BeamDrawDimension(ctx, x1, y1, x2, y2, label, vertical = false){
-  ctx.save();
-  ctx.strokeStyle = '#667085';
-  ctx.fillStyle = '#667085';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-  const tick = 4;
-  if(vertical){
-    ctx.beginPath();
-    ctx.moveTo(x1 - tick, y1);
-    ctx.lineTo(x1 + tick, y1);
-    ctx.moveTo(x2 - tick, y2);
-    ctx.lineTo(x2 + tick, y2);
-    ctx.stroke();
-    stage6BeamCanvasText(ctx, label, x1 + 8, (y1 + y2) / 2, {size:10, color:'#475467'});
-  }else{
-    ctx.beginPath();
-    ctx.moveTo(x1, y1 - tick);
-    ctx.lineTo(x1, y1 + tick);
-    ctx.moveTo(x2, y2 - tick);
-    ctx.lineTo(x2, y2 + tick);
-    ctx.stroke();
-    stage6BeamCanvasText(ctx, label, (x1 + x2) / 2, y1 - 9, {size:10, color:'#475467', align:'center'});
-  }
-  ctx.restore();
-}
-
-function stage6BeamDrawLoadArrow(ctx, x, yTop, yBot, color){
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.moveTo(x, yTop);
-  ctx.lineTo(x, yBot);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x, yBot);
-  ctx.lineTo(x - 4, yBot - 7);
-  ctx.lineTo(x + 4, yBot - 7);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
+  beamApp.buildCharts();
 }
 
 function drawStage6BeamGeometryPreview(analysis){
-  const canvas = document.getElementById('stage6BeamGeometryCanvas');
-  if(!(canvas instanceof HTMLCanvasElement) || !analysis) return;
-  const rect = canvas.getBoundingClientRect();
-  if(!(rect.width > 0 && rect.height > 0)) return;
-  const dpr = window.devicePixelRatio || 1;
-  const w = Math.max(1, Math.round(rect.width * dpr));
-  const h = Math.max(1, Math.round(rect.height * dpr));
-  if(canvas.width !== w || canvas.height !== h){
-    canvas.width = w;
-    canvas.height = h;
-  }
-  const ctx = canvas.getContext('2d');
-  if(!ctx) return;
-  ctx.save();
-  ctx.scale(dpr, dpr);
-  const W = rect.width;
-  const H = rect.height;
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#F8FAFC';
-  ctx.fillRect(0, 0, W, H);
-
-  const cfg = S.stage6?.beam || {};
-  const ks = analysis.ksInfo || {};
-  const mode = cfg.modelMode || 'slab_strip';
-  const axisCopy = stage6BeamAxisCopy(mode);
-  const L = Math.max(+cfg.L || +ks.L || 6, 0.5);
-  const b = Math.max(+cfg.b || +ks.b || 1, 0.1);
-  const B = Math.max(+cfg.B || +ks.B || b, 0.1);
-  const depth = Math.max(+cfg.h || +ks.h || 0.3, 0.05);
-  const Df = Math.max(+cfg.Df || 0, 0);
-  const pattern = cfg.loadPattern || 'uniform_full';
-  const margin = 18;
-  const mainX = margin;
-  const mainY = 24;
-  const mainW = Math.max(160, W - 210);
-  const mainH = H - 42;
-  const insetX = mainX + mainW + 18;
-  const insetW = Math.max(150, W - insetX - margin);
-  const soilY = mainY + Math.min(mainH * 0.58, mainH - 58);
-  const zScale = Math.min(54, Math.max(10, (soilY - mainY - 12) / Math.max(Df, depth, 0.1)));
-  const groundY = Math.max(mainY + 10, soilY - Df * zScale);
-  const beamPixH = Math.max(10, Math.min(64, depth * zScale));
-  const beamY = soilY - beamPixH;
-  const scaleX = mainW / L;
-
-  // Soil bed and founding depth context.
-  ctx.fillStyle = '#EEF4EC';
-  ctx.fillRect(mainX, groundY, mainW, mainH - (groundY - mainY));
-  ctx.strokeStyle = '#6F8F64';
-  ctx.setLineDash([5, 4]);
-  ctx.lineWidth = 1.1;
-  ctx.beginPath();
-  ctx.moveTo(mainX, groundY);
-  ctx.lineTo(mainX + mainW, groundY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  stage6BeamCanvasText(ctx, 'soil surface', mainX + 6, groundY - 8, {size:10, color:'#667085'});
-  ctx.strokeStyle = '#8AA57F';
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.moveTo(mainX, soilY);
-  ctx.lineTo(mainX + mainW, soilY);
-  ctx.stroke();
-  for(let x = mainX; x < mainX + mainW; x += 14){
-    ctx.strokeStyle = 'rgba(138,165,127,0.32)';
-    ctx.beginPath();
-    ctx.moveTo(x, soilY + 8);
-    ctx.lineTo(x + 10, soilY);
-    ctx.stroke();
-  }
-
-  // Springs.
-  const springCount = Math.max(8, Math.min(22, Math.round(mainW / 28)));
-  ctx.strokeStyle = '#9AA6B2';
-  ctx.lineWidth = 1;
-  for(let i = 0; i <= springCount; i += 1){
-    const x = mainX + (mainW * i) / springCount;
-    const y0 = soilY + 3;
-    const amp = 4;
-    const step = 4;
-    ctx.beginPath();
-    ctx.moveTo(x, y0);
-    for(let j = 1; j <= 6; j += 1){
-      ctx.lineTo(x + (j % 2 ? amp : -amp), y0 + j * step);
-    }
-    ctx.lineTo(x, y0 + 7 * step);
-    ctx.stroke();
-  }
-
-  // Beam/slab rectangle in x-z view.
-  stage6BeamRoundedRect(ctx, mainX, beamY, mainW, beamPixH, 2);
-  ctx.fillStyle = '#D9E7F5';
-  ctx.fill();
-  ctx.strokeStyle = '#3C6F97';
-  ctx.lineWidth = 1.3;
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(60,111,151,0.12)';
-  ctx.fillRect(mainX, beamY + beamPixH - 5, mainW, 5);
-
-  // Load rendering.
-  const loadColor = '#C2410C';
-  if(pattern === 'uniform_full' || pattern === 'uniform_patch'){
-    const xStart = pattern === 'uniform_patch' ? Math.max(0, Math.min(L, +cfg.xStart || 0)) : 0;
-    const xEndRaw = pattern === 'uniform_patch' ? (+cfg.xEnd || L) : L;
-    const xEnd = Math.max(xStart, Math.min(L, xEndRaw));
-    const px1 = mainX + xStart * scaleX;
-    const px2 = mainX + xEnd * scaleX;
-    ctx.fillStyle = 'rgba(194,65,12,0.10)';
-    ctx.fillRect(px1, beamY - 30, Math.max(2, px2 - px1), 24);
-    const arrows = Math.max(2, Math.min(10, Math.round((px2 - px1) / 28)));
-    for(let i = 0; i < arrows; i += 1){
-      const x = px1 + ((px2 - px1) * (i + 0.5)) / arrows;
-      stage6BeamDrawLoadArrow(ctx, x, beamY - 28, beamY - 6, loadColor);
-    }
-    stage6BeamCanvasText(ctx, pattern === 'uniform_patch' ? 'patch q(x)' : 'full-length q(x)', (px1 + px2) / 2, beamY - 36, {size:10, color:loadColor, align:'center'});
-  }else{
-    const pointX = pattern === 'point_at_x' ? (+cfg.xLoad || L / 2) : L / 2;
-    const px = mainX + Math.max(0, Math.min(L, pointX)) * scaleX;
-    stage6BeamDrawLoadArrow(ctx, px, beamY - 40, beamY - 5, loadColor);
-    stage6BeamCanvasText(ctx, 'P', px + 7, beamY - 34, {size:10, color:loadColor});
-  }
-
-  stage6BeamDrawDimension(ctx, mainX, beamY + beamPixH + 42, mainX + mainW, beamY + beamPixH + 42, `L = ${L.toFixed(2)} m`);
-  stage6BeamDrawDimension(ctx, mainX + mainW + 8, beamY, mainX + mainW + 8, beamY + beamPixH, `h = ${depth.toFixed(2)} m`, true);
-  stage6BeamDrawDimension(ctx, mainX + 10, groundY, mainX + 10, soilY, `Df = ${Df.toFixed(2)} m`, true);
-  stage6BeamCanvasText(ctx, 'soil bed / elastic support', mainX + mainW - 6, soilY + 44, {size:10, color:'#667085', align:'right'});
-  stage6BeamCanvasText(ctx, `x-z view - ${axisCopy.summary}`, mainX, 13, {size:11, weight:700, color:'#344054'});
-
-  // Cross-section inset y-z.
-  const insetY = mainY + 8;
-  const insetH = mainH - 12;
-  ctx.strokeStyle = '#D0D5DD';
-  ctx.beginPath();
-  ctx.moveTo(insetX - 10, mainY);
-  ctx.lineTo(insetX - 10, mainY + mainH);
-  ctx.stroke();
-  stage6BeamCanvasText(ctx, 'y-z section', insetX, 13, {size:11, weight:700, color:'#344054'});
-  const secBaseY = insetY + Math.min(insetH * 0.58, insetH - 56);
-  const maxSecW = insetW - 36;
-  const widthScale = maxSecW / Math.max(b, B);
-  const bW = Math.max(16, b * widthScale);
-  const BW = Math.max(16, B * widthScale);
-  const secZScale = Math.min(58, Math.max(14, (secBaseY - insetY - 12) / Math.max(Df, depth, 0.1)));
-  const secGroundY = Math.max(insetY + 8, secBaseY - Df * secZScale);
-  const secH = Math.max(20, Math.min(76, depth * secZScale));
-  const secCX = insetX + insetW / 2;
-  const secX = secCX - bW / 2;
-  const secY = secBaseY - secH;
-  ctx.fillStyle = '#EEF4EC';
-  ctx.fillRect(insetX, secGroundY, insetW - 4, insetH - (secGroundY - insetY));
-  ctx.strokeStyle = '#6F8F64';
-  ctx.setLineDash([5, 4]);
-  ctx.beginPath();
-  ctx.moveTo(insetX, secGroundY);
-  ctx.lineTo(insetX + insetW - 4, secGroundY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  stage6BeamCanvasText(ctx, 'surface', insetX + 3, secGroundY - 8, {size:9, color:'#667085'});
-  ctx.strokeStyle = '#8AA57F';
-  ctx.beginPath();
-  ctx.moveTo(insetX, secBaseY);
-  ctx.lineTo(insetX + insetW - 4, secBaseY);
-  ctx.stroke();
-  const bx = secCX - BW / 2;
-  ctx.fillStyle = 'rgba(138,165,127,0.20)';
-  ctx.fillRect(bx, secBaseY + 2, BW, 12);
-  ctx.strokeStyle = '#8AA57F';
-  ctx.strokeRect(bx, secBaseY + 2, BW, 12);
-  stage6BeamRoundedRect(ctx, secX, secY, bW, secH, 2);
-  ctx.fillStyle = '#D9E7F5';
-  ctx.fill();
-  ctx.strokeStyle = '#3C6F97';
-  ctx.stroke();
-  stage6BeamDrawDimension(ctx, secX, secY - 10, secX + bW, secY - 10, `b = ${b.toFixed(2)} m`);
-  stage6BeamDrawDimension(ctx, secX + bW + 8, secY, secX + bW + 8, secY + secH, `h = ${depth.toFixed(2)} m`, true);
-  stage6BeamDrawDimension(ctx, bx, secBaseY + 30, bx + BW, secBaseY + 30, `B = ${B.toFixed(2)} m`);
-  stage6BeamCanvasText(ctx, axisCopy.canvasMode, insetX, H - 15, {size:10, color:'#475467'});
-  ctx.restore();
+  beamApp.drawGeometryPreview(analysis);
 }
 
 function buildStage6BishopLineProbeChart(){

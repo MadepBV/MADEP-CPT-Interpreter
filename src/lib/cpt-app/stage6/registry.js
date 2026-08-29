@@ -18,16 +18,16 @@
 //
 // The retaining-walls app is the installed `retaining/` package (installRetainingApp(ctx)), so the
 // registry is a factory: the host passes that instance in. The bearing app is the `bearing/` package
-// (step 7, PR 12a), the pile app the `pile/` package (step 7, PR 12b), the settlement and dewatering
-// apps the `settlement/` and `dewatering/` packages (step 7, PR 12c): their state (`defaults` /
-// `ensure`) and card text come from <pkg>/index.js, the host installs them and hands the render
-// adapters to the shell. The other apps' state modules are pure and imported here directly; their
-// render code still lives in the monolith until their step-7 PRs.
+// (step 7, PR 12a), the pile app the `pile/` package (step 7, PR 12b), the settlement, dewatering and
+// beam apps the `settlement/`, `dewatering/` and `beam/` packages (step 7, PR 12c): their state
+// (`defaults` / `ensure`) and card text come from <pkg>/index.js, the host installs them and hands
+// the render adapters to the shell. The bishop state module is pure and imported here directly; its
+// render code still lives in the monolith until the seepslope package (step 9).
 import * as bearingApp from '../bearing/index.js';
 import * as pileApp from '../pile/index.js';
 import * as settlementApp from '../settlement/index.js';
 import * as dewateringApp from '../dewatering/index.js';
-import * as beamState from './apps/beam-state.js';
+import * as beamApp from '../beam/index.js';
 import * as bishopState from './apps/bishop-state.js';
 
 /** App ids in app-switch order (the card order of the monolith). */
@@ -72,7 +72,7 @@ export function createStage6Registry({ retaining, bishopEnabled = () => true }) 
     entry('pile', 'Piles', pileApp.cardMeta.title, pileApp.cardMeta.desc, pileApp),
     entry('settlement', 'Settlement', settlementApp.cardMeta.title, settlementApp.cardMeta.desc, settlementApp),
     entry('dewatering', 'Dewatering', dewateringApp.cardMeta.title, dewateringApp.cardMeta.desc, dewateringApp),
-    entry('beam', 'Beam/slab', 'Beam / slab on Winkler', '1D strip-on-elastic-foundation screening with EC2 reinforcement output.', beamState),
+    entry('beam', 'Beam/slab', beamApp.cardMeta.title, beamApp.cardMeta.desc, beamApp),
     retwall,
     bishop
   ];
