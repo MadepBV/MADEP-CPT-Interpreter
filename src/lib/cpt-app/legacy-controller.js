@@ -197,6 +197,17 @@ import {
   pileState as stage6PileState,
   bishopState as stage6BishopState
 } from './stage6/index.js';
+import {
+  installBearingApp,
+  layerAtDepth as bearingLayerAtDepth,
+  bearingAtDepth as bearingAtDepthPure,
+  bearingProfile as bearingProfilePure,
+  shapeFactors as bearingShapeFactors,
+  selectedDepthHtml as bearingSelectedDepthHtml,
+  materialParamsHtml as bearingMaterialParamsHtml,
+  drainedFormulaHtml as bearingDrainedFormulaHtml,
+  undrainedFormulaHtml as bearingUndrainedFormulaHtml
+} from './bearing/index.js';
 // The bishop mesh target-area helpers keep their monolith names (25 call sites in the bishop
 // region) until the seepslope package (step 9) takes them over with bishop-state.js.
 const {
@@ -251,11 +262,22 @@ const retainingApp = installRetainingApp({
   getProjectMeta: () => ({ projectName: PROJECT.name, cptId: S.meta?.testid || S.id || 'CPT', appVersion: (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.5.x') })
 });
 
+// Stage 6 "Bearing capacity" application — src/lib/cpt-app/bearing/ (refactor step 7 / PR 12a),
+// installed like the retaining app: live-state accessor, the composed ensure, the Stage 4 → 6
+// layer contract and the <details> memory of the shell. Hoisted function references only.
+const bearingApp = installBearingApp({
+  getState: () => S,
+  ensure: () => ensureStage6State(),
+  workingLayers: () => stage6WorkingLayers(),
+  detailsOpen: (key) => stage6DetailsOpen(key)
+});
+
 // Stage 6 shell — the ordered app registry (app switch cards + per-app state schema) and the
-// shell renderer (ensure → compute → body → post-render), src/lib/cpt-app/stage6/. The per-app
-// bodies are still this file's render functions until refactor step 7 moves them into packages;
-// they are handed to the shell as closures keyed by app id (unknown ids fall back to beam, the
-// `else` branch of the old chain). Hoisted function references only — nothing runs here.
+// shell renderer (ensure → compute → body → post-render), src/lib/cpt-app/stage6/. The bearing
+// body comes from the installed bearing/ package (step 7); the other per-app bodies are still this
+// file's render functions until their packages exist. All are handed to the shell as closures keyed
+// by app id (unknown ids fall back to beam, the `else` branch of the old chain). Hoisted function
+// references only — nothing runs here.
 const stage6Registry = createStage6Registry({
   retaining: retainingApp,
   bishopEnabled: () => stage6BishopEnabled()
@@ -268,9 +290,9 @@ const stage6Shell = createStage6Shell({
   workingLayers: () => stage6WorkingLayers(),
   apps: {
     bearing: {
-      compute: (layers) => bearingProfile(S.stage6.bearing, layers),
-      body: (profile) => renderStage6BearingApp(profile),
-      postRender: () => buildStage6BearingChart()
+      compute: (layers) => bearingApp.compute(layers),
+      body: (profile) => bearingApp.renderBody(profile),
+      postRender: () => bearingApp.postRender()
     },
     pile: {
       compute: (layers) => analyzePile(layers, S.wt, S.data, S.stage6.pile),
@@ -9862,171 +9884,24 @@ function initStage6BishopCanvas(){
   stage6BishopDrawCanvas();
 }
 
+// ── bearing/ package façades (refactor step 7 / PR 12a): the legacy names on the window API
+// keep their signatures; `layers` falls back to the working layers and the water table comes
+// from the active CPT. Bodies: src/lib/cpt-app/bearing/compute.js.
 function layerAtDepth(z, layers){
-  const arr = layers || stage6WorkingLayers();
-  if(!arr.length) return null;
-  return arr.find(l=>z >= l.top && z < l.bot) || arr[arr.length-1];
+  return bearingLayerAtDepth(z, layers || stage6WorkingLayers());
 }
 
-function stage6BearingGeometry(cfg){
-  const rawB = Math.max(cfg.B || 0.1, 0.1);
-  const rawL = Math.max(cfg.L || rawB, 0.1);
-  const eB = Math.max(0, Math.min(cfg.eB || 0, Math.max(rawB / 2 - 0.025, 0)));
-  const eL = Math.max(0, Math.min(cfg.eL || 0, Math.max(rawL / 2 - 0.025, 0)));
-  const effB = Math.max(rawB - 2 * eB, 0.05);
-  const effL = Math.max(rawL - 2 * eL, 0.05);
-  if((cfg.foundationType || 'strip') === 'strip'){
-    return {
-      B:effB,
-      L:Math.max(effL, effB),
-      BRaw:rawB,
-      LRaw:Math.max(rawL, rawB),
-      BEff:effB,
-      LEff:Math.max(effL, effB),
-      eB,
-      eL,
-      ratio:0,
-      label:'strip'
-    };
-  }
-  const shortSide = Math.max(Math.min(effB, effL), 0.05);
-  const longSide = Math.max(effB, effL);
-  return {
-    B:shortSide,
-    L:longSide,
-    BRaw:rawB,
-    LRaw:rawL,
-    BEff:shortSide,
-    LEff:longSide,
-    eB,
-    eL,
-    ratio:Math.max(0, Math.min(shortSide / longSide, 1)),
-    label:'rectangular'
-  };
+function bearingAtDepth(z, cfg, layers){
+  return bearingAtDepthPure(z, cfg, layers || stage6WorkingLayers(), { wt: S.wt });
 }
 
-function stage6BearingShapeModeLabel(mode){
-  return mode === 'conservative'
-    ? 'Conservative (shape factors = 1.0)'
-    : 'Brinch Hansen / Annex D';
-}
-
-function stage6BearingNgammaLabel(){
-  return 'EC7 Annex D rough base';
-}
-
-function stage6BearingShapeModeDetailHtml(mode){
-  if(mode === 'conservative'){
-    return 'Shape factors are fixed at <code>1.0</code> in conservative mode.';
-  }
-  return "Shape factors follow the effective-dimension ratio <code>r = B'/L'</code>.";
-}
-
-function stage6BearingShapeModeDetailText(mode){
-  if(mode === 'conservative'){
-    return 'In conservative mode all shape factors are fixed at 1.0.';
-  }
-  return 'In Brinch Hansen / Annex D mode the shape factors follow the effective-dimension ratio r = B′/L′.';
-}
-
-function stage6BearingShapeFactors(geometry, phiDeg, Nq, mode){
-  if(mode === 'conservative'){
-    return {sc:1, sq:1, sg:1, scu:1};
-  }
-  const r = geometry?.ratio || 0;
-  const phiRad = Math.max(phiDeg || 0, 0) * Math.PI / 180;
-  const sq = 1 + r * Math.sin(phiRad);
-  const sc = phiDeg > 0
-    ? (sq * Nq - 1) / Math.max(Nq - 1, 1e-6)
-    : 1 + 0.2 * r;
-  return {
-    sc,
-    sq,
-    sg:Math.max(0.6, 1 - 0.3 * r),
-    scu:1 + 0.2 * r
-  };
-}
-
-function stage6BearingDepthFactors(Df, B, phiDeg, Nc){
-  const eta = Math.max(Df || 0, 0) / Math.max(B || 0.1, 0.1);
-  const k = eta <= 1 ? eta : Math.atan(eta);
-  if(phiDeg > 0){
-    const phiRad = phiDeg * Math.PI / 180;
-    const sinPhi = Math.sin(phiRad);
-    const tanPhi = Math.tan(phiRad);
-    const dq = 1 + 2 * tanPhi * (1 - sinPhi) ** 2 * k;
-    return {
-      eta,
-      k,
-      dq,
-      dc:dq - (1 - dq) / (Math.max(Nc, 1e-6) * Math.max(tanPhi, 1e-6)),
-      dg:1.0,
-      dcu:1 + 0.4 * k
-    };
-  }
-  return {
-    eta,
-    k,
-    dq:1.0,
-    dc:1 + 0.4 * k,
-    dg:1.0,
-    dcu:1 + 0.4 * k
-  };
+function bearingProfile(cfg, layers){
+  return bearingProfilePure(cfg, layers || stage6WorkingLayers(), { wt: S.wt });
 }
 
 // Backward-compatible alias for any external callers that still expect
 // the old helper name on the legacy window API.
-const stage6ShapeFactors = stage6BearingShapeFactors;
-
-function stage6BearingNgamma(phiDeg, Nq){
-  if(!(phiDeg > 0)) return 0;
-  const phiRad = phiDeg * Math.PI / 180;
-  return Math.max(0, 2 * Math.max(Nq - 1, 0) * Math.tan(phiRad));
-}
-
-function stage6UsesEc7Factors(cfg){
-  return (cfg.factorMode || 'ec7') === 'ec7';
-}
-
-function stage6CapacityLabel(cfg){
-  return stage6UsesEc7Factors(cfg) ? 'q_d' : 'q_allow';
-}
-
-function stage6FactorLabel(cfg){
-  return stage6UsesEc7Factors(cfg) ? 'γ_Rd' : 'ξ';
-}
-
-function stage6FactorValue(cfg){
-  if(stage6UsesEc7Factors(cfg)) return Math.max(cfg.gammaRd || 1, 0.1);
-  return Math.max(cfg.xi || 1, 0.1);
-}
-
-function stage6BearingEc7Keys(mode){
-  if(mode === 'da1_1') return ['da1_1'];
-  if(mode === 'da1_2') return ['da1_2'];
-  return ['da1_1', 'da1_2'];
-}
-
-function stage6BearingEc7Spec(key){
-  if(key === 'da1_1'){
-    return {
-      key,
-      label:'DA1/1',
-      soilSet:'M1',
-      gammaMphi:1.00,
-      gammaMc:1.00,
-      gammaMcu:1.00
-    };
-  }
-  return {
-    key:'da1_2',
-    label:'DA1/2',
-    soilSet:'M2',
-    gammaMphi:1.25,
-    gammaMc:1.25,
-    gammaMcu:1.40
-  };
-}
+const stage6ShapeFactors = bearingShapeFactors;
 
 function stage6UseCategoryOptions(selected){
   const labels = {
@@ -10207,43 +10082,6 @@ function stage6BeamOrientationHtml(cfg, analysis){
   `;
 }
 
-function stage6BearingEc7Options(selected){
-  const labels = {
-    governing:'Governing of DA1/1 and DA1/2 (Recommended)',
-    da1_1:'DA1/1 - action-factored route',
-    da1_2:'DA1/2 - M2 soil-strength route'
-  };
-  return ['governing','da1_1','da1_2']
-    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
-    .join('');
-}
-
-function stage6BearingEc7Help(selected){
-  const text = {
-    governing:'Belgian EC7 bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.',
-    da1_1:'DA1/1 keeps soil strengths characteristic and is useful when you want to inspect the action-factored side on its own.',
-    da1_2:'DA1/2 applies the M2 reduction to soil strengths and often governs geotechnical bearing resistance; inspect it directly if you want to understand the soil-side penalty.'
-  };
-  return text[selected] || text.governing;
-}
-
-function stage6BearingShapeModeOptions(selected){
-  const labels = {
-    hansen:'Brinch Hansen / Annex D (Recommended)',
-    conservative:'Conservative (shape factors = 1.0)'
-  };
-  return ['hansen','conservative']
-    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
-    .join('');
-}
-
-function stage6BearingShapeModeHelp(selected){
-  if(selected === 'conservative'){
-    return 'Conservative mode keeps all shape factors equal to 1.0. Depth factors still apply, but plan-shape enhancement is suppressed.';
-  }
-  return 'Brinch Hansen / Annex D mode derives the shape factors from the effective plan ratio r = B′/L′ after eccentricity. This is the default and recommended mode.';
-}
-
 function stage6ExposureOptions(selected){
   return Object.entries(EC2_EXPOSURE_META)
     .map(([key, meta])=>`<option value="${key}"${selected===key?' selected':''}>${key} - ${meta.label}</option>`)
@@ -10292,397 +10130,29 @@ function stage6BeamDurabilityHtml(reinf){
   `;
 }
 
-function stage6BearingNotes(sel, cfg){
-  const notes = [{
-    level:'warn',
-    text:'Bearing capacity is shown as a shallow-foundation screening curve using the interpreted layer active at each founding depth. Layered failure mechanisms and full eccentric-load verification are not modeled here.'
-  }];
-  // EN 1997-1 §6.5.4: special precautions are required where the load
-  // eccentricity exceeds 1/3 of the footing dimension. The app clamps e at
-  // B/2 − 0.025 m but does not otherwise restrict it, so surface the
-  // normative warning instead of silently accepting an extreme offset.
-  const eB = Number(sel.eB) || 0;
-  const eL = Number(sel.eL) || 0;
-  if(eB > (Number(sel.BRaw) || sel.B) / 3 || eL > (Number(sel.LRaw) || sel.L) / 3){
-    notes.push({
-      level:'warn',
-      text:'Load eccentricity exceeds 1/3 of the footing width (EN 1997-1 §6.5.4): special precautions are required — careful review of the design actions and the bearing model is mandatory. The middle-third condition (|e| < B/6, no tensile corner reactions) is also violated.'
-    });
-  } else if(eB > (Number(sel.BRaw) || sel.B) / 6 || eL > (Number(sel.LRaw) || sel.L) / 6){
-    notes.push({
-      level:'info',
-      text:'Load eccentricity exceeds B/6 (middle third): part of the base loses compressive contact; the effective-width model remains valid but check serviceability and edge pressures.'
-    });
-  }
-  notes.push({
-    level:'info',
-    text:`The current bearing check uses ${sel.ngammaFormulaLabel} for Nγ and ${sel.shapeModeLabel} for shape factors. ${stage6BearingShapeModeDetailText(sel.shapeMode)} It includes Df/B′ depth factors, but it still assumes level ground, horizontal base, and no horizontal load.`
-  });
-  if(stage6UsesEc7Factors(cfg)){
-    notes.push({
-      level:'info',
-      text:'Belgian bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.'
-    });
-    notes.push({
-      level:'warn',
-      text:'gamma_Rd is kept as an optional model factor only. Leave it at 1.0 unless you intentionally want an extra correction for simplified analytical model bias.'
-    });
-  } else {
-    notes.push({level:'warn', text:'Global/system factor ξ is a legacy-style screening route. Keep it separate from the EC7 partial-factor route and do not stack them.'});
-  }
-  if(sel.layer.type === 'Sandy clay' || sel.layer.type === 'Peat / organic'){
-    notes.push({level:'info', text:'Mixed or organic layers can govern with undrained behaviour. Review both curves before accepting a founding depth.'});
-  }
-  return notes;
-}
-
-function bearingAtDepth(z, cfg, layers){
-  const arr = layers || stage6WorkingLayers();
-  const l = layerAtDepth(z, arr);
-  if(!l) return null;
-  const stress = effectiveVerticalStressAtDepth(arr, z, S.wt, stage6Constants().gammaW);
-  const geo = stage6BearingGeometry(cfg);
-  const B = geo.B;
-  const phiK = Math.max(l.phi || 0, 0);
-  const cK = Math.max(l.c || 0, 0);
-  const cuK = Math.max(l.cu || 0, 0);
-  const useEc7 = stage6UsesEc7Factors(cfg);
-  // Three-case water-table rule for the N_gamma-term unit weight (Das PoFE
-  // "Effect of Water Table" Case I/II/III; Meyerhof): buoyant gamma' when the
-  // WT is at/above the base; moist gamma when it lies deeper than the failure
-  // wedge (~B' below the base); linear interpolation in between. A binary
-  // switch at the base level would credit full moist gamma to a wedge that is
-  // almost entirely submerged (unconservative for 0 < d_w < B').
-  const gammaWConst = stage6Constants().gammaW;
-  const gammaMoistL = l.g;
-  const gammaBuoyL = Math.max((l.gs || l.g) - gammaWConst, 1.0);
-  const dWater = S.wt - z;  // depth of the water table below the founding level
-  let gammaEff;
-  let wtCase;
-  if(!(dWater > 0)){
-    gammaEff = gammaBuoyL; wtCase = 'WT at/above base: buoyant γ′';
-  } else if(dWater >= geo.BEff){
-    gammaEff = gammaMoistL; wtCase = 'WT deeper than wedge (≥ B′): moist γ';
-  } else {
-    gammaEff = gammaBuoyL + (dWater / Math.max(geo.BEff, 1e-6)) * (gammaMoistL - gammaBuoyL);
-    wtCase = 'WT within wedge: interpolated γ';
-  }
-  const qDrain = Math.max(stress.sigmaEff, 0);
-  const qUndrain = Math.max(stress.sigmaV, 0);
-  const factor = stage6FactorValue(cfg);
-  const shapeMode = cfg.shapeMode || 'hansen';
-  let drainedCalc = null;
-  let undrainedCalc = null;
-  let ec7Results = [];
-  if(useEc7){
-    ec7Results = stage6BearingEc7Keys(cfg.ec7Combination || 'governing').map(key=>{
-      const spec = stage6BearingEc7Spec(key);
-      const designed = designSoilLayer(l, spec.soilSet);
-      const phiD = Math.max(designed.phi || 0, 0);
-      const cD = Math.max(designed.c || 0, 0);
-      const cuD = Math.max(designed.cu || 0, 0);
-      const phiDRad = phiD * Math.PI / 180;
-      const tanPhi = Math.tan(phiDRad);
-      const Nq = phiD > 0 ? Math.exp(Math.PI * tanPhi) * Math.tan(Math.PI/4 + phiDRad/2)**2 : 1;
-      const Nc = phiD > 0 ? (Nq - 1) / Math.max(tanPhi, 1e-6) : 5.14;
-      const Ng = stage6BearingNgamma(phiD, Nq);
-      const shp = stage6BearingShapeFactors(geo, phiD, Nq, shapeMode);
-      const dep = stage6BearingDepthFactors(z, B, phiD, Nc);
-      const undShp = stage6BearingShapeFactors(geo, 0, 1, shapeMode);
-      const undDep = stage6BearingDepthFactors(z, B, 0, 5.14);
-      const qultDrained = Math.max(0, cD * Nc * shp.sc * dep.dc + qDrain * Nq * shp.sq * dep.dq + 0.5 * gammaEff * geo.BEff * Ng * shp.sg * dep.dg);
-      const qultUndrained = Math.max(0, qUndrain + 5.14 * cuD * undShp.scu * undDep.dcu);
-      const qdDrained = qultDrained / factor;
-      const qdUndrained = qultUndrained / factor;
-      return {
-        ...spec,
-        phiD, cD, cuD, Nq, Nc, Ng,
-        shape:shp,
-        depth:dep,
-        undrainedShape:undShp,
-        undrainedDepth:undDep,
-        shapeModeLabel:stage6BearingShapeModeLabel(shapeMode),
-        ngammaFormulaLabel:stage6BearingNgammaLabel(),
-        qultDrained, qultUndrained, qdDrained, qdUndrained
-      };
-    });
-    drainedCalc = ec7Results.reduce((best, item)=>
-      !best || item.qdDrained < best.qdDrained ? item : best
-    , null);
-    undrainedCalc = ec7Results.reduce((best, item)=>
-      !best || item.qdUndrained < best.qdUndrained ? item : best
-    , null);
-  } else {
-    const phiD = phiK;
-    const cD = cK;
-    const cuD = cuK;
-    const phiDRad = phiD * Math.PI / 180;
-    const tanPhi = Math.tan(phiDRad);
-    const Nq = phiD > 0 ? Math.exp(Math.PI * tanPhi) * Math.tan(Math.PI/4 + phiDRad/2)**2 : 1;
-    const Nc = phiD > 0 ? (Nq - 1) / Math.max(tanPhi, 1e-6) : 5.14;
-    const Ng = stage6BearingNgamma(phiD, Nq);
-    const shp = stage6BearingShapeFactors(geo, phiD, Nq, shapeMode);
-    const dep = stage6BearingDepthFactors(z, B, phiD, Nc);
-    const undShp = stage6BearingShapeFactors(geo, 0, 1, shapeMode);
-    const undDep = stage6BearingDepthFactors(z, B, 0, 5.14);
-    const qultDrained = Math.max(0, cD * Nc * shp.sc * dep.dc + qDrain * Nq * shp.sq * dep.dq + 0.5 * gammaEff * geo.BEff * Ng * shp.sg * dep.dg);
-    const qultUndrained = Math.max(0, qUndrain + 5.14 * cuD * undShp.scu * undDep.dcu);
-    drainedCalc = undrainedCalc = {
-      label:'Global SF',
-      soilSet:'M1',
-      gammaMphi:1,
-      gammaMc:1,
-      gammaMcu:1,
-      phiD, cD, cuD, Nq, Nc, Ng,
-      shape:shp,
-      depth:dep,
-      undrainedShape:undShp,
-      undrainedDepth:undDep,
-      shapeModeLabel:stage6BearingShapeModeLabel(shapeMode),
-      ngammaFormulaLabel:stage6BearingNgammaLabel(),
-      qultDrained, qultUndrained,
-      qdDrained: qultDrained / factor,
-      qdUndrained: qultUndrained / factor
-    };
-  }
-  const qdDrained = drainedCalc.qdDrained;
-  const qdUndrained = undrainedCalc.qdUndrained;
-  return{
-    layer:l,
-    z,
-    B:+B.toFixed(2),
-    L:+geo.L.toFixed(2),
-    BRaw:+geo.BRaw.toFixed(2),
-    LRaw:+geo.LRaw.toFixed(2),
-    BEff:+geo.BEff.toFixed(2),
-    LEff:+geo.LEff.toFixed(2),
-    eB:+geo.eB.toFixed(2),
-    eL:+geo.eL.toFixed(2),
-    r:+geo.ratio.toFixed(3),
-    eta:+drainedCalc.depth.eta.toFixed(3),
-    k:+drainedCalc.depth.k.toFixed(3),
-    sigV:+stress.sigmaV.toFixed(1),
-    sigVeff:+stress.sigmaEff.toFixed(1),
-    qDrain:+qDrain.toFixed(1),
-    qUndrain:+qUndrain.toFixed(1),
-    gammaEff:+gammaEff.toFixed(2),
-    wtCase,
-    phiK:+phiK.toFixed(1),
-    phiD:+drainedCalc.phiD.toFixed(1),
-    cK:+cK.toFixed(1),
-    cD:+drainedCalc.cD.toFixed(1),
-    cuK:+cuK.toFixed(1),
-    cuD:+undrainedCalc.cuD.toFixed(1),
-    drainedComboLabel:useEc7 ? drainedCalc.label : 'Global SF',
-    undrainedComboLabel:useEc7 ? undrainedCalc.label : 'Global SF',
-    gammaMphi:+drainedCalc.gammaMphi.toFixed(2),
-    gammaMc:+drainedCalc.gammaMc.toFixed(2),
-    gammaMcu:+undrainedCalc.gammaMcu.toFixed(2),
-    useEc7,
-    gammaRd:+(cfg.gammaRd || 1).toFixed(2),
-    xi:+(cfg.xi || 1).toFixed(2),
-    ec7CombinationMode:cfg.ec7Combination || 'governing',
-    ec7CombinationLabel:useEc7
-      ? drainedCalc.label === undrainedCalc.label
-        ? drainedCalc.label
-        : `drained ${drainedCalc.label} / undrained ${undrainedCalc.label}`
-      : null,
-    ec7Results:ec7Results.map(item=>({
-      label:item.label,
-      qdDrained:+item.qdDrained.toFixed(1),
-      qdUndrained:+item.qdUndrained.toFixed(1)
-    })),
-    capacityLabel:stage6CapacityLabel(cfg),
-    factorLabel:stage6FactorLabel(cfg),
-    shapeMode:shapeMode,
-    shapeModeLabel:drainedCalc.shapeModeLabel,
-    ngammaFormulaLabel:drainedCalc.ngammaFormulaLabel,
-    Nc:+drainedCalc.Nc.toFixed(3),
-    Nq:+drainedCalc.Nq.toFixed(3),
-    Ng:+drainedCalc.Ng.toFixed(3),
-    sc:+drainedCalc.shape.sc.toFixed(2),
-    sq:+drainedCalc.shape.sq.toFixed(2),
-    sg:+drainedCalc.shape.sg.toFixed(2),
-    scu:+undrainedCalc.undrainedShape.scu.toFixed(2),
-    dc:+drainedCalc.depth.dc.toFixed(2),
-    dq:+drainedCalc.depth.dq.toFixed(2),
-    dg:+drainedCalc.depth.dg.toFixed(2),
-    dcu:+undrainedCalc.undrainedDepth.dcu.toFixed(2),
-    factor:+factor.toFixed(2),
-    qultDrained:+drainedCalc.qultDrained.toFixed(1),
-    qultUndrained:+undrainedCalc.qultUndrained.toFixed(1),
-    qdDrained:+qdDrained.toFixed(1),
-    qdUndrained:+qdUndrained.toFixed(1),
-    utilDrained: cfg.load > 0 ? +(cfg.load / Math.max(qdDrained, 1e-6)).toFixed(2) : null,
-    utilUndrained: cfg.load > 0 ? +(cfg.load / Math.max(qdUndrained, 1e-6)).toFixed(2) : null
-  };
-}
-
-function bearingProfile(cfg, layers){
-  const arr = layers || stage6WorkingLayers();
-  if(!arr.length) return null;
-  const maxDepth = arr[arr.length-1].bot;
-  const step = Math.max(0.1, Math.min(0.25, maxDepth / 60));
-  const depths = [];
-  for(let z = Math.max(cfg.Df, 0.2); z <= maxDepth + 1e-9; z += step){
-    depths.push(+z.toFixed(3));
-  }
-  if(!depths.length || depths[0] !== +cfg.Df.toFixed(3)) depths.unshift(+cfg.Df.toFixed(3));
-  const pts = depths.map(z=>bearingAtDepth(z, cfg, arr)).filter(Boolean);
-  const selected = bearingAtDepth(cfg.Df, cfg, arr);
-  return{
-    pts,
-    selected,
-    drained:pts.map(p=>({x:p.qdDrained, y:p.z})),
-    undrained:pts.map(p=>({x:p.qdUndrained, y:p.z})),
-    maxDepth
-  };
-}
-
+// bearing/panel.js façades (legacy window API names).
 function stage6BearingSelectedDepthHtml(sel, governing, governingMode){
-  return `
-    <table class="pt" style="margin-bottom:12px">
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Selected depth</td></tr>
-      <tr><td>Df</td><td>${sel.z.toFixed(2)} m</td></tr>
-      <tr><td>Layer</td><td>${sel.layer.type}</td></tr>
-      <tr><td>Subtype</td><td>${sel.layer.subtype||'—'}</td></tr>
-      ${sel.useEc7 ? `<tr><td>Belgian EC7 envelope</td><td>${sel.ec7CombinationLabel}</td></tr>` : `<tr><td>Safety route</td><td>Global system factor</td></tr>`}
-      <tr><td>σ'v</td><td>${sel.sigVeff.toFixed(1)} kPa</td></tr>
-      <tr><td>Applied stress</td><td>${sel.utilDrained!=null?`${sel.utilDrained.toFixed(2)} · drained / ${sel.utilUndrained.toFixed(2)} · undrained`:'—'}</td></tr>
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--chart-green);padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Drained</td></tr>
-      ${sel.useEc7 ? `<tr><td>Governing combo</td><td>${sel.drainedComboLabel}</td></tr>` : ''}
-      <tr><td>q_ult</td><td>${sel.qultDrained.toLocaleString()} kPa</td></tr>
-      <tr><td>${sel.capacityLabel}</td><td>${sel.qdDrained.toLocaleString()} kPa</td></tr>
-      <tr><td>utilisation</td><td>${sel.utilDrained!=null?sel.utilDrained.toFixed(2):'—'}</td></tr>
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--chart-orange);padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Undrained</td></tr>
-      ${sel.useEc7 ? `<tr><td>Governing combo</td><td>${sel.undrainedComboLabel}</td></tr>` : ''}
-      <tr><td>q_ult</td><td>${sel.qultUndrained.toLocaleString()} kPa</td></tr>
-      <tr><td>${sel.capacityLabel}</td><td>${sel.qdUndrained.toLocaleString()} kPa</td></tr>
-      <tr><td>utilisation</td><td>${sel.utilUndrained!=null?sel.utilUndrained.toFixed(2):'—'}</td></tr>
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding:4px 0;border-top:1px solid var(--bd);text-transform:uppercase">Governing</td></tr>
-      <tr><td>Mode</td><td>${governingMode}</td></tr>
-      <tr><td>${sel.capacityLabel}</td><td>${governing.toLocaleString()} kPa</td></tr>
-    </table>
-  `;
+  return bearingSelectedDepthHtml(sel, governing, governingMode);
 }
 
 function stage6BearingMaterialParamsHtml(sel, cfg){
-  if(!sel.useEc7){
-    return `
-      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Global safety-factor route at selected depth</div>
-      <table class="pt">
-        <tr><td>φ'k</td><td>${sel.phiK.toFixed(1)}°</td><td>c'k</td><td>${sel.cK.toFixed(1)} kPa</td><td>cu,k</td><td>${sel.cuK.toFixed(1)} kPa</td></tr>
-        <tr><td>γ'</td><td>${sel.gammaEff.toFixed(2)} kN/m³</td><td>ξ</td><td>${cfg.xi.toFixed(2)}</td><td>Route</td><td>Global SF</td></tr>
-        <tr><td>B / L</td><td>${sel.BRaw.toFixed(2)} / ${sel.LRaw.toFixed(2)} m</td><td>eB / eL</td><td>${sel.eB.toFixed(2)} / ${sel.eL.toFixed(2)} m</td><td>Route</td><td>${sel.shapeModeLabel}</td></tr>
-        <tr><td>B' / L'</td><td>${sel.BEff.toFixed(2)} / ${sel.LEff.toFixed(2)} m</td><td>r</td><td>${sel.r.toFixed(3)}</td><td>k</td><td>${sel.k.toFixed(3)}</td></tr>
-      </table>
-      <div style="margin-top:8px;font-size:11px;color:var(--tx2);line-height:1.5">
-        Characteristic soil parameters are used directly. The global/system factor ξ is applied on the output resistance only and is not combined with γ_R or γ_M.<br>
-        Nγ uses the <strong>${sel.ngammaFormulaLabel}</strong> form. Shape factors follow <strong>${sel.shapeModeLabel}</strong>. ${stage6BearingShapeModeDetailHtml(sel.shapeMode)}
-      </div>
-    `;
-  }
-  return `
-    <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Belgian EC7 DA1 parameters used at selected depth</div>
-    <table class="pt">
-      <tr><td>Drained combo</td><td>${sel.drainedComboLabel}</td><td>Undrained combo</td><td>${sel.undrainedComboLabel}</td><td>γ_Rd</td><td>${cfg.gammaRd.toFixed(2)}</td></tr>
-      <tr><td>φ'k</td><td>${sel.phiK.toFixed(1)}°</td><td>γ_M,φ</td><td>${sel.gammaMphi.toFixed(2)}</td><td>φ'd</td><td>${sel.phiD.toFixed(1)}°</td></tr>
-      <tr><td>c'k</td><td>${sel.cK.toFixed(1)} kPa</td><td>γ_M,c'</td><td>${sel.gammaMc.toFixed(2)}</td><td>c'd</td><td>${sel.cD.toFixed(1)} kPa</td></tr>
-      <tr><td>cu,k</td><td>${sel.cuK.toFixed(1)} kPa</td><td>γ_M,cu</td><td>${sel.gammaMcu.toFixed(2)}</td><td>cu,d</td><td>${sel.cuD.toFixed(1)} kPa</td></tr>
-      <tr><td>γ'</td><td>${sel.gammaEff.toFixed(2)} kN/m³</td><td>Combo mode</td><td>${cfg.ec7Combination === 'governing' ? 'most onerous' : cfg.ec7Combination.toUpperCase().replace('_','/')}</td><td>R set</td><td>R1</td></tr>
-      <tr><td>B / L</td><td>${sel.BRaw.toFixed(2)} / ${sel.LRaw.toFixed(2)} m</td><td>eB / eL</td><td>${sel.eB.toFixed(2)} / ${sel.eL.toFixed(2)} m</td><td>Shape route</td><td>${sel.shapeModeLabel}</td></tr>
-      <tr><td>B' / L'</td><td>${sel.BEff.toFixed(2)} / ${sel.LEff.toFixed(2)} m</td><td>r</td><td>${sel.r.toFixed(3)}</td><td>Nγ</td><td>${sel.ngammaFormulaLabel}</td></tr>
-    </table>
-    ${sel.ec7Results && sel.ec7Results.length > 1 ? `
-      <div style="margin-top:8px;font-size:11px;color:var(--tx2);line-height:1.55">
-        DA1 overview: ${sel.ec7Results.map(r=>`${r.label}: drained ${r.qdDrained.toFixed(0)} kPa, undrained ${r.qdUndrained.toFixed(0)} kPa`).join(' · ')}
-      </div>
-    ` : ''}
-  `;
+  return bearingMaterialParamsHtml(sel, cfg);
 }
 
 function stage6BearingDrainedFormulaHtml(sel){
-  return `
-    <div style="font-size:10px;font-weight:700;color:var(--chart-green);text-transform:uppercase;margin-bottom:6px">Drained formula at selected depth</div>
-    <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
-      q_ult,d = c'·N_c·s_c·d_c + q'·N_q·s_q·d_q + 0.5·γ'·B'·N_γ·s_γ·d_γ
-    </div>
-    <div style="font-size:11px;color:var(--tx2);line-height:1.55">
-      φ'k = <strong>${sel.phiK.toFixed(1)}°</strong>${sel.useEc7?` → φ'd = <strong>${sel.phiD.toFixed(1)}°</strong>`:''}<br>
-      c'k = <strong>${sel.cK.toFixed(1)} kPa</strong>${sel.useEc7?` → c'd = <strong>${sel.cD.toFixed(1)} kPa</strong>`:''}<br>
-      N_c = <strong>${sel.Nc.toFixed(3)}</strong><br>
-      N_q = <strong>${sel.Nq.toFixed(3)}</strong><br>
-      N_γ = <strong>${sel.Ng.toFixed(3)}</strong> (${sel.ngammaFormulaLabel})<br>
-      q' = σ'v = <strong>${sel.qDrain.toFixed(1)} kPa</strong><br>
-      γ' = <strong>${sel.gammaEff.toFixed(2)} kN/m³</strong><br>
-      ${sel.useEc7 ? `Governing Belgian combo = <strong>${sel.drainedComboLabel}</strong><br>` : ''}
-      Shape factors = <strong>${sel.shapeModeLabel}</strong><br>
-      B = <strong>${sel.BRaw.toFixed(2)} m</strong>, L = <strong>${sel.LRaw.toFixed(2)} m</strong><br>
-      eB = <strong>${sel.eB.toFixed(2)} m</strong>, eL = <strong>${sel.eL.toFixed(2)} m</strong><br>
-      B' = <strong>${sel.BEff.toFixed(2)} m</strong>, L' = <strong>${sel.LEff.toFixed(2)} m</strong>, r = <strong>${sel.r.toFixed(3)}</strong><br>
-      Df/B' = η = <strong>${sel.eta.toFixed(3)}</strong>, k = <strong>${sel.k.toFixed(3)}</strong><br>
-      s_c = <strong>${sel.sc.toFixed(2)}</strong>, s_q = <strong>${sel.sq.toFixed(2)}</strong>, s_γ = <strong>${sel.sg.toFixed(2)}</strong><br>
-      d_c = <strong>${sel.dc.toFixed(2)}</strong>, d_q = <strong>${sel.dq.toFixed(2)}</strong>, d_γ = <strong>${sel.dg.toFixed(2)}</strong><br>
-      ${sel.factorLabel} = <strong>${sel.factor.toFixed(2)}</strong><br>
-      ${sel.capacityLabel} = q_ult,d / ${sel.factorLabel} = <strong>${sel.qdDrained.toLocaleString()} kPa</strong>
-    </div>
-  `;
+  return bearingDrainedFormulaHtml(sel);
 }
 
 function stage6BearingUndrainedFormulaHtml(sel){
-  return `
-    <div style="font-size:10px;font-weight:700;color:var(--chart-orange);text-transform:uppercase;margin-bottom:6px">Undrained formula at selected depth</div>
-    <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
-      q_ult,u = q + 5.14·c_u·s_cu·d_cu
-    </div>
-    <div style="font-size:11px;color:var(--tx2);line-height:1.55">
-      q = σv = <strong>${sel.qUndrain.toFixed(1)} kPa</strong><br>
-      cu,k = <strong>${sel.cuK.toFixed(1)} kPa</strong>${sel.useEc7?` → cu,d = <strong>${sel.cuD.toFixed(1)} kPa</strong>`:''}<br>
-      N_cu = <strong>5.14</strong><br>
-      ${sel.useEc7 ? `Governing Belgian combo = <strong>${sel.undrainedComboLabel}</strong><br>` : ''}
-      Shape factors = <strong>${sel.shapeModeLabel}</strong><br>
-      B = <strong>${sel.BRaw.toFixed(2)} m</strong>, L = <strong>${sel.LRaw.toFixed(2)} m</strong><br>
-      eB = <strong>${sel.eB.toFixed(2)} m</strong>, eL = <strong>${sel.eL.toFixed(2)} m</strong><br>
-      B' = <strong>${sel.BEff.toFixed(2)} m</strong>, L' = <strong>${sel.LEff.toFixed(2)} m</strong>, r = <strong>${sel.r.toFixed(3)}</strong><br>
-      Df/B' = η = <strong>${sel.eta.toFixed(3)}</strong>, k = <strong>${sel.k.toFixed(3)}</strong><br>
-      s_cu = <strong>${sel.scu.toFixed(2)}</strong>, d_cu = <strong>${sel.dcu.toFixed(2)}</strong><br>
-      ${sel.factorLabel} = <strong>${sel.factor.toFixed(2)}</strong><br>
-      ${sel.capacityLabel} = q_ult,u / ${sel.factorLabel} = <strong>${sel.qdUndrained.toLocaleString()} kPa</strong>
-    </div>
-  `;
+  return bearingUndrainedFormulaHtml(sel);
 }
 
-let stage6BearingChartTimer = null;
 function queueStage6BearingChartBuild(){
-  if(stage6BearingChartTimer) clearTimeout(stage6BearingChartTimer);
-  stage6BearingChartTimer = setTimeout(()=>{
-    stage6BearingChartTimer = null;
-    buildStage6BearingChart();
-  }, 20);
+  bearingApp.queueChartBuild();
 }
 
 function refreshStage6BearingPreview(){
-  ensureStage6State();
-  if(!S.layers.length || !S.stage6 || S.stage6.app !== 'bearing') return;
-  const layers = stage6WorkingLayers();
-  const cfg = S.stage6.bearing;
-  const profile = bearingProfile(cfg, layers);
-  if(!profile || !profile.selected) return;
-  S.stage6Cache.bearing = profile;
-  const sel = profile.selected;
-  const governing = Math.min(sel.qdDrained, sel.qdUndrained);
-  const governingMode = sel.qdDrained <= sel.qdUndrained ? 'Drained' : 'Undrained';
-  const dfValue = document.getElementById('stage6DfValue');
-  if(dfValue) dfValue.textContent = sel.z.toFixed(2)+' m';
-  const summary = document.getElementById('stage6SelectedDepth');
-  if(summary) summary.innerHTML = stage6BearingSelectedDepthHtml(sel, governing, governingMode);
-  const material = document.getElementById('stage6UlsParams');
-  if(material) material.innerHTML = stage6BearingMaterialParamsHtml(sel, cfg);
-  const drainedFormula = document.getElementById('stage6DrainedFormula');
-  if(drainedFormula) drainedFormula.innerHTML = stage6BearingDrainedFormulaHtml(sel);
-  const undrainedFormula = document.getElementById('stage6UndrainedFormula');
-  if(undrainedFormula) undrainedFormula.innerHTML = stage6BearingUndrainedFormulaHtml(sel);
-  queueStage6BearingChartBuild();
+  bearingApp.refreshPreview();
 }
 
 function stage6SharedBanner(){
@@ -11102,113 +10572,6 @@ function requestStage6PileLightRedraw(){
       commitChange: () => renderStage6()
     });
   });
-}
-
-function renderStage6BearingApp(profile){
-  const cfg = S.stage6.bearing;
-  const sel = profile.selected;
-  const governing = Math.min(sel.qdDrained, sel.qdUndrained);
-  const governingMode = sel.qdDrained <= sel.qdUndrained ? 'Drained' : 'Undrained';
-  return `
-    <div class="mc2">
-      <div class="mc2-head" style="margin-bottom:12px">
-        <span style="font-size:13px;font-weight:600">Bearing capacity</span>
-        <span style="font-size:11px;color:var(--tx2)">ULS-style resistance screening from the interpreted CPT profile.</span>
-      </div>
-      <div style="display:grid;grid-template-columns:260px 1fr 250px;gap:14px;align-items:start">
-        <div>
-          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
-          <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
-            <label style="font-size:11px;color:var(--tx2)">Displayed curves
-              <select onchange="setStage6Field('bearing.showMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                <option value="both"${cfg.showMode==='both'?' selected':''}>Show both curves</option>
-                <option value="drained"${cfg.showMode==='drained'?' selected':''}>Drained only</option>
-                <option value="undrained"${cfg.showMode==='undrained'?' selected':''}>Undrained only</option>
-              </select>
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Foundation type
-              <select onchange="setStage6Field('bearing.foundationType', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                <option value="strip"${cfg.foundationType==='strip'?' selected':''}>Strip</option>
-                <option value="footing"${cfg.foundationType==='footing'?' selected':''}>Footing / pad</option>
-                <option value="slab"${cfg.foundationType==='slab'?' selected':''}>Slab / raft</option>
-              </select>
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Width B (m)
-              <input type="number" step="0.1" min="0.1" value="${cfg.B.toFixed(2)}" onchange="setStage6Field('bearing.B', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Length L (m)
-              <input type="number" step="0.1" min="0.1" value="${cfg.L.toFixed(2)}" onchange="setStage6Field('bearing.L', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <div>
-              <div style="font-size:11px;color:var(--tx2);margin-bottom:5px">Founding depth Df = <strong id="stage6DfValue">${cfg.Df.toFixed(2)} m</strong></div>
-              <input type="range" min="0.2" max="${profile.maxDepth.toFixed(2)}" step="0.05" value="${cfg.Df.toFixed(2)}" oninput="setStage6Field('bearing.Df', this.value)" style="width:100%">
-            </div>
-            <details class="st6-adv" data-st6details="bearing-advanced"${stage6DetailsOpen('bearing-advanced')}>
-              <summary>Optional verification and safety settings</summary>
-              <div class="st6-adv-body">
-                <div class="st6-help">Bearing capacity is calculated regardless. Expand this only if you want a utilisation check against an applied stress or if you want to adjust the safety philosophy.</div>
-                <label style="font-size:11px;color:var(--tx2)">Shape factors
-                  <select onchange="setStage6Field('bearing.shapeMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                    ${stage6BearingShapeModeOptions(cfg.shapeMode)}
-                  </select>
-                </label>
-                <div class="st6-help">${stage6BearingShapeModeHelp(cfg.shapeMode)}</div>
-                <label style="font-size:11px;color:var(--tx2)">Eccentricity eB (m)
-                  <input type="number" step="0.01" min="0" value="${cfg.eB.toFixed(2)}" onchange="setStage6Field('bearing.eB', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Eccentricity eL (m)
-                  <input type="number" step="0.01" min="0" value="${cfg.eL.toFixed(2)}" onchange="setStage6Field('bearing.eL', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                </label>
-                <div class="st6-help">Effective dimensions for shape factors use B' = B − 2eB and L' = L − 2eL. With the default centered load, keep eB = eL = 0. For circular plans screened in this rectangular interface, use B = L so r = 1.</div>
-                <label style="font-size:11px;color:var(--tx2)">Applied stress for utilisation (kPa)
-                  <input type="number" step="5" min="0" value="${cfg.load.toFixed(0)}" onchange="setStage6Field('bearing.load', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Safety route
-                  <select onchange="setStage6Field('bearing.factorMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                    <option value="ec7"${cfg.factorMode==='ec7'?' selected':''}>EC7 output factors</option>
-                    <option value="system"${cfg.factorMode==='system'?' selected':''}>Global system factor ξ</option>
-                  </select>
-                </label>
-                ${cfg.factorMode==='ec7' ? `
-                  <label style="font-size:11px;color:var(--tx2)">Belgian ULS combination
-                    <select onchange="setStage6Field('bearing.ec7Combination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                      ${stage6BearingEc7Options(cfg.ec7Combination)}
-                    </select>
-                  </label>
-                  <div class="st6-help">${stage6BearingEc7Help(cfg.ec7Combination)}</div>
-                  <label style="font-size:11px;color:var(--tx2)">γ_Rd
-                    <input type="number" step="0.05" min="1.0" value="${cfg.gammaRd.toFixed(2)}" onchange="setStage6Field('bearing.gammaRd', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                  </label>
-                  <div class="st6-help">Belgian EC7 DA1 uses R1 for spread footing bearing. This tool keeps γ_R = 1.0 and switches the soil-side factors automatically between DA1/1 and DA1/2.</div>
-                ` : `
-                  <label style="font-size:11px;color:var(--tx2)">Global system factor ξ
-                    <input type="number" step="0.1" min="1.0" value="${cfg.xi.toFixed(2)}" onchange="setStage6Field('bearing.xi', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                  </label>
-                  <div class="st6-help">Use the global ξ route only as a legacy screening path. For Belgian EC7 checks, switch back to the EC7 route above.</div>
-                `}
-              </div>
-            </details>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
-            ${cfg.factorMode==='ec7' ? 'Design bearing capacity vs founding depth' : 'Allowable bearing capacity vs founding depth'}
-            <span style="margin-left:6px;color:var(--chart-green)">- drained</span>
-            <span style="margin-left:4px;color:var(--chart-orange)">- undrained</span>
-            <span style="margin-left:4px;color:var(--chart-blue)">- selected Df</span>
-          </div>
-          <div style="position:relative;height:420px"><canvas id="stage6BearingChart" role="img" aria-label="Bearing capacity versus depth"></canvas></div>
-        </div>
-        <div id="stage6SelectedDepth">${stage6BearingSelectedDepthHtml(sel, governing, governingMode)}</div>
-      </div>
-      <div id="stage6UlsParams" style="margin-top:14px" class="info">${stage6BearingMaterialParamsHtml(sel, cfg)}</div>
-      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div id="stage6DrainedFormula" class="info" style="background:var(--bg2)">${stage6BearingDrainedFormulaHtml(sel)}</div>
-        <div id="stage6UndrainedFormula" class="info" style="background:var(--bg2)">${stage6BearingUndrainedFormulaHtml(sel)}</div>
-      </div>
-      ${stage6NoteHtml(stage6BearingNotes(sel, cfg))}
-    </div>
-  `;
 }
 
 function renderStage6SettlementApp(analysis){
@@ -14215,18 +13578,7 @@ function renderStage6(){
 }
 
 function buildStage6BearingChart(){
-  const canvas = stage6DestroyChart('stage6BearingChart');
-  const data = S.stage6Cache?.bearing;
-  if(!canvas || !data || typeof Chart === 'undefined') return;
-  const cfg = S.stage6.bearing;
-  const chart = new Chart(canvas, buildBearingChartConfig({
-    data,
-    cfg,
-    capacityAxisTitle:stage6CapacityLabel(cfg)==='q_d'
-      ? 'Design bearing capacity q_d (kPa)'
-      : 'Allowable bearing capacity q_allow (kPa)'
-  }));
-  canvas._chartRef = chart;
+  bearingApp.buildChart();
 }
 
 function buildStage6SettlementCharts(){

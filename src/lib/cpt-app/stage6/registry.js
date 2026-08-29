@@ -17,9 +17,11 @@
 //             falls back to the first app (today only bishop has one, and it is always true)
 //
 // The retaining-walls app is the installed `retaining/` package (installRetainingApp(ctx)), so the
-// registry is a factory: the host passes that instance in. The other six apps' state modules are
-// pure and imported here directly; their render code still lives in the monolith until step 7.
-import * as bearingState from './apps/bearing-state.js';
+// registry is a factory: the host passes that instance in. The bearing app is the `bearing/` package
+// (step 7, PR 12a): its state (`defaults` / `ensure`) and card text come from bearing/index.js, the
+// host installs it and hands the render adapter to the shell. The other five apps' state modules are
+// pure and imported here directly; their render code still lives in the monolith until their step-7 PRs.
+import * as bearingApp from '../bearing/index.js';
 import * as pileState from './apps/pile-state.js';
 import * as settlementState from './apps/settlement-state.js';
 import * as dewateringState from './apps/dewatering-state.js';
@@ -64,7 +66,7 @@ export function createStage6Registry({ retaining, bishopEnabled = () => true }) 
   const bishop = entry('bishop', 'Seep/Slope', 'Seep / Slope', 'Slope-stability, seepage and deformation workspace on the active CPT soil model.', bishopState);
   bishop.enabled = bishopEnabled;
   return [
-    entry('bearing', 'Bearing', 'Bearing capacity', 'Drained and undrained shallow-foundation resistance vs founding depth.', bearingState),
+    entry('bearing', 'Bearing', bearingApp.cardMeta.title, bearingApp.cardMeta.desc, bearingApp),
     entry('pile', 'Piles', 'Pile capacity', 'Axial pile resistance and settlement from CPT (DM20 / De Beer).', pileState),
     entry('settlement', 'Settlement', 'Settlement', 'SLS settlement from CPT-derived E_oed with Boussinesq or 2:1 stress spread.', settlementState),
     entry('dewatering', 'Dewatering', 'Dewatering', 'Drawdown screening plus induced stress change and settlement at the CPT.', dewateringState),
