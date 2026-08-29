@@ -225,6 +225,23 @@ import {
   drainedFormulaHtml as bearingDrainedFormulaHtml,
   undrainedFormulaHtml as bearingUndrainedFormulaHtml
 } from './bearing/index.js';
+import { setActiveCpt } from './core/state.js';
+import { installProject, bindStageNav } from './project/index.js';
+import { installSection } from './section/index.js';
+import {
+  tuningCtx,
+  fitLayer as fitLayerPure,
+  runTuningFits,
+  acceptFit as acceptFitPure,
+  rejectFit as rejectFitPure,
+  getTuningPreviewM,
+  tuningSliderBounds,
+  tuningPreviewEoedRef,
+  tuningPreviewLineData,
+  tuningAreaHtml,
+  buildTuningCharts as buildTuningChartsPure,
+  updateTuningPreviewM as updateTuningPreviewPure
+} from './tuning/index.js';
 // The bishop mesh target-area helpers keep their monolith names (25 call sites in the bishop
 // region) until the seepslope package (step 9) takes them over with bishop-state.js.
 const {
@@ -431,153 +448,66 @@ const PROJECT={
 // S is a live reference to the active CPT — all existing code uses S unchanged
 let S=PROJECT.cpts[0];
 
-function selectCpt(idx){
-  if(idx<0||idx>=PROJECT.cpts.length)return;
-  stage6BishopStopSearch(true);
-  stage6BishopStopSeepage(true);
-  cancelClassificationRefresh();
+/* Re-point the active CPT: PROJECT.activeCptIdx and S move together (core/state.js
+   setActiveCpt). The only write of S after its declaration. */
+function setActive(idx){
+  S=setActiveCpt(PROJECT, idx);
+  return S;
+}
 
-  // Destroy any existing Chart.js instances tied to the DOM canvases
-  // (they are shared DOM elements, but each CPT has its own chart state)
-  try{
-    Object.values(S.charts||{}).forEach(c=>{if(c&&c.destroy)c.destroy();});
-  }catch(e){}
-
-  PROJECT.activeCptIdx=idx;
-  S=PROJECT.cpts[idx];
-  renderBanner();
-
-  // Reset stage nav to Stage 1
-  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===0));
-  document.querySelectorAll('.si').forEach((s,i)=>{
-    s.classList.remove('active','locked','done');
-    if(i===0)s.classList.add('active'); else s.classList.add('locked');
-  });
-
-  // Sync controls to this CPT's values
-  document.getElementById('wtR').value=S.wt;
-  document.getElementById('wtN').value=S.wt.toFixed(2);
-  document.getElementById('elevN').value=S.elev!=null?S.elev.toFixed(2):'';
-  const smartMergeEl=document.getElementById('smartMergeChk');
-  if(smartMergeEl) smartMergeEl.checked=!!S.smartMerge;
-  const smartSensRange=document.getElementById('smartMergeSensR');
-  const smartSensNum=document.getElementById('smartMergeSensN');
-  if(smartSensRange) smartSensRange.value=(S.smartMergeSensitivity ?? 1.1).toFixed(2);
-  if(smartSensNum) smartSensNum.value=(S.smartMergeSensitivity ?? 1.1).toFixed(2);
-  const smartMergeControls=document.getElementById('smartMergeControls');
-  if(smartMergeControls) smartMergeControls.style.display=S.smartMerge?'':'none';
-  const cptXEl=document.getElementById('cptX');
-  const cptYEl=document.getElementById('cptY');
-  if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
-  if(cptYEl) cptYEl.value=S.y!=null?S.y:'';
-  updateElevSrc(); updateWTDisplay(); updateAssumedRfControls();
-  document.getElementById('btnAlphaA').classList.toggle('active',S.alphaMethod==='A');
-  document.getElementById('btnAlphaB').classList.toggle('active',S.alphaMethod==='B');
-  document.getElementById('btnStiffA').classList.toggle('active',S.stiffMethod==='A');
-  document.getElementById('btnStiffB').classList.toggle('active',S.stiffMethod==='B');
-  // khKvMethod buttons are added in Stage 4; tolerate missing nodes during early init.
-  const btnKhKvA = document.getElementById('btnKhKvA');
-  const btnKhKvB = document.getElementById('btnKhKvB');
-  if (btnKhKvA) btnKhKvA.classList.toggle('active', S.khKvMethod==='A');
-  if (btnKhKvB) btnKhKvB.classList.toggle('active', S.khKvMethod==='B');
-  syncClassificationMethodCards(S.method);
-
-  if(S.data.length){
-    renderMeta();
-    document.getElementById('s1body').style.display='block';
-    // Force fresh chart creation for this CPT
-    S.chartsReady=false;
-    S.charts={};
-    // Rebuild chart area DOM so canvases are fresh
-    const cr=document.getElementById('chartArea');
-    if(cr) cr.innerHTML=`
-      <div class="col-card"><div class="ct">layers</div><svg id="layerColSvg" viewBox="0 0 60 400"></svg></div>
-      <div class="cc"><div class="ct">qc (MPa)</div><div style="position:relative;height:380px"><canvas id="cQc" role="img" aria-label="qc vs depth">qc profile</canvas></div></div>
-      <div class="cc"><div class="ct">fs (kPa)</div><div style="position:relative;height:380px"><canvas id="cFs" role="img" aria-label="fs vs depth">fs profile</canvas></div></div>
-      <div class="cc"><div class="ct">Rf (%)</div><div style="position:relative;height:380px"><canvas id="cRf" role="img" aria-label="Rf vs depth">Rf profile</canvas></div></div>`;
-    requestAnimationFrame(()=>initCharts());
-    drawLayerColumnSvg('layerColSvg', S.layers, S.data[S.data.length-1]?.z+0.5||20);
-  } else {
-    document.getElementById('s1body').style.display='none';
+// Banner, CPT list, phase and stage navigation — src/lib/cpt-app/project/ (PR 14). The
+// wrappers below keep their names for legacyApi and the inline onclick strings; every hook
+// is a hoisted function reference or a closure over PROJECT / S, nothing runs here.
+const projectApp = installProject({
+  document,
+  getProject: () => PROJECT,
+  getActive: () => S,
+  setActive,
+  newCptState,
+  confirm: (message) => confirm(message),
+  // Every Stage 6 worker of the CPT being left, incl. the deformation worker (map §3.4 #8 /
+  // PLAN §4 defect 2): its messages for the old runId would be dropped after the switch and
+  // the originating CPT stayed at deformation.progress.running = true with nothing to finish it.
+  stopWorkers: () => { stage6BishopStopSearch(true); stage6BishopStopSeepage(true); stage6BishopStopDeformation(true); },
+  cancelClassificationRefresh: () => cancelClassificationRefresh(),
+  syncClassificationMethodCards: (method) => syncClassificationMethodCards(method),
+  initCharts: () => initCharts(),
+  drawLayerColumnSvg: (svgId, layers, maxZ) => drawLayerColumnSvg(svgId, layers, maxZ),
+  renderCorrelation: () => stratigraphyApp.render(),
+  renderSection: () => renderSection(),
+  renderStage: (n) => {
+    if(n===2)renderLayers();
+    if(n===3)renderModel();
+    if(n===4)renderTuning();
+    if(n===5)renderStage6();
   }
+});
+
+function selectCpt(idx){
+  projectApp.selectCpt(idx);
 }
 
 function addCpt(){
-  const idx=PROJECT.cpts.length;
-  const cpt=newCptState('CPT-'+(idx+1));
-  PROJECT.cpts.push(cpt);
-  PROJECT.sectionOrder.push(idx);
-  selectCpt(idx);
-  // Open file picker for the new CPT
-  document.getElementById('fi').click();
+  projectApp.addCpt();
 }
 
 function setCptName(idx, name){
-  PROJECT.cpts[idx].id=name.trim()||('CPT-'+(idx+1));
-  renderBanner();
+  projectApp.setCptName(idx, name);
 }
 
 /* ════════════════════════════════
    BANNER + PHASE MANAGEMENT
 ════════════════════════════════ */
 function renderBanner(){
-  const tabs=document.getElementById('cptTabs');
-  if(!tabs)return;
-  tabs.innerHTML=PROJECT.cpts.map((cpt,i)=>{
-    const isActive=i===PROJECT.activeCptIdx;
-    const status=cpt.layers.length?'Ready':cpt.data.length?'Data':'Empty';
-    const statusClass=cpt.layers.length?'ready':cpt.data.length?'data':'empty';
-    return`<div class="cpt-tab ${isActive?'active':''}" data-cpt-index="${i}" role="button" tabindex="0" onclick="selectCpt(${i})" aria-label="Select ${cpt.id}">
-      <span class="cpt-tab__status cpt-tab__status--${statusClass}">${status}</span>
-      <span>${cpt.id}</span>
-      ${PROJECT.cpts.length>1?`<span data-remove="${i}"
-        class="cpt-tab__remove" title="Verwijder CPT" aria-label="Verwijder ${cpt.id}">x</span>`:''}
-    </div>`;
-  }).join('');
-  document.getElementById('projName').value=PROJECT.name;
-  // Event delegation for remove buttons (avoids nested onclick issues)
-  tabs.querySelectorAll('[data-remove]').forEach(el=>{
-    el.addEventListener('click', e=>{
-      e.stopPropagation();
-      const i=+el.dataset.remove;
-      removeCpt(i);
-    });
-  });
-  tabs.querySelectorAll('.cpt-tab').forEach(el=>{
-    el.addEventListener('keydown', e=>{
-      if(e.key!=='Enter'&&e.key!==' ') return;
-      e.preventDefault();
-      selectCpt(+el.dataset.cptIndex || 0);
-    });
-  });
+  projectApp.renderBanner();
 }
 
 function removeCpt(idx){
-  if(PROJECT.cpts.length<=1)return;
-  if(!confirm(`CPT "${PROJECT.cpts[idx].id}" verwijderen?`))return;
-  PROJECT.cpts.splice(idx,1);
-  PROJECT.sectionOrder=PROJECT.sectionOrder.filter(i=>i!==idx).map(i=>i>idx?i-1:i);
-  const newActive=Math.min(PROJECT.activeCptIdx,PROJECT.cpts.length-1);
-  PROJECT.activeCptIdx=newActive;
-  S=PROJECT.cpts[newActive];
-  renderBanner();
-  selectCpt(newActive);
+  projectApp.removeCpt(idx);
 }
 
 function setPhase(ph){
-  PROJECT.phase=ph;
-  ['analysis','correlation','section'].forEach(p=>{
-    document.getElementById('phase'+p[0].toUpperCase()+p.slice(1))?.classList.toggle('active',p===ph);
-  });
-  document.getElementById('phaseA').classList.toggle('active',ph==='analysis');
-  document.getElementById('phaseB').classList.toggle('active',ph==='correlation');
-  document.getElementById('phaseC').classList.toggle('active',ph==='section');
-  document.getElementById('nav').style.display    = ph==='analysis'?'flex':'none';
-  document.querySelector('.wrap').style.display   = ph==='analysis'?'block':'none';
-  document.getElementById('phaseCorr').style.display    = ph==='correlation'?'block':'none';
-  document.getElementById('phaseSection').style.display = ph==='section'?'block':'none';
-  if(ph==='correlation') stratigraphyApp.render();
-  if(ph==='section')     renderSection();
+  projectApp.setPhase(ph);
 }
 
 /* ════════════════════════════════
@@ -637,304 +567,45 @@ function setCptCoord(axis, val){
 /* ════════════════════════════════
    PHASE C — GEOLOGICAL CROSS-SECTION
 ════════════════════════════════ */
+// The SVG builder, tooltip and export live in src/lib/cpt-app/section/ (PR 14); the
+// projection comes from the stratigraphy module (one chainage for the section, the
+// correlation panel and the DXF export).
+const sectionApp = installSection({
+  document,
+  getProject: () => PROJECT,
+  projection: () => stratigraphyApp.projection(),
+  sectionGeometry: () => stratigraphyApp.sectionGeometry(),
+  readToken: readCssToken
+});
+
 function sectionProjection(){
-  // Chainage comes from the stratigraphy module so the section, the
-  // correlation panel and the DXF export share one projection. Each entry
-  // keeps its PROJECT index (cptIdx) — the CPT objects are copies.
-  const proj=stratigraphyApp.projection();
-  if(!proj) return null;
-  return proj.map(({cptIdx,dist})=>({...PROJECT.cpts[cptIdx], cptIdx, dist}));
+  return sectionApp.sectionProjection();
 }
 
 function renderSection(){
-  const svg=document.getElementById('sectionSvg');
-  if(!svg) return;
-  const vex=parseFloat(document.getElementById('vexag')?.value||2);
-
-  const projCpts=sectionProjection();
-  if(!projCpts||projCpts.length<1){
-    svg.innerHTML=`<text x="20" y="40" font-size="13" fill="${readCssToken('--tx3', '#888890')}">Minimaal 2 CPTs met maaiveldshoogte vereist voor doorsnede.</text>`;
-    svg.setAttribute('viewBox','0 0 400 80'); svg.setAttribute('width','400'); svg.setAttribute('height','80');
-    return;
-  }
-
-  // ── Canvas geometry ──
-  // Top margin hosts the legend row + CPT headers; right margin hosts the
-  // rightmost column's depth labels.
-  const ML=65,MR=48,MT=64,MB=50;
-  const W=Math.max(700, projCpts.length*260);
-
-  // Collect all elevations across all CPTs
-  const elevAll=[];
-  projCpts.forEach(c=>{
-    if(c.elev!=null) elevAll.push(c.elev);
-    c.layers.forEach(l=>{ if(c.elev!=null) elevAll.push(c.elev-l.bot); });
-  });
-  if(!elevAll.length){ svg.innerHTML=`<text x="20" y="30" font-size="11" fill="${readCssToken('--tx3', '#888890')}">Geen data.</text>`; return; }
-  const maxElev=Math.max(...elevAll)+1;
-  const minElev=Math.min(...elevAll)-1;
-  const elevRange=maxElev-minElev||1;
-  const H=Math.max(350, elevRange*vex*18);
-
-  const totalW=W+ML+MR, totalH=H+MT+MB;
-  svg.setAttribute('viewBox',`0 0 ${totalW} ${totalH}`);
-  svg.setAttribute('width',totalW); svg.setAttribute('height',totalH);
-
-  const distMin=projCpts[0].dist, distMax=projCpts[projCpts.length-1].dist;
-  const distRange=Math.max(distMax-distMin,1);
-
-  function px(d){ return ML+(d-distMin)/distRange*W; }
-  function py(e){ return MT+(maxElev-e)/elevRange*(H/vex)*vex; }
-  function esc(v){
-    return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-  const svgText = readCssToken('--tx', '#18181a');
-  const svgMuted = readCssToken('--tx2', '#4a4a52');
-  const svgSubtle = readCssToken('--tx3', '#888890');
-  const svgBlue = readCssToken('--chart-blue', '#4F8584');
-
-  let s='';
-
-  // ── Ground fill (below surface, above deepest layer) ──
-  s+='<rect x="0" y="0" width="'+totalW+'" height="'+totalH+'" fill="var(--bg)"/>';
-
-  // ── Elevation grid lines ──
-  const step=elevRange<=5?0.5:elevRange<=15?1:elevRange<=30?2:5;
-  for(let e=Math.ceil(minElev/step)*step; e<=Math.floor(maxElev/step)*step; e=+(e+step).toFixed(4)){
-    const y=py(e);
-    if(y<MT||y>MT+H) continue;
-    s+=`<line x1="${ML}" x2="${ML+W}" y1="${y}" y2="${y}" stroke="rgba(128,128,128,0.10)" stroke-width="0.5"/>`;
-    s+=`<text x="${ML-5}" y="${y+3.5}" font-size="9" text-anchor="end" fill="${svgSubtle}" font-family="sans-serif">${e.toFixed(1)}</text>`;
-  }
-
-  // ── Stratigraphic units ──
-  // Unit polygons come from the stratigraphy module: interpolated between
-  // sampled CPTs, pinched out halfway toward CPTs where a unit is absent
-  // (lenses form separate lobes). Same geometry as the DXF export.
-  const stratGeom=stratigraphyApp.sectionGeometry();
-  if(stratGeom){
-    stratGeom.polygons.forEach(poly=>{
-      const pts=poly.points.map(p=>`${px(p.dist).toFixed(1)},${py(p.taw).toFixed(1)}`).join(' ');
-      s+=`<polygon points="${pts}" fill="${poly.color}" fill-opacity="0.80" stroke="${svgMuted}" stroke-width="0.6"/>`;
-    });
-    // One label per unit, on its widest lobe — anchored at the midpoint of
-    // the lobe's widest span BETWEEN anchor points, so labels sit clear of
-    // the CPT columns and their depth annotations. A paint-order halo keeps
-    // them readable on any unit fill.
-    stratGeom.units.forEach(unit=>{
-      const lobes=stratGeom.polygons.filter(p=>p.unitId===unit.id);
-      if(!lobes.length) return;
-      const widest=lobes.reduce((a,b)=>{
-        const wA=Math.max(...a.points.map(p=>p.dist))-Math.min(...a.points.map(p=>p.dist));
-        const wB=Math.max(...b.points.map(p=>p.dist))-Math.min(...b.points.map(p=>p.dist));
-        return wB>wA?b:a;
-      });
-      // Vertical extent of the lobe at each anchor distance.
-      const spanAt=new Map();
-      widest.points.forEach(p=>{
-        const cur=spanAt.get(p.dist)||{top:-Infinity,bot:Infinity};
-        cur.top=Math.max(cur.top,p.taw);
-        cur.bot=Math.min(cur.bot,p.taw);
-        spanAt.set(p.dist,cur);
-      });
-      const anchors=[...spanAt.entries()].map(([dist,v])=>({dist,...v})).sort((a,b)=>a.dist-b.dist);
-      if(anchors.length<2) return;
-      // Widest gap between consecutive anchors — its midpoint is column-free.
-      let seg=0, segW=-1;
-      for(let i=1;i<anchors.length;i++){
-        const w=anchors[i].dist-anchors[i-1].dist;
-        if(w>segW){segW=w;seg=i-1;}
-      }
-      const a1=anchors[seg], a2=anchors[seg+1];
-      const labelDist=(a1.dist+a2.dist)/2;
-      const topMid=(a1.top+a2.top)/2, botMid=(a1.bot+a2.bot)/2;
-      const hPx=Math.abs(py(botMid)-py(topMid));
-      if(hPx>13){
-        const label=`${unit.letter} — ${(unit.subtype||unit.type).split('/')[0].trim()}`;
-        s+=`<text x="${px(labelDist).toFixed(1)}" y="${((py(topMid)+py(botMid))/2+3.5).toFixed(1)}" font-size="9" font-weight="600" text-anchor="middle"
-          fill="rgba(24,24,26,0.72)" stroke="var(--bg)" stroke-width="3" paint-order="stroke" stroke-linejoin="round"
-          font-family="sans-serif">${esc(label)}</text>`;
-      }
-    });
-  }
-
-  // ── Fill background below correlated stratigraphy (deepest layer downward) ──
-  // Draw a ground fill below the deepest confirmed layer in each CPT
-  projCpts.forEach(c=>{
-    if(!c.elev||!c.layers.length) return;
-    const deepBot=c.elev-c.layers[c.layers.length-1].bot;
-    const x=px(c.dist), colW=14;
-    s+=`<rect x="${(x-colW/2).toFixed(1)}" y="${py(deepBot).toFixed(1)}" width="${colW}" height="${(totalH-py(deepBot)).toFixed(1)}" fill="#b8a99a" fill-opacity="0.3"/>`;
-  });
-
-  // ── CPT columns ──
-  projCpts.forEach(c=>{
-    if(!c.elev) return;
-    const xc=px(c.dist), colW=14;
-    // Surface to toe vertical line
-    const toeElev=c.layers.length?c.elev-c.layers[c.layers.length-1].bot:c.elev-10;
-    s+=`<line x1="${xc}" x2="${xc}" y1="${py(c.elev)}" y2="${py(toeElev)}" stroke="${svgMuted}" stroke-width="0.8" stroke-dasharray="3,2"/>`;
-
-    c.layers.forEach(l=>{
-      const fill=SCFILL[l.type]||'#D3D1C7';
-      const y1=py(c.elev-l.top), y2=py(c.elev-l.bot);
-      const h=Math.max(y2-y1,1.5);
-      const topTaw=(c.elev-l.top).toFixed(2);
-      const botTaw=(c.elev-l.bot).toFixed(2);
-      const avgFsTxt=l.avgFs!=null?(l.avgFs*1000).toFixed(1):'—';
-      const avgRfTxt=l.avgRf!=null?l.avgRf.toFixed(2):'—';
-      const subtypeTxt=l.subtype||'—';
-      s+=`<rect class="section-layer-hit" data-section-layer="1"
-        data-cpt="${esc(c.id)}"
-        data-type="${esc(l.type)}"
-        data-subtype="${esc(subtypeTxt)}"
-        data-top="${l.top.toFixed(2)}"
-        data-bot="${l.bot.toFixed(2)}"
-        data-toptaw="${topTaw}"
-        data-bottaw="${botTaw}"
-        data-thk="${(l.bot-l.top).toFixed(2)}"
-        data-qc="${l.avgQc.toFixed(2)}"
-        data-fs="${avgFsTxt}"
-        data-rf="${avgRfTxt}"
-        data-g="${l.g}"
-        data-gs="${l.gs}"
-        data-phi="${l.phi}"
-        data-c="${l.c}"
-        data-cu="${l.cu}"
-        x="${(xc-colW/2).toFixed(1)}" y="${y1.toFixed(1)}" width="${colW}" height="${h.toFixed(1)}"
-        fill="${fill}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`;
-      // Layer boundary tick (right of column)
-      s+=`<line x1="${(xc+colW/2).toFixed(1)}" x2="${(xc+colW/2+5).toFixed(1)}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${svgMuted}" stroke-width="0.6"/>`;
-      // Depth label right of the column: keeps the leftmost column's labels
-      // off the elevation axis and all labels off the unit-name anchors.
-      if(h>12){
-        const elmid=(y1+y2)/2;
-        s+=`<text x="${(xc+colW/2+7).toFixed(1)}" y="${(elmid+3).toFixed(1)}" font-size="7.5" text-anchor="start" fill="${svgMuted}" paint-order="stroke" stroke="var(--bg)" stroke-width="2.5" stroke-linejoin="round" font-family="sans-serif">${(c.elev-l.bot).toFixed(1)}</text>`;
-      }
-    });
-
-    // WT
-    if(c.wt!=null){
-      const wtY=py(c.elev-c.wt);
-      s+=`<line x1="${(xc-18).toFixed(1)}" x2="${(xc+18).toFixed(1)}" y1="${wtY.toFixed(1)}" y2="${wtY.toFixed(1)}" stroke="${svgBlue}" stroke-width="2" stroke-dasharray="5,3"/>`;
-    }
-    // CPT label
-    s+=`<text x="${xc}" y="${(MT-14).toFixed(1)}" font-size="10" text-anchor="middle" font-weight="600" fill="${svgText}" font-family="sans-serif">${c.id}</text>`;
-    s+=`<text x="${xc}" y="${(MT-4).toFixed(1)}" font-size="9" text-anchor="middle" fill="${svgSubtle}" font-family="sans-serif">${c.elev!=null?c.elev.toFixed(2)+' m TAW':''}</text>`;
-    // Distance from start
-    const d0=(c.dist-distMin).toFixed(0);
-    s+=`<text x="${xc}" y="${(totalH-8).toFixed(1)}" font-size="9" text-anchor="middle" fill="${svgSubtle}" font-family="sans-serif">${d0}m</text>`;
-  });
-
-  // ── WT interpolated line across section ──
-  const wtPts=projCpts.filter(c=>c.wt!=null&&c.elev!=null)
-    .map(c=>`${px(c.dist).toFixed(1)},${py(c.elev-c.wt).toFixed(1)}`);
-  if(wtPts.length>=2)
-    s+=`<polyline points="${wtPts.join(' ')}" fill="none" stroke="${svgBlue}" stroke-width="1.8" stroke-dasharray="7,5"/>
-        <text x="${(ML+10).toFixed(1)}" y="${py(projCpts.find(c=>c.wt!=null)?.elev-(projCpts.find(c=>c.wt!=null)?.wt||0)||maxElev).toFixed(1)}" font-size="9" fill="${svgBlue}" font-family="sans-serif">WT</text>`;
-
-  // ── Axes labels ──
-  s+=`<text x="${(ML+W/2).toFixed(1)}" y="${(totalH-6).toFixed(1)}" font-size="10" text-anchor="middle" fill="${svgMuted}" font-family="sans-serif">Afstand langs doorsnede (m) — vex ×${vex}</text>`;
-  s+=`<text x="12" y="${(MT+H/2).toFixed(1)}" font-size="10" text-anchor="middle" fill="${svgMuted}" font-family="sans-serif" transform="rotate(-90,12,${(MT+H/2).toFixed(1)})">Hoogte (m TAW)</text>`;
-
-  // ── Legend — one horizontal chip row in the top band, clear of the plot ──
-  const legendTypes=[...new Set(PROJECT.cpts.flatMap(c=>c.layers.map(l=>l.type)))].slice(0,8);
-  let lx=ML;
-  const ly=14;
-  legendTypes.forEach(t=>{
-    s+=`<rect x="${lx}" y="${ly}" width="10" height="10" rx="2" fill="${SCFILL[t]||'#D3D1C7'}" stroke="rgba(0,0,0,0.2)" stroke-width="0.3"/>`;
-    s+=`<text x="${lx+14}" y="${ly+8.5}" font-size="8.5" fill="${svgMuted}" font-family="sans-serif">${t}</text>`;
-    lx+=14+t.length*4.6+16;
-  });
-
-  svg.innerHTML=s;
-  bindSectionTooltip();
+  sectionApp.renderSection();
 }
 
 function bindSectionTooltip(){
-  const svg=document.getElementById('sectionSvg');
-  const canvas=document.getElementById('sectionCanvas');
-  const tip=document.getElementById('sectionTip');
-  if(!svg||!canvas||!tip||svg.dataset.tipBound==='1') return;
-
-  function hideTip(){ tip.style.display='none'; }
-  function showTip(target, evt){
-    tip.innerHTML=`<strong>${target.dataset.cpt||'CPT'} — ${target.dataset.type||''}</strong>
-      <div class="mut">${target.dataset.subtype||'—'}</div>
-      <div class="row"><span>Depth</span><span>${target.dataset.top}–${target.dataset.bot} m</span></div>
-      <div class="row"><span>TAW</span><span>${target.dataset.toptaw} to ${target.dataset.bottaw}</span></div>
-      <div class="row"><span>Thickness</span><span>${target.dataset.thk} m</span></div>
-      <div class="row"><span>avg qc</span><span>${target.dataset.qc} MPa</span></div>
-      <div class="row"><span>avg fs</span><span>${target.dataset.fs} kPa</span></div>
-      <div class="row"><span>avg Rf</span><span>${target.dataset.rf} %</span></div>
-      <div class="row"><span>γ / γ_sat</span><span>${target.dataset.g} / ${target.dataset.gs}</span></div>
-      <div class="row"><span>φ' / c' / cu</span><span>${target.dataset.phi}° / ${target.dataset.c} / ${target.dataset.cu}</span></div>`;
-    tip.style.display='block';
-    const rect=canvas.getBoundingClientRect();
-    const pad=14;
-    const tipW=260;
-    const tipH=190;
-    let left=evt.clientX-rect.left+16+canvas.scrollLeft;
-    let top =evt.clientY-rect.top +16+canvas.scrollTop;
-    const maxLeft=canvas.scrollLeft+rect.width-tipW-pad;
-    const maxTop =canvas.scrollTop +rect.height-tipH-pad;
-    if(left>maxLeft) left=Math.max(canvas.scrollLeft+pad, evt.clientX-rect.left-tipW-16+canvas.scrollLeft);
-    if(top>maxTop)   top =Math.max(canvas.scrollTop+pad, evt.clientY-rect.top-tipH-16+canvas.scrollTop);
-    tip.style.left=`${left}px`;
-    tip.style.top=`${top}px`;
-  }
-
-  svg.addEventListener('mousemove',e=>{
-    const target=e.target.closest?.('[data-section-layer]');
-    if(!target){ hideTip(); return; }
-    showTip(target,e);
-  });
-  svg.addEventListener('mouseleave',hideTip);
-  svg.dataset.tipBound='1';
+  sectionApp.bindSectionTooltip();
 }
 
 function exportSectionSVG(){
-  const svg=document.getElementById('sectionSvg');
-  if(!svg)return;
-  const blob=new Blob(['<?xml version="1.0"?>'+svg.outerHTML],{type:'image/svg+xml'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`${PROJECT.name}_doorsnede.svg`;
-  a.click();
+  sectionApp.exportSectionSVG();
 }
 
 /* ════════════════════════════════
    SOIL DEFS
 ════════════════════════════════ */
 const SC = SOIL_CLASS_NAMES;
-const SCFILL = SOIL_FILL_COLORS;
 
 /* ════════════════════════════════
    NAVIGATION
 ════════════════════════════════ */
 function goS(n){
-  // Track highest stage reached so nav tabs stay unlocked
-  if(!S._maxStage) S._maxStage=0;
-  if(n>S._maxStage) S._maxStage=n;
-  const maxReached=S._maxStage;
-
-  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
-  document.querySelectorAll('.si').forEach((s,i)=>{
-    s.classList.remove('active','locked','done');
-    if(i===n) s.classList.add('active');
-    else if(i<=maxReached) s.classList.add('done');  // all reached stages stay clickable
-    else s.classList.add('locked');
-  });
-  if(n===2)renderLayers();
-  if(n===3)renderModel();
-  if(n===4)renderTuning();
-  if(n===5)renderStage6();
+  projectApp.goS(n);
 }
-document.querySelectorAll('.si').forEach(s=>{
-  s.addEventListener('click',()=>{
-    if(!s.classList.contains('locked'))goS(+s.dataset.s);
-  });
-});
+bindStageNav(document, goS);
 
 
 /* ════════════════════════════════
@@ -1888,456 +1559,44 @@ function renderModel(){
    Reliable if: n>=10 readings, stress range factor >= 1.5, top layer > 0.5m
 ════════════════════════════════ */
 
+/* Stage 5 — the fit, the cards and the charts live in src/lib/cpt-app/tuning/ (PR 14).
+   These wrappers feed them the active CPT; the render-after-write and the Stage 4 refresh
+   of acceptFit stay here (map §3.4 #2/#3). */
 function fitLayer(l){
-  // Pull the classified rows that belong to this layer depth range
-  const rows = S.classified.filter(r =>
-    r.z >= l.top && r.z <= l.bot && r.qc > 0.02
-  );
-  if(rows.length < 5) return null; // insufficient data
-
-  const pref = 100;
-  const cotphi = l.phi > 0
-    ? Math.cos(l.phi*Math.PI/180) / Math.sin(l.phi*Math.PI/180)
-    : 0;
-  const cCotPhi = l.c * cotphi;
-
-  // CUR 2003-7 binary default — must match hsParams().
-  const mDefault =
-      (l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic'||l.type==='Sandy clay')
-        ? 1.0
-        : 0.50;
-  const alphaDefault = (l.ovr.aE ? l.aE_ovr
-    : S.alphaMethod==='B' ? alphaEB(l.type, l.avgQc, l.subtype, l.avgRf ?? assumedRfValue())
-    : (AE[l.type] || 10));
-
-  // Build the point cloud directly from CPT rows in the layer.
-  // Stage 5 only: Method B uses the row qc for pointwise Eoed,i reconstruction.
-  const pts = [];
-  for(const r of rows){
-    const {sigVeff} = stressAt(r.z, l.gs, l.g);
-    const denom = pref + cCotPhi;
-    const numer = sigVeff + cCotPhi;
-    if(numer <= 0 || denom <= 0) continue;
-
-    const ratio = numer / denom;
-    if(ratio <= 0) continue;
-
-    const aE_row = l.ovr.aE ? l.aE_ovr
-      : S.alphaMethod==='B' ? alphaEB(l.type, r.qc, l.subtype, r.rf ?? l.avgRf ?? assumedRfValue())
-      : (AE[l.type] || 10);
-    const Eoed_i_row = aE_row * r.qc * 1000;
-    if(Eoed_i_row <= 0) continue;
-
-    pts.push({
-      z:r.z,
-      x:Math.log(ratio),
-      y:Math.log(Eoed_i_row),
-      ratio,
-      sigVeff,
-      aE:aE_row,
-      Eoed_i:Eoed_i_row
-    });
-  }
-
-  const n = pts.length;
-  if(n < 5) return null;
-
-  // Stress range check
-  const sigVeffs = pts.map(p => p.sigVeff);
-  const svMin = Math.min(...sigVeffs), svMax = Math.max(...sigVeffs);
-  const stressRangeFactor = svMin > 0 ? svMax / svMin : 1;
-
-  // OLS
-  const Xs = pts.map(p=>p.x);
-  const Ys = pts.map(p=>p.y);
-  const meanX = Xs.reduce((s,v)=>s+v,0)/n;
-  const meanY = Ys.reduce((s,v)=>s+v,0)/n;
-  const covXY = Xs.reduce((s,x,i)=>s+(x-meanX)*(Ys[i]-meanY),0)/n;
-  const varX  = Xs.reduce((s,x)=>s+(x-meanX)**2,0)/n;
-
-  if(Math.abs(varX) < 1e-6) return null; // no depth variation
-
-  const m_raw = covXY/varX;
-  if(!isFinite(m_raw)) return null;
-
-  const m_fit = +m_raw.toFixed(3);
-  const Eoed_ref_fit = +Math.exp(meanY - m_fit*meanX).toFixed(0);
-  const invalidSlope = m_fit <= 0;
-
-  // R²
-  const SS_res = Xs.reduce((s,x,i)=>{
-    const Ypred = meanY - m_raw*meanX + m_raw*x;
-    return s + (Ys[i]-Ypred)**2;
-  },0);
-  const SS_tot = Ys.reduce((s,y)=>s+(y-meanY)**2,0);
-  const R2 = SS_tot > 0 ? +(1 - SS_res/SS_tot).toFixed(3) : 0;
-
-  // Quality flag
-  let quality, qMsg;
-  if(n < 10)                         { quality='warn'; qMsg='Weinig meetpunten (n='+n+')'; }
-  else if(stressRangeFactor < 1.5)   { quality='warn'; qMsg='Spanningsbereik te klein (factor '+stressRangeFactor.toFixed(1)+')'; }
-  else if(l.top < 0.5)               { quality='warn'; qMsg='Laag te ondiep (<0.5m)'; }
-  else if(invalidSlope)              { quality='invalid'; qMsg='Negatieve of nul-helling gevonden — fit ongeldig'; }
-  else if(m_fit < 0 || m_fit > 1.5)  { quality='warn'; qMsg='m buiten verwacht bereik ('+m_fit.toFixed(2)+')'; }
-  else if(R2 < 0.50)                 { quality='warn'; qMsg='Lage R²='+R2+' — heterogene laag?'; }
-  else if(R2 < 0.70)                 { quality='ok';   qMsg='Acceptabel (R²='+R2+')'; }
-  else                               { quality='good'; qMsg='Goede fit (R²='+R2+')'; }
-
-  // Build depth-profile arrays for physical-space chart
-  const depthPts = pts.map(p=>p.z);
-  const EoedI_pts = pts.map(p=>p.Eoed_i); // CPT-derived per row
-  const aE_pts = pts.map(p=>+p.aE.toFixed(3));
-
-  // HS model curve: Eoed(z) = Eoed_ref * ratio(z)^m
-  const makeHScurve = (Eoed_ref_val, m_val) => pts.map(p =>
-    Eoed_ref_val * Math.pow(Math.max(p.ratio, 0.05), m_val)
-  );
-
-  // For default m: recompute Eoed_ref at midZ with default m
-  const midZ2 = (l.top+l.bot)/2;
-  const {sigVeff: sv_mid2} = stressAt(midZ2, l.gs, l.g);
-  const ratioMid = Math.max((sv_mid2+cCotPhi)/(pref+cCotPhi), 0.05);
-  const Eoed_ref_default = (alphaDefault * l.avgQc * 1000) / Math.pow(ratioMid, mDefault);
-
-  const hsDefault_pts = makeHScurve(Eoed_ref_default, mDefault);
-  const hsFit_pts     = makeHScurve(Eoed_ref_fit, m_fit);
-
-  return{m_fit, Eoed_ref_fit, R2, n, stressRangeFactor:+stressRangeFactor.toFixed(2),
-         quality, qMsg, invalidSlope, Xs, Ys, meanX:+meanX.toFixed(6), meanY:+meanY.toFixed(6), m_raw:+m_raw.toFixed(4),
-         depthPts, EoedI_pts, aE_pts, hsDefault_pts, hsFit_pts,
-         Eoed_ref_default, mDefault, alphaDefault:+alphaDefault.toFixed(3)};
+  return fitLayerPure(l, tuningCtx(S));
 }
 
 function runTuning(){
-  S.tuning = S.layers.map((l,i)=>{
-    const fit = fitLayer(l);
-    return{i, fit, previewM:fit ? (fit.invalidSlope ? fit.mDefault : fit.m_fit) : null};
-  });
+  S.tuning = runTuningFits(S.layers, tuningCtx(S));
   renderTuning();
 }
 
 function acceptFit(i){
-  const t = S.tuning?.[i];
-  const previewM = Number(t?.previewM);
-  if(!t||!t.fit||!isFinite(previewM)||previewM<=0) return;
-  S.layers[i].m_ovr = previewM;
-  S.layers[i].ovr.m = true;
-  // Also update Eoed,ref override? No — Eoed,ref is derived from m in hsParams.
-  // Accepting m is enough: renderModel will recompute Eoed,ref with the new m.
+  if(!acceptFitPure(S, i)) return;
   renderTuning();
   // Re-render Stage 4 in background so it stays current
   if(document.getElementById('p3').classList.contains('active')) renderModel();
 }
 
 function rejectFit(i){
-  if(!S.layers[i]) return;
-  delete S.layers[i].m_ovr;
-  S.layers[i].ovr.m = false;
+  if(!rejectFitPure(S, i)) return;
   renderTuning();
 }
 
-function getTuningPreviewM(t){
-  if(!t||!t.fit) return NaN;
-  const m = Number(t.previewM);
-  if(isFinite(m) && m > 0) return m;
-  return t.fit.invalidSlope ? t.fit.mDefault : t.fit.m_fit;
-}
-
-function tuningSliderBounds(fit){
-  const anchors=[fit.mDefault, fit.m_fit, 0.01].filter(v=>isFinite(v) && v>0);
-  const min=Math.max(0.01, Math.min(...anchors) - 0.4);
-  const max=Math.min(2.0, Math.max(...anchors) + 0.4);
-  return{
-    min:+min.toFixed(2),
-    max:+Math.max(max, min + 0.2).toFixed(2),
-    step:0.01
-  };
-}
-
-function tuningPreviewEoedRef(fit, previewM){
-  return +Math.exp(fit.meanY - previewM*fit.meanX).toFixed(0);
-}
-
-function tuningPreviewLineData(fit, previewM){
-  const Eoed_ref = tuningPreviewEoedRef(fit, previewM);
-  const Xmin = Math.min(...fit.Xs)-0.1, Xmax = Math.max(...fit.Xs)+0.1;
-  const linePts = 30;
-  const logLine = Array.from({length:linePts},(_,k)=>{
-    const x=Xmin+(Xmax-Xmin)*k/(linePts-1);
-    return{x, y: Math.log(Eoed_ref)+previewM*x};
-  });
-  const depthLine = fit.depthPts.map((z,i)=>({x:Eoed_ref*Math.exp(previewM*fit.Xs[i]), y:z}));
-  return{Eoed_ref, logLine, depthLine};
-}
-
 function updateTuningPreviewM(i, rawValue){
-  const t = S.tuning?.[i];
-  if(!t||!t.fit) return;
-
-  const parsed = Number(rawValue);
-  t.previewM = parsed;
-  const chartRed = readCssToken('--chart-red', '#9B3A32');
-  const chartGreen = readCssToken('--chart-green', '#3D6B6A');
-
-  const invalid = !isFinite(parsed) || parsed <= 0;
-  const previewM = invalid ? t.fit.m_fit : parsed;
-  const preview = tuningPreviewLineData(t.fit, previewM);
-
-  const input=document.getElementById('fitPreviewInput'+i);
-  if(input){
-    input.style.borderColor = invalid ? 'var(--bad)' : 'var(--bd2)';
-    input.style.color = invalid ? 'var(--bad-text)' : 'var(--tx)';
-  }
-
-  const mEl=document.getElementById('fitPreviewM'+i);
-  if(mEl) mEl.textContent = invalid ? '—' : previewM.toFixed(3);
-
-  const refEl=document.getElementById('fitPreviewRef'+i);
-  if(refEl) refEl.textContent = invalid ? '—' : preview.Eoed_ref.toLocaleString()+' kPa';
-
-  const noteEl=document.getElementById('fitPreviewNote'+i);
-  if(noteEl){
-    noteEl.textContent = invalid
-      ? 'Preview ongeldig: m moet groter zijn dan 0'
-      : (Math.abs(previewM - t.fit.m_fit) < 1e-6 ? 'Preview volgt de auto-fit' : 'Preview wijkt af van de auto-fit');
-    noteEl.style.color = invalid ? 'var(--bad-text)' : 'var(--tx2)';
-  }
-
-  const btn=document.getElementById('fitAcceptBtn'+i);
-  if(btn){
-    btn.disabled = invalid;
-    btn.style.opacity = invalid ? '0.5' : '1';
-    btn.style.cursor = invalid ? 'not-allowed' : '';
-  }
-
-  const regCanvas=document.getElementById('tChart'+i);
-  const regChart=regCanvas?regCanvas._chartRef:null;
-  if(regChart){
-    regChart.data.datasets[2].data = preview.logLine;
-    regChart.data.datasets[2].label = 'Preview m='+previewM.toFixed(2);
-    regChart.data.datasets[2].borderColor = invalid ? chartRed : chartGreen;
-    regChart.data.datasets[2].borderDash = invalid ? [5,4] : (t.fit.quality==='warn'?[5,4]:[]);
-    regChart.update('none');
-  }
-
-  const depCanvas=document.getElementById('tChart'+i+'d');
-  const depChart=depCanvas?depCanvas._chartRef:null;
-  if(depChart){
-    depChart.data.datasets[3].data = preview.depthLine;
-    depChart.data.datasets[3].label = 'HS preview m='+previewM.toFixed(2);
-    depChart.data.datasets[3].borderColor = invalid ? chartRed : chartGreen;
-    depChart.data.datasets[3].borderDash = invalid ? [5,4] : (t.fit.quality==='warn'?[5,4]:[]);
-    depChart.update('none');
-  }
+  updateTuningPreviewPure(document, S.tuning, i, rawValue);
 }
 
 function renderTuning(){
   const el = document.getElementById('tuningArea');
-  if(!S.tuning){
-    el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Klik op "Run fitting" om de regressie per laag te berekenen.</div>';
-    return;
-  }
-
-  const pref=100;
-  el.innerHTML = S.tuning.map(t=>{
-    const l = S.layers[t.i];
-    const fit = t.fit;
-    const hasAccepted = !!l.ovr.m;
-    const badge = SC[l.type]||'s-sand';
-
-    if(!fit){
-      return`<div class="mc2" style="margin-bottom:10px">
-        <div class="mc2-head">
-          <span class="sb ${badge}">${l.type}</span>
-          <span style="font-size:13px;font-weight:600">Laag ${t.i+1} — ${l.top.toFixed(2)}–${l.bot.toFixed(2)} m</span>
-          <span style="font-size:11px;color:var(--wn);margin-left:auto">Onvoldoende data voor regressie (n &lt; 5 of geen variatie)</span>
-        </div>
-      </div>`;
-    }
-
-    const qColor = fit.quality==='good'?'var(--ok-text)'
-      : fit.quality==='ok'?'var(--wn)'
-      : fit.quality==='invalid'?'var(--bad-text)'
-      : 'var(--bad-text)';
-
-    // Build scatter chart data
-    const chartId = 'tChart'+t.i;
-    const previewM = getTuningPreviewM(t);
-    const preview = tuningPreviewLineData(fit, previewM);
-    const slider = tuningSliderBounds(fit);
-
-    // Default line points stay anchored to the type-default baseline.
-    const m_def = fit.mDefault;
-    const Eoed_ref_default = fit.Eoed_ref_default;
-
-    // X range for model lines
-    const Xmin = Math.min(...fit.Xs)-0.1, Xmax = Math.max(...fit.Xs)+0.1;
-    const linePts = 30;
-    const defaultLineY = Array.from({length:linePts},(_,k)=>{
-      const x=Xmin+(Xmax-Xmin)*k/(linePts-1);
-      return{x, y: Math.log(Eoed_ref_default)+m_def*x};
-    });
-    const scatterData = fit.Xs.map((x,k)=>({x,y:fit.Ys[k]}));
-
-    return`<div class="mc2" style="margin-bottom:12px">
-      <div class="mc2-head" style="margin-bottom:12px">
-        <span class="sb ${badge}">${l.type}</span>
-        <span style="font-size:13px;font-weight:600">Laag ${t.i+1} — ${l.top.toFixed(2)}–${l.bot.toFixed(2)} m</span>
-        <span style="font-size:11px;font-style:italic;color:var(--tx2)">${l.subtype||''}</span>
-        <span style="font-size:11px;font-weight:600;color:${qColor};margin-left:auto">${fit.qMsg}</span>
-      </div>
-      <!-- 3-column: depth profile | log-log fit | numbers -->
-      <div style="display:grid;grid-template-columns:200px 1fr 200px;gap:14px;align-items:start">
-
-        <!-- LEFT: Eoed vs depth (physical space) -->
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
-            E_oed vs diepte (kPa)
-            <span style="margin-left:6px;color:var(--chart-purple)">─ default</span>
-            <span style="margin-left:4px;color:var(--chart-green)">─ preview</span>
-            <span style="margin-left:4px;color:rgba(53,162,235,0.7)">· CPT</span>
-          </div>
-          <div style="position:relative;height:280px">
-            <canvas id="${chartId+'d'}" role="img" aria-label="Eoed depth profile layer ${t.i+1}"></canvas>
-          </div>
-        </div>
-
-        <!-- MIDDLE: log-log regression plot -->
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
-            ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
-            <span style="margin-left:6px;color:var(--chart-purple)">─ default m=${m_def.toFixed(2)}</span>
-            <span style="margin-left:4px;color:var(--chart-green)">─ preview m=${previewM.toFixed(2)}</span>
-          </div>
-          <div style="position:relative;height:280px">
-            <canvas id="${chartId}" role="img" aria-label="m fitting regression layer ${t.i+1}"></canvas>
-          </div>
-        </div>
-
-        <!-- RIGHT: numbers + accept/reject -->
-        <div>
-          <table class="pt" style="margin-bottom:12px">
-            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Type-default</td></tr>
-            <tr><td>m</td><td>${m_def.toFixed(2)}</td></tr>
-            <tr><td>E_oed,ref</td><td>${Eoed_ref_default.toLocaleString()} kPa</td></tr>
-            <tr><td>&alpha;E basis</td><td>${S.alphaMethod==='B'?'puntgewijs qc-afhankelijk':'vast per laag'} (${fit.alphaDefault.toFixed(2)})</td></tr>
-            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--ok-text);padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Auto-fit</td></tr>
-            <tr><td>m</td><td style="color:var(--ok-text);font-weight:700">${fit.m_fit.toFixed(3)}</td></tr>
-            <tr><td>E_oed,ref</td><td style="color:var(--ok-text);font-weight:600">${fit.Eoed_ref_fit.toLocaleString()} kPa</td></tr>
-            <tr><td style="padding-top:6px">R²</td><td style="padding-top:6px">${fit.R2.toFixed(3)}</td></tr>
-            <tr><td>n</td><td>${fit.n} punten</td></tr>
-            <tr><td>σ' bereik</td><td>×${fit.stressRangeFactor}</td></tr>
-            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding:6px 0 4px;border-top:1px solid var(--bd);text-transform:uppercase">Preview / engineer tweak</td></tr>
-            <tr>
-              <td>m</td>
-              <td>
-                <input id="fitPreviewInput${t.i}" type="range" min="${slider.min}" max="${slider.max}" step="${slider.step}" value="${previewM.toFixed(3)}"
-                  oninput="updateTuningPreviewM(${t.i}, this.value)"
-                  style="width:100%;accent-color:var(--ac)">
-                <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx3);margin-top:2px">
-                  <span>${slider.min.toFixed(2)}</span>
-                  <span>${slider.max.toFixed(2)}</span>
-                </div>
-                <div id="fitPreviewNote${t.i}" style="font-size:10px;color:var(--tx2);margin-top:4px">
-                  ${fit.invalidSlope?'Auto-fit was ongeldig; slider start vanaf default m':'Preview volgt de auto-fit'}
-                </div>
-              </td>
-            </tr>
-            <tr><td>Preview m</td><td id="fitPreviewM${t.i}">${previewM.toFixed(3)}</td></tr>
-            <tr><td>Preview E_oed,ref</td><td id="fitPreviewRef${t.i}">${preview.Eoed_ref.toLocaleString()} kPa</td></tr>
-          </table>
-          ${hasAccepted
-            ?`<div style="font-size:11px;color:var(--ok-text);font-weight:600;margin-bottom:8px">✓ Huidige override m = ${l.m_ovr.toFixed(3)}</div>`
-            :`<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Standaard m actief tot je expliciet accepteert</div>`
-          }
-          <button id="fitAcceptBtn${t.i}" class="btn pri sm" onclick="acceptFit(${t.i})" ${fit.quality==='warn'||fit.quality==='invalid'?'style="background:var(--wn);border-color:var(--wn)"':''}>
-            ${fit.quality==='warn'?'⚠ ':''}Accepteer fit
-          </button>
-          ${hasAccepted?`<button class="btn sm" onclick="rejectFit(${t.i})" style="margin-left:6px">Herstel default m</button>`:''}
-        </div>
-      </div>
-    </div>
-    <div data-chart-pending="${chartId}"
-         data-chart-depth="${chartId+'d'}"
-         data-scatter='${JSON.stringify(scatterData).replace(/'/g,"&#39;")}'
-         data-default-line='${JSON.stringify(defaultLineY).replace(/'/g,"&#39;")}'
-         data-fit-line='${JSON.stringify(preview.logLine).replace(/'/g,"&#39;")}'
-         data-depth-pts='${JSON.stringify(fit.depthPts).replace(/'/g,"&#39;")}'
-         data-eoed-i='${JSON.stringify(fit.EoedI_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
-         data-hs-default='${JSON.stringify(fit.hsDefault_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
-         data-hs-fit='${JSON.stringify(preview.depthLine.map(v=>+v.x.toFixed(0))).replace(/'/g,"&#39;")}'
-         data-layer-top="${l.top.toFixed(3)}"
-         data-layer-bot="${l.bot.toFixed(3)}"
-         data-wt="${S.wt.toFixed(3)}"
-         data-m-def="${m_def.toFixed(2)}"
-         data-m-fit="${previewM.toFixed(2)}"
-         data-invalid-slope="0"
-         data-quality="${fit.quality}">
-    </div>`;
-  }).join('');
+  el.innerHTML = tuningAreaHtml(S);
+  if(!S.tuning) return;
   // Build charts after DOM settles.
   setTimeout(buildTuningCharts, 50);
 }
-/* Build tuning charts after DOM is rendered (avoids early tag close issue) */
-function buildTuningCharts(){
-  document.querySelectorAll('[data-chart-pending]').forEach(el=>{
-    // ── Log-log regression chart ──
-    const id = el.dataset.chartPending;
-    const canvas = document.getElementById(id);
-    if(canvas && !canvas._built){
-      canvas._built = true;
-      try{
-        const scatter  = JSON.parse(el.dataset.scatter);
-        const defLine  = JSON.parse(el.dataset.defaultLine);
-        const fitLine  = JSON.parse(el.dataset.fitLine);
-        const mDef = el.dataset.mDef, mFit = el.dataset.mFit;
-        const invalidSlope = el.dataset.invalidSlope === '1';
-        const chart = new Chart(canvas, buildTuningRegressionChartConfig({
-          scatter,
-          defaultLine:defLine,
-          previewLine:fitLine,
-          mDefault:mDef,
-          mPreview:mFit,
-          quality:el.dataset.quality,
-          invalidSlope
-        }));
-        canvas._chartRef = chart;
-      }catch(e){console.warn('Log-log chart error:',e);}
-    }
 
-    // ── Depth-profile chart ──
-    const idD = el.dataset.chartDepth;
-    const canvasD = idD ? document.getElementById(idD) : null;
-    if(canvasD && !canvasD._built){
-      canvasD._built = true;
-      try{
-        const depths    = JSON.parse(el.dataset.depthPts);
-        const EoedI     = JSON.parse(el.dataset.eoedI);
-        const hsDefault = JSON.parse(el.dataset.hsDefault);
-        const hsFit     = JSON.parse(el.dataset.hsFit);
-        const layerTop  = parseFloat(el.dataset.layerTop);
-        const layerBot  = parseFloat(el.dataset.layerBot);
-        const wt        = parseFloat(el.dataset.wt);
-        const mDef      = el.dataset.mDef;
-        const mFit      = el.dataset.mFit;
-        const invalidSlope = el.dataset.invalidSlope === '1';
-        const chart = new Chart(canvasD, buildTuningDepthChartConfig({
-          depths,
-          eoedI:EoedI,
-          hsDefault,
-          hsPreview:hsFit,
-          layerTop,
-          layerBot,
-          wt,
-          mDefault:mDef,
-          mPreview:mFit,
-          quality:el.dataset.quality,
-          invalidSlope
-        }));
-        canvasD._chartRef = chart;
-      }catch(e){console.warn('Depth chart error:',e);}
-    }
-  });
+function buildTuningCharts(){
+  buildTuningChartsPure(document);
 }
 
 /* ════════════════════════════════

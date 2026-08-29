@@ -471,7 +471,12 @@ check('legacy-controller.js no longer declares the moved bodies and imports load
     'function loadDemo(){\n  Object.assign(S, demoPatch(Math.random));\n  syncDemoDom(document, S);\n  requestAnimationFrame(()=>initCharts());']) {
     assert.ok(src.includes(w), `wrapper missing: ${w.split('\n')[0]}`);
   }
-  assert.equal((src.match(/\bS=PROJECT\.cpts\[/g) || []).length, 3, 'S is assigned only at its declaration and in selectCpt / removeCpt');
+  // PR 14 (step 8): the selectCpt / removeCpt reassignments moved behind setActive(idx)
+  // (core/state.js setActiveCpt) — S is written at its declaration and there only.
+  assert.equal((src.match(/\bS=PROJECT\.cpts\[/g) || []).length, 1, 'S is assigned from PROJECT.cpts only at its declaration');
+  assert.equal((src.match(/\bS=setActiveCpt\(PROJECT, idx\);/g) || []).length, 1, 'S is re-pointed only in setActive(idx)');
+  assert.ok(/^let S=PROJECT\.cpts\[0\];$/m.test(src), 'S declared as let S=PROJECT.cpts[0]');
+  assert.equal((src.match(/^\s*S\s*=[^=]/gm) || []).length, 1, 'no other statement assigns S');
 });
 check('load/ modules carry the SPDX header and @ts-nocheck; parsers import no DOM module', () => {
   const dir = join(ROOT, 'src/lib/cpt-app/load');
