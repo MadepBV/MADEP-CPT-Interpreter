@@ -265,7 +265,7 @@
     --app-line: var(--color-line); --app-line-strong: var(--color-line-strong); --app-hover: var(--surface-hover); --app-active: var(--surface-active);
     --app-good: var(--color-good); --app-good-bg: var(--color-good-soft); --app-warn: var(--color-warn); --app-warn-bg: var(--color-warn-soft);
     --app-danger: var(--color-bad); --app-danger-bg: var(--color-bad-soft); --app-gap: var(--gap-loose);
-    --app-toolbar-h: 4.25rem;   /* phase 1 keeps today's header height (spec: var(--toolbar-h) = 4rem) — geometry moves with the shell in phase 2a */
+    --app-toolbar-h: calc(var(--toolbar-h) + var(--sp-2));   /* phase 2a: the floating chrome (4 rem) plus its top inset — read by the Bishop view-menu max-height (legacy.css) */
     --color-primary: var(--color-ink); --color-primary-light: #282828; --color-primary-lighter: #404040;
     --color-text: var(--color-ink); --color-text-light: var(--color-ink-2); --color-text-muted: var(--color-ink-3);
     --color-text-on-dark: var(--color-on-dark); --color-text-on-dark-muted: var(--color-on-dark-3);

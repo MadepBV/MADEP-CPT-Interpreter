@@ -1,0 +1,410 @@
+/* src/lib/styles/components.css — component classes of the CPT app (worklog/refactor/02-design-system.md §3).
+   Layer `components` (declared in src/app.css); consumes tokens only.
+
+   Phase 2a (PR 7) ships the shell: the dark chrome (§3.3), the stage rail (§3.4), the button family (§3.8)
+   and the segmented control (§3.7/§3.12). Later PRs add panels, fields, tables, pills, verdicts, tabs.
+
+   Legacy aliases — the string-rendered controller (src/lib/cpt-app/legacy-controller.js) and the stage
+   skeletons still emit `.btn.pri`, `.btn.sm`, `.btn--compact`, `.togbtn`; the selectors below carry the
+   old names next to the new ones so the HTML strings need no edit in this PR (the rename is PR 10/13).
+   Because this layer sits above `legacy`, these rules win over legacy.css regardless of specificity.
+
+   Scope: the button/segmented family is scoped to `:where(.cpt-app)` for now — the docs site
+   (`.docs-page .btn`, docs.css) and the report routes (`.report-shell`, legacy .btn) keep their own
+   button look until phase 2h migrates them. */
+@layer components {
+  /* ════════════════════════════════════════════════════════════════════════
+     0. Shell frame
+     ════════════════════════════════════════════════════════════════════════ */
+  .cpt-app { position: relative; }               /* anchors the scroll sentinel */
+  .app-header__sentinel {                        /* 1 px tall marker at the very top of the page: when it
+                                                    leaves the viewport the chrome is `.is-scrolled` */
+    position: absolute; top: 0; left: 0;
+    width: 1px; height: calc(var(--sp-2) + 1px);
+    pointer-events: none; visibility: hidden;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     1. App header — dark liquid-glass chrome (§3.3)
+     ════════════════════════════════════════════════════════════════════════ */
+  .app-header {
+    /* chrome-local palette: the bar is dark in both themes, so these do not follow --color-* */
+    --chrome-accent:        #6FA9A8;                 /* 3.9:1 on the 80 % chrome — teal #3D6B6A is 2.5:1 (§4.2 c) */
+    --chrome-line:          rgba(237,233,225,0.16);
+    --chrome-line-strong:   rgba(237,233,225,0.40);
+    --chrome-divider:       rgba(237,233,225,0.12);
+    --chrome-wash:          rgba(255,255,255,0.05);
+    --chrome-active:        rgba(61,107,106,0.34);
+    --chrome-active-border: rgba(61,107,106,0.55);
+
+    position: sticky; top: 0; z-index: var(--z-header);
+    display: grid;
+    grid-template-columns: minmax(10rem, 13rem) auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: var(--sp-4);
+    min-height: var(--toolbar-h);
+    min-width: 0;
+    padding: var(--sp-2) var(--sp-4);
+    color: var(--color-on-dark);
+    transition: background-color var(--motion-quick) ease;   /* never box-shadow on glass (§4.1 rule 6) */
+  }
+  .app-header.glass-chrome { border-width: 0 0 1px; border-radius: 0; }   /* full-bleed: bottom hairline only */
+
+  /* Inset floating variant (madep.be pill) — the rail tucks under its rounded bottom corners */
+  @media (min-width: 1101px) {
+    .app-header,
+    .app-header.glass-chrome {
+      top: var(--sp-2);
+      margin: var(--sp-2) var(--section-px) 0;
+      border-width: 1px;
+      border-radius: var(--radius-md);
+    }
+  }
+
+  /* Brand + project name ---------------------------------------------------- */
+  .app-brand {
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    min-width: 0; color: inherit; cursor: text;
+  }
+  .app-brand-logo { flex: none; height: 1.6rem; width: auto; display: block; }   /* cream art: no filter chain */
+  .app-brand__text {
+    position: relative; flex: 1 1 auto; min-width: 0;
+    display: grid; line-height: var(--lh-tight);
+  }
+  .app-brand__text::after {                      /* underline wipe on focus — the brand motif */
+    content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 1px;
+    background: var(--chrome-accent);
+    transform: scaleX(0); transform-origin: left center;
+    transition: transform var(--motion-base) var(--ease-luxury);
+  }
+  .app-brand__text:focus-within::after { transform: scaleX(1); }
+  #projName {
+    width: 100%; min-width: 0; padding: 2px 0; border: 0; border-radius: 0;
+    background: transparent; color: var(--color-on-dark);
+    font: var(--fw-semibold) var(--fs-base) / var(--lh-tight) var(--font-heading);
+    letter-spacing: var(--track-heading);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #projName::placeholder { color: var(--color-on-dark-2); }
+  #projName:focus-visible { outline: none; }     /* replaced by the underline wipe above (§4.4) */
+
+  .app-divider { width: 1px; height: 1.7rem; background: var(--chrome-divider); }
+
+  /* CPT tabs ---------------------------------------------------------------- */
+  .cpt-tabs-wrap { min-width: 0; display: flex; align-items: center; gap: var(--sp-2); }
+  .cpt-tabs {
+    min-width: 0; flex: 1 1 auto;
+    display: flex; align-items: center; gap: var(--sp-1);
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(237,233,225,0.30) rgba(237,233,225,0.06);
+  }
+  .cpt-tabs::-webkit-scrollbar { height: 0.42rem; }
+  .cpt-tabs::-webkit-scrollbar-track { border-radius: var(--radius-round); background: rgba(237,233,225,0.06); }
+  .cpt-tabs::-webkit-scrollbar-thumb { border: 1px solid rgba(17,17,16,0.62); border-radius: var(--radius-round); background: rgba(237,233,225,0.28); }
+  .cpt-tabs::-webkit-scrollbar-thumb:hover { background: rgba(237,233,225,0.42); }
+
+  .cpt-tab {                                     /* = .control on chrome; rendered by renderBanner() */
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    height: var(--control-h); padding: 0 var(--sp-3);
+    border: 1px solid transparent; border-radius: var(--radius-sm);
+    color: var(--color-on-dark);                 /* not -2: --fs-sm 600 needs the full cream (§4.2) */
+    font-size: var(--fs-sm); font-weight: var(--fw-medium); white-space: nowrap; cursor: pointer;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  }
+  .cpt-tab:hover { border-color: var(--chrome-line); background: var(--chrome-wash); }
+  .cpt-tab.active { border-color: var(--chrome-active-border); background: var(--chrome-active); }
+  .cpt-tab__status {                             /* pill geometry (§3.9) on dark */
+    display: inline-flex; align-items: center; height: 1.1rem; padding: 0 0.35rem;
+    border: 1px solid rgba(237,233,225,0.18); border-radius: var(--radius-sm);
+    color: var(--color-on-dark-2);
+    font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono);
+  }
+  .cpt-tab__status--ready { border-color: rgba(46,111,85,0.55);  color: #9CC9B5; }   /* 5.7:1 on chrome */
+  .cpt-tab__status--data  { border-color: rgba(138,98,13,0.55); color: #D6B26F; }   /* 5.2:1 on chrome */
+  .cpt-tab__remove {                             /* 24 px target (WCAG 2.5.8) */
+    display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem;
+    margin-right: calc(-1 * var(--sp-1));
+    border: 1px solid transparent; border-radius: var(--radius-sm);
+    color: var(--color-on-dark-2);
+    font: var(--fw-medium) var(--fs-xs) / 1 var(--font-mono);
+  }
+  .cpt-tab__remove:hover { border-color: var(--chrome-line); background: var(--chrome-wash); color: var(--color-on-dark); }
+
+  /* Controls on chrome: a wash, never a second blur ------------------------- */
+  .app-header .btn,
+  .btn--ghost-dark {
+    border-color: var(--chrome-line); background: transparent; color: var(--color-on-dark);
+  }
+  .app-header .btn:hover,
+  .btn--ghost-dark:hover {
+    border-color: var(--chrome-line-strong); background: var(--chrome-wash); color: var(--color-on-dark);
+    transform: none; box-shadow: none;
+  }
+  .app-header .btn::before,
+  .btn--ghost-dark::before { content: none; }
+
+  .app-header .segmented { border-color: var(--chrome-line); background: rgba(255,255,255,0.03); }
+  .app-header .segmented__btn,
+  .app-header .togbtn { color: var(--color-on-dark-2); }
+  .app-header .segmented__btn:hover,
+  .app-header .togbtn:hover { color: var(--color-on-dark); background: var(--chrome-wash); }
+  .app-header .segmented__btn.active,
+  .app-header .segmented__btn[aria-checked="true"],
+  .app-header .segmented__btn[aria-pressed="true"],
+  .app-header .togbtn.active {
+    background: var(--chrome-active); color: var(--color-on-dark);
+    box-shadow: inset 0 0 0 1px var(--chrome-active-border);
+  }
+
+  /* Focus on the dark chrome: cream ring (teal is 2.5:1 there, §4.2 c) */
+  .app-header :focus-visible { outline: 2px solid var(--color-on-dark); outline-offset: 2px; }
+  .app-header #projName:focus-visible { outline: none; }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     2. Stage rail — light liquid glass, sticky under the chrome (§3.4)
+     ════════════════════════════════════════════════════════════════════════ */
+  .stage-rail {
+    position: sticky; top: var(--toolbar-h); z-index: var(--z-rail);
+    display: flex; align-items: stretch;
+    min-height: var(--rail-h); min-width: 0;
+    padding: 0 var(--section-px);
+  }
+  .stage-rail__list {
+    list-style: none; margin: 0; padding: var(--sp-2) 0;
+    flex: 1 1 auto; min-width: 0;
+    display: flex; align-items: center; gap: var(--sp-1);
+    overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .stage-rail__list::-webkit-scrollbar { display: none; }
+  .stage-rail__list > li { flex: none; display: flex; scroll-snap-align: start; }
+
+  .stage {
+    position: relative;
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    height: var(--control-h); padding: 0 var(--sp-3);
+    border: 0; border-radius: var(--radius-sm);
+    background: transparent; color: var(--color-ink-2);
+    font: var(--fw-medium) var(--fs-xs) / 1 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono);
+    white-space: nowrap; cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+  }
+  .stage::after {                                /* 1 px teal underline, wipes in on the active stage */
+    content: ""; position: absolute; left: var(--sp-3); right: var(--sp-3); bottom: 0; height: 1px;
+    background: var(--color-accent);
+    transform: scaleX(0); transform-origin: left center;
+    transition: transform var(--motion-base) var(--ease-luxury);
+  }
+  .stage:hover { background: var(--surface-hover); color: var(--color-ink); }
+  .stage__num {
+    position: relative; flex: none;
+    display: grid; place-items: center; width: 1.35rem; height: 1.35rem;
+    border: 1px solid var(--color-line-strong); border-radius: var(--radius-sm);
+    font-weight: var(--fw-semibold); font-size: var(--fs-xs); letter-spacing: 0;
+    color: var(--color-ink-2);
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  }
+  .stage__label { min-width: 0; }
+
+  /* states — the controller toggles .active/.done/.locked; StageNav.svelte mirrors them to ARIA */
+  .stage.active,
+  .stage[aria-current="step"] { color: var(--color-accent-text); }
+  .stage.active::after,
+  .stage[aria-current="step"]::after { transform: scaleX(1); }
+  .stage.active .stage__num,
+  .stage[aria-current="step"] .stage__num {
+    background: var(--color-accent); border-color: var(--color-accent); color: var(--color-bg);   /* cream on teal (light) / ink on light teal (dark) */
+  }
+  .stage.done { color: var(--color-ink); }
+  .stage.done .stage__num {
+    background: var(--color-accent-soft); border-color: var(--color-accent-border); color: transparent;
+  }
+  .stage.done .stage__num::after {               /* 10 px check glyph, theme-aware through mask + currentColor */
+    content: ""; position: absolute; inset: 0; margin: auto; width: 10px; height: 10px;
+    background: var(--color-accent-text);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.2l2.4 2.4 4.6-5' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.2l2.4 2.4 4.6-5' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .stage.locked,
+  .stage[aria-disabled="true"] { cursor: not-allowed; }                    /* still focusable — no pointer-events:none */
+  .stage.locked > *,
+  .stage[aria-disabled="true"] > * { opacity: 0.5; }                       /* dim the content, not the focus ring */
+  .stage.locked:hover,
+  .stage[aria-disabled="true"]:hover { background: transparent; color: var(--color-ink-2); }
+  .stage:focus-visible {                         /* two-tone ring, visible on the glass (§4.4) */
+    outline: none;
+    box-shadow: 0 0 0 2px var(--surface-page), 0 0 0 4px var(--color-accent);
+  }
+  .stage--report .stage__label::after {          /* report opens in a new tab: ↗ */
+    content: "\2197"; margin-left: 0.35em; font-size: 0.9em; color: var(--color-ink-3);
+  }
+  .stage--report.active .stage__label::after,
+  .stage--report:hover .stage__label::after { color: currentColor; }
+
+  .stage-rail__progress {                        /* done / 7 hairline along the bottom edge (scaleX: paint-only) */
+    position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+    background: var(--color-accent);
+    transform: scaleX(var(--rail-progress, 0)); transform-origin: left center;
+    pointer-events: none;
+    transition: transform var(--motion-base) var(--ease-luxury);
+  }
+
+  @media (min-width: 1101px) {                   /* inset like the chrome; tucked under its rounded corners */
+    .stage-rail {
+      top: calc(var(--sp-2) + var(--toolbar-h) - var(--radius-md));
+      margin: calc(-1 * var(--radius-md)) var(--section-px) 0;
+      padding: var(--radius-md) var(--sp-3) 0;
+      border: var(--hairline); border-top: 0;
+      border-radius: 0 0 var(--radius-md) var(--radius-md);
+    }
+    .stage-rail__progress { left: var(--radius-md); right: var(--radius-md); bottom: -1px; border-radius: 1px; }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     3. Buttons (§3.8) — scoped to the app until docs/report toolbars migrate (2h)
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .btn {
+    position: relative; isolation: isolate; overflow: hidden;
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+    min-height: var(--control-h); padding: 0 var(--sp-4);
+    border: var(--hairline-strong); border-radius: var(--radius-sm);
+    background: transparent; color: var(--color-ink);
+    font: var(--fw-semibold) var(--fs-xs) / 1.1 var(--font-body);
+    text-transform: uppercase; letter-spacing: var(--track-mono); text-decoration: none;
+    cursor: pointer;
+    transition:
+      background-color var(--transition-base), border-color var(--transition-base),
+      color var(--transition-base), box-shadow var(--transition-base),
+      transform var(--motion-quick) var(--ease-luxury);
+  }
+  :where(.cpt-app) .btn:hover { border-color: var(--color-ink); background: var(--surface-hover); transform: var(--lift-1); }
+  :where(.cpt-app) .btn::before {                /* sheen sweep — default + primary only */
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.22) 48%, transparent 66%);
+    transform: translate3d(-120%, 0, 0);
+    transition: transform var(--motion-slow) var(--ease-luxury);
+  }
+  :where(.cpt-app) .btn:hover::before { transform: translate3d(120%, 0, 0); }
+
+  :where(.cpt-app) .btn--primary,
+  :where(.cpt-app) .btn.pri { background: var(--color-ink); border-color: var(--color-ink); color: var(--color-bg); }
+  :where(.cpt-app) .btn--primary:hover,
+  :where(.cpt-app) .btn.pri:hover {
+    background: color-mix(in srgb, var(--color-ink) 88%, var(--color-bg));   /* keeps the inversion in dark theme */
+    border-color: color-mix(in srgb, var(--color-ink) 88%, var(--color-bg));
+    color: var(--color-bg); box-shadow: var(--shadow-1);
+  }
+  :where(.cpt-app) .btn--accent { background: var(--color-accent); border-color: var(--color-accent); color: #F7F4EF; }
+  :where(.cpt-app) .btn--accent:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); color: #F7F4EF; }
+  :where(.cpt-app) .btn--ghost { border-color: transparent; }
+  :where(.cpt-app) .btn--ghost:hover { border-color: transparent; background: var(--surface-hover); transform: none; }
+  :where(.cpt-app) .btn--icon { width: var(--control-h); padding: 0; }
+  :where(.cpt-app) .btn--icon svg { display: block; width: 16px; height: 16px; }
+  :where(.cpt-app) .btn--sm,
+  :where(.cpt-app) .btn.sm,
+  :where(.cpt-app) .btn--compact { min-height: var(--control-h-sm); padding: 0 var(--sp-3); font-size: var(--fs-2xs); }
+  :where(.cpt-app) .btn--sm.btn--icon,
+  :where(.cpt-app) .btn--compact.btn--icon { width: var(--control-h-sm); padding: 0; }
+  :where(.cpt-app) .btn--danger { color: var(--color-bad); border-color: var(--color-bad-border); }
+  :where(.cpt-app) .btn--danger:hover { background: var(--color-bad-soft); border-color: var(--color-bad); color: var(--color-bad); }
+  :where(.cpt-app) .btn.active,
+  :where(.cpt-app) .btn[aria-pressed="true"] { background: var(--surface-active); border-color: var(--color-accent-border); color: var(--color-accent-text); }
+  :where(.cpt-app) .btn[disabled],
+  :where(.cpt-app) .btn[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
+  :where(.cpt-app) .btn--ghost::before,
+  :where(.cpt-app) .btn--icon::before,
+  :where(.cpt-app) .btn--sm::before,
+  :where(.cpt-app) .btn.sm::before,
+  :where(.cpt-app) .btn--compact::before,
+  :where(.cpt-app) .btn--danger::before { content: none; }
+  :where(.cpt-app) .btn.is-busy::after {         /* indeterminate teal wipe instead of a spinner */
+    content: ""; position: absolute; left: 0; bottom: 0; height: 1px; width: 40%;
+    background: var(--color-accent);
+    animation: btn-busy var(--motion-reveal) linear infinite;
+  }
+  @keyframes btn-busy { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     4. Segmented control (§3.7) — `.togbtn` is the legacy alias of `.segmented__btn`
+     ════════════════════════════════════════════════════════════════════════ */
+  :where(.cpt-app) .segmented {
+    display: inline-flex; align-items: center; flex-shrink: 0;
+    padding: 2px; gap: 2px;
+    border: var(--hairline-strong); border-radius: var(--radius-sm);
+    background: var(--surface-quiet);
+  }
+  :where(.cpt-app) .segmented__btn,
+  :where(.cpt-app) .togbtn {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: calc(var(--control-h) - 4px); padding: 0 var(--sp-3);
+    border: 0; border-radius: 2px;
+    background: transparent; color: var(--color-ink-2);
+    font: var(--fw-semibold) var(--fs-xs) / 1.1 var(--font-body);
+    text-transform: uppercase; letter-spacing: var(--track-mono);
+    white-space: nowrap; cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  :where(.cpt-app) .segmented__btn:hover,
+  :where(.cpt-app) .togbtn:hover { color: var(--color-ink); background: var(--surface-hover); }
+  :where(.cpt-app) .segmented__btn.active,
+  :where(.cpt-app) .segmented__btn[aria-checked="true"],
+  :where(.cpt-app) .segmented__btn[aria-pressed="true"],
+  :where(.cpt-app) .togbtn.active {
+    background: var(--surface-raised); color: var(--color-accent-text);
+    box-shadow: var(--shadow-1), inset 0 0 0 1px var(--color-accent-border);
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     5. Responsive shell
+     ════════════════════════════════════════════════════════════════════════ */
+  @media (max-width: 1100px) {                   /* two rows: brand + phase switch, then the CPT tabs */
+    .app-header { grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr); }
+    .app-divider { display: none; }
+    .app-brand { grid-area: 1 / 1; }
+    .app-header > .segmented { grid-area: 1 / 2; justify-self: end; }
+    .cpt-tabs-wrap { grid-area: 2 / 1 / 3 / -1; }
+    .stage-rail { top: auto; }                   /* the chrome is taller than --toolbar-h here */
+  }
+  @media (max-width: 900px) {                    /* §4.1 rule 4: no page-scroll blur below 900 px */
+    .app-header { position: static; }
+    .app-header.glass-chrome { background: var(--glass-fallback-chrome); -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .stage-rail.glass-rail { background: var(--glass-fallback); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  }
+  @media (max-width: 760px) {
+    .app-header { grid-template-columns: minmax(0, 1fr); padding: var(--sp-3); gap: var(--sp-3); }
+    .app-brand { grid-area: 1 / 1; }
+    .app-header > .segmented { grid-area: 2 / 1; justify-self: stretch; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .app-header .segmented__btn,
+    .app-header .togbtn { min-width: 0; padding: 0 var(--sp-2); font-size: var(--fs-2xs); }
+    .cpt-tabs-wrap { grid-area: 3 / 1; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
+    .cpt-tabs { grid-column: 1 / -1; width: 100%; }
+    .stage-rail { position: static; padding: 0 var(--sp-3); }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     6. User preferences (§4.3)
+     ════════════════════════════════════════════════════════════════════════ */
+  @media (pointer: coarse) {
+    :where(.cpt-app) .btn, :where(.cpt-app) .segmented__btn, :where(.cpt-app) .togbtn, .stage { min-height: var(--touch-min); }
+    :where(.cpt-app) .btn:hover { transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :where(.cpt-app) .btn::before { content: none; }
+    :where(.cpt-app) .btn.is-busy::after { animation: none; width: 100%; }
+  }
+  /* blur(0) + saturate() would still promote a layer — drop the filter entirely when transparency is reduced */
+  @media (prefers-reduced-transparency: reduce) {
+    .app-header.glass-chrome, .stage-rail.glass-rail { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  }
+  :root[data-transparency="reduce"] .app-header.glass-chrome,
+  :root[data-transparency="reduce"] .stage-rail.glass-rail { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  @media (forced-colors: active) {
+    .app-header, .stage-rail { background: Canvas; color: CanvasText; border-color: CanvasText; box-shadow: none; }
+    .stage.active .stage__num, .stage[aria-current="step"] .stage__num { background: Highlight; color: HighlightText; border-color: Highlight; }
+    .stage::after, .stage-rail__progress { background: Highlight; }
+  }
+}

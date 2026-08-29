@@ -106,3 +106,4 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 
 - 2026-08-29 — reports 01/02/03 done; PR 1 merged (7a4a7ec, 2f970a3; 1 619 goldens, 29 s); PR 3 (5bb2030), PR 4 (5eb544d + fix 9391124) on v0.6.0. PR 5/6/9 merged on `integration-r` (controller 16 914 lines), waiting for PR 2 (design 0–1, main tree) before fast-forwarding v0.6.0. PR 8 and PR 11 started in worktrees.
 - 2026-08-29 (evening) — PR 2 merged (b6d046f visual project, 7734ce4 Phase 1 tokens; 126 baselines); integration-r merged into v0.6.0 (29573c4): controller 16 914 lines, packages core/ model-params/ classification/ layers/ load/. PR 8 and PR 11 in worktrees; PR 7 (design 2a shell) next on the main tree.
+- 2026-08-29 (late) — PR 7 shell restyle committed on v0.6.0 after gates; PR 12c / PR 17 agents lost to the session limit — to relaunch. Drivability push-in + data-sheet simplification + note error reporting landed on both v0.6.0 and v0.5.3.

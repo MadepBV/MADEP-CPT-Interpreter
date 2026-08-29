@@ -10,9 +10,11 @@
  * (CptInterpreterApp.svelte) and the four /report routes — not globally: it carries unscoped
  * selectors (`.btn`, `.panel`, `.info`, `.tbl`, `body{font-size:14px}` …) that would restyle the
  * documentation site (`.docs-page .btn`) if it were loaded on every route. docs.css is likewise
- * imported per docs route, wrapped in `@layer legacy`. components.css / utilities.css arrive in phase 2.
+ * imported per docs route, wrapped in `@layer legacy`. components.css (phase 2a: shell, buttons,
+ * segmented) is global but scopes its button family to `.cpt-app`; utilities.css arrives later.
  */
 @layer tokens, base, legacy, components, utilities;
 @import './lib/styles/tokens.css';
 @import './lib/styles/base.css';
 @import './lib/styles/glass.css';
+@import './lib/styles/components.css';
