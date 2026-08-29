@@ -81,12 +81,15 @@
 		"golden:update": "node scripts/golden/check.mjs --update",
 		"golden:wasm-check": "node scripts/golden/wasm-hash.mjs",
 		"golden:browser": "playwright test --config tests/e2e/golden.config.mjs",
+		"verify:tokens": "node scripts/verify_tokens.mjs",
+		"test:visual": "playwright test --project=visual",
+		"test:visual:update": "playwright test --project=visual --update-snapshots",
 		"golden:browser:record": "GOLDEN_MODE=record playwright test --config tests/e2e/golden.config.mjs",
 		"golden:browser:update": "GOLDEN_MODE=update playwright test --config tests/e2e/golden.config.mjs",
 		"verify:core-helpers": "node scripts/verify_core.mjs",
 		"verify:handlers": "node scripts/verify_window_handlers.mjs",
 		"verify:core": "npm run verify:handlers && npm run verify:core-helpers && npm run verify:nen6740 && npm run verify:stratigraphy && npm run verify:import-review && npm run verify:project-io && npm run verify:scia-db4 && npm run verify:qc-only && npm run verify:retaining && npm run verify:wasm && npm run verify:bishop-phase-a",
-		"test:all": "npm run check && npm run verify:core && npm run golden:wasm-check && npm run golden:check && npm run golden:browser && npm run test:e2e"
+		"test:all": "npm run check && npm run verify:core && npm run verify:tokens && npm run golden:wasm-check && npm run golden:check && npm run golden:browser && npm run test:e2e"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.62.1",

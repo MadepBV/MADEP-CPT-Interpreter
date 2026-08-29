@@ -1,0 +1,83 @@
+/* src/lib/styles/glass.css — the four liquid-glass surface classes (worklog/refactor/02-design-system.md §3.2).
+   Loaded into the `components` layer by src/app.css. Glass appears on chrome, rail, canvas floats and sheets only. */
+@layer components {
+  /* Base material: frost + tint + specular edge + lift. Never on scrolling lists or table rows. */
+  .glass,
+  .glass-float {
+    position: relative;
+    isolation: isolate;
+    contain: paint;
+    border-radius: var(--radius-lg);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow:
+      inset 0 1px 0 var(--glass-edge-light),
+      inset 0 -1px 0 var(--glass-edge-shadow),
+      0 0 0 1px var(--glass-hairline),
+      var(--glass-shadow);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+    color: var(--color-ink);
+  }
+  .glass--strong { background: var(--glass-bg-strong); }          /* inspector cards over dense canvases */
+  .glass--sm     { box-shadow: inset 0 1px 0 var(--glass-edge-light), inset 0 -1px 0 var(--glass-edge-shadow), 0 0 0 1px var(--glass-hairline), var(--glass-shadow-sm); }
+  .glass--sheen::before {                                            /* optional refraction sweep (hero cards, on reveal) */
+    content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    background: var(--glass-sheen); transform: translateX(-120%);
+    transition: transform var(--motion-slow) var(--ease-luxury);
+  }
+  .glass--sheen:hover::before, .glass--sheen[data-revealed]::before { transform: translateX(120%); }
+
+  /* Dark chrome: the top bar. Dark in both themes (madep.be / gis rule). */
+  .glass-chrome {
+    background: var(--glass-bg-chrome);
+    border: 1px solid var(--glass-border-chrome);
+    box-shadow: inset 0 1px 0 var(--glass-edge-chrome), var(--glass-shadow-chrome);
+    -webkit-backdrop-filter: blur(var(--glass-blur-chrome)) saturate(1.1);
+    backdrop-filter: blur(var(--glass-blur-chrome)) saturate(1.1);
+    color: var(--color-on-dark);
+  }
+  .glass-chrome.is-scrolled { background: var(--glass-bg-chrome-scrolled); }
+
+  /* Light rail: sticky stage navigation under the chrome. Lower blur; no lift shadow (it is attached, not floating). */
+  .glass-rail {
+    background: var(--glass-bg);
+    border-bottom: 1px solid var(--color-line);
+    box-shadow: inset 0 1px 0 var(--glass-edge-light);
+    -webkit-backdrop-filter: blur(var(--glass-blur-chrome)) saturate(var(--glass-sat));
+    backdrop-filter: blur(var(--glass-blur-chrome)) saturate(var(--glass-sat));
+  }
+
+  /* Sheet + scrim: modals. The sheet is 93% opaque (readable over canvases), the scrim carries the blur. */
+  .glass-scrim {
+    position: fixed; inset: 0; z-index: var(--z-scrim);
+    background: var(--scrim);
+    -webkit-backdrop-filter: blur(var(--glass-blur-scrim)) saturate(1.05);
+    backdrop-filter: blur(var(--glass-blur-scrim)) saturate(1.05);
+  }
+  .glass-sheet {
+    position: relative; z-index: var(--z-modal);
+    border-radius: var(--radius-lg);
+    background: var(--glass-bg-sheet);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-edge-light), 0 0 0 1px var(--glass-hairline), var(--glass-shadow);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  }
+
+  /* Controls that sit ON glass: a wash, not a second blur (blur-in-blur is the #1 GPU cost). */
+  .glass .control, .glass-float .control, .glass-chrome .control {
+    background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm);
+  }
+  .glass .control:hover, .glass-float .control:hover { background: color-mix(in srgb, #FFFFFF 28%, var(--surface-panel) 72%); }
+  .glass .control[aria-pressed="true"], .glass .control.active { background: var(--surface-active); color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent-border); }
+  .glass-chrome .control { color: var(--color-on-dark-2); border-color: rgba(237,233,225,0.16); }
+  .glass-chrome .control:hover { color: var(--color-on-dark); border-color: rgba(237,233,225,0.40); background: rgba(255,255,255,0.05); }
+  .glass-chrome .control.active { background: rgba(61,107,106,0.34); border-color: rgba(61,107,106,0.55); color: var(--color-on-dark); }
+
+  /* Print: glass becomes paper. */
+  @media print {
+    .glass, .glass-float, .glass-sheet, .glass-rail { background: #fff; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-color: #999; }
+    .glass-chrome, .glass-scrim { display: none !important; }
+  }
+}

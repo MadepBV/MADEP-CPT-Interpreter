@@ -1,31 +1,12 @@
+/* src/lib/styles/docs.css — documentation site. Cascade layer `legacy` (see src/app.css); brand
+   tokens come from src/lib/styles/tokens.css (the private `--color-*` copy that opened this file was
+   deleted in phase 1 so docs and app share one palette and one dark block). */
+@layer tokens, base, legacy, components, utilities;
+@layer legacy {
 .docs-page {
 	min-height: 100vh;
 	background: #f7f4ef;
 	color: #18181a;
-	--color-primary: #18181a;
-	--color-primary-light: #282828;
-	--color-accent: #3d6b6a;
-	--color-accent-hover: #4f8584;
-	--color-accent-text: #2e5150;
-	--color-accent-soft: rgba(61, 107, 106, 0.1);
-	--color-bg: #f7f4ef;
-	--color-bg-alt: #ede9e1;
-	--color-bg-dark: #111110;
-	--color-bg-darker: #0c0c0b;
-	--color-text: #18181a;
-	--color-text-light: #4a4a52;
-	--color-text-muted: #888890;
-	--color-text-on-dark: #ede9e1;
-	--color-text-on-dark-muted: #8a8a82;
-	--color-border: rgba(24, 24, 26, 0.1);
-	--color-border-strong: rgba(24, 24, 26, 0.18);
-	--font-heading: 'DM Sans', system-ui, sans-serif;
-	--font-body: 'Manrope', system-ui, sans-serif;
-	--font-mono: 'JetBrains Mono', 'Courier New', monospace;
-	--radius-sm: 3px;
-	--radius-md: 6px;
-	--shadow-sm: 0 2px 8px rgba(18, 18, 20, 0.05);
-	--shadow-md: 0 6px 24px rgba(18, 18, 20, 0.07);
 	font-family: var(--font-body);
 }
 
@@ -933,4 +914,5 @@
 		background: rgba(237, 233, 225, 0.05);
 		border-color: rgba(237, 233, 225, 0.32);
 	}
+}
 }

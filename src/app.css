@@ -1,116 +1,18 @@
-/*
- * Web fonts.
+/* src/app.css — the single CSS entry (worklog/refactor/02-design-system.md §5.1).
  *
- * DM Sans  — variable font, weight axis 100..1000 (Google Fonts v17).
- *            Used as the heading family via --font-heading.
- * Manrope  — variable font, weight axis 200..800 (Google Fonts v20).
- *            Used as the body family.
- * JetBrains Mono — variable font, weight axis 100..800.
+ * The layer order is declared FIRST: an unlayered rule beats every layered one, and among layers a
+ * later layer beats an earlier one regardless of specificity. Each imported file wraps itself in its
+ * own `@layer` block (tokens / base / components), which is why the imports below carry no `layer()`
+ * — nesting `@import … layer(tokens)` around a file that already declares `@layer tokens {}` would
+ * create a `tokens.tokens` sub-layer.
  *
- * Each face is split per Unicode subset (latin / latin-ext / greek for
- * formulas) so the browser only downloads the subsets it needs. Files are
- * the upstream Google Fonts woff2 with the full weight axis intact —
- * `font-weight: bold` (= 700) on a heading therefore selects the real 700
- * axis instance, not a synthesized faux-bold.
+ * legacy.css (layer `legacy`) is still imported by the routes that use it — the app shell
+ * (CptInterpreterApp.svelte) and the four /report routes — not globally: it carries unscoped
+ * selectors (`.btn`, `.panel`, `.info`, `.tbl`, `body{font-size:14px}` …) that would restyle the
+ * documentation site (`.docs-page .btn`) if it were loaded on every route. docs.css is likewise
+ * imported per docs route, wrapped in `@layer legacy`. components.css / utilities.css arrive in phase 2.
  */
-
-/* DM Sans — normal — latin */
-@font-face {
-	font-family: 'DM Sans';
-	font-style: normal;
-	font-weight: 100 1000;
-	font-display: swap;
-	src: url('/fonts/DMSans-latin.woff2') format('woff2');
-	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-/* DM Sans — normal — latin-ext */
-@font-face {
-	font-family: 'DM Sans';
-	font-style: normal;
-	font-weight: 100 1000;
-	font-display: swap;
-	src: url('/fonts/DMSans-latin-ext.woff2') format('woff2');
-	unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-
-/* DM Sans — italic — latin */
-@font-face {
-	font-family: 'DM Sans';
-	font-style: italic;
-	font-weight: 100 1000;
-	font-display: swap;
-	src: url('/fonts/DMSans-italic-latin.woff2') format('woff2');
-	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-/* DM Sans — italic — latin-ext */
-@font-face {
-	font-family: 'DM Sans';
-	font-style: italic;
-	font-weight: 100 1000;
-	font-display: swap;
-	src: url('/fonts/DMSans-italic-latin-ext.woff2') format('woff2');
-	unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-
-/* Manrope — latin */
-@font-face {
-	font-family: 'Manrope';
-	font-style: normal;
-	font-weight: 200 800;
-	font-display: swap;
-	src: url('/fonts/Manrope-latin.woff2') format('woff2');
-	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-/* Manrope — latin-ext */
-@font-face {
-	font-family: 'Manrope';
-	font-style: normal;
-	font-weight: 200 800;
-	font-display: swap;
-	src: url('/fonts/Manrope-latin-ext.woff2') format('woff2');
-	unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-
-/* Manrope — greek (γ, σ, η, ψ, φ, ξ, χ, etc. used in technical prose and formulas) */
-@font-face {
-	font-family: 'Manrope';
-	font-style: normal;
-	font-weight: 200 800;
-	font-display: swap;
-	src: url('/fonts/Manrope-greek.woff2') format('woff2');
-	unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
-}
-
-/* JetBrains Mono — variable, used for formulas and code samples */
-@font-face {
-	font-family: 'JetBrains Mono';
-	font-style: normal;
-	font-weight: 100 800;
-	font-display: swap;
-	src: url('/fonts/JetBrainsMono-0.woff2') format('woff2');
-}
-
-html,
-body {
-	margin: 0;
-	padding: 0;
-	min-height: 100%;
-	min-width: 320px;
-	background: #f7f4ef;
-}
-
-body {
-	background: #f7f4ef;
-	color: #18181a;
-	font-family: 'Manrope', system-ui, sans-serif;
-	font-size: 16px;
-	line-height: 1.78;
-	overflow-x: hidden;
-}
-
-* {
-	box-sizing: border-box;
-}
+@layer tokens, base, legacy, components, utilities;
+@import './lib/styles/tokens.css';
+@import './lib/styles/base.css';
+@import './lib/styles/glass.css';

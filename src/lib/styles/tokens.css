@@ -1,0 +1,280 @@
+/* src/lib/styles/tokens.css — MADEP CPT Interpreter design tokens
+   Layer order is declared once in app.css:  @layer tokens, base, legacy, components, utilities;  */
+@layer tokens {
+  :root {
+    color-scheme: light dark;
+
+    /* ── 1. Brand palette (madep.be / docs/style.md — do not change) ─────────── */
+    --color-bg:            #F7F4EF;   /* bone paper */
+    --color-bg-alt:        #EDE9E1;   /* sand: table heads, quiet panels */
+    --color-bg-panel:      #FBF9F5;   /* near-white flat panel + canvas paper */
+    --color-bg-dark:       #111110;
+    --color-bg-darker:     #0C0C0B;
+    --color-ink:           #18181A;
+    --color-ink-2:         #4A4A52;   /* body / secondary text */
+    --color-ink-3:         #65656D;   /* muted labels — 5.0:1 on bone (AA). NOT #888890 (3.0:1) */
+    --color-ink-4:         #8A8A82;   /* decorative only: dividers-as-text, disabled */
+    --color-on-dark:       #EDE9E1;
+    --color-on-dark-2:     rgba(237,233,225,0.72);
+    --color-on-dark-3:     #8A8A82;
+    --color-accent:        #3D6B6A;
+    --color-accent-hover:  #4F8584;
+    --color-accent-text:   #2E5150;   /* 7.6:1 on bone */
+    --color-accent-soft:   rgba(61,107,106,0.10);
+    --color-accent-border: rgba(61,107,106,0.34);
+    --color-line:          rgba(24,24,26,0.10);
+    --color-line-strong:   rgba(24,24,26,0.18);
+    --color-line-heavy:    rgba(24,24,26,0.28);
+
+    /* ── 2. Semantic ───────────────────────────────────────────────────────── */
+    --color-good:          #2E6F55;  --color-good-soft:   rgba(46,111,85,0.10);  --color-good-border:   rgba(46,111,85,0.28);
+    --color-warn:          #8A620D;  --color-warn-soft:   rgba(138,98,13,0.12);  --color-warn-border:   rgba(138,98,13,0.30);
+    --color-bad:           #9B3A32;  --color-bad-soft:    rgba(155,58,50,0.10);  --color-bad-border:    rgba(155,58,50,0.30);
+    --color-info:          var(--color-accent);
+    --color-info-text:     var(--color-accent-text);
+    --color-info-soft:     var(--color-accent-soft);
+    --color-neutral:       #6D6962;  --color-neutral-soft: rgba(109,105,98,0.12);
+
+    /* ── 3. Surfaces (flat paper) ──────────────────────────────────────────── */
+    --surface-page:        var(--color-bg);
+    --surface-panel:       rgba(255,255,255,0.56);   /* stage panel */
+    --surface-card:        rgba(255,255,255,0.66);   /* .card, .mc2, accordions */
+    --surface-quiet:       rgba(247,244,239,0.55);   /* help notes, muted groups */
+    --surface-raised:      #FFFFFF;                  /* inputs, popover content */
+    --surface-hover:       rgba(24,24,26,0.035);
+    --surface-active:      var(--color-accent-soft);
+    --surface-selected:    rgba(61,107,106,0.14);
+    --paper-grid:          rgba(24,24,26,0.026);     /* page graph paper */
+    --canvas-paper:        #FBF9F5;                  /* literal — read by JS */
+    --canvas-grid:         rgba(24,24,26,0.05);      /* literal — read by JS */
+
+    /* ── 4. Liquid glass ───────────────────────────────────────────────────── */
+    --glass-blur:          18px;
+    --glass-blur-chrome:   14px;
+    --glass-blur-scrim:    6px;
+    --glass-sat:           1.22;
+    --glass-tint:          color-mix(in srgb, #F7F4EF 62%, #FFFFFF 38%);
+    --glass-alpha:         0.66;
+    --glass-bg:            color-mix(in srgb, var(--glass-tint) calc(var(--glass-alpha) * 100%), transparent);
+    --glass-bg-strong:     color-mix(in srgb, var(--glass-tint) 86%, transparent);   /* inspector cards over busy canvases */
+    --glass-bg-sheet:      color-mix(in srgb, var(--color-bg) 93%, transparent);     /* modals: readable, not muddy (gis rule) */
+    --glass-border:        rgba(255,255,255,0.45);
+    --glass-hairline:      color-mix(in srgb, rgba(255,255,255,0.60) 60%, var(--color-line-strong));
+    --glass-edge-light:    rgba(255,255,255,0.55);   /* inset top specular */
+    --glass-edge-shadow:   rgba(24,24,26,0.06);      /* inset bottom weight */
+    --glass-sheen:         linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.22) 48%, transparent 66%);
+    --glass-shadow:        0 22px 58px rgba(22,28,36,0.16), 0 4px 14px rgba(22,28,36,0.08);
+    --glass-shadow-sm:     0 8px 20px rgba(22,28,36,0.12), 0 1px 3px rgba(22,28,36,0.06);
+    --glass-fallback:      #FBF9F5F2;                /* opaque bone when blur is unavailable / reduced */
+    --glass-tint-dark:     color-mix(in srgb, #111110 78%, #18181A 22%);
+    --glass-alpha-chrome:  0.80;   /* BC-sizer uses .68 for a 4-link header; CPT's bar carries text tabs → .80 for AA (§4.2) */
+    --glass-bg-chrome:     color-mix(in srgb, var(--glass-tint-dark) calc(var(--glass-alpha-chrome) * 100%), transparent);
+    --glass-bg-chrome-scrolled: rgba(17,17,16,0.88);
+    --glass-border-chrome: rgba(237,233,225,0.10);
+    --glass-edge-chrome:   rgba(237,233,225,0.06);
+    --glass-shadow-chrome: 0 8px 24px rgba(0,0,0,0.18);
+    --glass-fallback-chrome: #111110;
+    --scrim:               rgba(17,17,16,0.36);
+
+    /* ── 5. Geometry ───────────────────────────────────────────────────────── */
+    --radius-sm: 3px;  --radius-md: 6px;  --radius-lg: 10px;  --radius-round: 999px; /* round: progress tracks + dots only */
+    --hairline: 1px solid var(--color-line);
+    --hairline-strong: 1px solid var(--color-line-strong);
+
+    /* ── 6. Elevation (paper) ──────────────────────────────────────────────── */
+    --shadow-0: none;
+    --shadow-1: 0 1px 2px rgba(18,18,20,0.04), 0 2px 8px rgba(18,18,20,0.05);
+    --shadow-2: 0 6px 24px rgba(18,18,20,0.07);
+    --shadow-3: 0 12px 40px rgba(18,18,20,0.09);
+    --shadow-focus: 0 0 0 3px var(--color-accent-soft);
+
+    /* ── 7. Typography ─────────────────────────────────────────────────────── */
+    --font-heading: 'DM Sans', system-ui, sans-serif;
+    --font-body:    'Manrope', system-ui, sans-serif;
+    --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    /* app scale — instrument panel; rem is 16px so these are exact px */
+    --fs-2xs:  0.625rem;   /* 10px  mono micro (units, table meta) */
+    --fs-xs:   0.6875rem;  /* 11px  mono labels, eyebrows, pills, th */
+    --fs-sm:   0.75rem;    /* 12px  dense body, table cells, help */
+    --fs-md:   0.8125rem;  /* 13px  default control + body text in app */
+    --fs-base: 0.875rem;   /* 14px  panel body, sec-sub */
+    --fs-lg:   1rem;       /* 16px  panel title */
+    --fs-xl:   1.25rem;    /* 20px  metric value */
+    --fs-2xl:  1.5rem;     /* 24px  hero metric / report h2 */
+    --lh-tight: 1.2;  --lh-snug: 1.35;  --lh-body: 1.5;  --lh-loose: 1.65;
+    --track-mono: 0.08em;  --track-eyebrow: 0.12em;  --track-heading: -0.015em;
+    --fw-regular: 400;  --fw-medium: 500;  --fw-semibold: 600;  --fw-bold: 650;
+
+    /* ── 8. Spacing (4-pt) ─────────────────────────────────────────────────── */
+    --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem; --sp-5: 1.25rem;
+    --sp-6: 1.5rem;  --sp-8: 2rem;   --sp-10: 2.5rem; --sp-12: 3rem;
+    --gap-tight: var(--sp-2);  --gap: var(--sp-3);  --gap-loose: var(--sp-4);
+    --pad-control: 0.45rem 0.6rem;   /* inputs, compact buttons */
+    --pad-card: var(--sp-4);
+    --pad-panel: var(--sp-4) var(--sp-5);
+    --container-max: 1300px;  --container-narrow: 760px;
+    --section-px: clamp(1.25rem, 3.5vw, 3rem);   /* today's brand value (legacy.css + report routes); spec proposes clamp(1rem, 3vw, 2.5rem) for the phase-2a shell */
+    --toolbar-h: 4rem;  --rail-h: 3.25rem;
+    --control-h: 2.1rem;  --control-h-sm: 1.75rem;  --touch-min: 2.75rem;
+    --col-side: minmax(17rem, 19rem);  --col-inspector: minmax(16rem, 18rem);   /* Stage 6 three-column */
+
+    /* ── 9. Z layers ───────────────────────────────────────────────────────── */
+    --z-base: 0; --z-raised: 1; --z-sticky-cell: 2; --z-canvas-overlay: 10; --z-rail: 20;
+    --z-header: 30; --z-popover: 40; --z-tooltip: 50; --z-scrim: 60; --z-modal: 61; --z-toast: 70; --z-skiplink: 100;
+
+    /* ── 10. Motion ────────────────────────────────────────────────────────── */
+    --motion-micro: 0.12s; --motion-quick: 0.20s; --motion-base: 0.32s; --motion-slow: 0.60s; --motion-reveal: 0.96s;
+    --ease-smooth: cubic-bezier(0, 0, 0.2, 1);
+    --ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-reveal: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-luxury: cubic-bezier(0.16, 1, 0.3, 1);
+    --transition-fast: var(--motion-micro) ease;
+    --transition-base: 0.22s ease;
+    --lift-1: translateY(-1px);  --lift-2: translateY(-2px);
+
+    /* ── 11. Data-viz (all literal; read by Chart.js + 2D canvases + SVG) ──── */
+    --viz-1: #3D6B6A;  /* teal   — primary series (qc, main curve)            */
+    --viz-2: #18181A;  /* ink    — secondary series (fs, envelopes)           */
+    --viz-3: #8A620D;  /* ochre  — tertiary (Rf, neutral plane, warnings)     */
+    --viz-4: #9B3A32;  /* brick  — limits, failure, φ' reduction               */
+    --viz-5: #3C6F97;  /* slate  — water / pore pressure ONLY                  */
+    --viz-6: #6F8F64;  /* moss   — accepted / fitted                            */
+    --viz-neutral: #6D6962;
+    --viz-1-soft: rgba(61,107,106,0.12); --viz-3-soft: rgba(138,98,13,0.16); --viz-4-soft: rgba(155,58,50,0.12); --viz-5-soft: rgba(60,111,151,0.12);
+    --viz-grid: rgba(24,24,26,0.08);  --viz-grid-strong: rgba(24,24,26,0.16);  --viz-axis: rgba(24,24,26,0.55);
+    --viz-text: #18181A;  --viz-text-muted: #4A4A52;  --viz-halo: rgba(255,255,255,0.92);
+    --viz-band: rgba(24,24,26,0.05);  --viz-tooltip-bg: rgba(255,255,255,0.96);
+    --viz-water: #3C6F97;  --viz-water-soft: rgba(60,111,151,0.10);
+    /* soil units (soil-styles.js) — keep in sync; the JS map is the source */
+    --soil-peat: #C0DD97; --soil-sclay: #B5D4F4; --soil-clay: #AFA9EC; --soil-sclayl: #FAC775;
+    --soil-ssand: #F4C0D1; --soil-sand: #D3D1C7; --soil-gravel: #F0997B;
+    /* Bishop / seepage region palette (stage6-bishop.js) — muted earth, 8 stops */
+    --region-1:#b68a60; --region-2:#7aa6c2; --region-3:#a67bbd; --region-4:#d6b26f;
+    --region-5:#94b47b; --region-6:#d38d8d; --region-7:#8f9aa7; --region-8:#b7a27c;
+  }
+
+  /* ── Dark theme: redefine only what changes ──────────────────────────────── */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --color-bg: #111110; --color-bg-alt: #181818; --color-bg-panel: #16161A; --color-bg-dark: #0C0C0B; --color-bg-darker: #050504;
+      --color-ink: #EDE9E1; --color-ink-2: #BCB6AC; --color-ink-3: #9A948A; --color-ink-4: #6E6A62;
+      --color-accent: #6FA9A8; --color-accent-hover: #86C0BF; --color-accent-text: #9FD3D2;
+      --color-accent-soft: rgba(111,169,168,0.16); --color-accent-border: rgba(111,169,168,0.40);
+      --color-line: rgba(237,233,225,0.10); --color-line-strong: rgba(237,233,225,0.20); --color-line-heavy: rgba(237,233,225,0.32);
+      --color-good: #6FA585; --color-good-soft: rgba(111,165,133,0.16); --color-good-border: rgba(111,165,133,0.36);
+      --color-warn: #C99961; --color-warn-soft: rgba(201,153,97,0.16); --color-warn-border: rgba(201,153,97,0.36);
+      --color-bad:  #D2776E; --color-bad-soft:  rgba(210,119,110,0.16); --color-bad-border: rgba(210,119,110,0.36);
+      --color-neutral: #BCB6AC; --color-neutral-soft: rgba(237,233,225,0.08);
+      --surface-panel: rgba(33,36,34,0.62); --surface-card: rgba(33,36,34,0.85); --surface-quiet: rgba(24,24,22,0.55);
+      --surface-raised: rgba(8,8,7,0.55); --surface-hover: rgba(237,233,225,0.06); --surface-selected: rgba(111,169,168,0.22);
+      --paper-grid: rgba(237,233,225,0.035); --canvas-paper: #181816; --canvas-grid: rgba(237,233,225,0.06);
+      --glass-tint: color-mix(in srgb, #16181A 80%, #2A2D2B 20%);
+      --glass-bg-strong: color-mix(in srgb, var(--glass-tint) 90%, transparent);
+      --glass-border: rgba(237,233,225,0.12);
+      --glass-hairline: color-mix(in srgb, rgba(255,255,255,0.22) 50%, var(--color-line-strong));
+      --glass-edge-light: rgba(255,255,255,0.10); --glass-edge-shadow: rgba(0,0,0,0.35);
+      --glass-sheen: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.08) 48%, transparent 66%);
+      --glass-shadow: 0 22px 58px rgba(0,0,0,0.55), 0 4px 14px rgba(0,0,0,0.32);
+      --glass-shadow-sm: 0 8px 20px rgba(0,0,0,0.40), 0 1px 3px rgba(0,0,0,0.30);
+      --glass-fallback: #1A1A18F5;
+      --scrim: rgba(0,0,0,0.55);
+      --shadow-1: 0 1px 2px rgba(0,0,0,0.30), 0 2px 8px rgba(0,0,0,0.32); --shadow-2: 0 6px 24px rgba(0,0,0,0.40); --shadow-3: 0 12px 40px rgba(0,0,0,0.48);
+      --viz-1: #86C0BF; --viz-2: #EDE9E1; --viz-3: #C99961; --viz-4: #D2776E; --viz-5: #7FAAD0; --viz-6: #9CBF8E; --viz-neutral: #BCB6AC;
+      --viz-1-soft: rgba(134,192,191,0.18); --viz-3-soft: rgba(201,153,97,0.18); --viz-4-soft: rgba(210,119,110,0.16); --viz-5-soft: rgba(127,170,208,0.16);
+      --viz-grid: rgba(237,233,225,0.12); --viz-grid-strong: rgba(237,233,225,0.22); --viz-axis: rgba(237,233,225,0.55);
+      --viz-text: #EDE9E1; --viz-text-muted: #BCB6AC; --viz-halo: rgba(8,8,7,0.92);
+      --viz-band: rgba(237,233,225,0.06); --viz-tooltip-bg: rgba(24,24,22,0.96);
+      --viz-water: #7FAAD0; --viz-water-soft: rgba(127,170,208,0.14);
+    }
+  }
+  :root[data-theme="dark"] {
+    /* identical to the media block above — scripts/verify_tokens.mjs asserts the two stay in sync */
+    --color-bg: #111110; --color-bg-alt: #181818; --color-bg-panel: #16161A; --color-bg-dark: #0C0C0B; --color-bg-darker: #050504;
+    --color-ink: #EDE9E1; --color-ink-2: #BCB6AC; --color-ink-3: #9A948A; --color-ink-4: #6E6A62;
+    --color-accent: #6FA9A8; --color-accent-hover: #86C0BF; --color-accent-text: #9FD3D2;
+    --color-accent-soft: rgba(111,169,168,0.16); --color-accent-border: rgba(111,169,168,0.40);
+    --color-line: rgba(237,233,225,0.10); --color-line-strong: rgba(237,233,225,0.20); --color-line-heavy: rgba(237,233,225,0.32);
+    --color-good: #6FA585; --color-good-soft: rgba(111,165,133,0.16); --color-good-border: rgba(111,165,133,0.36);
+    --color-warn: #C99961; --color-warn-soft: rgba(201,153,97,0.16); --color-warn-border: rgba(201,153,97,0.36);
+    --color-bad:  #D2776E; --color-bad-soft:  rgba(210,119,110,0.16); --color-bad-border: rgba(210,119,110,0.36);
+    --color-neutral: #BCB6AC; --color-neutral-soft: rgba(237,233,225,0.08);
+    --surface-panel: rgba(33,36,34,0.62); --surface-card: rgba(33,36,34,0.85); --surface-quiet: rgba(24,24,22,0.55);
+    --surface-raised: rgba(8,8,7,0.55); --surface-hover: rgba(237,233,225,0.06); --surface-selected: rgba(111,169,168,0.22);
+    --paper-grid: rgba(237,233,225,0.035); --canvas-paper: #181816; --canvas-grid: rgba(237,233,225,0.06);
+    --glass-tint: color-mix(in srgb, #16181A 80%, #2A2D2B 20%);
+    --glass-bg-strong: color-mix(in srgb, var(--glass-tint) 90%, transparent);
+    --glass-border: rgba(237,233,225,0.12);
+    --glass-hairline: color-mix(in srgb, rgba(255,255,255,0.22) 50%, var(--color-line-strong));
+    --glass-edge-light: rgba(255,255,255,0.10); --glass-edge-shadow: rgba(0,0,0,0.35);
+    --glass-sheen: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.08) 48%, transparent 66%);
+    --glass-shadow: 0 22px 58px rgba(0,0,0,0.55), 0 4px 14px rgba(0,0,0,0.32);
+    --glass-shadow-sm: 0 8px 20px rgba(0,0,0,0.40), 0 1px 3px rgba(0,0,0,0.30);
+    --glass-fallback: #1A1A18F5;
+    --scrim: rgba(0,0,0,0.55);
+    --shadow-1: 0 1px 2px rgba(0,0,0,0.30), 0 2px 8px rgba(0,0,0,0.32); --shadow-2: 0 6px 24px rgba(0,0,0,0.40); --shadow-3: 0 12px 40px rgba(0,0,0,0.48);
+    --viz-1: #86C0BF; --viz-2: #EDE9E1; --viz-3: #C99961; --viz-4: #D2776E; --viz-5: #7FAAD0; --viz-6: #9CBF8E; --viz-neutral: #BCB6AC;
+    --viz-1-soft: rgba(134,192,191,0.18); --viz-3-soft: rgba(201,153,97,0.18); --viz-4-soft: rgba(210,119,110,0.16); --viz-5-soft: rgba(127,170,208,0.16);
+    --viz-grid: rgba(237,233,225,0.12); --viz-grid-strong: rgba(237,233,225,0.22); --viz-axis: rgba(237,233,225,0.55);
+    --viz-text: #EDE9E1; --viz-text-muted: #BCB6AC; --viz-halo: rgba(8,8,7,0.92);
+    --viz-band: rgba(237,233,225,0.06); --viz-tooltip-bg: rgba(24,24,22,0.96);
+    --viz-water: #7FAAD0; --viz-water-soft: rgba(127,170,208,0.14);
+  }
+
+  /* ── Reduced transparency / no backdrop-filter → opaque paper ─────────────── */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root { --glass-bg: var(--glass-fallback); --glass-bg-strong: var(--glass-fallback); --glass-bg-sheet: var(--glass-fallback);
+            --glass-bg-chrome: var(--glass-fallback-chrome); --glass-blur: 0px; --glass-blur-chrome: 0px; --glass-blur-scrim: 0px; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    :root { --glass-bg: var(--glass-fallback); --glass-bg-strong: var(--glass-fallback); --glass-bg-sheet: var(--glass-fallback);
+            --glass-bg-chrome: var(--glass-fallback-chrome); --glass-blur: 0px; --glass-blur-chrome: 0px; --glass-blur-scrim: 0px;
+            --glass-sheen: none; --scrim: rgba(17,17,16,0.55); }
+  }
+  :root[data-transparency="reduce"] { /* in-app toggle, same values as the media query */
+    --glass-bg: var(--glass-fallback); --glass-bg-strong: var(--glass-fallback); --glass-bg-sheet: var(--glass-fallback);
+    --glass-bg-chrome: var(--glass-fallback-chrome); --glass-blur: 0px; --glass-blur-chrome: 0px; --glass-blur-scrim: 0px; --glass-sheen: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root { --motion-micro: 0.001ms; --motion-quick: 0.001ms; --motion-base: 0.001ms; --motion-slow: 0.001ms; --motion-reveal: 0.001ms;
+            --lift-1: none; --lift-2: none; --glass-sheen: none; }
+  }
+
+  /* ── Legacy aliases (phase 1 — the 18k-line controller keeps working) ─────── */
+  :root {
+    --ac: var(--color-accent); --acl: var(--color-accent-soft); --acb: var(--color-accent-hover); --acd: var(--color-accent-text);
+    --wn: var(--color-warn); --wnl: var(--color-warn-soft); --wn-soft: var(--color-warn-soft);
+    --ok: var(--color-good); --ok-text: var(--color-good); --ok-soft: var(--color-good-soft);
+    --info: var(--color-info); --info-text: var(--color-info-text); --info-soft: var(--color-info-soft);
+    --bad: var(--color-bad); --bad-text: var(--color-bad); --bad-soft: var(--color-bad-soft);
+    --neutral-text: var(--color-neutral); --neutral-soft: var(--color-neutral-soft);
+    --bg: var(--color-bg); --bg2: var(--color-bg-alt); --bg3: var(--color-bg-panel);
+    --tx: var(--color-ink); --tx2: var(--color-ink-2); --tx3: var(--color-ink-3);
+    --bd: var(--color-line); --bd2: var(--color-line-strong);
+    --panel: var(--surface-panel); --panel-muted: var(--surface-quiet); --panel-soft: var(--surface-quiet);
+    --panel-solid: var(--surface-card); --panel-strong: var(--glass-bg-strong);
+    --hover-soft: var(--surface-hover); --input-bg: var(--surface-raised); --input-bg-hover: var(--surface-raised);
+    --r: var(--radius-md); --r2: var(--radius-lg); --sh: var(--shadow-1);
+    --nav-bg: var(--glass-bg); --canvas-bg: var(--canvas-paper); --canvas-grid-line: var(--canvas-grid);
+    --canvas-text: var(--viz-text); --canvas-text-halo: var(--viz-halo);
+    --chart-grid: var(--viz-grid); --chart-grid-strong: var(--viz-grid-strong); --chart-band-fill: var(--viz-band); --chart-tooltip-bg: var(--viz-tooltip-bg);
+    --chart-blue: var(--viz-1); --chart-purple: var(--viz-2); --chart-green: var(--viz-6); --chart-orange: var(--viz-3); --chart-red: var(--viz-4);
+    --chart-neutral: var(--viz-neutral); --chart-blue-soft: var(--viz-1-soft);
+    --plot-primary: var(--viz-1); --plot-secondary: var(--viz-2); --plot-tertiary: var(--viz-3); --plot-danger: var(--viz-4); --plot-grid: var(--viz-grid); --plot-fill: var(--viz-1-soft);
+    --btn-pri-hover: var(--color-bg-darker);
+    --app-panel: var(--surface-panel); --app-panel-muted: var(--surface-quiet); --app-panel-dark: var(--glass-bg-chrome);
+    --app-line: var(--color-line); --app-line-strong: var(--color-line-strong); --app-hover: var(--surface-hover); --app-active: var(--surface-active);
+    --app-good: var(--color-good); --app-good-bg: var(--color-good-soft); --app-warn: var(--color-warn); --app-warn-bg: var(--color-warn-soft);
+    --app-danger: var(--color-bad); --app-danger-bg: var(--color-bad-soft); --app-gap: var(--gap-loose);
+    --app-toolbar-h: 4.25rem;   /* phase 1 keeps today's header height (spec: var(--toolbar-h) = 4rem) — geometry moves with the shell in phase 2a */
+    --color-primary: var(--color-ink); --color-primary-light: #282828; --color-primary-lighter: #404040;
+    --color-text: var(--color-ink); --color-text-light: var(--color-ink-2); --color-text-muted: var(--color-ink-3);
+    --color-text-on-dark: var(--color-on-dark); --color-text-on-dark-muted: var(--color-on-dark-3);
+    --color-border: var(--color-line); --color-border-strong: var(--color-line-strong);
+    /* phase 1 keeps the fluid brand clamps (spec aliases these to the fixed --fs-* scale, which at 1500 px shrinks
+       .sec-title / .dz-title by 1–2 px and shifts every layout below — a phase-2 typography change, not a reskin) */
+    --text-xs: clamp(0.70rem, 1.0vw, 0.76rem); --text-sm: clamp(0.82rem, 1.2vw, 0.88rem); --text-base: clamp(0.94rem, 1.5vw, 1.02rem);
+    --text-lg: clamp(1.06rem, 1.8vw, 1.18rem); --text-xl: clamp(1.30rem, 2.2vw, 1.60rem);
+    --shadow-sm: var(--shadow-1); --shadow-md: var(--shadow-2); --shadow-lg: var(--shadow-3);
+    --transition-slow: 0.40s ease;   /* spec also listed `--motion-base: var(--motion-base)` — a self-reference is invalid at computed-value time; --motion-base is defined in §10 */
+  }
+}

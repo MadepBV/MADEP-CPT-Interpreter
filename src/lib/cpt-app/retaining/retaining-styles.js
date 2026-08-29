@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Scoped styles of the retaining-wall application (injected with the body; keeps legacy.css untouched).
+// Wrapped in `@layer legacy` so an injected <style> cannot outrank the `components` layer (design-system §5.1).
 export const RETWALL_STYLE = `<style>
+@layer legacy {
 .st6-retwall{padding:14px}
 .st6-rw-head{margin-bottom:10px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
 .st6-rw-title{font-size:14px;font-weight:600}
@@ -112,4 +114,5 @@ export const RETWALL_STYLE = `<style>
 .st6-rw-branchcard .f{font-size:10px;color:var(--tx3);font-family:var(--font-mono);margin-bottom:4px}
 @media (max-width:1200px){.st6-rw-cols{grid-template-columns:300px 1fr}.st6-rw-cols>.st6-rw-summary{grid-column:1/-1}.st6-rw-branchcards{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:900px){.st6-rw-cols{grid-template-columns:1fr}.st6-rw-tabs{grid-template-columns:repeat(2,1fr)}.st6-rw-grid2,.st6-rw-grid3{grid-template-columns:1fr}}
+}
 </style>`;
