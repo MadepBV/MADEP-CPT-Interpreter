@@ -1,0 +1,41 @@
+{
+  "cutTopBy": 0,
+  "extendedTopBy": 0,
+  "notes": [
+    "The CPT ends 20.0 m below the surface; the deepest layer (Clay) is extended downward beyond the sounding."
+  ],
+  "strata": [
+    {
+      "botEl": -6.4,
+      "c": 0,
+      "cu": 0,
+      "drained": true,
+      "gammaMoist": 19,
+      "gammaSat": 21,
+      "key": "0:0.00-8.00:Sand",
+      "label": "Sand",
+      "layerIndex": 0,
+      "overridden": [],
+      "phi": 33,
+      "qc": 12000,
+      "subtype": "zand, matig",
+      "topEl": 1.6
+    },
+    {
+      "botEl": -18.4,
+      "c": 4,
+      "cu": 60,
+      "drained": true,
+      "gammaMoist": 17,
+      "gammaSat": 17,
+      "key": "1:8.00-20.00:Clay",
+      "label": "Clay",
+      "layerIndex": 1,
+      "overridden": [],
+      "phi": 22,
+      "qc": 1200,
+      "subtype": "klei, vast",
+      "topEl": -6.4
+    }
+  ]
+}

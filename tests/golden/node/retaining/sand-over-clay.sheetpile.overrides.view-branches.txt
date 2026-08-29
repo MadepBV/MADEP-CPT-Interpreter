@@ -1,0 +1,50 @@
+DA1-2 governs
+γG 1.00 · γQ 1.10 · γφ 1.25 · γc 1.25
+excavation0.30m below nominal
+free-earth d₀4.519m
+design d5.422m
+ODF at provided1.138
+Mmax / MEd291.9 / 291.9kNm/m @ 5.85 m
+Vmax / VEd341.6 / 341.6kN/m @ 7.84 m
+z₀ (net = 0)0.75m below exc.
+p at surface / exc. / toe10.0 / 45.6 / -260.0kPa
+DA1-1
+γG 1.35 / 1.00 pass. · γQ 1.50 · γφ 1.00 · γc 1.00
+excavation0.30m below nominal
+free-earth d₀3.904m
+design d4.685m
+ODF at provided1.378
+Mmax / MEd290.9 / 290.9kNm/m @ 5.48 m
+Vmax / VEd384.8 / 384.8kN/m @ 7.22 m
+z₀ (net = 0)0.61m below exc.
+p at surface / exc. / toe10.8 / 54.0 / -394.8kPa
+BGT
+γG 1.00 · γQ 1.10 · γφ 1.00 · γc 1.00 · effects × 1.35
+excavation0.00m below nominal
+free-earth d₀2.900m
+design d3.480m
+ODF at provided2.219
+Mmax / MEd139.1 / 187.8kNm/m @ 4.55 m
+Vmax / VEd243.0 / 328.1kN/m @ 5.93 m
+z₀ (net = 0)0.39m below exc.
+p at surface / exc. / toe8.0 / 36.0 / -464.0kPa
+SLS
+γG 1.00 · γQ 1.00 · γφ 1.00 · γc 1.00
+excavation0.00m below nominal
+free-earth d₀2.856m
+design d3.427m
+ODF at provided2.258
+Mmax / MEd133.0 / 133.0kNm/m @ 4.54 m
+Vmax / VEd236.6 / 236.6kN/m @ 5.89 m
+z₀ (net = 0)0.39m below exc.
+p at surface / exc. / toe7.4 / 35.4 / -464.6kPa
+DA1-2DA1-1BGTSLSdesign strengths and coefficients of the selected branchcopy branch table (TSV)
+Retained side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 33.0 → 27.45° 0.0 → 0.00 0 → 0.0 0.3689 1.2148 18.3° 3.9504 5.6790
+-5.50 m drained 22.0 → 17.91° 0.5 → 0.40 60 → 42.9 0.5296 1.4554 11.9° 2.3136 4.0642
+Excavation side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 33.0 → 27.45° 0.0 → 0.00 0 → 0.0 0.3689 1.2148 18.3° 3.9504 5.6790
+-5.50 m drained 22.0 → 17.91° 0.5 → 0.40 60 → 42.9 0.5296 1.4554 11.9° 2.3136 4.0642
+DA1/2 (A2 + M2) — embedment, design excavation. Design strengths: tan φ′d = tan φ′k/γφ, c′d = c′k/γc, cu,d = cu,k/γcu; coefficients recomputed from φ′d (never Kp/γ). All forces per metre of wall.

@@ -1,0 +1,20 @@
+Will it drive the element? — hammer hydraulic, ram 5000 kg, 60 kJ × η 0.90
+REACHES TARGETThe hammer reaches the target 6.30 m; hardest driving 9 blows / 25 cm at 6.30 m.
+Blow count at target depth9blows / 25 cm at 6.30 mSet per blow at target27.4mmHardest driving9blows / 25 cm at 6.30 mMax compressive stress243MPaMax tensile stress62MPaTransferred energy (ENTHRU) at target47.2kJRefusal criterion≥ 250 blows / 25 cmFHWA GEC-12 practice
+Verify the compressive stress against 0.9·fy (EN 12699 / EN 12063 driving stress limits) and the pile's buckling and handling condition separately.
+z (m) Rstatic (kN) set (mm) blows/25 cm σc,max (MPa) σt,max (MPa) ENTHRU (kJ)
+0.50 221 94.2 3 220 62 48.0
+1.00 286 78.0 3 220 56 48.1
+1.50 350 66.5 4 220 49 48.0
+2.00 415 57.9 4 220 42 48.3
+2.50 479 51.5 5 220 34 48.0
+3.00 543 46.3 5 221 31 47.8
+3.50 608 42.1 6 225 23 47.6
+4.00 672 38.4 7 229 23 47.7
+4.50 736 35.5 7 233 13 47.4
+5.00 801 32.8 8 237 9 46.9
+5.50 865 30.6 8 240 9 47.0
+6.00 930 28.5 9 243 8 47.0
+6.30 968 27.4 9 243 11 47.2
+copy blow-count table (TSV)
+Reference method q_s = q_c, τ_s = f_s (course §7.2): illustrative screen, not a pile design method. Quakes: shaft 2.50 mm, toe 2.50 mm; damping: shaft per layer, toe 0.5 s/m (Smith). Hammer: ram 5000 kg, equivalent stroke 1.223 m, η = 0.9, v_impact = 4.65 m/s, E_kin = 54.0 kJ. Pile: 7 segments of 0.97 m, c = 5172 m/s, impedance Z = 531 kN·s/m.

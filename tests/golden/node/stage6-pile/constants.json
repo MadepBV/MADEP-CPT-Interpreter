@@ -1,0 +1,210 @@
+{
+  "ALPHA_B_DEFAULT": {
+    "bored": {
+      "clay": 0.5,
+      "loam": 0.55,
+      "sand": 0.6,
+      "sandy_clay": 0.6
+    },
+    "cfa": {
+      "clay": 0.5,
+      "loam": 0.55,
+      "sand": 0.6,
+      "sandy_clay": 0.6
+    },
+    "driven": {
+      "clay": 1,
+      "loam": 1,
+      "sand": 1,
+      "sandy_clay": 1
+    },
+    "screw_cased": {
+      "clay": 0.7,
+      "loam": 0.8,
+      "sand": 0.8,
+      "sandy_clay": 0.8
+    },
+    "screw_displacement": {
+      "clay": 0.8,
+      "loam": 0.9,
+      "sand": 0.9,
+      "sandy_clay": 0.9
+    }
+  },
+  "ALPHA_S_DEFAULT": {
+    "bored": {
+      "clay": 0.5,
+      "loam": 0.55,
+      "sand": 0.6,
+      "sandy_clay": 0.6
+    },
+    "cfa": {
+      "clay": 0.6,
+      "loam": 0.65,
+      "sand": 0.7,
+      "sandy_clay": 0.7
+    },
+    "driven": {
+      "clay": 1,
+      "loam": 1,
+      "sand": 1,
+      "sandy_clay": 1
+    },
+    "screw_cased": {
+      "clay": 0.8,
+      "loam": 0.8,
+      "sand": 0.8,
+      "sandy_clay": 0.8
+    },
+    "screw_displacement": {
+      "clay": 0.9,
+      "loam": 0.9,
+      "sand": 0.9,
+      "sandy_clay": 0.9
+    }
+  },
+  "DEBEER_DZ": 0.2,
+  "D_C": 0.0357,
+  "EP_BY_MATERIAL": {
+    "concrete": 30,
+    "steel": 210,
+    "timber": 12
+  },
+  "GAMMA_B_NO_QA": {
+    "bored": 1.2,
+    "cfa": 1.1,
+    "driven": 1,
+    "screw_cased": 1.07,
+    "screw_displacement": 1.07
+  },
+  "GAMMA_B_QA": {
+    "bored": 1,
+    "cfa": 1,
+    "driven": 1,
+    "screw_cased": 1,
+    "screw_displacement": 1
+  },
+  "GAMMA_RD_TABLE": {
+    "bored": {
+      "comparable": 1.2,
+      "jobsite": 1.1,
+      "none": 1.2
+    },
+    "cfa": {
+      "comparable": 1.2,
+      "jobsite": 1.1,
+      "none": 1.35
+    },
+    "driven": {
+      "comparable": 1,
+      "jobsite": 1,
+      "none": 1
+    },
+    "screw_cased": {
+      "comparable": 1.1,
+      "jobsite": 1,
+      "none": 1.3
+    },
+    "screw_displacement": {
+      "comparable": 1.1,
+      "jobsite": 1,
+      "none": 1.3
+    }
+  },
+  "GAMMA_S_NO_QA": {
+    "bored": 1,
+    "cfa": 1,
+    "driven": 1,
+    "screw_cased": 1,
+    "screw_displacement": 1
+  },
+  "GAMMA_S_QA": {
+    "bored": 1,
+    "cfa": 1,
+    "driven": 1,
+    "screw_cased": 1,
+    "screw_displacement": 1
+  },
+  "MB_TABLE": {
+    "bored": {
+      "clay": 3.5,
+      "mixed": 3.5,
+      "sand": 3.5
+    },
+    "cfa": {
+      "clay": 3.5,
+      "mixed": 3.5,
+      "sand": 3.5
+    },
+    "driven": {
+      "clay": 110,
+      "mixed": 7.5,
+      "sand": 32
+    },
+    "screw_cased": {
+      "clay": 50,
+      "mixed": 7.5,
+      "sand": 17
+    },
+    "screw_displacement": {
+      "clay": 50,
+      "mixed": 7.5,
+      "sand": 17
+    }
+  },
+  "MS_TABLE_E3": {
+    "bored": {
+      "clay": 3.5,
+      "mixed": 9,
+      "sand": 21
+    },
+    "cfa": {
+      "clay": 3.5,
+      "mixed": 9,
+      "sand": 21
+    },
+    "driven": {
+      "clay": 1.5,
+      "mixed": 4,
+      "sand": 9
+    },
+    "screw_cased": {
+      "clay": 3,
+      "mixed": 4.5,
+      "sand": 9
+    },
+    "screw_displacement": {
+      "clay": 3,
+      "mixed": 4.5,
+      "sand": 9
+    }
+  },
+  "OMEGA_TABLE": {
+    "M1": {
+      "other": 1,
+      "tertiary_clay": 1.3
+    },
+    "M2": {
+      "other": 1,
+      "tertiary_clay": 1.3
+    },
+    "M4": {
+      "other": 1,
+      "tertiary_clay": 1.15
+    }
+  },
+  "PILE_DZ_DEFAULT": 0.2,
+  "PILE_TYPE_KEYS": ["driven","screw_displacement","screw_cased","cfa","bored"],
+  "Q_C_MIN_FOR_SHAFT": 1,
+  "XI3_TABLE": {
+    "1-3": [1.25,1.29,1.32,1.36,1.4],
+    "4-10": [1.15,1.19,1.21,1.25,1.29],
+    ">10": [1.14,1.17,1.2,1.24,1.27]
+  },
+  "XI4_TABLE": {
+    "1-3": [1.08,1.17,1.23,1.31,1.4],
+    "4-10": [1,1.07,1.13,1.21,1.29],
+    ">10": [1,1.06,1.12,1.2,1.27]
+  },
+  "XI_DENSITIES": ["1/10m2","1/50m2","1/100m2","1/300m2","1/1000m2"]
+}

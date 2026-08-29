@@ -1,0 +1,7 @@
+Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,E_mc_kPa,nu,beta,Edef_kPa,rShear,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse
+1,Sandy clay,"klei, vrij vast",0.000,0.950,10.00,9.05,0.950,2.228,,18,18,20,8,100,1.50,B,3342,13353,13353,40059,3342,0.36,0.595,1988,0.18,1.00,0.658,0.2,B,5.00e-7,1.70e-7,3,1,"Infiltratie (effectief)"
+2,Sandy clay,"klei, vast",0.950,3.950,9.05,6.05,3.000,10.991,,19,19,20,15,200,1.50,B,16487,28956,28956,86868,16487,0.35,0.623,10271,0.20,1.00,0.658,0.2,B,5.00e-7,1.70e-7,3,1,"Infiltratie (effectief)"
+3,Sandy clay,"klei, weinig vast",3.950,7.950,6.05,2.05,4.000,0.916,,16,16,20,2,20,3.00,B,2748,4913,4913,14739,2748,0.4,0.467,1283,0.12,1.00,0.658,0.2,B,5.00e-7,1.70e-7,3,1,"Infiltratie (effectief)"
+4,Sandy clay,"klei, vrij vast",7.950,10.950,2.05,-0.95,3.000,2.294,,18,18,20,8,100,1.50,B,3441,3617,3617,10851,3441,0.36,0.595,2047,0.18,1.00,0.658,0.2,B,5.00e-7,1.70e-7,3,1,"Infiltratie (effectief)"
+5,Sandy clay,"klei, vast",10.950,14.950,-0.95,-4.95,4.000,16.852,,19,19,20,15,200,1.50,B,25278,20178,20178,60534,25278,0.35,0.623,15748,0.20,1.00,0.658,0.2,B,5.00e-7,1.70e-7,3,1,"Infiltratie (effectief)"
+6,Sandy clay,"klei, matig vast",14.950,18.000,-4.95,-8.00,3.050,1.412,,17,17,20,4,50,3.00,B,4236,3218,3218,9654,4236,0.38,0.534,2262,0.15,1.00,0.658,0.2,B,5.00e-7,1.70e-7,3,1,"Infiltratie (effectief)"

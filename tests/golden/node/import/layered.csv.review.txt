@@ -1,0 +1,40 @@
+Import controleren
+layered.csv · CSV · layered
+✕
+Herkende kolommen
+Grootheid Kolom in bestand Eerste waarden
+Diepte *
+kolom 1 — depth
+kolom 2 — qc
+kolom 3 — fs
+0.050 · 0.100 · 0.150
+Conusweerstand qc *
+kolom 1 — depth
+kolom 2 — qc
+kolom 3 — fs
+2.6485 · 2.0349 · 1.9382
+Kleefweerstand fs
+— niet aanwezig —
+kolom 1 — depth
+kolom 2 — qc
+kolom 3 — fs
+0.044691 · 0.043092 · 0.035383
+Wrijvingsgetal Rf
+— niet aanwezig —
+kolom 1 — depth
+kolom 2 — qc
+kolom 3 — fs
+—
+Eenheden worden uit het kolomlabel gelezen (MPa/kPa); pas de toewijzing aan als een kolom verkeerd herkend is — de statistieken hieronder rekenen direct mee.
+Metingen
+metingen360
+diepte0.05 – 18.00 m
+met fs360
+met Rf360
+Alle metingen hebben qc én fs/Rf.
+Bestandsgegevens
+Maaiveld niet in bestand — stel in bij Stage 1
+Waterpeil niet in bestand — standaard, instelbaar bij Stage 1
+Coördinaten niet in bestand
+Annuleer
+Importeer 360 metingen

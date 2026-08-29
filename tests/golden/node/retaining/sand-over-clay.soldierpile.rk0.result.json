@@ -1,0 +1,371 @@
+{
+  "branches": [
+    {
+      "MEd": 247.9937868,
+      "Mmax": 247.9937868,
+      "T": 0,
+      "TEd": 0,
+      "VEd": 241.448443,
+      "Vmax": 241.448443,
+      "back": [
+        {"Ka":0.3689050969,"Kac":1.214751163,"Kp":2.710724272,"Kpc":3.292855461,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":27.45305317,"phiK":33,"topEl":3},
+        {"Ka":0.5295728375,"Kac":1.455435107,"Kp":1.888314372,"Kpc":2.748319029,"cD":0.4,"cK":0.5,"cuD":42.85714286,"cuK":60,"deltaP":0,"drained":true,"phiD":17.91192098,"phiK":22,"topEl":-5.5}
+      ],
+      "bracketed": true,
+      "closed": true,
+      "closureDepth": 8.125259378,
+      "d0": 4.825259378,
+      "dDesign": 5.790311254,
+      "dProvided": 5,
+      "diagrams": {
+        "<digest>": "11983ac1b688f8e7a238d674",
+        "bytes": 21671
+      },
+      "excavationEl": -0.3,
+      "factors": {
+        "alphaVer": 1,
+        "effectFactor": 1,
+        "gC": 1.25,
+        "gCu": 1.4,
+        "gG": 1.1,
+        "gGResist": 1.1,
+        "gPhi": 1.25,
+        "gQ": 1.43,
+        "overdig": 0.3,
+        "uls": true
+      },
+      "front": [
+        {"Ka":0.3689050969,"Kac":1.214751163,"Kp":2.710724272,"Kpc":3.292855461,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":27.45305317,"phiK":33,"topEl":3},
+        {"Ka":0.5295728375,"Kac":1.455435107,"Kp":1.888314372,"Kpc":2.748319029,"cD":0.4,"cK":0.5,"cuD":42.85714286,"cuK":60,"deltaP":0,"drained":true,"phiD":17.91192098,"phiK":22,"topEl":-5.5}
+      ],
+      "id": "DA1-2",
+      "label": "DA1/2 (A2 + M2) — embedment, design excavation",
+      "lagging": {
+        "pEarth": 21.76768338,
+        "pSurch": 10.55068577,
+        "total": 32.31836915,
+        "u": 0
+      },
+      "odfProvided": 1.074729848,
+      "pExcavation": 51.74215836,
+      "pSurface": 12.57967151,
+      "pToeBack": 128.4014225,
+      "pToeFront": 283.2706297,
+      "toeEl": -5.3,
+      "yMmax": 5.81,
+      "yVmax": 8.134,
+      "zNetZero": 0.1998333333
+    },
+    {
+      "MEd": 240.2215878,
+      "Mmax": 240.2215878,
+      "T": 0,
+      "TEd": 0,
+      "VEd": 250.09951,
+      "Vmax": 250.09951,
+      "back": [
+        {"Ka":0.2948008918,"Kac":1.085911399,"Kp":3.392119997,"Kpc":3.683541772,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":33,"phiK":33,"topEl":3},
+        {"Ka":0.4549617393,"Kac":1.349017034,"Kp":2.197987025,"Kpc":2.965121937,"cD":0.5,"cK":0.5,"cuD":60,"cuK":60,"deltaP":0,"drained":true,"phiD":22,"phiK":22,"topEl":-5.5}
+      ],
+      "bracketed": true,
+      "closed": true,
+      "closureDepth": 7.850819262,
+      "d0": 4.550819262,
+      "dDesign": 5.460983114,
+      "dProvided": 5,
+      "diagrams": {
+        "<digest>": "19c7a2b4594446aa3eba79ae",
+        "bytes": 21534
+      },
+      "excavationEl": -0.3,
+      "factors": {
+        "alphaVer": 1,
+        "effectFactor": 1,
+        "gC": 1,
+        "gCu": 1,
+        "gG": 1.485,
+        "gGResist": 1,
+        "gPhi": 1,
+        "gQ": 1.65,
+        "overdig": 0.3,
+        "uls": true
+      },
+      "front": [
+        {"Ka":0.2948008918,"Kac":1.085911399,"Kp":3.392119997,"Kpc":3.683541772,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":33,"phiK":33,"topEl":3},
+        {"Ka":0.4549617393,"Kac":1.349017034,"Kp":2.197987025,"Kpc":2.965121937,"cD":0.5,"cK":0.5,"cuD":60,"cuK":60,"deltaP":0,"drained":true,"phiD":22,"phiK":22,"topEl":-5.5}
+      ],
+      "id": "DA1-1",
+      "label": "DA1/1 (A1 + M1) — γ_G 1.35 on retained-side actions, passive favourable 1.00, design excavation",
+      "lagging": {
+        "pEarth": 23.48335361,
+        "pSurch": 9.728429428,
+        "total": 33.21178304,
+        "u": 0
+      },
+      "odfProvided": 1.20889859,
+      "pExcavation": 59.43389847,
+      "pSurface": 11.91733437,
+      "pToeBack": 156.7669017,
+      "pToeFront": 322.2513352,
+      "toeEl": -5.3,
+      "yMmax": 5.644,
+      "yVmax": 7.885,
+      "zNetZero": 0.186
+    },
+    {
+      "MEd": 156.8782129,
+      "Mmax": 116.2060836,
+      "T": 0,
+      "TEd": 0,
+      "VEd": 204.5426805,
+      "Vmax": 151.5130967,
+      "back": [
+        {"Ka":0.2948008918,"Kac":1.085911399,"Kp":3.392119997,"Kpc":3.683541772,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":33,"phiK":33,"topEl":3},
+        {"Ka":0.4549617393,"Kac":1.349017034,"Kp":2.197987025,"Kpc":2.965121937,"cD":0.5,"cK":0.5,"cuD":60,"cuK":60,"deltaP":0,"drained":true,"phiD":22,"phiK":22,"topEl":-5.5}
+      ],
+      "bracketed": true,
+      "closed": true,
+      "closureDepth": 6.511337107,
+      "d0": 3.511337107,
+      "dDesign": 4.213604528,
+      "dProvided": 5.3,
+      "diagrams": {
+        "<digest>": "222b6b55097a25a20661dfef",
+        "bytes": 20959
+      },
+      "excavationEl": 0,
+      "factors": {
+        "alphaVer": 1.1,
+        "effectFactor": 1.35,
+        "gC": 1,
+        "gCu": 1,
+        "gG": 1,
+        "gGResist": 1,
+        "gPhi": 1,
+        "gQ": 1.1,
+        "overdig": 0,
+        "uls": false
+      },
+      "front": [
+        {"Ka":0.2948008918,"Kac":1.085911399,"Kp":3.392119997,"Kpc":3.683541772,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":33,"phiK":33,"topEl":3},
+        {"Ka":0.4549617393,"Kac":1.349017034,"Kp":2.197987025,"Kpc":2.965121937,"cD":0.5,"cK":0.5,"cuD":60,"cuK":60,"deltaP":0,"drained":true,"phiD":22,"phiK":22,"topEl":-5.5}
+      ],
+      "id": "BGT",
+      "label": "BGT + α_ver — characteristic strength, nominal excavation (× 1.35 for STR)",
+      "lagging": {
+        "pEarth": 14.82405954,
+        "pSurch": 6.485619619,
+        "total": 28.76806687,
+        "u": 0
+      },
+      "odfProvided": 2.305277123,
+      "pExcavation": 36.02466935,
+      "pSurface": 7.959629679,
+      "pToeBack": 105.5014258,
+      "pToeFront": 341.5864192,
+      "toeEl": -5.3,
+      "yMmax": 4.7725,
+      "yVmax": 6.5155,
+      "zNetZero": 0.1125
+    },
+    {
+      "MEd": 110.3104908,
+      "Mmax": 110.3104908,
+      "T": 0,
+      "TEd": 0,
+      "VEd": 148.8458608,
+      "Vmax": 148.8458608,
+      "back": [
+        {"Ka":0.2948008918,"Kac":1.085911399,"Kp":3.392119997,"Kpc":3.683541772,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":33,"phiK":33,"topEl":3},
+        {"Ka":0.4549617393,"Kac":1.349017034,"Kp":2.197987025,"Kpc":2.965121937,"cD":0.5,"cK":0.5,"cuD":60,"cuK":60,"deltaP":0,"drained":true,"phiD":22,"phiK":22,"topEl":-5.5}
+      ],
+      "bracketed": true,
+      "closed": true,
+      "closureDepth": 6.444962857,
+      "d0": 3.444962857,
+      "dDesign": 4.133955429,
+      "dProvided": 5.3,
+      "diagrams": {
+        "<digest>": "7fc3c2103d1ac450ad0429f6",
+        "bytes": 20929
+      },
+      "excavationEl": 0,
+      "factors": {
+        "alphaVer": 1,
+        "effectFactor": 1,
+        "gC": 1,
+        "gCu": 1,
+        "gG": 1,
+        "gGResist": 1,
+        "gPhi": 1,
+        "gQ": 1,
+        "overdig": 0,
+        "uls": false
+      },
+      "front": [
+        {"Ka":0.2948008918,"Kac":1.085911399,"Kp":3.392119997,"Kpc":3.683541772,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":33,"phiK":33,"topEl":3},
+        {"Ka":0.4549617393,"Kac":1.349017034,"Kp":2.197987025,"Kpc":2.965121937,"cD":0.5,"cK":0.5,"cuD":60,"cuK":60,"deltaP":0,"drained":true,"phiD":22,"phiK":22,"topEl":-5.5}
+      ],
+      "id": "SLS",
+      "label": "SLS — characteristic, nominal excavation",
+      "lagging": {
+        "pEarth": 14.82405954,
+        "pSurch": 5.896017835,
+        "total": 20.72007738,
+        "u": 0
+      },
+      "odfProvided": 2.391555303,
+      "pExcavation": 35.43506757,
+      "pSurface": 7.370027895,
+      "pToeBack": 104.9118241,
+      "pToeFront": 341.5864192,
+      "toeEl": -5.3,
+      "yMmax": 4.731,
+      "yVmax": 6.474,
+      "zNetZero": 0.1125
+    }
+  ],
+  "checks": [
+    {
+      "Ed": 5.790311254,
+      "Rd": 5,
+      "combo": "DA1-2",
+      "comboLabel": "DA1/2 (A2 + M2) — embedment, design excavation",
+      "extra": [
+        {"key":"ODF_at_provided","unit":"-","value":1.074729848},
+        {"key":"d_provided","unit":"m","value":5},
+        {"key":"d_required","unit":"m","value":5.790311254},
+        {"key":"d_free_earth","unit":"m","value":4.825259378},
+        {"key":"overdig","unit":"m","value":0.3}
+      ],
+      "id": "embedment",
+      "label": "Embedment / rotational stability (soldier pile, Blum)",
+      "note": "",
+      "pass": false,
+      "unit": "m",
+      "util": 1.158062251,
+      "verb": "d_provided >= d_required"
+    }
+  ],
+  "diagrams": {
+    "<digest>": "c84fc4d2cbfc4a216193570e",
+    "bytes": 7464,
+    "n": 2
+  },
+  "engine": "v2",
+  "maxUtil": 1.158062251,
+  "notes": [
+    "Retained water table above the excavation with permeable lagging: no water pressure is applied to the wall, which presumes free drainage through the lagging and a dewatered pit. This is a binding execution condition (Rekennota §8.1).",
+    "Hand calculation below the excavation: active on the flange width b, passive on b_eff = min(k*b, s) with the plane-strain K_p (EAB / Belgian guideline §5). The PLAXIS T_lat tables use Brinch Hansen with B = b; the two models are never mixed.",
+    "Partial factors: NBN EN 1997-1 ANB generic DA1 sets. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver)."
+  ],
+  "ok": true,
+  "overallPass": false,
+  "overdigUls": 0.3,
+  "perPile": true,
+  "resistanceModel": "effective-width",
+  "structural": {
+    "Mmax": 247.9937868,
+    "Vmax": 250.09951,
+    "anchorAxial": 0,
+    "anchorCombo": "",
+    "anchorForce": 0,
+    "anchorVertical": 0,
+    "combo": "DA1-2",
+    "laggingCombo": "DA1-1",
+    "laggingPressure": 33.21178304,
+    "requiredD": 5.790311254,
+    "requiredDCombo": "DA1-2",
+    "vCombo": "DA1-1"
+  },
+  "summary": [
+    {"key":"M_Ed","unit":"kNm/pile","value":247.9937868},
+    {"key":"V_Ed","unit":"kN/pile","value":250.09951},
+    {"key":"d_required","unit":"m","value":5.790311254}
+  ],
+  "tlat": [
+    {
+      "B": 0.18,
+      "Mu": 2345.290365,
+      "Ru": 680.7774448,
+      "gC": 1,
+      "gCu": 1,
+      "gPhi": 1,
+      "id": "characteristic",
+      "label": "Characteristic (M1) — staged/SLS phases and phi-c reduction",
+      "layers": [
+        {"K0":0.455360965,"Kc0":8.049013756,"KcInf":89.15529662,"Kq0":5.988431761,"KqA":0.2386588902,"KqInf":26.3645468,"Nc":38.6383103,"Nq":26.0920121,"Pq":6.227090651,"ac":0.1744281893,"aq":0.0829388061,"c":0,"cu":0,"dcInf":2.307432595,"drained":true,"phi":33,"topEl":3},
+        {"K0":0.6253934066,"Kc0":5.019799057,"KcInf":28.51488309,"Kq0":2.640956963,"KqA":0.3871735045,"KqInf":7.205007714,"Nc":16.88286462,"Nq":7.821120072,"Pq":3.028130468,"ac":0.354253002,"aq":0.1635179225,"c":0.5,"cu":60,"dcInf":1.688983697,"drained":true,"phi":22,"topEl":-5.5}
+      ],
+      "rows": [
+        {"Kc":0,"Kq":0,"KqA":0,"dq":73.64200001,"rowCap":0,"sigmaVf":0,"tlatAL":0,"tlatAdopted":0,"tlatEqual":0,"z":0},
+        {"Kc":23.86607126,"Kq":8.093163338,"KqA":0.2386588902,"dq":71.68949999,"rowCap":0,"sigmaVf":4.750000019,"tlatAL":3.839974111,"tlatAdopted":0,"tlatEqual":6.919654682,"z":0.25},
+        {"Kc":34.52071259,"Kq":9.803790979,"KqA":0.2386588902,"dq":69.73699999,"rowCap":14.7620196,"sigmaVf":9.500000019,"tlatAL":13.7686787,"tlatAdopted":13.7686787,"tlatEqual":16.76448261,"z":0.5},
+        {"Kc":42.18574102,"Kq":11.22153049,"KqA":0.2386588902,"dq":67.78449999,"rowCap":30.04988409,"sigmaVf":14.25000002,"tlatAL":25.87129851,"tlatAdopted":25.87129851,"tlatEqual":28.78322575,"z":0.75},
+        {"Kc":47.96463698,"Kq":12.41567116,"KqA":0.2386588902,"dq":65.83199999,"rowCap":45.33774858,"sigmaVf":19.00000002,"tlatAL":39.63354485,"tlatAdopted":39.63354485,"tlatEqual":42.46159542,"z":1},
+        {"Kc":52.47731043,"Kq":13.43524389,"KqA":0.2386588902,"dq":63.87949999,"rowCap":60.62561307,"sigmaVf":23.75000002,"tlatAL":54.69149379,"tlatAdopted":54.69149379,"tlatEqual":57.4356677,"z":1.25},
+        {"Kc":56.09883567,"Kq":14.31592066,"KqA":0.2386588902,"dq":61.92699999,"rowCap":75.91347756,"sigmaVf":28.50000002,"tlatAL":70.78037579,"tlatAdopted":70.78037579,"tlatEqual":73.44067303,"z":1.5},
+        {"Kc":59.06946245,"Kq":15.08427408,"KqA":0.2386588902,"dq":59.97449999,"rowCap":91.20134205,"sigmaVf":33.25000002,"tlatAL":87.70295983,"tlatAdopted":87.70295983,"tlatEqual":90.2793804,"z":1.75},
+        {"Kc":61.55020097,"Kq":15.76050486,"KqA":0.2386588902,"dq":58.02199999,"rowCap":106.4892065,"sigmaVf":38.00000002,"tlatAL":105.3093094,"tlatAdopted":105.3093094,"tlatEqual":107.8018533,"z":2},
+        {"Kc":63.65300206,"Kq":16.3602437,"KqA":0.2386588902,"dq":56.06949999,"rowCap":121.777071,"sigmaVf":42.75000002,"tlatAL":123.4834081,"tlatAdopted":121.777071,"tlatEqual":125.8920753,"z":2.25},
+        {"Kc":65.45811984,"Kq":16.89577445,"KqA":0.2386588902,"dq":54.11699999,"rowCap":137.0649355,"sigmaVf":47.50000002,"tlatAL":142.1340811,"tlatAdopted":137.0649355,"tlatEqual":144.4588716,"z":2.5},
+        {"Kc":67.02458811,"Kq":17.37688439,"KqA":0.2386588902,"dq":52.16449999,"rowCap":152.3528,"sigmaVf":52.25000002,"tlatAL":161.1886838,"tlatAdopted":152.3528,"tlatEqual":163.4295977,"z":2.75},
+        {"Kc":68.39679916,"Kq":17.81146779,"KqA":0.2386588902,"dq":50.21199999,"rowCap":167.6406645,"sigmaVf":57.00000002,"tlatAL":180.5886223,"tlatAdopted":167.6406645,"tlatEqual":182.7456596,"z":3},
+        {"Kc":69.60877793,"Kq":18.2059625,"KqA":0.2386588902,"dq":48.25949999,"rowCap":182.928529,"sigmaVf":61.75000002,"tlatAL":200.2861127,"tlatAdopted":182.928529,"tlatEqual":202.3592733,"z":3.25},
+        {"Kc":70.68704157,"Kq":18.56567101,"KqA":0.2386588902,"dq":46.30699999,"rowCap":198.2163935,"sigmaVf":66.50000002,"tlatAL":220.2417981,"tlatAdopted":198.2163935,"tlatEqual":222.231082,"z":3.5},
+        {"Kc":71.65256196,"Kq":18.89500014,"KqA":0.2386588902,"dq":44.35449999,"rowCap":213.504258,"sigmaVf":71.25000002,"tlatAL":240.4229696,"tlatAdopted":213.504258,"tlatEqual":242.3283768,"z":3.75},
+        {"Kc":72.52214324,"Kq":19.19764252,"KqA":0.2386588902,"dq":42.40199999,"rowCap":228.7921225,"sigmaVf":76.00000002,"tlatAL":260.8022192,"tlatAdopted":228.7921225,"tlatEqual":262.6237498,"z":4},
+        {"Kc":73.30940809,"Kq":19.47671563,"KqA":0.2386588902,"dq":40.44949999,"rowCap":244.0799869,"sigmaVf":80.75000002,"tlatAL":281.3564079,"tlatAdopted":244.0799869,"tlatEqual":283.0940618,"z":4.25},
+        {"Kc":74.02551669,"Kq":19.73486959,"KqA":0.2386588902,"dq":38.49699999,"rowCap":259.3678514,"sigmaVf":85.50000002,"tlatAL":302.0658657,"tlatAdopted":259.3678514,"tlatEqual":303.719643,"z":4.5},
+        {"Kc":74.67969899,"Kq":19.97437153,"KqA":0.2386588902,"dq":36.54449999,"rowCap":274.6557159,"sigmaVf":90.25000002,"tlatAL":322.9137651,"tlatAdopted":274.6557159,"tlatEqual":324.4836656,"z":4.75},
+        {"Kc":75.2796548,"Kq":20.19717245,"KqA":0.2386588902,"dq":34.59199999,"rowCap":289.9435804,"sigmaVf":95.00000002,"tlatAL":343.8856251,"tlatAdopted":289.9435804,"tlatEqual":345.371649,"z":5}
+      ],
+      "s": 1,
+      "toeEl": -5.3,
+      "topEl": -0.3,
+      "zBar": 3.445017726
+    },
+    {
+      "B": 0.18,
+      "Mu": 1449.890834,
+      "Ru": 414.7908818,
+      "gC": 1.25,
+      "gCu": 1.4,
+      "gPhi": 1.25,
+      "id": "design",
+      "label": "Design (M2 of the risk class) — explicit DA1/2 plastic phase",
+      "layers": [
+        {"K0":0.5389783378,"Kc0":6.232954846,"KcInf":46.50311912,"Kq0":3.932503831,"KqA":0.305678733,"KqInf":13.02149185,"Nc":24.76261927,"Nq":13.86482639,"Pq":4.238182564,"ac":0.264578107,"aq":0.1257861824,"c":0,"cu":0,"dcInf":1.877956391,"drained":true,"phi":27.45305317,"topEl":3},
+        {"K0":0.6924453998,"Kc0":4.34217833,"KcInf":21.17513856,"Kq0":1.942407986,"KqA":0.4610751519,"KqInf":4.739268771,"Nc":13.0337442,"Nq":5.212779583,"Pq":2.403483138,"ac":0.4171498316,"aq":0.1829205289,"c":0.4,"cu":42.85714286,"dcInf":1.624639722,"drained":true,"phi":17.91192098,"topEl":-5.5}
+      ],
+      "rows": [
+        {"Kc":0,"Kq":0,"KqA":0,"dq":73.64200001,"rowCap":0,"sigmaVf":0,"tlatAL":0,"tlatAdopted":0,"tlatEqual":0,"z":0},
+        {"Kc":17.0544466,"Kq":5.28422739,"KqA":0.305678733,"dq":71.68949999,"rowCap":0,"sigmaVf":4.750000019,"tlatAL":0.5735024412,"tlatAdopted":0,"tlatEqual":4.518014437,"z":0.25},
+        {"Kc":23.29183623,"Kq":6.285944806,"KqA":0.305678733,"dq":69.73699999,"rowCap":3.899049407,"sigmaVf":9.500000019,"tlatAL":6.911884434,"tlatAdopted":3.899049407,"tlatEqual":10.74896564,"z":0.5},
+        {"Kc":27.34882113,"Kq":7.05801584,"KqA":0.305678733,"dq":67.78449999,"rowCap":15.74297769,"sigmaVf":14.25000002,"tlatAL":14.37416024,"tlatAdopted":14.37416024,"tlatEqual":18.10381065,"z":0.75},
+        {"Kc":30.19860603,"Kq":7.671289857,"KqA":0.305678733,"dq":65.83199999,"rowCap":27.58690597,"sigmaVf":19.00000002,"tlatAL":22.61359171,"tlatAdopted":22.61359171,"tlatEqual":26.23581134,"z":1},
+        {"Kc":32.31023029,"Kq":8.170189747,"KqA":0.305678733,"dq":63.87949999,"rowCap":39.43083425,"sigmaVf":23.75000002,"tlatAL":31.41277236,"tlatAdopted":31.41277236,"tlatEqual":34.92756119,"z":1.25},
+        {"Kc":33.93761,"Kq":8.583982177,"KqA":0.305678733,"dq":61.92699999,"rowCap":51.27476254,"sigmaVf":28.50000002,"tlatAL":40.62847056,"tlatAdopted":40.62847056,"tlatEqual":44.0358286,"z":1.5},
+        {"Kc":35.23018317,"Kq":8.932733354,"KqA":0.305678733,"dq":59.97449999,"rowCap":63.11869082,"sigmaVf":33.25000002,"tlatAL":50.1624819,"tlatAdopted":50.1624819,"tlatEqual":53.46240915,"z":1.75},
+        {"Kc":36.28163417,"Kq":9.230660981,"KqA":0.305678733,"dq":58.02199999,"rowCap":74.9626191,"sigmaVf":38.00000002,"tlatAL":59.94522468,"tlatAdopted":59.94522468,"tlatEqual":63.13772114,"z":2},
+        {"Kc":37.15367679,"Kq":9.488120305,"KqA":0.305678733,"dq":56.06949999,"rowCap":86.80654738,"sigmaVf":42.75000002,"tlatAL":69.92602011,"tlatAdopted":69.92602011,"tlatEqual":73.01108578,"z":2.25},
+        {"Kc":37.88861994,"Kq":9.712832321,"KqA":0.305678733,"dq":54.11699999,"rowCap":98.65047566,"sigmaVf":47.50000002,"tlatAL":80.0670815,"tlatAdopted":80.0670815,"tlatEqual":83.04471638,"z":2.5},
+        {"Kc":38.51643878,"Kq":9.910671337,"KqA":0.305678733,"dq":52.16449999,"rowCap":110.4944039,"sigmaVf":52.25000002,"tlatAL":90.33965987,"tlatAdopted":90.33965987,"tlatEqual":93.20986396,"z":2.75},
+        {"Kc":39.05896376,"Kq":10.08618593,"KqA":0.305678733,"dq":50.21199999,"rowCap":122.3383322,"sigmaVf":57.00000002,"tlatAL":100.7214944,"tlatAdopted":100.7214944,"tlatEqual":103.4842677,"z":3},
+        {"Kc":39.53247097,"Kq":10.24295297,"KqA":0.305678733,"dq":48.25949999,"rowCap":134.1822605,"sigmaVf":61.75000002,"tlatAL":111.1950798,"tlatAdopted":111.1950798,"tlatEqual":113.8504223,"z":3.25},
+        {"Kc":39.94934301,"Kq":10.38382394,"KqA":0.305678733,"dq":46.30699999,"rowCap":146.0261888,"sigmaVf":66.50000002,"tlatAL":121.7464609,"tlatAdopted":121.7464609,"tlatEqual":124.2943726,"z":3.5},
+        {"Kc":40.31916752,"Kq":10.51109995,"KqA":0.305678733,"dq":44.35449999,"rowCap":157.8701171,"sigmaVf":71.25000002,"tlatAL":132.364376,"tlatAdopted":132.364376,"tlatEqual":134.8048569,"z":3.75},
+        {"Kc":40.64948364,"Kq":10.62665841,"KqA":0.305678733,"dq":42.40199999,"rowCap":169.7140454,"sigmaVf":76.00000002,"tlatAL":143.039637,"tlatAdopted":143.039637,"tlatEqual":145.3726871,"z":4},
+        {"Kc":40.94630137,"Kq":10.73204626,"KqA":0.305678733,"dq":40.44949999,"rowCap":181.5579736,"sigmaVf":80.75000002,"tlatAL":153.7646731,"tlatAdopted":153.7646731,"tlatEqual":155.9902924,"z":4.25},
+        {"Kc":41.21447055,"Kq":10.82854962,"KqA":0.305678733,"dq":38.49699999,"rowCap":193.4019019,"sigmaVf":85.50000002,"tlatAL":164.5331901,"tlatAdopted":164.5331901,"tlatEqual":166.6513787,"z":4.5},
+        {"Kc":41.45794793,"Kq":10.91724653,"KqA":0.305678733,"dq":36.54449999,"rowCap":205.2458302,"sigmaVf":90.25000002,"tlatAL":175.3399121,"tlatAdopted":175.3399121,"tlatEqual":177.3506698,"z":4.75},
+        {"Kc":41.67999368,"Kq":10.99904739,"KqA":0.305678733,"dq":34.59199999,"rowCap":217.0897585,"sigmaVf":95.00000002,"tlatAL":186.1803834,"tlatAdopted":186.1803834,"tlatEqual":188.0837104,"z":5}
+      ],
+      "s": 1,
+      "toeEl": -5.3,
+      "topEl": -0.3,
+      "zBar": 3.495474219
+    }
+  ],
+  "wallType": "soldierpile"
+}

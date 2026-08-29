@@ -1,0 +1,2 @@
+soilmat "Identification" "S4-SHORT_L1_zand_lh_los_MC" "SoilModel" 2 "DrainageType" "Undrained A" "gammaUnsat" 16 "gammaSat" 18 "ERef" 8925 "nu" 0.3 "cRef" 0.1 "phi" 25 "psi" 0 "PermHorizontalPrimary" 0.2592 "PermVertical" 0.2592
+soilmat "Identification" "S4-SHORT_L1_zand_lh_los_HS" "SoilModel" 3 "DrainageType" "Undrained A" "gammaUnsat" 16 "gammaSat" 18 "E50Ref" 23488 "EOedRef" 23488 "EURRef" 70464 "PowerM" 0.5 "pRef" 100 "cRef" 0.1 "phi" 25 "psi" 0 "PermHorizontalPrimary" 0.2592 "PermVertical" 0.2592

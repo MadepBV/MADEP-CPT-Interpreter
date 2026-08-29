@@ -1,0 +1,3 @@
+[
+  "PLAXIS note: nu′ >= 0.35 combined with Undrained A will be flagged by PLAXIS (Material Models Manual 3.3.2).\n\nLayer 1 (klei, vrij vast): nu = 0.36\nLayer 2 (klei, vast): nu = 0.35\nLayer 3 (klei, weinig vast): nu = 0.4\nLayer 4 (klei, vrij vast): nu = 0.36\nLayer 5 (klei, vast): nu = 0.35\nLayer 6 (klei, matig vast): nu = 0.38\n\nThe export is unchanged; review nu or the drainage type in PLAXIS."
+]

@@ -1,0 +1,4 @@
+{
+  "app": "settlement",
+  "cacheKeys": ["bearing","pile","pileCanvas","settlement"]
+}

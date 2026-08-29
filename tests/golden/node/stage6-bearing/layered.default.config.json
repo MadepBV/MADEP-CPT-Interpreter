@@ -1,0 +1,15 @@
+{
+  "B": 1.5,
+  "Df": 1,
+  "L": 1.5,
+  "eB": 0,
+  "eL": 0,
+  "ec7Combination": "governing",
+  "factorMode": "ec7",
+  "foundationType": "strip",
+  "gammaRd": 1,
+  "load": 150,
+  "shapeMode": "hansen",
+  "showMode": "both",
+  "xi": 2
+}

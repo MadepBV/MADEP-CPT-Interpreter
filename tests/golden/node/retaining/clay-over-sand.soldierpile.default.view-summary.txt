@@ -1,0 +1,13 @@
+VERIFICATIONS PASSgoverning utilisation 0.78
+Governing values
+drequired / dprovided3.45 / 4.40m · DA1-2ODF at provided depth1.80Mres/Mdriveover-excavation Δa0.30mMEd31.6kNm/pile · DA1-2VEd47.4kN/pile · DA1-1Steel HEA1800.41UC bending · plasticLagging plate0.60UC · L = 1.00 m
+Limit states
+Embedment / rotational stability (soldier pile, Blum)0.78PASS
+Bending, plastic (class 1)0.41PASS
+Shear0.24PASS
+M–V interaction0.48PASS
+Lagging plate0.60PASS
+Vertical equilibrium (pile)0.17PASS
+Engine notes
+Hand calculation below the excavation: active on the flange width b, passive on b_eff = min(k*b, s) with the plane-strain K_p (EAB / Belgian guideline §5). The PLAXIS T_lat tables use Brinch Hansen with B = b; the two models are never mixed.
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).

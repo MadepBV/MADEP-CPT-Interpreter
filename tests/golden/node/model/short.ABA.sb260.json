@@ -1,0 +1,38 @@
+[
+  {
+    "hs": {
+      "E50_i": 45253,
+      "E50_ref": 119095,
+      "Edef": 33623,
+      "Emc": 45253,
+      "Eoed_i": 45253,
+      "Eoed_ref": 119095,
+      "Eur_ref": 357285,
+      "K0nc": 0.577,
+      "aE": 13,
+      "beta": 0.743,
+      "botTAW": "6.10m TAW",
+      "m": 0.5,
+      "nu": 0.3,
+      "nu_ur": 0.2,
+      "psi": 0,
+      "rShear": 0.28,
+      "sigV": 16.4,
+      "sigVeff": 14.4,
+      "topTAW": "8.10m TAW",
+      "u": 2
+    },
+    "kh": {
+      "infClass": "Infiltratie (volledig)",
+      "kh_max": 0.000012,
+      "kh_max_fmt": "1.2×10⁻5",
+      "kh_min": 0.0000012,
+      "kh_min_fmt": "1.2×10⁻6",
+      "kh_rep": 0.000003,
+      "kh_rep_fmt": "3×10⁻6",
+      "khkv": 1,
+      "kv_rep": 0.000003,
+      "psi_unsat": 0.1
+    }
+  }
+]

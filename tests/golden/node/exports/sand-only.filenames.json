@@ -1,0 +1,6 @@
+{
+  "csv": "CPT_S3-SAND_layers.csv",
+  "plaxis": "CPT_S3-SAND_plaxis_materials_commands.txt",
+  "plaxisCpt": "CPT_S3-SAND_plaxis_simulated.txt",
+  "project": "CPT_Project_<stamp>.madep.json"
+}

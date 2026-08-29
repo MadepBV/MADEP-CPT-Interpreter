@@ -1,0 +1,57 @@
+{
+  "front": [
+    {"c":0,"cu":0,"drained":true,"gammaMoist":19,"gammaSat":21,"phi":33,"qc":12000,"topEl":3},
+    {"c":0.5,"cu":60,"drained":true,"gammaMoist":17,"gammaSat":17,"phi":22,"qc":1200,"topEl":-5.5}
+  ],
+  "geom": {
+    "anchorAngleDeg": 20,
+    "anchorDia": 0.15,
+    "anchorEl": 2.2,
+    "anchorFixedLen": 4,
+    "anchorGammaA": 1.1,
+    "anchorSpacing": 2,
+    "anchorTfk": 150,
+    "anchored": false,
+    "effectiveWidthFactor": 3,
+    "embedment": 5,
+    "excavationEl": 0,
+    "laggingWatertight": false,
+    "pileWidth": 0.18,
+    "retainedSurfaceEl": 3,
+    "rowCap": true,
+    "spacing": 1
+  },
+  "loads": {
+    "berm": null,
+    "surcharge": 20,
+    "surchargePermanent": 5
+  },
+  "retained": [
+    {"c":0,"cu":0,"drained":true,"gammaMoist":19,"gammaSat":21,"phi":33,"qc":12000,"topEl":3},
+    {"c":0.5,"cu":60,"drained":true,"gammaMoist":17,"gammaSat":17,"phi":22,"qc":1200,"topEl":-5.5}
+  ],
+  "settings": {
+    "alphaVer": 1.1,
+    "assumeCrackWater": true,
+    "consequenceClass": 3,
+    "da11Mode": "separate",
+    "deltaPassiveRatio": 0,
+    "effectFactorBGT": 1.35,
+    "materialOverride": {
+      "applyToDA12": true,
+      "gC": 1.35,
+      "gCu": 1.5,
+      "gPhi": 1.35
+    },
+    "overdigCustom": 0.3,
+    "overdigRule": "belgian",
+    "resistanceModel": "effective-width",
+    "riskScheme": 2,
+    "surchargeFloor": 10
+  },
+  "wallType": "soldierpile",
+  "water": {
+    "front": -1000,
+    "retained": 1.5
+  }
+}

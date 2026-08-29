@@ -1,0 +1,40 @@
+Sand
+Layer 1 — 0.00–2.00 m (8.10m TAW → 6.10m TAW) (2.00 m)
+zand (lh), los
+&sigma;v0 16.4 − u 2 = &sigma;'v0 14.4 kPa · &alpha;E 2.56
+Mohr-Coulomb
+E_ref (kPa) 8,925
+&nu;
+0.30
+r_shear
+0.28
+&phi;' (°) 25
+c' (kPa) 0
+&psi; (°) 0
+&gamma; / &gamma;_sat 16 / 18 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.743
+E_def (kPa) 6,631
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 8,925
+E_oed,ref (kPa) 23,488
+E_50,ref (kPa) =E_oed 23,488
+E_ur,ref (kPa) 70,464
+m
+0.50
+K0_nc 0.577
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 3×10⁻6
+range 1.2×10⁻6 – 1.2×10⁻5
+k_h/k_v 1
+k_v (m/s) 3.0e-6
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW

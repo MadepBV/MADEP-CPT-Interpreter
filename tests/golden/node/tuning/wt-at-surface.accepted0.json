@@ -1,0 +1,43 @@
+{
+  "hs": [
+    {"E50_i":4456,"E50_ref":19928,"Edef":3311,"Emc":4456,"Eoed_i":4456,"Eoed_ref":19928,"Eur_ref":59784,"K0nc":0.577,"aE":2,"beta":0.743,"botTAW":"9.05m TAW","m":0.5,"nu":0.3,"nu_ur":0.2,"psi":0,"rShear":0.28,"sigV":8.6,"sigVeff":3.9,"topTAW":"10.00m TAW","u":4.7},
+    {"E50_i":42307,"E50_ref":110063,"Edef":28557,"Emc":42307,"Eoed_i":42307,"Eoed_ref":110063,"Eur_ref":330189,"K0nc":0.47,"aE":3.79,"beta":0.675,"botTAW":"8.05m TAW","m":0.5,"nu":0.33,"nu_ur":0.2,"psi":2,"rShear":0.35,"sigV":29,"sigVeff":14.8,"topTAW":"9.05m TAW","u":14.2},
+    {"E50_i":41814,"E50_ref":76265,"Edef":32699,"Emc":41814,"Eoed_i":41814,"Eoed_ref":76265,"Eur_ref":228795,"K0nc":0.426,"aE":3.83,"beta":0.782,"botTAW":"6.05m TAW","m":0.5,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":59,"sigVeff":30.1,"topTAW":"8.05m TAW","u":28.9},
+    {"E50_i":2748,"E50_ref":6849,"Edef":1283,"Emc":2748,"Eoed_i":2748,"Eoed_ref":6849,"Eur_ref":20547,"K0nc":0.658,"aE":3,"beta":0.467,"botTAW":"2.05m TAW","m":1,"nu":0.4,"nu_ur":0.2,"psi":0,"rShear":0.12,"sigV":95.2,"sigVeff":36.8,"topTAW":"6.05m TAW","u":58.4},
+    {"E50_i":4588,"E50_ref":5655,"Edef":3097,"Emc":4588,"Eoed_i":4588,"Eoed_ref":5655,"Eur_ref":16965,"K0nc":0.625,"aE":2,"beta":0.675,"botTAW":"-0.95m TAW","m":1,"nu":0.33,"nu_ur":0.2,"psi":0,"rShear":0.2,"sigV":170.1,"sigVeff":77.4,"topTAW":"2.05m TAW","u":92.7},
+    {"E50_i":53707,"E50_ref":46753,"Edef":41999,"Emc":53707,"Eoed_i":53707,"Eoed_ref":46753,"Eur_ref":140259,"K0nc":0.426,"aE":3.19,"beta":0.782,"botTAW":"-4.95m TAW","m":0.5,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":259,"sigVeff":132,"topTAW":"-0.95m TAW","u":127},
+    {"E50_i":4236,"E50_ref":3632,"Edef":2262,"Emc":4236,"Eoed_i":4236,"Eoed_ref":3632,"Eur_ref":10896,"K0nc":0.658,"aE":3,"beta":0.534,"botTAW":"-8.00m TAW","m":1,"nu":0.38,"nu_ur":0.2,"psi":0,"rShear":0.15,"sigV":280.1,"sigVeff":118.5,"topTAW":"-4.95m TAW","u":161.6}
+  ],
+  "layers": [
+    {
+      "m_ovr": 0.5,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": null,
+      "ovr": {}
+    },
+    {
+      "m_ovr": null,
+      "ovr": {}
+    },
+    {
+      "m_ovr": null,
+      "ovr": {}
+    },
+    {
+      "m_ovr": null,
+      "ovr": {}
+    },
+    {
+      "m_ovr": null,
+      "ovr": {}
+    },
+    {
+      "m_ovr": null,
+      "ovr": {}
+    }
+  ]
+}

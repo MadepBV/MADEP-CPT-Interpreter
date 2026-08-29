@@ -1,0 +1,34 @@
+Import controleren
+wt-at-surface.gef · GEF · S1-WT0
+✕
+Herkende kolommen
+Grootheid Bron Eenheid
+Diepte
+kolom 1 (GEF #1)
+m
+Conusweerstand qc
+kolom 2 (GEF #2)
+MPa
+Kleefweerstand fs
+kolom 3 (GEF #3)
+MPa
+Wrijvingsgetal Rf
+kolom 4 (GEF #4)
+%
+Waterspanning u2
+kolom 5 (GEF #6)
+MPa
+Metingen
+metingen360
+diepte0.05 – 18.00 m
+met fs360
+met Rf360
+met u2360
+Alle metingen hebben qc én fs/Rf.
+Bestandsgegevens
+Maaiveld 10.00 m TAW (ZID)
+Waterpeil 0.00 m onder maaiveld (MEASUREMENTVAR 14)
+Coördinaten niet in bestand
+Project Golden Project
+Annuleer
+Importeer 360 metingen

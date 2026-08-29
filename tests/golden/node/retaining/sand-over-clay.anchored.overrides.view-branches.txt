@@ -1,0 +1,54 @@
+DA1-2 governs
+γG 1.00 · γQ 1.10 · γφ 1.25 · γc 1.25
+excavation0.30m below nominal
+free-earth d₀1.853m
+design d1.853m
+ODF at provided2.424
+T / TEd61.7 / 61.7kN/m
+Mmax / MEd56.3 / 56.3kNm/m @ 2.82 m
+Vmax / VEd51.1 / 51.1kN/m @ 0.83 m
+z₀ (net = 0)0.75m below exc.
+p at surface / exc. / toe10.0 / 45.6 / -260.0kPa
+DA1-1 governs
+γG 1.35 / 1.00 pass. · γQ 1.50 · γφ 1.00 · γc 1.00
+excavation0.30m below nominal
+free-earth d₀1.585m
+design d1.585m
+ODF at provided2.839
+T / TEd66.2 / 66.2kN/m
+Mmax / MEd58.6 / 58.6kNm/m @ 2.75 m
+Vmax / VEd54.6 / 54.6kN/m @ 0.83 m
+z₀ (net = 0)0.61m below exc.
+p at surface / exc. / toe10.8 / 54.0 / -394.8kPa
+BGT
+γG 1.00 · γQ 1.10 · γφ 1.00 · γc 1.00 · effects × 1.35
+excavation0.00m below nominal
+free-earth d₀1.113m
+design d1.113m
+ODF at provided4.236
+T / TEd39.2 / 52.9kN/m
+Mmax / MEd26.0 / 35.2kNm/m @ 2.43 m
+Vmax / VEd30.7 / 41.4kN/m @ 0.83 m
+z₀ (net = 0)0.39m below exc.
+p at surface / exc. / toe8.0 / 36.0 / -464.0kPa
+SLS
+γG 1.00 · γQ 1.00 · γφ 1.00 · γc 1.00
+excavation0.00m below nominal
+free-earth d₀1.099m
+design d1.099m
+ODF at provided4.270
+T / TEd37.7 / 37.7kN/m
+Mmax / MEd25.3 / 25.3kNm/m @ 2.43 m
+Vmax / VEd29.7 / 29.7kN/m @ 0.83 m
+z₀ (net = 0)0.39m below exc.
+p at surface / exc. / toe7.4 / 35.4 / -464.6kPa
+DA1-2DA1-1BGTSLSdesign strengths and coefficients of the selected branchcopy branch table (TSV)
+Retained side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 33.0 → 33.00° 0.0 → 0.00 0 → 0.0 0.2948 1.0859 22.0° 5.6558 7.1692
+-5.50 m drained 22.0 → 22.00° 0.5 → 0.50 60 → 60.0 0.4550 1.3490 14.7° 2.8793 4.6514
+Excavation side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 33.0 → 33.00° 0.0 → 0.00 0 → 0.0 0.2948 1.0859 22.0° 5.6558 7.1692
+-5.50 m drained 22.0 → 22.00° 0.5 → 0.50 60 → 60.0 0.4550 1.3490 14.7° 2.8793 4.6514
+DA1/1 (A1 + M1) — γ_G 1.35 on retained-side actions, passive favourable 1.00, design excavation. Design strengths: tan φ′d = tan φ′k/γφ, c′d = c′k/γc, cu,d = cu,k/γcu; coefficients recomputed from φ′d (never Kp/γ). All forces per metre of wall.

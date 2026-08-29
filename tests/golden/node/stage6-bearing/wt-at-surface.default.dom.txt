@@ -1,0 +1,112 @@
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: wt-at-surface · WT = 0.00 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = not accepted
+Bearing capacity
+ULS-style resistance screening from the interpreted CPT profile.
+Inputs
+Displayed curves
+Show both curves
+Drained only
+Undrained only
+Foundation type
+Strip
+Footing / pad
+Slab / raft
+Width B (m)
+Length L (m)
+Founding depth Df = 1.00 m
+Optional verification and safety settings
+Bearing capacity is calculated regardless. Expand this only if you want a utilisation check against an applied stress or if you want to adjust the safety philosophy.
+Shape factors
+Brinch Hansen / Annex D (Recommended)
+Conservative (shape factors = 1.0)
+Brinch Hansen / Annex D mode derives the shape factors from the effective plan ratio r = B′/L′ after eccentricity. This is the default and recommended mode.
+Eccentricity eB (m)
+Eccentricity eL (m)
+Effective dimensions for shape factors use B' = B − 2eB and L' = L − 2eL. With the default centered load, keep eB = eL = 0. For circular plans screened in this rectangular interface, use B = L so r = 1.
+Applied stress for utilisation (kPa)
+Safety route
+EC7 output factors
+Global system factor ξ
+Belgian ULS combination
+Governing of DA1/1 and DA1/2 (Recommended)
+DA1/1 - action-factored route
+DA1/2 - M2 soil-strength route
+Belgian EC7 bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.
+γ_Rd
+Belgian EC7 DA1 uses R1 for spread footing bearing. This tool keeps γ_R = 1.0 and switches the soil-side factors automatically between DA1/1 and DA1/2.
+Design bearing capacity vs founding depth
+- drained
+- undrained
+- selected Df
+Selected depth
+Df 1.00 m
+Layer Sand
+Subtype zand, dicht
+Belgian EC7 envelope drained DA1/2 / undrained DA1/1
+σ'v 8.3 kPa
+Applied stress 0.70 · drained / 8.29 · undrained
+Drained
+Governing combo DA1/2
+q_ult 214.1 kPa
+q_d 214.1 kPa
+utilisation 0.70
+Undrained
+Governing combo DA1/1
+q_ult 18.1 kPa
+q_d 18.1 kPa
+utilisation 8.29
+Governing
+Mode Undrained
+q_d 18.1 kPa
+Belgian EC7 DA1 parameters used at selected depth
+Drained combo DA1/2 Undrained combo DA1/1 γ_Rd 1.00
+φ'k 32.0° γ_M,φ 1.25 φ'd 26.6°
+c'k 0.0 kPa γ_M,c' 1.25 c'd 0.0 kPa
+cu,k 0.0 kPa γ_M,cu 1.00 cu,d 0.0 kPa
+γ' 10.19 kN/m³ Combo mode most onerous R set R1
+B / L 1.50 / 1.50 m eB / eL 0.00 / 0.00 m Shape route Brinch Hansen / Annex D
+B' / L' 1.50 / 1.50 m r 0.000 Nγ EC7 Annex D rough base
+DA1 overview: DA1/1: drained 439 kPa, undrained 18 kPa · DA1/2: drained 214 kPa, undrained 18 kPa
+Drained formula at selected depth
+q_ult,d = c'·N_c·s_c·d_c + q'·N_q·s_q·d_q + 0.5·γ'·B'·N_γ·s_γ·d_γ
+φ'k = 32.0° → φ'd = 26.6°
+c'k = 0.0 kPa → c'd = 0.0 kPa
+N_c = 23.180
+N_q = 12.588
+N_γ = 11.585 (EC7 Annex D rough base)
+q' = σ'v = 8.3 kPa
+γ' = 10.19 kN/m³
+Governing Belgian combo = DA1/2
+Shape factors = Brinch Hansen / Annex D
+B = 1.50 m, L = 1.50 m
+eB = 0.00 m, eL = 0.00 m
+B' = 1.50 m, L' = 1.50 m, r = 0.000
+Df/B' = η = 0.667, k = 0.667
+s_c = 1.00, s_q = 1.00, s_γ = 1.00
+d_c = 1.22, d_q = 1.20, d_γ = 1.00
+γ_Rd = 1.00
+q_d = q_ult,d / γ_Rd = 214.1 kPa
+Undrained formula at selected depth
+q_ult,u = q + 5.14·c_u·s_cu·d_cu
+q = σv = 18.1 kPa
+cu,k = 0.0 kPa → cu,d = 0.0 kPa
+N_cu = 5.14
+Governing Belgian combo = DA1/1
+Shape factors = Brinch Hansen / Annex D
+B = 1.50 m, L = 1.50 m
+eB = 0.00 m, eL = 0.00 m
+B' = 1.50 m, L' = 1.50 m, r = 0.000
+Df/B' = η = 0.667, k = 0.667
+s_cu = 1.00, d_cu = 1.27
+γ_Rd = 1.00
+q_d = q_ult,u / γ_Rd = 18.1 kPa
+Bearing capacity is shown as a shallow-foundation screening curve using the interpreted layer active at each founding depth. Layered failure mechanisms and full eccentric-load verification are not modeled here.
+The current bearing check uses EC7 Annex D rough base for Nγ and Brinch Hansen / Annex D for shape factors. In Brinch Hansen / Annex D mode the shape factors follow the effective-dimension ratio r = B′/L′. It includes Df/B′ depth factors, but it still assumes level ground, horizontal base, and no horizontal load.
+Belgian bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.
+gamma_Rd is kept as an optional model factor only. Leave it at 1.0 unless you intentionally want an extra correction for simplified analytical model bias.

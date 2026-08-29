@@ -1,0 +1,126 @@
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: clay-only · WT = 1.00 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = not accepted
+Pile capacity (Belgian DM20 / De Beer)
+CPT-based axial pile resistance and SLS settlement for a single pile, with the De Beer scale-effect base resistance and the Belgian load-transfer settlement method.
+Inputs
+Drag the pile toe and head on the section view to set ztoe and zhead, or type values here. Drag the shaft / base edges to change Ds / Db. Click any soil layer to snap the toe to its top, mid, or bottom.
+Pile type
+Driven / jacked
+Displacement screw (plastic-concrete shaft)
+Screw with lost / temporary casing
+CFA (continuous flight auger)
+Bored
+Cross-section
+Circular
+Square
+Rectangular
+Shaft diameter Ds (m)
+Base diameter Db (m)
+Pile axial cross-section Ap (m², blank = auto)
+Pile head depth zhead (m)
+Pile toe depth ztoe (m)
+ULS design load Fc,d (kN)
+SLS representative load Frep (kN)
+Allowable settlement sallow (mm)
+Factor chain (γRd / ξ / γb·γs)
+Static load test condition
+No SLT — γRd1
+SLT in comparable conditions — γRd2
+SLT on the job site — γRd3
+Number of piles
+1–3
+4–10
+10">>10
+CPT density
+1 CPT / 10 m²
+1 CPT / 50 m²
+1 CPT / 100 m²
+1 CPT / 300 m²
+1 CPT / 1000 m²
+Number of CPTs in zone
+Quality assurance (QA) — favourable γb column
+ATG / DM20 factor overrides
+Use ATG / DM20 overrides
+Tick the box above to expose αb, αs, γRd, γb override fields for ATG-certified pile systems.
+λ override (relaxing enlarged base)
+Mechanical cone correction
+Apply mechanical-cone ω correction
+Default: CPT-E (electric cone, ω = 1.00). Tick the box for mechanical cones.
+Negative skin friction / downdrag
+Downdrag preset
+No downdrag expected
+Moderate (4–10 cm settlement → ½ Fnk)
+Severe (>10 cm settlement → full Fnk)
+Settlement parameters
+Method
+Belgian load-transfer (recommended)
+Simplified typical-curve (short, homogeneous piles only)
+Pile material
+Reinforced concrete
+Steel
+Timber
+Ep (GPa)
+Eb override (kPa, blank = oedometric default)
+Ms override (×10⁻³, blank = table)
+Mb override (blank = table)
+Pile + soil section view (drag to edit)
+De Beer transformation chain
+Per-layer shaft friction qs
+Load–settlement curve
+Axial force N(z)
+Summary
+Pile length L 10.00 m
+Db,eq 0.400 m
+Ab 0.1257 m²
+χs 1.257 m
+Layer at toe clay
+qb (De Beer) 770 kPa
+αb · eb · β · λ 1.00 · 1.000 · 1.000 · 1.00
+Rb 97 kN
+Rs 0 kN
+Rc = Rb + Rs 97 kN
+γRd 1.00
+Rc,cal 97 kN
+ξ3 / ξ4 / max 1.32 / 1.23 / 1.32
+Rc,k 73 kN
+γb / γs 1.00 / 1.00
+Rc,d 73 kN
+Effective ULS load 500 kN
+ULS utilisation 6.824
+shead (SLS) 3840.27 mm
+zb (base) 3840.00 mm
+sallow 10.0 mm
+SLS utilisation 384.027
+FAIL · ULS
+FAIL · SLS
+Per-layer shaft resistance
+i Top (m) Bot (m) Cat. qc,m (MPa) η*p qs (kPa) αs h (m) Status Rs (kN)
+1
+0.00
+10.00
+clay
+0.92
+0.0000
+0
+1.00
+10.00
+excluded
+0
+Factor chain audit
+Rc = Rb + Rs 97 kN per-CPT calculated
+÷ γRd 1.00 DM20 default
+= Rc,cal 97 kN calibrated
+÷ max(ξ3, ξ4) 1.32 single-CPT governing branch (xi3)
+= Rc,k 73 kN characteristic
+Rb,k = 100% of Rc,k 73 kN
+Rs,k = 0% of Rc,k 0 kN
+Rc,d = Rb,k/γb + Rs,k/γs 73 kN γb=1.00, γs=1.00
+De Beer profile resampled from 240 raw points to 60 bins of 0.20 m.
+De Beer Stage 1 (homogeneous values) implemented as q_h = q_c (identity); the diameter scale-effect is applied through the gradient limits in Stages 2 and 3. The full BGGG [4] homogeneous-conversion equations are not in the public source set.
+Layer 1 excluded from shaft friction (layer-mean q_c = 0.92 MPa q_b at toe is low (770 kPa < 5 MPa) — verify the toe-level choice.

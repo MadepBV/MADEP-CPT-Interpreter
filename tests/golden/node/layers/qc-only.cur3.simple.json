@@ -1,0 +1,19 @@
+[
+  {
+    "avgFs": null,
+    "avgQc": 6.52,
+    "avgRf": null,
+    "bot": 18,
+    "c": 15,
+    "cu": 200,
+    "g": 19,
+    "gs": 19,
+    "id": 0,
+    "ovr": {},
+    "phi": 20,
+    "rfIndeterminate": true,
+    "subtype": "klei, vast",
+    "top": 0,
+    "type": "Clay"
+  }
+]

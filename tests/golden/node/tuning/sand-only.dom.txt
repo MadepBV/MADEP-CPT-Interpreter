@@ -1,0 +1,270 @@
+Gravel
+Laag 1 — 0.00–1.45 m
+grind, matig
+Laag te ondiep (
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.50
+Type-default
+m 0.50
+E_oed,ref 165,594.168 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.00)
+Auto-fit
+m -0.113
+E_oed,ref 45,102 kPa
+R² 0.160
+n 29 punten
+σ' bereik ×26.1
+Preview / engineer tweak
+m
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 0.500
+Preview E_oed,ref 179,116 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Gravel
+Laag 2 — 1.45–2.65 m
+grind, matig
+Negatieve of nul-helling gevonden — fit ongeldig
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.50
+Type-default
+m 0.50
+E_oed,ref 92,011.037 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.12)
+Auto-fit
+m -0.232
+E_oed,ref 42,096 kPa
+R² 0.026
+n 25 punten
+σ' bereik ×1.78
+Preview / engineer tweak
+m
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 0.500
+Preview E_oed,ref 88,487 kPa
+Standaard m actief tot je expliciet accepteert
+Accepteer fit
+Gravel
+Laag 3 — 2.65–3.70 m
+grind, matig
+Spanningsbereik te klein (factor 1.2)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.50
+Type-default
+m 0.50
+E_oed,ref 78,908.203 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.09)
+Auto-fit
+m -0.374
+E_oed,ref 42,790 kPa
+R² 0.012
+n 22 punten
+σ' bereik ×1.23
+Preview / engineer tweak
+m
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 0.500
+Preview E_oed,ref 76,065 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Gravel
+Laag 4 — 3.70–5.20 m
+grind, dicht
+Spanningsbereik te klein (factor 1.3)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.50
+Type-default
+m 0.50
+E_oed,ref 74,954.497 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (2.94)
+Auto-fit
+m -0.011
+E_oed,ref 60,271 kPa
+R² 0.000
+n 31 punten
+σ' bereik ×1.28
+Preview / engineer tweak
+m
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 0.500
+Preview E_oed,ref 72,779 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Gravel
+Laag 5 — 5.20–7.25 m
+grind, dicht
+Spanningsbereik te klein (factor 1.3)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.18
+Type-default
+m 0.50
+E_oed,ref 63,939.506 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (2.99)
+Auto-fit
+m 0.182
+E_oed,ref 60,030 kPa
+R² 0.004
+n 42 punten
+σ' bereik ×1.3
+Preview / engineer tweak
+m
+0.01
+0.90
+Preview volgt de auto-fit
+Preview m 0.182
+Preview E_oed,ref 60,030 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Gravel
+Laag 6 — 7.25–8.70 m
+grind, matig
+Spanningsbereik te klein (factor 1.2)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=1.86
+Type-default
+m 0.50
+E_oed,ref 57,237.597 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.07)
+Auto-fit
+m 1.858
+E_oed,ref 54,837 kPa
+R² 0.145
+n 30 punten
+σ' bereik ×1.16
+Preview / engineer tweak
+m
+0.01
+2.00
+Preview volgt de auto-fit
+Preview m 1.858
+Preview E_oed,ref 54,837 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Gravel
+Laag 7 — 8.70–12.75 m
+grind, matig
+Spanningsbereik te klein (factor 1.4)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.50
+Type-default
+m 0.50
+E_oed,ref 49,556.922 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.10)
+Auto-fit
+m -0.187
+E_oed,ref 56,800 kPa
+R² 0.005
+n 82 punten
+σ' bereik ×1.38
+Preview / engineer tweak
+m
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 0.500
+Preview E_oed,ref 47,876 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Gravel
+Laag 8 — 12.75–13.55 m
+grind, matig
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.65
+Type-default
+m 0.50
+E_oed,ref 46,330.519 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.07)
+Auto-fit
+m 0.650
+E_oed,ref 41,273 kPa
+R² 0.002
+n 17 punten
+σ' bereik ×1.05
+Preview / engineer tweak
+m
+0.01
+1.05
+Preview volgt de auto-fit
+Preview m 0.650
+Preview E_oed,ref 41,273 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Gravel
+Laag 9 — 13.55–15.00 m
+grind, matig
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.50
+Type-default
+m 0.50
+E_oed,ref 43,733.958 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.11)
+Auto-fit
+m -0.184
+E_oed,ref 60,581 kPa
+R² 0.001
+n 30 punten
+σ' bereik ×1.09
+Preview / engineer tweak
+m
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 0.500
+Preview E_oed,ref 43,023 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit

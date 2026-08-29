@@ -1,0 +1,15 @@
+{
+  "B": 0.3,
+  "Df": 2,
+  "L": 0.3,
+  "eB": 0.125,
+  "eL": 0.125,
+  "ec7Combination": "DA1-2",
+  "factorMode": "ec7",
+  "foundationType": "slab",
+  "gammaRd": 1.1,
+  "load": 0,
+  "shapeMode": "conservative",
+  "showMode": "drained",
+  "xi": 1.5
+}

@@ -1,0 +1,37 @@
+Will it drive the element? — SAES HST070
+REFUSALSAES HST070 is predicted to refuse at 2.70 m (mR = 1.0) — mechanically possible down to 2.60 m of the 6.30 m target. Short by 3.70 m.
+Fc available205.0kN at 48.3 Hz (2900 rpm)Fc,min required for the target411.4 / 518.3kN (m_R 1.0 / 1.25)Force margin at the target-206.4 / -313.3kN CLOSEDWorst margin-206.4 / -313.3kN at 6.30 mEccentric moment Me2.22kg·m (from F_c, rpm)Vibrating mass Mdyn1070kg incl. 700 kg element (from 12.0 mm p-p amplitude)Attached amplitude s₀ / App2.08 / 4.15mm (with the element)Acceleration ratio α19.53— free; at the worst depth 19.53Weff (weight + crowd − line)16.3kN incl. 5.8 kN isolated partStress screen (Fc + Weff)/As16.9MPa
+Carrier check PASS
+Item Machine needs Carrier
+Carrier class 22–37 t 30 t PASS
+Oil flow 175–215 l/min 200 l/min PASS
+Working pressure 200 (max 230) bar 220 bar PASS
+Hydraulic power p·Q/600 58–82 kW (motor 66 kW) — —
+Minimum vibrator for the target depth 6.30 m
+Fc,min (mR = 1.0)411.4kN, governing depth 6.30 mFc,min (mR = 1.25, recommended)518.3kN at 6.30 mEccentric moment at f5.62kg·m at 48.3 Hz (2900 rpm)Attached amplitude s₀ / App5.25 / 10.50mm for M_dyn 1070 kgAcceleration ratio α49.37—Static downforce Weff16.3kNStress screen (Fc + Weff)/As40.8MPaΛ / δH6 / 0.00
+Specification to a supplier: a head that delivers 518 kN and 5.6 kg·m simultaneously at 2900 rpm with about 370 kg vibrating mass, plus the static downforce assumed (course §7.9). Amplitude, clamp, power, wave stress and vibration are separate checks (course §7.10).
+z (m) Rs (kN) Rb (kN) Rdrive (kN) α Fc,min (kN) Fc,min,1.25 Gcand (kN)
+0.10 8.6 21.0 29.6 1.27 13.3 19.2 194.6
+0.40 31.6 19.3 50.8 3.29 34.5 46.6 171.2
+0.70 54.6 19.0 73.6 5.45 57.2 75.5 147.9
+1.00 77.8 19.0 96.8 7.67 80.5 104.7 124.5
+1.30 101.2 19.0 120.2 9.89 103.8 133.9 101.2
+1.60 124.5 19.0 143.5 12.11 127.2 163.0 77.8
+1.90 147.9 19.0 166.8 14.34 150.5 192.2 54.5
+2.20 171.2 19.0 190.2 16.56 173.9 221.4 31.1
+2.50 194.5 19.0 213.5 18.78 197.2 250.6 7.8
+2.80 217.9 19.0 236.9 21.01 220.5 279.8 -15.5
+3.10 241.2 19.0 260.2 23.23 243.9 308.9 -38.9
+3.40 264.6 19.0 283.6 25.45 267.2 338.1 -62.2
+3.70 281.8 7.6 289.3 26.00 273.0 345.3 -68.0
+4.00 297.7 7.6 305.3 27.52 289.0 365.3 -84.0
+4.30 313.7 7.6 321.3 29.04 304.9 385.2 -99.9
+4.60 329.6 7.6 337.2 30.57 320.9 405.2 -115.9
+4.90 345.6 7.6 353.2 32.09 336.9 425.2 -131.9
+5.20 361.6 7.6 369.1 33.61 352.8 445.1 -147.8
+5.50 377.5 7.6 385.1 35.13 368.8 465.1 -163.8
+5.80 393.5 7.6 401.1 36.65 384.7 485.0 -179.7
+6.10 409.5 7.6 417.0 38.17 400.7 505.0 -195.7
+6.30 420.1 7.6 427.7 39.18 411.4 518.3 -206.4
+copy per-depth table (TSV)
+Reference method q_s = q_c, τ_s = f_s (course §7.2): illustrative screen, not a pile design method. δ_H = 0: optimistic free-acceleration baseline (course §8.1). Calibrate against measured amplitude (course §15.8). Candidate F_c = 205 kN: refusal predicted at 2.70 m (m_R = 1.0) — mechanically possible down to 2.60 m of the 6.30 m target. Force-envelope root: F_c,min(m_R=1) = 411.4 kN at 6.30 m; F_c,min(1.25) = 518.3 kN at 6.30 m. Non-normative empirical model (course §7.1): confirm by an instrumented trial; check amplitude, clamp, power, wave stress and vibration separately (course §7.10).

@@ -1,0 +1,51 @@
+DA1-2 governs
+γG 1.00 · γQ 1.10 · γφ 1.35 · γc 1.35
+excavation0.30m below nominal
+free-earth d₀5.082m
+design d6.098m
+ODF at provided0.980
+Mmax / MEd345.1 / 345.1kNm/m @ 6.21 m
+Vmax / VEd341.4 / 341.4kN/m @ 8.30 m
+z₀ (net = 0)0.91m below exc.
+p at surface / exc. / toe10.7 / 47.6 / -218.9kPa
+Moment diagram not closed on the provided pile (under-embedded for this branch).
+DA1-1
+γG 1.35 / 1.00 pass. · γQ 1.50 · γφ 1.00 · γc 1.00
+excavation0.30m below nominal
+free-earth d₀3.904m
+design d4.685m
+ODF at provided1.378
+Mmax / MEd290.9 / 290.9kNm/m @ 5.48 m
+Vmax / VEd384.8 / 384.8kN/m @ 7.22 m
+z₀ (net = 0)0.61m below exc.
+p at surface / exc. / toe10.8 / 54.0 / -394.8kPa
+BGT
+γG 1.00 · γQ 1.10 · γφ 1.00 · γc 1.00 · effects × 1.35
+excavation0.00m below nominal
+free-earth d₀2.900m
+design d3.480m
+ODF at provided2.219
+Mmax / MEd139.1 / 187.8kNm/m @ 4.55 m
+Vmax / VEd243.0 / 328.1kN/m @ 5.93 m
+z₀ (net = 0)0.39m below exc.
+p at surface / exc. / toe8.0 / 36.0 / -464.0kPa
+SLS
+γG 1.00 · γQ 1.00 · γφ 1.00 · γc 1.00
+excavation0.00m below nominal
+free-earth d₀2.856m
+design d3.427m
+ODF at provided2.258
+Mmax / MEd133.0 / 133.0kNm/m @ 4.54 m
+Vmax / VEd236.6 / 236.6kN/m @ 5.89 m
+z₀ (net = 0)0.39m below exc.
+p at surface / exc. / toe7.4 / 35.4 / -464.6kPa
+DA1-2DA1-1BGTSLSdesign strengths and coefficients of the selected branchcopy branch table (TSV)
+Retained side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 33.0 → 25.69° 0.0 → 0.00 0 → 0.0 0.3952 1.2573 17.1° 3.5539 5.3091
+-5.50 m drained 22.0 → 16.66° 0.5 → 0.37 60 → 40.0 0.5543 1.4891 11.1° 2.1696 3.9080
+Excavation side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 33.0 → 25.69° 0.0 → 0.00 0 → 0.0 0.3952 1.2573 17.1° 3.5539 5.3091
+-5.50 m drained 22.0 → 16.66° 0.5 → 0.37 60 → 40.0 0.5543 1.4891 11.1° 2.1696 3.9080
+DA1/2 (A2 + M2) — embedment, design excavation. Design strengths: tan φ′d = tan φ′k/γφ, c′d = c′k/γc, cu,d = cu,k/γcu; coefficients recomputed from φ′d (never Kp/γ). All forces per metre of wall.

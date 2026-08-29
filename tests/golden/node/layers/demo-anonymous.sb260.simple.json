@@ -1,0 +1,36 @@
+[
+  {
+    "avgFs": 0.07771,
+    "avgQc": 3.451,
+    "avgRf": 3.41,
+    "bot": 6.98,
+    "c": 8,
+    "cu": 100,
+    "g": 18,
+    "gs": 18,
+    "id": 0,
+    "ovr": {},
+    "phi": 20,
+    "rfIndeterminate": false,
+    "subtype": "klei, vrij vast",
+    "top": 0,
+    "type": "Sandy clay"
+  },
+  {
+    "avgFs": 0.13589,
+    "avgQc": 5.683,
+    "avgRf": 2.49,
+    "bot": 21.72,
+    "c": 8,
+    "cu": 100,
+    "g": 20,
+    "gs": 20,
+    "id": 1,
+    "ovr": {},
+    "phi": 22,
+    "rfIndeterminate": false,
+    "subtype": "leem, vast",
+    "top": 6.98,
+    "type": "Sand"
+  }
+]

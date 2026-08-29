@@ -1,0 +1,290 @@
+{
+  "branches": [
+    {
+      "MEd": 790.3798266,
+      "Mmax": 790.3798266,
+      "T": 0,
+      "TEd": 0,
+      "VEd": 166.7356006,
+      "Vmax": 166.7356006,
+      "back": [
+        {"Ka":0.4668179417,"Kac":1.366481528,"Kp":2.77293596,"Kpc":4.543821761,"cD":2.4,"cK":3,"cuD":32.14285714,"cuK":45,"deltaP":14.21712944,"drained":true,"phiD":21.31503664,"phiK":26,"topEl":3},
+        {"Ka":0.563030002,"Kac":1.500706503,"Kp":2.123014195,"Kpc":3.856820177,"cD":0.4,"cK":0.5,"cuD":21.42857143,"cuK":30,"deltaP":10.82827952,"drained":true,"phiD":16.23430213,"phiK":20,"topEl":-1},
+        {"Ka":0.3434417145,"Kac":1.172078008,"Kp":4.418612597,"Kpc":6.102855958,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":19.51379712,"drained":true,"phiD":29.25606764,"phiK":35,"topEl":-4.5}
+      ],
+      "bracketed": true,
+      "closed": false,
+      "closureDepth": 10.25687826,
+      "d0": 6.956878258,
+      "dDesign": 8.34825391,
+      "dProvided": 5,
+      "diagrams": {
+        "<digest>": "57076f0961bb03e852f21c91",
+        "bytes": 22840
+      },
+      "excavationEl": -0.3,
+      "factors": {
+        "alphaVer": 1,
+        "effectFactor": 1,
+        "gC": 1.25,
+        "gCu": 1.4,
+        "gG": 1.1,
+        "gGResist": 1.1,
+        "gPhi": 1.25,
+        "gQ": 1.43,
+        "overdig": 0.3,
+        "uls": true
+      },
+      "front": [
+        {"Ka":0.4668179417,"Kac":1.366481528,"Kp":2.77293596,"Kpc":4.543821761,"cD":2.4,"cK":3,"cuD":32.14285714,"cuK":45,"deltaP":14.21712944,"drained":true,"phiD":21.31503664,"phiK":26,"topEl":3},
+        {"Ka":0.563030002,"Kac":1.500706503,"Kp":2.123014195,"Kpc":3.856820177,"cD":0.4,"cK":0.5,"cuD":21.42857143,"cuK":30,"deltaP":10.82827952,"drained":true,"phiD":16.23430213,"phiK":20,"topEl":-1},
+        {"Ka":0.3434417145,"Kac":1.172078008,"Kp":4.418612597,"Kpc":6.102855958,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":19.51379712,"drained":true,"phiD":29.25606764,"phiK":35,"topEl":-4.5}
+      ],
+      "id": "DA1-2",
+      "label": "DA1/2 (A2 + M2) — embedment, design excavation",
+      "odfProvided": 0.5464695785,
+      "pExcavation": 54.09357056,
+      "pSurface": 13.35100392,
+      "pToeBack": 116.1977929,
+      "pToeFront": 407.3076169,
+      "toeEl": -5.3,
+      "yMmax": 8.078666667,
+      "yVmax": 6.0175,
+      "zNetZero": 2.731333333
+    },
+    {
+      "MEd": 906.0055586,
+      "Mmax": 906.0055586,
+      "T": 0,
+      "TEd": 0,
+      "VEd": 201.1803472,
+      "Vmax": 201.1803472,
+      "back": [
+        {"Ka":0.390461707,"Kac":1.249738704,"Kp":3.619767314,"Kpc":5.371318989,"cD":3,"cK":3,"cuD":45,"cuK":45,"deltaP":17.342,"drained":true,"phiD":26,"phiK":26,"topEl":3},
+        {"Ka":0.4902905966,"Kac":1.400415076,"Kp":2.582623896,"Kpc":4.348223417,"cD":0.5,"cK":0.5,"cuD":30,"cuK":30,"deltaP":13.34,"drained":true,"phiD":20,"phiK":20,"topEl":-1},
+        {"Ka":0.2709900541,"Kac":1.041134101,"Kp":6.511358763,"Kpc":7.871036032,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":23.345,"drained":true,"phiD":35,"phiK":35,"topEl":-4.5}
+      ],
+      "bracketed": true,
+      "closed": false,
+      "closureDepth": 10.06541929,
+      "d0": 6.765419289,
+      "dDesign": 8.118503147,
+      "dProvided": 5,
+      "diagrams": {
+        "<digest>": "d793c103c62506de7c7cff5a",
+        "bytes": 22859
+      },
+      "excavationEl": -0.3,
+      "factors": {
+        "alphaVer": 1,
+        "effectFactor": 1,
+        "gC": 1,
+        "gCu": 1,
+        "gG": 1.485,
+        "gGResist": 1,
+        "gPhi": 1,
+        "gQ": 1.65,
+        "overdig": 0.3,
+        "uls": true
+      },
+      "front": [
+        {"Ka":0.390461707,"Kac":1.249738704,"Kp":3.619767314,"Kpc":5.371318989,"cD":3,"cK":3,"cuD":45,"cuK":45,"deltaP":17.342,"drained":true,"phiD":26,"phiK":26,"topEl":3},
+        {"Ka":0.4902905966,"Kac":1.400415076,"Kp":2.582623896,"Kpc":4.348223417,"cD":0.5,"cK":0.5,"cuD":30,"cuK":30,"deltaP":13.34,"drained":true,"phiD":20,"phiK":20,"topEl":-1},
+        {"Ka":0.2709900541,"Kac":1.041134101,"Kp":6.511358763,"Kpc":7.871036032,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":23.345,"drained":true,"phiD":35,"phiK":35,"topEl":-4.5}
+      ],
+      "id": "DA1-1",
+      "label": "DA1/1 (A1 + M1) — γ_G 1.35 on retained-side actions, passive favourable 1.00, design excavation",
+      "odfProvided": 0.5485772757,
+      "pExcavation": 61.68614189,
+      "pSurface": 12.8852509,
+      "pToeBack": 143.1522205,
+      "pToeFront": 545.6517406,
+      "toeEl": -5.3,
+      "yMmax": 8.064833333,
+      "yVmax": 6.5985,
+      "zNetZero": 3.312333333
+    },
+    {
+      "MEd": 314.6003579,
+      "Mmax": 233.0373021,
+      "T": 0,
+      "TEd": 0,
+      "VEd": 571.8092338,
+      "Vmax": 423.5623954,
+      "back": [
+        {"Ka":0.390461707,"Kac":1.249738704,"Kp":3.619767314,"Kpc":5.371318989,"cD":3,"cK":3,"cuD":45,"cuK":45,"deltaP":17.342,"drained":true,"phiD":26,"phiK":26,"topEl":3},
+        {"Ka":0.4902905966,"Kac":1.400415076,"Kp":2.582623896,"Kpc":4.348223417,"cD":0.5,"cK":0.5,"cuD":30,"cuK":30,"deltaP":13.34,"drained":true,"phiD":20,"phiK":20,"topEl":-1},
+        {"Ka":0.2709900541,"Kac":1.041134101,"Kp":6.511358763,"Kpc":7.871036032,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":23.345,"drained":true,"phiD":35,"phiK":35,"topEl":-4.5}
+      ],
+      "bracketed": true,
+      "closed": false,
+      "closureDepth": 8.315249958,
+      "d0": 5.315249958,
+      "dDesign": 6.37829995,
+      "dProvided": 5.3,
+      "diagrams": {
+        "<digest>": "f1e8cdd0e6bf8cc71bec2cd8",
+        "bytes": 23028
+      },
+      "excavationEl": 0,
+      "factors": {
+        "alphaVer": 1.1,
+        "effectFactor": 1.35,
+        "gC": 1,
+        "gCu": 1,
+        "gG": 1,
+        "gGResist": 1,
+        "gPhi": 1,
+        "gQ": 1.1,
+        "overdig": 0,
+        "uls": false
+      },
+      "front": [
+        {"Ka":0.390461707,"Kac":1.249738704,"Kp":3.619767314,"Kpc":5.371318989,"cD":3,"cK":3,"cuD":45,"cuK":45,"deltaP":17.342,"drained":true,"phiD":26,"phiK":26,"topEl":3},
+        {"Ka":0.4902905966,"Kac":1.400415076,"Kp":2.582623896,"Kpc":4.348223417,"cD":0.5,"cK":0.5,"cuD":30,"cuK":30,"deltaP":13.34,"drained":true,"phiD":20,"phiK":20,"topEl":-1},
+        {"Ka":0.2709900541,"Kac":1.041134101,"Kp":6.511358763,"Kpc":7.871036032,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":23.345,"drained":true,"phiD":35,"phiK":35,"topEl":-4.5}
+      ],
+      "id": "BGT",
+      "label": "BGT + α_ver — characteristic strength, nominal excavation (× 1.35 for STR)",
+      "odfProvided": 0.9965230083,
+      "pExcavation": 37.4332173,
+      "pSurface": 8.590167363,
+      "pToeBack": 96.33858166,
+      "pToeFront": 580.8130779,
+      "toeEl": -5.3,
+      "yMmax": 6.487833333,
+      "yVmax": 8.3,
+      "zNetZero": 0.4168333333
+    },
+    {
+      "MEd": 216.2937219,
+      "Mmax": 216.2937219,
+      "T": 0,
+      "TEd": 0,
+      "VEd": 410.5200567,
+      "Vmax": 410.5200567,
+      "back": [
+        {"Ka":0.390461707,"Kac":1.249738704,"Kp":3.619767314,"Kpc":5.371318989,"cD":3,"cK":3,"cuD":45,"cuK":45,"deltaP":17.342,"drained":true,"phiD":26,"phiK":26,"topEl":3},
+        {"Ka":0.4902905966,"Kac":1.400415076,"Kp":2.582623896,"Kpc":4.348223417,"cD":0.5,"cK":0.5,"cuD":30,"cuK":30,"deltaP":13.34,"drained":true,"phiD":20,"phiK":20,"topEl":-1},
+        {"Ka":0.2709900541,"Kac":1.041134101,"Kp":6.511358763,"Kpc":7.871036032,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":23.345,"drained":true,"phiD":35,"phiK":35,"topEl":-4.5}
+      ],
+      "bracketed": true,
+      "closed": true,
+      "closureDepth": 8.247228105,
+      "d0": 5.247228105,
+      "dDesign": 6.296673726,
+      "dProvided": 5.3,
+      "diagrams": {
+        "<digest>": "43739b92c9f3ac752bace54e",
+        "bytes": 23012
+      },
+      "excavationEl": 0,
+      "factors": {
+        "alphaVer": 1,
+        "effectFactor": 1,
+        "gC": 1,
+        "gCu": 1,
+        "gG": 1,
+        "gGResist": 1,
+        "gPhi": 1,
+        "gQ": 1,
+        "overdig": 0,
+        "uls": false
+      },
+      "front": [
+        {"Ka":0.390461707,"Kac":1.249738704,"Kp":3.619767314,"Kpc":5.371318989,"cD":3,"cK":3,"cuD":45,"cuK":45,"deltaP":17.342,"drained":true,"phiD":26,"phiK":26,"topEl":3},
+        {"Ka":0.4902905966,"Kac":1.400415076,"Kp":2.582623896,"Kpc":4.348223417,"cD":0.5,"cK":0.5,"cuD":30,"cuK":30,"deltaP":13.34,"drained":true,"phiD":20,"phiK":20,"topEl":-1},
+        {"Ka":0.2709900541,"Kac":1.041134101,"Kp":6.511358763,"Kpc":7.871036032,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":23.345,"drained":true,"phiD":35,"phiK":35,"topEl":-4.5}
+      ],
+      "id": "SLS",
+      "label": "SLS — characteristic, nominal excavation",
+      "odfProvided": 1.018418921,
+      "pExcavation": 36.65229388,
+      "pSurface": 7.809243949,
+      "pToeBack": 95.79660155,
+      "pToeFront": 580.8130779,
+      "toeEl": -5.3,
+      "yMmax": 6.391,
+      "yVmax": 8.2585,
+      "zNetZero": 0.403
+    }
+  ],
+  "checks": [
+    {
+      "Ed": 8.34825391,
+      "Rd": 5,
+      "combo": "DA1-2",
+      "comboLabel": "DA1/2 (A2 + M2) — embedment, design excavation",
+      "extra": [
+        {"key":"ODF_at_provided","unit":"-","value":0.5464695785},
+        {"key":"d_provided","unit":"m","value":5},
+        {"key":"d_required","unit":"m","value":8.34825391},
+        {"key":"d_free_earth","unit":"m","value":6.956878258},
+        {"key":"overdig","unit":"m","value":0.3}
+      ],
+      "id": "embedment",
+      "label": "Embedment / rotational stability (cantilever, Blum)",
+      "note": "",
+      "pass": false,
+      "unit": "m",
+      "util": 1.669650782,
+      "verb": "d_provided >= d_required"
+    },
+    {
+      "Ed": 23.8383,
+      "Rd": 50.355,
+      "combo": "HYD",
+      "comboLabel": "HYD hydraulic heave/piping",
+      "extra": [
+        {"key":"delta_h","unit":"m","value":1.8},
+        {"key":"embedment","unit":"m","value":5},
+        {"key":"i_exit","unit":"-","value":0.36},
+        {"key":"i_crit","unit":"-","value":1.140672783}
+      ],
+      "id": "heave",
+      "label": "Hydraulic heave / piping (HYD)",
+      "note": "Conservative exit gradient: the whole differential head is dissipated over the downstream embedment (no upstream seepage-path credit). Confirm with a flow net for stratified ground.",
+      "pass": true,
+      "unit": "kPa",
+      "util": 0.4734048257,
+      "verb": "u_dst <= sigma'_stb"
+    }
+  ],
+  "diagrams": {
+    "<digest>": "534255c823ddf663d6050d8d",
+    "bytes": 7493,
+    "n": 2
+  },
+  "engine": "v2",
+  "maxUtil": 1.669650782,
+  "notes": [
+    "Partial factors: NBN EN 1997-1 ANB generic DA1 sets. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).",
+    "Differential water head: pore pressures are hydrostatic on each face with no seepage modelling (EN 1997-1 9.3.1.6). Seepage around the toe reduces the front passive resistance — use a flow net / FE seepage where the head difference is significant."
+  ],
+  "ok": true,
+  "overallPass": false,
+  "overdigUls": 0.3,
+  "perPile": false,
+  "resistanceModel": "continuous",
+  "structural": {
+    "Mmax": 906.0055586,
+    "Vmax": 571.8092338,
+    "anchorAxial": 0,
+    "anchorCombo": "",
+    "anchorForce": 0,
+    "anchorVertical": 0,
+    "combo": "DA1-1",
+    "laggingCombo": "",
+    "laggingPressure": 0,
+    "requiredD": 8.34825391,
+    "requiredDCombo": "DA1-2",
+    "vCombo": "BGT"
+  },
+  "summary": [
+    {"key":"M_Ed","unit":"kNm/m","value":906.0055586},
+    {"key":"V_Ed","unit":"kN/m","value":571.8092338},
+    {"key":"d_required","unit":"m","value":8.34825391}
+  ],
+  "tlat": [],
+  "wallType": "sheetpile"
+}

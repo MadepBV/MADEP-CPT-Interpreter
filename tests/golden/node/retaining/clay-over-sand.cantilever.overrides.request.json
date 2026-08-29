@@ -1,0 +1,47 @@
+{
+  "backfill": {
+    "c": 0,
+    "cu": 0,
+    "drained": true,
+    "gammaMoist": 18,
+    "gammaSat": 20,
+    "phi": 32,
+    "topEl": 0
+  },
+  "geom": {
+    "backBatterDeg": 0,
+    "baseThk": 0.55,
+    "betaDeg": 0,
+    "frontSoilEl": 1,
+    "gammaConc": 24,
+    "heel": 2.1,
+    "keyDepth": 0,
+    "keyThk": 0.3,
+    "stemHeight": 3.5,
+    "stemThkBot": 0.45,
+    "stemThkTop": 0.3,
+    "toe": 0.9
+  },
+  "insitu": [
+    {"c":3,"cu":45,"drained":true,"gammaMoist":18,"gammaSat":19,"phi":26,"qc":2000,"topEl":1},
+    {"c":0.5,"cu":30,"drained":true,"gammaMoist":16,"gammaSat":16.5,"phi":20,"qc":700,"topEl":-3},
+    {"c":0,"cu":0,"drained":true,"gammaMoist":19,"gammaSat":21,"phi":35,"qc":18000,"topEl":-6.5}
+  ],
+  "settings": {
+    "assumeCrackWater": true,
+    "bearingDepthFactors": true,
+    "bearingMethod": "annexd",
+    "consequenceClass": 2,
+    "deltaActiveRatio": 0.667,
+    "deltaBaseRatio": 1,
+    "passiveDeltaRatio": 0.667,
+    "passiveToe": true,
+    "riskScheme": 0
+  },
+  "surcharge": 20,
+  "wallType": "cantilever",
+  "water": {
+    "front": -1000,
+    "retained": 2.55
+  }
+}

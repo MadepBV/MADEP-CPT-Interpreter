@@ -1,0 +1,42 @@
+Limit state (governing branch · reference) Ed / Rd Util.
+Embedment / rotational stability (soldier pile, Blum)
+DA1/2 (A2 + M2) — embedment, design excavation · d_provided >= d_required · EN 1997-1 §9.7
+ODF_at_provided 1.00 - · d_provided 5.00 m · d_required 5.99 m …
+ODF_at_provided 1.00 - · d_provided 5.00 m · d_required 5.99 m · d_free_earth 4.99 m · overdig 0.30 m
+5.99 / 5.00 m
+ODF 1.00 · d ratio 1.20
+FAIL
+Bending, plastic (class 1) — HEA180
+STR · DA1-2 · E_d <= R_d · EN 1993-1-1 §6.2.5
+229.26 / 76.35 kNm
+3.00
+FAIL
+Shear — HEA180
+STR · DA1-2 · E_d <= R_d · EN 1993-1-1 §6.2.6
+230.13 / 196.33 kN
+1.17
+FAIL
+M–V interaction — HEA180
+STR · DA1-2 · E_d <= R_d · EN 1993-1-1 §6.2.8
+V_Ed > 0.5·V_pl,Rd: ρ = 1.807, reduced M_y,V,Rd = 61.6 kNm
+230.13 / 98.16 kN
+3.72
+FAIL
+Lagging plate 10 mm S235
+STR · DA1-1 · M_Ed <= M_Rd (elastic) · EN 1993-1-1 §6.2.5; Rekennota §7.8
+L 1.00 m · sigma 226.44 N/mm2 · UC_plastic 0.64 - …
+L 1.00 m · sigma 226.44 N/mm2 · UC_plastic 0.64 - · deflection_char 15.86 mm
+3.77 / 3.92 kNm/m
+0.96
+PASS
+Vertical equilibrium of the pile (self-weight vs shaft resistance)
+GEO · screening · G <= R_s · EN 1997-1 §9.7.5; Rekennota §7.10
+G_pile 2.89 kN · G_lagging 2.59 kN …
+G_pile 2.89 kN · G_lagging 2.59 kNBase resistance not credited; T_skin from the β-method of the PLAXIS set.
+5.48 / 39.76 kN
+0.14
+PASS
+Retained water table above the excavation with permeable lagging: no water pressure is applied to the wall, which presumes free drainage through the lagging and a dewatered pit. This is a binding execution condition (Rekennota §8.1).
+Hand calculation below the excavation: active on the flange width b, passive on b_eff = min(k*b, s) with the plane-strain K_p (EAB / Belgian guideline §5). The PLAXIS T_lat tables use Brinch Hansen with B = b; the two models are never mixed.
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+Method & assumptions: documentation.

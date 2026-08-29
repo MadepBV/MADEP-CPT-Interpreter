@@ -1,0 +1,12 @@
+NOT VERIFIEDgoverning utilisation 11.54
+Governing values
+Stem MEd / VEd80.3 / 73.1kNm, kN per m · C1Toe MEd15.0kNm/m · C1Heel MEd10.7kNm/m · C1Base width B2.50m
+Limit states
+Bearing resultant in middle third (SLS, e <= B/6)1.45FAIL
+Uplift / flotation (UPL)0.16PASS
+Base sliding (GEO)1.38FAIL
+Base bearing resistance (GEO, Annex D)11.54FAIL
+Eccentricity (ULS, e <= B/3)0.98PASS
+Overturning about toe (EQU)0.91PASS
+Engine notes
+Both DA1 combinations evaluated; governing shown per check.

@@ -1,0 +1,2 @@
+DA1-2DA1-1BGTSLSbranch momentshearnet pressuredrawn on the section
+DA1/2 (A2 + M2) — embedment, design excavation. Depth from the retained surface. Pressures are the unfactored ordinates per unit width of the acting face (retained side incl. surcharge; excavation side = passive resistance); the net pressure, V and M are factored with this branch's partial factors. The V/M tail beyond the free-earth closure is set to zero (no toe reaction is modelled beyond it).

@@ -1,0 +1,56 @@
+DA1-2
+γG 1.10 · γQ 1.43 · γφ 1.25 · γc 1.25
+excavation0.30m below nominal
+free-earth d₀4.329m
+design d4.329m
+ODF at provided1.472
+T / TEd113.3 / 113.3kN/m
+Mmax / MEd156.2 / 156.2kNm/m @ 3.65 m
+Vmax / VEd99.8 / 99.8kN/m @ 0.83 m
+z₀ (net = 0)2.73m below exc.
+p at surface / exc. / toe13.4 / 54.1 / -291.1kPa
+DA1-1 governs
+γG 1.49 / 1.00 pass. · γQ 1.65 · γφ 1.00 · γc 1.00
+excavation0.30m below nominal
+free-earth d₀4.397m
+design d4.397m
+ODF at provided1.490
+T / TEd126.1 / 126.1kN/m
+Mmax / MEd190.3 / 190.3kNm/m @ 3.91 m
+Vmax / VEd113.2 / 113.2kN/m @ 0.83 m
+z₀ (net = 0)3.31m below exc.
+p at surface / exc. / toe12.9 / 61.7 / -402.5kPa
+BGT
+γG 1.00 · γQ 1.10 · γφ 1.00 · γc 1.00 · effects × 1.35
+excavation0.00m below nominal
+free-earth d₀2.430m
+design d2.430m
+ODF at provided2.441
+T / TEd44.8 / 60.5kN/m
+Mmax / MEd34.4 / 46.4kNm/m @ 2.57 m
+Vmax / VEd36.2 / 48.9kN/m @ 0.83 m
+z₀ (net = 0)0.42m below exc.
+p at surface / exc. / toe8.6 / 37.4 / -484.5kPa
+SLS
+γG 1.00 · γQ 1.00 · γφ 1.00 · γc 1.00
+excavation0.00m below nominal
+free-earth d₀2.357m
+design d2.357m
+ODF at provided2.467
+T / TEd42.3 / 42.3kN/m
+Mmax / MEd32.5 / 32.5kNm/m @ 2.56 m
+Vmax / VEd34.4 / 34.4kN/m @ 0.83 m
+z₀ (net = 0)0.40m below exc.
+p at surface / exc. / toe7.8 / 36.7 / -485.0kPa
+DA1-2DA1-1BGTSLSdesign strengths and coefficients of the selected branchcopy branch table (TSV)
+Retained side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 26.0 → 26.00° 3.0 → 3.00 45 → 45.0 0.3905 1.2497 17.3° 3.6198 5.3713
+-1.00 m drained 20.0 → 20.00° 0.5 → 0.50 30 → 30.0 0.4903 1.4004 13.3° 2.5826 4.3482
+-4.50 m drained 35.0 → 35.00° 0.0 → 0.00 0 → 0.0 0.2710 1.0411 23.3° 6.5114 7.8710
+Excavation side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 26.0 → 26.00° 3.0 → 3.00 45 → 45.0 0.3905 1.2497 17.3° 3.6198 5.3713
+-1.00 m drained 20.0 → 20.00° 0.5 → 0.50 30 → 30.0 0.4903 1.4004 13.3° 2.5826 4.3482
+-4.50 m drained 35.0 → 35.00° 0.0 → 0.00 0 → 0.0 0.2710 1.0411 23.3° 6.5114 7.8710
+DA1/1 (A1 + M1) — γ_G 1.35 on retained-side actions, passive favourable 1.00, design excavation. Design strengths: tan φ′d = tan φ′k/γφ, c′d = c′k/γc, cu,d = cu,k/γcu; coefficients recomputed from φ′d (never Kp/γ). All forces per metre of wall.

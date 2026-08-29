@@ -1,0 +1,2 @@
+soilmat "Identification" "S2-CLAY_L1_klei_weinig_vast_MC" "SoilModel" 2 "DrainageType" "Undrained A" "gammaUnsat" 16 "gammaSat" 16 "ERef" 2781 "nu" 0.4 "cRef" 2 "phi" 20 "psi" 0 "PermHorizontalPrimary" 0.00432 "PermVertical" 0.001469
+soilmat "Identification" "S2-CLAY_L1_klei_weinig_vast_HS" "SoilModel" 3 "DrainageType" "Undrained A" "gammaUnsat" 16 "gammaSat" 16 "E50Ref" 5594 "EOedRef" 5594 "EURRef" 16782 "PowerM" 1 "pRef" 100 "cRef" 2 "phi" 20 "psi" 0 "PermHorizontalPrimary" 0.00432 "PermVertical" 0.001469

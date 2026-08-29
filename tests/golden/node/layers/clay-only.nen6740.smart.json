@@ -1,0 +1,53 @@
+[
+  {
+    "avgFs": 0.03829,
+    "avgQc": 0.891,
+    "avgRf": 4.35,
+    "bot": 2.2,
+    "c": 2,
+    "cu": 20,
+    "g": 16,
+    "gs": 16,
+    "id": 0,
+    "ovr": {},
+    "phi": 20,
+    "rfIndeterminate": false,
+    "subtype": "klei, weinig vast",
+    "top": 0,
+    "type": "Clay"
+  },
+  {
+    "avgFs": 0.04231,
+    "avgQc": 0.929,
+    "avgRf": 4.6,
+    "bot": 4.15,
+    "c": 2,
+    "cu": 20,
+    "g": 16,
+    "gs": 16,
+    "id": 1,
+    "ovr": {},
+    "phi": 20,
+    "rfIndeterminate": false,
+    "subtype": "klei, weinig vast",
+    "top": 2.2,
+    "type": "Clay"
+  },
+  {
+    "avgFs": 0.04252,
+    "avgQc": 0.937,
+    "avgRf": 4.53,
+    "bot": 12,
+    "c": 2,
+    "cu": 20,
+    "g": 16,
+    "gs": 16,
+    "id": 2,
+    "ovr": {},
+    "phi": 20,
+    "rfIndeterminate": false,
+    "subtype": "klei, weinig vast",
+    "top": 4.15,
+    "type": "Clay"
+  }
+]

@@ -1,0 +1,300 @@
+{
+  "drivability": null,
+  "generatedAt": "<masked>",
+  "kind": "madep-cp/retaining-note",
+  "layers": {
+    "<digest>": "4e93ac3bfef4d6a220de5f8b",
+    "bytes": 211,
+    "n": 2
+  },
+  "profile": {
+    "cutTopBy": 0,
+    "extendedTopBy": 0.5,
+    "notes": [
+      "CPT ground level is 0.50 m below the reference surface: the uppermost layer (Sand) is extended upward to the surface with its own parameters.",
+      "The CPT ends 20.5 m below the surface; the deepest layer (Clay) is extended downward beyond the sounding."
+    ],
+    "strata": [
+      {
+        "botEl": -7.5,
+        "c": 0,
+        "cu": 0,
+        "drained": true,
+        "gammaMoist": 19,
+        "gammaSat": 21,
+        "key": "0:0.00-8.00:Sand",
+        "label": "Sand",
+        "layerIndex": 0,
+        "overridden": [],
+        "phi": 33,
+        "qc": 12000,
+        "subtype": "zand, matig",
+        "topEl": 1
+      },
+      {
+        "botEl": -19.5,
+        "c": 0.5,
+        "cu": 60,
+        "drained": true,
+        "gammaMoist": 17,
+        "gammaSat": 17,
+        "key": "1:8.00-20.00:Clay",
+        "label": "Clay",
+        "layerIndex": 1,
+        "overridden": ["c","drained"],
+        "phi": 22,
+        "qc": 1200,
+        "subtype": "klei, vast",
+        "topEl": -7.5
+      }
+    ]
+  },
+  "project": {
+    "appVersion": "golden",
+    "cptId": "CPT-A",
+    "name": "Golden"
+  },
+  "result": {
+    "<digest>": "d16ddbce3e6090ab0f562fea",
+    "bytes": 12517
+  },
+  "state": {
+    "backfill": {
+      "c": 0,
+      "cu": 0,
+      "drained": true,
+      "gammaMoist": 18,
+      "gammaSat": 20,
+      "label": "Granular backfill",
+      "phi": 32
+    },
+    "cantilever": {
+      "baseThk": 0.55,
+      "betaDeg": 0,
+      "frontSoilDepth": 1,
+      "heel": 2.1,
+      "keyDepth": 0,
+      "keyThk": 0.3,
+      "stemHeight": 3.5,
+      "stemThkBot": 0.45,
+      "stemThkTop": 0.3,
+      "toe": 0.9
+    },
+    "cptX": null,
+    "drivability": {
+      "deltaH": 0,
+      "error": "",
+      "hammer": {
+        "cushionCor": 0.8,
+        "cushionStiffness": 2500000,
+        "efficiency": 0.9,
+        "helmetMass": 1500,
+        "id": "custom",
+        "ramMass": 5000,
+        "ratedEnergy": 60,
+        "type": "hydraulic"
+      },
+      "interlock": 0,
+      "lambda": 6,
+      "method": "vibratory",
+      "reserve": 1.25,
+      "shaftFactor": 1,
+      "soil": {
+        "shaftDampingClay": 0.65,
+        "shaftDampingSand": 0.16,
+        "shaftQuake": 0.0025,
+        "toeDamping": 0.5,
+        "toeQuake": 0.0025
+      },
+      "status": "idle",
+      "targetDepth": null,
+      "toeFactor": 1,
+      "vibrator": {
+        "carrier": {
+          "flow_lmin": null,
+          "mass_t": null,
+          "power_kW": null,
+          "pressure_bar": null
+        },
+        "centrifugalForce": null,
+        "crowd": 0,
+        "dynamicMass": 5000,
+        "eccentricMoment": null,
+        "frequency": 35,
+        "id": "custom",
+        "lineForce": 0,
+        "sheet": {
+          "amplitudeConvention": "pp",
+          "amplitude_mm": null,
+          "carrierMax_t": null,
+          "carrierMin_t": null,
+          "dynamicMass_kg": null,
+          "eccentricMoment_kgm": null,
+          "flowMax_lmin": null,
+          "flow_lmin": null,
+          "forceAtRpm": null,
+          "force_kN": null,
+          "name": "",
+          "power_kW": null,
+          "pressureMax_bar": null,
+          "pressure_bar": null,
+          "rpmMax": null,
+          "rpmMin": null,
+          "rpmOperating": null,
+          "totalMass_kg": null
+        },
+        "source": "required"
+      }
+    },
+    "embedded": {
+      "anchorAngle": 20,
+      "anchorDepth": 0.8,
+      "anchorDia": 0.15,
+      "anchorGammaA": 1.1,
+      "anchorSpacing": 2,
+      "anchorTfk": 150,
+      "anchored": false,
+      "embedment": 5,
+      "fixedLen": 4,
+      "freeLen": 4,
+      "retainedHeight": 3
+    },
+    "error": "",
+    "gravity": {
+      "backBatterDeg": 6,
+      "baseThk": 0.5,
+      "betaDeg": 0,
+      "frontSoilDepth": 1,
+      "heel": 0.4,
+      "stemHeight": 3,
+      "stemThkBot": 1.7,
+      "stemThkTop": 0.6,
+      "toe": 0.4
+    },
+    "insitu": {
+      "c": 5,
+      "cu": 0,
+      "drained": true,
+      "gammaMoist": 19,
+      "gammaSat": 21,
+      "label": "Foundation / in-situ",
+      "mode": "cpt",
+      "phi": 30,
+      "source": "default"
+    },
+    "loads": {
+      "berm": {
+        "enabled": false,
+        "height": 1.5,
+        "slopeDeg": 45
+      },
+      "surchargePermanent": 5
+    },
+    "profile": {
+      "offset": -0.5,
+      "overrides": {
+        "1:8.00-20.00:Clay": {
+          "c": 0.5,
+          "drained": true
+        }
+      }
+    },
+    "settings": {
+      "alphaVer": 1.1,
+      "assumeCrackWater": true,
+      "bearingDepthFactors": true,
+      "bearingMethod": "annexd",
+      "consequenceClass": 3,
+      "da11Mode": "separate",
+      "deltaActiveRatio": 0.667,
+      "deltaBaseRatio": 1,
+      "deltaPassiveSheet": 0.667,
+      "deltaPassiveSoldier": 0,
+      "gammaConc": 24,
+      "materialOverride": {
+        "applyToDA12": false,
+        "enabled": false,
+        "gC": 1.3,
+        "gCu": 1.4,
+        "gPhi": 1.3
+      },
+      "overdigCustom": 0.3,
+      "overdigRule": "belgian",
+      "passiveDeltaRatio": 0.667,
+      "passiveToe": true,
+      "riskScheme": 0,
+      "surchargeFloor": 10
+    },
+    "sheet": {
+      "betaB": 1,
+      "corrosionLoss": 0,
+      "grade": "S355GP",
+      "sectionId": "AZ 26-700",
+      "useWpl": false
+    },
+    "soldier": {
+      "effectiveWidthFactor": 3,
+      "fmaxAlphaB": 0.5,
+      "fmaxPlugged": true,
+      "grade": "S235",
+      "laggingGrade": "S235",
+      "laggingSpan": "centre",
+      "laggingThk": 0.01,
+      "laggingWatertight": false,
+      "pileHeadAbove": 0,
+      "resistanceModel": "effective-width",
+      "rowCap": true,
+      "sectionId": "HEA180",
+      "spacing": 1,
+      "tlatConvention": "AL",
+      "tskinDeltaRatio": 0.667,
+      "tskinK": "k0",
+      "tskinPlug": true
+    },
+    "status": "done",
+    "surcharge": 20,
+    "vibration": {
+      "bs": {
+        "continuous": false,
+        "line": 2
+      },
+      "calibration": {
+        "points": []
+      },
+      "din": {
+        "duration": "short",
+        "line": 2,
+        "location": "foundation"
+      },
+      "distance": 10,
+      "framework": "SBR-A",
+      "frequency": 35,
+      "sbr": {
+        "category": 2,
+        "condition": "normal",
+        "measurement": "indicative",
+        "part": "structure",
+        "vibrationType": "repeated-short"
+      },
+      "warningFraction": 0.75
+    },
+    "wallType": "cantilever",
+    "water": {
+      "frontDepth": 0.5,
+      "mode": "levels",
+      "retainedDepth": 1.5
+    }
+  },
+  "structural": {
+    "<digest>": "74234e98afe7498fb5daf1f3",
+    "bytes": 4
+  },
+  "version": 1,
+  "vibration": null,
+  "wall": {
+    "embedded": false,
+    "family": "gravity",
+    "label": "RC cantilever",
+    "type": "cantilever"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "csv": "CPT_S4-SHORT_layers.csv",
+  "plaxis": "CPT_S4-SHORT_plaxis_materials_commands.txt",
+  "plaxisCpt": "CPT_S4-SHORT_plaxis_simulated.txt",
+  "project": "CPT_Project_<stamp>.madep.json"
+}

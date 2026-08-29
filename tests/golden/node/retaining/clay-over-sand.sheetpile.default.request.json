@@ -1,0 +1,53 @@
+{
+  "front": [
+    {"c":3,"cu":45,"drained":true,"gammaMoist":18,"gammaSat":19,"phi":26,"qc":2000,"topEl":1.6},
+    {"c":2,"cu":30,"drained":true,"gammaMoist":16,"gammaSat":16.5,"phi":20,"qc":700,"topEl":-1.9},
+    {"c":0,"cu":0,"drained":true,"gammaMoist":19,"gammaSat":21,"phi":35,"qc":18000,"topEl":-5.4}
+  ],
+  "geom": {
+    "anchorAngleDeg": 20,
+    "anchorDia": 0.15,
+    "anchorEl": 0.8,
+    "anchorFixedLen": 4,
+    "anchorGammaA": 1.1,
+    "anchorSpacing": 2,
+    "anchorTfk": 150,
+    "anchored": false,
+    "effectiveWidthFactor": 3,
+    "embedment": 4.4,
+    "excavationEl": 0,
+    "laggingWatertight": false,
+    "pileWidth": 0.18,
+    "retainedSurfaceEl": 1.6,
+    "rowCap": true,
+    "spacing": 1
+  },
+  "loads": {
+    "berm": null,
+    "surcharge": 10,
+    "surchargePermanent": 0
+  },
+  "retained": [
+    {"c":3,"cu":45,"drained":true,"gammaMoist":18,"gammaSat":19,"phi":26,"qc":2000,"topEl":1.6},
+    {"c":2,"cu":30,"drained":true,"gammaMoist":16,"gammaSat":16.5,"phi":20,"qc":700,"topEl":-1.9},
+    {"c":0,"cu":0,"drained":true,"gammaMoist":19,"gammaSat":21,"phi":35,"qc":18000,"topEl":-5.4}
+  ],
+  "settings": {
+    "alphaVer": 1.1,
+    "assumeCrackWater": true,
+    "consequenceClass": 2,
+    "da11Mode": "separate",
+    "deltaPassiveRatio": 0.667,
+    "effectFactorBGT": 1.35,
+    "overdigCustom": 0.3,
+    "overdigRule": "belgian",
+    "resistanceModel": "effective-width",
+    "riskScheme": 2,
+    "surchargeFloor": 10
+  },
+  "wallType": "sheetpile",
+  "water": {
+    "front": -1000,
+    "retained": -1000
+  }
+}

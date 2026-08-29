@@ -1,0 +1,175 @@
+{
+  "bytes": 293067,
+  "identical": true,
+  "stratigraphy": {
+    "hasResult": true,
+    "stale": false,
+    "units": [
+      {
+        "id": "u1",
+        "members": [
+          {"cptIdx":0,"layerIdx":0},
+          {"cptIdx":1,"layerIdx":0}
+        ],
+        "name": "Quartair zand"
+      },
+      {
+        "id": "u2",
+        "members": [
+          {"cptIdx":2,"layerIdx":0}
+        ],
+        "name": "B — leem, weinig vast"
+      },
+      {
+        "id": "u3",
+        "members": [
+          {"cptIdx":0,"layerIdx":1},
+          {"cptIdx":1,"layerIdx":1}
+        ],
+        "name": "C — zand, dicht"
+      },
+      {
+        "id": "u4",
+        "members": [
+          {"cptIdx":1,"layerIdx":2},
+          {"cptIdx":2,"layerIdx":1}
+        ],
+        "name": "D — leem, weinig vast"
+      },
+      {
+        "id": "u5",
+        "members": [
+          {"cptIdx":0,"layerIdx":2}
+        ],
+        "name": "E — klei, weinig vast"
+      },
+      {
+        "id": "u6",
+        "members": [
+          {"cptIdx":1,"layerIdx":3}
+        ],
+        "name": "F — zand, zeer dicht"
+      },
+      {
+        "id": "u7",
+        "members": [
+          {"cptIdx":0,"layerIdx":3}
+        ],
+        "name": "G — klei, weinig vast"
+      },
+      {
+        "id": "u8",
+        "members": [
+          {"cptIdx":2,"layerIdx":2}
+        ],
+        "name": "H — klei, weinig vast"
+      },
+      {
+        "id": "u9",
+        "members": [
+          {"cptIdx":0,"layerIdx":4}
+        ],
+        "name": "I — klei, weinig vast"
+      },
+      {
+        "id": "u10",
+        "members": [
+          {"cptIdx":0,"layerIdx":5}
+        ],
+        "name": "J — leem, vrij vast"
+      },
+      {
+        "id": "u11",
+        "members": [
+          {"cptIdx":2,"layerIdx":3}
+        ],
+        "name": "K — klei, weinig vast"
+      },
+      {
+        "id": "u12",
+        "members": [
+          {"cptIdx":0,"layerIdx":6}
+        ],
+        "name": "L — leem, vrij vast"
+      },
+      {
+        "id": "u13",
+        "members": [
+          {"cptIdx":1,"layerIdx":5}
+        ],
+        "name": "M — zand, zeer dicht"
+      },
+      {
+        "id": "u14",
+        "members": [
+          {"cptIdx":0,"layerIdx":7}
+        ],
+        "name": "N — klei (zh), vrij vast"
+      },
+      {
+        "id": "u15",
+        "members": [
+          {"cptIdx":1,"layerIdx":6}
+        ],
+        "name": "O — zand, zeer dicht"
+      },
+      {
+        "id": "u16",
+        "members": [
+          {"cptIdx":0,"layerIdx":8},
+          {"cptIdx":1,"layerIdx":4}
+        ],
+        "name": "P — zand, zeer dicht"
+      },
+      {
+        "id": "u17",
+        "members": [
+          {"cptIdx":2,"layerIdx":4}
+        ],
+        "name": "Q — klei, matig vast"
+      },
+      {
+        "id": "u18",
+        "members": [
+          {"cptIdx":1,"layerIdx":7}
+        ],
+        "name": "R — zand, zeer dicht"
+      },
+      {
+        "id": "u19",
+        "members": [
+          {"cptIdx":2,"layerIdx":5}
+        ],
+        "name": "S — klei, weinig vast"
+      },
+      {
+        "id": "u20",
+        "members": [
+          {"cptIdx":1,"layerIdx":8}
+        ],
+        "name": "T — zand, zeer dicht"
+      },
+      {
+        "id": "u21",
+        "members": [
+          {"cptIdx":1,"layerIdx":9}
+        ],
+        "name": "U — zand, zeer dicht"
+      },
+      {
+        "id": "u22",
+        "members": [
+          {"cptIdx":1,"layerIdx":10}
+        ],
+        "name": "V — zand, zeer dicht"
+      },
+      {
+        "id": "u23",
+        "members": [
+          {"cptIdx":0,"layerIdx":9}
+        ],
+        "name": "W — klei, matig vast"
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+Plate — continuous sheet pile over the full length, interfaces on both sides
+Parameter Value Unit / note
+Element type Plate, elastic
+EA₁ 3.927e+6 kN/m
+EA₂ — manufacturer/interlock data only (EA₁/20 is illustrative)
+EI 1.254e+5 kNm²/m
+w 1.4421 kN/m/m
+ν 0.0000 —
+d_eq (computed by PLAXIS) 0.6191 m
+M_p (if elastoplastic) 1089.8 kNm/m
+N_p (if elastoplastic) 6638.5 kN/m
+Prevent punching No Bentley KB: not for sheet piles
+Interfaces both sides R_inter per layer, see table
+copy plate set (TSV)
+All values per metre of wall (catalogue per-metre properties). M_p and N_p are numerical yield caps, not an EN 1993-5 verification (done separately). ν = 0: a corrugated sheet pile has no out-of-plane plate action; use the documented material value if the model requests otherwise.
+Interfaces (Rinter = tan δ / tan φ′)
+Layer φ′k (°) δ (°) Rinter
+— 33.0 22.0 0.622
+— 22.0 14.7 0.648
+δ as in the hand calculation (sheet-pile passive ratio × φ′). Assign interfaces on both sides; hydraulic resistance on the outside interface only (Bentley KB).

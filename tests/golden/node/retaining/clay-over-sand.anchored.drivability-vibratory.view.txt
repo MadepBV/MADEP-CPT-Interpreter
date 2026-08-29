@@ -1,0 +1,28 @@
+Minimum vibrator for the target depth 6.30 m
+Fc,min (mR = 1.0)371.9kN, governing depth 6.30 mFc,min (mR = 1.25, recommended)478.7kN at 6.30 mEccentric moment at f9.90kg·m at 35.0 Hz (2100 rpm)Attached amplitude s₀ / App1.74 / 3.47mm for M_dyn 5700 kgAcceleration ratio α8.56—Static downforce Weff55.9kNStress screen (Fc + Weff)/As40.8MPaΛ / δH6 / 0.00
+Specification to a supplier: a head that delivers 479 kN and 9.9 kg·m simultaneously at 2100 rpm with about 5000 kg vibrating mass, plus the static downforce assumed (course §7.9). Amplitude, clamp, power, wave stress and vibration are separate checks (course §7.10).
+z (m) Rs (kN) Rb (kN) Rdrive (kN) α Fc,min (kN) Fc,min,1.25
+0.10 10.7 26.2 36.9 0.00 0.0 0.0
+0.40 41.0 25.0 66.0 0.18 10.1 22.6
+0.70 65.9 23.0 88.9 0.59 33.0 50.1
+1.00 88.9 21.7 110.6 0.98 54.7 76.7
+1.30 111.0 20.8 131.9 1.36 75.9 103.2
+1.60 132.8 20.3 153.1 1.74 97.1 130.1
+1.90 154.6 19.9 174.4 2.12 118.5 157.4
+2.20 176.5 19.6 196.1 2.51 140.1 185.1
+2.50 198.6 19.4 218.0 2.90 162.1 213.2
+2.80 220.9 19.3 240.2 3.30 184.3 241.7
+3.10 243.5 19.2 262.7 3.70 206.8 270.3
+3.40 266.2 19.1 285.3 4.10 229.4 299.2
+3.70 283.3 7.6 290.9 4.20 235.0 306.3
+4.00 298.9 7.6 306.5 4.48 250.6 326.1
+4.30 314.6 7.6 322.2 4.76 266.3 345.9
+4.60 330.4 7.6 338.0 5.04 282.1 365.8
+4.90 346.2 7.6 353.8 5.33 297.9 385.7
+5.20 362.0 7.6 369.6 5.61 313.7 405.6
+5.50 377.9 7.6 385.5 5.89 329.5 425.6
+5.80 393.8 7.6 401.3 6.18 345.4 445.5
+6.10 409.7 7.6 417.2 6.46 361.3 465.4
+6.30 420.3 7.6 427.9 6.65 371.9 478.7
+copy per-depth table (TSV)
+Reference method q_s = q_c, τ_s = f_s (course §7.2): illustrative screen, not a pile design method. δ_H = 0: optimistic free-acceleration baseline (course §8.1). Calibrate against measured amplitude (course §15.8). Force-envelope root: F_c,min(m_R=1) = 371.9 kN at 6.30 m; F_c,min(1.25) = 478.7 kN at 6.30 m. Non-normative empirical model (course §7.1): confirm by an instrumented trial; check amplitude, clamp, power, wave stress and vibration separately (course §7.10).

@@ -1,0 +1,84 @@
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: sand-only · WT = 2.50 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = not accepted
+Dewatering impact
+Hydrogeological screening plus stress and settlement response at the CPT location.
+Inputs
+Combination context
+Characteristic drawdown
+Quasi-permanent drawdown context
+Characteristic is the recommended default here: enter the expected drawdown directly and do not factor it as a ULS variable load.
+Target water table at well / excavation (m below ground)
+Geometry
+Single well
+Equivalent well excavation
+Line dewatering trench
+Aquifer type
+Unconfined
+Confined
+Well radius rw (m)
+Distance well-CPT (m)
+Sichardt coefficient C
+Total stress mode
+Conservative sigma_v fixed
+Realistic gamma_sat to gamma
+Conservative keeps the total overburden stress profile unchanged and only lowers pore pressure. Realistic also reduces total stress in the zone that changes from saturated to unsaturated, by switching from γ_sat to γ.
+Aquifer base depth (m, optional)
+Sub-layer dz (m)
+Time horizon for settlement curve (days, optional)
+Estimated phreatic level profile from source to CPT
+Effective stress before / after drawdown
+Total settlement versus distance from source
+Summary
+New WT at CPT 3.00 m
+Drawdown at CPT 0.50 m
+Distance from well centre to CPT 0.00 m
+Well radius 0.15 m
+R influence 47.4 m
+Q estimate 2.46e-4 m3/s
+Aquifer base 3.20 m
+Hydraulic model Transmissivity-based Dupuit screening
+T far field 7.00e-4 m²/s
+T at well 2.00e-4 m²/s
+k_eff,h 1.00e-3 m/s
+Conservative settlement 1.03 mm
+Realistic settlement 0.82 mm
+Max Δσv mode effect 0.0 kPa
+Total settlement 1.0 mm
+Dewatering impact is treated as an SLS deformation screening tool. Use the expected drawdown directly; this module does not apply DA1/1 or DA1/2 style load factoring.
+Hydraulics are screened with a transmissivity-based model. The app combines the active layer conductivities into T = Σ(k_h · b) through the pumped interval and uses that profile in the radial or line-flow estimate.
+Important: settlement is driven by the drawdown at the CPT location, not by the target level at the well or excavation itself. If the CPT sits outside the computed screening influence radius, the module will show little or no settlement.
+Hydraulic screening inputs
+Limit state Combination Hydraulic model Geometry Original WT Target WT at well WT at CPT Drawdown at CPT Distance from well centre to CPT Well radius T far field T at well k_eff,h R
+SLS Characteristic drawdown Transmissivity-based Dupuit screening Single well 2.50 m 3.00 m 3.00 m 0.50 m 0.00 m 0.15 m 7.00e-4 m²/s 2.00e-4 m²/s 1.00e-3 m/s 47.4 m
+Formula route
+R = C · s · sqrt(k)
+h²(r) = h_w² + Q / (pi·k) · ln(r / r_w) (radial, unconfined)
+Delta eps = Delta sigma' / E_oed(sigma_mean)
+Geometry = Single well
+Aquifer type = unconfined
+Distance axis = radial distance from well centre / excavation centroid
+Settlement-distance curve = total settlement predicted at each x-location
+Total stress mode = conservative
+Settlement limit state = SLS only
+Combination route = Characteristic drawdown, no γ factors
+Per layer settlement contribution
+Layer Type Top-Bot (m) Settlement (mm)
+1 Gravel 0.00-1.45 0.00
+2 Gravel 1.45-2.65 0.00
+3 Gravel 2.65-3.70 0.08
+4 Gravel 3.70-5.20 0.12
+5 Gravel 5.20-7.25 0.17
+6 Gravel 7.25-8.70 0.12
+7 Gravel 8.70-12.75 0.35
+8 Gravel 12.75-13.55 0.07
+9 Gravel 13.55-15.00 0.12
+Sichardt radius of influence is shown as a screening estimate only. It is not a permit-grade hydrogeological prediction.
+Hydraulic screening uses a transmissivity profile through the pumped interval: T = Σ(k_h · b). For unconfined flow, the radial drawdown is solved from the cumulative transmissivity moment rather than from one lumped k_h value.
+Aquifer base was not provided, so the CPT bottom depth is used as a first-pass aquifer base. Verify this against geology or pumping-test data.
+Total-stress mode does change the result here: conservative = 1.03 mm, realistic = 0.82 mm.

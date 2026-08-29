@@ -1,0 +1,17 @@
+{
+  "BPit": 20,
+  "CSichardt": 2000,
+  "LPit": 30,
+  "LTrench": 40,
+  "aquiferBaseDepth": null,
+  "aquiferType": "confined",
+  "combination": "quasi-permanent",
+  "distanceToCPT": 0,
+  "dz": 0.5,
+  "geometry": "line_dewatering_trench",
+  "rCPT": 0,
+  "rw": 0.2,
+  "sigmaVMode": "realistic",
+  "targetWt": 11.8,
+  "timeDays": 0
+}

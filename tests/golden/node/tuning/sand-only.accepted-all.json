@@ -1,0 +1,69 @@
+{
+  "hs": [
+    {"E50_i":59821,"E50_ref":165595,"Edef":46780,"Emc":59821,"Eoed_i":59821,"Eoed_ref":165595,"Eur_ref":496785,"K0nc":0.426,"aE":3,"beta":0.782,"botTAW":"11.05m TAW","m":0.5,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":13.1,"sigVeff":13,"topTAW":"12.50m TAW","u":0},
+    {"E50_i":55892,"E50_ref":92010,"Edef":43708,"Emc":55892,"Eoed_i":55892,"Eoed_ref":92010,"Eur_ref":276030,"K0nc":0.426,"aE":3.12,"beta":0.782,"botTAW":"9.85m TAW","m":0.5,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":36.9,"sigVeff":36.9,"topTAW":"11.05m TAW","u":0},
+    {"E50_i":56835,"E50_ref":78908,"Edef":44445,"Emc":56835,"Eoed_i":56835,"Eoed_ref":78908,"Eur_ref":236724,"K0nc":0.426,"aE":3.09,"beta":0.782,"botTAW":"8.80m TAW","m":0.5,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":58.5,"sigVeff":51.9,"topTAW":"9.85m TAW","u":6.6},
+    {"E50_i":62406,"E50_ref":74954,"Edef":46368,"Emc":62406,"Eoed_i":62406,"Eoed_ref":74954,"Eur_ref":224862,"K0nc":0.357,"aE":2.94,"beta":0.743,"botTAW":"7.30m TAW","m":0.5,"nu":0.3,"nu_ur":0.2,"psi":10,"rShear":0.35,"sigV":88.5,"sigVeff":69.3,"topTAW":"8.80m TAW","u":19.1},
+    {"E50_i":60382,"E50_ref":61653,"Edef":44864,"Emc":60382,"Eoed_i":60382,"Eoed_ref":61653,"Eur_ref":184959,"K0nc":0.357,"aE":2.99,"beta":0.743,"botTAW":"5.25m TAW","m":0.182,"nu":0.3,"nu_ur":0.2,"psi":10,"rShear":0.35,"sigV":125.7,"sigVeff":89.2,"topTAW":"7.30m TAW","u":36.5},
+    {"E50_i":57463,"E50_ref":56629,"Edef":44936,"Emc":57463,"Eoed_i":57463,"Eoed_ref":56629,"Eur_ref":169887,"K0nc":0.426,"aE":3.07,"beta":0.782,"botTAW":"3.80m TAW","m":1.858,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":154.5,"sigVeff":100.8,"topTAW":"5.25m TAW","u":53.7},
+    {"E50_i":56245,"E50_ref":49557,"Edef":43984,"Emc":56245,"Eoed_i":56245,"Eoed_ref":49557,"Eur_ref":148671,"K0nc":0.426,"aE":3.1,"beta":0.782,"botTAW":"-0.25m TAW","m":0.5,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":209.5,"sigVeff":128.8,"topTAW":"3.80m TAW","u":80.7},
+    {"E50_i":57406,"E50_ref":43445,"Edef":44891,"Emc":57406,"Eoed_i":57406,"Eoed_ref":43445,"Eur_ref":130335,"K0nc":0.426,"aE":3.07,"beta":0.782,"botTAW":"-1.05m TAW","m":0.65,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":258,"sigVeff":153.5,"topTAW":"-0.25m TAW","u":104.5},
+    {"E50_i":56175,"E50_ref":43734,"Edef":43929,"Emc":56175,"Eoed_i":56175,"Eoed_ref":43734,"Eur_ref":131202,"K0nc":0.426,"aE":3.11,"beta":0.782,"botTAW":"-2.50m TAW","m":0.5,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":280.5,"sigVeff":165,"topTAW":"-1.05m TAW","u":115.5}
+  ],
+  "layers": [
+    {
+      "m_ovr": 0.5,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.5,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.5,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.5,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.182,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 1.858,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.5,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.65,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.5,
+      "ovr": {
+        "m": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,360 @@
+Gravel
+Layer 1 — 0.00–1.45 m (12.50m TAW → 11.05m TAW) (1.45 m)
+grind, matig
+&sigma;v0 13.1 − u 0 = &sigma;'v0 13 kPa · &alpha;E 3
+Mohr-Coulomb
+E_ref (kPa) 59,821
+&nu;
+0.28
+r_shear
+0.33
+&phi;' (°) 35
+c' (kPa) 0
+&psi; (°) 5
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.782
+E_def (kPa) 46,780
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 59,821
+E_oed,ref (kPa) 165,595
+E_50,ref (kPa) =E_oed 165,595
+E_ur,ref (kPa) 496,785
+m
+0.50
+K0_nc 0.426
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 2 — 1.45–2.65 m (11.05m TAW → 9.85m TAW) (1.20 m)
+grind, matig
+&sigma;v0 36.9 − u 0 = &sigma;'v0 36.9 kPa · &alpha;E 3.12
+Mohr-Coulomb
+E_ref (kPa) 55,892
+&nu;
+0.28
+r_shear
+0.33
+&phi;' (°) 35
+c' (kPa) 0
+&psi; (°) 5
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.782
+E_def (kPa) 43,708
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 55,892
+E_oed,ref (kPa) 92,010
+E_50,ref (kPa) =E_oed 92,010
+E_ur,ref (kPa) 276,030
+m
+0.50
+K0_nc 0.426
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 3 — 2.65–3.70 m (9.85m TAW → 8.80m TAW) (1.05 m)
+grind, matig
+&sigma;v0 58.5 − u 6.6 = &sigma;'v0 51.9 kPa · &alpha;E 3.09
+Mohr-Coulomb
+E_ref (kPa) 56,835
+&nu;
+0.28
+r_shear
+0.33
+&phi;' (°) 35
+c' (kPa) 0
+&psi; (°) 5
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.782
+E_def (kPa) 44,445
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 56,835
+E_oed,ref (kPa) 78,908
+E_50,ref (kPa) =E_oed 78,908
+E_ur,ref (kPa) 236,724
+m
+0.50
+K0_nc 0.426
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 4 — 3.70–5.20 m (8.80m TAW → 7.30m TAW) (1.50 m)
+grind, dicht
+&sigma;v0 88.5 − u 19.1 = &sigma;'v0 69.3 kPa · &alpha;E 2.94
+Mohr-Coulomb
+E_ref (kPa) 62,406
+&nu;
+0.30
+r_shear
+0.35
+&phi;' (°) 40
+c' (kPa) 0
+&psi; (°) 10
+&gamma; / &gamma;_sat 19 / 21 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.743
+E_def (kPa) 46,368
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 62,406
+E_oed,ref (kPa) 74,954
+E_50,ref (kPa) =E_oed 74,954
+E_ur,ref (kPa) 224,862
+m
+0.50
+K0_nc 0.357
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 5 — 5.20–7.25 m (7.30m TAW → 5.25m TAW) (2.05 m)
+grind, dicht
+&sigma;v0 125.7 − u 36.5 = &sigma;'v0 89.2 kPa · &alpha;E 2.99
+Mohr-Coulomb
+E_ref (kPa) 60,382
+&nu;
+0.30
+r_shear
+0.35
+&phi;' (°) 40
+c' (kPa) 0
+&psi; (°) 10
+&gamma; / &gamma;_sat 19 / 21 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.743
+E_def (kPa) 44,864
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 60,382
+E_oed,ref (kPa) 63,939
+E_50,ref (kPa) =E_oed 63,939
+E_ur,ref (kPa) 191,817
+m
+0.50
+K0_nc 0.357
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 6 — 7.25–8.70 m (5.25m TAW → 3.80m TAW) (1.45 m)
+grind, matig
+&sigma;v0 154.5 − u 53.7 = &sigma;'v0 100.8 kPa · &alpha;E 3.07
+Mohr-Coulomb
+E_ref (kPa) 57,463
+&nu;
+0.28
+r_shear
+0.33
+&phi;' (°) 35
+c' (kPa) 0
+&psi; (°) 5
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.782
+E_def (kPa) 44,936
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 57,463
+E_oed,ref (kPa) 57,237
+E_50,ref (kPa) =E_oed 57,237
+E_ur,ref (kPa) 171,711
+m
+0.50
+K0_nc 0.426
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 7 — 8.70–12.75 m (3.80m TAW → -0.25m TAW) (4.05 m)
+grind, matig
+&sigma;v0 209.5 − u 80.7 = &sigma;'v0 128.8 kPa · &alpha;E 3.1
+Mohr-Coulomb
+E_ref (kPa) 56,245
+&nu;
+0.28
+r_shear
+0.33
+&phi;' (°) 35
+c' (kPa) 0
+&psi; (°) 5
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.782
+E_def (kPa) 43,984
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 56,245
+E_oed,ref (kPa) 49,557
+E_50,ref (kPa) =E_oed 49,557
+E_ur,ref (kPa) 148,671
+m
+0.50
+K0_nc 0.426
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 8 — 12.75–13.55 m (-0.25m TAW → -1.05m TAW) (0.80 m)
+grind, matig
+&sigma;v0 258 − u 104.5 = &sigma;'v0 153.5 kPa · &alpha;E 3.07
+Mohr-Coulomb
+E_ref (kPa) 57,406
+&nu;
+0.28
+r_shear
+0.33
+&phi;' (°) 35
+c' (kPa) 0
+&psi; (°) 5
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.782
+E_def (kPa) 44,891
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 57,406
+E_oed,ref (kPa) 46,331
+E_50,ref (kPa) =E_oed 46,331
+E_ur,ref (kPa) 138,993
+m
+0.50
+K0_nc 0.426
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 9 — 13.55–15.00 m (-1.05m TAW → -2.50m TAW) (1.45 m)
+grind, matig
+&sigma;v0 280.5 − u 115.5 = &sigma;'v0 165 kPa · &alpha;E 3.11
+Mohr-Coulomb
+E_ref (kPa) 56,175
+&nu;
+0.28
+r_shear
+0.33
+&phi;' (°) 35
+c' (kPa) 0
+&psi; (°) 5
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.782
+E_def (kPa) 43,929
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 56,175
+E_oed,ref (kPa) 43,734
+E_50,ref (kPa) =E_oed 43,734
+E_ur,ref (kPa) 131,202
+m
+0.50
+K0_nc 0.426
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW

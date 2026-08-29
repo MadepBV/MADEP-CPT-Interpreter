@@ -1,0 +1,2116 @@
+[#cptTabs]
+Ready
+layered
+x
+Ready
+sand-only
+x
+Ready
+clay-only
+x
+[#lb]
+1
+0.00 0.95
+10.00
+9.05
+0.95 m
+Sand
+— kies grondsoort —
+· Zand — los (qc 2–4, Rf · Zand — matig (qc 4–10, Rf · Zand — dicht (qc 10–15, Rf · Zand — zeer dicht (qc ≥15, Rf ✓ Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+· Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+⚠ Leem — matig vast (qc 1–2, Rf 2–4%)
+⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)
+⚠ Leem — vast (qc ≥4, Rf 2–4%)
+⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+⚠ Grind — matig (qc 10–20, Rf ⚠ Grind — dicht (qc ≥20, Rf ⚠ Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+⚠ Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+Klei — matig vast (qc 1–2, Rf 3–6%)
+Klei — vrij vast (qc 2–4, Rf 3–6%)
+Klei — vast (qc ≥4, Rf 3–6%)
+Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+2.228
+42.0
+1.90
+2
+0.95 3.95
+9.05
+6.05
+3.00 m
+Sand
+— kies grondsoort —
+· Zand — los (qc 2–4, Rf · Zand — matig (qc 4–10, Rf ✓ Zand — dicht (qc 10–15, Rf · Zand — zeer dicht (qc ≥15, Rf · Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+~ Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+⚠ Leem — matig vast (qc 1–2, Rf 2–4%)
+⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)
+⚠ Leem — vast (qc ≥4, Rf 2–4%)
+⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+⚠ Grind — matig (qc 10–20, Rf ⚠ Grind — dicht (qc ≥20, Rf ⚠ Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+⚠ Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+Klei — matig vast (qc 1–2, Rf 3–6%)
+Klei — vrij vast (qc 2–4, Rf 3–6%)
+Klei — vast (qc ≥4, Rf 3–6%)
+Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+10.991
+79.8
+0.72
+3
+3.95 4.95
+6.05
+5.05
+1.00 m
+Clay
+— kies grondsoort —
+✓ Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+· Klei — matig vast (qc 1–2, Rf 3–6%)
+· Klei — vrij vast (qc 2–4, Rf 3–6%)
+· Klei — vast (qc ≥4, Rf 3–6%)
+✓ Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+· Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+· Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+⚠ Leem — matig vast (qc 1–2, Rf 2–4%)
+⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)
+⚠ Leem — vast (qc ≥4, Rf 2–4%)
+⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Zand — los (qc 2–4, Rf Zand — matig (qc 4–10, Rf Zand — dicht (qc 10–15, Rf Zand — zeer dicht (qc ≥15, Rf Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+Grind — matig (qc 10–20, Rf Grind — dicht (qc ≥20, Rf Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+0.871
+38.3
+4.39
+4
+4.95 5.65
+5.05
+4.35
+0.70 m
+Sandy clay
+— kies grondsoort —
+✓ Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+· Klei — matig vast (qc 1–2, Rf 3–6%)
+· Klei — vrij vast (qc 2–4, Rf 3–6%)
+· Klei — vast (qc ≥4, Rf 3–6%)
+✓ Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+· Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+· Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+· Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+· Leem — matig vast (qc 1–2, Rf 2–4%)
+· Leem — vrij vast (qc 2–4, Rf 2–4%)
+· Leem — vast (qc ≥4, Rf 2–4%)
+· Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+· Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+· Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+· Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+⚠ Zand — los (qc 2–4, Rf ⚠ Zand — matig (qc 4–10, Rf ⚠ Zand — dicht (qc 10–15, Rf ⚠ Zand — zeer dicht (qc ≥15, Rf ⚠ Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+⚠ Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+⚠ Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+⚠ Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Grind — matig (qc 10–20, Rf Grind — dicht (qc ≥20, Rf Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+0.924
+41.3
+4.52
+5
+5.65 7.95
+4.35
+2.05
+2.30 m
+Clay
+— kies grondsoort —
+✓ Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+· Klei — matig vast (qc 1–2, Rf 3–6%)
+· Klei — vrij vast (qc 2–4, Rf 3–6%)
+· Klei — vast (qc ≥4, Rf 3–6%)
+✓ Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+· Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+· Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+⚠ Leem — matig vast (qc 1–2, Rf 2–4%)
+⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)
+⚠ Leem — vast (qc ≥4, Rf 2–4%)
+⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Zand — los (qc 2–4, Rf Zand — matig (qc 4–10, Rf Zand — dicht (qc 10–15, Rf Zand — zeer dicht (qc ≥15, Rf Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+Grind — matig (qc 10–20, Rf Grind — dicht (qc ≥20, Rf Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+0.934
+42.1
+4.53
+6
+7.95 8.65
+2.05
+1.35
+0.70 m
+Silty sand
+— kies grondsoort —
+· Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+· Leem — matig vast (qc 1–2, Rf 2–4%)
+✓ Leem — vrij vast (qc 2–4, Rf 2–4%)
+· Leem — vast (qc ≥4, Rf 2–4%)
+· Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+· Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+✓ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+· Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+· Zand — los (qc 2–4, Rf · Zand — matig (qc 4–10, Rf · Zand — dicht (qc 10–15, Rf · Zand — zeer dicht (qc ≥15, Rf · Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+· Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+Klei — matig vast (qc 1–2, Rf 3–6%)
+Klei — vrij vast (qc 2–4, Rf 3–6%)
+Klei — vast (qc ≥4, Rf 3–6%)
+Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+Grind — matig (qc 10–20, Rf Grind — dicht (qc ≥20, Rf Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+2.324
+61.5
+2.67
+7
+8.65 9.85
+1.35
+0.15
+1.20 m
+Silty sand
+— kies grondsoort —
+· Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+· Leem — matig vast (qc 1–2, Rf 2–4%)
+✓ Leem — vrij vast (qc 2–4, Rf 2–4%)
+· Leem — vast (qc ≥4, Rf 2–4%)
+· Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+· Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+✓ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+· Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+· Zand — los (qc 2–4, Rf · Zand — matig (qc 4–10, Rf · Zand — dicht (qc 10–15, Rf · Zand — zeer dicht (qc ≥15, Rf · Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+· Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+Klei — matig vast (qc 1–2, Rf 3–6%)
+Klei — vrij vast (qc 2–4, Rf 3–6%)
+Klei — vast (qc ≥4, Rf 3–6%)
+Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+Grind — matig (qc 10–20, Rf Grind — dicht (qc ≥20, Rf Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+2.367
+62.3
+2.63
+8
+9.85 10.95
+0.15
+-0.95
+1.10 m
+Sandy clay
+— kies grondsoort —
+· Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+· Klei — matig vast (qc 1–2, Rf 3–6%)
+~ Klei — vrij vast (qc 2–4, Rf 3–6%)
+· Klei — vast (qc ≥4, Rf 3–6%)
+· Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+· Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+✓ Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+· Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+· Leem — matig vast (qc 1–2, Rf 2–4%)
+✓ Leem — vrij vast (qc 2–4, Rf 2–4%)
+· Leem — vast (qc ≥4, Rf 2–4%)
+· Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+· Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+✓ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+· Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+⚠ Zand — los (qc 2–4, Rf ⚠ Zand — matig (qc 4–10, Rf ⚠ Zand — dicht (qc 10–15, Rf ⚠ Zand — zeer dicht (qc ≥15, Rf ⚠ Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+⚠ Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+⚠ Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+⚠ Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Grind — matig (qc 10–20, Rf Grind — dicht (qc ≥20, Rf Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+2.196
+60.5
+2.74
+9
+10.95 14.95
+-0.95
+-4.95
+4.00 m
+Sand
+— kies grondsoort —
+· Zand — los (qc 2–4, Rf · Zand — matig (qc 4–10, Rf · Zand — dicht (qc 10–15, Rf ✓ Zand — zeer dicht (qc ≥15, Rf · Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+· Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+· Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+· Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+⚠ Leem — matig vast (qc 1–2, Rf 2–4%)
+⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)
+⚠ Leem — vast (qc ≥4, Rf 2–4%)
+⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+⚠ Grind — matig (qc 10–20, Rf ⚠ Grind — dicht (qc ≥20, Rf ⚠ Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+⚠ Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+Klei — matig vast (qc 1–2, Rf 3–6%)
+Klei — vrij vast (qc 2–4, Rf 3–6%)
+Klei — vast (qc ≥4, Rf 3–6%)
+Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+16.852
+109.6
+0.65
+10
+14.95 18.00
+-4.95
+-8.00
+3.05 m
+Clay
+— kies grondsoort —
+· Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+✓ Klei — matig vast (qc 1–2, Rf 3–6%)
+· Klei — vrij vast (qc 2–4, Rf 3–6%)
+· Klei — vast (qc ≥4, Rf 3–6%)
+· Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+✓ Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+· Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+⚠ Leem — matig vast (qc 1–2, Rf 2–4%)
+⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)
+⚠ Leem — vast (qc ≥4, Rf 2–4%)
+⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Zand — los (qc 2–4, Rf Zand — matig (qc 4–10, Rf Zand — dicht (qc 10–15, Rf Zand — zeer dicht (qc ≥15, Rf Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+Grind — matig (qc 10–20, Rf Grind — dicht (qc ≥20, Rf Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+1.412
+52.7
+3.72
+[#ma]
+Sand
+Layer 1 — 0.00–0.95 m (10.00m TAW → 9.05m TAW) (0.95 m)
+zand (lh), los
+&sigma;v0 8.6 − u 4.7 = &sigma;'v0 3.9 kPa · &alpha;E 2
+Mohr-Coulomb
+E_ref (kPa) 4,456
+&nu;
+0.30
+r_shear
+0.28
+&phi;' (°) 25
+c' (kPa) 0
+&psi; (°) 0
+&gamma; / &gamma;_sat 16 / 18 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.743
+E_def (kPa) 3,311
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 4,456
+E_oed,ref (kPa) 19,928
+E_50,ref (kPa) =E_oed 19,928
+E_ur,ref (kPa) 59,784
+m
+0.50
+K0_nc 0.577
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 3×10⁻6
+range 1.2×10⁻6 – 1.2×10⁻5
+k_h/k_v 1
+k_v (m/s) 3.0e-6
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Sand
+Layer 2 — 0.95–1.95 m (9.05m TAW → 8.05m TAW) (1.00 m)
+zand, dicht
+&sigma;v0 29 − u 14.2 = &sigma;'v0 14.8 kPa · &alpha;E 3.79
+Mohr-Coulomb
+E_ref (kPa) 42,307
+&nu;
+0.33
+r_shear
+0.35
+&phi;' (°) 32
+c' (kPa) 0
+&psi; (°) 2
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.675
+E_def (kPa) 28,557
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 42,307
+E_oed,ref (kPa) 110,063
+E_50,ref (kPa) =E_oed 110,063
+E_ur,ref (kPa) 330,189
+m
+0.50
+K0_nc 0.47
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1.5×10⁻4
+range 1.2×10⁻4 – 2.3×10⁻4
+k_h/k_v 1
+k_v (m/s) 1.5e-4
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 3 — 1.95–3.95 m (8.05m TAW → 6.05m TAW) (2.00 m)
+grind, matig
+&sigma;v0 59 − u 28.9 = &sigma;'v0 30.1 kPa · &alpha;E 3.83
+Mohr-Coulomb
+E_ref (kPa) 41,814
+&nu;
+0.28
+r_shear
+0.33
+&phi;' (°) 35
+c' (kPa) 0
+&psi; (°) 5
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.782
+E_def (kPa) 32,699
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 41,814
+E_oed,ref (kPa) 76,265
+E_50,ref (kPa) =E_oed 76,265
+E_ur,ref (kPa) 228,795
+m
+0.50
+K0_nc 0.426
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Clay
+Layer 4 — 3.95–7.95 m (6.05m TAW → 2.05m TAW) (4.00 m)
+klei, weinig vast
+&sigma;v0 95.2 − u 58.4 = &sigma;'v0 36.8 kPa · &alpha;E 3
+Mohr-Coulomb
+E_ref (kPa) 2,748
+&nu;
+0.40
+r_shear
+0.12
+&phi;' (°) 20
+c' (kPa) 2
+&psi; (°) 0
+&gamma; / &gamma;_sat 16 / 16 kN/m³
+c_u (kPa) 20
+Soilin — deformation modulus
+&beta; (-) 0.467
+E_def (kPa) 1,283
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 2,748
+E_oed,ref (kPa) 6,849
+E_50,ref (kPa) =E_oed 6,849
+E_ur,ref (kPa) 20,547
+m
+1.00
+K0_nc 0.658
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 5×10⁻8
+range 1×10⁻9 – 1.2×10⁻7
+k_h/k_v 3
+k_v (m/s) 1.7e-8
+&psi;_unsat (m) 3
+Infiltratie + buffer
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Sandy clay
+Layer 5 — 7.95–10.95 m (2.05m TAW → -0.95m TAW) (3.00 m)
+klei (zh), vrij vast
+&sigma;v0 170.1 − u 92.7 = &sigma;'v0 77.4 kPa · &alpha;E 2
+Mohr-Coulomb
+E_ref (kPa) 4,588
+&nu;
+0.33
+r_shear
+0.20
+&phi;' (°) 22
+c' (kPa) 8
+&psi; (°) 0
+&gamma; / &gamma;_sat 18 / 18 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.675
+E_def (kPa) 3,097
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 4,588
+E_oed,ref (kPa) 5,655
+E_50,ref (kPa) =E_oed 5,655
+E_ur,ref (kPa) 16,965
+m
+1.00
+K0_nc 0.625
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 5×10⁻7
+range 1.2×10⁻7 – 1.2×10⁻6
+k_h/k_v 3
+k_v (m/s) 1.7e-7
+&psi;_unsat (m) 1
+Infiltratie (effectief)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Gravel
+Layer 6 — 10.95–14.95 m (-0.95m TAW → -4.95m TAW) (4.00 m)
+grind, matig
+&sigma;v0 259 − u 127 = &sigma;'v0 132 kPa · &alpha;E 3.19
+Mohr-Coulomb
+E_ref (kPa) 53,707
+&nu;
+0.28
+r_shear
+0.33
+&phi;' (°) 35
+c' (kPa) 0
+&psi; (°) 5
+&gamma; / &gamma;_sat 18 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.782
+E_def (kPa) 41,999
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 53,707
+E_oed,ref (kPa) 46,753
+E_50,ref (kPa) =E_oed 46,753
+E_ur,ref (kPa) 140,259
+m
+0.50
+K0_nc 0.426
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 1×10⁻3
+range 2.3×10⁻4 – 1.2×10⁻2
+k_h/k_v 1
+k_v (m/s) 1.0e-3
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Clay
+Layer 7 — 14.95–18.00 m (-4.95m TAW → -8.00m TAW) (3.05 m)
+klei, matig vast
+&sigma;v0 280.1 − u 161.6 = &sigma;'v0 118.5 kPa · &alpha;E 3
+Mohr-Coulomb
+E_ref (kPa) 4,236
+&nu;
+0.38
+r_shear
+0.15
+&phi;' (°) 20
+c' (kPa) 4
+&psi; (°) 0
+&gamma; / &gamma;_sat 17 / 17 kN/m³
+c_u (kPa) 50
+Soilin — deformation modulus
+&beta; (-) 0.534
+E_def (kPa) 2,262
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 4,236
+E_oed,ref (kPa) 3,632
+E_50,ref (kPa) =E_oed 3,632
+E_ur,ref (kPa) 10,896
+m
+1.00
+K0_nc 0.658
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 5×10⁻8
+range 1×10⁻9 – 1.2×10⁻7
+k_h/k_v 3
+k_v (m/s) 1.7e-8
+&psi;_unsat (m) 3
+Infiltratie + buffer
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+[#stratPanel]
+Hercorreleer
+Gevoeligheid
+ruim (meer verbonden)
+normaal
+strikt (meer lenzen)
+Karakteristiek
+gewogen gemiddelde
+ondergrens (min)
+Export
+CSV
+PLAXIS materialen
+DXF doorsnede
+SOILIN rapport
+SOILIN DB4
+-50510ABCDEFGHIJKLMNOPQRSTUVWlayered0 m · mv 10.00
+layered — zand (lh), los
+10.00 → 9.05 m TAW · qc 2.23 MPa
+Eenheid AA
+layered — zand, dicht
+9.05 → 6.05 m TAW · qc 10.99 MPa
+Eenheid CC
+layered — klei, weinig vast
+6.05 → 5.05 m TAW · qc 0.87 MPa
+Eenheid EE
+layered — klei, weinig vast
+5.05 → 4.35 m TAW · qc 0.92 MPa
+Eenheid GG
+layered — klei, weinig vast
+4.35 → 2.05 m TAW · qc 0.93 MPa
+Eenheid II
+layered — leem, vrij vast
+2.05 → 1.35 m TAW · qc 2.32 MPa
+Eenheid JJ
+layered — leem, vrij vast
+1.35 → 0.15 m TAW · qc 2.37 MPa
+Eenheid LL
+layered — klei (zh), vrij vast
+0.15 → -0.95 m TAW · qc 2.20 MPa
+Eenheid NN
+layered — zand, zeer dicht
+-0.95 → -4.95 m TAW · qc 16.85 MPa
+Eenheid PP
+layered — klei, matig vast
+-4.95 → -8.00 m TAW · qc 1.41 MPa
+Eenheid WWsand-only30 m · mv 10.40
+sand-only — zand, zeer dicht
+10.40 → 9.35 m TAW · qc 21.09 MPa
+Eenheid AA
+sand-only — zand, zeer dicht
+9.35 → 7.45 m TAW · qc 18.12 MPa
+Eenheid CC
+sand-only — zand, zeer dicht
+7.45 → 5.45 m TAW · qc 20.09 MPa
+Eenheid DD
+sand-only — zand, zeer dicht
+5.45 → 4.10 m TAW · qc 20.16 MPa
+Eenheid FF
+sand-only — zand, zeer dicht
+4.10 → 0.95 m TAW · qc 18.87 MPa
+Eenheid PP
+sand-only — zand, zeer dicht
+0.95 → 0.00 m TAW · qc 20.55 MPa
+Eenheid MM
+sand-only — zand, zeer dicht
+0.00 → -0.80 m TAW · qc 16.84 MPa
+Eenheid OO
+sand-only — zand, zeer dicht
+-0.80 → -1.95 m TAW · qc 17.18 MPa
+Eenheid RR
+sand-only — zand, zeer dicht
+-1.95 → -3.10 m TAW · qc 18.42 MPa
+Eenheid TT
+sand-only — zand, zeer dicht
+-3.10 → -3.70 m TAW · qc 17.10 MPa
+Eenheid UU
+sand-only — zand, zeer dicht
+-3.70 → -4.60 m TAW · qc 18.99 MPa
+Eenheid VVclay-only60 m · mv 9.70
+clay-only — leem, weinig vast
+9.70 → 8.65 m TAW · qc 0.84 MPa
+Eenheid BB
+clay-only — leem, weinig vast
+8.65 → 4.85 m TAW · qc 0.94 MPa
+Eenheid DD
+clay-only — klei, weinig vast
+4.85 → 2.90 m TAW · qc 0.92 MPa
+Eenheid HH
+clay-only — klei, weinig vast
+2.90 → -0.65 m TAW · qc 0.89 MPa
+Eenheid KK
+clay-only — klei, matig vast
+-0.65 → -1.60 m TAW · qc 1.07 MPa
+Eenheid QQ
+clay-only — klei, weinig vast
+-1.60 → -2.30 m TAW · qc 0.95 MPa
+Eenheid SS
+Eenheid layered sand-only clay-only Dikte (m) qc (MPa) φ′ (°) c′ (kPa) E_def (MPa)
+Sand · 2 lagen
+10.00 → 9.05 TAW · 0.95 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+10.40 → 9.35 TAW · 1.05 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+0.9–1.1
+12.132.2–21.1
+30.325.0–35.0
+0.00.0
+21.9
+Voeg samen met…
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Silty sand · 1 laag (lens)
+— uitwiggend — uitwiggend
+9.70 → 8.65 TAW · 1.05 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+1.1
+0.840.8
+22.022.0
+0.00.0
+2.1
+Voeg samen met…
+A — zand, zeer dicht
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sand · 2 lagen
+9.05 → 6.05 TAW · 3.00 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+9.35 → 7.45 TAW · 1.90 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+1.9–3.0
+13.7511.0–18.1
+33.232.0–35.0
+0.00.0
+30.9
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Silty sand · 2 lagen
+— uitwiggend
+7.45 → 5.45 TAW · 2.00 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+8.65 → 4.85 TAW · 3.80 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+2.0–3.8
+7.550.9–20.1
+26.522.0–35.0
+0.00.0
+14.5
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Clay · 1 laag (lens)
+6.05 → 5.05 TAW · 1.00 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend — uitwiggend
+1.0
+0.870.9
+20.020.0
+2.02.0
+1.2
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sand · 1 laag (lens)
+— uitwiggend
+5.45 → 4.10 TAW · 1.35 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+1.4
+20.1620.2
+35.035.0
+0.00.0
+37.6
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sandy clay · 1 laag (lens)
+5.05 → 4.35 TAW · 0.70 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend — uitwiggend
+0.7
+0.920.9
+20.020.0
+2.02.0
+1.3
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sandy clay · 1 laag (lens)
+— uitwiggend — uitwiggend
+4.85 → 2.90 TAW · 1.95 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+1.9
+0.920.9
+20.020.0
+2.02.0
+1.3
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Clay · 1 laag (lens)
+4.35 → 2.05 TAW · 2.30 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend — uitwiggend
+2.3
+0.930.9
+20.020.0
+2.02.0
+1.3
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Silty sand · 1 laag (lens)
+2.05 → 1.35 TAW · 0.70 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend — uitwiggend
+0.7
+2.322.3
+22.022.0
+4.04.0
+3.2
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Clay · 1 laag (lens)
+— uitwiggend — uitwiggend
+2.90 → -0.65 TAW · 3.55 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+3.5
+0.890.9
+20.020.0
+2.02.0
+1.3
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Silty sand · 1 laag (lens)
+1.35 → 0.15 TAW · 1.20 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend — uitwiggend
+1.2
+2.372.4
+22.022.0
+4.04.0
+3.3
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sand · 1 laag (lens)
+— uitwiggend
+0.95 → 0.00 TAW · 0.95 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+0.9
+20.5520.6
+35.035.0
+0.00.0
+38.1
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sandy clay · 1 laag (lens)
+0.15 → -0.95 TAW · 1.10 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend — uitwiggend
+1.1
+2.202.2
+22.022.0
+8.08.0
+3.0
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sand · 1 laag (lens)
+— uitwiggend
+0.00 → -0.80 TAW · 0.80 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+0.8
+16.8416.8
+35.035.0
+0.00.0
+33.4
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sand · 2 lagen
+-0.95 → -4.95 TAW · 4.00 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+4.10 → 0.95 TAW · 3.15 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+3.1–4.0
+17.7416.9–18.9
+35.035.0
+0.00.0
+34.6
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Clay · 1 laag (lens)
+— uitwiggend — uitwiggend
+-0.65 → -1.60 TAW · 0.95 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+0.9
+1.071.1
+20.020.0
+4.04.0
+1.7
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sand · 1 laag (lens)
+— uitwiggend
+-0.80 → -1.95 TAW · 1.15 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+1.1
+17.1817.2
+35.035.0
+0.00.0
+33.9
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Clay · 1 laag (lens)
+— uitwiggend — uitwiggend
+-1.60 → -2.30 TAW · 0.70 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+0.7
+0.950.9
+20.020.0
+2.02.0
+1.3
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sand · 1 laag (lens)
+— uitwiggend
+-1.95 → -3.10 TAW · 1.15 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+1.1
+18.4218.4
+35.035.0
+0.00.0
+35.4
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sand · 1 laag (lens)
+— uitwiggend
+-3.10 → -3.70 TAW · 0.60 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+0.6
+17.1017.1
+35.035.0
+0.00.0
+33.8
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+Sand · 1 laag (lens)
+— uitwiggend
+-3.70 → -4.60 TAW · 0.90 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend
+0.9
+18.9919.0
+35.035.0
+0.00.0
+36.1
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+W — klei, matig vast
+Clay · 1 laag (lens)
+-4.95 → -8.00 TAW · 3.05 m
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+W — klei, matig vast
+→ nieuwe eenheid
+— uitwiggend — uitwiggend
+3.0
+1.411.4
+20.020.0
+4.04.0
+2.3
+Voeg samen met…
+A — zand, zeer dicht
+B — leem, weinig vast
+C — zand, dicht
+D — leem, weinig vast
+E — klei, weinig vast
+F — zand, zeer dicht
+G — klei, weinig vast
+H — klei, weinig vast
+I — klei, weinig vast
+J — leem, vrij vast
+K — klei, weinig vast
+L — leem, vrij vast
+M — zand, zeer dicht
+N — klei (zh), vrij vast
+O — zand, zeer dicht
+P — zand, zeer dicht
+Q — klei, matig vast
+R — zand, zeer dicht
+S — klei, weinig vast
+T — zand, zeer dicht
+U — zand, zeer dicht
+V — zand, zeer dicht
+Waarden per eenheid: dikte-gewogen gemiddelde over de deelnemende lagen, met min–max eronder.
+Wijs een laag aan een andere eenheid toe via de dropdown in de CPT-kolom.

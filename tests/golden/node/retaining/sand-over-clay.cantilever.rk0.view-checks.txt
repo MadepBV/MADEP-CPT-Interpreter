@@ -1,0 +1,46 @@
+Limit state (governing combination) Ed / Rd Util.
+Bearing resultant in middle third (SLS, e <= B/6)
+Characteristic (SLS) · e <= B/6
+e 0.47 m · q_max 91.91 kPa · q_min 9.30 kPa
+e 0.47 m · q_max 91.91 kPa · q_min 9.30 kPa
+0.47 / 0.57 m
+0.82
+PASS
+Uplift / flotation (UPL)
+UPL uplift/flotation · U_dst <= G_stb
+U_uplift 43.15 kN/m · G_favourable 217.74 kN/m …
+U_uplift 43.15 kN/m · G_favourable 217.74 kN/mWhole-body buoyancy (γ_G,stb=0.90 on weight, γ_G,dst=1.00 on uplift). Side/base friction conservatively neglected; governs only a deeply submerged, light wall.
+43.15 / 195.97 kN/m
+0.22
+PASS
+Base sliding (GEO)
+DA1 Combination 2 (A2+M2+R1) · H_d <= R_d + R_p,d
+H_drive 130.69 kN/m · V_resist 170.27 kN/m · uplift_U 43.15 kN/m …
+H_drive 130.69 kN/m · V_resist 170.27 kN/m · uplift_U 43.15 kN/m · R_passive 18.13 kN/m · R_passive_vert 6.00 kN/m · tan_delta_b 0.52 · B_eff 1.73 m
+130.69 / 106.59 kN/m
+1.23
+FAIL
+Base bearing resistance (GEO, Annex D)
+DA1 Combination 2 (A2+M2+R1) · V_d <= R_d
+q_Ed 95.87 kPa · q_Rd 25.53 kPa · e 0.72 m …
+q_Ed 95.87 kPa · q_Rd 25.53 kPa · e 0.72 m · B_eff 2.00 m · i_q 0.10 · N_q 13.86 · N_gamma 13.37 · D_embed 0.69 m · d_q 1.10 · d_c 1.11 · q_Rd (De Beer) 94.18 kPa · V_d 192.05 kN/m · H_d 130.69 kN/mIncludes the default-on Brinch-Hansen/Vesic depth factors for the embedded toe (d_q, d_c above); EN 1997-1 Annex D itself omits depth factors (conservative). The inclined, eccentric load on a shallow footing is what governs bearing. Cross-check: the alternative bearing route's q_Rd is listed above. The direct-CPT (De Beer) and phi-capped Annex D routes legitimately differ — most at shallow embedment, where Annex D loses its overburden and depth terms under the inclined load while the CPT q_c does not. Choose per the docs: direct CPT for competent granular ground, Annex D for soft/low-q_c soil.
+192.05 / 51.15 kN/m
+3.75
+FAIL
+Eccentricity (ULS, e <= B/3)
+DA1 Combination 2 (A2+M2+R1) · e <= B/3
+e 0.72 m · B/3 1.15 m
+e 0.72 m · B/3 1.15 m
+0.72 / 1.15 m
+0.63
+PASS
+Overturning about toe (EQU)
+EQU static equilibrium · M_dst <= M_stb
+M_dst 307.65 kNm/m · M_stb 405.51 kNm/m …
+M_dst 307.65 kNm/m · M_stb 405.51 kNm/mPure EQU is rare for soil-founded walls; bearing/eccentricity (GEO) normally governs.
+307.65 / 405.51 kNm/m
+0.76
+PASS
+Both DA1 combinations evaluated; governing shown per check.
+Short-heel cantilever: heel 2.10 m is below the Rankine wedge-clearance length 2.50 m (psi = 58 deg from the design phi'). The virtual-plane Rankine active thrust is outside its strict validity envelope here; cross-check the active thrust with Coulomb on the real stem back face.
+Method & assumptions: documentation.

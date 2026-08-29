@@ -1,0 +1,29 @@
+{
+  "Df": 2,
+  "cumulativeCurve": [],
+  "deltaStressCurve": [],
+  "eoedCurve": [],
+  "geometry": {
+    "B": 6,
+    "L": 12,
+    "footingType": "rectangular",
+    "note": null
+  },
+  "limitState": "SLS",
+  "loadCombination": "char",
+  "notes": [
+    {"level":"warn","text":"Settlement time curve uses a simplified Terzaghi 1D two-way drainage assumption with Hd = half the interpreted layer thickness."}
+  ],
+  "perLayer": [
+    {"bot":2,"layerIndex":0,"settlement":0,"settlementMm":0,"subtype":"zand (lh), los","thickness":2,"top":0,"type":"Sand"}
+  ],
+  "qGross": 744,
+  "qNet": 709.6,
+  "sigmaVDf": 34.4,
+  "sublayers": [],
+  "timeCurve": null,
+  "totalSettlement": 0,
+  "totalSettlementMm": 0,
+  "truncationCause": "CPT bottom reached",
+  "truncationDepth": 2
+}

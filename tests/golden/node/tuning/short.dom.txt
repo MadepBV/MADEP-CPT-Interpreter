@@ -1,0 +1,30 @@
+Sand
+Laag 1 — 0.00–2.00 m
+zand (lh), los
+Laag te ondiep (
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.50
+Type-default
+m 0.50
+E_oed,ref 23,489.216 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (2.56)
+Auto-fit
+m -0.111
+E_oed,ref 6,597 kPa
+R² 0.023
+n 94 punten
+σ' bereik ×10.1
+Preview / engineer tweak
+m
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 0.500
+Preview E_oed,ref 23,576 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit

@@ -1,0 +1,10370 @@
+[
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.5,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.5,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.5,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.5,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.5,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.5,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.51,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.51,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.51,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.51,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.51,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.51,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.02,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.02,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.02,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.02,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.02,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.02,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.04,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.04,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.04,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.04,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.04,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.04,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 25.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 25.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 25.1,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 25.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 25.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 25.1,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 50.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 50.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 50.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 50.19,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 50.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 50.19,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 100.39,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 100.39,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 100.39,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 100.39,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 100.39,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 100.39,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 200.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 200.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 200.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 200.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 200.78,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 200.78,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.32,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.32,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.32,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.32,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.32,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.32,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.58,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.58,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.58,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.58,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.58,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.58,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.15,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.15,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.15,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.15,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.15,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.15,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.31,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.31,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.31,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.31,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.31,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.31,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.77,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.77,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.77,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.77,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.77,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.77,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.55,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.55,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.55,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.55,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.55,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.55,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 63.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 63.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 63.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 63.1,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 63.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 63.1,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 126.19,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 126.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 126.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 126.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 126.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 126.19,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.22,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.22,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.22,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.22,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.22,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.22,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.09,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.09,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.09,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.09,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.09,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.09,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.19,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.19,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.19,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.19,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.19,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.37,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.37,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.37,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.37,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.37,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.37,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.94,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.94,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.94,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.94,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.94,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.94,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 21.87,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 21.87,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 21.87,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 21.87,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 21.87,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 21.87,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 43.74,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 43.74,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 43.74,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 43.74,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 43.74,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 43.74,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 87.49,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 87.49,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 87.49,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 87.49,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 87.49,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 87.49,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.16,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.16,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.16,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.16,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.16,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.16,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.82,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.82,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.82,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.82,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.82,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.82,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.65,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.65,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.65,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.65,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.65,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.65,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.29,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.29,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.29,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.29,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.29,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.29,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 8.24,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 8.24,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 8.24,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 8.24,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 8.24,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 8.24,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 16.47,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 16.47,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 16.47,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 16.47,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 16.47,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 16.47,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 32.95,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 32.95,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 32.95,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 32.95,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 32.95,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 32.95,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 65.89,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 65.89,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 65.89,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 65.89,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 65.89,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 65.89,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.12,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.12,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.12,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.12,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.12,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.12,
+      "c": 5,
+      "cu": 0,
+      "g": 13,
+      "gs": 13,
+      "phi": 15,
+      "subtype": "peat, moderately preloaded, moderate",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.58,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.58,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.58,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.58,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.58,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.58,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.16,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.16,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.16,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.16,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.16,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.16,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.32,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.32,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.32,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.32,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.32,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.32,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.79,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.79,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.79,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.79,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.79,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.79,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 11.59,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 11.59,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 11.59,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 11.59,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 11.59,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 11.59,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 23.18,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 23.18,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 23.18,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 23.18,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 23.18,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 23.18,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 46.36,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 46.36,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 46.36,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 46.36,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 46.36,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 46.36,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.09,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.09,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.09,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.09,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.09,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.09,
+      "c": 5,
+      "cu": 0,
+      "g": 13,
+      "gs": 13,
+      "phi": 15,
+      "subtype": "peat, moderately preloaded, moderate",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.46,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.46,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.46,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.46,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.46,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.46,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.92,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.92,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.92,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.92,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.92,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.92,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.84,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.84,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.84,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.84,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.84,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.84,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.61,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.61,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.61,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.61,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.61,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.61,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 9.21,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 9.21,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 9.21,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 9.21,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 9.21,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 9.21,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 18.43,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 18.43,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 18.43,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 18.43,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 18.43,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 18.43,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 36.86,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 36.86,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 36.86,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 36.86,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 36.86,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 36.86,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.08,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.08,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.08,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.08,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.08,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.08,
+      "c": 5,
+      "cu": 0,
+      "g": 13,
+      "gs": 13,
+      "phi": 15,
+      "subtype": "peat, moderately preloaded, moderate",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.39,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.39,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.39,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.39,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.39,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.39,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.78,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.78,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.78,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.78,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.78,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.78,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.55,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.55,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.55,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.55,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.55,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.55,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.88,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.88,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.88,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.88,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.88,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.88,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 7.77,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 7.77,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 7.77,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 7.77,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 7.77,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 7.77,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.54,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.54,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.54,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.54,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.54,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.54,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.08,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.08,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.08,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.08,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.08,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.08,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.07,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.07,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.07,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.07,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.07,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.07,
+      "c": 5,
+      "cu": 0,
+      "g": 13,
+      "gs": 13,
+      "phi": 15,
+      "subtype": "peat, moderately preloaded, moderate",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.34,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.34,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.34,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.34,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.34,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.34,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.68,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.68,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.68,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.68,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.68,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.68,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.36,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.36,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.36,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.36,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.36,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.36,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.39,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.39,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.39,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.39,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.39,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.39,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.78,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.78,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.78,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 13.56,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 13.56,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 13.56,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 13.56,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 13.56,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 13.56,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 27.13,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 27.13,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 27.13,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 27.13,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 27.13,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 27.13,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.5,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.51,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.02,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.04,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 25.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 50.19,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 100.39,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 200.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.32,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.58,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.15,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.31,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.77,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.55,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 63.1,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 126.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.22,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.09,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.19,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.37,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.94,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 21.87,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 43.74,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 87.49,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 37.5,
+      "subtype": "gravel, slightly silty, moderate",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.16,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.82,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.65,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.29,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 8.24,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 16.47,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 32.95,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 65.89,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.12,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.58,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.16,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.32,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.79,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 11.59,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 23.18,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 46.36,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.09,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.46,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.92,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.84,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.61,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 9.21,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 18.43,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 36.86,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 40,
+      "subtype": "sand, clean, stiff",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.08,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.39,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.78,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.55,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.88,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 7.77,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.54,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.08,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.07,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.34,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.68,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.36,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.39,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 13.56,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 27.13,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.5,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.51,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.02,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.04,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 25.1,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 50.19,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 100.39,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 200.78,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.32,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.58,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.15,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.31,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.77,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.55,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 63.1,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 126.19,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32.5,
+      "subtype": "sand, slightly silty, moderate",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.22,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.09,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.19,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.37,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 10.94,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 21.87,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 43.74,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 87.49,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.16,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.82,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.65,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.29,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 8.24,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 16.47,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 32.95,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 65.89,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 30,
+      "subtype": "sand, very silty, loose",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.12,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.58,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.16,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 2.32,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 5.79,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 11.59,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 23.18,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 46.36,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.09,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.46,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.92,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.84,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 4.61,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 9.21,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 18.43,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 36.86,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.08,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.39,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.78,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.55,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.88,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 7.77,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 15.54,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 31.08,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "loam, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.07,
+      "c": 1,
+      "cu": 0,
+      "g": 15,
+      "gs": 15,
+      "phi": 15,
+      "subtype": "clay, organic, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.34,
+      "c": 1,
+      "cu": 0,
+      "g": 16,
+      "gs": 16,
+      "phi": 15,
+      "subtype": "clay, organic, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 0.68,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 1.36,
+      "c": 5,
+      "cu": 0,
+      "g": 17,
+      "gs": 17,
+      "phi": 17.5,
+      "subtype": "clay, clean, weak",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 3.39,
+      "c": 15,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 25,
+      "subtype": "clay, clean, stiff",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 6.78,
+      "c": 13,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 22.5,
+      "subtype": "clay, slightly sandy, moderate",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 13.56,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 32.5,
+      "subtype": "clay, very sandy, stiff",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": 27.13,
+      "c": 1,
+      "cu": 0,
+      "g": 20,
+      "gs": 20,
+      "phi": 30,
+      "subtype": "loam, slightly sandy, weak",
+      "type": "Sandy clay"
+    }
+  }
+]

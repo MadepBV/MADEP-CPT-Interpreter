@@ -1,0 +1,35 @@
+1
+0.00 12.00
+5.20
+-6.80
+12.00 m
+Clay
+— kies grondsoort —
+✓ Klei — weinig vast (qc 0.4–1, Rf 3–6%)
+· Klei — matig vast (qc 1–2, Rf 3–6%)
+· Klei — vrij vast (qc 2–4, Rf 3–6%)
+· Klei — vast (qc ≥4, Rf 3–6%)
+✓ Klei zandhoudend — weinig vast (qc 0.4–1, Rf 2–5%)
+· Klei zandhoudend — matig vast (qc 1–2, Rf 2–5%)
+· Klei zandhoudend — vrij vast (qc 2–4, Rf 2–5%)
+· Klei zandhoudend — vast (qc ≥4, Rf 2–5%)
+⚠ Leem — weinig vast (qc 0.4–1, Rf 2–4%)
+⚠ Leem — matig vast (qc 1–2, Rf 2–4%)
+⚠ Leem — vrij vast (qc 2–4, Rf 2–4%)
+⚠ Leem — vast (qc ≥4, Rf 2–4%)
+⚠ Zandhoudende leem — weinig vast (qc 0.4–1, Rf 1–3%)
+⚠ Zandhoudende leem — matig vast (qc 1–2, Rf 1–3%)
+⚠ Zandhoudende leem — vrij vast (qc 2–4, Rf 1–3%)
+⚠ Zandhoudende leem — vast (qc ≥4, Rf 1–3%)
+Veen — weinig vast (qc 0.2–0.5, Rf >6%)
+Veen — matig vast (qc 0.5–1.0, Rf >6%)
+Veen — vast (qc ≥1.0, Rf >6%)
+Zand — los (qc 2–4, Rf Zand — matig (qc 4–10, Rf Zand — dicht (qc 10–15, Rf Zand — zeer dicht (qc ≥15, Rf Leemhoudend zand — los (qc 2–4, Rf 1–2%)
+Leemhoudend zand — matig (qc 4–10, Rf 1–2%)
+Leemhoudend zand — dicht (qc 10–15, Rf 1–2%)
+Leemhoudend zand — zeer dicht (qc ≥15, Rf 1–2%)
+Grind — matig (qc 10–20, Rf Grind — dicht (qc ≥20, Rf Grind klei-/leemhoudend — matig (qc 10–20, Rf 1–2%)
+Grind klei-/leemhoudend — dicht (qc ≥20, Rf 1–2%)
+0.927
+41.7
+4.51

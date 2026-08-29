@@ -1,0 +1,10 @@
+ⓘ Opmerking laag 1
+Laag 1: klei, vrij vast gekozen zonder gemeten Rf (fs ontbreekt in het bronbestand). Meerdere Tabel 3 rijen passen bij qc ≈ 2.2 MPa; de parameters volgen de eerste passende rij. Controleer of overschrijf de grondsoort indien boringen of projectkennis beschikbaar zijn.
+ⓘ Opmerking laag 3
+Laag 3: klei, weinig vast gekozen zonder gemeten Rf (fs ontbreekt in het bronbestand). Meerdere Tabel 3 rijen passen bij qc ≈ 0.9 MPa; de parameters volgen de eerste passende rij. Controleer of overschrijf de grondsoort indien boringen of projectkennis beschikbaar zijn.
+ⓘ Opmerking laag 4
+Laag 4: klei, vrij vast gekozen zonder gemeten Rf (fs ontbreekt in het bronbestand). Meerdere Tabel 3 rijen passen bij qc ≈ 2.3 MPa; de parameters volgen de eerste passende rij. Controleer of overschrijf de grondsoort indien boringen of projectkennis beschikbaar zijn.
+ⓘ Opmerking laag 5
+Laag 5: klei, vast gekozen zonder gemeten Rf (fs ontbreekt in het bronbestand). Meerdere Tabel 3 rijen passen bij qc ≈ 16.9 MPa; de parameters volgen de eerste passende rij. Controleer of overschrijf de grondsoort indien boringen of projectkennis beschikbaar zijn.
+ⓘ Opmerking laag 6
+Laag 6: klei, matig vast gekozen zonder gemeten Rf (fs ontbreekt in het bronbestand). Meerdere Tabel 3 rijen passen bij qc ≈ 1.4 MPa; de parameters volgen de eerste passende rij. Controleer of overschrijf de grondsoort indien boringen of projectkennis beschikbaar zijn.

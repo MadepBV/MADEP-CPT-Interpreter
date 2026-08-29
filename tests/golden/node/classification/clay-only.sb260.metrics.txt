@@ -1,0 +1,19 @@
+[#cmet]
+avg qc (MPa)
+0.93
+avg fs (kPa)
+41.7
+avg Rf (%)
+4.51
+max depth (m)
+12.00
+readings
+240
+method
+NEN Tabel 3 / EC7
+[#cmetricHead]
+Metric (-)
+[#classAssumedRfNote]
+
+[#minThkInfo]
+-> 1 layers

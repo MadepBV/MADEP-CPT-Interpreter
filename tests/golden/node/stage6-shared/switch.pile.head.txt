@@ -1,0 +1,8 @@
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: layered · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = not accepted

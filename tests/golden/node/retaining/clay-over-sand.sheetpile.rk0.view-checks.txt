@@ -1,0 +1,34 @@
+Limit state (governing branch · reference) Ed / Rd Util.
+Embedment / rotational stability (cantilever, Blum)
+DA1/2 (A2 + M2) — embedment, design excavation · d_provided >= d_required · EN 1997-1 §9.7
+ODF_at_provided 0.55 - · d_provided 5.00 m · d_required 8.35 m …
+ODF_at_provided 0.55 - · d_provided 5.00 m · d_required 8.35 m · d_free_earth 6.96 m · overdig 0.30 m
+8.35 / 5.00 m
+ODF 0.55 · d ratio 1.67
+FAIL
+Hydraulic heave / piping (HYD)
+HYD hydraulic heave/piping · u_dst <= sigma'_stb · EN 1997-1 §10.3
+delta_h 1.80 m · embedment 5.00 m · i_exit 0.36 - …
+delta_h 1.80 m · embedment 5.00 m · i_exit 0.36 - · i_crit 1.14 -Conservative exit gradient: the whole differential head is dissipated over the downstream embedment (no upstream seepage-path credit). Confirm with a flow net for stratified ground.
+23.84 / 50.35 kPa
+0.47
+PASS
+Bending, elastic (class 2) — AZ 26-700
+STR · DA1-1 · E_d <= R_d · EN 1993-5 §5.2.2
+906.01 / 923.00 kNm/m
+0.98
+PASS
+Shear (webs, inclination neglected) — AZ 26-700
+STR · DA1-1 · E_d <= R_d · EN 1993-5 §5.2.2(4)
+571.81 / 1599.61 kN/m
+0.36
+PASS
+M–V interaction — AZ 26-700
+STR · DA1-1 · E_d <= R_d · EN 1993-5 §5.2.2(9)
+V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.
+571.81 / 799.80 kN/m
+0.71
+PASS
+Partial factors: NBN EN 1997-1 ANB generic DA1 sets. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+Differential water head: pore pressures are hydrostatic on each face with no seepage modelling (EN 1997-1 9.3.1.6). Seepage around the toe reduces the front passive resistance — use a flow net / FE seepage where the head difference is significant.
+Method & assumptions: documentation.

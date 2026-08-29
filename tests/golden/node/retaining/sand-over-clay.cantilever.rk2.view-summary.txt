@@ -1,0 +1,13 @@
+NOT VERIFIEDgoverning utilisation 3.75
+Governing values
+Stem MEd / VEd135.5 / 107.8kNm, kN per m · C1Toe MEd48.3kNm/m · C1Heel MEd190.2kNm/m · C1Base width B3.45m
+Limit states
+Bearing resultant in middle third (SLS, e <= B/6)0.82PASS
+Uplift / flotation (UPL)0.22PASS
+Base sliding (GEO)1.23FAIL
+Base bearing resistance (GEO, Annex D)3.75FAIL
+Eccentricity (ULS, e <= B/3)0.63PASS
+Overturning about toe (EQU)0.76PASS
+Engine notes
+Both DA1 combinations evaluated; governing shown per check.
+Short-heel cantilever: heel 2.10 m is below the Rankine wedge-clearance length 2.50 m (psi = 58 deg from the design phi'). The virtual-plane Rankine active thrust is outside its strict validity envelope here; cross-check the active thrust with Coulomb on the real stem back face.

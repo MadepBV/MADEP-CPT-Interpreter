@@ -1,0 +1,33 @@
+[#mgrid]
+Project
+Golden Project
+Test ID
+S2-CLAY
+Location
+Golden site
+Owner
+MADEP golden
+Date
+2026, 1, 15
+Readings
+240
+Depth (m)
+0.05–12.00
+Surface (m TAW)
+5.20
+Area ratio a
+0.800
+Sleeve fric. fs
+Present
+Pore pres. u2
+—
+max qc (MPa)
+1.50
+[#finfo]
+clay-only.gef — 240 readings
+[#wt-src]
+(MEASUREMENTVAR 14)
+[#elev-src]
+(from ZID)
+[#wt-taw]
+= 4.20 m TAW

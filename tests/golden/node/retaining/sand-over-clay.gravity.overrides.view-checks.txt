@@ -1,0 +1,45 @@
+Limit state (governing combination) Ed / Rd Util.
+Bearing resultant in middle third (SLS, e <= B/6)
+Characteristic (SLS) · e <= B/6
+e 0.61 m · q_max 144.74 kPa · q_min 0.00 kPa
+e 0.61 m · q_max 144.74 kPa · q_min 0.00 kPa
+0.61 / 0.42 m
+1.45
+FAIL
+Uplift / flotation (UPL)
+UPL uplift/flotation · U_dst <= G_stb
+U_uplift 24.52 kN/m · G_favourable 165.90 kN/m …
+U_uplift 24.52 kN/m · G_favourable 165.90 kN/mWhole-body buoyancy (γ_G,stb=0.90 on weight, γ_G,dst=1.00 on uplift). Side/base friction conservatively neglected; governs only a deeply submerged, light wall.
+24.52 / 149.31 kN/m
+0.16
+PASS
+Base sliding (GEO)
+DA1 Combination 2 (A2+M2+R1) · H_d <= R_d + R_p,d
+H_drive 96.10 kN/m · V_resist 141.37 kN/m · uplift_U 24.52 kN/m …
+H_drive 96.10 kN/m · V_resist 141.37 kN/m · uplift_U 24.52 kN/m · R_passive 21.11 kN/m · R_passive_vert 6.99 kN/m · tan_delta_b 0.52 · B_eff 0.87 m
+96.10 / 94.56 kN/m
+1.02
+FAIL
+Base bearing resistance (GEO, Annex D)
+DA1 Combination 2 (A2+M2+R1) · V_d <= R_d
+q_Ed 162.94 kPa · q_Rd 27.68 kPa · e 0.82 m …
+q_Ed 162.94 kPa · q_Rd 27.68 kPa · e 0.82 m · B_eff 0.87 m · i_q 0.10 · N_q 13.86 · N_gamma 13.37 · D_embed 0.75 m · d_q 1.26 · d_c 1.28 · q_Rd (De Beer) 107.40 kPa · V_d 141.37 kN/m · H_d 96.10 kN/mIncludes the default-on Brinch-Hansen/Vesic depth factors for the embedded toe (d_q, d_c above); EN 1997-1 Annex D itself omits depth factors (conservative). The inclined, eccentric load on a shallow footing is what governs bearing. Cross-check: the alternative bearing route's q_Rd is listed above. The direct-CPT (De Beer) and phi-capped Annex D routes legitimately differ — most at shallow embedment, where Annex D loses its overburden and depth terms under the inclined load while the CPT q_c does not. Choose per the docs: direct CPT for competent granular ground, Annex D for soft/low-q_c soil.
+141.37 / 24.02 kN/m
+5.89
+FAIL
+Eccentricity (ULS, e <= B/3)
+DA1 Combination 2 (A2+M2+R1) · e <= B/3
+e 0.82 m · B/3 0.83 m
+e 0.82 m · B/3 0.83 m
+0.82 / 0.83 m
+0.98
+PASS
+Overturning about toe (EQU)
+EQU static equilibrium · M_dst <= M_stb
+M_dst 188.63 kNm/m · M_stb 206.64 kNm/m …
+M_dst 188.63 kNm/m · M_stb 206.64 kNm/mPure EQU is rare for soil-founded walls; bearing/eccentricity (GEO) normally governs.
+188.63 / 206.64 kNm/m
+0.91
+PASS
+Both DA1 combinations evaluated; governing shown per check.
+Method & assumptions: documentation.

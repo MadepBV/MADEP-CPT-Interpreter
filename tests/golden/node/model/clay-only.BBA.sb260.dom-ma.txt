@@ -1,0 +1,41 @@
+Clay
+Layer 1 — 0.00–12.00 m (5.20m TAW → -6.80m TAW) (12.00 m)
+klei, weinig vast
+&sigma;v0 96 − u 49 = &sigma;'v0 46.9 kPa · &alpha;E 3
+Mohr-Coulomb
+E_ref (kPa) 2,781
+&nu;
+0.40
+r_shear
+0.12
+&phi;' (°) 20
+c' (kPa) 2
+&psi; (°) 0
+&gamma; / &gamma;_sat 16 / 16 kN/m³
+c_u (kPa) 20
+Soilin — deformation modulus
+&beta; (-) 0.467
+E_def (kPa) 1,299
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 2,781
+E_oed,ref (kPa) 5,594
+E_50,ref (kPa) =E_oed 5,594
+E_ur,ref (kPa) 16,782
+m
+1.00
+K0_nc 0.658
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 5×10⁻8
+range 1×10⁻9 – 1.2×10⁻7
+k_h/k_v 3
+k_v (m/s) 1.7e-8
+&psi;_unsat (m) 3
+Infiltratie + buffer
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW

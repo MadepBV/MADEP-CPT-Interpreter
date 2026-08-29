@@ -1,0 +1,2 @@
+Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,E_mc_kPa,nu,beta,Edef_kPa,rShear,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse
+1,Clay,"klei, weinig vast",0.000,12.000,5.20,-6.80,12.000,0.927,4.51,16,16,20,2,20,3.00,B,2781,5594,5594,16782,2781,0.4,0.467,1299,0.12,1.00,0.658,0.2,B,5.00e-8,1.70e-8,3,3,"Infiltratie + buffer"

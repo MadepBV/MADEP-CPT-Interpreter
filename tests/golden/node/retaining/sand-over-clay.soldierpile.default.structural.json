@@ -1,0 +1,331 @@
+{
+  "fy": 235,
+  "lagging": {
+    "EI": 17.5,
+    "L": 1,
+    "MEd": 2.34864091,
+    "MRd": 3.916666666666667,
+    "MelRd": 3.916666666666667,
+    "MplRd": 5.875,
+    "Wel": 0.000016666666666666667,
+    "Wpl": 0.000025,
+    "combo": "DA1-1",
+    "deflection": 0.009080916159611993,
+    "pass": true,
+    "ref": "EN 1993-1-1 §6.2.5; Rekennota §7.8",
+    "sigma": 140.9184546,
+    "spanMode": "centre",
+    "util": 0.5996529982978722,
+    "utilElastic": 0.5996529982978722,
+    "utilPlastic": 0.39976866553191487
+  },
+  "layersBack": [
+    {"Ka":0.3689050969,"Kac":1.214751163,"Kp":2.710724272,"Kpc":3.292855461,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":27.45305317,"phiK":33,"topEl":1.6},
+    {"Ka":0.5295728375,"Kac":1.455435107,"Kp":1.888314372,"Kpc":2.748319029,"cD":3.2,"cK":4,"cuD":42.85714286,"cuK":60,"deltaP":0,"drained":true,"phiD":17.91192098,"phiK":22,"topEl":-6.4}
+  ],
+  "layersFront": [
+    {"Ka":0.3689050969,"Kac":1.214751163,"Kp":2.710724272,"Kpc":3.292855461,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":0,"drained":true,"phiD":27.45305317,"phiK":33,"topEl":1.6},
+    {"Ka":0.5295728375,"Kac":1.455435107,"Kp":1.888314372,"Kpc":2.748319029,"cD":3.2,"cK":4,"cuD":42.85714286,"cuK":60,"deltaP":0,"drained":true,"phiD":17.91192098,"phiK":22,"topEl":-6.4}
+  ],
+  "notes": [],
+  "perPile": true,
+  "plaxis": {
+    "ebr": {
+      "A": 0.004525,
+      "Deq": 0.25799910060231257,
+      "E": 210000000,
+      "EAperM": 950250.0000000001,
+      "EIperM": 5271,
+      "I": 0.0000251,
+      "ISF_KF": 9.050105723425768,
+      "ISF_RN": 0.9050105723425768,
+      "ISF_RS": 0.9050105723425768,
+      "Lspacing": 1,
+      "gammaEff": 59.5,
+      "kind": "embedded-beam-row",
+      "notes": [
+        "Actual properties of ONE pile — never divided by the spacing (PLAXIS smears the row itself).",
+        "Net unit weight because the embedded beam row does not remove soil volume.",
+        "The ISF values must coincide with the PLAXIS defaults; a mismatch means A, I or L_spacing were mistyped.",
+        "Continuity check at the transition: EI per metre = 5271 kNm²/m for both the plate and the row."
+      ],
+      "ratio": 3.8759825040686073,
+      "rows": [
+        ["L_spacing",1,"m"],
+        ["Cross section type","User-defined",""],
+        ["A",0.004525,"m²"],
+        ["I",0.0000251,"m⁴"],
+        ["E",210000000,"kN/m²"],
+        ["γ (net, γ_steel − γ_soil)",59.5,"kN/m³"],
+        ["D_eq = √(12·I/A) (computed by PLAXIS)",0.25799910060231257,"m"],
+        ["ISF_RS = ISF_RN (default)",0.9050105723425768,"—"],
+        ["ISF_KF (default)",9.050105723425768,"—"]
+      ]
+    },
+    "fmax": {
+      "Ab": 0.030780000000000002,
+      "Fmax": 184.68,
+      "FmaxUnplugged": 54.300000000000004,
+      "alphaB": 0.5,
+      "notes": [
+        "The least substantiated parameter of the set; a toe force approaching F_max in the results requires a separate pile calculation (NBN EN 1997-1 ANB)."
+      ],
+      "plugged": true,
+      "qb": 6000,
+      "rows": [
+        ["A_b",0.030780000000000002,"m² (b·h, plug assumed)"],
+        ["q_b = α_b·q_c",6000,"kPa (α_b = 0.5)"],
+        ["F_max",184.68,"kN"],
+        ["F_max unplugged (q_c·A_steel)",54.300000000000004,"kN"]
+      ]
+    },
+    "interfaces": [
+      {"Rinter":0.01,"delta":0,"label":"","phi":33},
+      {"Rinter":0.01,"delta":0,"label":"","phi":22}
+    ],
+    "plate": {
+      "EA": 950250.0000000001,
+      "EI": 5271,
+      "NplPerM": 1063.375,
+      "dEq": 0.25799910060231257,
+      "kind": "plate",
+      "laggingEI": 17.500000000000004,
+      "notes": [
+        "Profile properties divided by the spacing s = 1.00 m; lagging stiffness omitted (EI of the plate 17.5 kNm²/m ≪ profile, and no composite action).",
+        "The lagging self-weight IS included in w (stiffness and weight are independent).",
+        "ν = 0 for a wall of discrete elements (PLAXIS reference manual)."
+      ],
+      "nu": 0,
+      "rows": [
+        ["Element type","Plate, elastic",""],
+        ["EA₁ = EA₂",950250.0000000001,"kN/m"],
+        ["EI",5271,"kNm²/m"],
+        ["d_eq (computed by PLAXIS)",0.25799910060231257,"m"],
+        ["w",1.1402125,"kN/m/m"],
+        ["ν",0,"—"],
+        ["Interfaces","both sides","R_inter per layer"],
+        ["Rayleigh damping",0,"% (static)"]
+      ],
+      "w": 1.1402125,
+      "wLagging": 0.785,
+      "wProfile": 0.35521250000000004
+    },
+    "tlat": [
+      {
+        "B": 0.18,
+        "Mu": 1559.901293,
+        "Ru": 514.8308008,
+        "gC": 1,
+        "gCu": 1,
+        "gPhi": 1,
+        "id": "characteristic",
+        "label": "Characteristic (M1) — staged/SLS phases and phi-c reduction",
+        "layers": [
+          {"K0":0.455360965,"Kc0":8.049013756,"KcInf":89.15529662,"Kq0":5.988431761,"KqA":0.2386588902,"KqInf":26.3645468,"Nc":38.6383103,"Nq":26.0920121,"Pq":6.227090651,"ac":0.1744281893,"aq":0.0829388061,"c":0,"cu":0,"dcInf":2.307432595,"drained":true,"phi":33,"topEl":1.6},
+          {"K0":0.6253934066,"Kc0":5.019799057,"KcInf":28.51488309,"Kq0":2.640956963,"KqA":0.3871735045,"KqInf":7.205007714,"Nc":16.88286462,"Nq":7.821120072,"Pq":3.028130468,"ac":0.354253002,"aq":0.1635179225,"c":4,"cu":60,"dcInf":1.688983697,"drained":true,"phi":22,"topEl":-6.4}
+        ],
+        "plaxisRows": [
+          {"Kc":0,"Kq":0,"distance":0,"dq":46.10000002,"raw":0,"rowCap":0,"sigmaVf":0,"tlat":0},
+          {"Kc":23.86607126,"Kq":8.093163338,"distance":0.25,"dq":46.1,"raw":4.939263211,"rowCap":4.069953614,"sigmaVf":4.750000019,"tlat":4.069953614},
+          {"Kc":34.52071259,"Kq":9.803790979,"distance":0.5,"dq":46.1,"raw":14.78409114,"rowCap":18.78221936,"sigmaVf":9.500000019,"tlat":14.78409114},
+          {"Kc":42.18574102,"Kq":11.22153049,"distance":0.75,"dq":46.1,"raw":26.80283427,"rowCap":33.49448511,"sigmaVf":14.25000002,"tlat":26.80283427},
+          {"Kc":47.96463698,"Kq":12.41567116,"distance":1,"dq":46.1,"raw":40.48120395,"rowCap":48.20675086,"sigmaVf":19.00000002,"tlat":40.48120395},
+          {"Kc":52.47731043,"Kq":13.43524389,"distance":1.25,"dq":46.1,"raw":55.45527623,"rowCap":62.91901661,"sigmaVf":23.75000002,"tlat":55.45527623},
+          {"Kc":56.09883567,"Kq":14.31592066,"distance":1.5,"dq":46.1,"raw":71.46028156,"rowCap":77.63128235,"sigmaVf":28.50000002,"tlat":71.46028156},
+          {"Kc":59.06946245,"Kq":15.08427408,"distance":1.75,"dq":46.1,"raw":88.29898893,"rowCap":92.3435481,"sigmaVf":33.25000002,"tlat":88.29898893},
+          {"Kc":61.55020097,"Kq":15.76050486,"distance":2,"dq":46.1,"raw":105.8214618,"rowCap":107.0558139,"sigmaVf":38.00000002,"tlat":105.8214618},
+          {"Kc":63.65300206,"Kq":16.3602437,"distance":2.25,"dq":46.1,"raw":123.9116839,"rowCap":121.7680796,"sigmaVf":42.75000002,"tlat":121.7680796},
+          {"Kc":65.45811984,"Kq":16.89577445,"distance":2.5,"dq":46.1,"raw":142.4784802,"rowCap":136.4803453,"sigmaVf":47.50000002,"tlat":136.4803453},
+          {"Kc":67.02458811,"Kq":17.37688439,"distance":2.75,"dq":46.1,"raw":161.4492063,"rowCap":151.1926111,"sigmaVf":52.25000002,"tlat":151.1926111},
+          {"Kc":68.39679916,"Kq":17.81146779,"distance":3,"dq":46.1,"raw":180.7652681,"rowCap":165.9048768,"sigmaVf":57.00000002,"tlat":165.9048768},
+          {"Kc":69.60877793,"Kq":18.2059625,"distance":3.25,"dq":46.1,"raw":200.3788818,"rowCap":180.6171426,"sigmaVf":61.75000002,"tlat":180.6171426},
+          {"Kc":70.68704157,"Kq":18.56567101,"distance":3.5,"dq":46.1,"raw":220.2506906,"rowCap":195.3294083,"sigmaVf":66.50000002,"tlat":195.3294083},
+          {"Kc":71.65256196,"Kq":18.89500014,"distance":3.75,"dq":46.1,"raw":240.3479854,"rowCap":210.0416741,"sigmaVf":71.25000002,"tlat":210.0416741},
+          {"Kc":72.52214324,"Kq":19.19764252,"distance":4,"dq":46.1,"raw":260.6433583,"rowCap":224.7539398,"sigmaVf":76.00000002,"tlat":224.7539398},
+          {"Kc":73.30940809,"Kq":19.47671563,"distance":4.25,"dq":46.1,"raw":281.1136703,"rowCap":239.4662056,"sigmaVf":80.75000002,"tlat":239.4662056},
+          {"Kc":73.74698322,"Kq":19.63396548,"distance":4.4,"dq":46.1,"raw":293.4715211,"rowCap":248.293565,"sigmaVf":83.60000002,"tlat":248.293565}
+        ],
+        "rows": [
+          {"Kc":0,"Kq":0,"KqA":0,"dq":46.10000002,"rowCap":0,"sigmaVf":0,"tlatAL":0,"tlatAdopted":0,"tlatEqual":0,"z":0},
+          {"Kc":23.86607126,"Kq":8.093163338,"KqA":0.2386588902,"dq":46.1,"rowCap":4.069953614,"sigmaVf":4.750000019,"tlatAL":4.939263211,"tlatAdopted":4.069953614,"tlatEqual":6.919654682,"z":0.25},
+          {"Kc":34.52071259,"Kq":9.803790979,"KqA":0.2386588902,"dq":46.1,"rowCap":18.78221936,"sigmaVf":9.500000019,"tlatAL":14.78409114,"tlatAdopted":14.78409114,"tlatEqual":16.76448261,"z":0.5},
+          {"Kc":42.18574102,"Kq":11.22153049,"KqA":0.2386588902,"dq":46.1,"rowCap":33.49448511,"sigmaVf":14.25000002,"tlatAL":26.80283427,"tlatAdopted":26.80283427,"tlatEqual":28.78322575,"z":0.75},
+          {"Kc":47.96463698,"Kq":12.41567116,"KqA":0.2386588902,"dq":46.1,"rowCap":48.20675086,"sigmaVf":19.00000002,"tlatAL":40.48120395,"tlatAdopted":40.48120395,"tlatEqual":42.46159542,"z":1},
+          {"Kc":52.47731043,"Kq":13.43524389,"KqA":0.2386588902,"dq":46.1,"rowCap":62.91901661,"sigmaVf":23.75000002,"tlatAL":55.45527623,"tlatAdopted":55.45527623,"tlatEqual":57.4356677,"z":1.25},
+          {"Kc":56.09883567,"Kq":14.31592066,"KqA":0.2386588902,"dq":46.1,"rowCap":77.63128235,"sigmaVf":28.50000002,"tlatAL":71.46028156,"tlatAdopted":71.46028156,"tlatEqual":73.44067303,"z":1.5},
+          {"Kc":59.06946245,"Kq":15.08427408,"KqA":0.2386588902,"dq":46.1,"rowCap":92.3435481,"sigmaVf":33.25000002,"tlatAL":88.29898893,"tlatAdopted":88.29898893,"tlatEqual":90.2793804,"z":1.75},
+          {"Kc":61.55020097,"Kq":15.76050486,"KqA":0.2386588902,"dq":46.1,"rowCap":107.0558139,"sigmaVf":38.00000002,"tlatAL":105.8214618,"tlatAdopted":105.8214618,"tlatEqual":107.8018533,"z":2},
+          {"Kc":63.65300206,"Kq":16.3602437,"KqA":0.2386588902,"dq":46.1,"rowCap":121.7680796,"sigmaVf":42.75000002,"tlatAL":123.9116839,"tlatAdopted":121.7680796,"tlatEqual":125.8920753,"z":2.25},
+          {"Kc":65.45811984,"Kq":16.89577445,"KqA":0.2386588902,"dq":46.1,"rowCap":136.4803453,"sigmaVf":47.50000002,"tlatAL":142.4784802,"tlatAdopted":136.4803453,"tlatEqual":144.4588716,"z":2.5},
+          {"Kc":67.02458811,"Kq":17.37688439,"KqA":0.2386588902,"dq":46.1,"rowCap":151.1926111,"sigmaVf":52.25000002,"tlatAL":161.4492063,"tlatAdopted":151.1926111,"tlatEqual":163.4295977,"z":2.75},
+          {"Kc":68.39679916,"Kq":17.81146779,"KqA":0.2386588902,"dq":46.1,"rowCap":165.9048768,"sigmaVf":57.00000002,"tlatAL":180.7652681,"tlatAdopted":165.9048768,"tlatEqual":182.7456596,"z":3},
+          {"Kc":69.60877793,"Kq":18.2059625,"KqA":0.2386588902,"dq":46.1,"rowCap":180.6171426,"sigmaVf":61.75000002,"tlatAL":200.3788818,"tlatAdopted":180.6171426,"tlatEqual":202.3592733,"z":3.25},
+          {"Kc":70.68704157,"Kq":18.56567101,"KqA":0.2386588902,"dq":46.1,"rowCap":195.3294083,"sigmaVf":66.50000002,"tlatAL":220.2506906,"tlatAdopted":195.3294083,"tlatEqual":222.231082,"z":3.5},
+          {"Kc":71.65256196,"Kq":18.89500014,"KqA":0.2386588902,"dq":46.1,"rowCap":210.0416741,"sigmaVf":71.25000002,"tlatAL":240.3479854,"tlatAdopted":210.0416741,"tlatEqual":242.3283768,"z":3.75},
+          {"Kc":72.52214324,"Kq":19.19764252,"KqA":0.2386588902,"dq":46.1,"rowCap":224.7539398,"sigmaVf":76.00000002,"tlatAL":260.6433583,"tlatAdopted":224.7539398,"tlatEqual":262.6237498,"z":4},
+          {"Kc":73.30940809,"Kq":19.47671563,"KqA":0.2386588902,"dq":46.1,"rowCap":239.4662056,"sigmaVf":80.75000002,"tlatAL":281.1136703,"tlatAdopted":239.4662056,"tlatEqual":283.0940618,"z":4.25},
+          {"Kc":73.74698322,"Kq":19.63396548,"KqA":0.2386588902,"dq":46.1,"rowCap":248.293565,"sigmaVf":83.60000002,"tlatAL":293.4715211,"tlatAdopted":248.293565,"tlatEqual":295.4519126,"z":4.4}
+        ],
+        "s": 1,
+        "toeEl": -4.7,
+        "topEl": -0.3,
+        "zBar": 3.02993001
+      },
+      {
+        "B": 0.18,
+        "Mu": 963.1467864,
+        "Ru": 313.5983084,
+        "gC": 1.25,
+        "gCu": 1.4,
+        "gPhi": 1.25,
+        "id": "design",
+        "label": "Design (M2 of the risk class) — explicit DA1/2 plastic phase",
+        "layers": [
+          {"K0":0.5389783378,"Kc0":6.232954846,"KcInf":46.50311912,"Kq0":3.932503831,"KqA":0.305678733,"KqInf":13.02149185,"Nc":24.76261927,"Nq":13.86482639,"Pq":4.238182564,"ac":0.264578107,"aq":0.1257861824,"c":0,"cu":0,"dcInf":1.877956391,"drained":true,"phi":27.45305317,"topEl":1.6},
+          {"K0":0.6924453998,"Kc0":4.34217833,"KcInf":21.17513856,"Kq0":1.942407986,"KqA":0.4610751519,"KqInf":4.739268771,"Nc":13.0337442,"Nq":5.212779583,"Pq":2.403483138,"ac":0.4171498316,"aq":0.1829205289,"c":3.2,"cu":42.85714286,"dcInf":1.624639722,"drained":true,"phi":17.91192098,"topEl":-6.4}
+        ],
+        "plaxisRows": [
+          {"Kc":0,"Kq":0,"distance":0,"dq":46.10000002,"raw":0,"rowCap":0,"sigmaVf":0,"tlat":0},
+          {"Kc":17.0544466,"Kq":5.28422739,"distance":0.25,"dq":46.1,"raw":1.98149231,"rowCap":0,"sigmaVf":4.750000019,"tlat":0},
+          {"Kc":23.29183623,"Kq":6.285944806,"distance":0.5,"dq":46.1,"raw":8.212443512,"rowCap":8.92980821,"sigmaVf":9.500000019,"tlat":8.212443512},
+          {"Kc":27.34882113,"Kq":7.05801584,"distance":0.75,"dq":46.1,"raw":15.56728853,"rowCap":20.05344929,"sigmaVf":14.25000002,"tlat":15.56728853},
+          {"Kc":30.19860603,"Kq":7.671289857,"distance":1,"dq":46.1,"raw":23.69928921,"rowCap":31.17709037,"sigmaVf":19.00000002,"tlat":23.69928921},
+          {"Kc":32.31023029,"Kq":8.170189747,"distance":1.25,"dq":46.1,"raw":32.39103907,"rowCap":42.30073145,"sigmaVf":23.75000002,"tlat":32.39103907},
+          {"Kc":33.93761,"Kq":8.583982177,"distance":1.5,"dq":46.1,"raw":41.49930647,"rowCap":53.42437253,"sigmaVf":28.50000002,"tlat":41.49930647},
+          {"Kc":35.23018317,"Kq":8.932733354,"distance":1.75,"dq":46.1,"raw":50.92588703,"rowCap":64.54801361,"sigmaVf":33.25000002,"tlat":50.92588703},
+          {"Kc":36.28163417,"Kq":9.230660981,"distance":2,"dq":46.1,"raw":60.60119901,"rowCap":75.67165469,"sigmaVf":38.00000002,"tlat":60.60119901},
+          {"Kc":37.15367679,"Kq":9.488120305,"distance":2.25,"dq":46.1,"raw":70.47456365,"rowCap":86.79529577,"sigmaVf":42.75000002,"tlat":70.47456365},
+          {"Kc":37.88861994,"Kq":9.712832321,"distance":2.5,"dq":46.1,"raw":80.50819425,"rowCap":97.91893685,"sigmaVf":47.50000002,"tlat":80.50819425},
+          {"Kc":38.51643878,"Kq":9.910671337,"distance":2.75,"dq":46.1,"raw":90.67334183,"rowCap":109.0425779,"sigmaVf":52.25000002,"tlat":90.67334183},
+          {"Kc":39.05896376,"Kq":10.08618593,"distance":3,"dq":46.1,"raw":100.9477456,"rowCap":120.166219,"sigmaVf":57.00000002,"tlat":100.9477456},
+          {"Kc":39.53247097,"Kq":10.24295297,"distance":3.25,"dq":46.1,"raw":111.3139002,"rowCap":131.2898601,"sigmaVf":61.75000002,"tlat":111.3139002},
+          {"Kc":39.94934301,"Kq":10.38382394,"distance":3.5,"dq":46.1,"raw":121.7578505,"rowCap":142.4135012,"sigmaVf":66.50000002,"tlat":121.7578505},
+          {"Kc":40.31916752,"Kq":10.51109995,"distance":3.75,"dq":46.1,"raw":132.2683348,"rowCap":153.5371423,"sigmaVf":71.25000002,"tlat":132.2683348},
+          {"Kc":40.64948364,"Kq":10.62665841,"distance":4,"dq":46.1,"raw":142.836165,"rowCap":164.6607833,"sigmaVf":76.00000002,"tlat":142.836165},
+          {"Kc":40.94630137,"Kq":10.73204626,"distance":4.25,"dq":46.1,"raw":153.4537703,"rowCap":175.7844244,"sigmaVf":80.75000002,"tlat":153.4537703},
+          {"Kc":41.11037002,"Kq":10.79094128,"distance":4.4,"dq":46.1,"raw":159.8455623,"rowCap":182.4586091,"sigmaVf":83.60000002,"tlat":159.8455623}
+        ],
+        "rows": [
+          {"Kc":0,"Kq":0,"KqA":0,"dq":46.10000002,"rowCap":0,"sigmaVf":0,"tlatAL":0,"tlatAdopted":0,"tlatEqual":0,"z":0},
+          {"Kc":17.0544466,"Kq":5.28422739,"KqA":0.305678733,"dq":46.1,"rowCap":0,"sigmaVf":4.750000019,"tlatAL":1.98149231,"tlatAdopted":0,"tlatEqual":4.518014437,"z":0.25},
+          {"Kc":23.29183623,"Kq":6.285944806,"KqA":0.305678733,"dq":46.1,"rowCap":8.92980821,"sigmaVf":9.500000019,"tlatAL":8.212443512,"tlatAdopted":8.212443512,"tlatEqual":10.74896564,"z":0.5},
+          {"Kc":27.34882113,"Kq":7.05801584,"KqA":0.305678733,"dq":46.1,"rowCap":20.05344929,"sigmaVf":14.25000002,"tlatAL":15.56728853,"tlatAdopted":15.56728853,"tlatEqual":18.10381065,"z":0.75},
+          {"Kc":30.19860603,"Kq":7.671289857,"KqA":0.305678733,"dq":46.1,"rowCap":31.17709037,"sigmaVf":19.00000002,"tlatAL":23.69928921,"tlatAdopted":23.69928921,"tlatEqual":26.23581134,"z":1},
+          {"Kc":32.31023029,"Kq":8.170189747,"KqA":0.305678733,"dq":46.1,"rowCap":42.30073145,"sigmaVf":23.75000002,"tlatAL":32.39103907,"tlatAdopted":32.39103907,"tlatEqual":34.92756119,"z":1.25},
+          {"Kc":33.93761,"Kq":8.583982177,"KqA":0.305678733,"dq":46.1,"rowCap":53.42437253,"sigmaVf":28.50000002,"tlatAL":41.49930647,"tlatAdopted":41.49930647,"tlatEqual":44.0358286,"z":1.5},
+          {"Kc":35.23018317,"Kq":8.932733354,"KqA":0.305678733,"dq":46.1,"rowCap":64.54801361,"sigmaVf":33.25000002,"tlatAL":50.92588703,"tlatAdopted":50.92588703,"tlatEqual":53.46240915,"z":1.75},
+          {"Kc":36.28163417,"Kq":9.230660981,"KqA":0.305678733,"dq":46.1,"rowCap":75.67165469,"sigmaVf":38.00000002,"tlatAL":60.60119901,"tlatAdopted":60.60119901,"tlatEqual":63.13772114,"z":2},
+          {"Kc":37.15367679,"Kq":9.488120305,"KqA":0.305678733,"dq":46.1,"rowCap":86.79529577,"sigmaVf":42.75000002,"tlatAL":70.47456365,"tlatAdopted":70.47456365,"tlatEqual":73.01108578,"z":2.25},
+          {"Kc":37.88861994,"Kq":9.712832321,"KqA":0.305678733,"dq":46.1,"rowCap":97.91893685,"sigmaVf":47.50000002,"tlatAL":80.50819425,"tlatAdopted":80.50819425,"tlatEqual":83.04471638,"z":2.5},
+          {"Kc":38.51643878,"Kq":9.910671337,"KqA":0.305678733,"dq":46.1,"rowCap":109.0425779,"sigmaVf":52.25000002,"tlatAL":90.67334183,"tlatAdopted":90.67334183,"tlatEqual":93.20986396,"z":2.75},
+          {"Kc":39.05896376,"Kq":10.08618593,"KqA":0.305678733,"dq":46.1,"rowCap":120.166219,"sigmaVf":57.00000002,"tlatAL":100.9477456,"tlatAdopted":100.9477456,"tlatEqual":103.4842677,"z":3},
+          {"Kc":39.53247097,"Kq":10.24295297,"KqA":0.305678733,"dq":46.1,"rowCap":131.2898601,"sigmaVf":61.75000002,"tlatAL":111.3139002,"tlatAdopted":111.3139002,"tlatEqual":113.8504223,"z":3.25},
+          {"Kc":39.94934301,"Kq":10.38382394,"KqA":0.305678733,"dq":46.1,"rowCap":142.4135012,"sigmaVf":66.50000002,"tlatAL":121.7578505,"tlatAdopted":121.7578505,"tlatEqual":124.2943726,"z":3.5},
+          {"Kc":40.31916752,"Kq":10.51109995,"KqA":0.305678733,"dq":46.1,"rowCap":153.5371423,"sigmaVf":71.25000002,"tlatAL":132.2683348,"tlatAdopted":132.2683348,"tlatEqual":134.8048569,"z":3.75},
+          {"Kc":40.64948364,"Kq":10.62665841,"KqA":0.305678733,"dq":46.1,"rowCap":164.6607833,"sigmaVf":76.00000002,"tlatAL":142.836165,"tlatAdopted":142.836165,"tlatEqual":145.3726871,"z":4},
+          {"Kc":40.94630137,"Kq":10.73204626,"KqA":0.305678733,"dq":46.1,"rowCap":175.7844244,"sigmaVf":80.75000002,"tlatAL":153.4537703,"tlatAdopted":153.4537703,"tlatEqual":155.9902924,"z":4.25},
+          {"Kc":41.11037002,"Kq":10.79094128,"KqA":0.305678733,"dq":46.1,"rowCap":182.4586091,"sigmaVf":83.60000002,"tlatAL":159.8455623,"tlatAdopted":159.8455623,"tlatEqual":162.3820844,"z":4.4}
+        ],
+        "s": 1,
+        "toeEl": -4.7,
+        "topEl": -0.3,
+        "zBar": 3.071275452
+      }
+    ],
+    "tskin": {
+      "K": 0.4553609649849729,
+      "Rs": 30.788777322053665,
+      "Tend": 13.994898782751665,
+      "Tstart": 1,
+      "coefficient": 0.1674030954874601,
+      "delta": 22.011000000000003,
+      "notes": [
+        "β-method with K = K₀ as the lower bound of the allowed installation methods (pre-augering with backfill); a lower T_skin is conservative for the φ-c reduction and the vertical check.",
+        "Linear profile with the unit weight and φ′ of the stratum at the toe (uniform below the excavation) — for a strongly layered embedment enter a multilinear T_skin from the per-layer values."
+      ],
+      "perimeterPlug": 0.342,
+      "perimeterSteel": 0.36,
+      "phiK": 33,
+      "rows": [
+        ["K",0.4553609649849729,"K₀ = 1 − sin φ′_k (no installation increase)"],
+        ["δ",22.011000000000003,"° steel–soil"],
+        ["O_steel",0.36,"m (both flange faces)"],
+        ["O_plug",0.342,"m (soil–soil between the flanges)"],
+        ["T_skin / σ′_v",0.1674030954874601,"m"],
+        ["T_skin,start,max",1,"kN/m (numerical floor at z′ = 0)"],
+        ["T_skin,end,max",13.994898782751665,"kN/m at z′ = 4.400 m"]
+      ],
+      "slope": 3.180658814261742,
+      "term": 0.3676272415949937
+    }
+  },
+  "section": {
+    "A": 0.004525,
+    "Avz": 0.0014470000000000002,
+    "Iy": 0.0000251,
+    "Iz": 0.000009246000000000001,
+    "Wely": 0.00029360000000000003,
+    "Wply": 0.0003249,
+    "b": 0.18,
+    "boxArea": 0.030780000000000002,
+    "family": "HEA",
+    "h": 0.171,
+    "id": "HEA180",
+    "massPerM": 35.5,
+    "perimeterBox": 0.702,
+    "perimeterFlanges": 0.36,
+    "perimeterPlug": 0.342,
+    "r": 0.015,
+    "source": "ea-en10365",
+    "tf": 0.0095,
+    "tw": 0.006,
+    "weightPerM": 0.348255
+  },
+  "soldier": true,
+  "steel": {
+    "pass": true,
+    "resistance": {
+      "McRd": 76.3515,
+      "MelRd": 68.99600000000001,
+      "MplRd": 76.3515,
+      "NplRd": 1063.375,
+      "VplRd": 196.32507228658633,
+      "cls": {
+        "cls": 1,
+        "eps": 1,
+        "flange": {
+          "cls": 1,
+          "ct": 7.578947368421052,
+          "limit1": 9,
+          "limit2": 10,
+          "limit3": 14
+        },
+        "web": {
+          "cls": 1,
+          "ct": 20.333333333333336,
+          "limit1": 72,
+          "limit2": 83,
+          "limit3": 124
+        }
+      },
+      "fy": 235,
+      "gammaM0": 1,
+      "plasticAllowed": true
+    },
+    "rows": [
+      {"Ed":35.85177485,"Rd":76.3515,"id":"bending","label":"Bending, plastic (class 1)","pass":true,"ref":"EN 1993-1-1 §6.2.5","unit":"kNm","util":0.46956215464005285},
+      {"Ed":35.85177485,"Rd":68.99600000000001,"id":"bending_el","info":true,"label":"Bending, elastic (control)","pass":true,"ref":"EN 1993-1-1 §6.2.5","unit":"kNm","util":0.5196210628152356},
+      {"Ed":69.86915335,"Rd":196.32507228658633,"id":"shear","label":"Shear","pass":true,"ref":"EN 1993-1-1 §6.2.6","unit":"kN","util":0.35588502546433914},
+      {"Ed":69.86915335,"Rd":98.16253614329317,"id":"mv","label":"M–V interaction","note":"V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.","pass":true,"ref":"EN 1993-1-1 §6.2.8","unit":"kN","util":0.7117700509286783}
+    ]
+  },
+  "vertical": {
+    "G": 3.6855065000000002,
+    "Glagging": 1.4915000000000003,
+    "Gpile": 2.1940065,
+    "Rs": 30.788777322053665,
+    "pass": true,
+    "ref": "EN 1997-1 §9.7.5; Rekennota §7.10",
+    "util": 0.11970291841891728
+  }
+}

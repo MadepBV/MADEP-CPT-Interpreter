@@ -1,0 +1,23 @@
+<rect x="0" y="0" width="60" height="10.7" fill="#FAC775" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="8.35" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Sandy</text><rect x="0" y="10.7" width="60" height="16.6" fill="#D3D1C7" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="22" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Sand</text><rect x="0" y="27.3" width="60" height="27.599999999999998" fill="#D3D1C7" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="44.1" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Sand</text><rect x="0" y="54.9" width="60" height="73.6" fill="#AFA9EC" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="94.7" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Clay</text><rect x="0" y="128.5" width="60" height="46.099999999999994" fill="#F4C0D1" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="154.55" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Silty</text><rect x="0" y="174.6" width="60" height="27.599999999999994" fill="#AFA9EC" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="191.39999999999998" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Clay</text><rect x="0" y="202.2" width="60" height="26.900000000000006" fill="#F4C0D1" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="218.64999999999998" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Silty</text><rect x="0" y="229.1" width="60" height="23.900000000000006" fill="#FAC775" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="244.05" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Sandy</text><rect x="0" y="253" width="60" height="23.19999999999999" fill="#FAC775" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="267.6" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Sandy</text><rect x="0" y="276.2" width="60" height="78.90000000000003" fill="#F4C0D1" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="318.65" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Silty</text><rect x="0" y="355.1" width="60" height="44.89999999999998" fill="#F4C0D1" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      <text x="30" y="380.55" text-anchor="middle" font-size="7" fill="rgba(0,0,0,0.55)" font-family="sans-serif">Silty</text><line x1="0" x2="60" y1="31.3" y2="31.3" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4,3"/><line x1="0" x2="4" y1="0" y2="0" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="3" font-size="6" fill="#9a9a96" font-family="sans-serif">0</text><line x1="0" x2="4" y1="36.8" y2="36.8" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="39.8" font-size="6" fill="#9a9a96" font-family="sans-serif">2</text><line x1="0" x2="4" y1="73.7" y2="73.7" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="76.7" font-size="6" fill="#9a9a96" font-family="sans-serif">4</text><line x1="0" x2="4" y1="110.5" y2="110.5" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="113.5" font-size="6" fill="#9a9a96" font-family="sans-serif">6</text><line x1="0" x2="4" y1="147.3" y2="147.3" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="150.3" font-size="6" fill="#9a9a96" font-family="sans-serif">8</text><line x1="0" x2="4" y1="184.2" y2="184.2" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="187.2" font-size="6" fill="#9a9a96" font-family="sans-serif">10</text><line x1="0" x2="4" y1="221" y2="221" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="224" font-size="6" fill="#9a9a96" font-family="sans-serif">12</text><line x1="0" x2="4" y1="257.8" y2="257.8" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="260.8" font-size="6" fill="#9a9a96" font-family="sans-serif">14</text><line x1="0" x2="4" y1="294.7" y2="294.7" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="297.7" font-size="6" fill="#9a9a96" font-family="sans-serif">16</text><line x1="0" x2="4" y1="331.5" y2="331.5" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="334.5" font-size="6" fill="#9a9a96" font-family="sans-serif">18</text><line x1="0" x2="4" y1="368.3" y2="368.3" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>
+      <text x="5" y="371.3" font-size="6" fill="#9a9a96" font-family="sans-serif">20</text>

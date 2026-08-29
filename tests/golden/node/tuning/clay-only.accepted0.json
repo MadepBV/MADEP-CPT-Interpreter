@@ -1,0 +1,13 @@
+{
+  "hs": [
+    {"E50_i":2781,"E50_ref":2797,"Edef":1299,"Emc":2781,"Eoed_i":2781,"Eoed_ref":2797,"Eur_ref":8391,"K0nc":0.658,"aE":3,"beta":0.467,"botTAW":"-6.80m TAW","m":0.008,"nu":0.4,"nu_ur":0.2,"psi":0,"rShear":0.12,"sigV":96,"sigVeff":46.9,"topTAW":"5.20m TAW","u":49}
+  ],
+  "layers": [
+    {
+      "m_ovr": 0.008,
+      "ovr": {
+        "m": true
+      }
+    }
+  ]
+}

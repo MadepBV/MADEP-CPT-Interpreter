@@ -1,0 +1,48 @@
+Limit state (governing branch · reference) Ed / Rd Util.
+Embedment / rotational stability (anchored, free-earth)
+DA1/1 (A1 + M1) — γ_G 1.35 on retained-side actions, passive favourable 1.00, design excavation · d_provided >= d_required · EN 1997-1 §9.7
+ODF_at_provided 1.49 - · d_provided 5.00 m · d_required 4.40 m …
+ODF_at_provided 1.49 - · d_provided 5.00 m · d_required 4.40 m · d_free_earth 4.40 m · overdig 0.30 m
+4.40 / 5.00 m
+ODF 1.49 · d ratio 0.88
+PASS
+Hydraulic heave / piping (HYD)
+HYD hydraulic heave/piping · u_dst <= sigma'_stb · EN 1997-1 §10.3
+delta_h 1.80 m · embedment 5.00 m · i_exit 0.36 - …
+delta_h 1.80 m · embedment 5.00 m · i_exit 0.36 - · i_crit 1.14 -Conservative exit gradient: the whole differential head is dissipated over the downstream embedment (no upstream seepage-path credit). Confirm with a flow net for stratified ground.
+23.84 / 50.35 kPa
+0.47
+PASS
+Ground-anchor pull-out (EN 1537, per anchor)
+STR envelope (R4 anchor resistance) · T_d <= R_a,d · EN 1537 / EC7 Table A.12
+T_axial 268.32 kN · R_ak 282.74 kN · R_ad 257.04 kN …
+T_axial 268.32 kN · R_ak 282.74 kN · R_ad 257.04 kN · gamma_a 1.10 - · spacing 2.00 m · V_vert_on_wall 45.88 kN/mR_ak = pi*D*L_fixed*tau is a CALCULATED (untested) grout-body bond. EN 1997-1 Table A.12 gives gamma_a = 1.1 for anchorages; it presumes a proof-tested R_ak — until EN 1537 acceptance tests confirm the bond, treat R_ak as preliminary (model factor / reduced tau).
+268.32 / 257.04 kN
+1.04
+FAIL
+Wall vertical equilibrium (anchor down-drag)
+screening — confirm against the section · V_anchor <= R_v,shaft
+V_anchor 45.88 kN/m · R_v_shaft 68.98 kN/m …
+V_anchor 45.88 kN/m · R_v_shaft 68.98 kN/mScreening estimate: embedded shaft friction only (K0*sigma'_v*tan(2/3 phi'), both faces); base resistance and wall self-weight neglected.
+45.88 / 68.98 kN/m
+0.67
+PASS
+Bending, elastic (class 2) — AZ 26-700
+STR · DA1-1 · E_d <= R_d · EN 1993-5 §5.2.2
+190.31 / 923.00 kNm/m
+0.21
+PASS
+Shear (webs, inclination neglected) — AZ 26-700
+STR · DA1-1 · E_d <= R_d · EN 1993-5 §5.2.2(4)
+113.17 / 1599.61 kN/m
+0.07
+PASS
+M–V interaction — AZ 26-700
+STR · DA1-1 · E_d <= R_d · EN 1993-5 §5.2.2(9)
+V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.
+113.17 / 799.80 kN/m
+0.14
+PASS
+Partial factors: NBN EN 1997-1 ANB generic DA1 sets. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+Differential water head: pore pressures are hydrostatic on each face with no seepage modelling (EN 1997-1 9.3.1.6). Seepage around the toe reduces the front passive resistance — use a flow net / FE seepage where the head difference is significant.
+Method & assumptions: documentation.

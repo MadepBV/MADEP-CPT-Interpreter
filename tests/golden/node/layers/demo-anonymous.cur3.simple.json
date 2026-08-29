@@ -1,0 +1,53 @@
+[
+  {
+    "avgFs": 0.00199,
+    "avgQc": 0.212,
+    "avgRf": 0.94,
+    "bot": 0.58,
+    "c": 2,
+    "cu": 20,
+    "g": 16,
+    "gs": 16,
+    "id": 0,
+    "ovr": {},
+    "phi": 20,
+    "rfIndeterminate": false,
+    "subtype": "klei, weinig vast",
+    "top": 0,
+    "type": "Clay"
+  },
+  {
+    "avgFs": 0.08616,
+    "avgQc": 4.328,
+    "avgRf": 3.02,
+    "bot": 9.48,
+    "c": 8,
+    "cu": 100,
+    "g": 20,
+    "gs": 20,
+    "id": 1,
+    "ovr": {},
+    "phi": 22,
+    "rfIndeterminate": false,
+    "subtype": "leem, vast",
+    "top": 0.58,
+    "type": "Sand"
+  },
+  {
+    "avgFs": 0.14447,
+    "avgQc": 5.624,
+    "avgRf": 2.68,
+    "bot": 21.72,
+    "c": 15,
+    "cu": 200,
+    "g": 19,
+    "gs": 19,
+    "id": 2,
+    "ovr": {},
+    "phi": 22,
+    "rfIndeterminate": false,
+    "subtype": "klei (zh), vast",
+    "top": 9.48,
+    "type": "Clay"
+  }
+]

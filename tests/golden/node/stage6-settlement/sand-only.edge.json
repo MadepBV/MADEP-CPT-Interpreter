@@ -1,0 +1,39 @@
+{
+  "Df": 15,
+  "cumulativeCurve": [],
+  "deltaStressCurve": [],
+  "eoedCurve": [],
+  "geometry": {
+    "B": 1.7724538509055159,
+    "L": 1.7724538509055159,
+    "footingType": "circular",
+    "note": "Circular footing is approximated as an equal-area square for the stress integration."
+  },
+  "limitState": "SLS",
+  "loadCombination": "char",
+  "notes": [
+    {"level":"info","text":"Circular footing is approximated as an equal-area square for the stress integration."},
+    {"level":"warn","text":"Net foundation pressure is zero or negative after subtracting the in-situ overburden at Df. Settlement is therefore reported as 0 mm. This usually means the chosen SLS load combination is smaller than the removed overburden; unloading / heave is not modelled in this screening tool."},
+    {"level":"warn","text":"Settlement time curve uses a simplified Terzaghi 1D two-way drainage assumption with Hd = half the interpreted layer thickness."}
+  ],
+  "perLayer": [
+    {"bot":1.45,"layerIndex":0,"settlement":0,"settlementMm":0,"subtype":"grind, matig","thickness":1.45,"top":0,"type":"Gravel"},
+    {"bot":2.65,"layerIndex":1,"settlement":0,"settlementMm":0,"subtype":"grind, matig","thickness":1.2,"top":1.45,"type":"Gravel"},
+    {"bot":3.7,"layerIndex":2,"settlement":0,"settlementMm":0,"subtype":"grind, matig","thickness":1.0500000000000003,"top":2.65,"type":"Gravel"},
+    {"bot":5.2,"layerIndex":3,"settlement":0,"settlementMm":0,"subtype":"grind, dicht","thickness":1.5,"top":3.7,"type":"Gravel"},
+    {"bot":7.25,"layerIndex":4,"settlement":0,"settlementMm":0,"subtype":"grind, dicht","thickness":2.05,"top":5.2,"type":"Gravel"},
+    {"bot":8.7,"layerIndex":5,"settlement":0,"settlementMm":0,"subtype":"grind, matig","thickness":1.4499999999999993,"top":7.25,"type":"Gravel"},
+    {"bot":12.75,"layerIndex":6,"settlement":0,"settlementMm":0,"subtype":"grind, matig","thickness":4.050000000000001,"top":8.7,"type":"Gravel"},
+    {"bot":13.55,"layerIndex":7,"settlement":0,"settlementMm":0,"subtype":"grind, matig","thickness":0.8000000000000007,"top":12.75,"type":"Gravel"},
+    {"bot":15,"layerIndex":8,"settlement":0,"settlementMm":0,"subtype":"grind, matig","thickness":1.4499999999999993,"top":13.55,"type":"Gravel"}
+  ],
+  "qGross": 0,
+  "qNet": 0,
+  "sigmaVDf": 298.55,
+  "sublayers": [],
+  "timeCurve": null,
+  "totalSettlement": 0,
+  "totalSettlementMm": 0,
+  "truncationCause": "CPT bottom reached",
+  "truncationDepth": 15
+}

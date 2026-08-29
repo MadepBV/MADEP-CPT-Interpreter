@@ -1,0 +1,11 @@
+VERIFICATIONS PASSgoverning utilisation 0.55
+Governing values
+drequired / dprovided2.40 / 4.40m · DA1-2ODF at provided depth2.86Mres/Mdriveover-excavation Δa0.30mMEd33.2kNm/m · DA1-2VEd93.8kN/m · DA1-1Steel AZ 26-7000.04UC bending · elastic
+Limit states
+Embedment / rotational stability (cantilever, Blum)0.55PASS
+Hydraulic heave / piping (HYD)0.00PASS
+Bending, elastic (class 2)0.04PASS
+Shear (webs, inclination neglected)0.06PASS
+M–V interaction0.12PASS
+Engine notes
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).

@@ -1,0 +1,82 @@
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: layered · WT = 1.70 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = not accepted
+Dewatering impact
+Hydrogeological screening plus stress and settlement response at the CPT location.
+Inputs
+Combination context
+Characteristic drawdown
+Quasi-permanent drawdown context
+Characteristic is the recommended default here: enter the expected drawdown directly and do not factor it as a ULS variable load.
+Target water table at well / excavation (m below ground)
+Geometry
+Single well
+Equivalent well excavation
+Line dewatering trench
+Aquifer type
+Unconfined
+Confined
+Well radius rw (m)
+Distance well-CPT (m)
+Sichardt coefficient C
+Total stress mode
+Conservative sigma_v fixed
+Realistic gamma_sat to gamma
+Conservative keeps the total overburden stress profile unchanged and only lowers pore pressure. Realistic also reduces total stress in the zone that changes from saturated to unsaturated, by switching from γ_sat to γ.
+Aquifer base depth (m, optional)
+Sub-layer dz (m)
+Time horizon for settlement curve (days, optional)
+Estimated phreatic level profile from source to CPT
+Effective stress before / after drawdown
+Total settlement versus distance from source
+Summary
+New WT at CPT 3.00 m
+Drawdown at CPT 1.30 m
+Distance from well centre to CPT 0.00 m
+Well radius 0.15 m
+R influence 114.3 m
+Q estimate 1.02e-3 m3/s
+Aquifer base 3.20 m
+Hydraulic model Transmissivity-based Dupuit screening
+T far field 1.29e-3 m²/s
+T at well 2.00e-4 m²/s
+k_eff,h 8.58e-4 m/s
+Conservative settlement 32.24 mm
+Realistic settlement 26.01 mm
+Max Δσv mode effect 0.0 kPa
+Total settlement 32.2 mm
+Dewatering impact is treated as an SLS deformation screening tool. Use the expected drawdown directly; this module does not apply DA1/1 or DA1/2 style load factoring.
+Hydraulics are screened with a transmissivity-based model. The app combines the active layer conductivities into T = Σ(k_h · b) through the pumped interval and uses that profile in the radial or line-flow estimate.
+Important: settlement is driven by the drawdown at the CPT location, not by the target level at the well or excavation itself. If the CPT sits outside the computed screening influence radius, the module will show little or no settlement.
+Hydraulic screening inputs
+Limit state Combination Hydraulic model Geometry Original WT Target WT at well WT at CPT Drawdown at CPT Distance from well centre to CPT Well radius T far field T at well k_eff,h R
+SLS Characteristic drawdown Transmissivity-based Dupuit screening Single well 1.70 m 3.00 m 3.00 m 1.30 m 0.00 m 0.15 m 1.29e-3 m²/s 2.00e-4 m²/s 8.58e-4 m/s 114.3 m
+Formula route
+R = C · s · sqrt(k)
+h²(r) = h_w² + Q / (pi·k) · ln(r / r_w) (radial, unconfined)
+Delta eps = Delta sigma' / E_oed(sigma_mean)
+Geometry = Single well
+Aquifer type = unconfined
+Distance axis = radial distance from well centre / excavation centroid
+Settlement-distance curve = total settlement predicted at each x-location
+Total stress mode = conservative
+Settlement limit state = SLS only
+Combination route = Characteristic drawdown, no γ factors
+Per layer settlement contribution
+Layer Type Top-Bot (m) Settlement (mm)
+1 Sand 0.00-0.95 0.00
+2 Sand 0.95-1.95 0.01
+3 Gravel 1.95-3.95 0.46
+4 Clay 3.95-7.95 14.57
+5 Sandy clay 7.95-10.95 8.30
+6 Gravel 10.95-14.95 1.02
+7 Clay 14.95-18.00 7.90
+Sichardt radius of influence is shown as a screening estimate only. It is not a permit-grade hydrogeological prediction.
+Hydraulic screening uses a transmissivity profile through the pumped interval: T = Σ(k_h · b). For unconfined flow, the radial drawdown is solved from the cumulative transmissivity moment rather than from one lumped k_h value.
+Aquifer base was not provided, so the CPT bottom depth is used as a first-pass aquifer base. Verify this against geology or pumping-test data.
+Total-stress mode does change the result here: conservative = 32.24 mm, realistic = 26.01 mm.

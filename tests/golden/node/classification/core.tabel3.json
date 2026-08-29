@@ -1,0 +1,10370 @@
+[
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 25,
+      "subtype": "leem (zh), weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 5,
+      "cu": 20,
+      "g": 12,
+      "gs": 12,
+      "phi": 15,
+      "subtype": "veen, matig vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "leem (zh), matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 30,
+      "subtype": "zand, matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 18,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "grind, matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 25,
+      "subtype": "leem (zh), weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 5,
+      "cu": 20,
+      "g": 12,
+      "gs": 12,
+      "phi": 15,
+      "subtype": "veen, matig vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "leem (zh), matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 30,
+      "subtype": "zand, matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 18,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "grind, matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 25,
+      "subtype": "leem (zh), weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 5,
+      "cu": 20,
+      "g": 12,
+      "gs": 12,
+      "phi": 15,
+      "subtype": "veen, matig vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "leem (zh), matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 30,
+      "subtype": "zand, matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 18,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "grind, matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 25,
+      "subtype": "leem (zh), weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 5,
+      "cu": 20,
+      "g": 12,
+      "gs": 12,
+      "phi": 15,
+      "subtype": "veen, matig vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "leem (zh), matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 30,
+      "subtype": "zand, matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 18,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "grind, matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 25,
+      "subtype": "leem (zh), weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 5,
+      "cu": 20,
+      "g": 12,
+      "gs": 12,
+      "phi": 15,
+      "subtype": "veen, matig vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "leem (zh), matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 30,
+      "subtype": "zand, matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 18,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "grind, matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 25,
+      "subtype": "leem (zh), weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 5,
+      "cu": 20,
+      "g": 12,
+      "gs": 12,
+      "phi": 15,
+      "subtype": "veen, matig vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "leem (zh), matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 30,
+      "subtype": "zand, matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 18,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "grind, matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 25,
+      "subtype": "leem (zh), weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 5,
+      "cu": 20,
+      "g": 12,
+      "gs": 12,
+      "phi": 15,
+      "subtype": "veen, matig vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "leem (zh), matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 30,
+      "subtype": "zand, matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 18,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "grind, matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 25,
+      "subtype": "leem (zh), weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 5,
+      "cu": 20,
+      "g": 12,
+      "gs": 12,
+      "phi": 15,
+      "subtype": "veen, matig vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "leem (zh), matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 27,
+      "subtype": "zand, los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 19,
+      "gs": 19,
+      "phi": 22,
+      "subtype": "leem, vrij vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 30,
+      "subtype": "zand, matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 18,
+      "gs": 20,
+      "phi": 35,
+      "subtype": "grind, matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 40,
+      "subtype": "grind, dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 20,
+      "gs": 20,
+      "phi": 22,
+      "subtype": "leem, vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 10,
+      "cu": 40,
+      "g": 14,
+      "gs": 14,
+      "phi": 15,
+      "subtype": "veen, vast",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 25,
+      "g": 18,
+      "gs": 18,
+      "phi": 22,
+      "subtype": "leem, matig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 16,
+      "gs": 18,
+      "phi": 25,
+      "subtype": "zand (lh), los",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 17,
+      "gs": 19,
+      "phi": 27,
+      "subtype": "zand (lh), matig",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 19,
+      "gs": 21,
+      "phi": 32,
+      "subtype": "grind (kh), matig",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 0,
+      "g": 20,
+      "gs": 22,
+      "phi": 37,
+      "subtype": "grind (kh), dicht",
+      "type": "Gravel"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 20,
+      "g": 16,
+      "gs": 16,
+      "phi": 20,
+      "subtype": "klei, weinig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 17,
+      "gs": 17,
+      "phi": 20,
+      "subtype": "klei, matig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 18,
+      "gs": 18,
+      "phi": 20,
+      "subtype": "klei, vrij vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 20,
+      "g": 16,
+      "gs": 16,
+      "phi": 20,
+      "subtype": "klei, weinig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 17,
+      "gs": 17,
+      "phi": 20,
+      "subtype": "klei, matig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 18,
+      "gs": 18,
+      "phi": 20,
+      "subtype": "klei, vrij vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 20,
+      "g": 16,
+      "gs": 16,
+      "phi": 20,
+      "subtype": "klei, weinig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 17,
+      "gs": 17,
+      "phi": 20,
+      "subtype": "klei, matig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 18,
+      "gs": 18,
+      "phi": 20,
+      "subtype": "klei, vrij vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 20,
+      "g": 16,
+      "gs": 16,
+      "phi": 20,
+      "subtype": "klei, weinig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 17,
+      "gs": 17,
+      "phi": 20,
+      "subtype": "klei, matig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 18,
+      "gs": 18,
+      "phi": 20,
+      "subtype": "klei, vrij vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 20,
+      "g": 16,
+      "gs": 16,
+      "phi": 20,
+      "subtype": "klei, weinig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 17,
+      "gs": 17,
+      "phi": 20,
+      "subtype": "klei, matig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 18,
+      "gs": 18,
+      "phi": 20,
+      "subtype": "klei, vrij vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 20,
+      "g": 16,
+      "gs": 16,
+      "phi": 20,
+      "subtype": "klei, weinig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 17,
+      "gs": 17,
+      "phi": 20,
+      "subtype": "klei, matig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 18,
+      "gs": 18,
+      "phi": 20,
+      "subtype": "klei, vrij vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 20,
+      "g": 16,
+      "gs": 16,
+      "phi": 20,
+      "subtype": "klei, weinig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 17,
+      "gs": 17,
+      "phi": 20,
+      "subtype": "klei, matig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 18,
+      "gs": 18,
+      "phi": 20,
+      "subtype": "klei, vrij vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 0,
+      "cu": 10,
+      "g": 17,
+      "gs": 17,
+      "phi": 22,
+      "subtype": "leem, weinig vast",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 2,
+      "cu": 20,
+      "g": 16,
+      "gs": 16,
+      "phi": 20,
+      "subtype": "klei, weinig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 4,
+      "cu": 50,
+      "g": 17,
+      "gs": 17,
+      "phi": 20,
+      "subtype": "klei, matig vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 8,
+      "cu": 100,
+      "g": 18,
+      "gs": 18,
+      "phi": 20,
+      "subtype": "klei, vrij vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": null,
+      "Qt": null,
+      "c": 15,
+      "cu": 200,
+      "g": 19,
+      "gs": 19,
+      "phi": 20,
+      "subtype": "klei, vast",
+      "type": "Clay"
+    }
+  }
+]

@@ -1,0 +1,36 @@
+[
+  {
+    "avgFs": 0.06048,
+    "avgQc": 3.783,
+    "avgRf": 1.6,
+    "bot": 0.56,
+    "c": 0,
+    "cu": 0,
+    "g": 16,
+    "gs": 18,
+    "id": 0,
+    "ovr": {},
+    "phi": 25,
+    "rfIndeterminate": false,
+    "subtype": "zand (lh), los",
+    "top": 0,
+    "type": "Sand"
+  },
+  {
+    "avgFs": 0.05108,
+    "avgQc": 3.389,
+    "avgRf": 1.52,
+    "bot": 2,
+    "c": 4,
+    "cu": 50,
+    "g": 19,
+    "gs": 19,
+    "id": 1,
+    "ovr": {},
+    "phi": 25,
+    "rfIndeterminate": false,
+    "subtype": "leem (zh), vrij vast",
+    "top": 0.56,
+    "type": "Silty sand"
+  }
+]

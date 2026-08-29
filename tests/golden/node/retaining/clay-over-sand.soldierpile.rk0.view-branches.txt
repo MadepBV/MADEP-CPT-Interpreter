@@ -1,0 +1,58 @@
+DA1-2 governs
+γG 1.10 · γQ 1.43 · γφ 1.25 · γc 1.25
+excavation0.30m below nominal
+free-earth d₀6.109m
+design d7.331m
+ODF at provided0.628
+Mmax / MEd320.4 / 320.4kNm @ 6.85 m
+Vmax / VEd136.0 / 136.0kN @ 8.30 m
+z₀ (net = 0)0.10m below exc.
+p at surface / exc. / toe13.4 / 54.1 / -152.2kPa
+lagging pEd34.7kPa
+Moment diagram not closed on the provided pile (under-embedded for this branch).
+DA1-1
+γG 1.49 / 1.00 pass. · γQ 1.65 · γφ 1.00 · γc 1.00
+excavation0.30m below nominal
+free-earth d₀5.917m
+design d7.100m
+ODF at provided0.668
+Mmax / MEd308.3 / 308.3kNm @ 6.78 m
+Vmax / VEd156.7 / 156.7kN @ 8.30 m
+z₀ (net = 0)0.06m below exc.
+p at surface / exc. / toe12.9 / 61.7 / -166.1kPa
+lagging pEd35.5kPa
+Moment diagram not closed on the provided pile (under-embedded for this branch).
+BGT
+γG 1.00 · γQ 1.10 · γφ 1.00 · γc 1.00 · effects × 1.35
+excavation0.00m below nominal
+free-earth d₀4.657m
+design d5.588m
+ODF at provided1.302
+Mmax / MEd132.1 / 178.4kNm @ 5.38 m
+Vmax / VEd143.7 / 194.0kN @ 7.68 m
+z₀ (net = 0)0.00m below exc.
+p at surface / exc. / toe8.6 / 37.4 / -232.8kPa
+lagging pEd30.7kPa
+SLS
+γG 1.00 · γQ 1.00 · γφ 1.00 · γc 1.00
+excavation0.00m below nominal
+free-earth d₀4.535m
+design d5.443m
+ODF at provided1.363
+Mmax / MEd122.7 / 122.7kNm @ 5.30 m
+Vmax / VEd128.5 / 128.5kN @ 7.55 m
+z₀ (net = 0)0.00m below exc.
+p at surface / exc. / toe7.8 / 36.7 / -233.4kPa
+lagging pEd21.9kPa
+DA1-2DA1-1BGTSLSdesign strengths and coefficients of the selected branchcopy branch table (TSV)
+Retained side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 26.0 → 21.32° 3.0 → 2.40 45 → 32.1 0.4668 1.3665 0.0° 2.1422 2.9272
+-1.00 m drained 20.0 → 16.23° 0.5 → 0.40 30 → 21.4 0.5630 1.5007 0.0° 1.7761 2.6654
+-4.50 m drained 35.0 → 29.26° 0.0 → 0.00 0 → 0.0 0.3434 1.1721 0.0° 2.9117 3.4127
+Excavation side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 26.0 → 21.32° 3.0 → 2.40 45 → 32.1 0.4668 1.3665 0.0° 2.1422 2.9272
+-1.00 m drained 20.0 → 16.23° 0.5 → 0.40 30 → 21.4 0.5630 1.5007 0.0° 1.7761 2.6654
+-4.50 m drained 35.0 → 29.26° 0.0 → 0.00 0 → 0.0 0.3434 1.1721 0.0° 2.9117 3.4127
+DA1/2 (A2 + M2) — embedment, design excavation. Design strengths: tan φ′d = tan φ′k/γφ, c′d = c′k/γc, cu,d = cu,k/γcu; coefficients recomputed from φ′d (never Kp/γ). All forces per pile (× spacing above the excavation; b / beff below).

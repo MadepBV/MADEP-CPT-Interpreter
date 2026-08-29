@@ -1,0 +1,15 @@
+{
+  "B": 3,
+  "Df": 2,
+  "L": 6,
+  "eB": 0.3,
+  "eL": 0.5,
+  "ec7Combination": "DA1-2",
+  "factorMode": "ec7",
+  "foundationType": "footing",
+  "gammaRd": 1.1,
+  "load": 600,
+  "shapeMode": "conservative",
+  "showMode": "both",
+  "xi": 1.5
+}

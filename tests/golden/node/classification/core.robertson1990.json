@@ -1,0 +1,10370 @@
+[
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 3.02,
+      "Qt": 10.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.65,
+      "Qt": 10.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.77,
+      "Qt": 10.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.92,
+      "Qt": 10.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 3.09,
+      "Qt": 10.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 3.28,
+      "Qt": 10.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.43,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.97,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.12,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.31,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.52,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.75,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.22,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.7,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.88,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.09,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.32,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.56,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.04,
+      "Qt": 221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.45,
+      "Qt": 221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.66,
+      "Qt": 221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.89,
+      "Qt": 221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.14,
+      "Qt": 221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.4,
+      "Qt": 221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.85,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.17,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.42,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.69,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.96,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.24,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.75,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.01,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.29,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.58,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.87,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.17,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.7,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 0.93,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.23,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.53,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.83,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.13,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.71,
+      "Qt": 4443.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 0.94,
+      "Qt": 4443.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.23,
+      "Qt": 4443.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.53,
+      "Qt": 4443.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.83,
+      "Qt": 4443.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.13,
+      "Qt": 4443.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 3.33,
+      "Qt": 4.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.99,
+      "Qt": 4.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 3.1,
+      "Qt": 4.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 3.24,
+      "Qt": 4.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 3.4,
+      "Qt": 4.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 3.58,
+      "Qt": 4.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.67,
+      "Qt": 26.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.25,
+      "Qt": 26.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.39,
+      "Qt": 26.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.56,
+      "Qt": 26.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.75,
+      "Qt": 26.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.96,
+      "Qt": 26.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.43,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.97,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.12,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.31,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.52,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.75,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.22,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.7,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.88,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.09,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.32,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.56,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.99,
+      "Qt": 276.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.38,
+      "Qt": 276.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.6,
+      "Qt": 276.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.84,
+      "Qt": 276.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.09,
+      "Qt": 276.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.36,
+      "Qt": 276.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.85,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.17,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.42,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.69,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.96,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.24,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.75,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.01,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.29,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.58,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.87,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.17,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.7,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 0.93,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.23,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.53,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.83,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.13,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.68,
+      "Qt": 2.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.35,
+      "Qt": 2.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.46,
+      "Qt": 2.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.59,
+      "Qt": 2.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.75,
+      "Qt": 2.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.86,
+      "Qt": 2.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.87,
+      "Qt": 14.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.49,
+      "Qt": 14.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.62,
+      "Qt": 14.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.77,
+      "Qt": 14.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.95,
+      "Qt": 14.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.15,
+      "Qt": 14.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.62,
+      "Qt": 31,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.19,
+      "Qt": 31,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.33,
+      "Qt": 31,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.51,
+      "Qt": 31,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.7,
+      "Qt": 31,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.91,
+      "Qt": 31,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.39,
+      "Qt": 63.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.91,
+      "Qt": 63.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.07,
+      "Qt": 63.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.26,
+      "Qt": 63.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.48,
+      "Qt": 63.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.71,
+      "Qt": 63.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.12,
+      "Qt": 159.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.57,
+      "Qt": 159.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.76,
+      "Qt": 159.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.98,
+      "Qt": 159.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.22,
+      "Qt": 159.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.48,
+      "Qt": 159.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.95,
+      "Qt": 320.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.33,
+      "Qt": 320.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.56,
+      "Qt": 320.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.8,
+      "Qt": 320.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.06,
+      "Qt": 320.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.33,
+      "Qt": 320.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.82,
+      "Qt": 642,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.13,
+      "Qt": 642,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.39,
+      "Qt": 642,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.66,
+      "Qt": 642,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.94,
+      "Qt": 642,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.22,
+      "Qt": 642,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.74,
+      "Qt": 1285.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 0.99,
+      "Qt": 1285.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.27,
+      "Qt": 1285.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.56,
+      "Qt": 1285.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.86,
+      "Qt": 1285.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.15,
+      "Qt": 1285.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 4.31,
+      "Qt": 0.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 3.98,
+      "Qt": 0.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 4.1,
+      "Qt": 0.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 4.24,
+      "Qt": 0.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 4.31,
+      "Qt": 0.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 4.31,
+      "Qt": 0.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 3.07,
+      "Qt": 9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.7,
+      "Qt": 9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.83,
+      "Qt": 9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.97,
+      "Qt": 9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 3.15,
+      "Qt": 9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 3.34,
+      "Qt": 9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.78,
+      "Qt": 19.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.38,
+      "Qt": 19.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.51,
+      "Qt": 19.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.68,
+      "Qt": 19.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.86,
+      "Qt": 19.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 3.06,
+      "Qt": 19.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.53,
+      "Qt": 40.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.08,
+      "Qt": 40.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.23,
+      "Qt": 40.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.41,
+      "Qt": 40.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.62,
+      "Qt": 40.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.84,
+      "Qt": 40.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.24,
+      "Qt": 103.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.72,
+      "Qt": 103.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.9,
+      "Qt": 103.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.11,
+      "Qt": 103.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.34,
+      "Qt": 103.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.58,
+      "Qt": 103.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.05,
+      "Qt": 209.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.47,
+      "Qt": 209.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.68,
+      "Qt": 209.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.91,
+      "Qt": 209.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.16,
+      "Qt": 209.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.42,
+      "Qt": 209.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.9,
+      "Qt": 419.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.25,
+      "Qt": 419.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.49,
+      "Qt": 419.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.74,
+      "Qt": 419.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.01,
+      "Qt": 419.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.29,
+      "Qt": 419.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.78,
+      "Qt": 841,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.07,
+      "Qt": 841,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.34,
+      "Qt": 841,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.62,
+      "Qt": 841,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.9,
+      "Qt": 841,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.19,
+      "Qt": 841,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.37,
+      "Qt": 4.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.02,
+      "Qt": 4.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.14,
+      "Qt": 4.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.28,
+      "Qt": 4.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.44,
+      "Qt": 4.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.59,
+      "Qt": 4.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.01,
+      "Qt": 10.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.63,
+      "Qt": 10.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.76,
+      "Qt": 10.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.91,
+      "Qt": 10.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.09,
+      "Qt": 10.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.28,
+      "Qt": 10.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.73,
+      "Qt": 23.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.31,
+      "Qt": 23.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.45,
+      "Qt": 23.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.62,
+      "Qt": 23.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.81,
+      "Qt": 23.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.01,
+      "Qt": 23.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.4,
+      "Qt": 60.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.93,
+      "Qt": 60.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.09,
+      "Qt": 60.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.28,
+      "Qt": 60.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.49,
+      "Qt": 60.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.72,
+      "Qt": 60.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.19,
+      "Qt": 122.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.66,
+      "Qt": 122.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.85,
+      "Qt": 122.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.06,
+      "Qt": 122.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.29,
+      "Qt": 122.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.54,
+      "Qt": 122.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.01,
+      "Qt": 247.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.42,
+      "Qt": 247.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.63,
+      "Qt": 247.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.87,
+      "Qt": 247.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.12,
+      "Qt": 247.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.38,
+      "Qt": 247.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.87,
+      "Qt": 496.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.2,
+      "Qt": 496.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.45,
+      "Qt": 496.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.71,
+      "Qt": 496.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.98,
+      "Qt": 496.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.26,
+      "Qt": 496.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.63,
+      "Qt": 2.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.28,
+      "Qt": 2.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.4,
+      "Qt": 2.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.54,
+      "Qt": 2.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.7,
+      "Qt": 2.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.79,
+      "Qt": 2.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.19,
+      "Qt": 6.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.82,
+      "Qt": 6.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.94,
+      "Qt": 6.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.09,
+      "Qt": 6.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.26,
+      "Qt": 6.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.44,
+      "Qt": 6.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.87,
+      "Qt": 15.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.47,
+      "Qt": 15.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.6,
+      "Qt": 15.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.76,
+      "Qt": 15.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.94,
+      "Qt": 15.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.14,
+      "Qt": 15.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.52,
+      "Qt": 42.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.07,
+      "Qt": 42.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.22,
+      "Qt": 42.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.4,
+      "Qt": 42.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.61,
+      "Qt": 42.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.83,
+      "Qt": 42.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.29,
+      "Qt": 86.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.79,
+      "Qt": 86.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.96,
+      "Qt": 86.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.17,
+      "Qt": 86.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.39,
+      "Qt": 86.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.63,
+      "Qt": 86.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.1,
+      "Qt": 175.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.54,
+      "Qt": 175.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.73,
+      "Qt": 175.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.96,
+      "Qt": 175.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.2,
+      "Qt": 175.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.46,
+      "Qt": 175.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.93,
+      "Qt": 352.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.3,
+      "Qt": 352.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.53,
+      "Qt": 352.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.78,
+      "Qt": 352.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.04,
+      "Qt": 352.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.32,
+      "Qt": 352.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.9,
+      "Qt": 1.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.55,
+      "Qt": 1.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.67,
+      "Qt": 1.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.81,
+      "Qt": 1.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.97,
+      "Qt": 1.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.98,
+      "Qt": 1.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.34,
+      "Qt": 4.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.98,
+      "Qt": 4.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.1,
+      "Qt": 4.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.24,
+      "Qt": 4.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.41,
+      "Qt": 4.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.56,
+      "Qt": 4.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.98,
+      "Qt": 11.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.59,
+      "Qt": 11.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.72,
+      "Qt": 11.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.88,
+      "Qt": 11.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.05,
+      "Qt": 11.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.25,
+      "Qt": 11.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.61,
+      "Qt": 32.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.18,
+      "Qt": 32.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.32,
+      "Qt": 32.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.5,
+      "Qt": 32.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.69,
+      "Qt": 32.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.91,
+      "Qt": 32.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.37,
+      "Qt": 66.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 1.89,
+      "Qt": 66.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.06,
+      "Qt": 66.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.25,
+      "Qt": 66.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.47,
+      "Qt": 66.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.7,
+      "Qt": 66.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.17,
+      "Qt": 135.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 1.63,
+      "Qt": 135.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 1.82,
+      "Qt": 135.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.03,
+      "Qt": 135.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.27,
+      "Qt": 135.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.52,
+      "Qt": 135.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 1.99,
+      "Qt": 272.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 1.39,
+      "Qt": 272.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 1.6,
+      "Qt": 272.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 1.84,
+      "Qt": 272.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.1,
+      "Qt": 272.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.36,
+      "Qt": 272.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0005,
+      "qc": 0.1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.001,
+      "qc": 0.1,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.002,
+      "qc": 0.1,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.004,
+      "qc": 0.1,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.008,
+      "qc": 0.1,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 4.21,
+      "Qt": 0.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.0025,
+      "qc": 0.5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.87,
+      "Qt": 0.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 0.5,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.99,
+      "Qt": 0.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 0.5,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 4.13,
+      "Qt": 0.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 0.5,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 4.21,
+      "Qt": 0.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 0.5,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 4.21,
+      "Qt": 0.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.48,
+      "Qt": 3.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.005,
+      "qc": 1,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.12,
+      "Qt": 3.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 1,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.24,
+      "Qt": 3.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 1,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.38,
+      "Qt": 3.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 1,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.54,
+      "Qt": 3.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 1,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.66,
+      "Qt": 3.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.08,
+      "Qt": 9.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.01,
+      "qc": 2,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.7,
+      "Qt": 9.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.02,
+      "qc": 2,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.83,
+      "Qt": 9.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.04,
+      "qc": 2,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.98,
+      "Qt": 9.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.08,
+      "qc": 2,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.15,
+      "Qt": 9.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.16,
+      "qc": 2,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.34,
+      "Qt": 9.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.69,
+      "Qt": 26,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.025,
+      "qc": 5,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.26,
+      "Qt": 26,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 5,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.41,
+      "Qt": 26,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 5,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.58,
+      "Qt": 26,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 5,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.77,
+      "Qt": 26,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 5,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.98,
+      "Qt": 26,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.44,
+      "Qt": 54,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.05,
+      "qc": 10,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 1.97,
+      "Qt": 54,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 10,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.13,
+      "Qt": 54,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 10,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.32,
+      "Qt": 54,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 10,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.53,
+      "Qt": 54,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 10,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.76,
+      "Qt": 54,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.22,
+      "Qt": 110,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.1,
+      "qc": 20,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 1.7,
+      "Qt": 110,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 20,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 1.88,
+      "Qt": 110,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 20,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.09,
+      "Qt": 110,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 20,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.32,
+      "Qt": 110,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 20,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.57,
+      "Qt": 110,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.04,
+      "Qt": 222.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.2,
+      "qc": 40,
+      "rf": 0.5,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 1.45,
+      "Qt": 222.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.4,
+      "qc": 40,
+      "rf": 1,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 1.66,
+      "Qt": 222.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 0.8,
+      "qc": 40,
+      "rf": 2,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 1.89,
+      "Qt": 222.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 1.6,
+      "qc": 40,
+      "rf": 4,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.14,
+      "Qt": 222.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "fs": 3.2,
+      "qc": 40,
+      "rf": 8,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.41,
+      "Qt": 222.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.92,
+      "Qt": 10.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.31,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.09,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.89,
+      "Qt": 221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.69,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.58,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.53,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.53,
+      "Qt": 4443.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 3.24,
+      "Qt": 4.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.56,
+      "Qt": 26.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.31,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.09,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.84,
+      "Qt": 276.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.69,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.58,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.53,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.59,
+      "Qt": 2.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.77,
+      "Qt": 14.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.51,
+      "Qt": 31,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.26,
+      "Qt": 63.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.98,
+      "Qt": 159.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.8,
+      "Qt": 320.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.66,
+      "Qt": 642,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.56,
+      "Qt": 1285.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 4.24,
+      "Qt": 0.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.97,
+      "Qt": 9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.68,
+      "Qt": 19.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.41,
+      "Qt": 40.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.11,
+      "Qt": 103.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.91,
+      "Qt": 209.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.74,
+      "Qt": 419.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 1.62,
+      "Qt": 841,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.28,
+      "Qt": 4.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.91,
+      "Qt": 10.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.62,
+      "Qt": 23.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.28,
+      "Qt": 60.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.06,
+      "Qt": 122.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.87,
+      "Qt": 247.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 1.71,
+      "Qt": 496.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.54,
+      "Qt": 2.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.09,
+      "Qt": 6.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.76,
+      "Qt": 15.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.4,
+      "Qt": 42.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.17,
+      "Qt": 86.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.96,
+      "Qt": 175.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 1.78,
+      "Qt": 352.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.81,
+      "Qt": 1.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.24,
+      "Qt": 4.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.88,
+      "Qt": 11.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.5,
+      "Qt": 32.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.25,
+      "Qt": 66.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.03,
+      "Qt": 135.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 1.84,
+      "Qt": 272.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 4.13,
+      "Qt": 0.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.38,
+      "Qt": 3.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.98,
+      "Qt": 9.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.58,
+      "Qt": 26,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.32,
+      "Qt": 54,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.09,
+      "Qt": 110,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 2,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 1.89,
+      "Qt": 222.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 3.15,
+      "Qt": 10.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.59,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.4,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.23,
+      "Qt": 221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 2.05,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.97,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.92,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 0.5
+    },
+    "out": {
+      "Ic": 1.93,
+      "Qt": 4443.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 3.45,
+      "Qt": 4.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.81,
+      "Qt": 26.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.59,
+      "Qt": 54.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.4,
+      "Qt": 110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.18,
+      "Qt": 276.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 2.05,
+      "Qt": 554.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.97,
+      "Qt": 1110.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 1
+    },
+    "out": {
+      "Ic": 1.92,
+      "Qt": 2221.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.8,
+      "Qt": 2.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 3.01,
+      "Qt": 14.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.77,
+      "Qt": 31,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.55,
+      "Qt": 63.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.3,
+      "Qt": 159.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.15,
+      "Qt": 320.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 2.03,
+      "Qt": 642,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 2
+    },
+    "out": {
+      "Ic": 1.95,
+      "Qt": 1285.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 4.31,
+      "Qt": 0.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 3.2,
+      "Qt": 9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.93,
+      "Qt": 19.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.68,
+      "Qt": 40.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.41,
+      "Qt": 103.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.24,
+      "Qt": 209.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2.1,
+      "Qt": 419.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 4
+    },
+    "out": {
+      "Ic": 2,
+      "Qt": 841,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.5,
+      "Qt": 4.4,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 3.15,
+      "Qt": 10.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.87,
+      "Qt": 23.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.57,
+      "Qt": 60.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.37,
+      "Qt": 122.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.2,
+      "Qt": 247.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 8
+    },
+    "out": {
+      "Ic": 2.07,
+      "Qt": 496.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.76,
+      "Qt": 2.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.32,
+      "Qt": 6.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 3.01,
+      "Qt": 15.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.67,
+      "Qt": 42.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.46,
+      "Qt": 86.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.28,
+      "Qt": 175.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 12
+    },
+    "out": {
+      "Ic": 2.13,
+      "Qt": 352.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.98,
+      "Qt": 1.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.46,
+      "Qt": 4.9,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 3.12,
+      "Qt": 11.7,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.76,
+      "Qt": 32.3,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.54,
+      "Qt": 66.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.35,
+      "Qt": 135.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 16
+    },
+    "out": {
+      "Ic": 2.18,
+      "Qt": 272.5,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.8,
+      "Qt": null,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 0.5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 4.21,
+      "Qt": 0.8,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 1,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.6,
+      "Qt": 3.6,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Peat / organic"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 2,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 3.21,
+      "Qt": 9.2,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 5,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.83,
+      "Qt": 26,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 10,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.6,
+      "Qt": 54,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Sandy clay"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 20,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.4,
+      "Qt": 110,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  },
+  {
+    "in": {
+      "assumedRf": 5,
+      "fs": null,
+      "qc": 40,
+      "rf": null,
+      "u2": null,
+      "z": 20
+    },
+    "out": {
+      "Ic": 2.23,
+      "Qt": 222.1,
+      "c": null,
+      "cu": null,
+      "g": null,
+      "gs": null,
+      "phi": null,
+      "subtype": "",
+      "type": "Silty sand"
+    }
+  }
+]

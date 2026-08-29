@@ -1,0 +1,14 @@
+NOT VERIFIEDgoverning utilisation 4.23
+Governing values
+drequired / dprovided7.46 / 5.00m · DA1-2ODF at provided depth0.61Mres/Mdriveover-excavation Δa0.30mMEd290.4kNm/pile · DA1-2VEd194.0kN/pile · BGTSteel HEA1803.80UC bending · plasticLagging plate1.03UC · L = 1.00 m
+Limit states
+Embedment / rotational stability (soldier pile, Blum)1.49FAIL
+Bending, plastic (class 1)3.80FAIL
+Shear0.99PASS
+M–V interaction4.23FAIL
+Lagging plate1.03FAIL
+Vertical equilibrium (pile)0.14PASS
+Engine notes
+Retained water table above the excavation with permeable lagging: no water pressure is applied to the wall, which presumes free drainage through the lagging and a dewatered pit. This is a binding execution condition (Rekennota §8.1).
+Hand calculation below the excavation: active on the flange width b, passive on b_eff = min(k*b, s) with the plane-strain K_p (EAB / Belgian guideline §5). The PLAXIS T_lat tables use Brinch Hansen with B = b; the two models are never mixed.
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).

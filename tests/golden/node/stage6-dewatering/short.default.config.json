@@ -1,0 +1,17 @@
+{
+  "BPit": 8,
+  "CSichardt": 3000,
+  "LPit": 12,
+  "LTrench": 20,
+  "aquiferBaseDepth": null,
+  "aquiferType": "unconfined",
+  "combination": "characteristic",
+  "distanceToCPT": 10,
+  "dz": 0.1,
+  "geometry": "single_well",
+  "rCPT": 0,
+  "rw": 0.15,
+  "sigmaVMode": "conservative",
+  "targetWt": 1.8,
+  "timeDays": 0
+}

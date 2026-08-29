@@ -1,0 +1,12 @@
+Section resistance
+SectionAZ 26-700S355GP · fy 355 N/mm²Class (catalogue, this grade)2elastic resistance usedMc,Rd923.0kNm/m · W_el·f_yMpl,Rd / Mel,Rd1089.8 / 923.0kNm/mVpl,Rd1599.6kN/m · 1.43 webs/m · Av 78.0 cm²/mNpl,Rd6639kN/mγM01.00NBN EN 1993-1-1 ANB
+Design effects (STR envelope)
+MEd33.18kNm/m · DA1-2VEd93.78kN/m · DA1-1
+Steel checks
+Verification Ed Rd UC
+Bending, elastic (class 2)EN 1993-5 §5.2.2
+33.18 kNm/m 923.00 kNm/m 0.036 PASS
+Shear (webs, inclination neglected)EN 1993-5 §5.2.2(4)
+93.78 kN/m 1599.61 kN/m 0.059 PASS
+M–V interactionEN 1993-5 §5.2.2(9) · V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.
+93.78 kN/m 799.80 kN/m 0.117 PASS

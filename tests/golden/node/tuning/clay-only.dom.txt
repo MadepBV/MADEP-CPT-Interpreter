@@ -1,0 +1,30 @@
+Clay
+Laag 1 — 0.00–12.00 m
+klei, weinig vast
+Laag te ondiep (
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=0.01
+Type-default
+m 1.00
+E_oed,ref 5,594.084 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.00)
+Auto-fit
+m 0.008
+E_oed,ref 3,082 kPa
+R² 0.000
+n 240 punten
+σ' bereik ×84.09
+Preview / engineer tweak
+m
+0.01
+1.40
+Preview volgt de auto-fit
+Preview m 0.008
+Preview E_oed,ref 3,082 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit

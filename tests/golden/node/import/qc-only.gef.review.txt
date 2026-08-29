@@ -1,0 +1,33 @@
+Import controleren
+qc-only.gef · GEF · S1-QC
+✕
+Herkende kolommen
+Grootheid Bron Eenheid
+Diepte
+kolom 1 (GEF #1)
+m
+Conusweerstand qc
+kolom 2 (GEF #2)
+MPa
+Kleefweerstand fs
+niet in bestand
+—
+Wrijvingsgetal Rf
+niet in bestand
+—
+Waterspanning u2
+niet in bestand
+—
+Metingen
+metingen360
+diepte0.05 – 18.00 m
+met fs0
+met Rf0
+Geen gemeten fs/Rf in het bestand — de classificatie gebruikt overal een aangenomen Rf (3.0 %).
+Bestandsgegevens
+Maaiveld 10.00 m TAW (ZID)
+Waterpeil 1.70 m onder maaiveld (MEASUREMENTVAR 14)
+Coördinaten niet in bestand
+Project Golden Project
+Annuleer
+Importeer 360 metingen

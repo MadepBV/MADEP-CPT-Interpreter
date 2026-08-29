@@ -1,0 +1,20 @@
+Section resistance
+SectionHEA180S235 · fy 235 N/mm²Class (EN 1993-1-1 Table 5.2)1flange c/t 7.58 ≤ 9.0 · web 20.33 ≤ 72.0Mpl,Rd / Mel,Rd76.35 / 69.00kNmVpl,Rd196.3kN · Av,z 14.47 cm²Npl,Rd1063kNγM01.00NBN EN 1993-1-1 ANB
+Design effects (STR envelope)
+MEd247.99kNm · DA1-2VEd250.10kN · DA1-1
+Steel checks
+Verification Ed Rd UC
+Bending, plastic (class 1)EN 1993-1-1 §6.2.5
+247.99 kNm 76.35 kNm 3.248 FAIL
+Bending, elastic (control)EN 1993-1-1 §6.2.5
+247.99 kNm 69.00 kNm 3.594 info
+ShearEN 1993-1-1 §6.2.6
+250.10 kN 196.33 kN 1.274 FAIL
+M–V interactionEN 1993-1-1 §6.2.8 · V_Ed > 0.5·V_pl,Rd: ρ = 2.396, reduced M_y,V,Rd = 56.8 kNm
+250.10 kN 98.16 kN 4.363 FAIL
+Lagging plate — 10 mm S235, span centre-to-centre = 1.000 m
+pEd at the design excavation33.21kPa · DA1-1MEd = p·L²/84.151kNm/mWel = t²/6 · Wpl = t²/416.7 / 25.0cm³/mσ = MEd/Wel249.1N/mm²UC elastic / plastic1.060 / 0.707FAILDeflection under pk (5pL⁴/384EI)15.9mm
+Elastic verification on the c/c span is the conservative basis (Rekennota §7.8); the clear span between the flanges is the physically correct one. No arching between the piles is credited.
+Vertical equilibrium of one pile
+G (pile + lagging)5.48kNRs = ∫Tskin dz over the embedment39.76kNUC0.138PASS
+Base resistance Fmax not credited. With δ = 0 on the passive face no vertical earth-pressure component acts on the pile.

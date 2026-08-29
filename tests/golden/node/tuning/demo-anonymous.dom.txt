@@ -1,0 +1,210 @@
+Sandy clay
+Laag 1 — 0.00–0.58 m
+klei, weinig vast
+Laag te ondiep (
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=1.00
+Type-default
+m 1.00
+E_oed,ref 11,033.562 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (5.00)
+Auto-fit
+m -0.249
+E_oed,ref 595 kPa
+R² 0.067
+n 23 punten
+σ' bereik ×4.14
+Preview / engineer tweak
+m
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 1.000
+Preview E_oed,ref 9,968 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Sand
+Laag 2 — 0.58–2.98 m
+zand, matig
+Acceptabel (R²=0.584)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.96
+Type-default
+m 0.50
+E_oed,ref 50,442.5 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (4.00)
+Auto-fit
+m 0.960
+E_oed,ref 91,929 kPa
+R² 0.584
+n 121 punten
+σ' bereik ×4.12
+Preview / engineer tweak
+m
+0.01
+1.36
+Preview volgt de auto-fit
+Preview m 0.960
+Preview E_oed,ref 91,929 kPa
+Standaard m actief tot je expliciet accepteert
+Accepteer fit
+Clay
+Laag 3 — 2.98–5.44 m
+klei, matig vast
+Spanningsbereik te klein (factor 1.5)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=1.00
+Type-default
+m 1.00
+E_oed,ref 9,856.309 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.00)
+Auto-fit
+m -0.203
+E_oed,ref 3,887 kPa
+R² 0.006
+n 124 punten
+σ' bereik ×1.46
+Preview / engineer tweak
+m
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 1.000
+Preview E_oed,ref 8,537 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Clay
+Laag 4 — 5.44–6.98 m
+klei, matig vast
+Spanningsbereik te klein (factor 1.2)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=0.08
+Type-default
+m 1.00
+E_oed,ref 8,619.287 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (3.00)
+Auto-fit
+m 0.081
+E_oed,ref 4,622 kPa
+R² 0.000
+n 78 punten
+σ' bereik ×1.2
+Preview / engineer tweak
+m
+0.01
+1.40
+Preview volgt de auto-fit
+Preview m 0.081
+Preview E_oed,ref 4,622 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Sand
+Laag 5 — 6.98–9.48 m
+zand (lh), matig
+Spanningsbereik te klein (factor 1.3)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.25
+Type-default
+m 0.50
+E_oed,ref 12,675.455 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (2.00)
+Auto-fit
+m 0.254
+E_oed,ref 13,341 kPa
+R² 0.017
+n 126 punten
+σ' bereik ×1.3
+Preview / engineer tweak
+m
+0.01
+0.90
+Preview volgt de auto-fit
+Preview m 0.254
+Preview E_oed,ref 13,341 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Clay
+Laag 6 — 9.48–10.98 m
+klei, vrij vast
+Spanningsbereik te klein (factor 1.1)
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=1.00
+─ preview m=1.00
+Type-default
+m 1.00
+E_oed,ref 3,726.924 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (1.50)
+Auto-fit
+m -1.058
+E_oed,ref 3,779 kPa
+R² 0.041
+n 76 punten
+σ' bereik ×1.13
+Preview / engineer tweak
+m
+0.01
+1.40
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 1.000
+Preview E_oed,ref 3,753 kPa
+Standaard m actief tot je expliciet accepteert
+⚠ Accepteer fit
+Sand
+Laag 7 — 10.98–21.72 m
+leem, vast
+Negatieve of nul-helling gevonden — fit ongeldig
+E_oed vs diepte (kPa)
+─ default
+─ preview
+· CPT
+ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
+─ default m=0.50
+─ preview m=0.50
+Type-default
+m 0.50
+E_oed,ref 9,310.347 kPa
+&alpha;E basis puntgewijs qc-afhankelijk (2.00)
+Auto-fit
+m -0.019
+E_oed,ref 11,856 kPa
+R² 0.000
+n 538 punten
+σ' bereik ×1.85
+Preview / engineer tweak
+m
+0.01
+0.90
+Auto-fit was ongeldig; slider start vanaf default m
+Preview m 0.500
+Preview E_oed,ref 9,073 kPa
+Standaard m actief tot je expliciet accepteert
+Accepteer fit

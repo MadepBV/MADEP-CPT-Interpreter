@@ -1,0 +1,2 @@
+Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,E_mc_kPa,nu,beta,Edef_kPa,rShear,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse
+1,Sand,"zand (lh), los",0.000,2.000,8.10,6.10,2.000,3.481,1.54,16,18,25,0,0,2.56,B,8925,23488,23488,70464,8925,0.3,0.743,6631,0.28,0.50,0.577,0.2,B,3.00e-6,3.00e-6,1,0.1,"Infiltratie (volledig)"

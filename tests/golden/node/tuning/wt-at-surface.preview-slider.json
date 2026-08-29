@@ -1,0 +1,25 @@
+{
+  "hs0": {
+    "E50_i": 4456,
+    "E50_ref": 19928,
+    "Edef": 3311,
+    "Emc": 4456,
+    "Eoed_i": 4456,
+    "Eoed_ref": 19928,
+    "Eur_ref": 59784,
+    "K0nc": 0.577,
+    "aE": 2,
+    "beta": 0.743,
+    "botTAW": "9.05m TAW",
+    "m": 0.5,
+    "nu": 0.3,
+    "nu_ur": 0.2,
+    "psi": 0,
+    "rShear": 0.28,
+    "sigV": 8.6,
+    "sigVeff": 3.9,
+    "topTAW": "10.00m TAW",
+    "u": 4.7
+  },
+  "previewM": 0.55
+}

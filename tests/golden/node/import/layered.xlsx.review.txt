@@ -1,0 +1,45 @@
+Import controleren
+layered.xlsx · Excel · S1-XLSX
+✕
+Herkende kolommen
+Grootheid Kolom in bestand Eerste waarden
+Diepte *
+kolom 1 — Depth (m)
+kolom 2 — qc (MPa)
+kolom 3 — fs (MPa)
+kolom 4 — Rf (%)
+0.05 · 0.1 · 0.15
+Conusweerstand qc *
+kolom 1 — Depth (m)
+kolom 2 — qc (MPa)
+kolom 3 — fs (MPa)
+kolom 4 — Rf (%)
+2.6485 · 2.0349 · 1.9382
+Kleefweerstand fs
+— niet aanwezig —
+kolom 1 — Depth (m)
+kolom 2 — qc (MPa)
+kolom 3 — fs (MPa)
+kolom 4 — Rf (%)
+0.0447 · 0.0431 · 0.0354
+Wrijvingsgetal Rf
+— niet aanwezig —
+kolom 1 — Depth (m)
+kolom 2 — qc (MPa)
+kolom 3 — fs (MPa)
+kolom 4 — Rf (%)
+1.687 · 2.118 · 1.826
+Eenheden worden uit het kolomlabel gelezen (MPa/kPa); pas de toewijzing aan als een kolom verkeerd herkend is — de statistieken hieronder rekenen direct mee.
+Metingen
+metingen360
+diepte0.05 – 18.00 m
+met fs360
+met Rf360
+Alle metingen hebben qc én fs/Rf.
+Bestandsgegevens
+Maaiveld 10.00 m TAW (Header Grondniveau)
+Waterpeil 1.70 m onder maaiveld (Header Waterniveau)
+Coördinaten X 150000.0 · Y 200000.0
+Project Golden Project
+Annuleer
+Importeer 360 metingen

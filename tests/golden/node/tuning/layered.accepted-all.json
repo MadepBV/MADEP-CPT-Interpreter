@@ -1,0 +1,55 @@
+{
+  "hs": [
+    {"E50_i":4456,"E50_ref":16164,"Edef":3311,"Emc":4456,"Eoed_i":4456,"Eoed_ref":16164,"Eur_ref":48492,"K0nc":0.577,"aE":2,"beta":0.743,"botTAW":"9.05m TAW","m":0.5,"nu":0.3,"nu_ur":0.2,"psi":0,"rShear":0.28,"sigV":7.6,"sigVeff":7.6,"topTAW":"10.00m TAW","u":0},
+    {"E50_i":42307,"E50_ref":89883,"Edef":28557,"Emc":42307,"Eoed_i":42307,"Eoed_ref":89883,"Eur_ref":269649,"K0nc":0.47,"aE":3.79,"beta":0.675,"botTAW":"8.05m TAW","m":0.561,"nu":0.33,"nu_ur":0.2,"psi":2,"rShear":0.35,"sigV":26.1,"sigVeff":26.1,"topTAW":"9.05m TAW","u":0},
+    {"E50_i":41814,"E50_ref":63517,"Edef":32699,"Emc":41814,"Eoed_i":41814,"Eoed_ref":63517,"Eur_ref":190551,"K0nc":0.426,"aE":3.83,"beta":0.782,"botTAW":"6.05m TAW","m":0.5,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":55.6,"sigVeff":43.3,"topTAW":"8.05m TAW","u":12.3},
+    {"E50_i":2748,"E50_ref":4913,"Edef":1283,"Emc":2748,"Eoed_i":2748,"Eoed_ref":4913,"Eur_ref":14739,"K0nc":0.658,"aE":3,"beta":0.467,"botTAW":"2.05m TAW","m":1,"nu":0.4,"nu_ur":0.2,"psi":0,"rShear":0.12,"sigV":95.2,"sigVeff":53.5,"topTAW":"6.05m TAW","u":41.7},
+    {"E50_i":4588,"E50_ref":4647,"Edef":3097,"Emc":4588,"Eoed_i":4588,"Eoed_ref":4647,"Eur_ref":13941,"K0nc":0.625,"aE":2,"beta":0.675,"botTAW":"-0.95m TAW","m":0.253,"nu":0.33,"nu_ur":0.2,"psi":0,"rShear":0.2,"sigV":170.1,"sigVeff":94.1,"topTAW":"2.05m TAW","u":76},
+    {"E50_i":53707,"E50_ref":46955,"Edef":41999,"Emc":53707,"Eoed_i":53707,"Eoed_ref":46955,"Eur_ref":140865,"K0nc":0.426,"aE":3.19,"beta":0.782,"botTAW":"-4.95m TAW","m":0.36,"nu":0.28,"nu_ur":0.2,"psi":5,"rShear":0.33,"sigV":255.6,"sigVeff":145.2,"topTAW":"-0.95m TAW","u":110.4},
+    {"E50_i":4236,"E50_ref":3218,"Edef":2262,"Emc":4236,"Eoed_i":4236,"Eoed_ref":3218,"Eur_ref":9654,"K0nc":0.658,"aE":3,"beta":0.534,"botTAW":"-8.00m TAW","m":1,"nu":0.38,"nu_ur":0.2,"psi":0,"rShear":0.15,"sigV":280.1,"sigVeff":135.1,"topTAW":"-4.95m TAW","u":144.9}
+  ],
+  "layers": [
+    {
+      "m_ovr": 0.5,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.561,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.5,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 1,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.253,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 0.36,
+      "ovr": {
+        "m": true
+      }
+    },
+    {
+      "m_ovr": 1,
+      "ovr": {
+        "m": true
+      }
+    }
+  ]
+}

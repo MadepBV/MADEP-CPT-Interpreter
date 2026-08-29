@@ -1,0 +1,37 @@
+{
+  "Df": 18,
+  "cumulativeCurve": [],
+  "deltaStressCurve": [],
+  "eoedCurve": [],
+  "geometry": {
+    "B": 1.7724538509055159,
+    "L": 1.7724538509055159,
+    "footingType": "circular",
+    "note": "Circular footing is approximated as an equal-area square for the stress integration."
+  },
+  "limitState": "SLS",
+  "loadCombination": "char",
+  "notes": [
+    {"level":"info","text":"Circular footing is approximated as an equal-area square for the stress integration."},
+    {"level":"warn","text":"Net foundation pressure is zero or negative after subtracting the in-situ overburden at Df. Settlement is therefore reported as 0 mm. This usually means the chosen SLS load combination is smaller than the removed overburden; unloading / heave is not modelled in this screening tool."},
+    {"level":"warn","text":"Settlement time curve uses a simplified Terzaghi 1D two-way drainage assumption with Hd = half the interpreted layer thickness."}
+  ],
+  "perLayer": [
+    {"bot":0.95,"layerIndex":0,"settlement":0,"settlementMm":0,"subtype":"zand (lh), los","thickness":0.95,"top":0,"type":"Sand"},
+    {"bot":1.95,"layerIndex":1,"settlement":0,"settlementMm":0,"subtype":"zand, dicht","thickness":1,"top":0.95,"type":"Sand"},
+    {"bot":3.95,"layerIndex":2,"settlement":0,"settlementMm":0,"subtype":"grind, matig","thickness":2,"top":1.95,"type":"Gravel"},
+    {"bot":7.95,"layerIndex":3,"settlement":0,"settlementMm":0,"subtype":"klei, weinig vast","thickness":4,"top":3.95,"type":"Clay"},
+    {"bot":10.95,"layerIndex":4,"settlement":0,"settlementMm":0,"subtype":"klei (zh), vrij vast","thickness":2.999999999999999,"top":7.95,"type":"Sandy clay"},
+    {"bot":14.95,"layerIndex":5,"settlement":0,"settlementMm":0,"subtype":"grind, matig","thickness":4,"top":10.95,"type":"Gravel"},
+    {"bot":18,"layerIndex":6,"settlement":0,"settlementMm":0,"subtype":"klei, matig vast","thickness":3.0500000000000007,"top":14.95,"type":"Clay"}
+  ],
+  "qGross": 0,
+  "qNet": 0,
+  "sigmaVDf": 323.55,
+  "sublayers": [],
+  "timeCurve": null,
+  "totalSettlement": 0,
+  "totalSettlementMm": 0,
+  "truncationCause": "CPT bottom reached",
+  "truncationDepth": 18
+}

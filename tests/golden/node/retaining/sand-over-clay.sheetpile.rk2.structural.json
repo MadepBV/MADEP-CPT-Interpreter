@@ -1,0 +1,106 @@
+{
+  "fy": 355,
+  "lagging": null,
+  "layersBack": [
+    {"Ka":0.3951918938,"Kac":1.257285797,"Kp":3.553910485,"Kpc":5.309114322,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":17.13492283,"drained":true,"phiD":25.68953948,"phiK":33,"topEl":3},
+    {"Ka":0.5543471463,"Kac":1.489089851,"Kp":2.169578733,"Kpc":3.907992077,"cD":0.3703703704,"cK":0.5,"cuD":40,"cuK":60,"deltaP":11.11310102,"drained":true,"phiD":16.66132088,"phiK":22,"topEl":-5.5}
+  ],
+  "layersFront": [
+    {"Ka":0.3951918938,"Kac":1.257285797,"Kp":3.553910485,"Kpc":5.309114322,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":17.13492283,"drained":true,"phiD":25.68953948,"phiK":33,"topEl":3},
+    {"Ka":0.5543471463,"Kac":1.489089851,"Kp":2.169578733,"Kpc":3.907992077,"cD":0.3703703704,"cK":0.5,"cuD":40,"cuK":60,"deltaP":11.11310102,"drained":true,"phiD":16.66132088,"phiK":22,"topEl":-5.5}
+  ],
+  "notes": [],
+  "perPile": false,
+  "plaxis": {
+    "interfaces": [
+      {"Rinter":0.6224897474331385,"delta":22.011000000000003,"label":"","phi":33},
+      {"Rinter":0.6481265632606311,"delta":14.674000000000001,"label":"","phi":22}
+    ],
+    "plate": {
+      "EA1": 3927000.0000000005,
+      "EA2": null,
+      "EI": 125412,
+      "Mp": 1089.85,
+      "Np": 6638.500000000001,
+      "dEq": 0.6190556893560256,
+      "kind": "plate",
+      "material": "Elastic (or elastoplastic with M_p/N_p as numerical caps)",
+      "notes": [
+        "All values per metre of wall (catalogue per-metre properties).",
+        "M_p and N_p are numerical yield caps, not an EN 1993-5 verification (done separately).",
+        "ν = 0: a corrugated sheet pile has no out-of-plane plate action; use the documented material value if the model requests otherwise."
+      ],
+      "nu": 0,
+      "rows": [
+        ["Element type","Plate, elastic",""],
+        ["EA₁",3927000.0000000005,"kN/m"],
+        ["EA₂","—","manufacturer/interlock data only (EA₁/20 is illustrative)"],
+        ["EI",125412,"kNm²/m"],
+        ["w",1.4420700000000002,"kN/m/m"],
+        ["ν",0,"—"],
+        ["d_eq (computed by PLAXIS)",0.6190556893560256,"m"],
+        ["M_p (if elastoplastic)",1089.85,"kNm/m"],
+        ["N_p (if elastoplastic)",6638.500000000001,"kN/m"],
+        ["Prevent punching","No","Bentley KB: not for sheet piles"],
+        ["Interfaces","both sides","R_inter per layer, see table"]
+      ],
+      "w": 1.4420700000000002
+    }
+  },
+  "section": {
+    "A": 0.0187,
+    "Iy": 0.0005972,
+    "Wel": 0.0026,
+    "Wpl": 0.00307,
+    "b": 0.7,
+    "classByGrade": {
+      "S240GP": 2,
+      "S270GP": 2,
+      "S320GP": 2,
+      "S355GP": 2,
+      "S390GP": 2,
+      "S430GP": 2,
+      "S460GP": 2,
+      "S500GP": 2
+    },
+    "corrosionFactor": 1,
+    "developedPerimeterPerM": 3.065573770491804,
+    "family": "AZ",
+    "h": 0.46,
+    "id": "AZ 26-700",
+    "interlockResistance_kN_m": null,
+    "massPerM2": 147,
+    "massPerPile": 102.9,
+    "perMetre": true,
+    "s": 0.012199999999999999,
+    "series": "AZ-700",
+    "shape": "Z",
+    "source": "am-cat-2024",
+    "t": 0.012199999999999999,
+    "weightPerM2": 1.4420700000000002
+  },
+  "soldier": false,
+  "steel": {
+    "pass": true,
+    "resistance": {
+      "Av": 0.007804514285714287,
+      "McRd": 923,
+      "MelRd": 923,
+      "MplRd": 1089.85,
+      "NplRd": 6638.500000000001,
+      "VplRd": 1599.6081404317551,
+      "betaB": 1,
+      "cls": 2,
+      "fy": 355,
+      "gammaM0": 1,
+      "plasticAllowed": false,
+      "websPerM": 1.4285714285714286
+    },
+    "rows": [
+      {"Ed":345.114092,"Rd":923,"id":"bending","label":"Bending, elastic (class 2)","pass":true,"ref":"EN 1993-5 §5.2.2","unit":"kNm/m","util":0.3739047583965331},
+      {"Ed":384.8328394,"Rd":1599.6081404317551,"id":"shear","label":"Shear (webs, inclination neglected)","pass":true,"ref":"EN 1993-5 §5.2.2(4)","unit":"kN/m","util":0.24057944547351992},
+      {"Ed":384.8328394,"Rd":799.8040702158776,"id":"mv","label":"M–V interaction","note":"V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.","pass":true,"ref":"EN 1993-5 §5.2.2(9)","unit":"kN/m","util":0.48115889094703984}
+    ]
+  },
+  "vertical": null
+}

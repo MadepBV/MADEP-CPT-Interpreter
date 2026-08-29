@@ -1,0 +1,18 @@
+{
+  "B": 0.3,
+  "D": 2,
+  "Df": 18,
+  "Gk": 0,
+  "L": 0.3,
+  "QLead": 0,
+  "QOther": 0,
+  "allowableSettlement": 15,
+  "combination": "char",
+  "dz": 0.5,
+  "footingType": "circular",
+  "includeTime": true,
+  "stressMethod": "two_to_one",
+  "timeDays": 0,
+  "truncationRule": "CPT_bottom",
+  "useCategory": "C"
+}

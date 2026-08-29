@@ -1,0 +1,33 @@
+[#mgrid]
+Project
+Demo Project A
+Test ID
+CPT-1 (demo)
+Location
+Reference site — anonymised
+Owner
+Anonymous source
+Date
+2025, 7, 7
+Readings
+1080
+Depth (m)
+0.14–21.72
+Surface (m TAW)
+69.97
+Area ratio a
+0.790
+Sleeve fric. fs
+Present
+Pore pres. u2
+—
+max qc (MPa)
+9.93
+[#finfo]
+demo-anonymous.gef — 1080 readings
+[#wt-src]
+(MEASUREMENTVAR 14)
+[#elev-src]
+(from ZID)
+[#wt-taw]
+= 68.27 m TAW

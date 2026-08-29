@@ -1,0 +1,31 @@
+{
+  "Df": 2,
+  "cumulativeCurve": [],
+  "deltaStressCurve": [],
+  "eoedCurve": [],
+  "geometry": {
+    "B": 1.7724538509055159,
+    "L": 1.7724538509055159,
+    "footingType": "circular",
+    "note": "Circular footing is approximated as an equal-area square for the stress integration."
+  },
+  "limitState": "SLS",
+  "loadCombination": "char",
+  "notes": [
+    {"level":"info","text":"Circular footing is approximated as an equal-area square for the stress integration."},
+    {"level":"warn","text":"Net foundation pressure is zero or negative after subtracting the in-situ overburden at Df. Settlement is therefore reported as 0 mm. This usually means the chosen SLS load combination is smaller than the removed overburden; unloading / heave is not modelled in this screening tool."},
+    {"level":"warn","text":"Settlement time curve uses a simplified Terzaghi 1D two-way drainage assumption with Hd = half the interpreted layer thickness."}
+  ],
+  "perLayer": [
+    {"bot":2,"layerIndex":0,"settlement":0,"settlementMm":0,"subtype":"zand (lh), los","thickness":2,"top":0,"type":"Sand"}
+  ],
+  "qGross": 0,
+  "qNet": 0,
+  "sigmaVDf": 34.4,
+  "sublayers": [],
+  "timeCurve": null,
+  "totalSettlement": 0,
+  "totalSettlementMm": 0,
+  "truncationCause": "CPT bottom reached",
+  "truncationDepth": 2
+}

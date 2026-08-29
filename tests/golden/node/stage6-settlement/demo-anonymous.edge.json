@@ -1,0 +1,37 @@
+{
+  "Df": 21.72,
+  "cumulativeCurve": [],
+  "deltaStressCurve": [],
+  "eoedCurve": [],
+  "geometry": {
+    "B": 1.7724538509055159,
+    "L": 1.7724538509055159,
+    "footingType": "circular",
+    "note": "Circular footing is approximated as an equal-area square for the stress integration."
+  },
+  "limitState": "SLS",
+  "loadCombination": "char",
+  "notes": [
+    {"level":"info","text":"Circular footing is approximated as an equal-area square for the stress integration."},
+    {"level":"warn","text":"Net foundation pressure is zero or negative after subtracting the in-situ overburden at Df. Settlement is therefore reported as 0 mm. This usually means the chosen SLS load combination is smaller than the removed overburden; unloading / heave is not modelled in this screening tool."},
+    {"level":"warn","text":"Settlement time curve uses a simplified Terzaghi 1D two-way drainage assumption with Hd = half the interpreted layer thickness."}
+  ],
+  "perLayer": [
+    {"bot":0.58,"layerIndex":0,"settlement":0,"settlementMm":0,"subtype":"klei, weinig vast","thickness":0.58,"top":0,"type":"Sandy clay"},
+    {"bot":2.98,"layerIndex":1,"settlement":0,"settlementMm":0,"subtype":"zand, matig","thickness":2.4,"top":0.58,"type":"Sand"},
+    {"bot":5.44,"layerIndex":2,"settlement":0,"settlementMm":0,"subtype":"klei, matig vast","thickness":2.4600000000000004,"top":2.98,"type":"Clay"},
+    {"bot":6.98,"layerIndex":3,"settlement":0,"settlementMm":0,"subtype":"klei, matig vast","thickness":1.54,"top":5.44,"type":"Clay"},
+    {"bot":9.48,"layerIndex":4,"settlement":0,"settlementMm":0,"subtype":"zand (lh), matig","thickness":2.5,"top":6.98,"type":"Sand"},
+    {"bot":10.98,"layerIndex":5,"settlement":0,"settlementMm":0,"subtype":"klei, vrij vast","thickness":1.5,"top":9.48,"type":"Clay"},
+    {"bot":21.72,"layerIndex":6,"settlement":0,"settlementMm":0,"subtype":"leem, vast","thickness":10.739999999999998,"top":10.98,"type":"Sand"}
+  ],
+  "qGross": 0,
+  "qNet": 0,
+  "sigmaVDf": 409.93999999999994,
+  "sublayers": [],
+  "timeCurve": null,
+  "totalSettlement": 0,
+  "totalSettlementMm": 0,
+  "truncationCause": "CPT bottom reached",
+  "truncationDepth": 21.72
+}

@@ -1,0 +1,33 @@
+Import controleren
+demo-anonymous.gef · GEF · CPT-1 (demo)
+✕
+Herkende kolommen
+Grootheid Bron Eenheid
+Diepte
+kolom 1 (GEF #1)
+m
+Conusweerstand qc
+kolom 2 (GEF #2)
+MPa
+Kleefweerstand fs
+kolom 3 (GEF #3)
+MPa
+Wrijvingsgetal Rf
+kolom 4 (GEF #4)
+%
+Waterspanning u2
+niet in bestand
+—
+Metingen
+metingen1080
+diepte0.14 – 21.72 m
+met fs1080
+met Rf1080
+Alle metingen hebben qc én fs/Rf.
+Bestandsgegevens
+Maaiveld 69.97 m TAW (ZID)
+Waterpeil 1.70 m onder maaiveld (MEASUREMENTVAR 14)
+Coördinaten niet in bestand
+Project Demo Project A
+Annuleer
+Importeer 1080 metingen

@@ -1,0 +1,458 @@
+{
+  "drivability": null,
+  "generatedAt": "<masked>",
+  "kind": "madep-cp/retaining-note",
+  "layers": {
+    "<digest>": "4e93ac3bfef4d6a220de5f8b",
+    "bytes": 211,
+    "n": 2
+  },
+  "profile": {
+    "cutTopBy": 0,
+    "extendedTopBy": 0.5,
+    "notes": [
+      "CPT ground level is 0.50 m below the reference surface: the uppermost layer (Sand) is extended upward to the surface with its own parameters.",
+      "The CPT ends 20.5 m below the surface; the deepest layer (Clay) is extended downward beyond the sounding."
+    ],
+    "strata": [
+      {
+        "botEl": -5.5,
+        "c": 0,
+        "cu": 0,
+        "drained": true,
+        "gammaMoist": 19,
+        "gammaSat": 21,
+        "key": "0:0.00-8.00:Sand",
+        "label": "Sand",
+        "layerIndex": 0,
+        "overridden": [],
+        "phi": 33,
+        "qc": 12000,
+        "subtype": "zand, matig",
+        "topEl": 3
+      },
+      {
+        "botEl": -17.5,
+        "c": 0.5,
+        "cu": 60,
+        "drained": true,
+        "gammaMoist": 17,
+        "gammaSat": 17,
+        "key": "1:8.00-20.00:Clay",
+        "label": "Clay",
+        "layerIndex": 1,
+        "overridden": ["c","drained"],
+        "phi": 22,
+        "qc": 1200,
+        "subtype": "klei, vast",
+        "topEl": -5.5
+      }
+    ]
+  },
+  "project": {
+    "appVersion": "golden",
+    "cptId": "CPT-A",
+    "name": "Golden"
+  },
+  "result": {
+    "<digest>": "74cc58018b05c0c42a0e6ae4",
+    "bytes": 103645
+  },
+  "state": {
+    "backfill": {
+      "c": 0,
+      "cu": 0,
+      "drained": true,
+      "gammaMoist": 18,
+      "gammaSat": 20,
+      "label": "Granular backfill",
+      "phi": 32
+    },
+    "cantilever": {
+      "baseThk": 0.55,
+      "betaDeg": 0,
+      "frontSoilDepth": 1,
+      "heel": 2.1,
+      "keyDepth": 0,
+      "keyThk": 0.3,
+      "stemHeight": 3.5,
+      "stemThkBot": 0.45,
+      "stemThkTop": 0.3,
+      "toe": 0.9
+    },
+    "cptX": null,
+    "drivability": {
+      "deltaH": 0,
+      "error": "",
+      "hammer": {
+        "cushionCor": 0.8,
+        "cushionStiffness": 2500000,
+        "efficiency": 0.9,
+        "helmetMass": 1500,
+        "id": "custom",
+        "ramMass": 5000,
+        "ratedEnergy": 60,
+        "type": "hydraulic"
+      },
+      "interlock": 0,
+      "lambda": 6,
+      "method": "vibratory",
+      "reserve": 1.25,
+      "shaftFactor": 1,
+      "soil": {
+        "shaftDampingClay": 0.65,
+        "shaftDampingSand": 0.16,
+        "shaftQuake": 0.0025,
+        "toeDamping": 0.5,
+        "toeQuake": 0.0025
+      },
+      "status": "idle",
+      "targetDepth": null,
+      "toeFactor": 1,
+      "vibrator": {
+        "carrier": {
+          "flow_lmin": null,
+          "mass_t": null,
+          "power_kW": null,
+          "pressure_bar": null
+        },
+        "centrifugalForce": null,
+        "crowd": 0,
+        "dynamicMass": 5000,
+        "eccentricMoment": null,
+        "frequency": 35,
+        "id": "custom",
+        "lineForce": 0,
+        "sheet": {
+          "amplitudeConvention": "pp",
+          "amplitude_mm": null,
+          "carrierMax_t": null,
+          "carrierMin_t": null,
+          "dynamicMass_kg": null,
+          "eccentricMoment_kgm": null,
+          "flowMax_lmin": null,
+          "flow_lmin": null,
+          "forceAtRpm": null,
+          "force_kN": null,
+          "name": "",
+          "power_kW": null,
+          "pressureMax_bar": null,
+          "pressure_bar": null,
+          "rpmMax": null,
+          "rpmMin": null,
+          "rpmOperating": null,
+          "totalMass_kg": null
+        },
+        "source": "required"
+      }
+    },
+    "embedded": {
+      "anchorAngle": 20,
+      "anchorDepth": 0.8,
+      "anchorDia": 0.15,
+      "anchorGammaA": 1.1,
+      "anchorSpacing": 2,
+      "anchorTfk": 150,
+      "anchored": false,
+      "embedment": 5,
+      "fixedLen": 4,
+      "freeLen": 4,
+      "retainedHeight": 3
+    },
+    "error": "",
+    "gravity": {
+      "backBatterDeg": 6,
+      "baseThk": 0.5,
+      "betaDeg": 0,
+      "frontSoilDepth": 1,
+      "heel": 0.4,
+      "stemHeight": 3,
+      "stemThkBot": 1.7,
+      "stemThkTop": 0.6,
+      "toe": 0.4
+    },
+    "insitu": {
+      "c": 5,
+      "cu": 0,
+      "drained": true,
+      "gammaMoist": 19,
+      "gammaSat": 21,
+      "label": "Foundation / in-situ",
+      "mode": "cpt",
+      "phi": 30,
+      "source": "default"
+    },
+    "loads": {
+      "berm": {
+        "enabled": false,
+        "height": 1.5,
+        "slopeDeg": 45
+      },
+      "surchargePermanent": 5
+    },
+    "profile": {
+      "offset": -0.5,
+      "overrides": {
+        "1:8.00-20.00:Clay": {
+          "c": 0.5,
+          "drained": true
+        }
+      }
+    },
+    "settings": {
+      "alphaVer": 1.1,
+      "assumeCrackWater": true,
+      "bearingDepthFactors": true,
+      "bearingMethod": "annexd",
+      "consequenceClass": 2,
+      "da11Mode": "separate",
+      "deltaActiveRatio": 0.667,
+      "deltaBaseRatio": 1,
+      "deltaPassiveSheet": 0.667,
+      "deltaPassiveSoldier": 0,
+      "gammaConc": 24,
+      "materialOverride": {
+        "applyToDA12": false,
+        "enabled": false,
+        "gC": 1.3,
+        "gCu": 1.4,
+        "gPhi": 1.3
+      },
+      "overdigCustom": 0.3,
+      "overdigRule": "belgian",
+      "passiveDeltaRatio": 0.667,
+      "passiveToe": true,
+      "riskScheme": 2,
+      "surchargeFloor": 10
+    },
+    "sheet": {
+      "betaB": 1,
+      "corrosionLoss": 0,
+      "grade": "S355GP",
+      "sectionId": "AZ 26-700",
+      "useWpl": false
+    },
+    "soldier": {
+      "effectiveWidthFactor": 3,
+      "fmaxAlphaB": 0.5,
+      "fmaxPlugged": true,
+      "grade": "S235",
+      "laggingGrade": "S235",
+      "laggingSpan": "centre",
+      "laggingThk": 0.01,
+      "laggingWatertight": false,
+      "pileHeadAbove": 0,
+      "resistanceModel": "effective-width",
+      "rowCap": true,
+      "sectionId": "HEA180",
+      "spacing": 1,
+      "tlatConvention": "AL",
+      "tskinDeltaRatio": 0.667,
+      "tskinK": "k0",
+      "tskinPlug": true
+    },
+    "status": "done",
+    "surcharge": 20,
+    "vibration": {
+      "bs": {
+        "continuous": false,
+        "line": 2
+      },
+      "calibration": {
+        "points": []
+      },
+      "din": {
+        "duration": "short",
+        "line": 2,
+        "location": "foundation"
+      },
+      "distance": 10,
+      "framework": "SBR-A",
+      "frequency": 35,
+      "sbr": {
+        "category": 2,
+        "condition": "normal",
+        "measurement": "indicative",
+        "part": "structure",
+        "vibrationType": "repeated-short"
+      },
+      "warningFraction": 0.75
+    },
+    "wallType": "sheetpile",
+    "water": {
+      "frontDepth": 0.5,
+      "mode": "levels",
+      "retainedDepth": 1.5
+    }
+  },
+  "structural": {
+    "<digest>": "9b6dbd61cad0d703fde11b65",
+    "bytes": 3399
+  },
+  "version": 1,
+  "vibration": {
+    "args": {
+      "category": 2,
+      "condition": "normal",
+      "measurementType": "indicative",
+      "part": "structure",
+      "vibrationType": "repeated"
+    },
+    "assess": {
+      "detail": {
+        "aAllow_m_s2": null,
+        "aKar_m_s2": null,
+        "cD": 1,
+        "category": 2,
+        "condition": "normal",
+        "formula": "V_top,allow = V_kar / (γs · γv · γt)  ⇔  V_d = V_top · γv ≤ V_r = V_kar / (γt · γs)",
+        "framework": "SBR-A 2017",
+        "frequency_Hz": 35,
+        "gammaS": 1,
+        "gammaT": 1.5,
+        "gammaV": 1.6,
+        "measurementType": "indicative",
+        "notes": [],
+        "part": "structure",
+        "quantity": "peak velocity component V_top at the measuring point (SBR-A §9)",
+        "source": "SBR Trillingsrichtlijn A: Schade aan bouwwerken: 2017, Tables 9.2, 10.6, 10.7, 10.8, 10.9; §10.3.5",
+        "vAllow": 4.687499999999999,
+        "vKar": 11.25,
+        "vR": 7.5,
+        "vibrationType": "repeated"
+      },
+      "framework": "SBR-A 2017",
+      "frequency_Hz": 35,
+      "human": {
+        "band": "intolerable",
+        "descriptor": "Likely to be intolerable for any more than a very brief exposure to this level in most building environments.",
+        "framework": "BS 5228-2 Table B.1",
+        "notes": [
+          "Human-response descriptors are not building-damage limits (BS 5228-2 Annex B); a formal assessment uses BS 6472-1."
+        ],
+        "ppv_mm_s": 16.783465363173143,
+        "threshold_mm_s": 10
+      },
+      "limit_mm_s": 4.687499999999999,
+      "notes": [
+        "The predicted value is a resultant PPV at the ground surface; the framework limit refers to its own quantity/location (see detail.quantity). Do not mix frameworks."
+      ],
+      "predictedPpv_mm_s": 16.783465363173143,
+      "utilisation": 3.580472610810271,
+      "verdict": "exceeds"
+    },
+    "energyJ": null,
+    "f": 35,
+    "fit": null,
+    "fitAt": null,
+    "governing": {
+      "label": "5 % exceedance, start-up/run-down",
+      "median": 2.388643023320984,
+      "ppv": 16.783465363173143,
+      "steady95": 10.58965073672303
+    },
+    "impact": false,
+    "plan": {
+      "dominantFrequency_Hz": 35,
+      "expected": {
+        "note": "median-type prediction (e.g. TRL 429 k_v = 60)",
+        "unit": "mm/s",
+        "value": 2.388643023320984
+      },
+      "framework": "SBR-A 2017",
+      "frequencyTable": [
+        {"f":0,"vAllow":2.083333333333333,"vKar":5,"warning":1.5624999999999998},
+        {"f":5,"vAllow":2.083333333333333,"vKar":5,"warning":1.5624999999999998},
+        {"f":10,"vAllow":2.083333333333333,"vKar":5,"warning":1.5624999999999998},
+        {"f":15,"vAllow":2.604166666666666,"vKar":6.25,"warning":1.9531249999999996},
+        {"f":20,"vAllow":3.1249999999999996,"vKar":7.5,"warning":2.3437499999999996},
+        {"f":25,"vAllow":3.6458333333333326,"vKar":8.75,"warning":2.7343749999999996},
+        {"f":30,"vAllow":4.166666666666666,"vKar":10,"warning":3.1249999999999996},
+        {"f":35,"vAllow":4.687499999999999,"vKar":11.25,"warning":3.515624999999999},
+        {"f":40,"vAllow":5.208333333333332,"vKar":12.5,"warning":3.906249999999999},
+        {"f":45,"vAllow":5.729166666666666,"vKar":13.75,"warning":4.296875},
+        {"f":50,"vAllow":6.249999999999999,"vKar":15,"warning":4.687499999999999},
+        {"f":55,"vAllow":6.458333333333332,"vKar":15.5,"warning":4.843749999999999},
+        {"f":60,"vAllow":6.666666666666666,"vKar":16,"warning":5},
+        {"f":65,"vAllow":6.874999999999999,"vKar":16.5,"warning":5.156249999999999},
+        {"f":70,"vAllow":7.083333333333332,"vKar":17,"warning":5.312499999999999},
+        {"f":75,"vAllow":7.291666666666665,"vKar":17.5,"warning":5.468749999999999},
+        {"f":80,"vAllow":7.499999999999999,"vKar":18,"warning":5.624999999999999},
+        {"f":85,"vAllow":7.708333333333332,"vKar":18.5,"warning":5.781249999999999},
+        {"f":90,"vAllow":7.916666666666665,"vKar":19,"warning":5.937499999999999},
+        {"f":95,"vAllow":8.124999999999998,"vKar":19.5,"warning":6.093749999999998},
+        {"f":100,"vAllow":8.333333333333332,"vKar":20,"warning":6.249999999999999}
+      ],
+      "humanObjective": {
+        "descriptor": "Likely to cause complaint in residential environments, but can be tolerated if prior warning and explanation has been given to residents.",
+        "note": "BS 5228-2 Table B.1 human-response objective; not a damage limit",
+        "unit": "mm/s",
+        "value": 1
+      },
+      "notes": [
+        "Upper prediction exceeds the stop level: the method (moment/frequency control, distance, alternative system) must be revised before work starts.",
+        "Stop level must sit below the receiver limit by an allowance for instrument uncertainty, signal delay and run-down vibration (course §16.1); the framework limit is only the ceiling."
+      ],
+      "sensorLayout": {
+        "notes": [
+          "Receiver is close to the source: use at least a near-field control point and the receiver sensor; an attenuation fit needs ≥ 3 distances.",
+          "All devices need a common time reference; record depth, frequency and moment setting simultaneously (course §15.3)."
+        ],
+        "sensors": [
+          {"distance_m":5,"mounting":"triaxial geophone rigidly coupled to the ground surface (not loose on paving)","role":"near-field control (source repeatability)"},
+          {"distance_m":10,"mounting":"rigidly attached to the lowest accessible load-bearing element on the source-facing side; radial/transverse/vertical documented","role":"receiver"}
+        ]
+      },
+      "states": [
+        {"action":"Continue; log data; review trends.","condition":"PPV < warning (3.52 mm/s), stable penetration, no abnormal movement","state":"green"},
+        {"action":"Reduce eccentric moment / adjust frequency; pause if needed; verify sensors and alignment; review depth and settings.","condition":"warning ≤ PPV < stop, or expected upper prediction (16.78 mm/s) reached, PPV rising with depth, penetration rate falling, complaint","state":"amber"},
+        {"action":"Stop immediately; inspect; notify the responsible engineer; revise the method before restart.","condition":"PPV ≥ stop (4.69 mm/s), abnormal building/ground movement, sensor overload, prolonged refusal","state":"red"}
+      ],
+      "stop": {
+        "note": "alarm/stop level = SBR-A 2017 allowable value",
+        "unit": "mm/s",
+        "value": 4.687499999999999
+      },
+      "structuralGuide": {
+        "note": "unfactored characteristic/guide value of SBR-A 2017 at 35 Hz",
+        "unit": "mm/s",
+        "value": 11.25
+      },
+      "upper": {
+        "note": "conservative prediction (e.g. TRL 429 k_v = 266) — prediction-review level",
+        "unit": "mm/s",
+        "value": 16.783465363173143
+      },
+      "warning": {
+        "fraction": 0.75,
+        "note": "75 % of the stop level (SMS/notification level as in the example)",
+        "unit": "mm/s",
+        "value": 3.515624999999999
+      }
+    },
+    "pts": [],
+    "rowsPred": [
+      {"p33":5.016150348974066,"p5":10.58965073672303,"p50":2.388643023320984,"phase":"steady"},
+      {"p33":6.314959143703629,"p5":13.33158041448544,"p50":3.007123401763633,"phase":"all"},
+      {"p33":7.9500625404504355,"p5":16.783465363173143,"p50":3.78574406688116,"phase":"startup"}
+    ],
+    "sensors": {
+      "notes": [
+        "Receiver is close to the source: use at least a near-field control point and the receiver sensor; an attenuation fit needs ≥ 3 distances.",
+        "All devices need a common time reference; record depth, frequency and moment setting simultaneously (course §15.3)."
+      ],
+      "sensors": [
+        {"distance_m":5,"mounting":"triaxial geophone rigidly coupled to the ground surface (not loose on paving)","role":"near-field control (source repeatability)"},
+        {"distance_m":10,"mounting":"rigidly attached to the lowest accessible load-bearing element on the source-facing side; radial/transverse/vertical documented","role":"receiver"}
+      ]
+    },
+    "upper": null,
+    "x": 10
+  },
+  "wall": {
+    "embedded": true,
+    "family": "embedded",
+    "label": "Sheet pile",
+    "type": "sheetpile"
+  }
+}

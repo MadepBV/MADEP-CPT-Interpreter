@@ -1,0 +1,46 @@
+{
+  "backfill": {
+    "c": 0,
+    "cu": 0,
+    "drained": true,
+    "gammaMoist": 18,
+    "gammaSat": 20,
+    "phi": 32,
+    "topEl": 0
+  },
+  "geom": {
+    "backBatterDeg": 6,
+    "baseThk": 0.5,
+    "betaDeg": 0,
+    "frontSoilEl": 1,
+    "gammaConc": 24,
+    "heel": 0.4,
+    "keyDepth": 0,
+    "keyThk": 0.3,
+    "stemHeight": 3,
+    "stemThkBot": 1.7,
+    "stemThkTop": 0.6,
+    "toe": 0.4
+  },
+  "insitu": [
+    {"c":0,"cu":0,"drained":true,"gammaMoist":19,"gammaSat":21,"phi":33,"qc":12000,"topEl":1},
+    {"c":0.5,"cu":60,"drained":true,"gammaMoist":17,"gammaSat":17,"phi":22,"qc":1200,"topEl":-7.5}
+  ],
+  "settings": {
+    "assumeCrackWater": true,
+    "bearingDepthFactors": true,
+    "bearingMethod": "annexd",
+    "consequenceClass": 2,
+    "deltaActiveRatio": 0.667,
+    "deltaBaseRatio": 1,
+    "passiveDeltaRatio": 0.667,
+    "passiveToe": true,
+    "riskScheme": 0
+  },
+  "surcharge": 20,
+  "wallType": "gravity",
+  "water": {
+    "front": -1000,
+    "retained": 2
+  }
+}

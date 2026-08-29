@@ -1,0 +1,12 @@
+NOT VERIFIEDgoverning utilisation 1.76
+Governing values
+drequired / dprovided8.79 / 5.00m · DA1-2ODF at provided depth0.51Mres/Mdriveover-excavation Δa0.30mMEd759.8kNm/m · DA1-2VEd571.8kN/m · BGTSteel AZ 26-7000.82UC bending · elastic
+Limit states
+Embedment / rotational stability (cantilever, Blum)1.76FAIL
+Hydraulic heave / piping (HYD)0.47PASS
+Bending, elastic (class 2)0.82PASS
+Shear (webs, inclination neglected)0.36PASS
+M–V interaction0.71PASS
+Engine notes
+Partial factors: Belgian embedded-wall guideline (2022) — RK2. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+Differential water head: pore pressures are hydrostatic on each face with no seepage modelling (EN 1997-1 9.3.1.6). Seepage around the toe reduces the front passive resistance — use a flow net / FE seepage where the head difference is significant.

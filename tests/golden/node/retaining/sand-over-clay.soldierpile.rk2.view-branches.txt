@@ -1,0 +1,54 @@
+DA1-2 governs
+γG 1.00 · γQ 1.10 · γφ 1.35 · γc 1.35
+excavation0.30m below nominal
+free-earth d₀4.991m
+design d5.989m
+ODF at provided1.003
+Mmax / MEd229.3 / 229.3kNm @ 5.91 m
+Vmax / VEd216.6 / 216.6kN @ 8.30 m
+z₀ (net = 0)0.23m below exc.
+p at surface / exc. / toe10.7 / 47.6 / -121.7kPa
+lagging pEd29.9kPa
+DA1-1
+γG 1.35 / 1.00 pass. · γQ 1.50 · γφ 1.00 · γc 1.00
+excavation0.30m below nominal
+free-earth d₀4.344m
+design d5.212m
+ODF at provided1.330
+Mmax / MEd212.1 / 212.1kNm @ 5.53 m
+Vmax / VEd230.1 / 230.1kN @ 7.68 m
+z₀ (net = 0)0.17m below exc.
+p at surface / exc. / toe10.8 / 54.0 / -179.7kPa
+lagging pEd30.2kPa
+BGT
+γG 1.00 · γQ 1.10 · γφ 1.00 · γc 1.00 · effects × 1.35
+excavation0.00m below nominal
+free-earth d₀3.511m
+design d4.214m
+ODF at provided2.305
+Mmax / MEd116.2 / 156.9kNm @ 4.77 m
+Vmax / VEd151.5 / 204.5kN @ 6.52 m
+z₀ (net = 0)0.11m below exc.
+p at surface / exc. / toe8.0 / 36.0 / -236.1kPa
+lagging pEd28.8kPa
+SLS
+γG 1.00 · γQ 1.00 · γφ 1.00 · γc 1.00
+excavation0.00m below nominal
+free-earth d₀3.445m
+design d4.134m
+ODF at provided2.392
+Mmax / MEd110.3 / 110.3kNm @ 4.73 m
+Vmax / VEd148.8 / 148.8kN @ 6.47 m
+z₀ (net = 0)0.11m below exc.
+p at surface / exc. / toe7.4 / 35.4 / -236.7kPa
+lagging pEd20.7kPa
+DA1-2DA1-1BGTSLSdesign strengths and coefficients of the selected branchcopy branch table (TSV)
+Retained side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 33.0 → 25.69° 0.0 → 0.00 0 → 0.0 0.3952 1.2573 0.0° 2.5304 3.1815
+-5.50 m drained 22.0 → 16.66° 0.5 → 0.37 60 → 40.0 0.5543 1.4891 0.0° 1.8039 2.6862
+Excavation side
+Layer top framework φ′k → φ′d c′k → c′d cu,k → cu,d Ka Kac = 2√Ka δp Kp (Annex C) Kpc
+3.00 m drained 33.0 → 25.69° 0.0 → 0.00 0 → 0.0 0.3952 1.2573 0.0° 2.5304 3.1815
+-5.50 m drained 22.0 → 16.66° 0.5 → 0.37 60 → 40.0 0.5543 1.4891 0.0° 1.8039 2.6862
+DA1/2 (A2 + M2) — embedment, design excavation. Design strengths: tan φ′d = tan φ′k/γφ, c′d = c′k/γc, cu,d = cu,k/γcu; coefficients recomputed from φ′d (never Kp/γ). All forces per pile (× spacing above the excavation; b / beff below).

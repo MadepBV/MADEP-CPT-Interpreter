@@ -1,0 +1,17 @@
+Prediction at x = 10.0 m
+Operating phase kv 60 — 50 % kv 126 — 33 % kv 266 — 5 %
+steady-state driving (δ 1.4) 2.39 5.02 10.59
+all operations (δ 1.3) 3.01 6.31 13.33
+start-up / run-down (δ 1.2) 3.79 7.95 16.78
+Resultant PPV; the 5 % curve is a screening envelope, not a maximum (TRL 429).
+Receiver assessment — SBR-A
+EXCEEDS16.78 mm/s vs 4.69 mm/s · utilisation 3.58 · 5 % exceedance, start-up/run-down
+Vkar at f11.25mm/sγs · γv · γt1.0 · 1.6 · 1.5Vtop,allow = Vkar/(γsγvγt)4.69mm/s
+Human response (BS 5228-2 Table B.1): Likely to be intolerable for any more than a very brief exposure to this level in most building environments.. The predicted value is a resultant PPV at the ground surface; the framework limit refers to its own quantity/location (see detail.quantity). Do not mix frameworks.
+Trigger levels
+expected (median)2.39mm/supper prediction16.78mm/swarning (SMS)3.52mm/s (75 % of stop)stop4.69mm/shuman objective1.00mm/s
+Sensors: 5 m — near-field control (source repeatability); 10 m — receiver.
+Site calibration
+Enter at least two trial measurements in the panel to calibrate the site attenuation law.
+Limit vs frequency (SBR-A)
+copy frequency table (TSV)

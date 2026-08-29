@@ -1,0 +1,109 @@
+{
+  "fy": 355,
+  "lagging": null,
+  "layersBack": [
+    {"Ka":0.4668179417,"Kac":1.366481528,"Kp":2.77293596,"Kpc":4.543821761,"cD":2.4,"cK":3,"cuD":32.14285714,"cuK":45,"deltaP":14.21712944,"drained":true,"phiD":21.31503664,"phiK":26,"topEl":1.6},
+    {"Ka":0.563030002,"Kac":1.500706503,"Kp":2.123014195,"Kpc":3.856820177,"cD":1.6,"cK":2,"cuD":21.42857143,"cuK":30,"deltaP":10.82827952,"drained":true,"phiD":16.23430213,"phiK":20,"topEl":-1.9},
+    {"Ka":0.3434417145,"Kac":1.172078008,"Kp":4.418612597,"Kpc":6.102855958,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":19.51379712,"drained":true,"phiD":29.25606764,"phiK":35,"topEl":-5.4}
+  ],
+  "layersFront": [
+    {"Ka":0.4668179417,"Kac":1.366481528,"Kp":2.77293596,"Kpc":4.543821761,"cD":2.4,"cK":3,"cuD":32.14285714,"cuK":45,"deltaP":14.21712944,"drained":true,"phiD":21.31503664,"phiK":26,"topEl":1.6},
+    {"Ka":0.563030002,"Kac":1.500706503,"Kp":2.123014195,"Kpc":3.856820177,"cD":1.6,"cK":2,"cuD":21.42857143,"cuK":30,"deltaP":10.82827952,"drained":true,"phiD":16.23430213,"phiK":20,"topEl":-1.9},
+    {"Ka":0.3434417145,"Kac":1.172078008,"Kp":4.418612597,"Kpc":6.102855958,"cD":0,"cK":0,"cuD":0,"cuK":0,"deltaP":19.51379712,"drained":true,"phiD":29.25606764,"phiK":35,"topEl":-5.4}
+  ],
+  "notes": [],
+  "perPile": false,
+  "plaxis": {
+    "interfaces": [
+      {"Rinter":0.6402476641149023,"delta":17.342000000000002,"label":"","phi":26},
+      {"Rinter":0.6515017600894005,"delta":13.34,"label":"","phi":20},
+      {"Rinter":0.6163878581254695,"delta":23.345000000000002,"label":"","phi":35}
+    ],
+    "plate": {
+      "EA1": 3927000.0000000005,
+      "EA2": null,
+      "EI": 125412,
+      "Mp": 1089.85,
+      "Np": 6638.500000000001,
+      "dEq": 0.6190556893560256,
+      "kind": "plate",
+      "material": "Elastic (or elastoplastic with M_p/N_p as numerical caps)",
+      "notes": [
+        "All values per metre of wall (catalogue per-metre properties).",
+        "M_p and N_p are numerical yield caps, not an EN 1993-5 verification (done separately).",
+        "ν = 0: a corrugated sheet pile has no out-of-plane plate action; use the documented material value if the model requests otherwise."
+      ],
+      "nu": 0,
+      "rows": [
+        ["Element type","Plate, elastic",""],
+        ["EA₁",3927000.0000000005,"kN/m"],
+        ["EA₂","—","manufacturer/interlock data only (EA₁/20 is illustrative)"],
+        ["EI",125412,"kNm²/m"],
+        ["w",1.4420700000000002,"kN/m/m"],
+        ["ν",0,"—"],
+        ["d_eq (computed by PLAXIS)",0.6190556893560256,"m"],
+        ["M_p (if elastoplastic)",1089.85,"kNm/m"],
+        ["N_p (if elastoplastic)",6638.500000000001,"kN/m"],
+        ["Prevent punching","No","Bentley KB: not for sheet piles"],
+        ["Interfaces","both sides","R_inter per layer, see table"]
+      ],
+      "w": 1.4420700000000002
+    }
+  },
+  "section": {
+    "A": 0.0187,
+    "Iy": 0.0005972,
+    "Wel": 0.0026,
+    "Wpl": 0.00307,
+    "b": 0.7,
+    "classByGrade": {
+      "S240GP": 2,
+      "S270GP": 2,
+      "S320GP": 2,
+      "S355GP": 2,
+      "S390GP": 2,
+      "S430GP": 2,
+      "S460GP": 2,
+      "S500GP": 2
+    },
+    "corrosionFactor": 1,
+    "developedPerimeterPerM": 3.065573770491804,
+    "family": "AZ",
+    "h": 0.46,
+    "id": "AZ 26-700",
+    "interlockResistance_kN_m": null,
+    "massPerM2": 147,
+    "massPerPile": 102.9,
+    "perMetre": true,
+    "s": 0.012199999999999999,
+    "series": "AZ-700",
+    "shape": "Z",
+    "source": "am-cat-2024",
+    "t": 0.012199999999999999,
+    "weightPerM2": 1.4420700000000002
+  },
+  "soldier": false,
+  "steel": {
+    "pass": true,
+    "resistance": {
+      "Av": 0.007804514285714287,
+      "McRd": 923,
+      "MelRd": 923,
+      "MplRd": 1089.85,
+      "NplRd": 6638.500000000001,
+      "VplRd": 1599.6081404317551,
+      "betaB": 1,
+      "cls": 2,
+      "fy": 355,
+      "gammaM0": 1,
+      "plasticAllowed": false,
+      "websPerM": 1.4285714285714286
+    },
+    "rows": [
+      {"Ed":2.723595767,"Rd":923,"id":"bending","label":"Bending, elastic (class 2)","pass":true,"ref":"EN 1993-5 §5.2.2","unit":"kNm/m","util":0.0029508079815817982},
+      {"Ed":10.24543445,"Rd":1599.6081404317551,"id":"shear","label":"Shear (webs, inclination neglected)","pass":true,"ref":"EN 1993-5 §5.2.2(4)","unit":"kN/m","util":0.006404965185557647},
+      {"Ed":10.24543445,"Rd":799.8040702158776,"id":"mv","label":"M–V interaction","note":"V_Ed ≤ 0.5·V_pl,Rd — no reduction of the moment resistance required.","pass":true,"ref":"EN 1993-5 §5.2.2(9)","unit":"kN/m","util":0.012809930371115294}
+    ]
+  },
+  "vertical": null
+}

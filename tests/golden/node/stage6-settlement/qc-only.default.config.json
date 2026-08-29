@@ -1,0 +1,18 @@
+{
+  "B": 2,
+  "D": 2,
+  "Df": 1,
+  "Gk": 120,
+  "L": 2,
+  "QLead": 40,
+  "QOther": 0,
+  "allowableSettlement": 25,
+  "combination": "qp",
+  "dz": 0.1,
+  "footingType": "rectangular",
+  "includeTime": false,
+  "stressMethod": "boussinesq",
+  "timeDays": 180,
+  "truncationRule": "CPT_bottom",
+  "useCategory": "A"
+}

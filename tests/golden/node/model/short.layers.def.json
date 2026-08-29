@@ -1,0 +1,19 @@
+[
+  {
+    "avgFs": 0.05328,
+    "avgQc": 3.481,
+    "avgRf": 1.54,
+    "bot": 2,
+    "c": 0,
+    "cu": 0,
+    "g": 16.3,
+    "gs": 18.3,
+    "id": 0,
+    "ovr": {},
+    "phi": 26,
+    "rfIndeterminate": false,
+    "subtype": "zand (lh), los",
+    "top": 0,
+    "type": "Sand"
+  }
+]

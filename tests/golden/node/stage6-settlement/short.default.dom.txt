@@ -1,0 +1,86 @@
+Bearing
+Piles
+Settlement
+Dewatering
+Beam/slab
+Retaining walls
+Seep/Slope
+Active CPT: short · WT = 0.80 m below surface · parameter source = EC7 / NEN Table 3 · Stage 5 tuned m = not accepted
+Settlement
+SLS settlement at the footing / slab centreline from CPT-derived E_oed with explicit stress integration below Df.
+Inputs
+The reported settlement is the vertical settlement beneath the centre of the loaded area. For a strip footing this is the centreline in section; for a rectangular, square, circular footing or slab it is the middle of the footprint.
+Footing type
+Strip
+Rectangular / slab
+Square
+Circular
+Width B (m)
+Length L (m)
+Founding depth Df (m)
+Stress spread
+Boussinesq / Newmark
+2:1 method
+Truncation rule
+Delta sigma Delta sigma Use CPT bottom
+Sub-layer dz (m)
+Target allowable settlement (mm)
+Show settlement time curve
+Load assumptions and Eurocode combination
+Only expand this if you want to change the serviceability load assumptions. The default is the quasi-permanent SLS combination, which is usually the right starting point for long-term settlement.
+SLS combination
+Quasi-permanent
+Frequent
+Characteristic
+For settlement, quasi-permanent is the usual default for long-term behaviour and is the recommended starting point.
+Load category for Eurocode ψ-factors
+A - residential / domestic
+B - offices
+C - assembly / congregation
+D - shopping / commercial
+E - storage
+W - wind
+S - snow
+T - temperature
+Residential and domestic imposed loads. Typical default for houses and small residential slabs.
+Permanent stress Gk (kPa)
+Leading variable load Qk (kPa)
+Other variable loads together (kPa)
+Stress increase Delta sigma_v vs depth
+Cumulative settlement vs depth
+Summary
+Total settlement 5.3 mm
+Target allowable 25.0 mm
+Utilisation 0.21
+q_gross 132.0 kPa
+q_net 115.6 kPa
+Df 1.00 m
+Truncation CPT bottom reached
+z_trunc 2.00 m
+Sublayers used 10
+Load combination audit
+Limit state Combination Gk Qk,lead Qk,other q_gross sigma_v(Df) q_net
+SLS Quasi-permanent 120.0 kPa 40.0 kPa 0.0 kPa 132.0 kPa 16.4 kPa 115.6 kPa
+Formula used
+Delta eps = Delta sigma_v / E_oed(sigma_mean)
+Delta S = Sum(Delta eps * Delta z)
+Evaluation point = centre of loaded area
+Stress method = Boussinesq / Newmark centreline
+Soil route = Characteristic E_oed,ref and m
+Load route = SLS quasi-permanent
+Truncation = CPT bottom reached
+Per layer contribution
+Layer Type Top-Bot (m) Thickness (m) Settlement (mm)
+1 Sand 0.00-2.00 2.00 5.27
+Audit sublayers
+z_mid Layer sigma'v0 Delta sigma sigma'mean E_oed Delta S
+1.05 1 14.8 115.6 72.6 20019 0.577
+1.15 1 15.7 115.3 73.3 20113 0.573
+1.25 1 16.5 114.3 73.7 20159 0.567
+1.35 1 17.3 112.4 73.5 20137 0.558
+1.45 1 18.1 109.4 72.8 20043 0.546
+1.55 1 18.9 105.4 71.6 19879 0.530
+1.65 1 19.8 100.6 70.1 19659 0.512
+1.75 1 20.6 95.2 68.2 19398 0.491
+1.85 1 21.4 89.6 66.2 19111 0.469
+1.95 1 22.2 83.9 64.2 18813 0.446

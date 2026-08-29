@@ -1,0 +1,310 @@
+{
+  "drivability": null,
+  "generatedAt": "<masked>",
+  "kind": "madep-cp/retaining-note",
+  "layers": {
+    "<digest>": "ecfad6d32973714cefa35af2",
+    "bytes": 332,
+    "n": 3
+  },
+  "profile": {
+    "cutTopBy": 0,
+    "extendedTopBy": 0,
+    "notes": [
+      "The CPT ends 18.0 m below the surface; the deepest layer (Sand) is extended downward beyond the sounding."
+    ],
+    "strata": [
+      {
+        "botEl": -2.5,
+        "c": 3,
+        "cu": 45,
+        "drained": true,
+        "gammaMoist": 18,
+        "gammaSat": 19,
+        "key": "0:0.00-3.50:Sandy clay",
+        "label": "Sandy clay",
+        "layerIndex": 0,
+        "overridden": [],
+        "phi": 26,
+        "qc": 2000,
+        "subtype": "leem, vast",
+        "topEl": 1
+      },
+      {
+        "botEl": -6,
+        "c": 2,
+        "cu": 30,
+        "drained": true,
+        "gammaMoist": 16,
+        "gammaSat": 16.5,
+        "key": "1:3.50-7.00:Clay",
+        "label": "Clay",
+        "layerIndex": 1,
+        "overridden": [],
+        "phi": 20,
+        "qc": 700,
+        "subtype": "klei, weinig vast",
+        "topEl": -2.5
+      },
+      {
+        "botEl": -17,
+        "c": 0,
+        "cu": 0,
+        "drained": true,
+        "gammaMoist": 19,
+        "gammaSat": 21,
+        "key": "2:7.00-18.00:Sand",
+        "label": "Sand",
+        "layerIndex": 2,
+        "overridden": [],
+        "phi": 35,
+        "qc": 18000,
+        "subtype": "zand, vast",
+        "topEl": -6
+      }
+    ]
+  },
+  "project": {
+    "appVersion": "golden",
+    "cptId": "CPT-B",
+    "name": "Golden"
+  },
+  "result": {
+    "<digest>": "e17053c0f5e2b819f6f24e92",
+    "bytes": 10784
+  },
+  "state": {
+    "backfill": {
+      "c": 0,
+      "cu": 0,
+      "drained": true,
+      "gammaMoist": 18,
+      "gammaSat": 20,
+      "label": "Granular backfill",
+      "phi": 32
+    },
+    "cantilever": {
+      "baseThk": 0.55,
+      "betaDeg": 0,
+      "frontSoilDepth": 1,
+      "heel": 2.1,
+      "keyDepth": 0,
+      "keyThk": 0.3,
+      "stemHeight": 4.5,
+      "stemThkBot": 0.45,
+      "stemThkTop": 0.3,
+      "toe": 0.9
+    },
+    "cptX": null,
+    "drivability": {
+      "deltaH": 0,
+      "error": "",
+      "hammer": {
+        "cushionCor": 0.8,
+        "cushionStiffness": 2500000,
+        "efficiency": 0.9,
+        "helmetMass": 1500,
+        "id": "custom",
+        "ramMass": 5000,
+        "ratedEnergy": 60,
+        "type": "hydraulic"
+      },
+      "interlock": 0,
+      "lambda": 6,
+      "method": "vibratory",
+      "reserve": 1.25,
+      "shaftFactor": 1,
+      "soil": {
+        "shaftDampingClay": 0.65,
+        "shaftDampingSand": 0.16,
+        "shaftQuake": 0.0025,
+        "toeDamping": 0.5,
+        "toeQuake": 0.0025
+      },
+      "status": "idle",
+      "targetDepth": null,
+      "toeFactor": 1,
+      "vibrator": {
+        "carrier": {
+          "flow_lmin": null,
+          "mass_t": null,
+          "power_kW": null,
+          "pressure_bar": null
+        },
+        "centrifugalForce": null,
+        "crowd": 0,
+        "dynamicMass": 5000,
+        "eccentricMoment": null,
+        "frequency": 35,
+        "id": "custom",
+        "lineForce": 0,
+        "sheet": {
+          "amplitudeConvention": "pp",
+          "amplitude_mm": null,
+          "carrierMax_t": null,
+          "carrierMin_t": null,
+          "dynamicMass_kg": null,
+          "eccentricMoment_kgm": null,
+          "flowMax_lmin": null,
+          "flow_lmin": null,
+          "forceAtRpm": null,
+          "force_kN": null,
+          "name": "",
+          "power_kW": null,
+          "pressureMax_bar": null,
+          "pressure_bar": null,
+          "rpmMax": null,
+          "rpmMin": null,
+          "rpmOperating": null,
+          "totalMass_kg": null
+        },
+        "source": "required"
+      }
+    },
+    "embedded": {
+      "anchorAngle": 20,
+      "anchorDepth": 0.8,
+      "anchorDia": 0.15,
+      "anchorGammaA": 1.1,
+      "anchorSpacing": 2,
+      "anchorTfk": 150,
+      "anchored": false,
+      "embedment": 4.4,
+      "fixedLen": 4,
+      "freeLen": 4,
+      "retainedHeight": 1.6
+    },
+    "error": "",
+    "gravity": {
+      "backBatterDeg": 6,
+      "baseThk": 0.5,
+      "betaDeg": 0,
+      "frontSoilDepth": 1,
+      "heel": 0.4,
+      "stemHeight": 2.5,
+      "stemThkBot": 1.7,
+      "stemThkTop": 0.6,
+      "toe": 0.4
+    },
+    "insitu": {
+      "c": 5,
+      "cu": 0,
+      "drained": true,
+      "gammaMoist": 19,
+      "gammaSat": 21,
+      "label": "Foundation / in-situ",
+      "mode": "cpt",
+      "phi": 30,
+      "source": "default"
+    },
+    "loads": {
+      "berm": {
+        "enabled": false,
+        "height": 1.5,
+        "slopeDeg": 45
+      },
+      "surchargePermanent": 0
+    },
+    "profile": {
+      "offset": 0,
+      "overrides": {}
+    },
+    "settings": {
+      "alphaVer": 1.1,
+      "assumeCrackWater": true,
+      "bearingDepthFactors": true,
+      "bearingMethod": "annexd",
+      "consequenceClass": 2,
+      "da11Mode": "separate",
+      "deltaActiveRatio": 0.667,
+      "deltaBaseRatio": 1,
+      "deltaPassiveSheet": 0.667,
+      "deltaPassiveSoldier": 0,
+      "gammaConc": 24,
+      "materialOverride": {
+        "applyToDA12": false,
+        "enabled": false,
+        "gC": 1.3,
+        "gCu": 1.4,
+        "gPhi": 1.3
+      },
+      "overdigCustom": 0.3,
+      "overdigRule": "belgian",
+      "passiveDeltaRatio": 0.667,
+      "passiveToe": true,
+      "riskScheme": 2,
+      "surchargeFloor": 10
+    },
+    "sheet": {
+      "betaB": 1,
+      "corrosionLoss": 0,
+      "grade": "S355GP",
+      "sectionId": "AZ 26-700",
+      "useWpl": false
+    },
+    "soldier": {
+      "effectiveWidthFactor": 3,
+      "fmaxAlphaB": 0.5,
+      "fmaxPlugged": true,
+      "grade": "S235",
+      "laggingGrade": "S235",
+      "laggingSpan": "centre",
+      "laggingThk": 0.01,
+      "laggingWatertight": false,
+      "pileHeadAbove": 0,
+      "resistanceModel": "effective-width",
+      "rowCap": true,
+      "sectionId": "HEA180",
+      "spacing": 1,
+      "tlatConvention": "AL",
+      "tskinDeltaRatio": 0.667,
+      "tskinK": "k0",
+      "tskinPlug": true
+    },
+    "status": "done",
+    "surcharge": 10,
+    "vibration": {
+      "bs": {
+        "continuous": false,
+        "line": 2
+      },
+      "calibration": {
+        "points": []
+      },
+      "din": {
+        "duration": "short",
+        "line": 2,
+        "location": "foundation"
+      },
+      "distance": 10,
+      "framework": "SBR-A",
+      "frequency": 35,
+      "sbr": {
+        "category": 2,
+        "condition": "normal",
+        "measurement": "indicative",
+        "part": "structure",
+        "vibrationType": "repeated-short"
+      },
+      "warningFraction": 0.75
+    },
+    "wallType": "gravity",
+    "water": {
+      "frontDepth": 0,
+      "mode": "none",
+      "retainedDepth": 2.5
+    }
+  },
+  "structural": {
+    "<digest>": "74234e98afe7498fb5daf1f3",
+    "bytes": 4
+  },
+  "version": 1,
+  "vibration": null,
+  "wall": {
+    "embedded": false,
+    "family": "gravity",
+    "label": "Gravity / mass",
+    "type": "gravity"
+  }
+}

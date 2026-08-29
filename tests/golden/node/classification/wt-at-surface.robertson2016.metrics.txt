@@ -1,0 +1,19 @@
+[#cmet]
+avg qc (MPa)
+6.52
+avg fs (kPa)
+68.2
+avg Rf (%)
+2.44
+max depth (m)
+18.00
+readings
+360
+method
+Robertson (2016)
+[#cmetricHead]
+Qtn (-)
+[#classAssumedRfNote]
+
+[#minThkInfo]
+-> 11 layers

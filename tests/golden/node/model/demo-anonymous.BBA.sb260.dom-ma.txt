@@ -1,0 +1,283 @@
+Sandy clay
+Layer 1 — 0.00–0.58 m (69.97m TAW → 69.39m TAW) (0.58 m)
+klei, weinig vast
+&sigma;v0 4.6 − u 0 = &sigma;'v0 4.6 kPa · &alpha;E 5
+Mohr-Coulomb
+E_ref (kPa) 1,060
+&nu;
+0.40
+r_shear
+0.12
+&phi;' (°) 20
+c' (kPa) 2
+&psi; (°) 0
+&gamma; / &gamma;_sat 16 / 16 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.467
+E_def (kPa) 495
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 1,060
+E_oed,ref (kPa) 11,034
+E_50,ref (kPa) =E_oed 11,034
+E_ur,ref (kPa) 33,102
+m
+1.00
+K0_nc 0.658
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 5×10⁻7
+range 1.2×10⁻7 – 1.2×10⁻6
+k_h/k_v 3
+k_v (m/s) 1.7e-7
+&psi;_unsat (m) 1
+Infiltratie (effectief)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Sand
+Layer 2 — 0.58–2.98 m (69.39m TAW → 66.99m TAW) (2.40 m)
+zand, matig
+&sigma;v0 30.4 − u 0.8 = &sigma;'v0 29.6 kPa · &alpha;E 4
+Mohr-Coulomb
+E_ref (kPa) 27,460
+&nu;
+0.30
+r_shear
+0.33
+&phi;' (°) 30
+c' (kPa) 0
+&psi; (°) 0
+&gamma; / &gamma;_sat 17 / 19 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.743
+E_def (kPa) 20,403
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 27,460
+E_oed,ref (kPa) 50,442
+E_50,ref (kPa) =E_oed 50,442
+E_ur,ref (kPa) 151,326
+m
+0.50
+K0_nc 0.5
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 4×10⁻5
+range 1.2×10⁻5 – 1.2×10⁻4
+k_h/k_v 1
+k_v (m/s) 4.0e-5
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Clay
+Layer 3 — 2.98–5.44 m (66.99m TAW → 64.53m TAW) (2.46 m)
+klei, matig vast
+&sigma;v0 71.6 − u 24.6 = &sigma;'v0 46.9 kPa · &alpha;E 3
+Mohr-Coulomb
+E_ref (kPa) 5,145
+&nu;
+0.38
+r_shear
+0.15
+&phi;' (°) 20
+c' (kPa) 4
+&psi; (°) 0
+&gamma; / &gamma;_sat 17 / 17 kN/m³
+c_u (kPa) 50
+Soilin — deformation modulus
+&beta; (-) 0.534
+E_def (kPa) 2,747
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 5,145
+E_oed,ref (kPa) 9,856
+E_50,ref (kPa) =E_oed 9,856
+E_ur,ref (kPa) 29,568
+m
+1.00
+K0_nc 0.658
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 5×10⁻8
+range 1×10⁻9 – 1.2×10⁻7
+k_h/k_v 3
+k_v (m/s) 1.7e-8
+&psi;_unsat (m) 3
+Infiltratie + buffer
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Clay
+Layer 4 — 5.44–6.98 m (64.53m TAW → 62.99m TAW) (1.54 m)
+klei, matig vast
+&sigma;v0 105.6 − u 44.2 = &sigma;'v0 61.3 kPa · &alpha;E 3
+Mohr-Coulomb
+E_ref (kPa) 5,616
+&nu;
+0.38
+r_shear
+0.15
+&phi;' (°) 20
+c' (kPa) 4
+&psi; (°) 0
+&gamma; / &gamma;_sat 17 / 17 kN/m³
+c_u (kPa) 50
+Soilin — deformation modulus
+&beta; (-) 0.534
+E_def (kPa) 2,999
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 5,616
+E_oed,ref (kPa) 8,619
+E_50,ref (kPa) =E_oed 8,619
+E_ur,ref (kPa) 25,857
+m
+1.00
+K0_nc 0.658
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 5×10⁻8
+range 1×10⁻9 – 1.2×10⁻7
+k_h/k_v 3
+k_v (m/s) 1.7e-8
+&psi;_unsat (m) 3
+Infiltratie + buffer
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Sand
+Layer 5 — 6.98–9.48 m (62.99m TAW → 60.49m TAW) (2.50 m)
+zand (lh), matig
+&sigma;v0 153 − u 64.1 = &sigma;'v0 88.9 kPa · &alpha;E 2
+Mohr-Coulomb
+E_ref (kPa) 11,952
+&nu;
+0.32
+r_shear
+0.30
+&phi;' (°) 27
+c' (kPa) 0
+&psi; (°) 0
+&gamma; / &gamma;_sat 17 / 19 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.699
+E_def (kPa) 8,354
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 11,952
+E_oed,ref (kPa) 12,675
+E_50,ref (kPa) =E_oed 12,675
+E_ur,ref (kPa) 38,025
+m
+0.50
+K0_nc 0.546
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 4×10⁻5
+range 1.2×10⁻5 – 1.2×10⁻4
+k_h/k_v 1
+k_v (m/s) 4.0e-5
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Clay
+Layer 6 — 9.48–10.98 m (60.49m TAW → 58.99m TAW) (1.50 m)
+klei, vrij vast
+&sigma;v0 184.1 − u 83.7 = &sigma;'v0 100.5 kPa · &alpha;E 1.5
+Mohr-Coulomb
+E_ref (kPa) 3,741
+&nu;
+0.36
+r_shear
+0.18
+&phi;' (°) 20
+c' (kPa) 8
+&psi; (°) 0
+&gamma; / &gamma;_sat 18 / 18 kN/m³
+c_u (kPa) 100
+Soilin — deformation modulus
+&beta; (-) 0.595
+E_def (kPa) 2,226
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 3,741
+E_oed,ref (kPa) 3,727
+E_50,ref (kPa) =E_oed 3,727
+E_ur,ref (kPa) 11,181
+m
+1.00
+K0_nc 0.658
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 5×10⁻8
+range 1×10⁻9 – 1.2×10⁻7
+k_h/k_v 3
+k_v (m/s) 1.7e-8
+&psi;_unsat (m) 3
+Infiltratie + buffer
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW
+Sand
+Layer 7 — 10.98–21.72 m (58.99m TAW → 48.25m TAW) (10.74 m)
+leem, vast
+&sigma;v0 327 − u 143.7 = &sigma;'v0 183.3 kPa · &alpha;E 2
+Mohr-Coulomb
+E_ref (kPa) 12,122
+&nu;
+0.30
+r_shear
+0.25
+&phi;' (°) 22
+c' (kPa) 8
+&psi; (°) 0
+&gamma; / &gamma;_sat 20 / 20 kN/m³
+Soilin — deformation modulus
+&beta; (-) 0.743
+E_def (kPa) 9,007
+E_def = &beta;·E_oed,i · &beta; = (1+&nu;)(1−2&nu;)/(1−&nu;)
+ČSN 73 1001 / Soilin subsoil input · &nu; from Mohr-Coulomb column
+Hardening Soil — p_ref = 100 kPa
+&alpha;E (SB260)
+E_oed,i (kPa) 12,122
+E_oed,ref (kPa) 9,310
+E_50,ref (kPa) =E_oed 9,310
+E_ur,ref (kPa) 27,930
+m
+0.50
+K0_nc 0.625
+&nu;ur 0.2
+R_f 0.90
+Hydraulic conductivity
+k_h (m/s) 3×10⁻6
+range 1.2×10⁻6 – 1.2×10⁻5
+k_h/k_v 1
+k_v (m/s) 3.0e-6
+&psi;_unsat (m) 0.1
+Infiltratie (volledig)
+VMM §5.2 richtlijn
+Ref: OVAM Tabel 2-44
+I/RA/11461/15.066/JSW

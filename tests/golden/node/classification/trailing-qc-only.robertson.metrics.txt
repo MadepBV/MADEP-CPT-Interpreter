@@ -1,0 +1,21 @@
+[#cmet]
+avg qc (MPa)
+6.52
+avg fs (kPa)
+68.3
+avg Rf (%)
+2.43
+max depth (m)
+18.00
+readings
+360
+method
+Robertson (1990)
+[#cmetricHead]
+Ic (-)
+[#classAssumedRfNote]
+3 van 360 metingen zonder gemeten
+fs/Rf (op 17.90, 17.95, 18.00 m) — daarvoor geldt de aangenomen Rf = 3.0 %. De overige 357 metingen
+gebruiken de gemeten waarden.
+[#minThkInfo]
+-> 10 layers

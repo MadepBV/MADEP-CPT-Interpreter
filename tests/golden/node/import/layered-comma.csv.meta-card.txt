@@ -1,0 +1,33 @@
+[#mgrid]
+Project
+—
+Test ID
+layered-comma
+Location
+—
+Owner
+—
+Date
+—
+Readings
+341
+Depth (m)
+1.00–18.00
+Surface (m TAW)
+—
+Area ratio a
+0.800
+Sleeve fric. fs
+Present
+Pore pres. u2
+—
+max qc (MPa)
+18.00
+[#finfo]
+layered-comma.csv — 341 readings
+[#wt-src]
+(default)
+[#elev-src]
+(not set — enter for TAW output)
+[#wt-taw]
+

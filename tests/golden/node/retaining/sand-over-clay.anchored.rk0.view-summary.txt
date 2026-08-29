@@ -1,0 +1,14 @@
+VERIFICATIONS PASSgoverning utilisation 0.62
+Governing values
+drequired / dprovided1.90 / 5.00m · DA1-2ODF at provided depth2.38Mres/Mdriveover-excavation Δa0.30mMEd68.3kNm/m · DA1-1VEd62.0kN/m · DA1-1TEd (support)74.7kN/m · DA1-1per anchor (axial)159.1kNSteel AZ 26-7000.07UC bending · elastic
+Limit states
+Embedment / rotational stability (anchored, free-earth)0.38PASS
+Hydraulic heave / piping (HYD)0.47PASS
+Ground-anchor pull-out (EN 1537, per anchor)0.62PASS
+Wall vertical equilibrium (anchor down-drag)0.31PASS
+Bending, elastic (class 2)0.07PASS
+Shear (webs, inclination neglected)0.04PASS
+M–V interaction0.08PASS
+Engine notes
+Partial factors: NBN EN 1997-1 ANB generic DA1 sets. Embedment from the design excavation (nominal - 30 cm over-excavation); section forces enveloped over DA1/2, DA1/1 and 1.35 x (BGT + alpha_ver).
+Differential water head: pore pressures are hydrostatic on each face with no seepage modelling (EN 1997-1 9.3.1.6). Seepage around the toe reduces the front passive resistance — use a flow net / FE seepage where the head difference is significant.

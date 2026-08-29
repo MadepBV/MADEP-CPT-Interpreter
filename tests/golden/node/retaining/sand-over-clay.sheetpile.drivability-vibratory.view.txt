@@ -1,0 +1,28 @@
+Minimum vibrator for the target depth 6.30 m
+Fc,min (mR = 1.0)226.7kN, governing depth 6.30 mFc,min (mR = 1.25, recommended)287.4kN at 6.30 mEccentric moment at f5.94kg·m at 35.0 Hz (2100 rpm)Attached amplitude s₀ / App1.04 / 2.09mm for M_dyn 5700 kgAcceleration ratio α5.14—Static downforce Weff55.9kNStress screen (Fc + Weff)/As26.2MPaΛ / δH6 / 0.00
+Specification to a supplier: a head that delivers 287 kN and 5.9 kg·m simultaneously at 2100 rpm with about 5000 kg vibrating mass, plus the static downforce assumed (course §7.9). Amplitude, clamp, power, wave stress and vibration are separate checks (course §7.10).
+z (m) Rs (kN) Rb (kN) Rdrive (kN) α Fc,min (kN) Fc,min,1.25
+0.10 7.7 93.9 101.6 0.82 45.7 57.9
+0.40 27.8 84.9 112.7 1.02 56.8 70.3
+0.70 44.8 78.1 122.9 1.20 67.0 81.9
+1.00 59.6 72.7 132.4 1.37 76.4 92.9
+1.30 72.9 68.4 141.4 1.53 85.5 103.4
+1.60 85.1 64.9 150.0 1.68 94.1 113.7
+1.90 96.5 62.0 158.5 1.83 102.6 123.9
+2.20 107.3 59.5 166.8 1.98 110.8 134.0
+2.50 117.6 57.4 174.9 2.13 119.0 144.1
+2.80 127.5 55.5 183.0 2.27 127.1 154.4
+3.10 137.2 54.0 191.1 2.42 135.2 164.7
+3.40 146.6 52.6 199.2 2.56 143.3 175.2
+3.70 156.0 51.4 207.4 2.71 151.5 185.9
+4.00 165.2 50.4 215.6 2.86 159.7 196.8
+4.30 174.5 49.5 224.0 3.01 168.1 207.9
+4.60 183.7 48.7 232.4 3.16 176.5 219.2
+4.90 192.9 48.0 240.9 3.31 185.0 230.8
+5.20 202.2 47.4 249.6 3.46 193.7 242.6
+5.50 211.5 46.9 258.4 3.62 202.5 254.5
+5.80 220.9 46.5 267.4 3.78 211.5 266.7
+6.10 230.4 46.1 276.5 3.95 220.6 279.1
+6.30 236.8 45.9 282.7 4.06 226.7 287.4
+copy per-depth table (TSV)
+Reference method q_s = q_c, τ_s = f_s (course §7.2): illustrative screen, not a pile design method. δ_H = 0: optimistic free-acceleration baseline (course §8.1). Calibrate against measured amplitude (course §15.8). Force-envelope root: F_c,min(m_R=1) = 226.7 kN at 6.30 m; F_c,min(1.25) = 287.4 kN at 6.30 m. Non-normative empirical model (course §7.1): confirm by an instrumented trial; check amplitude, clamp, power, wave stress and vibration separately (course §7.10).

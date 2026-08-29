@@ -1,0 +1,18 @@
+{
+  "B": 6,
+  "D": 2,
+  "Df": 2.5,
+  "Gk": 600,
+  "L": 12,
+  "QLead": 200,
+  "QOther": 40,
+  "allowableSettlement": 15,
+  "combination": "char",
+  "dz": 0.2,
+  "footingType": "rectangular",
+  "includeTime": true,
+  "stressMethod": "two_to_one",
+  "timeDays": 365,
+  "truncationRule": "CPT_bottom",
+  "useCategory": "C"
+}

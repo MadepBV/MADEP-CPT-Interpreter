@@ -1,0 +1,23 @@
+[
+  {"assumedRf":2,"avgQc":12,"fs":0.08399999999999999,"type":"Sand"},
+  {"assumedRf":3,"avgQc":12,"fs":0.08399999999999999,"type":"Sand"},
+  {"assumedRf":5,"avgQc":12,"fs":0.08399999999999999,"type":"Sand"},
+  {"assumedRf":2,"avgQc":0.8,"fs":0.032,"type":"Clay"},
+  {"assumedRf":3,"avgQc":0.8,"fs":0.032,"type":"Clay"},
+  {"assumedRf":5,"avgQc":0.8,"fs":0.032,"type":"Clay"},
+  {"assumedRf":2,"avgQc":2,"fs":0.05,"type":"Sandy clay"},
+  {"assumedRf":3,"avgQc":2,"fs":0.05,"type":"Sandy clay"},
+  {"assumedRf":5,"avgQc":2,"fs":0.05,"type":"Sandy clay"},
+  {"assumedRf":2,"avgQc":6,"fs":0.09,"type":"Silty sand"},
+  {"assumedRf":3,"avgQc":6,"fs":0.09,"type":"Silty sand"},
+  {"assumedRf":5,"avgQc":6,"fs":0.09,"type":"Silty sand"},
+  {"assumedRf":2,"avgQc":0.3,"fs":0.015,"type":"Soft clay"},
+  {"assumedRf":3,"avgQc":0.3,"fs":0.015,"type":"Soft clay"},
+  {"assumedRf":5,"avgQc":0.3,"fs":0.015,"type":"Soft clay"},
+  {"assumedRf":2,"avgQc":0.2,"fs":0.014000000000000002,"type":"Peat / organic"},
+  {"assumedRf":3,"avgQc":0.2,"fs":0.014000000000000002,"type":"Peat / organic"},
+  {"assumedRf":5,"avgQc":0.2,"fs":0.014000000000000002,"type":"Peat / organic"},
+  {"assumedRf":2,"avgQc":25,"fs":0.125,"type":"Gravel"},
+  {"assumedRf":3,"avgQc":25,"fs":0.125,"type":"Gravel"},
+  {"assumedRf":5,"avgQc":25,"fs":0.125,"type":"Gravel"}
+]

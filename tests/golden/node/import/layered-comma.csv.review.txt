@@ -1,0 +1,34 @@
+Import controleren
+layered-comma.csv · CSV · layered-comma
+✕
+Herkende kolommen
+Grootheid Kolom in bestand Eerste waarden
+Diepte *
+kolom 1 — Diepte (m);qc (MPa);fs (kPa);Rf (%)
+0 · 0 · 0
+Conusweerstand qc *
+kolom 1 — Diepte (m);qc (MPa);fs (kPa);Rf (%)
+0 · 0 · 0
+Kleefweerstand fs
+— niet aanwezig —
+kolom 1 — Diepte (m);qc (MPa);fs (kPa);Rf (%)
+0 · 0 · 0
+Wrijvingsgetal Rf
+— niet aanwezig —
+kolom 1 — Diepte (m);qc (MPa);fs (kPa);Rf (%)
+0 · 0 · 0
+Eenheden worden uit het kolomlabel gelezen (MPa/kPa); pas de toewijzing aan als een kolom verkeerd herkend is — de statistieken hieronder rekenen direct mee.
+Metingen
+metingen341
+diepte1.00 – 18.00 m
+met fs341
+met Rf341
+overgeslagen19
+19× overgeslagen: qc < 0.02 MPa (conus niet in de grond)
+Alle metingen hebben qc én fs/Rf.
+Bestandsgegevens
+Maaiveld niet in bestand — stel in bij Stage 1
+Waterpeil niet in bestand — standaard, instelbaar bij Stage 1
+Coördinaten niet in bestand
+Annuleer
+Importeer 341 metingen

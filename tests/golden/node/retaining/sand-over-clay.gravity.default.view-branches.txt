@@ -1,0 +1,1 @@
+Branches are reported for embedded walls only.

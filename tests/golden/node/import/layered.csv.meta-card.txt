@@ -1,0 +1,33 @@
+[#mgrid]
+Project
+—
+Test ID
+layered
+Location
+—
+Owner
+—
+Date
+—
+Readings
+360
+Depth (m)
+0.05–18.00
+Surface (m TAW)
+—
+Area ratio a
+0.800
+Sleeve fric. fs
+Present
+Pore pres. u2
+—
+max qc (MPa)
+21.90
+[#finfo]
+layered.csv — 360 readings
+[#wt-src]
+(default)
+[#elev-src]
+(not set — enter for TAW output)
+[#wt-taw]
+

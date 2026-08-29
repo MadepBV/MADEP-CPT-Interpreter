@@ -1,0 +1,36 @@
+[
+  {
+    "avgFs": 0.04101,
+    "avgQc": 0.909,
+    "avgRf": 4.55,
+    "bot": 5.05,
+    "c": 0,
+    "cu": 10,
+    "g": 11,
+    "gs": 12,
+    "id": 0,
+    "ovr": {},
+    "phi": 17,
+    "rfIndeterminate": false,
+    "subtype": "CUR3 clay",
+    "top": 0,
+    "type": "Peat / organic"
+  },
+  {
+    "avgFs": 0.04221,
+    "avgQc": 0.94,
+    "avgRf": 4.47,
+    "bot": 12,
+    "c": 2,
+    "cu": 20,
+    "g": 16,
+    "gs": 16,
+    "id": 1,
+    "ovr": {},
+    "phi": 20,
+    "rfIndeterminate": false,
+    "subtype": "klei, weinig vast",
+    "top": 5.05,
+    "type": "Clay"
+  }
+]

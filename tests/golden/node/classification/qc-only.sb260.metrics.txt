@@ -1,0 +1,22 @@
+[#cmet]
+avg qc (MPa)
+6.52
+avg fs (kPa)
+—
+avg Rf (%)
+—
+max depth (m)
+18.00
+readings
+360
+method
+NEN Tabel 3 / EC7
+[#cmetricHead]
+Metric (-)
+[#classAssumedRfNote]
+Geen gemeten sleeve friction
+Het bronbestand bevat geen fs/Rf. De classificatie gebruikt overal een
+aangenomen Rf = 3.0 % (instelbaar hierboven). Grondtypes en afgeleide parameters zijn daardoor
+indicatief — controleer de lagen in Stage 3 tegen boringen of projectkennis.
+[#minThkInfo]
+-> 6 layers
