@@ -31,7 +31,13 @@ Production site: <https://cpt.madep.be/>
   - steady-state 2D seepage on triangular FEM meshes;
   - plane-strain deformation on T3/T6 triangular meshes;
   - beam/slab-on-elastic-foundation checks using Winkler/Pasternak style models;
-  - EC2-style reinforcement screening from calculated design moments.
+  - EC2-style reinforcement screening from calculated design moments;
+  - retaining walls to Eurocode 7 (Belgium): gravity / RC cantilever walls, continuous
+    sheet-pile walls and soldier-pile (Berliner) walls with the Belgian embedded-wall
+    design branches, EN 1993 steel checks, PLAXIS 2D input sets (Plate / Embedded Beam
+    Row incl. Brinch Hansen T_lat), a drivability estimator (vibratory force envelope and
+    Smith wave equation) and a vibration impact assessment (TRL 429 / SBR-A / DIN 4150-3 /
+    BS 7385-2), with a print-ready calculation note.
 - Produces browser-side technical reports for review and documentation.
 
 ## Supported CPT Inputs

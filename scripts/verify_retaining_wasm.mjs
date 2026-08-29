@@ -111,7 +111,9 @@ function embeddedMmax(cc) {
     wallType: 'sheetpile', geom: { retainedSurfaceEl: 6, excavationEl: 0, embedment: 4 },
     retained: [{ topEl: 6, gammaMoist: 18, gammaSat: 20, phi: 30, c: 0, cu: 0, drained: true }],
     front: [{ topEl: 0, gammaMoist: 18, gammaSat: 20, phi: 30, c: 0, cu: 0, drained: true }],
-    surcharge: 15, settings: { consequenceClass: cc }
+    // K_FI applies to the generic NBN EN 1997-1 ANB sets only (riskScheme 0); the Belgian
+    // risk-class sets (default, RK2) already differentiate reliability, so K_FI is forced to 1.
+    surcharge: 15, settings: { consequenceClass: cc, riskScheme: 0 }
   }).structural.Mmax;
 }
 const mCC1 = embeddedMmax(1), mCC3 = embeddedMmax(3);

@@ -137,7 +137,16 @@ const STAGE4_ENABLE_HARDENING_SOIL_PARAMS = true;
 const retainingApp = installRetainingApp({
   getState: () => S,
   requestRender: () => renderStage6(),
-  workingLayers: () => stage6WorkingLayers()
+  workingLayers: () => stage6WorkingLayers(),
+  // CPT trace of the active sounding for the drivability estimator (q_c MPa, f_s kPa)
+  getCpt: () => ({
+    id: S.meta?.testid || S.id || 'CPT',
+    depth: (S.data || []).map((r) => r.z),
+    qc: (S.data || []).map((r) => r.qc),
+    fs: (S.data || []).map((r) => (r.fs != null && Number.isFinite(r.fs) ? r.fs * 1000 : null)),
+    waterTable: S.wt
+  }),
+  getProjectMeta: () => ({ projectName: PROJECT.name, cptId: S.meta?.testid || S.id || 'CPT', appVersion: (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.5.x') })
 });
 
 // Multi-CPT stratigraphy application (Correlatie phase + Doorsnede geometry).

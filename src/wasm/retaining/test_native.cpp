@@ -4,6 +4,7 @@
 #include "earth_pressure.hpp"
 #include "gravity_wall.hpp"
 #include "embedded_wall.hpp"
+#include "brinch_hansen.hpp"
 #include <cstdio>
 #include <cmath>
 
@@ -182,104 +183,214 @@ int main() {
   checkTrue("gravity produces sliding+bearing checks", gr.checks.size() >= 4);
   checkTrue("stem moment positive & finite", gr.M_stem > 0 && std::isfinite(gr.M_stem));
 
-  std::printf("\n== embedded cantilever sheet pile (dry sand) ==\n");
-  EmbeddedInput ei;
-  ei.geom = {6.0, 0.0, 3.0, false, 0.0};  // retained surf=6, exc=0, d=3, cantilever
-  ei.retained = {{6.0, 18, 20, deg2rad(30), 0, 0, true}};
-  ei.front = {{0.0, 18, 20, deg2rad(30), 0, 0, true}};
-  ei.waterRetainedEl = -100; ei.waterFrontEl = -100; ei.surcharge = 0;
-  ei.s = {EpMethod::Rankine, 0.0, 0.667, false, 0.0, 0.0, 2, 0, 1500};
+  // ---------------------------------------------------------------------------------
+  // Embedded engine v2 — parity with the course manual (Sheet_Pile_Retaining_Walls_Manual_EC7_PLAXIS_v24 §6)
+  // ---------------------------------------------------------------------------------
+  auto findBranch = [](const EmbeddedResult& R, const char* id) -> const BranchResult* {
+    for (const auto& b : R.branches) if (b.spec.id == id) return &b;
+    return nullptr;
+  };
+  auto sand = [](double topEl, double phiDeg, double gamma, double c = 0) {
+    Stratum s; s.topEl = topEl; s.gammaMoist = gamma; s.gammaSat = gamma; s.phi = deg2rad(phiDeg);
+    s.c = c; s.cu = 0; s.drained = true; s.qc = 0; return s;
+  };
+
+  std::printf("\n== course §6: one-level supported wall, H=6, a=1.2, phi=30, gamma=18, q=10 (RK2, dry +0.30 m) ==\n");
   {
-    auto backD = designProfile(ei.retained, M1());
-    auto frontD = designProfile(ei.front, M1());
-    double odf2 = odfAt(ei, backD, frontD, 2.0, 0, 1.0, 1.0, false, 0);
-    double odf4 = odfAt(ei, backD, frontD, 4.0, 0, 1.0, 1.0, false, 0);
-    checkTrue("cantilever ODF increases with embedment", odf4 > odf2);
-    double dReq = requiredEmbedment(ei, backD, frontD, 0, 1.0, 1.0, false, 0);
-    double odfAtReq = odfAt(ei, backD, frontD, dReq, 0, 1.0, 1.0, false, 0);
-    check("cantilever ODF at required d ~ 1.0", odfAtReq, 1.0, 1e-2);
-    std::printf("  cantilever d_required(free-earth)=%.2f m\n", dReq);
-    checkTrue("cantilever d_required in plausible range", dReq > 1.0 && dReq < 8.0);
+    EmbeddedInput in;
+    in.kind = WallKind::Continuous;
+    in.geom.retainedSurfaceEl = 6.0; in.geom.excavationElNominal = 0.0; in.geom.embedment = 3.56806;
+    in.geom.anchored = true; in.geom.anchorEl = 6.0 - 1.2;
+    in.retained = {sand(6.0, 30, 18)}; in.front = {sand(6.0, 30, 18)};
+    in.loads.surchargeVariable = 10.0;
+    in.opt.deltaPassiveRatio = 0.0; in.opt.surchargeFloor = 0.0;
+    in.branches.riskScheme = 2; in.branches.overdigRule = OverdigRule::Belgian;
+    EmbeddedResult R = analyzeEmbedded(in);
+    check("overdig ULS (Belgian dry)", R.overdigUls, 0.30, 1e-9);
+    const BranchResult* d2 = findBranch(R, "DA1-2");
+    const BranchResult* bgt = findBranch(R, "BGT");
+    const BranchResult* sls = findBranch(R, "SLS");
+    checkTrue("all four branches present", d2 && bgt && sls && findBranch(R, "DA1-1"));
+    if (d2) {
+      check("DA1/2 gamma_Q = 1.10 (RK2)", d2->spec.gQ, 1.10, 1e-9);
+      check("DA1/2 phi_d", d2->back[0].phiDDeg, 24.7913, 1e-4);
+      check("DA1/2 Ka,d", d2->back[0].Ka, 0.4091315, 1e-5);
+      check("DA1/2 Kp,d (Rankine, delta=0)", d2->front[0].Kp, 2.4442018, 1e-5);
+      check("DA1/2 free-earth D", d2->d0, 3.56806, 2e-4);
+      check("DA1/2 support T", d2->T, 122.9213, 2e-4);
+      check("DA1/2 M_max", d2->Mmax, 258.2326, 3e-3);
+      check("DA1/2 y at M_max", d2->yMmax, 5.19899, 1e-2);
+      check("DA1/2 p at surface", d2->pSurface, 4.500, 2e-3);
+      check("DA1/2 p at excavation", d2->pExcavation, 50.896, 2e-3);
+      check("DA1/2 net at toe", d2->pToeBack - d2->pToeFront, -79.807, 3e-3);
+      check("DA1/2 zero net pressure z0", d2->zNetZero, 1.38941, 2e-2);
+      check("DA1/2 ODF at provided (= required) ~ 1", d2->odfProvided, 1.0, 2e-3);
+    }
+    if (bgt) {
+      check("BGT gamma_Q = alpha_ver 1.10", bgt->spec.gQ, 1.10, 1e-9);
+      check("BGT nominal excavation (no over-dig)", bgt->excavationEl, 0.0, 1e-9);
+      check("BGT free-earth D", bgt->d0, 2.4513, 3e-4);
+      check("BGT T", bgt->T, 83.021, 3e-4);
+      check("BGT T x1.35", bgt->TEd, 112.078, 3e-4);
+      check("BGT M_max", bgt->Mmax, 146.265, 3e-3);
+      check("BGT M x1.35", bgt->MEd, 197.458, 3e-3);
+    }
+    if (sls) {
+      check("SLS free-earth D", sls->d0, 2.4362, 3e-4);
+      check("SLS T", sls->T, 81.380, 3e-4);
+      check("SLS M_max", sls->Mmax, 144.209, 3e-3);
+      check("SLS z0", sls->zNetZero, 0.8194, 2e-2);
+    }
+    check("required D governed by DA1/2", R.requiredD, 3.56806, 2e-4);
+    checkTrue("required D combo is DA1-2", R.requiredDCombo == "DA1-2");
+    // default DA1/1 = separate-source (1.35 on retained side, 1.00 on passive): stricter than the course envelope
+    checkTrue("separate-source DA1/1 governs the STR envelope", R.MCombo == "DA1-1" && R.MEd > 258.2);
+    // guideline route (single-source DA1/1): envelope = max(DA1/2, 1.35 x BGT) as in the course
+    in.branches.da11SeparateSource = false; in.anchor.spacing = 2.0; in.anchor.angleDeg = 15.0;
+    EmbeddedResult Rs = analyzeEmbedded(in);
+    checkTrue("single-source: M_Ed envelope governed by DA1-2", Rs.MCombo == "DA1-2");
+    check("single-source: M_Ed envelope", Rs.MEd, 258.2326, 3e-3);
+    check("single-source: T_Ed envelope", Rs.TEd, 122.9213, 3e-4);
+    check("anchor axial per anchor (s=2, 15 deg)", Rs.anchorAxial, 254.5, 2e-3);
+    check("anchor vertical component per m (65.9 kN / 2 m)", Rs.anchorVertical, 65.9 / 2.0, 3e-3);
   }
-  EmbeddedResult er = analyzeEmbedded(ei);
-  std::printf("  M_max=%.1f kNm/m  d_required(x1.2)=%.2f m\n", er.Mmax, er.requiredD);
-  checkTrue("cantilever M_max positive", er.Mmax > 0 && std::isfinite(er.Mmax));
 
-  std::printf("\n== embedded anchored sheet pile (dry sand) ==\n");
-  EmbeddedInput ai = ei;
-  ai.geom = {6.0, 0.0, 2.5, true, 5.0};  // anchor at el=5 (1 m below top), exc=0
-  EmbeddedResult ar = analyzeEmbedded(ai);
-  std::printf("  M_max=%.1f kNm/m  anchor=%.1f kN/m  d_required=%.2f m\n",
-              ar.Mmax, ar.anchorForce, ar.requiredD);
-  checkTrue("anchored anchor force positive", ar.anchorForce > 0 && std::isfinite(ar.anchorForce));
-  checkTrue("anchored M_max positive", ar.Mmax > 0);
-  checkTrue("anchored needs less embedment than cantilever", ar.requiredD < er.requiredD);
-
-  std::printf("\n== deep-anchor moment diagram: span lobe survives the tail clamp ==\n");
+  std::printf("\n== course §4.3: cantilever illustration H=3, phi=30, gamma=18, q=0 (SLS branch) ==\n");
   {
-    // H=8 m, anchor 5 m below top, d=6 m, sand phi'=30. The governing peak is
-    // the anchor hogging (~230 kNm/m); the genuine span-sagging lobe below it
-    // (~-27 kNm/m) and the closure must remain in the plotted series. The old
-    // clamp (first M-zero below the governing peak) zeroed them away.
-    EmbeddedInput di;
-    di.geom = {8.0, 0.0, 6.0, true, 3.0};  // anchorEl = 8 - 5
-    di.retained = {{8.0, 18, 20, deg2rad(30), 0, 0, true}};
-    di.front = {{0.0, 18, 20, deg2rad(30), 0, 0, true}};
-    di.waterRetainedEl = -1000; di.waterFrontEl = -1000; di.surcharge = 0;
-    di.s = {EpMethod::Rankine, 0.0, 0.667, false, 0.0, 0.0, 2, 0, 1500};
-    EmbeddedResult dr = analyzeEmbedded(di);
-    const Series* sM = nullptr;
-    for (auto& d : dr.diagrams) if (d.id.rfind("M_", 0) == 0) { sM = &d; break; }
-    checkTrue("deep-anchor M series shipped", sM != nullptr);
-    if (sM) {
-      double mMin = 0, mEnd = sM->v.empty() ? 1e9 : sM->v.back();
-      for (double v : sM->v) mMin = std::min(mMin, v);
-      std::printf("  Mmax=%.1f (%s)  span lobe min=%.1f  M(end)=%.2f\n",
-                  dr.Mmax, dr.strCombo.c_str(), mMin, mEnd);
-      checkTrue("governing anchor-hogging Mmax plausible (150..320)", dr.Mmax > 150 && dr.Mmax < 320);
-      checkTrue("span-sagging lobe preserved (min M <= -10)", mMin <= -10.0);
-      checkTrue("divergent tail clamped (|M(end)| < 1)", std::fabs(mEnd) < 1.0);
+    EmbeddedInput in;
+    in.geom.retainedSurfaceEl = 3.0; in.geom.excavationElNominal = 0.0; in.geom.embedment = 3.5;
+    in.retained = {sand(3.0, 30, 18)}; in.front = {sand(3.0, 30, 18)};
+    in.opt.deltaPassiveRatio = 0.0;
+    EmbeddedResult R = analyzeEmbedded(in);
+    const BranchResult* sls = findBranch(R, "SLS");
+    checkTrue("SLS branch present", sls != nullptr);
+    if (sls) {
+      check("cantilever free-earth D0", sls->d0, 2.778, 2e-3);
+      check("cantilever design D = 1.2 D0", sls->dDesign, 1.2 * 2.778, 2e-3);
+      check("cantilever zero net pressure z0", sls->zNetZero, 0.375, 3e-2);
+      checkTrue("cantilever M_max positive", sls->Mmax > 0);
+    }
+    checkTrue("embedment check present", !R.checks.empty() && R.checks[0].id == "embedment");
+  }
+
+  std::printf("\n== Brinch Hansen coefficients (chapter §7.3 phi=20.5; Rekennota Table 5-6 phi=25) ==\n");
+  {
+    BrinchHansenConstants k = brinchHansenConstants(deg2rad(20.5));
+    check("BH Pq", k.Pq, 2.776880, 1e-5); check("BH KqA", k.KqA, 0.412869, 1e-5);
+    check("BH Kq0", k.Kq0, 2.364011, 1e-5); check("BH Kc0", k.Kc0, 4.752482, 1e-5);
+    check("BH K0", k.K0, 0.649793, 1e-5); check("BH dcInf", k.dcInf, 1.659923, 1e-5);
+    check("BH Nc", k.Nc, 15.314396, 1e-5); check("BH KcInf", k.KcInf, 25.420725, 1e-5);
+    check("BH KqInf", k.KqInf, 6.175902, 1e-5); check("BH aq", k.aq, 0.171761, 1e-5); check("BH ac", k.ac, 0.377861, 1e-5);
+    check("BH Kq(z/B=10)", brinchHansenKq(k, 10.0), 4.7732, 1e-4);
+    check("BH Kq(z/B=14)", brinchHansenKq(k, 14.0), 5.0563, 1e-4);
+    BrinchHansenConstants k25 = brinchHansenConstants(deg2rad(25.0));
+    check("BH25 Kq0", k25.Kq0, 3.2869, 2e-4); check("BH25 Kc0", k25.Kc0, 5.6339, 2e-4);
+    check("BH25 KqInf", k25.KqInf, 9.8932, 2e-4); check("BH25 KcInf", k25.KcInf, 36.7454, 2e-4);
+    check("BH25 aq", k25.aq, 0.14395, 2e-4); check("BH25 ac", k25.ac, 0.30545, 2e-4);
+    BrinchHansenConstants k0 = brinchHansenConstants(0.0);
+    check("BH phi=0 Kc0 = 1+pi/2", k0.Kc0, 2.5708, 1e-4); check("BH phi=0 KcInf", k0.KcInf, 8.1237, 1e-4);
+    check("BH phi=0 ac", k0.ac, 0.6547, 2e-4); check("BH phi=0 Kq(any) = 0", brinchHansenKq(k0, 5.0), 0.0, 1e-9);
+  }
+
+  std::printf("\n== Rekennota HEA180 h.o.h. 1.00 m — Blum with effective width, SF 1.30, berm 1.577 m @ 45 deg ==\n");
+  {
+    EmbeddedInput in;
+    in.kind = WallKind::SoldierEffWidth;
+    in.geom.retainedSurfaceEl = 71.216; in.geom.excavationElNominal = 69.600; in.geom.embedment = 4.484;
+    in.geom.pileWidthB = 0.180; in.geom.spacingS = 1.00; in.geom.effectiveWidthFactor = 3.0;
+    in.retained = {sand(71.216, 25, 19.5)}; in.front = {sand(71.216, 25, 19.5)};
+    in.loads.berm.active = true; in.loads.berm.height = 1.577; in.loads.berm.slopeRad = deg2rad(45); in.loads.berm.gamma = 19.5;
+    in.opt.deltaPassiveRatio = 0.0; in.opt.assumeCrackWater = false;
+    in.branches.riskScheme = 2; in.branches.overdigRule = OverdigRule::Custom; in.branches.overdigCustom = 0.30;
+    in.branches.materialOverride = true; in.branches.mOverride = {1.30, 1.30, 1.40, 1.0};
+    EmbeddedResult R = analyzeEmbedded(in);
+    const BranchResult* d2 = findBranch(R, "DA1-2");
+    const BranchResult* d1 = findBranch(R, "DA1-1");
+    if (d2) {
+      check("Rekennota phi_red (1.30)", d2->back[0].phiDDeg, 19.733, 1e-4);
+      check("Rekennota Ka (1.30)", d2->back[0].Ka, 0.4952, 2e-4);
+      check("Rekennota Kp (1.30)", d2->front[0].Kp, 2.0195, 2e-4);
+      check("Rekennota H_d", d2->excavationEl, 69.300, 1e-9);
+      check("Rekennota sigma'_v,a at H_d = 55.46 kPa (via Ka)", d2->pExcavation / d2->back[0].Ka, 55.46, 2e-3);
+      check("Rekennota t0 (SF 1.30)", d2->d0, 3.5393, 3e-3);
+      check("Rekennota D_req = 1.2 t0", d2->dDesign, 4.247, 3e-3);
+      check("Rekennota D_d provided", d2->dProvided, 4.484, 1e-6);
+      checkTrue("Rekennota UC < 1 (D_req/D_d = 0.947)", d2->dDesign / d2->dProvided < 1.0);
+    }
+    if (d1) {
+      check("Rekennota DA1/1 gamma_G,fav on passive = 1.00", d1->spec.gGResist, 1.00, 1e-9);
+      check("Rekennota DA1/1 t0 (info)", d1->d0, 3.346, 3e-3);
+      check("Rekennota DA1/1 M_Ed per pile", d1->MEd, 57.64, 1.5e-2);
+      check("Rekennota DA1/1 V_Ed per pile (Blum C at t0)", d1->VEd, 85.03, 3e-2);
+      check("Rekennota lagging p_Ed at H_d (DA1/1)", d1->lagging.total, 30.39, 3e-3);
+    }
+    // RK2 (1.25) sensitivity: t0 = 3.431 m
+    in.branches.materialOverride = false;
+    EmbeddedResult R2 = analyzeEmbedded(in);
+    const BranchResult* d2b = findBranch(R2, "DA1-2");
+    if (d2b) check("Rekennota t0 (RK2, 1.25)", d2b->d0, 3.431, 3e-3);
+    // T_lat tables (c' = 0.5 kPa as in the note; B = b; equal-level convention rows)
+    in.retained = {sand(71.216, 25, 19.5, 0.5)}; in.front = {sand(71.216, 25, 19.5, 0.5)};
+    in.branches.materialOverride = true; in.materialOverrideForTlat = true;
+    EmbeddedResult R3 = analyzeEmbedded(in);
+    checkTrue("T_lat tables: characteristic, design, sensitivity", R3.tlat.size() == 3);
+    if (R3.tlat.size() == 3) {
+      const TlatTable& tk = R3.tlat[0]; const TlatTable& ts = R3.tlat[2];
+      auto rowAt = [](const TlatTable& t, double z) -> const TlatRow* { for (auto& r : t.rows) if (std::fabs(r.z - z) < 1e-6) return &r; return nullptr; };
+      const TlatRow* r1 = rowAt(tk, 1.0); const TlatRow* r3 = rowAt(tk, 3.0); const TlatRow* r1s = rowAt(ts, 1.0);
+      checkTrue("T_lat rows at 1.0 / 3.0 m exist", r1 && r3 && r1s);
+      if (r1) { check("T_lat char z=1: Kq", r1->Kq, 6.223, 1e-3); check("T_lat char z=1: Kc", r1->Kc, 25.210, 1e-3); check("T_lat char z=1: equal-level", r1->tlatEqual, 24.11, 2e-3); check("T_lat char z=1: row cap Kp*sv*s", r1->rowCap / 1.0, 48.05 + 2.0 * std::sqrt(2.4639) * 0.5 - 0.4059 * (19.5 * 2.916 + 30.752 - 24.248 / 2.916) + 2.0 * std::sqrt(0.4059) * 0.5, 5e-2); }
+      if (r3) check("T_lat char z=3: equal-level", r3->tlatEqual, 86.56, 2e-3);
+      if (r1s) check("T_lat 1.30 z=1: equal-level", r1s->tlatEqual, 15.10, 3e-3);
+      check("T_lat char toe row", tk.rows.back().z, 4.484, 1e-6);
     }
   }
 
-  std::printf("\n== out-of-range anchor level is clamped (T no longer dropped) ==\n");
+  std::printf("\n== soldier pile: Brinch Hansen hand-calc model runs and is more favourable than 1x width ==\n");
   {
-    EmbeddedInput base;
-    base.geom = {6.0, 0.0, 2.5, true, 5.8};  // anchor 0.2 m below top (control)
-    base.retained = {{6.0, 18, 20, deg2rad(30), 0, 0, true}};
-    base.front = {{0.0, 18, 20, deg2rad(30), 0, 0, true}};
-    base.waterRetainedEl = -1000; base.waterFrontEl = -1000; base.surcharge = 0;
-    base.s = {EpMethod::Rankine, 0.0, 0.667, false, 0.0, 0.0, 2, 0, 1500};
-    EmbeddedInput bad = base;
-    bad.geom.anchorEl = 7.0;  // ABOVE the wall top: previously T was silently dropped
-    EmbeddedResult rc = analyzeEmbedded(base);
-    EmbeddedResult rb = analyzeEmbedded(bad);
-    bool noted = false;
-    for (auto& n : rb.notes) if (n.find("clamped") != std::string::npos) noted = true;
-    std::printf("  Mmax control=%.1f  clamped=%.1f\n", rc.Mmax, rb.Mmax);
-    checkTrue("clamped anchor produces a note", noted);
-    check("clamped Mmax ~ control Mmax", rb.Mmax, rc.Mmax, 0.10);
+    EmbeddedInput in;
+    in.kind = WallKind::SoldierBrinchHansen;
+    in.geom.retainedSurfaceEl = 3.0; in.geom.excavationElNominal = 0.0; in.geom.embedment = 4.0;
+    in.geom.pileWidthB = 0.18; in.geom.spacingS = 1.5;
+    in.retained = {sand(3.0, 30, 19)}; in.front = {sand(3.0, 30, 19)};
+    in.opt.deltaPassiveRatio = 0.0;
+    EmbeddedResult R = analyzeEmbedded(in);
+    const BranchResult* d2 = findBranch(R, "DA1-2");
+    checkTrue("BH model DA1/2 bracketed", d2 && d2->bracketed);
+    EmbeddedInput ew = in; ew.kind = WallKind::SoldierEffWidth; ew.geom.effectiveWidthFactor = 1.0;
+    EmbeddedResult Rw = analyzeEmbedded(ew);
+    const BranchResult* w2 = findBranch(Rw, "DA1-2");
+    if (d2 && w2) { std::printf("  d0 BH=%.3f  d0 effwidth(1b)=%.3f\n", d2->d0, w2->d0); checkTrue("BH needs less embedment than plane-strain on 1b", d2->d0 < w2->d0); }
   }
 
   std::printf("\n== embedded undrained crack water (full-tension clay) ==\n");
   {
-    // Uniform stiff clay cu=60, 3 m cut: 2cu > gamma*H over the retained
-    // height, so the active ordinate is in tension everywhere. With the crack
-    // water assumption ON the wall must still see the hydrostatic crack column
-    // (old code: zero driving water for undrained strata -> requiredD collapses).
     EmbeddedInput ci;
-    ci.geom = {3.0, 0.0, 3.0, false, 0.0};
-    ci.retained = {{3.0, 18, 18, 0, 0, 60, false}};
-    ci.front = {{0.0, 18, 18, 0, 0, 60, false}};
-    ci.waterRetainedEl = -100; ci.waterFrontEl = -100; ci.surcharge = 0;
-    ci.s = {EpMethod::Rankine, 0.0, 0.667, true, 0.0, 0.0, 2, 0, 1500};
-    EmbeddedInput cOff = ci; cOff.s.assumeCrackWater = false;
-    auto backOn  = designProfile(ci.retained, M1());
-    auto frontOn = designProfile(ci.front, M1());
-    EmbStat stOn  = integrateEmbedded(ci,   backOn, frontOn, -3.0, -3.0, 0, 1.0, 1.0);
-    EmbStat stOff = integrateEmbedded(cOff, backOn, frontOn, -3.0, -3.0, 0, 1.0, 1.0);
+    ci.geom.retainedSurfaceEl = 3.0; ci.geom.excavationElNominal = 0.0; ci.geom.embedment = 3.0;
+    Stratum clay; clay.topEl = 3.0; clay.gammaMoist = 18; clay.gammaSat = 18; clay.phi = 0; clay.c = 0; clay.cu = 60; clay.drained = false; clay.qc = 0;
+    ci.retained = {clay}; ci.front = {clay};
+    ci.branches.overdigRule = OverdigRule::None;
+    EmbeddedInput cOff = ci; cOff.opt.assumeCrackWater = false;
+    BranchSpec sls; sls.id = "SLS"; sls.gG = 1; sls.gQ = 1; sls.m = M1();
+    EmbeddedModel mOn; mOn.build(WallKind::Continuous, ci.geom, ci.retained, ci.front, ci.loads, ci.opt, sls);
+    EmbeddedModel mOff; mOff.build(WallKind::Continuous, cOff.geom, cOff.retained, cOff.front, cOff.loads, cOff.opt, sls);
+    EmbStat stOn = integrateEmbedded(mOn, -3.0, -3.0);
+    EmbStat stOff = integrateEmbedded(mOff, -3.0, -3.0);
     checkTrue("undrained crack ON drives the wall (Hdrive > 0)", stOn.Hdrive > 1.0);
     checkTrue("crack ON drives harder than OFF", stOn.Hdrive > stOff.Hdrive + 1.0);
+  }
+
+  std::printf("\n== anchored: out-of-range anchor level is clamped ==\n");
+  {
+    EmbeddedInput base;
+    base.geom.retainedSurfaceEl = 6.0; base.geom.excavationElNominal = 0.0; base.geom.embedment = 2.5; base.geom.anchored = true; base.geom.anchorEl = 5.8;
+    base.retained = {sand(6.0, 30, 18)}; base.front = {sand(6.0, 30, 18)};
+    EmbeddedInput bad = base; bad.geom.anchorEl = 7.0;
+    EmbeddedResult rc = analyzeEmbedded(base), rb = analyzeEmbedded(bad);
+    bool noted = false; for (auto& n : rb.notes) if (n.find("clamped") != std::string::npos) noted = true;
+    checkTrue("clamped anchor produces a note", noted);
+    check("clamped M_Ed ~ control", rb.MEd, rc.MEd, 0.10);
+    checkTrue("anchored needs less embedment than cantilever", rc.requiredD < analyzeEmbedded([&]{ EmbeddedInput c = base; c.geom.anchored = false; return c; }()).requiredD);
   }
 
   std::printf("\n%s (%d failure%s)\n", failures ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED",

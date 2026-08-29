@@ -118,6 +118,27 @@ export const docsGroups: DocsGroup[] = [
 				summary:
 					'Belgian Eurocode 7 (NBN EN 1997-1 ANB, DA1) verification of gravity, RC cantilever, and embedded sheet-pile walls: earth-pressure model, GEO/EQU/SLS checks, structural design forces, and the C++/WASM solver.',
 				tag: 'Stage 6'
+			},
+			{
+				title: 'Soldier-pile (Berliner) walls',
+				path: '/docs/engineering/soldier-pile',
+				summary:
+					'Hybrid lagging/discrete-pile idealisation, effective-width and Brinch Hansen (1961) resistance with the Andersen–Lodahl term, Belgian design branches, Blum embedment, lagging and EN 1993-1-1 checks, and the PLAXIS 2D Plate + Embedded Beam Row parameter set.',
+				tag: 'Stage 6'
+			},
+			{
+				title: 'Drivability',
+				path: '/docs/engineering/drivability',
+				summary:
+					'CPT-based static resistance to driving (reference and Alm & Hamre 2001), the Hypervib1-type vibratory force-envelope method, the Smith (1960) wave equation for impact hammers, and the verified hammer catalogue — non-normative.',
+				tag: 'Stage 6'
+			},
+			{
+				title: 'Vibration impact',
+				path: '/docs/engineering/vibration',
+				summary:
+					'TRL 429 / BS 5228-2 PPV prediction, SBR-A 2017, DIN 4150-3 and BS 7385-2 receiver frameworks, BS 5228-2 human response, the trigger-action monitoring plan, and site calibration of the attenuation law.',
+				tag: 'Stage 6'
 			}
 		]
 	},

@@ -1,0 +1,185 @@
+=== SHEET PILE MANUAL §6 (one-level supported, Rankine free-earth) ===
+OK   A: got=39.3333 want=39.3333
+OK   B: got=-48 want=-48
+OK   Mabove: got=338.4 want=338.4
+OK   D (SLS): got=2.43622 want=2.4362
+OK   T (SLS): got=81.3804 want=81.38
+OK   z0: got=0.819444 want=0.8194
+OK   Mmax (SLS): got=144.196 want=144.209
+OK   y at Mmax: got=4.68231 want=4.6825
+OK   D (BGT+aver): got=2.45132 want=2.4513
+OK   T (BGT+aver): got=83.0208 want=83.021
+OK   Mmax (BGT+aver): got=146.255 want=146.265
+OK   T x1.35: got=112.078 want=112.078
+OK   M x1.35: got=197.444 want=197.458
+OK   phi_d: got=24.7913 want=24.7913
+OK   Ka,d: got=0.409132 want=0.409131
+OK   Kp,d: got=2.4442 want=2.4442
+OK   A d: got=50.896 want=50.896
+OK   B d: got=-36.6313 want=-36.6313
+OK   Mabove d: got=493.726 want=493.726
+OK   D d: got=3.56806 want=3.56806
+OK   T d: got=122.921 want=122.921
+OK   z0 d: got=1.38941 want=1.38941
+OK   Mmax d: got=258.258 want=258.233
+OK   y Mmax d: got=5.19889 want=5.19899
+OK   p surface: got=4.50045 want=4.5
+OK   p toe: got=-79.8066 want=-79.807
+OK   cantilever z0: got=0.375 want=0.375
+OK   cantilever D0: got=2.77756 want=2.778
+OK   cantilever |Rt|: got=108.16 want=108.2
+OK   water case D (approx, hydrostatic simplified): got=8.65319 want=8.653
+
+=== BRINCH HANSEN CHAPTER §7 worked example ===
+OK   BH Pq: got=2.77688 want=2.77688
+OK   BH KqA: got=0.412869 want=0.412869
+OK   BH Kq0: got=2.36401 want=2.36401
+OK   BH Kc0: got=4.75248 want=4.75248
+OK   BH K0: got=0.649793 want=0.649793
+OK   BH dc: got=1.65992 want=1.65992
+OK   BH Nc: got=15.3144 want=15.3144
+OK   BH Kcinf: got=25.4207 want=25.4207
+OK   BH Kqinf: got=6.1759 want=6.1759
+OK   BH aq: got=0.171761 want=0.171761
+OK   BH ac: got=0.377861 want=0.377861
+OK   Ka(20.5): got=0.481254 want=0.4813
+OK   Kp(20.5): got=2.07791 want=2.0779
+OK   Kq(z=0): got=2.36401 want=2.364
+OK   ew(z=0): got=-12.5512 want=-12.551
+OK   Kq(z=0.2): got=3.33866 want=3.3387
+OK   ew(z=0.2): got=0.135712 want=0.136
+OK   Kq(z=0.4): got=3.91639 want=3.9164
+OK   ew(z=0.4): got=17.2134 want=17.213
+OK   Kq(z=0.6): got=4.29865 want=4.2986
+OK   ew(z=0.6): got=36.4533 want=36.453
+OK   Kq(z=0.8): got=4.57028 want=4.5703
+OK   ew(z=0.8): got=56.917 want=56.917
+OK   Kq(z=1.0): got=4.77324 want=4.7732
+OK   ew(z=1.0): got=78.1403 want=78.14
+OK   Kq(z=1.2): got=4.93065 want=4.9306
+OK   ew(z=1.2): got=99.8675 want=99.868
+OK   Kq(z=1.4): got=5.05629 want=5.0563
+OK   ew(z=1.4): got=121.946 want=121.946
+OK   z where ew=0: got=0.19824 want=0.198
+OK   Ru: got=6.98145 want=6.981
+OK   Mu: got=7.06562 want=7.066
+OK   zbar: got=1.01206 want=1.012
+OK   Kc0 limit phi->0 (1+pi/2): got=2.5708 want=2.5708
+OK   Nc limit: got=5.14159 want=5.1416
+OK   Kcinf limit: got=8.12372 want=8.1237
+OK   ac limit phi->0 (numerical): got=0.654727 want=0.6547
+OK   Kc0 numeric phi->0: got=2.5708 want=2.5708
+
+=== REKENNOTA HEA180 (Brinch Hansen coefficients + Blum) ===
+OK   BH25 Nq: got=10.6621 want=10.6621
+OK   BH25 Nc: got=20.7205 want=20.7205
+OK   BH25 dc: got=1.77338 want=1.7734
+OK   BH25 K0: got=0.577382 want=0.5774
+OK   BH25 Kq0: got=3.28693 want=3.2869
+OK   BH25 Kc0: got=5.63387 want=5.6339
+OK   BH25 Kqinf: got=9.89324 want=9.8932
+OK   BH25 Kcinf: got=36.7454 want=36.7454
+OK   BH25 aq: got=0.143951 want=0.14395
+OK   BH25 ac: got=0.305453 want=0.30545
+OK   Kqinf/Kp(25): got=4.01526 want=4.015
+OK   phi_red 1.30: got=19.7328 want=19.733
+OK   BHred Nq: got=6.23217 want=6.2323
+OK   BHred Nc: got=14.5865 want=14.5867
+OK   BHred dc: got=1.64771 want=1.6477
+OK   BHred K0: got=0.662366 want=0.6624
+OK   BHred Kq0: got=2.23219 want=2.2322
+OK   BHred Kc0: got=4.62455 want=4.6246
+OK   BHred Kqinf: got=5.71031 want=5.7104
+OK   BHred Kcinf: got=24.0344 want=24.0347
+OK   BHred aq: got=0.1755 want=0.1755
+OK   BHred ac: got=0.389701 want=0.3897
+OK   Kq25(z=0.25): got=4.38767 want=4.388
+OK   Kc25(z=0.25): got=14.9011 want=14.901
+OK   pu_k(z=0.25): got=5.19128 want=5.19
+OK   pu_red(z=0.25): got=3.34894 want=3.35
+OK   Kp*sv*s (z=0.25): got=12.0116 want=12.01
+OK   Kq25(z=0.5): got=5.17399 want=5.174
+OK   Kc25(z=0.5): got=19.9145 want=19.915
+OK   pu_k(z=0.5): got=10.8727 want=10.87
+OK   pu_red(z=0.5): got=6.93665 want=6.94
+OK   Kp*sv*s (z=0.5): got=24.0231 want=24.02
+OK   Kq25(z=1.0): got=6.22251 want=6.223
+OK   Kc25(z=1.0): got=25.2096 want=25.21
+OK   pu_k(z=1.0): got=24.1099 want=24.11
+OK   pu_red(z=1.0): got=15.1012 want=15.1
+OK   Kp*sv*s (z=1.0): got=48.0463 want=48.05
+OK   Kq25(z=2.0): got=7.35182 want=7.352
+OK   Kc25(z=2.0): got=29.6648 want=29.665
+OK   pu_k(z=2.0): got=54.2796 want=54.28
+OK   pu_red(z=2.0): got=33.2214 want=33.22
+OK   Kp*sv*s (z=2.0): got=96.0926 want=96.09
+OK   Kq25(z=3.0): got=7.94974 want=7.95
+OK   Kc25(z=3.0): got=31.6375 want=31.638
+OK   pu_k(z=3.0): got=86.5581 want=86.56
+OK   pu_red(z=3.0): got=52.2831 want=52.28
+OK   Kp*sv*s (z=3.0): got=144.139 want=144.14
+OK   Kq25(z=4.484): got=8.45269 want=8.453
+OK   Kc25(z=4.484): got=33.1316 want=33.132
+OK   pu_k(z=4.484): got=136.017 want=136.02
+OK   pu_red(z=4.484): got=81.2217 want=81.22
+OK   Kp*sv*s (z=4.484): got=215.44 want=215.44
+OK   Ka 1.30: got=0.495177 want=0.4952
+OK   Kp 1.30: got=2.01948 want=2.0195
+OK   Fa 1.30: got=26.5514 want=26.55
+OK   a: got=0.639379 want=0.6394
+OK   t0 1.30: got=3.53926 want=3.5393
+OK   Dreq 1.30: got=4.24711 want=4.247
+OK   t0 1.25: got=3.43087 want=3.431
+OK   Dreq 1.25: got=4.11704 want=4.117
+OK   Fa char: got=21.7621 want=21.763
+OK   Mpl,Rd: got=76.3515 want=76.35
+OK   Mel,Rd: got=68.996 want=69
+OK   Vpl,Rd: got=196.325 want=196.3
+OK   EA/s: got=950250 want=950300
+OK   EI/s: got=5271 want=5271
+OK   d_eq: got=0.257999 want=0.258
+OK   ISF: got=0.905013 want=0.905
+OK   Tskin slope: got=3.009 want=3.009
+OK   Av check: got=1447 want=1447
+
+=== VIBRATORY CHAPTER §8 & §11 ===
+OK   chi: got=0.473233 want=0.473233
+OK   Ab: got=0.0585349 want=0.058535
+OK   P: got=0.857655 want=0.857655
+OK   As: got=0.00666018 want=0.00666
+OK   Mp: got=313.694 want=313.7
+OK   Weff: got=36.582 want=36.582
+OK   alpha 125: got=5.79186 want=5.7919
+OK   qd 125: got=1424.52 want=1424.52
+OK   Rdrive 125: got=120.037 want=120.037
+OK   G 125: got=11.536 want=11.536
+OK   Fc,min mR=1: got=85.574 want=85.574
+OK   Fc,min mR=1.25: got=113.809 want=113.809
+OK   Me: got=2.58472 want=2.5847
+OK   s0 mm: got=1.17487 want=1.175
+OK   sigma screen MPa: got=24.2609 want=24.3
+OK   TRL kv=266 d=1.4: got=2.27464 want=2.275
+OK   TRL kv=266 d=1.2: got=4.49093 want=4.491
+OK   TRL kv=266 d=1.3: got=3.19613 want=3.196
+OK   TRL kv=60 d=1.4: got=0.513076 want=0.513
+OK   TRL kv=126 d=1.4: got=1.07746 want=1.078
+OK   TRL kv=60 d=1.3: got=0.720931 want=0.721
+OK   TRL kv=126 d=1.3: got=1.51395 want=1.514
+OK   TRL kv=60 d=1.2: got=1.01299 want=1.013
+OK   TRL kv=126 d=1.2: got=2.12728 want=2.127
+OK   BS7385 at 35 Hz: got=44 want=44
+OK   DIN4150 at 35Hz: got=11.25 want=11.25
+OK   power law n: got=1.32193 want=1.3219
+OK   K: got=104.93 want=104.93
+OK   v30: got=1.17017 want=1.17
+OK   sens fs=15: got=54.0248 want=54
+OK   sens fs=60: got=240.65 want=240.7
+OK   sens Lam=4: got=129.965 want=130
+OK   sens Lam=10: got=101.286 want=101.3
+OK   sens crowd 0: got=128.39 want=128.4
+OK   sens crowd 25: got=104.283 want=104.3
+
+=== SBR-A example (T26L053) ===
+OK   allow bouwwerk: got=1.22549 want=1.23
+OK   allow non-lb: got=3.67647 want=3.68
+OK   allow fundering: got=2.29779 want=2.3

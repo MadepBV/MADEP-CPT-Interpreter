@@ -61,7 +61,7 @@
 				<h2>1. Analysis class and intended use</h2>
 				<p>
 					The application performs <strong>ultimate and serviceability limit-state verification</strong>
-					of retaining structures on a per-metre-run (plane-strain) section. Four wall families
+					of retaining structures on a per-metre-run (plane-strain) section. Five wall types
 					are covered:
 				</p>
 				<ul class="notes">
@@ -69,13 +69,14 @@
 					<li><strong>Gravity / mass</strong> — resists by self-weight; the same GEO/EQU/SLS checks with active thrust on the inclined back face (Coulomb).</li>
 					<li><strong>Embedded sheet pile (cantilever)</strong> — free-earth / Blum simplified embedment, maximum bending moment.</li>
 					<li><strong>Anchored / propped sheet pile</strong> — free-earth-support embedment, anchor/prop force, maximum bending moment, and an <strong>EN 1537 ground-anchor pull-out</strong> verification.</li>
+						<li><strong>Soldier-pile (Berliner) wall</strong> — H-piles with lagging: Blum embedment with effective widths or Brinch Hansen line resistance, lagging plate and EN 1993-1-1 checks, PLAXIS Plate + Embedded Beam Row parameter set.</li>
 				</ul>
 				<div class="doc-callout">
 					<strong>What it is not.</strong> Per the agreed scope it delivers the geotechnical
 					verification, the <strong>structural design forces</strong> (M<sub>Ed</sub>, V<sub>Ed</sub>,
 					anchor force) and the ground-anchor <strong>pull-out</strong> check; it does not size
 					reinforcement, compute crack widths, select or verify steel sheet-pile / tendon sections,
-					or check the wall's vertical capacity for the inclined-anchor down-drag. Global/overall
+					or size reinforcement. Steel sections ARE verified (EN 1993-1-1 / EN 1993-5) for embedded walls. Global/overall
 					slope stability is handled by the separate Seep/Slope (Bishop/Spencer) application on the
 					same section.
 				</div>
@@ -83,38 +84,31 @@
 
 			<section id="framework" class="doc-card">
 				<p class="section-label">Design framework</p>
-				<h2>2. Belgian Eurocode 7 — Design Approach 1</h2>
+				<h2>2. Belgian Eurocode 7 — Design Approach 1 and the embedded-wall guideline</h2>
 				<p>
 					Belgium adopts <strong>Design Approach 1 (DA1)</strong> for the GEO/STR ultimate limit
-					states of retaining structures (NBN EN 1997-1 ANB). <strong>Both</strong> combinations are
-					evaluated for <strong>every</strong> check and the more unfavourable governs:
+					states of retaining structures (NBN EN 1997-1 ANB:2022). For <strong>embedded walls</strong> the
+					application follows the workflow of the Belgian embedded-wall guideline (BGGG/Buildwise 2022,
+					<em>Richtlijnen EC7 — beschoeiingen</em>) with its risk-class partial factors; for gravity and RC
+					cantilever walls the generic ANB sets apply. The partial-factor scheme is an explicit, visible input.
 				</p>
-				<ul class="notes">
-					<li><strong>Combination 1 (C1):</strong> A1 “+” M1 “+” R1 — actions amplified, soil strength full; usually governs structural forces.</li>
-					<li><strong>Combination 2 (C2):</strong> A2 “+” M2 “+” R1 — soil strength reduced at source, actions near-unfactored; usually governs sliding, bearing and embedment.</li>
-				</ul>
 				<div class="symbols">
-					<div class="symbols__title">Partial factors (verified NBN EN 1997-1 ANB values)</div>
+					<div class="symbols__title">Embedded walls — risk-class sets (guideline Table 8; RK2 is the default)</div>
 					<dl class="symbols__list">
-						<div class="symbols__row"><dt>Actions A1 / A2</dt><dd>γ<sub>G</sub> = 1.35 / 1.00 (unfav.), 1.00 / 1.00 (fav.); γ<sub>Q</sub> = 1.50 / <strong>1.30</strong> (unfav.), 0 (fav.).</dd></div>
-						<div class="symbols__row"><dt>Materials M1 / M2</dt><dd>γ<sub>φ′</sub> = 1.00 / 1.25 (on tan φ′); γ<sub>c′</sub> = 1.00 / 1.25; γ<sub>cu</sub> = 1.00 / 1.40; γ<sub>γ</sub> = 1.00 (weight density never factored).</dd></div>
-						<div class="symbols__row"><dt>Resistance R1</dt><dd>γ<sub>R;v</sub> = γ<sub>R;h</sub> = γ<sub>R;e</sub> = 1.00 for the wall body in both combinations.</dd></div>
-						<div class="symbols__row"><dt>EQU</dt><dd>γ<sub>G;dst</sub> = 1.10, γ<sub>G;stb</sub> = 0.90, γ<sub>Q;dst</sub> = 1.50, materials M2.</dd></div>
-						<div class="symbols__row"><dt>K<sub>FI</sub></dt><dd>Consequence-class multiplier on unfavourable actions: CC1 0.90, CC2 1.00, CC3 1.10.</dd></div>
+						<div class="symbols__row"><dt>RK2 · DA1/2 (A2 + M2)</dt><dd>γ<sub>G</sub> = 1.00, γ<sub>Q</sub> = <strong>1.10</strong>; γ<sub>φ′</sub> = γ<sub>c′</sub> = 1.25, γ<sub>cu</sub> = 1.40 — governs the embedment.</dd></div>
+						<div class="symbols__row"><dt>RK2 · DA1/1 (A1 + M1)</dt><dd>γ<sub>G</sub> = 1.35, γ<sub>Q</sub> = 1.50; strengths unfactored. Favourable passive resistance at γ<sub>G,fav</sub> = 1.00 by default ("separate source", the MADEP Rekennota convention), or single-source 1.35 on both sides (EN 1997-1 §2.4.2(9)P) — selectable.</dd></div>
+						<div class="symbols__row"><dt>BGT + α<sub>ver</sub></dt><dd>Characteristic strengths, nominal excavation, α<sub>ver</sub> = 1.10 on variable actions; support and section forces × 1.35 for STR (guideline §3.5 route).</dd></div>
+						<div class="symbols__row"><dt>SLS</dt><dd>Characteristic, nominal excavation — reference for movement models.</dd></div>
+						<div class="symbols__row"><dt>RK1 / RK3</dt><dd>A2 γ<sub>Q</sub> 1.10 / 1.20; M2 = 1.10/1.10/1.25 and 1.40/1.40/1.55; A1 = 1.20/1.30 and 1.50/1.80.</dd></div>
+						<div class="symbols__row"><dt>Generic ANB (option)</dt><dd>A2 γ<sub>Q</sub> = 1.30 with K<sub>FI</sub> (CC1 0.90, CC2 1.00, CC3 1.10). K<sub>FI</sub> is <em>not</em> applied on top of a risk-class set (it would double-count the reliability differentiation).</dd></div>
+						<div class="symbols__row"><dt>Gravity walls</dt><dd>A1 / A2 = 1.35 / 1.00 (γ<sub>G</sub>), 1.50 / 1.30 (γ<sub>Q</sub>); M2 = 1.25/1.25/1.40; EQU 1.10/0.90/1.50; HYD 1.35/0.90; UPL 1.00/0.90; R1 = 1.0; K<sub>FI</sub> per consequence class.</dd></div>
 					</dl>
 				</div>
-				<div class="doc-callout">
-					<strong>Resolved contradiction.</strong> The default DA1 Combination-2 variable-action
-					factor is <strong>γ<sub>Q</sub> = 1.30</strong> (the EN/ANB value), not the 1.10 of the
-					optional Buildwise embedded-wall risk-class scheme. The risk-class overlay is provided
-					only as a labelled, project-confirmed option. The factor sets are stored as configurable
-					data so the 2nd-generation EN 1997-1:2024 verification cases can be mapped later.
-				</div>
 				<p>
-					The <strong>single-source principle</strong> (EN 1997-1 §2.4.2(9)P) is honoured: all
-					permanent earth-pressure components from one soil body carry the same factor within a
-					combination (automatic in C2 where γ<sub>G</sub>&nbsp;=&nbsp;1.0), and is deliberately
-					split only for the EQU overturning check.
+					<strong>Design excavation.</strong> The over-excavation Δa (<em>overdiepte</em>) is a ULS geometry assumption applied to the DA1 branches only: Belgian guideline §3.3 — +0.30 m for a dry excavation, min(0.1·h, 0.5 m) under water (default); EN 1997-1 §9.3.2.2 — 10 % of h, ≤ 0.5 m; a custom value; or none where controlled execution is justified. The BGT and SLS branches use the nominal level. h is the retained height (cantilever) or the height below the lowest support (anchored).
+				</p>
+				<p>
+					Design strengths are formed at source (tan φ′<sub>d</sub> = tan φ′<sub>k</sub>/γ<sub>φ</sub>, c′<sub>d</sub> = c′<sub>k</sub>/γ<sub>c</sub>, c<sub>u,d</sub> = c<sub>u,k</sub>/γ<sub>cu</sub>) and every earth-pressure coefficient is recomputed from φ′<sub>d</sub> — never K<sub>p</sub>/γ. The single-source principle (EN 1997-1 §2.4.2(9)P) is honoured within each branch; the split between retained-side actions and favourable passive resistance in DA1/1 is a documented, selectable interpretation.
 				</p>
 			</section>
 
@@ -157,26 +151,32 @@
 
 			<section id="embedded" class="doc-card">
 				<p class="section-label">Embedded walls</p>
-				<h2>5. Sheet-pile and embedded walls</h2>
+				<h2>5. Sheet-pile and soldier-pile walls</h2>
 				<p>
-					Design strengths are factored at source (C2: tan φ′/1.25, c′/1.25) before the earth-pressure
-					coefficients are formed. The net effective-pressure-plus-water diagram drives a
-					moment-equilibrium solve for the embedment, expressed as an over-design factor
-					<strong>ODF = M<sub>resist</sub> / M<sub>drive</sub> ≥ 1</strong>, located by bisection.
+					The embedded engine (v2) runs the four Belgian design branches of §2 on one of three idealisations:
+					a <strong>continuous</strong> wall (sheet pile, cantilever or singly anchored — all quantities per metre
+					of wall), a <strong>soldier-pile wall with effective widths</strong> (lagging transfers the tributary width s above
+					the excavation; below it active on the flange width b and passive on b<sub>eff</sub> = min(k·b, s), EAB / guideline §5),
+					or a <strong>soldier-pile wall with the Brinch Hansen (1961) net line resistance</strong> B·[e<sub>w</sub>(z)]⁺ with the
+					Andersen–Lodahl (2023) retained-height term and the s·p<sub>net</sub> row cap. The soldier-pile methods are
+					detailed on the <a href="/docs/engineering/soldier-pile">soldier-pile page</a>.
 				</p>
 				<ul class="notes">
-					<li><strong>Cantilever:</strong> free-earth / Blum simplified method — moments about the toe give the free-earth depth d<sub>0</sub>, increased by ~20% for the equivalent toe reaction.</li>
-					<li><strong>Anchored / propped:</strong> free-earth-support method — moments about the anchor give the embedment; horizontal equilibrium at that depth gives the anchor/prop force T, evaluated per combination at its own free-earth depth and enveloped.</li>
-					<li><strong>Ground-anchor pull-out (EN 1537):</strong> characteristic resistance R<sub>a,k</sub> = π·Ø·L<sub>fixed</sub>·τ from the grout-body diameter Ø, fixed (bond) length L<sub>fixed</sub> and grout/soil bond τ; design R<sub>a,d</sub> = R<sub>a,k</sub>/γ<sub>a</sub>. The design force per anchor T<sub>d</sub> = T·s/cos(angle) (s = spacing) must satisfy T<sub>d</sub> ≤ R<sub>a,d</sub>. <strong>γ<sub>a</sub> = 1.1 is the EN 1997-1 Table A.12 anchor factor (temporary and permanent)</strong> and is EN-conforming — it is <em>not</em> the pile R4 set (≈ 1.5–1.6), which does not apply to anchors. The remaining caveat is that the calculated π·Ø·L·τ bond is untested and must be proven by EN 1537 acceptance testing (apply a model factor / reduce τ until then). The inclined anchor also applies V = T·tan(angle) downward — checked below.</li>
-					<li><strong>Hydraulic heave / piping (HYD, §10.3):</strong> under a differential head Δh the excess pore pressure at the toe must not exceed the buoyant effective stress — γ<sub>G,dst</sub>·γ<sub>w</sub>Δh ≤ γ<sub>G,stb</sub>·γ′·d (1.35 / 0.90), the full head conservatively dissipated over the downstream embedment (steepest exit gradient).</li>
-						<li><strong>Wall vertical equilibrium (anchored):</strong> the inclined anchors apply V = ΣT·tan(angle) downward; a screening check compares it against a conservative embedded shaft-friction estimate (base resistance neglected) — confirm against the real section.</li>
-						<li><strong>Outputs:</strong> required embedment (governing combination), maximum bending moment from double integration of the net pressure, the anchor force, the pull-out utilisation, and the heave / vertical-equilibrium verdicts.</li>
+					<li><strong>Cantilever (Blum):</strong> moments about the trial toe give the free-earth depth d₀ (ODF = M<sub>resist</sub>/M<sub>drive</sub> = 1 by bisection); design embedment 1.2·d₀. The 20 % is part of Blum's method (Rekennota §7.4), not an EC7 verification of the toe reaction.</li>
+					<li><strong>Anchored / propped:</strong> free-earth support — moments about the anchor give d₀; horizontal equilibrium at d₀ gives the support reaction T of each branch (course manual §4.4, eq. 19–20).</li>
+					<li><strong>Diagrams:</strong> V(z) and M(z) by trapezoidal double integration of the factored net pressure on the provided pile, the support reaction as an exact shear jump; M<sub>max</sub> at the governing zero-shear crossing inside the free-earth closure; pressure ordinates (retained side, resistance, water) reported per branch.</li>
+					<li><strong>Envelope:</strong> d<sub>required</sub> from DA1/2 (and DA1/1 with the generic sets); M<sub>Ed</sub>, V<sub>Ed</sub>, T<sub>Ed</sub> = max over DA1/2, DA1/1 and 1.35 × (BGT + α<sub>ver</sub>).</li>
+					<li><strong>Actions:</strong> variable surcharge (γ<sub>Q</sub>, α<sub>ver</sub>, with a visible practice floor), permanent surcharge (γ<sub>G</sub>), a retained berm/slope treated as an equivalent permanent surcharge averaged under a 45° spread (Rekennota §7.3 — an approximation, not Annex C sloping ground), hydrostatic water per face, water-filled tension crack (EN 1997-1 9.6(5)P).</li>
+					<li><strong>Soil profile:</strong> the CPT layer model with a vertical shift relative to the wall datum (top layer extended upward or cut off) and per-layer overrides of γ, γ<sub>sat</sub>, φ′, c′, c<sub>u</sub> and the drainage framework — every override is flagged in the results and the note.</li>
+					<li><strong>Wall friction:</strong> active Rankine (δ = 0); passive EN 1997-1 Annex C with δ<sub>p</sub> = ratio × φ′<sub>d</sub> per layer (sheet pile default ⅔, soldier pile default 0). Belgian caps shown in the UI: steel sheet piles ⅔φ′<sub>k</sub> (straight) / φ′<sub>k</sub> − 2.5° and ≤ 30° (curved); Berliner walls φ′<sub>k</sub>/3 (straight) / φ′<sub>k</sub>/2 (curved).</li>
+					<li><strong>Structural checks:</strong> sheet piles to NBN EN 1993-5 (elastic W<sub>el</sub> by default, W<sub>pl</sub> with β<sub>B</sub> for class 1–2; shear on the webs with the inclination neglected; optional uniform corrosion loss); H-piles to NBN EN 1993-1-1 (class per Table 5.2, M<sub>pl,Rd</sub>/M<sub>el,Rd</sub>, V<sub>pl,Rd</sub>, M–V interaction §6.2.8); lagging plate M = p·L²/8 with W<sub>el</sub> = t²/6; vertical equilibrium of a soldier pile. Sections from verified catalogues (EN 10365 H-profiles, ArcelorMittal 2024 sheet piles).</li>
+					<li><strong>Ground-anchor pull-out (EN 1537):</strong> R<sub>a,k</sub> = π·Ø·L<sub>fixed</sub>·τ, R<sub>a,d</sub> = R<sub>a,k</sub>/γ<sub>a</sub> (γ<sub>a</sub> = 1.1, EN 1997-1 Table A.12); T<sub>d</sub> per anchor = T<sub>Ed</sub>·s/cos(angle). The calculated bond must be proven by acceptance testing.</li>
+					<li><strong>HYD heave / piping (§10.3):</strong> γ<sub>G,dst</sub>·γ<sub>w</sub>Δh ≤ γ<sub>G,stb</sub>·γ′·d with the full head dissipated over the downstream embedment (continuous walls).</li>
+					<li><strong>PLAXIS 2D input:</strong> Plate (EA, EI, w, M<sub>p</sub>, N<sub>p</sub>, d<sub>eq</sub>, ν = 0, R<sub>inter</sub> per layer) for sheet piles; Plate above + Embedded Beam Row below the design excavation for soldier piles (A, I, E of one pile, γ<sub>eff</sub>, ISF defaults, linear T<sub>skin</sub>, F<sub>max</sub>, multilinear T<sub>lat</sub> per pile from Brinch Hansen with B = b).</li>
+					<li><strong>Drivability and vibration:</strong> non-normative estimators on the same CPT trace — see the <a href="/docs/engineering/drivability">drivability</a> and <a href="/docs/engineering/vibration">vibration</a> pages.</li>
 				</ul>
 				<div class="doc-callout">
-					<strong>Passive de-rating.</strong> Under DA1, the M2 strength factor (γ<sub>φ′</sub> = 1.25)
-					already de-rates passive resistance (an effective lumped factor of ≈ 1.5–2); no additional
-					ULS lumped factor is applied (the passive enters at M-factored strength / R1 = 1.0, the same convention as the gravity-wall toe); a separate SLS displacement / passive-mobilisation check is
-					required and is not performed here.
+					<strong>Verified against the course material.</strong> The engine reproduces the worked one-level supported wall of the sheet-pile manual (SLS D = 2.4362 m, T = 81.38 kN/m, M = 144.2 kNm/m; BGT + α<sub>ver</sub> T × 1.35 = 112.08 kN/m; DA1/2 D = 3.5681 m, T = 122.92 kN/m, M = 258.2 kNm/m, φ<sub>d</sub> = 24.79°, K<sub>a,d</sub> = 0.40913, K<sub>p,d</sub> = 2.44420), the cantilever illustration (D₀ = 2.778 m, z₀ = 0.375 m), the Brinch Hansen constants of the soldier-pile chapter and the MADEP Rekennota HEA180 case (t₀ = 3.539 m at γ<sub>φ</sub> = 1.30, D<sub>req</sub> = 4.247 m, M<sub>Ed</sub> = 57.6 kNm per pile) — see <code>src/wasm/retaining/test_native.cpp</code> and <code>scripts/verify_retaining_*.mjs</code>.
 				</div>
 			</section>
 
@@ -745,14 +745,14 @@ Wall vertical equilibrium (screening; base resistance neglected):
 				<h2>9. Documented assumptions</h2>
 				<ul class="notes">
 					<li>Built on EN 1997-1:2004 + NBN EN 1997-1 ANB (DA1). Factor sets are configurable for the 2nd-generation EN 1997-1:2024 verification cases.</li>
-					<li>DA1 Combination-2 variable-action factor defaults to 1.30; the Buildwise risk-class scheme (γ<sub>Q</sub> 1.10/1.20) is an optional, project-confirmed overlay only.</li>
+					<li>Embedded walls default to the Belgian embedded-wall guideline RK2 sets (DA1/2 γ<sub>Q</sub> = 1.10); RK1, RK3 and the generic NBN EN 1997-1 ANB sets (γ<sub>Q</sub> = 1.30 with K<sub>FI</sub>) are selectable. Gravity walls use the generic sets.</li>
 					<li>R1 = 1.0 applies to the wall body. <strong>Ground anchors</strong> are verified here for <strong>pull-out</strong> only (R<sub>a,k</sub> = π·Ø·L<sub>fixed</sub>·τ, R<sub>a,d</sub> = R<sub>a,k</sub>/γ<sub>a</sub>): <strong>γ<sub>a</sub> = 1.1 is the EN 1997-1 Table A.12 anchor factor (temporary and permanent) and is EN-conforming</strong> — the ~1.5–1.6 range is the pile R4 set and does not apply to anchors. The real caveat is that the calculated π·Ø·L·τ bond is untested and must be proven by EN 1537 acceptance testing (apply a model factor / reduce τ until then). The tendon/steel design and the free-length adequacy remain the engineer's responsibility. The inclined anchor's downward component V = ΣT·tan(angle) is carried into a screening wall vertical-equilibrium check (embedded shaft friction only, base neglected) that must be confirmed against the real section. Axially-loaded piles are out of scope.</li>
 					<li><strong>Passive resistance at the toe</strong> is computed from the EN 1997-1 Annex C closed form at M-factored strength / R1 = 1.0 — <strong>no lumped mobilisation factor</strong>. The unplanned over-dig Δa = min(0.10·H, 0.5 m) removes the top band (scour/future excavation), the front soil and overburden subdivide per CPT layer, and the value is the rigorous log-spiral coefficient for all δ (planar Coulomb passive was removed). Full passive needs large movement — verify SLS displacement separately, or disable the toe passive for a fully conservative design.</li>
 					<li>Brinch-Hansen/Vesić depth factors are applied to the Annex D bearing check <strong>by default</strong> (Annex D itself omits them; untick “Bearing depth factors” for the strict, more conservative Annex-D form). The cantilever uses the virtual-plane Rankine idealisation; for a <strong>short heel</strong> (heel below H<sub>v</sub>/tan(45°+φ′<sub>d</sub>/2)) the active wedge is interrupted by the stem, so the engine flags it at runtime and recommends a Coulomb-on-stem cross-check.</li>
 					<li><strong>Deliberate conservative simplifications</strong> (all err safe): the base uplift uses a linear head toe→heel (no flow net); the resisting front-water thrust and the shear-key passive block are neglected; the passive vertical drag R<sub>p,v</sub> = R<sub>p,h</sub>·tan δ<sub>p</sub> is reported but not credited to vertical equilibrium; and the unplanned over-dig removes the top band of front soil so the passive starts at zero effective stress at the design dig level.</li>
-					<li>Embedded-wall embedment uses the simplified free-earth / Blum method (conservative); SLS wall displacement and passive mobilisation are not computed.</li>
-					<li>No Belgian-codified minimum backfill surcharge exists. Gravity/cantilever walls use a prudent default surcharge that is fully editable; <strong>embedded walls additionally enforce a 10 kPa minimum variable surcharge floor</strong> (UK/CIRIA practice) — entering a lower value is honoured for gravity walls but floored at 10 kPa for embedded walls.</li>
-					<li>The in-situ / foundation profile is modelled as the full layered CPT stratigraphy — σ′<sub>v</sub> continuous, K and cohesion per layer — on both embedded faces and for the gravity/cantilever foundation, passive toe and overburden. The retained fill behind a gravity/cantilever wall is a single engineered backfill material (placed fill is uniform by design); a layered retained profile for walls retaining natural ground is a planned extension.</li>
+					<li>Embedded-wall embedment uses the free-earth / Blum limit-equilibrium method; SLS wall displacement and passive mobilisation are not computed (a nonlinear beam-on-springs model is a planned extension; PLAXIS 2D with the exported parameter set is the reference for movements).</li>
+					<li>No Belgian-codified minimum backfill surcharge exists. The minimum variable surcharge of embedded walls is an explicit, visible input (default 10 kPa, a practice value) — nothing is floored silently.</li>
+					<li>The in-situ / foundation profile is the full layered CPT stratigraphy — σ′<sub>v</sub> continuous, K and cohesion per layer — shifted to the wall datum where the sounding was pushed from another level and with per-layer overrides (c′ in particular) that are flagged everywhere. The retained fill behind a gravity/cantilever wall is a single engineered backfill material.</li>
 						<li>Hydraulic limit states are verified: <strong>HYD</strong> heave/piping for embedded walls (conservative exit gradient — confirm with a flow net for stratified ground) and <strong>UPL</strong> flotation for gravity walls. SLS is limited to the bearing-resultant middle-third / eccentricity; settlement, tilt and embedded-wall deflection (SSI/FE) are not yet automated and remain the engineer's responsibility.</li>
 					<li>The partial factors and equations were verified against the EN/ANB recommended values and multiple independent sources; for a stamped design every National-Annex value must still be confirmed against the controlled standards (NBN EN 1997-1 ANB, NBN EN 1992-1-1 ANB:2010, Buildwise).</li>
 				</ul>
@@ -770,7 +770,11 @@ Wall vertical equilibrium (screening; base resistance neglected):
 					<li><strong>EN 1997-1:2004 Annex C</strong> (Brinch-Hansen log-spiral) — the closed-form active/passive coefficients (eqs C.3–C.9) the engine evaluates for passive resistance. <strong>Kérisel, J. &amp; Absi, E.</strong> <em>Tables for the Calculation of Passive Pressure…</em> Gauthier-Villars — retained only as an independent cross-check of the closed form.</li>
 					<li><strong>Coulomb (1776), Rankine (1857)</strong> — classical earth-pressure theory; <strong>Blum (1931)</strong> — embedded-wall equivalent-beam method.</li>
 					<li><strong>CIRIA C760</strong> — guidance on embedded retaining walls (over-dig, passive mobilisation, hydraulic checks) used for context.</li>
-					<li><strong>Buildwise (WTCB/CSTC)</strong> — Belgian embedded-wall guideline (March 2022), provided as the optional risk-class overlay.</li>
+					<li><strong>Normalisatiecommissie NBN E25007 / Buildwise (WTCB–SECO), March 2022</strong> — <em>Richtlijnen voor de toepassing van de Eurocode 7 in België volgens NBN EN 1997-1 ANB: het grondmechanische ontwerp van ingebedde kerende constructies (beschoeiingen)</em> — risk classes, partial factors, over-excavation, BGT + α<sub>ver</sub> route, φ-c reduction ≥ 1.25, wall-friction limits, effective width of discontinuous walls.</li>
+						<li><strong>Blum, H. (1931)</strong> — <em>Einspannungsverhältnisse bei Bohlwerken</em>; <strong>Brinch Hansen, J. (1961)</strong> — <em>The ultimate resistance of rigid piles against transversal forces</em>, DGI Bulletin 12; <strong>Andersen, F. &amp; Lodahl, M.R. (2023)</strong> — <em>Modelling of soldier pile walls in Plaxis 2D</em>, NUMGE 2023, doi 10.53243/NUMGE2023-25.</li>
+						<li><strong>NBN EN 1993-1-1:2005 + ANB:2018; NBN EN 1993-5:2007 + ANB:2011; NBN EN 10365:2017; ArcelorMittal Sheet Piling General Catalogue 2024</strong> — steel section checks and catalogues.</li>
+						<li><strong>Bentley Systems (2024)</strong> — PLAXIS 2D Reference Manual V24 (Plate, Embedded Beam Row, interface stiffness factors); PLAXIS Knowledge Base articles “Material datasets for plates: sheet pile wall in bending” (KB0110039) and “End bearing of plates” (KB0110231).</li>
+						<li><strong>MADEP course material (2026)</strong> — <em>Steel sheet-pile retaining walls: manual calculation, EC7 design and PLAXIS 2D v24</em>; <em>Brinch Hansen lateral resistance for soldier-pile walls</em> — worked examples used as verification fixtures.</li>
 				</ul>
 				<p class="refs-inline">
 					The partial-factor tables (§2), earth-pressure equations (§3) and verification

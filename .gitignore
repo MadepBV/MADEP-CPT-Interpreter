@@ -39,3 +39,14 @@ pnpm-debug.log*
 
 # Local sample CPT files
 docs/classification/2306609_S1.xls
+
+# Playwright
+test-results/
+playwright-report/
+
+# Local course material and its working copies (MADEP course docs, client project PDF) — not published
+course/
+screenshots/
+worklog/course-originals/
+worklog/course-text/
+worklog/course-images/

@@ -44,6 +44,7 @@
 			<a href="#overview">Scope</a>
 			<a href="#families">Analysis families</a>
 			<a href="#foundation">Foundation design</a>
+			<a href="#retaining">Retaining walls</a>
 			<a href="#slope">Slope stability</a>
 			<a href="#groundwater">Groundwater</a>
 			<a href="#deformation">Deformation</a>
@@ -124,6 +125,50 @@
 						<p>
 							Strip-based EC2 reinforcement screening from the design moment, material
 							factors, and cover assumptions.
+						</p>
+					</a>
+				</div>
+			</section>
+
+			<section id="retaining" class="doc-card">
+				<p class="section-label">Retaining walls</p>
+				<h2>Retaining walls, installation and neighbours</h2>
+				<div class="docs-link-grid">
+					<a class="docs-link-card" href="/docs/engineering/retaining-wall">
+						<div class="docs-link-card__meta">Gravity, cantilever &amp; sheet-pile walls · EC7 DA1</div>
+						<h3>Retaining walls</h3>
+						<p>
+							Belgian Eurocode 7 (NBN EN 1997-1 ANB) verification of gravity, RC cantilever and
+							embedded sheet-pile walls: earth-pressure model, GEO/EQU/SLS/HYD/UPL checks,
+							ground-anchor pull-out, structural design forces, and the Belgian embedded-wall branches.
+						</p>
+					</a>
+					<a class="docs-link-card" href="/docs/engineering/soldier-pile">
+						<div class="docs-link-card__meta">Berliner walls · hand calculation &amp; PLAXIS 2D</div>
+						<h3>Soldier-pile (Berliner) walls</h3>
+						<p>
+							Hybrid lagging/discrete-pile idealisation, effective-width and Brinch Hansen (1961)
+							resistance with the Andersen–Lodahl term, Blum embedment, lagging and EN 1993-1-1
+							checks, and the PLAXIS Plate + Embedded Beam Row parameter set
+							(ISF, T<sub>skin</sub>, F<sub>max</sub>, T<sub>lat</sub>).
+						</p>
+					</a>
+					<a class="docs-link-card" href="/docs/engineering/drivability">
+						<div class="docs-link-card__meta">Installation · non-normative</div>
+						<h3>Drivability</h3>
+						<p>
+							CPT-based static resistance to driving (reference and Alm &amp; Hamre 2001), the
+							Hypervib1-type vibratory force envelope, the Smith (1960) wave equation for impact
+							hammers with GRLWEAP / FHWA defaults, and the verified hammer catalogue.
+						</p>
+					</a>
+					<a class="docs-link-card" href="/docs/engineering/vibration">
+						<div class="docs-link-card__meta">Source–path–receiver · screening</div>
+						<h3>Vibration impact</h3>
+						<p>
+							TRL 429 / BS 5228-2 PPV prediction, SBR-A 2017, DIN 4150-3 and BS 7385-2 receiver
+							frameworks (never mixed), BS 5228-2 human response, the trigger-action monitoring plan
+							and site calibration of the attenuation law.
 						</p>
 					</a>
 				</div>
