@@ -72,7 +72,7 @@
 						<li><strong>Soldier-pile (Berliner) wall</strong> — H-piles with lagging: Blum embedment with effective widths or Brinch Hansen line resistance, lagging plate and EN 1993-1-1 checks, PLAXIS Plate + Embedded Beam Row parameter set.</li>
 				</ul>
 				<div class="doc-callout">
-					<strong>What it is not.</strong> Per the agreed scope it delivers the geotechnical
+					<strong>Scope limits.</strong> Per the agreed scope it delivers the geotechnical
 					verification, the <strong>structural design forces</strong> (M<sub>Ed</sub>, V<sub>Ed</sub>,
 					anchor force) and the ground-anchor <strong>pull-out</strong> check; it does not size
 					reinforcement, compute crack widths, select or verify steel sheet-pile / tendon sections,

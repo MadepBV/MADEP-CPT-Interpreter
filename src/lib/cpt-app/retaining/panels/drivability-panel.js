@@ -300,7 +300,7 @@ function candidateCard(R) {
   }
   const sb = R.sensitivity;
   const band = sb ? help(`<strong>Model sensitivity:</strong> achievable depth ${fmt(sb.min_m, 1)}–${fmt(sb.max_m, 1)} m of the ${fmt(sb.target_m, 2)} m target across ${sb.rows.slice(1).map((r) => `${esc(r.label)} → ${fmt(r.achievable_m, 1)} m`).join(', ')}. The force-envelope method is an order-of-magnitude screen (course §7.1): differences smaller than this band — and any margin below ~0.5 m — are inside the model's resolution; confirm with a trial pile (course §15.8).`) : '';
-  return `<div class="st6-rw-card-title">Will it drive the element? — ${name}</div>${verdict}${band}<div style="margin-top:8px">${kvList(rows)}</div>${carrier}`;
+  return `<div class="st6-rw-card-title">Achievable depth — ${name}</div>${verdict}${band}<div style="margin-top:8px">${kvList(rows)}</div>${carrier}`;
 }
 
 export function drivabilityView(rw) {
@@ -342,7 +342,7 @@ export function drivabilityView(rw) {
       : !P.reachesTarget125 ? verdictBox('warn', 'MARGINAL', `<strong>${fmt(P.force_kN, 0)} kN</strong> reaches the target ${fmt(P.targetDepth_m, 2)} m without reserve; with the 1.25 reserve refusal is predicted at ${fmt(P.refusalDepth125_m, 2)} m. Required ${fmt(P.requiredForce125_kN, 0)} kN with reserve.`)
       : verdictBox('ok', 'REACHES TARGET', `<strong>${fmt(P.force_kN, 0)} kN</strong> reaches the target ${fmt(P.targetDepth_m, 2)} m with the 1.25 reserve — smallest margin ${fmt(Math.min(...P.perDepth.map((r) => r.G125_kN)), 0)} kN.`);
     html += `<div class="st6-rw-grid2"><div>
-      <div class="st6-rw-card-title">Will it push the element in? — static force balance</div>
+      <div class="st6-rw-card-title">Achievable depth — static push</div>
       ${verdict}<div style="margin-top:8px">
       ${kvList([['Required push force (m<sub>R</sub> = 1.0 / 1.25)', `${fmt(P.requiredForce_kN, 0)} / ${fmt(P.requiredForce125_kN, 0)}`, `kN, governing depth ${fmt(P.governingDepth_m, 2)} m`], ['Static resistance at the target', fmt(P.perDepth[P.perDepth.length - 1]?.Rstatic_kN, 0), 'kN (upper envelope)'], ['Element self-weight at the target', fmt(P.perDepth[P.perDepth.length - 1]?.W_kN, 1), 'kN'], ['Margin at the target (1.0 / 1.25)', `${fmt(P.marginAtTarget_kN, 0)} / ${fmt(P.marginAtTarget125_kN, 0)}`, 'kN']])}</div>
       ${help('The static resistance profile is an upper envelope from q<sub>c</sub>/f<sub>s</sub> (or Alm & Hamre with friction fatigue — the usual press-in basis). No dynamic degradation applies to pressing. The prediction is a screen; a trial element confirms it.')}
@@ -360,7 +360,7 @@ export function drivabilityView(rw) {
       ? verdictBox('bad', 'REFUSAL', `Refusal (≥ 250 blows / 25 cm) predicted at <strong>${fmt(I.refusalDepth_m, 2)} m</strong> of the ${fmt(R.target, 2)} m target.`)
       : verdictBox(last?.blows_per_25cm > 120 ? 'warn' : 'ok', last?.blows_per_25cm > 120 ? 'HARD DRIVING' : 'REACHES TARGET', `The hammer reaches the target ${fmt(R.target, 2)} m; hardest driving ${fmt(worst?.blows_per_25cm, 0)} blows / 25 cm at ${fmt(worst?.z, 2)} m.`);
     html += `<div class="st6-rw-grid2"><div>
-      <div class="st6-rw-card-title">Will it drive the element? — hammer ${esc(R.hammer?.type || '')}, ram ${fmt(R.hammer?.ramMass_kg, 0)} kg, ${fmt(R.hammer?.ratedEnergy_kJ, 0)} kJ × η ${fmt(R.hammer?.efficiency, 2)}</div>
+      <div class="st6-rw-card-title">Achievable depth — hammer ${esc(R.hammer?.type || '')}, ram ${fmt(R.hammer?.ramMass_kg, 0)} kg, ${fmt(R.hammer?.ratedEnergy_kJ, 0)} kJ × η ${fmt(R.hammer?.efficiency, 2)}</div>
       ${verdict}<div style="margin-top:8px">
       ${kvList([['Blow count at target depth', last?.blows_per_25cm != null ? fmt(last.blows_per_25cm, 0) : 'refusal', `blows / 25 cm at ${fmt(last?.z, 2)} m`], ['Set per blow at target', fmt(last?.set_mm, 1), 'mm'], ['Hardest driving', worst?.blows_per_25cm != null ? fmt(worst.blows_per_25cm, 0) : 'refusal', `blows / 25 cm at ${fmt(worst?.z, 2)} m`], ['Max compressive stress', fmt(Math.max(...I.perDepth.map((r) => r.maxCompStress_MPa || 0)), 0), 'MPa'], ['Max tensile stress', fmt(Math.max(...I.perDepth.map((r) => r.maxTensStress_MPa || 0)), 0), 'MPa'], ['Transferred energy (ENTHRU) at target', fmt(last?.enthru_kJ, 1), 'kJ'], ['Refusal criterion', '≥ 250 blows / 25 cm', 'FHWA GEC-12 practice']])}</div>
       <div class="st6-rw-note">Verify the compressive stress against 0.9·f<sub>y</sub> (EN 12699 / EN 12063 driving stress limits) and the pile's buckling and handling condition separately.</div>

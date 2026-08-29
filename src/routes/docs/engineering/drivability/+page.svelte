@@ -51,7 +51,7 @@
 			<a href="#impact">Smith wave equation</a>
 			<a href="#push">Static push-in</a>
 			<a href="#hammers">Hammer catalogue</a>
-			<a href="#datasheet">From a supplier data sheet</a>
+			<a href="#datasheet">Data-sheet input</a>
 			<a href="#outputs">Outputs and limitations</a>
 			<a href="#references">References</a>
 		</aside>
@@ -59,7 +59,7 @@
 		<main class="docs-content">
 			<section id="scope" class="doc-card">
 				<p class="section-label">Scope and positioning</p>
-				<h2>1. The four calculations that must not be confused</h2>
+				<h2>1. Scope: design, drivability, vibration and execution</h2>
 				<p>
 					Following the course chapter (§2), four different engineering questions surround a driven
 					element, and no single equation answers them all:
@@ -208,7 +208,7 @@
 					</dl>
 				</div>
 				<div class="doc-callout">
-					<strong>What it does not do.</strong> It does not predict the penetration rate, and it does not
+					<strong>Limitations.</strong> It does not predict the penetration rate, and it does not
 					check amplitude under load, clamp capacity, power, wave stress or ground vibration
 					(course §7.10) — those are separate checks. δ<sub>H</sub> = 0 is an optimistic baseline that
 					should be calibrated against the measured amplitude of a trial (course §15.8). One FR per
@@ -336,7 +336,7 @@
 
 			<section id="datasheet" class="doc-card">
 				<p class="section-label">Data sheet → model</p>
-				<h2>7. From a supplier data sheet to the model input — and how deep it drives</h2>
+				<h2>7. Data-sheet input and achievable depth</h2>
 				<p>
 					A supplier sheet describes a <em>machine</em> (centrifugal force, rpm range, amplitude, mass, oil
 					flow, working pressure, motor power, carrier class). The force-envelope model needs the
@@ -360,7 +360,7 @@
 					</div>
 				</div>
 				<p>
-					<strong>How deep will it drive?</strong> With a machine described (data sheet, catalogue row or a
+					<strong>Achievable depth.</strong> With a machine described (data sheet, catalogue row or a
 					custom F<sub>c</sub> / M<sub>e</sub>) the runner adds the element mass to M<sub>dyn</sub>, evaluates the
 					margin G(z) = F<sub>c</sub> + W<sub>eff</sub> − m<sub>R</sub>·R<sub>drive</sub>(z) at every trial toe depth
 					from the platform down, and reports the <em>first</em> depth at which the envelope closes

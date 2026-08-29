@@ -106,7 +106,7 @@ ok('data-sheet vibrator runs (derived M_e, M_dyn)', drvSheet.ok && drvSheet.data
 ok('data-sheet run reports an achievable / refusal depth', drvSheet.vibratory.candidateCheck.targetDepth_m > 0 && (drvSheet.vibratory.candidateCheck.reachesTarget || drvSheet.vibratory.candidateCheck.refusalDepth_m > 0));
 ok('carrier check rows present', drvSheet.carrier?.rows?.length === 4 && drvSheet.carrier.rows.find((r) => r.id === 'class').ok === true);
 rw.drivability.result = drvSheet; rw.drivability.status = 'done';
-ok('data-sheet view renders the verdict and carrier table', (() => { const h = drivabilityView(rw); return h.includes('Will it drive the element?') && h.includes('Carrier check') && h.includes('Minimum vibrator'); })());
+ok('data-sheet view renders the verdict and carrier table', (() => { const h = drivabilityView(rw); return h.includes('Achievable depth —') && h.includes('Carrier check') && h.includes('Minimum vibrator'); })());
 ok('drivability panel renders the data-sheet form with derived summary', (() => { const h = drivabilityPanel(rw); return h.includes('Centrifugal force') && h.includes('Derived') && h.includes('Your carrier'); })());
 ok('section scene carries the drivability marker', (() => { const sc = buildEmbeddedScene(rw, rw.result, layers); return sc.dims.some((d) => /refusal|reaches|reserve/.test(d.text)); })());
 rw.drivability.vibrator.source = 'required';
