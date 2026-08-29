@@ -115,6 +115,23 @@ import {
 import { readCssToken } from './core/css-tokens.js';
 import { destroyChart as stage6DestroyChart } from './core/chart-host.js';
 import {
+  parseGEF as parseGefPure,
+  parseCsvCpt as parseCsvPure,
+  parseExcelCpt as parseExcelPure,
+  loadXlsxModule,
+  applyParsedCpt as applyParsedCptPure,
+  reviewStaging,
+  NO_DATA_ROWS_MESSAGE,
+  importCptFiles as importCptFilesPure,
+  demoPatch,
+  syncParsedCptDom,
+  syncDemoDom,
+  renderElevationSource,
+  renderWaterTableDisplay,
+  renderAssumedRfControls,
+  renderMetaCard
+} from './load/index.js';
+import {
   DEF,
   AE,
   sb260GranularAlpha,
@@ -132,7 +149,6 @@ import {
 ════════════════════════════════ */
 let __legacyControllerInitialized = false;
 let __legacyControllerHashBound = false;
-let xlsxModulePromise = null;
 let stage6BishopWorker = null;
 let stage6BishopRunId = 0;
 let stage6BishopSeepageWorker = null;
@@ -414,77 +430,34 @@ function setPhase(ph){
 /* ════════════════════════════════
    MULTI-CPT FILE LOAD
 ════════════════════════════════ */
-function stripCptFileExtension(name){
-  return String(name||'CPT').replace(/\.(gef|txt|csv|xls|xlsx)$/i,'');
-}
-
-function isExcelCptFile(file){
-  const name=String(file?.name||'');
-  const type=String(file?.type||'');
-  return /\.(xls|xlsx)$/i.test(name)
-    || type.includes('spreadsheet')
-    || type.includes('excel');
-}
-
-function isCsvCptFile(file){
-  const name=String(file?.name||'');
-  const type=String(file?.type||'');
-  return /\.csv$/i.test(name) || type.includes('csv');
-}
+/* File-kind sniffing and the serial loader live in load/ (file-kind.js,
+   import-files.js). Each file is parsed for its explicit target CPT — the
+   importers apply the patch to that CPT and sync the Stage 1 DOM from it —
+   so S and PROJECT.activeCptIdx are never re-pointed during an import. */
+const cptFileImporters={
+  gef:async(txt,fname,cpt)=>importParsedCpt(cpt, parseGefPure(txt,fname)),
+  csv:async(text,fname,cpt)=>importParsedCpt(cpt, parseCsvPure(text,fname)),
+  excel:async(buffer,fname,cpt)=>importParsedCpt(cpt, parseExcelPure(await loadXlsxModule(),buffer,fname))
+};
 
 /* Reads files serially because parsing still drives shared DOM/chart state. */
 function importCptFiles(files){
-  if(!files.length)return;
-
-  // Build list of target CPT indices before any async work
-  const targets=files.map((f,fi)=>{
-    if(fi===0) return PROJECT.activeCptIdx;
-    const idx=PROJECT.cpts.length;
-    PROJECT.cpts.push(newCptState('CPT-'+(idx+1)));
-    PROJECT.sectionOrder.push(idx);
-    return idx;
-  });
-
-  // Load serially: each file's reader waits for previous to complete
-  function loadNext(fi){
-    if(fi>=files.length)return;
-    const f=files[fi], targetIdx=targets[fi];
-    const reader=new FileReader();
-    reader.onload=async e=>{
-      // Save current active, switch to target, parse, restore
-      const prevActive=PROJECT.activeCptIdx;
-      const prevS=S;
-      PROJECT.activeCptIdx=targetIdx;
-      S=PROJECT.cpts[targetIdx];
-      try{
-        let ok;
-        if(isExcelCptFile(f)) ok=await parseExcelCpt(e.target.result,f.name);
-        else if(isCsvCptFile(f)) ok=await parseCsvCpt(e.target.result,f.name);
-        else ok=await parseGEF(e.target.result,f.name);
-        if(ok!==false){
-          S.id=stripCptFileExtension(f.name);
-          renderBanner();
-        }
-      }catch(err){
-        console.error(err);
-        alert(`Error importing ${f.name}: ${err?.message||err}`);
-      }
-      if(fi===0){
+  importCptFilesPure(files,{
+    project:PROJECT,
+    newCptState,
+    importers:cptFileImporters,
+    onImported:(targetIdx,isFirst)=>{
+      if(isFirst){
         // First file: stay on this CPT, update display
         selectCpt(targetIdx);
       } else {
-        // Additional files: restore previous active, then load next
-        PROJECT.activeCptIdx=prevActive;
-        S=prevS;
+        // Additional files: the active CPT is unchanged, refresh the banner
         renderBanner();
       }
-      loadNext(fi+1);
-    };
-    reader.onerror=()=>{ alert('Error reading '+f.name); loadNext(fi+1); };
-    if(isExcelCptFile(f)) reader.readAsArrayBuffer(f);
-    else reader.readAsText(f);
-  }
-  loadNext(0);
+    },
+    renderBanner,
+    alert:(message)=>alert(message)
+  });
 }
 
 function importGEFFiles(files){
@@ -856,455 +829,59 @@ document.querySelectorAll('.si').forEach(s=>{
 
 /* ════════════════════════════════
    CPT FILE PARSERS
-   Number parsing, unit conversion and tabular row building live in
-   src/lib/cpt-app/import-review/ (shared with the import-review dialog);
-   here remain the format-specific readers and the header-sheet lookups.
+   The format readers are pure and live in load/parsers/ (gef.js, csv.js,
+   excel.js + excel-headers.js); number parsing, unit conversion and tabular
+   row building in import-review/ (shared with the review dialog). Here
+   remain the handshake — parse → review dialog → apply — and the wrappers
+   under the old names for the active CPT.
 ════════════════════════════════ */
-function pad2(n){
-  return String(n).padStart(2,'0');
+/* Review → apply for an explicit CPT (the seam used by the multi-file loader). */
+async function importParsedCpt(cpt, parsed){
+  if(!parsed.ok){alert(parsed.error);return false;}
+  const review=await presentImportReview(reviewStaging(parsed, normalizeAssumedRf(cpt.assumedRf).toFixed(1)));
+  if(!review) return false;
+  return applyParsedCptTo(cpt, {...parsed, rows:review.rows});
 }
 
-function formatExcelHeaderValue(value, key=''){
-  if(value==null) return '';
-  if(value instanceof Date && !isNaN(value)){
-    if(/tijd|time/i.test(key)){
-      return `${pad2(value.getHours())}:${pad2(value.getMinutes())}:${pad2(value.getSeconds())}`;
-    }
-    return `${pad2(value.getDate())}/${pad2(value.getMonth()+1)}/${value.getFullYear()}`;
-  }
-  if(typeof value==='number'){
-    return Number.isInteger(value)?String(value):String(value);
-  }
-  return String(value).trim();
-}
-
-function normalizeExcelLabel(value){
-  return String(value||'')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g,'')
-    .replace(/[^a-z0-9]+/g,' ');
-}
-
-function excelHeaderLookup(headerRows, labels){
-  const wanted=labels.map(normalizeExcelLabel);
-  for(const row of headerRows){
-    const key=normalizeExcelLabel(row?.[0]);
-    if(wanted.includes(key)) return row?.[1];
-  }
-  return null;
-}
-
-function excelHeaderText(headerRows, labels){
-  const raw=excelHeaderLookup(headerRows, labels);
-  const label=labels[0]||'';
-  const text=formatExcelHeaderValue(raw,label);
-  return text||null;
-}
-
-function excelHeaderNumber(headerRows, labels){
-  return parseCptNumber(excelHeaderLookup(headerRows, labels));
-}
-
-function findExcelSheetName(workbook, preferredName){
-  const wanted=normalizeExcelLabel(preferredName);
-  return workbook.SheetNames.find(name=>normalizeExcelLabel(name)===wanted)
-    || workbook.SheetNames.find(name=>normalizeExcelLabel(name).includes(wanted));
-}
-
-function loadXlsxModule(){
-  if(!xlsxModulePromise){
-    xlsxModulePromise=import('xlsx').then(module=>module.default?.read?module.default:module);
-  }
-  return xlsxModulePromise;
-}
-
-function applyParsedCpt({rows, meta, waterLevel, waterSource, elevation, elevationSource, x, y, coordinateSource}){
-  if(!rows.length){alert('No valid data rows found.');return false;}
-
-  S.data=rows;
-  S.wt=waterLevel??1.5;
-  S.wtFromFile=waterLevel!=null;
-  S.wtSource=waterLevel!=null?(waterSource||'file'):null;
-  S.elev=elevation;
-  S.elevFromFile=elevation!=null;
-  S.elevSource=elevation!=null?(elevationSource||'file'):null;
-  if(x!=null && y!=null && (x!==0 || y!==0)){
-    S.x=x;
-    S.y=y;
-  }else if(coordinateSource){
-    S.x=null;
-    S.y=null;
-  }
-  S.meta={...meta,nRows:rows.length,
-    depthMin:rows[0].z,depthMax:rows[rows.length-1].z,
-    hasU2:rows.some(r=>r.u2!=null),
-    hasFs:rows.some(r=>r.fs!=null),
-    hasRf:rows.some(r=>r.rf!=null)};
-
-  // Sync controls
-  document.getElementById('wtR').value=S.wt;
-  document.getElementById('wtN').value=S.wt.toFixed(2);
-  document.getElementById('elevN').value=S.elev!=null?S.elev.toFixed(2):'';
-  const cptXEl=document.getElementById('cptX');
-  const cptYEl=document.getElementById('cptY');
-  if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
-  if(cptYEl) cptYEl.value=S.y!=null?S.y:'';
-  updateElevSrc(); updateWTDisplay(); updateAssumedRfControls();
-
-  renderMeta();
-  document.getElementById('s1body').style.display='block';
+/* Assign the parsed patch to the CPT and sync the Stage 1 DOM from it; the
+   charts are (re)built on the next frame for the CPT active at that time. */
+function applyParsedCptTo(cpt, parsed){
+  const patch=applyParsedCptPure(cpt, parsed);
+  if(!patch){alert(NO_DATA_ROWS_MESSAGE);return false;}
+  Object.assign(cpt, patch);
+  syncParsedCptDom(document, cpt);
   requestAnimationFrame(()=>initCharts());
   return true;
 }
 
+function applyParsedCpt(parsed){
+  return applyParsedCptTo(S, parsed);
+}
+
 async function parseExcelCpt(buffer,fname){
-  const XLSX=await loadXlsxModule();
-  let workbook;
-  try{
-    workbook=XLSX.read(buffer,{type:'array',cellDates:true});
-  }catch(err){
-    alert(`Could not read Excel workbook: ${err?.message||err}`);
-    return false;
-  }
-
-  const dataSheetName=findExcelSheetName(workbook,'Data') || workbook.SheetNames[0];
-  const headerSheetName=findExcelSheetName(workbook,'Header');
-  const dataSheet=workbook.Sheets[dataSheetName];
-  if(!dataSheet){alert('No data sheet found in Excel workbook.');return false;}
-
-  const dataRows=XLSX.utils.sheet_to_json(dataSheet,{header:1,raw:true,defval:null,blankrows:false});
-  const headerRows=headerSheetName
-    ? XLSX.utils.sheet_to_json(workbook.Sheets[headerSheetName],{header:1,raw:true,defval:null,blankrows:false})
-    : [];
-
-  const headerIdx=findDataHeaderRow(dataRows);
-  if(headerIdx<0){alert('Could not find depth/qc columns in the Excel data sheet.');return false;}
-
-  const cols=detectColumns(dataRows[headerIdx]||[]);
-  if(cols.z<0 || cols.qc<0){alert('Excel data sheet needs at least depth and qc columns.');return false;}
-
-  const water=excelHeaderNumber(headerRows,['Waterniveau','Water level']);
-  const elevation=excelHeaderNumber(headerRows,['Grondniveau','Surface level','Ground level','ZID']);
-  const x=excelHeaderNumber(headerRows,['E Coordinate','X Coordinate','Easting']);
-  const y=excelHeaderNumber(headerRows,['N Coordinate','Y Coordinate','Northing']);
-  const aRatio=excelHeaderNumber(headerRows,['Alpha Factor','Alpha','Area ratio']) ?? 0.8;
-  const betaFactor=excelHeaderNumber(headerRows,['Beta Factor','Beta']);
-  const project=excelHeaderText(headerRows,['Taak Nummer','Project','Project ID']);
-  const testid=excelHeaderText(headerRows,['Sondering Nummer','Test ID','CPT ID']);
-  const client=excelHeaderText(headerRows,['Client Naam','Client Name','File owner']);
-  const operator=excelHeaderText(headerRows,['Operator']);
-  const location=excelHeaderText(headerRows,['Locatie','Location']);
-  const date=excelHeaderText(headerRows,['Datum','Date']);
-  const coneNumber=excelHeaderText(headerRows,['Conus Nummer','Cone Number']);
-  const penetrationDepth=excelHeaderNumber(headerRows,['Penetratiediepte','Penetration depth']);
-
-  // Review before apply: the engineer confirms the column mapping and the
-  // derived statistics (and can remap columns) before the data enters the
-  // project. Cancelling aborts this file's import.
-  const review=await presentImportReview({
-    fileName:fname,
-    format:'Excel',
-    grid:dataRows,
-    headerIdx,
-    cols,
-    context:{
-      waterLevel:water!=null?Math.abs(water):null,
-      waterSource:water!=null?'Header Waterniveau':null,
-      elevation,
-      elevationSource:elevation!=null?'Header Grondniveau':null,
-      x, y, testid, project,
-      assumedRf:assumedRfValue().toFixed(1)
-    }
-  });
-  if(!review) return false;
-
-  return applyParsedCpt({
-    rows:review.rows,
-    waterLevel:water!=null?Math.abs(water):null,
-    waterSource:water!=null?'Header Waterniveau':null,
-    elevation,
-    elevationSource:elevation!=null?'Header Grondniveau':null,
-    x,
-    y,
-    coordinateSource:(x!=null||y!=null)?'Header coordinates':null,
-    meta:{
-      fname,
-      importFormat:'Excel',
-      project,
-      testid,
-      client,
-      owner:client||operator,
-      operator,
-      location,
-      date,
-      coneNumber,
-      penetrationDepth,
-      aRatio,
-      betaFactor,
-      zid:elevation
-    }
-  });
-}
-
-function splitDelimitedLine(line, delimiter){
-  const cells=[];
-  let cell='';
-  let quoted=false;
-  for(let i=0;i<line.length;i++){
-    const ch=line[i];
-    if(ch==='"'){
-      if(quoted && line[i+1]==='"'){
-        cell+='"';
-        i++;
-      }else{
-        quoted=!quoted;
-      }
-    }else if(ch===delimiter && !quoted){
-      cells.push(cell.trim());
-      cell='';
-    }else{
-      cell+=ch;
-    }
-  }
-  cells.push(cell.trim());
-  return cells;
-}
-
-function parseDelimitedText(text, delimiter){
-  return String(text||'')
-    .replace(/^\uFEFF/,'')
-    .split(/\r?\n/)
-    .map(line=>splitDelimitedLine(line, delimiter))
-    .filter(row=>row.some(cell=>String(cell||'').trim()!==''));
-}
-
-function detectDelimitedTextSeparator(text){
-  const sample=String(text||'')
-    .replace(/^\uFEFF/,'')
-    .split(/\r?\n/)
-    .filter(line=>line.trim())
-    .slice(0,20);
-  const delimiters=[',',';','\t'];
-  let best={delimiter:',',score:-Infinity};
-  for(const delimiter of delimiters){
-    const rows=sample.map(line=>splitDelimitedLine(line, delimiter));
-    const headerIdx=findDataHeaderRow(rows);
-    const maxCols=Math.max(...rows.map(row=>row.length),0);
-    const avgCols=rows.length?rows.reduce((sum,row)=>sum+row.length,0)/rows.length:0;
-    const score=(headerIdx>=0?100:0) + maxCols*3 + avgCols;
-    if(score>best.score) best={delimiter,score};
-  }
-  return best.delimiter;
+  return cptFileImporters.excel(buffer,fname,S);
 }
 
 async function parseCsvCpt(text,fname){
-  const delimiter=detectDelimitedTextSeparator(text);
-  const tableRows=parseDelimitedText(text, delimiter);
-  const headerIdx=findDataHeaderRow(tableRows);
-  if(headerIdx<0){alert('Could not find depth/qc columns in the CSV file.');return false;}
-
-  const cols=detectColumns(tableRows[headerIdx]||[]);
-  if(cols.z<0 || cols.qc<0){alert('CSV file needs at least depth and qc columns.');return false;}
-
-  const review=await presentImportReview({
-    fileName:fname,
-    format:'CSV',
-    grid:tableRows,
-    headerIdx,
-    cols,
-    context:{
-      waterLevel:null,
-      elevation:null,
-      x:null, y:null,
-      testid:stripCptFileExtension(fname),
-      project:null,
-      assumedRf:assumedRfValue().toFixed(1)
-    }
-  });
-  if(!review) return false;
-
-  return applyParsedCpt({
-    rows:review.rows,
-    waterLevel:null,
-    elevation:null,
-    meta:{
-      fname,
-      importFormat:'CSV',
-      project:null,
-      testid:stripCptFileExtension(fname),
-      owner:null,
-      location:null,
-      date:null,
-      aRatio:0.8,
-      zid:null
-    }
-  });
+  return cptFileImporters.csv(text,fname,S);
 }
 
 /* ════════════════════════════════
    GEF PARSER
 ════════════════════════════════ */
 async function parseGEF(txt,fname){
-  const lines=txt.split(/\r?\n/);
-  const colMap={};  // quantityID → 0-based col index
-  const unitMap={}; // quantityID → declared unit string from COLUMNINFO
-  let eoh=false, wl=null, zid=null, aRatio=0.8;
-  const meta={fname};
-  const rows=[];
-
-  for(const raw of lines){
-    const l=raw.trim();
-    if(!l)continue;
-    if(l.toUpperCase().startsWith('#EOH')){eoh=true;continue;}
-
-    if(!eoh){
-      if(l.startsWith('#COLUMNINFO')){
-        // format: #COLUMNINFO= colIndex, unit, description, quantityID
-        const rest=l.slice(l.indexOf('=')+1).split(',');
-        if(rest.length>=4){
-          const ci=parseInt(rest[0].trim())-1;
-          const unit=(rest[1]||'').trim();
-          const qi=parseInt(rest[3].trim());
-          if(!isNaN(ci)&&!isNaN(qi)){
-            colMap[qi]=ci;
-            unitMap[qi]=unit;
-          }
-        }
-      }
-      if(l.startsWith('#MEASUREMENTVAR')){
-        const m=l.match(/#MEASUREMENTVAR\s*=\s*(\d+)\s*,\s*([\-\d.eE+]+)/);
-        if(m){
-          const id=+m[1],val=parseFloat(m[2]);
-          if(id===14&&!isNaN(val))wl=Math.abs(val);   // water table depth
-          if(id===3 &&!isNaN(val))aRatio=val;           // net area ratio
-        }
-      }
-      if(l.startsWith('#ZID')){
-        const m=l.match(/#ZID\s*=\s*[^,]+,\s*([\-\d.eE+]+)/);
-        if(m)zid=parseFloat(m[1]);
-      }
-      if(l.startsWith('#PROJECTID'))  meta.project=l.split('=')[1].trim();
-      if(l.startsWith('#TESTID'))     meta.testid=l.split('=')[1].trim();
-      if(l.startsWith('#STARTDATE'))  meta.date=l.split('=')[1].trim();
-      if(l.startsWith('#FILEOWNER'))  meta.owner=l.split('=')[1].trim();
-      if(l.startsWith('#MEASUREMENTTEXT')&&/lokatie|location/i.test(l)){
-        const m=l.match(/=\s*\d+\s*,\s*([^,]+)/);
-        if(m)meta.location=m[1].trim();
-      }
-      continue;
-    }
-
-    if(l.startsWith('!'))continue;
-    const parts=l.split(/\s+/).filter(Boolean);
-    if(parts.length<2)continue;
-    let vals;try{vals=parts.map(Number);}catch(e){continue;}
-    if(vals.some(v=>isNaN(v)))continue;
-
-    function get(qid){const ci=colMap[qid];return(ci!=null&&ci<vals.length)?vals[ci]:null;}
-    function unitFor(qid){return (unitMap[qid]||'').toLowerCase();}
-
-    const z=get(11)??get(1);   // prefer corrected depth
-    const qc_v=get(2);
-    const fs_v=get(3);
-    const rf_v=get(4);         // % as declared
-    const u2_v=get(6);
-
-    if(z==null||qc_v==null||isNaN(z)||isNaN(qc_v)||z<0)continue;
-
-    const qc=cptValueToMPa(qc_v, unitFor(2), 'qc');
-    const fs=cptValueToMPa(fs_v, unitFor(3), 'fs');
-
-    let rf=null;
-    if(rf_v!=null&&!isNaN(rf_v)&&rf_v>=0&&rf_v<50){
-      rf=Math.min(rf_v,20);
-    } else if(fs!=null&&qc>0.05){
-      rf=Math.max(0,Math.min(20,(Math.abs(fs)/qc)*100));
-    }
-
-    const u2=u2_v!=null&&!isNaN(u2_v)?u2_v:null;
-    if(qc<0.02)continue;  // cone not engaged
-
-    rows.push({z:+z.toFixed(4),qc:+qc.toFixed(4),
-      fs:fs!=null?+fs.toFixed(6):null,
-      rf:rf!=null?+rf.toFixed(3):null,u2});
-  }
-
-  // Review before apply — GEF columns are declared in the file header
-  // (COLUMNINFO quantity IDs), so the mapping is shown read-only.
-  const GEF_CHANNELS=[
-    {qid:11, alt:1, label:'Diepte'},
-    {qid:2, label:'Conusweerstand qc'},
-    {qid:3, label:'Kleefweerstand fs'},
-    {qid:4, label:'Wrijvingsgetal Rf'},
-    {qid:6, label:'Waterspanning u2'}
-  ];
-  const channels=GEF_CHANNELS
-    .map(ch=>{
-      const qid=colMap[ch.qid]!=null?ch.qid:(ch.alt!=null&&colMap[ch.alt]!=null?ch.alt:null);
-      if(qid==null) return {label:ch.label, source:'niet in bestand', unit:''};
-      return {label:ch.label, source:`kolom ${colMap[qid]+1} (GEF #${qid})`, unit:unitMap[qid]||''};
-    });
-  const review=await presentImportReview({
-    fileName:fname,
-    format:'GEF',
-    rows,
-    channels,
-    context:{
-      waterLevel:wl,
-      waterSource:wl!=null?'MEASUREMENTVAR 14':null,
-      elevation:zid,
-      elevationSource:zid!=null?'ZID':null,
-      x:null, y:null,
-      testid:meta.testid||null,
-      project:meta.project||null,
-      assumedRf:assumedRfValue().toFixed(1)
-    }
-  });
-  if(!review) return false;
-
-  return applyParsedCpt({
-    rows,
-    waterLevel:wl,
-    waterSource:wl!=null?'MEASUREMENTVAR 14':null,
-    elevation:zid,
-    elevationSource:zid!=null?'ZID':null,
-    meta:{...meta,importFormat:'GEF',aRatio,zid}
-  });
+  return cptFileImporters.gef(txt,fname,S);
 }
 
 function updateElevSrc(){
-  const src=S.elevSource || 'ZID';
-  document.getElementById('elev-src').textContent=
-    S.elevFromFile?`(from ${src})`:S.elev!=null?'(manually set)':'(not set — enter for TAW output)';
+  renderElevationSource(document, S);
 }
 function updateWTDisplay(){
-  document.getElementById('wt-src').textContent=S.wtFromFile?`(${S.wtSource || 'file'})`:'(default)';
-  const tawEl=document.getElementById('wt-taw');
-  if(S.elev!=null){
-    const wtTaw=(S.elev-S.wt).toFixed(2);
-    tawEl.textContent=`= ${wtTaw} m TAW`;
-  }else{tawEl.textContent='';}
+  renderWaterTableDisplay(document, S);
 }
 
 function renderMeta(){
-  const m=S.meta, d=S.data;
-  const maxQc=d.reduce((mx,r)=>Math.max(mx,r.qc),0).toFixed(2);
-  const items=[
-    {l:'Project',v:m.project||'—'},{l:'Test ID',v:m.testid||'—'},
-    {l:'Location',v:m.location||'—'},{l:'Owner',v:m.owner||'—'},
-    {l:'Date',v:m.date||'—'},{l:'Readings',v:m.nRows},
-    {l:'Depth (m)',v:`${(+m.depthMin).toFixed(2)}–${(+m.depthMax).toFixed(2)}`},
-    {l:'Surface (m TAW)',v:m.zid!=null?m.zid.toFixed(2):'—'},
-    {l:'Area ratio a',v:m.aRatio.toFixed(3)},
-    {l:'Sleeve fric. fs',v:(m.hasFs??d.some(r=>r.fs!=null))?'Present':'—'},
-    {l:'Pore pres. u2',v:m.hasU2?'Present':'—'},
-    {l:'max qc (MPa)',v:maxQc},
-  ];
-  document.getElementById('mgrid').innerHTML=items.map(i=>
-    `<div class="mi"><div class="mi-l">${i.l}</div><div class="mi-v">${i.v}</div></div>`).join('');
-  document.getElementById('finfo').textContent=`${m.fname||''} — ${m.nRows} readings`;
+  renderMetaCard(document, S);
 }
 
 /* ════════════════════════════════
@@ -1366,11 +943,7 @@ function setAssumedRf(v){
 }
 
 function updateAssumedRfControls(){
-  const show=S.data.length>0 && S.data.some(r=>r.rf==null);
-  const wrap=document.getElementById('assumedRfCtrl');
-  if(wrap) wrap.style.display=show?'inline-flex':'none';
-  const inp=document.getElementById('assumedRfN');
-  if(inp) inp.value=normalizeAssumedRf(S.assumedRf).toFixed(1);
+  renderAssumedRfControls(document, S);
 }
 
 function cancelClassificationRefresh(){
@@ -1624,32 +1197,8 @@ function bindLayerPreviewTooltip(){
    DEMO
 ════════════════════════════════ */
 function loadDemo(){
-  const rows=[];
-  for(let z=0.14;z<=21.73;z=+(z+0.02).toFixed(3)){
-    let qc,rf;
-    if(z<0.6)      {qc=0.15+Math.random()*0.12;rf=0.7+Math.random()*0.4;}
-    else if(z<1.5) {qc=3+Math.random()*2.5;   rf=0.5+Math.random()*0.4;}
-    else if(z<3.0) {qc=7+Math.random()*3;     rf=0.8+Math.random()*0.7;}
-    else if(z<5.5) {qc=1.2+Math.random()*1;   rf=4+Math.random()*3;}
-    else if(z<7.0) {qc=1.5+Math.random()*0.8; rf=3.5+Math.random()*2;}
-    else if(z<9.5) {qc=4+Math.random()*4;     rf=1.2+Math.random()*0.8;}
-    else if(z<11)  {qc=2+Math.random()*1;     rf=3+Math.random()*2;}
-    else           {qc=3.5+Math.random()*5;   rf=1.5+Math.random()*2;}
-    const fs=qc*rf/100;
-    rows.push({z,qc:+qc.toFixed(4),fs:+fs.toFixed(6),rf:+rf.toFixed(3),u2:null});
-  }
-  S.data=rows; S.wt=1.7; S.wtFromFile=true;
-  S.wtSource='demo';
-  S.elev=69.97; S.elevFromFile=true; S.elevSource='demo';
-  S.meta={project:'Demo Project A',testid:'CPT-1 (demo)',location:'Reference site — anonymised',owner:'Anonymous source',
-    date:'2025, 7, 7',aRatio:0.79,zid:69.97,fname:'demo-anonymous.GEF',
-    nRows:rows.length,depthMin:0.14,depthMax:21.73,hasU2:false,hasFs:true,hasRf:true};
-  document.getElementById('wtR').value=1.7;
-  document.getElementById('wtN').value='1.70';
-  document.getElementById('elevN').value='69.97';
-  updateElevSrc(); updateWTDisplay(); updateAssumedRfControls();
-  renderMeta();
-  document.getElementById('s1body').style.display='block';
+  Object.assign(S, demoPatch(Math.random));
+  syncDemoDom(document, S);
   requestAnimationFrame(()=>initCharts());
 }
 
