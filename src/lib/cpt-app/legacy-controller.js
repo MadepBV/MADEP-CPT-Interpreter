@@ -114,12 +114,78 @@ import {
 } from './core/format.js';
 import { readCssToken } from './core/css-tokens.js';
 import { destroyChart as stage6DestroyChart } from './core/chart-host.js';
+import {
+  parseGEF as parseGefPure,
+  parseCsvCpt as parseCsvPure,
+  parseExcelCpt as parseExcelPure,
+  loadXlsxModule,
+  applyParsedCpt as applyParsedCptPure,
+  reviewStaging,
+  NO_DATA_ROWS_MESSAGE,
+  importCptFiles as importCptFilesPure,
+  demoPatch,
+  syncParsedCptDom,
+  syncDemoDom,
+  renderElevationSource,
+  renderWaterTableDisplay,
+  renderAssumedRfControls,
+  renderMetaCard
+} from './load/index.js';
+import {
+  DEF,
+  AE,
+  sb260GranularAlpha,
+  sb260TransitionAlpha,
+  sb260AlphaFamily,
+  alphaEB,
+  cptModelCtx,
+  stressAt as stressAtPure,
+  hsParams as hsParamsPure,
+  khParams as khParamsPure,
+  workingLayers as workingLayersPure
+} from './model-params/index.js';
+import {
+  classificationMethodLabel,
+  classificationMetricLabel,
+  classificationMetricValue,
+  assumedRfValue as assumedRfValuePure,
+  cptHasFs as cptHasFsPure,
+  cptHasRf as cptHasRfPure,
+  classRob as classRobPure,
+  classRob2016 as classRob2016Pure,
+  classCUR3 as classCUR3Pure,
+  classNEN6740 as classNEN6740Pure,
+  classSB260 as classSB260Pure,
+  classifyCpt,
+  classificationMetricsHtml,
+  classificationAssumedRfNoteHtml,
+  classificationTableRowsHtml
+} from './classification/index.js';
+import {
+  CAT_GROUPS,
+  compatLevel,
+  subtypeGroup,
+  qcRfFit,
+  suggestSubtype,
+  layerTypeCompatScore,
+  familyClass,
+  qcSimilarity,
+  rfSimilarity,
+  subtypeSimilarity,
+  paramSimilarity,
+  compatSimilarity,
+  continuityScore,
+  isCriticalMarkerLayer,
+  mergeCandidateScore,
+  segmentSummary as segmentSummaryPure,
+  layersCtx,
+  detectLayers as detectLayersPure
+} from './layers/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
 let __legacyControllerInitialized = false;
 let __legacyControllerHashBound = false;
-let xlsxModulePromise = null;
 let stage6BishopWorker = null;
 let stage6BishopRunId = 0;
 let stage6BishopSeepageWorker = null;
@@ -163,18 +229,12 @@ const retainingApp = installRetainingApp({
 // Multi-CPT stratigraphy application (Correlatie phase + Doorsnede geometry).
 // Self-contained module (src/lib/cpt-app/stratigraphy/) wired via a small
 // context. layerParamsFor evaluates the Stage 4 parameter derivation in the
-// member layer's own CPT context: hsParams/khParams read the active-CPT
-// reference S, so it is swapped for the duration of the call.
+// member layer's own CPT context (model-params ctx built from that CPT).
 const stratigraphyApp = installStratigraphyApp({
   getProject: () => PROJECT,
   layerParamsFor: (cpt, layer) => {
-    const prevS = S;
-    S = cpt;
-    try {
-      return { hs: hsParams(layer), kh: khParams(layer) };
-    } finally {
-      S = prevS;
-    }
+    const ctx = cptModelCtx(cpt);
+    return { hs: hsParamsPure(layer, ctx), kh: khParamsPure(layer, ctx) };
   },
   requestSectionRender: () => { if(PROJECT.phase==='section') renderSection(); }
 });
@@ -407,77 +467,34 @@ function setPhase(ph){
 /* ════════════════════════════════
    MULTI-CPT FILE LOAD
 ════════════════════════════════ */
-function stripCptFileExtension(name){
-  return String(name||'CPT').replace(/\.(gef|txt|csv|xls|xlsx)$/i,'');
-}
-
-function isExcelCptFile(file){
-  const name=String(file?.name||'');
-  const type=String(file?.type||'');
-  return /\.(xls|xlsx)$/i.test(name)
-    || type.includes('spreadsheet')
-    || type.includes('excel');
-}
-
-function isCsvCptFile(file){
-  const name=String(file?.name||'');
-  const type=String(file?.type||'');
-  return /\.csv$/i.test(name) || type.includes('csv');
-}
+/* File-kind sniffing and the serial loader live in load/ (file-kind.js,
+   import-files.js). Each file is parsed for its explicit target CPT — the
+   importers apply the patch to that CPT and sync the Stage 1 DOM from it —
+   so S and PROJECT.activeCptIdx are never re-pointed during an import. */
+const cptFileImporters={
+  gef:async(txt,fname,cpt)=>importParsedCpt(cpt, parseGefPure(txt,fname)),
+  csv:async(text,fname,cpt)=>importParsedCpt(cpt, parseCsvPure(text,fname)),
+  excel:async(buffer,fname,cpt)=>importParsedCpt(cpt, parseExcelPure(await loadXlsxModule(),buffer,fname))
+};
 
 /* Reads files serially because parsing still drives shared DOM/chart state. */
 function importCptFiles(files){
-  if(!files.length)return;
-
-  // Build list of target CPT indices before any async work
-  const targets=files.map((f,fi)=>{
-    if(fi===0) return PROJECT.activeCptIdx;
-    const idx=PROJECT.cpts.length;
-    PROJECT.cpts.push(newCptState('CPT-'+(idx+1)));
-    PROJECT.sectionOrder.push(idx);
-    return idx;
-  });
-
-  // Load serially: each file's reader waits for previous to complete
-  function loadNext(fi){
-    if(fi>=files.length)return;
-    const f=files[fi], targetIdx=targets[fi];
-    const reader=new FileReader();
-    reader.onload=async e=>{
-      // Save current active, switch to target, parse, restore
-      const prevActive=PROJECT.activeCptIdx;
-      const prevS=S;
-      PROJECT.activeCptIdx=targetIdx;
-      S=PROJECT.cpts[targetIdx];
-      try{
-        let ok;
-        if(isExcelCptFile(f)) ok=await parseExcelCpt(e.target.result,f.name);
-        else if(isCsvCptFile(f)) ok=await parseCsvCpt(e.target.result,f.name);
-        else ok=await parseGEF(e.target.result,f.name);
-        if(ok!==false){
-          S.id=stripCptFileExtension(f.name);
-          renderBanner();
-        }
-      }catch(err){
-        console.error(err);
-        alert(`Error importing ${f.name}: ${err?.message||err}`);
-      }
-      if(fi===0){
+  importCptFilesPure(files,{
+    project:PROJECT,
+    newCptState,
+    importers:cptFileImporters,
+    onImported:(targetIdx,isFirst)=>{
+      if(isFirst){
         // First file: stay on this CPT, update display
         selectCpt(targetIdx);
       } else {
-        // Additional files: restore previous active, then load next
-        PROJECT.activeCptIdx=prevActive;
-        S=prevS;
+        // Additional files: the active CPT is unchanged, refresh the banner
         renderBanner();
       }
-      loadNext(fi+1);
-    };
-    reader.onerror=()=>{ alert('Error reading '+f.name); loadNext(fi+1); };
-    if(isExcelCptFile(f)) reader.readAsArrayBuffer(f);
-    else reader.readAsText(f);
-  }
-  loadNext(0);
+    },
+    renderBanner,
+    alert:(message)=>alert(message)
+  });
 }
 
 function importGEFFiles(files){
@@ -497,51 +514,8 @@ function setCptCoord(axis, val){
   // No renderBanner needed — coordinates don't affect banner display
 }
 
-/* ════════════════════════════════
-   CROSS-CPT LAYER COMPATIBILITY
-   (used by Stage 3 smart-merge continuity scoring; the multi-CPT
-   correlation itself lives in src/lib/cpt-app/stratigraphy/)
-════════════════════════════════ */
-function layerTypeCompatScore(lA, lB){
-  /* Multi-level type compatibility for correlation.
-     Uses both the COMPAT matrix (grp-based) AND direct type matching.
-     Mixed/transition layers (Sandy clay = leem/klei border) get adjacency credit
-     on both sides of the boundary. */
-  const compatA=COMPAT[lA.type]||{ok:[],adj:[]};
-  const compatB=COMPAT[lB.type]||{ok:[],adj:[]};
-
-  // Get Eurocode Table 3 group of each layer's subtype
-  const entA=CAT.find(r=>r.subtype===lA.subtype);
-  const entB=CAT.find(r=>r.subtype===lB.subtype);
-  const grpA=entA?entA.grp:'';
-  const grpB=entB?entB.grp:'';
-
-  // Direct type match (both same CPT type)
-  if(lA.type===lB.type) return 1.0;
-
-  // A's subtype group is in B's compat.ok
-  if(grpA&&compatB.ok.includes(grpA)) return 0.9;
-  // B's subtype group is in A's compat.ok
-  if(grpB&&compatA.ok.includes(grpB)) return 0.9;
-
-  // Adjacent type (transition zones)
-  if(grpA&&compatB.adj.includes(grpA)) return 0.5;
-  if(grpB&&compatA.adj.includes(grpB)) return 0.5;
-
-  // CPT types are compatible (even without subtype info)
-  const cpttypes_compat={
-    'Sandy clay': ['Clay','Soft clay','Silty sand'],
-    'Silty sand': ['Sandy clay','Sand'],
-    'Soft clay':  ['Clay','Sandy clay'],
-    'Clay':       ['Soft clay','Sandy clay'],
-    'Sand':       ['Silty sand','Gravel'],
-    'Gravel':     ['Sand'],
-  };
-  if((cpttypes_compat[lA.type]||[]).includes(lB.type)) return 0.4;
-  if((cpttypes_compat[lB.type]||[]).includes(lA.type)) return 0.4;
-
-  return 0.0; // genuinely incompatible
-}
+/* layerTypeCompatScore (cross-CPT layer compatibility, shared by the Stage 3
+   smart merge and the section view) lives in layers/tabel3-compat.js (PR 6). */
 
 
 /* ════════════════════════════════
@@ -818,221 +792,6 @@ function exportSectionSVG(){
 ════════════════════════════════ */
 const SC = SOIL_CLASS_NAMES;
 const SCFILL = SOIL_FILL_COLORS;
-const DEF={
-  'Peat / organic':{g:11,gs:12,phi:17,c:0,cu:10},
-  'Soft clay':     {g:15,gs:16,phi:20,c:2,cu:25},
-  'Clay':          {g:17,gs:18,phi:24,c:5,cu:50},
-  'Sandy clay':    {g:18,gs:19,phi:28,c:2,cu:0},
-  'Silty sand':    {g:19,gs:20,phi:31,c:0,cu:0},
-  'Sand':          {g:19,gs:20,phi:34,c:0,cu:0},
-  'Gravel':        {g:20,gs:21,phi:38,c:0,cu:0}
-};
-/* Alpha Method A — fixed Sanglerat values (SB260-21-6.4.10) */
-const AE={
-  'Peat / organic':1.5,'Soft clay':3.0,'Clay':5.0,
-  'Sandy clay':8.0,'Silty sand':10.0,'Sand':13.0,'Gravel':15.0
-};
-
-/* Default drained Poisson ratios nu' for the Mohr-Coulomb deformation export
-   and for Edef = beta*Eoed,i (beta = (1+nu)(1-2nu)/(1-nu), SCIA / CSN 73 1001).
-   Priority: selected EC7 subtype first, then broad CPT soil family fallback.
-   Provenance (full derivation + bibliography in /docs/workflow#stage4-scia-edef):
-   - Mineral soils are anchored to the CSN 73 1001 directive normative
-     characteristics (as reproduced in the SCIA Engineer 25.0 help), the native
-     parameter set of the beta/Edef convention: gravels G1-G5 0.20-0.30, sands
-     S1-S5 0.28-0.35, fine soils F1-F4 0.35 / F5-F7 0.40; capped at 0.40
-     (0.42-0.45 are near-undrained magnitudes; nu_u = 0.5 is a short-term
-     state, not a drained parameter — EN 1997-2:2007 Annex K.2(3), prEN 1997-2
-     9.1.2.2, Buildwise 2022 sec 4.2.5).
-   - veen uses measured drained values: nu' = 0.10-0.15 for fibrous peat with
-     a K0-implied ceiling of ~0.21-0.26 (O'Kelly 2017); CSN has no peat class
-     and the previous 0.40-0.45 was an undrained magnitude (beta down to 0.26).
-   - leem keeps the international silt band 0.30-0.35 (AASHTO 10.6.2.2.3b-1,
-     Bowles Table 2-7) — a deliberate departure from CSN F5 = 0.40, since
-     Belgian leem is a low-plasticity loess silt.
-   - Density grading rises in granular soils (Kulhawy & Mayne 1990:
-     nu_d = 0.1 + 0.3(phi'-25)/20); consistency grading falls in clays
-     (K0nc = 1-sin phi' matching, PLAXIS MMM 3.3.2). Family ordering
-     Gravel < Sand reflects fines/plasticity control, per CSN G1-G2 0.20
-     < S1-S2 0.28: nu' tracks fines content, not grain size. */
-const MC_NU_BY_TYPE={
-  'Peat / organic':0.20,
-  'Soft clay':0.40,
-  'Clay':0.38,
-  'Sandy clay':0.33,
-  'Silty sand':0.30,
-  'Sand':0.30,
-  'Gravel':0.28
-};
-
-const MC_NU_BY_SUBTYPE={
-  'veen, weinig vast':0.15,
-  'veen, matig vast':0.20,
-  'veen, vast':0.25,
-
-  'klei, weinig vast':0.40,
-  'klei, matig vast':0.38,
-  'klei, vrij vast':0.36,
-  'klei, vast':0.35,
-  'klei (zh), weinig vast':0.35,
-  'klei (zh), matig vast':0.34,
-  'klei (zh), vrij vast':0.33,
-  'klei (zh), vast':0.32,
-
-  'leem, weinig vast':0.35,
-  'leem, matig vast':0.33,
-  'leem, vrij vast':0.32,
-  'leem, vast':0.30,
-  'leem (zh), weinig vast':0.33,
-  'leem (zh), matig vast':0.32,
-  'leem (zh), vrij vast':0.31,
-  'leem (zh), vast':0.30,
-
-  'zand, los':0.28,
-  'zand, matig':0.30,
-  'zand, dicht':0.33,
-  'zand, zeer dicht':0.35,
-  'zand (lh), los':0.30,
-  'zand (lh), matig':0.32,
-  'zand (lh), dicht':0.34,
-  'zand (lh), z.dicht':0.35,
-
-  'grind, matig':0.28,
-  'grind, dicht':0.30,
-  'grind (kh), matig':0.30,
-  'grind (kh), dicht':0.32
-};
-
-const MC_RSHEAR_BY_TYPE={
-  'Peat / organic':0.12,
-  'Soft clay':0.14,
-  'Clay':0.16,
-  'Sandy clay':0.22,
-  'Silty sand':0.28,
-  'Sand':0.33,
-  'Gravel':0.34
-};
-
-const MC_RSHEAR_BY_SUBTYPE={
-  'veen, weinig vast':0.10,
-  'veen, matig vast':0.12,
-  'veen, vast':0.15,
-
-  'klei, weinig vast':0.12,
-  'klei, matig vast':0.15,
-  'klei, vrij vast':0.18,
-  'klei, vast':0.20,
-  'klei (zh), weinig vast':0.15,
-  'klei (zh), matig vast':0.18,
-  'klei (zh), vrij vast':0.20,
-  'klei (zh), vast':0.22,
-
-  'leem, weinig vast':0.18,
-  'leem, matig vast':0.20,
-  'leem, vrij vast':0.22,
-  'leem, vast':0.25,
-  'leem (zh), weinig vast':0.20,
-  'leem (zh), matig vast':0.22,
-  'leem (zh), vrij vast':0.25,
-  'leem (zh), vast':0.28,
-
-  'zand, los':0.30,
-  'zand, matig':0.33,
-  'zand, dicht':0.35,
-  'zand, zeer dicht':0.35,
-  'zand (lh), los':0.28,
-  'zand (lh), matig':0.30,
-  'zand (lh), dicht':0.32,
-  'zand (lh), z.dicht':0.33,
-
-  'grind, matig':0.33,
-  'grind, dicht':0.35,
-  'grind (kh), matig':0.30,
-  'grind (kh), dicht':0.33
-};
-
-function mohrCoulombNuDefault(type, subtype){
-  const key=(subtype||'').trim().toLowerCase();
-  if(key && Object.prototype.hasOwnProperty.call(MC_NU_BY_SUBTYPE, key)) return MC_NU_BY_SUBTYPE[key];
-  return MC_NU_BY_TYPE[type] ?? 0.30;
-}
-
-function mohrCoulombRShearDefault(type, subtype){
-  const key=(subtype||'').trim().toLowerCase();
-  if(key && Object.prototype.hasOwnProperty.call(MC_RSHEAR_BY_SUBTYPE, key)) return MC_RSHEAR_BY_SUBTYPE[key];
-  return MC_RSHEAR_BY_TYPE[type] ?? 0.25;
-}
-
-/* Alpha Method B — SB260 family mapping driven by the selected EC7 subtype.
-   Stage 4 uses layer avgQc; Stage 5 may pass row qc for pointwise fitting.
-   Peat water content w is not available in the app, so veen defaults to α=1.5. */
-/* ════════════════════════════════
-   ALPHA METHOD B — SB260-21-6.4.10 Tabel 21-6-5
-   
-   Definitive subtype→rule-family mapping. Priority: subtype string first, then type.
-   
-   Cohesive:
-   - veen, ...      → α=1.5 (w unknown in app)
-   - klei, ...      → qc<0.7 => 5 ; 0.7-2 => 3 ; >=2 => 1.5
-   - leem, ...      → qc<2 => 4 ; >=2 => 2
-
-   Transition:
-   - klei (zh), ... / leem (zh), ... / zand (lh), ...
-     qc<2.5 => α=2 ; 2.5-5 => Es=4qc-5 ; >=5 => α=2
-
-   Granular:
-   - zand, ... / grind, ... / grind (kh), ...
-     qc<=10 => Es=4qc ; 10-50 => Es=2qc+20 ; >50 => Es=120
-════════════════════════════════ */
-function sb260GranularAlpha(qc){
-  if(qc <= 10) return 4.0;
-  if(qc <= 50) return +(((2*qc) + 20) / qc).toFixed(3);
-  return +(120 / qc).toFixed(3);
-}
-
-function sb260TransitionAlpha(qc){
-  if(qc < 2.5) return 2.0;
-  if(qc < 5.0) return +(((4*qc) - 5) / qc).toFixed(3);
-  return 2.0;
-}
-
-function sb260AlphaFamily(type, subtype, rf){
-  const sub=(subtype||'').toLowerCase();
-
-  if(sub.includes('veen')) return 'cohesive-peat';
-  if(sub.includes('klei (zh)')) return 'transition';
-  if(sub.includes('leem (zh)')) return 'transition';
-  if(sub.includes('zand (lh)')) return 'transition';
-  if(sub.includes('grind (kh)')) return 'granular';
-  if(sub.includes('grind')) return 'granular';
-  if(sub.includes('zand')) return 'granular';
-  if(sub.includes('klei')) return 'cohesive-clay';
-  if(sub.includes('leem')) return 'cohesive-loam';
-
-  // Fallback by type if no EC7 subtype is available.
-  if(type==='Peat / organic') return 'cohesive-peat';
-  if(type==='Gravel') return 'granular';
-  if(type==='Sand'||type==='Silty sand'){
-    if(rf != null && rf >= 1 && rf <= 2) return 'transition';
-    return 'granular';
-  }
-  if(type==='Clay'||type==='Soft clay') return 'cohesive-clay';
-  if(type==='Sandy clay') return 'cohesive-loam';
-  return 'cohesive-clay';
-}
-
-function alphaEB(type, avgQc, subtype, avgRf){
-  const qc = Math.max(avgQc||0.1, 0.01);
-  const family = sb260AlphaFamily(type, subtype, avgRf);
-
-  if(family==='transition') return sb260TransitionAlpha(qc);
-  if(family==='granular') return sb260GranularAlpha(qc);
-  if(family==='cohesive-peat') return 1.5;
-  if(family==='cohesive-loam') return qc < 2.0 ? 4.0 : 2.0;
-  if(family==='cohesive-clay') return qc < 0.7 ? 5.0 : (qc < 2.0 ? 3.0 : 1.5);
-
-  return AE[type]||5.0;  // fallback Method A
-}
 
 /* ════════════════════════════════
    NAVIGATION
@@ -1064,455 +823,59 @@ document.querySelectorAll('.si').forEach(s=>{
 
 /* ════════════════════════════════
    CPT FILE PARSERS
-   Number parsing, unit conversion and tabular row building live in
-   src/lib/cpt-app/import-review/ (shared with the import-review dialog);
-   here remain the format-specific readers and the header-sheet lookups.
+   The format readers are pure and live in load/parsers/ (gef.js, csv.js,
+   excel.js + excel-headers.js); number parsing, unit conversion and tabular
+   row building in import-review/ (shared with the review dialog). Here
+   remain the handshake — parse → review dialog → apply — and the wrappers
+   under the old names for the active CPT.
 ════════════════════════════════ */
-function pad2(n){
-  return String(n).padStart(2,'0');
+/* Review → apply for an explicit CPT (the seam used by the multi-file loader). */
+async function importParsedCpt(cpt, parsed){
+  if(!parsed.ok){alert(parsed.error);return false;}
+  const review=await presentImportReview(reviewStaging(parsed, normalizeAssumedRf(cpt.assumedRf).toFixed(1)));
+  if(!review) return false;
+  return applyParsedCptTo(cpt, {...parsed, rows:review.rows});
 }
 
-function formatExcelHeaderValue(value, key=''){
-  if(value==null) return '';
-  if(value instanceof Date && !isNaN(value)){
-    if(/tijd|time/i.test(key)){
-      return `${pad2(value.getHours())}:${pad2(value.getMinutes())}:${pad2(value.getSeconds())}`;
-    }
-    return `${pad2(value.getDate())}/${pad2(value.getMonth()+1)}/${value.getFullYear()}`;
-  }
-  if(typeof value==='number'){
-    return Number.isInteger(value)?String(value):String(value);
-  }
-  return String(value).trim();
-}
-
-function normalizeExcelLabel(value){
-  return String(value||'')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g,'')
-    .replace(/[^a-z0-9]+/g,' ');
-}
-
-function excelHeaderLookup(headerRows, labels){
-  const wanted=labels.map(normalizeExcelLabel);
-  for(const row of headerRows){
-    const key=normalizeExcelLabel(row?.[0]);
-    if(wanted.includes(key)) return row?.[1];
-  }
-  return null;
-}
-
-function excelHeaderText(headerRows, labels){
-  const raw=excelHeaderLookup(headerRows, labels);
-  const label=labels[0]||'';
-  const text=formatExcelHeaderValue(raw,label);
-  return text||null;
-}
-
-function excelHeaderNumber(headerRows, labels){
-  return parseCptNumber(excelHeaderLookup(headerRows, labels));
-}
-
-function findExcelSheetName(workbook, preferredName){
-  const wanted=normalizeExcelLabel(preferredName);
-  return workbook.SheetNames.find(name=>normalizeExcelLabel(name)===wanted)
-    || workbook.SheetNames.find(name=>normalizeExcelLabel(name).includes(wanted));
-}
-
-function loadXlsxModule(){
-  if(!xlsxModulePromise){
-    xlsxModulePromise=import('xlsx').then(module=>module.default?.read?module.default:module);
-  }
-  return xlsxModulePromise;
-}
-
-function applyParsedCpt({rows, meta, waterLevel, waterSource, elevation, elevationSource, x, y, coordinateSource}){
-  if(!rows.length){alert('No valid data rows found.');return false;}
-
-  S.data=rows;
-  S.wt=waterLevel??1.5;
-  S.wtFromFile=waterLevel!=null;
-  S.wtSource=waterLevel!=null?(waterSource||'file'):null;
-  S.elev=elevation;
-  S.elevFromFile=elevation!=null;
-  S.elevSource=elevation!=null?(elevationSource||'file'):null;
-  if(x!=null && y!=null && (x!==0 || y!==0)){
-    S.x=x;
-    S.y=y;
-  }else if(coordinateSource){
-    S.x=null;
-    S.y=null;
-  }
-  S.meta={...meta,nRows:rows.length,
-    depthMin:rows[0].z,depthMax:rows[rows.length-1].z,
-    hasU2:rows.some(r=>r.u2!=null),
-    hasFs:rows.some(r=>r.fs!=null),
-    hasRf:rows.some(r=>r.rf!=null)};
-
-  // Sync controls
-  document.getElementById('wtR').value=S.wt;
-  document.getElementById('wtN').value=S.wt.toFixed(2);
-  document.getElementById('elevN').value=S.elev!=null?S.elev.toFixed(2):'';
-  const cptXEl=document.getElementById('cptX');
-  const cptYEl=document.getElementById('cptY');
-  if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
-  if(cptYEl) cptYEl.value=S.y!=null?S.y:'';
-  updateElevSrc(); updateWTDisplay(); updateAssumedRfControls();
-
-  renderMeta();
-  document.getElementById('s1body').style.display='block';
+/* Assign the parsed patch to the CPT and sync the Stage 1 DOM from it; the
+   charts are (re)built on the next frame for the CPT active at that time. */
+function applyParsedCptTo(cpt, parsed){
+  const patch=applyParsedCptPure(cpt, parsed);
+  if(!patch){alert(NO_DATA_ROWS_MESSAGE);return false;}
+  Object.assign(cpt, patch);
+  syncParsedCptDom(document, cpt);
   requestAnimationFrame(()=>initCharts());
   return true;
 }
 
+function applyParsedCpt(parsed){
+  return applyParsedCptTo(S, parsed);
+}
+
 async function parseExcelCpt(buffer,fname){
-  const XLSX=await loadXlsxModule();
-  let workbook;
-  try{
-    workbook=XLSX.read(buffer,{type:'array',cellDates:true});
-  }catch(err){
-    alert(`Could not read Excel workbook: ${err?.message||err}`);
-    return false;
-  }
-
-  const dataSheetName=findExcelSheetName(workbook,'Data') || workbook.SheetNames[0];
-  const headerSheetName=findExcelSheetName(workbook,'Header');
-  const dataSheet=workbook.Sheets[dataSheetName];
-  if(!dataSheet){alert('No data sheet found in Excel workbook.');return false;}
-
-  const dataRows=XLSX.utils.sheet_to_json(dataSheet,{header:1,raw:true,defval:null,blankrows:false});
-  const headerRows=headerSheetName
-    ? XLSX.utils.sheet_to_json(workbook.Sheets[headerSheetName],{header:1,raw:true,defval:null,blankrows:false})
-    : [];
-
-  const headerIdx=findDataHeaderRow(dataRows);
-  if(headerIdx<0){alert('Could not find depth/qc columns in the Excel data sheet.');return false;}
-
-  const cols=detectColumns(dataRows[headerIdx]||[]);
-  if(cols.z<0 || cols.qc<0){alert('Excel data sheet needs at least depth and qc columns.');return false;}
-
-  const water=excelHeaderNumber(headerRows,['Waterniveau','Water level']);
-  const elevation=excelHeaderNumber(headerRows,['Grondniveau','Surface level','Ground level','ZID']);
-  const x=excelHeaderNumber(headerRows,['E Coordinate','X Coordinate','Easting']);
-  const y=excelHeaderNumber(headerRows,['N Coordinate','Y Coordinate','Northing']);
-  const aRatio=excelHeaderNumber(headerRows,['Alpha Factor','Alpha','Area ratio']) ?? 0.8;
-  const betaFactor=excelHeaderNumber(headerRows,['Beta Factor','Beta']);
-  const project=excelHeaderText(headerRows,['Taak Nummer','Project','Project ID']);
-  const testid=excelHeaderText(headerRows,['Sondering Nummer','Test ID','CPT ID']);
-  const client=excelHeaderText(headerRows,['Client Naam','Client Name','File owner']);
-  const operator=excelHeaderText(headerRows,['Operator']);
-  const location=excelHeaderText(headerRows,['Locatie','Location']);
-  const date=excelHeaderText(headerRows,['Datum','Date']);
-  const coneNumber=excelHeaderText(headerRows,['Conus Nummer','Cone Number']);
-  const penetrationDepth=excelHeaderNumber(headerRows,['Penetratiediepte','Penetration depth']);
-
-  // Review before apply: the engineer confirms the column mapping and the
-  // derived statistics (and can remap columns) before the data enters the
-  // project. Cancelling aborts this file's import.
-  const review=await presentImportReview({
-    fileName:fname,
-    format:'Excel',
-    grid:dataRows,
-    headerIdx,
-    cols,
-    context:{
-      waterLevel:water!=null?Math.abs(water):null,
-      waterSource:water!=null?'Header Waterniveau':null,
-      elevation,
-      elevationSource:elevation!=null?'Header Grondniveau':null,
-      x, y, testid, project,
-      assumedRf:assumedRfValue().toFixed(1)
-    }
-  });
-  if(!review) return false;
-
-  return applyParsedCpt({
-    rows:review.rows,
-    waterLevel:water!=null?Math.abs(water):null,
-    waterSource:water!=null?'Header Waterniveau':null,
-    elevation,
-    elevationSource:elevation!=null?'Header Grondniveau':null,
-    x,
-    y,
-    coordinateSource:(x!=null||y!=null)?'Header coordinates':null,
-    meta:{
-      fname,
-      importFormat:'Excel',
-      project,
-      testid,
-      client,
-      owner:client||operator,
-      operator,
-      location,
-      date,
-      coneNumber,
-      penetrationDepth,
-      aRatio,
-      betaFactor,
-      zid:elevation
-    }
-  });
-}
-
-function splitDelimitedLine(line, delimiter){
-  const cells=[];
-  let cell='';
-  let quoted=false;
-  for(let i=0;i<line.length;i++){
-    const ch=line[i];
-    if(ch==='"'){
-      if(quoted && line[i+1]==='"'){
-        cell+='"';
-        i++;
-      }else{
-        quoted=!quoted;
-      }
-    }else if(ch===delimiter && !quoted){
-      cells.push(cell.trim());
-      cell='';
-    }else{
-      cell+=ch;
-    }
-  }
-  cells.push(cell.trim());
-  return cells;
-}
-
-function parseDelimitedText(text, delimiter){
-  return String(text||'')
-    .replace(/^\uFEFF/,'')
-    .split(/\r?\n/)
-    .map(line=>splitDelimitedLine(line, delimiter))
-    .filter(row=>row.some(cell=>String(cell||'').trim()!==''));
-}
-
-function detectDelimitedTextSeparator(text){
-  const sample=String(text||'')
-    .replace(/^\uFEFF/,'')
-    .split(/\r?\n/)
-    .filter(line=>line.trim())
-    .slice(0,20);
-  const delimiters=[',',';','\t'];
-  let best={delimiter:',',score:-Infinity};
-  for(const delimiter of delimiters){
-    const rows=sample.map(line=>splitDelimitedLine(line, delimiter));
-    const headerIdx=findDataHeaderRow(rows);
-    const maxCols=Math.max(...rows.map(row=>row.length),0);
-    const avgCols=rows.length?rows.reduce((sum,row)=>sum+row.length,0)/rows.length:0;
-    const score=(headerIdx>=0?100:0) + maxCols*3 + avgCols;
-    if(score>best.score) best={delimiter,score};
-  }
-  return best.delimiter;
+  return cptFileImporters.excel(buffer,fname,S);
 }
 
 async function parseCsvCpt(text,fname){
-  const delimiter=detectDelimitedTextSeparator(text);
-  const tableRows=parseDelimitedText(text, delimiter);
-  const headerIdx=findDataHeaderRow(tableRows);
-  if(headerIdx<0){alert('Could not find depth/qc columns in the CSV file.');return false;}
-
-  const cols=detectColumns(tableRows[headerIdx]||[]);
-  if(cols.z<0 || cols.qc<0){alert('CSV file needs at least depth and qc columns.');return false;}
-
-  const review=await presentImportReview({
-    fileName:fname,
-    format:'CSV',
-    grid:tableRows,
-    headerIdx,
-    cols,
-    context:{
-      waterLevel:null,
-      elevation:null,
-      x:null, y:null,
-      testid:stripCptFileExtension(fname),
-      project:null,
-      assumedRf:assumedRfValue().toFixed(1)
-    }
-  });
-  if(!review) return false;
-
-  return applyParsedCpt({
-    rows:review.rows,
-    waterLevel:null,
-    elevation:null,
-    meta:{
-      fname,
-      importFormat:'CSV',
-      project:null,
-      testid:stripCptFileExtension(fname),
-      owner:null,
-      location:null,
-      date:null,
-      aRatio:0.8,
-      zid:null
-    }
-  });
+  return cptFileImporters.csv(text,fname,S);
 }
 
 /* ════════════════════════════════
    GEF PARSER
 ════════════════════════════════ */
 async function parseGEF(txt,fname){
-  const lines=txt.split(/\r?\n/);
-  const colMap={};  // quantityID → 0-based col index
-  const unitMap={}; // quantityID → declared unit string from COLUMNINFO
-  let eoh=false, wl=null, zid=null, aRatio=0.8;
-  const meta={fname};
-  const rows=[];
-
-  for(const raw of lines){
-    const l=raw.trim();
-    if(!l)continue;
-    if(l.toUpperCase().startsWith('#EOH')){eoh=true;continue;}
-
-    if(!eoh){
-      if(l.startsWith('#COLUMNINFO')){
-        // format: #COLUMNINFO= colIndex, unit, description, quantityID
-        const rest=l.slice(l.indexOf('=')+1).split(',');
-        if(rest.length>=4){
-          const ci=parseInt(rest[0].trim())-1;
-          const unit=(rest[1]||'').trim();
-          const qi=parseInt(rest[3].trim());
-          if(!isNaN(ci)&&!isNaN(qi)){
-            colMap[qi]=ci;
-            unitMap[qi]=unit;
-          }
-        }
-      }
-      if(l.startsWith('#MEASUREMENTVAR')){
-        const m=l.match(/#MEASUREMENTVAR\s*=\s*(\d+)\s*,\s*([\-\d.eE+]+)/);
-        if(m){
-          const id=+m[1],val=parseFloat(m[2]);
-          if(id===14&&!isNaN(val))wl=Math.abs(val);   // water table depth
-          if(id===3 &&!isNaN(val))aRatio=val;           // net area ratio
-        }
-      }
-      if(l.startsWith('#ZID')){
-        const m=l.match(/#ZID\s*=\s*[^,]+,\s*([\-\d.eE+]+)/);
-        if(m)zid=parseFloat(m[1]);
-      }
-      if(l.startsWith('#PROJECTID'))  meta.project=l.split('=')[1].trim();
-      if(l.startsWith('#TESTID'))     meta.testid=l.split('=')[1].trim();
-      if(l.startsWith('#STARTDATE'))  meta.date=l.split('=')[1].trim();
-      if(l.startsWith('#FILEOWNER'))  meta.owner=l.split('=')[1].trim();
-      if(l.startsWith('#MEASUREMENTTEXT')&&/lokatie|location/i.test(l)){
-        const m=l.match(/=\s*\d+\s*,\s*([^,]+)/);
-        if(m)meta.location=m[1].trim();
-      }
-      continue;
-    }
-
-    if(l.startsWith('!'))continue;
-    const parts=l.split(/\s+/).filter(Boolean);
-    if(parts.length<2)continue;
-    let vals;try{vals=parts.map(Number);}catch(e){continue;}
-    if(vals.some(v=>isNaN(v)))continue;
-
-    function get(qid){const ci=colMap[qid];return(ci!=null&&ci<vals.length)?vals[ci]:null;}
-    function unitFor(qid){return (unitMap[qid]||'').toLowerCase();}
-
-    const z=get(11)??get(1);   // prefer corrected depth
-    const qc_v=get(2);
-    const fs_v=get(3);
-    const rf_v=get(4);         // % as declared
-    const u2_v=get(6);
-
-    if(z==null||qc_v==null||isNaN(z)||isNaN(qc_v)||z<0)continue;
-
-    const qc=cptValueToMPa(qc_v, unitFor(2), 'qc');
-    const fs=cptValueToMPa(fs_v, unitFor(3), 'fs');
-
-    let rf=null;
-    if(rf_v!=null&&!isNaN(rf_v)&&rf_v>=0&&rf_v<50){
-      rf=Math.min(rf_v,20);
-    } else if(fs!=null&&qc>0.05){
-      rf=Math.max(0,Math.min(20,(Math.abs(fs)/qc)*100));
-    }
-
-    const u2=u2_v!=null&&!isNaN(u2_v)?u2_v:null;
-    if(qc<0.02)continue;  // cone not engaged
-
-    rows.push({z:+z.toFixed(4),qc:+qc.toFixed(4),
-      fs:fs!=null?+fs.toFixed(6):null,
-      rf:rf!=null?+rf.toFixed(3):null,u2});
-  }
-
-  // Review before apply — GEF columns are declared in the file header
-  // (COLUMNINFO quantity IDs), so the mapping is shown read-only.
-  const GEF_CHANNELS=[
-    {qid:11, alt:1, label:'Diepte'},
-    {qid:2, label:'Conusweerstand qc'},
-    {qid:3, label:'Kleefweerstand fs'},
-    {qid:4, label:'Wrijvingsgetal Rf'},
-    {qid:6, label:'Waterspanning u2'}
-  ];
-  const channels=GEF_CHANNELS
-    .map(ch=>{
-      const qid=colMap[ch.qid]!=null?ch.qid:(ch.alt!=null&&colMap[ch.alt]!=null?ch.alt:null);
-      if(qid==null) return {label:ch.label, source:'niet in bestand', unit:''};
-      return {label:ch.label, source:`kolom ${colMap[qid]+1} (GEF #${qid})`, unit:unitMap[qid]||''};
-    });
-  const review=await presentImportReview({
-    fileName:fname,
-    format:'GEF',
-    rows,
-    channels,
-    context:{
-      waterLevel:wl,
-      waterSource:wl!=null?'MEASUREMENTVAR 14':null,
-      elevation:zid,
-      elevationSource:zid!=null?'ZID':null,
-      x:null, y:null,
-      testid:meta.testid||null,
-      project:meta.project||null,
-      assumedRf:assumedRfValue().toFixed(1)
-    }
-  });
-  if(!review) return false;
-
-  return applyParsedCpt({
-    rows,
-    waterLevel:wl,
-    waterSource:wl!=null?'MEASUREMENTVAR 14':null,
-    elevation:zid,
-    elevationSource:zid!=null?'ZID':null,
-    meta:{...meta,importFormat:'GEF',aRatio,zid}
-  });
+  return cptFileImporters.gef(txt,fname,S);
 }
 
 function updateElevSrc(){
-  const src=S.elevSource || 'ZID';
-  document.getElementById('elev-src').textContent=
-    S.elevFromFile?`(from ${src})`:S.elev!=null?'(manually set)':'(not set — enter for TAW output)';
+  renderElevationSource(document, S);
 }
 function updateWTDisplay(){
-  document.getElementById('wt-src').textContent=S.wtFromFile?`(${S.wtSource || 'file'})`:'(default)';
-  const tawEl=document.getElementById('wt-taw');
-  if(S.elev!=null){
-    const wtTaw=(S.elev-S.wt).toFixed(2);
-    tawEl.textContent=`= ${wtTaw} m TAW`;
-  }else{tawEl.textContent='';}
+  renderWaterTableDisplay(document, S);
 }
 
 function renderMeta(){
-  const m=S.meta, d=S.data;
-  const maxQc=d.reduce((mx,r)=>Math.max(mx,r.qc),0).toFixed(2);
-  const items=[
-    {l:'Project',v:m.project||'—'},{l:'Test ID',v:m.testid||'—'},
-    {l:'Location',v:m.location||'—'},{l:'Owner',v:m.owner||'—'},
-    {l:'Date',v:m.date||'—'},{l:'Readings',v:m.nRows},
-    {l:'Depth (m)',v:`${(+m.depthMin).toFixed(2)}–${(+m.depthMax).toFixed(2)}`},
-    {l:'Surface (m TAW)',v:m.zid!=null?m.zid.toFixed(2):'—'},
-    {l:'Area ratio a',v:m.aRatio.toFixed(3)},
-    {l:'Sleeve fric. fs',v:(m.hasFs??d.some(r=>r.fs!=null))?'Present':'—'},
-    {l:'Pore pres. u2',v:m.hasU2?'Present':'—'},
-    {l:'max qc (MPa)',v:maxQc},
-  ];
-  document.getElementById('mgrid').innerHTML=items.map(i=>
-    `<div class="mi"><div class="mi-l">${i.l}</div><div class="mi-v">${i.v}</div></div>`).join('');
-  document.getElementById('finfo').textContent=`${m.fname||''} — ${m.nRows} readings`;
+  renderMetaCard(document, S);
 }
 
 /* ════════════════════════════════
@@ -1574,11 +937,7 @@ function setAssumedRf(v){
 }
 
 function updateAssumedRfControls(){
-  const show=S.data.length>0 && S.data.some(r=>r.rf==null);
-  const wrap=document.getElementById('assumedRfCtrl');
-  if(wrap) wrap.style.display=show?'inline-flex':'none';
-  const inp=document.getElementById('assumedRfN');
-  if(inp) inp.value=normalizeAssumedRf(S.assumedRf).toFixed(1);
+  renderAssumedRfControls(document, S);
 }
 
 function cancelClassificationRefresh(){
@@ -1832,32 +1191,8 @@ function bindLayerPreviewTooltip(){
    DEMO
 ════════════════════════════════ */
 function loadDemo(){
-  const rows=[];
-  for(let z=0.14;z<=21.73;z=+(z+0.02).toFixed(3)){
-    let qc,rf;
-    if(z<0.6)      {qc=0.15+Math.random()*0.12;rf=0.7+Math.random()*0.4;}
-    else if(z<1.5) {qc=3+Math.random()*2.5;   rf=0.5+Math.random()*0.4;}
-    else if(z<3.0) {qc=7+Math.random()*3;     rf=0.8+Math.random()*0.7;}
-    else if(z<5.5) {qc=1.2+Math.random()*1;   rf=4+Math.random()*3;}
-    else if(z<7.0) {qc=1.5+Math.random()*0.8; rf=3.5+Math.random()*2;}
-    else if(z<9.5) {qc=4+Math.random()*4;     rf=1.2+Math.random()*0.8;}
-    else if(z<11)  {qc=2+Math.random()*1;     rf=3+Math.random()*2;}
-    else           {qc=3.5+Math.random()*5;   rf=1.5+Math.random()*2;}
-    const fs=qc*rf/100;
-    rows.push({z,qc:+qc.toFixed(4),fs:+fs.toFixed(6),rf:+rf.toFixed(3),u2:null});
-  }
-  S.data=rows; S.wt=1.7; S.wtFromFile=true;
-  S.wtSource='demo';
-  S.elev=69.97; S.elevFromFile=true; S.elevSource='demo';
-  S.meta={project:'Demo Project A',testid:'CPT-1 (demo)',location:'Reference site — anonymised',owner:'Anonymous source',
-    date:'2025, 7, 7',aRatio:0.79,zid:69.97,fname:'demo-anonymous.GEF',
-    nRows:rows.length,depthMin:0.14,depthMax:21.73,hasU2:false,hasFs:true,hasRf:true};
-  document.getElementById('wtR').value=1.7;
-  document.getElementById('wtN').value='1.70';
-  document.getElementById('elevN').value='69.97';
-  updateElevSrc(); updateWTDisplay(); updateAssumedRfControls();
-  renderMeta();
-  document.getElementById('s1body').style.display='block';
+  Object.assign(S, demoPatch(Math.random));
+  syncDemoDom(document, S);
   requestAnimationFrame(()=>initCharts());
 }
 
@@ -1886,30 +1221,6 @@ function bindDropzone(){
 /* ════════════════════════════════
    METHOD SELECT
 ════════════════════════════════ */
-function classificationMethodLabel(method){
-  return {
-    robertson:'Robertson (1990)',
-    robertson2016:'Robertson (2016)',
-    cur3:'CUR 3 layers',
-    nen6740:'NEN 6740',
-    sb260:'NEN Tabel 3 / EC7'
-  }[method] || method || 'Unknown';
-}
-
-function classificationMetricLabel(method){
-  if(method === 'robertson') return 'Ic (-)';
-  if(method === 'robertson2016') return 'Qtn (-)';
-  if(method === 'nen6740') return 'qc,NEN (MPa)';
-  return 'Metric (-)';
-}
-
-function classificationMetricValue(method, row){
-  if(method === 'robertson') return row.Ic != null ? row.Ic : '—';
-  if(method === 'robertson2016') return row.Qt != null ? row.Qt.toFixed(1) : '—';
-  if(method === 'nen6740') return row.Qt != null ? row.Qt.toFixed(2) : '—';
-  return '—';
-}
-
 function syncClassificationMethodCards(method){
   const cards={
     mRob:'robertson',
@@ -1933,183 +1244,48 @@ function selM(m){
    STRESS
 ════════════════════════════════ */
 function stressAt(z, gamma_sat, gamma_unsat){
-  /* Correct effective stress accounting for water table position.
-     Above WT: use gamma_unsat (unsaturated unit weight = gamma, Stage 3).
-     Below WT: use gamma_sat.
-     If gamma_unsat not supplied, falls back to gamma_sat for both zones
-     (conservative, used during Stage 2 classification where only gamma=18 known). */
-  const wt = S.wt;
-  const gu = gamma_unsat ?? gamma_sat; // fallback
-  let sigV;
-  if(z <= wt){
-    sigV = gu * z;
-  } else {
-    sigV = gu * wt + gamma_sat * (z - wt);
-  }
-  const u = z > wt ? 9.81 * (z - wt) : 0;
-  return{sigV: +sigV.toFixed(2), u: +u.toFixed(2), sigVeff: Math.max(sigV - u, 1)};
+  return stressAtPure(S, z, gamma_sat, gamma_unsat);
 }
 
 /* ════════════════════════════════
    CLASSIFICATION
 ════════════════════════════════ */
 
-/* ════════════════════════════════
-   CLASSIFICATION — Robertson (1990) SBT
-   
-   Source: Robertson, P.K. (1990). Soil classification using the CPT.
-   Canadian Geotechnical Journal, 27(1), 151-158.
-   
-   Uses the Soil Behaviour Type (SBT) index Ic and the normalised
-   Robertson chart. Nine zones mapped to practical soil types.
-   
-   STRESS NORMALISATION:
-     Qt = (qc - σv0) / σ'v0        (dimensionless, cone resistance ratio)
-     Fr = fs / (qc - σv0) × 100    (%, normalised friction ratio)
-     Ic = √((3.47 - log Qt)² + (log Fr + 1.22)²)
-   
-   IC ZONE BOUNDARIES (Robertson 1990):
-     Ic > 3.60  → Zone 2: Organic soils — clay / peat
-     Ic > 2.95  → Zone 3: Clays — silty clay to clay
-     Ic > 2.60  → Zone 4: Silt mixtures — clayey silt to silty clay
-     Ic > 2.05  → Zone 5: Sand mixtures — silty sand to sandy silt
-     Ic > 1.31  → Zone 6: Sands — clean sand to silty sand
-     Ic ≤ 1.31  → Zone 7: Gravelly sand to dense sand
-     (Zone 1 "sensitive fine-grained" is not defined by an Ic band alone.)
-   
-   MAPPING to app soil types:
-     Zone 2 → Peat / organic
-     Zone 3 → Clay
-     Zone 4 → Sandy clay
-     Zone 5 → Silty sand
-     Zone 6 → Sand
-     Zone 7 → Gravel
-   Sensitive / structured fine-grained soils require judgement outside the
-   Ic bands and are not inferred here from Ic alone.
-════════════════════════════════ */
-/* The classifier math lives in classification-core.js (pure, node-verified by
-   scripts/verify_qc_only_handling.mjs). These wrappers supply the stress state
-   and the app settings. assumedRfValue() is the explicit friction-ratio
-   assumption used for readings without measured fs/Rf. */
+/* The classifier math lives in classification-core.js; the per-method
+   wrappers (stress state + app settings) and the row dispatch live in
+   classification/classify.js (PR 6). These wrappers feed them the active CPT.
+   assumedRfValue() is the explicit friction-ratio assumption used for readings
+   without measured fs/Rf. */
 function assumedRfValue(){
-  return normalizeAssumedRf(S.assumedRf);
+  return assumedRfValuePure(S);
 }
 
 /* Single source of truth for fs/Rf availability — the meta flags are set at
    parse time; the S.data fallback covers states created before the flags. */
 function cptHasFs(){
-  return S.meta?.hasFs ?? S.data.some(r=>r.fs!=null);
+  return cptHasFsPure(S);
 }
 function cptHasRf(){
-  return S.meta?.hasRf ?? S.data.some(r=>r.rf!=null);
+  return cptHasRfPure(S);
 }
 
 function classRob(r){
-  return classifyRobertson1990(r, {
-    ...stressAt(r.z, 18, 17),
-    aRatio: S.meta?.aRatio ?? 0.8,
-    assumedRf: assumedRfValue()
-  });
+  return classRobPure(S, r);
 }
-
-/* ════════════════════════════════
-   CLASSIFICATION — Robertson (2016) SBT
-
-   Uses the Robertson 2016 iterative Qtn normalisation while keeping the
-   existing Ic-based app mapping to broad soil families.
-════════════════════════════════ */
 function classRob2016(r){
-  return classifyRobertson2016(r, {
-    ...stressAt(r.z, 18, 17),
-    aRatio: S.meta?.aRatio ?? 0.8,
-    assumedRf: assumedRfValue()
-  });
+  return classRob2016Pure(S, r);
 }
-
-/* ════════════════════════════════
-   CLASSIFICATION — CUR 3 layers
-
-   Source: PLAXIS Reference Manual, "CUR 3 layers method" chart.
-
-   This is a broad layering rule, not a detailed parameter catalogue.
-   The published chart contains four fields:
-     - Sand
-     - Silt
-     - Clay
-     - Peat
-
-   The app keeps downstream compatibility with the existing parameter
-   workflow by carrying the intermediate "Silt" field as the app's
-   intermediate type "Sandy clay", with subtype marker "CUR3 silt".
-
-   Implemented chart zones:
-     - Sand: Rf < 1.5% and qc ≥ 1.5 MPa
-     - Silt: Rf < 2.5% and qc ≥ 0.5 MPa
-     - Clay: Rf ≤ 5.0% and qc ≥ 0.2 MPa
-     - Peat: all remaining points
-
-   The chart is implemented as nested zones checked from the most
-   specific region to the broadest:
-     1. Sand
-     2. Silt
-     3. Clay
-     4. Peat (complement of the three zones above)
-════════════════════════════════ */
 function classCUR3(r){
-  return classifyCUR3(r, {assumedRf: assumedRfValue()});
+  return classCUR3Pure(S, r);
 }
 
 const classCUR = classCUR3;
 
-/* ════════════════════════════════
-   CLASSIFICATION — NEN 6740 (stress dependent)
-
-   Source: NEN 6740 chart as reproduced in D-SHEET Piling and related
-   engineering manuals. The source is a 14-area semilog chart rather
-   than a closed algebraic decision tree.
-
-   The app therefore implements a transparent fixed discretisation:
-     1. compute stress-corrected q_c,NEN
-     2. compute chart score = log10(q_c,NEN) - 0.34 * R_f
-     3. choose the nearest of the 14 published material areas
-
-   The 14 area centres are digitised from the published chart and tied
-   to the representative NEN material set commonly used by software
-   implementations of the rule.
-
-   Provenance:
-   - the stress correction exponent 0.67 follows the Deltares D-SHEET
-     Piling manual for the NEN (Stress Dependent) rule;
-   - the RF slope 0.34 is an app-side regression fit through the 14
-     digitised centres, not a published NEN coefficient. It replaced the
-     earlier 0.18 slope after audit validation showed that 0.18 collapsed
-     the boundary between the stored areas 5 and 6 into a near tie.
-════════════════════════════════ */
 function classNEN6740(r){
-  const {sigVeff} = stressAt(r.z, 18, 17);
-  return classifyNEN6740(r, {sigVeff, assumedRf: assumedRfValue()});
+  return classNEN6740Pure(S, r);
 }
-
-/* ════════════════════════════════
-   CLASSIFICATION — Eurocode / NEN Tabel 3
-   "Karakteristieke grondparameters op basis van de resultaten
-   uit een elektrische sondering"
-   
-   The Eurocode table contains overlapping qc/Rf envelopes.
-   For deterministic classification the implementation checks the exact
-   table rows in table order:
-     grind → zand → leem → klei → veen
-   and, within each group, top-to-bottom row order.
-   Range handling follows the table notation exactly:
-     qc lower bound inclusive, upper bound exclusive
-     Rf < 1 and Rf > 6 are strict
-     banded Rf ranges (1–2, 2–4, 2–5, 3–6) are inclusive.
-════════════════════════════════ */
 function classSB260(r){
-  /* Readings without measured Rf are classified with the explicit assumed Rf
-     (previously they skipped Tabel 3 entirely and every qc-only reading fell
-     through to the loose-sand fallback). */
-  return classifyTabel3(r, {assumedRf: assumedRfValue()});
+  return classSB260Pure(S, r);
 }
 
 /* ════════════════════════════════
@@ -2118,83 +1294,21 @@ function classSB260(r){
 function runClass(){
   if(!S.data.length){alert('Laad eerst een GEF bestand.');return;}
 
-  S.useSB260params=(S.method==='sb260');
+  /* Compute (classification/run.js, pure) → assign to the active CPT → render
+     the four Stage 2 regions (classification/panel.js builds the markup). */
+  const result=classifyCpt(S);
+  S.useSB260params=result.useSB260params;
+  S.classified=result.classified;
+  S.rfAssumedCount=result.rfAssumedCount;
 
-  S.classified=S.data.map(r=>{
-    let res;
-    if(S.method==='robertson')     res=classRob(r);
-    else if(S.method==='robertson2016') res=classRob2016(r);
-    else if(S.method==='cur3')     res=classCUR3(r);
-    else if(S.method==='nen6740')  res=classNEN6740(r);
-    else                           res=classSB260(r);
-    return Object.assign({},r,res);
-  });
+  document.getElementById('cmet').innerHTML=classificationMetricsHtml(result.metrics);
 
-  const cl=S.classified;
-  const n=cl.length;
-  const fsRows=cl.filter(r=>r.fs!=null);
-  const rfRows=cl.filter(r=>r.rf!=null);
-  const avg=(rows,fn)=>rows.reduce((s,x)=>s+fn(x),0)/rows.length;
-
-  // Readings classified without measured Rf → the assumed Rf was used.
-  S.rfAssumedCount=n-rfRows.length;
-
-  document.getElementById('cmet').innerHTML=[
-    {l:'avg qc (MPa)',  v:avg(cl,r=>r.qc).toFixed(2)},
-    {l:'avg fs (kPa)',  v:fsRows.length?(avg(fsRows,r=>r.fs)*1000).toFixed(1):'—'},
-    {l:'avg Rf (%)',    v:rfRows.length?avg(rfRows,r=>r.rf).toFixed(2):'—'},
-    {l:'max depth (m)', v:cl[n-1].z.toFixed(2)},
-    {l:'readings',      v:n},
-    {l:'method',        v:classificationMethodLabel(S.method)}
-  ].map(m=>`<div class="met"><div class="met-l">${m.l}</div><div class="met-v">${m.v}</div></div>`).join('');
-
-  /* fs/Rf coverage note — severity follows the share of affected readings.
-     A fully qc-only file compromises every classification (strong warning);
-     a handful of gaps (typically the final reading of a push) only merits a
-     quiet data note naming the depths, because the profile IS measured. */
   const assumedNote=document.getElementById('classAssumedRfNote');
-  if(assumedNote){
-    const missing=S.rfAssumedCount;
-    const noneMeasured=fsRows.length===0&&rfRows.length===0;
-    const rfTxt=`R<sub>f</sub> = ${assumedRfValue().toFixed(1)} %`;
-    if(missing===0){
-      assumedNote.innerHTML='';
-    }else if(noneMeasured){
-      assumedNote.innerHTML=`<div class="layerwarn layerwarn-bad">
-          <span class="layerwarn-k">Geen gemeten sleeve friction</span><br>
-          <span class="layerwarn-msg">Het bronbestand bevat geen fs/R<sub>f</sub>. De classificatie gebruikt overal een
-          <strong>aangenomen ${rfTxt}</strong> (instelbaar hierboven). Grondtypes en afgeleide parameters zijn daardoor
-          indicatief — controleer de lagen in Stage 3 tegen boringen of projectkennis.</span>
-        </div>`;
-    }else if(missing/n>=0.05){
-      assumedNote.innerHTML=`<div class="layerwarn layerwarn-adj">
-          <span class="layerwarn-k">Sleeve friction deels gemeten</span><br>
-          <span class="layerwarn-msg">${missing} van ${n} metingen hebben geen fs/R<sub>f</sub> in het bronbestand;
-          voor die metingen geldt een <strong>aangenomen ${rfTxt}</strong> (instelbaar hierboven).
-          Controleer de betreffende lagen in Stage 3.</span>
-        </div>`;
-    }else{
-      const gaps=cl.filter(r=>r.rf==null).map(r=>r.z.toFixed(2));
-      const depthTxt=gaps.length<=3?` (op ${gaps.join(', ')} m)`:'';
-      assumedNote.innerHTML=`<div class="data-note"><strong>${missing} van ${n}</strong> metingen zonder gemeten
-        fs/R<sub>f</sub>${depthTxt} — daarvoor geldt de aangenomen ${rfTxt}. De overige ${n-missing} metingen
-        gebruiken de gemeten waarden.</div>`;
-    }
-  }
+  if(assumedNote) assumedNote.innerHTML=classificationAssumedRfNoteHtml(result.assumedRfNote);
 
-  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
   const metricHead=document.getElementById('cmetricHead');
-  if(metricHead) metricHead.innerHTML=classificationMetricLabel(S.method);
-  document.getElementById('cbody').innerHTML=cl.map(r=>`<tr>
-    <td>${r.z.toFixed(3)}</td>
-    <td style="color:var(--tx2)">${taw(r.z)}</td>
-    <td>${r.qc.toFixed(3)}</td>
-    <td>${r.fs!=null?(r.fs*1000).toFixed(2):'—'}</td>
-    <td>${r.rf!=null?r.rf.toFixed(2):'—'}</td>
-    <td><span class="sb ${SC[r.type]||'s-sand'}">${r.type}</span></td>
-    <td style="font-size:10px;color:var(--tx2)">${r.subtype||'—'}</td>
-    <td style="color:var(--tx3)">${classificationMetricValue(S.method, r)}</td>
-  </tr>`).join('');
+  if(metricHead) metricHead.innerHTML=result.metricLabel;
+  document.getElementById('cbody').innerHTML=classificationTableRowsHtml(result.classified,{method:S.method,elev:S.elev});
 
   document.getElementById('classLayout').style.display='';
   detectLayers();
@@ -2206,338 +1320,18 @@ function runClass(){
 
 /* ════════════════════════════════
    LAYER DETECTION
+   The detection lives in layers/ (PR 6): segments.js (summaries, similarity
+   scores), merge.js (baseline / smart chains), detect.js (detectLayers →
+   layers[], pure). These wrappers feed the pure functions the active CPT;
+   detectLayers() assigns the result — rendering stays with its callers
+   (goS(2), setParamMethod, refreshClassificationDerivedViews), as before.
 ════════════════════════════════ */
 function segmentSummary(seg, prevSeg){
-  const r=seg.rows.filter(x=>x.qc>0.02);
-  const rows=r.length?r:seg.rows;
-  const top=segmentTop(seg, prevSeg);
-  const bot=+seg.rows[seg.rows.length-1].z.toFixed(3);
-  const avgQc=+(rows.reduce((s,x)=>s+x.qc,0)/rows.length).toFixed(3);
-  const fsR=rows.filter(x=>x.fs!=null);
-  const avgFs=fsR.length?+(fsR.reduce((s,x)=>s+x.fs,0)/fsR.length).toFixed(5):null;
-  const rfR=rows.filter(x=>x.rf!=null);
-  const avgRf=rfR.length?+(rfR.reduce((s,x)=>s+(x.rf??0),0)/rfR.length).toFixed(2):null;
-  const subtypeCounts={};
-  seg.rows.forEach(row=>{const st=row.subtype||'';subtypeCounts[st]=(subtypeCounts[st]||0)+1;});
-  const subtype=Object.keys(subtypeCounts).sort((a,b)=>subtypeCounts[b]-subtypeCounts[a])[0]||'';
-  let g,gs,phi,c,cu;
-  if(S.useSB260params){
-    const vr=seg.rows.filter(x=>x.g!=null);
-    if(vr.length){
-      const avg2=fn=>+(vr.reduce((s,x)=>s+fn(x),0)/vr.length).toFixed(1);
-      g=+avg2(x=>x.g); gs=+avg2(x=>x.gs); phi=+avg2(x=>x.phi); c=+avg2(x=>x.c); cu=+avg2(x=>x.cu);
-    }else{
-      const df=DEF[seg.type]||DEF['Sand']; g=df.g; gs=df.gs; phi=df.phi; c=df.c; cu=df.cu;
-    }
-  }else{
-    const df=DEF[seg.type]||DEF['Sand']; g=df.g; gs=df.gs; phi=df.phi; c=df.c; cu=df.cu;
-  }
-  return{type:seg.type,subtype,avgQc,avgFs,avgRf,g,gs,phi,c,cu,top,bot,thk:+(bot-top).toFixed(3),rows:seg.rows.length};
-}
-
-function segmentTop(seg, prevSeg){
-  if(!seg) return 0;
-  if(seg._top!=null) return +(+seg._top).toFixed(3);
-  if(seg.isFirst) return 0;
-
-  const prevLast=prevSeg?.rows?.[prevSeg.rows.length - 1]?.z;
-  const currFirst=seg.rows?.[0]?.z;
-
-  if(Number.isFinite(prevLast) && Number.isFinite(currFirst) && currFirst > prevLast){
-    return +(0.5 * (prevLast + currFirst)).toFixed(3);
-  }
-
-  if(Number.isFinite(currFirst)){
-    return +(currFirst - 0.02).toFixed(3);
-  }
-
-  return Number.isFinite(prevLast) ? +prevLast.toFixed(3) : 0;
-}
-
-function subtypeGroup(subtype){
-  const ent=CAT.find(r=>r.subtype===subtype);
-  return ent?ent.grp:'';
-}
-
-function familyClass(layer){
-  const grp=subtypeGroup(layer.subtype);
-  if(grp==='veen'||grp==='klei'||grp==='leem') return 'cohesive';
-  if(grp==='zand'||grp==='grind') return 'granular';
-  if(layer.type==='Peat / organic'||layer.type==='Clay'||layer.type==='Soft clay'||layer.type==='Sandy clay') return 'cohesive';
-  return 'granular';
-}
-
-function qcSimilarity(a,b){
-  const qa=Math.max(0.01,a.avgQc), qb=Math.max(0.01,b.avgQc);
-  return Math.max(0,1-Math.abs(Math.log(qa/qb))/Math.log(3));
-}
-
-function rfSimilarity(a,b){
-  if(a.avgRf==null||b.avgRf==null) return 0.5;
-  return Math.max(0,1-Math.abs(a.avgRf-b.avgRf)/3);
-}
-
-function subtypeSimilarity(a,b){
-  if(a.subtype&&a.subtype===b.subtype) return 1;
-  const ga=subtypeGroup(a.subtype), gb=subtypeGroup(b.subtype);
-  if(ga&&gb&&ga===gb) return 0.75;
-  const lvl=compatLevel(a.type,gb||'');
-  return lvl==='ok'?0.55:lvl==='adj'?0.25:0;
-}
-
-function paramSimilarity(a,b){
-  const vals=[
-    Math.max(0,1-Math.abs(a.phi-b.phi)/8),
-    Math.max(0,1-Math.abs(a.g-b.g)/3),
-    Math.max(0,1-Math.abs(a.c-b.c)/15)
-  ];
-  if(a.cu>0||b.cu>0) vals.push(Math.max(0,1-Math.abs(a.cu-b.cu)/75));
-  return vals.reduce((s,v)=>s+v,0)/vals.length;
-}
-
-function compatSimilarity(a,b){
-  const grpB=subtypeGroup(b.subtype);
-  const lvl=compatLevel(a.type,grpB||'');
-  return lvl==='ok'?1:lvl==='adj'?0.5:0;
-}
-
-function continuityScore(neighbor, outer){
-  if(!outer) return 0.5;
-  return 0.35*(layerTypeCompatScore(neighbor,outer)) + 0.35*qcSimilarity(neighbor,outer) + 0.30*rfSimilarity(neighbor,outer);
-}
-
-function isCriticalMarkerLayer(layer, up, down){
-  if(layer.type==='Peat / organic'||layer.type==='Gravel') return true;
-  if(layer.avgRf!=null&&layer.avgRf>6) return true;
-  if(layer.avgQc<0.35||layer.avgQc>=15) return true;
-  if(up&&down){
-    const fam=familyClass(layer), fu=familyClass(up), fd=familyClass(down);
-    if(fam!==fu&&fam!==fd&&fu===fd) return true;
-  }
-  return false;
-}
-
-const SMART_SLIVER_REF = 0.25;
-
-function mergeCandidateScore(layer, neighbor, outer){
-  if(!neighbor) return{ok:false,score:0,why:'no-neighbor'};
-  const logRatio=Math.abs(Math.log(Math.max(0.01,layer.avgQc)/Math.max(0.01,neighbor.avgQc)));
-  const thicknessRef=SMART_SLIVER_REF;
-  const thicknessImportance=Math.max(0,Math.min(1,(layer.thk||0)/thicknessRef));
-  const sliverBonus=0.14*(1-thicknessImportance);
-  const penaltyScale=0.25 + 0.75*thicknessImportance;
-
-  const typeScore=layer.type===neighbor.type?1:layerTypeCompatScore(layer,neighbor);
-  const qcScore=qcSimilarity(layer,neighbor);
-  const rfScore=rfSimilarity(layer,neighbor);
-  const stScore=subtypeSimilarity(layer,neighbor);
-  const pScore=paramSimilarity(layer,neighbor);
-  const compScore=compatSimilarity(layer,neighbor);
-  const corrScore=continuityScore(neighbor,outer);
-  let score=0.24*typeScore + 0.20*qcScore + 0.14*rfScore + 0.14*stScore + 0.12*pScore + 0.08*compScore + 0.08*corrScore + sliverBonus;
-
-  // Penalise sharp transitions, but do not fully block the merge.
-  // The thickness criterion remains hard; similarity only decides direction.
-  if(logRatio>Math.log(2.5)) score-=0.22*penaltyScale;
-  else if(logRatio>Math.log(1.8)) score-=0.10*penaltyScale;
-
-  if(layer.avgRf!=null&&neighbor.avgRf!=null){
-    const rfDiff=Math.abs(layer.avgRf-neighbor.avgRf);
-    if(rfDiff>4) score-=0.16*penaltyScale;
-    else if(rfDiff>2.5) score-=0.08*penaltyScale;
-  }
-
-  if((layer.type==='Peat / organic')!==(neighbor.type==='Peat / organic')) score-=0.18*penaltyScale;
-  if((layer.type==='Gravel')!==(neighbor.type==='Gravel')) score-=0.14*penaltyScale;
-
-  if(isCriticalMarkerLayer(layer,null,null) && layer.type!==neighbor.type) score-=0.10*penaltyScale;
-
-  score=Math.max(0,+score.toFixed(3));
-  return{ok:true,score};
-}
-
-function simpleUpwardMerge(segments){
-  let changed=true;
-  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  while(changed){
-    changed=false;
-    const next=[];
-    for(let i=0;i<merged.length;i++){
-      const seg=merged[i];
-      const rows=seg.rows;
-      const prev=i>0?merged[i-1]:null;
-      const thick=segmentSummary(seg, prev).thk;
-      if(thick<S.minThk&&next.length>0){
-        next[next.length-1].rows.push(...rows);
-        changed=true;
-      }else{
-        next.push({...seg,rows:[...rows]});
-      }
-    }
-    merged=next.map((seg,i)=>({...seg,isFirst:i===0}));
-  }
-  return merged;
-}
-
-function mergeSegmentInDirection(merged, i, dir){
-  const seg=merged[i];
-  if(dir==='up'){
-    merged[i-1].rows.push(...seg.rows);
-    merged.splice(i,1);
-  }else{
-    merged[i+1].rows.unshift(...seg.rows);
-    merged[i+1]._top=segmentTop(seg, i>0?merged[i-1]:null);
-    merged.splice(i,1);
-  }
-  return merged.map((s,idx)=>({...s,isFirst:idx===0}));
-}
-
-function chooseSimilarityMergeDirection(merged, i, margin){
-  const seg=merged[i];
-  const layer=segmentSummary(seg, i>0?merged[i-1]:null);
-  const upSeg=i>0?merged[i-1]:null, downSeg=i<merged.length-1?merged[i+1]:null;
-  const up=upSeg?segmentSummary(upSeg, i>1?merged[i-2]:null):null;
-  const down=downSeg?segmentSummary(downSeg, seg):null;
-  const upOuter=i>1?segmentSummary(merged[i-2], i>2?merged[i-3]:null):null;
-  const downOuter=i<merged.length-2?segmentSummary(merged[i+2], downSeg):null;
-  const upCand=mergeCandidateScore(layer,up,upOuter);
-  const downCand=mergeCandidateScore(layer,down,downOuter);
-  if(!upCand.ok&&!downCand.ok) return null;
-
-  if(upCand.ok&&(!downCand.ok||upCand.score>downCand.score+margin)) return 'up';
-  if(downCand.ok&&(!upCand.ok||downCand.score>upCand.score+margin)) return 'down';
-  if(upCand.ok&&downCand.ok){
-    const upThk=up?.thk||0, downThk=down?.thk||0;
-    return upThk===downThk?'up':(upThk>downThk?'up':'down');
-  }
-  return upCand.ok?'up':'down';
-}
-
-function smartSimilarityReduce(segments, sensitivity){
-  let changed=true;
-  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  const sens=Math.max(0,Math.min(6,sensitivity ?? 1.1));
-  const pairThreshold=0.90 - 0.275*sens;
-  const thicknessRef=SMART_SLIVER_REF;
-  while(changed){
-    changed=false;
-    let bestIdx=-1;
-    let bestScore=-Infinity;
-    for(let i=0;i<merged.length-1;i++){
-      const left=segmentSummary(merged[i], i>0?merged[i-1]:null);
-      const right=segmentSummary(merged[i+1], merged[i]);
-      const leftOuter=i>0?segmentSummary(merged[i-1], i>1?merged[i-2]:null):null;
-      const rightOuter=i<merged.length-2?segmentSummary(merged[i+2], merged[i+1]):null;
-      const lr=mergeCandidateScore(left,right,rightOuter);
-      const rl=mergeCandidateScore(right,left,leftOuter);
-      if(!lr.ok||!rl.ok) continue;
-      const thinBoundaryFactor=1-Math.max(0,Math.min(1,Math.min(left.thk,right.thk)/thicknessRef));
-      const pairScore=+(((lr.score+rl.score)/2 + 0.10*thinBoundaryFactor)).toFixed(3);
-      if(pairScore>bestScore){
-        bestScore=pairScore;
-        bestIdx=i;
-      }
-    }
-
-    if(bestIdx>=0 && bestScore>=pairThreshold){
-      merged[bestIdx].rows.push(...merged[bestIdx+1].rows);
-      merged.splice(bestIdx+1,1);
-      merged=merged.map((s,idx)=>({...s,isFirst:idx===0}));
-      changed=true;
-    }
-  }
-  return merged;
-}
-
-function enforceMinThicknessBySimilarity(segments, sensitivity){
-  let changed=true;
-  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  const sens=Math.max(0,Math.min(6,sensitivity ?? 1.1));
-  const margin=Math.max(0, 0.14 - 0.08*sens);
-  while(changed){
-    changed=false;
-    for(let i=0;i<merged.length;i++){
-      const layer=segmentSummary(merged[i], i>0?merged[i-1]:null);
-      if(layer.thk>=S.minThk) continue;
-      const dir=chooseSimilarityMergeDirection(merged, i, margin);
-      if(!dir) continue;
-      merged=mergeSegmentInDirection(merged, i, dir);
-      changed=true;
-      break;
-    }
-  }
-  return merged;
-}
-
-function smartPostMerge(segments){
-  const sensitivity=Math.max(0,Math.min(6,S.smartMergeSensitivity ?? 1.1));
-  let merged=segments.map((seg,i)=>({...seg,isFirst:i===0}));
-  // Intended smart chain:
-  //   1. original raw classification-derived layering
-  //   2. similarity-driven boundary reduction
-  //   3. minimum-thickness enforcement as the final hard merge force
-  merged=smartSimilarityReduce(merged, sensitivity);
-  merged=enforceMinThicknessBySimilarity(merged, sensitivity);
-  return merged;
-}
-
-function classificationSegmentKey(row){
-  if(S.method==='sb260') return `${row.type}::${row.subtype||''}`;
-  return row.type;
+  return segmentSummaryPure(seg, prevSeg, layersCtx(S));
 }
 
 function detectLayers(){
-  const d=S.classified;
-  const raw=[];
-  let cur={type:d[0].type, subtype:d[0].subtype||'', key:classificationSegmentKey(d[0]), rows:[d[0]]};
-  for(let i=1;i<d.length;i++){
-    const key=classificationSegmentKey(d[i]);
-    if(key===cur.key) cur.rows.push(d[i]);
-    else{
-      raw.push(cur);
-      cur={type:d[i].type, subtype:d[i].subtype||'', key, rows:[d[i]]};
-    }
-  }
-  raw.push(cur);
-
-  // Important: the original raw layering is always created first from the
-  // unmodified point-by-point classification sequence above.
-  // Then:
-  //   - baseline mode: enforce minimum thickness by upward merge
-  //   - smart mode: reduce by similarity first, enforce minimum thickness last
-  const merged=S.smartMerge ? smartPostMerge(raw) : simpleUpwardMerge(raw);
-
-  const mergedSummaries=merged.map((seg,i)=>segmentSummary({...seg,isFirst:i===0}, i>0?merged[i-1]:null));
-  let prevBot=null;
-  S.layers=merged.map((seg,i)=>{
-    const sum=mergedSummaries[i];
-    const top=prevBot==null?sum.top:+prevBot.toFixed(3);
-    const bot=Math.max(top,+sum.bot.toFixed(3));
-    prevBot=bot;
-    const {avgQc,avgFs,avgRf,subtype}=sum;
-    let {g,gs,phi,c,cu}=sum;
-    // Auto-suggest best Eurocode Table 3 subtype from catalogue based on avgQc + avgRf
-    // Only if subtype not already forced by the classification itself
-    const tmpLayer={type:seg.type,subtype,avgQc,avgRf};
-    const suggestion=suggestSubtype(tmpLayer);
-    const suggestedSubtype=suggestion?suggestion.subtype:subtype;
-    // Without measured Rf, Tabel 3 rows that share a qc band cannot be told
-    // apart — the suggestion falls back to catalogue order (conservative for
-    // the common Flanders profiles, and the engineer reviews/overrides in
-    // Stage 3). Flag the layer so that fallback is visible, not silent.
-    const rfIndeterminate=avgRf==null && !!suggestion &&
-      CAT.filter(r=>compatLevel(seg.type,r.grp)==='ok' && qcRfFit(r,avgQc,null)==='match').length>1;
-    // If suggestion differs from classification subtype, apply suggestion params
-    // but mark it as a suggestion (not a manual override)
-    let sg=g,sgs=gs,sphi=Math.round(phi),sc=Math.round(c),scu=Math.round(cu);
-    if(suggestion&&S.paramMethod==='sb260'){
-      sg=suggestion.g; sgs=suggestion.gs;
-      sphi=suggestion.phi; sc=suggestion.c; scu=suggestion.cu;
-    }
-    return{id:i,top,bot,type:seg.type,subtype:suggestedSubtype,avgQc,avgFs,avgRf,
-      rfIndeterminate,
-      g:sg,gs:sgs,phi:sphi,c:sc,cu:scu,ovr:{}};
-  });
+  S.layers=detectLayersPure(S, layersCtx(S));
 }
 
 /* ════════════════════════════════
@@ -2572,161 +1366,12 @@ function detectLayers(){
    at the top of this file) so the node verification scripts can exercise
    the exact table used by the app. */
 
-const CAT_GROUPS={
-  veen:'Veen',
-  klei:'Klei / Klei zandhoudend',
-  leem:'Leem / Zandhoudende leem',
-  zand:'Zand / Leemhoudend zand',
-  grind:'Grind',
-};
-
-/* Compatibility matrix: CPT type → {compatible grps, adjacent grps}
-   'compatible' = expected match, no warning
-   'adjacent'   = plausible (transition zone), show note in dropdown but allow
-   anything else = incompatible, shown in disabled optgroup with warning */
-/* COMPAT: CPT soil behaviour type → {ok: Tabel 3 groups, adj: adjacent groups}
-   'ok'  = directly expected for this CPT type — shown first in dropdown, ✓/~/· hints
-   'adj' = adjacent/transition — shown with ⚠ prefix, selectable
-   rest  = incompatible — disabled
-   
-   Robertson types → Tabel 3 mapping:
-     Peat/organic (Zone 2)  → veen
-     Soft clay   (Zone 1)   → klei (sensitive clay), leem adj
-     Clay        (Zone 3)   → klei, leem adj
-     Sandy clay  (Zone 4)   → leem AND klei zh (both are silt mixtures in Tabel 3)
-     Silty sand  (Zone 5)   → zandhoudende leem (leem grp) + leemhoudend zand (zand grp)
-                              pure klei is not treated as an adjacent transition here
-     Sand        (Zone 6)   → zand, grind adj
-     Gravel      (Zone 7)   → grind, zand adj
-*/
-const COMPAT={
-  'Peat / organic': {ok:['veen'],             adj:[]},
-  'Soft clay':      {ok:['klei'],             adj:['leem']},
-  'Clay':           {ok:['klei'],             adj:['leem']},
-  'Sandy clay':     {ok:['leem','klei'],      adj:['zand']},
-  'Silty sand':     {ok:['leem','zand'],      adj:[]},
-  'Sand':           {ok:['zand'],             adj:['grind','leem']},
-  'Gravel':         {ok:['grind'],            adj:['zand']},
-};
-
-function compatLevel(cptType, grp){
-  const c=COMPAT[cptType]||{ok:[],adj:[]};
-  if(c.ok.includes(grp))  return 'ok';
-  if(c.adj.includes(grp)) return 'adj';
-  return 'bad';
-}
+/* CAT_GROUPS, the COMPAT matrix, compatLevel, qcRfFit and suggestSubtype live in
+   layers/tabel3-compat.js (PR 6). */
 
 /* Build the subtype dropdown for one layer.
    Groups: compatible entries first (enabled), adjacent (enabled, marked),
    incompatible last (disabled). */
-/* ── qc/Rf fit check ───────────────────────────────────────────────────
-   Returns whether a CAT entry's qc and Rf ranges match the layer's
-   average values. 'match'=within range, 'close'=within 50% margin,
-   'out'=clearly outside. Only applied within compatible groups. */
-function qcRfFit(entry, avgQc, avgRf){
-  /* Strict matching against NEN Tabel 3 qc and Rf ranges.
-     
-     BOUNDARY RULES from Tabel 3:
-     - qc: lower bound inclusive, upper bound exclusive  (e.g. "2 ≤ qc < 4")
-     - Rf: lower bound inclusive, upper bound inclusive  (e.g. "Rf 3–6%")
-     - Exception: Rf < 1% entries (clean zand/grind) → upper bound is EXCLUSIVE
-       because Rf=1.0% belongs to the leem/kleihoudend zone (Rf 1–2%)
-     - Veen requires Rf > 6% (hard gate, no tolerance)
-     
-     Returns: 'match' = both qc and Rf in range for this entry
-              'close' = qc matches, Rf within 0.3pp of boundary
-              'out'   = clearly outside → shown as '·' hint only
-  */
-  const rf = avgRf ?? null;
-
-  // Hard veen gate: must have Rf > 6%
-  if(entry.grp === 'veen' && rf !== null && rf < 5.5) return 'out';
-
-  // qc check (exclusive upper bound per Tabel 3 notation)
-  const qcOk = avgQc >= entry.qcMin && avgQc < entry.qcMax;
-
-  // Rf check — boundary inclusivity depends on entry type
-  let rfOk;
-  if(rf === null){
-    rfOk = true;  // no Rf data: skip Rf check
-  } else if(entry.rfMax === 1 && entry.rfMin === 0){
-    // Clean zand / grind: Tabel 3 "Rf < 1%" → strict exclusive upper
-    rfOk = rf >= 0 && rf < 1.0;
-  } else if(entry.rfMax === 2 && entry.rfMin === 1){
-    // Lh/kh zand / grind: Tabel 3 "Rf 1–2%" → inclusive both ends
-    rfOk = rf >= 1.0 && rf <= 2.0;
-  } else {
-    // All other entries: inclusive both ends
-    rfOk = rf >= entry.rfMin && rf <= entry.rfMax;
-  }
-
-  if(qcOk && rfOk) return 'match';
-
-  // Close: qc in range, Rf within 0.3pp of boundary
-  let rfClose;
-  if(rf === null) rfClose = true;
-  else rfClose = rf >= entry.rfMin - 0.3 && rf <= entry.rfMax + 0.3;
-  if(qcOk && rfClose) return 'close';
-
-  return 'out';
-}
-
-/* ── Auto-suggest best CAT entry for a layer ──────────────────────────
-   Called when layer has no subtype yet (or on param method change).
-   Picks the highest-scoring compatible entry based on qc and Rf. */
-function suggestSubtype(l){
-  /* Suggest the single best CAT entry for this layer's qc and Rf.
-     
-     Priority:
-     1. Compatible group (COMPAT.ok) with qc AND Rf matching → score 10
-     2. Compatible group with qc matching, Rf close (±0.5pp) → score 5
-     3. Compatible group with qc matching, Rf out → score 2
-        BUT: never suggest veen if Rf < 6% (Tabel 3 hard gate)
-        AND: if the best ok-candidate has Rf mismatch, also check adj groups
-     4. Adjacent group with qc+Rf match → score 3 (preferred over ok+Rf mismatch)
-     5. Proximity-based fallback within ok group
-  */
-  const qc  = l.avgQc;
-  const rf  = l.avgRf ?? null;
-
-  // Hard veen exclusion: veen entries require Rf>6%
-  const rfBlocksVeen = rf !== null && rf < 5.0;
-
-  let best = null, bestScore = -99;
-
-  const levels = ['ok', 'adj'];
-  for(const level of levels){
-    const candidates = CAT.filter(r => compatLevel(l.type, r.grp) === level);
-    for(const r of candidates){
-      // Hard exclusion: never suggest veen if Rf clearly not peat-range
-      if(r.grp === 'veen' && rfBlocksVeen) continue;
-
-      const fit = qcRfFit(r, qc, rf);
-      let score = 0;
-      if(level === 'ok'){
-        if(fit === 'match')      score = 10;
-        else if(fit === 'close') score = 5;
-        else {
-          // qc out of range — penalise by distance
-          const qcDist = qc < r.qcMin ? r.qcMin - qc : Math.max(0, qc - r.qcMax);
-          score = 2 - qcDist;
-        }
-      } else {
-        // adj group — only suggest if it fits better than ok candidates
-        if(fit === 'match')      score = 4;   // slightly below ok-match
-        else if(fit === 'close') score = 2;
-        else score = -1;
-      }
-      // Tie-break: prefer entry whose qc midpoint is closest to layer avgQc
-      const qcMid = (r.qcMin + Math.min(r.qcMax, 20)) / 2;
-      score += 0.01 * (1 - Math.abs(qc - qcMid) / Math.max(qcMid, 1));
-
-      if(score > bestScore){ bestScore = score; best = r; }
-    }
-  }
-  return best;
-}
-
 function buildSubtypeDropdown(l, i){
   const cptType=l.type;
   const cur=l.subtype||'';
@@ -2946,88 +1591,7 @@ function editNu(el){
    MODEL PARAMETERS
 ════════════════════════════════ */
 function khParams(l){
-  /* Hydraulic conductivity from I/RA/11461/15.066/JSW
-     Tabel 2-44 (OVAM 2002) + Tabel 2-45 (De Smedt VUB)
-     mapped to CPT soil types. Values in m/s.
-     kh_min, kh_max = range; kh_rep = representative (geometric mean). */
-  const sub=l.subtype||'';
-  const isGranular=l.type==='Sand'||l.type==='Silty sand'||l.type==='Gravel';
-  const isCohesive =l.type==='Clay'||l.type==='Soft clay';
-  const isLeem     =l.type==='Sandy clay';
-  const isPeat     =l.type==='Peat / organic';
-
-  let kh_min,kh_max,kh_rep;
-
-  if(l.type==='Gravel'){
-    kh_min=2.3e-4; kh_max=1.2e-2; kh_rep=1e-3;
-  } else if(l.type==='Sand'){
-    // Sub-classify by SB260 consistency (subtype contains zand, los/matig/dicht/z.dicht)
-    if(sub.includes('z.dicht')||sub.includes('zeer dicht')){kh_min=1.2e-4;kh_max=2.3e-4;kh_rep=2e-4;}
-    else if(sub.includes('dicht'))                          {kh_min=1.2e-4;kh_max=2.3e-4;kh_rep=1.5e-4;}
-    else if(sub.includes('matig'))                          {kh_min=1.2e-5;kh_max=1.2e-4;kh_rep=4e-5;}
-    else /* los + kleihoudend */                            {kh_min=1.2e-6;kh_max=1.2e-5;kh_rep=3e-6;}
-  } else if(l.type==='Silty sand'){
-    kh_min=1.2e-6; kh_max=1.2e-5; kh_rep=3e-6;
-  } else if(isLeem){
-    kh_min=1.2e-7; kh_max=1.2e-6; kh_rep=5e-7;
-  } else if(l.type==='Clay'){
-    kh_min=1e-9; kh_max=1.2e-7; kh_rep=5e-8;
-  } else if(l.type==='Soft clay'){
-    kh_min=1e-10; kh_max=1.2e-7; kh_rep=2e-8;
-  } else if(isPeat){
-    kh_min=6e-8; kh_max=6e-7; kh_rep=2e-7;
-  } else {
-    kh_min=1e-6; kh_max=1e-4; kh_rep=1e-5; // fallback
-  }
-
-  // kh/kv ratio — engineer-selectable method.
-  //
-  //   Method A — OVAM / I/RA/11461 (default)
-  //     Conservative engineering practice value used in the Belgian
-  //     OVAM 2002 / I/RA/11461.15.066 reference.  Silty sand ("fijn zand"
-  //     in the source) is grouped with the fine soils → k_h/k_v = 3.
-  //
-  //   Method B — Bear (1979) academic
-  //     Bear's Hydraulics of Groundwater gives a literature-typical
-  //     intermediate value for fine/silty sand: k_h/k_v ≈ 2.  Reflects
-  //     the partly-cohesive nature of silty sand without lumping it
-  //     fully with cohesive soils.
-  //
-  // Sand and gravel remain isotropic (k_h/k_v = 1) under both methods.
-  // All cohesive soils (clay, sandy clay/leem, peat) get k_h/k_v = 3
-  // under both methods.
-  const isFineSand = l.type==='Silty sand';
-  let khkv;
-  if (isGranular && !isFineSand) {
-    khkv = 1;                                   // clean sand or gravel
-  } else if (isFineSand) {
-    khkv = (S.khKvMethod === 'B') ? 2 : 3;      // OVAM=3 (default), Bear=2
-  } else {
-    khkv = 3;                                   // cohesive
-  }
-  const kv_rep = +(kh_rep / khkv).toExponential(1);
-
-  // psi_unsat (Plaxis 2D Manual): granular 0.1 m, leem 1.0 m, cohesive 3.0 m.
-  // Silty sand stays in the granular branch for ψ_unsat (height of partially
-  // saturated zone above the water table) — it dries similarly to clean sand.
-  const psi_unsat = isGranular ? 0.1 : isLeem ? 1.0 : 3.0;
-
-  // Infiltration design class (VMM §5.2, I/RA/11461/15.066/JSW)
-  let infClass;
-  if(kh_rep > 0.5e-6)       infClass='Infiltratie (volledig)';
-  else if(kh_rep > 0.1e-6)  infClass='Infiltratie (effectief)';
-  else if(kh_rep > 0.01e-6) infClass='Infiltratie + buffer';
-  else                        infClass='Buffer (infiltratie marginaal)';
-
-  function fmtK(v){
-    // Format as X.Xe-N
-    const e=Math.floor(Math.log10(v));
-    const m=+(v/Math.pow(10,e)).toFixed(1);
-    return `${m}\u00d710\u207b${Math.abs(e)}`;  // m×10⁻N
-  }
-
-  return{kh_min,kh_max,kh_rep,khkv,kv_rep,psi_unsat,infClass,
-    kh_rep_fmt:fmtK(kh_rep), kh_min_fmt:fmtK(kh_min), kh_max_fmt:fmtK(kh_max)};
+  return khParamsPure(l, modelCtx());
 }
 
 /* Toggle functions for Stage 4 global method controls */
@@ -3071,89 +1635,13 @@ function setParamMethod(v){
   if(S.classified.length){ detectLayers(); renderLayers(); }
 }
 
+/* Stage 4 derivation lives in model-params/ (PR 5); these wrappers feed the
+   pure functions the context of the active CPT. */
+function modelCtx(){
+  return cptModelCtx(S);
+}
 function hsParams(l){
-  const pref=100;
-  const midZ=(l.top+l.bot)/2;
-  /* Pass both gamma_sat (l.gs) and gamma_unsat (l.g) so that stress
-     above the water table uses the unsaturated unit weight. */
-  const {sigV, u, sigVeff}=stressAt(midZ, l.gs, l.g);
-  const cohesive=l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic';
-
-  /* ── Alpha selection ── */
-  let aE;
-  if(l.ovr.aE){
-    aE=l.aE_ovr;  // engineer override takes absolute priority
-  } else if(S.alphaMethod==='B'){
-    // Fall back to the explicit assumed Rf when the CPT has no measured Rf,
-    // so the sand/transition α-family split stays consistent with Stage 2.
-    aE=alphaEB(l.type, l.avgQc, l.subtype, l.avgRf ?? assumedRfValue());
-  } else {
-    aE=AE[l.type]||10;
-  }
-
-  /* ── Eoed,i ── */
-  const Eoed_i=+(aE*l.avgQc*1000).toFixed(0);
-
-  /* ── m (type default, engineer can override) ──
-     CUR 2003-7 binary stress-exponent convention: m = 0.5 for granular soils
-     (sand, silty sand, gravel) and m = 1.0 for cohesive soils (clay, soft
-     clay, sandy clay / leem, peat).  This is the documented method's
-     conservative default — Stage 5 m-fitting is available per layer when
-     site-specific evidence supports a different value.
-     References: CUR 2003-7; Schanz, Vermeer & Bonnier (1999). */
-  const m=l.ovr.m ? l.m_ovr
-          : (cohesive || l.type==='Sandy clay') ? 1.0
-          : 0.50;
-
-  /* ── Eoed,ref (full cohesion-corrected formula per SB260-21-6.4.10) ── */
-  const cotphi = l.phi>0 ? Math.cos(l.phi*Math.PI/180)/Math.sin(l.phi*Math.PI/180) : 0;
-  const cCotPhi = l.c * cotphi;
-  const ratio = Math.max((sigVeff + cCotPhi) / (pref + cCotPhi), 0.05);
-  const Eoed_ref = +(Eoed_i / Math.pow(ratio, m)).toFixed(0);
-
-  /* ── Stiffness Method A (CUR 2003-7) or B (E50 = Eoed) ──
-     CUR 2003-7 treats klei AND leem (Sandy clay) as the cohesive set for
-     the E50/Eoed = 1.25 ratio.  The earlier code excluded Sandy clay,
-     which disagreed with the documented method. */
-  const cohesiveForE50 = cohesive || l.type==='Sandy clay';
-  let E50_i, E50_ref, Eur_ref;
-  if(S.stiffMethod==='B'){
-    E50_i = Eoed_i;
-    E50_ref = Eoed_ref;
-    Eur_ref = +(3*Eoed_ref).toFixed(0);
-  } else {
-    // Method A: CUR 2003-7
-    E50_i = cohesiveForE50 ? +(1.25*Eoed_i).toFixed(0) : Eoed_i;
-    E50_ref = cohesiveForE50 ? +(1.25*Eoed_ref).toFixed(0) : Eoed_ref;
-    Eur_ref = +(3*E50_ref).toFixed(0);
-  }
-
-  const K0nc=+(1-Math.sin(l.phi*Math.PI/180)).toFixed(3);
-  const nu = l.ovr && l.ovr.nu
-    ? Math.max(Math.min(Number(l.nu_ovr) || 0.30, 0.49), 0.05)
-    : mohrCoulombNuDefault(l.type, l.subtype);
-  const rShear = l.ovr && l.ovr.rShear
-    ? Math.max(Math.min(Number(l.rShear_ovr) || 0.25, 1), 0.01)
-    : mohrCoulombRShearDefault(l.type, l.subtype);
-  const nu_ur=0.20;
-  /* ── SCIA Engineer deformation modulus ──
-     Edef = beta * Eoed,i with beta = (1+nu)(1-2nu)/(1-nu): the isotropic-
-     elasticity link between the constrained (oedometric) modulus and the
-     Young-type deformation modulus that SCIA's subsoil input (Soilin)
-     expects, following the CSN 73 1001 convention (Eoed = Edef / beta).
-     Edef uses the in-situ Eoed,i, not the p_ref-normalised Eoed,ref.
-     Edef is computed from the ROUNDED beta so the reported numbers
-     reproduce exactly when the engineer checks beta x Eoed,i by hand. */
-  const beta=+(((1+nu)*(1-2*nu))/(1-nu)).toFixed(3);
-  const Edef=+(beta*Eoed_i).toFixed(0);
-  const psi=Math.max(0,l.phi>30?Math.round(l.phi-30):0);
-  /* MC export uses the current-stress loading stiffness E50,i.
-     The earlier x1.5 conversion from Eoed,i had no retained source basis. */
-  const Emc=E50_i;
-  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2)+'m TAW':'—';
-  return{Eoed_i,E50_i,Eoed_ref,E50_ref,Eur_ref,m,K0nc,nu,nu_ur,beta,Edef,aE:+aE.toFixed(2),
-    sigV:+sigV.toFixed(1),u:+u.toFixed(1),sigVeff:+sigVeff.toFixed(1),psi,Emc,rShear,
-    topTAW:taw(l.top),botTAW:taw(l.bot)};
+  return hsParamsPure(l, modelCtx());
 }
 
 function renderModel(){
@@ -4166,27 +2654,7 @@ function stage6Set(obj, path, value){
 }
 
 function stage6WorkingLayers(){
-  return S.layers.map((layer, index)=>{
-    const h = hsParams(layer);
-    const k = khParams(layer);
-    return{
-      ...layer,
-      index,
-      Eoed_ref:h.Eoed_ref,
-      Eoed_i:h.Eoed_i,
-      E50_ref:h.E50_ref,
-      Eur_ref:h.Eur_ref,
-      m:h.m,
-      Emc:h.Emc,
-      nu:h.nu,
-      K0nc:h.K0nc,
-      rShear:h.rShear,
-      psi:h.psi,
-      kh:k.kh_rep,
-      kv:k.kv_rep,
-      nu_ur:h.nu_ur
-    };
-  });
+  return workingLayersPure(S);
 }
 
 function stage6MaxDepth(){

@@ -43,20 +43,20 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | 0 | planning reports | — | 01, 02, 03 | — | ☑ |
 | 1 | `test(golden): harness + baseline at 462fc50` | H | 03 parts 1, 2, 3, 4-partial (retaining, project-io), 8, 9: `scripts/golden/**`, `tests/golden/**` (fixtures, node goldens, tolerances, README, CHANGELOG), `.github/workflows/ci.yml`, npm scripts `golden:*`, `verify:core`, `test:all` | `golden:check` green twice; `verify:*`, build | ☑ 7a4a7ec + 2f970a3 |
 | 2 | `test(visual): Phase 0 screenshot baselines` + `style(tokens): Phase 1 reskin` | D | 02 §5.2 phases 0–1: `tests/visual/*.spec.mjs` (Playwright `visual` project, seeded demo, canvases masked, print-PDF gate), `src/lib/styles/{tokens,base,glass}.css`, `theme.ts`, `src/app.css` layer order, `legacy.css` demoted to `@layer legacy`, retaining `<style>` wrapped, `scripts/verify_tokens.mjs` | print page-1 0 px; other diffs reviewed + re-baselined; `verify:tokens`, e2e | ◐ agent |
-| 3 | `test(golden): browser journeys (tier C)` | H | 03 §2.3/§4.5: `golden-journey.spec.mjs`, `browser-capture.js`, demo + GEF-import journeys, seeded PRNG init script, Chart.js routed to vendor copy, `golden:browser*` scripts, CI browser job | journeys green twice | ◐ agent |
-| 4 | `refactor(core): format, dom, css-tokens, chart-host + handler verifier` | R step 1 | 01 §6.2 step 1 (~300 lines) + `scripts/verify_window_handlers.mjs` (every `on*="name("` in HTML strings is published on `legacyApi`) — this also fixes the latent `stage6BishopSetSelectedRegionCoarseness` ReferenceError (separate fix commit) | golden:check, handler verifier | ◐ agent |
-| 5 | `refactor(model-params): hsParams/khParams/stressAt with explicit ctx` | R step 2 | ~500 lines; wrappers keep the monolith names; stratigraphy `S`-swap (160-166) deleted | golden `model/*`, `tuning/*`, stratigraphy verifiers bit-identical | ☐ |
-| 6 | `refactor(classification, layers): pure compute, render split out` | R step 3 | ~900 lines; `detectLayers` stops calling `renderLayers`; `runClass` becomes a thin render wrapper | golden `classification/*`, `layers/*` | ☐ |
+| 3 | `test(golden): browser journeys (tier C)` | H | 03 §2.3/§4.5: `golden-journey.spec.mjs`, `browser-capture.js`, demo + GEF-import journeys, seeded PRNG init script, Chart.js routed to vendor copy, `golden:browser*` scripts, CI browser job | journeys green twice | ☑ 5bb2030 |
+| 4 | `refactor(core): format, dom, css-tokens, chart-host + handler verifier` | R step 1 | 01 §6.2 step 1 (~300 lines) + `scripts/verify_window_handlers.mjs` (every `on*="name("` in HTML strings is published on `legacyApi`) — this also fixes the latent `stage6BishopSetSelectedRegionCoarseness` ReferenceError (separate fix commit) | golden:check, handler verifier | ☑ 5eb544d + 9391124 |
+| 5 | `refactor(model-params): hsParams/khParams/stressAt with explicit ctx` | R step 2 | ~500 lines; wrappers keep the monolith names; stratigraphy `S`-swap (160-166) deleted | golden `model/*`, `tuning/*`, stratigraphy verifiers bit-identical | ☑ 9acc3b7 (integration-r) |
+| 6 | `refactor(classification, layers): pure compute, render split out` | R step 3 | ~900 lines; `detectLayers` stops calling `renderLayers`; `runClass` becomes a thin render wrapper | golden `classification/*`, `layers/*` | ☑ 01759ec (integration-r) — note: `detectLayers` never rendered; map §2.3/§3.4 corrected by 09 report |
 | 7 | `style(shell): Phase 2a liquid-glass chrome + stage rail` | D 2a | 02 §5.2 row 2a: `.app-header.glass-chrome`, `.stage-rail.glass-rail` (7 stages), `.btn` family, segmented — the visible "liquid glass" moment | visual re-baseline (shell only), e2e | ☐ |
-| 8 | `refactor(export, report-payload)` | R step 4 | ~1,100 lines; `stage7Capture*` stays until step 9g | golden `exports/*`, `report/*` | ☐ |
-| 9 | `refactor(load): parsers + apply-parsed-cpt` | R step 5 | ~600 lines; parsers return patches; `controls.js` keeps the 15 DOM syncs | golden fixtures (GEF/CSV/XLSX), `verify_import_review` | ☐ |
+| 8 | `refactor(export, report-payload)` | R step 4 | ~1,100 lines; `stage7Capture*` stays until step 9g | golden `exports/*`, `report/*` | ◐ agent |
+| 9 | `refactor(load): parsers + apply-parsed-cpt` | R step 5 | ~600 lines; parsers return patches; `controls.js` keeps the 15 DOM syncs | golden fixtures (GEF/CSV/XLSX), `verify_import_review` | ☑ 450b6be (integration-r) |
 | 10 | `style(stage1-2)` then `style(stage3-5)` | D 2b, 2c | component classes for the Stage 1–5 templates, done **together with** the render wrappers left by PRs 6/9 (edit the markup once) | visual re-baseline per stage; golden DOM text unchanged | ☐ |
 
 ### Milestone v0.7.0 — Stage 6 shell and the five small apps
 
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
-| 11 | `refactor(stage6): registry, per-app defaults/ensure, shell render` | R step 6 | ~1,000 lines; `stage6Defaults`/`ensureStage6State`/`renderStage6` kept as façades (78 / 71 callers) | snapshot of `stage6Defaults()` identical; golden stage6-*; e2e | ☐ |
+| 11 | `refactor(stage6): registry, per-app defaults/ensure, shell render` | R step 6 | ~1,000 lines; `stage6Defaults`/`ensureStage6State`/`renderStage6` kept as façades (78 / 71 callers) | snapshot of `stage6Defaults()` identical; golden stage6-*; e2e | ◐ agent |
 | 12 | `refactor(bearing, pile, settlement, dewatering, beam)` | R step 7 | ~2,000 lines, one package per app in the retaining style, one PR per app (5 PRs) | headless render diff vs monolith HTML for the demo CPT; golden | ☐ |
 | 13 | `style(stage6 shell + apps)` | D 2d (shell parts), 2e | `.tabs--icon`, `.acc`, `.cols-3`, `.viz`, De Beer colours → `--viz-*`, nested blurs removed; done in the same PRs as 12 where the app's markup is touched | visual; blur count ≤ 5; frame budget ≥ 50 fps | ☐ |
 | 14 | `refactor(project, section, tuning)` | R step 8 | ~1,000 lines; `S` reassignment behind `setActive()`; `selectCpt` also terminates the deformation worker (bug fix commit) | `verify_project_io`, golden save-load journey | ☐ |
@@ -104,4 +104,4 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 
 ## 5. Status log
 
-- 2026-08-29 — reports 01/02/03 done; PR 1 merged (7a4a7ec, 2f970a3; 1 619 goldens, 29 s). PR 2 (design 0–1), PR 3 (browser tier) and PR 4 (core extraction) in progress with agents.
+- 2026-08-29 — reports 01/02/03 done; PR 1 merged (7a4a7ec, 2f970a3; 1 619 goldens, 29 s); PR 3 (5bb2030), PR 4 (5eb544d + fix 9391124) on v0.6.0. PR 5/6/9 merged on `integration-r` (controller 16 914 lines), waiting for PR 2 (design 0–1, main tree) before fast-forwarding v0.6.0. PR 8 and PR 11 started in worktrees.
