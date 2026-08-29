@@ -426,7 +426,10 @@ const projectApp = installProject({
   setActive,
   newCptState,
   confirm: (message) => confirm(message),
-  stopWorkers: () => { stage6BishopStopSearch(true); stage6BishopStopSeepage(true); },
+  // Every Stage 6 worker of the CPT being left, incl. the deformation worker (map §3.4 #8 /
+  // PLAN §4 defect 2): its messages for the old runId would be dropped after the switch and
+  // the originating CPT stayed at deformation.progress.running = true with nothing to finish it.
+  stopWorkers: () => { stage6BishopStopSearch(true); stage6BishopStopSeepage(true); stage6BishopStopDeformation(true); },
   cancelClassificationRefresh: () => cancelClassificationRefresh(),
   syncClassificationMethodCards: (method) => syncClassificationMethodCards(method),
   initCharts: () => initCharts(),

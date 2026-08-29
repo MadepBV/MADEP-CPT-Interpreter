@@ -274,6 +274,38 @@ if (args[0] === '--dump') {
     }
   }
 
+  // (g) the deformation worker on a CPT switch (PLAN §4 defect 2): a run in flight on CPT 0
+  // (progress.running, a runId, status 'solving') must be stopped by selectCpt(1) the way the
+  // search and seepage runs are — and nothing else of that CPT's Stage 6 state may move.
+  // No Worker exists under Node, so the flag is the whole observable.
+  resetProject(); await loadProject('multi-3cpt');
+  api.setPhase('analysis');
+  api.selectCpt(0);
+  api.ensureStage6State();
+  {
+    const b = S().stage6.bishop;
+    b.deformation.progress = { running: true, percent: 42, message: 'Running deformation...', runId: 7 };
+    b.deformation.status = 'solving';
+    b.seepage.progress = { ...b.seepage.progress, running: true, percent: 30, runId: 5 };
+    b.seepage.status = 'solving';
+    b.progress.running = true;
+    b.progress.previewCircle = { x: 1, y: 2, r: 3 };
+  }
+  const originating = S();
+  const before = ser(originating.stage6);
+  api.selectCpt(1);
+  const after = ser(originating.stage6);
+  const d = originating.stage6.bishop.deformation;
+  dump.deformationSwitch = {
+    active: P().activeCptIdx,
+    before,
+    after,
+    deformation: { running: d.progress.running, percent: d.progress.percent, runId: d.progress.runId, message: d.progress.message, status: d.status },
+    seepage: { running: originating.stage6.bishop.seepage.progress.running, percent: originating.stage6.bishop.seepage.progress.percent, status: originating.stage6.bishop.seepage.status },
+    search: { running: originating.stage6.bishop.progress.running, previewCircle: originating.stage6.bishop.progress.previewCircle },
+    target: ser(S().stage6)
+  };
+
   writeFileSync(outPath, JSON.stringify(dump));
   await server.close();
   process.exit(0);
@@ -434,6 +466,35 @@ for (const key of Object.keys(oldDump.tuning)) {
   same(`${key}: reject all / bogus index`, [o.rejectedAll, o.rejectBogus], [n.rejectedAll, n.rejectBogus]);
   same(`${key}: acceptFit with #p3 active re-renders Stage 4 (every stub element identical)`, o.acceptWithStage4, n.acceptWithStage4);
   same(`${key}: final S.tuning`, o.tuningFinal, n.tuningFinal);
+}
+
+console.log('\n(g) deformation worker on a CPT switch (PLAN §4 defect 2)');
+{
+  /** Leaf paths whose value differs between two JSON-able values. */
+  function changedPaths(x, y, path = '', out = []) {
+    if (JSON.stringify(x) === JSON.stringify(y)) return out;
+    if (x && y && typeof x === 'object' && typeof y === 'object' && !Array.isArray(x) && !Array.isArray(y)) {
+      for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) changedPaths(x[k], y[k], path ? `${path}.${k}` : k, out);
+      return out;
+    }
+    out.push(path || '<root>');
+    return out;
+  }
+  const SEARCH_SEEPAGE_STOPS = ['bishop.progress.running', 'bishop.progress.previewCircle', 'bishop.seepage.status', 'bishop.seepage.progress.running', 'bishop.seepage.progress.percent'];
+  const DEFORMATION_STOP = ['bishop.deformation.status', 'bishop.deformation.progress.running', 'bishop.deformation.progress.percent'];
+  const o = oldDump.deformationSwitch, n = newDump.deformationSwitch || {};
+  check('selectCpt(1) from CPT 0 with runs in flight: active 1 in both', o.active === 1 && n.active === 1);
+  same('originating CPT before the switch identical', o.before, n.before);
+  same('target CPT after the switch identical', o.target, n.target);
+  const oChanged = changedPaths(JSON.parse(o.before), JSON.parse(o.after)).sort();
+  const nChanged = changedPaths(JSON.parse(n.before), JSON.parse(n.after)).sort();
+  check('new: originating CPT deformation.progress.running cleared, percent 0, status idle', n.deformation?.running === false && n.deformation?.percent === 0 && n.deformation?.status === 'idle', JSON.stringify(n.deformation));
+  check('new: runId and message of the interrupted run kept (7, "Running deformation...")', n.deformation?.runId === 7 && n.deformation?.message === 'Running deformation...', JSON.stringify(n.deformation));
+  check('new: search + seepage stopped as before', n.search?.running === false && n.search?.previewCircle === null && n.seepage?.running === false && n.seepage?.percent === 0 && n.seepage?.status === 'idle');
+  same('new: nothing else of the originating CPT moved (search/seepage stops + the three deformation fields only)', nChanged, [...SEARCH_SEEPAGE_STOPS, ...DEFORMATION_STOP].sort());
+  const baseFixed = o.deformation.running === false;
+  console.log(`  info base: deformation.progress.running=${o.deformation.running} status=${o.deformation.status} after the switch — ${baseFixed ? 'base already stops the deformation worker' : 'the stuck flag of map §3.4 #8 (fixed by this commit)'}`);
+  same('base: search + seepage stops' + (baseFixed ? ' + deformation stop' : ' only'), oChanged, (baseFixed ? [...SEARCH_SEEPAGE_STOPS, ...DEFORMATION_STOP] : SEARCH_SEEPAGE_STOPS).sort());
 }
 
 console.log('\n(f) tier A — pure builders vs the working tree, tuning goldens recomputed');
