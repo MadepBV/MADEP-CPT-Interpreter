@@ -67,7 +67,7 @@ test('drivability, vibration and the calculation note', async ({ page, context }
     window.retwallRunDrivability();
   });
   await page.waitForTimeout(3500);
-  await expect(page.locator('#retwallResultBody')).toContainText('Will it drive the element?');
+  await expect(page.locator('#retwallResultBody')).toContainText('Achievable depth —');
   await expect(page.locator('#retwallResultBody')).toContainText('Carrier check');
   const inputsScroll = await page.evaluate(() => { const el = document.getElementById('retwallInputs'); el.scrollTop = 300; return el.scrollTop; });
   await page.evaluate(() => window.retwallSet('drivability.vibrator.sheet.rpmOperating', 2600));

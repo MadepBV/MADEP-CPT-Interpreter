@@ -73,7 +73,7 @@
 					only through the instrumented trial.
 				</p>
 				<div class="doc-callout">
-					<strong>Frameworks are never mixed.</strong> Each receiver function is tied to one standard, says
+					<strong>One framework per receiver function.</strong> Each receiver function is tied to one standard, says
 					so in its result (<code>framework</code>, <code>source</code>, <code>quantity</code>), and the
 					wrapper <code>assessReceiver</code> compares the prediction with that single framework. The
 					limits refer to different quantities and locations — SBR-A: the velocity component
@@ -245,7 +245,7 @@
 				</ul>
 				<p><code>suggestSensorLayout</code> proposes the course §15.2 layout: near-field control ≈ 5 m, intermediate ≈ 10 m and ≈ 20 m (only those closer than 0.8 × the receiver distance; an attenuation fit needs ≥ 3 distances) on triaxial geophones rigidly coupled to the ground, plus the receiver sensor on the lowest accessible load-bearing element on the source-facing side, all on a common time reference with depth, frequency and moment setting recorded simultaneously (course §15.3).</p>
 				<div class="doc-callout">
-					<strong>The framework limit is only the ceiling.</strong> The stop level must sit below the receiver
+					<strong>Stop level versus framework limit.</strong> The stop level must sit below the receiver
 					limit by an allowance for instrument uncertainty, signal delay and run-down vibration
 					(course §16.1); the plan says so in its notes, and the project must choose that allowance.
 				</div>

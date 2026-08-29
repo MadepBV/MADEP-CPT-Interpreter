@@ -280,7 +280,7 @@
 
 			<section id="hsensitivity" class="doc-card">
 				<p class="section-label">Sensitivity to member depth</p>
-				<h2>6. Why a stiffer strip can attract a larger bending moment</h2>
+				<h2>6. Effect of strip stiffness on the bending moment</h2>
 				<p>
 					On a rigid support a thicker member is unambiguously beneficial: the moment is fixed by
 					statics and the larger lever arm reduces stress. On a Winkler foundation that intuition

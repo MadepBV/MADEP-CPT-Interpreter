@@ -155,7 +155,7 @@
 
 			<section id="hsensitivity" class="doc-card">
 				<p class="section-label">Sensitivity to member depth</p>
-				<h2>3. Why A<sub>s,req</sub> can rise with h on a Winkler strip</h2>
+				<h2>3. Effect of the strip depth h on A<sub>s,req</sub> (Winkler strip)</h2>
 				<p>
 					On a rigid-support beam M is fixed by statics, so increasing h reduces μ and reduces
 					A<sub>s,req</sub> monotonically. On a Winkler foundation that intuition fails: the

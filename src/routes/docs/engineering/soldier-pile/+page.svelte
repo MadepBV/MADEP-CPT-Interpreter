@@ -88,7 +88,7 @@
 					what the soldier-pile route needs and adds the pile-specific parts.
 				</p>
 				<div class="doc-callout">
-					<strong>What it delivers.</strong> Required embedment (GEO), M<sub>Ed</sub>, V<sub>Ed</sub>,
+					<strong>Outputs.</strong> Required embedment (GEO), M<sub>Ed</sub>, V<sub>Ed</sub>,
 					T<sub>Ed</sub> per pile (STR envelope), the factored lagging pressure, the lagging plate
 					check, the EN 1993-1-1 checks of the H/I section (class, M<sub>c,Rd</sub>, V<sub>pl,Rd</sub>,
 					M–V), a vertical-equilibrium screen, and the PLAXIS 2D Plate + Embedded Beam Row parameter set
@@ -99,7 +99,7 @@
 
 			<section id="branches" class="doc-card">
 				<p class="section-label">Design framework</p>
-				<h2>2. The four Belgian design branches</h2>
+				<h2>2. Design branches (Belgian guideline)</h2>
 				<p>
 					Embedded walls follow the risk-class (RK) workflow of the Belgian embedded-wall guideline
 					(BGGG/Buildwise 2022, “Richtlijnen EC7 beschoeiingen”) as implemented in
