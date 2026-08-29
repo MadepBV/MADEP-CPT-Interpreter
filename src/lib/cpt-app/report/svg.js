@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
-import { SOIL_FILL_COLORS } from './soil-styles';
+import { SOIL_FILL_COLORS } from '../soil-styles.js';
 
 export function buildLayerColumnSvgMarkup({
   layers = [],

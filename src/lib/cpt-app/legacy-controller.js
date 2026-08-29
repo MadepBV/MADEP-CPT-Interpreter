@@ -79,10 +79,9 @@ import {
   classifyRobertson1990,
   classifyRobertson2016,
   classifyTabel3,
-  normalizeAssumedRf,
-  simulatedLayerFsValue
+  normalizeAssumedRf
 } from './classification-core.js';
-import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report-svg';
+import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report/svg.js';
 import { cleanupStage7Payloads, saveStage7Payload } from './report-storage';
 import { SOIL_CLASS_NAMES, SOIL_FILL_COLORS } from './soil-styles';
 import {
@@ -131,6 +130,24 @@ import {
   renderAssumedRfControls,
   renderMetaCard
 } from './load/index.js';
+import {
+  NO_LAYERS_MESSAGE,
+  buildLayersCsv,
+  layersCsvFilename,
+  buildPlaxisCommandsText,
+  plaxisNuDrainageConflicts,
+  plaxisNuDrainageAlertMessage,
+  plaxisCommandsFilename,
+  NO_LAYER_MODEL_MESSAGE,
+  NO_SIMULATED_ROWS_MESSAGE,
+  buildPlaxisCptText,
+  plaxisCptFilename
+} from './export/index.js';
+import {
+  STAGE7_GUARD_MESSAGE,
+  safeClone,
+  buildStage7Payload as buildStage7PayloadPure
+} from './report/index.js';
 import {
   DEF,
   AE,
@@ -14583,710 +14600,59 @@ function buildStage6BishopLineProbeChart(){
 }
 
 /* ════════════════════════════════
-   CSV EXPORT
+   EXPORTS (CSV / PLAXIS)
 ════════════════════════════════ */
+/* The text builders live in export/ (PR 8): buildLayersCsv, buildPlaxisCommandsText and
+   buildPlaxisCptText take (cpt, ctx) and return the file text. These wrappers keep the
+   guards, the alerts and the <a download> click of the monolith over the active CPT. */
 function exportCSV(){
-  if(!S.layers.length){alert('No layers to export. Run classification first.');return;}
-  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'';
-  const hdr='Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,E_mc_kPa,nu,beta,Edef_kPa,rShear,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse';
-  const rows=S.layers.map((l,i)=>{
-    const h=hsParams(l);
-    const k=khParams(l);
-    return[i+1,l.type,`"${l.subtype||''}"`,
-      l.top.toFixed(3),l.bot.toFixed(3),taw(l.top),taw(l.bot),
-      (l.bot-l.top).toFixed(3),l.avgQc,l.avgRf??'',
-      l.g,l.gs,l.phi,l.c,l.cu,
-      h.aE.toFixed(2),S.alphaMethod,
-      h.Eoed_i,h.Eoed_ref,h.E50_ref,h.Eur_ref,h.Emc,h.nu,h.beta,h.Edef,h.rShear.toFixed(2),h.m.toFixed(2),h.K0nc,h.nu_ur,S.stiffMethod,
-      k.kh_rep.toExponential(2),k.kv_rep.toExponential(2),k.khkv,k.psi_unsat,
-      `"${k.infClass}"`].join(',');
-  });
-  const csv=[hdr,...rows].join('\n');
+  if(!S.layers.length){alert(NO_LAYERS_MESSAGE);return;}
+  const csv=buildLayersCsv(S, modelCtx());
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download=`CPT_${S.meta.testid||'export'}_layers.csv`;
+  a.download=layersCsvFilename(S);
   a.click();
-}
-
-function safeMaterialToken(value){
-  let txt=String(value??'').trim();
-  if(txt.normalize) txt=txt.normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
-  txt=txt.replace(/[(),]/g,'').replace(/\s+/g,'_').replace(/[^A-Za-z0-9_.-]/g,'');
-  return txt || 'Layer';
-}
-
-function plaxisDrainageType(layer){
-  const sub=(layer.subtype||'').toLowerCase();
-  if(sub.includes('(lh)') || sub.includes('(kh)') || sub.includes('leemhoudend') || sub.includes('klei-/leemhoudend')){
-    return 'Undrained A';
-  }
-  return layer.type==='Sand' || layer.type==='Gravel' ? 'Drained' : 'Undrained A';
-}
-
-function plaxisDisplayName(value){
-  return String(value??'')
-    .replace(/"/g, '\'')
-    .replace(/\r?\n/g, ' ')
-    .trim();
-}
-
-function plaxisCommandValue(value){
-  if(typeof value === 'number'){
-    if(!isFinite(value)) return '0';
-    return Object.is(value, -0) ? '0' : String(value);
-  }
-  return `"${plaxisDisplayName(value)}"`;
-}
-
-function buildPlaxisSoilmatCommand(pairs){
-  return `soilmat ${pairs.map(([key,val])=>`${plaxisCommandValue(key)} ${plaxisCommandValue(val)}`).join(' ')}`;
-}
-
-function msToMday(value){
-  if(!isFinite(value)) return 0;
-  return +(value * 86400).toFixed(6);
 }
 
 function exportPlaxisCommands(){
   if(!S.layers.length){
-    alert('No layers to export. Run classification first.');
+    alert(NO_LAYERS_MESSAGE);
     return;
   }
-
-  const cptId=S.meta.testid||S.id||'CPT';
-  const commands=S.layers.flatMap((l,i)=>{
-    const layerId=i+1;
-    const subtype=l.subtype||l.type||`Layer_${layerId}`;
-    const safeSubtype=safeMaterialToken(subtype);
-    const baseName=`${safeMaterialToken(cptId)}_L${layerId}_${safeSubtype}`;
-    const dr=plaxisDrainageType(l);
-    const h=hsParams(l);
-    const k=khParams(l);
-    const khMday=msToMday(k.kh_rep);
-    const kvMday=msToMday(k.kv_rep);
-    const cohesion=Math.max(Number(l.c)||0,0.1);
-    const mcName=`${baseName}_MC`;
-    const hsName=`${baseName}_HS`;
-
-    return[
-      buildPlaxisSoilmatCommand([
-        ['Identification', mcName],
-        ['SoilModel', 2],
-        ['DrainageType', dr],
-        ['gammaUnsat', l.g],
-        ['gammaSat', l.gs],
-        ['ERef', h.Emc],
-        ['nu', h.nu],
-        ['cRef', cohesion],
-        ['phi', l.phi],
-        ['psi', h.psi],
-        ['PermHorizontalPrimary', khMday],
-        ['PermVertical', kvMday]
-      ]),
-      buildPlaxisSoilmatCommand([
-        ['Identification', hsName],
-        ['SoilModel', 3],
-        ['DrainageType', dr],
-        ['gammaUnsat', l.g],
-        ['gammaSat', l.gs],
-        ['E50Ref', h.E50_ref],
-        ['EOedRef', h.Eoed_ref],
-        ['EURRef', h.Eur_ref],
-        ['PowerM', h.m],
-        ['pRef', 100],
-        ['cRef', cohesion],
-        ['phi', l.phi],
-        ['psi', h.psi],
-        ['PermHorizontalPrimary', khMday],
-        ['PermVertical', kvMday]
-      ])
-    ];
-  });
-  const txt=commands.join('\r\n');
-
-  /* PLAXIS requires nu' < 0.35 for Undrained (A)/(B) materials (Material
-     Models Manual 3.3.2); cohesive layers export as Undrained A, so soft
-     fine layers at the table default nu' = 0.40 will be flagged on import.
-     Warn (without altering the exported values) so the engineer reviews
-     nu or the drainage type in PLAXIS. */
-  const nuDrainageConflicts=S.layers
-    .map((l,i)=>({i:i+1, dr:plaxisDrainageType(l), nu:hsParams(l).nu, subtype:l.subtype||l.type}))
-    .filter(x=>x.dr!=='Drained' && x.nu>=0.35);
+  const txt=buildPlaxisCommandsText(S, modelCtx());
+  const nuDrainageConflicts=plaxisNuDrainageConflicts(S, modelCtx());
   if(nuDrainageConflicts.length){
-    alert('PLAXIS note: nu′ >= 0.35 combined with Undrained A will be flagged by PLAXIS (Material Models Manual 3.3.2).\n\n'
-      +nuDrainageConflicts.map(x=>`Layer ${x.i} (${x.subtype}): nu = ${x.nu}`).join('\n')
-      +'\n\nThe export is unchanged; review nu or the drainage type in PLAXIS.');
+    alert(plaxisNuDrainageAlertMessage(nuDrainageConflicts));
   }
-
   const a=document.createElement('a');
   a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);
-  a.download=`CPT_${safeMaterialToken(cptId)}_plaxis_materials_commands.txt`;
+  a.download=plaxisCommandsFilename(S);
   a.click();
-}
-
-function findLayerForDepth(z){
-  for(let i=0;i<S.layers.length;i++){
-    const l=S.layers[i];
-    const isLast=i===S.layers.length-1;
-    if(z >= l.top && (z < l.bot || (isLast && z <= l.bot))) return l;
-  }
-  return null;
-}
-
-/* The simulated CPT exists so PLAXIS's own CPT interpretation recreates the
-   app's layer sequence. When a layer has no measured fs/Rf the sleeve friction
-   is synthesised from a representative Rf per soil type (classification-core):
-   writing fs=0 would make PLAXIS read every layer as clean sand and destroy
-   the layering the export is meant to carry. */
-function simulatedLayerFs(layer){
-  return simulatedLayerFsValue(layer, assumedRfValue());
-}
-
-function layerFsIsSynthetic(layer){
-  return !(layer.avgFs!=null && isFinite(layer.avgFs)) &&
-         !(layer.avgRf!=null && isFinite(layer.avgRf));
-}
-
-function formatPlaxisCoord(value){
-  if(value==null || !isFinite(value)) return '0';
-  const rounded=Math.abs(value) < 1e-9 ? 0 : value;
-  const txt=rounded.toFixed(4).replace(/\.?0+$/,'');
-  return txt === '-0' ? '0' : txt;
 }
 
 function exportPlaxisCpt(){
   if(!S.layers.length || !S.data.length){
-    alert('No layer model to export. Run classification and layer identification first.');
+    alert(NO_LAYER_MODEL_MESSAGE);
     return;
   }
-
-  const rows=S.data
-    .map(r=>{
-      const layer=findLayerForDepth(r.z);
-      if(!layer) return null;
-      return{
-        z:r.z,
-        qc:Math.max(0, layer.avgQc || 0),
-        fs:simulatedLayerFs(layer)
-      };
-    })
-    .filter(Boolean);
-
-  if(!rows.length){
-    alert('No simulated CPT rows could be generated from the active layer model.');
+  const txt=buildPlaxisCptText(S, modelCtx());
+  if(txt==null){
+    alert(NO_SIMULATED_ROWS_MESSAGE);
     return;
   }
-
-  const syntheticFsCount=S.layers.filter(layerFsIsSynthetic).length;
-  const fsNote=syntheticFsCount
-    ? ` — fs of ${syntheticFsCount} layer(s) simulated from soil-type Rf (no measured fs in source CPT)`
-    : '';
-  const lines=[
-    `X[m] ${formatPlaxisCoord(S.x)}`,
-    `Y[m] ${formatPlaxisCoord(S.y)}`,
-    `Z[m] ${formatPlaxisCoord(S.elev)}`,
-    `D[m] Q[MPa] F[MPa] x  # depth, qc, fs, Rf(skipped)${fsNote}`,
-    ...rows.map(r=>`${r.z.toFixed(4)} ${r.qc.toFixed(6)} ${r.fs.toFixed(6)} 0`)
-  ];
-
-  const txt=lines.join('\r\n');
   const a=document.createElement('a');
   a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);
-  a.download=`CPT_${S.meta.testid||S.id||'export'}_plaxis_simulated.txt`;
+  a.download=plaxisCptFilename(S);
   a.click();
 }
 
-function safeClone(value){
-  return value == null ? value : JSON.parse(JSON.stringify(value));
-}
-
-function stage7MethodLabel(method){
-  return classificationMethodLabel(method);
-}
-
-function stage7ParamMethodLabel(method){
-  return method === 'def' ? 'Generic (DEF)' : 'NEN Tabel 3 / EC7';
-}
-
-function stage7AlphaMethodLabel(method){
-  return method === 'A' ? 'A - Sanglerat (fixed)' : 'B - SB260 qc-dependent';
-}
-
-function stage7StiffMethodLabel(method){
-  return method === 'A' ? 'A - CUR 2003-7 ratios' : 'B - E50 = Eoed';
-}
-
-function stage7WtSourceLabel(){
-  return S.wtFromFile ? (S.wtSource || 'File') : 'Manual / default';
-}
-
-function stage7ElevSourceLabel(){
-  return S.elevFromFile ? (S.elevSource || 'File') : (S.elev != null ? 'Manual' : 'Not set');
-}
-
-function stage7LayerWarnings(){
-  const warnings=[];
-  S.layers.forEach((layer, index)=>{
-    if(!layer.subtype || layer.subtype === '(overridden)') return;
-    if(layer.rfIndeterminate && !layer.ovr.subtype){
-      warnings.push({
-        layer:index + 1,
-        level:'adj',
-        type:layer.type,
-        subtype:layer.subtype,
-        message:`${layer.subtype} was selected without measured Rf (no fs in the source CPT); several Tabel 3 rows share this qc band, so the catalogue-order row was applied. Review against borings or project knowledge.`
-      });
-    }
-    const entry=CAT.find(row=>row.subtype===layer.subtype);
-    if(!entry) return;
-    const level=compatLevel(layer.type, entry.grp);
-    if(level === 'ok') return;
-    warnings.push({
-      layer:index + 1,
-      level,
-      type:layer.type,
-      subtype:layer.subtype,
-      message:level === 'bad'
-        ? `${layer.type} is not directly compatible with ${layer.subtype}.`
-        : `${layer.subtype} sits in an adjacent transition family for ${layer.type}.`
-    });
-  });
-  return warnings;
-}
-
-function stage7TuningPayload(){
-  if(!S.tuning) return null;
-  return S.tuning.map((item)=>{
-    const layer=S.layers[item.i];
-    const fit=item.fit;
-    return{
-      index:item.i,
-      layerIndex:item.i + 1,
-      layerLabel:`Layer ${item.i + 1}`,
-      top:layer.top,
-      bot:layer.bot,
-      type:layer.type,
-      subtype:layer.subtype || '',
-      accepted:!!layer.ovr.m,
-      previewM:Number.isFinite(Number(item.previewM)) ? Number(item.previewM) : null,
-      fit:fit ? {
-        mFit:fit.m_fit,
-        eOedRefFit:fit.Eoed_ref_fit,
-        r2:fit.R2,
-        n:fit.n,
-        stressRangeFactor:fit.stressRangeFactor,
-        quality:fit.quality,
-        message:fit.qMsg,
-        mDefault:fit.mDefault,
-        eOedRefDefault:fit.Eoed_ref_default,
-        meanX:fit.meanX,
-        meanY:fit.meanY,
-        alphaDefault:fit.alphaDefault,
-        depthPts:fit.depthPts,
-        eOedIPts:fit.EoedI_pts,
-        hsDefaultPts:fit.hsDefault_pts,
-        hsFitPts:fit.hsFit_pts,
-        xs:fit.Xs,
-        ys:fit.Ys
-      } : null
-    };
-  });
-}
-
-function stage7WorkingLayerPayload(layer, index){
-  const hs=hsParams(layer);
-  const kh=khParams(layer);
-  const tuningFit=S.tuning?.[index]?.fit || null;
-  return{
-    index:index + 1,
-    id:layer.id,
-    top:layer.top,
-    bot:layer.bot,
-    topTaw:S.elev != null ? +(S.elev - layer.top).toFixed(2) : null,
-    botTaw:S.elev != null ? +(S.elev - layer.bot).toFixed(2) : null,
-    thickness:+(layer.bot - layer.top).toFixed(3),
-    type:layer.type,
-    subtype:layer.subtype || '',
-    avgQc:layer.avgQc,
-    avgFsKPa:layer.avgFs != null ? +(layer.avgFs * 1000).toFixed(2) : null,
-    avgRf:layer.avgRf,
-    gamma:layer.g,
-    gammaSat:layer.gs,
-    phi:layer.phi,
-    c:layer.c,
-    cu:layer.cu,
-    overrides:safeClone(layer.ovr || {}),
-    hasAcceptedTuning:!!layer.ovr?.m && !!tuningFit,
-    manualMOverride:!!layer.ovr?.m && !tuningFit,
-    hs:{
-      alphaE:hs.aE,
-      eOedI:hs.Eoed_i,
-      eOedRef:hs.Eoed_ref,
-      e50Ref:hs.E50_ref,
-      eurRef:hs.Eur_ref,
-      m:hs.m,
-      k0nc:hs.K0nc,
-      nu:hs.nu,
-      nuUr:hs.nu_ur,
-      beta:hs.beta,
-      eDef:hs.Edef,
-      rShear:hs.rShear,
-      psi:hs.psi,
-      eMc:hs.Emc,
-      sigmaV:hs.sigV,
-      porePressure:hs.u,
-      sigmaVEff:hs.sigVeff
-    },
-    hydraulic:{
-      kh:kh.kh_rep,
-      kv:kh.kv_rep,
-      khkv:kh.khkv,
-      psiUnsat:kh.psi_unsat,
-      infiltrationClass:kh.infClass
-    }
-  };
-}
-
-function stage7BishopPayload(){
-  const bishop=S.stage6?.bishop;
-  const results=bishop?.results?.allResults || [];
-  if(!results.length) return null;
-  const selected=stage6BishopSelectedResult();
-  const keepBest=Math.max(bishop.search?.keepBest || 10, 1);
-  return{
-    config:safeClone({
-      strengthSet:bishop.strengthSet,
-      methodMode:bishop.methodMode,
-      analysisDepth:bishop.analysisDepth,
-      snapSize:bishop.snapSize,
-      gridSnap:bishop.gridSnap,
-      pointSnap:bishop.pointSnap,
-	      activeCptX:bishop.activeCptX,
-	      cptInsertionOffset:bishop.cptInsertionOffset,
-	      walls:bishop.walls,
-	      entryZone:bishop.entryZone,
-	      exitZone:bishop.exitZone,
-	      surfaceLoad:bishop.surfaceLoad,
-	      surfaceLoads:bishop.surfaceLoads,
-	      search:bishop.search,
-      solver:bishop.solver,
-      spencer:bishop.spencer
-    }),
-    summary:safeClone(bishop.results?.summary || null),
-    wallSummary:safeClone(bishop.results?.wallSummary || null),
-    methodMode:bishop.results?.methodMode || bishop.methodMode || 'bishop_only',
-    spencerRechecked:bishop.results?.spencerRechecked || 0,
-    spencerConverged:bishop.results?.spencerConverged || 0,
-    selectedIndex:Math.min(Math.max(bishop.selectedResult || 0, 0), Math.max(results.length - 1, 0)),
-    selected:selected ? safeClone({
-      FS:selected.FS,
-      method:selected.method,
-      methodLabel:stage6BishopResultMethodLabel(selected),
-      F_bishop:selected.F_bishop,
-      F_m:selected.F_m,
-      F_f:selected.F_f,
-      lambda:selected.lambda,
-      thetaDeg:selected.thetaDeg,
-      momentResidual:selected.momentResidual,
-      forceResidual:selected.forceResidual,
-      spencerAttempted:selected.spencerAttempted,
-      spencerConverged:selected.spencerConverged,
-      spencerRejectReason:selected.spencerRejectReason,
-      intersectsWall:selected.intersectsWall,
-      passesBelowWall:selected.passesBelowWall,
-      wallIntersectionCount:selected.wallIntersectionCount,
-      wallForceTotal:selected.wallForceTotal,
-      wallMomentTerm:selected.wallMomentTerm,
-      wallForces:selected.wallForces,
-      iterations:selected.iterations,
-      circle:selected.circle,
-      entry:selected.entry,
-      exit:selected.exit
-    }) : null,
-    topResults:results.slice(0, keepBest).map((result, index)=>safeClone({
-      rank:index + 1,
-      FS:result.FS,
-      method:result.method,
-      methodLabel:stage6BishopResultMethodLabel(result),
-      F_bishop:result.F_bishop,
-      F_m:result.F_m,
-      F_f:result.F_f,
-      lambda:result.lambda,
-      thetaDeg:result.thetaDeg,
-      momentResidual:result.momentResidual,
-      forceResidual:result.forceResidual,
-      spencerAttempted:result.spencerAttempted,
-      spencerConverged:result.spencerConverged,
-      spencerRejectReason:result.spencerRejectReason,
-      intersectsWall:result.intersectsWall,
-      passesBelowWall:result.passesBelowWall,
-      wallIntersectionCount:result.wallIntersectionCount,
-      wallForceTotal:result.wallForceTotal,
-      iterations:result.iterations,
-      circle:result.circle
-    })),
-    rejectionCounts:safeClone(bishop.results?.rejectionCounts || {}),
-    timing:safeClone(bishop.results?.timing || null)
-  };
-}
-
-function stage7SeepagePayload(){
-  const bishop=S.stage6?.bishop;
-  const seepage=bishop?.seepage;
-  if(!bishop || !seepage) return null;
-  try{
-    const model=S.stage6Cache?.bishopModel || null;
-    const boundary=S.stage6Cache?.bishopSeepageBoundary || [];
-    const edgeByKey=new Map(boundary.map((edge)=>[edge.edgeKey, edge]));
-    const activeBcs=(seepage.bcs || []).filter((bc)=>bc?.status !== 'orphaned');
-    const orphanedBcs=(seepage.bcs || []).filter((bc)=>bc?.status === 'orphaned');
-    const hasSetup=!!(activeBcs.length || orphanedBcs.length || seepage.mesh || seepage.result || seepage.rejectReason);
-    if(!hasSetup) return null;
-    const prescribedHeadCount=activeBcs.filter((bc)=>bc.type === 'head').length;
-    const seepageFaceCount=activeBcs.filter((bc)=>bc.type === 'seepage-face').length;
-    const noFlowCount=activeBcs.filter((bc)=>bc.type !== 'head' && bc.type !== 'seepage-face').length;
-    const edgeLabelFor=(edgeKey, anchorSource)=>{
-      if(edgeByKey.has(edgeKey)) return stage6BishopSeepageEdgeLabel(edgeByKey.get(edgeKey));
-      if(typeof edgeKey === 'string' && edgeKey){
-        const [source, rawIndex] = edgeKey.split(':');
-        const index = Number(rawIndex);
-        return stage6BishopSeepageEdgeLabel({
-          source:source || anchorSource || '',
-          index:Number.isFinite(index) ? index : 0
-        });
-      }
-      return anchorSource ? `${anchorSource} edge` : 'Unmatched boundary edge';
-    };
-    return{
-      config:safeClone({
-        freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
-        usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
-        flowErrorTolerance:Math.max(+seepage.options?.flowErrorTolerance || 0.01, 0.000001),
-        maxRuntimeMs:Math.max(+seepage.options?.maxRuntimeMs || 10000, 1),
-        meshTargetArea:stage6BishopResolvedSeepageMeshTargetArea(bishop),
-        meshTargetAreaAuto:seepage.options?.meshTargetAreaAuto !== false,
-        drains:safeClone(seepage.options?.drains || {gatingTolerances:{}, reportPerSegmentInflow:true}),
-        useFemPorePressure:!!bishop.useFemPorePressure
-      }),
-      summary:{
-        status:seepage.status || 'idle',
-        solved:!!seepage.mesh && !!seepage.result,
-        rejectReason:seepage.rejectReason || '',
-        explicitBcCount:(seepage.bcs || []).length,
-        activeBcCount:activeBcs.length,
-        orphanedBcCount:orphanedBcs.length,
-        prescribedHeadCount,
-        seepageFaceCount,
-        noFlowCount,
-        drainCount:bishop.drains?.length || 0,
-        activeDrainNodeCount:seepage.result?.solver?.activeSetSummary?.drains?.activeNodes || 0,
-        totalDrainNodeCount:seepage.result?.solver?.activeSetSummary?.drains?.totalNodes || 0
-      },
-      geometry:safeClone({
-        regionMode:model?.regionMode || (bishop.useCustomRegions ? 'custom' : 'auto'),
-        regionCount:model?.regions?.length || (bishop.useCustomRegions ? (bishop.customRegions?.length || 0) : (bishop.materials?.length || 0)),
-        autoRegionCount:model?.autoRegions?.length || 0,
-        customRegionCount:model?.customRegions?.length || (bishop.customRegions?.length || 0),
-        terrainVertexCount:bishop.terrain?.length || 0,
-        phreaticVertexCount:bishop.phreatic?.length || 0,
-        drainCount:bishop.drains?.length || 0,
-        wallCount:bishop.walls?.length || 0,
-        boundaryEdgeCount:boundary.length
-      }),
-      walls:(bishop.walls || []).map((wall, index)=>{
-        const material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'legacy-impermeable'});
-        const endpoints = wallEndpoints(wall);
-        return safeClone({
-          id:wall.id || `wall-${index + 1}`,
-          label:`Wall ${index + 1}`,
-          head:endpoints ? endpoints.head : null,
-          tip:endpoints ? endpoints.tip : null,
-          x:Number.isFinite(+wall.x) ? +wall.x : null,
-          yTop:Number.isFinite(+wall.yTop) ? +wall.yTop : null,
-          yTip:Number.isFinite(+wall.yTip) ? +wall.yTip : null,
-          passiveSide:wall.passiveSide === 'left' ? 'left' : 'right',
-          material:{
-            id:material.id,
-            label:material.label,
-            kAcross:material.kAcross,
-            kAlong:material.kAlong,
-            kSource:material.kSource,
-            kSourceLabel:wallMaterialSourceLabel(material.kSource)
-          }
-        });
-      }),
-      drains:(bishop.drains || []).map((drain, index)=>{
-        const drainId = drain.id || `drain-${index + 1}`;
-        const resultDrain = (seepage.result?.drains || []).find((item)=>item?.drainId === drainId) || null;
-        const activeNodes = resultDrain?.nodes?.filter((node)=>node?.isActive).length || 0;
-        return safeClone({
-          id:drainId,
-          label:drain.label || `Drain ${index + 1}`,
-          vertices:drain.vertices || [],
-          vertexCount:drain.vertices?.length || 0,
-          closed:!!drain.closed,
-          length:drainTotalLength(drain),
-          head:safeClone(drain.head || {kind:'constant', value:0}),
-          gating:drain.gating || 'when-saturated',
-          gatingLabel:stage6BishopDrainGatingLabel(drain.gating),
-          result:resultDrain ? {
-            totalInflow:resultDrain.totalInflow,
-            activeNodes,
-            totalNodes:resultDrain.nodes?.length || 0,
-            perSegmentInflow:resultDrain.perSegmentInflow || []
-          } : null
-        });
-      }),
-      materials:(bishop.materials || []).map((mat)=>safeClone({
-        id:mat.id || '',
-        label:mat.label || mat.id || 'Material',
-        kx:Number.isFinite(+mat.kx) ? +mat.kx : null,
-        ky:Number.isFinite(+mat.ky) ? +mat.ky : null,
-        kSource:mat.kSource || 'sbtn-default',
-        kSourceLabel:seepageSourceLabel(mat.kSource)
-      })),
-      boundaryConditions:(seepage.bcs || []).map((bc, index)=>{
-        const edge=edgeByKey.get(bc.edgeKey);
-        return safeClone({
-          id:bc.id || `bc-${index + 1}`,
-          edgeKey:bc.edgeKey || '',
-          edgeLabel:edgeLabelFor(bc.edgeKey, bc.anchor?.source),
-          source:edge?.source || bc.anchor?.source || '',
-          index:edge?.index ?? null,
-          type:bc.type === 'head' ? 'head' : bc.type === 'seepage-face' ? 'seepage-face' : 'no-flow',
-          typeLabel:stage6BishopSeepageBcTypeLabel(bc.type),
-          head:bc.type === 'head' && Number.isFinite(+bc.head) ? +bc.head : null,
-          status:bc.status === 'orphaned' ? 'orphaned' : 'active',
-          length:Number.isFinite(edge?.length) ? edge.length : null,
-          midpoint:safeClone(edge?.mid || bc.anchor?.mid || null)
-        });
-      }),
-      mesh:seepage.mesh ? safeClone({
-        nodes:seepage.mesh.nodes?.length || 0,
-        elements:seepage.mesh.elements?.length || 0,
-        cells:seepage.mesh.cells?.length || 0,
-        boundaryFaces:seepage.mesh.boundaryFaces?.length || 0,
-        drainEdges:[...(seepage.mesh.drainEdgesByDrain?.values?.() || [])].reduce((sum, edges)=>sum + (edges?.length || 0), 0),
-        generatedMs:Number.isFinite(+seepage.mesh.generatedMs) ? +seepage.mesh.generatedMs : null
-      }) : null,
-      result:seepage.result ? safeClone({
-        headMin:seepage.result.headMin,
-        headMax:seepage.result.headMax,
-        throughFlow:seepage.result.throughFlow,
-        inflow:seepage.result.inflow,
-        outflow:seepage.result.outflow,
-        flowError:seepage.result.flowError,
-        maxExitGradient:seepage.result.maxExitGradient,
-        dryCellCount:seepage.result.dryCellCount,
-        equipotentialLevelCount:seepage.result.equipotentialSegments?.length || 0,
-        phreaticSegmentCount:seepage.result.phreaticSegments?.length || 0,
-        drains:safeClone(seepage.result.drains || []),
-        solver:safeClone(seepage.result.solver || null),
-        timing:safeClone(seepage.result.timing || null)
-      }) : null
-    };
-  } catch(error){
-    console.error('Stage 7 seepage payload build failed:', error);
-    return{
-      config:safeClone({
-        freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
-        usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
-        flowErrorTolerance:Math.max(+seepage.options?.flowErrorTolerance || 0.01, 0.000001),
-        maxRuntimeMs:Math.max(+seepage.options?.maxRuntimeMs || 10000, 1),
-        meshTargetArea:stage6BishopResolvedSeepageMeshTargetArea(bishop),
-        meshTargetAreaAuto:seepage.options?.meshTargetAreaAuto !== false,
-        useFemPorePressure:!!bishop.useFemPorePressure
-      }),
-      summary:{
-        status:seepage.status || 'idle',
-        solved:false,
-        rejectReason:seepage.rejectReason || 'Seepage report payload could not be fully assembled.',
-        explicitBcCount:(seepage.bcs || []).length,
-        activeBcCount:0,
-        orphanedBcCount:0,
-        prescribedHeadCount:0,
-        seepageFaceCount:0,
-        noFlowCount:0
-      },
-      geometry:{
-        regionMode:bishop.useCustomRegions ? 'custom' : 'auto',
-        regionCount:0,
-        autoRegionCount:0,
-        customRegionCount:bishop.customRegions?.length || 0,
-        terrainVertexCount:bishop.terrain?.length || 0,
-        phreaticVertexCount:bishop.phreatic?.length || 0,
-        wallCount:bishop.walls?.length || 0,
-        boundaryEdgeCount:0
-      },
-      materials:[],
-      boundaryConditions:[],
-      mesh:null,
-      result:null
-    };
-  }
-}
-
-// Deformation annex — included only when a result has been solved. The
-// captured view (manual via the toolbar button, or automatic at report-build
-// time when none exists) is the primary visual; the surrounding payload
-// captures the analysis context so the report can be reproduced and audited.
-function stage7DeformationPayload(){
-  ensureStage6State();
-  const stage6 = S.stage6;
-  const bishop = stage6?.bishop;
-  if(!bishop) return null;
-  const deformation = bishop.deformation;
-  if(!deformation || !deformation.result) return null;
-  const result = deformation.result;
-  const solver = result?.solver || {};
-  const elementType = solver.elementType
-    || result?.mesh?.elementType
-    || deformation.options?.meshElementType
-    || 't3';
-  const safetyFosLower = Number.isFinite(solver.safetyFactorOfSafetyLower) ? Number(solver.safetyFactorOfSafetyLower) : null;
-  const safetyFosUpper = Number.isFinite(solver.safetyFactorOfSafetyUpper) ? Number(solver.safetyFactorOfSafetyUpper) : null;
-  const safetyFinalization = solver.safetyResult?.finalization || null;
-  const summary = {
-    analysisType: deformation.options?.analysisType || 'deformation',
-    constitutiveModel: deformation.options?.constitutiveModel || 'linear-elastic',
-    elementType,
-    converged: solver.convergenceState === 'converged' || result?.converged === true,
-    convergenceState: solver.convergenceState || null,
-    loadFactor: result?.loadFactor != null ? Number(result.loadFactor) : null,
-    loadFactorMeaning: result?.loadFactorMeaning || null,
-    safetyStatus: solver.safetyStatus || null,
-    safetyFinalizationStatus: safetyFinalization?.status || null,
-    safetyFactorOfSafetyIsOpenEnded: safetyFinalization?.factorOfSafetyIsOpenEnded === true,
-    safetyFactorOfSafetyLower: safetyFosLower,
-    safetyFactorOfSafetyUpper: safetyFosUpper,
-    safetyLoadFactor: safetyFosLower != null
-      ? safetyFosLower
-      : (result?.safetyLoadFactor != null ? Number(result.safetyLoadFactor) : null),
-    initialPhaseConvergenceState: solver.initialPhaseConvergenceState || null,
-    servicePhaseConvergenceState: solver.servicePhaseConvergenceState || null,
-    iterations: solver.iterations != null
-      ? Number(solver.iterations)
-      : (result?.iterations != null ? Number(result.iterations) : null),
-    timing: result?.timing ? safeClone(result.timing) : null,
-    nodeCount: Array.isArray(result?.mesh?.nodes) ? result.mesh.nodes.length : (result?.mesh?.nodeCount ?? null),
-    elementCount: Array.isArray(result?.mesh?.triangles) ? result.mesh.triangles.length : (result?.mesh?.elementCount ?? null),
-    maxSettlementMm: result?.summary?.maxSettlementMm ?? null,
-    maxDisplacementMm: result?.summary?.maxDisplacementMm ?? null
-  };
-  const manualView = bishop.capturedView?.deformation || null;
-  const view = manualView
-    ? safeClone(manualView)
-    : stage7CaptureBishopWorkspaceView('deformation');
-  if(!view) return null;
-  view.source = manualView ? 'manual' : 'auto';
-  return {
-    config: safeClone(deformation.options || {}),
-    summary,
-    warnings: Array.isArray(deformation.warnings) ? safeClone(deformation.warnings) : [],
-    view
-  };
-}
-
+/* ════════════════════════════════
+   STAGE 7 — REPORT
+════════════════════════════════ */
+/* The payload builders live in report/ (PR 8): buildStage7Payload(project, cpt, deps) and
+   its parts (payload-stage6.js, payload-seepslope.js). safeClone is imported back for the
+   workspace captures below, which stay here until refactor step 9g because they switch
+   the Stage 6 app / bishop workspace and re-render (01-monolith-map.md §3.4 #10). */
 // Extend stage7CaptureBishopWorkspaceView to also support 'deformation' so the
 // auto-capture fallback works for the deformation annex.
 //
@@ -15461,218 +14827,34 @@ function stage7CaptureBishopWorkspaceView(workspace){
   }
 }
 
-function stage7Stage6Payload(workingLayers){
-  const annexes={};
-  if(S.stage6Cache?.bearing?.selected){
-    annexes.bearing={
-      config:safeClone(S.stage6.bearing),
-      analysis:safeClone(S.stage6Cache.bearing)
-    };
-  }
-  if(S.stage6Cache?.settlement?.sublayers?.length){
-    annexes.settlement={
-      config:safeClone(S.stage6.settlement),
-      analysis:safeClone(S.stage6Cache.settlement)
-    };
-  }
-  if(S.stage6Cache?.dewatering?.sublayers?.length || S.stage6Cache?.dewatering?.drawdownCurve?.length){
-    annexes.dewatering={
-      config:safeClone(S.stage6.dewatering),
-      analysis:safeClone(S.stage6Cache.dewatering)
-    };
-  }
-  if(S.stage6Cache?.beam?.sls?.xSamples?.length){
-    annexes.beam={
-      config:safeClone(S.stage6.beam),
-      analysis:safeClone(S.stage6Cache.beam)
-    };
-  }
-  // Pile capacity — added once the pile estimator was built (the cache is
-  // populated by analyzePile in renderStage6() when app === 'pile').
-  if(S.stage6Cache?.pile?.capacity){
-    annexes.pile={
-      config:safeClone(S.stage6.pile),
-      analysis:safeClone(S.stage6Cache.pile)
-    };
-  }
-  // Bishop / seepage / deformation each get a workspace screenshot. The user
-  // can press the "Capture for report" button in the workspace toolbar at any
-  // time to freeze a specific view (selected result, contour mode, viewport)
-  // for the report. We prefer that manual capture; if the user never pressed
-  // it, fall back to the automatic capture done here at report-build time.
-  const bishop=stage7BishopPayload();
-  if(bishop){
-    const manualBishopView = S.stage6.bishop?.capturedView?.stability || null;
-    const bishopView = manualBishopView
-      ? safeClone(manualBishopView)
-      : stage7CaptureBishopWorkspaceView('stability');
-    if(bishopView){
-      bishopView.source = manualBishopView ? 'manual' : 'auto';
-      bishop.view = bishopView;
+/* Everything the pure builder used to reach through this module's closure, named
+   (report/deps.js): the model-parameter wrappers over the active CPT, the Stage 6 state
+   normaliser, the automatic workspace capture (only called when an annex exists and no
+   manual capture is stored — same conditional as before) and the Seep/Slope helpers that
+   move with the seepslope/ package in step 9. */
+function stage7ControllerDeps(){
+  return {
+    hsParams,
+    khParams,
+    workingLayers:stage6WorkingLayers,
+    ensureStage6State,
+    captureBishopWorkspaceView:stage7CaptureBishopWorkspaceView,
+    seepslope:{
+      resultMethodLabel:stage6BishopResultMethodLabel,
+      seepageEdgeLabel:stage6BishopSeepageEdgeLabel,
+      seepageBcTypeLabel:stage6BishopSeepageBcTypeLabel,
+      drainGatingLabel:stage6BishopDrainGatingLabel,
+      resolvedSeepageMeshTargetArea:stage6BishopResolvedSeepageMeshTargetArea
     }
-    annexes.bishop=bishop;
-  }
-  const seepage=stage7SeepagePayload();
-  if(seepage){
-    const manualSeepageView = S.stage6.bishop?.capturedView?.seepage || null;
-    const seepageView = manualSeepageView
-      ? safeClone(manualSeepageView)
-      : stage7CaptureBishopWorkspaceView('seepage');
-    if(seepageView){
-      seepageView.source = manualSeepageView ? 'manual' : 'auto';
-      seepage.view = seepageView;
-    }
-    annexes.seepage=seepage;
-  }
-  // Deformation annex — was previously absent. Only included when a result
-  // is solved AND the user has captured a view (the captured view IS the
-  // deformation reporting; without a screenshot we have nothing meaningful
-  // to show in the printed report at present).
-  const deformation = stage7DeformationPayload();
-  if(deformation){
-    annexes.deformation = deformation;
-  }
-  const available=Object.keys(annexes);
-  if(!available.length) return null;
-  return{
-    currentApp:S.stage6?.app || 'bearing',
-    available,
-    layers:safeClone(workingLayers),
-    ...annexes
   };
 }
 
 function buildStage7Payload(){
   if(!S.layers.length || !S.data.length){
-    alert('Run the CPT through layers and model parameters before opening the Stage 7 report.');
+    alert(STAGE7_GUARD_MESSAGE);
     return null;
   }
-  ensureStage6State();
-  const workingLayers=stage6WorkingLayers();
-  const rawDepthMax=S.data.length ? +(S.data[S.data.length - 1].z + 0.5).toFixed(3) : stage6MaxDepth();
-  const maxQc=Math.max(1, arrMax(S.data.map(r=>r.qc))) * 1.15;
-  const maxFs=Math.max(10, arrMax(S.data.map(r=>r.fs != null ? r.fs * 1000 : 0))) * 1.15;
-  const tuning=stage7TuningPayload();
-  const layerWarnings=stage7LayerWarnings();
-  const layerPayload=S.layers.map((layer, index)=>stage7WorkingLayerPayload(layer, index));
-  const acceptedTuningCount=layerPayload.filter(layer=>layer.hasAcceptedTuning).length;
-  const manualOverrideCount=layerPayload.reduce((sum, layer)=>{
-    return sum + Object.values(layer.overrides || {}).filter(Boolean).length;
-  }, 0);
-  const stage6=stage7Stage6Payload(workingLayers);
-  return{
-    version:4,
-    stage:'stage7',
-    generatedAt:new Date().toISOString(),
-    appVersion: (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.5.x'),
-    project:{
-      name:PROJECT.name,
-      phase:PROJECT.phase
-    },
-    cpt:{
-      id:S.id,
-      displayId:S.meta?.testid || S.id || 'CPT',
-      coordinates:{
-        x:S.x,
-        y:S.y
-      }
-    },
-    metadata:safeClone({
-      ...S.meta,
-      sourceFile:S.meta?.fname || null,
-      nRows:S.meta?.nRows || S.data.length,
-      hasFs:cptHasFs(),
-      hasRf:cptHasRf(),
-      assumedRf:assumedRfValue(),
-      rfAssumedCount:S.data.filter(r=>r.rf==null).length
-    }),
-    replication:{
-      method:S.method,
-      methodLabel:stage7MethodLabel(S.method),
-      smartMerge:!!S.smartMerge,
-      smartMergeSensitivity:+Number(S.smartMergeSensitivity ?? 1.1).toFixed(3),
-      minThickness:+Number(S.minThk || 0).toFixed(3),
-      parameterMethod:S.paramMethod,
-      parameterMethodLabel:stage7ParamMethodLabel(S.paramMethod),
-      alphaMethod:S.alphaMethod,
-      alphaMethodLabel:stage7AlphaMethodLabel(S.alphaMethod),
-      stiffnessMethod:S.stiffMethod,
-      stiffnessMethodLabel:stage7StiffMethodLabel(S.stiffMethod),
-      waterTable:S.wt,
-      waterTableTaw:S.elev != null ? +(S.elev - S.wt).toFixed(2) : null,
-      waterTableSource:stage7WtSourceLabel(),
-      surfaceElevation:S.elev,
-      surfaceElevationSource:stage7ElevSourceLabel()
-    },
-    summary:{
-      layerCount:S.layers.length,
-      depthMin:S.meta?.depthMin ?? (S.data[0]?.z || 0),
-      depthMax:S.meta?.depthMax ?? (S.data[S.data.length - 1]?.z || 0),
-      acceptedTuningCount,
-      manualOverrideCount,
-      stage6Annexes:stage6?.available || []
-    },
-    visuals:{
-      layerColumn:{
-        width:72,
-        height:420,
-        markup:buildLayerColumnSvgMarkup({
-          layers:S.layers,
-          maxDepth:rawDepthMax,
-          wt:S.wt,
-          width:72,
-          height:420,
-          emptyLabel:'No layers'
-        })
-      },
-      layerProfile:{
-        width:210,
-        height:520,
-        markup:buildLayerPreviewSvgMarkup({
-          layers:S.layers,
-          rows:S.classified?.length ? S.classified : S.data,
-          wt:S.wt,
-          width:210,
-          height:520,
-          showRf:false,
-          // No fs in the source → no fs track: a permanently-empty column
-          // with a fabricated axis would misread as a measured zero profile.
-          showFs:cptHasFs()
-        })
-      }
-    },
-    chartInputs:{
-      raw:{
-        maxDepth:rawDepthMax,
-        maxQc,
-        maxFs
-      }
-    },
-    rawRows:S.data.map((row)=>({
-      depth:row.z,
-      taw:S.elev != null ? +(S.elev - row.z).toFixed(2) : null,
-      qc:row.qc,
-      fsMPa:row.fs ?? null,
-      fsKPa:row.fs != null ? +(row.fs * 1000).toFixed(3) : null,
-      rf:row.rf ?? null,
-      u2:row.u2 ?? null
-    })),
-    classifiedRows:(S.classified || []).map((row)=>({
-      depth:row.z,
-      taw:S.elev != null ? +(S.elev - row.z).toFixed(2) : null,
-      qc:row.qc,
-      fsKPa:row.fs != null ? +(row.fs * 1000).toFixed(3) : null,
-      rf:row.rf ?? null,
-      type:row.type,
-      subtype:row.subtype || '',
-      ic:row.Ic ?? null,
-      qtOrQcNen:row.Qt ?? null
-    })),
-    layers:layerPayload,
-    layerWarnings,
-    tuning,
-    stage6
-  };
+  return buildStage7PayloadPure(PROJECT, S, stage7ControllerDeps());
 }
 
 function openStage7Report(){
