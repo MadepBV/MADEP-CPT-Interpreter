@@ -235,6 +235,17 @@
       17.3, 17.4, 17.5, 17.6, 17.7, 17.8, 17.9
     ]
   },
+  "sensitivity": {
+    "max_m": 6.3,
+    "min_m": 6.3,
+    "rows": [
+      {"achievable_m":6.3,"label":"base (Λ = 6, δ_H = 0)","reaches":true},
+      {"achievable_m":6.3,"label":"Λ = 4","reaches":true},
+      {"achievable_m":6.3,"label":"Λ = 10","reaches":true},
+      {"achievable_m":6.3,"label":"δ_H = 0.5","reaches":true}
+    ],
+    "target_m": 6.3
+  },
   "source": "sheet",
   "target": 6.300000000000001,
   "vibrator": {

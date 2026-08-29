@@ -1,4 +1,4 @@
-Will it drive the element? — hammer hydraulic, ram 5000 kg, 60 kJ × η 0.90
+Achievable depth — hammer hydraulic, ram 5000 kg, 60 kJ × η 0.90
 REACHES TARGETThe hammer reaches the target 6.30 m; hardest driving 9 blows / 25 cm at 6.30 m.
 Blow count at target depth9blows / 25 cm at 6.30 mSet per blow at target27.4mmHardest driving9blows / 25 cm at 6.30 mMax compressive stress243MPaMax tensile stress62MPaTransferred energy (ENTHRU) at target47.2kJRefusal criterion≥ 250 blows / 25 cmFHWA GEC-12 practice
 Verify the compressive stress against 0.9·fy (EN 12699 / EN 12063 driving stress limits) and the pile's buckling and handling condition separately.

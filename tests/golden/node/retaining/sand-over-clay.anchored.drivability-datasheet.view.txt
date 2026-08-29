@@ -1,5 +1,6 @@
-Will it drive the element? — SAES HST070
+Achievable depth — SAES HST070
 REFUSALSAES HST070 is predicted to refuse at 5.00 m (mR = 1.0) — mechanically possible down to 4.90 m of the 6.30 m target. Short by 1.40 m.
+Model sensitivity: achievable depth 3.6–6.3 m of the 6.30 m target across Λ = 4 → 3.6 m, Λ = 10 → 6.3 m, δ_H = 0.5 → 4.9 m. The force-envelope method is an order-of-magnitude screen (course §7.1): differences smaller than this band — and any margin below ~0.5 m — are inside the model's resolution; confirm with a trial pile (course §15.8).
 Fc available205.0kN at 48.3 Hz (2900 rpm)Fc,min required for the target254.2 / 321.9kN (m_R 1.0 / 1.25)Force margin at the target-49.2 / -116.9kN CLOSEDWorst margin-49.2 / -116.9kN at 6.30 mEccentric moment Me2.22kg·m (from F_c, rpm)Vibrating mass Mdyn1070kg incl. 700 kg element (from 12.0 mm p-p amplitude)Attached amplitude s₀ / App2.08 / 4.15mm (with the element)Acceleration ratio α19.53— free; at the worst depth 19.53Weff (weight + crowd − line)16.3kN incl. 5.8 kN isolated partStress screen (Fc + Weff)/As16.9MPa
 Carrier check PASS
 Item Machine needs Carrier
