@@ -114,6 +114,19 @@ import {
 } from './core/format.js';
 import { readCssToken } from './core/css-tokens.js';
 import { destroyChart as stage6DestroyChart } from './core/chart-host.js';
+import {
+  DEF,
+  AE,
+  sb260GranularAlpha,
+  sb260TransitionAlpha,
+  sb260AlphaFamily,
+  alphaEB,
+  cptModelCtx,
+  stressAt as stressAtPure,
+  hsParams as hsParamsPure,
+  khParams as khParamsPure,
+  workingLayers as workingLayersPure
+} from './model-params/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -163,18 +176,12 @@ const retainingApp = installRetainingApp({
 // Multi-CPT stratigraphy application (Correlatie phase + Doorsnede geometry).
 // Self-contained module (src/lib/cpt-app/stratigraphy/) wired via a small
 // context. layerParamsFor evaluates the Stage 4 parameter derivation in the
-// member layer's own CPT context: hsParams/khParams read the active-CPT
-// reference S, so it is swapped for the duration of the call.
+// member layer's own CPT context (model-params ctx built from that CPT).
 const stratigraphyApp = installStratigraphyApp({
   getProject: () => PROJECT,
   layerParamsFor: (cpt, layer) => {
-    const prevS = S;
-    S = cpt;
-    try {
-      return { hs: hsParams(layer), kh: khParams(layer) };
-    } finally {
-      S = prevS;
-    }
+    const ctx = cptModelCtx(cpt);
+    return { hs: hsParamsPure(layer, ctx), kh: khParamsPure(layer, ctx) };
   },
   requestSectionRender: () => { if(PROJECT.phase==='section') renderSection(); }
 });
@@ -818,221 +825,6 @@ function exportSectionSVG(){
 ════════════════════════════════ */
 const SC = SOIL_CLASS_NAMES;
 const SCFILL = SOIL_FILL_COLORS;
-const DEF={
-  'Peat / organic':{g:11,gs:12,phi:17,c:0,cu:10},
-  'Soft clay':     {g:15,gs:16,phi:20,c:2,cu:25},
-  'Clay':          {g:17,gs:18,phi:24,c:5,cu:50},
-  'Sandy clay':    {g:18,gs:19,phi:28,c:2,cu:0},
-  'Silty sand':    {g:19,gs:20,phi:31,c:0,cu:0},
-  'Sand':          {g:19,gs:20,phi:34,c:0,cu:0},
-  'Gravel':        {g:20,gs:21,phi:38,c:0,cu:0}
-};
-/* Alpha Method A — fixed Sanglerat values (SB260-21-6.4.10) */
-const AE={
-  'Peat / organic':1.5,'Soft clay':3.0,'Clay':5.0,
-  'Sandy clay':8.0,'Silty sand':10.0,'Sand':13.0,'Gravel':15.0
-};
-
-/* Default drained Poisson ratios nu' for the Mohr-Coulomb deformation export
-   and for Edef = beta*Eoed,i (beta = (1+nu)(1-2nu)/(1-nu), SCIA / CSN 73 1001).
-   Priority: selected EC7 subtype first, then broad CPT soil family fallback.
-   Provenance (full derivation + bibliography in /docs/workflow#stage4-scia-edef):
-   - Mineral soils are anchored to the CSN 73 1001 directive normative
-     characteristics (as reproduced in the SCIA Engineer 25.0 help), the native
-     parameter set of the beta/Edef convention: gravels G1-G5 0.20-0.30, sands
-     S1-S5 0.28-0.35, fine soils F1-F4 0.35 / F5-F7 0.40; capped at 0.40
-     (0.42-0.45 are near-undrained magnitudes; nu_u = 0.5 is a short-term
-     state, not a drained parameter — EN 1997-2:2007 Annex K.2(3), prEN 1997-2
-     9.1.2.2, Buildwise 2022 sec 4.2.5).
-   - veen uses measured drained values: nu' = 0.10-0.15 for fibrous peat with
-     a K0-implied ceiling of ~0.21-0.26 (O'Kelly 2017); CSN has no peat class
-     and the previous 0.40-0.45 was an undrained magnitude (beta down to 0.26).
-   - leem keeps the international silt band 0.30-0.35 (AASHTO 10.6.2.2.3b-1,
-     Bowles Table 2-7) — a deliberate departure from CSN F5 = 0.40, since
-     Belgian leem is a low-plasticity loess silt.
-   - Density grading rises in granular soils (Kulhawy & Mayne 1990:
-     nu_d = 0.1 + 0.3(phi'-25)/20); consistency grading falls in clays
-     (K0nc = 1-sin phi' matching, PLAXIS MMM 3.3.2). Family ordering
-     Gravel < Sand reflects fines/plasticity control, per CSN G1-G2 0.20
-     < S1-S2 0.28: nu' tracks fines content, not grain size. */
-const MC_NU_BY_TYPE={
-  'Peat / organic':0.20,
-  'Soft clay':0.40,
-  'Clay':0.38,
-  'Sandy clay':0.33,
-  'Silty sand':0.30,
-  'Sand':0.30,
-  'Gravel':0.28
-};
-
-const MC_NU_BY_SUBTYPE={
-  'veen, weinig vast':0.15,
-  'veen, matig vast':0.20,
-  'veen, vast':0.25,
-
-  'klei, weinig vast':0.40,
-  'klei, matig vast':0.38,
-  'klei, vrij vast':0.36,
-  'klei, vast':0.35,
-  'klei (zh), weinig vast':0.35,
-  'klei (zh), matig vast':0.34,
-  'klei (zh), vrij vast':0.33,
-  'klei (zh), vast':0.32,
-
-  'leem, weinig vast':0.35,
-  'leem, matig vast':0.33,
-  'leem, vrij vast':0.32,
-  'leem, vast':0.30,
-  'leem (zh), weinig vast':0.33,
-  'leem (zh), matig vast':0.32,
-  'leem (zh), vrij vast':0.31,
-  'leem (zh), vast':0.30,
-
-  'zand, los':0.28,
-  'zand, matig':0.30,
-  'zand, dicht':0.33,
-  'zand, zeer dicht':0.35,
-  'zand (lh), los':0.30,
-  'zand (lh), matig':0.32,
-  'zand (lh), dicht':0.34,
-  'zand (lh), z.dicht':0.35,
-
-  'grind, matig':0.28,
-  'grind, dicht':0.30,
-  'grind (kh), matig':0.30,
-  'grind (kh), dicht':0.32
-};
-
-const MC_RSHEAR_BY_TYPE={
-  'Peat / organic':0.12,
-  'Soft clay':0.14,
-  'Clay':0.16,
-  'Sandy clay':0.22,
-  'Silty sand':0.28,
-  'Sand':0.33,
-  'Gravel':0.34
-};
-
-const MC_RSHEAR_BY_SUBTYPE={
-  'veen, weinig vast':0.10,
-  'veen, matig vast':0.12,
-  'veen, vast':0.15,
-
-  'klei, weinig vast':0.12,
-  'klei, matig vast':0.15,
-  'klei, vrij vast':0.18,
-  'klei, vast':0.20,
-  'klei (zh), weinig vast':0.15,
-  'klei (zh), matig vast':0.18,
-  'klei (zh), vrij vast':0.20,
-  'klei (zh), vast':0.22,
-
-  'leem, weinig vast':0.18,
-  'leem, matig vast':0.20,
-  'leem, vrij vast':0.22,
-  'leem, vast':0.25,
-  'leem (zh), weinig vast':0.20,
-  'leem (zh), matig vast':0.22,
-  'leem (zh), vrij vast':0.25,
-  'leem (zh), vast':0.28,
-
-  'zand, los':0.30,
-  'zand, matig':0.33,
-  'zand, dicht':0.35,
-  'zand, zeer dicht':0.35,
-  'zand (lh), los':0.28,
-  'zand (lh), matig':0.30,
-  'zand (lh), dicht':0.32,
-  'zand (lh), z.dicht':0.33,
-
-  'grind, matig':0.33,
-  'grind, dicht':0.35,
-  'grind (kh), matig':0.30,
-  'grind (kh), dicht':0.33
-};
-
-function mohrCoulombNuDefault(type, subtype){
-  const key=(subtype||'').trim().toLowerCase();
-  if(key && Object.prototype.hasOwnProperty.call(MC_NU_BY_SUBTYPE, key)) return MC_NU_BY_SUBTYPE[key];
-  return MC_NU_BY_TYPE[type] ?? 0.30;
-}
-
-function mohrCoulombRShearDefault(type, subtype){
-  const key=(subtype||'').trim().toLowerCase();
-  if(key && Object.prototype.hasOwnProperty.call(MC_RSHEAR_BY_SUBTYPE, key)) return MC_RSHEAR_BY_SUBTYPE[key];
-  return MC_RSHEAR_BY_TYPE[type] ?? 0.25;
-}
-
-/* Alpha Method B — SB260 family mapping driven by the selected EC7 subtype.
-   Stage 4 uses layer avgQc; Stage 5 may pass row qc for pointwise fitting.
-   Peat water content w is not available in the app, so veen defaults to α=1.5. */
-/* ════════════════════════════════
-   ALPHA METHOD B — SB260-21-6.4.10 Tabel 21-6-5
-   
-   Definitive subtype→rule-family mapping. Priority: subtype string first, then type.
-   
-   Cohesive:
-   - veen, ...      → α=1.5 (w unknown in app)
-   - klei, ...      → qc<0.7 => 5 ; 0.7-2 => 3 ; >=2 => 1.5
-   - leem, ...      → qc<2 => 4 ; >=2 => 2
-
-   Transition:
-   - klei (zh), ... / leem (zh), ... / zand (lh), ...
-     qc<2.5 => α=2 ; 2.5-5 => Es=4qc-5 ; >=5 => α=2
-
-   Granular:
-   - zand, ... / grind, ... / grind (kh), ...
-     qc<=10 => Es=4qc ; 10-50 => Es=2qc+20 ; >50 => Es=120
-════════════════════════════════ */
-function sb260GranularAlpha(qc){
-  if(qc <= 10) return 4.0;
-  if(qc <= 50) return +(((2*qc) + 20) / qc).toFixed(3);
-  return +(120 / qc).toFixed(3);
-}
-
-function sb260TransitionAlpha(qc){
-  if(qc < 2.5) return 2.0;
-  if(qc < 5.0) return +(((4*qc) - 5) / qc).toFixed(3);
-  return 2.0;
-}
-
-function sb260AlphaFamily(type, subtype, rf){
-  const sub=(subtype||'').toLowerCase();
-
-  if(sub.includes('veen')) return 'cohesive-peat';
-  if(sub.includes('klei (zh)')) return 'transition';
-  if(sub.includes('leem (zh)')) return 'transition';
-  if(sub.includes('zand (lh)')) return 'transition';
-  if(sub.includes('grind (kh)')) return 'granular';
-  if(sub.includes('grind')) return 'granular';
-  if(sub.includes('zand')) return 'granular';
-  if(sub.includes('klei')) return 'cohesive-clay';
-  if(sub.includes('leem')) return 'cohesive-loam';
-
-  // Fallback by type if no EC7 subtype is available.
-  if(type==='Peat / organic') return 'cohesive-peat';
-  if(type==='Gravel') return 'granular';
-  if(type==='Sand'||type==='Silty sand'){
-    if(rf != null && rf >= 1 && rf <= 2) return 'transition';
-    return 'granular';
-  }
-  if(type==='Clay'||type==='Soft clay') return 'cohesive-clay';
-  if(type==='Sandy clay') return 'cohesive-loam';
-  return 'cohesive-clay';
-}
-
-function alphaEB(type, avgQc, subtype, avgRf){
-  const qc = Math.max(avgQc||0.1, 0.01);
-  const family = sb260AlphaFamily(type, subtype, avgRf);
-
-  if(family==='transition') return sb260TransitionAlpha(qc);
-  if(family==='granular') return sb260GranularAlpha(qc);
-  if(family==='cohesive-peat') return 1.5;
-  if(family==='cohesive-loam') return qc < 2.0 ? 4.0 : 2.0;
-  if(family==='cohesive-clay') return qc < 0.7 ? 5.0 : (qc < 2.0 ? 3.0 : 1.5);
-
-  return AE[type]||5.0;  // fallback Method A
-}
 
 /* ════════════════════════════════
    NAVIGATION
@@ -1933,21 +1725,7 @@ function selM(m){
    STRESS
 ════════════════════════════════ */
 function stressAt(z, gamma_sat, gamma_unsat){
-  /* Correct effective stress accounting for water table position.
-     Above WT: use gamma_unsat (unsaturated unit weight = gamma, Stage 3).
-     Below WT: use gamma_sat.
-     If gamma_unsat not supplied, falls back to gamma_sat for both zones
-     (conservative, used during Stage 2 classification where only gamma=18 known). */
-  const wt = S.wt;
-  const gu = gamma_unsat ?? gamma_sat; // fallback
-  let sigV;
-  if(z <= wt){
-    sigV = gu * z;
-  } else {
-    sigV = gu * wt + gamma_sat * (z - wt);
-  }
-  const u = z > wt ? 9.81 * (z - wt) : 0;
-  return{sigV: +sigV.toFixed(2), u: +u.toFixed(2), sigVeff: Math.max(sigV - u, 1)};
+  return stressAtPure(S, z, gamma_sat, gamma_unsat);
 }
 
 /* ════════════════════════════════
@@ -2946,88 +2724,7 @@ function editNu(el){
    MODEL PARAMETERS
 ════════════════════════════════ */
 function khParams(l){
-  /* Hydraulic conductivity from I/RA/11461/15.066/JSW
-     Tabel 2-44 (OVAM 2002) + Tabel 2-45 (De Smedt VUB)
-     mapped to CPT soil types. Values in m/s.
-     kh_min, kh_max = range; kh_rep = representative (geometric mean). */
-  const sub=l.subtype||'';
-  const isGranular=l.type==='Sand'||l.type==='Silty sand'||l.type==='Gravel';
-  const isCohesive =l.type==='Clay'||l.type==='Soft clay';
-  const isLeem     =l.type==='Sandy clay';
-  const isPeat     =l.type==='Peat / organic';
-
-  let kh_min,kh_max,kh_rep;
-
-  if(l.type==='Gravel'){
-    kh_min=2.3e-4; kh_max=1.2e-2; kh_rep=1e-3;
-  } else if(l.type==='Sand'){
-    // Sub-classify by SB260 consistency (subtype contains zand, los/matig/dicht/z.dicht)
-    if(sub.includes('z.dicht')||sub.includes('zeer dicht')){kh_min=1.2e-4;kh_max=2.3e-4;kh_rep=2e-4;}
-    else if(sub.includes('dicht'))                          {kh_min=1.2e-4;kh_max=2.3e-4;kh_rep=1.5e-4;}
-    else if(sub.includes('matig'))                          {kh_min=1.2e-5;kh_max=1.2e-4;kh_rep=4e-5;}
-    else /* los + kleihoudend */                            {kh_min=1.2e-6;kh_max=1.2e-5;kh_rep=3e-6;}
-  } else if(l.type==='Silty sand'){
-    kh_min=1.2e-6; kh_max=1.2e-5; kh_rep=3e-6;
-  } else if(isLeem){
-    kh_min=1.2e-7; kh_max=1.2e-6; kh_rep=5e-7;
-  } else if(l.type==='Clay'){
-    kh_min=1e-9; kh_max=1.2e-7; kh_rep=5e-8;
-  } else if(l.type==='Soft clay'){
-    kh_min=1e-10; kh_max=1.2e-7; kh_rep=2e-8;
-  } else if(isPeat){
-    kh_min=6e-8; kh_max=6e-7; kh_rep=2e-7;
-  } else {
-    kh_min=1e-6; kh_max=1e-4; kh_rep=1e-5; // fallback
-  }
-
-  // kh/kv ratio — engineer-selectable method.
-  //
-  //   Method A — OVAM / I/RA/11461 (default)
-  //     Conservative engineering practice value used in the Belgian
-  //     OVAM 2002 / I/RA/11461.15.066 reference.  Silty sand ("fijn zand"
-  //     in the source) is grouped with the fine soils → k_h/k_v = 3.
-  //
-  //   Method B — Bear (1979) academic
-  //     Bear's Hydraulics of Groundwater gives a literature-typical
-  //     intermediate value for fine/silty sand: k_h/k_v ≈ 2.  Reflects
-  //     the partly-cohesive nature of silty sand without lumping it
-  //     fully with cohesive soils.
-  //
-  // Sand and gravel remain isotropic (k_h/k_v = 1) under both methods.
-  // All cohesive soils (clay, sandy clay/leem, peat) get k_h/k_v = 3
-  // under both methods.
-  const isFineSand = l.type==='Silty sand';
-  let khkv;
-  if (isGranular && !isFineSand) {
-    khkv = 1;                                   // clean sand or gravel
-  } else if (isFineSand) {
-    khkv = (S.khKvMethod === 'B') ? 2 : 3;      // OVAM=3 (default), Bear=2
-  } else {
-    khkv = 3;                                   // cohesive
-  }
-  const kv_rep = +(kh_rep / khkv).toExponential(1);
-
-  // psi_unsat (Plaxis 2D Manual): granular 0.1 m, leem 1.0 m, cohesive 3.0 m.
-  // Silty sand stays in the granular branch for ψ_unsat (height of partially
-  // saturated zone above the water table) — it dries similarly to clean sand.
-  const psi_unsat = isGranular ? 0.1 : isLeem ? 1.0 : 3.0;
-
-  // Infiltration design class (VMM §5.2, I/RA/11461/15.066/JSW)
-  let infClass;
-  if(kh_rep > 0.5e-6)       infClass='Infiltratie (volledig)';
-  else if(kh_rep > 0.1e-6)  infClass='Infiltratie (effectief)';
-  else if(kh_rep > 0.01e-6) infClass='Infiltratie + buffer';
-  else                        infClass='Buffer (infiltratie marginaal)';
-
-  function fmtK(v){
-    // Format as X.Xe-N
-    const e=Math.floor(Math.log10(v));
-    const m=+(v/Math.pow(10,e)).toFixed(1);
-    return `${m}\u00d710\u207b${Math.abs(e)}`;  // m×10⁻N
-  }
-
-  return{kh_min,kh_max,kh_rep,khkv,kv_rep,psi_unsat,infClass,
-    kh_rep_fmt:fmtK(kh_rep), kh_min_fmt:fmtK(kh_min), kh_max_fmt:fmtK(kh_max)};
+  return khParamsPure(l, modelCtx());
 }
 
 /* Toggle functions for Stage 4 global method controls */
@@ -3071,89 +2768,13 @@ function setParamMethod(v){
   if(S.classified.length){ detectLayers(); renderLayers(); }
 }
 
+/* Stage 4 derivation lives in model-params/ (PR 5); these wrappers feed the
+   pure functions the context of the active CPT. */
+function modelCtx(){
+  return cptModelCtx(S);
+}
 function hsParams(l){
-  const pref=100;
-  const midZ=(l.top+l.bot)/2;
-  /* Pass both gamma_sat (l.gs) and gamma_unsat (l.g) so that stress
-     above the water table uses the unsaturated unit weight. */
-  const {sigV, u, sigVeff}=stressAt(midZ, l.gs, l.g);
-  const cohesive=l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic';
-
-  /* ── Alpha selection ── */
-  let aE;
-  if(l.ovr.aE){
-    aE=l.aE_ovr;  // engineer override takes absolute priority
-  } else if(S.alphaMethod==='B'){
-    // Fall back to the explicit assumed Rf when the CPT has no measured Rf,
-    // so the sand/transition α-family split stays consistent with Stage 2.
-    aE=alphaEB(l.type, l.avgQc, l.subtype, l.avgRf ?? assumedRfValue());
-  } else {
-    aE=AE[l.type]||10;
-  }
-
-  /* ── Eoed,i ── */
-  const Eoed_i=+(aE*l.avgQc*1000).toFixed(0);
-
-  /* ── m (type default, engineer can override) ──
-     CUR 2003-7 binary stress-exponent convention: m = 0.5 for granular soils
-     (sand, silty sand, gravel) and m = 1.0 for cohesive soils (clay, soft
-     clay, sandy clay / leem, peat).  This is the documented method's
-     conservative default — Stage 5 m-fitting is available per layer when
-     site-specific evidence supports a different value.
-     References: CUR 2003-7; Schanz, Vermeer & Bonnier (1999). */
-  const m=l.ovr.m ? l.m_ovr
-          : (cohesive || l.type==='Sandy clay') ? 1.0
-          : 0.50;
-
-  /* ── Eoed,ref (full cohesion-corrected formula per SB260-21-6.4.10) ── */
-  const cotphi = l.phi>0 ? Math.cos(l.phi*Math.PI/180)/Math.sin(l.phi*Math.PI/180) : 0;
-  const cCotPhi = l.c * cotphi;
-  const ratio = Math.max((sigVeff + cCotPhi) / (pref + cCotPhi), 0.05);
-  const Eoed_ref = +(Eoed_i / Math.pow(ratio, m)).toFixed(0);
-
-  /* ── Stiffness Method A (CUR 2003-7) or B (E50 = Eoed) ──
-     CUR 2003-7 treats klei AND leem (Sandy clay) as the cohesive set for
-     the E50/Eoed = 1.25 ratio.  The earlier code excluded Sandy clay,
-     which disagreed with the documented method. */
-  const cohesiveForE50 = cohesive || l.type==='Sandy clay';
-  let E50_i, E50_ref, Eur_ref;
-  if(S.stiffMethod==='B'){
-    E50_i = Eoed_i;
-    E50_ref = Eoed_ref;
-    Eur_ref = +(3*Eoed_ref).toFixed(0);
-  } else {
-    // Method A: CUR 2003-7
-    E50_i = cohesiveForE50 ? +(1.25*Eoed_i).toFixed(0) : Eoed_i;
-    E50_ref = cohesiveForE50 ? +(1.25*Eoed_ref).toFixed(0) : Eoed_ref;
-    Eur_ref = +(3*E50_ref).toFixed(0);
-  }
-
-  const K0nc=+(1-Math.sin(l.phi*Math.PI/180)).toFixed(3);
-  const nu = l.ovr && l.ovr.nu
-    ? Math.max(Math.min(Number(l.nu_ovr) || 0.30, 0.49), 0.05)
-    : mohrCoulombNuDefault(l.type, l.subtype);
-  const rShear = l.ovr && l.ovr.rShear
-    ? Math.max(Math.min(Number(l.rShear_ovr) || 0.25, 1), 0.01)
-    : mohrCoulombRShearDefault(l.type, l.subtype);
-  const nu_ur=0.20;
-  /* ── SCIA Engineer deformation modulus ──
-     Edef = beta * Eoed,i with beta = (1+nu)(1-2nu)/(1-nu): the isotropic-
-     elasticity link between the constrained (oedometric) modulus and the
-     Young-type deformation modulus that SCIA's subsoil input (Soilin)
-     expects, following the CSN 73 1001 convention (Eoed = Edef / beta).
-     Edef uses the in-situ Eoed,i, not the p_ref-normalised Eoed,ref.
-     Edef is computed from the ROUNDED beta so the reported numbers
-     reproduce exactly when the engineer checks beta x Eoed,i by hand. */
-  const beta=+(((1+nu)*(1-2*nu))/(1-nu)).toFixed(3);
-  const Edef=+(beta*Eoed_i).toFixed(0);
-  const psi=Math.max(0,l.phi>30?Math.round(l.phi-30):0);
-  /* MC export uses the current-stress loading stiffness E50,i.
-     The earlier x1.5 conversion from Eoed,i had no retained source basis. */
-  const Emc=E50_i;
-  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2)+'m TAW':'—';
-  return{Eoed_i,E50_i,Eoed_ref,E50_ref,Eur_ref,m,K0nc,nu,nu_ur,beta,Edef,aE:+aE.toFixed(2),
-    sigV:+sigV.toFixed(1),u:+u.toFixed(1),sigVeff:+sigVeff.toFixed(1),psi,Emc,rShear,
-    topTAW:taw(l.top),botTAW:taw(l.bot)};
+  return hsParamsPure(l, modelCtx());
 }
 
 function renderModel(){
@@ -4166,27 +3787,7 @@ function stage6Set(obj, path, value){
 }
 
 function stage6WorkingLayers(){
-  return S.layers.map((layer, index)=>{
-    const h = hsParams(layer);
-    const k = khParams(layer);
-    return{
-      ...layer,
-      index,
-      Eoed_ref:h.Eoed_ref,
-      Eoed_i:h.Eoed_i,
-      E50_ref:h.E50_ref,
-      Eur_ref:h.Eur_ref,
-      m:h.m,
-      Emc:h.Emc,
-      nu:h.nu,
-      K0nc:h.K0nc,
-      rShear:h.rShear,
-      psi:h.psi,
-      kh:k.kh_rep,
-      kv:k.kv_rep,
-      nu_ur:h.nu_ur
-    };
-  });
+  return workingLayersPure(S);
 }
 
 function stage6MaxDepth(){
