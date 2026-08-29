@@ -61,6 +61,16 @@
 {:else if !payload || !rw || !res}
   <div class="report-shell"><div class="report-error"><h1>Rekennota laden…</h1></div></div>
 {:else}
+  <svelte:boundary>
+  {#snippet failed(err, reset)}
+    {@const e = err as any}
+    <div class="report-shell"><div class="report-error"><h1>Rekennota kon niet worden opgebouwd</h1>
+      <p>{String(e?.message || e)}</p>
+      <pre class="rn-errstack">{String(e?.stack || '').split('\n').slice(0, 6).join('\n')}</pre>
+      <p class="rn-note">Genereer de nota opnieuw vanuit de toepassing na een nieuwe berekening. Neem deze melding over bij een bugrapport (sleutel {new URLSearchParams(window.location.search).get('key') || '—'}).</p>
+      <div class="report-error__actions"><button class="btn" type="button" onclick={reset}>Opnieuw proberen</button><a class="btn pri" href="/">Naar de CPT-app</a></div>
+    </div></div>
+  {/snippet}
   <div class="report-shell">
     <div class="report-toolbar no-print">
       <a class="btn sm" href="/">CPT app</a>
@@ -269,7 +279,7 @@
 
           {#if drv?.ok}
             <section class="report-section">
-              <div class="report-section__head"><h2>Heipredictie — {drv.method === 'impact' ? 'heien (golfvergelijking, Smith 1960)' : 'trillen (Hypervib1-type krachtenvelop)'}</h2><p>Niet-normatief empirisch model; geen partiële factoren op de installatieweerstand (bovengrens van de weerstand).</p></div>
+              <div class="report-section__head"><h2>Heipredictie — {drv.method === 'impact' ? 'heien (golfvergelijking, Smith 1960)' : drv.method === 'push' ? 'statisch drukken (krachtenevenwicht)' : 'trillen (Hypervib1-type krachtenvelop)'}</h2><p>Niet-normatief empirisch model; geen partiële factoren op de installatieweerstand (bovengrens van de weerstand).</p></div>
               <p>Element: {drv.element?.label}, teenoppervlak {fmt(drv.element?.toeArea_m2 * 1e4, 1)} cm², contactomtrek {fmt(drv.element?.shaftPerimeter_m, 2)} m; doeldiepte {fmt(drv.target, 2)} m onder het werkvlak; statisch referentieprofiel {drv.profile?.method === 'alm-hamre' ? 'Alm & Hamre (2001)' : 'q_s = q_c, τ_s = f_s'}.</p>
               {#if drv.vibratory}
                 <table class="rn-table rn-kv"><tbody>
@@ -294,6 +304,12 @@
                 {/if}
                 <table class="rn-table"><thead><tr><th class="num">z [m]</th><th class="num">R_s [kN]</th><th class="num">R_b [kN]</th><th class="num">R_drive [kN]</th><th class="num">α</th><th class="num">F_c,min [kN]</th><th class="num">F_c,min,1.25 [kN]</th></tr></thead><tbody>
                   {#each drv.vibratory.perDepth.filter((_: any, i: number) => i % Math.max(1, Math.round(drv.vibratory.perDepth.length / 20)) === 0 || i === drv.vibratory.perDepth.length - 1) as r}<tr><td class="num">{fmt(r.z, 2)}</td><td class="num">{fmt(r.Rs_kN, 1)}</td><td class="num">{fmt(r.Rb_kN, 1)}</td><td class="num">{fmt(r.Rdrive_kN, 1)}</td><td class="num">{fmt(r.alpha, 2)}</td><td class="num">{fmt(r.FcMin_kN, 1)}</td><td class="num">{fmt(r.FcMin125_kN, 1)}</td></tr>{/each}
+                </tbody></table>
+              {/if}
+              {#if drv.push}
+                <div class="rn-verdict {drv.push.reachesTarget125 ? 'ok' : 'bad'}"><strong>{drv.push.reachesTarget125 ? 'DOELDIEPTE HAALBAAR (m_R = 1,25)' : drv.push.reachesTarget ? 'DOELDIEPTE HAALBAAR ZONDER RESERVE' : 'WEIGERING VOORSPELD'}</strong><span>drukkracht {fmt(drv.push.force_kN, 0)} kN; {drv.push.reachesTarget ? `statisch evenwicht open tot ${fmt(drv.push.targetDepth_m, 2)} m` : `weigering op ${fmt(drv.push.refusalDepth_m, 2)} m, haalbaar tot ${fmt(drv.push.achievableDepth_m, 2)} m`}; vereiste drukkracht {fmt(drv.push.requiredForce_kN, 0)} / {fmt(drv.push.requiredForce125_kN, 0)} kN (m_R 1,0 / 1,25) op {fmt(drv.push.governingDepth_m, 2)} m</span></div>
+                <table class="rn-table"><thead><tr><th class="num">z [m]</th><th class="num">R_s [kN]</th><th class="num">R_b [kN]</th><th class="num">R_statisch [kN]</th><th class="num">W [kN]</th><th class="num">F_vereist [kN]</th><th class="num">G [kN]</th></tr></thead><tbody>
+                  {#each drv.push.perDepth.filter((_: any, i: number) => i % Math.max(1, Math.round(drv.push.perDepth.length / 20)) === 0 || i === drv.push.perDepth.length - 1) as r}<tr><td class="num">{fmt(r.z, 2)}</td><td class="num">{fmt(r.Rs_kN, 0)}</td><td class="num">{fmt(r.Rb_kN, 0)}</td><td class="num">{fmt(r.Rstatic_kN, 0)}</td><td class="num">{fmt(r.W_kN, 1)}</td><td class="num">{fmt(r.Frequired_kN, 0)}</td><td class="num">{fmt(r.G_kN, 0)}</td></tr>{/each}
                 </tbody></table>
               {/if}
               {#if drv.impact}
@@ -336,6 +352,7 @@
       </td></tr></tbody>
     </table>
   </div>
+  </svelte:boundary>
 {/if}
 
 <style>
@@ -384,6 +401,7 @@
   @media print {
     :global(html), :global(body) { background: #fff; color: #111; font-size: 8pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .no-print { display: none !important; }
+    .rn-errstack { font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; text-align: left; background: rgba(0,0,0,0.05); padding: 8px; border-radius: 6px; }
     .report-shell { max-width: none; padding: 0; }
     .report-sheet { max-width: none; border: none; box-shadow: none; background: #fff; }
     .report-sheet > tbody > tr > td { padding: 0; }

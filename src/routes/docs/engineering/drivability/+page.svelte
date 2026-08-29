@@ -49,6 +49,7 @@
 			<a href="#geometry">Element geometry</a>
 			<a href="#vibratory">Vibratory force envelope</a>
 			<a href="#impact">Smith wave equation</a>
+			<a href="#push">Static push-in</a>
 			<a href="#hammers">Hammer catalogue</a>
 			<a href="#datasheet">From a supplier data sheet</a>
 			<a href="#outputs">Outputs and limitations</a>
@@ -263,6 +264,37 @@
 					slacks; no pile-cap impedance change; no plug mass; single blow per depth; uniform pile
 					section; set = D<sub>max</sub> − q ignores the residual elastic compression. The SRD profile of §2
 					(upper bound) is the resistance input.
+				</div>
+			</section>
+
+			<section id="push" class="doc-card">
+				<p class="section-label">Static push-in</p>
+				<h2>5b. Static push-in (press-in) — quasi-static force balance</h2>
+				<p>
+					For an element pushed in with a static force — excavator crowd through a driving cap, or the
+					rated force of a press-in machine — <code>runPushIn</code> (<code>push-in.js</code>) answers
+					"how deep does it go" with the force balance at every trial toe depth:
+				</p>
+				<div class="equations">
+					<div class="formula">F<sub>push</sub> + W(z) ≥ m<sub>R</sub>·R<sub>static</sub>(z),   R<sub>static</sub> = R<sub>shaft</sub> + R<sub>toe</sub> + R<sub>interlock</sub>   (§2 profile, no dynamic degradation)</div>
+					<div class="formula">W(z) = m′·g·z   (element self-weight over the embedded length; optional)</div>
+					<div class="formula">refusal = first z with F<sub>push</sub> + W &lt; m<sub>R</sub>·R<sub>static</sub>;   F<sub>required</sub>(target) = max<sub>z ≤ target</sub> [m<sub>R</sub>·R<sub>static</sub>(z) − W(z)]</div>
+				</div>
+				<p>
+					Reported for m<sub>R</sub> = 1.0 and 1.25 (equipment reserve, not a partial factor), with the
+					governing depth, the margin at the target, the per-depth table, the depth chart (R<sub>static</sub>,
+					F<sub>required</sub>, F<sub>push</sub>, refusal marker) and the outcome marker on the section.
+				</p>
+				<div class="doc-callout">
+					<strong>Assumptions.</strong> Quasi-static (no rate effects, no set-up between strokes, no plug model
+					beyond the element's toe-area choice); the static profile is the upper envelope of §2 — the right
+					basis for "will it get there", too high for capacity. The Alm &amp; Hamre option with friction
+					fatigue is the usual press-in basis (White &amp; Deeks 2007: press-in force ≈ static CPT-based
+					capacity with friction fatigue). A press-in machine needs its reaction (installed elements or
+					ballast); an excavator can push only what its weight and boom geometry allow — typically not more
+					than 30–50 % of its operating weight through the boom. Obstructions and layers with
+					q<sub>c</sub> &gt; 30 MPa refuse pressing regardless of the balance; pre-drilling or vibratory
+					assistance is the usual answer (course §14).
 				</div>
 			</section>
 

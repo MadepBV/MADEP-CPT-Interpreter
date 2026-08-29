@@ -72,7 +72,7 @@
 		"verify:soil-region-tiling": "node scripts/verify_soil_region_tiling.mjs",
 		"verify:cpt-offset-dxf": "node scripts/verify_cpt_offset_and_dxf.mjs",
 		"verify:retaining": "node scripts/verify_retaining_wasm.mjs && node scripts/verify_retaining_ui.mjs && node scripts/verify_retaining_behavior.mjs && node scripts/verify_retaining_soil_profile.mjs && node scripts/verify_retaining_sections_plaxis.mjs && node scripts/verify_retaining_request.mjs",
-		"verify:drivability": "node scripts/verify_srd_profile.mjs && node scripts/verify_drivability_vibratory.mjs && node scripts/verify_drivability_impact.mjs && node scripts/verify_drivability_datasheet.mjs",
+		"verify:drivability": "node scripts/verify_srd_profile.mjs && node scripts/verify_drivability_vibratory.mjs && node scripts/verify_drivability_impact.mjs && node scripts/verify_drivability_datasheet.mjs && node scripts/verify_push_in.mjs",
 		"verify:vibration": "node scripts/verify_vibration_ppv.mjs && node scripts/verify_vibration_criteria.mjs && node scripts/verify_vibration_calibration.mjs",
 		"test:e2e": "playwright test",
 		"golden:fixtures": "node scripts/golden/make-fixtures.mjs && node scripts/golden/fetch-vendor.mjs && node scripts/golden/wasm-hash.mjs --write",

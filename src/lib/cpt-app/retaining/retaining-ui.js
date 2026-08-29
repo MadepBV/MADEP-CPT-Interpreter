@@ -46,7 +46,7 @@ const STRUCTURAL_PATHS = new Set(['wallType', 'insitu.mode', 'water.mode', 'load
   'vibration.framework', 'embedded.anchored', 'profile.offset', 'soldier.laggingSpan', 'soldier.tlatConvention']);
 const STRING_PATHS = new Set(['water.mode', 'insitu.mode', 'settings.bearingMethod', 'settings.overdigRule', 'settings.da11Mode', 'sheet.sectionId', 'sheet.grade', 'soldier.sectionId', 'soldier.grade',
   'soldier.laggingGrade', 'soldier.laggingSpan', 'soldier.resistanceModel', 'soldier.tlatConvention', 'soldier.tskinK', 'drivability.method', 'drivability.drivingUnit', 'drivability.srdMethod',
-  'drivability.vibrator.id', 'drivability.vibrator.source', 'drivability.vibrator.sheet.name', 'drivability.vibrator.sheet.amplitudeConvention', 'drivability.hammer.id', 'drivability.hammer.type', 'vibration.framework', 'vibration.groundCondition', 'vibration.sbr.condition', 'vibration.sbr.measurement',
+  'drivability.vibrator.id', 'drivability.vibrator.source', 'drivability.vibrator.sheet.name', 'drivability.vibrator.sheet.amplitudeConvention', 'drivability.vibrator.sheet.massSource', 'drivability.hammer.id', 'drivability.hammer.type', 'vibration.framework', 'vibration.groundCondition', 'vibration.sbr.condition', 'vibration.sbr.measurement',
   'vibration.sbr.vibrationType', 'vibration.sbr.part', 'vibration.din.location', 'vibration.din.duration', 'ui.resultTab', 'ui.diagram', 'ui.branch', 'ui.tlatSet']);
 
 function setPath(obj, path, value) {
