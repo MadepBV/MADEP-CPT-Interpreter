@@ -47,8 +47,8 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | 4 | `refactor(core): format, dom, css-tokens, chart-host + handler verifier` | R step 1 | 01 §6.2 step 1 (~300 lines) + `scripts/verify_window_handlers.mjs` (every `on*="name("` in HTML strings is published on `legacyApi`) — this also fixes the latent `stage6BishopSetSelectedRegionCoarseness` ReferenceError (separate fix commit) | golden:check, handler verifier | ☑ 5eb544d + 9391124 |
 | 5 | `refactor(model-params): hsParams/khParams/stressAt with explicit ctx` | R step 2 | ~500 lines; wrappers keep the monolith names; stratigraphy `S`-swap (160-166) deleted | golden `model/*`, `tuning/*`, stratigraphy verifiers bit-identical | ☑ 9acc3b7 (integration-r) |
 | 6 | `refactor(classification, layers): pure compute, render split out` | R step 3 | ~900 lines; `detectLayers` stops calling `renderLayers`; `runClass` becomes a thin render wrapper | golden `classification/*`, `layers/*` | ☑ 01759ec (integration-r) — note: `detectLayers` never rendered; map §2.3/§3.4 corrected by 09 report |
-| 7 | `style(shell): Phase 2a liquid-glass chrome + stage rail` | D 2a | 02 §5.2 row 2a: `.app-header.glass-chrome`, `.stage-rail.glass-rail` (7 stages), `.btn` family, segmented — the visible "liquid glass" moment | visual re-baseline (shell only), e2e | ☐ |
-| 8 | `refactor(export, report-payload)` | R step 4 | ~1,100 lines; `stage7Capture*` stays until step 9g | golden `exports/*`, `report/*` | ◐ agent |
+| 7 | `style(shell): Phase 2a liquid-glass chrome + stage rail` | D 2a | 02 §5.2 row 2a: `.app-header.glass-chrome`, `.stage-rail.glass-rail` (7 stages), `.btn` family, segmented — the visible "liquid glass" moment | visual re-baseline (shell only), e2e | ◐ agent (main tree) |
+| 8 | `refactor(export, report-payload)` | R step 4 | ~1,100 lines; `stage7Capture*` stays until step 9g | golden `exports/*`, `report/*` | ☑ 0081510 (integration-r) |
 | 9 | `refactor(load): parsers + apply-parsed-cpt` | R step 5 | ~600 lines; parsers return patches; `controls.js` keeps the 15 DOM syncs | golden fixtures (GEF/CSV/XLSX), `verify_import_review` | ☑ 450b6be (integration-r) |
 | 10 | `style(stage1-2)` then `style(stage3-5)` | D 2b, 2c | component classes for the Stage 1–5 templates, done **together with** the render wrappers left by PRs 6/9 (edit the markup once) | visual re-baseline per stage; golden DOM text unchanged | ☐ |
 
@@ -56,10 +56,10 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
-| 11 | `refactor(stage6): registry, per-app defaults/ensure, shell render` | R step 6 | ~1,000 lines; `stage6Defaults`/`ensureStage6State`/`renderStage6` kept as façades (78 / 71 callers) | snapshot of `stage6Defaults()` identical; golden stage6-*; e2e | ◐ agent |
-| 12 | `refactor(bearing, pile, settlement, dewatering, beam)` | R step 7 | ~2,000 lines, one package per app in the retaining style, one PR per app (5 PRs) | headless render diff vs monolith HTML for the demo CPT; golden | ☐ |
+| 11 | `refactor(stage6): registry, per-app defaults/ensure, shell render` | R step 6 | ~1,000 lines; `stage6Defaults`/`ensureStage6State`/`renderStage6` kept as façades (78 / 71 callers) | snapshot of `stage6Defaults()` identical; golden stage6-*; e2e | ☑ 78a2e02 (integration-r) |
+| 12 | `refactor(bearing, pile, settlement, dewatering, beam)` | R step 7 | ~2,000 lines, one package per app in the retaining style, one PR per app (5 PRs) | headless render diff vs monolith HTML for the demo CPT; golden | ◐ bearing ☑ 30fd5a9; pile, settlement/dewatering/beam agents |
 | 13 | `style(stage6 shell + apps)` | D 2d (shell parts), 2e | `.tabs--icon`, `.acc`, `.cols-3`, `.viz`, De Beer colours → `--viz-*`, nested blurs removed; done in the same PRs as 12 where the app's markup is touched | visual; blur count ≤ 5; frame budget ≥ 50 fps | ☐ |
-| 14 | `refactor(project, section, tuning)` | R step 8 | ~1,000 lines; `S` reassignment behind `setActive()`; `selectCpt` also terminates the deformation worker (bug fix commit) | `verify_project_io`, golden save-load journey | ☐ |
+| 14 | `refactor(project, section, tuning)` | R step 8 | ~1,000 lines; `S` reassignment behind `setActive()`; `selectCpt` also terminates the deformation worker (bug fix commit) | `verify_project_io`, golden save-load journey | ◐ agent |
 | 15 | `style(retaining): delete retaining-styles.js, use component classes` | D 2f | `.st6-rw-*` → `.card/.acc/.field/.tbl--dense/.verdict--hero/.tabs/.segmented/.pill/.viz`; charts read `vizTheme()` | visual; retaining e2e; rekennota print 0 px | ☐ |
 | 16 | `style(dialogs, feedback)` | D 2g | `<dialog class="glass-sheet">` for import-review, `toast()` replaces the 20 `alert()`s, `.tip` helper | visual; e2e | ☐ |
 
@@ -105,3 +105,4 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 ## 5. Status log
 
 - 2026-08-29 — reports 01/02/03 done; PR 1 merged (7a4a7ec, 2f970a3; 1 619 goldens, 29 s); PR 3 (5bb2030), PR 4 (5eb544d + fix 9391124) on v0.6.0. PR 5/6/9 merged on `integration-r` (controller 16 914 lines), waiting for PR 2 (design 0–1, main tree) before fast-forwarding v0.6.0. PR 8 and PR 11 started in worktrees.
+- 2026-08-29 (night) — integration-r 070ed7e: PR 8, 11, 12a merged; controller 14 417 lines. PR 12b/12c/14 in worktrees, PR 7 on the main tree.
