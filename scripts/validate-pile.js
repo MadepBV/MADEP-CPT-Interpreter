@@ -2,7 +2,7 @@
 //
 // Validates the pile capacity module against hand-calculated reference cases
 // derived directly from the public Belgian factor tables [3] reproduced in
-// stage6-pile.js. Run with: `node scripts/validate-pile.js`
+// pile/compute.js. Run with: `node scripts/validate-pile.js`
 //
 // These are NOT third-party benchmarks — they're closed-form computations
 // using the SAME factor tables the code uses, so we're checking that the
@@ -10,7 +10,7 @@
 // arithmetic result the formula prescribes when each input is constant
 // enough that hand-calculation is tractable.
 
-import { analyzePile, unitShaftFriction, pileGeometry, xiLookup } from '../src/lib/cpt-app/stage6-pile.js';
+import { analyzePile, unitShaftFriction, pileGeometry, xiLookup } from '../src/lib/cpt-app/pile/compute.js';
 
 const fmt = (x, n = 1) => (Number.isFinite(x) ? x.toFixed(n) : String(x));
 const pct = (a, b) => `${((Math.abs(a - b) / Math.max(Math.abs(b), 1e-9)) * 100).toFixed(2)}%`;

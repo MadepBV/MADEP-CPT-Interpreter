@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 //
+// pile/compute.js (src/lib/cpt-app/stage6-pile.js until refactor step 7 / PR 12b).
 // Stage 6 — Pile Estimator: De Beer base resistance, CPT-based shaft
 // resistance, ULS factor chain, F_nk screening, and SLS settlement via the
 // Belgian load-transfer method.
@@ -16,7 +17,7 @@ import {
   effectiveVerticalStressAtDepth,
   totalVerticalStressAtDepth,
   eoedAtStress
-} from './stage6-engineering.js';
+} from '../stage6-engineering.js';
 
 const GAMMA_W = 9.81;
 const D_C = 0.0357;            // standard CPT cone diameter [m]

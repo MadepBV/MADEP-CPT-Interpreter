@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 //
+// pile/canvas.js (src/lib/cpt-app/stage6-pile-canvas.js until refactor step 7 / PR 12b).
 // Stage 6 — Pile Estimator: interactive SVG section view.
 //
 // Renders the soil column (from S.layers + S.wt), the parametric pile
@@ -28,9 +29,9 @@ import {
   snapToGrid,
   clampValue,
   makeViewport
-} from './stage6-canvas-utils.js';
+} from '../stage6-canvas-utils.js';
 
-import { SOIL_FILL_COLORS } from './soil-styles.js';
+import { SOIL_FILL_COLORS } from '../soil-styles.js';
 
 const SVG_W = 320;
 const SVG_H = 520;

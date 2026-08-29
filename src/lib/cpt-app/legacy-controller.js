@@ -54,10 +54,6 @@ import {
   buildDewateringSettlementChartConfig,
   buildDewateringStressChartConfig,
   buildLineProbeChartConfig,
-  buildPileAxialForceChartConfig,
-  buildPileDeBeerChartConfig,
-  buildPileLoadSettlementChartConfig,
-  buildPileShaftChartConfig,
   buildRawProfileChartConfig,
   buildSettlementCumulativeChartConfig,
   buildSettlementStressChartConfig,
@@ -65,12 +61,6 @@ import {
   buildTuningDepthChartConfig,
   buildTuningRegressionChartConfig
 } from './chart-factories';
-import { analyzePile, PILE_CONSTANTS } from './stage6-pile';
-import {
-  drawStage6PileSection,
-  ensurePileCanvasState,
-  stage6PileSnapZ
-} from './stage6-pile-canvas';
 import { CAT, eurocodeEntryMatches } from './eurocode-tabel3.js';
 import {
   DEFAULT_ASSUMED_RF,
@@ -79,10 +69,9 @@ import {
   classifyRobertson1990,
   classifyRobertson2016,
   classifyTabel3,
-  normalizeAssumedRf,
-  simulatedLayerFsValue
+  normalizeAssumedRf
 } from './classification-core.js';
-import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report-svg';
+import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report/svg.js';
 import { cleanupStage7Payloads, saveStage7Payload } from './report-storage';
 import { SOIL_CLASS_NAMES, SOIL_FILL_COLORS } from './soil-styles';
 import {
@@ -131,6 +120,24 @@ import {
   renderAssumedRfControls,
   renderMetaCard
 } from './load/index.js';
+import {
+  NO_LAYERS_MESSAGE,
+  buildLayersCsv,
+  layersCsvFilename,
+  buildPlaxisCommandsText,
+  plaxisNuDrainageConflicts,
+  plaxisNuDrainageAlertMessage,
+  plaxisCommandsFilename,
+  NO_LAYER_MODEL_MESSAGE,
+  NO_SIMULATED_ROWS_MESSAGE,
+  buildPlaxisCptText,
+  plaxisCptFilename
+} from './export/index.js';
+import {
+  STAGE7_GUARD_MESSAGE,
+  safeClone,
+  buildStage7Payload as buildStage7PayloadPure
+} from './report/index.js';
 import {
   DEF,
   AE,
@@ -181,6 +188,59 @@ import {
   layersCtx,
   detectLayers as detectLayersPure
 } from './layers/index.js';
+import {
+  createStage6Registry,
+  defaults as stage6StateDefaults,
+  ensureCpt as stage6EnsureCpt,
+  layerBottom as stage6LayerBottom,
+  get as stage6Get,
+  set as stage6Set,
+  uiState as stage6UiState,
+  rememberDetailsState as stage6RememberDetails,
+  detailsOpen as stage6DetailsOpenOf,
+  setDetailsOpen as stage6SetDetailsOpenOf,
+  setField as stage6SetField,
+  createStage6Shell,
+  bishopState as stage6BishopState
+} from './stage6/index.js';
+import {
+  installBearingApp,
+  layerAtDepth as bearingLayerAtDepth,
+  bearingAtDepth as bearingAtDepthPure,
+  bearingProfile as bearingProfilePure,
+  shapeFactors as bearingShapeFactors,
+  selectedDepthHtml as bearingSelectedDepthHtml,
+  materialParamsHtml as bearingMaterialParamsHtml,
+  drainedFormulaHtml as bearingDrainedFormulaHtml,
+  undrainedFormulaHtml as bearingUndrainedFormulaHtml
+} from './bearing/index.js';
+import { setActiveCpt } from './core/state.js';
+import { installProject, bindStageNav } from './project/index.js';
+import { installSection } from './section/index.js';
+import {
+  tuningCtx,
+  fitLayer as fitLayerPure,
+  runTuningFits,
+  acceptFit as acceptFitPure,
+  rejectFit as rejectFitPure,
+  getTuningPreviewM,
+  tuningSliderBounds,
+  tuningPreviewEoedRef,
+  tuningPreviewLineData,
+  tuningAreaHtml,
+  buildTuningCharts as buildTuningChartsPure,
+  updateTuningPreviewM as updateTuningPreviewPure
+} from './tuning/index.js';
+import { installPileApp } from './pile/index.js';
+// The bishop mesh target-area helpers keep their monolith names (25 call sites in the bishop
+// region) until the seepslope package (step 9) takes them over with bishop-state.js.
+const {
+  sortedPolyline: stage6BishopSortedPolyline,
+  autoSeepageMeshTargetArea: stage6BishopAutoSeepageMeshTargetArea,
+  resolvedSeepageMeshTargetArea: stage6BishopResolvedSeepageMeshTargetArea,
+  autoDeformationMeshTargetArea: stage6BishopAutoDeformationMeshTargetArea,
+  resolvedDeformationMeshTargetArea: stage6BishopResolvedDeformationMeshTargetArea
+} = stage6BishopState;
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -224,6 +284,82 @@ const retainingApp = installRetainingApp({
     waterTable: S.wt
   }),
   getProjectMeta: () => ({ projectName: PROJECT.name, cptId: S.meta?.testid || S.id || 'CPT', appVersion: (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.5.x') })
+});
+
+// Stage 6 "Bearing capacity" application — src/lib/cpt-app/bearing/ (refactor step 7 / PR 12a),
+// installed like the retaining app: live-state accessor, the composed ensure, the Stage 4 → 6
+// layer contract and the <details> memory of the shell. Hoisted function references only.
+const bearingApp = installBearingApp({
+  getState: () => S,
+  ensure: () => ensureStage6State(),
+  workingLayers: () => stage6WorkingLayers(),
+  detailsOpen: (key) => stage6DetailsOpen(key)
+});
+
+// Stage 6 "Piles" application — src/lib/cpt-app/pile/ (refactor step 7 / PR 12b), wired like the
+// retaining app: live-state accessor, the Stage 6 render trigger (drag end), the working-layer
+// contract, the layer bottom, the composed ensure (re-clamp before a live drag frame) and the
+// <details> memory of the shell. Hoisted function references only.
+const pileApp = installPileApp({
+  getState: () => S,
+  requestRender: () => renderStage6(),
+  workingLayers: () => stage6WorkingLayers(),
+  layerBottom: () => stage6MaxDepth(),
+  ensure: () => ensureStage6State(),
+  detailsOpen: (key) => stage6DetailsOpen(key)
+});
+
+// Stage 6 shell — the ordered app registry (app switch cards + per-app state schema) and the
+// shell renderer (ensure → compute → body → post-render), src/lib/cpt-app/stage6/. The bearing
+// and pile bodies come from the installed bearing/ and pile/ packages (step 7); the other per-app
+// bodies are still this file's render functions until their packages exist. All are handed to the
+// shell as closures keyed by app id (unknown ids fall back to beam, the `else` branch of the old
+// chain). Hoisted function references only — nothing runs here.
+const stage6Registry = createStage6Registry({
+  retaining: retainingApp,
+  bishopEnabled: () => stage6BishopEnabled()
+});
+const stage6Shell = createStage6Shell({
+  registry: stage6Registry,
+  getState: () => S,
+  ensure: () => ensureStage6State(),
+  rememberDetailsState: () => stage6RememberDetailsState(),
+  workingLayers: () => stage6WorkingLayers(),
+  apps: {
+    bearing: {
+      compute: (layers) => bearingApp.compute(layers),
+      body: (profile) => bearingApp.renderBody(profile),
+      postRender: () => bearingApp.postRender()
+    },
+    pile: {
+      compute: (layers) => pileApp.compute(layers),
+      body: (analysis) => pileApp.renderBody(analysis),
+      postRender: () => pileApp.postRender()
+    },
+    settlement: {
+      compute: (layers) => analyzeSettlement(layers, S.wt, S.stage6.settlement),
+      body: (analysis) => renderStage6SettlementApp(analysis),
+      postRender: () => buildStage6SettlementCharts()
+    },
+    dewatering: {
+      compute: (layers) => analyzeDewatering(layers, S.wt, S.stage6.dewatering),
+      body: (analysis) => renderStage6DewateringApp(analysis),
+      postRender: () => buildStage6DewateringCharts()
+    },
+    beam: {
+      compute: (layers) => analyzeBeamAndReinforcement(layers, S.wt, S.stage6.beam),
+      body: (analysis) => renderStage6BeamApp(analysis),
+      postRender: () => buildStage6BeamCharts()
+    },
+    retwall: {
+      body: () => retainingApp.renderBody(),
+      postRender: () => retainingApp.postRender()
+    },
+    bishop: {
+      body: () => renderStage6BishopApp(),
+      postRender: () => { initStage6BishopCanvas(); buildStage6BishopLineProbeChart(); buildStage6BishopWallCharts(); }
+    }
+  }
 });
 
 // Multi-CPT stratigraphy application (Correlatie phase + Doorsnede geometry).
@@ -315,153 +451,66 @@ const PROJECT={
 // S is a live reference to the active CPT — all existing code uses S unchanged
 let S=PROJECT.cpts[0];
 
-function selectCpt(idx){
-  if(idx<0||idx>=PROJECT.cpts.length)return;
-  stage6BishopStopSearch(true);
-  stage6BishopStopSeepage(true);
-  cancelClassificationRefresh();
+/* Re-point the active CPT: PROJECT.activeCptIdx and S move together (core/state.js
+   setActiveCpt). The only write of S after its declaration. */
+function setActive(idx){
+  S=setActiveCpt(PROJECT, idx);
+  return S;
+}
 
-  // Destroy any existing Chart.js instances tied to the DOM canvases
-  // (they are shared DOM elements, but each CPT has its own chart state)
-  try{
-    Object.values(S.charts||{}).forEach(c=>{if(c&&c.destroy)c.destroy();});
-  }catch(e){}
-
-  PROJECT.activeCptIdx=idx;
-  S=PROJECT.cpts[idx];
-  renderBanner();
-
-  // Reset stage nav to Stage 1
-  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===0));
-  document.querySelectorAll('.si').forEach((s,i)=>{
-    s.classList.remove('active','locked','done');
-    if(i===0)s.classList.add('active'); else s.classList.add('locked');
-  });
-
-  // Sync controls to this CPT's values
-  document.getElementById('wtR').value=S.wt;
-  document.getElementById('wtN').value=S.wt.toFixed(2);
-  document.getElementById('elevN').value=S.elev!=null?S.elev.toFixed(2):'';
-  const smartMergeEl=document.getElementById('smartMergeChk');
-  if(smartMergeEl) smartMergeEl.checked=!!S.smartMerge;
-  const smartSensRange=document.getElementById('smartMergeSensR');
-  const smartSensNum=document.getElementById('smartMergeSensN');
-  if(smartSensRange) smartSensRange.value=(S.smartMergeSensitivity ?? 1.1).toFixed(2);
-  if(smartSensNum) smartSensNum.value=(S.smartMergeSensitivity ?? 1.1).toFixed(2);
-  const smartMergeControls=document.getElementById('smartMergeControls');
-  if(smartMergeControls) smartMergeControls.style.display=S.smartMerge?'':'none';
-  const cptXEl=document.getElementById('cptX');
-  const cptYEl=document.getElementById('cptY');
-  if(cptXEl) cptXEl.value=S.x!=null?S.x:'';
-  if(cptYEl) cptYEl.value=S.y!=null?S.y:'';
-  updateElevSrc(); updateWTDisplay(); updateAssumedRfControls();
-  document.getElementById('btnAlphaA').classList.toggle('active',S.alphaMethod==='A');
-  document.getElementById('btnAlphaB').classList.toggle('active',S.alphaMethod==='B');
-  document.getElementById('btnStiffA').classList.toggle('active',S.stiffMethod==='A');
-  document.getElementById('btnStiffB').classList.toggle('active',S.stiffMethod==='B');
-  // khKvMethod buttons are added in Stage 4; tolerate missing nodes during early init.
-  const btnKhKvA = document.getElementById('btnKhKvA');
-  const btnKhKvB = document.getElementById('btnKhKvB');
-  if (btnKhKvA) btnKhKvA.classList.toggle('active', S.khKvMethod==='A');
-  if (btnKhKvB) btnKhKvB.classList.toggle('active', S.khKvMethod==='B');
-  syncClassificationMethodCards(S.method);
-
-  if(S.data.length){
-    renderMeta();
-    document.getElementById('s1body').style.display='block';
-    // Force fresh chart creation for this CPT
-    S.chartsReady=false;
-    S.charts={};
-    // Rebuild chart area DOM so canvases are fresh
-    const cr=document.getElementById('chartArea');
-    if(cr) cr.innerHTML=`
-      <div class="col-card"><div class="ct">layers</div><svg id="layerColSvg" viewBox="0 0 60 400"></svg></div>
-      <div class="cc"><div class="ct">qc (MPa)</div><div style="position:relative;height:380px"><canvas id="cQc" role="img" aria-label="qc vs depth">qc profile</canvas></div></div>
-      <div class="cc"><div class="ct">fs (kPa)</div><div style="position:relative;height:380px"><canvas id="cFs" role="img" aria-label="fs vs depth">fs profile</canvas></div></div>
-      <div class="cc"><div class="ct">Rf (%)</div><div style="position:relative;height:380px"><canvas id="cRf" role="img" aria-label="Rf vs depth">Rf profile</canvas></div></div>`;
-    requestAnimationFrame(()=>initCharts());
-    drawLayerColumnSvg('layerColSvg', S.layers, S.data[S.data.length-1]?.z+0.5||20);
-  } else {
-    document.getElementById('s1body').style.display='none';
+// Banner, CPT list, phase and stage navigation — src/lib/cpt-app/project/ (PR 14). The
+// wrappers below keep their names for legacyApi and the inline onclick strings; every hook
+// is a hoisted function reference or a closure over PROJECT / S, nothing runs here.
+const projectApp = installProject({
+  document,
+  getProject: () => PROJECT,
+  getActive: () => S,
+  setActive,
+  newCptState,
+  confirm: (message) => confirm(message),
+  // Every Stage 6 worker of the CPT being left, incl. the deformation worker (map §3.4 #8 /
+  // PLAN §4 defect 2): its messages for the old runId would be dropped after the switch and
+  // the originating CPT stayed at deformation.progress.running = true with nothing to finish it.
+  stopWorkers: () => { stage6BishopStopSearch(true); stage6BishopStopSeepage(true); stage6BishopStopDeformation(true); },
+  cancelClassificationRefresh: () => cancelClassificationRefresh(),
+  syncClassificationMethodCards: (method) => syncClassificationMethodCards(method),
+  initCharts: () => initCharts(),
+  drawLayerColumnSvg: (svgId, layers, maxZ) => drawLayerColumnSvg(svgId, layers, maxZ),
+  renderCorrelation: () => stratigraphyApp.render(),
+  renderSection: () => renderSection(),
+  renderStage: (n) => {
+    if(n===2)renderLayers();
+    if(n===3)renderModel();
+    if(n===4)renderTuning();
+    if(n===5)renderStage6();
   }
+});
+
+function selectCpt(idx){
+  projectApp.selectCpt(idx);
 }
 
 function addCpt(){
-  const idx=PROJECT.cpts.length;
-  const cpt=newCptState('CPT-'+(idx+1));
-  PROJECT.cpts.push(cpt);
-  PROJECT.sectionOrder.push(idx);
-  selectCpt(idx);
-  // Open file picker for the new CPT
-  document.getElementById('fi').click();
+  projectApp.addCpt();
 }
 
 function setCptName(idx, name){
-  PROJECT.cpts[idx].id=name.trim()||('CPT-'+(idx+1));
-  renderBanner();
+  projectApp.setCptName(idx, name);
 }
 
 /* ════════════════════════════════
    BANNER + PHASE MANAGEMENT
 ════════════════════════════════ */
 function renderBanner(){
-  const tabs=document.getElementById('cptTabs');
-  if(!tabs)return;
-  tabs.innerHTML=PROJECT.cpts.map((cpt,i)=>{
-    const isActive=i===PROJECT.activeCptIdx;
-    const status=cpt.layers.length?'Ready':cpt.data.length?'Data':'Empty';
-    const statusClass=cpt.layers.length?'ready':cpt.data.length?'data':'empty';
-    return`<div class="cpt-tab ${isActive?'active':''}" data-cpt-index="${i}" role="button" tabindex="0" onclick="selectCpt(${i})" aria-label="Select ${cpt.id}">
-      <span class="cpt-tab__status cpt-tab__status--${statusClass}">${status}</span>
-      <span>${cpt.id}</span>
-      ${PROJECT.cpts.length>1?`<span data-remove="${i}"
-        class="cpt-tab__remove" title="Verwijder CPT" aria-label="Verwijder ${cpt.id}">x</span>`:''}
-    </div>`;
-  }).join('');
-  document.getElementById('projName').value=PROJECT.name;
-  // Event delegation for remove buttons (avoids nested onclick issues)
-  tabs.querySelectorAll('[data-remove]').forEach(el=>{
-    el.addEventListener('click', e=>{
-      e.stopPropagation();
-      const i=+el.dataset.remove;
-      removeCpt(i);
-    });
-  });
-  tabs.querySelectorAll('.cpt-tab').forEach(el=>{
-    el.addEventListener('keydown', e=>{
-      if(e.key!=='Enter'&&e.key!==' ') return;
-      e.preventDefault();
-      selectCpt(+el.dataset.cptIndex || 0);
-    });
-  });
+  projectApp.renderBanner();
 }
 
 function removeCpt(idx){
-  if(PROJECT.cpts.length<=1)return;
-  if(!confirm(`CPT "${PROJECT.cpts[idx].id}" verwijderen?`))return;
-  PROJECT.cpts.splice(idx,1);
-  PROJECT.sectionOrder=PROJECT.sectionOrder.filter(i=>i!==idx).map(i=>i>idx?i-1:i);
-  const newActive=Math.min(PROJECT.activeCptIdx,PROJECT.cpts.length-1);
-  PROJECT.activeCptIdx=newActive;
-  S=PROJECT.cpts[newActive];
-  renderBanner();
-  selectCpt(newActive);
+  projectApp.removeCpt(idx);
 }
 
 function setPhase(ph){
-  PROJECT.phase=ph;
-  ['analysis','correlation','section'].forEach(p=>{
-    document.getElementById('phase'+p[0].toUpperCase()+p.slice(1))?.classList.toggle('active',p===ph);
-  });
-  document.getElementById('phaseA').classList.toggle('active',ph==='analysis');
-  document.getElementById('phaseB').classList.toggle('active',ph==='correlation');
-  document.getElementById('phaseC').classList.toggle('active',ph==='section');
-  document.getElementById('nav').style.display    = ph==='analysis'?'flex':'none';
-  document.querySelector('.wrap').style.display   = ph==='analysis'?'block':'none';
-  document.getElementById('phaseCorr').style.display    = ph==='correlation'?'block':'none';
-  document.getElementById('phaseSection').style.display = ph==='section'?'block':'none';
-  if(ph==='correlation') stratigraphyApp.render();
-  if(ph==='section')     renderSection();
+  projectApp.setPhase(ph);
 }
 
 /* ════════════════════════════════
@@ -521,304 +570,45 @@ function setCptCoord(axis, val){
 /* ════════════════════════════════
    PHASE C — GEOLOGICAL CROSS-SECTION
 ════════════════════════════════ */
+// The SVG builder, tooltip and export live in src/lib/cpt-app/section/ (PR 14); the
+// projection comes from the stratigraphy module (one chainage for the section, the
+// correlation panel and the DXF export).
+const sectionApp = installSection({
+  document,
+  getProject: () => PROJECT,
+  projection: () => stratigraphyApp.projection(),
+  sectionGeometry: () => stratigraphyApp.sectionGeometry(),
+  readToken: readCssToken
+});
+
 function sectionProjection(){
-  // Chainage comes from the stratigraphy module so the section, the
-  // correlation panel and the DXF export share one projection. Each entry
-  // keeps its PROJECT index (cptIdx) — the CPT objects are copies.
-  const proj=stratigraphyApp.projection();
-  if(!proj) return null;
-  return proj.map(({cptIdx,dist})=>({...PROJECT.cpts[cptIdx], cptIdx, dist}));
+  return sectionApp.sectionProjection();
 }
 
 function renderSection(){
-  const svg=document.getElementById('sectionSvg');
-  if(!svg) return;
-  const vex=parseFloat(document.getElementById('vexag')?.value||2);
-
-  const projCpts=sectionProjection();
-  if(!projCpts||projCpts.length<1){
-    svg.innerHTML=`<text x="20" y="40" font-size="13" fill="${readCssToken('--tx3', '#888890')}">Minimaal 2 CPTs met maaiveldshoogte vereist voor doorsnede.</text>`;
-    svg.setAttribute('viewBox','0 0 400 80'); svg.setAttribute('width','400'); svg.setAttribute('height','80');
-    return;
-  }
-
-  // ── Canvas geometry ──
-  // Top margin hosts the legend row + CPT headers; right margin hosts the
-  // rightmost column's depth labels.
-  const ML=65,MR=48,MT=64,MB=50;
-  const W=Math.max(700, projCpts.length*260);
-
-  // Collect all elevations across all CPTs
-  const elevAll=[];
-  projCpts.forEach(c=>{
-    if(c.elev!=null) elevAll.push(c.elev);
-    c.layers.forEach(l=>{ if(c.elev!=null) elevAll.push(c.elev-l.bot); });
-  });
-  if(!elevAll.length){ svg.innerHTML=`<text x="20" y="30" font-size="11" fill="${readCssToken('--tx3', '#888890')}">Geen data.</text>`; return; }
-  const maxElev=Math.max(...elevAll)+1;
-  const minElev=Math.min(...elevAll)-1;
-  const elevRange=maxElev-minElev||1;
-  const H=Math.max(350, elevRange*vex*18);
-
-  const totalW=W+ML+MR, totalH=H+MT+MB;
-  svg.setAttribute('viewBox',`0 0 ${totalW} ${totalH}`);
-  svg.setAttribute('width',totalW); svg.setAttribute('height',totalH);
-
-  const distMin=projCpts[0].dist, distMax=projCpts[projCpts.length-1].dist;
-  const distRange=Math.max(distMax-distMin,1);
-
-  function px(d){ return ML+(d-distMin)/distRange*W; }
-  function py(e){ return MT+(maxElev-e)/elevRange*(H/vex)*vex; }
-  function esc(v){
-    return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-  const svgText = readCssToken('--tx', '#18181a');
-  const svgMuted = readCssToken('--tx2', '#4a4a52');
-  const svgSubtle = readCssToken('--tx3', '#888890');
-  const svgBlue = readCssToken('--chart-blue', '#4F8584');
-
-  let s='';
-
-  // ── Ground fill (below surface, above deepest layer) ──
-  s+='<rect x="0" y="0" width="'+totalW+'" height="'+totalH+'" fill="var(--bg)"/>';
-
-  // ── Elevation grid lines ──
-  const step=elevRange<=5?0.5:elevRange<=15?1:elevRange<=30?2:5;
-  for(let e=Math.ceil(minElev/step)*step; e<=Math.floor(maxElev/step)*step; e=+(e+step).toFixed(4)){
-    const y=py(e);
-    if(y<MT||y>MT+H) continue;
-    s+=`<line x1="${ML}" x2="${ML+W}" y1="${y}" y2="${y}" stroke="rgba(128,128,128,0.10)" stroke-width="0.5"/>`;
-    s+=`<text x="${ML-5}" y="${y+3.5}" font-size="9" text-anchor="end" fill="${svgSubtle}" font-family="sans-serif">${e.toFixed(1)}</text>`;
-  }
-
-  // ── Stratigraphic units ──
-  // Unit polygons come from the stratigraphy module: interpolated between
-  // sampled CPTs, pinched out halfway toward CPTs where a unit is absent
-  // (lenses form separate lobes). Same geometry as the DXF export.
-  const stratGeom=stratigraphyApp.sectionGeometry();
-  if(stratGeom){
-    stratGeom.polygons.forEach(poly=>{
-      const pts=poly.points.map(p=>`${px(p.dist).toFixed(1)},${py(p.taw).toFixed(1)}`).join(' ');
-      s+=`<polygon points="${pts}" fill="${poly.color}" fill-opacity="0.80" stroke="${svgMuted}" stroke-width="0.6"/>`;
-    });
-    // One label per unit, on its widest lobe — anchored at the midpoint of
-    // the lobe's widest span BETWEEN anchor points, so labels sit clear of
-    // the CPT columns and their depth annotations. A paint-order halo keeps
-    // them readable on any unit fill.
-    stratGeom.units.forEach(unit=>{
-      const lobes=stratGeom.polygons.filter(p=>p.unitId===unit.id);
-      if(!lobes.length) return;
-      const widest=lobes.reduce((a,b)=>{
-        const wA=Math.max(...a.points.map(p=>p.dist))-Math.min(...a.points.map(p=>p.dist));
-        const wB=Math.max(...b.points.map(p=>p.dist))-Math.min(...b.points.map(p=>p.dist));
-        return wB>wA?b:a;
-      });
-      // Vertical extent of the lobe at each anchor distance.
-      const spanAt=new Map();
-      widest.points.forEach(p=>{
-        const cur=spanAt.get(p.dist)||{top:-Infinity,bot:Infinity};
-        cur.top=Math.max(cur.top,p.taw);
-        cur.bot=Math.min(cur.bot,p.taw);
-        spanAt.set(p.dist,cur);
-      });
-      const anchors=[...spanAt.entries()].map(([dist,v])=>({dist,...v})).sort((a,b)=>a.dist-b.dist);
-      if(anchors.length<2) return;
-      // Widest gap between consecutive anchors — its midpoint is column-free.
-      let seg=0, segW=-1;
-      for(let i=1;i<anchors.length;i++){
-        const w=anchors[i].dist-anchors[i-1].dist;
-        if(w>segW){segW=w;seg=i-1;}
-      }
-      const a1=anchors[seg], a2=anchors[seg+1];
-      const labelDist=(a1.dist+a2.dist)/2;
-      const topMid=(a1.top+a2.top)/2, botMid=(a1.bot+a2.bot)/2;
-      const hPx=Math.abs(py(botMid)-py(topMid));
-      if(hPx>13){
-        const label=`${unit.letter} — ${(unit.subtype||unit.type).split('/')[0].trim()}`;
-        s+=`<text x="${px(labelDist).toFixed(1)}" y="${((py(topMid)+py(botMid))/2+3.5).toFixed(1)}" font-size="9" font-weight="600" text-anchor="middle"
-          fill="rgba(24,24,26,0.72)" stroke="var(--bg)" stroke-width="3" paint-order="stroke" stroke-linejoin="round"
-          font-family="sans-serif">${esc(label)}</text>`;
-      }
-    });
-  }
-
-  // ── Fill background below correlated stratigraphy (deepest layer downward) ──
-  // Draw a ground fill below the deepest confirmed layer in each CPT
-  projCpts.forEach(c=>{
-    if(!c.elev||!c.layers.length) return;
-    const deepBot=c.elev-c.layers[c.layers.length-1].bot;
-    const x=px(c.dist), colW=14;
-    s+=`<rect x="${(x-colW/2).toFixed(1)}" y="${py(deepBot).toFixed(1)}" width="${colW}" height="${(totalH-py(deepBot)).toFixed(1)}" fill="#b8a99a" fill-opacity="0.3"/>`;
-  });
-
-  // ── CPT columns ──
-  projCpts.forEach(c=>{
-    if(!c.elev) return;
-    const xc=px(c.dist), colW=14;
-    // Surface to toe vertical line
-    const toeElev=c.layers.length?c.elev-c.layers[c.layers.length-1].bot:c.elev-10;
-    s+=`<line x1="${xc}" x2="${xc}" y1="${py(c.elev)}" y2="${py(toeElev)}" stroke="${svgMuted}" stroke-width="0.8" stroke-dasharray="3,2"/>`;
-
-    c.layers.forEach(l=>{
-      const fill=SCFILL[l.type]||'#D3D1C7';
-      const y1=py(c.elev-l.top), y2=py(c.elev-l.bot);
-      const h=Math.max(y2-y1,1.5);
-      const topTaw=(c.elev-l.top).toFixed(2);
-      const botTaw=(c.elev-l.bot).toFixed(2);
-      const avgFsTxt=l.avgFs!=null?(l.avgFs*1000).toFixed(1):'—';
-      const avgRfTxt=l.avgRf!=null?l.avgRf.toFixed(2):'—';
-      const subtypeTxt=l.subtype||'—';
-      s+=`<rect class="section-layer-hit" data-section-layer="1"
-        data-cpt="${esc(c.id)}"
-        data-type="${esc(l.type)}"
-        data-subtype="${esc(subtypeTxt)}"
-        data-top="${l.top.toFixed(2)}"
-        data-bot="${l.bot.toFixed(2)}"
-        data-toptaw="${topTaw}"
-        data-bottaw="${botTaw}"
-        data-thk="${(l.bot-l.top).toFixed(2)}"
-        data-qc="${l.avgQc.toFixed(2)}"
-        data-fs="${avgFsTxt}"
-        data-rf="${avgRfTxt}"
-        data-g="${l.g}"
-        data-gs="${l.gs}"
-        data-phi="${l.phi}"
-        data-c="${l.c}"
-        data-cu="${l.cu}"
-        x="${(xc-colW/2).toFixed(1)}" y="${y1.toFixed(1)}" width="${colW}" height="${h.toFixed(1)}"
-        fill="${fill}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`;
-      // Layer boundary tick (right of column)
-      s+=`<line x1="${(xc+colW/2).toFixed(1)}" x2="${(xc+colW/2+5).toFixed(1)}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${svgMuted}" stroke-width="0.6"/>`;
-      // Depth label right of the column: keeps the leftmost column's labels
-      // off the elevation axis and all labels off the unit-name anchors.
-      if(h>12){
-        const elmid=(y1+y2)/2;
-        s+=`<text x="${(xc+colW/2+7).toFixed(1)}" y="${(elmid+3).toFixed(1)}" font-size="7.5" text-anchor="start" fill="${svgMuted}" paint-order="stroke" stroke="var(--bg)" stroke-width="2.5" stroke-linejoin="round" font-family="sans-serif">${(c.elev-l.bot).toFixed(1)}</text>`;
-      }
-    });
-
-    // WT
-    if(c.wt!=null){
-      const wtY=py(c.elev-c.wt);
-      s+=`<line x1="${(xc-18).toFixed(1)}" x2="${(xc+18).toFixed(1)}" y1="${wtY.toFixed(1)}" y2="${wtY.toFixed(1)}" stroke="${svgBlue}" stroke-width="2" stroke-dasharray="5,3"/>`;
-    }
-    // CPT label
-    s+=`<text x="${xc}" y="${(MT-14).toFixed(1)}" font-size="10" text-anchor="middle" font-weight="600" fill="${svgText}" font-family="sans-serif">${c.id}</text>`;
-    s+=`<text x="${xc}" y="${(MT-4).toFixed(1)}" font-size="9" text-anchor="middle" fill="${svgSubtle}" font-family="sans-serif">${c.elev!=null?c.elev.toFixed(2)+' m TAW':''}</text>`;
-    // Distance from start
-    const d0=(c.dist-distMin).toFixed(0);
-    s+=`<text x="${xc}" y="${(totalH-8).toFixed(1)}" font-size="9" text-anchor="middle" fill="${svgSubtle}" font-family="sans-serif">${d0}m</text>`;
-  });
-
-  // ── WT interpolated line across section ──
-  const wtPts=projCpts.filter(c=>c.wt!=null&&c.elev!=null)
-    .map(c=>`${px(c.dist).toFixed(1)},${py(c.elev-c.wt).toFixed(1)}`);
-  if(wtPts.length>=2)
-    s+=`<polyline points="${wtPts.join(' ')}" fill="none" stroke="${svgBlue}" stroke-width="1.8" stroke-dasharray="7,5"/>
-        <text x="${(ML+10).toFixed(1)}" y="${py(projCpts.find(c=>c.wt!=null)?.elev-(projCpts.find(c=>c.wt!=null)?.wt||0)||maxElev).toFixed(1)}" font-size="9" fill="${svgBlue}" font-family="sans-serif">WT</text>`;
-
-  // ── Axes labels ──
-  s+=`<text x="${(ML+W/2).toFixed(1)}" y="${(totalH-6).toFixed(1)}" font-size="10" text-anchor="middle" fill="${svgMuted}" font-family="sans-serif">Afstand langs doorsnede (m) — vex ×${vex}</text>`;
-  s+=`<text x="12" y="${(MT+H/2).toFixed(1)}" font-size="10" text-anchor="middle" fill="${svgMuted}" font-family="sans-serif" transform="rotate(-90,12,${(MT+H/2).toFixed(1)})">Hoogte (m TAW)</text>`;
-
-  // ── Legend — one horizontal chip row in the top band, clear of the plot ──
-  const legendTypes=[...new Set(PROJECT.cpts.flatMap(c=>c.layers.map(l=>l.type)))].slice(0,8);
-  let lx=ML;
-  const ly=14;
-  legendTypes.forEach(t=>{
-    s+=`<rect x="${lx}" y="${ly}" width="10" height="10" rx="2" fill="${SCFILL[t]||'#D3D1C7'}" stroke="rgba(0,0,0,0.2)" stroke-width="0.3"/>`;
-    s+=`<text x="${lx+14}" y="${ly+8.5}" font-size="8.5" fill="${svgMuted}" font-family="sans-serif">${t}</text>`;
-    lx+=14+t.length*4.6+16;
-  });
-
-  svg.innerHTML=s;
-  bindSectionTooltip();
+  sectionApp.renderSection();
 }
 
 function bindSectionTooltip(){
-  const svg=document.getElementById('sectionSvg');
-  const canvas=document.getElementById('sectionCanvas');
-  const tip=document.getElementById('sectionTip');
-  if(!svg||!canvas||!tip||svg.dataset.tipBound==='1') return;
-
-  function hideTip(){ tip.style.display='none'; }
-  function showTip(target, evt){
-    tip.innerHTML=`<strong>${target.dataset.cpt||'CPT'} — ${target.dataset.type||''}</strong>
-      <div class="mut">${target.dataset.subtype||'—'}</div>
-      <div class="row"><span>Depth</span><span>${target.dataset.top}–${target.dataset.bot} m</span></div>
-      <div class="row"><span>TAW</span><span>${target.dataset.toptaw} to ${target.dataset.bottaw}</span></div>
-      <div class="row"><span>Thickness</span><span>${target.dataset.thk} m</span></div>
-      <div class="row"><span>avg qc</span><span>${target.dataset.qc} MPa</span></div>
-      <div class="row"><span>avg fs</span><span>${target.dataset.fs} kPa</span></div>
-      <div class="row"><span>avg Rf</span><span>${target.dataset.rf} %</span></div>
-      <div class="row"><span>γ / γ_sat</span><span>${target.dataset.g} / ${target.dataset.gs}</span></div>
-      <div class="row"><span>φ' / c' / cu</span><span>${target.dataset.phi}° / ${target.dataset.c} / ${target.dataset.cu}</span></div>`;
-    tip.style.display='block';
-    const rect=canvas.getBoundingClientRect();
-    const pad=14;
-    const tipW=260;
-    const tipH=190;
-    let left=evt.clientX-rect.left+16+canvas.scrollLeft;
-    let top =evt.clientY-rect.top +16+canvas.scrollTop;
-    const maxLeft=canvas.scrollLeft+rect.width-tipW-pad;
-    const maxTop =canvas.scrollTop +rect.height-tipH-pad;
-    if(left>maxLeft) left=Math.max(canvas.scrollLeft+pad, evt.clientX-rect.left-tipW-16+canvas.scrollLeft);
-    if(top>maxTop)   top =Math.max(canvas.scrollTop+pad, evt.clientY-rect.top-tipH-16+canvas.scrollTop);
-    tip.style.left=`${left}px`;
-    tip.style.top=`${top}px`;
-  }
-
-  svg.addEventListener('mousemove',e=>{
-    const target=e.target.closest?.('[data-section-layer]');
-    if(!target){ hideTip(); return; }
-    showTip(target,e);
-  });
-  svg.addEventListener('mouseleave',hideTip);
-  svg.dataset.tipBound='1';
+  sectionApp.bindSectionTooltip();
 }
 
 function exportSectionSVG(){
-  const svg=document.getElementById('sectionSvg');
-  if(!svg)return;
-  const blob=new Blob(['<?xml version="1.0"?>'+svg.outerHTML],{type:'image/svg+xml'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`${PROJECT.name}_doorsnede.svg`;
-  a.click();
+  sectionApp.exportSectionSVG();
 }
 
 /* ════════════════════════════════
    SOIL DEFS
 ════════════════════════════════ */
 const SC = SOIL_CLASS_NAMES;
-const SCFILL = SOIL_FILL_COLORS;
 
 /* ════════════════════════════════
    NAVIGATION
 ════════════════════════════════ */
 function goS(n){
-  // Track highest stage reached so nav tabs stay unlocked
-  if(!S._maxStage) S._maxStage=0;
-  if(n>S._maxStage) S._maxStage=n;
-  const maxReached=S._maxStage;
-
-  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
-  document.querySelectorAll('.si').forEach((s,i)=>{
-    s.classList.remove('active','locked','done');
-    if(i===n) s.classList.add('active');
-    else if(i<=maxReached) s.classList.add('done');  // all reached stages stay clickable
-    else s.classList.add('locked');
-  });
-  if(n===2)renderLayers();
-  if(n===3)renderModel();
-  if(n===4)renderTuning();
-  if(n===5)renderStage6();
+  projectApp.goS(n);
 }
-document.querySelectorAll('.si').forEach(s=>{
-  s.addEventListener('click',()=>{
-    if(!s.classList.contains('locked'))goS(+s.dataset.s);
-  });
-});
+bindStageNav(document, goS);
 
 
 /* ════════════════════════════════
@@ -1772,885 +1562,51 @@ function renderModel(){
    Reliable if: n>=10 readings, stress range factor >= 1.5, top layer > 0.5m
 ════════════════════════════════ */
 
+/* Stage 5 — the fit, the cards and the charts live in src/lib/cpt-app/tuning/ (PR 14).
+   These wrappers feed them the active CPT; the render-after-write and the Stage 4 refresh
+   of acceptFit stay here (map §3.4 #2/#3). */
 function fitLayer(l){
-  // Pull the classified rows that belong to this layer depth range
-  const rows = S.classified.filter(r =>
-    r.z >= l.top && r.z <= l.bot && r.qc > 0.02
-  );
-  if(rows.length < 5) return null; // insufficient data
-
-  const pref = 100;
-  const cotphi = l.phi > 0
-    ? Math.cos(l.phi*Math.PI/180) / Math.sin(l.phi*Math.PI/180)
-    : 0;
-  const cCotPhi = l.c * cotphi;
-
-  // CUR 2003-7 binary default — must match hsParams().
-  const mDefault =
-      (l.type==='Clay'||l.type==='Soft clay'||l.type==='Peat / organic'||l.type==='Sandy clay')
-        ? 1.0
-        : 0.50;
-  const alphaDefault = (l.ovr.aE ? l.aE_ovr
-    : S.alphaMethod==='B' ? alphaEB(l.type, l.avgQc, l.subtype, l.avgRf ?? assumedRfValue())
-    : (AE[l.type] || 10));
-
-  // Build the point cloud directly from CPT rows in the layer.
-  // Stage 5 only: Method B uses the row qc for pointwise Eoed,i reconstruction.
-  const pts = [];
-  for(const r of rows){
-    const {sigVeff} = stressAt(r.z, l.gs, l.g);
-    const denom = pref + cCotPhi;
-    const numer = sigVeff + cCotPhi;
-    if(numer <= 0 || denom <= 0) continue;
-
-    const ratio = numer / denom;
-    if(ratio <= 0) continue;
-
-    const aE_row = l.ovr.aE ? l.aE_ovr
-      : S.alphaMethod==='B' ? alphaEB(l.type, r.qc, l.subtype, r.rf ?? l.avgRf ?? assumedRfValue())
-      : (AE[l.type] || 10);
-    const Eoed_i_row = aE_row * r.qc * 1000;
-    if(Eoed_i_row <= 0) continue;
-
-    pts.push({
-      z:r.z,
-      x:Math.log(ratio),
-      y:Math.log(Eoed_i_row),
-      ratio,
-      sigVeff,
-      aE:aE_row,
-      Eoed_i:Eoed_i_row
-    });
-  }
-
-  const n = pts.length;
-  if(n < 5) return null;
-
-  // Stress range check
-  const sigVeffs = pts.map(p => p.sigVeff);
-  const svMin = Math.min(...sigVeffs), svMax = Math.max(...sigVeffs);
-  const stressRangeFactor = svMin > 0 ? svMax / svMin : 1;
-
-  // OLS
-  const Xs = pts.map(p=>p.x);
-  const Ys = pts.map(p=>p.y);
-  const meanX = Xs.reduce((s,v)=>s+v,0)/n;
-  const meanY = Ys.reduce((s,v)=>s+v,0)/n;
-  const covXY = Xs.reduce((s,x,i)=>s+(x-meanX)*(Ys[i]-meanY),0)/n;
-  const varX  = Xs.reduce((s,x)=>s+(x-meanX)**2,0)/n;
-
-  if(Math.abs(varX) < 1e-6) return null; // no depth variation
-
-  const m_raw = covXY/varX;
-  if(!isFinite(m_raw)) return null;
-
-  const m_fit = +m_raw.toFixed(3);
-  const Eoed_ref_fit = +Math.exp(meanY - m_fit*meanX).toFixed(0);
-  const invalidSlope = m_fit <= 0;
-
-  // R²
-  const SS_res = Xs.reduce((s,x,i)=>{
-    const Ypred = meanY - m_raw*meanX + m_raw*x;
-    return s + (Ys[i]-Ypred)**2;
-  },0);
-  const SS_tot = Ys.reduce((s,y)=>s+(y-meanY)**2,0);
-  const R2 = SS_tot > 0 ? +(1 - SS_res/SS_tot).toFixed(3) : 0;
-
-  // Quality flag
-  let quality, qMsg;
-  if(n < 10)                         { quality='warn'; qMsg='Weinig meetpunten (n='+n+')'; }
-  else if(stressRangeFactor < 1.5)   { quality='warn'; qMsg='Spanningsbereik te klein (factor '+stressRangeFactor.toFixed(1)+')'; }
-  else if(l.top < 0.5)               { quality='warn'; qMsg='Laag te ondiep (<0.5m)'; }
-  else if(invalidSlope)              { quality='invalid'; qMsg='Negatieve of nul-helling gevonden — fit ongeldig'; }
-  else if(m_fit < 0 || m_fit > 1.5)  { quality='warn'; qMsg='m buiten verwacht bereik ('+m_fit.toFixed(2)+')'; }
-  else if(R2 < 0.50)                 { quality='warn'; qMsg='Lage R²='+R2+' — heterogene laag?'; }
-  else if(R2 < 0.70)                 { quality='ok';   qMsg='Acceptabel (R²='+R2+')'; }
-  else                               { quality='good'; qMsg='Goede fit (R²='+R2+')'; }
-
-  // Build depth-profile arrays for physical-space chart
-  const depthPts = pts.map(p=>p.z);
-  const EoedI_pts = pts.map(p=>p.Eoed_i); // CPT-derived per row
-  const aE_pts = pts.map(p=>+p.aE.toFixed(3));
-
-  // HS model curve: Eoed(z) = Eoed_ref * ratio(z)^m
-  const makeHScurve = (Eoed_ref_val, m_val) => pts.map(p =>
-    Eoed_ref_val * Math.pow(Math.max(p.ratio, 0.05), m_val)
-  );
-
-  // For default m: recompute Eoed_ref at midZ with default m
-  const midZ2 = (l.top+l.bot)/2;
-  const {sigVeff: sv_mid2} = stressAt(midZ2, l.gs, l.g);
-  const ratioMid = Math.max((sv_mid2+cCotPhi)/(pref+cCotPhi), 0.05);
-  const Eoed_ref_default = (alphaDefault * l.avgQc * 1000) / Math.pow(ratioMid, mDefault);
-
-  const hsDefault_pts = makeHScurve(Eoed_ref_default, mDefault);
-  const hsFit_pts     = makeHScurve(Eoed_ref_fit, m_fit);
-
-  return{m_fit, Eoed_ref_fit, R2, n, stressRangeFactor:+stressRangeFactor.toFixed(2),
-         quality, qMsg, invalidSlope, Xs, Ys, meanX:+meanX.toFixed(6), meanY:+meanY.toFixed(6), m_raw:+m_raw.toFixed(4),
-         depthPts, EoedI_pts, aE_pts, hsDefault_pts, hsFit_pts,
-         Eoed_ref_default, mDefault, alphaDefault:+alphaDefault.toFixed(3)};
+  return fitLayerPure(l, tuningCtx(S));
 }
 
 function runTuning(){
-  S.tuning = S.layers.map((l,i)=>{
-    const fit = fitLayer(l);
-    return{i, fit, previewM:fit ? (fit.invalidSlope ? fit.mDefault : fit.m_fit) : null};
-  });
+  S.tuning = runTuningFits(S.layers, tuningCtx(S));
   renderTuning();
 }
 
 function acceptFit(i){
-  const t = S.tuning?.[i];
-  const previewM = Number(t?.previewM);
-  if(!t||!t.fit||!isFinite(previewM)||previewM<=0) return;
-  S.layers[i].m_ovr = previewM;
-  S.layers[i].ovr.m = true;
-  // Also update Eoed,ref override? No — Eoed,ref is derived from m in hsParams.
-  // Accepting m is enough: renderModel will recompute Eoed,ref with the new m.
+  if(!acceptFitPure(S, i)) return;
   renderTuning();
   // Re-render Stage 4 in background so it stays current
   if(document.getElementById('p3').classList.contains('active')) renderModel();
 }
 
 function rejectFit(i){
-  if(!S.layers[i]) return;
-  delete S.layers[i].m_ovr;
-  S.layers[i].ovr.m = false;
+  if(!rejectFitPure(S, i)) return;
   renderTuning();
 }
 
-function getTuningPreviewM(t){
-  if(!t||!t.fit) return NaN;
-  const m = Number(t.previewM);
-  if(isFinite(m) && m > 0) return m;
-  return t.fit.invalidSlope ? t.fit.mDefault : t.fit.m_fit;
-}
-
-function tuningSliderBounds(fit){
-  const anchors=[fit.mDefault, fit.m_fit, 0.01].filter(v=>isFinite(v) && v>0);
-  const min=Math.max(0.01, Math.min(...anchors) - 0.4);
-  const max=Math.min(2.0, Math.max(...anchors) + 0.4);
-  return{
-    min:+min.toFixed(2),
-    max:+Math.max(max, min + 0.2).toFixed(2),
-    step:0.01
-  };
-}
-
-function tuningPreviewEoedRef(fit, previewM){
-  return +Math.exp(fit.meanY - previewM*fit.meanX).toFixed(0);
-}
-
-function tuningPreviewLineData(fit, previewM){
-  const Eoed_ref = tuningPreviewEoedRef(fit, previewM);
-  const Xmin = Math.min(...fit.Xs)-0.1, Xmax = Math.max(...fit.Xs)+0.1;
-  const linePts = 30;
-  const logLine = Array.from({length:linePts},(_,k)=>{
-    const x=Xmin+(Xmax-Xmin)*k/(linePts-1);
-    return{x, y: Math.log(Eoed_ref)+previewM*x};
-  });
-  const depthLine = fit.depthPts.map((z,i)=>({x:Eoed_ref*Math.exp(previewM*fit.Xs[i]), y:z}));
-  return{Eoed_ref, logLine, depthLine};
-}
-
 function updateTuningPreviewM(i, rawValue){
-  const t = S.tuning?.[i];
-  if(!t||!t.fit) return;
-
-  const parsed = Number(rawValue);
-  t.previewM = parsed;
-  const chartRed = readCssToken('--chart-red', '#9B3A32');
-  const chartGreen = readCssToken('--chart-green', '#3D6B6A');
-
-  const invalid = !isFinite(parsed) || parsed <= 0;
-  const previewM = invalid ? t.fit.m_fit : parsed;
-  const preview = tuningPreviewLineData(t.fit, previewM);
-
-  const input=document.getElementById('fitPreviewInput'+i);
-  if(input){
-    input.style.borderColor = invalid ? 'var(--bad)' : 'var(--bd2)';
-    input.style.color = invalid ? 'var(--bad-text)' : 'var(--tx)';
-  }
-
-  const mEl=document.getElementById('fitPreviewM'+i);
-  if(mEl) mEl.textContent = invalid ? '—' : previewM.toFixed(3);
-
-  const refEl=document.getElementById('fitPreviewRef'+i);
-  if(refEl) refEl.textContent = invalid ? '—' : preview.Eoed_ref.toLocaleString()+' kPa';
-
-  const noteEl=document.getElementById('fitPreviewNote'+i);
-  if(noteEl){
-    noteEl.textContent = invalid
-      ? 'Preview ongeldig: m moet groter zijn dan 0'
-      : (Math.abs(previewM - t.fit.m_fit) < 1e-6 ? 'Preview volgt de auto-fit' : 'Preview wijkt af van de auto-fit');
-    noteEl.style.color = invalid ? 'var(--bad-text)' : 'var(--tx2)';
-  }
-
-  const btn=document.getElementById('fitAcceptBtn'+i);
-  if(btn){
-    btn.disabled = invalid;
-    btn.style.opacity = invalid ? '0.5' : '1';
-    btn.style.cursor = invalid ? 'not-allowed' : '';
-  }
-
-  const regCanvas=document.getElementById('tChart'+i);
-  const regChart=regCanvas?regCanvas._chartRef:null;
-  if(regChart){
-    regChart.data.datasets[2].data = preview.logLine;
-    regChart.data.datasets[2].label = 'Preview m='+previewM.toFixed(2);
-    regChart.data.datasets[2].borderColor = invalid ? chartRed : chartGreen;
-    regChart.data.datasets[2].borderDash = invalid ? [5,4] : (t.fit.quality==='warn'?[5,4]:[]);
-    regChart.update('none');
-  }
-
-  const depCanvas=document.getElementById('tChart'+i+'d');
-  const depChart=depCanvas?depCanvas._chartRef:null;
-  if(depChart){
-    depChart.data.datasets[3].data = preview.depthLine;
-    depChart.data.datasets[3].label = 'HS preview m='+previewM.toFixed(2);
-    depChart.data.datasets[3].borderColor = invalid ? chartRed : chartGreen;
-    depChart.data.datasets[3].borderDash = invalid ? [5,4] : (t.fit.quality==='warn'?[5,4]:[]);
-    depChart.update('none');
-  }
+  updateTuningPreviewPure(document, S.tuning, i, rawValue);
 }
 
 function renderTuning(){
   const el = document.getElementById('tuningArea');
-  if(!S.tuning){
-    el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Klik op "Run fitting" om de regressie per laag te berekenen.</div>';
-    return;
-  }
-
-  const pref=100;
-  el.innerHTML = S.tuning.map(t=>{
-    const l = S.layers[t.i];
-    const fit = t.fit;
-    const hasAccepted = !!l.ovr.m;
-    const badge = SC[l.type]||'s-sand';
-
-    if(!fit){
-      return`<div class="mc2" style="margin-bottom:10px">
-        <div class="mc2-head">
-          <span class="sb ${badge}">${l.type}</span>
-          <span style="font-size:13px;font-weight:600">Laag ${t.i+1} — ${l.top.toFixed(2)}–${l.bot.toFixed(2)} m</span>
-          <span style="font-size:11px;color:var(--wn);margin-left:auto">Onvoldoende data voor regressie (n &lt; 5 of geen variatie)</span>
-        </div>
-      </div>`;
-    }
-
-    const qColor = fit.quality==='good'?'var(--ok-text)'
-      : fit.quality==='ok'?'var(--wn)'
-      : fit.quality==='invalid'?'var(--bad-text)'
-      : 'var(--bad-text)';
-
-    // Build scatter chart data
-    const chartId = 'tChart'+t.i;
-    const previewM = getTuningPreviewM(t);
-    const preview = tuningPreviewLineData(fit, previewM);
-    const slider = tuningSliderBounds(fit);
-
-    // Default line points stay anchored to the type-default baseline.
-    const m_def = fit.mDefault;
-    const Eoed_ref_default = fit.Eoed_ref_default;
-
-    // X range for model lines
-    const Xmin = Math.min(...fit.Xs)-0.1, Xmax = Math.max(...fit.Xs)+0.1;
-    const linePts = 30;
-    const defaultLineY = Array.from({length:linePts},(_,k)=>{
-      const x=Xmin+(Xmax-Xmin)*k/(linePts-1);
-      return{x, y: Math.log(Eoed_ref_default)+m_def*x};
-    });
-    const scatterData = fit.Xs.map((x,k)=>({x,y:fit.Ys[k]}));
-
-    return`<div class="mc2" style="margin-bottom:12px">
-      <div class="mc2-head" style="margin-bottom:12px">
-        <span class="sb ${badge}">${l.type}</span>
-        <span style="font-size:13px;font-weight:600">Laag ${t.i+1} — ${l.top.toFixed(2)}–${l.bot.toFixed(2)} m</span>
-        <span style="font-size:11px;font-style:italic;color:var(--tx2)">${l.subtype||''}</span>
-        <span style="font-size:11px;font-weight:600;color:${qColor};margin-left:auto">${fit.qMsg}</span>
-      </div>
-      <!-- 3-column: depth profile | log-log fit | numbers -->
-      <div style="display:grid;grid-template-columns:200px 1fr 200px;gap:14px;align-items:start">
-
-        <!-- LEFT: Eoed vs depth (physical space) -->
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
-            E_oed vs diepte (kPa)
-            <span style="margin-left:6px;color:var(--chart-purple)">─ default</span>
-            <span style="margin-left:4px;color:var(--chart-green)">─ preview</span>
-            <span style="margin-left:4px;color:rgba(53,162,235,0.7)">· CPT</span>
-          </div>
-          <div style="position:relative;height:280px">
-            <canvas id="${chartId+'d'}" role="img" aria-label="Eoed depth profile layer ${t.i+1}"></canvas>
-          </div>
-        </div>
-
-        <!-- MIDDLE: log-log regression plot -->
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
-            ln(E_oed,i) vs ln(σ'v0 stress ratio) — regressionvlak
-            <span style="margin-left:6px;color:var(--chart-purple)">─ default m=${m_def.toFixed(2)}</span>
-            <span style="margin-left:4px;color:var(--chart-green)">─ preview m=${previewM.toFixed(2)}</span>
-          </div>
-          <div style="position:relative;height:280px">
-            <canvas id="${chartId}" role="img" aria-label="m fitting regression layer ${t.i+1}"></canvas>
-          </div>
-        </div>
-
-        <!-- RIGHT: numbers + accept/reject -->
-        <div>
-          <table class="pt" style="margin-bottom:12px">
-            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Type-default</td></tr>
-            <tr><td>m</td><td>${m_def.toFixed(2)}</td></tr>
-            <tr><td>E_oed,ref</td><td>${Eoed_ref_default.toLocaleString()} kPa</td></tr>
-            <tr><td>&alpha;E basis</td><td>${S.alphaMethod==='B'?'puntgewijs qc-afhankelijk':'vast per laag'} (${fit.alphaDefault.toFixed(2)})</td></tr>
-            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--ok-text);padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Auto-fit</td></tr>
-            <tr><td>m</td><td style="color:var(--ok-text);font-weight:700">${fit.m_fit.toFixed(3)}</td></tr>
-            <tr><td>E_oed,ref</td><td style="color:var(--ok-text);font-weight:600">${fit.Eoed_ref_fit.toLocaleString()} kPa</td></tr>
-            <tr><td style="padding-top:6px">R²</td><td style="padding-top:6px">${fit.R2.toFixed(3)}</td></tr>
-            <tr><td>n</td><td>${fit.n} punten</td></tr>
-            <tr><td>σ' bereik</td><td>×${fit.stressRangeFactor}</td></tr>
-            <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding:6px 0 4px;border-top:1px solid var(--bd);text-transform:uppercase">Preview / engineer tweak</td></tr>
-            <tr>
-              <td>m</td>
-              <td>
-                <input id="fitPreviewInput${t.i}" type="range" min="${slider.min}" max="${slider.max}" step="${slider.step}" value="${previewM.toFixed(3)}"
-                  oninput="updateTuningPreviewM(${t.i}, this.value)"
-                  style="width:100%;accent-color:var(--ac)">
-                <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx3);margin-top:2px">
-                  <span>${slider.min.toFixed(2)}</span>
-                  <span>${slider.max.toFixed(2)}</span>
-                </div>
-                <div id="fitPreviewNote${t.i}" style="font-size:10px;color:var(--tx2);margin-top:4px">
-                  ${fit.invalidSlope?'Auto-fit was ongeldig; slider start vanaf default m':'Preview volgt de auto-fit'}
-                </div>
-              </td>
-            </tr>
-            <tr><td>Preview m</td><td id="fitPreviewM${t.i}">${previewM.toFixed(3)}</td></tr>
-            <tr><td>Preview E_oed,ref</td><td id="fitPreviewRef${t.i}">${preview.Eoed_ref.toLocaleString()} kPa</td></tr>
-          </table>
-          ${hasAccepted
-            ?`<div style="font-size:11px;color:var(--ok-text);font-weight:600;margin-bottom:8px">✓ Huidige override m = ${l.m_ovr.toFixed(3)}</div>`
-            :`<div style="font-size:11px;color:var(--tx2);margin-bottom:8px">Standaard m actief tot je expliciet accepteert</div>`
-          }
-          <button id="fitAcceptBtn${t.i}" class="btn pri sm" onclick="acceptFit(${t.i})" ${fit.quality==='warn'||fit.quality==='invalid'?'style="background:var(--wn);border-color:var(--wn)"':''}>
-            ${fit.quality==='warn'?'⚠ ':''}Accepteer fit
-          </button>
-          ${hasAccepted?`<button class="btn sm" onclick="rejectFit(${t.i})" style="margin-left:6px">Herstel default m</button>`:''}
-        </div>
-      </div>
-    </div>
-    <div data-chart-pending="${chartId}"
-         data-chart-depth="${chartId+'d'}"
-         data-scatter='${JSON.stringify(scatterData).replace(/'/g,"&#39;")}'
-         data-default-line='${JSON.stringify(defaultLineY).replace(/'/g,"&#39;")}'
-         data-fit-line='${JSON.stringify(preview.logLine).replace(/'/g,"&#39;")}'
-         data-depth-pts='${JSON.stringify(fit.depthPts).replace(/'/g,"&#39;")}'
-         data-eoed-i='${JSON.stringify(fit.EoedI_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
-         data-hs-default='${JSON.stringify(fit.hsDefault_pts.map(v=>+v.toFixed(0))).replace(/'/g,"&#39;")}'
-         data-hs-fit='${JSON.stringify(preview.depthLine.map(v=>+v.x.toFixed(0))).replace(/'/g,"&#39;")}'
-         data-layer-top="${l.top.toFixed(3)}"
-         data-layer-bot="${l.bot.toFixed(3)}"
-         data-wt="${S.wt.toFixed(3)}"
-         data-m-def="${m_def.toFixed(2)}"
-         data-m-fit="${previewM.toFixed(2)}"
-         data-invalid-slope="0"
-         data-quality="${fit.quality}">
-    </div>`;
-  }).join('');
+  el.innerHTML = tuningAreaHtml(S);
+  if(!S.tuning) return;
   // Build charts after DOM settles.
   setTimeout(buildTuningCharts, 50);
 }
-/* Build tuning charts after DOM is rendered (avoids early tag close issue) */
-function buildTuningCharts(){
-  document.querySelectorAll('[data-chart-pending]').forEach(el=>{
-    // ── Log-log regression chart ──
-    const id = el.dataset.chartPending;
-    const canvas = document.getElementById(id);
-    if(canvas && !canvas._built){
-      canvas._built = true;
-      try{
-        const scatter  = JSON.parse(el.dataset.scatter);
-        const defLine  = JSON.parse(el.dataset.defaultLine);
-        const fitLine  = JSON.parse(el.dataset.fitLine);
-        const mDef = el.dataset.mDef, mFit = el.dataset.mFit;
-        const invalidSlope = el.dataset.invalidSlope === '1';
-        const chart = new Chart(canvas, buildTuningRegressionChartConfig({
-          scatter,
-          defaultLine:defLine,
-          previewLine:fitLine,
-          mDefault:mDef,
-          mPreview:mFit,
-          quality:el.dataset.quality,
-          invalidSlope
-        }));
-        canvas._chartRef = chart;
-      }catch(e){console.warn('Log-log chart error:',e);}
-    }
 
-    // ── Depth-profile chart ──
-    const idD = el.dataset.chartDepth;
-    const canvasD = idD ? document.getElementById(idD) : null;
-    if(canvasD && !canvasD._built){
-      canvasD._built = true;
-      try{
-        const depths    = JSON.parse(el.dataset.depthPts);
-        const EoedI     = JSON.parse(el.dataset.eoedI);
-        const hsDefault = JSON.parse(el.dataset.hsDefault);
-        const hsFit     = JSON.parse(el.dataset.hsFit);
-        const layerTop  = parseFloat(el.dataset.layerTop);
-        const layerBot  = parseFloat(el.dataset.layerBot);
-        const wt        = parseFloat(el.dataset.wt);
-        const mDef      = el.dataset.mDef;
-        const mFit      = el.dataset.mFit;
-        const invalidSlope = el.dataset.invalidSlope === '1';
-        const chart = new Chart(canvasD, buildTuningDepthChartConfig({
-          depths,
-          eoedI:EoedI,
-          hsDefault,
-          hsPreview:hsFit,
-          layerTop,
-          layerBot,
-          wt,
-          mDefault:mDef,
-          mPreview:mFit,
-          quality:el.dataset.quality,
-          invalidSlope
-        }));
-        canvasD._chartRef = chart;
-      }catch(e){console.warn('Depth chart error:',e);}
-    }
-  });
+function buildTuningCharts(){
+  buildTuningChartsPure(document);
 }
 
 /* ════════════════════════════════
    STAGE 6 — APPLICATIONS
 ════════════════════════════════ */
 function stage6Defaults(){
-  return{
-    app:'bearing',
-    ui:{details:{}},
-    retwall:retainingApp.defaults(),
-    bearing:{
-      foundationType:'strip',
-      B:1.50,
-      L:1.50,
-      eB:0.00,
-      eL:0.00,
-      shapeMode:'hansen',
-      load:150,
-      factorMode:'ec7',
-      xi:2.0,
-      gammaRd:1.00,
-      ec7Combination:'governing',
-      Df:1.00,
-      showMode:'both'
-    },
-    settlement:{
-      footingType:'rectangular',
-      B:2.00,
-      L:2.00,
-      D:2.00,
-      Df:1.00,
-      Gk:120,
-      QLead:40,
-      QOther:0,
-      useCategory:'A',
-      combination:'qp',
-      stressMethod:'boussinesq',
-      truncationRule:'CPT_bottom',
-      dz:0.10,
-      includeTime:false,
-      timeDays:180,
-      allowableSettlement:25
-    },
-    dewatering:{
-      combination:'characteristic',
-      targetWt:3.00,
-      geometry:'single_well',
-      aquiferType:'unconfined',
-      rw:0.15,
-      rCPT:0.00,
-      LPit:12.00,
-      BPit:8.00,
-      LTrench:20.00,
-      distanceToCPT:10.00,
-      CSichardt:3000,
-      sigmaVMode:'conservative',
-      aquiferBaseDepth:null,
-      dz:0.10,
-      timeDays:0
-    },
-    pile:{
-      pileType:'driven',
-      shape:'circular',
-      Ds:0.40,
-      Db:0.40,
-      a:null,
-      b:null,
-      Ap:null,
-      zHead:0.00,
-      zToe:10.00,
-      Fcd:500,
-      Frep:350,
-      loadFromComponents:false,
-      GkPerPile:null,
-      QLeadPerPile:null,
-      QOtherPerPile:null,
-      loadCategory:'A',
-      slsCombination:'qp',
-      ulsSet:'A1',
-      sltCondition:'none',
-      qaToggle:false,
-      nCpt:1,
-      nPiles:'1-3',
-      cptDensity:'1/100m2',
-      useAtg:false,
-      atgAlphaB:null,
-      atgAlphaS:null,
-      atgGammaRd:null,
-      atgGammaB:null,
-      lambdaOverride:null,
-      downdrag:'none',
-      neutralPlane:null,
-      pileMaterial:'concrete',
-      Ep:30,
-      EbOverride:null,
-      MsOverride:null,
-      MbOverride:null,
-      sAllowable:10,
-      mechanicalCone:false,
-      coneType:'M1',
-      settlementMethod:'transfer'
-    },
-    beam:{
-      modelMode:'slab_strip',
-      foundationModel:'pasternak',
-      B:1.50,
-      b:1.00,
-      L:6.00,
-      h:0.35,
-      Df:0.80,
-      Ec:33000000,
-      EsMode:'oedometric',
-      zInfluence:3.00,
-      gpEta:1.00,
-      gpOverride:null,
-      loadPattern:'uniform_full',
-      Gk:35,
-      QLead:15,
-      QOther:0,
-      useCategory:'A',
-      slsCombination:'qp',
-      ulsCombination:'A1',
-      xLoad:3.00,
-      xStart:1.50,
-      xEnd:4.50,
-      nElements:120,
-      allowableDeflectionRatio:500,
-      fck:30,
-      fyk:500,
-      exposureClass:'XC2',
-      phiBar:12,
-      dG:20,
-      deltaCdev:10,
-      cNomOverride:null,
-      designLifeYears:50,
-      isSlabOrPlate:true,
-      specialQC:false,
-      castAgainstUnevenSurface:false,
-      castAgainstPreparedGround:false,
-      castAgainstUnpreparedGround:false,
-      dz:0.10
-    },
-    bishop:{
-      schemaVersion:3,
-      history:[],
-      workspace:'stability',
-      tool:'terrain',
-      useFemPorePressure:false,
-      strengthSet:'characteristic',
-      methodMode:'bishop_spencer',
-      useCustomRegions:false,
-      customRegions:[],
-      selectedRegionId:null,
-      regionDraftMaterialId:null,
-      measurement:{
-        points:[]
-      },
-      lineProbe:{
-        sampleCount:81,
-        seepageQuantity:'head',
-        deformationQuantity:'uTotal',
-        copyMessage:'',
-        copyTone:''
-      },
-      analysisTab:'line-probe',
-      display:{
-        showRegions:true,
-        showRegionLabels:true,
-        showRegionLegend:true,
-        regionOpacity:0.22
-      },
-      terrain:[],
-      phreatic:[],
-      walls:[],
-      selectedWallId:null,
-      drains:[],
-      selectedDrainId:'',
-      draft:[],
-      draftKind:'',
-      activeCptX:null,
-      cptInsertionOffset:0,
-      entryZone:null,
-      exitZone:null,
-	      surfaceLoad:{
-	        xStart:null,
-	        xEnd:null,
-	        q:0
-	      },
-	      surfaceLoads:[],
-	      selectedSurfaceLoadId:null,
-      viewport:{
-        scale:24,
-        offsetX:80,
-        offsetY:360,
-        fitted:false
-      },
-      gridSnap:true,
-      pointSnap:false,
-      snapSize:0.50,
-      analysisDepth:15.00,
-      materials:[],
-      sourceLayerSignature:'',
-      search:{
-        nEntry:10,
-        nExit:10,
-        nCenter:15,
-        centerOffsetMin:0.50,
-        centerOffsetMax:3.00,
-        minChordLength:2.00,
-        minSlipThickness:0.75,
-        maxExitAngleDeg:45,
-        validationSamples:30,
-        geomTol:0.001,
-        minSliceWidth:0.05,
-        targetSlices:30,
-        keepBest:10
-      },
-      solver:{
-        useOrdinarySeed:true,
-        initialFS:1.00,
-        tolerance:0.0001,
-        maxIterations:50,
-        minMAlpha:0.000001
-      },
-      spencer:{
-        recheckCount:10,
-        lambdaLow:-0.60,
-        lambdaHigh:0.60,
-        lambdaTolerance:0.001,
-        momentTolerance:0.001,
-        forceTolerance:0.001,
-        FBracketLow:0.10,
-        FBracketHigh:10.00,
-        maxOuterIter:20,
-        maxInnerIter:30,
-        useNewton:false,
-        initialF:null,
-        initialLambda:0.00,
-        fallbackBishop:true
-      },
-      progress:{
-        running:false,
-        percent:0,
-        trial:0,
-        total:0,
-        message:'',
-        previewCircle:null
-      },
-      seepage:{
-        bcs:[],
-        mesh:null,
-        result:null,
-        stale:false,
-        status:'idle',
-        progress:{
-          running:false,
-          percent:0,
-          message:'',
-          runId:0
-        },
-        rejectReason:'',
-        drainValidation:{
-          errors:[],
-          warnings:[]
-        },
-        geometryHash:'',
-        options:{
-          freeSurface:'iterate',
-          usePhreaticAsSeed:true,
-          flowErrorTolerance:0.01,
-          maxRuntimeMs:10000,
-          meshTargetArea:null,
-          meshTargetAreaAuto:true,
-          drains:{
-            gatingTolerances:{},
-            reportPerSegmentInflow:true
-          }
-        },
-        display:{
-          showBoundaryConditions:true,
-          showBoundaryLabels:true,
-          contourMode:'head',
-          showContours:true,
-          showContourLines:true,
-          showContourLegend:true,
-          showPhreatic:true,
-          showDrains:true,
-          showHead:false,
-          showEquipotentials:false,
-          showFlowVectors:false,
-          showExitGradient:false
-        },
-        lastAppliedBcType:'',
-        lastAppliedBcHead:null,
-        selectedEdgeKey:'',
-        selectedBcId:''
-      },
-      deformation:{
-        mesh:null,
-        result:null,
-        stale:false,
-        status:'idle',
-        rejectReason:'',
-        warnings:[],
-        progress:{
-          running:false,
-          percent:0,
-          message:'',
-          runId:0
-        },
-        options:{
-          analysisType:'deformation',
-          loadMode:'pressure',
-          constitutiveModel:'mc-plastic',
-          initialStressMode:'plastic-geostatic',
-          totalLoad:null,
-          outOfPlaneLength:10,
-          meshElementType:'t6',
-          meshTargetArea:null,
-          meshTargetAreaAuto:true,
-          useSeepagePorePressures:false,
-          displacementScale:1,
-          nonlinearMaxIterations:32,
-          initialLoadStep:0.25,
-          minLoadStep:1/4096,
-          maxLoadSteps:384,
-          residualRelTol:1e-4,
-          residualAbsTol:1e-3,
-          displacementRelTol:1e-4,
-          displacementAbsTol:1e-6,
-          loadStepGrowthFactor:1.25,
-          loadStepCutbackFactor:0.5,
-          plasticLoadStepGrowthFactor:1.08,
-          plasticLoadStepCutbackFactor:0.4,
-          plasticLineSearchMaxBacktracks:6,
-          geostaticInitializationMethod:'auto',
-          geostaticStressOnlyResidualTolerance:0.05,
-          useStagedGeostaticInit:true,
-          // Staged construction (model C): for a retaining wall, hold the in-situ
-          // K0 state supported, then relax the cut-face support in a wall-active
-          // excavation phase so the wall carries the cut. ON by default — it is
-          // the physically-correct model and only engages for MC + a wall (inert
-          // otherwise). Toggle off for the legacy wall-free geostatic.
-          useStagedExcavation:true,
-          // Phase 2: zero-thickness Coulomb soil-wall interface (gap + slip),
-          // the staged path's companion. ON by default — it is the mechanism
-          // that releases the crest tension band (deep cohesionless cuts reach
-          // 100% load) and it only engages for MC + wall + staged construction.
-          // Single-sided in this phase (documented in the result assumptions).
-          useWallInterface:true,
-          allowStressOnlyGeostaticReference:false,
-          stressOnlyGeostaticMaxEta:1.0,
-          geostaticCorrectionStages:1,
-          initialGravityTangentSchedule:['plastic'],
-          initialGravityElasticGlobalizationIterations:4,
-          elasticGlobalizationArmijoC1:1e-3,
-          elasticGlobalizationMinResidualRatio:0.90,
-          geostaticMinLoadStep:5e-4,
-          geostaticMaxRepeatedBand:3,
-          geostaticProgressFailFast:false,
-          geostaticProgressFailFastSteps:6,
-          geostaticProgressFailFastLoadFactor:0.50,
-          geostaticProgressFailFastPlasticFraction:0.15,
-          serviceProgressFailFast:false,
-          serviceProgressFailFastSteps:16,
-          serviceProgressFailFastLoadFactor:0.20,
-          serviceProgressFailFastPlasticFraction:0.35,
-          preconditionerLevel:'jacobi',
-          safetyInitialSigmaMsfIncrement:0.10,
-          safetySigmaMsfGrowthFactor:1.50,
-          safetySigmaMsfMax:3.00,
-          safetySigmaMsfBracketTolerance:0.01,
-          safetyMaxSearchTrials:32,
-          safetyFinalizationMode:'production-msf',
-          useUnsymmetricPlasticSolver:true,
-          useMcConsistentTangent:true,
-          hsConsistentTangentPromptPending:false,
-          hsConsistentTangentMigrationResolved:false
-        },
-        display:{
-          contourMode:'uTotal',
-          showContours:true,
-          showContourLines:true,
-          showContourLegend:true,
-          showDisplacementVectors:false,
-          showDeformedMesh:false,
-          showUndeformedMesh:false,
-          showLoadVectors:true,
-          showPlasticPoints:true,
-          showWallMomentOverlay:false
-        }
-      },
-      results:null,
-      selectedResult:0,
-      stale:true,
-      capturedView:{
-        stability:null,
-        seepage:null,
-        deformation:null
-      }
-    }
-  };
-}
-
-function stage6Merge(target, defaults){
-  Object.keys(defaults).forEach((key)=>{
-    const dv = defaults[key];
-    if(dv && typeof dv === 'object' && !Array.isArray(dv)){
-      if(!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) target[key] = {};
-      stage6Merge(target[key], dv);
-    } else if(target[key] == null){
-      target[key] = dv;
-    }
-  });
-}
-
-function stage6Get(obj, path){
-  return path.split('.').reduce((acc, part)=>acc ? acc[part] : undefined, obj);
-}
-
-function stage6Set(obj, path, value){
-  const parts = path.split('.');
-  let cur = obj;
-  for(let i=0;i<parts.length-1;i+=1){
-    const part = parts[i];
-    if(!cur[part] || typeof cur[part] !== 'object') cur[part] = {};
-    cur = cur[part];
-  }
-  cur[parts[parts.length-1]] = value;
+  return stage6StateDefaults(stage6Registry);
 }
 
 function stage6WorkingLayers(){
@@ -2658,555 +1614,44 @@ function stage6WorkingLayers(){
 }
 
 function stage6MaxDepth(){
-  return S.layers.length ? S.layers[S.layers.length-1].bot : 10;
-}
-
-function stage6BishopSeepageDomainArea(bishop){
-  const terrain = stage6BishopSortedPolyline(bishop?.terrain);
-  if(terrain.length < 2) return null;
-  const terrainLine = {vertices:terrain};
-  const xMin = terrain[0].x;
-  const xMax = terrain[terrain.length - 1].x;
-  const refX = Number.isFinite(+bishop?.activeCptX)
-    ? Math.max(xMin, Math.min(+bishop.activeCptX, xMax))
-    : 0.5 * (xMin + xMax);
-  const groundY = bishopTerrainY(terrainLine, refX);
-  if(!Number.isFinite(groundY)) return null;
-  const analysisDepth = Math.max(+bishop?.analysisDepth || 15, 0.5);
-  const bottomY = groundY - analysisDepth;
-  const polygon = [
-    ...terrain,
-    {x:xMax, y:bottomY},
-    {x:xMin, y:bottomY}
-  ];
-  const area = polygonArea(polygon);
-  return area > 1e-6 ? area : null;
-}
-
-function stage6BishopAutoSeepageMeshTargetArea(bishop){
-  const domainArea = stage6BishopSeepageDomainArea(bishop);
-  if(!(domainArea > 0)) return 0.05;
-  return +Math.min(Math.max(domainArea / 3500, 0.05), 1.5).toFixed(3);
-}
-
-function stage6BishopResolvedSeepageMeshTargetArea(bishop){
-  const options = bishop?.seepage?.options || {};
-  const autoArea = stage6BishopAutoSeepageMeshTargetArea(bishop);
-  if(options.meshTargetAreaAuto !== false) return autoArea;
-  const manualArea = Number(options.meshTargetArea);
-  return Math.max(Number.isFinite(manualArea) && manualArea > 0 ? manualArea : autoArea, 0.01);
-}
-
-function stage6BishopAutoDeformationMeshTargetArea(bishop){
-  // Auto target area for the deformation mesh.  Coarser than seepage by
-  // a factor of 9 (was 3): the deformation analysis is dominated by the
-  // nonlinear inner-Newton + GMRES cost, which scales much more strongly
-  // with the number of free DOFs than the assembly cost — a 3× coarser
-  // mesh in each direction (≈ 9× area per element) cuts numFree by 3×
-  // and the GMRES Arnoldi cost by ~9× while keeping engineering-grade
-  // resolution for the ground-improvement problem class this app targets.
-  // Users can still tighten the mesh manually via the meshTargetArea field
-  // (turning auto off).
-  const domainArea = stage6BishopSeepageDomainArea(bishop);
-  if(!(domainArea > 0)) return 0.45;
-  return +Math.min(Math.max(9 * (domainArea / 3500), 0.45), 9.0).toFixed(3);
-}
-
-function stage6BishopResolvedDeformationMeshTargetArea(bishop){
-  const options = bishop?.deformation?.options || {};
-  const autoArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
-  if(options.meshTargetAreaAuto !== false) return autoArea;
-  const manualArea = Number(options.meshTargetArea);
-  return Math.max(Number.isFinite(manualArea) && manualArea > 0 ? manualArea : autoArea, 0.01);
+  return stage6LayerBottom(S);
 }
 
 function ensureStage6State(){
-  if(!S.stage6) S.stage6 = stage6Defaults();
-  stage6Merge(S.stage6, stage6Defaults());
-  retainingApp.ensure(S.stage6);
-  if(!S.stage6Cache) S.stage6Cache = {};
-  const maxDepth = Math.max(stage6MaxDepth(), 0.5);
-  S.stage6.bearing.B = Math.max(+S.stage6.bearing.B || stage6Defaults().bearing.B, 0.1);
-  S.stage6.bearing.L = Math.max(+S.stage6.bearing.L || S.stage6.bearing.B, 0.1);
-  S.stage6.bearing.Df = Math.min(Math.max(+S.stage6.bearing.Df || 0.2, 0.2), maxDepth);
-  S.stage6.bearing.eB = Math.max(0, Math.min(+S.stage6.bearing.eB || 0, Math.max((+S.stage6.bearing.B || 0.1) / 2 - 0.025, 0)));
-  S.stage6.bearing.eL = Math.max(0, Math.min(+S.stage6.bearing.eL || 0, Math.max((+S.stage6.bearing.L || 0.1) / 2 - 0.025, 0)));
-  if(!['hansen','conservative'].includes(S.stage6.bearing.shapeMode)) S.stage6.bearing.shapeMode = 'hansen';
-  S.stage6.settlement.Df = Math.min(Math.max(+S.stage6.settlement.Df || 0.0, 0.0), maxDepth);
-  S.stage6.dewatering.targetWt = Math.min(Math.max(+S.stage6.dewatering.targetWt || (S.wt + 0.5), S.wt), Math.max(S.wt, maxDepth-0.2));
-  S.stage6.beam.Df = Math.min(Math.max(+S.stage6.beam.Df || 0.0, 0.0), maxDepth);
-  S.stage6.beam.zInfluence = Math.max(+S.stage6.beam.zInfluence || 1, 0.5);
-  S.stage6.beam.gpEta = Math.max(+S.stage6.beam.gpEta || 1.0, 0);
-  if(!['slab_strip','beam_length','footing_transverse'].includes(S.stage6.beam.modelMode)){
-    S.stage6.beam.modelMode = 'slab_strip';
-  }
-  if(S.stage6.beam.gpOverride != null && S.stage6.beam.gpOverride !== ''){
-    S.stage6.beam.gpOverride = +S.stage6.beam.gpOverride;
-  } else {
-    S.stage6.beam.gpOverride = null;
-  }
-  if(S.stage6.beam.cNomOverride != null && S.stage6.beam.cNomOverride !== ''){
-    S.stage6.beam.cNomOverride = +S.stage6.beam.cNomOverride;
-  }
-  if(!stage6BishopEnabled() && S.stage6.app === 'bishop'){
-    S.stage6.app = 'bearing';
-  }
-  ensurePileState(maxDepth);
-  const bishop = S.stage6.bishop;
-  const bishopSchemaVersionBeforeSync = Math.round(+bishop.schemaVersion || 0);
-  const hsConsistentTangentLegacySchema = bishopSchemaVersionBeforeSync < 3;
-  bishop.schemaVersion = Math.max(bishopSchemaVersionBeforeSync, 3);
-  if(!Array.isArray(bishop.history)) bishop.history = [];
-  const bishopMinDepth = Math.max(stage6MaxDepth(), 15);
-  if(!['stability','seepage','deformation'].includes(bishop.workspace)) bishop.workspace = 'stability';
-  bishop.useFemPorePressure = !!bishop.useFemPorePressure;
-  if(!bishop.measurement || typeof bishop.measurement !== 'object') bishop.measurement = {points:[]};
-  if(!Array.isArray(bishop.measurement.points)) bishop.measurement.points = [];
-  bishop.measurement.points = bishop.measurement.points
-    .filter((pt)=>Number.isFinite(pt?.x) && Number.isFinite(pt?.y))
-    .slice(0, 2)
-    .map((pt)=>({x:+pt.x, y:+pt.y}));
-  if(!bishop.lineProbe || typeof bishop.lineProbe !== 'object') bishop.lineProbe = stage6Defaults().bishop.lineProbe;
-  bishop.lineProbe.sampleCount = Math.min(Math.max(Math.round(+bishop.lineProbe.sampleCount || 81), 21), 201);
-  if(!['head','porePressure','gradient','hydraulicFs','flow','qx','qy','normalFlow'].includes(bishop.lineProbe.seepageQuantity)){
-    bishop.lineProbe.seepageQuantity = 'head';
-  }
-  if(!stage6BishopDeformationQuantityIds(
-    bishop.deformation?.options?.analysisType,
-    STAGE6_ENABLE_HARDENING_SOIL_UI && bishop.deformation?.result?.hasHardeningSoil === true
-  ).includes(bishop.lineProbe.deformationQuantity)){
-    bishop.lineProbe.deformationQuantity = 'uTotal';
-  }
-  bishop.lineProbe.copyMessage = typeof bishop.lineProbe.copyMessage === 'string' ? bishop.lineProbe.copyMessage : '';
-  bishop.lineProbe.copyTone = bishop.lineProbe.copyTone === 'warn' ? 'warn' : bishop.lineProbe.copyTone === 'ok' ? 'ok' : '';
-  if(bishop.analysisDepth == null || bishop.analysisDepth === ''){
-    const legacyBottomMargin = Number(bishop.bottomMargin);
-    const hasCustomLegacyMargin = Number.isFinite(legacyBottomMargin) && Math.abs(legacyBottomMargin - 5) > 1e-9;
-    bishop.analysisDepth = hasCustomLegacyMargin
-      ? stage6MaxDepth() + legacyBottomMargin
-      : bishopMinDepth;
-  }
-  bishop.analysisDepth = Math.max(+bishop.analysisDepth || bishopMinDepth, bishopMinDepth);
-  bishop.cptInsertionOffset = Number.isFinite(+bishop.cptInsertionOffset)
-    ? Math.max(Math.min(+bishop.cptInsertionOffset, 100), -100)
-    : 0;
-  bishop.snapSize = Math.max(+bishop.snapSize || 0.5, 0.05);
-  bishop.pointSnap = !!bishop.pointSnap;
-  if(!bishop.display || typeof bishop.display !== 'object') bishop.display = stage6Defaults().bishop.display;
-  bishop.display.showRegions = bishop.display.showRegions !== false;
-  bishop.display.showRegionLabels = bishop.display.showRegionLabels !== false;
-  bishop.display.showRegionLegend = bishop.display.showRegionLegend !== false;
-  bishop.display.regionOpacity = Math.min(Math.max(+bishop.display.regionOpacity || 0.22, 0.05), 0.75);
-  bishop.search.nEntry = Math.max(2, Math.round(+bishop.search.nEntry || 10));
-  bishop.search.nExit = Math.max(2, Math.round(+bishop.search.nExit || 10));
-  bishop.search.nCenter = Math.max(2, Math.round(+bishop.search.nCenter || 15));
-  bishop.search.centerOffsetMin = Math.max(+bishop.search.centerOffsetMin || 0.5, 0.05);
-  bishop.search.centerOffsetMax = Math.max(+bishop.search.centerOffsetMax || 3, bishop.search.centerOffsetMin + 0.05);
-  bishop.search.minChordLength = Math.max(+bishop.search.minChordLength || 2, 0.5);
-  bishop.search.minSlipThickness = Math.max(+bishop.search.minSlipThickness || 0.75, 0.1);
-  bishop.search.maxExitAngleDeg = Math.min(Math.max(+bishop.search.maxExitAngleDeg || 45, 5), 89);
-  bishop.search.validationSamples = Math.max(8, Math.round(+bishop.search.validationSamples || 30));
-  bishop.search.geomTol = Math.max(+bishop.search.geomTol || 0.001, 0.000001);
-  bishop.search.minSliceWidth = Math.max(+bishop.search.minSliceWidth || 0.05, 0.01);
-  bishop.search.targetSlices = Math.max(6, Math.round(+bishop.search.targetSlices || 30));
-  bishop.search.keepBest = Math.max(1, Math.round(+bishop.search.keepBest || 10));
-  if(!['bishop_only','bishop_spencer'].includes(bishop.methodMode)) bishop.methodMode = 'bishop_spencer';
-  bishop.solver.initialFS = Math.max(+bishop.solver.initialFS || 1, 0.1);
-  bishop.solver.tolerance = Math.max(+bishop.solver.tolerance || 0.0001, 0.000001);
-  bishop.solver.maxIterations = Math.max(5, Math.round(+bishop.solver.maxIterations || 50));
-  bishop.solver.minMAlpha = Math.max(+bishop.solver.minMAlpha || 0.000001, 0.000000001);
-  if(!bishop.spencer || typeof bishop.spencer !== 'object') bishop.spencer = {};
-  bishop.spencer.recheckCount = Math.max(1, Math.min(Math.round(+bishop.spencer.recheckCount || 10), bishop.search.keepBest));
-  bishop.spencer.lambdaLow = Number.isFinite(+bishop.spencer.lambdaLow) ? +bishop.spencer.lambdaLow : -0.6;
-  bishop.spencer.lambdaHigh = Number.isFinite(+bishop.spencer.lambdaHigh) ? +bishop.spencer.lambdaHigh : 0.6;
-  if(bishop.spencer.lambdaHigh <= bishop.spencer.lambdaLow) bishop.spencer.lambdaHigh = bishop.spencer.lambdaLow + 0.1;
-  bishop.spencer.lambdaTolerance = Math.max(+bishop.spencer.lambdaTolerance || 0.001, 0.000001);
-  bishop.spencer.momentTolerance = Math.max(
-    +(bishop.spencer.momentTolerance ?? bishop.spencer.FfTolerance) || 0.001,
-    0.000001
-  );
-  bishop.spencer.forceTolerance = Math.max(
-    +(bishop.spencer.forceTolerance ?? bishop.spencer.FfTolerance) || 0.001,
-    0.000001
-  );
-  bishop.spencer.FBracketLow = Math.max(
-    +(bishop.spencer.FBracketLow ?? bishop.spencer.FfBracketLow) || 0.1,
-    0.01
-  );
-  bishop.spencer.FBracketHigh = Math.max(
-    +(bishop.spencer.FBracketHigh ?? bishop.spencer.FfBracketHigh) || 10.0,
-    bishop.spencer.FBracketLow + 0.1
-  );
-  bishop.spencer.maxOuterIter = Math.max(5, Math.round(+bishop.spencer.maxOuterIter || 20));
-  bishop.spencer.maxInnerIter = Math.max(5, Math.round(+bishop.spencer.maxInnerIter || 30));
-  bishop.spencer.useNewton = !!bishop.spencer.useNewton;
-  bishop.spencer.initialF = Number.isFinite(+bishop.spencer.initialF) && +bishop.spencer.initialF > 0 ? +bishop.spencer.initialF : null;
-  bishop.spencer.initialLambda = Number.isFinite(+bishop.spencer.initialLambda) ? +bishop.spencer.initialLambda : 0;
-  bishop.spencer.fallbackBishop = bishop.spencer.fallbackBishop !== false;
-  if(!Array.isArray(bishop.terrain)) bishop.terrain = [];
-  if(!Array.isArray(bishop.phreatic)) bishop.phreatic = [];
-  if(!Array.isArray(bishop.walls)) bishop.walls = [];
-  if(!Array.isArray(bishop.drains)) bishop.drains = [];
-  bishop.selectedDrainId = bishop.selectedDrainId ? String(bishop.selectedDrainId) : '';
-  if(!Array.isArray(bishop.draft)) bishop.draft = [];
-  if(!Array.isArray(bishop.materials)) bishop.materials = [];
-  if(!bishop.seepage || typeof bishop.seepage !== 'object') bishop.seepage = stage6Defaults().bishop.seepage;
-  stage6Merge(bishop.seepage, stage6Defaults().bishop.seepage);
-  if(!Array.isArray(bishop.seepage.bcs)) bishop.seepage.bcs = [];
-  if(!['idle','meshing','solving','success','failed'].includes(bishop.seepage.status)) bishop.seepage.status = 'idle';
-  if(!bishop.seepage.progress || typeof bishop.seepage.progress !== 'object') bishop.seepage.progress = stage6Defaults().bishop.seepage.progress;
-  bishop.seepage.progress.running = !!bishop.seepage.progress.running;
-  bishop.seepage.progress.percent = Math.max(0, Math.min(100, +bishop.seepage.progress.percent || 0));
-  bishop.seepage.progress.message = bishop.seepage.progress.message ? String(bishop.seepage.progress.message) : '';
-  bishop.seepage.progress.runId = Math.max(0, Math.round(+bishop.seepage.progress.runId || 0));
-  bishop.seepage.rejectReason = bishop.seepage.rejectReason ? String(bishop.seepage.rejectReason) : '';
-  if(!bishop.seepage.drainValidation || typeof bishop.seepage.drainValidation !== 'object') bishop.seepage.drainValidation = {errors:[], warnings:[]};
-  if(!Array.isArray(bishop.seepage.drainValidation.errors)) bishop.seepage.drainValidation.errors = [];
-  if(!Array.isArray(bishop.seepage.drainValidation.warnings)) bishop.seepage.drainValidation.warnings = [];
-  bishop.seepage.geometryHash = bishop.seepage.geometryHash ? String(bishop.seepage.geometryHash) : '';
-  if(!bishop.seepage.options || typeof bishop.seepage.options !== 'object') bishop.seepage.options = stage6Defaults().bishop.seepage.options;
-  if(!['fixed','iterate'].includes(bishop.seepage.options.freeSurface)) bishop.seepage.options.freeSurface = 'iterate';
-  bishop.seepage.options.usePhreaticAsSeed = bishop.seepage.options.usePhreaticAsSeed !== false;
-  bishop.seepage.options.flowErrorTolerance = Math.max(+bishop.seepage.options.flowErrorTolerance || 0.01, 0.000001);
-  bishop.seepage.options.maxRuntimeMs = Math.max(+bishop.seepage.options.maxRuntimeMs || 10000, 1);
-  if(!bishop.seepage.options.drains || typeof bishop.seepage.options.drains !== 'object'){
-    bishop.seepage.options.drains = {gatingTolerances:{}, reportPerSegmentInflow:true};
-  }
-  if(!bishop.seepage.options.drains.gatingTolerances || typeof bishop.seepage.options.drains.gatingTolerances !== 'object'){
-    bishop.seepage.options.drains.gatingTolerances = {};
-  }
-  bishop.seepage.options.drains.reportPerSegmentInflow = bishop.seepage.options.drains.reportPerSegmentInflow !== false;
-  const rawSeepageMeshTargetArea = Number(bishop.seepage.options.meshTargetArea);
-  if(bishop.seepage.options.meshTargetAreaAuto == null){
-    bishop.seepage.options.meshTargetAreaAuto = !(
-      Number.isFinite(rawSeepageMeshTargetArea) &&
-      rawSeepageMeshTargetArea > 0 &&
-      Math.abs(rawSeepageMeshTargetArea - 0.5) > 1e-9
-    );
-  }
-  if(bishop.seepage.options.meshTargetAreaAuto === false && !(rawSeepageMeshTargetArea > 0)){
-    bishop.seepage.options.meshTargetAreaAuto = true;
-  }
-  bishop.seepage.options.meshTargetArea = stage6BishopResolvedSeepageMeshTargetArea(bishop);
-  if(!bishop.seepage.display || typeof bishop.seepage.display !== 'object') bishop.seepage.display = stage6Defaults().bishop.seepage.display;
-  bishop.seepage.display.showBoundaryConditions = bishop.seepage.display.showBoundaryConditions !== false;
-  bishop.seepage.display.showBoundaryLabels = bishop.seepage.display.showBoundaryLabels !== false;
-  if(!['head','porePressure','gradient','hydraulicFs','flow','qx','qy'].includes(bishop.seepage.display.contourMode)) bishop.seepage.display.contourMode = 'head';
-  bishop.seepage.display.showContours = bishop.seepage.display.showContours !== false;
-  bishop.seepage.display.showContourLines = bishop.seepage.display.showContourLines !== false;
-  bishop.seepage.display.showContourLegend = bishop.seepage.display.showContourLegend !== false;
-  bishop.seepage.display.showPhreatic = bishop.seepage.display.showPhreatic !== false;
-  bishop.seepage.display.showDrains = bishop.seepage.display.showDrains !== false;
-  bishop.seepage.display.showHead = !!bishop.seepage.display.showHead;
-  bishop.seepage.display.showEquipotentials = !!bishop.seepage.display.showEquipotentials;
-  bishop.seepage.display.showFlowVectors = !!bishop.seepage.display.showFlowVectors;
-  bishop.seepage.display.showExitGradient = !!bishop.seepage.display.showExitGradient;
-  bishop.seepage.stale = !!bishop.seepage.stale;
-  bishop.seepage.lastAppliedBcType = ['head','seepage-face','no-flow'].includes(bishop.seepage.lastAppliedBcType)
-    ? bishop.seepage.lastAppliedBcType
-    : '';
-  bishop.seepage.lastAppliedBcHead = Number.isFinite(+bishop.seepage.lastAppliedBcHead)
-    ? +bishop.seepage.lastAppliedBcHead
-    : null;
-  bishop.seepage.selectedEdgeKey = bishop.seepage.selectedEdgeKey ? String(bishop.seepage.selectedEdgeKey) : '';
-  bishop.seepage.selectedBcId = bishop.seepage.selectedBcId ? String(bishop.seepage.selectedBcId) : '';
-  if(!bishop.deformation || typeof bishop.deformation !== 'object') bishop.deformation = stage6Defaults().bishop.deformation;
-  stage6Merge(bishop.deformation, stage6Defaults().bishop.deformation);
-  const visibleConstitutiveModels = STAGE6_ENABLE_HARDENING_SOIL_UI
-    ? ['linear-elastic','mc-reduced-stiffness','mc-plastic','hardening-soil']
-    : ['linear-elastic','mc-reduced-stiffness','mc-plastic'];
-  if(!visibleConstitutiveModels.includes(bishop.deformation.options.constitutiveModel)){
-    bishop.deformation.options.constitutiveModel = stage6Defaults().bishop.deformation.options.constitutiveModel;
-    if(!visibleConstitutiveModels.includes(bishop.deformation.options.constitutiveModel)){
-      bishop.deformation.options.constitutiveModel = 'mc-plastic';
-    }
-  }
-  // The browser UI no longer exposes the old predictor-only initial mode.
-  // Keep that mode available to lower-level scripts through the solver API,
-  // but migrate saved UI sessions to the production geostatic workflow.
-  bishop.deformation.options.initialStressMode = 'plastic-geostatic';
-  if(!['idle','meshing','solving','post','success','failed'].includes(bishop.deformation.status)) bishop.deformation.status = 'idle';
-  if(!bishop.deformation.progress || typeof bishop.deformation.progress !== 'object') bishop.deformation.progress = stage6Defaults().bishop.deformation.progress;
-  bishop.deformation.progress.running = !!bishop.deformation.progress.running;
-  bishop.deformation.progress.percent = Math.max(0, Math.min(100, +bishop.deformation.progress.percent || 0));
-  bishop.deformation.progress.message = bishop.deformation.progress.message ? String(bishop.deformation.progress.message) : '';
-  bishop.deformation.progress.runId = Math.max(0, Math.round(+bishop.deformation.progress.runId || 0));
-  bishop.deformation.rejectReason = bishop.deformation.rejectReason ? String(bishop.deformation.rejectReason) : '';
-  if(!Array.isArray(bishop.deformation.warnings)) bishop.deformation.warnings = [];
-  if(!bishop.deformation.options || typeof bishop.deformation.options !== 'object') bishop.deformation.options = stage6Defaults().bishop.deformation.options;
-  if(hsConsistentTangentLegacySchema && bishop.deformation.options.hsConsistentTangentMigrationResolved !== true){
-    bishop.deformation.options.hsConsistentTangentPromptPending = true;
-  }
-  if(!['deformation','safety-cphi'].includes(bishop.deformation.options.analysisType)){
-    bishop.deformation.options.analysisType = stage6Defaults().bishop.deformation.options.analysisType;
-  }
-  if(!['t3','t6'].includes(String(bishop.deformation.options.meshElementType || '').toLowerCase())){
-    bishop.deformation.options.meshElementType = stage6Defaults().bishop.deformation.options.meshElementType;
-  } else {
-    bishop.deformation.options.meshElementType = String(bishop.deformation.options.meshElementType).toLowerCase();
-  }
-  if(!['pressure','total'].includes(bishop.deformation.options.loadMode)) bishop.deformation.options.loadMode = 'pressure';
-  bishop.deformation.options.totalLoad = Number.isFinite(+bishop.deformation.options.totalLoad) && +bishop.deformation.options.totalLoad > 0
-    ? +bishop.deformation.options.totalLoad
-    : null;
-  bishop.deformation.options.outOfPlaneLength = Math.max(+bishop.deformation.options.outOfPlaneLength || 10, 0.1);
-  bishop.deformation.options.useSeepagePorePressures = !!bishop.deformation.options.useSeepagePorePressures;
-  bishop.deformation.options.displacementScale = Math.max(+bishop.deformation.options.displacementScale || 1, 0.05);
-  {
-    const migrateOldDefault = (key, oldValue, newValue) => {
-      const current = Number(bishop.deformation.options[key]);
-      const tol = Math.max(1e-15, Math.abs(oldValue) * 1e-12);
-      if (Number.isFinite(current) && Math.abs(current - oldValue) <= tol) {
-        bishop.deformation.options[key] = newValue;
-      }
-    };
-    migrateOldDefault('residualRelTol', 1e-3, 1e-4);
-    migrateOldDefault('residualAbsTol', 1e-2, 1e-3);
-    migrateOldDefault('minLoadStep', 1 / 2048, 1 / 4096);
-    migrateOldDefault('maxLoadSteps', 256, 384);
-    migrateOldDefault('plasticLoadStepGrowthFactor', 1.05, 1.08);
-    migrateOldDefault('plasticLineSearchMaxBacktracks', 4, 6);
-  }
-  bishop.deformation.options.nonlinearMaxIterations = Math.max(Math.round(+bishop.deformation.options.nonlinearMaxIterations || 32), 1);
-  bishop.deformation.options.initialLoadStep = Math.min(Math.max(+bishop.deformation.options.initialLoadStep || 0.25, 0.0001), 1);
-  bishop.deformation.options.minLoadStep = Math.max(+bishop.deformation.options.minLoadStep || (1/4096), 0.000001);
-  if(bishop.deformation.options.initialLoadStep < bishop.deformation.options.minLoadStep){
-    bishop.deformation.options.initialLoadStep = bishop.deformation.options.minLoadStep;
-  }
-  bishop.deformation.options.maxLoadSteps = Math.max(Math.round(+bishop.deformation.options.maxLoadSteps || 384), 1);
-  bishop.deformation.options.residualRelTol = Math.max(+bishop.deformation.options.residualRelTol || 1e-4, 1e-8);
-  bishop.deformation.options.residualAbsTol = Math.max(+bishop.deformation.options.residualAbsTol || 1e-3, 1e-9);
-  bishop.deformation.options.displacementRelTol = Math.max(+bishop.deformation.options.displacementRelTol || 1e-4, 1e-8);
-  bishop.deformation.options.displacementAbsTol = Math.max(+bishop.deformation.options.displacementAbsTol || 1e-6, 1e-12);
-  bishop.deformation.options.loadStepGrowthFactor = Math.max(+bishop.deformation.options.loadStepGrowthFactor || 1.25, 1);
-  bishop.deformation.options.loadStepCutbackFactor = Math.min(Math.max(+bishop.deformation.options.loadStepCutbackFactor || 0.5, 0.1), 0.9);
-  bishop.deformation.options.plasticLoadStepGrowthFactor = Math.max(+bishop.deformation.options.plasticLoadStepGrowthFactor || 1.08, 1);
-  bishop.deformation.options.plasticLoadStepCutbackFactor = Math.min(Math.max(+bishop.deformation.options.plasticLoadStepCutbackFactor || 0.4, 0.1), 0.9);
-  bishop.deformation.options.plasticLineSearchMaxBacktracks = Math.max(Math.round(+bishop.deformation.options.plasticLineSearchMaxBacktracks || 6), 1);
-  {
-    // The deformation pipeline now exposes exactly two initial-stress
-    // workflows: 'auto' (elastic gravity-step CG + K0 recovery, identical
-    // for flat and sloping ground) and 'gravity-ramp' (zero-stress seed
-    // ramped by plastic Newton, only valid with mc-plastic). Every
-    // historical method string ('direct-k0', 'admissible-k0', 'k0-nil-step',
-    // 'sequential-deposition', 'field-stress') maps onto 'auto'.
-    let geostaticMethod = String(bishop.deformation.options.geostaticInitializationMethod || '').toLowerCase();
-    if(geostaticMethod !== 'auto' && geostaticMethod !== 'gravity-ramp'){
-      geostaticMethod = 'auto';
-    }
-    if(bishop.deformation.options.constitutiveModel !== 'mc-plastic' && geostaticMethod === 'gravity-ramp'){
-      geostaticMethod = 'auto';
-    }
-    bishop.deformation.options.geostaticInitializationMethod = geostaticMethod;
-  }
-  bishop.deformation.options.geostaticStressOnlyResidualTolerance = Math.max(+bishop.deformation.options.geostaticStressOnlyResidualTolerance || 0.05, 0.00000001);
-  // Staged nil-step correction is now the production geostatic workflow. Keep
-  // the solver's compatibility option for scripts, but migrate UI state to the
-  // staged path so old saved sessions cannot silently select the obsolete
-  // single-jump correction.
-  bishop.deformation.options.useStagedGeostaticInit = true;
-  bishop.deformation.options.allowStressOnlyGeostaticReference = bishop.deformation.options.allowStressOnlyGeostaticReference === true;
-  bishop.deformation.options.stressOnlyGeostaticMaxEta = Math.min(Math.max(+bishop.deformation.options.stressOnlyGeostaticMaxEta || 1, 0), 1);
-  bishop.deformation.options.geostaticCorrectionStages = Math.min(Math.max(Math.round(+bishop.deformation.options.geostaticCorrectionStages || 1), 1), 64);
-  bishop.deformation.options.initialGravityTangentSchedule = Array.isArray(bishop.deformation.options.initialGravityTangentSchedule)
-    ? bishop.deformation.options.initialGravityTangentSchedule
-    : String(bishop.deformation.options.initialGravityTangentSchedule || 'plastic').split(/[,\s]+/).filter(Boolean);
-  bishop.deformation.options.initialGravityElasticGlobalizationIterations = Math.max(Math.round(+bishop.deformation.options.initialGravityElasticGlobalizationIterations || 4), 0);
-  bishop.deformation.options.elasticGlobalizationArmijoC1 = Math.max(+bishop.deformation.options.elasticGlobalizationArmijoC1 || 0.001, 0);
-  bishop.deformation.options.elasticGlobalizationMinResidualRatio = Math.min(Math.max(+bishop.deformation.options.elasticGlobalizationMinResidualRatio || 0.90, 0.000001), 0.999);
-  bishop.deformation.options.geostaticMinLoadStep = Math.max(+bishop.deformation.options.geostaticMinLoadStep || 0.0005, 0.000001);
-  bishop.deformation.options.geostaticMaxRepeatedBand = Math.max(Math.round(+bishop.deformation.options.geostaticMaxRepeatedBand || 3), 1);
-  bishop.deformation.options.geostaticProgressFailFast = bishop.deformation.options.geostaticProgressFailFast === true;
-  bishop.deformation.options.geostaticProgressFailFastSteps = Math.max(Math.round(+bishop.deformation.options.geostaticProgressFailFastSteps || 6), 1);
-  bishop.deformation.options.geostaticProgressFailFastLoadFactor = Math.min(Math.max(+bishop.deformation.options.geostaticProgressFailFastLoadFactor || 0.50, 0), 1);
-  bishop.deformation.options.geostaticProgressFailFastPlasticFraction = Math.min(Math.max(+bishop.deformation.options.geostaticProgressFailFastPlasticFraction || 0.15, 0), 1);
-  bishop.deformation.options.serviceProgressFailFast = bishop.deformation.options.serviceProgressFailFast === true;
-  bishop.deformation.options.serviceProgressFailFastSteps = Math.max(Math.round(+bishop.deformation.options.serviceProgressFailFastSteps || 16), 1);
-  bishop.deformation.options.serviceProgressFailFastLoadFactor = Math.min(Math.max(+bishop.deformation.options.serviceProgressFailFastLoadFactor || 0.20, 0), 1);
-  bishop.deformation.options.serviceProgressFailFastPlasticFraction = Math.min(Math.max(+bishop.deformation.options.serviceProgressFailFastPlasticFraction || 0.35, 0), 1);
-  // The Schwarz preconditioner option was removed; block-Jacobi 2x2 is the
-  // single canonical Krylov preconditioner.
-  bishop.deformation.options.preconditionerLevel = 'jacobi';
-  delete bishop.deformation.options.schwarzMinFreeDofs;
-  delete bishop.deformation.options.schwarzOverlap;
-  delete bishop.deformation.options.schwarzMaxPatchDofs;
-  delete bishop.deformation.options.schwarzDamping;
-  delete bishop.deformation.options.schwarzDiagonalShiftScale;
-  delete bishop.deformation.options.schwarzSymmetrizePatch;
-  delete bishop.deformation.options.allowSchwarzPreconditioner;
-  delete bishop.deformation.options.useAdmissibleSlopeSeed;
-  delete bishop.deformation.options.unsymmetricLinearSolver;
-  bishop.deformation.options.safetyInitialSigmaMsfIncrement = Math.max(+bishop.deformation.options.safetyInitialSigmaMsfIncrement || 0.10, 0.001);
-  bishop.deformation.options.safetySigmaMsfGrowthFactor = Math.max(+bishop.deformation.options.safetySigmaMsfGrowthFactor || 1.50, 1.01);
-  bishop.deformation.options.safetySigmaMsfMax = Math.max(+bishop.deformation.options.safetySigmaMsfMax || 3.00, 1.0);
-  bishop.deformation.options.safetySigmaMsfBracketTolerance = Math.max(+bishop.deformation.options.safetySigmaMsfBracketTolerance || 0.01, 0.0001);
-  bishop.deformation.options.safetyMaxSearchTrials = Math.max(Math.round(+bishop.deformation.options.safetyMaxSearchTrials || 32), 1);
-  const hadSafetyFinalizationMode = typeof bishop.deformation.options.safetyFinalizationMode === 'string';
-  bishop.deformation.options.safetyFinalizationMode = bishop.deformation.options.safetyFinalizationMode === 'production-msf'
-    ? 'production-msf'
-    : bishop.deformation.options.safetyFinalizationMode === 'legacy-bracket'
-      ? 'legacy-bracket'
-      : (hadSafetyFinalizationMode ? 'production-msf' : 'legacy-bracket');
-  bishop.deformation.options.useUnsymmetricPlasticSolver = bishop.deformation.options.useUnsymmetricPlasticSolver !== false;
-  bishop.deformation.options.useMcConsistentTangent = bishop.deformation.options.useMcConsistentTangent !== false;
-  bishop.deformation.options.wasmRobustNonlinearMode = false;
-  // Strip legacy GPU-related option carriers from saved sessions. The current
-  // production deformation UI exposes the CPU f64 route only.
-  delete bishop.deformation.options.useGpuAcceleration;
-  delete bishop.deformation.options.useResidentCg;
-  delete bishop.deformation.options.useResidentGmres;
-  delete bishop.deformation.options.allowHybridGpuMatvecForCpuKrylov;
-  delete bishop.deformation.options.gpuPrecisionMode;
-  delete bishop.deformation.options.linearAlgebraBackend;
-  delete bishop.deformation.options.gpuMinDof;
-  // Solver backend — single canonical option that drives the dispatch.
-  // Valid visible values: 'wasm-cpu' (default) and 'js-cpu'. GPU
-  // backends remain in the codebase, but are not selectable in the app
-  // while the production path is WASM-first.
-  // Migration: if `solverBackend` is missing but a legacy toggle is set,
-  // derive it from the legacy fields. Then mirror the canonical value
-  // back onto the legacy fields so the existing worker payload + solver
-  // dispatch keep working unchanged.
-  let solverBackend = bishop.deformation.options.solverBackend;
-  if (typeof solverBackend !== 'string') {
-    if (bishop.deformation.options.useWasmCpuPipeline === true) solverBackend = 'wasm-cpu';
-    else solverBackend = 'wasm-cpu';
-  }
-  if (!['js-cpu', 'wasm-cpu'].includes(solverBackend)) solverBackend = 'wasm-cpu';
-  bishop.deformation.options.solverBackend = solverBackend;
-  bishop.deformation.options.useWasmCpuPipeline = solverBackend === 'wasm-cpu';
-  bishop.deformation.options.useNewGpuPipeline = false;
-  bishop.deformation.options.gpuPipelineVersion = 'v1';
-  const rawDeformationMeshTargetArea = Number(bishop.deformation.options.meshTargetArea);
-  const deformationAutoMeshTargetArea = stage6BishopAutoDeformationMeshTargetArea(bishop);
-  if(bishop.deformation.options.meshTargetAreaAuto == null){
-    bishop.deformation.options.meshTargetAreaAuto = !(
-      Number.isFinite(rawDeformationMeshTargetArea) &&
-      rawDeformationMeshTargetArea > 0 &&
-      Math.abs(rawDeformationMeshTargetArea - deformationAutoMeshTargetArea) > 1e-9
-    );
-  }
-  if(bishop.deformation.options.meshTargetAreaAuto === false && !(rawDeformationMeshTargetArea > 0)){
-    bishop.deformation.options.meshTargetAreaAuto = true;
-  }
-  bishop.deformation.options.meshTargetArea = stage6BishopResolvedDeformationMeshTargetArea(bishop);
-  if(!bishop.deformation.display || typeof bishop.deformation.display !== 'object') bishop.deformation.display = stage6Defaults().bishop.deformation.display;
-  if(bishop.deformation.display.contourMode === 'syy') bishop.deformation.display.contourMode = 'deltaSigmaYy';
-  if(bishop.deformation.display.contourMode === 'mc') bishop.deformation.display.contourMode = 'mcEta';
-  if(!stage6BishopDeformationQuantityIds(
-    bishop.deformation?.options?.analysisType,
-    STAGE6_ENABLE_HARDENING_SOIL_UI && bishop.deformation?.result?.hasHardeningSoil === true
-  ).includes(bishop.deformation.display.contourMode)) bishop.deformation.display.contourMode = 'uTotal';
-  bishop.deformation.display.showContours = bishop.deformation.display.showContours !== false;
-  bishop.deformation.display.showContourLines = bishop.deformation.display.showContourLines !== false;
-  bishop.deformation.display.showContourLegend = bishop.deformation.display.showContourLegend !== false;
-  bishop.deformation.display.showDisplacementVectors = !!bishop.deformation.display.showDisplacementVectors;
-  bishop.deformation.display.showDeformedMesh = !!bishop.deformation.display.showDeformedMesh;
-  bishop.deformation.display.showUndeformedMesh = !!bishop.deformation.display.showUndeformedMesh;
-  bishop.deformation.display.showLoadVectors = bishop.deformation.display.showLoadVectors !== false;
-  bishop.deformation.display.showPlasticPoints = bishop.deformation.display.showPlasticPoints !== false;
-  bishop.deformation.display.showWallMomentOverlay = bishop.deformation.display.showWallMomentOverlay === true;
-  if(!['M', 'V', 'N', 'w', 'theta'].includes(bishop.deformation.display.wallOverlayQuantity)){
-    bishop.deformation.display.wallOverlayQuantity = 'M';
-  }
-  bishop.deformation.stale = !!bishop.deformation.stale;
-  if(!['line-probe', 'structure'].includes(bishop.analysisTab)) bishop.analysisTab = 'line-probe';
-  if(!bishop.surfaceLoad || typeof bishop.surfaceLoad !== 'object') bishop.surfaceLoad = {xStart:null, xEnd:null, q:0};
-  bishop.surfaceLoad.q = Math.max(+bishop.surfaceLoad.q || 0, 0);
-  stage6BishopMigrateSurfaceLoadsShape(bishop);
-  if(!bishop.viewport || typeof bishop.viewport !== 'object') bishop.viewport = {scale:24, offsetX:80, offsetY:360, fitted:false};
-  if(!['characteristic','da1_1','da1_2'].includes(bishop.strengthSet)) bishop.strengthSet = 'characteristic';
+  stage6EnsureCpt(S, stage6EnsureCtx());
+}
+
+// Host hooks of the composed ensure(): the registry, the hardening-soil UI gate and the two bishop
+// helpers the migration still calls into this file (stage6/apps/bishop-state.js header).
+function stage6EnsureCtx(){
+  return {
+    registry: stage6Registry,
+    hardeningSoilUi: STAGE6_ENABLE_HARDENING_SOIL_UI,
+    deformationQuantityIds: stage6BishopDeformationQuantityIds,
+    migrateSurfaceLoadsShape: stage6BishopMigrateSurfaceLoadsShape
+  };
 }
 
 function stage6RememberDetailsState(){
   const root = document.getElementById('stage6Area');
   if(!root) return;
   ensureStage6State();
-  if(!S.stage6.ui || typeof S.stage6.ui !== 'object') S.stage6.ui = {details:{}};
-  if(!S.stage6.ui.details || typeof S.stage6.ui.details !== 'object') S.stage6.ui.details = {};
-  root.querySelectorAll('details[data-st6details]').forEach(el=>{
-    S.stage6.ui.details[el.dataset.st6details] = !!el.open;
-  });
+  stage6RememberDetails(S.stage6, root);
 }
 
 function stage6DetailsOpen(key){
   ensureStage6State();
-  return S.stage6?.ui?.details?.[key] ? ' open' : '';
-}
-
-const STAGE6_SCROLL_PERSIST_SELECTORS = [
-  '[data-st6scroll-key]',
-  '.st6-canvas-card-body',
-  '.st6-canvas-sheet-body',
-  '.st6-bishop-view-menu-body',
-  '.st6-canvas-table-wrap',
-  'details[data-st6details] [style*="overflow"]'
-];
-
-function stage6ScrollTargetBaseKey(el){
-  const explicit = el?.getAttribute?.('data-st6scroll-key');
-  if(explicit) return `explicit:${explicit}`;
-  const detailsKey = el?.closest?.('details[data-st6details]')?.dataset?.st6details || '';
-  const dialogLabel = el?.closest?.('[role="dialog"][aria-label]')?.getAttribute?.('aria-label') || '';
-  const classKey = Array.from(el?.classList || []).sort().join('.');
-  const tag = String(el?.tagName || 'node').toLowerCase();
-  return `${tag}|${classKey}|${detailsKey}|${dialogLabel}`;
-}
-
-function stage6ScrollTargets(root){
-  if(!root?.querySelectorAll) return [];
-  const seen = new Set();
-  const rawTargets = [];
-  STAGE6_SCROLL_PERSIST_SELECTORS.forEach((selector)=>{
-    root.querySelectorAll(selector).forEach((el)=>{
-      if(seen.has(el)) return;
-      seen.add(el);
-      if(typeof el.scrollTop !== 'number' || typeof el.scrollLeft !== 'number') return;
-      rawTargets.push(el);
-    });
-  });
-  const counts = new Map();
-  return rawTargets.map((el)=>{
-    const baseKey = stage6ScrollTargetBaseKey(el);
-    const index = counts.get(baseKey) || 0;
-    counts.set(baseKey, index + 1);
-    return {el, key:`${baseKey}#${index}`};
-  });
-}
-
-function stage6CaptureScrollState(root){
-  return stage6ScrollTargets(root)
-    .map(({el, key})=>({key, top:el.scrollTop || 0, left:el.scrollLeft || 0}))
-    .filter((entry)=>entry.top || entry.left);
-}
-
-function stage6RestoreScrollState(root, scrollState){
-  if(!scrollState?.length) return;
-  const byKey = new Map(scrollState.map((entry)=>[entry.key, entry]));
-  const restore = ()=>{
-    stage6ScrollTargets(root).forEach(({el, key})=>{
-      const entry = byKey.get(key);
-      if(!entry) return;
-      el.scrollTop = entry.top;
-      el.scrollLeft = entry.left;
-    });
-  };
-  restore();
-  requestAnimationFrame(restore);
+  return stage6DetailsOpenOf(S.stage6, key);
 }
 
 function stage6SetDetailsOpen(key, open = true){
   ensureStage6State();
-  if(!S.stage6.ui || typeof S.stage6.ui !== 'object') S.stage6.ui = {details:{}};
-  if(!S.stage6.ui.details || typeof S.stage6.ui.details !== 'object') S.stage6.ui.details = {};
-  S.stage6.ui.details[key] = !!open;
+  stage6SetDetailsOpenOf(S.stage6, key, open);
 }
 
 function stage6BishopUiState(){
   ensureStage6State();
-  if(!S.stage6.ui || typeof S.stage6.ui !== 'object') S.stage6.ui = {details:{}};
-  if(!S.stage6.ui.details || typeof S.stage6.ui.details !== 'object') S.stage6.ui.details = {};
-  return S.stage6.ui;
+  return stage6UiState(S.stage6);
 }
 
 function stage6BishopToggleSettingsPanel(force){
@@ -3324,15 +1769,7 @@ function stage6BishopOpenSettingsDetail(key){
 function setStage6Field(field, value){
   ensureStage6State();
   stage6RememberDetailsState();
-  const defaults = stage6Defaults();
-  const currentDefault = stage6Get(defaults, field);
-  let nextValue = value;
-  if(typeof currentDefault === 'number'){
-    nextValue = value === '' || value == null ? null : +value;
-  } else if(typeof currentDefault === 'boolean'){
-    nextValue = !!value;
-  }
-  stage6Set(S.stage6, field, nextValue);
+  stage6SetField(S.stage6, stage6Defaults(), field, value);
   if(field === 'bearing.Df' && S.stage6.app === 'bearing'){
     refreshStage6BearingPreview();
     return;
@@ -3354,18 +1791,6 @@ function stage6BishopEnabled(){
 
 function stage6BishopHashActive(){
   return typeof window !== 'undefined' && window.location.hash === '#bishop';
-}
-
-function stage6BishopSortedPolyline(points){
-  return (points || [])
-    .filter(pt=>Number.isFinite(pt?.x) && Number.isFinite(pt?.y))
-    .sort((a,b)=>a.x-b.x)
-    .reduce((acc, pt)=>{
-      if(!acc.length || Math.hypot(acc[acc.length-1].x-pt.x, acc[acc.length-1].y-pt.y) > 1e-6){
-        acc.push({x:+pt.x, y:+pt.y});
-      }
-      return acc;
-    }, []);
 }
 
 function stage6BishopSortZone(zone){
@@ -10738,171 +9163,24 @@ function initStage6BishopCanvas(){
   stage6BishopDrawCanvas();
 }
 
+// ── bearing/ package façades (refactor step 7 / PR 12a): the legacy names on the window API
+// keep their signatures; `layers` falls back to the working layers and the water table comes
+// from the active CPT. Bodies: src/lib/cpt-app/bearing/compute.js.
 function layerAtDepth(z, layers){
-  const arr = layers || stage6WorkingLayers();
-  if(!arr.length) return null;
-  return arr.find(l=>z >= l.top && z < l.bot) || arr[arr.length-1];
+  return bearingLayerAtDepth(z, layers || stage6WorkingLayers());
 }
 
-function stage6BearingGeometry(cfg){
-  const rawB = Math.max(cfg.B || 0.1, 0.1);
-  const rawL = Math.max(cfg.L || rawB, 0.1);
-  const eB = Math.max(0, Math.min(cfg.eB || 0, Math.max(rawB / 2 - 0.025, 0)));
-  const eL = Math.max(0, Math.min(cfg.eL || 0, Math.max(rawL / 2 - 0.025, 0)));
-  const effB = Math.max(rawB - 2 * eB, 0.05);
-  const effL = Math.max(rawL - 2 * eL, 0.05);
-  if((cfg.foundationType || 'strip') === 'strip'){
-    return {
-      B:effB,
-      L:Math.max(effL, effB),
-      BRaw:rawB,
-      LRaw:Math.max(rawL, rawB),
-      BEff:effB,
-      LEff:Math.max(effL, effB),
-      eB,
-      eL,
-      ratio:0,
-      label:'strip'
-    };
-  }
-  const shortSide = Math.max(Math.min(effB, effL), 0.05);
-  const longSide = Math.max(effB, effL);
-  return {
-    B:shortSide,
-    L:longSide,
-    BRaw:rawB,
-    LRaw:rawL,
-    BEff:shortSide,
-    LEff:longSide,
-    eB,
-    eL,
-    ratio:Math.max(0, Math.min(shortSide / longSide, 1)),
-    label:'rectangular'
-  };
+function bearingAtDepth(z, cfg, layers){
+  return bearingAtDepthPure(z, cfg, layers || stage6WorkingLayers(), { wt: S.wt });
 }
 
-function stage6BearingShapeModeLabel(mode){
-  return mode === 'conservative'
-    ? 'Conservative (shape factors = 1.0)'
-    : 'Brinch Hansen / Annex D';
-}
-
-function stage6BearingNgammaLabel(){
-  return 'EC7 Annex D rough base';
-}
-
-function stage6BearingShapeModeDetailHtml(mode){
-  if(mode === 'conservative'){
-    return 'Shape factors are fixed at <code>1.0</code> in conservative mode.';
-  }
-  return "Shape factors follow the effective-dimension ratio <code>r = B'/L'</code>.";
-}
-
-function stage6BearingShapeModeDetailText(mode){
-  if(mode === 'conservative'){
-    return 'In conservative mode all shape factors are fixed at 1.0.';
-  }
-  return 'In Brinch Hansen / Annex D mode the shape factors follow the effective-dimension ratio r = B′/L′.';
-}
-
-function stage6BearingShapeFactors(geometry, phiDeg, Nq, mode){
-  if(mode === 'conservative'){
-    return {sc:1, sq:1, sg:1, scu:1};
-  }
-  const r = geometry?.ratio || 0;
-  const phiRad = Math.max(phiDeg || 0, 0) * Math.PI / 180;
-  const sq = 1 + r * Math.sin(phiRad);
-  const sc = phiDeg > 0
-    ? (sq * Nq - 1) / Math.max(Nq - 1, 1e-6)
-    : 1 + 0.2 * r;
-  return {
-    sc,
-    sq,
-    sg:Math.max(0.6, 1 - 0.3 * r),
-    scu:1 + 0.2 * r
-  };
-}
-
-function stage6BearingDepthFactors(Df, B, phiDeg, Nc){
-  const eta = Math.max(Df || 0, 0) / Math.max(B || 0.1, 0.1);
-  const k = eta <= 1 ? eta : Math.atan(eta);
-  if(phiDeg > 0){
-    const phiRad = phiDeg * Math.PI / 180;
-    const sinPhi = Math.sin(phiRad);
-    const tanPhi = Math.tan(phiRad);
-    const dq = 1 + 2 * tanPhi * (1 - sinPhi) ** 2 * k;
-    return {
-      eta,
-      k,
-      dq,
-      dc:dq - (1 - dq) / (Math.max(Nc, 1e-6) * Math.max(tanPhi, 1e-6)),
-      dg:1.0,
-      dcu:1 + 0.4 * k
-    };
-  }
-  return {
-    eta,
-    k,
-    dq:1.0,
-    dc:1 + 0.4 * k,
-    dg:1.0,
-    dcu:1 + 0.4 * k
-  };
+function bearingProfile(cfg, layers){
+  return bearingProfilePure(cfg, layers || stage6WorkingLayers(), { wt: S.wt });
 }
 
 // Backward-compatible alias for any external callers that still expect
 // the old helper name on the legacy window API.
-const stage6ShapeFactors = stage6BearingShapeFactors;
-
-function stage6BearingNgamma(phiDeg, Nq){
-  if(!(phiDeg > 0)) return 0;
-  const phiRad = phiDeg * Math.PI / 180;
-  return Math.max(0, 2 * Math.max(Nq - 1, 0) * Math.tan(phiRad));
-}
-
-function stage6UsesEc7Factors(cfg){
-  return (cfg.factorMode || 'ec7') === 'ec7';
-}
-
-function stage6CapacityLabel(cfg){
-  return stage6UsesEc7Factors(cfg) ? 'q_d' : 'q_allow';
-}
-
-function stage6FactorLabel(cfg){
-  return stage6UsesEc7Factors(cfg) ? 'γ_Rd' : 'ξ';
-}
-
-function stage6FactorValue(cfg){
-  if(stage6UsesEc7Factors(cfg)) return Math.max(cfg.gammaRd || 1, 0.1);
-  return Math.max(cfg.xi || 1, 0.1);
-}
-
-function stage6BearingEc7Keys(mode){
-  if(mode === 'da1_1') return ['da1_1'];
-  if(mode === 'da1_2') return ['da1_2'];
-  return ['da1_1', 'da1_2'];
-}
-
-function stage6BearingEc7Spec(key){
-  if(key === 'da1_1'){
-    return {
-      key,
-      label:'DA1/1',
-      soilSet:'M1',
-      gammaMphi:1.00,
-      gammaMc:1.00,
-      gammaMcu:1.00
-    };
-  }
-  return {
-    key:'da1_2',
-    label:'DA1/2',
-    soilSet:'M2',
-    gammaMphi:1.25,
-    gammaMc:1.25,
-    gammaMcu:1.40
-  };
-}
+const stage6ShapeFactors = bearingShapeFactors;
 
 function stage6UseCategoryOptions(selected){
   const labels = {
@@ -11083,43 +9361,6 @@ function stage6BeamOrientationHtml(cfg, analysis){
   `;
 }
 
-function stage6BearingEc7Options(selected){
-  const labels = {
-    governing:'Governing of DA1/1 and DA1/2 (Recommended)',
-    da1_1:'DA1/1 - action-factored route',
-    da1_2:'DA1/2 - M2 soil-strength route'
-  };
-  return ['governing','da1_1','da1_2']
-    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
-    .join('');
-}
-
-function stage6BearingEc7Help(selected){
-  const text = {
-    governing:'Belgian EC7 bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.',
-    da1_1:'DA1/1 keeps soil strengths characteristic and is useful when you want to inspect the action-factored side on its own.',
-    da1_2:'DA1/2 applies the M2 reduction to soil strengths and often governs geotechnical bearing resistance; inspect it directly if you want to understand the soil-side penalty.'
-  };
-  return text[selected] || text.governing;
-}
-
-function stage6BearingShapeModeOptions(selected){
-  const labels = {
-    hansen:'Brinch Hansen / Annex D (Recommended)',
-    conservative:'Conservative (shape factors = 1.0)'
-  };
-  return ['hansen','conservative']
-    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
-    .join('');
-}
-
-function stage6BearingShapeModeHelp(selected){
-  if(selected === 'conservative'){
-    return 'Conservative mode keeps all shape factors equal to 1.0. Depth factors still apply, but plan-shape enhancement is suppressed.';
-  }
-  return 'Brinch Hansen / Annex D mode derives the shape factors from the effective plan ratio r = B′/L′ after eccentricity. This is the default and recommended mode.';
-}
-
 function stage6ExposureOptions(selected){
   return Object.entries(EC2_EXPOSURE_META)
     .map(([key, meta])=>`<option value="${key}"${selected===key?' selected':''}>${key} - ${meta.label}</option>`)
@@ -11168,1022 +9409,70 @@ function stage6BeamDurabilityHtml(reinf){
   `;
 }
 
-function stage6BearingNotes(sel, cfg){
-  const notes = [{
-    level:'warn',
-    text:'Bearing capacity is shown as a shallow-foundation screening curve using the interpreted layer active at each founding depth. Layered failure mechanisms and full eccentric-load verification are not modeled here.'
-  }];
-  // EN 1997-1 §6.5.4: special precautions are required where the load
-  // eccentricity exceeds 1/3 of the footing dimension. The app clamps e at
-  // B/2 − 0.025 m but does not otherwise restrict it, so surface the
-  // normative warning instead of silently accepting an extreme offset.
-  const eB = Number(sel.eB) || 0;
-  const eL = Number(sel.eL) || 0;
-  if(eB > (Number(sel.BRaw) || sel.B) / 3 || eL > (Number(sel.LRaw) || sel.L) / 3){
-    notes.push({
-      level:'warn',
-      text:'Load eccentricity exceeds 1/3 of the footing width (EN 1997-1 §6.5.4): special precautions are required — careful review of the design actions and the bearing model is mandatory. The middle-third condition (|e| < B/6, no tensile corner reactions) is also violated.'
-    });
-  } else if(eB > (Number(sel.BRaw) || sel.B) / 6 || eL > (Number(sel.LRaw) || sel.L) / 6){
-    notes.push({
-      level:'info',
-      text:'Load eccentricity exceeds B/6 (middle third): part of the base loses compressive contact; the effective-width model remains valid but check serviceability and edge pressures.'
-    });
-  }
-  notes.push({
-    level:'info',
-    text:`The current bearing check uses ${sel.ngammaFormulaLabel} for Nγ and ${sel.shapeModeLabel} for shape factors. ${stage6BearingShapeModeDetailText(sel.shapeMode)} It includes Df/B′ depth factors, but it still assumes level ground, horizontal base, and no horizontal load.`
-  });
-  if(stage6UsesEc7Factors(cfg)){
-    notes.push({
-      level:'info',
-      text:'Belgian bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.'
-    });
-    notes.push({
-      level:'warn',
-      text:'gamma_Rd is kept as an optional model factor only. Leave it at 1.0 unless you intentionally want an extra correction for simplified analytical model bias.'
-    });
-  } else {
-    notes.push({level:'warn', text:'Global/system factor ξ is a legacy-style screening route. Keep it separate from the EC7 partial-factor route and do not stack them.'});
-  }
-  if(sel.layer.type === 'Sandy clay' || sel.layer.type === 'Peat / organic'){
-    notes.push({level:'info', text:'Mixed or organic layers can govern with undrained behaviour. Review both curves before accepting a founding depth.'});
-  }
-  return notes;
-}
-
-function bearingAtDepth(z, cfg, layers){
-  const arr = layers || stage6WorkingLayers();
-  const l = layerAtDepth(z, arr);
-  if(!l) return null;
-  const stress = effectiveVerticalStressAtDepth(arr, z, S.wt, stage6Constants().gammaW);
-  const geo = stage6BearingGeometry(cfg);
-  const B = geo.B;
-  const phiK = Math.max(l.phi || 0, 0);
-  const cK = Math.max(l.c || 0, 0);
-  const cuK = Math.max(l.cu || 0, 0);
-  const useEc7 = stage6UsesEc7Factors(cfg);
-  // Three-case water-table rule for the N_gamma-term unit weight (Das PoFE
-  // "Effect of Water Table" Case I/II/III; Meyerhof): buoyant gamma' when the
-  // WT is at/above the base; moist gamma when it lies deeper than the failure
-  // wedge (~B' below the base); linear interpolation in between. A binary
-  // switch at the base level would credit full moist gamma to a wedge that is
-  // almost entirely submerged (unconservative for 0 < d_w < B').
-  const gammaWConst = stage6Constants().gammaW;
-  const gammaMoistL = l.g;
-  const gammaBuoyL = Math.max((l.gs || l.g) - gammaWConst, 1.0);
-  const dWater = S.wt - z;  // depth of the water table below the founding level
-  let gammaEff;
-  let wtCase;
-  if(!(dWater > 0)){
-    gammaEff = gammaBuoyL; wtCase = 'WT at/above base: buoyant γ′';
-  } else if(dWater >= geo.BEff){
-    gammaEff = gammaMoistL; wtCase = 'WT deeper than wedge (≥ B′): moist γ';
-  } else {
-    gammaEff = gammaBuoyL + (dWater / Math.max(geo.BEff, 1e-6)) * (gammaMoistL - gammaBuoyL);
-    wtCase = 'WT within wedge: interpolated γ';
-  }
-  const qDrain = Math.max(stress.sigmaEff, 0);
-  const qUndrain = Math.max(stress.sigmaV, 0);
-  const factor = stage6FactorValue(cfg);
-  const shapeMode = cfg.shapeMode || 'hansen';
-  let drainedCalc = null;
-  let undrainedCalc = null;
-  let ec7Results = [];
-  if(useEc7){
-    ec7Results = stage6BearingEc7Keys(cfg.ec7Combination || 'governing').map(key=>{
-      const spec = stage6BearingEc7Spec(key);
-      const designed = designSoilLayer(l, spec.soilSet);
-      const phiD = Math.max(designed.phi || 0, 0);
-      const cD = Math.max(designed.c || 0, 0);
-      const cuD = Math.max(designed.cu || 0, 0);
-      const phiDRad = phiD * Math.PI / 180;
-      const tanPhi = Math.tan(phiDRad);
-      const Nq = phiD > 0 ? Math.exp(Math.PI * tanPhi) * Math.tan(Math.PI/4 + phiDRad/2)**2 : 1;
-      const Nc = phiD > 0 ? (Nq - 1) / Math.max(tanPhi, 1e-6) : 5.14;
-      const Ng = stage6BearingNgamma(phiD, Nq);
-      const shp = stage6BearingShapeFactors(geo, phiD, Nq, shapeMode);
-      const dep = stage6BearingDepthFactors(z, B, phiD, Nc);
-      const undShp = stage6BearingShapeFactors(geo, 0, 1, shapeMode);
-      const undDep = stage6BearingDepthFactors(z, B, 0, 5.14);
-      const qultDrained = Math.max(0, cD * Nc * shp.sc * dep.dc + qDrain * Nq * shp.sq * dep.dq + 0.5 * gammaEff * geo.BEff * Ng * shp.sg * dep.dg);
-      const qultUndrained = Math.max(0, qUndrain + 5.14 * cuD * undShp.scu * undDep.dcu);
-      const qdDrained = qultDrained / factor;
-      const qdUndrained = qultUndrained / factor;
-      return {
-        ...spec,
-        phiD, cD, cuD, Nq, Nc, Ng,
-        shape:shp,
-        depth:dep,
-        undrainedShape:undShp,
-        undrainedDepth:undDep,
-        shapeModeLabel:stage6BearingShapeModeLabel(shapeMode),
-        ngammaFormulaLabel:stage6BearingNgammaLabel(),
-        qultDrained, qultUndrained, qdDrained, qdUndrained
-      };
-    });
-    drainedCalc = ec7Results.reduce((best, item)=>
-      !best || item.qdDrained < best.qdDrained ? item : best
-    , null);
-    undrainedCalc = ec7Results.reduce((best, item)=>
-      !best || item.qdUndrained < best.qdUndrained ? item : best
-    , null);
-  } else {
-    const phiD = phiK;
-    const cD = cK;
-    const cuD = cuK;
-    const phiDRad = phiD * Math.PI / 180;
-    const tanPhi = Math.tan(phiDRad);
-    const Nq = phiD > 0 ? Math.exp(Math.PI * tanPhi) * Math.tan(Math.PI/4 + phiDRad/2)**2 : 1;
-    const Nc = phiD > 0 ? (Nq - 1) / Math.max(tanPhi, 1e-6) : 5.14;
-    const Ng = stage6BearingNgamma(phiD, Nq);
-    const shp = stage6BearingShapeFactors(geo, phiD, Nq, shapeMode);
-    const dep = stage6BearingDepthFactors(z, B, phiD, Nc);
-    const undShp = stage6BearingShapeFactors(geo, 0, 1, shapeMode);
-    const undDep = stage6BearingDepthFactors(z, B, 0, 5.14);
-    const qultDrained = Math.max(0, cD * Nc * shp.sc * dep.dc + qDrain * Nq * shp.sq * dep.dq + 0.5 * gammaEff * geo.BEff * Ng * shp.sg * dep.dg);
-    const qultUndrained = Math.max(0, qUndrain + 5.14 * cuD * undShp.scu * undDep.dcu);
-    drainedCalc = undrainedCalc = {
-      label:'Global SF',
-      soilSet:'M1',
-      gammaMphi:1,
-      gammaMc:1,
-      gammaMcu:1,
-      phiD, cD, cuD, Nq, Nc, Ng,
-      shape:shp,
-      depth:dep,
-      undrainedShape:undShp,
-      undrainedDepth:undDep,
-      shapeModeLabel:stage6BearingShapeModeLabel(shapeMode),
-      ngammaFormulaLabel:stage6BearingNgammaLabel(),
-      qultDrained, qultUndrained,
-      qdDrained: qultDrained / factor,
-      qdUndrained: qultUndrained / factor
-    };
-  }
-  const qdDrained = drainedCalc.qdDrained;
-  const qdUndrained = undrainedCalc.qdUndrained;
-  return{
-    layer:l,
-    z,
-    B:+B.toFixed(2),
-    L:+geo.L.toFixed(2),
-    BRaw:+geo.BRaw.toFixed(2),
-    LRaw:+geo.LRaw.toFixed(2),
-    BEff:+geo.BEff.toFixed(2),
-    LEff:+geo.LEff.toFixed(2),
-    eB:+geo.eB.toFixed(2),
-    eL:+geo.eL.toFixed(2),
-    r:+geo.ratio.toFixed(3),
-    eta:+drainedCalc.depth.eta.toFixed(3),
-    k:+drainedCalc.depth.k.toFixed(3),
-    sigV:+stress.sigmaV.toFixed(1),
-    sigVeff:+stress.sigmaEff.toFixed(1),
-    qDrain:+qDrain.toFixed(1),
-    qUndrain:+qUndrain.toFixed(1),
-    gammaEff:+gammaEff.toFixed(2),
-    wtCase,
-    phiK:+phiK.toFixed(1),
-    phiD:+drainedCalc.phiD.toFixed(1),
-    cK:+cK.toFixed(1),
-    cD:+drainedCalc.cD.toFixed(1),
-    cuK:+cuK.toFixed(1),
-    cuD:+undrainedCalc.cuD.toFixed(1),
-    drainedComboLabel:useEc7 ? drainedCalc.label : 'Global SF',
-    undrainedComboLabel:useEc7 ? undrainedCalc.label : 'Global SF',
-    gammaMphi:+drainedCalc.gammaMphi.toFixed(2),
-    gammaMc:+drainedCalc.gammaMc.toFixed(2),
-    gammaMcu:+undrainedCalc.gammaMcu.toFixed(2),
-    useEc7,
-    gammaRd:+(cfg.gammaRd || 1).toFixed(2),
-    xi:+(cfg.xi || 1).toFixed(2),
-    ec7CombinationMode:cfg.ec7Combination || 'governing',
-    ec7CombinationLabel:useEc7
-      ? drainedCalc.label === undrainedCalc.label
-        ? drainedCalc.label
-        : `drained ${drainedCalc.label} / undrained ${undrainedCalc.label}`
-      : null,
-    ec7Results:ec7Results.map(item=>({
-      label:item.label,
-      qdDrained:+item.qdDrained.toFixed(1),
-      qdUndrained:+item.qdUndrained.toFixed(1)
-    })),
-    capacityLabel:stage6CapacityLabel(cfg),
-    factorLabel:stage6FactorLabel(cfg),
-    shapeMode:shapeMode,
-    shapeModeLabel:drainedCalc.shapeModeLabel,
-    ngammaFormulaLabel:drainedCalc.ngammaFormulaLabel,
-    Nc:+drainedCalc.Nc.toFixed(3),
-    Nq:+drainedCalc.Nq.toFixed(3),
-    Ng:+drainedCalc.Ng.toFixed(3),
-    sc:+drainedCalc.shape.sc.toFixed(2),
-    sq:+drainedCalc.shape.sq.toFixed(2),
-    sg:+drainedCalc.shape.sg.toFixed(2),
-    scu:+undrainedCalc.undrainedShape.scu.toFixed(2),
-    dc:+drainedCalc.depth.dc.toFixed(2),
-    dq:+drainedCalc.depth.dq.toFixed(2),
-    dg:+drainedCalc.depth.dg.toFixed(2),
-    dcu:+undrainedCalc.undrainedDepth.dcu.toFixed(2),
-    factor:+factor.toFixed(2),
-    qultDrained:+drainedCalc.qultDrained.toFixed(1),
-    qultUndrained:+undrainedCalc.qultUndrained.toFixed(1),
-    qdDrained:+qdDrained.toFixed(1),
-    qdUndrained:+qdUndrained.toFixed(1),
-    utilDrained: cfg.load > 0 ? +(cfg.load / Math.max(qdDrained, 1e-6)).toFixed(2) : null,
-    utilUndrained: cfg.load > 0 ? +(cfg.load / Math.max(qdUndrained, 1e-6)).toFixed(2) : null
-  };
-}
-
-function bearingProfile(cfg, layers){
-  const arr = layers || stage6WorkingLayers();
-  if(!arr.length) return null;
-  const maxDepth = arr[arr.length-1].bot;
-  const step = Math.max(0.1, Math.min(0.25, maxDepth / 60));
-  const depths = [];
-  for(let z = Math.max(cfg.Df, 0.2); z <= maxDepth + 1e-9; z += step){
-    depths.push(+z.toFixed(3));
-  }
-  if(!depths.length || depths[0] !== +cfg.Df.toFixed(3)) depths.unshift(+cfg.Df.toFixed(3));
-  const pts = depths.map(z=>bearingAtDepth(z, cfg, arr)).filter(Boolean);
-  const selected = bearingAtDepth(cfg.Df, cfg, arr);
-  return{
-    pts,
-    selected,
-    drained:pts.map(p=>({x:p.qdDrained, y:p.z})),
-    undrained:pts.map(p=>({x:p.qdUndrained, y:p.z})),
-    maxDepth
-  };
-}
-
+// bearing/panel.js façades (legacy window API names).
 function stage6BearingSelectedDepthHtml(sel, governing, governingMode){
-  return `
-    <table class="pt" style="margin-bottom:12px">
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding-bottom:4px;border-bottom:1px solid var(--bd);text-transform:uppercase">Selected depth</td></tr>
-      <tr><td>Df</td><td>${sel.z.toFixed(2)} m</td></tr>
-      <tr><td>Layer</td><td>${sel.layer.type}</td></tr>
-      <tr><td>Subtype</td><td>${sel.layer.subtype||'—'}</td></tr>
-      ${sel.useEc7 ? `<tr><td>Belgian EC7 envelope</td><td>${sel.ec7CombinationLabel}</td></tr>` : `<tr><td>Safety route</td><td>Global system factor</td></tr>`}
-      <tr><td>σ'v</td><td>${sel.sigVeff.toFixed(1)} kPa</td></tr>
-      <tr><td>Applied stress</td><td>${sel.utilDrained!=null?`${sel.utilDrained.toFixed(2)} · drained / ${sel.utilUndrained.toFixed(2)} · undrained`:'—'}</td></tr>
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--chart-green);padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Drained</td></tr>
-      ${sel.useEc7 ? `<tr><td>Governing combo</td><td>${sel.drainedComboLabel}</td></tr>` : ''}
-      <tr><td>q_ult</td><td>${sel.qultDrained.toLocaleString()} kPa</td></tr>
-      <tr><td>${sel.capacityLabel}</td><td>${sel.qdDrained.toLocaleString()} kPa</td></tr>
-      <tr><td>utilisation</td><td>${sel.utilDrained!=null?sel.utilDrained.toFixed(2):'—'}</td></tr>
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--chart-orange);padding:4px 0;border-top:1px solid var(--bd);border-bottom:1px solid var(--bd);text-transform:uppercase">Undrained</td></tr>
-      ${sel.useEc7 ? `<tr><td>Governing combo</td><td>${sel.undrainedComboLabel}</td></tr>` : ''}
-      <tr><td>q_ult</td><td>${sel.qultUndrained.toLocaleString()} kPa</td></tr>
-      <tr><td>${sel.capacityLabel}</td><td>${sel.qdUndrained.toLocaleString()} kPa</td></tr>
-      <tr><td>utilisation</td><td>${sel.utilUndrained!=null?sel.utilUndrained.toFixed(2):'—'}</td></tr>
-      <tr><td colspan="2" style="font-size:10px;font-weight:600;color:var(--tx2);padding:4px 0;border-top:1px solid var(--bd);text-transform:uppercase">Governing</td></tr>
-      <tr><td>Mode</td><td>${governingMode}</td></tr>
-      <tr><td>${sel.capacityLabel}</td><td>${governing.toLocaleString()} kPa</td></tr>
-    </table>
-  `;
+  return bearingSelectedDepthHtml(sel, governing, governingMode);
 }
 
 function stage6BearingMaterialParamsHtml(sel, cfg){
-  if(!sel.useEc7){
-    return `
-      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Global safety-factor route at selected depth</div>
-      <table class="pt">
-        <tr><td>φ'k</td><td>${sel.phiK.toFixed(1)}°</td><td>c'k</td><td>${sel.cK.toFixed(1)} kPa</td><td>cu,k</td><td>${sel.cuK.toFixed(1)} kPa</td></tr>
-        <tr><td>γ'</td><td>${sel.gammaEff.toFixed(2)} kN/m³</td><td>ξ</td><td>${cfg.xi.toFixed(2)}</td><td>Route</td><td>Global SF</td></tr>
-        <tr><td>B / L</td><td>${sel.BRaw.toFixed(2)} / ${sel.LRaw.toFixed(2)} m</td><td>eB / eL</td><td>${sel.eB.toFixed(2)} / ${sel.eL.toFixed(2)} m</td><td>Route</td><td>${sel.shapeModeLabel}</td></tr>
-        <tr><td>B' / L'</td><td>${sel.BEff.toFixed(2)} / ${sel.LEff.toFixed(2)} m</td><td>r</td><td>${sel.r.toFixed(3)}</td><td>k</td><td>${sel.k.toFixed(3)}</td></tr>
-      </table>
-      <div style="margin-top:8px;font-size:11px;color:var(--tx2);line-height:1.5">
-        Characteristic soil parameters are used directly. The global/system factor ξ is applied on the output resistance only and is not combined with γ_R or γ_M.<br>
-        Nγ uses the <strong>${sel.ngammaFormulaLabel}</strong> form. Shape factors follow <strong>${sel.shapeModeLabel}</strong>. ${stage6BearingShapeModeDetailHtml(sel.shapeMode)}
-      </div>
-    `;
-  }
-  return `
-    <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Belgian EC7 DA1 parameters used at selected depth</div>
-    <table class="pt">
-      <tr><td>Drained combo</td><td>${sel.drainedComboLabel}</td><td>Undrained combo</td><td>${sel.undrainedComboLabel}</td><td>γ_Rd</td><td>${cfg.gammaRd.toFixed(2)}</td></tr>
-      <tr><td>φ'k</td><td>${sel.phiK.toFixed(1)}°</td><td>γ_M,φ</td><td>${sel.gammaMphi.toFixed(2)}</td><td>φ'd</td><td>${sel.phiD.toFixed(1)}°</td></tr>
-      <tr><td>c'k</td><td>${sel.cK.toFixed(1)} kPa</td><td>γ_M,c'</td><td>${sel.gammaMc.toFixed(2)}</td><td>c'd</td><td>${sel.cD.toFixed(1)} kPa</td></tr>
-      <tr><td>cu,k</td><td>${sel.cuK.toFixed(1)} kPa</td><td>γ_M,cu</td><td>${sel.gammaMcu.toFixed(2)}</td><td>cu,d</td><td>${sel.cuD.toFixed(1)} kPa</td></tr>
-      <tr><td>γ'</td><td>${sel.gammaEff.toFixed(2)} kN/m³</td><td>Combo mode</td><td>${cfg.ec7Combination === 'governing' ? 'most onerous' : cfg.ec7Combination.toUpperCase().replace('_','/')}</td><td>R set</td><td>R1</td></tr>
-      <tr><td>B / L</td><td>${sel.BRaw.toFixed(2)} / ${sel.LRaw.toFixed(2)} m</td><td>eB / eL</td><td>${sel.eB.toFixed(2)} / ${sel.eL.toFixed(2)} m</td><td>Shape route</td><td>${sel.shapeModeLabel}</td></tr>
-      <tr><td>B' / L'</td><td>${sel.BEff.toFixed(2)} / ${sel.LEff.toFixed(2)} m</td><td>r</td><td>${sel.r.toFixed(3)}</td><td>Nγ</td><td>${sel.ngammaFormulaLabel}</td></tr>
-    </table>
-    ${sel.ec7Results && sel.ec7Results.length > 1 ? `
-      <div style="margin-top:8px;font-size:11px;color:var(--tx2);line-height:1.55">
-        DA1 overview: ${sel.ec7Results.map(r=>`${r.label}: drained ${r.qdDrained.toFixed(0)} kPa, undrained ${r.qdUndrained.toFixed(0)} kPa`).join(' · ')}
-      </div>
-    ` : ''}
-  `;
+  return bearingMaterialParamsHtml(sel, cfg);
 }
 
 function stage6BearingDrainedFormulaHtml(sel){
-  return `
-    <div style="font-size:10px;font-weight:700;color:var(--chart-green);text-transform:uppercase;margin-bottom:6px">Drained formula at selected depth</div>
-    <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
-      q_ult,d = c'·N_c·s_c·d_c + q'·N_q·s_q·d_q + 0.5·γ'·B'·N_γ·s_γ·d_γ
-    </div>
-    <div style="font-size:11px;color:var(--tx2);line-height:1.55">
-      φ'k = <strong>${sel.phiK.toFixed(1)}°</strong>${sel.useEc7?` → φ'd = <strong>${sel.phiD.toFixed(1)}°</strong>`:''}<br>
-      c'k = <strong>${sel.cK.toFixed(1)} kPa</strong>${sel.useEc7?` → c'd = <strong>${sel.cD.toFixed(1)} kPa</strong>`:''}<br>
-      N_c = <strong>${sel.Nc.toFixed(3)}</strong><br>
-      N_q = <strong>${sel.Nq.toFixed(3)}</strong><br>
-      N_γ = <strong>${sel.Ng.toFixed(3)}</strong> (${sel.ngammaFormulaLabel})<br>
-      q' = σ'v = <strong>${sel.qDrain.toFixed(1)} kPa</strong><br>
-      γ' = <strong>${sel.gammaEff.toFixed(2)} kN/m³</strong><br>
-      ${sel.useEc7 ? `Governing Belgian combo = <strong>${sel.drainedComboLabel}</strong><br>` : ''}
-      Shape factors = <strong>${sel.shapeModeLabel}</strong><br>
-      B = <strong>${sel.BRaw.toFixed(2)} m</strong>, L = <strong>${sel.LRaw.toFixed(2)} m</strong><br>
-      eB = <strong>${sel.eB.toFixed(2)} m</strong>, eL = <strong>${sel.eL.toFixed(2)} m</strong><br>
-      B' = <strong>${sel.BEff.toFixed(2)} m</strong>, L' = <strong>${sel.LEff.toFixed(2)} m</strong>, r = <strong>${sel.r.toFixed(3)}</strong><br>
-      Df/B' = η = <strong>${sel.eta.toFixed(3)}</strong>, k = <strong>${sel.k.toFixed(3)}</strong><br>
-      s_c = <strong>${sel.sc.toFixed(2)}</strong>, s_q = <strong>${sel.sq.toFixed(2)}</strong>, s_γ = <strong>${sel.sg.toFixed(2)}</strong><br>
-      d_c = <strong>${sel.dc.toFixed(2)}</strong>, d_q = <strong>${sel.dq.toFixed(2)}</strong>, d_γ = <strong>${sel.dg.toFixed(2)}</strong><br>
-      ${sel.factorLabel} = <strong>${sel.factor.toFixed(2)}</strong><br>
-      ${sel.capacityLabel} = q_ult,d / ${sel.factorLabel} = <strong>${sel.qdDrained.toLocaleString()} kPa</strong>
-    </div>
-  `;
+  return bearingDrainedFormulaHtml(sel);
 }
 
 function stage6BearingUndrainedFormulaHtml(sel){
-  return `
-    <div style="font-size:10px;font-weight:700;color:var(--chart-orange);text-transform:uppercase;margin-bottom:6px">Undrained formula at selected depth</div>
-    <div style="font-family:monospace;font-size:12px;color:var(--tx);margin-bottom:8px">
-      q_ult,u = q + 5.14·c_u·s_cu·d_cu
-    </div>
-    <div style="font-size:11px;color:var(--tx2);line-height:1.55">
-      q = σv = <strong>${sel.qUndrain.toFixed(1)} kPa</strong><br>
-      cu,k = <strong>${sel.cuK.toFixed(1)} kPa</strong>${sel.useEc7?` → cu,d = <strong>${sel.cuD.toFixed(1)} kPa</strong>`:''}<br>
-      N_cu = <strong>5.14</strong><br>
-      ${sel.useEc7 ? `Governing Belgian combo = <strong>${sel.undrainedComboLabel}</strong><br>` : ''}
-      Shape factors = <strong>${sel.shapeModeLabel}</strong><br>
-      B = <strong>${sel.BRaw.toFixed(2)} m</strong>, L = <strong>${sel.LRaw.toFixed(2)} m</strong><br>
-      eB = <strong>${sel.eB.toFixed(2)} m</strong>, eL = <strong>${sel.eL.toFixed(2)} m</strong><br>
-      B' = <strong>${sel.BEff.toFixed(2)} m</strong>, L' = <strong>${sel.LEff.toFixed(2)} m</strong>, r = <strong>${sel.r.toFixed(3)}</strong><br>
-      Df/B' = η = <strong>${sel.eta.toFixed(3)}</strong>, k = <strong>${sel.k.toFixed(3)}</strong><br>
-      s_cu = <strong>${sel.scu.toFixed(2)}</strong>, d_cu = <strong>${sel.dcu.toFixed(2)}</strong><br>
-      ${sel.factorLabel} = <strong>${sel.factor.toFixed(2)}</strong><br>
-      ${sel.capacityLabel} = q_ult,u / ${sel.factorLabel} = <strong>${sel.qdUndrained.toLocaleString()} kPa</strong>
-    </div>
-  `;
+  return bearingUndrainedFormulaHtml(sel);
 }
 
-let stage6BearingChartTimer = null;
 function queueStage6BearingChartBuild(){
-  if(stage6BearingChartTimer) clearTimeout(stage6BearingChartTimer);
-  stage6BearingChartTimer = setTimeout(()=>{
-    stage6BearingChartTimer = null;
-    buildStage6BearingChart();
-  }, 20);
+  bearingApp.queueChartBuild();
 }
 
 function refreshStage6BearingPreview(){
-  ensureStage6State();
-  if(!S.layers.length || !S.stage6 || S.stage6.app !== 'bearing') return;
-  const layers = stage6WorkingLayers();
-  const cfg = S.stage6.bearing;
-  const profile = bearingProfile(cfg, layers);
-  if(!profile || !profile.selected) return;
-  S.stage6Cache.bearing = profile;
-  const sel = profile.selected;
-  const governing = Math.min(sel.qdDrained, sel.qdUndrained);
-  const governingMode = sel.qdDrained <= sel.qdUndrained ? 'Drained' : 'Undrained';
-  const dfValue = document.getElementById('stage6DfValue');
-  if(dfValue) dfValue.textContent = sel.z.toFixed(2)+' m';
-  const summary = document.getElementById('stage6SelectedDepth');
-  if(summary) summary.innerHTML = stage6BearingSelectedDepthHtml(sel, governing, governingMode);
-  const material = document.getElementById('stage6UlsParams');
-  if(material) material.innerHTML = stage6BearingMaterialParamsHtml(sel, cfg);
-  const drainedFormula = document.getElementById('stage6DrainedFormula');
-  if(drainedFormula) drainedFormula.innerHTML = stage6BearingDrainedFormulaHtml(sel);
-  const undrainedFormula = document.getElementById('stage6UndrainedFormula');
-  if(undrainedFormula) undrainedFormula.innerHTML = stage6BearingUndrainedFormulaHtml(sel);
-  queueStage6BearingChartBuild();
+  bearingApp.refreshPreview();
 }
 
 function stage6SharedBanner(){
-  return `
-    <div class="info" style="margin-bottom:14px;background:var(--bg2);border-color:var(--bd2);color:var(--tx2)">
-      Active CPT: <strong>${S.id}</strong> · WT = <strong>${S.wt.toFixed(2)} m</strong> below surface · parameter source = <strong>${S.paramMethod==='sb260'?'EC7 / NEN Table 3':'DEF'}</strong> · Stage 5 tuned m = <strong>${S.layers.some(l=>l.ovr.m)?'used where accepted':'not accepted'}</strong>
-    </div>
-  `;
+  return stage6Shell.sharedBanner();
 }
 
 function stage6AppIcon(id){
-  // 18×18 line-art glyphs (stroke = currentColor), one per Stage 6 application.
-  const I = (b)=>`<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b}</svg>`;
-  switch(id){
-    case 'bearing':   return I('<path d="M2 12h14"/><rect x="6.5" y="3" width="5" height="6"/><path d="M3 12l1.5 3M15 12l-1.5 3M9 12v3"/>');
-    case 'pile':      return I('<path d="M2 5h14"/><rect x="7.5" y="5" width="3" height="11"/><path d="M2 5v2M16 5v2"/>');
-    case 'settlement':return I('<path d="M2 4h14"/><path d="M5 7v5M9 7v6M13 7v4"/><path d="M3.5 10.5L5 12l1.5-1.5M7.5 11.5L9 13l1.5-1.5M11.5 9.5L13 11l1.5-1.5"/>');
-    case 'dewatering':return I('<path d="M9 2c2.5 3 4 5 4 7a4 4 0 0 1-8 0c0-2 1.5-4 4-7z"/><path d="M2 15h14"/>');
-    case 'beam':      return I('<path d="M2 7h14"/><path d="M4 7l-1.5 3h3zM14 7l-1.5 3h3z"/><path d="M5 7v-2M9 7V5M13 7V5"/>');
-    case 'retwall':   return I('<path d="M3 15h12"/><path d="M5 15V4h2v9h6"/><path d="M9 11h5M9 8h5M9 5h5" stroke-width="0.9"/>');
-    case 'bishop':    return I('<path d="M2 15h14"/><path d="M3 15C3 8 8 4 15 4"/><path d="M4 13a9 9 0 0 1 9-7" stroke-dasharray="2 1.6"/>');
-    default:          return I('<rect x="3" y="3" width="12" height="12" rx="2"/>');
-  }
+  return stage6Shell.appIcon(id);
 }
 
 function stage6CardsHtml(app){
-  const cards = [
-    {id:'bearing', short:'Bearing', title:'Bearing capacity', desc:'Drained and undrained shallow-foundation resistance vs founding depth.'},
-    {id:'pile', short:'Piles', title:'Pile capacity', desc:'Axial pile resistance and settlement from CPT (DM20 / De Beer).'},
-    {id:'settlement', short:'Settlement', title:'Settlement', desc:'SLS settlement from CPT-derived E_oed with Boussinesq or 2:1 stress spread.'},
-    {id:'dewatering', short:'Dewatering', title:'Dewatering', desc:'Drawdown screening plus induced stress change and settlement at the CPT.'},
-    {id:'beam', short:'Beam/slab', title:'Beam / slab on Winkler', desc:'1D strip-on-elastic-foundation screening with EC2 reinforcement output.'},
-    {id:retainingApp.cardMeta.id, short:'Retaining walls', title:retainingApp.cardMeta.title, desc:retainingApp.cardMeta.desc}
-  ];
-  if(stage6BishopEnabled()){
-    cards.push({id:'bishop', short:'Seep/Slope', title:'Seep / Slope', desc:'Slope-stability, seepage and deformation workspace on the active CPT soil model.'});
-  }
-  return `
-    <div class="app-switch" role="tablist" aria-label="Stage 6 applications">
-      ${cards.map(c=>`<button type="button" role="tab" aria-selected="${c.id===app}" class="app-chip ${c.id===app?'sel':''}" onclick="setStage6App('${c.id}')" title="${c.title} — ${c.desc}">
-        <span class="app-chip-ico">${stage6AppIcon(c.id)}</span><span class="app-chip-lbl">${c.short}</span>
-      </button>`).join('')}
-    </div>
-  `;
+  return stage6Shell.cardsHtml(app);
 }
 
 // =====================================================================
 // Stage 6 — Pile Estimator (Option A++ interactive section view)
 // =====================================================================
+// Moved into src/lib/cpt-app/pile/ (refactor step 7, PR 12b): state.js (ensurePileState),
+// panel.js (renderStage6PileApp and the four column / table builders), charts.js
+// (buildStage6PileCharts), section-live.js (drawStage6PileSectionLive +
+// requestStage6PileLightRedraw). The names below are façades over the installed `pileApp`;
+// the shell's `apps.pile` adapter (top of the file) calls the package directly.
 
 function ensurePileState(maxDepth){
-  if(!S.stage6.pile) S.stage6.pile = stage6Defaults().pile;
-  const p = S.stage6.pile;
-  const def = stage6Defaults().pile;
-  // Enums
-  const pileTypes = ['driven','screw_displacement','screw_cased','cfa','bored'];
-  if(!pileTypes.includes(p.pileType)) p.pileType = 'driven';
-  if(!['circular','square','rectangular'].includes(p.shape)) p.shape = 'circular';
-  if(!['none','comparable','jobsite'].includes(p.sltCondition)) p.sltCondition = 'none';
-  if(!['1-3','4-10','>10'].includes(p.nPiles)) p.nPiles = '1-3';
-  if(!['1/10m2','1/50m2','1/100m2','1/300m2','1/1000m2'].includes(p.cptDensity)) p.cptDensity = '1/100m2';
-  if(!['M1','M2','M4'].includes(p.coneType)) p.coneType = 'M1';
-  if(!['none','moderate','severe'].includes(p.downdrag)) p.downdrag = 'none';
-  if(!['concrete','steel','timber'].includes(p.pileMaterial)) p.pileMaterial = 'concrete';
-  if(!['transfer','typical-curve'].includes(p.settlementMethod)) p.settlementMethod = 'transfer';
-  if(!['qp','frequent','characteristic'].includes(p.slsCombination)) p.slsCombination = 'qp';
-  if(!['A1','A2'].includes(p.ulsSet)) p.ulsSet = 'A1';
-  if(!['A','B','C','D','E','W','S','T'].includes(p.loadCategory)) p.loadCategory = 'A';
-  // Geometry
-  p.Ds = Math.max(+p.Ds || def.Ds, 0.05);
-  p.Db = Math.max(+p.Db || p.Ds, p.Ds);
-  if(p.shape === 'rectangular'){
-    p.a = Math.max(+p.a || p.Ds, 0.05);
-    p.b = Math.max(+p.b || p.a, p.a);
-  } else if(p.shape === 'square'){
-    p.a = Math.max(+p.a || p.Ds, 0.05);
-    p.b = null;
-  } else {
-    p.a = null;
-    p.b = null;
-  }
-  if(p.Ap != null && p.Ap !== '' && Number.isFinite(+p.Ap) && +p.Ap > 0) p.Ap = +p.Ap;
-  else p.Ap = null;
-  // Depths
-  p.zHead = Math.max(+p.zHead || 0, 0);
-  if(p.zHead > maxDepth - 0.5) p.zHead = Math.max(0, maxDepth - 0.5);
-  p.zToe = Math.min(Math.max(+p.zToe || def.zToe, p.zHead + 0.50), maxDepth);
-  // Loads
-  p.Fcd = Math.max(+p.Fcd || 0, 0);
-  p.Frep = Math.max(+p.Frep || 0, 0);
-  // Toggles / counts
-  p.qaToggle = !!p.qaToggle;
-  p.useAtg = !!p.useAtg;
-  p.mechanicalCone = !!p.mechanicalCone;
-  p.loadFromComponents = !!p.loadFromComponents;
-  p.nCpt = Math.max(1, Math.round(+p.nCpt || 1));
-  p.sAllowable = Math.max(+p.sAllowable || 10, 0.1);
-  // Material modulus
-  if(p.pileMaterial === 'steel') p.Ep = +p.Ep > 0 ? +p.Ep : 210;
-  else if(p.pileMaterial === 'timber') p.Ep = +p.Ep > 0 ? +p.Ep : 12;
-  else p.Ep = +p.Ep > 0 ? +p.Ep : 30;
-  // Optional overrides
-  for(const key of ['atgAlphaB','atgAlphaS','atgGammaRd','atgGammaB','lambdaOverride','EbOverride','MsOverride','MbOverride','GkPerPile','QLeadPerPile','QOtherPerPile']){
-    const v = p[key];
-    if(v == null || v === '' || !Number.isFinite(+v) || +v <= 0) p[key] = null;
-    else p[key] = +v;
-  }
-  // Lambda special: default 1.0 when relaxing flagged
-  if(p.lambdaOverride != null && p.lambdaOverride > 1.0) p.lambdaOverride = 1.0;
-  // Downdrag / neutral plane
-  if(p.downdrag !== 'none'){
-    if(p.neutralPlane == null || !Number.isFinite(+p.neutralPlane)){
-      p.neutralPlane = Math.max(p.zHead + 0.5, p.zToe / 2);
-    } else {
-      p.neutralPlane = Math.min(Math.max(+p.neutralPlane, p.zHead + 0.05), p.zToe - 0.05);
-    }
-  } else {
-    p.neutralPlane = null;
-  }
+  pileApp.ensure(S.stage6, {maxDepth});
 }
 
 function renderStage6PileApp(analysis){
-  const cfg = S.stage6.pile;
-  const cap = analysis?.capacity || {};
-  const set = analysis?.settlement;
-  const notes = analysis?.notes || [];
-  const xi = cap.xi || {};
-  const lengthM = (cfg.zToe - cfg.zHead);
-  const sHead = set ? set.sHead_mm : 0;
-  const sUtil = sHead && cfg.sAllowable > 0 ? sHead / cfg.sAllowable : 0;
-  const ulsPass = cap.ulsUtil != null && cap.ulsUtil <= 1.0;
-  const slsPass = sUtil != null && sUtil <= 1.0;
-  return `
-    <div class="mc2 st6-pile">
-      <div class="mc2-head" style="margin-bottom:12px">
-        <span style="font-size:13px;font-weight:600">Pile capacity (Belgian DM20 / De Beer)</span>
-        <span style="font-size:11px;color:var(--tx2)">CPT-based axial pile resistance and SLS settlement for a single pile, with the De Beer scale-effect base resistance and the Belgian load-transfer settlement method.</span>
-      </div>
-      <div class="st6-pile-cols">
-        ${renderPileInputsColumn(cfg)}
-        ${renderPileVisualsColumn(cfg, analysis)}
-        ${renderPileSummaryColumn(cap, set, sHead, sUtil, ulsPass, slsPass, lengthM, cfg)}
-      </div>
-      <div class="st6-pile-tables">
-        ${renderPilePerLayerTable(cap)}
-        ${renderPileFactorChainTable(cap)}
-      </div>
-      ${stage6NoteHtml(notes)}
-    </div>
-  `;
-}
-
-function renderPileInputsColumn(cfg){
-  const numField = (path, label, value, opts={}) => `
-    <label style="font-size:11px;color:var(--tx2)">${label}
-      <input type="number" step="${opts.step || 0.01}" min="${opts.min ?? 0}" ${opts.max != null ? `max="${opts.max}"` : ''}
-        value="${value != null && value !== '' ? value : ''}" placeholder="${opts.placeholder || ''}"
-        onchange="setStage6Field('pile.${path}', this.value)"
-        style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-    </label>`;
-  const selectField = (path, label, value, options) => `
-    <label style="font-size:11px;color:var(--tx2)">${label}
-      <select onchange="setStage6Field('pile.${path}', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-        ${options.map(([v,l])=>`<option value="${v}"${value===v?' selected':''}>${l}</option>`).join('')}
-      </select>
-    </label>`;
-  const checkField = (path, label, value) => `
-    <label style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:8px">
-      <input type="checkbox" ${value?'checked':''} onchange="setStage6Field('pile.${path}', this.checked)">
-      ${label}
-    </label>`;
-
-  return `
-    <div>
-      <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
-      <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
-        <div class="st6-help">Drag the pile toe and head on the section view to set z<sub>toe</sub> and z<sub>head</sub>, or type values here. Drag the shaft / base edges to change D<sub>s</sub> / D<sub>b</sub>. Click any soil layer to snap the toe to its top, mid, or bottom.</div>
-        ${selectField('pileType','Pile type',cfg.pileType,[
-          ['driven','Driven / jacked'],
-          ['screw_displacement','Displacement screw (plastic-concrete shaft)'],
-          ['screw_cased','Screw with lost / temporary casing'],
-          ['cfa','CFA (continuous flight auger)'],
-          ['bored','Bored']
-        ])}
-        ${selectField('shape','Cross-section',cfg.shape,[
-          ['circular','Circular'],
-          ['square','Square'],
-          ['rectangular','Rectangular']
-        ])}
-        ${cfg.shape === 'circular' ? `
-          ${numField('Ds','Shaft diameter D<sub>s</sub> (m)',cfg.Ds,{step:0.01,min:0.05})}
-          ${numField('Db','Base diameter D<sub>b</sub> (m)',cfg.Db,{step:0.01,min:cfg.Ds})}
-        ` : cfg.shape === 'square' ? `
-          ${numField('a','Side a (m)',cfg.a ?? cfg.Ds,{step:0.01,min:0.05})}
-          ${numField('Ds','Shaft equivalent D<sub>s</sub> (m, perimeter use)',cfg.Ds,{step:0.01,min:0.05})}
-          ${numField('Db','Base equivalent D<sub>b</sub> (m, base use)',cfg.Db,{step:0.01,min:cfg.Ds})}
-        ` : `
-          ${numField('a','Short side a (m)',cfg.a ?? cfg.Ds,{step:0.01,min:0.05})}
-          ${numField('b','Long side b (m)',cfg.b ?? cfg.a ?? cfg.Ds,{step:0.01,min:cfg.a ?? cfg.Ds})}
-          ${numField('Ds','Shaft equivalent D<sub>s</sub> (m)',cfg.Ds,{step:0.01,min:0.05})}
-          ${numField('Db','Base equivalent D<sub>b</sub> (m)',cfg.Db,{step:0.01,min:cfg.Ds})}
-        `}
-        ${numField('Ap','Pile axial cross-section A<sub>p</sub> (m², blank = auto)',cfg.Ap,{step:0.001,min:0.001,placeholder:'auto'})}
-        ${numField('zHead','Pile head depth z<sub>head</sub> (m)',cfg.zHead.toFixed(2),{step:0.05,min:0})}
-        ${numField('zToe','Pile toe depth z<sub>toe</sub> (m)',cfg.zToe.toFixed(2),{step:0.05,min:cfg.zHead+0.5})}
-        ${numField('Fcd','ULS design load F<sub>c,d</sub> (kN)',cfg.Fcd,{step:10,min:0})}
-        ${numField('Frep','SLS representative load F<sub>rep</sub> (kN)',cfg.Frep,{step:10,min:0})}
-        ${numField('sAllowable','Allowable settlement s<sub>allow</sub> (mm)',cfg.sAllowable,{step:1,min:0.5})}
-        <details class="st6-adv" data-st6details="pile-factors"${stage6DetailsOpen('pile-factors')}>
-          <summary>Factor chain (γ<sub>Rd</sub> / ξ / γ<sub>b</sub>·γ<sub>s</sub>)</summary>
-          <div class="st6-adv-body">
-            ${selectField('sltCondition','Static load test condition',cfg.sltCondition,[
-              ['none','No SLT — γ<sub>Rd1</sub>'],
-              ['comparable','SLT in comparable conditions — γ<sub>Rd2</sub>'],
-              ['jobsite','SLT on the job site — γ<sub>Rd3</sub>']
-            ])}
-            ${selectField('nPiles','Number of piles',cfg.nPiles,[
-              ['1-3','1–3'],['4-10','4–10'],['>10','>10']
-            ])}
-            ${selectField('cptDensity','CPT density',cfg.cptDensity,[
-              ['1/10m2','1 CPT / 10 m²'],
-              ['1/50m2','1 CPT / 50 m²'],
-              ['1/100m2','1 CPT / 100 m²'],
-              ['1/300m2','1 CPT / 300 m²'],
-              ['1/1000m2','1 CPT / 1000 m²']
-            ])}
-            ${numField('nCpt','Number of CPTs in zone',cfg.nCpt,{step:1,min:1})}
-            ${checkField('qaToggle','Quality assurance (QA) — favourable γ<sub>b</sub> column',cfg.qaToggle)}
-          </div>
-        </details>
-        <details class="st6-adv" data-st6details="pile-atg"${stage6DetailsOpen('pile-atg')}>
-          <summary>ATG / DM20 factor overrides</summary>
-          <div class="st6-adv-body">
-            ${checkField('useAtg','Use ATG / DM20 overrides',cfg.useAtg)}
-            ${cfg.useAtg ? `
-              ${numField('atgAlphaB','α<sub>b</sub> override',cfg.atgAlphaB,{step:0.01,min:0.01,placeholder:'default'})}
-              ${numField('atgAlphaS','α<sub>s</sub> override',cfg.atgAlphaS,{step:0.01,min:0.01,placeholder:'default'})}
-              ${numField('atgGammaRd','γ<sub>Rd</sub> override',cfg.atgGammaRd,{step:0.05,min:0.5,placeholder:'default'})}
-              ${numField('atgGammaB','γ<sub>b</sub> override',cfg.atgGammaB,{step:0.05,min:0.5,placeholder:'default'})}
-            ` : '<div class="st6-help">Tick the box above to expose α<sub>b</sub>, α<sub>s</sub>, γ<sub>Rd</sub>, γ<sub>b</sub> override fields for ATG-certified pile systems.</div>'}
-            ${numField('lambdaOverride','λ override (relaxing enlarged base)',cfg.lambdaOverride,{step:0.01,min:0.1,max:1.0,placeholder:'default 1.00'})}
-          </div>
-        </details>
-        <details class="st6-adv" data-st6details="pile-cone"${stage6DetailsOpen('pile-cone')}>
-          <summary>Mechanical cone correction</summary>
-          <div class="st6-adv-body">
-            ${checkField('mechanicalCone','Apply mechanical-cone ω correction',cfg.mechanicalCone)}
-            ${cfg.mechanicalCone ? selectField('coneType','Cone type',cfg.coneType,[
-              ['M1','M1'],['M2','M2'],['M4','M4']
-            ]) : '<div class="st6-help">Default: CPT-E (electric cone, ω = 1.00). Tick the box for mechanical cones.</div>'}
-          </div>
-        </details>
-        <details class="st6-adv" data-st6details="pile-downdrag"${stage6DetailsOpen('pile-downdrag')}>
-          <summary>Negative skin friction / downdrag</summary>
-          <div class="st6-adv-body">
-            ${selectField('downdrag','Downdrag preset',cfg.downdrag,[
-              ['none','No downdrag expected'],
-              ['moderate','Moderate (4–10 cm settlement → ½ F<sub>nk</sub>)'],
-              ['severe','Severe (>10 cm settlement → full F<sub>nk</sub>)']
-            ])}
-            ${cfg.downdrag !== 'none' ? `
-              ${numField('neutralPlane','Neutral plane depth (m)',cfg.neutralPlane,{step:0.05,min:cfg.zHead+0.05,max:cfg.zToe-0.05})}
-              <div class="st6-help">Layers above the neutral plane lose positive shaft friction and contribute to F<sub>nk</sub> via slip + analogy methods.</div>
-            ` : ''}
-          </div>
-        </details>
-        <details class="st6-adv" data-st6details="pile-settlement"${stage6DetailsOpen('pile-settlement')}>
-          <summary>Settlement parameters</summary>
-          <div class="st6-adv-body">
-            ${selectField('settlementMethod','Method',cfg.settlementMethod,[
-              ['transfer','Belgian load-transfer (recommended)'],
-              ['typical-curve','Simplified typical-curve (short, homogeneous piles only)']
-            ])}
-            ${selectField('pileMaterial','Pile material',cfg.pileMaterial,[
-              ['concrete','Reinforced concrete'],
-              ['steel','Steel'],
-              ['timber','Timber']
-            ])}
-            ${numField('Ep','E<sub>p</sub> (GPa)',cfg.Ep,{step:1,min:1})}
-            ${numField('EbOverride','E<sub>b</sub> override (kPa, blank = oedometric default)',cfg.EbOverride,{step:1000,min:1000,placeholder:'auto'})}
-            ${numField('MsOverride','M<sub>s</sub> override (×10⁻³, blank = table)',cfg.MsOverride,{step:0.5,min:0.1,placeholder:'auto'})}
-            ${numField('MbOverride','M<sub>b</sub> override (blank = table)',cfg.MbOverride,{step:1,min:0.1,placeholder:'auto'})}
-          </div>
-        </details>
-      </div>
-    </div>
-  `;
-}
-
-function renderPileVisualsColumn(cfg, analysis){
-  return `
-    <div class="st6-pile-visuals">
-      <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">Pile + soil section view (drag to edit)</div>
-      <div style="position:relative">
-        <svg id="stage6PileSection" width="100%" style="height:520px;display:block;background:var(--bg2);border:1px solid var(--bd2);border-radius:6px"></svg>
-      </div>
-      <div class="st6-pile-charts">
-        <div class="st6-pile-chart">
-          <div class="st6-pile-chart__title">De Beer transformation chain</div>
-          <div class="st6-pile-chart__cv"><canvas id="stage6PileDeBeerChart" role="img" aria-label="De Beer profile"></canvas></div>
-        </div>
-        <div class="st6-pile-chart">
-          <div class="st6-pile-chart__title">Per-layer shaft friction q<sub>s</sub></div>
-          <div class="st6-pile-chart__cv"><canvas id="stage6PileShaftChart" role="img" aria-label="Shaft friction profile"></canvas></div>
-        </div>
-        <div class="st6-pile-chart">
-          <div class="st6-pile-chart__title">Load–settlement curve</div>
-          <div class="st6-pile-chart__cv"><canvas id="stage6PileLoadSettlementChart" role="img" aria-label="Load-settlement curve"></canvas></div>
-        </div>
-        <div class="st6-pile-chart">
-          <div class="st6-pile-chart__title">Axial force N(z)</div>
-          <div class="st6-pile-chart__cv"><canvas id="stage6PileAxialForceChart" role="img" aria-label="Axial force profile"></canvas></div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function renderPileSummaryColumn(cap, set, sHead, sUtil, ulsPass, slsPass, lengthM, cfg){
-  const fmt = (v, dp=0, unit='') => Number.isFinite(+v) ? `${(+v).toFixed(dp)}${unit?(' '+unit):''}` : '—';
-  const utilColor = (u) => !Number.isFinite(+u) ? 'var(--tx2)' : (+u <= 1.0 ? '#1D9E75' : '#D85A30');
-  const passBadge = (pass, label) => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;color:#fff;background:${pass?'#1D9E75':'#D85A30'}">${pass?'PASS':'FAIL'} · ${label}</span>`;
-  return `
-    <div>
-      <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Summary</div>
-      <table class="pt" style="margin-bottom:10px">
-        <tr><td>Pile length L</td><td>${lengthM.toFixed(2)} m</td></tr>
-        <tr><td>D<sub>b,eq</sub></td><td>${fmt(cap.Dbeq, 3, 'm')}</td></tr>
-        <tr><td>A<sub>b</sub></td><td>${fmt(cap.A_b, 4, 'm²')}</td></tr>
-        <tr><td>χ<sub>s</sub></td><td>${fmt(cap.chi_s, 3, 'm')}</td></tr>
-        <tr><td>Layer at toe</td><td>${cap.categoryAtToe || '—'}</td></tr>
-        <tr><td>q<sub>b</sub> (De Beer)</td><td>${fmt(cap.qb_kPa, 0, 'kPa')}</td></tr>
-        <tr><td>α<sub>b</sub> · e<sub>b</sub> · β · λ</td><td>${(cap.alphaB||0).toFixed(2)} · ${(cap.eb||1).toFixed(3)} · ${(cap.beta||1).toFixed(3)} · ${(cap.lambda||1).toFixed(2)}</td></tr>
-        <tr><td>R<sub>b</sub></td><td>${fmt(cap.R_b, 0, 'kN')}</td></tr>
-        <tr><td>R<sub>s</sub></td><td>${fmt(cap.R_s, 0, 'kN')}</td></tr>
-        <tr><td>R<sub>c</sub> = R<sub>b</sub> + R<sub>s</sub></td><td>${fmt(cap.R_c, 0, 'kN')}</td></tr>
-        <tr><td>γ<sub>Rd</sub></td><td>${fmt(cap.gammaRd, 2)}</td></tr>
-        <tr><td>R<sub>c,cal</sub></td><td>${fmt(cap.R_c_cal, 0, 'kN')}</td></tr>
-        <tr><td>ξ<sub>3</sub> / ξ<sub>4</sub> / max</td><td>${(cap.xi?.xi3||0).toFixed(2)} / ${(cap.xi?.xi4||0).toFixed(2)} / <strong>${(cap.xi?.governing||0).toFixed(2)}</strong></td></tr>
-        <tr><td>R<sub>c,k</sub></td><td>${fmt(cap.R_c_k, 0, 'kN')}</td></tr>
-        <tr><td>γ<sub>b</sub> / γ<sub>s</sub></td><td>${(cap.gamma_b||1).toFixed(2)} / ${(cap.gamma_s||1).toFixed(2)}</td></tr>
-        <tr><td>R<sub>c,d</sub></td><td><strong>${fmt(cap.R_c_d, 0, 'kN')}</strong></td></tr>
-        ${cap.neutralPlane != null ? `
-          <tr><td>F<sub>nk</sub> slip</td><td>${fmt(cap.F_nk_slip, 0, 'kN')}</td></tr>
-          <tr><td>F<sub>nk</sub> analogy</td><td>${fmt(cap.F_nk_analogy, 0, 'kN')}</td></tr>
-          <tr><td>F<sub>nk,d</sub> (governing)</td><td><strong>${fmt(cap.F_nk_design, 0, 'kN')}</strong></td></tr>
-        ` : ''}
-        <tr><td>Effective ULS load</td><td>${fmt(cap.ulsLoad, 0, 'kN')}</td></tr>
-        <tr><td style="color:${utilColor(cap.ulsUtil)}">ULS utilisation</td><td style="color:${utilColor(cap.ulsUtil)};font-weight:700">${fmt(cap.ulsUtil, 3)}</td></tr>
-        ${set ? `
-          <tr><td>s<sub>head</sub> (SLS)</td><td>${fmt(sHead, 2, 'mm')}</td></tr>
-          <tr><td>z<sub>b</sub> (base)</td><td>${fmt((set.zb_m||0)*1000, 2, 'mm')}</td></tr>
-          <tr><td>s<sub>allow</sub></td><td>${cfg.sAllowable.toFixed(1)} mm</td></tr>
-          <tr><td style="color:${utilColor(sUtil)}">SLS utilisation</td><td style="color:${utilColor(sUtil)};font-weight:700">${fmt(sUtil, 3)}</td></tr>
-        ` : ''}
-      </table>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${passBadge(ulsPass, 'ULS')}
-        ${set ? passBadge(slsPass, 'SLS') : ''}
-      </div>
-    </div>
-  `;
-}
-
-function renderPilePerLayerTable(cap){
-  const rows = (cap?.perLayer || []).map((row) => {
-    const tag = row.excluded ? '<span style="color:var(--tx2)">excluded</span>'
-      : row.aboveNeutral ? '<span style="color:#D85A30">above N.P.</span>'
-      : '<span style="color:#1D9E75">contributing</span>';
-    const etaP = row.etaP != null ? row.etaP.toFixed(4) : 'cap';
-    return `<tr>
-      <td>${row.layerIndex + 1}</td>
-      <td>${row.top.toFixed(2)}</td>
-      <td>${row.bot.toFixed(2)}</td>
-      <td>${row.category}</td>
-      <td>${row.qcMean.toFixed(2)}</td>
-      <td>${etaP}</td>
-      <td>${row.qs.toFixed(0)}</td>
-      <td>${row.alphaS.toFixed(2)}</td>
-      <td>${row.h.toFixed(2)}</td>
-      <td>${tag}</td>
-      <td>${row.RsLayer.toFixed(0)}</td>
-    </tr>`;
-  }).join('');
-  return `
-    <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
-      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Per-layer shaft resistance</div>
-      <div style="overflow:auto">
-        <table class="tbl" style="font-size:11px;width:100%">
-          <thead><tr><th>i</th><th>Top (m)</th><th>Bot (m)</th><th>Cat.</th><th>q<sub>c,m</sub> (MPa)</th><th>η*<sub>p</sub></th><th>q<sub>s</sub> (kPa)</th><th>α<sub>s</sub></th><th>h (m)</th><th>Status</th><th>R<sub>s</sub> (kN)</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="11" style="text-align:center;color:var(--tx2)">No layers intersect the pile shaft.</td></tr>'}</tbody>
-        </table>
-      </div>
-    </div>
-  `;
-}
-
-function renderPileFactorChainTable(cap){
-  const fmt = (v, dp=0) => Number.isFinite(+v) ? (+v).toFixed(dp) : '—';
-  return `
-    <div class="info" style="background:var(--bg2);border-color:var(--bd2)">
-      <div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Factor chain audit</div>
-      <table class="pt" style="font-size:11px;width:100%">
-        <tr><td>R<sub>c</sub> = R<sub>b</sub> + R<sub>s</sub></td><td>${fmt(cap.R_c, 0)} kN</td><td>per-CPT calculated</td></tr>
-        <tr><td>÷ γ<sub>Rd</sub></td><td>${fmt(cap.gammaRd, 2)}</td><td>${cap.lambdaSource === 'override' ? 'ATG override' : 'DM20 default'}</td></tr>
-        <tr><td>= R<sub>c,cal</sub></td><td>${fmt(cap.R_c_cal, 0)} kN</td><td>calibrated</td></tr>
-        <tr><td>÷ max(ξ<sub>3</sub>, ξ<sub>4</sub>)</td><td>${fmt(cap.xi?.governing, 2)}</td><td>single-CPT governing branch (${cap.xi?.branch || '—'})</td></tr>
-        <tr><td>= R<sub>c,k</sub></td><td>${fmt(cap.R_c_k, 0)} kN</td><td>characteristic</td></tr>
-        <tr><td>R<sub>b,k</sub> = ${(cap.RbShare*100).toFixed(0)}% of R<sub>c,k</sub></td><td>${fmt(cap.R_b_k, 0)} kN</td><td></td></tr>
-        <tr><td>R<sub>s,k</sub> = ${(cap.RsShare*100).toFixed(0)}% of R<sub>c,k</sub></td><td>${fmt(cap.R_s_k, 0)} kN</td><td></td></tr>
-        <tr><td>R<sub>c,d</sub> = R<sub>b,k</sub>/γ<sub>b</sub> + R<sub>s,k</sub>/γ<sub>s</sub></td><td><strong>${fmt(cap.R_c_d, 0)} kN</strong></td><td>γ<sub>b</sub>=${(cap.gamma_b||1).toFixed(2)}, γ<sub>s</sub>=${(cap.gamma_s||1).toFixed(2)}</td></tr>
-      </table>
-    </div>
-  `;
+  return pileApp.renderBody(analysis);
 }
 
 function buildStage6PileCharts(){
-  const analysis = S.stage6Cache?.pile;
-  if(!analysis || typeof Chart === 'undefined') return;
-  const cap = analysis.capacity || {};
-  const set = analysis.settlement;
-  const cfg = S.stage6.pile;
-  const maxDepth = stage6MaxDepth();
-  const deBeerCanvas = stage6DestroyChart('stage6PileDeBeerChart');
-  if(deBeerCanvas){
-    deBeerCanvas._chartRef = new Chart(deBeerCanvas, buildPileDeBeerChartConfig({
-      deBeer: cap.deBeer,
-      maxDepth,
-      zToe: cfg.zToe
-    }));
-  }
-  const shaftCanvas = stage6DestroyChart('stage6PileShaftChart');
-  if(shaftCanvas){
-    shaftCanvas._chartRef = new Chart(shaftCanvas, buildPileShaftChartConfig({
-      perLayer: cap.perLayer || [],
-      maxDepth
-    }));
-  }
-  const lsCanvas = stage6DestroyChart('stage6PileLoadSettlementChart');
-  if(lsCanvas && set){
-    lsCanvas._chartRef = new Chart(lsCanvas, buildPileLoadSettlementChartConfig({
-      curve: set.curve || [],
-      Frep: cfg.Frep,
-      Rcd: cap.R_c_d,
-      sAllowable: cfg.sAllowable
-    }));
-  }
-  const nCanvas = stage6DestroyChart('stage6PileAxialForceChart');
-  if(nCanvas && set){
-    nCanvas._chartRef = new Chart(nCanvas, buildPileAxialForceChartConfig({
-      trace: set.trace || [],
-      zHead: cfg.zHead,
-      zToe: cfg.zToe,
-      Frep: cfg.Frep
-    }));
-  }
+  pileApp.buildCharts();
 }
 
 function drawStage6PileSectionLive(){
-  const analysis = S.stage6Cache?.pile;
-  if(!analysis) return;
-  const canvasState = ensurePileCanvasState(S.stage6Cache);
-  drawStage6PileSection('stage6PileSection', analysis, S.stage6.pile, canvasState, {
-    getLayers: () => stage6WorkingLayers(),
-    getWt: () => S.wt,
-    getMaxDepth: () => stage6MaxDepth(),
-    setField: (path, value) => {
-      // Drag-driven writes: bypass the full setStage6Field rebuild for the live
-      // drag path, but still go through the same state shape. We update the
-      // pile config in place; ensurePileState() re-clamps on next render.
-      const segs = path.split('.');
-      let cur = S.stage6;
-      for(let i = 0; i < segs.length - 1; i += 1){
-        if(!cur[segs[i]]) cur[segs[i]] = {};
-        cur = cur[segs[i]];
-      }
-      cur[segs[segs.length - 1]] = value;
-    },
-    requestRedraw: () => requestStage6PileLightRedraw(),
-    commitChange: () => {
-      // Full re-render on drag-end so the column-3 summary, audit tables and
-      // four Chart.js panels also reflect the new state.
-      renderStage6();
-    }
-  });
+  pileApp.sectionLive.draw();
 }
 
-let __stage6PileLightRedrawHandle = null;
 function requestStage6PileLightRedraw(){
-  if(__stage6PileLightRedrawHandle) return;
-  __stage6PileLightRedrawHandle = requestAnimationFrame(()=>{
-    __stage6PileLightRedrawHandle = null;
-    if(S.stage6.app !== 'pile') return;
-    // Re-clamp config and recompute the analysis so the active-shaft band,
-    // downdrag overlay, and per-layer hover tooltips track the live drag.
-    // analyzePile is fast (~ms-range on a typical CPT); doing it at 60 Hz
-    // is well within budget on modern browsers.
-    ensureStage6State();
-    const analysis = analyzePile(stage6WorkingLayers(), S.wt, S.data, S.stage6.pile);
-    S.stage6Cache.pile = analysis;
-    const canvasState = ensurePileCanvasState(S.stage6Cache);
-    drawStage6PileSection('stage6PileSection', analysis, S.stage6.pile, canvasState, {
-      getLayers: () => stage6WorkingLayers(),
-      getWt: () => S.wt,
-      getMaxDepth: () => stage6MaxDepth(),
-      setField: (path, value) => {
-        const segs = path.split('.');
-        let cur = S.stage6;
-        for(let i = 0; i < segs.length - 1; i += 1){
-          if(!cur[segs[i]]) cur[segs[i]] = {};
-          cur = cur[segs[i]];
-        }
-        cur[segs[segs.length - 1]] = value;
-      },
-      requestRedraw: () => requestStage6PileLightRedraw(),
-      commitChange: () => renderStage6()
-    });
-  });
-}
-
-function renderStage6BearingApp(profile){
-  const cfg = S.stage6.bearing;
-  const sel = profile.selected;
-  const governing = Math.min(sel.qdDrained, sel.qdUndrained);
-  const governingMode = sel.qdDrained <= sel.qdUndrained ? 'Drained' : 'Undrained';
-  return `
-    <div class="mc2">
-      <div class="mc2-head" style="margin-bottom:12px">
-        <span style="font-size:13px;font-weight:600">Bearing capacity</span>
-        <span style="font-size:11px;color:var(--tx2)">ULS-style resistance screening from the interpreted CPT profile.</span>
-      </div>
-      <div style="display:grid;grid-template-columns:260px 1fr 250px;gap:14px;align-items:start">
-        <div>
-          <div style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;margin-bottom:8px">Inputs</div>
-          <div class="ctrl-row" style="padding:12px;display:grid;grid-template-columns:1fr;gap:10px">
-            <label style="font-size:11px;color:var(--tx2)">Displayed curves
-              <select onchange="setStage6Field('bearing.showMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                <option value="both"${cfg.showMode==='both'?' selected':''}>Show both curves</option>
-                <option value="drained"${cfg.showMode==='drained'?' selected':''}>Drained only</option>
-                <option value="undrained"${cfg.showMode==='undrained'?' selected':''}>Undrained only</option>
-              </select>
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Foundation type
-              <select onchange="setStage6Field('bearing.foundationType', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                <option value="strip"${cfg.foundationType==='strip'?' selected':''}>Strip</option>
-                <option value="footing"${cfg.foundationType==='footing'?' selected':''}>Footing / pad</option>
-                <option value="slab"${cfg.foundationType==='slab'?' selected':''}>Slab / raft</option>
-              </select>
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Width B (m)
-              <input type="number" step="0.1" min="0.1" value="${cfg.B.toFixed(2)}" onchange="setStage6Field('bearing.B', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <label style="font-size:11px;color:var(--tx2)">Length L (m)
-              <input type="number" step="0.1" min="0.1" value="${cfg.L.toFixed(2)}" onchange="setStage6Field('bearing.L', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-            </label>
-            <div>
-              <div style="font-size:11px;color:var(--tx2);margin-bottom:5px">Founding depth Df = <strong id="stage6DfValue">${cfg.Df.toFixed(2)} m</strong></div>
-              <input type="range" min="0.2" max="${profile.maxDepth.toFixed(2)}" step="0.05" value="${cfg.Df.toFixed(2)}" oninput="setStage6Field('bearing.Df', this.value)" style="width:100%">
-            </div>
-            <details class="st6-adv" data-st6details="bearing-advanced"${stage6DetailsOpen('bearing-advanced')}>
-              <summary>Optional verification and safety settings</summary>
-              <div class="st6-adv-body">
-                <div class="st6-help">Bearing capacity is calculated regardless. Expand this only if you want a utilisation check against an applied stress or if you want to adjust the safety philosophy.</div>
-                <label style="font-size:11px;color:var(--tx2)">Shape factors
-                  <select onchange="setStage6Field('bearing.shapeMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                    ${stage6BearingShapeModeOptions(cfg.shapeMode)}
-                  </select>
-                </label>
-                <div class="st6-help">${stage6BearingShapeModeHelp(cfg.shapeMode)}</div>
-                <label style="font-size:11px;color:var(--tx2)">Eccentricity eB (m)
-                  <input type="number" step="0.01" min="0" value="${cfg.eB.toFixed(2)}" onchange="setStage6Field('bearing.eB', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Eccentricity eL (m)
-                  <input type="number" step="0.01" min="0" value="${cfg.eL.toFixed(2)}" onchange="setStage6Field('bearing.eL', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                </label>
-                <div class="st6-help">Effective dimensions for shape factors use B' = B − 2eB and L' = L − 2eL. With the default centered load, keep eB = eL = 0. For circular plans screened in this rectangular interface, use B = L so r = 1.</div>
-                <label style="font-size:11px;color:var(--tx2)">Applied stress for utilisation (kPa)
-                  <input type="number" step="5" min="0" value="${cfg.load.toFixed(0)}" onchange="setStage6Field('bearing.load', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                </label>
-                <label style="font-size:11px;color:var(--tx2)">Safety route
-                  <select onchange="setStage6Field('bearing.factorMode', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                    <option value="ec7"${cfg.factorMode==='ec7'?' selected':''}>EC7 output factors</option>
-                    <option value="system"${cfg.factorMode==='system'?' selected':''}>Global system factor ξ</option>
-                  </select>
-                </label>
-                ${cfg.factorMode==='ec7' ? `
-                  <label style="font-size:11px;color:var(--tx2)">Belgian ULS combination
-                    <select onchange="setStage6Field('bearing.ec7Combination', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                      ${stage6BearingEc7Options(cfg.ec7Combination)}
-                    </select>
-                  </label>
-                  <div class="st6-help">${stage6BearingEc7Help(cfg.ec7Combination)}</div>
-                  <label style="font-size:11px;color:var(--tx2)">γ_Rd
-                    <input type="number" step="0.05" min="1.0" value="${cfg.gammaRd.toFixed(2)}" onchange="setStage6Field('bearing.gammaRd', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                  </label>
-                  <div class="st6-help">Belgian EC7 DA1 uses R1 for spread footing bearing. This tool keeps γ_R = 1.0 and switches the soil-side factors automatically between DA1/1 and DA1/2.</div>
-                ` : `
-                  <label style="font-size:11px;color:var(--tx2)">Global system factor ξ
-                    <input type="number" step="0.1" min="1.0" value="${cfg.xi.toFixed(2)}" onchange="setStage6Field('bearing.xi', this.value)" style="margin-top:3px;font-size:12px;padding:5px 7px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);width:100%">
-                  </label>
-                  <div class="st6-help">Use the global ξ route only as a legacy screening path. For Belgian EC7 checks, switch back to the EC7 route above.</div>
-                `}
-              </div>
-            </details>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:10px;color:var(--tx2);margin-bottom:4px">
-            ${cfg.factorMode==='ec7' ? 'Design bearing capacity vs founding depth' : 'Allowable bearing capacity vs founding depth'}
-            <span style="margin-left:6px;color:var(--chart-green)">- drained</span>
-            <span style="margin-left:4px;color:var(--chart-orange)">- undrained</span>
-            <span style="margin-left:4px;color:var(--chart-blue)">- selected Df</span>
-          </div>
-          <div style="position:relative;height:420px"><canvas id="stage6BearingChart" role="img" aria-label="Bearing capacity versus depth"></canvas></div>
-        </div>
-        <div id="stage6SelectedDepth">${stage6BearingSelectedDepthHtml(sel, governing, governingMode)}</div>
-      </div>
-      <div id="stage6UlsParams" style="margin-top:14px" class="info">${stage6BearingMaterialParamsHtml(sel, cfg)}</div>
-      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div id="stage6DrainedFormula" class="info" style="background:var(--bg2)">${stage6BearingDrainedFormulaHtml(sel)}</div>
-        <div id="stage6UndrainedFormula" class="info" style="background:var(--bg2)">${stage6BearingUndrainedFormulaHtml(sel)}</div>
-      </div>
-      ${stage6NoteHtml(stage6BearingNotes(sel, cfg))}
-    </div>
-  `;
+  pileApp.sectionLive.requestRedraw();
 }
 
 function renderStage6SettlementApp(analysis){
@@ -15186,78 +12475,11 @@ function renderStage6BishopApp(){
 }
 
 function renderStage6(){
-  ensureStage6State();
-  const el = document.getElementById('stage6Area');
-  if(!el) return;
-  const scrollState = stage6CaptureScrollState(el);
-  stage6RememberDetailsState();
-  if(!S.layers.length){
-    el.innerHTML='<div style="color:var(--tx2);font-size:13px;padding:20px 0">Run the CPT through Stages 2–5 first so Stage 6 can reuse the interpreted layer model.</div>';
-    return;
-  }
-  const layers = stage6WorkingLayers();
-  const app = S.stage6.app;
-  let body = '';
-  if(app === 'bearing'){
-    const profile = bearingProfile(S.stage6.bearing, layers);
-    S.stage6Cache.bearing = profile;
-    body = renderStage6BearingApp(profile);
-  } else if(app === 'pile'){
-    const analysis = analyzePile(layers, S.wt, S.data, S.stage6.pile);
-    S.stage6Cache.pile = analysis;
-    ensurePileCanvasState(S.stage6Cache);
-    body = renderStage6PileApp(analysis);
-  } else if(app === 'settlement'){
-    const analysis = analyzeSettlement(layers, S.wt, S.stage6.settlement);
-    S.stage6Cache.settlement = analysis;
-    body = renderStage6SettlementApp(analysis);
-  } else if(app === 'dewatering'){
-    const analysis = analyzeDewatering(layers, S.wt, S.stage6.dewatering);
-    S.stage6Cache.dewatering = analysis;
-    body = renderStage6DewateringApp(analysis);
-  } else if(app === 'bishop'){
-    body = renderStage6BishopApp();
-  } else if(app === 'retwall'){
-    body = retainingApp.renderBody();
-  } else {
-    const analysis = analyzeBeamAndReinforcement(layers, S.wt, S.stage6.beam);
-    S.stage6Cache.beam = analysis;
-    body = renderStage6BeamApp(analysis);
-  }
-  el.innerHTML = `${stage6CardsHtml(app)}${stage6SharedBanner()}${body}`;
-  stage6RestoreScrollState(el, scrollState);
-  requestAnimationFrame(()=>{
-    if(app === 'bearing') buildStage6BearingChart();
-    if(app === 'pile'){
-      drawStage6PileSectionLive();
-      buildStage6PileCharts();
-    }
-    if(app === 'settlement') buildStage6SettlementCharts();
-    if(app === 'dewatering') buildStage6DewateringCharts();
-    if(app === 'beam') buildStage6BeamCharts();
-    if(app === 'bishop'){
-      initStage6BishopCanvas();
-      buildStage6BishopLineProbeChart();
-      buildStage6BishopWallCharts();
-    }
-    if(app === 'retwall') retainingApp.postRender();
-    stage6RestoreScrollState(el, scrollState);
-  });
+  stage6Shell.render();
 }
 
 function buildStage6BearingChart(){
-  const canvas = stage6DestroyChart('stage6BearingChart');
-  const data = S.stage6Cache?.bearing;
-  if(!canvas || !data || typeof Chart === 'undefined') return;
-  const cfg = S.stage6.bearing;
-  const chart = new Chart(canvas, buildBearingChartConfig({
-    data,
-    cfg,
-    capacityAxisTitle:stage6CapacityLabel(cfg)==='q_d'
-      ? 'Design bearing capacity q_d (kPa)'
-      : 'Allowable bearing capacity q_allow (kPa)'
-  }));
-  canvas._chartRef = chart;
+  bearingApp.buildChart();
 }
 
 function buildStage6SettlementCharts(){
@@ -15614,710 +12836,59 @@ function buildStage6BishopLineProbeChart(){
 }
 
 /* ════════════════════════════════
-   CSV EXPORT
+   EXPORTS (CSV / PLAXIS)
 ════════════════════════════════ */
+/* The text builders live in export/ (PR 8): buildLayersCsv, buildPlaxisCommandsText and
+   buildPlaxisCptText take (cpt, ctx) and return the file text. These wrappers keep the
+   guards, the alerts and the <a download> click of the monolith over the active CPT. */
 function exportCSV(){
-  if(!S.layers.length){alert('No layers to export. Run classification first.');return;}
-  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'';
-  const hdr='Layer,Type,Subtype,Top_m,Bot_m,Top_TAW,Bot_TAW,Thick_m,avgQc_MPa,avgRf_pct,gamma,gamma_sat,phi,c,cu,alphaE,alphaMethod,Eoed_i_kPa,Eoed_ref_kPa,E50_ref_kPa,Eur_ref_kPa,E_mc_kPa,nu,beta,Edef_kPa,rShear,m,K0nc,nu_ur,stiffMethod,kh_ms,kv_ms,khkv,psi_unsat_m,Infiltratie_klasse';
-  const rows=S.layers.map((l,i)=>{
-    const h=hsParams(l);
-    const k=khParams(l);
-    return[i+1,l.type,`"${l.subtype||''}"`,
-      l.top.toFixed(3),l.bot.toFixed(3),taw(l.top),taw(l.bot),
-      (l.bot-l.top).toFixed(3),l.avgQc,l.avgRf??'',
-      l.g,l.gs,l.phi,l.c,l.cu,
-      h.aE.toFixed(2),S.alphaMethod,
-      h.Eoed_i,h.Eoed_ref,h.E50_ref,h.Eur_ref,h.Emc,h.nu,h.beta,h.Edef,h.rShear.toFixed(2),h.m.toFixed(2),h.K0nc,h.nu_ur,S.stiffMethod,
-      k.kh_rep.toExponential(2),k.kv_rep.toExponential(2),k.khkv,k.psi_unsat,
-      `"${k.infClass}"`].join(',');
-  });
-  const csv=[hdr,...rows].join('\n');
+  if(!S.layers.length){alert(NO_LAYERS_MESSAGE);return;}
+  const csv=buildLayersCsv(S, modelCtx());
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download=`CPT_${S.meta.testid||'export'}_layers.csv`;
+  a.download=layersCsvFilename(S);
   a.click();
-}
-
-function safeMaterialToken(value){
-  let txt=String(value??'').trim();
-  if(txt.normalize) txt=txt.normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
-  txt=txt.replace(/[(),]/g,'').replace(/\s+/g,'_').replace(/[^A-Za-z0-9_.-]/g,'');
-  return txt || 'Layer';
-}
-
-function plaxisDrainageType(layer){
-  const sub=(layer.subtype||'').toLowerCase();
-  if(sub.includes('(lh)') || sub.includes('(kh)') || sub.includes('leemhoudend') || sub.includes('klei-/leemhoudend')){
-    return 'Undrained A';
-  }
-  return layer.type==='Sand' || layer.type==='Gravel' ? 'Drained' : 'Undrained A';
-}
-
-function plaxisDisplayName(value){
-  return String(value??'')
-    .replace(/"/g, '\'')
-    .replace(/\r?\n/g, ' ')
-    .trim();
-}
-
-function plaxisCommandValue(value){
-  if(typeof value === 'number'){
-    if(!isFinite(value)) return '0';
-    return Object.is(value, -0) ? '0' : String(value);
-  }
-  return `"${plaxisDisplayName(value)}"`;
-}
-
-function buildPlaxisSoilmatCommand(pairs){
-  return `soilmat ${pairs.map(([key,val])=>`${plaxisCommandValue(key)} ${plaxisCommandValue(val)}`).join(' ')}`;
-}
-
-function msToMday(value){
-  if(!isFinite(value)) return 0;
-  return +(value * 86400).toFixed(6);
 }
 
 function exportPlaxisCommands(){
   if(!S.layers.length){
-    alert('No layers to export. Run classification first.');
+    alert(NO_LAYERS_MESSAGE);
     return;
   }
-
-  const cptId=S.meta.testid||S.id||'CPT';
-  const commands=S.layers.flatMap((l,i)=>{
-    const layerId=i+1;
-    const subtype=l.subtype||l.type||`Layer_${layerId}`;
-    const safeSubtype=safeMaterialToken(subtype);
-    const baseName=`${safeMaterialToken(cptId)}_L${layerId}_${safeSubtype}`;
-    const dr=plaxisDrainageType(l);
-    const h=hsParams(l);
-    const k=khParams(l);
-    const khMday=msToMday(k.kh_rep);
-    const kvMday=msToMday(k.kv_rep);
-    const cohesion=Math.max(Number(l.c)||0,0.1);
-    const mcName=`${baseName}_MC`;
-    const hsName=`${baseName}_HS`;
-
-    return[
-      buildPlaxisSoilmatCommand([
-        ['Identification', mcName],
-        ['SoilModel', 2],
-        ['DrainageType', dr],
-        ['gammaUnsat', l.g],
-        ['gammaSat', l.gs],
-        ['ERef', h.Emc],
-        ['nu', h.nu],
-        ['cRef', cohesion],
-        ['phi', l.phi],
-        ['psi', h.psi],
-        ['PermHorizontalPrimary', khMday],
-        ['PermVertical', kvMday]
-      ]),
-      buildPlaxisSoilmatCommand([
-        ['Identification', hsName],
-        ['SoilModel', 3],
-        ['DrainageType', dr],
-        ['gammaUnsat', l.g],
-        ['gammaSat', l.gs],
-        ['E50Ref', h.E50_ref],
-        ['EOedRef', h.Eoed_ref],
-        ['EURRef', h.Eur_ref],
-        ['PowerM', h.m],
-        ['pRef', 100],
-        ['cRef', cohesion],
-        ['phi', l.phi],
-        ['psi', h.psi],
-        ['PermHorizontalPrimary', khMday],
-        ['PermVertical', kvMday]
-      ])
-    ];
-  });
-  const txt=commands.join('\r\n');
-
-  /* PLAXIS requires nu' < 0.35 for Undrained (A)/(B) materials (Material
-     Models Manual 3.3.2); cohesive layers export as Undrained A, so soft
-     fine layers at the table default nu' = 0.40 will be flagged on import.
-     Warn (without altering the exported values) so the engineer reviews
-     nu or the drainage type in PLAXIS. */
-  const nuDrainageConflicts=S.layers
-    .map((l,i)=>({i:i+1, dr:plaxisDrainageType(l), nu:hsParams(l).nu, subtype:l.subtype||l.type}))
-    .filter(x=>x.dr!=='Drained' && x.nu>=0.35);
+  const txt=buildPlaxisCommandsText(S, modelCtx());
+  const nuDrainageConflicts=plaxisNuDrainageConflicts(S, modelCtx());
   if(nuDrainageConflicts.length){
-    alert('PLAXIS note: nu′ >= 0.35 combined with Undrained A will be flagged by PLAXIS (Material Models Manual 3.3.2).\n\n'
-      +nuDrainageConflicts.map(x=>`Layer ${x.i} (${x.subtype}): nu = ${x.nu}`).join('\n')
-      +'\n\nThe export is unchanged; review nu or the drainage type in PLAXIS.');
+    alert(plaxisNuDrainageAlertMessage(nuDrainageConflicts));
   }
-
   const a=document.createElement('a');
   a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);
-  a.download=`CPT_${safeMaterialToken(cptId)}_plaxis_materials_commands.txt`;
+  a.download=plaxisCommandsFilename(S);
   a.click();
-}
-
-function findLayerForDepth(z){
-  for(let i=0;i<S.layers.length;i++){
-    const l=S.layers[i];
-    const isLast=i===S.layers.length-1;
-    if(z >= l.top && (z < l.bot || (isLast && z <= l.bot))) return l;
-  }
-  return null;
-}
-
-/* The simulated CPT exists so PLAXIS's own CPT interpretation recreates the
-   app's layer sequence. When a layer has no measured fs/Rf the sleeve friction
-   is synthesised from a representative Rf per soil type (classification-core):
-   writing fs=0 would make PLAXIS read every layer as clean sand and destroy
-   the layering the export is meant to carry. */
-function simulatedLayerFs(layer){
-  return simulatedLayerFsValue(layer, assumedRfValue());
-}
-
-function layerFsIsSynthetic(layer){
-  return !(layer.avgFs!=null && isFinite(layer.avgFs)) &&
-         !(layer.avgRf!=null && isFinite(layer.avgRf));
-}
-
-function formatPlaxisCoord(value){
-  if(value==null || !isFinite(value)) return '0';
-  const rounded=Math.abs(value) < 1e-9 ? 0 : value;
-  const txt=rounded.toFixed(4).replace(/\.?0+$/,'');
-  return txt === '-0' ? '0' : txt;
 }
 
 function exportPlaxisCpt(){
   if(!S.layers.length || !S.data.length){
-    alert('No layer model to export. Run classification and layer identification first.');
+    alert(NO_LAYER_MODEL_MESSAGE);
     return;
   }
-
-  const rows=S.data
-    .map(r=>{
-      const layer=findLayerForDepth(r.z);
-      if(!layer) return null;
-      return{
-        z:r.z,
-        qc:Math.max(0, layer.avgQc || 0),
-        fs:simulatedLayerFs(layer)
-      };
-    })
-    .filter(Boolean);
-
-  if(!rows.length){
-    alert('No simulated CPT rows could be generated from the active layer model.');
+  const txt=buildPlaxisCptText(S, modelCtx());
+  if(txt==null){
+    alert(NO_SIMULATED_ROWS_MESSAGE);
     return;
   }
-
-  const syntheticFsCount=S.layers.filter(layerFsIsSynthetic).length;
-  const fsNote=syntheticFsCount
-    ? ` — fs of ${syntheticFsCount} layer(s) simulated from soil-type Rf (no measured fs in source CPT)`
-    : '';
-  const lines=[
-    `X[m] ${formatPlaxisCoord(S.x)}`,
-    `Y[m] ${formatPlaxisCoord(S.y)}`,
-    `Z[m] ${formatPlaxisCoord(S.elev)}`,
-    `D[m] Q[MPa] F[MPa] x  # depth, qc, fs, Rf(skipped)${fsNote}`,
-    ...rows.map(r=>`${r.z.toFixed(4)} ${r.qc.toFixed(6)} ${r.fs.toFixed(6)} 0`)
-  ];
-
-  const txt=lines.join('\r\n');
   const a=document.createElement('a');
   a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);
-  a.download=`CPT_${S.meta.testid||S.id||'export'}_plaxis_simulated.txt`;
+  a.download=plaxisCptFilename(S);
   a.click();
 }
 
-function safeClone(value){
-  return value == null ? value : JSON.parse(JSON.stringify(value));
-}
-
-function stage7MethodLabel(method){
-  return classificationMethodLabel(method);
-}
-
-function stage7ParamMethodLabel(method){
-  return method === 'def' ? 'Generic (DEF)' : 'NEN Tabel 3 / EC7';
-}
-
-function stage7AlphaMethodLabel(method){
-  return method === 'A' ? 'A - Sanglerat (fixed)' : 'B - SB260 qc-dependent';
-}
-
-function stage7StiffMethodLabel(method){
-  return method === 'A' ? 'A - CUR 2003-7 ratios' : 'B - E50 = Eoed';
-}
-
-function stage7WtSourceLabel(){
-  return S.wtFromFile ? (S.wtSource || 'File') : 'Manual / default';
-}
-
-function stage7ElevSourceLabel(){
-  return S.elevFromFile ? (S.elevSource || 'File') : (S.elev != null ? 'Manual' : 'Not set');
-}
-
-function stage7LayerWarnings(){
-  const warnings=[];
-  S.layers.forEach((layer, index)=>{
-    if(!layer.subtype || layer.subtype === '(overridden)') return;
-    if(layer.rfIndeterminate && !layer.ovr.subtype){
-      warnings.push({
-        layer:index + 1,
-        level:'adj',
-        type:layer.type,
-        subtype:layer.subtype,
-        message:`${layer.subtype} was selected without measured Rf (no fs in the source CPT); several Tabel 3 rows share this qc band, so the catalogue-order row was applied. Review against borings or project knowledge.`
-      });
-    }
-    const entry=CAT.find(row=>row.subtype===layer.subtype);
-    if(!entry) return;
-    const level=compatLevel(layer.type, entry.grp);
-    if(level === 'ok') return;
-    warnings.push({
-      layer:index + 1,
-      level,
-      type:layer.type,
-      subtype:layer.subtype,
-      message:level === 'bad'
-        ? `${layer.type} is not directly compatible with ${layer.subtype}.`
-        : `${layer.subtype} sits in an adjacent transition family for ${layer.type}.`
-    });
-  });
-  return warnings;
-}
-
-function stage7TuningPayload(){
-  if(!S.tuning) return null;
-  return S.tuning.map((item)=>{
-    const layer=S.layers[item.i];
-    const fit=item.fit;
-    return{
-      index:item.i,
-      layerIndex:item.i + 1,
-      layerLabel:`Layer ${item.i + 1}`,
-      top:layer.top,
-      bot:layer.bot,
-      type:layer.type,
-      subtype:layer.subtype || '',
-      accepted:!!layer.ovr.m,
-      previewM:Number.isFinite(Number(item.previewM)) ? Number(item.previewM) : null,
-      fit:fit ? {
-        mFit:fit.m_fit,
-        eOedRefFit:fit.Eoed_ref_fit,
-        r2:fit.R2,
-        n:fit.n,
-        stressRangeFactor:fit.stressRangeFactor,
-        quality:fit.quality,
-        message:fit.qMsg,
-        mDefault:fit.mDefault,
-        eOedRefDefault:fit.Eoed_ref_default,
-        meanX:fit.meanX,
-        meanY:fit.meanY,
-        alphaDefault:fit.alphaDefault,
-        depthPts:fit.depthPts,
-        eOedIPts:fit.EoedI_pts,
-        hsDefaultPts:fit.hsDefault_pts,
-        hsFitPts:fit.hsFit_pts,
-        xs:fit.Xs,
-        ys:fit.Ys
-      } : null
-    };
-  });
-}
-
-function stage7WorkingLayerPayload(layer, index){
-  const hs=hsParams(layer);
-  const kh=khParams(layer);
-  const tuningFit=S.tuning?.[index]?.fit || null;
-  return{
-    index:index + 1,
-    id:layer.id,
-    top:layer.top,
-    bot:layer.bot,
-    topTaw:S.elev != null ? +(S.elev - layer.top).toFixed(2) : null,
-    botTaw:S.elev != null ? +(S.elev - layer.bot).toFixed(2) : null,
-    thickness:+(layer.bot - layer.top).toFixed(3),
-    type:layer.type,
-    subtype:layer.subtype || '',
-    avgQc:layer.avgQc,
-    avgFsKPa:layer.avgFs != null ? +(layer.avgFs * 1000).toFixed(2) : null,
-    avgRf:layer.avgRf,
-    gamma:layer.g,
-    gammaSat:layer.gs,
-    phi:layer.phi,
-    c:layer.c,
-    cu:layer.cu,
-    overrides:safeClone(layer.ovr || {}),
-    hasAcceptedTuning:!!layer.ovr?.m && !!tuningFit,
-    manualMOverride:!!layer.ovr?.m && !tuningFit,
-    hs:{
-      alphaE:hs.aE,
-      eOedI:hs.Eoed_i,
-      eOedRef:hs.Eoed_ref,
-      e50Ref:hs.E50_ref,
-      eurRef:hs.Eur_ref,
-      m:hs.m,
-      k0nc:hs.K0nc,
-      nu:hs.nu,
-      nuUr:hs.nu_ur,
-      beta:hs.beta,
-      eDef:hs.Edef,
-      rShear:hs.rShear,
-      psi:hs.psi,
-      eMc:hs.Emc,
-      sigmaV:hs.sigV,
-      porePressure:hs.u,
-      sigmaVEff:hs.sigVeff
-    },
-    hydraulic:{
-      kh:kh.kh_rep,
-      kv:kh.kv_rep,
-      khkv:kh.khkv,
-      psiUnsat:kh.psi_unsat,
-      infiltrationClass:kh.infClass
-    }
-  };
-}
-
-function stage7BishopPayload(){
-  const bishop=S.stage6?.bishop;
-  const results=bishop?.results?.allResults || [];
-  if(!results.length) return null;
-  const selected=stage6BishopSelectedResult();
-  const keepBest=Math.max(bishop.search?.keepBest || 10, 1);
-  return{
-    config:safeClone({
-      strengthSet:bishop.strengthSet,
-      methodMode:bishop.methodMode,
-      analysisDepth:bishop.analysisDepth,
-      snapSize:bishop.snapSize,
-      gridSnap:bishop.gridSnap,
-      pointSnap:bishop.pointSnap,
-	      activeCptX:bishop.activeCptX,
-	      cptInsertionOffset:bishop.cptInsertionOffset,
-	      walls:bishop.walls,
-	      entryZone:bishop.entryZone,
-	      exitZone:bishop.exitZone,
-	      surfaceLoad:bishop.surfaceLoad,
-	      surfaceLoads:bishop.surfaceLoads,
-	      search:bishop.search,
-      solver:bishop.solver,
-      spencer:bishop.spencer
-    }),
-    summary:safeClone(bishop.results?.summary || null),
-    wallSummary:safeClone(bishop.results?.wallSummary || null),
-    methodMode:bishop.results?.methodMode || bishop.methodMode || 'bishop_only',
-    spencerRechecked:bishop.results?.spencerRechecked || 0,
-    spencerConverged:bishop.results?.spencerConverged || 0,
-    selectedIndex:Math.min(Math.max(bishop.selectedResult || 0, 0), Math.max(results.length - 1, 0)),
-    selected:selected ? safeClone({
-      FS:selected.FS,
-      method:selected.method,
-      methodLabel:stage6BishopResultMethodLabel(selected),
-      F_bishop:selected.F_bishop,
-      F_m:selected.F_m,
-      F_f:selected.F_f,
-      lambda:selected.lambda,
-      thetaDeg:selected.thetaDeg,
-      momentResidual:selected.momentResidual,
-      forceResidual:selected.forceResidual,
-      spencerAttempted:selected.spencerAttempted,
-      spencerConverged:selected.spencerConverged,
-      spencerRejectReason:selected.spencerRejectReason,
-      intersectsWall:selected.intersectsWall,
-      passesBelowWall:selected.passesBelowWall,
-      wallIntersectionCount:selected.wallIntersectionCount,
-      wallForceTotal:selected.wallForceTotal,
-      wallMomentTerm:selected.wallMomentTerm,
-      wallForces:selected.wallForces,
-      iterations:selected.iterations,
-      circle:selected.circle,
-      entry:selected.entry,
-      exit:selected.exit
-    }) : null,
-    topResults:results.slice(0, keepBest).map((result, index)=>safeClone({
-      rank:index + 1,
-      FS:result.FS,
-      method:result.method,
-      methodLabel:stage6BishopResultMethodLabel(result),
-      F_bishop:result.F_bishop,
-      F_m:result.F_m,
-      F_f:result.F_f,
-      lambda:result.lambda,
-      thetaDeg:result.thetaDeg,
-      momentResidual:result.momentResidual,
-      forceResidual:result.forceResidual,
-      spencerAttempted:result.spencerAttempted,
-      spencerConverged:result.spencerConverged,
-      spencerRejectReason:result.spencerRejectReason,
-      intersectsWall:result.intersectsWall,
-      passesBelowWall:result.passesBelowWall,
-      wallIntersectionCount:result.wallIntersectionCount,
-      wallForceTotal:result.wallForceTotal,
-      iterations:result.iterations,
-      circle:result.circle
-    })),
-    rejectionCounts:safeClone(bishop.results?.rejectionCounts || {}),
-    timing:safeClone(bishop.results?.timing || null)
-  };
-}
-
-function stage7SeepagePayload(){
-  const bishop=S.stage6?.bishop;
-  const seepage=bishop?.seepage;
-  if(!bishop || !seepage) return null;
-  try{
-    const model=S.stage6Cache?.bishopModel || null;
-    const boundary=S.stage6Cache?.bishopSeepageBoundary || [];
-    const edgeByKey=new Map(boundary.map((edge)=>[edge.edgeKey, edge]));
-    const activeBcs=(seepage.bcs || []).filter((bc)=>bc?.status !== 'orphaned');
-    const orphanedBcs=(seepage.bcs || []).filter((bc)=>bc?.status === 'orphaned');
-    const hasSetup=!!(activeBcs.length || orphanedBcs.length || seepage.mesh || seepage.result || seepage.rejectReason);
-    if(!hasSetup) return null;
-    const prescribedHeadCount=activeBcs.filter((bc)=>bc.type === 'head').length;
-    const seepageFaceCount=activeBcs.filter((bc)=>bc.type === 'seepage-face').length;
-    const noFlowCount=activeBcs.filter((bc)=>bc.type !== 'head' && bc.type !== 'seepage-face').length;
-    const edgeLabelFor=(edgeKey, anchorSource)=>{
-      if(edgeByKey.has(edgeKey)) return stage6BishopSeepageEdgeLabel(edgeByKey.get(edgeKey));
-      if(typeof edgeKey === 'string' && edgeKey){
-        const [source, rawIndex] = edgeKey.split(':');
-        const index = Number(rawIndex);
-        return stage6BishopSeepageEdgeLabel({
-          source:source || anchorSource || '',
-          index:Number.isFinite(index) ? index : 0
-        });
-      }
-      return anchorSource ? `${anchorSource} edge` : 'Unmatched boundary edge';
-    };
-    return{
-      config:safeClone({
-        freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
-        usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
-        flowErrorTolerance:Math.max(+seepage.options?.flowErrorTolerance || 0.01, 0.000001),
-        maxRuntimeMs:Math.max(+seepage.options?.maxRuntimeMs || 10000, 1),
-        meshTargetArea:stage6BishopResolvedSeepageMeshTargetArea(bishop),
-        meshTargetAreaAuto:seepage.options?.meshTargetAreaAuto !== false,
-        drains:safeClone(seepage.options?.drains || {gatingTolerances:{}, reportPerSegmentInflow:true}),
-        useFemPorePressure:!!bishop.useFemPorePressure
-      }),
-      summary:{
-        status:seepage.status || 'idle',
-        solved:!!seepage.mesh && !!seepage.result,
-        rejectReason:seepage.rejectReason || '',
-        explicitBcCount:(seepage.bcs || []).length,
-        activeBcCount:activeBcs.length,
-        orphanedBcCount:orphanedBcs.length,
-        prescribedHeadCount,
-        seepageFaceCount,
-        noFlowCount,
-        drainCount:bishop.drains?.length || 0,
-        activeDrainNodeCount:seepage.result?.solver?.activeSetSummary?.drains?.activeNodes || 0,
-        totalDrainNodeCount:seepage.result?.solver?.activeSetSummary?.drains?.totalNodes || 0
-      },
-      geometry:safeClone({
-        regionMode:model?.regionMode || (bishop.useCustomRegions ? 'custom' : 'auto'),
-        regionCount:model?.regions?.length || (bishop.useCustomRegions ? (bishop.customRegions?.length || 0) : (bishop.materials?.length || 0)),
-        autoRegionCount:model?.autoRegions?.length || 0,
-        customRegionCount:model?.customRegions?.length || (bishop.customRegions?.length || 0),
-        terrainVertexCount:bishop.terrain?.length || 0,
-        phreaticVertexCount:bishop.phreatic?.length || 0,
-        drainCount:bishop.drains?.length || 0,
-        wallCount:bishop.walls?.length || 0,
-        boundaryEdgeCount:boundary.length
-      }),
-      walls:(bishop.walls || []).map((wall, index)=>{
-        const material = normalizeWallMaterial(wall.material, index, wall.id, {sourceFallback:'legacy-impermeable'});
-        const endpoints = wallEndpoints(wall);
-        return safeClone({
-          id:wall.id || `wall-${index + 1}`,
-          label:`Wall ${index + 1}`,
-          head:endpoints ? endpoints.head : null,
-          tip:endpoints ? endpoints.tip : null,
-          x:Number.isFinite(+wall.x) ? +wall.x : null,
-          yTop:Number.isFinite(+wall.yTop) ? +wall.yTop : null,
-          yTip:Number.isFinite(+wall.yTip) ? +wall.yTip : null,
-          passiveSide:wall.passiveSide === 'left' ? 'left' : 'right',
-          material:{
-            id:material.id,
-            label:material.label,
-            kAcross:material.kAcross,
-            kAlong:material.kAlong,
-            kSource:material.kSource,
-            kSourceLabel:wallMaterialSourceLabel(material.kSource)
-          }
-        });
-      }),
-      drains:(bishop.drains || []).map((drain, index)=>{
-        const drainId = drain.id || `drain-${index + 1}`;
-        const resultDrain = (seepage.result?.drains || []).find((item)=>item?.drainId === drainId) || null;
-        const activeNodes = resultDrain?.nodes?.filter((node)=>node?.isActive).length || 0;
-        return safeClone({
-          id:drainId,
-          label:drain.label || `Drain ${index + 1}`,
-          vertices:drain.vertices || [],
-          vertexCount:drain.vertices?.length || 0,
-          closed:!!drain.closed,
-          length:drainTotalLength(drain),
-          head:safeClone(drain.head || {kind:'constant', value:0}),
-          gating:drain.gating || 'when-saturated',
-          gatingLabel:stage6BishopDrainGatingLabel(drain.gating),
-          result:resultDrain ? {
-            totalInflow:resultDrain.totalInflow,
-            activeNodes,
-            totalNodes:resultDrain.nodes?.length || 0,
-            perSegmentInflow:resultDrain.perSegmentInflow || []
-          } : null
-        });
-      }),
-      materials:(bishop.materials || []).map((mat)=>safeClone({
-        id:mat.id || '',
-        label:mat.label || mat.id || 'Material',
-        kx:Number.isFinite(+mat.kx) ? +mat.kx : null,
-        ky:Number.isFinite(+mat.ky) ? +mat.ky : null,
-        kSource:mat.kSource || 'sbtn-default',
-        kSourceLabel:seepageSourceLabel(mat.kSource)
-      })),
-      boundaryConditions:(seepage.bcs || []).map((bc, index)=>{
-        const edge=edgeByKey.get(bc.edgeKey);
-        return safeClone({
-          id:bc.id || `bc-${index + 1}`,
-          edgeKey:bc.edgeKey || '',
-          edgeLabel:edgeLabelFor(bc.edgeKey, bc.anchor?.source),
-          source:edge?.source || bc.anchor?.source || '',
-          index:edge?.index ?? null,
-          type:bc.type === 'head' ? 'head' : bc.type === 'seepage-face' ? 'seepage-face' : 'no-flow',
-          typeLabel:stage6BishopSeepageBcTypeLabel(bc.type),
-          head:bc.type === 'head' && Number.isFinite(+bc.head) ? +bc.head : null,
-          status:bc.status === 'orphaned' ? 'orphaned' : 'active',
-          length:Number.isFinite(edge?.length) ? edge.length : null,
-          midpoint:safeClone(edge?.mid || bc.anchor?.mid || null)
-        });
-      }),
-      mesh:seepage.mesh ? safeClone({
-        nodes:seepage.mesh.nodes?.length || 0,
-        elements:seepage.mesh.elements?.length || 0,
-        cells:seepage.mesh.cells?.length || 0,
-        boundaryFaces:seepage.mesh.boundaryFaces?.length || 0,
-        drainEdges:[...(seepage.mesh.drainEdgesByDrain?.values?.() || [])].reduce((sum, edges)=>sum + (edges?.length || 0), 0),
-        generatedMs:Number.isFinite(+seepage.mesh.generatedMs) ? +seepage.mesh.generatedMs : null
-      }) : null,
-      result:seepage.result ? safeClone({
-        headMin:seepage.result.headMin,
-        headMax:seepage.result.headMax,
-        throughFlow:seepage.result.throughFlow,
-        inflow:seepage.result.inflow,
-        outflow:seepage.result.outflow,
-        flowError:seepage.result.flowError,
-        maxExitGradient:seepage.result.maxExitGradient,
-        dryCellCount:seepage.result.dryCellCount,
-        equipotentialLevelCount:seepage.result.equipotentialSegments?.length || 0,
-        phreaticSegmentCount:seepage.result.phreaticSegments?.length || 0,
-        drains:safeClone(seepage.result.drains || []),
-        solver:safeClone(seepage.result.solver || null),
-        timing:safeClone(seepage.result.timing || null)
-      }) : null
-    };
-  } catch(error){
-    console.error('Stage 7 seepage payload build failed:', error);
-    return{
-      config:safeClone({
-        freeSurface:seepage.options?.freeSurface === 'iterate' ? 'iterate' : 'fixed',
-        usePhreaticAsSeed:seepage.options?.usePhreaticAsSeed !== false,
-        flowErrorTolerance:Math.max(+seepage.options?.flowErrorTolerance || 0.01, 0.000001),
-        maxRuntimeMs:Math.max(+seepage.options?.maxRuntimeMs || 10000, 1),
-        meshTargetArea:stage6BishopResolvedSeepageMeshTargetArea(bishop),
-        meshTargetAreaAuto:seepage.options?.meshTargetAreaAuto !== false,
-        useFemPorePressure:!!bishop.useFemPorePressure
-      }),
-      summary:{
-        status:seepage.status || 'idle',
-        solved:false,
-        rejectReason:seepage.rejectReason || 'Seepage report payload could not be fully assembled.',
-        explicitBcCount:(seepage.bcs || []).length,
-        activeBcCount:0,
-        orphanedBcCount:0,
-        prescribedHeadCount:0,
-        seepageFaceCount:0,
-        noFlowCount:0
-      },
-      geometry:{
-        regionMode:bishop.useCustomRegions ? 'custom' : 'auto',
-        regionCount:0,
-        autoRegionCount:0,
-        customRegionCount:bishop.customRegions?.length || 0,
-        terrainVertexCount:bishop.terrain?.length || 0,
-        phreaticVertexCount:bishop.phreatic?.length || 0,
-        wallCount:bishop.walls?.length || 0,
-        boundaryEdgeCount:0
-      },
-      materials:[],
-      boundaryConditions:[],
-      mesh:null,
-      result:null
-    };
-  }
-}
-
-// Deformation annex — included only when a result has been solved. The
-// captured view (manual via the toolbar button, or automatic at report-build
-// time when none exists) is the primary visual; the surrounding payload
-// captures the analysis context so the report can be reproduced and audited.
-function stage7DeformationPayload(){
-  ensureStage6State();
-  const stage6 = S.stage6;
-  const bishop = stage6?.bishop;
-  if(!bishop) return null;
-  const deformation = bishop.deformation;
-  if(!deformation || !deformation.result) return null;
-  const result = deformation.result;
-  const solver = result?.solver || {};
-  const elementType = solver.elementType
-    || result?.mesh?.elementType
-    || deformation.options?.meshElementType
-    || 't3';
-  const safetyFosLower = Number.isFinite(solver.safetyFactorOfSafetyLower) ? Number(solver.safetyFactorOfSafetyLower) : null;
-  const safetyFosUpper = Number.isFinite(solver.safetyFactorOfSafetyUpper) ? Number(solver.safetyFactorOfSafetyUpper) : null;
-  const safetyFinalization = solver.safetyResult?.finalization || null;
-  const summary = {
-    analysisType: deformation.options?.analysisType || 'deformation',
-    constitutiveModel: deformation.options?.constitutiveModel || 'linear-elastic',
-    elementType,
-    converged: solver.convergenceState === 'converged' || result?.converged === true,
-    convergenceState: solver.convergenceState || null,
-    loadFactor: result?.loadFactor != null ? Number(result.loadFactor) : null,
-    loadFactorMeaning: result?.loadFactorMeaning || null,
-    safetyStatus: solver.safetyStatus || null,
-    safetyFinalizationStatus: safetyFinalization?.status || null,
-    safetyFactorOfSafetyIsOpenEnded: safetyFinalization?.factorOfSafetyIsOpenEnded === true,
-    safetyFactorOfSafetyLower: safetyFosLower,
-    safetyFactorOfSafetyUpper: safetyFosUpper,
-    safetyLoadFactor: safetyFosLower != null
-      ? safetyFosLower
-      : (result?.safetyLoadFactor != null ? Number(result.safetyLoadFactor) : null),
-    initialPhaseConvergenceState: solver.initialPhaseConvergenceState || null,
-    servicePhaseConvergenceState: solver.servicePhaseConvergenceState || null,
-    iterations: solver.iterations != null
-      ? Number(solver.iterations)
-      : (result?.iterations != null ? Number(result.iterations) : null),
-    timing: result?.timing ? safeClone(result.timing) : null,
-    nodeCount: Array.isArray(result?.mesh?.nodes) ? result.mesh.nodes.length : (result?.mesh?.nodeCount ?? null),
-    elementCount: Array.isArray(result?.mesh?.triangles) ? result.mesh.triangles.length : (result?.mesh?.elementCount ?? null),
-    maxSettlementMm: result?.summary?.maxSettlementMm ?? null,
-    maxDisplacementMm: result?.summary?.maxDisplacementMm ?? null
-  };
-  const manualView = bishop.capturedView?.deformation || null;
-  const view = manualView
-    ? safeClone(manualView)
-    : stage7CaptureBishopWorkspaceView('deformation');
-  if(!view) return null;
-  view.source = manualView ? 'manual' : 'auto';
-  return {
-    config: safeClone(deformation.options || {}),
-    summary,
-    warnings: Array.isArray(deformation.warnings) ? safeClone(deformation.warnings) : [],
-    view
-  };
-}
-
+/* ════════════════════════════════
+   STAGE 7 — REPORT
+════════════════════════════════ */
+/* The payload builders live in report/ (PR 8): buildStage7Payload(project, cpt, deps) and
+   its parts (payload-stage6.js, payload-seepslope.js). safeClone is imported back for the
+   workspace captures below, which stay here until refactor step 9g because they switch
+   the Stage 6 app / bishop workspace and re-render (01-monolith-map.md §3.4 #10). */
 // Extend stage7CaptureBishopWorkspaceView to also support 'deformation' so the
 // auto-capture fallback works for the deformation annex.
 //
@@ -16492,218 +13063,34 @@ function stage7CaptureBishopWorkspaceView(workspace){
   }
 }
 
-function stage7Stage6Payload(workingLayers){
-  const annexes={};
-  if(S.stage6Cache?.bearing?.selected){
-    annexes.bearing={
-      config:safeClone(S.stage6.bearing),
-      analysis:safeClone(S.stage6Cache.bearing)
-    };
-  }
-  if(S.stage6Cache?.settlement?.sublayers?.length){
-    annexes.settlement={
-      config:safeClone(S.stage6.settlement),
-      analysis:safeClone(S.stage6Cache.settlement)
-    };
-  }
-  if(S.stage6Cache?.dewatering?.sublayers?.length || S.stage6Cache?.dewatering?.drawdownCurve?.length){
-    annexes.dewatering={
-      config:safeClone(S.stage6.dewatering),
-      analysis:safeClone(S.stage6Cache.dewatering)
-    };
-  }
-  if(S.stage6Cache?.beam?.sls?.xSamples?.length){
-    annexes.beam={
-      config:safeClone(S.stage6.beam),
-      analysis:safeClone(S.stage6Cache.beam)
-    };
-  }
-  // Pile capacity — added once the pile estimator was built (the cache is
-  // populated by analyzePile in renderStage6() when app === 'pile').
-  if(S.stage6Cache?.pile?.capacity){
-    annexes.pile={
-      config:safeClone(S.stage6.pile),
-      analysis:safeClone(S.stage6Cache.pile)
-    };
-  }
-  // Bishop / seepage / deformation each get a workspace screenshot. The user
-  // can press the "Capture for report" button in the workspace toolbar at any
-  // time to freeze a specific view (selected result, contour mode, viewport)
-  // for the report. We prefer that manual capture; if the user never pressed
-  // it, fall back to the automatic capture done here at report-build time.
-  const bishop=stage7BishopPayload();
-  if(bishop){
-    const manualBishopView = S.stage6.bishop?.capturedView?.stability || null;
-    const bishopView = manualBishopView
-      ? safeClone(manualBishopView)
-      : stage7CaptureBishopWorkspaceView('stability');
-    if(bishopView){
-      bishopView.source = manualBishopView ? 'manual' : 'auto';
-      bishop.view = bishopView;
+/* Everything the pure builder used to reach through this module's closure, named
+   (report/deps.js): the model-parameter wrappers over the active CPT, the Stage 6 state
+   normaliser, the automatic workspace capture (only called when an annex exists and no
+   manual capture is stored — same conditional as before) and the Seep/Slope helpers that
+   move with the seepslope/ package in step 9. */
+function stage7ControllerDeps(){
+  return {
+    hsParams,
+    khParams,
+    workingLayers:stage6WorkingLayers,
+    ensureStage6State,
+    captureBishopWorkspaceView:stage7CaptureBishopWorkspaceView,
+    seepslope:{
+      resultMethodLabel:stage6BishopResultMethodLabel,
+      seepageEdgeLabel:stage6BishopSeepageEdgeLabel,
+      seepageBcTypeLabel:stage6BishopSeepageBcTypeLabel,
+      drainGatingLabel:stage6BishopDrainGatingLabel,
+      resolvedSeepageMeshTargetArea:stage6BishopResolvedSeepageMeshTargetArea
     }
-    annexes.bishop=bishop;
-  }
-  const seepage=stage7SeepagePayload();
-  if(seepage){
-    const manualSeepageView = S.stage6.bishop?.capturedView?.seepage || null;
-    const seepageView = manualSeepageView
-      ? safeClone(manualSeepageView)
-      : stage7CaptureBishopWorkspaceView('seepage');
-    if(seepageView){
-      seepageView.source = manualSeepageView ? 'manual' : 'auto';
-      seepage.view = seepageView;
-    }
-    annexes.seepage=seepage;
-  }
-  // Deformation annex — was previously absent. Only included when a result
-  // is solved AND the user has captured a view (the captured view IS the
-  // deformation reporting; without a screenshot we have nothing meaningful
-  // to show in the printed report at present).
-  const deformation = stage7DeformationPayload();
-  if(deformation){
-    annexes.deformation = deformation;
-  }
-  const available=Object.keys(annexes);
-  if(!available.length) return null;
-  return{
-    currentApp:S.stage6?.app || 'bearing',
-    available,
-    layers:safeClone(workingLayers),
-    ...annexes
   };
 }
 
 function buildStage7Payload(){
   if(!S.layers.length || !S.data.length){
-    alert('Run the CPT through layers and model parameters before opening the Stage 7 report.');
+    alert(STAGE7_GUARD_MESSAGE);
     return null;
   }
-  ensureStage6State();
-  const workingLayers=stage6WorkingLayers();
-  const rawDepthMax=S.data.length ? +(S.data[S.data.length - 1].z + 0.5).toFixed(3) : stage6MaxDepth();
-  const maxQc=Math.max(1, arrMax(S.data.map(r=>r.qc))) * 1.15;
-  const maxFs=Math.max(10, arrMax(S.data.map(r=>r.fs != null ? r.fs * 1000 : 0))) * 1.15;
-  const tuning=stage7TuningPayload();
-  const layerWarnings=stage7LayerWarnings();
-  const layerPayload=S.layers.map((layer, index)=>stage7WorkingLayerPayload(layer, index));
-  const acceptedTuningCount=layerPayload.filter(layer=>layer.hasAcceptedTuning).length;
-  const manualOverrideCount=layerPayload.reduce((sum, layer)=>{
-    return sum + Object.values(layer.overrides || {}).filter(Boolean).length;
-  }, 0);
-  const stage6=stage7Stage6Payload(workingLayers);
-  return{
-    version:4,
-    stage:'stage7',
-    generatedAt:new Date().toISOString(),
-    appVersion: (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.5.x'),
-    project:{
-      name:PROJECT.name,
-      phase:PROJECT.phase
-    },
-    cpt:{
-      id:S.id,
-      displayId:S.meta?.testid || S.id || 'CPT',
-      coordinates:{
-        x:S.x,
-        y:S.y
-      }
-    },
-    metadata:safeClone({
-      ...S.meta,
-      sourceFile:S.meta?.fname || null,
-      nRows:S.meta?.nRows || S.data.length,
-      hasFs:cptHasFs(),
-      hasRf:cptHasRf(),
-      assumedRf:assumedRfValue(),
-      rfAssumedCount:S.data.filter(r=>r.rf==null).length
-    }),
-    replication:{
-      method:S.method,
-      methodLabel:stage7MethodLabel(S.method),
-      smartMerge:!!S.smartMerge,
-      smartMergeSensitivity:+Number(S.smartMergeSensitivity ?? 1.1).toFixed(3),
-      minThickness:+Number(S.minThk || 0).toFixed(3),
-      parameterMethod:S.paramMethod,
-      parameterMethodLabel:stage7ParamMethodLabel(S.paramMethod),
-      alphaMethod:S.alphaMethod,
-      alphaMethodLabel:stage7AlphaMethodLabel(S.alphaMethod),
-      stiffnessMethod:S.stiffMethod,
-      stiffnessMethodLabel:stage7StiffMethodLabel(S.stiffMethod),
-      waterTable:S.wt,
-      waterTableTaw:S.elev != null ? +(S.elev - S.wt).toFixed(2) : null,
-      waterTableSource:stage7WtSourceLabel(),
-      surfaceElevation:S.elev,
-      surfaceElevationSource:stage7ElevSourceLabel()
-    },
-    summary:{
-      layerCount:S.layers.length,
-      depthMin:S.meta?.depthMin ?? (S.data[0]?.z || 0),
-      depthMax:S.meta?.depthMax ?? (S.data[S.data.length - 1]?.z || 0),
-      acceptedTuningCount,
-      manualOverrideCount,
-      stage6Annexes:stage6?.available || []
-    },
-    visuals:{
-      layerColumn:{
-        width:72,
-        height:420,
-        markup:buildLayerColumnSvgMarkup({
-          layers:S.layers,
-          maxDepth:rawDepthMax,
-          wt:S.wt,
-          width:72,
-          height:420,
-          emptyLabel:'No layers'
-        })
-      },
-      layerProfile:{
-        width:210,
-        height:520,
-        markup:buildLayerPreviewSvgMarkup({
-          layers:S.layers,
-          rows:S.classified?.length ? S.classified : S.data,
-          wt:S.wt,
-          width:210,
-          height:520,
-          showRf:false,
-          // No fs in the source → no fs track: a permanently-empty column
-          // with a fabricated axis would misread as a measured zero profile.
-          showFs:cptHasFs()
-        })
-      }
-    },
-    chartInputs:{
-      raw:{
-        maxDepth:rawDepthMax,
-        maxQc,
-        maxFs
-      }
-    },
-    rawRows:S.data.map((row)=>({
-      depth:row.z,
-      taw:S.elev != null ? +(S.elev - row.z).toFixed(2) : null,
-      qc:row.qc,
-      fsMPa:row.fs ?? null,
-      fsKPa:row.fs != null ? +(row.fs * 1000).toFixed(3) : null,
-      rf:row.rf ?? null,
-      u2:row.u2 ?? null
-    })),
-    classifiedRows:(S.classified || []).map((row)=>({
-      depth:row.z,
-      taw:S.elev != null ? +(S.elev - row.z).toFixed(2) : null,
-      qc:row.qc,
-      fsKPa:row.fs != null ? +(row.fs * 1000).toFixed(3) : null,
-      rf:row.rf ?? null,
-      type:row.type,
-      subtype:row.subtype || '',
-      ic:row.Ic ?? null,
-      qtOrQcNen:row.Qt ?? null
-    })),
-    layers:layerPayload,
-    layerWarnings,
-    tuning,
-    stage6
-  };
+  return buildStage7PayloadPure(PROJECT, S, stage7ControllerDeps());
 }
 
 function openStage7Report(){
