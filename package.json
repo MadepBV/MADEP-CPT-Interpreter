@@ -88,7 +88,7 @@
 		"golden:browser:update": "GOLDEN_MODE=update playwright test --config tests/e2e/golden.config.mjs",
 		"verify:core-helpers": "node scripts/verify_core.mjs",
 		"verify:handlers": "node scripts/verify_window_handlers.mjs",
-		"verify:core": "npm run verify:handlers && npm run verify:core-helpers && npm run verify:model-params && npm run verify:classification-layers && npm run verify:load && npm run verify:export-report && npm run verify:bearing && npm run verify:pile && npm run verify:settlement-dewatering-beam && npm run verify:seepslope-state && npm run verify:seepslope-model && npm run verify:seepslope-run && npm run verify:seepslope-geometry && npm run verify:seepslope-canvas && npm run verify:project-section-tuning && npm run verify:nen6740 && npm run verify:stratigraphy && npm run verify:import-review && npm run verify:project-io && npm run verify:scia-db4 && npm run verify:qc-only && npm run verify:retaining && npm run verify:wasm && npm run verify:bishop-phase-a",
+		"verify:core": "npm run verify:handlers && npm run verify:core-helpers && npm run verify:model-params && npm run verify:classification-layers && npm run verify:load && npm run verify:export-report && npm run verify:bearing && npm run verify:pile && npm run verify:settlement-dewatering-beam && npm run verify:seepslope-state && npm run verify:seepslope-model && npm run verify:seepslope-run && npm run verify:seepslope-geometry && npm run verify:seepslope-canvas && npm run verify:seepslope-panels && npm run verify:project-section-tuning && npm run verify:nen6740 && npm run verify:stratigraphy && npm run verify:import-review && npm run verify:project-io && npm run verify:scia-db4 && npm run verify:qc-only && npm run verify:retaining && npm run verify:wasm && npm run verify:bishop-phase-a",
 		"test:all": "npm run check && npm run verify:core && npm run verify:tokens && npm run golden:wasm-check && npm run golden:check && npm run golden:browser && npm run test:e2e",
 		"verify:model-params": "node scripts/verify_model_params.mjs",
 		"verify:classification-layers": "node scripts/verify_classification_layers.mjs",
@@ -102,6 +102,7 @@
 		"verify:seepslope-run": "node scripts/verify_seepslope_run.mjs",
 		"verify:seepslope-geometry": "node scripts/verify_seepslope_geometry.mjs",
 		"verify:seepslope-canvas": "node scripts/verify_seepslope_canvas.mjs",
+		"verify:seepslope-panels": "node scripts/verify_seepslope_panels.mjs",
 		"verify:project-section-tuning": "node scripts/verify_project_section_tuning.mjs"
 	},
 	"devDependencies": {
