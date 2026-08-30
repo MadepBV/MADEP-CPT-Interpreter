@@ -7,10 +7,39 @@
 
 let modulePromise = null;
 
+/**
+ * Major version of the engine this build of the app speaks to (JSON schema v2: soldier piles,
+ * Belgian design branches, T_lat sets). A page that has been open across an engine rebuild keeps the
+ * *old* instance in memory while HMR swaps the JS around it — that used to surface as a cryptic
+ * "unknown wallType: soldierpile". The check below turns it into an instruction to reload.
+ */
+const REQUIRED_ENGINE_MAJOR = 2;
+
+/** Cache-buster so a rebuilt engine is never served from the HTTP cache of a long-lived tab. */
+const BUILD_TAG = (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev');
+
 function resolveRetainingWasmUrl() {
-  if (typeof self === 'undefined') return '/wasm/retaining/retaining.js';
+  if (typeof self === 'undefined') return `/wasm/retaining/retaining.js?v=${BUILD_TAG}`;
   const origin = self.location?.origin || '';
-  return `${origin}/wasm/retaining/retaining.js`;
+  return `${origin}/wasm/retaining/retaining.js?v=${BUILD_TAG}`;
+}
+
+/** Engine version string, or null for a pre-2.0 build (the export did not exist yet). */
+function engineVersion(Module) {
+  const fn = Module && Module._madepRetainingVersion;
+  if (typeof fn !== 'function') return null;
+  try { return Module.UTF8ToString(fn()); } catch { return null; }
+}
+
+function assertEngineVersion(Module) {
+  const version = engineVersion(Module);
+  const major = version ? Number.parseInt(version.split('.')[0], 10) : NaN;
+  if (Number.isFinite(major) && major >= REQUIRED_ENGINE_MAJOR) return Module;
+  throw new Error(
+    `Retaining engine ${version || '(pre-2.0)'} is older than this app expects (v${REQUIRED_ENGINE_MAJOR}). ` +
+    'The page is running an engine cached from an earlier session — reload with a hard refresh ' +
+    '(⇧⌘R on macOS, Ctrl-F5 on Windows).'
+  );
 }
 
 export async function getRetainingWasmModule() {
@@ -28,12 +57,12 @@ export async function getRetainingWasmModule() {
           const origin = typeof self !== 'undefined' && self.location?.origin
             ? self.location.origin
             : '';
-          return `${origin}/wasm/retaining/${path}`;
+          return `${origin}/wasm/retaining/${path}?v=${BUILD_TAG}`;
         }
         return path;
       }
     });
-  })();
+  })().then(assertEngineVersion);
   try {
     return await modulePromise;
   } catch (err) {
