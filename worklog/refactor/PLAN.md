@@ -73,7 +73,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
 | 17 | golden tier A solver suites + seep-slope journey | H parts 5, 7 | bishop / seepage / deformation suites, `seep-slope-journey`, `multi-cpt-journey`, `save-load-journey` | green twice | ☑ 8d80778 (467 solver/config cases; seep-slope, multi-cpt, save-load journeys; total 2 086 Node + 5 journeys) |
-| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | 18a ☑ f15b3c2 (1 110 checks) · 18b ☑ 44deb8c + fix 75878b9 (1 301 checks; draw path no longer invalidates solved results) · 18c ☑ dd4a6cb + fix e29e01a (1 255 checks) · 18d ☑ 6371c17 (geometry + probe, 1 833 checks) · 18e–g open |
+| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | 18a ☑ f15b3c2 (1 110 checks) · 18b ☑ 44deb8c + fix 75878b9 (1 301 checks; draw path no longer invalidates solved results) · 18c ☑ dd4a6cb + fix e29e01a (1 255 checks) · 18d ☑ 6371c17 (geometry + probe, 1 833 checks) · 18e ☑ 3d34e76 (canvas: view-model + 14 draw layers; 1.78 M draw calls and 19/19 browser PNGs byte-identical) · 18f–g open |
 | 19 | `style(seepslope)` | D 2d (rest) | canvas shell `.glass-float`, legends/view menu `.glass-float.acc`, `.is-computing` de-blur | visual; blur count; fps | ☐ |
 
 ### Milestone v0.9.0 — composition root and Svelte ownership
@@ -126,6 +126,7 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 - `seep-slope-journey` `09-seepage-bcs` has a lost-click race (~1 in 8, pre-existing): `waitState` only checks that `selectedEdgeKey` is non-empty, so a missed click applies the right-side head to the left edge (report 22 §5.2 has the hardening).
 - The soil-model sync converges on the third run, not the second (`normalizeWalls` one-shot prompt flag, `ensure` mesh-area drift, no-layers CPT re-importing) — monolith behaviour, pinned by goldens; behaviour commit later.
 - `dewatering.aquiferBaseDepth` string → `TypeError` on render (PLAN §4.5).
+- `pointercancel` is bound to `pointerup`, so a cancelled drag commits its geometry **and** clears solved results (found by PR 18e, kept verbatim and pinned; a real cancel needs `down` to snapshot the grabbed entity).
 - Christensen (1961) page range and the two Rekennota placeholders (SB250/SB260 version, PLAX2D sub-version) still to confirm.
 
 ### Verifier convention (learned the hard way, PR 18b/18c)
