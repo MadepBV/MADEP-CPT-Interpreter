@@ -7359,7 +7359,18 @@ function stage6BishopDrawCanvas(){
   };
   const workspace = bishop.workspace === 'seepage' ? 'seepage' : bishop.workspace === 'deformation' ? 'deformation' : 'stability';
   const deformationAnalysisType = stage6BishopNormalizedDeformationAnalysisType();
-  stage6BishopSyncSoilModel();
+  // PLAN §4 defect 3 / map §3.4 #5, §6.3 item 5: drawing a frame must not mutate the state. This
+  // used to call stage6BishopSyncSoilModel() first, so every animation frame could re-import the
+  // materials from the Stage 3/4 layers and — through the invalidation that re-import carries —
+  // silently clear the Bishop and deformation results the user was looking at (map §3.4 #9). The
+  // sync now runs only where the inputs change: the app render (stage6BishopCurrentModel at the
+  // top of renderStage6BishopApp, which is also the app-entry and CPT-switch path), every field /
+  // material / wall / drain / region / terrain-import handler, and each of the three run handlers
+  // before they build their model. By the time a frame is drawn the block is therefore already
+  // synced, and the line below is a pure read of it that yields the very model those callers
+  // built — verified by scripts/verify_seepslope_model.mjs (c). Only the volatile model cache
+  // (S.stage6Cache, not S.stage6) is written, so the hover tooltip and the pointer picking that
+  // read it stay on the frame's own model instead of re-syncing behind the user.
   const model = buildBishopModelFromStageLayers(stage6WorkingLayers(), bishop);
   S.stage6Cache.bishopModel = model;
   const displayRegions = stage6BishopDisplayRegions(model);

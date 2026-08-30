@@ -31,14 +31,15 @@
 //       Invalidate via SetField('useFemPorePressure') (message) and Clear('phreatic') (no message),
 //       InvalidateWallGeometry via SetWallField('tip.y') — the Stage 6 shell shows the bearing app
 //       during this walk so renderStage6() does not re-sync the bishop block in between
-//   (c) the draw path — after (a), N canvas frames through the two published paths that are pure
-//       draw (pointer move / leave on #stage6BishopCanvas) on a synced state and then on a state
-//       whose layers / strength set changed underneath. In PR 18b commit 1 (the pure move) this is
-//       a parity check: base and working tree must behave identically frame for frame, and the
-//       report line prints whether drawing mutated the block at all — which is PLAN §4 defect 3
-//       measured. Commit 2 (the draw stops syncing) turns it into "the working tree's block is
-//       byte-identical after every frame". Either way the renderStage6() that follows must converge
-//       both controllers to the same state (the same model from the same inputs, whoever synced).
+//   (c) the draw path (PLAN §4 defect 3) — after (a), N canvas frames through the two published
+//       paths that are pure draw (pointer move / leave on #stage6BishopCanvas) in five scenarios:
+//       a synced state, a state whose Stage 3/4 layers changed underneath, the same after the next
+//       render, a state whose strength set changed underneath, and the same after the next render.
+//       The working tree's S.stage6.bishop must be byte-identical after every frame of every
+//       scenario; on a synced state the model the frames drew must be byte-identical to the base's;
+//       for the two "changed underneath" scenarios the base is asserted to still reproduce the
+//       defect (it mutates) and the transient model difference is printed; and the renderStage6()
+//       after each scenario must converge both controllers to the same state *and* the same model.
 //   (d) working tree only: the package standalone — syncSoilModel on a copy of the pre-step state
 //       of every (a) step with the ids the controller consumed, applied with applySoilModelPatch
 //       (+ invalidateBishop when it says so), equals the controller's post-step block; the input
@@ -452,7 +453,11 @@ if (args[0] === '--dump') {
         frames.push(ser(B()) === before);
       }
     } catch (e) { error = String(e?.stack || e).split('\n').slice(0, 3).join(' | '); }
-    dump.draw.push({ label, error, frames: DRAW_FRAMES, identicalFrames: frames.filter(Boolean).length, firstChangedFrame: frames.indexOf(false), before, after: ser(B()), message: B().progress?.message ?? null, cacheChanged: ser(S().stage6Cache?.bishopModel ?? null) !== cacheBefore, rafErrors: stub.rafErrors.map((e) => e.split('\n')[0]) });
+    // `drawnModel` is the model the last frame put in the volatile cache — the picture the frames
+    // actually drew. Comparing it base vs working tree is the "the same model is used everywhere"
+    // half of PLAN §4 defect 3; `after === before` is the "no mutation" half.
+    const drawnModel = ser(S().stage6Cache?.bishopModel ?? null);
+    dump.draw.push({ label, error, frames: DRAW_FRAMES, identicalFrames: frames.filter(Boolean).length, firstChangedFrame: frames.indexOf(false), before, after: ser(B()), message: B().progress?.message ?? null, cacheChanged: drawnModel !== cacheBefore, drawnModel, rafErrors: stub.rafErrors.map((e) => e.split('\n')[0]) });
   }
   observe(dump.sync, 'draw: render before the frames', () => api.renderStage6(), { model: true });
   api.fitStage6BishopViewport();
@@ -462,10 +467,14 @@ if (args[0] === '--dump') {
   layerEdit(1, 'phi', (Number(S().layers[1].phi) || 0) + 2);
   drawFrames('layers changed underneath (signature)');
   observe(dump.sync, 'draw: render after the frames on the changed layers (both converge)', () => api.renderStage6(), { model: true });
+  drawFrames('layers changed, then re-rendered');
+  observe(dump.sync, 'draw: render after the second round of frames on the changed layers', () => api.renderStage6(), { model: true });
   fakeResults();
   B().strengthSet = 'da1_1';
   drawFrames('strength set changed underneath');
   observe(dump.sync, 'draw: render after the frames on the changed strength set (both converge)', () => api.renderStage6(), { model: true });
+  drawFrames('strength set changed, then re-rendered');
+  observe(dump.sync, 'draw: render after the second round of frames on the changed strength set', () => api.renderStage6(), { model: true });
   dump.idEvents = idEvents.length;
   unseedIds();
 
@@ -766,23 +775,41 @@ compareSteps('(b) the invalidation transitions', oldDump.invalidate, newDump.inv
   check('transitions: the wall edit invalidated everything (Bishop + deformation + seepage mesh)', parse(wall).results === null && parse(wall).seepage.mesh === null && parse(wall).seepage.result === null && parse(wall).deformation.result === null && /Retaining wall geometry updated/.test(wall.message) && wall.seepageReason === 'Wall geometry changed; rerun seepage.', JSON.stringify([wall.message, wall.seepageReason]));
 }
 
-// (c) The draw path. PR 18b commit 1 is a pure move: the draw still runs the sync, so the only
-// thing to prove here is that base and working tree behave identically frame for frame. Commit 2
-// (PLAN §4 defect 3) turns the second check into "the working tree's block is byte-identical after
-// every frame" — see report 22 §4 (c).
-console.log('\n(c) the draw path');
+// (c) The draw path — PLAN §4 defect 3, fixed by PR 18b commit 2. Two things must hold:
+//   · no mutation: N frames leave S.stage6.bishop byte-identical, in *every* scenario, including
+//     the one where the Stage 3/4 layers or the strength set changed under a drawn canvas (that is
+//     exactly where the base re-imported the materials and cleared the results mid-frame);
+//   · the same model everywhere: whenever the block entering the frames is synced — which is what
+//     every caller of the draw guarantees — the model the frames drew is byte-identical to the
+//     base's. The two "changed underneath" scenarios are the transient the fix creates: until the
+//     next render the drawn model is built from the state as the user left it, not from a state
+//     the draw silently rewrote. The scenario that follows each of them ("… then re-rendered")
+//     proves the transient closes on the very next render.
+const DRAW_SYNCED_SCENARIOS = ['synced state', 'layers changed, then re-rendered', 'strength set changed, then re-rendered'];
+console.log('\n(c) the draw path (PLAN §4 defect 3)');
 {
   check('(c) same scenario list', JSON.stringify(oldDump.draw.map((d) => d.label)) === JSON.stringify(newDump.draw.map((d) => d.label)));
   newDump.draw.forEach((n, i) => {
     const o = oldDump.draw[i] || {};
     check(`draw ${n.label}: no exception (${n.frames} frames)`, !n.error && !o.error, n.error || o.error || '');
-    check(`draw ${n.label}: base and working tree agree frame for frame (${n.identicalFrames}/${n.frames} left the block identical)`,
-      o.before === n.before && o.after === n.after && o.identicalFrames === n.identicalFrames && o.message === n.message && o.cacheChanged === n.cacheChanged,
-      `${firstDiff(o.after, n.after) || ''} identical ${o.identicalFrames} → ${n.identicalFrames}, cacheChanged ${o.cacheChanged} → ${n.cacheChanged}`);
-    console.log(`       drawing ${n.frames} frames changed the block: ${n.identicalFrames === n.frames ? 'no' : `yes, from frame ${n.firstChangedFrame} — ${firstDiff(n.before, n.after)}`}`);
+    check(`draw ${n.label}: the block entering the frames is the base's (compared in (a))`, o.before === n.before, firstDiff(o.before, n.before));
+    check(`draw ${n.label}: working tree — every frame leaves S.stage6.bishop byte-identical (${n.identicalFrames}/${n.frames})`,
+      n.identicalFrames === n.frames && n.before === n.after,
+      `first changed frame ${n.firstChangedFrame}: ${firstDiff(n.before, n.after)}`);
+    if (DRAW_SYNCED_SCENARIOS.includes(n.label)) {
+      check(`draw ${n.label}: the model the frames drew is byte-identical to the base's`, o.drawnModel === n.drawnModel, firstDiff(o.drawnModel, n.drawnModel));
+    } else {
+      check(`draw ${n.label}: the base mutated the block here (the defect) and the working tree did not`, o.identicalFrames < o.frames, `base left ${o.identicalFrames}/${o.frames} frames identical — the scenario no longer reproduces the defect`);
+      console.log(`       base changed the block from frame ${o.firstChangedFrame}: ${firstDiff(o.before, o.after)}`);
+      console.log(`       transient model difference until the next render: ${firstDiff(o.drawnModel, n.drawnModel) || 'none'}`);
+    }
   });
-  const converge = (l) => newDump.sync.find((o) => o.label.startsWith(l)) && oldDump.sync.find((o) => o.label.startsWith(l));
-  check('draw: the render after the frames converges both controllers (compared in (a))', ['draw: render after the frames on the changed layers', 'draw: render after the frames on the changed strength set'].every((l) => converge(l) && newDump.sync.find((o) => o.label.startsWith(l)).bishop === oldDump.sync.find((o) => o.label.startsWith(l)).bishop));
+  const both = (l) => [oldDump.sync.find((o) => o.label.startsWith(l)), newDump.sync.find((o) => o.label.startsWith(l))];
+  const convergeLabels = ['draw: render after the frames on the changed layers', 'draw: render after the frames on the changed strength set',
+    'draw: render after the second round of frames on the changed layers', 'draw: render after the second round of frames on the changed strength set'];
+  check(`draw: the render after the frames converges both controllers, state and model (${convergeLabels.length} steps)`,
+    convergeLabels.every((l) => { const [o, n] = both(l); return o && n && o.bishop === n.bishop && o.model === n.model; }),
+    convergeLabels.filter((l) => { const [o, n] = both(l); return !(o && n && o.bishop === n.bishop && o.model === n.model); }).join('; '));
 }
 
 console.log('\n(d) the package standalone (working tree)');
