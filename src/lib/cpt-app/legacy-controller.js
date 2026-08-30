@@ -137,18 +137,9 @@ import {
   installLayersApp
 } from './layers/index.js';
 import {
-  createStage6Registry,
-  defaults as stage6StateDefaults,
-  ensureCpt as stage6EnsureCpt,
-  layerBottom as stage6LayerBottom,
   get as stage6Get,
   set as stage6Set,
-  uiState as stage6UiState,
-  rememberDetailsState as stage6RememberDetails,
-  detailsOpen as stage6DetailsOpenOf,
-  setDetailsOpen as stage6SetDetailsOpenOf,
-  setField as stage6SetField,
-  createStage6Shell
+  installStage6App
 } from './stage6/index.js';
 import {
   installBearingApp,
@@ -514,16 +505,16 @@ const beamApp = installBeamApp({
 // beam/ packages (step 7); the bishop body is still this file's render function until step 9. All
 // are handed to the shell as closures keyed by app id (unknown ids fall back to beam, the `else`
 // branch of the old chain). Hoisted function references only — nothing runs here.
-const stage6Registry = createStage6Registry({
+const stage6App = installStage6App({
+  document,
+  getActive: () => S,
   retaining: retainingApp,
-  bishopEnabled: () => stage6BishopEnabled()
-});
-const stage6Shell = createStage6Shell({
-  registry: stage6Registry,
-  getState: () => S,
-  ensure: () => ensureStage6State(),
-  rememberDetailsState: () => stage6RememberDetailsState(),
+  bishopEnabled: () => stage6BishopEnabled(),
   workingLayers: () => stage6WorkingLayers(),
+  hardeningSoilUi: STAGE6_ENABLE_HARDENING_SOIL_UI,
+  // The one Seep/Slope helper the state migration calls back into (seepslope/state/ensure.js).
+  deformationQuantityIds: (analysisType, hasHs) => stage6BishopDeformationQuantityIds(analysisType, hasHs),
+  refreshBearingPreview: () => refreshStage6BearingPreview(),
   apps: {
     bearing: {
       compute: (layers) => bearingApp.compute(layers),
@@ -560,6 +551,23 @@ const stage6Shell = createStage6Shell({
     }
   }
 });
+const {
+  registry: stage6Registry,
+  defaults: stage6Defaults,
+  ensure: ensureStage6State,
+  ensureCtx: stage6EnsureCtx,
+  maxDepth: stage6MaxDepth,
+  rememberDetailsState: stage6RememberDetailsState,
+  detailsOpen: stage6DetailsOpen,
+  setDetailsOpen: stage6SetDetailsOpen,
+  uiState: stage6BishopUiState,
+  setStage6Field,
+  setStage6App,
+  render: renderStage6,
+  cardsHtml: stage6CardsHtml,
+  sharedBanner: stage6SharedBanner,
+  appIcon: stage6AppIcon
+} = stage6App;
 
 // Multi-CPT stratigraphy application (Correlatie phase + Doorsnede geometry).
 // Self-contained module (src/lib/cpt-app/stratigraphy/) wired via a small
@@ -835,7 +843,8 @@ const modelParamsApp = installModelParamsApp({
 });
 const {
   modelCtx, stressAt, hsParams, khParams, renderModel,
-  setAlphaMethod, setStiffMethod, setKhKvMethod
+  setAlphaMethod, setStiffMethod, setKhKvMethod,
+  workingLayers: stage6WorkingLayers
 } = modelParamsApp;
 
 /* ════════════════════════════════
@@ -869,55 +878,10 @@ const {
 
 /* ════════════════════════════════
    STAGE 6 — APPLICATIONS
+   The shell (registry, state schema, <details> memory, field setters, the one re-render path)
+   is src/lib/cpt-app/stage6/, installed at the top of this file; the bishop UI toggles below
+   still belong to the Seep/Slope app.
 ════════════════════════════════ */
-function stage6Defaults(){
-  return stage6StateDefaults(stage6Registry);
-}
-
-const stage6WorkingLayers = modelParamsApp.workingLayers;
-
-function stage6MaxDepth(){
-  return stage6LayerBottom(S);
-}
-
-function ensureStage6State(){
-  stage6EnsureCpt(S, stage6EnsureCtx());
-}
-
-// Host hooks of the composed ensure(): the registry, the hardening-soil UI gate and the one
-// bishop helper the seepslope/state migration still calls into this file (the deformation
-// quantity list lives in the deformation-contours region until step 9b/9d; seepslope/state/ensure.js
-// header). The surface-load shape migration is the package's own since PR 18a.
-function stage6EnsureCtx(){
-  return {
-    registry: stage6Registry,
-    hardeningSoilUi: STAGE6_ENABLE_HARDENING_SOIL_UI,
-    deformationQuantityIds: stage6BishopDeformationQuantityIds
-  };
-}
-
-function stage6RememberDetailsState(){
-  const root = document.getElementById('stage6Area');
-  if(!root) return;
-  ensureStage6State();
-  stage6RememberDetails(S.stage6, root);
-}
-
-function stage6DetailsOpen(key){
-  ensureStage6State();
-  return stage6DetailsOpenOf(S.stage6, key);
-}
-
-function stage6SetDetailsOpen(key, open = true){
-  ensureStage6State();
-  stage6SetDetailsOpenOf(S.stage6, key, open);
-}
-
-function stage6BishopUiState(){
-  ensureStage6State();
-  return stage6UiState(S.stage6);
-}
-
 function stage6BishopToggleSettingsPanel(force){
   ensureStage6State();
   stage6RememberDetailsState();
@@ -1027,25 +991,6 @@ function stage6BishopOpenSettingsDetail(key){
   ui.bishopActiveCanvasSheet = sheet;
   ui.bishopCanvasToolsHidden = false;
   stage6SetDetailsOpen(key, true);
-  renderStage6();
-}
-
-function setStage6Field(field, value){
-  ensureStage6State();
-  stage6RememberDetailsState();
-  stage6SetField(S.stage6, stage6Defaults(), field, value);
-  if(field === 'bearing.Df' && S.stage6.app === 'bearing'){
-    refreshStage6BearingPreview();
-    return;
-  }
-  renderStage6();
-}
-
-function setStage6App(app){
-  ensureStage6State();
-  stage6RememberDetailsState();
-  if(app === 'bishop' && !stage6BishopEnabled()) return;
-  S.stage6.app = app;
   renderStage6();
 }
 
@@ -3898,18 +3843,6 @@ function refreshStage6BearingPreview(){
   bearingApp.refreshPreview();
 }
 
-function stage6SharedBanner(){
-  return stage6Shell.sharedBanner();
-}
-
-function stage6AppIcon(id){
-  return stage6Shell.appIcon(id);
-}
-
-function stage6CardsHtml(app){
-  return stage6Shell.cardsHtml(app);
-}
-
 // =====================================================================
 // Stage 6 — Pile Estimator (Option A++ interactive section view)
 // =====================================================================
@@ -4028,10 +3961,6 @@ function renderStage6BishopApp(){
   const vm = seepslopeBuildPanelsViewModel({bishop, bishopUi, model, modeMeta, selected}, SEEPSLOPE_PANELS_ENV);
   S.stage6Cache.bishopLineProbe = vm.lineProbe;
   return seepslopeBishopAppHtml(vm, SEEPSLOPE_PANELS_ENV);
-}
-
-function renderStage6(){
-  stage6Shell.render();
 }
 
 function buildStage6BearingChart(){
