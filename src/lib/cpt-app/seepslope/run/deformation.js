@@ -59,11 +59,18 @@ export function deformationAnalysisType(bishop){
   return bishop.deformation?.options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
 }
 
-/** The state a rejected attempt writes: the reason and a failed status. */
+/**
+ * The state a rejected attempt writes: the reason, a failed status, and the run flag cleared.
+ *
+ * `deformation.progress.running = false` is a **behaviour fix** (PR 18c commit 2); see
+ * seepage.js seepageRejectionPatch for the same reasoning. Both pre-flight rejections returned
+ * before stage6BishopStopDeformation(true).
+ */
 export function deformationRejectionPatch(rejection){
   return {
     'deformation.rejectReason': rejection.message,
-    'deformation.status': 'failed'
+    'deformation.status': 'failed',
+    'deformation.progress.running': false
   };
 }
 

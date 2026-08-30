@@ -48,11 +48,20 @@ export const SEEPAGE_INTERRUPT_MESSAGE = 'Seepage interrupted before the first s
 const NO_EFFECTS = Object.freeze({ render: false, drawCanvas: false, updateProgressDom: false });
 const RENDER_EFFECTS = Object.freeze({ render: true, drawCanvas: false, updateProgressDom: false });
 
-/** The state a rejected attempt writes: the reason and a failed status. */
+/**
+ * The state a rejected attempt writes: the reason, a failed status, and the run flag cleared.
+ *
+ * `seepage.progress.running = false` is a **behaviour fix** (PR 18c commit 2). All four pre-flight
+ * rejections returned before stage6BishopStopSeepage(true), so a Run pressed on a state that had
+ * become un-runnable while a solve was in flight left `status: 'failed'` next to
+ * `progress.running: true` — a panel showing a failure and a running spinner at once. A run that
+ * refuses to start clears its own flag.
+ */
 export function seepageRejectionPatch(rejection){
   return {
     'seepage.rejectReason': rejection.message,
-    'seepage.status': 'failed'
+    'seepage.status': 'failed',
+    'seepage.progress.running': false
   };
 }
 

@@ -51,9 +51,17 @@ export function searchRejection(bishop, model){
   return null;
 }
 
-/** The state a rejected attempt writes: the reason on the progress line. */
+/**
+ * The state a rejected attempt writes: the reason on the progress line, and the run flag cleared.
+ *
+ * `progress.running = false` is a **behaviour fix** (PR 18c commit 2). The monolith's two
+ * pre-flight rejections returned before stage6BishopStopSearch(true), so pressing Run on a state
+ * that had become un-runnable while a search was in flight left `progress.running = true` with
+ * the reason on the line: the progress bar kept animating and the canvas kept drawing the preview
+ * circle of a run whose result would be dropped. A run that refuses to start clears its own flag.
+ */
 export function searchRejectionPatch(rejection){
-  return { 'progress.message': rejection.message };
+  return { 'progress.message': rejection.message, 'progress.running': false };
 }
 
 /** Pre-flight: may this attempt post, and what does it write either way. */

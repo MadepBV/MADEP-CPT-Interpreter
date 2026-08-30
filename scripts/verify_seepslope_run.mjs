@@ -367,11 +367,16 @@ if (args[0] === '--dump') {
   observe('reject: exit zone cleared too', () => { B().exitZone = null; });
   observe('reject: RunSearch with neither zone', () => api.stage6BishopRunSearch(), { record: 'search' });
   observe('reject: zones back', () => { Object.assign(B(), clone(CPT_TERRAIN)); });
-  observe('reject: BCs orphaned', () => { for (const bc of B().seepage.bcs) bc.status = 'orphaned'; });
-  observe('reject: RunSeepage with only orphaned BCs', () => api.stage6BishopRunSeepage(), { record: 'seepage' });
-  observe('reject: BCs back, but as flux', () => { for (const bc of B().seepage.bcs) { bc.status = 'active'; bc.type = 'flux'; } });
+  // `bc.status = 'orphaned'` does not stick — stage6BishopSyncSeepageState re-derives the status
+  // from the boundary on the next sync — so the two "no head BC" scenarios are a type change and
+  // an empty list, both of which survive to the pre-flight.
+  let savedBcs = null;
+  observe('reject: BCs turned into flux BCs', () => { for (const bc of B().seepage.bcs) bc.type = 'flux'; });
   observe('reject: RunSeepage without a head BC', () => api.stage6BishopRunSeepage(), { record: 'seepage' });
+  observe('reject: BCs removed altogether', () => { savedBcs = clone(B().seepage.bcs); B().seepage.bcs = []; });
+  observe('reject: RunSeepage without any BC', () => api.stage6BishopRunSeepage(), { record: 'seepage' });
   observe('reject: head BCs back, free surface fixed without a phreatic line', () => {
+    B().seepage.bcs = clone(savedBcs);
     for (const bc of B().seepage.bcs) bc.type = 'head';
     B().seepage.options.freeSurface = 'fixed';
     B().phreatic = [];
@@ -400,6 +405,37 @@ if (args[0] === '--dump') {
   observe('no-worker: RunSeepage', () => api.stage6BishopRunSeepage(), { record: 'seepage' });
   observe('no-worker: RunDeformation', () => api.stage6BishopRunDeformation(), { record: 'deformation' });
   observe('no-worker: Worker back', () => { installWorker(); });
+
+  // ── (b2) the behaviour fix of PR 18c commit 2: a rejected attempt clears its own run flag.
+  // Every pre-flight rejection of the monolith returned *before* the silent stop the handler
+  // makes on its way to the worker, so a Run pressed on a state that had become un-runnable
+  // while a run was in flight left `progress.running = true` next to the failure reason. These
+  // steps are the only ones where base and working tree may differ, and only in that flag.
+  await classify(WALK_FIXTURE);
+  makeRunnable();
+  dump.runningFix = {};
+  const launched = {};
+  observe('running-fix: RunSearch launched (a search is now in flight)', () => api.stage6BishopRunSearch());
+  launched.search = B().progress.running;
+  observe('running-fix: terrain removed under the running search', () => { B().terrain = [{ x: 0, y: 4 }]; });
+  observe('running-fix: RunSearch rejected while a search is in flight', () => api.stage6BishopRunSearch());
+  dump.runningFix.search = { launched: launched.search, afterReject: B().progress.running, message: B().progress.message };
+  // a silent stop brings both trees back together, so the divergence cannot leak into later steps
+  observe('running-fix: silent stop after the search rejection (both trees converge)', () => { api.stage6BishopStopSearch(true); api.renderStage6(); });
+  observe('running-fix: terrain back', () => { Object.assign(B(), clone(CPT_TERRAIN)); api.renderStage6(); });
+  observe('running-fix: RunSeepage launched (a solve is now in flight)', () => api.stage6BishopRunSeepage());
+  launched.seepage = B().seepage.progress.running;
+  observe('running-fix: terrain removed under the running solve', () => { B().terrain = [{ x: 0, y: 4 }]; });
+  observe('running-fix: RunSeepage rejected while a solve is in flight', () => api.stage6BishopRunSeepage());
+  dump.runningFix.seepage = { launched: launched.seepage, afterReject: B().seepage.progress.running, status: B().seepage.status, message: B().seepage.rejectReason };
+  observe('running-fix: silent stop after the seepage rejection (both trees converge)', () => { api.stage6BishopStopSeepage(true); api.renderStage6(); });
+  observe('running-fix: terrain back for the deformation scenario', () => { Object.assign(B(), clone(CPT_TERRAIN)); api.renderStage6(); });
+  observe('running-fix: RunDeformation launched (a solve is now in flight)', () => api.stage6BishopRunDeformation());
+  launched.deformation = B().deformation.progress.running;
+  observe('running-fix: terrain removed under the running deformation solve', () => { B().terrain = [{ x: 0, y: 4 }]; });
+  observe('running-fix: RunDeformation rejected while a solve is in flight', () => api.stage6BishopRunDeformation());
+  dump.runningFix.deformation = { launched: launched.deformation, afterReject: B().deformation.progress.running, status: B().deformation.status, message: B().deformation.rejectReason };
+  observe('running-fix: silent stop after the deformation rejection (both trees converge)', () => { api.stage6BishopStopDeformation(true); api.renderStage6(); });
 
   // ── (c) the replies, run by run
   await classify(WALK_FIXTURE);
@@ -763,8 +799,28 @@ function firstDiff(aJson, bJson) {
   };
   return walk(a, b, '') || 'texts differ (whitespace?)';
 }
+/** Every leaf difference between two JSON texts (firstDiff, but exhaustive). */
+function allDiffs(aJson, bJson) {
+  if (aJson === bJson) return [];
+  let a, b;
+  try { a = JSON.parse(aJson); b = JSON.parse(bJson); } catch { return ['<unparseable>']; }
+  const out = [];
+  const walk = (x, y, path) => {
+    if (x === y) return;
+    if (typeof x !== typeof y || x === null || y === null || typeof x !== 'object') { out.push(`${path || '<root>'}: ${JSON.stringify(x)} → ${JSON.stringify(y)}`); return; }
+    const kx = Object.keys(x), ky = Object.keys(y);
+    if (kx.join(' ') !== ky.join(' ')) { out.push(`${path || '<root>'}: key set/order ${JSON.stringify(kx)} → ${JSON.stringify(ky)}`); return; }
+    for (const k of kx) walk(x[k], y[k], path ? `${path}.${k}` : k);
+  };
+  walk(a, b, '');
+  return out;
+}
 const errorMessage = (e) => (e ? String(e).split(' | ')[0] : null);
 const j = (v) => JSON.stringify(v);
+// PR 18c commit 2: the only steps where the working tree is allowed to differ from the base, and
+// only by clearing the run's own `progress.running` (see the "running-fix" group in the child).
+const RUNNING_FIX_STEP = /^running-fix: Run\w+ rejected while a (search|solve) is in flight$/;
+const RUNNING_FIX_PATH = { RunSearch: 'progress.running', RunSeepage: 'seepage.progress.running', RunDeformation: 'deformation.progress.running' };
 
 const tmp = mkdtempSync(join(tmpdir(), 'verify-seepslope-run-'));
 const materialised = [];
@@ -799,14 +855,32 @@ oldDump.steps.forEach((o, i) => {
   const n = newDump.steps[i] || {};
   const p = `step ${String(i + 1).padStart(3, '0')} ${o.label}`;
   check(`${p}: exception identical (${errorMessage(o.error) || 'none'})`, errorMessage(o.error) === errorMessage(n.error), `${errorMessage(o.error)} → ${errorMessage(n.error)}`);
-  check(`${p}: S.stage6.bishop deep-equal + key order`, o.bishop === n.bishop, firstDiff(o.bishop, n.bishop));
+  if (RUNNING_FIX_STEP.test(o.label)) {
+    // The one intended behaviour change: the run flag, and nothing else.
+    const path = RUNNING_FIX_PATH[o.label.split(' ')[1]];
+    const diffs = allDiffs(o.bishop, n.bishop);
+    check(`${p}: differs from the base ONLY by clearing ${path} (the PR 18c commit 2 fix)`,
+      diffs.length === 1 && diffs[0] === `${path}: true → false`, j(diffs));
+  } else {
+    check(`${p}: S.stage6.bishop deep-equal + key order`, o.bishop === n.bishop, firstDiff(o.bishop, n.bishop));
+  }
   check(`${p}: worker messages posted deep-equal (${o.workerEvents.length} events)`, j(o.workerEvents) === j(n.workerEvents), firstDiff(j(o.workerEvents), j(n.workerEvents)));
   check(`${p}: workers built identical`, j(o.workersBuilt.map((w) => w.file)) === j(n.workersBuilt.map((w) => w.file)) && j(o.workersBuilt.map((w) => w.options)) === j(n.workersBuilt.map((w) => w.options)),
     `${j(o.workersBuilt)} → ${j(n.workersBuilt)}`);
-  check(`${p}: status strings + progress DOM identical`,
-    j([o.message, o.seepageReason, o.seepageStatus, o.deformationReason, o.deformationStatus, o.deformationMessage, o.progressDom, o.progressBar]) ===
-    j([n.message, n.seepageReason, n.seepageStatus, n.deformationReason, n.deformationStatus, n.deformationMessage, n.progressDom, n.progressBar]),
-    `${j([o.message, o.deformationMessage, o.progressDom, o.progressBar])} → ${j([n.message, n.deformationMessage, n.progressDom, n.progressBar])}`);
+  const statusStrings = (s) => [s.message, s.seepageReason, s.seepageStatus, s.deformationReason, s.deformationStatus, s.deformationMessage, s.progressBar];
+  if (RUNNING_FIX_STEP.test(o.label)) {
+    // Clearing the search flag also changes what the progress line shows: the base keeps
+    // rendering the "N/M Bishop trials" line of a run that is not coming back, the working tree
+    // shows the rejection message. That is the visible half of the fix.
+    check(`${p}: status strings identical; the progress line either matches or shows the message instead of a dead trial counter`,
+      j(statusStrings(o)) === j(statusStrings(n))
+      && (o.progressDom === n.progressDom || (/Bishop trials/.test(o.progressDom) && n.progressDom === n.message)),
+      `${j([statusStrings(o), o.progressDom])} → ${j([statusStrings(n), n.progressDom])}`);
+  } else {
+    check(`${p}: status strings + progress DOM identical`,
+      j(statusStrings(o).concat(o.progressDom)) === j(statusStrings(n).concat(n.progressDom)),
+      `${j([o.message, o.deformationMessage, o.progressDom, o.progressBar])} → ${j([n.message, n.deformationMessage, n.progressDom, n.progressBar])}`);
+  }
   check(`${p}: app / rAF errors / alerts / id events identical`, j([o.app, o.rafErrors, o.alerts, o.idEvents]) === j([n.app, n.rafErrors, n.alerts, n.idEvents]),
     `${j([o.app, o.rafErrors, o.alerts, o.idEvents])} → ${j([n.app, n.rafErrors, n.alerts, n.idEvents])}`);
   if ('area' in o) check(`${p}: #stage6Area byte-identical (${String(o.area).length} chars)`, o.area === n.area, firstTextDiff(o.area, n.area));
@@ -854,6 +928,18 @@ check('same number of Date.now() / Math.random() calls over the whole walk', old
   });
   check(`a reply whose runId is not the block's current one changes nothing (${stale.length} steps)`, stale.length >= 5 && staleUnchanged.length === stale.length,
     stale.filter((s) => !staleUnchanged.includes(s)).map((s) => `${s.label}: ${firstDiff(newDump.steps[newDump.steps.indexOf(s) - 1].bishop, s.bishop)}`).join('; '));
+}
+
+// ── (b2) the behaviour fix of PR 18c commit 2
+console.log('\n(b2) a rejected run clears its own progress.running (PR 18c commit 2)');
+for (const kind of ['search', 'seepage', 'deformation']) {
+  const o = oldDump.runningFix[kind];
+  const n = newDump.runningFix[kind];
+  check(`${kind}: the scenario really had a run in flight and produced the same rejection in both trees`,
+    o.launched === true && n.launched === true && o.message === n.message && o.message !== '' && (o.status ?? null) === (n.status ?? null),
+    `${j(o)} → ${j(n)}`);
+  check(`${kind}: the base leaves progress.running = true after the rejection (the defect) and the working tree clears it`,
+    o.afterReject === true && n.afterReject === false, `base ${o.afterReject} → tree ${n.afterReject}`);
 }
 
 // ── (e) terminate on CPT switch — PLAN §4 defect 2 (fixed in PR 14, must still hold)
@@ -982,9 +1068,10 @@ console.log('\n(f) the package standalone (working tree)');
   const r = p.rejections;
   check('the pure rejections match the monolith strings and the pre-flight order',
     r.searchNoModel.reason === 'no-model' && r.searchNoZones.reason === 'no-zones' && r.searchNoExit.reason === 'no-zones' && r.searchOk === null
-    && j(r.searchNoWorker) === j({ 'progress.message': 'Web Worker is not available in this browser context.' })
-    && j(r.seepageNoWorker) === j({ 'seepage.rejectReason': 'Web Worker is not available in this browser context.', 'seepage.status': 'failed' })
-    && j(r.deformationNoWorker) === j({ 'deformation.rejectReason': 'Web Worker is not available in this browser context.', 'deformation.status': 'failed' })
+    // the `*.progress.running: false` is the PR 18c commit 2 fix
+    && j(r.searchNoWorker) === j({ 'progress.message': 'Web Worker is not available in this browser context.', 'progress.running': false })
+    && j(r.seepageNoWorker) === j({ 'seepage.rejectReason': 'Web Worker is not available in this browser context.', 'seepage.status': 'failed', 'seepage.progress.running': false })
+    && j(r.deformationNoWorker) === j({ 'deformation.rejectReason': 'Web Worker is not available in this browser context.', 'deformation.status': 'failed', 'deformation.progress.running': false })
     && j(r.deformationAnalysisType) === j(['safety-cphi', 'deformation', 'deformation']),
     j(r));
 }
