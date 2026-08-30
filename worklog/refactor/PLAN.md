@@ -80,7 +80,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
-| 20 | `refactor(host): composition root` | R step 10 | delete `legacyApi`, per-package `handlers`, typed `ctx`, no module-load side effects, `#bishop` hash into `project/phase.js` | all gates; new smoke spec through all 7 stages | ☐ |
+| 20 | `refactor(host): composition root` | R step 10 | delete `legacyApi`, per-package `handlers`, typed `ctx`, no module-load side effects, `#bishop` hash into `project/phase.js` | all gates; new smoke spec through all 7 stages | ☑ 28cfceb…7ab2ea5 (nine commits; controller 5 488 → **673 lines**; legacyApi replaced by per-package handlers, all 179 published names bit-identical) |
 | 21 | `style(docs, reports)` | D 2h | `docs.css` on tokens + components, report toolbars; `--rpt-*` untouched | print gates; visual | ☐ |
 | 22 | `feat(ui): Svelte re-owns shell + tables` | D phase 3 | `StageRail.svelte`, `TopBar.svelte` (store-driven state, theme toggle), `LayerTable.svelte`, then per churn × pain | visual; a11y (axe) 0 serious | ☐ |
 | 23 | `feat(ui): polish` | D phase 4 | sliding tab indicator, count-up governing values, toast queue, keyboard handle nudging, `<dialog>` everywhere, density toggle | visual; a11y | ☐ |
@@ -147,3 +147,16 @@ historical proof. `verify_seepslope_model.mjs` and `verify_seepslope_run.mjs` fo
 ignores `.svelte-kit/{output,generated}` and `build/` in the watcher. An agent worktree with a symlinked
 `node_modules` therefore serves the SvelteKit client entry instead of 403-ing it, and a build next to a
 running server no longer breaks a browser suite. Scratch configs are no longer needed.
+
+### Milestone: the monolith is gone (2026-08-30)
+
+`legacy-controller.js` is **673 lines** of composition root — 18 503 at v0.5.3. Eighteen packages under
+`src/lib/cpt-app/`, each with a Node verifier that compares it byte-for-byte against the previous
+controller. Deferred deliberately:
+
+- the rename to `host/controller.js` — ten verifiers materialise the *base* controller into
+  `src/lib/cpt-app/` and four append an identical `export {…}` block to both copies; the rename becomes a
+  one-line change in 18 places once the base ref advances past PR 20 (next PR).
+- `seepslope/host.js` is 2 538 lines in one closure on purpose (≈230 mutually recursive names moved
+  verbatim); splitting it into `host/{ui,entities,seepage,model,runs,canvas,panels,report}.js` is cheap
+  and safe now that the byte-exact verifiers exist.
