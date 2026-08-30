@@ -512,12 +512,13 @@ async function testNonHsRegression(mod) {
 // ---------------------------------------------------------------------------
 
 function loadLegacyHelpers() {
-  // The controller is one big script with no public exports for the
-  // stage6 helpers, so we slice the function definitions out of the
-  // source and eval them in a tiny sandbox. The functions we care about
-  // are pure (no DOM, no fetch); they only touch a top-level `S` object
-  // when no explicit `analysisType` is passed, which we stub to {}.
-  const controllerPath = resolve(repoRoot, 'src/lib/cpt-app/legacy-controller.js');
+  // The deformation contour catalogue is a factory (createDeformationContours(env)) with no
+  // public exports for the individual helpers, so we slice the function definitions out of the
+  // source and eval them in a tiny sandbox. The functions we care about are pure (no DOM, no
+  // fetch); they only reach for the run's own analysis type when no explicit `analysisType` is
+  // passed, which we stub to undefined — the same fallback the old `const S = {}` stub gave.
+  // (PR 20 moved them out of legacy-controller.js into seepslope/contours/deformation.js.)
+  const controllerPath = resolve(repoRoot, 'src/lib/cpt-app/seepslope/contours/deformation.js');
   const source = readFileSync(controllerPath, 'utf-8');
 
   function sliceFunction(name) {
@@ -541,7 +542,7 @@ function loadLegacyHelpers() {
   }
 
   const code = [
-    'const S = {};',
+    'const env = { currentAnalysisType: () => undefined };',
     sliceFunction('stage6BishopNormalizedDeformationAnalysisType'),
     sliceFunction('stage6BishopDeformationQuantityIds'),
     sliceFunction('stage6BishopDeformationContourMeta'),
