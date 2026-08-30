@@ -35,7 +35,6 @@ import {
 } from './seepage/drains';
 import { contourSegmentsForTriangles } from './seepage/solver';
 import { normalizeRegionPolygon } from './soil-regions';
-import { sampleDeformationState } from './deformation/solver.js';
 import { wallResultIsStale } from './deformation/wall-result-staleness.js';
 import {
   buildBearingChartConfig,
@@ -79,6 +78,7 @@ import { installProjectIO } from './project-io/index.js';
 // The guards whose text a golden locks — the export / Stage 7 preconditions and the PLAXIS nu note,
 // which gates a download that then proceeds — deliberately keep `alert()`; see worklog 25 §3.
 import { toast } from '../styles/toast.ts';
+import { seepslopeVizSeries } from '../styles/theme.ts';
 import {
   escAttr as stage6EscAttr,
   escJsString as stage6EscJsString,
@@ -395,6 +395,40 @@ import {
   integrateLineProbe as stage6BishopIntegrateLineProbe,
   buildLineProbe as seepslopeBuildLineProbe
 } from './seepslope/probe/index.js';
+// Seep / Slope canvas package (refactor step 9e / PR 18e, src/lib/cpt-app/seepslope/canvas/):
+// the viewport (world ↔ screen, fit, zoom / pan, every px → world tolerance), the picking and
+// snapping, the {down, move, up, cancel} pointer state machine, the pure view model and the
+// fourteen `draw/*` layers behind one sequencer. Every monolith name below survives as a façade in
+// the canvas region: they own `S`, the canvas element, the device-pixel ratio, the model cache and
+// the tooltip DOM — the package owns everything else, and reads none of them.
+import {
+  worldToScreen as seepslopeWorldToScreen,
+  screenToWorldFromClient as seepslopeScreenToWorldFromClient,
+  snapToleranceWorld as seepslopeSnapToleranceWorld,
+  boundaryPickToleranceWorld as seepslopeBoundaryPickToleranceWorld,
+  canvasWorldBounds as seepslopeCanvasWorldBounds,
+  fitViewport as seepslopeFitViewport,
+  gridSpec as seepslopeGridSpec,
+  currentDragKey as seepslopeCurrentDragKey,
+  snapPointKey as seepslopeSnapPointKey,
+  collectSnapPoints as seepslopeCollectSnapPoints,
+  nearestPointSnap as seepslopeNearestPointSnap,
+  snapWorldPoint as seepslopeSnapWorldPoint,
+  nearestHandle as seepslopeNearestHandle,
+  pickSurfaceLoadAtWorld as seepslopePickSurfaceLoadAtWorld,
+  pickWallAtWorld as seepslopePickWallAtWorld,
+  commitDrawPoint as seepslopeCommitDrawPoint,
+  completeCurrentActionAt as seepslopeCompleteCurrentActionAt,
+  hoverUpdate as seepslopeHoverUpdate,
+  pointerDown as seepslopePointerDown,
+  pointerMove as seepslopePointerMove,
+  pointerUp as seepslopePointerUp,
+  pointerLeave as seepslopePointerLeave,
+  wheel as seepslopeWheel,
+  buildCanvasViewModel as seepslopeBuildCanvasViewModel,
+  drawCanvasFrame as seepslopeDrawCanvasFrame,
+  drawGrid as seepslopeDrawGrid
+} from './seepslope/canvas/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -5221,8 +5255,9 @@ function stage6BishopCanvasToolRailHtml(context){
 // file, the six below as façades, because they read `S`, the canvas viewport, or a catalogue of a
 // region that is not extracted yet (the deformation and seepage contour metas, map §2.11).
 // Staying here on purpose: stage6CopyTextFallback / stage6CopyTextToClipboard (browser clipboard
-// APIs), stage6BishopCopyLineProbeData (a handler: state + render) and
-// stage6BishopBoundaryPickToleranceWorld (the canvas viewport — step 9e).
+// APIs) and stage6BishopCopyLineProbeData (a handler: state + render).
+// stage6BishopBoundaryPickToleranceWorld became a one-liner over seepslope/canvas/viewport.js in
+// PR 18e (report 26 finding 2); it lives in the canvas region below with the rest of the viewport.
 
 /** The host values seepslope/probe cannot own yet; see seepslope/probe/index.js for the contract. */
 const SEEPSLOPE_PROBE_ENV = {
@@ -5319,8 +5354,22 @@ function stage6BishopDisplayRegions(model){
   return seepslopeDisplayRegions(model, S?.stage6?.bishop);
 }
 
+// ───────────────────────── seepslope/canvas façades (refactor step 9e / PR 18e) ─────────────────────────
+// The section canvas moved to src/lib/cpt-app/seepslope/canvas/**: the viewport (world ↔ screen,
+// fit, zoom / pan, every px → world tolerance), the picking and snapping, the pointer state
+// machine, the view model and the fourteen draw layers. What is left here is the host half the
+// package cannot own — `S`, the canvas element, the device-pixel ratio, the model cache, the
+// tooltip DOM and the theme — plus a façade under every monolith name.
+//
+// Two host objects carry what the package needs from regions that are not extracted yet
+// (the contour catalogues, the wall-response overlay, the seepage BC lookup — map §2.11) and the
+// handlers a gesture ends in: SEEPSLOPE_CANVAS_ENV (draw-time reads, one per frame) and
+// seepslopeCanvasEnv(canvas) (a gesture's effects). Both follow the value-or-function convention
+// of PR 18a / 18d, so every host read happens at the very statement the monolith made it.
+
+/** The pick tolerance of the polygon-boundary tools: 14 px at the current scale, in metres. */
 function stage6BishopBoundaryPickToleranceWorld(){
-  return stage6BishopSnapToleranceWorld();
+  return seepslopeBoundaryPickToleranceWorld(S?.stage6?.bishop?.viewport);
 }
 
 // The tolerance is handed over as a function, so the package reads the viewport at the very
@@ -5329,54 +5378,114 @@ function stage6BishopPickRegionBoundaryPoint(region, world){
   return seepslopePickRegionBoundaryPoint(region, world, stage6BishopBoundaryPickToleranceWorld);
 }
 
-function stage6BishopHideHoverDom(){
-  const tip = document.getElementById('stage6BishopTip');
-  const coord = document.getElementById('stage6BishopCoord');
-  if(tip) tip.style.display = 'none';
-  if(coord) coord.textContent = '';
+/** Draw-time reads the canvas package cannot own yet; see seepslope/canvas/view-model.js. */
+const SEEPSLOPE_CANVAS_ENV = {
+  // map §2.11 "Deformation contours"
+  normalizedDeformationAnalysisType:()=>stage6BishopNormalizedDeformationAnalysisType(),
+  deformationContourDerived:(result, mesh, mode)=>stage6BishopDeformationContourDerived(result, mesh, mode),
+  deformationContourValue:(result, mesh, index, mode)=>stage6BishopDeformationContourValue(result, mesh, index, mode),
+  deformationContourColor:(value, min, max, mode, alpha, analysisType)=>stage6BishopDeformationContourColor(value, min, max, mode, alpha, analysisType),
+  deformationContourLineColor:(level, min, max, mode, alpha, analysisType)=>stage6BishopDeformationContourLineColor(level, min, max, mode, alpha, analysisType),
+  deformationVectorMode:(mode)=>stage6BishopDeformationVectorMode(mode),
+  deformationPlasticPointSets:(result)=>stage6BishopDeformationPlasticPointSets(result),
+  deformationFiniteScalarOrNull:(value)=>stage6BishopDeformationFiniteScalarOrNull(value),
+  averageFiniteValues:(values, fallback)=>stage6BishopAverageFiniteValues(values, fallback),
+  t6VisualSubtriangles:(element)=>stage6BishopT6VisualSubtriangles(element),
+  // map §2.11 "Seepage state + contours"
+  seepageContourDerived:(result, mesh, mode)=>stage6BishopSeepageContourDerived(result, mesh, mode),
+  seepageContourValue:(result, mesh, index, mode)=>stage6BishopSeepageContourValue(result, mesh, index, mode),
+  seepageContourColor:(value, min, max, mode, alpha)=>stage6BishopSeepageContourColor(value, min, max, mode, alpha),
+  seepageContourLineColor:(level, min, max, mode, alpha)=>stage6BishopSeepageContourLineColor(level, min, max, mode, alpha),
+  // map §2.11 "Seepage BC handlers"
+  seepageBoundary:(model)=>S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model),
+  selectedBoundaryEdge:(model)=>stage6BishopSelectedBoundaryEdge(model),
+  hoveredSeepageEdge:(model)=>stage6BishopHoveredSeepageEdge(model),
+  seepageBcForEdge:(edgeKey)=>stage6BishopSeepageBcForEdge(edgeKey),
+  // map §2.11 "Result HTML / labels" (step 9f)
+  selectedResult:()=>stage6BishopSelectedResult(),
+  wallOverlayQuantity:()=>stage6BishopWallOverlayQuantity(),
+  wallNodeValuesForOverlay:(wallResult, quantity)=>stage6BishopWallNodeValuesForOverlay(wallResult, quantity),
+  wallQuantityFormat:(value, meta)=>stage6BishopWallQuantityFormat(value, meta),
+  cssColorWithAlpha:(color, alpha)=>stage6BishopCssColorWithAlpha(color, alpha),
+  contrastingTextColor:(color)=>stage6BishopContrastingTextColor(color)
+};
+
+/** The canvas the gesture is on, as seepslope/canvas/pointer.js wants it. */
+function seepslopeCanvasCtx(canvas){
+  const bishop = S.stage6.bishop;
+  return {
+    bishop,
+    viewport:bishop.viewport,
+    canvasState:stage6BishopCanvasState,
+    rect:()=>canvas.getBoundingClientRect()
+  };
 }
 
-function stage6BishopUpdateHoverDom(canvas, clientX, clientY){
-  const coord = document.getElementById('stage6BishopCoord');
-  const tip = document.getElementById('stage6BishopTip');
-  const model = S.stage6Cache.bishopModel || stage6BishopCurrentModel();
-  const world = stage6BishopScreenToWorld(canvas, clientX, clientY);
-  const snapped = stage6BishopSnapWorldPoint(world, 'free');
-  stage6BishopCanvasState.hoverWorld = world;
-  if(coord){
-    const snapEnabled = S.stage6.bishop.gridSnap || S.stage6.bishop.pointSnap;
-    coord.textContent = `x = ${world.x.toFixed(2)} m · y = ${world.y.toFixed(2)} m${snapEnabled ? ` · snap ${snapped.x.toFixed(2)}, ${snapped.y.toFixed(2)} m` : ''}`;
-  }
-  if(!tip || !model){
-    stage6BishopDrawCanvas();
-    return;
-  }
-  const load = stage6BishopPickSurfaceLoadAtWorld(world);
-  const hoveredWall = !load && S.stage6.bishop.workspace === 'deformation'
-    ? stage6BishopPickWallAtWorld(world)
-    : null;
-  const hoveredWallResult = hoveredWall ? stage6BishopWallResultForId(hoveredWall.id) : null;
-  const hoveredWallMeta = hoveredWallResult
-    ? stage6BishopWallQuantityStats(hoveredWallResult, stage6BishopWallOverlayQuantity())
-    : null;
-  const region = !load && !hoveredWall ? stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world) : null;
-  if(load){
-    const wrap = canvas.parentElement;
-    const wrapRect = wrap.getBoundingClientRect();
-    tip.innerHTML = `
+/** The drag key excluded from its own snap candidates — read live, as the monolith did. */
+const seepslopeCanvasExcludeKey = ()=>seepslopeCurrentDragKey(stage6BishopCanvasState.pointerDrag);
+
+/**
+ * Everything a gesture on `canvas` can do to the host: the two DOM effects the package must not
+ * perform itself, the render / redraw, and the handlers a committed draw point ends in.
+ */
+function seepslopeCanvasEnv(canvas){
+  return {
+    render:()=>renderStage6(),
+    draw:()=>stage6BishopDrawCanvas(),
+    updateHover:(clientX, clientY)=>stage6BishopUpdateHoverDom(canvas, clientX, clientY),
+    hideHover:()=>stage6BishopHideHoverDom(),
+    setPointerCapture:(pointerId)=>{ if(canvas?.setPointerCapture) canvas.setPointerCapture(pointerId); },
+    releasePointerCapture:(pointerId)=>{
+      if(canvas?.releasePointerCapture){
+        try{ canvas.releasePointerCapture(pointerId); }catch(e){}
+      }
+    },
+    model:()=>S.stage6Cache.bishopModel || stage6BishopCurrentModel(),
+    seepageBoundary:(model)=>S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model),
+    pickSeepageBoundaryEdge:(boundary, world, tolerance)=>pickSeepageBoundaryEdge(boundary, world, tolerance),
+    selectSeepageBoundary:(edgeKey)=>stage6BishopSelectSeepageBoundary(edgeKey),
+    finishDraft:()=>stage6BishopFinishDraft(),
+    createDrainFromVertices:(vertices)=>stage6BishopCreateDrainFromVertices(vertices),
+    selectedCustomRegion:()=>stage6BishopSelectedCustomRegion(),
+    pickRegionBoundaryPoint:(region, world)=>stage6BishopPickRegionBoundaryPoint(region, world),
+    splitSelectedRegion:()=>stage6BishopSplitSelectedRegion(),
+    regionAtInModel:(model, world)=>stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world),
+    invalidate:(message)=>stage6BishopInvalidate(message),
+    invalidateSeepage:(message, keepMesh, preserveSolvedState)=>stage6BishopInvalidateSeepage(message, keepMesh, preserveSolvedState),
+    invalidateDeformation:(message)=>stage6BishopInvalidateDeformation(message),
+    invalidateWallGeometry:(message)=>stage6BishopInvalidateWallGeometry(message),
+    clearCustomRegions:(message)=>stage6BishopClearCustomRegions(message),
+    createSurfaceLoadFromZone:(zone)=>stage6BishopCreateSurfaceLoadFromZone(zone),
+    wallId:()=>stage6BishopWallId(),
+    defaultPassiveSide:()=>stage6BishopDefaultPassiveSide(),
+    defaultWallMaterial:(index, wallId)=>stage6BishopDefaultWallMaterial(index, wallId),
+    openStructuresPanel:()=>{
+      const ui = stage6BishopUiState();
+      ui.bishopActiveCanvasPanel = 'structures';
+      ui.bishopActiveCanvasSheet = '';
+      ui.bishopCanvasToolsHidden = false;
+    }
+  };
+}
+
+/** The tooltip bodies: HTML, so they stay with the other HTML strings until step 9f. */
+function seepslopeCanvasTooltipEnv(canvas, model){
+  return {
+    wrapRect:()=>canvas.parentElement.getBoundingClientRect(),
+    regionAt:(world)=>stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world),
+    tooltipForLoad:(load)=>`
       <div style="font-weight:700;margin-bottom:4px">${stage6EscAttr(load.label || load.id || 'Surface load')}</div>
       <div>${stage6EscAttr(stage6BishopSurfaceLoadSummary(load, S.stage6.bishop.workspace))}</div>
       <div style="color:var(--tx2);margin-top:4px">Click to edit · drag endpoints when selected</div>
-    `;
-    tip.style.display = 'block';
-    tip.style.left = `${Math.min(Math.max(clientX - wrapRect.left + 16, 12), Math.max(wrapRect.width - 292, 12))}px`;
-    tip.style.top = `${Math.min(Math.max(clientY - wrapRect.top + 16, 12), Math.max(wrapRect.height - 180, 12))}px`;
-  } else if(hoveredWall){
-    const wrap = canvas.parentElement;
-    const wrapRect = wrap.getBoundingClientRect();
-    const wallIndex = (S.stage6.bishop.walls || []).findIndex((wall)=>wall.id === hoveredWall.id);
-    const meta = hoveredWallMeta?.meta || stage6BishopWallResponseMeta(stage6BishopWallOverlayQuantity());
-    tip.innerHTML = `
+    `,
+    tooltipForWall:(hoveredWall)=>{
+      const hoveredWallResult = stage6BishopWallResultForId(hoveredWall.id);
+      const hoveredWallMeta = hoveredWallResult
+        ? stage6BishopWallQuantityStats(hoveredWallResult, stage6BishopWallOverlayQuantity())
+        : null;
+      const wallIndex = (S.stage6.bishop.walls || []).findIndex((wall)=>wall.id === hoveredWall.id);
+      const meta = hoveredWallMeta?.meta || stage6BishopWallResponseMeta(stage6BishopWallOverlayQuantity());
+      return `
       <div style="font-weight:700;margin-bottom:4px">Wall ${wallIndex + 1}</div>
       <div>${stage6EscAttr(meta.label)} overlay</div>
       ${hoveredWallMeta ? `
@@ -5387,178 +5496,80 @@ function stage6BishopUpdateHoverDom(canvas, clientX, clientY){
       ` : '<div style="color:var(--tx2);margin-top:4px">Run deformation with this wall mechanically active to show result ranges.</div>'}
       <div style="color:var(--tx2);margin-top:4px">Click to select · open Analysis for diagrams</div>
     `;
-    tip.style.display = 'block';
-    tip.style.left = `${Math.min(Math.max(clientX - wrapRect.left + 16, 12), Math.max(wrapRect.width - 292, 12))}px`;
-    tip.style.top = `${Math.min(Math.max(clientY - wrapRect.top + 16, 12), Math.max(wrapRect.height - 180, 12))}px`;
-  } else if(region){
-    const wrap = canvas.parentElement;
-    const wrapRect = wrap.getBoundingClientRect();
-    tip.innerHTML = stage6BishopTooltipHtml(region);
-    tip.style.display = 'block';
-    tip.style.left = `${Math.min(Math.max(clientX - wrapRect.left + 16, 12), Math.max(wrapRect.width - 292, 12))}px`;
-    tip.style.top = `${Math.min(Math.max(clientY - wrapRect.top + 16, 12), Math.max(wrapRect.height - 180, 12))}px`;
-  } else {
-    tip.style.display = 'none';
+    },
+    tooltipForRegion:(region)=>stage6BishopTooltipHtml(region)
+  };
+}
+
+function stage6BishopHideHoverDom(){
+  const tip = document.getElementById('stage6BishopTip');
+  const coord = document.getElementById('stage6BishopCoord');
+  if(tip) tip.style.display = 'none';
+  if(coord) coord.textContent = '';
+}
+
+/** The readout under the canvas and the hover card; the maths is seepslope/canvas/pointer.js. */
+function stage6BishopUpdateHoverDom(canvas, clientX, clientY){
+  const coord = document.getElementById('stage6BishopCoord');
+  const tip = document.getElementById('stage6BishopTip');
+  const model = S.stage6Cache.bishopModel || stage6BishopCurrentModel();
+  const hover = seepslopeHoverUpdate(
+    seepslopeCanvasCtx(canvas),
+    clientX,
+    clientY,
+    seepslopeCanvasTooltipEnv(canvas, model),
+    !!tip && !!model
+  );
+  if(coord) coord.textContent = hover.coordText;
+  if(hover.tip !== undefined){
+    if(hover.tip){
+      tip.innerHTML = hover.tip.html;
+      tip.style.display = 'block';
+      tip.style.left = `${hover.tip.left}px`;
+      tip.style.top = `${hover.tip.top}px`;
+    } else {
+      tip.style.display = 'none';
+    }
   }
   stage6BishopDrawCanvas();
 }
 
 function stage6BishopScreenToWorld(canvas, clientX, clientY){
-  const rect = canvas.getBoundingClientRect();
-  const bishop = S.stage6.bishop;
-  const sx = clientX - rect.left;
-  const sy = clientY - rect.top;
-  return {
-    x:(sx - bishop.viewport.offsetX) / bishop.viewport.scale,
-    y:(bishop.viewport.offsetY - sy) / bishop.viewport.scale
-  };
+  return seepslopeScreenToWorldFromClient(canvas.getBoundingClientRect(), clientX, clientY, S.stage6.bishop.viewport);
 }
 
 function stage6BishopWorldToScreen(pt){
-  const bishop = S.stage6.bishop;
-  return {
-    x:pt.x * bishop.viewport.scale + bishop.viewport.offsetX,
-    y:bishop.viewport.offsetY - pt.y * bishop.viewport.scale
-  };
+  return seepslopeWorldToScreen(pt, S.stage6.bishop.viewport);
 }
 
 function stage6BishopSnapToleranceWorld(){
-  const scale = Math.max(S?.stage6?.bishop?.viewport?.scale || 24, 1);
-  return 14 / scale;
+  return seepslopeSnapToleranceWorld(S?.stage6?.bishop?.viewport);
 }
 
 function stage6BishopCurrentDragKey(){
-  const drag = stage6BishopCanvasState.pointerDrag;
-  if(!drag) return '';
-  const index = drag.kind === 'drainVertex' ? drag.vertexIndex : drag.index;
-  return `${drag.kind}:${drag.regionId || drag.loadId || ''}:${Number.isFinite(index) ? index : ''}`;
+  return seepslopeCurrentDragKey(stage6BishopCanvasState.pointerDrag);
 }
 
 function stage6BishopSnapPointKey(kind, index, regionId){
-  return `${kind}:${regionId || ''}:${Number.isFinite(index) ? index : ''}`;
+  return seepslopeSnapPointKey(kind, index, regionId);
 }
 
 function stage6BishopCollectSnapPoints(){
-  const bishop = S.stage6.bishop;
-  const points = [];
-  const seen = new Set();
-  const excludeKey = stage6BishopCurrentDragKey();
-  const pushPoint = (kind, pt, index = null, regionId = null)=>{
-    const x = Number(pt?.x);
-    const y = Number(pt?.y);
-    if(!Number.isFinite(x) || !Number.isFinite(y)) return;
-    if(stage6BishopSnapPointKey(kind, index, regionId) === excludeKey) return;
-    const coordKey = `${x.toFixed(4)}:${y.toFixed(4)}`;
-    if(seen.has(coordKey)) return;
-    seen.add(coordKey);
-    points.push({x, y});
-  };
-  (bishop.terrain || []).forEach((pt, index)=>pushPoint('terrain', pt, index));
-  (bishop.phreatic || []).forEach((pt, index)=>pushPoint('phreatic', pt, index));
-  if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
-    pushPoint('cpt', {
-      x:bishop.activeCptX,
-      y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX) + (Number(bishop.cptInsertionOffset) || 0)
-    });
-  }
-  if(bishop.entryZone && bishop.terrain.length >= 2){
-    pushPoint('entryStart', {x:bishop.entryZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.entryZone.xStart)});
-    pushPoint('entryEnd', {x:bishop.entryZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.entryZone.xEnd)});
-  }
-  if(bishop.exitZone && bishop.terrain.length >= 2){
-    pushPoint('exitStart', {x:bishop.exitZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xStart)});
-    pushPoint('exitEnd', {x:bishop.exitZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xEnd)});
-  }
-  const selectedLoadForSnap = stage6BishopSelectedSurfaceLoad()
-    || ((bishop.surfaceLoads || []).length === 1 ? bishop.surfaceLoads[0] : null);
-  if(stage6BishopValidZone(selectedLoadForSnap) && bishop.terrain.length >= 2){
-    pushPoint('loadStart', {x:selectedLoadForSnap.xStart, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForSnap.xStart)}, null, selectedLoadForSnap.id);
-    pushPoint('loadEnd', {x:selectedLoadForSnap.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForSnap.xEnd)}, null, selectedLoadForSnap.id);
-  }
-  (bishop.walls || []).forEach((wall, index)=>{
-    const endpoints = wallEndpoints(wall);
-    if(!endpoints) return;
-    pushPoint('wallTop', endpoints.head, index);
-    pushPoint('wallTip', endpoints.tip, index);
-  });
-  (bishop.drains || []).forEach((drain)=>{
-    (drain.vertices || []).forEach((pt, index)=>pushPoint('drainVertex', pt, index, drain.id));
-  });
-  (bishop.customRegions || []).forEach((region)=>{
-    (region.polygon || []).forEach((pt, index)=>pushPoint('regionVertex', pt, index, region.id));
-  });
-  return points;
+  return seepslopeCollectSnapPoints(S.stage6.bishop, seepslopeCanvasExcludeKey);
 }
 
 function stage6BishopNearestPointSnap(pt, mode){
-  const tolerance = stage6BishopSnapToleranceWorld();
-  let best = null;
-  stage6BishopCollectSnapPoints().forEach((candidate)=>{
-    const distance = mode === 'terrain-x'
-      ? Math.abs(candidate.x - pt.x)
-      : stage6BishopDist(candidate, pt);
-    if(distance > tolerance) return;
-    if(!best || distance < best.distance){
-      best = {
-        distance,
-        point:mode === 'terrain-x'
-          ? {x:candidate.x, y:pt.y}
-          : {x:candidate.x, y:candidate.y}
-      };
-    }
-  });
-  return best;
+  const bishop = S.stage6.bishop;
+  return seepslopeNearestPointSnap(pt, mode, bishop, bishop.viewport, seepslopeCanvasExcludeKey);
 }
 
 function stage6BishopSnapWorldPoint(pt, mode){
   const bishop = S.stage6.bishop;
-  const grid = Math.max(bishop.snapSize || 0.5, 0.05);
-  const candidates = [];
-  if(bishop.gridSnap){
-    const gridPoint = {...pt};
-    gridPoint.x = Math.round(gridPoint.x / grid) * grid;
-    if(mode !== 'terrain-x'){
-      gridPoint.y = Math.round(gridPoint.y / grid) * grid;
-    }
-    candidates.push({
-      point:gridPoint,
-      distance:mode === 'terrain-x' ? Math.abs(gridPoint.x - pt.x) : stage6BishopDist(gridPoint, pt)
-    });
-  }
-  if(bishop.pointSnap){
-    const pointCandidate = stage6BishopNearestPointSnap(pt, mode);
-    if(pointCandidate) candidates.push(pointCandidate);
-  }
-  if(!candidates.length) return {...pt};
-  candidates.sort((a, b)=>a.distance - b.distance);
-  return {...candidates[0].point};
+  return seepslopeSnapWorldPoint(pt, mode, bishop, bishop.viewport, seepslopeCanvasExcludeKey);
 }
 
 function stage6BishopCanvasWorldBounds(model){
-  const bishop = S.stage6.bishop;
-  const terrain = stage6BishopSortedPolyline(bishop.terrain);
-  if(terrain.length >= 2){
-    const xs = terrain.map(pt=>pt.x);
-    const ys = terrain.map(pt=>pt.y);
-    (bishop.walls || []).forEach((wall)=>{
-      const endpoints = wallEndpoints(wall);
-      if(!endpoints) return;
-      xs.push(endpoints.head.x, endpoints.tip.x);
-      ys.push(endpoints.head.y, endpoints.tip.y);
-    });
-    (bishop.drains || []).forEach((drain)=>{
-      (drain.vertices || []).forEach((point)=>{
-        if(Number.isFinite(point?.x)) xs.push(point.x);
-        if(Number.isFinite(point?.y)) ys.push(point.y);
-      });
-    });
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const maxY = Math.max(...ys);
-    const minY = model ? model.analysisBottomY : (maxY - Math.max(+bishop.analysisDepth || 15, 1));
-    return {minX, maxX, minY, maxY};
-  }
-  return {minX:0, maxX:20, minY:-10, maxY:5};
+  return seepslopeCanvasWorldBounds(S.stage6.bishop, model);
 }
 
 function fitStage6BishopViewport(){
@@ -5568,18 +5579,7 @@ function fitStage6BishopViewport(){
   const model = stage6BishopCurrentModel();
   const rect = canvas.getBoundingClientRect();
   const bounds = stage6BishopCanvasWorldBounds(model);
-  const width = Math.max(rect.width, 100);
-  const height = Math.max(rect.height, 100);
-  const dx = Math.max(bounds.maxX - bounds.minX, 1);
-  const dy = Math.max(bounds.maxY - bounds.minY, 1);
-  const margin = 28;
-  const scale = Math.max(Math.min((width - 2*margin)/dx, (height - 2*margin)/dy), 8);
-  const cx = 0.5*(bounds.minX + bounds.maxX);
-  const cy = 0.5*(bounds.minY + bounds.maxY);
-  S.stage6.bishop.viewport.scale = scale;
-  S.stage6.bishop.viewport.offsetX = width*0.5 - cx*scale;
-  S.stage6.bishop.viewport.offsetY = height*0.5 + cy*scale;
-  S.stage6.bishop.viewport.fitted = true;
+  Object.assign(S.stage6.bishop.viewport, seepslopeFitViewport(bounds, rect.width, rect.height));
   stage6BishopDrawCanvas();
 }
 
@@ -5589,665 +5589,77 @@ function stage6BishopAutoFitViewportIfNeeded(){
 
 function stage6BishopNearestHandle(canvas, clientX, clientY){
   const bishop = S.stage6.bishop;
-  const handles = [];
-  const screenDist = (pt)=>{
-    const scr = stage6BishopWorldToScreen(pt);
-    return Math.hypot(scr.x - (clientX - canvas.getBoundingClientRect().left), scr.y - (clientY - canvas.getBoundingClientRect().top));
-  };
-  bishop.terrain.forEach((pt, index)=>handles.push({kind:'terrain', index, pt}));
-  bishop.phreatic.forEach((pt, index)=>handles.push({kind:'phreatic', index, pt}));
-  if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
-    handles.push({kind:'cpt', pt:{x:bishop.activeCptX, y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX) + (Number(bishop.cptInsertionOffset) || 0)}});
-  }
-  if(bishop.entryZone){
-    handles.push({kind:'entryStart', pt:{x:bishop.entryZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.entryZone.xStart)}});
-    handles.push({kind:'entryEnd', pt:{x:bishop.entryZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.entryZone.xEnd)}});
-  }
-  if(bishop.exitZone){
-    handles.push({kind:'exitStart', pt:{x:bishop.exitZone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xStart)}});
-    handles.push({kind:'exitEnd', pt:{x:bishop.exitZone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, bishop.exitZone.xEnd)}});
-  }
-  const selectedLoadForHandles = stage6BishopSelectedSurfaceLoad()
-    || ((bishop.surfaceLoads || []).length === 1 ? bishop.surfaceLoads[0] : null);
-  if(stage6BishopValidZone(selectedLoadForHandles)){
-    handles.push({kind:'loadStart', loadId:selectedLoadForHandles.id, pt:{x:selectedLoadForHandles.xStart, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForHandles.xStart)}});
-    handles.push({kind:'loadEnd', loadId:selectedLoadForHandles.id, pt:{x:selectedLoadForHandles.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, selectedLoadForHandles.xEnd)}});
-  }
-  (bishop.walls || []).forEach((wall, index)=>{
-    const endpoints = wallEndpoints(wall);
-    if(!endpoints) return;
-    handles.push({kind:'wallTop', index, pt:endpoints.head});
-    handles.push({kind:'wallTip', index, pt:endpoints.tip});
-  });
-  (bishop.drains || []).forEach((drain, drainIndex)=>{
-    (drain.vertices || []).forEach((pt, vertexIndex)=>{
-      handles.push({kind:'drainVertex', index:drainIndex, vertexIndex, regionId:drain.id, pt});
-    });
-  });
-  if((bishop.customRegions || []).length){
-    const selectedRegion = stage6BishopSelectedCustomRegion();
-    (selectedRegion?.polygon || []).forEach((pt, index)=>{
-      handles.push({kind:'regionVertex', regionId:selectedRegion.id, index, pt});
-    });
-  }
-  let best = null;
-  handles.forEach((handle)=>{
-    const d = screenDist(handle.pt);
-    if(d <= 12 && (!best || d < best.distance)){
-      best = {...handle, distance:d};
-    }
-  });
-  return best;
+  return seepslopeNearestHandle(bishop, bishop.viewport, canvas.getBoundingClientRect(), clientX, clientY, stage6BishopSelectedCustomRegion);
 }
 
 function stage6BishopPickSurfaceLoadAtWorld(world){
   const bishop = S.stage6.bishop;
-  if(!world || !bishop?.terrain?.length) return null;
-  const tolerance = stage6BishopSnapToleranceWorld();
-  const terrain = {vertices:bishop.terrain};
-  const loads = [...(bishop.surfaceLoads || [])].reverse();
-  for(const load of loads){
-    if(!stage6BishopValidZone(load)) continue;
-    const xStart = Math.min(load.xStart, load.xEnd);
-    const xEnd = Math.max(load.xStart, load.xEnd);
-    if(world.x < xStart - tolerance || world.x > xEnd + tolerance) continue;
-    const xProbe = Math.min(Math.max(world.x, xStart), xEnd);
-    const ySurface = bishopTerrainY(terrain, xProbe);
-    const height = Math.max(0.8, 22 / Math.max(bishop.viewport.scale || 24, 1));
-    if(world.y >= ySurface - tolerance && world.y <= ySurface + height + tolerance){
-      return load;
-    }
-  }
-  return null;
+  return seepslopePickSurfaceLoadAtWorld(bishop, world, bishop.viewport);
 }
 
 function stage6BishopPickWallAtWorld(world){
   const bishop = S.stage6.bishop;
-  if(!world) return null;
-  const tolerance = stage6BishopSnapToleranceWorld();
-  let best = null;
-  (bishop.walls || []).forEach((wall)=>{
-    const endpoints = wallEndpoints(wall);
-    if(!endpoints) return;
-    const distance = wallPointSegmentDistance(world, endpoints.head, endpoints.tip);
-    if(distance <= tolerance && (!best || distance < best.distance)){
-      best = {wall, distance};
-    }
-  });
-  return best?.wall || null;
+  return seepslopePickWallAtWorld(bishop, world, bishop.viewport);
 }
 
 function stage6BishopCommitDrawPoint(canvas, world){
   ensureStage6State();
   const bishop = S.stage6.bishop;
-  const tool = bishop.tool;
-  if(tool === 'seepageBc'){
-    const model = S.stage6Cache?.bishopModel || stage6BishopCurrentModel();
-    const boundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
-    const picked = pickSeepageBoundaryEdge(boundary, world, stage6BishopSnapToleranceWorld());
-    if(!picked?.edge){
-      bishop.progress.message = 'Click near an outer-boundary edge to assign a seepage boundary condition.';
-      renderStage6();
-      return;
-    }
-    stage6BishopSelectSeepageBoundary(picked.edge.edgeKey);
-    return;
-  }
-  if(tool === 'terrain' || tool === 'phreatic'){
-    const snapped = stage6BishopSnapWorldPoint(world, 'free');
-    const next = [...bishop.draft];
-    // Permit a vertical drop (same x, different y); reject only a backwards move or a duplicate point.
-    const prevPt = next[next.length-1];
-    if(prevPt && (snapped.x < prevPt.x - 1e-6 || Math.hypot(snapped.x-prevPt.x, snapped.y-prevPt.y) <= 1e-6)) return;
-    next.push(snapped);
-    bishop.draft = next;
-    bishop.draftKind = tool;
-    renderStage6();
-    return;
-  }
-  if(tool === 'drain'){
-    if(bishop.terrain.length < 2) return;
-    const snapped = stage6BishopSnapWorldPoint(world, 'free');
-    const next = [...bishop.draft];
-    if(next.length && stage6BishopDist(snapped, next[next.length - 1]) <= 1e-6) return;
-    if(bishop.draftKind !== 'drain' || !next.length){
-      bishop.draft = [snapped];
-      bishop.draftKind = 'drain';
-      bishop.progress.message = 'Drain start set. Click the end point to create the drain.';
-      renderStage6();
-      return;
-    }
-    if(stage6BishopCreateDrainFromVertices([next[0], snapped])){
-      bishop.draft = [];
-      bishop.draftKind = '';
-    }
-    renderStage6();
-    return;
-  }
-  if(tool === 'region' || tool === 'regionHole'){
-    if(bishop.terrain.length < 2) return;
-    if(tool === 'regionHole' && !stage6BishopSelectedCustomRegion()){
-      bishop.progress.message = 'Select a custom polygon first in Edit / pan mode, then choose Cut hole.';
-      renderStage6();
-      return;
-    }
-    const snapped = stage6BishopSnapWorldPoint(world, 'free');
-    const next = [...bishop.draft];
-    if(next.length && stage6BishopDist(snapped, next[next.length - 1]) <= 1e-6) return;
-    if(next.length >= 3 && stage6BishopDist(snapped, next[0]) <= Math.max(bishop.snapSize || 0.5, 0.25)){
-      stage6BishopFinishDraft();
-      return;
-    }
-    next.push(snapped);
-    bishop.draft = next;
-    bishop.draftKind = tool;
-    renderStage6();
-    return;
-  }
-  if(tool === 'regionSplit'){
-    const region = stage6BishopSelectedCustomRegion();
-    if(!region){
-      bishop.progress.message = 'Select a custom polygon first in Edit / pan mode, then choose Split selected.';
-      renderStage6();
-      return;
-    }
-    const cutPoint = stage6BishopPickRegionBoundaryPoint(region, world);
-    if(!cutPoint){
-      bishop.progress.message = 'Click near the selected polygon boundary to place a split point.';
-      renderStage6();
-      return;
-    }
-    if(bishop.draftKind !== 'regionSplit' || bishop.draft.length >= 2){
-      bishop.draft = [cutPoint];
-      bishop.draftKind = 'regionSplit';
-      renderStage6();
-      return;
-    }
-    if(stage6BishopDist(bishop.draft[0], cutPoint) <= Math.max((bishop.snapSize || 0.5) * 0.25, 0.05)){
-      bishop.progress.message = 'Choose a second boundary point away from the first one to split the polygon.';
-      renderStage6();
-      return;
-    }
-    bishop.draft = [bishop.draft[0], cutPoint];
-    bishop.draftKind = 'regionSplit';
-    stage6BishopSplitSelectedRegion();
-    return;
-  }
-  if(tool === 'cpt'){
-    if(bishop.terrain.length < 2) return;
-    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
-    const terrain = {vertices:bishop.terrain};
-    bishop.activeCptX = Math.min(Math.max(x, bishop.terrain[0].x), bishop.terrain[bishop.terrain.length-1].x);
-    stage6BishopInvalidate('Active CPT position updated; rerun Bishop search.');
-    renderStage6();
-    return;
-  }
-  if(tool === 'measure'){
-    const snapped = stage6BishopSnapWorldPoint(world, 'free');
-    const points = (bishop.measurement?.points || []).slice(0, 2);
-    if(points.length !== 1){
-      bishop.measurement = {points:[snapped]};
-    } else if(stage6BishopDist(points[0], snapped) > 1e-6){
-      bishop.measurement = {points:[points[0], snapped]};
-    }
-    renderStage6();
-    return;
-  }
-	  if(tool === 'entry' || tool === 'exit' || tool === 'load'){
-	    if(bishop.terrain.length < 2) return;
-    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
-    const terrain = {vertices:bishop.terrain};
-    const minX = bishop.terrain[0].x;
-    const maxX = bishop.terrain[bishop.terrain.length-1].x;
-    const clampedX = Math.min(Math.max(x, minX), maxX);
-    if(bishop.draftKind !== tool || bishop.draft.length >= 2){
-      bishop.draft = [{x:clampedX, y:bishopTerrainY(terrain, clampedX)}];
-      bishop.draftKind = tool;
-	    } else {
-	      const first = bishop.draft[0];
-	      const zoneKey = stage6BishopZoneKey(tool);
-	      const zone = stage6BishopSortZone({
-	        ...(bishop[zoneKey] || {}),
-	        xStart:first.x,
-	        xEnd:clampedX
-	      });
-	      if(tool === 'load'){
-	        stage6BishopCreateSurfaceLoadFromZone(zone);
-	      } else if(zoneKey) {
-	        bishop[zoneKey] = zone;
-	        stage6BishopInvalidate(`${stage6BishopZoneLabel(tool)} updated; rerun Bishop search.`);
-	      }
-	      bishop.draft = [];
-	      bishop.draftKind = '';
-	    }
-	    renderStage6();
-	    return;
-  }
-  if(tool === 'wall'){
-    if(bishop.terrain.length < 2) return;
-    const minX = bishop.terrain[0].x;
-    const maxX = bishop.terrain[bishop.terrain.length-1].x;
-    if(bishop.draftKind !== 'wall' || bishop.draft.length !== 1){
-      const x = Math.min(Math.max(stage6BishopSnapWorldPoint(world, 'terrain-x').x, minX), maxX);
-      const terrain = {vertices:bishop.terrain};
-      bishop.draft = [{x, y:bishopTerrainY(terrain, x)}];
-      bishop.draftKind = 'wall';
-    } else {
-      const top = bishop.draft[0];
-      const tip = stage6BishopSnapWorldPoint(world, 'free');
-      const wallId = stage6BishopWallId();
-      bishop.walls = [
-        ...(bishop.walls || []),
-        {
-          id:wallId,
-          head:{x:top.x, y:top.y},
-          tip:{x:tip.x, y:tip.y},
-          x:top.x,
-          yTop:top.y,
-          yTip:tip.y,
-          passiveSide:stage6BishopDefaultPassiveSide(),
-          mechanicalActive:true,
-          anchors:[],
-          maxShearForce:null,
-          material:stage6BishopDefaultWallMaterial((bishop.walls || []).length, wallId)
-        }
-      ];
-      bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
-      bishop.selectedWallId = wallId;
-      bishop.draft = [];
-      bishop.draftKind = '';
-      stage6BishopInvalidateWallGeometry('Retaining wall added; rerun Bishop search.');
-    }
-    renderStage6();
-  }
+  return seepslopeCommitDrawPoint(bishop, world, bishop.viewport, seepslopeCanvasEnv(canvas), seepslopeCanvasExcludeKey);
 }
 
 function stage6BishopCompleteCurrentActionAt(world){
   ensureStage6State();
   const bishop = S.stage6.bishop;
-  if(bishop.draftKind === 'terrain' || bishop.draftKind === 'phreatic' || bishop.draftKind === 'drain' || bishop.draftKind === 'region' || bishop.draftKind === 'regionHole'){
-    if((bishop.draft || []).length >= 2){
-      if(bishop.draftKind === 'drain' && bishop.draft.length < 2) return false;
-      if((bishop.draftKind === 'region' || bishop.draftKind === 'regionHole') && bishop.draft.length < 3) return false;
-      stage6BishopFinishDraft();
-      return true;
-    }
-    return false;
-  }
-  if(bishop.draftKind === 'regionSplit'){
-    bishop.draft = [];
-    bishop.draftKind = 'regionSplit';
-    renderStage6();
-    return true;
-  }
-  if((bishop.draftKind === 'entry' || bishop.draftKind === 'exit' || bishop.draftKind === 'load') && (bishop.draft || []).length === 1 && bishop.terrain.length >= 2){
-    const kind = bishop.draftKind;
-    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
-    const terrain = {vertices:bishop.terrain};
-    const minX = bishop.terrain[0].x;
-    const maxX = bishop.terrain[bishop.terrain.length-1].x;
-    const clampedX = Math.min(Math.max(x, minX), maxX);
-    const first = bishop.draft[0];
-    const zoneKey = stage6BishopZoneKey(kind);
-    const zone = stage6BishopSortZone({
-      ...(bishop[zoneKey] || {}),
-      xStart:first.x,
-      xEnd:clampedX
-    });
-	    if(stage6BishopValidZone(zone)){
-	      if(kind === 'load'){
-	        stage6BishopCreateSurfaceLoadFromZone(zone);
-	      } else if(zoneKey) {
-	        bishop[zoneKey] = zone;
-	        stage6BishopInvalidate(`${stage6BishopZoneLabel(kind)} updated; rerun Bishop search.`);
-	      }
-	      bishop.draft = [];
-	      bishop.draftKind = '';
-	      renderStage6();
-	      return true;
-	    }
-  }
-  if(bishop.draftKind === 'wall' && (bishop.draft || []).length === 1){
-    const top = bishop.draft[0];
-    const tip = stage6BishopSnapWorldPoint(world, 'free');
-    const wallId = stage6BishopWallId();
-    bishop.walls = [
-      ...(bishop.walls || []),
-      {
-        id:wallId,
-        head:{x:top.x, y:top.y},
-        tip:{x:tip.x, y:tip.y},
-        x:top.x,
-        yTop:top.y,
-        yTip:tip.y,
-        passiveSide:stage6BishopDefaultPassiveSide(),
-        mechanicalActive:true,
-        anchors:[],
-        maxShearForce:null,
-        material:stage6BishopDefaultWallMaterial((bishop.walls || []).length, wallId)
-      }
-    ];
-    bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
-    bishop.selectedWallId = wallId;
-    bishop.draft = [];
-    bishop.draftKind = '';
-    stage6BishopInvalidateWallGeometry('Retaining wall added; rerun Bishop search.');
-    renderStage6();
-    return true;
-  }
-  return false;
+  const canvas = stage6BishopCanvasState.canvas || document.getElementById('stage6BishopCanvas');
+  return seepslopeCompleteCurrentActionAt(bishop, world, bishop.viewport, seepslopeCanvasEnv(canvas), seepslopeCanvasExcludeKey);
 }
 
 function stage6BishopPointerDown(event){
   const canvas = event.currentTarget;
-  const bishop = S.stage6.bishop;
   stage6BishopCanvasState.canvas = canvas;
-  stage6BishopUpdateHoverDom(canvas, event.clientX, event.clientY);
-  if(event.button === 2){
-    event.preventDefault();
-    stage6BishopCompleteCurrentActionAt(stage6BishopScreenToWorld(canvas, event.clientX, event.clientY));
-    return;
-  }
-  if(event.button === 1){
-    event.preventDefault();
-    stage6BishopCanvasState.pointerDrag = {
-      kind:'pan',
-      pointerId:event.pointerId,
-      startX:event.clientX,
-      startY:event.clientY,
-      offsetX:bishop.viewport.offsetX,
-      offsetY:bishop.viewport.offsetY
-    };
-    canvas.setPointerCapture(event.pointerId);
-    return;
-  }
-  if(bishop.tool === 'edit'){
-    const handle = stage6BishopNearestHandle(canvas, event.clientX, event.clientY);
-    if(handle){
-      if(handle.kind === 'wallTop' || handle.kind === 'wallTip'){
-        bishop.selectedWallId = bishop.walls?.[handle.index]?.id || null;
-      }
-      // Invalidation is owned by the gated pointer-up path (stage6BishopPointerUp),
-      // keyed on `drag.moved` and the handle kind. Grabbing a handle no longer
-      // destroys solved results up-front, so a click-without-drag (selection only)
-      // preserves Bishop / seepage / deformation results.
-	      stage6BishopCanvasState.pointerDrag = {
-	        kind:handle.kind,
-	        index:handle.index,
-	        vertexIndex:handle.vertexIndex,
-	        regionId:handle.regionId,
-	        loadId:handle.loadId,
-	        moved:false,
-	        pointerId:event.pointerId
-	      };
-      canvas.setPointerCapture(event.pointerId);
-      return;
-    }
-	    const model = S.stage6Cache.bishopModel || stage6BishopCurrentModel();
-	    const world = stage6BishopScreenToWorld(canvas, event.clientX, event.clientY);
-	    const load = stage6BishopPickSurfaceLoadAtWorld(world);
-	    if(load){
-	      bishop.selectedSurfaceLoadId = load.id;
-	      bishop.selectedRegionId = null;
-	      bishop.selectedWallId = null;
-	      renderStage6();
-	      return;
-	    }
-    const wall = stage6BishopPickWallAtWorld(world);
-    if(wall){
-      bishop.selectedWallId = wall.id;
-      bishop.selectedSurfaceLoadId = null;
-      bishop.selectedRegionId = null;
-      bishop.selectedDrainId = '';
-      const ui = stage6BishopUiState();
-      ui.bishopActiveCanvasPanel = 'structures';
-      ui.bishopActiveCanvasSheet = '';
-      ui.bishopCanvasToolsHidden = false;
-      renderStage6();
-      return;
-    }
-	    const region = (bishop.customRegions || []).length
-      ? stage6BishopRegionAtPoint({regions:stage6BishopDisplayRegions(model)}, world)
-      : null;
-    if(region){
-      bishop.selectedRegionId = region.id;
-      bishop.selectedWallId = null;
-      renderStage6();
-      return;
-    }
-    stage6BishopCanvasState.pointerDrag = {
-      kind:'pan',
-      pointerId:event.pointerId,
-      startX:event.clientX,
-      startY:event.clientY,
-      offsetX:bishop.viewport.offsetX,
-      offsetY:bishop.viewport.offsetY
-    };
-    canvas.setPointerCapture(event.pointerId);
-    return;
-  }
-  stage6BishopCommitDrawPoint(canvas, stage6BishopScreenToWorld(canvas, event.clientX, event.clientY));
+  const effects = seepslopePointerDown(seepslopeCanvasCtx(canvas), event, seepslopeCanvasEnv(canvas));
+  seepslopeApplyPointerEffects(event, effects);
 }
 
 function stage6BishopPointerMove(event){
   const canvas = event.currentTarget;
-  stage6BishopUpdateHoverDom(canvas, event.clientX, event.clientY);
-  const drag = stage6BishopCanvasState.pointerDrag;
-  if(!drag || drag.pointerId !== event.pointerId){
-    return;
-  }
-  const bishop = S.stage6.bishop;
-  if(drag.kind === 'pan'){
-    bishop.viewport.offsetX = drag.offsetX + (event.clientX - drag.startX);
-    bishop.viewport.offsetY = drag.offsetY + (event.clientY - drag.startY);
-    stage6BishopDrawCanvas();
-    return;
-  }
-  // Mark that this handle drag actually produced pointer motion. pointer-up uses
-  // `drag.moved` to gate result invalidation so a click-without-drag on a handle
-  // (selection only, no geometry change) does not needlessly destroy solved
-  // Bishop / seepage / deformation results.
-  drag.moved = true;
-  const world = stage6BishopScreenToWorld(canvas, event.clientX, event.clientY);
-  if(drag.kind === 'terrain'){
-    const pt = stage6BishopSnapWorldPoint(world, 'free');
-    const prev = bishop.terrain[drag.index-1];
-    const next = bishop.terrain[drag.index+1];
-    // Monotone NON-decreasing x (allow a vertical face Δx=0, Δy≠0 — e.g. a step flush to a wall);
-    // 'free' snapping pulls x onto a wall head/tip so the drop lands exactly on the wall.
-    if(prev) pt.x = Math.max(pt.x, prev.x);
-    if(next) pt.x = Math.min(pt.x, next.x);
-    if((prev && Math.hypot(pt.x-prev.x, pt.y-prev.y) <= 1e-6) ||
-       (next && Math.hypot(pt.x-next.x, pt.y-next.y) <= 1e-6)) return;  // reject a zero-length edge
-    bishop.terrain[drag.index] = pt;
-  } else if(drag.kind === 'phreatic'){
-    const pt = stage6BishopSnapWorldPoint(world, 'free');
-    const prev = bishop.phreatic[drag.index-1];
-    const next = bishop.phreatic[drag.index+1];
-    if(prev) pt.x = Math.max(pt.x, prev.x);   // allow a vertical phreatic step to match the face
-    if(next) pt.x = Math.min(pt.x, next.x);
-    if((prev && Math.hypot(pt.x-prev.x, pt.y-prev.y) <= 1e-6) ||
-       (next && Math.hypot(pt.x-next.x, pt.y-next.y) <= 1e-6)) return;
-    bishop.phreatic[drag.index] = pt;
-  } else if(drag.kind === 'cpt'){
-    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
-    bishop.activeCptX = Math.min(Math.max(x, bishop.terrain[0].x), bishop.terrain[bishop.terrain.length-1].x);
-  } else if(drag.kind.startsWith('entry') || drag.kind.startsWith('exit') || drag.kind.startsWith('load')){
-    const edge = drag.kind.endsWith('Start') ? 'xStart' : 'xEnd';
-    const x = stage6BishopSnapWorldPoint(world, 'terrain-x').x;
-    const minX = bishop.terrain[0].x;
-    const maxX = bishop.terrain[bishop.terrain.length-1].x;
-    if(drag.kind.startsWith('load')){
-      const load = (bishop.surfaceLoads || []).find((item)=>item.id === drag.loadId)
-        || stage6BishopSelectedSurfaceLoad();
-      if(!load) return;
-      load[edge] = Math.min(Math.max(x, minX), maxX);
-      Object.assign(load, stage6BishopSortZone(load) || load);
-      bishop.selectedSurfaceLoadId = load.id;
-      stage6BishopSyncLegacySurfaceLoadMirror(bishop);
-    } else {
-      const zoneKey = drag.kind.startsWith('entry') ? 'entryZone' : 'exitZone';
-      bishop[zoneKey][edge] = Math.min(Math.max(x, minX), maxX);
-      bishop[zoneKey] = stage6BishopSortZone(bishop[zoneKey]);
-    }
-  } else if(drag.kind === 'wallTop' || drag.kind === 'wallTip'){
-    const wall = bishop.walls?.[drag.index];
-    if(!wall) return;
-    const pt = stage6BishopSnapWorldPoint(world, 'free');
-    const minX = bishop.terrain.length >= 2 ? bishop.terrain[0].x : -Infinity;
-    const maxX = bishop.terrain.length >= 2 ? bishop.terrain[bishop.terrain.length-1].x : Infinity;
-    const nextPoint = {
-      x:Math.min(Math.max(pt.x, minX), maxX),
-      y:pt.y
-    };
-    if(drag.kind === 'wallTop'){
-      wall.head = nextPoint;
-    } else {
-      wall.tip = nextPoint;
-    }
-    bishop.walls = stage6BishopNormalizeWalls(bishop.walls, bishop.terrain);
-  } else if(drag.kind === 'drainVertex'){
-    const drain = bishop.drains?.[drag.index];
-    if(!drain || !Array.isArray(drain.vertices) || !drain.vertices[drag.vertexIndex]) return;
-    const pt = stage6BishopSnapWorldPoint(world, 'free');
-    drain.vertices[drag.vertexIndex] = {x:+pt.x.toFixed(6), y:+pt.y.toFixed(6)};
-    bishop.drains = stage6BishopNormalizeDrains(bishop.drains);
-  } else if(drag.kind === 'regionVertex'){
-    const region = (bishop.customRegions || []).find((item)=>item.id === drag.regionId);
-    if(!region) return;
-    const pt = stage6BishopSnapWorldPoint(world, 'free');
-    const minX = bishop.terrain.length >= 2 ? bishop.terrain[0].x : -Infinity;
-    const maxX = bishop.terrain.length >= 2 ? bishop.terrain[bishop.terrain.length-1].x : Infinity;
-    const nextPoint = stage6BishopClampRegionPoint(pt, minX, maxX);
-    const nextPolygon = (region.polygon || []).map((item, index)=>index === drag.index ? nextPoint : item);
-    if(stage6BishopPolygonIsValid(nextPolygon)){
-      region.polygon[drag.index] = nextPoint;
-    }
-  }
-  stage6BishopDrawCanvas();
+  const effects = seepslopePointerMove(seepslopeCanvasCtx(canvas), event, seepslopeCanvasEnv(canvas));
+  seepslopeApplyPointerEffects(event, effects);
 }
 
 function stage6BishopPointerUp(event){
-  const drag = stage6BishopCanvasState.pointerDrag;
-  if(!drag || drag.pointerId !== event.pointerId) return;
-  stage6BishopCanvasState.pointerDrag = null;
-  if(event.currentTarget.releasePointerCapture){
-    try{ event.currentTarget.releasePointerCapture(event.pointerId); }catch(e){}
-  }
-  // Per-kind result invalidation, gated on actual drag motion (`drag.moved`).
-  // A handle grab no longer clears results up-front, so a click-without-drag
-  // (selection only) leaves Bishop / seepage / deformation results intact.
-  // Each branch uses the narrowest invalidator that covers what the edit
-  // physically changed, avoiding double-invalidating the same analysis:
-  //   stage6BishopInvalidate            → Bishop + deformation
-  //   stage6BishopInvalidateSeepage     → seepage
-  //   stage6BishopInvalidateDeformation → deformation
-  //   stage6BishopInvalidateWallGeometry→ Bishop + deformation + seepage (everything)
-  if(drag.moved){
-    const kind = drag.kind;
-    if(kind === 'wallTop' || kind === 'wallTip'){
-      // Wall endpoint moved: geometry feeds Bishop slip search, seepage domain,
-      // and the deformation mesh/beam. Invalidate all three. This already calls
-      // stage6BishopInvalidateSeepage internally, so the old bare seepage call
-      // here was redundant and is dropped.
-      stage6BishopInvalidateWallGeometry('Retaining wall geometry updated; rerun analyses.');
-    } else if(kind === 'terrain'){
-      // Terrain shape changes Bishop, the seepage domain, and the deformation mesh.
-      // Clearing custom regions (when present) already invalidates Bishop + deformation;
-      // otherwise invalidate Bishop + deformation directly. Either way, seepage too.
-      if((S.stage6.bishop.customRegions || []).length){
-        stage6BishopClearCustomRegions('Terrain updated; custom soil polygons were cleared and analyses were reset.');
-      } else {
-        stage6BishopInvalidate('Terrain geometry updated; rerun analyses.');
-      }
-      stage6BishopInvalidateSeepage('Terrain geometry updated; rerun seepage.', false, false);
-    } else if(kind === 'cpt'){
-      // Moving the active-CPT marker remaps the soil layering everywhere:
-      // Bishop, seepage and deformation all depend on it.
-      stage6BishopInvalidate('Active CPT location updated; rerun analyses.');
-      stage6BishopInvalidateSeepage('Active CPT location updated; rerun seepage.', false, false);
-    } else if(kind === 'regionVertex'){
-      // A custom soil-polygon vertex moved: Bishop, seepage and deformation.
-      stage6BishopInvalidate('Soil polygon geometry updated; rerun analyses.');
-      stage6BishopInvalidateSeepage('Soil polygon geometry updated; rerun seepage.', false, false);
-    } else if(kind === 'phreatic'){
-      // The phreatic polyline feeds the Bishop slice pore pressures DIRECTLY
-      // (averagePorePressureOnBase samples model.phreatic when FEM pore
-      // pressure is off), as well as the seepage field and the deformation
-      // solve. Invalidate all three.
-      stage6BishopInvalidate('Phreatic line updated; rerun analyses.');
-      stage6BishopInvalidateSeepage('Phreatic line updated; rerun seepage.', false, false);
-    } else if(kind === 'drainVertex'){
-      // Drains act only through the seepage solve (Bishop consumes that field
-      // solely via the FEM-pore-pressure option, which carries its own
-      // staleness flag) and through the pore pressures the deformation solve
-      // uses. Invalidate seepage + deformation.
-      stage6BishopInvalidateSeepage('Drain geometry updated; rerun seepage.', false, false);
-      stage6BishopInvalidateDeformation('Drain geometry updated; rerun deformation analysis.');
-    } else if(kind === 'loadStart' || kind === 'loadEnd'){
-      // Surface-load extent changes the Bishop driving moment and the deformation
-      // loading, but not the seepage domain. Bishop + deformation.
-      stage6BishopInvalidate('Surface load geometry updated; rerun analyses.');
-    } else if(kind.startsWith('entry') || kind.startsWith('exit')){
-      // Entry/exit zones only retune the Bishop slip-circle search window
-      // (no seepage/deformation coupling). Keep the prior "Bishop only" behavior;
-      // stage6BishopInvalidate is the narrowest available invalidator that
-      // clears the Bishop results (it also drops any stale deformation, which is
-      // harmless here since the window does not feed the deformation solve).
-      stage6BishopInvalidate('Bishop search window updated; rerun Bishop search.');
-    }
-  }
-  renderStage6();
+  const canvas = event.currentTarget;
+  const effects = seepslopePointerUp(seepslopeCanvasCtx(canvas), event, seepslopeCanvasEnv(canvas));
+  seepslopeApplyPointerEffects(event, effects);
 }
 
-function stage6BishopPointerLeave(){
-  stage6BishopCanvasState.hoverWorld = null;
-  stage6BishopHideHoverDom();
-  stage6BishopDrawCanvas();
+function stage6BishopPointerLeave(event){
+  const canvas = event?.currentTarget || stage6BishopCanvasState.canvas;
+  seepslopePointerLeave(seepslopeCanvasCtx(canvas), seepslopeCanvasEnv(canvas));
 }
 
 function stage6BishopWheel(event){
-  event.preventDefault();
   const canvas = event.currentTarget;
-  const bishop = S.stage6.bishop;
-  const before = stage6BishopScreenToWorld(canvas, event.clientX, event.clientY);
-  const factor = event.deltaY < 0 ? 1.08 : 1/1.08;
-  bishop.viewport.scale = Math.min(Math.max(bishop.viewport.scale * factor, 4), 220);
-  bishop.viewport.offsetX = (event.clientX - canvas.getBoundingClientRect().left) - before.x * bishop.viewport.scale;
-  bishop.viewport.offsetY = (event.clientY - canvas.getBoundingClientRect().top) + before.y * bishop.viewport.scale;
-  stage6BishopDrawCanvas();
+  const effects = seepslopeWheel(seepslopeCanvasCtx(canvas), event, seepslopeCanvasEnv(canvas));
+  seepslopeApplyPointerEffects(event, effects);
+}
+
+/** The only effect the state machine returns instead of performing (see canvas/pointer.js). */
+function seepslopeApplyPointerEffects(event, effects){
+  for(const effect of effects){
+    if(effect.type === 'preventDefault') event.preventDefault();
+  }
 }
 
 function stage6BishopDrawGrid(ctx, width, height){
   const bishop = S.stage6.bishop;
-  const step = Math.max(bishop.snapSize || 0.5, 0.05);
-  if(bishop.viewport.scale * step < 18) return;
-  const xMin = (0 - bishop.viewport.offsetX) / bishop.viewport.scale;
-  const xMax = (width - bishop.viewport.offsetX) / bishop.viewport.scale;
-  const yMax = bishop.viewport.offsetY / bishop.viewport.scale;
-  const yMin = (bishop.viewport.offsetY - height) / bishop.viewport.scale;
-  const startX = Math.floor(xMin / step) * step;
-  const endX = Math.ceil(xMax / step) * step;
-  const startY = Math.floor(yMin / step) * step;
-  const endY = Math.ceil(yMax / step) * step;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(140, 150, 170, 0.18)';
-  ctx.lineWidth = 1;
-  for(let x=startX; x<=endX+1e-9; x+=step){
-    const sx = stage6BishopWorldToScreen({x, y:0}).x;
-    ctx.beginPath();
-    ctx.moveTo(sx, 0);
-    ctx.lineTo(sx, height);
-    ctx.stroke();
-  }
-  for(let y=startY; y<=endY+1e-9; y+=step){
-    const sy = stage6BishopWorldToScreen({x:0, y}).y;
-    ctx.beginPath();
-    ctx.moveTo(0, sy);
-    ctx.lineTo(width, sy);
-    ctx.stroke();
-  }
-  ctx.restore();
+  seepslopeDrawGrid(ctx, {
+    viewport:bishop.viewport,
+    width,
+    height,
+    grid:seepslopeGridSpec(bishop.viewport, width, height, bishop.snapSize)
+  }, seepslopeVizSeries());
 }
 
 function stage6BishopDrawCanvas(){
@@ -6262,15 +5674,6 @@ function stage6BishopDrawCanvas(){
   const ctx = canvas.getContext('2d');
   if(!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const width = rect.width;
-  const height = rect.height;
-  ctx.clearRect(0, 0, width, height);
-  const rootStyle = getComputedStyle(document.documentElement);
-  ctx.fillStyle = rootStyle.getPropertyValue('--bg').trim() || '#fff';
-  ctx.fillRect(0, 0, width, height);
-  stage6BishopDrawGrid(ctx, width, height);
-  const canvasTextColor = rootStyle.getPropertyValue('--canvas-text').trim() || '#213142';
-  const canvasHaloColor = rootStyle.getPropertyValue('--canvas-text-halo').trim() || 'rgba(255,255,255,0.92)';
 
   const bishop = S.stage6.bishop;
   // E2E hook (harmless, read/drive only): set a terrain polyline and read the world→screen map.
@@ -6279,8 +5682,6 @@ function stage6BishopDrawCanvas(){
     worldToScreen: stage6BishopWorldToScreen,
     terrain: bishop.terrain
   };
-  const workspace = bishop.workspace === 'seepage' ? 'seepage' : bishop.workspace === 'deformation' ? 'deformation' : 'stability';
-  const deformationAnalysisType = stage6BishopNormalizedDeformationAnalysisType();
   // PLAN §4 defect 3 / map §3.4 #5, §6.3 item 5: drawing a frame must not mutate the state. This
   // used to call stage6BishopSyncSoilModel() first, so every animation frame could re-import the
   // materials from the Stage 3/4 layers and — through the invalidation that re-import carries —
@@ -6292,1101 +5693,21 @@ function stage6BishopDrawCanvas(){
   // synced, and the line below is a pure read of it that yields the very model those callers
   // built — verified by scripts/verify_seepslope_model.mjs (c). Only the volatile model cache
   // (S.stage6Cache, not S.stage6) is written, so the hover tooltip and the pointer picking that
-  // read it stay on the frame's own model instead of re-syncing behind the user.
+  // read it stay on the frame's own model instead of re-syncing behind the user. PR 18e keeps the
+  // property structural: the view model below is a pure function and the draw layers only paint.
   const model = buildBishopModelFromStageLayers(stage6WorkingLayers(), bishop);
   S.stage6Cache.bishopModel = model;
-  const displayRegions = stage6BishopDisplayRegions(model);
-  const showingCustomRegionPreview = stage6BishopShowingCustomRegionPreview(model);
-  if(model && bishop.display?.showRegions !== false){
-    displayRegions.forEach((region)=>{
-      if(!region.polygon?.length) return;
-      const screenPts = region.polygon.map((pt)=>stage6BishopWorldToScreen(pt));
-      const isSelectedCustom = region.id === bishop.selectedRegionId;
-      ctx.beginPath();
-      screenPts.forEach((s, index)=>{
-        if(index === 0) ctx.moveTo(s.x, s.y);
-        else ctx.lineTo(s.x, s.y);
-      });
-      ctx.closePath();
-      ctx.save();
-      ctx.globalAlpha = showingCustomRegionPreview ? Math.min((bishop.display?.regionOpacity ?? 0.22) + 0.06, 0.35) : (bishop.display?.regionOpacity ?? 0.22);
-      ctx.fillStyle = region.material.color || '#c9b089';
-      ctx.fill();
-      ctx.restore();
-      ctx.strokeStyle = region.material.color || '#c9b089';
-      ctx.globalAlpha = isSelectedCustom ? 0.95 : (showingCustomRegionPreview ? 0.82 : 0.7);
-      ctx.lineWidth = isSelectedCustom ? 3 : 1.5;
-      if(showingCustomRegionPreview) ctx.setLineDash([8, 5]);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.setLineDash([]);
-      if(isSelectedCustom){
-        ctx.save();
-        ctx.strokeStyle = '#213142';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([6,4]);
-        ctx.stroke();
-        ctx.restore();
-      }
 
-      if(bishop.display?.showRegionLabels !== false){
-        const centroid = stage6BishopPolygonCentroid(region.polygon);
-        if(centroid){
-          const labelPos = stage6BishopWorldToScreen(centroid);
-          const xs = screenPts.map((pt)=>pt.x);
-          const ys = screenPts.map((pt)=>pt.y);
-          const widthPx = Math.max(...xs) - Math.min(...xs);
-          const heightPx = Math.max(...ys) - Math.min(...ys);
-          if(widthPx >= 48 && heightPx >= 20){
-            const label = stage6BishopRegionShortLabel(region);
-            ctx.save();
-            ctx.font = '600 11px system-ui, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.lineWidth = 4;
-            ctx.lineJoin = 'round';
-            ctx.strokeStyle = canvasHaloColor;
-            ctx.strokeText(label, labelPos.x, labelPos.y);
-            ctx.fillStyle = canvasTextColor;
-            ctx.fillText(label, labelPos.x, labelPos.y);
-            ctx.restore();
-          }
-        }
-      }
-    });
-  }
-
-  const drawPolyline = (points, stroke, widthPx, dash)=>{
-    if(!points?.length) return;
-    ctx.save();
-    ctx.beginPath();
-    points.forEach((pt, index)=>{
-      const s = stage6BishopWorldToScreen(pt);
-      if(index === 0) ctx.moveTo(s.x, s.y);
-      else ctx.lineTo(s.x, s.y);
-    });
-    ctx.strokeStyle = stroke;
-    ctx.lineWidth = widthPx;
-    ctx.setLineDash(dash || []);
-    ctx.stroke();
-    ctx.restore();
-  };
-
-  const drawPolylineArrows = (points, stroke, spacingPx = 74, arrowPx = 7)=>{
-    if(!points?.length || points.length < 2) return;
-    const screenPts = points.map((point)=>stage6BishopWorldToScreen(point));
-    let carry = spacingPx * 0.5;
-    for(let i=0;i<screenPts.length-1;i+=1){
-      const a = screenPts[i];
-      const b = screenPts[i+1];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const len = Math.hypot(dx, dy);
-      if(!(len > 1e-6)) continue;
-      let offset = carry;
-      while(offset < len){
-        const t = offset / len;
-        const x = a.x + dx * t;
-        const y = a.y + dy * t;
-        const angle = Math.atan2(dy, dx);
-        ctx.save();
-        ctx.strokeStyle = stroke;
-        ctx.fillStyle = stroke;
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(x - 0.6 * arrowPx * Math.cos(angle), y - 0.6 * arrowPx * Math.sin(angle));
-        ctx.lineTo(x + 0.6 * arrowPx * Math.cos(angle), y + 0.6 * arrowPx * Math.sin(angle));
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x + 0.6 * arrowPx * Math.cos(angle), y + 0.6 * arrowPx * Math.sin(angle));
-        ctx.lineTo(x + 0.05 * arrowPx * Math.cos(angle) - 0.6 * arrowPx * Math.cos(angle - Math.PI / 6), y + 0.05 * arrowPx * Math.sin(angle) - 0.6 * arrowPx * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(x + 0.05 * arrowPx * Math.cos(angle) - 0.6 * arrowPx * Math.cos(angle + Math.PI / 6), y + 0.05 * arrowPx * Math.sin(angle) - 0.6 * arrowPx * Math.sin(angle + Math.PI / 6));
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-        offset += spacingPx;
-      }
-      carry = offset - len;
-    }
-  };
-
-  const drawCircleArc = (circle, stroke, widthPx, dash)=>{
-    const pts = [];
-    const n = 100;
-    const branch = circle?.branch === 'upper' ? 'upper' : 'lower';
-    for(let i=0;i<=n;i+=1){
-      const x = circle.entryPoint.x + ((circle.exitPoint.x - circle.entryPoint.x) * i) / n;
-      const rem = Math.max(circle.radius*circle.radius - (x-circle.center.x)*(x-circle.center.x), 0);
-      const root = Math.sqrt(rem);
-      pts.push({x, y:branch === 'upper' ? circle.center.y + root : circle.center.y - root});
-    }
-    drawPolyline(pts, stroke, widthPx, dash);
-  };
-
-  const seepageMesh = bishop.seepage?.mesh || null;
-  const seepageResult = bishop.seepage?.result || null;
-  if(workspace === 'seepage' && seepageMesh && seepageResult){
-    const contourMode = bishop.seepage?.display?.contourMode || 'head';
-    const contourDerived = stage6BishopSeepageContourDerived(seepageResult, seepageMesh, contourMode);
-    const contourStats = contourDerived.stats;
-    if(bishop.seepage.display?.showContours !== false){
-      ctx.save();
-      seepageMesh.cells.forEach((cell, index)=>{
-        const polygon = cell?.polygon || [];
-        if(polygon.length < 3) return;
-        const screen = polygon.map((point)=>stage6BishopWorldToScreen(point));
-        const wetFraction = Math.max(0, Math.min(seepageResult.cellWetFraction?.[index] ?? (seepageResult.cellDryMask?.[index] ? 0 : 1), 1));
-        const alpha = contourMode === 'head' || contourMode === 'hydraulicFs'
-          ? (0.08 + 0.44 * wetFraction)
-          : 0.52;
-        const value = stage6BishopSeepageContourValue(seepageResult, seepageMesh, index, contourMode);
-        ctx.fillStyle = stage6BishopSeepageContourColor(value, contourStats.min, contourStats.max, contourMode, alpha);
-        ctx.beginPath();
-        ctx.moveTo(screen[0].x, screen[0].y);
-        for(let i=1;i<screen.length;i+=1) ctx.lineTo(screen[i].x, screen[i].y);
-        ctx.closePath();
-        ctx.fill();
-      });
-      ctx.restore();
-    }
-
-    if(bishop.seepage.display?.showContourLines !== false){
-      ctx.save();
-      contourDerived.levelSegments.forEach((group)=>{
-        const stroke = stage6BishopSeepageContourLineColor(group.level, contourStats.min, contourStats.max, contourMode, 0.94);
-        (group.segments || []).forEach((segment)=>{
-          drawPolyline(segment, stroke, Math.abs(group.level) < 1e-10 ? 2.1 : 1.35, []);
-        });
-      });
-      ctx.restore();
-    }
-
-    if(bishop.seepage.display?.showPhreatic !== false){
-      (seepageResult.phreaticSegments || []).forEach((segment)=>{
-        drawPolyline(segment, readCssToken('--chart-green', '#3D6B6A'), 2, [8, 4]);
-      });
-    }
-
-    if(bishop.seepage.display?.showFlowVectors){
-      const flowLines = seepageResult.flowLines || [];
-      flowLines.forEach((line)=>{
-        drawPolyline(line, 'rgba(20, 58, 95, 0.48)', 1.6, []);
-        drawPolylineArrows(line, 'rgba(20, 58, 95, 0.78)', 74, 7);
-      });
-    }
-
-    if(bishop.seepage.display?.showExitGradient){
-      (seepageMesh.boundaryFaces || []).forEach((face, index)=>{
-        if(face?.type !== 'seepage-face') return;
-        if(seepageResult.activeSeepageFaceMask && !seepageResult.activeSeepageFaceMask[index]) return;
-        const gradient = seepageResult.boundaryGradients?.[index] || 0;
-        const t = Math.max(0, Math.min(gradient / Math.max(seepageResult.maxExitGradient || 1, 1e-6), 1));
-        const stroke = `rgba(${Math.round(70 + 185 * t)}, ${Math.round(165 - 105 * t)}, 72, 0.86)`;
-        drawPolyline([face.a, face.b], stroke, 4, []);
-      });
-    }
-  }
-
-  const deformationMesh = bishop.deformation?.mesh || null;
-  const deformationResult = bishop.deformation?.result || null;
-  if(workspace === 'deformation' && deformationMesh && deformationResult){
-    const contourMode = bishop.deformation?.display?.contourMode || 'uTotal';
-    const contourDerived = stage6BishopDeformationContourDerived(deformationResult, deformationMesh, contourMode);
-    const contourStats = contourDerived.stats;
-    const dispScale = Math.max(Number(bishop.deformation?.options?.displacementScale) || 1, 0.05);
-    const deformationVectorMode = stage6BishopDeformationVectorMode(contourMode);
-    const deformationVectorReference = deformationVectorMode
-      ? Math.max(
-          (deformationResult?.nodalDisplacements || []).reduce((max, disp)=>{
-            const ux = Number(disp?.ux) || 0;
-            const uy = Number(disp?.uy) || 0;
-            const mag = contourMode === 'ux'
-              ? Math.abs(ux)
-              : contourMode === 'uy' || contourMode === 'settlement'
-                ? Math.abs(uy)
-                : Math.hypot(ux, uy);
-            return Math.max(max, mag);
-          }, 0),
-          1e-12
-        )
-      : 1e-12;
-    const deformedPoint = (nodeId)=>{
-      const node = deformationMesh.nodes?.[nodeId];
-      const disp = deformationResult.nodalDisplacements?.[nodeId];
-      return stage6BishopWorldToScreen({
-        x:(node?.x || 0) + (disp?.ux || 0) * dispScale,
-        y:(node?.y || 0) + (disp?.uy || 0) * dispScale
-      });
-    };
-    if(bishop.deformation?.display?.showContours !== false){
-      ctx.save();
-      if(deformationMesh.elementType === 't6' && deformationVectorMode){
-        deformationMesh.elements.forEach((element)=>{
-          stage6BishopT6VisualSubtriangles(element).forEach((subtri)=>{
-            if(subtri.length < 3) return;
-            const value = stage6BishopAverageFiniteValues(
-              subtri.map((nodeId)=>stage6BishopDeformationFiniteScalarOrNull(contourDerived.nodalValues?.[nodeId])),
-              null
-            );
-            if(!Number.isFinite(value)) return;
-            const screen = subtri.map((nodeId)=>stage6BishopWorldToScreen(deformationMesh.nodes[nodeId]));
-            ctx.fillStyle = stage6BishopDeformationContourColor(value, contourStats.min, contourStats.max, contourMode, 0.52, deformationAnalysisType);
-            ctx.beginPath();
-            ctx.moveTo(screen[0].x, screen[0].y);
-            ctx.lineTo(screen[1].x, screen[1].y);
-            ctx.lineTo(screen[2].x, screen[2].y);
-            ctx.closePath();
-            ctx.fill();
-          });
-        });
-      } else {
-        deformationMesh.cells.forEach((cell, index)=>{
-          const polygon = cell?.polygon || [];
-          if(polygon.length < 3) return;
-          const screen = polygon.map((point)=>stage6BishopWorldToScreen(point));
-          const value = stage6BishopDeformationContourValue(deformationResult, deformationMesh, index, contourMode);
-          if(!Number.isFinite(value)) return;
-          ctx.fillStyle = stage6BishopDeformationContourColor(value, contourStats.min, contourStats.max, contourMode, 0.52, deformationAnalysisType);
-          ctx.beginPath();
-          ctx.moveTo(screen[0].x, screen[0].y);
-          for(let i=1;i<screen.length;i+=1) ctx.lineTo(screen[i].x, screen[i].y);
-          ctx.closePath();
-          ctx.fill();
-        });
-      }
-      ctx.restore();
-    }
-    if(bishop.deformation?.display?.showContourLines !== false){
-      ctx.save();
-      contourDerived.levelSegments.forEach((group)=>{
-        const stroke = stage6BishopDeformationContourLineColor(group.level, contourStats.min, contourStats.max, contourMode, 0.94, deformationAnalysisType);
-        (group.segments || []).forEach((segment)=>{
-          drawPolyline(segment, stroke, Math.abs(group.level) < 1e-10 ? 2.1 : 1.35, []);
-        });
-      });
-      ctx.restore();
-    }
-    if(bishop.deformation?.display?.showPlasticPoints !== false){
-      const plasticPointSets = stage6BishopDeformationPlasticPointSets(deformationResult);
-      const drawPlasticMarkers = (points, style = {})=>{
-        if(!points?.length) return;
-        const radius = Math.max(Number(style.radius) || 2.3, 1.2);
-        ctx.save();
-        points.forEach((point)=>{
-          const screen = stage6BishopWorldToScreen(point);
-          ctx.beginPath();
-          ctx.arc(screen.x, screen.y, radius, 0, Math.PI * 2);
-          if(style.fill){
-            ctx.fillStyle = style.fill;
-            ctx.fill();
-          }
-          if(style.stroke){
-            ctx.lineWidth = Number(style.lineWidth) || 1;
-            ctx.strokeStyle = style.stroke;
-            ctx.stroke();
-          }
-        });
-        ctx.restore();
-      };
-      drawPlasticMarkers(plasticPointSets.historyPoints, {
-        stroke:'rgba(181, 58, 109, 0.88)',
-        lineWidth:1.2,
-        radius:2.0
-      });
-      drawPlasticMarkers(plasticPointSets.activePoints, {
-        fill:'rgba(196, 57, 43, 0.88)',
-        stroke:'rgba(255, 255, 255, 0.92)',
-        lineWidth:0.9,
-        radius:2.4
-      });
-      drawPlasticMarkers(plasticPointSets.tensionPoints, {
-        fill:'rgba(214, 137, 16, 0.92)',
-        stroke:'rgba(255, 255, 255, 0.92)',
-        lineWidth:0.9,
-        radius:2.7
-      });
-    }
-    if(
-      bishop.deformation?.display?.showDisplacementVectors &&
-      bishop.deformation?.display?.showContourLines !== false &&
-      deformationVectorMode
-    ){
-      const maxVectors = 28;
-      const bucketSizePx = 96;
-      const viewportPaddingPx = 18;
-      const usedBuckets = new Set();
-      let drawnVectors = 0;
-      const drawDisplacementArrow = (screenMid, vx, vy, relativeMagnitude)=>{
-        const mag = Math.hypot(vx, vy);
-        if(!(mag > 1e-12)) return;
-        const dirX = vx / mag;
-        const dirY = vy / mag;
-        const shaftPx = 10 + 8 * Math.max(0, Math.min(relativeMagnitude, 1));
-        const halfDx = 0.5 * shaftPx * dirX;
-        const halfDy = -0.5 * shaftPx * dirY;
-        const tailX = screenMid.x - halfDx;
-        const tailY = screenMid.y - halfDy;
-        const tipX = screenMid.x + halfDx;
-        const tipY = screenMid.y + halfDy;
-        const headPx = 5.2;
-        const headAngle = Math.PI / 6;
-        ctx.save();
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
-        ctx.lineWidth = 3.4;
-        ctx.beginPath();
-        ctx.moveTo(tailX, tailY);
-        ctx.lineTo(tipX, tipY);
-        ctx.stroke();
-        ctx.strokeStyle = 'rgba(25, 37, 54, 0.92)';
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(tailX, tailY);
-        ctx.lineTo(tipX, tipY);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(25, 37, 54, 0.94)';
-        ctx.beginPath();
-        ctx.moveTo(tipX, tipY);
-        ctx.lineTo(
-          tipX - headPx * Math.cos(Math.atan2(-dirY, dirX) - headAngle),
-          tipY - headPx * Math.sin(Math.atan2(-dirY, dirX) - headAngle)
-        );
-        ctx.lineTo(
-          tipX - headPx * Math.cos(Math.atan2(-dirY, dirX) + headAngle),
-          tipY - headPx * Math.sin(Math.atan2(-dirY, dirX) + headAngle)
-        );
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      };
-      contourDerived.levelSegments.forEach((group)=>{
-        if(drawnVectors >= maxVectors) return;
-        (group.segments || []).forEach((segment)=>{
-          if(drawnVectors >= maxVectors || !segment?.length || segment.length < 2) return;
-          const a = segment[0];
-          const b = segment[segment.length - 1];
-          const screenA = stage6BishopWorldToScreen(a);
-          const screenB = stage6BishopWorldToScreen(b);
-          const screenLen = Math.hypot(screenB.x - screenA.x, screenB.y - screenA.y);
-          if(screenLen < 2) return;
-          const midpoint = {
-            x:0.5 * (a.x + b.x),
-            y:0.5 * (a.y + b.y)
-          };
-          const screenMid = stage6BishopWorldToScreen(midpoint);
-          if(
-            screenMid.x < -viewportPaddingPx ||
-            screenMid.x > width + viewportPaddingPx ||
-            screenMid.y < -viewportPaddingPx ||
-            screenMid.y > height + viewportPaddingPx
-          ) return;
-          const bucketKey = `${Math.floor(screenMid.x / bucketSizePx)}:${Math.floor(screenMid.y / bucketSizePx)}`;
-          if(usedBuckets.has(bucketKey)) return;
-          const sampled = sampleDeformationState(deformationMesh, deformationResult, midpoint.x, midpoint.y);
-          if(!sampled) return;
-          const vx = contourMode === 'ux'
-            ? Number(sampled.ux) || 0
-            : contourMode === 'uy' || contourMode === 'settlement'
-              ? 0
-              : Number(sampled.ux) || 0;
-          const vy = contourMode === 'ux'
-            ? 0
-            : contourMode === 'uy' || contourMode === 'settlement'
-              ? Number(sampled.uy) || 0
-              : Number(sampled.uy) || 0;
-          const referenceMag = contourMode === 'ux'
-            ? Math.abs(vx)
-            : contourMode === 'uy' || contourMode === 'settlement'
-              ? Math.abs(vy)
-              : Math.hypot(vx, vy);
-          if(!(referenceMag > 1e-12)) return;
-          usedBuckets.add(bucketKey);
-          drawDisplacementArrow(screenMid, vx, vy, referenceMag / deformationVectorReference);
-          drawnVectors += 1;
-        });
-      });
-    }
-    if(bishop.deformation?.display?.showUndeformedMesh){
-      ctx.save();
-      ctx.strokeStyle = 'rgba(33, 49, 66, 0.22)';
-      ctx.lineWidth = 0.8;
-      deformationMesh.elements.forEach((element)=>{
-        const p0 = stage6BishopWorldToScreen(deformationMesh.nodes[element[0]]);
-        const p1 = stage6BishopWorldToScreen(deformationMesh.nodes[element[1]]);
-        const p2 = stage6BishopWorldToScreen(deformationMesh.nodes[element[2]]);
-        ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y);
-        ctx.lineTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.closePath();
-        ctx.stroke();
-      });
-      ctx.restore();
-    }
-    if(bishop.deformation?.display?.showDeformedMesh !== false){
-      ctx.save();
-      ctx.strokeStyle = 'rgba(33, 49, 66, 0.68)';
-      ctx.lineWidth = 0.9;
-      deformationMesh.elements.forEach((element)=>{
-        const p0 = deformedPoint(element[0]);
-        const p1 = deformedPoint(element[1]);
-        const p2 = deformedPoint(element[2]);
-        ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y);
-        ctx.lineTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.closePath();
-        ctx.stroke();
-      });
-      ctx.restore();
-    }
-  }
-
-  const drawLoadZoneMarkers = (zone, q, color, options = {})=>{
-    if(!stage6BishopValidZone(zone) || bishop.terrain.length < 2) return;
-    const terrain = {vertices:bishop.terrain};
-    const midX = 0.5 * (zone.xStart + zone.xEnd);
-    const midY = bishopTerrainY(terrain, midX);
-    const mid = stage6BishopWorldToScreen({x:midX, y:midY});
-    ctx.save();
-    ctx.fillStyle = color;
-    ctx.globalAlpha = options.active === false ? 0.62 : 1;
-    ctx.font = `${options.active === false ? 'italic ' : ''}12px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    const label = options.label ? `${options.label}: ` : '';
-    const text = options.active === false
-      ? `${label}inactive`
-      : `${options.selected ? 'Selected · ' : ''}${label}q=${q.toFixed(1)} kPa`;
-    if(options.selected){
-      const metrics = ctx.measureText(text);
-      const padX = 7;
-      const badgeX = mid.x - metrics.width / 2 - padX;
-      const badgeY = mid.y - 28;
-      const badgeW = metrics.width + 2 * padX;
-      const badgeH = 18;
-      ctx.save();
-      ctx.fillStyle = 'rgba(255,255,255,0.88)';
-      ctx.strokeStyle = 'rgba(31,111,235,0.55)';
-      ctx.lineWidth = 1;
-      if(typeof ctx.roundRect === 'function'){
-        ctx.beginPath();
-        ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
-        ctx.fill();
-        ctx.stroke();
-      } else {
-        ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
-        ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
-      }
-      ctx.restore();
-    }
-    ctx.fillText(text, mid.x, mid.y - 12);
-    ctx.restore();
-    if(!(q > 0) || options.active === false) return;
-    const span = Math.abs(zone.xEnd - zone.xStart);
-    const arrowCount = Math.max(2, Math.min(5, Math.round(span / 2) + 1));
-    Array.from({length:arrowCount}, (_, index)=>(
-      zone.xStart + ((zone.xEnd - zone.xStart) * index) / Math.max(arrowCount - 1, 1)
-    )).forEach((x)=>{
-      const y = bishopTerrainY(terrain, x);
-      const top = stage6BishopWorldToScreen({x, y:y + 0.8});
-      const tip = stage6BishopWorldToScreen({x, y:y + 0.08});
-      ctx.save();
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
-      ctx.globalAlpha = options.active === false ? 0.35 : 1;
-      ctx.lineWidth = options.selected ? 2 : 1.5;
-      ctx.beginPath();
-      ctx.moveTo(top.x, top.y);
-      ctx.lineTo(tip.x, tip.y);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(tip.x, tip.y);
-      ctx.lineTo(tip.x - 4, tip.y - 6);
-      ctx.lineTo(tip.x + 4, tip.y - 6);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    });
-  };
-
-  const drawWall = (wall, options = {})=>{
-    const axis = wallAxis(wall);
-    if(!axis) return;
-    const top = stage6BishopWorldToScreen(axis.head);
-    const tip = stage6BishopWorldToScreen(axis.tip);
-    const mid = stage6BishopWorldToScreen({
-      x:0.5 * (axis.head.x + axis.tip.x),
-      y:0.5 * (axis.head.y + axis.tip.y)
-    });
-    const passiveNormal = wallNormalForSide(axis, wall.passiveSide);
-    const screenNormal = passiveNormal
-      ? {x:passiveNormal.x, y:-passiveNormal.y}
-      : {x:wall.passiveSide === 'left' ? -1 : 1, y:0};
-    ctx.save();
-    ctx.strokeStyle = options.stroke || '#6a5841';
-    ctx.lineWidth = options.width || 4;
-    ctx.setLineDash(options.dash || []);
-    ctx.beginPath();
-    ctx.moveTo(top.x, top.y);
-    ctx.lineTo(tip.x, tip.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = options.stroke || '#6a5841';
-    ctx.beginPath();
-    const arrowTip = {x:mid.x + screenNormal.x * 12, y:mid.y + screenNormal.y * 12};
-    const arrowBase = {x:mid.x + screenNormal.x * 3, y:mid.y + screenNormal.y * 3};
-    const tangentScreen = {x:tip.x - top.x, y:tip.y - top.y};
-    const tangentLen = Math.max(Math.hypot(tangentScreen.x, tangentScreen.y), 1);
-    const tx = tangentScreen.x / tangentLen;
-    const ty = tangentScreen.y / tangentLen;
-    ctx.moveTo(arrowTip.x, arrowTip.y);
-    ctx.lineTo(arrowBase.x + tx * 5, arrowBase.y + ty * 5);
-    ctx.lineTo(arrowBase.x - tx * 5, arrowBase.y - ty * 5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  };
-
-  const drawWallResponse = (wallResult)=>{
-    const stations = wallResult?.stations || [];
-    if(stations.length < 2) return;
-    const displacementScale = Math.max(Number(bishop.deformation?.options?.displacementScale) || 1, 0.05);
-    const passiveSign = wallResult.passiveSign < 0 ? -1 : 1;
-    const deformed = stations.map((station)=>stage6BishopWorldToScreen({
-      x:(Number(station.x) || 0) + displacementScale * (Number(station.ux) || 0),
-      y:(Number(station.y) || 0) + displacementScale * (Number(station.uy) || 0)
-    }));
-    const base = stations.map((station)=>stage6BishopWorldToScreen({
-      x:Number(station.x) || 0,
-      y:Number(station.y) || 0
-    }));
-    const overlayQuantity = stage6BishopWallOverlayQuantity();
-    const overlayData = stage6BishopWallNodeValuesForOverlay(wallResult, overlayQuantity);
-    const overlayMaxAbs = Math.max(...(overlayData?.nodeValues || []).map((value)=>Math.abs(Number(value) || 0)), 0);
-    ctx.save();
-    ctx.strokeStyle = 'rgba(18, 127, 155, 0.95)';
-    ctx.lineWidth = 2.2;
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    deformed.forEach((pt, index)=>{
-      if(index === 0) ctx.moveTo(pt.x, pt.y);
-      else ctx.lineTo(pt.x, pt.y);
-    });
-    ctx.stroke();
-    if(overlayMaxAbs > 0){
-      if(bishop.deformation?.display?.showWallMomentOverlay !== true){
-        ctx.restore();
-        return;
-      }
-      ctx.strokeStyle = overlayData?.meta?.color || 'rgba(126, 80, 168, 0.8)';
-      ctx.fillStyle = stage6BishopCssColorWithAlpha(overlayData?.meta?.color || '#7e50a8', 0.12);
-      ctx.lineWidth = 1.4;
-      const diagram = stations.map((station, index)=>{
-        const value = Number(overlayData.nodeValues[index]) || 0;
-        const prev = stations[Math.max(index - 1, 0)] || station;
-        const next = stations[Math.min(index + 1, stations.length - 1)] || station;
-        const dx = (Number(next.x) || 0) - (Number(prev.x) || 0);
-        const dy = (Number(next.y) || 0) - (Number(prev.y) || 0);
-        const len = Math.max(Math.hypot(dx, dy), 1e-9);
-        const normal = {x:-(dy / len) * passiveSign, y:(dx / len) * passiveSign};
-        return {
-          x:base[index].x + normal.x * 32 * (value / overlayMaxAbs),
-          y:base[index].y - normal.y * 32 * (value / overlayMaxAbs)
-        };
-      });
-      ctx.beginPath();
-      base.forEach((pt, index)=>{
-        if(index === 0) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      });
-      for(let i=diagram.length - 1; i >= 0; i -= 1) ctx.lineTo(diagram[i].x, diagram[i].y);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      diagram.forEach((pt, index)=>{
-        if(index === 0) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      });
-      ctx.stroke();
-      // Per-station tick marks: the diagram amplitude is normalized to 32 px at
-      // |max|, so a smoothly growing quantity (e.g. the ~cubic moment build-up
-      // over the retained height) can hug the wall line within the wall-stroke
-      // width and read as "no data". Small dots keep every station visibly
-      // present without changing the normalization. (Verified twice: the
-      // "missing" upper-band data was correct and statics-consistent.)
-      ctx.save();
-      ctx.fillStyle = overlayData?.meta?.color || 'rgba(126, 80, 168, 0.8)';
-      diagram.forEach((pt)=>{
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 1.6, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      ctx.restore();
-      const extrema = overlayData.nodeValues.map((value, index)=>({
-        value:Number(value) || 0,
-        index,
-        point:diagram[index]
-      })).filter((item)=>item.point);
-      if(extrema.length){
-        let minItem = extrema[0];
-        let maxItem = extrema[0];
-        extrema.forEach((item)=>{
-          if(item.value < minItem.value) minItem = item;
-          if(item.value > maxItem.value) maxItem = item;
-        });
-        const drawOverlayExtremum = (item, label, offsetSign)=>{
-          const point = item?.point;
-          if(!point) return;
-          const meta = overlayData?.meta || {};
-          const labelText = `${label} ${stage6BishopWallQuantityFormat(item.value, meta)}`;
-          const station = stations[item.index];
-          const stationText = `s=${stage6CompactNumber(Number(station?.s) || 0, 3)} m`;
-          ctx.save();
-          ctx.font = '10px system-ui, sans-serif';
-          const labelW = Math.max(ctx.measureText(labelText).width, ctx.measureText(stationText).width) + 12;
-          const labelH = 26;
-          let lx = point.x + 10;
-          let ly = point.y + offsetSign * 18 - labelH / 2;
-          lx = Math.max(6, Math.min(width - labelW - 6, lx));
-          ly = Math.max(6, Math.min(height - labelH - 6, ly));
-          ctx.fillStyle = '#fff';
-          ctx.strokeStyle = meta.color || '#7e50a8';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(point.x, point.y, 3.6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.fillStyle = stage6BishopCssColorWithAlpha(meta.color || '#7e50a8', 0.88);
-          ctx.strokeStyle = stage6BishopCssColorWithAlpha(meta.color || '#7e50a8', 0.96);
-          ctx.lineWidth = 1;
-          if(typeof ctx.roundRect === 'function'){
-            ctx.beginPath();
-            ctx.roundRect(lx, ly, labelW, labelH, 5);
-            ctx.fill();
-            ctx.stroke();
-          } else {
-            ctx.fillRect(lx, ly, labelW, labelH);
-            ctx.strokeRect(lx, ly, labelW, labelH);
-          }
-          ctx.fillStyle = stage6BishopContrastingTextColor(meta.color || '#7e50a8');
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'top';
-          ctx.fillText(labelText, lx + 6, ly + 4);
-          ctx.fillText(stationText, lx + 6, ly + 15);
-          ctx.restore();
-        };
-        drawOverlayExtremum(minItem, 'min', -1);
-        const sameExtremum = minItem.index === maxItem.index ||
-          (Math.abs(minItem.value - maxItem.value) < 1e-12 && Math.abs(minItem.index - maxItem.index) === 0);
-        if(!sameExtremum) drawOverlayExtremum(maxItem, 'max', 1);
-      }
-    }
-    ctx.restore();
-  };
-
-  const drawMeasurementOverlay = (points, options = {})=>{
-    const metrics = stage6BishopMeasurementMetrics(points);
-    if(!metrics) return;
-    const a = stage6BishopWorldToScreen(metrics.a);
-    const b = stage6BishopWorldToScreen(metrics.b);
-    const label = stage6BishopMeasurementLabel(metrics);
-    ctx.save();
-    ctx.strokeStyle = options.preview ? 'rgba(181, 87, 36, 0.78)' : '#b55724';
-    ctx.fillStyle = options.preview ? 'rgba(181, 87, 36, 0.12)' : '#b55724';
-    ctx.lineWidth = options.preview ? 2 : 2.2;
-    ctx.setLineDash(options.preview ? [7, 5] : []);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    [a, b].forEach((pt)=>{
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI*2);
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-      ctx.strokeStyle = options.preview ? 'rgba(181, 87, 36, 0.78)' : '#b55724';
-      ctx.lineWidth = options.preview ? 2 : 2.2;
-    });
-    const labelPos = stage6BishopWorldToScreen({
-      x:metrics.mid.x,
-      y:metrics.mid.y + Math.max(0.2, 12 / Math.max(bishop.viewport.scale || 24, 1))
-    });
-    ctx.font = '600 11px system-ui, sans-serif';
-    const paddingX = 8;
-    const paddingY = 5;
-    const textWidth = ctx.measureText(label).width;
-    const boxWidth = textWidth + paddingX * 2;
-    const boxHeight = 24;
-    const boxX = labelPos.x - boxWidth / 2;
-    const boxY = labelPos.y - boxHeight / 2;
-    ctx.fillStyle = options.preview ? 'rgba(255, 246, 237, 0.9)' : 'rgba(255, 246, 237, 0.96)';
-    ctx.strokeStyle = options.preview ? 'rgba(181, 87, 36, 0.55)' : 'rgba(181, 87, 36, 0.9)';
-    ctx.lineWidth = 1;
-    if(typeof ctx.roundRect === 'function'){
-      ctx.beginPath();
-      ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 6);
-      ctx.fill();
-      ctx.stroke();
-    } else {
-      ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-    }
-    ctx.fillStyle = '#6b3212';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, labelPos.x, labelPos.y);
-    ctx.restore();
-  };
-
-  if(bishop.phreatic?.length >= 2) drawPolyline(bishop.phreatic, '#2f7fda', 2, [8, 5]);
-  if(bishop.seepage?.display?.showDrains !== false){
-    (bishop.drains || []).forEach((drain)=>{
-      const selected = drain.id && drain.id === bishop.selectedDrainId;
-      drawPolyline(drain.vertices || [], selected ? '#0b7285' : '#128a99', selected ? 3.5 : 2.5, []);
-    });
-  }
-  if(bishop.draft?.length){
-    const draftStroke = bishop.draftKind === 'phreatic'
-      ? '#2f7fda'
-      : bishop.draftKind === 'drain'
-        ? '#128a99'
-        : '#2d3a4a';
-    drawPolyline(bishop.draft, draftStroke, 2, [6, 4]);
-  }
-  if(stage6BishopCanvasState.hoverWorld){
-    if((bishop.tool === 'terrain' || bishop.tool === 'phreatic') && bishop.draft?.length){
-      const last = bishop.draft[bishop.draft.length-1];
-      const next = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
-      if(next.x > last.x + 1e-6){
-        drawPolyline([last, next], bishop.tool === 'phreatic' ? '#2f7fda' : '#2d3a4a', 1.5, [6, 4]);
-      }
-    }
-    if(bishop.tool === 'drain' && bishop.draftKind === 'drain' && bishop.draft?.length){
-      const last = bishop.draft[bishop.draft.length - 1];
-      const next = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
-      if(stage6BishopDist(last, next) > 1e-6){
-        drawPolyline([last, next], '#128a99', 1.5, [6, 4]);
-      }
-    }
-    if((bishop.tool === 'entry' || bishop.tool === 'exit' || bishop.tool === 'load') && bishop.draftKind === bishop.tool && bishop.draft?.length === 1 && bishop.terrain.length >= 2){
-      const terrain = {vertices:bishop.terrain};
-      const first = bishop.draft[0];
-      const x = Math.min(Math.max(stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'terrain-x').x, bishop.terrain[0].x), bishop.terrain[bishop.terrain.length-1].x);
-      const zone = stage6BishopSortZone({xStart:first.x, xEnd:x});
-      if(stage6BishopValidZone(zone)){
-        drawPolyline([
-          {x:zone.xStart, y:bishopTerrainY(terrain, zone.xStart)},
-          {x:zone.xEnd, y:bishopTerrainY(terrain, zone.xEnd)}
-        ], stage6BishopZoneColor(bishop.tool), 4, [5, 4]);
-      }
-    }
-    if((bishop.tool === 'region' || bishop.tool === 'regionHole') && (bishop.draftKind === 'region' || bishop.draftKind === 'regionHole') && bishop.draft?.length){
-      const isHoleDraft = bishop.draftKind === 'regionHole';
-      const next = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
-      const preview = [...bishop.draft, next];
-      if(preview.length >= 2){
-        drawPolyline(preview, isHoleDraft ? '#b3477a' : '#2d3a4a', 1.5, [6, 4]);
-      }
-      if(preview.length >= 3){
-        ctx.save();
-        ctx.beginPath();
-        preview.forEach((pt, index)=>{
-          const s = stage6BishopWorldToScreen(pt);
-          if(index === 0) ctx.moveTo(s.x, s.y);
-          else ctx.lineTo(s.x, s.y);
-        });
-        ctx.closePath();
-        ctx.fillStyle = isHoleDraft ? '#b3477a' : '#2d3a4a';
-        ctx.globalAlpha = 0.08;
-        ctx.fill();
-        ctx.restore();
-        const first = stage6BishopWorldToScreen(preview[0]);
-        ctx.save();
-        ctx.fillStyle = '#fff';
-        ctx.strokeStyle = isHoleDraft ? '#b3477a' : '#2d3a4a';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(first.x, first.y, 5, 0, Math.PI*2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-    if(bishop.tool === 'regionSplit'){
-      const selectedRegion = stage6BishopSelectedCustomRegion();
-      const splitDraft = bishop.draftKind === 'regionSplit' ? (bishop.draft || []) : [];
-      splitDraft.forEach((pt, index)=>{
-        const s = stage6BishopWorldToScreen(pt);
-        ctx.save();
-        ctx.fillStyle = index === 0 ? '#b3477a' : '#fff';
-        ctx.strokeStyle = '#b3477a';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, 5, 0, Math.PI*2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      });
-      if(selectedRegion && splitDraft.length === 1 && stage6BishopCanvasState.hoverWorld){
-        const hoverCut = stage6BishopPickRegionBoundaryPoint(selectedRegion, stage6BishopCanvasState.hoverWorld);
-        if(hoverCut){
-          drawPolyline([splitDraft[0], hoverCut], '#b3477a', 2, [6, 4]);
-        }
-      }
-    }
-    if(bishop.tool === 'wall' && bishop.draftKind === 'wall' && bishop.draft?.length === 1){
-      const top = bishop.draft[0];
-      const tip = stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free');
-      drawWall({
-        head:{x:top.x, y:top.y},
-        tip:{x:tip.x, y:tip.y},
-        x:top.x,
-        yTop:top.y,
-        yTip:tip.y,
-        passiveSide:stage6BishopDefaultPassiveSide()
-      }, {stroke:'#6a5841', width:3, dash:[6,4]});
-    }
-    if(bishop.tool === 'measure' && (bishop.measurement?.points || []).length === 1){
-      drawMeasurementOverlay([
-        bishop.measurement.points[0],
-        stage6BishopSnapWorldPoint(stage6BishopCanvasState.hoverWorld, 'free')
-      ], {preview:true});
-    }
-  }
-
-  const zoneStroke = (zone, color, widthPx, dash)=>{
-    if(!stage6BishopValidZone(zone) || bishop.terrain.length < 2) return;
-    const pts = [
-      {x:zone.xStart, y:bishopTerrainY({vertices:bishop.terrain}, zone.xStart)},
-      {x:zone.xEnd, y:bishopTerrainY({vertices:bishop.terrain}, zone.xEnd)}
-    ];
-    drawPolyline(pts, color, widthPx || 5, dash);
-  };
-  zoneStroke(bishop.entryZone, stage6BishopZoneColor('entry'));
-  zoneStroke(bishop.exitZone, stage6BishopZoneColor('exit'));
-  (bishop.surfaceLoads || []).forEach((load, index)=>{
-    const zone = stage6BishopSortZone(load);
-    if(!stage6BishopValidZone(zone)) return;
-    const q = stage6BishopEffectiveSurfaceLoadQ(load, workspace);
-    const selectedLoad = load.id === bishop.selectedSurfaceLoadId;
-    const active = load.active !== false && q > 0;
-    const color = selectedLoad ? '#1f6feb' : stage6BishopZoneColor('load');
-    if(selectedLoad){
-      zoneStroke(zone, 'rgba(31, 111, 235, 0.22)', 12, []);
-    }
-    zoneStroke(zone, color, selectedLoad ? 6 : 4, active ? [] : [5, 4]);
-    if(workspace !== 'deformation' || bishop.deformation?.display?.showLoadVectors !== false){
-      drawLoadZoneMarkers(zone, q, color, {
-        label: load.label || `Load ${index + 1}`,
-        active,
-        selected: selectedLoad
-      });
-    }
-    if(selectedLoad){
-      [zone.xStart, zone.xEnd].forEach((x)=>{
-        const y = bishopTerrainY({vertices:bishop.terrain}, x);
-        const screen = stage6BishopWorldToScreen({x, y});
-        ctx.save();
-        ctx.fillStyle = '#fff';
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(screen.x, screen.y, 5.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      });
-    }
-  });
-  (bishop.walls || []).forEach((wall)=>drawWall(wall, wall.id === bishop.selectedWallId ? {stroke:'#127f9b', width:5} : {}));
-  if(workspace === 'deformation'){
-    // Defense-in-depth: skip any wall overlay whose run-time geometry no longer
-    // matches the current wall, so a stale result can never silently masquerade
-    // (a diagram drawn at old coordinates) even if a future edit path forgets to
-    // invalidate the deformation result.
-    (bishop.deformation?.result?.wallResults || bishop.deformation?.result?.retainingWallResults || [])
-      .filter((wallResult)=>!stage6BishopWallResultIsStale(wallResult, bishop))
-      .forEach(drawWallResponse);
-  }
-  if((bishop.measurement?.points || []).length >= 2){
-    drawMeasurementOverlay(bishop.measurement.points);
-  }
-
-  const results = bishop.results?.allResults || [];
-  const keepBest = Math.min(results.length, bishop.search.keepBest || 10);
-  if(workspace === 'stability'){
-    if(bishop.progress?.running && bishop.progress.previewCircle){
-      drawCircleArc(bishop.progress.previewCircle, 'rgba(58, 128, 212, 0.6)', 1.8, [8, 6]);
-    }
-    for(let i=Math.min(keepBest-1, results.length-1); i>=0; i-=1){
-      const result = results[i];
-      const color = i === (bishop.selectedResult || 0) ? '#d65252' : 'rgba(214, 82, 82, 0.16)';
-      drawCircleArc(result.circle, color, i === (bishop.selectedResult || 0) ? 2.8 : 1.2);
-    }
-
-    const selected = stage6BishopSelectedResult();
-    if(selected){
-      selected.slices.forEach((slice)=>{
-        const top = stage6BishopWorldToScreen({x:slice.xL, y:slice.yTopL});
-        const base = stage6BishopWorldToScreen({x:slice.xL, y:slice.yBaseL});
-        ctx.save();
-        ctx.strokeStyle = 'rgba(34, 76, 120, 0.35)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(top.x, top.y);
-        ctx.lineTo(base.x, base.y);
-        ctx.stroke();
-        ctx.restore();
-      });
-      (selected.wallForces || []).forEach((wallForce)=>{
-        const application = stage6BishopWorldToScreen({x:wallForce.x, y:wallForce.y_application});
-        const passiveNormal = wallForce.passiveNormal || wallNormalForSide(wallForce.wall, wallForce.wall?.passiveSide);
-        const screenNormal = passiveNormal
-          ? {x:passiveNormal.x, y:-passiveNormal.y}
-          : {x:wallForce.wall?.passiveSide === 'left' ? -1 : 1, y:0};
-        const labelAlign = screenNormal.x >= 0 ? 'left' : 'right';
-        const tip = {
-          x:application.x + screenNormal.x * 22,
-          y:application.y + screenNormal.y * 22
-        };
-        const tangent = {x:-screenNormal.y, y:screenNormal.x};
-        ctx.save();
-        ctx.strokeStyle = '#b3477a';
-        ctx.fillStyle = '#b3477a';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(application.x, application.y);
-        ctx.lineTo(tip.x, tip.y);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(tip.x, tip.y);
-        ctx.lineTo(tip.x - screenNormal.x * 8 + tangent.x * 5, tip.y - screenNormal.y * 8 + tangent.y * 5);
-        ctx.lineTo(tip.x - screenNormal.x * 8 - tangent.x * 5, tip.y - screenNormal.y * 8 - tangent.y * 5);
-        ctx.closePath();
-        ctx.fill();
-        ctx.font = '11px system-ui, sans-serif';
-        ctx.textAlign = labelAlign;
-        ctx.fillText(`${wallForce.R_wall.toFixed(0)} kN/m`, tip.x + screenNormal.x * 4, tip.y + screenNormal.y * 4 - 6);
-        ctx.restore();
-      });
-    }
-  }
-
-  if(bishop.terrain?.length >= 2) drawPolyline(bishop.terrain, '#2d3a4a', 3);
-
-  if(workspace === 'seepage' && model && bishop.seepage?.display?.showBoundaryConditions !== false){
-    const boundaryBlue = readCssToken('--chart-blue', '#4F8584');
-    const boundaryGreen = readCssToken('--chart-green', '#3D6B6A');
-    const boundaryNeutral = readCssToken('--chart-neutral', '#6b6b68');
-    const boundary = S.stage6Cache?.bishopSeepageBoundary || stage6BishopCurrentSeepageBoundary(model);
-    const selectedBoundary = stage6BishopSelectedBoundaryEdge(model);
-    const hoveredBoundary = stage6BishopHoveredSeepageEdge(model);
-    boundary.forEach((edge)=>{
-      const bc = stage6BishopSeepageBcForEdge(edge.edgeKey);
-      const isSelected = selectedBoundary?.edgeKey === edge.edgeKey;
-      const isHovered = hoveredBoundary?.edgeKey === edge.edgeKey;
-      const stroke = bc?.type === 'head'
-        ? boundaryBlue
-        : bc?.type === 'seepage-face'
-          ? boundaryGreen
-          : boundaryNeutral;
-      const dash = bc?.type === 'head' ? [] : bc?.type === 'seepage-face' ? [10, 6] : [7, 5];
-      drawPolyline([edge.a, edge.b], stroke, isSelected ? 5 : isHovered ? 4 : 2.5, dash);
-      if((isSelected || isHovered) && bc?.status !== 'orphaned'){
-        drawPolyline([edge.a, edge.b], 'rgba(33,49,66,0.9)', 1.2, []);
-      }
-      if(bishop.seepage.display?.showBoundaryLabels !== false){
-        const label = bc?.type === 'head'
-          ? `h=${Number(bc.head ?? edge.mid.y).toFixed(2)} m`
-          : bc?.type === 'seepage-face'
-            ? 'h = y'
-            : (isSelected ? 'no-flow' : '');
-        if(label){
-          const mid = stage6BishopWorldToScreen(edge.mid);
-          ctx.save();
-          ctx.font = '11px system-ui, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'bottom';
-          ctx.lineWidth = 4;
-          ctx.strokeStyle = canvasHaloColor;
-          ctx.strokeText(label, mid.x, mid.y - 6);
-          ctx.fillStyle = stroke;
-          ctx.fillText(label, mid.x, mid.y - 6);
-          ctx.restore();
-        }
-      }
-    });
-  }
-
-  if(Number.isFinite(bishop.activeCptX) && bishop.terrain.length >= 2){
-    const offset = Number(bishop.cptInsertionOffset) || 0;
-    const groundPt = {x:bishop.activeCptX, y:bishopTerrainY({vertices:bishop.terrain}, bishop.activeCptX)};
-    const topPt = {x:groundPt.x, y:groundPt.y + offset};
-    const sGround = stage6BishopWorldToScreen(groundPt);
-    const sTop = stage6BishopWorldToScreen(topPt);
-    ctx.save();
-    if(Math.abs(offset) > 1e-6){
-      // Connector from the terrain surface to the offset insertion point.
-      ctx.strokeStyle = '#7a2dd2';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      ctx.moveTo(sGround.x, sGround.y);
-      ctx.lineTo(sTop.x, sTop.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(sGround.x - 5, sGround.y);
-      ctx.lineTo(sGround.x + 5, sGround.y);
-      ctx.stroke();
-      const label = `${offset > 0 ? '+' : ''}${offset.toFixed(2)} m`;
-      ctx.font = '11px system-ui, sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-      ctx.strokeText(label, sTop.x + 9, 0.5 * (sGround.y + sTop.y));
-      ctx.fillStyle = '#7a2dd2';
-      ctx.fillText(label, sTop.x + 9, 0.5 * (sGround.y + sTop.y));
-    }
-    ctx.fillStyle = '#7a2dd2';
-    ctx.beginPath();
-    ctx.arc(sTop.x, sTop.y, 6, 0, Math.PI*2);
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  if(bishop.tool === 'edit'){
-    const handleSets = [
-      ...(bishop.terrain || []),
-      ...(bishop.phreatic || []),
-      ...(bishop.walls || []).flatMap((wall)=>{
-        const endpoints = wallEndpoints(wall);
-        return endpoints ? [endpoints.head, endpoints.tip] : [];
-      }),
-      ...(bishop.drains || []).flatMap((drain)=>drain.vertices || []),
-      ...((bishop.customRegions?.length ? stage6BishopSelectedCustomRegion()?.polygon : []) || [])
-    ];
-    handleSets.forEach((pt)=>{
-      const s = stage6BishopWorldToScreen(pt);
-      ctx.save();
-      ctx.fillStyle = '#fff';
-      ctx.strokeStyle = '#1f2e40';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, 4, 0, Math.PI*2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    });
-  }
+  const viewModel = seepslopeBuildCanvasViewModel({
+    bishop,
+    model,
+    viewport:bishop.viewport,
+    width:rect.width,
+    height:rect.height,
+    hoverWorld:stage6BishopCanvasState.hoverWorld,
+    excludeKey:seepslopeCanvasExcludeKey
+  }, SEEPSLOPE_CANVAS_ENV);
+  seepslopeDrawCanvasFrame(ctx, viewModel, seepslopeVizSeries());
 }
 
 function initStage6BishopCanvas(){

@@ -187,6 +187,98 @@ export function retainingVizSeries() {
 	};
 }
 
+/** A token with an explicit per-call fallback (the `readCssToken(name, fallback)` contract). */
+const tokenOr = (name: string, fallback: string) => token(name) || FALLBACK[name] || fallback;
+
+/**
+ * The Stage 6 Seep / Slope section canvas (§3.13 "Pile/retaining canvases"), resolved for the
+ * current theme — one role per thing the canvas paints, read once per frame by
+ * `seepslope/canvas/draw/*` (PR 18e).
+ *
+ * The six roles at the top are the tokens the monolith already read per frame
+ * (`getComputedStyle(root).getPropertyValue('--bg' | '--canvas-text' | '--canvas-text-halo')` and
+ * `readCssToken('--chart-blue' | '--chart-green' | '--chart-neutral')`); they now go through
+ * `token()`, which resolves any token form — `color-mix()` included — to an `rgb()` string a canvas
+ * can parse, and keeps the monolith's literal as the no-DOM fallback.
+ *
+ * Everything below them is still the monolith's **literal** palette. PR 18e is a pure move and its
+ * gate is 0 px on the Bishop visual baselines, so no colour may shift here; naming the roles is
+ * what makes PR 19 (`style(seepslope)`, PLAN §2 row 19) a one-file change — map each literal onto
+ * its `--viz-*` token there, with a re-baseline.
+ */
+export function seepslopeVizSeries() {
+	return {
+		// ── resolved tokens ─────────────────────────────────────────────────────
+		paper: tokenOr('--bg', '#fff'),                                    // canvas background
+		text: tokenOr('--canvas-text', '#213142'),                         // labels
+		halo: tokenOr('--canvas-text-halo', 'rgba(255,255,255,0.92)'),     // label halo
+		bcHead: tokenOr('--chart-blue', '#4F8584'),                        // seepage BC: fixed head
+		bcSeepageFace: tokenOr('--chart-green', '#3D6B6A'),                // seepage BC: seepage face
+		bcNoFlow: tokenOr('--chart-neutral', '#6b6b68'),                   // seepage BC: no flow
+		phreaticSolved: tokenOr('--chart-green', '#3D6B6A'),               // solved free surface
+		// ── grid, ground and water (literals — PR 19) ───────────────────────────
+		grid: 'rgba(140, 150, 170, 0.18)',
+		terrain: '#2d3a4a',
+		regionFallback: '#c9b089',                                         // a material without a colour
+		regionSelectedOutline: '#213142',
+		phreatic: '#2f7fda',
+		drain: '#128a99',
+		drainSelected: '#0b7285',
+		draft: '#2d3a4a',
+		draftHole: '#b3477a',
+		splitPoint: '#b3477a',
+		// ── loads and walls ─────────────────────────────────────────────────────
+		loadSelected: '#1f6feb',
+		loadSelectedHalo: 'rgba(31, 111, 235, 0.22)',
+		loadBadgeBg: 'rgba(255,255,255,0.88)',
+		loadBadgeBorder: 'rgba(31,111,235,0.55)',
+		handleFill: '#fff',
+		handleStroke: '#1f2e40',
+		wall: '#6a5841',
+		wallSelected: '#127f9b',
+		wallDeflection: 'rgba(18, 127, 155, 0.95)',
+		wallOverlayFallback: 'rgba(126, 80, 168, 0.8)',
+		wallOverlayFallbackHex: '#7e50a8',
+		wallOverlayLabelBg: '#fff',
+		// ── seepage results ─────────────────────────────────────────────────────
+		flowLine: 'rgba(20, 58, 95, 0.48)',
+		flowArrow: 'rgba(20, 58, 95, 0.78)',
+		bcSelectedOutline: 'rgba(33,49,66,0.9)',
+		// ── deformation results ─────────────────────────────────────────────────
+		plasticHistory: 'rgba(181, 58, 109, 0.88)',
+		plasticActive: 'rgba(196, 57, 43, 0.88)',
+		plasticTension: 'rgba(214, 137, 16, 0.92)',
+		plasticStroke: 'rgba(255, 255, 255, 0.92)',
+		vectorHalo: 'rgba(255, 255, 255, 0.92)',
+		vectorInk: 'rgba(25, 37, 54, 0.92)',
+		vectorFill: 'rgba(25, 37, 54, 0.94)',
+		meshUndeformed: 'rgba(33, 49, 66, 0.22)',
+		meshDeformed: 'rgba(33, 49, 66, 0.68)',
+		// ── stability results ───────────────────────────────────────────────────
+		circleSelected: '#d65252',
+		circleOther: 'rgba(214, 82, 82, 0.16)',
+		circlePreview: 'rgba(58, 128, 212, 0.6)',
+		slice: 'rgba(34, 76, 120, 0.35)',
+		wallForce: '#b3477a',
+		// ── measurement ─────────────────────────────────────────────────────────
+		measure: '#b55724',
+		measurePreview: 'rgba(181, 87, 36, 0.78)',
+		measurePreviewFill: 'rgba(181, 87, 36, 0.12)',
+		measureBoxBg: 'rgba(255, 246, 237, 0.96)',
+		measureBoxBgPreview: 'rgba(255, 246, 237, 0.9)',
+		measureBoxBorder: 'rgba(181, 87, 36, 0.9)',
+		measureBoxBorderPreview: 'rgba(181, 87, 36, 0.55)',
+		measureText: '#6b3212',
+		measureDotStroke: '#ffffff',
+		// ── the active-CPT marker ───────────────────────────────────────────────
+		cpt: '#7a2dd2',
+		cptHalo: 'rgba(255,255,255,0.9)',
+		cptRing: '#fff'
+	};
+}
+
+export type SeepslopeVizSeries = ReturnType<typeof seepslopeVizSeries>;
+
 /** Stored choice ('system' when nothing is stored). */
 export function getTheme(): ThemeChoice {
 	if (typeof localStorage === 'undefined') return 'system';
