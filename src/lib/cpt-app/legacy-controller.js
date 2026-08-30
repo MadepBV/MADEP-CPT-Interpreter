@@ -293,17 +293,59 @@ import {
   invalidateBishop as seepslopeInvalidateBishop,
   invalidateWallGeometry as seepslopeInvalidateWallGeometry
 } from './seepslope/model/index.js';
+// Seep / Slope run package (refactor step 9c / PR 18c, src/lib/cpt-app/seepslope/run/): each of
+// the three runs is a pure request builder (state → worker message) plus a pure result reducer
+// (worker message → state patch, the run-id guard included); the worker lifecycle lives behind
+// one `createWorkerAdapter()` instance, so the controller no longer holds worker singletons in
+// closure. The run/stop/progress façades below keep the monolith names and own the three host
+// halves the package cannot: ensureStage6State(), the DOM, and `S`.
+import {
+  applyRunPatch as seepslopeApplyRunPatch,
+  createWorkerAdapter as seepslopeCreateWorkerAdapter,
+  prepareSearch as seepslopePrepareSearch,
+  searchNoWorkerPatch as seepslopeSearchNoWorkerPatch,
+  buildSearchInput as seepslopeBuildSearchInput,
+  searchRequest as seepslopeSearchRequest,
+  startSearchPatch as seepslopeStartSearchPatch,
+  reduceSearchMessage as seepslopeReduceSearchMessage,
+  searchWorkerErrorPatch as seepslopeSearchWorkerErrorPatch,
+  stopSearchPatch as seepslopeStopSearchPatch,
+  prepareSeepage as seepslopePrepareSeepage,
+  seepageNoWorkerPatch as seepslopeSeepageNoWorkerPatch,
+  buildSeepageInputModel as seepslopeBuildSeepageInputModel,
+  seepageRequest as seepslopeSeepageRequest,
+  startSeepagePatch as seepslopeStartSeepagePatch,
+  reduceSeepageMessage as seepslopeReduceSeepageMessage,
+  seepageWorkerErrorPatch as seepslopeSeepageWorkerErrorPatch,
+  stopSeepagePatch as seepslopeStopSeepagePatch,
+  prepareDeformation as seepslopePrepareDeformation,
+  deformationNoWorkerPatch as seepslopeDeformationNoWorkerPatch,
+  buildDeformationOptions as seepslopeBuildDeformationOptions,
+  deformationRequest as seepslopeDeformationRequest,
+  startDeformationPatch as seepslopeStartDeformationPatch,
+  reduceDeformationMessage as seepslopeReduceDeformationMessage,
+  deformationWorkerErrorPatch as seepslopeDeformationWorkerErrorPatch,
+  stopDeformationPatch as seepslopeStopDeformationPatch,
+  searchProgressDom as seepslopeSearchProgressDom,
+  runningMessage as seepslopeRunningMessage,
+  readyMessage as seepslopeReadyMessage,
+  // The four label helpers the runs share with the results / panel regions (step 9f): the run is
+  // their only writer, so they moved with it and keep their monolith names as import aliases.
+  methodModeLabel as stage6BishopMethodModeLabel,
+  secondsLabelFromMs as stage6SecondsLabelFromMs,
+  seepageFlowErrorLabel as stage6SeepageFlowErrorLabel,
+  safetyFinalizationStatusFromSolver as stage6SafetyFinalizationStatusFromSolver,
+  completeMessage as stage6BishopCompleteMessage,
+  seepageCompleteMessage as stage6BishopSeepageCompleteMessage
+} from './seepslope/run/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
 let __legacyControllerInitialized = false;
 let __legacyControllerHashBound = false;
-let stage6BishopWorker = null;
-let stage6BishopRunId = 0;
-let stage6BishopSeepageWorker = null;
-let stage6BishopSeepageRunId = 0;
-let stage6BishopDeformationWorker = null;
-let stage6BishopDeformationRunId = 0;
+// The three Seep / Slope workers and their run ids (map §3.4 #8) live in this adapter instead of
+// six module variables; nothing outside the run façades below touches it.
+const stage6BishopWorkers = seepslopeCreateWorkerAdapter();
 let classificationRefreshTimer = null;
 const stage6BishopCanvasState = {
   canvas:null,
@@ -3787,332 +3829,100 @@ function stage6BishopDeleteDrain(index){
 }
 
 
+// ── seepslope/run façades (refactor step 9c / PR 18c) ───────────────────────────────────────
+// The three runs (map §5 rows 1-3) are pure request builders and pure result reducers in
+// src/lib/cpt-app/seepslope/run/; the worker lifecycle is one adapter (`stage6BishopWorkers`)
+// instead of the six module variables the monolith closed over (map §3.4 #8). Each façade keeps
+// the monolith name, signature and call order, and adds only what the package cannot own:
+// ensureStage6State(), stage6RememberDetailsState(), the pending region-coarseness commit, the
+// soil-model sync, the DOM (renderStage6 / the progress bar / the canvas) and `S`.
+
+/** The bishop block of the CPT that is active *now* — the worker callbacks' one host hook. */
+function stage6BishopRunState(){
+  return S?.stage6?.bishop || null;
+}
+
+/** Apply a run patch to the active block; a no-op when there is no Stage 6 state. */
+function stage6BishopApplyRunPatch(patch){
+  const bishop = stage6BishopRunState();
+  if(bishop) seepslopeApplyRunPatch(bishop, patch);
+  return bishop;
+}
+
 function stage6BishopStopSeepage(silent){
-  if(stage6BishopSeepageWorker){
-    if(silent){
-      stage6BishopSeepageWorker.terminate();
-      stage6BishopSeepageWorker = null;
-    } else if(S?.stage6?.bishop?.seepage?.progress?.runId){
-      stage6BishopSeepageWorker.postMessage({
-        type:'stop-seepage',
-        runId:S.stage6.bishop.seepage.progress.runId
-      });
-    }
-  }
-  if(S?.stage6?.bishop?.seepage){
-    const seepage = S.stage6.bishop.seepage;
-    if(silent){
-      seepage.progress.running = false;
-      seepage.progress.percent = 0;
-      if(seepage.status === 'meshing' || seepage.status === 'solving') seepage.status = 'idle';
-    } else if(seepage.progress?.running){
-      seepage.progress.message = 'Stopping seepage and keeping the latest solved state...';
-      seepage.rejectReason = '';
-    } else {
-      seepage.progress.message = 'No seepage run is active.';
-      seepage.rejectReason = '';
-    }
-  }
+  stage6BishopWorkers.stop('seepage', {silent, runId:S?.stage6?.bishop?.seepage?.progress?.runId});
+  stage6BishopApplyRunPatch(seepslopeStopSeepagePatch(stage6BishopRunState(), silent));
 }
 
 function stage6BishopStopDeformation(silent){
-  if(stage6BishopDeformationWorker){
-    if(silent){
-      stage6BishopDeformationWorker.terminate();
-      stage6BishopDeformationWorker = null;
-    } else if(S?.stage6?.bishop?.deformation?.progress?.runId){
-      stage6BishopDeformationWorker.postMessage({
-        type:'stop-deformation',
-        runId:S.stage6.bishop.deformation.progress.runId
-      });
-    }
-  }
-  if(S?.stage6?.bishop?.deformation){
-    const deformation = S.stage6.bishop.deformation;
-    if(silent){
-      deformation.progress.running = false;
-      deformation.progress.percent = 0;
-      if(['meshing','solving','post'].includes(deformation.status)) deformation.status = 'idle';
-    } else if(deformation.progress?.running){
-      deformation.progress.message = 'Stopping deformation and keeping the latest solved state...';
-      deformation.rejectReason = '';
-    } else {
-      deformation.progress.message = 'No deformation run is active.';
-      deformation.rejectReason = '';
-    }
-  }
+  stage6BishopWorkers.stop('deformation', {silent, runId:S?.stage6?.bishop?.deformation?.progress?.runId});
+  stage6BishopApplyRunPatch(seepslopeStopDeformationPatch(stage6BishopRunState(), silent));
 }
 
 function stage6BishopStopSearch(silent){
-  if(stage6BishopWorker){
-    stage6BishopWorker.terminate();
-    stage6BishopWorker = null;
-  }
-  if(S?.stage6?.bishop){
-    S.stage6.bishop.progress.running = false;
-    S.stage6.bishop.progress.previewCircle = null;
-    if(!silent) S.stage6.bishop.progress.message = 'Bishop search stopped.';
-  }
+  // The search worker has no stop protocol (analyzeBishopSearch never yields), so the adapter
+  // terminates it whether or not the stop is silent — as the monolith did.
+  stage6BishopWorkers.stop('search', {silent});
+  stage6BishopApplyRunPatch(seepslopeStopSearchPatch(stage6BishopRunState(), silent));
 }
 
 function stage6BishopUpdateProgressDom(){
-  const bishop = S?.stage6?.bishop;
+  const bishop = stage6BishopRunState();
   if(!bishop) return;
   const status = document.getElementById('stage6BishopProgress');
   const bar = document.getElementById('stage6BishopProgressBar');
-  if(status){
-    const p = bishop.progress;
-    status.textContent = p.running
-      ? `${stage6BishopMethodModeLabel(bishop.methodMode)} · ${p.trial||0}/${p.total||0} Bishop trials (${(p.percent||0).toFixed(0)}%)`
-      : (p.message || 'Idle');
-  }
-  if(bar) bar.style.width = `${Math.max(0, Math.min(100, bishop.progress.percent || 0))}%`;
+  const dom = seepslopeSearchProgressDom(bishop);
+  if(status) status.textContent = dom.text;
+  if(bar) bar.style.width = dom.width;
+}
+
+/** Run one reducer result: the patch on the active block, then the effects it asks for. */
+function stage6BishopApplyRunStep(step){
+  if(!step.handled) return false;
+  stage6BishopApplyRunPatch(step.patch);
+  if(step.effects.updateProgressDom) stage6BishopUpdateProgressDom();
+  if(step.effects.drawCanvas) stage6BishopDrawCanvas();
+  if(step.effects.render) renderStage6();
+  return true;
 }
 
 function stage6BishopEnsureWorker(){
-  if(stage6BishopWorker || typeof Worker === 'undefined') return stage6BishopWorker;
-  stage6BishopWorker = new Worker(new URL('./stage6-bishop-worker.js', import.meta.url), {type:'module'});
-  stage6BishopWorker.onmessage = (event)=>{
-    const payload = event?.data || {};
-    const bishop = S?.stage6?.bishop;
-    if(!bishop || payload.runId !== bishop.progress.runId) return;
-    if(payload.type === 'progress'){
-      bishop.progress.running = true;
-      bishop.progress.trial = payload.progress?.trial || 0;
-      bishop.progress.total = payload.progress?.total || 0;
-      bishop.progress.percent = payload.progress?.percent || 0;
-      bishop.progress.previewCircle = payload.progress?.previewCircle || null;
-      bishop.progress.message = stage6BishopRunningMessage();
-      stage6BishopUpdateProgressDom();
-      stage6BishopDrawCanvas();
-      return;
-    }
-    bishop.progress.running = false;
-    bishop.progress.previewCircle = null;
-    if(payload.type === 'result'){
-      bishop.results = payload.result || null;
-      bishop.selectedResult = 0;
-      bishop.stale = false;
-      const timing = payload.result?.timing;
-      bishop.progress.message = stage6BishopCompleteMessage(payload.result, timing);
-      renderStage6();
-      return;
-    }
-    bishop.progress.message = payload.error || 'Bishop search failed.';
-    bishop.progress.previewCircle = null;
-    renderStage6();
-  };
-  stage6BishopWorker.onerror = ()=>{
-    if(S?.stage6?.bishop){
-      S.stage6.bishop.progress.running = false;
-      S.stage6.bishop.progress.previewCircle = null;
-      S.stage6.bishop.progress.message = 'Bishop worker error.';
+  return stage6BishopWorkers.ensure('search', {
+    onMessage:(payload)=>{
+      stage6BishopApplyRunStep(seepslopeReduceSearchMessage(stage6BishopRunState(), payload));
+    },
+    onError:()=>{
+      if(!stage6BishopRunState()) return;
+      stage6BishopApplyRunPatch(seepslopeSearchWorkerErrorPatch());
       renderStage6();
     }
-    if(stage6BishopWorker){
-      stage6BishopWorker.terminate();
-      stage6BishopWorker = null;
-    }
-  };
-  return stage6BishopWorker;
+  });
 }
 
 function stage6BishopEnsureSeepageWorker(){
-  if(stage6BishopSeepageWorker || typeof Worker === 'undefined') return stage6BishopSeepageWorker;
-  stage6BishopSeepageWorker = new Worker(new URL('./seepage/seepage-worker.js', import.meta.url), {type:'module'});
-  stage6BishopSeepageWorker.onmessage = (event)=>{
-    const payload = event?.data || {};
-    const seepage = S?.stage6?.bishop?.seepage;
-    if(!seepage || payload.runId !== seepage.progress?.runId) return;
-    if(payload.type === 'progress'){
-      seepage.progress.running = true;
-      seepage.progress.percent = payload.progress?.percent || 0;
-      seepage.progress.message = payload.progress?.message || 'Running seepage...';
-      if(payload.progress?.stage === 'meshing') seepage.status = 'meshing';
-      else if(payload.progress?.stage === 'solving' || payload.progress?.stage === 'post') seepage.status = 'solving';
-      renderStage6();
-      return;
-    }
-    seepage.progress.running = false;
-    seepage.progress.percent = 100;
-    if(payload.type === 'result'){
-      seepage.mesh = payload.output?.mesh || null;
-      seepage.result = payload.output?.result || null;
-      seepage.stale = false;
-      seepage.status = seepage.mesh && seepage.result ? 'success' : 'failed';
-      seepage.rejectReason = seepage.status === 'success'
-        ? ''
-        : 'The seepage solver returned no result.';
-      if(
-        seepage.status === 'success' &&
-        !seepage.display?.showContours &&
-        !seepage.display?.showContourLines &&
-        !seepage.display?.showFlowVectors &&
-        !seepage.display?.showExitGradient
-      ){
-        seepage.display.showContours = true;
-        seepage.display.showContourLines = true;
-        seepage.display.showContourLegend = true;
-        seepage.display.contourMode = 'head';
-      }
-      seepage.progress.message = seepage.status === 'success'
-        ? stage6BishopSeepageCompleteMessage(seepage.result)
-        : 'Seepage solve failed.';
-      renderStage6();
-      return;
-    }
-    if(payload.error === 'Seepage run was interrupted before a solution became available.'){
-      seepage.status = 'idle';
-      seepage.rejectReason = '';
-      seepage.progress.message = 'Seepage interrupted before the first solution became available.';
-      seepage.progress.percent = 0;
-      renderStage6();
-      return;
-    }
-    seepage.status = 'failed';
-    seepage.rejectReason = payload.error || 'Seepage solve failed.';
-    seepage.progress.message = seepage.rejectReason;
-    seepage.progress.percent = 0;
-    renderStage6();
-  };
-  stage6BishopSeepageWorker.onerror = ()=>{
-    if(S?.stage6?.bishop?.seepage){
-      const seepage = S.stage6.bishop.seepage;
-      seepage.progress.running = false;
-      seepage.progress.percent = 0;
-      seepage.status = 'failed';
-      seepage.rejectReason = 'Seepage worker error.';
-      seepage.progress.message = 'Seepage worker error.';
+  return stage6BishopWorkers.ensure('seepage', {
+    onMessage:(payload)=>{
+      stage6BishopApplyRunStep(seepslopeReduceSeepageMessage(stage6BishopRunState(), payload));
+    },
+    onError:()=>{
+      if(!stage6BishopRunState()?.seepage) return;
+      stage6BishopApplyRunPatch(seepslopeSeepageWorkerErrorPatch());
       renderStage6();
     }
-    if(stage6BishopSeepageWorker){
-      stage6BishopSeepageWorker.terminate();
-      stage6BishopSeepageWorker = null;
-    }
-  };
-  return stage6BishopSeepageWorker;
+  });
 }
 
 function stage6BishopEnsureDeformationWorker(){
-  if(stage6BishopDeformationWorker || typeof Worker === 'undefined') return stage6BishopDeformationWorker;
-  stage6BishopDeformationWorker = new Worker(new URL('./deformation/deformation-worker.js', import.meta.url), {type:'module'});
-  stage6BishopDeformationWorker.onmessage = (event)=>{
-    const payload = event?.data || {};
-    const deformation = S?.stage6?.bishop?.deformation;
-    if(!deformation || payload.runId !== deformation.progress?.runId) return;
-    if(payload.type === 'progress'){
-      deformation.progress.running = true;
-      deformation.progress.percent = payload.progress?.percent || 0;
-      deformation.progress.message = payload.progress?.message || 'Running deformation...';
-      if(payload.progress?.stage === 'meshing') deformation.status = 'meshing';
-      else if(payload.progress?.stage === 'solving') deformation.status = 'solving';
-      else if(payload.progress?.stage === 'post') deformation.status = 'post';
-      renderStage6();
-      return;
-    }
-    deformation.progress.running = false;
-    deformation.progress.percent = 100;
-    if(payload.type === 'result'){
-      deformation.mesh = payload.output?.mesh || null;
-      deformation.result = payload.output || null;
-      deformation.stale = false;
-      deformation.warnings = Array.isArray(payload.output?.warnings) ? payload.output.warnings : [];
-      deformation.status = deformation.mesh && deformation.result ? 'success' : 'failed';
-      deformation.rejectReason = deformation.status === 'success'
-        ? ''
-        : 'The deformation solver returned no result.';
-      const solver = payload.output?.solver || {};
-      const analysisType = solver?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
-      const convergenceState = solver?.convergenceState || 'converged';
-      const shownLoadFactor = 100 * Math.max(Number(solver?.displayedLoadFactor) || 0, 0);
-      const stableLoadFactor = 100 * Math.max(Number(solver?.loadFactorCommitted) || 0, 0);
-      const shownGravityFactor = 100 * Math.max(Number(solver?.initialPhaseDisplayedGravityFactor) || 0, 0);
-      const initialPhaseDisplayedContinuationMode = String(solver?.initialPhaseDisplayedContinuationMode || 'gravity');
-      const initialPhaseTargetLabel = initialPhaseDisplayedContinuationMode === 'predictor-to-full-gravity correction'
-        ? `${shownGravityFactor.toFixed(1)}% of the predictor-to-full-gravity correction`
-        : `${shownGravityFactor.toFixed(1)}% gravity`;
-      const initialPhaseStarted = solver?.initialPhaseStarted === true;
-      const servicePhaseStarted = solver?.servicePhaseStarted === true;
-      const shownPhasePeakTensionCutoff = initialPhaseStarted && !servicePhaseStarted
-        ? Math.max(Math.round(Number(solver?.initialPhasePeakTensionCutoffActiveElements ?? solver?.initialPhasePeakTensionPendingElements) || 0), 0)
-        : Math.max(Math.round(Number(solver?.peakTensionCutoffActiveElements ?? solver?.peakTensionPendingElements) || 0), 0);
-      const maxMcEtaLabel = shownPhasePeakTensionCutoff > 0
-        ? 'n/a (tension cut-off active)'
-        : payload.output?.summaries?.hasInfiniteMcEta
-          ? '∞'
-        : (Number(payload.output?.summaries?.maxMcEta) || 0).toFixed(2);
-      const maxSettlementLabel = ((payload.output?.summaries?.maxSettlement || 0) * 1000).toFixed(1);
-      const maxSafetyPlasticLabel = `${(100 * (payload.output?.summaries?.maxSafetyEquivalentPlasticIncrement || 0)).toFixed(3)} %`;
-      const inadmissibleInitialCount = Math.max(Math.round(Number(payload.output?.summaries?.inadmissibleInitialElementCount) || 0), 0);
-      const inadmissibleInitialSuffix = inadmissibleInitialCount > 0
-        ? ` Initial exact MC audit flagged ${inadmissibleInitialCount} inadmissible predictor element${inadmissibleInitialCount === 1 ? '' : 's'}.`
-        : '';
-      const safetyFinalization = solver?.safetyResult?.finalization || null;
-      const safetyFinalizationStatus = stage6SafetyFinalizationStatusFromSolver(solver);
-      const safetyOpenEnded = safetyFinalization?.factorOfSafetyIsOpenEnded === true
-        || safetyFinalizationStatus === 'no-failure-found';
-      const safetyPhysicalFailure = safetyFinalizationStatus === 'bracketed-failure'
-        || safetyFinalizationStatus === 'mechanism-developed';
-      const safetyPhysicalLead = safetyFinalizationStatus === 'mechanism-developed'
-        ? `C-phi reduction developed a coherent mechanism at ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}.`
-        : `C-phi reduction bracketed failure between ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)} and ${Number(solver?.safetyFactorOfSafetyUpper || solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}.`;
-      deformation.progress.message = deformation.status === 'success'
-        ? (
-            analysisType === 'safety-cphi'
-              ? (
-                  safetyPhysicalFailure
-                    ? `${safetyPhysicalLead} Conservative FoS ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Showing the near-failure mechanism at ΣMsf ${Number(solver?.safetyDisplayedSigmaMsf || solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Max additional settlement ${maxSettlementLabel} mm; max safety Δε̄ᵖ ${maxSafetyPlasticLabel}.${inadmissibleInitialSuffix}`
-                    : safetyOpenEnded
-                      ? `C-phi reduction remained stable up to ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Report FoS > ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)}. Max additional settlement ${maxSettlementLabel} mm; max safety Δε̄ᵖ ${maxSafetyPlasticLabel}.${inadmissibleInitialSuffix}`
-                      : `C-phi reduction stopped at ΣMsf ${Number(solver?.safetyFactorOfSafetyLower || 1).toFixed(3)} with status ${safetyFinalizationStatus.replaceAll('-', ' ')}. Treat the FoS as a lower-bound numerical result, not confirmed soil body failure. Max additional settlement ${maxSettlementLabel} mm; max safety Δε̄ᵖ ${maxSafetyPlasticLabel}.${inadmissibleInitialSuffix}`
-                )
-              : convergenceState === 'partial'
-              ? (
-                  initialPhaseStarted && !servicePhaseStarted
-                    ? `Showing a non-converged initial self-weight equilibration state at ${initialPhaseTargetLabel}. Service loading was not started. Max settlement ${maxSettlementLabel} mm; max MC eta ${maxMcEtaLabel}.${inadmissibleInitialSuffix}`
-                    : `Showing a non-converged near-failure deformation state at ${shownLoadFactor.toFixed(1)}% load${shownLoadFactor > stableLoadFactor + 1e-6 ? ` (last fully converged state ${stableLoadFactor.toFixed(1)}%)` : ''}. Max settlement ${maxSettlementLabel} mm; max MC eta ${maxMcEtaLabel}.${inadmissibleInitialSuffix}`
-                )
-              : `Deformation screen ready. Max settlement ${maxSettlementLabel} mm; max MC eta ${maxMcEtaLabel}.${inadmissibleInitialSuffix}`
-          )
-        : 'Deformation solve failed.';
-      renderStage6();
-      return;
-    }
-    if(
-      payload.error === 'Deformation run was interrupted before the first displacement solution became available.' ||
-      payload.error === 'Deformation run was interrupted before geostatic initialization became available.'
-    ){
-      deformation.status = 'idle';
-      deformation.rejectReason = '';
-      deformation.progress.message = payload.error === 'Deformation run was interrupted before geostatic initialization became available.'
-        ? 'Deformation interrupted before the geostatic initialization solution became available.'
-        : 'Deformation interrupted before the first displacement solution became available.';
-      deformation.progress.percent = 0;
-      renderStage6();
-      return;
-    }
-    deformation.status = 'failed';
-    deformation.rejectReason = payload.error || 'Deformation solve failed.';
-    deformation.progress.message = deformation.rejectReason;
-    deformation.progress.percent = 0;
-    renderStage6();
-  };
-  stage6BishopDeformationWorker.onerror = ()=>{
-    if(S?.stage6?.bishop?.deformation){
-      const deformation = S.stage6.bishop.deformation;
-      deformation.progress.running = false;
-      deformation.progress.percent = 0;
-      deformation.status = 'failed';
-      deformation.rejectReason = 'Deformation worker error.';
-      deformation.progress.message = 'Deformation worker error.';
+  return stage6BishopWorkers.ensure('deformation', {
+    onMessage:(payload)=>{
+      stage6BishopApplyRunStep(seepslopeReduceDeformationMessage(stage6BishopRunState(), payload));
+    },
+    onError:()=>{
+      if(!stage6BishopRunState()?.deformation) return;
+      stage6BishopApplyRunPatch(seepslopeDeformationWorkerErrorPatch());
       renderStage6();
     }
-    if(stage6BishopDeformationWorker){
-      stage6BishopDeformationWorker.terminate();
-      stage6BishopDeformationWorker = null;
-    }
-  };
-  return stage6BishopDeformationWorker;
+  });
 }
 
 function stage6BishopRunSearch(){
@@ -4121,58 +3931,28 @@ function stage6BishopRunSearch(){
   stage6BishopCommitPendingSelectedRegionCoarseness();
   const bishop = S.stage6.bishop;
   const model = stage6BishopCurrentModel();
-  if(!model){
-    bishop.progress.message = 'Draw terrain and place the active CPT marker first.';
+  const prep = seepslopePrepareSearch(bishop, model);
+  if(!prep.ok){
+    seepslopeApplyRunPatch(bishop, prep.patch);
     renderStage6();
     return;
   }
-  if(!bishop.entryZone || !bishop.exitZone){
-    bishop.progress.message = 'Define entry and exit zones on the terrain before running the search.';
-    renderStage6();
-    return;
-  }
-  const entryZone = stage6BishopSortZone(bishop.entryZone);
-  const exitZone = stage6BishopSortZone(bishop.exitZone);
-  const span = Math.abs((exitZone?.xEnd || 0) - (entryZone?.xStart || 0));
-  const input = {
-    model,
-    entryZone,
-    exitZone,
-    methodMode:bishop.methodMode,
-    searchConfig:{
-      ...bishop.search,
-      minSliceWidth:Math.max(+bishop.search.minSliceWidth || 0.05, span/300 || 0.05, 0.05)
-    },
-    solverConfig:{...bishop.solver},
-    spencerConfig:{...bishop.spencer}
-  };
+  // The input is built here, before the silent stops and before the pre-post render, exactly
+  // where the monolith built it: the render re-runs ensure() and the soil-model sync, which may
+  // still clamp the zones or the search config on a state that has not converged yet.
+  const input = seepslopeBuildSearchInput(bishop, model);
   stage6BishopStopSeepage(true);
   stage6BishopStopSearch(true);
   const worker = stage6BishopEnsureWorker();
   if(!worker){
-    bishop.progress.message = 'Web Worker is not available in this browser context.';
+    seepslopeApplyRunPatch(bishop, seepslopeSearchNoWorkerPatch());
     renderStage6();
     return;
   }
-  stage6BishopRunId += 1;
-  bishop.progress = {
-    running:true,
-    percent:0,
-    trial:0,
-    total:0,
-    runId:stage6BishopRunId,
-    message:stage6BishopRunningMessage(),
-    previewCircle:null
-  };
-  bishop.results = null;
-  bishop.selectedResult = 0;
-  bishop.stale = true;
+  const runId = stage6BishopWorkers.nextRunId('search');
+  seepslopeApplyRunPatch(bishop, seepslopeStartSearchPatch(bishop, runId));
   renderStage6();
-  worker.postMessage({
-    type:'analyze',
-    runId:stage6BishopRunId,
-    input
-  });
+  worker.postMessage(seepslopeSearchRequest(runId, input));
 }
 
 function stage6BishopRunSeepage(){
@@ -4182,31 +3962,11 @@ function stage6BishopRunSeepage(){
   const bishop = S.stage6.bishop;
   stage6BishopSyncSoilModel();
   const model = stage6BishopCurrentModel();
-  if(!model){
-    bishop.seepage.rejectReason = 'Draw terrain and place the active CPT marker first.';
-    bishop.seepage.status = 'failed';
-    renderStage6();
-    return;
-  }
-  const activeBcs = (bishop.seepage.bcs || []).filter((bc)=>bc.status !== 'orphaned');
-  const headCount = activeBcs.filter((bc)=>bc.type === 'head').length;
-  if(!headCount){
-    bishop.seepage.rejectReason = 'Assign at least one prescribed-head boundary edge before running seepage.';
-    bishop.seepage.status = 'failed';
-    renderStage6();
-    return;
-  }
-  if(bishop.seepage.options?.freeSurface === 'fixed' && (!bishop.phreatic || bishop.phreatic.length < 2)){
-    bishop.seepage.rejectReason = 'Draw a phreatic line or switch seepage to iterative free-surface mode.';
-    bishop.seepage.status = 'failed';
-    renderStage6();
-    return;
-  }
-  const drainValidation = validateDrains(model);
-  bishop.seepage.drainValidation = drainValidation;
-  if(drainValidation.errors.length){
-    bishop.seepage.rejectReason = drainValidation.errors[0].message;
-    bishop.seepage.status = 'failed';
+  // prepareSeepage also *stores* the drain validation (the drains panel renders it), so its patch
+  // is applied whether or not the pre-flight passed.
+  const prep = seepslopePrepareSeepage(bishop, model);
+  seepslopeApplyRunPatch(bishop, prep.patch);
+  if(!prep.ok){
     renderStage6();
     return;
   }
@@ -4214,34 +3974,15 @@ function stage6BishopRunSeepage(){
   stage6BishopStopSeepage(true);
   const worker = stage6BishopEnsureSeepageWorker();
   if(!worker){
-    bishop.seepage.rejectReason = 'Web Worker is not available in this browser context.';
-    bishop.seepage.status = 'failed';
+    seepslopeApplyRunPatch(bishop, seepslopeSeepageNoWorkerPatch());
     renderStage6();
     return;
   }
-  stage6BishopSeepageRunId += 1;
-  bishop.seepage.status = 'meshing';
-  bishop.seepage.rejectReason = '';
-  bishop.seepage.progress = {
-    running:true,
-    percent:0,
-    message:'Building triangulated seepage mesh...',
-    runId:stage6BishopSeepageRunId
-  };
-  const seepageInputModel = {
-    ...model,
-    seepage:{
-      ...(model.seepage || {}),
-      mesh:null,
-      result:null
-    }
-  };
+  const runId = stage6BishopWorkers.nextRunId('seepage');
+  seepslopeApplyRunPatch(bishop, seepslopeStartSeepagePatch(runId));
+  const inputModel = seepslopeBuildSeepageInputModel(model);
   renderStage6();
-  worker.postMessage({
-    type:'run-seepage',
-    runId:stage6BishopSeepageRunId,
-    input:{model:seepageInputModel}
-  });
+  worker.postMessage(seepslopeSeepageRequest(runId, inputModel));
 }
 
 function stage6BishopRunDeformation(){
@@ -4251,123 +3992,27 @@ function stage6BishopRunDeformation(){
   const bishop = S.stage6.bishop;
   stage6BishopSyncSoilModel();
   const model = stage6BishopCurrentModel();
-  if(!model){
-    bishop.deformation.rejectReason = 'Draw terrain and place the active CPT marker first.';
-    bishop.deformation.status = 'failed';
+  const prep = seepslopePrepareDeformation(bishop, model);
+  if(!prep.ok){
+    seepslopeApplyRunPatch(bishop, prep.patch);
     renderStage6();
     return;
-  }
-  const analysisType = bishop.deformation?.options?.analysisType === 'safety-cphi' ? 'safety-cphi' : 'deformation';
-  const loadMode = bishop.deformation?.options?.loadMode === 'total' ? 'total' : 'pressure';
-  const activeLoads = stage6BishopActiveSurfaceLoads('deformation');
-  if(analysisType === 'deformation'){
-    if(!activeLoads.length){
-      bishop.deformation.rejectReason = 'Draw or enable at least one positive surface load before running deformation.';
-      bishop.deformation.status = 'failed';
-      renderStage6();
-      return;
-    }
   }
   stage6BishopStopSearch(true);
   stage6BishopStopSeepage(true);
   stage6BishopStopDeformation(true);
   const worker = stage6BishopEnsureDeformationWorker();
   if(!worker){
-    bishop.deformation.rejectReason = 'Web Worker is not available in this browser context.';
-    bishop.deformation.status = 'failed';
+    seepslopeApplyRunPatch(bishop, seepslopeDeformationNoWorkerPatch());
     renderStage6();
     return;
   }
-  stage6BishopDeformationRunId += 1;
-  bishop.deformation.status = 'meshing';
-  bishop.deformation.rejectReason = '';
-  bishop.deformation.warnings = [];
-  bishop.deformation.lastWallInputs = (model.walls || []).map((wall)=>({
-    id:wall.id,
-    head:wall.head ? {...wall.head} : null,
-    tip:wall.tip ? {...wall.tip} : null,
-    x:wall.x,
-    yTop:wall.yTop,
-    yTip:wall.yTip,
-    passiveSide:wall.passiveSide,
-    mechanicalActive:wall.mechanicalActive === true
-  }));
-  bishop.deformation.progress = {
-    running:true,
-    percent:0,
-    message:'Building triangulated deformation mesh...',
-    runId:stage6BishopDeformationRunId
-  };
+  const runId = stage6BishopWorkers.nextRunId('deformation');
+  seepslopeApplyRunPatch(bishop, seepslopeStartDeformationPatch(model, runId));
   renderStage6();
-  worker.postMessage({
-    type:'run-deformation',
-    runId:stage6BishopDeformationRunId,
-    input:{
-      model,
-      options:{
-        analysisType,
-        meshTargetArea:stage6BishopResolvedDeformationMeshTargetArea(bishop),
-        meshElementType:String(bishop.deformation?.options?.meshElementType || '').toLowerCase() === 't6' ? 't6' : 't3',
-        constitutiveModel:bishop.deformation?.options?.constitutiveModel,
-        initialStressMode:'plastic-geostatic',
-        loadMode,
-        totalLoad:bishop.deformation?.options?.totalLoad,
-        outOfPlaneLength:bishop.deformation?.options?.outOfPlaneLength,
-        useSeepagePorePressures:bishop.deformation?.options?.useSeepagePorePressures === true,
-        nonlinearMaxIterations:bishop.deformation?.options?.nonlinearMaxIterations,
-        initialLoadStep:bishop.deformation?.options?.initialLoadStep,
-        minLoadStep:bishop.deformation?.options?.minLoadStep,
-        maxLoadSteps:bishop.deformation?.options?.maxLoadSteps,
-        residualRelTol:bishop.deformation?.options?.residualRelTol,
-        residualAbsTol:bishop.deformation?.options?.residualAbsTol,
-        displacementRelTol:bishop.deformation?.options?.displacementRelTol,
-        displacementAbsTol:bishop.deformation?.options?.displacementAbsTol,
-        loadStepGrowthFactor:bishop.deformation?.options?.loadStepGrowthFactor,
-        loadStepCutbackFactor:bishop.deformation?.options?.loadStepCutbackFactor,
-        plasticLoadStepGrowthFactor:bishop.deformation?.options?.plasticLoadStepGrowthFactor,
-        plasticLoadStepCutbackFactor:bishop.deformation?.options?.plasticLoadStepCutbackFactor,
-        geostaticInitializationMethod:bishop.deformation?.options?.geostaticInitializationMethod,
-        geostaticStressOnlyResidualTolerance:bishop.deformation?.options?.geostaticStressOnlyResidualTolerance,
-        useStagedGeostaticInit:true,
-        // Staged construction (model C): default ON (physically-correct for a
-        // retaining wall; inert for non-wall / non-MC). Toggle off for the
-        // legacy wall-free geostatic.
-        useStagedExcavation:bishop.deformation?.options?.useStagedExcavation !== false,
-        // Phase 2 soil-wall interface: default ON (engages only for MC + wall +
-        // staged; the solver downgrades safety-cphi runs to the bonded wall).
-        useWallInterface:bishop.deformation?.options?.useWallInterface !== false,
-        allowStressOnlyGeostaticReference:bishop.deformation?.options?.allowStressOnlyGeostaticReference === true,
-        stressOnlyGeostaticMaxEta:bishop.deformation?.options?.stressOnlyGeostaticMaxEta,
-        geostaticCorrectionStages:bishop.deformation?.options?.geostaticCorrectionStages,
-        initialGravityTangentSchedule:bishop.deformation?.options?.initialGravityTangentSchedule,
-        initialGravityElasticGlobalizationIterations:bishop.deformation?.options?.initialGravityElasticGlobalizationIterations,
-        elasticGlobalizationArmijoC1:bishop.deformation?.options?.elasticGlobalizationArmijoC1,
-        elasticGlobalizationMinResidualRatio:bishop.deformation?.options?.elasticGlobalizationMinResidualRatio,
-        geostaticMinLoadStep:bishop.deformation?.options?.geostaticMinLoadStep,
-        geostaticMaxRepeatedBand:bishop.deformation?.options?.geostaticMaxRepeatedBand,
-        geostaticProgressFailFast:bishop.deformation?.options?.geostaticProgressFailFast === true,
-        geostaticProgressFailFastSteps:bishop.deformation?.options?.geostaticProgressFailFastSteps,
-        geostaticProgressFailFastLoadFactor:bishop.deformation?.options?.geostaticProgressFailFastLoadFactor,
-        geostaticProgressFailFastPlasticFraction:bishop.deformation?.options?.geostaticProgressFailFastPlasticFraction,
-        serviceProgressFailFast:bishop.deformation?.options?.serviceProgressFailFast === true,
-        serviceProgressFailFastSteps:bishop.deformation?.options?.serviceProgressFailFastSteps,
-        serviceProgressFailFastLoadFactor:bishop.deformation?.options?.serviceProgressFailFastLoadFactor,
-        serviceProgressFailFastPlasticFraction:bishop.deformation?.options?.serviceProgressFailFastPlasticFraction,
-        safetyInitialSigmaMsfIncrement:bishop.deformation?.options?.safetyInitialSigmaMsfIncrement,
-        safetySigmaMsfGrowthFactor:bishop.deformation?.options?.safetySigmaMsfGrowthFactor,
-        safetySigmaMsfMax:bishop.deformation?.options?.safetySigmaMsfMax,
-        safetySigmaMsfBracketTolerance:bishop.deformation?.options?.safetySigmaMsfBracketTolerance,
-        safetyMaxSearchTrials:bishop.deformation?.options?.safetyMaxSearchTrials,
-        safetyFinalizationMode:bishop.deformation?.options?.safetyFinalizationMode === 'production-msf' ? 'production-msf' : 'legacy-bracket',
-        useUnsymmetricPlasticSolver:bishop.deformation?.options?.useUnsymmetricPlasticSolver === true,
-        solverBackend:bishop.deformation?.options?.solverBackend === 'js-cpu' ? 'js-cpu' : 'wasm-cpu',
-        useNewGpuPipeline:false,
-        gpuPipelineVersion:'v1',
-        useWasmCpuPipeline:bishop.deformation?.options?.solverBackend !== 'js-cpu',
-        wasmRobustNonlinearMode:false
-      }
-    }
-  });
+  // The ~60 solver options are read at the post, where the monolith read them (inline in the
+  // postMessage literal, after the pre-post render).
+  worker.postMessage(seepslopeDeformationRequest(runId, model, seepslopeBuildDeformationOptions(bishop)));
 }
 
 function stage6BishopSelectResult(index){
@@ -4390,23 +4035,9 @@ function stage6BishopStrengthSetLabel(key){
   return 'Characteristic';
 }
 
-function stage6BishopMethodModeLabel(mode){
-  return mode === 'bishop_spencer' ? 'Bishop + Spencer check' : 'Bishop only';
-}
-
-function stage6SecondsLabelFromMs(value){
-  const ms = Number(value);
-  if(!Number.isFinite(ms)) return '—';
-  return `${stage6CompactNumber(ms / 1000, 3)} s`;
-}
-
-function stage6SafetyFinalizationStatusFromSolver(solver){
-  const finalStatus = solver?.safetyResult?.finalization?.status;
-  if(finalStatus) return finalStatus;
-  const legacyStatus = solver?.safetyStatus;
-  if(legacyStatus === 'bracketed') return 'bracketed-failure';
-  return legacyStatus || 'not-applicable';
-}
+// stage6BishopMethodModeLabel / stage6SecondsLabelFromMs / stage6SafetyFinalizationStatusFromSolver
+// are import aliases of seepslope/run/progress.js (PR 18c): the run writes them, the results and
+// panel regions read them.
 
 function stage6DepthBandReportHtml(report, title = 'Depth-band plasticity'){
   const bands = Array.isArray(report?.depthBands) ? report.depthBands.filter((band)=>Number(band?.count) > 0) : [];
@@ -4634,9 +4265,7 @@ function stage6BishopSafetyMechanismHtml(mechanism){
   `;
 }
 
-function stage6SeepageFlowErrorLabel(result){
-  return result?.flowError != null ? `${stage6CompactNumber(100 * result.flowError, 3)} %` : '—';
-}
+// stage6SeepageFlowErrorLabel is an import alias of seepslope/run/progress.js (PR 18c).
 
 function stage6BishopSeepageTerminationLabel(reason){
   if(!reason) return '—';
@@ -4653,49 +4282,15 @@ function stage6BishopResultMethodLabel(result){
   return 'Seep/Slope';
 }
 
+// The four run messages live in seepslope/run/progress.js (PR 18c). stage6BishopCompleteMessage
+// and stage6BishopSeepageCompleteMessage are import aliases (they never read `S`); the two below
+// keep their monolith signatures and hand the active block to the pure functions.
 function stage6BishopRunningMessage(){
-  return S.stage6?.bishop?.methodMode === 'bishop_spencer'
-    ? 'Running Bishop search; Spencer will recheck the shortlist...'
-    : 'Running Bishop search...';
+  return seepslopeRunningMessage(S.stage6?.bishop);
 }
 
 function stage6BishopReadyMessage(runReady){
-  if(!runReady) return 'Draw terrain, place the active CPT, and define entry and exit zones. Retaining walls, load zones, and the phreatic line are optional.';
-  return S.stage6?.bishop?.methodMode === 'bishop_spencer'
-    ? 'Ready to run Bishop + Spencer check.'
-    : 'Ready to run Bishop search.';
-}
-
-function stage6BishopCompleteMessage(result, timing){
-  if(!result?.critical) return 'Search completed with no valid slip circles.';
-  const runtime = timing?.totalMs?.toFixed ? timing.totalMs.toFixed(0) : timing?.totalMs || 0;
-  if(result.methodMode === 'bishop_spencer'){
-    if((result.spencerConverged || 0) > 0){
-      return `Search + Spencer check complete in ${runtime} ms.`;
-    }
-    return `Bishop search complete in ${runtime} ms; Spencer fell back to Bishop results.`;
-  }
-  return `Search complete in ${runtime} ms.`;
-}
-
-function stage6BishopSeepageCompleteMessage(result){
-  const runtime = stage6SecondsLabelFromMs(result?.timing?.totalMs);
-  const flowError = stage6SeepageFlowErrorLabel(result);
-  const terminationReason = result?.solver?.terminationReason || 'flow-error';
-  if(terminationReason === 'time-limit'){
-    return flowError !== '—'
-      ? `Seepage stopped after ${runtime} at the configured runtime limit. Latest flow-rate error: ${flowError}.`
-      : `Seepage stopped after ${runtime} at the configured runtime limit; showing the best available result.`;
-  }
-  if(terminationReason === 'interrupted'){
-    return flowError !== '—'
-      ? `Seepage interrupted after ${runtime}. Showing the latest solved state with flow-rate error ${flowError}.`
-      : `Seepage interrupted after ${runtime}. Showing the latest solved state.`;
-  }
-  if(terminationReason === 'fixed-boundary'){
-    return `Seepage solved in ${runtime} with a fixed phreatic boundary.`;
-  }
-  return `Seepage solved in ${runtime} with flow-rate error ${flowError}.`;
+  return seepslopeReadyMessage(S.stage6?.bishop, runReady);
 }
 
 function stage6BishopModeMeta(){
