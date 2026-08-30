@@ -8,9 +8,7 @@ import {
 import {
   bishopHsJakyK0nc,
   bishopHsRowePhiCvDeg,
-  bishopLayerSignature,
   buildBishopModelFromStageLayers,
-  importBishopMaterialsFromLayers,
   terrainY as bishopTerrainY
 } from './stage6-bishop';
 import { importTerrainFromDxfText } from './dxf-terrain';
@@ -283,6 +281,18 @@ import {
   setSelectedRegionCoarseness as seepslopeSetSelectedRegionCoarseness,
   splitSelectedRegion as seepslopeSplitSelectedRegion
 } from './seepslope/state/index.js';
+// Seep / Slope model package (refactor step 9b / PR 18b, src/lib/cpt-app/seepslope/model/): the
+// soil-model sync as a pure patch of the bishop block and the result invalidation as pure state
+// transitions; the façades below (stage6BishopSyncSoilModel, stage6BishopInvalidate*) keep the
+// monolith names, apply the patch to `S.stage6.bishop` and terminate the workers.
+import {
+  syncSoilModel as seepslopeSyncSoilModel,
+  applySoilModelPatch as seepslopeApplySoilModelPatch,
+  invalidateSeepage as seepslopeInvalidateSeepage,
+  invalidateDeformation as seepslopeInvalidateDeformation,
+  invalidateBishop as seepslopeInvalidateBishop,
+  invalidateWallGeometry as seepslopeInvalidateWallGeometry
+} from './seepslope/model/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -1951,24 +1961,17 @@ function stage6BishopSelectedCustomRegion(){
 }
 
 
+// ── seepslope/model invalidation façades (refactor step 9b / PR 18b) ────────────────────────
+// The four invalidators are pure state transitions in seepslope/model/invalidate.js; the façades
+// keep the monolith names and signatures and add the two host halves the package cannot own: the
+// `ensureStage6State()` the monolith opened with, and the `terminate()` of the worker singletons
+// (the state half of the silent stop lives in the package, so the pair is equivalent whatever the
+// order). They return the transition's `{ stop, rerun, keptSolvedState, render }` — nothing reads
+// it in the monolith yet; step 9c's run handlers will.
 function stage6BishopInvalidateSeepage(message, keepMesh, preserveSolvedState){
   ensureStage6State();
   stage6BishopStopSeepage(true);
-  const seepage = S.stage6.bishop.seepage;
-  const keepSolvedState = !!preserveSolvedState && !!seepage.mesh && !!seepage.result;
-  seepage.progress.running = false;
-  seepage.progress.percent = 0;
-  if(keepSolvedState){
-    seepage.stale = true;
-    seepage.status = 'success';
-    if(message) seepage.rejectReason = message;
-    return;
-  }
-  if(!keepMesh) seepage.mesh = null;
-  seepage.result = null;
-  seepage.stale = false;
-  if(seepage.status === 'success' || seepage.status === 'meshing' || seepage.status === 'solving') seepage.status = 'idle';
-  if(message) seepage.rejectReason = message;
+  return seepslopeInvalidateSeepage(S.stage6.bishop, {message, keepMesh, preserveSolvedState});
 }
 
 function stage6BishopCurrentSeepageBoundary(model){
@@ -2821,186 +2824,43 @@ function stage6BishopDeleteSeepageBc(edgeKey){
 function stage6BishopInvalidateDeformation(message, keepMesh, preserveSolvedState){
   ensureStage6State();
   stage6BishopStopDeformation(true);
-  const deformation = S.stage6.bishop.deformation;
-  const keepSolvedState = !!preserveSolvedState && !!deformation.mesh && !!deformation.result;
-  deformation.progress.running = false;
-  deformation.progress.percent = 0;
-  if(keepSolvedState){
-    deformation.stale = true;
-    deformation.status = 'success';
-    if(message) deformation.rejectReason = message;
-    return;
-  }
-  if(!keepMesh) deformation.mesh = null;
-  deformation.result = null;
-  deformation.stale = false;
-  deformation.warnings = [];
-  if(['success','meshing','solving','post'].includes(deformation.status)) deformation.status = 'idle';
-  deformation.rejectReason = message || '';
-  // Status honesty: the deformation status bar renders `deformation.progress.message`
-  // (e.g. "Deformation screen ready…"). Clearing `result` without updating that string
-  // leaves the bar advertising a screen that no longer exists. Overwrite it with the
-  // invalidation reason so the bar truthfully reflects that the run was discarded.
-  deformation.progress.message = message || 'Deformation result cleared; rerun deformation analysis.';
+  return seepslopeInvalidateDeformation(S.stage6.bishop, {message, keepMesh, preserveSolvedState});
 }
 
 function stage6BishopInvalidate(message){
   ensureStage6State();
-  const bishop = S.stage6.bishop;
   stage6BishopStopSearch(true);
   stage6BishopStopDeformation(true);
-  bishop.results = null;
-  bishop.selectedResult = 0;
-  bishop.stale = true;
-  if(bishop.deformation){
-    bishop.deformation.mesh = null;
-    bishop.deformation.result = null;
-    bishop.deformation.stale = false;
-    bishop.deformation.warnings = [];
-    bishop.deformation.progress.running = false;
-    bishop.deformation.progress.percent = 0;
-    if(['success','meshing','solving','post'].includes(bishop.deformation.status)) bishop.deformation.status = 'idle';
-    bishop.deformation.rejectReason = '';
-    // Status honesty: keep the deformation status bar from advertising a stale
-    // "Deformation screen ready…" after its result has been discarded here.
-    bishop.deformation.progress.message = message || 'Deformation result cleared; rerun deformation analysis.';
-  }
-  if(message) bishop.progress.message = message;
+  return seepslopeInvalidateBishop(S.stage6.bishop, message);
 }
 
 function stage6BishopInvalidateWallGeometry(message){
-  stage6BishopInvalidate(message || 'Retaining wall geometry changed; rerun Bishop search.');
-  stage6BishopInvalidateSeepage('Wall geometry changed; rerun seepage.', false, false);
+  ensureStage6State();
+  stage6BishopStopSearch(true);
+  stage6BishopStopDeformation(true);
+  stage6BishopStopSeepage(true);
+  return seepslopeInvalidateWallGeometry(S.stage6.bishop, message);
 }
 
+// ── seepslope/model soil-model façades (refactor step 9b / PR 18b) ──────────────────────────
+// The soil-model sync (materials from the Stage 3/4 working layers by signature, the HS mirror,
+// the geometry normalisation, the selection pruning) lives in seepslope/model/sync-soil-model.js
+// as a pure patch of the bishop block; this façade applies it to the active CPT and fires the
+// Bishop invalidation a re-import carries (the same message strings). Returns the working layers
+// the model is built from, as before.
+//
+// Order: the monolith fired stage6BishopInvalidate in the *middle* of the sync (right after the
+// re-import, before the HS mirror / geometry / pruning); here the whole patch lands first and the
+// invalidation follows. The two are equivalent — the invalidator writes results / selectedResult /
+// stale / progress.message / deformation.*, none of which the sync touches, and every key exists
+// after ensure() so no key order moves. scripts/verify_seepslope_model.mjs (a) checks it.
 function stage6BishopSyncSoilModel(){
   ensureStage6State();
   const bishop = S.stage6.bishop;
-  stage6BishopMigrateSurfaceLoadsShape(bishop);
   const layers = stage6WorkingLayers();
-  const signature = bishopLayerSignature(layers);
-  const hadSignature = !!bishop.sourceLayerSignature;
-  const strengthSetChanged = bishop.sourceStrengthSet !== bishop.strengthSet;
-  if(signature !== bishop.sourceLayerSignature || !bishop.materials.length || strengthSetChanged){
-    bishop.materials = importBishopMaterialsFromLayers(layers, bishop.materials || [], bishop.strengthSet || 'characteristic');
-    bishop.sourceLayerSignature = signature;
-    bishop.sourceStrengthSet = bishop.strengthSet;
-    if(hadSignature) stage6BishopInvalidate(strengthSetChanged ? 'Material strength set changed; Bishop results were cleared.' : 'Active CPT layers changed; Bishop results were cleared.');
-  }
-  bishop.materials.forEach((material, index)=>{
-    const layer = layers[index];
-    if(!Number.isFinite(Number(material?.rShear))){
-      material.rShear = Number.isFinite(Number(layer?.rShear)) ? Number(layer.rShear) : 0.25;
-    }
-    // The HS stiffness fields (E50_ref / Eoed_ref / Eur_ref / m / ν_ur) and
-    // the cohesion/friction-derived K0_nc + ψ are computed upstream in
-    // `hsParams` per CUR 2003-7 / SB260-21-6.4.10 (cohesion-corrected
-    // formula + binary stress-exponent default, with Stage 5 m-fit
-    // overrides).  Mirror them onto the bishop material on every sync so
-    // toggling alphaMethod / stiffMethod / m_ovr upstream is reflected
-    // without requiring a full layer-signature rebuild.
-    const fallbackE50 = Number(material.Emc) || 1000;
-    material.E50_ref = Number(layer?.E50_ref) || fallbackE50;
-    material.Eoed_ref = Number(layer?.Eoed_ref) || material.E50_ref;
-    material.Eur_ref = Number(layer?.Eur_ref) || 3 * material.E50_ref;
-    material.m = Math.min(Math.max(Number.isFinite(Number(layer?.m)) ? Number(layer.m) : 0.5, 0), 1);
-    material.nu_ur = Math.min(Math.max(Number.isFinite(Number(layer?.nu_ur)) ? Number(layer.nu_ur) : 0.2, -0.99), 0.49);
-    if(Number.isFinite(Number(layer?.K0nc))) material.K0nc = Number(layer.K0nc);
-    if(Number.isFinite(Number(layer?.psi))) material.psi = Number(layer.psi);
-    // HS-only sub-block: parameters with no upstream analogue. Only these
-    // are editable from the HS panel; the inherited block above is
-    // read-only (engineer edits them via the Stage 5 layer / material
-    // editor).
-    if(!material.hs || typeof material.hs !== 'object') material.hs = {};
-    const hs = material.hs;
-    hs.p_ref = Math.max(Number(hs.p_ref) || 100, 1e-6);
-    hs.Rf = Math.min(Math.max(Number.isFinite(Number(hs.Rf)) ? Number(hs.Rf) : 0.9, 1e-6), 0.999999);
-    hs.e_init = Number.isFinite(Number(hs.e_init)) ? Number(hs.e_init) : -1;
-    hs.e_max = Number.isFinite(Number(hs.e_max)) ? Number(hs.e_max) : -1;
-    hs.OCR = Math.max(Number(hs.OCR) || 1, 1e-6);
-    const legacyHsReserved = Number(hs.reserved);
-    hs.nearSurfaceMinConfiningStress = Math.max(
-      Number.isFinite(Number(hs.nearSurfaceMinConfiningStress))
-        ? Number(hs.nearSurfaceMinConfiningStress)
-        : (Number.isFinite(legacyHsReserved) ? legacyHsReserved : 0),
-      0
-    );
-    const hasStoredHsConsistentTangent = Object.prototype.hasOwnProperty.call(hs, 'useConsistentTangent');
-    if(hasStoredHsConsistentTangent){
-      hs.useConsistentTangent = hs.useConsistentTangent === true || Number(hs.useConsistentTangent) >= 0.5;
-    } else {
-      // Existing projects saved before the HS selector existed must not
-      // silently flip into the Simo-Hughes path. New projects are handled in
-      // importBishopMaterialsFromLayers(), which writes the field explicitly.
-      hs.useConsistentTangent = false;
-      if(bishop.deformation?.options && bishop.deformation.options.hsConsistentTangentMigrationResolved !== true){
-        bishop.deformation.options.hsConsistentTangentPromptPending = true;
-      }
-    }
-    if('reserved' in hs) delete hs.reserved;
-    // Strip legacy stiffness fields that may linger on an existing
-    // material.hs from older project files — they now live at the
-    // material's top level.
-    if('E50_ref' in hs) delete hs.E50_ref;
-    if('Eoed_ref' in hs) delete hs.Eoed_ref;
-    if('Eur_ref' in hs) delete hs.Eur_ref;
-    if('m' in hs) delete hs.m;
-    if('nu_ur' in hs) delete hs.nu_ur;
-    if('K0_nc' in hs) delete hs.K0_nc;
-  });
-  if(!Array.isArray(bishop.customRegions)) bishop.customRegions = [];
-  bishop.useCustomRegions = !!bishop.useCustomRegions;
-  if(Array.isArray(bishop.terrain) && bishop.terrain.length >= 2){
-    const sorted = stage6BishopSortedPolyline(bishop.terrain);
-    bishop.terrain = sorted;
-    const minX = sorted[0].x;
-    const maxX = sorted[sorted.length-1].x;
-    if(!Number.isFinite(bishop.activeCptX)){
-      bishop.activeCptX = 0.5*(minX+maxX);
-    } else {
-      bishop.activeCptX = Math.min(Math.max(+bishop.activeCptX, minX), maxX);
-    }
-    ['entryZone','exitZone'].forEach((key)=>{
-      const zone = stage6BishopSortZone(bishop[key]);
-      if(!zone) return;
-      zone.xStart = Math.min(Math.max(zone.xStart, minX), maxX);
-      zone.xEnd = Math.min(Math.max(zone.xEnd, minX), maxX);
-      bishop[key] = stage6BishopSortZone(zone);
-    });
-    bishop.surfaceLoads = (bishop.surfaceLoads || []).map((load, index)=>{
-      const normalized = stage6BishopNormalizeSurfaceLoad(load, index, bishop);
-      if(stage6BishopValidZone(normalized)){
-        normalized.xStart = Math.min(Math.max(normalized.xStart, minX), maxX);
-        normalized.xEnd = Math.min(Math.max(normalized.xEnd, minX), maxX);
-        return stage6BishopSortZone(normalized) || normalized;
-      }
-      return normalized;
-    }).filter((load)=>stage6BishopValidZone(load));
-    stage6BishopSyncLegacySurfaceLoadMirror(bishop);
-    bishop.walls = stage6BishopNormalizeWalls(bishop.walls, sorted);
-    bishop.drains = stage6BishopNormalizeDrains(bishop.drains);
-    bishop.customRegions = stage6BishopNormalizeCustomRegions(bishop.customRegions, sorted, bishop.materials);
-  }
-  bishop.selectedWallId = bishop.selectedWallId ? String(bishop.selectedWallId) : null;
-  if(bishop.selectedWallId && !(bishop.walls || []).some((wall)=>wall.id === bishop.selectedWallId)){
-    bishop.selectedWallId = null;
-  }
-  if(!(bishop.drains || []).some((drain)=>drain.id === bishop.selectedDrainId)){
-    bishop.selectedDrainId = bishop.drains?.[0]?.id || '';
-  }
-  const validMaterialIds = new Set((bishop.materials || []).map((material)=>material.id));
-  if(!validMaterialIds.has(bishop.regionDraftMaterialId)){
-    bishop.regionDraftMaterialId = bishop.materials?.[0]?.id || null;
-  }
-  if(!(bishop.customRegions || []).some((region)=>region.id === bishop.selectedRegionId)){
-    bishop.selectedRegionId = bishop.customRegions?.[0]?.id || null;
-  }
-  if(!(bishop.customRegions || []).length) bishop.useCustomRegions = false;
-  if((bishop.tool === 'regionSplit' || bishop.tool === 'regionHole') && !bishop.selectedRegionId){
-    bishop.tool = 'edit';
-    bishop.draft = [];
-    bishop.draftKind = '';
-  }
+  const sync = seepslopeSyncSoilModel(bishop, layers);
+  if(sync.changed) seepslopeApplySoilModelPatch(bishop, sync.patch);
+  if(sync.invalidation) stage6BishopInvalidate(sync.invalidation.message);
   return layers;
 }
 
