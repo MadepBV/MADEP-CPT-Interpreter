@@ -73,7 +73,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
 | 17 | golden tier A solver suites + seep-slope journey | H parts 5, 7 | bishop / seepage / deformation suites, `seep-slope-journey`, `multi-cpt-journey`, `save-load-journey` | green twice | ☑ 8d80778 (467 solver/config cases; seep-slope, multi-cpt, save-load journeys; total 2 086 Node + 5 journeys) |
-| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | 18a ☑ f15b3c2 (1 110 checks) · 18b ☑ 44deb8c + fix 75878b9 (1 301 checks; draw path no longer invalidates solved results) · 18c ☑ dd4a6cb + fix e29e01a (1 255 checks) · 18d ☑ 6371c17 (geometry + probe, 1 833 checks) · 18e ☑ 3d34e76 (canvas: view-model + 14 draw layers; 1.78 M draw calls and 19/19 browser PNGs byte-identical) · 18f ☑ 57e3335 (panels + tool rail; 62.3 M chars of HTML byte-identical over 978 states) · 18g open |
+| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | 18a ☑ f15b3c2 (1 110 checks) · 18b ☑ 44deb8c + fix 75878b9 (1 301 checks; draw path no longer invalidates solved results) · 18c ☑ dd4a6cb + fix e29e01a (1 255 checks) · 18d ☑ 6371c17 (geometry + probe, 1 833 checks) · 18e ☑ 3d34e76 (canvas: view-model + 14 draw layers; 1.78 M draw calls and 19/19 browser PNGs byte-identical) · 18f ☑ 57e3335 (panels + tool rail; 62.3 M chars of HTML byte-identical over 978 states) · 18g ☑ 280fd25 (report capture renders offscreen; 24/24 JPEG data URLs byte-identical; the capture no longer re-renders the app 6× per report) |
 | 19 | `style(seepslope)` | D 2d (rest) | canvas shell `.glass-float`, legends/view menu `.glass-float.acc`, `.is-computing` de-blur | visual; blur count; fps | ☐ |
 
 ### Milestone v0.9.0 — composition root and Svelte ownership
@@ -104,7 +104,8 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
    region-coarseness edits (fix in PR 4 with the handler verifier).
 2. `selectCpt` does not terminate the deformation worker; a switch mid-run leaves `progress.running = true` on the
    originating CPT (fix in PR 14).
-3. `stage6BishopDrawCanvas` mutated state on every frame — worse than mapped: it carried the materials re-import's invalidation, so a Stage 3/4 edit followed by a mouse-move over the canvas silently discarded solved Bishop and deformation results. **Fixed by 75878b9.**
+3. ~~Stage 7 capture switched the app/workspace to rasterise the canvas~~ — **fixed by 280fd25** (offscreen render).
+4. `stage6BishopDrawCanvas` mutated state on every frame — worse than mapped: it carried the materials re-import's invalidation, so a Stage 3/4 edit followed by a mouse-move over the canvas silently discarded solved Bishop and deformation results. **Fixed by 75878b9.**
 4. Muted text `#888890` fails WCAG AA (fixed by PR 2 tokens).
 5. `dewatering.aquiferBaseDepth`: typing a value stores a string (null default) → `.toFixed` TypeError on every later dewatering render (found by PR 12c; locked as-is in its verifier — fix as a behaviour commit with a golden case).
 
@@ -139,3 +140,10 @@ A verifier that asserts *"the base still reproduces defect X"* breaks the moment
 base branch. Write the assertion as **"the working tree is correct, and the base either shows the defect
 or already carries the fix"**, and print which case was seen plus the `--base <sha>` that reproduces the
 historical proof. `verify_seepslope_model.mjs` and `verify_seepslope_run.mjs` follow this now.
+
+### Worktree dev servers (fixed centrally, 2026-08-30)
+
+`vite.config.ts` now sets `server.fs.allow` to the config's own directory plus its `node_modules`, and
+ignores `.svelte-kit/{output,generated}` and `build/` in the watcher. An agent worktree with a symlinked
+`node_modules` therefore serves the SvelteKit client entry instead of 403-ing it, and a build next to a
+running server no longer breaks a browser suite. Scratch configs are no longer needed.
