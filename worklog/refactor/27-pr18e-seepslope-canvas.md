@@ -283,15 +283,30 @@ branch use `--base origin/main`, or `--against` a committed `--snapshot`.
 | `npm run build` | `✔ done`, exit 0; the three worker chunks emitted as before |
 | `npm run check` | 532 files, **6 errors** = the 6 pre-existing (5 × `deformation/wall-result-staleness.js`, 1 × `vite.config.ts`), 0 warnings, 0 in `seepslope/**` |
 | `GOLDEN_PORT=5699 GOLDEN_VISUAL=soft npx playwright test --config tests/e2e/golden.config.mjs --grep seep-slope` | **1 passed**, 13 steps, 24.6 s; state + DOM text byte-identical; bishop search 942 ms, seepage 231 ms, deformation 1 009 ms. **No `09-seepage-bcs` flake** (report 22 §5.2). The three `visual (soft)` mismatches (`01-bishop-empty`, `02-terrain`, `08-stability`) are the pre-existing machine-wide PNG drift of report 22 §5.1 |
-| `PW_PORT=5499 npx playwright test --project=visual --grep "app journey"` | **4 passed** (2.6 min) — all four variants at `maxDiffPixels: 0`, `stage6-bishop-dock-card` included |
+| `PW_PORT=5499 npx playwright test --project=visual --grep "app journey"` | **4 passed** (2.5 min) — all four variants at `maxDiffPixels: 0`, `stage6-bishop-dock-card` included |
+| `PW_PORT=5499 npx playwright test --project=visual` (all 14) | **13 passed, 1 failed** — see §5.2: a load-induced *capture* timeout, no pixel comparison ever ran; the failing spec passes on a re-run |
 | the Bishop canvas, rasterised base vs tree (§5.1) | **19 / 19 PNGs byte-identical** |
 
 Both browser suites ran against dev servers started from the worktree with a scratch `.mts` Vite
-config under this session's scratchpad (report 19 §5 + report 22 §5.3): run **from the worktree**
-so `sveltekit()` still finds `svelte.config.js` (it overrides `root`, so setting `root` in the
-config is not enough), `server.fs.allow` += the real `node_modules` path, and the `**/.claude/**`
-watcher ignore dropped — the worktree *is* under `.claude/`, so keeping it would silence the whole
-tree. Ports 5499 (visual) and 5699 (journey); Playwright's `reuseExistingServer` picked both up.
+config under this session's scratchpad (report 19 §5 + report 22 §5.3), with **two corrections to
+the recipe**:
+
+* **Run it from the worktree** (`npx vite dev --config <scratch>.mts`), not with `root` set in the
+  config. `sveltekit()` overrides `root` — it prints "The following Vite config options will be
+  overridden by SvelteKit: - root" and then fails with `src/app.html does not exist`. The cwd is
+  what it uses to find `svelte.config.js` and the project.
+* **Ignore the generated trees explicitly.** Dropping the repo's `**/.claude/**` watcher ignore is
+  necessary (the worktree *is* under `.claude/`, so keeping it silences everything) but not
+  sufficient: an `npm run build` next to a running dev server rewrites `.svelte-kit/output/**` and
+  `build/**`, the watcher invalidates the client module graph mid-run, and the next navigation dies
+  with `Failed to fetch dynamically imported module … /.svelte-kit/generated/client/nodes/25.js` —
+  an "Application Error" page that looks exactly like a regression. It cost one full visual run
+  here (`report retaining — screen` timed out waiting for `.report-sheet`). The scratch config now
+  ignores `**/.svelte-kit/{output,generated}/**`, `**/build/**`, `**/test-results/**`,
+  `**/tests/visual/__screenshots__/**` and `**/tests/golden/**`, and the suite passes.
+
+`server.fs.allow` += the real `node_modules` path as before. Ports 5499 (visual) and 5699
+(journey); Playwright's `reuseExistingServer` picked both up.
 
 ### 5.1 The pixel proof
 
@@ -328,6 +343,28 @@ rasterised in the browser. They are covered by run 1 on real solved fields, and 
 add (`phreaticSolved`) is the very same `token('--chart-green')` call that `bcSeepageFace` makes and
 that run 2 does cover. A follow-up could drive the journey's `layered` fixture instead of the demo
 to close that gap in the browser too.
+
+### 5.2 The visual suite is capture-timeout-flaky on a loaded machine
+
+Worth writing down because it looks exactly like a regression and is not one. `toHaveScreenshot`
+has a 5 s expect timeout (`playwright.config.mjs` sets `maxDiffPixels: 0` but leaves
+`expect.timeout` at its 5 s default), and the app journey takes ~40 full-page captures of a 1500 ×
+950 page. On this box under load — three Vite servers, another agent's suites, `load average 45` —
+the *capture* times out before any comparison happens:
+
+```
+Error: expect(page).toHaveScreenshot(expected) failed
+  Timeout: 5000ms
+  Snapshot: stage6-retwall-sheetpile--note--desktop-light.png
+```
+
+The tell is in `test-results/`: a failed **comparison** writes `-expected.png`, `-actual.png` and
+`-diff.png`; a failed **capture** writes only `-expected.png` and the page's `test-failed-1.png`.
+Every failure seen here was the latter, and the shot that timed out moved between runs
+(`stage2-classification`, then `stage6-retwall-sheetpile--note`) — a pixel regression does not
+wander. Run 1 (load ≈ 5) and run 3 (load ≈ 11) both passed **4 / 4**; run 2, taken at load ≈ 45
+with the other two specs on parallel workers, failed one. Nothing in this PR touches either shot.
+A `--workers=1` run once the box is quiet is the reliable form.
 
 ## 6. Findings
 
