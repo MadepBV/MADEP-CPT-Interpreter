@@ -360,16 +360,30 @@ check('legacy-controller.js no longer declares the moved bodies and imports mode
   assert.ok(!/const wt = S\.wt;/.test(src), 'stressAt body still in the controller');
   assert.ok(!/const prevS = S;\s*\n\s*S = cpt;/.test(src), 'stratigraphy S-swap still present');
   assert.ok(src.includes("} from './model-params/index.js';"), 'model-params import missing');
-  for (const w of ['function stressAt(z, gamma_sat, gamma_unsat){\n  return stressAtPure(S, z, gamma_sat, gamma_unsat);',
-    'function hsParams(l){\n  return hsParamsPure(l, modelCtx());', 'function khParams(l){\n  return khParamsPure(l, modelCtx());',
-    'function stage6WorkingLayers(){\n  return workingLayersPure(S);']) {
-    assert.ok(src.includes(w), `wrapper missing: ${w.split('\n')[0]}`);
+  // PR 20 (composition root): the four wrappers moved into installModelParamsApp(ctx), which
+  // builds the ctx from the live active CPT. The controller keeps the monolith names as bindings
+  // of that install, so the inline `on*=` attributes and the Node verifiers still resolve them.
+  for (const name of ['stressAt', 'hsParams', 'khParams', 'modelCtx', 'renderModel', 'setAlphaMethod',
+    'setStiffMethod', 'setKhKvMethod']) {
+    assert.ok(!new RegExp(`^function ${name}\\(`, 'm').test(src), `${name} is still declared in legacy-controller.js`);
+  }
+  const bindings = src.slice(src.indexOf('} = modelParamsApp;') - 300, src.indexOf('} = modelParamsApp;'));
+  for (const name of ['modelCtx', 'stressAt', 'hsParams', 'khParams', 'renderModel', 'setAlphaMethod', 'setStiffMethod', 'setKhKvMethod']) {
+    assert.ok(new RegExp(`\\b${name}\\b`).test(bindings), `${name} is not bound from modelParamsApp`);
+  }
+  assert.ok(src.includes('const stage6WorkingLayers = modelParamsApp.workingLayers;'), 'stage6WorkingLayers binding');
+  const mp = readFileSync(join(ROOT, 'src/lib/cpt-app/model-params/index.js'), 'utf8');
+  for (const w of ['modelCtx: () => cptModelCtx(getActive()),',
+    'stressAt: (z, gammaSat, gammaUnsat) => stressAtOf(getActive(), z, gammaSat, gammaUnsat),',
+    'hsParams: (l) => hsParamsOf(l, app.modelCtx()),', 'khParams: (l) => khParamsOf(l, app.modelCtx()),',
+    'workingLayers: () => workingLayersOf(getActive()),']) {
+    assert.ok(mp.includes(w), `model-params/index.js wrapper missing: ${w}`);
   }
 });
 check('model-params modules carry the SPDX header and @ts-nocheck', () => {
   const dir = join(ROOT, 'src/lib/cpt-app/model-params');
   const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['context.js', 'hs-params.js', 'index.js', 'kh-params.js', 'soil-defaults.js', 'stress.js', 'working-layers.js']);
+  assert.deepEqual(files.sort(), ['context.js', 'hs-params.js', 'index.js', 'kh-params.js', 'panel.js', 'soil-defaults.js', 'stress.js', 'working-layers.js']);
   for (const f of files) {
     const head = readFileSync(join(dir, f), 'utf8').split('\n').slice(0, 2);
     assert.equal(head[0], '// SPDX-License-Identifier: AGPL-3.0-or-later', f);

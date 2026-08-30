@@ -109,42 +109,22 @@ import {
   buildStage7Payload as buildStage7PayloadPure
 } from './report/index.js';
 import {
-  DEF,
-  AE,
   sb260GranularAlpha,
   sb260TransitionAlpha,
   sb260AlphaFamily,
   alphaEB,
   cptModelCtx,
-  stressAt as stressAtPure,
   hsParams as hsParamsPure,
   khParams as khParamsPure,
-  workingLayers as workingLayersPure
+  installModelParamsApp
 } from './model-params/index.js';
+import { installClassificationApp } from './classification/index.js';
 import {
-  classificationMethodLabel,
-  classificationMetricLabel,
-  classificationMetricValue,
-  assumedRfValue as assumedRfValuePure,
-  cptHasFs as cptHasFsPure,
-  cptHasRf as cptHasRfPure,
-  classRob as classRobPure,
-  classRob2016 as classRob2016Pure,
-  classCUR3 as classCUR3Pure,
-  classNEN6740 as classNEN6740Pure,
-  classSB260 as classSB260Pure,
-  classifyCpt,
-  classificationMetricsHtml,
-  classificationAssumedRfNoteHtml,
-  classificationTableRowsHtml
-} from './classification/index.js';
-import {
-  CAT_GROUPS,
   compatLevel,
-  subtypeGroup,
   qcRfFit,
   suggestSubtype,
   layerTypeCompatScore,
+  subtypeGroup,
   familyClass,
   qcSimilarity,
   rfSimilarity,
@@ -154,9 +134,7 @@ import {
   continuityScore,
   isCriticalMarkerLayer,
   mergeCandidateScore,
-  segmentSummary as segmentSummaryPure,
-  layersCtx,
-  detectLayers as detectLayersPure
+  installLayersApp
 } from './layers/index.js';
 import {
   createStage6Registry,
@@ -187,18 +165,11 @@ import { setActiveCpt } from './core/state.js';
 import { installProject } from './project/index.js';
 import { installSection } from './section/index.js';
 import {
-  tuningCtx,
-  fitLayer as fitLayerPure,
-  runTuningFits,
-  acceptFit as acceptFitPure,
-  rejectFit as rejectFitPure,
   getTuningPreviewM,
   tuningSliderBounds,
   tuningPreviewEoedRef,
   tuningPreviewLineData,
-  tuningAreaHtml,
-  buildTuningCharts as buildTuningChartsPure,
-  updateTuningPreviewM as updateTuningPreviewPure
+  installTuningApp
 } from './tuning/index.js';
 import { installPileApp } from './pile/index.js';
 import { installSettlementApp } from './settlement/index.js';
@@ -824,598 +795,77 @@ function goS(n){
 
 
 /* ════════════════════════════════
-   METHOD SELECT
+   STAGES 2-5 (src/lib/cpt-app/{classification,layers,model-params,tuning}/, PR 20 / step 10)
+   Classification run and method cards · layer detection, table and per-layer editors · the
+   Stage 4 parameter cards and the three global method toggles · the Stage 5 m-fit. Each package
+   is installed once with the shared accessors; the names below are the installs' methods, kept
+   as module bindings so the inline `on*=` attributes and the Node verifiers still find them.
 ════════════════════════════════ */
-function syncClassificationMethodCards(method){
-  const cards={
-    mRob:'robertson',
-    mRob16:'robertson2016',
-    mCur:'cur3',
-    mNen:'nen6740',
-    mSB:'sb260'
-  };
-  Object.entries(cards).forEach(([id, value])=>{
-    const el=document.getElementById(id);
-    if(el) el.classList.toggle('sel', method === value);
-  });
-}
+const classificationApp = installClassificationApp({
+  document,
+  getActive: () => S,
+  toast,
+  detectLayers: () => detectLayers(),
+  renderLayerPreviewSvg: (svgId) => renderLayerPreviewSvg(svgId),
+  drawLayerColumnSvg: (svgId, layers, maxZ) => drawLayerColumnSvg(svgId, layers, maxZ)
+});
+const {
+  syncMethodCards: syncClassificationMethodCards, selM,
+  assumedRfValue, cptHasFs, cptHasRf,
+  classRob, classRob2016, classCUR3, classCUR, classNEN6740, classSB260,
+  runClass
+} = classificationApp;
 
-function selM(m){
-  S.method=m;
-  syncClassificationMethodCards(m);
-}
+const layersApp = installLayersApp({
+  document,
+  getActive: () => S,
+  renderModel: () => renderModel()
+});
+const {
+  segmentSummary, detectLayers, renderLayers, renderCompatWarnings,
+  changeSubtype, editL, editAlpha, editM, editRShear, editNu, setParamMethod
+} = layersApp;
+const buildSubtypeDropdown = layersApp.handlers.buildSubtypeDropdown;
 
-/* ════════════════════════════════
-   STRESS
-════════════════════════════════ */
-function stressAt(z, gamma_sat, gamma_unsat){
-  return stressAtPure(S, z, gamma_sat, gamma_unsat);
-}
-
-/* ════════════════════════════════
-   CLASSIFICATION
-════════════════════════════════ */
-
-/* The classifier math lives in classification-core.js; the per-method
-   wrappers (stress state + app settings) and the row dispatch live in
-   classification/classify.js (PR 6). These wrappers feed them the active CPT.
-   assumedRfValue() is the explicit friction-ratio assumption used for readings
-   without measured fs/Rf. */
-function assumedRfValue(){
-  return assumedRfValuePure(S);
-}
-
-/* Single source of truth for fs/Rf availability — the meta flags are set at
-   parse time; the S.data fallback covers states created before the flags. */
-function cptHasFs(){
-  return cptHasFsPure(S);
-}
-function cptHasRf(){
-  return cptHasRfPure(S);
-}
-
-function classRob(r){
-  return classRobPure(S, r);
-}
-function classRob2016(r){
-  return classRob2016Pure(S, r);
-}
-function classCUR3(r){
-  return classCUR3Pure(S, r);
-}
-
-const classCUR = classCUR3;
-
-function classNEN6740(r){
-  return classNEN6740Pure(S, r);
-}
-function classSB260(r){
-  return classSB260Pure(S, r);
-}
-
-/* ════════════════════════════════
-   CLASSIFICATION RUN
-════════════════════════════════ */
-function runClass(){
-  if(!S.data.length){toast('Laad eerst een GEF bestand.',{tone:'warn'});return;}
-
-  /* Compute (classification/run.js, pure) → assign to the active CPT → render
-     the four Stage 2 regions (classification/panel.js builds the markup). */
-  const result=classifyCpt(S);
-  S.useSB260params=result.useSB260params;
-  S.classified=result.classified;
-  S.rfAssumedCount=result.rfAssumedCount;
-
-  document.getElementById('cmet').innerHTML=classificationMetricsHtml(result.metrics);
-
-  const assumedNote=document.getElementById('classAssumedRfNote');
-  if(assumedNote) assumedNote.innerHTML=classificationAssumedRfNoteHtml(result.assumedRfNote);
-
-  const metricHead=document.getElementById('cmetricHead');
-  if(metricHead) metricHead.innerHTML=result.metricLabel;
-  document.getElementById('cbody').innerHTML=classificationTableRowsHtml(result.classified,{method:S.method,elev:S.elev});
-
-  document.getElementById('classLayout').style.display='';
-  detectLayers();
-  renderLayerPreviewSvg('layerPreviewSvg');
-  drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1].z+0.5);
-  document.getElementById('minThkInfo').textContent='-> '+S.layers.length+' layers';
-  document.getElementById('btnToLayers').style.display='';
-}
-
-/* ════════════════════════════════
-   LAYER DETECTION
-   The detection lives in layers/ (PR 6): segments.js (summaries, similarity
-   scores), merge.js (baseline / smart chains), detect.js (detectLayers →
-   layers[], pure). These wrappers feed the pure functions the active CPT;
-   detectLayers() assigns the result — rendering stays with its callers
-   (goS(2), setParamMethod, refreshClassificationDerivedViews), as before.
-════════════════════════════════ */
-function segmentSummary(seg, prevSeg){
-  return segmentSummaryPure(seg, prevSeg, layersCtx(S));
-}
-
-function detectLayers(){
-  S.layers=detectLayersPure(S, layersCtx(S));
-}
-
-/* ════════════════════════════════
-   LAYER TABLE
-   
-   CONCEPTUAL SEPARATION:
-   - Stage 2 (classification): Robertson / CUR 3 layers / NEN 6740 / Eurocode Table 3
-     → assigns CPT soil type
-     per depth reading, then layers are detected. This determines the BOUNDARY logic.
-   - Stage 3 (parameter method): independently assigns geotechnical parameters
-     (γ, φ', c', cu) to each layer. The engineer can choose:
-       • Generic DEF table (type-based defaults)
-       • Eurocode / NEN Tabel 3 (full subtype catalogue with consistentie)
-     These are independent of the Stage 2 classification method.
-   - Stage 4 (model): derives HS/MC params from Stage 3 output.
-
-   The subtype dropdown always shows the full Eurocode / NEN Table 3 catalogue.
-   Compatible entries (matching the CPT type) are listed first and enabled.
-   Potentially compatible entries (adjacent soil families) are shown with a note.
-   Incompatible entries are shown in a disabled optgroup with a warning label.
-   
-   A warning panel below the table flags any layer where the selected subtype
-   is outside the compatible or adjacent range for its CPT type.
-════════════════════════════════ */
-
-/* ── Parameter method selector (Stage 3 global) ── */
-// S.paramMethod: 'sb260' | 'def'
-// Set from the radio buttons rendered in renderLayers()
-
-/* NEN / Eurocode 7 Tabel 3 catalogue (CAT), the derived classification
-   entry list and the row matcher now live in eurocode-tabel3.js (imported
-   at the top of this file) so the node verification scripts can exercise
-   the exact table used by the app. */
-
-/* CAT_GROUPS, the COMPAT matrix, compatLevel, qcRfFit and suggestSubtype live in
-   layers/tabel3-compat.js (PR 6). */
-
-/* Build the subtype dropdown for one layer.
-   Groups: compatible entries first (enabled), adjacent (enabled, marked),
-   incompatible last (disabled). */
-function buildSubtypeDropdown(l, i){
-  const cptType=l.type;
-  const cur=l.subtype||'';
-  const qc=l.avgQc;
-  // null (not an assumed 3): qcRfFit then skips the Rf check, matching the
-  // suggestion engine — otherwise a qc-only CPT shows no ✓ on any sand entry.
-  const rf=l.avgRf??null;
-  const bdCol=l.ovr.subtype?'var(--wn)':'var(--bd2)';
-
-  // Sort entries: ok → adj → bad
-  const sorted=[
-    ...CAT.filter(r=>compatLevel(cptType,r.grp)==='ok'),
-    ...CAT.filter(r=>compatLevel(cptType,r.grp)==='adj'),
-    ...CAT.filter(r=>compatLevel(cptType,r.grp)==='bad'),
-  ];
-
-  const sections={ok:'',adj:'',bad:''};
-  const grpOpen={ok:'',adj:'',bad:''};
-
-  for(const row of sorted){
-    const level=compatLevel(cptType,row.grp);
-    const sel=row.subtype===cur?' selected':'';
-    const grpLabel=CAT_GROUPS[row.grp]||row.grp;
-    const key=level+'__'+row.grp;
-    if(grpOpen[level]!==key){
-      if(grpOpen[level]) sections[level]+='</optgroup>';
-      const prefix=level==='adj'?'⚠ Overgang — ':'';
-      sections[level]+=`<optgroup label="${prefix}${grpLabel}">`;
-      grpOpen[level]=key;
-    }
-
-    // Visual fit hints — 'ok' entries never disabled (user must be able to select any)
-    // 'bad' (incompatible soil family) remain disabled
-    let disabled='', label=row.label, titleAttr='';
-    if(level==='ok'){
-      const fit=qcRfFit(row,qc,rf);
-      if(fit==='match'){
-        label='✓ '+row.label;            // clear best match
-      } else if(fit==='close'){
-        label='~ '+row.label;            // borderline
-      } else {
-        label='· '+row.label;            // out of range but still selectable
-      }
-    } else if(level==='adj'){
-      label='⚠ '+row.label;             // adjacent/transition
-    } else if(level==='bad'){
-      disabled=' disabled';               // incompatible family — truly disabled
-    }
-
-    sections[level]+=`<option value="${row.subtype}"${sel}${disabled}>${label}</option>`;
-  }
-  for(const lv of ['ok','adj','bad']) if(grpOpen[lv]) sections[lv]+='</optgroup>';
-
-  let inner=`<option value="">— kies grondsoort —</option>`;
-  if(sections.ok)  inner+=sections.ok;
-  if(sections.adj) inner+=`<optgroup label="── Overgang ──" disabled></optgroup>`+sections.adj;
-  if(sections.bad) inner+=`<optgroup label="── Niet verwacht ──" disabled></optgroup>`+sections.bad;
-
-  return `<select data-i="${i}" onchange="changeSubtype(this)"
-    style="font-size:11px;padding:2px 4px;border:1px solid ${bdCol};border-radius:4px;
-           background:var(--bg);color:var(--tx);width:100%;margin-top:3px;max-width:210px"
-    >${inner}</select>`;
-}
-
-function renderLayers(){
-  const taw=z=>S.elev!=null?(S.elev-z).toFixed(2):'—';
-  document.getElementById('lb').innerHTML=S.layers.map((l,i)=>{
-    const ed=(f,step=0.5)=>
-      `<input class="input input--sm${l.ovr[f]?' ovr':''}" data-i="${i}" data-f="${f}" value="${l[f]}" type="number" step="${step}" onchange="editL(this)">`;
-    const thick=(l.bot-l.top).toFixed(2);
-    const dropdown=buildSubtypeDropdown(l,i);
-    return`<tr>
-      <td class="key" style="font-weight:600">${i+1}</td>
-      <td class="num">${l.top.toFixed(2)}</td><td class="num">${l.bot.toFixed(2)}</td>
-      <td class="num" style="color:var(--tx2)">${taw(l.top)}</td>
-      <td class="num" style="color:var(--tx2)">${taw(l.bot)}</td>
-      <td class="num">${thick} m</td>
-      <td style="min-width:180px">
-        <span class="pill ${SC[l.type]||'s-sand'}" style="font-size:10px">${l.type}</span>
-        ${l.rfIndeterminate&&!l.ovr.subtype?'<span style="font-size:9px;color:var(--wn);border:1px solid var(--wn);border-radius:3px;padding:0 3px;margin-left:4px;vertical-align:middle" title="Geen gemeten Rf — meerdere Tabel 3 rijen passen bij deze qc. Grondsoort volgt de catalogusvolgorde; controleer de keuze.">qc-only</span>':''}
-        ${dropdown}
-      </td>
-      <td class="num">${l.avgQc.toFixed(3)}</td>
-      <td class="num">${l.avgFs!=null?(l.avgFs*1000).toFixed(1):'—'}</td>
-      <td class="num">${l.avgRf!=null?l.avgRf.toFixed(2):'—'}</td>
-      <td class="num">${ed('g')}</td><td class="num">${ed('gs')}</td>
-      <td class="num">${ed('phi')}</td><td class="num">${ed('c')}</td><td class="num">${ed('cu',1)}</td>
-    </tr>`;
-  }).join('');
-
-  // Render compatibility warnings below the table
-  renderCompatWarnings();
-}
-
-function changeSubtype(sel){
-  const i=+sel.dataset.i;
-  const subtype=sel.value;
-  if(!subtype) return;
-  const l=S.layers[i];
-  const entry=CAT.find(r=>r.subtype===subtype);
-  if(!entry) return;
-
-  const prevType=l.type;
-  l.type=entry.type;
-  l.subtype=entry.subtype;
-  l.ovr.type=true;
-  l.ovr.subtype=true;
-
-  // Auto-fill DEF params — only fields not yet manually overridden
-  ['g','gs','phi','c','cu'].forEach(f=>{
-    if(!l.ovr[f]){ l[f]=entry[f]; }
-  });
-
-  // The soil-type pick drives the nu proposal: ANY new dropdown selection —
-  // including a consistency-only refinement within the same family, since the
-  // nu defaults are graded per subtype — invalidates a manual Poisson
-  // override and re-proposes the subtype default (the engineer can override
-  // nu again afterwards in Stage 4).
-  l.ovr.nu=false;
-  delete l.nu_ovr;
-
-  renderLayers();
-}
-
-function renderCompatWarnings(){
-  // Find layer warnings container — create if missing
-  let warnEl=document.getElementById('layerWarnings');
-  if(!warnEl){
-    warnEl=document.createElement('div');
-    warnEl.id='layerWarnings';
-    warnEl.style.cssText='margin-top:12px';
-    document.getElementById('lt').parentElement.after(warnEl);
-  }
-
-  const warnings=[];
-  S.layers.forEach((l,i)=>{
-    if(!l.subtype||l.subtype==='(overridden)') return;
-    if(l.rfIndeterminate && !l.ovr.subtype){
-      warnings.push({i,layer:i+1,cptType:l.type,subtype:l.subtype,level:'adj',
-        msg:`Laag ${i+1}: <strong>${l.subtype}</strong> gekozen zonder gemeten R<sub>f</sub> (fs ontbreekt in het bronbestand). Meerdere Tabel 3 rijen passen bij qc ≈ ${l.avgQc.toFixed(1)} MPa; de parameters volgen de eerste passende rij. Controleer of overschrijf de grondsoort indien boringen of projectkennis beschikbaar zijn.`});
-    }
-    const entry=CAT.find(r=>r.subtype===l.subtype);
-    if(!entry) return;
-    const level=compatLevel(l.type, entry.grp);
-    if(level==='bad'){
-      warnings.push({i,layer:i+1,cptType:l.type,subtype:l.subtype,level:'bad',
-        msg:`CPT classificatie = <strong>${l.type}</strong>, gekozen grondsoort = <strong>${l.subtype}</strong> — dit zijn niet-verwante grondsoorten. Controleer of de CPT classificatie correct is of pas de grondsoort aan.`});
-    } else if(level==='adj'){
-      warnings.push({i,layer:i+1,cptType:l.type,subtype:l.subtype,level:'adj',
-        msg:`Laag ${i+1}: <strong>${l.subtype}</strong> ligt in een aangrenzende / overgangsfamilie t.o.v. CPT type <strong>${l.type}</strong>. Enkel aanvaardbaar indien bevestigd via boring, labo of projectkennis.`});
-    }
-  });
-
-  if(!warnings.length){warnEl.innerHTML='';return;}
-
-  warnEl.innerHTML=warnings.map(w=>`
-    <div class="layerwarn ${w.level==='bad'?'layerwarn-bad':'layerwarn-adj'}">
-      <span class="layerwarn-k">
-        ${w.level==='bad'?'⚠ Waarschuwing laag '+w.layer:'ⓘ Opmerking laag '+w.layer}
-      </span><br>
-      <span class="layerwarn-msg">${w.msg}</span>
-    </div>`).join('');
-}
-
-function editL(el){
-  const i=+el.dataset.i,f=el.dataset.f;
-  S.layers[i][f]=+el.value; S.layers[i].ovr[f]=true; el.classList.add('ovr');
-}
-
-function editAlpha(el){
-  const i=+el.dataset.i;
-  S.layers[i].aE_ovr=+el.value; S.layers[i].ovr.aE=true;
-  el.classList.add('ovr');
-  renderModel();
-}
-
-function editM(el){
-  const i=+el.dataset.i;
-  S.layers[i].m_ovr=+el.value; S.layers[i].ovr.m=true;
-  el.classList.add('ovr');
-  renderModel();
-}
-
-function editRShear(el){
-  const i=+el.dataset.i;
-  const numeric=Number(el.value);
-  if(!Number.isFinite(numeric)) return;
-  S.layers[i].rShear_ovr=Math.max(Math.min(numeric, 1), 0.01);
-  S.layers[i].ovr.rShear=true;
-  el.classList.add('ovr');
-  renderModel();
-}
-
-function editNu(el){
-  const i=+el.dataset.i;
-  const raw=String(el.value).trim();
-  if(raw===''){
-    /* A cleared (or browser-invalid) number input reports value="" — treat it
-       as "return to the soil-type proposal", never as 0 (which would clamp to
-       an extreme 0.05 override). */
-    S.layers[i].ovr.nu=false;
-    delete S.layers[i].nu_ovr;
-    renderModel();
-    return;
-  }
-  const numeric=Number(raw);
-  if(!Number.isFinite(numeric)) return;
-  /* nu < 0.5 strictly: beta = (1+nu)(1-2nu)/(1-nu) degenerates to 0 at 0.5.
-     Rounded to 2 decimals so the stored override always equals the display. */
-  S.layers[i].nu_ovr=Math.max(Math.min(Math.round(numeric*100)/100, 0.49), 0.05);
-  S.layers[i].ovr.nu=true;
-  el.classList.add('ovr');
-  renderModel();
-}
-
-/* ════════════════════════════════
-   MODEL PARAMETERS
-════════════════════════════════ */
-function khParams(l){
-  return khParamsPure(l, modelCtx());
-}
-
-/* Toggle functions for Stage 4 global method controls */
-function setAlphaMethod(v){
-  S.alphaMethod=v;
-  document.getElementById('btnAlphaA').classList.toggle('active',v==='A');
-  document.getElementById('btnAlphaB').classList.toggle('active',v==='B');
-  if(S.layers.length) renderModel();
-}
-function setStiffMethod(v){
-  S.stiffMethod=v;
-  document.getElementById('btnStiffA').classList.toggle('active',v==='A');
-  document.getElementById('btnStiffB').classList.toggle('active',v==='B');
-  if(S.layers.length) renderModel();
-}
-
-/* k_h/k_v anisotropy method.
-   A — OVAM / I/RA/11461 (default): conservative engineering practice value.
-       Silty sand grouped with fine soils → k_h/k_v = 3.
-   B — Bear (1979): literature-typical intermediate value for fine/silty sand.
-       Silty sand → k_h/k_v = 2.
-   Sand and gravel are isotropic (k_h/k_v = 1) under both methods.
-   Cohesive soils (clay, sandy clay/leem, peat) get k_h/k_v = 3 under both. */
-function setKhKvMethod(v){
-  S.khKvMethod=v;
-  document.getElementById('btnKhKvA').classList.toggle('active',v==='A');
-  document.getElementById('btnKhKvB').classList.toggle('active',v==='B');
-  if(S.layers.length) renderModel();
-}
-
-function setParamMethod(v){
-  S.paramMethod=v;
-  document.getElementById('pmSB260').classList.toggle('active',v==='sb260');
-  document.getElementById('pmDEF').classList.toggle('active',v==='def');
-  const desc={
-    sb260:'Grondsoort en consistentie uit NEN Tabel 3 — aanbevolen',
-    def:'Generieke parameters op basis van CPT-type (DEF tabel)'
-  };
-  document.getElementById('pmDesc').textContent=desc[v]||'';
-  // Re-run detectLayers to apply new suggestions, then re-render
-  if(S.classified.length){ detectLayers(); renderLayers(); }
-}
-
-/* Stage 4 derivation lives in model-params/ (PR 5); these wrappers feed the
-   pure functions the context of the active CPT. */
-function modelCtx(){
-  return cptModelCtx(S);
-}
-function hsParams(l){
-  return hsParamsPure(l, modelCtx());
-}
-
-function renderModel(){
-  document.getElementById('ma').innerHTML=S.layers.map((l,i)=>{
-    const h=hsParams(l);
-    const k=khParams(l);
-    const thick=(l.bot-l.top).toFixed(2);
-    const midZ=(l.top+l.bot)/2;
-    const tawStr=S.elev!=null?` &nbsp;(${h.topTAW} \u2192 ${h.botTAW})`:'';
-
-    // Infiltration class colour
-    const infCol={
-      'Infiltratie (volledig)':    'var(--ac)',
-      'Infiltratie (effectief)':   'var(--ok-text)',
-      'Infiltratie + buffer':      'var(--wn)',
-      'Buffer (infiltratie marginaal)': 'var(--chart-orange)'
-    }[k.infClass]||'var(--tx2)';
-
-    return`<div class="card">
-      <div class="card__head">
-        <span class="pill ${SC[l.type]||'s-sand'}">${l.type}</span>
-        <span style="font-size:13px;font-weight:600">Layer ${i+1} &mdash; ${l.top.toFixed(2)}&ndash;${l.bot.toFixed(2)} m${tawStr} &nbsp;(${thick} m)</span>
-        ${l.subtype?`<span style="font-size:11px;color:var(--tx2);font-style:italic">${l.subtype}</span>`:''}
-        <span style="font-size:11px;color:var(--tx2);margin-left:auto" title="z_mid=${midZ.toFixed(2)}m | &sigma;v0=${h.sigV} kPa | u=${h.u} kPa | &sigma;'v0=${h.sigVeff} kPa">&sigma;v0 ${h.sigV} &minus; u ${h.u} = &sigma;'v0 <strong>${h.sigVeff} kPa</strong> &middot; &alpha;E ${h.aE}</span>
-      </div>
-      <div style="display:grid;grid-template-columns:${STAGE4_ENABLE_HARDENING_SOIL_PARAMS?'1fr 1fr 1fr 1fr':'1fr 1fr 1fr'};gap:14px">
-        <div>
-          <div class="card__eyebrow">Mohr-Coulomb</div>
-          <table class="tbl tbl--kv">
-            <tr><td>E_ref (kPa)</td><td>${h.Emc.toLocaleString()}</td></tr>
-            <tr class="key">
-              <td>&nu; <input class="input input--sm${l.ovr.nu?' ovr':''}" type="number" step="0.01" min="0.05" max="0.49"
-                value="${h.nu.toFixed(2)}" style="width:52px;margin-left:4px"
-                data-i="${i}" onchange="editNu(this)"></td>
-              <td>${h.nu.toFixed(2)}</td>
-            </tr>
-            <tr class="key">
-              <td>r_shear <input class="input input--sm${l.ovr.rShear?' ovr':''}" type="number" step="0.01" min="0.01" max="1.00"
-                value="${h.rShear.toFixed(2)}" style="width:52px;margin-left:4px"
-                data-i="${i}" onchange="editRShear(this)"></td>
-              <td>${h.rShear.toFixed(2)}</td>
-            </tr>
-            <tr class="key"><td>&phi;' (&deg;)</td><td>${l.phi}</td></tr>
-            <tr class="key"><td>c' (kPa)</td><td>${l.c}</td></tr>
-            <tr><td>&psi; (&deg;)</td><td>${h.psi}</td></tr>
-            <tr><td>&gamma; / &gamma;_sat</td><td>${l.g} / ${l.gs} kN/m&sup3;</td></tr>
-            ${l.type==='Soft clay'||l.type==='Clay'?`<tr><td>c_u (kPa)</td><td>${l.cu}</td></tr>`:''}
-          </table>
-        </div>
-        <div>
-          <div class="card__eyebrow">Soilin &mdash; deformation modulus</div>
-          <table class="tbl tbl--kv">
-            <tr><td>&beta; (-)</td><td>${h.beta.toFixed(3)}</td></tr>
-            <tr class="key"><td>E_def (kPa)</td><td>${h.Edef.toLocaleString()}</td></tr>
-          </table>
-          <div style="font-size:9px;color:var(--tx3);margin-top:6px">
-            E_def = &beta;&middot;E_oed,i &nbsp;&middot;&nbsp; &beta; = (1+&nu;)(1&minus;2&nu;)/(1&minus;&nu;)<br>
-            &#268;SN 73 1001 / Soilin subsoil input &middot; &nu; from Mohr-Coulomb column
-          </div>
-        </div>
-        ${STAGE4_ENABLE_HARDENING_SOIL_PARAMS ? `
-          <div>
-            <div class="card__eyebrow">Hardening Soil &mdash; p_ref = 100 kPa</div>
-            <table class="tbl tbl--kv">
-              <tr>
-                <td style="color:var(--tx3);font-size:10px">&alpha;E (${S.alphaMethod==='B'?'SB260':'Sanglerat'})</td>
-                <td style="text-align:right">
-                  <input class="input input--sm${l.ovr.aE?' ovr':''}" type="number" step="0.5" min="0.5" max="30"
-                    value="${h.aE}" style="width:54px"
-                    data-i="${i}" onchange="editAlpha(this)">
-                </td>
-              </tr>
-              <tr><td>E_oed,i (kPa)</td><td style="color:var(--tx2)">${h.Eoed_i.toLocaleString()}</td></tr>
-              <tr class="key"><td>E_oed,ref (kPa)</td><td>${h.Eoed_ref.toLocaleString()}</td></tr>
-              <tr class="key"><td>E_50,ref (kPa) <span style="font-size:9px;color:var(--tx3)">${S.stiffMethod==='B'?'=E_oed':'CUR 2003-7'}</span></td><td>${h.E50_ref.toLocaleString()}</td></tr>
-              <tr class="key"><td>E_ur,ref (kPa)</td><td>${h.Eur_ref.toLocaleString()}</td></tr>
-              <tr class="key">
-                <td>m <input class="input input--sm${l.ovr.m?' ovr':''}" type="number" step="0.05" min="0.3" max="1.2"
-                  value="${h.m.toFixed(2)}" style="width:48px;margin-left:4px"
-                  data-i="${i}" onchange="editM(this)"></td>
-                <td>${h.m.toFixed(2)}</td>
-              </tr>
-              <tr><td>K0_nc</td><td>${h.K0nc}</td></tr>
-              <tr><td>&nu;<sub>ur</sub></td><td>${h.nu_ur}</td></tr>
-              <tr><td>R_f</td><td>0.90</td></tr>
-            </table>
-          </div>
-        ` : ''}
-        <div>
-          <div class="card__eyebrow">Hydraulic conductivity</div>
-          <table class="tbl tbl--kv">
-            <tr><td>k_h (m/s)</td><td style="font-family:monospace;font-size:11px">${k.kh_rep_fmt}</td></tr>
-            <tr><td style="color:var(--tx3);font-size:10px">range</td><td style="font-family:monospace;font-size:10px;color:var(--tx3)">${k.kh_min_fmt} \u2013 ${k.kh_max_fmt}</td></tr>
-            <tr><td>k_h/k_v</td><td>${k.khkv}</td></tr>
-            <tr><td>k_v (m/s)</td><td style="font-family:monospace;font-size:11px">${k.kv_rep.toExponential(1)}</td></tr>
-            <tr><td>&psi;_unsat (m)</td><td>${k.psi_unsat}</td></tr>
-            <tr><td colspan="2" style="padding-top:6px">
-              <span style="font-size:10px;font-weight:600;color:${infCol}">${k.infClass}</span>
-              <div style="font-size:9px;color:var(--tx3);margin-top:2px">VMM §5.2 richtlijn</div>
-            </td></tr>
-          </table>
-          <div style="font-size:9px;color:var(--tx3);margin-top:6px">Ref: OVAM Tabel 2-44<br>I/RA/11461/15.066/JSW</div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  // Build charts after DOM settles (data-attribute approach avoids early tag close)
-  setTimeout(buildTuningCharts, 50);
-}
+const modelParamsApp = installModelParamsApp({
+  document,
+  getActive: () => S,
+  hardeningSoilParams: STAGE4_ENABLE_HARDENING_SOIL_PARAMS,
+  buildTuningCharts: () => buildTuningCharts()
+});
+const {
+  modelCtx, stressAt, hsParams, khParams, renderModel,
+  setAlphaMethod, setStiffMethod, setKhKvMethod
+} = modelParamsApp;
 
 /* ════════════════════════════════
    STAGE 5 — TUNING: m-fitting from CPT profile
-   
+
    METHOD: OLS regression on log-log space.
-   
+
    For each depth reading z_j in a layer:
      Eoed,i(z_j) = alphaE * qc(z_j) * 1000         [kPa]  (CPT-derived)
      X_j = ln((sigma_v0'(z_j) + c*cotphi) / (p_ref + c*cotphi))
      Y_j = ln(Eoed,i(z_j))
-   
+
    The HS model predicts: Y = ln(Eoed,ref) + m * X
    OLS gives: m = cov(X,Y)/var(X), Eoed,ref = exp(mean(Y) - m*mean(X))
-   
+
    This is equivalent to matching the derivative d(ln Eoed)/d(ln stress_ratio),
    which is exactly m. Minimising the sum of squared log-errors finds the best m.
-   
+
    R2 = 1 - SS_res/SS_tot  (in log space)
    Reliable if: n>=10 readings, stress range factor >= 1.5, top layer > 0.5m
 ════════════════════════════════ */
-
-/* Stage 5 — the fit, the cards and the charts live in src/lib/cpt-app/tuning/ (PR 14).
-   These wrappers feed them the active CPT; the render-after-write and the Stage 4 refresh
-   of acceptFit stay here (map §3.4 #2/#3). */
-function fitLayer(l){
-  return fitLayerPure(l, tuningCtx(S));
-}
-
-function runTuning(){
-  S.tuning = runTuningFits(S.layers, tuningCtx(S));
-  renderTuning();
-}
-
-function acceptFit(i){
-  if(!acceptFitPure(S, i)) return;
-  renderTuning();
-  // Re-render Stage 4 in background so it stays current
-  if(document.getElementById('p3').classList.contains('active')) renderModel();
-}
-
-function rejectFit(i){
-  if(!rejectFitPure(S, i)) return;
-  renderTuning();
-}
-
-function updateTuningPreviewM(i, rawValue){
-  updateTuningPreviewPure(document, S.tuning, i, rawValue);
-}
-
-function renderTuning(){
-  const el = document.getElementById('tuningArea');
-  el.innerHTML = tuningAreaHtml(S);
-  if(!S.tuning) return;
-  // Build charts after DOM settles.
-  setTimeout(buildTuningCharts, 50);
-}
-
-function buildTuningCharts(){
-  buildTuningChartsPure(document);
-}
+const tuningApp = installTuningApp({
+  document,
+  getActive: () => S,
+  // acceptFit re-renders Stage 4 in the background so it stays current (map §3.4 #2/#3).
+  renderModelIfActive: () => { if(document.getElementById('p3').classList.contains('active')) renderModel(); }
+});
+const {
+  fitLayer, runTuning, acceptFit, rejectFit, updateTuningPreviewM, renderTuning, buildTuningCharts
+} = tuningApp;
 
 /* ════════════════════════════════
    STAGE 6 — APPLICATIONS
@@ -1424,9 +874,7 @@ function stage6Defaults(){
   return stage6StateDefaults(stage6Registry);
 }
 
-function stage6WorkingLayers(){
-  return workingLayersPure(S);
-}
+const stage6WorkingLayers = modelParamsApp.workingLayers;
 
 function stage6MaxDepth(){
   return stage6LayerBottom(S);

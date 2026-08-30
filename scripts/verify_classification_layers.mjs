@@ -620,45 +620,77 @@ check('legacy-controller.js no longer declares the moved bodies and imports clas
   for (const decl of ['const CAT_GROUPS={', 'const COMPAT={', 'const SMART_SLIVER_REF', "S.method==='robertson')     res=classRob(r)", 'const thick=segmentSummary(seg, prev).thk', 'S.layers=merged.map(']) {
     assert.ok(!src.includes(decl), `still contains: ${decl}`);
   }
-  assert.ok(src.includes("} from './classification/index.js';"), 'classification import missing');
-  assert.ok(src.includes("} from './layers/index.js';"), 'layers import missing');
-  const mp = src.indexOf("} from './model-params/index.js';"), cl = src.indexOf("import {\n  classificationMethodLabel,"), core = src.indexOf("} from './core/chart-host.js';");
+  assert.ok(src.includes("import { installClassificationApp } from './classification/index.js';"), 'classification install import missing');
+  assert.ok(src.includes("  installLayersApp\n} from './layers/index.js';"), 'layers install import missing');
+  const mp = src.indexOf("} from './model-params/index.js';"), cl = src.indexOf("import { installClassificationApp }"), core = src.indexOf("} from './core/chart-host.js';");
   assert.ok(core < mp && mp < cl && cl - mp < 40, 'the classification/layers imports must directly follow the model-params import block');
+  // PR 20 (composition root): the Stage 2 / Stage 3 wrappers moved into installClassificationApp(ctx)
+  // and installLayersApp(ctx). The controller installs each package once and keeps the monolith
+  // names as bindings of the install, so the inline `on*=` attributes still resolve them.
+  for (const name of ['selM', 'runClass', 'assumedRfValue', 'cptHasFs', 'cptHasRf', 'classRob', 'classRob2016',
+    'classCUR3', 'classCUR', 'classNEN6740', 'classSB260', 'segmentSummary', 'detectLayers', 'renderLayers',
+    'renderCompatWarnings', 'changeSubtype', 'editL', 'editAlpha', 'editM', 'editRShear', 'editNu', 'setParamMethod']) {
+    assert.ok(!new RegExp(`^(async )?function ${name}\\(`, 'm').test(src), `${name} is still declared in legacy-controller.js`);
+  }
+  const classBindings = src.slice(src.indexOf('} = classificationApp;') - 400, src.indexOf('} = classificationApp;'));
+  for (const name of ['selM', 'assumedRfValue', 'cptHasFs', 'cptHasRf', 'classRob', 'classRob2016', 'classCUR3',
+    'classCUR', 'classNEN6740', 'classSB260', 'runClass']) {
+    assert.ok(new RegExp(`\\b${name}\\b`).test(classBindings), `${name} is not bound from classificationApp`);
+  }
+  const layerBindings = src.slice(src.indexOf('} = layersApp;') - 400, src.indexOf('} = layersApp;'));
+  for (const name of ['segmentSummary', 'detectLayers', 'renderLayers', 'renderCompatWarnings', 'changeSubtype',
+    'editL', 'editAlpha', 'editM', 'editRShear', 'editNu', 'setParamMethod']) {
+    assert.ok(new RegExp(`\\b${name}\\b`).test(layerBindings), `${name} is not bound from layersApp`);
+  }
+  // the bodies, now in the packages
+  const cls = readFileSync(join(ROOT, 'src/lib/cpt-app/classification/index.js'), 'utf8');
   for (const w of [
-    'function assumedRfValue(){\n  return assumedRfValuePure(S);',
-    'function cptHasFs(){\n  return cptHasFsPure(S);',
-    'function cptHasRf(){\n  return cptHasRfPure(S);',
-    'function classRob(r){\n  return classRobPure(S, r);',
-    'function classSB260(r){\n  return classSB260Pure(S, r);',
-    'const classCUR = classCUR3;',
-    'const result=classifyCpt(S);\n  S.useSB260params=result.useSB260params;\n  S.classified=result.classified;\n  S.rfAssumedCount=result.rfAssumedCount;',
-    "document.getElementById('cmet').innerHTML=classificationMetricsHtml(result.metrics);",
-    "document.getElementById('cbody').innerHTML=classificationTableRowsHtml(result.classified,{method:S.method,elev:S.elev});",
-    'function segmentSummary(seg, prevSeg){\n  return segmentSummaryPure(seg, prevSeg, layersCtx(S));',
-    'function detectLayers(){\n  S.layers=detectLayersPure(S, layersCtx(S));\n}'
+    'assumedRfValue: () => assumedRfValueOf(getActive()),',
+    'cptHasFs: () => cptHasFsOf(getActive()),',
+    'cptHasRf: () => cptHasRfOf(getActive()),',
+    'classRob: (r) => classRobOf(getActive(), r),',
+    'classSB260: (r) => classSB260Of(getActive(), r),',
+    'app.classCUR = app.classCUR3;',
+    'const result=classifyCptOf(S);\n      S.useSB260params=result.useSB260params;\n      S.classified=result.classified;\n      S.rfAssumedCount=result.rfAssumedCount;',
+    "document.getElementById('cmet').innerHTML=metricsHtml(result.metrics);",
+    "document.getElementById('cbody').innerHTML=tableRowsHtml(result.classified,{method:S.method,elev:S.elev});"
   ]) {
-    assert.ok(src.includes(w), `wrapper missing: ${w.split('\n')[0]}`);
+    assert.ok(cls.includes(w), `classification/index.js wrapper missing: ${w.split('\n')[0]}`);
   }
   // the render tail of runClass is unchanged
-  assert.ok(src.includes("  document.getElementById('classLayout').style.display='';\n  detectLayers();\n  renderLayerPreviewSvg('layerPreviewSvg');\n  drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1].z+0.5);\n  document.getElementById('minThkInfo').textContent='-> '+S.layers.length+' layers';\n  document.getElementById('btnToLayers').style.display='';\n}"), 'runClass render tail changed');
+  assert.ok(cls.includes("      document.getElementById('classLayout').style.display='';\n      ctx.detectLayers();\n      ctx.renderLayerPreviewSvg('layerPreviewSvg');\n      ctx.drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1].z+0.5);\n      document.getElementById('minThkInfo').textContent='-> '+S.layers.length+' layers';\n      document.getElementById('btnToLayers').style.display='';"), 'runClass render tail changed');
+  const lay = readFileSync(join(ROOT, 'src/lib/cpt-app/layers/index.js'), 'utf8');
+  assert.ok(lay.includes('segmentSummary: (seg, prevSeg) => segmentSummaryOf(seg, prevSeg, layersCtx(getActive())),'), 'layers/index.js segmentSummary wrapper');
+  assert.ok(lay.includes('S.layers = detectLayersOf(S, layersCtx(S));'), 'layers/index.js detectLayers wrapper');
   // renderLayers is still called by the callers, never by detectLayers
-  const detectBody = src.slice(src.indexOf('function detectLayers(){'), src.indexOf('function detectLayers(){') + 80);
+  const detectStart = lay.indexOf('detectLayers(){');
+  const detectBody = lay.slice(detectStart, lay.indexOf('},', detectStart));
   assert.ok(!detectBody.includes('renderLayers'), 'detectLayers wrapper must not render');
 });
 check('classification/ and layers/ modules carry the SPDX header and @ts-nocheck; no DOM, no S in the pure modules', () => {
+  // PR 20 split each package into pure modules and DOM modules: the pure list keeps the
+  // "no document / window / alert / S" contract; index.js and the DOM modules (the method cards,
+  // the layer table, the per-layer editors) own the browser half and only keep the header check.
   const expect = {
-    classification: ['classify.js', 'index.js', 'labels.js', 'panel.js', 'run.js'],
-    layers: ['context.js', 'detect.js', 'index.js', 'merge.js', 'segments.js', 'tabel3-compat.js']
+    classification: {
+      pure: ['classify.js', 'labels.js', 'panel.js', 'run.js'],
+      dom: ['index.js', 'method-cards.js']
+    },
+    layers: {
+      pure: ['context.js', 'detect.js', 'merge.js', 'segments.js', 'tabel3-compat.js'],
+      dom: ['handlers.js', 'index.js', 'table.js']
+    }
   };
-  for (const [pkg, files] of Object.entries(expect)) {
+  for (const [pkg, groups] of Object.entries(expect)) {
     const dir = join(ROOT, 'src/lib/cpt-app', pkg);
     assert.ok(existsSync(join(dir, 'index.js')), `${pkg}/index.js`);
-    assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith('.js')).sort(), files, pkg);
-    for (const f of files) {
+    assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith('.js')).sort(), [...groups.pure, ...groups.dom].sort(), pkg);
+    for (const f of [...groups.pure, ...groups.dom]) {
       const text = readFileSync(join(dir, f), 'utf8');
       const head = text.split('\n').slice(0, 2);
       assert.equal(head[0], '// SPDX-License-Identifier: AGPL-3.0-or-later', `${pkg}/${f}`);
       assert.equal(head[1], '// @ts-nocheck', `${pkg}/${f}`);
+      if (!groups.pure.includes(f)) continue;
       assert.ok(!/\bdocument\b|\bwindow\b|\balert\(/.test(text), `${pkg}/${f} touches the DOM`);
       assert.ok(!/(^|[^A-Za-z0-9_.$])S\.[a-zA-Z]/.test(text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')), `${pkg}/${f} reads S`);
     }

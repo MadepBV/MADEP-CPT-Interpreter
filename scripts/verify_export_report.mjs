@@ -681,7 +681,7 @@ check('legacy-controller.js no longer declares the moved bodies', () => {
 });
 check('legacy-controller.js imports export/ and report/ directly after the load/ block and keeps the wrappers + captures', () => {
   const src = readFileSync(CTRL, 'utf8');
-  assert.ok(/\} from '\.\/load\/index\.js';\nimport \{\n  NO_LAYERS_MESSAGE,\n[\s\S]*?\} from '\.\/export\/index\.js';\nimport \{\n  STAGE7_GUARD_MESSAGE,\n  safeClone,\n  buildStage7Payload as buildStage7PayloadPure\n\} from '\.\/report\/index\.js';\nimport \{\n  DEF,/.test(src), 'import blocks between load/ and model-params/');
+  assert.ok(/installLoadApp \} from '\.\/load\/index\.js';\nimport \{\n  NO_LAYERS_MESSAGE,\n[\s\S]*?\} from '\.\/export\/index\.js';\nimport \{\n  STAGE7_GUARD_MESSAGE,\n  safeClone,\n  buildStage7Payload as buildStage7PayloadPure\n\} from '\.\/report\/index\.js';\nimport \{\n  sb260GranularAlpha,/.test(src), 'import blocks between load/ and model-params/');
   assert.ok(src.includes("import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report/svg.js';"), 'svg import moved');
   for (const w of [
     "function exportCSV(){\n  if(!S.layers.length){alert(NO_LAYERS_MESSAGE);return;}\n  const csv=buildLayersCsv(S, modelCtx());\n  const a=document.createElement('a');\n  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);\n  a.download=layersCsvFilename(S);\n  a.click();\n}",
