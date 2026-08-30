@@ -519,9 +519,12 @@ if (args[0] === '--dump') {
       .map((n) => [n, typeof G[n] === 'function']);
     // and the capture no longer reaches for the render / init path
     P.controllerSource = (() => {
-      const src = readFileSync(resolve(ROOT, CTRL_REL), 'utf8');
+      // PR 20 moved the capture region out of the controller into the Seep/Slope host layer;
+      // the assertion itself is unchanged — that region still must not render, switch the app
+      // or re-init the canvas.
+      const src = readFileSync(resolve(ROOT, 'src/lib/cpt-app/seepslope/host.js'), 'utf8');
       const start = src.indexOf('function stage7CaptureBishopWorkspaceView');
-      const end = src.indexOf('function stage7ControllerDeps');
+      const end = src.indexOf('\n  return {', start);
       const region = start >= 0 && end > start ? src.slice(start, end) : '';
       return {
         found: region.length > 0,

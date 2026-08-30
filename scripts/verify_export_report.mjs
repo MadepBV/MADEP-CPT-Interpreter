@@ -681,16 +681,25 @@ check('legacy-controller.js no longer declares the moved bodies', () => {
 });
 check('legacy-controller.js imports export/ and report/ directly after the load/ block and keeps the wrappers + captures', () => {
   const src = readFileSync(CTRL, 'utf8');
-  assert.ok(/installLoadApp \} from '\.\/load\/index\.js';\nimport \{\n  NO_LAYERS_MESSAGE,\n[\s\S]*?\} from '\.\/export\/index\.js';\nimport \{\n  STAGE7_GUARD_MESSAGE,\n  safeClone,\n  buildStage7Payload as buildStage7PayloadPure\n\} from '\.\/report\/index\.js';\nimport \{\n  sb260GranularAlpha,/.test(src), 'import blocks between load/ and model-params/');
-  assert.ok(src.includes("import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './report/svg.js';"), 'svg import moved');
+  assert.ok(/installLoadApp \} from '\.\/load\/index\.js';\nimport \{\n  NO_LAYERS_MESSAGE,\n[\s\S]*?\} from '\.\/export\/index\.js';\nimport \{\n  STAGE7_GUARD_MESSAGE,\n  buildStage7Payload as buildStage7PayloadPure\n\} from '\.\/report\/index\.js';\nimport \{\n  sb260GranularAlpha,/.test(src), 'import blocks between load/ and model-params/');
+  // PR 20: the two SVG markup builders are consumed by load/layer-svgs.js, not by the host.
+  assert.ok(readFileSync(join(ROOT, 'src/lib/cpt-app/load/layer-svgs.js'), 'utf8')
+    .includes("import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from '../report/svg.js';"), 'svg import moved');
   for (const w of [
     "function exportCSV(){\n  if(!S.layers.length){alert(NO_LAYERS_MESSAGE);return;}\n  const csv=buildLayersCsv(S, modelCtx());\n  const a=document.createElement('a');\n  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);\n  a.download=layersCsvFilename(S);\n  a.click();\n}",
     "function exportPlaxisCommands(){\n  if(!S.layers.length){\n    alert(NO_LAYERS_MESSAGE);\n    return;\n  }\n  const txt=buildPlaxisCommandsText(S, modelCtx());\n  const nuDrainageConflicts=plaxisNuDrainageConflicts(S, modelCtx());\n  if(nuDrainageConflicts.length){\n    alert(plaxisNuDrainageAlertMessage(nuDrainageConflicts));\n  }\n  const a=document.createElement('a');\n  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);\n  a.download=plaxisCommandsFilename(S);\n  a.click();\n}",
     "function exportPlaxisCpt(){\n  if(!S.layers.length || !S.data.length){\n    alert(NO_LAYER_MODEL_MESSAGE);\n    return;\n  }\n  const txt=buildPlaxisCptText(S, modelCtx());\n  if(txt==null){\n    alert(NO_SIMULATED_ROWS_MESSAGE);\n    return;\n  }\n  const a=document.createElement('a');\n  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);\n  a.download=plaxisCptFilename(S);\n  a.click();\n}",
     "function buildStage7Payload(){\n  if(!S.layers.length || !S.data.length){\n    alert(STAGE7_GUARD_MESSAGE);\n    return null;\n  }\n  return buildStage7PayloadPure(PROJECT, S, stage7ControllerDeps());\n}",
     'captureBishopWorkspaceView:stage7CaptureBishopWorkspaceView,', 'resolvedSeepageMeshTargetArea:stage6BishopResolvedSeepageMeshTargetArea',
-    'function stage7CaptureCanvasImage(', 'function stage7CaptureWorkspaceView(', 'function stage7ClearWorkspaceCapture(', 'function stage7CaptureBishopWorkspaceView(', 'function openStage7Report(){']) {
+    'function openStage7Report(){']) {
     assert.ok(src.includes(w), `missing: ${w.split('\n')[0]}`);
+  }
+  // PR 20 moved the Stage 7 workspace capture into the Seep/Slope host layer; the controller
+  // binds the four names from that install and hands them to report/deps.js unchanged.
+  const host = readFileSync(join(ROOT, 'src/lib/cpt-app/seepslope/host.js'), 'utf8');
+  for (const w of ['function stage7CaptureCanvasImage(', 'function stage7CaptureWorkspaceView(',
+    'function stage7ClearWorkspaceCapture(', 'function stage7CaptureBishopWorkspaceView(']) {
+    assert.ok(host.includes(w), `seepslope/host.js missing: ${w}`);
   }
   const apiBlock = src.slice(src.indexOf('const legacyApi={'), src.indexOf('export function initLegacyController'));
   const names = apiBlock.slice(apiBlock.indexOf('{') + 1, apiBlock.lastIndexOf('}')).split(',').map((s) => s.trim()).filter(Boolean);

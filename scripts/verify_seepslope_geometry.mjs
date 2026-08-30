@@ -71,47 +71,16 @@ const CPT_SEARCH = { nEntry: 4, nExit: 4, nCenter: 6, centerOffsetMin: 0.5, cent
 const EXPORT_BLOCK = `
 /* ── appended by scripts/verify_seepslope_geometry.mjs (PR 18d) — exports only ── */
 export {
-  stage6BishopDist,
-  stage6BishopPointInPolygon,
-  stage6BishopRegionAtPoint,
   stage6BishopTooltipHtml,
-  stage6BishopRegionShortLabel,
-  stage6BishopPolygonCentroid,
-  stage6BishopRegionLegendItems,
-  stage6BishopMeasurementMetrics,
-  stage6BishopMeasurementLabel,
-  stage6BishopMeasurementVectors,
   stage6BishopLineProbeOptions,
   stage6BishopLineProbeMeta,
-  stage6BishopLineProbeFormatValue,
-  stage6ClipboardNumber,
-  stage6BishopLineProbeClipboardValueHeader,
-  stage6BishopLineProbeClipboardText,
   stage6CopyTextFallback,
   stage6CopyTextToClipboard,
-  stage6BishopLineProbeStats,
-  stage6BishopIntegrateLineProbe,
   stage6BishopBuildLineProbe,
   stage6BishopCopyLineProbeData,
   stage6BishopDisplayRegions,
-  stage6BishopShowingCustomRegionPreview,
-  stage6BishopPolygonIsValid,
-  stage6BishopSegmentOrientation,
-  stage6BishopSegmentsIntersectClosed,
-  stage6BishopValidateHolePolygon,
-  stage6BishopPointOnSegment,
-  stage6BishopPointInsideOrBoundary,
-  stage6BishopClosestPointOnSegment,
   stage6BishopBoundaryPickToleranceWorld,
   stage6BishopPickRegionBoundaryPoint,
-  stage6BishopTraverseBoundary,
-  stage6BishopBuildSplitBoundary,
-  stage6BishopUniqueSortedNumbers,
-  stage6BishopBoundaryYAtX,
-  stage6BishopPolygonIntervalsDetailed,
-  stage6BishopSubtractDetailedIntervals,
-  stage6BishopSubtractHoleFromPolygon,
-  stage6BishopSplitRegionPolygon,
   stage6BishopSnapToleranceWorld,
   stage6BishopStrengthSetLabel,
   stage6BishopNormalizedDeformationAnalysisType,
@@ -127,6 +96,45 @@ export {
   ensureStage6State,
   renderStage6
 };
+/* The 31 names below were already *import aliases* of seepslope/{geometry,probe} in the base
+   controller (PR 18d moved their bodies); PR 20's composition root no longer imports what it
+   does not use, so the block re-exports them straight from the packages. Both controllers
+   therefore export the very same functions — the parity comparison is unchanged. */
+export {
+  dist as stage6BishopDist,
+  segmentOrientation as stage6BishopSegmentOrientation,
+  pointOnSegment as stage6BishopPointOnSegment,
+  segmentsIntersectClosed as stage6BishopSegmentsIntersectClosed,
+  closestPointOnSegment as stage6BishopClosestPointOnSegment,
+  uniqueSortedNumbers as stage6BishopUniqueSortedNumbers,
+  pointInPolygon as stage6BishopPointInPolygon,
+  pointInsideOrBoundary as stage6BishopPointInsideOrBoundary,
+  polygonCentroid as stage6BishopPolygonCentroid,
+  polygonIsValid as stage6BishopPolygonIsValid,
+  validateHolePolygon as stage6BishopValidateHolePolygon,
+  traverseBoundary as stage6BishopTraverseBoundary,
+  buildSplitBoundary as stage6BishopBuildSplitBoundary,
+  boundaryYAtX as stage6BishopBoundaryYAtX,
+  polygonIntervalsDetailed as stage6BishopPolygonIntervalsDetailed,
+  subtractDetailedIntervals as stage6BishopSubtractDetailedIntervals,
+  subtractHoleFromPolygon as stage6BishopSubtractHoleFromPolygon,
+  splitRegionPolygon as stage6BishopSplitRegionPolygon,
+  showingCustomRegionPreview as stage6BishopShowingCustomRegionPreview,
+  regionAtPoint as stage6BishopRegionAtPoint,
+  regionShortLabel as stage6BishopRegionShortLabel,
+  regionLegendItems as stage6BishopRegionLegendItems,
+  measurementMetrics as stage6BishopMeasurementMetrics,
+  measurementLabel as stage6BishopMeasurementLabel,
+  measurementVectors as stage6BishopMeasurementVectors
+} from './seepslope/geometry/index.js';
+export {
+  lineProbeFormatValue as stage6BishopLineProbeFormatValue,
+  clipboardNumber as stage6ClipboardNumber,
+  lineProbeClipboardValueHeader as stage6BishopLineProbeClipboardValueHeader,
+  lineProbeClipboardText as stage6BishopLineProbeClipboardText,
+  lineProbeStats as stage6BishopLineProbeStats,
+  integrateLineProbe as stage6BishopIntegrateLineProbe
+} from './seepslope/probe/index.js';
 `;
 
 const args = process.argv.slice(2);

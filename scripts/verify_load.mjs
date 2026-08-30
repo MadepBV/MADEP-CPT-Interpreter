@@ -462,7 +462,7 @@ check('legacy-controller.js no longer declares the moved bodies and imports load
     assert.ok(!src.includes(decl), `still contains ${decl}`);
   }
   assert.ok(src.includes("import { installLoadApp } from './load/index.js';"), 'load install import missing');
-  assert.ok(/import \{ destroyChart as stage6DestroyChart \} from '\.\/core\/chart-host\.js';\nimport \{ installLoadApp \} from '\.\/load\/index\.js';/.test(src), 'the load install is imported directly after the core/ imports');
+  assert.ok(/import \{ readCssToken \} from '\.\/core\/css-tokens\.js';\n\nimport \{ installLoadApp \} from '\.\/load\/index\.js';/.test(src), 'the load install is imported directly after the core/ imports');
   // PR 20 (composition root): the Stage 1 wrappers moved into installLoadApp(ctx). The controller
   // installs the package once and keeps the monolith names as bindings of that install, so the
   // inline `on*=` attributes and the Node verifiers still resolve them at module scope.

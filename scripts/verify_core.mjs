@@ -207,9 +207,21 @@ check('legacy-controller.js no longer declares the moved helpers and imports the
   for (const name of moved) {
     assert.ok(!new RegExp(`^function ${name}\\(`, 'm').test(src), `${name} is still declared in legacy-controller.js`);
   }
-  assert.ok(/from '\.\/core\/format\.js'/.test(src), 'core/format.js import missing');
+  // PR 20 (composition root): only the host's own use of readCssToken is left in the controller;
+  // the other core/ helpers are imported by the packages that render with them.
   assert.ok(/from '\.\/core\/css-tokens\.js'/.test(src), 'core/css-tokens.js import missing');
-  assert.ok(/from '\.\/core\/chart-host\.js'/.test(src), 'core/chart-host.js import missing');
+  const importers = {
+    'core/format.js': ['seepslope/host.js', 'seepslope/wall/chart.js', 'seepslope/contours/seepage.js'],
+    'core/chart-host.js': ['seepslope/host.js'],
+    'core/css-tokens.js': ['load/raw-charts.js', 'seepslope/wall/chart.js']
+  };
+  for (const [mod, users] of Object.entries(importers)) {
+    for (const user of users) {
+      const text = readFileSync(resolve(ROOT, 'src/lib/cpt-app', user), 'utf8');
+      const rel = '../'.repeat(user.split('/').length - 1) + mod;
+      assert.ok(text.includes(`from '${rel}'`), `${user} must import ${mod}`);
+    }
+  }
 });
 
 console.log(`\n${count - fails}/${count} checks passed`);

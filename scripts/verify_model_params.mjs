@@ -371,7 +371,7 @@ check('legacy-controller.js no longer declares the moved bodies and imports mode
   for (const name of ['modelCtx', 'stressAt', 'hsParams', 'khParams', 'renderModel', 'setAlphaMethod', 'setStiffMethod', 'setKhKvMethod']) {
     assert.ok(new RegExp(`\\b${name}\\b`).test(bindings), `${name} is not bound from modelParamsApp`);
   }
-  assert.ok(src.includes('const stage6WorkingLayers = modelParamsApp.workingLayers;'), 'stage6WorkingLayers binding');
+  assert.ok(src.includes('workingLayers: stage6WorkingLayers'), 'stage6WorkingLayers binding');
   const mp = readFileSync(join(ROOT, 'src/lib/cpt-app/model-params/index.js'), 'utf8');
   for (const w of ['modelCtx: () => cptModelCtx(getActive()),',
     'stressAt: (z, gammaSat, gammaUnsat) => stressAtOf(getActive(), z, gammaSat, gammaUnsat),',
