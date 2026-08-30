@@ -461,16 +461,36 @@ check('legacy-controller.js no longer declares the moved bodies and imports load
     "for(let z=0.14;z<=21.73;", "{l:'Area ratio a'", "document.getElementById('wtR').value=1.7;"]) {
     assert.ok(!src.includes(decl), `still contains ${decl}`);
   }
-  assert.ok(src.includes("} from './load/index.js';"), 'load import missing');
-  assert.ok(/import \{ destroyChart as stage6DestroyChart \} from '\.\/core\/chart-host\.js';\nimport \{\n  parseGEF as parseGefPure,/.test(src), 'load import block directly after the core/ imports');
-  for (const w of ['function importCptFiles(files){\n  importCptFilesPure(files,{', 'async function importParsedCpt(cpt, parsed){', 'function applyParsedCptTo(cpt, parsed){',
-    'function applyParsedCpt(parsed){\n  return applyParsedCptTo(S, parsed);', 'async function parseGEF(txt,fname){\n  return cptFileImporters.gef(txt,fname,S);',
-    'async function parseCsvCpt(text,fname){\n  return cptFileImporters.csv(text,fname,S);', 'async function parseExcelCpt(buffer,fname){\n  return cptFileImporters.excel(buffer,fname,S);',
-    'function updateElevSrc(){\n  renderElevationSource(document, S);', 'function updateWTDisplay(){\n  renderWaterTableDisplay(document, S);',
-    'function updateAssumedRfControls(){\n  renderAssumedRfControls(document, S);', 'function renderMeta(){\n  renderMetaCard(document, S);',
-    'function loadDemo(){\n  Object.assign(S, demoPatch(Math.random));\n  syncDemoDom(document, S);\n  requestAnimationFrame(()=>initCharts());']) {
-    assert.ok(src.includes(w), `wrapper missing: ${w.split('\n')[0]}`);
+  assert.ok(src.includes("import { installLoadApp } from './load/index.js';"), 'load install import missing');
+  assert.ok(/import \{ destroyChart as stage6DestroyChart \} from '\.\/core\/chart-host\.js';\nimport \{ installLoadApp \} from '\.\/load\/index\.js';/.test(src), 'the load install is imported directly after the core/ imports');
+  // PR 20 (composition root): the Stage 1 wrappers moved into installLoadApp(ctx). The controller
+  // installs the package once and keeps the monolith names as bindings of that install, so the
+  // inline `on*=` attributes and the Node verifiers still resolve them at module scope.
+  assert.ok(/const loadApp = installLoadApp\(\{\n  document,\n  getProject: \(\) => PROJECT,\n  getActive: \(\) => S,\n  newCptState,/.test(src), 'installLoadApp(ctx) call missing');
+  const loadBindings = src.slice(src.indexOf('} = loadApp;') - 1200, src.indexOf('} = loadApp;'));
+  for (const name of ['importParsedCpt', 'applyParsedCptTo', 'applyParsedCpt', 'parseGEF', 'parseCsvCpt', 'parseExcelCpt',
+    'importCptFiles', 'importGEFFiles', 'loadGEF', 'setCptCoord', 'updateElevSrc', 'updateWTDisplay', 'renderMeta',
+    'setElev', 'setWT', 'updateWTLine', 'setAssumedRf', 'updateAssumedRfControls', 'cancelClassificationRefresh',
+    'refreshClassificationDerivedViews', 'scheduleClassificationDerivedViews', 'setMinThk', 'setSmartMerge',
+    'setSmartMergeSensitivity', 'arrMax', 'arrSafe', 'initCharts', 'refreshChartData', 'drawLayerColumnSvg',
+    'renderLayerPreviewSvg', 'bindLayerPreviewTooltip', 'loadDemo', 'bindDropzone']) {
+    assert.ok(new RegExp(`\\b${name}\\b`).test(loadBindings), `${name} is not bound from loadApp`);
+    assert.ok(!new RegExp(`^(async )?function ${name}\\(`, 'm').test(src), `${name} is still declared in legacy-controller.js`);
   }
+  // The bodies now live in the package, one file per concern.
+  const pkg = (f) => readFileSync(join(ROOT, 'src/lib/cpt-app/load', f), 'utf8');
+  const install = pkg('index.js');
+  for (const w of ['importCptFilesSerially(files,{', 'async importParsedCpt(cpt, parsed){', 'applyParsedCptTo(cpt, parsed){',
+    'applyParsedCpt(parsed){\n      return app.applyParsedCptTo(getActive(), parsed);', 'async parseGEF(txt,fname){\n      return cptFileImporters.gef(txt,fname,getActive());',
+    'async parseCsvCpt(text,fname){\n      return cptFileImporters.csv(text,fname,getActive());', 'async parseExcelCpt(buffer,fname){\n      return cptFileImporters.excel(buffer,fname,getActive());',
+    'updateElevSrc(){\n      renderElevationSource(document, getActive());', 'updateWTDisplay(){\n      renderWaterTableDisplay(document, getActive());',
+    'updateAssumedRfControls(){\n      renderAssumedRfControls(document, getActive());', 'renderMeta(){\n      renderMetaCard(document, getActive());',
+    'loadDemo(){\n      Object.assign(getActive(), demoPatch(Math.random));\n      syncDemoDom(document, getActive());\n      requestAnimationFrame(()=>app.initCharts());']) {
+    assert.ok(install.includes(w), `load/index.js wrapper missing: ${w.split('\n')[0]}`);
+  }
+  assert.ok(pkg('raw-charts.js').includes('export function initCharts(document, cpt, {drawLayerColumn, again}){'), 'raw-charts.js owns initCharts');
+  assert.ok(pkg('layer-svgs.js').includes('export function drawLayerColumnSvg(document, svgId, layers, maxZ, wt){'), 'layer-svgs.js owns drawLayerColumnSvg');
+  assert.ok(pkg('dropzone.js').includes('export function bindDropzone(document, onFiles){'), 'dropzone.js owns bindDropzone');
   // PR 14 (step 8): the selectCpt / removeCpt reassignments moved behind setActive(idx)
   // (core/state.js setActiveCpt) — S is written at its declaration and there only.
   assert.equal((src.match(/\bS=PROJECT\.cpts\[/g) || []).length, 1, 'S is assigned from PROJECT.cpts only at its declaration');
@@ -481,7 +501,7 @@ check('legacy-controller.js no longer declares the moved bodies and imports load
 check('load/ modules carry the SPDX header and @ts-nocheck; parsers import no DOM module', () => {
   const dir = join(ROOT, 'src/lib/cpt-app/load');
   const files = readdirSync(dir).filter((f) => f.endsWith('.js')).sort();
-  assert.deepEqual(files, ['apply-parsed-cpt.js', 'controls.js', 'demo.js', 'file-kind.js', 'import-files.js', 'index.js']);
+  assert.deepEqual(files, ['apply-parsed-cpt.js', 'controls.js', 'demo.js', 'dropzone.js', 'file-kind.js', 'import-files.js', 'index.js', 'layer-svgs.js', 'raw-charts.js']);
   const parsers = readdirSync(join(dir, 'parsers')).filter((f) => f.endsWith('.js')).sort();
   assert.deepEqual(parsers, ['csv.js', 'excel-headers.js', 'excel.js', 'gef.js']);
   for (const f of [...files.map((f) => join(dir, f)), ...parsers.map((f) => join(dir, 'parsers', f))]) {

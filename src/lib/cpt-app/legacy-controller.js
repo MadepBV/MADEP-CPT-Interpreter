@@ -89,23 +89,7 @@ import {
 } from './core/format.js';
 import { readCssToken } from './core/css-tokens.js';
 import { destroyChart as stage6DestroyChart } from './core/chart-host.js';
-import {
-  parseGEF as parseGefPure,
-  parseCsvCpt as parseCsvPure,
-  parseExcelCpt as parseExcelPure,
-  loadXlsxModule,
-  applyParsedCpt as applyParsedCptPure,
-  reviewStaging,
-  NO_DATA_ROWS_MESSAGE,
-  importCptFiles as importCptFilesPure,
-  demoPatch,
-  syncParsedCptDom,
-  syncDemoDom,
-  renderElevationSource,
-  renderWaterTableDisplay,
-  renderAssumedRfControls,
-  renderMetaCard
-} from './load/index.js';
+import { installLoadApp } from './load/index.js';
 import {
   NO_LAYERS_MESSAGE,
   buildLayersCsv,
@@ -473,7 +457,6 @@ let __legacyControllerHashBound = false;
 // The three Seep / Slope workers and their run ids (map §3.4 #8) live in this adapter instead of
 // six module variables; nothing outside the run façades below touches it.
 const stage6BishopWorkers = seepslopeCreateWorkerAdapter();
-let classificationRefreshTimer = null;
 const stage6BishopCanvasState = {
   canvas:null,
   pointerDrag:null,
@@ -761,56 +744,37 @@ function setPhase(ph){
 }
 
 /* ════════════════════════════════
-   MULTI-CPT FILE LOAD
+   STAGE 1 — LOAD  (src/lib/cpt-app/load/, PR 20 / refactor step 10)
+   The parse → review → apply handshake, the multi-file loader, the elevation / water table /
+   assumed-Rf / min-thickness / smart-merge controls, the three raw charts, the two layer SVGs
+   and the dropzone. `installLoadApp(ctx)` owns them; the names below are its methods, kept as
+   module bindings so the inline `on*=` attributes and the Node verifiers still find them.
 ════════════════════════════════ */
-/* File-kind sniffing and the serial loader live in load/ (file-kind.js,
-   import-files.js). Each file is parsed for its explicit target CPT — the
-   importers apply the patch to that CPT and sync the Stage 1 DOM from it —
-   so S and PROJECT.activeCptIdx are never re-pointed during an import. */
-const cptFileImporters={
-  gef:async(txt,fname,cpt)=>importParsedCpt(cpt, parseGefPure(txt,fname)),
-  csv:async(text,fname,cpt)=>importParsedCpt(cpt, parseCsvPure(text,fname)),
-  excel:async(buffer,fname,cpt)=>importParsedCpt(cpt, parseExcelPure(await loadXlsxModule(),buffer,fname))
-};
-
-/* Reads files serially because parsing still drives shared DOM/chart state. */
-function importCptFiles(files){
-  importCptFilesPure(files,{
-    project:PROJECT,
-    newCptState,
-    importers:cptFileImporters,
-    onImported:(targetIdx,isFirst)=>{
-      if(isFirst){
-        // First file: stay on this CPT, update display
-        selectCpt(targetIdx);
-      } else {
-        // Additional files: the active CPT is unchanged, refresh the banner
-        renderBanner();
-      }
-    },
-    renderBanner,
-    // A file that could not be read is reported, not acknowledged: the loader is already moving on
-    // to the next file, so a modal would stack in front of the queue (design §3.15).
-    notify:(message)=>toast(message,{tone:'bad'})
-  });
-}
-
-function importGEFFiles(files){
-  importCptFiles(files);
-}
-
-/* Multi-CPT file load — one picker action can create multiple CPT tabs. */
-function loadGEF(evt){
-  const files=Array.from(evt.target.files||[]);
-  evt.target.value='';
-  importCptFiles(files);
-}
-
-function setCptCoord(axis, val){
-  const v=parseFloat(val);
-  S[axis]=isNaN(v)?null:v;
-  // No renderBanner needed — coordinates don't affect banner display
-}
+const loadApp = installLoadApp({
+  document,
+  getProject: () => PROJECT,
+  getActive: () => S,
+  newCptState,
+  selectCpt: (idx) => selectCpt(idx),
+  renderBanner: () => renderBanner(),
+  runClass: () => runClass(),
+  detectLayers: () => detectLayers(),
+  renderLayers: () => renderLayers(),
+  toast,
+  alert: (message) => alert(message)
+});
+const {
+  cptFileImporters, importParsedCpt, applyParsedCptTo, applyParsedCpt,
+  parseGEF, parseCsvCpt, parseExcelCpt,
+  importCptFiles, importGEFFiles, loadGEF, setCptCoord,
+  updateElevSrc, updateWTDisplay, renderMeta,
+  setElev, setWT, updateWTLine, setAssumedRf, updateAssumedRfControls,
+  cancelClassificationRefresh, refreshClassificationDerivedViews, scheduleClassificationDerivedViews,
+  setMinThk, setSmartMerge, setSmartMergeSensitivity,
+  arrMax, arrSafe, initCharts, refreshChartData, updateRawChartEmptyStates,
+  drawLayerColumnSvg, renderLayerPreviewSvg, bindLayerPreviewTooltip,
+  loadDemo, bindDropzone
+} = loadApp;
 
 /* layerTypeCompatScore (cross-CPT layer compatibility, shared by the Stage 3
    smart merge and the section view) lives in layers/tabel3-compat.js (PR 6). */
@@ -858,403 +822,6 @@ function goS(n){
   projectApp.goS(n);
 }
 
-
-/* ════════════════════════════════
-   CPT FILE PARSERS
-   The format readers are pure and live in load/parsers/ (gef.js, csv.js,
-   excel.js + excel-headers.js); number parsing, unit conversion and tabular
-   row building in import-review/ (shared with the review dialog). Here
-   remain the handshake — parse → review dialog → apply — and the wrappers
-   under the old names for the active CPT.
-════════════════════════════════ */
-/* Review → apply for an explicit CPT (the seam used by the multi-file loader). */
-async function importParsedCpt(cpt, parsed){
-  if(!parsed.ok){alert(parsed.error);return false;}
-  const review=await presentImportReview(reviewStaging(parsed, normalizeAssumedRf(cpt.assumedRf).toFixed(1)));
-  if(!review) return false;
-  return applyParsedCptTo(cpt, {...parsed, rows:review.rows});
-}
-
-/* Assign the parsed patch to the CPT and sync the Stage 1 DOM from it; the
-   charts are (re)built on the next frame for the CPT active at that time. */
-function applyParsedCptTo(cpt, parsed){
-  const patch=applyParsedCptPure(cpt, parsed);
-  if(!patch){toast(NO_DATA_ROWS_MESSAGE,{tone:'warn'});return false;}
-  Object.assign(cpt, patch);
-  syncParsedCptDom(document, cpt);
-  requestAnimationFrame(()=>initCharts());
-  return true;
-}
-
-function applyParsedCpt(parsed){
-  return applyParsedCptTo(S, parsed);
-}
-
-async function parseExcelCpt(buffer,fname){
-  return cptFileImporters.excel(buffer,fname,S);
-}
-
-async function parseCsvCpt(text,fname){
-  return cptFileImporters.csv(text,fname,S);
-}
-
-/* ════════════════════════════════
-   GEF PARSER
-════════════════════════════════ */
-async function parseGEF(txt,fname){
-  return cptFileImporters.gef(txt,fname,S);
-}
-
-function updateElevSrc(){
-  renderElevationSource(document, S);
-}
-function updateWTDisplay(){
-  renderWaterTableDisplay(document, S);
-}
-
-function renderMeta(){
-  renderMetaCard(document, S);
-}
-
-/* ════════════════════════════════
-   CONTROLS: elevation, WT, min-thickness
-════════════════════════════════ */
-function setElev(v){
-  S.elev=(isNaN(v)||v==='')?null:v;
-  S.elevFromFile=false;
-  S.elevSource=null;
-  updateElevSrc(); updateWTDisplay();
-  // Re-render layers if they exist (TAW column changes)
-  if(S.layers.length&&document.getElementById('p2').classList.contains('active'))renderLayers();
-}
-
-function setWT(v,fromInput){
-  if(isNaN(v)||v<0)return;
-  S.wt=v;
-  S.wtFromFile=false;
-  S.wtSource=null;
-  if(fromInput)document.getElementById('wtR').value=v;
-  else document.getElementById('wtN').value=v.toFixed(2);
-  updateWTDisplay();
-  // Update only the WT annotation line on each chart — no rebuild
-  if(S.chartsReady){
-    const d=S.data;
-    const maxZ=d[d.length-1].z+0.5;
-    const maxQc=Math.max(1,arrMax(d.map(r=>r.qc)));
-    // Same floor as initCharts — without it a qc-only file collapses the fs
-    // chart's WT line to a zero-length segment (line disappears).
-    const maxFs=Math.max(10,arrMax(d.map(r=>r.fs!=null?r.fs*1000:0)));
-    updateWTLine(S.charts.qc, v, maxQc*1.15);
-    updateWTLine(S.charts.fs, v, maxFs*1.15);
-    updateWTLine(S.charts.rf, v, 12);
-  }
-}
-
-function updateWTLine(chart,wt,xmax){
-  if(!chart)return;
-  chart.data.datasets[1].data=[{x:0,y:wt},{x:xmax,y:wt}];
-  chart.update('none'); // no animation
-}
-
-/* ── Assumed Rf (qc-only files) ──
-   Shown only when the loaded CPT has readings without measured Rf. The value
-   feeds every classification method through assumedRfValue(). */
-function setAssumedRf(v){
-  const n=Number(v);
-  if(!Number.isFinite(n)||n<=0){
-    // Rejected input: snap the field back to the value actually in use.
-    updateAssumedRfControls();
-    return;
-  }
-  S.assumedRf=normalizeAssumedRf(n);
-  updateAssumedRfControls();
-  updateRawChartEmptyStates();
-  // Re-run the full classification chain so table, layers and previews stay
-  // consistent with the new assumption.
-  if(S.classified.length) runClass();
-}
-
-function updateAssumedRfControls(){
-  renderAssumedRfControls(document, S);
-}
-
-function cancelClassificationRefresh(){
-  if(classificationRefreshTimer!=null){
-    clearTimeout(classificationRefreshTimer);
-    classificationRefreshTimer=null;
-  }
-}
-
-function refreshClassificationDerivedViews(){
-  cancelClassificationRefresh();
-  if(!S.classified.length) return;
-  detectLayers();
-  renderLayerPreviewSvg('layerPreviewSvg');
-  const layerColSvg=document.getElementById('layerColSvg');
-  if(layerColSvg) drawLayerColumnSvg('layerColSvg',S.layers,S.data[S.data.length-1]?.z+0.5||20);
-  if(document.getElementById('p2').classList.contains('active')) renderLayers();
-  const info=document.getElementById('minThkInfo');
-  if(info) info.textContent=`→ ${S.layers.length} layers`;
-}
-
-function scheduleClassificationDerivedViews(delay=90){
-  cancelClassificationRefresh();
-  const info=document.getElementById('minThkInfo');
-  if(info) info.textContent='Updating...';
-  classificationRefreshTimer=setTimeout(()=>{
-    classificationRefreshTimer=null;
-    refreshClassificationDerivedViews();
-  }, delay);
-}
-
-function setMinThk(v,fromInput){
-  if(isNaN(v)||v<0.05)return;
-  S.minThk=v;
-  if(fromInput)document.getElementById('minThkR').value=v;
-  else document.getElementById('minThkN').value=v.toFixed(2);
-  document.getElementById('minThkInfo').textContent='';
-  // If already classified, re-run layer detection and update preview
-  if(S.classified.length){
-    refreshClassificationDerivedViews();
-  }
-}
-
-function setSmartMerge(v){
-  S.smartMerge=!!v;
-  const smartMergeControls=document.getElementById('smartMergeControls');
-  if(smartMergeControls) smartMergeControls.style.display=S.smartMerge?'':'none';
-  if(S.classified.length){
-    refreshClassificationDerivedViews();
-  }
-}
-
-function setSmartMergeSensitivity(v,fromInput){
-  if(isNaN(v)) return;
-  const val=Math.max(0,Math.min(6,+v));
-  S.smartMergeSensitivity=val;
-  const range=document.getElementById('smartMergeSensR');
-  const num=document.getElementById('smartMergeSensN');
-  if(fromInput){
-    if(range) range.value=val.toFixed(2);
-  }else{
-    if(num) num.value=val.toFixed(2);
-  }
-  if(S.classified.length && S.smartMerge){
-    scheduleClassificationDerivedViews();
-  }
-}
-
-/* ════════════════════════════════
-   CHARTS — created once, updated in-place
-════════════════════════════════ */
-function arrMax(arr){return arr.reduce((m,v)=>Math.max(m,v),-Infinity);}
-function arrSafe(arr){return arr.map(v=>isNaN(v)||v==null?0:v);}
-
-/* Shared data prep for the three Stage 1 raw-profile charts (initCharts and
-   refreshChartData must stay identical). fs/Rf keep null when not measured —
-   null points are dropped by ptData, NOT drawn as a fake zero-line (legacy
-   qc-only files previously rendered fs=0 as a measured-looking profile). */
-function buildRawChartSeries(){
-  const d=S.data;
-  const depths=d.map(r=>r.z);
-  const qcs=arrSafe(d.map(r=>r.qc));
-  const fss=d.map(r=>r.fs!=null?r.fs*1000:null);
-  const rfs=d.map(r=>r.rf??null);
-  return{
-    depths,qcs,fss,rfs,
-    maxZ:arrMax(depths)+0.5,
-    maxQc:Math.max(1,arrMax(qcs))*1.15,
-    maxFs:Math.max(10,arrMax(arrSafe(fss)))*1.15,
-    ptData:vals=>depths.map((z,i)=>({x:vals[i],y:z})).filter(p=>p.x!=null)
-  };
-}
-
-function initCharts(){
-  const hasCanvases = document.getElementById('cQc') && document.getElementById('cFs') && document.getElementById('cRf');
-  // If charts already exist and the canvases still exist, just update data
-  if(S.chartsReady && hasCanvases && S.charts.qc && S.charts.fs && S.charts.rf){
-    refreshChartData(); return;
-  }
-  if(typeof Chart==='undefined'){
-    setTimeout(()=>initCharts(), 120);
-    return;
-  }
-  const {qcs,fss,rfs,maxZ,maxQc,maxFs,ptData}=buildRawChartSeries();
-  const wt=S.wt;
-
-  function mk(id,vals,color,xmax,label){
-    const ctx=document.getElementById(id);
-    if(!ctx)return null;
-    return new Chart(ctx, buildRawProfileChartConfig({
-      points:ptData(vals),
-      wt,
-      xMax:xmax,
-      maxDepth:maxZ,
-      color,
-      valueLabel:label
-    }));
-  }
-
-  S.charts.qc=mk('cQc',qcs,readCssToken('--chart-green', '#3D6B6A'),maxQc,'qc');
-  S.charts.fs=mk('cFs',fss,readCssToken('--chart-purple', '#18181A'),maxFs,'fs');
-  S.charts.rf=mk('cRf',rfs,readCssToken('--chart-orange', '#8A620D'),12,'Rf');
-  S.chartsReady=true;
-  updateRawChartEmptyStates();
-
-  // Layer column SVG (placeholder before classification)
-  drawLayerColumnSvg('layerColSvg',[],maxZ);
-}
-
-/* Overlay note on the fs / Rf canvases when the source file never measured
-   the quantity, so an empty track cannot be mistaken for a zero profile. */
-function setChartEmptyState(canvasId, message){
-  const canvas=document.getElementById(canvasId);
-  const holder=canvas?.parentElement;
-  if(!holder)return;
-  let note=holder.querySelector('.chart-empty-note');
-  if(message){
-    if(!note){
-      note=document.createElement('div');
-      note.className='chart-empty-note';
-      note.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;color:var(--tx3);pointer-events:none;padding:0 18px';
-      holder.appendChild(note);
-    }
-    note.textContent=message;
-  }else if(note){
-    note.remove();
-  }
-}
-
-function updateRawChartEmptyStates(){
-  setChartEmptyState('cFs', cptHasFs()?null:'fs not recorded in source file');
-  setChartEmptyState('cRf', cptHasRf()?null:`Rf not recorded — classification uses assumed Rf = ${assumedRfValue().toFixed(1)} %`);
-}
-
-function refreshChartData(){
-  // Called if a new file is loaded after charts exist
-  const {qcs,fss,rfs,maxZ,maxQc,maxFs,ptData}=buildRawChartSeries();
-
-  function applyData(c,vals,xmax){
-    c.data.datasets[0].data=ptData(vals);
-    c.data.datasets[1].data=[{x:0,y:S.wt},{x:xmax,y:S.wt}];
-    c.options.scales.x.max=xmax;
-    c.options.scales.y.max=maxZ;
-    c.update('none');
-  }
-  applyData(S.charts.qc,qcs,maxQc);
-  applyData(S.charts.fs,fss,maxFs);
-  applyData(S.charts.rf,rfs,12);
-  updateRawChartEmptyStates();
-}
-
-/* ════════════════════════════════
-   LAYER COLUMN SVG (Stage 1 preview)
-════════════════════════════════ */
-function drawLayerColumnSvg(svgId, layers, maxZ){
-  const svg=document.getElementById(svgId);
-  if(!svg)return;
-  const W=60,H=400;
-  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-  svg.innerHTML=buildLayerColumnSvgMarkup({
-    layers,
-    maxDepth:maxZ,
-    wt:S.wt,
-    width:W,
-    height:H,
-    emptyLabel:'Run class.'
-  });
-}
-
-/* ════════════════════════════════
-   LAYER PREVIEW SVG (Stage 2 side panel)
-════════════════════════════════ */
-function renderLayerPreviewSvg(svgId){
-  const svg=document.getElementById(svgId);
-  if(!svg||!S.layers.length)return;
-
-  const W=240, H=520;
-  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-  svg.innerHTML=buildLayerPreviewSvgMarkup({
-    layers:S.layers,
-    rows:S.classified||[],
-    wt:S.wt,
-    width:W,
-    height:H,
-    showRf:cptHasRf()
-  });
-  svg.setAttribute('width','100%');
-  bindLayerPreviewTooltip();
-}
-
-function bindLayerPreviewTooltip(){
-  const svg=document.getElementById('layerPreviewSvg');
-  const wrap=svg?.parentElement;
-  const tip=document.getElementById('layerPreviewTip');
-  if(!svg||!wrap||!tip||svg.dataset.previewTipBound==='1') return;
-
-  function hideTip(){ tip.style.display='none'; }
-  function showTip(target, evt){
-    tip.innerHTML=`<strong>${target.dataset.type||''}</strong>
-      <div class="mut">${target.dataset.subtype||'—'}</div>
-      <div class="row"><span>Depth</span><span>${target.dataset.top}–${target.dataset.bot} m</span></div>
-      <div class="row"><span>Thickness</span><span>${target.dataset.thk} m</span></div>
-      <div class="row"><span>Original points</span><span>${target.dataset.points}</span></div>
-      <div class="row"><span>qc original</span><span>${target.dataset.qcmin}–${target.dataset.qcmax} MPa</span></div>
-      <div class="row"><span>qc layer avg</span><span>${target.dataset.qcavg} MPa</span></div>
-      <div class="row"><span>Rf original</span><span>${target.dataset.rfmin}–${target.dataset.rfmax} %</span></div>
-      <div class="row"><span>Rf layer avg</span><span>${target.dataset.rfavg} %</span></div>
-      <div class="row"><span>fs original</span><span>${target.dataset.fsmin}–${target.dataset.fsmax} kPa</span></div>
-      <div class="row"><span>fs layer avg</span><span>${target.dataset.fsavg} kPa</span></div>`;
-    tip.style.display='block';
-    const rect=wrap.getBoundingClientRect();
-    const pad=12, tipW=250, tipH=210;
-    let left=evt.clientX-rect.left+14;
-    let top=evt.clientY-rect.top+14;
-    if(left+tipW>rect.width-pad) left=Math.max(pad, evt.clientX-rect.left-tipW-14);
-    if(top+tipH>rect.height-pad) top=Math.max(pad, evt.clientY-rect.top-tipH-14);
-    tip.style.left=`${left}px`;
-    tip.style.top=`${top}px`;
-  }
-
-  svg.addEventListener('mousemove',e=>{
-    const target=e.target.closest?.('[data-layer-preview]');
-    if(!target){ hideTip(); return; }
-    showTip(target,e);
-  });
-  svg.addEventListener('mouseleave',hideTip);
-  svg.dataset.previewTipBound='1';
-}
-
-/* ════════════════════════════════
-   DEMO
-════════════════════════════════ */
-function loadDemo(){
-  Object.assign(S, demoPatch(Math.random));
-  syncDemoDom(document, S);
-  requestAnimationFrame(()=>initCharts());
-}
-
-/* ════════════════════════════════
-   FILE LOAD
-════════════════════════════════ */
-function loadSingleGEF(evt){
-  const f=evt.target.files[0]; if(!f)return;
-  const r=new FileReader();
-  r.onload=e=>{parseGEF(e.target.result,f.name).catch(err=>toast(`Error importing ${f.name}: ${err?.message||err}`,{tone:'bad'}));};
-  r.readAsText(f);
-}
-function bindDropzone(){
-  const dz=document.getElementById('dz');
-  if(!dz || dz.dataset.bound==='1') return;
-  document.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
-  document.addEventListener('dragleave',e=>{if(!dz.contains(e.relatedTarget))dz.classList.remove('drag')});
-  document.addEventListener('drop',e=>{
-    e.preventDefault();dz.classList.remove('drag');
-    const files=Array.from(e.dataTransfer?.files||[]);
-    importGEFFiles(files);
-  });
-  dz.dataset.bound='1';
-}
 
 /* ════════════════════════════════
    METHOD SELECT
