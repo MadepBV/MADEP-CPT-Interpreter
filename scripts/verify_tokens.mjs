@@ -3,9 +3,10 @@
 //
 //   node scripts/verify_tokens.mjs            (npm run verify:tokens)
 //
-// 1. Every `var(--x)` used in legacy.css, retaining-styles.js, docs.css, report/**/*.svelte and
-//    legacy-controller.js (HTML strings) is defined in src/lib/styles/tokens.css — or locally in the
-//    same file (`--rpt-*`, `--st6-*`, inline `style="--x:…"`).
+// 1. Every `var(--x)` used in legacy.css, docs.css, report/**/*.svelte and legacy-controller.js
+//    (HTML strings) is defined in src/lib/styles/tokens.css — or locally in the same file
+//    (`--rpt-*`, `--st6-*`, inline `style="--x:…"`). (retaining-styles.js was in this list until
+//    PR 15 deleted it; the informational sweep below still covers every module under src/lib.)
 // 2. Both dark blocks exist and are identical: `@media (prefers-color-scheme: dark) :root:not([data-theme="light"])`
 //    and `:root[data-theme="dark"]`.
 // 3. Tokens that JS reads for canvases resolve (through the alias chain) to a literal colour —
@@ -51,7 +52,6 @@ console.log(`tokens.css: ${defined.size} tokens defined`);
 console.log('\n1. var(--…) coverage');
 const scope = [
 	join(root, 'src/lib/cpt-app/legacy.css'),
-	join(root, 'src/lib/cpt-app/retaining/retaining-styles.js'),
 	join(root, 'src/lib/styles/docs.css'),
 	join(root, 'src/lib/cpt-app/legacy-controller.js'),
 	...walk(join(root, 'src/routes/report')).filter((f) => f.endsWith('.svelte'))

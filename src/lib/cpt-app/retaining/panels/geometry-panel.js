@@ -33,5 +33,5 @@ export function geometryPanel(rw) {
     }
     rows.push(help('The embedment is measured below the <strong>design</strong> excavation (nominal level minus the over-excavation set in the Eurocode panel). The drawing shows both levels.'));
   }
-  return accordion('geom', 'Geometry', `<div class="st6-rw-fields">${rows.join('')}</div>`, { open: true });
+  return accordion('geom', 'Geometry', rows.join(''), { open: true });
 }

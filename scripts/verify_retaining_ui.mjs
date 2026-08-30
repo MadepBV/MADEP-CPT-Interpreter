@@ -89,7 +89,7 @@ const st = computeEmbeddedStructural(rw, result, built.profile);
 ok('structural derived (steel, lagging, vertical, plaxis)', st && st.steel && st.lagging && st.vertical && st.plaxis.plate && st.plaxis.ebr && st.plaxis.tskin && st.plaxis.tlat.length >= 2);
 ok('summary renders', summaryCard(rw, result, st).includes('Governing values'));
 ok('checks view renders steel + lagging rows', (() => { const h = checksView(rw, result, st); return h.includes('Lagging plate') && h.includes('Bending'); })());
-ok('branches view renders 4 cards', (branchesView(rw, result).match(/st6-rw-branchcard/g) || []).length >= 4);
+ok('branches view renders 4 cards', (branchesView(rw, result).match(/card--branch/g) || []).length >= 4);   // PR 15: .st6-rw-branchcard → .card.card--branch
 ok('plaxis view renders EBR + T_lat', (() => { const h = plaxisView(rw, result, st); return h.includes('Embedded beam row') && h.includes('Multi-linear') && h.includes('data-copy'); })());
 ok('structural view renders', structuralView(rw, result, st).includes('Steel checks'));
 ok('vibration view renders', vibrationView(rw).includes('Receiver assessment'));
