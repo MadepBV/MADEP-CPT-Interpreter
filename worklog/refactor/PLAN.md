@@ -65,7 +65,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | 12 | `refactor(bearing, pile, settlement, dewatering, beam)` | R step 7 | ~2,000 lines, one package per app in the retaining style, one PR per app (5 PRs) | headless render diff vs monolith HTML for the demo CPT; golden | ☑ bearing 30fd5a9, pile 1644f16, settlement 5798592, dewatering 26bed2a, beam d0bc5e7 |
 | 13 | `style(stage6 shell + apps)` | D 2d (shell parts), 2e | `.tabs--icon`, `.acc`, `.cols-3`, `.viz`, De Beer colours → `--viz-*`, nested blurs removed; done in the same PRs as 12 where the app's markup is touched | visual; blur count ≤ 5; frame budget ≥ 50 fps | ☑ db27c9c (Stage 6 shell + five apps; blur 14 → 4, 120 fps; Bishop canvas shell left for PR 19) |
 | 14 | `refactor(project, section, tuning)` | R step 8 | ~1,000 lines; `S` reassignment behind `setActive()`; `selectCpt` also terminates the deformation worker (bug fix commit) | `verify_project_io`, golden save-load journey | ☑ b2c3844 + fix 504abef (integration-r) |
-| 15 | `style(retaining): delete retaining-styles.js, use component classes` | D 2f | `.st6-rw-*` → `.card/.acc/.field/.tbl--dense/.verdict--hero/.tabs/.segmented/.pill/.viz`; charts read `vizTheme()` | visual; retaining e2e; rekennota print 0 px | ◐ agent |
+| 15 | `style(retaining): delete retaining-styles.js, use component classes` | D 2f | `.st6-rw-*` → `.card/.acc/.field/.tbl--dense/.verdict--hero/.tabs/.segmented/.pill/.viz`; charts read `vizTheme()` | visual; retaining e2e; rekennota print 0 px | ☑ 4d4054b (retaining-styles.js deleted; blur 2; also fixed the shared-probe bug in theme.ts) |
 | 16 | `style(dialogs, feedback)` | D 2g | `<dialog class="glass-sheet">` for import-review, `toast()` replaces the 20 `alert()`s, `.tip` helper | visual; e2e | ☐ |
 
 ### Milestone v0.8.0 — Seep/Slope (56 % of the file)
@@ -73,7 +73,7 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
 | 17 | golden tier A solver suites + seep-slope journey | H parts 5, 7 | bishop / seepage / deformation suites, `seep-slope-journey`, `multi-cpt-journey`, `save-load-journey` | green twice | ☑ 8d80778 (467 solver/config cases; seep-slope, multi-cpt, save-load journeys; total 2 086 Node + 5 journeys) |
-| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | ◐ 18a ☑ f15b3c2 (state package, 1 110 checks); 18b agent |
+| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | 18a ☑ f15b3c2 (1 110 checks) · 18b ☑ 44deb8c + fix 75878b9 (1 301 checks; draw path no longer invalidates solved results) · 18c–g open |
 | 19 | `style(seepslope)` | D 2d (rest) | canvas shell `.glass-float`, legends/view menu `.glass-float.acc`, `.is-computing` de-blur | visual; blur count; fps | ☐ |
 
 ### Milestone v0.9.0 — composition root and Svelte ownership
@@ -104,7 +104,7 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
    region-coarseness edits (fix in PR 4 with the handler verifier).
 2. `selectCpt` does not terminate the deformation worker; a switch mid-run leaves `progress.running = true` on the
    originating CPT (fix in PR 14).
-3. `stage6BishopDrawCanvas` mutates state (`stage6BishopSyncSoilModel` on every frame) (fixed by 18b).
+3. `stage6BishopDrawCanvas` mutated state on every frame — worse than mapped: it carried the materials re-import's invalidation, so a Stage 3/4 edit followed by a mouse-move over the canvas silently discarded solved Bishop and deformation results. **Fixed by 75878b9.**
 4. Muted text `#888890` fails WCAG AA (fixed by PR 2 tokens).
 5. `dewatering.aquiferBaseDepth`: typing a value stores a string (null default) → `.toFixed` TypeError on every later dewatering render (found by PR 12c; locked as-is in its verifier — fix as a behaviour commit with a golden case).
 
@@ -119,3 +119,11 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 - 2026-08-29 (late) — PR 10 merged; v0.6.0 fully gated (browser journeys, visual 17/17). golden.config.mjs takes GOLDEN_PORT. PR 13 started; PR 17 running.
 - 2026-08-29 (late) — PR 17 merged (46e4f3f). PR 18a started; PR 13 running.
 - 2026-08-30 — PR 13 and PR 18a merged; theme.ts falls back to the light palette without a DOM; chart-config goldens updated for the viz palette; classification verifier follows the PR 10 classes. PR 18b and PR 15 started.
+
+## 6. Open items found along the way (not yet scheduled)
+
+- Browser-journey PNG baselines drift machine-wide (state and DOM text are exact); re-record on the CI runner, keep `GOLDEN_VISUAL: soft` until then (report 22 §5.1).
+- `seep-slope-journey` `09-seepage-bcs` has a lost-click race (~1 in 8, pre-existing): `waitState` only checks that `selectedEdgeKey` is non-empty, so a missed click applies the right-side head to the left edge (report 22 §5.2 has the hardening).
+- The soil-model sync converges on the third run, not the second (`normalizeWalls` one-shot prompt flag, `ensure` mesh-area drift, no-layers CPT re-importing) — monolith behaviour, pinned by goldens; behaviour commit later.
+- `dewatering.aquiferBaseDepth` string → `TypeError` on render (PLAN §4.5).
+- Christensen (1961) page range and the two Rekennota placeholders (SB250/SB260 version, PLAX2D sub-version) still to confirm.
