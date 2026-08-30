@@ -14,10 +14,10 @@
 //      inside the source, strips template-time `${…}` interpolations (those are
 //      evaluated while rendering, not at event time) and collects every bare
 //      call `name(` in the remaining event-time JavaScript;
-//   2. collects everything that reaches `window`: the `legacyApi` object of
-//      legacy-controller.js (parsed from source) and the `handlers` object that
-//      `installRetainingApp(ctx)` returns (loaded for real under a DOM stub —
-//      that is what `initLegacyController` spreads onto `window`);
+//   2. collects everything that reaches `window`: since PR 20 (the composition root) that is
+//      the union of the per-package `handlers` maps, so the controller is loaded for real
+//      under the Tier-B DOM stub and `initLegacyController()` is run — the keys it adds to
+//      `window` ARE the published surface, no source parsing involved;
 //   3. fails (exit 1) when a called name is not published, listing every
 //      call site as file:line.
 //
@@ -124,56 +124,63 @@ function calledNames(body) {
 }
 
 // ---------------------------------------------------------------- published
-function legacyApiNames(controllerSrc) {
-  const m = controllerSrc.match(/\nconst legacyApi\s*=\s*\{([\s\S]*?)\n\};/);
-  if (!m) throw new Error('legacy-controller.js: `const legacyApi={…};` block not found');
-  const names = new Set();
-  for (const raw of m[1].split(',')) {
-    const entry = raw.replace(/\/\/.*$/gm, '').trim();
-    if (!entry) continue;
-    const key = entry.split(':')[0].trim();
-    if (/^[A-Za-z_$][\w$]*$/.test(key)) names.add(key);
-    else throw new Error(`legacy-controller.js: unexpected legacyApi entry "${entry}"`);
+/**
+ * The real surface: load the controller under the Tier-B DOM stub, run
+ * `initLegacyController()` and diff the keys of `globalThis` before and after. Since PR 20 the
+ * controller composes `handlers` out of the per-package maps, so there is no object to parse —
+ * and this is the stronger check anyway: it is exactly what the browser sees.
+ *
+ * Every name is attributed back to the package whose `handlers` map carries it, so the summary
+ * still names its origin (and a name published by two packages would be reported).
+ */
+async function publishedNames() {
+  const { installDomStub } = await import('./golden/lib/load-controller.mjs');
+  const { createServer } = await import('vite');
+  installDomStub();
+  const server = await createServer({
+    root: ROOT,
+    configFile: false,
+    appType: 'custom',
+    logLevel: 'error',
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+    optimizeDeps: { noDiscovery: true, include: [] },
+    resolve: { alias: { $lib: resolve(ROOT, 'src/lib') } },
+    define: { __APP_VERSION__: JSON.stringify(globalThis.__APP_VERSION__) }
+  });
+  const before = new Set(Object.keys(globalThis));
+  const ctl = await server.ssrLoadModule('/src/lib/cpt-app/legacy-controller.js');
+  ctl.initLegacyController();
+  const added = Object.keys(globalThis).filter((k) => !before.has(k));
+  await server.close();
+  return added;
+}
+
+// Which package's handlers map owns each name (for the summary line only).
+async function handlerOrigins() {
+  const origins = new Map();
+  const dirs = ['load', 'classification', 'layers', 'model-params', 'tuning', 'stage6', 'bearing',
+    'seepslope', 'section', 'export', 'report', 'project', 'project-io', 'retaining'];
+  for (const dir of dirs) {
+    const file = dir === 'retaining' ? RETAINING_UI : resolve(APP_DIR, dir, 'index.js');
+    let text;
+    try { text = readFileSync(file, 'utf8'); } catch { continue; }
+    const block = text.match(/handlers\s*=\s*\{([\s\S]*?)\n\s*\};/);
+    if (!block) continue;
+    for (const m of block[1].matchAll(/^\s*([A-Za-z_$][\w$]*)\s*[:,]/gm)) {
+      if (!origins.has(m[1])) origins.set(m[1], dir);
+    }
   }
-  return names;
-}
-
-// What initLegacyController spreads onto window besides legacyApi.
-function windowAssignTargets(controllerSrc) {
-  const targets = [];
-  const re = /Object\.assign\(\s*window\s*,\s*([^)]+?)\s*\)/g;
-  let m;
-  while ((m = re.exec(controllerSrc))) targets.push(m[1].trim());
-  const direct = [...controllerSrc.matchAll(/\bwindow\.([A-Za-z_$][\w$]*)\s*=[^=]/g)].map((x) => x[1]);
-  return { targets, direct };
-}
-
-async function retainingHandlerNames() {
-  // The same minimal DOM stub scripts/verify_retaining_ui.mjs uses: the
-  // handlers object is built inside installRetainingApp without touching it,
-  // but the module's imports must be safe to evaluate.
-  const elements = new Map();
-  const makeEl = (id) => ({ id, innerHTML: '', getAttribute: () => null, setAttribute() {}, removeAttribute() {}, querySelectorAll: () => [], getBoundingClientRect: () => ({ width: 800, height: 440, left: 0, top: 0 }), getContext: () => new Proxy({}, { get: () => () => ({}) }), style: {}, parentElement: null, textContent: '' });
-  globalThis.document ??= { getElementById: (id) => { if (!elements.has(id)) elements.set(id, makeEl(id)); return elements.get(id); }, createElement: () => makeEl('tmp'), querySelectorAll: () => [], body: { appendChild() {} } };
-  globalThis.window ??= { devicePixelRatio: 1, addEventListener() {}, removeEventListener() {}, localStorage: null };
-  globalThis.requestAnimationFrame ??= (fn) => setTimeout(fn, 0);
-  const { installRetainingApp } = await import(RETAINING_UI);
-  const state = { stage6: {} };
-  const app = installRetainingApp({ getState: () => state, requestRender() {}, workingLayers: () => [], getCpt: () => null, getProjectMeta: () => ({}) });
-  return new Set(Object.keys(app.handlers || {}));
+  return origins;
 }
 
 // ---------------------------------------------------------------- main
 const controllerSrc = readFileSync(CONTROLLER, 'utf8');
 const published = new Map(); // name → origin
-for (const n of legacyApiNames(controllerSrc)) published.set(n, 'legacyApi');
-const { targets, direct } = windowAssignTargets(controllerSrc);
-const KNOWN_TARGETS = new Set(['legacyApi', 'retainingApp.handlers']);
-const unknownTargets = targets.filter((t) => !KNOWN_TARGETS.has(t));
-if (targets.includes('retainingApp.handlers')) {
-  for (const n of await retainingHandlerNames()) published.set(n, 'retainingApp.handlers');
-}
-for (const n of direct) published.set(n, 'window.<name> =');
+const origins = await handlerOrigins();
+for (const n of await publishedNames()) published.set(n, origins.get(n) || 'composition root');
+const unknownTargets = [...controllerSrc.matchAll(/Object\.assign\(\s*window\s*,\s*([^)]+?)\s*\)/g)]
+  .map((m) => m[1].trim())
+  .filter((t) => t !== 'handlers');
 
 const calls = new Map(); // name → [{file, line}]
 let attributeCount = 0;
@@ -197,7 +204,7 @@ for (const [, origin] of published) byOrigin[origin] = (byOrigin[origin] || 0) +
 
 console.log(`scanned ${files.length} files under src/lib/cpt-app, ${attributeCount} inline on*= attributes, ${calls.size} distinct event-time callees`);
 console.log(`published on window: ${published.size} names (${Object.entries(byOrigin).map(([k, v]) => `${k}: ${v}`).join(', ')})`);
-if (unknownTargets.length) console.log(`WARN  Object.assign(window, …) with an unrecognised source: ${unknownTargets.join(', ')} — extend KNOWN_TARGETS`);
+if (unknownTargets.length) console.log(`WARN  Object.assign(window, …) with a source other than the composed \`handlers\`: ${unknownTargets.join(', ')}`);
 
 if (VERBOSE) {
   for (const name of [...calls.keys()].sort()) {
@@ -215,7 +222,7 @@ for (const name of missing) {
 }
 
 if (fails) {
-  console.log(`\n${fails} unpublished handler name(s). Add them to legacyApi (or the owning package's handlers).`);
+  console.log(`\n${fails} unpublished handler name(s). Add them to the owning package's \`handlers\` map.`);
   process.exit(1);
 }
 console.log('OK    every inline handler callee is published on window');

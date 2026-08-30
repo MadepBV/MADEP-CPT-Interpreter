@@ -679,20 +679,38 @@ check('legacy-controller.js no longer declares the moved bodies', () => {
     assert.ok(!src.includes(decl), `still contains ${decl}`);
   }
 });
-check('legacy-controller.js imports export/ and report/ directly after the load/ block and keeps the wrappers + captures', () => {
+check('the export/ and report/ installs own the wrappers, and the composition root wires them', () => {
   const src = readFileSync(CTRL, 'utf8');
-  assert.ok(/installLoadApp \} from '\.\/load\/index\.js';\nimport \{\n  NO_LAYERS_MESSAGE,\n[\s\S]*?\} from '\.\/export\/index\.js';\nimport \{\n  STAGE7_GUARD_MESSAGE,\n  buildStage7Payload as buildStage7PayloadPure\n\} from '\.\/report\/index\.js';\nimport \{\n  sb260GranularAlpha,/.test(src), 'import blocks between load/ and model-params/');
+  // PR 20 (composition root): the three download handlers and the Stage 7 payload / report
+  // window moved into installExportApp(ctx) / installReportApp(ctx); the controller installs
+  // them and spreads their `handlers` into the one published surface.
+  assert.ok(/import \{ installLoadApp \} from '\.\/load\/index\.js';\nimport \{ installExportApp \} from '\.\/export\/index\.js';\nimport \{ installReportApp \} from '\.\/report\/index\.js';/.test(src),
+    'the export/ and report/ installs are imported right after load/');
+  assert.ok(src.includes('...exportApp.handlers'), 'exportApp.handlers is spread into the published surface');
+  assert.ok(src.includes('...reportApp.handlers'), 'reportApp.handlers is spread into the published surface');
+  assert.ok(src.includes('captureBishopWorkspaceView: stage7CaptureBishopWorkspaceView,'), 'the capture dep is wired');
+  assert.ok(src.includes('resolvedSeepageMeshTargetArea: stage6BishopResolvedSeepageMeshTargetArea'), 'the seepslope deps are wired');
+  assert.ok(src.includes('const { deps: stage7ControllerDeps, buildStage7Payload, openStage7Report } = reportApp;'), 'the report bindings');
+  for (const name of ['exportCSV', 'exportPlaxisCommands', 'exportPlaxisCpt', 'buildStage7Payload', 'openStage7Report', 'stage7ControllerDeps']) {
+    assert.ok(!new RegExp(`^function ${name}\\(`, 'm').test(src), `${name} is still declared in legacy-controller.js`);
+  }
   // PR 20: the two SVG markup builders are consumed by load/layer-svgs.js, not by the host.
   assert.ok(readFileSync(join(ROOT, 'src/lib/cpt-app/load/layer-svgs.js'), 'utf8')
     .includes("import { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from '../report/svg.js';"), 'svg import moved');
+  // The bodies, verbatim, in the packages that own them.
+  const exp = readFileSync(join(ROOT, 'src/lib/cpt-app/export/index.js'), 'utf8');
   for (const w of [
-    "function exportCSV(){\n  if(!S.layers.length){alert(NO_LAYERS_MESSAGE);return;}\n  const csv=buildLayersCsv(S, modelCtx());\n  const a=document.createElement('a');\n  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);\n  a.download=layersCsvFilename(S);\n  a.click();\n}",
-    "function exportPlaxisCommands(){\n  if(!S.layers.length){\n    alert(NO_LAYERS_MESSAGE);\n    return;\n  }\n  const txt=buildPlaxisCommandsText(S, modelCtx());\n  const nuDrainageConflicts=plaxisNuDrainageConflicts(S, modelCtx());\n  if(nuDrainageConflicts.length){\n    alert(plaxisNuDrainageAlertMessage(nuDrainageConflicts));\n  }\n  const a=document.createElement('a');\n  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);\n  a.download=plaxisCommandsFilename(S);\n  a.click();\n}",
-    "function exportPlaxisCpt(){\n  if(!S.layers.length || !S.data.length){\n    alert(NO_LAYER_MODEL_MESSAGE);\n    return;\n  }\n  const txt=buildPlaxisCptText(S, modelCtx());\n  if(txt==null){\n    alert(NO_SIMULATED_ROWS_MESSAGE);\n    return;\n  }\n  const a=document.createElement('a');\n  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);\n  a.download=plaxisCptFilename(S);\n  a.click();\n}",
-    "function buildStage7Payload(){\n  if(!S.layers.length || !S.data.length){\n    alert(STAGE7_GUARD_MESSAGE);\n    return null;\n  }\n  return buildStage7PayloadPure(PROJECT, S, stage7ControllerDeps());\n}",
-    'captureBishopWorkspaceView:stage7CaptureBishopWorkspaceView,', 'resolvedSeepageMeshTargetArea:stage6BishopResolvedSeepageMeshTargetArea',
-    'function openStage7Report(){']) {
-    assert.ok(src.includes(w), `missing: ${w.split('\n')[0]}`);
+    "exportCSV(){\n      const S=getActive();\n      if(!S.layers.length){alert(NO_LAYERS_MESSAGE);return;}\n      const csv=buildLayersCsv(S, ctx.modelCtx());",
+    "const txt=buildPlaxisCommandsText(S, ctx.modelCtx());\n      const nuDrainageConflicts=plaxisNuDrainageConflicts(S, ctx.modelCtx());\n      if(nuDrainageConflicts.length){\n        alert(plaxisNuDrainageAlertMessage(nuDrainageConflicts));\n      }",
+    "if(!S.layers.length || !S.data.length){\n        alert(NO_LAYER_MODEL_MESSAGE);\n        return;\n      }\n      const txt=buildPlaxisCptText(S, ctx.modelCtx());\n      if(txt==null){\n        alert(NO_SIMULATED_ROWS_MESSAGE);\n        return;\n      }",
+    "a.href=href;\n    a.download=name;\n    a.click();"]) {
+    assert.ok(exp.includes(w), `export/index.js wrapper missing: ${w.split('\n')[0]}`);
+  }
+  const rep = readFileSync(join(ROOT, 'src/lib/cpt-app/report/index.js'), 'utf8');
+  for (const w of [
+    "if(!S.layers.length || !S.data.length){\n        alert(STAGE7_GUARD_MESSAGE);\n        return null;\n      }\n      return buildStage7PayloadPure(getProject(), S, app.deps());",
+    'openStage7Report(){', 'cleanupStage7Payloads(win.localStorage, key);']) {
+    assert.ok(rep.includes(w), `report/index.js wrapper missing: ${w.split('\n')[0]}`);
   }
   // PR 20 moved the Stage 7 workspace capture into the Seep/Slope host layer; the controller
   // binds the four names from that install and hands them to report/deps.js unchanged.
@@ -701,12 +719,10 @@ check('legacy-controller.js imports export/ and report/ directly after the load/
     'function stage7ClearWorkspaceCapture(', 'function stage7CaptureBishopWorkspaceView(']) {
     assert.ok(host.includes(w), `seepslope/host.js missing: ${w}`);
   }
-  const apiBlock = src.slice(src.indexOf('const legacyApi={'), src.indexOf('export function initLegacyController'));
-  const names = apiBlock.slice(apiBlock.indexOf('{') + 1, apiBlock.lastIndexOf('}')).split(',').map((s) => s.trim()).filter(Boolean);
-  assert.equal(names.length, 167, 'legacyApi keeps its 167 names');
-  for (const n of ['exportCSV', 'exportPlaxisCommands', 'exportPlaxisCpt', 'buildStage7Payload', 'openStage7Report', 'stage7CaptureWorkspaceView', 'stage7ClearWorkspaceCapture', 'arrMax']) assert.ok(names.includes(n), n);
 });
 check('export/ and report/ modules: SPDX + @ts-nocheck, no DOM / alert / S; report-svg.js moved, report-storage.js in place', () => {
+  // PR 20: index.js is each package's install — it owns the browser half (the `<a download>`
+  // click, the blocking guards, localStorage + window.open). Every *other* module stays pure.
   const dirs = { export: ['csv.js', 'index.js', 'plaxis-commands.js', 'plaxis-cpt.js'], report: ['clone.js', 'deps.js', 'index.js', 'payload-seepslope.js', 'payload-stage6.js', 'payload.js', 'svg.js'] };
   for (const [dir, expected] of Object.entries(dirs)) {
     const base = join(ROOT, 'src/lib/cpt-app', dir);
@@ -717,8 +733,9 @@ check('export/ and report/ modules: SPDX + @ts-nocheck, no DOM / alert / S; repo
       assert.equal(head[0], '// SPDX-License-Identifier: AGPL-3.0-or-later', f);
       assert.equal(head[1], '// @ts-nocheck', f);
       const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-      assert.ok(!/\bdocument\b|\bwindow\b|\balert\(|\blocalStorage\b|\bS\.|\bPROJECT\b/.test(code), `${dir}/${f} must not touch the DOM, alert, S or PROJECT`);
       for (const m of code.matchAll(/from '(\.[^']+)'/g)) assert.ok(m[1].endsWith('.js'), `${dir}/${f}: plain-Node import ${m[1]}`);
+      if (f === 'index.js') continue;
+      assert.ok(!/\bdocument\b|\bwindow\b|\balert\(|\blocalStorage\b|\bS\.|\bPROJECT\b/.test(code), `${dir}/${f} must not touch the DOM, alert, S or PROJECT`);
     }
   }
   assert.ok(!existsSync(join(ROOT, 'src/lib/cpt-app/report-svg.js')), 'report-svg.js moved to report/svg.js');

@@ -52,5 +52,12 @@ export function installSection(ctx){
     }),
     exportSectionSVG: () => exportSvgDom(document, getProject())
   };
+  /* The four names the Doorsnede toolbar and the Svelte bridge resolve on `window` (PR 20). */
+  app.handlers = {
+    sectionProjection: app.sectionProjection,
+    renderSection: app.renderSection,
+    bindSectionTooltip: app.bindSectionTooltip,
+    exportSectionSVG: app.exportSectionSVG
+  };
   return app;
 }

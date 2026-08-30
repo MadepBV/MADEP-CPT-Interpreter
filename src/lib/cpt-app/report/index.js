@@ -17,10 +17,11 @@
 // The workspace capture moved to ../seepslope/report/capture.js in refactor step 9g (PR 18g): it
 // paints the Seep / Slope frame on an offscreen canvas instead of switching the Stage 6 app and
 // re-rendering, and `deps.js` binds it through `bishopWorkspaceCapture(cpt, over.captureHost)`.
-// Still in legacy-controller.js: the four host halves — stage7CaptureCanvasImage (reads
-// #stage6BishopCanvas by id), stage7CaptureWorkspaceView / stage7ClearWorkspaceCapture (the
-// toolbar button: it writes S.stage6 and re-renders on purpose) and openStage7Report (localStorage
-// + window.open, through ../report-storage.js which the report routes import as well).
+// PR 20 (refactor step 10) moved the four Stage 7 capture host halves into ../seepslope/host.js
+// (they own the canvas element, the frame box and the volatile model cache) and added
+// `installReportApp(ctx)` at the bottom: the deps object the pure builder is fed, the Stage 7
+// guard and `openStage7Report` (localStorage + window.open through ../report-storage.js, which
+// the report routes import as well).
 
 export {
   STAGE7_GUARD_MESSAGE,
@@ -34,3 +35,58 @@ export { stage7BishopPayload, stage7SeepagePayload, stage7DeformationPayload } f
 export { stage7Deps, seepslopeDeps } from './deps.js';
 export { safeClone } from './clone.js';
 export { buildLayerColumnSvgMarkup, buildLayerPreviewSvgMarkup } from './svg.js';
+
+import { buildStage7Payload as buildStage7PayloadPure, STAGE7_GUARD_MESSAGE } from './payload.js';
+import { cleanupStage7Payloads, saveStage7Payload } from '../report-storage.js';
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// installReportApp(ctx) — Stage 7 bound to a host (PR 20 / refactor step 10).
+//
+// `deps()` is everything the pure builder used to reach through the controller's closure, named:
+// the model-parameter wrappers over the active CPT, the Stage 6 state normaliser, the host half
+// of the automatic workspace capture (only called when an annex exists and no manual capture is
+// stored — the same conditional as before) and the five Seep/Slope label helpers.
+//
+//   ctx.getProject(), ctx.getActive(), ctx.window, ctx.alert(message), ctx.toast(message, opts),
+//   ctx.hsParams(l), ctx.khParams(l), ctx.workingLayers(), ctx.ensureStage6State(),
+//   ctx.captureBishopWorkspaceView(workspace), ctx.seepslope  (the five label helpers)
+export function installReportApp(ctx){
+  const { getProject, getActive, alert, toast } = ctx;
+  const app = {
+    deps: () => ({
+      hsParams: ctx.hsParams,
+      khParams: ctx.khParams,
+      workingLayers: ctx.workingLayers,
+      ensureStage6State: ctx.ensureStage6State,
+      captureBishopWorkspaceView: ctx.captureBishopWorkspaceView,
+      seepslope: ctx.seepslope
+    }),
+
+    buildStage7Payload(){
+      const S=getActive();
+      if(!S.layers.length || !S.data.length){
+        alert(STAGE7_GUARD_MESSAGE);
+        return null;
+      }
+      return buildStage7PayloadPure(getProject(), S, app.deps());
+    },
+
+    openStage7Report(){
+      const payload=app.buildStage7Payload();
+      const win=ctx.window;
+      if(!payload || !win) return;
+      const key=saveStage7Payload(win.localStorage, payload);
+      if(!key){
+        toast('The Stage 7 report payload could not be validated for saving.',{tone:'bad'});
+        return;
+      }
+      cleanupStage7Payloads(win.localStorage, key);
+      win.open(`/report/stage7?key=${encodeURIComponent(key)}`, '_blank', 'noopener');
+    }
+  };
+  app.handlers = {
+    buildStage7Payload: app.buildStage7Payload,
+    openStage7Report: app.openStage7Report
+  };
+  return app;
+}

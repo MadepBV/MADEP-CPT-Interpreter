@@ -29,8 +29,14 @@
 // compute / panel names the window API publishes (layerAtDepth, bearingAtDepth, bearingProfile,
 // stage6ShapeFactors, stage6Bearing*Html) stay façades in the host until the composition root (step 10).
 import { defaults, ensure } from './state.js';
-import { bearingProfile } from './compute.js';
-import { bearingBodyHtml } from './panel.js';
+import { bearingProfile, bearingAtDepth, layerAtDepth, shapeFactors } from './compute.js';
+import {
+  bearingBodyHtml,
+  selectedDepthHtml,
+  materialParamsHtml,
+  drainedFormulaHtml,
+  undrainedFormulaHtml
+} from './panel.js';
 import { refreshBearingPreview } from './preview.js';
 import { buildBearingChart, createChartQueue } from './chart.js';
 
@@ -110,7 +116,23 @@ export function installBearingApp(ctx) {
     refreshBearingPreview(cpt(), layers, queueChartBuild);
   }
 
-  const handlers = {};
+  /* The Stage 6 bearing names the window API publishes (PR 20 / refactor step 10). The four
+     compute entry points keep the monolith signatures: `layers` falls back to the Stage 4 working
+     layers and the water table comes from the active CPT. */
+  const handlers = {
+    layerAtDepth: (z, layers_) => layerAtDepth(z, layers_ || layers()),
+    bearingAtDepth: (z, config, layers_) => bearingAtDepth(z, config, layers_ || layers(), env()),
+    bearingProfile: (config, layers_) => bearingProfile(config, layers_ || layers(), env()),
+    // Backward-compatible alias for callers that still expect the old helper name.
+    stage6ShapeFactors: shapeFactors,
+    stage6BearingSelectedDepthHtml: selectedDepthHtml,
+    stage6BearingMaterialParamsHtml: materialParamsHtml,
+    stage6BearingDrainedFormulaHtml: drainedFormulaHtml,
+    stage6BearingUndrainedFormulaHtml: undrainedFormulaHtml,
+    queueStage6BearingChartBuild: queueChartBuild,
+    refreshStage6BearingPreview: refreshPreview,
+    buildStage6BearingChart: buildChart
+  };
 
   return { defaults, ensure, renderBody, postRender, handlers, cardMeta, compute, refreshPreview, queueChartBuild, buildChart };
 }

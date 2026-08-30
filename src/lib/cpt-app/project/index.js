@@ -57,5 +57,16 @@ export function installProject(ctx){
     handleBishopHashChange: () => handleBishopHashChange(getActive(), { render: ctx.renderStage6, win: ctx.window }),
     bindBishopHash: () => bindBishopHash(ctx.window, app.handleBishopHashChange)
   };
+  /* The seven names the banner tabs, the phase switch and the stage rail resolve on `window`
+     (PR 20 / refactor step 10); the `#bishop` helpers are host wiring, not a handler surface. */
+  app.handlers = {
+    selectCpt: app.selectCpt,
+    addCpt: app.addCpt,
+    setCptName: app.setCptName,
+    renderBanner: app.renderBanner,
+    removeCpt: app.removeCpt,
+    setPhase: app.setPhase,
+    goS: app.goS
+  };
   return app;
 }

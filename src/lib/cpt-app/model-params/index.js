@@ -29,6 +29,9 @@ export { hsParams } from './hs-params.js';
 export { khParams } from './kh-params.js';
 export { workingLayers } from './working-layers.js';
 
+import {
+  sb260GranularAlpha, sb260TransitionAlpha, sb260AlphaFamily, alphaEB
+} from './soil-defaults.js';
 import { cptModelCtx } from './context.js';
 import { stressAt as stressAtOf } from './stress.js';
 import { hsParams as hsParamsOf } from './hs-params.js';
@@ -72,6 +75,11 @@ export function installModelParamsApp(ctx){
     setKhKvMethod: (v) => setKhKvMethodOf(document, getActive(), v, { renderModel: app.renderModel })
   };
   app.handlers = {
+    // the pure α_E correlations the window API has always published
+    sb260GranularAlpha,
+    sb260TransitionAlpha,
+    sb260AlphaFamily,
+    alphaEB,
     stressAt: app.stressAt,
     hsParams: app.hsParams,
     khParams: app.khParams,

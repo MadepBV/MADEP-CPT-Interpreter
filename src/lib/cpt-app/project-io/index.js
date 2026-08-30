@@ -89,5 +89,8 @@ export function installProjectIO(ctx) {
     ctx.afterLoad(position);
   }
 
-  return { saveProject, loadProjectFromFile };
+  /* The two names the top bar's Save / Open buttons resolve on `window` (PR 20). */
+  const handlers = { saveProject, loadProjectFromFile };
+
+  return { saveProject, loadProjectFromFile, handlers };
 }

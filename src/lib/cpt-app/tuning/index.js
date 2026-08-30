@@ -31,6 +31,10 @@ export { TUNING_PLACEHOLDER_HTML, tuningLayerCardHtml, tuningAreaHtml } from './
 export { buildTuningCharts, applyTuningPreview, updateTuningPreviewM } from './charts.js';
 
 import {
+  getTuningPreviewM,
+  tuningSliderBounds,
+  tuningPreviewEoedRef,
+  tuningPreviewLineData,
   tuningCtx,
   fitLayer as fitLayerOf,
   runTuningFits,
@@ -89,6 +93,11 @@ export function installTuningApp(ctx){
     }
   };
   app.handlers = {
+    // the pure preview helpers the window API has always published
+    getTuningPreviewM,
+    tuningSliderBounds,
+    tuningPreviewEoedRef,
+    tuningPreviewLineData,
     fitLayer: app.fitLayer,
     runTuning: app.runTuning,
     acceptFit: app.acceptFit,

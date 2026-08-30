@@ -621,7 +621,7 @@ check('legacy-controller.js no longer declares the moved bodies and imports clas
     assert.ok(!src.includes(decl), `still contains: ${decl}`);
   }
   assert.ok(src.includes("import { installClassificationApp } from './classification/index.js';"), 'classification install import missing');
-  assert.ok(src.includes("  installLayersApp\n} from './layers/index.js';"), 'layers install import missing');
+  assert.ok(src.includes("import { installLayersApp } from './layers/index.js';"), 'layers install import missing');
   const mp = src.indexOf("} from './model-params/index.js';"), cl = src.indexOf("import { installClassificationApp }"), core = src.indexOf("} from './core/chart-host.js';");
   assert.ok(core < mp && mp < cl && cl - mp < 40, 'the classification/layers imports must directly follow the model-params import block');
   // PR 20 (composition root): the Stage 2 / Stage 3 wrappers moved into installClassificationApp(ctx)

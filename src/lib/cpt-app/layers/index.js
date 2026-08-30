@@ -34,6 +34,14 @@ export {
 export { layersCtx } from './context.js';
 export { classificationSegmentKey, detectLayers } from './detect.js';
 
+import { eurocodeEntryMatches } from '../eurocode-tabel3.js';
+import {
+  layerTypeCompatScore, subtypeGroup, compatLevel, qcRfFit, suggestSubtype
+} from './tabel3-compat.js';
+import {
+  familyClass, qcSimilarity, rfSimilarity, subtypeSimilarity, paramSimilarity,
+  compatSimilarity, continuityScore, isCriticalMarkerLayer, mergeCandidateScore
+} from './segments.js';
 import { layersCtx } from './context.js';
 import { detectLayers as detectLayersOf } from './detect.js';
 import { segmentSummary as segmentSummaryOf } from './segments.js';
@@ -96,6 +104,22 @@ export function installLayersApp(ctx){
     })
   };
   app.handlers = {
+    // the pure Stage 3 helpers the window API has always published
+    layerTypeCompatScore,
+    subtypeGroup,
+    familyClass,
+    qcSimilarity,
+    rfSimilarity,
+    subtypeSimilarity,
+    paramSimilarity,
+    compatSimilarity,
+    continuityScore,
+    isCriticalMarkerLayer,
+    mergeCandidateScore,
+    compatLevel,
+    qcRfFit,
+    suggestSubtype,
+    eurocodeEntryMatches,
     segmentSummary: app.segmentSummary,
     detectLayers: app.detectLayers,
     renderLayers: app.renderLayers,
