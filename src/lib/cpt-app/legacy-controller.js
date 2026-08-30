@@ -75,6 +75,10 @@ import {
   presentImportReview
 } from './import-review/index.js';
 import { installProjectIO } from './project-io/index.js';
+// Transient feedback (design §3.15): an `alert()` the engineer can only acknowledge becomes a toast.
+// The guards whose text a golden locks — the export / Stage 7 preconditions and the PLAXIS nu note,
+// which gates a download that then proceeds — deliberately keep `alert()`; see worklog 25 §3.
+import { toast } from '../styles/toast.ts';
 import {
   escAttr as stage6EscAttr,
   escJsString as stage6EscJsString,
@@ -618,7 +622,9 @@ function importCptFiles(files){
       }
     },
     renderBanner,
-    alert:(message)=>alert(message)
+    // A file that could not be read is reported, not acknowledged: the loader is already moving on
+    // to the next file, so a modal would stack in front of the queue (design §3.15).
+    notify:(message)=>toast(message,{tone:'bad'})
   });
 }
 
@@ -707,7 +713,7 @@ async function importParsedCpt(cpt, parsed){
    charts are (re)built on the next frame for the CPT active at that time. */
 function applyParsedCptTo(cpt, parsed){
   const patch=applyParsedCptPure(cpt, parsed);
-  if(!patch){alert(NO_DATA_ROWS_MESSAGE);return false;}
+  if(!patch){toast(NO_DATA_ROWS_MESSAGE,{tone:'warn'});return false;}
   Object.assign(cpt, patch);
   syncParsedCptDom(document, cpt);
   requestAnimationFrame(()=>initCharts());
@@ -1068,7 +1074,7 @@ function loadDemo(){
 function loadSingleGEF(evt){
   const f=evt.target.files[0]; if(!f)return;
   const r=new FileReader();
-  r.onload=e=>{parseGEF(e.target.result,f.name).catch(err=>alert(`Error importing ${f.name}: ${err?.message||err}`));};
+  r.onload=e=>{parseGEF(e.target.result,f.name).catch(err=>toast(`Error importing ${f.name}: ${err?.message||err}`,{tone:'bad'}));};
   r.readAsText(f);
 }
 function bindDropzone(){
@@ -1158,7 +1164,7 @@ function classSB260(r){
    CLASSIFICATION RUN
 ════════════════════════════════ */
 function runClass(){
-  if(!S.data.length){alert('Laad eerst een GEF bestand.');return;}
+  if(!S.data.length){toast('Laad eerst een GEF bestand.',{tone:'warn'});return;}
 
   /* Compute (classification/run.js, pure) → assign to the active CPT → render
      the four Stage 2 regions (classification/panel.js builds the markup). */
@@ -11295,7 +11301,7 @@ function openStage7Report(){
   if(!payload || typeof window === 'undefined') return;
   const key=saveStage7Payload(window.localStorage, payload);
   if(!key){
-    alert('The Stage 7 report payload could not be validated for saving.');
+    toast('The Stage 7 report payload could not be validated for saving.',{tone:'bad'});
     return;
   }
   cleanupStage7Payloads(window.localStorage, key);

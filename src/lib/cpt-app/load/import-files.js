@@ -22,7 +22,7 @@
 //                    the first file's CPT is the active one and is (re)selected, the others only
 //                    need the banner
 //   renderBanner()   after a successful parse (the CPT got its file name as id)
-//   alert(message)   user-facing error
+//   notify(message)  user-facing error report (the controller routes it to the toast queue)
 //   FileReader       optional; defaults to the global
 
 import { isCsvCptFile, isExcelCptFile, stripCptFileExtension } from './file-kind.js';
@@ -60,12 +60,12 @@ export function importCptFiles(files, ctx){
         }
       }catch(err){
         console.error(err);
-        ctx.alert(`Error importing ${f.name}: ${err?.message||err}`);
+        ctx.notify(`Error importing ${f.name}: ${err?.message||err}`);
       }
       ctx.onImported(targetIdx, fi===0);
       loadNext(fi+1);
     };
-    reader.onerror=()=>{ ctx.alert('Error reading '+f.name); loadNext(fi+1); };
+    reader.onerror=()=>{ ctx.notify('Error reading '+f.name); loadNext(fi+1); };
     if(isExcelCptFile(f)) reader.readAsArrayBuffer(f);
     else reader.readAsText(f);
   }

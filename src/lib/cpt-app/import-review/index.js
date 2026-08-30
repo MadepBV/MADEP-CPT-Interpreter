@@ -9,6 +9,9 @@
 // core (tabular.js) is pure and shared; the dialog (modal.js) owns the DOM.
 
 export { presentImportReview } from './modal.js';
+// The shared <dialog> plumbing lives here because the import review is the app's first modal;
+// `confirmDialog` is the blocking-question form that replaces `window.confirm()` (design §3.15).
+export { confirmDialog, openModal } from './dialog.js';
 export {
   buildRowsFromGrid,
   columnSamples,
