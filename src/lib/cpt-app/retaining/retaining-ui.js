@@ -15,7 +15,6 @@
  */
 import { runRetainingAnalysis } from './wasm-loader.js';
 import { createRetainingCanvas } from './retaining-canvas.js';
-import { RETWALL_STYLE } from './retaining-styles.js';
 import { WALL_TYPES, isEmbedded, isSoldierPile } from './wall-types.js';
 import { defaults, ensure } from './wall-state.js';
 import { buildRequest } from './request-builder.js';
@@ -161,7 +160,7 @@ export function installRetainingApp(ctx) {
   function resultBodyHtml(rw) {
     const { cur } = resultTabs(rw);
     const st = structuralOf(rw);
-    if (rw.status === 'error' && cur !== 'drivability' && cur !== 'vibration' && cur !== 'note') return `<div class="st6-rw-verdict bad"><span class="st6-rw-verdict-tag">ENGINE ERROR</span><span>${esc(rw.error)}</span></div>`;
+    if (rw.status === 'error' && cur !== 'drivability' && cur !== 'vibration' && cur !== 'note') return `<div class="verdict verdict--bad"><span class="verdict__tag">ENGINE ERROR</span><span class="verdict__body">${esc(rw.error)}</span></div>`;
     if (!isEmbedded(rw.wallType)) {
       if (cur === 'structural') return structuralView(rw, rw.result, null);
       if (cur === 'note') return noteView(rw);
@@ -198,37 +197,41 @@ export function installRetainingApp(ctx) {
   }
   function tabsHtml(rw) {
     const { tabs, cur } = resultTabs(rw);
-    return tabs.map(([id, label]) => `<button type="button" class="st6-rw-rtab ${id === cur ? 'sel' : ''}" onclick="retwallSet('ui.resultTab','${id}')">${label}</button>`).join('');
+    return tabs.map(([id, label]) => `<button type="button" class="tab" role="tab" aria-selected="${id === cur ? 'true' : 'false'}" onclick="retwallSet('ui.resultTab','${id}')">${label}</button>`).join('');
   }
+
+  // Section legend: one swatch per series of the canvas palette (components.css §24 `.viz__swatch`,
+  // the same --viz-* roles retaining-canvas.js paints with — see theme.ts retainingVizSeries()).
+  const swatch = (series, label) => `<i class="viz__swatch series-${series}"></i>${label}`;
 
   function renderBody() {
     const rw = getRw();
-    const tabs = WALL_TYPES.map((t) => `<button class="st6-rw-tab ${t.id === rw.wallType ? 'sel' : ''}" onclick="retwallSetType('${t.id}')"><strong>${esc(t.label)}</strong><span>${esc(t.sub)}</span></button>`).join('');
+    const tabs = WALL_TYPES.map((t) => `<button type="button" class="card card--select" aria-pressed="${t.id === rw.wallType ? 'true' : 'false'}" onclick="retwallSetType('${t.id}')"><strong class="card__title">${esc(t.label)}</strong><span class="card__text">${esc(t.sub)}</span></button>`).join('');
     const embedded = isEmbedded(rw.wallType);
-    return `${RETWALL_STYLE}
-      <div class="mc2 st6-retwall">
-        <div class="st6-rw-head">
+    return `
+      <div class="card st6-retwall stack">
+        <div class="card__head card__head--split">
           <div>
-            <div class="st6-rw-title">Retaining walls — Eurocode 7 (Belgium, DA1)</div>
-            <div class="st6-rw-subtitle">Gravity and RC cantilever walls, continuous sheet-pile walls and soldier-pile (Berliner) walls on the interpreted CPT profile: earth pressures per design branch, embedment, section forces, EN 1993 steel checks, PLAXIS 2D input sets, drivability and vibration impact — every intermediate value shown.</div>
+            <div class="card__title">Retaining walls — Eurocode 7 (Belgium, DA1)</div>
+            <div class="card__text">Gravity and RC cantilever walls, continuous sheet-pile walls and soldier-pile (Berliner) walls on the interpreted CPT profile: earth pressures per design branch, embedment, section forces, EN 1993 steel checks, PLAXIS 2D input sets, drivability and vibration impact — every intermediate value shown.</div>
           </div>
-          <div class="st6-rw-actions"><button type="button" class="btn sm" onclick="retwallOpenNote()">Calculation note ↗</button></div>
+          <div class="actions"><button type="button" class="btn btn--sm" onclick="retwallOpenNote()">Calculation note ↗</button></div>
         </div>
-        <div class="st6-rw-tabs">${tabs}</div>
-        <div class="st6-rw-cols">
-          <div class="st6-rw-inputs" id="retwallInputs">${inputsHtml(rw)}</div>
-          <div class="st6-rw-canvaswrap"><canvas id="retwallCanvas"></canvas>
-            <div class="st6-rw-canvastools"><button type="button" title="Fit to view" onclick="retwallFit()">⤢ Fit</button><span class="st6-rw-hint">drag ● handles · scroll to zoom · drag empty to pan</span></div>
-            <div class="st6-rw-legend">
-              ${embedded ? '<span><i style="background:#8a8f98"></i>steel</span><span><i style="background:rgba(46,111,85,0.5)"></i>passive wedge</span><span><i style="background:rgba(180,60,50,0.35)"></i>over-excavation</span><span><i style="background:#7e50a8"></i>M / <i style="background:#8a620d"></i>V</span>' : '<span><i style="background:#d8b15a"></i>backfill</span><span><i style="background:#9b3a32"></i>σ active</span><span><i style="background:#2e6f55"></i>σ passive</span>'}
-              <span><i style="background:#3d6b6a"></i>water</span><span>* = overridden layer</span>
+        <div class="card-grid card-grid--sm">${tabs}</div>
+        <div class="cols-3 cols-3--wide">
+          <div class="col--sticky" id="retwallInputs">${inputsHtml(rw)}</div>
+          <div class="viz viz--section"><canvas id="retwallCanvas"></canvas>
+            <div class="viz__tools"><button type="button" class="btn btn--sm btn--text" title="Fit to view" onclick="retwallFit()">⤢ Fit</button><span class="viz__hint">drag ● handles · scroll to zoom · drag empty to pan</span></div>
+            <div class="viz__legend">
+              ${embedded ? `<span>${swatch('neutral', 'steel')}</span><span>${swatch(6, 'passive wedge')}</span><span>${swatch(4, 'over-excavation')}</span><span>${swatch(1, 'M / ')}${swatch(3, 'V')}</span>` : `<span>${swatch(3, 'backfill')}</span><span>${swatch(4, 'σ active')}</span><span>${swatch(6, 'σ passive')}</span>`}
+              <span>${swatch('water', 'water')}</span><span>* = overridden layer</span>
             </div>
           </div>
-          <div class="st6-rw-summary" id="retwallSummary">${summaryCard(rw, rw.result, structuralOf(rw))}</div>
+          <div class="stack--snug" id="retwallSummary">${summaryCard(rw, rw.result, structuralOf(rw))}</div>
         </div>
-        <div class="st6-rw-results">
-          <div class="st6-rw-rtabs" id="retwallResultTabs">${tabsHtml(rw)}</div>
-          <div class="st6-rw-rbody" id="retwallResultBody">${resultBodyHtml(rw)}</div>
+        <div class="card card--tabs">
+          <div class="tabs tabs--text" role="tablist" aria-label="Retaining wall results" id="retwallResultTabs">${tabsHtml(rw)}</div>
+          <div class="tabs__panel stack--sections" id="retwallResultBody">${resultBodyHtml(rw)}</div>
         </div>
       </div>`;
   }

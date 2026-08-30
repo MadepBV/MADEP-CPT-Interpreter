@@ -12,6 +12,7 @@ import { assessReceiver, sbrAAllowableVelocity, humanResponseDescriptor } from '
 import { buildMonitoringPlan, suggestSensorLayout } from '../vibration/monitoring-plan.js';
 import { calibrateLeastSquares, calibrateTwoPoint, upperPrediction, predictFromFit } from '../vibration/attenuation-calibration.js';
 import { drawXYChart } from '../retaining-charts.js';
+import { retainingVizSeries } from '../../../styles/theme.ts';
 import { findHammer } from '../drivability/hammer-catalog.js';
 
 function frameworkArgs(v) {
@@ -63,7 +64,7 @@ export function vibrationPanel(rw) {
     ${numberRow('Dominant frequency', 'vibration.frequency', v.frequency, { unit: 'Hz', step: 1, min: 0, title: 'Operating frequency of the vibrator; impact: expected dominant frequency at the receiver' })}
     ${help(impact ? 'Impact driving: BS 5228-2 Annex E, v = k<sub>p</sub>·√W / r<sup>1.3</sup>, W = hammer energy per blow × efficiency; k<sub>p</sub> by ground condition (not a probability level).' : 'Vibratory driving: TRL 429 / BS 5228-2, v = k<sub>v</sub>·x<sup>−δ</sup> with k<sub>v</sub> = 60 / 126 / 266 (50 / 33 / 5 % exceedance) and δ = 1.4 steady, 1.3 all operations, 1.2 start-up/run-down; valid 1–100 m.')}
     ${impact ? selectRow('Ground condition (k<sub>p</sub>)', 'vibration.groundCondition', v.groundCondition || 'refusal', Object.keys(BS5228_KP).map((k) => ({ value: k, label: `${k} (k_p = ${BS5228_KP[k].kp})` }))) : ''}
-    <div class="st6-rw-card-title" style="margin-top:10px">Receiver criterion</div>
+    <div class="card__eyebrow">Receiver criterion</div>
     ${selectRow('Framework', 'vibration.framework', v.framework, [{ value: 'SBR-A', label: 'SBR-A (2017) — Belgian/Dutch practice' }, { value: 'DIN4150-3', label: 'DIN 4150-3:2016' }, { value: 'BS7385-2', label: 'BS 7385-2:1993' }])}`;
   if (v.framework === 'SBR-A') {
     body += `${selectRow('Building category', 'vibration.sbr.category', v.sbr.category, [{ value: 1, label: '1 — industrial / reinforced (20→40→50)' }, { value: 2, label: '2 — dwellings, masonry (5→15→20)' }, { value: 3, label: '3 — legacy sensitive (3→8→10)' }])}
@@ -80,9 +81,9 @@ export function vibrationPanel(rw) {
       ${checkRow('Continuous vibration (−50 %)', 'vibration.bs.continuous', !!v.bs.continuous)}`;
   }
   body += `${numberRow('Warning level (fraction of stop)', 'vibration.warningFraction', v.warningFraction, { step: 0.05, min: 0.3, max: 0.95 })}
-    <div class="st6-rw-card-title" style="margin-top:10px">Site calibration (trial measurements)</div>
-    ${(v.calibration.points || []).map((p, i) => `<div class="st6-rw-field"><span>point ${i + 1}</span><span class="st6-rw-inwrap"><input type="number" step="0.5" style="width:56px" value="${esc(p.x)}" onchange="retwallCalPoint(${i},'x',this.value)"><span class="st6-rw-unit">m</span><input type="number" step="0.1" style="width:56px" value="${esc(p.v)}" onchange="retwallCalPoint(${i},'v',this.value)"><span class="st6-rw-unit">mm/s</span><button type="button" class="st6-rw-copy" onclick="retwallCalPoint(${i},'remove')">×</button></span></div>`).join('')}
-    <div class="st6-rw-actions"><button type="button" class="st6-rw-copy" onclick="retwallCalPoint(-1,'add')">+ add measurement (distance, PPV)</button></div>
+    <div class="card__eyebrow">Site calibration (trial measurements)</div>
+    ${(v.calibration.points || []).map((p, i) => `<div class="field field--inline"><span class="field__text">point ${i + 1}</span><span class="field__row"><input class="input input--sm input--num input--xs" type="number" step="0.5" value="${esc(p.x)}" onchange="retwallCalPoint(${i},'x',this.value)"><span class="field__unit">m</span><input class="input input--sm input--num input--xs" type="number" step="0.1" value="${esc(p.v)}" onchange="retwallCalPoint(${i},'v',this.value)"><span class="field__unit">mm/s</span><button type="button" class="btn btn--sm btn--icon btn--text" title="remove" onclick="retwallCalPoint(${i},'remove')">×</button></span></div>`).join('')}
+    <div class="actions"><button type="button" class="btn btn--sm btn--text" onclick="retwallCalPoint(-1,'add')">+ add measurement (distance, PPV)</button></div>
     ${help('Two points give v = K·x<sup>−n</sup> directly (course §15.5); three or more a least-squares fit with a one-sided 95 % upper prediction (§15.7). Separate fits per source condition (start-up vs steady, different settings).')}`;
   return accordion('vibration', 'Vibration impact', body, { open: false, pill: v.framework });
 }
@@ -101,25 +102,25 @@ export function vibrationView(rw) {
   const tsv = toTsv(['f_Hz', 'V_kar_mm_s', 'V_allow_mm_s', 'warning_mm_s'], freqRows);
   const cal = V.fit && Number.isFinite(V.fit.K)
     ? kvList([['n', fmt(V.fit.n, 4), ''], ['K', fmt(V.fit.K, 2), 'mm/s at 1 m'], ['v at x (best fit)', fmt(typeof V.fitAt === 'number' ? V.fitAt : V.fitAt?.ppv_mm_s ?? V.fitAt?.v_mm_s, 2), 'mm/s'], ...(V.upper ? [['v<sub>95</sub> at x', fmt(V.upper.v95_mm_s, 2), `mm/s (N = ${V.pts.length})`]] : []), ...(V.fit.r2 != null ? [['r²', fmt(V.fit.r2, 3), '']] : [])])
-    : '<div class="st6-help">Enter at least two trial measurements in the panel to calibrate the site attenuation law.</div>';
-  return `<div class="st6-rw-grid2">
-      <div>
-        <div class="st6-rw-card-title">Prediction at x = ${fmt(V.x, 1)} m</div>${predTable}
-        <div class="st6-rw-note">${V.impact ? (V.governing.notes || []).map(esc).join(' ') : 'Resultant PPV; the 5 % curve is a screening envelope, not a maximum (TRL 429).'}</div>
-        <div class="st6-rw-card-title" style="margin-top:10px">Receiver assessment — ${esc(v.framework)}</div>
-        <div class="st6-rw-verdict ${verdictCls === 'ok' ? 'ok' : verdictCls === 'bad' ? 'bad' : 'idle'}"><span class="st6-rw-verdict-tag">${A.verdict === 'ok' ? 'BELOW LIMIT' : A.verdict === 'attention' ? 'ATTENTION' : 'EXCEEDS'}</span><span>${fmt(V.governing.ppv, 2)} mm/s vs ${fmt(A.limit_mm_s, 2)} mm/s · utilisation ${fmt(A.utilisation, 2)} · ${esc(V.governing.label)}</span></div>
+    : '<div class="card card--quiet card--note">Enter at least two trial measurements in the panel to calibrate the site attenuation law.</div>';
+  return `<div class="cols-2">
+      <div class="stack--sections">
+        <div class="card__eyebrow">Prediction at x = ${fmt(V.x, 1)} m</div>${predTable}
+        <div class="card__text">${V.impact ? (V.governing.notes || []).map(esc).join(' ') : 'Resultant PPV; the 5 % curve is a screening envelope, not a maximum (TRL 429).'}</div>
+        <div class="card__eyebrow">Receiver assessment — ${esc(v.framework)}</div>
+        <div class="verdict ${verdictCls === 'ok' ? 'verdict--good' : verdictCls === 'bad' ? 'verdict--bad' : 'verdict--warn'}"><span class="verdict__tag">${A.verdict === 'ok' ? 'BELOW LIMIT' : A.verdict === 'attention' ? 'ATTENTION' : 'EXCEEDS'}</span><span class="verdict__body">${fmt(V.governing.ppv, 2)} mm/s vs ${fmt(A.limit_mm_s, 2)} mm/s · utilisation ${fmt(A.utilisation, 2)} · ${esc(V.governing.label)}</span></div>
         ${limitRows}
-        <div class="st6-rw-note">Human response (BS 5228-2 Table B.1): ${esc(human.descriptor || human.text || human)}. ${(A.notes || []).map(esc).join(' ')}</div>
-        <div class="st6-rw-card-title" style="margin-top:10px">Trigger levels</div>
+        <div class="card__text">Human response (BS 5228-2 Table B.1): ${esc(human.descriptor || human.text || human)}. ${(A.notes || []).map(esc).join(' ')}</div>
+        <div class="card__eyebrow">Trigger levels</div>
         ${kvList([['expected (median)', fmt(V.plan.expected?.value, 2), 'mm/s'], ['upper prediction', fmt(V.plan.upper?.value, 2), 'mm/s'], ['warning (SMS)', fmt(V.plan.warning?.value, 2), `mm/s (${fmt(num(v.warningFraction, 0.75) * 100, 0)} % of stop)`], ['stop', fmt(V.plan.stop?.value, 2), 'mm/s'], ['human objective', fmt(V.plan.humanObjective?.value, 2), 'mm/s']])}
-        <div class="st6-rw-note">Sensors: ${esc((V.sensors?.sensors || []).map((s) => `${fmt(s.distance_m, 0)} m — ${s.role}`).join('; '))}.</div>
-        <div class="st6-rw-card-title" style="margin-top:10px">Site calibration</div>${cal}
+        <div class="card__text">Sensors: ${esc((V.sensors?.sensors || []).map((s) => `${fmt(s.distance_m, 0)} m — ${s.role}`).join('; '))}.</div>
+        <div class="card__eyebrow">Site calibration</div>${cal}
       </div>
-      <div>
-        <canvas class="st6-rw-chart" id="retwallChartPpv"></canvas>
-        <div class="st6-rw-card-title" style="margin-top:10px">Limit vs frequency (${esc(v.framework)})</div>
-        <canvas class="st6-rw-chart" id="retwallChartLimit" style="height:240px"></canvas>
-        <div class="st6-rw-actions">${copyButton('copy frequency table (TSV)', tsv)}</div>
+      <div class="stack--sections">
+        <div class="viz viz--chart"><canvas id="retwallChartPpv"></canvas></div>
+        <div class="card__eyebrow">Limit vs frequency (${esc(v.framework)})</div>
+        <div class="viz viz--chart viz--short"><canvas id="retwallChartLimit"></canvas></div>
+        <div class="actions">${copyButton('copy frequency table (TSV)', tsv)}</div>
       </div>
     </div>`;
 }
@@ -128,26 +129,27 @@ export function drawVibrationCharts(rw) {
   const V = computeVibration(rw);
   const c1 = document.getElementById('retwallChartPpv');
   const c2 = document.getElementById('retwallChartLimit');
+  const S = retainingVizSeries();
   const distances = []; for (let x = 2; x <= 100; x += 2) distances.push(x);
   if (c1) {
     const series = [];
     if (!V.impact) {
-      for (const [p, color, label] of [[50, '#2e6f55', 'steady 50 %'], [5, '#8a620d', 'steady 5 %']]) {
+      for (const [p, color, label] of [[50, S.p50, 'steady 50 %'], [5, S.p5, 'steady 5 %']]) {
         const c = ppvVsDistanceCurve({ predictor: 'vibratory', args: { phase: 'steady', probability: p }, distances });
         series.push({ x: c.points.map((q) => q.distance_m ?? q.x_m ?? q.x), y: c.points.map((q) => q.ppv_mm_s), color, label });
       }
       const c = ppvVsDistanceCurve({ predictor: 'vibratory', args: { phase: 'startup', probability: 5 }, distances });
-      series.push({ x: c.points.map((q) => q.distance_m ?? q.x_m ?? q.x), y: c.points.map((q) => q.ppv_mm_s), color: '#9b3a32', label: 'start-up 5 %' });
+      series.push({ x: c.points.map((q) => q.distance_m ?? q.x_m ?? q.x), y: c.points.map((q) => q.ppv_mm_s), color: S.startup, label: 'start-up 5 %' });
     } else {
       const c = ppvVsDistanceCurve({ predictor: 'impact', args: { hammerEnergy_J: V.energyJ, groundCondition: rw.vibration.groundCondition || 'refusal' }, distances });
-      series.push({ x: c.points.map((q) => q.distance_m ?? q.x_m ?? q.x), y: c.points.map((q) => q.ppv_mm_s), color: '#9b3a32', label: 'BS 5228-2 impact' });
+      series.push({ x: c.points.map((q) => q.distance_m ?? q.x_m ?? q.x), y: c.points.map((q) => q.ppv_mm_s), color: S.impact, label: 'BS 5228-2 impact' });
     }
-    if (V.fit && Number.isFinite(V.fit.K)) series.push({ x: distances, y: distances.map((x) => V.fit.K * Math.pow(x, -V.fit.n)), color: '#18181a', dash: [4, 3], label: 'site fit' });
-    if (V.pts.length) series.push({ x: V.pts.map((p) => p.x_m), y: V.pts.map((p) => p.v_mm_s), color: '#18181a', label: 'measurements', points: true, width: 0.1 });
+    if (V.fit && Number.isFinite(V.fit.K)) series.push({ x: distances, y: distances.map((x) => V.fit.K * Math.pow(x, -V.fit.n)), color: S.fit, dash: [4, 3], label: 'site fit' });
+    if (V.pts.length) series.push({ x: V.pts.map((p) => p.x_m), y: V.pts.map((p) => p.v_mm_s), color: S.measurements, label: 'measurements', points: true, width: 0.1 });
     drawXYChart(c1, { title: 'PPV vs distance', xLabel: 'distance (m)', yLabel: 'PPV (mm/s)', logY: true, series, hlines: Number.isFinite(V.assess.limit_mm_s) ? [{ y: V.assess.limit_mm_s, label: `limit ${fmt(V.assess.limit_mm_s, 2)} mm/s` }] : [], vlines: [{ x: V.x, label: `receiver ${fmt(V.x, 0)} m` }] });
   }
   if (c2 && V.plan.frequencyTable?.length) {
     const t = V.plan.frequencyTable;
-    drawXYChart(c2, { xLabel: 'frequency (Hz)', yLabel: 'mm/s', series: [{ x: t.map((r) => r.f), y: t.map((r) => r.vKar), color: '#3d6b6a', label: 'V_kar (characteristic)' }, { x: t.map((r) => r.f), y: t.map((r) => r.vAllow), color: '#9b3a32', label: 'allowable (stop)' }, { x: t.map((r) => r.f), y: t.map((r) => r.warning), color: '#8a620d', dash: [4, 3], label: 'warning' }], vlines: [{ x: V.f, label: `f = ${fmt(V.f, 0)} Hz` }], yMin: 0 });
+    drawXYChart(c2, { xLabel: 'frequency (Hz)', yLabel: 'mm/s', series: [{ x: t.map((r) => r.f), y: t.map((r) => r.vKar), color: S.characteristic, label: 'V_kar (characteristic)' }, { x: t.map((r) => r.f), y: t.map((r) => r.vAllow), color: S.limit, label: 'allowable (stop)' }, { x: t.map((r) => r.f), y: t.map((r) => r.warning), color: S.warning, dash: [4, 3], label: 'warning' }], vlines: [{ x: V.f, label: `f = ${fmt(V.f, 0)} Hz` }], yMin: 0 });
   }
 }

@@ -5,8 +5,8 @@ import { esc, fmt, badge, kvList } from './result-kit.js';
 import { isEmbedded, isAnchoredType } from '../wall-types.js';
 
 export function summaryCard(rw, result, structural) {
-  if (rw.status === 'error') return `<div class="st6-rw-verdict bad"><span class="st6-rw-verdict-tag">ENGINE ERROR</span><span>${esc(rw.error)}</span></div>`;
-  if (!result) return `<div class="st6-rw-verdict idle"><span class="st6-rw-verdict-tag">${rw.status === 'running' ? 'COMPUTING…' : 'NO RESULT'}</span><span>Adjust the inputs to run the verification.</span></div>`;
+  if (rw.status === 'error') return `<div class="verdict verdict--bad verdict--hero"><span class="verdict__tag">ENGINE ERROR</span><span class="verdict__body">${esc(rw.error)}</span></div>`;
+  if (!result) return `<div class="verdict verdict--neutral verdict--hero"><span class="verdict__tag">${rw.status === 'running' ? 'COMPUTING…' : 'NO RESULT'}</span><span class="verdict__body">Adjust the inputs to run the verification.</span></div>`;
   const embedded = isEmbedded(rw.wallType);
   const checks = result.checks || [];
   const steelRows = structural?.steel?.rows?.filter((r) => !r.info) || [];
@@ -46,10 +46,13 @@ export function summaryCard(rw, result, structural) {
       ['Base width B', fmt(result.B, 2), 'm']
     ]);
   }
-  const list = all.map((c) => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:3px 0;border-bottom:1px solid var(--bd)"><span style="font-size:11px">${esc(c.label)}</span><span style="display:flex;gap:6px;align-items:center"><span class="st6-rw-utilnum">${fmt(c.util, 2)}</span>${badge(c.pass)}</span></div>`).join('');
+  const list = all.map((c) => `<div class="util-list__row"><span>${esc(c.label)}</span><span class="util-list__val"><span class="mono">${fmt(c.util, 2)}</span>${badge(c.pass)}</span></div>`).join('');
+  // the governing utilisation as a meter under the hero verdict (§3.11): track to 1.5, mark at 1.0
+  const meterTone = !overall ? 'meter--bad' : worst > 0.85 ? 'meter--warn' : 'meter--good';
+  const meter = `<div class="meter ${meterTone}"><div class="meter__fill" style="width:${Math.max(0, Math.min(worst, 1.5)) / 1.5 * 100}%"></div><div class="meter__mark" style="left:${100 / 1.5}%"></div></div>`;
   return `
-    <div class="st6-rw-verdict ${overall ? 'ok' : 'bad'}"><span class="st6-rw-verdict-tag">${overall ? 'VERIFICATIONS PASS' : 'NOT VERIFIED'}</span><span>governing utilisation ${fmt(worst, 2)}</span></div>
-    <div class="st6-rw-card"><div class="st6-rw-card-title">Governing values</div>${kv}</div>
-    <div class="st6-rw-card"><div class="st6-rw-card-title">Limit states</div>${list}</div>
-    ${(result.notes || []).length ? `<div class="st6-rw-card"><div class="st6-rw-card-title">Engine notes</div><div class="st6-rw-note">${(result.notes || []).map(esc).join('<br>')}</div></div>` : ''}`;
+    <div class="verdict ${overall ? 'verdict--good' : 'verdict--bad'} verdict--hero"><span class="verdict__tag">${overall ? 'VERIFICATIONS PASS' : 'NOT VERIFIED'}</span><span class="verdict__body">governing utilisation ${fmt(worst, 2)}</span>${meter}</div>
+    <div class="card"><div class="card__eyebrow">Governing values</div>${kv}</div>
+    <div class="card"><div class="card__eyebrow">Limit states</div><div class="util-list">${list}</div></div>
+    ${(result.notes || []).length ? `<div class="card"><div class="card__eyebrow">Engine notes</div><div class="card__text">${(result.notes || []).map(esc).join('<br>')}</div></div>` : ''}`;
 }

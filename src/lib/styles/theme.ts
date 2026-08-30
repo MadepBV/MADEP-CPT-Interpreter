@@ -4,31 +4,41 @@
 // `getComputedStyle(root).getPropertyValue('--x')` returns a custom property *unresolved* when it
 // holds `color-mix()` / `light-dark()`; CanvasRenderingContext2D cannot parse that. Reading the
 // token through a probe element's `color` resolves any token form to an `rgb()` string.
-// The module is SSR-safe: the probe is created lazily on first use in a browser.
+// The module is SSR-safe: probes are created lazily on first use in a browser.
+//
+// ONE PROBE PER TOKEN (PR 15). A single shared probe whose `color` is rewritten per lookup is wrong:
+// inside one task Chromium serves `getComputedStyle().color` from the *previous* style recalc, so a
+// batch read (vizTheme() resolves ~20 tokens in a row) returns the same stale colour for every name —
+// which painted the whole retaining section in one hue. Writing `color` once, on a freshly attached
+// element, always resolves correctly, so every name gets its own probe and the set is dropped on a
+// theme change (the values behind the probes have changed; fresh elements re-resolve).
 
 export type ThemeChoice = 'light' | 'dark' | 'system';
 
 export const THEME_STORAGE_KEY = 'madep-theme';
 export const THEME_EVENT = 'madep:theme';
 
-let probe: HTMLSpanElement | null = null;
+const probes = new Map<string, HTMLSpanElement>();
 
-function getProbe(): HTMLSpanElement | null {
-	if (typeof document === 'undefined') return null;
-	if (probe && probe.isConnected) return probe;
-	probe = document.createElement('span');
-	probe.setAttribute('aria-hidden', 'true');
-	probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:0;height:0;overflow:hidden';
-	document.body.append(probe);
-	return probe;
+const PROBE_CSS = 'position:absolute;visibility:hidden;pointer-events:none;width:0;height:0;overflow:hidden';
+
+function dropProbes(): void {
+	for (const el of probes.values()) el.remove();
+	probes.clear();
 }
 
 /** Resolves a token (`--viz-1`, `--glass-bg`, …) to an `rgb()` / `rgba()` string usable by canvas + SVG. */
 export function token(name: string): string {
 	try {
-		const el = getProbe();
-		if (!el) return '';
-		el.style.color = `var(${name})`;
+		if (typeof document === 'undefined' || !document.body) return '';
+		let el = probes.get(name);
+		if (!el || !el.isConnected) {
+			el = document.createElement('span');
+			el.setAttribute('aria-hidden', 'true');
+			el.style.cssText = `${PROBE_CSS};color:var(${name})`;
+			document.body.append(el);
+			probes.set(name, el);
+		}
 		const c = getComputedStyle(el)?.color;
 		return typeof c === 'string' ? c : '';
 	} catch {
@@ -113,6 +123,70 @@ export function pileVizSeries() {
 	};
 }
 
+/**
+ * The Stage 6 retaining-wall series (§3.13 "Pile/retaining canvases"), resolved for the current theme:
+ * the pressure / shear / moment diagrams, the drivability envelopes and the vibration curves of
+ * retaining/retaining-charts.js, and the section canvas (retaining-canvas.js maps the literal palette
+ * of the pure, golden-locked scenes/*.js onto these roles at paint time).
+ */
+export function retainingVizSeries() {
+	const t = vizTheme();
+	return {
+		// ── structure ───────────────────────────────────────────────────────────
+		wall: t.s2,                            // sheet / soldier pile outline — ink (§3.13 "wall --viz-2")
+		wallFill: withAlpha(t.neutral, 0.55),  // steel body — warm grey, the legacy #8a8f98 role
+		lagging: withAlpha(t.neutral, 0.28),
+		concrete: withAlpha(t.neutral, 0.35),  // gravity / cantilever stem + base
+		concreteStroke: t.neutral,
+		// ── ground, water and pressures ─────────────────────────────────────────
+		retained: t.s4,                        // earth + q on the retained side — the load
+		retainedSoft: withAlpha(t.s4, 0.10),
+		retainedFill: withAlpha(t.s4, 0.16),
+		passive: t.s6,                         // excavation-side resistance — accepted
+		passiveSoft: withAlpha(t.s6, 0.10),
+		passiveWedge: withAlpha(t.s6, 0.16),
+		passiveFill: withAlpha(t.s6, 0.14),
+		overdig: withAlpha(t.s4, 0.10),        // over-excavation band
+		overdigLine: withAlpha(t.s4, 0.35),
+		berm: withAlpha(t.s3, 0.45),           // retained berm / backfill — ochre
+		bermHatch: withAlpha(t.s3, 0.30),
+		bermLine: withAlpha(t.s3, 0.50),
+		water: t.water,
+		waterFront: withAlpha(t.water, 0.6),
+		net: t.s2,                             // factored net pressure — ink
+		shear: t.s3,                           // V — ochre
+		shearSoft: withAlpha(t.s3, 0.10),
+		shearFill: withAlpha(t.s3, 0.16),
+		moment: t.s1,                          // M — teal (was the purple of the legacy palette)
+		momentSoft: withAlpha(t.s1, 0.12),
+		momentFill: withAlpha(t.s1, 0.16),
+		load: t.s3,                            // surcharge arrows
+		anchor: t.s2,                          // tendon + head plate — ink
+		anchorGrout: t.s3,                     // grout body (§3.13 "anchors --viz-3")
+		// ── annotation ──────────────────────────────────────────────────────────
+		dim: t.neutral,                        // dimension lines
+		excavation: t.s4,                      // design-excavation marker
+		closure: t.s6,                         // free-earth closure marker
+		target: t.neutral,                     // target toe depth
+		handle: t.s1,                          // drag handles (§3.13 "handles --viz-1")
+		bad: t.s4, warn: t.s3, good: t.s6,     // drivability outcome markers on the section
+		// ── drivability / vibration charts ──────────────────────────────────────
+		refusal: t.s4, marginal: t.s3, reaches: t.s6,
+		machine: t.s1,                         // the candidate / chosen machine
+		required: t.s4, required125: t.s3,     // F_c,min at m_R 1.0 / 1.25
+		drive: t.s6, staticRef: t.neutral,     // R_drive / R_static
+		zero: t.s2,
+		blows: t.s4, blowsSoft: withAlpha(t.s4, 0.10), stress: t.s3, capacity: t.s6,
+		p50: t.s6, p5: t.s3, startup: t.s4, impact: t.s4,   // PPV curves
+		fit: t.s2, measurements: t.s2,
+		characteristic: t.s1, limit: t.s4, warning: t.s3,
+		// ── paper, ink and hatching shared with vizTheme() ──────────────────────
+		paper: t.paper, halo: t.halo, text: t.text, textMuted: t.textMuted, axis: t.axis, gridStrong: t.gridStrong,
+		hatch: withAlpha(t.axis, 0.25),        // soil-band hatching
+		soilLine: withAlpha(t.axis, 0.18)      // soil-band outline
+	};
+}
+
 /** Stored choice ('system' when nothing is stored). */
 export function getTheme(): ThemeChoice {
 	if (typeof localStorage === 'undefined') return 'system';
@@ -164,6 +238,10 @@ if (typeof window !== 'undefined' && typeof matchMedia === 'function') {
 		window.dispatchEvent(new CustomEvent(THEME_EVENT));
 	});
 }
+
+// The probes hold the *old* theme's colours after a switch; drop them first, so every subscriber that
+// re-reads tokens in its `madep:theme` handler resolves against fresh elements (see `token()` above).
+if (typeof window !== 'undefined') window.addEventListener(THEME_EVENT, dropProbes, true);
 
 // Phase 2 boot probe (§4.1): ~300 ms of rAF while a test glass element animates; < 45 fps →
 // document.documentElement.dataset.transparency = 'reduce'. Not wired in phase 1 (no glass class is

@@ -55,14 +55,14 @@ export function openNote(payload) {
 
 export function noteView(rw) {
   const embedded = isEmbedded(rw.wallType);
-  return `<div class="st6-rw-grid2"><div>
-      <div class="st6-rw-card-title">Print-ready calculation note</div>
-      <p class="st6-rw-note">Generates a complete, navigable note in the structure of a Belgian "rekennota" for a temporary retaining wall: references, assumptions, geometry, CPT-derived characteristic parameters with every override flagged, risk class and partial factors, the hand calculation per design branch (design strengths, coefficients, pressures, embedment, section forces), the Eurocode verifications with utilisation${embedded ? ', the EN 1993 steel checks, the full PLAXIS 2D input set (Plate / Embedded Beam Row, T<sub>skin</sub>, F<sub>max</sub>, multilinear T<sub>lat</sub> table), the drivability estimate and the vibration assessment' : ''}. Every number can be copied into the project note.</p>
-      <div class="st6-rw-actions"><button type="button" class="btn sm pri" onclick="retwallOpenNote()">Open calculation note ↗</button><span class="st6-help">opens in a new tab — print or save as PDF from there</span></div>
-      <div class="st6-rw-note">${rw.result ? `Current result: ${esc(rw.result.wallType)}, ${rw.result.overallPass ? 'all engine verifications pass' : 'not verified'}${embedded ? `, M_Ed ${fmt(rw.result.structural?.Mmax, 1)} ${rw.result.perPile ? 'kNm/pile' : 'kNm/m'}` : ''}.` : 'Run the analysis first.'}</div>
-    </div><div>
-      <div class="st6-rw-card-title">What the note states explicitly</div>
-      <ul class="st6-rw-note" style="padding-left:16px;margin:0">
+  return `<div class="cols-2"><div class="stack--sections">
+      <div class="card__eyebrow">Print-ready calculation note</div>
+      <p class="card__text">Generates a complete, navigable note in the structure of a Belgian "rekennota" for a temporary retaining wall: references, assumptions, geometry, CPT-derived characteristic parameters with every override flagged, risk class and partial factors, the hand calculation per design branch (design strengths, coefficients, pressures, embedment, section forces), the Eurocode verifications with utilisation${embedded ? ', the EN 1993 steel checks, the full PLAXIS 2D input set (Plate / Embedded Beam Row, T<sub>skin</sub>, F<sub>max</sub>, multilinear T<sub>lat</sub> table), the drivability estimate and the vibration assessment' : ''}. Every number can be copied into the project note.</p>
+      <div class="actions"><button type="button" class="btn btn--sm btn--primary" onclick="retwallOpenNote()">Open calculation note ↗</button><span class="field__hint">opens in a new tab — print or save as PDF from there</span></div>
+      <div class="card__text">${rw.result ? `Current result: ${esc(rw.result.wallType)}, ${rw.result.overallPass ? 'all engine verifications pass' : 'not verified'}${embedded ? `, M_Ed ${fmt(rw.result.structural?.Mmax, 1)} ${rw.result.perPile ? 'kNm/pile' : 'kNm/m'}` : ''}.` : 'Run the analysis first.'}</div>
+    </div><div class="stack--sections">
+      <div class="card__eyebrow">What the note states explicitly</div>
+      <ul class="card__text bullets">
         <li>Partial-factor scheme and every factor per branch (no hidden values).</li>
         <li>Over-excavation rule and the resulting design excavation.</li>
         <li>Soil parameters: CPT-derived characteristic values, overrides (c′!), stratigraphy shift.</li>

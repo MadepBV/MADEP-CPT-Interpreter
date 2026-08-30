@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // @ts-nocheck
 // Steel section inputs: sheet-pile section (per metre) or soldier-pile H-profile + lagging + model choices.
-import { numberRow, selectRow, checkRow, help, accordion, esc, fmt, segmented } from './panel-kit.js';
+import { numberRow, selectRow, checkRow, help, accordion, esc, fmt, segmented, note } from './panel-kit.js';
 import { isSoldierPile } from '../wall-types.js';
 import { STEEL_H_SECTIONS } from '../sections/steel-h-sections.js';
 import { SHEET_PILE_SECTIONS } from '../sections/sheet-pile-sections.js';
@@ -14,7 +14,7 @@ function groupedOptions(list, keyFn, labelFn) {
 }
 
 function sectionSelect(path, value, groups, labelFn) {
-  let html = `<select onchange="retwallSet('${path}', this.value)">`;
+  let html = `<select class="input input--sm" onchange="retwallSet('${path}', this.value)">`;
   for (const [g, items] of groups) {
     html += `<optgroup label="${esc(g)}">` + items.map((s) => `<option value="${esc(s.id)}"${s.id === value ? ' selected' : ''}>${esc(labelFn(s))}</option>`).join('') + '</optgroup>';
   }
@@ -35,16 +35,16 @@ function sheetPileSectionPanel(rw) {
   const sp = sheetPileSI(sh.sectionId, { corrosionLoss: sh.corrosionLoss });
   const fy = yieldStrength(sh.grade) || 355;
   const cls = sp?.classByGrade ? sp.classByGrade[sh.grade] : null;
-  const props = sp ? `<div class="st6-rw-kv" style="margin-top:6px">
+  const props = sp ? `<div class="kv">
       <dt>A</dt><dd>${fmt(sp.A * 1e4, 0)}<small>cm²/m</small></dd>
       <dt>I<sub>y</sub></dt><dd>${fmt(sp.Iy * 1e8, 0)}<small>cm⁴/m</small></dd>
       <dt>W<sub>el</sub> / W<sub>pl</sub></dt><dd>${fmt(sp.Wel * 1e6, 0)} / ${fmt((sp.Wpl || 0) * 1e6, 0)}<small>cm³/m</small></dd>
       <dt>mass</dt><dd>${fmt(sp.massPerM2, 0)}<small>kg/m²</small></dd>
       <dt>h / t / s</dt><dd>${fmt(sp.h * 1000, 0)} / ${fmt(sp.t * 1000, 1)} / ${fmt(sp.s * 1000, 1)}<small>mm</small></dd>
       <dt>class (${esc(sh.grade)})</dt><dd>${cls != null ? cls : '—'}</dd>
-    </div>` : '<div class="st6-rw-note warn">Section not found in the catalogue.</div>';
+    </div>` : note('Section not found in the catalogue.', true);
   const body = `
-    <label class="st6-rw-field"><span>Section</span>${sectionSelect('sheet.sectionId', sh.sectionId, groups, (s) => s.id)}</label>
+    <label class="field field--inline"><span class="field__text">Section</span>${sectionSelect('sheet.sectionId', sh.sectionId, groups, (s) => s.id)}</label>
     ${selectRow('Steel grade', 'sheet.grade', sh.grade, SP_GRADES)}
     ${props}
     ${checkRow('Use plastic W<sub>pl</sub> (class 1–2 only)', 'sheet.useWpl', !!sh.useWpl, { title: 'EN 1993-5 §5.2.2: plastic resistance for class 1 and 2 sections; elastic (W_el) otherwise' })}
@@ -60,7 +60,7 @@ function soldierSectionPanel(rw) {
   const sec = hSectionSI(so.sectionId);
   const fy = yieldStrength(so.grade) || 235;
   const cls = sec ? hSectionClass(sec, fy) : null;
-  const props = sec ? `<div class="st6-rw-kv" style="margin-top:6px">
+  const props = sec ? `<div class="kv">
       <dt>h × b</dt><dd>${fmt(sec.h * 1000, 0)} × ${fmt(sec.b * 1000, 0)}<small>mm</small></dd>
       <dt>A</dt><dd>${fmt(sec.A * 1e4, 2)}<small>cm²</small></dd>
       <dt>I<sub>y</sub></dt><dd>${fmt(sec.Iy * 1e8, 0)}<small>cm⁴</small></dd>
@@ -68,26 +68,26 @@ function soldierSectionPanel(rw) {
       <dt>A<sub>v,z</sub></dt><dd>${fmt(sec.Avz * 1e4, 2)}<small>cm²</small></dd>
       <dt>mass</dt><dd>${fmt(sec.massPerM, 1)}<small>kg/m</small></dd>
       <dt>class (${esc(so.grade)})</dt><dd>${cls ? cls.cls : '—'}</dd>
-    </div>` : '<div class="st6-rw-note warn">Section not found in the catalogue.</div>';
+    </div>` : note('Section not found in the catalogue.', true);
   const body = `
-    <label class="st6-rw-field"><span>Profile</span>${sectionSelect('soldier.sectionId', so.sectionId, groups, (s) => `${s.id} (${s.mass} kg/m)`)}</label>
+    <label class="field field--inline"><span class="field__text">Profile</span>${sectionSelect('soldier.sectionId', so.sectionId, groups, (s) => `${s.id} (${s.mass} kg/m)`)}</label>
     ${selectRow('Steel grade', 'soldier.grade', so.grade, H_GRADES)}
     ${props}
-    <div class="st6-rw-card-title" style="margin-top:10px">Lagging (beschot)</div>
+    <div class="card__eyebrow">Lagging (beschot)</div>
     ${numberRow('Plate thickness', 'soldier.laggingThk', so.laggingThk, { unit: 'm', step: 0.001, min: 0.002 })}
     ${selectRow('Lagging grade', 'soldier.laggingGrade', so.laggingGrade, H_GRADES)}
-    <label class="st6-rw-field"><span>Span for the plate check</span>${segmented('soldier.laggingSpan', so.laggingSpan, [{ value: 'centre', label: 'c/c spacing (conservative)' }, { value: 'clear', label: 'clear s − b' }])}</label>
+    <label class="field field--inline"><span class="field__text">Span for the plate check</span>${segmented('soldier.laggingSpan', so.laggingSpan, [{ value: 'centre', label: 'c/c spacing (conservative)' }, { value: 'clear', label: 'clear s − b' }])}</label>
     ${checkRow('Lagging watertight (apply water pressure above the excavation)', 'soldier.laggingWatertight', !!so.laggingWatertight)}
-    <div class="st6-rw-card-title" style="margin-top:10px">Resistance model below the excavation (hand calculation)</div>
-    <label class="st6-rw-field"><span>Model</span>${segmented('soldier.resistanceModel', so.resistanceModel, [{ value: 'effective-width', label: 'Effective width' }, { value: 'brinch-hansen', label: 'Brinch Hansen' }])}</label>
+    <div class="card__eyebrow">Resistance model below the excavation (hand calculation)</div>
+    <label class="field field--inline"><span class="field__text">Model</span>${segmented('soldier.resistanceModel', so.resistanceModel, [{ value: 'effective-width', label: 'Effective width' }, { value: 'brinch-hansen', label: 'Brinch Hansen' }])}</label>
     ${so.resistanceModel === 'brinch-hansen'
       ? checkRow('Cap by the continuous-wall tributary resistance s·p<sub>net</sub>', 'soldier.rowCap', so.rowCap !== false)
       : numberRow('Effective width factor k (b<sub>eff</sub> = min(k·b, s))', 'soldier.effectiveWidthFactor', so.effectiveWidthFactor, { step: 0.5, min: 1, max: 5 })}
     ${help(so.resistanceModel === 'brinch-hansen'
       ? 'Net line resistance B·[e<sub>w</sub>(z)]⁺ per pile from the Brinch Hansen (1961) coefficients with the Andersen–Lodahl (2023) retained-height term; B = flange width. The net coefficient cannot separate active from passive, so DA1/1 factoring applies to the retained-side load above the excavation only.'
       : 'EAB / Belgian guideline §5: active on the flange width b, passive on b<sub>eff</sub> = min(k·b, s) with the plane-strain K<sub>p</sub>. k = 3 is the usual value; the Rekennota uses min(3b, s). The PLAXIS T<sub>lat</sub> table always uses Brinch Hansen with B = b — the two models are never mixed.')}
-    <div class="st6-rw-card-title" style="margin-top:10px">PLAXIS embedded-beam axial inputs</div>
-    <label class="st6-rw-field"><span>T<sub>lat</sub> convention</span>${segmented('soldier.tlatConvention', so.tlatConvention, [{ value: 'AL', label: 'Andersen–Lodahl' }, { value: 'equal', label: 'Equal-level' }])}</label>
+    <div class="card__eyebrow">PLAXIS embedded-beam axial inputs</div>
+    <label class="field field--inline"><span class="field__text">T<sub>lat</sub> convention</span>${segmented('soldier.tlatConvention', so.tlatConvention, [{ value: 'AL', label: 'Andersen–Lodahl' }, { value: 'equal', label: 'Equal-level' }])}</label>
     ${selectRow('K for T<sub>skin</sub>', 'soldier.tskinK', so.tskinK, [{ value: 'k0', label: 'K₀ = 1 − sin φ′ (pre-augered / lower bound)' }, { value: '0.8', label: '0.8' }, { value: '1.0', label: '1.0 (driven)' }])}
     ${numberRow('δ/φ′ on the flanges', 'soldier.tskinDeltaRatio', so.tskinDeltaRatio, { step: 0.05, min: 0, max: 1 })}
     ${checkRow('Soil–soil shear on the plug faces (2h at φ′)', 'soldier.tskinPlug', so.tskinPlug !== false)}
