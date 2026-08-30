@@ -8,9 +8,14 @@
    Stage 6 shell + engineering-app vocabulary (§17–§23): tabs (§3.12), accordions (§3.6), the three-column
    `.cols-3` grid, stacked fields, chart hosts and series keys. Phase 2f (PR 15) adds the retaining-app
    vocabulary (§24): inline fields, the sticky input column, the `<dl>` key/value list, the utilisation
-   meter, dense tables, the canvas float chips and the mixed-case variants. The Bishop canvas shell (2d,
-   later PR), dialogs (2g) and docs/reports (2h) are still on legacy.css — see the transitional scopes
-   noted at §7, §11 and §19 below.
+   meter, dense tables, the canvas float chips and the mixed-case variants. Phase 2g (PR 16) adds the
+   feedback layer (§25–§27): the native `<dialog>` modal, the toast queue of `src/lib/styles/toast.ts`
+   and the `data-tip` tooltip. The Bishop canvas shell (2d, later PR) and docs/reports (2h) are still on
+   legacy.css — see the transitional scopes noted at §7, §11 and §19 below.
+
+   A second scope, `.modal`: a `<dialog>` renders in the top layer as a child of `<body>`, outside
+   `<main class="cpt-app">`, so the families the modal reuses (§3, §8, §9, §12, §13, §20) read
+   `:where(.cpt-app, .modal)`. `:where()` is zero-specificity, so nothing outside a dialog changes.
 
    Legacy aliases — the Bishop / retaining strings of the controller (src/lib/cpt-app/legacy-controller.js)
    still emit `.btn.pri`, `.btn.sm`, `.btn--compact`, `.togbtn`; the selectors below carry the old names next
@@ -277,7 +282,7 @@
   /* ════════════════════════════════════════════════════════════════════════
      3. Buttons (§3.8) — scoped to the app until docs/report toolbars migrate (2h)
      ════════════════════════════════════════════════════════════════════════ */
-  :where(.cpt-app) .btn {
+  :where(.cpt-app, .modal) .btn {
     position: relative; isolation: isolate; overflow: hidden;
     display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
     min-height: var(--control-h); padding: 0 var(--sp-4);
@@ -291,47 +296,47 @@
       color var(--transition-base), box-shadow var(--transition-base),
       transform var(--motion-quick) var(--ease-luxury);
   }
-  :where(.cpt-app) .btn:hover { border-color: var(--color-ink); background: var(--surface-hover); transform: var(--lift-1); }
-  :where(.cpt-app) .btn::before {                /* sheen sweep — default + primary only */
+  :where(.cpt-app, .modal) .btn:hover { border-color: var(--color-ink); background: var(--surface-hover); transform: var(--lift-1); }
+  :where(.cpt-app, .modal) .btn::before {                /* sheen sweep — default + primary only */
     content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
     background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.22) 48%, transparent 66%);
     transform: translate3d(-120%, 0, 0);
     transition: transform var(--motion-slow) var(--ease-luxury);
   }
-  :where(.cpt-app) .btn:hover::before { transform: translate3d(120%, 0, 0); }
+  :where(.cpt-app, .modal) .btn:hover::before { transform: translate3d(120%, 0, 0); }
 
-  :where(.cpt-app) .btn--primary,
-  :where(.cpt-app) .btn.pri { background: var(--color-ink); border-color: var(--color-ink); color: var(--color-bg); }
-  :where(.cpt-app) .btn--primary:hover,
-  :where(.cpt-app) .btn.pri:hover {
+  :where(.cpt-app, .modal) .btn--primary,
+  :where(.cpt-app, .modal) .btn.pri { background: var(--color-ink); border-color: var(--color-ink); color: var(--color-bg); }
+  :where(.cpt-app, .modal) .btn--primary:hover,
+  :where(.cpt-app, .modal) .btn.pri:hover {
     background: color-mix(in srgb, var(--color-ink) 88%, var(--color-bg));   /* keeps the inversion in dark theme */
     border-color: color-mix(in srgb, var(--color-ink) 88%, var(--color-bg));
     color: var(--color-bg); box-shadow: var(--shadow-1);
   }
-  :where(.cpt-app) .btn--accent { background: var(--color-accent); border-color: var(--color-accent); color: #F7F4EF; }
-  :where(.cpt-app) .btn--accent:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); color: #F7F4EF; }
-  :where(.cpt-app) .btn--ghost { border-color: transparent; }
-  :where(.cpt-app) .btn--ghost:hover { border-color: transparent; background: var(--surface-hover); transform: none; }
-  :where(.cpt-app) .btn--icon { width: var(--control-h); padding: 0; }
-  :where(.cpt-app) .btn--icon svg { display: block; width: 16px; height: 16px; }
-  :where(.cpt-app) .btn--sm,
-  :where(.cpt-app) .btn.sm,
-  :where(.cpt-app) .btn--compact { min-height: var(--control-h-sm); padding: 0 var(--sp-3); font-size: var(--fs-2xs); }
-  :where(.cpt-app) .btn--sm.btn--icon,
-  :where(.cpt-app) .btn--compact.btn--icon { width: var(--control-h-sm); padding: 0; }
-  :where(.cpt-app) .btn--danger { color: var(--color-bad); border-color: var(--color-bad-border); }
-  :where(.cpt-app) .btn--danger:hover { background: var(--color-bad-soft); border-color: var(--color-bad); color: var(--color-bad); }
-  :where(.cpt-app) .btn.active,
-  :where(.cpt-app) .btn[aria-pressed="true"] { background: var(--surface-active); border-color: var(--color-accent-border); color: var(--color-accent-text); }
-  :where(.cpt-app) .btn[disabled],
-  :where(.cpt-app) .btn[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
-  :where(.cpt-app) .btn--ghost::before,
-  :where(.cpt-app) .btn--icon::before,
-  :where(.cpt-app) .btn--sm::before,
-  :where(.cpt-app) .btn.sm::before,
-  :where(.cpt-app) .btn--compact::before,
-  :where(.cpt-app) .btn--danger::before { content: none; }
-  :where(.cpt-app) .btn.is-busy::after {         /* indeterminate teal wipe instead of a spinner */
+  :where(.cpt-app, .modal) .btn--accent { background: var(--color-accent); border-color: var(--color-accent); color: #F7F4EF; }
+  :where(.cpt-app, .modal) .btn--accent:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); color: #F7F4EF; }
+  :where(.cpt-app, .modal) .btn--ghost { border-color: transparent; }
+  :where(.cpt-app, .modal) .btn--ghost:hover { border-color: transparent; background: var(--surface-hover); transform: none; }
+  :where(.cpt-app, .modal) .btn--icon { width: var(--control-h); padding: 0; }
+  :where(.cpt-app, .modal) .btn--icon svg { display: block; width: 16px; height: 16px; }
+  :where(.cpt-app, .modal) .btn--sm,
+  :where(.cpt-app, .modal) .btn.sm,
+  :where(.cpt-app, .modal) .btn--compact { min-height: var(--control-h-sm); padding: 0 var(--sp-3); font-size: var(--fs-2xs); }
+  :where(.cpt-app, .modal) .btn--sm.btn--icon,
+  :where(.cpt-app, .modal) .btn--compact.btn--icon { width: var(--control-h-sm); padding: 0; }
+  :where(.cpt-app, .modal) .btn--danger { color: var(--color-bad); border-color: var(--color-bad-border); }
+  :where(.cpt-app, .modal) .btn--danger:hover { background: var(--color-bad-soft); border-color: var(--color-bad); color: var(--color-bad); }
+  :where(.cpt-app, .modal) .btn.active,
+  :where(.cpt-app, .modal) .btn[aria-pressed="true"] { background: var(--surface-active); border-color: var(--color-accent-border); color: var(--color-accent-text); }
+  :where(.cpt-app, .modal) .btn[disabled],
+  :where(.cpt-app, .modal) .btn[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
+  :where(.cpt-app, .modal) .btn--ghost::before,
+  :where(.cpt-app, .modal) .btn--icon::before,
+  :where(.cpt-app, .modal) .btn--sm::before,
+  :where(.cpt-app, .modal) .btn.sm::before,
+  :where(.cpt-app, .modal) .btn--compact::before,
+  :where(.cpt-app, .modal) .btn--danger::before { content: none; }
+  :where(.cpt-app, .modal) .btn.is-busy::after {         /* indeterminate teal wipe instead of a spinner */
     content: ""; position: absolute; left: 0; bottom: 0; height: 1px; width: 40%;
     background: var(--color-accent);
     animation: btn-busy var(--motion-reveal) linear infinite;
@@ -493,34 +498,35 @@
   }
   :where(.cpt-app) .card__text { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--color-ink-2); overflow-wrap: anywhere; }
   :where(.cpt-app) .card__hint { color: var(--color-accent-text); font-weight: var(--fw-medium); }
-  :where(.cpt-app) .eyebrow,
-  :where(.cpt-app) .card__eyebrow,
-  :where(.cpt-app) .viz__title {
+  :where(.cpt-app, .modal) .eyebrow,
+  :where(.cpt-app, .modal) .card__eyebrow,
+  :where(.cpt-app, .modal) .viz__title {
     font: var(--fw-medium) var(--fs-xs) / 1.3 var(--font-mono);
     text-transform: uppercase; letter-spacing: var(--track-eyebrow);
     color: var(--color-accent-text);
   }
-  :where(.cpt-app) .card__eyebrow { margin-bottom: var(--sp-2); padding-bottom: var(--sp-1); border-bottom: var(--hairline); }
-  :where(.cpt-app) .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--card-min, 12rem), 1fr)); gap: var(--sp-3); min-width: 0; }
+  :where(.cpt-app, .modal) .card__eyebrow { margin-bottom: var(--sp-2); padding-bottom: var(--sp-1); border-bottom: var(--hairline); }
+  :where(.cpt-app, .modal) .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--card-min, 12rem), 1fr)); gap: var(--sp-3); min-width: 0; }
 
-  :where(.cpt-app) .stats { --stat-min: 11rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--stat-min), 1fr)); gap: var(--sp-2); min-width: 0; }
-  :where(.cpt-app) .stats--dense { --stat-min: 8rem; }
-  :where(.cpt-app) .stat {
+  :where(.cpt-app, .modal) .stats { --stat-min: 11rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--stat-min), 1fr)); gap: var(--sp-2); min-width: 0; }
+  :where(.cpt-app, .modal) .stats--dense { --stat-min: 8rem; }
+  :where(.cpt-app, .modal) .stat {
     min-width: 0; padding: var(--sp-3);
     background: var(--surface-quiet); border: var(--hairline); border-radius: var(--radius-sm);
   }
-  :where(.cpt-app) .stat__label {
+  :where(.cpt-app, .modal) .stat__label {
+    display: block;                                /* the import dialog's tiles label with a <span> (§25) */
     margin-bottom: var(--sp-1);
     font: var(--fw-medium) var(--fs-2xs) / 1.3 var(--font-mono);
     text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
   }
-  :where(.cpt-app) .stat__value {
+  :where(.cpt-app, .modal) .stat__value {
     font: var(--fw-semibold) var(--fs-xl) / var(--lh-tight) var(--font-heading);
     font-variant-numeric: tabular-nums; letter-spacing: var(--track-heading); color: var(--color-ink);
     overflow-wrap: anywhere;
   }
-  :where(.cpt-app) .stat__unit { margin-left: 0.3em; font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono); color: var(--color-ink-3); }
-  :where(.cpt-app) .stats--meta .stat__value { font-size: var(--fs-base); font-weight: var(--fw-medium); line-height: var(--lh-snug); }   /* file metadata is prose, not a metric */
+  :where(.cpt-app, .modal) .stat__unit { margin-left: 0.3em; font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono); color: var(--color-ink-3); }
+  :where(.cpt-app, .modal) .stats--meta .stat__value { font-size: var(--fs-base); font-weight: var(--fw-medium); line-height: var(--lh-snug); }   /* file metadata is prose, not a metric */
 
   /* ════════════════════════════════════════════════════════════════════════
      9. Form fields + inputs (§3.7)
@@ -540,11 +546,11 @@
     text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
   }
   :where(.cpt-app) .field__row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); min-width: 0; }
-  :where(.cpt-app) .field__unit { font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono); color: var(--color-ink-3); }
-  :where(.cpt-app) .field__hint { font: var(--fw-regular) var(--fs-xs) / var(--lh-snug) var(--font-body); color: var(--color-ink-3); }
-  :where(.cpt-app) .field__hint:empty { display: none; }   /* source tags the controller fills (elev-src, wt-taw …) */
+  :where(.cpt-app, .modal) .field__unit { font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono); color: var(--color-ink-3); }
+  :where(.cpt-app, .modal) .field__hint { font: var(--fw-regular) var(--fs-xs) / var(--lh-snug) var(--font-body); color: var(--color-ink-3); }
+  :where(.cpt-app, .modal) .field__hint:empty { display: none; }   /* source tags the controller fills (elev-src, wt-taw …) */
 
-  :where(.cpt-app) .input {
+  :where(.cpt-app, .modal) .input {
     box-sizing: border-box;
     height: var(--control-h); padding: var(--pad-control);
     border: var(--hairline-strong); border-radius: var(--radius-sm);
@@ -554,21 +560,21 @@
     outline: none; transform: none;                /* no -1px lift on focus: it jitters in 15-column tables */
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
-  :where(.cpt-app) .input:hover { border-color: var(--color-line-heavy); }
-  :where(.cpt-app) .input:focus,
-  :where(.cpt-app) .input:focus-visible { border-color: var(--color-accent); box-shadow: var(--shadow-focus); outline: none; transform: none; }
-  :where(.cpt-app) .input::placeholder { color: var(--color-ink-4); font-style: normal; }
-  :where(.cpt-app) .input--num { width: 5.5rem; text-align: right; font-family: var(--font-mono); font-size: var(--fs-sm); }
-  :where(.cpt-app) .input--sm { height: var(--control-h-sm); padding: 0 0.4rem; font-size: var(--fs-xs); }
+  :where(.cpt-app, .modal) .input:hover { border-color: var(--color-line-heavy); }
+  :where(.cpt-app, .modal) .input:focus,
+  :where(.cpt-app, .modal) .input:focus-visible { border-color: var(--color-accent); box-shadow: var(--shadow-focus); outline: none; transform: none; }
+  :where(.cpt-app, .modal) .input::placeholder { color: var(--color-ink-4); font-style: normal; }
+  :where(.cpt-app, .modal) .input--num { width: 5.5rem; text-align: right; font-family: var(--font-mono); font-size: var(--fs-sm); }
+  :where(.cpt-app, .modal) .input--sm { height: var(--control-h-sm); padding: 0 0.4rem; font-size: var(--fs-xs); }
   /* no spin buttons: Chrome reserves ~15 px for them even when hidden, which clips a 52 px table input */
-  :where(.cpt-app) .input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
-  :where(.cpt-app) .input::-webkit-inner-spin-button,
-  :where(.cpt-app) .input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  :where(.cpt-app, .modal) .input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+  :where(.cpt-app, .modal) .input::-webkit-inner-spin-button,
+  :where(.cpt-app, .modal) .input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   /* override state — the controller adds `.ovr` (editL / editNu …); `.is-override` is the spec name */
-  :where(.cpt-app) .input:is(.is-override, .ovr) { border-color: var(--color-warn); color: var(--color-warn); font-style: italic; }
+  :where(.cpt-app, .modal) .input:is(.is-override, .ovr) { border-color: var(--color-warn); color: var(--color-warn); font-style: italic; }
 
-  :where(.cpt-app) .range { width: 8rem; margin: 0; accent-color: var(--color-accent); }
-  :where(.cpt-app) .check {
+  :where(.cpt-app, .modal) .range { width: 8rem; margin: 0; accent-color: var(--color-accent); }
+  :where(.cpt-app, .modal) .check {
     display: inline-flex; align-items: center; gap: var(--sp-2);
     min-height: var(--control-h);
     font-size: var(--fs-sm); color: var(--color-ink-2); cursor: pointer;
@@ -651,18 +657,18 @@
      table — but not to the bare `.tbl` of Stage 6 / the Stage 7 report, which keep the legacy rule until 2d/2h
      wrap them. Widen `.tbl-wrap > .tbl` to `.tbl` in that PR.
      ════════════════════════════════════════════════════════════════════════ */
-  :where(.cpt-app) .tbl-wrap {
+  :where(.cpt-app, .modal) .tbl-wrap {
     max-height: var(--tbl-wrap-max, none); overflow: auto; min-width: 0;
     border: var(--hairline); border-radius: var(--radius-md);
     background: var(--surface-card);
   }
-  :where(.cpt-app) :is(.tbl-wrap > .tbl, .tbl--kv) {
+  :where(.cpt-app, .modal) :is(.tbl-wrap > .tbl, .tbl--kv) {
     width: 100%; margin: 0;
     border-collapse: separate; border-spacing: 0;          /* collapsed borders do not travel with sticky headers */
     background: transparent;
     font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
   }
-  :where(.cpt-app) .tbl-wrap > .tbl th {
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl th {
     position: sticky; top: 0; z-index: var(--z-sticky-cell);
     padding: var(--sp-2) var(--sp-3);
     background: var(--color-bg-alt);
@@ -671,36 +677,36 @@
     font: var(--fw-medium) var(--fs-2xs) / 1.3 var(--font-mono);
     text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
   }
-  :where(.cpt-app) .tbl-wrap > .tbl td {
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl td {
     padding: var(--sp-2) var(--sp-3);
     border-bottom: var(--hairline);
     font-size: var(--fs-sm); line-height: var(--lh-snug); vertical-align: middle;
   }
-  :where(.cpt-app) .tbl-wrap > .tbl tbody tr:last-child td { border-bottom: 0; }
-  :where(.cpt-app) .tbl-wrap > .tbl tbody tr:hover td { background: var(--surface-hover); }
-  :where(.cpt-app) .tbl-wrap > .tbl th.num,
-  :where(.cpt-app) .tbl-wrap > .tbl td.num { text-align: right; }
-  :where(.cpt-app) .tbl-wrap > .tbl td.num { font-family: var(--font-mono); font-size: var(--fs-xs); white-space: nowrap; }
-  :where(.cpt-app) .tbl-wrap > .tbl td.key { color: var(--color-ink-2); }
-  :where(.cpt-app) .tbl-wrap > .tbl tr:is(.is-selected, .gov) td { background: var(--surface-active); }
-  :where(.cpt-app) .tbl-wrap > .tbl tr:is(.is-selected, .gov) td:first-child { box-shadow: inset 2px 0 0 var(--color-accent); }
-  :where(.cpt-app) .tbl-wrap > .tbl tr.is-fail td { color: var(--color-bad); }
-  :where(.cpt-app) .tbl-wrap > .tbl .input--sm { width: 100%; min-width: 3.5rem; }
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl tbody tr:last-child td { border-bottom: 0; }
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl tbody tr:hover td { background: var(--surface-hover); }
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl th.num,
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl td.num { text-align: right; }
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl td.num { font-family: var(--font-mono); font-size: var(--fs-xs); white-space: nowrap; }
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl td.key { color: var(--color-ink-2); }
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl tr:is(.is-selected, .gov) td { background: var(--surface-active); }
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl tr:is(.is-selected, .gov) td:first-child { box-shadow: inset 2px 0 0 var(--color-accent); }
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl tr.is-fail td { color: var(--color-bad); }
+  :where(.cpt-app, .modal) .tbl-wrap > .tbl .input--sm { width: 100%; min-width: 3.5rem; }
 
   /* key / value (replaces .pt): no rules, mono keys, right-aligned values, `.key` rows in accent */
-  :where(.cpt-app) .tbl--kv td { padding: var(--sp-1) 0; border: 0; vertical-align: top; font-size: var(--fs-sm); line-height: var(--lh-snug); }
-  :where(.cpt-app) .tbl--kv td:first-child {
+  :where(.cpt-app, .modal) .tbl--kv td { padding: var(--sp-1) 0; border: 0; vertical-align: top; font-size: var(--fs-sm); line-height: var(--lh-snug); }
+  :where(.cpt-app, .modal) .tbl--kv td:first-child {
     padding-right: var(--sp-3); white-space: nowrap;
     font: var(--fw-medium) var(--fs-2xs) / 1.6 var(--font-mono);
     text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
   }
-  :where(.cpt-app) .tbl--kv td:last-child { text-align: right; font-weight: var(--fw-medium); color: var(--color-ink); }
-  :where(.cpt-app) .tbl--kv tr.key td:last-child { color: var(--color-accent-text); }
+  :where(.cpt-app, .modal) .tbl--kv td:last-child { text-align: right; font-weight: var(--fw-medium); color: var(--color-ink); }
+  :where(.cpt-app, .modal) .tbl--kv tr.key td:last-child { color: var(--color-accent-text); }
 
   /* ════════════════════════════════════════════════════════════════════════
      13. Verdict banners (§3.11) — notes, warnings, data notes
      ════════════════════════════════════════════════════════════════════════ */
-  :where(.cpt-app) .verdict {
+  :where(.cpt-app, .modal) .verdict {
     display: flex; align-items: center; gap: var(--sp-2) var(--sp-3);
     min-width: 0; padding: var(--sp-3) var(--sp-4);
     border: 1px solid var(--color-line); border-left-width: 3px; border-radius: var(--radius-sm);
@@ -708,27 +714,27 @@
     font-size: var(--fs-sm); line-height: var(--lh-body);
     overflow-wrap: anywhere;
   }
-  :where(.cpt-app) .verdict > br { display: none; }   /* string-rendered notes still carry a <br> between tag and body */
-  :where(.cpt-app) .verdict__tag {
+  :where(.cpt-app, .modal) .verdict > br { display: none; }   /* string-rendered notes still carry a <br> between tag and body */
+  :where(.cpt-app, .modal) .verdict__tag {
     flex: none; align-self: flex-start; padding-top: 0.2em;
     font: var(--fw-semibold) var(--fs-xs) / 1.3 var(--font-mono);
     text-transform: uppercase; letter-spacing: var(--track-mono);
   }
-  :where(.cpt-app) .verdict__body { flex: 1 1 auto; min-width: 0; }
-  :where(.cpt-app) .verdict__meta { flex: none; margin-left: auto; font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono); color: var(--color-ink-3); }
-  :where(.cpt-app) .verdict strong { color: var(--color-ink); font-weight: var(--fw-semibold); }
-  :where(.cpt-app) .verdict--good    { background: var(--color-good-soft);   border-color: var(--color-good-border);   border-left-color: var(--color-good); }
-  :where(.cpt-app) .verdict--warn    { background: var(--color-warn-soft);   border-color: var(--color-warn-border);   border-left-color: var(--color-warn); }
-  :where(.cpt-app) .verdict--bad     { background: var(--color-bad-soft);    border-color: var(--color-bad-border);    border-left-color: var(--color-bad); }
-  :where(.cpt-app) .verdict--info    { background: var(--color-accent-soft); border-color: var(--color-accent-border); border-left-color: var(--color-accent); }
-  :where(.cpt-app) .verdict--neutral { background: var(--color-neutral-soft); border-color: var(--color-line-strong); border-left-color: var(--color-neutral); }
-  :where(.cpt-app) .verdict--good .verdict__tag    { color: var(--color-good); }
-  :where(.cpt-app) .verdict--warn .verdict__tag    { color: var(--color-warn); }
-  :where(.cpt-app) .verdict--bad .verdict__tag     { color: var(--color-bad); }
-  :where(.cpt-app) .verdict--info .verdict__tag    { color: var(--color-accent-text); }
-  :where(.cpt-app) .verdict--neutral .verdict__tag { color: var(--color-neutral); }
-  :where(.cpt-app) .verdict--inline { border-left-width: 1px; color: var(--color-ink-2); }
-  :where(.cpt-app) .verdict--inline strong { color: var(--color-ink); }
+  :where(.cpt-app, .modal) .verdict__body { flex: 1 1 auto; min-width: 0; }
+  :where(.cpt-app, .modal) .verdict__meta { flex: none; margin-left: auto; font: var(--fw-medium) var(--fs-2xs) / 1 var(--font-mono); color: var(--color-ink-3); }
+  :where(.cpt-app, .modal) .verdict strong { color: var(--color-ink); font-weight: var(--fw-semibold); }
+  :where(.cpt-app, .modal) .verdict--good    { background: var(--color-good-soft);   border-color: var(--color-good-border);   border-left-color: var(--color-good); }
+  :where(.cpt-app, .modal) .verdict--warn    { background: var(--color-warn-soft);   border-color: var(--color-warn-border);   border-left-color: var(--color-warn); }
+  :where(.cpt-app, .modal) .verdict--bad     { background: var(--color-bad-soft);    border-color: var(--color-bad-border);    border-left-color: var(--color-bad); }
+  :where(.cpt-app, .modal) .verdict--info    { background: var(--color-accent-soft); border-color: var(--color-accent-border); border-left-color: var(--color-accent); }
+  :where(.cpt-app, .modal) .verdict--neutral { background: var(--color-neutral-soft); border-color: var(--color-line-strong); border-left-color: var(--color-neutral); }
+  :where(.cpt-app, .modal) .verdict--good .verdict__tag    { color: var(--color-good); }
+  :where(.cpt-app, .modal) .verdict--warn .verdict__tag    { color: var(--color-warn); }
+  :where(.cpt-app, .modal) .verdict--bad .verdict__tag     { color: var(--color-bad); }
+  :where(.cpt-app, .modal) .verdict--info .verdict__tag    { color: var(--color-accent-text); }
+  :where(.cpt-app, .modal) .verdict--neutral .verdict__tag { color: var(--color-neutral); }
+  :where(.cpt-app, .modal) .verdict--inline { border-left-width: 1px; color: var(--color-ink-2); }
+  :where(.cpt-app, .modal) .verdict--inline strong { color: var(--color-ink); }
 
   /* ════════════════════════════════════════════════════════════════════════
      14. Charts & canvases (§3.13) — graph-paper container
@@ -959,22 +965,22 @@
   :where(.cpt-app) .fieldset .check { min-height: 0; padding: var(--sp-1) 0; font-size: var(--fs-xs); }
 
   /* select.input: native chrome off, 12 px chevron from a mask so it follows currentColor in both themes */
-  :where(.cpt-app) select.input {
+  :where(.cpt-app, .modal) select.input {
     -webkit-appearance: none; appearance: none;
     padding-right: 1.6rem;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2365656D' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 0.55rem center; background-size: 12px 12px;
     text-overflow: ellipsis;
   }
-  :root[data-theme="dark"] :where(.cpt-app) select.input {
+  :root[data-theme="dark"] :where(.cpt-app, .modal) select.input {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%239A948A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) :where(.cpt-app) select.input {
+    :root:not([data-theme="light"]) :where(.cpt-app, .modal) select.input {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%239A948A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     }
   }
-  :where(.cpt-app) select.input option { color: var(--color-ink); background: var(--surface-raised); }
+  :where(.cpt-app, .modal) select.input option { color: var(--color-ink); background: var(--surface-raised); }
 
   /* ════════════════════════════════════════════════════════════════════════
      21. Stage 6 tables + pills — additions to §11/§12
@@ -1272,6 +1278,264 @@
   @media (forced-colors: active) {
     :where(.cpt-app) .meter, :where(.cpt-app) .viz__tools, :where(.cpt-app) .viz__legend { border: 1px solid CanvasText; }
     :where(.cpt-app) .meter__fill { background: Highlight; }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     25. Modal dialog (§3.15) — a native <dialog> in the top layer
+     The element is a child of <body>, outside <main class="cpt-app">, so the component families the
+     sheet reuses (§3 buttons, §8 stats + eyebrow, §9 inputs, §12 tables, §13 verdicts, §20 select)
+     carry `.modal` as a second `:where()` scope — the sheet is `.modal`, nothing else in the app is.
+     §4.1 rule 8: the SCRIM carries the blur, once, on `::backdrop`; the sheet is 93 % opaque
+     (`--glass-bg-sheet`) and adds none, so a dialog over Stage 6 costs one blurred layer, not two.
+     ════════════════════════════════════════════════════════════════════════ */
+  /* `.modal-host` is the generic dialog element. `.import-review-overlay` is the one dialog that
+     cannot also take it: the Node golden harness recognises that overlay by an exact `className`
+     match (scripts/golden/lib/load-controller.mjs), so its class list must stay a single name. */
+  dialog.modal-host,
+  dialog.import-review-overlay {
+    position: fixed; inset: 0;
+    width: 100%; max-width: none; height: 100%; max-height: none;
+    margin: 0; padding: var(--sp-6);
+    border: 0; background: transparent; color: var(--color-ink);
+    overflow: hidden;
+  }
+  dialog.modal-host[open],
+  dialog.import-review-overlay[open] { display: flex; align-items: center; justify-content: center; }
+  dialog.modal-host::backdrop,
+  dialog.import-review-overlay::backdrop {
+    background: var(--scrim, rgba(17, 17, 16, 0.36));
+    -webkit-backdrop-filter: blur(var(--glass-blur-scrim, 6px)) saturate(1.05);
+    backdrop-filter: blur(var(--glass-blur-scrim, 6px)) saturate(1.05);
+    animation: modal-scrim-in var(--motion-quick, 0.2s) var(--ease-smooth, ease) both;
+  }
+
+  .modal {
+    position: relative;
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+    width: min(45rem, 100%); max-height: min(84vh, 860px);
+    min-width: 0; text-align: left;
+    animation: modal-in var(--motion-base) var(--ease-luxury) both;
+  }
+  .modal.glass-sheet { -webkit-backdrop-filter: none; backdrop-filter: none; }   /* §4.1 rule 8 — the scrim carries it */
+  @keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+  @keyframes modal-scrim-in { from { opacity: 0; } }
+
+  .modal__head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3);
+    min-width: 0; padding: var(--sp-4) var(--sp-5);
+    border-bottom: var(--hairline);
+  }
+  .modal__title {
+    margin: 0;
+    font: var(--fw-semibold) var(--fs-lg) / var(--lh-snug) var(--font-heading);
+    letter-spacing: var(--track-heading); color: var(--color-ink);
+    overflow-wrap: anywhere;
+  }
+  .modal__meta {                                   /* mono file · format · test-id line under the title */
+    margin-top: 2px;
+    font: var(--fw-medium) var(--fs-xs) / 1.4 var(--font-mono);
+    color: var(--color-ink-3); overflow-wrap: anywhere;
+  }
+  .modal__body { min-width: 0; overflow: auto; overscroll-behavior: contain; padding: var(--pad-panel); }
+  .modal__body > * + * { margin-top: var(--sp-5); }
+  .modal__section { min-width: 0; }
+  .modal__section > * + * { margin-top: var(--sp-2); }
+  .modal__section > .eyebrow + * { margin-top: var(--sp-3); }
+  .modal__foot {
+    display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-5);
+    border-top: var(--hairline);
+  }
+  /* the file's own metadata: mono uppercase keys, prose values kept left (they are sentences —
+     "niet in bestand — stel in bij Stage 1" — not the numbers `.tbl--kv` right-aligns) */
+  .modal__meta-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+  .modal__meta-table td { padding: var(--sp-1) var(--sp-4) var(--sp-1) 0; vertical-align: top; line-height: var(--lh-snug); }
+  .modal__meta-table td:first-child {
+    white-space: nowrap;
+    font: var(--fw-medium) var(--fs-2xs) / 1.6 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
+  }
+  .modal__src { color: var(--color-ink-3); font-size: var(--fs-xs); }
+  /* cells of the recognised-columns table: the quantity name, and the mono sample values */
+  .modal .tbl td.modal__ch { white-space: nowrap; color: var(--color-ink-2); }
+  .modal .tbl td.modal__samples { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--color-ink-3); }
+
+  /* the question form (`confirmDialog`): one paragraph, two buttons, no scroll area */
+  .modal--ask { width: min(28rem, 100%); }
+  .modal__ask-body { margin: 0; font-size: var(--fs-base); line-height: var(--lh-body); color: var(--color-ink-2); }
+
+  @media (max-width: 760px) {
+    dialog.modal-host, dialog.import-review-overlay { padding: var(--sp-3); }
+    .modal { width: 100%; max-height: min(92vh, 860px); }
+    .modal__head, .modal__foot { padding: var(--sp-3); }
+    .modal__body { padding: var(--sp-3); }
+    .modal__foot > .btn { flex: 1 1 auto; }
+  }
+  /* blur(0) still promotes a compositor layer — drop the filter outright (§4.3) */
+  @media (prefers-reduced-transparency: reduce) {
+    dialog.modal-host::backdrop,
+    dialog.import-review-overlay::backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  }
+  :root[data-transparency="reduce"] dialog.modal-host::backdrop,
+  :root[data-transparency="reduce"] dialog.import-review-overlay::backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .modal, dialog.modal-host::backdrop, dialog.import-review-overlay::backdrop { animation: none; }
+  }
+  @media (forced-colors: active) {
+    .modal { border: 1px solid CanvasText; background: Canvas; }
+    .modal__head, .modal__foot { border-color: CanvasText; }
+  }
+  @media print {
+    dialog.modal-host, dialog.import-review-overlay { display: none !important; }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     26. Toasts (§3.15) — the transient feedback queue of src/lib/styles/toast.ts
+     Bottom-right, at most three at a time, `aria-live="polite"` on the region and `role="status"` /
+     `role="alert"` per card (§4.4). No `backdrop-filter`: a toast can land over an animating canvas
+     (a Bishop search, a retaining drag), the case §4.1 names as the expensive one — the card takes
+     `--glass-fallback` (the opaque bone / ink of the same material) with the `.glass--sm` hairline and
+     shadow written out instead. §3.15's 86 % `--glass-bg-strong` assumes the blur is there to quiet
+     what is behind it; without one, page text reads straight through a message that must be legible
+     the instant it appears. Same trade as the retaining canvas chips (PR 15 §5.2).
+     ════════════════════════════════════════════════════════════════════════ */
+  .toast-region {
+    position: fixed;
+    inset: auto var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px)) auto;
+    z-index: var(--z-toast);
+    display: grid; gap: var(--sp-2); justify-items: end;
+    width: min(24rem, calc(100vw - 2 * var(--sp-4)));
+    pointer-events: none;                          /* the page stays clickable around the cards */
+  }
+  .toast {
+    pointer-events: auto;
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start;
+    gap: var(--sp-1) var(--sp-3);
+    width: 100%; min-width: 0;
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--radius-md);
+    /* fully opaque: `--glass-fallback` is 95 %, and the 5 % is enough for page text to ghost through
+       a message that has to be read at a glance — the page colour underneath closes it */
+    background-color: var(--surface-page);
+    background-image: linear-gradient(var(--glass-fallback), var(--glass-fallback));
+    border: 1px solid var(--glass-border);
+    box-shadow:
+      inset 0 1px 0 var(--glass-edge-light),
+      0 0 0 1px var(--glass-hairline),
+      var(--glass-shadow-sm);
+    color: var(--color-ink);
+    font-size: var(--fs-sm); line-height: var(--lh-body);
+    animation: toast-in var(--motion-base) var(--ease-luxury) both;
+  }
+  .toast.is-leaving { animation: toast-out var(--motion-quick) var(--ease-snappy) both; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } }
+  @keyframes toast-out { to { opacity: 0; transform: translateY(4px); } }
+
+  .toast__dot { width: 6px; height: 6px; margin-top: 0.5em; border-radius: var(--radius-round); background: var(--color-neutral); }
+  .toast__body { min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
+  .toast__tag {
+    margin-right: var(--sp-2);
+    font: var(--fw-semibold) var(--fs-2xs) / 1.3 var(--font-mono);
+    text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--color-ink-3);
+  }
+  /* repeat counter: a chip, so "×3" never reads as part of the sentence it follows */
+  .toast__count {
+    margin-left: var(--sp-2); padding: 0.1em 0.4em;
+    border-radius: var(--radius-round); background: var(--surface-quiet);
+    font: var(--fw-medium) var(--fs-2xs) / 1.4 var(--font-mono); color: var(--color-ink-3);
+  }
+  .toast__count[hidden] { display: none; }
+  .toast__close {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.5rem; height: 1.5rem; margin: -0.2rem -0.35rem 0 0; padding: 0;
+    border: 0; border-radius: var(--radius-sm);
+    background: transparent; color: var(--color-ink-3);
+    font-size: var(--fs-sm); line-height: 1; cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+  }
+  .toast__close:hover { background: var(--surface-hover); color: var(--color-ink); }
+  .toast--ok   .toast__dot { background: var(--color-good); }
+  .toast--warn .toast__dot { background: var(--color-warn); }
+  .toast--bad  .toast__dot { background: var(--color-bad); }
+  .toast--info .toast__dot { background: var(--color-accent); }
+  .toast--ok   .toast__tag { color: var(--color-good); }
+  .toast--warn .toast__tag { color: var(--color-warn); }
+  .toast--bad  .toast__tag { color: var(--color-bad); }
+  .toast--info .toast__tag { color: var(--color-accent-text); }
+
+  @media (max-width: 760px) {
+    .toast-region { inset: auto var(--sp-3) calc(var(--sp-3) + env(safe-area-inset-bottom, 0px)) var(--sp-3); width: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .toast, .toast.is-leaving { animation: none; }
+  }
+  @media (forced-colors: active) {
+    .toast { border: 1px solid CanvasText; background: Canvas; }
+    .toast__dot { background: CanvasText; }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     27. Tooltips (§3.15) — the `data-tip` helper, CSS only
+     `.st6-tip` is the name the markup carries (core/format.js `tooltip()`, whose exact string is
+     asserted by scripts/verify_core.mjs, plus two Stage 2 buttons); `.tip` is the spec name and the
+     one new markup should use. Unscoped, like the legacy.css rule it replaces.
+     The resting badge is reproduced verbatim (16 px, `--radius-sm`, 0.62rem/700) so the Stage 2 and
+     Stage 6 baselines stay 0 px; the bubble — hover / focus only, never in a baseline — is the §3.15
+     recipe: light in both themes, `--fs-xs`, ≤ 18 rem, 300 ms in / 0 out.
+     ════════════════════════════════════════════════════════════════════════ */
+  .tip, .st6-tip {
+    position: relative;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1rem; height: 1rem; margin-left: 0.25rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-line-strong);
+    background: var(--color-bg-alt); color: var(--color-ink-2);
+    font-size: 0.62rem; font-weight: 700;
+    cursor: help; vertical-align: middle;
+  }
+  .tip:is(:hover, :focus, :focus-visible),
+  .st6-tip:is(:hover, :focus, :focus-visible) {
+    background: var(--color-accent-soft); border-color: var(--color-accent-hover); color: var(--color-accent-text);
+  }
+  /* 24 px pointer target (WCAG 2.2 2.5.8) without touching the 16 px layout box */
+  .tip::before, .st6-tip::before { content: ""; position: absolute; inset: -4px; border-radius: var(--radius-sm); }
+  /* the bubble is generated on hover / focus only: a permanently present 18 rem box would widen the
+     scrollable overflow of the tables and canvases the badges sit in (legacy.css did the same) */
+  .tip::after, .st6-tip::after { content: none; }
+  .tip:is(:hover, :focus, :focus-visible)::after,
+  .st6-tip:is(:hover, :focus, :focus-visible)::after {
+    content: attr(data-tip);
+    position: absolute; left: 50%; bottom: calc(100% + var(--sp-2)); transform: translateX(-50%);
+    z-index: var(--z-tooltip);
+    width: max-content; min-width: 13.75rem; max-width: 18rem;
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-page);          /* opaque: a tooltip carries no blur either (§26) */
+    background-image: linear-gradient(var(--glass-fallback), var(--glass-fallback));
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-edge-light), 0 0 0 1px var(--glass-hairline), var(--glass-shadow-sm);
+    color: var(--color-ink);
+    font: var(--fw-regular) var(--fs-xs) / var(--lh-body) var(--font-body);
+    letter-spacing: 0; text-transform: none; text-align: left; white-space: normal;
+    pointer-events: none;
+    animation: tip-in var(--motion-quick) var(--ease-smooth) 300ms both;   /* 300 ms in, 0 out (§3.15) */
+  }
+  @keyframes tip-in { from { opacity: 0; } }
+  @media (max-width: 760px) {                      /* narrow screens: pin the bubble to the right edge */
+    .tip:is(:hover, :focus, :focus-visible)::after,
+    .st6-tip:is(:hover, :focus, :focus-visible)::after {
+      left: auto; right: 0; transform: none;
+      min-width: 0; width: min(17rem, calc(100vw - 2rem));
+    }
+  }
+  /* on the dark chrome the bubble keeps the dark material so it reads against it (§3.15 `.tip--on-dark`) */
+  .tip--on-dark:is(:hover, :focus, :focus-visible)::after {
+    background: var(--glass-fallback-chrome); border-color: var(--glass-border-chrome); color: var(--color-on-dark);
+  }
+  @media (forced-colors: active) {
+    .tip, .st6-tip { border-color: CanvasText; }
+    .tip:is(:hover, :focus, :focus-visible)::after,
+    .st6-tip:is(:hover, :focus, :focus-visible)::after { background: Canvas; border-color: CanvasText; color: CanvasText; }
   }
 
 }

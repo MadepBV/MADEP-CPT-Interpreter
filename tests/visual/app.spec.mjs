@@ -17,6 +17,17 @@ for (const v of VARIANTS) {
     await settle(page, 400);
     await shotPage(page, 'home-empty', v);
 
+    // ── toast queue ─────────────────────────────────────────────────────────
+    // Classifying with no CPT loaded is the app's own guard message; running it twice proves the
+    // queue coalesces a repeat into one card with a ×n counter instead of stacking duplicates.
+    await page.evaluate(() => { window.runClass(); window.runClass(); });
+    await page.locator('.toast').waitFor();
+    await settle(page, 300);
+    await shotPage(page, 'toast', v);
+    await page.locator('.toast [data-toast-close]').click();
+    await page.locator('.toast').waitFor({ state: 'detached' });
+    await page.mouse.move(0, 0);
+
     // ── Stage 1 after demo load ─────────────────────────────────────────────
     await loadDemo(page);
     await shotPage(page, 'stage1-demo', v);

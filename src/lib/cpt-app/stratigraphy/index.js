@@ -24,6 +24,7 @@ import { buildUnitsCsv, buildPlaxisUnitCommands, buildSectionDxf } from './expor
 import { buildSoilinReportPayload, saveSoilinPayload } from './soilin-report.js';
 import { buildGeologicProfilesPayload, wrapDb4Container } from './scia-db4.js';
 import { projectOntoSectionLine } from './profiles.js';
+import { toast } from '../../styles/toast.ts';
 
 function download({ filename, mime, text }) {
   const a = document.createElement('a');
@@ -76,7 +77,7 @@ export function installStratigraphyApp(ctx) {
             const file = wrapDb4Container(payload, await zlibDeflate(payload));
             downloadBinary('EP_GeologicProfile.db4', file);
           } catch (err) {
-            alert(`Het db4-bestand kon niet worden aangemaakt: ${err?.message || err}`);
+            toast(`Het db4-bestand kon niet worden aangemaakt: ${err?.message || err}`, { tone: 'bad' });
           }
         }
       },
@@ -89,7 +90,7 @@ export function installStratigraphyApp(ctx) {
         });
         const key = saveSoilinPayload(window.localStorage, payload);
         if (!key) {
-          alert('Het SOILIN-rapport kon niet worden opgeslagen voor weergave.');
+          toast('Het SOILIN-rapport kon niet worden opgeslagen voor weergave.', { tone: 'bad' });
           return;
         }
         window.open(`/report/soilin?key=${encodeURIComponent(key)}`, '_blank', 'noopener');

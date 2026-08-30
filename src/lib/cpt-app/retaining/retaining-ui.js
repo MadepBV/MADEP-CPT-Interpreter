@@ -39,6 +39,7 @@ import { plaxisView } from './results/plaxis-view.js';
 import { gravityChecksView } from './results/gravity-results.js';
 import { noteView, buildNotePayload, openNote } from './report/note-view.js';
 import { esc } from './results/result-kit.js';
+import { toast } from '../../styles/toast.ts';
 
 const STRUCTURAL_PATHS = new Set(['wallType', 'insitu.mode', 'water.mode', 'loads.berm.enabled', 'settings.riskScheme', 'settings.overdigRule', 'settings.materialOverride.enabled',
   'soldier.resistanceModel', 'sheet.useWpl', 'sheet.sectionId', 'soldier.sectionId', 'sheet.grade', 'soldier.grade', 'drivability.method', 'drivability.vibrator.id', 'drivability.hammer.id',
@@ -341,7 +342,7 @@ export function installRetainingApp(ctx) {
       try {
         const payload = buildNotePayload({ rw, layers: layers(), profile: lastProfile, structural: structuralOf(rw), vibration: isEmbedded(rw.wallType) ? computeVibration(rw) : null, meta: ctx.getProjectMeta ? ctx.getProjectMeta() : {} });
         openNote(payload);
-      } catch (e) { alert(`Calculation note could not be generated: ${e?.message || e}`); }
+      } catch (e) { toast(`Calculation note could not be generated: ${e?.message || e}`, { tone: 'bad' }); }
     }
   };
   function fallbackCopy(text, done) {

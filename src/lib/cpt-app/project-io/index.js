@@ -13,6 +13,7 @@ import {
   validateProjectSnapshot,
   applyProjectSnapshot
 } from './snapshot.js';
+import { toast } from '../../styles/toast.ts';
 
 function fileStamp(date) {
   const p = (n) => String(n).padStart(2, '0');
@@ -44,7 +45,11 @@ export function installProjectIO(ctx) {
     try {
       text = JSON.stringify(snapshot, null, 1);
     } catch (err) {
-      alert(`Project kon niet worden opgeslagen: ${err?.message || err}`);
+      // A failed serialisation is reported, not acknowledged (design §3.15). The two
+      // invalid-file alerts of `loadProjectFromFile` below stay blocking: their text is locked
+      // by tests/golden/node/project-io/invalid-files.json and by the save-load journey's
+      // 04-dialogs.json, so they convert with a golden re-record (worklog 25 §3).
+      toast(`Project kon niet worden opgeslagen: ${err?.message || err}`, { tone: 'bad' });
       return;
     }
     const a = document.createElement('a');

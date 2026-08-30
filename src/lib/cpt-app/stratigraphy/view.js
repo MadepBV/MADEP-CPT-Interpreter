@@ -6,6 +6,8 @@
 // here. Follows the retaining-ui pattern: innerHTML rendering + one
 // delegated event listener, reusing the app's existing CSS vocabulary.
 
+import { confirmDialog } from '../import-review/dialog.js';
+
 const esc = (s) =>
   String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -261,9 +263,23 @@ ${l.topTaw.toFixed(2)} → ${l.botTaw.toFixed(2)} m TAW · qc ${fmt(l.avgQc)} MP
 
   // ── events ─────────────────────────────────────────────────────────────
 
-  function confirmRerun() {
-    if (!store.hasManualEdits()) return true;
-    return window.confirm('Hercorreleren verwijdert de handmatige aanpassingen (toewijzingen, namen). Doorgaan?');
+  /**
+   * Re-correlating throws away the engineer's manual unit assignments and names, so it asks first —
+   * now through the app's own `<dialog>` (design §3.15) instead of `window.confirm`.
+   * With nothing to lose the path stays **synchronous**, exactly as it was: only the case that used
+   * to block on a native dialog is deferred to the promise.
+   */
+  function confirmRerun(onConfirmed, onDeclined) {
+    if (!store.hasManualEdits()) {
+      onConfirmed();
+      return;
+    }
+    confirmDialog({
+      title: 'Hercorreleren?',
+      body: 'Hercorreleren verwijdert de handmatige aanpassingen (toewijzingen, namen). Doorgaan?',
+      confirmLabel: 'Doorgaan',
+      tone: 'danger'
+    }).then((ok) => (ok ? onConfirmed() : onDeclined?.()));
   }
 
   function handleClick(e) {
@@ -271,10 +287,11 @@ ${l.topTaw.toFixed(2)} → ${l.botTaw.toFixed(2)} m TAW · qc ${fmt(l.avgQc)} MP
     if (!btn || btn.disabled) return;
     const act = btn.dataset.act;
     if (act === 'run') {
-      if (!confirmRerun()) return;
-      store.run();
-      render();
-      actions.onChanged();
+      confirmRerun(() => {
+        store.run();
+        render();
+        actions.onChanged();
+      });
     } else if (act === 'export-csv') actions.export('csv');
     else if (act === 'export-plaxis') actions.export('plaxis');
     else if (act === 'export-dxf') actions.export('dxf');
@@ -288,11 +305,15 @@ ${l.topTaw.toFixed(2)} → ${l.botTaw.toFixed(2)} m TAW · qc ${fmt(l.avgQc)} MP
       const key = t.dataset.setting;
       store.setSetting(key, t.value);
       if (key === 'minMatch') {
-        if (!confirmRerun()) {
-          render();
-          return;
-        }
-        store.run();
+        confirmRerun(
+          () => {
+            store.run();
+            render();
+            actions.onChanged();
+          },
+          () => render()          // the setting is kept, the correlation is not re-run
+        );
+        return;
       }
       render();
       actions.onChanged();
