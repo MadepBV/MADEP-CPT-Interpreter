@@ -857,10 +857,14 @@ oldDump.steps.forEach((o, i) => {
   check(`${p}: exception identical (${errorMessage(o.error) || 'none'})`, errorMessage(o.error) === errorMessage(n.error), `${errorMessage(o.error)} → ${errorMessage(n.error)}`);
   if (RUNNING_FIX_STEP.test(o.label)) {
     // The one intended behaviour change: the run flag, and nothing else.
+    // Against a base that predates the fix this differs by exactly the run flag; against a base that
+    // already carries it (integration-r since e29e01a) the two trees are identical. Both are correct;
+    // anything else is a regression.
     const path = RUNNING_FIX_PATH[o.label.split(' ')[1]];
     const diffs = allDiffs(o.bishop, n.bishop);
-    check(`${p}: differs from the base ONLY by clearing ${path} (the PR 18c commit 2 fix)`,
-      diffs.length === 1 && diffs[0] === `${path}: true → false`, j(diffs));
+    const onlyTheFlag = diffs.length === 1 && diffs[0] === `${path}: true → false`;
+    check(`${p}: differs from the base only by clearing ${path}, or the base already carries the fix`,
+      onlyTheFlag || diffs.length === 0, j(diffs));
   } else {
     check(`${p}: S.stage6.bishop deep-equal + key order`, o.bishop === n.bishop, firstDiff(o.bishop, n.bishop));
   }
@@ -938,8 +942,10 @@ for (const kind of ['search', 'seepage', 'deformation']) {
   check(`${kind}: the scenario really had a run in flight and produced the same rejection in both trees`,
     o.launched === true && n.launched === true && o.message === n.message && o.message !== '' && (o.status ?? null) === (n.status ?? null),
     `${j(o)} → ${j(n)}`);
-  check(`${kind}: the base leaves progress.running = true after the rejection (the defect) and the working tree clears it`,
-    o.afterReject === true && n.afterReject === false, `base ${o.afterReject} → tree ${n.afterReject}`);
+  // The working tree must always clear the flag; the base only shows the defect while `--base`
+  // predates e29e01a (run with --base f5b4a9b for the historical proof).
+  check(`${kind}: the working tree clears progress.running after the rejection`, n.afterReject === false, `tree ${n.afterReject}`);
+  if (o.afterReject === false) console.log(`       base already contains the PR 18c fix — historical proof: run with --base f5b4a9b`);
 }
 
 // ── (e) terminate on CPT switch — PLAN §4 defect 2 (fixed in PR 14, must still hold)

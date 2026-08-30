@@ -66,14 +66,14 @@ Status: ☐ planned · ◐ in progress · ☑ merged. Sizes are the reports' est
 | 13 | `style(stage6 shell + apps)` | D 2d (shell parts), 2e | `.tabs--icon`, `.acc`, `.cols-3`, `.viz`, De Beer colours → `--viz-*`, nested blurs removed; done in the same PRs as 12 where the app's markup is touched | visual; blur count ≤ 5; frame budget ≥ 50 fps | ☑ db27c9c (Stage 6 shell + five apps; blur 14 → 4, 120 fps; Bishop canvas shell left for PR 19) |
 | 14 | `refactor(project, section, tuning)` | R step 8 | ~1,000 lines; `S` reassignment behind `setActive()`; `selectCpt` also terminates the deformation worker (bug fix commit) | `verify_project_io`, golden save-load journey | ☑ b2c3844 + fix 504abef (integration-r) |
 | 15 | `style(retaining): delete retaining-styles.js, use component classes` | D 2f | `.st6-rw-*` → `.card/.acc/.field/.tbl--dense/.verdict--hero/.tabs/.segmented/.pill/.viz`; charts read `vizTheme()` | visual; retaining e2e; rekennota print 0 px | ☑ 4d4054b (retaining-styles.js deleted; blur 2; also fixed the shared-probe bug in theme.ts) |
-| 16 | `style(dialogs, feedback)` | D 2g | `<dialog class="glass-sheet">` for import-review, `toast()` replaces the 20 `alert()`s, `.tip` helper | visual; e2e | ☐ |
+| 16 | `style(dialogs, feedback)` | D 2g | `<dialog class="glass-sheet">` for import-review, `toast()` replaces the 20 `alert()`s, `.tip` helper | visual; e2e | ☑ 0f6c81d (native <dialog> import review, toast queue, confirmDialog; 9 alerts converted, 13 blocking ones listed) |
 
 ### Milestone v0.8.0 — Seep/Slope (56 % of the file)
 
 | # | PR | Stream | Content | Gate | Status |
 |---|---|---|---|---|---|
 | 17 | golden tier A solver suites + seep-slope journey | H parts 5, 7 | bishop / seepage / deformation suites, `seep-slope-journey`, `multi-cpt-journey`, `save-load-journey` | green twice | ☑ 8d80778 (467 solver/config cases; seep-slope, multi-cpt, save-load journeys; total 2 086 Node + 5 journeys) |
-| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | 18a ☑ f15b3c2 (1 110 checks) · 18b ☑ 44deb8c + fix 75878b9 (1 301 checks; draw path no longer invalidates solved results) · 18c–g open |
+| 18a–g | `refactor(seepslope): …` | R step 9 | 9a state+ensure+migrations · 9b soil-model sync/invalidate (canvas draw stops mutating state) · 9c runs/workers return patches · 9d geometry + line probe · 9e canvas (viewport/snap/pointer, then `draw/*`) · 9f panels one `data-st6details` group at a time + tool rail (view-model for the 2,392-line `renderStage6BishopApp`) · 9g `report/capture.js` without app switching | golden bishop/seepage/deformation within 1e-6, iteration counts exact; journeys; frame budget | 18a ☑ f15b3c2 (1 110 checks) · 18b ☑ 44deb8c + fix 75878b9 (1 301 checks; draw path no longer invalidates solved results) · 18c ☑ dd4a6cb + fix e29e01a (1 255 checks) · 18d–g open |
 | 19 | `style(seepslope)` | D 2d (rest) | canvas shell `.glass-float`, legends/view menu `.glass-float.acc`, `.is-computing` de-blur | visual; blur count; fps | ☐ |
 
 ### Milestone v0.9.0 — composition root and Svelte ownership
@@ -127,3 +127,10 @@ v1.0.0 = 23 merged, `legacy-controller.js` gone, `legacy-leftovers.css` < 300 li
 - The soil-model sync converges on the third run, not the second (`normalizeWalls` one-shot prompt flag, `ensure` mesh-area drift, no-layers CPT re-importing) — monolith behaviour, pinned by goldens; behaviour commit later.
 - `dewatering.aquiferBaseDepth` string → `TypeError` on render (PLAN §4.5).
 - Christensen (1961) page range and the two Rekennota placeholders (SB250/SB260 version, PLAX2D sub-version) still to confirm.
+
+### Verifier convention (learned the hard way, PR 18b/18c)
+
+A verifier that asserts *"the base still reproduces defect X"* breaks the moment the fix lands on the
+base branch. Write the assertion as **"the working tree is correct, and the base either shows the defect
+or already carries the fix"**, and print which case was seen plus the `--base <sha>` that reproduces the
+historical proof. `verify_seepslope_model.mjs` and `verify_seepslope_run.mjs` follow this now.
