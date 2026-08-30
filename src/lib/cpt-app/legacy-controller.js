@@ -33,8 +33,8 @@ import {
   drainTotalLength,
   validateDrains
 } from './seepage/drains';
-import { contourSegmentsForTriangles, sampleSeepageFlowState, sampleSeepageHead, sampleSeepagePorePressure } from './seepage/solver';
-import { isSimplePolygon, normalizeRegionPolygon, polygonArea } from './soil-regions';
+import { contourSegmentsForTriangles } from './seepage/solver';
+import { normalizeRegionPolygon } from './soil-regions';
 import { sampleDeformationState } from './deformation/solver.js';
 import { wallResultIsStale } from './deformation/wall-result-staleness.js';
 import {
@@ -342,6 +342,59 @@ import {
   completeMessage as stage6BishopCompleteMessage,
   seepageCompleteMessage as stage6BishopSeepageCompleteMessage
 } from './seepslope/run/index.js';
+// Seep / Slope geometry package (refactor step 9d / PR 18d, src/lib/cpt-app/seepslope/geometry/):
+// the section maths — points and segments, polygons and their validators, boundary picking,
+// splitting and hole subtraction, the regions a canvas shows, the shared Measure tool's line.
+// Everything here is pure, so the monolith names are import aliases; the three that read `S`, the
+// viewport or the results region (TooltipHtml, DisplayRegions, PickRegionBoundaryPoint) are
+// façades in the geometry region below. The pointer / snapping / viewport handling that *uses*
+// them stays in the controller until step 9e.
+import {
+  dist as stage6BishopDist,
+  segmentOrientation as stage6BishopSegmentOrientation,
+  pointOnSegment as stage6BishopPointOnSegment,
+  segmentsIntersectClosed as stage6BishopSegmentsIntersectClosed,
+  closestPointOnSegment as stage6BishopClosestPointOnSegment,
+  uniqueSortedNumbers as stage6BishopUniqueSortedNumbers,
+  pointInPolygon as stage6BishopPointInPolygon,
+  pointInsideOrBoundary as stage6BishopPointInsideOrBoundary,
+  polygonCentroid as stage6BishopPolygonCentroid,
+  polygonIsValid as stage6BishopPolygonIsValid,
+  validateHolePolygon as stage6BishopValidateHolePolygon,
+  pickRegionBoundaryPoint as seepslopePickRegionBoundaryPoint,
+  traverseBoundary as stage6BishopTraverseBoundary,
+  buildSplitBoundary as stage6BishopBuildSplitBoundary,
+  boundaryYAtX as stage6BishopBoundaryYAtX,
+  polygonIntervalsDetailed as stage6BishopPolygonIntervalsDetailed,
+  subtractDetailedIntervals as stage6BishopSubtractDetailedIntervals,
+  subtractHoleFromPolygon as stage6BishopSubtractHoleFromPolygon,
+  splitRegionPolygon as stage6BishopSplitRegionPolygon,
+  displayRegions as seepslopeDisplayRegions,
+  showingCustomRegionPreview as stage6BishopShowingCustomRegionPreview,
+  regionAtPoint as stage6BishopRegionAtPoint,
+  regionTooltipHtml as seepslopeRegionTooltipHtml,
+  regionShortLabel as stage6BishopRegionShortLabel,
+  regionLegendItems as stage6BishopRegionLegendItems,
+  measurementMetrics as stage6BishopMeasurementMetrics,
+  measurementLabel as stage6BishopMeasurementLabel,
+  measurementVectors as stage6BishopMeasurementVectors
+} from './seepslope/geometry/index.js';
+// Seep / Slope line probe (refactor step 9d / PR 18d, src/lib/cpt-app/seepslope/probe/): the
+// quantity catalogue per workspace, the sampler along the Measure tool's line, and the clipboard
+// readout. `lineProbeOptions` / `lineProbeMeta` / `buildLineProbe` take the host `env` of
+// SEEPSLOPE_PROBE_ENV (the HS UI flag and the two contour catalogues that are not extracted yet),
+// so they are façades below; the formatters and the clipboard text are pure.
+import {
+  lineProbeOptions as seepslopeLineProbeOptions,
+  lineProbeMeta as seepslopeLineProbeMeta,
+  lineProbeFormatValue as stage6BishopLineProbeFormatValue,
+  clipboardNumber as stage6ClipboardNumber,
+  lineProbeClipboardValueHeader as stage6BishopLineProbeClipboardValueHeader,
+  lineProbeClipboardText as stage6BishopLineProbeClipboardText,
+  lineProbeStats as stage6BishopLineProbeStats,
+  integrateLineProbe as stage6BishopIntegrateLineProbe,
+  buildLineProbe as seepslopeBuildLineProbe
+} from './seepslope/probe/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -5160,234 +5213,43 @@ function stage6BishopCanvasToolRailHtml(context){
   `;
 }
 
-function stage6BishopDist(a, b){
-  return Math.hypot((Number(a?.x) || 0) - (Number(b?.x) || 0), (Number(a?.y) || 0) - (Number(b?.y) || 0));
-}
+// ─────────────────── seepslope/geometry + seepslope/probe façades (step 9d) ───────────────────
+// PR 18d moved the section geometry (points and segments, polygons and their validators, boundary
+// picking / splitting / hole subtraction, the regions a canvas shows, the shared Measure tool's
+// line) and the line probe into src/lib/cpt-app/seepslope/geometry/** and seepslope/probe/**.
+// Every monolith name survives: the 29 pure ones as import aliases in the block at the top of this
+// file, the six below as façades, because they read `S`, the canvas viewport, or a catalogue of a
+// region that is not extracted yet (the deformation and seepage contour metas, map §2.11).
+// Staying here on purpose: stage6CopyTextFallback / stage6CopyTextToClipboard (browser clipboard
+// APIs), stage6BishopCopyLineProbeData (a handler: state + render) and
+// stage6BishopBoundaryPickToleranceWorld (the canvas viewport — step 9e).
 
-function stage6BishopPointInPolygon(point, polygon){
-  let inside = false;
-  for(let i=0, j=polygon.length-1; i<polygon.length; j=i, i+=1){
-    const xi = polygon[i].x;
-    const yi = polygon[i].y;
-    const xj = polygon[j].x;
-    const yj = polygon[j].y;
-    const intersect = ((yi > point.y) !== (yj > point.y))
-      && (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 1e-12) + xi);
-    if(intersect) inside = !inside;
-  }
-  return inside;
-}
+/** The host values seepslope/probe cannot own yet; see seepslope/probe/index.js for the contract. */
+const SEEPSLOPE_PROBE_ENV = {
+  hardeningSoilUi:STAGE6_ENABLE_HARDENING_SOIL_UI,
+  normalizedDeformationAnalysisType:(analysisType = null)=>stage6BishopNormalizedDeformationAnalysisType(analysisType),
+  deformationContourOptions:(analysisType, hasHs)=>stage6BishopDeformationContourOptions(analysisType, hasHs),
+  deformationContourMeta:(id, analysisType)=>stage6BishopDeformationContourMeta(id, analysisType),
+  seepageHydraulicFs:(gradientMagnitude, material)=>stage6BishopSeepageHydraulicFs(gradientMagnitude, material)
+};
 
-function stage6BishopRegionAtPoint(model, point){
-  if(!model?.regions?.length) return null;
-  for(let i=model.regions.length-1;i>=0;i-=1){
-    const region = model.regions[i];
-    if(region.polygon?.length >= 3 && stage6BishopPointInPolygon(point, region.polygon)) return region;
-  }
-  return null;
-}
-
+// The region hover card: the material's own strength set, or the workspace's, formatted by
+// stage6BishopStrengthSetLabel (results region, step 9f). `strengthSet` is passed as a function so
+// the package reads `S` exactly where the monolith did — only for a material without a
+// `sourceStrengthSet`, and never for a region without a material.
 function stage6BishopTooltipHtml(region){
-  if(!region?.material) return '';
-  const mat = region.material;
-  const setLabel = stage6BishopStrengthSetLabel(mat.sourceStrengthSet || S.stage6.bishop.strengthSet);
-  return `
-    <strong>${mat.label}</strong>
-    <div class="mut">${mat.sourceType || 'Soil'}${mat.sourceSubtype ? ` · ${mat.sourceSubtype}` : ''}</div>
-    <div class="row"><span>Strength set</span><span>${setLabel}</span></div>
-    <div class="row"><span>c'</span><span>${Number(mat.cEff || 0).toFixed(1)} kPa</span></div>
-    <div class="row"><span>phi'</span><span>${Number(mat.phiEffDeg || 0).toFixed(1)}°</span></div>
-    <div class="row"><span>gamma</span><span>${Number(mat.gamma || 0).toFixed(2)} kN/m³</span></div>
-    <div class="row"><span>gamma_sat</span><span>${Number(mat.gammaSat || 0).toFixed(2)} kN/m³</span></div>
-  `;
-}
-
-function stage6BishopRegionShortLabel(region){
-  const label = String(region?.material?.label || region?.material?.id || 'Region').trim();
-  const base = label.includes(' - ') ? label.split(' - ')[0] : label;
-  return base.length > 18 ? `${base.slice(0, 17)}…` : base;
-}
-
-function stage6BishopPolygonCentroid(polygon){
-  if(!polygon?.length) return null;
-  let twiceArea = 0;
-  let cx = 0;
-  let cy = 0;
-  for(let i=0;i<polygon.length;i+=1){
-    const a = polygon[i];
-    const b = polygon[(i+1)%polygon.length];
-    const cross = a.x * b.y - b.x * a.y;
-    twiceArea += cross;
-    cx += (a.x + b.x) * cross;
-    cy += (a.y + b.y) * cross;
-  }
-  if(Math.abs(twiceArea) < 1e-9){
-    const avg = polygon.reduce((acc, pt)=>{
-      acc.x += pt.x;
-      acc.y += pt.y;
-      return acc;
-    }, {x:0, y:0});
-    return {
-      x:avg.x / polygon.length,
-      y:avg.y / polygon.length
-    };
-  }
-  return {
-    x:cx / (3 * twiceArea),
-    y:cy / (3 * twiceArea)
-  };
-}
-
-function stage6BishopRegionLegendItems(model){
-  if(!model?.regions?.length) return [];
-  const items = new Map();
-  model.regions.forEach((region)=>{
-    const mat = region.material || {};
-    const key = mat.id || region.id;
-    const item = items.get(key) || {
-      id:key,
-      label:mat.label || key,
-      color:mat.color || '#c9b089',
-      count:0,
-      sourceType:mat.sourceType || 'Soil'
-    };
-    item.count += 1;
-    items.set(key, item);
+  return seepslopeRegionTooltipHtml(region, {
+    strengthSet:()=>S.stage6.bishop.strengthSet,
+    strengthSetLabel:stage6BishopStrengthSetLabel
   });
-  return [...items.values()];
-}
-
-function stage6BishopMeasurementMetrics(points){
-  const clean = (points || [])
-    .filter((pt)=>Number.isFinite(pt?.x) && Number.isFinite(pt?.y))
-    .slice(0, 2);
-  if(clean.length < 2) return null;
-  const [a, b] = clean;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  return {
-    a,
-    b,
-    dx,
-    dy,
-    length:Math.hypot(dx, dy),
-    mid:{
-      x:0.5 * (a.x + b.x),
-      y:0.5 * (a.y + b.y)
-    }
-  };
-}
-
-function stage6BishopMeasurementLabel(metrics){
-  if(!metrics) return 'Measure not set';
-  return `L=${metrics.length.toFixed(2)} m · dx=${metrics.dx.toFixed(2)} m · dy=${metrics.dy.toFixed(2)} m`;
 }
 
 function stage6BishopLineProbeOptions(workspace, analysisType = null, hasHs = false){
-  const chartBlue = readCssToken('--chart-blue', '#4F8584');
-  const chartGreen = readCssToken('--chart-green', '#3D6B6A');
-  const chartOrange = readCssToken('--chart-orange', '#8A620D');
-  const chartRed = readCssToken('--chart-red', '#9B3A32');
-  const chartPurple = readCssToken('--chart-purple', '#18181A');
-  if(workspace === 'seepage'){
-    return [
-      {id:'head', label:'h', axisTitle:'Head h (m)', unit:'m', color:chartBlue, digits:3},
-      {id:'porePressure', label:'u', axisTitle:'Pore pressure u (kPa)', unit:'kPa', color:chartBlue, digits:3},
-      {id:'gradient', label:'|∇h|', axisTitle:'Hydraulic gradient |∇h| (-)', unit:'', color:chartGreen, digits:3},
-      {id:'hydraulicFs', label:'FSᵢ', axisTitle:'Hydraulic safety factor FSᵢ = iᶜʳⁱᵗ / |∇h| (-)', unit:'', color:chartGreen, digits:2},
-      {id:'flow', label:'|q|', axisTitle:'Specific discharge |q| (m/s)', unit:'m/s', color:readCssToken('--wn', '#BA7517'), digits:3},
-      {id:'qx', label:'qₓ', axisTitle:'Specific discharge qₓ (m/s)', unit:'m/s', color:chartOrange, digits:3},
-      {id:'qy', label:'qᵧ', axisTitle:'Specific discharge qᵧ (m/s)', unit:'m/s', color:chartPurple, digits:3},
-      {id:'normalFlow', label:'qₙ', axisTitle:'Normal discharge qₙ (m/s)', unit:'m/s', color:chartRed, digits:3}
-    ];
-  }
-  if(workspace === 'deformation'){
-    const normalizedAnalysisType = stage6BishopNormalizedDeformationAnalysisType(analysisType);
-    const colorById = {
-      settlement:chartOrange,
-      ux:chartBlue,
-      uy:chartPurple,
-      uTotal:chartRed,
-      epsilonXx:chartGreen,
-      epsilonYy:chartGreen,
-      gammaXy:chartBlue,
-      equivalentPlasticStrain:chartPurple,
-      safetyEquivalentPlasticIncrement:chartPurple,
-      deltaSigmaYy:readCssToken('--wn', '#BA7517'),
-      sigmaYyEffInit:readCssToken('--wn', '#BA7517'),
-      sigmaYyEff:chartOrange,
-      sigmaYyTotalInit:chartOrange,
-      sigmaYyTotal:chartRed,
-      sigmaXxEffInit:chartBlue,
-      sigmaXxEff:chartBlue,
-      sigmaXxTotalInit:chartBlue,
-      sigmaXxTotal:chartBlue,
-      tauXy:chartPurple,
-      mcEta:chartRed,
-      hsGammaP:chartGreen,
-      hsPP:chartOrange,
-      hsEpsVPDilative:chartPurple,
-      hsLastActiveSet:chartRed
-    };
-    return stage6BishopDeformationContourOptions(normalizedAnalysisType, hasHs === true).map(({id, label})=>{
-      const meta = stage6BishopDeformationContourMeta(id, normalizedAnalysisType);
-      return {
-        id,
-        label,
-        axisTitle:meta.axisTitle || `${label}${meta.unit ? ` (${meta.unit})` : ''}`,
-        unit:meta.unit || '',
-        color:colorById[id] || chartBlue,
-        digits:meta.digits || 3
-      };
-    });
-  }
-  return [];
+  return seepslopeLineProbeOptions(workspace, analysisType, hasHs, SEEPSLOPE_PROBE_ENV);
 }
 
 function stage6BishopLineProbeMeta(workspace, quantity, analysisType = null, hasHs = false){
-  const options = stage6BishopLineProbeOptions(workspace, analysisType, hasHs === true);
-  return options.find((item)=>item.id === quantity) || options[0] || null;
-}
-
-function stage6BishopLineProbeFormatValue(meta, value){
-  if(!Number.isFinite(value)) return '—';
-  const suffix = meta?.unit ? ` ${meta.unit}` : '';
-  return `${stage6CompactNumber(value, meta?.digits || 3)}${suffix}`;
-}
-
-function stage6ClipboardNumber(value){
-  const n = Number(value);
-  if(!Number.isFinite(n)) return '';
-  const abs = Math.abs(n);
-  if(abs === 0) return '0';
-  if(abs < 1e-6 || abs >= 1e6) return n.toExponential(10);
-  return n.toFixed(10).replace(/\.?0+$/, '');
-}
-
-function stage6BishopLineProbeClipboardValueHeader(lineProbe){
-  const quantity = lineProbe?.quantity || lineProbe?.meta?.label || 'value';
-  const unit = lineProbe?.meta?.unit || '';
-  const slug = String(quantity)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '') || 'value';
-  const unitSlug = String(unit)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-  return unitSlug ? `${slug}_${unitSlug}` : slug;
-}
-
-function stage6BishopLineProbeClipboardText(lineProbe){
-  if(!lineProbe || lineProbe.status !== 'ready') return '';
-  const valueHeader = stage6BishopLineProbeClipboardValueHeader(lineProbe);
-  const rows = [
-    `distance_along_line_m\t${valueHeader}`
-  ];
-  (lineProbe.samples || []).forEach((sample)=>{
-    rows.push(`${stage6ClipboardNumber(sample?.s)}\t${stage6ClipboardNumber(sample?.value)}`);
-  });
-  return rows.join('\n');
+  return seepslopeLineProbeMeta(workspace, quantity, analysisType, hasHs, SEEPSLOPE_PROBE_ENV);
 }
 
 function stage6CopyTextFallback(text){
@@ -5426,198 +5288,8 @@ async function stage6CopyTextToClipboard(text){
   return stage6CopyTextFallback(text);
 }
 
-function stage6BishopMeasurementVectors(metrics){
-  const length = Math.max(metrics?.length || 0, 1e-9);
-  return {
-    tx:(metrics?.dx || 0) / length,
-    ty:(metrics?.dy || 0) / length,
-    nx:-(metrics?.dy || 0) / length,
-    ny:(metrics?.dx || 0) / length
-  };
-}
-
-function stage6BishopLineProbeStats(samples){
-  const values = (samples || []).map((item)=>item?.value).filter(Number.isFinite);
-  if(!values.length){
-    return {
-      min:null,
-      max:null,
-      mean:null,
-      validCount:0
-    };
-  }
-  const sum = values.reduce((acc, value)=>acc + value, 0);
-  return {
-    min:Math.min(...values),
-    max:Math.max(...values),
-    mean:sum / values.length,
-    validCount:values.length
-  };
-}
-
-function stage6BishopIntegrateLineProbe(samples, absolute){
-  let total = 0;
-  const items = (samples || []).filter((item)=>Number.isFinite(item?.s));
-  for(let i=1;i<items.length;i+=1){
-    const prev = items[i-1];
-    const next = items[i];
-    if(!(Number.isFinite(prev?.value) && Number.isFinite(next?.value))) continue;
-    const ds = next.s - prev.s;
-    if(!(ds > 0)) continue;
-    const v0 = absolute ? Math.abs(prev.value) : prev.value;
-    const v1 = absolute ? Math.abs(next.value) : next.value;
-    total += 0.5 * (v0 + v1) * ds;
-  }
-  return total;
-}
-
 function stage6BishopBuildLineProbe(workspace, measurementMetrics){
-  const bishop = S?.stage6?.bishop;
-  const quantity = workspace === 'seepage'
-    ? (bishop?.lineProbe?.seepageQuantity || 'head')
-    : (bishop?.lineProbe?.deformationQuantity || 'uTotal');
-  const analysisType = workspace === 'deformation'
-    ? stage6BishopNormalizedDeformationAnalysisType()
-    : null;
-  const hasHs = workspace === 'deformation' && STAGE6_ENABLE_HARDENING_SOIL_UI && bishop?.deformation?.result?.hasHardeningSoil === true;
-  const meta = stage6BishopLineProbeMeta(workspace, quantity, analysisType, hasHs);
-  if(workspace !== 'seepage' && workspace !== 'deformation'){
-    return {
-      workspace,
-      quantity,
-      meta,
-      status:'unsupported',
-      message:'Line plots are currently available in the seepage and deformation workspaces.'
-    };
-  }
-  if(!measurementMetrics || !(measurementMetrics.length > 1e-9)){
-    return {
-      workspace,
-      quantity,
-      meta,
-      status:'missing-measurement',
-      message:'Use the shared Measure tool to draw a probe line on the canvas first.'
-    };
-  }
-  if(workspace === 'seepage' && !(bishop?.seepage?.mesh && bishop?.seepage?.result)){
-    return {
-      workspace,
-      quantity,
-      meta,
-      status:'missing-result',
-      message:'Run seepage first, then the measured line can plot heads, gradients, and discharge quantities.'
-    };
-  }
-  if(workspace === 'deformation' && !(bishop?.deformation?.mesh && bishop?.deformation?.result)){
-    return {
-      workspace,
-      quantity,
-      meta,
-      status:'missing-result',
-      message:'Run deformation first, then the measured line can plot displacement and MC screening quantities.'
-    };
-  }
-  const sampleCount = Math.min(Math.max(Math.round(+bishop?.lineProbe?.sampleCount || 81), 21), 201);
-  const vectors = stage6BishopMeasurementVectors(measurementMetrics);
-  const samples = [];
-  for(let i=0;i<sampleCount;i+=1){
-    const t = sampleCount <= 1 ? 0 : i / (sampleCount - 1);
-    const x = measurementMetrics.a.x + t * measurementMetrics.dx;
-    const y = measurementMetrics.a.y + t * measurementMetrics.dy;
-    const s = t * measurementMetrics.length;
-    let value = null;
-    if(workspace === 'seepage'){
-      if(quantity === 'head'){
-        value = sampleSeepageHead(bishop.seepage.mesh, bishop.seepage.result, x, y);
-      } else if(quantity === 'porePressure'){
-        value = sampleSeepagePorePressure(bishop.seepage.mesh, bishop.seepage.result, x, y, 9.81);
-      } else {
-        const flowState = sampleSeepageFlowState(bishop.seepage.mesh, bishop.seepage.result, x, y);
-        if(flowState){
-          if(quantity === 'gradient'){
-            value = Math.hypot(flowState.dhdx || 0, flowState.dhdy || 0);
-          } else if(quantity === 'hydraulicFs'){
-            const cell = bishop.seepage.mesh?.cells?.[flowState.cellIndex];
-            value = stage6BishopSeepageHydraulicFs(
-              Math.hypot(flowState.dhdx || 0, flowState.dhdy || 0),
-              cell?.material
-            );
-          } else if(quantity === 'flow'){
-            value = Math.hypot(flowState.qx || 0, flowState.qy || 0);
-          } else if(quantity === 'qx'){
-            value = flowState.qx || 0;
-          } else if(quantity === 'qy'){
-            value = flowState.qy || 0;
-          } else if(quantity === 'normalFlow'){
-            value = (flowState.qx || 0) * vectors.nx + (flowState.qy || 0) * vectors.ny;
-          }
-        }
-      }
-    } else if(workspace === 'deformation'){
-      const state = sampleDeformationState(bishop.deformation.mesh, bishop.deformation.result, x, y);
-      if(state){
-        if(quantity === 'ux') value = 1000 * (state.ux || 0);
-        else if(quantity === 'uy') value = 1000 * (state.uy || 0);
-        else if(quantity === 'uTotal') value = 1000 * (state.uTotal || 0);
-        else if(quantity === 'epsilonXx') value = 100 * (state.epsilonXx || 0);
-        else if(quantity === 'epsilonYy') value = 100 * (state.epsilonYy || 0);
-        else if(quantity === 'gammaXy') value = 100 * (state.gammaXy || 0);
-        else if(quantity === 'equivalentPlasticStrain') value = 100 * (state.equivalentPlasticStrain || 0);
-        else if(quantity === 'safetyEquivalentPlasticIncrement') value = 100 * (state.safetyEquivalentPlasticIncrement || 0);
-        else if(quantity === 'deltaSigmaYy') value = state.deltaSigmaYy;
-        else if(quantity === 'sigmaYyEffInit') value = state.sigmaYyEffInit;
-        else if(quantity === 'sigmaYyEff') value = state.sigmaYyEff;
-        else if(quantity === 'sigmaYyTotalInit') value = state.sigmaYyTotalInit;
-        else if(quantity === 'sigmaYyTotal') value = state.sigmaYyTotal;
-        else if(quantity === 'sigmaXxEffInit') value = state.sigmaXxEffInit;
-        else if(quantity === 'sigmaXxEff') value = state.sigmaXxEff;
-        else if(quantity === 'sigmaXxTotalInit') value = state.sigmaXxTotalInit;
-        else if(quantity === 'sigmaXxTotal') value = state.sigmaXxTotal;
-        else if(quantity === 'tauXy') value = state.tauXy;
-        else if(quantity === 'mcEta') value = state.mcEta;
-        else value = 1000 * (state.settlement || 0);
-      }
-    }
-    samples.push({
-      index:i,
-      x,
-      y,
-      s,
-      value:Number.isFinite(value) ? value : null
-    });
-  }
-  const stats = stage6BishopLineProbeStats(samples);
-  if(!stats.validCount){
-    return {
-      workspace,
-      quantity,
-      meta,
-      measurement:measurementMetrics,
-      samples,
-      chartPoints:samples.map((item)=>({x:item.s, y:item.value})),
-      stats,
-      status:'no-valid-samples',
-      message:'The current measurement line does not intersect the solved field inside the section domain.'
-    };
-  }
-  const coverage = stats.validCount / sampleCount;
-  return {
-    workspace,
-    quantity,
-    meta,
-    measurement:measurementMetrics,
-    samples,
-    chartPoints:samples.map((item)=>({x:item.s, y:item.value})),
-    stats,
-    status:'ready',
-    coverage,
-    sampleCount,
-    message:coverage < 0.999
-      ? 'Part of the measurement line lies outside the solved domain, so the graph includes gaps where no field value exists.'
-      : '',
-    netCrossFlow:workspace === 'seepage' && quantity === 'normalFlow' ? stage6BishopIntegrateLineProbe(samples, false) : null,
-    absCrossFlow:workspace === 'seepage' && quantity === 'normalFlow' ? stage6BishopIntegrateLineProbe(samples, true) : null
-  };
+  return seepslopeBuildLineProbe(S?.stage6?.bishop, workspace, measurementMetrics, SEEPSLOPE_PROBE_ENV);
 }
 
 async function stage6BishopCopyLineProbeData(){
@@ -5644,368 +5316,17 @@ async function stage6BishopCopyLineProbeData(){
 }
 
 function stage6BishopDisplayRegions(model){
-  const bishop = S?.stage6?.bishop;
-  if(!model || !bishop) return [];
-  const customRegions = model.customRegions || [];
-  if(customRegions.length) return customRegions;
-  return model.regions || [];
-}
-
-function stage6BishopShowingCustomRegionPreview(model){
-  return !!(model?.customRegions?.length) && model.regionMode !== 'custom';
-}
-
-function stage6BishopPolygonIsValid(polygon){
-  return Array.isArray(polygon) && polygon.length >= 3 && polygonArea(polygon) > 1e-4 && isSimplePolygon(polygon);
-}
-
-function stage6BishopSegmentOrientation(a, b, c){
-  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-}
-
-function stage6BishopSegmentsIntersectClosed(a, b, c, d, tol = 1e-6){
-  const o1 = stage6BishopSegmentOrientation(a, b, c);
-  const o2 = stage6BishopSegmentOrientation(a, b, d);
-  const o3 = stage6BishopSegmentOrientation(c, d, a);
-  const o4 = stage6BishopSegmentOrientation(c, d, b);
-
-  if(Math.abs(o1) <= tol && stage6BishopPointOnSegment(c, a, b, tol)) return true;
-  if(Math.abs(o2) <= tol && stage6BishopPointOnSegment(d, a, b, tol)) return true;
-  if(Math.abs(o3) <= tol && stage6BishopPointOnSegment(a, c, d, tol)) return true;
-  if(Math.abs(o4) <= tol && stage6BishopPointOnSegment(b, c, d, tol)) return true;
-
-  return (
-    ((o1 > tol && o2 < -tol) || (o1 < -tol && o2 > tol)) &&
-    ((o3 > tol && o4 < -tol) || (o3 < -tol && o4 > tol))
-  );
-}
-
-function stage6BishopValidateHolePolygon(parentRegion, polygon){
-  const parentPolygon = parentRegion?.polygon || [];
-  const holePolygon = normalizeRegionPolygon(polygon || []);
-  if(parentPolygon.length < 3) return {ok:false, message:'Select a valid custom polygon before cutting a hole.'};
-  if(holePolygon.length < 3 || !(polygonArea(holePolygon) > 1e-4)){
-    return {ok:false, message:'Draw at least three distinct points for the hole polygon.'};
-  }
-  if(!isSimplePolygon(holePolygon)){
-    return {ok:false, message:'Hole polygons must be simple non-self-intersecting closed shapes.'};
-  }
-  if(holePolygon.some((pt)=>parentPolygon.some((_, index)=>stage6BishopPointOnSegment(pt, parentPolygon[index], parentPolygon[(index + 1) % parentPolygon.length], 1e-6)))){
-    return {ok:false, message:'The hole polygon must stay strictly inside the selected custom polygon.'};
-  }
-  if(holePolygon.some((pt)=>!stage6BishopPointInPolygon(pt, parentPolygon))){
-    return {ok:false, message:'The hole polygon must stay strictly inside the selected custom polygon.'};
-  }
-  for(let i=0;i<holePolygon.length;i+=1){
-    const a = holePolygon[i];
-    const b = holePolygon[(i + 1) % holePolygon.length];
-    for(let j=0;j<parentPolygon.length;j+=1){
-      const c = parentPolygon[j];
-      const d = parentPolygon[(j + 1) % parentPolygon.length];
-      if(stage6BishopSegmentsIntersectClosed(a, b, c, d)){
-        return {ok:false, message:'The hole polygon must stay strictly inside the selected custom polygon.'};
-      }
-    }
-  }
-  return {ok:true, polygon:holePolygon};
-}
-
-function stage6BishopPointOnSegment(point, a, b, tol = 1e-6){
-  const apx = point.x - a.x;
-  const apy = point.y - a.y;
-  const abx = b.x - a.x;
-  const aby = b.y - a.y;
-  const len2 = abx*abx + aby*aby;
-  if(len2 <= 1e-12) return stage6BishopDist(point, a) <= tol;
-  const cross = Math.abs(apx*aby - apy*abx);
-  if(cross > tol * Math.max(1, Math.sqrt(len2))) return false;
-  const dot = apx*abx + apy*aby;
-  return dot >= -tol && dot <= len2 + tol;
-}
-
-function stage6BishopPointInsideOrBoundary(point, polygon){
-  if(stage6BishopPointInPolygon(point, polygon)) return true;
-  for(let i=0;i<polygon.length;i+=1){
-    const a = polygon[i];
-    const b = polygon[(i+1)%polygon.length];
-    if(stage6BishopPointOnSegment(point, a, b, 1e-4)) return true;
-  }
-  return false;
-}
-
-function stage6BishopClosestPointOnSegment(point, a, b){
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len2 = dx*dx + dy*dy;
-  const t = len2 > 1e-12 ? Math.min(Math.max(((point.x - a.x)*dx + (point.y - a.y)*dy) / len2, 0), 1) : 0;
-  return {
-    point:stage6BishopClampRegionPoint({x:a.x + dx*t, y:a.y + dy*t}),
-    t,
-    distance:Math.hypot(point.x - (a.x + dx*t), point.y - (a.y + dy*t))
-  };
+  return seepslopeDisplayRegions(model, S?.stage6?.bishop);
 }
 
 function stage6BishopBoundaryPickToleranceWorld(){
   return stage6BishopSnapToleranceWorld();
 }
 
+// The tolerance is handed over as a function, so the package reads the viewport at the very
+// statement the monolith read it: after the nearest-edge loop, and only when an edge was found.
 function stage6BishopPickRegionBoundaryPoint(region, world){
-  const polygon = region?.polygon || [];
-  if(polygon.length < 3) return null;
-  let best = null;
-  for(let i=0;i<polygon.length;i+=1){
-    const a = polygon[i];
-    const b = polygon[(i+1)%polygon.length];
-    const projected = stage6BishopClosestPointOnSegment(world, a, b);
-    if(!best || projected.distance < best.distance){
-      best = {
-        ...projected,
-        edgeIndex:i
-      };
-    }
-  }
-  if(!best || best.distance > stage6BishopBoundaryPickToleranceWorld()) return null;
-  const polygonLength = polygon.length;
-  const nearVertexTol = 1e-3;
-  if(best.t <= nearVertexTol){
-    return {
-      x:stage6BishopRoundRegionCoord(polygon[best.edgeIndex].x),
-      y:stage6BishopRoundRegionCoord(polygon[best.edgeIndex].y),
-      edgeIndex:best.edgeIndex,
-      vertexIndex:best.edgeIndex,
-      t:0
-    };
-  }
-  if(best.t >= 1 - nearVertexTol){
-    const vertexIndex = (best.edgeIndex + 1) % polygonLength;
-    return {
-      x:stage6BishopRoundRegionCoord(polygon[vertexIndex].x),
-      y:stage6BishopRoundRegionCoord(polygon[vertexIndex].y),
-      edgeIndex:best.edgeIndex,
-      vertexIndex,
-      t:1
-    };
-  }
-  return {
-    x:best.point.x,
-    y:best.point.y,
-    edgeIndex:best.edgeIndex,
-    vertexIndex:null,
-    t:best.t
-  };
-}
-
-function stage6BishopTraverseBoundary(boundary, startIndex, endIndex){
-  const out = [];
-  let index = startIndex;
-  while(true){
-    out.push(stage6BishopClampRegionPoint(boundary[index]));
-    if(index === endIndex) break;
-    index = (index + 1) % boundary.length;
-    if(out.length > boundary.length + 2) return [];
-  }
-  return out;
-}
-
-function stage6BishopBuildSplitBoundary(polygon, cuts){
-  const insertionsByEdge = new Map();
-  const cutNamesByVertex = new Map();
-  cuts.forEach((cut)=>{
-    if(Number.isInteger(cut.vertexIndex)){
-      const names = cutNamesByVertex.get(cut.vertexIndex) || [];
-      names.push(cut.name);
-      cutNamesByVertex.set(cut.vertexIndex, names);
-      return;
-    }
-    const insertions = insertionsByEdge.get(cut.edgeIndex) || [];
-    insertions.push(cut);
-    insertionsByEdge.set(cut.edgeIndex, insertions);
-  });
-  const boundary = [];
-  const cutIndices = {};
-  for(let i=0;i<polygon.length;i+=1){
-    boundary.push(stage6BishopClampRegionPoint(polygon[i]));
-    (cutNamesByVertex.get(i) || []).forEach((name)=>{
-      cutIndices[name] = boundary.length - 1;
-    });
-    const insertions = (insertionsByEdge.get(i) || []).slice().sort((a, b)=>a.t - b.t);
-    insertions.forEach((cut)=>{
-      const pt = stage6BishopClampRegionPoint(cut);
-      if(stage6BishopDist(boundary[boundary.length - 1], pt) > 1e-6){
-        boundary.push(pt);
-      }
-      cutIndices[cut.name] = boundary.length - 1;
-    });
-  }
-  return {boundary, cutIndices};
-}
-
-function stage6BishopUniqueSortedNumbers(values, tol = 1e-6){
-  const sorted = [...values].filter((value)=>Number.isFinite(value)).sort((a, b)=>a - b);
-  const out = [];
-  sorted.forEach((value)=>{
-    if(!out.length || Math.abs(value - out[out.length - 1]) > tol) out.push(value);
-  });
-  return out;
-}
-
-function stage6BishopBoundaryYAtX(boundary, x){
-  const polygon = boundary?.polygon || [];
-  const a = polygon?.[boundary?.edgeIndex];
-  const b = polygon?.[(boundary?.edgeIndex + 1) % polygon.length];
-  if(!a || !b) return NaN;
-  if(Math.abs((b.x - a.x) || 0) <= 1e-9) return +a.y.toFixed(6);
-  return +(a.y + ((x - a.x) * (b.y - a.y)) / (b.x - a.x)).toFixed(6);
-}
-
-function stage6BishopPolygonIntervalsDetailed(polygon, x){
-  const pts = normalizeRegionPolygon(polygon || []);
-  if(pts.length < 3) return [];
-  const hits = [];
-  for(let i=0;i<pts.length;i+=1){
-    const a = pts[i];
-    const b = pts[(i + 1) % pts.length];
-    const dx = b.x - a.x;
-    const minX = Math.min(a.x, b.x);
-    const maxX = Math.max(a.x, b.x);
-    if(Math.abs(dx) <= 1e-9) continue;
-    if(x <= minX + 1e-9 || x >= maxX - 1e-9) continue;
-    const t = (x - a.x) / dx;
-    if(t <= 1e-9 || t >= 1 - 1e-9) continue;
-    hits.push({
-      y:a.y + (b.y - a.y) * t,
-      edgeIndex:i
-    });
-  }
-  hits.sort((left, right)=>left.y - right.y);
-  const intervals = [];
-  for(let i=0;i+1<hits.length;i+=2){
-    const low = hits[i];
-    const high = hits[i + 1];
-    if(!(high.y > low.y + 1e-6)) continue;
-    intervals.push({
-      yBottom:low.y,
-      yTop:high.y,
-      bottomBoundary:{polygon:pts, edgeIndex:low.edgeIndex},
-      topBoundary:{polygon:pts, edgeIndex:high.edgeIndex}
-    });
-  }
-  return intervals;
-}
-
-function stage6BishopSubtractDetailedIntervals(parentIntervals, holeIntervals){
-  const out = [];
-  (parentIntervals || []).forEach((parentInterval)=>{
-    let segments = [{
-      yBottom:parentInterval.yBottom,
-      yTop:parentInterval.yTop,
-      bottomBoundary:parentInterval.bottomBoundary,
-      topBoundary:parentInterval.topBoundary
-    }];
-    (holeIntervals || []).forEach((holeInterval)=>{
-      const nextSegments = [];
-      segments.forEach((segment)=>{
-        const overlapBottom = Math.max(segment.yBottom, holeInterval.yBottom);
-        const overlapTop = Math.min(segment.yTop, holeInterval.yTop);
-        if(!(overlapTop > overlapBottom + 1e-6)){
-          nextSegments.push(segment);
-          return;
-        }
-        if(overlapBottom > segment.yBottom + 1e-6){
-          nextSegments.push({
-            yBottom:segment.yBottom,
-            yTop:overlapBottom,
-            bottomBoundary:segment.bottomBoundary,
-            topBoundary:holeInterval.bottomBoundary
-          });
-        }
-        if(overlapTop < segment.yTop - 1e-6){
-          nextSegments.push({
-            yBottom:overlapTop,
-            yTop:segment.yTop,
-            bottomBoundary:holeInterval.topBoundary,
-            topBoundary:segment.topBoundary
-          });
-        }
-      });
-      segments = nextSegments;
-    });
-    out.push(...segments.filter((segment)=>segment.yTop > segment.yBottom + 1e-6));
-  });
-  return out;
-}
-
-function stage6BishopSubtractHoleFromPolygon(parentPolygon, holePolygon){
-  const parent = normalizeRegionPolygon(parentPolygon || []);
-  const hole = normalizeRegionPolygon(holePolygon || []);
-  if(parent.length < 3 || hole.length < 3) return [];
-  const xBreaks = stage6BishopUniqueSortedNumbers([
-    ...parent.map((pt)=>pt.x),
-    ...hole.map((pt)=>pt.x)
-  ]);
-  const pieces = [];
-  for(let i=0;i<xBreaks.length - 1;i+=1){
-    const xL = xBreaks[i];
-    const xR = xBreaks[i + 1];
-    if(!(xR > xL + 1e-6)) continue;
-    const xMid = 0.5 * (xL + xR);
-    const parentIntervals = stage6BishopPolygonIntervalsDetailed(parent, xMid);
-    const holeIntervals = stage6BishopPolygonIntervalsDetailed(hole, xMid);
-    const visibleIntervals = stage6BishopSubtractDetailedIntervals(parentIntervals, holeIntervals);
-    visibleIntervals.forEach((interval)=>{
-      const leftBottom = stage6BishopClampRegionPoint({x:xL, y:stage6BishopBoundaryYAtX(interval.bottomBoundary, xL)});
-      const leftTop = stage6BishopClampRegionPoint({x:xL, y:stage6BishopBoundaryYAtX(interval.topBoundary, xL)});
-      const rightTop = stage6BishopClampRegionPoint({x:xR, y:stage6BishopBoundaryYAtX(interval.topBoundary, xR)});
-      const rightBottom = stage6BishopClampRegionPoint({x:xR, y:stage6BishopBoundaryYAtX(interval.bottomBoundary, xR)});
-      const piece = normalizeRegionPolygon([leftBottom, leftTop, rightTop, rightBottom]);
-      if(stage6BishopPolygonIsValid(piece)){
-        pieces.push(piece);
-      }
-    });
-  }
-  return pieces;
-}
-
-function stage6BishopSplitRegionPolygon(region, cutA, cutB){
-  const polygon = region?.polygon || [];
-  if(polygon.length < 3) return {ok:false, message:'Select a valid polygon before splitting it.'};
-  if(stage6BishopDist(cutA, cutB) <= 1e-4){
-    return {ok:false, message:'Choose two distinct points on the selected polygon boundary to split it.'};
-  }
-  const chordSamples = [0.25, 0.5, 0.75].every((t)=>{
-    const point = {
-      x:cutA.x + (cutB.x - cutA.x)*t,
-      y:cutA.y + (cutB.y - cutA.y)*t
-    };
-    return stage6BishopPointInsideOrBoundary(point, polygon);
-  });
-  if(!chordSamples){
-    return {ok:false, message:'The split line must stay inside the selected polygon.'};
-  }
-  const {boundary, cutIndices} = stage6BishopBuildSplitBoundary(polygon, [
-    {...cutA, name:'a'},
-    {...cutB, name:'b'}
-  ]);
-  const indexA = cutIndices.a;
-  const indexB = cutIndices.b;
-  if(indexA == null || indexB == null || indexA === indexB){
-    return {ok:false, message:'Choose two separate polygon-boundary points to split the polygon.'};
-  }
-  const polygonA = normalizeRegionPolygon(stage6BishopTraverseBoundary(boundary, indexA, indexB));
-  const polygonB = normalizeRegionPolygon(stage6BishopTraverseBoundary(boundary, indexB, indexA));
-  if(!stage6BishopPolygonIsValid(polygonA) || !stage6BishopPolygonIsValid(polygonB)){
-    return {ok:false, message:'That split would create an invalid polygon. Try points on different edges.'};
-  }
-  const originalArea = polygonArea(polygon);
-  const splitArea = polygonArea(polygonA) + polygonArea(polygonB);
-  const areaTolerance = Math.max(0.01, originalArea * 1e-4);
-  if(Math.abs(splitArea - originalArea) > areaTolerance){
-    return {ok:false, message:'That split falls outside the polygon. Try a cut line that stays inside the region.'};
-  }
-  return {
-    ok:true,
-    polygons:[polygonA, polygonB]
-  };
+  return seepslopePickRegionBoundaryPoint(region, world, stage6BishopBoundaryPickToleranceWorld);
 }
 
 function stage6BishopHideHoverDom(){
