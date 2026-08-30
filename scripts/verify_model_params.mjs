@@ -312,7 +312,7 @@ if (PURE_ONLY) {
       for (const r of S.data.filter((_, i) => i % 7 === 0)) assert.deepStrictEqual(api.stressAt(r.z, 18, 17), stressAt(S, r.z, 18, 17));
       for (const l of S.layers) assert.deepStrictEqual(api.stressAt((l.top + l.bot) / 2, l.gs, l.g), stressAt(S, (l.top + l.bot) / 2, l.gs, l.g));
     });
-    // stage6WorkingLayers() is not on legacyApi (and this PR adds no name to it); the
+    // stage6WorkingLayers() is not published on window (and this PR adds no name to it); the
     // Stage 7 payload embeds safeClone(stage6WorkingLayers()) as stage6.layers once a
     // Stage 6 app has rendered, so the wrapper is observed through buildStage7Payload().
     const activeWorkingLayers = () => {
@@ -339,7 +339,7 @@ if (PURE_ONLY) {
       // the active CPT was not touched by deriving for another one
       assert.deepStrictEqual(canon(activeWorkingLayers()), canon(active));
     });
-    check('legacyApi still publishes the Stage 4 names', () => {
+    check('the window surface still publishes the Stage 4 names', () => {
       for (const n of ['hsParams', 'khParams', 'stressAt', 'alphaEB', 'sb260GranularAlpha', 'sb260TransitionAlpha', 'sb260AlphaFamily']) assert.equal(typeof api[n], 'function', n);
     });
   } finally {

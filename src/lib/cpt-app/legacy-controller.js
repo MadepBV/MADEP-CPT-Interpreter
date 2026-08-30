@@ -324,7 +324,7 @@ function setActive(idx){
 }
 
 // Banner, CPT list, phase and stage navigation — src/lib/cpt-app/project/ (PR 14). The
-// wrappers below keep their names for legacyApi and the inline onclick strings; every hook
+// wrappers below keep their names for the published surface and the inline onclick strings; every hook
 // is a hoisted function reference or a closure over PROJECT / S, nothing runs here.
 const projectApp = installProject({
   document,

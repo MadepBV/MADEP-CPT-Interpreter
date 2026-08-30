@@ -18,7 +18,7 @@
 //   8    wrapper ⇔ pure agreement through the golden Tier-B loader (controller under Node,
 //        DOM stub, auto-confirmed review): single import, the multi-file loader with an
 //        explicit target CPT (no S swap), a failing file in the middle, seeded loadDemo,
-//        legacyApi names. Skip with --pure-only.
+//        the published window names. Skip with --pure-only.
 //   9    extraction complete (the moved bodies are gone from the controller, the wrappers and
 //        the import block are present, the modules carry SPDX + @ts-nocheck).
 import assert from 'node:assert/strict';
@@ -422,7 +422,7 @@ if (PURE_ONLY) {
       assert.deepEqual(c.alerts, []);
     });
 
-    await checkAsync('parseGEF / loadDemo wrappers: legacyApi names, seeded loadDemo == demoPatch(seeded), DOM synced', async () => {
+    await checkAsync('parseGEF / loadDemo wrappers: published names, seeded loadDemo == demoPatch(seeded), DOM synced', async () => {
       await gctx.resetProject();
       for (const n of ['loadGEF', 'loadDemo', 'parseGEF', 'updateElevSrc', 'updateWTDisplay', 'renderMeta', 'initCharts', 'setCptCoord']) assert.equal(typeof api[n], 'function', n);
       const real = Math.random;
@@ -439,7 +439,7 @@ if (PURE_ONLY) {
       assert.equal(dom.finfo, 'demo-anonymous.GEF — 1080 readings');
       assert.ok(dom.mgrid.includes('Demo Project A'));
       assert.equal(dom.s1body, 'block');
-      // parseGEF (legacyApi) still targets the active CPT and resolves true
+      // parseGEF (published on window) still targets the active CPT and resolves true
       const ok = await api.parseGEF(readFileSync(join(FIXTURES, 'cpt/short.gef'), 'utf8'), 'short.gef');
       assert.equal(ok, true);
       assert.equal(S.meta.fname, 'short.gef');

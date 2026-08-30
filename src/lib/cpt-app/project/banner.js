@@ -8,7 +8,8 @@
 // The markup is verbatim (the CPT id is interpolated unescaped, as before); the innerHTML is
 // now a pure string builder, `bannerTabsHtml(project)`, and the DOM write + the two delegated
 // listeners (remove "x", Enter/Space on a tab) are the thin `renderBanner(document, project,
-// handlers)`. The inline `onclick="selectCpt(i)"` keeps resolving through window (legacyApi).
+// handlers)`. The inline `onclick="selectCpt(i)"` keeps resolving through window (the composed
+// `handlers` surface of the composition root; `project/index.js` owns the seven names).
 
 /** `#cptTabs` innerHTML: one `.cpt-tab` per CPT, the active one marked, a remove "x" when > 1. */
 export function bannerTabsHtml(project){

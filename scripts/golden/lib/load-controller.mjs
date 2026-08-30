@@ -184,7 +184,7 @@ let loaded = null;
 
 /**
  * Load the controller once (idempotent for the process). Returns
- * { api: globalThis (== window, carrying legacyApi), captured, alerts, …, close() }.
+ * { api: globalThis (== window, carrying the composed handler surface), captured, alerts, …, close() }.
  */
 export async function loadController() {
   if (loaded) return loaded;
@@ -200,7 +200,7 @@ export async function loadController() {
     define: { __APP_VERSION__: JSON.stringify(globalThis.__APP_VERSION__) }
   });
   const ctl = await server.ssrLoadModule(CTRL_PATH);
-  ctl.initLegacyController();   // Object.assign(window, legacyApi) (:18490-18503)
+  ctl.initLegacyController();   // Object.assign(window, handlers) — the union of the packages' maps
   loaded = {
     api: globalThis,
     ...stub,

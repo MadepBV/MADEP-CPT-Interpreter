@@ -24,9 +24,9 @@
 //        stores them); the state is proven untouched; .open.json and no-layers.json likewise;
 //   5    wrapper ⇔ pure through the same loader: exportCSV / exportPlaxisCommands / exportPlaxisCpt
 //        downloads, file names and alerts == the pure builders for every profile fixture (demo
-//        included); buildStage7Payload() == the pure builder; the no-layers guards; legacyApi names;
+//        included); buildStage7Payload() == the pure builder; the no-layers guards; the published names;
 //   6    extraction complete (the moved bodies are gone, the wrappers and the import blocks are
-//        present, legacyApi still has 167 names, the modules carry SPDX + @ts-nocheck and touch
+//        present (PR 20: in the export/ and report/ installs), the modules carry SPDX + @ts-nocheck and touch
 //        neither the DOM nor S).
 // Parts 4 and 5 need the Vite dev dependency (as golden:check does); skip them with --pure-only.
 import assert from 'node:assert/strict';
@@ -658,7 +658,7 @@ if (PURE_ONLY) {
       assert.equal(exp.buildPlaxisCptText(S), null);
       await gctx.resetProject();
     });
-    check('the export / report names are still published on legacyApi', () => {
+    check('the export / report names are still published on window', () => {
       for (const n of ['exportCSV', 'exportPlaxisCommands', 'exportPlaxisCpt', 'buildStage7Payload', 'openStage7Report', 'stage7CaptureWorkspaceView', 'stage7ClearWorkspaceCapture']) assert.equal(typeof api[n], 'function', n);
     });
   } finally {

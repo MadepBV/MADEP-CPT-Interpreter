@@ -563,7 +563,7 @@ if (PURE_ONLY) {
         assert.deepStrictEqual(api.stressAt(r.z, 18, 17), stressAt(S, r.z, 18, 17));
       }
     });
-    check('the S-free Stage 3 helpers on legacyApi return what the package returns', () => {
+    check('the S-free Stage 3 helpers on the window surface return what the package returns', () => {
       for (const l of S.layers) {
         assert.deepStrictEqual(api.suggestSubtype(l), suggestSubtype(l));
         for (const e of CAT.filter((_, i) => i % 5 === 0)) {
@@ -595,7 +595,7 @@ if (PURE_ONLY) {
       assert.ok(layers.length >= 1);
       assert.deepStrictEqual(canon(S.layers), canon(detectLayers(S)));   // the active CPT is untouched
     });
-    check('legacyApi still publishes the Stage 2 / Stage 3 names', () => {
+    check('the window surface still publishes the Stage 2 / Stage 3 names', () => {
       for (const n of ['selM', 'stressAt', 'classRob', 'classCUR', 'classSB260', 'runClass', 'segmentSummary', 'subtypeGroup', 'familyClass', 'qcSimilarity', 'rfSimilarity',
         'subtypeSimilarity', 'paramSimilarity', 'compatSimilarity', 'continuityScore', 'isCriticalMarkerLayer', 'mergeCandidateScore', 'detectLayers', 'compatLevel', 'qcRfFit',
         'suggestSubtype', 'buildSubtypeDropdown', 'renderLayers', 'changeSubtype', 'renderCompatWarnings', 'editL', 'layerTypeCompatScore']) {

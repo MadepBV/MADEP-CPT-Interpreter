@@ -42,7 +42,7 @@
 //       migration prompt, the legacy wall-activation prompt, the partial-load badge and the
 //       "no valid circle" search result.
 //   (f) every inline handler name still published — `scripts/verify_window_handlers.mjs` is run as
-//       a child process, so the panels' `on*="…"` strings are checked against `legacyApi` with the
+//       a child process, so the panels' `on*="…"` strings are checked against the real window
 //       repo's own logic rather than a copy of it.
 //   (g) working tree only: the package standalone — the view model is pure (the `bishop` block and
 //       the section model it is handed come back byte-identical, and two builds agree), every
@@ -995,7 +995,7 @@ console.log('\n(f) the inline handler names — scripts/verify_window_handlers.m
   const r = spawnSync(process.execPath, [resolve(ROOT, 'scripts/verify_window_handlers.mjs')], { cwd: ROOT, encoding: 'utf8' });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   const tail = out.trim().split('\n').slice(-4).join(' | ');
-  check('every `on*="name("` in an HTML string is published on legacyApi', r.status === 0, tail);
+  check('every `on*="name("` in an HTML string is published on window', r.status === 0, tail);
   console.log(`        ${tail}`);
 }
 
