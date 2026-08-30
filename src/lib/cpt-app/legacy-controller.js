@@ -200,7 +200,7 @@ import {
   undrainedFormulaHtml as bearingUndrainedFormulaHtml
 } from './bearing/index.js';
 import { setActiveCpt } from './core/state.js';
-import { installProject, bindStageNav } from './project/index.js';
+import { installProject } from './project/index.js';
 import { installSection } from './section/index.js';
 import {
   tuningCtx,
@@ -708,6 +708,7 @@ function setActive(idx){
 // is a hoisted function reference or a closure over PROJECT / S, nothing runs here.
 const projectApp = installProject({
   document,
+  window: typeof window !== 'undefined' ? window : null,
   getProject: () => PROJECT,
   getActive: () => S,
   setActive,
@@ -728,7 +729,8 @@ const projectApp = installProject({
     if(n===3)renderModel();
     if(n===4)renderTuning();
     if(n===5)renderStage6();
-  }
+  },
+  renderStage6: () => renderStage6()
 });
 
 function selectCpt(idx){
@@ -855,7 +857,6 @@ const SC = SOIL_CLASS_NAMES;
 function goS(n){
   projectApp.goS(n);
 }
-bindStageNav(document, goS);
 
 
 /* ════════════════════════════════
@@ -2037,8 +2038,9 @@ function stage6BishopEnabled(){
   return true;
 }
 
+/* The `#bishop` deep link lives in project/phase.js (PR 20); this keeps the monolith name. */
 function stage6BishopHashActive(){
-  return typeof window !== 'undefined' && window.location.hash === '#bishop';
+  return projectApp.bishopHashActive();
 }
 
 // ── seepslope/state façades (refactor step 9a / PR 18a) ─────────────────────────────────────
@@ -5293,13 +5295,7 @@ function openStage7Report(){
 }
 
 function stage6BishopHandleHashChange(){
-  if(!S?.stage6) return;
-  if(stage6BishopHashActive()){
-    if(S.stage6.app !== 'bishop') S.stage6.app = 'bishop';
-  } else if(S.stage6.app === 'bishop'){
-    S.stage6.app = 'bearing';
-  }
-  renderStage6();
+  projectApp.handleBishopHashChange();
 }
 
 const legacyApi={
@@ -5476,13 +5472,11 @@ export function initLegacyController(){
   if(__legacyControllerInitialized) return ()=>{};
   Object.assign(window, legacyApi);
   Object.assign(window, retainingApp.handlers);
+  projectApp.bindStageNav();
   bindDropzone();
-  if(stage6BishopHashActive()) S.stage6.app = 'bishop';
+  projectApp.applyOpeningBishopHash();
   renderBanner();
-  if(!__legacyControllerHashBound && typeof window !== 'undefined'){
-    window.addEventListener('hashchange', stage6BishopHandleHashChange);
-    __legacyControllerHashBound = true;
-  }
+  if(!__legacyControllerHashBound) __legacyControllerHashBound = projectApp.bindBishopHash();
   __legacyControllerInitialized = true;
   return ()=>{};
 }

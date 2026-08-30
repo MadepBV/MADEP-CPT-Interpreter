@@ -6,7 +6,8 @@
 //
 //   banner.js  bannerTabsHtml(project) (pure) · renderBanner(document, project, handlers)
 //   cpts.js    selectCpt(project, idx, ctx) · addCpt · setCptName · removeCpt · syncCptControls
-//   phase.js   setPhase(document, project, ph, hooks) · PHASES
+//   phase.js   setPhase(document, project, ph, hooks) · PHASES · the `#bishop` deep link
+//              (bishopHashActive · applyBishopHash · handleBishopHashChange · bindBishopHash)
 //   nav.js     goS(document, cpt, n, renderStage) · trackMaxStage · applyStageNav · resetStageNav
 //              · bindStageNav(document, goS)
 //
@@ -21,12 +22,12 @@
 
 import { renderBanner as renderBannerDom } from './banner.js';
 import { selectCpt as selectCptOf, addCpt as addCptTo, setCptName as setCptNameOf, removeCpt as removeCptFrom } from './cpts.js';
-import { setPhase as setPhaseOf } from './phase.js';
+import { setPhase as setPhaseOf, bishopHashActive, applyBishopHash, handleBishopHashChange, bindBishopHash } from './phase.js';
 import { goS as goStage, bindStageNav } from './nav.js';
 
 export { bannerTabsHtml, bindBannerTabs, renderBanner } from './banner.js';
 export { CHART_AREA_HTML, syncCptControls, selectCpt, addCpt, setCptName, removeCpt } from './cpts.js';
-export { PHASES, setPhase } from './phase.js';
+export { PHASES, setPhase, BISHOP_HASH, bishopHashActive, applyBishopHash, handleBishopHashChange, bindBishopHash } from './phase.js';
 export { trackMaxStage, applyStageNav, resetStageNav, goS, bindStageNav } from './nav.js';
 
 export function installProject(ctx){
@@ -49,7 +50,12 @@ export function installProject(ctx){
     removeCpt: (idx) => removeCptFrom(getProject(), idx, { confirm: ctx.confirm, setActive, renderBanner: app.renderBanner, selectCpt: app.selectCpt }),
     setPhase: (ph) => setPhaseOf(document, getProject(), ph, { renderCorrelation: ctx.renderCorrelation, renderSection: ctx.renderSection }),
     goS: (n) => goStage(document, getActive(), n, ctx.renderStage),
-    bindStageNav: () => bindStageNav(document, app.goS)
+    bindStageNav: () => bindStageNav(document, app.goS),
+    // The `#bishop` deep link: the opening sync (init), the hashchange handler and its binding.
+    bishopHashActive: () => bishopHashActive(ctx.window),
+    applyOpeningBishopHash: () => applyBishopHash(getActive(), bishopHashActive(ctx.window)),
+    handleBishopHashChange: () => handleBishopHashChange(getActive(), { render: ctx.renderStage6, win: ctx.window }),
+    bindBishopHash: () => bindBishopHash(ctx.window, app.handleBishopHashChange)
   };
   return app;
 }
