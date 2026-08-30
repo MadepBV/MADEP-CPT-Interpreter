@@ -8,9 +8,11 @@
 // Moved out of src/lib/cpt-app/legacy-controller.js (PR 8, refactor step 4):
 // stage7Stage6Payload (old lines 16495-16574 at c989770). Changes inside the body: the CPT
 // state is a parameter (`cpt`) instead of the module-level active CPT `S`; the automatic
-// workspace capture (stage7CaptureBishopWorkspaceView — switches the Stage 6 app, stays in
-// the controller until step 9g) is `deps.captureBishopWorkspaceView`, called under exactly
-// the old conditional: only when the annex exists and no manual capture is stored.
+// workspace capture is `deps.captureBishopWorkspaceView`, called under exactly the old
+// conditional: only when the annex exists and no manual capture is stored. (Until refactor
+// step 9g that dep was the controller's stage7CaptureBishopWorkspaceView, which switched the
+// Stage 6 app and re-rendered; PR 18g made it seepslope/report/capture.js, an offscreen
+// render — so building a payload no longer perturbs the UI.)
 
 import { safeClone } from './clone.js';
 import { stage7Deps } from './deps.js';

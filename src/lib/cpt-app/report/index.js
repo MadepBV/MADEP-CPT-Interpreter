@@ -14,9 +14,12 @@
 //   clone.js             safeClone
 //   svg.js               buildLayerColumnSvgMarkup / buildLayerPreviewSvgMarkup (was report-svg.js)
 //
-// Still in legacy-controller.js until refactor step 9g: stage7CaptureCanvasImage,
-// stage7CaptureWorkspaceView, stage7ClearWorkspaceCapture, stage7CaptureBishopWorkspaceView
-// (they switch the Stage 6 app / workspace and re-render) and openStage7Report (localStorage
+// The workspace capture moved to ../seepslope/report/capture.js in refactor step 9g (PR 18g): it
+// paints the Seep / Slope frame on an offscreen canvas instead of switching the Stage 6 app and
+// re-rendering, and `deps.js` binds it through `bishopWorkspaceCapture(cpt, over.captureHost)`.
+// Still in legacy-controller.js: the four host halves — stage7CaptureCanvasImage (reads
+// #stage6BishopCanvas by id), stage7CaptureWorkspaceView / stage7ClearWorkspaceCapture (the
+// toolbar button: it writes S.stage6 and re-renders on purpose) and openStage7Report (localStorage
 // + window.open, through ../report-storage.js which the report routes import as well).
 
 export {

@@ -453,6 +453,18 @@ import {
   safetyCurveHtml as seepslopeSafetyCurveHtml,
   safetyMechanismHtml as seepslopeSafetyMechanismHtml
 } from './seepslope/panels/index.js';
+// Seep / Slope report package (refactor step 9g / PR 18g, src/lib/cpt-app/seepslope/report/):
+// the Stage 7 workspace screenshot, rasterised on an offscreen canvas from a view model built for
+// the target workspace. It replaces the app / workspace switch + double re-render of
+// 01-monolith-map.md §3.4 #10; the façades in the Stage 7 region below own the host halves — the
+// canvas factory, the frame box, the section model and the theme.
+import {
+  bishopCanvasProbeHtml as seepslopeBishopCanvasProbeHtml,
+  bishopWorkspaceCapture as seepslopeBishopWorkspaceCapture,
+  isCaptureWorkspace as seepslopeIsCaptureWorkspace,
+  manualCaptureDisplay as seepslopeManualCaptureDisplay,
+  rasteriseCanvas as seepslopeRasteriseCanvas
+} from './seepslope/report/index.js';
 /* ════════════════════════════════
    STATE
 ════════════════════════════════ */
@@ -5099,42 +5111,89 @@ function exportPlaxisCpt(){
    STAGE 7 — REPORT
 ════════════════════════════════ */
 /* The payload builders live in report/ (PR 8): buildStage7Payload(project, cpt, deps) and
-   its parts (payload-stage6.js, payload-seepslope.js). safeClone is imported back for the
-   workspace captures below, which stay here until refactor step 9g because they switch
-   the Stage 6 app / bishop workspace and re-render (01-monolith-map.md §3.4 #10). */
-// Extend stage7CaptureBishopWorkspaceView to also support 'deformation' so the
-// auto-capture fallback works for the deformation annex.
-//
-// (The function itself is defined further down; this comment documents the
-// contract.)
-function stage7CaptureCanvasImage(canvasId, {
-  maxWidth=1400,
-  quality=0.9,
-  mimeType='image/jpeg'
-} = {}){
+   its parts (payload-stage6.js, payload-seepslope.js). The automatic workspace capture moved
+   to seepslope/report/capture.js in step 9g (PR 18g); what is left here is its host half —
+   the offscreen canvas factory, the frame box, the section model, the theme — plus the
+   manual "Capture for report" button, which writes S.stage6 and re-renders on purpose. */
+// ── seepslope/report façades (refactor step 9g / PR 18g) ─────────────────────────────────
+// 01-monolith-map.md §3.4 #10 and §6.3 item 7 — "Stage 7 capture that mutates app/workspace
+// state" — are gone: stage7CaptureBishopWorkspaceView no longer sets S.stage6.app /
+// bishop.workspace, no longer calls renderStage6() twice and no longer reads the on-screen
+// canvas. It paints the frame on a canvas of its own from a view model built for the target
+// workspace (seepslope/canvas, PR 18e) and hands that to the same down-scale + JPEG encode.
+// The four host halves the package cannot own are below.
+
+/** A real offscreen canvas, or null where there is none (SSR, the Node golden harness). */
+function stage7OffscreenCanvas(width, height){
+  if(typeof document === 'undefined') return null;
+  const canvas=document.createElement('canvas');
+  // The monolith's own guard, moved from the source canvas to the target one: the Tier-B DOM
+  // stub hands out plain objects, so a payload built under Node still has no image.
+  if(!(canvas instanceof HTMLCanvasElement)) return null;
+  canvas.width=Math.max(1, Math.round(width));
+  canvas.height=Math.max(1, Math.round(height));
+  return canvas;
+}
+
+/**
+ * The CSS box the Seep/Slope canvas has — or would have — plus the device pixel ratio the backing
+ * store is sized for. The live element when the app is open; otherwise the same box measured
+ * through a zero-height probe with the layout's own classes (seepslope/report/capture.js
+ * `bishopCanvasProbeHtml`), appended to #stage6Area and removed in the same task, so nothing is
+ * painted and no state is touched. Null when Stage 6 is not laid out at all (`.panel` is
+ * `display:none`) — the state in which the monolith measured a 0 × 0 canvas and captured nothing.
+ */
+function stage6BishopCanvasBox(){
+  if(typeof document === 'undefined' || typeof window === 'undefined') return null;
+  const dpr=window.devicePixelRatio || 1;
+  const live=document.getElementById('stage6BishopCanvas');
+  if(live instanceof HTMLCanvasElement){
+    const rect=live.getBoundingClientRect();
+    if(rect.width > 0 && rect.height > 0) return {width:rect.width, height:rect.height, dpr};
+  }
+  const area=document.getElementById('stage6Area');
+  if(!area || typeof area.appendChild !== 'function') return null;
+  const probe=document.createElement('div');
+  probe.setAttribute('aria-hidden','true');
+  probe.style.cssText='height:0;overflow:hidden;visibility:hidden';
+  probe.innerHTML=seepslopeBishopCanvasProbeHtml({settingsWide:stage6BishopUiState().bishopSettingsWide === true});
+  area.appendChild(probe);
+  try{
+    const rect=probe.querySelector?.('canvas')?.getBoundingClientRect?.() || null;
+    if(!rect || !(rect.width > 0) || !(rect.height > 0)) return null;
+    return {width:rect.width, height:rect.height, dpr};
+  }finally{
+    probe.remove();
+  }
+}
+
+/**
+ * The host half of the capture: the four non-pure pieces `seepslope/report/capture.js` asks for.
+ * `model` is the frame's own line (stage6BishopDrawCanvas 4797-4798) including the volatile cache
+ * write — S.stage6Cache, not S.stage6 — because stage7SeepagePayload reads `bishopModel` back
+ * after the stability capture has run, and must keep seeing the model the frame built.
+ */
+function stage7CaptureHost(){
+  return {
+    ensure:()=>ensureStage6State(),
+    box:()=>stage6BishopCanvasBox(),
+    model:()=>{
+      const model=buildBishopModelFromStageLayers(stage6WorkingLayers(), S.stage6.bishop);
+      S.stage6Cache.bishopModel=model;
+      return model;
+    },
+    createCanvas:stage7OffscreenCanvas,
+    theme:()=>seepslopeVizSeries(),
+    env:SEEPSLOPE_CANVAS_ENV
+  };
+}
+
+/** The live canvas by id, down-scaled and encoded — what the manual capture button grabs. */
+function stage7CaptureCanvasImage(canvasId, options = {}){
   if(typeof document === 'undefined') return null;
   const canvas=document.getElementById(canvasId);
-  if(!(canvas instanceof HTMLCanvasElement) || !canvas.width || !canvas.height) return null;
-  try{
-    const scale=Math.min(1, maxWidth / Math.max(canvas.width, 1));
-    const out=document.createElement('canvas');
-    out.width=Math.max(1, Math.round(canvas.width * scale));
-    out.height=Math.max(1, Math.round(canvas.height * scale));
-    const ctx=out.getContext('2d');
-    if(!ctx) return null;
-    ctx.fillStyle='#ffffff';
-    ctx.fillRect(0, 0, out.width, out.height);
-    ctx.drawImage(canvas, 0, 0, out.width, out.height);
-    return {
-      mimeType,
-      width:out.width,
-      height:out.height,
-      dataUrl:out.toDataURL(mimeType, quality)
-    };
-  }catch(error){
-    console.warn('Stage 7 canvas capture failed:', error);
-    return null;
-  }
+  if(!(canvas instanceof HTMLCanvasElement)) return null;
+  return seepslopeRasteriseCanvas(canvas, {...options, createCanvas:stage7OffscreenCanvas});
 }
 
 // User-initiated workspace screenshot. Press the "Capture" button in the
@@ -5146,8 +5205,7 @@ function stage7CaptureCanvasImage(canvasId, {
 function stage7CaptureWorkspaceView(workspace){
   if(typeof document === 'undefined') return;
   ensureStage6State();
-  const valid = ['stability', 'seepage', 'deformation'];
-  if(!valid.includes(workspace)) return;
+  if(!seepslopeIsCaptureWorkspace(workspace)) return;
   const image = stage7CaptureCanvasImage('stage6BishopCanvas');
   if(!image?.dataUrl){
     console.warn(`Stage 7 capture (${workspace}) failed: canvas not ready.`);
@@ -5157,17 +5215,7 @@ function stage7CaptureWorkspaceView(workspace){
   if(!bishop.capturedView || typeof bishop.capturedView !== 'object'){
     bishop.capturedView = { stability:null, seepage:null, deformation:null };
   }
-  let display = null;
-  if(workspace === 'stability'){
-    display = {
-      selectedResult: Math.max(0, bishop.selectedResult || 0),
-      methodMode: bishop.methodMode || 'bishop_spencer'
-    };
-  } else if(workspace === 'seepage'){
-    display = safeClone(bishop.seepage?.display || null);
-  } else if(workspace === 'deformation'){
-    display = safeClone(bishop.deformation?.display || null);
-  }
+  const display = seepslopeManualCaptureDisplay(bishop, workspace);
   bishop.capturedView[workspace] = {
     workspace,
     app:'bishop',
@@ -5190,97 +5238,23 @@ function stage7ClearWorkspaceCapture(workspace){
   }
 }
 
+/**
+ * The automatic annex screenshot: `seepslope/report/capture.js` bound to the active CPT and to the
+ * host halves above — the same value `report/deps.js` builds itself from `over.captureHost` when a
+ * caller has no controller. It is handed to the payload under the dep name PR 8 gave it
+ * (`captureBishopWorkspaceView`), so nothing downstream changed except that a report build no
+ * longer switches the app, re-renders or writes `S.stage6`.
+ */
 function stage7CaptureBishopWorkspaceView(workspace){
   if(typeof document === 'undefined') return null;
-  ensureStage6State();
-  const stage6=S.stage6;
-  const bishop=stage6?.bishop;
-  if(!stage6 || !bishop) return null;
-  const targetWorkspace = workspace === 'seepage'
-    ? 'seepage'
-    : workspace === 'deformation'
-    ? 'deformation'
-    : 'stability';
-  const hasContent = targetWorkspace === 'seepage'
-    ? !!(bishop.seepage?.mesh && bishop.seepage?.result)
-    : targetWorkspace === 'deformation'
-    ? !!(bishop.deformation?.result)
-    : !!(bishop.results?.allResults?.length);
-  if(!hasContent) return null;
-
-  const prevApp=stage6.app;
-  const prevWorkspace=bishop.workspace;
-  const switched=prevApp !== 'bishop' || prevWorkspace !== targetWorkspace;
-
-  const syncBishopCanvas = ()=>{
-    const stage6Area = document.getElementById('stage6Area');
-    if(stage6.app !== 'bishop'){
-      renderStage6();
-      if(stage6.app === 'bishop' && stage6Area) initStage6BishopCanvas();
-      return;
-    }
-    const canvas = document.getElementById('stage6BishopCanvas');
-    if(!(canvas instanceof HTMLCanvasElement) || !stage6Area){
-      renderStage6();
-      if(document.getElementById('stage6BishopCanvas')) initStage6BishopCanvas();
-      return;
-    }
-    stage6BishopCanvasState.canvas = canvas;
-    stage6BishopDrawCanvas();
-  };
-
-  try{
-    if(switched){
-      stage6.app='bishop';
-      bishop.workspace=targetWorkspace;
-      syncBishopCanvas();
-    }
-    if(!switched) syncBishopCanvas();
-    const image=stage7CaptureCanvasImage('stage6BishopCanvas');
-    if(!image?.dataUrl) return null;
-    return safeClone({
-      workspace:targetWorkspace,
-      app:'bishop',
-      capturedAt:new Date().toISOString(),
-      display: targetWorkspace === 'seepage'
-        ? {
-            contourMode:bishop.seepage?.display?.contourMode || 'head',
-            showContours:bishop.seepage?.display?.showContours !== false,
-            showContourLines:bishop.seepage?.display?.showContourLines !== false,
-            showContourLegend:bishop.seepage?.display?.showContourLegend !== false,
-            showBoundaryConditions:bishop.seepage?.display?.showBoundaryConditions !== false,
-            showBoundaryLabels:bishop.seepage?.display?.showBoundaryLabels !== false,
-            showPhreatic:bishop.seepage?.display?.showPhreatic !== false,
-            showFlowVectors:!!bishop.seepage?.display?.showFlowVectors,
-            showExitGradient:!!bishop.seepage?.display?.showExitGradient
-          }
-        : targetWorkspace === 'deformation'
-        ? safeClone(bishop.deformation?.display || null)
-        : {
-            selectedResult:Math.min(Math.max(bishop.selectedResult || 0, 0), Math.max((bishop.results?.allResults?.length || 1) - 1, 0)),
-            methodMode:bishop.methodMode || 'bishop_spencer'
-          },
-      viewport:safeClone(bishop.viewport || null),
-      image
-    });
-  } finally {
-    if(switched){
-      stage6.app=prevApp;
-      bishop.workspace=prevWorkspace;
-      if(prevApp === 'bishop'){
-        syncBishopCanvas();
-      } else {
-        renderStage6();
-      }
-    }
-  }
+  return seepslopeBishopWorkspaceCapture(S, stage7CaptureHost())(workspace);
 }
 
 /* Everything the pure builder used to reach through this module's closure, named
    (report/deps.js): the model-parameter wrappers over the active CPT, the Stage 6 state
-   normaliser, the automatic workspace capture (only called when an annex exists and no
-   manual capture is stored — same conditional as before) and the Seep/Slope helpers that
-   move with the seepslope/ package in step 9. */
+   normaliser, the host half of the automatic workspace capture (only called when an annex
+   exists and no manual capture is stored — same conditional as before) and the Seep/Slope
+   helpers that move with the seepslope/ package in step 9. */
 function stage7ControllerDeps(){
   return {
     hsParams,
