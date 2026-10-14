@@ -45,6 +45,7 @@ export {
   layerAtDepth,
   bearingGeometry,
   shapeModeLabel,
+  depthModeLabel,
   ngammaLabel,
   shapeFactors,
   depthFactors,
@@ -65,6 +66,8 @@ export {
   ec7Help,
   shapeModeOptions,
   shapeModeHelp,
+  depthModeOptions,
+  depthModeHelp,
   bearingNotes
 } from './notes.js';
 export {

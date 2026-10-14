@@ -259,13 +259,14 @@ FOUNDATION TYPE strip
 B / L (M) 2 / 1.5 m
 EB / EL (M) 0 / 0 m
 B′ / L′ (M) 2 / 2 m
-SHAPE FACTORS Brinch Hansen / Annex D
+SHAPE FACTORS EN 1997-1 Annex D
+DEPTH FACTORS None (EN 1997-1 Annex D, d = 1)
 NΓ FORMULATION EC7 Annex D rough base
 LOAD Q (KPA) 15 kPa
 SELECTED LAYER Sand
-DRAINED QD (KPA) 210 kPa
+DRAINED QD (KPA) 189 kPa
 UNDRAINED QD (KPA) 16 kPa
-This bearing annex uses the EC7 Annex D rough-base Nγ = 2(Nq − 1)tanφ′ formulation. Shape factors follow Brinch Hansen / Annex D . Shape factors follow the effective-dimension ratio r = B′/L′.
+This bearing annex uses the EC7 Annex D rough-base Nγ = 2(Nq − 1)tanφ′ formulation. Shape factors follow EN 1997-1 Annex D . Shape factors follow the effective-dimension ratio r = B′/L′. Depth factors: None (EN 1997-1 Annex D, d = 1).
 SETTLEMENT
 TOTAL SETTLEMENT
 13.63 mm

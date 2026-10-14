@@ -2,6 +2,7 @@
   "B": 3,
   "Df": 2,
   "L": 6,
+  "depthFactors": "none",
   "eB": 0.3,
   "eL": 0.5,
   "ec7Combination": "DA1-2",

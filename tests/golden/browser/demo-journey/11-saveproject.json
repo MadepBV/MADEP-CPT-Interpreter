@@ -324,6 +324,7 @@
               "B": 2,
               "Df": 1,
               "L": 1.5,
+              "depthFactors": "none",
               "eB": 0,
               "eL": 0,
               "ec7Combination": "governing",

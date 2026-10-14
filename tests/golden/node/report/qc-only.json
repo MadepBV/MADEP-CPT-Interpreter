@@ -419,13 +419,14 @@
     },
     "bearing": {
       "analysis": {
-        "<digest>": "d334b9c3200c7d5e614f704b",
-        "bytes": 98754
+        "<digest>": "943072858a934c2f7332256a",
+        "bytes": 102470
       },
       "config": {
         "B": 1.5,
         "Df": 1,
         "L": 1.5,
+        "depthFactors": "none",
         "eB": 0,
         "eL": 0,
         "ec7Combination": "governing",

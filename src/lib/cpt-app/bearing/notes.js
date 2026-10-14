@@ -26,7 +26,7 @@ export function shapeModeDetailText(mode){
   if(mode === 'conservative'){
     return 'In conservative mode all shape factors are fixed at 1.0.';
   }
-  return 'In Brinch Hansen / Annex D mode the shape factors follow the effective-dimension ratio r = B′/L′.';
+  return 'In EN 1997-1 Annex D mode the shape factors follow the effective-dimension ratio r = B′/L′.';
 }
 
 export function ec7Options(selected){
@@ -51,7 +51,7 @@ export function ec7Help(selected){
 
 export function shapeModeOptions(selected){
   const labels = {
-    hansen:'Brinch Hansen / Annex D (Recommended)',
+    hansen:'EN 1997-1 Annex D (Recommended)',
     conservative:'Conservative (shape factors = 1.0)'
   };
   return ['hansen','conservative']
@@ -61,9 +61,26 @@ export function shapeModeOptions(selected){
 
 export function shapeModeHelp(selected){
   if(selected === 'conservative'){
-    return 'Conservative mode keeps all shape factors equal to 1.0. Depth factors still apply, but plan-shape enhancement is suppressed.';
+    return 'Conservative mode keeps all shape factors equal to 1.0. Plan-shape enhancement is suppressed; the depth-factor setting is unaffected.';
   }
-  return 'Brinch Hansen / Annex D mode derives the shape factors from the effective plan ratio r = B′/L′ after eccentricity. This is the default and recommended mode.';
+  return 'EN 1997-1 Annex D mode derives the shape factors s_q = 1 + r·sinφ′, s_γ = 1 − 0.3r, s_c from s_q and s_cu = 1 + 0.2r from the effective plan ratio r = B′/L′ after eccentricity. This is the default and recommended mode.';
+}
+
+export function depthModeOptions(selected){
+  const labels = {
+    none:'None - EN 1997-1 Annex D (Recommended)',
+    hansen:'Brinch Hansen / Vesić - EN 1997-3 Annex B'
+  };
+  return ['none','hansen']
+    .map(v=>`<option value="${v}"${selected===v?' selected':''}>${labels[v]}</option>`)
+    .join('');
+}
+
+export function depthModeHelp(selected){
+  if(selected === 'hansen'){
+    return 'Applies the Brinch Hansen (1970) / Vesić (1973) embedment factors d_q, d_c and d_cu (EN 1997-3:2025 Annex B form). EN 1997-1:2004 Annex D does not contain depth factors, so this is not a strict Annex D value. Do not use when the soil above founding level is weaker than the founding layer.';
+  }
+  return 'Strict EN 1997-1:2004 Annex D: no depth factors (d_c = d_q = d_γ = d_cu = 1). The embedment only enters through the surcharge term q′·N_q. This is the default and recommended mode.';
 }
 
 export function bearingNotes(sel, cfg){
@@ -88,9 +105,12 @@ export function bearingNotes(sel, cfg){
       text:'Load eccentricity exceeds B/6 (middle third): part of the base loses compressive contact; the effective-width model remains valid but check serviceability and edge pressures.'
     });
   }
+  const depthText = sel.depthMode === 'hansen'
+    ? 'It applies Brinch Hansen / Vesić Df/B′ depth factors, which are not part of EN 1997-1 Annex D (switch them off for a strict Annex D value, and do not use them where the soil above founding level is weaker than the founding layer).'
+    : 'Depth factors are off (strict EN 1997-1 Annex D: d = 1).';
   notes.push({
     level:'info',
-    text:`The current bearing check uses ${sel.ngammaFormulaLabel} for Nγ and ${sel.shapeModeLabel} for shape factors. ${shapeModeDetailText(sel.shapeMode)} It includes Df/B′ depth factors, but it still assumes level ground, horizontal base, and no horizontal load.`
+    text:`The current bearing check uses ${sel.ngammaFormulaLabel} for Nγ and ${sel.shapeModeLabel} for shape factors. ${shapeModeDetailText(sel.shapeMode)} ${depthText} It still assumes level ground, horizontal base, and no horizontal load.`
   });
   if(usesEc7Factors(cfg)){
     notes.push({

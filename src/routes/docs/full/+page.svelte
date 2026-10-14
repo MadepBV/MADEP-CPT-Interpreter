@@ -1082,7 +1082,7 @@
 					title: '7.1 Current implemented resistance model',
 					paragraphs: [
 						'The application computes drained and undrained ultimate resistance separately and converts those results to q<sub>d</sub> or q<sub>allow</sub> depending on the selected safety route.',
-						'The underlying reference family is the Brinch Hansen / EC7 Annex D shallow-foundation format. The current app implements the vertical-load subset of that model: no horizontal load, no ground slope, and no base tilt. Eccentricity is only used to derive the effective dimensions for the shape-factor route.'
+						'The underlying reference is the EN 1997-1 Annex D shallow-foundation format (N-factors and shape factors), extended with the Brinch Hansen (1970) / Vesić (1973) depth factors that Annex D itself does not contain. The current app implements the vertical-load subset of that model: no horizontal load, no ground slope, and no base tilt. Eccentricity is only used to derive the effective dimensions for the shape-factor route.'
 					],
 						equations: [
 							"q<sub>ult,d</sub> = c′N<sub>c</sub>s<sub>c</sub>d<sub>c</sub> + q′N<sub>q</sub>s<sub>q</sub>d<sub>q</sub> + 0.5γ′B′N<sub>γ</sub>s<sub>γ</sub>d<sub>γ</sub>",
@@ -1095,9 +1095,11 @@
 						'r = B′ / L′ &nbsp;&nbsp; with B′ ≤ L′; strip uses r = 0',
 						's<sub>q</sub> = 1 + r sinφ′',
 						's<sub>c</sub> = (s<sub>q</sub>N<sub>q</sub> − 1) / (N<sub>q</sub> − 1) &nbsp;&nbsp; for φ′ > 0',
-						's<sub>γ</sub> = max(0.6, 1 − 0.3r)',
+						's<sub>γ</sub> = 1 − 0.3r &nbsp;&nbsp; (Annex D; the code keeps a Brinch Hansen 0.6 floor that never governs since r ≤ 1)',
 						's<sub>cu</sub> = 1 + 0.2r',
 						'Conservative shape mode: s<sub>q</sub> = s<sub>c</sub> = s<sub>γ</sub> = s<sub>cu</sub> = 1.0',
+						'Depth-factor mode "none" (default, EN 1997-1 Annex D): d<sub>c</sub> = d<sub>q</sub> = d<sub>γ</sub> = d<sub>cu</sub> = 1.0',
+						'Depth-factor mode "hansen" (Brinch Hansen 1970 / Vesić 1973, EN 1997-3:2025 Annex B form):',
 						'η = D<sub>f</sub> / B′; &nbsp; k = η for η ≤ 1, else k = atan(η)',
 						'd<sub>q</sub> = 1 + 2tanφ′(1 − sinφ′)<sup>2</sup>k',
 						'd<sub>c</sub> = d<sub>q</sub> − (1 − d<sub>q</sub>) / (N<sub>c</sub>tanφ′) &nbsp;&nbsp; for φ′ > 0',
@@ -1122,7 +1124,8 @@
 					],
 					bullets: [
 							'The app now keeps the EC7 Annex D rough-base N<sub>γ</sub> = 2(N<sub>q</sub> − 1)tanφ′ formulation consistently. The earlier Vesić variant 2(N<sub>q</sub> + 1)tanφ′ is slightly larger; Annex D is now preferred here because Stage 6 is an EC7-oriented screening tool and the Annex D form is slightly more conservative and easier to audit against the code text.',
-							'Shape factors now default to Brinch Hansen / Annex D values derived from the effective plan ratio r = B′/L′. Users can switch to a conservative mode with all shape factors fixed to 1.0.',
+							'Shape factors default to the EN 1997-1 Annex D values derived from the effective plan ratio r = B′/L′ (s<sub>γ</sub> coefficient 0.3, not the Brinch Hansen 0.4 or the Vesić tanφ′ forms). Users can switch to a conservative mode with all shape factors fixed to 1.0.',
+							'The depth factors d<sub>q</sub>, d<sub>c</sub>, d<sub>γ</sub>, d<sub>cu</sub> are the Brinch Hansen (1970) embedment terms in the form adopted by Vesić (1973). EN 1997-1 Annex D contains no depth factors, so the "Depth factors" setting defaults to "none" (strict Annex D, d = 1) and the Brinch Hansen / Vesić set is an explicit opt-in. The second-generation EN 1997-3:2025 Annex B (B.4) reintroduces them, with a note setting them to 1.0 where the soil above founding level is weaker than at founding level — a condition the app does not check. Projects saved before this setting existed load with depth factors off.',
 							'For circular footings screened through this rectangular interface, use B = L and keep e<sub>B</sub> = e<sub>L</sub> = 0 so r = 1.',
 							'For φ′ = 0, the drained block collapses to the undrained Prandtl expression q<sub>ult,u</sub> = q + 5.14c<sub>u</sub>s<sub>cu</sub>d<sub>cu</sub>; the drained expression is therefore not evaluated in that limit.',
 							'The bearing-depth envelope is sampled from the selected starting depth upward to the model bottom using a depth increment clamped between 0.10 m and 0.25 m.',
@@ -1156,7 +1159,7 @@
 					]
 				}
 			],
-			references: ['EN 1997-1:2004+A1:2013', 'NBN EN 1997-1 ANB:2022', 'EN 1990:2002+A1:2005', 'NBN EN 1990 ANB:2005', 'Vesić (1975)', 'Terzaghi & Peck (1967)']
+			references: ['EN 1997-1:2004+A1:2013 (Annex D)', 'NBN EN 1997-1 ANB:2022', 'EN 1990:2002+A1:2005', 'NBN EN 1990 ANB:2021', 'Brinch Hansen (1970)', 'Vesić (1973)', 'Vesić (1975)', 'Terzaghi & Peck (1967)']
 		},
 		{
 			id: 'dewatering',

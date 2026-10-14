@@ -23,9 +23,13 @@ Founding depth Df = 1.00 m
 Optional verification and safety settings
 Bearing capacity is calculated regardless. Expand this only if you want a utilisation check against an applied stress or if you want to adjust the safety philosophy.
 Shape factors
-Brinch Hansen / Annex D (Recommended)
+EN 1997-1 Annex D (Recommended)
 Conservative (shape factors = 1.0)
-Brinch Hansen / Annex D mode derives the shape factors from the effective plan ratio r = B′/L′ after eccentricity. This is the default and recommended mode.
+EN 1997-1 Annex D mode derives the shape factors s_q = 1 + r·sinφ′, s_γ = 1 − 0.3r, s_c from s_q and s_cu = 1 + 0.2r from the effective plan ratio r = B′/L′ after eccentricity. This is the default and recommended mode.
+Depth factors
+None - EN 1997-1 Annex D (Recommended)
+Brinch Hansen / Vesić - EN 1997-3 Annex B
+Strict EN 1997-1:2004 Annex D: no depth factors (d_c = d_q = d_γ = d_cu = 1). The embedment only enters through the surcharge term q′·N_q. This is the default and recommended mode.
 Eccentricity eB (m)
 Eccentricity eL (m)
 Effective dimensions for shape factors use B' = B − 2eB and L' = L − 2eL. With the default centered load, keep eB = eL = 0. For circular plans screened in this rectangular interface, use B = L so r = 1.
@@ -50,12 +54,12 @@ Layer Sand
 Subtype zand (lh), los
 Belgian EC7 envelope drained DA1/2 / undrained DA1/1
 σ'v 14.4 kPa
-Applied stress 1.05 · drained / 9.15 · undrained
+Applied stress 1.22 · drained / 9.15 · undrained
 Drained
 Governing combo DA1/2
-q_ult 143.2 kPa
-q_d 143.2 kPa
-utilisation 1.05
+q_ult 122.8 kPa
+q_d 122.8 kPa
+utilisation 1.22
 Undrained
 Governing combo DA1/1
 q_ult 16.4 kPa
@@ -70,9 +74,10 @@ Drained combo DA1/2 Undrained combo DA1/1 γ_Rd 1.00
 c'k 0.0 kPa γ_M,c' 1.25 c'd 0.0 kPa
 cu,k 0.0 kPa γ_M,cu 1.00 cu,d 0.0 kPa
 γ' 8.19 kN/m³ Combo mode most onerous R set R1
-B / L 1.50 / 1.50 m eB / eL 0.00 / 0.00 m Shape route Brinch Hansen / Annex D
+B / L 1.50 / 1.50 m eB / eL 0.00 / 0.00 m Shape route EN 1997-1 Annex D
 B' / L' 1.50 / 1.50 m r 0.000 Nγ EC7 Annex D rough base
-DA1 overview: DA1/1: drained 241 kPa, undrained 16 kPa · DA1/2: drained 143 kPa, undrained 16 kPa
+Depth factors None (EN 1997-1 Annex D, d = 1)
+DA1 overview: DA1/1: drained 209 kPa, undrained 16 kPa · DA1/2: drained 123 kPa, undrained 16 kPa
 Drained formula at selected depth
 q_ult,d = c'·N_c·s_c·d_c + q'·N_q·s_q·d_q + 0.5·γ'·B'·N_γ·s_γ·d_γ
 φ'k = 25.0° → φ'd = 20.5°
@@ -83,30 +88,32 @@ N_γ = 4.251 (EC7 Annex D rough base)
 q' = σ'v = 14.4 kPa
 γ' = 8.19 kN/m³
 Governing Belgian combo = DA1/2
-Shape factors = Brinch Hansen / Annex D
+Shape factors = EN 1997-1 Annex D
+Depth factors = None (EN 1997-1 Annex D, d = 1)
 B = 1.50 m, L = 1.50 m
 eB = 0.00 m, eL = 0.00 m
 B' = 1.50 m, L' = 1.50 m, r = 0.000
 Df/B' = η = 0.667, k = 0.667
 s_c = 1.00, s_q = 1.00, s_γ = 1.00
-d_c = 1.25, d_q = 1.21, d_γ = 1.00
+d_c = 1.00, d_q = 1.00, d_γ = 1.00
 γ_Rd = 1.00
-q_d = q_ult,d / γ_Rd = 143.2 kPa
+q_d = q_ult,d / γ_Rd = 122.8 kPa
 Undrained formula at selected depth
 q_ult,u = q + 5.14·c_u·s_cu·d_cu
 q = σv = 16.4 kPa
 cu,k = 0.0 kPa → cu,d = 0.0 kPa
 N_cu = 5.14
 Governing Belgian combo = DA1/1
-Shape factors = Brinch Hansen / Annex D
+Shape factors = EN 1997-1 Annex D
+Depth factors = None (EN 1997-1 Annex D, d = 1)
 B = 1.50 m, L = 1.50 m
 eB = 0.00 m, eL = 0.00 m
 B' = 1.50 m, L' = 1.50 m, r = 0.000
 Df/B' = η = 0.667, k = 0.667
-s_cu = 1.00, d_cu = 1.27
+s_cu = 1.00, d_cu = 1.00
 γ_Rd = 1.00
 q_d = q_ult,u / γ_Rd = 16.4 kPa
 Bearing capacity is shown as a shallow-foundation screening curve using the interpreted layer active at each founding depth. Layered failure mechanisms and full eccentric-load verification are not modeled here.
-The current bearing check uses EC7 Annex D rough base for Nγ and Brinch Hansen / Annex D for shape factors. In Brinch Hansen / Annex D mode the shape factors follow the effective-dimension ratio r = B′/L′. It includes Df/B′ depth factors, but it still assumes level ground, horizontal base, and no horizontal load.
+The current bearing check uses EC7 Annex D rough base for Nγ and EN 1997-1 Annex D for shape factors. In EN 1997-1 Annex D mode the shape factors follow the effective-dimension ratio r = B′/L′. Depth factors are off (strict EN 1997-1 Annex D: d = 1). It still assumes level ground, horizontal base, and no horizontal load.
 Belgian bearing checks should normally review both DA1/1 and DA1/2; the governing result is the recommended default in this tool.
 gamma_Rd is kept as an optional model factor only. Leave it at 1.0 unless you intentionally want an extra correction for simplified analytical model bias.

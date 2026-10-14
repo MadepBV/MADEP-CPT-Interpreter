@@ -1031,7 +1031,8 @@
                     <tr><td>B / L (m)</td><td>{fmt(payload.stage6.bearing.config.B, 2)} / {fmt(payload.stage6.bearing.config.L, 2)} m</td></tr>
                     <tr><td>eB / eL (m)</td><td>{fmt(payload.stage6.bearing.analysis.selected.eB ?? 0, 2)} / {fmt(payload.stage6.bearing.analysis.selected.eL ?? 0, 2)} m</td></tr>
                     <tr><td>B′ / L′ (m)</td><td>{fmt(payload.stage6.bearing.analysis.selected.BEff ?? payload.stage6.bearing.config.B, 2)} / {fmt(payload.stage6.bearing.analysis.selected.LEff ?? payload.stage6.bearing.config.L, 2)} m</td></tr>
-                    <tr><td>Shape factors</td><td>{payload.stage6.bearing.analysis.selected.shapeModeLabel || 'Brinch Hansen / Annex D'}</td></tr>
+                    <tr><td>Shape factors</td><td>{payload.stage6.bearing.analysis.selected.shapeModeLabel || 'EN 1997-1 Annex D'}</td></tr>
+                    <tr><td>Depth factors</td><td>{payload.stage6.bearing.analysis.selected.depthModeLabel || 'Brinch Hansen / Vesić (EN 1997-3 Annex B)'}</td></tr>
                     <tr><td>Nγ formulation</td><td>{payload.stage6.bearing.analysis.selected.ngammaFormulaLabel || 'EC7 Annex D rough base'}</td></tr>
                     <tr><td>Load q (kPa)</td><td>{fmt(payload.stage6.bearing.config.load, 0)} kPa</td></tr>
                     <tr><td>Selected layer</td><td>{payload.stage6.bearing.analysis.selected.layer.type}</td></tr>
@@ -1044,8 +1045,9 @@
                   <p class="report-note" style="margin-top:10px">
                     This bearing annex uses the EC7 Annex D rough-base
                     <code>Nγ = 2(Nq − 1)tanφ′</code> formulation. Shape factors follow
-                    {payload.stage6.bearing.analysis.selected.shapeModeLabel || 'Brinch Hansen / Annex D'}
-                    . {bearingShapeModeNote(payload.stage6.bearing.analysis.selected)}
+                    {payload.stage6.bearing.analysis.selected.shapeModeLabel || 'EN 1997-1 Annex D'}
+                    . {bearingShapeModeNote(payload.stage6.bearing.analysis.selected)} Depth factors:
+                    {payload.stage6.bearing.analysis.selected.depthModeLabel || 'Brinch Hansen / Vesić (EN 1997-3 Annex B)'}.
                   </p>
                 </div>
               </div>

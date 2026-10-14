@@ -318,6 +318,7 @@
         "B": 2,
         "Df": 1,
         "L": 1.5,
+        "depthFactors": "none",
         "eB": 0,
         "eL": 0,
         "ec7Combination": "governing",
@@ -923,8 +924,8 @@
   "cache": {
     "bearing": {
       "<unchanged-since>": "07-bearing-bearing-b-2",
-      "<digest>": "0ff494f568f3e68766bea3d4",
-      "bytes": 118640
+      "<digest>": "ac4439a897b8bad4a0f5a64b",
+      "bytes": 123158
     },
     "pile": {
       "<unchanged-since>": "07-pile-pile-ztoe-12",

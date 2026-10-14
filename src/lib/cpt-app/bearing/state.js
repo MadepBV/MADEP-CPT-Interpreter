@@ -21,6 +21,9 @@ export function defaults(){
     eB:0.00,
     eL:0.00,
     shapeMode:'hansen',
+    // 'none' = strict EN 1997-1:2004 Annex D (d_c = d_q = d_γ = d_cu = 1); 'hansen' = the Brinch Hansen
+    // (1970) / Vesić (1973) embedment factors that EN 1997-3:2025 Annex B reintroduces.
+    depthFactors:'none',
     load:150,
     factorMode:'ec7',
     xi:2.0,
@@ -40,4 +43,5 @@ export function ensure(stage6, env){
   stage6.bearing.eB = Math.max(0, Math.min(+stage6.bearing.eB || 0, Math.max((+stage6.bearing.B || 0.1) / 2 - 0.025, 0)));
   stage6.bearing.eL = Math.max(0, Math.min(+stage6.bearing.eL || 0, Math.max((+stage6.bearing.L || 0.1) / 2 - 0.025, 0)));
   if(!['hansen','conservative'].includes(stage6.bearing.shapeMode)) stage6.bearing.shapeMode = 'hansen';
+  if(!['none','hansen'].includes(stage6.bearing.depthFactors)) stage6.bearing.depthFactors = 'none';
 }

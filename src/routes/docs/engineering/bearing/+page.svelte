@@ -5,7 +5,7 @@
 
 	const pageTitle = 'Bearing Capacity — MADEP CPT Interpreter';
 	const pageDescription =
-		'Technical engineering chapter for the Stage 6 bearing-capacity workflow: Prandtl-Reissner slip-line derivation, drained and undrained resistance, effective dimensions, shape and depth factors, inclination factors, water-table averaging, Belgian DA1 handling, and limitations.';
+		'Technical engineering chapter for the Stage 6 bearing-capacity workflow: Prandtl-Reissner slip-line derivation, EN 1997-1 Annex D drained and undrained resistance, effective dimensions, Annex D shape factors, Brinch Hansen / Vesić depth factors (an extension beyond Annex D), inclination factors as background, water-table averaging, Belgian DA1 handling, and limitations.';
 	const canonicalUrl = 'https://cpt.madep.be/docs/engineering/bearing';
 	const ogImageUrl = 'https://cpt.madep.be/logo.png';
 </script>
@@ -30,10 +30,12 @@
 			<h1>Stage 6 bearing capacity.</h1>
 			<p class="hero__lead">
 				The bearing-capacity route is a shallow-foundation ULS screen for vertical loading on the
-				interpreted CPT section. It evaluates drained and undrained resistance separately, applies
-				effective-dimension logic for eccentricity, builds Brinch-Hansen shape / depth / inclination
-				factors from the effective dimensions, averages the unit weight across the water table for
-				the N<sub>γ</sub> term, and reports Belgian DA1-style design envelopes.
+				interpreted CPT section. It evaluates drained and undrained resistance separately with the
+				EN 1997-1 Annex D expressions, applies effective-dimension logic for eccentricity, uses the
+				Annex D shape factors on the effective dimensions, adds Brinch Hansen / Vesić depth factors
+				(which Annex D itself does not contain — see §6), averages the unit weight across the water
+				table for the N<sub>γ</sub> term, and reports Belgian DA1-style design envelopes. No
+				inclination factors are computed: vertical loading is assumed.
 			</p>
 		</div>
 	</header>
@@ -46,7 +48,7 @@
 			<a href="#factors">Bearing-capacity factors</a>
 			<a href="#model">Drained and undrained resistance</a>
 			<a href="#dimensions">Effective dimensions</a>
-			<a href="#shape">Shape and depth factors</a>
+			<a href="#shape">Shape factors (Annex D) and depth factors (Brinch Hansen / Vesić)</a>
 			<a href="#inclination">Inclination factors</a>
 			<a href="#gamma">Water-table averaging for the N<sub>γ</sub> term</a>
 			<a href="#design">Belgian DA1 handling</a>
@@ -65,9 +67,10 @@
 					drained and undrained resistance envelopes versus founding depth.
 				</p>
 				<div class="doc-callout">
-					<strong>Model class.</strong> Brinch Hansen / EC7 Annex D screening for vertical loading.
-					Not a full general-footing check with sliding, uplift, ground slope, or base tilt. Those
-					live in dedicated structural-geotechnical tools.
+					<strong>Model class.</strong> EN 1997-1 Annex D screening for vertical loading, extended with
+					Brinch Hansen (1970) / Vesić (1973) depth factors. Not a full general-footing check with
+					sliding, uplift, ground slope, or base tilt. Those live in dedicated
+					structural-geotechnical tools.
 				</div>
 				<div class="symbols">
 					<div class="symbols__title">Primary quantities</div>
@@ -215,17 +218,45 @@
 
 			<section id="shape" class="doc-card">
 				<p class="section-label">Shape and depth factors</p>
-				<h2>6. Brinch Hansen factors on effective dimensions</h2>
+				<h2>6. Shape factors (EN 1997-1 Annex D) and depth factors (Brinch Hansen / Vesić)</h2>
+				<p>
+					The shape factors are the EN 1997-1:2004 Annex D forms (D.3 for undrained, D.4 for
+					drained), evaluated on the effective dimensions with r = B′/L′ (r = 0 for a strip, r = 1
+					for a square or circle). They are <em>not</em> the Brinch Hansen (1970) shape factors:
+					Brinch Hansen uses s<sub>γ</sub> = 1 − 0.4 B′/L′ with a floor of 0.6, and Vesić uses
+					s<sub>q</sub> = 1 + (B′/L′) tan φ′. The app uses the Annex D coefficients.
+				</p>
 				<div class="equations">
 					<div class="formula">s<sub>q</sub> = 1 + r sin φ′</div>
 					<div class="formula">s<sub>c</sub> = (s<sub>q</sub> N<sub>q</sub> − 1) / (N<sub>q</sub> − 1)</div>
-					<div class="formula">s<sub>γ</sub> = max(0.6, 1 − 0.3 r)</div>
+					<div class="formula">s<sub>γ</sub> = 1 − 0.3 r    (≥ 0.7; the code also carries Brinch Hansen's 0.6 floor, which can never govern)</div>
 					<div class="formula">s<sub>cu</sub> = 1 + 0.2 r</div>
+				</div>
+				<div class="doc-callout">
+					<strong>Depth factors are an extension beyond Annex D.</strong> EN 1997-1 Annex D contains
+					no depth factors: its drained expression (D.2) has only b, s and i factors, and its
+					undrained expression (D.1) only b<sub>c</sub>, s<sub>c</sub> and i<sub>c</sub>. The UK National
+					Annex notes the omission explicitly. The d-factors below are the Brinch Hansen (1970)
+					embedment terms in the form adopted by Vesić (1973). For a 2 × 2 m footing at
+					D<sub>f</sub> = 1 m on φ′ = 30° sand they raise the drained resistance by about 10 %
+					(d<sub>q</sub> ≈ 1.14) and the undrained resistance by 20 % (d<sub>cu</sub> = 1.20). A
+					strict Annex D check therefore corresponds to d<sub>q</sub> = d<sub>c</sub> = d<sub>cu</sub> = 1.
+					<strong>The app exposes this as the "Depth factors" setting</strong> (advanced panel):
+					"None – EN 1997-1 Annex D" is the default and gives the strict Annex D value; "Brinch Hansen /
+					Vesić – EN 1997-3 Annex B" applies the factors below. The second-generation
+					EN 1997-3:2025 Annex B (B.4) does add these depth factors, but its note sets them to 1.0
+					where the soil above founding level is weaker than the soil at founding level — the app
+					applies them over the full D<sub>f</sub> using the founding layer only, so check that
+					condition yourself when the overlying layers are softer fill. EN 1997-3 also writes the
+					undrained factor as 1 + 0.33 atan(D/B) and changes N<sub>γ</sub> to 2(N<sub>q</sub> + 1) tan φ′;
+					the app keeps the Brinch Hansen 1 + 0.4 k and the Annex D N<sub>γ</sub>.
+				</div>
+				<div class="equations">
 					<div class="formula">η = D<sub>f</sub> / B′,    k = η   for η ≤ 1,    k = atan(η)   for η &gt; 1</div>
 					<div class="formula">d<sub>q</sub> = 1 + 2 tan φ′ (1 − sin φ′)² k</div>
-					<div class="formula">d<sub>c</sub> = d<sub>q</sub> − (1 − d<sub>q</sub>)/(N<sub>c</sub> tan φ′)    for φ′ &gt; 0</div>
+					<div class="formula">d<sub>c</sub> = d<sub>q</sub> − (1 − d<sub>q</sub>)/(N<sub>c</sub> tan φ′)    for φ′ &gt; 0  (Vesić relation; Brinch Hansen's own form is 1 + 0.4 k)</div>
 					<div class="formula">d<sub>γ</sub> = 1.0</div>
-					<div class="formula">d<sub>cu</sub> = 1 + 0.4 k</div>
+					<div class="formula">d<sub>cu</sub> = d<sub>c</sub>(φ′ = 0) = 1 + 0.4 k</div>
 				</div>
 				<div class="symbols">
 					<div class="symbols__title">Notation</div>
@@ -355,7 +386,8 @@
 				<ul class="notes">
 					<li>Under Belgian DA1 (NBN EN 1997-1 ANB) spread-foundation bearing uses resistance set R1, i.e. γ<sub>R;v</sub> = 1.00 in both combinations (EN 1997-1 Table A.5). The 1.40 value sometimes quoted belongs to the R2 set used in DA2, which Belgium does not apply. γ<sub>Rd</sub> in this tool is an optional <em>model</em> factor for analytical-model bias — default 1.0, and normally left there.</li>
 					<li>DA1/1 and DA1/2 resistance envelopes are reported separately; the displayed "governing" value is the minimum design <em>resistance</em> — a conservative envelope, not a per-combination utilisation comparison.</li>
-					<li>Action-side partial factors (γ<sub>G</sub>, γ<sub>Q</sub>) are not applied here — the entered bearing stress must already be the factored design value E<sub>d</sub> from the governing load combination (normally 1.35 G<sub>k</sub> + 1.5 Q<sub>k</sub> for DA1/1, 1.0 G<sub>k</sub> + 1.3 Q<sub>k</sub> for DA1/2).</li>
+					<li>Action-side partial factors (γ<sub>G</sub>, γ<sub>Q</sub>) are not applied here — the entered bearing stress must already be the factored design value E<sub>d</sub> from the governing load combination. With the Belgian NBN EN 1990 ANB that is set B for DA1/1 (1.35 G<sub>k</sub> + 1.5 Q<sub>k,1</sub> + 1.5 ψ<sub>0,i</sub> Q<sub>k,i</sub>) and set C for DA1/2 (1.0 G<sub>k</sub> + 1.3 Q<sub>k,1</sub> + 1.1 ψ<sub>0,i</sub> Q<sub>k,i</sub>, Table A1.2(C) ANB); "Benadering 1" of EN 1990 A1.3.1(5) is normative in Belgium.</li>
+					<li>The Belgian National Annex fixes choices and values (design approach, partial factors, the CPT-based characteristic-parameter table) but prescribes no bearing-capacity calculation method. Annex D therefore remains the informative Eurocode reference, and nothing in the ANB adds depth factors — see §6.</li>
 				</ul>
 			</section>
 
@@ -382,6 +414,7 @@
 				<ul class="notes">
 					<li>Depth-wise drained and undrained resistance envelopes; DA1/1 and DA1/2 design envelopes.</li>
 					<li>Effective-dimension summary, shape / depth factor breakdown (inclination factors are not computed — vertical load assumed, see §7).</li>
+					<li>The depth factors d<sub>q</sub>, d<sub>c</sub>, d<sub>cu</sub> are not part of EN 1997-1 Annex D (see §6). They are off by default; the "Depth factors" setting switches the Brinch Hansen / Vesić set on, and the result cards and the report annex name the active mode.</li>
 					<li>N<sub>γ</sub> term's water-table case (above footing / in wedge / below wedge).</li>
 					<li>Ground slope, base tilt, horizontal load and inclination, dynamic or seismic action, uplift, and sliding are not in the current route.</li>
 					<li>Piled or combined-pile-raft foundations are outside the shallow-foundation screen.</li>
@@ -397,11 +430,13 @@
 					<li>Prandtl, L. (1921). Über die Eindringungsfestigkeit plastischer Baustoffe und die Festigkeit von Schneiden. <em>Z. Angew. Math. Mech.</em> 1(1), 15–20. Origin of the N<sub>c</sub> = π + 2 result.</li>
 					<li>Reissner, H. (1924). Zum Erddruckproblem. <em>Proc. 1st Int. Congr. Appl. Mech.</em>, Delft, 295–311. Extension of Prandtl to weightless frictional soil.</li>
 					<li>Meyerhof, G. G. (1953). The bearing capacity of foundations under eccentric and inclined loads. <em>Proc. 3rd ICSMFE</em>, Zurich, Vol. 1, 440–445.</li>
-					<li>Brinch Hansen, J. (1970). A revised and extended formula for bearing capacity. <em>Bull. Danish Geotech. Inst.</em> 28, 5–11. Source of the shape/depth/inclination factors.</li>
-					<li>Vesić, A. S. (1973). Analysis of ultimate loads of shallow foundations. <em>J. Soil Mech. Found. Div. ASCE</em> 99(SM1), 45–73.</li>
-					<li>EN 1997-1:2004+A1:2013 — Eurocode 7, Part 1. Annex D.</li>
-					<li>NBN EN 1997-1 ANB:2022 — Belgian National Annex to Eurocode 7.</li>
-					<li>EN 1990:2002+A1:2005 — Basis of structural design.</li>
+					<li>Brinch Hansen, J. (1970). A revised and extended formula for bearing capacity. <em>Bull. Danish Geotech. Inst.</em> 28, 5–11. Source of the depth factors (k = D/B, atan(D/B) beyond D = B) and of the inclination-factor background.</li>
+					<li>Vesić, A. S. (1973). Analysis of ultimate loads of shallow foundations. <em>J. Soil Mech. Found. Div. ASCE</em> 99(SM1), 45–73. Source of the d<sub>c</sub> = d<sub>q</sub> − (1 − d<sub>q</sub>)/(N<sub>c</sub> tan φ′) relation.</li>
+					<li>EN 1997-1:2004+A1:2013 — Eurocode 7, Part 1. Annex D (informative): source of N<sub>q</sub>, N<sub>c</sub>, N<sub>γ</sub> and the shape factors; contains no depth factors. Tables A.4 and A.5: M1/M2 soil factors and R1 resistance factors.</li>
+					<li>NBN EN 1997-1 ANB:2022 — Belgian National Annex to Eurocode 7 (replaces ANB:2014). Fixes DA1 and the partial-factor values; prescribes no calculation method.</li>
+					<li>Buildwise (2022). Richtlijnen voor de toepassing van EC7 in België — het grondmechanische ontwerp van ingebedde kerende constructies. Republishes the Belgian DA1/1 and DA1/2 partial-factor tables (γ<sub>φ′</sub> = γ<sub>c′</sub> = 1.25, γ<sub>cu</sub> = 1.40, γ<sub>γ</sub> = 1.00, set R1).</li>
+					<li>Lesny, K. &amp; Orr, T. (2024). Eurocode 7 – second generation – spread foundations. <em>Proc. XVIII ECSMGE</em>, Lisbon. Summary of the EN 1997-3:2025 Annex B changes (FprEN 1997-3:2024) (depth factors, N<sub>γ</sub> = 2(N<sub>q</sub> + 1) tan φ′).</li>
+					<li>EN 1990:2002+A1:2005 — Basis of structural design; NBN EN 1990 ANB:2021 — Belgian National Annex (Table A1.2(C) set-C factors).</li>
 				</ul>
 			</section>
 		</main>

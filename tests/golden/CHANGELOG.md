@@ -3,6 +3,19 @@
 Every intentional golden update: date, commit, suite — reason — affected cases. CI requires an entry
 here whenever `tests/golden/**` changes in a pull request.
 
+## 2026-10-14 — bearing depth-factor toggle, strict Annex D default (v0.6.0)
+
+`stage6.bearing.depthFactors` added (`'none'` default = EN 1997-1:2004 Annex D, every d = 1; `'hansen'` = the
+previous Brinch Hansen / Vesić embedment factors, now opt-in). Review: `worklog/06-bearing-eurocode-annex-d-review.md`.
+Node tier, 95 cases rewritten with `golden:update`: `stage6-bearing` (56: every analysis / at-depth / config / dom —
+d_q, d_c, d_cu → 1, lower q_ult / q_d, new `depthMode` / `depthModeLabel` keys, the new "Depth factors" select,
+shape-factor label "Brinch Hansen / Annex D" → "EN 1997-1 Annex D"), `stage6-shared` (4: the new default key),
+`project-io` (12: snapshot carries the key; byte counts), `exports` (9: saveProject snapshot), `report` (7: bearing
+annex digests), `chart-configs` (7: bearing chart axis max follows the lower resistance). Browser tier (`GOLDEN_MODE=update`): every `*.state.json` / `*-saveproject.json` / report payload of the five journeys
+(the new `bearing.depthFactors` key), the bearing and report DOMs of `demo-journey` / `gef-import-journey`, and only the
+`07-bearing.png` / `12-report.png` screenshots of those two journeys; the other screenshots differed by local Chromium
+rendering alone (soft signal) and were restored. Check mode green twice.
+
 ## 2026-08-29 — baseline
 
 - Baseline characterization of branch `v0.6.0` at HEAD `462fc50` (unmodified app source). 1 619 Node-tier

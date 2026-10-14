@@ -1,6 +1,6 @@
 {
   "drained": [
-    {"x":1005.8,"y":18}
+    {"x":679.7,"y":18}
   ],
   "maxDepth": 18,
   "pts": [
@@ -19,18 +19,20 @@
       "capacityLabel": "q_d",
       "cuD": 35.7,
       "cuK": 50,
-      "dc": 1.61,
-      "dcu": 1.63,
+      "dc": 1,
+      "dcu": 1,
+      "depthMode": "none",
+      "depthModeLabel": "None (EN 1997-1 Annex D, d = 1)",
       "dg": 1,
-      "dq": 1.47,
+      "dq": 1,
       "drainedComboLabel": "DA1/2",
       "eB": 0.13,
       "eL": 0.13,
       "ec7CombinationLabel": "DA1/2",
       "ec7CombinationMode": "DA1-2",
       "ec7Results": [
-        {"label":"DA1/1","qdDrained":1476.5,"qdUndrained":670.8},
-        {"label":"DA1/2","qdDrained":1005.8,"qdUndrained":562.2}
+        {"label":"DA1/1","qdDrained":985.7,"qdUndrained":524.5},
+        {"label":"DA1/2","qdDrained":679.7,"qdUndrained":457.7}
       ],
       "eta": 180,
       "factor": 1.1,
@@ -77,10 +79,10 @@
       "phiK": 20,
       "qDrain": 160,
       "qUndrain": 319.9,
-      "qdDrained": 1005.8,
-      "qdUndrained": 562.2,
-      "qultDrained": 1106.4,
-      "qultUndrained": 618.5,
+      "qdDrained": 679.7,
+      "qdUndrained": 457.7,
+      "qultDrained": 747.7,
+      "qultUndrained": 503.5,
       "r": 1,
       "sc": 1,
       "scu": 1,
@@ -114,18 +116,20 @@
     "capacityLabel": "q_d",
     "cuD": 35.7,
     "cuK": 50,
-    "dc": 1.61,
-    "dcu": 1.63,
+    "dc": 1,
+    "dcu": 1,
+    "depthMode": "none",
+    "depthModeLabel": "None (EN 1997-1 Annex D, d = 1)",
     "dg": 1,
-    "dq": 1.47,
+    "dq": 1,
     "drainedComboLabel": "DA1/2",
     "eB": 0.13,
     "eL": 0.13,
     "ec7CombinationLabel": "DA1/2",
     "ec7CombinationMode": "DA1-2",
     "ec7Results": [
-      {"label":"DA1/1","qdDrained":1476.5,"qdUndrained":670.8},
-      {"label":"DA1/2","qdDrained":1005.8,"qdUndrained":562.2}
+      {"label":"DA1/1","qdDrained":985.7,"qdUndrained":524.5},
+      {"label":"DA1/2","qdDrained":679.7,"qdUndrained":457.7}
     ],
     "eta": 180,
     "factor": 1.1,
@@ -172,10 +176,10 @@
     "phiK": 20,
     "qDrain": 160,
     "qUndrain": 319.9,
-    "qdDrained": 1005.8,
-    "qdUndrained": 562.2,
-    "qultDrained": 1106.4,
-    "qultUndrained": 618.5,
+    "qdDrained": 679.7,
+    "qdUndrained": 457.7,
+    "qultDrained": 747.7,
+    "qultUndrained": 503.5,
     "r": 1,
     "sc": 1,
     "scu": 1,
@@ -194,6 +198,6 @@
     "z": 18
   },
   "undrained": [
-    {"x":562.2,"y":18}
+    {"x":457.7,"y":18}
   ]
 }

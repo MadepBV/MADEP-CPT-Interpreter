@@ -261,6 +261,7 @@
         "B": 1.5,
         "Df": 1,
         "L": 1.5,
+        "depthFactors": "none",
         "eB": 0,
         "eL": 0,
         "ec7Combination": "governing",
@@ -1357,8 +1358,8 @@
   "cache": {
     "bearing": {
       "<unchanged-since>": "01-bishop-empty",
-      "<digest>": "392f98ecf220bd7be99b3b83",
-      "bytes": 99055
+      "<digest>": "12269d7c25f43807efcec748",
+      "bytes": 102811
     },
     "bishopLineProbe": {
       "message": "Run deformation first, then the measured line can plot displacement and MC screening quantities.",

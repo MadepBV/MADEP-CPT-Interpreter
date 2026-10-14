@@ -223,6 +223,7 @@
             "B": 2,
             "Df": 1.5,
             "L": 4,
+            "depthFactors": "none",
             "eB": 0,
             "eL": 0,
             "ec7Combination": "governing",

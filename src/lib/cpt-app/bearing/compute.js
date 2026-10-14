@@ -85,7 +85,14 @@ export function bearingGeometry(cfg){
 export function shapeModeLabel(mode){
   return mode === 'conservative'
     ? 'Conservative (shape factors = 1.0)'
-    : 'Brinch Hansen / Annex D';
+    : 'EN 1997-1 Annex D';
+}
+
+/** Label of the depth-factor route: strict Annex D (none) or the Brinch Hansen / Vesić set. */
+export function depthModeLabel(mode){
+  return mode === 'hansen'
+    ? 'Brinch Hansen / Vesić (EN 1997-3 Annex B)'
+    : 'None (EN 1997-1 Annex D, d = 1)';
 }
 
 export function ngammaLabel(){
@@ -110,9 +117,18 @@ export function shapeFactors(geometry, phiDeg, Nq, mode){
   };
 }
 
-export function depthFactors(Df, B, phiDeg, Nc){
+// Depth factors. EN 1997-1:2004 Annex D has none (mode 'none' → every d = 1, the default). Mode
+// 'hansen' applies the Brinch Hansen (1970) embedment terms in the Vesić (1973) form — the set that
+// EN 1997-3:2025 Annex B (B.4) reintroduces: d_q = 1 + 2 tanφ′ (1 − sinφ′)² k, d_c from d_q,
+// d_γ = 1, k = D/B′ up to 1 and atan(D/B′) beyond. The undrained d_cu = 1 + 0.4 k is the classical
+// Brinch Hansen / Skempton form (EN 1997-3 writes 1 + 0.33 atan(D/B)); both should be set to 1
+// when the soil above founding level is weaker than the founding layer (EN 1997-3 B.4 NOTE).
+export function depthFactors(Df, B, phiDeg, Nc, mode = 'hansen'){
   const eta = Math.max(Df || 0, 0) / Math.max(B || 0.1, 0.1);
   const k = eta <= 1 ? eta : Math.atan(eta);
+  if(mode === 'none'){
+    return { eta, k, dq:1.0, dc:1.0, dg:1.0, dcu:1.0 };
+  }
   if(phiDeg > 0){
     const phiRad = phiDeg * Math.PI / 180;
     const sinPhi = Math.sin(phiRad);
@@ -222,6 +238,7 @@ export function bearingAtDepth(z, cfg, layers, env){
   const qUndrain = Math.max(stress.sigmaV, 0);
   const factor = factorValue(cfg);
   const shapeMode = cfg.shapeMode || 'hansen';
+  const depthMode = cfg.depthFactors || 'none';
   let drainedCalc = null;
   let undrainedCalc = null;
   let ec7Results = [];
@@ -238,9 +255,9 @@ export function bearingAtDepth(z, cfg, layers, env){
       const Nc = phiD > 0 ? (Nq - 1) / Math.max(tanPhi, 1e-6) : 5.14;
       const Ng = ngamma(phiD, Nq);
       const shp = shapeFactors(geo, phiD, Nq, shapeMode);
-      const dep = depthFactors(z, B, phiD, Nc);
+      const dep = depthFactors(z, B, phiD, Nc, depthMode);
       const undShp = shapeFactors(geo, 0, 1, shapeMode);
-      const undDep = depthFactors(z, B, 0, 5.14);
+      const undDep = depthFactors(z, B, 0, 5.14, depthMode);
       const qultDrained = Math.max(0, cD * Nc * shp.sc * dep.dc + qDrain * Nq * shp.sq * dep.dq + 0.5 * gammaEff * geo.BEff * Ng * shp.sg * dep.dg);
       const qultUndrained = Math.max(0, qUndrain + 5.14 * cuD * undShp.scu * undDep.dcu);
       const qdDrained = qultDrained / factor;
@@ -253,6 +270,7 @@ export function bearingAtDepth(z, cfg, layers, env){
         undrainedShape:undShp,
         undrainedDepth:undDep,
         shapeModeLabel:shapeModeLabel(shapeMode),
+        depthModeLabel:depthModeLabel(depthMode),
         ngammaFormulaLabel:ngammaLabel(),
         qultDrained, qultUndrained, qdDrained, qdUndrained
       };
@@ -273,9 +291,9 @@ export function bearingAtDepth(z, cfg, layers, env){
     const Nc = phiD > 0 ? (Nq - 1) / Math.max(tanPhi, 1e-6) : 5.14;
     const Ng = ngamma(phiD, Nq);
     const shp = shapeFactors(geo, phiD, Nq, shapeMode);
-    const dep = depthFactors(z, B, phiD, Nc);
+    const dep = depthFactors(z, B, phiD, Nc, depthMode);
     const undShp = shapeFactors(geo, 0, 1, shapeMode);
-    const undDep = depthFactors(z, B, 0, 5.14);
+    const undDep = depthFactors(z, B, 0, 5.14, depthMode);
     const qultDrained = Math.max(0, cD * Nc * shp.sc * dep.dc + qDrain * Nq * shp.sq * dep.dq + 0.5 * gammaEff * geo.BEff * Ng * shp.sg * dep.dg);
     const qultUndrained = Math.max(0, qUndrain + 5.14 * cuD * undShp.scu * undDep.dcu);
     drainedCalc = undrainedCalc = {
@@ -290,6 +308,7 @@ export function bearingAtDepth(z, cfg, layers, env){
       undrainedShape:undShp,
       undrainedDepth:undDep,
       shapeModeLabel:shapeModeLabel(shapeMode),
+      depthModeLabel:depthModeLabel(depthMode),
       ngammaFormulaLabel:ngammaLabel(),
       qultDrained, qultUndrained,
       qdDrained: qultDrained / factor,
@@ -347,6 +366,8 @@ export function bearingAtDepth(z, cfg, layers, env){
     factorLabel:factorLabel(cfg),
     shapeMode:shapeMode,
     shapeModeLabel:drainedCalc.shapeModeLabel,
+    depthMode:depthMode,
+    depthModeLabel:drainedCalc.depthModeLabel,
     ngammaFormulaLabel:drainedCalc.ngammaFormulaLabel,
     Nc:+drainedCalc.Nc.toFixed(3),
     Nq:+drainedCalc.Nq.toFixed(3),

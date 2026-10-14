@@ -44,6 +44,7 @@
     "B": 0.1,
     "Df": 10,
     "L": 1.5,
+    "depthFactors": "none",
     "eB": 0.025,
     "eL": 0,
     "ec7Combination": "governing",

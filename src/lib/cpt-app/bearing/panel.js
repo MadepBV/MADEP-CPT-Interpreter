@@ -20,7 +20,7 @@
 // stage6UndrainedFormula (the partial-update targets of preview.js), stage6BearingChart (chart.js) and
 // every visible string are unchanged.
 import { noteHtml } from '../core/format.js';
-import { bearingNotes, ec7Help, ec7Options, shapeModeDetailHtml, shapeModeHelp, shapeModeOptions } from './notes.js';
+import { bearingNotes, depthModeHelp, depthModeOptions, ec7Help, ec7Options, shapeModeDetailHtml, shapeModeHelp, shapeModeOptions } from './notes.js';
 
 /** Governing design resistance at the selected depth: the lower of the drained and undrained curves. */
 export function governingResistance(sel){
@@ -65,10 +65,11 @@ export function materialParamsHtml(sel, cfg){
         <tr><td>γ'</td><td class="tbl__v">${sel.gammaEff.toFixed(2)} kN/m³</td><td class="tbl__k">ξ</td><td class="tbl__v">${cfg.xi.toFixed(2)}</td><td class="tbl__k">Route</td><td>Global SF</td></tr>
         <tr><td>B / L</td><td class="tbl__v">${sel.BRaw.toFixed(2)} / ${sel.LRaw.toFixed(2)} m</td><td class="tbl__k">eB / eL</td><td class="tbl__v">${sel.eB.toFixed(2)} / ${sel.eL.toFixed(2)} m</td><td class="tbl__k">Route</td><td>${sel.shapeModeLabel}</td></tr>
         <tr><td>B' / L'</td><td class="tbl__v">${sel.BEff.toFixed(2)} / ${sel.LEff.toFixed(2)} m</td><td class="tbl__k">r</td><td class="tbl__v">${sel.r.toFixed(3)}</td><td class="tbl__k">k</td><td>${sel.k.toFixed(3)}</td></tr>
+        <tr><td>Depth factors</td><td class="tbl__v" colspan="5">${sel.depthModeLabel}</td></tr>
       </table>
       <div class="card__text">
         Characteristic soil parameters are used directly. The global/system factor ξ is applied on the output resistance only and is not combined with γ_R or γ_M.<br>
-        Nγ uses the <strong>${sel.ngammaFormulaLabel}</strong> form. Shape factors follow <strong>${sel.shapeModeLabel}</strong>. ${shapeModeDetailHtml(sel.shapeMode)}
+        Nγ uses the <strong>${sel.ngammaFormulaLabel}</strong> form. Shape factors follow <strong>${sel.shapeModeLabel}</strong>. ${shapeModeDetailHtml(sel.shapeMode)} Depth factors: <strong>${sel.depthModeLabel}</strong>.
       </div>
     `;
   }
@@ -82,6 +83,7 @@ export function materialParamsHtml(sel, cfg){
       <tr><td>γ'</td><td class="tbl__v">${sel.gammaEff.toFixed(2)} kN/m³</td><td class="tbl__k">Combo mode</td><td class="tbl__v">${cfg.ec7Combination === 'governing' ? 'most onerous' : cfg.ec7Combination.toUpperCase().replace('_','/')}</td><td class="tbl__k">R set</td><td>R1</td></tr>
       <tr><td>B / L</td><td class="tbl__v">${sel.BRaw.toFixed(2)} / ${sel.LRaw.toFixed(2)} m</td><td class="tbl__k">eB / eL</td><td class="tbl__v">${sel.eB.toFixed(2)} / ${sel.eL.toFixed(2)} m</td><td class="tbl__k">Shape route</td><td>${sel.shapeModeLabel}</td></tr>
       <tr><td>B' / L'</td><td class="tbl__v">${sel.BEff.toFixed(2)} / ${sel.LEff.toFixed(2)} m</td><td class="tbl__k">r</td><td class="tbl__v">${sel.r.toFixed(3)}</td><td class="tbl__k">Nγ</td><td>${sel.ngammaFormulaLabel}</td></tr>
+      <tr><td>Depth factors</td><td class="tbl__v" colspan="5">${sel.depthModeLabel}</td></tr>
     </table>
     ${sel.ec7Results && sel.ec7Results.length > 1 ? `
       <div class="card__text">
@@ -107,6 +109,7 @@ export function drainedFormulaHtml(sel){
       γ' = <strong>${sel.gammaEff.toFixed(2)} kN/m³</strong><br>
       ${sel.useEc7 ? `Governing Belgian combo = <strong>${sel.drainedComboLabel}</strong><br>` : ''}
       Shape factors = <strong>${sel.shapeModeLabel}</strong><br>
+      Depth factors = <strong>${sel.depthModeLabel}</strong><br>
       B = <strong>${sel.BRaw.toFixed(2)} m</strong>, L = <strong>${sel.LRaw.toFixed(2)} m</strong><br>
       eB = <strong>${sel.eB.toFixed(2)} m</strong>, eL = <strong>${sel.eL.toFixed(2)} m</strong><br>
       B' = <strong>${sel.BEff.toFixed(2)} m</strong>, L' = <strong>${sel.LEff.toFixed(2)} m</strong>, r = <strong>${sel.r.toFixed(3)}</strong><br>
@@ -131,6 +134,7 @@ export function undrainedFormulaHtml(sel){
       N_cu = <strong>5.14</strong><br>
       ${sel.useEc7 ? `Governing Belgian combo = <strong>${sel.undrainedComboLabel}</strong><br>` : ''}
       Shape factors = <strong>${sel.shapeModeLabel}</strong><br>
+      Depth factors = <strong>${sel.depthModeLabel}</strong><br>
       B = <strong>${sel.BRaw.toFixed(2)} m</strong>, L = <strong>${sel.LRaw.toFixed(2)} m</strong><br>
       eB = <strong>${sel.eB.toFixed(2)} m</strong>, eL = <strong>${sel.eL.toFixed(2)} m</strong><br>
       B' = <strong>${sel.BEff.toFixed(2)} m</strong>, L' = <strong>${sel.LEff.toFixed(2)} m</strong>, r = <strong>${sel.r.toFixed(3)}</strong><br>
@@ -189,6 +193,12 @@ export function bearingBodyHtml(profile, cfg, { detailsOpen }){
                   </select>
                 </label>
                 <div class="card card--quiet card--note">${shapeModeHelp(cfg.shapeMode)}</div>
+                <label class="field-stack">Depth factors
+                  <select class="input" onchange="setStage6Field('bearing.depthFactors', this.value)">
+                    ${depthModeOptions(cfg.depthFactors)}
+                  </select>
+                </label>
+                <div class="card card--quiet card--note">${depthModeHelp(cfg.depthFactors)}</div>
                 <label class="field-stack">Eccentricity eB (m)
                   <input type="number" class="input input--num" step="0.01" min="0" value="${cfg.eB.toFixed(2)}" onchange="setStage6Field('bearing.eB', this.value)">
                 </label>
